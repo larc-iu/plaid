@@ -16,6 +16,8 @@ import { runHeldNotice } from './runHeld.js';
 // nothing said. `running` defaults to the run's own. `onOpen` runs each time
 // the dialog opens. `closeFirst` closes the dialog before `onRun`, else after
 // it settles. `size` is the button's (`sm` on an annotation tab's RunBar).
+// `children` sit under the method row: what else the run takes (the
+// channels of a recording, say).
 export function ServiceSpotDialog({
   label,
   icon,
@@ -34,6 +36,7 @@ export function ServiceSpotDialog({
   running = run.running,
   closeFirst = true,
   size,
+  children = null,
 }) {
   const [open, setOpen] = useState(false);
   const notice = running ? null : (blockedHint ?? runHeldNotice(writeLock, running));
@@ -81,6 +84,7 @@ export function ServiceSpotDialog({
         }
       >
         <ServiceMethodRow spot={spot} disabled={running} emptyHint={emptyHint} />
+        {children}
       </ServiceRunDialog>
     </>
   );

@@ -9,7 +9,7 @@ import tempfile
 import shutil
 import whisper
 from typing import List, Dict, Any
-from plaid_client.workflows.asr import ASRModel, Alignment, AlignmentProcessor
+from plaid_client.workflows.asr import ASRModel, Alignment, AlignmentProcessor, extract_channel
 from plaid_client import BaseService, TASKS, Param, service_source, PROV_DETAIL_KEY, ROLES, find_by_role
 from plaid_client.service import Refusal, held_run, progress_heartbeat
 from plaid_client.workflows.requester import requester_of
@@ -34,6 +34,10 @@ transcribes it, and writes time-aligned segments.
 
 Each new segment's text gets a sentence of its own. The words, sentences and
 annotations already in the document stay as they are.
+
+A recording with a speaker on each channel is transcribed one channel at a
+time: the app sends one request per channel, this service hears that channel
+alone, and each segment it writes carries the channel's speaker.
 
 Tokens this service creates carry provenance metadata (`prov`/`provSource`).
 """
@@ -187,6 +191,12 @@ class WhisperASRService(BaseService):
         # User-controlled arguments (declared in the service's parameter schema).
         model_size = request_data['model_size'] or None
         language = request_data['language'] or None
+        # One channel of a multichannel recording, and its speaker, when the
+        # app asks for a channel (0-based). Without one the whole recording
+        # is transcribed as it always was.
+        channel = request_data.get('channel')
+        channel = int(channel) if channel is not None and channel != '' else None
+        speaker = (request_data.get('speaker') or '').strip() or None
         requester = requester_of(self.client, request_data)
         
         # Validate required parameters
@@ -219,7 +229,8 @@ class WhisperASRService(BaseService):
             with held_run(self.client, response_helper, document_id) as run:
                 run.result = self._transcribe(document_id, text_layer_id, alignment_token_layer_id,
                                               sentence_token_layer_id, model_size, language,
-                                              requester, temp_dir, response_helper, model)
+                                              requester, temp_dir, response_helper, model,
+                                              channel=channel, speaker=speaker)
 
         finally:
             # Clean up temporary files. Reporting a failure is BaseService's
@@ -231,7 +242,7 @@ class WhisperASRService(BaseService):
 
     def _transcribe(self, document_id, text_layer_id, alignment_token_layer_id,
                     sentence_token_layer_id, model_size, language, requester, temp_dir,
-                    response_helper, model=None):
+                    response_helper, model=None, channel=None, speaker=None):
         """Read, transcribe and write, under the caller's lock. The result."""
         # Get the document, to learn whether it has a recording
         response_helper.progress(5, "Fetching document…")
@@ -252,6 +263,12 @@ class WhisperASRService(BaseService):
 
         audio_file = self.alignment_processor.download_media_file(
             self.client, document_id, temp_dir, on_progress=downloaded)
+
+        # One channel of the recording, when asked for one: pulled out before
+        # the model hears it, so the other speakers are not in its ears.
+        if channel is not None:
+            response_helper.progress(32, f"Taking out channel {channel + 1}…")
+            audio_file = extract_channel(audio_file, channel, temp_dir)
 
         # Transcribe audio with ASR model. One blocking call with nothing to
         # poll inside it, and the longest stretch of this service by far: an
@@ -283,12 +300,17 @@ class WhisperASRService(BaseService):
         # Group every write into ONE labeled audit-log entry. `critical`
         # because the writes are one batch that a stop part-way would only
         # throw away after the transcription was paid for.
-        audit_msg = requester.label(f"Whisper ASR transcription ({language})" if language
-                                    else "Whisper ASR transcription")
+        audit_msg = requester.label(
+            "Whisper ASR transcription"
+            + (f" ({language})" if language else "")
+            + (f", {speaker}" if speaker else ""))
         for alignment in alignments:
             scores = (alignment.metadata or {}).get(PROV_DETAIL_KEY) or {}
             alignment.metadata = {**(alignment.metadata or {}), PROV_DETAIL_KEY:
                                   self.stamp_detail(requester, **scores)}
+            # The channel's speaker, on every segment heard on it.
+            if speaker:
+                alignment.metadata['speaker'] = speaker
         # The word layer, whose "Tokenize new text" gives the transcribed
         # text its words, as typed text gets them.
         text_layer = next((tl for tl in full_document.get("text_layers") or []

@@ -63,6 +63,8 @@ def _logged(entries):
 
 
 def _document(body, *, sentences=(), align=(), sentence_spans=()):
+    # An `align` entry is (begin, end, timeBegin, timeEnd) or the same with a
+    # speaker fifth.
     return {
         'id': 'd1',
         'text_layers': [{
@@ -70,9 +72,10 @@ def _document(body, *, sentences=(), align=(), sentence_spans=()):
             'text': {'id': 'text-1', 'body': body},
             'token_layers': [
                 {'id': ALIGN_LAYER, 'name': 'Alignment',
-                 'tokens': [{'id': f'a{i}', 'begin': b, 'end': e,
-                             'metadata': {'timeBegin': tb, 'timeEnd': te}}
-                            for i, (b, e, tb, te) in enumerate(align)]},
+                 'tokens': [{'id': f'a{i}', 'begin': a[0], 'end': a[1],
+                             'metadata': {'timeBegin': a[2], 'timeEnd': a[3],
+                                          **({'speaker': a[4]} if len(a) > 4 else {})}}
+                            for i, a in enumerate(align)]},
                 {'id': SENTENCE_LAYER, 'name': 'Sentences',
                  'tokens': [{'id': f's{i}', 'begin': b, 'end': e}
                             for i, (b, e) in enumerate(sentences)],
@@ -191,3 +194,50 @@ def test_the_time_order_refusal_names_the_document_segment_in_the_way():
     assert str(caught.value) == ('The new segment at 3 s has no place in time order: the document\'s segment '
                                  'at 1 s stands after it in the text. Put the document\'s segments in time '
                                  'order first. Nothing was written.')
+
+
+# A channel's transcription carries its speaker, and another speaker's
+# segments are not in its way: a new segment over an existing one is skipped
+# only when the two could not stand together (the cross-talk rule, as the
+# app has it: both labelled, different speakers).
+def _spoken(speaker, start, end, text='said'):
+    return Alignment(text=text, start=start, end=end,
+                     metadata={'speaker': speaker} if speaker else {})
+
+
+def test_may_overlap_is_the_apps_cross_talk_rule():
+    from plaid_client.workflows.asr import may_overlap
+    assert may_overlap('Ana', 'Ben')
+    assert not may_overlap('Ana', 'Ana')
+    assert not may_overlap('Ana', '')
+    assert not may_overlap(None, 'Ben')
+    assert not may_overlap(' Ana ', 'Ana')
+
+
+def test_another_speakers_segment_over_the_same_time_is_written_with_its_speaker():
+    client = _FakeClient([_document('ana said', sentences=[(0, 8)],
+                                    align=[(0, 8, 0.0, 2.0, 'Ana')])])
+    n = _held_alignments(client, 'd1', [_spoken('Ben', 0.5, 1.5)],
+                         TEXT_LAYER, ALIGN_LAYER, SENTENCE_LAYER, testing.Helper(),
+                         prov_source='service:asr:test')
+    assert n == 1
+    made = next(c[1] for c in client.calls_made
+                if c[0] == 'bulk_create' and c[1][0]['token_layer_id'] == ALIGN_LAYER)
+    assert made[0]['metadata']['speaker'] == 'Ben'
+    assert made[0]['metadata']['timeBegin'] == 0.5
+
+
+@pytest.mark.parametrize('existing, new', [
+    ('Ana', 'Ana'),    # the same voice
+    ('Ana', None),     # the new one unlabelled
+    (None, 'Ben'),     # the existing one unlabelled
+    (None, None),      # neither, as before
+])
+def test_a_segment_that_could_not_stand_beside_the_existing_one_is_skipped(existing, new):
+    align = [(0, 8, 0.0, 2.0) + ((existing,) if existing else ())]
+    client = _FakeClient([_document('ana said', sentences=[(0, 8)], align=align)])
+    n = _held_alignments(client, 'd1', [_spoken(new, 0.5, 1.5)],
+                         TEXT_LAYER, ALIGN_LAYER, SENTENCE_LAYER, testing.Helper(),
+                         prov_source='service:asr:test')
+    assert n == 0
+    assert [c for c in client.calls_made if c[0] in ('text_update', 'bulk_create')] == []

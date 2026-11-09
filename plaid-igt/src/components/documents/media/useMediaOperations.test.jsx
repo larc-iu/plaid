@@ -1134,3 +1134,57 @@ describe('useMediaOperations: split and merge', () => {
     await h.unmount();
   });
 });
+
+// A recording with a speaker on each channel is transcribed one channel at a
+// time: a request per chosen channel, each carrying the channel and its
+// speaker beside the ids, all under the one operation.
+describe('useMediaOperations: transcribing per channel', () => {
+  it('asks the service once per channel, with channel and speaker, in one operation', async () => {
+    const opts = [];
+    const client = fakeClient({
+      withOperation: async (_label, fn, o) => {
+        opts.push(o);
+        return fn();
+      },
+      messages: {
+        discoverServices: vi.fn(async () => SERVICES),
+        requestService: vi.fn(async () => ({ segmentsAdded: 1, segmentsSkipped: 0 })),
+      },
+    });
+    const doc = withMedia('/api/v1/documents/doc-1/media?v=a', {
+      body: '',
+      storedMetadata: { channelSpeakers: ['Ana', ''] },
+    });
+    const h = await mountMedia({ doc, client });
+    expect(h.api.channelSpeakers).toEqual(['Ana', '']);
+    await h.step(async () => {
+      await h.api.handleTranscribe({
+        channels: [
+          { channel: 0, speaker: 'Ana' },
+          { channel: 1, speaker: '' },
+        ],
+      });
+      await settle();
+    });
+    const calls = client.messages.requestService.mock.calls;
+    expect(calls).toHaveLength(2);
+    expect(calls[0][2]).toMatchObject({ documentId: 'doc-1', channel: 0, speaker: 'Ana' });
+    expect(calls[1][2]).toMatchObject({ documentId: 'doc-1', channel: 1, speaker: '' });
+    expect(opts).toEqual([{ kind: 'service-run', ref: 'service:asr-1' }]);
+    await h.unmount();
+  });
+
+  it('with no channels sends one request with no channel in it', async () => {
+    const client = fakeClient({ messages: { discoverServices: vi.fn(async () => SERVICES) } });
+    const doc = withMedia('/api/v1/documents/doc-1/media?v=a', { body: '' });
+    const h = await mountMedia({ doc, client });
+    await h.step(async () => {
+      await h.api.handleTranscribe();
+      await settle();
+    });
+    const [call] = client.messages.requestService.mock.calls;
+    expect(call[2]).not.toHaveProperty('channel');
+    expect(call[2]).not.toHaveProperty('speaker');
+    await h.unmount();
+  });
+});

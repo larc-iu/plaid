@@ -20,6 +20,17 @@ from plaid_client.workflows.igt.word_breaks import is_js_space
 
 from .asr_model import Alignment
 
+
+def may_overlap(speaker_a, speaker_b) -> bool:
+    """The cross-talk rule, as the app has it (alignmentTimes.js): two
+    segments may share a stretch of time only when both carry a speaker and
+    the speakers differ. One voice cannot overlap itself, and an unlabelled
+    segment cannot be told from its neighbour."""
+    a = (speaker_a or '').strip()
+    b = (speaker_b or '').strip()
+    return a != '' and b != '' and a != b
+
+
 # Media download budgets. Both are STALL budgets, not caps on the transfer:
 # how long to wait for the connection, and how long one chunk may take.
 CONNECT_TIMEOUT_S = 15
@@ -200,20 +211,28 @@ class AlignmentProcessor:
         
         response_helper.progress(78, "Skipping segments that overlap existing ones…")
         
-        # Step 1: Filter out transcriptions that have time collisions
+        # Step 1: Filter out transcriptions that have time collisions. A
+        # segment over the same stretch as an existing one is skipped unless
+        # the two could stand together (the cross-talk rule, `may_overlap`):
+        # a channel's transcription carries its speaker, and the other
+        # speaker's segments are not in its way.
         non_colliding_transcriptions = []
         for trans in transcriptions:
             trans_start = trans['start']
             trans_end = trans['end']
+            trans_speaker = (trans.get('metadata') or {}).get('speaker')
             
             # Check for time overlap with existing alignment tokens
             has_collision = False
             for existing_token in existing_alignment_tokens:
-                existing_start = existing_token.get("metadata", {}).get("timeBegin", 0)
-                existing_end = existing_token.get("metadata", {}).get("timeEnd", 0)
+                existing_meta = existing_token.get("metadata", {})
+                existing_start = existing_meta.get("timeBegin", 0)
+                existing_end = existing_meta.get("timeEnd", 0)
                 
                 # Check for overlap: not (trans_end <= existing_start or trans_start >= existing_end)
                 if not (trans_end <= existing_start or trans_start >= existing_end):
+                    if may_overlap(trans_speaker, existing_meta.get("speaker")):
+                        continue
                     has_collision = True
                     break
             

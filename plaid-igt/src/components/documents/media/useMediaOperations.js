@@ -878,155 +878,177 @@ export const useMediaOperations = () => {
     await cancelRequest();
   }, [cancelRequest]);
 
-  // ASR operations
-  const handleTranscribe = useCallback(async () => {
-    const service = transcribeSpot.service;
-    if (!service) return;
+  // ASR operations. `channels` (`[{ channel, speaker }]`) is the chosen
+  // channels of a recording with a speaker on each: one request per channel,
+  // carrying `channel` and `speaker` beside the ids, so the service hears
+  // that channel alone and writes the speaker on every segment. Null runs
+  // the whole recording as it always did.
+  const handleTranscribe = useCallback(
+    async ({ channels = null } = {}) => {
+      const service = transcribeSpot.service;
+      if (!service) return;
+      const runs = channels?.length ? channels : [null];
+      const nameOf = (run) => run?.speaker || `Channel ${(run?.channel ?? 0) + 1}`;
 
-    const serviceId = service.serviceId;
-    const documentId = doc.document.id;
+      const serviceId = service.serviceId;
+      const documentId = doc.document.id;
 
-    if (!documentId) {
-      notifyError('This document could not be found.', 'Failed to transcribe');
-      return;
-    }
-
-    // One service run at a time. `requestService` refuses a second one and
-    // returns nothing, and it used to do so AFTER the baseline had been wiped
-    // to make room for a transcript that was never asked for. Speech detection
-    // by a service is the run this one can collide with: it takes no write
-    // lock, so the lock is not what keeps the two apart.
-    if (isProcessing) {
-      notifyError('Another service run is in progress.', 'Transcribe');
-      return;
-    }
-
-    // Block on unmet required service arguments before doing any work.
-    const missing = Object.values(transcribeSpot.params.errors);
-    if (missing.length) {
-      notifyError(missing[0], 'Missing required option');
-      return;
-    }
-
-    // The request goes on the document as it is: the service puts each new
-    // segment into the text in time order, skips a segment whose times
-    // another already holds, and deletes nothing (N2-SERVICES-1). A fresh
-    // transcript is the person's to make, by clearing the text first.
-
-    // Find text, alignment token, and sentence token layers
-    const primaryTextLayer = doc.layerInfo.primaryTextLayer;
-    const alignmentTokenLayer = doc.layerInfo.alignmentTokenLayer;
-    const sentenceTokenLayer = doc.layerInfo.sentenceTokenLayer;
-
-    // Held for the whole run: the service writes into the document.
-    const lock = acquireWriteLock('Transcribe', { onCancel: stopTranscribe });
-    if (!lock) return;
-    lockRef.current = lock;
-    let stillOut = false; // the request survived our giving up on it
-    let stopped = false;
-    let asked = false; // the service was asked, so its answer ends the run
-    let onStop;
-    const stopping = new Promise((resolve) => {
-      onStop = resolve;
-    });
-    transcribeStopRef.current = () => {
-      stopped = true;
-      transcribeRun.report({ percent: null, message: 'Stopping…' });
-      lock.setStatus('Stopping…');
-      onStop();
-    };
-    try {
-      // Every write the ASR service makes is ONE logical operation in the
-      // audit log: the open operation propagates to the service via the
-      // request.
-      // It is a service run naming the service, which the service's writes
-      // keep when they join it.
-      const label = `Transcribe audio (${service.serviceName || serviceId})`;
-      transcribeRun.start(['Transcribe']);
-      // The client holds one open operation, and an edit still saving holds
-      // one: opened now, this run's would join it and be recorded as that
-      // edit. The lock keeps new edits out, so the wait is for those already
-      // made.
-      await Promise.race([doc.whenSaved(), stopping]);
-      if (stopped) {
-        notifyInfo('Stopped. The transcript is unchanged.', 'Transcribe');
-        return;
-      }
-      await doc.client.withOperation(
-        label,
-        async () => {
-          if (stopped) return;
-          transcribeRun.report({ message: 'Starting the service…' });
-          asked = true;
-
-          await requestService(
-            project.id,
-            documentId,
-            serviceId,
-            {
-              // User-controlled arguments declared by the service, spread FIRST so
-              // the fixed layer/doc params below always win over any same-named arg.
-              ...transcribeSpot.params.coerced(),
-              documentId: documentId,
-              textLayerId: primaryTextLayer.id,
-              alignmentTokenLayerId: alignmentTokenLayer.id,
-              sentenceTokenLayerId: sentenceTokenLayer.id,
-            },
-            {
-              successMessage: 'Transcription complete',
-              notice: transcribeNotice,
-              errorTitle: 'Failed to transcribe',
-              stoppedTitle: 'Transcribe',
-              // Written down before submitting, so a reload can still find it.
-              onRequestId: (requestId) =>
-                writeRunRecord(documentId, {
-                  requestId,
-                  projectId: project.id,
-                  label: 'Transcribe',
-                  task: TASKS.TRANSCRIBE,
-                }),
-              timeout: TRANSCRIBE_TIMEOUT_MS,
-              // The operation opened above, for this run.
-              inOperation: true,
-            },
-          );
-        },
-        { kind: 'service-run', ref: serviceSource(serviceId) },
-      );
-      if (!asked) {
-        notifyInfo('Stopped. The transcript is unchanged.', 'Transcribe');
+      if (!documentId) {
+        notifyError('This document could not be found.', 'Failed to transcribe');
         return;
       }
 
-      // A full reload of a freshly transcribed document is seconds of work
-      // with nothing else on screen to show for it, so it is named like any
-      // other step rather than left as dead air.
-      transcribeRun.report({ percent: null, message: 'Loading the transcript…' });
-      lock.setStatus('Loading the transcript…');
-      await reloadAfterRun(() => doc.reload());
-    } catch (error) {
-      console.error('Transcription failed:', error);
-      // `pending` means the request is still out there. The client stopped
-      // waiting and the service did not stop working, so keep the record for
-      // a reload to rejoin.
-      stillOut = error?.pending === true;
-    } finally {
-      if (!stillOut) clearRunRecord(documentId);
-      transcribeStopRef.current = null;
-      transcribeRun.finish();
-      lock.release();
-      lockRef.current = null;
-    }
-  }, [
-    doc,
-    project,
-    requestService,
-    isProcessing,
-    transcribeSpot,
-    transcribeRun,
-    acquireWriteLock,
-    stopTranscribe,
-  ]);
+      // One service run at a time. `requestService` refuses a second one and
+      // returns nothing, and it used to do so AFTER the baseline had been wiped
+      // to make room for a transcript that was never asked for. Speech detection
+      // by a service is the run this one can collide with: it takes no write
+      // lock, so the lock is not what keeps the two apart.
+      if (isProcessing) {
+        notifyError('Another service run is in progress.', 'Transcribe');
+        return;
+      }
+
+      // Block on unmet required service arguments before doing any work.
+      const missing = Object.values(transcribeSpot.params.errors);
+      if (missing.length) {
+        notifyError(missing[0], 'Missing required option');
+        return;
+      }
+
+      // The request goes on the document as it is: the service puts each new
+      // segment into the text in time order, skips a segment whose times
+      // another already holds, and deletes nothing (N2-SERVICES-1). A fresh
+      // transcript is the person's to make, by clearing the text first.
+
+      // Find text, alignment token, and sentence token layers
+      const primaryTextLayer = doc.layerInfo.primaryTextLayer;
+      const alignmentTokenLayer = doc.layerInfo.alignmentTokenLayer;
+      const sentenceTokenLayer = doc.layerInfo.sentenceTokenLayer;
+
+      // Held for the whole run: the service writes into the document.
+      const lock = acquireWriteLock('Transcribe', { onCancel: stopTranscribe });
+      if (!lock) return;
+      lockRef.current = lock;
+      let stillOut = false; // the request survived our giving up on it
+      let stopped = false;
+      let asked = false; // the service was asked, so its answer ends the run
+      let onStop;
+      const stopping = new Promise((resolve) => {
+        onStop = resolve;
+      });
+      transcribeStopRef.current = () => {
+        stopped = true;
+        transcribeRun.report({ percent: null, message: 'Stopping…' });
+        lock.setStatus('Stopping…');
+        onStop();
+      };
+      try {
+        // Every write the ASR service makes is ONE logical operation in the
+        // audit log: the open operation propagates to the service via the
+        // request.
+        // It is a service run naming the service, which the service's writes
+        // keep when they join it.
+        const label = `Transcribe audio (${service.serviceName || serviceId})`;
+        transcribeRun.start(runs.length > 1 ? runs.map(nameOf) : ['Transcribe']);
+        // The client holds one open operation, and an edit still saving holds
+        // one: opened now, this run's would join it and be recorded as that
+        // edit. The lock keeps new edits out, so the wait is for those already
+        // made.
+        await Promise.race([doc.whenSaved(), stopping]);
+        if (stopped) {
+          notifyInfo('Stopped. The transcript is unchanged.', 'Transcribe');
+          return;
+        }
+        await doc.client.withOperation(
+          label,
+          async () => {
+            if (stopped) return;
+            transcribeRun.report({ message: 'Starting the service…' });
+            asked = true;
+
+            for (const [i, run] of runs.entries()) {
+              if (stopped) return;
+              if (runs.length > 1) transcribeRun.step(i);
+              // A channel's notice names its speaker, since each channel is a
+              // run of its own and says its own counts.
+              const notice = (result) => {
+                const said = transcribeNotice(result);
+                return said && run ? { ...said, message: `${nameOf(run)}: ${said.message}` } : said;
+              };
+              const result = await requestService(
+                project.id,
+                documentId,
+                serviceId,
+                {
+                  // User-controlled arguments declared by the service, spread FIRST so
+                  // the fixed layer/doc params below always win over any same-named arg.
+                  ...transcribeSpot.params.coerced(),
+                  documentId: documentId,
+                  textLayerId: primaryTextLayer.id,
+                  alignmentTokenLayerId: alignmentTokenLayer.id,
+                  sentenceTokenLayerId: sentenceTokenLayer.id,
+                  ...(run ? { channel: run.channel, speaker: run.speaker || '' } : {}),
+                },
+                {
+                  successMessage: 'Transcription complete',
+                  notice,
+                  errorTitle: 'Failed to transcribe',
+                  stoppedTitle: 'Transcribe',
+                  // Written down before submitting, so a reload can still find it.
+                  onRequestId: (requestId) =>
+                    writeRunRecord(documentId, {
+                      requestId,
+                      projectId: project.id,
+                      label: 'Transcribe',
+                      task: TASKS.TRANSCRIBE,
+                    }),
+                  timeout: TRANSCRIBE_TIMEOUT_MS,
+                  // The operation opened above, for this run.
+                  inOperation: true,
+                },
+              );
+              // A stopped channel ends the run: the channels after it are not asked.
+              if (!result || result.stopped === true) return;
+            }
+          },
+          { kind: 'service-run', ref: serviceSource(serviceId) },
+        );
+        if (!asked) {
+          notifyInfo('Stopped. The transcript is unchanged.', 'Transcribe');
+          return;
+        }
+
+        // A full reload of a freshly transcribed document is seconds of work
+        // with nothing else on screen to show for it, so it is named like any
+        // other step rather than left as dead air.
+        transcribeRun.report({ percent: null, message: 'Loading the transcript…' });
+        lock.setStatus('Loading the transcript…');
+        await reloadAfterRun(() => doc.reload());
+      } catch (error) {
+        console.error('Transcription failed:', error);
+        // `pending` means the request is still out there. The client stopped
+        // waiting and the service did not stop working, so keep the record for
+        // a reload to rejoin.
+        stillOut = error?.pending === true;
+      } finally {
+        if (!stillOut) clearRunRecord(documentId);
+        transcribeStopRef.current = null;
+        transcribeRun.finish();
+        lock.release();
+        lockRef.current = null;
+      }
+    },
+    [
+      doc,
+      project,
+      requestService,
+      isProcessing,
+      transcribeSpot,
+      transcribeRun,
+      acquireWriteLock,
+      stopTranscribe,
+    ],
+  );
 
   // Speech detection: the built-in runs in this tab, a service returns regions
   // that land in the same proposal list. Either way nothing is written until

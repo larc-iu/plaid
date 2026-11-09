@@ -574,3 +574,100 @@ def test_a_second_request_is_rejected_rather_than_queued(monkeypatch):
     release.set()
     thread.join(10)
     assert len(first.results) == 1
+
+
+# --- one channel of a recording with a speaker on each -----------------------
+
+def _wav(frames, rate=16000):
+    """A 16-bit PCM WAV of ``frames`` (one value per channel each)."""
+    import struct
+    channels = len(frames[0])
+    data = b''.join(struct.pack('<' + 'h' * channels, *f) for f in frames)
+    fmt = struct.pack('<HHIIHH', 1, channels, rate, rate * channels * 2, channels * 2, 16)
+    body = b'fmt ' + struct.pack('<I', 16) + fmt + b'data' + struct.pack('<I', len(data)) + data
+    return b'RIFF' + struct.pack('<I', 4 + len(body)) + b'WAVE' + body
+
+
+def _wav_media(monkeypatch, frames):
+    """A recording that arrives as a real WAV through ``documents.get_media``."""
+    def get_media(self, document_id, *, to_path=None, on_progress=None, timeout=None):
+        self._root.record('read', document_id)
+        with open(to_path, 'wb') as f:
+            f.write(_wav(frames))
+        return to_path
+
+    monkeypatch.setattr(servicetest.FakeClient._Documents, 'get_media', get_media,
+                        raising=False)
+
+
+def test_a_request_for_one_channel_hears_that_channel_alone_and_writes_its_speaker(monkeypatch):
+    pytest.importorskip('numpy')
+    from plaid_client.workflows.asr import channels as ch
+    _wav_media(monkeypatch, [(1, 10), (2, 20), (3, 30)])
+    # The channel's file is read while the model has it: the service removes
+    # its temp dir once the run ends.
+    heard = {}
+
+    def peek():
+        path = heard['whisper'].calls[-1][1]
+        with open(path, 'rb') as f:
+            header = ch._read_wav_header(f)
+            f.seek(header[4])
+            heard['header'] = header[:4]
+            heard['samples'] = list(f.read(header[5]))
+    module, whisper = load_whisper(before_return=peek)
+    heard['whisper'] = whisper
+    service = _service(module)
+    helper = servicetest.run(service, {**REQUEST, 'channel': 1, 'speaker': 'Ben'})
+
+    assert helper.errors == []
+    # The model was handed the channel's own file, not the recording: mono,
+    # the same rate, the second channel's samples.
+    [(_, audio_path, _)] = [c for c in whisper.calls if c[0] == 'transcribe']
+    assert audio_path.endswith('channel-1.wav')
+    assert heard['header'] == (1, 1, 16000, 16)
+    assert heard['samples'] == [10, 0, 20, 0, 30, 0]
+    # Every segment carries the channel's speaker, and the run names it.
+    [ops] = [ops for ops in service.client.payloads('tokens.bulk_create')
+             if ops[0]['token_layer_id'] == ALIGN_LAYER]
+    assert [op['metadata']['speaker'] for op in ops] == ['Ben', 'Ben']
+    assert service.client.operations == ['Whisper ASR transcription (tr), Ben']
+    assert 'Taking out channel 2…' in helper.messages
+
+
+def test_a_request_without_a_channel_runs_as_before(monkeypatch):
+    _media(monkeypatch)
+    module, whisper = load_whisper()
+    service = _service(module)
+    helper = servicetest.run(service, REQUEST)
+    assert helper.errors == []
+    [(_, audio_path, _)] = [c for c in whisper.calls if c[0] == 'transcribe']
+    assert audio_path.endswith('media')
+    [ops] = [ops for ops in service.client.payloads('tokens.bulk_create')
+             if ops[0]['token_layer_id'] == ALIGN_LAYER]
+    assert all('speaker' not in op['metadata'] for op in ops)
+
+
+def test_a_channel_the_recording_does_not_have_is_refused_in_the_requesters_words(monkeypatch):
+    pytest.importorskip('numpy')
+    _wav_media(monkeypatch, [(1, 10)])
+    module, _ = load_whisper()
+    service = _service(module)
+    helper = servicetest.run(service, {**REQUEST, 'channel': 3, 'speaker': ''})
+    assert helper.reports == [('error', 'The recording has 2 channels, not a channel 4.')]
+    assert service.client.writes == []
+
+
+def test_the_other_speakers_segments_do_not_stand_in_a_channels_way(monkeypatch):
+    """Ana's segment holds 0 to 1.5 s. Ben's channel hears something over
+    the same stretch: written, with his speaker, where an unlabelled run was
+    skipped (the cross-talk rule)."""
+    pytest.importorskip('numpy')
+    _wav_media(monkeypatch, [(1, 10), (2, 20)])
+    module, _ = load_whisper()
+    doc = _document(body='evler geliyor', sentences=[(0, 13)], align=[(0, 13, 0.0, 1.5)])
+    doc['text_layers'][0]['token_layers'][0]['tokens'][0]['metadata']['speaker'] = 'Ana'
+    service = _service(module, documents=[doc])
+    helper = servicetest.run(service, {**REQUEST, 'channel': 1, 'speaker': 'Ben'})
+    [result] = helper.results
+    assert (result['segments_added'], result['segments_skipped']) == (2, 0)
