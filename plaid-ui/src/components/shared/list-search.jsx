@@ -56,13 +56,16 @@ SearchInput.displayName = 'SearchInput';
 
 // How much of the list a search is hiding. Sits beside the search box.
 // `noun` is a singular, or a [singular, plural] pair (see lib/plural.js).
-export const ListCount = ({ shown, total, noun = 'item', className }) => (
-  <span className={cn('whitespace-nowrap text-xs text-muted-foreground', className)}>
-    {shown === total
-      ? `${total.toLocaleString()} ${plural(total, noun)}`
-      : `${shown.toLocaleString()} of ${total.toLocaleString()} ${plural(total, noun)}`}
-  </span>
-);
+// `more` is set while the server holds rows past the `total` loaded, and the
+// total then reads "200+", as ListPager's range does.
+export const ListCount = ({ shown, total, noun = 'item', more = false, className }) => {
+  const all = `${total.toLocaleString()}${more ? '+' : ''} ${plural(total, noun)}`;
+  return (
+    <span className={cn('whitespace-nowrap text-xs text-muted-foreground', className)}>
+      {shown === total ? all : `${shown.toLocaleString()} of ${all}`}
+    </span>
+  );
+};
 
 // A note under a list: what a capped search left out, and how to see it.
 export const ListHint = ({ children, className }) => (

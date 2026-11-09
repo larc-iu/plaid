@@ -156,7 +156,9 @@ export const DataTable = ({
               className={cn('max-w-[16rem]', title && 'ml-auto')}
             />
           )}
-          {showCount && <ListCount shown={matched.length} total={rows.length} noun={noun} />}
+          {showCount && (
+            <ListCount shown={matched.length} total={rows.length} noun={noun} more={!!more} />
+          )}
           {actions && <div className="ml-auto flex items-center gap-2">{actions}</div>}
         </div>
       )}

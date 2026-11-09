@@ -248,4 +248,10 @@ describe('DataTable', () => {
     expect(container.textContent).toContain('No accounts yet.');
     await unmount();
   });
+
+  it('counts with a + while the server holds more rows', async () => {
+    const { container, unmount } = await table({ more: { load: () => {}, loading: false } });
+    expect(container.textContent).toContain('3+ people');
+    await unmount();
+  });
 });

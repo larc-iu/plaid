@@ -41,6 +41,14 @@ describe('ListCount', () => {
     expect(await text({ shown: 2, total: 2, noun: 'service' })).toBe('2 services');
   });
 
+  // H1-6: the audit feed read "200 changes" while its pager read "1–100 of 200+".
+  it('says there are more when the server holds more', async () => {
+    expect(await text({ shown: 200, total: 200, noun: 'change', more: true })).toBe('200+ changes');
+    expect(await text({ shown: 3, total: 200, noun: 'change', more: true })).toBe(
+      '3 of 200+ changes',
+    );
+  });
+
   it('groups thousands', async () => {
     expect(await text({ shown: 1234, total: 1234, noun: 'change' })).toBe('1,234 changes');
   });
