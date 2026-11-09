@@ -1,4 +1,5 @@
 import { canManageProject } from '@ui/domain/permissions.js';
+import { readChannelSpeakers } from './media/channelSpeakers.js';
 import { DocumentModel } from '@ui/domain/DocumentModel.js';
 import { settledId } from '@ui/domain/pendingIds.js';
 import { getIgtLayerInfo } from './layerInfo.js';
@@ -271,12 +272,15 @@ export class IgtDocument extends DocumentModel {
   // actually in use on this document's alignment tokens (live, always fresh)
   // unioned with the project-level `config.igt.speakers` cache (names used in
   // OTHER documents — see `_rememberSpeaker`). Sorted, de-duped, blanks dropped.
+  // The speaker on each channel of the recording (channelSpeakers.js) is a
+  // speaker of the document too: suggested, and coloured like the others.
   get knownSpeakers() {
     const set = new Set(readSpeakers(this._project?.config));
     for (const t of this.alignmentTokens) {
       const s = t.metadata?.speaker;
       if (s) set.add(s);
     }
+    for (const s of readChannelSpeakers(this.storedMetadata) || []) if (s) set.add(s);
     return [...set].filter((s) => typeof s === 'string' && s.trim() !== '').sort();
   }
 

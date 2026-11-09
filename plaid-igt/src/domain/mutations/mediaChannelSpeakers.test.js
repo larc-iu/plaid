@@ -69,3 +69,12 @@ describe('deleteMedia with channelSpeakers', () => {
     expect(patch.args[1]).toEqual([{ op: 'delete', path: ['channelSpeakers'] }]);
   });
 });
+
+describe('knownSpeakers with channelSpeakers', () => {
+  it("counts the speaker on each channel among the document's speakers", () => {
+    const doc = makeIgtDoc({
+      raw: buildRawDoc({ metadata: { channelSpeakers: ['Zed', '', 'Ana'] } }),
+    });
+    expect(doc.knownSpeakers).toEqual(['Ana', 'Zed']);
+  });
+});

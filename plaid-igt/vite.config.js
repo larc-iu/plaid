@@ -70,6 +70,11 @@ export default defineConfig(({ command }) => ({
   // exclusion alone was tried first and was NOT sufficient.
   optimizeDeps: {
     exclude: ['@larc-iu/plaid-client', '@larc-iu/plaid-ui'],
+    // The speech detector's runtime is first asked for from a worker, on the
+    // first Detect of a session. Found then, Vite optimizes it and reloads
+    // the page under the dialog. Known from the start, it is bundled before
+    // the page is served.
+    include: ['onnxruntime-web/wasm'],
   },
   server: {
     port: 5174,
