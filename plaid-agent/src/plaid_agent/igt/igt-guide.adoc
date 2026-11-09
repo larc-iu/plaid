@@ -384,6 +384,8 @@ A value already in a document's field stays as it was.
 
 In the link popover, the linked entry's form opens the entry in its vocabulary.
 When no entry fits, **Create** adds one with the word's or morpheme's form and links it.
+The new entry also takes the values the word or morpheme holds in fields that have a lexicon field, such as its gloss.
+On a word or multi-word expression that no entry is spelled like or starts with, the popover starts on **Create**.
 Anyone who can edit the document can add an entry this way.
 
 An entry can carry a morpheme **type**: stem, prefix, suffix, enclitic, and so on, following the FieldWorks inventory.
@@ -517,7 +519,7 @@ Everything it produces shows in violet until you accept or discard it (see <<_pr
 1. **Propose translations.** A translation service drafts a free translation for every sentence. It runs first because the later steps read the translation. Needs a connected translation service.
 2. **Copy previous analyses.** Every word that has not been analyzed at all is given the analysis the same word form has most often had elsewhere in the project. This is built in and needs no service (see <<_copying_previous_analyses>>).
 3. **Propose segmentation and glosses.** An analysis service, such as PolyGloss or a language model, proposes morphemes and glosses for every word a person has not analyzed. Needs a connected analysis service.
-4. **Link to the lexicon.** Words and morphemes no person has linked are linked to lexicon entries, by the built-in rule described below or by a service. It runs last so that it can link the stems step 3 produced. Needs the project to have a vocabulary.
+4. **Link to the lexicon.** Words and morphemes no person has linked are linked to lexicon entries, by the built-in rule described below or by a service. It runs last so that it can link the stems step 3 produced. On a word step 2 copied, the built-in rule keeps the links the copy brought and links only what has none. Needs the project to have a vocabulary.
 
 A service step is unavailable when no service for it is online.
 An analysis service writes its glosses into the morpheme field whose lexicon field is the entry's gloss, and a translation service into the sentence field whose role is the translation, or the field chosen in the dialog.
@@ -1149,7 +1151,7 @@ Enter, Tab, the arrow keys, Escape, Backspace, Delete, and `-` and `=` in a morp
 | **Enter** (sentence field) | Save the value and leave the field. **Shift+Enter** starts a new line, and **Tab** moves to the same field of the next sentence.
 | **-** | In a morpheme form, split the morpheme at the cursor.
 | **=** | In a morpheme form, split at the cursor as a clitic boundary. The clitic is typed by its place in the word (see <<_morpheme_types>>).
-| **Backspace** | At the start of a morpheme form, merge it into the previous one. In an emptied morpheme form other than a word's first, delete the morpheme.
+| **Backspace** | At the start of a morpheme form, merge it into the previous one. The merged-in morpheme's gloss and other values, its lexicon link and its comments are not kept. In an emptied morpheme form other than a word's first, delete the morpheme with its gloss and other values.
 | **Alt+-** / **Alt+=** | Type a literal hyphen or equals sign in a morpheme form.
 | **Alt+0** | In a morpheme form, type the zero morph ∅.
 | **\** + a two-character code | Type a character the keyboard lacks, anywhere language data is typed: `\sw` gives ə. See <<_typing_special_characters>>.
