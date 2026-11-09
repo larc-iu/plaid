@@ -6,7 +6,6 @@
   cascade-deleted by the FK when a vocab layer is dropped."
   (:require [taoensso.timbre :as log]
             [plaid.sql.audit-write :as psaw]
-            [plaid.sql.cascade-statistics :as cascade-stats]
             [plaid.sql.common :as psc]
             [plaid.sql.crud :as crud]
             [plaid.sql.operation :as op :refer [submit-operation!]]
@@ -353,19 +352,6 @@
             post-image (assoc vl-row :maintainers post-maintainers)]
         (psaw/record-audit-write! tx :vocab_layers vocab-id :update pre-image post-image)))))
 
-(defn- hidden-document-ids
-  "The set of `doc-ids` whose project is being deleted (`projects.deleted_at`
-  stamped, the background removal not yet done)."
-  [tx doc-ids]
-  (into #{}
-        (comp (mapcat (fn [chunk]
-                        (psc/q tx {:select [:d.id]
-                                   :from [[:documents :d]]
-                                   :join [[:projects :p] [:= :p.id :d.project_id]]
-                                   :where [:and [:in :d.id (map str chunk)] [:<> :p.deleted_at nil]]})))
-              (map :id))
-        (partition-all psc/bulk-chunk-size (distinct doc-ids))))
-
 (defn delete
   "Delete a vocab layer. Walks the descendant subtree (vocab_items
   and the vocab_links each item is referenced by) and audits each row
@@ -410,25 +396,13 @@
                                                      :where [:= :vocab_layer_id eid]})
                                           (mapv :id))]
                           (when (seq vi-ids)
-                            (cascade-stats/prepare! tx)
-                           ;; R39: a link in a project being deleted is
-                           ;; removed without an audit row or a version
-                           ;; bump. Nothing travels back to that project,
-                           ;; and the purge never reaches rows written
-                           ;; under this op, which names no project.
-                            (let [all-rows (crud/select-in tx :vocab_links "id, document_id" :vocab_item_id
-                                                           "idx_vocab_links_item" vi-ids)
-                                  hidden (hidden-document-ids tx (map :document_id all-rows))
-                                  gone-ids (into [] (comp (filter #(contains? hidden (:document_id %))) (map :id))
-                                                 all-rows)]
-                              (when (seq gone-ids)
-                                (crud/delete-ids-unaudited! tx :vocab_links gone-ids)
-                                (crud/delete-entity-metadata! tx "vocab-link" gone-ids)))
                            ;; The items by the one item delete path: the
-                           ;; other links, audited, a version bump on every
+                           ;; links audited, a version bump on every
                            ;; document that lost one (the op-attrs carry
                            ;; :document nil, so the post-body bump does not
-                           ;; fire), then the items with their metadata.
+                           ;; fire), a link in a project being deleted
+                           ;; removed unaudited (R39), then the items with
+                           ;; their metadata.
                             (vocab-item/delete-items! tx vi-ids)))
                        ;; Snapshot junction-table state BEFORE the row
                        ;; goes away (FK CASCADE would erase

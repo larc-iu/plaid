@@ -185,6 +185,30 @@
                          (op/bump-document-versions! tx doc-ids)
                          eid))))
 
+(defn- hidden-document-ids
+  "The set of `doc-ids` whose project is being deleted (`projects.deleted_at`
+  stamped, the background removal not yet done)."
+  [tx doc-ids]
+  (into #{}
+        (comp (mapcat (fn [chunk]
+                        (psc/q tx {:select [:d.id]
+                                   :from [[:documents :d]]
+                                   :join [[:projects :p] [:= :p.id :d.project_id]]
+                                   :where [:and [:in :d.id (map str chunk)] [:<> :p.deleted_at nil]]})))
+              (map :id))
+        (partition-all psc/bulk-chunk-size (distinct doc-ids))))
+
+(defn- links-by-visibility
+  "The links pointing at item `ids` (rows of id and document_id), split into
+  `{:live [...] :hidden [...]}`, hidden being those in a document whose
+  project is being deleted (R39). No reader sees the hidden ones, so no
+  count a client checks includes them."
+  [tx ids]
+  (let [rows (crud/select-in tx :vocab_links "id, document_id" :vocab_item_id "idx_vocab_links_item" ids)
+        hidden (hidden-document-ids tx (map :document_id rows))
+        {gone true live false} (group-by #(contains? hidden (:document_id %)) rows)]
+    {:live (vec live) :hidden (vec gone)}))
+
 (defn delete-items!
   "The one delete path of vocab items, for item `ids`: the links pointing
   at them go first, audited with their metadata (FK ON DELETE CASCADE
@@ -192,18 +216,28 @@
   then the items go with their metadata. Each delete cascades, so the
   statistics are made safe first (`cascade-stats/prepare!`). Touches no
   vocabulary's `modified_at`, which is the caller's. Returns the deleted
-  items' pre-images."
+  items' pre-images.
+
+  The exception is a link in a project being deleted (R39): it is removed
+  unaudited, with no version bump, since nothing travels back to that
+  project, and the purge never reaches rows written under these ops, which
+  name no project."
   [tx ids]
   (when (seq ids)
     (cascade-stats/prepare! tx))
-  (let [links (crud/select-in tx :vocab_links "id, document_id" :vocab_item_id "idx_vocab_links_item" ids)]
-    (crud/delete-entities! tx :vocab_links (mapv :id links))
-    (op/bump-document-versions! tx (mapv :document_id links))
+  (let [{:keys [live hidden]} (links-by-visibility tx ids)
+        hidden-ids (mapv :id hidden)]
+    (when (seq hidden-ids)
+      (crud/delete-ids-unaudited! tx :vocab_links hidden-ids)
+      (crud/delete-entity-metadata! tx "vocab-link" hidden-ids))
+    (crud/delete-entities! tx :vocab_links (mapv :id live))
+    (op/bump-document-versions! tx (mapv :document_id live))
     (crud/delete-entities! tx :vocab_items ids)))
 
 (defn- delete*
   "The operation of `delete`. `links-found` is an atom it sets to the number
-  of links the entry has, read inside the transaction."
+  of links the entry has, read inside the transaction. A link in a project
+  being deleted is not counted, as no reader counts it."
   [db eid user-id expected-link-count links-found]
   (submit-operation! [tx db {:type :vocab-item/delete
                              :project nil
@@ -214,8 +248,7 @@
                        (when (nil? existing)
                          (throw (ex-info (psc/err-msg-not-found "Vocab item" eid)
                                          {:code 404 :id eid})))
-                       (let [vl-count (count (crud/select-in tx :vocab_links "id" :vocab_item_id
-                                                             "idx_vocab_links_item" [eid]))]
+                       (let [vl-count (count (:live (links-by-visibility tx [eid])))]
                          (reset! links-found vl-count)
                          (when (and (some? expected-link-count)
                                     (not= expected-link-count vl-count))

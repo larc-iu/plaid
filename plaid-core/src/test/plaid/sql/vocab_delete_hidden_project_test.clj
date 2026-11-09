@@ -75,3 +75,47 @@
       (removal/remove-project! db (:proj doomed))
       (is (false? (prj/hidden? db (:proj doomed))))
       (is (empty? (psc/q db {:select [:id] :from [:documents] :where [:= :id (:doc doomed)]}))))))
+
+(defn- names-any? [rows {:keys [link doc]}]
+  (some #(or (= (str link) (str (:target_id %)))
+             (= (str doc) (str (:target_id %)))
+             (= (str doc) (str (:document_id %))))
+        rows))
+
+(deftest an-entry-delete-counts-and-audits-no-link-in-a-project-being-deleted
+  (let [vocab (-> (create-vocab-layer admin-request "Shared") :body :id)
+        item (-> (create-vocab-item admin-request vocab "greeting") :body :id)
+        doomed (project-with-link! "Doomed" vocab item)
+        live (project-with-link! "Live" vocab item)
+        del (fn [n] (api-call admin-request {:method :delete
+                                             :path (str "/api/v1/vocab-items/" item "?expected-link-count=" n)}))]
+    (is (:success (prj/delete db (:proj doomed) "admin@example.com")))
+    (testing "the count a reader sees leaves the hidden project's link out, and the refusal says so"
+      (let [resp (del 2)]
+        (is (= 409 (:status resp)))
+        (is (= 1 (get-in resp [:body :links])))))
+    (testing "the delete given that count lands"
+      (assert-no-content (del 1)))
+    (let [rows (op-rows "vocab-item/delete")]
+      (testing "nothing under the vocab-item/delete names the hidden project's link or document"
+        (is (not (names-any? rows doomed)) (pr-str rows)))
+      (testing "the live project's link delete stays audited"
+        (is (some #(and (= "vocab_links" (:target_table %)) (= "delete" (:change_type %))
+                        (= (str (:link live)) (str (:target_id %))))
+                  rows))))
+    (testing "both links are gone"
+      (is (empty? (psc/q db {:select [:id] :from [:vocab_links]
+                             :where [:in :id [(:link doomed) (:link live)]]}))))))
+
+(deftest a-bulk-entry-delete-audits-no-link-in-a-project-being-deleted
+  (let [vocab (-> (create-vocab-layer admin-request "Shared") :body :id)
+        item (-> (create-vocab-item admin-request vocab "greeting") :body :id)
+        doomed (project-with-link! "Doomed" vocab item)
+        live (project-with-link! "Live" vocab item)]
+    (is (:success (prj/delete db (:proj doomed) "admin@example.com")))
+    (assert-no-content (api-call admin-request {:method :delete :path "/api/v1/vocab-items/bulk" :body [item]}))
+    (let [rows (op-rows "vocab-item/bulk-delete")]
+      (is (not (names-any? rows doomed)) (pr-str rows))
+      (is (names-any? rows live)))
+    (is (empty? (psc/q db {:select [:id] :from [:vocab_links]
+                           :where [:in :id [(:link doomed) (:link live)]]})))))
