@@ -23,6 +23,7 @@ import { formatTime } from './formatTime.js';
 import { RUNNING_TIME_MS, useThrottledValue } from './useThrottledValue.js';
 import { MediaHelp, MediaHelpButton } from './MediaHelp.jsx';
 import { VadDetection } from './VadDetection.jsx';
+import { ChannelList } from './ChannelList.jsx';
 import { PLAYBACK_RATE_MIN, PLAYBACK_RATE_MAX, PLAYBACK_RATE_STEP } from './useMediaOperations.js';
 import { useClockTime } from './playbackClock.js';
 
@@ -420,6 +421,22 @@ export const MediaPlayer = ({ mediaOps, readOnly = false, canWrite = false }) =>
               disabled={!ready}
             />
           </div>
+
+          {/* The channels of a multichannel recording: the speaker on each,
+              Mute and Solo. Hidden on a recording with one channel. */}
+          {mediaOps.channelCount >= 2 && (
+            <ChannelList
+              count={mediaOps.channelCount}
+              speakers={mediaOps.channelSpeakers}
+              knownSpeakers={mediaOps.doc?.knownSpeakers ?? []}
+              muted={mediaOps.channelMix?.muted}
+              solo={mediaOps.channelMix?.solo}
+              onToggleMute={mediaOps.toggleChannelMute}
+              onToggleSolo={mediaOps.toggleChannelSolo}
+              onSpeakerChange={mediaOps.setChannelSpeaker}
+              readOnly={readOnly}
+            />
+          )}
 
           {/* Speed on the left, volume on the right: volume is where players
               keep it, and the speed slider must not sit in its place. */}

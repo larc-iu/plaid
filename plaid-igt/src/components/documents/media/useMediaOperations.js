@@ -1,4 +1,4 @@
-import { useEffect, useCallback, useRef, useState } from 'react';
+import { useEffect, useCallback, useMemo, useRef, useState } from 'react';
 import { TASKS, serviceSource } from '@larc-iu/plaid-client';
 import { useDocumentCtx } from '../contexts/DocumentContext.jsx';
 import { transcribeNotice } from './transcribeNotice.js';
@@ -27,6 +27,14 @@ import { createPlaybackClock } from './playbackClock.js';
 import { RUNNING_TIME_MS } from './useThrottledValue.js';
 import { readTimelineView } from './timelineView.js';
 import { clampZoom } from './useTimelineOperations.js';
+import { useWaveform } from './useWaveform.js';
+import {
+  CHANNEL_SPEAKERS_KEY,
+  readChannelSpeakers,
+  withChannelSpeaker,
+} from '../../../domain/media/channelSpeakers.js';
+import { channelGains, createChannelMixer } from '../../../domain/media/channelMixer.js';
+import { readWavInfo } from '../../../domain/media/wavAdpcm.js';
 
 // Hotkeys ignore key events from form fields, with one exception: the tab's
 // own boxes (transcript rows, time boxes, the alignment popover) sit under a
@@ -397,6 +405,78 @@ export const useMediaOperations = () => {
   const authenticatedMediaUrl = media.url;
   const mediaBlob = media.blob;
   const mediaBlobKey = media.key;
+
+  // The speaker on each channel, when the document says (channelSpeakers.js).
+  // Null for a recording uploaded plainly: its channels are not speakers, and
+  // the tab treats it as it always did.
+  const storedChannelSpeakers = doc.storedMetadata[CHANNEL_SPEAKERS_KEY];
+  const channelSpeakers = useMemo(
+    () => readChannelSpeakers({ [CHANNEL_SPEAKERS_KEY]: storedChannelSpeakers }),
+    [storedChannelSpeakers],
+  );
+  const channelSpeakersRef = useRef(channelSpeakers);
+  channelSpeakersRef.current = channelSpeakers;
+
+  // The waveform's envelope, decoded once per recording, with an envelope per
+  // channel when the channels are speakers. The decode is also where the
+  // channel count comes from for anything but a WAV.
+  const waveform = useWaveform({
+    mediaBlob,
+    mediaKey: mediaBlobKey ?? null,
+    duration,
+    perChannel: !!channelSpeakers,
+  });
+
+  // How many channels the recording has: off a WAV's header the moment the
+  // file is here, else from the decode. Null until known.
+  const [headerChannels, setHeaderChannels] = useState(null);
+  useEffect(() => {
+    setHeaderChannels(null);
+    if (!mediaBlob || typeof mediaBlob.slice !== 'function') return undefined;
+    let live = true;
+    const read = async (from, to) =>
+      new Uint8Array(await mediaBlob.slice(from, Math.min(to, mediaBlob.size)).arrayBuffer());
+    readWavInfo(read, mediaBlob.size).then(
+      (info) => {
+        if (live && info?.channels > 0) setHeaderChannels(info.channels);
+      },
+      () => {},
+    );
+    return () => {
+      live = false;
+    };
+  }, [mediaBlob]);
+  const channelCount = waveform.channelCount ?? headerChannels;
+  const channelCountRef = useRef(channelCount);
+  channelCountRef.current = channelCount;
+
+  // Which channels are heard: a view setting, kept nowhere, and back to all
+  // of them with another recording.
+  const [channelMix, setChannelMix] = useState(() => ({ muted: new Set(), solo: new Set() }));
+  useEffect(() => setChannelMix({ muted: new Set(), solo: new Set() }), [mediaSrcUrl]);
+  const toggledIn = (mix, key, i) => {
+    const next = new Set(mix[key]);
+    if (next.has(i)) next.delete(i);
+    else next.add(i);
+    return { ...mix, [key]: next };
+  };
+  const toggleChannelMute = useCallback((i) => setChannelMix((m) => toggledIn(m, 'muted', i)), []);
+  const toggleChannelSolo = useCallback((i) => setChannelMix((m) => toggledIn(m, 'solo', i)), []);
+  // The speaker on a channel, written to the document and shown at once.
+  const setChannelSpeaker = useCallback(
+    (i, name) => {
+      const next = withChannelSpeaker(
+        channelSpeakersRef.current,
+        i,
+        name,
+        channelCountRef.current ?? 0,
+      );
+      doc.setMetadataKeys({ [CHANNEL_SPEAKERS_KEY]: next }).catch((err) => {
+        console.error('Could not save the channel speaker:', err);
+      });
+    },
+    [doc],
+  );
 
   // Whether the element has read the file it was handed. The file arrives
   // whole after the tab opens, and the transcript rows and the keys are live
@@ -1156,6 +1236,23 @@ export const useMediaOperations = () => {
     [doc, confirm, segmentAtHand],
   );
 
+  // Mute and Solo need the element's sound in Web Audio (channelMixer.js):
+  // the element itself plays a third channel to a centre speaker and a fourth
+  // nowhere. Only a recording with two or more channels is routed there, so
+  // one with one plays as it always did.
+  const mixerRef = useRef(null);
+  useEffect(() => {
+    if (!mediaElement || !(channelCount >= 2)) return;
+    if (!mixerRef.current) mixerRef.current = createChannelMixer();
+    mixerRef.current.attach(mediaElement, channelCount);
+  }, [mediaElement, channelCount]);
+  useEffect(() => {
+    const mixer = mixerRef.current;
+    if (!mixer?.attached || !(channelCount >= 2)) return;
+    mixer.setGains(channelGains(channelCount, channelMix.muted, channelMix.solo));
+  }, [channelCount, channelMix]);
+  useEffect(() => () => mixerRef.current?.dispose(), []);
+
   // Keep the DOM media element's volume in sync with `volume`. Covers the
   // initial 0.8, any volume set before the element mounted, and element swaps.
   useEffect(() => {
@@ -1275,6 +1372,16 @@ export const useMediaOperations = () => {
     mediaLoadError,
     alignmentTokenLayer,
     alignmentTokens,
+
+    // The recording's channels: the speaker on each, how many there are, and
+    // which are heard.
+    channelSpeakers,
+    channelCount,
+    channelMix,
+    toggleChannelMute,
+    toggleChannelSolo,
+    setChannelSpeaker,
+    waveform,
 
     // Media state
     mediaElement,

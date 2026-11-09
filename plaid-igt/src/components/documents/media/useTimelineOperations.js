@@ -1,6 +1,5 @@
 import { useState, useRef, useEffect, useLayoutEffect, useCallback } from 'react';
 import { clampResize, freeStretch, MIN_SEGMENT } from '../../../domain/alignmentTimes.js';
-import { useWaveform } from './useWaveform.js';
 import { readTimelineView, writeTimelineView } from './timelineView.js';
 
 // Constants
@@ -602,18 +601,16 @@ export const useTimelineOperations = (mediaOps) => {
     return clock.subscribe(place);
   }, [clock, mediaOps.duration, mediaOps.pixelsPerSecond]);
 
-  // The waveform's envelope: the recording decoded once.
-  const waveform = useWaveform({
-    mediaBlob: mediaOps.mediaBlob,
-    mediaKey: mediaOps.mediaBlobKey ?? null,
-    duration: mediaOps.duration,
-  });
+  // The waveform's envelope: the recording decoded once, by the media hook,
+  // which also reads the channel count off it.
+  const waveform = mediaOps.waveform ?? { envelope: null, envelopes: null, loading: false };
 
   return {
     // State
     isDragging,
     tempSelection,
     waveformEnvelope: waveform.envelope,
+    waveformEnvelopes: waveform.envelopes,
     isLoadingWaveform: waveform.loading,
     drawn,
     isResizing,

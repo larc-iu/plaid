@@ -198,7 +198,7 @@ describe('the timeline waveform', () => {
     const view = await renderComponent(<Probe blob={blob} />);
     await view.step(() => decodes[0].finish(decoded([1, 2, 3])));
     await settle(view);
-    expect(decodeShared).toHaveBeenCalledWith(blob);
+    expect(decodeShared).toHaveBeenCalledWith(blob, { perChannel: false });
     expect(seq).toEqual(['drawn:1,2,3']);
     await view.unmount();
   });
@@ -214,6 +214,61 @@ describe('the timeline waveform', () => {
     await settle(view);
     expect(decodes).toHaveLength(1);
     expect(notifyWarning).toHaveBeenCalledTimes(1);
+    await view.unmount();
+  });
+});
+
+// A recording with a speaker on each channel is drawn as a lane per channel,
+// so the hook asks the decode for the channels and makes an envelope of each.
+const ProbeChannels = ({ blob }) => {
+  const view = useWaveform({
+    mediaBlob: blob,
+    mediaKey: blob?.key ?? null,
+    duration: 2,
+    perChannel: true,
+  });
+  api = view;
+  useEffect(() => {
+    const picture = view.envelopes
+      ? `lanes:${view.envelopes.map((e) => [...e.peaks].join('.')).join('|')}:${view.channelCount}`
+      : `mono:${view.channelCount}`;
+    if (seq[seq.length - 1] !== picture) seq.push(picture);
+  });
+  return null;
+};
+
+describe('the waveform per channel', () => {
+  it('asks for the channels and draws a lane each, with the count', async () => {
+    const blob = recording();
+    const view = await renderComponent(<ProbeChannels blob={blob} />);
+    expect(decodeShared).toHaveBeenCalledWith(blob, { perChannel: true });
+    await view.step(() =>
+      decodes[0].finish({
+        samples: Float32Array.from([1, 1]),
+        channels: [Float32Array.from([1, 0]), Float32Array.from([0, 1])],
+        channelCount: 2,
+        shared: false,
+      }),
+    );
+    await settle(view);
+    expect(seq[seq.length - 1]).toBe('lanes:1.0|0.1:2');
+    expect(api.envelope.peaks.length).toBe(2);
+    await view.unmount();
+  });
+
+  it('a recording with one channel has no lanes, and says one channel', async () => {
+    const view = await renderComponent(<ProbeChannels blob={recording()} />);
+    await view.step(() =>
+      decodes[0].finish({
+        samples: Float32Array.from([1]),
+        channels: null,
+        channelCount: 1,
+        shared: false,
+      }),
+    );
+    await settle(view);
+    expect(seq[seq.length - 1]).toBe('mono:1');
+    expect(api.envelopes).toBeNull();
     await view.unmount();
   });
 });

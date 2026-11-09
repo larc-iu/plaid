@@ -232,4 +232,31 @@ describe('the element failing to read its link', () => {
     expect(tryAgain(view.container)).toBeUndefined();
     await view.unmount();
   });
+
+  // The channel list, for a recording with two or more channels: the speaker
+  // on each (what the document says, else the channel's number), Mute, Solo.
+  it('lists the channels of a multichannel recording, and none of a mono one', async () => {
+    const channels = {
+      channelCount: 2,
+      channelSpeakers: ['Ana', ''],
+      channelMix: { muted: new Set(), solo: new Set([1]) },
+      toggleChannelMute: vi.fn(),
+      toggleChannelSolo: vi.fn(),
+      setChannelSpeaker: vi.fn(),
+      doc: { knownSpeakers: ['Ana'] },
+    };
+    const view = await renderComponent(<MediaPlayer mediaOps={mediaOps(channels)} canWrite />);
+    expect(view.container.querySelectorAll('[data-channel]')).toHaveLength(2);
+    expect(view.container.querySelector('[aria-label="Ana speaker"]').value).toBe('Ana');
+    expect(
+      view.container.querySelector('[aria-label="Solo Channel 2"]').getAttribute('aria-pressed'),
+    ).toBe('true');
+    await view.step(() => view.container.querySelector('[aria-label="Mute Ana"]').click());
+    expect(channels.toggleChannelMute).toHaveBeenCalledWith(0);
+    await view.rerender(
+      <MediaPlayer mediaOps={mediaOps({ ...channels, channelCount: 1 })} canWrite />,
+    );
+    expect(view.container.querySelector('[data-channel-list]')).toBeNull();
+    await view.unmount();
+  });
 });
