@@ -147,13 +147,6 @@ describe('useMediaOperations channels', () => {
     await h.unmount();
   });
 
-  it('speakers per channel writes an empty speaker for each channel', async () => {
-    const { h, doc } = await mount();
-    await h.step(() => h.api.addChannelSpeakers());
-    expect(doc.setMetadataKeys).toHaveBeenCalledWith({ channelSpeakers: ['', '', ''] });
-    await h.unmount();
-  });
-
   it('the way back removes channelSpeakers', async () => {
     const { h, doc } = await mount({ channelSpeakers: ['Ana', 'Ben', ''] });
     await h.step(() => h.api.removeChannelSpeakers());

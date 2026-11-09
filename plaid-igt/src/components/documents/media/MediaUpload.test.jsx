@@ -69,7 +69,7 @@ const until = (r, done) =>
 describe('MediaUpload', () => {
   it('offers the file picker when nothing is uploading', async () => {
     const r = await renderComponent(<MediaUpload onUpload={vi.fn()} isUploading={false} />);
-    expect(all(r.container, 'button')).toHaveLength(2);
+    expect(all(r.container, 'button')).toHaveLength(3);
     expect(bar(r.container)).toBeNull();
     await r.unmount();
   });
@@ -257,10 +257,10 @@ describe('MediaUpload', () => {
     await r.unmount();
   });
 
-  // The card takes one file. Several files, one per speaker, are a mix the
-  // person asks for with Mix files, one per speaker, which picks several and
-  // opens the mix dialog. Several files on the plain picker or a drop are
-  // refused with a note, never mixed and never dropped silently.
+  // The card has two modes, Single (the default) and Per speaker. Single
+  // takes one file, and several are refused with a note naming the switch.
+  // Per speaker takes several files, mixed in the mix dialog, or one file
+  // with a channel per speaker, whose speakers are asked in their own dialog.
   const chooseAll = async (r, files) => {
     const input = r.container.querySelector('input[type=file]');
     Object.defineProperty(input, 'files', { value: files, configurable: true });
@@ -277,29 +277,44 @@ describe('MediaUpload', () => {
     fileOf(2 * MB, 'ana.wav', 'audio/wav'),
     fileOf(2 * MB, 'ben.wav', 'audio/wav'),
   ];
+  const perSpeaker = (r) =>
+    r.step(() =>
+      all(r.container, 'button')
+        .find((b) => b.textContent === 'Per speaker')
+        .click(),
+    );
+  const pressed = (r, label) =>
+    all(r.container, 'button')
+      .find((b) => b.textContent === label)
+      .getAttribute('aria-pressed');
 
-  it('the plain picker takes one file, and says so', async () => {
+  it('starts on Single, which takes one file', async () => {
     const r = await renderComponent(<MediaUpload onUpload={vi.fn()} isUploading={false} />);
+    expect(pressed(r, 'Single')).toBe('true');
+    expect(pressed(r, 'Per speaker')).toBe('false');
     expect(r.container.querySelector('input[type=file]').multiple).toBe(false);
     expect(buttonSaying(r.container, 'Choose media file')).not.toBeNull();
-    expect(r.container.textContent).not.toContain('Choose media files');
+    expect(r.container.textContent).toContain('One audio or video file.');
+    expect(r.container.textContent).not.toContain('Mix files');
     await r.unmount();
   });
 
-  it('several files on the plain picker are refused with a note naming the mix', async () => {
+  it('several files on Single are refused with a note naming the switch', async () => {
     const onUpload = vi.fn();
     const r = await renderComponent(
       <MediaUpload onUpload={onUpload} isUploading={false} decodeTrack={decodeTrack} />,
     );
     await chooseAll(r, two());
     await until(r, () => r.container.textContent.includes('One file at a time'));
+    expect(r.container.textContent).toContain(
+      'One file at a time. For a file per speaker, switch to Per speaker.',
+    );
     expect(onUpload).not.toHaveBeenCalled();
     expect(document.body.textContent).not.toContain('Mix recordings');
-    expect(r.container.textContent).toContain('Mix files, one per speaker');
     await r.unmount();
   });
 
-  it('several files dropped on the card are refused the same way', async () => {
+  it('several files dropped on Single are refused the same way', async () => {
     const onUpload = vi.fn();
     const r = await renderComponent(<MediaUpload onUpload={onUpload} isUploading={false} />);
     const drop = new Event('drop', { bubbles: true, cancelable: true });
@@ -311,25 +326,43 @@ describe('MediaUpload', () => {
     await r.unmount();
   });
 
-  it('Mix files, one per speaker picks several and opens the mix dialog', async () => {
+  it('Per speaker says what it does, and its picker takes several files', async () => {
+    const r = await renderComponent(<MediaUpload onUpload={vi.fn()} isUploading={false} />);
+    await perSpeaker(r);
+    expect(pressed(r, 'Per speaker')).toBe('true');
+    expect(r.container.querySelector('input[type=file]').multiple).toBe(true);
+    expect(r.container.textContent).toContain(
+      'One file per speaker, mixed into one recording with a channel per speaker.',
+    );
+    expect(buttonSaying(r.container, 'Choose files')).not.toBeNull();
+    await r.unmount();
+  });
+
+  it('several files on Per speaker open the mix dialog', async () => {
     const onUpload = vi.fn();
     const r = await renderComponent(
       <MediaUpload onUpload={onUpload} isUploading={false} decodeTrack={decodeTrack} />,
     );
-    const input = r.container.querySelector('input[type=file]');
-    let multipleAtClick = null;
-    input.click = () => {
-      multipleAtClick = input.multiple;
-    };
-    await r.step(() => buttonSaying(r.container, 'Mix files, one per speaker').click());
-    expect(multipleAtClick).toBe(true);
+    await perSpeaker(r);
     await chooseAll(r, two());
     await until(r, () => document.body.textContent.includes('ben.wav'));
     expect(onUpload).not.toHaveBeenCalled();
     expect(document.body.textContent).toContain('Mix recordings');
     expect(document.body.textContent).toContain('ana.wav');
-    // The next plain choice is one file again.
-    expect(input.multiple).toBe(false);
+    await r.unmount();
+  });
+
+  it('one file on Per speaker asks a speaker per channel, with no mix', async () => {
+    const onUpload = vi.fn();
+    const r = await renderComponent(
+      <MediaUpload onUpload={onUpload} isUploading={false} readChannels={async () => 2} />,
+    );
+    await perSpeaker(r);
+    await chooseAll(r, [fileOf(2 * MB, 'interview.wav', 'audio/wav')]);
+    await until(r, () => document.body.textContent.includes('Channel 2'));
+    expect(document.body.textContent).toContain('Speakers per channel');
+    expect(document.body.textContent).not.toContain('Mix recordings');
+    expect(onUpload).not.toHaveBeenCalled();
     await r.unmount();
   });
 

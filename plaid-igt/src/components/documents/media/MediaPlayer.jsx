@@ -18,7 +18,6 @@ import {
   Volume2,
   Trash2,
   Repeat,
-  Users,
 } from 'lucide-react';
 import { formatTime } from './formatTime.js';
 import { RUNNING_TIME_MS, useThrottledValue } from './useThrottledValue.js';
@@ -188,25 +187,6 @@ export const MediaPlayer = ({ mediaOps, readOnly = false, canWrite = false }) =>
                 readOnly={!canWrite}
                 disabled={mediaOps.isLoadingMedia || !mediaOps.mediaBlob}
               />
-              {/* A recording made elsewhere with a channel per speaker: the
-                  way to say so. Only for one with two or more channels and
-                  no speakers on them yet. */}
-              {!readOnly && mediaOps.channelCount >= 2 && !mediaOps.channelSpeakers && (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-9 w-9"
-                      onClick={mediaOps.addChannelSpeakers}
-                      aria-label="Speakers per channel"
-                    >
-                      <Users className="h-4 w-4" />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>Speakers per channel</TooltipContent>
-                </Tooltip>
-              )}
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button

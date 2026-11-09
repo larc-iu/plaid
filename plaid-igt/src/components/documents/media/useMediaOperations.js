@@ -477,16 +477,8 @@ export const useMediaOperations = () => {
     },
     [doc],
   );
-  // Say the channels are speakers, one each with no name yet (a recording
-  // made elsewhere with a channel per speaker), or take that back: the
-  // recording then plays and shows as any other.
-  const addChannelSpeakers = useCallback(() => {
-    const count = channelCountRef.current ?? 0;
-    if (count < 2) return;
-    doc
-      .setMetadataKeys({ [CHANNEL_SPEAKERS_KEY]: Array.from({ length: count }, () => '') })
-      .catch((err) => console.error('Could not save the channel speakers:', err));
-  }, [doc]);
+  // The channels are not speakers after all: the recording then plays and
+  // shows as any other.
   const removeChannelSpeakers = useCallback(() => {
     doc
       .setMetadataKeys({ [CHANNEL_SPEAKERS_KEY]: null })
@@ -1450,7 +1442,6 @@ export const useMediaOperations = () => {
     toggleChannelMute,
     toggleChannelSolo,
     setChannelSpeaker,
-    addChannelSpeakers,
     removeChannelSpeakers,
     waveform,
 

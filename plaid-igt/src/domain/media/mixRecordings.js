@@ -8,6 +8,7 @@
 
 import { resampleMono } from '../vad/decodeTo16kMono.js';
 import { readSampleRate } from './mediaSampleRate.js';
+import { readWavInfo } from './wavAdpcm.js';
 import {
   FALLBACK_RATE,
   averageChannels,
@@ -41,6 +42,21 @@ export async function decodeTrack(file) {
     seconds: decoded.duration,
     mono: averageChannels(channels),
   };
+}
+
+/**
+ * How many channels `file` has: off a WAV's header without decoding it, else
+ * from the browser's decode. Throws when the file is not decodable audio.
+ */
+export async function readChannelCount(file) {
+  const read = async (from, to) =>
+    new Uint8Array(await file.slice(from, Math.min(to, file.size)).arrayBuffer());
+  const info = await readWavInfo(read, file.size).catch(() => null);
+  if (info?.channels > 0) return info.channels;
+  const Ctx = OfflineCtx();
+  if (!Ctx) throw new Error('This browser has no OfflineAudioContext.');
+  const decoded = await new Ctx(1, 1, FALLBACK_RATE).decodeAudioData(await file.arrayBuffer());
+  return decoded.numberOfChannels;
 }
 
 /**

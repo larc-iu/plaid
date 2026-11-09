@@ -260,34 +260,24 @@ describe('the element failing to read its link', () => {
     await view.unmount();
   });
 
-  // A recording with no speakers on its channels plays and shows as any
-  // other, whatever its channel count: no channel list. A writer gets one
-  // quiet button to say the channels are speakers.
-  it('a stereo recording with no channelSpeakers shows no channel list, and offers Speakers per channel', async () => {
-    const addChannelSpeakers = vi.fn();
+  // A recording with no speakers on its channels shows as any other, whatever
+  // its channel count: no channel list and nothing in the header to add one.
+  it('a stereo recording with no channelSpeakers shows nothing extra', async () => {
     const ops = {
       channelCount: 2,
       channelSpeakers: null,
       channelMix: { muted: new Set(), solo: new Set() },
-      addChannelSpeakers,
       doc: { knownSpeakers: [] },
     };
-    const optIn = (view) =>
-      all(view.container, 'button').find(
-        (b) => b.getAttribute('aria-label') === 'Speakers per channel',
-      );
     const view = await renderComponent(<MediaPlayer mediaOps={mediaOps(ops)} canWrite />);
     expect(view.container.querySelector('[data-channel-list]')).toBeNull();
-    await view.step(() => optIn(view).click());
-    expect(addChannelSpeakers).toHaveBeenCalledTimes(1);
-    await view.rerender(<MediaPlayer mediaOps={mediaOps(ops)} readOnly />);
-    expect(optIn(view)).toBeUndefined();
-    await view.rerender(<MediaPlayer mediaOps={mediaOps({ ...ops, channelCount: 1 })} canWrite />);
-    expect(optIn(view)).toBeUndefined();
+    expect(view.container.textContent).not.toContain('per channel');
+    expect(all(view.container, 'button').map((b) => b.getAttribute('aria-label'))).not.toContain(
+      'Speakers per channel',
+    );
     await view.rerender(
       <MediaPlayer mediaOps={mediaOps({ ...ops, channelSpeakers: ['', ''] })} canWrite />,
     );
-    expect(optIn(view)).toBeUndefined();
     expect(view.container.querySelectorAll('[data-channel]')).toHaveLength(2);
     await view.unmount();
   });

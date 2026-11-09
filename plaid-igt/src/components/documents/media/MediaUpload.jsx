@@ -7,7 +7,9 @@ import { formatBytes } from '@/utils/formatBytes';
 import { conversionNeed, conversionNote, estimateMp3Bytes } from '@/domain/media/transcodeToMp3';
 import { readDuration } from '@/domain/media/mediaDuration';
 import { readyRecordings } from '@/utils/readyRecordings';
+import { SegmentedControl } from '@ui/components/shared/SegmentedControl.jsx';
 import { MixRecordingsDialog } from './MixRecordingsDialog.jsx';
+import { ChannelSpeakersDialog } from './ChannelSpeakersDialog.jsx';
 
 // The upload prompt, and the upload itself once a file is chosen: the bytes
 // going up as a bar with the count, then a pulsing bar while the server checks
@@ -15,11 +17,13 @@ import { MixRecordingsDialog } from './MixRecordingsDialog.jsx';
 // `{ name, loaded, total }` while an upload is in flight, else null, and
 // `convertProgress` is `{ name, fraction }` while a recording is converted.
 //
-// The card takes one file. Several files, one per speaker, are a mix only
-// when the person asks for one (Mix files, one per speaker): they go through
-// the mix dialog and come out as one recording with a channel each
-// (MixRecordingsDialog). Several files on the plain picker or a drop are
-// refused with a note, so none is mixed or left out unasked.
+// The card has two modes, a view setting kept nowhere. Single (the default)
+// takes one file, and several are refused with a note naming the switch, so
+// none is mixed or left out unasked. Per speaker takes several files, one per
+// speaker, which go through the mix dialog and come out as one recording with
+// a channel each (MixRecordingsDialog), or one file made elsewhere with a
+// speaker per channel, uploaded as it is once its speakers are named
+// (ChannelSpeakersDialog).
 export const MediaUpload = ({
   onUpload,
   isUploading,
@@ -32,6 +36,8 @@ export const MediaUpload = ({
   prepareOptions = undefined,
   // The mix dialog's decoder, for a test to say what the browser hears.
   decodeTrack = undefined,
+  // The channel count of one file under Per speaker, for a test.
+  readChannels = undefined,
 }) => {
   const inputRef = useRef(null);
   // A large file waits here for the choice between sending it and converting
@@ -45,8 +51,11 @@ export const MediaUpload = ({
   // Two or more files, waiting in the mix dialog.
   const [mixing, setMixing] = useState(null);
   const [dragOver, setDragOver] = useState(false);
-  // The picker was opened for a mix: it takes several files, this once.
-  const mixPickRef = useRef(false);
+  // 'single' or 'perSpeaker'.
+  const [mode, setMode] = useState('single');
+  const perSpeaker = mode === 'perSpeaker';
+  // One file under Per speaker, waiting in the channel speakers dialog.
+  const [channelFile, setChannelFile] = useState(null);
   // Several files where one was expected.
   const [tooMany, setTooMany] = useState(false);
 
@@ -74,12 +83,13 @@ export const MediaUpload = ({
 
   // A recording the browser cannot play is refused here, and an ADPCM WAV is
   // swapped for its PCM decoding, before anything below sees its size. Two or
-  // or more files chosen for a mix go to the mix dialog.
-  const choose = async (pickedList, { mix = false } = {}) => {
+  // or more files under Per speaker go to the mix dialog, one to the channel
+  // speakers dialog.
+  const choose = async (pickedList) => {
     const picked = [...(pickedList || [])];
     if (!picked.length || isUploading || readOnly) return;
     setTooMany(false);
-    if (picked.length > 1 && !mix) {
+    if (picked.length > 1 && !perSpeaker) {
       setTooMany(true);
       return;
     }
@@ -90,8 +100,9 @@ export const MediaUpload = ({
       setDecoding(null);
     }
     if (!files.length) return;
-    if (mix) {
-      setMixing(files);
+    if (perSpeaker) {
+      if (files.length > 1) setMixing(files);
+      else setChannelFile(files[0]);
       return;
     }
     const [file] = files;
@@ -122,24 +133,42 @@ export const MediaUpload = ({
         choose(e.dataTransfer?.files);
       }}
     >
+      {!(decoding || convertProgress || progress || pending) && (
+        <div className="flex justify-start">
+          <SegmentedControl
+            label="Upload"
+            value={mode}
+            onChange={(next) => {
+              setMode(next);
+              setTooMany(false);
+            }}
+            options={[
+              { value: 'single', label: 'Single' },
+              { value: 'perSpeaker', label: 'Per speaker' },
+            ]}
+          />
+        </div>
+      )}
       <div className="flex items-center justify-center">
         <div className="flex w-full flex-col items-center gap-6">
           <Upload className="h-12 w-12 text-muted-foreground" />
           <div className="text-center">
             <p className="mb-1 text-lg font-medium">Upload media file</p>
-            <p className="mb-4 text-sm text-muted-foreground">One audio or video file.</p>
+            <p className="mb-4 text-sm text-muted-foreground">
+              {perSpeaker
+                ? 'One file per speaker, mixed into one recording with a channel per speaker. Or one file with a channel per speaker.'
+                : 'One audio or video file.'}
+            </p>
           </div>
 
           <input
             ref={inputRef}
             type="file"
             accept="audio/*,video/*"
+            multiple={perSpeaker}
             className="hidden"
             onChange={(e) => {
-              const mix = mixPickRef.current;
-              mixPickRef.current = false;
-              e.target.multiple = false;
-              choose(e.target.files, { mix });
+              choose(e.target.files);
               e.target.value = '';
             }}
           />
@@ -211,31 +240,14 @@ export const MediaUpload = ({
               <Button
                 size="lg"
                 disabled={isUploading || readOnly}
-                onClick={() => {
-                  mixPickRef.current = false;
-                  if (inputRef.current) inputRef.current.multiple = false;
-                  inputRef.current?.click();
-                }}
+                onClick={() => inputRef.current?.click()}
               >
                 <Upload className="h-4 w-4" />
-                Choose media file
-              </Button>
-              <Button
-                variant="link"
-                size="sm"
-                className="h-auto p-0 text-xs text-muted-foreground"
-                disabled={isUploading || readOnly}
-                onClick={() => {
-                  mixPickRef.current = true;
-                  if (inputRef.current) inputRef.current.multiple = true;
-                  inputRef.current?.click();
-                }}
-              >
-                Mix files, one per speaker
+                {perSpeaker ? 'Choose files' : 'Choose media file'}
               </Button>
               {tooMany && (
                 <p className="text-xs font-medium text-destructive" role="status">
-                  One file at a time. For one file per speaker, use Mix files, one per speaker.
+                  One file at a time. For a file per speaker, switch to Per speaker.
                 </p>
               )}
             </div>
@@ -256,6 +268,18 @@ export const MediaUpload = ({
         {...(decodeTrack ? { decode: decodeTrack } : {})}
         onUpload={(file, options) => {
           setMixing(null);
+          onUpload(file, options);
+        }}
+      />
+      <ChannelSpeakersDialog
+        open={!!channelFile}
+        file={channelFile}
+        onOpenChange={(next) => !next && setChannelFile(null)}
+        knownSpeakers={knownSpeakers}
+        maxBytes={maxBytes}
+        {...(readChannels ? { readChannels } : {})}
+        onUpload={(file, options) => {
+          setChannelFile(null);
           onUpload(file, options);
         }}
       />
