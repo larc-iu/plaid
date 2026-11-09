@@ -1,10 +1,14 @@
-import { PARENT_KEY } from './vocabDictionary.js';
+import { PARENT_KEY, parentOf } from './vocabDictionary.js';
 
 // How many entries each vocabulary holds, as `{ vocabId: count }` for the ids
-// asked about (0 for one with no rows). Two grouped aggregates across every
-// vocabulary the user can read: every row, and the rows that are SENSES. An
-// entry is what is left. Counting rows and calling them entries read 23 for a
-// dictionary of 20 entries and 3 senses.
+// asked about. Two grouped aggregates across every vocabulary a readable
+// project links: every row, and the rows that are SENSES. An entry is what is
+// left. Counting rows and calling them entries read 23 for a dictionary of 20
+// entries and 3 senses.
+//
+// The query has no group for a vocabulary with no rows, nor for one no readable
+// project links (a deleted project's lexicon), so each id it does not answer is
+// read on its own. One that cannot be read is left out (unknown), never 0.
 //
 // A sense is a row carrying a parent (PARENT_KEY, see vocabDictionary). The
 // query language has no "this key is set" test and cannot bind a variable to
@@ -26,6 +30,20 @@ export async function loadEntryCounts(client, vocabIds) {
   const senseRows = {};
   for (const [layerId, n] of senses?.results || []) senseRows[layerId] = n;
   const counts = {};
-  for (const id of vocabIds) counts[id] = Math.max(0, (rows[id] ?? 0) - (senseRows[id] ?? 0));
+  const unseen = [];
+  for (const id of vocabIds) {
+    if (id in rows) counts[id] = Math.max(0, rows[id] - (senseRows[id] ?? 0));
+    else unseen.push(id);
+  }
+  await Promise.all(
+    unseen.map(async (id) => {
+      try {
+        const { items = [] } = (await client.vocabLayers.get(id, true)) || {};
+        counts[id] = items.filter((item) => !parentOf(item)).length;
+      } catch {
+        // Unknown: the list shows no count.
+      }
+    }),
+  );
   return counts;
 }
