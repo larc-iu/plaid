@@ -16,19 +16,13 @@ import { TimeAlignmentPopover } from './TimeAlignmentPopover.jsx';
 import { formatTime } from './formatTime.js';
 import { TimeRuler, RULER_BAND } from './TimeRuler.jsx';
 import { assignLanes } from '../../../domain/alignmentTimes.js';
+import { speakerHue } from '../../../domain/speakerHue.js';
 import { stableKey } from '@ui/domain/pendingIds.js';
 import { keys } from '@/lib/keymap.js';
 import { caretInRow } from './segmentCaret.js';
 
-// One colour per speaker, the same on every segment and in every document of
-// the project: the speaker's place in the (sorted) speaker list, stepped round
-// the colour wheel by the golden angle, so the first few speakers are always
-// far apart. A hash of the name put "Speaker 1" and "Speaker 2" one degree
-// apart. Unlabelled segments take the theme's primary colour.
-const speakerHue = (speaker, speakers) => {
-  const i = Math.max(0, speakers.indexOf(speaker));
-  return Math.round((30 + i * 137.508) % 360);
-};
+// A segment's colours: its speaker's hue (speakerHue.js), or the theme's
+// primary colour when it has none.
 const segmentColors = (speaker, speakers, resizing) => {
   if (!speaker) {
     return {
@@ -65,28 +59,45 @@ const ScaleLayer = ({ width, children }) => (
 // The waveform for one stretch of the recording, drawn straight onto the
 // canvas whenever the stretch or the zoom changes. Between a zoom and its
 // redraw the old picture is stretched to the new width, since its box is a
-// share of the track.
-const WaveformCanvas = ({ envelope, from, to, duration, pixelsPerSecond }) => {
+// share of the track. With a speaker on each channel the track is one lane
+// per channel (`lane` of `laneCount`), each in its speaker's colour.
+const WaveformCanvas = ({
+  envelope,
+  from,
+  to,
+  duration,
+  pixelsPerSecond,
+  lane = 0,
+  laneCount = 1,
+  color = null,
+  channel = null,
+}) => {
   const ref = React.useRef(null);
+  const height = TRACK_HEIGHT / laneCount;
   React.useLayoutEffect(() => {
-    drawWaveform(ref.current, envelope, { from, to, duration, pixelsPerSecond });
-  }, [envelope, from, to, duration, pixelsPerSecond]);
+    drawWaveform(ref.current, envelope, { from, to, duration, pixelsPerSecond, height, color });
+  }, [envelope, from, to, duration, pixelsPerSecond, height, color]);
   return (
     <canvas
       ref={ref}
       aria-hidden="true"
+      data-waveform-lane={channel ?? undefined}
       style={{
         position: 'absolute',
-        top: 0,
+        top: `${(lane * 100) / laneCount}%`,
         left: `${(from / duration) * 100}%`,
         width: `${((to - from) / duration) * 100}%`,
-        height: '100%',
+        height: `${100 / laneCount}%`,
         pointerEvents: 'none',
         zIndex: 1,
       }}
     />
   );
 };
+
+// A channel lane's colour: its speaker's hue, else the theme's primary.
+const laneColor = (speaker, speakers) =>
+  speaker ? `hsla(${speakerHue(speaker, speakers)}, 60%, 45%, 0.45)` : null;
 
 // How far the selection's ring stands outside its box (a 1px gap and a 2px
 // ring), so the bracket above meets the ring and not the box inside it.
@@ -355,6 +366,7 @@ export const Timeline = ({ mediaOps, readOnly = false }) => {
     isDragging,
     tempSelection,
     waveformEnvelope,
+    waveformEnvelopes,
     isLoadingWaveform,
     isResizing,
     resizingToken,
@@ -376,6 +388,12 @@ export const Timeline = ({ mediaOps, readOnly = false }) => {
 
   const onPixelsPerSecondChange = timelineOps.zoomTo;
   const { fitToWidth } = timelineOps;
+
+  // One lane per channel when the document says which speaker each channel
+  // is (channelSpeakers), and the recording decoded to more than one.
+  const channelSpeakers = mediaOps.channelSpeakers ?? null;
+  const channelLanes =
+    channelSpeakers && waveformEnvelopes && waveformEnvelopes.length > 1 ? waveformEnvelopes : null;
 
   // Open on the view this document was left at, or the whole recording
   // fitted to the lane, once, when the duration first arrives. Not on every
@@ -495,16 +513,35 @@ export const Timeline = ({ mediaOps, readOnly = false }) => {
               />
 
               {/* Waveform, for the drawn stretch only, so it stays sharp at
-                  every zoom on a recording of any length. */}
+                  every zoom on a recording of any length. With a speaker per
+                  channel, one lane per channel, stacked, in the speaker's
+                  colour. */}
               {waveformEnvelope && duration > 0 && (
                 <ScaleLayer width={timelineWidth}>
-                  <WaveformCanvas
-                    envelope={waveformEnvelope}
-                    from={drawn.from}
-                    to={drawn.to}
-                    duration={duration}
-                    pixelsPerSecond={pixelsPerSecond}
-                  />
+                  {channelLanes ? (
+                    channelLanes.map((envelope, c) => (
+                      <WaveformCanvas
+                        key={c}
+                        channel={c}
+                        envelope={envelope}
+                        from={drawn.from}
+                        to={drawn.to}
+                        duration={duration}
+                        pixelsPerSecond={pixelsPerSecond}
+                        lane={c}
+                        laneCount={channelLanes.length}
+                        color={laneColor(channelSpeakers?.[c], speakers)}
+                      />
+                    ))
+                  ) : (
+                    <WaveformCanvas
+                      envelope={waveformEnvelope}
+                      from={drawn.from}
+                      to={drawn.to}
+                      duration={duration}
+                      pixelsPerSecond={pixelsPerSecond}
+                    />
+                  )}
                 </ScaleLayer>
               )}
 

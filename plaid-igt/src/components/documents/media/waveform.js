@@ -133,9 +133,20 @@ const nextTask = () =>
  * image's own pixels, centred on its middle. `left` and `width` are in the
  * TIMELINE's pixels, so the slice of the envelope is the slice of the
  * recording under that stretch, and a bar lands on the time it belongs to.
+ * `height` is the lane's, the whole track unless the track is split into a
+ * lane per channel.
  */
-export const barsFor = ({ peaks, level, left, width, timelineWidth, drawWidth }) => {
+export const barsFor = ({
+  peaks,
+  level,
+  left,
+  width,
+  timelineWidth,
+  drawWidth,
+  height = TIMELINE_HEIGHT,
+}) => {
   if (!peaks?.length || !(timelineWidth > 0) || !(drawWidth > 0)) return [];
+  const available = (height * WAVEFORM_AVAILABLE_HEIGHT) / TIMELINE_HEIGHT;
   const from = (left / timelineWidth) * peaks.length;
   const to = ((left + width) / timelineWidth) * peaks.length;
   // Two bars per pixel, never finer than the envelope itself.
@@ -148,12 +159,12 @@ export const barsFor = ({ peaks, level, left, width, timelineWidth, drawWidth })
     const end = Math.min(peaks.length, Math.max(start + 1, Math.floor(from + (i + 1) * per)));
     let peak = 0;
     for (let j = start; j < end; j += 1) if (peaks[j] > peak) peak = peaks[j];
-    const height = Math.max(MIN_BAR_HEIGHT, Math.min(1, peak / level) * WAVEFORM_AVAILABLE_HEIGHT);
+    const barHeight = Math.max(MIN_BAR_HEIGHT, Math.min(1, peak / level) * available);
     bars.push({
       x: (i / count) * drawWidth,
-      y: TIMELINE_HEIGHT / 2 - height / 2,
+      y: height / 2 - barHeight / 2,
       width: barWidth,
-      height,
+      height: barHeight,
     });
   }
   return bars;

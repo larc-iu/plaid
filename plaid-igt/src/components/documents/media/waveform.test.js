@@ -147,3 +147,23 @@ it('stops reading once the recording is no longer wanted', async () => {
   expect(out).toBeNull();
   expect(pauses).toBe(1);
 });
+
+describe('barsFor in a lane', () => {
+  it('scales the bars to the lane and centres them in it', () => {
+    const peaks = Float32Array.from([1, 1, 1, 1]);
+    const whole = barsFor({ peaks, level: 1, left: 0, width: 4, timelineWidth: 4, drawWidth: 4 });
+    const lane = barsFor({
+      peaks,
+      level: 1,
+      left: 0,
+      width: 4,
+      timelineWidth: 4,
+      drawWidth: 4,
+      height: 50,
+    });
+    expect(whole[0].height).toBe(90);
+    expect(whole[0].y).toBe(5);
+    expect(lane[0].height).toBe(45);
+    expect(lane[0].y).toBe(2.5);
+  });
+});
