@@ -349,6 +349,15 @@ def _apply_set_head(ctx: Context, op) -> int:
     ctx.b.add(lambda batch, o=op: batch.relations.create(
         o['relation_layer_id'], ctx.lemma_at[head_id], ctx.lemma_at[word_id], o['deprel'],
         ctx.stamp(), id=ctx.b.new_id()))
+    # The enhanced graph's relabel of the old relation goes to the new head
+    # with it (``moved_ids``, staged by ``_stage_head``), its extras restamped
+    # as the re-pointed relation is.
+    for rid in op.get('moved_ids') or ():
+        if not ctx.removed_by_others(op, rid):
+            ctx.b.add(lambda batch, i=rid: batch.relations.set_source(i, ctx.lemma_at[head_id]))
+    for rid in op.get('moved_extra_ids') or ():
+        if not ctx.removed_by_others(op, rid):
+            ctx.b.update('relations', rid, metadata=metadata_ops(ctx.restamp()))
     return 1
 
 

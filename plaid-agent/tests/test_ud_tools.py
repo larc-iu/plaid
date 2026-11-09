@@ -125,6 +125,37 @@ def test_a_relabel_keeps_the_enhanced_graph_as_it_was():
     assert 'e-1' not in deleted
 
 
+def test_a_new_head_takes_the_relabel_along():
+    """A relabel (``obl`` in the tree, ``obl:a`` in the graph) is a suppressor
+    and an extra over the tree's pair. A new head moves both to it, in the
+    same batch, so the word keeps its enhanced label under the new head
+    (Luke, 2026-11-09, H2-2), as the editor's ``createRelation`` does. Left
+    behind, the extra became a second enhanced head. An extra from another
+    head is a head of its own and stays."""
+    ws = _enhanced_ws([suppressor('e-1', 'sp-l1', 'sp-l3'),
+                       {'id': 'e-2', 'source': 'sp-l1', 'target': 'sp-l3', 'value': 'obl:a'},
+                       {'id': 'e-3', 'source': 'sp-l2a', 'target': 'sp-l3', 'value': 'dep'}])
+    run(ws, 'set_head', document='Viaje', ref='s1.w4', head=3, deprel='obl')
+    assert ws.ops[0]['suppressor_ids'] == []
+    execute_plan(ws.client, ws.ops, source='s', label='l', project=ws.project)
+    deleted = ws.client.payloads('relations.delete')
+    assert not {'e-1', 'e-2', 'e-3'} & set(deleted)
+    moved = ws.client.payloads('relations.set_source')
+    assert moved == [('e-1', 'sp-l2b'), ('e-2', 'sp-l2b')]
+    assert len(ws.client.batches) == 1, 'in the same batch as the relation itself'
+
+
+def test_a_new_head_for_a_word_left_out_of_the_graph_takes_the_suppressor():
+    """A suppressor with no extra beside it is no relabel: the word was left
+    out of the enhanced graph, and the suppressor goes with its relation."""
+    ws = _enhanced_ws([suppressor('e-1', 'sp-l1', 'sp-l3'),
+                       {'id': 'e-3', 'source': 'sp-l2a', 'target': 'sp-l3', 'value': 'dep'}])
+    run(ws, 'set_head', document='Viaje', ref='s1.w4', head=3, deprel='obl')
+    execute_plan(ws.client, ws.ops, source='s', label='l', project=ws.project)
+    assert 'e-1' in ws.client.payloads('relations.delete')
+    assert ws.client.payloads('relations.set_source') == []
+
+
 def test_removing_a_head_takes_the_suppressor_over_it():
     ws = _enhanced_ws([suppressor('e-1', 'sp-l1', 'sp-l4')])
     run(ws, 'del_relation', document='Viaje', refs=['s1.w5'])

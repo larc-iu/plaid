@@ -69,12 +69,19 @@ const toggle = async (raw, charPos) => {
 // or a root is the head picker's `createRelation`, a new label under the head
 // the word has is the label cell's `updateRelation`, and a removal is
 // `deleteRelation` of the basic relation into the word.
-const headWrite = async (raw, write) => {
+// The rows it moves to a new head (a relabel goes with its relation) are
+// `moves`, each `[id, new source]`.
+const headWrite = async (raw, write, moves) => {
   const deleted = [];
   const client = withOps({
     relations: {
       create: async () => ({ id: 'new-relation' }),
       update: async () => ({}),
+      patchMetadata: async () => ({}),
+      setSource: async (id, source) => {
+        moves.push([id, source]);
+        return {};
+      },
       delete: async (id) => {
         deleted.push(id);
         return {};
@@ -110,7 +117,11 @@ for (const c of cases) {
   const merges = {};
   for (const pos of c.mergeAt) merges[pos] = await toggle(c.raw, pos);
   const heads = {};
-  for (const write of c.heads) heads[write.key] = await headWrite(c.raw, write);
+  const moves = {};
+  for (const write of c.heads) {
+    moves[write.key] = [];
+    heads[write.key] = await headWrite(c.raw, write, moves[write.key]);
+  }
   out.push({
     deps: depsBySentence(doc.toConllu()),
     hasEnhanced: doc.sentences.map((s) => (s.enhancedRelations || []).length > 0),
@@ -118,6 +129,7 @@ for (const c of cases) {
     splits,
     merges,
     heads,
+    moves,
     crossing,
   });
 }

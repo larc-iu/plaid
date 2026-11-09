@@ -118,6 +118,11 @@ def _case(seed: int) -> dict:
         for rel in basic:
             if rel['target'] in sent_words and r.random() < 0.35:
                 suppress(rel['source'], rel['target'])
+                # Now and then a relabel: an extra over the suppressed pair,
+                # which a new head moves along with the relation.
+                if r.random() < 0.5:
+                    rows.append({'id': nid('e'), 'source': rel['source'], 'target': rel['target'],
+                                 'value': r.choice(LABELS)})
         if r.random() < 0.35:
             # A suppressor over a pair with no basic relation: dangling.
             pair = (r.choice(sent_words), r.choice(sent_words))
@@ -203,6 +208,11 @@ def _deletes(client):
     return [op[1] for op in _sent(client) if op[0] == 'delete']
 
 
+def _moves(client):
+    """The rows a plan moved to a new source, ``[id, source]`` each."""
+    return [list(payload[:2]) for kind, payload in client.writes if kind == 'relations.set_source']
+
+
 def _head_writes(raw: dict, doc) -> list:
     """The head writes to run on both sides, each one word's: removing its
     head, a relabel under the head it has, the root, a head onto every pair a
@@ -240,7 +250,7 @@ def _head_writes(raw: dict, doc) -> list:
 def _python_side(raw: dict) -> dict:
     client, ws = _workspace(raw)
     doc = ws.doc(NAME)
-    heads = {}
+    heads, moves = {}, {}
     actions = _head_writes(raw, doc)
     for a in actions:
         client, ws = _workspace(raw)
@@ -256,6 +266,7 @@ def _python_side(raw: dict) -> dict:
             _stage_head(ws, d, w, ws.sentence_of(d, w), a['head'], a['deprel'])
         execute_plan(client, ws.ops, source='s', label='l', project=ws.project)
         heads[a['key']] = _deletes(client)
+        moves[a['key']] = _moves(client)
     deps, has_enhanced, suppressor_of = [], [], {}
     for s in doc.sentences:
         has_enhanced.append(s.has_enhanced)
@@ -284,7 +295,7 @@ def _python_side(raw: dict) -> dict:
             execute_plan(client, ws.ops, source='s', label='l', project=ws.project)
             merges[str(s.tokens[0].begin)] = _sent(client)
     return {'deps': deps, 'hasEnhanced': has_enhanced, 'suppressorOf': suppressor_of,
-            'splits': splits, 'merges': merges, 'heads': heads, 'actions': actions,
+            'splits': splits, 'merges': merges, 'heads': heads, 'moves': moves, 'actions': actions,
             'crossing': crossing}
 
 
@@ -328,6 +339,8 @@ def test_the_cases_reach_every_shape_they_are_for(compared):
                for p, pairs in zip(py, rows)) > CASES // 5
     assert sum(any(a['kind'] == 'head' and _dangling(raw, a['source'], a['target'])
                    for a in p['actions']) for raw, p in zip(raws, py)) > CASES // 10
+    # A head write that moves a relabel along.
+    assert sum(any(p['moves'].values()) for p in py) > CASES // 10
 
 
 def _relation_layers(raw):
@@ -428,3 +441,15 @@ def test_a_head_write_sweeps_the_suppressors_the_editor_sweeps(compared):
         port = {k: sorted(x for x in v if x in rows) for k, v in b['heads'].items()}
         if app != port:
             _differ('heads', i, app, port, raws)
+
+
+def test_a_head_write_moves_the_relabel_the_editor_moves(compared):
+    """The rows a new head takes along to itself (a relabel: the suppressor
+    and the extras over the replaced relation's pair), against
+    ``createRelation``. Order within one write is each side's own."""
+    raws, js, py = compared
+    for i, (a, b) in enumerate(zip(js, py)):
+        app = {k: sorted(v) for k, v in a['moves'].items()}
+        port = {k: sorted(v) for k, v in b['moves'].items()}
+        if app != port:
+            _differ('moves', i, app, port, raws)

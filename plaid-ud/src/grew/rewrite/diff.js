@@ -35,7 +35,8 @@ const COLUMN_LAYER = {
   xpos: 'xposLayer',
 };
 
-export function diffGraphs(before, after, layerInfo) {
+export function diffGraphs(before, rewritten, layerInfo) {
+  const after = withRelabelsMoved(before, rewritten);
   const changes = [];
   const writes = { tokens: [], lemmaCreates: [], main: [] };
   const layer = (key) => layerInfo[key]?.id;
@@ -474,6 +475,34 @@ export function diffGraphs(before, after, layerInfo) {
   }
 
   return { changes, writes, errors, loss };
+}
+
+// The rewritten graph with each relabel moved along with its tree edge, as the
+// editor moves it (enhancedGraph.js, relabelRowsOver). A relabel is a
+// suppressor and the extras over the tree edge's pair. When a rule gives that
+// edge's dependent a new head and leaves the extras alone, the extras go to
+// the new head with it, and the suppressor follows them there (settled below,
+// with every extra that moved). Left behind, the extra was a second enhanced
+// head the rule never asked for. An extra the rule itself touched is the
+// rule's to place.
+function withRelabelsMoved(before, after) {
+  const pair = (e) => `${e.src}>${e.tgt}`;
+  const suppressed = new Set((before.suppressors || []).map(pair));
+  const newHead = new Map();
+  for (const [id, b] of before.edges) {
+    const a = after.edges.get(id);
+    if (!a || isEnhancedLabel(b.label) || isEnhancedLabel(a.label)) continue;
+    if (a.tgt === b.tgt && a.src !== b.src && suppressed.has(pair(b))) newHead.set(pair(b), a.src);
+  }
+  if (!newHead.size) return after;
+  const edges = new Map(after.edges);
+  for (const [id, b] of before.edges) {
+    const a = after.edges.get(id);
+    if (!a || !isEnhancedLabel(b.label) || !newHead.has(pair(b))) continue;
+    if (a.src !== b.src || a.tgt !== b.tgt || a.label !== b.label) continue;
+    edges.set(id, { ...a, src: newHead.get(pair(b)) });
+  }
+  return { ...after, edges };
 }
 
 // Each cycle of a one-head-a-word tree (`headOf` maps a word to its head), as

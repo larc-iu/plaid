@@ -17,7 +17,13 @@ import {
 import { DocumentModel } from '../../../plaid-ui/src/domain/DocumentModel.js';
 import { getUdLayerInfo, containsToken, dependencyRelationLayers } from '../utils/udLayerUtils.js';
 import { readTokenizerLocale } from './udConfig.js';
-import { SUPPRESS_KEY, isSuppressor, suppressorFor, suppressorIdsOver } from './enhancedGraph.js';
+import {
+  SUPPRESS_KEY,
+  isSuppressor,
+  relabelRowsOver,
+  suppressorFor,
+  suppressorIdsOver,
+} from './enhancedGraph.js';
 import { notSetUp } from '../../../plaid-ui/src/domain/setupGuard.js';
 import { pendingId, recordSettled, settledId } from '../../../plaid-ui/src/domain/pendingIds.js';
 import {
@@ -1682,10 +1688,25 @@ export class ConlluDocument extends DocumentModel {
     // on the Python client, say) that moved a basic relation and left its
     // suppressor: a person redrawing that very arc would otherwise see it
     // born faded, with no enhanced head and nothing on screen saying why.
+    // A relabel of the relation it replaces (a suppressor and the extras over
+    // its pair, enhancedGraph.js) moves to the new head with it, so the word
+    // keeps its enhanced label. Those rows are kept, not swept.
+    const relabel = incomingRelations.flatMap((rel) =>
+      relabelRowsOver(rel, info.enhancedRelationLayer?.relations),
+    );
+    const relabelIds = new Set(relabel.map((r) => r.id));
+    const moved = relabel.filter((r) => r.source !== resolvedSourceId);
+    // A moved extra is the writer's, as the re-pointed relation is.
+    const movedStamps = new Map(
+      moved
+        .filter((r) => !isSuppressor(r))
+        .map((r) => [r.id, this.writer.repointStamp(r.metadata)])
+        .filter(([, stamp]) => stamp),
+    );
     const staleSuppressors = this._suppressorIdsOver(info, [
       ...incomingRelations,
       { source: resolvedSourceId, target: resolvedTargetId },
-    ]);
+    ]).filter((id) => !relabelIds.has(id));
     const finalDeprel = deprel || (resolvedSourceId === resolvedTargetId ? 'root' : 'dep');
     // A re-pointed head is a person's relation: it carries the writer's
     // create stamp (null for a verifier, so a verifier's stays plain).
@@ -1705,8 +1726,18 @@ export class ConlluDocument extends DocumentModel {
         ...(relStamp ? { metadata: relStamp } : {}),
       });
       const enhanced = infoNext.enhancedRelationLayer;
-      if (staleSuppressors.length && Array.isArray(enhanced?.relations)) {
-        enhanced.relations = enhanced.relations.filter((r) => !staleSuppressors.includes(r.id));
+      if ((staleSuppressors.length || moved.length) && Array.isArray(enhanced?.relations)) {
+        enhanced.relations = enhanced.relations
+          .filter((r) => !staleSuppressors.includes(r.id))
+          .map((r) => {
+            if (!moved.some((m) => m.id === r.id)) return r;
+            const stamp = movedStamps.get(r.id);
+            return {
+              ...r,
+              source: resolvedSourceId,
+              ...(stamp ? { metadata: mergeMetadata(r.metadata, stamp) } : {}),
+            };
+          });
       }
     });
 
@@ -1716,6 +1747,10 @@ export class ConlluDocument extends DocumentModel {
         this._queuePendingSpans(b, info, pending);
         incomingRelations.forEach((rel) => b.relations.delete(settledId(rel.id)));
         staleSuppressors.forEach((id) => b.relations.delete(settledId(id)));
+        moved.forEach((r) => b.relations.setSource(settledId(r.id), settledId(resolvedSourceId)));
+        movedStamps.forEach((stamp, id) =>
+          b.relations.patchMetadata(settledId(id), metadataOps(stamp)),
+        );
         b.relations.create(
           info.relationLayer.id,
           settledId(resolvedSourceId),

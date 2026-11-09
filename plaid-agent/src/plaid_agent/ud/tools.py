@@ -713,8 +713,17 @@ def _stage_head(ws: Workspace, doc: UdDoc, word: Word, sentence: Sentence, head,
     # strands nothing: the pair stays, and so does whatever the enhanced graph
     # says about it, as in the editor's `updateRelation`.
     relabel = bool(word.relation_id) and word.head == head
+    # A relabel in the ENHANCED graph (``obl`` in the tree, ``obl:on`` in the
+    # graph) is the suppressor plus the extras over the replaced relation's
+    # pair. A new head moves them along, so the word keeps its enhanced label
+    # under it (Luke, 2026-11-09), as the editor's `createRelation` does
+    # (``relabelRowsOver``). A suppressor with no extra beside it is a word
+    # left out of the graph, and goes with its relation as before.
+    extras = [] if relabel or not word.suppressor_id else [
+        rid for h, rid in word.extra_edges if h == word.head]
+    moved = [word.suppressor_id, *extras] if extras else []
     stale = [] if relabel else [
-        word.suppressor_id,
+        None if moved else word.suppressor_id,
         doc.suppressor_over(head_lemma.id if head_lemma else None, lemma.id if lemma else None)]
     op = {'kind': 'set_head', 'word_id': word.id, 'head_id': head_word.id,
                'lemma_layer_id': ws.project.layer('lemma'),
@@ -726,6 +735,9 @@ def _stage_head(ws: Workspace, doc: UdDoc, word: Word, sentence: Sentence, head,
                'head_lemma_span_id': head_lemma.id if head_lemma else None,
                'relation_id': word.relation_id, 'deprel': deprel, 'document_id': doc.id,
                'suppressor_ids': [i for i in dict.fromkeys(stale) if i],
+               # The relabel moved to the new head, and of it the extras, which
+               # become this plan's as the re-pointed relation does.
+               **({'moved_ids': moved, 'moved_extra_ids': extras} if moved else {}),
                # The same head: the stored relation takes the new label.
                **({'relabel': True} if relabel else {}),
                'label': (f'{word_ref(sentence, word)} root' if head == 0

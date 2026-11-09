@@ -24,8 +24,16 @@
 // words needs nothing more, since the server deletes every relation on their
 // lemma spans, suppressors included. Left behind, a suppressor would lie over
 // a pair with no basic relation (`danglingSuppressorIds`) and quietly
-// suppress the next relation drawn over it. An extra edge left behind is
-// simply still drawn.
+// suppress the next relation drawn over it.
+//
+// A relabel moves with its basic relation (Luke, 2026-11-09). Where extras
+// lie over the same pair as a suppressor, they stand in for the tree's edge
+// under another label (`obl` in the tree, `obl:on` in the graph), so a write
+// that gives the word a new head moves the suppressor and those extras to the
+// new head in the same batch (`relabelRowsOver`), and the word keeps its
+// enhanced label. Left behind, the extra became a second enhanced head. An
+// extra over any other pair is a head of its own and stays where it is, and
+// so does an extra over a pair nothing suppresses.
 //
 // A root is a relation from a word to itself in both layers, as the basic
 // tree already has it.
@@ -133,6 +141,25 @@ export const sentenceArcs = (sentence) => [
 export const suppressorIdsOver = (pairs, rows) => {
   if (!rows?.length) return [];
   return [...new Set(pairs.map((rel) => suppressorFor(rel, rows)?.id).filter(Boolean))];
+};
+
+/**
+ * The rows that stand in for this basic relation in the enhanced graph: the
+ * suppressor over its pair and every extra over the same pair, suppressor
+ * first. Empty unless there is at least one extra, since a suppressor alone
+ * is a relation left out of the graph, not a relabel. These are what a new
+ * head for the relation's dependent moves along with it.
+ */
+export const relabelRowsOver = (basicRelation, rows) => {
+  const suppressor = suppressorFor(basicRelation, rows);
+  if (!suppressor) return [];
+  const extras = (rows || []).filter(
+    (row) =>
+      !isSuppressor(row) &&
+      row.source === basicRelation.source &&
+      row.target === basicRelation.target,
+  );
+  return extras.length ? [suppressor, ...extras] : [];
 };
 
 /**

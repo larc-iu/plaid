@@ -218,6 +218,8 @@ The tree is drawn above the words and the enhanced relations below them.
 * **Leave a relation out of the enhanced graph**: **Ctrl/Cmd+click** a relation of the tree, or press **Ctrl/Cmd+E** on its label. The relation is shown faded. Do the same again to put it back.
 
 Changes to the tree carry over to the enhanced graph.
+A word given a new head, by hand or by a rewrite rule, keeps its relabel there: an `obl` relabelled `obl:on` moves to the new head as `obl:on`.
+A second head the enhanced graph gives the word stays where it is.
 On export, DEPS lists every relation of the enhanced graph for each word.
 Empty nodes are not supported, so an elided predicate cannot be added, and gapping stays as the tree's `orphan` relation.
 

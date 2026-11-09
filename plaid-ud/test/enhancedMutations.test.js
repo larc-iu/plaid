@@ -42,6 +42,9 @@ const relationClient = () => {
       update: async (id, value) => {
         log.push({ op: 'update', id, value });
       },
+      setSource: async (id, source) => {
+        log.push({ op: 'source', id, source });
+      },
     },
     spans: {
       delete: async (id) => {
@@ -214,6 +217,140 @@ test('re-pointing a head clears the suppressor over the relation it replaces', a
 
   await doc.createRelation(lemma('come'), lemma('home'), 'obj');
   assert.deepEqual(rows(), []);
+});
+
+// A relabel (`obl` in the tree, `obl:on` in the graph, UD's own case-marked
+// labels) is a suppressor and an extra over the tree's pair. A new head takes
+// both along, so the word keeps its enhanced label under the new head (Luke,
+// 2026-11-09, H2-2). Left behind, the extra became a second enhanced head.
+const CASED = [
+  '# text = We examine outcomes on land.',
+  '1\tWe\twe\tPRON\t_\t_\t2\tnsubj\t2:nsubj\t_',
+  '2\texamine\texamine\tVERB\t_\t_\t0\troot\t0:root\t_',
+  '3\toutcomes\toutcome\tNOUN\t_\t_\t2\tobj\t2:obj\t_',
+  '4\ton\ton\tADP\t_\t_\t5\tcase\t5:case\t_',
+  '5\tland\tland\tNOUN\t_\t_\t2\tobl\t2:obl:on|4:dep\t_',
+  '6\t.\t.\tPUNCT\t_\t_\t2\tpunct\t2:punct\t_',
+].join('\n');
+
+const depsOf = (doc, form) =>
+  doc
+    .toConllu()
+    .split('\n')
+    .find((l) => l.split('\t')[1] === form)
+    .split('\t')
+    .slice(6, 9)
+    .join(' ');
+
+test('a new head takes the relabelled enhanced edge along, in one write', async () => {
+  const { doc, log, lemma, rows } = open(CASED);
+  let batches = 0;
+  const batched = doc._client.batched;
+  doc._client.batched = (fn, o) => {
+    batches += 1;
+    return batched.call(doc._client, fn, o);
+  };
+  const [suppressor, extra] = ['suppress', 'obl:on'].map((v) =>
+    rows().find((r) => (v === 'suppress' ? isSuppressor(r) : r.value === v)),
+  );
+  const second = rows().find((r) => r.value === 'dep');
+
+  const write = doc.createRelation(lemma('outcome'), lemma('land'), 'obl');
+  // Shown before the server answers, as every write is.
+  assert.equal(depsOf(doc, 'land'), '3 obl 3:obl:on|4:dep');
+  await write;
+
+  assert.equal(depsOf(doc, 'land'), '3 obl 3:obl:on|4:dep');
+  assert.equal(batches, 1);
+  // Moved, not deleted and made again: the rows keep their ids.
+  assert.deepEqual(
+    log.filter((l) => l.op === 'source').map((l) => [l.id, l.source]),
+    [
+      [suppressor.id, lemma('outcome')],
+      [extra.id, lemma('outcome')],
+    ],
+  );
+  assert.ok(!log.some((l) => l.op === 'delete' && [suppressor.id, extra.id].includes(l.id)));
+  // A second enhanced head of its own stays where it was.
+  assert.equal(rows().find((r) => r.id === second.id).source, lemma('on'));
+});
+
+test('a new head that is the root takes the relabel along too', async () => {
+  const { doc, lemma } = open(CASED);
+  await doc.createRelation(lemma('land'), lemma('land'), 'root');
+  assert.equal(depsOf(doc, 'land'), '0 root 0:obl:on|4:dep');
+});
+
+test('the same head drawn again keeps the relabel', async () => {
+  const { doc, lemma } = open(CASED);
+  await doc.createRelation(lemma('examine'), lemma('land'), 'obl');
+  assert.equal(depsOf(doc, 'land'), '2 obl 2:obl:on|4:dep');
+});
+
+test('a word simply left out of the graph rejoins it under a new head', async () => {
+  // A suppressor with no extra beside it is no relabel: it goes with its
+  // tree relation, as before.
+  const LEFT_OUT = CASED.replace('2:obl:on|4:dep', '_');
+  const { doc, lemma, rows } = open(LEFT_OUT);
+  assert.equal(rows().filter(isSuppressor).length, 1);
+  await doc.createRelation(lemma('outcome'), lemma('land'), 'obl');
+  assert.equal(depsOf(doc, 'land'), '3 obl 3:obl');
+  assert.deepEqual(rows(), []);
+});
+
+test("a moved machine relabel becomes the writer's, as a re-pointed head does", async () => {
+  const { doc, log, lemma, rows } = open(CASED);
+  const extra = rows().find((r) => r.value === 'obl:on');
+  extra.metadata = { prov: 'inferred', provSource: 'service:stanza-parser' };
+  await doc.createRelation(lemma('outcome'), lemma('land'), 'obl');
+  assert.equal(rows().find((r) => r.id === extra.id).metadata.prov, undefined);
+  assert.ok(log.some((l) => l.op === 'patch' && l.id === extra.id));
+});
+
+test('a drag and a Grew rule that move a head take the relabel along alike', async () => {
+  const { doc: byHand, lemma } = open(CASED);
+  await byHand.createRelation(lemma('outcome'), lemma('land'), 'obl');
+
+  const byRule = new ConlluDocument({ raw: rawDocFromConllu(CASED, 'e', { enhanced: true }) });
+  const before = graphFromSentence(byRule.sentences[0]);
+  const { graph: after, applications } = rewriteSentence(
+    parseGrs(
+      'pattern { V [lemma="examine"]; H [lemma="outcome"]; V -[obl]-> W } commands { shift_out V =[obl]=> H }',
+    ),
+    before,
+  );
+  assert.equal(applications.length, 1);
+  const { writes, errors } = diffGraphs(before, after, byRule.layerInfo);
+  assert.deepEqual(errors, []);
+  // The writes applied as the runner sends them, rows found by id, words
+  // named by their lemma span.
+  const li = byRule.layerInfo;
+  const lemmaOf = new Map(li.lemmaLayer.spans.map((s) => [s.tokens[0], s.id]));
+  const layers = [li.relationLayer, li.enhancedRelationLayer];
+  const find = (id) => layers.flatMap((l) => l.relations).find((r) => r.id === id);
+  let made = 0;
+  for (const w of writes.main) {
+    if (w.op === 'setSource') find(w.id).source = lemmaOf.get(w.node);
+    else if (w.op === 'setTarget') find(w.id).target = lemmaOf.get(w.node);
+    else if (w.op === 'deleteRelation')
+      for (const l of layers) l.relations = l.relations.filter((r) => r.id !== w.id);
+    else if (w.op === 'createRelation')
+      layers
+        .find((l) => l.id === w.layer)
+        .relations.push({
+          id: `w-${made++}`,
+          source: lemmaOf.get(w.src),
+          target: lemmaOf.get(w.tgt),
+          value: w.value,
+          ...(w.metadata ? { metadata: w.metadata } : {}),
+        });
+    else throw new Error(`no ${w.op} here`);
+  }
+
+  assert.deepEqual(graphOf(byRule), graphOf(byHand));
+  assert.ok(graphOf(byRule).includes('outcome>land:obl:on'));
+  assert.ok(!graphOf(byRule).includes('examine>land:obl:on'));
+  assert.ok(!graphOf(byRule).includes('outcome>land:obl'));
 });
 
 test('a relation drawn over a pair someone else left a suppressor on is not born faded', async () => {

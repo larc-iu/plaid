@@ -645,7 +645,9 @@ def _read_enhanced(word_layer, project: UdProject, basic: List[dict],
     READ-ONLY, by ruling (2026-09-21): the assistant shows and cites the
     enhanced graph and has no tool that changes it. What its head ops owe the
     layer is tidying the suppressors around a basic relation they move or
-    delete, which is why the map of them comes back from here.
+    delete, and moving a relabel (a suppressor and the extras over its pair)
+    to a new head with its relation, which is why the map of them comes back
+    from here.
     """
     rows = _relations(word_layer, project.enhanced_relation_layer_id)
     if not rows:
