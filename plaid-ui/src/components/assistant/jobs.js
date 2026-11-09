@@ -10,6 +10,7 @@ import { lastProjects } from './projectReach.js';
 import { itemTime } from './itemTime.js';
 import { assistantsAmong } from './useAssistantAvailable.js';
 import { uuidv4 } from '../../../../plaid-client-js/src/ids.js';
+import { signalTurnEnded, turnEnding } from './turnSignal.js';
 
 // The assistant's conversations and the runs behind them: what is stored
 // where, the page-independent job registry, and asking the service for
@@ -413,6 +414,13 @@ const finishJob = async (j, store) => {
   if (j.recorded) j.unsent = null;
   j.done = true;
   j.result = result;
+  // A turn this page sent that ended while the page was hidden is signalled
+  // (`turnSignal.js`). A rejoined one (`attachJob`) is not: it was sent before
+  // this page was open, or from another tab.
+  const ending = j.sent ? turnEnding(j) : null;
+  if (ending) {
+    signalTurnEnded({ title: result.meta?.title, body: ending, tag: j.id, onOpen: j.reveal });
+  }
   notifyJob(j);
   jobs.delete(j.id);
   notifyJob(j);
@@ -473,6 +481,7 @@ export const startTurn = ({
     projectId,
     serviceId: service.serviceId,
     kind: 'turn',
+    sent: true,
     requestId,
     planId: null,
     conv,

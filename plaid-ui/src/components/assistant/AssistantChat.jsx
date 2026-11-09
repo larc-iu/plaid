@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useFollowEnd } from './useFollowEnd.js';
 import { replyLanded } from './replyLanded.js';
+import { primeTurnSignals } from './turnSignal.js';
 import { RotateCcw, Check, X, Loader2, PanelRightClose } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Button } from '../ui/button.jsx';
@@ -609,10 +610,17 @@ export const AssistantChat = ({
 
   const canSend = !!service && !busy && !attaching && !readOnly;
 
+  // What clicking the notification of a turn that ended while the page was
+  // hidden does besides focusing the window: shows its conversation, when
+  // this panel is still on the project it belongs to.
+  const revealOf = (j) => () => {
+    if (projectIdRef.current === j.projectId) setConvIdRef.current(j.id);
+  };
   const send = async (textOverride) => {
     const typed = (textOverride ?? input).trim();
     if (!typed || !canSend || sendingRef.current) return;
     sendingRef.current = true;
+    primeTurnSignals();
     thread.toEnd();
     try {
       await sendNow(typed);
@@ -705,6 +713,7 @@ export const AssistantChat = ({
       tab,
     });
     j.unsentFiles = pending;
+    j.reveal = revealOf(j);
     applyMeta(shownMeta(prevMeta, conv, projectId, service, where, tab, j));
     showJob(j);
   };
@@ -807,7 +816,10 @@ export const AssistantChat = ({
     if (!conv || conv.draft || !canSend) return;
     setStopped(null);
     setNotice(null);
-    showJob(startTurn({ store, service, conv, retry: true, tab: held.tab }));
+    primeTurnSignals();
+    const j = startTurn({ store, service, conv, retry: true, tab: held.tab });
+    j.reveal = revealOf(j);
+    showJob(j);
     // The Retry button goes with the line it stood on: the keyboard goes to
     // the composer, not to the page.
     inputRef.current?.focus();
