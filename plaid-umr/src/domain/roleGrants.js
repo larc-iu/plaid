@@ -5,5 +5,5 @@ import { projectRoleOptions } from '@ui/domain/projectRoles.js';
 
 export const ROLE_OPTIONS = projectRoleOptions({
   readerHint: 'Reads the annotation. Cannot comment.',
-  writerHint: 'Also edits documents and their annotation.',
+  writerHint: 'Also edits documents and their annotation, and deletes documents.',
 });

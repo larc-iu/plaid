@@ -1061,7 +1061,7 @@ Restoring an entry is for the vocabulary's maintainers.
 Projects are shared by adding members, each with a role:
 
 * **Reader**: can view everything but make no edits, comments included.
-* **Writer**: can edit documents and link vocabulary.
+* **Writer**: can edit and delete documents and link vocabulary.
 * **Maintainer**: can also change project settings, manage members, and delete the project.
 
 Add and manage members under the project's **Settings**, in **Access**.

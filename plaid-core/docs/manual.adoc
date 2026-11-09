@@ -56,7 +56,7 @@ So `Ana@Example.org` and `ana@example.org` name one account.
 By default, each project is private, and one of three permissions levels is needed in order to interact with one:
 
 * **Maintainers** have full privileges for working with projects: they may edit documents and also modify the project's configuration.
-* **Writers** may edit documents belonging to a project, but may not modify the project's configuration.
+* **Writers** may edit and delete documents belonging to a project, but may not modify the project's configuration.
 * **Readers** may only read documents belonging to a project—they may not make any edits to the project's documents or configuration.
 
 Additionally, a global **admin** role exists, which allows the user to see and edit all data in the Plaid instance.

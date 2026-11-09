@@ -516,7 +516,7 @@ The toast that confirms it also offers **Undo** for fifteen seconds.
 Projects are shared by adding members with a role:
 
 * **Reader**: can view everything but make no edits.
-* **Writer**: can edit documents and annotations.
+* **Writer**: can edit and delete documents and annotations.
 * **Maintainer**: can also change project settings, manage members, and delete the project.
 
 Add members from the project's **Access** settings by searching for a name or an email address.
