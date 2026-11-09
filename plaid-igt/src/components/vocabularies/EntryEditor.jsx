@@ -94,7 +94,7 @@ export const EntryEditor = ({
         field.name === 'morphType' ? (
           <select
             id={fieldId}
-            className="h-8 rounded-md border border-input bg-background px-2 text-sm disabled:cursor-not-allowed disabled:opacity-60"
+            className="h-8 rounded-md border border-input bg-background px-2 text-sm disabled:cursor-not-allowed disabled:opacity-50"
             value={values.morphType || ''}
             disabled={disabled}
             onChange={(event) =>
@@ -224,6 +224,11 @@ export const EntryEditor = ({
         </p>
       )}
 
+      {!canManage && (
+        <p className="mb-3 text-xs text-muted-foreground">
+          Only this vocabulary’s maintainers can edit entries.
+        </p>
+      )}
       <div className="flex flex-col gap-4 [&>*+*]:border-t [&>*+*]:pt-3" onKeyDown={onFormKeyDown}>
         <FormGroup>
           <div className="flex min-w-0 flex-col gap-1">

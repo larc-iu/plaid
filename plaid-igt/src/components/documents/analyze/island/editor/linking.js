@@ -161,6 +161,26 @@ export const linking = {
   // `all`: {ids, formText} for the other unlinked tokens reading the same, when
   // the row's "all" was taken. One operation with the create. `metadata`: the
   // new entry's, its type when one was chosen in the create form.
+  // What "+ Create" gives the new entry besides its form: the values the word's
+  // or morpheme's cells hold in the fields that name a lexicon field, under
+  // that entry field (the morpheme's gloss as the entry's gloss, H5-2). An
+  // empty cell gives nothing.
+  _entryValuesOf(tokenId, kind) {
+    const token =
+      kind === 'morpheme'
+        ? this._morphContext(tokenId)?.morph
+        : kind === 'word'
+          ? (this.doc.sentences || []).flatMap((s) => s.tokens || []).find((w) => w.id === tokenId)
+          : null;
+    const out = {};
+    for (const [name, ann] of Object.entries(token?.annotations || {})) {
+      const key = this._lexiconFieldOf(kind, name);
+      const value = typeof ann?.value === 'string' ? ann.value.trim() : '';
+      if (key && value && !(key in out)) out[key] = value;
+    }
+    return out;
+  },
+
   async _createVocab(tokenId, vocabId, form, returnFocus = false, all = null, metadata = {}) {
     this._closePopover(returnFocus);
     if (!form) return;

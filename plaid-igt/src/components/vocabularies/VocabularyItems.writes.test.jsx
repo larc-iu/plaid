@@ -1052,6 +1052,41 @@ describe('the empty pane', () => {
   });
 });
 
+describe('an entry opened by someone who does not maintain the vocabulary', () => {
+  // H5-2: every field was disabled and nothing said why, and the Type select
+  // looked live beside them.
+  it('says who can edit it, and its Type looks as disabled as the rest', async () => {
+    const { client } = stub([{ id: 'a', form: 'uno', metadata: { morphType: 'stem' } }]);
+    auth.client = client;
+    const view = await renderComponent(
+      <MemoryRouter initialEntries={['/vocabularies/v1?item=a']}>
+        <VocabularyItems
+          vocabularyId="v1"
+          vocabulary={{ id: 'v1' }}
+          client={client}
+          fields={[{ name: 'morphType', type: 'text' }, ...FIELDS]}
+          writes={new WriteQueue()}
+          canManage={false}
+        />
+      </MemoryRouter>,
+    );
+    for (let i = 0; i < 3; i++) await view.step(async () => {});
+    expect(formInput().disabled).toBe(true);
+    expect(document.body.textContent).toContain(
+      'Only this vocabulary’s maintainers can edit entries.',
+    );
+    const type = document.querySelector('select');
+    expect(type.disabled).toBe(true);
+    const disabledLook = (el) =>
+      el.className
+        .split(/\s+/)
+        .filter((c) => c.startsWith('disabled:'))
+        .sort();
+    expect(disabledLook(type)).toEqual(disabledLook(formInput()));
+    await view.unmount();
+  });
+});
+
 describe('opening the vocabulary', () => {
   const REF_FIELDS = [
     { name: 'gloss', type: 'text' },

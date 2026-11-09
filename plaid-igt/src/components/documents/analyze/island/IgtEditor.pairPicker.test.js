@@ -395,15 +395,30 @@ describe('a pick from the chip', () => {
     expect(morph(doc, 3).annotations.Gloss ?? null).toBeNull();
   });
 
-  it('+ Create makes the entry with the form and leaves the gloss', async () => {
+  // H5-2 (Luke 2026-11-09): the entry takes the morpheme's gloss, in the
+  // create itself, and the morpheme keeps it.
+  it('+ Create makes the entry with the form and the morpheme’s gloss', async () => {
     const { doc, client } = mount();
     await settle(4);
     openChip('m-2');
     click(host.querySelector('.igt-vocab-pop__create'));
     click(host.querySelector('.igt-vocab-pop__create'));
     await settle(6);
-    expect(client.calls.some((c) => c.kind === 'vocabItems.create')).toBe(true);
+    const made = client.calls.find((c) => c.kind === 'vocabItems.create');
+    expect(made.args.slice(0, 3)).toEqual(['v1', 'cat', { gloss: 'feline' }]);
     expect(morph(doc).annotations.Gloss.value).toBe('feline');
+  });
+
+  it('+ Create on a morpheme with no gloss gives the entry none', async () => {
+    const { client } = mount();
+    await settle(4);
+    openChip('m-1');
+    click(host.querySelector('.igt-vocab-pop__create'));
+    click(host.querySelector('.igt-vocab-pop__create'));
+    await settle(6);
+    const made = client.calls.find((c) => c.kind === 'vocabItems.create');
+    expect(made.args[1]).toBe('the');
+    expect(made.args[2]?.gloss).toBeUndefined();
   });
 
   it('on a word nobody has analyzed, gives focus back to the chip of the morpheme it made', async () => {

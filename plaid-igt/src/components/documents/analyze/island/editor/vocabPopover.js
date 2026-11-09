@@ -256,8 +256,12 @@ export const vocabPopover = {
     const editingCreate = canCreate && this._popoverCreateEdit != null;
     // The type the Type row gives the entry being created (R56), none unless
     // chosen there.
-    const createMeta =
-      editingCreate && this._popoverCreateType ? { morphType: this._popoverCreateType } : {};
+    // With the values the cells hold in fields that name a lexicon field
+    // (_entryValuesOf), written with the create.
+    const createMeta = {
+      ...(canCreate && !isMwe ? this._entryValuesOf(tokenId, kind) : {}),
+      ...(editingCreate && this._popoverCreateType ? { morphType: this._popoverCreateType } : {}),
+    };
     const effectiveForm = editingCreate ? this._popoverCreateEdit.trim() : createForm;
     // If the form already exists in the active vocab, the new entry would be
     // spelled like an existing one. Preview the number it would get (existing

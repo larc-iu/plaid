@@ -136,6 +136,40 @@ describe('a writer who does not maintain the lexicon', () => {
     }
   });
 
+  // H5-2: a word's values in fields that name a lexicon field go into the
+  // entry made from it, as a morpheme's gloss does (IgtEditor.pairPicker).
+  it('gives the entry made from a word the values its cells hold', async () => {
+    const raw = buildRawDoc({
+      body: 'the cat',
+      words: [
+        { id: 'w-1', begin: 0, end: 3 },
+        { id: 'w-2', begin: 4, end: 7 },
+      ],
+      lexiconFields: { 'Word:POS': 'pos' },
+    });
+    const pos = raw.textLayers[0].tokenLayers
+      .flatMap((l) => l.spanLayers || [])
+      .find((l) => l.id === 'wsl-0');
+    pos.spans.push({ id: 'sp-pos', tokens: ['w-1'], value: 'DET', metadata: {} });
+    const client = makeFakeClient();
+    client.query = async () => ({ results: [] });
+    const doc = makeIgtDoc({
+      raw,
+      project: { id: 'proj-1', vocabs: [{ id: 'v1' }], config: { plaid: {} } },
+      vocabularies: { v1: { id: 'v1', name: 'Lexicon', items: [], vocabLinks: [] } },
+      client,
+      user: { id: 'wren@example.com' },
+    });
+    client.documents.get = async () => doc.raw;
+    ({ host, editor } = mountIsland(doc, { canManageVocab: () => false }));
+    openOn('w-1');
+    click(popover().querySelector('.igt-vocab-pop__create'));
+    click(popover().querySelector('.igt-vocab-pop__create'));
+    await settle(4);
+    const made = client.calls.find((c) => c.kind === 'vocabItems.create');
+    expect(made.args.slice(0, 3)).toEqual(['v1', 'the', { pos: 'DET' }]);
+  });
+
   it('is offered "+ Create" for a multi-word expression', () => {
     mount();
     click(form('w-3'), { shiftKey: true });
