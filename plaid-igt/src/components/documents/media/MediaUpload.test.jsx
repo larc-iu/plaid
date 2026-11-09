@@ -256,4 +256,48 @@ describe('MediaUpload', () => {
     expect(bar(r.container).hasAttribute('aria-valuenow')).toBe(false);
     await r.unmount();
   });
+
+  // Several files at once are one recording with a channel each, decided in
+  // the mix dialog. One file is uploaded as it always was.
+  const chooseAll = async (r, files) => {
+    const input = r.container.querySelector('input[type=file]');
+    Object.defineProperty(input, 'files', { value: files, configurable: true });
+    await r.step(() => input.dispatchEvent(new Event('change', { bubbles: true })));
+  };
+  const decodeTrack = async (file) => ({
+    name: file.name,
+    sampleRate: 16000,
+    channels: 1,
+    seconds: 1,
+    mono: new Float32Array(16000),
+  });
+
+  it('two files open the mix dialog instead of uploading', async () => {
+    const onUpload = vi.fn();
+    const r = await renderComponent(
+      <MediaUpload onUpload={onUpload} isUploading={false} decodeTrack={decodeTrack} />,
+    );
+    expect(r.container.querySelector('input[type=file]').multiple).toBe(true);
+    await chooseAll(r, [
+      fileOf(2 * MB, 'ana.wav', 'audio/wav'),
+      fileOf(2 * MB, 'ben.wav', 'audio/wav'),
+    ]);
+    await until(r, () => document.body.textContent.includes('ben.wav'));
+    expect(onUpload).not.toHaveBeenCalled();
+    expect(document.body.textContent).toContain('Mix recordings');
+    expect(document.body.textContent).toContain('ana.wav');
+    await r.unmount();
+  });
+
+  it('files dropped on the card are chosen like picked ones', async () => {
+    const onUpload = vi.fn();
+    const r = await renderComponent(<MediaUpload onUpload={onUpload} isUploading={false} />);
+    const file = fileOf(2 * MB);
+    const drop = new Event('drop', { bubbles: true, cancelable: true });
+    drop.dataTransfer = { files: [file] };
+    await r.step(() => r.container.firstChild.dispatchEvent(drop));
+    await until(r, () => onUpload.mock.calls.length > 0);
+    expect(onUpload).toHaveBeenCalledWith(file);
+    await r.unmount();
+  });
 });

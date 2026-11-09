@@ -27,6 +27,7 @@ import { getIgtLayerInfo } from '../layerInfo.js';
 import { readTokenizeNewText } from '../igtConfig.js';
 import { underKeys } from './alignment.js';
 import { VAD_METADATA_KEY } from '../media/speechDetectionKey.js';
+import { CHANNEL_SPEAKERS_KEY } from '../media/channelSpeakers.js';
 import { followedForms, soleForms } from '../soleMorphemeForms.js';
 
 // How many morpheme forms one bulk token update writes.
@@ -469,26 +470,37 @@ export const documentMutations = {
   // `onProgress` gets `{ loaded, total }` in bytes as the file goes up, which
   // is what shows while it does; the reload that follows (the document now
   // carries its media, at an address only the server knows) is not counted.
-  async uploadMedia(file, { onProgress } = {}) {
+  // `channelSpeakers`, the speaker on each channel of a mix of several files,
+  // is written after the upload lands, so a failed upload leaves no list.
+  async uploadMedia(file, { onProgress, channelSpeakers = null } = {}) {
     if (!file) return false;
     return this._queueWrite('Failed to upload media', async () => {
       await this._client.documents.uploadMedia(this.id, file, undefined, { onProgress });
+      if (channelSpeakers) {
+        await this._client.documents.patchMetadata(
+          this.id,
+          metadataOps({ [CHANNEL_SPEAKERS_KEY]: channelSpeakers }),
+        );
+      }
       await this._reloadInSend();
     });
   },
 
-  // The speech-detection cuts were measured on the recording, so they go with
-  // it, in the same operation. The delete names the recording on screen, so
-  // one replaced by someone else since is refused rather than deleted, and
-  // the refetch after the refusal shows the current one.
+  // The speech-detection cuts were measured on the recording, and the channel
+  // speakers name its channels, so both go with it, in the same operation.
+  // The delete names the recording on screen, so one replaced by someone
+  // else since is refused rather than deleted, and the refetch after the
+  // refusal shows the current one.
   async deleteMedia() {
     const label = 'Failed to delete media';
     if (!this._canWrite(label)) return false;
     const mediaVersion = mediaVersionOf(this._raw?.mediaUrl);
-    const ops =
-      this._raw?.metadata?.[VAD_METADATA_KEY] != null
-        ? metadataOps({ [VAD_METADATA_KEY]: null })
-        : [];
+    const gone = Object.fromEntries(
+      [VAD_METADATA_KEY, CHANNEL_SPEAKERS_KEY]
+        .filter((key) => this._raw?.metadata?.[key] != null)
+        .map((key) => [key, null]),
+    );
+    const ops = Object.keys(gone).length ? metadataOps(gone) : [];
     this._applyRawPatch((next) => {
       next.mediaUrl = null;
       if (ops.length) next.metadata = applyMetadataOps(next.metadata, ops);

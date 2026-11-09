@@ -716,8 +716,10 @@ export const useMediaOperations = () => {
   // `convert` sends the recording as mono 16 kHz MP3 instead of itself: a
   // recording too large for the server becomes one that fits, and its timeline
   // is unchanged, so segments made against either line up with the other.
+  // `channelSpeakers` comes with a mix of several files, one per channel, and
+  // is written to the document with the recording (mutations/document.js).
   const handleMediaUpload = useCallback(
-    async (file, { convert = false } = {}) => {
+    async (file, { convert = false, channelSpeakers = null } = {}) => {
       if (!file) return;
 
       let sending = file;
@@ -744,6 +746,7 @@ export const useMediaOperations = () => {
       setUploadProgress({ name: sending.name, loaded: 0, total: sending.size });
       try {
         const ok = await doc.uploadMedia(sending, {
+          channelSpeakers,
           onProgress: ({ loaded, total }) =>
             setUploadProgress((p) => (p ? { ...p, loaded, total: total ?? p.total } : p)),
         });

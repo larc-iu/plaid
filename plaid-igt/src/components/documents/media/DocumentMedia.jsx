@@ -40,6 +40,7 @@ export function DocumentMedia() {
           convertProgress={mediaOps.convertProgress}
           maxBytes={limits?.mediaFileBytes ?? null}
           readOnly={readOnly}
+          knownSpeakers={doc.knownSpeakers}
         />
         {/* Timed rows with no recording (from ELAN, say): shown, not edited. */}
         {mediaOps.alignmentTokens.length > 0 && (

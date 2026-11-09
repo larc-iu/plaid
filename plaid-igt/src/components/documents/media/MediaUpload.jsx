@@ -2,16 +2,22 @@ import { useEffect, useRef, useState } from 'react';
 import { AudioLines, Upload } from 'lucide-react';
 import { Button } from '@ui/components/ui/button';
 import { Progress } from '@ui/components/ui/progress';
+import { cn } from '@ui/lib/utils';
 import { formatBytes } from '@/utils/formatBytes';
 import { conversionNeed, conversionNote, estimateMp3Bytes } from '@/domain/media/transcodeToMp3';
 import { readDuration } from '@/domain/media/mediaDuration';
 import { readyRecordings } from '@/utils/readyRecordings';
+import { MixRecordingsDialog } from './MixRecordingsDialog.jsx';
 
 // The upload prompt, and the upload itself once a file is chosen: the bytes
 // going up as a bar with the count, then a pulsing bar while the server checks
 // the file and the document reloads with it. `progress` is
 // `{ name, loaded, total }` while an upload is in flight, else null, and
 // `convertProgress` is `{ name, fraction }` while a recording is converted.
+//
+// Several files chosen together, one per speaker, go through the mix dialog
+// and come out as one recording with a channel each (MixRecordingsDialog);
+// one file takes the path it always took.
 export const MediaUpload = ({
   onUpload,
   isUploading,
@@ -19,8 +25,11 @@ export const MediaUpload = ({
   convertProgress = null,
   maxBytes = null,
   readOnly = false,
+  knownSpeakers = [],
   // prepareRecording's options, for a test to say what the browser plays.
   prepareOptions = undefined,
+  // The mix dialog's decoder, for a test to say what the browser hears.
+  decodeTrack = undefined,
 }) => {
   const inputRef = useRef(null);
   // A large file waits here for the choice between sending it and converting
@@ -31,6 +40,9 @@ export const MediaUpload = ({
   const [seconds, setSeconds] = useState(null);
   // The name of a recording being converted to PCM WAV before anything else.
   const [decoding, setDecoding] = useState(null);
+  // Two or more files, waiting in the mix dialog.
+  const [mixing, setMixing] = useState(null);
+  const [dragOver, setDragOver] = useState(false);
 
   useEffect(() => {
     if (!pending) return undefined;
@@ -55,16 +67,23 @@ export const MediaUpload = ({
   const smaller = Number.isFinite(seconds) && seconds > 0 ? estimateMp3Bytes(seconds) : null;
 
   // A recording the browser cannot play is refused here, and an ADPCM WAV is
-  // swapped for its PCM decoding, before anything below sees its size.
-  const choose = async (picked) => {
-    if (!picked) return;
-    let file;
+  // swapped for its PCM decoding, before anything below sees its size. Two or
+  // more files go to the mix dialog.
+  const choose = async (pickedList) => {
+    const picked = [...(pickedList || [])];
+    if (!picked.length || isUploading || readOnly) return;
+    let files;
     try {
-      [file] = await readyRecordings([picked], { ...prepareOptions, onConvert: setDecoding });
+      files = await readyRecordings(picked, { ...prepareOptions, onConvert: setDecoding });
     } finally {
       setDecoding(null);
     }
-    if (!file) return;
+    if (!files.length) return;
+    if (files.length > 1) {
+      setMixing(files);
+      return;
+    }
+    const [file] = files;
     if (conversionNeed(file.size, maxBytes)) setPending(file);
     else onUpload(file);
   };
@@ -76,14 +95,29 @@ export const MediaUpload = ({
   };
 
   return (
-    <div className="rounded-lg border bg-card p-4">
+    <div
+      className={cn(
+        'rounded-lg border bg-card p-4',
+        dragOver && !isUploading && !readOnly && 'border-primary bg-primary/5',
+      )}
+      onDragOver={(e) => {
+        e.preventDefault();
+        if (!dragOver) setDragOver(true);
+      }}
+      onDragLeave={() => setDragOver(false)}
+      onDrop={(e) => {
+        e.preventDefault();
+        setDragOver(false);
+        choose(e.dataTransfer?.files);
+      }}
+    >
       <div className="flex items-center justify-center">
         <div className="flex w-full flex-col items-center gap-6">
           <Upload className="h-12 w-12 text-muted-foreground" />
           <div className="text-center">
             <p className="mb-1 text-lg font-medium">Upload media file</p>
             <p className="mb-4 text-sm text-muted-foreground">
-              Upload an audio or video file to begin time-aligned transcription
+              One audio or video file, or one file per speaker.
             </p>
           </div>
 
@@ -91,9 +125,10 @@ export const MediaUpload = ({
             ref={inputRef}
             type="file"
             accept="audio/*,video/*"
+            multiple
             className="hidden"
             onChange={(e) => {
-              choose(e.target.files?.[0]);
+              choose(e.target.files);
               e.target.value = '';
             }}
           />
@@ -167,7 +202,7 @@ export const MediaUpload = ({
               onClick={() => inputRef.current?.click()}
             >
               <Upload className="h-4 w-4" />
-              Choose media file
+              Choose media files
             </Button>
           )}
 
@@ -176,6 +211,19 @@ export const MediaUpload = ({
           </p>
         </div>
       </div>
+
+      <MixRecordingsDialog
+        open={!!mixing}
+        files={mixing}
+        onOpenChange={(next) => !next && setMixing(null)}
+        knownSpeakers={knownSpeakers}
+        maxBytes={maxBytes}
+        {...(decodeTrack ? { decode: decodeTrack } : {})}
+        onUpload={(file, options) => {
+          setMixing(null);
+          onUpload(file, options);
+        }}
+      />
     </div>
   );
 };
