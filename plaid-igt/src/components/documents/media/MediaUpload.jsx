@@ -15,9 +15,11 @@ import { MixRecordingsDialog } from './MixRecordingsDialog.jsx';
 // `{ name, loaded, total }` while an upload is in flight, else null, and
 // `convertProgress` is `{ name, fraction }` while a recording is converted.
 //
-// Several files chosen together, one per speaker, go through the mix dialog
-// and come out as one recording with a channel each (MixRecordingsDialog);
-// one file takes the path it always took.
+// The card takes one file. Several files, one per speaker, are a mix only
+// when the person asks for one (Mix files, one per speaker): they go through
+// the mix dialog and come out as one recording with a channel each
+// (MixRecordingsDialog). Several files on the plain picker or a drop are
+// refused with a note, so none is mixed or left out unasked.
 export const MediaUpload = ({
   onUpload,
   isUploading,
@@ -43,6 +45,10 @@ export const MediaUpload = ({
   // Two or more files, waiting in the mix dialog.
   const [mixing, setMixing] = useState(null);
   const [dragOver, setDragOver] = useState(false);
+  // The picker was opened for a mix: it takes several files, this once.
+  const mixPickRef = useRef(false);
+  // Several files where one was expected.
+  const [tooMany, setTooMany] = useState(false);
 
   useEffect(() => {
     if (!pending) return undefined;
@@ -68,10 +74,15 @@ export const MediaUpload = ({
 
   // A recording the browser cannot play is refused here, and an ADPCM WAV is
   // swapped for its PCM decoding, before anything below sees its size. Two or
-  // more files go to the mix dialog.
-  const choose = async (pickedList) => {
+  // or more files chosen for a mix go to the mix dialog.
+  const choose = async (pickedList, { mix = false } = {}) => {
     const picked = [...(pickedList || [])];
     if (!picked.length || isUploading || readOnly) return;
+    setTooMany(false);
+    if (picked.length > 1 && !mix) {
+      setTooMany(true);
+      return;
+    }
     let files;
     try {
       files = await readyRecordings(picked, { ...prepareOptions, onConvert: setDecoding });
@@ -79,7 +90,7 @@ export const MediaUpload = ({
       setDecoding(null);
     }
     if (!files.length) return;
-    if (files.length > 1) {
+    if (mix) {
       setMixing(files);
       return;
     }
@@ -116,19 +127,19 @@ export const MediaUpload = ({
           <Upload className="h-12 w-12 text-muted-foreground" />
           <div className="text-center">
             <p className="mb-1 text-lg font-medium">Upload media file</p>
-            <p className="mb-4 text-sm text-muted-foreground">
-              One audio or video file, or one file per speaker.
-            </p>
+            <p className="mb-4 text-sm text-muted-foreground">One audio or video file.</p>
           </div>
 
           <input
             ref={inputRef}
             type="file"
             accept="audio/*,video/*"
-            multiple
             className="hidden"
             onChange={(e) => {
-              choose(e.target.files);
+              const mix = mixPickRef.current;
+              mixPickRef.current = false;
+              e.target.multiple = false;
+              choose(e.target.files, { mix });
               e.target.value = '';
             }}
           />
@@ -196,14 +207,38 @@ export const MediaUpload = ({
               </div>
             </div>
           ) : (
-            <Button
-              size="lg"
-              disabled={isUploading || readOnly}
-              onClick={() => inputRef.current?.click()}
-            >
-              <Upload className="h-4 w-4" />
-              Choose media files
-            </Button>
+            <div className="flex flex-col items-center gap-2">
+              <Button
+                size="lg"
+                disabled={isUploading || readOnly}
+                onClick={() => {
+                  mixPickRef.current = false;
+                  if (inputRef.current) inputRef.current.multiple = false;
+                  inputRef.current?.click();
+                }}
+              >
+                <Upload className="h-4 w-4" />
+                Choose media file
+              </Button>
+              <Button
+                variant="link"
+                size="sm"
+                className="h-auto p-0 text-xs text-muted-foreground"
+                disabled={isUploading || readOnly}
+                onClick={() => {
+                  mixPickRef.current = true;
+                  if (inputRef.current) inputRef.current.multiple = true;
+                  inputRef.current?.click();
+                }}
+              >
+                Mix files, one per speaker
+              </Button>
+              {tooMany && (
+                <p className="text-xs font-medium text-destructive" role="status">
+                  One file at a time. For one file per speaker, use Mix files, one per speaker.
+                </p>
+              )}
+            </div>
           )}
 
           <p className="text-xs text-muted-foreground">

@@ -69,7 +69,7 @@ const until = (r, done) =>
 describe('MediaUpload', () => {
   it('offers the file picker when nothing is uploading', async () => {
     const r = await renderComponent(<MediaUpload onUpload={vi.fn()} isUploading={false} />);
-    expect(all(r.container, 'button')).toHaveLength(1);
+    expect(all(r.container, 'button')).toHaveLength(2);
     expect(bar(r.container)).toBeNull();
     await r.unmount();
   });
@@ -257,8 +257,10 @@ describe('MediaUpload', () => {
     await r.unmount();
   });
 
-  // Several files at once are one recording with a channel each, decided in
-  // the mix dialog. One file is uploaded as it always was.
+  // The card takes one file. Several files, one per speaker, are a mix the
+  // person asks for with Mix files, one per speaker, which picks several and
+  // opens the mix dialog. Several files on the plain picker or a drop are
+  // refused with a note, never mixed and never dropped silently.
   const chooseAll = async (r, files) => {
     const input = r.container.querySelector('input[type=file]');
     Object.defineProperty(input, 'files', { value: files, configurable: true });
@@ -271,21 +273,63 @@ describe('MediaUpload', () => {
     seconds: 1,
     mono: new Float32Array(16000),
   });
+  const two = () => [
+    fileOf(2 * MB, 'ana.wav', 'audio/wav'),
+    fileOf(2 * MB, 'ben.wav', 'audio/wav'),
+  ];
 
-  it('two files open the mix dialog instead of uploading', async () => {
+  it('the plain picker takes one file, and says so', async () => {
+    const r = await renderComponent(<MediaUpload onUpload={vi.fn()} isUploading={false} />);
+    expect(r.container.querySelector('input[type=file]').multiple).toBe(false);
+    expect(buttonSaying(r.container, 'Choose media file')).not.toBeNull();
+    expect(r.container.textContent).not.toContain('Choose media files');
+    await r.unmount();
+  });
+
+  it('several files on the plain picker are refused with a note naming the mix', async () => {
     const onUpload = vi.fn();
     const r = await renderComponent(
       <MediaUpload onUpload={onUpload} isUploading={false} decodeTrack={decodeTrack} />,
     );
-    expect(r.container.querySelector('input[type=file]').multiple).toBe(true);
-    await chooseAll(r, [
-      fileOf(2 * MB, 'ana.wav', 'audio/wav'),
-      fileOf(2 * MB, 'ben.wav', 'audio/wav'),
-    ]);
+    await chooseAll(r, two());
+    await until(r, () => r.container.textContent.includes('One file at a time'));
+    expect(onUpload).not.toHaveBeenCalled();
+    expect(document.body.textContent).not.toContain('Mix recordings');
+    expect(r.container.textContent).toContain('Mix files, one per speaker');
+    await r.unmount();
+  });
+
+  it('several files dropped on the card are refused the same way', async () => {
+    const onUpload = vi.fn();
+    const r = await renderComponent(<MediaUpload onUpload={onUpload} isUploading={false} />);
+    const drop = new Event('drop', { bubbles: true, cancelable: true });
+    drop.dataTransfer = { files: two() };
+    await r.step(() => r.container.firstChild.dispatchEvent(drop));
+    await until(r, () => r.container.textContent.includes('One file at a time'));
+    expect(onUpload).not.toHaveBeenCalled();
+    expect(document.body.textContent).not.toContain('Mix recordings');
+    await r.unmount();
+  });
+
+  it('Mix files, one per speaker picks several and opens the mix dialog', async () => {
+    const onUpload = vi.fn();
+    const r = await renderComponent(
+      <MediaUpload onUpload={onUpload} isUploading={false} decodeTrack={decodeTrack} />,
+    );
+    const input = r.container.querySelector('input[type=file]');
+    let multipleAtClick = null;
+    input.click = () => {
+      multipleAtClick = input.multiple;
+    };
+    await r.step(() => buttonSaying(r.container, 'Mix files, one per speaker').click());
+    expect(multipleAtClick).toBe(true);
+    await chooseAll(r, two());
     await until(r, () => document.body.textContent.includes('ben.wav'));
     expect(onUpload).not.toHaveBeenCalled();
     expect(document.body.textContent).toContain('Mix recordings');
     expect(document.body.textContent).toContain('ana.wav');
+    // The next plain choice is one file again.
+    expect(input.multiple).toBe(false);
     await r.unmount();
   });
 

@@ -2,12 +2,17 @@ import { test, expect, seedAuth, collectClientErrors } from './fixtures.js';
 import { freshDoc, cleanupDoc } from './bugbash/harness.mjs';
 import { getFixture } from './fixtureProject.js';
 
-// Several files chosen together on the Media tab (one per speaker) are mixed in
-// the browser into one recording with a channel each: the mix dialog takes a
-// speaker per file, the upload lands with channelSpeakers, and the tab then
+// Several files chosen through Mix files, one per speaker on the Media tab
+// (several on the plain picker are refused) are mixed in the browser into one
+// recording with a channel each: the mix dialog takes a speaker per file, the upload lands with channelSpeakers, and the tab then
 // shows the channel list (speaker, Mute, Solo), one waveform lane per channel,
 // and speech detection with a box per channel whose proposals carry the
 // channel's speaker. Runs against a THROWAWAY document in the fixture project.
+//
+// A plain stereo recording is the other case: no channel list, one lane, the
+// element plays on its own (never routed into Web Audio), until a person says
+// its channels are speakers with Speakers per channel, and back again with
+// Remove speakers per channel.
 //
 // B66_SHOTS names a directory to put screenshots in (the browser check).
 
@@ -84,20 +89,46 @@ test('two files go through the mix dialog and come out as one recording with a c
   await seedAuth(page);
   await openMedia(page);
   await expect(page.getByText('Upload media file')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Choose media file', exact: true })).toBeVisible();
+  await shot(page, '00-upload');
 
   // Ana speaks from 1 to 3 s, Ben (a stereo file) from 4 to 6.5 s.
-  await page.locator('input[type="file"]').setInputFiles([
-    {
-      name: 'ana.wav',
-      mimeType: 'audio/wav',
-      buffer: speechLikeWav({ seconds: 8, bursts: [[1, 3]] }),
+  const ana = {
+    name: 'ana.wav',
+    mimeType: 'audio/wav',
+    buffer: speechLikeWav({ seconds: 8, bursts: [[1, 3]] }),
+  };
+  const benStereo = {
+    name: 'ben.wav',
+    mimeType: 'audio/wav',
+    buffer: speechLikeWav({ seconds: 7, bursts: [[4, 6.5]], channels: 2 }),
+  };
+
+  // Two files dropped on the card are refused: nothing is mixed unasked. (The
+  // plain picker itself takes one file.)
+  const dropped = await page.evaluateHandle(
+    (files) => {
+      const dt = new DataTransfer();
+      for (const f of files) {
+        dt.items.add(new File([new Uint8Array(f.bytes)], f.name, { type: 'audio/wav' }));
+      }
+      return dt;
     },
-    {
-      name: 'ben.wav',
-      mimeType: 'audio/wav',
-      buffer: speechLikeWav({ seconds: 7, bursts: [[4, 6.5]], channels: 2 }),
-    },
-  ]);
+    [ana, benStereo].map((f) => ({ name: f.name, bytes: [...f.buffer.subarray(0, 64)] })),
+  );
+  await page
+    .getByText('Upload media file')
+    .locator('xpath=ancestor::div[contains(@class,"rounded-lg")][1]')
+    .dispatchEvent('drop', { dataTransfer: dropped });
+  await expect(page.getByText('One file at a time.', { exact: false })).toBeVisible();
+  await expect(page.getByRole('dialog', { name: 'Mix recordings' })).toHaveCount(0);
+
+  // Mix files, one per speaker picks several.
+  const chooser = page.waitForEvent('filechooser');
+  await page.getByRole('button', { name: 'Mix files, one per speaker' }).click();
+  const picker = await chooser;
+  expect(picker.isMultiple()).toBe(true);
+  await picker.setFiles([ana, benStereo]);
 
   const dialog = page.getByRole('dialog', { name: 'Mix recordings' });
   await expect(dialog).toBeVisible();
@@ -195,5 +226,85 @@ test('speech detection lists the channels and labels each proposal with its spea
     const at = Number(await rows.nth(i).getAttribute('data-row-time'));
     const speaker = await rows.nth(i).locator('input[list]').inputValue();
     expect(speaker).toBe(at < 3.5 ? 'Ana' : 'Benjamin');
+  }
+});
+
+test('a plain stereo recording plays as it is, with speakers per channel only on request', async ({
+  page,
+}) => {
+  test.setTimeout(120_000);
+  const { documentId } = await freshDoc(ctx.client, ctx.projectId, {
+    body: '',
+    name: `UI Media Stereo Test ${Date.now()}`,
+  });
+  try {
+    // Count the media elements routed into Web Audio.
+    await page.addInitScript(() => {
+      window.__routed = 0;
+      const proto = window.AudioContext?.prototype;
+      if (!proto) return;
+      const original = proto.createMediaElementSource;
+      proto.createMediaElementSource = function (...args) {
+        window.__routed += 1;
+        return original.apply(this, args);
+      };
+    });
+    await seedAuth(page);
+    await page.goto(`/#/projects/${ctx.projectId}/documents/${documentId}`);
+    await page.waitForLoadState('networkidle');
+    await page.getByRole('tab', { name: 'Media' }).click();
+    await expect(page.getByText('Upload media file')).toBeVisible();
+    await page.locator('input[type="file"]').setInputFiles({
+      name: 'interview.wav',
+      mimeType: 'audio/wav',
+      buffer: speechLikeWav({ seconds: 6, bursts: [[1, 3]], channels: 2 }),
+    });
+
+    // The recording is there, with one lane, no channel list, and a quiet
+    // button to say the channels are speakers.
+    await expect(page.getByText('Timeline', { exact: true })).toBeVisible({ timeout: 30000 });
+    const optIn = page.getByRole('button', { name: 'Speakers per channel', exact: true });
+    await expect(optIn).toBeVisible({ timeout: 15000 });
+    await expect(page.locator('[data-channel-list]')).toHaveCount(0);
+    await expect(page.locator('canvas[data-waveform-lane]')).toHaveCount(0);
+    await page.getByRole('button', { name: 'Play', exact: true }).click();
+    await page.getByRole('button', { name: 'Pause', exact: true }).click();
+    expect(await page.evaluate(() => window.__routed)).toBe(0);
+    await shot(page, '06-plain-stereo');
+
+    // Speech detection runs on the whole recording: no channel boxes.
+    await page.getByRole('button', { name: 'Detect speech' }).click();
+    const detect = page.getByRole('dialog', { name: 'Speech detection' });
+    await expect(detect).toBeVisible();
+    await expect(detect.locator('[data-channel-checklist]')).toHaveCount(0);
+    await detect.getByRole('button', { name: 'Close Speech detection' }).click();
+
+    // Speakers per channel: the list, two lanes, the document says so.
+    await optIn.click();
+    const list = page.locator('[data-channel-list]');
+    await expect(list).toBeVisible();
+    await expect(list.getByLabel('Channel 1 speaker')).toHaveValue('');
+    await expect(list.getByLabel('Channel 2 speaker')).toHaveValue('');
+    await expect(optIn).toHaveCount(0);
+    await expect(page.locator('canvas[data-waveform-lane]')).toHaveCount(2, { timeout: 20000 });
+    await expect
+      .poll(async () => (await ctx.client.documents.get(documentId)).metadata?.channelSpeakers, {
+        timeout: 15000,
+      })
+      .toEqual(['', '']);
+    await expect.poll(() => page.evaluate(() => window.__routed)).toBe(1);
+
+    // And back: no list, one lane, nothing stored.
+    await list.getByRole('button', { name: 'Remove speakers per channel' }).click();
+    await expect(page.locator('[data-channel-list]')).toHaveCount(0);
+    await expect(optIn).toBeVisible();
+    await expect(page.locator('canvas[data-waveform-lane]')).toHaveCount(0, { timeout: 20000 });
+    await expect
+      .poll(async () => (await ctx.client.documents.get(documentId)).metadata?.channelSpeakers, {
+        timeout: 15000,
+      })
+      .toBeUndefined();
+  } finally {
+    await cleanupDoc(ctx.client, documentId);
   }
 });
