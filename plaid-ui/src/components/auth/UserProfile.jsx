@@ -35,7 +35,7 @@ export const UserProfile = ({ className, children }) => {
   useDocumentTitle('Profile');
   const navigate = useNavigate();
   const confirm = useConfirm();
-  const { user, client, updateUser } = useAuth();
+  const { user, client, updateUser, logout } = useAuth();
   const passwordMinimum = usePasswordMinimum();
   const [isEditing, setIsEditing] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -204,6 +204,11 @@ export const UserProfile = ({ className, children }) => {
         undefined,
         updateData.password ? { currentPassword: fields.currentPassword } : {},
       );
+      // A new password ends every session of the account, this one too.
+      if (updateData.password) {
+        logout('password-changed');
+        return;
+      }
       const updatedUserData = await client.users.get(user.id);
 
       notifySuccess('Profile updated');

@@ -73,6 +73,16 @@ describe('LoginForm', () => {
     expect(sessionStorage.getItem('plaid:logout-reason')).toBe(null);
   });
 
+  // H1-2: a password change ends every session, this one too, and the page
+  // said "Your session has expired".
+  it('says the password changed after a change of password', async () => {
+    sessionStorage.setItem('plaid:logout-reason', 'password-changed');
+    const { container } = await mount();
+    expect(container.querySelector('[role="status"]').textContent).toBe(
+      'Password changed. Sign in with the new password.',
+    );
+  });
+
   // H10-SCRIPTS-2: the browser's email check refused `müller@x.de` and sent
   // `a@bücher.de` as punycode.
   it('sends an address with letters outside ASCII as typed', async () => {

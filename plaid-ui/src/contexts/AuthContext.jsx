@@ -43,7 +43,7 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  // `reason` ('expired') lets the login page say why it is showing.
+  // `reason` ('expired', 'password-changed') lets the login page say why it is showing.
   const logout = (reason = null) => {
     authService.logout(reason);
     setUser(null);

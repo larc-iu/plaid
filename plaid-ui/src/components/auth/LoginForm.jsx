@@ -10,6 +10,12 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../ui
 import { PlaidMark } from '../assistant/PlaidMarks.jsx';
 import { TYPE } from '../../lib/typeScale.js';
 
+// What the page says for each reason `authService.logout` was given.
+const LOGOUT_NOTICES = {
+  expired: 'Your session has expired. Sign in again.',
+  'password-changed': 'Password changed. Sign in with the new password.',
+};
+
 /**
  * The sign-in screen. `tagline` is the one line under the app's name, and
  * `homePath` is where a signed-in reader lands, both of them the app's own.
@@ -27,8 +33,7 @@ export const LoginForm = ({ tagline, homePath }) => {
   // this route and then hard-reloads, so the form mounts twice.
   const [notice] = useState(() => {
     try {
-      const r = sessionStorage.getItem('plaid:logout-reason');
-      return r === 'expired' ? 'Your session has expired. Sign in again.' : '';
+      return LOGOUT_NOTICES[sessionStorage.getItem('plaid:logout-reason')] ?? '';
     } catch {
       return '';
     }

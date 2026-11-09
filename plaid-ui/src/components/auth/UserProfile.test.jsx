@@ -14,6 +14,7 @@ const { toast, auth, confirm } = vi.hoisted(() => ({
     user: { id: 'ada@example.com', displayName: 'Ada' },
     client: null,
     updateUser: vi.fn(),
+    logout: vi.fn(),
   },
   confirm: vi.fn(async () => false),
 }));
@@ -211,6 +212,36 @@ describe('the profile form', () => {
       undefined,
       { currentPassword: 'the-old-one' },
     );
+    await view.unmount();
+  });
+
+  // H1-2: the change ends this session too, and reading the user back with the
+  // dead token signed out with "Your session has expired".
+  it('signs out saying the password changed, without reading the user back', async () => {
+    const get = vi.fn();
+    const update = vi.fn(async () => ({}));
+    auth.client = { ...baseClient(), users: { avatarUrl: () => null, update, get } };
+    const view = await mount();
+    await openEditor(view);
+    await fillPasswords(view, 'the-old-one');
+    await submitAround(view, view.container.querySelector('#newPassword'));
+
+    expect(auth.logout).toHaveBeenCalledWith('password-changed');
+    expect(get).not.toHaveBeenCalled();
+    await view.unmount();
+  });
+
+  it('keeps the session for a display name change', async () => {
+    const get = vi.fn(async () => ({ id: 'ada@example.com', displayName: 'Ada L' }));
+    const update = vi.fn(async () => ({}));
+    auth.client = { ...baseClient(), users: { avatarUrl: () => null, update, get } };
+    const view = await mount();
+    await openEditor(view);
+    await view.step(() => typeInto(view.container.querySelector('#displayName'), 'Ada L'));
+    await submitAround(view, view.container.querySelector('#displayName'));
+
+    expect(auth.logout).not.toHaveBeenCalled();
+    expect(toast.success).toHaveBeenCalled();
     await view.unmount();
   });
 
