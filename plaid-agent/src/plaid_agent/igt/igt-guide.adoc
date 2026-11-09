@@ -168,19 +168,24 @@ The timing is unchanged, but the picture is dropped and the sound is no longer g
 
 === Recordings with one file per speaker
 
-A conversation recorded with a microphone per speaker is several files that share one clock.
-Press **Mix files, one per speaker** under **Choose media file** and pick them all, and **Mix recordings** makes one recording of them with a channel per file.
-The plain picker takes one file.
+The upload card has two modes, **Single** and **Per speaker**.
+**Single** takes one file, and the recording plays as it was recorded, a stereo one in stereo.
+**Per speaker** is for a conversation recorded with a microphone per speaker.
+
+A microphone per speaker gives several files that share one clock.
+Under **Per speaker**, choose them all, and **Mix recordings** makes one recording of them with a channel per file.
 Each row takes the speaker of that file and an offset in seconds, silence put before the file (a negative offset trims its start) for a file that was started late.
 A stereo file is averaged to one channel first.
 **Full quality** keeps the highest sample rate among the files, **Smaller** resamples to 16 kHz, and each says the size it comes to.
 A mix the server would refuse is refused here, before anything is uploaded.
 
-A mixed recording shows a **channel list** under the player.
+A file made elsewhere with a speaker on each channel can be chosen alone under **Per speaker**.
+It is not mixed.
+**Speakers per channel** takes a speaker for each channel, and the file is uploaded as it is.
+
+A recording uploaded under **Per speaker** shows a **channel list** under the player.
 Each channel has its speaker, which you can change, and **Mute** and **Solo**, which only change what you hear.
-For a recording made elsewhere with a channel per speaker, press **Speakers per channel** at the top of the player to get the same list.
-Any other recording plays as it was recorded, a stereo one in stereo, with no channel list.
-**Remove speakers per channel** under the list makes it such a recording again.
+**Remove speakers per channel** under the list makes it a plain recording again.
 
 With the speakers filled in, the timeline draws one waveform lane per channel in the speaker's colour, speech detection and transcription list the channels so each runs on one channel alone, and every proposal and segment they make carries that channel's speaker.
 Two speakers' segments may overlap in time.
