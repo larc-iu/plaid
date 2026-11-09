@@ -211,6 +211,21 @@ const typedBeforeEach = (morphemes) => {
   });
 };
 
+// The morphemes with no type in words of two or more: a "-" records nothing,
+// and FLEx reads a morph with no type as a stem. The export says how many
+// (H5-7).
+export const untypedInLongerWords = (doc) => {
+  let n = 0;
+  for (const s of doc?.sentences || []) {
+    for (const w of s.tokens || []) {
+      const ms = (w.morphemes || []).filter((m) => !m.virtual);
+      if (ms.length < 2) continue;
+      for (const m of ms) if (!m.morphType) n++;
+    }
+  }
+  return n;
+};
+
 function morphXml(indent, m, options, lex, typedBefore) {
   const morphType = m?.morphType ?? null;
   const typeAttr = FLEX_MORPH_TYPES.includes(morphType) ? ` type="${xmlEscape(morphType)}"` : '';

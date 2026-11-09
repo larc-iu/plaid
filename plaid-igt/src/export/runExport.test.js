@@ -434,6 +434,68 @@ describe('runExport', () => {
     ]);
   });
 
+  // H5-7 (Luke 2026-11-09): a morpheme split off with "-" has no type, and
+  // FLEx reads a morph with no type as a stem.
+  it('counts the untyped morphemes of words with two or more, on screen and in the README', async () => {
+    const doc = rawDoc('d1', 'Flex', 'khaore perro');
+    doc.textLayers[0].tokenLayers.push({
+      config: role('morpheme'),
+      tokens: [
+        { id: 'm1', begin: 0, end: 6, precedence: 1, metadata: { form: 'khao' } },
+        { id: 'm2', begin: 0, end: 6, precedence: 2, metadata: { form: 're' } },
+        { id: 'm3', begin: 7, end: 12, precedence: 1, metadata: { form: 'perr' } },
+        {
+          id: 'm4',
+          begin: 7,
+          end: 12,
+          precedence: 2,
+          metadata: { form: 'o', morphType: 'suffix' },
+        },
+      ],
+      spanLayers: [],
+    });
+    const client = stubClient({ docs: [doc] });
+    const preset = newPreset('flextext', discoverExportLayers(PROJECT), 'f');
+    const result = await runExport({
+      client,
+      project: PROJECT,
+      preset,
+      scope: { type: 'document', id: 'd1' },
+    });
+    const line =
+      '3 morphemes in words of two or more morphemes have no type. FLEx reads them as stems unless their entries carry a morph type.';
+    expect(result.warnings).toEqual([line]);
+    const readme = new TextDecoder().decode((await unzipBlob(result.blob))['README.txt']);
+    expect(readme.replace(/\s+/g, ' ')).toContain(line);
+  });
+
+  it('says nothing of types when every morpheme of a longer word has one', async () => {
+    const doc = rawDoc('d1', 'Flex', 'perro');
+    doc.textLayers[0].tokenLayers.push({
+      config: role('morpheme'),
+      tokens: [
+        {
+          id: 'm1',
+          begin: 0,
+          end: 5,
+          precedence: 1,
+          metadata: { form: 'perr', morphType: 'stem' },
+        },
+        { id: 'm2', begin: 0, end: 5, precedence: 2, metadata: { form: 'o', morphType: 'suffix' } },
+      ],
+      spanLayers: [],
+    });
+    const client = stubClient({ docs: [doc] });
+    const preset = newPreset('flextext', discoverExportLayers(PROJECT), 'f');
+    const result = await runExport({
+      client,
+      project: PROJECT,
+      preset,
+      scope: { type: 'document', id: 'd1' },
+    });
+    expect(result.warnings).toEqual([]);
+  });
+
   it('includes the lexicon for a preset saved before the option existed', async () => {
     const client = stubClient({ docs: [rawDoc('d1', 'Flex', 'hi yo')] });
     const preset = newPreset('flextext', discoverExportLayers(PROJECT), 'f');

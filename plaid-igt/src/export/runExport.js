@@ -34,7 +34,7 @@ import { bareMediaType, extensionForMediaType } from '../domain/media/mediaTypes
 import { exportedVocabFields } from '../domain/vocabFields.js';
 import { discoverExportLayers, intersectSelection } from './exportLayers.js';
 import { serializeDocumentPlain } from './plainTextDoc.js';
-import { interlinearTextXml, flextextEnvelope } from './flextext.js';
+import { interlinearTextXml, flextextEnvelope, untypedInLongerWords } from './flextext.js';
 import { countXmlDropped } from './xml.js';
 import { buildLiftLexicon, collectExampleRefs } from './lift.js';
 import { buildItemNumbers, exampleKey } from '../domain/vocabDictionary.js';
@@ -144,7 +144,10 @@ const DOCUMENT_WRITERS = {
  * entries must exist first for FLEx to link the two together. Nothing in
  * either file says so.
  */
-const flexReadme = ({ stem, lexicon, docCount }) =>
+const untypedLine = (n) =>
+  `${countOf(n, 'morpheme')} in words of two or more morphemes ${n === 1 ? 'has' : 'have'} no type. FLEx reads ${n === 1 ? 'it as a stem unless its entry carries' : 'them as stems unless their entries carry'} a morph type.`;
+
+const flexReadme = ({ stem, lexicon, docCount, untypedNote = null }) =>
   [
     'Exported from Plaid for FieldWorks Language Explorer (FLEx).',
     '',
@@ -169,6 +172,7 @@ const flexReadme = ({ stem, lexicon, docCount }) =>
     'so the entries have to be in place before the texts are imported for FLEx',
     'to link them up.',
     '',
+    ...(untypedNote ? [untypedNote, ''] : []),
   ].join('\n');
 
 /**
@@ -482,6 +486,8 @@ export async function runExport({
 
   // Documents in order, each serialized as its turn comes.
   const docFiles = [];
+  // FLEx: the morphemes it will read as stems for want of a type (H5-7).
+  let untypedMorphs = 0;
   // A run left early (a cancel, a throw) starts no further reads: the
   // generator starts one only when asked for the next.
   const reads = readInOrder(docIds, readDoc);
@@ -560,6 +566,7 @@ export async function runExport({
     }
 
     const onWarning = (msg) => warnings.push(`"${name}": ${msg}`);
+    if (format.id === 'flextext') untypedMorphs += untypedInLongerWords(igtDoc);
     try {
       docFiles.push({
         name: `${sanitizeFilename(name)}.${ext}`,
@@ -638,6 +645,8 @@ export async function runExport({
   // not one per document), and the lexicon rides along as LIFT beside it.
   if (format.id === 'flextext') {
     const flextext = flextextEnvelope(docFiles.map((f) => f.data));
+    const untypedNote = untypedMorphs ? untypedLine(untypedMorphs) : null;
+    if (untypedNote) warnings.push(untypedNote);
     const lexicon = wantLexicon
       ? serializeXmlCounted(
           () =>
@@ -676,7 +685,10 @@ export async function runExport({
         { path: `${stem}.lift`, data: lexicon.lift },
         // FLEx looks for the ranges beside the .lift under the same stem.
         ...(lexicon.ranges ? [{ path: `${stem}.lift-ranges`, data: lexicon.ranges }] : []),
-        { path: 'README.txt', data: flexReadme({ stem, lexicon, docCount: docFiles.length }) },
+        {
+          path: 'README.txt',
+          data: flexReadme({ stem, lexicon, docCount: docFiles.length, untypedNote }),
+        },
       ]),
       warnings,
     };
