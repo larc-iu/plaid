@@ -533,3 +533,21 @@
                                            :body []})]
         (is (= 400 (:status r)))
         (is (clojure.string/includes? (-> r :body :error) "names no document"))))))
+
+(deftest any-password-secret-or-token-key-is-redacted
+  ;; REV-FX-H1-4: `current-password` was logged in clear at debug level, since
+  ;; the list matched whole key names only.
+  (let [redacted (mw/redact-sensitive {:current-password "wrong-CURRENT-guess"
+                                       :new-password "n"
+                                       :client-secret "s"
+                                       :api-token "t"
+                                       :delegated/token "d"
+                                       :tokens ["01890000-0000-7000-8000-000000000001"]
+                                       :token-layer "L"
+                                       :status-code 404})]
+    (doseq [k [:current-password :new-password :client-secret :api-token :delegated/token]]
+      (is (= "<redacted>" (get redacted k)) (str k)))
+    (testing "a list of token ids, a layer id and a status are not secrets"
+      (is (= ["01890000-0000-7000-8000-000000000001"] (:tokens redacted)))
+      (is (= "L" (:token-layer redacted)))
+      (is (= 404 (:status-code redacted))))))

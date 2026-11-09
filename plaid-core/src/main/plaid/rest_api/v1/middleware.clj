@@ -240,7 +240,12 @@
   `media-token` and `avatar-token` are the link tokens a media link and a
   profile picture's URL carry (see Link tokens in `plaid.rest-api.v1.auth`),
   so one is in the query string of every request a playing recording or a
-  shown picture makes."
+  shown picture makes.
+
+  Beyond the whole names here, `redact-key?` takes any name containing
+  `password` or `secret` (`current-password`, `client-secret`) and any ending
+  in `-token` (`api-token`, `scoped-token`). Not every name containing
+  `token`: `tokens` and `token-layer` hold ids, not credentials."
   #{"password" "token" "authorization" "secret-key" "code" "media-token" "avatar-token"})
 
 (defn- redact-key?
@@ -255,7 +260,11 @@
               (symbol? k) (name k)
               (string? k) k
               :else (str k))]
-      (contains? sensitive-name-tokens (str/lower-case n)))))
+      (let [n (str/lower-case n)]
+        (or (contains? sensitive-name-tokens n)
+            (str/includes? n "password")
+            (str/includes? n "secret")
+            (str/ends-with? n "-token"))))))
 
 (defn redact-sensitive
   "Walk a request/response shape and replace sensitive values with the
