@@ -92,3 +92,17 @@ describe('a link opened while signed out', () => {
     }
   });
 });
+
+// REV-FX-H1-2: after a Sign out on a project page, the guard's last render wrote
+// that page into the sign-in entry, and the next person to sign in on the tab
+// landed on it. Last in the file: a sign-out lasts until the page reloads.
+describe('after a sign-out', () => {
+  it('sign-in goes home, not to the page the last person was on', async () => {
+    const { markSigningOut } = await import('../../lib/returnTo.js');
+    markSigningOut();
+    const view = await mount('/projects/p1');
+    await signIn(view);
+    expect(view.container.querySelector('#where').textContent).toBe('/projects');
+    await view.unmount();
+  });
+});

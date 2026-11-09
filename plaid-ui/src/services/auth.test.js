@@ -241,11 +241,14 @@ describe('authService', () => {
     expect(sessionStorage.getItem('plaid:return-to')).toBe('/projects/p1/documents/d1?tab=analyze');
   });
 
-  it('keeps nothing on a sign-out a person asked for', () => {
+  it('keeps nothing on a sign-out a person asked for', async () => {
     window.location.hash = '#/projects/p1';
     vi.spyOn(window.location, 'reload').mockImplementation(() => {});
     authService.logout();
     expect(sessionStorage.getItem('plaid:return-to')).toBe(null);
+    // and the guard writes no page for the sign-in to go to
+    const { isSigningOut } = await import('../lib/returnTo.js');
+    expect(isSigningOut()).toBe(true);
   });
 
   it('rebuilds a client from a stored token, and none without one', () => {

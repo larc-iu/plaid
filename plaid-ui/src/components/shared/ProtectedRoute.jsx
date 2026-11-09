@@ -1,5 +1,6 @@
 import { Navigate, useLocation } from 'react-router-dom';
 import { Loading } from './Loading.jsx';
+import { isSigningOut } from '../../lib/returnTo.js';
 
 // The guard every signed-in route sits behind, and what a reader sees while
 // the session is still being worked out.
@@ -29,7 +30,9 @@ export const createProtectedRoute = (useAuth, { loginPath }) => {
     }
 
     if (isAuthenticated) return children;
-    // Sign-in goes on to where the reader was going.
+    // Sign-in goes on to where the reader was going, unless the reader just
+    // signed out (an expired session keeps its page by its own means).
+    if (isSigningOut()) return <Navigate to={loginPath} replace />;
     const from = location.pathname + location.search + location.hash;
     return <Navigate to={loginPath} replace state={{ from }} />;
   };

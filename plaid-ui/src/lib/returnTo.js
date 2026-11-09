@@ -33,3 +33,16 @@ export const takeReturnTo = () => {
     return null;
   }
 };
+
+// Set once this page starts signing out, until it reloads. The guard renders
+// once more as the user goes, and a `from` written then would send the next
+// person to sign in on this tab to the last person's page.
+let signingOut = false;
+
+/** This page is signing out. */
+export const markSigningOut = () => {
+  signingOut = true;
+};
+
+/** Whether this page is signing out. */
+export const isSigningOut = () => signingOut;
