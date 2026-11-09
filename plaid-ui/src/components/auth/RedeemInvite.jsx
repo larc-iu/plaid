@@ -140,7 +140,8 @@ export const RedeemInvite = ({ loginPath, homePath, projectPath }) => {
       if (joined.joined) {
         notifySuccess(`Joined ${preview.projectName} as a ${joined.projectRole}.`, 'Welcome');
       }
-      navigate(projectPath ? projectPath(joined.projectId) : homePath);
+      // The invite page leaves the history, so Back does not land on it.
+      navigate(projectPath ? projectPath(joined.projectId) : homePath, { replace: true });
     } catch (err) {
       const status = err?.responseData?.status;
       if (statusOf(err) === 410 && status) setPreview((pv) => ({ ...pv, status }));
@@ -149,12 +150,14 @@ export const RedeemInvite = ({ loginPath, homePath, projectPath }) => {
     }
   };
 
-  // Back from "Sign in to join": join straight away, once.
+  // Back from "Sign in to join": join straight away, once. The entry's
+  // `signedIn` goes first, so a revisit of it never joins again.
   const joinedOnArrival = useRef(false);
   useEffect(() => {
     if (!user || !joinable || preview?.status !== 'active') return;
     if (!location.state?.signedIn || joinedOnArrival.current) return;
     joinedOnArrival.current = true;
+    navigate(location.pathname + location.search, { replace: true, state: null });
     join();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, joinable, preview?.status, location.state]);

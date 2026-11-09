@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { MemoryRouter, Routes, Route, useLocation } from 'react-router-dom';
+import { MemoryRouter, Routes, Route, useLocation, useNavigate } from 'react-router-dom';
 import { renderComponent, byText } from '../../test/renderComponent.jsx';
 import { RedeemInvite } from './RedeemInvite.jsx';
 
@@ -315,6 +315,44 @@ describe('RedeemInvite', () => {
       await step(async () => byText(container, 'button', 'Join Lezgi').click());
       expect(alertText(container)).toContain('This invite has already been used');
       expect(byText(container, 'a', 'Open Plaid IGT').getAttribute('href')).toBe('/projects');
+    });
+
+    // REV-FX-H1-1: Back from the project landed on the invite page, which
+    // joined again and pushed the project again.
+    it('leaves the history on a join, so Back does not join again', async () => {
+      const accept = vi.fn(async () => ({ projectId: 'p1', projectRole: 'writer', joined: true }));
+      signedIn(accept);
+      let goBack;
+      const Project = () => {
+        goBack = useNavigate();
+        return <p>the project p1</p>;
+      };
+      const { container, step } = await renderComponent(
+        <MemoryRouter
+          initialEntries={['/invite/CODE', { pathname: '/invite/CODE', state: { signedIn: true } }]}
+          initialIndex={1}
+        >
+          <Routes>
+            <Route
+              path="/invite/:code"
+              element={
+                <RedeemInvite
+                  loginPath="/login"
+                  homePath="/projects"
+                  projectPath={(id) => `/projects/${id}/documents`}
+                />
+              }
+            />
+            <Route path="/projects/:projectId/documents" element={<Project />} />
+          </Routes>
+        </MemoryRouter>,
+      );
+      await step(async () => new Promise((r) => setTimeout(r, 0)));
+      expect(container.textContent).toBe('the project p1');
+      await step(async () => goBack(-1));
+      await step(async () => new Promise((r) => setTimeout(r, 0)));
+      expect(accept).toHaveBeenCalledTimes(1);
+      expect(byText(container, 'button', 'Join Lezgi')).not.toBe(null);
     });
   });
 });
