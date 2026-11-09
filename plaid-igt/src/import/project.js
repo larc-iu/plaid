@@ -18,10 +18,11 @@
 // — have one home. The format-shaped work (reading the file, naming fields,
 // glosses, lexicons, media) stays in each importer.
 
-import { createdIds, uuidv7 } from '@larc-iu/plaid-client';
+import { createdIds, uuidv7, metadataOps } from '@larc-iu/plaid-client';
 import { bulkInChunks, withMintedIds } from '../domain/bulk.js';
 import { convertedNote, prepareRecording } from '../domain/media/playableRecording.js';
 import { mediaUploadFailure } from './mediaUpload.js';
+import { CHANNEL_SPEAKERS_KEY } from '../domain/media/channelSpeakers.js';
 import {
   defaultIgnoredTokensSetup,
   findAlignmentTokenLayer,
@@ -423,43 +424,84 @@ export async function writeAlignments({
  *
  * `prepare` converts a recording no browser plays before it goes up (an ADPCM
  * WAV goes up as PCM), and refuses one it cannot convert.
+ *
+ * `tracks` (`[{file, offset, speaker}]`, two or more) are several recordings,
+ * one per speaker, mixed by `mix` into one WAV with a channel each
+ * (domain/media/mixRecordings.js) at `mixQuality`, uploaded, and followed by
+ * `channelSpeakers` on the document, one entry per channel. Answers whether
+ * a recording was uploaded.
  */
 export async function finishDocument({
   client,
   documentId,
   name,
   media = null,
+  tracks = null,
+  mix = null,
+  mixQuality = 'full',
   prepare = false,
   onProgress,
   progress = () => {},
   check = () => {},
   warnings,
 }) {
-  if (media) {
-    check();
-    progress('Uploading media');
-    try {
-      let file = media;
-      if (prepare) {
-        const ready = await prepareRecording(file);
-        if (ready.convertedFrom) {
-          warnings?.push(convertedNote([{ name: ready.file.name, from: ready.convertedFrom }]));
-        }
-        if (ready.refused) warnings?.push(`"${name}": ${ready.refused} Not uploaded.`);
-        file = ready.refused ? null : ready.file;
+  const mixing = tracks?.length >= 2 && mix ? tracks : null;
+  if (!media && !mixing) return false;
+  check();
+  try {
+    let recording = { file: media, speakers: null };
+    if (mixing) {
+      recording = await mixedRecording(mixing, { mix, quality: mixQuality, progress });
+    } else if (prepare) {
+      const ready = await prepareRecording(media);
+      if (ready.convertedFrom) {
+        warnings?.push(convertedNote([{ name: ready.file.name, from: ready.convertedFrom }]));
       }
-      if (file) {
-        await client.documents.uploadMedia(documentId, file, `Import media for ${name}`, {
-          onProgress: (bytes) =>
-            onProgress?.({ phase: 'document', doc: name, step: 'Uploading media', bytes }),
-        });
-      }
-    } catch (err) {
-      warnings?.push(
-        `"${name}": media upload failed. ${await mediaUploadFailure(client, err)} ` +
-          "Upload the recording on the document's Media tab.",
-      );
+      if (ready.refused) warnings?.push(`"${name}": ${ready.refused} Not uploaded.`);
+      recording.file = ready.refused ? null : ready.file;
     }
+    if (!recording.file) return false;
+    progress('Uploading media');
+    await uploadRecording(client, documentId, name, { ...recording, onProgress });
+    return true;
+  } catch (err) {
+    warnings?.push(
+      `"${name}": media upload failed. ${await mediaUploadFailure(client, err)} ` +
+        "Upload the recording on the document's Media tab.",
+    );
+    return false;
+  }
+}
+
+/**
+ * Several recordings (`[{file, offset, speaker}]`) as the one to upload:
+ * `{ file, speakers }`, the mix `mix` makes at `quality` and the speaker on
+ * each of its channels. `progress(step)` is told what is happening.
+ */
+export async function mixedRecording(tracks, { mix, quality = 'full', progress = () => {} }) {
+  progress('Mixing recordings');
+  const file = await mix(
+    tracks.map((t) => ({ file: t.file, offset: t.offset || 0 })),
+    { quality, onProgress: progress },
+  );
+  return { file, speakers: tracks.map((t) => t.speaker || '') };
+}
+
+/**
+ * Upload `file` as the document's recording, then `speakers` (the speaker on
+ * each channel of a mix) as its channelSpeakers. The list comes after the
+ * upload, so a failed upload leaves none behind.
+ */
+export async function uploadRecording(client, documentId, name, { file, speakers, onProgress }) {
+  await client.documents.uploadMedia(documentId, file, `Import media for ${name}`, {
+    onProgress: (bytes) =>
+      onProgress?.({ phase: 'document', doc: name, step: 'Uploading media', bytes }),
+  });
+  if (speakers) {
+    await client.documents.patchMetadata(
+      documentId,
+      metadataOps({ [CHANNEL_SPEAKERS_KEY]: speakers }),
+    );
   }
 }
 

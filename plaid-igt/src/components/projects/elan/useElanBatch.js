@@ -80,6 +80,7 @@ export function useElanBatch({
       return buildElanBatch(comparison, roles, {
         fieldNames,
         mediaByFile: media.byFile,
+        mediaTracks: media.tracks,
         recordMediaName,
       });
     } catch (e) {

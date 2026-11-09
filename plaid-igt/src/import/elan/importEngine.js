@@ -31,8 +31,10 @@ import { recordProjectLanguages } from '../projectLanguages.js';
 import {
   createDocumentShell,
   finishDocument,
+  mixedRecording,
   resolveIgtTargets,
   setupDataFor,
+  uploadRecording,
   writeAlignments,
   writeBuiltDocument,
 } from '../project.js';
@@ -77,6 +79,8 @@ export async function importDocument({
   warnings,
   copyName = null,
   onDocument = null,
+  mix = null,
+  mixQuality = 'full',
 }) {
   const progress = (step) => onProgress?.({ phase: 'document', doc: doc.name, step });
   const check = () => {
@@ -132,6 +136,9 @@ export async function importDocument({
     documentId: docId,
     name: doc.name,
     media: doc.mediaFile,
+    tracks: doc.mediaTracks,
+    mix,
+    mixQuality,
     onProgress,
     progress,
     check,
@@ -145,17 +152,32 @@ export async function importDocument({
 // recording nowhere, and nothing said so: the file was listed as coming along
 // and the tally said "already there". It goes to the existing document when
 // that has none, and is left alone when it has one.
-async function addRecordingToExisting({ client, existing, doc, results, onProgress, warn }) {
-  if (!doc.mediaFile) return;
+async function addRecordingToExisting({
+  client,
+  existing,
+  doc,
+  results,
+  onProgress,
+  warn,
+  mix = null,
+  mixQuality = 'full',
+}) {
+  if (!doc.mediaFile && !(doc.mediaTracks?.length >= 2 && mix)) return;
   if (existing.mediaUrl) {
     results.recordingsUnused += 1;
     return;
   }
   try {
-    await client.documents.uploadMedia(existing.id, doc.mediaFile, `Import media for ${doc.name}`, {
-      onProgress: (bytes) =>
-        onProgress?.({ phase: 'document', doc: doc.name, step: 'Uploading media', bytes }),
-    });
+    const recording =
+      doc.mediaTracks?.length >= 2
+        ? await mixedRecording(doc.mediaTracks, {
+            mix,
+            quality: mixQuality,
+            progress: (step) => onProgress?.({ phase: 'document', doc: doc.name, step }),
+          })
+        : { file: doc.mediaFile, speakers: null };
+    if (!recording.file) return;
+    await uploadRecording(client, existing.id, doc.name, { ...recording, onProgress });
     results.recordingsAdded += 1;
   } catch (err) {
     warn(
@@ -204,6 +226,11 @@ async function runElanImportImpl({
   // Documents a failed run of this screen made and could not remove: no one
   // has worked on them, so they are redone whatever priorMode says.
   redo = [],
+  // Several recordings on one document are mixed into one by `mix`
+  // (domain/media/mixRecordings.js mixFiles) at `mixQuality`. Without a
+  // mixer a document with several recordings gets none.
+  mix = null,
+  mixQuality = 'full',
 }) {
   const project = await client.projects.get(projectId);
   const targets = resolveTargets(project, build);
@@ -266,6 +293,8 @@ async function runElanImportImpl({
           results,
           onProgress: docProgress,
           warn,
+          mix,
+          mixQuality,
         });
         continue;
       }
@@ -283,6 +312,8 @@ async function runElanImportImpl({
         onDocument: (id) => {
           making = id;
         },
+        mix,
+        mixQuality,
         // A push-alike, so a warning raised while writing is logged the moment it
         // happens like any other.
         warnings: { push: (...w) => w.forEach(warn) },

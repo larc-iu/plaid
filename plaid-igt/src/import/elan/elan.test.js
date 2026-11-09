@@ -14,8 +14,10 @@ import {
   buildElanDocuments,
   buildElanBatch,
   matchMediaFiles,
+  mediaDescriptors,
   readMorphForm,
   alignSegments,
+  trackSpeaker,
 } from './buildDocuments.js';
 import { buildEafDocument } from '../../export/elan.js';
 import { ELAN_FIELD_NAMES_PROPERTY } from '../../domain/elanFieldNames.js';
@@ -59,9 +61,16 @@ function eafXml({ tiers, types, properties = {}, media = null }) {
   const props = Object.entries(properties)
     .map(([k, v]) => `<PROPERTY NAME="${k}">${v}</PROPERTY>`)
     .join('');
-  const mediaXml = media
-    ? `<MEDIA_DESCRIPTOR MEDIA_URL="${media}" RELATIVE_MEDIA_URL="./${media}" MIME_TYPE="audio/x-wav"/>`
-    : '';
+  // `media` is one file name, or a list of descriptors `{url, timeOrigin?, extractedFrom?}`.
+  const descriptors = !media ? [] : Array.isArray(media) ? media : [{ url: media }];
+  const mediaXml = descriptors
+    .map(
+      (d) =>
+        `<MEDIA_DESCRIPTOR MEDIA_URL="${d.url}" RELATIVE_MEDIA_URL="./${d.url}" MIME_TYPE="audio/x-wav"${
+          d.timeOrigin != null ? ` TIME_ORIGIN="${d.timeOrigin}"` : ''
+        }${d.extractedFrom ? ` EXTRACTED_FROM="${d.extractedFrom}"` : ''}/>`,
+    )
+    .join('');
   return `<?xml version="1.0" encoding="UTF-8"?>
 <ANNOTATION_DOCUMENT AUTHOR="t" DATE="2026-01-01T00:00:00Z" VERSION="2.8" FORMAT="2.8">
 <HEADER TIME_UNITS="milliseconds">${mediaXml}${props}</HEADER>
@@ -2186,5 +2195,133 @@ describe('a word that begins inside a character', () => {
     const [doc] = build.documents;
     expect(doc.body).toBe('k\u00e1 ma');
     expect(doc.tokenEdges).toBeNull();
+  });
+});
+
+// A file naming several recordings, one per speaker: each is matched, the
+// chosen ones ride on the document as tracks to be mixed into one recording
+// with a channel each, with its TIME_ORIGIN as the track's offset and the
+// participant named exactly like the file as its speaker.
+describe('several recordings on one file', () => {
+  const twoSpeakers = (media) =>
+    eafXml({
+      types: { u: null },
+      tiers: [
+        { id: 'Ana', type: 'u', participant: 'Ana', anns: [['a1', 'hola', 0, 500]] },
+        { id: 'Ben', type: 'u', participant: 'Ben', anns: [['b1', 'ciao', 600, 900]] },
+      ],
+      media,
+    });
+
+  it('reads TIME_ORIGIN and EXTRACTED_FROM off each descriptor', () => {
+    const eaf = readEaf(
+      twoSpeakers([
+        { url: 'session.mp4' },
+        { url: 'ana.wav', timeOrigin: 1500, extractedFrom: 'session.mp4' },
+        { url: 'ben.wav' },
+      ]),
+      'x.eaf',
+    );
+    expect(eaf.media.map((d) => [d.url, d.timeOrigin, d.extractedFrom])).toEqual([
+      ['session.mp4', null, ''],
+      ['ana.wav', 1500, 'session.mp4'],
+      ['ben.wav', null, ''],
+    ]);
+    // The one taken out of another is not a recording of its own.
+    expect(mediaDescriptors(eaf).map((d) => d.name)).toEqual(['session.mp4', 'ben.wav']);
+  });
+
+  it('matches every descriptor and lists the tracks, chosen or not', () => {
+    const eaf = readEaf(
+      twoSpeakers([{ url: 'ana.wav' }, { url: 'ben.wav', timeOrigin: 250 }, { url: 'cam.mp4' }]),
+      'x.eaf',
+    );
+    const ana = { name: 'ana.wav' };
+    const ben = { name: 'ben.mp3' };
+    const { byFile, tracks, missing, unmatched } = matchMediaFiles([eaf], [ana, ben]);
+    expect(tracks.get('x.eaf')).toEqual([
+      { name: 'ana.wav', timeOrigin: null, file: ana },
+      { name: 'ben.wav', timeOrigin: 250, file: ben },
+      { name: 'cam.mp4', timeOrigin: null, file: null },
+    ]);
+    expect(byFile.get('x.eaf')).toBe(ana);
+    expect(missing).toEqual(['cam.mp4']);
+    expect(unmatched).toEqual([]);
+  });
+
+  it('a speaker is the participant named exactly like the file, else none', () => {
+    expect(trackSpeaker('Ana.wav', ['Ana', 'Ben'])).toBe('Ana');
+    expect(trackSpeaker('ana.WAV', ['Ana', 'Ben'])).toBe('Ana');
+    expect(trackSpeaker('ana-left.wav', ['Ana', 'Ben'])).toBe('');
+    expect(trackSpeaker('ana.wav', ['Ana', 'ana'])).toBe('');
+    expect(trackSpeaker('track1.wav', ['Ana'])).toBe('');
+  });
+
+  it('two or more chosen become tracks with offsets and speakers, and no mediaFile', () => {
+    const eaf = readEaf(
+      twoSpeakers([{ url: 'ana.wav' }, { url: 'ben.wav', timeOrigin: 1500 }]),
+      'x.eaf',
+    );
+    const ana = { name: 'ana.wav' };
+    const ben = { name: 'ben.wav' };
+    const media = matchMediaFiles([eaf], [ana, ben]);
+    const { build } = buildFrom(
+      [[twoSpeakers([{ url: 'ana.wav' }, { url: 'ben.wav', timeOrigin: 1500 }]), 'x.eaf']],
+      {},
+      {
+        mediaByFile: media.byFile,
+        mediaTracks: media.tracks,
+      },
+    );
+    const [doc] = build.documents;
+    expect(doc.mediaFile).toBeNull();
+    expect(doc.mediaTracks).toEqual([
+      { file: ana, name: 'ana.wav', offset: 0, speaker: 'Ana' },
+      { file: ben, name: 'ben.wav', offset: 1.5, speaker: 'Ben' },
+    ]);
+    expect(doc.metadata['Media file']).toBe('ana.wav');
+    expect(doc.warnings).toEqual([]);
+    expect(build.warnings.join(' ')).not.toMatch(/without media/);
+  });
+
+  it('with only some chosen the document says which are missing and takes what there is', () => {
+    const xml = twoSpeakers([{ url: 'ana.wav' }, { url: 'ben.wav' }, { url: 'cy.wav' }]);
+    const eaf = readEaf(xml, 'x.eaf');
+    const ana = { name: 'ana.wav' };
+    const ben = { name: 'ben.wav' };
+    const two = matchMediaFiles([eaf], [ana, ben]);
+    const { build: mixed } = buildFrom(
+      [[xml, 'x.eaf']],
+      {},
+      { mediaByFile: two.byFile, mediaTracks: two.tracks },
+    );
+    expect(mixed.documents[0].mediaTracks.map((t) => t.name)).toEqual(['ana.wav', 'ben.wav']);
+    expect(mixed.documents[0].warnings).toEqual([
+      '1 of the 3 recordings the file names was not chosen (cy.wav). The others are mixed into its recording.',
+    ]);
+    const one = matchMediaFiles([eaf], [ben]);
+    const { build: single } = buildFrom(
+      [[xml, 'x.eaf']],
+      {},
+      { mediaByFile: one.byFile, mediaTracks: one.tracks },
+    );
+    expect(single.documents[0].mediaTracks).toBeNull();
+    expect(single.documents[0].mediaFile).toBe(ben);
+    expect(single.documents[0].warnings[0]).toMatch(
+      /2 of the 3 recordings .* Its recording is the one chosen\./,
+    );
+  });
+
+  it("one descriptor is today's path: one file, no tracks", () => {
+    const xml = twoSpeakers('rec.wav');
+    const rec = { name: 'rec.wav' };
+    const media = matchMediaFiles([readEaf(xml, 'x.eaf')], [rec]);
+    const { build } = buildFrom(
+      [[xml, 'x.eaf']],
+      {},
+      { mediaByFile: media.byFile, mediaTracks: media.tracks },
+    );
+    expect(build.documents[0].mediaFile).toBe(rec);
+    expect(build.documents[0].mediaTracks).toBeNull();
   });
 });

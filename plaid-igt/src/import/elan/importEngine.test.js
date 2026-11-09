@@ -93,6 +93,7 @@ function stubClient({ documents = [], docMetadata = {}, docMedia = [] } = {}) {
       delete: async (id) => calls.push(['documents.delete', id]),
       setMetadata: async (id, metadata) => calls.push(['documents.setMetadata', id, metadata]),
       uploadMedia: async (id, file) => calls.push(['documents.uploadMedia', id, file.name]),
+      patchMetadata: async (id, ops) => calls.push(['documents.patchMetadata', id, ops]),
     },
     texts: {
       create: async (layerId, docId, body, _metadata, _message, { id } = {}) => {
@@ -624,5 +625,103 @@ describe('runElanImport', () => {
     await expect(
       runElanImport({ client, projectId: 'p1', build: BUILD, shouldStop: () => true }),
     ).rejects.toBeInstanceOf(ImportCancelled);
+  });
+});
+
+// Several recordings on one document are mixed into one by the mixer the
+// screen hands over, uploaded, and followed by the speaker on each channel.
+describe('a document with several recordings', () => {
+  const ana = { name: 'ana.wav' };
+  const ben = { name: 'ben.wav' };
+  const tracks = [
+    { file: ana, name: 'ana.wav', offset: 0, speaker: 'Ana' },
+    { file: ben, name: 'ben.wav', offset: 1.5, speaker: '' },
+  ];
+  const withTracks = {
+    ...BUILD,
+    documents: [{ ...BUILD.documents[0], mediaFile: null, mediaTracks: tracks }],
+  };
+  const mixer = () => {
+    const mix = async (entries, options) => {
+      mix.calls.push([entries, options.quality]);
+      options.onProgress?.('Writing the mix');
+      return { name: 'ana (mixed, 2 speakers).wav' };
+    };
+    mix.calls = [];
+    return mix;
+  };
+
+  it('mixes the tracks at the chosen quality, uploads the mix and writes channelSpeakers after it', async () => {
+    const client = stubClient();
+    const mix = mixer();
+    const steps = [];
+    const res = await runElanImport({
+      client,
+      projectId: 'p1',
+      build: withTracks,
+      mix,
+      mixQuality: 'small',
+      onProgress: (p) => p.step && steps.push(p.step),
+    });
+    expect(res.imported).toBe(1);
+    expect(mix.calls).toEqual([
+      [
+        [
+          { file: ana, offset: 0 },
+          { file: ben, offset: 1.5 },
+        ],
+        'small',
+      ],
+    ]);
+    const kinds = client.calls.map(([m]) => m);
+    const upload = client.calls.find(([m]) => m === 'documents.uploadMedia');
+    expect(upload[2]).toBe('ana (mixed, 2 speakers).wav');
+    expect(client.calls).toContainEqual([
+      'documents.patchMetadata',
+      upload[1],
+      [{ op: 'set', path: ['channelSpeakers'], value: ['Ana', ''] }],
+    ]);
+    expect(kinds.indexOf('documents.uploadMedia')).toBeLessThan(
+      kinds.indexOf('documents.patchMetadata'),
+    );
+    expect(steps).toContain('Mixing recordings');
+  });
+
+  it('a failed upload leaves no channelSpeakers and is a warning', async () => {
+    const client = stubClient();
+    client.documents.uploadMedia = async () => {
+      throw new Error('disk full');
+    };
+    const res = await runElanImport({ client, projectId: 'p1', build: withTracks, mix: mixer() });
+    expect(res.imported).toBe(1);
+    expect(client.calls.some(([m]) => m === 'documents.patchMetadata')).toBe(false);
+    expect(res.warnings.join(' ')).toMatch(/media upload failed.*disk full/);
+  });
+
+  it('goes to a kept document that has no recording, mixed the same way', async () => {
+    const client = stubClient({
+      documents: [{ id: 'old', name: 'Story' }],
+      docMetadata: { old: { importSource: 'old:a.eaf' } },
+    });
+    const mix = mixer();
+    const res = await runElanImport({ client, projectId: 'p1', build: withTracks, mix });
+    expect(res).toMatchObject({ skipped: 1, recordingsAdded: 1 });
+    expect(mix.calls).toHaveLength(1);
+    expect(client.calls).toContainEqual([
+      'documents.uploadMedia',
+      'old',
+      'ana (mixed, 2 speakers).wav',
+    ]);
+    expect(client.calls).toContainEqual([
+      'documents.patchMetadata',
+      'old',
+      [{ op: 'set', path: ['channelSpeakers'], value: ['Ana', ''] }],
+    ]);
+  });
+
+  it('without a mixer the tracks go nowhere, and a single file still goes up', async () => {
+    const client = stubClient();
+    await runElanImport({ client, projectId: 'p1', build: withTracks });
+    expect(client.calls.some(([m]) => m === 'documents.uploadMedia')).toBe(false);
   });
 });

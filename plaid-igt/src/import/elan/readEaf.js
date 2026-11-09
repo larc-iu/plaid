@@ -78,7 +78,7 @@ export function baseTierName(id, participant) {
  *   fileName: string,
  *   documentName: string,
  *   properties: Record<string,string>,
- *   media: Array<{url: string, relativeUrl: string, mimeType: string}>,
+ *   media: Array<{url: string, relativeUrl: string, mimeType: string, timeOrigin: number|null, extractedFrom: string}>,
  *   linguisticTypes: Record<string, {constraint: string|null, timeAlignable: boolean}>,
  *   tiers: Array<{id, baseName, participant, typeRef, parentRef, annotator, annotations}>,
  * }}
@@ -121,6 +121,10 @@ export function readEaf(xmlText, fileName = 'file.eaf') {
           url: a.MEDIA_URL ?? '',
           relativeUrl: a.RELATIVE_MEDIA_URL ?? '',
           mimeType: a.MIME_TYPE ?? '',
+          // Where this file starts on the shared clock, in milliseconds, and
+          // the file it was taken out of (an audio track pulled from a video).
+          timeOrigin: num(a.TIME_ORIGIN),
+          extractedFrom: a.EXTRACTED_FROM ?? '',
         });
         break;
       case 'PROPERTY':

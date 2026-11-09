@@ -14,6 +14,7 @@ import { Progress } from '@ui/components/ui/progress';
 import { formatBytes } from '@/utils/formatBytes';
 import { countOf } from '@ui/lib/plural.js';
 import { conversionNeed, conversionNote, estimateMp3Bytes } from '@/domain/media/transcodeToMp3';
+import { FALLBACK_RATE, SMALL_RATE, mixBytes, mixRate } from '@/domain/media/mixdown';
 import { Panel } from '../ImportPanels.jsx';
 import { ElanSection } from './ElanSection.jsx';
 
@@ -76,6 +77,9 @@ const PRIOR_MODES = [
  *                    and then no row says "new" either.
  * @param recordMediaName  whether each recording's file name goes in a Media
  *                    file metadata field, and onRecordMediaName to change it
+ * @param sampleRates Map<File, Hz|null>, for the size a mix comes to
+ * @param mixQuality  'full' or 'small', the quality of a mix of several
+ *                    recordings on one document, and onMixQuality to change it
  */
 export const ElanFiles = ({
   step = 1,
@@ -98,13 +102,43 @@ export const ElanFiles = ({
   onStopConverting = null,
   recordMediaName = true,
   onRecordMediaName = null,
+  sampleRates = null,
+  mixQuality = 'full',
+  onMixQuality = null,
 }) => {
   const [showAll, setShowAll] = useState(false);
   if (!files?.length && !mediaFiles?.length) return null;
 
   const docOf = new Map((documents || []).map((d) => [d.id, d]));
-  const matched = new Set(media.byFile.values());
+  // Every recording some file takes, alone or as one of several.
+  const matched = new Set([
+    ...media.byFile.values(),
+    ...[...(media.tracks?.values() ?? [])].flatMap((ts) => ts.map((t) => t.file).filter(Boolean)),
+  ]);
   const unmatched = (mediaFiles || []).filter((f) => !matched.has(f));
+
+  // The documents whose several recordings are mixed into one, with the size
+  // each mix comes to once every recording's length is known.
+  const mixes = (documents || [])
+    .filter((d) => d.mediaTracks?.length >= 2)
+    .map((d) => {
+      const tracks = d.mediaTracks.map((t) => ({
+        seconds: durations.get(t.file),
+        sampleRate: sampleRates?.get(t.file) ?? FALLBACK_RATE,
+        offset: t.offset,
+      }));
+      const known = tracks.every((t) => Number.isFinite(t.seconds));
+      return {
+        doc: d,
+        bytes: known ? { full: mixBytes(tracks, 'full'), small: mixBytes(tracks, 'small') } : null,
+        rate: mixRate(tracks, 'full'),
+      };
+    });
+  const mixTotal = (q) =>
+    mixes.length && mixes.every((m) => m.bytes) ? mixes.reduce((n, m) => n + m.bytes[q], 0) : null;
+  const overLimit = mixes.filter(
+    (m) => maxBytes != null && m.bytes && m.bytes[mixQuality] > maxBytes,
+  );
 
   const needOf = (file) => conversionNeed(file.size, maxBytes);
   const toConvert = (mediaFiles || []).filter((f) => matched.has(f) && needOf(f));
@@ -120,8 +154,8 @@ export const ElanFiles = ({
   const importedCount = imported ? eafs.filter((f) => imported.has(f.fileName)).length : 0;
   const namesRecording = eafs.some((f) => f.media?.length);
 
-  const recordingRow = (eaf, file) => {
-    const need = needOf(file);
+  const recordingRow = (eaf, file, track = null) => {
+    const need = !track && needOf(file);
     const smaller = convertedBytes(durations.get(file));
     const existing = imported?.get(eaf.fileName);
     // Kept as it is, the file's document is not remade, so its recording has
@@ -138,6 +172,12 @@ export const ElanFiles = ({
         <span className={TONES.muted}>
           {formatBytes(file.size, { against: need === 'required' ? maxBytes : null })}
         </span>
+        {track?.speaker && <span className={TONES.muted}>{track.speaker}</span>}
+        {track && track.offset !== 0 && (
+          <span className={TONES.muted}>
+            from {track.offset.toFixed(3).replace(/\.?0+$/, '')} s
+          </span>
+        )}
         {need && (
           <span className={need === 'required' ? TONES.error : TONES.muted}>
             becomes {smaller ? `a ${formatBytes(smaller)} MP3` : 'an MP3'}
@@ -151,6 +191,13 @@ export const ElanFiles = ({
       </Row>
     );
   };
+
+  // A recording the file names and nobody chose.
+  const missingRow = (eaf, name) => (
+    <Row key={`missing:${eaf.fileName}:${name}`} nested icon={Film} name={name}>
+      <span className={TONES.warn}>recording not chosen</span>
+    </Row>
+  );
 
   return (
     <ElanSection
@@ -174,6 +221,10 @@ export const ElanFiles = ({
           const existing = imported?.get(eaf.fileName);
           const recording = media.byFile.get(eaf.fileName);
           const named = eaf.media?.[0]?.relativeUrl || eaf.media?.[0]?.url || '';
+          // Several recordings named by one file: a row each, chosen or not.
+          const tracks = media.tracks?.get(eaf.fileName) ?? [];
+          const several = tracks.length >= 2 ? tracks : null;
+          const mixed = doc?.mediaTracks ?? null;
           return (
             <li key={`eaf:${eaf.fileName}`} className="py-0.5">
               <ul className="flex flex-col">
@@ -191,7 +242,14 @@ export const ElanFiles = ({
                   ) : (
                     <span className={TONES.muted}>{countOf(eaf.tiers.length, 'tier')}</span>
                   )}
-                  {!recording && named && <span className={TONES.warn}>recording not chosen</span>}
+                  {!recording && named && !several && (
+                    <span className={TONES.warn}>recording not chosen</span>
+                  )}
+                  {mixed && (
+                    <span className={TONES.muted}>
+                      {countOf(mixed.length, 'recording')}, mixed into one
+                    </span>
+                  )}
                   {imported &&
                     (existing ? (
                       <span className={TONES.warn}>
@@ -207,7 +265,17 @@ export const ElanFiles = ({
                       <span className={TONES.muted}>new</span>
                     ))}
                 </Row>
-                {recording && recordingRow(eaf, recording)}
+                {several
+                  ? several.map((t) =>
+                      t.file
+                        ? recordingRow(
+                            eaf,
+                            t.file,
+                            mixed?.find((m) => m.file === t.file) ?? { offset: 0, speaker: '' },
+                          )
+                        : missingRow(eaf, t.name),
+                    )
+                  : recording && recordingRow(eaf, recording)}
               </ul>
             </li>
           );
@@ -235,6 +303,46 @@ export const ElanFiles = ({
         >
           {showAll ? `Show the first ${LIST_LIMIT}` : `Show all ${eafs.length}`}
         </button>
+      )}
+
+      {mixes.length > 0 && (
+        <div className="flex flex-col gap-2 text-xs">
+          <div role="radiogroup" aria-label="Mix quality" className="flex flex-col gap-1">
+            {[
+              [
+                'full',
+                `Full quality (${Math.round(Math.max(...mixes.map((m) => m.rate)) / 100) / 10} kHz)`,
+              ],
+              ['small', `Smaller (${SMALL_RATE / 1000} kHz)`],
+            ].map(([value, label]) => (
+              <label key={value} className="flex cursor-pointer items-center gap-2">
+                <input
+                  type="radio"
+                  name="mix-quality"
+                  value={value}
+                  disabled={!editable}
+                  checked={mixQuality === value}
+                  onChange={() => onMixQuality?.(value)}
+                />
+                <span>{label}</span>
+                {mixTotal(value) != null && (
+                  <span className={TONES.muted}>
+                    · {formatBytes(mixTotal(value), { against: maxBytes })}
+                    {mixes.length > 1 ? ' in all' : ''}
+                  </span>
+                )}
+              </label>
+            ))}
+          </div>
+          {overLimit.length > 0 && (
+            <p className="font-medium text-destructive">
+              This server accepts {formatBytes(maxBytes)}.{' '}
+              {overLimit.length === 1
+                ? `The mix for ${overLimit[0].doc.name} is ${formatBytes(overLimit[0].bytes[mixQuality], { against: maxBytes })}.`
+                : `${overLimit.length} mixes are larger.`}
+            </p>
+          )}
+        </div>
       )}
 
       {namesRecording && onRecordMediaName && (

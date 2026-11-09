@@ -114,10 +114,30 @@ export function alignSegments(body, begin, end, texts) {
   return spans;
 }
 
-/** The last path segment of a media URL, or '' when there is none. */
-const mediaBasename = (eaf) => {
-  const ref = eaf?.media?.[0]?.relativeUrl || eaf?.media?.[0]?.url || '';
-  return String(ref).split(/[\\/]/).pop() || '';
+/** The last path segment of a media descriptor's URL, or '' when there is none. */
+const descriptorName = (d) =>
+  String(d?.relativeUrl || d?.url || '')
+    .split(/[\\/]/)
+    .pop() || '';
+
+/**
+ * The recordings a file names that stand on their own: a descriptor whose
+ * EXTRACTED_FROM names another descriptor is the audio already inside that
+ * one, and is left out. Each is `{ name, timeOrigin }`, the origin in
+ * milliseconds or null.
+ */
+export const mediaDescriptors = (eaf) => {
+  const named = new Set((eaf?.media || []).map((d) => descriptorName(d)).filter(Boolean));
+  return (eaf?.media || [])
+    .filter((d) => {
+      const from =
+        String(d.extractedFrom || '')
+          .split(/[\\/]/)
+          .pop() || '';
+      return !(from && named.has(from));
+    })
+    .map((d) => ({ name: descriptorName(d), timeOrigin: d.timeOrigin ?? null }))
+    .filter((d) => d.name);
 };
 
 /**
@@ -153,7 +173,13 @@ const stem = (name) =>
  * With `shared`, a file goes to every entry that names it instead: FLEx texts
  * cut from one long session are each timed against the whole recording.
  *
- * @returns {{byFile: Map<string, File>, unmatched: File[], missing: string[]}}
+ * A file naming several recordings (one per speaker, say) has each matched:
+ * `tracks` lists them in the file's order, each with the File chosen for it
+ * or null. `byFile` holds the one file of a file naming one recording, and
+ * the first matched of a file naming several.
+ *
+ * @returns {{byFile: Map<string, File>, tracks: Map<string, Array<{name, timeOrigin, file}>>,
+ *   unmatched: File[], missing: string[]}}
  *   missing = the media names .eaf files reference but nothing supplied, each
  *   once.
  */
@@ -161,25 +187,92 @@ export function matchMediaFiles(eafs, mediaFiles, { shared = false } = {}) {
   const pool = [...(mediaFiles || [])];
   const taken = new Set();
   const byFile = new Map();
+  const tracks = new Map();
   const missing = [];
   const claim = (predicate) => pool.find((f, i) => (shared || !taken.has(i)) && predicate(f, i));
+  const miss = (name) => {
+    if (name && !missing.some((m) => matchKey(m) === matchKey(name))) missing.push(name);
+  };
   for (const eaf of eafs || []) {
-    const referenced = mediaBasename(eaf);
-    const pick =
-      (referenced && claim((f) => matchKey(f.name) === matchKey(referenced))) ||
-      (referenced && claim((f) => stem(f.name) === stem(referenced))) ||
-      claim((f) => stem(f.name) === stem(eaf.fileName));
-    if (pick) {
-      taken.add(pool.indexOf(pick));
-      byFile.set(eaf.fileName, pick);
-    } else if (referenced && !missing.some((m) => matchKey(m) === matchKey(referenced))) {
-      missing.push(referenced);
+    const descriptors = mediaDescriptors(eaf);
+    const matched = descriptors.map((d) => {
+      const pick =
+        claim((f) => matchKey(f.name) === matchKey(d.name)) ||
+        claim((f) => stem(f.name) === stem(d.name)) ||
+        // A file naming one recording may be named after it instead.
+        (descriptors.length === 1 ? claim((f) => stem(f.name) === stem(eaf.fileName)) : null);
+      if (pick) taken.add(pool.indexOf(pick));
+      else miss(d.name);
+      return { ...d, file: pick ?? null };
+    });
+    // A file naming no recording may still be named after one.
+    if (!descriptors.length) {
+      const pick = claim((f) => stem(f.name) === stem(eaf.fileName));
+      if (pick) {
+        taken.add(pool.indexOf(pick));
+        matched.push({ name: pick.name, timeOrigin: null, file: pick });
+      }
     }
+    tracks.set(eaf.fileName, matched);
+    const first = matched.find((t) => t.file);
+    if (first) byFile.set(eaf.fileName, first.file);
   }
   return {
     byFile,
+    tracks,
     unmatched: pool.filter((_, i) => !taken.has(i)),
     missing,
+  };
+}
+
+/**
+ * The speaker of a recording among several on one file: the participant
+ * whose name is the recording's file name without its extension, else none.
+ * Only that exact match, so nothing is read into a name that merely
+ * resembles a participant: the person sets the rest on the Media tab.
+ */
+export function trackSpeaker(fileName, participants) {
+  const key = stem(fileName);
+  const hits = [...new Set((participants || []).filter(Boolean))].filter(
+    (p) => matchKey(p) === key,
+  );
+  return hits.length === 1 ? hits[0] : '';
+}
+
+/**
+ * The recordings of one file as the import uploads them: `mediaTracks`
+ * (`[{file, offset, speaker, name}]`) when two or more of several were
+ * chosen, to be mixed into one recording with a channel each, else null and
+ * `mediaFile` as before. `warnings` gets a line when some were not chosen.
+ */
+function documentMedia(eaf, mediaByFile, mediaTracks, warnings) {
+  const listed = mediaTracks?.get(eaf.fileName) ?? [];
+  const chosen = listed.filter((t) => t.file);
+  if (listed.length >= 2 && chosen.length < listed.length) {
+    const notChosen = listed.filter((t) => !t.file).map((t) => t.name);
+    warnings.push(
+      `${notChosen.length} of the ${listed.length} recordings the file names ${
+        notChosen.length === 1 ? 'was' : 'were'
+      } not chosen (${notChosen.join(', ')}). ${
+        chosen.length >= 2
+          ? 'The others are mixed into its recording.'
+          : chosen.length === 1
+            ? 'Its recording is the one chosen.'
+            : 'The document is imported without media.'
+      }`,
+    );
+  }
+  if (chosen.length < 2)
+    return { mediaFile: mediaByFile?.get(eaf.fileName) ?? null, mediaTracks: null };
+  const participants = eaf.tiers.map((t) => t.participant);
+  return {
+    mediaFile: null,
+    mediaTracks: chosen.map((t) => ({
+      file: t.file,
+      name: t.name,
+      offset: (t.timeOrigin ?? 0) / 1000,
+      speaker: trackSpeaker(t.file.name, participants),
+    })),
   };
 }
 
@@ -402,6 +495,7 @@ function batchWarnings(files, mediaByFile) {
 function buildGroup(files, nodes, roles, options = {}) {
   const fieldNames = options.fieldNames || {};
   const mediaByFile = options.mediaByFile || null;
+  const mediaTracks = options.mediaTracks || null;
   // The recording's original file name goes in a Media file metadata field
   // unless the person turns that off.
   const recordMediaName = options.recordMediaName !== false;
@@ -948,6 +1042,7 @@ function buildGroup(files, nodes, roles, options = {}) {
       [...sentences, ...words, ...kept].flatMap((t) => [t.begin, t.end]),
     );
     const moved = (t) => ({ ...t, begin: composed.at(t.begin), end: composed.at(t.end) });
+    const media = documentMedia(eaf, mediaByFile, mediaTracks, docWarnings);
     documents.push({
       id: eaf.fileName,
       name: eaf.documentName,
@@ -961,8 +1056,10 @@ function buildGroup(files, nodes, roles, options = {}) {
       // matchMediaFiles). The CLDF importer carries media as bytes because its
       // zip already holds them in memory; here the file is on disk and a
       // recording can be hundreds of megabytes, so the File itself rides along
-      // and the upload streams it.
-      mediaFile: mediaByFile?.get(eaf.fileName) ?? null,
+      // and the upload streams it. Several chosen for one file are
+      // `mediaTracks`, mixed into one recording by the engine.
+      mediaFile: media.mediaFile,
+      mediaTracks: media.mediaTracks,
       warnings: docWarnings,
     });
   }

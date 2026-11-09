@@ -117,3 +117,80 @@ describe('ElanPreview', () => {
     expect(view.container.textContent).toBe('');
   });
 });
+
+// A file naming several recordings lists each under it, chosen or not, and
+// the quality of the mix is asked once for the batch.
+describe('ElanFiles with several recordings on one file', () => {
+  const ana = { name: 'ana.wav', size: 1000, type: 'audio/wav' };
+  const ben = { name: 'ben.wav', size: 1000, type: 'audio/wav' };
+  const twoFile = {
+    fileName: 'talk.eaf',
+    tiers: [1, 2],
+    media: [{ url: 'ana.wav' }, { url: 'ben.wav' }, { url: 'cam.mp4' }],
+  };
+  const doc = {
+    id: 'talk.eaf',
+    name: 'Talk',
+    sentences: [{}],
+    mediaTracks: [
+      { file: ana, name: 'ana.wav', offset: 0, speaker: 'Ana' },
+      { file: ben, name: 'ben.wav', offset: 1.5, speaker: '' },
+    ],
+  };
+  const props = {
+    files: [twoFile],
+    mediaFiles: [ana, ben],
+    media: {
+      byFile: new Map([['talk.eaf', ana]]),
+      tracks: new Map([
+        [
+          'talk.eaf',
+          [
+            { name: 'ana.wav', timeOrigin: null, file: ana },
+            { name: 'ben.wav', timeOrigin: 1500, file: ben },
+            { name: 'cam.mp4', timeOrigin: null, file: null },
+          ],
+        ],
+      ]),
+    },
+    durations: new Map([
+      [ana, 10],
+      [ben, 8],
+    ]),
+    sampleRates: new Map([
+      [ana, 48000],
+      [ben, 44100],
+    ]),
+    documents: [doc],
+  };
+
+  it('nests a row per recording, says which was not chosen, and asks the quality with sizes', async () => {
+    view = await renderComponent(
+      <MemoryRouter>
+        <ElanFiles {...props} mixQuality="full" onMixQuality={() => {}} />
+      </MemoryRouter>,
+    );
+    expect(rowOf('talk.eaf')).toContain('2 recordings, mixed into one');
+    expect(rowOf('ana.wav')).toContain('Ana');
+    expect(rowOf('ben.wav')).toContain('from 1.5 s');
+    expect(rowOf('cam.mp4')).toContain('recording not chosen');
+    expect(view.container.textContent).not.toContain('no .eaf names this file');
+    const radios = [...view.container.querySelectorAll('input[name="mix-quality"]')];
+    expect(radios.map((r) => r.value)).toEqual(['full', 'small']);
+    expect(radios[0].checked).toBe(true);
+    // 10 s (ana runs longest) at 48 kHz and 16 kHz, two channels, 16-bit.
+    expect(view.container.textContent).toContain('Full quality (48 kHz)· 1.9 MB');
+    expect(view.container.textContent).toContain('Smaller (16 kHz)· 640 KB');
+  });
+
+  it('says when the mix is over the server limit', async () => {
+    view = await renderComponent(
+      <MemoryRouter>
+        <ElanFiles {...props} mixQuality="full" maxBytes={1000 * 1000} />
+      </MemoryRouter>,
+    );
+    expect(view.container.textContent).toContain(
+      'This server accepts 1.0 MB. The mix for Talk is 1.9 MB.',
+    );
+  });
+});

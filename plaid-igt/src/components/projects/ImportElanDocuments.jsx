@@ -58,6 +58,8 @@ import { NAMED_ROLES, SCOPE_OF_ROLE } from '@/import/elan/schema';
 import { ElanFiles } from './elan/ElanFiles.jsx';
 import { ElanPreview } from './elan/ElanPreview.jsx';
 import { useMediaDurations } from './elan/useMediaDurations';
+import { useMediaSampleRates } from './elan/useMediaSampleRates';
+import { mixFiles } from '@/domain/media/mixRecordings';
 import { useRecordingConversion } from './elan/useRecordingConversion';
 import { useServerLimits } from '@/hooks/useServerLimits';
 import { FORM_PAGE_WIDTH } from '@ui/lib/pageWidth.js';
@@ -134,6 +136,9 @@ export const ImportElanDocuments = () => {
   const limits = useServerLimits();
   const conversion = useRecordingConversion(batch.setMediaFiles);
   const durations = useMediaDurations(batch.mediaFiles);
+  const sampleRates = useMediaSampleRates(batch.mediaFiles);
+  // The quality of a mix of several recordings on one document, asked once.
+  const [mixQuality, setMixQuality] = useState('full');
 
   useEffect(() => {
     let cancelled = false;
@@ -220,6 +225,8 @@ export const ImportElanDocuments = () => {
         client,
         projectId,
         build: batch.build,
+        mix: mixFiles,
+        mixQuality,
         prior: retrying ? null : prior,
         redo: leftovers,
         priorMode,
@@ -437,6 +444,9 @@ export const ImportElanDocuments = () => {
                   mediaFiles={batch.mediaFiles}
                   media={batch.media}
                   durations={durations}
+                  sampleRates={sampleRates}
+                  mixQuality={mixQuality}
+                  onMixQuality={setMixQuality}
                   maxBytes={limits?.mediaFileBytes ?? null}
                   editable={editable}
                   converting={conversion.converting}
