@@ -264,6 +264,12 @@ test('text mode refuses what the canvas refuses', () => {
     /would close a cycle/,
   );
   assert.equal(doc.planPenman(1, withChild('(s1l2 / thing)')).errors, undefined);
+  // A letter outside a to z: validate.py's document-level check reads
+  // variables as ASCII and refuses the file such a name reaches (H3-1).
+  assert.match(
+    doc.planPenman(1, withChild('(s1pé / thing)')).errors[0].message,
+    /s1pé is not a variable/,
+  );
   // A role UMR does not have is refused, as the canvas's role editor does, not
   // stored and then reported. A concept stays free text.
   assert.match(

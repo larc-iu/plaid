@@ -241,10 +241,10 @@ test('every string a canvas edit takes is stored in NFC', async () => {
   assert.equal(byVar(doc, 's1r').concept, `r${NFC_E}sum${NFC_E}`);
   assert.equal(calls.findLast((c) => c.name === 'spans.update').args[1], `r${NFC_E}sum${NFC_E}`);
 
-  // A variable typed with the accent apart is a letter once composed.
-  assert.equal(doc.variableProblem(byVar(doc, 's1p').id, `s1${NFD_E}`), null);
-  await doc.setVariable(byVar(doc, 's1p').id, `s1${NFD_E}`);
-  assert.equal(doc.node(byVar(doc, `s1${NFC_E}`).id).var, `s1${NFC_E}`);
+  // A variable's letters are a to z, composed or not (validate.py's
+  // document-level check reads them as ASCII, H3-1).
+  assert.match(doc.variableProblem(byVar(doc, 's1p').id, `s1${NFD_E}`), /not a variable/);
+  assert.match(doc.variableProblem(byVar(doc, 's1p').id, `s1${NFC_E}`), /not a variable/);
 
   await doc.setAttrs(byVar(doc, 's1e').id, [{ rel: ':op1', value: `"${NFD_E}"` }]);
   assert.equal(byVar(doc, 's1e').attrs[0].value, `"${NFC_E}"`);

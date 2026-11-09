@@ -68,7 +68,11 @@ import {
 } from './format/validate.js';
 import { countOf } from '../../../plaid-ui/src/lib/plural.js';
 
-const VARIABLE = /^s[0-9]+\p{Ll}+[0-9]*$/u;
+// A new name's letters are a to z: the official validator's document-level
+// check reads variables as ASCII (validate.py:406), so `s4pé` exports a file
+// it refuses. A file may still hold such a name (penman.js reads it), and
+// validate.js warns about it.
+const VARIABLE = /^s[0-9]+[a-z]+[0-9]*$/;
 // What the export calls a sentence's document-level block.
 const DOC_GRAPH_VARIABLE = /^s[0-9]+s0$/;
 
@@ -1195,7 +1199,7 @@ export class UmrDocument extends DocumentModel {
   // graph kept as text has, the kept graph of sentence `mending` aside.
   _newVariableProblem(variable, sentenceIndex, mending = null) {
     if (!VARIABLE.test(variable)) {
-      return `${variable} is not a variable: s, the sentence number, letters, a number.`;
+      return `${variable} is not a variable: s, the sentence number, letters a to z, a number.`;
     }
     const n = Number(variable.match(/^s([0-9]+)/)[1]);
     const number =

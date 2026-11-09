@@ -828,3 +828,12 @@ describe('temporal contradictions', () => {
     assert.deepEqual(mismatches(sentences), []);
   });
 });
+
+describe('variables validate.py reads', () => {
+  // Its document-level check reads a variable as ASCII, so `s1pé` passes a
+  // sentence graph and then fails the file there (H3-1).
+  test('a variable with a letter outside a to z is named', () => {
+    const found = validateSentence(sentence({ graph: '(s1pé / person)', words: 'he' }), quiet);
+    assert.ok(codes(found).includes('invalid-variable'));
+  });
+});

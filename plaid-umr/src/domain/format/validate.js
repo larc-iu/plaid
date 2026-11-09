@@ -24,7 +24,9 @@ import {
 import { nfc, treeEdges } from './penman.js';
 
 const OP = /^:op([1-9][0-9]*)$/;
-const VARIABLE = /^s[0-9]+\p{Ll}+[0-9]*$/u;
+// ASCII as validate.py's document-level check reads it (validate.py:406): a
+// variable with another letter fails there, so it is named here.
+const VARIABLE = /^s[0-9]+[a-z]+[0-9]*$/;
 const PUNCTUATION = /^\p{P}+$/u;
 const WIKIDATA_ID = /^Q[1-9][0-9]*$/;
 const ROLESET = /^.+-91$/;
@@ -252,7 +254,7 @@ function checkGraph(sentence, findings, options) {
       findings.push({
         level: 'warning',
         code: 'invalid-variable',
-        message: `Variable '${variable}' is not of the form sNx.`,
+        message: `Variable '${variable}' is not of the form sNx (s, the sentence number, letters a to z, a number).`,
         var: variable,
       });
     }
