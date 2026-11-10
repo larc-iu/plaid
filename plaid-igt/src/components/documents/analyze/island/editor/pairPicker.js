@@ -282,7 +282,9 @@ export const pairPicker = {
   // row that names none, "no entry" on an unlinked morpheme's current row),
   // the sense's own value when the row keeps another, the vocabulary when
   // there are several, the tags, and the entry's detail line.
-  // `extra`: the chip's actions on the row, at the end of its line.
+  // `extra`: the chip's actions on the row. They and the tags are one group
+  // that goes to a line of its own when the row is too narrow for it, so no
+  // mark is ever pushed out of the popover (CW-BROWSER-1).
   _pairRowCells(row, { multiVocab = false, entryLink = null, extra = nothing } = {}) {
     const form = row.item ? html`${row.item.form}${numHtml(row.sub, 'igt-vocab-pop')}` : null;
     const entry =
@@ -310,9 +312,11 @@ export const pairPicker = {
         ${shown.description
           ? html`<span class="igt-pair__desc">${shown.description}</span>`
           : nothing}
-        <span class="igt-pair__tags">${shown.tags}</span>
-        ${this._pairConfirms(row) ? html`<span class="igt-vocab-pop__ok">accept</span>` : nothing}
-        ${extra}
+        <span class="igt-pair__end">
+          <span class="igt-pair__tags">${shown.tags}</span>
+          ${this._pairConfirms(row) ? html`<span class="igt-vocab-pop__ok">accept</span>` : nothing}
+          ${extra}
+        </span>
       </span>
       ${shown.detail ? html`<span class="igt-vocab-pop__detail">${shown.detail}</span>` : nothing}`;
   },

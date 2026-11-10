@@ -1648,10 +1648,14 @@
   align-items: stretch;
   gap: 1px;
 }
+/* The line wraps: in the chip's 360px a vocabulary name or the tags and marks
+   of the current row go to the next line whole. Nothing is squeezed and
+   nothing leaves the popover. */
 .igt-pair__line {
   display: flex;
+  flex-wrap: wrap;
   align-items: baseline;
-  gap: 6px;
+  gap: 0 6px;
 }
 /* Value and entry as two aligned columns. */
 .igt-pair__value {
@@ -1679,8 +1683,25 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.igt-pair__tags {
+/* A vocabulary's name stays on one line, cut only when it is longer than the
+   row. */
+.igt-pair__vocab {
+  white-space: nowrap;
+}
+/* The tags and the row's marks ("accept", "all ×N", "unlink"), kept together
+   at the end of the row. */
+.igt-pair__end {
   margin-left: auto;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: baseline;
+  gap: 0 6px;
+}
+.igt-pair__end .igt-vocab-pop__take-all {
+  margin-left: 0;
+}
+.igt-pair__tags {
   font-size: 10px;
   color: var(--igt-gray-500);
   white-space: nowrap;

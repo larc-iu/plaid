@@ -116,6 +116,37 @@ const stored = async (morphId) => {
 };
 const saved = (page) => expect(page.locator('.igt-status[data-state="saving"]')).toHaveCount(0);
 
+// Layout first, before a test below changes the first morpheme: its row is
+// the widest a list draws, with "current", "machine NN%", "unconfirmed",
+// "accept", "all ×N" and "unlink".
+test('the marks of the chip’s current row stay inside the popover and take a click', async ({
+  page,
+}) => {
+  await openAnalyze(page);
+  await page.locator(`button[data-vocab-opener="${ids.m[0]}"]`).click();
+  const pop = page.locator('.igt-vocab-pop');
+  await expect(pop.locator('.igt-vocab-pop__x')).toBeVisible();
+  const marks = await pop.evaluate((el) => {
+    const p = el.getBoundingClientRect();
+    return [
+      ...el.querySelectorAll('.igt-vocab-pop__ok, .igt-vocab-pop__take-all, .igt-vocab-pop__x'),
+    ].map((k) => {
+      const b = k.getBoundingClientRect();
+      const hit = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2);
+      return {
+        mark: k.textContent.trim().replace(/\d+/, 'N'),
+        inside: b.left >= p.left && b.right <= p.right,
+        takesClick: hit === k,
+      };
+    });
+  });
+  expect(marks).toEqual([
+    { mark: 'accept', inside: true, takesClick: true },
+    { mark: 'all ×N', inside: true, takesClick: true },
+    { mark: 'unlink', inside: true, takesClick: true },
+  ]);
+});
+
 test('a pick from Alt+Down sets the link and the gloss, and both are there after a reload', async ({
   page,
 }) => {
