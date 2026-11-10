@@ -17,6 +17,7 @@ let client;
 let projectId;
 let documentId;
 let morphs = [];
+let wordIds = [];
 
 test.beforeAll(async () => {
   client = new PlaidClient(CORE, readToken().token);
@@ -47,6 +48,10 @@ test.beforeAll(async () => {
     .find((l) => roleOf(l) === ROLES.BASELINE)
     .tokenLayers.find((l) => roleOf(l) === ROLES.MORPHEME);
   morphs = words.map((x) => ml.tokens.find((t) => t.begin === x.begin).id);
+  const wl = seeded.textLayers
+    .find((l) => roleOf(l) === ROLES.BASELINE)
+    .tokenLayers.find((l) => roleOf(l) === ROLES.WORD);
+  wordIds = words.map((x) => wl.tokens.find((t) => t.begin === x.begin).id);
 });
 
 test.afterAll(async () => {
@@ -151,6 +156,49 @@ test('Escape lets a lost gloss go, and the stored value stays', async ({ browser
     await settled(B.page);
     expect(B.writes).toBe(before);
     expect(await glossOf(morphs[1])).toBe('feline');
+  } finally {
+    await A.ctx.close();
+    await B.ctx.close();
+  }
+});
+
+// LP2-11: the note under a word's cell hangs in room the grid makes for it,
+// and covers no cell of the row under it, focused or not.
+test('the note under a lost word field covers no other cell', async ({ browser }) => {
+  const A = await openTab(browser);
+  const B = await openTab(browser);
+  try {
+    const key = `wa:${wordIds[0]}:Part of Speech`;
+    const cell = (page) => page.locator(`.igt-field[data-cell-key="${key}"]`);
+    const release = B.hold();
+    await cell(B.page).click();
+    await B.page.keyboard.type('NOUN');
+    await B.page.keyboard.press('Tab');
+    await cell(A.page).click();
+    await A.page.keyboard.type('VERB');
+    await A.page.keyboard.press('Tab');
+    await settled(A.page);
+    release();
+    await settled(B.page);
+    const note = B.page.locator('.igt-field-conflict');
+    await expect(note).toHaveText('Yours: NOUN · Enter to keep yours');
+    // Every cell but its own whose box the note's box meets, past the 2 px
+    // the note rises into its own row to join its cell.
+    const covered = () =>
+      B.page.evaluate((own) => {
+        const n = document.querySelector('.igt-field-conflict').getBoundingClientRect();
+        return [...document.querySelectorAll('.igt-field')]
+          .filter((el) => el.dataset.cellKey !== own)
+          .filter((el) => {
+            const b = el.getBoundingClientRect();
+            return b.left < n.right && b.right > n.left && b.top < n.bottom && b.bottom > n.top + 2;
+          })
+          .map((el) => el.dataset.cellKey);
+      }, key);
+    expect(await covered()).toEqual([]);
+    await cell(B.page).click();
+    await expect(note).toHaveText('Yours: NOUN · Enter to keep yours');
+    expect(await covered()).toEqual([]);
   } finally {
     await A.ctx.close();
     await B.ctx.close();

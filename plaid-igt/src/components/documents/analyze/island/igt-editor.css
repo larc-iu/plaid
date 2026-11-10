@@ -1825,6 +1825,14 @@
 .igt-grid:has(.igt-field-conflict) {
   padding-bottom: 14px;
 }
+/* A note hangs over the row under its cell, so while a sentence's grid has
+   one, every row of it, in each column and its label, is that much taller
+   with the room at its foot. The note covers no cell, and the rows stay in
+   line. A minimized row stays as it is. */
+.igt-tokens:has(.igt-field-conflict) [data-row]:not(.is-row-collapsed) {
+  box-sizing: content-box;
+  padding-bottom: 14px;
+}
 .igt-field-conflict__hint {
   position: absolute;
   width: 1px;
