@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import { renderComponent } from '@ui/test/renderComponent.jsx';
 import { ElanFiles } from './ElanFiles.jsx';
@@ -212,6 +212,38 @@ describe('ElanFiles with several recordings on one file', () => {
     expect(rowOf('ben.wav')).toContain('not used');
     expect(rowOf('ben.wav')).not.toContain('MP3');
     expect(view.container.querySelector('input[name="mix-quality"]')).toBeNull();
+  });
+
+  it('lists two recordings of one name from two folders with no key clash', async () => {
+    const left = { name: 'take.wav', size: 1000, type: 'audio/wav' };
+    const right = { name: 'take.wav', size: 1000, type: 'audio/wav' };
+    const stray1 = { name: 'x.wav', size: 1, type: 'audio/wav' };
+    const stray2 = { name: 'x.wav', size: 1, type: 'audio/wav' };
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    view = await renderComponent(
+      <MemoryRouter>
+        <ElanFiles
+          {...props}
+          mediaFiles={[left, right, stray1, stray2]}
+          media={{
+            byFile: new Map([['talk.eaf', left]]),
+            tracks: new Map([
+              [
+                'talk.eaf',
+                [
+                  { name: 'a/take.wav', mimeType: 'audio/x-wav', timeOrigin: null, file: left },
+                  { name: 'b/take.wav', mimeType: 'audio/x-wav', timeOrigin: null, file: right },
+                ],
+              ],
+            ]),
+          }}
+          documents={[{ ...doc, mediaTracks: null }]}
+        />
+      </MemoryRouter>,
+    );
+    const said = spy.mock.calls.map((c) => c.join(' ')).join('\n');
+    spy.mockRestore();
+    expect(said).not.toMatch(/same key/);
   });
 
   it('says when the mix is over the server limit', async () => {

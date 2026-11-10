@@ -171,7 +171,8 @@ export const ElanFiles = ({
   const importedCount = imported ? eafs.filter((f) => imported.has(f.fileName)).length : 0;
   const namesRecording = eafs.some((f) => f.media?.length);
 
-  const recordingRow = (eaf, file, track = null) => {
+  // `at` tells apart two recordings of one name (from two folders).
+  const recordingRow = (eaf, file, track = null, at = 0) => {
     const unused = notUsed.has(file);
     const need = !track && !unused && needOf(file);
     const smaller = convertedBytes(durations.get(file));
@@ -181,7 +182,7 @@ export const ElanFiles = ({
     const kept = existing && priorMode === 'skip' && !unused;
     return (
       <Row
-        key={`media:${file.name}`}
+        key={`media:${at}:${file.name}`}
         nested
         icon={need ? AudioLines : Film}
         name={file.name}
@@ -214,8 +215,8 @@ export const ElanFiles = ({
   };
 
   // A recording the file names and nobody chose.
-  const missingRow = (eaf, name) => (
-    <Row key={`missing:${eaf.fileName}:${name}`} nested icon={Film} name={name}>
+  const missingRow = (eaf, name, at = 0) => (
+    <Row key={`missing:${at}:${name}`} nested icon={Film} name={name}>
       <span className={TONES.warn}>recording not chosen</span>
     </Row>
   );
@@ -288,24 +289,25 @@ export const ElanFiles = ({
                     ))}
                 </Row>
                 {several
-                  ? several.map((t) =>
+                  ? several.map((t, at) =>
                       !t.file
-                        ? missingRow(eaf, t.name)
+                        ? missingRow(eaf, t.name, at)
                         : mixing
                           ? recordingRow(
                               eaf,
                               t.file,
                               mixed?.find((m) => m.file === t.file) ?? { offset: 0, speaker: '' },
+                              at,
                             )
-                          : recordingRow(eaf, t.file),
+                          : recordingRow(eaf, t.file, null, at),
                     )
                   : recording && recordingRow(eaf, recording)}
               </ul>
             </li>
           );
         })}
-        {unmatched.map((file) => (
-          <li key={`media:${file.name}`} className="py-0.5">
+        {unmatched.map((file, at) => (
+          <li key={`media:${at}:${file.name}`} className="py-0.5">
             <ul className="flex flex-col">
               <Row
                 icon={Film}
