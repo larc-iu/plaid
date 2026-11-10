@@ -136,6 +136,22 @@ describe('useVadProposals persistence', () => {
     await r.unmount();
   });
 
+  // A new run starts fresh, so the dialog says how many discarded proposals
+  // it would bring back: those a segment does not cover.
+  it('counts the discarded proposals a new run would bring back', async () => {
+    let api = null;
+    const r = await renderComponent(
+      <Probe
+        saved={kept(REGIONS, ['vad-0.420-3.100', 'vad-3.800-7.550'])}
+        tokens={[{ metadata: { timeBegin: 4, timeEnd: 5 } }]}
+        onReady={(v) => (api = v)}
+      />,
+    );
+    expect(shown(r)).toBe('');
+    expect(api.discardedCount).toBe(1);
+    await r.unmount();
+  });
+
   it('keeps the channel of a proposal on a recording with a speaker per channel', async () => {
     vi.useFakeTimers();
     const onPersist = vi.fn();

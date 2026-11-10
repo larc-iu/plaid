@@ -1,5 +1,6 @@
 // The Speech detection dialog's footer: Discard is offered only when a run
-// left proposals or discards to throw away.
+// left proposals or discards to throw away. Detect starts fresh, and the
+// dialog says so when there are discarded proposals it would bring back.
 import { describe, it, expect, vi } from 'vitest';
 import { renderComponent } from '@ui/test/renderComponent.jsx';
 import { VadDetection } from './VadDetection.jsx';
@@ -42,5 +43,14 @@ describe('the Speech detection dialog', () => {
     const left = await footer({ foundCount: 2, hasAnalysis: true });
     expect(left.text).toContain('No proposals left');
     expect(left.buttons).toContain('Discard');
+  });
+
+  it('says that Detect brings back discarded proposals, only when there are some', async () => {
+    const one = await footer({ foundCount: 2, hasAnalysis: true, discardedCount: 1 });
+    expect(one.text).toContain('1 discarded proposal comes back on Detect.');
+    const two = await footer({ foundCount: 2, hasAnalysis: true, discardedCount: 2 });
+    expect(two.text).toContain('2 discarded proposals come back on Detect.');
+    const none = await footer({ foundCount: 2, hasAnalysis: true, discardedCount: 0 });
+    expect(none.text).not.toContain('discarded');
   });
 });

@@ -327,7 +327,7 @@ export function useVadProposals({
   // lets React abandon a list render the next move has already superseded.
   const derivedFrom = useDeferredValue(params);
 
-  const { proposals, foundCount, regions } = useMemo(() => {
+  const { proposals, foundCount, discardedCount, regions } = useMemo(() => {
     const found =
       serviceRegions ??
       (analysis
@@ -343,23 +343,26 @@ export function useVadProposals({
             )
             .sort((a, b) => a.timeBegin - b.timeBegin)
         : null);
-    if (!found) return { proposals: [], foundCount: 0, regions: null };
+    if (!found) return { proposals: [], foundCount: 0, discardedCount: 0, regions: null };
     const tokens = alignmentTokens || [];
     // A proposal meets a segment: dropped unless the two could stand together
     // as segments (both labelled, different speakers), so one speaker's
     // proposals survive over the other's segments.
     const meets = (p) => (t) =>
       timeBeginOf(t) < p.timeEnd && timeEndOf(t) > p.timeBegin && !mayOverlap(asToken(p), t);
+    const open = found
+      .map((r) => ({
+        id: `vad-${Number.isInteger(r.channel) ? `${r.channel}-` : ''}${r.timeBegin.toFixed(3)}-${r.timeEnd.toFixed(3)}`,
+        ...r,
+      }))
+      .filter((p) => !tokens.some(meets(p)));
+    const proposals = open.filter((p) => !dismissed.has(p.id));
     return {
       regions: found,
       foundCount: found.length,
-      proposals: found
-        .map((r) => ({
-          id: `vad-${Number.isInteger(r.channel) ? `${r.channel}-` : ''}${r.timeBegin.toFixed(3)}-${r.timeEnd.toFixed(3)}`,
-          ...r,
-        }))
-        .filter((p) => !dismissed.has(p.id))
-        .filter((p) => !tokens.some(meets(p))),
+      // The discarded ones a new run, which starts fresh, would bring back.
+      discardedCount: open.length - proposals.length,
+      proposals,
     };
   }, [analysis, serviceRegions, derivedFrom, dismissed, alignmentTokens]);
 
@@ -397,6 +400,7 @@ export function useVadProposals({
     // What detection found before anything was accepted or discarded, so the
     // dialog can tell an empty recording from one whose proposals are all used up.
     foundCount,
+    discardedCount,
     hasAnalysis: !!analysis || !!serviceRegions,
     status,
     progress,

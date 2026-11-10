@@ -28,7 +28,7 @@ export function VadDetection({ mediaOps, readOnly = false, disabled = false }) {
     channelSpeakers,
     channelCount,
   } = mediaOps;
-  const { proposals, foundCount, status, error, hasAnalysis } = vad;
+  const { proposals, foundCount, discardedCount, status, error, hasAnalysis } = vad;
   const running = detectRun.running || status === 'running';
   const count = proposals.length;
   // Both methods stop from the one button: the built-in model aborts its
@@ -79,6 +79,14 @@ export function VadDetection({ mediaOps, readOnly = false, disabled = false }) {
       >
         <ServiceMethodRow spot={detectSpot} disabled={running} />
         <ChannelChecklist channels={channels} disabled={running} />
+        {/* Detect starts fresh: what was discarded is proposed again. */}
+        {discardedCount > 0 && !running && (
+          <p className="text-xs text-muted-foreground">
+            {discardedCount === 1
+              ? '1 discarded proposal comes back on Detect.'
+              : `${discardedCount} discarded proposals come back on Detect.`}
+          </p>
+        )}
       </ServiceRunDialog>
     </>
   );
