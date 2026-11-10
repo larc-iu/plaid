@@ -182,29 +182,35 @@ export const linking = {
     return out;
   },
 
-  // A morpheme's own stored type (from "=", a hand pick or an import), not
-  // the one a linked entry gives it.
-  _storedMorphType(tokenId) {
+  // The type a morpheme goes by, as its Type row shows it: the linked
+  // entry's when that entry has one, else the morpheme's own stored type
+  // (from "=", a hand pick or an import).
+  _morphTypeShown(tokenId, currentItem) {
+    const fromItem = currentItem?.vocabId
+      ? this._vocabMemoFor(currentItem.vocabId).morphTypeOf(currentItem.id)
+      : null;
     return (
+      fromItem ||
       (this.doc.layerInfo.morphemeTokenLayer?.tokens || []).find((m) => m.id === tokenId)?.metadata
-        ?.morphType || null
+        ?.morphType ||
+      null
     );
   },
 
   // The type "+ Create" gives a morpheme's new entry (M2-1): the one picked
-  // in the Type row, else the morpheme's stored type. Markers typed in the
-  // form ("-s", "=na") name the type when nothing was picked (entryForm).
-  _newEntryType(tokenId, form) {
+  // in the Type row, else the type the morpheme goes by. Markers typed in
+  // the form ("-s", "=na") name the type when nothing was picked (entryForm).
+  _newEntryType(tokenId, form, currentItem) {
     if (this._popoverCreateType !== undefined) return this._popoverCreateType;
     if (entryForm(null, form).morphType) return null;
-    return this._storedMorphType(tokenId);
+    return this._morphTypeShown(tokenId, currentItem);
   },
 
   // What the Type row shows while "+ Create" is open: the type the create
   // would give, so a marker typed in the form shows the type it names.
-  _newEntryTypeShown(tokenId, form) {
+  _newEntryTypeShown(tokenId, form, currentItem) {
     if (this._popoverCreateType !== undefined) return this._popoverCreateType;
-    return entryForm(null, form).morphType || this._storedMorphType(tokenId);
+    return entryForm(null, form).morphType || this._morphTypeShown(tokenId, currentItem);
   },
 
   async _createVocab(tokenId, vocabId, form, returnFocus = false, all = null, metadata = {}) {

@@ -259,7 +259,7 @@ export const vocabPopover = {
     // takes the type the Type row is on (_newEntryType).
     const createMeta = canCreate && !isMwe ? this._entryValuesOf(tokenId, kind) : {};
     const createMetaFor = (form) => {
-      const type = kind === 'morpheme' ? this._newEntryType(tokenId, form) : null;
+      const type = kind === 'morpheme' ? this._newEntryType(tokenId, form, currentItem) : null;
       return type ? { ...createMeta, morphType: type } : createMeta;
     };
     const effectiveForm = editingCreate ? this._popoverCreateEdit.trim() : createForm;
@@ -730,7 +730,7 @@ export const vocabPopover = {
         })()}
         ${kind === 'morpheme'
           ? editingCreate
-            ? this._newEntryTypeRow(tokenId, effectiveForm)
+            ? this._newEntryTypeRow(tokenId, effectiveForm, currentItem)
             : this._morphTypeRow(tokenId, currentItem)
           : isMwe
             ? this._mweTypeRow(editingCreate ? null : currentItem)
@@ -939,12 +939,12 @@ export const vocabPopover = {
   },
 
   // While "+ Create" is open the Type row is the new entry's (R56). It starts
-  // on the morpheme's own stored type (M2-1) and shows the type a marker
+  // on the type the morpheme goes by (M2-1) and shows the type a marker
   // typed in the form names, a pick is held and goes with the create, and
   // focus goes back to the form so Enter creates. Cancelling the create
   // brings back the row of the linked entry or the morpheme.
-  _newEntryTypeRow(tokenId, form) {
-    const current = this._newEntryTypeShown(tokenId, form) || '';
+  _newEntryTypeRow(tokenId, form, currentItem) {
+    const current = this._newEntryTypeShown(tokenId, form, currentItem) || '';
     return html`
       <label
         class="igt-vocab-pop__type"

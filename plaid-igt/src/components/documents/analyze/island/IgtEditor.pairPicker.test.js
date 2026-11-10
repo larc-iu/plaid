@@ -469,8 +469,9 @@ describe('a pick from the chip', () => {
   });
 
   // H5-2 (Luke 2026-11-09): the entry takes the morpheme's gloss, in the
-  // create itself, and the morpheme keeps it.
-  it('+ Create makes the entry with the form and the morpheme’s gloss', async () => {
+  // create itself, and the morpheme keeps it. It takes the type the morpheme
+  // goes by too, here its linked entry's (Luke 2026-11-10).
+  it('+ Create makes the entry with the form, the morpheme’s gloss and its type', async () => {
     const { doc, client } = mount();
     await settle(4);
     openChip('m-2');
@@ -478,7 +479,7 @@ describe('a pick from the chip', () => {
     click(host.querySelector('.igt-vocab-pop__create'));
     await settle(6);
     const made = client.calls.find((c) => c.kind === 'vocabItems.create');
-    expect(made.args.slice(0, 3)).toEqual(['v1', 'cat', { gloss: 'feline' }]);
+    expect(made.args.slice(0, 3)).toEqual(['v1', 'cat', { gloss: 'feline', morphType: 'stem' }]);
     expect(morph(doc).annotations.Gloss.value).toBe('feline');
   });
 

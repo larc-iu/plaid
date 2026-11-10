@@ -207,7 +207,7 @@ describe('the type control while + Create is open (R56)', () => {
     expect(createInput()).not.toBeNull();
     const row = popover().querySelector('.igt-vocab-pop__type');
     expect(row.textContent).toContain('Type (new entry)');
-    expect(row.querySelector('option[selected]').value).toBe('');
+    expect(row.querySelector('option[selected]').value).toBe('enclitic');
     expect(popover().querySelector('.igt-vocab-pop__type-note')).toBeNull();
     choose('suffix');
     await settle(2);
@@ -347,6 +347,23 @@ describe('the new entry’s type starts on the morpheme’s stored type (M2-1)',
     enter(createInput());
     await settle(6);
     expect(created(client).args[2]?.morphType).toBeUndefined();
+  });
+
+  it('starts on the linked entry’s type on a morpheme linked to a typed entry', async () => {
+    const { client } = mount({ linked: true, entryType: 'suffix' });
+    openOn('m-2');
+    await openCreate();
+    expect(popover().querySelector('.igt-vocab-pop__type option[selected]').value).toBe('suffix');
+    enter(createInput());
+    await settle(6);
+    expect(created(client).args[2]).toMatchObject({ morphType: 'suffix' });
+  });
+
+  it('starts on the morpheme’s own type when the linked entry has none', async () => {
+    mount({ linked: true, entryType: null, own2: { morphType: 'stem' } });
+    openOn('m-2');
+    await openCreate();
+    expect(popover().querySelector('.igt-vocab-pop__type option[selected]').value).toBe('stem');
   });
 
   it('gives the stored type to an entry created as is, by double-click', async () => {
