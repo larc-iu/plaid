@@ -332,6 +332,28 @@ describe('MediaUpload', () => {
     await r.unmount();
   });
 
+  it('offers Cancel while a recording converts to MP3, and is idle with focus on the picker after it', async () => {
+    const onCancel = vi.fn();
+    const card = (convertProgress) => (
+      <MediaUpload
+        onUpload={vi.fn()}
+        onCancel={onCancel}
+        isUploading={false}
+        convertProgress={convertProgress}
+      />
+    );
+    const r = await renderComponent(card({ name: 'long.wav', fraction: 0.3 }));
+    const cancel = buttonSaying(r.container, 'Cancel');
+    expect(cancel?.disabled).toBe(false);
+    await r.step(() => cancel.click());
+    expect(onCancel).toHaveBeenCalledTimes(1);
+    await r.rerender(card(null));
+    expect(r.container.textContent).not.toContain('Converting to MP3');
+    expect(document.activeElement).toBe(buttonSaying(r.container, 'Choose media file'));
+    expect(buttonSaying(r.container, 'Choose media file').disabled).toBe(false);
+    await r.unmount();
+  });
+
   it('puts focus on the file picker button once an upload is cancelled', async () => {
     const card = (progress) => (
       <MediaUpload

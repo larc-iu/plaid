@@ -25,14 +25,18 @@ const OfflineCtx = () =>
 
 // The decodes wait their turn here, one at a time across every dialog, and
 // `use` runs inside the turn, so a decode left over from a closed dialog is
-// gone before the next one starts. A turn whose signal is aborted is skipped.
+// gone before the next one starts. A turn whose signal is aborted is skipped,
+// and one aborted while its file is read from disk decodes nothing. A decode
+// under way cannot be stopped: its samples are dropped when it ends.
 let turn = Promise.resolve();
 function withDecoded(file, rate, signal, use) {
   const run = turn.then(async () => {
     signal?.throwIfAborted();
     const Ctx = OfflineCtx();
     if (!Ctx) throw new Error('This browser has no OfflineAudioContext.');
-    const decoded = await new Ctx(1, 1, rate).decodeAudioData(await file.arrayBuffer());
+    const bytes = await file.arrayBuffer();
+    signal?.throwIfAborted();
+    const decoded = await new Ctx(1, 1, rate).decodeAudioData(bytes);
     signal?.throwIfAborted();
     return use(decoded);
   });

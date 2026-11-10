@@ -840,9 +840,9 @@ export const useMediaOperations = () => {
   // is unchanged, so segments made against either line up with the other.
   // `channelSpeakers` comes with a mix of several files, one per channel, and
   // is written to the document with the recording (mutations/document.js).
-  // `cancelUpload` aborts the upload and puts the card back at once. The
-  // document drops the send and reads itself again, so a file the server
-  // stored all the same shows up as the recording.
+  // `cancelUpload` aborts the upload, or the conversion before it, and puts
+  // the card back at once. The document drops the send and reads itself
+  // again, so a file the server stored all the same shows up as the recording.
   const handleMediaUpload = useCallback(
     async (file, { convert = false, channelSpeakers = null } = {}) => {
       // One at a time: nothing starts while a file converts or goes up.
@@ -860,11 +860,14 @@ export const useMediaOperations = () => {
         setUpload(doc, converting);
         try {
           sending = await transcodeToMp3(file, {
+            signal: abort.signal,
             onProgress: (fraction) => {
               if (ours()) setUpload(doc, { ...converting, fraction });
             },
           });
         } catch (error) {
+          // Cancelled: the card is back already, and nothing is said.
+          if (abort.signal.aborted) return;
           console.error('Converting the recording failed:', error);
           if (ours()) setUpload(doc, null);
           notifyError(

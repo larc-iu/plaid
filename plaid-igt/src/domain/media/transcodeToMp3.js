@@ -74,7 +74,10 @@ export const estimateMp3Bytes = (seconds) => Math.round((seconds * MP3_BITRATE_K
  * @returns {Promise<File|null>} null when cancelled
  */
 export async function transcodeToMp3(file, { onProgress, signal } = {}) {
-  const samples = await decodeTo16kMono(file);
+  const samples = await decodeTo16kMono(file, { signal }).catch((error) => {
+    if (signal?.aborted) return null;
+    throw error;
+  });
   if (signal?.aborted) return null;
 
   const worker = new Worker(new URL('./mp3Worker.js', import.meta.url), { type: 'module' });

@@ -21,7 +21,8 @@ import { ChannelSpeakersDialog } from './ChannelSpeakersDialog.jsx';
 // answer was lost goes again from the first byte until the server answers,
 // and the card says so under the bar, as the save pills do (SaveStatus).
 // `onCancel` stops the upload, and Cancel is on the card until every byte is
-// up: from then on the server stores the file whatever the browser does.
+// up: from then on the server stores the file whatever the browser does. It
+// stops a conversion to MP3 too, and is on the card all through one.
 //
 // The card has two modes, a view setting kept nowhere. Single (the default)
 // takes one file, and several are refused with a note naming the switch, so
@@ -89,6 +90,19 @@ export const MediaUpload = ({
   const pct = total > 0 ? (sent / total) * 100 : 0;
   const processing = !!progress && total > 0 && sent >= total;
   const canCancel = !!onCancel && !processing;
+  // Stops the upload, or the conversion to MP3 before it.
+  const cancelButton = (
+    <Button
+      variant="outline"
+      size="sm"
+      onClick={() => {
+        focusChoose.current = true;
+        onCancel();
+      }}
+    >
+      Cancel
+    </Button>
+  );
 
   // Over the server's limit there is no question to ask: sending it as it is
   // would fail after the whole upload.
@@ -207,7 +221,10 @@ export const MediaUpload = ({
                 </span>
               </div>
               <Progress value={convertProgress.fraction * 100} label="Conversion progress" />
-              <p className="text-xs text-muted-foreground">Converting to MP3.</p>
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-xs text-muted-foreground">Converting to MP3.</p>
+                {onCancel && cancelButton}
+              </div>
             </div>
           ) : progress ? (
             <div className="flex w-[28rem] max-w-full flex-col gap-2" aria-live="polite">
@@ -226,18 +243,7 @@ export const MediaUpload = ({
               {(saves || canCancel) && (
                 <div className="flex items-center justify-between gap-3">
                   <span>{saves && <SaveStatus doc={saves} />}</span>
-                  {canCancel && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        focusChoose.current = true;
-                        onCancel();
-                      }}
-                    >
-                      Cancel
-                    </Button>
-                  )}
+                  {canCancel && cancelButton}
                 </div>
               )}
             </div>

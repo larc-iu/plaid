@@ -26,7 +26,8 @@ import { QualityChoice } from './QualityChoice.jsx';
 // since a recording's channels can be taken apart for transcription only in
 // a WAV. A file with one channel has no speakers to tell apart, and is not
 // uploaded from here. `readFile` and `makeWav` are readChannelFile and
-// keptChannelsWav unless a test says what the file holds.
+// keptChannelsWav unless a test says what the file holds. Cancel or the
+// Close X while the WAV is made stops it and leaves the dialog as it was.
 
 const SPEAKER_LIST_ID = 'channel-file-speaker-options';
 
@@ -94,6 +95,7 @@ export function ChannelSpeakersDialog({
     convertAbort.current = abort;
     try {
       const wav = await makeWav({ ...read, file }, { quality, signal: abort.signal });
+      if (abort.signal.aborted) return;
       onOpenChange(false);
       onUpload(wav, { channelSpeakers });
     } catch (error) {
@@ -104,9 +106,21 @@ export function ChannelSpeakersDialog({
     }
   };
 
+  const stopConverting = () => {
+    convertAbort.current?.abort();
+    setConverting(false);
+  };
+
   return (
-    <Dialog open={open} onOpenChange={(next) => !converting && onOpenChange(next)}>
-      <DialogContent className="max-w-lg" closeLabel="Close Speakers per channel">
+    <Dialog
+      open={open}
+      onOpenChange={(next) => (converting ? stopConverting() : onOpenChange(next))}
+    >
+      <DialogContent
+        className="max-w-lg"
+        closeLabel="Close Speakers per channel"
+        onInteractOutside={(e) => converting && e.preventDefault()}
+      >
         <DialogHeader>
           <DialogTitle>Speakers per channel</DialogTitle>
           <DialogDescription>One file with a speaker on each channel.</DialogDescription>
@@ -191,7 +205,10 @@ export function ChannelSpeakersDialog({
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={converting}>
+          <Button
+            variant="outline"
+            onClick={() => (converting ? stopConverting() : onOpenChange(false))}
+          >
             Cancel
           </Button>
           <Button onClick={upload} disabled={!canUpload}>

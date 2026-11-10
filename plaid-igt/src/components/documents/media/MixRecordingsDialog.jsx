@@ -22,7 +22,8 @@ import { QualityChoice } from './QualityChoice.jsx';
 // and an offset for each, offers the two qualities with the size each comes
 // to, and refuses a mix the server would not take before a byte goes up.
 // The files are read one at a time and only their length, channels and rate
-// are kept. Closing the dialog stops the reads and the mix.
+// are kept. Closing the dialog stops the reads and the mix. Cancel or the
+// Close X while it mixes stops the mix and leaves the dialog as it was.
 // `decode` is readTrack unless a test says what the browser hears.
 
 const SPEAKER_LIST_ID = 'mix-speaker-options';
@@ -106,6 +107,7 @@ export function MixRecordingsDialog({
           onProgress: (index, total) => setMixing({ index, total }),
         },
       );
+      if (abort.signal.aborted) return;
       const channelSpeakers = tracks.map((t) => t.speaker.trim());
       onOpenChange(false);
       onUpload(file, { channelSpeakers });
@@ -117,9 +119,18 @@ export function MixRecordingsDialog({
     }
   };
 
+  const stopMix = () => {
+    mixAbort.current?.abort();
+    setMixing(null);
+  };
+
   return (
-    <Dialog open={open} onOpenChange={(next) => !mixing && onOpenChange(next)}>
-      <DialogContent className="max-w-2xl" closeLabel="Close Mix recordings">
+    <Dialog open={open} onOpenChange={(next) => (mixing ? stopMix() : onOpenChange(next))}>
+      <DialogContent
+        className="max-w-2xl"
+        closeLabel="Close Mix recordings"
+        onInteractOutside={(e) => mixing && e.preventDefault()}
+      >
         <DialogHeader>
           <DialogTitle>Mix recordings</DialogTitle>
           <DialogDescription>
@@ -213,7 +224,7 @@ export function MixRecordingsDialog({
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={!!mixing}>
+          <Button variant="outline" onClick={() => (mixing ? stopMix() : onOpenChange(false))}>
             Cancel
           </Button>
           <Button onClick={upload} disabled={!ready || failed || overLimit || !!mixing}>

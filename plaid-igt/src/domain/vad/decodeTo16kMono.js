@@ -50,16 +50,20 @@ const resampleMono = async (samples, fromRate, toRate) => {
  * Decode `blob` at 16 kHz: `{ mono, channels, channelCount }`, where
  * `channels` is one Float32Array per channel when `perChannel` is asked for
  * and null otherwise. Throws with the browser's own message when the file is
- * not decodable audio (a video container without an audio track, say).
+ * not decodable audio (a video container without an audio track, say), and
+ * an AbortError once `signal` is aborted, at the next step: the browser's
+ * decode itself cannot be stopped.
  */
-export async function decodeTo16k(blob, { perChannel = false } = {}) {
+export async function decodeTo16k(blob, { perChannel = false, signal } = {}) {
   const Ctx = OfflineCtx();
   if (!Ctx) throw new Error('This browser has no OfflineAudioContext.');
   // `arrayBuffer()` hands back a fresh copy each call, and decodeAudioData
   // detaches what it is given, so this never disturbs another decode of the
   // same blob.
   const bytes = await blob.arrayBuffer();
+  signal?.throwIfAborted();
   const decoded = await new Ctx(1, 1, TARGET_RATE).decodeAudioData(bytes);
+  signal?.throwIfAborted();
   const at16k = async (samples) =>
     decoded.sampleRate === TARGET_RATE
       ? samples
@@ -70,7 +74,7 @@ export async function decodeTo16k(blob, { perChannel = false } = {}) {
   return { mono, channels: kept, channelCount: channels.length };
 }
 
-/** Decode `blob` to a mono Float32Array at 16 kHz. */
-export async function decodeTo16kMono(blob) {
-  return (await decodeTo16k(blob)).mono;
+/** Decode `blob` to a mono Float32Array at 16 kHz, stopped by `signal` as decodeTo16k is. */
+export async function decodeTo16kMono(blob, { signal } = {}) {
+  return (await decodeTo16k(blob, { signal })).mono;
 }

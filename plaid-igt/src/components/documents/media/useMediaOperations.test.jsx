@@ -1444,6 +1444,48 @@ describe('useMediaOperations: cancelling an upload', () => {
     await again.unmount();
   });
 
+  // Cancel during a conversion to MP3 stops the conversion itself, on the tab
+  // mounted again as on the first: nothing goes up and nothing is said, even
+  // when the conversion answers late or fails once it is stopped.
+  it.each([
+    ['answers null once stopped', (c) => c.resolve(null)],
+    ['fails once stopped', (c) => c.reject(new Error('decode failed'))],
+    ['finishes all the same', (c) => c.resolve(new File(['z'], 'talk.mp3'))],
+  ])('Cancel during a conversion stops it, and nothing is uploaded when it %s', async (_, end) => {
+    const converting = deferred();
+    let signal;
+    transcodeToMp3.mockImplementationOnce((file, options) => {
+      signal = options.signal;
+      return converting.promise;
+    });
+    notifyError.mockClear();
+    const doc = withMedia(null, { document: { id: `doc-convert-cancel-${_}` } });
+    doc.uploadMedia = vi.fn(async () => true);
+    const first = await mountMedia({ doc });
+    await first.step(async () => {
+      first.api.handleMediaUpload(new File(['xy'], 'talk.wav'), { convert: true });
+      await settle();
+    });
+    expect(signal?.aborted).toBe(false);
+    await first.unmount();
+
+    const again = await mountMedia({ doc });
+    expect(again.api.convertProgress).toMatchObject({ name: 'talk.wav' });
+    await again.step(() => again.api.cancelUpload());
+    expect(signal.aborted).toBe(true);
+    expect(again.api.convertProgress).toBeNull();
+    expect(again.api.isUploading).toBe(false);
+    await again.step(async () => {
+      end(converting);
+      await settle();
+    });
+    expect(doc.uploadMedia).not.toHaveBeenCalled();
+    expect(notifyError).not.toHaveBeenCalled();
+    expect(again.api.convertProgress).toBeNull();
+    expect(again.api.isUploading).toBe(false);
+    await again.unmount();
+  });
+
   // A version from History is the same document as it was: it has no upload.
   it('a past version of the document shows no upload', async () => {
     const doc = withMedia(null);

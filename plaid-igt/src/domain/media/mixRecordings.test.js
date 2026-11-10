@@ -190,6 +190,59 @@ describe('mixTracks', () => {
   });
 });
 
+// A long file takes a while to be read from disk before its decode. Cancel
+// in that while (FX-M4, the browser replay) decoded the whole file all the
+// same before the mix stopped.
+describe('a stop while a file is still being read', () => {
+  const slowFile = (name) => {
+    let release;
+    const file = {
+      name,
+      arrayBuffer: () =>
+        new Promise((ok) => {
+          release = () => ok(new TextEncoder().encode(name).buffer);
+        }),
+    };
+    return { file, release: () => release() };
+  };
+
+  it('decodes nothing more in a mix', async () => {
+    const events = [];
+    stubDecoder(events);
+    const abort = new AbortController();
+    const { file, release } = slowFile('ana:0.5');
+    const track = { file, name: 'ana', seconds: 1, sampleRate: 16000, offset: 0 };
+    const mixing = mixTracks([track], { signal: abort.signal }).then(
+      () => null,
+      (e) => e,
+    );
+    await new Promise((ok) => setTimeout(ok, 10));
+    abort.abort();
+    release();
+    expect((await mixing)?.name).toBe('AbortError');
+    expect(events).toEqual([]);
+  });
+
+  it('decodes nothing in a conversion to a WAV', async () => {
+    const events = [];
+    stubDecoder(events);
+    const abort = new AbortController();
+    const { file, release } = slowFile('talk.mp3:0.5:2');
+    const making = keptChannelsWav(
+      { file, channels: 2, seconds: 1, sampleRate: 16000 },
+      { signal: abort.signal },
+    ).then(
+      () => null,
+      (e) => e,
+    );
+    await new Promise((ok) => setTimeout(ok, 10));
+    abort.abort();
+    release();
+    expect((await making)?.name).toBe('AbortError');
+    expect(events).toEqual([]);
+  });
+});
+
 describe('keptChannelsWav', () => {
   const pcm = (bytes, at) => new DataView(bytes.buffer).getInt16(at, true);
 

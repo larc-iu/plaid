@@ -1,6 +1,9 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { renderComponent, all } from '@ui/test/renderComponent.jsx';
 import { ChannelSpeakersDialog } from './ChannelSpeakersDialog.jsx';
+import { notifyError } from '@/utils/feedback';
+
+vi.mock('@/utils/feedback', () => ({ notifyError: vi.fn() }));
 
 // One file with a speaker per channel, chosen under Per speaker: no mix, a
 // speaker per channel, and a WAV uploaded as it is with the
@@ -143,6 +146,78 @@ describe('ChannelSpeakersDialog', () => {
     expect(makeWav.mock.calls[0][1]).toMatchObject({ quality: 'small' });
     expect(onUpload).toHaveBeenCalledWith(wav, { channelSpeakers: ['Ana', 'Ben'] });
   });
+
+  // Cancel and the Close X while the WAV is made stop it and leave the dialog
+  // as it was before Upload. Nothing is uploaded and nothing is said when the
+  // stopped conversion ends, however it ends.
+  it.each([
+    ['Cancel', 'fails', 'Cancel', (c) => c.reject(new Error('decode failed'))],
+    [
+      'the Close X',
+      'finishes',
+      'Close Speakers per channel',
+      (c) => c.resolve(new File(['w'], 'talk.wav')),
+    ],
+  ])(
+    '%s while it converts stops the conversion and leaves the dialog ready, even when it %s',
+    async (_, _how, label, end) => {
+      notifyError.mockClear();
+      const onUpload = vi.fn();
+      const onOpenChange = vi.fn();
+      const runs = [];
+      const makeWav = vi.fn((_track, { signal }) => {
+        let resolve;
+        let reject;
+        const promise = new Promise((ok, no) => {
+          resolve = ok;
+          reject = no;
+        });
+        runs.push({ signal, resolve, reject });
+        return promise;
+      });
+      vi.spyOn(console, 'error').mockImplementation(() => {});
+      view = await renderComponent(
+        <ChannelSpeakersDialog
+          open
+          file={mp3()}
+          onOpenChange={onOpenChange}
+          onUpload={onUpload}
+          readFile={async () => mp3Read}
+          makeWav={makeWav}
+        />,
+      );
+      await settled();
+      await type(field('Channel 1 speaker'), 'Ana');
+      await view.step(() => radio('Smaller').click());
+      await view.step(() => button('Upload').click());
+      expect(text()).toContain('Converting to WAV.');
+      expect(button(label).disabled).toBe(false);
+      await view.step(() => button(label).click());
+      expect(runs[0].signal.aborted).toBe(true);
+      expect(onOpenChange).not.toHaveBeenCalledWith(false);
+      expect(text()).not.toContain('Converting to WAV.');
+      expect(field('Channel 1 speaker').value).toBe('Ana');
+      expect(field('Channel 1 speaker').disabled).toBe(false);
+      expect(radio('Smaller').checked).toBe(true);
+      expect(button('Upload').disabled).toBe(false);
+      await view.step(async () => {
+        end(runs[0]);
+        await new Promise((ok) => setTimeout(ok, 10));
+      });
+      expect(onUpload).not.toHaveBeenCalled();
+      expect(text()).not.toContain('Converting to WAV.');
+      expect(button('Upload').disabled).toBe(false);
+      expect(notifyError).not.toHaveBeenCalled();
+      await view.step(() => button('Upload').click());
+      expect(runs).toHaveLength(2);
+      expect(runs[1].signal.aborted).toBe(false);
+      await view.step(async () => {
+        runs[1].resolve(new File(['w'], 'talk.wav'));
+        await new Promise((ok) => setTimeout(ok, 10));
+      });
+      expect(onUpload).toHaveBeenCalledTimes(1);
+    },
+  );
 
   it('checks the WAV against the server limit, not the file chosen', async () => {
     const onUpload = vi.fn();

@@ -180,6 +180,74 @@ describe('MixRecordingsDialog', () => {
     expect(onUpload).not.toHaveBeenCalled();
   });
 
+  // Cancel and the Close X while it mixes stop the mix and leave the dialog
+  // as it was before Upload: open, its fields as they were, Upload ready to
+  // press again. Nothing is uploaded and nothing is said when the stopped mix
+  // ends, however it ends.
+  it.each([
+    [
+      'Cancel',
+      'rejects',
+      () => button('Cancel'),
+      (m) => m.reject(new DOMException('', 'AbortError')),
+    ],
+    [
+      'the Close X',
+      'finishes',
+      () => button('Close Mix recordings'),
+      (m) => m.resolve(new File(['w'], 'mix.wav')),
+    ],
+  ])(
+    '%s while it mixes stops the mix and leaves the dialog ready, even when the mix %s',
+    async (_, _how, control, end) => {
+      const { notifyError } = await import('@/utils/feedback');
+      notifyError.mockClear();
+      const onUpload = vi.fn();
+      const onOpenChange = vi.fn();
+      const mixes = [];
+      mixTracks.mockImplementation((_tracks, opts) => {
+        let resolve;
+        let reject;
+        const promise = new Promise((ok, no) => {
+          resolve = ok;
+          reject = no;
+        });
+        mixes.push({ signal: opts.signal, resolve, reject });
+        return promise;
+      });
+      await mount({ onUpload, onOpenChange });
+      await type(field('ana.wav speaker'), 'Ana');
+      await type(field('ben.wav offset in seconds'), '1.5');
+      await view.step(() => button('Upload').click());
+      expect(control().disabled).toBe(false);
+      await view.step(() => control().click());
+      expect(mixes[0].signal.aborted).toBe(true);
+      expect(onOpenChange).not.toHaveBeenCalledWith(false);
+      expect(text()).not.toContain('Mixing');
+      expect(field('ana.wav speaker').value).toBe('Ana');
+      expect(field('ana.wav speaker').disabled).toBe(false);
+      expect(field('ben.wav offset in seconds').value).toBe('1.5');
+      expect(button('Upload').disabled).toBe(false);
+      await view.step(async () => {
+        end(mixes[0]);
+        await new Promise((ok) => setTimeout(ok, 10));
+      });
+      expect(onUpload).not.toHaveBeenCalled();
+      expect(notifyError).not.toHaveBeenCalled();
+      expect(button('Upload').disabled).toBe(false);
+      // Upload again mixes again, under a signal of its own.
+      await view.step(() => button('Upload').click());
+      expect(mixes).toHaveLength(2);
+      expect(mixes[1].signal.aborted).toBe(false);
+      await view.step(async () => {
+        mixes[1].resolve(new File(['w'], 'mix.wav'));
+        await new Promise((ok) => setTimeout(ok, 10));
+      });
+      expect(onUpload).toHaveBeenCalledTimes(1);
+      expect(onUpload.mock.calls[0][1]).toEqual({ channelSpeakers: ['Ana', ''] });
+    },
+  );
+
   // REV-MIX-D-1: the mix works from what the fields held at the click, so a
   // speaker or an offset typed while it ran was shown and never used.
   it('takes no speaker or offset while it mixes', async () => {

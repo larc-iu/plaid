@@ -8,10 +8,10 @@ import { transcodeToMp3 } from './transcodeToMp3.js';
 // what is posted during the encode waits until the encode ends, and only
 // terminate() cuts it short.
 
-vi.mock('../vad/decodeTo16kMono.js', () => ({
-  TARGET_RATE: 16000,
-  decodeTo16kMono: async () => new Float32Array(16000),
+const { decodeTo16kMono } = vi.hoisted(() => ({
+  decodeTo16kMono: vi.fn(async () => new Float32Array(16000)),
 }));
+vi.mock('../vad/decodeTo16kMono.js', () => ({ TARGET_RATE: 16000, decodeTo16kMono }));
 
 let finishEncode;
 const workers = [];
@@ -66,5 +66,17 @@ describe('transcodeToMp3 stopped mid-encode', () => {
     const file = await result;
     expect(file.name).toBe('long.mp3');
     expect(file.size).toBe(3);
+  });
+
+  // The decode stops too, between its steps (FX-M4).
+  it('hands its signal to the decode', async () => {
+    vi.stubGlobal('Worker', SingleTaskWorker);
+    const controller = new AbortController();
+    const file = new File(['x'], 'long.wav');
+    const result = transcodeToMp3(file, { signal: controller.signal });
+    await vi.waitFor(() => expect(workers[0]?.busy).toBe(true));
+    expect(decodeTo16kMono).toHaveBeenLastCalledWith(file, { signal: controller.signal });
+    controller.abort();
+    await expect(result).resolves.toBeNull();
   });
 });
