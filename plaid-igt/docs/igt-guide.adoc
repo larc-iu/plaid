@@ -186,6 +186,7 @@ It is not mixed.
 A recording uploaded under **Per speaker** shows a **channel list** under the player.
 Each channel has its speaker, which you can change, and **Mute** and **Solo**, which only change what you hear.
 **Remove speakers per channel** under the list makes it a plain recording again.
+Speakers go on channels only at upload, so to have them back the recording is uploaded again.
 
 With the speakers filled in, the timeline draws one waveform lane per channel in the speaker's colour, speech detection and transcription list the channels so each runs on one channel alone, and every proposal and segment they make carries that channel's speaker.
 Two speakers' segments may overlap in time.

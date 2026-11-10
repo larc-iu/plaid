@@ -487,12 +487,22 @@ export const useMediaOperations = () => {
     [doc],
   );
   // The channels are not speakers after all: the recording then plays and
-  // shows as any other.
-  const removeChannelSpeakers = useCallback(() => {
+  // shows as any other. It asks first, as nothing puts the speakers back.
+  const removeChannelSpeakers = useCallback(async () => {
+    if (
+      !(await confirm({
+        title: 'Remove speakers per channel?',
+        description: 'Removes the speaker from every channel. This cannot be undone.',
+        confirmLabel: 'Remove',
+        destructive: true,
+      }))
+    ) {
+      return;
+    }
     doc
       .setMetadataKeys({ [CHANNEL_SPEAKERS_KEY]: null })
       .catch((err) => console.error('Could not remove the channel speakers:', err));
-  }, [doc]);
+  }, [doc, confirm]);
 
   // Whether the element has read the file it was handed. The file arrives
   // whole after the tab opens, and the transcript rows and the keys are live

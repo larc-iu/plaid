@@ -159,9 +159,25 @@ describe('useMediaOperations channels', () => {
     await h.unmount();
   });
 
-  it('the way back removes channelSpeakers', async () => {
+  it('the way back asks first, and removes channelSpeakers on Remove', async () => {
     const { h, doc } = await mount({ channelSpeakers: ['Ana', 'Ben', ''] });
-    await h.step(() => h.api.removeChannelSpeakers());
+    const dialog = () => document.querySelector('[role="alertdialog"]');
+    const answer = (label) =>
+      h.step(() =>
+        [...dialog().querySelectorAll('button')].find((b) => b.textContent === label).click(),
+      );
+
+    await h.step(() => void h.api.removeChannelSpeakers());
+    expect(dialog().textContent).toContain('Remove speakers per channel?');
+    expect(dialog().textContent).toContain(
+      'Removes the speaker from every channel. This cannot be undone.',
+    );
+    expect(doc.setMetadataKeys).not.toHaveBeenCalled();
+    await answer('Cancel');
+    expect(doc.setMetadataKeys).not.toHaveBeenCalled();
+
+    await h.step(() => void h.api.removeChannelSpeakers());
+    await answer('Remove');
     expect(doc.setMetadataKeys).toHaveBeenCalledWith({ channelSpeakers: null });
     await h.unmount();
   });

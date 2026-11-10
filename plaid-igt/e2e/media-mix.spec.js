@@ -355,6 +355,7 @@ test('one file with a channel per speaker goes up as it is under Per speaker, an
 
     // And back: no list, one lane, nothing stored.
     await list.getByRole('button', { name: 'Remove speakers per channel' }).click();
+    await page.getByRole('alertdialog').getByRole('button', { name: 'Remove' }).click();
     await expect(page.locator('[data-channel-list]')).toHaveCount(0);
     await expect(page.locator('canvas[data-waveform-lane]')).toHaveCount(0, { timeout: 20000 });
     await expect
