@@ -990,11 +990,15 @@ export class DocumentModel {
   // are answered from what they stored and write nothing twice, and the rest
   // run. The rebase resend after a real conflict is a new write on a new
   // version, and takes a new seed.
+  //
+  // Aborting `signal` drops the write (WriteQueue): an upload the person
+  // cancels. It resolves false with nothing reported, and the document is
+  // read again once the queue has drained when any of it had been sent.
   _queueWrite(
     label,
     send,
     named = operationLabel(label),
-    { reload = false, shown = true, kind, ref, recheck = null } = {},
+    { reload = false, shown = true, kind, ref, recheck = null, signal = null } = {},
   ) {
     const operation = this._operation || named;
     const conflictHandled = this._conflictHandled;
@@ -1069,7 +1073,7 @@ export class DocumentModel {
         off?.();
       }
     };
-    return this._writes.push(
+    const queued = this._writes.push(
       async () => {
         this._unsent = this._unsent.filter((u) => u !== unsent);
         // The document was found deleted since it was queued.
@@ -1102,6 +1106,7 @@ export class DocumentModel {
       },
       {
         shown,
+        signal,
         resendWhenBack: (err) => isUnknownOutcome(err),
         resendWhileLocked: isLockedByOther,
         refused: (err) => {
@@ -1139,6 +1144,13 @@ export class DocumentModel {
           unsent.stale || this._deleted ? undefined : this._reloadAfterFailure(conflict),
       },
     );
+    // A write dropped before its turn never ran the send above, which is
+    // where it leaves `_unsent`.
+    return signal
+      ? queued.finally(() => {
+          this._unsent = this._unsent.filter((u) => u !== unsent);
+        })
+      : queued;
   }
 
   // After a refusal for a changed document: read it.

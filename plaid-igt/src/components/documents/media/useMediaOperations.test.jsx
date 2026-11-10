@@ -1188,3 +1188,47 @@ describe('useMediaOperations: transcribing per channel', () => {
     await h.unmount();
   });
 });
+
+// Cancel on the upload card: the upload's signal is aborted (the document
+// drops the send, see IgtDocument.uploadMedia) and the card is idle at once.
+describe('useMediaOperations: cancelling an upload', () => {
+  it('aborts the upload and leaves the card idle, and a later upload is not reset by it', async () => {
+    const doc = withMedia(null);
+    const sends = [];
+    doc.uploadMedia = vi.fn((file, { signal }) => {
+      const d = deferred();
+      sends.push({ file, signal, ...d });
+      return d.promise;
+    });
+    const h = await mountMedia({ doc });
+    await h.step(async () => {
+      h.api.handleMediaUpload(new File(['x'], 'first.wav'));
+      await settle();
+    });
+    expect(h.api.isUploading).toBe(true);
+    expect(h.api.uploadProgress).toMatchObject({ name: 'first.wav' });
+
+    await h.step(() => h.api.cancelUpload());
+    expect(sends[0].signal.aborted).toBe(true);
+    expect(h.api.isUploading).toBe(false);
+    expect(h.api.uploadProgress).toBeNull();
+
+    await h.step(async () => {
+      h.api.handleMediaUpload(new File(['y'], 'second.wav'));
+      await settle();
+    });
+    await h.step(async () => {
+      sends[0].resolve(false);
+      await settle();
+    });
+    expect(h.api.isUploading).toBe(true);
+    expect(h.api.uploadProgress).toMatchObject({ name: 'second.wav' });
+    expect(sends[1].signal.aborted).toBe(false);
+    await h.step(async () => {
+      sends[1].resolve(true);
+      await settle();
+    });
+    expect(h.api.isUploading).toBe(false);
+    await h.unmount();
+  });
+});

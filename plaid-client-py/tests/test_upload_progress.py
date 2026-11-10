@@ -116,3 +116,78 @@ def test_a_retried_upload_starts_the_body_over(monkeypatch):
     assert len(attempts) == 2
     assert attempts[0] == attempts[1]
     assert b'abc' in attempts[1]
+
+
+# A ``signal`` (a threading.Event) stops an upload, as the JS client's
+# AbortSignal does: once set, the body stops between two blocks, the call
+# raises UploadAborted, and nothing is sent again.
+
+def test_a_set_signal_stops_the_upload_between_blocks_and_raises_upload_aborted():
+    import threading
+
+    import pytest
+
+    from plaid_client import UploadAborted
+
+    client = make_client()
+    signal = threading.Event()
+    seen = []
+
+    def progress(p):
+        seen.append(p)
+        if len(seen) == 2:
+            signal.set()
+
+    with pytest.raises(UploadAborted):
+        client.documents.upload_media(
+            'doc-1', ('talk.wav', io.BytesIO(b'RIFF' * 40), 'audio/wav'),
+            on_progress=progress, signal=signal)
+    assert len(seen) == 2, 'no block was read once the signal was set'
+    assert client.session.calls == [], 'the request never finished'
+
+
+def test_an_upload_whose_signal_is_set_sends_nothing():
+    import threading
+
+    import pytest
+
+    from plaid_client import UploadAborted
+
+    client = make_client()
+    signal = threading.Event()
+    signal.set()
+    with pytest.raises(UploadAborted):
+        client.documents.upload_media('doc-1', ('talk.wav', io.BytesIO(b'x'), 'audio/wav'),
+                                      signal=signal)
+    assert client.session.calls == []
+
+
+def test_a_set_signal_is_not_retried_as_a_busy_server_is(monkeypatch):
+    import threading
+
+    import pytest
+
+    import plaid_client.http as http
+    from plaid_client import UploadAborted
+
+    monkeypatch.setattr(http.time, 'sleep', lambda s: None)
+    client = make_client()
+    signal = threading.Event()
+
+    class BusySetsSignal(FakeSession):
+        def request(self, **kwargs):
+            super().request(**kwargs)
+            signal.set()
+            busy = FakeResponse()
+            busy.ok = False
+            busy.status_code = 503
+            busy.text = '{"error": "Database busy"}'
+            busy.json = lambda: {'error': 'Database busy'}
+            busy.reason = 'Service Unavailable'
+            return busy
+
+    client.session = BusySetsSignal()
+    with pytest.raises(UploadAborted):
+        client.documents.upload_media('doc-1', ('talk.wav', io.BytesIO(b'x'), 'audio/wav'),
+                                      signal=signal)
+    assert len(client.session.calls) == 1

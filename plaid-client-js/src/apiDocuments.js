@@ -345,10 +345,10 @@ export function documentsApi(client) {
      * @param {string} documentId - The document ID
      * @param {File} file - The file to upload
      * @param {string} [auditMessage] - Custom audit-log message for this write
-     * @param {{onProgress?: (progress: {loaded: number, total: number | null}) => void}} [options] - `{ onProgress }`: called with `{ loaded, total }` (bytes) as the file goes up. In a browser the upload then travels by XMLHttpRequest, and the request timeout only fires when the upload stalls, not on total time.
+     * @param {{onProgress?: (progress: {loaded: number, total: number | null}) => void, signal?: AbortSignal}} [options] - `{ onProgress, signal }`. `onProgress` is called with `{ loaded, total }` (bytes) as the file goes up. In a browser the upload then travels by XMLHttpRequest, and the request timeout only fires when the upload stalls, not on total time. Aborting `signal` cuts the upload off and rejects with an AbortError. Aborted once the whole file has gone up, the server may still store it: read the document to know.
      * @returns {Promise<{message: string, extension: string, contentType: string}>}
      */
-    uploadMedia: (documentId, file, auditMessage, { onProgress } = {}) => {
+    uploadMedia: (documentId, file, auditMessage, { onProgress, signal } = {}) => {
       const fd = new FormData();
       fd.append("file", file);
       return client._request("PUT", `/api/v1/documents/${documentId}/media`, {
@@ -357,6 +357,7 @@ export function documentsApi(client) {
         formData: true,
         noBatch: true,
         onUploadProgress: onProgress,
+        signal,
       });
     },
     /**

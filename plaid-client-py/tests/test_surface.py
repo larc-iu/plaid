@@ -183,6 +183,7 @@ PY_ONLY = {
     **dict.fromkeys(['PROV_KEY', 'PROV_SOURCE_KEY', 'PROV_CONFIRMED_KEY', 'PROV_PROB_KEY', 'PROV_DETAIL_KEY'],
                     'JS groups the provenance keys in PROV'),
     'PlaidAPIError': 'JS throws an Error carrying the same fields',
+    'UploadAborted': "JS rejects with the AbortSignal's own AbortError",
     'close': 'closes the requests session, which the browser has none of',
 }
 

@@ -130,3 +130,81 @@ test('without onProgress the upload still goes by fetch', async () => {
     assert.equal(FakeXHR.last, null);
   });
 });
+
+// A `signal` stops an upload: aborted, the request is cut off and the call
+// rejects with the signal's reason (an AbortError), never as a network error
+// a caller would send again.
+
+test('an aborted signal cuts off an upload in flight and rejects with an AbortError', async () => {
+  await withFakeXhr(async () => {
+    const abort = new AbortController();
+    FakeXHR.onSend = (xhr) => {
+      xhr.upload.onprogress({ loaded: 5, total: 10, lengthComputable: true });
+      abort.abort();
+    };
+    await assert.rejects(
+      makeClient().documents.uploadMedia('doc-1', new Blob(['abc']), undefined, {
+        onProgress: () => {},
+        signal: abort.signal,
+      }),
+      (e) => e.name === 'AbortError' && e.status === undefined,
+    );
+    assert.equal(FakeXHR.last.aborted, true);
+  });
+});
+
+test('an upload whose signal is already aborted sends nothing', async () => {
+  await withFakeXhr(async () => {
+    let sent = 0;
+    FakeXHR.onSend = () => {
+      sent += 1;
+    };
+    const abort = new AbortController();
+    abort.abort();
+    await assert.rejects(
+      makeClient().documents.uploadMedia('doc-1', new Blob(['abc']), undefined, {
+        onProgress: () => {},
+        signal: abort.signal,
+      }),
+      (e) => e.name === 'AbortError',
+    );
+    assert.equal(sent, 0);
+  });
+});
+
+test('an aborted signal is not retried as a busy server is', async () => {
+  await withFakeXhr(async () => {
+    const abort = new AbortController();
+    let sent = 0;
+    FakeXHR.onSend = (xhr) => {
+      sent += 1;
+      abort.abort();
+      xhr.respond({ status: 503, statusText: 'Busy', json: { error: 'Database busy' } });
+    };
+    await assert.rejects(
+      makeClient().documents.uploadMedia('doc-1', new Blob(['abc']), undefined, {
+        onProgress: () => {},
+        signal: abort.signal,
+      }),
+      (e) => e.name === 'AbortError',
+    );
+    assert.equal(sent, 1);
+  });
+});
+
+test('without onProgress the signal stops the fetch', async () => {
+  await withFakeXhr(async () => {
+    const abort = new AbortController();
+    globalThis.fetch = (_url, options) =>
+      new Promise((_resolve, reject) => {
+        options.signal.addEventListener('abort', () => reject(options.signal.reason));
+        abort.abort();
+      });
+    await assert.rejects(
+      makeClient().documents.uploadMedia('doc-1', new Blob(['abc']), undefined, {
+        signal: abort.signal,
+      }),
+      (e) => e.name === 'AbortError' && e.status === undefined,
+    );
+  });
+});

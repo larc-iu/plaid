@@ -35,6 +35,7 @@ export function DocumentMedia() {
       <div className="flex flex-col gap-6">
         <MediaUpload
           onUpload={mediaOps.handleMediaUpload}
+          onCancel={mediaOps.cancelUpload}
           isUploading={mediaOps.isUploading}
           progress={mediaOps.uploadProgress}
           saves={doc}

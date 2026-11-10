@@ -282,6 +282,55 @@ describe('MediaUpload', () => {
     await r.unmount();
   });
 
+  // Cancel stops an upload while its bytes go up, or while it waits to be
+  // sent again. Once every byte is up the server stores the file whatever the
+  // browser does, so Cancel is not offered then.
+  it('offers Cancel while the bytes go up, and not once every byte is up', async () => {
+    const onCancel = vi.fn();
+    const card = (loaded) => (
+      <MediaUpload
+        onUpload={vi.fn()}
+        onCancel={onCancel}
+        isUploading
+        progress={{ name: 'talk.wav', loaded, total: 1000 }}
+      />
+    );
+    const r = await renderComponent(card(250));
+    const cancel = buttonSaying(r.container, 'Cancel');
+    expect(cancel.disabled).toBe(false);
+    await r.step(() => cancel.click());
+    expect(onCancel).toHaveBeenCalledTimes(1);
+    await r.rerender(card(1000));
+    expect(buttonSaying(r.container, 'Cancel').disabled).toBe(true);
+    await r.unmount();
+  });
+
+  it('is back on the mode it had once an upload is cancelled', async () => {
+    const card = (progress) => (
+      <MediaUpload
+        onUpload={vi.fn()}
+        onCancel={vi.fn()}
+        isUploading={!!progress}
+        progress={progress}
+      />
+    );
+    const r = await renderComponent(card(null));
+    await r.step(() =>
+      all(r.container, 'button')
+        .find((b) => b.textContent === 'Per speaker')
+        .click(),
+    );
+    await r.rerender(card({ name: 'talk.wav', loaded: 250, total: 1000 }));
+    await r.rerender(card(null));
+    expect(
+      all(r.container, 'button')
+        .find((b) => b.textContent === 'Per speaker')
+        .getAttribute('aria-pressed'),
+    ).toBe('true');
+    expect(buttonSaying(r.container, 'Choose media files').disabled).toBe(false);
+    await r.unmount();
+  });
+
   // The card has two modes, Single (the default) and Per speaker. Single
   // takes one file, and several are refused with a note naming the switch.
   // Per speaker takes several files, mixed in the mix dialog, or one file

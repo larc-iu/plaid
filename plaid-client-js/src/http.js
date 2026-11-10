@@ -360,17 +360,22 @@ export function timeoutSignal(timeout) {
  * re-armed by every progress event, so a large file on a slow link is never
  * cut off while it is still moving, only once nothing has moved for `timeout`
  * ms. Rejects the way fetch does: a TypeError for a network failure, an error
- * named TimeoutError for a stall.
+ * named TimeoutError for a stall, and the reason of `signal` (an AbortError)
+ * once it is aborted, which also cuts the request off.
  * @param {string} url
  * @param {{method: string, headers: Record<string, string>, body: any}} request
- * @param {{onUploadProgress?: (progress: {loaded: number, total: number | null}) => void, timeout?: number | null}} [options]
+ * @param {{onUploadProgress?: (progress: {loaded: number, total: number | null}) => void, timeout?: number | null, signal?: AbortSignal}} [options]
  */
 export function xhrSend(
   url,
   { method, headers, body },
-  { onUploadProgress, timeout } = {},
+  { onUploadProgress, timeout, signal } = {},
 ) {
   return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(signal.reason);
+      return;
+    }
     const xhr = new XMLHttpRequest();
     xhr.open(method, url);
     xhr.responseType = "arraybuffer";
@@ -378,7 +383,12 @@ export function xhrSend(
       xhr.setRequestHeader(name, value);
 
     let timer = null;
-    const disarm = () => clearTimeout(timer);
+    const cutOff = () => xhr.abort();
+    signal?.addEventListener("abort", cutOff, { once: true });
+    const disarm = () => {
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", cutOff);
+    };
     const arm = () => {
       if (!timeout || timeout <= 0) return;
       disarm();
@@ -438,9 +448,11 @@ export function xhrSend(
     xhr.onabort = () => {
       disarm();
       reject(
-        Object.assign(new Error(`Request aborted at ${url}`), {
-          name: "AbortError",
-        }),
+        signal?.aborted
+          ? signal.reason
+          : Object.assign(new Error(`Request aborted at ${url}`), {
+              name: "AbortError",
+            }),
       );
     };
 
@@ -677,10 +689,12 @@ async function learnOmittedVersionQuietly(client) {
 /**
  * One send of a request by fetch, under a fresh timeout signal: an
  * AbortSignal.timeout fires once and stays aborted, so a retry needs its own.
- * `timeoutMs` 0 or null sends with none.
+ * `timeoutMs` 0 or null sends with none. `abortSignal`, the caller's, stops
+ * it as well.
  */
-export function fetchWithTimeout(url, fetchOptions, timeoutMs) {
-  const signal = timeoutSignal(timeoutMs);
+export function fetchWithTimeout(url, fetchOptions, timeoutMs, abortSignal) {
+  const signals = [timeoutSignal(timeoutMs), abortSignal].filter(Boolean);
+  const signal = signals.length > 1 ? AbortSignal.any(signals) : signals[0];
   return fetch(url, signal ? { ...fetchOptions, signal } : fetchOptions);
 }
 
@@ -760,6 +774,9 @@ export function noteAuthError(client, error) {
  *                     request then travels by XMLHttpRequest (see xhrSend),
  *                     where the timeout only fires when the upload stalls;
  *                     elsewhere the callback is ignored and fetch is used.
+ *   signal          - An AbortSignal. Once it is aborted the request is cut
+ *                     off and never sent again, and the call rejects with the
+ *                     signal's reason (an AbortError).
  */
 /**
  * What a write about to go out needs to tell the lock keepers it renewed:
@@ -831,6 +848,7 @@ export async function makeRequest(client, method, path, options = {}) {
     onUploadProgress,
     learningOmittedVersion,
     noBusyRetry,
+    signal,
   } = options;
   if (method !== "GET" && omittedStrictDocument(client)) {
     await learnOmittedVersion(client);
@@ -873,9 +891,10 @@ export async function makeRequest(client, method, path, options = {}) {
       return xhrSend(url, fetchOptions, {
         onUploadProgress,
         timeout: timeoutMs,
+        signal,
       });
     }
-    return fetchWithTimeout(url, fetchOptions, timeoutMs);
+    return fetchWithTimeout(url, fetchOptions, timeoutMs, signal);
   };
 
   // One attempt: a 503, and for a keyed write a 502 or 504, surfaces as a
@@ -889,10 +908,12 @@ export async function makeRequest(client, method, path, options = {}) {
     writesLanded(client, started, headers.get(REPLAYED_HEADER) === "true");
 
   const attempt = async () => {
+    signal?.throwIfAborted();
     let res;
     try {
       res = await send();
     } catch (e) {
+      if (signal?.aborted) throw signal.reason;
       throw makeNetworkError(e, url, method);
     }
     if (
@@ -961,6 +982,7 @@ export async function makeRequest(client, method, path, options = {}) {
       return await response.text();
     }
   } catch (error) {
+    if (signal?.aborted && error === signal.reason) throw error;
     const escaped =
       error.status !== undefined ? error : makeNetworkError(error, url, method);
     if (keyed) escaped.idempotencyKey = key;

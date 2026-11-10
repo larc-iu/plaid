@@ -476,30 +476,39 @@ export const documentMutations = {
   // cuts stay: they name their recording by its print, so another recording
   // shows none of them, and the same one uploaded again (onto an archive
   // imported without its media) has them.
-  async uploadMedia(file, { onProgress, channelSpeakers = null } = {}) {
+  // Aborting `signal` cancels the upload: never sent again and not reported,
+  // no list written, and the document read again once the queue has drained,
+  // since the server may have stored the file all the same (_queueWrite).
+  async uploadMedia(file, { onProgress, channelSpeakers = null, signal } = {}) {
     if (!file) return false;
-    return this._queueWrite('Failed to upload media', async () => {
-      await this._client.documents.uploadMedia(this.id, file, undefined, { onProgress });
-      const stored = this._raw?.metadata || {};
-      const ops =
-        channelSpeakers || stored[CHANNEL_SPEAKERS_KEY] != null
-          ? metadataOps({ [CHANNEL_SPEAKERS_KEY]: channelSpeakers })
-          : [];
-      if (ops.length) {
-        try {
-          await this._client.documents.patchMetadata(this.id, ops);
-        } catch (err) {
-          // A lost answer or a lock goes round again with the upload. A
-          // refusal is said as what it is: the recording is uploaded.
-          if (isUnknownOutcome(err) || statusOf(err) === 423) throw err;
-          this._writeFailed(
-            channelSpeakers ? 'Speakers per channel not saved' : 'Failed to save metadata',
-            err,
-          );
+    const label = 'Failed to upload media';
+    return this._queueWrite(
+      label,
+      async () => {
+        await this._client.documents.uploadMedia(this.id, file, undefined, { onProgress, signal });
+        const stored = this._raw?.metadata || {};
+        const ops =
+          channelSpeakers || stored[CHANNEL_SPEAKERS_KEY] != null
+            ? metadataOps({ [CHANNEL_SPEAKERS_KEY]: channelSpeakers })
+            : [];
+        if (ops.length) {
+          try {
+            await this._client.documents.patchMetadata(this.id, ops);
+          } catch (err) {
+            // A lost answer or a lock goes round again with the upload. A
+            // refusal is said as what it is: the recording is uploaded.
+            if (isUnknownOutcome(err) || statusOf(err) === 423) throw err;
+            this._writeFailed(
+              channelSpeakers ? 'Speakers per channel not saved' : 'Failed to save metadata',
+              err,
+            );
+          }
         }
-      }
-      await this._reloadInSend();
-    });
+        await this._reloadInSend();
+      },
+      undefined,
+      { signal },
+    );
   },
 
   // The speech-detection cuts were measured on the recording, and the channel

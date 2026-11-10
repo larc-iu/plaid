@@ -179,6 +179,8 @@ export const useMediaOperations = () => {
   const [uploadProgress, setUploadProgress] = useState(null);
   // {name, fraction} while a recording is being converted, else null.
   const [convertProgress, setConvertProgress] = useState(null);
+  // The upload under way, for Cancel (`cancelUpload`): its AbortController.
+  const uploadAbortRef = useRef(null);
 
   // Listening preferences (see the *_KEY constants). `playbackRateRef` mirrors
   // the state for the deps-`[]` element registration, like `volumeRef`.
@@ -826,6 +828,9 @@ export const useMediaOperations = () => {
   // is unchanged, so segments made against either line up with the other.
   // `channelSpeakers` comes with a mix of several files, one per channel, and
   // is written to the document with the recording (mutations/document.js).
+  // `cancelUpload` aborts the upload and puts the card back at once. The
+  // document drops the send and reads itself again, so a file the server
+  // stored all the same shows up as the recording.
   const handleMediaUpload = useCallback(
     async (file, { convert = false, channelSpeakers = null } = {}) => {
       if (!file) return;
@@ -850,11 +855,14 @@ export const useMediaOperations = () => {
         if (!sending) return;
       }
 
+      const abort = new AbortController();
+      uploadAbortRef.current = abort;
       setIsUploading(true);
       setUploadProgress({ name: sending.name, loaded: 0, total: sending.size });
       try {
         const ok = await doc.uploadMedia(sending, {
           channelSpeakers,
+          signal: abort.signal,
           onProgress: ({ loaded, total }) =>
             setUploadProgress((p) => (p ? { ...p, loaded, total: total ?? p.total } : p)),
         });
@@ -862,12 +870,26 @@ export const useMediaOperations = () => {
           notifySuccess('Media file uploaded');
         }
       } finally {
-        setIsUploading(false);
-        setUploadProgress(null);
+        // A cancelled upload has put the card back already, and another may
+        // be under way by now.
+        if (uploadAbortRef.current === abort) {
+          uploadAbortRef.current = null;
+          setIsUploading(false);
+          setUploadProgress(null);
+        }
       }
     },
     [doc],
   );
+
+  const cancelUpload = useCallback(() => {
+    const abort = uploadAbortRef.current;
+    if (!abort) return;
+    uploadAbortRef.current = null;
+    abort.abort();
+    setIsUploading(false);
+    setUploadProgress(null);
+  }, []);
 
   const handleDeleteMedia = useCallback(async () => {
     if (!doc.document.id) return;
@@ -1526,6 +1548,7 @@ export const useMediaOperations = () => {
 
     // Media file operations
     handleMediaUpload,
+    cancelUpload,
     convertProgress,
     handleDeleteMedia,
 

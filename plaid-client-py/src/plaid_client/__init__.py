@@ -3,7 +3,7 @@ from plaid_client.document_lock import (
     DocumentLock,
     DocumentLockLost,
 )
-from plaid_client.http import PlaidAPIError
+from plaid_client.http import PlaidAPIError, UploadAborted
 from plaid_client.service import BaseService
 from plaid_client.services import (
     ServiceRegistrationError, ServiceCancelled, CancelScope, UNKNOWN_OUTCOME, UNREACHABLE,
@@ -87,6 +87,7 @@ __all__ = [
     "PlaidClient",
     "MAX_BATCH_OPS",
     "PlaidAPIError",
+    "UploadAborted",
     "DocumentLock",
     "DocumentLockLost",
     "BaseService",

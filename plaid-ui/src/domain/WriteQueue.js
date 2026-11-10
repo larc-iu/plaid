@@ -65,6 +65,15 @@
 // writes nothing. Meanwhile `isLocked` is true (not `isOffline`: the
 // server answered), and `onLockedChange(locked)` runs as it starts and ends.
 //
+// A send pushed with a `signal` (an upload the person cancels) is dropped
+// once the signal is aborted: one that has not started is never sent, one
+// being sent stops with it, and a resend waiting for the network or a lock
+// stops waiting. It is never sent again, is not refused (no `refused`, no
+// error) and resolves false, and the sends behind it go in their turn. One
+// that had started may have landed all the same (an answer lost before, or
+// the abort coming after the server took it), so the screen is refetched
+// once the queue has drained, as after `reloadWhenDrained`.
+//
 // Once the page is being unloaded (`pagehide`), no send starts. Leaving the
 // page aborts the send in flight, and the one behind it would otherwise go
 // out after the person agreed to leave. A page brought back from the
@@ -104,6 +113,14 @@ globalThis.addEventListener?.('pageshow', () => {
 });
 const untilShown = () =>
   unloading ? new Promise((resolve) => whenShown.add(resolve)) : Promise.resolve();
+
+// What `_sendUntilBack` throws for a send its signal dropped. `started` is
+// whether any attempt of it was made.
+class Dropped {
+  constructor(started) {
+    this.started = started;
+  }
+}
 
 export class WriteQueue {
   /**
@@ -260,7 +277,8 @@ export class WriteQueue {
    * failed send goes again until it is answered: true for a lost answer to a
    * send whose requests are keyed, so a resend writes nothing twice.
    * `resendWhileLocked(err)` says whether a send refused for another's lock
-   * goes again until the lock is gone.
+   * goes again until the lock is gone. Aborting `signal` drops the send
+   * (resolves false, see the note at the top).
    */
   push(
     send,
@@ -270,6 +288,7 @@ export class WriteQueue {
       shown = true,
       resendWhenBack = null,
       resendWhileLocked = null,
+      signal = null,
     } = {},
   ) {
     const entry = { shown };
@@ -281,9 +300,13 @@ export class WriteQueue {
       this._waiting.delete(entry);
       await untilShown();
       try {
-        await this._sendUntilBack(send, resendWhenBack, resendWhileLocked);
+        await this._sendUntilBack(send, resendWhenBack, resendWhileLocked, signal);
         return true;
       } catch (err) {
+        if (err instanceof Dropped) {
+          if (err.started) this._refetchWhenDrained(resync);
+          return false;
+        }
         // Its own refetch below stands in for one asked for earlier.
         if (shown) this.reloadWhenDrained = false;
         if (shown && resync) this._resyncWhenDrained = null;
@@ -309,21 +332,27 @@ export class WriteQueue {
 
   // Run `send`, and again each time it fails in a way `resendWhenBack` allows,
   // once the network is back, or in a way `resendWhileLocked` allows, a little
-  // later. `isOffline` or `isLocked` holds while it waits.
-  async _sendUntilBack(send, resendWhenBack, resendWhileLocked) {
+  // later. `isOffline` or `isLocked` holds while it waits. Throws Dropped once
+  // `signal` is aborted, whatever the send failed with.
+  async _sendUntilBack(send, resendWhenBack, resendWhileLocked, signal) {
+    const drop = (started) => {
+      this._setOffline(false);
+      this._setLocked(false);
+      return new Dropped(started);
+    };
     for (let attempt = 0; ; attempt += 1) {
+      if (signal?.aborted) throw drop(attempt > 0);
       try {
         await send();
         this._setOffline(false);
         this._setLocked(false);
         return;
       } catch (err) {
+        if (signal?.aborted) throw drop(true);
         if (resendWhileLocked?.(err)) {
           this._setOffline(false);
           this._setLocked(true);
-          await new Promise((resolve) =>
-            setTimeout(resolve, Math.min(this._retryDelay(attempt), LOCKED_WAIT_MAX)),
-          );
+          await this._wait(Math.min(this._retryDelay(attempt), LOCKED_WAIT_MAX), { signal });
           await untilShown();
           continue;
         }
@@ -334,23 +363,33 @@ export class WriteQueue {
         }
         console.error('A write got no answer, and goes again until it does:', err);
         this._setOffline(true);
-        await this._untilOnline(this._retryDelay(attempt));
+        await this._wait(this._retryDelay(attempt), { signal, online: true });
         await untilShown();
       }
     }
   }
 
-  // Resolves after `ms`, or as soon as the browser says the network is back.
-  _untilOnline(ms) {
+  // Resolves after `ms`, or as soon as `signal` is aborted, or with `online`
+  // as soon as the browser says the network is back.
+  _wait(ms, { signal = null, online = false } = {}) {
     return new Promise((resolve) => {
       const done = () => {
         clearTimeout(timer);
-        globalThis.removeEventListener?.('online', done);
+        if (online) globalThis.removeEventListener?.('online', done);
+        signal?.removeEventListener('abort', done);
         resolve();
       };
       const timer = setTimeout(done, ms);
-      globalThis.addEventListener?.('online', done);
+      if (online) globalThis.addEventListener?.('online', done);
+      signal?.addEventListener('abort', done);
     });
+  }
+
+  // Refetch once the queue has drained: the queue's own `reloadDrained`, else
+  // the caller's `resync`.
+  _refetchWhenDrained(resync) {
+    if (this._reloadDrained) this.reloadWhenDrained = true;
+    else if (resync) this._resyncWhenDrained = resync;
   }
 
   // What becomes of the sends queued behind a refusal once its refetch has
@@ -360,9 +399,7 @@ export class WriteQueue {
   // `reloadDrained` of the queue's own, that refetch is the caller's `resync`.
   _behindRefusal(resync) {
     const behind = [...this._waiting].some((w) => w.shown);
-    if (!behind) return;
-    if (this._reloadDrained) this.reloadWhenDrained = true;
-    else if (resync) this._resyncWhenDrained = resync;
+    if (behind) this._refetchWhenDrained(resync);
   }
 
   // The last queued send has landed (or been refused): refetch, when a send

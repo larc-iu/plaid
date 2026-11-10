@@ -453,28 +453,38 @@ def _learn_omitted_version_quietly(client):
         pass
 
 
+class UploadAborted(Exception):
+    """Raised by an upload whose ``signal`` was set before the whole file had
+    gone up. The upload is cut off and never sent again."""
+
+
 class _ProgressBody:
     """An encoded request body that reports how much of it has been read.
 
     ``http.client`` sends a file-like body by reading it in blocks, so what
     has been read is what has gone up the socket, give or take one block. Has
     a length so ``requests`` sends a Content-Length rather than chunking.
+    Once ``signal`` is set, the next read raises UploadAborted, which cuts
+    the request off.
     """
 
-    def __init__(self, data, callback):
+    def __init__(self, data, callback, signal=None):
         self._data = data
         self._pos = 0
         self._callback = callback
+        self._signal = signal
 
     def __len__(self):
         return len(self._data)
 
     def read(self, size=-1):
+        if self._signal is not None and self._signal.is_set():
+            raise UploadAborted('The upload was stopped')
         if size is None or size < 0:
             size = len(self._data) - self._pos
         chunk = self._data[self._pos:self._pos + size]
         self._pos += len(chunk)
-        if chunk:
+        if chunk and self._callback is not None:
             self._callback({'loaded': self._pos, 'total': len(self._data)})
         return chunk
 
@@ -663,7 +673,7 @@ def make_request(client, method, path, *, body=None, raw_body=None, form_data=Fa
                  no_auth=False, binary_response=False, audit_message=None,
                  timeout=_UNSET, on_upload_progress=None, versioned=True,
                  no_busy_retry=False, to_path=None, on_download_progress=None,
-                 _learning_omitted_version=False):
+                 signal=None, _learning_omitted_version=False):
     """Generic request method handling all HTTP logic.
 
     Args:
@@ -707,6 +717,11 @@ def make_request(client, method, path, *, body=None, raw_body=None, form_data=Fa
             up (the JS client's ``on_upload_progress``). The body is then
             encoded up front and streamed from memory, which is what
             ``requests`` does for ``files=`` anyway.
+        signal: For a multipart upload, a ``threading.Event``. Once it is set
+            the body stops between two blocks, the call raises
+            :class:`UploadAborted`, and nothing is sent again. The body is
+            then sent as with ``on_upload_progress``. Set after the whole body
+            has gone up, it changes nothing: the call waits for the answer.
     """
     if method != 'GET' and _omitted_strict_document(client):
         _learn_omitted_version(client)
@@ -748,7 +763,7 @@ def make_request(client, method, path, *, body=None, raw_body=None, form_data=Fa
             # request_body is a dict of {field: file_tuple} for multipart
             kwargs.pop('headers', None)
             kwargs['headers'] = {k: v for k, v in headers.items() if k != 'Content-Type'}
-            if on_upload_progress is not None:
+            if on_upload_progress is not None or signal is not None:
                 # requests' own encoder for ``files=``, so the body is byte
                 # for byte what the plain path would have sent; only the
                 # transport differs (a file-like body read in blocks).
@@ -768,12 +783,18 @@ def make_request(client, method, path, *, body=None, raw_body=None, form_data=Fa
     started = writes_started(client) if method != 'GET' and not out_of_band else ()
 
     def attempt():
+        if signal is not None and signal.is_set():
+            raise UploadAborted('The upload was stopped')
         if encoded_upload is not None:
             # A fresh body per attempt: a retried upload must start over.
-            kwargs['data'] = _ProgressBody(encoded_upload, on_upload_progress)
+            kwargs['data'] = _ProgressBody(encoded_upload, on_upload_progress, signal)
         try:
             resp = client.session.request(**kwargs)
+        except UploadAborted:
+            raise
         except Exception as e:
+            if signal is not None and signal.is_set():
+                raise UploadAborted('The upload was stopped') from e
             raise network_error(e, url, method)
         note_server_clock(client, getattr(resp, 'headers', None))
         # Raise a 503 from inside so retry_while_busy can see it; every other

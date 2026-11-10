@@ -2158,7 +2158,7 @@ class DocumentsResource(_MetadataMethods, _Resource):
         return {**link, 'url': f"{self._client.base_url}{link['url']}"}
 
     def upload_media(self, document_id: str, file, audit_message=None, *,
-                     on_progress=None) -> Any:
+                     on_progress=None, signal=None) -> Any:
         """Upload a media file for a document. Uses Apache Tika for content validation.
         A document that already has a recording refuses it with a 409
         (``media-exists``, and the current ``media-url``): delete that one first.
@@ -2176,10 +2176,15 @@ class DocumentsResource(_MetadataMethods, _Resource):
                 ``{'loaded': bytes_sent, 'total': body_bytes}`` as the file
                 goes up, for a progress bar; the same payload as the JS
                 client's ``onProgress``.
+            signal: Optional ``threading.Event`` (the JS client's AbortSignal).
+                Once it is set the upload stops and the call raises
+                :class:`UploadAborted`. Set once the whole file has gone up,
+                it changes nothing, and the server may store the file.
         """
         return self._request('PUT', f'/api/v1/documents/{document_id}/media',
                              body={'file': file}, form_data=True, no_batch=True,
-                             audit_message=audit_message, on_upload_progress=on_progress)
+                             audit_message=audit_message, on_upload_progress=on_progress,
+                             signal=signal)
 
     def delete_media(self, document_id: str, audit_message=None,
                      media_version: str = None) -> Any:
