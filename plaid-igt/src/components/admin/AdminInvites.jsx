@@ -302,8 +302,9 @@ export const AdminInvites = ({ client }) => {
           </DialogHeader>
           <div className="flex flex-col gap-4">
             <div className="flex flex-col gap-1.5">
-              <Label>How many</Label>
+              <Label htmlFor="invite-count">How many</Label>
               <Input
+                id="invite-count"
                 type="number"
                 min="1"
                 max="200"
@@ -313,12 +314,12 @@ export const AdminInvites = ({ client }) => {
               />
             </div>
             <div className="flex flex-col gap-1.5">
-              <Label>Project</Label>
+              <Label htmlFor="invite-project">Project</Label>
               <Select
                 value={batch.projectId}
                 onValueChange={(v) => setBatch({ ...batch, projectId: v })}
               >
-                <SelectTrigger>
+                <SelectTrigger id="invite-project">
                   <SelectValue placeholder="Choose a project" />
                 </SelectTrigger>
                 <SelectContent>
@@ -333,9 +334,9 @@ export const AdminInvites = ({ client }) => {
             </div>
             {batch.projectId !== NO_PROJECT && (
               <div className="flex flex-col gap-1.5">
-                <Label>Role</Label>
+                <Label htmlFor="invite-role">Role</Label>
                 <Select value={batch.role} onValueChange={(v) => setBatch({ ...batch, role: v })}>
-                  <SelectTrigger>
+                  <SelectTrigger id="invite-role">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -349,8 +350,9 @@ export const AdminInvites = ({ client }) => {
               </div>
             )}
             <div className="flex flex-col gap-1.5">
-              <Label>Expires in (days)</Label>
+              <Label htmlFor="invite-ttl">Expires in (days)</Label>
               <Input
+                id="invite-ttl"
                 type="number"
                 min="1"
                 max="365"
@@ -359,8 +361,9 @@ export const AdminInvites = ({ client }) => {
               />
             </div>
             <div className="flex flex-col gap-1.5">
-              <Label>Label</Label>
+              <Label htmlFor="invite-label">Label</Label>
               <Input
+                id="invite-label"
                 placeholder="Field methods Fall 2026"
                 value={batch.note}
                 onChange={(e) => setBatch({ ...batch, note: e.target.value })}
