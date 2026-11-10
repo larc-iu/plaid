@@ -584,7 +584,9 @@
   own metadata that refers to a loser (its parent was one) is the caller's:
   it rewrites that in the same batch.
 
-  Every document holding a moved or deleted link has its version bumped.
+  Every document holding a moved or deleted link has its version bumped. A
+  loser's link in a project being deleted is not moved or counted: it goes
+  with the loser, unaudited, as `delete-items!` removes it (R39).
   Returns {:moved n :duplicates n :removed [loser ids deleted]}."
   [db survivor-id loser-ids user-id]
   (let [loser-ids (vec (distinct loser-ids))]
@@ -611,11 +613,18 @@
                                  survivor-links (psc/q tx {:select [:id]
                                                            :from :vocab_links
                                                            :where [:= :vocab_item_id survivor-id]})
+                                 ;; A link in a project being deleted (R39) is
+                                 ;; not moved: the losers' delete removes it
+                                 ;; unaudited with no version bump, as the
+                                 ;; purge never reaches rows written under
+                                 ;; this op, which names no project.
                                  loser-links (if (seq existing-ids)
-                                               (psc/q tx {:select [:id :document_id]
-                                                          :from :vocab_links
-                                                          :where [:in :vocab_item_id existing-ids]
-                                                          :order-by [:rowid]})
+                                               (let [rows (psc/q tx {:select [:id :document_id]
+                                                                     :from :vocab_links
+                                                                     :where [:in :vocab_item_id existing-ids]
+                                                                     :order-by [:rowid]})
+                                                     hidden (hidden-document-ids tx (map :document_id rows))]
+                                                 (filterv #(not (contains? hidden (:document_id %))) rows))
                                                [])
                                  words (link-token-keys tx (into (mapv :id survivor-links)
                                                                  (map :id) loser-links))

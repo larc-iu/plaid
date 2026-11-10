@@ -159,3 +159,36 @@
               (pr-str rows)))
         (is (= doomed-version (version doomed)))))
     (is (= "greeting" (:form (psc/q1 db {:select [:form] :from [:vocab_items] :where [:= :id item]}))))))
+
+(deftest an-entry-merge-moves-and-audits-no-link-in-a-project-being-deleted
+  ;; REV-BL-A-3: merge-into, an operation that names no project, wrote a
+  ;; vocab_links update and a doc-version-bump for a hidden project's
+  ;; document, which the purge never reaches. That link is now left to the
+  ;; losers' delete, which removes it unaudited, and is not counted as moved.
+  (let [vocab (-> (create-vocab-layer admin-request "Shared") :body :id)
+        survivor (-> (create-vocab-item admin-request vocab "keep") :body :id)
+        loser (-> (create-vocab-item admin-request vocab "lose") :body :id)
+        doomed (project-with-link! "Doomed" vocab loser)
+        live (project-with-link! "Live" vocab loser)
+        version (fn [{:keys [doc]}] (:version (psc/q1 db {:select [:version] :from [:documents] :where [:= :id doc]})))
+        doomed-version (version doomed)]
+    (is (:success (prj/delete db (:proj doomed) "admin@example.com")))
+    (let [res (api-call admin-request {:method :post :path (str "/api/v1/vocab-items/" survivor "/merge")
+                                       :body {:losers [loser]}})]
+      (is (= 200 (:status res)) (pr-str res))
+      (is (= 1 (get-in res [:body :moved])) (pr-str res)))
+    (let [rows (op-rows "vocab-item/merge-into")]
+      (testing "nothing under the merge names the hidden project's link or document"
+        (is (not (names-any? rows doomed)) (pr-str rows)))
+      (testing "the live project's link move and version bump stay audited"
+        (is (some #(and (= "vocab_links" (:target_table %)) (= "update" (:change_type %))
+                        (= (str (:link live)) (str (:target_id %))))
+                  rows)
+            (pr-str rows))
+        (is (some #(and (= "doc-version-bump" (:change_type %)) (= (str (:doc live)) (str (:target_id %)))) rows)
+            (pr-str rows))))
+    (is (= doomed-version (version doomed)))
+    (testing "the live link now names the survivor, and the hidden one is gone with the loser"
+      (is (= (str survivor) (str (:vocab_item_id (psc/q1 db {:select [:vocab_item_id] :from [:vocab_links]
+                                                             :where [:= :id (:link live)]})))))
+      (is (empty? (psc/q db {:select [:id] :from [:vocab_links] :where [:= :id (:link doomed)]}))))))
