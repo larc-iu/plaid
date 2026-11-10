@@ -196,19 +196,30 @@ export const PULSE_CLASS = 'igt-confirmed';
 // is whether the person looking is one, whose Ctrl+Enter takes machine
 // proposals only. `readOnly`: the person cannot write here (a reader, a
 // History version), so the title names no key.
-const reviewHint = (readOnly) =>
-  readOnly ? '' : `. Edit to fix, ${keys.words('analyze.accept')} to accept the whole word`;
-const provStateText = (state, origin, contributor, note, readOnly) => {
+// `accepts`: what the key accepts. A word's cells go together, a sentence
+// field goes alone.
+const ACCEPTS_WORD = 'the whole word';
+export const ACCEPTS_FIELD = 'it as is';
+const reviewHint = (readOnly, accepts) =>
+  readOnly ? '' : `. Edit to fix, ${keys.words('analyze.accept')} to accept ${accepts}`;
+const provStateText = (state, origin, contributor, note, readOnly, accepts) => {
   if (state === PROV_STATES.MACHINE)
-    return `machine-made, unverified${note ? `, ${note}` : ''}${reviewHint(readOnly)}`;
+    return `machine-made, unverified${note ? `, ${note}` : ''}${reviewHint(readOnly, accepts)}`;
   if (state === PROV_STATES.CONTRIBUTED)
     return contributor
       ? 'contributed, awaiting review'
-      : `contributed, unverified${reviewHint(readOnly)}`;
+      : `contributed, unverified${reviewHint(readOnly, accepts)}`;
   return `${originWord(origin)}, confirmed`;
 };
-export const provTitle = (value, state, origin, contributor, note = null, readOnly = false) =>
-  `${value}: ${provStateText(state, origin, contributor, note, readOnly)}`;
+export const provTitle = (
+  value,
+  state,
+  origin,
+  contributor,
+  note = null,
+  readOnly = false,
+  accepts = ACCEPTS_WORD,
+) => `${value}: ${provStateText(state, origin, contributor, note, readOnly, accepts)}`;
 
 // The CSS classes of the marked material this writer reviews (see
 // IgtDocument.reviewable): the review sweep's stops and the confirm/discard

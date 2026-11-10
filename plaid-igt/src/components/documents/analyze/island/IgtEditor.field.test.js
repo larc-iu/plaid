@@ -142,3 +142,43 @@ describe('_field markup', () => {
     });
   }
 });
+
+// A sentence field has no word to accept, and a person who cannot write has no
+// key to press. The title said "accept the whole word" and then named the key a
+// second time, to a reader as well.
+describe('the title of a machine-made sentence field', () => {
+  const sentenceCell = (how) =>
+    draw(
+      {
+        ...BASE,
+        key: 'sa:s-1:Translation',
+        sentence: true,
+        value: 'cat',
+        prov: 'machine',
+        provOrigin: 'svc',
+      },
+      how,
+    ).attrs.title;
+
+  it('names the key once, and no word', () => {
+    expect(sentenceCell()).toBe(
+      'cat: machine-made, unverified. Edit to fix, Ctrl+Enter to accept it as is',
+    );
+  });
+
+  it('names no key to a person who cannot write', () => {
+    expect(sentenceCell({ readOnly: true })).toBe('cat: machine-made, unverified');
+  });
+
+  it('names no key on a value already confirmed', () => {
+    const title = draw({
+      ...BASE,
+      key: 'sa:s-1:Translation',
+      sentence: true,
+      value: 'cat',
+      prov: 'verified',
+      provOrigin: 'svc',
+    }).attrs.title;
+    expect(title).not.toMatch(/accept/);
+  });
+});

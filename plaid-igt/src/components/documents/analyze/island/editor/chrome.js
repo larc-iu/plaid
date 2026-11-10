@@ -276,8 +276,8 @@ export const chrome = {
 
   // The tooltip of a marked cell (see provStateText): its value and state,
   // with the two origins of a confirmed value told apart.
-  _cellTitle(value, state, origin, note = null) {
-    return provTitle(value, state, origin, this.doc.isContributor, note, this.readOnly);
+  _cellTitle(value, state, origin, note = null, accepts = undefined) {
+    return provTitle(value, state, origin, this.doc.isContributor, note, this.readOnly, accepts);
   },
 
   // A machine value's confidence against the project's threshold

@@ -28,6 +28,7 @@ import {
   cellByKey,
   cellTier,
   PRECEDENT_REFRESH_MIN_MS,
+  ACCEPTS_FIELD,
   provClass,
   uncontrolledValue,
 } from './editor/shared.js';
@@ -773,9 +774,7 @@ export class IgtEditor {
           aria-label=${label}
           aria-describedby=${describedBy}
           title=${violationTitle ??
-          (p
-            ? `${this._cellTitle(v, p, origin, confidence?.note)}. ${keys.words('analyze.accept')} to accept it as is`
-            : nothing)}
+          (p ? this._cellTitle(v, p, origin, confidence?.note, ACCEPTS_FIELD) : nothing)}
           rows="1"
           spellcheck="false"
           dir="auto"
