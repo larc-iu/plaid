@@ -597,7 +597,8 @@ const ProposalRow = memo(function ProposalRow({
   // A proposal with a speaker (a channel's, or a service's) makes a segment
   // with that speaker. One without takes the last speaker saved in this
   // document, as a new segment does, and follows it when another save
-  // changes it.
+  // changes it, until a person types into its speaker box. What they typed
+  // is theirs, and is what the segment is saved with.
   const sticky = useStickySpeaker(documentId);
   const [speaker, setSpeakerState] = useState(() => proposal.speaker || sticky);
   const ref = useRef(null);
@@ -610,6 +611,7 @@ const ProposalRow = memo(function ProposalRow({
   // Set once the proposal has become a segment. This row is unmounting by
   // then, and the blur it fires on the way out must not create a second one.
   const acceptedRef = useRef(false);
+  const speakerTyped = useRef(false);
 
   const setDraft = (value) => {
     draftRef.current = value;
@@ -620,7 +622,7 @@ const ProposalRow = memo(function ProposalRow({
     setSpeakerState(value);
   };
   useEffect(() => {
-    if (proposal.speaker) return;
+    if (proposal.speaker || speakerTyped.current) return;
     speakerRef.current = sticky;
     setSpeakerState(sticky);
   }, [proposal.speaker, sticky]);
@@ -702,7 +704,10 @@ const ProposalRow = memo(function ProposalRow({
         aria-label={`Proposed segment at ${formatTime(proposal.timeBegin)}, speaker`}
         autoComplete="off"
         className="h-8 text-xs"
-        onChange={(e) => setSpeaker(e.target.value)}
+        onChange={(e) => {
+          speakerTyped.current = true;
+          setSpeaker(e.target.value);
+        }}
         onKeyDown={onKeyDown}
         onBlur={commit}
       />
@@ -766,10 +771,14 @@ const NewSegmentRow = memo(function NewSegmentRow({
 }) {
   const [draft, setDraft] = useState('');
   // The speaker of the segment saved last in this document, here or anywhere
-  // else on the tab (a proposal, the timeline).
+  // else on the tab (a proposal, the timeline). A speaker typed into the box
+  // stays, whatever is saved elsewhere, until this row makes its segment.
   const sticky = useStickySpeaker(documentId);
   const [speaker, setSpeaker] = useState(sticky);
-  useEffect(() => setSpeaker(sticky), [sticky]);
+  const speakerTyped = useRef(false);
+  useEffect(() => {
+    if (!speakerTyped.current) setSpeaker(sticky);
+  }, [sticky]);
   const ref = useRef(null);
   const ready = currentTime > prevEnd + MIN_SEGMENT;
   const canCreate = ready && draft.trim().length > 0;
@@ -808,6 +817,7 @@ const NewSegmentRow = memo(function NewSegmentRow({
     // playing it can only be ahead of the display, never behind `prevEnd`.
     const exact = readCurrentTime?.();
     setDraft('');
+    speakerTyped.current = false;
     setStickySpeaker(documentId, speaker);
     const ok = await onCreate({
       text,
@@ -868,7 +878,10 @@ const NewSegmentRow = memo(function NewSegmentRow({
         aria-label="New segment speaker"
         autoComplete="off"
         className="h-8 text-xs"
-        onChange={(e) => setSpeaker(e.target.value)}
+        onChange={(e) => {
+          speakerTyped.current = true;
+          setSpeaker(e.target.value);
+        }}
         onKeyDown={onKeyDown}
       />
       <div className={cn(ROW_TEXT, 'flex flex-col gap-1')}>

@@ -1022,4 +1022,69 @@ describe('the speaker a new segment starts with', () => {
     expect(row('vad-2').querySelector('input').value).toBe('Ana');
     await r.unmount();
   });
+
+  // The boxes follow a save made elsewhere only until a person types into
+  // them (REV-FX-H7-1): a speaker typed by hand was replaced by the next
+  // segment's, and stored that way.
+  it('keeps a speaker typed by hand when another segment is saved, and saves with it', async () => {
+    const doc = { ...makeDoc({ body: 'the cat', tokens: TOKENS }), id: 'sticky-d' };
+    const ops = makeOps({
+      currentTime: 5,
+      vad: {
+        proposals: [
+          { id: 'vad-1', timeBegin: 3.2, timeEnd: 3.6 },
+          { id: 'vad-2', timeBegin: 3.8, timeEnd: 4.4 },
+        ],
+        dismiss: vi.fn(),
+      },
+    });
+    const r = await renderComponent(element(doc, ops));
+    const row = (id) => r.container.querySelector(`[data-vad-proposal-row="${id}"]`);
+    const newSpeaker = () => r.container.querySelector('input[aria-label="New segment speaker"]');
+    await r.step(() => setValue(row('vad-2').querySelector('input'), 'Ben'));
+    await r.step(() => setValue(newSpeaker(), 'Cy'));
+    await r.step(() => setValue(row('vad-1').querySelector('input'), 'Kim'));
+    await r.step(() => setValue(row('vad-1').querySelector('textarea'), 'hers'));
+    await r.step(async () => {
+      press(row('vad-1').querySelector('textarea'), 'Enter');
+      await settle();
+    });
+    expect(doc.createAlignment).toHaveBeenLastCalledWith(
+      expect.objectContaining({ speaker: 'Kim' }),
+    );
+    expect(row('vad-2').querySelector('input').value).toBe('Ben');
+    expect(speakerOf(r.container)).toBe('Cy');
+
+    await r.step(() => setValue(row('vad-2').querySelector('textarea'), 'his'));
+    await r.step(async () => {
+      press(row('vad-2').querySelector('textarea'), 'Enter');
+      await settle();
+    });
+    expect(doc.createAlignment).toHaveBeenLastCalledWith(
+      expect.objectContaining({ speaker: 'Ben' }),
+    );
+    // Still the one typed, after a second save elsewhere.
+    expect(speakerOf(r.container)).toBe('Cy');
+    await r.unmount();
+  });
+
+  it('follows the next save again once the row typed into has made its segment', async () => {
+    const doc = { ...makeDoc({ body: 'the cat', tokens: TOKENS }), id: 'sticky-e' };
+    const ops = makeOps({
+      currentTime: 5,
+      vad: { proposals: [{ id: 'vad-1', timeBegin: 3.2, timeEnd: 3.6 }], dismiss: vi.fn() },
+    });
+    const r = await renderComponent(element(doc, ops));
+    const row = (id) => r.container.querySelector(`[data-vad-proposal-row="${id}"]`);
+    await saveNew(r, 'dog', 'Cy');
+    expect(speakerOf(r.container)).toBe('Cy');
+    await r.step(() => setValue(row('vad-1').querySelector('input'), 'Kim'));
+    await r.step(() => setValue(row('vad-1').querySelector('textarea'), 'hers'));
+    await r.step(async () => {
+      press(row('vad-1').querySelector('textarea'), 'Enter');
+      await settle();
+    });
+    expect(speakerOf(r.container)).toBe('Kim');
+    await r.unmount();
+  });
 });
