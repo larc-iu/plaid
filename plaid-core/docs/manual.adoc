@@ -1042,7 +1042,7 @@ Note the following:
 1. `begin` and `end` must form valid substring indices for the given text. They are counted in Unicode code points, not UTF-16 code units or bytes, so an emoji is one position.
 2. By default, zero-length tokens where `begin == end` are valid.
 3. By default, tokens may overlap.
-4. Plaid sorts tokens by `begin` when determining their linear order in the document. For tokens with identical `begin`, Plaid uses the optional `precedence` value wherever available, such that tokens with lower precedence appear earlier in linear order.
+4. A token's place in the linear order of the document is given by its `begin`. Among tokens with the same `begin`, the optional `precedence` value decides, and a token with lower precedence comes earlier. A read of a document does not return its tokens in this order: sort them by `begin` and then `precedence` to read them in order.
 
 Token layers are unique in that their invariants are configurable.
 In addition to the default configuration, it is possible to constrain them further: for example, a token layer may require that no tokens be overlapping in extent of `begin` and `end`.

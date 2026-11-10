@@ -1171,7 +1171,7 @@ The tables below give the shortcuts as they come.
 You can change most of them under **Profile**, in **Keyboard shortcuts**: choose **Change** beside an action and press the keys you want.
 A change follows your account to any computer you sign in on, and shows in the `?` legends.
 **Reset** puts one shortcut back and **Reset all** puts back every one.
-Enter, Tab, the arrow keys, Escape, Backspace, Delete, and `-` and `=` in a morpheme form cannot be reassigned.
+Enter and Tab, each with or without Shift, the arrow keys, Escape, Backspace, Delete, and `-` and `=` in a morpheme form cannot be reassigned.
 
 [[_anywhere]]
 == Any screen
