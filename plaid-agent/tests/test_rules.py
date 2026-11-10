@@ -72,6 +72,16 @@ def test_a_document_gained_or_lost_and_a_value_edited_are_each_named():
                                'shown (other values in "Text 1")']
 
 
+def test_a_change_outside_any_document_is_named_without_in():
+    op = {'matched': [[None, 2, 'a'], ['d1', 1, 'b']], 'change': 'Rename tag "N"'}
+    for now, said in (([[None, 1, 'a'], ['d1', 1, 'b']], '1 fewer outside any document'),
+                      ([[None, 3, 'a'], ['d1', 1, 'b']], '1 more outside any document'),
+                      ([[None, 2, 'c'], ['d1', 1, 'b']], 'other values outside any document')):
+        with pytest.raises(PlanOutOfDate) as e:
+            rules.check_matched(op, now, lambda d: NAMES.get(d, d))
+        assert f'({said})' in e.value.reasons[0], e.value.reasons[0]
+
+
 def test_a_field_named_in_lower_case_keeps_its_case_in_the_refusal_on_screen():
     from plaid_agent.core.outcome import _sentence
     then = [_span('t1', 'S', 'Z')]

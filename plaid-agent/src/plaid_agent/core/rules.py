@@ -161,13 +161,13 @@ def moved_reason(op: Dict[str, Any], then: Dict[Any, tuple], now: Dict[Any, tupl
         a, b = then.get(d, (0, None)), now.get(d, (0, None))
         if a == b:
             continue
-        where = name_of(d) if d is not None else 'outside any document'
+        where = f'in {name_of(d)}' if d is not None else 'outside any document'
         if b[0] > a[0]:
-            places.append(f'{b[0] - a[0]:,} more in {where}')
+            places.append(f'{b[0] - a[0]:,} more {where}')
         elif b[0] < a[0]:
-            places.append(f'{a[0] - b[0]:,} fewer in {where}')
+            places.append(f'{a[0] - b[0]:,} fewer {where}')
         else:
-            places.append(f'other values in {where}')
+            places.append(f'other values {where}')
     shown = places[:REASON_DOCUMENTS]
     if len(places) > REASON_DOCUMENTS:
         rest = len(places) - REASON_DOCUMENTS
