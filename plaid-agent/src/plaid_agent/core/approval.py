@@ -4,7 +4,7 @@ said to the user once the locks are released."""
 
 from typing import Any, Dict, List, Optional
 
-from plaid_client import DocumentLockLost, service_source
+from plaid_client import DocumentLockLost, PlaidAPIError, service_source
 from plaid_client.service import requester_message
 
 from .conversation import ConversationStore, MissingConversation, find_plan, now_iso, plan_settling
@@ -475,14 +475,25 @@ def _documents_named(client, documents: list, ids: List[str]) -> str:
 
 def _failure(client, documents: list, e: PlanError) -> str:
     """Why a plan stopped, as the clause after "Failed to apply the plan:".
-    A lock that lapsed names its document as the reader knows it. Anything
-    else is the failure's own text, without the period it may end in, since
-    the answer goes on after it."""
+    A lock that lapsed names its document as the reader knows it, and so
+    does a write refused because the document moved under the plan (409):
+    the lock lets the approver's own editor write between two batches.
+    Anything else is the failure's own text, without the period it may end
+    in, since the answer goes on after it."""
     cause = e
     while cause is not None and not isinstance(cause, DocumentLockLost):
         cause = cause.__cause__
     if cause is not None:
         return f'the lock on {_named(_document_name(client, documents, cause.document_id))} lapsed'
+    # The server's own refusal, as the executor raised it: not one a reason
+    # of the assistant's was made from (an entry linked elsewhere).
+    refused = e.__cause__
+    data = getattr(refused, 'response_data', None)
+    if (isinstance(refused, PlaidAPIError) and refused.status == 409
+            and not (isinstance(data, dict) and data.get('error') == 'id-taken')):
+        held = [d.get('id') for d in documents or () if isinstance(d, dict) and d.get('id')]
+        which = _named(_document_name(client, documents, held[0])) if len(held) == 1 else 'a document it writes'
+        return f'{which} was changed while the plan was written'
     said = str(e).rstrip()
     return said[:-1] if said.endswith('.') and not said.endswith('..') else said
 

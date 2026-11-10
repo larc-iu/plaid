@@ -275,6 +275,35 @@ def test_a_lapse_is_told_by_the_documents_name_in_plain_words(spec, monkeypatch)
                              'lapsed. Nothing was written.'], helper.errors
 
 
+def _moved_under(monkeypatch, after=0):
+    """The approver's own editor writes the document while the plan holds
+    its lock (a holder's writes pass), so the plan's next batch, stamped
+    with the version it holds, is refused as core refuses it."""
+    calls = {'n': 0}
+    real = core_plan.Batcher.flush
+
+    def flush(self):
+        if self._batch is not None:
+            calls['n'] += 1
+            if calls['n'] > after:
+                text = 'Document version mismatch. The document has been modified since you last fetched it.'
+                raise PlaidAPIError(f'HTTP 409 {text}', status=409, response_data={'error': text})
+        real(self)
+
+    monkeypatch.setattr(core_plan.Batcher, 'flush', flush)
+
+
+def test_a_document_changed_under_the_plan_is_told_in_plain_words(spec, monkeypatch):
+    """Not core's "Document version mismatch ... since you last fetched it"
+    with its HTTP status (LP2-37)."""
+    client = spec['client']()
+    plan, _ = sbs._plan(spec, client)
+    _moved_under(monkeypatch)
+    helper = sbs._approve(spec, client, plan)
+    assert helper.errors == [f'Failed to apply the plan: document "{NAMES[spec["app"]]}" was changed while '
+                             'the plan was written. Nothing was written.'], helper.errors
+
+
 def test_a_failure_whose_text_ends_in_a_period_is_not_given_a_second(spec, monkeypatch):
     client = spec['client']()
     plan, _ = sbs._plan(spec, client)
