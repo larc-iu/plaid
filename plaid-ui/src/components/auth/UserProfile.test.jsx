@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, Routes, Route, useLocation } from 'react-router-dom';
+import { configureUi } from '../../lib/uiConfig.js';
 import { renderComponent, byText } from '../../test/renderComponent.jsx';
 
 // The API-token failure is what a person reads, so whatever reaches the toast is
@@ -274,6 +275,46 @@ describe('the profile form', () => {
 
     expect(update).not.toHaveBeenCalled();
     expect(toast.warning).toHaveBeenCalled();
+    await view.unmount();
+  });
+});
+
+// H1 S5: Back was the browser's, so on a profile opened from a bookmark it
+// left the app.
+describe('Back', () => {
+  const at = (entries) => {
+    let path = null;
+    const Probe = () => {
+      path = useLocation().pathname;
+      return null;
+    };
+    return renderComponent(
+      <MemoryRouter initialEntries={entries} initialIndex={entries.length - 1}>
+        <Routes>
+          <Route path="/profile" element={<UserProfile />} />
+          <Route path="*" element={<p>elsewhere</p>} />
+        </Routes>
+        <Probe />
+      </MemoryRouter>,
+    ).then((view) => ({ view, path: () => path }));
+  };
+  const back = (view) => byText(view.container, 'button', 'Back');
+
+  const RESTORE = { appPrefix: 'plaid_igt', configNamespace: 'igt', appName: 'Plaid IGT' };
+  beforeEach(() => configureUi({ ...RESTORE, appRoutes: { projects: '/projects' } }));
+  afterEach(() => configureUi(RESTORE));
+
+  it('goes to the projects list on a profile opened first', async () => {
+    const { view, path } = await at(['/profile']);
+    await view.step(() => back(view).click());
+    expect(path()).toBe('/projects');
+    await view.unmount();
+  });
+
+  it('goes back to where the profile was opened from', async () => {
+    const { view, path } = await at(['/projects/p1/documents', '/profile']);
+    await view.step(() => back(view).click());
+    expect(path()).toBe('/projects/p1/documents');
     await view.unmount();
   });
 });

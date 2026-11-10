@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Copy, Check, ImagePlus } from 'lucide-react';
 import { useAuth } from '../../contexts/useAuth.js';
 import { timeAgo, fullTimestamp } from '../../lib/formatTime.js';
@@ -7,6 +7,7 @@ import { useDocumentTitle } from '../../hooks/useDocumentTitle.js';
 import { notifySuccess, notifyError, notifyWarning } from '../../lib/notify.js';
 import { humanizeError, refusalSaid } from '../../lib/errors.js';
 import { cn } from '../../lib/utils.js';
+import { appRoutes } from '../../lib/uiConfig.js';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
@@ -34,6 +35,7 @@ const EMPTY = (displayName = '') => ({
 export const UserProfile = ({ className, children }) => {
   useDocumentTitle('Profile');
   const navigate = useNavigate();
+  const location = useLocation();
   const confirm = useConfirm();
   const { user, client, updateUser, logout } = useAuth();
   const passwordMinimum = usePasswordMinimum();
@@ -230,6 +232,13 @@ export const UserProfile = ({ className, children }) => {
     }
   };
 
+  // The page before this one, or the app's home when the profile was the
+  // first page opened (a bookmark, a pasted link): Back never leaves the app.
+  const goBack = () => {
+    if (location.key === 'default') navigate(appRoutes().projects);
+    else navigate(-1);
+  };
+
   const handleCancel = () => {
     setIsEditing(false);
     setFields(EMPTY(user?.displayName));
@@ -239,7 +248,7 @@ export const UserProfile = ({ className, children }) => {
   return (
     <div className={cn('mx-auto flex max-w-2xl flex-col gap-6', className)}>
       <div>
-        <Button variant="ghost" size="sm" onClick={() => navigate(-1)}>
+        <Button variant="ghost" size="sm" onClick={goBack}>
           <ArrowLeft className="h-4 w-4" /> Back
         </Button>
       </div>
