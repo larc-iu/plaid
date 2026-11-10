@@ -1045,6 +1045,11 @@
   border-radius: 4px;
   font: inherit;
 }
+/* The ring the form box of the "+" row has, not the browser's black one. */
+.igt-vocab-pop__search:focus {
+  outline: 2px solid var(--igt-blue);
+  outline-offset: -1px;
+}
 .igt-vocab-pop__list {
   max-height: 180px;
   overflow-y: auto;
@@ -1263,7 +1268,8 @@
    one vocab (on a morpheme's chip, where "+ Create" puts a new entry, and a
    label says so); the active chip is a link to the full vocab view (new tab).
    The label keeps its width and the tabs shrink and scroll, so the row is
-   never wider than the popover. */
+   never wider than the popover. A tab shows its whole name while the row has
+   room, and names are cut only when it has not. */
 .igt-vocab-pop__vocabsel {
   display: flex;
   align-items: center;
@@ -1296,7 +1302,6 @@
   gap: 3px;
   flex: 0 1 auto;
   min-width: 0;
-  max-width: 13ch;
   padding: 1px 8px;
   font: inherit;
   font-size: 10px;
@@ -1696,6 +1701,15 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* The chip's list wraps a value, which Alt+Down's keeps on one line: a long
+   one is cut at two lines there, and the whole of it is in the title. */
+.igt-vocab-pop__item .igt-pair__value {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow-wrap: anywhere;
+}
 .igt-pair__sense {
   font-size: 11px;
   color: var(--igt-gray-500);
@@ -1715,10 +1729,12 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
-/* A vocabulary's name stays on one line, cut only when it is longer than the
-   row. */
+/* A vocabulary's name stays on one line and is cut at a fixed width, so a
+   long one does not push the row's tags to a line of their own. The whole
+   name is in the title. */
 .igt-pair__vocab {
   white-space: nowrap;
+  max-width: 16ch;
 }
 /* The tags and the row's marks ("accept", "all ×N", "unlink"), kept together
    at the end of the row. */

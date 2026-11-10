@@ -929,6 +929,17 @@ describe('the two doors dress a row alike', () => {
     expect(op.args[0]).toBe('Create and link the entry "cat 2"');
   });
 
+  // A row cuts a long vocabulary name. The whole of it is in the title.
+  it('gives a row’s vocabulary name as the title of its name', async () => {
+    const { doc } = mount();
+    doc.vocabularies.v2 = { id: 'v2', name: 'Loans', items: [], vocabLinks: [] };
+    await settle(4);
+    openChip('m-2');
+    const names = [...host.querySelectorAll('.igt-vocab-pop__item .igt-pair__vocab')];
+    expect(names.length).toBeGreaterThan(0);
+    expect(names.map((n) => n.title)).toEqual(names.map((n) => n.textContent));
+  });
+
   it('names the vocabulary tabs for where + Create puts a new entry', async () => {
     const { doc } = mount();
     doc.vocabularies.v2 = { id: 'v2', name: 'Loans', items: [], vocabLinks: [] };

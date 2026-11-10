@@ -660,7 +660,7 @@ export const vocabPopover = {
                 title="Click to edit the form before creating · double-click to create as is"
                 @click=${onCreateClick}
               >
-                ${createMark} "${createForm}${numHtml(newFormSub, 'igt-vocab-pop')}" ${createExtras}
+                ${createMark} “${createForm}${numHtml(newFormSub, 'igt-vocab-pop')}” ${createExtras}
               </button>`
           : nothing}
         ${extraRows.map((r, j) => {

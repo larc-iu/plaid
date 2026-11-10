@@ -152,9 +152,9 @@ test('B11-01/02/03 + B5-03/01: unicode-punctuation rule with a `?` whitelist', a
   // character. This project claims `?`, so `Qué?` keeps it — the price of
   // declaring a character letter-like is that it is one everywhere, including
   // where it happens to sit at the end of a sentence.
-  expect(await createFormFor(page, ids.w[W.derechos])).toMatch(/Create "derechos"/);
-  expect(await createFormFor(page, ids.w[W.que])).toMatch(/Create "Qué\?"/);
-  expect(await createFormFor(page, ids.w[W.q])).toMatch(/Create "\?"/);
+  expect(await createFormFor(page, ids.w[W.derechos])).toMatch(/Create “derechos”/);
+  expect(await createFormFor(page, ids.w[W.que])).toMatch(/Create “Qué\?”/);
+  expect(await createFormFor(page, ids.w[W.q])).toMatch(/Create “\?”/);
 });
 
 test('B5-12: a blacklist rule trims nothing; listed tokens are inert', async ({ page }) => {
@@ -165,15 +165,15 @@ test('B5-12: a blacklist rule trims nothing; listed tokens are inert', async ({ 
   await openAnalyze(page);
   await expect(opener(page, ids.w[W.dots])).toHaveCount(0);
   await expect(opener(page, ids.w[W.dollar])).toHaveCount(1);
-  expect(await createFormFor(page, ids.w[W.derechos])).toMatch(/Create "derechos\."/);
-  expect(await createFormFor(page, ids.w[W.que])).toMatch(/Create "¿Qué\?"/);
+  expect(await createFormFor(page, ids.w[W.derechos])).toMatch(/Create “derechos\.”/);
+  expect(await createFormFor(page, ids.w[W.que])).toMatch(/Create “¿Qué\?”/);
 });
 
 test('B5-13: no ignore config at all: nothing is ignored, nothing trimmed', async ({ page }) => {
   await client.tokenLayers.deleteConfig(wordLayerId, 'plaid', 'ignoredTokens');
   await openAnalyze(page);
   await expect(opener(page, ids.w[W.dots])).toHaveCount(1);
-  expect(await createFormFor(page, ids.w[W.derechos])).toMatch(/Create "derechos\."/);
+  expect(await createFormFor(page, ids.w[W.derechos])).toMatch(/Create “derechos\.”/);
   // Restore the original rule for any later run in this file.
   await client.tokenLayers.setConfig(wordLayerId, 'plaid', 'ignoredTokens', {
     type: 'unicodePunctuation',

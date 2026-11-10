@@ -318,7 +318,9 @@ export const pairPicker = {
         ${shown.senseValue
           ? html`<span class="igt-pair__sense" dir="auto">${shown.senseValue}</span>`
           : nothing}
-        ${shown.vocab ? html`<span class="igt-pair__vocab">${shown.vocab}</span>` : nothing}
+        ${shown.vocab
+          ? html`<span class="igt-pair__vocab" title=${shown.vocab}>${shown.vocab}</span>`
+          : nothing}
         ${shown.description
           ? html`<span class="igt-pair__desc">${shown.description}</span>`
           : nothing}

@@ -311,7 +311,7 @@ describe('gathering words into a multi-word expression', () => {
       r.textContent.trim(),
     );
     expect(rows[0]).toBe('sit down');
-    expect(pop.querySelector('.igt-vocab-pop__create').textContent).toContain('"sat down"');
+    expect(pop.querySelector('.igt-vocab-pop__create').textContent).toContain('“sat down”');
     const type = pop.querySelector('.igt-vocab-pop__type select');
     expect(type.querySelector('option[selected]').value).toBe('phrase');
     expect(type.disabled).toBe(true);

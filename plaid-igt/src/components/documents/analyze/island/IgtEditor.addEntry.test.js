@@ -95,7 +95,7 @@ describe('the create row', () => {
     mount();
     openOn('m-1');
     const create = popover().querySelector('.igt-vocab-pop__create');
-    expect(shown(create)).toBe('+ "the"');
+    expect(shown(create)).toBe('+ “the”');
     expect(create.querySelector('.igt-sr-only').textContent).toBe('Create');
     expect(create.querySelector('[aria-hidden="true"]').textContent).toBe('+');
   });
@@ -117,7 +117,7 @@ describe('a writer who does not maintain the lexicon', () => {
     openOn('m-1');
     const create = popover().querySelector('.igt-vocab-pop__create');
     expect(create).not.toBeNull();
-    expect(create.textContent).toContain('"the"');
+    expect(create.textContent).toContain('“the”');
     click(create);
     click(popover().querySelector('.igt-vocab-pop__create'));
     await settle(4);
@@ -213,7 +213,7 @@ describe('a writer who does not maintain the lexicon', () => {
     key(label('mwe:new'), 'Enter');
     const create = popover().querySelector('.igt-vocab-pop__create');
     expect(create).not.toBeNull();
-    expect(create.textContent).toContain('"sat down"');
+    expect(create.textContent).toContain('“sat down”');
   });
 
   it('cannot change the type of a linked entry', () => {
