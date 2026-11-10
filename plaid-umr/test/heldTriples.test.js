@@ -166,3 +166,21 @@ test("a kept graph's names are taken for a new node or a rename, and its own men
   assert.ok((await moved.applyPenman(38, mended)) > 0);
   assert.ok(moved.sentence(38).nodes.some((n) => n.var === 's37i2'));
 });
+
+test('Text mode applied with an empty text clears the kept graph and the relations held for its names (FB-14)', async () => {
+  const { doc, calls } = load();
+  assert.ok(doc.sentence(37).rawGraph, 'sentence 37 keeps its graph as text');
+  assert.equal(doc.planPenman(37, '').changes, 1);
+  assert.equal(await doc.applyPenman(37, ''), 1);
+  assert.equal(calls.filter((c) => c.name === 'operation').length, 1);
+  assert.equal(doc.sentence(37).rawGraph, null);
+  assert.equal(doc.penmanOf(37), '');
+  // A relation held for a name the text defined goes with it, so a node
+  // given that name later does not take it up.
+  [37, 38, 57].forEach((i) => assert.equal(doc.sentence(i).held.length, 0, `sentence ${i}`));
+  const again = parseUmrFile(doc.toUmr());
+  assert.equal(again.sentences[36].graph, null);
+  assert.ok(!doc.toUmr().includes('s37e'));
+  // Nothing left to clear: a second empty apply changes nothing.
+  assert.equal(doc.planPenman(37, '').changes, 0);
+});

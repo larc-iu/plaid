@@ -1252,11 +1252,12 @@ export class UmrDocument extends DocumentModel {
   // stays. A relation naming a deleted node goes, so a node given the name
   // later does not take it up, and one naming a renamed node follows it. A
   // name another node still has, or a graph kept as text defines, is left,
-  // since the relation may name that one.
-  _heldAfter(ids, renames = new Map()) {
+  // since the relation may name that one. `cleared` are the names of the
+  // graph kept as text by sentence `clearing`, which goes with them.
+  _heldAfter(ids, renames = new Map(), cleared = new Set(), clearing = null) {
     const changed = new Set(ids);
-    const names = new Set();
-    const still = keptVariables(this.graph);
+    const names = new Set(cleared);
+    const still = keptVariables(this.graph, clearing);
     this.graph.nodesById.forEach((n) => {
       if (!n.var) return;
       if (changed.has(n.id)) names.add(n.var);
@@ -2565,7 +2566,13 @@ export class UmrDocument extends DocumentModel {
         relations: (n.docOut?.length || 0) + (n.docIn?.length || 0),
       }));
 
+    // An empty text over a graph kept as text clears it: the text was the
+    // whole of that graph.
+    plan.clearKept =
+      !String(text).trim() && !sentence.nodes.length && typeof sentence.rawGraph === 'string';
+
     const changes =
+      (plan.clearKept ? 1 : 0) +
       plan.create.length +
       plan.delete.length +
       plan.rename.length +
@@ -2598,9 +2605,16 @@ export class UmrDocument extends DocumentModel {
       opsByToken.set(tokenId, { ...opsByToken.get(tokenId), ...changes });
     // A relation held for a graph kept as text follows a node renamed here
     // and goes with one deleted here (`_heldAfter`).
+    // A graph kept as text and cleared takes its names with it.
+    const cleared = new Set();
+    if (plan.clearKept) {
+      for (const m of sentence.rawGraph.matchAll(KEPT_VARIABLE)) cleared.add(m[1]);
+    }
     const after = this._heldAfter(
       [...plan.delete, ...plan.rename.map((r) => r.nodeId)],
       new Map(plan.rename.map((r) => [r.from, r.to])),
+      cleared,
+      plan.clearKept ? sentence.index : null,
     );
     (this.graph.records || []).forEach(({ id, record }) => {
       const had = Array.isArray(record.held) ? record.held : [];
@@ -2628,8 +2642,13 @@ export class UmrDocument extends DocumentModel {
         }
       } else if (held !== had) add(id, { held });
     });
-    // The graph kept as text, mended: its text is no longer what is kept.
-    if (fresh.size && !sentence.nodes.length && typeof sentence.rawGraph === 'string') {
+    // The graph kept as text, mended or cleared: its text is no longer what
+    // is kept.
+    if (
+      (fresh.size || plan.clearKept) &&
+      !sentence.nodes.length &&
+      typeof sentence.rawGraph === 'string'
+    ) {
       add(sentence.recordToken, { rawGraph: undefined, rawAlignment: undefined });
     }
     return { heldTriples, recordOps: [...opsByToken].map(([id, c]) => [id, umrOps(c)]) };
