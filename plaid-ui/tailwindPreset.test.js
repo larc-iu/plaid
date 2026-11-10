@@ -85,12 +85,9 @@ describe("the package's stylesheet", () => {
     '--success-foreground',
     '--destructive-strong',
     '--plaid-highlight',
-  ])(
-    'defines %s',
-    (name) => {
-      expect(css).toMatch(new RegExp(`${name}:\\s*\\d`));
-    },
-  );
+  ])('defines %s', (name) => {
+    expect(css).toMatch(new RegExp(`${name}:\\s*\\d`));
+  });
 });
 
 // Both faces are self-hosted, so a renamed or missing file is a silent fall

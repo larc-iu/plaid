@@ -32,7 +32,9 @@ export default defineConfig({
     // Keep each module's transform on disk between runs, keyed by its source
     // and this config, so a run transforms only what changed.
     fsModuleCache: true,
-    fsModuleCachePath: fileURLToPath(new URL('./node_modules/.vite/vitest-modules', import.meta.url)),
+    fsModuleCachePath: fileURLToPath(
+      new URL('./node_modules/.vite/vitest-modules', import.meta.url),
+    ),
     setupFiles: ['./src/test/setup.js'],
     environment: 'happy-dom',
     globals: true,
