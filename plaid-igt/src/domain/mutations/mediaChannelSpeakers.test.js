@@ -3,7 +3,8 @@ import { buildRawDoc, resetIds, makeIgtDoc } from '../test-helpers.js';
 
 // The speaker on each channel of a mixed recording rides with the recording:
 // written after the upload lands, so a failed upload leaves no list, and
-// dropped with the recording, so a plain upload after it starts with none.
+// dropped with the recording, and by a plain upload, so a plain recording
+// never carries a list from before it.
 
 beforeEach(() => resetIds());
 
@@ -27,6 +28,45 @@ describe('uploadMedia with channelSpeakers', () => {
     const doc = makeIgtDoc({ raw: buildRawDoc() });
     await doc.uploadMedia(new Blob(['x']));
     expect(doc.client.calls.map((c) => c.kind)).not.toContain('documents.patchMetadata');
+  });
+
+  it('a plain upload drops a stored list and the detected cuts, after the upload', async () => {
+    const doc = makeIgtDoc({
+      raw: buildRawDoc({
+        metadata: {
+          speechDetection: { media: '4:abc', method: 'builtin', regions: [1, 2], dismissed: [] },
+          channelSpeakers: ['Ana', 'Ben'],
+          source: 'tape 4',
+        },
+      }),
+    });
+    expect(await doc.uploadMedia(new Blob(['x']))).toBe(true);
+    const kinds = doc.client.calls.map((c) => c.kind).filter((k) => k.startsWith('documents.'));
+    expect(kinds.indexOf('documents.uploadMedia')).toBeLessThan(
+      kinds.indexOf('documents.patchMetadata'),
+    );
+    const patch = doc.client.calls.find((c) => c.kind === 'documents.patchMetadata');
+    expect(patch.args[1]).toEqual([
+      { op: 'delete', path: ['speechDetection'] },
+      { op: 'delete', path: ['channelSpeakers'] },
+    ]);
+  });
+
+  it('a mix replaces a stored list and drops the detected cuts', async () => {
+    const doc = makeIgtDoc({
+      raw: buildRawDoc({
+        metadata: {
+          speechDetection: { media: '4:abc', method: 'builtin', regions: [1, 2], dismissed: [] },
+          channelSpeakers: ['Ana', 'Ben'],
+        },
+      }),
+    });
+    await doc.uploadMedia(new Blob(['x']), { channelSpeakers: ['Cy', 'Di'] });
+    const patch = doc.client.calls.find((c) => c.kind === 'documents.patchMetadata');
+    expect(patch.args[1]).toEqual([
+      { op: 'delete', path: ['speechDetection'] },
+      { op: 'set', path: ['channelSpeakers'], value: ['Cy', 'Di'] },
+    ]);
   });
 
   it('writes no list when the upload fails', async () => {

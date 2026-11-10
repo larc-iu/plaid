@@ -27,7 +27,7 @@ export function VadDetection({ mediaOps, readOnly = false, disabled = false }) {
   // Both methods stop from the one button: the built-in model aborts its
   // worker, a service is asked to stop. A service run used to offer neither.
   const stopDetection = detectSpot.service ? cancelRequest : vad.cancel;
-  const channels = useChosenChannels(channelSpeakers);
+  const channels = useChosenChannels(channelSpeakers, mediaOps.channelCount);
 
   const summary =
     count > 0

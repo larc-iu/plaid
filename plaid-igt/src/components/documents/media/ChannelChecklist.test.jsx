@@ -15,8 +15,8 @@ afterEach(async () => {
   view = null;
 });
 
-const Probe = ({ speakers }) => {
-  const channels = useChosenChannels(speakers);
+const Probe = ({ speakers, count }) => {
+  const channels = useChosenChannels(speakers, count);
   useEffect(() => {
     api = channels;
   });
@@ -46,6 +46,19 @@ describe('ChannelChecklist', () => {
     await view.step(() => second.click());
     expect(api.chosen).toEqual([]);
     expect(api.none).toBe(true);
+  });
+
+  it('lists only the channels the recording has, and none for one channel', async () => {
+    view = await renderComponent(<Probe speakers={['Ana', 'Ben', 'Cy']} count={2} />);
+    expect(view.container.querySelectorAll('input[type=checkbox]')).toHaveLength(2);
+    expect(api.chosen).toEqual([
+      { channel: 0, speaker: 'Ana' },
+      { channel: 1, speaker: 'Ben' },
+    ]);
+    await view.unmount();
+    view = await renderComponent(<Probe speakers={['Ana', 'Ben']} count={1} />);
+    expect(view.container.querySelector('[data-channel-checklist]')).toBeNull();
+    expect(api.chosen).toBeNull();
   });
 
   it('renders nothing when the channels are not speakers', async () => {
