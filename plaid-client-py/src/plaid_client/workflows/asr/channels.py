@@ -145,7 +145,7 @@ def extract_channel(path, channel, out_dir):
             capture_output=True, text=True)
         if result.returncode != 0:
             raise Refusal(f'Channel {channel + 1} cannot be taken out of this recording '
-                          f'({(result.stderr or "ffmpeg failed").strip().splitlines()[-1]}).')
+                          f'({((result.stderr or "").strip() or "ffmpeg failed").splitlines()[-1]}).')
         if not os.path.exists(decoded) or not _extract_wav_channel(decoded, channel, out_path):
             raise Refusal(f'Channel {channel + 1} cannot be taken out of this recording.')
     finally:

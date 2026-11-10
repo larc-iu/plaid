@@ -148,3 +148,14 @@ def test_a_channel_a_recording_that_is_not_a_wav_does_not_have_is_refused(tmp_pa
     with pytest.raises(Refusal) as caught:
         extract_channel(str(src), 1, str(tmp_path))
     assert str(caught.value) == 'The recording has 1 channel, not a channel 2.'
+
+
+def test_an_ffmpeg_failure_with_nothing_said_is_still_refused_readably(tmp_path, monkeypatch):
+    src = tmp_path / 'talk.mp3'
+    src.write_bytes(b'\xff\xfb\x90\x00')
+    monkeypatch.setattr(ch.shutil, 'which', lambda name: '/usr/bin/ffmpeg')
+    monkeypatch.setattr(ch.subprocess, 'run',
+                        lambda args, **kw: type('R', (), {'returncode': 1, 'stderr': ' \n '})())
+    with pytest.raises(Refusal) as caught:
+        extract_channel(str(src), 0, str(tmp_path))
+    assert str(caught.value) == 'Channel 1 cannot be taken out of this recording (ffmpeg failed).'
