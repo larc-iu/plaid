@@ -1667,7 +1667,8 @@
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
-  gap: 0 6px;
+  /* The row gap clears an entry's sense subscript, which hangs under its line. */
+  gap: 4px 6px;
 }
 /* Value and entry as two aligned columns. */
 .igt-pair__value {
