@@ -9,7 +9,7 @@ import { renderComponent, all } from '@ui/test/renderComponent.jsx';
 
 const { mixTracks } = vi.hoisted(() => ({ mixTracks: vi.fn() }));
 vi.mock('@/domain/media/mixRecordings', () => ({
-  decodeTrack: vi.fn(),
+  readTrack: vi.fn(),
   mixTracks,
 }));
 vi.mock('@/utils/feedback', () => ({ notifyError: vi.fn() }));
@@ -19,8 +19,8 @@ const { MixRecordingsDialog } = await import('./MixRecordingsDialog.jsx');
 const MB = 1000 * 1000;
 const fileOf = (name) => new File(['x'], name, { type: 'audio/wav' });
 const decoded = {
-  'ana.wav': { sampleRate: 48000, channels: 1, seconds: 10, mono: new Float32Array(2) },
-  'ben.wav': { sampleRate: 44100, channels: 2, seconds: 8, mono: new Float32Array(2) },
+  'ana.wav': { sampleRate: 48000, channels: 1, seconds: 10 },
+  'ben.wav': { sampleRate: 44100, channels: 2, seconds: 8 },
 };
 const decode = vi.fn(async (file) => ({ name: file.name, ...decoded[file.name] }));
 
@@ -108,10 +108,11 @@ describe('MixRecordingsDialog', () => {
     await settled();
     expect(mixTracks).toHaveBeenCalledTimes(1);
     const [tracks, options] = mixTracks.mock.calls[0];
-    expect(tracks.map((t) => [t.name, t.offset])).toEqual([
-      ['ana.wav', 0],
-      ['ben.wav', 1.5],
+    expect(tracks.map((t) => [t.file.name, t.name, t.offset])).toEqual([
+      ['ana.wav', 'ana.wav', 0],
+      ['ben.wav', 'ben.wav', 1.5],
     ]);
+    expect(options.signal.aborted).toBe(false);
     expect(options.quality).toBe('full');
     expect(onOpenChange).toHaveBeenCalledWith(false);
     expect(onUpload).toHaveBeenCalledWith(mixed, { channelSpeakers: ['Ana', 'Ben'] });
@@ -134,5 +135,48 @@ describe('MixRecordingsDialog', () => {
     expect(text()).toContain('Cannot be decoded.');
     expect(button('Upload').disabled).toBe(true);
     vi.restoreAllMocks();
+  });
+
+  it('reads one file at a time, and closing stops the reads left', async () => {
+    let finish;
+    const reading = vi.fn(
+      (file, { signal }) =>
+        new Promise((ok) => {
+          finish = () => ok({ name: file.name, ...decoded[file.name], signal });
+        }),
+    );
+    const files = [fileOf('ana.wav'), fileOf('ben.wav')];
+    await mount({ decode: reading, files });
+    expect(reading).toHaveBeenCalledTimes(1);
+    const { signal } = reading.mock.calls[0][1];
+    await view.rerender(
+      <MixRecordingsDialog
+        open={false}
+        files={files}
+        onOpenChange={() => {}}
+        onUpload={() => {}}
+        decode={reading}
+      />,
+    );
+    expect(signal.aborted).toBe(true);
+    finish();
+    await settled();
+    expect(reading).toHaveBeenCalledTimes(1);
+  });
+
+  it('closing while it mixes stops the mix, and nothing is uploaded', async () => {
+    const onUpload = vi.fn();
+    let options;
+    mixTracks.mockImplementation((_tracks, opts) => {
+      options = opts;
+      return new Promise(() => {});
+    });
+    await mount({ onUpload });
+    await view.step(() => button('Upload').click());
+    expect(options.signal.aborted).toBe(false);
+    await view.unmount();
+    view = null;
+    expect(options.signal.aborted).toBe(true);
+    expect(onUpload).not.toHaveBeenCalled();
   });
 });

@@ -1,15 +1,15 @@
 import { describe, it, expect } from 'vitest';
 import {
   SMALL_RATE,
-  averageChannels,
+  emptyWav,
   encodeWav,
   mixBytes,
   mixName,
   mixRate,
   mixSeconds,
-  placeTrack,
   trackNote,
   wavHeaderBytes,
+  writeChannel,
 } from './mixdown.js';
 import { readWavInfo, wavVerdict } from './wavAdpcm.js';
 
@@ -63,29 +63,47 @@ describe('the plan of a mix', () => {
 
 describe('placing a track', () => {
   const samples = Float32Array.from([0.1, 0.2, 0.3, 0.4]);
+  // One channel at 4 Hz, `frames` long, read back as the numbers written.
+  const placed = (sources, offset, frames) => {
+    const bytes = emptyWav(1, frames, 4);
+    writeChannel(bytes, 0, sources, offset);
+    const view = new DataView(bytes.buffer);
+    return Array.from({ length: frames }, (_, i) => view.getInt16(44 + i * 2, true) / 32767);
+  };
+  const pcm = (values) => values.map((v) => expect.closeTo(v, 4));
 
   it('puts silence before it for a positive offset', () => {
-    expect([...placeTrack(samples, 0.5, 4, 8)]).toEqual([0, 0, 0.1, 0.2, 0.3, 0.4, 0, 0].map(near));
+    expect(placed([samples], 0.5, 8)).toEqual(pcm([0, 0, 0.1, 0.2, 0.3, 0.4, 0, 0]));
   });
 
   it('cuts its start for a negative offset', () => {
-    expect([...placeTrack(samples, -0.5, 4, 4)]).toEqual([0.3, 0.4, 0, 0].map(near));
+    expect(placed([samples], -0.5, 4)).toEqual(pcm([0.3, 0.4, 0, 0]));
   });
 
   it('never writes past the end of the mix', () => {
-    expect([...placeTrack(samples, 0.75, 4, 4)]).toEqual([0, 0, 0, 0.1].map(near));
-    expect([...placeTrack(samples, 2, 4, 4)]).toEqual([0, 0, 0, 0]);
+    expect(placed([samples], 0.75, 4)).toEqual(pcm([0, 0, 0, 0.1]));
+    expect(placed([samples], 2, 4)).toEqual(pcm([0, 0, 0, 0]));
   });
 
   it('averages channels to one', () => {
-    const mono = averageChannels([Float32Array.from([1, 0]), Float32Array.from([0, 1])]);
-    expect([...mono]).toEqual([0.5, 0.5]);
-    const one = Float32Array.from([0.3]);
-    expect(averageChannels([one])).toBe(one);
+    expect(placed([Float32Array.from([1, 0]), Float32Array.from([0, 1])], 0, 2)).toEqual(
+      pcm([0.5, 0.5]),
+    );
+  });
+
+  it('writes only its own channel of the WAV', () => {
+    const bytes = emptyWav(3, 2, 4);
+    writeChannel(bytes, 1, [Float32Array.from([0.5, -0.5])]);
+    const view = new DataView(bytes.buffer);
+    const frames = [0, 1].map((i) =>
+      [0, 1, 2].map((c) => view.getInt16(68 + (i * 3 + c) * 2, true)),
+    );
+    expect(frames).toEqual([
+      [0, 16384, 0],
+      [0, -16383, 0],
+    ]);
   });
 });
-
-const near = (v) => expect.closeTo(v, 6);
 
 describe('the WAV', () => {
   it('is plain 16-bit PCM up to two channels, and reads back as one', async () => {

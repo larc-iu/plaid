@@ -3,8 +3,10 @@
 // input is averaged to mono first), every channel runs the same clock, and a
 // file's offset is leading silence (a negative one trims its start). The
 // result is 16-bit PCM WAV, WAVE_FORMAT_EXTENSIBLE past two channels with no
-// channel mask, which every browser and ffmpeg read. mixRecordings.js does the
-// decoding and calls into here.
+// channel mask, which every browser and ffmpeg read. Each input is written
+// straight into the WAV's bytes, so a mix holds the file it makes and one
+// decoded input at a time. mixRecordings.js does the decoding and calls into
+// here.
 
 /** The rate of the "Smaller" mix: mono speech needs no more. */
 export const SMALL_RATE = 16000;
@@ -53,70 +55,42 @@ export function mixName(firstName, count) {
   return `${stem || 'recording'} (mixed, ${count} speakers).wav`;
 }
 
-/** Channels averaged to one. */
-export function averageChannels(channels) {
-  if (channels.length === 1) return channels[0];
-  const length = Math.max(0, ...channels.map((c) => c.length));
-  const mono = new Float32Array(length);
-  for (const channel of channels) {
-    for (let i = 0; i < channel.length; i += 1) mono[i] += channel[i];
-  }
-  for (let i = 0; i < length; i += 1) mono[i] /= channels.length;
-  return mono;
-}
-
-/**
- * `samples` placed on the mix's clock: `offset` seconds of silence before it,
- * or its first `-offset` seconds cut, in `frames` frames.
- */
-export function placeTrack(samples, offset, sampleRate, frames) {
-  const out = new Float32Array(frames);
-  const shift = Math.round((Number(offset) || 0) * sampleRate);
-  const from = Math.max(0, -shift);
-  const to = Math.max(0, shift);
-  const count = Math.max(0, Math.min(samples.length - from, frames - to));
-  if (count > 0) out.set(samples.subarray(from, from + count), to);
-  return out;
-}
-
 const clamp16 = (v) => {
   const n = Math.round(v * 32767);
   return n > 32767 ? 32767 : n < -32768 ? -32768 : n;
 };
 
 /**
- * A 16-bit PCM WAV of `channels` (one Float32Array per channel, -1..1, all
- * the same length), WAVE_FORMAT_EXTENSIBLE with channel mask 0 past two.
+ * A silent 16-bit PCM WAV of `channels` channels and `frames` frames,
+ * WAVE_FORMAT_EXTENSIBLE with channel mask 0 past two. `writeChannel` fills it.
  */
-export function encodeWav(channels, sampleRate) {
-  const count = channels.length;
-  const frames = channels[0]?.length ?? 0;
-  const header = wavHeaderBytes(count);
-  const dataSize = frames * count * 2;
+export function emptyWav(channels, frames, sampleRate) {
+  const header = wavHeaderBytes(channels);
+  const dataSize = frames * channels * 2;
   const bytes = new Uint8Array(header + dataSize);
   const view = new DataView(bytes.buffer);
   const tag = (at, s) => {
     for (let i = 0; i < 4; i += 1) bytes[at + i] = s.charCodeAt(i);
   };
-  const blockAlign = count * 2;
+  const blockAlign = channels * 2;
   tag(0, 'RIFF');
   view.setUint32(4, header - 8 + dataSize, true);
   tag(8, 'WAVE');
   tag(12, 'fmt ');
-  if (count > 2) {
+  if (channels > 2) {
     view.setUint32(16, 40, true);
     view.setUint16(20, WAV_EXTENSIBLE, true);
   } else {
     view.setUint32(16, 16, true);
     view.setUint16(20, WAV_PCM, true);
   }
-  view.setUint16(22, count, true);
+  view.setUint16(22, channels, true);
   view.setUint32(24, sampleRate, true);
   view.setUint32(28, sampleRate * blockAlign, true);
   view.setUint16(32, blockAlign, true);
   view.setUint16(34, 16, true);
   let at = 36;
-  if (count > 2) {
+  if (channels > 2) {
     view.setUint16(36, 22, true); // cbSize
     view.setUint16(38, 16, true); // valid bits per sample
     view.setUint32(40, 0, true); // channel mask: no speaker positions
@@ -130,13 +104,48 @@ export function encodeWav(channels, sampleRate) {
   }
   tag(at, 'data');
   view.setUint32(at + 4, dataSize, true);
-  let pos = at + 8;
-  for (let i = 0; i < frames; i += 1) {
-    for (let c = 0; c < count; c += 1) {
-      view.setInt16(pos, clamp16(channels[c][i] || 0), true);
-      pos += 2;
+  return bytes;
+}
+
+/**
+ * One input written into channel `channel` of a WAV from `emptyWav`: its
+ * channels (`sources`, one Float32Array each, at the WAV's rate) averaged to
+ * one, with `offset` seconds of silence before it or its first `-offset`
+ * seconds cut, and nothing past the WAV's end.
+ */
+export function writeChannel(bytes, channel, sources, offset = 0) {
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const count = view.getUint16(22, true);
+  const sampleRate = view.getUint32(24, true);
+  const header = wavHeaderBytes(count);
+  const frames = (bytes.byteLength - header) / (count * 2);
+  const shift = Math.round((Number(offset) || 0) * sampleRate);
+  const from = Math.max(0, -shift);
+  const to = Math.max(0, shift);
+  const length = Math.max(0, ...sources.map((s) => s.length));
+  const n = Math.max(0, Math.min(length - from, frames - to));
+  const one = sources.length === 1 ? sources[0] : null;
+  let pos = header + (to * count + channel) * 2;
+  for (let i = from; i < from + n; i += 1) {
+    let v;
+    if (one) v = one[i];
+    else {
+      v = 0;
+      for (let k = 0; k < sources.length; k += 1) if (i < sources[k].length) v += sources[k][i];
+      v /= sources.length;
     }
+    view.setInt16(pos, clamp16(v), true);
+    pos += count * 2;
   }
+}
+
+/**
+ * A 16-bit PCM WAV of `channels` (one Float32Array per channel, -1..1, all
+ * the same length), WAVE_FORMAT_EXTENSIBLE with channel mask 0 past two.
+ */
+export function encodeWav(channels, sampleRate) {
+  const bytes = emptyWav(channels.length, channels[0]?.length ?? 0, sampleRate);
+  for (const [c, samples] of channels.entries()) writeChannel(bytes, c, [samples]);
   return bytes;
 }
 

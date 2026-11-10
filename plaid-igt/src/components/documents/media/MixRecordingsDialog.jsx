@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -12,7 +12,7 @@ import { Input } from '@ui/components/ui/input';
 import { Progress } from '@ui/components/ui/progress';
 import { formatBytes } from '@/utils/formatBytes';
 import { notifyError } from '@/utils/feedback';
-import { decodeTrack, mixTracks } from '@/domain/media/mixRecordings';
+import { readTrack, mixTracks } from '@/domain/media/mixRecordings';
 import { SMALL_RATE, mixBytes, mixRate, trackNote } from '@/domain/media/mixdown';
 import { formatTime } from './formatTime.js';
 
@@ -20,7 +20,9 @@ import { formatTime } from './formatTime.js';
 // channel each. The dialog lists the files as they are read, takes a speaker
 // and an offset for each, offers the two qualities with the size each comes
 // to, and refuses a mix the server would not take before a byte goes up.
-// `decode` is decodeTrack unless a test says what the browser hears.
+// The files are read one at a time and only their length, channels and rate
+// are kept. Closing the dialog stops the reads and the mix.
+// `decode` is readTrack unless a test says what the browser hears.
 
 const SPEAKER_LIST_ID = 'mix-speaker-options';
 
@@ -36,19 +38,23 @@ export function MixRecordingsDialog({
   onUpload,
   knownSpeakers = [],
   maxBytes = null,
-  decode = decodeTrack,
+  decode = readTrack,
 }) {
   const [tracks, setTracks] = useState([]);
   const [quality, setQuality] = useState('full');
   // `{ index, total }` while the mix is written, else null.
   const [mixing, setMixing] = useState(null);
+  // Aborts the mix when the dialog goes away.
+  const mixAbort = useRef(null);
+  useEffect(() => () => mixAbort.current?.abort(), []);
 
   // Read every file once, in order, as soon as the dialog has them.
   useEffect(() => {
     if (!open || !files?.length) return undefined;
-    let alive = true;
+    const abort = new AbortController();
     setTracks(
       files.map((f) => ({
+        file: f,
         name: f.name,
         size: f.size,
         status: 'reading',
@@ -61,18 +67,17 @@ export function MixRecordingsDialog({
       for (const [i, file] of files.entries()) {
         let read;
         try {
-          read = { ...(await decode(file)), status: 'ready' };
+          read = { ...(await decode(file, { signal: abort.signal })), status: 'ready' };
         } catch (error) {
+          if (abort.signal.aborted) return;
           console.error('Decoding a recording failed:', error);
           read = { status: 'failed' };
         }
-        if (!alive) return;
+        if (abort.signal.aborted) return;
         setTracks((prev) => prev.map((t, k) => (k === i ? { ...t, ...read } : t)));
       }
     })();
-    return () => {
-      alive = false;
-    };
+    return () => abort.abort();
   }, [open, files, decode]);
 
   const ready = tracks.length > 0 && tracks.every((t) => t.status === 'ready');
@@ -97,15 +102,22 @@ export function MixRecordingsDialog({
   const upload = async () => {
     if (!ready || overLimit || mixing) return;
     setMixing({ index: 0, total: tracks.length });
+    const abort = new AbortController();
+    mixAbort.current = abort;
     try {
       const file = await mixTracks(
         tracks.map((t) => ({ ...t, offset: Number(t.offset) || 0 })),
-        { quality, onProgress: (index, total) => setMixing({ index, total }) },
+        {
+          quality,
+          signal: abort.signal,
+          onProgress: (index, total) => setMixing({ index, total }),
+        },
       );
       const channelSpeakers = tracks.map((t) => t.speaker.trim());
       onOpenChange(false);
       onUpload(file, { channelSpeakers });
     } catch (error) {
+      if (abort.signal.aborted) return;
       console.error('Mixing the recordings failed:', error);
       notifyError(error?.message || 'The recordings could not be mixed.', 'Failed to mix');
       setMixing(null);

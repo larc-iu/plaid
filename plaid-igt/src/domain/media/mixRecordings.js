@@ -1,47 +1,51 @@
 // Mixing several recordings, one per speaker, into one multichannel WAV in
-// the browser. Each file is decoded once at its own rate (mediaSampleRate.js
-// reads it from the header, since the decoder resamples to whatever it is
-// asked for) and averaged to one channel, so the dialog can say what each
-// file is before the quality is chosen. The mix itself resamples each track
-// to the chosen rate, places it on the common clock (mixdown.js) and writes
-// the WAV. Nothing about the offsets is kept once the file is made.
+// the browser. A long recording decodes to gigabytes, so only one decoded
+// file is held at a time. Each file is read once at its own rate
+// (mediaSampleRate.js reads it from the header, since the decoder resamples
+// to whatever it is asked for) for its length and channels, and only those
+// numbers are kept, so the dialog can say what each file is before the
+// quality is chosen. The mix decodes each file again at the chosen rate,
+// writes it into the WAV on the common clock (mixdown.js) and drops it before
+// the next. Nothing about the offsets is kept once the file is made.
 
-import { resampleMono } from '../vad/decodeTo16kMono.js';
 import { readSampleRate } from './mediaSampleRate.js';
 import { readWavInfo } from './wavAdpcm.js';
-import {
-  FALLBACK_RATE,
-  averageChannels,
-  encodeWav,
-  mixName,
-  mixRate,
-  mixSeconds,
-  placeTrack,
-} from './mixdown.js';
+import { FALLBACK_RATE, emptyWav, mixName, mixRate, mixSeconds, writeChannel } from './mixdown.js';
 
 const OfflineCtx = () =>
   typeof window !== 'undefined' && (window.OfflineAudioContext || window.webkitOfflineAudioContext);
 
+// The decodes wait their turn here, one at a time across every dialog, and
+// `use` runs inside the turn, so a decode left over from a closed dialog is
+// gone before the next one starts. A turn whose signal is aborted is skipped.
+let turn = Promise.resolve();
+function withDecoded(file, rate, signal, use) {
+  const run = turn.then(async () => {
+    signal?.throwIfAborted();
+    const Ctx = OfflineCtx();
+    if (!Ctx) throw new Error('This browser has no OfflineAudioContext.');
+    const decoded = await new Ctx(1, 1, rate).decodeAudioData(await file.arrayBuffer());
+    signal?.throwIfAborted();
+    return use(decoded);
+  });
+  turn = run.catch(() => {});
+  return run;
+}
+
 /**
- * `file` decoded at its own rate and averaged to one channel:
- * `{ name, sampleRate, channels, seconds, mono }`. Throws with the browser's
- * own message when the file is not decodable audio.
+ * What `file` is, from the browser's decode at its own rate:
+ * `{ name, sampleRate, channels, seconds }`. The samples are not kept.
+ * Throws with the browser's own message when the file is not decodable audio,
+ * and an AbortError once `signal` is aborted.
  */
-export async function decodeTrack(file) {
-  const Ctx = OfflineCtx();
-  if (!Ctx) throw new Error('This browser has no OfflineAudioContext.');
+export async function readTrack(file, { signal } = {}) {
   const rate = (await readSampleRate(file)) ?? FALLBACK_RATE;
-  const decoded = await new Ctx(1, 1, rate).decodeAudioData(await file.arrayBuffer());
-  const channels = Array.from({ length: decoded.numberOfChannels }, (_, c) =>
-    decoded.getChannelData(c),
-  );
-  return {
+  return withDecoded(file, rate, signal, (decoded) => ({
     name: file.name || 'recording',
     sampleRate: decoded.sampleRate,
     channels: decoded.numberOfChannels,
     seconds: decoded.duration,
-    mono: averageChannels(channels),
-  };
+  }));
 }
 
 /**
@@ -60,37 +64,38 @@ export async function readChannelCount(file) {
 }
 
 /**
- * Decoded tracks (`decodeTrack` plus an `offset` in seconds each) as one WAV
- * File. `onProgress(index, total)` is told before each track is placed.
+ * Tracks (`readTrack` plus the `file` and an `offset` in seconds each) as one
+ * WAV File. Each file is decoded at the mix's rate, written in and dropped
+ * before the next is read. `onProgress(index, total)` is told before each
+ * track. Stops with an AbortError once `signal` is aborted.
  */
-export async function mixTracks(tracks, { quality = 'full', onProgress } = {}) {
+export async function mixTracks(tracks, { quality = 'full', onProgress, signal } = {}) {
   const rate = mixRate(tracks, quality);
   const frames = Math.ceil(mixSeconds(tracks) * rate);
-  const placed = [];
+  const bytes = emptyWav(tracks.length, frames, rate);
   for (const [i, track] of tracks.entries()) {
     onProgress?.(i, tracks.length);
-    const samples = await resampleMono(track.mono, track.sampleRate, rate);
-    placed.push(placeTrack(samples, track.offset, rate, frames));
+    await withDecoded(track.file, rate, signal, (decoded) => {
+      const sources = Array.from({ length: decoded.numberOfChannels }, (_, c) =>
+        decoded.getChannelData(c),
+      );
+      writeChannel(bytes, i, sources, track.offset);
+    });
   }
   onProgress?.(tracks.length, tracks.length);
-  return new File([encodeWav(placed, rate)], mixName(tracks[0].name, tracks.length), {
-    type: 'audio/wav',
-  });
+  return new File([bytes], mixName(tracks[0].name, tracks.length), { type: 'audio/wav' });
 }
 
 /**
- * Files straight to a mix: `[{file, offset}]` decoded and mixed, for a path
+ * Files straight to a mix: `[{file, offset}]` read and mixed, for a path
  * with no dialog between the two (an ELAN import). `onProgress(step)` is
  * told what is happening, as "Decoding ana.wav" or "Writing the mix".
  */
-export async function mixFiles(
-  entries,
-  { quality = 'full', onProgress, decode = decodeTrack } = {},
-) {
+export async function mixFiles(entries, { quality = 'full', onProgress, read = readTrack } = {}) {
   const tracks = [];
   for (const { file, offset } of entries) {
     onProgress?.(`Decoding ${file.name}`);
-    tracks.push({ ...(await decode(file)), offset: offset || 0 });
+    tracks.push({ ...(await read(file)), file, offset: offset || 0 });
   }
   onProgress?.('Writing the mix');
   return mixTracks(tracks, { quality });
