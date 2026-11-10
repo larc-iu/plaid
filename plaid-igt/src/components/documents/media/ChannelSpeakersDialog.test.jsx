@@ -233,11 +233,13 @@ describe('ChannelSpeakersDialog', () => {
       />,
     );
     await settled();
-    expect(text()).toContain('This server accepts 1.0 MB. The WAV is 1.8 MB.');
-    expect(button('Upload').disabled).toBe(true);
-    await view.step(() => radio('Smaller').click());
+    // Only Smaller fits, so it starts there.
+    expect(radio('Smaller').checked).toBe(true);
     expect(text()).not.toContain('This server accepts');
     expect(button('Upload').disabled).toBe(false);
+    await view.step(() => radio('Full quality').click());
+    expect(text()).toContain('This server accepts 1.0 MB. The WAV is 1.8 MB.');
+    expect(button('Upload').disabled).toBe(true);
   });
 
   it('asks no quality for a WAV', async () => {

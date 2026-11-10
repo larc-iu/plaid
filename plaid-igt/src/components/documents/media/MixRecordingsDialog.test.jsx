@@ -85,14 +85,25 @@ describe('MixRecordingsDialog', () => {
     expect(button('Upload').disabled).toBe(false);
   });
 
-  it('refuses a mix over the server limit before anything is uploaded, and the smaller mix gets through', async () => {
+  it('starts on Smaller when only the smaller mix fits, and refuses Full when it is chosen', async () => {
     const onUpload = vi.fn();
     await mount({ maxBytes: 1 * MB, onUpload });
-    expect(text()).toContain('This server accepts 1.0 MB. The mix is 1.9 MB.');
-    expect(button('Upload').disabled).toBe(true);
-    await view.step(() => document.body.querySelector('input[value="small"]').click());
+    expect(document.body.querySelector('input[value="small"]').checked).toBe(true);
     expect(text()).not.toContain('This server accepts');
     expect(button('Upload').disabled).toBe(false);
+    await view.step(() => document.body.querySelector('input[value="full"]').click());
+    expect(text()).toContain('This server accepts 1.0 MB. The mix is 1.9 MB.');
+    expect(button('Upload').disabled).toBe(true);
+  });
+
+  it('starts on Full when it fits, and when neither fits', async () => {
+    await mount({ maxBytes: 2 * MB });
+    expect(document.body.querySelector('input[value="full"]').checked).toBe(true);
+    await view.unmount();
+    await mount({ maxBytes: 0.5 * MB });
+    expect(document.body.querySelector('input[value="full"]').checked).toBe(true);
+    expect(text()).toContain('This server accepts 500 KB. The mix is 1.9 MB.');
+    expect(button('Upload').disabled).toBe(true);
   });
 
   it('hands the upload the mixed file and the speakers in channel order, offsets applied', async () => {

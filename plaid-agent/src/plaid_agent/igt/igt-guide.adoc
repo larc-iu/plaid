@@ -178,6 +178,7 @@ Under **Per speaker**, choose them all, and **Mix recordings** makes one recordi
 Each row takes the speaker of that file and an offset in seconds, silence put before the file (a negative offset trims its start) for a file that was started late.
 A stereo file is averaged to one channel first.
 **Full quality** keeps the highest sample rate among the files, **Smaller** resamples to 16 kHz, and each says the size it comes to.
+The dialog starts on **Full quality**, or on **Smaller** when only that one fits the server's limit.
 A mix the server would refuse is refused here, before anything is uploaded.
 
 A file made elsewhere with a speaker on each channel can be chosen alone under **Per speaker**.

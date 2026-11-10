@@ -14,7 +14,7 @@ import { formatBytes } from '@/utils/formatBytes';
 import { notifyError } from '@/utils/feedback';
 import { keptChannelsWav, readChannelFile } from '@/domain/media/mixRecordings';
 import { keptChannelsBytes } from '@/domain/media/mixdown';
-import { QualityChoice } from './QualityChoice.jsx';
+import { QualityChoice, startingQuality } from './QualityChoice.jsx';
 
 // One file chosen under Per speaker: a recording made elsewhere with a
 // speaker on each channel. Nothing is mixed. The dialog reads how many
@@ -45,7 +45,8 @@ export function ChannelSpeakersDialog({
   // rest of readChannelFile's answer when the file is made a WAV.
   const [read, setRead] = useState({ status: 'reading', channels: 0 });
   const [speakers, setSpeakers] = useState([]);
-  const [quality, setQuality] = useState('full');
+  // The quality chosen, null until one is (startingQuality holds till then).
+  const [chosen, setChosen] = useState(null);
   // True while the WAV is written.
   const [converting, setConverting] = useState(false);
   // Stops a read or a conversion when the dialog goes away.
@@ -57,7 +58,7 @@ export function ChannelSpeakersDialog({
     const abort = new AbortController();
     setRead({ status: 'reading', channels: 0 });
     setSpeakers([]);
-    setQuality('full');
+    setChosen(null);
     setConverting(false);
     readFile(file, { signal: abort.signal }).then(
       (answer) => {
@@ -78,6 +79,7 @@ export function ChannelSpeakersDialog({
   const oneChannel = ready && read.channels < 2;
   const convert = ready && read.convert;
   const bytesOf = (q) => (convert ? keptChannelsBytes(read, q) : null);
+  const quality = chosen ?? startingQuality(bytesOf, maxBytes);
   const bytes = convert ? bytesOf(quality) : (file?.size ?? null);
   const overLimit = maxBytes != null && bytes != null && bytes > maxBytes;
   const canUpload = ready && !oneChannel && !overLimit && !converting;
@@ -180,7 +182,7 @@ export function ChannelSpeakersDialog({
               <p className="text-xs text-muted-foreground">Uploaded as a WAV.</p>
               <QualityChoice
                 value={quality}
-                onChange={setQuality}
+                onChange={setChosen}
                 fullRate={read.sampleRate}
                 bytesOf={bytesOf}
                 maxBytes={maxBytes}

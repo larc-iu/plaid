@@ -9,6 +9,13 @@ import { SMALL_RATE } from '@/domain/media/mixdown';
 // until it is known). A file at 16 kHz or below has nothing to gain from
 // Smaller, so only Full is offered.
 
+// The quality a dialog starts on, until one is chosen: Full, unless it is over
+// the server's limit and Smaller is not.
+export const startingQuality = (bytesOf, maxBytes) => {
+  const over = (quality) => maxBytes != null && (bytesOf(quality) ?? 0) > maxBytes;
+  return over('full') && !over('small') ? 'small' : 'full';
+};
+
 const QUALITIES = [
   ['full', (rate) => (rate ? `Full quality (${Math.round(rate / 100) / 10} kHz)` : 'Full quality')],
   ['small', () => `Smaller (${SMALL_RATE / 1000} kHz)`],

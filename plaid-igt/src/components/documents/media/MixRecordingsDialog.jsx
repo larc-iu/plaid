@@ -15,7 +15,7 @@ import { notifyError } from '@/utils/feedback';
 import { readTrack, mixTracks } from '@/domain/media/mixRecordings';
 import { mixBytes, mixRate, trackNote } from '@/domain/media/mixdown';
 import { formatTime } from './formatTime.js';
-import { QualityChoice } from './QualityChoice.jsx';
+import { QualityChoice, startingQuality } from './QualityChoice.jsx';
 
 // Several files chosen at once, one per speaker, become one recording with a
 // channel each. The dialog lists the files as they are read, takes a speaker
@@ -38,7 +38,8 @@ export function MixRecordingsDialog({
   decode = readTrack,
 }) {
   const [tracks, setTracks] = useState([]);
-  const [quality, setQuality] = useState('full');
+  // The quality chosen, null until one is (startingQuality holds till then).
+  const [chosen, setChosen] = useState(null);
   // `{ index, total }` while the mix is written, else null.
   const [mixing, setMixing] = useState(null);
   // Aborts the mix when the dialog goes away.
@@ -59,6 +60,7 @@ export function MixRecordingsDialog({
         offset: '',
       })),
     );
+    setChosen(null);
     setMixing(null);
     (async () => {
       for (const [i, file] of files.entries()) {
@@ -87,6 +89,7 @@ export function MixRecordingsDialog({
       }))
     : null;
   const bytesOf = (q) => (plan ? mixBytes(plan, q) : null);
+  const quality = chosen ?? startingQuality(bytesOf, maxBytes);
   const bytes = bytesOf(quality);
   const overLimit = maxBytes != null && bytes != null && bytes > maxBytes;
 
@@ -197,7 +200,7 @@ export function MixRecordingsDialog({
 
           <QualityChoice
             value={quality}
-            onChange={setQuality}
+            onChange={setChosen}
             fullRate={plan ? mixRate(plan, 'full') : null}
             bytesOf={bytesOf}
             maxBytes={maxBytes}
