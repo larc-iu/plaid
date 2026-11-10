@@ -104,19 +104,47 @@ def test_a_recording_that_is_not_a_wav_needs_ffmpeg_and_is_refused_without_one(t
     assert 'ffmpeg is not installed' in str(caught.value)
 
 
-def test_a_recording_that_is_not_a_wav_goes_through_ffmpeg_when_there_is_one(tmp_path, monkeypatch):
+def stub_ffmpeg(tmp_path, monkeypatch, wav):
+    """An ``ffmpeg`` on PATH that writes ``wav`` (bytes) to the last path it
+    is given and records its arguments, one per line, in ``argv.txt``."""
+    bin_dir = tmp_path / 'bin'
+    bin_dir.mkdir()
+    (tmp_path / 'stub.wav').write_bytes(wav)
+    script = bin_dir / 'ffmpeg'
+    script.write_text(
+        f'#!{sys.executable}\n'
+        'import shutil, sys\n'
+        f'open({str(tmp_path / "argv.txt")!r}, "w").write("\\n".join(sys.argv[1:]))\n'
+        f'shutil.copyfile({str(tmp_path / "stub.wav")!r}, sys.argv[-1])\n')
+    script.chmod(0o755)
+    monkeypatch.setenv('PATH', f'{bin_dir}{os.pathsep}{os.environ.get("PATH", "")}')
+    return lambda: (tmp_path / 'argv.txt').read_text().split('\n')
+
+
+def test_a_recording_that_is_not_a_wav_is_decoded_whole_by_ffmpeg_then_split_here(tmp_path, monkeypatch):
     src = tmp_path / 'talk.mp3'
     src.write_bytes(b'\xff\xfb\x90\x00')
-    seen = {}
-    monkeypatch.setattr(ch.shutil, 'which', lambda name: '/usr/bin/ffmpeg')
+    argv = stub_ffmpeg(tmp_path, monkeypatch, wav_bytes([(1, 10), (2, 20)], rate=44100))
+    out_dir = tmp_path / 'out'
+    out_dir.mkdir()
+    out = extract_channel(str(src), 1, str(out_dir))
+    assert os.path.basename(out) == 'channel-1.wav'
+    header, samples = read_mono(out)
+    assert header == (ch.WAV_PCM, 1, 44100, 16)
+    assert samples == [10, 20]
+    args = argv()
+    assert args[args.index('-i') + 1] == str(src)
+    assert args[args.index('-c:a') + 1] == 'pcm_s16le'
+    assert '-af' not in args
+    assert args[-1].endswith('.wav') and args[-1] != out
+    # The whole decode is not left beside the channel.
+    assert os.listdir(out_dir) == ['channel-1.wav']
 
-    def run(args, **kwargs):
-        seen['args'] = args
-        return type('R', (), {'returncode': 0, 'stderr': ''})()
 
-    monkeypatch.setattr(ch.subprocess, 'run', run)
-    out = extract_channel(str(src), 1, str(tmp_path))
-    assert out.endswith('channel-1.wav')
-    assert seen['args'][0] == '/usr/bin/ffmpeg'
-    assert 'pan=mono|c0=c1' in seen['args']
-    assert seen['args'][-1] == out
+def test_a_channel_a_recording_that_is_not_a_wav_does_not_have_is_refused(tmp_path, monkeypatch):
+    src = tmp_path / 'talk.mp3'
+    src.write_bytes(b'\xff\xfb\x90\x00')
+    stub_ffmpeg(tmp_path, monkeypatch, wav_bytes([(1,), (2,)]))
+    with pytest.raises(Refusal) as caught:
+        extract_channel(str(src), 1, str(tmp_path))
+    assert str(caught.value) == 'The recording has 1 channel, not a channel 2.'
