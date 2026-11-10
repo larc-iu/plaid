@@ -59,6 +59,18 @@ describe('buildReplacer', () => {
     expect(out).toEqual([null]);
   });
 
+  // LP1-6: a replacement reads `$1` and `$&`, and a backslash in it was
+  // written as itself, so `\x{300}` made `ma\x{300}` of `má`. The assistant
+  // refuses it. So does this, and writes nothing.
+  it('refuses a backslash in a regex replacement', () => {
+    for (const repl of ['\\x{300}', '\\1', '\\n', 'a\\']) {
+      const { error, out } = run('(a)\u0301', 'regex', repl, ['m\u00e1']);
+      expect(error).toBe('The replacement cannot hold a backslash. Type the character itself.');
+      expect(out).toEqual([null]);
+    }
+    expect(run('a', 'contains', 'b\\c', ['a']).out).toEqual(['b\\c']);
+  });
+
   it('says nothing changed when the match rewrites to itself', () => {
     expect(run('kat', 'exact', 'kat', ['kat']).out).toEqual([null]);
   });

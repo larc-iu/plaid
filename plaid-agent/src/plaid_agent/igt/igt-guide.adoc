@@ -1036,6 +1036,7 @@ A regular expression is read the same way in Search, in Bulk Edit, in a vocabula
 `\w` is a letter, mark, digit, or underscore in any script, `\b` the edge of a word, and `\p{IsArabic}` any character of the Arabic script, and likewise for every script.
 `(?i)` at the start ignores case.
 In a replacement, `$1` is the first group and `$&` the whole match.
+A replacement cannot hold a backslash, so an accent goes in as the character itself.
 
 Results come in two views:
 

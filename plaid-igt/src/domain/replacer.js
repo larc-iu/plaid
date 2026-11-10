@@ -141,6 +141,8 @@ function matchCase(matched, replacement) {
   return chars.join('');
 }
 
+const REPLACEMENT_BACKSLASH = 'The replacement cannot hold a backslash. Type the character itself.';
+
 // Returns { apply, error }: `apply(value)` gives the rewritten value, or null
 // when the value is unchanged (no match, or the match rewrites to itself).
 // A pattern that cannot be used yields `error` and an `apply` that never
@@ -174,6 +176,12 @@ export function buildReplacer(find, matchType, replacement) {
       const d = translatePattern(options.literal ? nfd(find) : decomposePattern(find), options);
       if (!d.error) decomposed = new RegExp(d.source, 'gu');
     }
+  }
+  // A replacement reads `$1` and `$&` and nothing else, so a backslash in it
+  // would be written as itself: `\x{300}` as those six characters. The
+  // assistant refuses one (plaid-agent core/replace.py), and so does this.
+  if (matchType === 'regex' && (replacement ?? '').includes('\\')) {
+    return { apply: never, error: REPLACEMENT_BACKSLASH };
   }
   const hasCapital = (s) => Array.from(s ?? '').some(isUpper);
   const keepCase = matchType === 'contains' && !hasCapital(find) && !hasCapital(replacement);
