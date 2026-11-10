@@ -268,7 +268,7 @@ export const ImportCldfProject = () => {
                     const active = mapping && mapping.enabled !== false;
                     return (
                       <div key={choice.name} className="flex items-center justify-between gap-3">
-                        <span className="min-w-0 flex-1 truncate text-sm">{choice.name}</span>
+                        <span className="min-w-0 flex-1 truncate text-sm">{choice.label}</span>
                         <Select
                           value={active ? mapping.scope : OFF}
                           disabled={locked}

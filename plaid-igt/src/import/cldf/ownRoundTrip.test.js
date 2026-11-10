@@ -304,3 +304,21 @@ describe('a word that begins inside a character', () => {
     expect(d.tokenEdges).toBeNull();
   });
 });
+
+// LP2-16: a field whose name CSVW cannot hold goes out percent-encoded, with
+// the name a person reads in `titles`, and the import lists it by that title.
+describe('custom columns, as the review lists them', () => {
+  it('are labelled by their titles, not their encoded names', () => {
+    const doc = makeFixtureDoc();
+    doc.sortedSentences[0].annotations['Translation (pmy)'] = { value: 'Free.' };
+    const { dataset } = exportThenRead([doc], {
+      ...OPTIONS,
+      extras: { ...OPTIONS.extras, sentence: ['Translation (pmy)'] },
+    });
+    const choice = customColumnChoices(dataset).find(
+      (c) => c.name === 'Sentence_Translation%20(pmy)',
+    );
+    expect(choice).toBeDefined();
+    expect(choice.label).toBe('Sentence_Translation (pmy)');
+  });
+});

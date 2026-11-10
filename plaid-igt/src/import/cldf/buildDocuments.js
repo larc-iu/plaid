@@ -283,12 +283,18 @@ export function customColumnChoices(dataset) {
   const own = isOwnExport(examples);
   return customColumnsOf(examples)
     .filter((n) => !skipColumn(n, own))
-    .map((name) => ({
-      name,
-      // Only a list column can align with Analyzed_Word.
-      canBePerWord: !!examples.columns.find((c) => c.name === name)?.separator,
-      suggested: recognizePrefix(name, own),
-    }));
+    .map((name) => {
+      const column = examples.columns.find((c) => c.name === name);
+      return {
+        name,
+        // What the review lists it as: its titles, which our own export
+        // writes beside a percent-encoded name, else the name.
+        label: column?.title || name,
+        // Only a list column can align with Analyzed_Word.
+        canBePerWord: !!column?.separator,
+        suggested: recognizePrefix(name, own),
+      };
+    });
 }
 
 // ---- media -------------------------------------------------------------------

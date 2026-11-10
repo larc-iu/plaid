@@ -184,6 +184,13 @@ function findDescriptor(entries) {
   return null;
 }
 
+// The name a person reads, a column's CSVW `titles`: a string, or a list
+// whose first is taken. Null when it has none.
+const titleOf = (titles) => {
+  const first = Array.isArray(titles) ? titles[0] : titles;
+  return typeof first === 'string' && first ? first : null;
+};
+
 function buildComponent({ url, conformsTo, columnSpecs, rows, delimiter }) {
   const text = decode(rows, url);
   const { header, objects } = toObjects(parseCsv(text, delimiter));
@@ -194,6 +201,7 @@ function buildComponent({ url, conformsTo, columnSpecs, rows, delimiter }) {
     const spec = declared.get(name);
     return {
       name,
+      title: titleOf(spec?.titles),
       term: spec ? termOf(spec.propertyUrl) : null,
       separator: spec?.separator ?? null,
       nulls: spec ? nullsOf(spec) : [''],
