@@ -172,6 +172,19 @@ describe('the morpheme type control (R48)', () => {
     choose('enclitic');
     expect(doc.sentences[0].tokens[0].morphemes[1].morphType).toBe('enclitic');
   });
+
+  // The class is what gives the morpheme form row the height for the opener
+  // (igt-editor.css). At the short height the row below covered it.
+  it('keeps room for the opener in the morpheme row of a project with no lexicon', () => {
+    mount({ lexicon: false });
+    expect(document.querySelector('.igt-island--morph-opener')).not.toBeNull();
+  });
+
+  it('keeps the short morpheme row where the lexicon chip already has the tall one', () => {
+    mount({ linked: true });
+    expect(document.querySelector('.igt-island--morph-opener')).toBeNull();
+    expect(document.querySelector('.igt-island--vocab')).not.toBeNull();
+  });
 });
 
 describe('the type control while + Create is open (R56)', () => {

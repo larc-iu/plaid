@@ -563,10 +563,11 @@ export class IgtEditor {
     this.container.classList.toggle('igt-island--readonly', !!this.readOnly);
     // Vocab-linked projects show a hint line under every word/morpheme form;
     // the CSS reserves taller form rows for it (see --igt-form-h).
-    this.container.classList.toggle(
-      'igt-island--vocab',
-      Object.keys(this.doc.vocabularies || {}).length > 0,
-    );
+    const hasVocabs = Object.keys(this.doc.vocabularies || {}).length > 0;
+    this.container.classList.toggle('igt-island--vocab', hasVocabs);
+    // With no lexicon a writer's morphemes carry an opener all the same ("set
+    // type", grid.js), and the morpheme form row has to hold it.
+    this.container.classList.toggle('igt-island--morph-opener', !hasVocabs && !this.readOnly);
     this._followPopover();
     // What the engine holds is gone over against new data first, so the
     // template draws it as it stands (a value put back whose stored value

@@ -98,6 +98,12 @@
   --igt-form-h: 42px;
   --igt-morph-form-h: 44px;
 }
+/* With no lexicon a writer's morpheme still has a second line, "set type".
+   At the short height it painted into the row below, whose cell took its
+   clicks (CW-BROWSER-3). */
+.igt-island--morph-opener {
+  --igt-morph-form-h: 44px;
+}
 
 .igt-island__error {
   margin-bottom: 12px;
