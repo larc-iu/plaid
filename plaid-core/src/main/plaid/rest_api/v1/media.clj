@@ -10,7 +10,9 @@
             [plaid.util.canonical :as canonical]
             [ring.util.response :as response]
             [taoensso.timbre :as log])
-  (:import [java.io FileInputStream InputStream]
+  (:import [java.io File]
+           [java.nio.channels FileChannel FileChannel$MapMode]
+           [java.nio.file OpenOption StandardOpenOption]
            [java.time Instant]))
 
 (def ^:private error-status
@@ -148,51 +150,28 @@
       (catch NumberFormatException _
         nil))))
 
-(defn- bounded-input-stream
-  "Expose at most `length` bytes from `input`, closing the underlying stream."
-  ^InputStream [^InputStream input length]
-  (let [remaining (atom (long length))]
-    (proxy [InputStream] []
-      (read
-        ([]
-         (if (zero? @remaining)
-           -1
-           (let [value (.read input)]
-             (when-not (= -1 value) (swap! remaining dec))
-             value)))
-        ;; read(byte[]) is what servers (http-kit) actually call when
-        ;; streaming a body; without this arity every Range request 500'd
-        ;; ("Wrong number of args (2)") and browsers, which always ask for
-        ;; `bytes=0-`, could never play media.
-        ([buffer]
-         (let [^bytes b buffer]
-           (.read ^InputStream this b 0 (alength b))))
-        ([buffer offset requested]
-         (if (zero? @remaining)
-           -1
-           (let [allowed (int (min (long requested) @remaining))
-                 n (.read input buffer offset allowed)]
-             (when (pos? n) (swap! remaining - n))
-             n))))
-      (available []
-        (int (min (long (.available input)) @remaining Integer/MAX_VALUE)))
-      (skip [requested]
-        (let [n (.skip input (min (long requested) @remaining))]
-          (swap! remaining - n)
-          n))
-      (close [] (.close input)))))
+(defn- mapped-body
+  "`length` bytes of `file` from `start`, mapped read-only. http-kit writes a
+  ByteBuffer body as it is, and NIO writes a mapped buffer from the page
+  cache, so serving a recording costs neither heap nor direct memory of its
+  size. An InputStream body is read whole into the heap by http-kit, then
+  copied whole into a direct buffer to be written: about twice the file per
+  GET, which a few people opening long recordings at once ran out of. The
+  mapping outlives the channel and goes with the buffer. A recording is
+  replaced or deleted by a rename or an unlink, never written in place, so a
+  mapping being served still reads the old bytes."
+  ^java.nio.ByteBuffer [^File file start length]
+  (with-open [ch (FileChannel/open (.toPath file) (into-array OpenOption [StandardOpenOption/READ]))]
+    (.map ch FileChannel$MapMode/READ_ONLY (long start) (long length))))
 
 (defn stream-file-response
-  "Create a streaming response for a file with RFC-style single-range support.
+  "Create a response for a file with RFC-style single-range support.
   Cache headers are the handler's business (see `media-cache-headers`)."
   [file content-type size range-header]
   (if range-header
     (if-let [{:keys [start end]} (parse-byte-range range-header size)]
-      (let [length (inc (- end start))
-            file-stream (FileInputStream. file)
-            _ (.position (.getChannel file-stream) start)
-            input-stream (bounded-input-stream file-stream length)]
-        (-> (response/response input-stream)
+      (let [length (inc (- end start))]
+        (-> (response/response (mapped-body file start length))
             (response/status 206)
             (response/header "Content-Type" content-type)
             (response/header "Content-Length" (str length))
@@ -202,7 +181,7 @@
        :headers {"Content-Range" (str "bytes */" size)
                  "Accept-Ranges" "bytes"}
        :body ""})
-    (-> (response/response (FileInputStream. file))
+    (-> (response/response (mapped-body file 0 size))
         (response/header "Content-Type" content-type)
         (response/header "Content-Length" (str size))
         (response/header "Accept-Ranges" "bytes"))))
