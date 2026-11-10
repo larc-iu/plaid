@@ -158,14 +158,21 @@ function variableNumber(sentence) {
 
 /**
  * Whether a parsed .umr file numbers its sentences otherwise than 1, 2, 3 in
- * order: an excerpt starting at snt5, a released file with a gap, or this
- * app's export of a document numbered by its file that holds a sentence typed
- * in before its first (snt1, snt5, snt6). The import marks every record of
- * such a file, so the document goes by those numbers whatever stands first.
+ * order: an excerpt starting at snt5, a released file with a gap, this app's
+ * export of a document numbered by its file that holds a sentence typed in
+ * before its first (snt1, snt5, snt6), or a file whose variables name another
+ * number than their sentence's place (s24u in the 23rd sentence). The import
+ * marks every record of such a file, so the document goes by those numbers
+ * whatever stands first, and opening it renames none of its variables.
  */
 export function fileNumbersItsSentences(parsedSentences) {
   return (parsedSentences || []).some(
-    (ps, i) => ps.snt != null && String(ps.snt) !== String(i + 1),
+    (ps, i) =>
+      (ps.snt != null && String(ps.snt) !== String(i + 1)) ||
+      [...(ps.graph?.nodes?.keys() ?? [])].some((v) => {
+        const m = NUMBERED_VARIABLE.exec(v);
+        return m && Number(m[1]) !== i + 1;
+      }),
   );
 }
 

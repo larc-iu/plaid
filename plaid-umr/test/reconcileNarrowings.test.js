@@ -73,6 +73,29 @@ test('an excerpt whose file starts at snt5 keeps its variables on first open', a
   assert.equal(calls.length, 0);
 });
 
+// FB-19, Luke's ruling of 2026-11-10 ("Keep the file's numbers"): a file
+// whose variables name another sentence number than their sentence's place
+// (s24u in the 23rd sentence of Kukama's) goes by the file's numbers, as an
+// excerpt starting at snt5 does, so opening it renames nothing and the
+// export writes the file's own variables.
+for (const name of ['kukama_umr-0001.umr', 'arapaho_umr-0001.umr']) {
+  test(`${name}: an import opened in Annotate writes nothing and exports the file's variables`, async () => {
+    const text = fs.readFileSync(path.join(path.dirname(SANAPANA), name), 'utf8');
+    const file = parseUmrFile(text).sentences;
+    const { doc, calls } = open(fromText(text));
+    const result = await doc._reconcile();
+    assert.equal(result.renumbered ?? 0, 0);
+    assert.equal(calls.length, 0);
+    const out = parseUmrFile(doc.toUmr()).sentences;
+    const names = (sentences) => sentences.map((s) => [...(s.graph?.nodes?.keys() ?? [])].sort());
+    assert.deepEqual(names(out), names(file));
+    assert.deepEqual(
+      out.map((s) => s.snt),
+      file.map((s) => s.snt),
+    );
+  });
+}
+
 test('the same file starting at snt1 with a sentence IGT added before it is renumbered', async () => {
   const raw = fromText(`${block(1)}\n${block(2)}`);
   insertSentenceAtStart(raw);
