@@ -130,6 +130,32 @@ describe('import', () => {
     await view.unmount();
   });
 
+  // LP2-7: a zip's later files are still importing when the first is done,
+  // and the line read "Imported 1 of 1" as though that were all.
+  it('says it is still importing while later files are', async () => {
+    let release;
+    const held = new Promise((r) => (release = r));
+    const format = baseFormat();
+    format.prepareImport = vi.fn(async () => async ({ index, name, push }) => {
+      if (index === 1) await held;
+      push({ key: `${index}`, name, status: 'imported', warnings: [] });
+    });
+    const view = await mount(format);
+    await drop(view, [file('one.xy', 'a'), file('two.xy', 'b')]);
+    await view.step(async () => {
+      button(view.container, 'Import').click();
+      await settle();
+    });
+    expect(view.container.textContent).toContain('Importing, 1 imported');
+    expect(view.container.textContent).not.toContain('Imported 1 of 1');
+    await view.step(async () => {
+      release();
+      await settle();
+    });
+    expect(view.container.textContent).toContain('Imported 2 of 2');
+    await view.unmount();
+  });
+
   it('says on a row that it went onto an existing document', async () => {
     const format = baseFormat();
     format.prepareImport = vi.fn(async () => async ({ index, name, push }) => {

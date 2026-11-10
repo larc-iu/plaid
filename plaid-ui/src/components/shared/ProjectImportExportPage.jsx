@@ -423,7 +423,9 @@ export const ProjectImportExportPage = ({ tabs: Tabs, setupHref, format }) => {
                         tabIndex={-1}
                         className="mb-2 font-semibold focus:outline-none"
                       >
-                        Imported {importedCount} of {results.length}
+                        {importing
+                          ? `Importing, ${importedCount} imported`
+                          : `Imported ${importedCount} of ${results.length}`}
                         {rejectedCount ? `, ${rejectedCount} rejected` : ''}
                       </p>
                       <div className="max-h-[360px] overflow-y-auto">
