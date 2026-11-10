@@ -652,8 +652,12 @@ class Workspace(BaseWorkspace):
         # A sense this plan has just added carries its entry's form, so a bare
         # form would suddenly name two things. It counts only when there is
         # something to tell it apart by, exactly as an existing sense does.
+        # A "#" number is one the app shows, and an entry or sense this plan
+        # adds has none until it is made, so a number names only what exists.
         def planned_ok(e):
-            if suffix is not None or g:
+            if suffix is not None:
+                return False
+            if g:
                 return True
             return not (e.get('metadata') or {}).get('parent')
 

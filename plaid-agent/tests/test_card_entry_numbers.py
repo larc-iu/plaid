@@ -53,6 +53,17 @@ def test_a_new_entry_is_its_form():
     assert _labels(w)[-1].endswith(': link "gam"'), _labels(w)
 
 
+def test_a_numbered_form_names_an_existing_entry_after_the_plan_adds_one_spelled_alike():
+    # A new entry or sense has no number until it is made, so "gam#1" still
+    # names the existing gam#1 once the plan holds a new gam (LP1-17).
+    w = _ws()
+    call_tool(w, 'create_entry', {'form': 'gam', 'fields': {'gloss': 'trap'}})
+    assert 'Planned 1' in call_tool(w, 'senses', {'action': 'add', 'entry_form': 'gam#1', 'fields': {'gloss': 'weir'}})
+    out = call_tool(w, 'link_entry', {'document': 'Text 1', 'refs': ['s1.w3'], 'entry_form': 'gam#1'})
+    assert 'Planned 1' in out, out
+    assert _labels(w)[-1].endswith(': link "gam₁"'), _labels(w)
+
+
 def test_a_phrase_link_carries_the_number():
     w = _ws()
     call_tool(w, 'link_phrase', {'document': 'Text 1', 'refs': ['s1.w2', 's1.w3'], 'entry_form': 'gam#2'})
