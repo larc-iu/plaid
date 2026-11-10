@@ -15,6 +15,7 @@ last reply's first 300 characters.
 import re
 from types import SimpleNamespace
 
+import common as c
 import ud_tree
 
 
@@ -26,7 +27,7 @@ def check(ctx):
     a = ctx.args
     tree = ud_tree.check(SimpleNamespace(**{**vars(ctx), 'args': a['tree']}))
     replies = [d for d in ctx.conversation.get('display') or [] if d.get('kind') == 'assistant']
-    text = '\n'.join(re.sub(r'<cite\b[^>]*/>', ' ', d.get('text') or '') for d in replies)
+    text = '\n'.join(c.shown_text(ctx.app, d) for d in replies)
     hits = [bool(re.search(p, text, re.I | re.S)) for p in _list(a.get('match'))]
     bad = [p for p in _list(a.get('reject')) if re.search(p, text, re.I | re.S)]
     answered = bool(replies) and all(hits) and not bad

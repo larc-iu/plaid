@@ -106,3 +106,65 @@ def test_no_run_output_or_data_is_in_the_harness_folder():
         assert not (BENCH / name).exists(), name
     for name in ('src', 'snapshot', 'build'):
         assert not (BENCH / 'fixtures' / name).exists(), f'fixtures/{name}'
+
+
+# --- the reply as the panel shows it -------------------------------------------
+
+UMR_ALIGNMENT_REPLY = (
+    '**1. Alignment of s9a2 (after):** word 3, **rchikari**.\n\n'
+    '**2. Nodes aligned to no word (0-0):** three\n'
+    '- <cite doc="Kukama text 2" ref="s9.s9h"/> have-location-91\n'
+    '- <cite doc="Kukama text 2" ref="s9.s9p"/> person\n'
+    '- <cite doc="Kukama text 2" ref="s9.s9t"/> thing\n')
+
+
+def _umr_cite(var):
+    return {'key': f'<cite doc="Kukama text 2" ref="s9.{var}"/>', 'document_name': 'Kukama text 2',
+            'number': 9, 'sentence': 9, 'focus': [var]}
+
+
+def test_a_checker_reads_a_cite_as_the_panel_shows_it(bench_path):
+    # glm53-1's umr-q-alignment named the three unaligned nodes only in cites,
+    # which the panel shows as "Kukama text 2, sentence 9, node s9h", and the
+    # checker, which dropped every cite, failed a right answer.
+    import common
+    import yaml
+    item = {'kind': 'assistant', 'text': UMR_ALIGNMENT_REPLY,
+            'citations': [_umr_cite(v) for v in ('s9h', 's9p', 's9t')]}
+    shown = common.shown_text('umr', item)
+    assert 'Kukama text 2, sentence 9, node s9h have-location-91' in shown
+    assert '<cite' not in shown
+    task = yaml.safe_load((BENCH / 'tasks/umr/umr-q-alignment.yaml').read_text())
+    import re
+    assert all(re.search(p, shown, re.I | re.S) for p in task['args']['match'])
+
+
+def test_each_app_titles_a_cite_as_its_panel_does(bench_path):
+    import common
+    igt = {'text': 'See <cite doc="Lezgi text 1" ref="s2.w3.m1"/> and s4.w1 and s5.',
+           'citations': [
+               {'key': '<cite doc="Lezgi text 1" ref="s2.w3.m1"/>', 'document_name': 'Lezgi text 1',
+                'sentence': 2, 'focus': [{'word': 3, 'morpheme': 1}]},
+               {'key': 's4.w1', 'document_name': 'Lezgi text 1', 'sentence': 4,
+                'focus': [{'word': 1, 'morpheme': None}, {'word': 2, 'morpheme': 1}]}]}
+    assert common.shown_text('igt', igt) == \
+        'See Lezgi text 1, sentence 2, word 3, morpheme 1 and Lezgi text 1, sentence 4, words 1, 2 and s5.'
+    ud = {'text': '<cite doc="French 1" ref="s1.w6"/>\n{{French 2 s3}}',
+          'citations': [{'key': '<cite doc="French 1" ref="s1.w6"/>', 'document_name': 'French 1',
+                         'sentence': 1, 'focus': [6]},
+                        {'key': '{{French 2 s3}}', 'document_name': 'French 2', 'sentence': 3, 'focus': []}]}
+    # a cite alone on its line is a card, whose heading is the same title
+    assert common.shown_text('ud', ud) == 'French 1, sentence 1, word 6\nFrench 2, sentence 3'
+    umr = {'text': 'Nodes s9.s9h and s9.s9p, sentence s9.', 'citations': [
+        {'key': 's9.s9h', 'document_name': 'Kukama text 2', 'number': 9, 'sentence': 9, 'focus': ['s9h', 's9x']}]}
+    # an unresolved one reads as the reference it names
+    assert common.shown_text('umr', umr) == 'Nodes Kukama text 2, sentence 9, nodes s9h, s9x and s9.s9p, sentence s9.'
+    assert common.shown_text('igt', {'text': 'Look at <cite doc="Lezgi text 1" ref="s2"/>.'}) == \
+        'Look at Lezgi text 1 s2.'
+    assert common.shown_text('ud', {'text': None}) == ''
+
+
+def test_every_checker_reads_the_reply_through_the_one_reader(bench_path):
+    # A checker that strips cites itself reads a reply the user never saw.
+    for p in sorted((BENCH / 'checks').glob('*.py')):
+        assert '<cite' not in p.read_text() or p.name == 'common.py', p.name

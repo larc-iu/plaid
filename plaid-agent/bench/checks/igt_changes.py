@@ -190,8 +190,7 @@ def check(ctx):
     plan_ok = ('applied' in statuses) if want_plan == 'required' else (not flat and 'applied' not in statuses)
 
     replies = [d for d in ctx.conversation.get('display') or [] if d.get('kind') in ('assistant', 'error')]
-    text = (replies[-1].get('text') or '') if replies else ''
-    plain = re.sub(r'<cite\b[^>]*/>', ' ', text)
+    plain = c.shown_text(ctx.app, replies[-1]) if replies else ''
     pats = _list(a.get('match'))
     matched = [bool(re.search(p, plain, re.I | re.S)) for p in pats]
     bad = [p for p in _list(a.get('reject')) if re.search(p, plain, re.I | re.S)]

@@ -315,6 +315,69 @@ def project_changes(ctx, reader) -> Dict[str, Dict[str, tuple]]:
     return out
 
 
+# --- the reply as the panel shows it ---------------------------------------------
+#
+# The panel never shows a cite tag. A citation the service resolved reads as its
+# title ("Kukama text 2, sentence 9, node s9h"), inline as a link and alone on
+# its line as a card under that heading, and one it could not resolve as the
+# document and reference it names. Each checker reads a reply through
+# `shown_text`, so it judges what the user saw. Ported from plaid-ui's
+# assistant/citations.js (citePlain, linkifyCitations) and each app's CITE_RE
+# (adapter.js) and citationTitle (cite.js). Code spans are not told apart.
+
+CITE_RE = {
+    'igt': re.compile(r'<\s*cite\b[^<>]*?/?\s*>(?:[ \t]*<\s*/\s*cite\s*>)?'
+                      r'|\{\{?\s*[^{}\n]+?\s+s\d+(?:\.w\d+(?:\.m\d+)?)?\s*\}\}?'
+                      r'|(?<![\w{.])s\d+(?:\.w\d+(?:\.m\d+)?)?\b', re.A),
+    'ud': re.compile(r'<\s*cite\b[^<>]*?/?\s*>(?:[ \t]*<\s*/\s*cite\s*>)?'
+                     r'|\{\{?\s*[^{}\n]+?\s+s\d+(?:\.w\d+(?:-\d+)?)?\s*\}\}?'
+                     r'|(?<![\w{.])s\d+(?:\.w\d+(?:-\d+)?)?\b', re.A),
+    'umr': re.compile(r'<\s*cite\b[^<>]*?/?\s*>(?:[ \t]*<\s*/\s*cite\s*>)?'
+                      r'|\{\{?\s*[^{}\n]+?\s+s\d+(?:\.[A-Za-z][\w-]*)?(?:\s*,\s*[A-Za-z][\w-]*)*\s*\}\}?'
+                      r'|(?<![\w{.])s\d+\.[A-Za-z][\w-]*\b', re.A),
+}
+_CITE_ATTR = re.compile(r'''([A-Za-z_][\w-]*)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'<>/]+))''', re.A)
+
+
+def _cite_plain(m: str) -> str:
+    if re.match(r'<\s*cite\b', m, re.I):
+        at = {a[0].lower(): a[1] or a[2] or a[3] or '' for a in _CITE_ATTR.findall(m)}
+        return ' '.join(x for x in (at.get('doc') or at.get('document') or '',
+                                    at.get('ref') or at.get('sentence') or '') if x)
+    return re.sub(r'\s*\}{1,2}$', '', re.sub(r'^\{{1,2}\s*', '', m))
+
+
+def _cite_title(app: str, c: dict) -> str:
+    focus = c.get('focus') or []
+    if app == 'umr':
+        head = f'{c.get("document_name")}, sentence {c.get("number", c.get("sentence"))}'
+        if not focus:
+            return head
+        return f'{head}, node {focus[0]}' if len(focus) == 1 else f'{head}, nodes {", ".join(focus)}'
+    head = f'{c.get("document_name")}, sentence {c.get("sentence")}'
+    if not focus:
+        return head
+    if app == 'igt':
+        if len(focus) == 1:
+            f = focus[0]
+            return f'{head}, word {f.get("word")}' + (f', morpheme {f["morpheme"]}' if f.get('morpheme') else '')
+        words = list(dict.fromkeys(f.get('word') for f in focus))
+        return f'{head}, words {", ".join(map(str, words))}'
+    return f'{head}, word {focus[0]}' if len(focus) == 1 else f'{head}, words {", ".join(map(str, focus))}'
+
+
+def shown_text(app: str, item: dict) -> str:
+    """A reply of the conversation record's `display` as the panel shows it:
+    every citation as its title, or as its plain reference when the service
+    did not resolve it."""
+    by_key = {c.get('key'): c for c in item.get('citations') or []}
+
+    def one(m):
+        c = by_key.get(m.group(0))
+        return _cite_title(app, c) if c else _cite_plain(m.group(0))
+    return CITE_RE[app].sub(one, item.get('text') or '')
+
+
 def result(passed: bool, **measures):
     return {'pass': bool(passed), 'measures': measures}
 

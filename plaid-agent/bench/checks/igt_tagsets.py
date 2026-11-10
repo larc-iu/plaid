@@ -53,7 +53,7 @@ def check(ctx):
     sl = _morph_gloss(p)
     writes = sum(len(ch) for ch in c.project_changes(ctx, c.igt_values).values())
     replies = [d for d in ctx.conversation.get('display') or [] if d.get('kind') in ('assistant', 'error')]
-    text = (replies[-1].get('text') or '') if replies else ''
+    text = c.shown_text(ctx.app, replies[-1]) if replies else ''
     statuses = [x.get('status') for x in plan_items(ctx.conversation)]
     if a['mode'] == 'seed':
         listed = {v.get('value') for v in t.get('values') or []}
