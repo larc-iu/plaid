@@ -134,7 +134,7 @@ describe('ElanFiles with several recordings on one file', () => {
     sentences: [{}],
     mediaTracks: [
       { file: ana, name: 'ana.wav', offset: 0, speaker: 'Ana' },
-      { file: ben, name: 'ben.wav', offset: 1.5, speaker: '' },
+      { file: ben, name: 'ben.wav', offset: -1.5, speaker: '' },
     ],
   };
   const props = {
@@ -172,7 +172,7 @@ describe('ElanFiles with several recordings on one file', () => {
     );
     expect(rowOf('talk.eaf')).toContain('2 recordings, mixed into one');
     expect(rowOf('ana.wav')).toContain('Ana');
-    expect(rowOf('ben.wav')).toContain('from 1.5 s');
+    expect(rowOf('ben.wav')).toContain('first 1.5 s skipped');
     expect(rowOf('cam.mp4')).toContain('recording not chosen');
     expect(view.container.textContent).not.toContain('no .eaf names this file');
     const radios = [...view.container.querySelectorAll('input[name="mix-quality"]')];

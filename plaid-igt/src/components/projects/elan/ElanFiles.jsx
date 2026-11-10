@@ -21,6 +21,9 @@ import { ElanSection } from './ElanSection.jsx';
 // A corpus is hundreds of files, and the first screenful says what the rest say.
 const LIST_LIMIT = 12;
 
+/** Seconds as the review shows an offset: up to milliseconds, no trailing zeros. */
+const seconds = (s) => s.toFixed(3).replace(/\.?0+$/, '');
+
 /** What a recording will become, once its duration is known. */
 const convertedBytes = (seconds) =>
   Number.isFinite(seconds) && seconds > 0 ? estimateMp3Bytes(seconds) : null;
@@ -175,7 +178,9 @@ export const ElanFiles = ({
         {track?.speaker && <span className={TONES.muted}>{track.speaker}</span>}
         {track && track.offset !== 0 && (
           <span className={TONES.muted}>
-            from {track.offset.toFixed(3).replace(/\.?0+$/, '')} s
+            {track.offset < 0
+              ? `first ${seconds(-track.offset)} s skipped`
+              : `from ${seconds(track.offset)} s`}
           </span>
         )}
         {need && (

@@ -262,17 +262,28 @@ function documentMedia(eaf, mediaByFile, mediaTracks, warnings) {
       }`,
     );
   }
-  if (chosen.length < 2)
-    return { mediaFile: mediaByFile?.get(eaf.fileName) ?? null, mediaTracks: null };
+  // A TIME_ORIGIN is the stretch of a file before ELAN's timeline starts:
+  // timeline time t plays the file at t + origin. Mixed, each file's start is
+  // cut by its origin. Alone, the times move onto the file (`origin`, in ms).
+  if (chosen.length < 2) {
+    const mediaFile = mediaByFile?.get(eaf.fileName) ?? null;
+    const own = mediaFile
+      ? chosen.find((t) => t.file === mediaFile)
+      : listed.length === 1
+        ? listed[0]
+        : null;
+    return { mediaFile, mediaTracks: null, origin: own?.timeOrigin ?? 0 };
+  }
   const participants = eaf.tiers.map((t) => t.participant);
   return {
     mediaFile: null,
     mediaTracks: chosen.map((t) => ({
       file: t.file,
       name: t.name,
-      offset: (t.timeOrigin ?? 0) / 1000,
+      offset: t.timeOrigin ? -t.timeOrigin / 1000 : 0,
       speaker: trackSpeaker(t.file.name, participants),
     })),
+    origin: 0,
   };
 }
 
@@ -1051,7 +1062,15 @@ function buildGroup(files, nodes, roles, options = {}) {
       tokenEdges: composed.tokenEdges,
       sentences: sentences.map(moved),
       words: words.map(moved),
-      alignments: kept.map(moved),
+      alignments: kept.map(moved).map((a) =>
+        media.origin
+          ? {
+              ...a,
+              timeBegin: toSeconds(a.timeBegin * 1000 + media.origin),
+              timeEnd: toSeconds(a.timeEnd * 1000 + media.origin),
+            }
+          : a,
+      ),
       // The File the user picked for this .eaf, when they picked one (see
       // matchMediaFiles). The CLDF importer carries media as bytes because its
       // zip already holds them in memory; here the file is on disk and a

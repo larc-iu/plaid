@@ -2200,7 +2200,7 @@ describe('a word that begins inside a character', () => {
 
 // A file naming several recordings, one per speaker: each is matched, the
 // chosen ones ride on the document as tracks to be mixed into one recording
-// with a channel each, with its TIME_ORIGIN as the track's offset and the
+// with a channel each, with its TIME_ORIGIN cut from the track's start and the
 // participant named exactly like the file as its speaker.
 describe('several recordings on one file', () => {
   const twoSpeakers = (media) =>
@@ -2277,7 +2277,12 @@ describe('several recordings on one file', () => {
     expect(doc.mediaFile).toBeNull();
     expect(doc.mediaTracks).toEqual([
       { file: ana, name: 'ana.wav', offset: 0, speaker: 'Ana' },
-      { file: ben, name: 'ben.wav', offset: 1.5, speaker: 'Ben' },
+      { file: ben, name: 'ben.wav', offset: -1.5, speaker: 'Ben' },
+    ]);
+    // The times are on the mix's clock, which is ELAN's timeline.
+    expect(doc.alignments.map((a) => [a.timeBegin, a.timeEnd])).toEqual([
+      [0, 0.5],
+      [0.6, 0.9],
     ]);
     expect(doc.metadata['Media file']).toBe('ana.wav');
     expect(doc.warnings).toEqual([]);
@@ -2310,6 +2315,44 @@ describe('several recordings on one file', () => {
     expect(single.documents[0].warnings[0]).toMatch(
       /2 of the 3 recordings .* Its recording is the one chosen\./,
     );
+  });
+
+  // In ELAN a TIME_ORIGIN is the stretch of the file before the timeline
+  // starts: timeline time t plays the file at t + origin.
+  it('a TIME_ORIGIN on a recording mixed in skips that much of its start', () => {
+    const xml = twoSpeakers([{ url: 'ana.wav' }, { url: 'ben.wav', timeOrigin: 1500 }]);
+    const ana = { name: 'ana.wav' };
+    const ben = { name: 'ben.wav' };
+    const media = matchMediaFiles([readEaf(xml, 'x.eaf')], [ana, ben]);
+    const { build } = buildFrom(
+      [[xml, 'x.eaf']],
+      {},
+      { mediaByFile: media.byFile, mediaTracks: media.tracks },
+    );
+    expect(build.documents[0].mediaTracks.map((t) => t.offset)).toEqual([0, -1.5]);
+  });
+
+  it('a TIME_ORIGIN on the one recording moves the times onto that file', () => {
+    const xml = twoSpeakers([{ url: 'rec.wav', timeOrigin: 1500 }]);
+    const rec = { name: 'rec.wav' };
+    const media = matchMediaFiles([readEaf(xml, 'x.eaf')], [rec]);
+    const { build } = buildFrom(
+      [[xml, 'x.eaf']],
+      {},
+      { mediaByFile: media.byFile, mediaTracks: media.tracks },
+    );
+    expect(build.documents[0].mediaFile).toBe(rec);
+    expect(build.documents[0].alignments.map((a) => [a.timeBegin, a.timeEnd])).toEqual([
+      [1.5, 2],
+      [2.1, 2.4],
+    ]);
+    // Not chosen, the times still index the file it names.
+    const none = buildFrom(
+      [[xml, 'x.eaf']],
+      {},
+      { mediaByFile: new Map(), mediaTracks: matchMediaFiles([readEaf(xml, 'x.eaf')], []).tracks },
+    );
+    expect(none.build.documents[0].alignments[0].timeBegin).toBe(1.5);
   });
 
   it("one descriptor is today's path: one file, no tracks", () => {
