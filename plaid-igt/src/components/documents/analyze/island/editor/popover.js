@@ -56,7 +56,9 @@ export const popover = {
     this._popoverSearch = '';
     this._popoverActiveIndex = 0;
     this._popoverCreateEdit = null; // string while the "+ Create" row is being edited
-    this._popoverCreateType = null; // the type the Type row gives the entry being created
+    // The type picked in the Type row for the entry being created, undefined
+    // while none was picked (_newEntryType).
+    this._popoverCreateType = undefined;
     clearTimeout(this._createClickTimer);
     this._createClickTimer = null;
     this._popoverReturnId = null;

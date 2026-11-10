@@ -255,6 +255,92 @@ describe('the type control while + Create is open (R56)', () => {
   });
 });
 
+describe('the new entry’s type starts on the morpheme’s stored type (M2-1)', () => {
+  const createInput = () => popover().querySelector('.igt-vocab-pop__create-input');
+  const openCreate = async () => {
+    click(popover().querySelector('.igt-vocab-pop__create'));
+    await new Promise((r) => setTimeout(r, 300));
+  };
+  const enter = (el) =>
+    el.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }),
+    );
+  const typeInto = (el, value) => {
+    el.value = value;
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+  };
+  const created = (client) => client.calls.find((c) => c.kind === 'vocabItems.create');
+  const fromEquals = { morphType: 'enclitic', morphTypeFromEquals: 'enclitic' };
+
+  it('starts on the type "=" gave the morpheme, and the new entry takes it', async () => {
+    const { doc, client } = mount({ own2: fromEquals });
+    openOn('m-2');
+    await openCreate();
+    const row = popover().querySelector('.igt-vocab-pop__type');
+    expect(row.textContent).toContain('Type (new entry)');
+    expect(row.querySelector('option[selected]').value).toBe('enclitic');
+    enter(createInput());
+    await settle(6);
+    expect(created(client).args[2]).toMatchObject({ morphType: 'enclitic' });
+    // The morpheme then goes by its entry's type (R2).
+    const m = doc.layerInfo.morphemeTokenLayer.tokens.find((t) => t.id === 'm-2');
+    expect(m.metadata.morphType).toBeUndefined();
+    expect(doc.sentences[0].tokens[0].morphemes[1].morphType).toBe('enclitic');
+  });
+
+  it('starts on a type picked by hand, and can be changed before creating', async () => {
+    const { client } = mount({ own: { morphType: 'prefix' } });
+    openOn('m-1');
+    await openCreate();
+    expect(popover().querySelector('.igt-vocab-pop__type option[selected]').value).toBe('prefix');
+    choose('stem');
+    enter(createInput());
+    await settle(6);
+    expect(created(client).args[2]).toMatchObject({ morphType: 'stem' });
+  });
+
+  it('gives no type when "—" is picked over the stored one', async () => {
+    const { client } = mount({ own2: fromEquals });
+    openOn('m-2');
+    await openCreate();
+    choose('');
+    enter(createInput());
+    await settle(6);
+    expect(created(client).args[2]?.morphType).toBeUndefined();
+  });
+
+  it('lets a marker typed in the form name the type', async () => {
+    const { client } = mount({ own2: fromEquals });
+    openOn('m-2');
+    await openCreate();
+    typeInto(createInput(), '-ri');
+    enter(createInput());
+    await settle(6);
+    expect(created(client).args[1]).toBe('ri');
+    expect(created(client).args[2]).toMatchObject({ morphType: 'suffix' });
+  });
+
+  it('starts on "—" for a morpheme with no stored type', async () => {
+    const { client } = mount();
+    openOn('m-1');
+    await openCreate();
+    expect(popover().querySelector('.igt-vocab-pop__type option[selected]').value).toBe('');
+    enter(createInput());
+    await settle(6);
+    expect(created(client).args[2]?.morphType).toBeUndefined();
+  });
+
+  it('gives the stored type to an entry created as is, by double-click', async () => {
+    const { client } = mount({ own2: fromEquals });
+    openOn('m-2');
+    const row = popover().querySelector('.igt-vocab-pop__create');
+    click(row);
+    click(row);
+    await settle(6);
+    expect(created(client).args[2]).toMatchObject({ morphType: 'enclitic' });
+  });
+});
+
 describe('the clitic side of "=" (R49)', () => {
   it('sets "=" against an enclitic with a hair space on the host side', () => {
     mount({ linked: true });

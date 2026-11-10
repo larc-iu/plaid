@@ -1,4 +1,5 @@
 import { notifyInfo } from '@/utils/feedback';
+import { entryForm } from '@larc-iu/plaid-client';
 import { sameFormUnlinked } from '@/domain/linkEverywhere.js';
 
 // Linking a token to a lexicon entry: confirm, toggle, create, link every
@@ -131,7 +132,7 @@ export const linking = {
   // Enter creates. Double-click creates immediately without the editor.
   _openCreateEdit(form) {
     this._popoverCreateEdit = form ?? '';
-    this._popoverCreateType = null;
+    this._popoverCreateType = undefined;
     this._render(true);
     const input = this.container.querySelector('.igt-vocab-pop__create-input');
     if (input) {
@@ -146,7 +147,7 @@ export const linking = {
 
   _cancelCreateEdit() {
     this._popoverCreateEdit = null;
-    this._popoverCreateType = null;
+    this._popoverCreateType = undefined;
     this._render(true);
     const search = this.container.querySelector('.igt-vocab-pop__search');
     if (search) {
@@ -179,6 +180,24 @@ export const linking = {
       if (key && value && !(key in out)) out[key] = value;
     }
     return out;
+  },
+
+  // A morpheme's own stored type (from "=", a hand pick or an import), not
+  // the one a linked entry gives it.
+  _storedMorphType(tokenId) {
+    return (
+      (this.doc.layerInfo.morphemeTokenLayer?.tokens || []).find((m) => m.id === tokenId)?.metadata
+        ?.morphType || null
+    );
+  },
+
+  // The type "+ Create" gives a morpheme's new entry (M2-1): the one picked
+  // in the Type row, else the morpheme's stored type. Markers typed in the
+  // form ("-s", "=na") name the type when nothing was picked (entryForm).
+  _newEntryType(tokenId, form) {
+    if (this._popoverCreateType !== undefined) return this._popoverCreateType;
+    if (entryForm(null, form).morphType) return null;
+    return this._storedMorphType(tokenId);
   },
 
   async _createVocab(tokenId, vocabId, form, returnFocus = false, all = null, metadata = {}) {
