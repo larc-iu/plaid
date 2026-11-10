@@ -32,7 +32,7 @@ import { TYPE } from '../../lib/typeScale.js';
  *
  * `failed` says the document could not be read: nothing is loading, the
  * breadcrumb names the project as far as it is known, and there is no
- * heading, since the document's name is not known.
+ * heading, since the document's name is not known, and no tab row.
  *
  * `status` is drawn at the end of the breadcrumb row: the document's save
  * status (SaveStatus). `actions` is drawn at the end of the tab row: History,
@@ -81,6 +81,8 @@ export const DocumentTabStrip = ({
   const [scrolledPast, setScrolledPast] = useState(false);
   useProjectFavicon(project);
 
+  // Both effects run again on `failed`, since the row is not drawn while the
+  // document has failed to load.
   useLayoutEffect(() => {
     if (!sticky) return undefined;
     let frame = 0;
@@ -106,7 +108,7 @@ export const DocumentTabStrip = ({
       window.removeEventListener('resize', onScroll);
       if (frame) window.cancelAnimationFrame(frame);
     };
-  }, [sticky]);
+  }, [sticky, failed]);
 
   // `document` here is the Plaid document, so the page is `window.document`.
   useLayoutEffect(() => {
@@ -121,7 +123,7 @@ export const DocumentTabStrip = ({
       observer.disconnect();
       root.style.removeProperty('--plaid-tab-row-height');
     };
-  }, [sticky]);
+  }, [sticky, failed]);
 
   const p = location.pathname;
   const active = activeProp ?? tabs.find((t) => p.includes(`/${t.value}`))?.value ?? tabs[0].value;
@@ -161,55 +163,59 @@ export const DocumentTabStrip = ({
         </h1>
       )}
 
-      <div
-        ref={rowRef}
-        data-testid="document-tab-row"
-        data-pinned={sticky || undefined}
-        className={cn(
-          'flex flex-wrap items-center gap-x-6 gap-y-2',
-          sticky &&
-            'sticky top-[var(--plaid-sticky-top,0px)] z-30 mb-2 border-b bg-background/95 pt-1 backdrop-blur supports-[backdrop-filter]:bg-background/80',
-          inset,
-        )}
-      >
-        {/* The negative margin narrows the gap to the tabs, which are always
+      {/* A document that could not be read has no tabs to go to and no
+          History to open. */}
+      {!failed && (
+        <div
+          ref={rowRef}
+          data-testid="document-tab-row"
+          data-pinned={sticky || undefined}
+          className={cn(
+            'flex flex-wrap items-center gap-x-6 gap-y-2',
+            sticky &&
+              'sticky top-[var(--plaid-sticky-top,0px)] z-30 mb-2 border-b bg-background/95 pt-1 backdrop-blur supports-[backdrop-filter]:bg-background/80',
+            inset,
+          )}
+        >
+          {/* The negative margin narrows the gap to the tabs, which are always
             on its right since the row stays left to right. A logical margin
             would follow the name's own direction and, under an Arabic name,
             pull the link past the page's left edge instead. */}
-        {sticky && scrolledPast && (
-          <Link
-            to={routes.documents(projectId)}
-            dir="auto"
-            data-testid="tab-row-project"
-            className="-mr-3 flex min-w-0 max-w-[16rem] shrink items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground hover:underline"
+          {sticky && scrolledPast && (
+            <Link
+              to={routes.documents(projectId)}
+              dir="auto"
+              data-testid="tab-row-project"
+              className="-mr-3 flex min-w-0 max-w-[16rem] shrink items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground hover:underline"
+            >
+              <ProjectTartan project={project} size={14} className="shrink-0" />
+              <span className="truncate">{project?.name || 'Project'}</span>
+            </Link>
+          )}
+          <Tabs
+            value={active}
+            onValueChange={(v) => !disabled && navigate(to[v])}
+            guard={guard}
+            className="min-w-0"
           >
-            <ProjectTartan project={project} size={14} className="shrink-0" />
-            <span className="truncate">{project?.name || 'Project'}</span>
-          </Link>
-        )}
-        <Tabs
-          value={active}
-          onValueChange={(v) => !disabled && navigate(to[v])}
-          guard={guard}
-          className="min-w-0"
-        >
-          {/* Pinned, the row's own rule is the tabs' rule: a second one under
+            {/* Pinned, the row's own rule is the tabs' rule: a second one under
               the list drew two lines a few pixels apart. */}
-          <TabsList className={sticky ? 'border-b-0' : undefined}>
-            {tabs.map((t) => (
-              <TabsTrigger key={t.value} value={t.value} {...target(t.value)}>
-                {t.label}
-                {t.count > 0 && (
-                  <span className="ms-1.5 rounded-full bg-muted px-1.5 text-[10px] leading-4 tabular-nums">
-                    {t.count}
-                  </span>
-                )}
-              </TabsTrigger>
-            ))}
-          </TabsList>
-        </Tabs>
-        {actions && <div className="ms-auto flex shrink-0 items-center gap-2">{actions}</div>}
-      </div>
+            <TabsList className={sticky ? 'border-b-0' : undefined}>
+              {tabs.map((t) => (
+                <TabsTrigger key={t.value} value={t.value} {...target(t.value)}>
+                  {t.label}
+                  {t.count > 0 && (
+                    <span className="ms-1.5 rounded-full bg-muted px-1.5 text-[10px] leading-4 tabular-nums">
+                      {t.count}
+                    </span>
+                  )}
+                </TabsTrigger>
+              ))}
+            </TabsList>
+          </Tabs>
+          {actions && <div className="ms-auto flex shrink-0 items-center gap-2">{actions}</div>}
+        </div>
+      )}
     </div>
   );
 };

@@ -66,6 +66,22 @@ describe('DocumentTabStrip', () => {
     expect(view.container.textContent).not.toContain('Loading…');
   });
 
+  // PB-20: a document the reader cannot open has no tabs to go to, and no
+  // History to open.
+  it('draws no tab row and no actions for a document that failed to load', async () => {
+    await mount({
+      document: null,
+      failed: true,
+      actions: <button type="button">History</button>,
+    });
+    expect(view.container.querySelector('[data-testid="document-tab-row"]')).toBeNull();
+    expect(all(view.container, '[role="tab"]')).toEqual([]);
+    expect(view.container.textContent).not.toContain('History');
+    // The breadcrumb back to the project stays.
+    const crumbs = view.container.querySelector('nav[aria-label="Breadcrumb"]');
+    expect(all(crumbs, 'a').map((a) => a.textContent)).toEqual(['Projects', 'Ay']);
+  });
+
   it('draws the status at the end of the breadcrumb row', async () => {
     await mount({ document: { name: 'One' }, status: <span data-testid="status">Saved</span> });
     const status = view.container.querySelector('[data-testid="status"]');
