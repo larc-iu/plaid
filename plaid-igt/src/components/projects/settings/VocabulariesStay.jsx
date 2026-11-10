@@ -14,12 +14,15 @@ const nameList = (vocabs) =>
 
 /**
  * What the Delete project confirm says of the project's vocabularies (H1-5,
- * M2-5): deleting a project leaves every vocabulary it uses, entries and all,
- * under Vocabularies. It names them, and says that no other project uses them
- * only of the ones it can know that of. An admin lists every project, so for
- * an admin a vocabulary no other project names is one no other project uses.
- * Anyone else lists only the projects they can read, so nothing is said of
- * other projects. Nothing for a project with no vocabulary.
+ * M2-5): deleting a project deletes no vocabulary it uses. It names them, and
+ * says that no other project uses them only of the ones it can know that of.
+ * An admin lists every project, so for an admin a vocabulary no other project
+ * names is one no other project uses. Anyone else lists only the projects
+ * they can read, so nothing is said of other projects. It does not say where
+ * a vocabulary is found afterwards: someone who is neither an admin nor one
+ * of its maintainers saw it through the project, and no longer sees it once
+ * the project is gone (REV-FX-M2-2). Nothing for a project with no
+ * vocabulary.
  */
 export const VocabulariesStay = ({ project, client }) => {
   const { user } = useAuth();
@@ -56,9 +59,7 @@ export const VocabulariesStay = ({ project, client }) => {
     <>
       {one ? 'The vocabulary ' : 'The vocabularies '}
       {nameList(vocabs)}
-      {one
-        ? ' stays under Vocabularies with all its entries.'
-        : ' stay under Vocabularies with all their entries.'}
+      {one ? ' is not deleted.' : ' are not deleted.'}
       {unused.length === vocabs.length ? (
         <> No other project uses {one ? 'it' : 'them'}.</>
       ) : unused.length ? (

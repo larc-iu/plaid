@@ -1,6 +1,8 @@
-// M2-5: the Delete project confirm names the vocabularies that stay, and says
-// no other project uses them only where the app can know it (an admin, who
-// lists every project).
+// M2-5: the Delete project confirm names the vocabularies the delete leaves,
+// and says no other project uses them only where the app can know it (an
+// admin, who lists every project). It does not say where they are found
+// afterwards: someone who saw one only through this project no longer sees it
+// (REV-FX-M2-2).
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import { renderComponent, all } from '@ui/test/renderComponent.jsx';
@@ -50,11 +52,11 @@ const open = async ({ vocabs, others = [], isAdmin = false }) => {
 };
 
 describe('the Delete project confirm', () => {
-  it('names the vocabularies that stay, and that no other project uses them, to an admin', async () => {
+  it('names the vocabularies it leaves, and that no other project uses them, to an admin', async () => {
     const { text, card } = await open({ vocabs: [KUKAMA, LOANS], isAdmin: true });
-    expect(card).not.toContain('under Vocabularies');
+    expect(card).not.toContain('not deleted');
     expect(text).toContain(
-      'The vocabularies Kukama and Loans stay under Vocabularies with all their entries. No other project uses them.',
+      'The vocabularies Kukama and Loans are not deleted. No other project uses them.',
     );
   });
 
@@ -65,20 +67,21 @@ describe('the Delete project confirm', () => {
       isAdmin: true,
     });
     expect(text).toContain(
-      'The vocabularies Kukama and Shared stay under Vocabularies with all their entries. No other project uses Kukama.',
+      'The vocabularies Kukama and Shared are not deleted. No other project uses Kukama.',
     );
   });
 
-  it('claims nothing of other projects to someone who cannot list them all', async () => {
+  it('claims nothing of other projects, or of where the vocabulary is found, to someone who cannot list them all', async () => {
     const { text, list } = await open({ vocabs: [KUKAMA] });
-    expect(text).toContain('The vocabulary Kukama stays under Vocabularies with all its entries.');
+    expect(text).toContain('The vocabulary Kukama is not deleted.');
     expect(text).not.toContain('No other project');
+    expect(text).not.toContain('under Vocabularies');
     expect(list).not.toHaveBeenCalled();
   });
 
   it('is as before for a project with no vocabulary', async () => {
     const { text } = await open({ vocabs: [], isAdmin: true });
-    expect(text).not.toContain('Vocabularies');
+    expect(text).not.toContain('ocabular');
     expect(text).toContain('This cannot be undone.');
   });
 });
