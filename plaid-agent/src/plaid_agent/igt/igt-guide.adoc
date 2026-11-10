@@ -348,7 +348,7 @@ The **Type** list in a morpheme's link popover sets its type, and **—** clears
 On an unlinked morpheme it sets the morpheme's own type.
 On a morpheme linked to an entry with a type, it shows the entry's type, and a change applies to every use of the entry. Only the vocabulary's maintainers can change it.
 Linked to an entry with no type, the morpheme goes by its own, and the list shows and sets that, not the entry's.
-While **+ Create** is open, the list reads **Type (new entry)** and sets the type of the entry being created.
+While the form of the **+** row is open, the list reads **Type (new entry)** and sets the type of the entry being created.
 It starts on the type the list showed before (the linked entry's, else the morpheme's own), or on **—** when there is none, and an entry created as is takes that type.
 A form typed with a marker, such as -s, sets the list to the type the marker names, unless a type was picked from the list.
 Closing the create form with **Esc** brings back the list of the linked entry or the morpheme.
@@ -418,9 +418,9 @@ Because a vocabulary is shared, editing an entry changes it for every document l
 A value already in a document's field stays as it was.
 
 In the link popover, the linked entry's form opens the entry in its vocabulary.
-When no entry fits, **Create** adds one with the word's or morpheme's form and links it.
+When no entry fits, the **+** row under the list adds one with the word's or morpheme's form and links it.
 The new entry also takes the values the word or morpheme holds in fields that have a lexicon field, such as its gloss.
-On a word or multi-word expression that no entry is spelled like or starts with, the popover starts on **Create**.
+On a word or multi-word expression that no entry is spelled like or starts with, the popover starts on the **+** row.
 Anyone who can edit the document can add an entry this way.
 
 An entry can carry a morpheme **type**: stem, prefix, suffix, enclitic, and so on, following the FieldWorks inventory.

@@ -1204,8 +1204,8 @@
   background: var(--igt-blue-100);
   border-style: solid;
 }
-/* While its form is edited the row is a box holding "+ Create" (the button)
-   and the form, so no button surrounds the form (H5-3). */
+/* While its form is edited the row is a box holding "+" (the button) and the
+   form, so no button surrounds the form (H5-3). */
 .igt-vocab-pop__create.is-editing {
   display: flex;
   flex-wrap: wrap;
@@ -1214,7 +1214,9 @@
   cursor: default;
 }
 .igt-vocab-pop__create-go {
-  padding: 0;
+  /* "+" alone is a narrow thing to click: the padding widens it. */
+  padding: 0 6px;
+  margin-left: -6px;
   background: none;
   border: 0;
   color: inherit;

@@ -80,6 +80,37 @@ afterEach(() => {
   host = null;
 });
 
+// Luke 2026-11-10: the row reads "+" and the form. The verb is kept for a
+// screen reader, which the mark alone would not tell what the row does.
+describe('the create row', () => {
+  const shown = (el) =>
+    [...el.childNodes]
+      .filter((n) => n.nodeType === 3 || (n.nodeType === 1 && !n.matches('.igt-sr-only')))
+      .map((n) => n.textContent)
+      .join('')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+  it('reads "+" and the form, with the verb for a screen reader only', () => {
+    mount();
+    openOn('m-1');
+    const create = popover().querySelector('.igt-vocab-pop__create');
+    expect(shown(create)).toBe('+ "the"');
+    expect(create.querySelector('.igt-sr-only').textContent).toBe('Create');
+    expect(create.querySelector('[aria-hidden="true"]').textContent).toBe('+');
+  });
+
+  it('keeps "+" as the button beside the form while the form is edited', async () => {
+    mount();
+    openOn('m-1');
+    click(popover().querySelector('.igt-vocab-pop__create'));
+    await new Promise((r) => setTimeout(r, 300));
+    const go = popover().querySelector('.igt-vocab-pop__create-go');
+    expect(shown(go)).toBe('+');
+    expect(go.querySelector('.igt-sr-only').textContent).toBe('Create');
+  });
+});
+
 describe('a writer who does not maintain the lexicon', () => {
   it('is offered "+ Create" on a word, and it makes and links the entry', async () => {
     const { doc, client } = mount();

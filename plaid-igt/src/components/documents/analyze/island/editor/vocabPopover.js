@@ -482,6 +482,10 @@ export const vocabPopover = {
     };
 
     // The create row's tail, the same whether its form is being edited or not.
+    // The row reads "+" and the form (Luke 2026-11-10). A screen reader is
+    // given the verb, which the mark alone does not say.
+    const createMark = html`<span aria-hidden="true">+</span
+      ><span class="igt-sr-only">Create</span>`;
     const createExtras = html`${canTakeAll && activeIdx === limited.length
       ? html`<span
           class="igt-vocab-pop__take-all"
@@ -613,7 +617,7 @@ export const vocabPopover = {
             ? // While the form is being edited the row is NOT a button: a
               // browser activates the button around a focused box on Space,
               // which created the entry from the text before the space (H5-3).
-              // "+ Create" is the button, beside the box.
+              // "+" is the button, beside the box.
               html`<div
                 class="igt-vocab-pop__create is-editing ${activeIdx === limited.length
                   ? 'is-active'
@@ -626,7 +630,7 @@ export const vocabPopover = {
                   title="Create the entry as typed · Enter"
                   @click=${onCreateClick}
                 >
-                  + Create
+                  ${createMark}
                 </button>
                 <input
                   class="igt-vocab-pop__create-input"
@@ -656,7 +660,7 @@ export const vocabPopover = {
                 title="Click to edit the form before creating · double-click to create as is"
                 @click=${onCreateClick}
               >
-                + Create "${createForm}${numHtml(newFormSub, 'igt-vocab-pop')}" ${createExtras}
+                ${createMark} "${createForm}${numHtml(newFormSub, 'igt-vocab-pop')}" ${createExtras}
               </button>`
           : nothing}
         ${extraRows.map((r, j) => {
