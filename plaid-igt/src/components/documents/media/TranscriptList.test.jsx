@@ -1068,6 +1068,36 @@ describe('the speaker a new segment starts with', () => {
     await r.unmount();
   });
 
+  // A proposal found on one channel is that channel's: when the channel has
+  // no speaker, it starts with none, not with the speaker saved last.
+  it('is not given to a proposal from a channel with no speaker', async () => {
+    const doc = { ...makeDoc({ body: 'the cat', tokens: TOKENS }), id: 'sticky-f' };
+    const ops = makeOps({
+      currentTime: 5,
+      vad: {
+        proposals: [
+          { id: 'vad-1', timeBegin: 3.2, timeEnd: 3.6, channel: 1 },
+          { id: 'vad-2', timeBegin: 3.8, timeEnd: 4.4 },
+        ],
+        dismiss: vi.fn(),
+      },
+    });
+    const r = await renderComponent(element(doc, ops));
+    const row = (id) => r.container.querySelector(`[data-vad-proposal-row="${id}"]`);
+    await saveNew(r, 'dog', 'Cy');
+    expect(row('vad-2').querySelector('input').value).toBe('Cy');
+    expect(row('vad-1').querySelector('input').value).toBe('');
+    await r.step(() => setValue(row('vad-1').querySelector('textarea'), 'hers'));
+    await r.step(async () => {
+      press(row('vad-1').querySelector('textarea'), 'Enter');
+      await settle();
+    });
+    expect(doc.createAlignment).toHaveBeenLastCalledWith(
+      expect.not.objectContaining({ speaker: 'Cy' }),
+    );
+    await r.unmount();
+  });
+
   it('follows the next save again once the row typed into has made its segment', async () => {
     const doc = { ...makeDoc({ body: 'the cat', tokens: TOKENS }), id: 'sticky-e' };
     const ops = makeOps({

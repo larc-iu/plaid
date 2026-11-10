@@ -595,12 +595,14 @@ const ProposalRow = memo(function ProposalRow({
 }) {
   const [draft, setDraftState] = useState('');
   // A proposal with a speaker (a channel's, or a service's) makes a segment
-  // with that speaker. One without takes the last speaker saved in this
-  // document, as a new segment does, and follows it when another save
-  // changes it, until a person types into its speaker box. What they typed
-  // is theirs, and is what the segment is saved with.
+  // with that speaker. One from a channel with no speaker starts with none.
+  // Any other takes the last speaker saved in this document, as a new segment
+  // does, and follows it when another save changes it, until a person types
+  // into its speaker box. What they typed is theirs, and is what the segment
+  // is saved with.
   const sticky = useStickySpeaker(documentId);
-  const [speaker, setSpeakerState] = useState(() => proposal.speaker || sticky);
+  const own = proposal.speaker || Number.isInteger(proposal.channel);
+  const [speaker, setSpeakerState] = useState(() => (own ? proposal.speaker || '' : sticky));
   const ref = useRef(null);
   // Mirrored into refs for the same reason the segment row does it: the blur
   // that follows a keystroke runs before React re-renders, so a guard read
@@ -622,10 +624,10 @@ const ProposalRow = memo(function ProposalRow({
     setSpeakerState(value);
   };
   useEffect(() => {
-    if (proposal.speaker || speakerTyped.current) return;
+    if (own || speakerTyped.current) return;
     speakerRef.current = sticky;
     setSpeakerState(sticky);
-  }, [proposal.speaker, sticky]);
+  }, [own, sticky]);
 
   useLayoutEffect(() => autoGrow(ref.current), [draft]);
 
