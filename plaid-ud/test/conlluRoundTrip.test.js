@@ -14,7 +14,7 @@ import assert from 'node:assert/strict';
 
 import { ConlluDocument } from '../src/domain/ConlluDocument.js';
 import { rawDocFromConllu } from './helpers/rawDoc.js';
-import { parseCoNLLU } from '../src/utils/conlluParser.js';
+import { parseCoNLLU, splitConlluByNewdoc } from '../src/utils/conlluParser.js';
 
 const conllu = (lines) => lines.join('\n');
 
@@ -99,4 +99,25 @@ test('a value carrying a tab or a newline still exports a file that re-parses', 
   assert.ok(!/^# newdoc id = a$/m.test(text), text.split('\n')[0]);
   assert.match(text.split('\n')[0], /# newdoc id = a b c/);
   assert.doesNotThrow(() => parseCoNLLU(text));
+});
+
+test('a document whose name has a space round-trips with its name and valid sent_ids', () => {
+  // The import names a document from `# newdoc id`, so that line keeps the
+  // space. The sent_ids the export makes up take an underscore, and a second
+  // import keeps them as stored, so export, import, export is the same file.
+  const first = new ConlluDocument({ raw: rawDocFromConllu(INPUT, 'Ten sentences') }).toConllu();
+  assert.equal(first.split('\n')[0], '# newdoc id = Ten sentences');
+  assert.ok(first.includes('\n# sent_id = Ten_sentences-1\n'), first);
+  const [chunk] = splitConlluByNewdoc(first);
+  assert.equal(chunk.id, 'Ten sentences');
+  const again = new ConlluDocument({ raw: rawDocFromConllu(chunk.text, chunk.id) }).toConllu();
+  assert.equal(again, first);
+  // A file exported before, with the space in its sent_id, still imports and
+  // keeps that id as stored.
+  const old = first.replace('Ten_sentences-1', 'Ten sentences-1');
+  const [oldChunk] = splitConlluByNewdoc(old);
+  assert.equal(
+    new ConlluDocument({ raw: rawDocFromConllu(oldChunk.text, oldChunk.id) }).toConllu(),
+    old,
+  );
 });

@@ -141,17 +141,20 @@ export function buildConllu({ name, layerInfo: info, sentences: sentenceData }) 
   // `<doc>-<n>`, its position, or the next number no other sentence of the
   // file has. Stored ids follow that same pattern (Plaid's own exports, GUM),
   // so the position alone could name a sentence twice, which UD's validator
-  // refuses.
+  // refuses. The validator also refuses whitespace in a sent_id, so the name
+  // part has an underscore for each run of it. `# newdoc id` keeps the name
+  // as it is, since the import names the document from it.
   const usedIds = new Set(
     sentenceData
       .map((s) => s.sentenceToken?.metadata?.sent_id)
       .filter((id) => id != null && id !== '')
       .map(flat),
   );
+  const idBase = docName.replace(/\s+/gu, '_');
   const freshId = (n) => {
     let k = n;
-    while (usedIds.has(`${docName}-${k}`)) k += 1;
-    const id = `${docName}-${k}`;
+    while (usedIds.has(`${idBase}-${k}`)) k += 1;
+    const id = `${idBase}-${k}`;
     usedIds.add(id);
     return id;
   };
