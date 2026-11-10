@@ -845,7 +845,8 @@ export const useMediaOperations = () => {
   // stored all the same shows up as the recording.
   const handleMediaUpload = useCallback(
     async (file, { convert = false, channelSpeakers = null } = {}) => {
-      if (!file) return;
+      // One at a time: nothing starts while a file converts or goes up.
+      if (!file || uploadOf(doc)) return;
 
       const abort = new AbortController();
       // Only this upload's own entry is changed: a cancelled one has put the

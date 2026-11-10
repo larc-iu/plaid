@@ -523,4 +523,26 @@ describe('MediaUpload', () => {
     expect(onUpload).toHaveBeenCalledWith(file);
     await r.unmount();
   });
+
+  // The card takes no file while one is converted for its upload, as it takes
+  // none while one goes up.
+  it('a file dropped while a recording converts is not taken', async () => {
+    const onUpload = vi.fn();
+    const r = await renderComponent(
+      <MediaUpload
+        onUpload={onUpload}
+        isUploading={false}
+        convertProgress={{ name: 'talk.wav', fraction: 0.4 }}
+      />,
+    );
+    const drop = new Event('drop', { bubbles: true, cancelable: true });
+    drop.dataTransfer = { files: [fileOf(2 * MB)] };
+    await r.step(async () => {
+      r.container.firstChild.dispatchEvent(drop);
+      await new Promise((done) => setTimeout(done, 50));
+    });
+    expect(onUpload).not.toHaveBeenCalled();
+    expect(r.container.textContent).toContain('talk.wav');
+    await r.unmount();
+  });
 });

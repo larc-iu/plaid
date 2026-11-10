@@ -101,7 +101,7 @@ export const MediaUpload = ({
   // speakers dialog.
   const choose = async (pickedList) => {
     const picked = [...(pickedList || [])];
-    if (!picked.length || isUploading || readOnly) return;
+    if (!picked.length || isUploading || convertProgress || readOnly) return;
     setRefusal(null);
     if (picked.length > 1 && !perSpeaker) {
       setRefusal('One file at a time. For a file per speaker, switch to Per speaker.');
@@ -138,7 +138,7 @@ export const MediaUpload = ({
     <div
       className={cn(
         'rounded-lg border bg-card p-4',
-        dragOver && !isUploading && !readOnly && 'border-primary bg-primary/5',
+        dragOver && !isUploading && !convertProgress && !readOnly && 'border-primary bg-primary/5',
       )}
       onDragOver={(e) => {
         e.preventDefault();
