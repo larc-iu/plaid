@@ -163,7 +163,7 @@ Any other file the browser cannot play is refused, as in `story.wav cannot be pl
 Convert such a file to MP3 or PCM WAV with an audio editor first.
 
 A large recording can be sent as audio only.
-Choosing one offers to convert it to MP3 in the browser, mono at 16 kHz, about 14 MB an hour.
+Choosing one under **Single** offers to convert it to MP3 in the browser, mono at 16 kHz, about 14 MB an hour.
 The timing is unchanged, but the picture is dropped and the sound is no longer good enough for phonetic measurement.
 
 === Recordings with one file per speaker
