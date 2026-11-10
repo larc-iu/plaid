@@ -69,6 +69,20 @@ describe('uploadMedia with channelSpeakers', () => {
     ]);
   });
 
+  // The recording is there: the toast says what was not saved, not that the
+  // upload failed.
+  it('a refused list after the upload landed is said as the list not saved', async () => {
+    const doc = makeIgtDoc({ raw: buildRawDoc() });
+    const errors = [];
+    doc.onError = (msg, err, label) => errors.push({ msg, err, label });
+    doc.client.documents.patchMetadata = async () => {
+      throw Object.assign(new Error('The server hit an unexpected error.'), { status: 500 });
+    };
+    await doc.uploadMedia(new Blob(['x']), { channelSpeakers: ['Ana', 'Ben'] });
+    expect(errors.map((e) => e.label)).toEqual(['Speakers per channel not saved']);
+    expect(errors[0].err.status).toBe(500);
+  });
+
   it('writes no list when the upload fails', async () => {
     const doc = makeIgtDoc({ raw: buildRawDoc() });
     doc.client.documents.uploadMedia = async () => {

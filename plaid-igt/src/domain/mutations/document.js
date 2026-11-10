@@ -485,7 +485,19 @@ export const documentMutations = {
           ? { [CHANNEL_SPEAKERS_KEY]: channelSpeakers }
           : {}),
       });
-      if (ops.length) await this._client.documents.patchMetadata(this.id, ops);
+      if (ops.length) {
+        try {
+          await this._client.documents.patchMetadata(this.id, ops);
+        } catch (err) {
+          // A lost answer or a lock goes round again with the upload. A
+          // refusal is said as what it is: the recording is uploaded.
+          if (isUnknownOutcome(err) || statusOf(err) === 423) throw err;
+          this._writeFailed(
+            channelSpeakers ? 'Speakers per channel not saved' : 'Failed to save metadata',
+            err,
+          );
+        }
+      }
       await this._reloadInSend();
     });
   },
