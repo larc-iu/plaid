@@ -14,14 +14,15 @@
 (use-fixtures :each with-clean-db)
 
 (defn- run-prompt
-  "Run the interactive branch with `email` typed at the email prompt and
-  `secrets` typed, in turn, at each password prompt (nil once they run out,
-  as at the end of input). Returns {:lines logged :exit status-or-nil :out
-  printed}."
+  "Run the interactive branch with `email` typed at the email prompt (a
+  vector is typed in turn, one at each email prompt) and `secrets` typed, in
+  turn, at each password prompt (nil once either runs out, as at the end of
+  input). Returns {:lines logged :exit status-or-nil :out printed}."
   [email & secrets]
   (let [lines (atom [])
         exit (atom nil)
         typed (atom secrets)
+        emails (atom (if (vector? email) email (repeat email)))
         out (with-out-str
               (binding [log/*config* (merge log/*config*
                                             {:appenders {:println {:enabled? false}
@@ -31,7 +32,7 @@
                 (with-redefs [server-sql/console-attached? (constantly true)
                               server-sql/exit! (fn [status] (reset! exit status))
                               server-sql/read-line-secret (fn [] (let [[s] @typed] (swap! typed next) s))
-                              read-line (constantly email)]
+                              read-line (fn [] (let [[e] @emails] (swap! emails next) e))]
                   (server-sql/make-admin-user fix/db))))]
     {:lines @lines :exit @exit :out out}))
 
@@ -57,6 +58,19 @@
       (is (nil? exit))
       (is (= 2 (count-of "Enter password" out)) out)
       (is (user/admin? (user/get fix/db "third@b.com"))))))
+
+;; REV-FX-B: a mistyped email was caught only after the password had been
+;; typed twice, and then the server exited.
+(deftest the-first-admin-prompt-asks-again-until-the-email-is-one
+  (let [{:keys [exit out]} (run-prompt ["not an email" "fourth@b.com"] "abc12345" "abc12345")]
+    (is (nil? exit))
+    (is (= 2 (count-of "Enter email" out)) out)
+    (is (= 1 (count-of "Enter password" out)) out)
+    (is (str/includes? out "User ID must be an email address") out)
+    (is (user/admin? (user/get fix/db "fourth@b.com"))))
+  (testing "the end of input exits, with no account"
+    (let [{:keys [exit]} (run-prompt ["not an email"])]
+      (is (= 1 exit)))))
 
 (deftest the-first-admin-password-is-typed-twice
   (testing "two passwords that differ are asked again, and the second pair makes the admin"

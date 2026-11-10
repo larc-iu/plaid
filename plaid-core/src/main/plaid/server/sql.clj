@@ -40,6 +40,21 @@
     (some-> (.readPassword console) String.)
     (read-line)))
 
+(defn- prompt-first-email
+  "Ask for the first admin's email until it is one the account can be made
+  with, so a typo is caught before the password is typed. Nil at the end of
+  input."
+  []
+  (loop []
+    (print "Enter email: ")
+    (flush)
+    (when-let [email (read-line)]
+      (if-let [refusal (try (pxu/assert-valid-email! email) nil
+                            (catch clojure.lang.ExceptionInfo e (ex-message e)))]
+        (do (println (str refusal "."))
+            (recur))
+        email))))
+
 (defn- prompt-first-password
   "Ask for the first admin's password until it is long enough and typed the
   same twice, so a typo cannot lock the only admin out. Nil at the end of
@@ -92,11 +107,10 @@
       :else
       (do
         (log/warn "No users detected! Prompting you for credentials...")
-        (print "Enter email: ") (flush)
-        (let [email (read-line)
-              password (prompt-first-password)]
+        (let [email (prompt-first-email)
+              password (when email (prompt-first-password))]
           (if (nil? password)
-            (do (log/error "Error creating first user: no password entered")
+            (do (log/error (str "Error creating first user: no " (if email "password" "email") " entered"))
                 (exit! 1))
             ;; nil actor: this is the bootstrap admin, no user exists yet.
             (let [{:keys [success extra error]} (pxu/create datasource email true password nil)]
