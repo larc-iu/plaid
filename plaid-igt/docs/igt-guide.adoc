@@ -908,6 +908,10 @@ The review screen of an ELAN import has three parts, in the order you work.
 **Tiers** is where each tier is given its role, and a tier is matched across files by its name, so files need not have the same tiers in the same places.
 **Preview** draws a sentence as the interlinear lines the import would write, and redraws it as you change a role.
 
+A file that names several audio recordings, one per speaker, has those chosen mixed into one recording with a channel each, as under **Per speaker** on the Media tab, at the quality chosen under **Files**.
+When one of those chosen is a video, nothing is mixed: the first one chosen, in the file's order, is the recording, and the others are not used.
+A time origin set on a recording in ELAN is applied, so the segments stay on the speech they were aligned to.
+
 The roles a tier can take:
 
 * **Sentences**: the transcription. Each annotation becomes one sentence, and their text, joined in time order, becomes the document's text. Every import needs one such tier.
