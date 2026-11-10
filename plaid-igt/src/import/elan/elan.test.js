@@ -61,12 +61,12 @@ function eafXml({ tiers, types, properties = {}, media = null }) {
   const props = Object.entries(properties)
     .map(([k, v]) => `<PROPERTY NAME="${k}">${v}</PROPERTY>`)
     .join('');
-  // `media` is one file name, or a list of descriptors `{url, timeOrigin?, extractedFrom?}`.
+  // `media` is one file name, or a list of descriptors `{url, mimeType?, timeOrigin?, extractedFrom?}`.
   const descriptors = !media ? [] : Array.isArray(media) ? media : [{ url: media }];
   const mediaXml = descriptors
     .map(
       (d) =>
-        `<MEDIA_DESCRIPTOR MEDIA_URL="${d.url}" RELATIVE_MEDIA_URL="./${d.url}" MIME_TYPE="audio/x-wav"${
+        `<MEDIA_DESCRIPTOR MEDIA_URL="${d.url}" RELATIVE_MEDIA_URL="./${d.url}" MIME_TYPE="${d.mimeType ?? 'audio/x-wav'}"${
           d.timeOrigin != null ? ` TIME_ORIGIN="${d.timeOrigin}"` : ''
         }${d.extractedFrom ? ` EXTRACTED_FROM="${d.extractedFrom}"` : ''}/>`,
     )
@@ -2240,9 +2240,9 @@ describe('several recordings on one file', () => {
     const ben = { name: 'ben.mp3' };
     const { byFile, tracks, missing, unmatched } = matchMediaFiles([eaf], [ana, ben]);
     expect(tracks.get('x.eaf')).toEqual([
-      { name: 'ana.wav', timeOrigin: null, file: ana },
-      { name: 'ben.wav', timeOrigin: 250, file: ben },
-      { name: 'cam.mp4', timeOrigin: null, file: null },
+      { name: 'ana.wav', mimeType: 'audio/x-wav', timeOrigin: null, file: ana },
+      { name: 'ben.wav', mimeType: 'audio/x-wav', timeOrigin: 250, file: ben },
+      { name: 'cam.mp4', mimeType: 'audio/x-wav', timeOrigin: null, file: null },
     ]);
     expect(byFile.get('x.eaf')).toBe(ana);
     expect(missing).toEqual(['cam.mp4']);
@@ -2353,6 +2353,39 @@ describe('several recordings on one file', () => {
       { mediaByFile: new Map(), mediaTracks: matchMediaFiles([readEaf(xml, 'x.eaf')], []).tracks },
     );
     expect(none.build.documents[0].alignments[0].timeBegin).toBe(1.5);
+  });
+
+  // Mixing is for one file per speaker. With a video among them the video is
+  // the recording, as before mixing, and the rest are not used.
+  it('with a video chosen nothing is mixed, and the first chosen is the recording', () => {
+    const xml = twoSpeakers([{ url: 'cam.mp4', mimeType: 'video/mp4' }, { url: 'ben.wav' }]);
+    const eaf = readEaf(xml, 'x.eaf');
+    expect(mediaDescriptors(eaf).map((d) => d.mimeType)).toEqual(['video/mp4', 'audio/x-wav']);
+    const cam = { name: 'cam.mp4' };
+    const ben = { name: 'ben.wav' };
+    const media = matchMediaFiles([eaf], [cam, ben]);
+    expect(media.unmatched).toEqual([]);
+    const { build } = buildFrom(
+      [[xml, 'x.eaf']],
+      {},
+      { mediaByFile: media.byFile, mediaTracks: media.tracks },
+    );
+    const [doc] = build.documents;
+    expect(doc.mediaTracks).toBeNull();
+    expect(doc.mediaFile).toBe(cam);
+    expect(doc.warnings).toEqual(['Its recording is cam.mp4. Not used: ben.wav.']);
+    // The MIME type decides, not the name.
+    const named = twoSpeakers([{ url: 'a.mp4' }, { url: 'b.wav', mimeType: 'video/quicktime' }]);
+    const a = { name: 'a.mp4' };
+    const b = { name: 'b.wav' };
+    const byType = matchMediaFiles([readEaf(named, 'x.eaf')], [a, b]);
+    const { build: second } = buildFrom(
+      [[named, 'x.eaf']],
+      {},
+      { mediaByFile: byType.byFile, mediaTracks: byType.tracks },
+    );
+    expect(second.documents[0].mediaTracks).toBeNull();
+    expect(second.documents[0].mediaFile).toBe(a);
   });
 
   it("one descriptor is today's path: one file, no tracks", () => {

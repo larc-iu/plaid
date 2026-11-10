@@ -183,6 +183,37 @@ describe('ElanFiles with several recordings on one file', () => {
     expect(view.container.textContent).toContain('Smaller (16 kHz)· 640 KB');
   });
 
+  it('with a video chosen, names the one used and the rest as not used', async () => {
+    const cam = { name: 'cam.mp4', size: 1000, type: 'video/mp4' };
+    view = await renderComponent(
+      <MemoryRouter>
+        <ElanFiles
+          {...props}
+          mediaFiles={[cam, ben]}
+          media={{
+            byFile: new Map([['talk.eaf', cam]]),
+            tracks: new Map([
+              [
+                'talk.eaf',
+                [
+                  { name: 'cam.mp4', mimeType: 'video/mp4', timeOrigin: null, file: cam },
+                  { name: 'ben.wav', mimeType: 'audio/x-wav', timeOrigin: null, file: ben },
+                ],
+              ],
+            ]),
+          }}
+          documents={[{ ...doc, mediaTracks: null, mediaFile: cam }]}
+          maxBytes={10}
+        />
+      </MemoryRouter>,
+    );
+    expect(rowOf('talk.eaf')).not.toContain('mixed');
+    expect(rowOf('cam.mp4')).not.toContain('not used');
+    expect(rowOf('ben.wav')).toContain('not used');
+    expect(rowOf('ben.wav')).not.toContain('MP3');
+    expect(view.container.querySelector('input[name="mix-quality"]')).toBeNull();
+  });
+
   it('says when the mix is over the server limit', async () => {
     view = await renderComponent(
       <MemoryRouter>

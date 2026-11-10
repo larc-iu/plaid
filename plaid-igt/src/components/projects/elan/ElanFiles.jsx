@@ -15,6 +15,7 @@ import { formatBytes } from '@/utils/formatBytes';
 import { countOf } from '@ui/lib/plural.js';
 import { conversionNeed, conversionNote, estimateMp3Bytes } from '@/domain/media/transcodeToMp3';
 import { FALLBACK_RATE, SMALL_RATE, mixBytes, mixRate } from '@/domain/media/mixdown';
+import { mixesTracks } from '@/import/elan/buildDocuments';
 import { Panel } from '../ImportPanels.jsx';
 import { ElanSection } from './ElanSection.jsx';
 
@@ -119,6 +120,17 @@ export const ElanFiles = ({
     ...[...(media.tracks?.values() ?? [])].flatMap((ts) => ts.map((t) => t.file).filter(Boolean)),
   ]);
   const unmatched = (mediaFiles || []).filter((f) => !matched.has(f));
+  // Chosen for a file whose recordings are not mixed, and not its recording.
+  const chosenOf = (eaf) => (media.tracks?.get(eaf.fileName) ?? []).filter((t) => t.file);
+  const notUsed = new Set(
+    (files || []).flatMap((eaf) =>
+      mixesTracks(chosenOf(eaf))
+        ? []
+        : chosenOf(eaf)
+            .map((t) => t.file)
+            .filter((f) => f !== media.byFile.get(eaf.fileName)),
+    ),
+  );
 
   // The documents whose several recordings are mixed into one, with the size
   // each mix comes to once every recording's length is known.
@@ -144,7 +156,9 @@ export const ElanFiles = ({
   );
 
   const needOf = (file) => conversionNeed(file.size, maxBytes);
-  const toConvert = (mediaFiles || []).filter((f) => matched.has(f) && needOf(f));
+  const toConvert = (mediaFiles || []).filter(
+    (f) => matched.has(f) && !notUsed.has(f) && needOf(f),
+  );
   const required = toConvert.filter((f) => needOf(f) === 'required');
   const anyVideo = toConvert.some((f) => f.type?.startsWith('video/'));
   // A total only means anything once every duration is known.
@@ -158,12 +172,13 @@ export const ElanFiles = ({
   const namesRecording = eafs.some((f) => f.media?.length);
 
   const recordingRow = (eaf, file, track = null) => {
-    const need = !track && needOf(file);
+    const unused = notUsed.has(file);
+    const need = !track && !unused && needOf(file);
     const smaller = convertedBytes(durations.get(file));
     const existing = imported?.get(eaf.fileName);
     // Kept as it is, the file's document is not remade, so its recording has
     // one place left to go.
-    const kept = existing && priorMode === 'skip';
+    const kept = existing && priorMode === 'skip' && !unused;
     return (
       <Row
         key={`media:${file.name}`}
@@ -183,6 +198,7 @@ export const ElanFiles = ({
               : `from ${seconds(track.offset)} s`}
           </span>
         )}
+        {unused && <span className={TONES.muted}>not used</span>}
         {need && (
           <span className={need === 'required' ? TONES.error : TONES.muted}>
             becomes {smaller ? `a ${formatBytes(smaller)} MP3` : 'an MP3'}
@@ -229,6 +245,7 @@ export const ElanFiles = ({
           // Several recordings named by one file: a row each, chosen or not.
           const tracks = media.tracks?.get(eaf.fileName) ?? [];
           const several = tracks.length >= 2 ? tracks : null;
+          const mixing = mixesTracks(chosenOf(eaf));
           const mixed = doc?.mediaTracks ?? null;
           return (
             <li key={`eaf:${eaf.fileName}`} className="py-0.5">
@@ -272,13 +289,15 @@ export const ElanFiles = ({
                 </Row>
                 {several
                   ? several.map((t) =>
-                      t.file
-                        ? recordingRow(
-                            eaf,
-                            t.file,
-                            mixed?.find((m) => m.file === t.file) ?? { offset: 0, speaker: '' },
-                          )
-                        : missingRow(eaf, t.name),
+                      !t.file
+                        ? missingRow(eaf, t.name)
+                        : mixing
+                          ? recordingRow(
+                              eaf,
+                              t.file,
+                              mixed?.find((m) => m.file === t.file) ?? { offset: 0, speaker: '' },
+                            )
+                          : recordingRow(eaf, t.file),
                     )
                   : recording && recordingRow(eaf, recording)}
               </ul>

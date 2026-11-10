@@ -123,8 +123,8 @@ const descriptorName = (d) =>
 /**
  * The recordings a file names that stand on their own: a descriptor whose
  * EXTRACTED_FROM names another descriptor is the audio already inside that
- * one, and is left out. Each is `{ name, timeOrigin }`, the origin in
- * milliseconds or null.
+ * one, and is left out. Each is `{ name, mimeType, timeOrigin }`, the
+ * origin in milliseconds or null.
  */
 export const mediaDescriptors = (eaf) => {
   const named = new Set((eaf?.media || []).map((d) => descriptorName(d)).filter(Boolean));
@@ -136,7 +136,11 @@ export const mediaDescriptors = (eaf) => {
           .pop() || '';
       return !(from && named.has(from));
     })
-    .map((d) => ({ name: descriptorName(d), timeOrigin: d.timeOrigin ?? null }))
+    .map((d) => ({
+      name: descriptorName(d),
+      mimeType: d.mimeType || '',
+      timeOrigin: d.timeOrigin ?? null,
+    }))
     .filter((d) => d.name);
 };
 
@@ -178,7 +182,7 @@ const stem = (name) =>
  * or null. `byFile` holds the one file of a file naming one recording, and
  * the first matched of a file naming several.
  *
- * @returns {{byFile: Map<string, File>, tracks: Map<string, Array<{name, timeOrigin, file}>>,
+ * @returns {{byFile: Map<string, File>, tracks: Map<string, Array<{name, mimeType, timeOrigin, file}>>,
  *   unmatched: File[], missing: string[]}}
  *   missing = the media names .eaf files reference but nothing supplied, each
  *   once.
@@ -210,7 +214,7 @@ export function matchMediaFiles(eafs, mediaFiles, { shared = false } = {}) {
       const pick = claim((f) => stem(f.name) === stem(eaf.fileName));
       if (pick) {
         taken.add(pool.indexOf(pick));
-        matched.push({ name: pick.name, timeOrigin: null, file: pick });
+        matched.push({ name: pick.name, mimeType: '', timeOrigin: null, file: pick });
       }
     }
     tracks.set(eaf.fileName, matched);
@@ -240,38 +244,56 @@ export function trackSpeaker(fileName, participants) {
 }
 
 /**
+ * Whether the chosen recordings of one file (matchMediaFiles tracks with a
+ * file) are mixed into one: two or more, all audio. A descriptor whose
+ * MIME_TYPE is a video's is never mixed: the file's recording is then the
+ * first chosen, as with one, and the rest are not used.
+ */
+export const mixesTracks = (chosen) =>
+  chosen.length >= 2 && !chosen.some((t) => /^video\//i.test(t.mimeType || ''));
+
+/**
  * The recordings of one file as the import uploads them: `mediaTracks`
- * (`[{file, offset, speaker, name}]`) when two or more of several were
- * chosen, to be mixed into one recording with a channel each, else null and
- * `mediaFile` as before. `warnings` gets a line when some were not chosen.
+ * (`[{file, offset, speaker, name}]`) when they are mixed (mixesTracks), each
+ * with a channel of one recording, else null and `mediaFile` as before.
+ * `warnings` gets a line when some were not chosen or not used.
  */
 function documentMedia(eaf, mediaByFile, mediaTracks, warnings) {
   const listed = mediaTracks?.get(eaf.fileName) ?? [];
   const chosen = listed.filter((t) => t.file);
+  const mixed = mixesTracks(chosen);
   if (listed.length >= 2 && chosen.length < listed.length) {
     const notChosen = listed.filter((t) => !t.file).map((t) => t.name);
     warnings.push(
       `${notChosen.length} of the ${listed.length} recordings the file names ${
         notChosen.length === 1 ? 'was' : 'were'
-      } not chosen (${notChosen.join(', ')}). ${
-        chosen.length >= 2
-          ? 'The others are mixed into its recording.'
+      } not chosen (${notChosen.join(', ')}).${
+        mixed
+          ? ' The others are mixed into its recording.'
           : chosen.length === 1
-            ? 'Its recording is the one chosen.'
-            : 'The document is imported without media.'
+            ? ' Its recording is the one chosen.'
+            : chosen.length
+              ? ''
+              : ' The document is imported without media.'
       }`,
     );
   }
   // A TIME_ORIGIN is the stretch of a file before ELAN's timeline starts:
   // timeline time t plays the file at t + origin. Mixed, each file's start is
   // cut by its origin. Alone, the times move onto the file (`origin`, in ms).
-  if (chosen.length < 2) {
+  if (!mixed) {
     const mediaFile = mediaByFile?.get(eaf.fileName) ?? null;
     const own = mediaFile
       ? chosen.find((t) => t.file === mediaFile)
       : listed.length === 1
         ? listed[0]
         : null;
+    const unused = chosen.filter((t) => t !== own);
+    if (own && unused.length) {
+      warnings.push(
+        `Its recording is ${own.name}. Not used: ${unused.map((t) => t.name).join(', ')}.`,
+      );
+    }
     return { mediaFile, mediaTracks: null, origin: own?.timeOrigin ?? 0 };
   }
   const participants = eaf.tiers.map((t) => t.participant);
