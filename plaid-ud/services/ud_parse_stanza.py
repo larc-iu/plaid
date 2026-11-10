@@ -765,9 +765,10 @@ def parse_document(pipeline_provider, client, document_id, *, stamp, language='e
       annotation are refreshed (Stanza runs pretokenized over their words,
       replacing UD's syntactic-word tokens + spans/relations for just those
       sentences, writing only the rows whose value changes: ruling 30, per
-      row); sentences a human has touched are left untouched. Limitation:
-      pretokenized Stanza does not split multiword tokens, so each word gets
-      exactly one syntactic word (annotators can still split by hand).
+      row); sentences a human has touched are left untouched. Pretokenized
+      Stanza splits no word: a word holding two or more syntactic words keeps
+      them, whoever split it, and Stanza tags and attaches them as they are.
+      Every other word gets exactly one syntactic word.
 
     Provenance write contract: every syntactic word, span and relation created
     here carries ``stamp``, the service's machine stamp
@@ -895,6 +896,29 @@ def parse_document(pipeline_provider, client, document_id, *, stamp, language='e
             return {"mode": "preserve", "parsed_sentences": 0,
                     "skipped_sentences": len(skipped_idxs)}
 
+        # A word that already holds two or more syntactic words keeps them,
+        # whoever made the split (PARSE-1, Luke 2026-11-10): Stanza is
+        # handed each of them as a word, its form read from its Form span or
+        # else the word's text, and the parse lands on them where they are
+        # stored. A word of one syntactic word, or of none, is its text.
+        # Nothing here splits a word or merges one.
+        stored_at = {}
+        for m in existing_morphemes:
+            stored_at.setdefault((m["begin"], m["end"]), []).append(m)
+        form_of = {}
+        for span in (form_layer or {}).get("spans", []) or []:
+            if span.get("tokens") and span.get("value"):
+                form_of[_token_id(span["tokens"][0])] = span["value"]
+
+        def parts_of(w):
+            """``(form, precedence)`` for each syntactic word ``w`` gets."""
+            text = body[w["begin"]:w["end"]]
+            stored = stored_at.get((w["begin"], w["end"]), [])
+            if len(stored) < 2:
+                return [(text, 0)]
+            stored = sorted(stored, key=lambda m: m.get("precedence") or 0)
+            return [(form_of.get(m["id"]) or text, m.get("precedence") or 0) for m in stored]
+
         log("Preserving existing tokenization; parsing pretokenized…")
         # The first parse in a language downloads its models, which is the
         # longest silent stretch this service has. Name it before it starts.
@@ -912,7 +936,7 @@ def parse_document(pipeline_provider, client, document_id, *, stamp, language='e
             group = reparse[start:start + SENTENCE_GROUP]
             progress.report(ParseProgress.PARSE, start / total,
                             f"Parsing sentence {start + 1} of {total}…")
-            stanza_doc = pipeline([[body[w["begin"]:w["end"]] for w in ws]
+            stanza_doc = pipeline([[form for w in ws for form, _ in parts_of(w)]
                                    for _, _, ws in group])
             sentences_data.extend(stanza_doc.to_dict())
         # And once after the last group, so a stop pressed while it parsed
@@ -938,19 +962,20 @@ def parse_document(pipeline_provider, client, document_id, *, stamp, language='e
         # subset), so the shared span/relation code below stays consistent.
         for r_idx, ((orig_idx, sent, ws), sentence_data) in enumerate(zip(reparse, sentences_data)):
             rows = [td for td in sentence_data if not isinstance(td["id"], tuple)]
-            if len(rows) != len(ws):
+            places = [(w, precedence) for w in ws for _, precedence in parts_of(w)]
+            if len(rows) != len(places):
                 # A misalignment would hang annotations on the wrong
                 # words — fail loudly rather than guess.
                 raise RuntimeError(
                     f"Pretokenized parse returned {len(rows)} words for a "
-                    f"{len(ws)}-word sentence (original index {orig_idx}); aborting")
+                    f"{len(places)}-word sentence (original index {orig_idx}); aborting")
             if orig_idx in new_words:
                 units[r_idx].words = [make_bulk_token(word_layer["id"], text_id, w["begin"], w["end"])
                                       for w in ws]
-            for w, row in zip(ws, rows):
+            for (w, precedence), row in zip(places, rows):
                 op = make_bulk_token(morpheme_layer["id"], text_id,
                                      w["begin"], w["end"], metadata=dict(frag))
-                op["precedence"] = 0
+                op["precedence"] = precedence
                 units[r_idx].add_morpheme(op, row, body[w["begin"]:w["end"]])
         parse_summary = {"mode": "preserve", "parsed_sentences": len(reparse),
                          "skipped_sentences": len(skipped_idxs)}

@@ -144,8 +144,9 @@ def _document(*, body=BODY, sentences=(), words=(), morphemes=(),
                        tokens=[{'id': f'w{i}', 'begin': b, 'end': e}
                                for i, (b, e) in enumerate(words)]),
                 _layer('morphL', 'Morphemes', 'syntactic-word',
-                       tokens=[{'id': mid, 'begin': b, 'end': e}
-                               for mid, b, e in morphemes],
+                       tokens=[{'id': m[0], 'begin': m[1], 'end': m[2],
+                                **({'precedence': m[3]} if len(m) > 3 else {})}
+                               for m in morphemes],
                        span_layers=span_layers,
                        vocabs=[{'id': 'v1', 'vocab_links': list(links)}]),
             ],
@@ -1210,3 +1211,143 @@ def test_a_layer_is_found_by_its_ud_flag_never_by_its_name():
               {'id': 'b', 'name': 'Citation form', 'config': {'ud': {'lemma': True}}}]
     assert ud.span_layer_by_ud_config(layers, 'lemma')['id'] == 'b'
     assert ud.span_layer_by_ud_config(layers[:1], 'lemma') is None
+
+
+# --- a stored split is kept (PARSE-1, Luke 2026-11-10) -----------------------
+#
+# "When a word already has more than one syntactic word, whoever made the
+# split, Parse keeps those words and has Stanza tag and attach them as they
+# are. A second run never merges anything."
+
+DONT_BODY = "I don't know"
+
+
+def _dont_rows(changes=None):
+    """Stanza's rows for "I do n't know", each changed by ``changes``
+    (``{row id: {key: value}}``)."""
+    rows = [
+        {'id': 1, 'text': 'I', 'lemma': 'I', 'upos': 'PRON', 'xpos': 'PRP',
+         'feats': 'Case=Nom|Number=Sing|Person=1|PronType=Prs', 'head': 4, 'deprel': 'nsubj'},
+        {'id': 2, 'text': 'do', 'lemma': 'do', 'upos': 'AUX', 'xpos': 'VBP',
+         'feats': 'Mood=Ind|Number=Sing|Person=1|Tense=Pres|VerbForm=Fin', 'head': 4,
+         'deprel': 'aux'},
+        {'id': 3, 'text': "n't", 'lemma': 'not', 'upos': 'PART', 'xpos': 'RB',
+         'feats': 'Polarity=Neg', 'head': 4, 'deprel': 'advmod'},
+        {'id': 4, 'text': 'know', 'lemma': 'know', 'upos': 'VERB', 'xpos': 'VB',
+         'feats': 'VerbForm=Inf', 'head': 0, 'deprel': 'root'},
+    ]
+    return [{**row, **(changes or {}).get(row['id'], {})} for row in rows]
+
+
+def _first_run_of_dont():
+    """The writes of a from-scratch parse of DONT_BODY, Stanza splitting
+    "don't" into do and n't."""
+    rows = _dont_rows()
+    mwt = [{'id': (2, 3), 'text': "don't", 'start_char': 2, 'end_char': 7}]
+    rows[0].update(start_char=0, end_char=1)
+    rows[3].update(start_char=8, end_char=12)
+    service = _service(documents=[_document(body=DONT_BODY)],
+                       provider=_PipelineProvider([rows[:1] + mwt + rows[1:]]))
+    assert servicetest.run(service, REQUEST).errors == []
+    return service
+
+
+def _stored_dont(meta=MACHINE, form_meta=None):
+    """DONT_BODY as the first run left it: "don't" one word with two
+    syntactic words, do and n't, each with its Form span, and the analysis
+    ``_dont_rows()`` gives. ``meta`` is every stored row's metadata, and
+    ``form_meta`` the Form spans' (a hand split's carry no stamp)."""
+    form_meta = meta if form_meta is None else form_meta
+    places = {1: ('m1', 0, 1, 0), 2: ('m2', 2, 7, 0), 3: ('m3', 2, 7, 1), 4: ('m4', 8, 12, 0)}
+    spans = {'formL': [{'id': 'fo2', 'tokens': ['m2'], 'value': 'do', 'metadata': form_meta},
+                       {'id': 'fo3', 'tokens': ['m3'], 'value': "n't", 'metadata': form_meta}]}
+    relations = []
+    for row in _dont_rows():
+        mid = places[row['id']][0]
+        for layer, key, prefix in (('lemmaL', 'lemma', 'l'), ('uposL', 'upos', 'u'),
+                                   ('xposL', 'xpos', 'x')):
+            spans.setdefault(layer, []).append(
+                {'id': f'{prefix}{row["id"]}', 'tokens': [mid], 'value': row[key],
+                 'metadata': meta})
+        for n, value in enumerate(row['feats'].split('|')):
+            spans.setdefault('featsL', []).append(
+                {'id': f'f{row["id"]}-{n}', 'tokens': [mid], 'value': value, 'metadata': meta})
+        source = f'l{row["id"]}' if row['head'] == 0 else f'l{row["head"]}'
+        relations.append({'id': f'r{row["id"]}', 'source': source, 'target': f'l{row["id"]}',
+                          'value': row['deprel'], 'metadata': meta})
+    return _document(body=DONT_BODY, sentences=[(0, 12)], words=[(0, 1), (2, 7), (8, 12)],
+                     morphemes=list(places.values()), spans=spans, relations=relations)
+
+
+def test_a_second_parse_keeps_the_split_the_first_made_and_its_words():
+    first = _first_run_of_dont()
+    morphemes = _ops(first.client, 'tokens.bulk_create', 'token_layer_id', 'morphL')
+    assert [(op['begin'], op['end'], op['precedence']) for op in morphemes] == \
+        [(0, 1, 0), (2, 7, 0), (2, 7, 1), (8, 12, 0)]
+    assert [op['value'] for op in _ops(first.client, 'spans.bulk_create', 'span_layer_id',
+                                       'formL')] == ['do', "n't"]
+
+    # The second run: Stanza is handed the stored words, do and n't, and the
+    # parse it gives is the one stored, so nothing is written at all.
+    second = _service(documents=[_stored_dont()], provider=_PipelineProvider([_dont_rows()]))
+    helper = servicetest.run(second, REQUEST)
+    assert helper.errors == []
+    assert second.pipeline_provider.inputs == [[['I', 'do', "n't", 'know']]]
+    [result] = helper.results
+    assert result['parsed_sentences'] == 1 and result['unchanged_sentences'] == 1
+    assert _writes(second) == []
+
+
+def test_a_second_parse_writes_its_analysis_onto_the_stored_split():
+    """A value the parse changes is updated on the stored word's own span:
+    the words keep their ids and their Form spans."""
+    changed = _dont_rows({3: {'upos': 'ADV', 'deprel': 'advmod:neg'}})
+    service = _service(documents=[_stored_dont()], provider=_PipelineProvider([changed]))
+    helper = servicetest.run(service, REQUEST)
+    assert helper.errors == []
+    writes = _writes(service)
+    assert sorted(kind for kind, _ in writes) == ['relations.bulk_update', 'spans.bulk_update']
+    assert [(u['id'], u['value']) for kind, p in writes if kind == 'spans.bulk_update'
+            for u in p] == [('u3', 'ADV')]
+    assert [(u['id'], u['value']) for kind, p in writes if kind == 'relations.bulk_update'
+            for u in p] == [('r3', 'advmod:neg')]
+    assert not any(kind.startswith('tokens.') for kind, _ in writes)
+
+
+def test_overwrite_keeps_a_split_a_person_made_and_parses_its_words():
+    """A hand split's Form spans carry no stamp, so its sentence is kept
+    unless Overwrite is on. With it on, the split stays all the same: the
+    person's words and Form spans are kept, and the parse is written onto
+    them."""
+    stored = _stored_dont(meta=MACHINE, form_meta={})
+    kept = _service(documents=[stored], provider=_PipelineProvider([_dont_rows()]))
+    assert servicetest.run(kept, REQUEST).results[0]['skipped_sentences'] == 1
+    assert _writes(kept) == []
+
+    changed = _dont_rows({2: {'lemma': 'does'}})
+    service = _service(documents=[stored], provider=_PipelineProvider([changed]))
+    helper = servicetest.run(service, {**REQUEST, 'overwrite': True})
+    assert helper.errors == []
+    assert service.pipeline_provider.inputs == [[['I', 'do', "n't", 'know']]]
+    assert _writes(service) == [('spans.bulk_update', [{
+        'id': 'l2', 'value': 'does', 'metadata': _writes(service)[0][1][0]['metadata']}])]
+
+
+def test_a_split_is_handed_to_stanza_word_by_word_however_many_parts():
+    """Every stored syntactic word of a token is one word to Stanza, in its
+    order, read from its Form span. A token of one syntactic word is its
+    text."""
+    body = 'vámonos ya'
+    doc = _document(body=body, sentences=[(0, 10)], words=[(0, 7), (8, 10)],
+                    morphemes=[('a', 0, 7, 2), ('b', 0, 7, 0), ('c', 0, 7, 1), ('d', 8, 10, 0)],
+                    spans={'formL': [{'id': 'fa', 'tokens': ['a'], 'value': 'nos', 'metadata': {}},
+                                     {'id': 'fb', 'tokens': ['b'], 'value': 'vamos',
+                                      'metadata': {}},
+                                     {'id': 'fc', 'tokens': ['c'], 'value': '', 'metadata': {}}]})
+    rows = [{'id': n, 'text': t} for n, t in enumerate(['vamos', 'vámonos', 'nos', 'ya'], 1)]
+    service = _service(documents=[doc], provider=_PipelineProvider([rows]))
+    helper = servicetest.run(service, {**REQUEST, 'overwrite': True})
+    assert helper.errors == []
+    # An empty Form reads as the token's text, the rule every reader has.
+    assert service.pipeline_provider.inputs == [[['vamos', 'vámonos', 'nos', 'ya']]]
+    assert not any(kind.startswith('tokens.') for kind, _ in _writes(service))
