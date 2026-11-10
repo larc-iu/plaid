@@ -142,13 +142,27 @@ test('an aborted signal cuts off an upload in flight and rejects with an AbortEr
       xhr.upload.onprogress({ loaded: 5, total: 10, lengthComputable: true });
       abort.abort();
     };
-    await assert.rejects(
-      makeClient().documents.uploadMedia('doc-1', new Blob(['abc']), undefined, {
-        onProgress: () => {},
-        signal: abort.signal,
-      }),
-      (e) => e.name === 'AbortError' && e.status === undefined,
-    );
+    // Within a second, under the client's default timeout: the signal cuts the
+    // request off, not the stall timer, which would do it after 30 s
+    // (REV-FX-M1-A-1).
+    let late = null;
+    const tooLate = new Promise((_, reject) => {
+      late = setTimeout(() => reject(new Error('not cut off within 1 s')), 1000);
+    });
+    try {
+      await assert.rejects(
+        Promise.race([
+          makeClient().documents.uploadMedia('doc-1', new Blob(['abc']), undefined, {
+            onProgress: () => {},
+            signal: abort.signal,
+          }),
+          tooLate,
+        ]),
+        (e) => e.name === 'AbortError' && e.status === undefined,
+      );
+    } finally {
+      clearTimeout(late);
+    }
     assert.equal(FakeXHR.last.aborted, true);
   });
 });

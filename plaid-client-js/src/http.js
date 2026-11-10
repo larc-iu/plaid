@@ -385,13 +385,16 @@ export function xhrSend(
     let timer = null;
     const cutOff = () => xhr.abort();
     signal?.addEventListener("abort", cutOff, { once: true });
+    // Once the request has settled: the stall timer and the signal's listener
+    // both go. Re-arming the timer clears the timer alone, so the signal still
+    // cuts off a request that is going up.
     const disarm = () => {
       clearTimeout(timer);
       signal?.removeEventListener("abort", cutOff);
     };
     const arm = () => {
       if (!timeout || timeout <= 0) return;
-      disarm();
+      clearTimeout(timer);
       timer = setTimeout(() => {
         xhr.abort();
         reject(
