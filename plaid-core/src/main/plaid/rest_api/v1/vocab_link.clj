@@ -105,9 +105,12 @@
                      (let [item-ids (->> links (map :vocab-item) distinct)
                            unreadable (when-not (user/admin? user-record)
                                         (remove #(user-can-access-vocab-item? db % user-id) item-ids))]
+                       ;; `unresolved` when every refused item is gone (deleted
+                       ;; since the caller read it), as the single-id gates say.
                        (when (seq unreadable)
                          {:status 403
-                          :body {:error (str "User " user-id " lacks read access to vocab item(s) " (vec unreadable))}})))
+                          :body (cond-> {:error (str "User " user-id " lacks read access to vocab item(s) " (vec unreadable))}
+                                  (not-any? #(vocab-item/get db %) unreadable) (assoc :unresolved true))})))
      :delete-summary "Delete multiple vocab links in a single operation. Provide an array of IDs."
      :bulk-delete vocab-link/bulk-delete
      ;; Mirror single delete's gate: project-WRITER + vocab-WRITER on each

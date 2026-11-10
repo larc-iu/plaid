@@ -104,6 +104,26 @@
       (assert-forbidden (bulk-create-vocab-links user1-request [{:vocab-item item-a :tokens [t1]}]))
       (assert-forbidden (bulk-delete-vocab-links user1-request ids)))))
 
+(deftest bulk-create-naming-a-gone-entry-says-so
+  ;; REV-FX-B: an entry a colleague deleted since the page read it was refused
+  ;; as "lacks read access" with no `unresolved`, so a client could not tell
+  ;; it from a real refusal.
+  (let [{:keys [proj t1 t2 item-a item-b]} (setup)
+        other (-> (create-vocab-layer admin-request "Theirs") :body :id)
+        theirs (-> (create-vocab-item admin-request other "cat") :body :id)]
+    (add-project-writer admin-request proj "user1@example.com")
+    (assert-no-content (delete-vocab-item admin-request item-a))
+    (testing "every refused entry is gone"
+      (let [r (bulk-create-vocab-links user1-request [{:vocab-item item-a :tokens [t1]}
+                                                      {:vocab-item item-b :tokens [t2]}])]
+        (assert-forbidden r)
+        (is (true? (-> r :body :unresolved)))))
+    (testing "one of them is an entry the writer cannot read"
+      (let [r (bulk-create-vocab-links user1-request [{:vocab-item item-a :tokens [t1]}
+                                                      {:vocab-item theirs :tokens [t2]}])]
+        (assert-forbidden r)
+        (is (not (contains? (:body r) :unresolved)) "a real refusal, not a gone id")))))
+
 (deftest document-lists-links-in-the-order-they-were-made
   (testing "a document's vocab links come back in id order, whatever made them"
     (let [{:keys [doc t1 t2 t3 item-a item-b]} (setup)
