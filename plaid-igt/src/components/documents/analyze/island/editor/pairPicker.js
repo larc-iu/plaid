@@ -307,7 +307,7 @@ export const pairPicker = {
     // under the empty column it read as a stray word.
     const beside = shown.detail && row.value === '';
     return html`<span class="igt-pair__line">
-        <span class="igt-pair__value" dir="auto">${row.value}</span>
+        <span class="igt-pair__value" dir="auto" title=${row.value || nothing}>${row.value}</span>
         ${entry}
         ${shown.senseValue
           ? html`<span class="igt-pair__sense" dir="auto">${shown.senseValue}</span>`

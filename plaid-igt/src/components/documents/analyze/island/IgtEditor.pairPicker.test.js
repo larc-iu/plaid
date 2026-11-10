@@ -226,6 +226,18 @@ describe('the two doors', () => {
     expect(sense.style.getPropertyValue('--igt-depth')).toBe('1');
   });
 
+  // Alt+Down cuts a long value to its column. The whole of it is in the title.
+  it('give a row’s value as the title of its value cell', async () => {
+    mount();
+    await settle(4);
+    openAlts(cell('ma:m-4:Gloss'));
+    const values = [...document.querySelectorAll('.igt-alts__item .igt-pair__value')];
+    expect(values.map((v) => v.getAttribute('title'))).toEqual(
+      values.map((v) => v.textContent || null),
+    );
+    expect(values.some((v) => v.title === 'jazzman')).toBe(true);
+  });
+
   // On a row with no value the detail line stood alone under the empty value
   // column, at the far left, and read as a stray word (CW-BROWSER S5-2).
   it('draw the detail of a row with no value beside its entry', async () => {
