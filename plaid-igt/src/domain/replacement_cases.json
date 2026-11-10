@@ -1,0 +1,49 @@
+{
+  "about": "One table for a replacement's reading in igt's replacer.js (replacer.test.js) and the assistant's core/replace.py (plaid-agent tests/test_replace_template.py). regex: [pattern, replacement, value, written], case counts. literal: [find, replacement, value, written], any case, all small letters. refused: [regex replacement, the group digit its refusal names or null].",
+  "regex": [
+    ["(o)", "$1x", "foo", "foxox"],
+    ["(o)", "$&$&", "foo", "foooo"],
+    ["(o)", "$$1", "foo", "f$1$1"],
+    ["(o)", "$0", "foo", "f$0$0"],
+    ["(o)", "$00", "foo", "f$00$00"],
+    ["(o)", "$2", "foo", "f$2$2"],
+    ["(o)", "$10", "foo", "fo0o0"],
+    ["(o)", "$01x", "foo", "foxox"],
+    ["(o)", "x$", "foo", "fx$x$"],
+    ["(o)", "$x", "foo", "f$x$x"],
+    ["(o)", "$<n>", "foo", "f$<n>$<n>"],
+    ["(o)", "$<$1>", "foo", "f$<o>$<o>"],
+    ["(?<n>o)", "[$<n>]", "foo", "f[o][o]"],
+    ["(?<n>o)", "[$<m>]", "foo", "f[][]"],
+    ["(?<n>o)", "[$<n]", "foo", "f[$<n][$<n]"],
+    ["(?<n>o)", "$1", "foo", "foo"],
+    ["o", "[$`]", "abo", "ab[ab]"],
+    ["b", "[$']", "abc", "a[c]c"],
+    ["(a)|(b)", "[$2]", "ab", "[][b]"],
+    ["(a)(b)(c)(d)(e)(f)(g)(h)(i)(j)(k)", "$11$10$1", "abcdefghijk", "kja"],
+    ["(a)(b)(c)(d)(e)(f)(g)(h)(i)(j)(k)", "$12", "abcdefghijk", "a2"],
+    ["(^|[.-])3AUG(?=[.-]|$)", "$13NSG", "RL.3AUG", "RL.3NSG"],
+    ["(\\w+)\\.$", "$1!", "fish.", "fish!"],
+    ["(\\w+)-(\\w+)", "$2-$1", "a-b", "b-a"],
+    ["(\u00fc)", "$1$1", "\u00fcber", "\u00fc\u00fcber"],
+    ["(p.)\u00e1", "$1a", "p\u02b0a\u0301.PL", "p\u02b0a.PL"],
+    ["(.)\u0301", "$1\u0302", "p\u02b0\u00e1", "p\u02b0\u00e2"],
+    ["(\\w+)\\.PL", "$1-PL", "father.PL", "father-PL"]
+  ],
+  "literal": [
+    ["o", "$1x", "foo", "f$1x$1x"],
+    ["o", "$&", "foo", "f$&$&"],
+    ["o", "\\1", "foo", "f\\1\\1"],
+    ["o", "back\\slash", "fo", "fback\\slash"],
+    ["o", "$$", "foo", "f$$$$"]
+  ],
+  "refused": [
+    ["\\1x", "1"],
+    ["a\\2", "2"],
+    ["\\13NSG", "1"],
+    ["$1\\PL", null],
+    ["\\x{300}", null],
+    ["\\\\", null],
+    ["a\\", null]
+  ]
+}

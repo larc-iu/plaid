@@ -181,7 +181,7 @@ PLAN: substitute inside every value of one column that matches a pattern, across
 
 - `field` (one of `lemma`, `upos`, `xpos`, `features`, `deprel`, required)
 - `pattern` (string, required)
-- `replacement` (string, required): With regex, \1 refers to a group.
+- `replacement` (string, required): With regex, $1 is the first group and $& the whole match. A backslash is refused.
 - `regex` (boolean)
 - `whole` (boolean)
 - `case_sensitive` (boolean)

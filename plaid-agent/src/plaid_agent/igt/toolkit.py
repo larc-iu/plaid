@@ -29,6 +29,7 @@ from .reads import (CONCORDANCE_LIMIT, ENTRY_EXAMPLES, MAX_FORMS_PER_CALL, READ_
                     t_list_documents, t_project_overview,
                     t_read_document, t_read_lexicon, t_read_sentences, t_search)
 from .sandbox import t_code_help, t_run_code
+from ..core.replace import REPLACEMENT_HELP
 from ..core.scope import among_documents
 from .guide import t_app_guide
 from .tagsets import t_tagsets
@@ -53,6 +54,7 @@ _SHARED = toolkit.shared_schemas(ref='sN, sN.wN, or sN.wN.mN.', comment_field=Tr
 
 
 _DOC = {'type': 'string', 'description': 'Document id or exact name (see project_overview).'}
+_REGEX_REPLACEMENT = {'type': 'string', 'description': REPLACEMENT_HELP}
 _DOCS = {'type': 'array', 'items': {'type': 'string'}}  # several documents in place of one (core/scope.py)
 _GLOSS = {'type': 'string', 'description': 'Singles out one of several entries with the same form: a value one of '
                                            'its fields has (e.g. its gloss).'}
@@ -403,11 +405,11 @@ TOOLS += [
          'limit': {'type': 'integer'}}, ['sequence']),
     _fn('replace_in_field',
         'PLAN: substitute inside every value of a field, project-wide or in one document: substring by default, '
-        'whole=true for exact values, regex=true for patterns with backreferences (\\1). Case counts unless '
+        'whole=true for exact values, regex=true for a pattern with groups. Case counts unless '
         'case_sensitive=false. field="morpheme form" rewrites stored morpheme forms instead of a field. One call '
         'plans every change; the result lists every distinct change it makes (old value → new value), check them '
         'before you describe the plan.',
-        {'field': {'type': 'string'}, 'pattern': {'type': 'string'}, 'replacement': {'type': 'string'},
+        {'field': {'type': 'string'}, 'pattern': {'type': 'string'}, 'replacement': _REGEX_REPLACEMENT,
          'regex': {'type': 'boolean'}, 'case_sensitive': {'type': 'boolean', 'description': 'On by default: "PROS" does not find "pros". false to ignore case.'}, 'whole': {'type': 'boolean', 'description': 'Match the whole value only.'}, 'document': _DOC,
          'where': _WHERE},
         ['field', 'pattern', 'replacement']),
@@ -417,7 +419,7 @@ TOOLS += [
         'those words (morpheme_forms=false to leave them). Lexicon headwords are left as they are unless lexicon=true '
         '(then the pattern is applied to every entry, not only linked ones: ask the user first, a lexicon can be '
         'shared). Patterns apply within words only.',
-        {'pattern': {'type': 'string'}, 'replacement': {'type': 'string'}, 'regex': {'type': 'boolean'}, 'case_sensitive': {'type': 'boolean', 'description': 'Match case too (off by default: "ar" finds "Ar").'},
+        {'pattern': {'type': 'string'}, 'replacement': _REGEX_REPLACEMENT, 'regex': {'type': 'boolean'}, 'case_sensitive': {'type': 'boolean', 'description': 'Match case too (off by default: "ar" finds "Ar").'},
          'whole': {'type': 'boolean', 'description': 'Match the whole word only.'}, 'document': _DOC, 'morpheme_forms': {'type': 'boolean'},
          'lexicon': {'type': 'boolean'}}, ['pattern', 'replacement']),
     _fn('copy_to_orthography',

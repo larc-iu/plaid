@@ -460,11 +460,11 @@ Sentences containing a sequence of words, each described by conditions on its fo
 
 ### replace_in_field
 
-PLAN: substitute inside every value of a field, project-wide or in one document: substring by default, whole=true for exact values, regex=true for patterns with backreferences (\1). Case counts unless case_sensitive=false. field="morpheme form" rewrites stored morpheme forms instead of a field. One call plans every change; the result lists every distinct change it makes (old value → new value), check them before you describe the plan.
+PLAN: substitute inside every value of a field, project-wide or in one document: substring by default, whole=true for exact values, regex=true for a pattern with groups. Case counts unless case_sensitive=false. field="morpheme form" rewrites stored morpheme forms instead of a field. One call plans every change; the result lists every distinct change it makes (old value → new value), check them before you describe the plan.
 
 - `field` (string, required)
 - `pattern` (string, required)
-- `replacement` (string, required)
+- `replacement` (string, required): With regex, $1 is the first group and $& the whole match. A backslash is refused.
 - `regex` (boolean)
 - `case_sensitive` (boolean): On by default: "PROS" does not find "pros". false to ignore case.
 - `whole` (boolean): Match the whole value only.
@@ -476,7 +476,7 @@ PLAN: substitute inside every value of a field, project-wide or in one document:
 PLAN: change the baseline spelling of every word matching a pattern (an orthography change), keeping each word's analysis, glosses, and links. The same replacement is carried into the stored morpheme forms of those words (morpheme_forms=false to leave them). Lexicon headwords are left as they are unless lexicon=true (then the pattern is applied to every entry, not only linked ones: ask the user first, a lexicon can be shared). Patterns apply within words only.
 
 - `pattern` (string, required)
-- `replacement` (string, required)
+- `replacement` (string, required): With regex, $1 is the first group and $& the whole match. A backslash is refused.
 - `regex` (boolean)
 - `case_sensitive` (boolean): Match case too (off by default: "ar" finds "Ar").
 - `whole` (boolean): Match the whole word only.

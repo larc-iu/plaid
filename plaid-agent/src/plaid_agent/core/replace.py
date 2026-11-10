@@ -8,10 +8,12 @@ so the pattern is read here exactly as the server reads it
 ``[[:alpha:]]`` otherwise, and a replace rewrote other values than the search
 found.
 
-The other subtlety is the literal replacement, the one a person asks for: a
-replacement typed as text goes into ``sub`` as a TEMPLATE, where a backslash
-means something. So "back\\slash" raised, "x\\1y" raised, and neither is a
-pattern the user was writing.
+The replacement reads as the app's own find-and-replace reads it, the two
+held to one table of cases (tests/test_replace_template.py): a regex
+replacement reads $1 to $99, $<name>, $&, $$, $` and $' as JavaScript's
+``String.replace`` does (:func:`expand`), and a backslash in it is refused,
+as the app refuses one. A plain replacement is text, $ and backslash
+included.
 
 Anchoring is the next half: ``whole`` anchors the PATTERN rather than
 switching to ``fullmatch``, so a group captured in a whole-value pattern can
@@ -106,24 +108,75 @@ def _sub(compiled, expand, s: str) -> str:
     out, last = [], 0
     for m in _matches(compiled, s):
         out.append(s[last:m.start()])
-        try:
-            out.append(expand(m))
-        except IndexError:
-            # As sub says it.
-            raise regex.error('invalid group reference')
+        out.append(expand(m))
         last = m.end()
     out.append(s[last:])
     return ''.join(out)
 
 
-def _group_hint(template: str) -> str:
-    """How to write a group followed by a digit, where the template has one:
-    "\\13NSG" is read as group 13 (bench, twice, meant group 1 then 3NSG)."""
-    m = regex.search(r'\\(\d)(\d[^\\]*)', template)
-    if not m:
-        return ''
-    n, rest = m.group(1), m.group(2)
-    return f' Write \\g<{n}> for group {n} when a digit follows it, as in \\g<{n}>{rest}.'
+#: What a tool that takes a replacement says of it to the model.
+REPLACEMENT_HELP = 'With regex, $1 is the first group and $& the whole match. A backslash is refused.'
+
+_DIGITS = '0123456789'
+
+
+def expand(template: str, m) -> str:
+    """``template`` for match ``m`` as JavaScript's ``String.replace`` writes
+    it (GetSubstitution): ``$$`` a dollar, ``$&`` the match, ``$``` and
+    ``$'`` the text before and after it, ``$nn`` group nn when the pattern
+    has that many groups, else ``$n`` group n and the second digit as
+    itself, ``$<name>`` the named group (empty when no group has that name)
+    when the pattern names a group. A group that took no part is empty, and
+    every other ``$`` is itself."""
+    groups = m.re.groups
+    named = bool(m.re.groupindex)
+    out, i, n = [], 0, len(template)
+    while i < n:
+        c = template[i]
+        nxt = template[i + 1] if i + 1 < n else ''
+        if c != '$' or not nxt:
+            out.append(c)
+            i += 1
+        elif nxt == '$':
+            out.append('$')
+            i += 2
+        elif nxt == '&':
+            out.append(m.group(0))
+            i += 2
+        elif nxt == '`':
+            out.append(m.string[:m.start()])
+            i += 2
+        elif nxt == "'":
+            out.append(m.string[m.end():])
+            i += 2
+        elif nxt in _DIGITS:
+            two = template[i + 1:i + 3]
+            if len(two) == 2 and two[1] in _DIGITS and 1 <= int(two) <= groups:
+                out.append(m.group(int(two)) or '')
+                i += 3
+            elif 1 <= int(nxt) <= groups:
+                out.append(m.group(int(nxt)) or '')
+                i += 2
+            else:
+                out.append('$')
+                i += 1
+        elif nxt == '<' and named and template.find('>', i + 2) >= 0:
+            close = template.find('>', i + 2)
+            out.append(m.groupdict().get(template[i + 2:close]) or '')
+            i = close + 1
+        else:
+            out.append('$')
+            i += 1
+    return ''.join(out)
+
+
+def _backslash_refusal(replacement: str) -> str:
+    """The app's refusal of a backslash in a regex replacement, said to the
+    model. ``\\1`` is a group in sed, Perl and Python, so a backslash
+    before a digit is told the group as this replacement writes it."""
+    group = regex.search(r'\\([0-9])', replacement)
+    hint = f' Write ${group.group(1)} for a group.' if group else ''
+    return 'A regex replacement cannot hold a backslash. Type the character itself.' + hint
 
 
 def _is_upper(c: str) -> bool:
@@ -168,7 +221,8 @@ def replacer(pattern: str, replacement: str, regex_mode: bool, whole: bool,
     """A function from a stored value to its replacement.
 
     Case-insensitive by default, like search, so what search found is what the
-    replacement hits. A pattern that cannot be built raises ``error``, by
+    replacement hits. A pattern that cannot be built, or a regex replacement
+    that holds a backslash, raises ``error``, by
     default :class:`core.tools.ToolError` (``invalid-argument``), whose
     message reaches the model.
 
@@ -191,41 +245,38 @@ def replacer(pattern: str, replacement: str, regex_mode: bool, whole: bool,
         decomposed = compile_decomposed(pattern, **kw)
     except PatternError as e:
         raise error(f'That pattern cannot be used: {e}')
-    # A literal replacement is text, not a template: every backslash in it
-    # stands for itself.
-    template = replacement if regex_mode else replacement.replace('\\', '\\\\')
-    typed = [_ESCAPE.sub('', pattern), _ESCAPE.sub('', replacement)] if regex_mode else [pattern, replacement]
+    if regex_mode and '\\' in replacement:
+        raise error(_backslash_refusal(replacement))
+    # A plain replacement is text: `$` and a backslash stand for themselves.
+    typed = [_ESCAPE.sub('', pattern), replacement] if regex_mode else [pattern, replacement]
     cased = keep_case and not case_sensitive and not any(_has_capital(t) for t in typed)
 
-    def expand(m) -> str:
-        out = m.expand(template)
+    def write(m) -> str:
+        out = expand(replacement, m) if regex_mode else replacement
         return match_case(m.group(0), out) if cased else out
 
     def apply(value: str) -> str:
-        try:
-            if decomposed is not None:
-                # A pattern holding a mark reads the value decomposed, so it
-                # reaches a mark inside a composed letter too. The result is
-                # composed, as the server stores every value.
-                d = nfd(value)
-                if decomposed.search(d) is not None:
-                    return nfc(_sub(decomposed, expand, d))
-            n = nfc(value)
-            if composed.search(n) is None:
-                # Only the text as stored matches (a mark on its own), or
-                # nothing does.
-                return _sub(compiled, expand, value)
-            if n is value:
-                return _sub(composed, expand, value)
-            start, end = _mapper(value)
-            out, last = [], 0
-            for m in _matches(composed, n):
-                a, b = max(start(m.start()), last), max(end(m.end()), last)
-                out.append(value[last:a])
-                out.append(expand(m))
-                last = b
-            out.append(value[last:])
-            return ''.join(out)
-        except (regex.error, IndexError) as e:
-            raise error(f'The replacement is not valid for that pattern: {e}.{_group_hint(template)}')
+        if decomposed is not None:
+            # A pattern holding a mark reads the value decomposed, so it
+            # reaches a mark inside a composed letter too. The result is
+            # composed, as the server stores every value.
+            d = nfd(value)
+            if decomposed.search(d) is not None:
+                return nfc(_sub(decomposed, write, d))
+        n = nfc(value)
+        if composed.search(n) is None:
+            # Only the text as stored matches (a mark on its own), or
+            # nothing does.
+            return _sub(compiled, write, value)
+        if n is value:
+            return _sub(composed, write, value)
+        start, end = _mapper(value)
+        out, last = [], 0
+        for m in _matches(composed, n):
+            a, b = max(start(m.start()), last), max(end(m.end()), last)
+            out.append(value[last:a])
+            out.append(write(m))
+            last = b
+        out.append(value[last:])
+        return ''.join(out)
     return apply

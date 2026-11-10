@@ -72,7 +72,7 @@ def test_names_mark_reads_a_pattern_as_core_does():
     # has no composed form, and the value comes back composed.
     assert rep('\u0301', '\u0300', '\u014b\u0301 p\u02b0\u00e1') == '\u014b\u0300 p\u02b0\u00e0'
     assert rep('\u0301', '', 'p\u02b0\u00e1') == 'p\u02b0a'
-    assert rep('(.)\u0301', r'\1\u0302', 'p\u02b0\u00e1', regex=True) == 'p\u02b0\u00e2'
+    assert rep('(.)\u0301', '$1\u0302', 'p\u02b0\u00e1', regex=True) == 'p\u02b0\u00e2'
     # A letter matches inside a decomposed one as stored, as it always has.
     assert matcher('a.', literal=False)('p\u02b0a\u0301')
 
@@ -106,7 +106,7 @@ def test_a_replacement_rewrites_the_place_it_matched_and_keeps_the_rest_as_store
     # The replacement is written as typed, decomposed when typed so.
     assert rep('á', 'é', 'á') == 'é'
     # A group carries what it captured.
-    assert rep(r'(p.)á', r'\1a', NFD, regex=True) == 'pʰa.PL'
+    assert rep(r'(p.)á', '$1a', NFD, regex=True) == 'pʰa.PL'
     assert rep('a', 'o', 'pʰá') == 'pʰá'
     # A composed match comes first: both spellings in one value are rewritten.
     assert rep('á', 'X', 'á á') == 'X X'

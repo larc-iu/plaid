@@ -420,7 +420,7 @@
    }
   ]
  },
- "proj replace_in_field {\"field\": \"Translation\", \"pattern\": \"(\\\\w+)\\\\.$\", \"regex\": true, \"replacement\": \"\\\\1!\"}": {
+ "proj replace_in_field {\"field\": \"Translation\", \"pattern\": \"(\\\\w+)\\\\.$\", \"regex\": true, \"replacement\": \"$1!\"}": {
   "answer": "Planned 1 value in 1 document, as one row on the card (nothing is written until the user approves; the plan now holds 1 change). Describe the plan to the user in your reply. 1 of them replace work a person made or accepted, and the card says so.\nMatches anywhere in the value, case-sensitive.\nEvery distinct change it makes, the card lists the same:\n  \"Ali saw a fish.\" → \"Ali saw a fish!\" 1 value\nIn 1 document: \"Text 1\" 1.\nFor example:\n  Text 1 s1 \"Ali-di gam akuna.\": Translation \"Ali saw a fish.\" → \"Ali saw a fish!\"\nStored as a rule, found again when the user approves. To leave one value out, set_field it to what it holds now.",
   "ops": [
    {
@@ -430,7 +430,7 @@
      "field": "Translation",
      "pattern": "(\\w+)\\.$",
      "regex": true,
-     "replacement": "\\1!",
+     "replacement": "$1!",
      "whole": false
     },
     "card": {
@@ -440,7 +440,7 @@
       "field": "Translation",
       "pattern": "(\\w+)\\.$",
       "regex": true,
-      "replacement": "\\1!",
+      "replacement": "$1!",
       "whole": false
      },
      "documents": [
@@ -496,7 +496,7 @@
       "values"
      ]
     },
-    "change": "Translation matching \"(\\w+)\\.$\" → \"\\1!\"",
+    "change": "Translation matching \"(\\w+)\\.$\" → \"$1!\"",
     "count": 1,
     "counts": {
      "set_span": 1
@@ -504,9 +504,9 @@
     "documents": [
      "d1"
     ],
-    "head": "Translation: replace matching \"(\\w+)\\.$\" with \"\\1!\" (regex, case-sensitive)",
+    "head": "Translation: replace matching \"(\\w+)\\.$\" with \"$1!\" (regex, case-sensitive)",
     "kind": "bulk_scope",
-    "label": "Translation: replace matching \"(\\w+)\\.$\" with \"\\1!\" (regex, case-sensitive), 1 value in 1 document, 1 of them replaces accepted work",
+    "label": "Translation: replace matching \"(\\w+)\\.$\" with \"$1!\" (regex, case-sensitive), 1 value in 1 document, 1 of them replaces accepted work",
     "matched": [
      [
       "d1",

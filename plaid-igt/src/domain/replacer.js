@@ -142,6 +142,12 @@ function matchCase(matched, replacement) {
 }
 
 const REPLACEMENT_BACKSLASH = 'The replacement cannot hold a backslash. Type the character itself.';
+// `\1` is a group in sed, Perl and Python, so a backslash before a digit is
+// told the group as this replacement writes it.
+const backslashError = (replacement) => {
+  const group = /\\([0-9])/.exec(replacement);
+  return group ? `${REPLACEMENT_BACKSLASH} Write $${group[1]} for a group.` : REPLACEMENT_BACKSLASH;
+};
 
 // Returns { apply, error }: `apply(value)` gives the rewritten value, or null
 // when the value is unchanged (no match, or the match rewrites to itself).
@@ -179,9 +185,10 @@ export function buildReplacer(find, matchType, replacement) {
   }
   // A replacement reads `$1` and `$&` and nothing else, so a backslash in it
   // would be written as itself: `\x{300}` as those six characters. The
-  // assistant refuses one (plaid-agent core/replace.py), and so does this.
+  // assistant reads a replacement as this does and refuses one too
+  // (plaid-agent core/replace.py, held to replacement_cases.json with this).
   if (matchType === 'regex' && (replacement ?? '').includes('\\')) {
-    return { apply: never, error: REPLACEMENT_BACKSLASH };
+    return { apply: never, error: backslashError(replacement) };
   }
   const hasCapital = (s) => Array.from(s ?? '').some(isUpper);
   const keepCase = matchType === 'contains' && !hasCapital(find) && !hasCapital(replacement);

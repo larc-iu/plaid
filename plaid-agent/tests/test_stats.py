@@ -118,7 +118,7 @@ def test_bulk_plans():
     w = ws()
     out = call_tool(w, 'replace_in_field', {'field': 'Morph Gloss', 'pattern': 'ERG', 'replacement': 'PL', 'whole': True})
     assert out.startswith('Planned 1 value in 1 document') and values(w) == {'sp-m1b': 'PL'}
-    out = call_tool(w, 'replace_in_field', {'field': 'Translation', 'pattern': r'(\w+)\.$', 'replacement': r'\1!', 'regex': True})
+    out = call_tool(w, 'replace_in_field', {'field': 'Translation', 'pattern': r'(\w+)\.$', 'replacement': '$1!', 'regex': True})
     assert values(w)['sp-t1'] == 'Ali saw a fish!'
     assert call_tool(w, 'replace_in_field', {'field': 'Gloss', 'pattern': 'zzz', 'replacement': 'y'}).startswith('Nothing to change')
     # A literal replacement is text, not a re.sub template: these two raised.
@@ -128,9 +128,9 @@ def test_bulk_plans():
     w1 = ws()
     call_tool(w1, 'replace_in_field', {'field': 'Gloss', 'pattern': 'Ali', 'replacement': 'x\\1y'})
     assert list(values(w1).values()) == ['x\\1y']
-    # And a backreference expands even when the pattern matches the whole value.
+    # And a group expands even when the pattern matches the whole value.
     w1 = ws()
-    call_tool(w1, 'replace_in_field', {'field': 'Gloss', 'pattern': r'(A)(li)', 'replacement': r'\2\1',
+    call_tool(w1, 'replace_in_field', {'field': 'Gloss', 'pattern': r'(A)(li)', 'replacement': '$2$1',
                                        'regex': True, 'whole': True})
     assert list(values(w1).values()) == ['liA']
     out = call_tool(w, 'respell_all', {'lexicon': True, 'pattern': 'a', 'replacement': 'ä'})

@@ -1356,7 +1356,7 @@ def test_a_literal_replacement_may_hold_a_backslash(ws):
     assert 'Planned 1 lemma change' in run(ws, 'replace_in_field', field='lemma', pattern='mar',
                                            replacement='x\\1y')
     ws.ops.clear()
-    out = run(ws, 'replace_in_field', field='lemma', pattern='(m)(ar)', replacement=r'\2\1',
+    out = run(ws, 'replace_in_field', field='lemma', pattern='(m)(ar)', replacement='$2$1',
               regex=True, whole=True)
     assert 'Planned 1 lemma change' in out and '"mar" → "arm"' in out
 

@@ -178,7 +178,7 @@ def same_ops(proj, tool, args):
 
 def test_bulk_tools_plan(proj):
     same_ops(proj, 'replace_in_field', {'field': 'Morph Gloss', 'pattern': 'ERG', 'replacement': 'PL', 'whole': True})
-    same_ops(proj, 'replace_in_field', {'field': 'Translation', 'pattern': r'(\w+)\.$', 'replacement': r'\1!', 'regex': True})
+    same_ops(proj, 'replace_in_field', {'field': 'Translation', 'pattern': r'(\w+)\.$', 'replacement': '$1!', 'regex': True})
     same_ops(proj, 'replace_in_field', {'field': 'Gloss', 'pattern': 'zzz', 'replacement': 'y'})
     same_ops(proj, 'respell_all', {'lexicon': True, 'pattern': 'a', 'replacement': 'ä'})
     same_ops(proj, 'respell_all', {'pattern': 'a', 'replacement': 'ä', 'case_sensitive': True, 'morpheme_forms': False, 'lexicon': False})

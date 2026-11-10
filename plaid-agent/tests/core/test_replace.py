@@ -2,7 +2,8 @@
 
 The literal case is where it went wrong: a replacement a person typed as text
 went into ``re.sub`` as a template, so "back\\slash" and "x\\1y" raised
-instead of being written. The anchoring is the other half: ``whole`` anchors
+instead of being written. A regex replacement reads ``$1`` as the app does
+(test_replace_template.py). The anchoring is the other half: ``whole`` anchors
 the pattern rather than switching to ``fullmatch``, so a group captured in a
 whole-value pattern can still be written back.
 """
@@ -26,9 +27,9 @@ def test_a_literal_replacement_is_text_and_not_a_template():
     assert r('x', 'back\\slash', whole=True)('x') == 'back\\slash'
 
 
-def test_a_backreference_expands_in_regex_mode_whole_value_included():
-    assert r(r'(\w+)\.$', r'\1!', regex=True)('fish.') == 'fish!'
-    assert r(r'(\w+)-(\w+)', r'\2-\1', regex=True, whole=True)('a-b') == 'b-a'
+def test_a_group_expands_in_regex_mode_whole_value_included():
+    assert r(r'(\w+)\.$', '$1!', regex=True)('fish.') == 'fish!'
+    assert r(r'(\w+)-(\w+)', '$2-$1', regex=True, whole=True)('a-b') == 'b-a'
 
 
 def test_whole_matches_the_value_and_nothing_less():
@@ -47,10 +48,9 @@ def test_what_cannot_be_built_is_said_in_words():
         r('', 'x')
     with pytest.raises(ToolError, match='cannot be used: Unclosed group'):
         r('(unclosed', 'x', regex=True)
-    # A backreference to a group the pattern does not have fails on the value.
-    apply = r('(a)', r'\2', regex=True)
-    with pytest.raises(ToolError, match='not valid for that pattern'):
-        apply('a')
+    # A backslash in a regex replacement is refused before any value is read.
+    with pytest.raises(ToolError, match='cannot hold a backslash'):
+        r('(a)', r'\2', regex=True)
 
 
 def test_the_app_chooses_what_a_refusal_is():

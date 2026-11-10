@@ -20,6 +20,7 @@ from .query import t_query, t_query_help
 from .restore import t_restore_document
 from .sandbox import t_code_help, t_run_code
 from .sentences import t_merge_sentences, t_split_sentence
+from ..core.replace import REPLACEMENT_HELP
 from ..core.scope import among_documents
 from .shape import t_set_words, t_split_token
 from ..core.history import add_comment as t_add_comment, comments as t_comments
@@ -142,7 +143,7 @@ TOOLS = [
         'with its count; search shows every match first.',
         {'field': {'type': 'string', 'enum': list(FIELDS) + ['deprel']},
          'pattern': {'type': 'string'},
-         'replacement': {'type': 'string', 'description': 'With regex, \\1 refers to a group.'},
+         'replacement': {'type': 'string', 'description': REPLACEMENT_HELP},
          'regex': {'type': 'boolean'}, 'whole': {'type': 'boolean'},
          'case_sensitive': {'type': 'boolean'}, 'document': _DOC},
         ['field', 'pattern', 'replacement']),

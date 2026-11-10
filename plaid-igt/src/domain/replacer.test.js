@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { buildReplacer, MATCH_EMPTY } from './replacer.js';
+import cases from './replacement_cases.json';
 
 const run = (find, matchType, replacement, values) => {
   const { apply, error } = buildReplacer(find, matchType, replacement);
@@ -63,12 +64,42 @@ describe('buildReplacer', () => {
   // written as itself, so `\x{300}` made `ma\x{300}` of `má`. The assistant
   // refuses it. So does this, and writes nothing.
   it('refuses a backslash in a regex replacement', () => {
-    for (const repl of ['\\x{300}', '\\1', '\\n', 'a\\']) {
+    for (const repl of ['\\x{300}', '\\n', 'a\\']) {
       const { error, out } = run('(a)\u0301', 'regex', repl, ['m\u00e1']);
       expect(error).toBe('The replacement cannot hold a backslash. Type the character itself.');
       expect(out).toEqual([null]);
     }
     expect(run('a', 'contains', 'b\\c', ['a']).out).toEqual(['b\\c']);
+  });
+
+  // REV-BL-B-2: `\1` is the group of sed, Perl and Python, and the backslash
+  // people type most. The refusal names the group as this replacement writes it.
+  it('names the group a backslash and a digit meant', () => {
+    expect(run('(a)', 'regex', '\\2x', ['a']).error).toBe(
+      'The replacement cannot hold a backslash. Type the character itself. Write $2 for a group.',
+    );
+  });
+
+  // The table the assistant's replace (plaid-agent core/replace.py) is held
+  // to as well, so a replacement means one thing in the app and the plan.
+  describe('reads a replacement as the shared table says', () => {
+    it.each(cases.regex)('regex %s to %s on %s', (find, replacement, value, written) => {
+      expect(buildReplacer(find, 'regex', replacement).apply(value) ?? value).toBe(written);
+      // As String.replace writes it, where the value holds no accent.
+      if (value === value.normalize('NFD') && value === value.normalize('NFC')) {
+        expect(value.replace(new RegExp(find, 'gu'), replacement)).toBe(written);
+      }
+    });
+    it.each(cases.literal)('contains %s to %s on %s', (find, replacement, value, written) => {
+      expect(buildReplacer(find, 'contains', replacement).apply(value) ?? value).toBe(written);
+    });
+    it.each(cases.refused)('refuses %s', (replacement, digit) => {
+      const { error } = buildReplacer('(a)', 'regex', replacement);
+      expect(error).toBe(
+        'The replacement cannot hold a backslash. Type the character itself.' +
+          (digit ? ` Write $${digit} for a group.` : ''),
+      );
+    });
   });
 
   it('says nothing changed when the match rewrites to itself', () => {
