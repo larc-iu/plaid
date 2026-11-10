@@ -8,6 +8,7 @@ import {
   senseFills,
 } from '@/domain/pairRows';
 import { morphemeGlossReading, readingTagset } from '@/domain/tagsets';
+import { trimIgnoredEdges } from '@/domain/igtConfig';
 import { morphFormOf, numHtml } from './shared.js';
 
 // The pair picker: a morpheme's link and value picked together. Alt+Down on a
@@ -102,6 +103,8 @@ export const pairPicker = {
       morph,
       field,
       form: morphFormOf(morph),
+      // The form "+ Create" gives a new entry (vocabPopover.js createForm).
+      lexiconForm: trimIgnoredEdges(morphFormOf(morph), this._ignoredCfg),
       precedent: this._precedentTally(),
       lexicons: this._pickerLexicons(),
       lexiconField: field ? this._lexiconFieldOf('morpheme', field) : null,

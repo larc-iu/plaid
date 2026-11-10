@@ -120,6 +120,9 @@ const T = { CURRENT: 0, MODEL: 1, OWN: 2, PRECEDENT: 3, LEXICON: 4, TAGSET: 5 };
  * @param {object} args.morph the derived morpheme ({ vocabItem, annotations })
  * @param {string|null} args.field the picker field, or null for link-only rows
  * @param {string} args.form the morpheme's precedent form
+ * @param {string} [args.lexiconForm] the form a new entry for the morpheme
+ *   would get (edge punctuation trimmed by the project's ignored-token rule),
+ *   which its entries are found by as well. `form` when not given
  * @param {Map} [args.precedent] the precedent tally
  * @param {object[]} args.lexicons pickerLexicon per vocabulary
  * @param {string|null} [args.lexiconField] the field's Lexicon field, the entry
@@ -143,6 +146,7 @@ export function pairRows({
   morph,
   field,
   form,
+  lexiconForm = form,
   precedent = null,
   lexicons = [],
   lexiconField = null,
@@ -271,7 +275,7 @@ export function pairRows({
           ...it,
           _detail: detailOf ? detailOf(it, lx) : senseValue(it),
         })),
-        { form, search: search.trim() },
+        { form: lexiconForm, search: search.trim() },
       );
       entries = groupRankedByHeadword(ranked, lx.items, lx.tree).map((g) => ({
         item: lx.byId.get(g.item.id) ?? g.item,
@@ -293,7 +297,12 @@ export function pairRows({
         .filter(([id, n]) => n > 0 && lx.byId.has(id))
         .sort((a, b) => b[1] - a[1]);
       for (const [id] of before) root(id);
-      for (const it of lx.byForm.get(collationKey(form)) || []) root(it.id);
+      // Spelled like the morpheme, with its edge punctuation and without: a
+      // word nobody has segmented is its own morpheme, and an imported
+      // "derechos." is the entry "derechos".
+      for (const k of new Set([collationKey(form), collationKey(lexiconForm)])) {
+        for (const it of lx.byForm.get(k) || []) root(it.id);
+      }
       entries = [];
       const walk = (item, depth) => {
         const kids = lx.tree.childrenOf.get(item.id) || [];

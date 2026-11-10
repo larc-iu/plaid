@@ -34,6 +34,8 @@ const ITEMS = [
 
 // "the cat the cat": the first "cat" (m-2) glossed and linked by a model
 // that weighed both senses. `hold` keeps every batch until `release()`.
+// `text` is another body and its words, `ignorePunctuation` the ignored-token
+// rule setup gives a project, and `lexicon: false` a project with no lexicon.
 function mount({
   hold = false,
   tagset = null,
@@ -41,19 +43,28 @@ function mount({
   fields,
   lexiconFields,
   items = ITEMS,
+  text = null,
+  ignorePunctuation = false,
+  lexicon: hasLexicon = true,
 } = {}) {
   const raw = buildRawDoc({
-    body: 'the cat the cat',
-    words: [
-      { id: 'w-1', begin: 0, end: 3 },
-      { id: 'w-2', begin: 4, end: 7 },
-      { id: 'w-3', begin: 8, end: 11 },
-      { id: 'w-4', begin: 12, end: 15 },
-    ],
+    ...(text ?? {
+      body: 'the cat the cat',
+      words: [
+        { id: 'w-1', begin: 0, end: 3 },
+        { id: 'w-2', begin: 4, end: 7 },
+        { id: 'w-3', begin: 8, end: 11 },
+        { id: 'w-4', begin: 12, end: 15 },
+      ],
+    }),
     ...(analyzed ? {} : { morphemes: [] }),
     ...(fields ? { morphFields: fields } : {}),
     lexiconFields,
   });
+  if (ignorePunctuation) {
+    const wordLayer = raw.textLayers[0].tokenLayers.find((l) => l.id === 'wordL');
+    wordLayer.config.plaid.ignoredTokens = { type: 'unicodePunctuation', whitelist: [] };
+  }
   const gloss = raw.textLayers[0].tokenLayers[2].spanLayers[0];
   if (analyzed) {
     gloss.spans.push({
@@ -102,25 +113,27 @@ function mount({
     raw,
     project: {
       id: 'proj-1',
-      vocabs: [{ id: 'v1' }],
+      vocabs: hasLexicon ? [{ id: 'v1' }] : [],
       config: { plaid: {}, igt: tagset ? { tagsets: { T: tagset } } : {} },
     },
-    vocabularies: {
-      v1: {
-        ...lexicon,
-        items: structuredClone(items),
-        vocabLinks: analyzed
-          ? [
-              {
-                id: 'l-2',
-                tokens: ['m-2'],
-                vocabItem: { id: 'c1', layer: 'v1', form: 'cat' },
-                metadata: MACHINE,
-              },
-            ]
-          : [],
-      },
-    },
+    vocabularies: hasLexicon
+      ? {
+          v1: {
+            ...lexicon,
+            items: structuredClone(items),
+            vocabLinks: analyzed
+              ? [
+                  {
+                    id: 'l-2',
+                    tokens: ['m-2'],
+                    vocabItem: { id: 'c1', layer: 'v1', form: 'cat' },
+                    metadata: MACHINE,
+                  },
+                ]
+              : [],
+          },
+        }
+      : {},
     client,
     user: { id: 'wren@example.com' },
   });
@@ -207,6 +220,35 @@ describe('the two doors', () => {
     expect(head?.querySelector('.igt-pair__entry').textContent.trim()).toBe('cat1');
     const sense = items.find((r) => r.textContent.includes('jazzman'));
     expect(sense.style.getPropertyValue('--igt-depth')).toBe('1');
+  });
+
+  // A word nobody has analyzed keeps its edge punctuation in its morpheme (an
+  // imported "cat."), and "+ Create" there would make a second "cat".
+  it('list the entries a morpheme is spelled like without its edge punctuation', async () => {
+    const { doc } = mount({
+      analyzed: false,
+      ignorePunctuation: true,
+      text: {
+        body: 'the cat.',
+        words: [
+          { id: 'w-1', begin: 0, end: 3 },
+          { id: 'w-2', begin: 4, end: 8 },
+        ],
+      },
+    });
+    await settle(4);
+    const m = morph(doc).id;
+    const senses = [
+      ['', 'cat1'],
+      ['feline', 'cat1.1'],
+      ['jazzman', 'cat1.2'],
+    ];
+    openAlts(cell(`ma:${m}:Gloss`));
+    expect(altRows()).toEqual(senses);
+    key(cell(`ma:${m}:Gloss`), 'Escape');
+    openChip(m);
+    await settle(4);
+    expect(chipRows()).toEqual(senses);
   });
 
   it('open from any field with a Lexicon field, POS included, and from no other', async () => {
