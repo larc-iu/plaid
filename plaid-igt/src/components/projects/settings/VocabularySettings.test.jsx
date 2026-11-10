@@ -233,20 +233,17 @@ describe('Project settings, Vocabularies, entry counts', () => {
         ]),
       },
       projects: { get: vi.fn(async () => ({ id: 'p1', vocabs: [] })) },
-      query: vi.fn(async (q) =>
-        JSON.stringify(q).includes('regex')
-          ? { results: [['v2', 3]] }
-          : {
-              results: [
-                ['v1', 1],
-                ['v2', 1207],
-              ],
-            },
-      ),
+      // Every entry counts, senses included, as on the vocabulary's page.
+      query: vi.fn(async () => ({
+        results: [
+          ['v1', 1],
+          ['v2', 1207],
+        ],
+      })),
     };
     const view = await mount(client);
     const rows = all(view.container, 'tbody tr').map((r) => r.textContent);
-    expect(rows).toEqual(['Lexicon1 entry', 'Lexicon1,204 entries']);
+    expect(rows).toEqual(['Lexicon1 entry', 'Lexicon1,207 entries']);
     await view.unmount();
   });
 });
