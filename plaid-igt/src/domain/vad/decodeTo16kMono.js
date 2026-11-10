@@ -31,7 +31,7 @@ const mixToMono = (channels) => {
 };
 
 /** `samples` at `fromRate` rendered at `toRate`, through the browser's resampler. */
-export const resampleMono = async (samples, fromRate, toRate) => {
+const resampleMono = async (samples, fromRate, toRate) => {
   if (fromRate === toRate) return samples;
   const Ctx = OfflineCtx();
   const length = Math.max(1, Math.ceil((samples.length * toRate) / fromRate));

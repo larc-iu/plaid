@@ -140,16 +140,6 @@ export function writeChannel(bytes, channel, sources, offset = 0) {
 }
 
 /**
- * A 16-bit PCM WAV of `channels` (one Float32Array per channel, -1..1, all
- * the same length), WAVE_FORMAT_EXTENSIBLE with channel mask 0 past two.
- */
-export function encodeWav(channels, sampleRate) {
-  const bytes = emptyWav(channels.length, channels[0]?.length ?? 0, sampleRate);
-  for (const [c, samples] of channels.entries()) writeChannel(bytes, c, [samples]);
-  return bytes;
-}
-
-/**
  * How a decoded input is said on screen: its channels and what becomes of
  * them, and its rate.
  */

@@ -2,7 +2,6 @@ import { describe, it, expect } from 'vitest';
 import {
   SMALL_RATE,
   emptyWav,
-  encodeWav,
   mixBytes,
   mixName,
   mixRate,
@@ -11,6 +10,7 @@ import {
   wavHeaderBytes,
   writeChannel,
 } from './mixdown.js';
+import { encodeWav } from './wavFixture.js';
 import { readWavInfo, wavVerdict } from './wavAdpcm.js';
 
 const reader = (bytes) => async (from, to) => bytes.subarray(from, Math.min(to, bytes.length));

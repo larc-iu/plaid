@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { mountDocumentHook, fakeDocument, fakeClient } from '@/test/mountDocumentHook.jsx';
-import { encodeWav } from '@/domain/media/mixdown.js';
+import { encodeWav } from '@/domain/media/wavFixture.js';
 import { useMediaOperations } from './useMediaOperations.js';
 
 // The Web Audio graph, faked: what matters here is whether the element is

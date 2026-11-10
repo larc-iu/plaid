@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { encodeWav, mixBytes } from './mixdown.js';
+import { mixBytes } from './mixdown.js';
+import { encodeWav } from './wavFixture.js';
 import { mixTracks, readChannelCount, readTrack } from './mixRecordings.js';
 
 // How many channels a single file has, for a file with a speaker per channel:

@@ -4,7 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Mp3Encoder } from '@breezystack/lamejs';
 import { readSampleRate } from './mediaSampleRate.js';
-import { encodeWav } from './mixdown.js';
+import { encodeWav } from './wavFixture.js';
 
 // Recordings made by Chromium's MediaRecorder at 48 kHz, each holding byte
 // pairs in its compressed payload that look like an MPEG frame header.
