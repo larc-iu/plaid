@@ -194,19 +194,21 @@ export const PULSE_CLASS = 'igt-confirmed';
 // What a marked value's tooltip says of its state. `origin` (provOrigin of
 // the entity) tells a verified value's two origins apart; `contributor`
 // is whether the person looking is one, whose Ctrl+Enter takes machine
-// proposals only.
-const reviewHint = () => `Edit to fix, ${keys.words('analyze.accept')} to accept the whole word`;
-const provStateText = (state, origin, contributor, note) => {
+// proposals only. `readOnly`: the person cannot write here (a reader, a
+// History version), so the title names no key.
+const reviewHint = (readOnly) =>
+  readOnly ? '' : `. Edit to fix, ${keys.words('analyze.accept')} to accept the whole word`;
+const provStateText = (state, origin, contributor, note, readOnly) => {
   if (state === PROV_STATES.MACHINE)
-    return `machine-made, unverified${note ? `, ${note}` : ''}. ${reviewHint()}`;
+    return `machine-made, unverified${note ? `, ${note}` : ''}${reviewHint(readOnly)}`;
   if (state === PROV_STATES.CONTRIBUTED)
     return contributor
       ? 'contributed, awaiting review'
-      : `contributed, unverified. ${reviewHint()}`;
+      : `contributed, unverified${reviewHint(readOnly)}`;
   return `${originWord(origin)}, confirmed`;
 };
-export const provTitle = (value, state, origin, contributor, note = null) =>
-  `${value}: ${provStateText(state, origin, contributor, note)}`;
+export const provTitle = (value, state, origin, contributor, note = null, readOnly = false) =>
+  `${value}: ${provStateText(state, origin, contributor, note, readOnly)}`;
 
 // The CSS classes of the marked material this writer reviews (see
 // IgtDocument.reviewable): the review sweep's stops and the confirm/discard

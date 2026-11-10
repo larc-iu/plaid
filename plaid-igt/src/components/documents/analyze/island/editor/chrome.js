@@ -277,7 +277,7 @@ export const chrome = {
   // The tooltip of a marked cell (see provStateText): its value and state,
   // with the two origins of a confirmed value told apart.
   _cellTitle(value, state, origin, note = null) {
-    return provTitle(value, state, origin, this.doc.isContributor, note);
+    return provTitle(value, state, origin, this.doc.isContributor, note, this.readOnly);
   },
 
   // A machine value's confidence against the project's threshold
@@ -301,16 +301,22 @@ export const chrome = {
 
   // The tooltip of a link chip or MWE label: what it links to and, for a
   // marked link, its state and what the click does. `single` is a word's or
-  // morpheme's own chip (the MWE label prefixes the words itself).
+  // morpheme's own chip (the MWE label prefixes the words itself). Without
+  // `canLink` the chip does not open (a reader, a History version), so the
+  // text names the state and no action.
   _linkStateText(state, origin, form, canLink, single = false) {
     const manage = canLink ? ' · manage' : '';
     const linked = single ? `Linked to "${form}"` : `linked to "${form}"`;
-    if (state === PROV_STATES.MACHINE)
-      return `${single ? 'Auto-linked' : 'auto-linked'} to "${form}": open to accept or change`;
-    if (state === PROV_STATES.CONTRIBUTED)
-      return this.doc.isContributor
-        ? `${linked}: contributed, awaiting review${manage}`
-        : `${linked}: contributed. Open to accept or change`;
+    if (state === PROV_STATES.MACHINE) {
+      const auto = `${single ? 'Auto-linked' : 'auto-linked'} to "${form}"`;
+      return canLink ? `${auto}: open to accept or change` : `${auto}, unconfirmed`;
+    }
+    if (state === PROV_STATES.CONTRIBUTED) {
+      if (this.doc.isContributor) return `${linked}: contributed, awaiting review${manage}`;
+      return canLink
+        ? `${linked}: contributed. Open to accept or change`
+        : `${linked}: contributed, unconfirmed`;
+    }
     if (state === PROV_STATES.VERIFIED)
       return `${linked}: ${origin === PROV.CONTRIBUTED ? 'contributed' : 'auto-linked'}, confirmed${manage}`;
     return `${linked}${manage}`;

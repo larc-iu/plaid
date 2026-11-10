@@ -82,10 +82,14 @@ export const grid = {
     // reads "machine-made" is not the one swapped.
     const wpTitle = wp
       ? token.content +
-        provTitle('', wp, provOrigin(token.metadata), this.doc.isContributor).replace(
-          'machine-made',
-          'machine-tokenized',
-        )
+        provTitle(
+          '',
+          wp,
+          provOrigin(token.metadata),
+          this.doc.isContributor,
+          null,
+          this.readOnly,
+        ).replace('machine-made', 'machine-tokenized')
       : token.content;
     // Multi-word expressions: a member of the selection (or of the MWE whose
     // popover is open) is outlined; while gathering, every word is a target.

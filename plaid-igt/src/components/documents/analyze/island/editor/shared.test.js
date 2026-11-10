@@ -1,6 +1,7 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { PROV, PROV_STATES } from '@larc-iu/plaid-client';
 import { anchoredPos, provTitle } from './shared.js';
+import { chrome } from './chrome.js';
 
 // Where the grid's floating surfaces sit. All three (the popover, the row menu,
 // the alternatives list) share this, so the edges are worth pinning: an edge
@@ -75,5 +76,42 @@ describe('the provenance tooltip', () => {
     expect(provTitle('kai', PROV_STATES.VERIFIED, PROV.CONTRIBUTED, false)).toBe(
       'kai: contributed, confirmed',
     );
+  });
+
+  it('names no key to a person who cannot write', () => {
+    expect(
+      provTitle('kai', PROV_STATES.MACHINE, PROV.INFERRED, false, 'low confidence', true),
+    ).toBe('kai: machine-made, unverified, low confidence');
+    expect(provTitle('kai', PROV_STATES.CONTRIBUTED, PROV.CONTRIBUTED, false, null, true)).toBe(
+      'kai: contributed, unverified',
+    );
+    expect(provTitle('kai', PROV_STATES.MACHINE, PROV.INFERRED, false)).toMatch(
+      / to accept the whole word$/,
+    );
+  });
+});
+
+describe('the tooltip of a link chip', () => {
+  const text = (state, canLink, isContributor = false) =>
+    chrome._linkStateText.call(
+      { doc: { isContributor } },
+      state,
+      PROV.INFERRED,
+      'kai',
+      canLink,
+      true,
+    );
+
+  it('tells a writer what opening the chip does', () => {
+    expect(text(PROV_STATES.MACHINE, true)).toBe('Auto-linked to "kai": open to accept or change');
+    expect(text(PROV_STATES.CONTRIBUTED, true)).toBe(
+      'Linked to "kai": contributed. Open to accept or change',
+    );
+  });
+
+  it('names the state and no action where the chip does not open', () => {
+    expect(text(PROV_STATES.MACHINE, false)).toBe('Auto-linked to "kai", unconfirmed');
+    expect(text(PROV_STATES.CONTRIBUTED, false)).toBe('Linked to "kai": contributed, unconfirmed');
+    expect(text(PROV_STATES.HUMAN, false)).toBe('Linked to "kai"');
   });
 });
