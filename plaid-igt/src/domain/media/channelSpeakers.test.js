@@ -3,6 +3,7 @@ import {
   CHANNEL_SPEAKERS_KEY,
   channelLabel,
   readChannelSpeakers,
+  speakersForChannels,
   withChannelSpeaker,
 } from './channelSpeakers.js';
 
@@ -34,5 +35,13 @@ describe('channelSpeakers', () => {
     expect(channelLabel(0, ['Ana', ''])).toBe('Ana');
     expect(channelLabel(1, ['Ana', ''])).toBe('Channel 2');
     expect(channelLabel(0, null)).toBe('Channel 1');
+  });
+
+  it("a list is the recording's only when its length is the channel count, once known", () => {
+    expect(speakersForChannels(['Ana', 'Ben'], 2)).toEqual(['Ana', 'Ben']);
+    expect(speakersForChannels(['Ana', 'Ben'], 1)).toBeNull();
+    expect(speakersForChannels(['Ana', 'Ben'], 3)).toBeNull();
+    expect(speakersForChannels(['Ana', 'Ben'], null)).toEqual(['Ana', 'Ben']);
+    expect(speakersForChannels(null, 2)).toBeNull();
   });
 });

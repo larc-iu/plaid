@@ -6,19 +6,13 @@ import { channelLabel } from '@/domain/media/channelSpeakers';
 // by the detection and transcription dialogs.
 
 /**
- * @param {string[]|null} stored  channelSpeakers as stored, or null
- * @param {number|null} count  the recording's channels once known: only those
- *   are listed, and one channel is the whole recording
+ * @param {string[]|null} speakers  channelSpeakers as stored, or null
  * @returns {{list: Array<{channel, speaker, label}>, on: Set<number>,
  *   toggle: (channel) => void, chosen: Array<{channel, speaker}>|null,
  *   none: boolean}} `chosen` is null when the channels are not speakers (run
  *   the whole recording), `none` when every box is off.
  */
-export function useChosenChannels(stored, count = null) {
-  const speakers = useMemo(
-    () => (!stored || count == null ? stored : count < 2 ? null : stored.slice(0, count)),
-    [stored, count],
-  );
+export function useChosenChannels(speakers) {
   const list = useMemo(
     () =>
       speakers

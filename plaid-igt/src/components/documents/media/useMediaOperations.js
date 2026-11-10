@@ -31,6 +31,7 @@ import { useWaveform } from './useWaveform.js';
 import {
   CHANNEL_SPEAKERS_KEY,
   readChannelSpeakers,
+  speakersForChannels,
   withChannelSpeaker,
 } from '../../../domain/media/channelSpeakers.js';
 import { channelGains, createChannelMixer } from '../../../domain/media/channelMixer.js';
@@ -406,16 +407,13 @@ export const useMediaOperations = () => {
   const mediaBlob = media.blob;
   const mediaBlobKey = media.key;
 
-  // The speaker on each channel, when the document says (channelSpeakers.js).
-  // Null for a recording uploaded plainly: its channels are not speakers, and
-  // the tab treats it as it always did.
+  // The list as stored (channelSpeakers.js). The speaker on each channel is
+  // read from it below, once the channel count is known.
   const storedChannelSpeakers = doc.storedMetadata[CHANNEL_SPEAKERS_KEY];
-  const channelSpeakers = useMemo(
+  const storedSpeakers = useMemo(
     () => readChannelSpeakers({ [CHANNEL_SPEAKERS_KEY]: storedChannelSpeakers }),
     [storedChannelSpeakers],
   );
-  const channelSpeakersRef = useRef(channelSpeakers);
-  channelSpeakersRef.current = channelSpeakers;
 
   // The waveform's envelope, decoded once per recording, with an envelope per
   // channel when the channels are speakers. The decode is also where the
@@ -424,7 +422,7 @@ export const useMediaOperations = () => {
     mediaBlob,
     mediaKey: mediaBlobKey ?? null,
     duration,
-    perChannel: !!channelSpeakers,
+    perChannel: !!storedSpeakers,
   });
 
   // How many channels the recording has: off a WAV's header the moment the
@@ -449,6 +447,17 @@ export const useMediaOperations = () => {
   const channelCount = waveform.channelCount ?? headerChannels;
   const channelCountRef = useRef(channelCount);
   channelCountRef.current = channelCount;
+
+  // The speaker on each channel, when the document says. Null for a recording
+  // uploaded plainly, and for a list sized for another recording (one a
+  // History restore brought back, say): its channels are not speakers, and
+  // the tab treats it as it always did. Everything per channel reads this.
+  const channelSpeakers = useMemo(
+    () => speakersForChannels(storedSpeakers, channelCount),
+    [storedSpeakers, channelCount],
+  );
+  const channelSpeakersRef = useRef(channelSpeakers);
+  channelSpeakersRef.current = channelSpeakers;
 
   // Which channels are heard: a view setting, kept nowhere, and back to all
   // of them with another recording.

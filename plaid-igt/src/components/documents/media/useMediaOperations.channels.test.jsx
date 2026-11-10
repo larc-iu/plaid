@@ -133,6 +133,18 @@ describe('useMediaOperations channels', () => {
     await h.unmount();
   });
 
+  // A list whose length is not the recording's channel count names another
+  // recording's channels (one a History restore brought back, say).
+  it('reads a list sized for another recording as none, and routes nothing', async () => {
+    const { h } = await mount({ channelSpeakers: ['Ana', 'Ben'] });
+    expect(h.api.channelCount).toBe(3);
+    expect(h.api.channelSpeakers).toBeNull();
+    await h.step(() => h.api.setMediaElement(document.createElement('audio')));
+    await settle(h);
+    expect(mixer.made).toBe(0);
+    await h.unmount();
+  });
+
   it('removing channelSpeakers takes the element out of the mixer', async () => {
     const { h, doc } = await mount({ channelSpeakers: ['Ana', 'Ben', ''] });
     await h.step(() => h.api.setMediaElement(document.createElement('audio')));

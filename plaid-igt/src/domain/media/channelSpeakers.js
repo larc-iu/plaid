@@ -19,6 +19,14 @@ export function readChannelSpeakers(metadata) {
 }
 
 /**
+ * The list as the recording's own: null when the recording's channel count
+ * is known and is not the list's length, since the list then names the
+ * channels of another recording. While the count is not known, the list.
+ */
+export const speakersForChannels = (speakers, count) =>
+  speakers && count != null && speakers.length !== count ? null : speakers;
+
+/**
  * The list with channel `index` set to `speaker`, sized to `count` channels
  * (a shorter stored list is padded with empty entries, a longer one kept).
  */

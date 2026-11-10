@@ -18,7 +18,7 @@ export function TranscribeDialog({ mediaOps, readOnly = false }) {
     stopTranscribe,
     channelSpeakers,
   } = mediaOps;
-  const channels = useChosenChannels(channelSpeakers, mediaOps.channelCount);
+  const channels = useChosenChannels(channelSpeakers);
   return (
     <ServiceSpotDialog
       label="Transcribe"
