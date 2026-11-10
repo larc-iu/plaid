@@ -9,6 +9,7 @@ import {
 } from '@/domain/pairRows';
 import { morphemeGlossReading, readingTagset } from '@/domain/tagsets';
 import { trimIgnoredEdges } from '@/domain/igtConfig';
+import { entryName } from '@/domain/vocabLookup.js';
 import { morphFormOf, numHtml } from './shared.js';
 
 // The pair picker: a morpheme's link and value picked together. Alt+Down on a
@@ -230,14 +231,19 @@ export const pairPicker = {
         ? this.doc.adoptStamp(row.linkSource, { vocabItem: row.itemId })
         : null;
     const fills = fill ? this._senseFillsFor(morph, word, field, row) : [];
+    // The value's edit, and the entry the row links (M2-4). A pick that
+    // writes no value goes by the link's own label (setMorphemePair).
+    const entry = named
+      ? entryName(this.doc.vocabularies?.[row.vocabId]?.items || [], row.item)
+      : '';
     const label =
       field && value !== stored
-        ? this._editLabel(
+        ? `${this._editLabel(
             field,
             this._morphemeSubject(morph, word, word.morphemes || []),
             index,
             value,
-          )
+          )}${entry ? `, linked to "${entry}"` : ''}`
         : null;
     return this.doc.labelled(label, () =>
       this.doc.setMorphemePair(morph.id, {

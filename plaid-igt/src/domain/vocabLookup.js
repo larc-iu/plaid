@@ -13,7 +13,7 @@
 // editor replaces its lists on every change instead of editing them, but
 // nothing enforces that, and a frozen list cannot be edited in place.
 
-import { lexiconView } from './vocabDictionary.js';
+import { itemLabel, lexiconView } from './vocabDictionary.js';
 
 const shared = new WeakMap();
 
@@ -50,6 +50,13 @@ export const entryMorphTypesOf = (items) =>
     const view = lexiconViewOf(list);
     return new Map(list.map((it) => [it.id, view.morphTypeOf(it.id)]));
   });
+
+/**
+ * An entry as text, the way History names it: its form, with its number
+ * where it has one ("kai 1", "tsu 1.2"). `items` is its vocabulary's list,
+ * which holds `item`.
+ */
+export const entryName = (items, item) => itemLabel(item, lexiconViewOf(items).numbers);
 
 export function linkedItem(byId, link) {
   const ref = link?.vocabItem;

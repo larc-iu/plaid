@@ -19,7 +19,7 @@ import { isValidMorphType } from '../affixMarkers.js';
 import { pendingId, settledId } from '@ui/domain/pendingIds.js';
 import { findSpanLayer, planSpan, showSpan } from './spans.js';
 import { notSetUp } from '@ui/domain/setupGuard.js';
-import { entryMorphTypesOf } from '../vocabLookup.js';
+import { entryMorphTypesOf, entryName } from '../vocabLookup.js';
 import { EQUALS_TYPE_KEY } from './equalsRule.js';
 
 // Not the shared CHUNK (domain/bulk.js): this writes through an ATOMIC BATCH
@@ -78,6 +78,10 @@ const findVocabForItem = (vocabularies, vocabItemId) => {
 // type the "=" rule gave a morpheme linked to an untyped entry stays, with
 // its record (morphTypeFromEquals), since nothing else would type it.
 const isType = (t) => typeof t === 'string' && t !== '';
+
+// A new entry of `vocab` as History names it, with the number it will have
+// beside the entries spelled like it (entryName).
+const newEntryName = (vocab, newItem) => entryName([...(vocab?.items || []), newItem], newItem);
 
 // The type `item` of `vocab` goes by: its own, else its headword's. An entry
 // not yet in the list (one the same batch makes) goes by its own.
@@ -260,7 +264,7 @@ export const vocabMutations = {
       this.refuse('Entry not found');
       return false;
     }
-    const label = 'Failed to link the entry';
+    const label = `Failed to link the entry "${entryName(targetVocab.items, vocabItem)}"`;
     if (!this._canWrite(label)) return false;
     // Linking an unanalyzed word's morpheme makes the morpheme too: a link
     // needs a token to point at. A word id passes through.
@@ -409,7 +413,9 @@ export const vocabMutations = {
     const label =
       field && value && (stored?.value ?? '') !== value
         ? `Failed to update ${field}`
-        : 'Failed to link the entry';
+        : target
+          ? `Failed to link the entry "${entryName(target.vocab.items, target.item)}"`
+          : 'Failed to link the entry';
     if (!this._canWrite(label)) return false;
     const {
       ids: [id],
@@ -530,7 +536,7 @@ export const vocabMutations = {
       this.refuse('Entry not found');
       return false;
     }
-    const label = 'Failed to link entries';
+    const label = `Failed to link the entry "${entryName(targetVocab.items, vocabItem)}"`;
     if (!this._canWrite(label)) return false;
     const plan = this._planLinkMany(tokenIds, targetVocab, vocabItem);
     if (!plan.links.length) return false;
@@ -730,7 +736,7 @@ export const vocabMutations = {
     }
     const tokens = this._mweMembers(tokenIds);
     if (!tokens) return false;
-    const label = 'Failed to link multi-word expression';
+    const label = `Failed to link multi-word expression "${entryName(vocab.items, item)}"`;
     if (!this._canWrite(label)) return false;
     const vocabId = vocab.id;
     const itemSnapshot = { id: item.id, form: item.form, metadata: item.metadata || {} };
@@ -773,11 +779,11 @@ export const vocabMutations = {
     }
     const tokens = this._mweMembers(tokenIds);
     if (!tokens) return false;
-    const label = 'Failed to create and link multi-word expression';
+    const newItem = { id: pendingId(), form, metadata: metadata || {} };
+    const label = `Failed to create and link multi-word expression "${newEntryName(this._vocabularies[vocabId], newItem)}"`;
     if (!this._canWrite(label)) return false;
     const metadataArg = Object.keys(metadata || {}).length > 0 ? metadata : undefined;
     const stamp = this.createStamp || undefined;
-    const newItem = { id: pendingId(), form, metadata: metadata || {} };
     const linkId = pendingId();
     this._applyRawPatch((next, info, vocabs) => {
       if (replaceLinkId) {
@@ -828,7 +834,7 @@ export const vocabMutations = {
       this.refuse('Entry not found');
       return false;
     }
-    const label = 'Failed to change multi-word expression';
+    const label = `Failed to change multi-word expression to "${entryName(vocab.items, item)}"`;
     if (!this._canWrite(label)) return false;
     const tokens = [...prior.tokens];
     const vocabId = vocab.id;
@@ -990,7 +996,8 @@ export const vocabMutations = {
       this.refuse('Vocabulary not found');
       return false;
     }
-    const label = 'Failed to create and link the entry';
+    const newItem = { id: pendingId(), form, metadata: metadata || {} };
+    const label = `Failed to create and link the entry "${newEntryName(this._vocabularies[vocabId], newItem)}"`;
     if (!this._canWrite(label)) return false;
     // Same as linkVocab: an unanalyzed word's morpheme is made too, before
     // anything points at it.
@@ -1008,7 +1015,6 @@ export const vocabMutations = {
     );
     const metadataArg = Object.keys(metadata || {}).length > 0 ? metadata : undefined;
     const stamp = this.createStamp || undefined;
-    const newItem = { id: pendingId(), form, metadata: metadata || {} };
     const linkId = pendingId();
     // "Create and link every ‹roa› in this text": the others that read the
     // same and have no link, in the same operation as the create.

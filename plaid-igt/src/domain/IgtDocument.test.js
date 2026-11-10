@@ -3429,3 +3429,79 @@ describe('the entry list across a patch', () => {
     expect(doc.vocabularies.v1.items[1]).toBe(vocabs.v1.items[1]);
   });
 });
+
+// M2-4: History names the entry a link writes, as the app writes an entry
+// elsewhere, its form with its number where it has one.
+describe('the History label of a link names the entry', () => {
+  const raw = () =>
+    buildRawDoc({
+      body: 'the cat sat down',
+      words: [
+        { id: 'w-1', begin: 0, end: 3 },
+        { id: 'w-2', begin: 4, end: 7 },
+        { id: 'w-3', begin: 8, end: 11 },
+        { id: 'w-4', begin: 12, end: 16 },
+      ],
+    });
+  const vocabularies = () => ({
+    v1: {
+      id: 'v1',
+      name: 'Lexicon',
+      items: [
+        { id: 'i-cat', form: 'cat', metadata: {} },
+        { id: 'i-cat2', form: 'cat', metadata: {} },
+        { id: 'i-the', form: 'the', metadata: {} },
+        { id: 'i-sit', form: 'sit down', metadata: { morphType: 'phrase' } },
+        { id: 'i-alt', form: 'sit down', metadata: { morphType: 'phrase' } },
+      ],
+      vocabLinks: [],
+    },
+  });
+  const project = { id: 'proj-1', vocabs: [{ id: 'v1' }], config: { plaid: {} } };
+  const labels = (doc) =>
+    doc.client.calls.filter((c) => c.kind === 'beginOperation').map((c) => c.args[0]);
+  const docWith = (vocabs = vocabularies()) =>
+    makeDoc({ raw: raw(), project, vocabularies: vocabs });
+
+  it('a link to an entry, with its number', async () => {
+    const doc = docWith();
+    await doc.linkVocab('w-2', 'i-cat2');
+    await doc.linkVocab('w-1', 'i-the');
+    expect(labels(doc)).toEqual(['Link the entry "cat 2"', 'Link the entry "the"']);
+  });
+
+  it('a pick of a morpheme’s entry that writes no value', async () => {
+    const doc = docWith();
+    await doc.setMorphemePair('m-2', { itemId: 'i-cat2' });
+    expect(labels(doc)).toEqual(['Link the entry "cat 2"']);
+  });
+
+  it('a link of every unlinked word reading the same', async () => {
+    const doc = docWith();
+    await doc.linkVocabMany(['w-2'], 'i-cat');
+    expect(labels(doc)).toEqual(['Link the entry "cat 1"']);
+  });
+
+  it('a new entry, with the number it gets beside one spelled the same', async () => {
+    const doc = docWith();
+    await doc.createAndLinkVocabItem('w-2', 'v1', 'cat');
+    await doc.createAndLinkVocabItem('w-1', 'v1', 'thee');
+    expect(labels(doc)).toEqual([
+      'Create and link the entry "cat 3"',
+      'Create and link the entry "thee"',
+    ]);
+  });
+
+  it('a multi-word expression linked, made, or pointed at another entry', async () => {
+    const doc = docWith();
+    await doc.linkMwe(['w-3', 'w-4'], 'i-alt');
+    const linkId = doc.sentences[0].mwes[0].linkId;
+    await doc.relinkMwe(linkId, 'i-sit');
+    await doc.createAndLinkMwe(['w-1', 'w-2'], 'v1', 'the cat', { morphType: 'phrase' });
+    expect(labels(doc)).toEqual([
+      'Link multi-word expression "sit down 2"',
+      'Change multi-word expression to "sit down 1"',
+      'Create and link multi-word expression "the cat"',
+    ]);
+  });
+});

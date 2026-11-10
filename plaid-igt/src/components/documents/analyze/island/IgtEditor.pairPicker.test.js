@@ -902,7 +902,30 @@ describe('the two doors dress a row alike', () => {
     );
     await settle(6);
     const op = client.calls.filter((c) => c.kind === 'beginOperation').at(-1);
-    expect(op.args[0]).toMatch(/^Gloss of .*: jazzman$/);
+    expect(op.args[0]).toBe('Gloss of morpheme "cat" in sentence 1: jazzman, linked to "cat 1.2"');
+  });
+
+  it('names the entry a pick links in History, from Alt+Down too (M2-4)', async () => {
+    const { client } = mount();
+    await settle(4);
+    const el = cell('ma:m-2:Gloss');
+    openAlts(el);
+    key(el, 'ArrowDown');
+    key(el, 'Enter');
+    await settle(6);
+    const op = client.calls.filter((c) => c.kind === 'beginOperation').at(-1);
+    expect(op.args[0]).toBe('Gloss of morpheme "cat" in sentence 1: jazzman, linked to "cat 1.2"');
+  });
+
+  it('names the entry + Create made in History (M2-4)', async () => {
+    const { client } = mount();
+    await settle(4);
+    openChip('m-2');
+    click(host.querySelector('.igt-vocab-pop__create'));
+    click(host.querySelector('.igt-vocab-pop__create'));
+    await settle(6);
+    const op = client.calls.filter((c) => c.kind === 'beginOperation').at(-1);
+    expect(op.args[0]).toBe('Create and link the entry "cat 2"');
   });
 
   it('names the vocabulary tabs for where + Create puts a new entry', async () => {
