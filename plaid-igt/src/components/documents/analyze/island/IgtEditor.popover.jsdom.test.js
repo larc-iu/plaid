@@ -55,6 +55,35 @@ describe('the popover entry list', () => {
   });
 });
 
+// A scroll with the popover open places it again. By a guessed height a list
+// taller than the guess ended past the bottom of the window (CW-BROWSER S5-1).
+describe('a scroll with the popover open', () => {
+  it('places it again by the height it has', async () => {
+    const client = makeFakeClient();
+    client.query = async () => ({ results: [] });
+    const doc = makeIgtDoc({
+      raw: buildRawDoc({ body: 'the kat' }),
+      project: { id: 'proj-1', vocabs: [{ id: 'v1' }], config: { plaid: {}, igt: {} } },
+      vocabularies: { v1: structuredClone(VOCAB) },
+      client,
+    });
+    let editor;
+    ({ host, editor } = mountIsland(doc));
+    const key = [...host.querySelectorAll('.igt-vocab__opener')].at(-1).dataset.popOpener;
+    host.querySelector(`[data-pop-opener="${key}"]`).click();
+    const pop = host.querySelector('[data-igt-pop]');
+    Object.defineProperty(pop, 'offsetHeight', { configurable: true, value: 400 });
+    // The grid has scrolled: the opener now stands 420px down a 768px window,
+    // with no room for 400px under it or over it.
+    const opener = host.querySelector(`[data-pop-opener="${key}"]`);
+    opener.getBoundingClientRect = () => ({ left: 100, top: 400, bottom: 420, width: 40 });
+    editor._repositionPopover();
+    await new Promise((r) => requestAnimationFrame(r));
+    expect(window.innerHeight).toBe(768);
+    expect(host.querySelector('[data-igt-pop]').style.top).toBe('360px');
+  });
+});
+
 // "Link every…" on the first click: before the token has a link, the
 // highlighted row offers to take the other unlinked tokens reading the same.
 describe('taking every same-form token along with the first link', () => {

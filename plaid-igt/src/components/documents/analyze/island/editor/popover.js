@@ -151,13 +151,17 @@ export const popover = {
       if (!this._popover) return;
       this._followPopover();
       const opener = this._openerEl(this._popoverReturnId);
-      const pos = opener ? this._computePopoverPos(opener, undefined, this._popWidth()) : null;
+      // By the height it has, as _fitPopover places it: by the estimate a
+      // taller list ended past the bottom of the window.
+      const el = this._popEl();
+      const pos = opener
+        ? this._computePopoverPos(opener, el?.offsetHeight || undefined, this._popWidth())
+        : null;
       if (!pos) {
         this._closePopover();
         return;
       }
       this._popoverPos = pos;
-      const el = this._popEl();
       if (el) {
         el.style.left = `${pos.left}px`;
         el.style.top = `${pos.top}px`;
