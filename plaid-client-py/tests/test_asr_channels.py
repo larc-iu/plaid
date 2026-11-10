@@ -13,7 +13,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 from plaid_client.service import Refusal  # noqa: E402
 from plaid_client.workflows.asr import channels as ch  # noqa: E402
-from plaid_client.workflows.asr import extract_channel, wav_channel_count  # noqa: E402
+from plaid_client.workflows.asr import extract_channel  # noqa: E402
 
 np = pytest.importorskip('numpy')
 
@@ -55,7 +55,6 @@ def read_mono(path):
 def test_a_channel_of_a_plain_pcm_wav_comes_out_as_mono_at_the_same_rate(tmp_path):
     src = tmp_path / 'mix.wav'
     src.write_bytes(wav_bytes([(1, 10, 100), (2, 20, 200), (3, 30, 300)], rate=22050))
-    assert wav_channel_count(str(src)) == 3
     out = extract_channel(str(src), 1, str(tmp_path))
     assert os.path.basename(out) == 'channel-1.wav'
     header, samples = read_mono(out)
@@ -66,7 +65,6 @@ def test_a_channel_of_a_plain_pcm_wav_comes_out_as_mono_at_the_same_rate(tmp_pat
 def test_the_mix_the_app_writes_past_two_channels_is_extensible_and_reads_the_same(tmp_path):
     src = tmp_path / 'mix.wav'
     src.write_bytes(wav_bytes([(1, 10, 100), (2, 20, 200)], extensible=True))
-    assert wav_channel_count(str(src)) == 3
     _, samples = read_mono(extract_channel(str(src), 2, str(tmp_path)))
     assert samples == [100, 200]
 
@@ -97,7 +95,6 @@ def test_a_channel_the_recording_does_not_have_is_refused(tmp_path):
 def test_a_recording_that_is_not_a_wav_needs_ffmpeg_and_is_refused_without_one(tmp_path, monkeypatch):
     src = tmp_path / 'talk.mp3'
     src.write_bytes(b'\xff\xfb\x90\x00' + b'\0' * 100)
-    assert wav_channel_count(str(src)) is None
     monkeypatch.setattr(ch.shutil, 'which', lambda name: None)
     with pytest.raises(Refusal) as caught:
         extract_channel(str(src), 0, str(tmp_path))

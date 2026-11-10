@@ -67,17 +67,6 @@ def _write_mono_wav(path, samples_int16, rate):
         out.write(data)
 
 
-def wav_channel_count(path):
-    """How many channels the WAV at ``path`` has, or None when it is not a
-    PCM or float WAV this module reads."""
-    with open(path, 'rb') as f:
-        header = _read_wav_header(f)
-    if header is None:
-        return None
-    tag, channels = header[0], header[1]
-    return channels if tag in (WAV_PCM, WAV_FLOAT) else None
-
-
 def _extract_wav_channel(path, channel, out_path):
     import numpy as np
 
