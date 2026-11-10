@@ -14,7 +14,11 @@ vi.mock('../../domain/umrImport.js', () => {
     importUmrDocument: vi.fn(async (_c, _p, name, _t, _l, options = {}) => {
       calls.push({ into: options.into ?? null });
       if (options.into && refusal) throw refusal(WordsDiffer);
-      return { document: { id: 'd1', name }, warnings: [], attached: !!options.into };
+      return {
+        document: { id: 'd1', name: options.into ? name : `${name} (2)` },
+        warnings: [],
+        attached: !!options.into,
+      };
     }),
   };
 });
@@ -50,7 +54,7 @@ describe('a UMR file whose words differ from the document', () => {
     const rows = await importOnce();
     expect(calls).toEqual([{ into: { id: 'd0' } }, { into: null }]);
     expect(rows[0].status).toBe('imported');
-    expect(rows[0].warnings[0]).toBe('Imported as a new document: Satz 1 weicht ab.');
+    expect(rows[0].warnings[0]).toBe('Imported as new document "a (2)": Satz 1 weicht ab.');
   });
 
   it('is refused when another error says "differs"', async () => {

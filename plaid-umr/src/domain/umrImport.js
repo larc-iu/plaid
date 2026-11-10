@@ -108,6 +108,8 @@ async function importDocument(client, projectId, name, text, layerInfo, options)
   const rewrittenRecords = [];
 
   let documentId = existing ? existing.raw.id : null;
+  // The name stored, which the report gives: a new document's may be "Name (2)".
+  let documentName = name;
   try {
     let textId;
     if (existing) {
@@ -119,6 +121,7 @@ async function importDocument(client, projectId, name, text, layerInfo, options)
         client.documents.create(projectId, name, undefined, undefined, { id, freeName: true }),
       );
       documentId = created.id;
+      documentName = created.name ?? name;
       const textResponse = await client.texts.create(layerInfo.textLayer.id, documentId, plan.body);
       textId = textResponse.id;
     }
@@ -292,7 +295,7 @@ async function importDocument(client, projectId, name, text, layerInfo, options)
     }
 
     return {
-      document: { id: documentId, name },
+      document: { id: documentId, name: documentName },
       warnings: [...warnings, ...readerNotes(parsed)],
       attached: !!existing,
     };

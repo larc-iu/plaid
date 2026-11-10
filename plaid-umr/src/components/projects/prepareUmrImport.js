@@ -54,7 +54,10 @@ export const prepareImport = async ({ client, project, projectId }) => {
       : { into: null };
     const { into } = target;
     const asNew = (why) => (res) => {
-      res.warnings = [`Imported as a new document: ${why}`, ...(res.warnings || [])];
+      res.warnings = [
+        `Imported as new document "${res.document.name}": ${why}`,
+        ...(res.warnings || []),
+      ];
       return res;
     };
     let result;

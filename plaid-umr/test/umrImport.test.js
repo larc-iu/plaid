@@ -296,6 +296,18 @@ test('a file with content and no separator line names the missing line', async (
   });
 });
 
+// H3-8: a new document whose name another document holds is stored as
+// "Name (2)", and the import answers with the name stored, for its report.
+test('a new document answers with the name the server stored', async () => {
+  const raw = rawFromPlan(planImport(parseUmrFile(file(CAT)).sentences, []));
+  const { client } = recordingClient({
+    answer: ({ kind, args }) =>
+      kind === 'documents.create' ? { id: args[4].id, name: `${args[1]} (2)` } : undefined,
+  });
+  const { document } = await importUmrDocument(client, 'p', 'doc', file(CAT), getUmrLayerInfo(raw));
+  assert.equal(document.name, 'doc (2)');
+});
+
 // N3-IMPORT-OVER-3: attaching a file onto a document that holds a triple
 // between two constants the file leaves out kept the relation stored and
 // dropped it from the sentence's record, so nothing showed it and no export

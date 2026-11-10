@@ -108,7 +108,7 @@ Each file becomes a document named after the file, with its sentences, words, gr
 
 A file can also bring annotation to a document already in the project, such as one glossed in Plaid IGT.
 If a document has the file's name, has no graph yet, and has the same words sentence by sentence, the file's graphs are put on that document's words.
-If its words differ, the file becomes a new document of that name instead, and the report says so.
+If its words differ, the file becomes a new document instead, named like "Name (2)", and the report gives its name.
 A document that already has a graph refuses the file.
 
 The import report lists notes under each file, by sentence.
