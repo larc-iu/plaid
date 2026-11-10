@@ -850,6 +850,16 @@ describe('the two doors dress a row alike', () => {
     expect(rule('.igt-vocab-pop__ok')).toMatch(/white-space:\s*nowrap/);
   });
 
+  it('places a morpheme’s popover at the plain width in a project with no lexicon', async () => {
+    mount({ lexicon: false });
+    await settle(4);
+    openChip('m-2');
+    await settle(4);
+    const pop = document.querySelector('[data-igt-pop]');
+    expect(pop.classList.contains('igt-vocab-pop--pairs')).toBe(false);
+    expect(editor._popWidth()).toBe(240);
+  });
+
   it('labels a pick in History the same from either door', async () => {
     const { client } = mount();
     await settle(4);

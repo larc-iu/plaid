@@ -37,8 +37,12 @@ export const popover = {
   // width its CSS actually renders at.
   _popWidth(variant = this._popover?.variant) {
     if (variant === 'comment') return 320;
-    // A morpheme's chip lists the pair picker's rows (.igt-vocab-pop--pairs).
-    return this._popover?.kind === 'morpheme' ? 360 : 240;
+    // A morpheme's chip lists the pair picker's rows (.igt-vocab-pop--pairs),
+    // in a project with a lexicon: with none its popover is the plain one
+    // (vocabPopover.js _spreadPopover).
+    const pairs =
+      this._popover?.kind === 'morpheme' && Object.keys(this.doc?.vocabularies || {}).length > 0;
+    return pairs ? 360 : 240;
   },
 
   // The popover's state gone, and with it a comment thread's claim on the
