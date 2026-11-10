@@ -184,7 +184,7 @@ A file made elsewhere with a speaker on each channel can be chosen alone under *
 It is not mixed.
 **Speakers per channel** takes a speaker for each channel.
 A WAV is uploaded as it is.
-Any other file is uploaded as a WAV with the same channels, at **Full quality** or **Smaller** as a mix is, so the stored file is larger than the one chosen.
+Any other file is uploaded as a WAV with the same channels, at **Full quality** or **Smaller** as a mix is.
 A video chosen alone is refused: upload it under **Single**.
 
 A recording uploaded under **Per speaker** shows a **channel list** under the player.

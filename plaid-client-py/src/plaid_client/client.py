@@ -2179,7 +2179,8 @@ class DocumentsResource(_MetadataMethods, _Resource):
             signal: Optional ``threading.Event`` (the JS client's AbortSignal).
                 Once it is set the upload stops and the call raises
                 :class:`UploadAborted`. Set once the whole file has gone up,
-                it changes nothing, and the server may store the file.
+                the call may still raise it, and the server may store the
+                file all the same: read the document to know.
         """
         return self._request('PUT', f'/api/v1/documents/{document_id}/media',
                              body={'file': file}, form_data=True, no_batch=True,

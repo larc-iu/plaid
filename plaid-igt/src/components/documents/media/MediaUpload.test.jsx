@@ -331,6 +331,22 @@ describe('MediaUpload', () => {
     await r.unmount();
   });
 
+  it('puts focus on the file picker button once an upload is cancelled', async () => {
+    const card = (progress) => (
+      <MediaUpload
+        onUpload={vi.fn()}
+        onCancel={vi.fn()}
+        isUploading={!!progress}
+        progress={progress}
+      />
+    );
+    const r = await renderComponent(card({ name: 'talk.wav', loaded: 250, total: 1000 }));
+    await r.step(() => buttonSaying(r.container, 'Cancel').click());
+    await r.rerender(card(null));
+    expect(document.activeElement).toBe(buttonSaying(r.container, 'Choose media file'));
+    await r.unmount();
+  });
+
   // A card mounted while a Per speaker upload goes (the tab left and come
   // back to) shows the bar, and is on Per speaker once it is cancelled.
   it('mounted during a Per speaker upload, is on Per speaker once it is cancelled', async () => {

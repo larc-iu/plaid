@@ -50,6 +50,8 @@ export const MediaUpload = ({
   readFile = undefined,
 }) => {
   const inputRef = useRef(null);
+  // Set by Cancel: the picker button takes focus as it comes back.
+  const focusChoose = useRef(false);
   // A large file waits here for the choice between sending it and converting
   // it. A small one is uploaded on sight, as it always was.
   const [pending, setPending] = useState(null);
@@ -224,7 +226,15 @@ export const MediaUpload = ({
                 <div className="flex items-center justify-between gap-3">
                   <span>{saves && <SaveStatus doc={saves} />}</span>
                   {onCancel && (
-                    <Button variant="outline" size="sm" disabled={processing} onClick={onCancel}>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={processing}
+                      onClick={() => {
+                        focusChoose.current = true;
+                        onCancel();
+                      }}
+                    >
                       Cancel
                     </Button>
                   )}
@@ -265,6 +275,12 @@ export const MediaUpload = ({
           ) : (
             <div className="flex flex-col items-center gap-2">
               <Button
+                ref={(el) => {
+                  if (el && focusChoose.current) {
+                    focusChoose.current = false;
+                    el.focus();
+                  }
+                }}
                 size="lg"
                 disabled={isUploading || readOnly}
                 onClick={() => inputRef.current?.click()}

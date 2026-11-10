@@ -454,8 +454,9 @@ def _learn_omitted_version_quietly(client):
 
 
 class UploadAborted(Exception):
-    """Raised by an upload whose ``signal`` was set before the whole file had
-    gone up. The upload is cut off and never sent again."""
+    """Raised by an upload whose ``signal`` was set while it went up. The
+    upload is cut off and never sent again. Set as the last block went, the
+    server may have the whole file and store it all the same."""
 
 
 class _ProgressBody:
@@ -720,8 +721,10 @@ def make_request(client, method, path, *, body=None, raw_body=None, form_data=Fa
         signal: For a multipart upload, a ``threading.Event``. Once it is set
             the body stops between two blocks, the call raises
             :class:`UploadAborted`, and nothing is sent again. The body is
-            then sent as with ``on_upload_progress``. Set after the whole body
-            has gone up, it changes nothing: the call waits for the answer.
+            then sent as with ``on_upload_progress``. Set once the whole body
+            has gone up, the call may wait for the answer or still raise
+            :class:`UploadAborted`, and the server may store the file all the
+            same: read the document to know.
     """
     if method != 'GET' and _omitted_strict_document(client):
         _learn_omitted_version(client)
