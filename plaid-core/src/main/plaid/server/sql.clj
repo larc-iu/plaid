@@ -33,10 +33,32 @@
   (checkpoint-wal! datasource)
   (log/info "Migrations complete."))
 
-(defn- read-line-secret []
+(defn- read-line-secret
+  "Read one line without echo, or nil at the end of input."
+  []
   (if-let [console (System/console)]
-    (String. (.readPassword console))
+    (some-> (.readPassword console) String.)
     (read-line)))
+
+(defn- prompt-first-password
+  "Ask for the first admin's password until it is long enough and typed the
+  same twice, so a typo cannot lock the only admin out. Nil at the end of
+  input."
+  []
+  (loop []
+    (print (str "Enter password (at least " pxu/min-password-length " characters): "))
+    (flush)
+    (when-let [password (read-line-secret)]
+      (if (or (< (count password) pxu/min-password-length) (str/blank? password))
+        (do (println (str "Password must be at least " pxu/min-password-length " characters."))
+            (recur))
+        (do (print "Confirm password: ")
+            (flush)
+            (when-let [again (read-line-secret)]
+              (if (= password again)
+                password
+                (do (println "Passwords do not match.")
+                    (recur)))))))))
 
 (defn- console-attached? [] (some? (System/console)))
 
@@ -50,7 +72,7 @@
         env-password (System/getenv "PLAID_ADMIN_PASSWORD")]
     (cond
       (and (seq env-email) (seq env-password))
-      ;; nil actor: this is the bootstrap admin — no user exists yet.
+      ;; nil actor: this is the bootstrap admin, no user exists yet.
       (let [{:keys [success extra error]} (pxu/create datasource env-email true env-password nil)]
         (if success
           (log/info (str "Admin user created from PLAID_ADMIN_EMAIL (" extra ")."))
@@ -72,16 +94,16 @@
         (log/warn "No users detected! Prompting you for credentials...")
         (print "Enter email: ") (flush)
         (let [email (read-line)
-              _ (do (print (str "Enter password (at least " pxu/min-password-length
-                                " characters): "))
-                    (flush))
-              password (read-line-secret)
-              ;; nil actor: this is the bootstrap admin — no user exists yet.
-              {:keys [success extra error]} (pxu/create datasource email true password nil)]
-          (if success
-            (log/info (str "Admin user created with email " extra "."))
-            (do (log/error "Error creating first user:" error)
-                (exit! 1))))))))
+              password (prompt-first-password)]
+          (if (nil? password)
+            (do (log/error "Error creating first user: no password entered")
+                (exit! 1))
+            ;; nil actor: this is the bootstrap admin, no user exists yet.
+            (let [{:keys [success extra error]} (pxu/create datasource email true password nil)]
+              (if success
+                (log/info (str "Admin user created with email " extra "."))
+                (do (log/error "Error creating first user:" error)
+                    (exit! 1))))))))))
 
 (defn- checkpoint-wal!
   "Run `PRAGMA wal_checkpoint(TRUNCATE)` so the WAL is flushed into the
