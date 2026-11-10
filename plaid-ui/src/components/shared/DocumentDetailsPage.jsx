@@ -174,9 +174,10 @@ export const DocumentDetailsPage = ({
       await getClient().documents.delete(documentId);
       notifySuccess(`Deleted “${label}”`);
       // Nothing to ask: the document the name was typed for is gone. The extra
-      // history entry still comes out before the route changes.
+      // history entry still comes out before the route changes. The list takes
+      // this page's place, so Back does not come back to the deleted document.
       await dropUnsavedDrafts();
-      navigate(routes.documents(projectId));
+      navigate(routes.documents(projectId), { replace: true });
     } catch (err) {
       notifyError(humanizeError(err), 'Failed to delete document');
       console.error('Error deleting document:', err);

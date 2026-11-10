@@ -4,7 +4,7 @@
 // its history entry back out) itself.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { act } from 'react';
-import { MemoryRouter, Routes, Route, useLocation } from 'react-router-dom';
+import { MemoryRouter, Routes, Route, useLocation, useNavigationType } from 'react-router-dom';
 import { renderComponent, all } from '../../test/renderComponent.jsx';
 import { configureUi } from '../../lib/uiConfig.js';
 import { DocumentModel } from '../../domain/DocumentModel.js';
@@ -73,8 +73,10 @@ class Doc extends DocumentModel {
 const deleteDocument = vi.fn(async () => true);
 
 let path = null;
+let how = null;
 const Probe = () => {
   path = useLocation().pathname;
+  how = useNavigationType();
   return null;
 };
 
@@ -381,5 +383,16 @@ describe('the document details screen', () => {
     await tick();
     expect(idx()).toBe(0);
     expect(hasUnsavedDraft()).toBe(null);
+  });
+
+  // H1 S5: Back after a delete went to the deleted document.
+  it('leaves for the list in place of the deleted document, so Back skips it', async () => {
+    const view = await mount();
+    await view.step(async () => {
+      click(button(view.container, 'Delete document'));
+    });
+    await flush();
+    expect(path).toBe('/projects/p1/documents');
+    expect(how).toBe('REPLACE');
   });
 });
