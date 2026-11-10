@@ -384,7 +384,8 @@ Your edits are sent once the server answers again.
 Closing the tab meanwhile asks first.
 
 Two people can have one document open at once, but neither sees the other's edits as they are made.
-Edits to different words and sentences are all saved.
+Edits to different fields are all saved.
+An edit to a field that someone else changed anywhere in the document since you opened it can be refused with **Changed elsewhere**, and your value stays in its cell, not saved.
 When someone else changed the same cell first, the cell shows their value with an amber edge and yours under it, and a message names the change, such as `b changed this to DOG.`
 **Enter** keeps your value, and **Esc** or typing another value lets it go.
 Any other edit that clashes with a change elsewhere is refused, and the document shows the latest version for you to redo it.
