@@ -1,8 +1,9 @@
 // A recording's own sample rate, read from its header. The browser's decoder
 // resamples to whatever rate it is asked for and never says what the file
 // had, so "full quality" (the highest rate among the files being mixed) is
-// read here: a WAV says so in its `fmt ` chunk, an MP4 or M4A in the sound
-// track's `mdhd` box, an MP3 in every frame header. The containers are read
+// read here: a WAV says so in its `fmt ` chunk, a FLAC in its STREAMINFO
+// block, an MP4 or M4A in the sound track's `mdhd` box, an MP3 in every frame
+// header. The containers are read
 // first, since their compressed payload holds byte pairs that look like an
 // MP3 frame header. Anything else (a WebM, an Ogg) is unknown, and the caller
 // takes a fixed rate for it.
@@ -26,6 +27,15 @@ const fileReader = (file) => async (from, to) =>
 async function wavRate(file) {
   const info = await readWavInfo(fileReader(file), file.size).catch(() => null);
   return info?.sampleRate || null;
+}
+
+// A FLAC starts `fLaC`, then the STREAMINFO block: a 4-byte block header
+// (type 0) and 34 bytes, whose 20 bits from byte 10 are the rate.
+async function flacRate(file) {
+  const view = await readSlice(file, 0, 21);
+  if (view.byteLength < 21 || typeAt(view, 0) !== 'fLaC') return null;
+  if ((view.getUint8(4) & 0x7f) !== 0) return null;
+  return (view.getUint8(18) << 12) | (view.getUint8(19) << 4) | (view.getUint8(20) >> 4);
 }
 
 // MPEG audio frame header: the rate index per version, and the bitrate index
@@ -72,8 +82,9 @@ function mp3Frame(view, i) {
   return { version, layer, rate, length };
 }
 
-// The first bytes of containers that are not MPEG audio and have no reader
-// here: Ogg, WebM or Matroska, FLAC, a RIFF or AIFF that is not a readable WAV.
+// The first bytes of containers that are not MPEG audio, so a frame-like pair
+// in their payload is never read as one: Ogg, WebM or Matroska, a FLAC its
+// reader could not read, a RIFF or AIFF that is not a readable WAV.
 const NOT_MP3 = ['OggS', '\x1aE\xdf\xa3', 'fLaC', 'RIFF', 'FORM'];
 
 async function mp3Rate(file) {
@@ -160,7 +171,7 @@ async function mp4Rate(file) {
 
 /** The file's sample rate in Hz, or null when its header does not say. */
 export async function readSampleRate(file) {
-  for (const read of [wavRate, mp4Rate, mp3Rate]) {
+  for (const read of [wavRate, flacRate, mp4Rate, mp3Rate]) {
     try {
       const rate = await read(file);
       if (rate) return rate;

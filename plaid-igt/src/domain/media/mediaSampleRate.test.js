@@ -105,6 +105,33 @@ describe('readSampleRate', () => {
     expect(await readSampleRate(fileOf(file))).toBe(48000);
   });
 
+  // `fLaC`, a STREAMINFO block (the last, 34 bytes) whose bits 80 to 99 are
+  // the rate, then a payload of two MP3-like frames in a row.
+  const flacOf = (rate, { first = 0x80 } = {}) => {
+    const info = new Uint8Array(34);
+    info[10] = rate >> 12;
+    info[11] = (rate >> 4) & 0xff;
+    info[12] = ((rate & 0x0f) << 4) | (1 << 1); // stereo, then 16 bits a sample
+    info[13] = 0xf0;
+    return cat(
+      new Uint8Array([0x66, 0x4c, 0x61, 0x43, first, 0, 0, 34]),
+      info,
+      frameOf(417),
+      frameOf(417),
+    );
+  };
+
+  it('reads a FLAC from its STREAMINFO block', async () => {
+    expect(await readSampleRate(fileOf(flacOf(16000)))).toBe(16000);
+    expect(await readSampleRate(fileOf(flacOf(96000)))).toBe(96000);
+    expect(await readSampleRate(fileOf(flacOf(44100, { first: 0x00 })))).toBe(44100);
+  });
+
+  it('says nothing for a FLAC whose first block is not STREAMINFO, or is cut short', async () => {
+    expect(await readSampleRate(fileOf(flacOf(16000, { first: 0x84 })))).toBe(null);
+    expect(await readSampleRate(fileOf(flacOf(16000).slice(0, 20)))).toBe(null);
+  });
+
   it('says nothing for a WebM or an Ogg, whatever their payload holds', async () => {
     expect(await readSampleRate(fileOf(fixture('opus.webm')))).toBe(null);
     // An Ogg page header, then a payload of two MP3-like frames in a row.
