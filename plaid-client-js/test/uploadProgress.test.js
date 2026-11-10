@@ -6,6 +6,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { PlaidClient } from '../src/index.js';
+import { xhrSend } from '../src/http.js';
 
 const encode = (obj) => new TextEncoder().encode(JSON.stringify(obj)).buffer;
 
@@ -113,6 +114,19 @@ test('the timeout is a stall timeout: it fires when nothing moves, and aborts th
         onProgress: () => {},
       }),
       /timed out/,
+    );
+    assert.equal(FakeXHR.last.aborted, true);
+  });
+});
+
+// The abort a stall makes fires the request's own abort handler at once, so
+// the stall has to be the first to reject, or its error is an AbortError.
+test('a stall rejects with an error named TimeoutError', async () => {
+  await withFakeXhr(async () => {
+    FakeXHR.onSend = () => {};
+    await assert.rejects(
+      xhrSend('http://x/y', { method: 'PUT', headers: {}, body: 'abc' }, { timeout: 5 }),
+      { name: 'TimeoutError' },
     );
     assert.equal(FakeXHR.last.aborted, true);
   });

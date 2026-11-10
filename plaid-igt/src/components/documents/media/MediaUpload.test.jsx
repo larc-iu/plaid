@@ -282,9 +282,9 @@ describe('MediaUpload', () => {
     await r.unmount();
   });
 
-  // Cancel stops an upload while its bytes go up, or while it waits to be
-  // sent again. Once every byte is up the server stores the file whatever the
-  // browser does, so Cancel is not on the card then.
+  // Cancel stops an upload while its bytes go up. Once every byte is up the
+  // server stores the file whatever the browser does, so Cancel is not on the
+  // card then.
   it('offers Cancel while the bytes go up, and not once every byte is up', async () => {
     const onCancel = vi.fn();
     const card = (loaded) => (

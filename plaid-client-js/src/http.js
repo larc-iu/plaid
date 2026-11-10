@@ -396,12 +396,14 @@ export function xhrSend(
       if (!timeout || timeout <= 0) return;
       clearTimeout(timer);
       timer = setTimeout(() => {
-        xhr.abort();
+        // Rejected before the abort: the abort fires `onabort` at once, and
+        // the first to reject names the error.
         reject(
           Object.assign(new Error(`Request timed out at ${url}`), {
             name: "TimeoutError",
           }),
         );
+        xhr.abort();
       }, timeout);
     };
 
