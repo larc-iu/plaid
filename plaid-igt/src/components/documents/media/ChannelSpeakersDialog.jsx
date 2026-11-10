@@ -13,8 +13,8 @@ import { Progress } from '@ui/components/ui/progress';
 import { formatBytes } from '@/utils/formatBytes';
 import { notifyError } from '@/utils/feedback';
 import { keptChannelsWav, readChannelFile } from '@/domain/media/mixRecordings';
-import { keptChannelsBytes } from '@/domain/media/mixdown';
-import { QualityChoice, startingQuality } from './QualityChoice.jsx';
+import { keptChannelsBytes, startingQuality } from '@/domain/media/mixdown';
+import { QualityChoice } from './QualityChoice.jsx';
 
 // One file chosen under Per speaker: a recording made elsewhere with a
 // speaker on each channel. Nothing is mixed. The dialog reads how many

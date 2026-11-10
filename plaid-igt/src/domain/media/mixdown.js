@@ -59,6 +59,16 @@ export function keptChannelsBytes({ channels, seconds, sampleRate }, quality) {
   return wavBytes(channels, Math.ceil((Number(seconds) || 0) * rate));
 }
 
+/**
+ * The quality a dialog starts on until one is chosen, from `bytesOf(quality)`
+ * (null while unknown): Full, unless it is over the server's limit and Smaller
+ * is not.
+ */
+export function startingQuality(bytesOf, maxBytes) {
+  const over = (quality) => maxBytes != null && (bytesOf(quality) ?? 0) > maxBytes;
+  return over('full') && !over('small') ? 'small' : 'full';
+}
+
 const stem = (name) => String(name || '').replace(/\.[^./\\]*$/, '') || 'recording';
 
 /** The mix's file name: the first file's, said to be mixed. */

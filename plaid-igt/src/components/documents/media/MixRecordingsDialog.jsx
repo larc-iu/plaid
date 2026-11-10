@@ -13,9 +13,9 @@ import { Progress } from '@ui/components/ui/progress';
 import { formatBytes } from '@/utils/formatBytes';
 import { notifyError } from '@/utils/feedback';
 import { readTrack, mixTracks } from '@/domain/media/mixRecordings';
-import { mixBytes, mixRate, trackNote } from '@/domain/media/mixdown';
+import { mixBytes, mixRate, startingQuality, trackNote } from '@/domain/media/mixdown';
 import { formatTime } from './formatTime.js';
-import { QualityChoice, startingQuality } from './QualityChoice.jsx';
+import { QualityChoice } from './QualityChoice.jsx';
 
 // Several files chosen at once, one per speaker, become one recording with a
 // channel each. The dialog lists the files as they are read, takes a speaker
