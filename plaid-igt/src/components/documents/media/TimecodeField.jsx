@@ -1,4 +1,5 @@
 import React, { memo, useEffect, useRef, useState } from 'react';
+import { useSavedOnLeave } from './useSavedOnLeave.js';
 import { cn } from '@ui/lib/utils';
 import { formatTime, parseTime } from './formatTime.js';
 import { keys as keymap } from '@/lib/keymap.js';
@@ -114,6 +115,7 @@ export const TimecodeField = memo(function TimecodeField({
     });
     return inFlight.current;
   };
+  useSavedOnLeave(() => dirtyRef.current, commit);
 
   // A click on a separator, or on the group's own padding, goes to the box
   // whose centre is nearest the pointer rather than nowhere.

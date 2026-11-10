@@ -27,6 +27,7 @@ import { settledId, stableKey } from '@ui/domain/pendingIds.js';
 import { useEditLog } from '@ui/hooks/useEditLog.js';
 import { shownOrRefused } from './shownOrRefused.js';
 import { caretInRow } from './segmentCaret.js';
+import { useSavedOnLeave } from './useSavedOnLeave.js';
 
 // The transcript: every time-aligned segment as a row you can type into, in
 // time order, with the recording following your focus. This is the pass a
@@ -296,6 +297,8 @@ const SegmentRow = memo(function SegmentRow({
     });
     return inFlight.current;
   };
+  // An emptied row is put back rather than saved, so it holds nothing to lose.
+  useSavedOnLeave(() => dirtyRef.current && draftRef.current.trim() !== '', commit);
 
   const playToggle = () => onPlayToggle(token);
 
@@ -645,6 +648,7 @@ const ProposalRow = memo(function ProposalRow({
     });
     return inFlight.current;
   };
+  useSavedOnLeave(() => !acceptedRef.current && draftRef.current.trim() !== '', commit);
 
   const onKeyDown = (e) => {
     const step = leavingBy(e) || unitStepOf(e);
@@ -756,6 +760,9 @@ const NewSegmentRow = memo(function NewSegmentRow({
   const ref = useRef(null);
   const ready = currentTime > prevEnd + MIN_SEGMENT;
   const canCreate = ready && draft.trim().length > 0;
+  // Only Enter saves this row, so what it holds is asked about on every way
+  // out, as Baseline's edit box is.
+  useUnsavedDraft(draft.trim() ? 'The new segment you have typed' : null);
 
   useLayoutEffect(() => autoGrow(ref.current), [draft]);
   // Stable, so the running clock's re-renders do not hand the box over again
