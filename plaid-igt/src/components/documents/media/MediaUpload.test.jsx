@@ -331,10 +331,11 @@ describe('MediaUpload', () => {
     await perSpeaker(r);
     expect(pressed(r, 'Per speaker')).toBe('true');
     expect(r.container.querySelector('input[type=file]').multiple).toBe(true);
+    expect(r.container.textContent).toContain('Upload media files');
     expect(r.container.textContent).toContain(
-      'One file per speaker, mixed into one recording with a channel per speaker.',
+      'One file per speaker, or one file with a channel per speaker.',
     );
-    expect(buttonSaying(r.container, 'Choose files')).not.toBeNull();
+    expect(buttonSaying(r.container, 'Choose media files')).not.toBeNull();
     await r.unmount();
   });
 

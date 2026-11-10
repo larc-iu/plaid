@@ -153,10 +153,12 @@ export const MediaUpload = ({
         <div className="flex w-full flex-col items-center gap-6">
           <Upload className="h-12 w-12 text-muted-foreground" />
           <div className="text-center">
-            <p className="mb-1 text-lg font-medium">Upload media file</p>
+            <p className="mb-1 text-lg font-medium">
+              {perSpeaker ? 'Upload media files' : 'Upload media file'}
+            </p>
             <p className="mb-4 text-sm text-muted-foreground">
               {perSpeaker
-                ? 'One file per speaker, mixed into one recording with a channel per speaker. Or one file with a channel per speaker.'
+                ? 'One file per speaker, or one file with a channel per speaker.'
                 : 'One audio or video file.'}
             </p>
           </div>
@@ -243,7 +245,7 @@ export const MediaUpload = ({
                 onClick={() => inputRef.current?.click()}
               >
                 <Upload className="h-4 w-4" />
-                {perSpeaker ? 'Choose files' : 'Choose media file'}
+                {perSpeaker ? 'Choose media files' : 'Choose media file'}
               </Button>
               {tooMany && (
                 <p className="text-xs font-medium text-destructive" role="status">

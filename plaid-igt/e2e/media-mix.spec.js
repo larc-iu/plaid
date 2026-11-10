@@ -143,7 +143,7 @@ test('two files go through the mix dialog and come out as one recording with a c
 
   // Per speaker takes several.
   await page.getByRole('button', { name: 'Per speaker' }).click();
-  await expect(page.getByRole('button', { name: 'Choose files' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Choose media files' })).toBeVisible();
   await shot(page, '00-per-speaker');
   await page.locator('input[type="file"]').setInputFiles([ana, benStereo]);
 
