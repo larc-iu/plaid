@@ -1,6 +1,32 @@
 import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { Mp3Encoder } from '@breezystack/lamejs';
 import { readSampleRate } from './mediaSampleRate.js';
 import { encodeWav } from './mixdown.js';
+
+// Recordings made by Chromium's MediaRecorder at 48 kHz, each holding byte
+// pairs in its compressed payload that look like an MPEG frame header.
+const fixture = (name) =>
+  new Uint8Array(
+    readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), 'rate-fixtures', name)),
+  );
+
+// A real MP3 of a tone, from the encoder the app uses.
+const mp3Of = (rate) => {
+  const encoder = new Mp3Encoder(1, rate, 64);
+  const pcm = new Int16Array(rate / 2).map((_, i) => Math.round(8000 * Math.sin(i / 7)));
+  const parts = [encoder.encodeBuffer(pcm), encoder.flush()];
+  return cat(...parts.map((p) => new Uint8Array(p.buffer, p.byteOffset, p.length)));
+};
+// MPEG 1 Layer III, 128 kbit/s, 44.1 kHz, no padding: a 417-byte frame.
+const FALSE_SYNC = [0xff, 0xfb, 0x90, 0x00];
+const frameOf = (length) => {
+  const out = new Uint8Array(length);
+  out.set(FALSE_SYNC);
+  return out;
+};
 
 // A File stands in by its bytes: `slice` and `size` are all the readers use.
 const fileOf = (bytes) => ({
@@ -53,6 +79,41 @@ describe('readSampleRate', () => {
     const audio = box('trak', box('mdia', cat(box('hdlr', hdlr), box('mdhd', mdhd))));
     const file = cat(box('ftyp', new Uint8Array(8)), box('moov', cat(video, audio)));
     expect(await readSampleRate(fileOf(file))).toBe(48000);
+  });
+
+  it('reads a real MP3, and past junk only where a second frame follows', async () => {
+    expect(await readSampleRate(fileOf(mp3Of(22050)))).toBe(22050);
+    expect(await readSampleRate(fileOf(mp3Of(48000)))).toBe(48000);
+    const junk = new Uint8Array(300).fill(7);
+    junk.set(FALSE_SYNC, 100); // a lone header-like pair in the junk
+    expect(await readSampleRate(fileOf(cat(junk, mp3Of(16000))))).toBe(16000);
+    expect(await readSampleRate(fileOf(junk))).toBe(null);
+  });
+
+  it('reads an M4A and an MP4 video by their sound track, not a false MP3 sync', async () => {
+    expect(await readSampleRate(fileOf(fixture('opus.m4a')))).toBe(48000);
+    expect(await readSampleRate(fileOf(fixture('video.mp4')))).toBe(48000);
+  });
+
+  it('reads an MP4 whose payload holds two MP3-like frames before its moov', async () => {
+    const mdat = box('mdat', cat(frameOf(417), frameOf(417)));
+    const audio = box(
+      'trak',
+      box('mdia', cat(box('hdlr', withHandler('soun')), box('mdhd', timescale(48000)))),
+    );
+    const file = cat(box('ftyp', new Uint8Array(8)), mdat, box('moov', audio));
+    expect(await readSampleRate(fileOf(file))).toBe(48000);
+  });
+
+  it('says nothing for a WebM or an Ogg, whatever their payload holds', async () => {
+    expect(await readSampleRate(fileOf(fixture('opus.webm')))).toBe(null);
+    // An Ogg page header, then a payload of two MP3-like frames in a row.
+    const ogg = cat(
+      new Uint8Array([0x4f, 0x67, 0x67, 0x53, 0, 2, ...new Array(22).fill(0)]),
+      frameOf(417),
+      frameOf(417),
+    );
+    expect(await readSampleRate(fileOf(ogg))).toBe(null);
   });
 
   it('says nothing for a file whose header does not say', async () => {
