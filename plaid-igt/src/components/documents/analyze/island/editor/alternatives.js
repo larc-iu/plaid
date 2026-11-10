@@ -76,6 +76,8 @@ export const alternatives = {
       this._alts && items ? this._altsTemplate(items, this._alts.cellKey) : nothing,
       this._altsRoot,
     );
+    // Placed again by the size it turned out to have.
+    this._repositionAlts();
   },
 
   // A cell's rows. A pair picker cell whose tagset splits values lists whole
@@ -262,11 +264,18 @@ export const alternatives = {
     if (el) this._pickAlt(el, item);
   },
 
-  // At least as wide as the cell it lists for, and as tall as its rows up to
-  // the eight it scrolls past. Placed like every other floating surface.
-  _computeAltsPos(el, n) {
+  // At least as wide as the cell it lists for. Placed like every other
+  // floating surface. Before the list is drawn its size is a guess: the cell's
+  // width, and its rows up to the eight it scrolls past. Once drawn, `list`
+  // gives the real one, and a pair row is far wider than a cell, so a list
+  // placed by the guess ran off the window's edge (CW-BROWSER-2).
+  _computeAltsPos(el, n, list = null) {
     const width = Math.max(160, el?.getBoundingClientRect?.().width ?? 0);
-    const pos = anchoredPos(el, { width, height: Math.min(n, 8) * 24 + 10, gap: 2 });
+    const pos = anchoredPos(el, {
+      width: Math.max(width, list?.offsetWidth ?? 0),
+      height: list?.offsetHeight || Math.min(n, 8) * 24 + 10,
+      gap: 2,
+    });
     return pos && { ...pos, width };
   },
 
@@ -275,7 +284,7 @@ export const alternatives = {
     const el = cellByKey(this.container, this._alts.cellKey);
     const list = this._altsRoot?.querySelector('.igt-alts');
     if (!el || !list) return;
-    const pos = this._computeAltsPos(el, (this._alts.visible || []).length || 1);
+    const pos = this._computeAltsPos(el, (this._alts.visible || []).length || 1, list);
     if (!pos) return;
     this._altsPos = pos;
     list.style.left = `${pos.left}px`;

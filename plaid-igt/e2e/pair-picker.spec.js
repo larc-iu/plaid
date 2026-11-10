@@ -147,6 +147,19 @@ test('the marks of the chip’s current row stay inside the popover and take a c
   ]);
 });
 
+test('the Alt+Down list stays inside a narrow window', async ({ page }) => {
+  await page.setViewportSize({ width: 400, height: 800 });
+  await openAnalyze(page);
+  const cell = page.locator(`.igt-field[data-cell-key="ma:${ids.m[0]}:Gloss"]`);
+  await cell.click();
+  await page.keyboard.press('Alt+ArrowDown');
+  const list = page.locator('.igt-alts');
+  await expect(list.locator('.igt-alts__item').first()).toContainText('current');
+  const box = await list.boundingBox();
+  expect(box.x).toBeGreaterThanOrEqual(0);
+  expect(box.x + box.width).toBeLessThanOrEqual(400);
+});
+
 test('a pick from Alt+Down sets the link and the gloss, and both are there after a reload', async ({
   page,
 }) => {

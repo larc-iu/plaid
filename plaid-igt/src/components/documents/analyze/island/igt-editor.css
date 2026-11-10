@@ -1581,6 +1581,12 @@
 .igt-alts {
   position: fixed;
   z-index: 50;
+  /* As wide as its rows, whatever room is left beside where it stands: the
+     list is measured and then placed (alternatives.js _repositionAlts), and a
+     width that depended on the place would not be the one it gets. Never
+     wider than the window: its rows wrap first (.igt-pair__line). */
+  width: max-content;
+  max-width: calc(100vw - 16px);
   max-height: 220px;
   overflow-y: auto;
   padding: 4px;
