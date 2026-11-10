@@ -199,6 +199,7 @@ A node losing its words and a variable taking a new number are put right when th
 = Editing
 
 Every edit is saved as it happens, and there is no save button.
+A save the server has not answered after three seconds reads **Saving…** until it lands.
 If the server cannot be reached, the page reads **Can't reach the server, retrying**, or **Offline, retrying** when the computer has no network.
 Your edits are sent once the server answers.
 If a script or service has locked the document, the page reads **In use elsewhere, waiting** and saves once the lock is gone.

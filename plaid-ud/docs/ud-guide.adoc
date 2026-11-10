@@ -282,6 +282,7 @@ If a prediction is already correct, you don't have to retype it:
 == Saving
 
 A cell is saved when you leave it, and a relation when you draw or change it. There is no save button.
+A save the server has not answered after three seconds reads **Saving…** until it lands.
 If the server cannot be reached, saves are retried until it answers, and the page reads **Can't reach the server, retrying** meanwhile, or **Offline, retrying** when the computer has no network.
 While a script or a service has the document locked, the page reads **In use elsewhere, waiting**, and your edits are saved once it is done.
 

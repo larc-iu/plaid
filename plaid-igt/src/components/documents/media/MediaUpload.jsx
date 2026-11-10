@@ -19,7 +19,8 @@ import { ChannelSpeakersDialog } from './ChannelSpeakersDialog.jsx';
 // `convertProgress` is `{ name, fraction }` while a recording is converted.
 // `saves` is the document, whose write queue sends the upload: an upload whose
 // answer was lost goes again from the first byte until the server answers,
-// and the card says so under the bar, as the save pills do (SaveStatus).
+// and the card says so under the bar, as the save pills do (SaveStatus). The
+// bar shows the upload is on its way, so the card has no "Saving…".
 // `onCancel` stops the upload, and Cancel is on the card until every byte is
 // up: from then on the server stores the file whatever the browser does. It
 // stops a conversion to MP3 too, and is on the card all through one.
@@ -242,7 +243,7 @@ export const MediaUpload = ({
               </p>
               {(saves || canCancel) && (
                 <div className="flex items-center justify-between gap-3">
-                  <span>{saves && <SaveStatus doc={saves} />}</span>
+                  <span>{saves && <SaveStatus doc={saves} slow={false} />}</span>
                   {canCancel && cancelButton}
                 </div>
               )}
