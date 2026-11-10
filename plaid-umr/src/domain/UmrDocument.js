@@ -409,6 +409,17 @@ export class UmrDocument extends DocumentModel {
     ]);
   }
 
+  // The parts of each sentence no root reaches, which the export leaves out
+  // (`unreachedByRoot`), each by the number its sentence goes by.
+  get leftOutOfExport() {
+    return this._derived('leftOutOfExport', () =>
+      unreachedByRoot(this.graph).map((p) => ({
+        ...p,
+        sentence: this.sentence(p.sentence)?.number ?? p.sentence,
+      })),
+    );
+  }
+
   // What the official checks find, over the same sentences the export writes,
   // and the edges the export has to leave out.
   get problems() {

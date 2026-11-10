@@ -79,6 +79,36 @@ describe('ExportEditor', () => {
     state.project = { name: 'P' };
   });
 
+  it('names the nodes no root reaches beside the file', async () => {
+    state.doc = {
+      name: 'Lunch',
+      exportProblems: [],
+      leftOutOfExport: [
+        {
+          sentence: 2,
+          var: 's2e',
+          nodes: 2,
+          message:
+            's2e and 1 node under it are not reached from the root s2l, and the export leaves them out.',
+        },
+        {
+          sentence: 3,
+          var: 's3p',
+          nodes: 1,
+          message: 's3p is not reached from the root s3l, and the export leaves it out.',
+        },
+      ],
+      toUmr: () => '(s2l / leave-02)',
+    };
+    const r = await renderComponent(<ExportEditor />);
+    const notice = r.container.querySelector('[data-tone="warning"]');
+    expect(notice.textContent).toContain('3 nodes left out of the file:');
+    expect(notice.textContent).toContain('Sentence 2: s2e and 1 node under it are not reached');
+    expect(notice.textContent).toContain('Sentence 3: s3p is not reached');
+    expect(r.container.querySelector('textarea').value).toBe('(s2l / leave-02)');
+    expect(buttons(r).Copy.disabled).toBe(false);
+  });
+
   it('shows the file when there is nothing to list', async () => {
     state.doc = { name: 'Lunch', exportProblems: [], toUmr: () => '(s1d / dog)' };
     const r = await renderComponent(<ExportEditor />);

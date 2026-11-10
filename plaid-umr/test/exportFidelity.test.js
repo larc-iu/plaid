@@ -67,6 +67,17 @@ test('a part the root does not reach gets a root and is reported', () => {
   assert.ok(doc.problems.some((p) => p.code === 'unreached-by-root'));
 });
 
+// LP2-27: a Skeleton run leaves nodes with no edges, each a root, and the
+// export wrote only the first. The Export tab lists what it leaves out.
+test('the export lists each part no root reaches, with how many nodes it holds', () => {
+  const doc = loadEdited(file(LUNCH, LUNCH_ALIGNED), cutPurpose);
+  assert.deepEqual(
+    doc.leftOutOfExport.map((p) => [p.sentence, p.var, p.nodes]),
+    [[1, 's1e', 2]],
+  );
+  assert.deepEqual(load(file(LUNCH, LUNCH_ALIGNED)).leftOutOfExport, []);
+});
+
 test('the export writes only what the root reaches, with its alignment and triples', () => {
   const doc = loadEdited(
     file(

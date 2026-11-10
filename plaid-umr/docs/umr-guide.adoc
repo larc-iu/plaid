@@ -125,7 +125,7 @@ A file name in the zip may spell a document's name differently, and the zip reco
 Each sentence is written with its words and gloss lines, its graph in PENMAN, an alignment line for every node, and its document-level block.
 The Morphemes line joins the morphemes of a word with `-` or `=` as the canvas shows them, such as `ts- ɨmɨntsara -ra`.
 Sentences are numbered 1, 2, 3, unless the document came from a file that numbered them otherwise, in which case they keep the file's numbers.
-A part of a sentence that the root does not reach, such as a node made with no parent, is left out of the file.
+A part of a sentence that the root does not reach, such as a node made with no parent, is left out of the file, and the Export tab lists it.
 A document the file format cannot hold is not exported, and the tab lists each problem.
 One such document stops the project's zip, and **Import and export** lists every problem.
 

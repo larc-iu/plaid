@@ -762,6 +762,7 @@ export const unreachedByRoot = (graph) => {
         code: 'unreached-by-root',
         sentence: s.index,
         var: r.var,
+        nodes: part.size,
         message: `${what} not reached from the root ${root}, and the export leaves ${n ? 'them' : 'it'} out.`,
       });
     });
