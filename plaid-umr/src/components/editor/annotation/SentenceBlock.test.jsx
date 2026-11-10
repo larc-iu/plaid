@@ -541,6 +541,71 @@ describe('SentenceBlock node menu', () => {
   });
 });
 
+// H3-7: the question before a delete of several nodes names the document
+// relations (coreference, temporal, modal) that go with them, each once.
+describe('SentenceBlock node menu, deleting nodes with document relations', () => {
+  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  const dialog = () => document.querySelector('[role="alertdialog"]');
+  const ask = async ({ eatDoc, personDoc }) => {
+    const { sentence, nodesById } = fixture();
+    Object.assign(nodesById.get('n3'), eatDoc);
+    Object.assign(nodesById.get('n2'), personDoc);
+    const doc = {
+      graph: {},
+      canConfirmSentence: () => false,
+      canDiscardSentence: () => false,
+      canConfirm: () => false,
+      orphanedBy: () => [nodesById.get('n2')],
+      deleteNode: () => {},
+    };
+    const r = await renderComponent(
+      <ConfirmProvider>
+        <SentenceBlock
+          doc={doc}
+          sentence={sentence}
+          nodesById={nodesById}
+          dataVersion={1}
+          readOnly={false}
+        />
+      </ConfirmProvider>,
+    );
+    const eat = all(r.container, '.umr-node').find(
+      (n) => n.querySelector('.umr-node-concept')?.textContent === 'eat-01',
+    );
+    await r.step(() =>
+      eat.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true })),
+    );
+    const item = all(document, '[role="menuitem"]').find((m) =>
+      m.textContent.includes('Delete node and all below it'),
+    );
+    await r.step(() => item.click());
+    await r.step(() => wait(50));
+    const text = dialog().textContent;
+    await r.step(() =>
+      all(dialog(), 'button')
+        .find((b) => b.textContent.trim() === 'Cancel')
+        .click(),
+    );
+    await r.step(() => wait(50));
+    await r.unmount();
+    return text;
+  };
+
+  it('counts each relation once, and says nothing when there are none', async () => {
+    const t1 = { id: 't1', metadata: {} };
+    const t2 = { id: 't2', metadata: {} };
+    expect(await ask({ eatDoc: { docOut: [t1] }, personDoc: { docIn: [t1, t2] } })).toContain(
+      'eat-01, person. Also removes 2 document relations. Restorable from History.',
+    );
+    expect(await ask({ eatDoc: { docOut: [t1] }, personDoc: {} })).toContain(
+      'eat-01, person. Also removes 1 document relation. Restorable from History.',
+    );
+    expect(await ask({ eatDoc: {}, personDoc: {} })).toContain(
+      'eat-01, person. Restorable from History.',
+    );
+  });
+});
+
 describe('SentenceBlock node menu, the last node', () => {
   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 

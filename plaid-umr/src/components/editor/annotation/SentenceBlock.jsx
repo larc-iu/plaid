@@ -916,9 +916,16 @@ export const SentenceBlock = React.memo(function SentenceBlock({
     const next = edge ? edge.source : treeEdgeInto(node.id)?.source || null;
     if (doomed.length > 1) {
       const n = doomed.length;
+      // The document relations on the nodes that go, which go with them.
+      const docRelations = new Set(
+        doomed.flatMap((d) => [...(d.docOut || []), ...(d.docIn || [])].map((t) => t.id)),
+      ).size;
+      const also = docRelations
+        ? ` Also removes ${countOf(docRelations, 'document relation')}.`
+        : '';
       const ok = await confirm({
         title: edge ? `Delete ${edge.role} and ${countOf(n, 'node')}?` : `Delete ${n} nodes?`,
-        description: `${doomed.map((d) => d.concept).join(', ')}. Restorable from History.`,
+        description: `${doomed.map((d) => d.concept).join(', ')}.${also} Restorable from History.`,
         confirmLabel: 'Delete',
         destructive: true,
       });
