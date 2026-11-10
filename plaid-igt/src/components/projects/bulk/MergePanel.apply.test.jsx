@@ -273,7 +273,9 @@ describe('Merge', () => {
     const gone = Object.assign(new Error('HTTP 403'), {
       status: 403,
       method: 'POST',
-      responseData: { error: 'User u1 lacks maintainer access to vocab layer' },
+      // What the server answers for an entry it cannot find: `unresolved`
+      // tells a gone entry from a person who lost access.
+      responseData: { error: 'User u1 lacks maintainer access to vocab layer', unresolved: true },
     });
     const client = makeClient({ refuse: gone });
     const view = await mount(client);
