@@ -740,8 +740,12 @@ export const vocabPopover = {
               ${
                 // On a morpheme's chip the tabs only choose where "+ Create"
                 // puts a new entry (M2-3). Elsewhere they choose the list.
+                // The tab list carries the same words as its name, so the
+                // visible ones are kept from a screen reader.
                 pairs
-                  ? html`<span class="igt-vocab-pop__vocabsel-label">New entry in</span>`
+                  ? html`<span class="igt-vocab-pop__vocabsel-label" aria-hidden="true"
+                      >New entry in</span
+                    >`
                   : nothing
               }
               <div

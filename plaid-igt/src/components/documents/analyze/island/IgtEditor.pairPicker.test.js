@@ -947,6 +947,15 @@ describe('the two doors dress a row alike', () => {
     expect(sel.querySelector('[role="tablist"] .igt-vocab-pop__vocabtab')).not.toBeNull();
   });
 
+  it('gives a screen reader the label once, as the name of the tab list (REV-FX-M2)', async () => {
+    mount();
+    await settle(4);
+    openChip('m-2');
+    const sel = host.querySelector('.igt-vocab-pop__vocabsel');
+    expect(sel.querySelector('[role="tablist"]').getAttribute('aria-label')).toBe('New entry in');
+    expect(sel.firstElementChild.getAttribute('aria-hidden')).toBe('true');
+  });
+
   it('puts no such label on a word’s popover, whose tabs choose the list', async () => {
     mount();
     await settle(4);
