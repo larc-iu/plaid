@@ -78,6 +78,9 @@ REGEX_NOTE = ('(note) The engine matched this pattern in {docs}, but nothing in 
 def t_search(ws: Workspace, field: str = None, pattern: str = None, document: str = None,
              whole: bool = False, regex: bool = False, limit: int = None, case_sensitive: bool = False) -> str:
     """Words whose field matches, each in its context."""
+    if not field:
+        raise ToolError('Give field: the column to search. One of: ' + ', '.join(SEARCHABLE),
+                        kind='invalid-argument')
     if field not in SEARCHABLE:
         raise ToolError(f'Unknown field "{field}". One of: ' + ', '.join(SEARCHABLE), kind='invalid-argument')
     if not pattern:

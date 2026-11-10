@@ -151,6 +151,9 @@ def t_replace_in_field(ws: Workspace, field: str = None, pattern: str = None, re
     """PLAN: substitute inside every value of a column that matches, across
     the project or in one document. Case counts unless the model asks
     otherwise, as in igt (H12-RULES-1)."""
+    if not field:
+        raise ToolError('Give field: the column to change. One of: ' + ', '.join(REPLACE_FIELDS),
+                        kind='invalid-argument')
     if field not in REPLACE_FIELDS:
         raise ToolError(f'Unknown field "{field}". One of: ' + ', '.join(REPLACE_FIELDS), kind='invalid-argument')
     if replacement is None:

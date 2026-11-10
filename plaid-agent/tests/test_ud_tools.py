@@ -732,6 +732,23 @@ def test_search_refuses_a_column_it_cannot_search(ws):
     assert 'Unknown field "head"' in out
 
 
+def test_a_tool_called_without_its_field_says_field_is_missing(ws):
+    # glm53-1 called search with a pattern and no field five times, and was
+    # told 'Unknown field "None"'.
+    from plaid_agent.ud.stats import SEARCHABLE
+    from plaid_agent.ud.tools import FIELDS
+    from plaid_agent.ud.bulk import REPLACE_FIELDS
+    out = call_tool(ws, 'search', {'pattern': 'oasis'})
+    assert 'None' not in out
+    assert 'Give field: the column to search. One of: ' + ', '.join(SEARCHABLE) in out
+    out = call_tool(ws, 'set_field', {'document': 'Viaje', 'refs': ['s1.w1'], 'value': 'NOUN'})
+    assert 'None' not in out
+    assert 'Give field: the column to set. One of: ' + ', '.join(FIELDS) in out
+    out = call_tool(ws, 'replace_in_field', {'pattern': 'a', 'replacement': 'b'})
+    assert 'None' not in out
+    assert 'Give field: the column to change. One of: ' + ', '.join(REPLACE_FIELDS) in out
+
+
 def test_search_refuses_a_broken_regular_expression(ws):
     out = call_tool(ws, 'search', {'field': 'lemma', 'pattern': '[', 'regex': True})
     assert 'That pattern cannot be used: Unclosed [.' in out

@@ -256,6 +256,8 @@ def _words(ws: Workspace, doc: UdDoc, refs) -> List[Word]:
 
 
 def _field_layer(ws: Workspace, field: str) -> str:
+    if not field:
+        raise ToolError('Give field: the column to set. One of: ' + ', '.join(FIELDS), kind='invalid-argument')
     if field not in FIELDS:
         raise ToolError(f'Unknown field "{field}". One of: ' + ', '.join(FIELDS), kind='invalid-argument')
     return ws.project.layer('features' if field == 'features' else field)
