@@ -480,6 +480,32 @@ describe('TagsetsManager: rename, seed and value rows', () => {
     await unmount();
   });
 
+  it('names the field the values were read from, whatever it is called', async () => {
+    // LP2-17: the note spoke of "a Gloss field" over a tagset on POS.
+    const pos = byTagsetName(
+      governedFields(
+        {
+          spanLayers: {
+            word: [{ id: 'l-2', name: 'POS', config: { igt: { tagset: 'Leipzig' } } }],
+          },
+        },
+        { igt: { tagsets: { Leipzig: leipzig } } },
+      ),
+    );
+    const onLoadAttested = vi.fn(async () => [
+      ['n', 5],
+      ['PL', 1],
+      ['v', 2],
+    ]);
+    const { container, step, unmount } = await mountWith({ usage: pos, onLoadAttested });
+    await expandFirst(container, step);
+    await step(async () => button(container, 'Add values used in this project').click());
+    expect(container.textContent).toContain('values not written in capitals');
+    expect(container.textContent).not.toContain('Gloss');
+    expect(container.textContent).toContain('Read from POS.');
+    await unmount();
+  });
+
   it('can still take everything, for a lowercase inventory like part of speech', async () => {
     const onSaveChanges = vi.fn();
     const onLoadAttested = vi.fn(async () => [

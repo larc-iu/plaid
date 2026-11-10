@@ -664,8 +664,7 @@ export const TagsetsManager = ({
                         {seedPending.lexical.length > 5 ? ', …' : ''}) not in the list.
                       </p>
                       <p className="text-xs text-muted-foreground">
-                        In a Gloss field, values not written in capitals are usually stems rather
-                        than tags.
+                        Read from {fields.map((f) => f.field).join(', ')}.
                       </p>
                       <div className="flex gap-2">
                         <Button
