@@ -148,9 +148,13 @@ export const guidelinesTests = ({
     await page.getByRole('button', { name: 'Pin', exact: true }).click();
 
     await expect(page.getByRole('button', { name: 'Unpin', exact: true })).toBeVisible();
-    const after = await client().guidelines.get(id);
-    expect(after.pinned).toBe(true);
-    expect(after.body).toBe('p');
+    // Unpin shows before the server has the pin, so the read waits for it.
+    await expect
+      .poll(async () => {
+        const after = await client().guidelines.get(id);
+        return { pinned: after.pinned, body: after.body };
+      })
+      .toEqual({ pinned: true, body: 'p' });
   });
 
   test('a save is refused when someone else saved first, and keeps every word', async ({
