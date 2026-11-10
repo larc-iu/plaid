@@ -15,7 +15,7 @@ import { ChannelSpeakersDialog } from './ChannelSpeakersDialog.jsx';
 // The upload prompt, and the upload itself once a file is chosen: the bytes
 // going up as a bar with the count, then a pulsing bar while the server checks
 // the file and the document reloads with it. `progress` is
-// `{ name, loaded, total }` while an upload is in flight, else null, and
+// `{ name, loaded, total, perSpeaker }` while an upload is in flight, else null, and
 // `convertProgress` is `{ name, fraction }` while a recording is converted.
 // `saves` is the document, whose write queue sends the upload: an upload whose
 // answer was lost goes again from the first byte until the server answers,
@@ -61,8 +61,9 @@ export const MediaUpload = ({
   // Two or more files, waiting in the mix dialog.
   const [mixing, setMixing] = useState(null);
   const [dragOver, setDragOver] = useState(false);
-  // 'single' or 'perSpeaker'.
-  const [mode, setMode] = useState('single');
+  // 'single' or 'perSpeaker'. A card mounted while an upload goes starts on
+  // that upload's mode.
+  const [mode, setMode] = useState(() => (progress?.perSpeaker ? 'perSpeaker' : 'single'));
   const perSpeaker = mode === 'perSpeaker';
   // One file under Per speaker, waiting in the channel speakers dialog.
   const [channelFile, setChannelFile] = useState(null);

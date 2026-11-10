@@ -1231,4 +1231,47 @@ describe('useMediaOperations: cancelling an upload', () => {
     expect(h.api.isUploading).toBe(false);
     await h.unmount();
   });
+
+  // The upload lives with the document, not the tab: a Media tab mounted
+  // again while it goes shows its bar, takes no second file, and its Cancel
+  // stops it.
+  it('a tab mounted again while the upload goes shows it, and Cancel there stops it', async () => {
+    const doc = withMedia(null);
+    const sends = [];
+    doc.uploadMedia = vi.fn((file, { signal, onProgress }) => {
+      const d = deferred();
+      sends.push({ file, signal, onProgress, ...d });
+      return d.promise;
+    });
+    const first = await mountMedia({ doc });
+    await first.step(async () => {
+      first.api.handleMediaUpload(new File(['xy'], 'talk.wav'), {
+        channelSpeakers: ['Ana', 'Ben'],
+      });
+      await settle();
+    });
+    await first.step(() => sends[0].onProgress({ loaded: 1, total: 2 }));
+    await first.unmount();
+
+    const again = await mountMedia({ doc });
+    expect(again.api.isUploading).toBe(true);
+    expect(again.api.uploadProgress).toMatchObject({
+      name: 'talk.wav',
+      loaded: 1,
+      total: 2,
+      perSpeaker: true,
+    });
+    await again.step(() => sends[0].onProgress({ loaded: 2, total: 2 }));
+    expect(again.api.uploadProgress).toMatchObject({ loaded: 2 });
+
+    await again.step(() => again.api.cancelUpload());
+    expect(sends[0].signal.aborted).toBe(true);
+    expect(again.api.isUploading).toBe(false);
+    expect(again.api.uploadProgress).toBeNull();
+    await again.step(async () => {
+      sends[0].resolve(false);
+      await settle();
+    });
+    await again.unmount();
+  });
 });

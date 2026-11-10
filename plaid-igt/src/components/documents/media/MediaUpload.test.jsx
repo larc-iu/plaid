@@ -331,6 +331,32 @@ describe('MediaUpload', () => {
     await r.unmount();
   });
 
+  // A card mounted while a Per speaker upload goes (the tab left and come
+  // back to) shows the bar, and is on Per speaker once it is cancelled.
+  it('mounted during a Per speaker upload, is on Per speaker once it is cancelled', async () => {
+    const card = (progress) => (
+      <MediaUpload
+        onUpload={vi.fn()}
+        onCancel={vi.fn()}
+        isUploading={!!progress}
+        progress={progress}
+      />
+    );
+    const r = await renderComponent(
+      card({ name: 'talk.wav', loaded: 250, total: 1000, perSpeaker: true }),
+    );
+    expect(r.container.textContent).toContain('25%');
+    expect(buttonSaying(r.container, 'Cancel')).not.toBeNull();
+    await r.rerender(card(null));
+    expect(
+      all(r.container, 'button')
+        .find((b) => b.textContent === 'Per speaker')
+        .getAttribute('aria-pressed'),
+    ).toBe('true');
+    expect(buttonSaying(r.container, 'Choose media files').disabled).toBe(false);
+    await r.unmount();
+  });
+
   // The card has two modes, Single (the default) and Per speaker. Single
   // takes one file, and several are refused with a note naming the switch.
   // Per speaker takes several files, mixed in the mix dialog, or one file

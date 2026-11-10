@@ -1,4 +1,4 @@
-import { useEffect, useCallback, useMemo, useRef, useState } from 'react';
+import { useEffect, useCallback, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { TASKS, serviceSource } from '@larc-iu/plaid-client';
 import { useDocumentCtx } from '../contexts/DocumentContext.jsx';
 import { transcribeNotice } from './transcribeNotice.js';
@@ -28,6 +28,7 @@ import { RUNNING_TIME_MS } from './useThrottledValue.js';
 import { readTimelineView } from './timelineView.js';
 import { clampZoom } from './useTimelineOperations.js';
 import { useWaveform } from './useWaveform.js';
+import { setUpload, subscribeUpload, uploadOf } from './uploadUnderWay.js';
 import {
   CHANNEL_SPEAKERS_KEY,
   readChannelSpeakers,
@@ -173,14 +174,15 @@ export const useMediaOperations = () => {
     const view = readTimelineView(doc.document.id);
     return view ? clampZoom(view.pixelsPerSecond) : 25;
   });
-  const [isUploading, setIsUploading] = useState(false);
-  // `{ name, loaded, total }` while a file is going up, else null. `total`
-  // is the request body (the file plus a few bytes of multipart framing).
-  const [uploadProgress, setUploadProgress] = useState(null);
+  // `{ name, loaded, total, perSpeaker, abort }` while a file is going up,
+  // else null, kept with the document so a tab mounted while it goes shows it
+  // (uploadUnderWay.js). `total` is the request body (the file plus a few
+  // bytes of multipart framing), `abort` the upload's AbortController.
+  const subscribeToUpload = useCallback((listener) => subscribeUpload(doc, listener), [doc]);
+  const uploadProgress = useSyncExternalStore(subscribeToUpload, () => uploadOf(doc));
+  const isUploading = !!uploadProgress;
   // {name, fraction} while a recording is being converted, else null.
   const [convertProgress, setConvertProgress] = useState(null);
-  // The upload under way, for Cancel (`cancelUpload`): its AbortController.
-  const uploadAbortRef = useRef(null);
 
   // Listening preferences (see the *_KEY constants). `playbackRateRef` mirrors
   // the state for the deps-`[]` element registration, like `volumeRef`.
@@ -856,40 +858,41 @@ export const useMediaOperations = () => {
       }
 
       const abort = new AbortController();
-      uploadAbortRef.current = abort;
-      setIsUploading(true);
-      setUploadProgress({ name: sending.name, loaded: 0, total: sending.size });
+      // Only this upload's own entry is changed: a cancelled one has put the
+      // card back already, and another may be under way by now.
+      const ours = () => uploadOf(doc)?.abort === abort;
+      setUpload(doc, {
+        name: sending.name,
+        loaded: 0,
+        total: sending.size,
+        perSpeaker: !!channelSpeakers,
+        abort,
+      });
       try {
         const ok = await doc.uploadMedia(sending, {
           channelSpeakers,
           signal: abort.signal,
-          onProgress: ({ loaded, total }) =>
-            setUploadProgress((p) => (p ? { ...p, loaded, total: total ?? p.total } : p)),
+          onProgress: ({ loaded, total }) => {
+            const p = uploadOf(doc);
+            if (ours()) setUpload(doc, { ...p, loaded, total: total ?? p.total });
+          },
         });
         if (ok) {
           notifySuccess('Media file uploaded');
         }
       } finally {
-        // A cancelled upload has put the card back already, and another may
-        // be under way by now.
-        if (uploadAbortRef.current === abort) {
-          uploadAbortRef.current = null;
-          setIsUploading(false);
-          setUploadProgress(null);
-        }
+        if (ours()) setUpload(doc, null);
       }
     },
     [doc],
   );
 
   const cancelUpload = useCallback(() => {
-    const abort = uploadAbortRef.current;
-    if (!abort) return;
-    uploadAbortRef.current = null;
-    abort.abort();
-    setIsUploading(false);
-    setUploadProgress(null);
-  }, []);
+    const upload = uploadOf(doc);
+    if (!upload) return;
+    setUpload(doc, null);
+    upload.abort.abort();
+  }, [doc]);
 
   const handleDeleteMedia = useCallback(async () => {
     if (!doc.document.id) return;
