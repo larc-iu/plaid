@@ -136,6 +136,29 @@ describe('useVadProposals persistence', () => {
     await r.unmount();
   });
 
+  it('keeps the channel of a proposal on a recording with a speaker per channel', async () => {
+    vi.useFakeTimers();
+    const onPersist = vi.fn();
+    let api = null;
+    const perChannel = (dismissed = []) => ({
+      ...kept(REGIONS, dismissed),
+      speakers: ['Ana', 'Ben'],
+      channels: [0, 1],
+    });
+    const r = await renderComponent(
+      <Probe saved={perChannel()} onPersist={onPersist} onReady={(v) => (api = v)} />,
+    );
+    expect(shown(r)).toBe('vad-0-0.420-3.100 vad-1-3.800-7.550');
+    await r.step(() => api.dismiss('vad-0-0.420-3.100'));
+    await r.step(() => vi.advanceTimersByTime(2000));
+    expect(onPersist).toHaveBeenCalledWith(perChannel(['vad-0-0.420-3.100']));
+    await r.unmount();
+    // Back after a reload, the discarded one stays discarded.
+    const again = await renderComponent(<Probe saved={perChannel(['vad-0-0.420-3.100'])} />);
+    expect(shown(again)).toBe('vad-1-3.800-7.550');
+    await again.unmount();
+  });
+
   it('leaves a proposal that became a segment out, without rewriting the cuts', async () => {
     vi.useFakeTimers();
     const onPersist = vi.fn();

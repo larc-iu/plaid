@@ -55,8 +55,10 @@ const PERSIST_DELAY_MS = 1500;
 // (mediaFingerprint.js), read from its bytes: a replacement of the same length
 // is another recording, and its cuts are not these.
 // The regions go into the document's metadata as one flat list of numbers,
-// begin and end in turn, with the speakers (a service may name them) in a
-// parallel list only when there are any. The server caps a metadata payload
+// begin and end in turn, with the speakers (a service may name them) and the
+// channels (of a recording with a speaker per channel) in parallel lists only
+// when there are any. A proposal's id holds its channel, so a discard is kept
+// only when the channel is. The server caps a metadata payload
 // at 500 keys counted through every level of nesting, and a list of
 // {timeBegin, timeEnd} objects spent two per region: a 39-minute recording's
 // 300 cuts could not be saved at all ("Metadata exceeds max key count").
@@ -64,11 +66,17 @@ const PERSIST_DELAY_MS = 1500;
 const packRegions = (regions) => {
   const times = [];
   const speakers = [];
+  const channels = [];
   for (const r of regions) {
     times.push(Number(r.timeBegin.toFixed(3)), Number(r.timeEnd.toFixed(3)));
     speakers.push(r.speaker ?? null);
+    channels.push(Number.isInteger(r.channel) ? r.channel : null);
   }
-  return speakers.some((sp) => sp != null) ? { regions: times, speakers } : { regions: times };
+  return {
+    regions: times,
+    ...(speakers.some((sp) => sp != null) ? { speakers } : {}),
+    ...(channels.some((c) => c != null) ? { channels } : {}),
+  };
 };
 
 const unpackRegions = (kept) => {
@@ -76,7 +84,13 @@ const unpackRegions = (kept) => {
   const out = [];
   for (let i = 0; i + 1 < times.length; i += 2) {
     const speaker = kept.speakers?.[i / 2] ?? undefined;
-    out.push({ timeBegin: times[i], timeEnd: times[i + 1], ...(speaker ? { speaker } : {}) });
+    const channel = kept.channels?.[i / 2];
+    out.push({
+      timeBegin: times[i],
+      timeEnd: times[i + 1],
+      ...(speaker ? { speaker } : {}),
+      ...(Number.isInteger(channel) ? { channel } : {}),
+    });
   }
   return out.length ? out : null;
 };
