@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { buildRawDoc, resetIds, makeIgtDoc } from '../test-helpers.js';
 
 // The speaker on each channel of a mixed recording rides with the recording:
@@ -99,6 +99,112 @@ describe('uploadMedia with channelSpeakers', () => {
     };
     expect(await doc.uploadMedia(new Blob(['x']), { channelSpeakers: ['Ana', 'Ben'] })).toBe(false);
     expect(doc.client.calls.map((c) => c.kind)).not.toContain('documents.patchMetadata');
+  });
+});
+
+// The first send stored the file and its answer was lost, so the resend is
+// refused because a recording is stored. A stored recording of the size sent
+// is this upload's own: the upload has landed and its list is written. Any
+// other size is refused as before, and so is a first send.
+describe('uploadMedia whose resend finds a recording stored', () => {
+  const lost = () =>
+    Object.assign(new Error('Network error at http://x/api/v1/documents/doc-1/media'), {
+      status: 0,
+      method: 'PUT',
+    });
+  const exists = () =>
+    Object.assign(new Error('Media file already exists. Delete existing file first.'), {
+      status: 409,
+      responseData: {
+        error: 'Media file already exists. Delete existing file first.',
+        'media-exists': true,
+        'media-url': '/api/v1/documents/doc-1/media?v=1-3',
+      },
+    });
+  // A server whose upload answers each send in turn from `answers`, holding
+  // a recording of `storedBytes`, read back by its length in a range read.
+  const open = ({ answers, storedBytes }) => {
+    const doc = makeIgtDoc({ raw: buildRawDoc() });
+    doc._writes._retryDelay = () => 5;
+    const errors = [];
+    doc.onError = (msg, err, label) => errors.push(label);
+    let sends = 0;
+    doc.client.documents.uploadMedia = async () => {
+      doc.client.calls.push({ kind: 'documents.uploadMedia' });
+      const answer = answers[sends++];
+      if (answer) throw answer();
+      return { message: 'ok' };
+    };
+    const get = doc.client.documents.get;
+    doc.client.documents.get = (...args) => {
+      doc.client.calls.push({ kind: 'documents.get' });
+      return get(...args);
+    };
+    doc.client.documents.mediaLink = async (id) => ({
+      url: `http://x/api/v1/documents/${id}/media?media-token=t`,
+      expiresAt: '2026-11-10T20:00:00Z',
+    });
+    const ranges = [];
+    vi.stubGlobal('fetch', async (url, init) => {
+      ranges.push({ url, range: init?.headers?.Range });
+      return new Response('R', {
+        status: 206,
+        headers: { 'Content-Range': `bytes 0-0/${storedBytes}` },
+      });
+    });
+    return { doc, errors, ranges };
+  };
+  const kinds = (doc) => doc.client.calls.map((c) => c.kind);
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('takes a stored recording of the size sent as this upload, and writes its speakers', async () => {
+    const { doc, errors, ranges } = open({ answers: [lost, exists], storedBytes: 3 });
+    const ok = await doc.uploadMedia(new Blob(['abc']), { channelSpeakers: ['Ana', 'Ben'] });
+    expect(ok).toBe(true);
+    expect(errors).toEqual([]);
+    expect(doc.error).toBeFalsy();
+    expect(ranges).toEqual([
+      { url: 'http://x/api/v1/documents/doc-1/media?media-token=t', range: 'bytes=0-0' },
+    ]);
+    const patch = doc.client.calls.find((c) => c.kind === 'documents.patchMetadata');
+    expect(patch.args[1]).toEqual([
+      { op: 'set', path: ['channelSpeakers'], value: ['Ana', 'Ben'] },
+    ]);
+    // The list goes after a read, at the version the stored upload made,
+    // which the lost answer never told.
+    const order = kinds(doc).filter((k) => /uploadMedia|documents\.get|patchMetadata/.test(k));
+    expect(order.slice(0, 4)).toEqual([
+      'documents.uploadMedia',
+      'documents.uploadMedia',
+      'documents.get',
+      'documents.patchMetadata',
+    ]);
+  });
+
+  it('a plain upload landed the same way is not refused', async () => {
+    const { doc, errors } = open({ answers: [lost, exists], storedBytes: 3 });
+    expect(await doc.uploadMedia(new Blob(['abc']))).toBe(true);
+    expect(errors).toEqual([]);
+    expect(kinds(doc)).not.toContain('documents.patchMetadata');
+  });
+
+  it('refuses the resend as before when the stored recording is another size', async () => {
+    const { doc, errors } = open({ answers: [lost, exists], storedBytes: 4 });
+    expect(await doc.uploadMedia(new Blob(['abc']), { channelSpeakers: ['Ana', 'Ben'] })).toBe(
+      false,
+    );
+    expect(errors).toEqual(['Failed to upload media']);
+    expect(kinds(doc)).not.toContain('documents.patchMetadata');
+  });
+
+  it('refuses a first send as before, whatever the stored size, and reads nothing', async () => {
+    const { doc, errors, ranges } = open({ answers: [exists], storedBytes: 3 });
+    expect(await doc.uploadMedia(new Blob(['abc']), { channelSpeakers: ['Ana', 'Ben'] })).toBe(
+      false,
+    );
+    expect(errors).toEqual(['Failed to upload media']);
+    expect(ranges).toEqual([]);
+    expect(kinds(doc)).not.toContain('documents.patchMetadata');
   });
 });
 

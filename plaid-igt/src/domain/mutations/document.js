@@ -29,6 +29,7 @@ import { underKeys } from './alignment.js';
 import { VAD_METADATA_KEY } from '../media/speechDetectionKey.js';
 import { CHANNEL_SPEAKERS_KEY } from '../media/channelSpeakers.js';
 import { followedForms, soleForms } from '../soleMorphemeForms.js';
+import { storedMediaSize } from '../media/storedMediaSize.js';
 
 // How many morpheme forms one bulk token update writes.
 const FORM_CHUNK = 500;
@@ -479,13 +480,33 @@ export const documentMutations = {
   // Aborting `signal` cancels the upload: never sent again and not reported,
   // no list written, and the document read again once the queue has drained,
   // since the server may have stored the file all the same (_queueWrite).
+  // A resend refused because a recording is stored may meet this upload's own
+  // first send, stored with its answer lost. A stored recording of the size
+  // sent is taken as that one, and the upload goes on as landed, after a read
+  // for the version that send made. A first send refused so is refused,
+  // whatever the size.
   async uploadMedia(file, { onProgress, channelSpeakers = null, signal } = {}) {
     if (!file) return false;
     const label = 'Failed to upload media';
+    let sends = 0;
     return this._queueWrite(
       label,
       async () => {
-        await this._client.documents.uploadMedia(this.id, file, undefined, { onProgress, signal });
+        sends += 1;
+        try {
+          await this._client.documents.uploadMedia(this.id, file, undefined, {
+            onProgress,
+            signal,
+          });
+        } catch (err) {
+          const own =
+            sends > 1 &&
+            statusOf(err) === 409 &&
+            err?.responseData?.['media-exists'] === true &&
+            (await storedMediaSize(this._client, this.id)) === file.size;
+          if (!own) throw err;
+          await this._reloadInSend();
+        }
         const stored = this._raw?.metadata || {};
         const ops =
           channelSpeakers || stored[CHANNEL_SPEAKERS_KEY] != null
