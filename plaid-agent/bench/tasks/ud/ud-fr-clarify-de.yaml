@@ -13,5 +13,7 @@ check: answer
 args:
   reader: ud
   match:
-    - '\?'
+    # a question, or a request for the user's choice phrased as one ("Tell me
+    # which one to retag")
+    - '\?|\btell me\b|\blet me know\b'
     - 'which|several|multiple|more than one|\b(five|six)\b|\b[56]\b|each of|all of them|occurrences|instances'
