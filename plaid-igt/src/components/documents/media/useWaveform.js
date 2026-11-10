@@ -1,7 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 import { notifyWarning } from '@/utils/feedback';
 import { decodeShared } from '../../../domain/vad/sharedDecode.js';
-import { MAX_CANVAS_WIDTH, TIMELINE_HEIGHT, barsFor, peaksOfInSlices } from './waveform.js';
+import { readWavInfo } from '../../../domain/media/wavAdpcm.js';
+import {
+  MAX_CANVAS_WIDTH,
+  TIMELINE_HEIGHT,
+  barsFor,
+  peaksOfInSlices,
+  peaksOfPcmWav,
+} from './waveform.js';
 
 // Drawing the timeline's waveform: decode once, redraw the stretch on screen.
 //
@@ -52,7 +59,34 @@ const themeColor = (name, alpha) => {
 // and not lower: 8 kHz drops everything above 4 kHz, where [s] and [f] are,
 // and drew them as silence. Mono is the channels mixed, so a recording with
 // the voice on one channel still draws it.
+//
+// A PCM WAV (every recording with a speaker per channel is one) is not
+// decoded at all: its envelope is read from its bytes a slice at a time
+// (peaksOfPcmWav). Decoding takes the whole file and every sample at once,
+// which for an hour at 48 kHz in stereo was about 3.7 GB, in the tab of
+// anyone who only opened the document.
 const decodeForEnvelope = (blob, perChannel) => decodeShared(blob, { perChannel });
+
+const envelopesOf = async (blob, duration, perChannel, slices) => {
+  const read = async (from, to) =>
+    new Uint8Array(await blob.slice(from, Math.min(to, blob.size)).arrayBuffer());
+  const info = await readWavInfo(read, blob.size).catch(() => null);
+  const fromBytes = info && (await peaksOfPcmWav(read, info, duration, { perChannel, ...slices }));
+  if (fromBytes || slices.cancelled()) return fromBytes;
+  const { samples, channels, channelCount } = await decodeForEnvelope(blob, perChannel);
+  const envelope = await peaksOfInSlices([samples], duration, slices);
+  if (!envelope) return null;
+  let envelopes = null;
+  if (channels) {
+    envelopes = [];
+    for (const channel of channels) {
+      const one = await peaksOfInSlices([channel], duration, slices);
+      if (!one) return null;
+      envelopes.push(one);
+    }
+  }
+  return { envelope, envelopes, channelCount };
+};
 
 /**
  * The recording's amplitude envelope, decoded once per recording.
@@ -85,20 +119,10 @@ export function useWaveform({ mediaBlob, mediaKey, duration, perChannel = false 
     }
     (async () => {
       try {
-        const { samples, channels, channelCount } = await decodeForEnvelope(mediaBlob, perChannel);
-        const slices = { cancelled: () => cancelled };
-        const envelope = await peaksOfInSlices([samples], duration, slices);
-        if (cancelled || !envelope) return;
-        let envelopes = null;
-        if (channels) {
-          envelopes = [];
-          for (const channel of channels) {
-            const one = await peaksOfInSlices([channel], duration, slices);
-            if (cancelled || !one) return;
-            envelopes.push(one);
-          }
-        }
-        const drawn = { envelope, envelopes, channelCount };
+        const drawn = await envelopesOf(mediaBlob, duration, perChannel, {
+          cancelled: () => cancelled,
+        });
+        if (cancelled || !drawn) return;
         // A decode the recording has moved on from is kept nowhere.
         if (key) rememberEnvelope(key, drawn);
         setState({ blob: mediaBlob, drawn });

@@ -115,6 +115,98 @@ export const peaksOfInSlices = async (
   return { peaks, level: levelOf(peaks) };
 };
 
+// The codings of a WAV read straight from its bytes: integer PCM of 8 to 32
+// bits and 32-bit float, each turned into -1..1 as a decoder does. Null for
+// any other, which is decoded.
+const WAV_PCM = 0x0001;
+const WAV_FLOAT = 0x0003;
+const sampleOf = ({ tag, bitsPerSample }) => {
+  if (tag === WAV_FLOAT && bitsPerSample === 32) return (v, at) => v.getFloat32(at, true);
+  if (tag !== WAV_PCM) return null;
+  if (bitsPerSample === 8) return (v, at) => (v.getUint8(at) - 128) / 128;
+  if (bitsPerSample === 16) return (v, at) => v.getInt16(at, true) / 32768;
+  if (bitsPerSample === 24)
+    return (v, at) =>
+      (v.getUint8(at) | (v.getUint8(at + 1) << 8) | (v.getInt8(at + 2) << 16)) / 8388608;
+  if (bitsPerSample === 32) return (v, at) => v.getInt32(at, true) / 2147483648;
+  return null;
+};
+
+/**
+ * The envelope of a PCM WAV read from its bytes, a slice at a time, with no
+ * decoder: what peaksOfInSlices gives for the decoded samples, but holding
+ * only one slice of the file at once. Decoding an hour at 48 kHz in stereo
+ * took the whole file and every sample of it, about 3.7 GB.
+ *
+ * `read(from, to)` gives the file's bytes (a Promise of a Uint8Array) and
+ * `info` is readWavInfo's. The envelope is of the channels averaged, as the
+ * decoded mono is. `envelopes` is one per channel when `perChannel` is asked
+ * for and there is more than one, else null. Null for a coding it cannot
+ * read, or once `cancelled()` says the recording is no longer wanted.
+ *
+ * @returns {Promise<{envelope: {peaks: Float32Array, level: number},
+ *   envelopes: Array<{peaks: Float32Array, level: number}>|null,
+ *   channelCount: number}|null>}
+ */
+export const peaksOfPcmWav = async (
+  read,
+  info,
+  duration,
+  { perChannel = false, pause = nextTask, cancelled = () => false } = {},
+) => {
+  const sample = sampleOf(info);
+  const { channels, blockAlign, dataOffset, dataSize } = info;
+  const size = info.bitsPerSample / 8;
+  if (!sample || dataOffset == null || !(channels > 0) || blockAlign !== channels * size) {
+    return null;
+  }
+  const frames = Math.floor(dataSize / blockAlign);
+  const mono = new Float32Array(bucketCount(duration));
+  const lanes =
+    perChannel && channels > 1
+      ? Array.from({ length: channels }, () => new Float32Array(mono.length))
+      : null;
+  const per = frames / mono.length;
+  for (let from = 0; from < mono.length; from += BUCKETS_PER_SLICE) {
+    const to = Math.min(mono.length, from + BUCKETS_PER_SLICE);
+    // The frames under buckets `from` to `to`, as fillPeaks takes them.
+    const first = Math.floor(from * per);
+    const last = Math.min(frames, Math.max(Math.floor((to - 1) * per) + 1, Math.floor(to * per)));
+    const bytes = await read(dataOffset + first * blockAlign, dataOffset + last * blockAlign);
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    const have = first + Math.floor(bytes.byteLength / blockAlign);
+    for (let i = from; i < to; i += 1) {
+      const start = Math.floor(i * per);
+      const end = Math.min(have, Math.max(start + 1, Math.floor((i + 1) * per)));
+      let peak = 0;
+      for (let f = start; f < end; f += 1) {
+        const at = (f - first) * blockAlign;
+        let sum = 0;
+        for (let c = 0; c < channels; c += 1) {
+          const v = sample(view, at + c * size);
+          sum += v;
+          if (lanes) {
+            const a = v < 0 ? -v : v;
+            if (a > lanes[c][i]) lanes[c][i] = a;
+          }
+        }
+        const m = sum < 0 ? -sum / channels : sum / channels;
+        if (m > peak) peak = m;
+      }
+      mono[i] = peak;
+    }
+    if (to < mono.length) {
+      await pause();
+      if (cancelled()) return null;
+    }
+  }
+  return {
+    envelope: { peaks: mono, level: levelOf(mono) },
+    envelopes: lanes && lanes.map((peaks) => ({ peaks, level: levelOf(peaks) })),
+    channelCount: channels,
+  };
+};
+
 // The next task, through a message rather than a timer: a tab in the
 // background runs a chain of zero timers once a second, which made a long
 // recording's envelope take most of a minute there.

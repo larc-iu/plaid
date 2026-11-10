@@ -43,13 +43,16 @@ const { decodeShared, shareCalls } = vi.hoisted(() => {
 vi.mock('../../../domain/vad/sharedDecode.js', () => ({ decodeShared }));
 
 const { useWaveform, drawWaveform } = await import('./useWaveform.js');
+const { encodeWav } = await import('../../../domain/media/wavFixture.js');
 
 // A recording, named by its versioned URL (which is also the envelope cache's
 // key, so every test needs its own).
 let nextKey = 1000;
+// Its bytes are no WAV, so it goes to the decoder.
 const recording = (key = `/media?v=${(nextKey += 1)}`) => ({
   key,
   size: 5000,
+  slice: () => ({ arrayBuffer: () => Promise.resolve(new ArrayBuffer(12)) }),
   arrayBuffer: () => Promise.resolve(new ArrayBuffer(8)),
 });
 
@@ -269,6 +272,52 @@ describe('the waveform per channel', () => {
     await settle(view);
     expect(seq[seq.length - 1]).toBe('mono:1');
     expect(api.envelopes).toBeNull();
+    await view.unmount();
+  });
+});
+
+// A recording stored as a PCM WAV (every one with a speaker per channel is)
+// is drawn from its bytes, read a slice at a time. Decoding it took the whole
+// file and every sample at once: about 3.7 GB for an hour at 48 kHz in stereo.
+describe('the waveform of a PCM WAV', () => {
+  // Reading a Blob is real I/O, a few ticks rather than a microtask.
+  const drawn = async (view) => {
+    for (let i = 0; i < 100 && api.loading; i += 1) {
+      await view.step(() => new Promise((resolve) => setTimeout(resolve, 5)));
+    }
+    expect(api.loading).toBe(false);
+  };
+  const wavBlob = (channels, rate) => {
+    const blob = new Blob([encodeWav(channels, rate)], { type: 'audio/wav' });
+    blob.key = `/media?v=${(nextKey += 1)}`;
+    return blob;
+  };
+
+  it('draws a lane per channel from the bytes, and never decodes', async () => {
+    // Two seconds at 8 kHz: Ana loud in the first, Ben in the second.
+    const ana = Float32Array.from({ length: 16000 }, (_, i) => (i < 8000 ? 0.5 : 0));
+    const ben = Float32Array.from({ length: 16000 }, (_, i) => (i < 8000 ? 0 : 0.5));
+    const view = await renderComponent(<ProbeChannels blob={wavBlob([ana, ben], 8000)} />);
+    await drawn(view);
+    expect(decodeShared).not.toHaveBeenCalled();
+    expect(api.channelCount).toBe(2);
+    const [a, b] = api.envelopes;
+    expect(a.peaks.length).toBe(2000);
+    expect(a.peaks[500]).toBeCloseTo(0.5, 3);
+    expect(a.peaks[1500]).toBe(0);
+    expect(b.peaks[500]).toBe(0);
+    expect(b.peaks[1500]).toBeCloseTo(0.5, 3);
+    expect(api.envelope.peaks[500]).toBeCloseTo(0.25, 3);
+    await view.unmount();
+  });
+
+  it('draws a plain recording from the bytes too, with no lanes', async () => {
+    const tone = Float32Array.from({ length: 16000 }, (_, i) => 0.5 * Math.sin(i / 3));
+    const view = await renderComponent(<Probe blob={wavBlob([tone, tone], 8000)} />);
+    await drawn(view);
+    expect(decodeShared).not.toHaveBeenCalled();
+    expect(api.envelopes).toBeNull();
+    expect(api.envelope.peaks[1000]).toBeGreaterThan(0.4);
     await view.unmount();
   });
 });
