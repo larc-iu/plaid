@@ -64,4 +64,34 @@ describe('the timeline popover', () => {
     expect(box().value).toBe('');
     await r.unmount();
   });
+
+  // A segment saved with a speaker in one document is no default for the next
+  // (H7-5): the speaker a new segment starts with is the document's own.
+  it("starts with the speaker saved last in this document, and none in another document's", async () => {
+    const speaker = () => document.querySelector('#alignment-speaker').value;
+    const a = fakeDocument({ id: 'pop-a', createAlignment: vi.fn(async () => true) });
+    const r = await renderComponent(tree(a, true));
+    expect(speaker()).toBe('');
+    await r.step(() => {
+      const el = document.querySelector('#alignment-speaker');
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(el, 'Zed');
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await r.step(() => type(box(), 'dunu'));
+    await r.step(async () => {
+      button('Save').click();
+      await new Promise((res) => setTimeout(res, 0));
+    });
+    expect(a.createAlignment).toHaveBeenCalledWith(expect.objectContaining({ speaker: 'Zed' }));
+    await r.unmount();
+
+    const b = fakeDocument({ id: 'pop-b' });
+    const other = await renderComponent(tree(b, true));
+    expect(speaker()).toBe('');
+    await other.unmount();
+
+    const again = await renderComponent(tree(a, true));
+    expect(speaker()).toBe('Zed');
+    await again.unmount();
+  });
 });

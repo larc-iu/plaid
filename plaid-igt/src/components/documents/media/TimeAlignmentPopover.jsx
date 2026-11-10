@@ -60,9 +60,9 @@ export const TimeAlignmentPopover = ({
       setText(draftRef.current);
       setAvailable('');
       setPicked(null);
-      setSpeaker(getStickySpeaker());
+      setSpeaker(getStickySpeaker(doc.id));
     }
-  }, [open]);
+  }, [open, doc.id]);
 
   // Focus the box. New text: caret at the end of whatever is there, never
   // with the contents selected, so a stray key cannot replace them. Existing
@@ -128,7 +128,7 @@ export const TimeAlignmentPopover = ({
         ok = await createAlignment(text, sp);
       }
       if (!ok) return; // the document toasted the reason
-      setStickySpeaker(sp);
+      setStickySpeaker(doc.id, sp);
       notifySuccess(mode === 'align' ? 'Text aligned' : 'Segment created');
       if (mode !== 'align') draftRef.current = '';
       setText('');

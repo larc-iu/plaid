@@ -199,7 +199,7 @@ To add a speaker later, delete the recording and upload all the files again.
 The transcript is a list of segments in time order, and it is built for typing what you hear.
 Play the recording, then type the utterance you just heard into the **New segment** row and press Enter.
 The new segment runs from the end of the previous one to wherever playback is when you save.
-It takes the speaker of the previous segment, so a run of turns by one speaker needs nothing more than Enter.
+It takes the speaker of the last segment made in this document since the page was loaded, so a run of turns by one speaker needs nothing more than Enter.
 
 Every segment is a row you can edit:
 

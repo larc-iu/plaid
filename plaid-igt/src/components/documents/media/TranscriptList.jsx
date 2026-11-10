@@ -21,7 +21,7 @@ import { formatTime } from './formatTime.js';
 import { MIN_SEGMENT, rangeProblem } from '../../../domain/alignmentTimes.js';
 import { TimecodeField } from './TimecodeField.jsx';
 import { RUNNING_TIME_MS, useThrottledValue } from './useThrottledValue.js';
-import { getStickySpeaker, setStickySpeaker } from './stickySpeaker.js';
+import { setStickySpeaker, useStickySpeaker } from './stickySpeaker.js';
 import { keys } from '@/lib/keymap.js';
 import { settledId, stableKey } from '@ui/domain/pendingIds.js';
 import { useEditLog } from '@ui/hooks/useEditLog.js';
@@ -591,12 +591,15 @@ const ProposalRow = memo(function ProposalRow({
   onDiscard,
   onPlayToggle,
   registerText,
+  documentId,
 }) {
   const [draft, setDraftState] = useState('');
   // A proposal with a speaker (a channel's, or a service's) makes a segment
-  // with that speaker. One without takes the last speaker saved, as a new
-  // segment does.
-  const [speaker, setSpeakerState] = useState(() => proposal.speaker || getStickySpeaker());
+  // with that speaker. One without takes the last speaker saved in this
+  // document, as a new segment does, and follows it when another save
+  // changes it.
+  const sticky = useStickySpeaker(documentId);
+  const [speaker, setSpeakerState] = useState(() => proposal.speaker || sticky);
   const ref = useRef(null);
   // Mirrored into refs for the same reason the segment row does it: the blur
   // that follows a keystroke runs before React re-renders, so a guard read
@@ -616,6 +619,11 @@ const ProposalRow = memo(function ProposalRow({
     speakerRef.current = value;
     setSpeakerState(value);
   };
+  useEffect(() => {
+    if (proposal.speaker) return;
+    speakerRef.current = sticky;
+    setSpeakerState(sticky);
+  }, [proposal.speaker, sticky]);
 
   useLayoutEffect(() => autoGrow(ref.current), [draft]);
 
@@ -639,7 +647,7 @@ const ProposalRow = memo(function ProposalRow({
       });
       if (ok) {
         acceptedRef.current = true;
-        setStickySpeaker(speakerRef.current);
+        setStickySpeaker(documentId, speakerRef.current);
       }
       return ok;
     };
@@ -754,9 +762,14 @@ const NewSegmentRow = memo(function NewSegmentRow({
   onToggle,
   onStep,
   textRef,
+  documentId,
 }) {
   const [draft, setDraft] = useState('');
-  const [speaker, setSpeaker] = useState(getStickySpeaker);
+  // The speaker of the segment saved last in this document, here or anywhere
+  // else on the tab (a proposal, the timeline).
+  const sticky = useStickySpeaker(documentId);
+  const [speaker, setSpeaker] = useState(sticky);
+  useEffect(() => setSpeaker(sticky), [sticky]);
   const ref = useRef(null);
   const ready = currentTime > prevEnd + MIN_SEGMENT;
   const canCreate = ready && draft.trim().length > 0;
@@ -795,7 +808,7 @@ const NewSegmentRow = memo(function NewSegmentRow({
     // playing it can only be ahead of the display, never behind `prevEnd`.
     const exact = readCurrentTime?.();
     setDraft('');
-    setStickySpeaker(speaker);
+    setStickySpeaker(documentId, speaker);
     const ok = await onCreate({
       text,
       timeBegin: prevEnd,
@@ -1332,6 +1345,7 @@ export function TranscriptList({
             onDiscard={handleDiscardProposal}
             onPlayToggle={handlePlayToggleProposal}
             registerText={registerText}
+            documentId={doc.id}
           />
         ),
       ),
@@ -1360,6 +1374,7 @@ export function TranscriptList({
       handleAccept,
       handleDiscardProposal,
       handlePlayToggleProposal,
+      doc.id,
     ],
   );
 
@@ -1477,6 +1492,7 @@ export function TranscriptList({
             onToggle={handleToggleFree}
             onStep={handleStep}
             textRef={newTextRef}
+            documentId={doc.id}
           />
         </div>
       )}

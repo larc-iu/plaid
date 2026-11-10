@@ -2,7 +2,6 @@ import { describe, it, expect, vi } from 'vitest';
 import { renderComponent, all, texts } from '@ui/test/renderComponent.jsx';
 import { DocumentProvider } from '../contexts/DocumentContext.jsx';
 import { TranscriptList } from './TranscriptList.jsx';
-import { setStickySpeaker } from './stickySpeaker.js';
 import { pendingId, recordSettled } from '@ui/domain/pendingIds.js';
 import { applyTextOps, gapsToOps } from '@larc-iu/plaid-client';
 import { settle } from '@/domain/test-helpers.js';
@@ -854,7 +853,9 @@ describe('TranscriptList proposals', () => {
   });
 
   it('a proposal with a speaker makes a segment with that speaker', async () => {
-    const doc = makeDoc({ body: 'the cat', tokens: TOKENS });
+    // A document of its own, so the speaker saved here is no default for the
+    // tests after it.
+    const doc = { ...makeDoc({ body: 'the cat', tokens: TOKENS }), id: 'proposal-speaker' };
     const r = await renderComponent(
       element(doc, withVad({ proposals: [{ ...PROPOSALS[1], speaker: 'Ana' }] })),
     );
@@ -871,8 +872,6 @@ describe('TranscriptList proposals', () => {
       timeEnd: 4.0,
       speaker: 'Ana',
     });
-    // The save made Ana the sticky speaker; the next test starts with none.
-    setStickySpeaker('');
   });
 
   it('saves what was typed into a proposal when focus leaves it', async () => {
@@ -961,5 +960,66 @@ describe('TranscriptList proposals', () => {
     const doc = makeDoc({ body: 'the cat', tokens: TOKENS });
     const r = await renderComponent(element(doc, withVad(), true));
     expect(proposalRows(r.container)).toHaveLength(0);
+  });
+});
+
+// A new segment starts with the speaker of the segment saved last in the same
+// document (H7-5): one value for the whole session prefilled a speaker typed
+// in one document into every new segment of the next.
+describe('the speaker a new segment starts with', () => {
+  const speakerOf = (root) => root.querySelector('input[aria-label="New segment speaker"]').value;
+  const saveNew = async (r, text, speaker) => {
+    const sp = r.container.querySelector('input[aria-label="New segment speaker"]');
+    await r.step(() => setValue(sp, speaker));
+    const box = newTextarea(r.container);
+    await r.step(() => setValue(box, text));
+    await r.step(async () => {
+      press(box, 'Enter');
+      await settle();
+    });
+  };
+
+  it('is the one saved last in this document, and a document with none saved starts with none', async () => {
+    const a = { ...makeDoc({ body: 'the cat', tokens: TOKENS }), id: 'sticky-a' };
+    const b = { ...makeDoc({ body: 'the cat', tokens: TOKENS }), id: 'sticky-b' };
+    const r = await renderComponent(element(a, makeOps({ currentTime: 5 })));
+    expect(speakerOf(r.container)).toBe('');
+    await saveNew(r, 'dog', 'Zed');
+    expect(a.createAlignment).toHaveBeenCalledWith(expect.objectContaining({ speaker: 'Zed' }));
+    await r.unmount();
+
+    const other = await renderComponent(element(b, makeOps({ currentTime: 5 })));
+    expect(speakerOf(other.container)).toBe('');
+    await other.unmount();
+
+    const again = await renderComponent(element(a, makeOps({ currentTime: 5 })));
+    expect(speakerOf(again.container)).toBe('Zed');
+    await again.unmount();
+  });
+
+  it('follows a segment saved from a proposal at once, in the new-segment row and in the other proposals', async () => {
+    const doc = { ...makeDoc({ body: 'the cat', tokens: TOKENS }), id: 'sticky-c' };
+    const ops = makeOps({
+      currentTime: 5,
+      vad: {
+        proposals: [
+          { id: 'vad-1', timeBegin: 3.2, timeEnd: 3.6 },
+          { id: 'vad-2', timeBegin: 3.8, timeEnd: 4.4 },
+        ],
+        dismiss: vi.fn(),
+      },
+    });
+    const r = await renderComponent(element(doc, ops));
+    const row = (id) => r.container.querySelector(`[data-vad-proposal-row="${id}"]`);
+    await r.step(() => setValue(row('vad-1').querySelector('input'), 'Ana'));
+    await r.step(() => setValue(row('vad-1').querySelector('textarea'), 'hers'));
+    await r.step(async () => {
+      press(row('vad-1').querySelector('textarea'), 'Enter');
+      await settle();
+    });
+    expect(doc.createAlignment).toHaveBeenCalledWith(expect.objectContaining({ speaker: 'Ana' }));
+    expect(speakerOf(r.container)).toBe('Ana');
+    expect(row('vad-2').querySelector('input').value).toBe('Ana');
+    await r.unmount();
   });
 });
