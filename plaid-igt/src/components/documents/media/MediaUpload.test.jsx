@@ -284,7 +284,7 @@ describe('MediaUpload', () => {
 
   // Cancel stops an upload while its bytes go up, or while it waits to be
   // sent again. Once every byte is up the server stores the file whatever the
-  // browser does, so Cancel is not offered then.
+  // browser does, so Cancel is not on the card then.
   it('offers Cancel while the bytes go up, and not once every byte is up', async () => {
     const onCancel = vi.fn();
     const card = (loaded) => (
@@ -301,7 +301,8 @@ describe('MediaUpload', () => {
     await r.step(() => cancel.click());
     expect(onCancel).toHaveBeenCalledTimes(1);
     await r.rerender(card(1000));
-    expect(buttonSaying(r.container, 'Cancel').disabled).toBe(true);
+    expect(buttonSaying(r.container, 'Cancel')).toBeFalsy();
+    expect(r.container.textContent).toContain('Processing…');
     await r.unmount();
   });
 

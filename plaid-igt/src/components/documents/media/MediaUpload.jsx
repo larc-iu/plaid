@@ -20,8 +20,8 @@ import { ChannelSpeakersDialog } from './ChannelSpeakersDialog.jsx';
 // `saves` is the document, whose write queue sends the upload: an upload whose
 // answer was lost goes again from the first byte until the server answers,
 // and the card says so under the bar, as the save pills do (SaveStatus).
-// `onCancel` stops the upload, offered until every byte is up: from then on
-// the server stores the file whatever the browser does.
+// `onCancel` stops the upload, and Cancel is on the card until every byte is
+// up: from then on the server stores the file whatever the browser does.
 //
 // The card has two modes, a view setting kept nowhere. Single (the default)
 // takes one file, and several are refused with a note naming the switch, so
@@ -88,6 +88,7 @@ export const MediaUpload = ({
   const sent = Math.min(progress?.loaded ?? 0, total);
   const pct = total > 0 ? (sent / total) * 100 : 0;
   const processing = !!progress && total > 0 && sent >= total;
+  const canCancel = !!onCancel && !processing;
 
   // Over the server's limit there is no question to ask: sending it as it is
   // would fail after the whole upload.
@@ -222,14 +223,13 @@ export const MediaUpload = ({
                   ? 'Checking the file and saving it.'
                   : `${formatBytes(sent)} of ${formatBytes(total)}`}
               </p>
-              {(saves || onCancel) && (
+              {(saves || canCancel) && (
                 <div className="flex items-center justify-between gap-3">
                   <span>{saves && <SaveStatus doc={saves} />}</span>
-                  {onCancel && (
+                  {canCancel && (
                     <Button
                       variant="outline"
                       size="sm"
-                      disabled={processing}
                       onClick={() => {
                         focusChoose.current = true;
                         onCancel();
