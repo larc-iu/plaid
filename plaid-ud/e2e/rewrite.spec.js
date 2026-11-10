@@ -90,7 +90,7 @@ const preview = async (page, box, rule) => {
   await page.getByRole('button', { name: 'Preview changes' }).click();
 };
 const applyAll = async (page, n) => {
-  await page.getByRole('button', { name: `Apply ${n} change${n === 1 ? '' : 's'}` }).click();
+  await page.getByRole('button', { name: `Apply to ${n} sentence${n === 1 ? '' : 's'}` }).click();
   await page.getByRole('button', { name: 'Apply', exact: true }).click();
 };
 

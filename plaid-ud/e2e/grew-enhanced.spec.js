@@ -137,7 +137,7 @@ test('a rule shares the subject, in the enhanced layer', async ({ page }) => {
   await expect(page.getByText('1 sentence in 1 document, 1 selected')).toBeVisible();
   await expect(page.getByText('fell → he: E:nsubj added')).toBeVisible();
 
-  await page.getByRole('button', { name: 'Apply 1 change' }).click();
+  await page.getByRole('button', { name: 'Apply to 1 sentence' }).click();
   await page.getByRole('button', { name: 'Apply', exact: true }).click();
   await expect(page.getByText('Changed 1 sentence in 1 document.')).toBeVisible();
   await expect(page.getByText('No sentences to change.')).toBeVisible();
@@ -161,7 +161,7 @@ test('a rule that relabels in the enhanced graph suppresses the tree edge, and D
   );
   await page.getByRole('button', { name: 'Preview changes' }).click();
   await expect(page.getByText('fell → and: cc left out of the enhanced graph')).toBeVisible();
-  await page.getByRole('button', { name: 'Apply 1 change' }).click();
+  await page.getByRole('button', { name: 'Apply to 1 sentence' }).click();
   await page.getByRole('button', { name: 'Apply', exact: true }).click();
   await expect(page.getByText('Changed 1 sentence in 1 document.')).toBeVisible();
 
@@ -188,7 +188,7 @@ test('a rule that removes a suppressed basic edge takes the suppressor with it',
   await box.fill('pattern { V [lemma="sing"]; e: V -[conj]-> W } commands { del_edge e }');
   await page.getByRole('button', { name: 'Preview changes' }).click();
   await expect(page.getByText('sang → danced: conj removed')).toBeVisible();
-  await page.getByRole('button', { name: 'Apply 1 change' }).click();
+  await page.getByRole('button', { name: 'Apply to 1 sentence' }).click();
   await page.getByRole('button', { name: 'Apply', exact: true }).click();
   await expect(page.getByText('Changed 1 sentence in 1 document.')).toBeVisible();
 

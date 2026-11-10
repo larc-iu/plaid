@@ -113,7 +113,7 @@ export const RewritePreview = ({ rows, selected, onSelect, hrefFor, canApply, bu
             </Button>
             {canApply ? (
               <Button onClick={confirmApply} disabled={!chosen.length || busy}>
-                {busy ? 'Applying…' : `Apply ${countOf(chosen.length, 'change')}`}
+                {busy ? 'Applying…' : `Apply to ${countOf(chosen.length, 'sentence')}`}
               </Button>
             ) : (
               <p className="text-sm text-muted-foreground">Maintainers only.</p>

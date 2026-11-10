@@ -82,4 +82,13 @@ describe('rewrite preview, words that take other annotations with them', () => {
     expect(confirm.mock.calls[0][0].destructive).toBe(false);
     await view.unmount();
   });
+
+  it('names the chosen sentences on the button, not changes', async () => {
+    const view = await mount([row('s1', false), row('s2', false)]);
+    expect(apply(view).textContent).toBe('Apply to 2 sentences');
+    await view.unmount();
+    const one = await mount([row('s1', false)]);
+    expect(apply(one).textContent).toBe('Apply to 1 sentence');
+    await one.unmount();
+  });
 });
