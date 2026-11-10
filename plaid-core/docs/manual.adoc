@@ -2114,7 +2114,7 @@ The same lines can be read on the **Logs** tab of the IGT app's admin area, whic
 == Settings worth a look
 
 * `[auth] jwt_ttl_seconds`: how long a login lasts. The default is thirty days, and a shared lab machine may want a day. Every token lifetime setting must be a positive whole number of seconds, or the server refuses to start.
-* `[media] max_file_size_mb`: the largest recording a document may carry. Raise the proxy's limit with it.
+* `[media] max_file_size_mb`: the largest recording a document may carry. The default is 200 MB and the ceiling is 2047. Raise the proxy's limit with it.
 * `[user_data] max_value_mb`: the largest private data value, which is how long an assistant conversation can grow before it is full. The default is 5 MB. `[server] max_json_body_mb` must be at least 1 more, or the server refuses to start, so raise the two together.
 * `[api] expose_openapi`: turn off if the API description should not be public.
 * `[backup] directory`: point it at a mounted volume or a synced folder to get backups off the machine for free.
