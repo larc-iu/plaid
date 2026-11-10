@@ -46,7 +46,9 @@ const SeekBar = ({ clock, max, onSeek, disabled }) => {
   );
 };
 
-export const MediaPlayer = ({ mediaOps, readOnly = false, canWrite = false }) => {
+// `past`: the document is shown as of an earlier time. History keeps no
+// recording, so the one drawn and played here is the one the document has now.
+export const MediaPlayer = ({ mediaOps, readOnly = false, canWrite = false, past = false }) => {
   // Destructure what we need from mediaOps
   const {
     authenticatedMediaUrl: mediaUrl,
@@ -177,6 +179,11 @@ export const MediaPlayer = ({ mediaOps, readOnly = false, canWrite = false }) =>
           <div className="flex items-center gap-2">
             <h3 className="text-base font-semibold">Recording</h3>
             <MediaHelpButton open={helpOpen} onToggle={() => setHelpOpen((v) => !v)} />
+            {past && (
+              <span className="text-xs text-muted-foreground">
+                The document’s current recording
+              </span>
+            )}
           </div>
           {mediaUrl && (
             <div className="flex items-center gap-2">

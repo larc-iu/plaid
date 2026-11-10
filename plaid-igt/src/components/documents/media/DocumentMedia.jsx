@@ -14,7 +14,7 @@ import { DELETE_BUTTON_CLASS } from '@ui/lib/destructive.js';
 import { DeleteSegmentsDialog } from './DeleteSegmentsDialog.jsx';
 
 export function DocumentMedia() {
-  const { doc, readOnly, canWrite, writeLock } = useDocumentCtx();
+  const { doc, readOnly, canWrite, writeLock, asOf } = useDocumentCtx();
   useDocumentModel(doc);
   const [deleteOpen, setDeleteOpen] = React.useState(false);
 
@@ -60,7 +60,7 @@ export function DocumentMedia() {
     <div className="flex flex-col gap-6 pb-24" data-media-keys="">
       {/* Media Player. Speech detection sits in its header: it acts on the
           recording, and its proposals surface on the timeline and transcript. */}
-      <MediaPlayer mediaOps={mediaOps} readOnly={readOnly} canWrite={canWrite} />
+      <MediaPlayer mediaOps={mediaOps} readOnly={readOnly} canWrite={canWrite} past={!!asOf} />
 
       {/* Timeline */}
       <div className="relative">

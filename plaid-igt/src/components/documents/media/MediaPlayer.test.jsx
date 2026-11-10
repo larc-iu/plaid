@@ -282,3 +282,17 @@ describe('the element failing to read its link', () => {
     await view.unmount();
   });
 });
+
+describe('a version from History', () => {
+  // The media route has no as-of: the old transcript stands over the recording
+  // the document has now, and nothing said so.
+  it('says the recording is the current one', async () => {
+    const view = await renderComponent(<MediaPlayer mediaOps={mediaOps()} past />);
+    expect(view.container.textContent).toContain('The document’s current recording');
+  });
+
+  it('says nothing of it on the document as it is now', async () => {
+    const view = await renderComponent(<MediaPlayer mediaOps={mediaOps()} canWrite />);
+    expect(view.container.textContent).not.toContain('current recording');
+  });
+});
