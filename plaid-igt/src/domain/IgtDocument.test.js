@@ -3470,6 +3470,18 @@ describe('the History label of a link names the entry', () => {
     expect(labels(doc)).toEqual(['Link the entry "cat 2"', 'Link the entry "the"']);
   });
 
+  it('a long form is cut at 40 characters, as a value is, and keeps its number', async () => {
+    const long = 'abcdefghij'.repeat(5);
+    const vocabs = vocabularies();
+    vocabs.v1.items.push(
+      { id: 'i-long', form: long, metadata: {} },
+      { id: 'i-long2', form: long, metadata: {} },
+    );
+    const doc = docWith(vocabs);
+    await doc.linkVocab('w-2', 'i-long2');
+    expect(labels(doc)).toEqual([`Link the entry "${long.slice(0, 40)}… 2"`]);
+  });
+
   it('a pick of a morpheme’s entry that writes no value', async () => {
     const doc = docWith();
     await doc.setMorphemePair('m-2', { itemId: 'i-cat2' });

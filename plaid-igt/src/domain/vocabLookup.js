@@ -54,9 +54,14 @@ export const entryMorphTypesOf = (items) =>
 /**
  * An entry as text, the way History names it: its form, with its number
  * where it has one ("kai 1", "tsu 1.2"). `items` is its vocabulary's list,
- * which holds `item`.
+ * which holds `item`. A form over 40 characters is cut there, as a value is
+ * in a label (the editor's `_labelFor`), and keeps its number.
  */
-export const entryName = (items, item) => itemLabel(item, lexiconViewOf(items).numbers);
+export const entryName = (items, item) => {
+  const chars = [...(item?.form ?? '')];
+  const shown = chars.length > 40 ? { ...item, form: `${chars.slice(0, 40).join('')}…` } : item;
+  return itemLabel(shown, lexiconViewOf(items).numbers);
+};
 
 export function linkedItem(byId, link) {
   const ref = link?.vocabItem;
