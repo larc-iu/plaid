@@ -30,7 +30,10 @@ describe('uploadMedia with channelSpeakers', () => {
     expect(doc.client.calls.map((c) => c.kind)).not.toContain('documents.patchMetadata');
   });
 
-  it('a plain upload drops a stored list and the detected cuts, after the upload', async () => {
+  // The cuts name the recording they were measured on by its print, so the
+  // screen shows none of them for another recording, and the same recording
+  // uploaded again (onto an archive imported without its media) has them.
+  it('a plain upload drops a stored list and keeps the detected cuts, after the upload', async () => {
     const doc = makeIgtDoc({
       raw: buildRawDoc({
         metadata: {
@@ -46,13 +49,22 @@ describe('uploadMedia with channelSpeakers', () => {
       kinds.indexOf('documents.patchMetadata'),
     );
     const patch = doc.client.calls.find((c) => c.kind === 'documents.patchMetadata');
-    expect(patch.args[1]).toEqual([
-      { op: 'delete', path: ['speechDetection'] },
-      { op: 'delete', path: ['channelSpeakers'] },
-    ]);
+    expect(patch.args[1]).toEqual([{ op: 'delete', path: ['channelSpeakers'] }]);
   });
 
-  it('a mix replaces a stored list and drops the detected cuts', async () => {
+  it('a plain upload onto kept cuts and no list writes no metadata', async () => {
+    const doc = makeIgtDoc({
+      raw: buildRawDoc({
+        metadata: {
+          speechDetection: { media: '4:abc', method: 'builtin', regions: [1, 2], dismissed: ['a'] },
+        },
+      }),
+    });
+    expect(await doc.uploadMedia(new Blob(['x']))).toBe(true);
+    expect(doc.client.calls.map((c) => c.kind)).not.toContain('documents.patchMetadata');
+  });
+
+  it('a mix replaces a stored list and keeps the detected cuts', async () => {
     const doc = makeIgtDoc({
       raw: buildRawDoc({
         metadata: {
@@ -63,10 +75,7 @@ describe('uploadMedia with channelSpeakers', () => {
     });
     await doc.uploadMedia(new Blob(['x']), { channelSpeakers: ['Cy', 'Di'] });
     const patch = doc.client.calls.find((c) => c.kind === 'documents.patchMetadata');
-    expect(patch.args[1]).toEqual([
-      { op: 'delete', path: ['speechDetection'] },
-      { op: 'set', path: ['channelSpeakers'], value: ['Cy', 'Di'] },
-    ]);
+    expect(patch.args[1]).toEqual([{ op: 'set', path: ['channelSpeakers'], value: ['Cy', 'Di'] }]);
   });
 
   // The recording is there: the toast says what was not saved, not that the

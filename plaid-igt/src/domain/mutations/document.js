@@ -472,19 +472,19 @@ export const documentMutations = {
   // carries its media, at an address only the server knows) is not counted.
   // `channelSpeakers`, the speaker on each channel of a mix of several files,
   // is written after the upload lands, so a failed upload leaves no list.
-  // The old recording's detected cuts go, and its list unless a new one is
-  // given, as deleteMedia drops them.
+  // The old recording's list goes unless a new one is given. Its detected
+  // cuts stay: they name their recording by its print, so another recording
+  // shows none of them, and the same one uploaded again (onto an archive
+  // imported without its media) has them.
   async uploadMedia(file, { onProgress, channelSpeakers = null } = {}) {
     if (!file) return false;
     return this._queueWrite('Failed to upload media', async () => {
       await this._client.documents.uploadMedia(this.id, file, undefined, { onProgress });
       const stored = this._raw?.metadata || {};
-      const ops = metadataOps({
-        ...(stored[VAD_METADATA_KEY] != null ? { [VAD_METADATA_KEY]: null } : {}),
-        ...(channelSpeakers || stored[CHANNEL_SPEAKERS_KEY] != null
-          ? { [CHANNEL_SPEAKERS_KEY]: channelSpeakers }
-          : {}),
-      });
+      const ops =
+        channelSpeakers || stored[CHANNEL_SPEAKERS_KEY] != null
+          ? metadataOps({ [CHANNEL_SPEAKERS_KEY]: channelSpeakers })
+          : [];
       if (ops.length) {
         try {
           await this._client.documents.patchMetadata(this.id, ops);
