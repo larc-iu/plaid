@@ -200,6 +200,13 @@ export const linking = {
     return this._storedMorphType(tokenId);
   },
 
+  // What the Type row shows while "+ Create" is open: the type the create
+  // would give, so a marker typed in the form shows the type it names.
+  _newEntryTypeShown(tokenId, form) {
+    if (this._popoverCreateType !== undefined) return this._popoverCreateType;
+    return entryForm(null, form).morphType || this._storedMorphType(tokenId);
+  },
+
   async _createVocab(tokenId, vocabId, form, returnFocus = false, all = null, metadata = {}) {
     this._closePopover(returnFocus);
     if (!form) return;

@@ -730,7 +730,7 @@ export const vocabPopover = {
         })()}
         ${kind === 'morpheme'
           ? editingCreate
-            ? this._newEntryTypeRow(tokenId)
+            ? this._newEntryTypeRow(tokenId, effectiveForm)
             : this._morphTypeRow(tokenId, currentItem)
           : isMwe
             ? this._mweTypeRow(editingCreate ? null : currentItem)
@@ -935,14 +935,12 @@ export const vocabPopover = {
   },
 
   // While "+ Create" is open the Type row is the new entry's (R56). It starts
-  // on the morpheme's own stored type (M2-1), a pick is held and goes with
-  // the create, and focus goes back to the form so Enter creates. Cancelling
-  // the create brings back the row of the linked entry or the morpheme.
-  _newEntryTypeRow(tokenId) {
-    const current =
-      (this._popoverCreateType === undefined
-        ? this._storedMorphType(tokenId)
-        : this._popoverCreateType) || '';
+  // on the morpheme's own stored type (M2-1) and shows the type a marker
+  // typed in the form names, a pick is held and goes with the create, and
+  // focus goes back to the form so Enter creates. Cancelling the create
+  // brings back the row of the linked entry or the morpheme.
+  _newEntryTypeRow(tokenId, form) {
+    const current = this._newEntryTypeShown(tokenId, form) || '';
     return html`
       <label
         class="igt-vocab-pop__type"

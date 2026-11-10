@@ -320,6 +320,25 @@ describe('the new entry’s type starts on the morpheme’s stored type (M2-1)',
     expect(created(client).args[2]).toMatchObject({ morphType: 'suffix' });
   });
 
+  it('shows the type a typed marker names, in place of the stored one, until a type is picked', async () => {
+    const { client } = mount({ own2: fromEquals });
+    openOn('m-2');
+    await openCreate();
+    const shown = () => popover().querySelector('.igt-vocab-pop__type option[selected]').value;
+    expect(shown()).toBe('enclitic');
+    typeInto(createInput(), '-ri');
+    expect(shown()).toBe('suffix');
+    typeInto(createInput(), 'ri');
+    expect(shown()).toBe('enclitic');
+    // A pick wins over a marker, on screen as in the write.
+    choose('stem');
+    typeInto(createInput(), '-ri');
+    expect(shown()).toBe('stem');
+    enter(createInput());
+    await settle(6);
+    expect(created(client).args[2]).toMatchObject({ morphType: 'stem' });
+  });
+
   it('starts on "—" for a morpheme with no stored type', async () => {
     const { client } = mount();
     openOn('m-1');

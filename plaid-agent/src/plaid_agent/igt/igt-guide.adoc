@@ -350,6 +350,7 @@ On a morpheme linked to an entry with a type, it shows the entry's type, and a c
 Linked to an entry with no type, the morpheme goes by its own, and the list shows and sets that, not the entry's.
 While **+ Create** is open, the list reads **Type (new entry)** and sets the type of the entry being created.
 It starts on the morpheme's own type, or on **—** when the morpheme has none, and an entry created as is takes the morpheme's own type.
+A form typed with a marker, such as -s, sets the list to the type the marker names, unless a type was picked from the list.
 Closing the create form with **Esc** brings back the list of the linked entry or the morpheme.
 In a project with no lexicon, the **set type** button under a morpheme opens the list.
 
