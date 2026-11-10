@@ -186,6 +186,26 @@ describe('cellWrite', () => {
     expect(errors.map((e) => e.err.status)).toEqual([403, 409]);
   });
 
+  // H1 S5: a refusal because the writer just lost access is no conflict. The
+  // document says it under the write's own title.
+  it('reports a refusal for lost access itself, with its title, when an engine settles it', async () => {
+    const { server, doc, errors } = open();
+    server.fail.push(() =>
+      Object.assign(new Error('HTTP 403 lacks sufficient privileges'), {
+        status: 403,
+        method: 'PATCH',
+        responseData: {
+          error:
+            'User b@x.com lacks sufficient privileges to write the project this entity belongs to',
+        },
+      }),
+    );
+    const outcome = await doc.cellWrite(() => doc.set('gloss', 'DOG'), { engine: true });
+    expect(outcome).toMatchObject({ landed: false, status: 403 });
+    expect(errors.map((e) => e.err.status)).toEqual([403]);
+    expect(doc.error).toMatch(/^Failed to update gloss: /);
+  });
+
   it('answers when the document the edit was made on was last changed', async () => {
     const { server, doc } = open();
     doc._raw = { ...doc._raw, timeModified: '2026-10-05T01:00:00Z' };

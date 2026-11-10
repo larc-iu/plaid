@@ -318,9 +318,12 @@ describe('a write to something that is gone', () => {
   const GONE = 'Changed or removed by someone else.';
 
   it('is told apart from a refusal that names its project', () => {
-    const gone = refused(
-      403,
-      'User b@x.com lacks sufficient privileges to write the project this entity belongs to',
+    const gone = Object.assign(
+      refused(
+        403,
+        'User b@x.com lacks sufficient privileges to write the project this entity belongs to',
+      ),
+      { responseData: { error: 'x', unresolved: true } },
     );
     expect(isGone(gone)).toBe(true);
     expect(isChangedElsewhere(gone)).toBe(true);
@@ -355,10 +358,29 @@ describe('a write to something that is gone', () => {
     expect(isGone(e)).toBe(true);
   });
 
-  it('covers a vocabulary entry whose vocabulary cannot be placed', () => {
+  // H1 S5: the core words a refusal for an entity whose project the request
+  // did not name the same way whether the entity is gone or the writer lost
+  // access. Only `unresolved` says gone.
+  it('is not a write by someone who just lost access', () => {
+    const said =
+      'User b@x.com lacks sufficient privileges to write the project this entity belongs to';
+    const lostAccess = refused(403, said);
+    expect(isGone(lostAccess)).toBe(false);
+    expect(isChangedElsewhere(lostAccess)).toBe(false);
+    expect(humanizeError(lostAccess)).toBe("You don't have permission to do that.");
     expect(isGone(refused(403, 'User b@x.com lacks read access to vocab layer ', 'POST'))).toBe(
-      true,
+      false,
     );
+  });
+
+  it('covers a vocabulary entry whose vocabulary cannot be placed', () => {
+    const unplaced = Object.assign(
+      refused(403, 'User b@x.com lacks read access to vocab layer ', 'POST'),
+      {
+        responseData: { error: 'User b@x.com lacks read access to vocab layer ', unresolved: true },
+      },
+    );
+    expect(isGone(unplaced)).toBe(true);
     expect(
       isGone(refused(403, 'User b@x.com lacks read access to vocab layer 0199aaaa-0000', 'POST')),
     ).toBe(false);

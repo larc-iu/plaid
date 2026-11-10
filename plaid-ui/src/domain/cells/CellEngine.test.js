@@ -272,6 +272,26 @@ describe('a refused edit', () => {
     }
   });
 
+  // H1 S5: a writer whose access was just taken away is refused 403 for the
+  // project the entity belongs to. The row is there: nothing changed
+  // elsewhere, and the document says the refusal under its own title.
+  it('refused because the writer lost access is dropped with nothing said', () => {
+    const said =
+      'User b@x.com lacks sufficient privileges to write the project this entity belongs to';
+    const views = { k: cellView() };
+    const { engine, heard } = setup({ stored: { k: 'a' }, views });
+    const t = engine.sending('k', { saved: 'a', typed: 'b', field: 'POS' });
+    const outcome = {
+      landed: false,
+      status: 403,
+      readBack: true,
+      error: { status: 403, method: 'PATCH', responseData: { error: said } },
+    };
+    expect(engine.settle(t, outcome).kind).toBe('dropped');
+    expect(views.k.shown).toEqual([['a', false]]);
+    expect(heard).toEqual([]);
+  });
+
   it('refused for good over a value someone else stored is still a conflict (a 403 read as changed)', () => {
     const { engine } = setup({ stored: { k: 'theirs' } });
     const t = engine.sending('k', { saved: 'a', typed: 'b' });
