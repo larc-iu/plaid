@@ -101,6 +101,28 @@ describe('a rule on the plan card', () => {
     await view.unmount();
   });
 
+  it('counts every rewrite a rule stands for, beside a row of its own', async () => {
+    const respell = ruleRow({
+      label: 'respell "a" as "ä", 6 changes in 2 documents',
+      change: 'respell "a" → "ä"',
+      writesText: 6,
+      replacesWork: 0,
+    });
+    const view = await mount(
+      plan([respell, { label: 'Text 0 s1.w1: respell "Ali" → "Äli"', writesText: 1 }]),
+    );
+    expect(byText(view.container, 'p', '7 changes rewrite the text.')).not.toBeNull();
+    expect(view.container.querySelector('tr[data-rule]').textContent).toContain('Rewrite');
+    await view.unmount();
+  });
+
+  it('shows no count of rewrites for a rule that rewrites none', async () => {
+    const view = await mount(plan([ruleRow({ writesText: 0 })]));
+    expect(view.container.textContent).not.toMatch(/rewrites? the text/);
+    expect(view.container.querySelector('tr[data-rule]').textContent).not.toMatch(/^0/);
+    await view.unmount();
+  });
+
   it('is shown unfolded in the web page export', async () => {
     const view = await mount(plan([ruleRow()]), {}, (card) => (
       <ExportContext.Provider value={{}}>{card}</ExportContext.Provider>

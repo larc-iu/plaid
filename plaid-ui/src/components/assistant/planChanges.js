@@ -8,8 +8,13 @@
 
 export const ROWS_COLLAPSED = 12;
 
-/** How many of these changes rewrite the text itself. */
-export const textRewrites = (rows) => (rows || []).filter((r) => r.writesText).length;
+/**
+ * How many of these changes rewrite the text itself. A row counts as many as
+ * it stands for: one corpus-wide respell is one row and may rewrite dozens of
+ * words.
+ */
+export const textRewrites = (rows) =>
+  (rows || []).reduce((n, r) => n + (Number(r.writesText) || 0), 0);
 
 /**
  * How many of these changes replace work a person made or accepted. A row
@@ -139,10 +144,10 @@ export const planRows = (plan) => {
       where: c.where || null,
       change: c.change || null,
       label: c.label || '',
-      // A change to the text itself rather than to an annotation of it. The
-      // service decides which ops those are; a plan recorded before it did
-      // says nothing, and those are all long since settled.
-      writesText: !!c.writesText,
+      // How many changes to the text itself rather than to an annotation of
+      // it the row stands for: 1 for one change, the count for a corpus-wide
+      // respell, 0 for none. The service decides which ops those are.
+      writesText: Number(c.writesText) || 0,
       // How many things a person made or accepted the change replaces, which
       // the service decides from their provenance: 1 for a change of one
       // thing, the count for a corpus-wide replace, 0 for none. Such a change
@@ -164,7 +169,7 @@ export const planRows = (plan) => {
     where: null,
     change: null,
     label: c?.label || '',
-    writesText: false,
+    writesText: 0,
     replacesWork: 0,
     rule: null,
     kept: false,

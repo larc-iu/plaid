@@ -99,20 +99,31 @@ def test_a_change_to_the_text_itself_is_marked():
                ('respell', {'document': 'Text 1', 'ref': 's1.w3', 'new_text': 'akun'}),
                ('retype_sentence', {'document': 'Text 1', 'ref': 's2', 'text': 'Gam-ar'}))
     gloss, respell, retype = describe_changes(ws, ws.ops)
-    assert gloss['writes_text'] is False
-    assert respell['writes_text'] is True
-    assert retype['writes_text'] is True
+    assert gloss['writes_text'] == 0
+    assert respell['writes_text'] == 1
+    assert retype['writes_text'] == 1
 
 
 def test_a_corpus_wide_respell_is_marked_through_its_counts():
     """A corpus-wide tool stages one `bulk_scope` op standing for many, so the
-    mark has to read the counts rather than the op's own kind."""
+    mark has to read the counts rather than the op's own kind, and counts
+    each rewrite it stands for, as the card's "N changes rewrite" line says
+    (LP1-11)."""
     from plaid_agent.igt.changes import writes_text
-    assert writes_text({'kind': 'bulk_scope', 'counts': {'respell': 3, 'set_morpheme_form': 3}}) is True
-    assert writes_text({'kind': 'bulk_scope', 'counts': {'set_span': 12}}) is False
-    assert writes_text({'kind': 'bulk_scope', 'counts': {'respell': 0}}) is False
-    # A compacted group keeps the kind of its members.
-    assert writes_text({'kind': 'respell', 'compact': True, 'count': 40}) is True
+    assert writes_text({'kind': 'bulk_scope', 'counts': {'respell': 3, 'set_morpheme_form': 3}}) == 3
+    assert writes_text({'kind': 'bulk_scope', 'counts': {'set_span': 12}}) == 0
+    assert writes_text({'kind': 'bulk_scope', 'counts': {'respell': 0}}) == 0
+    # A compacted group keeps the kind of its members, and counts them.
+    assert writes_text({'kind': 'respell', 'compact': True, 'count': 40}) == 40
+    assert writes_text({'kind': 'set_span', 'compact': True, 'count': 40}) == 0
+
+
+def test_a_respell_rule_row_counts_every_word_it_rewrites():
+    ws = _plan(('respell_all', {'pattern': 'a', 'replacement': 'ä', 'morpheme_forms': False}))
+    [row] = describe_changes(ws, ws.ops)
+    words = (ws.ops[0].get('counts') or {}).get('respell')
+    assert words and words > 1, ws.ops[0]
+    assert row['writes_text'] == words, row
 
 
 def test_a_document_name_holding_a_colon_keeps_its_change_whole():

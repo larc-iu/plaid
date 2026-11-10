@@ -403,10 +403,10 @@ def test_the_mark_reaches_the_card_row_in_both_apps():
         def doc_label(self, _):
             return ''
     ws = _WS()
-    assert igt_changes.describe_change(ws, rewrite)['writes_text'] is True
-    assert igt_changes.describe_change(ws, edit)['writes_text'] is False
-    assert ud_changes.describe_change(ws, rewrite)['writes_text'] is True
-    assert ud_changes.describe_change(ws, edit)['writes_text'] is False
+    assert igt_changes.describe_change(ws, rewrite)['writes_text'] == 1
+    assert igt_changes.describe_change(ws, edit)['writes_text'] == 0
+    assert ud_changes.describe_change(ws, rewrite)['writes_text'] == 1
+    assert ud_changes.describe_change(ws, edit)['writes_text'] == 0
 
 
 def test_only_a_wholesale_rewrite_is_marked_on_the_card():

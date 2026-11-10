@@ -384,7 +384,7 @@ const RuleRow = ({ row, projectId, adapter, open: openFirst = false, written }) 
           {written && (
             <Check className="mr-1 inline h-3 w-3 align-[-2px] text-success" aria-label="Written" />
           )}
-          {row.writesText && (
+          {row.writesText > 0 && (
             <Badge
               variant="outline"
               className="mr-1.5 border-warning/40 px-1 py-0 align-[1px] text-[10px] font-medium text-warning-foreground"
@@ -507,7 +507,7 @@ const RuleRow = ({ row, projectId, adapter, open: openFirst = false, written }) 
               where: c.where || null,
               change: c.change || null,
               label: c.label || '',
-              writesText: !!c.writesText,
+              writesText: Number(c.writesText) || 0,
               replacesWork: Number(c.replacesWork) || 0,
             }}
             projectId={projectId}
@@ -578,7 +578,7 @@ const ChangeRow = ({
         {written && (
           <Check className="mr-1 inline h-3 w-3 align-[-2px] text-success" aria-label="Written" />
         )}
-        {row.writesText && (
+        {row.writesText > 0 && (
           <Badge
             variant="outline"
             className="mr-1.5 border-warning/40 px-1 py-0 align-[1px] text-[10px] font-medium text-warning-foreground"

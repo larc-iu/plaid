@@ -29,10 +29,10 @@ def describe_change(ws, op: Dict[str, Any]) -> Dict[str, Any]:
         docs = op['card'].get('documents') or []
         where = ({'kind': 'document', 'document_id': docs[0][0], 'document_name': docs[0][1]}
                  if len(docs) == 1 else None)
-        return {'label': label, 'where': where, 'change': op.get('change'), 'writes_text': False,
+        return {'label': label, 'where': where, 'change': op.get('change'), 'writes_text': 0,
                 'replaces_work': int(op.get(work.FLAG) or 0), 'rule': op['card']}
     return {'label': label, 'where': locate(ws, op), 'change': _change(op, label),
-            'writes_text': op.get('kind') in _PROSE_KINDS,
+            'writes_text': int(op.get('kind') in _PROSE_KINDS),
             'replaces_work': int(op.get(work.FLAG) or 0)}
 
 

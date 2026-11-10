@@ -66,7 +66,7 @@ describe('planRows', () => {
         where: word,
         change: 'Gloss = "x"',
         label: 'a',
-        writesText: false,
+        writesText: 0,
         replacesWork: 0,
         rule: null,
         kept: false,
@@ -77,7 +77,7 @@ describe('planRows', () => {
         where: null,
         change: null,
         label: 'b',
-        writesText: false,
+        writesText: 0,
         replacesWork: 0,
         rule: null,
         kept: false,
@@ -93,7 +93,7 @@ describe('planRows', () => {
         where: null,
         change: null,
         label: 'only a label',
-        writesText: false,
+        writesText: 0,
         replacesWork: 0,
         rule: null,
         kept: false,
@@ -112,13 +112,14 @@ describe('planRows', () => {
           label: 'b',
           where: sentence,
           change: 'retype "Ali-di gam akuna." → "Ali-di gam akuna"',
-          writesText: true,
+          writesText: 1,
         },
+        { label: 'c', where: null, change: 'respell "a" → "ä"', writesText: 6 },
       ],
     };
-    const rows = planRows(plan);
-    expect(rows.map((r) => r.writesText)).toEqual([false, true]);
-    expect(textRewrites(rows)).toBe(1);
+    const rows = planRows({ ...plan, ops: [{}, {}, {}] });
+    expect(rows.map((r) => r.writesText)).toEqual([0, 1, 6]);
+    expect(textRewrites(rows)).toBe(7);
     expect(textRewrites([])).toBe(0);
   });
 });

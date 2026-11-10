@@ -743,7 +743,7 @@ def compact_plan(item: Dict[str, Any]) -> Dict[str, Any]:
         kept['changes'] = changes[:SETTLED_ROWS_MAX] + ruled
         kept['omitted'] = {
             'count': rows - SETTLED_ROWS_MAX,
-            'writes_text': sum(1 for c in dropped if c.get('writes_text')),
+            'writes_text': sum(int(c.get('writes_text') or 0) for c in dropped),
             'replaces_work': sum(int(c.get('replaces_work') or 0) for c in dropped),
         }
         # Rows that keep a value, or a corpus-wide change settled to none,

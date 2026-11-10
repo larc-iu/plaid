@@ -19,8 +19,9 @@ past its loading budget) names the document alone.
 ``change`` is the label without its location, or None when the label names
 no place (the card then shows the label whole). Every op that has a place is
 built by ``core.plan.labelled``, which records where its change starts.
-``writes_text`` marks the changes that rewrite the baseline itself, and
-``replaces_work`` how many of a person's things each one replaces (core/work.py).
+``writes_text`` counts the rewrites of the baseline itself each one stands
+for, and ``replaces_work`` how many of a person's things each one replaces
+(core/work.py).
 """
 
 from typing import Any, Dict, List, Optional
@@ -70,12 +71,15 @@ def describe_change(ws, op: Dict[str, Any]) -> Dict[str, Any]:
             **({'kept': True} if is_keep(op) else {})}
 
 
-def writes_text(op: Dict[str, Any]) -> bool:
-    """Whether this op rewrites baseline text. A compacted group keeps the
-    kind of its members; a corpus-wide op stands for a count per kind."""
+def writes_text(op: Dict[str, Any]) -> int:
+    """How many rewrites of the baseline text this op stands for. A compacted
+    group keeps the kind of its members and counts them; a corpus-wide op
+    stands for a count per kind."""
     if op.get('kind') in SCOPES:
-        return any(k in _TEXT_KINDS for k, n in (op.get('counts') or {}).items() if n)
-    return op.get('kind') in _TEXT_KINDS
+        return sum(int(n or 0) for k, n in (op.get('counts') or {}).items() if k in _TEXT_KINDS)
+    if op.get('kind') not in _TEXT_KINDS:
+        return 0
+    return int(op.get('count') or 1) if op.get('compact') else 1
 
 
 # --- location -------------------------------------------------------------------

@@ -32,10 +32,10 @@ def describe_change(ws, op: Dict[str, Any]) -> Dict[str, Any]:
         where = ({'kind': 'document', 'document_id': docs[0][0], 'document_name': docs[0][1]}
                  if len(docs) == 1 else None)
         return {'label': op.get('label') or '', 'where': where, 'change': op.get('change'),
-                'writes_text': False, 'replaces_work': int(op.get(work.COUNTED) or 0),
+                'writes_text': 0, 'replaces_work': int(op.get(work.COUNTED) or 0),
                 'rule': op['card'], **writes_nothing(op)}
     return {'label': op.get('label') or '', 'where': locate(ws, op),
-            'writes_text': op.get('kind') in _PROSE_KINDS,
+            'writes_text': int(op.get('kind') in _PROSE_KINDS),
             'replaces_work': int(op.get(work.FLAG) or 0),
             # A value kept out of a corpus-wide change: a row, not a change.
             **({'kept': True} if is_keep(op) else {}), **writes_nothing(op)}
