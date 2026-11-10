@@ -86,7 +86,7 @@ expose_openapi = true
 # Media uploads
 # -----------------------------------------------------------------------------
 [media]
-# Maximum size (in megabytes) of a single uploaded media file.
+# Maximum size (in megabytes) of a single uploaded media file, at most 2047.
 max_file_size_mb = 200
 
 # Profile pictures. Every upload is decoded, center-cropped to a square,

@@ -318,3 +318,23 @@
         (is (= 60 (get-in cfg [:plaid.media/config :link-ttl-seconds])))
         (is (= 120 (get-in cfg [:plaid.media/config :avatar-link-ttl-seconds]))))
       (finally (.delete f)))))
+
+(deftest a-media-limit-the-web-server-cannot-take-refuses-to-load
+  ;; http-kit counts a request body in an int, so 2048 MB and up failed at
+  ;; startup with a bare "integer overflow".
+  (doseq [v ["2048" "4096" "0" "-5" "\"200\""]]
+    (let [f (temp-toml (str "[media]\nmax_file_size_mb = " v "\n"))]
+      (try
+        (is (= (str "[media] max_file_size_mb must be a positive number of megabytes, at most 2047, not "
+                    (if (= v "\"200\"") "\"200\"" v))
+               (some-> (try (config/load-config! {:config-path (.getAbsolutePath f) :explicit? true})
+                            nil
+                            (catch clojure.lang.ExceptionInfo e e))
+                       ex-message))
+            v)
+        (finally (.delete f)))))
+  (let [f (temp-toml "[media]\nmax_file_size_mb = 2047\n")]
+    (try
+      (is (= 2047 (get-in (config/load-config! {:config-path (.getAbsolutePath f) :explicit? true})
+                          [:plaid.media/config :max-file-size-mb])))
+      (finally (.delete f)))))

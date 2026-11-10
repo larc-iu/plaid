@@ -262,6 +262,22 @@
                         {:setting label :value v})))))
   cfg)
 
+(def ^:private max-media-file-mb
+  "The largest [media] max_file_size_mb: an upload is one request body, and
+  the web server (http-kit) counts a body's bytes in an int."
+  (quot Integer/MAX_VALUE (* 1024 1024)))
+
+(defn- check-media-size!
+  "Refuse a media limit the web server cannot take. 2048 MB and up used to
+  fail at startup with a bare \"integer overflow\"."
+  [cfg]
+  (let [v (get-in cfg [:plaid.media/config :max-file-size-mb] ::absent)]
+    (when-not (or (= v ::absent) (and (number? v) (pos? v) (<= v max-media-file-mb)))
+      (throw (ex-info (str "[media] max_file_size_mb must be a positive number of megabytes, at most "
+                           max-media-file-mb ", not " (pr-str v))
+                      {:max-file-size-mb v}))))
+  cfg)
+
 (defn load-config!
   "Build the internal config map: the bundled config.toml template supplies the
    default values, the file at `config-path` (filesystem first, then classpath)
@@ -292,7 +308,8 @@
                       (translate toml)))]
       (vary-meta (-> (deep-merge (deep-merge internal-only-defaults defaults) overlay)
                      check-limits!
-                     check-lifetimes!)
+                     check-lifetimes!
+                     check-media-size!)
                  assoc ::source (or ov-src (str "the bundled defaults (" tpl-src ")"))))))
 
 (defn ensure-config-file!
