@@ -5,14 +5,11 @@ channel: the app sends one request per channel, and the service pulls that
 channel out before the model hears it. A PCM WAV (plain or
 WAVE_FORMAT_EXTENSIBLE, which is what the app's mix writes) is read here
 with numpy and written back as 16-bit mono at the same rate. Anything else
-is decoded whole to such a WAV by ffmpeg when there is one on the PATH, and
-read the same way, or refused when there is none, naming what was asked.
+is refused, naming what was asked.
 """
 
 import os
-import shutil
 import struct
-import subprocess
 
 from plaid_client.service import Refusal
 
@@ -115,29 +112,9 @@ def extract_channel(path, channel, out_dir):
     mono 16-bit WAV in ``out_dir``. Answers the new file's path.
 
     Raises:
-        Refusal: the recording has no such channel, or it is not a WAV and
-            there is no ffmpeg to read it with.
+        Refusal: the recording has no such channel, or it is not a WAV.
     """
     out_path = os.path.join(out_dir, f'channel-{channel}.wav')
     if _extract_wav_channel(path, channel, out_path):
         return out_path
-    ffmpeg = shutil.which('ffmpeg')
-    if not ffmpeg:
-        raise Refusal(f'Channel {channel + 1} cannot be taken out of this recording: it is not a '
-                      'WAV, and ffmpeg is not installed where the service runs.')
-    # The whole file as a multichannel 16-bit WAV, then the channel is taken
-    # out of that as from any WAV, so a channel the file lacks is refused alike.
-    decoded = os.path.join(out_dir, f'decoded-{channel}.wav')
-    try:
-        result = subprocess.run(
-            [ffmpeg, '-y', '-loglevel', 'error', '-i', path, '-vn', '-c:a', 'pcm_s16le', decoded],
-            capture_output=True, text=True)
-        if result.returncode != 0:
-            raise Refusal(f'Channel {channel + 1} cannot be taken out of this recording '
-                          f'({((result.stderr or "").strip() or "ffmpeg failed").splitlines()[-1]}).')
-        if not os.path.exists(decoded) or not _extract_wav_channel(decoded, channel, out_path):
-            raise Refusal(f'Channel {channel + 1} cannot be taken out of this recording.')
-    finally:
-        if os.path.exists(decoded):
-            os.remove(decoded)
-    return out_path
+    raise Refusal(f'Channel {channel + 1} cannot be taken out of this recording: it is not a WAV.')
