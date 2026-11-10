@@ -150,7 +150,9 @@ export function MixRecordingsDialog({
                       ? 'Reading…'
                       : t.status === 'failed'
                         ? 'Cannot be decoded.'
-                        : `${formatTime(t.seconds)} · ${trackNote(t)}`}
+                        : `${formatTime(t.seconds)} · ${trackNote(t)}${
+                            t.file?.type?.startsWith('video/') ? ' · video, sound only' : ''
+                          }`}
                   </span>
                 </div>
                 <Input

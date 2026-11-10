@@ -179,4 +179,16 @@ describe('MixRecordingsDialog', () => {
     expect(options.signal.aborted).toBe(true);
     expect(onUpload).not.toHaveBeenCalled();
   });
+
+  it('says a video row keeps only its sound, by the type the browser gives', async () => {
+    const files = [
+      new File(['x'], 'cam.wav', { type: 'video/mp4' }),
+      new File(['x'], 'ben.mp4', { type: 'audio/mp4' }),
+    ];
+    const read = vi.fn(async (file) => ({ name: file.name, ...decoded['ana.wav'] }));
+    await mount({ decode: read, files });
+    const rows = all(document.body, 'li').map((li) => li.textContent);
+    expect(rows[0]).toContain('0:10.000 · mono · 48 kHz · video, sound only');
+    expect(rows[1]).not.toContain('video');
+  });
 });
