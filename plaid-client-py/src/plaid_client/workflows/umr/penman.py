@@ -235,6 +235,12 @@ def variable_form_problem(variable) -> Optional[str]:
 #: second definition of it.
 DOC_GRAPH_VARIABLE = re.compile(r's[0-9]+s0')
 
+#: A NEW name's letters are a to z (``UmrDocument.js`` ``VARIABLE``): the
+#: official validator's document-level check reads variables as ASCII, so
+#: ``s4pé`` exports a file it refuses. A file may still hold such a name
+#: (``is_variable`` reads it).
+_NEW_VARIABLE = re.compile(r's[0-9]+[a-z]+[0-9]*')
+
 
 def new_variable_problem(variable, sentence_index: Optional[int], taken) -> Optional[str]:
     """Why ``variable`` cannot name a NEW node of sentence ``sentence_index``,
@@ -246,8 +252,8 @@ def new_variable_problem(variable, sentence_index: Optional[int], taken) -> Opti
     name that breaks the rule is kept (``variable_form_problem`` is the check
     for those)."""
     text = variable if isinstance(variable, str) else ''
-    if not is_variable(text):
-        return f'{text} is not a variable: s, the sentence number, letters, a number.'
+    if not _NEW_VARIABLE.fullmatch(text):
+        return f'{text} is not a variable: s, the sentence number, letters a to z, a number.'
     n = int(_VARIABLE_HEAD.match(text).group()[1:])
     if sentence_index is not None and n != sentence_index:
         return f'{text} names sentence {n}, and the node is in sentence {sentence_index}.'

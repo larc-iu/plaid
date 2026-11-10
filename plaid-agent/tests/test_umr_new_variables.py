@@ -92,9 +92,14 @@ def test_the_check_matches_the_apps():
     assert new_variable_problem('s2t', 2, taken) == 's2t is already in use.'
     assert new_variable_problem('s2s0', 2, taken) == "s2s0 names the sentence's document graph."
     assert new_variable_problem('s2s', 2, taken) is None
+    # Letters are a to z, as the app's check has it: validate.py reads a
+    # document-level variable as ASCII, so s2pé would export a file it refuses.
+    assert new_variable_problem('s2pé', 2, taken) == (
+        's2pé is not a variable: s, the sentence number, letters a to z, a number.')
+    assert new_variable_problem('s2ρ', 2, taken) is not None
     assert new_variable_problem('s1x', 2, taken) == (
         's1x names sentence 1, and the node is in sentence 2.')
     assert new_variable_problem('S2x', 2, taken) == (
-        'S2x is not a variable: s, the sentence number, letters, a number.')
+        'S2x is not a variable: s, the sentence number, letters a to z, a number.')
     assert new_variable_problem('s2x2y', 2, taken)
-    assert new_variable_problem('s2é', 2, taken) is None
+    assert new_variable_problem('s2é', 2, taken) is not None
