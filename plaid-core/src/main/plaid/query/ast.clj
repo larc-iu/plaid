@@ -357,6 +357,10 @@
               node))]
     [(walk/postwalk f x) @used]))
 
+(def ^:private top-level-keys
+  "Every key a query may carry, in the order the refusal lists them."
+  [:find :where :scope :limit :order-by :return :bindings])
+
 (defn parse
   "Normalize a raw request map (string- or keyword-keyed; JSON or EDN dialect)
   into the canonical EDN AST. Pure; does not validate semantics beyond the
@@ -368,6 +372,11 @@
   (when-not (map? raw)
     (err! :parse (str "Query must be a map/object, got: " (pr-str raw))))
   (let [m0 (reduce-kv (fn [acc k v] (assoc acc (->kw k) v)) {} raw)
+        ;; closed key set: a misspelled key (`limti`) would otherwise be dropped
+        ;; and the query run without it. `:as-of` passes here to get its own
+        ;; refusal in validate.
+        _ (when-let [unknown (seq (remove (conj (set top-level-keys) :as-of) (keys m0)))]
+            (err! :parse (str "Unknown query key(s) " (vec unknown) " (allowed: " top-level-keys ")")))
         subst (when (contains? m0 :bindings) (build-bindings (:bindings m0)))
         [m used] (if subst (apply-bindings (dissoc m0 :bindings) subst) [m0 #{}])]
     ;; strict: every binding must be referenced (a typo'd/unused placeholder is

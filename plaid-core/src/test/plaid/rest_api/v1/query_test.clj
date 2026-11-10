@@ -57,7 +57,14 @@
     (let [resp (api-call admin-request
                          {:method :post :path "/api/v1/query"
                           :body (assoc noun-verb-query :as-of "2020-01-01")})]
-      (fix/assert-status 400 resp))))
+      (fix/assert-status 400 resp)))
+  (testing "a misspelled top-level key -> 400 naming it and the allowed keys, not a query run without it"
+    (let [resp (api-call admin-request
+                         {:method :post :path "/api/v1/query"
+                          :body (assoc noun-verb-query :limti 1)})]
+      (fix/assert-status 400 resp)
+      (is (= "Unknown query key(s) [:limti] (allowed: [:find :where :scope :limit :order-by :return :bindings])"
+             (-> resp :body :error))))))
 
 (deftest query-endpoint-requires-auth
   (testing "no bearer token -> 401"

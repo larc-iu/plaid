@@ -87,6 +87,7 @@ A query is a JSON object with these keys:
 |===
 
 The clients accept these keys in your language's own casing (see <<Clients and casing>>).
+Any other key is refused with a 400 that names it, so a misspelled `limit` is never ignored.
 
 == Variables
 

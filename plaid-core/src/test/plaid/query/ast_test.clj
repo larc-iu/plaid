@@ -63,6 +63,25 @@
     (is (map? (ast/parse+validate
                {"find" ["?my-span_2"] "where" [["span" "?my-span_2" {}]]})))))
 
+(deftest top-level-key-set-is-closed
+  (let [q {"find" ["?t"] "where" [["token" "?t" {}]]}
+        message (fn [raw] (try (ast/parse raw) nil
+                               (catch clojure.lang.ExceptionInfo e
+                                 (when (= 400 (:code (ex-data e))) (ex-message e)))))]
+    (testing "a misspelled key is refused by name, with the allowed keys"
+      (is (= "Unknown query key(s) [:limti] (allowed: [:find :where :scope :limit :order-by :return :bindings])"
+             (message (assoc q "limti" 5))))
+      (is (= "Unknown query key(s) [:orderBy] (allowed: [:find :where :scope :limit :order-by :return :bindings])"
+             (message (assoc q :orderBy [["?t" "begin"]])))
+          "an un-recased client key is refused too"))
+    (testing "every key of the language passes, string- or keyword-keyed, with or without a colon"
+      (is (map? (ast/parse (assoc q "scope" {"project-ids" ["p"]} "limit" 5 "order-by" [["?t" "begin"]]
+                                  "return" "ids" "bindings" {"?x" "y"}
+                                  "where" [["token" "?t" {"layer" "?x"}]]))))
+      (is (map? (ast/parse (assoc q ":limit" 5 :return "count")))))
+    (testing "as-of keeps its own refusal"
+      (is (= 400 (code-of #(ast/parse+validate (assoc q "as-of" "2020"))))))))
+
 (deftest validation-errors
   (testing "all author errors are :code 400"
     (is (= 400 (code-of #(ast/parse+validate {"find" ["?t"] "where" [["token" "?t" {"layer" "w"}]] "as-of" "2020"})))
