@@ -952,12 +952,12 @@ class Workspace(BaseWorkspace):
     def held_values(self, word_id: Optional[str], f) -> set:
         """The values word ``word_id``'s stored morphemes hold in field ``f``:
         from its document when this turn has loaded it, else as a corpus-wide
-        read found them (:attr:`word_held`)."""
+        read found them (:attr:`word_held`). The word is looked up by its id
+        in each loaded document's index, not by walking every word."""
         for d in self._docs.values():
-            for s in d.sentences:
-                for w in s.words:
-                    if w.id == word_id:
-                        return {m.fields[f.name].value for m in w.morphemes if f.name in m.fields}
+            hit = d.find(word_id) if word_id else None
+            if hit and hit[1] is not None and hit[1].id == word_id:
+                return {m.fields[f.name].value for m in hit[1].morphemes if f.name in m.fields}
         return self.word_held.get((word_id, f.layer_id), set())
 
     def entry_reading(self, vocab: dict, op: Dict[str, Any]) -> Optional[dict]:
