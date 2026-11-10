@@ -17,8 +17,9 @@ export function TranscribeDialog({ mediaOps, readOnly = false }) {
     isUploading,
     stopTranscribe,
     channelSpeakers,
+    channelCount,
   } = mediaOps;
-  const channels = useChosenChannels(channelSpeakers);
+  const channels = useChosenChannels(channelSpeakers, channelCount);
   return (
     <ServiceSpotDialog
       label="Transcribe"
@@ -32,7 +33,7 @@ export function TranscribeDialog({ mediaOps, readOnly = false }) {
       writeLock={writeLock}
       noun="transcription"
       disabled={readOnly || isUploading}
-      blocked={!transcribeSpot.service || isUploading || channels.none}
+      blocked={!transcribeSpot.service || isUploading || channels.none || channels.waiting}
     >
       <ChannelChecklist channels={channels} disabled={transcribeRun.running} />
     </ServiceSpotDialog>

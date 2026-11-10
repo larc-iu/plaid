@@ -19,15 +19,22 @@ import { useChosenChannels } from './useChosenChannels.js';
 // box, and the detector listens to each chosen channel on its own.
 export function VadDetection({ mediaOps, readOnly = false, disabled = false }) {
   const [open, setOpen] = useState(false);
-  const { vad, detectSpot, detectRun, handleDetectSpeech, cancelRequest, channelSpeakers } =
-    mediaOps;
+  const {
+    vad,
+    detectSpot,
+    detectRun,
+    handleDetectSpeech,
+    cancelRequest,
+    channelSpeakers,
+    channelCount,
+  } = mediaOps;
   const { proposals, foundCount, status, error, hasAnalysis } = vad;
   const running = detectRun.running || status === 'running';
   const count = proposals.length;
   // Both methods stop from the one button: the built-in model aborts its
   // worker, a service is asked to stop. A service run used to offer neither.
   const stopDetection = detectSpot.service ? cancelRequest : vad.cancel;
-  const channels = useChosenChannels(channelSpeakers);
+  const channels = useChosenChannels(channelSpeakers, channelCount);
 
   const summary =
     count > 0
@@ -61,7 +68,7 @@ export function VadDetection({ mediaOps, readOnly = false, disabled = false }) {
         result={status === 'ready' ? summary : null}
         runLabel="Detect"
         onRun={() => handleDetectSpeech({ channels: channels.chosen })}
-        runDisabled={readOnly || disabled || channels.none}
+        runDisabled={readOnly || disabled || channels.none || channels.waiting}
         onCancel={stopDetection}
         secondary={hasAnalysis && !running ? { label: 'Discard', onClick: vad.clear } : undefined}
       >

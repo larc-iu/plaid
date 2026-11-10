@@ -6,13 +6,19 @@ import { channelLabel } from '@/domain/media/channelSpeakers';
 // by the detection and transcription dialogs.
 
 /**
- * @param {string[]|null} speakers  channelSpeakers as stored, or null
+ * @param {string[]|null} stored  the recording's channelSpeakers, or null
+ * @param {number|null} count  the recording's channel count, null until read
  * @returns {{list: Array<{channel, speaker, label}>, on: Set<number>,
  *   toggle: (channel) => void, chosen: Array<{channel, speaker}>|null,
- *   none: boolean}} `chosen` is null when the channels are not speakers (run
- *   the whole recording), `none` when every box is off.
+ *   none: boolean, waiting: boolean}} `chosen` is null when the channels are
+ *   not speakers (run the whole recording), `none` when every box is off.
+ *   `waiting` while there is a list and the count is not read yet: the list
+ *   may be another recording's (useMediaOperations reads it as absent once
+ *   the count says so), so no channel is listed and a run waits.
  */
-export function useChosenChannels(speakers) {
+export function useChosenChannels(stored, count) {
+  const waiting = !!stored && count == null;
+  const speakers = waiting ? null : stored;
   const list = useMemo(
     () =>
       speakers
@@ -41,5 +47,5 @@ export function useChosenChannels(speakers) {
   const chosen = speakers
     ? list.filter((c) => on.has(c.channel)).map(({ channel, speaker }) => ({ channel, speaker }))
     : null;
-  return { list, on, toggle, chosen, none: !!speakers && on.size === 0 };
+  return { list, on, toggle, chosen, none: !!speakers && on.size === 0, waiting };
 }

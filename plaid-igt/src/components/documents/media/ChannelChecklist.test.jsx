@@ -15,8 +15,8 @@ afterEach(async () => {
   view = null;
 });
 
-const Probe = ({ speakers }) => {
-  const channels = useChosenChannels(speakers);
+const Probe = ({ speakers, count = speakers?.length }) => {
+  const channels = useChosenChannels(speakers, count);
   useEffect(() => {
     api = channels;
   });
@@ -48,10 +48,24 @@ describe('ChannelChecklist', () => {
     expect(api.none).toBe(true);
   });
 
+  // REV-MIX-C-2: a list a History restore brought back may be another
+  // recording's, and only the channel count tells. Until it is read the
+  // dialog listed the list's channels, ticked and runnable.
+  it('lists nothing and waits while the channel count of a recording with a list is not known', async () => {
+    view = await renderComponent(<Probe speakers={['Old A', 'Old B']} count={null} />);
+    expect(view.container.querySelector('[data-channel-checklist]')).toBeNull();
+    expect(api.waiting).toBe(true);
+    await view.rerender(<Probe speakers={['Old A', 'Old B']} count={2} />);
+    expect(view.container.querySelectorAll('input[type=checkbox]')).toHaveLength(2);
+    expect(api.waiting).toBe(false);
+    expect(api.chosen).toHaveLength(2);
+  });
+
   it('renders nothing when the channels are not speakers', async () => {
     view = await renderComponent(<Probe speakers={null} />);
     expect(view.container.querySelector('[data-channel-checklist]')).toBeNull();
     expect(api.chosen).toBeNull();
     expect(api.none).toBe(false);
+    expect(api.waiting).toBe(false);
   });
 });
