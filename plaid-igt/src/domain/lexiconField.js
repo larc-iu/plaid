@@ -79,6 +79,7 @@ export function proposeLexiconField(field, choices) {
   );
   return hit?.key ?? null;
 }
+
 /**
  * The entry role each entry field key holds, `{key: role}`: the role the
  * given vocabularies (each `{ config }`) declare for it (none when declared

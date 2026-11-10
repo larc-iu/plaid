@@ -12,11 +12,10 @@ import { trimIgnoredEdges } from '@/domain/igtConfig';
 import { morphFormOf, numHtml } from './shared.js';
 
 // The pair picker: a morpheme's link and value picked together. Alt+Down on a
-// morpheme field with a Lexicon field (alternatives.js; domain/lexiconField.js)
-// and a click on its lexicon chip
-// (vocabPopover.js) list the same rows (domain/pairRows.js), drawn by one
-// template, and a pick from either goes through one path (_pickPairRow) to one
-// batch (IgtDocument.setMorphemePair).
+// morpheme field with a Lexicon field (alternatives.js, domain/lexiconField.js)
+// and a click on its lexicon chip (vocabPopover.js) list the same rows
+// (domain/pairRows.js), drawn by one template, and a pick from either goes
+// through one path (_pickPairRow) to one batch (IgtDocument.setMorphemePair).
 export const pairPicker = {
   // Every vocabulary as the picker reads it. Asked once per paired cell per
   // render, so it answers at once while the data has not changed. After a

@@ -350,11 +350,11 @@ export function pairRows({
 
   let list = [...rows.values()];
   // From the chip, a sense over a value a person wrote (a contributor
-  // included) or confirmed links and keeps that value, when the value is the person's own rather than the one
-  // that goes with the current link (the linked sense's own, or its
-  // producer's for that entry): a value that only went with the old sense
-  // moves with the pick. The row shows the value it keeps, and the sense's
-  // own value as `senseValue`.
+  // included) or confirmed links and keeps that value, when the value is the
+  // person's own rather than the one that goes with the current link (the
+  // linked sense's own, or its producer's for that entry): a value that only
+  // went with the old sense moves with the pick. The row shows the value it
+  // keeps, and the sense's own value as `senseValue`.
   const lexiconValue = (id) => {
     const hit = id ? byId.get(id) : null;
     return hit ? senseValue(hit.item) : '';

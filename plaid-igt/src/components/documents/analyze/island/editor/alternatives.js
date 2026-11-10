@@ -10,11 +10,13 @@ import { keys } from '@/lib/keymap.js';
 // are the pair picker's (pairPicker.js), each a sense and a value, and a pick
 // writes both.
 export const alternatives = {
-  // seen for the form (domain/glossGuess.js listAlternatives), ranked, with
-  // its provenance. ↑↓ move, ↵ picks, Esc closes, typing narrows. A pick goes
-  // through the guess-adoption path (data-guess-* + blur-commit), so it is
-  // written born-verified with the row's source, exactly like adopting a
-  // placeholder guess; the cell keeps focus.
+  // Open the list on a cell: the values seen for its form
+  // (domain/glossGuess.js listAlternatives) or the pair picker's rows, ranked,
+  // each with its provenance. ↑↓ move, ↵ picks, Esc closes, typing narrows. A
+  // pick rides to the cell's commit on the element (`igtPick`, read by
+  // cells.js _commitField), so a suggestion picked into an empty cell is
+  // written born-verified with the row's source, as an adopted placeholder
+  // guess is. The cell keeps focus.
   // `asked`: the person asked for the list (Alt+Down), as opposed to a
   // governed cell opening it on focus. Moving in a list asks for it too, and
   // typing in the cell takes it back (cells.js _onFieldInput), so Enter
