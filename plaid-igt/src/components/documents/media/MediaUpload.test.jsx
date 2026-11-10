@@ -381,7 +381,11 @@ describe('MediaUpload', () => {
   it('one file on Per speaker asks a speaker per channel, with no mix', async () => {
     const onUpload = vi.fn();
     const r = await renderComponent(
-      <MediaUpload onUpload={onUpload} isUploading={false} readChannels={async () => 2} />,
+      <MediaUpload
+        onUpload={onUpload}
+        isUploading={false}
+        readFile={async () => ({ channels: 2, convert: false })}
+      />,
     );
     await perSpeaker(r);
     await chooseAll(r, [fileOf(2 * MB, 'interview.wav', 'audio/wav')]);

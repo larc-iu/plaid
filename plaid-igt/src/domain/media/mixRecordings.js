@@ -10,7 +10,15 @@
 
 import { readSampleRate } from './mediaSampleRate.js';
 import { readWavInfo } from './wavAdpcm.js';
-import { FALLBACK_RATE, emptyWav, mixName, mixRate, mixSeconds, writeChannel } from './mixdown.js';
+import {
+  FALLBACK_RATE,
+  emptyWav,
+  mixName,
+  mixRate,
+  mixSeconds,
+  wavName,
+  writeChannel,
+} from './mixdown.js';
 
 const OfflineCtx = () =>
   typeof window !== 'undefined' && (window.OfflineAudioContext || window.webkitOfflineAudioContext);
@@ -49,18 +57,37 @@ export async function readTrack(file, { signal } = {}) {
 }
 
 /**
- * How many channels `file` has: off a WAV's header without decoding it, else
- * from the browser's decode. Throws when the file is not decodable audio.
+ * One file chosen alone with a speaker per channel. A WAV (read off its
+ * header, not decoded) and a video are uploaded as they are:
+ * `{ channels, convert: false }`. Any other recording is made a WAV with the
+ * same channels first (`keptChannelsWav`): readTrack's
+ * `{ name, sampleRate, channels, seconds }` with `convert: true`.
+ * Throws when the file is not decodable audio.
  */
-export async function readChannelCount(file) {
+export async function readChannelFile(file, { signal } = {}) {
   const read = async (from, to) =>
     new Uint8Array(await file.slice(from, Math.min(to, file.size)).arrayBuffer());
   const info = await readWavInfo(read, file.size).catch(() => null);
-  if (info?.channels > 0) return info.channels;
-  const Ctx = OfflineCtx();
-  if (!Ctx) throw new Error('This browser has no OfflineAudioContext.');
-  const decoded = await new Ctx(1, 1, FALLBACK_RATE).decodeAudioData(await file.arrayBuffer());
-  return decoded.numberOfChannels;
+  if (info?.channels > 0) return { channels: info.channels, convert: false };
+  if (file.type?.startsWith('video/')) {
+    const channels = await withDecoded(file, FALLBACK_RATE, signal, (d) => d.numberOfChannels);
+    return { channels, convert: false };
+  }
+  return { ...(await readTrack(file, { signal })), convert: true };
+}
+
+/**
+ * A file read by `readChannelFile` (with its `file`) as a WAV File of the same
+ * channels, channel n of the file in channel n of the WAV, at the rate of
+ * `quality` as a mix takes it. Decoded once and written straight in.
+ */
+export async function keptChannelsWav(track, { quality = 'full', signal } = {}) {
+  const rate = mixRate([track], quality);
+  const bytes = emptyWav(track.channels, Math.ceil(track.seconds * rate), rate);
+  await withDecoded(track.file, rate, signal, (decoded) => {
+    for (let c = 0; c < track.channels; c += 1) writeChannel(bytes, c, [decoded.getChannelData(c)]);
+  });
+  return new File([bytes], wavName(track.file.name), { type: 'audio/wav' });
 }
 
 /**

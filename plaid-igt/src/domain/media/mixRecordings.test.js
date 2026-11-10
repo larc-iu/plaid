@@ -1,10 +1,11 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { mixBytes } from './mixdown.js';
+import { keptChannelsBytes, mixBytes } from './mixdown.js';
 import { encodeWav } from './wavFixture.js';
-import { mixTracks, readChannelCount, readTrack } from './mixRecordings.js';
+import { keptChannelsWav, mixTracks, readChannelFile, readTrack } from './mixRecordings.js';
 
-// How many channels a single file has, for a file with a speaker per channel:
-// off a WAV's header without decoding it, else from the browser's decode.
+// One file with a speaker per channel: a WAV's channels off its header
+// without decoding it, a video's from the decoder, both uploaded as they are,
+// and any other recording read as a track to be made a WAV.
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -20,32 +21,50 @@ const wavOf = (channels) =>
     { type: 'audio/wav' },
   );
 
-describe('readChannelCount', () => {
-  it('reads a WAV header without decoding', async () => {
+describe('readChannelFile', () => {
+  it('reads a WAV header without decoding, and keeps the WAV as it is', async () => {
     const decodeAudioData = vi.fn();
     vi.stubGlobal('window', {
       OfflineAudioContext: class {
         decodeAudioData = decodeAudioData;
       },
     });
-    expect(await readChannelCount(wavOf(1))).toBe(1);
-    expect(await readChannelCount(wavOf(2))).toBe(2);
-    expect(await readChannelCount(wavOf(4))).toBe(4);
+    expect(await readChannelFile(wavOf(1))).toEqual({ channels: 1, convert: false });
+    expect(await readChannelFile(wavOf(2))).toEqual({ channels: 2, convert: false });
+    expect(await readChannelFile(wavOf(4))).toEqual({ channels: 4, convert: false });
     expect(decodeAudioData).not.toHaveBeenCalled();
   });
 
-  it('asks the decoder for anything else', async () => {
+  it('keeps a video as it is', async () => {
     vi.stubGlobal('window', {
       OfflineAudioContext: class {
         async decodeAudioData() {
-          return { numberOfChannels: 3 };
+          return { numberOfChannels: 2 };
+        }
+      },
+    });
+    const video = new File([new Uint8Array(8)], 'talk.mp4', { type: 'video/mp4' });
+    expect(await readChannelFile(video)).toEqual({ channels: 2, convert: false });
+  });
+
+  it('reads any other recording as a track to be made a WAV', async () => {
+    vi.stubGlobal('window', {
+      OfflineAudioContext: class {
+        async decodeAudioData() {
+          return { numberOfChannels: 3, sampleRate: 48000, duration: 2 };
         }
       },
     });
     const mp3 = new File([new Uint8Array([0xff, 0xfb, 0x90, 0x00, 0, 0, 0, 0])], 'rec.mp3', {
       type: 'audio/mpeg',
     });
-    expect(await readChannelCount(mp3)).toBe(3);
+    expect(await readChannelFile(mp3)).toEqual({
+      name: 'rec.mp3',
+      channels: 3,
+      sampleRate: 48000,
+      seconds: 2,
+      convert: true,
+    });
   });
 });
 
@@ -180,5 +199,43 @@ describe('mixTracks', () => {
     await finish();
     expect((await mixing)?.name).toBe('AbortError');
     expect(events).toEqual(['start ana:0.5 @16000', 'decoded ana:0.5']);
+  });
+});
+
+describe('keptChannelsWav', () => {
+  const pcm = (bytes, at) => new DataView(bytes.buffer).getInt16(at, true);
+
+  it('writes each channel of the file to the same channel of a WAV, at the rate asked', async () => {
+    const events = [];
+    const finish = stubDecoder(events);
+    // Two channels: channel 1 is 0.5, channel 2 is 0.
+    const track = { file: audio('talk.mp3:0.5:2'), channels: 2, seconds: 1, sampleRate: 44100 };
+    const making = keptChannelsWav(track, { quality: 'small' });
+    await finish();
+    const file = await making;
+    expect(events).toEqual(['start talk.mp3:0.5:2 @16000', 'decoded talk.mp3:0.5:2']);
+    expect(file.name).toBe('talk.wav');
+    expect(file.type).toBe('audio/wav');
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    expect(bytes.length).toBe(keptChannelsBytes(track, 'small'));
+    const view = new DataView(bytes.buffer);
+    expect(view.getUint16(22, true)).toBe(2);
+    expect(view.getUint32(24, true)).toBe(16000);
+    expect(pcm(bytes, 44)).toBe(Math.round(0.5 * 32767));
+    expect(pcm(bytes, 46)).toBe(0);
+    expect(pcm(bytes, 44 + 15999 * 4)).toBe(Math.round(0.5 * 32767));
+    expect(pcm(bytes, 44 + 15999 * 4 + 2)).toBe(0);
+  });
+
+  it("keeps the file's own rate at full quality", async () => {
+    const events = [];
+    const finish = stubDecoder(events);
+    const track = { file: audio('talk.mp3:0.5:2'), channels: 2, seconds: 1, sampleRate: 44100 };
+    const making = keptChannelsWav(track);
+    await finish();
+    const file = await making;
+    expect(events[0]).toBe('start talk.mp3:0.5:2 @44100');
+    expect(file.size).toBe(keptChannelsBytes(track, 'full'));
+    expect(file.size).toBe(44 + 44100 * 4);
   });
 });

@@ -41,19 +41,33 @@ export function mixRate(tracks, quality) {
 export const wavHeaderBytes = (channels) =>
   channels > 2 ? EXTENSIBLE_HEADER_BYTES : PCM_HEADER_BYTES;
 
+const wavBytes = (channels, frames) =>
+  channels ? wavHeaderBytes(channels) + frames * channels * 2 : 0;
+
 /** How many bytes the mix comes to, before it is made. */
 export function mixBytes(tracks, quality) {
   const channels = (tracks || []).length;
-  if (!channels) return 0;
-  const frames = Math.ceil(mixSeconds(tracks) * mixRate(tracks, quality));
-  return wavHeaderBytes(channels) + frames * channels * 2;
+  return wavBytes(channels, Math.ceil(mixSeconds(tracks) * mixRate(tracks, quality)));
 }
+
+/**
+ * How many bytes one file (`{channels, seconds, sampleRate}`) comes to as a
+ * WAV at a quality, with every channel kept as it is.
+ */
+export function keptChannelsBytes({ channels, seconds, sampleRate }, quality) {
+  const rate = mixRate([{ sampleRate }], quality);
+  return wavBytes(channels, Math.ceil((Number(seconds) || 0) * rate));
+}
+
+const stem = (name) => String(name || '').replace(/\.[^./\\]*$/, '') || 'recording';
 
 /** The mix's file name: the first file's, said to be mixed. */
 export function mixName(firstName, count) {
-  const stem = String(firstName || 'recording').replace(/\.[^./\\]*$/, '');
-  return `${stem || 'recording'} (mixed, ${count} speakers).wav`;
+  return `${stem(firstName)} (mixed, ${count} speakers).wav`;
 }
+
+/** A file's name once it is a WAV: "talk.mp3" is "talk.wav". */
+export const wavName = (name) => `${stem(name)}.wav`;
 
 const clamp16 = (v) => {
   const n = Math.round(v * 32767);

@@ -26,8 +26,9 @@ import { ChannelSpeakersDialog } from './ChannelSpeakersDialog.jsx';
 // none is mixed or left out unasked. Per speaker takes several files, one per
 // speaker, which go through the mix dialog and come out as one recording with
 // a channel each (MixRecordingsDialog), or one file made elsewhere with a
-// speaker per channel, uploaded as it is once its speakers are named
-// (ChannelSpeakersDialog).
+// speaker per channel (ChannelSpeakersDialog), uploaded once its speakers are
+// named: a WAV or a video as it is, any other recording as a WAV of the same
+// channels.
 export const MediaUpload = ({
   onUpload,
   isUploading,
@@ -41,8 +42,8 @@ export const MediaUpload = ({
   prepareOptions = undefined,
   // The mix dialog's decoder, for a test to say what the browser hears.
   decodeTrack = undefined,
-  // The channel count of one file under Per speaker, for a test.
-  readChannels = undefined,
+  // What one file under Per speaker holds, for a test (readChannelFile).
+  readFile = undefined,
 }) => {
   const inputRef = useRef(null);
   // A large file waits here for the choice between sending it and converting
@@ -289,7 +290,7 @@ export const MediaUpload = ({
         onOpenChange={(next) => !next && setChannelFile(null)}
         knownSpeakers={knownSpeakers}
         maxBytes={maxBytes}
-        {...(readChannels ? { readChannels } : {})}
+        {...(readFile ? { readFile } : {})}
         onUpload={(file, options) => {
           setChannelFile(null);
           onUpload(file, options);

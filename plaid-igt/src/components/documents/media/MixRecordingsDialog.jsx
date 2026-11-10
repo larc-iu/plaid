@@ -13,8 +13,9 @@ import { Progress } from '@ui/components/ui/progress';
 import { formatBytes } from '@/utils/formatBytes';
 import { notifyError } from '@/utils/feedback';
 import { readTrack, mixTracks } from '@/domain/media/mixRecordings';
-import { SMALL_RATE, mixBytes, mixRate, trackNote } from '@/domain/media/mixdown';
+import { mixBytes, mixRate, trackNote } from '@/domain/media/mixdown';
 import { formatTime } from './formatTime.js';
+import { QualityChoice } from './QualityChoice.jsx';
 
 // Several files chosen at once, one per speaker, become one recording with a
 // channel each. The dialog lists the files as they are read, takes a speaker
@@ -25,11 +26,6 @@ import { formatTime } from './formatTime.js';
 // `decode` is readTrack unless a test says what the browser hears.
 
 const SPEAKER_LIST_ID = 'mix-speaker-options';
-
-const QUALITIES = [
-  ['full', (rate) => (rate ? `Full quality (${Math.round(rate / 100) / 10} kHz)` : 'Full quality')],
-  ['small', () => `Smaller (${SMALL_RATE / 1000} kHz)`],
-];
 
 export function MixRecordingsDialog({
   files,
@@ -92,9 +88,6 @@ export function MixRecordingsDialog({
   const bytesOf = (q) => (plan ? mixBytes(plan, q) : null);
   const bytes = bytesOf(quality);
   const overLimit = maxBytes != null && bytes != null && bytes > maxBytes;
-  // Files already at the smaller rate or below have nothing to gain from it,
-  // so only the full quality is offered.
-  const qualities = plan && mixRate(plan, 'full') <= SMALL_RATE ? QUALITIES.slice(0, 1) : QUALITIES;
 
   const setTrack = (i, patch) =>
     setTracks((prev) => prev.map((t, k) => (k === i ? { ...t, ...patch } : t)));
@@ -191,26 +184,14 @@ export function MixRecordingsDialog({
             Offset: silence before the file, in seconds. Negative trims its start.
           </p>
 
-          <div role="radiogroup" aria-label="Quality" className="flex flex-col gap-1 text-sm">
-            {qualities.map(([value, label]) => (
-              <label key={value} className="flex cursor-pointer items-center gap-2">
-                <input
-                  type="radio"
-                  name="mix-quality"
-                  value={value}
-                  checked={quality === value}
-                  disabled={!!mixing}
-                  onChange={() => setQuality(value)}
-                />
-                <span>{label(plan ? mixRate(plan, 'full') : null)}</span>
-                {bytesOf(value) != null && (
-                  <span className="text-xs text-muted-foreground">
-                    · {formatBytes(bytesOf(value), { against: maxBytes })}
-                  </span>
-                )}
-              </label>
-            ))}
-          </div>
+          <QualityChoice
+            value={quality}
+            onChange={setQuality}
+            fullRate={plan ? mixRate(plan, 'full') : null}
+            bytesOf={bytesOf}
+            maxBytes={maxBytes}
+            disabled={!!mixing}
+          />
 
           {overLimit && (
             <p className="text-xs font-medium text-destructive">
