@@ -8,6 +8,7 @@ import { conversionNeed, conversionNote, estimateMp3Bytes } from '@/domain/media
 import { readDuration } from '@/domain/media/mediaDuration';
 import { readyRecordings } from '@/utils/readyRecordings';
 import { SegmentedControl } from '@ui/components/shared/SegmentedControl.jsx';
+import { SaveStatus } from '@ui/components/shared/SaveStatus.jsx';
 import { MixRecordingsDialog } from './MixRecordingsDialog.jsx';
 import { ChannelSpeakersDialog } from './ChannelSpeakersDialog.jsx';
 
@@ -16,6 +17,9 @@ import { ChannelSpeakersDialog } from './ChannelSpeakersDialog.jsx';
 // the file and the document reloads with it. `progress` is
 // `{ name, loaded, total }` while an upload is in flight, else null, and
 // `convertProgress` is `{ name, fraction }` while a recording is converted.
+// `saves` is the document, whose write queue sends the upload: an upload whose
+// answer was lost goes again from the first byte until the server answers,
+// and the card says so under the bar, as the save pills do (SaveStatus).
 //
 // The card has two modes, a view setting kept nowhere. Single (the default)
 // takes one file, and several are refused with a note naming the switch, so
@@ -29,6 +33,7 @@ export const MediaUpload = ({
   isUploading,
   progress = null,
   convertProgress = null,
+  saves = null,
   maxBytes = null,
   readOnly = false,
   knownSpeakers = [],
@@ -205,6 +210,11 @@ export const MediaUpload = ({
                   ? 'Checking the file and saving it.'
                   : `${formatBytes(sent)} of ${formatBytes(total)}`}
               </p>
+              {saves && (
+                <span className="self-start">
+                  <SaveStatus doc={saves} />
+                </span>
+              )}
             </div>
           ) : pending ? (
             <div className="flex w-[28rem] max-w-full flex-col gap-3">

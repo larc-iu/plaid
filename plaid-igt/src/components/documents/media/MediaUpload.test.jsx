@@ -243,6 +243,31 @@ describe('MediaUpload', () => {
     await r.unmount();
   });
 
+  // An upload whose answer was lost goes again from the first byte, until the
+  // server answers (H7-3). The card says so, in the words the save pills use,
+  // rather than a bar that silently starts over.
+  it('says it cannot reach the server while the upload is being sent again', async () => {
+    const saves = (offline) => ({
+      isSaving: true,
+      isOffline: offline,
+      subscribe: () => () => {},
+      getSnapshot: () => (offline ? 1 : 0),
+    });
+    const card = (offline) => (
+      <MediaUpload
+        onUpload={vi.fn()}
+        isUploading
+        progress={{ name: 'talk.wav', loaded: 250, total: 1000 }}
+        saves={saves(offline)}
+      />
+    );
+    const r = await renderComponent(card(false));
+    expect(r.container.textContent).not.toContain('retrying');
+    await r.rerender(card(true));
+    expect(r.container.textContent).toContain("Can't reach the server, retrying");
+    await r.unmount();
+  });
+
   it('pulses without a number once every byte is up and the server is at work', async () => {
     const r = await renderComponent(
       <MediaUpload

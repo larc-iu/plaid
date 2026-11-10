@@ -37,6 +37,7 @@ export function DocumentMedia() {
           onUpload={mediaOps.handleMediaUpload}
           isUploading={mediaOps.isUploading}
           progress={mediaOps.uploadProgress}
+          saves={doc}
           convertProgress={mediaOps.convertProgress}
           maxBytes={limits?.mediaFileBytes ?? null}
           readOnly={readOnly}
