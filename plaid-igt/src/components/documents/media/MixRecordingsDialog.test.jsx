@@ -225,6 +225,23 @@ describe('MixRecordingsDialog', () => {
     expect(reading).toHaveBeenCalledTimes(1);
   });
 
+  // The last file is written in one go on the main thread, so a click on
+  // Cancel made meanwhile is still waiting when the mix ends: it has to be
+  // let in before the mix is uploaded.
+  it('a Cancel pressed as the mix ends stops it, and nothing is uploaded', async () => {
+    const onUpload = vi.fn();
+    const mixed = new File(['wav'], 'mixed.wav', { type: 'audio/wav' });
+    mixTracks.mockImplementation(async () => {
+      setTimeout(() => button('Cancel').click(), 0);
+      return mixed;
+    });
+    await mount({ onUpload });
+    await view.step(() => button('Upload').click());
+    await settled();
+    expect(onUpload).not.toHaveBeenCalled();
+    expect(button('Upload').disabled).toBe(false);
+  });
+
   it('closing while it mixes stops the mix, and nothing is uploaded', async () => {
     const onUpload = vi.fn();
     let options;

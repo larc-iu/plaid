@@ -219,6 +219,30 @@ describe('ChannelSpeakersDialog', () => {
     },
   );
 
+  it('a Cancel pressed as the conversion ends stops it, and nothing is uploaded', async () => {
+    const onUpload = vi.fn();
+    const wav = new File(['w'], 'talk.wav', { type: 'audio/wav' });
+    const makeWav = vi.fn(async () => {
+      setTimeout(() => button('Cancel').click(), 0);
+      return wav;
+    });
+    view = await renderComponent(
+      <ChannelSpeakersDialog
+        open
+        file={mp3()}
+        onOpenChange={() => {}}
+        onUpload={onUpload}
+        readFile={async () => mp3Read}
+        makeWav={makeWav}
+      />,
+    );
+    await settled();
+    await view.step(() => button('Upload').click());
+    await settled();
+    expect(makeWav).toHaveBeenCalledTimes(1);
+    expect(onUpload).not.toHaveBeenCalled();
+  });
+
   it('checks the WAV against the server limit, not the file chosen', async () => {
     const onUpload = vi.fn();
     view = await renderComponent(

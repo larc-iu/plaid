@@ -97,6 +97,9 @@ export function ChannelSpeakersDialog({
     convertAbort.current = abort;
     try {
       const wav = await makeWav({ ...read, file }, { quality, signal: abort.signal });
+      // The WAV is written in one go on the main thread, so a click on Cancel
+      // made meanwhile is still waiting: it is let in before the check.
+      await new Promise((done) => setTimeout(done));
       if (abort.signal.aborted) return;
       onOpenChange(false);
       onUpload(wav, { channelSpeakers });

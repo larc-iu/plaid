@@ -114,6 +114,9 @@ export function MixRecordingsDialog({
           onProgress: (index, total) => setMixing({ index, total }),
         },
       );
+      // The last file is written in one go on the main thread, so a click on
+      // Cancel made meanwhile is still waiting: it is let in before the check.
+      await new Promise((done) => setTimeout(done));
       if (abort.signal.aborted) return;
       const channelSpeakers = tracks.map((t) => t.speaker.trim());
       onOpenChange(false);
