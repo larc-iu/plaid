@@ -68,3 +68,31 @@ test('a count that is not a whole number is no count at all', () => {
   assert.equal(parseNotice({ parsedSentences: null }).level, 'warning');
   assert.equal(parseNotice({ parsedSentences: 1.5 }).level, 'warning');
 });
+
+// A second parse of a document nobody touched parses every sentence and finds
+// each as it is stored, so nothing is written: that is not "Parsed N".
+test('a run whose sentences all parse as stored says the document is not modified', () => {
+  assert.deepEqual(
+    parseNotice({ parsedSentences: 10, skippedSentences: 0, unchangedSentences: 10 }),
+    {
+      level: 'warning',
+      title: 'Document not modified',
+      message: 'All 10 sentences parse as they are stored.',
+    },
+  );
+  assert.equal(
+    parseNotice({ parsedSentences: 1, unchangedSentences: 1 }).message,
+    '1 sentence parses as it is stored.',
+  );
+  assert.equal(
+    parseNotice({ parsedSentences: 9, skippedSentences: 1, unchangedSentences: 9 }).message,
+    'All 9 sentences parse as they are stored. Kept 1 sentence with a person’s annotations.',
+  );
+});
+
+test('a run that changed some sentences still says how many it parsed', () => {
+  assert.equal(
+    parseNotice({ parsedSentences: 10, unchangedSentences: 8 }).title,
+    'Parsed 10 sentences',
+  );
+});

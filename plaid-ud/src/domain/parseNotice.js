@@ -1,5 +1,6 @@
 // What to say about a finished parse, from the counts the service reports
-// (the core manual, "Service results"): `parsedSentences`, and
+// (the core manual, "Service results"): `parsedSentences`,
+// `unchangedSentences`, those of them that parsed as they are stored, and
 // `skippedSentences`, the sentences kept because a person made or verified
 // annotations in them. `reason: 'no-text'` is a document with no text.
 //
@@ -20,6 +21,19 @@ export const parseNotice = (summary) => {
   }
   const parsed = count(summary?.parsedSentences);
   const skipped = count(summary?.skippedSentences);
+  // Every sentence the run parsed came out as it is stored, so it wrote
+  // nothing (`unchangedSentences`, counted among the parsed).
+  if (parsed > 0 && count(summary?.unchangedSentences) >= parsed) {
+    return {
+      level: 'warning',
+      title: 'Document not modified',
+      message:
+        (parsed === 1
+          ? '1 sentence parses as it is stored.'
+          : `All ${countOf(parsed, 'sentence')} parse as they are stored.`) +
+        (skipped ? ` Kept ${countOf(skipped, 'sentence')} with a person’s annotations.` : ''),
+    };
+  }
   if (parsed > 0) {
     return {
       level: 'success',

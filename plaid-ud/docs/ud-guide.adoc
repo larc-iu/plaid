@@ -235,7 +235,7 @@ Every sentence carries `sent_id`, CoNLL-U's own identifier for it.
 Other fields are a maintainer's choice, under **Settings → UD settings**. A free translation is conventionally `text_en`, naming its language.
 Fields save as you leave them, and clearing one removes it.
 On export, sentence fields are written above their sentence, as `# sent_id = ...` or `# text_en = ...`.
-A sentence with no `sent_id`, such as one made by a split, is given one on export: the document's name with an underscore for each space, then its number, as in `Field_notes-3`.
+A sentence with no `sent_id`, such as one made by a split, is given one on export: the document's name with an underscore for each space or slash, then its number, as in `Field_notes-3`.
 
 == Text Direction
 

@@ -140,3 +140,16 @@ test('a made-up sent_id has underscores where the name has spaces', () => {
     'kept as stored',
   ]);
 });
+
+// UD's validator refuses a slash in a sent_id as it refuses a space, so a
+// made-up id takes an underscore for it too.
+test('a made-up sent_id has an underscore where the name has a slash', () => {
+  const out = buildConllu({
+    name: 'field notes 3/4',
+    layerInfo: { isConfigured: true },
+    sentences: [sentence([tok(1)])],
+  });
+  const lines = out.split('\n');
+  assert.equal(lines[0], '# newdoc id = field notes 3/4');
+  assert.ok(lines.includes('# sent_id = field_notes_3_4-1'));
+});

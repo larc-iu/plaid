@@ -150,7 +150,7 @@ export function buildConllu({ name, layerInfo: info, sentences: sentenceData }) 
       .filter((id) => id != null && id !== '')
       .map(flat),
   );
-  const idBase = docName.replace(/\s+/gu, '_');
+  const idBase = docName.replace(/[\s/]+/gu, '_');
   const freshId = (n) => {
     let k = n;
     while (usedIds.has(`${idBase}-${k}`)) k += 1;
