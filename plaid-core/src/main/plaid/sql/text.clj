@@ -180,7 +180,11 @@
         (when-let [spec (some->> (:text/tokenize-layer attrs) (tokenize-spec tx layer))]
           (doseq [{:token/keys [begin end]} (tokenize-words spec stored [[0 (cp/cp-count stored)]] [])]
             (crud/insert! tx :tokens {:id (psc/new-uuid) :text_id new-id :token_layer_id (:layer spec)
-                                      :document_id document :begin begin :end_ end})))
+                                      :document_id document :begin begin :end_ end}))
+          ;; judged at the end of the transaction as a save's words are
+          ;; (`finish-partitions!`)
+          (when-let [pending psaw/*pending*]
+            (swap! pending vary-meta update ::saved-texts (fnil conj #{}) new-id)))
         (when (seq metadata-map)
           (metadata/insert-metadata! tx "text" new-id metadata-map))
         new-id)))))

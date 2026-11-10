@@ -289,3 +289,48 @@
     (is (= [] (words-of words)))
     (is (= [] (words-of phrases)))
     (is (= "" (:body (psc/q1 db {:select [:body] :from [:texts] :where [:= :id text]}))))))
+
+(deftest a-text-created-naming-the-word-layer-with-no-sentences-gets-one-sentence
+  ;; FB-41: the create is a save like the others, so the words it makes
+  ;; under a partition that holds no token get one sentence over the body
+  (let [{:keys [proj tl words sentences]} (setup "")
+        doc2 (create-test-document admin-request proj "Doc2")]
+    (assert-created (api-call admin-request {:method :post :path "/api/v1/texts"
+                                             :body {:text-layer-id tl :document-id doc2
+                                                    :body "one two.\nthree" :tokenize-layer words}}))
+    (is (= [[0 14]] (sentences-of sentences)))
+    (is (= [[0 3] [4 7] [9 14]] (words-of words)))
+    (testing "core's own token routes take the words"
+      (let [w (psc/q1 db {:select [:id :end_] :from [:tokens] :where [:= :token_layer_id words]
+                          :order-by [[:begin :asc]]})]
+        (assert-ok (update-token admin-request (:id w) :end (:end_ w)))))))
+
+(deftest a-batch-that-creates-the-text-and-then-its-sentences-makes-them-itself
+  (let [{:keys [proj tl words sentences]} (setup "")
+        doc2 (create-test-document admin-request proj "Doc2")
+        text-id (str (psc/new-uuid))
+        res (api-call admin-request {:method :post :path "/api/v1/batch"
+                                     :body [{:path "/api/v1/texts" :method "post"
+                                             :body {:id text-id :text-layer-id tl :document-id doc2
+                                                    :body "cat\ndog" :tokenize-layer words}}
+                                            {:path "/api/v1/tokens/bulk" :method "post"
+                                             :body [{:token-layer-id sentences :text text-id :begin 0 :end 4}
+                                                    {:token-layer-id sentences :text text-id :begin 4 :end 7}]}]})]
+    (assert-ok res)
+    (is (= [[0 4] [4 7]] (sentences-of sentences)))
+    (is (= [[0 3] [4 7]] (words-of words)))))
+
+(deftest a-text-created-with-a-word-under-an-empty-parent-that-is-no-partition-is-refused
+  (let [proj (create-test-project admin-request "TokProj")
+        doc (create-test-document admin-request proj "Doc")
+        tl (-> (create-text-layer admin-request proj "TL") :body :id)
+        phrases (-> (create-token-layer-opts admin-request tl "Phrases" {:overlap-mode "non-overlapping"}) :body :id)
+        words (-> (create-token-layer-opts admin-request tl "Words" {:overlap-mode "non-overlapping"
+                                                                     :parent-token-layer-id phrases})
+                  :body :id)
+        res (api-call admin-request {:method :post :path "/api/v1/texts"
+                                     :body {:text-layer-id tl :document-id doc :body "aa bb" :tokenize-layer words}})]
+    (assert-status 409 res)
+    (is (re-find #"Words" (str (-> res :body :error))))
+    (is (= [] (words-of words)))
+    (is (nil? (psc/q1 db {:select [:id] :from [:texts] :where [:= :document_id doc]})))))

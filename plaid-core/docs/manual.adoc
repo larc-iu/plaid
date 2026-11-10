@@ -1010,6 +1010,7 @@ A stretch no token of the layer covers is cut into words at whitespace and at pu
 Punctuation here is the built-in tokenizer's break class, read from the same Unicode 16 table, under the layer's `ignoredTokens` rule in the `plaid` namespace: a character the rule calls letter-like is part of a word, and under an explicit list only the listed characters part words.
 A word holding no typed character is not made, and neither is one the rule ignores or one holding a letter of a script written without spaces between words, such as Han, kana or Thai.
 The new words come in the answer's `reshape.tokens` with their `layer` and `text`.
+A new text's words are judged as a save's are, at the end of the request: under a `partitioning` layer that holds no token they get one token of it over the whole body, unless the request makes the partition itself, and a word left in no token of its parent layer is refused (409) with nothing stored.
 
 [,js]
 ----
