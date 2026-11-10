@@ -1,5 +1,6 @@
 import { isProvKey } from '../utils/provenanceUi.js';
 import { enhancedEdges, isSuppressor, serializeDeps } from './enhancedGraph.js';
+import { countOf } from '../../../plaid-ui/src/lib/plural.js';
 
 // CoNLL-U export: the sentence rows and the layer info in, the file out.
 //
@@ -51,8 +52,19 @@ const uncoveredText = (sentence) => {
   return out;
 };
 
-export function conlluLosses({ sentences } = {}) {
+export function conlluLosses({ sentences, sentenceTokens } = {}) {
   const out = [];
+  // A sentence that holds no tokens has no rows, so the file has no lines
+  // for it. `sentenceTokens` are the stored sentences, each row's own among them.
+  const kept = new Set((sentences || []).map((s) => s.sentenceToken?.id));
+  const empty = (sentenceTokens || []).filter((t) => !kept.has(t.id)).length;
+  if (empty) {
+    out.push(
+      `${countOf(empty, 'sentence')} ${empty === 1 ? 'holds' : 'hold'} no tokens and ` +
+        `${empty === 1 ? 'is' : 'are'} not in the file. Tokenize in the Text Editor to give ` +
+        `${empty === 1 ? 'it' : 'them'} tokens.`,
+    );
+  }
   (sentences || []).forEach((sentence, i) => {
     const gaps = uncoveredText(sentence);
     if (gaps.length) {

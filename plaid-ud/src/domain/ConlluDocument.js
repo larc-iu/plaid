@@ -2287,7 +2287,12 @@ export class ConlluDocument extends DocumentModel {
   // each. Cached with the text it is about.
   conlluLosses() {
     return this._derived('conlluLosses', () =>
-      this.layerInfo.isConfigured ? conlluLosses({ sentences: this.sentences }) : [],
+      this.layerInfo.isConfigured
+        ? conlluLosses({
+            sentences: this.sentences,
+            sentenceTokens: this.layerInfo.sentenceTokenLayer?.tokens,
+          })
+        : [],
     );
   }
 }
