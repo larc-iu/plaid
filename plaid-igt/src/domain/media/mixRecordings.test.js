@@ -4,8 +4,8 @@ import { encodeWav } from './wavFixture.js';
 import { keptChannelsWav, mixTracks, readChannelFile, readTrack } from './mixRecordings.js';
 
 // One file with a speaker per channel: a WAV's channels off its header
-// without decoding it, a video's from the decoder, both uploaded as they are,
-// and any other recording read as a track to be made a WAV.
+// without decoding it, uploaded as it is, and any other recording read as a
+// track to be made a WAV.
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -33,18 +33,6 @@ describe('readChannelFile', () => {
     expect(await readChannelFile(wavOf(2))).toEqual({ channels: 2, convert: false });
     expect(await readChannelFile(wavOf(4))).toEqual({ channels: 4, convert: false });
     expect(decodeAudioData).not.toHaveBeenCalled();
-  });
-
-  it('keeps a video as it is', async () => {
-    vi.stubGlobal('window', {
-      OfflineAudioContext: class {
-        async decodeAudioData() {
-          return { numberOfChannels: 2 };
-        }
-      },
-    });
-    const video = new File([new Uint8Array(8)], 'talk.mp4', { type: 'video/mp4' });
-    expect(await readChannelFile(video)).toEqual({ channels: 2, convert: false });
   });
 
   it('reads any other recording as a track to be made a WAV', async () => {

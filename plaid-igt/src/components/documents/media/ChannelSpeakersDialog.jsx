@@ -19,7 +19,8 @@ import { QualityChoice } from './QualityChoice.jsx';
 // One file chosen under Per speaker: a recording made elsewhere with a
 // speaker on each channel. Nothing is mixed. The dialog reads how many
 // channels the file has and takes a speaker for each (an entry may stay
-// empty). A WAV, or a video, goes up as it is with `channelSpeakers`. Any
+// empty). A WAV goes up as it is with `channelSpeakers`. A video never comes
+// here: the upload card refuses one under Per speaker. Any
 // other recording goes up as a WAV made here with the same channels, channel
 // n of the file in channel n of the WAV, at the quality chosen as a mix's is,
 // since a recording's channels can be taken apart for transcription only in

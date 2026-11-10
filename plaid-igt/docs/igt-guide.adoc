@@ -183,8 +183,9 @@ A mix the server would refuse is refused here, before anything is uploaded.
 A file made elsewhere with a speaker on each channel can be chosen alone under **Per speaker**.
 It is not mixed.
 **Speakers per channel** takes a speaker for each channel.
-A WAV or a video is uploaded as it is.
+A WAV is uploaded as it is.
 Any other file is uploaded as a WAV with the same channels, at **Full quality** or **Smaller** as a mix is, so the stored file is larger than the one chosen.
+A video chosen alone is refused: upload it under **Single**.
 
 A recording uploaded under **Per speaker** shows a **channel list** under the player.
 Each channel has its speaker, which you can change, and **Mute** and **Solo**, which only change what you hear.
@@ -192,7 +193,6 @@ Each channel has its speaker, which you can change, and **Mute** and **Solo**, w
 Speakers go on channels only at upload, so to have them back the recording is uploaded again.
 
 With the speakers filled in, the timeline draws one waveform lane per channel in the speaker's colour, speech detection and transcription list the channels so each runs on one channel alone, and every proposal and segment they make carries that channel's speaker.
-Transcription refuses the channels of a video.
 Two speakers' segments may overlap in time.
 
 The mix is made once, when the files are uploaded.

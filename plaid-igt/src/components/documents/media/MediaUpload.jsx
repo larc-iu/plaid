@@ -29,8 +29,9 @@ import { ChannelSpeakersDialog } from './ChannelSpeakersDialog.jsx';
 // speaker, which go through the mix dialog and come out as one recording with
 // a channel each (MixRecordingsDialog), or one file made elsewhere with a
 // speaker per channel (ChannelSpeakersDialog), uploaded once its speakers are
-// named: a WAV or a video as it is, any other recording as a WAV of the same
-// channels.
+// named: a WAV as it is, any other recording as a WAV of the same channels. A
+// video chosen alone there is refused, by its type, with a note naming Single.
+// Among several files it is mixed by its sound, as any file is.
 export const MediaUpload = ({
   onUpload,
   onCancel = null,
@@ -65,8 +66,8 @@ export const MediaUpload = ({
   const perSpeaker = mode === 'perSpeaker';
   // One file under Per speaker, waiting in the channel speakers dialog.
   const [channelFile, setChannelFile] = useState(null);
-  // Several files where one was expected.
-  const [tooMany, setTooMany] = useState(false);
+  // Why the files chosen were refused, said under the button, else null.
+  const [refusal, setRefusal] = useState(null);
 
   useEffect(() => {
     if (!pending) return undefined;
@@ -97,9 +98,13 @@ export const MediaUpload = ({
   const choose = async (pickedList) => {
     const picked = [...(pickedList || [])];
     if (!picked.length || isUploading || readOnly) return;
-    setTooMany(false);
+    setRefusal(null);
     if (picked.length > 1 && !perSpeaker) {
-      setTooMany(true);
+      setRefusal('One file at a time. For a file per speaker, switch to Per speaker.');
+      return;
+    }
+    if (picked.length === 1 && perSpeaker && picked[0].type?.startsWith('video/')) {
+      setRefusal('A video cannot be split by speaker. Switch to Single.');
       return;
     }
     let files;
@@ -149,7 +154,7 @@ export const MediaUpload = ({
             value={mode}
             onChange={(next) => {
               setMode(next);
-              setTooMany(false);
+              setRefusal(null);
             }}
             options={[
               { value: 'single', label: 'Single' },
@@ -266,9 +271,9 @@ export const MediaUpload = ({
                 <Upload className="h-4 w-4" />
                 {perSpeaker ? 'Choose media files' : 'Choose media file'}
               </Button>
-              {tooMany && (
+              {refusal && (
                 <p className="text-xs font-medium text-destructive" role="status">
-                  One file at a time. For a file per speaker, switch to Per speaker.
+                  {refusal}
                 </p>
               )}
             </div>

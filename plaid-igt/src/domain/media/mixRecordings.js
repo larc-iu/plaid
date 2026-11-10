@@ -57,9 +57,9 @@ export async function readTrack(file, { signal } = {}) {
 }
 
 /**
- * One file chosen alone with a speaker per channel. A WAV (read off its
- * header, not decoded) and a video are uploaded as they are:
- * `{ channels, convert: false }`. Any other recording is made a WAV with the
+ * One file chosen alone with a speaker per channel, never a video (the upload
+ * card refuses one). A WAV, read off its header and not decoded, is uploaded
+ * as it is: `{ channels, convert: false }`. Any other recording is made a WAV with the
  * same channels first (`keptChannelsWav`): readTrack's
  * `{ name, sampleRate, channels, seconds }` with `convert: true`.
  * Throws when the file is not decodable audio.
@@ -69,10 +69,6 @@ export async function readChannelFile(file, { signal } = {}) {
     new Uint8Array(await file.slice(from, Math.min(to, file.size)).arrayBuffer());
   const info = await readWavInfo(read, file.size).catch(() => null);
   if (info?.channels > 0) return { channels: info.channels, convert: false };
-  if (file.type?.startsWith('video/')) {
-    const channels = await withDecoded(file, FALLBACK_RATE, signal, (d) => d.numberOfChannels);
-    return { channels, convert: false };
-  }
   return { ...(await readTrack(file, { signal })), convert: true };
 }
 

@@ -3,7 +3,7 @@ import { renderComponent, all } from '@ui/test/renderComponent.jsx';
 import { ChannelSpeakersDialog } from './ChannelSpeakersDialog.jsx';
 
 // One file with a speaker per channel, chosen under Per speaker: no mix, a
-// speaker per channel, and a WAV (or a video) uploaded as it is with the
+// speaker per channel, and a WAV uploaded as it is with the
 // speakers. Any other recording is uploaded as a WAV of the same channels, at
 // the quality chosen. A file with one channel is said to need more, and
 // nothing is uploaded.

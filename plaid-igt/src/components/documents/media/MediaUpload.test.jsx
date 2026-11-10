@@ -445,6 +445,30 @@ describe('MediaUpload', () => {
     await r.unmount();
   });
 
+  // A video goes up under Single only. Its type says it is one, whatever its
+  // tracks: an audio-only .webm typed as video is refused too.
+  it('one video on Per speaker is refused with a note naming the switch, before any dialog', async () => {
+    const onUpload = vi.fn();
+    const readFile = vi.fn(async () => ({ channels: 2, convert: false }));
+    const r = await renderComponent(
+      <MediaUpload onUpload={onUpload} isUploading={false} readFile={readFile} />,
+    );
+    await perSpeaker(r);
+    for (const video of [fileOf(2 * MB), fileOf(2 * MB, 'voice.webm', 'video/webm')]) {
+      await chooseAll(r, [video]);
+      await until(r, () => r.container.textContent.includes('Switch to Single'));
+      expect(r.container.textContent).toContain(
+        'A video cannot be split by speaker. Switch to Single.',
+      );
+    }
+    expect(document.body.textContent).not.toContain('Speakers per channel');
+    expect(readFile).not.toHaveBeenCalled();
+    expect(onUpload).not.toHaveBeenCalled();
+    await r.step(() => buttonSaying(r.container, 'Single').click());
+    expect(r.container.textContent).not.toContain('Switch to Single');
+    await r.unmount();
+  });
+
   it('files dropped on the card are chosen like picked ones', async () => {
     const onUpload = vi.fn();
     const r = await renderComponent(<MediaUpload onUpload={onUpload} isUploading={false} />);
