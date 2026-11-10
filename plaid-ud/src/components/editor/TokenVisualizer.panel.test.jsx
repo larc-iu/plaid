@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { renderComponent, all } from '@ui/test/renderComponent.jsx';
 
 // The badges are plain spans and one hover panel serves them all, anchored to
@@ -32,10 +32,22 @@ const hover = (view, el) =>
   });
 const panel = () => document.querySelector('[data-token-panel]');
 
+// Each view is unmounted after its test, failed or not, so a failure leaves
+// no panel behind for the next test to find.
+const views = [];
+const render = async (element) => {
+  const view = await renderComponent(element);
+  views.push(view);
+  return view;
+};
+afterEach(async () => {
+  for (const view of views.splice(0)) await view.unmount();
+});
+
 describe('the token panel', () => {
   it('opens on the hovered token, follows the pointer, and acts on its token', async () => {
     const onWordDelete = vi.fn();
-    const view = await renderComponent(
+    const view = await render(
       <TokenVisualizer
         text={TEXT}
         originalText={TEXT}
@@ -78,7 +90,6 @@ describe('the token panel', () => {
     await view.step(async () => del.click());
     expect(onWordDelete).toHaveBeenCalledWith('w4');
     expect(panel()).toBeNull();
-    await view.unmount();
   });
 
   it('stays open on its token when the token moves into another sentence', async () => {
@@ -92,7 +103,7 @@ describe('the token panel', () => {
       onSentenceToggle: vi.fn(),
       onWordDelete: vi.fn(),
     };
-    const view = await renderComponent(
+    const view = await render(
       <TokenVisualizer {...props} sentenceTokens={[{ id: 's1', begin: 0, end: 14 }]} />,
     );
     await hover(view, all(view.container, '[data-mwt]')[1]);
@@ -112,7 +123,6 @@ describe('the token panel', () => {
       <TokenVisualizer {...props} sentenceTokens={[{ id: 's1', begin: 0, end: 14 }]} />,
     );
     expect(panel()?.textContent).toContain('dog');
-    await view.unmount();
   });
 
   it('closes when its token is gone', async () => {
@@ -123,7 +133,7 @@ describe('the token panel', () => {
       morphemeTokens: morphemes,
       onWordDelete: vi.fn(),
     };
-    const view = await renderComponent(<TokenVisualizer {...props} wordTokens={words} />);
+    const view = await render(<TokenVisualizer {...props} wordTokens={words} />);
     await hover(view, all(view.container, '[data-mwt]')[1]);
     expect(panel()).not.toBeNull();
     await view.rerender(
@@ -133,7 +143,6 @@ describe('the token panel', () => {
     // Another token opens as usual.
     await hover(view, all(view.container, '[data-mwt]')[0]);
     expect(panel()?.textContent).toContain('The');
-    await view.unmount();
   });
 
   // P3-2: "Remove word" unmounted itself, focus fell to the page, and the
@@ -164,7 +173,7 @@ describe('the token panel', () => {
 
   it('keeps a panel with a draft on its token when another token is hovered', async () => {
     const props = mwtProps();
-    const view = await renderComponent(<TokenVisualizer {...props} />);
+    const view = await render(<TokenVisualizer {...props} />);
     const badges = all(view.container, '[data-mwt]');
     await hover(view, badges[2]);
     expect(all(panel(), 'input').map((i) => i.value)).toEqual(['de', 'el']);
@@ -187,12 +196,11 @@ describe('the token panel', () => {
     expect(props.onSetWordMorphemes).toHaveBeenCalledTimes(1);
     expect(props.onSetWordMorphemes.mock.calls[0][0].id).toBe('w3');
     expect(props.onSetWordMorphemes.mock.calls[0][1]).toEqual(['del']);
-    await view.unmount();
   });
 
   it('lets a panel with no draft follow the pointer, and Escape drops a draft', async () => {
     const props = mwtProps();
-    const view = await renderComponent(<TokenVisualizer {...props} />);
+    const view = await render(<TokenVisualizer {...props} />);
     const badges = all(view.container, '[data-mwt]');
     await hover(view, badges[2]);
     await typeInto(view, all(panel(), 'input')[1], 'ell');
@@ -212,12 +220,11 @@ describe('the token panel', () => {
     expect(props.onSetWordMorphemes).not.toHaveBeenCalled();
     await hover(view, badges[1]);
     expect(panel()?.textContent).toContain('dog');
-    await view.unmount();
   });
 
   it('drops a draft for a click on another token and opens that token', async () => {
     const props = mwtProps();
-    const view = await renderComponent(<TokenVisualizer {...props} />);
+    const view = await render(<TokenVisualizer {...props} />);
     const badges = all(view.container, '[data-mwt]');
     await hover(view, badges[2]);
     await typeInto(view, all(panel(), 'input')[1], 'la');
@@ -231,22 +238,20 @@ describe('the token panel', () => {
     });
     expect(panel()?.textContent).toContain('dog');
     expect(props.onSetWordMorphemes).not.toHaveBeenCalled();
-    await view.unmount();
   });
 
   it('hands focus to a word in the panel when its Remove word button goes', async () => {
-    const view = await renderComponent(<TokenVisualizer {...mwtProps()} />);
+    const view = await render(<TokenVisualizer {...mwtProps()} />);
     await hover(view, all(view.container, '[data-mwt]')[2]);
     // The last row's button, then the only one left: both unmount.
     await view.step(async () => removeButtons()[1].focus());
     await view.step(async () => removeButtons()[1].click());
     expect(removeButtons()).toEqual([]);
     expect(document.activeElement).toBe(all(panel(), 'input')[0]);
-    await view.unmount();
   });
 
   it('opens no panel while the text has unsaved edits', async () => {
-    const view = await renderComponent(
+    const view = await render(
       <TokenVisualizer
         text="The big dog"
         originalText="The dog"
@@ -261,6 +266,5 @@ describe('the token panel', () => {
     expect(badges.map((b) => b.textContent)).toEqual(['The', 'dog']);
     await hover(view, badges[1]);
     expect(panel()).toBeNull();
-    await view.unmount();
   });
 });
