@@ -145,7 +145,7 @@ test('B5-01/02/14: "+ Create" trims edge punctuation, creates + links, and repla
 }) => {
   await openAnalyze(page);
   await open(page, ids.w[W.derechos], lexB.name);
-  await expect(createRow(page)).toHaveText(/Create\s*"derechos"/);
+  await expect(createRow(page)).toHaveText(/Create\s*“derechos”/);
   await expect(createRow(page)).not.toContainText('derechos.');
   await createRow(page).dblclick();
   await expect(chip(page, ids.w[W.derechos])).toHaveText(/derechos/);
@@ -184,20 +184,20 @@ test('B5-01/02/14: "+ Create" trims edge punctuation, creates + links, and repla
 test('B5-04..09: create-row forms per token shape', async ({ page }) => {
   await openAnalyze(page);
   await open(page, ids.w[W.hola], lexB.name);
-  await expect(createRow(page)).toHaveText(/Create\s*"hola"/);
+  await expect(createRow(page)).toHaveText(/Create\s*“hola”/);
   await page.keyboard.press('Escape');
   await open(page, ids.w[W.dogs], lexB.name);
-  await expect(createRow(page)).toHaveText(/Create\s*"dog's"/);
+  await expect(createRow(page)).toHaveText(/Create\s*“dog's”/);
   await page.keyboard.press('Escape');
   // `...` is an ignored token: no opener at all.
   await expect(opener(page, ids.w[W.dots])).toHaveCount(0);
   // Emoji are annotatable: opener present, create row shows the emoji.
   await open(page, ids.w[W.emoji], lexB.name);
-  await expect(createRow(page)).toHaveText(/Create\s*"😀"/);
+  await expect(createRow(page)).toHaveText(/Create\s*“😀”/);
   await page.keyboard.press('Escape');
   // A morpheme's create row uses the morpheme FORM, not the word.
   await open(page, ids.m[W.hum], lexB.name);
-  await expect(createRow(page)).toHaveText(/Create\s*"ko"/);
+  await expect(createRow(page)).toHaveText(/Create\s*“ko”/);
   await page.keyboard.press('Escape');
   // An empty morpheme form: no create row.
   await open(page, ids.m[W.the], lexB.name);
