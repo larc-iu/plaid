@@ -166,8 +166,9 @@ def summarize_extract(ext: Path, gate_log: Path, since: float = 0):
     for c in calls:
         tools[c.get('tool')] = tools.get(c.get('tool'), 0) + 1
     gate = [json.loads(x) for x in gate_log.read_text().splitlines()] if gate_log.exists() else []
-    # The service's startup ping is not part of any turn.
-    gate = [g for g in gate if g.get('at', 0) >= since]
+    # The service's startup ping is not part of any turn, and a request whose
+    # caller left before the gate sent it is no model call.
+    gate = [g for g in gate if g.get('at', 0) >= since and not g.get('gone')]
     usage = [g.get('usage') or {} for g in gate]
     infra = [g.get('infra') or infra_reason(g.get('status'), g.get('error')) for g in gate]
     infra = [x for x in infra if x]

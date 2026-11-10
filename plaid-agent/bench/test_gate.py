@@ -246,6 +246,42 @@ def test_an_unreachable_upstream_is_infra(env):
     assert records(log)[0]['infra'] == 'unreachable'
 
 
+def test_a_request_whose_caller_left_while_it_waited_for_the_slot_is_not_sent(env):
+    # glm53-1: an assistant's startup ping gave up after 30 s in the queue
+    # behind the other run's call, and the gate sent it anyway, 29 times
+    fake, g, log = env([('sleep', 1.0), 200])
+    first = threading.Thread(target=ask, args=(g,))
+    first.start()
+    time.sleep(0.2)  # the first holds the one slot
+    with pytest.raises(Exception):
+        ask(g, timeout=0.3)
+    first.join()
+    gone = [r for r in records(log, 2) if r.get('gone')]
+    assert len(fake.seen) == 1
+    assert len(gone) == 1 and gone[0]['attempts'] == 0 and 'infra' not in gone[0]
+    assert ask(g)[0] == 200 and len(fake.seen) == 2  # the gate goes on serving
+
+
+def test_a_request_whose_caller_left_during_a_backoff_is_not_sent_again(env):
+    fake, g, log = env([429, 200], backoff=(1.0,))
+    with pytest.raises(Exception):
+        ask(g, timeout=0.3)
+    rec, = records(log)
+    time.sleep(0.2)
+    assert len(fake.seen) == 1
+    assert rec['gone'] and rec['attempts'] == 1 and 'infra' not in rec
+
+
+def test_a_left_request_is_not_a_model_call_of_the_run(tmp_path):
+    sys.path.insert(0, str(HERE))
+    from run import summarize_extract
+    log = tmp_path / 'gate.jsonl'
+    log.write_text(json.dumps({'at': 10, 'status': 200, 'upstream_s': 2.0}) + '\n' +
+                   json.dumps({'at': 11, 'status': 0, 'attempts': 0, 'gone': True}) + '\n')
+    s = summarize_extract(tmp_path / 'extract', log)
+    assert s['model_calls'] == 1 and s['model_errors'] == 0 and s['endpoint_errors'] == []
+
+
 def test_the_per_minute_cap_holds_in_one_gate(env):
     fake, g, log = env([200], rpm=3)
     g.rate.window = 1.0

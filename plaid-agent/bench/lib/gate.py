@@ -27,6 +27,10 @@ Neither has a default.
   per-minute cap and in backoff, the attempts, the last attempt's upstream
   time, the final status, and the token usage when the answer carries it. A
   record whose final status is not 200 carries `infra: <reason>`.
+- It does not send a request whose caller has gone (closed its connection
+  while the request waited for a slot, the per-minute cap or a backoff). An
+  assistant's startup ping gives up after 30 s. Such a request is logged with
+  `gone: true` and is not a model call of the run.
 
 Streaming answers are passed through as they arrive. For the answer that
 reached the assistant, the log has `first_chunk_s` (from the request sent to
@@ -40,6 +44,8 @@ import fcntl
 import http.client
 import json
 import os
+import select
+import socket
 import threading
 import time
 import urllib.parse
@@ -251,6 +257,15 @@ class Gate:
                 self.wfile.flush()
                 return got
 
+            def _caller_gone(self):
+                # The request body is read, so a socket that reads as ready
+                # with nothing to peek is closed at the caller's end.
+                try:
+                    ready, _, _ = select.select([self.connection], [], [], 0)
+                    return bool(ready) and self.connection.recv(1, socket.MSG_PEEK) == b''
+                except OSError:
+                    return True
+
             def _forward(self, method):
                 parts = self.path.lstrip('/').split('/', 1)
                 tag, rest = (parts[0], '/' + parts[1]) if len(parts) == 2 else ('', self.path)
@@ -273,9 +288,15 @@ class Gate:
                     waited = time.time() - t0
                     first = time.time()
                     attempts, rate_wait, backoff = [], 0.0, 0.0
-                    status, got, err, t1, sent = 0, b'', None, time.time(), False
+                    status, got, err, t1, sent, gone = 0, b'', None, time.time(), False, False
                     while True:
+                        gone = self._caller_gone()
+                        if gone:
+                            break
                         rate_wait += gate.rate.take()
+                        gone = self._caller_gone()
+                        if gone:
+                            break
                         t1 = time.time()
                         conn = gate._conn()
                         status, got, err, r = 0, b'', None, None
@@ -314,7 +335,7 @@ class Gate:
                             break
                         time.sleep(delay)
                         backoff += delay
-                    if not sent:
+                    if not sent and not gone:
                         try:
                             if status:
                                 self._send(status, r.getheaders() if r is not None else [], [got])
@@ -342,11 +363,13 @@ class Gate:
                             rec['max_gap_s'] = round(max(chunks['gap'], end - chunks['last']), 3)
                     if len(attempts) > 1:
                         rec['retried'] = attempts[:-1]
-                    if err:
+                    if gone:
+                        rec['gone'] = True
+                    elif err:
                         rec['error'] = err
                     elif status != 200:
                         rec['error'] = gate._clean(got[:300].decode('utf-8', 'replace'))
-                    why = infra_reason(status, err)
+                    why = None if gone else infra_reason(status, err)
                     if why:
                         rec['infra'] = why
                     gate.log(tag, rec)
