@@ -148,6 +148,56 @@ describe('MixRecordingsDialog', () => {
     vi.restoreAllMocks();
   });
 
+  it('a file that cannot be decoded can be removed, and the rest are mixed', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const onUpload = vi.fn();
+    const mixed = new File(['wav'], 'mixed.wav', { type: 'audio/wav' });
+    mixTracks.mockResolvedValue(mixed);
+    // The broken file comes first, and ben is still being read when it is
+    // removed: ben's answer lands in ben's row.
+    let finishBen;
+    const reading = vi.fn((file) => {
+      if (file.name === 'bad.wav') return Promise.reject(new Error('EncodingError'));
+      if (file.name === 'ben.wav')
+        return new Promise((ok) => {
+          finishBen = () => ok({ name: file.name, ...decoded[file.name] });
+        });
+      return Promise.resolve({ name: file.name, ...decoded[file.name] });
+    });
+    await mount({
+      decode: reading,
+      onUpload,
+      files: [fileOf('bad.wav'), fileOf('ben.wav'), fileOf('ana.wav')],
+    });
+    expect(text()).toContain('Cannot be decoded.');
+    await view.step(() => field('Remove bad.wav').click());
+    expect(text()).not.toContain('bad.wav');
+    await view.step(() => finishBen());
+    await settled();
+    expect(text()).toContain('0:08.000 · stereo, mixed to one channel · 44.1 kHz');
+    expect(text()).toContain('0:10.000 · mono · 48 kHz');
+    expect(button('Upload').disabled).toBe(false);
+    await type(field('ben.wav speaker'), 'Ben');
+    await view.step(() => button('Upload').click());
+    await settled();
+    expect(mixTracks.mock.calls[0][0].map((t) => t.name)).toEqual(['ben.wav', 'ana.wav']);
+    expect(onUpload).toHaveBeenCalledWith(mixed, { channelSpeakers: ['Ben', ''] });
+    vi.restoreAllMocks();
+  });
+
+  it('one file left after a removal is not mixed', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const failing = vi.fn(async (file) => {
+      if (file.name === 'ben.wav') throw new Error('EncodingError');
+      return { name: file.name, ...decoded[file.name] };
+    });
+    await mount({ decode: failing });
+    await view.step(() => field('Remove ben.wav').click());
+    expect(text()).toContain('A mix takes two files or more.');
+    expect(button('Upload').disabled).toBe(true);
+    vi.restoreAllMocks();
+  });
+
   it('reads one file at a time, and closing stops the reads left', async () => {
     let finish;
     const reading = vi.fn(

@@ -63,7 +63,7 @@ export function MixRecordingsDialog({
     setChosen(null);
     setMixing(null);
     (async () => {
-      for (const [i, file] of files.entries()) {
+      for (const file of files) {
         let read;
         try {
           read = { ...(await decode(file, { signal: abort.signal })), status: 'ready' };
@@ -73,13 +73,16 @@ export function MixRecordingsDialog({
           read = { status: 'failed' };
         }
         if (abort.signal.aborted) return;
-        setTracks((prev) => prev.map((t, k) => (k === i ? { ...t, ...read } : t)));
+        // By the file, since a row above may have been removed meanwhile.
+        setTracks((prev) => prev.map((t) => (t.file === file ? { ...t, ...read } : t)));
       }
     })();
     return () => abort.abort();
   }, [open, files, decode]);
 
-  const ready = tracks.length > 0 && tracks.every((t) => t.status === 'ready');
+  // A mix of one file has no speakers to tell apart.
+  const tooFew = tracks.length < 2;
+  const ready = !tooFew && tracks.every((t) => t.status === 'ready');
   const failed = tracks.some((t) => t.status === 'failed');
   const plan = ready
     ? tracks.map((t) => ({
@@ -95,6 +98,7 @@ export function MixRecordingsDialog({
 
   const setTrack = (i, patch) =>
     setTracks((prev) => prev.map((t, k) => (k === i ? { ...t, ...patch } : t)));
+  const removeTrack = (i) => setTracks((prev) => prev.filter((_, k) => k !== i));
 
   const upload = async () => {
     if (!ready || overLimit || mixing) return;
@@ -148,8 +152,8 @@ export function MixRecordingsDialog({
                 key={`${t.name}:${i}`}
                 className="grid grid-cols-[minmax(0,1fr)_10rem_6rem] items-center gap-x-3 gap-y-1 py-2"
               >
-                <div className="flex min-w-0 flex-col">
-                  <span className="truncate font-mono text-xs">{t.name}</span>
+                <div className="flex min-w-0 flex-col items-start">
+                  <span className="max-w-full truncate font-mono text-xs">{t.name}</span>
                   <span
                     className={`text-xs ${t.status === 'failed' ? 'text-destructive' : 'text-muted-foreground'}`}
                   >
@@ -161,6 +165,17 @@ export function MixRecordingsDialog({
                             t.file?.type?.startsWith('video/') ? ' · video, sound only' : ''
                           }`}
                   </span>
+                  {t.status === 'failed' && (
+                    <Button
+                      variant="link"
+                      size="sm"
+                      className="h-auto p-0 text-xs"
+                      aria-label={`Remove ${t.name}`}
+                      onClick={() => removeTrack(i)}
+                    >
+                      Remove
+                    </Button>
+                  )}
                 </div>
                 <Input
                   value={t.speaker}
@@ -194,6 +209,9 @@ export function MixRecordingsDialog({
               <option key={s} value={s} />
             ))}
           </datalist>
+          {tooFew && tracks.length > 0 && (
+            <p className="text-xs font-medium text-destructive">A mix takes two files or more.</p>
+          )}
           <p className="text-xs text-muted-foreground">
             Offset: silence before the file, in seconds. Negative trims its start.
           </p>
