@@ -21,6 +21,10 @@ Two commands:
       decoder with its own scripts (the paper's settings), and fits one
       temperature on the held-out sentences so that the probabilities it
       writes are calibrated. The model goes under --home/PROJECT_ID.
+      Deleting the project in Plaid leaves that directory as it is: the
+      model, its lexicon of the project's morphemes and glosses, and the
+      training sentences a --keep-work run keeps stay on this machine until
+      the directory is deleted.
 
   python igt_analyze_cwomp.py [PROJECT_ID ...] --url URL
       Serves the analyze task on those projects, each with its own model.
