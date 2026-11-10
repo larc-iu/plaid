@@ -390,10 +390,12 @@
   list can still show that the link existed and whether it was used before
   being pulled."
   [db id actor-id]
+  ;; Filed under the link's project, as its Create invite row is. A link's
+  ;; project never changes, so reading it ahead of the transaction is safe.
   (submit-operation! [tx db {:type :invite/revoke
-                             :project nil
+                             :project (:project_id (get-internal db id))
                              :document nil
-                             :description (str "Revoke invite " id)
+                             :description "Revoke invite"
                              :user actor-id}]
                      (let [existing (get-internal tx id)]
                        (when (nil? existing)

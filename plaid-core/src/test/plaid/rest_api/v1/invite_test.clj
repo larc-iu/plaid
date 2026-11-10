@@ -240,6 +240,26 @@
                                   {:method :delete
                                    :path "/api/v1/invites/01a03f68-0000-7000-8000-000000000000"})))))
 
+(deftest a-revoke-is-logged-like-a-create
+  ;; Activity names a Create invite row by its project, so the revoke of the
+  ;; same link is filed under that project too, and its text carries no id.
+  (let [pid (h/create-test-project admin-request "P")
+        iid (-> (mint! admin-request {:project-id pid :project-role "reader"}) :body :id)
+        ops (fn [op-type] (plaid.sql.common/q db {:select [:description :project_id]
+                                                  :from [:operations]
+                                                  :where [:= :op_type op-type]}))]
+    (assert-no-content (api-call admin-request {:method :delete
+                                                :path (str "/api/v1/invites/" iid)}))
+    (is (= [{:description "Create invite" :project_id pid}] (ops "invite/create")))
+    (is (= [{:description "Revoke invite" :project_id pid}] (ops "invite/revoke")))
+    (testing "a link with no project is revoked with no project"
+      (let [iid2 (-> (mint! admin-request {}) :body :id)]
+        (assert-no-content (api-call admin-request {:method :delete
+                                                    :path (str "/api/v1/invites/" iid2)}))
+        (is (= #{{:description "Revoke invite" :project_id pid}
+                 {:description "Revoke invite" :project_id nil}}
+               (set (ops "invite/revoke"))))))))
+
 (deftest only-entitled-users-may-revoke
   (let [pid (h/create-test-project admin-request "P")
         iid (-> (mint! admin-request {:project-id pid :project-role "reader"}) :body :id)]
