@@ -27,7 +27,7 @@ import { formatTime } from './formatTime.js';
 const SPEAKER_LIST_ID = 'mix-speaker-options';
 
 const QUALITIES = [
-  ['full', (rate) => `Full quality (${Math.round(rate / 100) / 10} kHz)`],
+  ['full', (rate) => (rate ? `Full quality (${Math.round(rate / 100) / 10} kHz)` : 'Full quality')],
   ['small', () => `Smaller (${SMALL_RATE / 1000} kHz)`],
 ];
 
@@ -200,7 +200,7 @@ export function MixRecordingsDialog({
                   disabled={!!mixing}
                   onChange={() => setQuality(value)}
                 />
-                <span>{label(plan ? mixRate(plan, 'full') : 0)}</span>
+                <span>{label(plan ? mixRate(plan, 'full') : null)}</span>
                 {bytesOf(value) != null && (
                   <span className="text-xs text-muted-foreground">
                     · {formatBytes(bytesOf(value), { against: maxBytes })}

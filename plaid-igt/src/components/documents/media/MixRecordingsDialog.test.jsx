@@ -191,4 +191,22 @@ describe('MixRecordingsDialog', () => {
     expect(rows[0]).toContain('0:10.000 · mono · 48 kHz · video, sound only');
     expect(rows[1]).not.toContain('video');
   });
+
+  it('names no rate for Full quality until every file is read', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const waiting = vi.fn(() => new Promise(() => {}));
+    await mount({ decode: waiting });
+    expect(text()).toContain('Full quality');
+    expect(text()).not.toContain('Full quality (');
+    await view.unmount();
+    const failing = vi.fn(async (file) => {
+      if (file.name === 'ben.wav') throw new Error('EncodingError');
+      return { name: file.name, ...decoded[file.name] };
+    });
+    await mount({ decode: failing });
+    expect(text()).toContain('Cannot be decoded.');
+    expect(text()).toContain('Full quality');
+    expect(text()).not.toContain('Full quality (');
+    vi.restoreAllMocks();
+  });
 });
