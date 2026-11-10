@@ -168,3 +168,27 @@ def test_every_checker_reads_the_reply_through_the_one_reader(bench_path):
     # A checker that strips cites itself reads a reply the user never saw.
     for p in sorted((BENCH / 'checks').glob('*.py')):
         assert '<cite' not in p.read_text() or p.name == 'common.py', p.name
+
+
+# --- the context window the services are given ---------------------------------
+
+def test_run_takes_a_context_window_per_model(bench_path):
+    # glm53-1 could not give glm-5.3-flash its 196608 tokens, and every
+    # service logged "Context window: unknown"
+    from run import context_windows
+    assert context_windows(None, ['glm-5.3-flash']) == {}
+    assert context_windows(['glm-5.3-flash=196608', 'qwen3.8-27b=131072'], ['glm-5.3-flash', 'qwen3.8-27b']) == \
+        {'glm-5.3-flash': 196608, 'qwen3.8-27b': 131072}
+    for bad in (['196608'], ['glm-5.3-flash=big'], ['glm-5.3-flash=0'], ['glm-5.2=196608']):
+        with pytest.raises(SystemExit):
+            context_windows(bad, ['glm-5.3-flash'])
+
+
+def test_a_service_is_given_its_models_context_window_and_none_without_one(bench_path):
+    from run import service_command
+    task = {'app': 'ud', 'service_args': ['--max-steps', 30]}
+    cmd = service_command(task, 'glm-5.3-flash', 'http://gate/v1', 'http://core', 'P', 196608)
+    assert cmd[cmd.index('--context-window') + 1] == '196608'
+    assert cmd[-3:] == ['--max-steps', '30', 'P']
+    cmd = service_command(task, 'glm-5.3-flash', 'http://gate/v1', 'http://core', 'P', None)
+    assert '--context-window' not in cmd

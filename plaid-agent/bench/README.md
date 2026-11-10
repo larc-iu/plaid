@@ -68,6 +68,8 @@ The report's Storage table (rule-shaped plans) gives per task the conversation r
 
 `--models` takes a comma-separated list of the endpoint's model names (default `glm-5.2`).
 
+`--context-window MODEL=TOKENS`, once per model, passes `--context-window TOKENS` to that model's assistants (for example `--context-window glm-5.3-flash=196608`). litellm does not know every model's window, and without it the service logs "Context window: unknown". Without the option nothing is passed. `run.json` records the windows under `context_windows`, and `--rerun-infra` uses them again. A task's `service_args` come after it and win.
+
 Each run gets its own copy of the snapshot, its own core (about 5 s to start) and its own assistant process, registered on the task's project only. A simple task takes 20 to 45 s. Whatever `--jobs` says, at most 1 model request is in flight and at most 8 are sent a minute across every bench process on the machine (the key may serve other clients too), so more than 2 jobs only makes runs wait on the gate.
 
 What a run leaves in DATA `runs/<stamp>/<task>/<model>/<rep>/`:

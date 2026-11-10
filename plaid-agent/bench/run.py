@@ -2,6 +2,7 @@
 snapshot database, its own core and its own assistant process.
 
     ./run [TASK ...] [--models glm-5.2] [--reps 1] [--jobs 1] [--stamp NAME] [--keep-db]
+          [--context-window MODEL=TOKENS ...]
     ./run --rerun-infra STAMP [--jobs 1]
 
 TASK is a task id (`igt-smoke-gloss`), an app (`igt`), or a path to a task
@@ -192,7 +193,30 @@ def summarize_extract(ext: Path, gate_log: Path, since: float = 0):
     }
 
 
-def run_one(task, model, rep, stamp_dir: Path, gate: Gate, code: Path, man, keep_db=False):
+def context_windows(values, models):
+    """{model: tokens} from --context-window MODEL=TOKENS options, each for a
+    model of the run."""
+    out = {}
+    for v in values or []:
+        model, _, n = v.rpartition('=')
+        if not model or not n.isdigit() or int(n) < 1:
+            raise SystemExit(f'--context-window takes MODEL=TOKENS, not {v!r}')
+        if model not in models:
+            raise SystemExit(f'--context-window names {model}, which is not in --models')
+        out[model] = int(n)
+    return out
+
+
+def service_command(task, model, api_base, core_url, project_id, window=None):
+    """The assistant's command line. A task's service_args come last, so
+    they win over the run's."""
+    return [str(bl.AGENT_PY), '-m', f'plaid_agent.{task["app"]}.service', '--url', core_url,
+            '--model', f'openai/{model}', '--api-base', api_base, '--timeout', str(SERVICE_TIMEOUT_S),
+            *(['--context-window', str(window)] if window else []),
+            *[str(x) for x in task.get('service_args') or []], project_id]
+
+
+def run_one(task, model, rep, stamp_dir: Path, gate: Gate, code: Path, man, keep_db=False, windows=None):
     rd = stamp_dir / task['id'] / model / str(rep)
     rd.mkdir(parents=True, exist_ok=True)
     tag = re.sub(r'[^A-Za-z0-9._-]', '_', f'{stamp_dir.name}.{task["id"]}.{model}.{rep}')
@@ -220,9 +244,8 @@ def run_one(task, model, rep, stamp_dir: Path, gate: Gate, code: Path, man, keep
         env = dict(os.environ)
         env['PYTHONPATH'] = f'{code / "plaid-agent/src"}:{code / "plaid-client-py/src"}'
         env['OPENAI_API_KEY'] = 'bench-gate-holds-the-key'
-        cmd = [str(bl.AGENT_PY), '-m', f'plaid_agent.{task["app"]}.service', '--url', core.url,
-               '--model', f'openai/{model}', '--api-base', gate.base(tag), '--timeout', str(SERVICE_TIMEOUT_S),
-               *[str(x) for x in task.get('service_args') or []], project['id']]
+        cmd = service_command(task, model, gate.base(tag), core.url, project['id'],
+                              (windows or {}).get(model))
         svc = subprocess.Popen(cmd, cwd=sd, env=env, stdout=open(rd / 'service.log', 'ab'),
                                stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, start_new_session=True)
         service = wait_for_service(user, project['id'], task['app'], timeout=600)
@@ -355,7 +378,8 @@ def rerun_infra(stamp, jobs, code_arg, keep_db):
     say(f'stamp {stamp}: rerunning {len(jobs_)} infra runs, code {code.name}')
     try:
         with ThreadPoolExecutor(max_workers=max(1, jobs)) as ex:
-            list(ex.map(lambda j: run_one(*j, sd, gate, code, man, keep_db), jobs_))
+            windows = meta.get('context_windows')
+            list(ex.map(lambda j: run_one(*j, sd, gate, code, man, keep_db, windows), jobs_))
     finally:
         gate.stop()
     say(f'done: {sd}')
@@ -371,6 +395,9 @@ def main():
     ap.add_argument('--stamp', default=None)
     ap.add_argument('--code', default=None, help='a code/<sha> to run instead of code/CURRENT')
     ap.add_argument('--keep-db', action='store_true')
+    ap.add_argument('--context-window', action='append', metavar='MODEL=TOKENS',
+                    help='the tokens MODEL can be sent, passed to its assistants (default: none passed, '
+                         'litellm\'s figure). Once per model')
     a = ap.parse_args()
     if a.rerun_infra:
         if a.tasks:
@@ -380,19 +407,21 @@ def main():
     man = bl.manifest()
     tasks = load_tasks(a.tasks)
     models = [m.strip() for m in a.models.split(',') if m.strip()]
+    windows = context_windows(a.context_window, models)
     stamp = a.stamp or datetime.now().strftime('%Y%m%d-%H%M%S')
     sd = bl.RUNS / stamp
     sd.mkdir(parents=True, exist_ok=True)
     (sd / 'run.json').write_text(json.dumps({
         'code': code.name, 'snapshot_built': man['built_at'], 'importers_commit': man['importers_commit'],
-        'models': models, 'reps': a.reps, 'tasks': [t['id'] for t in tasks], 'argv': sys.argv[1:],
+        'models': models, 'context_windows': windows, 'reps': a.reps, 'tasks': [t['id'] for t in tasks],
+        'argv': sys.argv[1:],
         'started': datetime.now().isoformat(timespec='seconds')}, indent=1))
     gate = Gate.from_env().start()
     say(f'stamp {stamp}: {len(tasks)} tasks x {len(models)} models x {a.reps} reps, code {code.name}')
     jobs = [(t, m, r) for t in tasks for m in models for r in range(1, a.reps + 1)]
     try:
         with ThreadPoolExecutor(max_workers=max(1, a.jobs)) as ex:
-            list(ex.map(lambda j: run_one(*j, sd, gate, code, man, a.keep_db), jobs))
+            list(ex.map(lambda j: run_one(*j, sd, gate, code, man, a.keep_db, windows), jobs))
     finally:
         gate.stop()
     say(f'done: {sd}')
