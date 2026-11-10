@@ -2110,6 +2110,33 @@ describe('speakers of tiers with no participant', () => {
     );
   });
 
+  // What this app's own export writes for segments with no speaker beside
+  // the speakers' tier sets: the plain tier is nobody's, not a speaker
+  // called "Sentence".
+  it('names no speaker for a plain tier beside the same tier per participant', () => {
+    const doc = build([
+      { id: 'Sentence@Ana', type: 'u', participant: 'Ana', anns: [['a1', 'ma bo', 0, 2000]] },
+      { id: 'Sentence@Ben', type: 'u', participant: 'Ben', anns: [['b1', 'oi', 1000, 3000]] },
+      { id: 'Sentence', type: 'u', anns: [['s1', 'tu ri', 4000, 5000]] },
+    ]);
+    expect(spans(doc)).toEqual([
+      [0, 2, 'Ana'],
+      [1, 3, 'Ben'],
+      [4, 5, null],
+    ]);
+  });
+
+  it('names no speaker for the plain tier beside one participant tier', () => {
+    const doc = build([
+      { id: 'Sentence@Ana', type: 'u', participant: 'Ana', anns: [['a1', 'ma bo', 0, 2000]] },
+      { id: 'Sentence', type: 'u', anns: [['s1', 'tu ri', 4000, 5000]] },
+    ]);
+    expect(spans(doc)).toEqual([
+      [0, 2, 'Ana'],
+      [4, 5, null],
+    ]);
+  });
+
   it('keeps one tier with no participant unlabelled, and drops an overlap in it', () => {
     const doc = build([
       {

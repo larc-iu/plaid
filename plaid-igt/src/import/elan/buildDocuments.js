@@ -360,12 +360,27 @@ const tiersOfNodes = (eaf, nodeList) => {
  * tree of its own names them by prefix (`W-Spch`, `K-Spch`). The parts of the
  * name every such tier shares (`Spch`) are the tier's type, and what is left
  * is the speaker (`W`). A name with nothing left is the speaker whole. One
- * tier alone is one voice, and names none. A map of tier id to speaker.
+ * tier alone is one voice, and names none. Nor does a tier named as a
+ * participant's tier is without the participant (`Sentence` beside
+ * `Sentence@Ana`): that is the tier of whoever was not named, as this app's
+ * own export writes it. A map of tier id to speaker.
  */
 function tierSpeakers(tiers) {
-  const unnamed = tiers.filter((t) => !t.participant);
+  const partsOf = (name) => name.split(/[-_@.\s]+/).filter(Boolean);
+  const plain = new Set(
+    tiers
+      .filter((t) => t.participant)
+      .map((t) => {
+        const who = new Set(partsOf(t.participant));
+        return partsOf(t.id)
+          .filter((part) => !who.has(part))
+          .join('-');
+      })
+      .filter(Boolean),
+  );
+  const unnamed = tiers.filter((t) => !t.participant && !plain.has(partsOf(t.id).join('-')));
   if (tiers.length < 2 || !unnamed.length) return new Map();
-  const parts = unnamed.map((t) => t.id.split(/[-_@.\s]+/).filter(Boolean));
+  const parts = unnamed.map((t) => partsOf(t.id));
   const shared =
     unnamed.length < 2
       ? new Set()
