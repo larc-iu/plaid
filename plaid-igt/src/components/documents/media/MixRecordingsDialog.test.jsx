@@ -180,6 +180,23 @@ describe('MixRecordingsDialog', () => {
     expect(onUpload).not.toHaveBeenCalled();
   });
 
+  // REV-MIX-D-1: the mix works from what the fields held at the click, so a
+  // speaker or an offset typed while it ran was shown and never used.
+  it('takes no speaker or offset while it mixes', async () => {
+    mixTracks.mockImplementation(() => new Promise(() => {}));
+    await mount();
+    const fields = () =>
+      [
+        'ana.wav speaker',
+        'ben.wav speaker',
+        'ana.wav offset in seconds',
+        'ben.wav offset in seconds',
+      ].map((label) => field(label).disabled);
+    expect(fields()).toEqual([false, false, false, false]);
+    await view.step(() => button('Upload').click());
+    expect(fields()).toEqual([true, true, true, true]);
+  });
+
   it('says a video row keeps only its sound, by the type the browser gives', async () => {
     const files = [
       new File(['x'], 'cam.wav', { type: 'video/mp4' }),

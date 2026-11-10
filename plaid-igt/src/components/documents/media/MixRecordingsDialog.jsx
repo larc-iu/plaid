@@ -162,6 +162,7 @@ export function MixRecordingsDialog({
                   compose
                   autoComplete="off"
                   aria-label={`${t.name} speaker`}
+                  disabled={!!mixing}
                   className="h-8 text-xs"
                   onChange={(e) => setTrack(i, { speaker: e.target.value })}
                 />
@@ -172,6 +173,7 @@ export function MixRecordingsDialog({
                     value={t.offset}
                     placeholder="0"
                     aria-label={`${t.name} offset in seconds`}
+                    disabled={!!mixing}
                     className="h-8 text-xs tabular-nums"
                     onChange={(e) => setTrack(i, { offset: e.target.value })}
                   />
