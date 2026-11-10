@@ -70,7 +70,12 @@ export function VadDetection({ mediaOps, readOnly = false, disabled = false }) {
         onRun={() => handleDetectSpeech({ channels: channels.chosen })}
         runDisabled={readOnly || disabled || channels.none || channels.waiting}
         onCancel={stopDetection}
-        secondary={hasAnalysis && !running ? { label: 'Discard', onClick: vad.clear } : undefined}
+        // A run that found no speech left nothing to discard.
+        secondary={
+          hasAnalysis && !running && foundCount !== 0
+            ? { label: 'Discard', onClick: vad.clear }
+            : undefined
+        }
       >
         <ServiceMethodRow spot={detectSpot} disabled={running} />
         <ChannelChecklist channels={channels} disabled={running} />
