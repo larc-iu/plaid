@@ -847,7 +847,9 @@ export const vocabPopover = {
         _sub: numIdx ? numIdx.get(it.id) : null,
       })),
       {
-        form: formText || '',
+        // The form "+ Create" would give a new entry (edge punctuation
+        // trimmed), so "derechos." is spelled like the entry "derechos".
+        form: trimIgnoredEdges(formText || '', this._ignoredCfg),
         search,
         // Precedent is tallied per word or morpheme form; the joined form of
         // a multi-word expression has none.

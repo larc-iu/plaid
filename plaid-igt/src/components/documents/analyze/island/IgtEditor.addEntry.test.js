@@ -24,16 +24,21 @@ let editor;
 
 // "the cat sat down", the word "cat" linked, and a writer who does not
 // maintain the lexicon.
-function mount() {
-  const raw = buildRawDoc({
-    body: 'the cat sat down',
-    words: [
-      { id: 'w-1', begin: 0, end: 3 },
-      { id: 'w-2', begin: 4, end: 7 },
-      { id: 'w-3', begin: 8, end: 11 },
-      { id: 'w-4', begin: 12, end: 16 },
-    ],
-  });
+function mount(text = null) {
+  const raw = buildRawDoc(
+    text ?? {
+      body: 'the cat sat down',
+      words: [
+        { id: 'w-1', begin: 0, end: 3 },
+        { id: 'w-2', begin: 4, end: 7 },
+        { id: 'w-3', begin: 8, end: 11 },
+        { id: 'w-4', begin: 12, end: 16 },
+      ],
+    },
+  );
+  // Punctuation is ignored, as setup makes a project.
+  const wordLayer = raw.textLayers[0].tokenLayers.find((l) => l.id === 'wordL');
+  wordLayer.config.plaid.ignoredTokens = { type: 'unicodePunctuation', whitelist: [] };
   const client = makeFakeClient();
   client.query = async () => ({ results: [] });
   const doc = makeIgtDoc({
@@ -254,6 +259,25 @@ describe('the lexicon popover', () => {
     mount();
     openOn('w-2');
     expect(popover().querySelector('.igt-vocab-pop__item.is-active')).not.toBeNull();
+  });
+
+  // REV-FX-A-3: a word that keeps edge punctuation (an imported "cat.") is
+  // spelled like the entry its "+ Create" would duplicate.
+  it('starts on the entry a word with edge punctuation is spelled like', () => {
+    mount({
+      body: 'a the cat.',
+      words: [
+        { id: 'w-1', begin: 0, end: 1 },
+        { id: 'w-2', begin: 2, end: 5 },
+        { id: 'w-3', begin: 6, end: 10 },
+      ],
+    });
+    openOn('w-3');
+    const active = popover().querySelector('.igt-vocab-pop__item.is-active');
+    expect(active?.textContent).toContain('cat');
+    expect(popover().querySelector('.igt-vocab-pop__create')?.classList.contains('is-active')).toBe(
+      false,
+    );
   });
 
   it('reads the lexicon again when it opens, so an entry added elsewhere since the page loaded is offered', async () => {
