@@ -30,6 +30,7 @@ import { suppressedBasicIds } from '../../../domain/enhancedGraph.js';
 import { stableKey } from '@ui/domain/pendingIds.js';
 import { useFollowedState } from '@ui/hooks/useFollowedState.js';
 import { getEffectiveSpanId, positionMatchesSpanId } from './treePositions.js';
+import { edgeScrollStep } from './edgeScroll.js';
 import './DependencyTree.css';
 
 // The modifier that turns a tree gesture into an enhanced-graph one. Cmd as
@@ -363,11 +364,32 @@ export const DependencyTree = forwardRef(
     const dragging = Boolean(dragOrigin);
     useEffect(() => {
       if (!dragging) return undefined;
-      const move = (e) => dragHandlersRef.current.move(e);
+      // Where the pointer last was, once it has moved: an arc held at the
+      // sentence's edge scrolls the sentence that way (edgeScrollStep), and the
+      // arc's end follows, since no mousemove comes while the hand is still.
+      let pointer = null;
+      let frame = 0;
+      const tick = () => {
+        frame = window.requestAnimationFrame(tick);
+        const scroller = svgRef.current?.closest('.sentence-scroll');
+        if (!pointer || !scroller) return;
+        const { left, right } = scroller.getBoundingClientRect();
+        const step = edgeScrollStep(pointer.clientX, left, right);
+        if (!step) return;
+        const before = scroller.scrollLeft;
+        scroller.scrollLeft += step;
+        if (scroller.scrollLeft !== before) dragHandlersRef.current.move(pointer);
+      };
+      const move = (e) => {
+        pointer = { clientX: e.clientX, clientY: e.clientY };
+        dragHandlersRef.current.move(e);
+      };
       const up = (e) => dragHandlersRef.current.up(e);
       window.addEventListener('mousemove', move);
       window.addEventListener('mouseup', up);
+      frame = window.requestAnimationFrame(tick);
       return () => {
+        window.cancelAnimationFrame(frame);
         window.removeEventListener('mousemove', move);
         window.removeEventListener('mouseup', up);
       };
