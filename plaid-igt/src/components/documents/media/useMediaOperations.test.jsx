@@ -9,6 +9,7 @@ import { fakeRaf } from '@/test/fakeRaf.js';
 import { notifyError, notifyInfo, notifyWarning } from '@/utils/feedback';
 import { useMediaOperations } from './useMediaOperations.js';
 import { settle } from '@/domain/test-helpers.js';
+import { transcodeToMp3 } from '../../../domain/media/transcodeToMp3.js';
 
 vi.mock('@/utils/feedback', async (importOriginal) => ({
   ...(await importOriginal()),
@@ -16,6 +17,7 @@ vi.mock('@/utils/feedback', async (importOriginal) => ({
   notifyInfo: vi.fn(),
   notifyWarning: vi.fn(),
 }));
+vi.mock('../../../domain/media/transcodeToMp3.js', () => ({ transcodeToMp3: vi.fn() }));
 
 // The media tab's operations hook, at the seams where it can fall behind the
 // document on screen: the media link the <video> streams, and the whole file
@@ -1339,6 +1341,106 @@ describe('useMediaOperations: cancelling an upload', () => {
       sends[0].resolve(false);
       await settle();
     });
+    await again.unmount();
+  });
+
+  // The Media tab need not be open when the upload ends: the document loaded
+  // again reads itself the next time its Media tab is.
+  it('the document loaded again reads itself when the upload ended while its Media tab was closed', async () => {
+    const doc = withMedia(null, { document: { id: 'doc-ended-away' } });
+    const sends = [];
+    doc.uploadMedia = vi.fn(() => {
+      const d = deferred();
+      sends.push(d);
+      return d.promise;
+    });
+    doc.reload = vi.fn(async () => {});
+    const first = await mountMedia({ doc });
+    await first.step(async () => {
+      first.api.handleMediaUpload(new File(['xy'], 'talk.wav'));
+      await settle();
+    });
+    await first.unmount();
+    sends[0].resolve(true);
+    await settle();
+
+    const loadedAgain = withMedia(null, { document: { id: 'doc-ended-away' } });
+    loadedAgain.reload = vi.fn(async () => {});
+    const again = await mountMedia({ doc: loadedAgain });
+    expect(again.api.isUploading).toBe(false);
+    expect(loadedAgain.reload).toHaveBeenCalledTimes(1);
+    await again.unmount();
+
+    const third = await mountMedia({ doc: loadedAgain });
+    expect(loadedAgain.reload).toHaveBeenCalledTimes(1);
+    await third.unmount();
+    expect(doc.reload).not.toHaveBeenCalled();
+  });
+
+  it('the model that sent the upload does not read itself when its Media tab opens after the end', async () => {
+    const doc = withMedia(null, { document: { id: 'doc-ended-same' } });
+    const sends = [];
+    doc.uploadMedia = vi.fn(() => {
+      const d = deferred();
+      sends.push(d);
+      return d.promise;
+    });
+    doc.reload = vi.fn(async () => {});
+    const first = await mountMedia({ doc });
+    await first.step(async () => {
+      first.api.handleMediaUpload(new File(['xy'], 'talk.wav'));
+      await settle();
+    });
+    await first.unmount();
+    sends[0].resolve(true);
+    await settle();
+    const again = await mountMedia({ doc });
+    expect(doc.reload).not.toHaveBeenCalled();
+    await again.unmount();
+  });
+
+  // A conversion to MP3 goes on when the tab is left, as an upload does: the
+  // tab mounted again shows it, and the upload that follows it.
+  it('a tab mounted again while a recording converts shows the conversion, then the upload', async () => {
+    const converting = deferred();
+    let progressed;
+    transcodeToMp3.mockImplementationOnce((file, { onProgress }) => {
+      progressed = onProgress;
+      return converting.promise;
+    });
+    const doc = withMedia(null, { document: { id: 'doc-converting' } });
+    const sends = [];
+    doc.uploadMedia = vi.fn((file) => {
+      const d = deferred();
+      sends.push({ file, ...d });
+      return d.promise;
+    });
+    const first = await mountMedia({ doc });
+    await first.step(async () => {
+      first.api.handleMediaUpload(new File(['xy'], 'talk.wav'), { convert: true });
+      await settle();
+    });
+    expect(first.api.convertProgress).toMatchObject({ name: 'talk.wav', fraction: 0 });
+    expect(first.api.isUploading).toBe(false);
+    await first.unmount();
+
+    const again = await mountMedia({ doc });
+    expect(again.api.convertProgress).toMatchObject({ name: 'talk.wav', fraction: 0 });
+    await again.step(() => progressed(0.5));
+    expect(again.api.convertProgress).toMatchObject({ fraction: 0.5 });
+    expect(again.api.isUploading).toBe(false);
+
+    await again.step(async () => {
+      converting.resolve(new File(['z'], 'talk.mp3'));
+      await settle();
+    });
+    expect(again.api.convertProgress).toBeNull();
+    expect(again.api.uploadProgress).toMatchObject({ name: 'talk.mp3' });
+    await again.step(async () => {
+      sends[0].resolve(true);
+      await settle();
+    });
+    expect(again.api.isUploading).toBe(false);
     await again.unmount();
   });
 

@@ -156,7 +156,7 @@ The **Media** tab attaches an audio or video recording to the document and holds
 Each segment is a stretch of the recording with its text, which becomes part of the baseline, and an optional speaker label.
 Media is optional, and a document with none is simply a text.
 Common audio and video formats are accepted (MP3, WAV, M4A, MP4, WebM, and others).
-While a recording is uploaded, **Cancel** stops the upload and nothing is stored.
+Until the whole file has gone up, **Cancel** stops the upload and nothing is stored.
 
 A recording has to be one the browser can play.
 A WAV that browsers cannot play, such as the ADPCM files ELAN and some recorders write, is converted to plain PCM when you choose it.
@@ -184,8 +184,8 @@ A file made elsewhere with a speaker on each channel can be chosen alone under *
 It is not mixed.
 **Speakers per channel** takes a speaker for each channel.
 A WAV is uploaded as it is.
-Any other file is uploaded as a WAV with the same channels, at **Full quality** or **Smaller** as a mix is.
-A video chosen alone is refused: upload it under **Single**.
+Any other audio file is uploaded as a WAV with the same channels, at **Full quality** or **Smaller** as a mix is.
+A video file chosen alone is refused, a WebM or MP4 that holds only sound included: upload it under **Single**.
 
 A recording uploaded under **Per speaker** shows a **channel list** under the player.
 Each channel has its speaker, which you can change, and **Mute** and **Solo**, which only change what you hear.

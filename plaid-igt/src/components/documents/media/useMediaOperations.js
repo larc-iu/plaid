@@ -28,7 +28,7 @@ import { RUNNING_TIME_MS } from './useThrottledValue.js';
 import { readTimelineView } from './timelineView.js';
 import { clampZoom } from './useTimelineOperations.js';
 import { useWaveform } from './useWaveform.js';
-import { setUpload, subscribeUpload, uploadOf } from './uploadUnderWay.js';
+import { setUpload, subscribeUpload, takeEndedBy, uploadOf } from './uploadUnderWay.js';
 import {
   CHANNEL_SPEAKERS_KEY,
   readChannelSpeakers,
@@ -179,19 +179,20 @@ export const useMediaOperations = () => {
   // (uploadUnderWay.js). `total` is the request body (the file plus a few
   // bytes of multipart framing), `abort` the upload's AbortController.
   const subscribeToUpload = useCallback((listener) => subscribeUpload(doc, listener), [doc]);
-  const uploadProgress = useSyncExternalStore(subscribeToUpload, () => uploadOf(doc));
+  const underWay = useSyncExternalStore(subscribeToUpload, () => uploadOf(doc));
+  const uploadProgress = underWay && !underWay.converting ? underWay : null;
   const isUploading = !!uploadProgress;
+  // `{ name, fraction }` while a recording is being converted for its upload,
+  // else null, kept with the document as the upload is.
+  const convertProgress = underWay?.converting ? underWay : null;
   // An upload another model of this document sent (the document was left and
-  // opened again while it went) wrote the recording there: when it ends, this
-  // one reads the document.
-  const uploadSeen = useRef(uploadProgress);
+  // opened again while it went) wrote the recording there: once it has ended,
+  // this one reads the document, now or when its Media tab is next open.
   useEffect(() => {
-    const was = uploadSeen.current;
-    uploadSeen.current = uploadProgress;
-    if (was && !uploadProgress && was.model !== doc) doc.reload();
-  }, [uploadProgress, doc]);
-  // {name, fraction} while a recording is being converted, else null.
-  const [convertProgress, setConvertProgress] = useState(null);
+    if (underWay) return;
+    const sender = takeEndedBy(doc);
+    if (sender && sender !== doc) doc.reload();
+  }, [underWay, doc]);
 
   // Listening preferences (see the *_KEY constants). `playbackRateRef` mirrors
   // the state for the deps-`[]` element registration, like `volumeRef`.
@@ -846,37 +847,44 @@ export const useMediaOperations = () => {
     async (file, { convert = false, channelSpeakers = null } = {}) => {
       if (!file) return;
 
+      const abort = new AbortController();
+      // Only this upload's own entry is changed: a cancelled one has put the
+      // card back already, and another may be under way by now.
+      const ours = () => uploadOf(doc)?.abort === abort;
+      const model = doc;
+
       let sending = file;
       if (convert) {
-        setConvertProgress({ name: file.name, fraction: 0 });
+        const converting = { converting: true, name: file.name, fraction: 0, abort, model };
+        setUpload(doc, converting);
         try {
           sending = await transcodeToMp3(file, {
-            onProgress: (fraction) => setConvertProgress((p) => (p ? { ...p, fraction } : p)),
+            onProgress: (fraction) => {
+              if (ours()) setUpload(doc, { ...converting, fraction });
+            },
           });
         } catch (error) {
           console.error('Converting the recording failed:', error);
+          if (ours()) setUpload(doc, null);
           notifyError(
             error?.message || 'This file could not be converted. Upload it as it is.',
             'Failed to convert',
           );
           return;
-        } finally {
-          setConvertProgress(null);
         }
-        if (!sending) return;
+        if (!sending || !ours()) {
+          if (ours()) setUpload(doc, null);
+          return;
+        }
       }
 
-      const abort = new AbortController();
-      // Only this upload's own entry is changed: a cancelled one has put the
-      // card back already, and another may be under way by now.
-      const ours = () => uploadOf(doc)?.abort === abort;
       setUpload(doc, {
         name: sending.name,
         loaded: 0,
         total: sending.size,
         perSpeaker: !!channelSpeakers,
         abort,
-        model: doc,
+        model,
       });
       try {
         const ok = await doc.uploadMedia(sending, {
