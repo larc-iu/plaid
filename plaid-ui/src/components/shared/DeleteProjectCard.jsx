@@ -16,9 +16,11 @@ import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
  * The server hides the project at once and removes it in the background, so
  * the request returns quickly and the reader lands on the project list.
  *
- * Props: `project` (with `id` and `name`).
+ * Props: `project` (with `id` and `name`), and `note`, more of what the
+ * delete means that the app knows of its own data (a node of inline text),
+ * which the confirm says after the consequence.
  */
-export const DeleteProjectCard = ({ project }) => {
+export const DeleteProjectCard = ({ project, note = null }) => {
   const { getClient } = useAuth();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
@@ -52,7 +54,15 @@ export const DeleteProjectCard = ({ project }) => {
         open={open}
         onOpenChange={setOpen}
         project={project}
-        consequence={consequence}
+        consequence={
+          note ? (
+            <>
+              {consequence} {note}
+            </>
+          ) : (
+            consequence
+          )
+        }
         onDelete={async () => {
           await getClient().projects.delete(project.id);
           notifySuccess(`Deleted “${project.name}”`);

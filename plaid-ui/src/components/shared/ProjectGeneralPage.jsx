@@ -41,12 +41,15 @@ import { showsTartan } from '../../domain/projectTartan.js';
  *   switch (`config.plaid.research.telemetry`, the core manual's "Research
  *   telemetry"), drawn after the app's sections. Only the apps that record
  *   events pass it.
+ * - `deleteNote`: what the Delete project confirm says besides the
+ *   consequence, about the app's own data (DeleteProjectCard `note`).
  */
 export const ProjectGeneralPage = ({
   project,
   onSaved,
   language = null,
   research = false,
+  deleteNote = null,
   children,
 }) => {
   const { getClient } = useAuth();
@@ -117,7 +120,7 @@ export const ProjectGeneralPage = ({
 
       <TartanCard project={project} onSaved={onSaved} />
 
-      <DeleteProjectCard project={project} />
+      <DeleteProjectCard project={project} note={deleteNote} />
     </div>
   );
 };
