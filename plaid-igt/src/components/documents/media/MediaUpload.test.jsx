@@ -427,6 +427,18 @@ describe('MediaUpload', () => {
       .find((b) => b.textContent === label)
       .getAttribute('aria-pressed');
 
+  // A reader or a History version sees the card with its picker disabled,
+  // and no switch to flip.
+  it('shows a reader no Single / Per speaker switch', async () => {
+    const r = await renderComponent(
+      <MediaUpload onUpload={vi.fn()} isUploading={false} readOnly />,
+    );
+    expect(buttonSaying(r.container, 'Choose media file').disabled).toBe(true);
+    expect(buttonSaying(r.container, 'Per speaker')).toBeNull();
+    expect(buttonSaying(r.container, 'Single')).toBeNull();
+    await r.unmount();
+  });
+
   it('starts on Single, which takes one file', async () => {
     const r = await renderComponent(<MediaUpload onUpload={vi.fn()} isUploading={false} />);
     expect(pressed(r, 'Single')).toBe('true');

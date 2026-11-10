@@ -165,7 +165,7 @@ export const MediaUpload = ({
         choose(e.dataTransfer?.files);
       }}
     >
-      {!(decoding || convertProgress || progress || pending) && (
+      {!(readOnly || decoding || convertProgress || progress || pending) && (
         <div className="flex justify-start">
           <SegmentedControl
             label="Upload"
