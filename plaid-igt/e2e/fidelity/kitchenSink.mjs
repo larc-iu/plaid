@@ -537,19 +537,21 @@ async function buildStory(ctx) {
     ),
   );
 
-  // Document settings.
-  await must(
-    doc,
-    'speech detection',
-    doc.setMetadataKeys({ speechDetection: [0.1, 0.9, 1.2, 2.4] }),
-  );
-
-  // Media and time alignment.
+  // Media with a speaker on its channel, and time alignment. The detected
+  // speech is set after the upload, which drops what was measured before it.
   doc = await reload(client, projectId, docId);
   await must(
     doc,
     'media',
-    doc.uploadMedia(new File([wavBytes(3)], 'story.wav', { type: 'audio/wav' })),
+    doc.uploadMedia(new File([wavBytes(3)], 'story.wav', { type: 'audio/wav' }), {
+      channelSpeakers: ['Ada'],
+    }),
+  );
+  doc = await reload(client, projectId, docId);
+  await must(
+    doc,
+    'speech detection',
+    doc.setMetadataKeys({ speechDetection: [0.1, 0.9, 1.2, 2.4] }),
   );
   doc = await reload(client, projectId, docId);
   const s0Range = { begin: sentenceAt(doc, 0).begin, end: sentenceAt(doc, 0).end };
