@@ -33,14 +33,19 @@
 ;; `(id, version)`) serves the old headword indefinitely.
 ;; ============================================================
 
-(defn- linked-document-ids
-  "Document ids holding a vocab_link to any of `item-ids`, duplicates and all
-  (`bump-document-versions!` dedups). Must be read BEFORE the links go away."
+(defn linked-document-ids
+  "Ids of the documents holding a vocab_link to any of `item-ids`, which a
+  write to the entries' forms restates and bumps. A document of a project
+  being deleted is left out (R39): no reader sees it, and the purge never
+  reaches the audit row a bump would write under an operation that names no
+  project. Must be read BEFORE the links go away."
   [tx item-ids]
   (if-let [ids (seq item-ids)]
-    (->> (psc/q tx {:select [:document_id]
-                    :from :vocab_links
-                    :where [:in :vocab_item_id (vec ids)]})
+    (->> (psc/q tx {:select-distinct [:vl.document_id]
+                    :from [[:vocab_links :vl]]
+                    :join [[:documents :d] [:= :d.id :vl.document_id]
+                           [:projects :p] [:= :p.id :d.project_id]]
+                    :where [:and [:in :vl.vocab_item_id (vec ids)] [:= :p.deleted_at nil]]})
          (mapv :document_id))
     []))
 

@@ -259,12 +259,16 @@
   "Ids of every document holding a link to an entry of `vocab-id`. A deep
   document read names each linked vocabulary's name and config, so a write
   to either restates exactly these documents and bumps them (R14). A
-  maintainer change bumps none of them, by ruling (R22)."
+  maintainer change bumps none of them, by ruling (R22). A document of a
+  project being deleted is left out, as `vocab-item/linked-document-ids`
+  leaves it out (R39)."
   [tx vocab-id]
   (->> (psc/q tx {:select-distinct [:vl.document_id]
                   :from [[:vocab_links :vl]]
-                  :join [[:vocab_items :vi] [:= :vi.id :vl.vocab_item_id]]
-                  :where [:= :vi.vocab_layer_id vocab-id]})
+                  :join [[:vocab_items :vi] [:= :vi.id :vl.vocab_item_id]
+                         [:documents :d] [:= :d.id :vl.document_id]
+                         [:projects :p] [:= :p.id :d.project_id]]
+                  :where [:and [:= :vi.vocab_layer_id vocab-id] [:= :p.deleted_at nil]]})
        (mapv :document_id)))
 
 (defn merge

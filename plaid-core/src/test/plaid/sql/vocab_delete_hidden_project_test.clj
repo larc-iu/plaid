@@ -119,3 +119,43 @@
       (is (names-any? rows live)))
     (is (empty? (psc/q db {:select [:id] :from [:vocab_links]
                            :where [:in :id [(:link doomed) (:link live)]]})))))
+
+(deftest renames-config-writes-and-restores-bump-no-document-in-a-project-being-deleted
+  ;; PB-17: a write that restates the documents linking an entry or a
+  ;; vocabulary bumps only those of live projects, so it leaves no audit row
+  ;; for a hidden project's document, which the purge never reaches
+  (let [vocab (-> (create-vocab-layer admin-request "Shared") :body :id)
+        item (-> (create-vocab-item admin-request vocab "greeting") :body :id)
+        doomed (project-with-link! "Doomed" vocab item)
+        live (project-with-link! "Live" vocab item)
+        before (do (Thread/sleep 5) (str (java.time.Instant/now)))
+        _ (Thread/sleep 5)
+        version (fn [{:keys [doc]}] (:version (psc/q1 db {:select [:version] :from [:documents] :where [:= :id doc]})))
+        doomed-version (version doomed)]
+    (is (:success (prj/delete db (:proj doomed) "admin@example.com")))
+    (doseq [[op-type write] [["vocab-item/merge"
+                              #(api-call admin-request {:method :patch :path (str "/api/v1/vocab-items/" item)
+                                                        :body {:form "hello"}})]
+                             ["vocab-item/bulk-merge"
+                              #(api-call admin-request {:method :patch :path "/api/v1/vocab-items/bulk"
+                                                        :body [{:id item :form "hi"}]})]
+                             ["vocab/update"
+                              #(api-call admin-request {:method :patch :path (str "/api/v1/vocab-layers/" vocab)
+                                                        :body {:name "Shared words"}})]
+                             ["layer/assoc-editor-config-pair"
+                              #(api-call admin-request {:method :put
+                                                        :path (str "/api/v1/vocab-layers/" vocab "/config/plaid/note")
+                                                        :body "x"})]
+                             ["vocab-item/restore"
+                              #(api-call admin-request {:method :post
+                                                        :path (str "/api/v1/vocab-layers/" vocab "/items/" item
+                                                                   "/restore?as-of=" (java.net.URLEncoder/encode before "UTF-8"))})]]]
+      (testing op-type
+        (let [res (write)]
+          (is (< (:status res) 300) (pr-str res)))
+        (let [rows (op-rows op-type)]
+          (is (not (names-any? rows doomed)) (pr-str rows))
+          (is (some #(and (= "doc-version-bump" (:change_type %)) (= (str (:doc live)) (str (:target_id %)))) rows)
+              (pr-str rows)))
+        (is (= doomed-version (version doomed)))))
+    (is (= "greeting" (:form (psc/q1 db {:select [:form] :from [:vocab_items] :where [:= :id item]}))))))

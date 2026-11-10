@@ -24,6 +24,7 @@
             [plaid.sql.crud :as crud]
             [plaid.sql.metadata :as metadata]
             [plaid.sql.operation :as op :refer [submit-operation!]]
+            [plaid.sql.vocab-item :as vocab-item]
             [plaid.util.canonical :as canonical]
             [plaid.util.storable-text :as storable]))
 
@@ -59,13 +60,6 @@
    :metadata (boolean metadata?)
    :total (if insert? 1 (+ (if form? 1 0) (if metadata? 1 0)))})
 
-(defn- linked-document-ids
-  "Documents holding a link to `item-id`, read before its form changes."
-  [tx item-id]
-  (mapv :document_id (psc/q tx {:select [:document_id]
-                                :from :vocab_links
-                                :where [:= :vocab_item_id item-id]})))
-
 (defn- apply-plan! [tx vocab-id item-id tgt {:keys [insert? form? metadata?]}]
   (cond
     insert?
@@ -82,7 +76,7 @@
     :else
     (do
       (when form?
-        (let [doc-ids (linked-document-ids tx item-id)]
+        (let [doc-ids (vocab-item/linked-document-ids tx [item-id])]
           (crud/update-by-id! tx :vocab_items item-id {:form (:form tgt)})
           (op/bump-document-versions! tx doc-ids)))
       (when metadata?
