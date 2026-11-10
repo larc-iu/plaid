@@ -6,7 +6,9 @@ const SENSE_PARENT = '01890000-0000-7000-8000-000000000001';
 // The cross-project query sees only vocabularies a readable project links. H1-5:
 // one no project linked (left behind by a deleted project) read 0 entries while
 // it held 2,112, and a person tidying up deletes an "empty" vocabulary.
-const clientWith = ({ all, senses, layers = {} }) => ({
+// The vocabulary's page counts every entry, senses included, and the lists
+// show the same number.
+const clientWith = ({ all, senses = [], layers = {} }) => ({
   query: vi.fn(async (q) => ({
     results: q.where[0][2].metadata ? senses : all,
   })),
@@ -19,13 +21,13 @@ const clientWith = ({ all, senses, layers = {} }) => ({
 });
 
 describe('loadEntryCounts', () => {
-  it('counts entries, not senses, for the vocabularies the query sees', async () => {
+  it('counts every entry, senses included, for the vocabularies the query sees', async () => {
     const client = clientWith({ all: [['a', 5]], senses: [['a', 2]] });
-    expect(await loadEntryCounts(client, ['a'])).toEqual({ a: 3 });
+    expect(await loadEntryCounts(client, ['a'])).toEqual({ a: 5 });
     expect(client.vocabLayers.get).not.toHaveBeenCalled();
   });
 
-  it('reads a vocabulary the query does not see on its own', async () => {
+  it('reads a vocabulary the query does not see on its own, senses included', async () => {
     const client = clientWith({
       all: [['a', 1]],
       senses: [],
@@ -40,7 +42,7 @@ describe('loadEntryCounts', () => {
     });
     expect(await loadEntryCounts(client, ['a', 'orphan', 'empty'])).toEqual({
       a: 1,
-      orphan: 2,
+      orphan: 3,
       empty: 0,
     });
   });
