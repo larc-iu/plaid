@@ -302,6 +302,10 @@ export const pairPicker = {
           ? html`<span class="igt-pair__entry igt-pair__none">no entry</span>`
           : html`<span class="igt-pair__entry"></span>`;
     const shown = this._pairShown(row, multiVocab);
+    // Under a value the entry's detail has a line of its own. A row with no
+    // value (a headword shown for its senses) keeps it beside the entry: alone
+    // under the empty column it read as a stray word.
+    const beside = shown.detail && row.value === '';
     return html`<span class="igt-pair__line">
         <span class="igt-pair__value" dir="auto">${row.value}</span>
         ${entry}
@@ -312,13 +316,16 @@ export const pairPicker = {
         ${shown.description
           ? html`<span class="igt-pair__desc">${shown.description}</span>`
           : nothing}
+        ${beside ? html`<span class="igt-pair__desc">${shown.detail}</span>` : nothing}
         <span class="igt-pair__end">
           <span class="igt-pair__tags">${shown.tags}</span>
           ${this._pairConfirms(row) ? html`<span class="igt-vocab-pop__ok">accept</span>` : nothing}
           ${extra}
         </span>
       </span>
-      ${shown.detail ? html`<span class="igt-vocab-pop__detail">${shown.detail}</span>` : nothing}`;
+      ${shown.detail && !beside
+        ? html`<span class="igt-vocab-pop__detail">${shown.detail}</span>`
+        : nothing}`;
   },
 };
 

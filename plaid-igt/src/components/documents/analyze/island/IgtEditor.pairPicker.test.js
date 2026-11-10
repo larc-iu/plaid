@@ -35,7 +35,8 @@ const ITEMS = [
 // "the cat the cat": the first "cat" (m-2) glossed and linked by a model
 // that weighed both senses. `hold` keeps every batch until `release()`.
 // `text` is another body and its words, `ignorePunctuation` the ignored-token
-// rule setup gives a project, and `lexicon: false` a project with no lexicon.
+// rule setup gives a project, `lexicon: false` a project with no lexicon, and
+// `inlineFields` the lexicon fields an entry's detail line shows.
 function mount({
   hold = false,
   tagset = null,
@@ -46,6 +47,7 @@ function mount({
   text = null,
   ignorePunctuation = false,
   lexicon: hasLexicon = true,
+  inlineFields = ['gloss'],
 } = {}) {
   const raw = buildRawDoc({
     ...(text ?? {
@@ -91,7 +93,9 @@ function mount({
     id: 'v1',
     name: 'Lexicon',
     maintainers: [],
-    config: { igt: { fields: { gloss: { inline: true } } } },
+    config: {
+      igt: { fields: Object.fromEntries(inlineFields.map((n) => [n, { inline: true }])) },
+    },
   };
   // The popover reads the lexicon again when it opens.
   client.vocabLayers = { get: async () => ({ ...lexicon, items: structuredClone(items) }) };
@@ -220,6 +224,21 @@ describe('the two doors', () => {
     expect(head?.querySelector('.igt-pair__entry').textContent.trim()).toBe('cat1');
     const sense = items.find((r) => r.textContent.includes('jazzman'));
     expect(sense.style.getPropertyValue('--igt-depth')).toBe('1');
+  });
+
+  // On a row with no value the detail line stood alone under the empty value
+  // column, at the far left, and read as a stray word (CW-BROWSER S5-2).
+  it('draw the detail of a row with no value beside its entry', async () => {
+    const items = structuredClone(ITEMS);
+    items.find((i) => i.id === 'h').metadata = { pos: 'V' };
+    mount({ items, inlineFields: ['gloss', 'pos'] });
+    await settle(4);
+    openAlts(cell('ma:m-4:Gloss'));
+    const head = [...document.querySelectorAll('.igt-alts__item')].find((r) =>
+      r.classList.contains('is-context'),
+    );
+    expect(head.querySelector('.igt-vocab-pop__detail')).toBeNull();
+    expect(head.querySelector('.igt-pair__line').textContent).toContain('V');
   });
 
   // A word nobody has analyzed keeps its edge punctuation in its morpheme (an
