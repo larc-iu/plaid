@@ -473,13 +473,20 @@ def _documents_named(client, documents: list, ids: List[str]) -> str:
     return 'documents ' + (shown[0] if len(shown) == 1 else ', '.join(shown[:-1]) + ' and ' + shown[-1])
 
 
+# How each of core's refusals of a stale document version begins
+# (plaid.sql.audit-write/version-mismatch and its variant in
+# plaid.rest-api.v1.middleware). Core's other 409s say what they refuse.
+VERSION_MISMATCH = 'Document version mismatch'
+
+
 def _failure(client, documents: list, e: PlanError) -> str:
     """Why a plan stopped, as the clause after "Failed to apply the plan:".
     A lock that lapsed names its document as the reader knows it, and so
-    does a write refused because the document moved under the plan (409):
-    the lock lets the approver's own editor write between two batches.
-    Anything else is the failure's own text, without the period it may end
-    in, since the answer goes on after it."""
+    does a write refused because the document moved under the plan (core's
+    409 "Document version mismatch"): the lock lets the approver's own
+    editor write between two batches. Anything else, another 409 among
+    them, is the failure's own text, without the period it may end in,
+    since the answer goes on after it."""
     cause = e
     while cause is not None and not isinstance(cause, DocumentLockLost):
         cause = cause.__cause__
@@ -489,8 +496,8 @@ def _failure(client, documents: list, e: PlanError) -> str:
     # of the assistant's was made from (an entry linked elsewhere).
     refused = e.__cause__
     data = getattr(refused, 'response_data', None)
-    if (isinstance(refused, PlaidAPIError) and refused.status == 409
-            and not (isinstance(data, dict) and data.get('error') == 'id-taken')):
+    if (isinstance(refused, PlaidAPIError) and refused.status == 409 and isinstance(data, dict)
+            and str(data.get('error') or '').startswith(VERSION_MISMATCH)):
         held = [d.get('id') for d in documents or () if isinstance(d, dict) and d.get('id')]
         which = _named(_document_name(client, documents, held[0])) if len(held) == 1 else 'a document it writes'
         return f'{which} was changed while the plan was written'

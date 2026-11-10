@@ -275,7 +275,15 @@ def test_a_lapse_is_told_by_the_documents_name_in_plain_words(spec, monkeypatch)
                              'lapsed. Nothing was written.'], helper.errors
 
 
-def _moved_under(monkeypatch, after=0):
+# Core's two refusals of a stale document version (plaid.sql.audit-write
+# `version-mismatch` and the variant in rest-api.v1.middleware).
+MISMATCH = [
+    'Document version mismatch. The document has been modified since you last fetched it.',
+    'Document version mismatch. What this request names is no longer in the document.',
+]
+
+
+def _moved_under(monkeypatch, after=0, text=MISMATCH[0]):
     """The approver's own editor writes the document while the plan holds
     its lock (a holder's writes pass), so the plan's next batch, stamped
     with the version it holds, is refused as core refuses it."""
@@ -286,22 +294,48 @@ def _moved_under(monkeypatch, after=0):
         if self._batch is not None:
             calls['n'] += 1
             if calls['n'] > after:
-                text = 'Document version mismatch. The document has been modified since you last fetched it.'
                 raise PlaidAPIError(f'HTTP 409 {text}', status=409, response_data={'error': text})
         real(self)
 
     monkeypatch.setattr(core_plan.Batcher, 'flush', flush)
 
 
-def test_a_document_changed_under_the_plan_is_told_in_plain_words(spec, monkeypatch):
+@pytest.mark.parametrize('text', MISMATCH)
+def test_a_document_changed_under_the_plan_is_told_in_plain_words(spec, monkeypatch, text):
     """Not core's "Document version mismatch ... since you last fetched it"
     with its HTTP status (LP2-37)."""
     client = spec['client']()
     plan, _ = sbs._plan(spec, client)
-    _moved_under(monkeypatch)
+    _moved_under(monkeypatch, text=text)
     helper = sbs._approve(spec, client, plan)
     assert helper.errors == [f'Failed to apply the plan: document "{NAMES[spec["app"]]}" was changed while '
                              'the plan was written. Nothing was written.'], helper.errors
+
+
+# Core's other 409s (guideline.clj, constraints/token.clj, project.clj's
+# config cell, layer_constraints.clj): none of them says a document moved.
+OTHER_409 = [
+    'This guideline was changed by someone else after you opened it',
+    'Token overlaps with existing token(s) in non-overlapping layer',
+    'This setting was changed by someone else since it was read',
+    "This namespace's constraints on the layer changed since they were read.",
+]
+
+
+@pytest.mark.parametrize('text', OTHER_409)
+def test_a_409_that_is_no_version_mismatch_keeps_its_own_text(spec, monkeypatch, text):
+    """Only a stale document version reads as the document changed
+    (REV-BL-A-1): any other 409 is told in core's words, as before."""
+    def flush(self):
+        if self._batch is not None:
+            raise PlaidAPIError(f'HTTP 409 {text}', status=409, response_data={'error': text})
+
+    monkeypatch.setattr(core_plan.Batcher, 'flush', flush)
+    client = spec['client']()
+    plan, _ = sbs._plan(spec, client)
+    helper = sbs._approve(spec, client, plan)
+    said = text[:-1] if text.endswith('.') else text
+    assert helper.errors == [f'Failed to apply the plan: HTTP 409 {said}. Nothing was written.'], helper.errors
 
 
 def test_a_failure_whose_text_ends_in_a_period_is_not_given_a_second(spec, monkeypatch):
