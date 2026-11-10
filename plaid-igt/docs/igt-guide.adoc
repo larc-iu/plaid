@@ -371,7 +371,8 @@ A value that a field's tagset refuses is underlined in red, and a closed tagset 
 === Saving
 
 A value is saved when you leave its cell, and there is no save button.
-When the connection drops, the save status reads **Offline, retrying**, and your edits are sent once the server answers again.
+When the server cannot be reached, the save status reads **Can't reach the server, retrying**, or **Offline, retrying** when the computer has no network.
+Your edits are sent once the server answers again.
 Closing the tab meanwhile asks first.
 
 Two people can have one document open at once, but neither sees the other's edits as they are made.

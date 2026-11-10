@@ -343,7 +343,8 @@ export class DocumentModel {
     return false;
   }
   // True while a refetch after a refused edit waits for the server to be
-  // reachable again. The save-status pills say "Offline, retrying".
+  // reachable again. The save-status pills say "Can't reach the server, retrying"
+  // (or "Offline, retrying" with no network).
   get isOffline() {
     return this._writes.isOffline;
   }
