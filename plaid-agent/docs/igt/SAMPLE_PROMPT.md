@@ -249,7 +249,7 @@ PLAN: set a field (e.g. gloss) on a lexicon entry. A field that holds a referenc
 
 - `field` (string, required)
 - `value` (string, required)
-- `entry_form` (string): A headword, with an optional "#" and the number shown beside it. One segment is a headword ("gam#2", the second spelled that way), two or more a sense ("kwatha#1.2", "gam#2.1.3"). A bare "kwatha" is the headword. read_lexicon shows every number.
+- `entry_form` (string): A headword, with an optional "#" and the number shown beside it. One segment is a headword ("gam#2", the second spelled that way), two or more a sense ("kwatha#1.2", "gam#2.1.3"). A bare "kwatha" is the headword. read_lexicon shows every number. A number names only an entry that exists: name one this plan adds by the entry_id it was given.
 - `lexicon` (string)
 - `entry_id` (string)
 - `entry_gloss` (string): Singles out one of several entries with the same form: a value one of its fields has (e.g. its gloss).
@@ -280,7 +280,7 @@ How a form has been analyzed so far, as a word (segmentation, glosses, links) an
 
 One lexicon entry in full: all its fields, how many words and morphemes link to it (an entry with senses counts their links too, and each sense's own), and example occurrences. It also says where the entry sits, the senses under it, what refers to it, and its promoted usage examples with their numbers.
 
-- `entry_form` (string): A headword, with an optional "#" and the number shown beside it. One segment is a headword ("gam#2", the second spelled that way), two or more a sense ("kwatha#1.2", "gam#2.1.3"). A bare "kwatha" is the headword. read_lexicon shows every number.
+- `entry_form` (string): A headword, with an optional "#" and the number shown beside it. One segment is a headword ("gam#2", the second spelled that way), two or more a sense ("kwatha#1.2", "gam#2.1.3"). A bare "kwatha" is the headword. read_lexicon shows every number. A number names only an entry that exists: name one this plan adds by the entry_id it was given.
 - `lexicon` (string)
 - `entry_id` (string)
 - `entry_gloss` (string): Singles out one of several entries with the same form: a value one of its fields has (e.g. its gloss).
@@ -378,7 +378,7 @@ PLAN: move an entry, with everything under it, to sit as a sense of another entr
 
 - `under_form` (string): The entry it should sit under.
 - `under_id` (string)
-- `entry_form` (string): A headword, with an optional "#" and the number shown beside it. One segment is a headword ("gam#2", the second spelled that way), two or more a sense ("kwatha#1.2", "gam#2.1.3"). A bare "kwatha" is the headword. read_lexicon shows every number.
+- `entry_form` (string): A headword, with an optional "#" and the number shown beside it. One segment is a headword ("gam#2", the second spelled that way), two or more a sense ("kwatha#1.2", "gam#2.1.3"). A bare "kwatha" is the headword. read_lexicon shows every number. A number names only an entry that exists: name one this plan adds by the entry_id it was given.
 - `lexicon` (string): Lexicon name (needed only when the project has several).
 - `entry_id` (string)
 - `entry_gloss` (string): Singles out one of several entries with the same form: a value one of its fields has (e.g. its gloss).
@@ -388,7 +388,7 @@ PLAN: move an entry, with everything under it, to sit as a sense of another entr
 PLAN: an entry's place in the sense tree: add, move or free a sense, order homographs, add or drop a usage example. Call with action "help" first.
 
 - `action` (one of `help`, `add`, `move`, `free`, `order_homographs`, `promote_example`, `remove_example`, required)
-- `entry_form` (string): A headword, with an optional "#" and the number shown beside it. One segment is a headword ("gam#2", the second spelled that way), two or more a sense ("kwatha#1.2", "gam#2.1.3"). A bare "kwatha" is the headword. read_lexicon shows every number.
+- `entry_form` (string): A headword, with an optional "#" and the number shown beside it. One segment is a headword ("gam#2", the second spelled that way), two or more a sense ("kwatha#1.2", "gam#2.1.3"). A bare "kwatha" is the headword. read_lexicon shows every number. A number names only an entry that exists: name one this plan adds by the entry_id it was given.
 - `lexicon` (string): Lexicon name (needed only when the project has several).
 - `entry_id` (string)
 - `entry_gloss` (string): Singles out one of several entries with the same form: a value one of its fields has (e.g. its gloss).

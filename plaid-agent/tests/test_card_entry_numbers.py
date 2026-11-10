@@ -64,6 +64,31 @@ def test_a_numbered_form_names_an_existing_entry_after_the_plan_adds_one_spelled
     assert _labels(w)[-1].endswith(': link "gam₁"'), _labels(w)
 
 
+def test_a_numbered_form_that_names_only_an_entry_the_plan_adds_is_refused_with_its_entry_id():
+    # No zub exists, the plan adds one, and the model writes the number it
+    # saw in the new entry_id. A number names only what exists, so it is
+    # refused, and the refusal gives that entry_id rather than telling the
+    # model to create the entry it has just created (REV-BL-A-2).
+    w = fake_ws(FakeClient(documents={'d1': document_raw()}, lexicon=lexicon_raw()))
+    made = call_tool(w, 'create_entry', {'form': 'zub', 'fields': {'gloss': 'river'}})
+    key = made.split('entry_id: ')[1].split()[0]
+    out = call_tool(w, 'link_entry', {'document': 'Text 1', 'refs': ['s1.w3'], 'entry_form': 'zub#1'})
+    assert 'Planned' not in out, out
+    assert key in out and 'create_entry' not in out, out
+    out = call_tool(w, 'link_entry', {'document': 'Text 1', 'refs': ['s1.w3'], 'entry_id': key})
+    assert 'Planned 1' in out, out
+
+
+def test_a_numbered_form_past_the_existing_ones_gives_the_new_entrys_id():
+    # gam#1 and gam#2 exist and the plan adds a third gam: "gam#3" is no
+    # number the app shows, and the refusal names the planned gam's entry_id.
+    w = _ws()
+    made = call_tool(w, 'create_entry', {'form': 'gam', 'fields': {'gloss': 'trap'}})
+    key = made.split('entry_id: ')[1].split()[0]
+    out = call_tool(w, 'link_entry', {'document': 'Text 1', 'refs': ['s1.w3'], 'entry_form': 'gam#3'})
+    assert 'Planned' not in out and key in out and 'create_entry' not in out, out
+
+
 def test_a_phrase_link_carries_the_number():
     w = _ws()
     call_tool(w, 'link_phrase', {'document': 'Text 1', 'refs': ['s1.w2', 's1.w3'], 'entry_form': 'gam#2'})

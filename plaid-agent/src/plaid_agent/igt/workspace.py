@@ -683,6 +683,19 @@ class Workspace(BaseWorkspace):
                 # of them is what the form names, so the refusal stays as it is.
                 if len(was) == 1:
                     return 'existing', was[0]
+            # A number names only what exists, so a numbered form that names
+            # nothing but is spelled as an entry or sense this plan adds is
+            # refused with that entry's entry_id, never "create_entry": the
+            # model may have read the number off the entry_id it was given.
+            if suffix is not None:
+                planned = [(k, e) for k, e in self.new_entries.items()
+                           if e['form'].lower() == form.lower()
+                           and (not lexicon or e['vocab_id'] == vocabs[0]['id']) and has_gloss(e.get('metadata'))]
+                if planned:
+                    raise ToolError('\n'.join(
+                        [f'No lexicon entry "{form}#{suffix}". A number names only an entry that exists. '
+                         f'This plan adds "{form}": pass its entry_id.'] + self.entry_lines([], planned)),
+                        kind='not-found')
             # The number as the app shows it ("kai₁") or writes it in a
             # reference field ("kai 1") says what "kai#1" says. Read only when
             # the form as given names nothing, so an entry really spelled that

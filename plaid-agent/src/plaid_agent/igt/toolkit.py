@@ -60,7 +60,8 @@ _ENTRY_FORM = {'type': 'string',
                'description': 'A headword, with an optional "#" and the number shown beside it. One segment '
                               'is a headword ("gam#2", the second spelled that way), two or more a sense '
                               '("kwatha#1.2", "gam#2.1.3"). A bare "kwatha" is the headword. read_lexicon '
-                              'shows every number.'}
+                              'shows every number. A number names only an entry that exists: name one this plan '
+                              'adds by the entry_id it was given.'}
 _ENTRY_ADDR = {'entry_form': _ENTRY_FORM,
                'lexicon': {'type': 'string', 'description': 'Lexicon name (needed only when the project has several).'},
                'entry_id': {'type': 'string'}}
