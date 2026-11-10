@@ -46,7 +46,7 @@ const prepareImport = async ({ client, project, projectId }) => {
       try {
         // One audit-log operation per imported document, which the import
         // labels itself (conlluImport.js).
-        const { documentId, importWarnings } = await ConlluDocument.importFromConllu(
+        const imported = await ConlluDocument.importFromConllu(
           client,
           projectId,
           name,
@@ -55,12 +55,14 @@ const prepareImport = async ({ client, project, projectId }) => {
           { mint: mintOf(key) },
         );
         mints.delete(key);
+        // The name the document was stored under: "fr1 (2)" when the
+        // project already held an fr1.
         push({
           key: `${index}-${c}`,
-          name,
+          name: imported.name,
           status: 'imported',
-          documentId,
-          warnings: importWarnings || [],
+          documentId: imported.documentId,
+          warnings: imported.importWarnings || [],
         });
       } catch (err) {
         push({ key: `${index}-${c}`, name, status: 'rejected', reason: importErrorText(err) });

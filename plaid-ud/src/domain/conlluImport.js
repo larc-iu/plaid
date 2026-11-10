@@ -144,6 +144,7 @@ async function importDocument(client, projectId, name, conlluText, precomputedLa
   }
 
   let createdDocumentId = null;
+  let storedName = name;
   try {
     // Names are unique in a project: a name another document holds becomes
     // the first free "Name (2)", which the server picks.
@@ -151,6 +152,9 @@ async function importDocument(client, projectId, name, conlluText, precomputedLa
       client.documents.create(projectId, name, undefined, undefined, { id, freeName: true }),
     );
     createdDocumentId = documentResponse.id;
+    // The name stored, which the result names. An earlier press that made it
+    // (createOnce's `{ id }`) answers none, and that press asked for this one.
+    storedName = documentResponse.name ?? name;
     // Layer config is project-level and identical for every document, so a
     // bulk-import caller can pass it in to skip a per-document round trip.
     const layerInfo =
@@ -462,7 +466,7 @@ async function importDocument(client, projectId, name, conlluText, precomputedLa
       );
     }
 
-    return { documentId: createdDocumentId, importWarnings };
+    return { documentId: createdDocumentId, name: storedName, importWarnings };
   } catch (err) {
     if (createdDocumentId) {
       try {

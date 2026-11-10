@@ -37,12 +37,16 @@ function serverClient({ loseFirst = false } = {}) {
             responseData: { error: 'id-taken', deleted: false },
           });
         }
-        made.set(opts.id, name);
+        // The first free name, as the server picks it under free-name.
+        const taken = new Set(made.values());
+        let stored = name;
+        for (let k = 2; taken.has(stored); k += 1) stored = `${name} (${k})`;
+        made.set(opts.id, stored);
         if (lose) {
           lose = false;
           throw Object.assign(new Error('no answer'), { status: 0 });
         }
-        return { id: opts.id };
+        return { id: opts.id, name: stored };
       },
       get: async () => {
         throw new Error('the layer info is precomputed');
@@ -92,4 +96,14 @@ test('an import made again after a lost create answer goes on into the same docu
   assert.equal(client.creates[0], client.creates[1]);
   assert.equal(out.documentId, client.creates[0]);
   assert.deepEqual([...client.made.keys()], [out.documentId]);
+});
+
+// LP2-6: a name another document holds is stored as "Name (2)", and the import
+// result names the document by the name it was stored under.
+test('the import answers the name the server stored', async () => {
+  const client = serverClient();
+  const first = await ConlluDocument.importFromConllu(client, 'p1', 'fr1', INPUT, info);
+  const second = await ConlluDocument.importFromConllu(client, 'p1', 'fr1', INPUT, info);
+  assert.equal(first.name, 'fr1');
+  assert.equal(second.name, 'fr1 (2)');
 });
