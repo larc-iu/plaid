@@ -1258,17 +1258,34 @@
   outline-offset: 0;
 }
 /* Thin lexicon selector at the bottom: each chip scopes the whole popover to
-   one vocab; the active chip is a link to the full vocab view (new tab). */
+   one vocab (on a morpheme's chip, where "+ Create" puts a new entry, and a
+   label says so); the active chip is a link to the full vocab view (new tab).
+   The label keeps its width and the tabs shrink and scroll, so the row is
+   never wider than the popover. */
 .igt-vocab-pop__vocabsel {
   display: flex;
-  gap: 3px;
+  align-items: center;
+  gap: 6px;
   margin-top: 5px;
   padding-top: 5px;
   border-top: 1px solid var(--igt-line);
+}
+.igt-vocab-pop__vocabsel-label {
+  flex: none;
+  font-size: 10px;
+  line-height: 18px;
+  color: var(--igt-gray-500);
+  white-space: nowrap;
+}
+.igt-vocab-pop__vocabtabs {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  gap: 3px;
   overflow-x: auto;
   scrollbar-width: none;
 }
-.igt-vocab-pop__vocabsel::-webkit-scrollbar {
+.igt-vocab-pop__vocabtabs::-webkit-scrollbar {
   display: none;
 }
 .igt-vocab-pop__vocabtab {

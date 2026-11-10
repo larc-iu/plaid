@@ -913,4 +913,24 @@ describe('the two doors dress a row alike', () => {
     const tab = host.querySelector('button.igt-vocab-pop__vocabtab');
     expect(tab?.title).toBe('Create in “Loans”');
   });
+
+  it('says before the vocabulary tabs that they choose where a new entry goes (M2-3)', async () => {
+    mount();
+    await settle(4);
+    openChip('m-2');
+    const sel = host.querySelector('.igt-vocab-pop__vocabsel');
+    expect(sel.firstElementChild.className).toBe('igt-vocab-pop__vocabsel-label');
+    expect(sel.firstElementChild.textContent).toBe('New entry in');
+    expect(sel.querySelector('[role="tablist"] .igt-vocab-pop__vocabtab')).not.toBeNull();
+  });
+
+  it('puts no such label on a word’s popover, whose tabs choose the list', async () => {
+    mount();
+    await settle(4);
+    editor._openPopover('w-2', 'word', host.querySelector('[data-vocab-opener="m-2"]'));
+    editor._render(true);
+    expect(host.querySelector('.igt-vocab-pop:not(.igt-vocab-pop--pairs)')).not.toBeNull();
+    expect(host.querySelector('.igt-vocab-pop__vocabtab')).not.toBeNull();
+    expect(host.querySelector('.igt-vocab-pop__vocabsel-label')).toBeNull();
+  });
 });

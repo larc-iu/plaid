@@ -736,43 +736,52 @@ export const vocabPopover = {
             ? this._mweTypeRow(editingCreate ? null : currentItem)
             : nothing}
         ${vocabs.length
-          ? html`<div
-              class="igt-vocab-pop__vocabsel"
-              role="tablist"
-              aria-label=${pairs ? 'Create in' : 'Choose lexicon'}
-            >
-              ${vocabs.map((v) => {
-                const isActive = v.id === activeVocab?.id;
-                // An inactive chip scopes the popover to that lexicon; the active
-                // chip is a link to the full vocab view (new tab). So the first
-                // click selects, a second click on the now-active chip opens.
-                return isActive
-                  ? html`<a
-                      class="igt-vocab-pop__vocabtab is-active"
-                      role="tab"
-                      aria-selected="true"
-                      href=${`#/vocabularies/${v.id}`}
-                      target="_blank"
-                      rel="noopener"
-                      title=${`Open “${v.name}” in a new tab`}
-                      @click=${(e) => e.stopPropagation()}
-                      ><span class="igt-vocab-pop__vtab-name">${v.name}</span
-                      ><span class="igt-vocab-pop__vtab-ext">↗</span></a
-                    >`
-                  : html`<button
-                      type="button"
-                      class="igt-vocab-pop__vocabtab"
-                      role="tab"
-                      aria-selected="false"
-                      title=${pairs ? `Create in “${v.name}”` : `Switch to “${v.name}”`}
-                      @click=${(e) => {
-                        e.stopPropagation();
-                        selectVocab(v.id);
-                      }}
-                    >
-                      <span class="igt-vocab-pop__vtab-name">${v.name}</span>
-                    </button>`;
-              })}
+          ? html`<div class="igt-vocab-pop__vocabsel">
+              ${
+                // On a morpheme's chip the tabs only choose where "+ Create"
+                // puts a new entry (M2-3). Elsewhere they choose the list.
+                pairs
+                  ? html`<span class="igt-vocab-pop__vocabsel-label">New entry in</span>`
+                  : nothing
+              }
+              <div
+                class="igt-vocab-pop__vocabtabs"
+                role="tablist"
+                aria-label=${pairs ? 'New entry in' : 'Choose lexicon'}
+              >
+                ${vocabs.map((v) => {
+                  const isActive = v.id === activeVocab?.id;
+                  // An inactive chip scopes the popover to that lexicon; the active
+                  // chip is a link to the full vocab view (new tab). So the first
+                  // click selects, a second click on the now-active chip opens.
+                  return isActive
+                    ? html`<a
+                        class="igt-vocab-pop__vocabtab is-active"
+                        role="tab"
+                        aria-selected="true"
+                        href=${`#/vocabularies/${v.id}`}
+                        target="_blank"
+                        rel="noopener"
+                        title=${`Open “${v.name}” in a new tab`}
+                        @click=${(e) => e.stopPropagation()}
+                        ><span class="igt-vocab-pop__vtab-name">${v.name}</span
+                        ><span class="igt-vocab-pop__vtab-ext">↗</span></a
+                      >`
+                    : html`<button
+                        type="button"
+                        class="igt-vocab-pop__vocabtab"
+                        role="tab"
+                        aria-selected="false"
+                        title=${pairs ? `Create in “${v.name}”` : `Switch to “${v.name}”`}
+                        @click=${(e) => {
+                          e.stopPropagation();
+                          selectVocab(v.id);
+                        }}
+                      >
+                        <span class="igt-vocab-pop__vtab-name">${v.name}</span>
+                      </button>`;
+                })}
+              </div>
             </div>`
           : nothing}
       </div>
