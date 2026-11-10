@@ -144,7 +144,7 @@ async function importDocument(client, projectId, name, conlluText, precomputedLa
   }
 
   let createdDocumentId = null;
-  let storedName = name;
+  let storedName;
   try {
     // Names are unique in a project: a name another document holds becomes
     // the first free "Name (2)", which the server picks.
