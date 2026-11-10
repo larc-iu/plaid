@@ -280,8 +280,13 @@ export const humanizeError = (error, fallback = 'Something went wrong.') => {
 
 // A sign-in that fails says one thing to the person typing, so the general
 // wording for 401 ("your sign-in is no longer valid") does not belong on that screen.
-// Everything else reads as it does everywhere: a server that is down, a 500.
-export const signInError = (error) =>
-  statusOf(error) === 401
-    ? 'Email or password is incorrect.'
-    : humanizeError(error, 'Failed to sign in.');
+// The server says an account is deactivated only to someone who typed its right
+// password (a 403 with `deactivated`). Everything else reads as it does
+// everywhere: a server that is down, a 500.
+export const signInError = (error) => {
+  if (statusOf(error) === 401) return 'Email or password is incorrect.';
+  if (statusOf(error) === 403 && error?.responseData?.deactivated === true) {
+    return 'This account is deactivated.';
+  }
+  return humanizeError(error, 'Failed to sign in.');
+};

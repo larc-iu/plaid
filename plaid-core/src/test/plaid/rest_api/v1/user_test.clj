@@ -231,9 +231,13 @@
     (testing "deactivation rejects logins, kills live tokens, stays visible"
       (is (= 204 (:status (rest-handler (admin-request :delete "/api/v1/users/deact@example.com")))))
       (let [resp (login "deact@example.com" "hunter22")]
-        (is (= 401 (:status resp)) "login rejected after deactivation")
+        (is (= 403 (:status resp)) "login with the right password rejected after deactivation")
+        (is (= {:error "This account is deactivated." :deactivated true} (parse-response-body resp))
+            "the right password learns the account is deactivated, so no password reset is tried"))
+      (let [resp (login "deact@example.com" "wrong-password")]
+        (is (= 401 (:status resp)))
         (is (= {:error "Invalid credentials"} (parse-response-body resp))
-            "same generic message as a wrong password — no enumeration of deactivated accounts"))
+            "a wrong password reads as for an active account or none: nothing learned without the password"))
       (is (= 401 (:status (bearer-get token "/api/v1/users/deact@example.com")))
           "pre-deactivation session token is dead immediately")
       (is (= 401 (:status (bearer-get api-tok "/api/v1/users/deact@example.com")))

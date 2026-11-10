@@ -311,15 +311,19 @@
     :post {:summary (str "Authenticate with a <body>user-id</body> (the account's email address) and "
                          "<body>password</body> and get a JWT token. The token should be included "
                          "in request headers under \"Authorization: Bearer ...\" in order to prove successful "
-                         "authentication to the server.")
+                         "authentication to the server. A wrong password or an unknown account answers 401. "
+                         "The right password on a deactivated account answers 403 with "
+                         "<body>deactivated</body> true.")
            :middleware [rl/wrap-login-rate-limit]
            :parameters {:body {:user-id schema/user-id :password string?}}
            :handler (fn [{{{:keys [user-id password]} :body} :parameters
                           db :db secret-key :secret-key :as request}]
-                      ;; Return the same generic error in all branches to avoid
-                      ;; leaking which accounts exist (user-enumeration via
-                      ;; login) — including the deactivated case, which must be
-                      ;; indistinguishable from a wrong password.
+                      ;; A wrong password and an unknown account get the same
+                      ;; generic error, so nobody learns which accounts exist
+                      ;; (user-enumeration via login), and a deactivated account
+                      ;; reads the same to anyone without its password. Only the
+                      ;; right password on a deactivated account is told so
+                      ;; (Luke, 2026-11-10): a password reset cannot help it.
                       (let [{:user/keys [id password-changes password-hash deactivated-at]
                              :as account} (user/get-internal db user-id)
                             ;; Always do one bcrypt check. Missing users use a
@@ -329,7 +333,8 @@
                                                            (if account
                                                              password-hash
                                                              dummy-password-hash))]
-                        (if (and account password-valid? (nil? deactivated-at))
+                        (cond
+                          (and account password-valid? (nil? deactivated-at))
                           (let [token (sign-user-token secret-key id password-changes)]
                             ;; Successful login clears the rate-limit
                             ;; bucket — an occasional typo shouldn't lock
@@ -344,6 +349,14 @@
                                     (vreset! {:user id}))
                             {:status 200
                              :body {:token token}})
+
+                          (and account password-valid?)
+                          (do (rl/record-failure! request user-id)
+                              {:status 403
+                               :body {:error "This account is deactivated."
+                                      :deactivated true}})
+
+                          :else
                           (do (rl/record-failure! request user-id)
                               {:status 401
                                :body {:error "Invalid credentials"}}))))}}])

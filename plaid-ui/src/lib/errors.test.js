@@ -207,6 +207,14 @@ describe('a failed sign-in', () => {
     );
   });
 
+  // PB-21: the right password on a deactivated account. A wrong one reads as
+  // for any account, so only someone who has the password learns this.
+  it('says the account is deactivated when the server says the password was right', () => {
+    const e = httpError(403, 'This account is deactivated.');
+    e.responseData = { error: 'This account is deactivated.', deactivated: true };
+    expect(signInError(e)).toBe('This account is deactivated.');
+  });
+
   it('says what else went wrong, in the usual words', () => {
     expect(signInError(new TypeError('Failed to fetch'))).toMatch(/Check your connection/);
     expect(signInError(httpError(500))).toMatch(/unexpected error/);
