@@ -163,7 +163,7 @@ Any other file the browser cannot play is refused, as in `story.wav cannot be pl
 Convert such a file to MP3 or PCM WAV with an audio editor first.
 
 A large recording can be sent as audio only.
-Choosing one offers to convert it to MP3 in the browser, mono at 16 kHz, about 14 MB an hour.
+Choosing one under **Single** offers to convert it to MP3 in the browser, mono at 16 kHz, about 14 MB an hour.
 The timing is unchanged, but the picture is dropped and the sound is no longer good enough for phonetic measurement.
 
 === Recordings with one file per speaker
@@ -907,6 +907,10 @@ The review screen of an ELAN import has three parts, in the order you work.
 **Files** lists each `.eaf` with the document it becomes and its recording under it.
 **Tiers** is where each tier is given its role, and a tier is matched across files by its name, so files need not have the same tiers in the same places.
 **Preview** draws a sentence as the interlinear lines the import would write, and redraws it as you change a role.
+
+A file that names several audio recordings, one per speaker, has those chosen mixed into one recording with a channel each, as under **Per speaker** on the Media tab, at the quality chosen under **Files**.
+When one of those chosen is a video, nothing is mixed: the first one chosen, in the file's order, is the recording, and the others are not used.
+A time origin set on a recording in ELAN is applied, so the segments stay on the speech they were aligned to.
 
 The roles a tier can take:
 
