@@ -96,19 +96,6 @@ describe('SaveStatus', () => {
     await view.unmount();
   });
 
-  it('leaves Saving… out where told to, for a card with a progress bar of its own', async () => {
-    vi.useFakeTimers();
-    const doc = fakeDoc();
-    const view = await renderComponent(<SaveStatus doc={doc} slow={false} />);
-    const status = view.container.querySelector('[role="status"]');
-    await view.step(() => doc.set({ isSaving: true }));
-    await view.step(() => vi.advanceTimersByTime(5000));
-    expect(status.textContent).toBe('');
-    await view.step(() => doc.set({ isOffline: true }));
-    expect(status.textContent).toBe("Can't reach the server, retrying");
-    await view.unmount();
-  });
-
   it('says the document is in use while an edit waits for another lock, and goes quiet once sent', async () => {
     const doc = fakeDoc();
     const view = await renderComponent(<SaveStatus doc={doc} />);

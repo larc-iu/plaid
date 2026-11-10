@@ -384,6 +384,7 @@ A value is saved when you leave its cell, and there is no save button.
 When the server cannot be reached, the save status reads **Can't reach the server, retrying**, or **Offline, retrying** when the computer has no network.
 Your edits are sent once the server answers again.
 Closing the tab meanwhile asks first.
+On every tab but Analyze the save status is beside the tabs, and a save the server has not answered after three seconds reads **Saving…** there until it lands.
 
 Two people can have one document open at once, but neither sees the other's edits as they are made.
 Edits to different fields are all saved.

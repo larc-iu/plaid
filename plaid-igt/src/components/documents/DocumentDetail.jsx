@@ -115,8 +115,9 @@ const IGT_SHELL = {
   renderTab: (tab, context) => <DocumentBody tab={tab} context={context} />,
   // The check on open is about the document, whatever tab it opens on.
   validateOnOpen: true,
-  // The Analyze grid says how its saves are going itself.
-  saveStatus: false,
+  // The Analyze grid says how its saves are going itself. Every other tab
+  // shows the shell's status.
+  ownSaveStatus: ['analyze'],
   roleWords: TOKEN_ROLE_WORDS,
   // Landing on a sentence: the ?focusSentence= handoff, and a citation asking
   // for one of this document's sentences while the reader is on the grid.

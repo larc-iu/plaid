@@ -38,7 +38,6 @@ export function DocumentMedia() {
           onCancel={mediaOps.cancelUpload}
           isUploading={mediaOps.isUploading}
           progress={mediaOps.uploadProgress}
-          saves={doc}
           convertProgress={mediaOps.convertProgress}
           maxBytes={limits?.mediaFileBytes ?? null}
           readOnly={readOnly}

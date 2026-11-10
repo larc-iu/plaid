@@ -8,7 +8,6 @@ import { conversionNeed, conversionNote, estimateMp3Bytes } from '@/domain/media
 import { readDuration } from '@/domain/media/mediaDuration';
 import { readyRecordings } from '@/utils/readyRecordings';
 import { SegmentedControl } from '@ui/components/shared/SegmentedControl.jsx';
-import { SaveStatus } from '@ui/components/shared/SaveStatus.jsx';
 import { MixRecordingsDialog } from './MixRecordingsDialog.jsx';
 import { ChannelSpeakersDialog } from './ChannelSpeakersDialog.jsx';
 
@@ -17,10 +16,8 @@ import { ChannelSpeakersDialog } from './ChannelSpeakersDialog.jsx';
 // the file and the document reloads with it. `progress` is
 // `{ name, loaded, total, perSpeaker }` while an upload is in flight, else null, and
 // `convertProgress` is `{ name, fraction }` while a recording is converted.
-// `saves` is the document, whose write queue sends the upload: an upload whose
-// answer was lost goes again from the first byte until the server answers,
-// and the card says so under the bar, as the save pills do (SaveStatus). The
-// bar shows the upload is on its way, so the card has no "Saving…".
+// An upload whose answer was lost goes again from the first byte until the
+// server answers, and the save status in the tab row says so.
 // `onCancel` stops the upload, and Cancel is on the card until every byte is
 // up: from then on the server stores the file whatever the browser does. It
 // stops a conversion to MP3 too, and is on the card all through one.
@@ -40,7 +37,6 @@ export const MediaUpload = ({
   isUploading,
   progress = null,
   convertProgress = null,
-  saves = null,
   maxBytes = null,
   readOnly = false,
   knownSpeakers = [],
@@ -241,11 +237,8 @@ export const MediaUpload = ({
                   ? 'Checking the file and saving it.'
                   : `${formatBytes(sent)} of ${formatBytes(total)}`}
               </p>
-              {(saves || canCancel) && (
-                <div className="flex items-center justify-between gap-3">
-                  <span>{saves && <SaveStatus doc={saves} slow={false} />}</span>
-                  {canCancel && cancelButton}
-                </div>
+              {canCancel && (
+                <div className="flex items-center justify-end gap-3">{cancelButton}</div>
               )}
             </div>
           ) : pending ? (

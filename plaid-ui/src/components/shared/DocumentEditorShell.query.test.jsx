@@ -21,13 +21,14 @@ vi.mock('../../domain/useDocumentModel.js', () => ({ useDocumentModel: () => 0 }
 // The strip as data: which tab it marks, whether it is inert, and each tab's
 // address.
 vi.mock('./DocumentTabStrip.jsx', () => ({
-  DocumentTabStrip: ({ tabs, active, disabled, project, failed }) => (
+  DocumentTabStrip: ({ tabs, active, disabled, project, failed, status }) => (
     <div
       data-testid="strip"
       data-active={active}
       data-disabled={String(disabled)}
       data-project={project?.name ?? ''}
       data-failed={String(!!failed)}
+      data-status={String(!!status)}
     >
       {tabs.map((t) => (
         <a key={t.value} data-testid={`to-${t.value}`} href={t.to}>
@@ -263,6 +264,28 @@ describe('a document whose tab is in the query', () => {
   it('names the tab in the window title', async () => {
     await mount(['/p/p1/d/d1?tab=details']);
     expect(document.title.startsWith('Details · Doc · Project')).toBe(true);
+    await view.unmount();
+  });
+});
+
+// igt's Analyze grid shows its own save pill. The tab row shows the save
+// status on every other tab, and on none of the tabs that have their own.
+describe('the save status in the tab row', () => {
+  it('is on every tab but those with a save pill of their own', async () => {
+    await mount(['/p/p1/d/d1?tab=baseline'], { config: app({ ownSaveStatus: ['analyze'] }) });
+    expect(strip().dataset.status).toBe('true');
+    await view.step(() => seen.goToTab('analyze'));
+    expect(strip().dataset.status).toBe('false');
+    for (const tab of ['comments', 'details']) {
+      await view.step(() => seen.goToTab(tab));
+      expect(strip().dataset.status).toBe('true');
+    }
+    await view.unmount();
+  });
+
+  it('is on every tab of an app that names none', async () => {
+    await mount(['/p/p1/d/d1?tab=analyze']);
+    expect(strip().dataset.status).toBe('true');
     await view.unmount();
   });
 });

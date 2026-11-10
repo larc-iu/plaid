@@ -9,18 +9,17 @@ const noSnapshot = () => 0;
 const SLOW_SAVE_MS = 3000;
 
 /**
- * The save status over an open document, for the apps whose editors show no
- * save pill of their own (plaid-ud, plaid-umr), and igt's vocabulary page. An
- * edit is on screen before it is sent, so a save on its way says nothing
- * until it has gone `SLOW_SAVE_MS` without an answer, and then "Saving…"
- * (PB-12), unless `slow` is false (a card with a progress bar of its own).
- * It also says that a write or a refetch is being sent again until the server
+ * The save status over an open document, for the editors that show no save
+ * pill of their own (plaid-ud, plaid-umr, igt's tabs but Analyze), and igt's
+ * vocabulary page. An edit is on screen before it is sent, so a save on its
+ * way says nothing until it has gone `SLOW_SAVE_MS` without an answer, and
+ * then "Saving…" (PB-12). It also says that a write or a refetch is being sent again until the server
  * answers (DocumentModel `isOffline`), or waits for someone else's lock on the
  * document to go (`isLocked`), while editing goes on.
  *
  * Always a live region, empty or not, so a screen reader hears it appear.
  */
-export const SaveStatus = ({ doc, slow = true }) => {
+export const SaveStatus = ({ doc }) => {
   useSyncExternalStore(doc?.subscribe ?? noSubscribe, doc?.getSnapshot ?? noSnapshot);
   // The wording names the browser's network, which changes with nothing else.
   useSyncExternalStore(onOnlineChange, isOnline);
@@ -29,13 +28,13 @@ export const SaveStatus = ({ doc, slow = true }) => {
   const isSaving = !!doc?.isSaving;
   const [late, setLate] = useState(false);
   useEffect(() => {
-    if (!isSaving || !slow) return undefined;
+    if (!isSaving) return undefined;
     const timer = setTimeout(() => setLate(true), SLOW_SAVE_MS);
     return () => {
       clearTimeout(timer);
       setLate(false);
     };
-  }, [isSaving, slow]);
+  }, [isSaving]);
   if (!doc) return null;
   // A save simply on its way says nothing here, since the edit shows already,
   // until it has gone unanswered for a while.

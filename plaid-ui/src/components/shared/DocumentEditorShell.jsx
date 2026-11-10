@@ -82,7 +82,8 @@ import { cn } from '../../lib/utils.js';
 //   opens (useValidateOnOpen), for every tab. An app that checks from one tab
 //   does it there. An app that repairs from one tab (plaid-umr) holds the tabs
 //   inert meanwhile through `setChromeBusy`.
-// - `saveStatus`: false for an app whose editor shows a save pill of its own.
+// - `ownSaveStatus`, optional: the tabs whose body shows a save pill of its
+//   own (igt's Analyze grid). Every other tab shows SaveStatus in the tab row.
 // - `roleWords`, `layerWords`: History's words for the app's rows.
 // - `focusParams(focus)`: the URL params a citation's focus opens, or null
 //   when it names nothing on this page. Or `useFocusHere({ documentId,
@@ -517,7 +518,7 @@ const DocumentEditor = ({ app, documentClient }) => {
         }))}
         active={tab}
         disabled={chromeBusy}
-        status={doc && app.saveStatus !== false ? <SaveStatus doc={doc} /> : null}
+        status={doc && !app.ownSaveStatus?.includes(tab) ? <SaveStatus doc={doc} /> : null}
         sticky
         inset={DOC_GUTTER}
         actions={
