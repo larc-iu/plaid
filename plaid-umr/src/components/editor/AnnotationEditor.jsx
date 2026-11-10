@@ -4,12 +4,12 @@ import { Notice } from '@ui/components/shared/Notice.jsx';
 import { NotSetUpNotice } from '@ui/components/shared/NotSetUpNotice.jsx';
 import { setupHref } from '../projects/setup.jsx';
 import { Loading } from '@ui/components/shared/Loading.jsx';
-import { useReconcileOnOpen } from '@ui/hooks/useReconcileOnOpen.js';
 import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
 import { canEditProject, canManageProject, readOnlyReason } from '@ui/domain/permissions.js';
 import { useAuth } from '../../contexts/AuthContext.jsx';
 import { useDocumentEditor } from '@ui/hooks/useDocumentEditor.js';
 import { useWideEnoughToDock } from '@ui/components/assistant/useDock.js';
+import { useRepairOnOpen } from './hooks/useRepairOnOpen.js';
 import { getUmrLayerInfo } from '../../utils/umrLayerUtils.js';
 import { UmrCanvas } from './annotation/UmrCanvas.jsx';
 import { DraftDialog } from './services/DraftDialog.jsx';
@@ -29,15 +29,12 @@ export const AnnotationEditor = () => {
   // named or the live document (`doc`).
   const {
     projectId,
-    documentId,
     doc: shown,
     liveDoc: doc,
     pastEntry: selectedEntry,
-    asOf,
     project,
     services,
     writeLockHeld,
-    setChromeBusy,
     focusNonce = 0,
     comments,
     canComment,
@@ -48,7 +45,7 @@ export const AnnotationEditor = () => {
   // Ask hands the shell a reference and the shell opens the assistant panel on
   // it, so where there is no room for a panel Ask does nothing at all.
   const roomToDock = useWideEnoughToDock();
-  const { getClient, user } = useAuth();
+  const { user } = useAuth();
   // The deep link: ?sent=<sentence number>, and ?var= for one of its nodes.
   // The canvas answers it, since the block may be on another page.
   const [searchParams] = useSearchParams();
@@ -58,17 +55,11 @@ export const AnnotationEditor = () => {
   useDocumentTitle('Annotate', doc?.name, project?.name);
 
   // The initial repair, and the gate the body holds behind a spinner while it
-  // runs. Strict mode OCC-guards annotation edits, as in plaid-ud: every write
-  // carries the document's version, so an edit made over another person's
-  // newer one is refused with a 409 and the page resyncs, where it silently
-  // overwrote theirs (or minted a variable they had just taken). It is entered
-  // BEFORE the repair, whose writes then carry the version it was planned from.
-  const reconciling = useReconcileOnOpen({
-    doc,
-    asOf,
-    canWrite: canEditProject(project, user),
-    enterStrictMode: () => getClient()?.enterStrictMode(documentId),
-  });
+  // runs. Strict mode, entered before it, also OCC-guards annotation edits:
+  // an edit made over another person's newer one is refused with a 409 and
+  // the page resyncs, where it silently overwrote theirs (or minted a
+  // variable they had just taken).
+  const reconciling = useRepairOnOpen();
   // The project's vocabularies, which the entry check compares a node picked
   // from an entry with: a warning on the node, its sentence's badge and the
   // Validation tab when the entry now reads another concept. Read once per
@@ -87,19 +78,6 @@ export const AnnotationEditor = () => {
       live = false;
     };
   }, [doc, shown]);
-
-  // Strict mode is client-GLOBAL, so it is exited on the way out of this tab,
-  // or it leaks onto unrelated writes (a copy on Details, a rename) with a
-  // stale document-version and spurious 409s.
-  useEffect(() => () => getClient()?.exitStrictMode(), [documentId, getClient]);
-
-  // Lock the shell's tab strip for as long as the body is a spinner: a tab
-  // switch mid-repair would leave the repair writing under a screen that has
-  // moved on.
-  useEffect(() => {
-    setChromeBusy(reconciling);
-    return () => setChromeBusy(false);
-  }, [reconciling, setChromeBusy]);
 
   const activeDocument = shown?.raw;
 
