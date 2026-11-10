@@ -63,8 +63,15 @@ async function importDocument(client, projectId, name, text, layerInfo, options)
   const parsed = parseUmrFile(text);
   if (!parsed.sentences.length) {
     const first = parsed.errors?.[0];
+    // Content and no sentence: the file has none of the separator lines a
+    // sentence starts with.
+    const noSeparator = parsed.warnings.some((w) => w.code === 'content-before-first-sentence');
     throw new Error(
-      first ? `Failed to read the file: ${first.message}` : 'No sentences found in the file.',
+      first
+        ? `Failed to read the file: ${first.message}`
+        : noSeparator
+          ? 'No sentences found. Each sentence starts with a line of 80 #.'
+          : 'No sentences found in the file.',
     );
   }
   const warnings = [];

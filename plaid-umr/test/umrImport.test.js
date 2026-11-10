@@ -286,6 +286,16 @@ test('an import is one operation of kind import, whoever calls it', async () => 
   ]);
 });
 
+// H3-2: a file whose sentences have no line of 80 # before them reads as no
+// sentences at all, and the refusal says which line is missing.
+test('a file with content and no separator line names the missing line', async () => {
+  const client = { withOperation: async (_label, fn) => fn(() => {}) };
+  const text = file(CAT).replace(`${SEPARATOR}\n`, '');
+  await assert.rejects(importUmrDocument(client, 'p', 'english', text, { isConfigured: true }), {
+    message: 'No sentences found. Each sentence starts with a line of 80 #.',
+  });
+});
+
 // N3-IMPORT-OVER-3: attaching a file onto a document that holds a triple
 // between two constants the file leaves out kept the relation stored and
 // dropped it from the sentence's record, so nothing showed it and no export
