@@ -1274,4 +1274,99 @@ describe('useMediaOperations: cancelling an upload', () => {
     });
     await again.unmount();
   });
+  // Leaving the document for the project's list and coming back loads the
+  // document again, as another model, while the first one's queue goes on
+  // sending. The card of the new one shows the same upload, and when it ends
+  // the new one reads the document, since the recording was written by the
+  // other.
+  it('the document loaded again while the upload goes shows it, and reads itself when it ends', async () => {
+    const doc = withMedia(null);
+    const sends = [];
+    doc.uploadMedia = vi.fn((file, { signal, onProgress }) => {
+      const d = deferred();
+      sends.push({ file, signal, onProgress, ...d });
+      return d.promise;
+    });
+    const first = await mountMedia({ doc });
+    await first.step(async () => {
+      first.api.handleMediaUpload(new File(['xy'], 'talk.wav'));
+      await settle();
+    });
+    await first.step(() => sends[0].onProgress({ loaded: 1, total: 2 }));
+    await first.unmount();
+
+    const loadedAgain = withMedia(null);
+    loadedAgain.reload = vi.fn(async () => {});
+    loadedAgain.uploadMedia = vi.fn();
+    const again = await mountMedia({ doc: loadedAgain });
+    expect(again.api.isUploading).toBe(true);
+    expect(again.api.uploadProgress).toMatchObject({ name: 'talk.wav', loaded: 1, total: 2 });
+    await again.step(() => sends[0].onProgress({ loaded: 2, total: 2 }));
+    expect(again.api.uploadProgress).toMatchObject({ loaded: 2 });
+    expect(loadedAgain.reload).not.toHaveBeenCalled();
+
+    await again.step(async () => {
+      sends[0].resolve(true);
+      await settle();
+    });
+    expect(again.api.isUploading).toBe(false);
+    expect(loadedAgain.reload).toHaveBeenCalledTimes(1);
+    await again.unmount();
+  });
+
+  it('Cancel on the document loaded again stops the upload the first one sends', async () => {
+    const doc = withMedia(null);
+    const sends = [];
+    doc.uploadMedia = vi.fn((file, { signal }) => {
+      const d = deferred();
+      sends.push({ file, signal, ...d });
+      return d.promise;
+    });
+    const first = await mountMedia({ doc });
+    await first.step(async () => {
+      first.api.handleMediaUpload(new File(['xy'], 'talk.wav'));
+      await settle();
+    });
+    await first.unmount();
+
+    const loadedAgain = withMedia(null);
+    loadedAgain.reload = vi.fn(async () => {});
+    const again = await mountMedia({ doc: loadedAgain });
+    await again.step(() => again.api.cancelUpload());
+    expect(sends[0].signal.aborted).toBe(true);
+    expect(again.api.isUploading).toBe(false);
+    await again.step(async () => {
+      sends[0].resolve(false);
+      await settle();
+    });
+    await again.unmount();
+  });
+
+  // A version from History is the same document as it was: it has no upload.
+  it('a past version of the document shows no upload', async () => {
+    const doc = withMedia(null);
+    const sends = [];
+    doc.uploadMedia = vi.fn(() => {
+      const d = deferred();
+      sends.push(d);
+      return d.promise;
+    });
+    const first = await mountMedia({ doc });
+    await first.step(async () => {
+      first.api.handleMediaUpload(new File(['xy'], 'talk.wav'));
+      await settle();
+    });
+
+    const past = withMedia(null, { asOf: '2026-11-01T00:00:00Z' });
+    past.reload = vi.fn(async () => {});
+    const then = await mountMedia({ doc: past });
+    expect(then.api.isUploading).toBe(false);
+    await first.step(async () => {
+      sends[0].resolve(true);
+      await settle();
+    });
+    expect(past.reload).not.toHaveBeenCalled();
+    await then.unmount();
+    await first.unmount();
+  });
 });

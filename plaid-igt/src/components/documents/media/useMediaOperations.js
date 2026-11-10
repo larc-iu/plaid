@@ -174,13 +174,22 @@ export const useMediaOperations = () => {
     const view = readTimelineView(doc.document.id);
     return view ? clampZoom(view.pixelsPerSecond) : 25;
   });
-  // `{ name, loaded, total, perSpeaker, abort }` while a file is going up,
+  // `{ name, loaded, total, perSpeaker, abort, model }` while a file is going up,
   // else null, kept with the document so a tab mounted while it goes shows it
   // (uploadUnderWay.js). `total` is the request body (the file plus a few
   // bytes of multipart framing), `abort` the upload's AbortController.
   const subscribeToUpload = useCallback((listener) => subscribeUpload(doc, listener), [doc]);
   const uploadProgress = useSyncExternalStore(subscribeToUpload, () => uploadOf(doc));
   const isUploading = !!uploadProgress;
+  // An upload another model of this document sent (the document was left and
+  // opened again while it went) wrote the recording there: when it ends, this
+  // one reads the document.
+  const uploadSeen = useRef(uploadProgress);
+  useEffect(() => {
+    const was = uploadSeen.current;
+    uploadSeen.current = uploadProgress;
+    if (was && !uploadProgress && was.model !== doc) doc.reload();
+  }, [uploadProgress, doc]);
   // {name, fraction} while a recording is being converted, else null.
   const [convertProgress, setConvertProgress] = useState(null);
 
@@ -867,6 +876,7 @@ export const useMediaOperations = () => {
         total: sending.size,
         perSpeaker: !!channelSpeakers,
         abort,
+        model: doc,
       });
       try {
         const ok = await doc.uploadMedia(sending, {
