@@ -311,6 +311,21 @@ describe('Back', () => {
     await view.unmount();
   });
 
+  // REV-FX-B-1: sign-in reaches a bookmarked profile with a replace, which
+  // gives the entry a key of its own while it is still the tab's first.
+  it('goes to the projects list on a profile reached through sign-in', async () => {
+    const before = window.history.state;
+    window.history.replaceState({ idx: 0, key: 'k1' }, '');
+    try {
+      const { view, path } = await at([{ pathname: '/profile', key: 'k1' }]);
+      await view.step(() => back(view).click());
+      expect(path()).toBe('/projects');
+      await view.unmount();
+    } finally {
+      window.history.replaceState(before, '');
+    }
+  });
+
   it('goes back to where the profile was opened from', async () => {
     const { view, path } = await at(['/projects/p1/documents', '/profile']);
     await view.step(() => back(view).click());

@@ -232,10 +232,14 @@ export const UserProfile = ({ className, children }) => {
     }
   };
 
-  // The page before this one, or the app's home when the profile was the
-  // first page opened (a bookmark, a pasted link): Back never leaves the app.
+  // The page before this one, or the app's home when the profile is the
+  // tab's first page in the app: Back never leaves the app. A bookmark or a
+  // pasted link has the default key, and one reached through sign-in was
+  // put in its place (LoginForm's replace), so it has a key of its own and
+  // the router's index 0.
   const goBack = () => {
-    if (location.key === 'default') navigate(appRoutes().projects);
+    const first = location.key === 'default' || window.history.state?.idx === 0;
+    if (first) navigate(appRoutes().projects);
     else navigate(-1);
   };
 
