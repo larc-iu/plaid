@@ -256,7 +256,9 @@ export const mixesTracks = (chosen) =>
  * The recordings of one file as the import uploads them: `mediaTracks`
  * (`[{file, offset, speaker, name}]`) when they are mixed (mixesTracks), each
  * with a channel of one recording, else null and `mediaFile` as before.
- * `warnings` gets a line when some were not chosen or not used.
+ * `name` is the name the file gives the recording that was chosen (the first
+ * of a mix), null with none chosen. `warnings` gets a line when some were
+ * not chosen or not used.
  */
 function documentMedia(eaf, mediaByFile, mediaTracks, warnings) {
   const listed = mediaTracks?.get(eaf.fileName) ?? [];
@@ -294,7 +296,12 @@ function documentMedia(eaf, mediaByFile, mediaTracks, warnings) {
         `Its recording is ${own.name}. Not used: ${unused.map((t) => t.name).join(', ')}.`,
       );
     }
-    return { mediaFile, mediaTracks: null, origin: own?.timeOrigin ?? 0 };
+    return {
+      mediaFile,
+      mediaTracks: null,
+      origin: own?.timeOrigin ?? 0,
+      name: (mediaFile && own?.name) || null,
+    };
   }
   const participants = eaf.tiers.map((t) => t.participant);
   return {
@@ -306,6 +313,7 @@ function documentMedia(eaf, mediaByFile, mediaTracks, warnings) {
       speaker: trackSpeaker(t.file.name, participants),
     })),
     origin: 0,
+    name: chosen[0].name,
   };
 }
 
@@ -1076,6 +1084,9 @@ function buildGroup(files, nodes, roles, options = {}) {
     );
     const moved = (t) => ({ ...t, begin: composed.at(t.begin), end: composed.at(t.end) });
     const media = documentMedia(eaf, mediaByFile, mediaTracks, docWarnings);
+    // The Media file field names the recording the document got, which is
+    // not the file's first when that one was not chosen.
+    if (metadata[MEDIA_FILE_FIELD] && media.name) metadata[MEDIA_FILE_FIELD] = media.name;
     documents.push({
       id: eaf.fileName,
       name: eaf.documentName,

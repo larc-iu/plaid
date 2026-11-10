@@ -2315,6 +2315,11 @@ describe('several recordings on one file', () => {
     expect(single.documents[0].warnings[0]).toMatch(
       /2 of the 3 recordings .* Its recording is the one chosen\./,
     );
+    // REV-MIX-C-3: the Media file field named the file's first recording
+    // whatever was chosen, and the ELAN export shipped ben's under ana's name.
+    expect(single.documents[0].metadata['Media file']).toBe('ben.wav');
+    const { build: none } = buildFrom([[xml, 'x.eaf']]);
+    expect(none.documents[0].metadata['Media file']).toBe('ana.wav');
   });
 
   // In ELAN a TIME_ORIGIN is the stretch of the file before the timeline
