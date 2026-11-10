@@ -11,7 +11,8 @@ from fixtures import FakeClient
 from test_service_flow import PLAN1, Helper, _seed_plan, _service
 from test_single_writer import _answering, _req, _send, _set_meta
 
-from plaid_agent.core.conversation import ConversationStore, compact_plan
+from plaid_agent.core.conversation import DIED_OUTCOME, ConversationStore, compact_plan
+from plaid_agent.core.plan import PlanError
 
 
 class _Died(BaseException):
@@ -160,3 +161,53 @@ def test_a_record_holding_the_old_apply_again_keys_reads_and_applies():
     _, _, item = _settled_item(client)
     assert item['status'] == 'applied' and item['as_human'] is False
     assert compact_plan(item) == item
+
+
+def _stop_partway(client, svc, *, as_human=False, reviewed=False, before=None):
+    """Approve the plan on ``svc`` with a run that writes its first change
+    and is then refused, so the plan settles partly applied. ``before`` runs
+    in the middle of the run, before the refusal."""
+    if reviewed:
+        svc._reviewed = lambda *a: True
+
+    def execute(*a, **k):
+        client.spans.create('sl-gloss', 'w-2', 'fish')
+        if before:
+            before()
+        raise PlanError('the server refused', applied=1, total=2, written=[0])
+    svc.execute_plan = execute
+    helper = Helper(request_id='a1')
+    svc.process_request(_req(client, 'approve', plan_id=PLAN1, as_human=as_human), helper)
+    assert helper.done and helper.done[0]['partial'] is True
+    return _settled_item(client)[2]
+
+
+def test_a_plan_applied_in_part_records_how_it_was_written():
+    """The research dataset reads `as_human` and `contributed` from every
+    plan that wrote, a partly applied one too (FB-29)."""
+    for as_human, reviewed, said in ((True, False, (True, False)), (False, False, (False, False)),
+                                     (True, True, (False, True))):
+        client = FakeClient()
+        _seed_plan(client, request_id=None)
+        _set_meta(client, pending=None)
+        item = _stop_partway(client, _service(), as_human=as_human, reviewed=reviewed)
+        assert item['status'] == 'partial' and item['written'] == [0]
+        assert (item.get('as_human'), bool(item.get('contributed'))) == said, item
+
+
+def test_a_run_taken_for_dead_that_stops_partway_keeps_its_contribution():
+    """Another process settles the run on a guess, the run then stops partway
+    and its own outcome replaces the guess: written as a contribution, it
+    says so (FB-29)."""
+    client = FakeClient()
+    _seed_plan(client, request_id=None)
+    _set_meta(client, pending=None)
+    seen = {}
+
+    def other():
+        _service().process_request(_req(client, 'hold'), Helper(request_id='h-other'))
+        seen['mid'] = _settled_item(client)[2].get('outcome')
+    item = _stop_partway(client, _service(), as_human=True, reviewed=True, before=other)
+    assert seen['mid'] == DIED_OUTCOME
+    assert item['status'] == 'partial' and item['written'] == [0]
+    assert item['as_human'] is False and item['contributed'] is True

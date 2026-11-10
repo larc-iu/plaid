@@ -253,7 +253,7 @@ class Approving:
         refused with nothing written, worded as the user reads it."""
         why = 'the server did not answer' if e.unknown else _failure(ap.client, ap.documents, e)
         if e.wrote:
-            return partly_applied(ap.ops, e, why)
+            return partly_applied(ap.ops, e, why, _recorded(ap))
         return Outcome.refused(f'Failed to apply the plan: {why}. Nothing was written.')
 
     def _settle_applied(self, ap: 'Approval', counts: Dict[str, Any]) -> None:
@@ -271,8 +271,7 @@ class Approving:
         # What the record keeps of the outcome: how the approval was recorded,
         # and what applying dropped (a change a later one superseded, say),
         # since each change's outcome is otherwise the plan's.
-        outcome = {'as_human': ap.stamp_mode == 'human', **({'contributed': True} if ap.contributor else {}),
-                   **({'apply_notes': notes} if notes else {}),
+        outcome = {**_recorded(ap), **({'apply_notes': notes} if notes else {}),
                    **({'unwritten': unwritten} if unwritten else {})}
         if not ap.settled('applied', note, **outcome):
             ap.helper.error('The changes were applied, but this conversation was deleted.')
@@ -376,6 +375,12 @@ class Approving:
 #: What the model is told of a plan approved with nothing to write.
 NOTHING_TO_WRITE_NOTE = ('(note) The plan only kept values as they are, so it was settled as discarded: nothing '
                          'was changed.')
+
+
+def _recorded(ap: 'Approval') -> Dict[str, Any]:
+    """How the run wrote, kept on the record of a plan that wrote (applied
+    or partly applied): as the approver's own work, or as a contribution."""
+    return {'as_human': ap.stamp_mode == 'human', **({'contributed': True} if ap.contributor else {})}
 
 
 def _moved_on(store: ConversationStore, conv_id: str, plan_id: str) -> str:

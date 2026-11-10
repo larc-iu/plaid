@@ -56,14 +56,16 @@ def _sentence(text: str) -> str:
     return text[:1].upper() + text[1:] + ('' if text.endswith('.') else '.')
 
 
-def partly_applied(ops: List[Dict[str, Any]], e, why: str) -> Outcome:
+def partly_applied(ops: List[Dict[str, Any]], e, why: str, recorded: Dict[str, Any]) -> Outcome:
     """A plan that stopped partway after writing some of it (``e``, a
     :class:`core.plan.PlanError` that wrote), settled as partly applied (Luke's
     ruling Q4): no Approve that cannot work, the card marks the changes
     written in full, and the model is told which, so the user asks it to
     finish. ``why`` is the failure as the clause after "Failed to apply the
-    plan:". The count is of the card's rows: `applied` counts batch calls,
-    and one change can be several."""
+    plan:". ``recorded`` is how the run wrote (`as_human`, `contributed`),
+    kept on the record as an applied plan keeps it. The count is of the
+    card's rows: `applied` counts batch calls, and one change can be
+    several."""
     done = list(e.written or [])
     labels = [op.get('label') or '' for op in ops]
     # A row that folds many changes ("dep on 600 words") counts
@@ -89,7 +91,7 @@ def partly_applied(ops: List[Dict[str, Any]], e, why: str) -> Outcome:
         n, of, unit = count
         outcome = (f'Written in part: {n} of {of} {unit}.' if not written_n
                    else f'{partial_tally(written_n, sum(sizes), 1)} ({n} of {of} {unit}).')
-    fields = {'written': done, 'outcome': outcome, **({'unknown': True} if e.unknown else {}),
+    fields = {**recorded, 'written': done, 'outcome': outcome, **({'unknown': True} if e.unknown else {}),
               **({'in_part': list(count)} if count else {})}
     said = (f'Partly applied{". " if count and not written_n else ": "}{outcome} '
             + ('The server did not answer for the rest.' if e.unknown else _sentence(why)))
