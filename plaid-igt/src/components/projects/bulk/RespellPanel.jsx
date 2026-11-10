@@ -207,7 +207,7 @@ export const RespellPanel = ({ project, projectId, client, layerInfo }) => {
           >
             <SelectionSummary
               selectable={selectableRow}
-              rows={[...plan.rows, ...plan.lexiconRows]}
+              rows={includeLexicon ? [...plan.rows, ...plan.lexiconRows] : plan.rows}
               selected={r.selected}
               setSelected={r.setSelected}
             />
