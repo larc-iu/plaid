@@ -278,6 +278,19 @@
                       {:max-file-size-mb v}))))
   cfg)
 
+(defn media-heap-warning
+  "What to log at startup when the media limit is more than half the memory the
+  JVM may use (`heap-bytes`), or nil. The web server holds a request body in
+  memory whole, so an upload near such a limit runs the server out of memory
+  and is never answered."
+  [max-file-size-mb heap-bytes]
+  (let [heap-mb (quot heap-bytes (* 1024 1024))]
+    (when (> (* 2 max-file-size-mb) heap-mb)
+      (str "[media] max_file_size_mb is " max-file-size-mb " and the server has " heap-mb
+           " MB of memory (the Java heap). An upload is held in memory whole, so one near the"
+           " limit may never be answered. Lower the limit, or start the server with more memory"
+           " (java -Xmx)."))))
+
 (defn load-config!
   "Build the internal config map: the bundled config.toml template supplies the
    default values, the file at `config-path` (filesystem first, then classpath)

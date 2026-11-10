@@ -2,7 +2,7 @@
   (:require [clojure.pprint :refer [pprint]]
             [mount.core :refer [defstate]]
             [org.httpkit.server :as http-kit]
-            [plaid.server.config :refer [config]]
+            [plaid.server.config :as server-config :refer [config]]
             [plaid.server.media-maintenance :as media-maintenance]
             [plaid.server.middleware :refer [middleware]]
             [plaid.server.events] ; Start the events system
@@ -41,6 +41,8 @@
     (project-removal/resume! sql/datasource)
     (project-removal/start-sweeps! sql/datasource)
     (log/info "Starting server on port" port "with max body size" max-body-bytes "bytes")
+    (some-> (server-config/media-heap-warning max-file-size-mb (.maxMemory (Runtime/getRuntime)))
+            log/warn)
     (let [stop-server (http-kit/run-server middleware http-kit-config-with-max-body)]
       (fn []
         (stop-server))))

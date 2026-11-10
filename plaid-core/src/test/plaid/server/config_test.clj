@@ -338,3 +338,18 @@
       (is (= 2047 (get-in (config/load-config! {:config-path (.getAbsolutePath f) :explicit? true})
                           [:plaid.media/config :max-file-size-mb])))
       (finally (.delete f)))))
+
+(deftest a-media-limit-over-half-the-servers-memory-is-warned-about
+  ;; The web server holds an upload in memory whole. With the limit at 2047 on
+  ;; a default 1 GB heap, a 1.1 GB upload was never answered and nothing in the
+  ;; log said why (REV-CORE-MEDIA-2).
+  (let [mb (* 1024 1024)]
+    (is (nil? (config/media-heap-warning 200 (* 1024 mb))) "the default limit on a 1 GB heap")
+    (is (nil? (config/media-heap-warning 512 (* 1024 mb))) "exactly half")
+    (is (nil? (config/media-heap-warning 2047 (* 8192 mb))))
+    (is (= (str "[media] max_file_size_mb is 2047 and the server has 1024 MB of memory (the Java heap). "
+                "An upload is held in memory whole, so one near the limit may never be answered. "
+                "Lower the limit, or start the server with more memory (java -Xmx).")
+           (config/media-heap-warning 2047 (* 1024 mb))))
+    (is (some? (config/media-heap-warning 513 (* 1024 mb))))
+    (is (some? (config/media-heap-warning 200.5 (* 400 mb))) "a limit may be a fraction")))

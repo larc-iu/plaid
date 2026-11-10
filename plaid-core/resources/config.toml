@@ -87,6 +87,8 @@ expose_openapi = true
 # -----------------------------------------------------------------------------
 [media]
 # Maximum size (in megabytes) of a single uploaded media file, at most 2047.
+# An upload is held in memory whole: the server needs about this much Java
+# heap (-Xmx) for every upload under way at once.
 max_file_size_mb = 200
 
 # Profile pictures. Every upload is decoded, center-cropped to a square,
