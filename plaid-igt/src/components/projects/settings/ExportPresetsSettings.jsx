@@ -89,8 +89,8 @@ export const ExportPresetsSettings = ({ projectId, client, onProjectUpdate }) =>
 
   // `change(list)` returns the list to store. It is made to the stored list,
   // so a preset another maintainer saved meanwhile stays.
-  const persist = async (change, successMessage) => {
-    const stored = await updateExportPresets(client, project, change);
+  const persist = async (change, auditMessage, successMessage) => {
+    const stored = await updateExportPresets(client, project, change, auditMessage);
     setProject(stored.project);
     setPresets(stored.presets);
     // The project object the rest of the page holds carries these presets, so
@@ -124,7 +124,10 @@ export const ExportPresetsSettings = ({ projectId, client, onProjectUpdate }) =>
       );
       creatingId.current ??= made.id;
       const preset = { ...made, id: creatingId.current };
-      await persist((list) => [...list.filter((p) => p.id !== preset.id), preset]);
+      await persist(
+        (list) => [...list.filter((p) => p.id !== preset.id), preset],
+        `Create export preset “${name}”`,
+      );
       creatingId.current = null;
       setCreateOpen(false);
       setNewName('');
@@ -141,7 +144,11 @@ export const ExportPresetsSettings = ({ projectId, client, onProjectUpdate }) =>
   const remove = async (id) => {
     const target = presets.find((p) => p.id === id);
     try {
-      await persist((list) => list.filter((p) => p.id !== id), `Deleted preset “${target?.name}”.`);
+      await persist(
+        (list) => list.filter((p) => p.id !== id),
+        `Delete export preset “${target?.name}”`,
+        `Deleted preset “${target?.name}”.`,
+      );
     } catch (err) {
       console.error('Failed to delete export preset:', err);
       notifyError(err, 'Failed to delete the preset');

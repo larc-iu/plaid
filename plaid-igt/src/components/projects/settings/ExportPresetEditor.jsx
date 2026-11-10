@@ -113,13 +113,18 @@ export const ExportPresetEditor = ({ projectId, client, presetId, onProjectUpdat
       // Only this preset is written. Another maintainer's save of the list
       // meanwhile stays, unless it changed or removed this preset, which
       // refuses the save.
-      const stored = await updateExportPresets(client, project, (list) => {
-        const now = list.find((p) => p.id === presetId);
-        if (!sameConfig(now, saved)) {
-          throw Object.assign(new Error('Changed elsewhere'), { status: 409 });
-        }
-        return list.map((p) => (p.id === presetId ? edited : p));
-      });
+      const stored = await updateExportPresets(
+        client,
+        project,
+        (list) => {
+          const now = list.find((p) => p.id === presetId);
+          if (!sameConfig(now, saved)) {
+            throw Object.assign(new Error('Changed elsewhere'), { status: 409 });
+          }
+          return list.map((p) => (p.id === presetId ? edited : p));
+        },
+        `Edit export preset “${edited.name}”`,
+      );
       setPresets(stored.presets);
       setDraft(stored.presets.find((p) => p.id === presetId));
       // The page's own project object holds the presets too, and the runner

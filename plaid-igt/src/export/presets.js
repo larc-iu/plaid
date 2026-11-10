@@ -184,12 +184,13 @@ export const readExportPresets = (project) => {
  * came in between, the list is read again and `change` made to it once more,
  * so a preset someone else added or edited meanwhile stays. `change` throws to
  * refuse (a preset it edits was changed or removed meanwhile). Resolves to the
- * project with the list as stored, and the list.
+ * project with the list as stored, and the list. `auditMessage` names the write
+ * in History and Activity.
  */
-export async function updateExportPresets(client, project, change) {
+export async function updateExportPresets(client, project, change, auditMessage) {
   const attempt = async (p) => {
     const presets = change(readExportPresets(p));
-    await client.projects.setConfig(p.id, IGT_NAMESPACE, 'export', { presets }, undefined, {
+    await client.projects.setConfig(p.id, IGT_NAMESPACE, 'export', { presets }, auditMessage, {
       expected: p.config?.[IGT_NAMESPACE]?.export,
     });
     return { project: applyExportPresets(p, presets), presets };
