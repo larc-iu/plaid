@@ -207,6 +207,19 @@ describe('the document details screen', () => {
     expect(view.container.textContent).toContain('Delete document');
   });
 
+  it('says a copy takes the recording when the document has one', async () => {
+    let view = await mount();
+    expect(view.container.textContent).toContain(
+      'Copies the text and annotations into this project. Comments are not copied.',
+    );
+    await view.unmount();
+    editor.doc = new Doc({ id: 'd1', name: 'One', metadata: {}, mediaUrl: '/media/d1' });
+    view = await mount();
+    expect(view.container.textContent).toContain(
+      'Copies the text, annotations and recording into this project. Comments are not copied.',
+    );
+  });
+
   it('asks before a copy takes the reader to it, and stays put on no', async () => {
     const view = await mount();
     await typeAName(view);

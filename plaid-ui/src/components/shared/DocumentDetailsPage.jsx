@@ -239,7 +239,10 @@ export const DocumentDetailsPage = ({
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
             <p className="text-sm text-muted-foreground">
-              Copies the text and annotations into this project. Comments are not copied.
+              {doc.raw?.mediaUrl
+                ? 'Copies the text, annotations and recording into this project.'
+                : 'Copies the text and annotations into this project.'}{' '}
+              Comments are not copied.
             </p>
             <Button variant="outline" className="self-start" onClick={openCopy}>
               <Copy className="h-4 w-4" /> Copy document
