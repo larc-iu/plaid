@@ -16,6 +16,8 @@ import { useConfirm } from '../components/shared/ConfirmProvider.jsx';
 //    a capture-phase click listener installed while a draft exists;
 //  - the browser's Back button, through one extra history entry standing in
 //    front of the page while a draft exists, so the first Back lands here;
+//  - an address typed by hand, or a link from outside, that changes only what
+//    follows `#`, through the same popstate, heard before the router hears it;
 //  - a reload or a closed window, through `beforeunload`, which is the
 //    browser's own question and the only one it will let us ask.
 //
@@ -79,6 +81,14 @@ const STOP = '__plaidUnsavedDraftStop';
 
 let installed = null;
 
+// The blocker's popstate listener, added when this module loads. That is
+// before any router mounts and adds its own, and the listeners of one event
+// are called in the order they were added, so this one can keep the router
+// from hearing of a typed address.
+if (typeof window !== 'undefined') {
+  window.addEventListener('popstate', (e) => installed?.onPopState(e));
+}
+
 const sameUrl = (a, b) => {
   const key = (u) => u.origin + u.pathname + u.search + (u.hash === '#' ? '' : u.hash);
   return key(a) === key(b);
@@ -139,6 +149,7 @@ const install = (ask) => {
   // so the entries it counts stay in order.
   const arm = () => {
     const current = window.history.state;
+    state.url = window.location.href;
     if (current && current[STOP]) return;
     const next = { ...current, [STOP]: state.token };
     if (typeof current?.idx === 'number') next.idx = current.idx + 1;
@@ -182,7 +193,7 @@ const install = (ask) => {
 
   // Back landed on the page again, the extra entry spent. Ask, then either go
   // the rest of the way or put the entry back.
-  const onPopState = () => {
+  const onPopState = (e) => {
     if (latePop) {
       const late = Date.now() < latePop;
       latePop = 0;
@@ -192,6 +203,15 @@ const install = (ask) => {
       }
     }
     if (!hasUnsavedDraft()) return;
+    // Another screen's address, typed or followed from outside: a new entry
+    // in front of the extra one. The router does not hear of it unless the
+    // answer is yes, and on no the page's own address comes back.
+    const target = window.location.href;
+    if (!sameUrl(new URL(target), new URL(state.url))) {
+      e.stopImmediatePropagation();
+      leaveTo(target);
+      return;
+    }
     Promise.resolve(state.ask()).then(async (ok) => {
       if (!ok) {
         arm();
@@ -207,6 +227,32 @@ const install = (ask) => {
         settle();
       }
     });
+  };
+
+  // Off the typed entry, back onto the extra one, then ask. Yes takes the
+  // extra one out too (`askToLeave`) and goes on to the typed address as the
+  // router's own push would, so one Back from there returns to the page.
+  const leaveTo = async (target) => {
+    leaving += 1;
+    try {
+      await traverse(-1);
+    } finally {
+      leaving -= 1;
+    }
+    const ok = await state.ask();
+    if (!ok) {
+      settle();
+      return;
+    }
+    leaving += 1;
+    try {
+      const next = { idx: (window.history.state?.idx ?? 0) + 1 };
+      window.history.pushState(next, '', target);
+      window.dispatchEvent(new PopStateEvent('popstate', { state: next }));
+    } finally {
+      leaving -= 1;
+      settle();
+    }
   };
 
   // An in-app link, before React or the router sees the click. A modified
@@ -254,13 +300,12 @@ const install = (ask) => {
 
   arm();
   window.addEventListener('beforeunload', onBeforeUnload);
-  window.addEventListener('popstate', onPopState);
+  state.onPopState = onPopState;
   document.addEventListener('click', onClick, true);
 
   state.teardown = () => {
     window.history.replaceState = replaceState;
     window.removeEventListener('beforeunload', onBeforeUnload);
-    window.removeEventListener('popstate', onPopState);
     document.removeEventListener('click', onClick, true);
   };
 };

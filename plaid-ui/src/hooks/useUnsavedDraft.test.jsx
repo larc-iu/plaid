@@ -397,6 +397,57 @@ describe('an unsaved draft', () => {
     expect(confirm).toHaveBeenCalledTimes(1);
   });
 
+  // An address typed by hand, or a link from outside the app, that changes
+  // only the part after `#`: a new history entry, and a popstate the router
+  // takes as a move to that screen. `router` stands in for HashRouter's own
+  // listener, added when the app mounts, before any draft is typed.
+  let seen = [];
+  const router = () => seen.push(window.location.hash);
+  const mountUnderRouter = async (what) => {
+    seen = [];
+    window.addEventListener('popstate', router);
+    return mount(what);
+  };
+  afterEach(() => window.removeEventListener('popstate', router));
+  const typedAddress = async (url) => {
+    await act(async () => {
+      window.history.pushState(null, '', url);
+      window.dispatchEvent(new PopStateEvent('popstate', { state: null }));
+    });
+    await flush();
+    await tick();
+  };
+
+  it('asks before a typed address takes the page, and puts the page back on no', async () => {
+    await mountUnderRouter('The graph you have typed');
+    await typedAddress('/#/projects/p1/documents/d2');
+    expect(confirm).toHaveBeenCalledTimes(1);
+    // The router never saw the other screen, and the address is the page's.
+    expect(seen.filter((h) => h.includes('d2'))).toEqual([]);
+    expect(window.location.hash).toBe('');
+    expect(hasUnsavedDraft()).toBe('The graph you have typed');
+    expect(idx()).toBe(1);
+  });
+
+  it('goes to a typed address on yes, with no entry of its own left behind it', async () => {
+    confirm.mockResolvedValue(true);
+    await mountUnderRouter('The graph you have typed');
+    await typedAddress('/#/projects/p1/documents/d2');
+    expect(confirm).toHaveBeenCalledTimes(1);
+    expect(seen.at(-1)).toBe('#/projects/p1/documents/d2');
+    expect(window.location.hash).toBe('#/projects/p1/documents/d2');
+    // One Back returns to the page itself.
+    await view.unmount();
+    view = null;
+    await flush();
+    await tick();
+    await act(async () => {
+      window.history.back();
+    });
+    await flush();
+    expect(window.history.state?.key).toBe(pageKey);
+  });
+
   it('asks the browser to ask, on a reload or a closed window', async () => {
     await mount('The graph you have typed');
     const event = new Event('beforeunload', { cancelable: true });
