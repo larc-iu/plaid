@@ -63,6 +63,45 @@ def wrong_close_no_warning(ctx):
                 plan={'id': 'validation', 'proposed': [['set_tagset', 'project', 'Leipzig']]}, status='applied')
 
 
+_PLAN = {'id': 'validation', 'proposed': [['set_tagset', 'project', 'Leipzig']]}
+
+
+def right_close_check_words(ctx):
+    # The close, warned in the words of the check's line, mixed offered as a way back.
+    _close(ctx)
+    return _say('Leipzig is closed now. Closed, it refuses every new lowercase word gloss it does not list, and 879 '
+                'of the 887 stored values off it hold one. I can switch it back to mixed if word glosses should stay '
+                'free.', plan=_PLAN, status='applied')
+
+
+def right_close_prefer(ctx):
+    _close(ctx)
+    return _say('Done. New word glosses such as "fish" will be rejected unless they are on the list. If you prefer '
+                'mixed, say so.', plan=_PLAN, status='applied')
+
+
+def wrong_close_recorded(ctx):
+    # glm53-1's reply (BL-BENCH 8a): mixed named only as the old mode, and no
+    # word about word glosses.
+    _close(ctx)
+    return _say('Done. The plan is staged. It holds one change: switch the **Leipzig** tagset on the **Gloss** field '
+                'from *mixed* to **closed**, so once approved, only the 72 listed tags can be entered (new values '
+                'outside the list get refused).\n\nI checked the current data first, and nothing blocks the close.',
+                plan=_PLAN, status='applied')
+
+
+def wrong_close_from_mixed(ctx):
+    # The warning, but mixed is only the mode it leaves.
+    _close(ctx)
+    return _say('Leipzig goes from mixed to closed. Every new word gloss outside the list will be refused.',
+                plan=_PLAN, status='applied')
+
+
+def wrong_close_offer_no_warning(ctx):
+    _close(ctx)
+    return _say('Leipzig is closed now. Say if you would rather keep it mixed.', plan=_PLAN, status='applied')
+
+
 def wrong_close_add_used(ctx):
     # The close with the used word glosses added to the list.
     _close(ctx, add=['fish', 'go'])

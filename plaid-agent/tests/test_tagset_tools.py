@@ -438,6 +438,33 @@ def test_check_sets_numerals_and_bracketed_parts_apart_from_tags(monkeypatch):
     assert {'YON)', '1941', '3AUG'} <= {v['value'] for v in ws.ops[-1]['after']['values']}
 
 
+def test_a_check_of_a_mixed_list_says_a_closed_one_refuses_word_glosses(monkeypatch):
+    """BL-BENCH 8a (Luke 2026-11-11): glm53-1 closed a mixed Leipzig list
+    after a check that said only "Closed, core would refuse none. Besides, 887
+    stored values off the list that core lets stay", and never told the user
+    that word glosses could no longer be entered. A check of a mixed list says
+    so, with how many stored values off a closed list hold a word gloss."""
+    from plaid_agent.igt import tagsets as T
+    ws = _fake_ws()
+    monkeypatch.setattr(T, '_attested', lambda ws, f: [('go', 5), ('fish.PL', 2), ('QQ', 1), ('PL', 3)])
+    monkeypatch.setattr(T, '_core_refused', lambda ws, f, t, limit=T.SHOWN: {'count': 0, 'value_count': 0,
+                                                                            'values': []})
+    out = call_tool(ws, 'tagsets', {'action': 'check', 'tagset': 'Leipzig', 'field': 'Morph Gloss'})
+    lines = out.splitlines()
+    i = lines.index('  Closed, core would refuse none. Besides, 8 stored values off the list that core lets stay '
+                    '(unconfirmed machine values, or set by an import, a document copy or a restore).')
+    assert lines[i + 1] == ('  Closed, it would refuse every new lowercase word gloss it does not list. '
+                            '7 of the 8 stored values off it hold one.'), out
+    # Nothing off it: the first sentence alone.
+    monkeypatch.setattr(T, '_attested', lambda ws, f: [('PL', 3)])
+    out = call_tool(ws, 'tagsets', {'action': 'check', 'tagset': 'Leipzig', 'field': 'Morph Gloss'})
+    assert out.splitlines()[-1] == '  Closed, it would refuse every new lowercase word gloss it does not list.', out
+    # A list already closed says nothing of the kind: its own lines cover it.
+    call_tool(ws, 'tagsets', {'action': 'edit', 'tagset': 'Leipzig', 'changes': {'mode': 'closed'}})
+    out = call_tool(ws, 'tagsets', {'action': 'check', 'tagset': 'Leipzig', 'field': 'Morph Gloss'})
+    assert 'every new lowercase word gloss' not in out, out
+
+
 def test_a_refused_value_names_the_parts_off_the_list():
     """REV-WIRE-3: of a composite value, the parts core names are shown."""
     from plaid_agent.igt.tagsets import _refused_line

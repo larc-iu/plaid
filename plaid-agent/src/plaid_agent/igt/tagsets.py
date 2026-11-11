@@ -47,7 +47,7 @@ delimiters are the characters that join a composite value's parts ("1SG.NOM" wit
 A project has its own tagsets for annotation fields and document metadata fields. A lexicon has its own for its entry fields: pass lexicon= for those.
 
 Actions of the tagsets tool:
-- check (tagset, optional field): the fields the tagset governs, the parts their stored values use that it does not list, with counts, and the stored values core would refuse if it were closed. A field named with field= is checked as though the tagset governed it.
+- check (tagset, optional field): the fields the tagset governs, the parts their stored values use that it does not list, with counts, and the stored values core would refuse if it were closed. Of a mixed list, how many stored values off it closed hold a word gloss. A field named with field= is checked as though the tagset governed it.
 - edit (tagset, changes): plans a new tagset, or a change to one. changes holds any of:
   mode, delimiters,
   add: values, as strings or {"value", "description"}; a listed value takes the new description,
@@ -365,8 +365,25 @@ def _check(ws, name: str, field: Optional[str], lexicon: Optional[str]) -> str:
             lines.append('  Closed, core would refuse ' + _refused_line(r) + '.' + _let_stay_note(stay))
         elif stay > 0:
             lines.append('  Closed, core would refuse none.' + _let_stay_note(stay))
+        if t['mode'] == MIXED:
+            # Core's closed rule has no lexical reading: every part must be
+            # listed, so a close takes away the word glosses mixed leaves free.
+            lines.append('  Closed, it would refuse every new lowercase word gloss it does not list.'
+                         + _word_gloss_count(_refused(attested, t), t))
     note = ws.corpus.clipped_note()
     return '\n'.join(lines) + (f'\n{note}' if note else '')
+
+
+def _word_gloss_count(off, t: dict) -> str:
+    """The sentence "W of the M stored values off it hold one.", ``off`` the
+    [(value, count)] off ``t`` closed, a value holding a word gloss when a part
+    it does not list is a lexical gloss. Nothing when no stored value is off it."""
+    total = sum(n for _, n in off)
+    if not total:
+        return ''
+    listed = {v['value'] for v in t['values']}
+    words = sum(n for v, n in off if any(p not in listed and is_lexical_part(p) for p in _parts(v, t['delimiters'])))
+    return f' {words} of the {_stored_n(total)} off it hold{"s" if words == 1 else ""} one.'
 
 
 def _stored_n(n: int) -> str:

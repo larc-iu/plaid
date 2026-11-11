@@ -1,7 +1,9 @@
-# Closing a list that the stored values break: the morpheme glosses hold word
-# glosses no Leipzig list names, so a closed list is refused by core. The
-# assistant should find that out (check, or the warning when it plans) and
-# say so rather than leave the user a plan that cannot apply.
+# Closing a mixed list: the morpheme glosses hold word glosses no Leipzig list
+# names. Core lets the imported ones stay (since
+# 0b3f1a9ac), so core takes the close, but a closed list refuses every new
+# lowercase word gloss it does not list, which mixed leaves free. The tagsets
+# check says so. The assistant should either not close it and ask, or close it
+# and warn about the word glosses and offer to keep it mixed.
 id: igt-tagset-close-hard
 app: igt
 project: igt-natugu
@@ -16,8 +18,11 @@ args:
   mode: refuse
   name: Leipzig
   want_mode: mixed
-  # A plain close (no tag or word added to the list) that
-  # warns about the word glosses and offers mixed passes too. Core exempts
-  # imported values since 0b3f1a9ac, so the premise above no longer holds.
-  close_ok: {mode: closed, offer: '\bmixed\b'}
+  # A plain close (no tag or word added to the list) that warns about the
+  # word glosses and offers mixed passes too. The offer names mixed as a mode
+  # to keep or go back to, not as the mode the close leaves ("from mixed to
+  # closed" is no offer).
+  close_ok:
+    mode: closed
+    offer: '\b(keep|keeping|leave|leaving|stay|staying|remain|back to|revert|rather|prefer)\b[^.!?]{0,60}\bmixed\b|\bmixed\b[^.!?]{0,30}\b(instead|does that|would do that|keeps|leaves)\b'
   match: '(word|lexical|stem|lowercase).{0,200}(refus|reject|not (be )?(accepted|allowed)|break|ban|forbid|disallow|outside|(not|n''t) (in|on) (the|a|your) list|off the list|unlisted|keep it mixed|mixed mode)|(refus|reject|break|ban|forbid|disallow).{0,200}(word|lexical|stem|lowercase)'
