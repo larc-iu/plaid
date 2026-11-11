@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import { TASKS } from '@larc-iu/plaid-client';
 import { ServiceDefaultsSettings } from '@ui/components/shared/ServiceDefaultsSettings.jsx';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@ui/components/ui/card';
 import { IGT_NAMESPACE, resolveAutoAnalysis } from '@/domain/igtConfig';
 import { sameConfig, storedConfig } from '@ui/domain/configCells.js';
 import { fieldIdsOf, fieldNamesOf, fieldRolesOf } from '@/domain/fieldInventory';
@@ -76,59 +77,67 @@ function CheckRow({ id, label, hint, checked, disabled, onChange, indent = false
   );
 }
 
-// The built-in link rule's own options, shown inline when it's the selected
-// default in the Auto-link spot — the built-in is just another method in that
-// list, so its options live with it rather than in a card of their own. These
-// seed the Auto-analyze dialog's "copy previous analyses" step
-// (config.igt.autoAnalysis); the built-in never runs on its own, and everything
-// a copy writes is marked unverified (violet) until a person confirms or edits it.
-function BuiltinLinkOptions({ draft, onChange }) {
+// What Auto-analyze's copy step copies, and whether the dialog ticks it, in a
+// card of its own: the step runs whichever method links to the lexicon, so its
+// options are no one method's. These seed the dialog's "Copy previous
+// analyses" step (config.igt.autoAnalysis), and everything a copy writes is
+// marked unverified (violet) until a person confirms or edits it.
+function CopyOptions({ draft, onChange }) {
   const set = (key) => (v) => onChange({ ...draft, [key]: v });
   const copyOn = draft.copyAnalyses;
   return (
-    <div className="space-y-2.5">
-      <CheckRow
-        id="auto-analysis-copy"
-        label="Also copy analyses by default"
-        hint="Pre-checks the Auto-analyze dialog's step that copies a word's prior full analysis (uncontested project-wide majority) onto identical unanalyzed words. Only words with no analysis at all are touched."
-        checked={draft.copyAnalyses}
-        onChange={set('copyAnalyses')}
-      />
-      <div className="ml-6 space-y-1.5">
-        <p className="text-xs font-medium text-muted-foreground">What a copy includes:</p>
+    <Card>
+      <CardHeader className="pb-3">
+        <CardTitle>Copy previous analyses</CardTitle>
+        <CardDescription>
+          Copies the analysis a word is given most often onto identical words with none
+          (Auto-analyze, step 2).
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-2.5">
         <CheckRow
-          id="auto-analysis-copy-seg"
-          indent
-          label="Morpheme segmentation (forms and types)"
-          checked={draft.copySegmentation}
-          disabled={!copyOn}
-          onChange={set('copySegmentation')}
+          id="auto-analysis-copy"
+          label="Copy analyses by default"
+          hint="Pre-checks the step in the Auto-analyze dialog."
+          checked={draft.copyAnalyses}
+          onChange={set('copyAnalyses')}
         />
-        <CheckRow
-          id="auto-analysis-copy-links"
-          indent
-          label="Lexicon links"
-          checked={draft.copyLinks}
-          disabled={!copyOn}
-          onChange={set('copyLinks')}
-        />
-        <CheckRow
-          id="auto-analysis-copy-fields"
-          indent
-          label="Annotation values (glosses, POS, …)"
-          checked={draft.copyFields}
-          disabled={!copyOn}
-          onChange={set('copyFields')}
-        />
-      </div>
-    </div>
+        <div className="ml-6 space-y-1.5">
+          <p className="text-xs font-medium text-muted-foreground">What a copy includes:</p>
+          <CheckRow
+            id="auto-analysis-copy-seg"
+            indent
+            label="Morpheme segmentation (forms and types)"
+            checked={draft.copySegmentation}
+            disabled={!copyOn}
+            onChange={set('copySegmentation')}
+          />
+          <CheckRow
+            id="auto-analysis-copy-links"
+            indent
+            label="Lexicon links"
+            checked={draft.copyLinks}
+            disabled={!copyOn}
+            onChange={set('copyLinks')}
+          />
+          <CheckRow
+            id="auto-analysis-copy-fields"
+            indent
+            label="Annotation values (glosses, POS, …)"
+            checked={draft.copyFields}
+            disabled={!copyOn}
+            onChange={set('copyFields')}
+          />
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
 // Project-level Services settings. The registry, the spot cards and the saving
 // are shared with plaid-ud; what is this app's is the list of spots, and the
-// built-in link rule's own options, which ride along in the same Save under a
-// second config key.
+// copy step's options, which ride along in the same Save under a second config
+// key.
 export const ServicesSettings = ({ projectId, client }) => {
   const [autoDraft, setAutoDraft] = useState(resolveAutoAnalysis(null));
   const [autoDirty, setAutoDirty] = useState(false);
@@ -171,11 +180,8 @@ export const ServicesSettings = ({ projectId, client }) => {
         setAutoStored(autoSent.current);
         setAutoDirty(!sameConfig(autoNow.current, autoSent.current));
       }}
-      builtinOptions={(spotKey, name) =>
-        spotKey === TASKS.LINK_VOCAB && name === BUILTIN_LINK_PRECEDENT ? (
-          <BuiltinLinkOptions draft={autoDraft} onChange={setAutoAnalysis} />
-        ) : null
-      }
-    />
+    >
+      <CopyOptions draft={autoDraft} onChange={setAutoAnalysis} />
+    </ServiceDefaultsSettings>
   );
 };

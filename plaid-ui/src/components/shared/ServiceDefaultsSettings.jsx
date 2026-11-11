@@ -125,7 +125,6 @@ function SpotCard({
   onChange,
   onDiscard,
   canManage,
-  builtinOptions,
   fields,
   fieldRoles,
   fieldIds,
@@ -140,9 +139,6 @@ function SpotCard({
     decoded?.kind === 'service'
       ? spotServices.find((s) => s.serviceId === decoded.id) || null
       : null;
-  // A selected built-in may carry its own options (the link rule's copy policy,
-  // say), shown in the same inline slot a service's params use.
-  const builtinOpts = decoded?.kind === 'builtin' ? builtinOptions?.(spot.key, decoded.id) : null;
   // A service's own options. Its field parameters are the task's default
   // fields, below, shared by every method of the task.
   const paramSchema = useMemo(
@@ -271,7 +267,6 @@ function SpotCard({
             />
           </div>
         )}
-        {builtinOpts && <div className="mt-3 border-t pt-3">{builtinOpts}</div>}
         {selectedService && paramSchema.length > 0 && (
           <div className="mt-3 border-t pt-3">
             <p className="mb-2 text-xs font-medium text-muted-foreground">
@@ -297,8 +292,9 @@ function SpotCard({
  * per spot. Defaults are stored under the app's own `configNamespace`, and an
  * editor seeds from them (a per-user localStorage choice still wins).
  *
- * `spots` is the app's, being a list of places in its own UI. `builtinOptions`
- * lets a selected built-in show options of its own. `saveExtra(batch)` lets
+ * `spots` is the app's, being a list of places in its own UI. `children` are
+ * the app's own cards, drawn after the spots' and saved by the same Save
+ * through the next three. `saveExtra(batch)` lets
  * the app write a second config key in the same Save: it queues that write on
  * the batch the defaults go in, so the two land together or not at all, and
  * `onExtraSaved` runs once they have landed, for the app to clear its own
@@ -314,7 +310,7 @@ export const ServiceDefaultsSettings = ({
   client,
   spots,
   canManage = true,
-  builtinOptions,
+  children,
   onProjectLoaded,
   extraDirty = false,
   saveExtra,
@@ -518,12 +514,13 @@ export const ServiceDefaultsSettings = ({
           onChange={(entry) => setSpotEntry(spot.key, entry)}
           onDiscard={discard}
           canManage={canManage}
-          builtinOptions={builtinOptions}
           fields={project ? (fieldsOf?.(project) ?? null) : null}
           fieldRoles={project ? (fieldRolesOf?.(project) ?? null) : null}
           fieldIds={project ? (fieldIdsOf?.(project) ?? null) : null}
         />
       ))}
+
+      {children}
 
       {unmatched.length > 0 && (
         <Card>
