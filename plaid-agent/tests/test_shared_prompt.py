@@ -106,7 +106,11 @@ def test_every_prompt_says_how_much_to_analyse_at_once_and_what_that_leaves_alon
     word by word or phrase by phrase is full analysis, the request that
     failed on prod ("mark every NP for accessibility") among it, and only one
     value per sentence, such as a free translation or a note, may cover
-    more."""
+    more. And again (FX-BUSY 2): about 5 sentences, and the model reads and
+    decides only those. Run on glm-5.3-flash it read all 20 sentences of the
+    bench text and reasoned over them before staging 10, 21,000 to 23,000
+    reasoning tokens a stretch, and once ran out of its 32,768 with nothing
+    staged (BENCH-STRETCH)."""
     from plaid_agent.core.limits import STRETCH_SENTENCES
     full = {'igt': 'segmenting and glossing, marking every noun phrase, a field on every word',
             'ud': 'a parse, a lemma, a feature or a relation on every word',
@@ -119,7 +123,12 @@ def test_every_prompt_says_how_much_to_analyse_at_once_and_what_that_leaves_alon
         line = next(x for x in text.splitlines() if x.startswith('- WORK IN STRETCHES.'))
         assert f'Work judged word by word or phrase by phrase ({full[app]}) is done about ' \
                f'{STRETCH_SENTENCES} sentences at a time' in line, app
-        assert f'do the first {STRETCH_SENTENCES} or so' in line, app
+        assert STRETCH_SENTENCES == 5, 'the owner\'s figure (2026-11-11, after BENCH-STRETCH)'
+        assert f'take the first {STRETCH_SENTENCES} or so: read ONLY those sentences, not the whole ' \
+               'document, decide only those, and stage them' in line, app
+        assert 'Do not read, plan or reason about the sentences after them: they wait for a later turn.' \
+            in line, app
+        assert not re.search(r'\b(?:10|ten)\b', line), app
         assert 'once they approve this plan' in line, 'a plan per stretch, as ONE_TURN has it'
         assert light[app] in line, app
         # Nothing judged per word reads as light work any more.

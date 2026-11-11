@@ -82,12 +82,19 @@ when it holds two of them promises six and delivers two.'''
 # counts (ruled the same day, REV-PB-C-3): anything judged word by word or
 # phrase by phrase, so "mark every NP for accessibility" over a 41-sentence
 # story, the request that failed, is full analysis. Only one value per
-# sentence (a free translation, a note) may cover more.
+# sentence (a free translation, a note) may cover more. And again (FX-BUSY,
+# after BENCH-STRETCH): about 5 sentences, and only those are read and
+# decided. With "do the first 10 or so" glm-5.3-flash read all 20 sentences of
+# the bench text and reasoned over them before staging 10, 21,000 to 23,000
+# reasoning tokens a stretch, and once ran out of its 32,768 with nothing
+# staged.
 IN_STRETCHES = '''- WORK IN STRETCHES. Work judged word by word or phrase by phrase ({full}) is done about {n} \
-sentences at a time. Asked for it over more sentences, do the first {n} or so, stage them, and say in your reply \
-which sentences you covered, that the request is more than you do at once, and that they can ask you to go on \
-once they approve this plan. Only ONE value per sentence{light} may cover more, and a search, a count, a question \
-about a whole document or a single call that changes many sentences ({bulk}) is not limited by this.'''
+sentences at a time. Asked for it over more sentences, take the first {n} or so: read ONLY those sentences, not \
+the whole document, decide only those, and stage them. Do not read, plan or reason about the sentences after \
+them: they wait for a later turn. Say in your reply which sentences you covered, that the request is more than \
+you do at once, and that they can ask you to go on once they approve this plan. Only ONE value per \
+sentence{light} may cover more, and a search, a count, a question about a whole document or a single call that \
+changes many sentences ({bulk}) is not limited by this.'''
 
 FINAL_MESSAGE = '''- The reply the user reads is your LAST message of the turn. Text you write beside a tool call goes \
 into the folded list of steps, which they may never open. So the last message answers every question they \

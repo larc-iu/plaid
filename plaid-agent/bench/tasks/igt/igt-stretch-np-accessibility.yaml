@@ -2,13 +2,14 @@
 # in one call: the shape of the request that failed on prod ("mark every NP
 # for accessibility" over a 41-sentence story, one field per word, PROD-LOOP
 # and REV-PB-C-3). By the prompt's WORK IN STRETCHES (the owner's ruling,
-# 2026-11-11) the assistant does a first stretch of about 10 sentences,
+# 2026-11-11) the assistant does a first stretch of about 5 sentences (10
+# until the owner's second ruling that day), reading and deciding only those,
 # stages it, and says it covered only part and offers to go on. Setup adds a
 # word field Accessibility, empty. The text has 20 sentences.
 #
 # Passes when the plan is applied, the only changes are Accessibility values
-# (given, accessible or new, stamped) in at least 5 sentences, none after
-# sentence 15, and the reply says it covered only the first sentences and
+# (given, accessible or new, stamped) in at least 3 sentences, none after
+# sentence 8, and the reply says it covered only the first sentences and
 # offers to continue. Which words are noun phrases is not checked.
 id: igt-stretch-np-accessibility
 app: igt
@@ -27,8 +28,8 @@ args:
     document: Lezgi text 1
     field: Accessibility
     values: [given, accessible, new]
-    min: 5
-    max: 15
+    min: 3
+    max: 8
   match:
     - '\b(?:first|only|so far)\b|\bsentences?\s+1\s*(?:-|–|to|through)\s*\d+'
-    - '\b(?:go on|continue|carry on|keep going|the rest|remaining|next (?:\d+|ten|stretch|batch|sentences?))\b'
+    - '\b(?:go on|continue|carry on|keep going|the rest|remaining|next (?:\d+|five|stretch|batch|sentences?))\b'

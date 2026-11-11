@@ -179,5 +179,7 @@ NGRAM_MAX = 3
 # About how many sentences of full analysis one turn does (Luke, 2026-11-11):
 # a request for more is done a stretch at a time, the first in this turn
 # (core.prompt.IN_STRETCHES). Four of the five output-cap failures on prod
-# were whole-story requests (PROD-LOOP).
-STRETCH_SENTENCES = 10
+# were whole-story requests (PROD-LOOP). 10 at first, 5 since a stretch of 10
+# cost glm-5.3-flash two thirds of its output cap (BENCH-STRETCH, the owner's
+# ruling the same day).
+STRETCH_SENTENCES = 5
