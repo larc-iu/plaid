@@ -38,7 +38,23 @@ test.beforeAll(async () => {
     projectId,
     PROBE,
     (_data, helper) => helper.error('not served'),
-    { schemaVersion: 1, tasks: ['analyze'], summary: SUMMARY },
+    {
+      schemaVersion: 1,
+      tasks: ['analyze'],
+      summary: SUMMARY,
+      // A list longer than its box, for the Select test below.
+      parameters: [
+        {
+          key: 'variety',
+          label: 'Variety',
+          type: 'enum',
+          options: Array.from({ length: 40 }, (_, i) => ({
+            value: `v${i + 1}`,
+            label: `Variety ${i + 1}`,
+          })),
+        },
+      ],
+    },
   );
   await expect
     .poll(
@@ -75,7 +91,7 @@ async function openBubble(page) {
   const step = dialog.getByRole('checkbox', { name: /Propose segmentation and glosses/ });
   if (!(await step.isChecked())) await step.check();
   // Another analysis service may be online too: pick the probe.
-  const method = dialog.getByRole('combobox');
+  const method = dialog.getByRole('combobox').filter({ hasNotText: 'Variety' });
   if (await method.count()) {
     await method.first().click();
     await page.getByRole('option', { name: PROBE.serviceName }).click();
@@ -181,3 +197,17 @@ for (const dir of ['ltr', 'rtl']) {
     await expect.poll(() => scrollTopOf(bubble)).toBeGreaterThan(0);
   });
 }
+
+// A Select in the dialog holds a scroll lock of its own and always scrolled:
+// kept here so the popover change is seen to leave it so.
+test("a parameter's Select list in the dialog scrolls under the wheel", async ({ page }) => {
+  const { dialog } = await openBubble(page);
+  await page.keyboard.press('Escape');
+  await dialog.getByRole('combobox').filter({ hasText: 'Variety 1' }).click();
+  const list = page.locator('[data-radix-select-viewport]');
+  await expect(list).toBeVisible();
+  const box = await list.boundingBox();
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.wheel(0, 200);
+  await expect.poll(() => scrollTopOf(list)).toBeGreaterThan(0);
+});
