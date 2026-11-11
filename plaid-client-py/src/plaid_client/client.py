@@ -512,16 +512,26 @@ class VocabLayersResource(_ConfigMethods, _Resource):
         return self._request('PATCH', f'/api/v1/vocab-layers/{id}',
                              body=_body_of(name=name), audit_message=audit_message)
 
-    def delete(self, id: str, audit_message=None, *, only_in_project: str | None = None) -> Any:
-        """Delete a vocab layer. With ``only_in_project``, refused (409) when any
-        other project links it, including projects the caller cannot read.
+    def delete(self, id: str, audit_message=None, *, only_in_project: str | None = None,
+               dry_run: bool = False) -> Any:
+        """Delete a vocab layer, with its entries and every link to them.
+        Refused (409) while a project the caller does not maintain links it
+        (an admin maintains every project): the error's ``response_data``
+        counts those projects as ``'other-projects'`` and names none. With
+        ``only_in_project``, refused (409) when any other project links it,
+        including projects the caller cannot read. With ``dry_run`` nothing
+        is written: the same refusals, or ``{'projects', 'links'}``, the
+        projects linking it and the links in their documents the delete
+        would remove.
 
         Args:
             id: The resource ID
             only_in_project: The one project allowed to link it
+            dry_run: Write nothing, answer what would go
         """
         return self._request('DELETE', f'/api/v1/vocab-layers/{id}', audit_message=audit_message,
-                             query_params={'only-in-project': only_in_project})
+                             query_params={'only-in-project': only_in_project,
+                                           'dry-run': 'true' if dry_run else None})
 
     def audit(self, id: str, *, start_time: str | None = None,
               end_time: str | None = None,

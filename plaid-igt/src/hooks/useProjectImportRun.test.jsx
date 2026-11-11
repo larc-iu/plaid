@@ -104,7 +104,7 @@ const serverClient = () => {
           ([pid, ids]) => pid !== onlyInProject && ids.includes(id),
         );
         if (onlyInProject && elsewhere) {
-          throw Object.assign(new Error('Another project uses this vocabulary.'), {
+          throw Object.assign(new Error('1 other project uses this vocabulary.'), {
             status: 409,
           });
         }

@@ -6,6 +6,7 @@
                                     assert-status assert-success assert-created assert-ok assert-no-content assert-not-found assert-bad-request
                                     with-admin with-test-users user1-request user2-request with-clean-db]]
             [plaid.fixtures :as fix]
+            [plaid.sql.common :as psc]
             [plaid.sql.vocab-layer :as vl]
             [plaid.test-helpers :refer :all]))
 
@@ -1446,3 +1447,76 @@
       (assert-not-found (get-vocab-layer admin-request vocab-id)))
     (assert-no-content (delete-test-project admin-request proj-a))
     (assert-no-content (delete-test-project admin-request proj-b))))
+
+(deftest vocab-delete-refused-while-a-project-the-caller-does-not-maintain-links-it
+  ;; SEAM-2 (Luke 2026-11-11, "Refuse while others link it"): a vocabulary
+  ;; linked to a project the caller does not maintain is not deleted. The
+  ;; 409 counts those projects and names none of them. An admin maintains
+  ;; everything. A project being deleted stands in no one's way. The dry
+  ;; run answers the same refusal, or what the delete would remove.
+  (let [proj-a (create-test-project admin-request "MineA")
+        proj-b (create-test-project admin-request "TheirsB")
+        proj-c (create-test-project admin-request "TheirsC")
+        vocab-id (-> (create-vocab-layer admin-request "Shared lexicon") :body :id)
+        item (-> (create-vocab-item admin-request vocab-id "kai") :body :id)
+        linked-doc! (fn [proj]
+                      (let [tl (-> (create-text-layer admin-request proj "TL") :body :id)
+                            tkl (-> (create-token-layer admin-request tl "TKL") :body :id)
+                            doc (create-test-document admin-request proj "Doc")
+                            text (-> (create-text admin-request tl doc "kai kai") :body :id)
+                            t1 (-> (create-token admin-request tkl text 0 3) :body :id)
+                            t2 (-> (create-token admin-request tkl text 4 7) :body :id)]
+                        (assert-created (create-vocab-link admin-request item [t1]))
+                        (assert-created (create-vocab-link admin-request item [t2]))
+                        doc))
+        delete! (fn [req & {:keys [dry-run]}]
+                  (api-call req {:method :delete
+                                 :path (str "/api/v1/vocab-layers/" vocab-id
+                                            (when dry-run "?dry-run=true"))}))
+        maintain! (fn [proj] (assert-no-content
+                              (api-call admin-request {:method :post
+                                                       :path (str "/api/v1/projects/" proj
+                                                                  "/maintainers/user1@example.com")})))]
+    (assert-no-content (add-vocab-maintainer admin-request vocab-id "user1@example.com"))
+    (doseq [p [proj-a proj-b proj-c]]
+      (assert-no-content (link-vocab-to-project admin-request p vocab-id))
+      (linked-doc! p))
+    (maintain! proj-a)
+    (assert-no-content (add-project-reader admin-request proj-b "user1@example.com"))
+    (testing "refused while projects the caller does not maintain link it, counted and not named"
+      (doseq [resp [(delete! user1-request) (delete! user1-request :dry-run true)]]
+        (assert-status 409 resp)
+        (is (= 2 (-> resp :body :other-projects)))
+        (is (= "2 other projects use this vocabulary." (-> resp :body :error)))
+        (is (not (re-find #"TheirsB|TheirsC" (pr-str (:body resp)))))
+        (is (not (re-find (re-pattern (str proj-b "|" proj-c)) (pr-str (:body resp))))))
+      (assert-ok (get-vocab-layer admin-request vocab-id))
+      (is (= 6 (count (psc/q fix/db {:select [:id] :from [:vocab_links]})))))
+    (testing "the dry run counts the projects and the links an admin's delete would remove"
+      (let [resp (delete! admin-request :dry-run true)]
+        (assert-ok resp)
+        (is (= {:projects 3 :links 6} (:body resp)))))
+    (testing "one project left in the way is said in the singular"
+      (maintain! proj-b)
+      (let [resp (delete! user1-request :dry-run true)]
+        (assert-status 409 resp)
+        (is (= 1 (-> resp :body :other-projects)))
+        (is (= "1 other project uses this vocabulary." (-> resp :body :error)))))
+    (testing "a project being deleted stands in no one's way, nor counts"
+      (psc/execute! fix/db {:update :projects :set {:deleted_at "2026-11-11T00:00:00Z"}
+                            :where [:= :id proj-c]})
+      (let [resp (delete! user1-request :dry-run true)]
+        (assert-ok resp)
+        (is (= {:projects 2 :links 4} (:body resp))))
+      (assert-ok (get-vocab-layer admin-request vocab-id)))
+    (testing "deleted once the caller maintains every project linking it"
+      (assert-no-content (delete! user1-request))
+      (assert-not-found (get-vocab-layer admin-request vocab-id))
+      (is (empty? (psc/q fix/db {:select [:id] :from [:vocab_links]})))))
+  (testing "an admin's delete goes through whoever maintains the projects"
+    (let [proj (create-test-project admin-request "Elsewhere")
+          vocab-id (-> (create-vocab-layer admin-request "Admin's") :body :id)]
+      (assert-no-content (link-vocab-to-project admin-request proj vocab-id))
+      (assert-no-content (api-call admin-request {:method :delete
+                                                  :path (str "/api/v1/vocab-layers/" vocab-id)}))
+      (assert-not-found (get-vocab-layer admin-request vocab-id)))))

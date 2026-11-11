@@ -356,6 +356,77 @@
             post-image (assoc vl-row :maintainers post-maintainers)]
         (psaw/record-audit-write! tx :vocab_layers vocab-id :update pre-image post-image)))))
 
+(defn- projects-in-the-way
+  "The ids of the projects whose link to vocab layer `eid` (a row of
+  `project_vocabs`, whatever the number of links in its documents) stands
+  in the way of deleting it.
+
+  With `only-in-project`, every project but that one, whether or not the
+  caller can read it (R58: an unfinished import's Delete takes the
+  vocabulary it made only when no other project uses it).
+
+  Otherwise every project the caller (`user-id`) does not maintain, unless
+  the caller is an admin (`admin?`), who maintains everything: a delete
+  removes every link in those projects' documents, and nothing brings them
+  back (SEAM-2, Luke 2026-11-11). A project being deleted stands in no
+  one's way: its links go unaudited with it (R39)."
+  [tx eid {:keys [only-in-project user-id admin?]}]
+  (cond
+    only-in-project
+    (->> (fetch-vocab-project-grants tx eid)
+         (remove #(= (str %) (str only-in-project))))
+
+    admin?
+    []
+
+    :else
+    (->> (psc/q tx {:select [:pv.project_id]
+                    :from [[:project_vocabs :pv]]
+                    :join [[:projects :p] [:= :p.id :pv.project_id]]
+                    :where [:and
+                            [:= :pv.vocab_layer_id eid]
+                            [:= :p.deleted_at nil]
+                            [:not [:exists {:select [1]
+                                            :from [[:project_users :pu]]
+                                            :where [:and
+                                                    [:= :pu.project_id :pv.project_id]
+                                                    [:= :pu.user_id user-id]
+                                                    [:= :pu.role "maintainer"]]}]]]})
+         (mapv :project_id))))
+
+(defn- refuse-projects-in-the-way!
+  "Throw the 409 a delete of `eid` is refused with when a project stands in
+  its way (`projects-in-the-way`). The body counts them as
+  `other-projects` and names none, since the caller may not be able to
+  read them."
+  [tx eid opts]
+  (let [n (count (projects-in-the-way tx eid opts))]
+    (when (pos? n)
+      (throw (ex-info (str n (if (= 1 n) " other project uses" " other projects use") " this vocabulary.")
+                      {:code 409 :id eid :plaid/body {:other-projects n}})))))
+
+(defn delete-preview
+  "What deleting vocab layer `eid` would remove, without writing:
+  `{:projects n :links m}`, the projects linking it and the links in their
+  documents, a project being deleted left out of both. Throws the delete's
+  own refusals (404, and the 409 of `refuse-projects-in-the-way!`). `opts`
+  as for `delete`."
+  [db eid opts]
+  (when (nil? (psc/fetch-by-id db :vocab_layers eid))
+    (throw (ex-info (psc/err-msg-not-found "Vocab" eid) {:code 404 :id eid})))
+  (refuse-projects-in-the-way! db eid opts)
+  (let [live [:= :p.deleted_at nil]]
+    {:projects (:n (psc/q1 db {:select [[[:count :*] :n]]
+                               :from [[:project_vocabs :pv]]
+                               :join [[:projects :p] [:= :p.id :pv.project_id]]
+                               :where [:and [:= :pv.vocab_layer_id eid] live]}))
+     :links (:n (psc/q1 db {:select [[[:count :*] :n]]
+                            :from [[:vocab_links :l]]
+                            :join [[:vocab_items :i] [:= :i.id :l.vocab_item_id]
+                                   [:documents :d] [:= :d.id :l.document_id]
+                                   [:projects :p] [:= :p.id :d.project_id]]
+                            :where [:and [:= :i.vocab_layer_id eid] live]}))}))
+
 (defn delete
   "Delete a vocab layer. Walks the descendant subtree (vocab_items
   and the vocab_links each item is referenced by) and audits each row
@@ -377,12 +448,13 @@
       removed) under the unnamespaced `:vocabs` key so ETL replay sees
       the grant transition.
 
-  With `only-in-project`, the delete is refused (409, nothing written) when
-  any project but that one links the vocabulary, whether or not the caller
-  can read that project (R58: an unfinished import's Delete takes the
-  vocabulary it made only when no other project uses it)."
+  The delete is refused (409, nothing written) while a project stands in
+  its way (`projects-in-the-way`): with `only-in-project`, any project but
+  that one, otherwise any project `user-id` does not maintain, unless
+  `admin?`. With neither `admin?` nor a user who maintains every linking
+  project, `opts` nil, that is every linking project."
   ([db eid user-id] (delete db eid user-id nil))
-  ([db eid user-id {:keys [only-in-project]}]
+  ([db eid user-id opts]
    (submit-operation! [tx db {:type :vocab/delete
                               :project nil
                               :document nil
@@ -391,10 +463,7 @@
                       (let [existing (psc/fetch-by-id tx :vocab_layers eid)]
                         (when (nil? existing)
                           (throw (ex-info (psc/err-msg-not-found "Vocab" eid) {:code 404 :id eid})))
-                        (when (and only-in-project
-                                   (some #(not= (str %) (str only-in-project))
-                                         (fetch-vocab-project-grants tx eid)))
-                          (throw (ex-info "Another project uses this vocabulary." {:code 409 :id eid})))
+                        (refuse-projects-in-the-way! tx eid (assoc opts :user-id user-id))
                         (let [vi-ids (->> (psc/q tx {:select [:id]
                                                      :from :vocab_items
                                                      :where [:= :vocab_layer_id eid]})

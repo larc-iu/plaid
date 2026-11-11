@@ -181,18 +181,32 @@ export function vocabLayersApi(client) {
         body: bodyOf({ name }),
       }),
     /**
-     * Delete a vocab layer. With `onlyInProject`, refused (409) when any
-     * other project links it, including projects the caller cannot read.
+     * Delete a vocab layer, with its entries and every link to them.
+     * Refused (409) while a project the caller does not maintain links it
+     * (an admin maintains every project): the error's `responseData` counts
+     * those projects as `"other-projects"` and names none. With
+     * `onlyInProject`, refused (409) when any other project links it,
+     * including projects the caller cannot read. With `dryRun` nothing is
+     * written: the same refusals, or `{projects, links}`, the projects
+     * linking it and the links in their documents the delete would remove.
      * @param {string} id - The resource ID
      * @param {string} [auditMessage] - Audit message for this write
      * @param {object} [opts]
      * @param {string} [opts.onlyInProject] - The one project allowed to link it
-     * @returns {Promise<void>}
+     * @param {boolean} [opts.dryRun] - Write nothing, answer what would go
+     * @returns {Promise<void | {projects: number, links: number}>}
      */
-    delete: (id, auditMessage, { onlyInProject } = {}) =>
+    delete: (id, auditMessage, { onlyInProject, dryRun } = {}) =>
       client._request("DELETE", `/api/v1/vocab-layers/${id}`, {
         auditMessage,
-        ...(onlyInProject ? { queryParams: { "only-in-project": onlyInProject } } : {}),
+        ...(onlyInProject || dryRun
+          ? {
+              queryParams: {
+                ...(onlyInProject ? { "only-in-project": onlyInProject } : {}),
+                ...(dryRun ? { "dry-run": "true" } : {}),
+              },
+            }
+          : {}),
       }),
     /**
      * Get the audit log of a vocabulary: every change to it or to its

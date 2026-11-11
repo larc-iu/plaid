@@ -33,6 +33,8 @@ import {
 } from '@/domain/igtConfig';
 import { entryMorphTypesOf } from '@/domain/vocabLookup';
 import { planKeptTypes, queueKeptTypes, busyLinkedDocument } from '@/domain/keptMorphType';
+import { statusOf } from '@ui/lib/errors.js';
+import { countOf, plural } from '@ui/lib/plural.js';
 import {
   normalizeVocabFields,
   newVocabField,
@@ -124,6 +126,14 @@ const TYPE_CHOICES = [
 const typeChoiceOf = (field) =>
   field.type === FIELD_TYPES.ITEM ? (field.many ? 'items' : 'item') : 'text';
 
+// Core refuses to delete a vocabulary while projects the person does not
+// maintain use it (409), and counts them as `other-projects`, naming none.
+// The count, or null for any other failure.
+const otherProjectsOf = (err) =>
+  statusOf(err) === 409 ? Number(err?.responseData?.['other-projects']) || null : null;
+const otherProjectsSaid = (n) =>
+  `${countOf(n, 'other project')} ${n === 1 ? 'uses' : 'use'} this vocabulary.`;
+
 export const VocabularyDetail = () => {
   const { vocabularyId } = useParams();
   const navigate = useNavigate();
@@ -198,7 +208,23 @@ export const VocabularyDetail = () => {
     [fields, vocabulary],
   );
   const [deleteModalOpened, setDeleteModalOpened] = useState(false);
-  const openDeleteModal = () => setDeleteModalOpened(true);
+  // What the delete would do, asked of core (a dry run) when the question
+  // opens: `{ projects, links }`, the projects that use the vocabulary and the
+  // links in their documents, or `{ otherProjects }` while projects this
+  // person does not maintain use it, which core refuses the delete for
+  // (SEAM-2). Undefined while asked, null when it could not be read.
+  const [deleteCheck, setDeleteCheck] = useState(undefined);
+  const openDeleteModal = () => {
+    setDeleteCheck(undefined);
+    setDeleteModalOpened(true);
+    Promise.resolve()
+      .then(() => client.vocabLayers.delete(vocabularyId, undefined, { dryRun: true }))
+      .then((r) => setDeleteCheck({ projects: r?.projects ?? 0, links: r?.links ?? 0 }))
+      .catch((err) => {
+        const n = otherProjectsOf(err);
+        setDeleteCheck(n ? { otherProjects: n } : null);
+      });
+  };
   const closeDeleteModal = () => setDeleteModalOpened(false);
   const [confirmDeleteName, setConfirmDeleteName] = useState('');
 
@@ -913,6 +939,12 @@ export const VocabularyDetail = () => {
       notifySuccess('Vocabulary deleted');
     } catch (err) {
       console.error('Error deleting vocabulary:', err);
+      const n = otherProjectsOf(err);
+      if (n) {
+        setDeleteCheck({ otherProjects: n });
+        notifyError(otherProjectsSaid(n), 'Failed to delete the vocabulary');
+        return;
+      }
       notifyError(busyLinkedDocument(err) ?? err, 'Failed to delete the vocabulary');
     }
   };
@@ -1497,29 +1529,55 @@ export const VocabularyDetail = () => {
           </DialogHeader>
 
           <div className="flex flex-col gap-4">
-            <div className="rounded-md border border-destructive/50 bg-destructive/5 p-3">
-              <div className="flex items-start gap-2">
-                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
-                <div className="text-sm">
-                  <p className="text-muted-foreground">
-                    Deletes <strong>“{vocabulary?.name}”</strong> with all its entries and their
-                    links. This cannot be undone.
-                  </p>
+            {deleteCheck?.otherProjects ? (
+              <p className="text-sm">
+                {otherProjectsSaid(deleteCheck.otherProjects)} It can be deleted once{' '}
+                {deleteCheck.otherProjects === 1 ? 'that project unlinks it' : 'they unlink it'}.
+              </p>
+            ) : (
+              <>
+                <div className="rounded-md border border-destructive/50 bg-destructive/5 p-3">
+                  <div className="flex items-start gap-2">
+                    <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
+                    <div className="text-sm">
+                      <p className="text-muted-foreground">
+                        Deletes <strong>“{vocabulary?.name}”</strong> with all its entries and their
+                        links. This cannot be undone.
+                      </p>
+                      {deleteCheck?.projects > 0 && (
+                        <p className="mt-1 text-muted-foreground">
+                          <strong>{countOf(deleteCheck.projects, 'project')}</strong>{' '}
+                          {deleteCheck.projects === 1 ? 'uses' : 'use'} this vocabulary.
+                          {deleteCheck.links > 0 && (
+                            <>
+                              {' '}
+                              Its entries are linked to{' '}
+                              <strong>
+                                {countOf(deleteCheck.links, 'word')}/
+                                {plural(deleteCheck.links, 'morpheme')}
+                              </strong>
+                              . Those links will be removed.
+                            </>
+                          )}
+                        </p>
+                      )}
+                    </div>
+                  </div>
                 </div>
-              </div>
-            </div>
 
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="vocabulary-delete-confirm">
-                Type “{vocabulary?.name}” to confirm
-              </Label>
-              <Input
-                id="vocabulary-delete-confirm"
-                placeholder="Enter vocabulary name"
-                value={confirmDeleteName}
-                onChange={(event) => setConfirmDeleteName(event.target.value)}
-              />
-            </div>
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="vocabulary-delete-confirm">
+                    Type “{vocabulary?.name}” to confirm
+                  </Label>
+                  <Input
+                    id="vocabulary-delete-confirm"
+                    placeholder="Enter vocabulary name"
+                    value={confirmDeleteName}
+                    onChange={(event) => setConfirmDeleteName(event.target.value)}
+                  />
+                </div>
+              </>
+            )}
           </div>
 
           <DialogFooter>
@@ -1532,13 +1590,17 @@ export const VocabularyDetail = () => {
             >
               Cancel
             </Button>
-            <Button
-              variant="destructive"
-              onClick={handleDelete}
-              disabled={!sameName(confirmDeleteName, vocabulary?.name)}
-            >
-              <Trash2 className="h-4 w-4" /> Delete vocabulary
-            </Button>
+            {!deleteCheck?.otherProjects && (
+              <Button
+                variant="destructive"
+                onClick={handleDelete}
+                disabled={
+                  deleteCheck === undefined || !sameName(confirmDeleteName, vocabulary?.name)
+                }
+              >
+                <Trash2 className="h-4 w-4" /> Delete vocabulary
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>

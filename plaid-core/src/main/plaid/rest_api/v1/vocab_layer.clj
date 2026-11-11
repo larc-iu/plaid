@@ -9,6 +9,7 @@
             [plaid.rest-api.v1.pagination :as pagination]
             [reitit.coercion.malli]
             [plaid.sql.audit :as audit]
+            [plaid.sql.user :as user]
             [plaid.sql.vocab-layer :as vocab])
   (:import (java.time Instant)
            (java.time.format DateTimeParseException)))
@@ -141,25 +142,42 @@
                              {:status 200 :body (vocab/get db id)} db (pra/readable-document-ids req documents))
                             (prm/op-error result {:message nil}))))}
 
-     :delete {:summary (str "Delete a vocab layer. With <query>only-in-project</query>, refused (409) when any "
-                            "other project links it, including projects the caller cannot read.")
+     :delete {:summary (str "Delete a vocab layer, with its entries and every link to them. Refused (409) while a project "
+                            "the caller does not maintain links it (an admin maintains every project), the body "
+                            "counting those projects as <body>other-projects</body> without naming them. A project being "
+                            "deleted stands in no one's way. With <query>only-in-project</query>, refused (409) "
+                            "when any other project links it, including projects the caller cannot read. With "
+                            "<query>dry-run</query> true nothing is written: the same refusals, or "
+                            "{projects, links}, the projects linking it and the links in their documents that the delete "
+                            "would remove.")
               :middleware [[pra/wrap-vocab-maintainer-required get-vocab-id]]
               :plaid/vocabulary-admin true
-              :parameters {:query [:map [:only-in-project {:optional true} :uuid]]}
+              :parameters {:query [:map
+                                   [:only-in-project {:optional true} :uuid]
+                                   [:dry-run {:optional true} :boolean]]}
               :handler (fn [{{{:keys [id]} :path
-                              {:keys [only-in-project]} :query} :parameters
+                              {:keys [only-in-project dry-run]} :query} :parameters
                              db :db
                              user-id :user/id :as req}]
-                         (let [{:keys [success documents] :as result}
-                               (vocab/delete db id user-id {:only-in-project only-in-project})]
-                           (if success
-                             ;; Deleting a vocabulary unlinks it from the
-                             ;; documents that used it, which bumps their
-                             ;; versions: a client told nothing here is
-                             ;; refused on its own next write.
-                             (prm/assoc-document-versions-in-header
-                              {:status 204} db (pra/readable-document-ids req documents))
-                             (prm/op-error result))))}}]
+                         (let [opts {:only-in-project only-in-project
+                                     :admin? (user/admin? (:user/record req))}]
+                           (if dry-run
+                             (try
+                               {:status 200 :body (vocab/delete-preview db id (assoc opts :user-id user-id))}
+                               (catch clojure.lang.ExceptionInfo e
+                                 (let [{:keys [code] :plaid/keys [body]} (ex-data e)]
+                                   (if (and code (< code 500))
+                                     {:status code :body (merge {:error (ex-message e)} body)}
+                                     (throw e)))))
+                             (let [{:keys [success documents] :as result} (vocab/delete db id user-id opts)]
+                               (if success
+                                 ;; Deleting a vocabulary unlinks it from the
+                                 ;; documents that used it, which bumps their
+                                 ;; versions: a client told nothing here is
+                                 ;; refused on its own next write.
+                                 (prm/assoc-document-versions-in-header
+                                  {:status 204} db (pra/readable-document-ids req documents))
+                                 (prm/op-error result {:extras? true}))))))}}]
 
    ["/:id/audit"
     {:parameters {:path [:map [:id :uuid]]}
