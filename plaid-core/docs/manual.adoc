@@ -129,6 +129,8 @@ Here is an example of how to use the Python client:
 
 [,python]
 ----
+from plaid_client import PlaidClient
+
 client = PlaidClient("http://localhost:8080", "<SECRET_TOKEN>")
 
 projects = client.projects.list()
@@ -148,6 +150,8 @@ The same, in JavaScript:
 
 [,javascript]
 ----
+import { PlaidClient } from "@larc-iu/plaid-client"
+
 const client = new PlaidClient("http://localhost:8080", "<SECRET_TOKEN>")
 
 const projects = await client.projects.list()
