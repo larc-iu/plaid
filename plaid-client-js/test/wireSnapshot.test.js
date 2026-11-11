@@ -94,7 +94,16 @@ export function stubArgs(fn) {
   return paramsOf(fn).flatMap((param, i) => {
     if (param.startsWith("...")) return [];
     if (param.startsWith("{")) {
-      const inner = param.slice(1, param.lastIndexOf("}"));
+      // Up to the brace that closes the first one, not the last brace,
+      // which in `{ x, y } = {}` is the default's.
+      let depth = 0;
+      let close = 0;
+      while (close < param.length) {
+        if (param[close] === "{") depth++;
+        else if (param[close] === "}" && --depth === 0) break;
+        close++;
+      }
+      const inner = param.slice(1, close);
       const opts = {};
       for (const part of splitTop(inner)) {
         const key = part.split(/[:=]/)[0].trim();
@@ -268,6 +277,25 @@ if (process.env.WIRE_PROBE) {
   process.stdout.write(JSON.stringify(snapshot));
   process.exit(0);
 } else {
+  test("an options object with a default gets one stub per key", () => {
+    // REV-PB-A-4: `{ onlyInProject, dryRun } = {}` once gave the key "dryRun }".
+    const fn = (id, auditMessage, { onlyInProject, dryRun } = {}) => [
+      id,
+      auditMessage,
+      onlyInProject,
+      dryRun,
+    ];
+    assert.deepEqual(stubArgs(fn), [
+      "a0",
+      "a1",
+      { onlyInProject: "a2.onlyInProject", dryRun: "a2.dryRun" },
+    ]);
+    const keys = Object.values(JSON.parse(readFileSync(FIXTURE, "utf8"))).flatMap((e) =>
+      (e.args || []).flatMap((a) => (a && typeof a === "object" ? Object.keys(a) : [])),
+    );
+    assert.deepEqual(keys.filter((k) => !/^[A-Za-z]+$/.test(k)), []);
+  });
+
   test("every bundle method sends what the wire snapshot holds", () => {
     const got = JSON.parse(
       execFileSync(process.execPath, [fileURLToPath(import.meta.url)], {
