@@ -230,11 +230,15 @@ def busy_hint(e: BaseException, now: Optional[float] = None) -> Optional[float]:
 
 
 def busy_delay(e: BaseException, tries: int, left: float) -> float:
-    """How long to wait before busy try number ``tries`` + 1: the provider's
-    hint, else :data:`BUSY_BACKOFF_S`, made longer by up to
-    :data:`BUSY_JITTER`, and never more than the ``left`` of the budget."""
+    """How long to wait before busy try number ``tries`` + 1: the step of
+    :data:`BUSY_BACKOFF_S`, or the provider's hint when that is shorter, made
+    longer by up to :data:`BUSY_JITTER`, and never more than the ``left`` of
+    the budget. The hint only shortens a wait: a proxy's Retry-After is its
+    limiter's window (60 s on the IU endpoint), not the moment a slot frees,
+    and waiting it out let every newer request take the freed slot first."""
     hint = busy_hint(e)
-    base = hint if hint is not None else BUSY_BACKOFF_S[min(tries, len(BUSY_BACKOFF_S) - 1)]
+    step = BUSY_BACKOFF_S[min(tries, len(BUSY_BACKOFF_S) - 1)]
+    base = step if hint is None else min(hint, step)
     return max(0.0, min(max(base, 1.0) * (1.0 + random.uniform(0.0, BUSY_JITTER)), left))
 
 
@@ -284,7 +288,7 @@ def retrying(call: Callable[[], Any], *, model: str, timeout: Optional[float] = 
     passes, and its answer returned.
 
     A call the provider refused as busy (:func:`is_busy`, HTTP 429) is tried
-    again after the provider's own hint or :data:`BUSY_BACKOFF_S`, with a
+    again after a step of :data:`BUSY_BACKOFF_S` (the provider's own hint when shorter), with a
     little jitter (:func:`busy_delay`), until the waits add up to
     ``busy_wait`` seconds; the last busy refusal is then raised as it is.
     ``on_busy(True)`` runs before each such wait and ``on_busy(False)`` after

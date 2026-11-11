@@ -84,7 +84,8 @@ test('Stop ends the wait for a busy model at once', async ({ page }) => {
   await withAssistant(
     page,
     'igt:assist:e2e-busy-stop',
-    [{ busy: 120 }, { content: 'Never asked for.' }],
+    // Busy on every try: the waits are steps of 5, 10, 20 s, whatever the hint says.
+    [{ busy: 120 }, { busy: 120 }, { busy: 120 }, { busy: 120 }, { content: 'Never asked for.' }],
     async (box) => {
       await box.fill('How many documents are there?');
       await box.press('Enter');

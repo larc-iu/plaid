@@ -112,12 +112,13 @@ def _run(ws=None, cancelled=lambda: False):
 
 # --- the wait ------------------------------------------------------------------
 
-def test_a_busy_model_with_a_hint_is_waited_for_as_it_says_and_the_reader_is_told(monkeypatch, clock):
+def test_a_busy_model_is_waited_for_and_the_reader_is_told_and_a_long_hint_does_not_slow_the_steps(monkeypatch, clock):
     calls = _script(monkeypatch, busy(60), busy(60), _resp('Done.'))
     turn, progress = _run()
     assert turn.text == 'Done.'
     assert len(calls) == 3
-    assert clock.slept and sum(clock.slept) == 120, clock.slept
+    # The provider says 60 s, its limiter's window, not when a slot frees: the steps stay 5 then 10.
+    assert clock.slept and sum(clock.slept) == 15, clock.slept
     assert progress == ['Thinking…', llm.BUSY_WAITING, 'Thinking…', llm.BUSY_WAITING, 'Thinking…']
     assert llm.BUSY_WAITING == 'The model is busy. Waiting for a free slot…'
 
@@ -135,8 +136,10 @@ def test_without_a_hint_the_waits_back_off_and_never_all_land_at_once(monkeypatc
     # Jitter makes each wait longer by up to a fifth, never shorter.
     monkeypatch.setattr(llm.random, 'uniform', lambda a, b: b)
     assert llm.busy_delay(busy(), 0, 999) == pytest.approx(6.0)
-    assert llm.busy_delay(busy(60), 0, 999) == pytest.approx(72.0)
-    assert llm.busy_delay(busy(60), 0, 40) == 40, 'never past the budget left'
+    assert llm.busy_delay(busy(60), 0, 999) == pytest.approx(6.0), 'a hint longer than the step does not lengthen it'
+    assert llm.busy_delay(busy(60), 3, 999) == pytest.approx(36.0)
+    assert llm.busy_delay(busy(2), 3, 999) == pytest.approx(2.4), 'a hint shorter than the step is taken'
+    assert llm.busy_delay(busy(60), 3, 20) == 20, 'never past the budget left'
 
 
 def test_the_budget_is_the_whole_wait_and_running_out_says_the_model_is_busy(monkeypatch, clock):
@@ -147,21 +150,21 @@ def test_the_budget_is_the_whole_wait_and_running_out_says_the_model_is_busy(mon
     # 5 + 10 + 20 + 30 + 30 + 30 + 30 = 155, and the last wait is what is left.
     assert len(calls) == 9
     assert model_failure_line(e.value) == 'The model is busy. Try again in a minute.'
-    # A hint longer than what is left waits only what is left.
+    # A long hint changes neither the budget nor the number of tries.
     clock.slept.clear()
-    calls = _script(monkeypatch, *[busy(150)] * 5)
+    calls = _script(monkeypatch, *[busy(150)] * 50)
     with pytest.raises(agent.litellm.RateLimitError):
         _run()
-    assert sum(clock.slept) == pytest.approx(llm.BUSY_WAIT_S) and len(calls) == 3
+    assert sum(clock.slept) == pytest.approx(llm.BUSY_WAIT_S) and len(calls) == 9
 
 
 def test_stop_during_the_wait_ends_the_turn_at_once(monkeypatch, clock):
     calls = _script(monkeypatch, busy(60), _resp('never asked for'))
-    stop_at = clock.now + 12
+    stop_at = clock.now + 3
     with pytest.raises(TurnCancelled):
         _run(cancelled=lambda: clock.now >= stop_at)
     assert len(calls) == 1, 'nothing more is asked of the model'
-    assert sum(clock.slept) <= 12.5, 'the wait ends within half a second of the stop'
+    assert sum(clock.slept) <= 3.5, 'the wait ends within half a second of the stop'
 
 
 def test_the_other_passing_failures_keep_the_short_schedule(monkeypatch, clock):
@@ -318,5 +321,5 @@ def test_a_real_429_with_and_without_a_hint_then_an_answer(monkeypatch, clock):
         endpoint.close()
     assert turn.text == 'Here it is.'
     assert endpoint.seen == 3
-    assert sum(clock.slept) == pytest.approx(7 + 10), 'Retry-After 7, then the second step of the back-off'
+    assert sum(clock.slept) == pytest.approx(5 + 10), 'Retry-After 7 is longer than the first step, so 5, then 10'
     assert progress.count(llm.BUSY_WAITING) == 2 and progress[-1] == 'Thinking…'
