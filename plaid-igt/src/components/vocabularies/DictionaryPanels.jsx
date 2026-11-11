@@ -559,7 +559,10 @@ export const ContextRow = ({ row, to }) => {
 /**
  * The entry's examples, resolved live: a reference is looked up in its
  * document and shown in context, or marked as gone when the token no longer
- * exists or no longer links here. Imported text examples show as text.
+ * exists or no longer links here. A document of a project the viewer cannot
+ * open is not gone, and its example is not theirs to remove: core refuses it
+ * 403 without `unresolved`, which it adds only for an id that resolves to
+ * nothing (deleted or never there). Imported text examples show as text.
  *
  * `linkedTokenIds` is the concordance plan's set of tokens linked to this
  * entry (null while loading, or when the plan was capped and cannot say).
@@ -571,6 +574,7 @@ export const ExamplesPanel = ({ item, client, linkedTokenIds, canManage, onRemov
     .map((e) => `${e.document}/${e.token}`)
     .join(',');
   const [resolved, setResolved] = useState(null); // Map "doc/token" -> {row, projectId, docName} | null
+  const [refusedDocs, setRefusedDocs] = useState(() => new Set());
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -586,6 +590,7 @@ export const ExamplesPanel = ({ item, client, linkedTokenIds, canManage, onRemov
     const tokenIds = new Set(refs.map((r) => r.token));
     (async () => {
       const out = new Map();
+      const refused = new Set();
       await Promise.all(
         [...byDoc.entries()].map(async ([docId, n]) => {
           try {
@@ -596,12 +601,14 @@ export const ExamplesPanel = ({ item, client, linkedTokenIds, canManage, onRemov
                   out.set(`${docId}/${t}`, { row, projectId: g.projectId, docName: g.docName });
               }
             }
-          } catch {
-            // an unreadable or deleted document: its references show as gone
+          } catch (err) {
+            // A deleted document leaves its references shown as gone.
+            if (err?.status === 403 && err.responseData?.unresolved !== true) refused.add(docId);
           }
         }),
       );
       if (!alive) return;
+      setRefusedDocs(refused);
       setResolved(out);
       setLoading(false);
     })();
@@ -652,7 +659,8 @@ export const ExamplesPanel = ({ item, client, linkedTokenIds, canManage, onRemov
           // Until the first lookup has answered (`resolved` null), a missing
           // hit is not yet a missing example.
           const pending = loading || resolved == null;
-          const gone = !pending && (!hit || unlinked);
+          const refused = !pending && !hit && refusedDocs.has(ex.document);
+          const gone = !pending && !refused && (!hit || unlinked);
           return (
             <li key={i} className="flex items-start gap-2 px-1 py-1">
               <span className="w-6 shrink-0 pt-1.5 text-right text-xs tabular-nums text-muted-foreground">
@@ -660,6 +668,10 @@ export const ExamplesPanel = ({ item, client, linkedTokenIds, canManage, onRemov
               </span>
               {pending && !hit ? (
                 <div className="min-w-0 flex-1 px-3 py-1.5 text-sm text-muted-foreground">…</div>
+              ) : refused ? (
+                <div className="min-w-0 flex-1 px-3 py-1.5 text-sm text-muted-foreground">
+                  This example is in a document you cannot open.
+                </div>
               ) : gone ? (
                 <div className="min-w-0 flex-1 px-3 py-1.5 text-sm text-muted-foreground">
                   This example no longer exists, or its word is no longer linked to this entry.
@@ -675,7 +687,7 @@ export const ExamplesPanel = ({ item, client, linkedTokenIds, canManage, onRemov
                   </p>
                 </div>
               )}
-              {canManage && (
+              {canManage && !refused && (
                 <button
                   type="button"
                   aria-label="Remove example"
