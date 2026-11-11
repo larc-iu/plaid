@@ -48,6 +48,18 @@ describe('readableDescription, ids in the middle', () => {
     ).toBe('Create text with 0 metadata keys');
   });
 
+  it('drops an id that follows the noun it names', () => {
+    // History and Activity showed these beside "Create guideline "Clitic se"".
+    expect(readableDescription('Update guideline 01a1cb73-0b1c-7a3e-9f00-1c2d3e4f5a6b')).toBe(
+      'Update guideline',
+    );
+    expect(
+      readableDescription(
+        'Update document 01a1cb5c-0b1c-7a3e-9f00-1c2d3e4f5a6b name to "Field notes"',
+      ),
+    ).toBe('Update document name to "Field notes"');
+  });
+
   it('still handles one at the end, and leaves the name in front of it', () => {
     expect(
       readableDescription(

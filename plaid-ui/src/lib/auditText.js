@@ -16,8 +16,12 @@
 const UUID_CLAUSE =
   /\s+\b(?:on|in|to|from|of|for)\b[\w\s"'-]*?[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi;
 
+// And an id standing after the noun it names, "Update guideline <id>", goes on
+// its own, leaving the noun: "Update guideline".
+const BARE_UUID = /\s+[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi;
+
 export const readableDescription = (text) =>
-  typeof text === 'string' ? text.replace(UUID_CLAUSE, '').trim() : text;
+  typeof text === 'string' ? text.replace(UUID_CLAUSE, '').replace(BARE_UUID, '').trim() : text;
 
 // What an operation's kind (the server's closed list, `?group-kind=`) is
 // called on a History row. An operation with no kind names none.
