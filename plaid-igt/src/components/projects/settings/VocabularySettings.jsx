@@ -61,12 +61,17 @@ export const VocabularySettings = ({ project, projectId, client, onProjectUpdate
   // which seed its fields, so handleLoadData stamps every row isCustom: false.
   // The send asks the project first, so a send whose premise an earlier one
   // already settled (a refused link, then an untick) does nothing.
-  const handleSaveChanges = async ({ change }) => {
+  // Each is labelled with the vocabulary's name, which History and Activity
+  // show in place of the id core writes ("Remove vocab 01a1… from project …").
+  const handleSaveChanges = async ({ vocabularies, change }) => {
     if (!change) return;
     const live = await client.projects.get(projectId);
     const linked = (live.vocabs || []).some((v) => v.id === change.id);
+    const name = vocabularies?.find((v) => v.id === change.id)?.name ?? change.id;
     if (change.enabled && !linked) {
-      await client.projects.linkVocab(projectId, change.id);
+      await client.withOperation(`Link vocabulary “${name}”`, () =>
+        client.projects.linkVocab(projectId, change.id),
+      );
     } else if (!change.enabled && linked) {
       // The unlink takes the project's links into the vocabulary, and each
       // morpheme they leave keeps the type its entry gave it, in the same
@@ -76,10 +81,12 @@ export const VocabularySettings = ({ project, projectId, client, onProjectUpdate
       const kept = await planKeptTypes(client, user, { vocabId: change.id, projectId }, (id) =>
         types.get(id),
       );
-      await client.batched((b) => {
-        queueKeptTypes(b, kept);
-        b.projects.unlinkVocab(projectId, change.id);
-      });
+      await client.withOperation(`Unlink vocabulary “${name}”`, () =>
+        client.batched((b) => {
+          queueKeptTypes(b, kept);
+          b.projects.unlinkVocab(projectId, change.id);
+        }),
+      );
     } else return;
     // The link has landed, so a read that fails is not a failed send.
     await Promise.resolve(onProjectUpdate?.()).catch((err) =>

@@ -30,6 +30,16 @@ const batching = (client) => {
   client.tokens = client.tokens ?? { bulkUpdate: vi.fn(async () => {}) };
   client.vocabLayers.get = client.vocabLayers.get ?? vi.fn(async () => ({ items: [] }));
   client.tokenLayers = client.tokenLayers ?? { get: vi.fn(async () => ({ project: 'p1' })) };
+  // The open operation's label, as the writes inside it carry it.
+  client.labels = [];
+  client.withOperation = vi.fn(async (label, fn) => {
+    client.labels.push(label);
+    try {
+      return await fn();
+    } finally {
+      client.labels.pop();
+    }
+  });
   client.batched = vi.fn(async (fn) => {
     const sent = [];
     await fn({
@@ -459,6 +469,26 @@ describe('Project settings, Vocabularies, an unlink while a linked document is h
       'Vocabularies not updated',
     );
     expect(boxOf(view.container, 'Mine').checked).toBe(true);
+    await view.unmount();
+  });
+});
+
+// History and Activity name a link or unlink by the vocabulary's name, not
+// its id ("Remove vocab 01a1… from project …" is what core writes).
+describe('Project settings, Vocabularies, the History label', () => {
+  it('labels a link and an unlink with the vocabulary name', async () => {
+    const client = makeClient({ linked: ['v2'] });
+    const seen = [];
+    client.projects.linkVocab = vi.fn(async () => seen.push(['link', client.labels.at(-1)]));
+    client.projects.unlinkVocab = vi.fn(async () => seen.push(['unlink', client.labels.at(-1)]));
+    const view = await mount(client);
+    await view.step(() => rowOf(view.container, 'Mine').click());
+    await view.step(() => rowOf(view.container, 'Theirs').click());
+    await view.step(() => byText(document.body, '[role=alertdialog] button', 'Unlink').click());
+    expect(seen).toEqual([
+      ['link', 'Link vocabulary “Mine”'],
+      ['unlink', 'Unlink vocabulary “Theirs”'],
+    ]);
     await view.unmount();
   });
 });
