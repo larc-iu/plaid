@@ -162,3 +162,22 @@ test("a summary's hard-wrapped lines flow, and its paragraphs and list items sta
   expect(lines).toBeLessThan(5);
   await expect(body.locator('p').first()).toContainText('segmentation and glosses for every word');
 });
+for (const dir of ['ltr', 'rtl']) {
+  test(`the bubble stays on screen in a narrow window, ${dir}`, async ({ page }) => {
+    await page.setViewportSize({ width: 520, height: 560 });
+    await page.addInitScript((d) => {
+      document.addEventListener('DOMContentLoaded', () => {
+        document.documentElement.dir = d;
+      });
+    }, dir);
+    const { bubble } = await openBubble(page);
+    const box = await bubble.boundingBox();
+    expect(box.x).toBeGreaterThanOrEqual(0);
+    expect(box.y).toBeGreaterThanOrEqual(0);
+    expect(box.x + box.width).toBeLessThanOrEqual(520);
+    expect(box.y + box.height).toBeLessThanOrEqual(560);
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.wheel(0, 120);
+    await expect.poll(() => scrollTopOf(bubble)).toBeGreaterThan(0);
+  });
+}

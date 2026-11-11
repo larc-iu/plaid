@@ -25,7 +25,13 @@ export function ServiceSummary({ service }) {
           <Info className="h-4 w-4" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent align="start" className="max-h-80 w-96 overflow-y-auto">
+      {/* Never taller than the room the window leaves it, or its end is off
+          screen where no scrolling reaches it. */}
+      <PopoverContent
+        align="start"
+        collisionPadding={8}
+        className="max-h-[min(20rem,var(--radix-popover-content-available-height))] w-96 overflow-y-auto"
+      >
         {service.serviceName && <p className="mb-1 text-sm font-semibold">{service.serviceName}</p>}
         <SafeMarkdown className="text-sm text-muted-foreground" breaks={false}>
           {summary}
