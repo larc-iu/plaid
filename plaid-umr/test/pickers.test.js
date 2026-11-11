@@ -207,3 +207,17 @@ test('an Arabic word lists its own senses, then lemma--NN, then a folded lemma',
   assert.deepEqual(senses('أثرت'), ['أثر-01', 'أثر--01']);
   assert.deepEqual(senses('الأم'), ['أم-01', 'ألام-01']);
 });
+
+// GUIDE-UMR-1: the concept picker lists concepts only. The date-entity roles
+// (:day, :year, :time) were in its Abstract group, and Enter on a typed `day`
+// took `:day`, which a concept cannot hold.
+test('the concept picker offers no relation, so a typed day is a concept', () => {
+  const values = conceptOptions([{ text: 'day' }], null, 'day')
+    .flatMap((g) => g.items)
+    .map((i) => (typeof i === 'string' ? i : i.value));
+  assert.deepEqual(
+    values.filter((v) => v.startsWith(':')),
+    [],
+  );
+  assert.ok(values.includes('date-entity'));
+});

@@ -310,7 +310,7 @@ export const ABSTRACT_CONCEPTS = {
     'space',
     'trajectory',
   ],
-  // The subroles of date-entity, kept because the Info panels list them.
+  // The subroles of date-entity: relations, which the concept picker leaves out.
   dateSubroles: [
     ':calendar',
     ':century',

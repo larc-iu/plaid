@@ -115,9 +115,12 @@ export const normalizeRole = (text) => {
 // after the words' own senses, on every node (ruled 2026-09-28): the lemma of
 // "bought" or "abandonou" is found by typing it.
 const nameOf = (c) => (typeof c === 'string' ? c : c.name);
-// The inventory's groups never change: built once.
+// The inventory's groups never change: built once. The date-entity roles
+// (`:day`, `:year`) are relations, not concepts: listed, they made Enter on
+// a typed `day` take `:day`, which a concept cannot hold.
+const { dateSubroles: _dateRoles, ...CONCEPT_TABLES } = ABSTRACT_CONCEPTS;
 const STATIC_CONCEPT_GROUPS = [
-  { group: 'Abstract', items: uniq(flat(ABSTRACT_CONCEPTS).map(nameOf)) },
+  { group: 'Abstract', items: uniq(flat(CONCEPT_TABLES).map(nameOf)) },
   { group: 'Rolesets', items: uniq(flat(ROLESETS_91).map(nameOf)) },
   {
     group: 'Discourse',

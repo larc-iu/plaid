@@ -1398,10 +1398,15 @@ export const SentenceBlock = React.memo(function SentenceBlock({
   // the word, the same as dropping a grip on it: an inflected surface form
   // is almost never the concept, and the frame file's senses of the word are
   // the first thing the picker offers. Enter takes the word as typed.
+  //
+  // An editor open for another word or node goes, unsaved: its blur on the
+  // first click has already written it or refused it, and a refused one kept
+  // open took the next concept typed onto the wrong word. One for this word
+  // stays: the first click of the pair may be what opened it (a word in
+  // child mode), and this would throw it away.
   const doubleClickWord = (wordId) => {
-    // Not over an open editor: the first click of the pair may be what
-    // opened it (a word in child mode), and this would throw it away.
-    if (readOnly || mode || editor) return;
+    if (readOnly || mode) return;
+    if (editor?.kind === 'new' && editor.wordIds.includes(wordId)) return;
     const word = sentence.words.find((w) => w.id === wordId);
     if (!word) return;
     const col = columns.get(wordId);

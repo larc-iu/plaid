@@ -2357,3 +2357,79 @@ describe('SentenceBlock, a typed edit the server refused', () => {
     await r.unmount();
   });
 });
+
+// GUIDE-UMR-1: a node started on a word by a double-click.
+describe('SentenceBlock a node started on a word', () => {
+  const press = (el, key) =>
+    el.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
+  const input = (root) => root.querySelector('.umr-inline-editor input');
+  const word = (root, n) => all(root, '.umr-word')[n - 1];
+  const dblclick = (el) => el.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+  const typeOver = async (r, el, text) => {
+    const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+    await r.step(() => {
+      set.call(el, '');
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    for (const ch of text) {
+      await r.step(() => {
+        set.call(el, el.value + ch);
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+      });
+    }
+  };
+  const mount = async () => {
+    const { sentence, nodesById } = fixture();
+    const doc = {
+      graph: {},
+      canConfirmSentence: () => false,
+      canDiscardSentence: () => false,
+      canConfirm: () => false,
+      node: () => null,
+      edge: () => null,
+      createNode: vi.fn(),
+    };
+    const r = await renderComponent(
+      <SentenceBlock
+        doc={doc}
+        dataVersion={1}
+        readOnly={false}
+        sentence={sentence}
+        nodesById={nodesById}
+      />,
+    );
+    return { r, doc };
+  };
+
+  it('takes a typed day as the concept, not the date role :day', async () => {
+    const { r, doc } = await mount();
+    await r.step(() => dblclick(word(r.container, 1)));
+    expect(input(r.container).value).toBe('Lindsay');
+    await typeOver(r, input(r.container), 'day');
+    await r.step(() => press(input(r.container), 'Enter'));
+    expect(r.container.textContent).not.toMatch(/cannot hold/);
+    expect(doc.createNode).toHaveBeenCalledTimes(1);
+    expect(doc.createNode.mock.calls[0][0]).toMatchObject({ concept: 'day', wordIds: ['w1'] });
+    await r.unmount();
+  });
+
+  it('starts over on the word double-clicked while a refused concept is open', async () => {
+    const { r, doc } = await mount();
+    await r.step(() => dblclick(word(r.container, 1)));
+    await typeOver(r, input(r.container), 'a:b');
+    await r.step(() => press(input(r.container), 'Enter'));
+    expect(r.container.textContent).toMatch(/cannot hold/);
+    expect(doc.createNode).not.toHaveBeenCalled();
+    await r.step(() => dblclick(word(r.container, 3)));
+    expect(input(r.container).value).toBe('eat');
+    expect(r.container.textContent).not.toMatch(/cannot hold/);
+    await typeOver(r, input(r.container), 'village');
+    await r.step(() => press(input(r.container), 'Enter'));
+    expect(doc.createNode).toHaveBeenCalledTimes(1);
+    expect(doc.createNode.mock.calls[0][0]).toMatchObject({
+      concept: 'village',
+      wordIds: ['w3'],
+    });
+    await r.unmount();
+  });
+});
