@@ -93,9 +93,17 @@ export const AssistantChrome = ({
     open,
     projectId,
     available,
-    routeHasProject,
+    projectScreen: !!subject?.projectId || routeHasProject,
     assistantRoute,
   });
+
+  // Whether the dock stands in the picker for the chat, as it was when the
+  // dock was last shown. A closing dock slides out with what it showed, rather
+  // than turning into a chat (with no project, a discovery the server refuses)
+  // for the length of the slide. React's render-phase adjustment, as in the
+  // shared Combobox.
+  const [pickerShown, setPickerShown] = useState(gate.showPicker);
+  if (gate.showDock && pickerShown !== gate.showPicker) setPickerShown(gate.showPicker);
 
   // What the reader pointed at, as {ref, label}: "Ask", beside a sentence or an
   // entry. Pointing at something opens the panel, because it is how you start
@@ -164,11 +172,12 @@ export const AssistantChrome = ({
           focus={focus}
           onClearFocus={clearFocus}
           picker={
-            gate.showPicker ? (
+            pickerShown ? (
               <ProjectPicker
                 client={client}
                 onPick={(p) => setHeld({ projectId: p.id, projectName: p.name })}
                 onHide={() => setDockOpen(false)}
+                noAssistantFor={gate.noAssistant ? project?.projectName || null : null}
               />
             ) : null
           }

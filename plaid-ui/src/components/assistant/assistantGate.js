@@ -17,6 +17,8 @@
 //     pads by `showDock`, so the gutter goes with it. The open state itself is
 //     left alone: it is the reader's, and walking past a project without an
 //     assistant is no reason to forget it.
+//   - A screen that is not a project's own offers the project picker, and
+//     keeps it, saying so, when the project picked there has no assistant.
 //   - Nothing is offered on the app's own Assistant screen. The full tab is
 //     already showing the conversation, and a dock beside it drew the same
 //     live turn a second time, each copy with its own step list, Stop button
@@ -27,25 +29,38 @@ export const assistantGate = ({
   open = false,
   projectId = null,
   available = null,
-  routeHasProject = false,
+  projectScreen = false,
   assistantRoute = false,
 } = {}) => {
-  // Offer to pick a project only where none is in scope AND the route is not
-  // itself under one. The route test keeps the picker off the new-project
-  // wizard and the importers, which publish no subject and have no annotation
-  // to ask about.
-  const offerPicker = !projectId && !routeHasProject;
+  // Offer to pick a project only on a screen that is not a project's own (the
+  // project list, a vocabulary list, the profile). `projectScreen` covers a
+  // screen that published a project and a route under one, which keeps the
+  // picker off the new-project wizard and the importers, with no annotation to
+  // ask about.
+  //
+  // There the picker stands until the project the panel holds is known to have
+  // an assistant. Which projects have one is known only per project, so the
+  // way in is offered whatever the answer, and a project picked with none
+  // leaves the panel open on the picker, saying so, rather than closing it with
+  // nothing said.
+  const offerPicker = !projectScreen && available !== true;
   const showDock = !!(
     open &&
     wide &&
     !assistantRoute &&
-    (projectId ? available !== false : offerPicker)
+    (offerPicker || (projectId && available !== false))
   );
   const showHandle = !!(
     wide &&
     !assistantRoute &&
     !showDock &&
-    (projectId ? available === true : offerPicker)
+    (offerPicker || (projectId && available === true))
   );
-  return { showHandle, showDock, showPicker: showDock && !projectId };
+  const showPicker = showDock && offerPicker;
+  return {
+    showHandle,
+    showDock,
+    showPicker,
+    noAssistant: showPicker && !!projectId && available === false,
+  };
 };

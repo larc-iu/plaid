@@ -19,7 +19,10 @@ import { ProjectTartan } from '../shared/ProjectTartan.jsx';
 // `onHide` is the same button the chat's header carries, in the same
 // place. The panel is shut from its own header on every screen, and this is
 // the header on the screen a reader lands on.
-export const ProjectPicker = ({ client, onPick, onHide }) => {
+//
+// `noAssistantFor` names a project picked here that has no assistant running.
+// The picker stays, so another can be picked, and says so above the list.
+export const ProjectPicker = ({ client, onPick, onHide, noAssistantFor = null }) => {
   const [projects, setProjects] = useState(null);
   const [error, setError] = useState('');
 
@@ -60,6 +63,11 @@ export const ProjectPicker = ({ client, onPick, onHide }) => {
         )}
       </header>
       <div className="min-h-0 flex-1 overflow-y-auto p-2">
+        {noAssistantFor && (
+          <p role="status" className="px-1 pb-2 text-xs text-muted-foreground">
+            No assistant is running for “{noAssistantFor}”.
+          </p>
+        )}
         {projects === null ? (
           <Loading className="px-1 py-2 text-xs" />
         ) : error ? (

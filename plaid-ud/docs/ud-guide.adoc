@@ -406,7 +406,8 @@ Past 85 percent it turns amber, and a full conversation sends nothing more.
 == Assistant Availability
 
 The assistant is a service that your server's operator runs and picks the model for.
-When none is connected, the tab, the button, the handle and **Ask** are not shown.
+In a project with none connected, the tab, the button, the handle and **Ask** are not shown.
+On a screen outside any project the button is always shown, and the panel says so when the project you pick has no assistant.
 Saved conversations still open from their own links.
 
 = Additional Features
