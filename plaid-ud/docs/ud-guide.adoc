@@ -100,7 +100,7 @@ A new document starts empty. You give it a name, then add text in the Text Edito
 == Importing CoNLL-U
 
 If you already have annotated data, you can import it instead of typing it in.
-Open the project's **Import and export** tab and drop `.conllu` files on it, one or many.
+Open the project's **Import and export** tab, drop `.conllu` files on it, one or many, and press **Import**.
 Each `# newdoc` boundary inside a file becomes its own document.
 A project's export zip can be dropped as it is.
 A file too large for the server is not imported, and its row says so.
@@ -188,6 +188,7 @@ Each word has cells for:
 | **Features** | Morphological features, as `Key=Value` pairs (e.g. `Case=Nom`, `Number=Sing`).
 |===
 
+Click a row's label to hide or show the row. The **Features** row starts hidden.
 Click a cell to edit it.
 The UPOS, XPOS and Features cells, and the dependency-relation labels in the tree, offer **autocomplete** from your project's controlled vocabularies.
 By default any value is accepted, but a maintainer can restrict a list to its own values (see <<_suggestions_or_rules>>).
@@ -469,7 +470,7 @@ commands { X.upos = PRON }
 
 With a rule in the box the button reads **Preview changes**. A preview writes nothing.
 It lists every sentence the rule would change, grouped by document, with one line per change such as `that: upos SCONJ → PRON`.
-Tick the sentences or documents you want, or use **Select all**, then press **Apply**. Anyone who can search can preview, and applying is for maintainers.
+Every sentence starts ticked. Untick the sentences or documents you do not want, or use **Select none** and tick the ones you do, then press **Apply** and confirm. Anyone who can search can preview, and applying is for maintainers.
 
 As in Grew, a rule is applied to a sentence again and again until it no longer matches.
 So a rule has to stop matching what it has just changed. One that adds something usually needs a `without` block naming what it adds:
@@ -497,7 +498,7 @@ Some things to know before applying:
 == History
 
 Every change is recorded.
-**History**, at the end of a document's tab row, lists the actions taken on it, such as "Update UPOS", "Create relation", or a parser run with the name of the person who ran it.
+**History**, at the end of a document's tab row or on the rail at the left edge of the editor, lists the actions taken on it, such as "Update UPOS", "Create relation", or a parser run with the name of the person who ran it.
 Selecting an entry shows the document as it was right after that action, and an entry made of several changes can be expanded to select each one.
 Past states are **read-only**, and **Return to current** goes back to the live document.
 
@@ -559,7 +560,7 @@ A value off a closed list is refused where you type it, and from an assistant pl
 Values from an import, a copy or a restore, and a parser's unconfirmed predictions, are kept anyway, and the **Validation** tab lists them.
 **Accept predictions** skips a prediction that is off the list and names it.
 
-A list cannot be closed, or a value removed from a closed one, while the project's annotations still use a value off it.
+A list cannot be closed, or a value removed from a closed one, while the project's annotations hold a value off it that a person entered or confirmed.
 The message names one such value. Change those values first, or add them to the list.
 
 === Value Definitions
@@ -621,7 +622,7 @@ The link:manual.html#_services[Services chapter of the Plaid manual] explains ho
 
 == Scripting
 
-From the project's **Access** settings, and from your user profile, you can create named **API tokens** for scripts and services.
+On your user profile you can create named **API tokens** for scripts and services. The project's **Access** settings link there with **Manage API tokens**.
 A token carries your permissions and does not expire, and actions taken with one are attributed to it in the history.
 A token cannot change a password, create an account, create or revoke tokens, or make an invitation or password-reset link. Do these signed in.
 
