@@ -44,8 +44,9 @@ export const EditorLegend = ({ project }) => {
       </Row>
 
       <Row title="Tree">
-        Drag from one word to another to draw a relation · click a label to rename it ·{' '}
-        <Key>Ctrl</Key>/<Key>Cmd</Key>+<Key>D</Key> to jump into the labels, <Key>←</Key>
+        Drag from one word to another to draw a relation, or from the band across the top of the
+        tree to a word to mark the root · click a label to rename it · <Key>Ctrl</Key>/
+        <Key>Cmd</Key>+<Key>D</Key> to jump into the labels, <Key>←</Key>
         <Key>→</Key> to move between them, <Key>↵</Key> to edit, <Key>↓</Key> to drop back into the
         grid.
       </Row>
