@@ -182,6 +182,48 @@
             (handler request)))
         (handler request)))))
 
+(def app-content-security-policy
+  "The Content-Security-Policy of the apps' own pages: each bundled app's
+  index.html and the landing page at /. The apps keep the session token in
+  localStorage, so a script that runs on this origin can take it. Under this
+  policy a page runs only the scripts the server sends as files: an injected
+  inline script, an event-handler attribute, a javascript: URL, eval and a
+  script from another host are all refused.
+
+  What the built apps need, and why each source is here:
+  - worker-src blob: for fflate's zip workers (igt's export), which it builds
+    from a Blob. The other workers (speech detection, MP3 conversion, PDF
+    reading) are files under /<app>/assets/.
+  - style-src 'unsafe-inline' for style attributes in markup and style
+    elements that libraries add (lit-html templates in igt's Analyze editor,
+    Radix and TipTap). A style cannot run script.
+  - img-src and media-src data: and blob: for pictures and recordings the
+    apps make in the page (a project's tab icon, a recording chosen for
+    upload, a mix, a converted file).
+  Everything else comes from this origin. No page is framed by another."
+  (str/join "; " ["default-src 'self'"
+                  "script-src 'self'"
+                  "worker-src 'self' blob:"
+                  "style-src 'self' 'unsafe-inline'"
+                  "img-src 'self' data: blob:"
+                  "media-src 'self' blob:"
+                  "font-src 'self'"
+                  "connect-src 'self'"
+                  "object-src 'none'"
+                  "base-uri 'self'"
+                  "form-action 'self'"
+                  "frame-ancestors 'none'"]))
+
+(defn- with-app-csp
+  "`response` with the apps' policy under the header `mode` names ([server]
+  content_security_policy): :enforce, :report-only, or :off for none."
+  [response mode]
+  (case mode
+    :enforce (assoc-in response [:headers "Content-Security-Policy"] app-content-security-policy)
+    :report-only (assoc-in response [:headers "Content-Security-Policy-Report-Only"]
+                           app-content-security-policy)
+    response))
+
 (def ^:private bundled-spa-roots
   "URL prefix -> classpath resource root for each SPA bundled into the uberjar.
   The release workflow copies each app's Vite build (built with base `/ud/`,
@@ -212,13 +254,17 @@
   "Serve the bundled SPAs (plaid-ud at /ud, plaid-igt at /igt, plaid-dict at
   /dict) from the CLASSPATH so they work inside the distributed uberjar (where
   there is no filesystem `resources/` directory). Only serves real files; misses
-  fall through to the next handler."
-  [handler]
+  fall through to the next handler. An app's index.html carries the apps'
+  policy as `csp-mode` says (see `with-app-csp`). Its scripts, styles and
+  workers do not: a worker started from a file takes the policy of that file's
+  response, and speech detection's worker compiles WebAssembly."
+  [handler csp-mode]
   (fn [{:keys [uri request-method] :as request}]
     (if-let [resource-path (and (= :get request-method)
                                 (bundled-spa-resource-path uri))]
       (or (some-> (response/resource-response resource-path)
-                  (response/content-type (mime/ext-mime-type resource-path)))
+                  (response/content-type (mime/ext-mime-type resource-path))
+                  (cond-> (str/ends-with? resource-path ".html") (with-app-csp csp-mode)))
           (handler request))
       (handler request))))
 
@@ -409,14 +455,16 @@
   same file the three SPAs serve, so there is no second copy of the artwork to
   keep in step. In a source checkout that has not been built it is simply
   absent and the page falls back to the browser's default icon.
+  The page carries the apps' policy as `csp-mode` says (see `with-app-csp`).
   All other requests fall through."
-  [handler]
+  [handler csp-mode]
   (fn [{:keys [uri request-method] :as request}]
     (cond
       (and (= :get request-method) (= "/" uri))
-      {:status 200
-       :headers {"Content-Type" "text/html; charset=utf-8"}
-       :body root-landing-html}
+      (with-app-csp {:status 200
+                     :headers {"Content-Type" "text/html; charset=utf-8"}
+                     :body root-landing-html}
+        csp-mode)
 
       (and (= :get request-method) (= "/plaid.svg" uri))
       (or (some-> (response/resource-response "plaid.svg")
@@ -589,7 +637,8 @@
         ;; just does an integer compare. The outer http-kit per-connection
         ;; cap stays sized for multipart media uploads.
         max-json-body-mb (or (get-in config [:plaid.server.http-server :max-json-body-mb]) 10)
-        max-json-body-bytes (* max-json-body-mb 1024 1024)]
+        max-json-body-bytes (* max-json-body-mb 1024 1024)
+        csp-mode (:plaid.server.middleware/content-security-policy config :enforce)]
     (when (some #{".*" "*"} allow-origins)
       (log/warn "CORS :access-control-allow-origin includes a wildcard ('.*' or '*'). "
                 "This allows cross-origin requests from ANY origin and is unsafe with "
@@ -612,8 +661,8 @@
                      "subdomain pattern, list each exact origin instead.")))
     (-> not-found
         (wrap-rest-routes datasource)
-        wrap-root-landing
-        wrap-bundled-spa
+        (wrap-root-landing csp-mode)
+        (wrap-bundled-spa csp-mode)
         wrap-client-js
         wrap-static-resources
         wrap-health

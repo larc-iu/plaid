@@ -89,6 +89,7 @@
   [[["server" "port"]                     [:org.httpkit.server/config :port]                                 identity]
    [["server" "max_json_body_mb"]         [:plaid.server.http-server :max-json-body-mb]                      identity]
    [["server" "static_resources_path"]    [:plaid.server.middleware/static-resources-path]                  identity]
+   [["server" "content_security_policy"]  [:plaid.server.middleware/content-security-policy]                identity]
 
    [["logging" "level"]                   [:taoensso.timbre/logging-config :min-level]                       ->kw]
    [["logging" "library_level"]           [:plaid.logging/config :library-level]                             ->kw]
@@ -283,6 +284,23 @@
                       {:max-file-size-mb v}))))
   cfg)
 
+(def ^:private csp-modes
+  "[server] content_security_policy as written -> the mode the middleware reads."
+  {"enforce" :enforce "report-only" :report-only "off" :off})
+
+(defn- check-csp-mode!
+  "Read [server] content_security_policy into its mode, and refuse any other
+  value: a typo must not leave the apps' pages without their policy."
+  [cfg]
+  (let [path [:plaid.server.middleware/content-security-policy]
+        v (get-in cfg path ::absent)]
+    (cond
+      (= v ::absent) cfg
+      (contains? csp-modes v) (assoc-in cfg path (csp-modes v))
+      :else (throw (ex-info (str "[server] content_security_policy must be \"enforce\", "
+                                 "\"report-only\" or \"off\", not " (pr-str v))
+                            {:content-security-policy v})))))
+
 (defn media-heap-warning
   "What to log at startup when the media limit is more than half the memory the
   JVM may use (`heap-bytes`), or nil. The web server holds a request body in
@@ -327,7 +345,8 @@
       (vary-meta (-> (deep-merge (deep-merge internal-only-defaults defaults) overlay)
                      check-limits!
                      check-lifetimes!
-                     check-media-size!)
+                     check-media-size!
+                     check-csp-mode!)
                  assoc ::source (or ov-src (str "the bundled defaults (" tpl-src ")"))))))
 
 (defn ensure-config-file!

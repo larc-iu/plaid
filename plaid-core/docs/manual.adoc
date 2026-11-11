@@ -2050,6 +2050,10 @@ plaid.example.edu {
 Any proxy must allow request bodies as large as `[media] max_file_size_mb`, since recordings are uploaded whole, and must pass the server's event streams through without buffering.
 Caddy does both with the configuration above, while nginx needs `client_max_body_size` raised and `proxy_buffering off` on the `/api/` location.
 
+The apps' pages carry a `Content-Security-Policy` header, set by `[server] content_security_policy` in `config.toml`.
+A proxy passes it on unchanged unless told otherwise.
+A policy the proxy adds of its own applies on top of it.
+
 == Backups
 
 Every night at `[backup] time` (03:00 by default) Plaid writes a snapshot of the database to `data/backups/` and keeps the most recent `[backup] retention` of them.

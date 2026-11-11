@@ -34,6 +34,18 @@ max_json_body_mb = 10
 # JavaScript client from /client/plaid-client.js.
 # static_resources_path = "/srv/plaid-static"
 
+# The Content-Security-Policy header on the bundled apps' pages (/igt/, /ud/,
+# /umr/, /dict/ and the landing page at /). It lets those pages run only the
+# scripts the server sends as files, so a script injected into a page cannot
+# run and read the session. One of:
+#   "enforce"      send the policy (the default)
+#   "report-only"  send it as Content-Security-Policy-Report-Only: the browser
+#                  runs everything and lists what the policy would refuse in
+#                  its console
+#   "off"          send no policy
+# Pages served from static_resources_path never carry it.
+content_security_policy = "enforce"
+
 # -----------------------------------------------------------------------------
 # Logging
 # -----------------------------------------------------------------------------
