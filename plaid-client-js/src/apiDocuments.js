@@ -385,7 +385,10 @@ export function documentsApi(client) {
      * operation: what was deleted since then comes back under its original
      * id, what was added since is removed, and what changed is set back,
      * across every layer. A layer deleted since then, or a vocabulary entry
-     * that no longer exists, is skipped and reported under `skipped`. A name
+     * that no longer exists, is skipped and reported under `skipped`. A link
+     * whose entry then no longer exists, while a link lives now under its id
+     * (moved by a merge), stays as it is now and is reported under `kept`,
+     * unless the restore removes a token it covers now. A name
      * another document holds now stays with it, and the document keeps its
      * current name, reported under `nameKept` (`{name, taken}`).
      * Resolves to a summary of the changes. Maintainers only.

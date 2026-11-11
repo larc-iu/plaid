@@ -177,6 +177,20 @@ export const skippedLines = (skipped) =>
     (k) => `${countOf(k.count, ...(SKIPPED_WORDS[k.kind] || ['item', 'items']))} cannot come back.`,
   );
 
+// What the restore leaves as it is now although its state then cannot come
+// back: a link whose entry of that time no longer exists, while a link lives
+// now under its id (a merge moved it to the entry kept). Core says how many
+// (`kept`).
+export const keptLines = (kept) =>
+  (kept || [])
+    .filter((k) => k.kind === 'vocab-link' && k.count > 0)
+    .map(
+      (k) =>
+        `Kept: ${countOf(k.count, 'vocabulary link')} whose ${
+          k.count === 1 ? 'entry no longer exists' : 'entries no longer exist'
+        }.`,
+    );
+
 // A restore keeps the document's current name when the name it had then
 // belongs to another document now. Core says which (`nameKept`).
 export const nameKeptLine = (summary) => {

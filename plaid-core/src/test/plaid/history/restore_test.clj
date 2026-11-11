@@ -466,3 +466,65 @@
       (is (= :relations (:dependent (ex-data e)))))
     (is (nil? (#'restore/refuse-cascade! db :relations [rel])))
     (assert-ok (get-relation admin-request rel))))
+
+;; ============================================================
+;; A link whose entry of that time is gone (SEAM-1)
+;; ============================================================
+
+(defn- merge-entries! [survivor losers]
+  (assert-ok (api-call admin-request {:method :post
+                                      :path (str "/api/v1/vocab-items/" survivor "/merge")
+                                      :body {:losers losers}})))
+
+(defn- kinds [rows] (into {} (map (juxt :kind :count)) rows))
+
+(deftest a-link-whose-entry-was-merged-away-is-kept
+  ;; A merge moves a loser's links to the survivor under the same link ids.
+  ;; A restore to before the merge finds the link of that time naming an
+  ;; entry that no longer exists: the link as it is now stays, and the
+  ;; summary says it was kept, never that it was removed (Luke 2026-11-11).
+  (let [{:keys [doc-id vocab fox-item words]} (build-scenario!)
+        fax (-> (create-vocab-item admin-request vocab "fax") :body :id)
+        moved (-> (create-vocab-link admin-request fax [(nth words 2)]) :body :id)
+        t (latest-op-ts)]
+    (merge-entries! fox-item [fax])
+    (assert-ok (rename-document! admin-request doc-id "Renamed"))
+    (let [dry (restore! admin-request doc-id t :dry-run true)]
+      (assert-ok dry)
+      (is (= {"vocab-link" 1} (kinds (-> dry :body :kept))))
+      (is (= {} (kinds (-> dry :body :skipped))))
+      (is (= {:inserted 0 :updated 0 :deleted 0} (-> dry :body :vocab-links)))
+      (is (true? (-> dry :body :name))))
+    (let [resp (restore! admin-request doc-id t)]
+      (assert-ok resp)
+      (is (= {"vocab-link" 1} (kinds (-> resp :body :kept))))
+      (is (= "Doc" (:document/name (live doc-id))))
+      (is (= fox-item (-> (get-vocab-link admin-request moved) :body :vocab-link/vocab-item))))
+    (testing "a deleted entry's link, with no live link under its id, is still skipped"
+      (let [t2 (latest-op-ts)]
+        (assert-no-content (api-call admin-request {:method :delete :path (str "/api/v1/vocab-items/" fox-item)}))
+        (let [dry (restore! admin-request doc-id t2 :dry-run true)]
+          (assert-ok dry)
+          (is (= {"vocab-link" 2} (kinds (-> dry :body :skipped))))
+          (is (empty? (-> dry :body :kept))))))))
+
+(deftest a-kept-link-goes-with-a-word-the-restore-removes
+  ;; The one guard on keeping a link: a word it covers now that the restore
+  ;; removes takes the link with it, as before.
+  (let [{:keys [doc-id vocab fox-item words]} (build-scenario!)
+        fax (-> (create-vocab-item admin-request vocab "fax") :body :id)
+        mwe (-> (create-vocab-link admin-request fax [(nth words 1) (nth words 2)]) :body :id)
+        t-made (latest-op-ts)
+        _ (assert-no-content (delete-token admin-request (nth words 2)))
+        ;; At t the link covers word 1 alone and names "fax".
+        t (latest-op-ts)]
+    ;; Word 2 comes back, and the link covers both words again.
+    (assert-ok (restore! admin-request doc-id t-made))
+    (merge-entries! fox-item [fax])
+    (let [dry (restore! admin-request doc-id t :dry-run true)]
+      (assert-ok dry)
+      (is (empty? (-> dry :body :kept)))
+      (is (= {"vocab-link" 1} (kinds (-> dry :body :skipped))))
+      (is (= 1 (-> dry :body :vocab-links :deleted))))
+    (assert-ok (restore! admin-request doc-id t))
+    (assert-status 404 (get-vocab-link admin-request mwe))))

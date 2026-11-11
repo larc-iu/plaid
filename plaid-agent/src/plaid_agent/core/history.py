@@ -258,7 +258,8 @@ def restore_lines(summary: Dict[str, Any], *, tokens: Callable[[Optional[str], i
                   spans: Callable[[Optional[str], int], str], relations: Callable[[int], str],
                   links: Callable[[int], str]) -> List[str]:
     """The dry run's counts, one phrase per kind of change, in the order a
-    document is built, its metadata, and then what cannot come back. Every count core's
+    document is built, its metadata, then what cannot come back and what is
+    kept as it is now. Every count core's
     ``summarize`` puts in ``total`` is named here, so no change is counted and
     left out. The app names its layers: ``tokens(layer id, n)`` and
     ``spans(layer id, n)`` per layer, ``relations(n)`` and ``links(n)`` for
@@ -286,7 +287,16 @@ def restore_lines(summary: Dict[str, Any], *, tokens: Callable[[Optional[str], i
         lines.append('the document metadata')
     for k in summary.get('skipped') or []:
         lines.append(f'{k.get("count")} {k.get("kind")}(s) cannot come back ({k.get("reason")})')
+    lines.extend(kept_lines(summary))
     return lines
+
+
+def kept_lines(summary: Dict[str, Any]) -> List[str]:
+    """What the restore leaves as it is now although its state then cannot
+    come back: a link whose entry of that time no longer exists, while a link
+    lives now under its id (moved by a merge). Core reports it under ``kept``."""
+    return [f'{k.get("count")} {k.get("kind")}(s) kept as they are now ({k.get("reason")})'
+            for k in summary.get('kept') or []]
 
 
 def restore_document(ws, document: Optional[str], as_of: Optional[str], *,
@@ -320,8 +330,12 @@ def restore_document(ws, document: Optional[str], as_of: Optional[str], *,
     kept_note = (f' The name stays {qname(kept.get("name"))}: another document has {qname(kept.get("taken"))}.'
                  if isinstance(kept, dict) else '')
     if not total:
+        held = kept_lines(summary)
+        held_note = (' ' + ', '.join(held) + '.') if held else ''
         if kept_note:
-            return f'Nothing to restore but the name, and it cannot come back.{kept_note}'
+            return f'Nothing to restore but the name, and it cannot come back.{kept_note}{held_note}'
+        if held:
+            return f'Nothing to restore.{held_note}'
         return f'Nothing to restore: {doc_label(ws, doc.id, qname)} is as it was at {as_of}.'
     said = lines(summary)
     ws.add_op({'kind': 'restore_document', 'document_id': doc.id, 'as_of': as_of, **(extra(doc) if extra else {}),

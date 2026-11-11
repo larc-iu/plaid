@@ -165,6 +165,42 @@ describe('RestoreDialog', () => {
     error.mockRestore();
   });
 
+  // A link a merge moved names an entry that no longer exists at the time
+  // restored to. Core keeps it as it is now and says so under `kept`: it is
+  // neither removed nor a gap (SEAM-1).
+  it('says a link is kept, not removed, when its entry then no longer exists', async () => {
+    const restore = vi.fn().mockResolvedValue({
+      name: true,
+      vocabLinks: { inserted: 0, updated: 0, deleted: 0 },
+      skipped: [],
+      kept: [{ kind: 'vocab-link', count: 1, reason: 'x' }],
+      total: 1,
+    });
+    view = await mount({ documents: { restore, audit: async () => [] } }, vi.fn(), {});
+    await settle(view);
+    expect(
+      byText(document.body, 'p', 'Kept: 1 vocabulary link whose entry no longer exists.'),
+    ).not.toBeNull();
+    expect(byText(document.body, 'p', 'Removed')).toBeNull();
+    expect(document.body.textContent).not.toMatch(/cannot come back/);
+    expect(byText(document.body, 'button', 'Restore').disabled).toBe(false);
+  });
+
+  it('says the links kept in place of "Nothing differs" when nothing else changes', async () => {
+    const restore = vi.fn().mockResolvedValue({
+      skipped: [],
+      kept: [{ kind: 'vocab-link', count: 2, reason: 'x' }],
+      total: 0,
+    });
+    view = await mount({ documents: { restore, audit: async () => [] } }, vi.fn(), {});
+    await settle(view);
+    expect(
+      byText(document.body, 'p', 'Kept: 2 vocabulary links whose entries no longer exist.'),
+    ).not.toBeNull();
+    expect(byText(document.body, 'p', 'Nothing differs from the current state.')).toBeNull();
+    expect(byText(document.body, 'button', 'Restore').disabled).toBe(true);
+  });
+
   it('says the name stays when another document holds the old one, in place of "Nothing differs"', async () => {
     const restore = vi.fn().mockResolvedValue({
       name: false,

@@ -35,7 +35,9 @@
   restorable. What cannot come back is skipped and reported, never
   guessed: a row whose layer was deleted since T, a link whose
   vocabulary entry is gone or whose vocabulary left the project, and
-  whatever depends on those. The final state is validated once, layer
+  whatever depends on those. A link whose entry is gone but which lives
+  now under the same id (moved by a merge) is kept as it is now and
+  reported under `kept`. The final state is validated once, layer
   by layer (bounds, overlap mode, nesting); a violation rolls the whole
   operation back with a 409 naming the layer by its name.
 
@@ -61,8 +63,16 @@
 
 (defn- prune-target
   "Drop from the target what has nothing to attach to any more, closed
-  under dependency, and say what was dropped. Returns `[target skipped]`."
-  [db tgt]
+  under dependency, and say what was dropped. Returns `[target skipped
+  kept]`.
+
+  A link whose entry of that time no longer exists is dropped, except
+  where a link lives now under the same id (a merge moves a loser's links
+  to the survivor and keeps their ids): that link is kept as it is now,
+  in the target, and counted under `kept` instead of `skipped`. It still
+  goes when a token it covers now does not stay, since then the restore
+  removes that token (SEAM-1, Luke 2026-11-11)."
+  [db tgt cur]
   (let [prj (:project_id (:document tgt))
         ids-of (fn [rows] (set (map :id rows)))
         text-layer-ids (ids-of (psc/q db {:select [:id] :from [:text_layers] :where [:= :project_id prj]}))
@@ -90,9 +100,15 @@
                                  (contains? span-ids (:source_span_id %))
                                  (contains? span-ids (:target_span_id %)))
                            (:relations tgt))
-        links (filterv #(and (contains? live-item-ids (:vocab_item_id %))
-                             (every? token-ids (:tokens %)))
-                       (:vocab-links tgt))
+        entry-gone (into #{} (comp (remove #(contains? live-item-ids (:vocab_item_id %))) (map :id))
+                         (:vocab-links tgt))
+        kept-links (filterv #(and (contains? entry-gone (:id %))
+                                  (every? token-ids (:tokens %)))
+                            (:vocab-links cur))
+        links (into (filterv #(and (contains? live-item-ids (:vocab_item_id %))
+                                   (every? token-ids (:tokens %)))
+                             (:vocab-links tgt))
+                    kept-links)
         skipped (->> [{:kind "text" :count (- (count (:texts tgt)) (count texts))
                        :reason "its layer no longer exists"}
                       {:kind "token" :count (- (count (:tokens tgt)) (count tokens))
@@ -106,7 +122,11 @@
                      (remove #(zero? (:count %)))
                      vec)]
     [(assoc tgt :texts texts :tokens tokens :spans spans :relations relations :vocab-links links)
-     skipped]))
+     skipped
+     (if (seq kept-links)
+       [{:kind "vocab-link" :count (count kept-links)
+         :reason "the vocabulary entry it had then no longer exists, and it is kept as it is now"}]
+       [])]))
 
 ;; ============================================================
 ;; Composed, as all stored text is
@@ -408,8 +428,9 @@
 (defn- build
   "Target (pruned), current, plan and skips, from one connection."
   [db doc-id ts]
-  (let [[tgt skipped] (prune-target db (compose-target (target-rows! db doc-id ts)))
+  (let [raw (compose-target (target-rows! db doc-id ts))
         cur (drows/read-rows db doc-id)
+        [tgt skipped kept] (prune-target db raw cur)
         p (assoc (plan tgt cur) :document-metadata (meta-of (:document tgt)))
         ;; Names are unique in a project: a name another document has taken
         ;; since stays with it, and this document keeps the name it has. The
@@ -418,7 +439,7 @@
         h (when (:name p) (names/held db (:project_id (:document cur)) (:name p) doc-id))
         p (cond-> p h (assoc :name nil))]
     {:plan p :current cur :skipped skipped
-     :summary (cond-> (summarize p skipped)
+     :summary (cond-> (assoc (summarize p skipped) :kept kept)
                 h (assoc :name-kept {:name (:name (:document cur)) :taken (:name h)}))}))
 
 (defn preview

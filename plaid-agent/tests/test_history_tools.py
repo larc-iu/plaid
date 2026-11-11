@@ -236,6 +236,14 @@ def test_restore_document_plans_from_the_dry_run_and_stands_alone():
     w6 = fake_ws(FakeClient(restore_summary={**SUMMARY, 'name_kept': kept}))
     assert call_tool(w6, 'restore_document', {'document': 'd1', 'as_of': '2026-09-05T18:45:49Z'}).endswith(
         '(item-gone). The name stays "Fable": another document has "TALE".')
+    # A link a merge moved stays as it is now, and the plan says so (SEAM-1).
+    held = [{'kind': 'vocab-link', 'count': 1, 'reason': 'entry-gone-kept'}]
+    w7 = fake_ws(FakeClient(restore_summary={**SUMMARY, 'kept': held}))
+    assert call_tool(w7, 'restore_document', {'document': 'd1', 'as_of': '2026-09-05T18:45:49Z'}).endswith(
+        '1 vocab-link(s) cannot come back (item-gone), 1 vocab-link(s) kept as they are now (entry-gone-kept).')
+    w8 = fake_ws(FakeClient(restore_summary={**SUMMARY, 'total': 0, 'kept': held}))
+    assert call_tool(w8, 'restore_document', {'document': 'd1', 'as_of': '2026-09-05T18:45:49Z'}) == \
+        'Nothing to restore. 1 vocab-link(s) kept as they are now (entry-gone-kept).'
     w4 = fake_ws(FakeClient(fails={'documents.restore': PlaidAPIError('HTTP 403 Forbidden', status=403)}))
     assert 'maintainer access' in call_tool(w4, 'restore_document', {'document': 'd1', 'as_of': '2026-09-05T18:45:49Z'})
     # Approval runs the server's restore once, as the plan's one write.

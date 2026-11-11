@@ -8,6 +8,7 @@ import {
   recordingNote,
   restoreError,
   nameKeptLine,
+  keptLines,
   skippedLines,
 } from './restoreSummary.js';
 
@@ -216,6 +217,19 @@ describe('skippedLines', () => {
       ]),
     ).toEqual(['1 annotation cannot come back.', '4 tokens cannot come back.']);
     expect(skippedLines(undefined)).toEqual([]);
+  });
+});
+
+describe('keptLines', () => {
+  it('counts the links kept as they are now, singular and plural', () => {
+    expect(keptLines([{ kind: 'vocab-link', count: 1 }])).toEqual([
+      'Kept: 1 vocabulary link whose entry no longer exists.',
+    ]);
+    expect(keptLines([{ kind: 'vocab-link', count: 3 }])).toEqual([
+      'Kept: 3 vocabulary links whose entries no longer exist.',
+    ]);
+    expect(keptLines(undefined)).toEqual([]);
+    expect(keptLines([])).toEqual([]);
   });
 });
 

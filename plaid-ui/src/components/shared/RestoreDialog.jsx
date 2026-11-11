@@ -18,6 +18,7 @@ import {
   changeGroups,
   historyMessage,
   indexLayers,
+  keptLines,
   latestState,
   nameKeptLine,
   recordingNote,
@@ -104,6 +105,7 @@ export const RestoreDialog = ({
   const recording = preview ? recordingNote(mediaEntries, asOf, !!raw?.mediaUrl) : null;
   const gaps = [...skippedLines(preview?.skipped), ...(recording?.gap ? [recording.gap] : [])];
   const nameKept = nameKeptLine(preview);
+  const kept = keptLines(preview?.kept);
 
   const close = () => {
     if (busy) return;
@@ -140,9 +142,11 @@ export const RestoreDialog = ({
       {
         loading: 'Undoing the restore…',
         success: (res) =>
-          res?.skipped?.length
-            ? `Back to the state before the restore. ${skippedLines(res.skipped).join(' ')}`
-            : 'Back to the state before the restore.',
+          [
+            'Back to the state before the restore.',
+            ...skippedLines(res?.skipped),
+            ...keptLines(res?.kept),
+          ].join(' '),
         error: (err) => restoreError(err, 'The undo was not applied.'),
       },
     ).catch(() => {});
@@ -163,6 +167,7 @@ export const RestoreDialog = ({
           ? skippedLines(res.skipped).join(' ')
           : `Restored to ${fullTimestamp(asOf)}.`,
         nameKeptLine(res),
+        ...keptLines(res?.kept),
       ]
         .filter(Boolean)
         .join(' ');
@@ -208,7 +213,7 @@ export const RestoreDialog = ({
 
           {!error && !preview && <Loading label="Comparing…" className="p-0" />}
 
-          {preview && groups.length === 0 && !nameKept && (
+          {preview && groups.length === 0 && !nameKept && kept.length === 0 && (
             <p className="text-sm text-muted-foreground">Nothing differs from the current state.</p>
           )}
 
@@ -223,6 +228,12 @@ export const RestoreDialog = ({
                 ))}
               </ul>
             </div>
+          ))}
+
+          {kept.map((k, i) => (
+            <p key={i} className="text-sm text-muted-foreground">
+              {k}
+            </p>
           ))}
 
           {recording?.note && <p className="text-sm text-muted-foreground">{recording.note}</p>}

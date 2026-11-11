@@ -627,6 +627,10 @@
  * @property {RestoreCounts & {byLayer: Array<RestoreCounts & {layerId: string}>}} relations
  * @property {RestoreCounts} vocabLinks
  * @property {Array<{kind: string, count: number, reason: string}>} skipped
+ * @property {Array<{kind: string, count: number, reason: string}>} kept What
+ *   stays as it is now although its state then cannot come back: a link
+ *   whose entry then no longer exists, while a link lives now under its id
+ *   (moved by a merge).
  * @property {{name: string, taken: string}} [nameKept] When the name the
  *   document had then belongs to another document now: the name it keeps,
  *   and that other document's name.
