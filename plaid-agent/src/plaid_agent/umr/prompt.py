@@ -65,6 +65,7 @@ end up with, not only the one you are adding.
 {stage_now}
 {user_values}
 {one_turn}
+{in_stretches}
 {final_message}
 - Which tool: every tool carries its own description, which says what it does and what it takes. Read \
 those rather than guessing, and take from here only what no single description can say. read_document \
@@ -95,6 +96,8 @@ SYSTEM = shared.filled(_SYSTEM, {
     'stage_now': shared.stage_now(),
     'user_values': shared.user_values('a concept, an aspect, a role, a modal strength'),
     'one_turn': shared.one_turn(),
+    'in_stretches': shared.in_stretches('a sentence graph', 'one attribute, such as an aspect',
+                                        'set_attribute_for_concept'),
     'final_message': shared.final_message('nodes'),
     'read_budget': shared.read_budget('find_nodes or frequency_list'),
     'be_concise': shared.be_concise(),

@@ -23,7 +23,7 @@ from plaid_agent.umr import prompt as umr_prompt  # noqa: E402
 # Every paragraph `core.prompt` owns, as the template it keeps, so a hole an
 # app fills is not compared and everything around it is.
 SHARED = [shared.PLAN_CONTRACT, shared.PROJECT_SHAPE, shared.HOW_TO_WORK, shared.FIND_FIRST,
-          shared.STAGE_NOW, shared.ONE_TURN, shared.FINAL_MESSAGE, shared.READ_BUDGET,
+          shared.STAGE_NOW, shared.ONE_TURN, shared.IN_STRETCHES, shared.FINAL_MESSAGE, shared.READ_BUDGET,
           shared.BE_CONCISE, shared.ATTACH_FILES, shared.CITE_EVIDENCE]
 
 
@@ -95,3 +95,22 @@ def test_every_prompt_says_to_ask_which_one_and_that_only_the_last_message_is_re
         assert 'ask which one, list the candidates with their references, and plan nothing' in text, app
         assert 'The reply the user reads is your LAST message of the turn.' in text, app
         assert re.search(r'ONE thing the user names \("[^"]+", "[^"]+"\)', text), app
+
+
+def test_every_prompt_says_how_much_to_analyse_at_once_and_what_that_leaves_alone():
+    """PROD-LOOP: asked to analyse a whole story at once, the model ran to its
+    output cap four times running. The owner's rule (2026-11-11): about ten
+    sentences of full analysis a turn, the first stretch staged and the next
+    offered, which leaves reads and the tools that change many sentences in
+    one call alone."""
+    from plaid_agent.core.limits import STRETCH_SENTENCES
+    full = {'igt': 'segmenting and glossing', 'ud': 'a full parse', 'umr': 'a sentence graph'}
+    bulk = {'igt': 'replace_in_field', 'ud': 'replace_in_field', 'umr': 'set_attribute_for_concept'}
+    for app, text in _built().items():
+        line = next(x for x in text.splitlines() if x.startswith('- WORK IN STRETCHES.'))
+        assert f'({full[app]}) of more than about {STRETCH_SENTENCES} sentences' in line, app
+        assert f'do the first {STRETCH_SENTENCES} or so' in line, app
+        assert 'once they approve this plan' in line, 'a plan per stretch, as ONE_TURN has it'
+        assert bulk[app] in line and 'a question about a whole document' in line, app
+        # Next to the rule it must agree with.
+        assert text.index('A plan lives for ONE turn') < text.index('- WORK IN STRETCHES.'), app

@@ -175,3 +175,9 @@ PLAN_MAX_DOCUMENTS = 500
 # The longest run of adjacent words frequency_list(ngram=...) counts, in
 # every app: past a triple, a pattern search says more than a count.
 NGRAM_MAX = 3
+
+# About how many sentences of full analysis one turn does (Luke, 2026-11-11):
+# a request for more is done a stretch at a time, the first in this turn
+# (core.prompt.IN_STRETCHES). Four of the five output-cap failures on prod
+# were whole-story requests (PROD-LOOP).
+STRETCH_SENTENCES = 10

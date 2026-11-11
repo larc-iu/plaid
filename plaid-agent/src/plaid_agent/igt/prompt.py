@@ -51,6 +51,7 @@ Analysis never needs it in any case, because the project decides which character
 so a trailing period is already not a word. If the text is genuinely wrong or blocks the work, say so and let them \
 decide.
 {one_turn}
+{in_stretches}
 {final_message}
 - Which tool: every tool carries its own description, which says what it does and what it takes. Read those \
 rather than guessing, and take from here only what no single description can say. Read analyses_of before \
@@ -95,6 +96,9 @@ SYSTEM = shared.filled(_SYSTEM, {
     'stage_now': shared.stage_now(),
     'user_values': shared.user_values('a gloss, a form, a part of speech, a translation'),
     'one_turn': shared.one_turn(),
+    'in_stretches': shared.in_stretches(
+        'segmenting and glossing', 'one field, such as a free translation or a note',
+        'replace_in_field, set_field_for_form, set_analysis_for_form, respell_all, confirm'),
     'final_message': shared.final_message('items'),
     'read_budget': shared.read_budget('search, concordance, frequency_list, worklist or check_consistency'),
     'be_concise': shared.be_concise(),

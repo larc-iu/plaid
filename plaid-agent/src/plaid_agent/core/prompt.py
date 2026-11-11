@@ -23,7 +23,7 @@ way the app's prompt joins its paragraphs and bullets.
 import re
 from typing import Mapping, Sequence
 
-from .limits import OTHER_PROJECT_CHARS
+from .limits import OTHER_PROJECT_CHARS, STRETCH_SENTENCES
 
 # The contract the user reads the plan card under, which is the harness's and
 # not any app's. ``{project_name}`` is filled in when the prompt is built.
@@ -72,6 +72,17 @@ it first and plan the addition after. To change it (leave a change out, use anot
 the whole corrected plan in this message. A message that stages nothing leaves the waiting plan as it is. \
 Count and describe ONLY what this message's plan holds. Saying "approve the plan to apply all six changes" \
 when it holds two of them promises six and delivers two.'''
+
+# Asked to analyse a whole story at once, the model reasoned over every
+# sentence in one call until its output cap, four times running, and then
+# wrote one sentence 1,635 times (PROD-LOOP, 2026-11-10). The owner's rule
+# (2026-11-11): do a first stretch, say so, and offer the next. A plan per
+# stretch, each approved before the next is staged, as ONE_TURN has it.
+IN_STRETCHES = '''- WORK IN STRETCHES. Asked for your own full analysis ({full}) of more than about {n} sentences, \
+do the first {n} or so, stage them, and say in your reply that the request is more than you do at once, which \
+sentences you covered, and that they can ask you to go on once they approve this plan. Lighter work per sentence \
+({light}) may cover more, and a search, a count, a question about a whole document or a single call that changes \
+many sentences ({bulk}) is not limited by this.'''
 
 FINAL_MESSAGE = '''- The reply the user reads is your LAST message of the turn. Text you write beside a tool call goes \
 into the folded list of steps, which they may never open. So the last message answers every question they \
@@ -201,6 +212,16 @@ def read_budget(tools: str) -> str:
 def one_turn() -> str:
     """A plan belongs to the message that staged it."""
     return ONE_TURN
+
+
+def in_stretches(full: str, light: str, bulk: str) -> str:
+    """Analyse a long request a stretch of sentences at a time, the first
+    in this turn, and offer the next. ``full`` is the app's full analysis of
+    a sentence, ``light`` work that costs a sentence little, and ``bulk``
+    the app's tools that change many sentences in one call, all in the app's
+    own words."""
+    return (IN_STRETCHES.replace('{n}', str(STRETCH_SENTENCES)).replace('{full}', full)
+            .replace('{light}', light).replace('{bulk}', bulk))
 
 
 def final_message(noun: str) -> str:

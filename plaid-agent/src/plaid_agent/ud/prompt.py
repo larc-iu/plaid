@@ -52,6 +52,7 @@ enhanced graph; no tool changes it, and it is edited on the canvas.
 {stage_now}
 {user_values}
 {one_turn}
+{in_stretches}
 {final_message}
 - Which tool: every tool carries its own description, which says what it does and what it takes. Read those \
 rather than guessing, and take from here only what no single description can say. read_document takes a sentence \
@@ -94,6 +95,8 @@ SYSTEM = shared.filled(_SYSTEM, {
     'stage_now': shared.stage_now(),
     'user_values': shared.user_values('a lemma, a UPOS, a feature, a head, a relation'),
     'one_turn': shared.one_turn(),
+    'in_stretches': shared.in_stretches('a full parse', 'one column, such as a lemma or a feature',
+                                        'run_parse, replace_in_field, confirm'),
     'final_message': shared.final_message('words'),
     'read_budget': shared.read_budget('search, grew_search, frequency_list, worklist or check_consistency'),
     'be_concise': shared.be_concise(),
