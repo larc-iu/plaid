@@ -74,6 +74,11 @@ def test_turn_ends():
     assert turn_end({'kind': 'error', 'text': 'The model wrote 32,768 tokens without finishing, so this turn '
                                               'was stopped. Ask again, perhaps more narrowly.'}) == 'cut_at_length'
     assert turn_end({'kind': 'assistant', 'text': 'Here.'}) == 'answered'
+    # A call that failed after a plan was staged, the plan kept (PROD-LOOP).
+    assert turn_end({'kind': 'assistant', 'failed': True,
+                     'text': '(The model wrote 32,768 tokens without finishing, so this turn was stopped. '
+                             'Ask again, perhaps more narrowly.)'}) == 'cut_at_length'
+    assert turn_end({'kind': 'assistant', 'failed': True, 'text': '(The model could not answer.)'}) == 'no_answer'
 
 
 def test_changes_are_classed_on_folded_images():

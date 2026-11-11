@@ -262,11 +262,18 @@ class Turn:
         if plan:
             plan['proposed'], plan['proposed_count'] = proposed_changes(plan.get('ops') or [],
                                                                         *self.proposed_keys)
-        item = assistant_item(turn.text, plan, self.citations(ws, turn.text),
+        text = turn.text
+        failure = getattr(turn, 'failure', None)
+        if failure is not None:
+            # The turn's last model call failed and its plan was kept: the
+            # reply is the line the turn would have failed with.
+            text = f'({self.turn_failure_line(failure)})'
+        item = assistant_item(text, plan, self.citations(ws, text),
                               turn.steps, turn.summary, model, usage,
                               guidelines_in_context(getattr(project, 'guidelines', None) or []),
                               version=self.version, service=self.service_id, reply_round=turn.reply_round,
-                              reply_thought=turn.reply_thought)
+                              reply_thought=turn.reply_thought, failed=failure is not None,
+                              partial=getattr(turn, 'partial', None))
         item['elapsed_ms'] = int((time.monotonic() - started) * 1000)
         if ws.keeper.refs:
             # The files this turn stored, which later turns read as the
@@ -310,7 +317,7 @@ class Turn:
                 said = (f'The conversation could not be saved: '
                         f'{requester_message(e, secrets=self.REQUEST_SECRETS).rstrip(".")}. '
                         f'This answer is not in the record.')
-            response_helper.complete({'kind': 'turn', 'message': turn.text, 'warning': said, 'item': item})
+            response_helper.complete({'kind': 'turn', 'message': text, 'warning': said, 'item': item})
             return
         if not written:
             # The conversation moved on (stopped, resent or deleted), so the
@@ -322,7 +329,7 @@ class Turn:
         except ServiceCancelled:
             # Stopped after the answer was written: it is the outcome all the same.
             pass
-        response_helper.complete({'kind': 'turn', 'message': turn.text, 'plan': item['plan'],
+        response_helper.complete({'kind': 'turn', 'message': text, 'plan': item['plan'],
                                   'citations': item['citations'], 'steps': turn.steps, 'steps_summary': turn.summary})
 
     def transcript_budget(self, model: str, overhead) -> Optional[tuple]:

@@ -151,6 +151,7 @@ class ModelTooSlow(Exception):
 STREAM_INTERVAL_S = 0.15
 
 
+
 def _provider_kwargs(cfg: ModelConfig) -> Dict[str, Any]:
     """What every call to this model needs: the model string, and the base and
     key when the operator gave them (else litellm reads the provider's env)."""
@@ -515,8 +516,8 @@ class TurnFailed(Exception):
 
 
 EMPTY_REPLY = 'The model returned an empty reply.'
-#: The reply of a turn whose last call, for the words after a plan, failed:
-#: the plan is kept and its card shows it.
+#: The line of a model call that failed in a way with no line of its own
+#: (`keep_the_plan`, which keeps the plan of a turn whose later call failed).
 NO_ANSWER = 'The model did not answer.'
 #: The line added under the reply of a turn that used its step budget.
 STEP_LIMIT_STOP = '*(Stopped at the step limit.)*'
@@ -900,6 +901,11 @@ class TurnResult:
     reply_round: Optional[str] = None
     # That round holds the model's reasoning.
     reply_thought: bool = False
+    # The turn's last model call failed after a plan was staged, and the plan
+    # was kept: the failure (``text`` is its line in parentheses), and the
+    # text that call had written, which the reader watched stream.
+    failure: Optional[BaseException] = None
+    partial: Optional[str] = None
 
     @property
     def summary(self) -> str:
@@ -927,13 +933,25 @@ class Spend:
         self.unreported = 0
 
     def add(self, resp) -> None:
-        u = usage_of(resp)
+        self.add_usage(usage_of(resp))
+
+    def add_usage(self, u: Optional[Dict[str, int]]) -> None:
+        """One call's ``{sent, received}`` as its provider reported them."""
         if u is None:
             self.unreported += 1
             return
         self.last = u
         self.sent += u['sent']
         self.received += u['received']
+        self.calls += 1
+
+    def add_counted(self, sent: int, received: int) -> None:
+        """A failed call the provider reported nothing for, counted here by
+        the model's tokenizer: added to the total, which is what the turn
+        cost, and not taken as the last call's figure, which the gauge shows
+        as a measurement."""
+        self.sent += sent
+        self.received += received
         self.calls += 1
 
     def usage(self) -> Optional[Dict[str, Any]]:
@@ -1090,16 +1108,49 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
         earlier message still waits (the reply may be about that one)."""
         return not held_changes(ws) and not getattr(ws, 'waiting', None) and claims_a_plan(text)
 
-    def keep_the_plan(e: Exception) -> None:
+    # A model call that failed after a plan was staged (`keep_the_plan`): the
+    # failure and the text that call had written.
+    ended: Dict[str, Any] = {'failure': None, 'partial': None}
+
+    def keep_the_plan(e: Exception, kwargs: Dict[str, Any]):
         """After a model call failed with ``e``: re-raises it when nothing
         is planned. The plan is the substance of this turn, as for an empty
         reply: a failure of any model call after it was staged does not lose
-        it, and the turn's reply is NO_ANSWER (REV7-AGENT R7A-8)."""
+        it (REV7-AGENT R7A-8). The turn's reply is then the failure's line in
+        parentheses, the line a turn with nothing planned fails with, the
+        text the call wrote stays on the turn (``partial``), and its tokens
+        count in the turn's usage: as the provider reported them, else as
+        the model's tokenizer counts what was sent and written.
+        ``(reply, reasoning of the failed call)``."""
         if not getattr(ws, 'ops', None):
             raise e
-        print(f'{cfg.model}: a model call after a staged plan failed, and the plan is kept:')
+        line = failure_line(e)
+        print(f'{cfg.model}: a model call after a staged plan failed, and the plan is kept: {line}')
         traceback.print_exception(e)
+        partial = live['text']
+        thought = clean_reasoning(keeper.thinking) if keeper is not None else None
+        reported = getattr(e, 'usage', None)
+        if reported is not None:
+            spend.add_usage(reported)
+        elif partial or thought:
+            try:
+                spend.add_counted(_sent_tokens(cfg.model, kwargs) or 0,
+                                  token_counter(cfg.model)(_joined(thought, partial) or ''))
+            except Exception:  # noqa: BLE001 - a count is never a reason to lose the plan
+                traceback.print_exc()
+        ended.update(failure=e, partial=partial or None)
         live['text'] = ''
+        return f'({line})', thought
+
+    def failure_line(e: BaseException) -> str:
+        """The line a turn that failed with ``e`` is recorded with."""
+        if isinstance(e, TurnFailed):
+            return str(e)
+        return model_failure_line(e, cfg.timeout) or NO_ANSWER
+
+    def done(text: str, reply_round: Optional[str] = None, thought: bool = False) -> TurnResult:
+        return TurnResult(text, new, trace, spend.usage(), reply_round, thought,
+                          failure=ended['failure'], partial=ended['partial'])
 
     def ask_for_the_reply(kwargs: Dict[str, Any], nudge: str):
         """One more call, without tools, when the model owes the user words.
@@ -1115,8 +1166,7 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
         except TurnCancelled:
             raise
         except Exception as e:  # noqa: BLE001 - a provider failure, a timeout, a cut reply
-            keep_the_plan(e)
-            return f'({NO_ANSWER})', None
+            return keep_the_plan(e, kwargs)
         spend.add(resp)
         choice = resp.choices[0]
         thinking = _thinking_of(choice.message)
@@ -1139,11 +1189,15 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
         rounds do not: the question as received (a turn that called no tool)
         or the reasoning. ``(round id, holds reasoning)``, or ``(None,
         False)`` when there is nothing to store or it was not stored."""
-        if keeper is None or (asked_here is None and not thinking):
+        said = ended['partial']
+        if keeper is None or (asked_here is None and not thinking and not said):
             return None, False
         rnd = new_round(n, cfg.model, asked_here)
         if thinking:
             rnd['thinking'] = thinking
+        if said:
+            # What the call for the reply wrote before it failed.
+            rnd['said'] = said
         if not keeper.store(rnd):
             return None, False
         return rnd['id'], bool(thinking)
@@ -1169,7 +1223,16 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
         thought = clean_reasoning(getattr(msg, 'reasoning_content', None))
         if thought:
             on_thinking(thought)
-        raise TurnFailed(cut_line((usage_of(resp) or {}).get('received') or cfg.max_tokens))
+        usage = usage_of(resp)
+        written = (usage or {}).get('received') or cfg.max_tokens
+        print(f'{cfg.model}: a model call reached the output limit '
+              f'({written:,} tokens written, the limit is {cfg.max_tokens:,})' if cfg.max_tokens
+              else f'{cfg.model}: a model call reached the output limit')
+        e = TurnFailed(cut_line(written))
+        # What the provider counted for the call, which the turn's usage
+        # adds when the turn goes on without it (`keep_the_plan`).
+        e.usage = usage
+        raise e
 
     def asked_once(kwargs: Dict[str, Any], messages: Callable[[], List[Dict[str, Any]]]):
         """One model call. Refused as too long, it is asked once more on a
@@ -1209,9 +1272,8 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
         except Exception as e:  # noqa: BLE001 - a provider failure, a timeout, a cut reply
             # What the failed call wrote and reasoned, which the reader saw
             # stream, is kept in a round of its own, as a failed turn's is.
-            partial = live['text']
-            thought = clean_reasoning(keeper.thinking) if keeper is not None else None
-            keep_the_plan(e)
+            reply, thought = keep_the_plan(e, kwargs)
+            partial = ended['partial']
             kept_round = None
             if keeper is not None and (thought or partial):
                 kept = new_round(rounds + 1, cfg.model)
@@ -1221,8 +1283,7 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
                     kept['said'] = partial
                 if keeper.store(kept):
                     kept_round = kept['id']
-            return TurnResult(f'({NO_ANSWER})', new, trace, spend.usage(), kept_round,
-                              bool(kept_round and thought))
+            return done(reply, kept_round, bool(kept_round and thought))
         spend.add(resp)
         choice = resp.choices[0]
         thinking = _thinking_of(choice.message)
@@ -1278,14 +1339,13 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
                     text, thinking = ask_for_the_reply(kwargs, '(system) You have used the tool budget for this '
                                                                'turn. Reply now with what you found and what '
                                                                'remains to do.')
-                    return TurnResult(text + '\n\n' + STEP_LIMIT_STOP,
-                                      new, trace, spend.usage(), *reply_round_of(rounds + 1, thinking))
+                    return done(text + '\n\n' + STEP_LIMIT_STOP, *reply_round_of(rounds + 1, thinking))
                 continue
             # The reply's own round holds something only on a turn that
             # called no tool (the question as received) or when the model
             # reasoned. Its text is the reply.
             reply_round, thought = reply_round_of(rounds + 1, thinking, asked if rounds == 0 else None)
-            return TurnResult(text, new, trace, spend.usage(), reply_round, thought)
+            return done(text, reply_round, thought)
         # The text written beside the calls is the round's, and goes on its
         # first step: it is no longer the call under way's.
         said = (d.get('content') or '').strip()
@@ -1417,8 +1477,8 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
                                                        f'{REPEATED_FAILURES} times in a row. Do not call it again. '
                                                        'Reply now with what you found and what remains to do.')
             line = 'was repeated' if failing['repeated'] else 'failed'
-            return TurnResult(text + '\n\n' + REPEAT_STOP.format(how=line, times=REPEATED_FAILURES),
-                              new, trace, spend.usage(), *reply_round_of(rounds + 1, thinking))
+            return done(text + '\n\n' + REPEAT_STOP.format(how=line, times=REPEATED_FAILURES),
+                        *reply_round_of(rounds + 1, thinking))
         if rounds >= cfg.max_steps:
             text, thinking = ask_for_the_reply(kwargs, '(system) You have used the tool budget for this turn. '
                                                        'Reply now with what you found and what remains to do.')
@@ -1426,5 +1486,4 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
             # several), so the line gives no number the trace would contradict.
             # Raising it is the operator's `--max-steps`, which is not named to
             # the reader.
-            return TurnResult(text + '\n\n' + STEP_LIMIT_STOP,
-                              new, trace, spend.usage(), *reply_round_of(rounds + 1, thinking))
+            return done(text + '\n\n' + STEP_LIMIT_STOP, *reply_round_of(rounds + 1, thinking))

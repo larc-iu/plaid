@@ -244,6 +244,33 @@ describe('a turn that did not finish', () => {
     await view.unmount();
   });
 
+  it('keeps the text of a reply whose last call failed after its plan, folded in its work', async () => {
+    // PROD-LOOP: a call that ran to its output cap after a plan was staged.
+    const { rounds } = reader({ r1: ROUND });
+    const item = {
+      kind: 'assistant',
+      failed: true,
+      text: '(The model began repeating itself and was stopped.)',
+      plan: null,
+      citations: [],
+      steps: STEPS,
+      stepsSummary: '1 planned change · 2 steps',
+      partial: 'Staged 47 changes. Make the calls first. Then reply.',
+    };
+    const view = await renderComponent(
+      <Turn item={item} projectId="p1" adapter={{}} rounds={rounds} />,
+    );
+    expect(view.container.textContent).toContain(
+      '(The model began repeating itself and was stopped.)',
+    );
+    expect(view.container.textContent).not.toContain('Staged 47 changes.');
+    await view.step(() => byText(view.container, 'button', '1 planned change · 2 steps').click());
+    const body = view.container.textContent;
+    expect(body).toContain('Staged 47 changes. Make the calls first. Then reply.');
+    expect(body.indexOf('Read across the corpus')).toBeLessThan(body.indexOf('Staged 47 changes.'));
+    await view.unmount();
+  });
+
   it('is exported to Markdown with its text and labels', () => {
     const md = conversationToMarkdown(
       {

@@ -29,7 +29,7 @@ from typing import Any, Callable, Dict, List, Optional, Set
 
 from plaid_client import PlaidAPIError, uuid7
 
-from .conversation import _bytes, _patiently, now_iso
+from .conversation import _bytes, _patiently, cut_middle, now_iso
 from .files import value_budget
 
 #: How much of a step's text a progress event carries.
@@ -123,9 +123,7 @@ def _middle_cut(text: str, over: int) -> str:
     # Characters cost from one to twelve stored bytes: keep a share of the
     # characters as large as the share of bytes that may stay.
     keep = max(0, int(len(text) * max(0, size - over - 200) / size))
-    front, back = text[:keep // 2], text[len(text) - keep // 2:] if keep // 2 else ''
-    cut = len(text) - len(front) - len(back)
-    return f'{front}\n[{cut} characters cut to fit the store]\n{back}'
+    return cut_middle(text, keep)
 
 
 def prompt_value(system: str, tools: List[Dict[str, Any]]) -> Dict[str, Any]:

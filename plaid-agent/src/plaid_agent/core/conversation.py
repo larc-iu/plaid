@@ -439,6 +439,28 @@ def pending_kept(prev: Optional[Dict[str, Any]], request_id: Optional[str],
 # ``itemTime``). A plan's own times stay where they were: its id dates its
 # staging, ``settled_at`` its decision.
 
+#: The most of a model call's unfinished text (an item's ``partial``) the
+#: record keeps. A call that ran to its output cap wrote over 100,000
+#: characters, much of it one sentence repeated, and the record is one value
+#: under a cap (`record_budget`). The round beside the record keeps the text
+#: to its own, larger budget (`rounds.fit`).
+PARTIAL_MAX_CHARS = 12000
+
+
+def cut_middle(text: str, keep: int) -> str:
+    """``text`` with all but ``keep`` characters cut from its middle, and a
+    line in their place saying how many went (the store's own wording,
+    `rounds.fit`)."""
+    front, back = text[:keep // 2], text[len(text) - keep // 2:] if keep // 2 else ''
+    cut = len(text) - len(front) - len(back)
+    return f'{front}\n[{cut} characters cut to fit the store]\n{back}'
+
+
+def clipped(text: str, most: int = PARTIAL_MAX_CHARS) -> str:
+    """``text`` held to ``most`` characters, cut from its middle (`cut_middle`)."""
+    return text if len(text) <= most else cut_middle(text, most)
+
+
 def user_item(text: str, **fields) -> Dict[str, Any]:
     """A message the user sent. ``fields`` are what it carries beside the
     text, given only when set: ``request_id`` (the request that recorded it,
@@ -454,7 +476,8 @@ def assistant_item(text: str, plan: Optional[Dict[str, Any]], citations: List[Di
                    usage: Optional[Dict[str, int]] = None,
                    context_note: str = '', version: Optional[str] = None,
                    service: Optional[str] = None, reply_round: Optional[str] = None,
-                   reply_thought: bool = False) -> Dict[str, Any]:
+                   reply_thought: bool = False, failed: bool = False,
+                   partial: Optional[str] = None) -> Dict[str, Any]:
     """What the person sees of a reply. A step's own input and output are not
     repeated here: they are in the round the step names (core/rounds.py),
     stored beside the conversation. ``reply_round`` names the round of the
@@ -480,6 +503,11 @@ def assistant_item(text: str, plan: Optional[Dict[str, Any]], citations: List[Di
     can restart the service on another model or another release in the
     middle of a conversation, and a plan's writes name the one that proposed
     it, not the one running when it is approved.
+
+    ``failed``: the turn's last model call failed after a plan was staged,
+    the plan was kept, and ``text`` is the failure's line in parentheses.
+    ``partial`` is the text that call had written, held to
+    :data:`PARTIAL_MAX_CHARS` (`clipped`), as a failed turn's is.
     """
     item = {'kind': 'assistant', 'text': text or '', 'plan': plan, 'citations': citations or [],
             'status': None, 'model': model, 'steps': steps or [], 'steps_summary': steps_summary or '',
@@ -496,6 +524,10 @@ def assistant_item(text: str, plan: Optional[Dict[str, Any]], citations: List[Di
         item['reply_round'] = reply_round
         if reply_thought:
             item['reply_thought'] = True
+    if failed:
+        item['failed'] = True
+    if partial:
+        item['partial'] = clipped(partial)
     return item
 
 
@@ -509,7 +541,8 @@ def error_item(text: str, stopped: bool = False, model: Optional[str] = None,
     ``steps`` are the tool calls the turn made before it failed or was
     stopped, as an answer's are (`trace.trace_step`), each naming the round
     that holds its input and output, as an answer's do. ``partial`` is the
-    text the model call under way had written when the turn ended. A failed
+    text the model call under way had written when the turn ended, held to
+    :data:`PARTIAL_MAX_CHARS` (`clipped`). A failed
     turn's messages leave the model transcript (a retry must not send them
     again), so the item is the only record of them in the conversation.
     ``reply_round`` names the round that keeps the reasoning of the model
@@ -521,7 +554,7 @@ def error_item(text: str, stopped: bool = False, model: Optional[str] = None,
         item['steps'] = steps
         item['steps_summary'] = summarize_steps(steps)
     if partial:
-        item['partial'] = partial
+        item['partial'] = clipped(partial)
     if reply_round:
         item['reply_round'] = reply_round
         item['reply_thought'] = True

@@ -199,11 +199,16 @@ def arg_names(args: Any) -> Optional[List[str]]:
 
 def turn_end(item: Dict[str, Any]) -> str:
     """How a turn ended: an answer, or which of the ways it can stop."""
+    text = item.get('text') or ''
     if item.get('kind') == 'error':
-        if CUT_AT_CAP.search(item.get('text') or ''):
+        if CUT_AT_CAP.search(text):
             return 'cut_at_length'
         return 'stopped' if item.get('stopped') else 'lost' if item.get('lost') else 'failed'
-    text = item.get('text') or ''
+    if item.get('failed'):
+        # The last call failed after a plan was staged, and the plan was
+        # kept: the reply is the failure's line in parentheses.
+        line = text.strip().removeprefix('(')
+        return 'cut_at_length' if CUT_AT_CAP.search(line) else 'no_answer'
     if STOPPED_REPEAT.search(text):
         return 'stopped_repeat'
     if STEP_LIMIT.search(text):

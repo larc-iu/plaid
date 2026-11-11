@@ -325,10 +325,13 @@ export const Turn = ({
             Answered by <span className="font-medium text-foreground">{item.model}</span>
           </div>
         )}
+        {/* `partial`: the text of a last call that failed after the plan was
+            staged (`failed`), whose line is the reply. */}
         {(item.steps?.length > 0 || item.replyRound) && (
           <WorkTrace
             steps={item.steps || []}
             summary={item.steps?.length > 0 ? item.stepsSummary : 'No steps'}
+            partial={item.partial}
             rounds={rounds}
             gone={roundsGone}
             firstRound={item.steps?.[0]?.round ?? item.replyRound}
