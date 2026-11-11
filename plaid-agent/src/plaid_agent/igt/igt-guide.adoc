@@ -613,6 +613,7 @@ Each row also counts the documents the person touched, with a bar for each day o
 Below it, the members who have made no changes in that window are named.
 
 The lower table is the project's history as a feed, newest first, each row naming the person, what they did, and the document it happened to.
+Changes made in a lexicon, such as merging, renaming or deleting entries, do not appear here, only in the vocabulary's History and in that of each document they changed.
 For one document's history, and for putting a document back the way it was, see <<_history>>.
 
 = Settings
