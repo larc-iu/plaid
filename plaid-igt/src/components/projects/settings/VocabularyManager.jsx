@@ -420,6 +420,9 @@ export const VocabularyManager = ({
           Every link from this project to the vocabulary's entries is removed. The vocabulary
           remains available to other projects.
         </p>
+        {vocabToUnlink?.maintained === false && (
+          <p>You do not maintain this vocabulary and cannot link it again.</p>
+        )}
         {onCountLinks && (
           <p>
             {unlinkCount === undefined && 'Counting links…'}

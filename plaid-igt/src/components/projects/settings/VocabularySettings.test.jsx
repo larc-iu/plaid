@@ -283,6 +283,30 @@ describe('Project settings, Vocabularies, the unlink confirm', () => {
     await view.unmount();
   });
 
+  // SEAM-4: unlinking is any project maintainer's, linking again only the
+  // vocabulary's maintainers', so the confirm says so first.
+  it('says the user cannot link again a vocabulary they do not maintain', async () => {
+    const client = makeClient({ linked: ['v1', 'v2'] });
+    client.query = vi.fn(async (q) => (linkQuery(q) ? { results: [[4]] } : { results: [] }));
+    const view = await mount(client);
+    await view.step(() => rowOf(view.container, 'Theirs').click());
+    expect(dialogText()).toContain('You do not maintain this vocabulary and cannot link it again.');
+    expect(dialogText()).toContain('This project has 4 links to its entries.');
+    await view.step(() => byText(document.body, '[role=alertdialog] button', 'Cancel').click());
+    await view.step(() => rowOf(view.container, 'Mine').click());
+    expect(dialogText()).toContain('This project has 4 links to its entries.');
+    expect(dialogText()).not.toContain('You do not maintain');
+    await view.unmount();
+  });
+
+  it('says nothing of maintaining to an admin', async () => {
+    auth = { user: { id: 'admin@x.org', isAdmin: true } };
+    const view = await mount(counted(async () => ({ results: [[0]] })));
+    await view.step(() => rowOf(view.container, 'Mine').click());
+    expect(dialogText()).not.toContain('You do not maintain');
+    await view.unmount();
+  });
+
   it('says when the count could not be read, and still unlinks', async () => {
     const client = counted(async () => {
       throw new Error('down');

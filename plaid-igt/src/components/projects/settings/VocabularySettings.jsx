@@ -40,6 +40,8 @@ export const VocabularySettings = ({ project, projectId, client, onProjectUpdate
         isCustom: false, // All existing vocabs from API are not custom
         // One an unfinished import made is linked into no other project (R58).
         canLink: canManageVocabulary(vocab, user) && !vocabImporting(vocab.config),
+        // The unlink confirm says when the user could not link it again.
+        maintained: canManageVocabulary(vocab, user),
         ...(vocabImporting(vocab.config) ? { lockNote: 'Import did not finish.' } : {}),
       }));
 
