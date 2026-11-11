@@ -105,7 +105,8 @@ Every field in a project belongs to exactly one scope, which decides which row o
 The **Documents** tab lists a project's texts with their word counts, when each was last changed by anyone, and when you last changed it yourself.
 Click a column heading to sort by it, and again to reverse it.
 Sorting by **Your last edit** is the quickest way back to what you were working on.
-**New document** creates an empty document and opens it on its Baseline tab.
+**New document** offers **Blank document**, which asks for a name and opens the new, empty document on its Baseline tab, and **Import from ELAN** (see <<_importing>>).
+A member who is not a maintainer is asked for the name straight away.
 
 Each document is built up on its tabs, which the rest of this chapter walks through.
 
@@ -623,12 +624,16 @@ It has five sections, listed down the left side.
 
 == General
 
-The project's name, its languages, and the option to delete the project.
+The project's name, its languages, the **Research** and **Project plaid** switches, and the option to delete the project.
 
 Two languages are recorded: the **object language**, which the baseline text is in, and the **meta language**, which glosses and translations are written in.
 Each has a name, an ISO 639-3 code, a Glottocode, and a **writing system tag**, the label FLEx and ELAN files carry on their text (`oni`, `pmy`, `en`).
 An import from FLEx, ELAN, or CLDF fills these in from the file.
 The languages go out with exports such as CLDF, where a dataset without a Glottocode cannot be linked to any other.
+
+Under **Research**, **Record responses to suggestions** records when a suggestion is shown to a member, accepted or replaced, and when an assistant plan is expanded.
+It is off by default.
+Under **Project plaid**, **Show the project's plaid** draws the project's plaid beside its name and in the browser tab.
 
 == Text and vocab
 
@@ -1228,7 +1233,7 @@ Enter and Tab, each with or without Shift, the arrow keys, Escape, Backspace, De
 | **Alt+click** a word | Open it on the Analyze tab.
 |===
 
-The arrow button above a sentence merges it with the previous one.
+The arrow button beside a sentence's number merges it with the previous one.
 
 == Media tab
 
