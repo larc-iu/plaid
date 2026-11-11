@@ -51,7 +51,12 @@
                                      ;; `[server] static_resources_path`. It could
                                      ;; not hit, cost a lookup per request, and
                                      ;; no operator could turn it off.
+                                     ;; nosniff on every response: a browser
+                                     ;; takes the served type as it is, and never
+                                     ;; runs as a page what was served as
+                                     ;; something else.
                                      :security {:anti-forgery false
+                                                :content-type-options :nosniff
                                                 :hsts true
                                                 :ssl-redirect false
                                                 :frame-options nil
