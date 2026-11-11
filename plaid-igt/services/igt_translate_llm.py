@@ -34,7 +34,7 @@ from typing import Dict, Optional
 from plaid_client import BaseService, TASKS, Param, service_source
 from plaid_client.service import PhasedProgress, Refusal, held_run, requester_message
 from plaid_client.workflows.requester import requester_of
-from plaid_client.workflows.llm import (ChatModel, UnansweredRun,
+from plaid_client.workflows.llm import (BUSY_WAITING, ChatModel, UnansweredRun,
                                         add_model_arguments, setup_service)
 from plaid_client.metadata_ops import metadata_ops
 from plaid_client.provenance import PROVENANCE_KEYS, stamp_inferred, prov_state, MACHINE
@@ -293,8 +293,8 @@ class LLMTranslateService(BaseService):
             # every sentence with the document locked.
             unanswered = UnansweredRun()
             for n, (i, s, span) in enumerate(targets):
-                progress.count(TranslateProgress.TRANSLATE, n, len(targets),
-                               f'Translating sentences ({n + 1}/{len(targets)})…')
+                said = f'Translating sentences ({n + 1}/{len(targets)})…'
+                progress.count(TranslateProgress.TRANSLATE, n, len(targets), said)
                 words = [w['text'] for w in s['words']]
                 context = []
                 for c in sentences[max(0, i - n_context):i]:
@@ -306,7 +306,9 @@ class LLMTranslateService(BaseService):
                 try:
                     reply = self.model.complete(
                         SYSTEM_PROMPT.format(language=language, metalanguage=metalanguage), prompt,
-                        should_stop=lambda: response_helper.cancelled)
+                        should_stop=lambda: response_helper.cancelled,
+                        on_busy=lambda waiting: progress.count(TranslateProgress.TRANSLATE, n, len(targets),
+                                                               BUSY_WAITING if waiting else said))
                 except Exception as exc:
                     # The provider's own error text is the operator's: it can carry
                     # the endpoint, the request body, and the key that was refused.

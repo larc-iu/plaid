@@ -55,7 +55,9 @@ export function skipUnlessAgent(test) {
 // An OpenAI-compatible endpoint that answers "OK." to anything, streamed or
 // not. With a `script`, each turn's model call (not the startup ping) takes
 // the next of its replies, `{content, calls: [{name, arguments}]}`, and "OK."
-// once it runs out.
+// once it runs out. A reply `{busy: seconds}` refuses that call as the IU
+// endpoint does when its key has every request slot in use: HTTP 429 with
+// `Retry-After: seconds`.
 function startFakeModel(script = []) {
   const left = [...script];
   let n = 0;
@@ -76,6 +78,23 @@ function startFakeModel(script = []) {
       };
       const ping = (body.messages || []).some((m) => m.content === 'ping');
       const reply = (!ping && left.shift()) || { content: 'OK.' };
+      if (reply.busy !== undefined) {
+        res.writeHead(429, {
+          'Content-Type': 'application/json',
+          'Retry-After': String(reply.busy),
+        });
+        res.end(
+          JSON.stringify({
+            error: {
+              message:
+                'Rate limit exceeded for api_key: e2e. Limit type: max_parallel_requests. ' +
+                'Current limit: 4, Remaining: 0.',
+              code: '429',
+            },
+          }),
+        );
+        return;
+      }
       const calls = (reply.calls || []).map((c) => ({
         id: `call_${(n += 1)}`,
         type: 'function',

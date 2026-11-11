@@ -75,7 +75,7 @@ class _Chat:
     def __init__(self):
         self.prompts = []
 
-    def complete(self, system, user, should_stop=None):
+    def complete(self, system, user, should_stop=None, on_busy=None):
         self.prompts.append(user)
         return Reply(text=TRANSLIT if 'EV' in user else BASELINE)
 

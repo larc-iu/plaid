@@ -55,6 +55,9 @@ EMPTY_REPLY = f'({agent.EMPTY_REPLY})'
 NO_ANSWER = f'({agent.NO_ANSWER})'
 # The line of a call the repeat guard ended (agent.REPEATING_LINE).
 REPEATING = re.compile(r'^\(?' + re.escape(agent.REPEATING_LINE))
+# The line of a call the provider still refused as busy after the wait for a
+# free slot (agent.BUSY_LINE).
+BUSY = re.compile(r'^\(?' + re.escape(agent.BUSY_LINE))
 
 # A tool's refusal, by what it says, for a step written before steps stored
 # their refusal's kind (``error_kind``, core.tools.REFUSAL_KINDS, 2026-10-24).
@@ -207,13 +210,15 @@ def turn_end(item: Dict[str, Any]) -> str:
             return 'cut_at_length'
         if REPEATING.search(text):
             return 'repeating'
+        if BUSY.search(text):
+            return 'busy'
         return 'stopped' if item.get('stopped') else 'lost' if item.get('lost') else 'failed'
     if item.get('failed'):
         # The last call failed after a plan was staged, and the plan was
         # kept: the reply is the failure's line in parentheses.
         line = text.strip().removeprefix('(')
         return 'cut_at_length' if CUT_AT_CAP.search(line) else 'repeating' if REPEATING.search(line) \
-            else 'no_answer'
+            else 'busy' if BUSY.search(line) else 'no_answer'
     if STOPPED_REPEAT.search(text):
         return 'stopped_repeat'
     if STEP_LIMIT.search(text):

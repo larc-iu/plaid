@@ -273,7 +273,11 @@ def test_every_model_call_carries_the_operators_timeout(monkeypatch):
 
 
 def _no_waiting(monkeypatch):
-    monkeypatch.setattr(agent.time, 'sleep', lambda s: None)
+    """The loop's waits pass at once: its clock moves on as it sleeps (a wait
+    for a busy model is 5 s or more, test_busy_model)."""
+    clock = {'now': 1000.0}
+    monkeypatch.setattr(agent, 'time', SimpleNamespace(monotonic=lambda: clock['now'],
+                                                       sleep=lambda s: clock.update(now=clock['now'] + s)))
     monkeypatch.setattr(llm.random, 'uniform', lambda a, b: 0.0)
 
 

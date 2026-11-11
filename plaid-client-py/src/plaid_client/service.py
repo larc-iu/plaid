@@ -59,16 +59,30 @@ def progress_heartbeat(response_helper, percent, message, interval_s=20.0):
 
     Re-sends the same percent and message, which is what the requester's
     status line already shows: the point is the event, not new words.
+
+    The block is given ``say(message)``, which reports a new message now and
+    has the beat repeat it from then on (a model call waiting for a busy
+    provider says so, and then gives the old words back). It is a
+    cancellation checkpoint like any report, and the beat never reports at
+    the same moment.
     """
     if response_helper is None:
-        yield
+        yield lambda m: None
         return
     done = threading.Event()
+    lock = threading.Lock()
+    said = {'message': message}
+
+    def say(m):
+        with lock:
+            said['message'] = m
+            response_helper.progress(percent, m)
 
     def beat():
         while not done.wait(interval_s):
             try:
-                response_helper.progress(percent, message)
+                with lock:
+                    response_helper.progress(percent, said['message'])
             except BaseException:
                 # A stop landed (or the report failed). The work's own
                 # checkpoint carries it from here; the beat has nothing to add.
@@ -77,7 +91,7 @@ def progress_heartbeat(response_helper, percent, message, interval_s=20.0):
     thread = threading.Thread(target=beat, daemon=True)
     thread.start()
     try:
-        yield
+        yield say
     finally:
         done.set()
         # A beat already past its wait would otherwise land after the block,
@@ -125,7 +139,7 @@ class PhasedProgress:
         """Keep saying ``message`` through one blocking call that reports
         nothing of its own (:func:`progress_heartbeat`)."""
         if not self._helper:
-            return contextlib.nullcontext()
+            return contextlib.nullcontext(lambda m: None)
         return progress_heartbeat(self._helper, self._percent(phase, fraction), message)
 
 

@@ -124,7 +124,7 @@ def _run(monkeypatch, ws, kit, script):
     script = iter(script)
     sent = []
 
-    def complete(cfg, kwargs, on_text, cancelled=None, on_thinking=None):
+    def complete(cfg, kwargs, on_text, cancelled=None, on_thinking=None, on_busy=None):
         sent.append(kwargs)
         return next(script)
 

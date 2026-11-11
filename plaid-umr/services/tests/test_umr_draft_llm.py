@@ -68,7 +68,7 @@ class _Model:
         self._error = error
         self._truncated = truncated
 
-    def complete(self, system, user, should_stop=None):
+    def complete(self, system, user, should_stop=None, on_busy=None):
         self.calls.append((system, user))
         self.should_stop = should_stop
         if self._during:
@@ -1028,7 +1028,7 @@ class _Scripted(_Model):
         super().__init__()
         self._outcomes = list(outcomes)
 
-    def complete(self, system, user, should_stop=None):
+    def complete(self, system, user, should_stop=None, on_busy=None):
         self.calls.append((system, user))
         outcome = self._outcomes[len(self.calls) - 1]
         if isinstance(outcome, BaseException):
@@ -1039,6 +1039,28 @@ class _Scripted(_Model):
 def _timeout():
     from plaid_client.workflows.llm import ModelTimeout
     return ModelTimeout('The model did not answer within 120 seconds.')
+
+
+class _BusyOnce(_Model):
+    """The provider is busy for a while on the second sentence, then answers."""
+
+    def complete(self, system, user, should_stop=None, on_busy=None):
+        if len(self.calls) == 1:
+            on_busy(True)
+            on_busy(False)
+        return super().complete(system, user, should_stop)
+
+
+def test_a_wait_for_a_busy_model_is_on_the_status_line_and_then_gone():
+    """FX-BUSY: the wait for a free slot is the run's status while it lasts,
+    and the beat repeats it, then the sentence's own line comes back."""
+    from plaid_client.workflows.llm import BUSY_WAITING
+    service = _service(documents=[_sentences_document(3)], model=_BusyOnce())
+    helper = servicetest.run(service, REQUEST)
+    [result] = helper.results
+    assert result['drafted'] == 3
+    i = helper.messages.index(BUSY_WAITING)
+    assert helper.messages[i - 1] == helper.messages[i + 1] == 'Drafting sentence 2 (2 of 3)…'
 
 
 def test_a_run_ends_after_two_sentences_in_a_row_get_no_answer():

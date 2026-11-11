@@ -34,22 +34,42 @@ greedy decoding (0) sent a reasoning model round the same lines of thought
 until its token limit.
 """
 
+import email.utils
 import random
+import re
 import threading
 import time
 import traceback
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from types import SimpleNamespace
 from typing import Any, Callable, Dict, List, Optional
 
 from plaid_client.services import ServiceCancelled
 
-#: How many times a call is retried when the provider says it is over its rate
-#: limit or briefly unavailable. Short and bounded: the run reports nothing
-#: while it waits, and a provider that is still refusing after this is a
-#: per-sentence failure worth showing the linguist.
+#: How many times a call is retried when the provider is briefly unavailable
+#: (a 5xx, a connection that failed). Short and bounded: a provider that is
+#: still refusing after this is a failure worth showing.
 RETRIES = 3
 RETRY_BASE_S = 2.0
+
+#: The seconds a call waits in all, over its tries, while the provider refuses
+#: it as busy (HTTP 429: the key's requests in flight, or a per-minute limit;
+#: :func:`is_busy`). A slot frees only when another caller's call ends, and
+#: those ran 1 to 5 minutes when a class of eight shared a key of 4 in flight
+#: (PROD-CLASS, 2026-11-11), so the short schedule above failed nearly every
+#: such call.
+BUSY_WAIT_S = 180.0
+#: The waits between busy tries when the provider gives no hint of its own,
+#: the last repeated until :data:`BUSY_WAIT_S` is spent.
+BUSY_BACKOFF_S = (5.0, 10.0, 20.0, 30.0)
+#: Each busy wait is longer by up to this share, so callers refused at once do
+#: not all try again in the same instant.
+BUSY_JITTER = 0.2
+#: What a requester is shown while a call waits for a busy provider, and when
+#: the wait ran out (the assistants' failure line, the model services' reason).
+BUSY_WAITING = 'The model is busy. Waiting for a free slot…'
+BUSY_LINE = 'The model is busy. Try again in a minute.'
 
 #: Seconds a model call may go without sending anything before it is
 #: abandoned, unless the operator sets ``--timeout``. The call is streamed, so
@@ -86,9 +106,10 @@ UNANSWERED_IN_A_ROW = 2
 def did_not_answer(exc: BaseException) -> bool:
     """Whether a failed call means the model is not answering at all: it
     passed the deadline (:class:`ModelTimeout`), or the provider could not be
-    reached or said it was unavailable, after the retries. An answer that is
-    an error (a bad request, a refused key) is not this: the next sentence may
-    well get a reply."""
+    reached, said it was unavailable, or was still busy after
+    :data:`BUSY_WAIT_S` of waiting (:func:`is_busy`), after the retries. An
+    answer that is an error (a bad request, a refused key) is not this: the
+    next sentence may well get a reply."""
     if isinstance(exc, ModelTimeout):
         return True
     try:
@@ -98,7 +119,7 @@ def did_not_answer(exc: BaseException) -> bool:
     down = tuple(e for e in (getattr(litellm, n, None) for n in
                              ('APIConnectionError', 'ServiceUnavailableError'))
                  if isinstance(e, type) and issubclass(e, BaseException))
-    return bool(down) and isinstance(exc, down)
+    return (bool(down) and isinstance(exc, down)) or is_busy(exc, litellm)
 
 
 class UnansweredRun:
@@ -149,6 +170,74 @@ def transient_errors(litellm=None) -> tuple:
                  if isinstance(e, type) and issubclass(e, Exception))
 
 
+def is_busy(e: BaseException, litellm=None) -> bool:
+    """Whether the provider refused the call as busy: HTTP 429, which
+    litellm raises as its ``RateLimitError`` (a subclass of the openai SDK's,
+    which is counted too, raised as it is). An IU reallms key over its 4
+    requests in flight answers ``Rate limit exceeded ... Limit type:
+    max_parallel_requests`` with ``Retry-After: 60``, and its per-minute caps
+    answer the same way."""
+    if litellm is None:
+        import litellm
+    kinds = [getattr(litellm, 'RateLimitError', None)]
+    try:
+        from openai import RateLimitError
+        kinds.append(RateLimitError)
+    except ImportError:  # pragma: no cover - litellm depends on openai
+        pass
+    kinds = tuple(k for k in kinds if isinstance(k, type) and issubclass(k, BaseException))
+    return bool(kinds) and isinstance(e, kinds)
+
+
+# "Limit resets at: 2026-11-11 21:20:48 UTC", as a litellm proxy words it.
+_RESETS_AT = re.compile(r'Limit resets at: (\d{4}-\d\d-\d\d \d\d:\d\d:\d\d) UTC')
+
+
+def busy_hint(e: BaseException, now: Optional[float] = None) -> Optional[float]:
+    """The seconds the provider said to wait before trying a busy call again,
+    or None when it said nothing usable: its ``Retry-After`` header (seconds,
+    or an HTTP date), else the "Limit resets at" time a litellm proxy writes
+    into its message. A time already past is no hint."""
+    now = time.time() if now is None else now
+    for headers in (getattr(e, 'litellm_response_headers', None),
+                    getattr(getattr(e, 'response', None), 'headers', None)):
+        try:
+            value = headers.get('retry-after') if headers is not None else None
+        except Exception:  # noqa: BLE001 - a header object of another shape is no hint
+            value = None
+        if value is None:
+            continue
+        value = str(value).strip()
+        try:
+            return max(0.0, float(value))
+        except ValueError:
+            pass
+        try:
+            when = email.utils.parsedate_to_datetime(value)
+        except (TypeError, ValueError):
+            continue
+        if when.tzinfo is None:
+            when = when.replace(tzinfo=timezone.utc)
+        left = when.timestamp() - now
+        if left > 0:
+            return left
+    m = _RESETS_AT.search(str(e))
+    if m:
+        left = datetime.strptime(m.group(1), '%Y-%m-%d %H:%M:%S').replace(tzinfo=timezone.utc).timestamp() - now
+        if left > 0:
+            return left
+    return None
+
+
+def busy_delay(e: BaseException, tries: int, left: float) -> float:
+    """How long to wait before busy try number ``tries`` + 1: the provider's
+    hint, else :data:`BUSY_BACKOFF_S`, made longer by up to
+    :data:`BUSY_JITTER`, and never more than the ``left`` of the budget."""
+    hint = busy_hint(e)
+    base = hint if hint is not None else BUSY_BACKOFF_S[min(tries, len(BUSY_BACKOFF_S) - 1)]
+    return max(0.0, min(max(base, 1.0) * (1.0 + random.uniform(0.0, BUSY_JITTER)), left))
+
+
 def _timeout_errors(litellm) -> tuple:
     out = [getattr(litellm, 'Timeout', None)]
     try:  # litellm raises the openai SDK's classes too, its own Timeout among them
@@ -189,31 +278,53 @@ def is_timeout(e: BaseException, litellm=None) -> bool:
 def retrying(call: Callable[[], Any], *, model: str, timeout: Optional[float] = None,
              retries: int = RETRIES, timeout_retries: int = TIMEOUT_RETRIES,
              sleep: Callable[[float], None] = None, on_retry: Optional[Callable[[], None]] = None,
-             litellm=None):
+             litellm=None, busy_wait: float = BUSY_WAIT_S,
+             on_busy: Optional[Callable[[bool], None]] = None):
     """``call()``, tried again when the provider refused it for a reason that
     passes, and its answer returned.
 
-    A rate limit or a provider briefly down is tried up to ``retries`` more
-    times after a wait with full jitter, so two callers hitting one provider
-    do not march in step and collide again. A call that passed its deadline
-    is tried ``timeout_retries`` more times, at once: a model that did not
-    answer in the whole window is down or stuck, and every try costs another
-    window. Anything else, or the last failure, is raised as it is.
-    ``sleep(delay)`` waits between tries (a caller that can be stopped looks
-    for the stop there), and ``on_retry()`` runs before each new try. The
-    operator's log says what happened, and the requester never sees it."""
+    A call the provider refused as busy (:func:`is_busy`, HTTP 429) is tried
+    again after the provider's own hint or :data:`BUSY_BACKOFF_S`, with a
+    little jitter (:func:`busy_delay`), until the waits add up to
+    ``busy_wait`` seconds; the last busy refusal is then raised as it is.
+    ``on_busy(True)`` runs before each such wait and ``on_busy(False)`` after
+    it, so a caller can say it is waiting. With ``busy_wait`` 0 a busy
+    refusal is tried as a provider briefly down is.
+
+    A provider briefly down is tried up to ``retries`` more times after a wait
+    with full jitter, so two callers hitting one provider do not march in
+    step and collide again. A call that passed its deadline is tried
+    ``timeout_retries`` more times, at once: a model that did not answer in
+    the whole window is down or stuck, and every try costs another window.
+    Anything else, or the last failure, is raised as it is. ``sleep(delay)``
+    waits between tries (a caller that can be stopped looks for the stop
+    there), and ``on_retry()`` runs before each new try. The operator's log
+    says what happened."""
     if sleep is None:
         sleep = time.sleep
     if litellm is None:
         import litellm
     transient = transient_errors(litellm)
     timeouts_of = _timeout_errors(litellm)
-    attempt = timeouts = 0
+    attempt = timeouts = busy_tries = 0
+    waited = 0.0  # the busy waits so far
     while True:
+        busy = False
         try:
             return call()
         except Exception as e:
-            if _timed_out(e, timeouts_of):
+            if busy_wait and is_busy(e, litellm):
+                left = busy_wait - waited
+                if left <= 0:
+                    print(f'{model} was still busy after {waited:.0f}s of waiting; giving up')
+                    raise
+                delay = busy_delay(e, busy_tries, left)
+                busy_tries += 1
+                waited += delay
+                busy = True
+                print(f'{model} is busy ({" ".join(str(e).split())[:200]}); '
+                      f'waiting {delay:.1f}s ({waited:.0f}s of {busy_wait:g}s)')
+            elif _timed_out(e, timeouts_of):
                 timeouts += 1
                 if timeouts > timeout_retries:
                     raise
@@ -229,7 +340,11 @@ def retrying(call: Callable[[], Any], *, model: str, timeout: Optional[float] = 
                       f'retrying in {delay:.1f}s ({attempt} of {retries})')
             else:
                 raise
+        if busy and on_busy is not None:
+            on_busy(True)
         sleep(delay)
+        if busy and on_busy is not None:
+            on_busy(False)
         if on_retry is not None:
             on_retry()
 
@@ -286,17 +401,20 @@ class ChatModel:
         return line + (f', {self.cost:.4f} in provider cost' if self.cost else '')
 
     def complete(self, system: str, user: str,
-                 should_stop: Optional[Callable[[], bool]] = None) -> Reply:
-        """One chat completion, streamed, retried while the provider is rate
-        limiting.
+                 should_stop: Optional[Callable[[], bool]] = None,
+                 on_busy: Optional[Callable[[bool], None]] = None) -> Reply:
+        """One chat completion, streamed, tried again while the provider is
+        busy (up to :data:`BUSY_WAIT_S` of waiting) or briefly down.
 
         ``should_stop`` is read about once a second while the call waits and
         before every retry, and a True ends the call with ``ServiceCancelled``
         (pass ``lambda: response_helper.cancelled``). Without it a stop is
         noticed only after the model answers or the deadline passes. A call
         that goes silent for the deadline is tried once more, then raises
-        :class:`ModelTimeout`. The temperature is sent only when the operator
-        chose one.
+        :class:`ModelTimeout`. ``on_busy(True)`` runs as a wait for a busy
+        provider begins and ``on_busy(False)`` as it ends (the run's status
+        line, :data:`BUSY_WAITING`). The temperature is sent only when the
+        operator chose one.
         """
         import litellm  # only the running service needs it
         kwargs: Dict[str, Any] = {
@@ -318,7 +436,7 @@ class ChatModel:
         if self.max_tokens:
             kwargs['max_tokens'] = self.max_tokens
 
-        resp = self._with_retries(litellm, kwargs, should_stop)
+        resp = self._with_retries(litellm, kwargs, should_stop, on_busy)
         choice = resp.choices[0]
         self._record(resp)
         return Reply(
@@ -329,7 +447,7 @@ class ChatModel:
 
     # --- the parts worth having in one place --------------------------------
 
-    def _with_retries(self, litellm, kwargs, should_stop=None):
+    def _with_retries(self, litellm, kwargs, should_stop=None, on_busy=None):
         """Retry a call the provider refused for a reason that passes
         (:func:`retrying`), looking for a stop before every try and while it
         waits. A timeout that is not tried again is named for the requester.
@@ -340,7 +458,8 @@ class ChatModel:
 
         try:
             return retrying(call, model=self.model, timeout=self.timeout, retries=self.retries,
-                            sleep=lambda delay: self._sleep(delay, should_stop), litellm=litellm)
+                            sleep=lambda delay: self._sleep(delay, should_stop), litellm=litellm,
+                            on_busy=on_busy)
         except Exception as e:
             if is_timeout(e, litellm):
                 window = f'within {self.timeout:g} seconds' if self.timeout else 'in time'

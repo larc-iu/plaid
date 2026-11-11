@@ -1357,8 +1357,33 @@ def test_a_stop_ends_the_beat_and_leaves_the_work_to_notice_it():
 
 
 def test_no_helper_means_no_beat():
-    with progress_heartbeat(None, 40, 'x', interval_s=0.01):
-        pass
+    with progress_heartbeat(None, 40, 'x', interval_s=0.01) as say:
+        say('y')  # and nothing to say it to
+
+
+def test_the_block_can_change_what_the_beat_says():
+    """A model call waiting for a busy provider says so, and the beat goes on
+    saying it until the block gives the old words back (FX-BUSY)."""
+    helper = _BeatHelper()
+    ready = threading.Event()
+    with progress_heartbeat(helper, 40, 'Drafting sentence 3 (3 of 9)...', interval_s=0.01) as say:
+        say('The model is busy. Waiting for a free slot...')
+        n = len(helper.beats)
+        while len(helper.beats) < n + 3:
+            ready.wait(0.01)
+        say('Drafting sentence 3 (3 of 9)...')
+        n = len(helper.beats)
+        while len(helper.beats) < n + 2:
+            ready.wait(0.01)
+    busy = helper.beats.index((40, 'The model is busy. Waiting for a free slot...'))
+    back = helper.beats.index((40, 'Drafting sentence 3 (3 of 9)...'), busy)
+    assert set(helper.beats[busy:back]) == {(40, 'The model is busy. Waiting for a free slot...')}
+    assert set(helper.beats[back:]) == {(40, 'Drafting sentence 3 (3 of 9)...')}
+    # Saying is a cancellation checkpoint, as any report is.
+    stopped = _BeatHelper(stop_after=1)
+    with pytest.raises(ServiceCancelled):
+        with progress_heartbeat(stopped, 40, 'x', interval_s=10) as say:
+            say('y')
 
 
 # --- every path that reports a failure scrubs it first ------------------------

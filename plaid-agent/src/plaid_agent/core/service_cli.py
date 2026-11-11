@@ -8,7 +8,7 @@ import re
 import time
 from urllib.parse import urlsplit
 
-from plaid_client.workflows.llm import add_timeout_argument, provider_secrets
+from plaid_client.workflows.llm import add_timeout_argument, is_busy, provider_secrets
 
 from .agent import (DEFAULT_MAX_OUTPUT_TOKENS, ModelConfig, ModelTooSlow, PING_TIMEOUT_S, context_window, output_cap,
                     ping_model)
@@ -127,10 +127,16 @@ class ServiceCli:
             print(f'  No answer within {PING_TIMEOUT_S}s. Serving anyway: a slow provider is '
                   f'not a misconfigured one, and the first question will wait for it.')
         except Exception as e:  # noqa: BLE001 - whatever the provider says, the operator needs to read it
-            print(f'  The model did not answer: {e}')
-            print('  Check --model (a litellm model string), --api-base, and the provider key '
-                  '(--api-key or the provider\'s environment variable).')
-            raise SystemExit(1)
+            if is_busy(e):
+                # Refused as busy (HTTP 429): the provider and the key answered,
+                # and the model is in use. Every turn waits for a free slot.
+                print(f'  The model is busy: {" ".join(str(e).split())[:200]}. Serving anyway: '
+                      f'each question waits for a free slot.')
+            else:
+                print(f'  The model did not answer: {e}')
+                print('  Check --model (a litellm model string), --api-base, and the provider key '
+                      '(--api-key or the provider\'s environment variable).')
+                raise SystemExit(1)
         else:
             print(f'  Answered in {time.monotonic() - started:.1f}s.')
         self.web_cfg = build_web_config(args)

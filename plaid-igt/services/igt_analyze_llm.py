@@ -48,7 +48,7 @@ from typing import List, Optional
 
 from plaid_client import BaseService, TASKS, Param
 from plaid_client.service import requester_message
-from plaid_client.workflows.llm import (ChatModel, UnansweredRun,
+from plaid_client.workflows.llm import (BUSY_WAITING, ChatModel, UnansweredRun,
                                         add_model_arguments, setup_service)
 from plaid_client.workflows.igt.config import read_lexicon_field, role_field
 from plaid_client.workflows.igt.senses import build_sense_tree, morph_type_of
@@ -457,15 +457,18 @@ class LLMAnalyzeService(BaseService):
             # every sentence with the document locked.
             unanswered = UnansweredRun()
             for n, (s, idxs) in enumerate(targets):
-                progress.count(AnalyzeProgress.GLOSS, n, total, f'Glossing sentences ({n + 1}/{total})…')
+                said = f'Glossing sentences ({n + 1}/{total})…'
+                progress.count(AnalyzeProgress.GLOSS, n, total, said)
                 words = [w['surface'] for w in s['words']]
                 entries = matching_entries(lexicon, words)
                 examples = rank_examples(pool, words, n_examples) if n_examples else []
                 prompt = build_user_prompt(language, metalanguage, words, (s['translation'] or '').strip(),
                                            entries, examples)
                 try:
-                    reply = self.model.complete(system, prompt,
-                                                should_stop=lambda: response_helper.cancelled)
+                    reply = self.model.complete(
+                        system, prompt, should_stop=lambda: response_helper.cancelled,
+                        on_busy=lambda waiting: progress.count(AnalyzeProgress.GLOSS, n, total,
+                                                               BUSY_WAITING if waiting else said))
                 except Exception as exc:
                     # The provider's own error text is the operator's: it can carry
                     # the endpoint, the request body, and the key that was refused.

@@ -11,7 +11,7 @@ import pathlib
 import pytest
 from plaid_client import testing as servicetest
 from plaid_client.workflows.igt import analyze as analyze_workflow
-from plaid_client.workflows.llm import ModelTimeout, Reply
+from plaid_client.workflows.llm import BUSY_WAITING, ModelTimeout, Reply
 
 SERVICES = pathlib.Path(__file__).resolve().parent.parent
 translate = servicetest.load_service(SERVICES / 'igt_translate_llm.py')
@@ -52,6 +52,11 @@ REQUEST = {'document_id': 'd1', 'project_id': 'p1', 'word_token_layer_id': 'word
            'gloss_field': 'Gloss', 'translation_field': 'Translation'}
 
 
+#: An outcome: the provider is busy for a while, then answers this text.
+class Busy(str):
+    pass
+
+
 class _Model:
     """One outcome per call, in order: a reply's text, or an exception."""
 
@@ -59,11 +64,14 @@ class _Model:
         self.outcomes = list(outcomes)
         self.calls = 0
 
-    def complete(self, system, user, should_stop=None):
+    def complete(self, system, user, should_stop=None, on_busy=None):
         self.calls += 1
         outcome = self.outcomes[self.calls - 1]
         if isinstance(outcome, BaseException):
             raise outcome
+        if isinstance(outcome, Busy):
+            on_busy(True)
+            on_busy(False)
         return Reply(text=outcome)
 
     def describe(self):
@@ -105,6 +113,18 @@ def test_a_run_stops_after_two_sentences_in_a_row_get_no_answer(module, cls, rep
                for f in failed)
     assert result['sentences_not_asked'] == ['s4', 's5']
     assert 'so the run stopped. 2 sentences were not' in capsys.readouterr().out
+
+
+@pytest.mark.parametrize('module, cls, reply', SERVICES_UNDER_TEST)
+def test_a_wait_for_a_busy_model_is_on_the_status_line_and_then_gone(module, cls, reply):
+    """FX-BUSY: the model's wait for a free slot is the run's status while
+    it lasts, and the sentence's own line comes back after it."""
+    service = _service(module, cls, [reply, Busy(reply)] + [reply] * N)
+    helper = servicetest.run(service, REQUEST)
+    [result] = helper.results
+    assert not result.get('sentences_failed')
+    i = helper.messages.index(BUSY_WAITING)
+    assert '(2/5)' in helper.messages[i - 1] and helper.messages[i + 1] == helper.messages[i - 1]
 
 
 @pytest.mark.parametrize('module, cls, reply', SERVICES_UNDER_TEST)

@@ -29,6 +29,10 @@ class _Timeout(Exception):
     pass
 
 
+class _Unavailable(Exception):
+    pass
+
+
 class _Usage:
     def __init__(self, prompt=11, completion=7):
         self.prompt_tokens = prompt
@@ -55,7 +59,8 @@ def _fake_litellm(responses):
         return item
 
     fake = types.SimpleNamespace(completion=completion, calls=calls,
-                                 RateLimitError=_RateLimited, Timeout=_Timeout)
+                                 RateLimitError=_RateLimited, Timeout=_Timeout,
+                                 ServiceUnavailableError=_Unavailable)
     return fake
 
 
@@ -105,15 +110,39 @@ def test_a_rate_limit_is_waited_out_rather_than_failing_the_sentence(monkeypatch
     reply = llm.ChatModel('openai/x').complete('sys', 'user')
     assert reply.text == 'done'
     assert len(fake.calls) == 3 and len(no_sleep) == 2
-    assert all(0 <= s <= llm.RETRY_BASE_S * 4 for s in no_sleep)
+    assert 5 <= no_sleep[0] <= 6 and 10 <= no_sleep[1] <= 12, 'the busy back-off, a little jitter on top'
 
 
 def test_a_provider_still_refusing_after_the_last_try_raises(monkeypatch, no_sleep):
-    fake = _fake_litellm([_RateLimited('slow down')] * 4)
+    fake = _fake_litellm([_Unavailable('loading')] * 4)
     _install(monkeypatch, fake)
-    with pytest.raises(_RateLimited):
+    with pytest.raises(_Unavailable):
         llm.ChatModel('openai/x', retries=3).complete('sys', 'user')
     assert len(fake.calls) == 4
+    assert all(0 <= s <= llm.RETRY_BASE_S * 4 for s in no_sleep)
+
+
+def test_a_busy_provider_is_waited_for_about_three_minutes_and_the_run_says_so(monkeypatch, no_sleep):
+    """FX-BUSY: a 429 is waited for up to BUSY_WAIT_S in all, and the run's
+    status line says so while it waits."""
+    monkeypatch.setattr(llm.random, 'uniform', lambda a, b: 0.0)
+    fake = _fake_litellm([_RateLimited('slow down')] * 50)
+    _install(monkeypatch, fake)
+    said = []
+    with pytest.raises(_RateLimited):
+        llm.ChatModel('openai/x').complete('sys', 'user', on_busy=said.append)
+    assert no_sleep == [5, 10, 20, 30, 30, 30, 30, 25] and sum(no_sleep) == llm.BUSY_WAIT_S
+    assert len(fake.calls) == 9
+    assert said == [True, False] * 8
+    assert llm.did_not_answer(_RateLimited('slow down')), 'a run stops after two such sentences in a row'
+
+
+def test_a_stop_during_a_busy_wait_ends_the_call(monkeypatch, no_sleep):
+    fake = _fake_litellm([_RateLimited('slow down'), _response('never asked for')])
+    _install(monkeypatch, fake)
+    with pytest.raises(ServiceCancelled):
+        llm.ChatModel('openai/x').complete('sys', 'user', should_stop=lambda: len(no_sleep) >= 3)
+    assert len(fake.calls) == 1 and len(no_sleep) == 3, 'the wait ends at the next look, a second at most'
 
 
 def test_what_a_run_spent_is_on_the_operators_log(monkeypatch):
@@ -255,10 +284,12 @@ class _Unreachable(Exception):
 def test_a_run_stops_after_two_sentences_in_a_row_get_no_answer(monkeypatch):
     from plaid_client.workflows.llm import ModelTimeout, UnansweredRun, did_not_answer
     monkeypatch.setitem(sys.modules, 'litellm', types.SimpleNamespace(
-        APIConnectionError=_Unreachable, ServiceUnavailableError=_Unreachable))
+        APIConnectionError=_Unreachable, ServiceUnavailableError=_Unreachable, RateLimitError=_RateLimited))
     down = _Unreachable('refused')
     assert did_not_answer(ModelTimeout('x')) and did_not_answer(down)
     assert not did_not_answer(RuntimeError('400 bad request'))
+    # Still busy after the wait for a slot: the next sentence would wait as long.
+    assert did_not_answer(_RateLimited('slow down'))
 
     run = UnansweredRun()
     assert run.failed(ModelTimeout('x')) is False

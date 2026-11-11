@@ -47,7 +47,7 @@ from typing import Any, Dict, List, Optional
 
 from plaid_client import BaseService, TASKS
 from plaid_client.service import requester_message
-from plaid_client.workflows.llm import (ChatModel, UnansweredRun, add_model_arguments,
+from plaid_client.workflows.llm import (BUSY_WAITING, ChatModel, UnansweredRun, add_model_arguments,
                                         setup_service)
 from plaid_client.workflows.umr import (DraftProgress, anchor_pieces, drafting,
                                         cycle_edges, draft_params, finish_draft, join_flat_graph,
@@ -464,9 +464,11 @@ class UmrDraftService(BaseService):
                 gloss_lines = gloss_lines_for(sentence, run.layers.gloss_layers, run.document.gloss)
                 prompt = build_user_prompt(sentence, gloss_lines, language)
                 try:
-                    with progress.heartbeat(DraftProgress.DRAFT, n / total, message):
+                    with progress.heartbeat(DraftProgress.DRAFT, n / total, message) as say:
                         reply = self.model.complete(SYSTEM_PROMPT, prompt,
-                                                    should_stop=lambda: response_helper.cancelled)
+                                                    should_stop=lambda: response_helper.cancelled,
+                                                    on_busy=lambda waiting: say(BUSY_WAITING if waiting
+                                                                                else message))
                 except Exception as exc:
                     # The provider's own error text is the operator's: it can carry
                     # the endpoint, the request body and the key that was refused.

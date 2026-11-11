@@ -25,8 +25,8 @@ import litellm
 # services' own (one loop for every caller of a model). RETRIES and
 # TIMEOUT_RETRIES are imported for the docstrings and tests that name them.
 from plaid_client import ServiceCancelled
-from plaid_client.workflows.llm import (RETRIES, TIMEOUT_RETRIES, close_stream, is_timeout, retrying,  # noqa: F401
-                                        transient_errors)
+from plaid_client.workflows.llm import (BUSY_LINE, BUSY_WAITING, RETRIES, TIMEOUT_RETRIES,  # noqa: F401
+                                        close_stream, is_busy, is_timeout, retrying, transient_errors)
 
 from .bidi import for_model
 from .conversation import DROPPED
@@ -254,16 +254,19 @@ def ping_model(cfg: ModelConfig, timeout: float = PING_TIMEOUT_S) -> None:
     timeout, which becomes :class:`ModelTooSlow` so the caller can tell a
     provider that is slow from one that is misconfigured.
 
-    A rate limit or a provider briefly down is tried again as a turn's call
-    is (:func:`_complete`), up to :data:`RETRIES` more times after a jittered
-    wait: the call sends ``max_retries=0``, so without this one 429 or 503
-    while the assistant starts would stop it.
+    A rate limit or a provider briefly down is tried again up to
+    :data:`RETRIES` more times after a jittered wait: the call sends
+    ``max_retries=0``, so without this one 429 or 503 while the assistant
+    starts would stop it. A busy provider is not waited for as a turn waits
+    (``busy_wait=0``): the operator is watching, and a provider still busy
+    after the retries raises its refusal (:func:`~plaid_client.workflows.llm.is_busy`),
+    which the service starts on all the same.
     """
     try:
         resp = retrying(lambda: litellm.completion(**{**_provider_kwargs(cfg), 'timeout': timeout},
                                                    max_tokens=PING_MAX_TOKENS,
                                                    messages=[{'role': 'user', 'content': 'ping'}]),
-                        model=cfg.model, timeout=timeout, timeout_retries=0, litellm=litellm)
+                        model=cfg.model, timeout=timeout, timeout_retries=0, litellm=litellm, busy_wait=0)
     except Exception as e:
         if is_timeout(e, litellm):
             raise ModelTooSlow(str(e)) from e
@@ -274,19 +277,22 @@ def ping_model(cfg: ModelConfig, timeout: float = PING_TIMEOUT_S) -> None:
 
 def _complete(cfg: ModelConfig, kwargs: Dict[str, Any], on_text: Callable[[str], None],
               cancelled: Callable[[], bool] = lambda: False,
-              on_thinking: Callable[[str], None] = lambda t: None):
+              on_thinking: Callable[[str], None] = lambda t: None,
+              on_busy: Callable[[bool], None] = lambda waiting: None):
     """One model call, tried again as the model services try theirs
     (``plaid_client.workflows.llm.retrying``).
 
     A call that passes the operator's deadline is tried :data:`TIMEOUT_RETRIES`
     more times and no more: a model that did not answer in the whole window is
-    down or stuck, and every try costs the reader another window. A rate limit
-    or a provider briefly down is tried up to :data:`RETRIES` more times after
-    a jittered wait. ``cancelled`` is read while the call waits, before every
-    retry and during the wait, and a stop ends the call with
-    :class:`TurnCancelled`. ``on_thinking`` receives the reasoning the
-    provider streams beside the text (``reasoning_content``), as ``on_text``
-    receives the text."""
+    down or stuck, and every try costs the reader another window. A provider
+    briefly down is tried up to :data:`RETRIES` more times after a jittered
+    wait. A provider that refuses the call as busy (HTTP 429) is waited for,
+    up to ``BUSY_WAIT_S`` in all, with ``on_busy(True)`` as each wait begins
+    and ``on_busy(False)`` as it ends. ``cancelled`` is read while the call
+    waits, before every retry and during the wait, and a stop ends the call
+    with :class:`TurnCancelled` at once. ``on_thinking`` receives the
+    reasoning the provider streams beside the text (``reasoning_content``),
+    as ``on_text`` receives the text."""
     def wait(delay: float) -> None:
         end = time.monotonic() + delay
         while True:
@@ -302,7 +308,7 @@ def _complete(cfg: ModelConfig, kwargs: Dict[str, Any], on_text: Callable[[str],
         on_thinking('')
 
     return retrying(lambda: _watched(cfg, kwargs, on_text, cancelled, on_thinking), model=cfg.model,
-                    timeout=cfg.timeout, sleep=wait, on_retry=again, litellm=litellm)
+                    timeout=cfg.timeout, sleep=wait, on_retry=again, litellm=litellm, on_busy=on_busy)
 
 
 #: How often a waiting model call looks for a stop, in seconds.
@@ -823,7 +829,10 @@ def model_failure_line(e: BaseException, timeout: Optional[float] = None) -> Opt
     upstream ("litellm.InternalServerError: OpenAIException - ...") and can
     quote the request, the endpoint or the key it refused. The operator's log
     has the whole of it. ``timeout`` is the operator's deadline, named in the
-    line the way the model services name it."""
+    line the way the model services name it. A provider still busy after the
+    wait for it (:func:`_complete`) says so, and when to try again."""
+    if is_busy(e, litellm):
+        return BUSY_LINE
     if is_timeout(e, litellm):
         return f'The model did not answer within {timeout:g} seconds.' if timeout \
             else 'The model did not answer in time.'
@@ -1178,6 +1187,17 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
     new: List[Dict[str, Any]] = []
     rounds = 0
     asked = _asked(history)
+    # The line the reader last saw from this loop, which a wait for a busy
+    # model stands in for while it lasts and then gives back.
+    shown: Dict[str, Any] = {'pct': 0, 'msg': ''}
+    reported = on_progress
+
+    def on_progress(pct: int, msg: str) -> None:
+        shown.update(pct=pct, msg=msg)
+        reported(pct, msg)
+
+    def on_busy(waiting: bool) -> None:
+        reported(shown['pct'], BUSY_WAITING if waiting else shown['msg'])
 
     def text_seen(t: str) -> None:
         # What the model call under way has written, kept for a turn that
@@ -1340,7 +1360,7 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
         text_seen('')
         on_thinking('')
         try:
-            return _complete(cfg, kwargs, text_seen, cancelled, on_thinking)
+            return _complete(cfg, kwargs, text_seen, cancelled, on_thinking, on_busy)
         except Exception as e:
             if not too_long(e) or shrink is None:
                 raise
@@ -1352,7 +1372,7 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
             history[:] = smaller
             text_seen('')
             on_thinking('')
-            return _complete(cfg, {**kwargs, 'messages': messages()}, text_seen, cancelled, on_thinking)
+            return _complete(cfg, {**kwargs, 'messages': messages()}, text_seen, cancelled, on_thinking, on_busy)
 
     while True:
         if cancelled():

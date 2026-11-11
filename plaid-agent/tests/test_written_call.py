@@ -170,7 +170,7 @@ def test_code_run_in_an_earlier_turn_is_shown_code(monkeypatch):
                   {'role': 'user', 'content': 'how did you count?'}]
     sent = []
 
-    def complete(cfg, kwargs, on_text, cancelled=None, on_thinking=None):
+    def complete(cfg, kwargs, on_text, cancelled=None, on_thinking=None, on_busy=None):
         sent.append(kwargs)
         return _reply(text=SHOWN)
 
@@ -203,7 +203,7 @@ def test_a_call_that_went_through_in_an_earlier_turn_restated(monkeypatch, answe
     name, args = plan
     sent = []
 
-    def complete(cfg, kwargs, on_text, cancelled=None, on_thinking=None):
+    def complete(cfg, kwargs, on_text, cancelled=None, on_thinking=None, on_busy=None):
         sent.append(kwargs)
         return _reply(text=CALLED if len(sent) == 1 else 'ok')
 
@@ -239,7 +239,7 @@ def test_a_failure_of_the_next_round_keeps_the_staged_plan(monkeypatch):
     ws, kit, plan, _read = APPS['igt']()
     calls = iter([_reply(plan), RuntimeError('litellm.Timeout: read timed out')])
 
-    def complete(cfg, kwargs, on_text, cancelled=None, on_thinking=None):
+    def complete(cfg, kwargs, on_text, cancelled=None, on_thinking=None, on_busy=None):
         x = next(calls)
         if isinstance(x, Exception):
             raise x
@@ -255,7 +255,7 @@ def test_a_failure_with_nothing_planned_still_fails_the_turn(monkeypatch):
     ws, kit, _plan, read = APPS['igt']()
     calls = iter([_reply(read), RuntimeError('litellm.Timeout: read timed out')])
 
-    def complete(cfg, kwargs, on_text, cancelled=None, on_thinking=None):
+    def complete(cfg, kwargs, on_text, cancelled=None, on_thinking=None, on_busy=None):
         x = next(calls)
         if isinstance(x, Exception):
             raise x

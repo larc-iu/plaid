@@ -140,7 +140,7 @@ Three limits hold across every bench process on the machine, through files in DA
 
 - **1 request in flight** (`SLOTS` in gate.py). A request holds an exclusive `flock` on `slot0.lock` from before it is sent until its answer has been read.
 - **8 requests a minute** (`BENCH_RPM` to change it), so the bench leaves the rest of a shared key's per-minute limit to its other clients. `rpm.log` holds the send times of the last minute under an `flock` on `rpm.lock`. Every attempt counts, retries too.
-- **A 429, 502, 503 or 504, a timeout or an unreachable endpoint is tried again inside the gate**, still holding its slot, after the answer's Retry-After or 5, 10, 20, 40, 60, 60 ... s, for up to 10 minutes from the first attempt. Only then does the error reach the assistant.
+- **A 429, 502, 503 or 504, a timeout or an unreachable endpoint is tried again inside the gate**, still holding its slot, after the answer's Retry-After or 5, 10, 20, 40, 60, 60 ... s, for up to 10 minutes from the first attempt. Only then does the error reach the assistant, which waits for a busy model (a 429) as it does in production, after the answer's Retry-After for up to 3 minutes in all, each new try going through the gate again.
 
 A request whose caller has gone (closed its connection while it waited for a slot, the per-minute cap or a backoff) is not sent (an assistant's startup ping gives up after 30 s). It is logged with `gone: true` and is not a model call of the run.
 
