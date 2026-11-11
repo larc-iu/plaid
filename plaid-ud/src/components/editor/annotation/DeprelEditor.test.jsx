@@ -139,15 +139,17 @@ describe('DeprelEditor', () => {
   });
 
   // An emptied label names no relation. Enter on it must not take the list's
-  // first one (it stored `acl`): it does what the bin does, and where there is
-  // no bin (a relabel being typed) it leaves things as they were.
+  // first one (it stored `acl`), and must not delete the relation either: the
+  // label arrives selected, so one Backspace, Delete, a typed space or an empty
+  // paste empties it. Enter then does what Tab and clicking away do there, and
+  // the label stays. Deleting is the bin's and Shift+Backspace's.
   const clear = (input) => {
     const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
     setter.call(input, '');
     input.dispatchEvent(new Event('input', { bubbles: true }));
   };
 
-  it('deletes on Enter once the label has been emptied, as the bin does', async () => {
+  it('cancels on Enter once the label has been emptied, and deletes nothing', async () => {
     const onCommit = vi.fn();
     const onDelete = vi.fn();
     const onCancel = vi.fn();
@@ -159,11 +161,48 @@ describe('DeprelEditor', () => {
     await step(async () => press(input, 'Enter'));
 
     expect(onCommit).not.toHaveBeenCalled();
-    expect(onDelete).toHaveBeenCalledTimes(1);
+    expect(onDelete).not.toHaveBeenCalled();
+    expect(onCancel).toHaveBeenCalledTimes(1);
     await unmount();
   });
 
-  it('cancels on Enter on an emptied label when there is nothing to delete', async () => {
+  it('cancels on Enter on a label emptied by a typed space', async () => {
+    const onCommit = vi.fn();
+    const onDelete = vi.fn();
+    const onCancel = vi.fn();
+    const { container, step, unmount } = await mount({ onCommit, onDelete, onCancel });
+    const input = all(container, 'input')[0];
+
+    await step(async () => focus(input));
+    await step(async () => type(input, ' '));
+    await step(async () => press(input, 'Enter'));
+
+    expect(onCommit).not.toHaveBeenCalled();
+    expect(onDelete).not.toHaveBeenCalled();
+    expect(onCancel).toHaveBeenCalledTimes(1);
+    await unmount();
+  });
+
+  it('cancels on Enter after a label is typed and erased again', async () => {
+    const onCommit = vi.fn();
+    const onDelete = vi.fn();
+    const onCancel = vi.fn();
+    const { container, step, unmount } = await mount({ onCommit, onDelete, onCancel });
+    const input = all(container, 'input')[0];
+
+    await step(async () => focus(input));
+    await step(async () => type(input, 'ob'));
+    await step(async () => clear(input));
+    await step(async () => press(input, 'Enter'));
+
+    expect(onCommit).not.toHaveBeenCalled();
+    expect(onDelete).not.toHaveBeenCalled();
+    expect(onCancel).toHaveBeenCalledTimes(1);
+    await unmount();
+  });
+
+  it('never stores the first option on Enter on an emptied relabel', async () => {
+    // A relabel being typed has no bin, and an emptied one cancels too.
     const onCommit = vi.fn();
     const onCancel = vi.fn();
     const { container, step, unmount } = await mount({ onCommit, onCancel, onDelete: undefined });
