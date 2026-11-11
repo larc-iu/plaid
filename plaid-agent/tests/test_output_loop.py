@@ -177,3 +177,203 @@ def test_a_looping_call_with_nothing_planned_fails_the_turn_with_its_text(monkey
     assert str(e.value) == REPEATING_LINE
     _steps, partial = agent.turn_trace(e.value)
     assert partial.startswith('Hmm.') and LOOP in partial
+
+
+# --- every way out of a stream closes it, and litellm's own guard (REV-PB-C-2) -------
+
+class _Failing(_Stream):
+    """A stream that yields ``pieces`` and then raises ``error``, or ends
+    there when there is none, and counts its closes."""
+
+    def __init__(self, pieces, error=None):
+        super().__init__(lambda: iter(pieces))
+        self.error = error
+        self.closes = 0
+
+    def __iter__(self):
+        yield from super().__iter__()
+        if self.error is not None:
+            raise self.error
+
+    def close(self):
+        self.closes += 1
+        self.closed = True
+
+
+def _litellm_repeat_error():
+    """What litellm 1.102 raises after REPEATED_STREAMING_CHUNK_LIMIT identical
+    chunks: its InternalServerError, wrapped by the stream in a
+    MidStreamFallbackError (a ServiceUnavailableError, so a transient one)."""
+    litellm = agent.litellm
+    inner = litellm.InternalServerError(message='The model is repeating the same chunk = ────.',
+                                        model='', llm_provider='')
+    return litellm.exceptions.MidStreamFallbackError(message=str(inner), model='m', llm_provider='openai',
+                                          original_exception=inner, generated_content='────' * 100)
+
+
+def test_litellms_repeat_error_is_what_litellm_raises():
+    from litellm.litellm_core_utils.streaming_handler import CustomStreamWrapper
+    wrapper = CustomStreamWrapper.__new__(CustomStreamWrapper)
+    delta = SimpleNamespace(content='────')
+    wrapper.chunks = [SimpleNamespace(choices=[SimpleNamespace(delta=delta)])] * 2
+    wrapper._repeated_messages_count = agent.litellm.REPEATED_STREAMING_CHUNK_LIMIT
+    with pytest.raises(agent.litellm.InternalServerError) as e:
+        wrapper.raise_on_model_repetition()
+    assert agent.litellm_repeating(e.value)
+    assert agent.litellm_repeating(_litellm_repeat_error())
+
+
+def test_other_provider_failures_are_not_litellms_repeat_error():
+    litellm = agent.litellm
+    down = litellm.ServiceUnavailableError(message='upstream down', model='m', llm_provider='openai')
+    assert not agent.litellm_repeating(down)
+    assert not agent.litellm_repeating(litellm.exceptions.MidStreamFallbackError(
+        message='connection reset', model='m', llm_provider='openai', original_exception=down))
+    assert not agent.litellm_repeating(litellm.InternalServerError(
+        message='The model is repeating the request', model='m', llm_provider='openai'))
+    assert not agent.litellm_repeating(RuntimeError('The model is repeating the same chunk = x'))
+
+
+@pytest.mark.parametrize('field', ['content', 'reasoning_content'])
+def test_a_stream_that_fails_partway_is_closed(monkeypatch, field):
+    monkeypatch.setattr(agent, 'STREAM_INTERVAL_S', 0)
+    stream = _Failing(['Staged ', 'two.'], RuntimeError('the reader failed'))
+    stream.field = field
+    monkeypatch.setattr(agent.litellm, 'completion', lambda **kw: stream)
+    with pytest.raises(RuntimeError):
+        agent._complete_once(ModelConfig(model='m'), {'model': 'm', 'messages': []}, lambda t: None)
+    assert stream.closed
+
+
+def test_a_reader_that_fails_closes_the_stream(monkeypatch):
+    monkeypatch.setattr(agent, 'STREAM_INTERVAL_S', 0)
+    stream = _Stream(_forever('Staged ', 'more words '))
+    monkeypatch.setattr(agent.litellm, 'completion', lambda **kw: stream)
+
+    def on_text(t):
+        if len(t) > 100:
+            raise RuntimeError('a reader failed')
+    with pytest.raises(RuntimeError):
+        agent._complete_once(ModelConfig(model='m'), {'model': 'm', 'messages': []}, on_text)
+    assert stream.closed
+
+
+def test_a_stream_read_to_its_end_is_closed_and_a_second_close_is_harmless(monkeypatch):
+    monkeypatch.setattr(agent, 'STREAM_INTERVAL_S', 0)
+    stream = _Failing(['All ', 'done.'])
+    monkeypatch.setattr(agent.litellm, 'completion', lambda **kw: stream)
+    resp = agent._complete_once(ModelConfig(model='m'), {'model': 'm', 'messages': []}, lambda t: None)
+    assert resp.choices[0].message.content == 'All done.'
+    assert stream.closes == 1
+    agent.close_stream(stream)
+    assert stream.closes == 2
+
+
+def test_litellms_repeat_error_ends_the_call_as_our_guard_does_and_is_not_tried_again(monkeypatch, capsys):
+    monkeypatch.setattr(agent, 'STREAM_INTERVAL_S', 0)
+    streams = []
+
+    def completion(**kwargs):
+        streams.append(_Failing(['Here is the tree:\n'] + ['────'] * 100, _litellm_repeat_error()))
+        return streams[-1]
+
+    monkeypatch.setattr(agent.litellm, 'completion', completion)
+    texts = []
+    with pytest.raises(TurnFailed) as e:
+        agent._complete(ModelConfig(model='m'), {'model': 'm', 'messages': []}, texts.append)
+    assert str(e.value) == REPEATING_LINE
+    assert len(streams) == 1, 'not tried again'
+    assert streams[0].closed
+    assert texts[-1].startswith('Here is the tree:') and texts[-1].endswith('────'), 'the text so far is handed on'
+    assert 'repeating' in capsys.readouterr().out
+
+
+def test_litellms_repeat_error_after_a_plan_keeps_the_plan(monkeypatch):
+    monkeypatch.setattr(agent, 'STREAM_INTERVAL_S', 0)
+    calls = []
+
+    def completion(**kwargs):
+        calls.append(kwargs)
+        if len(calls) == 1:
+            return _resp(calls=[_call(1, 'plan_a', '{}')], usage=_usage(1000, 50))
+        return _Failing(['Staged.\n'] + ['ka-ka'] * 100, _litellm_repeat_error())
+
+    monkeypatch.setattr(agent.litellm, 'completion', completion)
+    ws = _Ws()
+    turn = run_turn(ModelConfig(model='fake/m'), _kit(), ws, 'system', [{'role': 'user', 'content': 'go'}])
+    assert len(calls) == 2, 'not tried again'
+    assert len(ws.ops) == 1, 'the plan is kept'
+    assert turn.text == f'({REPEATING_LINE})'
+    assert turn.partial.startswith('Staged.') and 'ka-ka' in turn.partial
+
+
+def test_another_failure_partway_is_still_tried_again(monkeypatch):
+    monkeypatch.setattr(agent, 'STREAM_INTERVAL_S', 0)
+    litellm = agent.litellm
+    down = litellm.ServiceUnavailableError(message='upstream down', model='m', llm_provider='openai')
+    streams = []
+
+    def completion(**kwargs):
+        if not streams:
+            streams.append(_Failing(['Half '], litellm.exceptions.MidStreamFallbackError(
+                message='reset', model='m', llm_provider='openai', original_exception=down)))
+        else:
+            streams.append(_Failing(['Whole.']))
+        return streams[-1]
+
+    monkeypatch.setattr(agent.litellm, 'completion', completion)
+    monkeypatch.setattr('plaid_client.workflows.llm.random.uniform', lambda a, b: 0)
+    resp = agent._complete(ModelConfig(model='m'), {'model': 'm', 'messages': []}, lambda t: None)
+    assert resp.choices[0].message.content == 'Whole.'
+    assert len(streams) == 2 and streams[0].closed
+
+
+def test_litellms_repeat_guard_through_a_real_stream(tmp_path):
+    """Through the real litellm against a local server sending one
+    4-character chunk over and over (the reviewer's case G): one request, the
+    turn's line, and the server sees the client go at once."""
+    import http.server
+    import json
+    import threading
+    import time
+    state = {'requests': 0, 'sent': 0, 'gone_at': None}
+    done = threading.Event()
+
+    class Handler(http.server.BaseHTTPRequestHandler):
+        def log_message(self, *a):
+            pass
+
+        def do_POST(self):
+            self.rfile.read(int(self.headers.get('Content-Length') or 0))
+            state['requests'] += 1
+            self.send_response(200)
+            self.send_header('Content-Type', 'text/event-stream')
+            self.end_headers()
+            try:
+                for _ in range(1500):
+                    body = {'id': 'c', 'object': 'chat.completion.chunk', 'created': 0, 'model': 'x',
+                            'choices': [{'index': 0, 'delta': {'content': '────'}, 'finish_reason': None}]}
+                    self.wfile.write(f'data: {json.dumps(body)}\n\n'.encode())
+                    self.wfile.flush()
+                    state['sent'] += 1
+                    time.sleep(0.005)
+                self.wfile.write(b'data: [DONE]\n\n')
+            except (BrokenPipeError, ConnectionResetError):
+                state['gone_at'] = state['sent']
+            finally:
+                done.set()
+
+    server = http.server.ThreadingHTTPServer(('127.0.0.1', 0), Handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    base = f'http://127.0.0.1:{server.server_address[1]}/v1'
+    try:
+        cfg = ModelConfig(model='openai/x', api_base=base, api_key='k')
+        kwargs = {'model': 'openai/x', 'api_base': base, 'api_key': 'k', 'max_retries': 0,
+                  'messages': [{'role': 'user', 'content': 'hi'}]}
+        with pytest.raises(TurnFailed) as e:
+            agent._complete(cfg, kwargs, lambda t: None)
+        assert str(e.value) == REPEATING_LINE
+        assert done.wait(3), 'the provider was still writing 3 seconds after the guard'
+        assert state['requests'] == 1 and state['gone_at'] is not None and state['gone_at'] < 300
+    finally:
+        server.shutdown()

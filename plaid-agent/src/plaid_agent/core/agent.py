@@ -202,6 +202,25 @@ class Repeating(Exception):
     with :class:`TurnFailed` (`_complete_once`)."""
 
 
+#: How litellm's own repeat guard words its error (litellm 1.102,
+#: ``CustomStreamWrapper.raise_on_model_repetition``).
+_LITELLM_REPEATING = 'litellm.InternalServerError: The model is repeating the same chunk = '
+
+
+def litellm_repeating(e: BaseException) -> bool:
+    """Whether ``e`` is litellm's own repeat guard ending a stream. After
+    ``litellm.REPEATED_STREAMING_CHUNK_LIMIT`` (100) identical text chunks of
+    3 or more characters in a row (a model stuck on "ka-" or a rule of
+    box-drawing characters, a unit too short for :func:`repeating`), its
+    stream raises an ``InternalServerError`` with that message, handed on as
+    the ``original_exception`` of a ``MidStreamFallbackError``. Both are
+    "service unavailable" errors, which :func:`retrying` would ask again."""
+    fallback = getattr(litellm.exceptions, 'MidStreamFallbackError', ())
+    inner = getattr(e, 'original_exception', None) if isinstance(e, fallback) else e
+    return (isinstance(inner, litellm.InternalServerError)
+            and str(getattr(inner, 'message', '')).startswith(_LITELLM_REPEATING))
+
+
 def _provider_kwargs(cfg: ModelConfig) -> Dict[str, Any]:
     """What every call to this model needs: the model string, and the base and
     key when the operator gave them (else litellm reads the provider's env)."""
@@ -350,12 +369,13 @@ def _complete_once(cfg: ModelConfig, kwargs: Dict[str, Any], on_text: Callable[[
     ``on_thinking`` the same way, and is put on the message whole at the end,
     whichever builder put the reply together.
 
-    A text or reasoning whose end repeats one unit (`repeating`) ends the
-    call: the text so far goes to ``on_text`` and ``on_thinking`` whole, the
-    stream is closed so the provider stops writing, and the call fails with
+    A text or reasoning whose end repeats one unit (`repeating`), or
+    litellm's own guard (:func:`litellm_repeating`), ends the call: the text
+    so far goes to ``on_text`` and ``on_thinking`` whole, the stream is closed
+    so the provider stops writing, and the call fails with
     :class:`TurnFailed` (:data:`REPEATING_LINE`), which is never tried
     again. An unstreamed call cannot be stopped this way: it ends at the
-    output cap."""
+    output cap. The stream is closed on every way out of this function."""
     if not cfg.stream:
         return litellm.completion(**kwargs)
     chunks: List[Any] = []
@@ -371,10 +391,10 @@ def _complete_once(cfg: ModelConfig, kwargs: Dict[str, Any], on_text: Callable[[
         # (``litellm.drop_params``), not refused.
         stream = litellm.completion(**kwargs, stream=True, stream_options={'include_usage': True})
         if hasattr(stream, 'choices'):
-            return stream  # a whole response (a test double, a provider that ignored stream=)
+            whole, stream = stream, None
+            return whole  # a whole response (a test double, a provider that ignored stream=)
         for chunk in stream:
             if abandoned is not None and abandoned.is_set():
-                close_stream(stream)
                 raise TurnCancelled()
             chunks.append(chunk)
             choices = getattr(chunk, 'choices', None) or []
@@ -406,22 +426,21 @@ def _complete_once(cfg: ModelConfig, kwargs: Dict[str, Any], on_text: Callable[[
                     raise Repeating(unit)
     except TurnCancelled:
         raise
-    except Repeating as e:
-        close_stream(stream)
-        print(f'{kwargs.get("model")}: a model call began repeating itself and was stopped '
-              f'({REPEAT_MIN_TIMES} copies in a row of "{str(e)[:80]}")')
-        if thought:
-            on_thinking(clean_reasoning(thought) or '')
-        if text:
-            on_text(text)
-        raise TurnFailed(REPEATING_LINE) from None
-    except ServiceCancelled:
-        # A stop the client saw as it sent the text so far (a stop asked for,
-        # or a request the server no longer knows): the stream is closed as
-        # at a stop seen here, so the provider can stop writing.
-        close_stream(stream)
-        raise
     except Exception as e:
+        if isinstance(e, Repeating):
+            what = f'{REPEAT_MIN_TIMES} copies in a row of "{str(e)[:80]}"'
+        elif litellm_repeating(e):
+            what = f'litellm: {litellm.REPEATED_STREAMING_CHUNK_LIMIT} identical chunks in a row'
+        else:
+            what = None
+        if what is not None:
+            close_stream(stream)  # first, so the provider stops while the text is handed on
+            print(f'{kwargs.get("model")}: a model call began repeating itself and was stopped ({what})')
+            if thought:
+                on_thinking(clean_reasoning(thought) or '')
+            if text:
+                on_text(text)
+            raise TurnFailed(REPEATING_LINE) from None
         # A timeout, a rate limit or a provider that is down is not a provider
         # that refuses to stream: asking again at once without streaming would
         # only fail the same way, and :func:`_complete` decides about retries.
@@ -431,6 +450,11 @@ def _complete_once(cfg: ModelConfig, kwargs: Dict[str, Any], on_text: Callable[[
         if abandoned is not None and abandoned.is_set():
             raise TurnCancelled() from e
         return litellm.completion(**kwargs)
+    finally:
+        # Every way out: a stop, a reader that failed (ServiceCancelled
+        # included), a provider error partway, the end of the reply. A second
+        # close does nothing more.
+        close_stream(stream)
     if thought:
         on_thinking(clean_reasoning(thought) or '')
     if text:
