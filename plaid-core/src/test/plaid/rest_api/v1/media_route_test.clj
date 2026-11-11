@@ -10,22 +10,13 @@
                                     admin-request with-clean-db parse-response-body]]
             [plaid.media.storage]
             [plaid.server.config :as config]
-            [plaid.test-helpers :refer [delete-tree! create-test-project create-test-document]])
+            [plaid.test-helpers :refer [delete-tree! create-test-project create-test-document mp3-file]])
   (:import [java.io File]
            [java.nio.file FileVisitOption Files]
            [java.nio.file.attribute FileAttribute]))
 
 (use-fixtures :once with-db with-mount-states with-rest-handler with-admin with-test-users)
 (use-fixtures :each with-clean-db)
-
-(defn- temp-clip!
-  "A file that uploads as audio by its name (Tika sees text, the filename
-  extension carries it), which is all the route needs to exercise."
-  ^File [content]
-  (let [file (File/createTempFile "plaid-media-route-" ".mp3")]
-    (spit file content)
-    (.deleteOnExit file)
-    file))
 
 (defn- close-body! [response]
   (when-let [body (:body response)]
@@ -42,7 +33,7 @@
               did (create-test-document admin-request pid "Media document")
               media-path (str "/api/v1/documents/" did "/media")
               upload! (fn [content]
-                        (let [file (temp-clip! content)]
+                        (let [file (mp3-file content)]
                           (rest-handler (-> (admin-request :put media-path)
                                             (assoc :multipart-params
                                                    {"file" {:filename "clip.mp3"
@@ -116,9 +107,11 @@
               did (create-test-document admin-request pid "Media document")
               media-path (str "/api/v1/documents/" did "/media")
               upload! (fn [filename content]
-                        (let [file (File/createTempFile "plaid-media-kind-" ".tmp")]
-                          (spit file content)
-                          (.deleteOnExit file)
+                        (let [file (if (re-find #"\.mp3$" filename)
+                                     (mp3-file content)
+                                     (doto (File/createTempFile "plaid-media-kind-" ".tmp")
+                                       (.deleteOnExit)
+                                       (spit content)))]
                           (rest-handler (-> (admin-request :put media-path)
                                             (assoc :multipart-params
                                                    {"file" {:filename filename

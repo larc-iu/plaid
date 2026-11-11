@@ -713,6 +713,19 @@
   (let [parent (.getParentFile (File. ^String db-path))]
     (when (.exists parent) (.delete parent))))
 
+(defn mp3-file
+  "A temp file whose bytes content detection reads as an MP3, as an upload
+  must be: the 4-byte header of an MPEG-1 Layer III frame, then `content`, so
+  different contents make different recordings. A file of text alone is
+  refused, whatever its name."
+  ^File [content]
+  (let [file (File/createTempFile "plaid-recording-" ".tmp")]
+    (.deleteOnExit file)
+    (with-open [out (java.io.FileOutputStream. file)]
+      (.write out (byte-array (map unchecked-byte [0xFF 0xFB 0x90 0x64])))
+      (.write out (.getBytes (str content) "UTF-8")))
+    file))
+
 (defn delete-tree!
   "Delete a directory and everything under it."
   [^Path root]

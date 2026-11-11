@@ -90,6 +90,14 @@
       (log/warn "Failed to detect content type:" (.getMessage e))
       nil)))
 
+(defn detect-bytes-type
+  "The canonical type of `file` read from its bytes alone, as
+  `detect-content-type` reads it, with no hint from the file's name: a page
+  named talk.mp3 is a page."
+  [^File file]
+  (with-open [in (java.io.BufferedInputStream. (java.io.FileInputStream. file))]
+    (detect-content-type in)))
+
 (defn is-media-type?
   "Check if a MIME type is video or audio"
   [mime-type]
@@ -185,6 +193,45 @@
   (when-let [v (media-version doc-id)]
     (str "/api/v1/documents/" doc-id "/media?v=" v)))
 
+(def served-types
+  "The Content-Type a recording is served with, by the extension it was
+  stored under (`get-extension-from-content-type` of the type accepted at
+  upload). Every value is an audio or video type, the one the upload's
+  detected type maps to. A stored extension not listed here is served as
+  application/octet-stream, which a media element still plays. The served type
+  is never read from the stored bytes again: a page stored by hand under a
+  recording's name is served as that recording's type, with nosniff, never as
+  a page."
+  {"mp3" "audio/mpeg"
+   "wav" "audio/wav"
+   "m4a" "audio/mp4"
+   "aac" "audio/aac"
+   "x-aac" "audio/x-aac"
+   "ogg" "audio/ogg"
+   "flac" "audio/flac"
+   "x-aiff" "audio/x-aiff"
+   "amr" "audio/amr"
+   "amr-wb" "audio/amr-wb"
+   "basic" "audio/basic"
+   "ac3" "audio/ac3"
+   "x-caf" "audio/x-caf"
+   "mp4" "video/mp4"
+   "mov" "video/quicktime"
+   "webm" "video/webm"
+   "mkv" "video/x-matroska"
+   "avi" "video/x-msvideo"
+   "mpeg" "video/mpeg"
+   "3gpp" "video/3gpp"
+   "3gpp2" "video/3gpp2"
+   "x-m4v" "video/x-m4v"
+   "x-flv" "video/x-flv"
+   "x-ms-asf" "video/x-ms-asf"})
+
+(defn served-content-type
+  "The Content-Type a recording stored under `extension` is served with."
+  [extension]
+  (get served-types (str/lower-case (str extension)) "application/octet-stream"))
+
 (defn get-media-info
   "Get information about a media file (size, extension, content-type)"
   [doc-id]
@@ -193,13 +240,7 @@
       (when (.exists file)
         {:file-path file-path
          :extension extension
-         :content-type (or
-                        ;; Try to detect actual content type
-                        (detect-content-type file)
-                        ;; Fallback to guessing from extension
-                        (str (if (contains? #{"mp3" "wav" "aac" "m4a" "ogg" "flac"} extension)
-                               "audio/" "video/")
-                             extension))
+         :content-type (served-content-type extension)
          :size (.length file)
          :last-modified (.lastModified file)}))))
 
@@ -282,10 +323,27 @@
       (str "WAV encoded as " coding " cannot be played in a browser. "
            "Only PCM, 32-bit float, A-law and mu-law WAV are accepted."))))
 
+(def ^:private named-by-extension
+  "What content detection answers for real recordings it cannot call audio or
+  video from their bytes: nothing better than application/octet-stream (an MP3
+  that starts with padding), every WebM and Matroska file, and an Ogg holding
+  Opus. Only for these does the file name's extension decide, from
+  `media-extensions`. Every other type that is not audio or video is refused
+  whatever the name: a page named talk.mp3 is text/html."
+  #{"application/octet-stream" "application/x-matroska" "application/ogg"})
+
+(def ^:private media-extensions
+  #{"mp4" "mp3" "wav" "mov" "avi" "mkv" "webm" "aac" "m4a" "ogg" "flac"})
+
+(def not-media-error
+  "The refusal of a file that is not audio or video."
+  "Not an audio or video file.")
+
 (defn validate-media-file
-  "Validate a media file using Tika content detection"
+  "Validate a media file by its bytes (Tika content detection), and by its
+  name only where the bytes do not say (`named-by-extension`)."
   [temp-file filename]
-  (let [detected-type (detect-content-type temp-file)
+  (let [detected-type (detect-bytes-type temp-file)
         filename-ext (when filename (last (str/split filename #"\.")))
         ;; Check if detected type is a media type
         is-detected-media? (is-media-type? detected-type)
@@ -312,19 +370,19 @@
       (and is-detected-media? filename-ext)
       {:valid? true :content-type detected-type :method :tika-with-filename-ext}
 
-      ;; If we have a filename extension and no detection, accept common media extensions
-      (and filename-ext (contains? #{"mp4" "mp3" "wav" "mov" "avi" "mkv" "webm" "aac" "m4a" "ogg" "flac"}
-                                   (str/lower-case filename-ext)))
+      ;; The bytes do not say, and the name is a recording's.
+      (and (or (nil? detected-type) (contains? named-by-extension detected-type))
+           filename-ext
+           (contains? media-extensions (str/lower-case filename-ext)))
       {:valid? true
        :content-type (str (if (contains? #{"mp3" "wav" "aac" "m4a" "ogg" "flac"} (str/lower-case filename-ext))
                             "audio/" "video/")
                           (str/lower-case filename-ext))
        :method :filename-only}
 
-      ;; Otherwise, invalid
       :else
       {:valid? false
-       :error "Unsupported media type"
+       :error not-media-error
        :detected detected-type
        :filename-ext filename-ext})))
 

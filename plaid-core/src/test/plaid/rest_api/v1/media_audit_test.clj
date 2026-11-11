@@ -10,22 +10,12 @@
                                     admin-request user1-request api-call
                                     with-clean-db parse-response-body]]
             [plaid.server.config :as config]
-            [plaid.test-helpers :refer [delete-tree! create-test-project create-test-document]])
-  (:import [java.io File]
-           [java.nio.file FileVisitOption Files]
+            [plaid.test-helpers :refer [delete-tree! create-test-project create-test-document mp3-file]])
+  (:import [java.nio.file FileVisitOption Files]
            [java.nio.file.attribute FileAttribute]))
 
 (use-fixtures :once with-db with-mount-states with-rest-handler with-admin with-test-users)
 (use-fixtures :each with-clean-db)
-
-(defn- temp-clip!
-  "A file that uploads as audio by its name (Tika sees text, the filename
-  extension carries it)."
-  ^File [content]
-  (let [file (File/createTempFile "plaid-media-audit-" ".mp3")]
-    (spit file content)
-    (.deleteOnExit file)
-    file))
 
 (defn- with-media-dir [f]
   (let [tmp (Files/createTempDirectory "plaid-media-audit-" (make-array FileAttribute 0))]
@@ -36,7 +26,7 @@
       (finally (delete-tree! tmp)))))
 
 (defn- upload! [request-fn did filename content]
-  (let [file (temp-clip! content)]
+  (let [file (mp3-file content)]
     (rest-handler (-> (request-fn :put (str "/api/v1/documents/" did "/media"))
                       (assoc :multipart-params {"file" {:filename filename
                                                         :tempfile file

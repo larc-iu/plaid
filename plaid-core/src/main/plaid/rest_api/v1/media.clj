@@ -198,6 +198,14 @@
                      "private, max-age=31536000, immutable"
                      "private, no-cache")})
 
+(def media-safety-headers
+  "On every media response. A recording is opened straight from its link, on
+  the apps' own origin: the browser must take the served type as it is
+  (nosniff), and whatever it shows runs no script and reaches no storage of
+  the origin (sandbox). An audio or video element plays it all the same."
+  {"X-Content-Type-Options" "nosniff"
+   "Content-Security-Policy" "sandbox"})
+
 (defn media-etag
   "The same version the document's `media-url` carries, as a validator."
   [{:keys [last-modified size]}]
@@ -217,7 +225,11 @@
                          "response may be cached for a year and still changes the moment the file is "
                          "replaced. A bare request is served with an ETag and must revalidate. "
                          "A request with no Authorization header may carry <body>media-token</body> "
-                         "from a media link (POST <body>/media/link</body>) instead.")
+                         "from a media link (POST <body>/media/link</body>) instead. "
+                         "The Content-Type is the audio or video type of the stored file's "
+                         "extension, else application/octet-stream, and every response carries "
+                         "<body>X-Content-Type-Options: nosniff</body> and "
+                         "<body>Content-Security-Policy: sandbox</body>.")
            ;; `wrap-read-jwt` reads `?media-token=` here and on no other route.
            :plaid/link-token pra/media-audience
            :parameters {:query [:map [:media-token {:optional true} string?]]}
@@ -233,17 +245,20 @@
                                 cache (media-cache-headers
                                        (not (str/blank? (get query-params "v"))))]
                             (if (= (get headers "if-none-match") etag)
-                              {:status 304 :headers (assoc cache "ETag" etag) :body ""}
+                              {:status 304 :headers (merge cache media-safety-headers {"ETag" etag}) :body ""}
                               (-> (stream-file-response
                                    (:file result)
                                    (:content-type result)
                                    (:size result)
                                    range-header)
-                                  (update :headers merge cache {"ETag" etag}))))
+                                  (update :headers merge cache media-safety-headers {"ETag" etag}))))
                           (error-response result))))}
 
      :put {:plaid/idempotency false
-           :summary (str "Upload a media file for a document. Uses Apache Tika for content validation. "
+           :summary (str "Upload a media file for a document. Uses Apache Tika for content validation: "
+                         "a file whose bytes read as anything but audio or video (a page, a picture, "
+                         "text) is refused 415 whatever its name. The name's extension decides only "
+                         "where the bytes do not say (application/octet-stream, Matroska or WebM, Ogg). "
                          "A document that already has one refuses it 409, with "
                          "<body>media-exists</body> and the current <body>media-url</body>. "
                          "A WAV whose samples are not PCM, 32-bit float, A-law or mu-law (IMA or MS ADPCM, GSM, "

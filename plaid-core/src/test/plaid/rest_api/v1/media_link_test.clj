@@ -12,12 +12,11 @@
                      with-clean-db api-call]]
             [plaid.rest-api.v1.auth :as auth]
             [plaid.server.config :as config]
-            [plaid.test-helpers :refer [delete-tree! create-test-project create-test-document
+            [plaid.test-helpers :refer [delete-tree! create-test-project create-test-document mp3-file
                                         add-project-reader]]
             [ring.mock.request :as mock]
             [taoensso.timbre :as log])
-  (:import [java.io File]
-           [java.nio.file FileVisitOption Files]
+  (:import [java.nio.file FileVisitOption Files]
            [java.nio.file.attribute FileAttribute]
            [java.time Instant]))
 
@@ -53,9 +52,7 @@
   response)
 
 (defn- upload! [did content]
-  (let [file (File/createTempFile "plaid-media-link-" ".mp3")]
-    (spit file content)
-    (.deleteOnExit file)
+  (let [file (mp3-file content)]
     (rest-handler (-> (admin-request :put (str "/api/v1/documents/" did "/media"))
                       (assoc :multipart-params
                              {"file" {:filename "clip.mp3" :tempfile file :size (.length file)}})))))
@@ -114,7 +111,7 @@
           (let [resp (close-body! (rest-handler (-> (anonymous :get url)
                                                     (assoc-in [:headers "range"] "bytes=2-5"))))]
             (is (= 206 (:status resp)))
-            (is (= "bytes 2-5/10" (get-in resp [:headers "Content-Range"])))
+            (is (= "bytes 2-5/14" (get-in resp [:headers "Content-Range"])))
             (is (= "private, max-age=31536000, immutable" (get-in resp [:headers "Cache-Control"])))))
         (testing "a matching If-None-Match through the link is 304"
           (let [etag (get-in (get-anon url) [:headers "ETag"])

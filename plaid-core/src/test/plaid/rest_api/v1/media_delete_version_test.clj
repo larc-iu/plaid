@@ -12,9 +12,8 @@
                                     with-clean-db parse-response-body]]
             [plaid.server.config :as config]
             [plaid.sql.operation]
-            [plaid.test-helpers :refer [delete-tree! create-test-project create-test-document]])
-  (:import [java.io File]
-           [java.nio.file FileVisitOption Files]
+            [plaid.test-helpers :refer [delete-tree! create-test-project create-test-document mp3-file]])
+  (:import [java.nio.file FileVisitOption Files]
            [java.nio.file.attribute FileAttribute]))
 
 (use-fixtures :once with-db with-mount-states with-rest-handler with-admin with-test-users)
@@ -29,9 +28,7 @@
       (finally (delete-tree! tmp)))))
 
 (defn- upload! [did content]
-  (let [file (File/createTempFile "plaid-media-delver-" ".mp3")]
-    (spit file content)
-    (.deleteOnExit file)
+  (let [file (mp3-file content)]
     (rest-handler (-> (admin-request :put (str "/api/v1/documents/" did "/media"))
                       (assoc :multipart-params {"file" {:filename "clip.mp3"
                                                         :tempfile file
