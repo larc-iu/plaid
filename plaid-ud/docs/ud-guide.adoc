@@ -227,14 +227,16 @@ Empty nodes are not supported, so an elided predicate cannot be added, and gappi
 
 == Metadata
 
-CoNLL-U keeps notes about documents and sentences as comment lines, and Plaid UD edits them in two places.
+Plaid UD keeps notes about documents and about sentences, and edits them in two places.
 Notes **about a document**, such as its source, genre or licence, are on its **Details** tab.
+They stay in Plaid and are not written to the CoNLL-U export.
 Notes **about a sentence** are behind **Edit metadata**, in the row of actions below its grid.
 
 Every sentence carries `sent_id`, CoNLL-U's own identifier for it.
 Other fields are a maintainer's choice, under **Settings → UD settings**. A free translation is conventionally `text_en`, naming its language.
 Fields save as you leave them, and clearing one removes it.
 On export, sentence fields are written above their sentence, as `# sent_id = ...` or `# text_en = ...`.
+On import, a comment line under `# newdoc id`, such as `# source = ...`, becomes a field of the document's first sentence, not of the document.
 A sentence with no `sent_id`, such as one made by a split, is given one on export: the document's name with an underscore for each space or slash, then its number, as in `Field_notes-3`.
 
 == Text Direction
