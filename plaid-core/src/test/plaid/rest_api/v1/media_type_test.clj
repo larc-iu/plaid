@@ -143,6 +143,18 @@
           (is (= "Not an audio or video file." (:error (parse-response-body res))) name)
           (is (= 404 (:status (get-media did))) (str name " is not stored")))))))
 
+(deftest an-empty-file-is-refused
+  ;; REV-PB-A: a 0-byte file named like a recording was taken by its name.
+  (with-media-dir
+    (let [pid (create-test-project admin-request "Media empty")]
+      (doseq [name ["empty.mp3" "empty.wav" "empty.webm"]]
+        (let [did (create-test-document admin-request pid name)
+              source (doto (File/createTempFile "plaid-empty-" ".bin") (.deleteOnExit))
+              res (upload-file! did name source)]
+          (is (= 415 (:status res)) name)
+          (is (= "The file is empty." (:error (parse-response-body res))) name)
+          (is (= 404 (:status (get-media did))) (str name " is not stored")))))))
+
 (deftest a-stored-page-is-served-as-the-type-of-its-extension
   ;; A file already in the media folder (stored before SEC-1, or put there by
   ;; hand) is served as the type its extension names, never as what its bytes

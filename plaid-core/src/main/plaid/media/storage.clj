@@ -408,6 +408,10 @@
           {:success false :error-kind :exists
            :error "Media file already exists. Delete existing file first."}
 
+          ;; An empty file is no recording, whatever its name says.
+          (zero? (.length temp-file))
+          {:success false :error-kind :unsupported :error "The file is empty."}
+
           (> (.length temp-file) (get-max-file-size))
           ;; The sizes ride along so the refusal can say what the limit is.
           {:success false :error-kind :too-large :error "File too large"

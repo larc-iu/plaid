@@ -257,7 +257,7 @@
      :put {:plaid/idempotency false
            :summary (str "Upload a media file for a document. Uses Apache Tika for content validation: "
                          "a file whose bytes read as anything but audio or video (a page, a picture, "
-                         "text) is refused 415 whatever its name. The name's extension decides only "
+                         "text) is refused 415 whatever its name, and so is an empty file. The name's extension decides only "
                          "where the bytes do not say (application/octet-stream, Matroska or WebM, Ogg). "
                          "A document that already has one refuses it 409, with "
                          "<body>media-exists</body> and the current <body>media-url</body>. "
