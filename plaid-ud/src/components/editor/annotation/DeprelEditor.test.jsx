@@ -138,6 +138,64 @@ describe('DeprelEditor', () => {
     await unmount();
   });
 
+  // An emptied label names no relation. Enter on it must not take the list's
+  // first one (it stored `acl`): it does what the bin does, and where there is
+  // no bin (a relabel being typed) it leaves things as they were.
+  const clear = (input) => {
+    const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+    setter.call(input, '');
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  };
+
+  it('deletes on Enter once the label has been emptied, as the bin does', async () => {
+    const onCommit = vi.fn();
+    const onDelete = vi.fn();
+    const onCancel = vi.fn();
+    const { container, step, unmount } = await mount({ onCommit, onDelete, onCancel });
+    const input = all(container, 'input')[0];
+
+    await step(async () => focus(input));
+    await step(async () => clear(input));
+    await step(async () => press(input, 'Enter'));
+
+    expect(onCommit).not.toHaveBeenCalled();
+    expect(onDelete).toHaveBeenCalledTimes(1);
+    await unmount();
+  });
+
+  it('cancels on Enter on an emptied label when there is nothing to delete', async () => {
+    const onCommit = vi.fn();
+    const onCancel = vi.fn();
+    const { container, step, unmount } = await mount({ onCommit, onCancel, onDelete: undefined });
+    const input = all(container, 'input')[0];
+
+    await step(async () => focus(input));
+    await step(async () => type(input, 'nm'));
+    await step(async () => clear(input));
+    await step(async () => press(input, 'Enter'));
+
+    expect(onCommit).not.toHaveBeenCalled();
+    expect(onCancel).toHaveBeenCalledTimes(1);
+    await unmount();
+  });
+
+  it('takes the option the arrows picked on an emptied label', async () => {
+    const onCommit = vi.fn();
+    const onDelete = vi.fn();
+    const { container, step, unmount } = await mount({ onCommit, onDelete });
+    const input = all(container, 'input')[0];
+
+    await step(async () => focus(input));
+    await step(async () => clear(input));
+    await step(async () => press(input, 'ArrowDown'));
+    await step(async () => press(input, 'ArrowDown'));
+    await step(async () => press(input, 'Enter'));
+
+    expect(onCommit).toHaveBeenCalledWith('obj', true);
+    expect(onDelete).not.toHaveBeenCalled();
+    await unmount();
+  });
+
   // Chromium's select() focuses the input, so a deferred select-on-arrival that
   // fires after the caret has left pulls it back (see EditableCell.arrival).
   it('never selects the label once the caret has left it', async () => {

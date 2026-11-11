@@ -23,7 +23,9 @@ import { textIncludes } from '@ui/domain/collation.js';
 //     item ("Use … as typed") — pick it by click to annotate literally (rare).
 //
 // Keyboard contract (preserved from the old contentEditable editor):
-//   Enter / blur     → commit + close (Enter commits the highlighted match)
+//   Enter / blur     → commit + close (Enter commits the highlighted match).
+//                      Enter on an emptied label is the bin (cancel where there
+//                      is none), and blur on one keeps the label as it was.
 //   Escape           → cancel + close
 //   Shift+Backspace  → delete the relation, while the label is still as it
 //                      opened (also the bin to the input's left, whose tooltip
@@ -233,10 +235,14 @@ export function DeprelEditor({ relation, onCommit, onCancel, onDelete, onTab }) 
             // highlighted one wins when there is one. It is read straight off the
             // list rather than inferred from a later event, which is the whole
             // point of the combobox handing its state to the key handler.
+            // An emptied label names no relation, so Enter on it does what the
+            // bin does, and cancels where there is no bin.
             const picked = combo.activeValue;
-            once(() =>
-              picked != null ? commitOr(picked, true) : commitOr(value, typedRef.current),
-            );
+            once(() => {
+              if (picked != null) commitOr(picked, true);
+              else if (!typed) (onDelete || onCancel)();
+              else commitOr(value, typedRef.current);
+            });
           } else if (e.key === 'Escape') {
             e.preventDefault();
             e.stopPropagation();
@@ -262,10 +268,11 @@ export function DeprelEditor({ relation, onCommit, onCancel, onDelete, onTab }) 
           }
         }}
         filter={optionsFilter}
-        // Auto-highlight the best match for Enter — but only once typing has
-        // started. While pristine (just opened, showing the full list) nothing is
-        // pre-selected, so Enter keeps the current value.
-        autoHighlight={!pristine}
+        // Auto-highlight the best match for Enter, but only once something has
+        // been typed. While pristine (just opened, showing the full list) nothing
+        // is pre-selected, so Enter keeps the current value, and an emptied
+        // label highlights nothing, so Enter never takes the list's first one.
+        autoHighlight={!pristine && typed !== ''}
         autoFocus
         className="deprel-edit-input"
         optionClassName="px-2 py-0.5 text-[11px]"
