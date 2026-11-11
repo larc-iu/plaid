@@ -13,15 +13,37 @@
 //
 // Descriptions go into an immutable audit log, so this has to happen at read
 // time: fixing the writers would leave every row already stored as it is.
-const UUID_CLAUSE =
-  /\s+\b(?:on|in|to|from|of|for)\b[\w\s"'-]*?[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi;
-
-// And an id standing after the noun it names, "Update guideline <id>", goes on
-// its own, leaving the noun: "Update guideline".
-const BARE_UUID = /\s+[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi;
+//
+// What is left must still say what happened, and never stop on a joining
+// word. The rules, in order:
+//   1. "and <id>" and "into <id>" go whole: "Merge tokens <id> and <id>" reads
+//      "Merge tokens", "Merge 3 vocab items into <id>" reads "Merge 3 vocab
+//      items".
+//   2. An id in brackets goes with them: "Delete project "X" (<id>)".
+//   3. A clause that only places the row goes, preposition and all: "on layer
+//      <id>", "in project <id>", "to span <id>". "of" is not one of them, since
+//      it says what was changed: "Update body of text <id>" keeps "of text".
+//   4. Any id left, after the noun it names, goes on its own: "Update guideline
+//      <id>" reads "Update guideline".
+//   5. A count of one is said in the singular where core wrote the plural:
+//      "with 1 keys", "Merge 1 vocab items".
+const ID = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\\b';
+const JOINED_ID = new RegExp(`\\s+(?:and|into)\\s+${ID}`, 'gi');
+const BRACKETED_ID = new RegExp(`\\s*\\(${ID}\\)`, 'gi');
+const UUID_CLAUSE = new RegExp(`\\s+\\b(?:on|in|to|from|for)\\b[\\w\\s"'-]*?${ID}`, 'gi');
+const BARE_UUID = new RegExp(`\\s+${ID}`, 'gi');
+const ONE_OF_MANY = /\b1 (metadata key|key|op|relation|vocab item)s\b/g;
 
 export const readableDescription = (text) =>
-  typeof text === 'string' ? text.replace(UUID_CLAUSE, '').replace(BARE_UUID, '').trim() : text;
+  typeof text === 'string'
+    ? text
+        .replace(JOINED_ID, '')
+        .replace(BRACKETED_ID, '')
+        .replace(UUID_CLAUSE, '')
+        .replace(BARE_UUID, '')
+        .replace(ONE_OF_MANY, '1 $1')
+        .trim()
+    : text;
 
 // What an operation's kind (the server's closed list, `?group-kind=`) is
 // called on a History row. An operation with no kind names none.
