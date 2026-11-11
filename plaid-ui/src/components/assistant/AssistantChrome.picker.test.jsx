@@ -27,14 +27,19 @@ afterEach(async () => {
   saveDockOpen(false);
 });
 
-const mount = async (c) => {
-  view = await renderComponent(
-    <AssistantChrome adapter={ADAPTER} client={c} user={{ id: 'u1' }}>
-      {({ chip }) => <header>{chip}</header>}
-    </AssistantChrome>,
-  );
+const chrome = (c, subject = null) => (
+  <AssistantChrome adapter={ADAPTER} client={c} user={{ id: 'u1' }} subject={subject}>
+    {({ chip }) => <header>{chip}</header>}
+  </AssistantChrome>
+);
+const settle = async () => {
   for (let i = 0; i < 5; i++) await view.step(() => new Promise((r) => setTimeout(r, 0)));
 };
+const mount = async (c, subject = null) => {
+  view = await renderComponent(chrome(c, subject));
+  await settle();
+};
+const LINE = 'No assistant is running for “Quiet project”.';
 
 describe('the project picker', () => {
   it('stays open and says so when the project picked has no assistant', async () => {
@@ -52,5 +57,40 @@ describe('the project picker', () => {
     expect(aside.textContent).toContain('No assistant is running for “Quiet project”.');
     // The list stays, so another project can be picked.
     expect(byText(aside, 'button', 'Quiet project')).not.toBeNull();
+  });
+
+  it('says nothing about a project only walked through on the way to the list', async () => {
+    // The bug: open a project with no assistant, go back to the list, and the
+    // panel named that project, though nobody picked it there.
+    const c = client();
+    // Known to have none, as it is once that project's screen has asked.
+    serviceCache.set('p-quiet', []);
+    await mount(c, { projectId: 'p-quiet', projectName: 'Quiet project' });
+    await view.rerender(chrome(c, null));
+    await settle();
+
+    const aside = document.body.querySelector('aside');
+    expect(aside).not.toBeNull();
+    expect(byText(aside, 'button', 'Quiet project')).not.toBeNull();
+    expect(aside.textContent).not.toContain(LINE);
+  });
+
+  it('says it only until the panel is hidden', async () => {
+    const c = client();
+    await mount(c);
+    await view.step(() => byText(document.body, 'aside button', 'Quiet project').click());
+    await settle();
+    expect(document.body.querySelector('aside').textContent).toContain(LINE);
+
+    await view.step(() =>
+      document.body.querySelector('aside button[title="Hide the assistant"]').click(),
+    );
+    await settle();
+    await view.step(() => byText(document.body, 'header button', 'Assistant').click());
+    await settle();
+
+    const aside = document.body.querySelector('aside');
+    expect(aside).not.toBeNull();
+    expect(aside.textContent).not.toContain(LINE);
   });
 });

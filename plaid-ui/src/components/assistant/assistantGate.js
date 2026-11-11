@@ -19,6 +19,8 @@
 //     assistant is no reason to forget it.
 //   - A screen that is not a project's own offers the project picker, and
 //     keeps it, saying so, when the project picked there has no assistant.
+//     Only a project picked there since the panel opened is named: one the
+//     reader only walked through on the way to the list was not asked about.
 //   - Nothing is offered on the app's own Assistant screen. The full tab is
 //     already showing the conversation, and a dock beside it drew the same
 //     live turn a second time, each copy with its own step list, Stop button
@@ -30,6 +32,7 @@ export const assistantGate = ({
   projectId = null,
   available = null,
   projectScreen = false,
+  picked = false,
   assistantRoute = false,
 } = {}) => {
   // Offer to pick a project only on a screen that is not a project's own (the
@@ -61,6 +64,6 @@ export const assistantGate = ({
     showHandle,
     showDock,
     showPicker,
-    noAssistant: showPicker && !!projectId && available === false,
+    noAssistant: showPicker && picked && !!projectId && available === false,
   };
 };

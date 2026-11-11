@@ -56,7 +56,7 @@ describe('assistantGate', () => {
   it('keeps the panel open and says so when the project picked there has no assistant', () => {
     // The bug: picking a project with no assistant closed the panel, and the
     // button went with it, with nothing said.
-    const picked = { projectId: 'p1', projectScreen: false };
+    const picked = { projectId: 'p1', projectScreen: false, picked: true };
     expect(gate({ ...picked, available: false, open: true })).toEqual({
       ...NONE,
       showDock: true,
@@ -72,6 +72,17 @@ describe('assistantGate', () => {
     });
     // One with an assistant opens its conversation, as before.
     expect(gate({ ...picked, available: true, open: true })).toEqual({ ...NONE, showDock: true });
+  });
+
+  it('says nothing about a project the panel holds but nobody picked there', () => {
+    // Walked through on the way to the project list: the picker stands, and
+    // names no project.
+    const walked = { projectId: 'p1', projectScreen: false, picked: false };
+    expect(gate({ ...walked, available: false, open: true })).toEqual({
+      ...NONE,
+      showDock: true,
+      showPicker: true,
+    });
   });
 
   it('offers nothing on the app’s own Assistant screen', () => {

@@ -58,9 +58,15 @@ export const AssistantChrome = ({
   // who has never opened it gets it shut (see panelWidth.js).
   const [open, setOpen] = useState(readDockOpen);
   const { width, resize, wide } = useDockWidth();
+  // The project last picked in the picker below, until the panel is hidden or
+  // a screen publishes a project. Only that one is said to have no assistant:
+  // a project the panel holds because the reader walked through it was not
+  // asked about.
+  const [pickedId, setPickedId] = useState(null);
   const setDockOpen = useCallback((next) => {
     setOpen(next);
     saveDockOpen(next);
+    if (!next) setPickedId(null);
   }, []);
 
   // The project the panel is about. A screen with no project of its own leaves
@@ -78,6 +84,7 @@ export const AssistantChrome = ({
   const [held, setHeld] = useState(null);
   useEffect(() => {
     if (!subject?.projectId) return;
+    setPickedId(null);
     setHeld({
       projectId: subject.projectId,
       projectName: subject.projectName,
@@ -94,6 +101,7 @@ export const AssistantChrome = ({
     projectId,
     available,
     projectScreen: !!subject?.projectId || routeHasProject,
+    picked: !!projectId && pickedId === projectId,
     assistantRoute,
   });
 
@@ -175,7 +183,10 @@ export const AssistantChrome = ({
             pickerShown ? (
               <ProjectPicker
                 client={client}
-                onPick={(p) => setHeld({ projectId: p.id, projectName: p.name })}
+                onPick={(p) => {
+                  setHeld({ projectId: p.id, projectName: p.name });
+                  setPickedId(p.id);
+                }}
                 onHide={() => setDockOpen(false)}
                 noAssistantFor={gate.noAssistant ? project?.projectName || null : null}
               />
