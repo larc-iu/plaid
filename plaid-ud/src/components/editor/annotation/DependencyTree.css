@@ -25,11 +25,11 @@
   overflow: visible;
 }
 
-/* The ROOT bar: the page's own colour at rest, so it shows only under the
-   pointer, and a fill all the same, so it takes clicks. */
+/* The ROOT bar: a faint grey at rest, so it can be found without hovering,
+   and the full grey under the pointer. */
 .tree-root-rect,
 .tree-root-rect--default {
-  fill: hsl(var(--background));
+  fill: hsl(var(--muted) / 0.4);
 }
 
 .tree-root-rect {
