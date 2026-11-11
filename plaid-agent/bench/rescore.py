@@ -10,6 +10,11 @@ then a core is started on the run's own kept database and the checker is run
 with the run's conversation and its saved baseline. The old result is kept in
 score.json as `pass_as_run` and `measures_as_run`, the new one replaces
 `pass` and `measures`, and `rescored` says when and why.
+
+A run without its database is scored too when it wrote nothing (its
+extract followed no unit: no plan applied, no service run). Its database
+after the run is then the snapshot after the task's setup, which the copy
+made for the setup is. A run that wrote and kept no database is skipped.
 """
 import json
 import sys
@@ -26,6 +31,12 @@ import benchlib as bl  # noqa: E402
 from run import load_checker, load_tasks, run_setup  # noqa: E402
 
 
+def wrote_nothing(rd: Path) -> bool:
+    """The run's extract followed no unit, so nothing was written after the setup."""
+    units = rd / 'extract' / 'units.jsonl'
+    return units.is_file() and not units.read_text().strip()
+
+
 def main():
     stamp, names = sys.argv[1], sys.argv[2:]
     sd = bl.RUNS / stamp
@@ -38,8 +49,9 @@ def main():
         project = man['projects'][task['project']]
         who = task.get('as', 'B')
         for rd in sorted((sd / task['id']).glob('*/*')):
-            if not (rd / 'db' / 'plaid.db').exists():
-                print(f'{rd}: no kept database, skipped')
+            kept = (rd / 'db' / 'plaid.db').exists()
+            if not kept and not wrote_nothing(rd):
+                print(f'{rd}: no kept database and the run wrote, skipped')
                 continue
             start = SimpleNamespace(project=project, task=task, args=task.get('args') or {}, app=task['app'],
                                     manifest=man, turns=[], baseline_dir=None)
@@ -50,24 +62,28 @@ def main():
                 try:
                     start.client = PlaidClient(core.url, man['tokens']['A'])
                     start.user = PlaidClient(core.url, man['tokens'][who])
-                    run_setup(task, start, tmp / 'baseline')
+                    setup_baseline = run_setup(task, start, tmp / 'baseline')
                 finally:
                     core.stop()
-            core = bl.Core(code, rd / 'db', rd / 'rescore-core.log').start()
-            try:
-                rec = json.loads((rd / 'record.json').read_text())
-                ctx = SimpleNamespace(client=PlaidClient(core.url, man['tokens']['A']),
-                                      user=PlaidClient(core.url, man['tokens'][who]), manifest=man,
-                                      project=project, task=task, args=task.get('args') or {}, app=task['app'],
-                                      turns=json.loads((rd / 'turns.json').read_text()),
-                                      baseline_dir=(rd / 'baseline') if (rd / 'baseline').is_dir() else None,
-                                      conversation=rec['conversation'], meta=rec.get('meta'))
-                for k in ('lex_baseline', 'guidelines_baseline'):
-                    if hasattr(start, k):
-                        setattr(ctx, k, getattr(start, k))
-                got = check(ctx)
-            finally:
-                core.stop()
+                if kept:
+                    db, baseline = rd / 'db', (rd / 'baseline') if (rd / 'baseline').is_dir() else None
+                else:
+                    db, baseline = tmp / 'db', setup_baseline
+                core = bl.Core(code, db, rd / 'rescore-core.log').start()
+                try:
+                    rec = json.loads((rd / 'record.json').read_text())
+                    ctx = SimpleNamespace(client=PlaidClient(core.url, man['tokens']['A']),
+                                          user=PlaidClient(core.url, man['tokens'][who]), manifest=man,
+                                          project=project, task=task, args=task.get('args') or {},
+                                          app=task['app'], turns=json.loads((rd / 'turns.json').read_text()),
+                                          baseline_dir=baseline, conversation=rec['conversation'],
+                                          meta=rec.get('meta'))
+                    for k in ('lex_baseline', 'guidelines_baseline'):
+                        if hasattr(start, k):
+                            setattr(ctx, k, getattr(start, k))
+                    got = check(ctx)
+                finally:
+                    core.stop()
             sp = rd / 'score.json'
             s = json.loads(sp.read_text())
             s.setdefault('pass_as_run', s['pass'])
@@ -75,7 +91,8 @@ def main():
             s['pass'] = bool(got.get('pass'))
             s['measures'] = got.get('measures', {})
             s['rescored'] = {'at': datetime.now().isoformat(timespec='seconds'),
-                             'why': 'checker changed after the run, see the task file'}
+                             'why': 'checker changed after the run, see the task file',
+                             'database': 'kept' if kept else 'the setup copy, the run wrote nothing'}
             sp.write_text(json.dumps(s, ensure_ascii=False, indent=1, default=str))
             if not (rd / 'check_as_run.json').exists():
                 (rd / 'check.json').rename(rd / 'check_as_run.json')

@@ -192,3 +192,20 @@ def test_a_service_is_given_its_models_context_window_and_none_without_one(bench
     assert cmd[-3:] == ['--max-steps', '30', 'P']
     cmd = service_command(task, 'glm-5.3-flash', 'http://gate/v1', 'http://core', 'P', None)
     assert '--context-window' not in cmd
+
+
+# --- rescoring a run whose database was not kept ---------------------------------
+
+def test_a_run_that_wrote_nothing_is_rescored_without_its_database(bench_path, tmp_path):
+    # glm53-1 kept no database (no --keep-db), so rescore skipped every run,
+    # the 35 that wrote nothing too: their database after the run is the
+    # snapshot after the task's setup
+    from rescore import wrote_nothing
+    rd = tmp_path / 'run'
+    assert not wrote_nothing(rd), 'no extract: nothing says what the run wrote'
+    (rd / 'extract').mkdir(parents=True)
+    assert not wrote_nothing(rd)
+    (rd / 'extract' / 'units.jsonl').write_text('')
+    assert wrote_nothing(rd)
+    (rd / 'extract' / 'units.jsonl').write_text('{"kind": "assistant-plan", "counts": {"spans.update": 1}}\n')
+    assert not wrote_nothing(rd)

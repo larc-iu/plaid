@@ -18,7 +18,7 @@ The harness is this folder, in git. What it makes and reads that is not code liv
 | `run`, `run.py` | run tasks |
 | `validate`, `validate.py` | prove a checker on hand-made right and wrong results, no model |
 | `report`, `report.py` | tables from a run stamp, or the diff of two |
-| `rescore`, `rescore.py` | score kept runs (`--keep-db`) again with a task's current checker, no model. The old verdict stays in score.json as `pass_as_run` |
+| `rescore`, `rescore.py` | score kept runs (`--keep-db`) again with a task's current checker, no model, and runs that wrote nothing (on the snapshot after the task's setup). The old verdict stays in score.json as `pass_as_run` |
 | `lib/gate.py` | the model gate: holds the key, caps requests in flight and per minute, retries 429s |
 | `lib/panel.py` | the Assistant panel, headless |
 | DATA `runs/<stamp>/` | results |
@@ -82,7 +82,7 @@ What a run leaves in DATA `runs/<stamp>/<task>/<model>/<rep>/`:
 - `extract/`: `plaid_agent.research.extract` on the run's database (`tool_calls.jsonl`, `turns.jsonl`, `plans.jsonl` and the rest, see its README). `PRIVATE_text.jsonl` holds the texts, which here are public data and our own prompts.
 - `core.log`, `service.log`, `harness_error.txt` when the harness itself failed.
 
-The run's database is deleted after extraction unless `--keep-db`.
+The run's database is deleted after extraction unless `--keep-db`. Without it, `rescore` can still score a run that wrote nothing (`extract/units.jsonl` empty), and no other.
 
 ## Adding a task
 
