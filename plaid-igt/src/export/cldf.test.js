@@ -434,8 +434,25 @@ describe('buildCldfDataset — languages', () => {
 
   it('warns when a translation has no meta language to attribute it to', () => {
     const { files, warnings } = build({ languages: { object: LANGUAGES.object, meta: {} } });
-    expect(warnings.join(' ')).toMatch(/No meta language/);
+    expect(warnings.join(' ')).toMatch(
+      /The meta language has no name, Glottocode or ISO 639-3 code, so translations carry no Meta_Language_ID/,
+    );
     expect(Object.keys(table(files, 'examples.csv')[0])).not.toContain('Meta_Language_ID');
+  });
+
+  // A FLEx import leaves the meta language as a writing-system tag alone
+  // (GUIDE-IGT S5). The tag is not a language identifier a LanguageTable
+  // carries, so the row is left out as before, and the warning says what is
+  // missing instead of claiming nothing is set.
+  it('names what a meta language with only a writing-system tag lacks', () => {
+    const { files, warnings } = build({
+      languages: { object: LANGUAGES.object, meta: { tag: 'pt' } },
+    });
+    const all = warnings.join(' ');
+    expect(all).not.toMatch(/No meta language is configured/);
+    expect(all).toMatch(/The meta language has no name, Glottocode or ISO 639-3 code/);
+    expect(Object.keys(table(files, 'examples.csv')[0])).not.toContain('Meta_Language_ID');
+    expect(table(files, 'languages.csv')).toHaveLength(1);
   });
 });
 

@@ -391,6 +391,8 @@ export function buildCldfDataset({
   // --- languages ---
   const objId = languageId(languages?.object, 'object');
   const metaId = languageId(languages?.meta, 'meta');
+  // A language row needs a name or a code. A writing-system tag alone (what a
+  // FLEx import records) is not a language identifier, so it writes no row.
   const hasMeta = !!(
     languages?.meta &&
     (languages.meta.name || languages.meta.glottocode || languages.meta.iso639P3)
@@ -417,8 +419,8 @@ export function buildCldfDataset({
   // A translation with no stated meta language is a dangling claim, so say so.
   if (o.translationField && !hasMeta) {
     warnings.push(
-      'No meta language is configured, so translations carry no Meta_Language_ID. ' +
-        'Set it under Settings → General → Languages.',
+      'The meta language has no name, Glottocode or ISO 639-3 code, so translations carry no ' +
+        'Meta_Language_ID. Set it under Settings → General → Languages.',
     );
   }
 
