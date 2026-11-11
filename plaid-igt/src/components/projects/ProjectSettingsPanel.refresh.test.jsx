@@ -87,6 +87,8 @@ const fakeClient = () => {
     tokenLayers: { setConfig: vi.fn(async () => {}) },
     spanLayers: { setConfig: vi.fn(async () => {}) },
     batched: async () => [],
+    // A link or unlink is one labelled operation.
+    withOperation: async (label, fn) => fn(),
     query: vi.fn(async () => ({ results: [] })),
   };
 };
