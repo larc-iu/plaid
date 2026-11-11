@@ -125,7 +125,7 @@
      skipped
      (if (seq kept-links)
        [{:kind "vocab-link" :count (count kept-links)
-         :reason "the vocabulary entry it had then no longer exists, and it is kept as it is now"}]
+         :reason "the vocabulary entry it had then no longer exists"}]
        [])]))
 
 ;; ============================================================

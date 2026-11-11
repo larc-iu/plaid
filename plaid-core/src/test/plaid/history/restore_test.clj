@@ -492,6 +492,10 @@
     (let [dry (restore! admin-request doc-id t :dry-run true)]
       (assert-ok dry)
       (is (= {"vocab-link" 1} (kinds (-> dry :body :kept))))
+      ;; The reason says why, as a skipped row's does. That it is kept is
+      ;; the key it sits under (REV-PB-A-3).
+      (is (= ["the vocabulary entry it had then no longer exists"]
+             (mapv :reason (-> dry :body :kept))))
       (is (= {} (kinds (-> dry :body :skipped))))
       (is (= {:inserted 0 :updated 0 :deleted 0} (-> dry :body :vocab-links)))
       (is (true? (-> dry :body :name))))
