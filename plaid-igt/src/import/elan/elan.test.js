@@ -22,6 +22,9 @@ import {
 import { buildEafDocument } from '../../export/elan.js';
 import { ELAN_FIELD_NAMES_PROPERTY } from '../../domain/elanFieldNames.js';
 import { makeAlignmentToken, makeSentence } from '../../export/testFixtures.js';
+import { tokenizeText } from '../../utils/tokenizationUtils.js';
+import { DEFAULT_IGNORED_TOKENS } from '../../domain/igtConfig.js';
+import { previewSentence } from './preview.js';
 
 // ---- fixtures --------------------------------------------------------------
 
@@ -633,6 +636,99 @@ describe('buildElanDocuments', () => {
     ]);
     expect(doc.words.every((w) => w.morphemes.length === 0)).toBe(true);
     expect(doc.sentences[0].fields).toEqual({ ft: 'no words here' });
+  });
+
+  describe('words made with no word tier', () => {
+    // A speaker's transcription tier and nothing under it, the shape the tier
+    // screen offers only Sentences for. Each utterance's words are what
+    // the Tokenize tab makes of its text, under the rule given.
+    const transcription = (values) =>
+      eafXml({
+        types: { u: null },
+        tiers: [
+          {
+            id: 'A',
+            type: 'u',
+            participant: 'A',
+            anns: values.map((v, i) => [`a${i}`, v, i * 1000, i * 1000 + 900]),
+          },
+        ],
+      });
+    const wordsOf = (doc) => {
+      const chars = [...doc.body];
+      return doc.words.map((w) => chars.slice(w.begin, w.end).join(''));
+    };
+    // What a Tokenize run over the whole stored body makes.
+    const tokenized = (doc, rule) =>
+      tokenizeText(doc.body, rule, [{ start: 0, end: [...doc.body].length }]).map((t) => ({
+        begin: t.begin,
+        end: t.end,
+      }));
+    const spans = (doc) => doc.words.map((w) => ({ begin: w.begin, end: w.end }));
+
+    it('leaves punctuation out of the words under the default rule', () => {
+      const xml = eafXml({
+        types: { u: null },
+        tiers: [
+          {
+            id: 'Ana',
+            type: 'u',
+            participant: 'Ana',
+            anns: [['a1', 'ama, kilu sipa. ¿tuni wari?', 0, 900]],
+          },
+          {
+            id: 'Bo',
+            type: 'u',
+            participant: 'Bo',
+            anns: [['b1', '(???) "puri", nina.', 1000, 1900]],
+          },
+        ],
+      });
+      const { build } = buildFrom([[xml, 'x.eaf']]);
+      const [doc] = build.documents;
+      expect(wordsOf(doc)).toEqual(['ama', 'kilu', 'sipa', 'tuni', 'wari', 'puri', 'nina']);
+      expect(spans(doc)).toEqual(tokenized(doc, DEFAULT_IGNORED_TOKENS));
+      expect(build.stats.words).toBe(7);
+      // The review shows the stored words.
+      expect(previewSentence(doc, 0).words).toEqual(['ama', 'kilu', 'sipa', 'tuni', 'wari']);
+    });
+
+    it("follows the project's rule", () => {
+      const xml = transcription(["k'a ama, kilu-ta."]);
+      const keepApostrophe = { type: 'unicodePunctuation', whitelist: ["'"], blacklist: [] };
+      const kept = buildFrom([[xml, 'x.eaf']], {}, { ignoredTokens: keepApostrophe }).build
+        .documents[0];
+      expect(wordsOf(kept)).toEqual(["k'a", 'ama', 'kilu', 'ta']);
+      expect(spans(kept)).toEqual(tokenized(kept, keepApostrophe));
+      const onlyComma = { type: 'blacklist', whitelist: [], blacklist: [','] };
+      const listed = buildFrom([[xml, 'x.eaf']], {}, { ignoredTokens: onlyComma }).build
+        .documents[0];
+      expect(wordsOf(listed)).toEqual(["k'a", 'ama', 'kilu-ta.']);
+      expect(spans(listed)).toEqual(tokenized(listed, onlyComma));
+      // No rule stored: as the Tokenize tab reads a project without one.
+      const none = buildFrom([[xml, 'x.eaf']], {}, { ignoredTokens: null }).build.documents[0];
+      expect(spans(none)).toEqual(tokenized(none, null));
+    });
+
+    it('counts code points in right-to-left text, astral text and text without spaces', () => {
+      const xml = transcription(['«مرحبا، يا صديقي؟»', '𐌰𐌱𐌲, 𐌳𐌴.', '我们走了。好！', '¿Qué?']);
+      const [doc] = buildFrom([[xml, 'x.eaf']]).build.documents;
+      expect(wordsOf(doc)).toEqual(['مرحبا', 'يا', 'صديقي', '𐌰𐌱𐌲', '𐌳𐌴', '我们走了', '好', 'Qué']);
+      expect(spans(doc)).toEqual(tokenized(doc, DEFAULT_IGNORED_TOKENS));
+      expect(doc.words.every((w) => w.sentenceIndex != null)).toBe(true);
+      expect(doc.words.map((w) => w.sentenceIndex)).toEqual([0, 0, 0, 1, 1, 2, 2, 3]);
+    });
+
+    it('makes no word of an utterance that is only punctuation', () => {
+      const xml = transcription(['ama.', '(???)', '  ', '... ¿?', 'kilu']);
+      const { build } = buildFrom([[xml, 'x.eaf']]);
+      const [doc] = build.documents;
+      // The blank one is skipped, the punctuation ones are sentences with no words.
+      expect(doc.sentences).toHaveLength(4);
+      expect(wordsOf(doc)).toEqual(['ama', 'kilu']);
+      expect(doc.words.map((w) => w.sentenceIndex)).toEqual([0, 3]);
+      expect(build.stats.words).toBe(2);
+    });
   });
 
   it('drops a morph annotation that says nothing, so the word reads as unanalyzed', () => {

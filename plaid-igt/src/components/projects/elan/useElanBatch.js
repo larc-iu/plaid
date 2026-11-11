@@ -45,10 +45,14 @@ const newFieldNames = (nodes, roles) => fieldWorksFieldNames(fieldTierEntries(no
  *   the fields that project already has; anything it leaves out falls back to
  *   the tier's own name. It decides for the whole batch at once because some
  *   pairings only follow from the set (see suggestFieldNames).
+ * @param options.ignoredTokens  the stored ignored-tokens rule of the project
+ *   the documents go into, which makes the words of an utterance no tier
+ *   divides. Left out, the rule a new project starts with.
  */
 export function useElanBatch({
   skipEmptyTiers = false,
   namesFor = newFieldNames,
+  ignoredTokens = undefined,
   // prepareRecording's options, for a test to say what the browser plays.
   prepareOptions = undefined,
 } = {}) {
@@ -82,12 +86,13 @@ export function useElanBatch({
         mediaByFile: media.byFile,
         mediaTracks: media.tracks,
         recordMediaName,
+        ignoredTokens,
       });
     } catch (e) {
       console.error('ELAN build failed:', e);
       return null;
     }
-  }, [files, comparison, roles, fieldNames, problems, media, recordMediaName]);
+  }, [files, comparison, roles, fieldNames, problems, media, recordMediaName, ignoredTokens]);
 
   // Adopt a schema: suggest the roles and field names for it, keeping whatever
   // the user has already chosen for nodes that survive. A merge changes node

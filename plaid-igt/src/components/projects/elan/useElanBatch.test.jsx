@@ -48,15 +48,15 @@ const NEAR_MISS = [
 const picked = (tiers) => [new File([eaf(tiers)], 'corpus.eaf')];
 const pickedAs = (names, tiers) => names.map((name) => new File([eaf(tiers)], name));
 
-const Probe = ({ onReady }) => {
-  const batch = useElanBatch();
+const Probe = ({ onReady, options }) => {
+  const batch = useElanBatch(options);
   onReady(batch);
   return null;
 };
 
-const mount = async () => {
+const mount = async (options) => {
   let last = null;
-  const view = await renderComponent(<Probe onReady={(b) => (last = b)} />);
+  const view = await renderComponent(<Probe options={options} onReady={(b) => (last = b)} />);
   return { ...view, read: () => last };
 };
 
@@ -93,6 +93,29 @@ describe('useElanBatch mapping', () => {
     expect(again.read().roles[bo]).toBe(ROLES.UTTERANCE);
     expect(again.read().fieldNames[folded]).toBe('Transcription');
     await again.unmount();
+  });
+});
+
+// With no word tier, the words are what the Tokenize tab makes under the rule
+// of the project the import writes into, and the build the review shows and
+// the run writes holds them.
+describe('useElanBatch words without a word tier', () => {
+  const PUNCTUATED = [{ id: 'Ana', anns: [['a1', "¿k'a ama, kilu?", 0, 1000]] }];
+  const wordsOf = async (options) => {
+    const v = await mount(options);
+    await v.step(() => v.read().readFiles(picked(PUNCTUATED)));
+    const [doc] = v.read().build.documents;
+    await v.unmount();
+    return doc.words.map((w) => [...doc.body].slice(w.begin, w.end).join(''));
+  };
+
+  it('splits by the rule a new project starts with', async () => {
+    expect(await wordsOf()).toEqual(['k', 'a', 'ama', 'kilu']);
+  });
+
+  it("splits by the project's own rule", async () => {
+    const rule = { type: 'unicodePunctuation', whitelist: ["'"], blacklist: [] };
+    expect(await wordsOf({ ignoredTokens: rule })).toEqual(["k'a", 'ama', 'kilu']);
   });
 });
 

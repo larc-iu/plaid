@@ -934,7 +934,7 @@ A time origin set on a recording in ELAN is applied, so the segments stay on the
 The roles a tier can take:
 
 * **Sentences**: the transcription. Each annotation becomes one sentence, and their text, joined in time order, becomes the document's text. Every import needs one such tier.
-* **Words** and **Morphemes**: tiers below it, dividing each sentence and then each word. Without them the document arrives untokenized, ready for the Tokenize tab.
+* **Words** and **Morphemes**: tiers below it, dividing each sentence and then each word. A Words tier's words are kept as they are in the file, punctuation included. Without one, each sentence is split into words as **Tokenize** splits it, with punctuation left out of the words.
 * **Morpheme type**: a tier naming each morpheme's type in FLEx's terms (`stem`, `suffix`, `enclitic`).
 * **Time alignment**: the segments on the Media tab. Leave it out and the sentence tier's own times are used.
 * **Orthography**: an alternate spelling of each word, beside the baseline.

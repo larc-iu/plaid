@@ -45,7 +45,13 @@ import {
 } from './tierNaming.js';
 import { chainOrder } from './readEaf.js';
 import { ELAN_FIELD_NAMES_PROPERTY } from '../../domain/elanFieldNames.js';
-import { MEDIA_FILE_FIELD, orthographyKey } from '../../domain/igtConfig.js';
+import {
+  DEFAULT_IGNORED_TOKENS,
+  MEDIA_FILE_FIELD,
+  orthographyKey,
+} from '../../domain/igtConfig.js';
+import { tokenizeText } from '../../utils/tokenizationUtils.js';
+import { cpLength, cpSlice } from '@larc-iu/plaid-client';
 import { keepTimeRule } from '../../domain/alignmentTimes.js';
 import { nameKey, sameName } from '@ui/lib/nameKey.js';
 import { countOf } from '../../../../plaid-ui/src/lib/plural.js';
@@ -436,9 +442,13 @@ function orderUtterances(utterances) {
  * @param files  parsed .eaf objects (readEaf output)
  * @param nodes  the agreed schema (schema.js tierSchema, one shared shape)
  * @param roles  {nodeKey: ROLES.*}
- * @param options {fieldNames: {nodeKey: string}, mediaByFile, recordMediaName: boolean}
+ * @param options {fieldNames: {nodeKey: string}, mediaByFile, recordMediaName: boolean,
+ *   ignoredTokens}
  *   recordMediaName (default true) records each recording's file name in a
- *   Media file metadata field.
+ *   Media file metadata field. ignoredTokens is the stored ignored-tokens rule
+ *   of the project the documents go into (null for a project that has none),
+ *   which splits an utterance into words when no tier holds them. Left out, it
+ *   is the rule a new project starts with.
  * @returns {{documents, schema, stats, warnings}}
  */
 export function buildElanDocuments(files, nodes, roles, options = {}) {
@@ -555,6 +565,8 @@ function buildGroup(files, nodes, roles, options = {}) {
   // The recording's original file name goes in a Media file metadata field
   // unless the person turns that off.
   const recordMediaName = options.recordMediaName !== false;
+  const ignoredTokens =
+    options.ignoredTokens === undefined ? DEFAULT_IGNORED_TOKENS : options.ignoredTokens;
   const { byRole } = resolveMapping(nodes, roles);
 
   const utteranceNodes = byRole.get(ROLES.UTTERANCE) || [];
@@ -918,9 +930,9 @@ function buildGroup(files, nodes, roles, options = {}) {
 
       if (!piece.text) return;
 
-      // Word forms: the mapped tier, or a whitespace split of the utterance
-      // when the corpus has no word tier at all (very common: a transcription
-      // and a translation, nothing else).
+      // Word forms: the mapped tier, or the Tokenize tab's words of the
+      // utterance when the corpus has no word tier at all (very common: a
+      // transcription and a translation, nothing else).
       let wordSpans;
       let wordAnns = [];
       if (piece.rebuilt) {
@@ -972,15 +984,14 @@ function buildGroup(files, nodes, roles, options = {}) {
           }
         }
       } else {
-        wordSpans = [];
-        const re = /\S+/g;
-        let m;
-        while ((m = re.exec(piece.text)) !== null) {
-          wordSpans.push({
-            beginU16: piece.beginU16 + m.index,
-            endU16: piece.beginU16 + m.index + m[0].length,
-          });
-        }
+        // The words the Tokenize tab would make of the utterance, under the
+        // rule of the project the import writes into.
+        const whole = [{ start: 0, end: cpLength(piece.text) }];
+        const u16 = (cp) => piece.beginU16 + cpSlice(piece.text, 0, cp).length;
+        wordSpans = tokenizeText(piece.text, ignoredTokens, whole).map((t) => ({
+          beginU16: u16(t.begin),
+          endU16: u16(t.end),
+        }));
       }
 
       wordSpans.forEach((span, wi) => {

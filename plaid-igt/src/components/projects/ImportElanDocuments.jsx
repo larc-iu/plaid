@@ -66,6 +66,7 @@ import { FORM_PAGE_WIDTH } from '@ui/lib/pageWidth.js';
 import { useMaintainersOnly } from './useMaintainersOnly.js';
 import { UnfinishedImportScreen } from './UnfinishedImport.jsx';
 import { readImportState } from '@/domain/igtConfig';
+import { getIgnoredTokensConfig } from '@/utils/tokenizationUtils';
 import { countOf } from '@ui/lib/plural.js';
 
 const NEW_FIELD = '__new__';
@@ -111,6 +112,9 @@ export const ImportElanDocuments = () => {
 
   const batch = useElanBatch({
     skipEmptyTiers: true,
+    // Words with no tier of their own are split as this project's Tokenize
+    // tab splits them.
+    ignoredTokens: project ? getIgnoredTokensConfig(project) : undefined,
     // Place every tier we can on the project's own fields: first by the
     // FieldWorks tier-naming convention (Translation-gls-nl → "Translation
     // (nl)"), then by a name that simply reads alike. A FieldWorks-shaped tier

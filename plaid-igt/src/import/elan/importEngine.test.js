@@ -6,7 +6,11 @@ import {
   runElanImport,
   ImportCancelled,
 } from './importEngine.js';
-import { defaultIgnoredTokensSetup } from '../../domain/igtConfig.js';
+import {
+  DEFAULT_IGNORED_TOKENS,
+  defaultIgnoredTokensSetup,
+  storedIgnoredTokens,
+} from '../../domain/igtConfig.js';
 import { mintedId, mintedSpecs } from '../test-helpers.js';
 
 const role = (r) => ({ plaid: { role: r } });
@@ -135,6 +139,8 @@ describe('deriveSetupData', () => {
       { name: 'Gloss', scope: 'Morpheme', lang: null, lexiconField: 'gloss', isCustom: true },
     ]);
     expect(setup.fields.ignoredTokens).toEqual(defaultIgnoredTokensSetup());
+    // The rule the build split utterances by when it was given none.
+    expect(storedIgnoredTokens(setup.fields.ignoredTokens)).toEqual(DEFAULT_IGNORED_TOKENS);
     // ELAN carries no lexicon, so no vocabulary is proposed.
     expect(setup.vocabulary.vocabularies).toEqual([]);
     expect(setup.documentMetadata.enabledFields).toEqual([
