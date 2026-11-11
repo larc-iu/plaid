@@ -140,3 +140,25 @@ test('the bubble scrolls by keyboard, and closes as before', async ({ page }) =>
   await expect(bubble).toHaveCount(0);
   await expect(dialog).toBeVisible();
 });
+
+test("a summary's hard-wrapped lines flow, and its paragraphs and list items stay apart", async ({
+  page,
+}) => {
+  const { bubble } = await openBubble(page);
+  const body = bubble.locator('.md-body');
+  await expect(body.locator('br')).toHaveCount(0);
+  await expect(body.locator('p')).toHaveCount(2);
+  await expect(body.locator('li')).toHaveCount(14);
+  // The first paragraph's three source lines lay out as running text: its
+  // first line is full, not cut at the source's newline after "and".
+  const lines = await body
+    .locator('p')
+    .first()
+    .evaluate((p) => {
+      const range = document.createRange();
+      range.selectNodeContents(p);
+      return new Set([...range.getClientRects()].map((r) => Math.round(r.top))).size;
+    });
+  expect(lines).toBeLessThan(5);
+  await expect(body.locator('p').first()).toContainText('segmentation and glosses for every word');
+});

@@ -102,9 +102,10 @@ function ensureHook() {
 }
 
 marked.setOptions({
-  // A single newline is a line break. People type comments the way they type
-  // chat messages, not the way they write Markdown documents, and model output
-  // is written the same way.
+  // A single newline is a line break by default. People type comments the way
+  // they type chat messages, not the way they write Markdown documents, and
+  // model output is written the same way. Text written as a Markdown file is,
+  // hard-wrapped, and passes `breaks: false` (a service's summary).
   breaks: true,
   gfm: true,
 });
@@ -176,6 +177,9 @@ function setQuotedForms(root) {
  * chrome and a quoted form is data), bold or italic inside the quotes too.
  * Bold or italic alone stays in the chrome's face.
  *
+ * `breaks: false` reads a single newline inside a paragraph as a space, as
+ * Markdown has it, for text hard-wrapped in its source.
+ *
  * NOTE: no images. An `<img>` is a fetch to an arbitrary URL every time anyone
  * views the content, which leaks who is reading what — and for the two inputs
  * this app does not author (a service summary, a model's answer) it is also an
@@ -185,13 +189,14 @@ function setQuotedForms(root) {
  * Falls back to the raw text if anything throws, so content is never lost to a
  * rendering bug: the reader sees the source rather than an empty box.
  */
-export function markdownToSafeHtml(text, { quotedForms = false } = {}) {
+export function markdownToSafeHtml(text, { quotedForms = false, breaks = true } = {}) {
   const source = String(text ?? '');
   if (!source.trim()) return '';
   try {
     ensureHook();
-    if (!quotedForms) return DOMPurify.sanitize(marked.parse(source), PURIFY_CONFIG);
-    const fragment = DOMPurify.sanitize(marked.parse(source), {
+    const html = marked.parse(source, { breaks });
+    if (!quotedForms) return DOMPurify.sanitize(html, PURIFY_CONFIG);
+    const fragment = DOMPurify.sanitize(html, {
       ...PURIFY_CONFIG,
       RETURN_DOM_FRAGMENT: true,
     });

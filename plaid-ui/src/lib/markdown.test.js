@@ -42,6 +42,14 @@ describe('markdownToSafeHtml', () => {
     expect(draw('one\ntwo').querySelectorAll('br')).toHaveLength(1);
   });
 
+  it('flows a single newline as a space when asked, for text hard-wrapped in its source', () => {
+    const box = document.createElement('div');
+    box.innerHTML = markdownToSafeHtml('one\ntwo\n\n- three\n  four\n- five', { breaks: false });
+    expect(box.querySelectorAll('br')).toHaveLength(0);
+    expect(box.querySelectorAll('li')).toHaveLength(2);
+    expect(box.textContent.replace(/\s+/g, ' ').trim()).toBe('one two three four five');
+  });
+
   it('strips script tags and event handlers', () => {
     const out = draw('hello <script>alert(1)</script> <img src=x onerror="alert(2)">');
     expect(out.querySelector('script')).toBeNull();

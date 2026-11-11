@@ -12,11 +12,12 @@ import './markdown.css';
 // Styling comes from the caller's className. `md-body` carries the compact
 // defaults (headings, lists, tables, code); the assistant layers Tailwind
 // Typography's `prose` on top of it. `quotedForms` sets quoted runs in the
-// face for language data (see markdownToSafeHtml).
-export function SafeMarkdown({ children, className, quotedForms = false }) {
+// face for language data, and `breaks={false}` flows a single newline as a
+// space (see markdownToSafeHtml).
+export function SafeMarkdown({ children, className, quotedForms = false, breaks = true }) {
   const __html = useMemo(
-    () => markdownToSafeHtml(children, { quotedForms }),
-    [children, quotedForms],
+    () => markdownToSafeHtml(children, { quotedForms, breaks }),
+    [children, quotedForms, breaks],
   );
   return <div className={cn('md-body', className)} dangerouslySetInnerHTML={{ __html }} />;
 }

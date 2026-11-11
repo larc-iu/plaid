@@ -7,7 +7,8 @@ import { getServiceSummary } from '@larc-iu/plaid-client';
 // Info popover showing a service's self-provided summary (markdown via
 // extras.summary, else the short description). The summary is written by
 // whoever wrote the service, so it goes through the shared SafeMarkdown, which
-// renders no raw HTML and sanitizes link protocols.
+// renders no raw HTML and sanitizes link protocols. It is written as a Markdown
+// file is, hard-wrapped, so a single newline flows as a space.
 export function ServiceSummary({ service }) {
   const summary = getServiceSummary(service);
   if (!service || !summary) return null;
@@ -26,7 +27,9 @@ export function ServiceSummary({ service }) {
       </PopoverTrigger>
       <PopoverContent align="start" className="max-h-80 w-96 overflow-y-auto">
         {service.serviceName && <p className="mb-1 text-sm font-semibold">{service.serviceName}</p>}
-        <SafeMarkdown className="text-sm text-muted-foreground">{summary}</SafeMarkdown>
+        <SafeMarkdown className="text-sm text-muted-foreground" breaks={false}>
+          {summary}
+        </SafeMarkdown>
       </PopoverContent>
     </Popover>
   );
