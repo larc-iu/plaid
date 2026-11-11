@@ -153,6 +153,22 @@ describe('the Entries tab at a past state', () => {
     await view.unmount();
   });
 
+  // A past state is read-only for everyone, and the banner over the tab says
+  // so ("Read-only. This is the vocabulary as of ..."). The line about the
+  // maintainers' role told the vocabulary's own maintainer they could not
+  // edit (GUIDE-IGT S5).
+  const MAINTAINERS = 'Only this vocabulary’s maintainers can edit entries.';
+  it.each([
+    ['a maintainer', {}],
+    ['someone who does not maintain it', { canManage: false, canRestore: false }],
+    ['anyone, while the past state is read', { past: null, historyPending: true }],
+  ])('does not blame the role, for %s', async (_who, props) => {
+    const view = await mount(makeClient(), '/vocabularies/v1?item=a', props);
+    const text = document.body.textContent;
+    await view.unmount();
+    expect(text).not.toContain(MAINTAINERS);
+  });
+
   it('offers no restore to someone who does not maintain the vocabulary', async () => {
     const view = await mount(makeClient(), '/vocabularies/v1?item=a', { canRestore: false });
     expect(button('Restore')).toBeUndefined();

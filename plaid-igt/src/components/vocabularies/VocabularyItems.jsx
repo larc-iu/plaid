@@ -830,6 +830,7 @@ export const VocabularyItems = ({
       saveAllowed={saveAllowed}
       onRolesetProblem={setArgProblem}
       canManage={canManage}
+      notMaintainer={!canManageNow && !past && !historyPending}
       tagsetFor={draftTagsetFor}
       statusKey={statusKey}
       formGroups={formGroups}

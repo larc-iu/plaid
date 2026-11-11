@@ -43,6 +43,7 @@ export const EntryEditor = ({
   saveAllowed,
   onRolesetProblem,
   canManage,
+  notMaintainer,
   tagsetFor,
   statusKey,
   formGroups,
@@ -224,7 +225,9 @@ export const EntryEditor = ({
         </p>
       )}
 
-      {!canManage && (
+      {/* The role's line, on the present only: a past state is read-only for
+          everyone, and the banner over the tab says so. */}
+      {notMaintainer && (
         <p className="mb-3 text-xs text-muted-foreground">
           Only this vocabulary’s maintainers can edit entries.
         </p>
