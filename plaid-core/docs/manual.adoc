@@ -66,7 +66,8 @@ Anyone may create a project and so become a maintainer, which means every user c
 
 A request for a project, document or vocabulary that does not exist answers 404 to an admin.
 Anyone else gets the same 403 they would get for one that exists but is not theirs.
-When the 403 is for an id that resolves to nothing, its body also carries `"unresolved": true`, which a client can read as "changed or removed by someone else".
+When the 403 is for an unknown id of something inside a project or vocabulary, such as a document, a token or a vocabulary entry, its body also carries `"unresolved": true`, which a client can read as "changed or removed by someone else".
+An unknown project or vocabulary id gets the 403 without it.
 
 Permissions say what a person may do, not how far their work is trusted.
 A project may also mark members whose work needs review, whatever their role, as described under <<Provenance>>.
