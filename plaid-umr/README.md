@@ -89,8 +89,10 @@ No requirements beyond `larc-plaid-client`.
 
 `services/umr_ancast.py` registers the service behind the **Compare** tab: it scores this
 document's UMR against another document of the same project with the AnCast++ metric (Sun
-and Xue 2024), and writes the report as metadata at `umr.adjudication`: the summary on the
-scored document, and each sentence's scores on that sentence's token. Nothing is annotated. The usual pair is one text annotated
+and Xue 2024), and writes the report as metadata on each sentence's record, the token of
+the UMR nodes layer over that sentence: the sentence's scores at `umr.adjudication`, and
+the summary at `umr.adjudicationSummary` on the first sentence's record. Nothing is
+written on the document or on the sentence tokens, and nothing is annotated. The usual pair is one text annotated
 twice, which is what Copy document makes.
 
 ```bash
