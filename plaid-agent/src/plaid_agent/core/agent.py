@@ -151,6 +151,55 @@ class ModelTooSlow(Exception):
 STREAM_INTERVAL_S = 0.15
 
 
+# The repeat guard (`repeating`). A model that falls into a loop writes one
+# short passage over and over until its output cap: glm-5.3-flash wrote "Make
+# the calls first. Then reply." 1,635 times into a reply the user watched for
+# minutes (PROD-LOOP, 2026-11-10). A fixed rule ends such a call: the end of
+# the text (or of the reasoning), its whitespace runs read as one space, is
+# one unit written REPEAT_MIN_TIMES times back to back.
+#: The longest unit looked for. A loop is a sentence or two, and only the
+#: last REPEAT_UNIT_MAX_CHARS * REPEAT_MIN_TIMES characters are read, so the
+#: check on every chunk stays small.
+REPEAT_UNIT_MAX_CHARS = 200
+#: The fewest characters other than spaces a unit must have. Shorter units
+#: repeat in honest output: a rule of dashes, "NOM NOM NOM", "ka-ka-ka",
+#: "1, 1, 1", an empty table row.
+REPEAT_UNIT_MIN_CHARS = 12
+#: How many copies in a row end the call. A table or a list repeats its
+#: shape, never a whole row word for word twenty times.
+REPEAT_MIN_TIMES = 20
+_REPEAT_TAIL = REPEAT_UNIT_MAX_CHARS * REPEAT_MIN_TIMES
+_SPACES = re.compile(r'\s+')
+
+#: What the reader is told when the guard ended a call.
+REPEATING_LINE = 'The model began repeating itself and was stopped.'
+
+
+def repeating(text: Optional[str]) -> Optional[str]:
+    """The unit the end of ``text`` repeats, by the guard's rule (see
+    REPEAT_MIN_TIMES), or None. A unit that is itself a shorter unit repeated
+    ("------------") is that shorter one, which is too short to count."""
+    if not text:
+        return None
+    # Twice the tail as written, since its whitespace runs shrink to one space.
+    tail = _SPACES.sub(' ', text[-2 * _REPEAT_TAIL:])
+    n = len(tail)
+    for p in range(1, min(REPEAT_UNIT_MAX_CHARS, n // REPEAT_MIN_TIMES) + 1):
+        if tail[n - 1] != tail[n - 1 - p]:
+            continue
+        span = p * REPEAT_MIN_TIMES
+        if tail[n - span:n - p] != tail[n - span + p:]:
+            continue
+        unit = tail[n - p:]
+        if (unit + unit).find(unit, 1) == p and len(unit.replace(' ', '')) >= REPEAT_UNIT_MIN_CHARS:
+            return unit
+    return None
+
+
+class Repeating(Exception):
+    """Raised inside a streamed call the repeat guard ended; the call ends
+    with :class:`TurnFailed` (`_complete_once`)."""
+
 
 def _provider_kwargs(cfg: ModelConfig) -> Dict[str, Any]:
     """What every call to this model needs: the model string, and the base and
@@ -298,7 +347,14 @@ def _complete_once(cfg: ModelConfig, kwargs: Dict[str, Any], on_text: Callable[[
 
     The reasoning a provider streams (``reasoning_content``) goes to
     ``on_thinking`` the same way, and is put on the message whole at the end,
-    whichever builder put the reply together."""
+    whichever builder put the reply together.
+
+    A text or reasoning whose end repeats one unit (`repeating`) ends the
+    call: the text so far goes to ``on_text`` and ``on_thinking`` whole, the
+    stream is closed so the provider stops writing, and the call fails with
+    :class:`TurnFailed` (:data:`REPEATING_LINE`), which is never tried
+    again. An unstreamed call cannot be stopped this way: it ends at the
+    output cap."""
     if not cfg.stream:
         return litellm.completion(**kwargs)
     chunks: List[Any] = []
@@ -332,6 +388,9 @@ def _complete_once(cfg: ModelConfig, kwargs: Dict[str, Any], on_text: Callable[[
                 if now - last_thought >= STREAM_INTERVAL_S:
                     last_thought = now
                     on_thinking(clean_reasoning(thought) or '')
+                unit = repeating(thought)
+                if unit is not None:
+                    raise Repeating(unit)
             if piece:
                 if seam and text and not text[-1].isspace() and not piece[0].isspace():
                     text += '\n\n'
@@ -341,8 +400,20 @@ def _complete_once(cfg: ModelConfig, kwargs: Dict[str, Any], on_text: Callable[[
                 if now - last >= STREAM_INTERVAL_S:
                     last = now
                     on_text(text)
+                unit = repeating(text)
+                if unit is not None:
+                    raise Repeating(unit)
     except TurnCancelled:
         raise
+    except Repeating as e:
+        _close(stream)
+        print(f'{kwargs.get("model")}: a model call began repeating itself and was stopped '
+              f'({REPEAT_MIN_TIMES} copies in a row of "{str(e)[:80]}")')
+        if thought:
+            on_thinking(clean_reasoning(thought) or '')
+        if text:
+            on_text(text)
+        raise TurnFailed(REPEATING_LINE) from None
     except ServiceCancelled:
         # A stop the client saw as it sent the text so far (a stop asked for,
         # or a request the server no longer knows): the stream is closed as
@@ -384,9 +455,18 @@ def _complete_once(cfg: ModelConfig, kwargs: Dict[str, Any], on_text: Callable[[
 
 
 def _close(stream: Any) -> None:
-    close = getattr(stream, 'close', None)
-    if callable(close):
-        close()
+    """Close a stream so the provider stops writing. litellm's stream wrapper
+    has no close of its own: the provider's stream under it
+    (``completion_stream``, the openai SDK's, whose close ends the HTTP
+    response) is closed."""
+    for s in (stream, getattr(stream, 'completion_stream', None)):
+        close = getattr(s, 'close', None)
+        if callable(close):
+            try:
+                close()
+            except Exception:  # noqa: BLE001 - a stream that will not close is left to end on its own
+                traceback.print_exc()
+            return
 
 
 def _assembled(chunks: List[Any]):

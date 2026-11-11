@@ -78,6 +78,9 @@ def test_turn_ends():
     assert turn_end({'kind': 'assistant', 'failed': True,
                      'text': '(The model wrote 32,768 tokens without finishing, so this turn was stopped. '
                              'Ask again, perhaps more narrowly.)'}) == 'cut_at_length'
+    assert turn_end({'kind': 'assistant', 'failed': True,
+                     'text': '(The model began repeating itself and was stopped.)'}) == 'repeating'
+    assert turn_end({'kind': 'error', 'text': 'The model began repeating itself and was stopped.'}) == 'repeating'
     assert turn_end({'kind': 'assistant', 'failed': True, 'text': '(The model could not answer.)'}) == 'no_answer'
 
 
