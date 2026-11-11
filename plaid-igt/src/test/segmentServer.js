@@ -41,7 +41,8 @@
 // code.
 
 import { createHash } from 'node:crypto';
-import { composeTextEdits } from '@larc-iu/plaid-client';
+import { composeTextEdits, readIgnoredTokens } from '@larc-iu/plaid-client';
+import { shouldTokenizeCharacter } from '@ui/domain/igtWordBreaks.js';
 import { trimToWordEdges } from '@ui/lib/editLog.js';
 import {
   applyGapsLocally,
@@ -128,7 +129,9 @@ function reshapeOf(before, after) {
 // moved or resized by the change beside or inside it, as the app shows an edit
 // before the server answers (`applyGapsLocally`). Text typed with no space in
 // it at a token's edge joins the token on the `side` the op names, as the
-// client asks of the core, and a token left with no text is deleted, with what
+// client asks of the core, except that a word and a morpheme take none that
+// holds a character the word layer's ignored-tokens rule leaves out of a word
+// (Luke, 2026-11-11), and a token left with no text is deleted, with what
 // hangs off it. A token other than a sentence or a segment that a gap deletes
 // whole goes too, whatever is typed in its place, as the core's rule has it
 // (R42). That is all. It is NOT the core's rule (plaid-core
@@ -178,11 +181,16 @@ function takeEdit(raw, textId, gaps, vocabs) {
       ),
     )
     .map((t) => t.id);
+  const rule = readIgnoredTokens(info.primaryTokenLayer?.config);
+  const keepsOut = (value) =>
+    ['unicodePunctuation', 'blacklist'].includes(rule?.type) &&
+    [...value].some((c) => shouldTokenizeCharacter(c, rule));
   for (const gap of [...gaps].reverse()) {
     applyGapsLocally(raw, textId, [gap]);
     const n = [...gap.value].length;
     if (gap.start !== gap.end || !n || /\s/u.test(gap.value) || !gap.side) continue;
     for (const layer of textLayer.tokenLayers || []) {
+      if (!holds.has(layer.id) && keepsOut(gap.value)) continue;
       for (const t of layer.tokens || []) {
         if (gap.side === 'before' && t.begin < gap.start && t.end === gap.start) t.end += n;
         if (gap.side === 'after' && t.begin === gap.start + n && t.end > t.begin) t.begin -= n;

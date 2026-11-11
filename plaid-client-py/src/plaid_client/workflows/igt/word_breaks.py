@@ -39,6 +39,16 @@ def _is_break_char(c: str, cfg) -> bool:
     return punct
 
 
+def is_kept_out(c: str, cfg) -> bool:
+    """Does a word typed against keep this character out of it? The server's
+    text-edit rule (plaid-core ``ignored-rule``, ``:kept-out?``, Luke
+    2026-11-11): under the word layer's ignored-tokens rule, a character
+    the tokenizer breaks a word at, and under no rule none."""
+    if not isinstance(cfg, dict) or cfg.get('type') not in ('unicodePunctuation', 'blacklist'):
+        return False
+    return _is_break_char(c, cfg)
+
+
 # JavaScript's ``\s`` (what its ``trim`` strips) and NEL (U+0085), which the
 # editor's tokenizer reads as whitespace (plaid-ui ``isWordSpace``, plaid-core
 # ``space?``). Python's ``str.isspace`` differs at the edges: it takes the

@@ -95,6 +95,29 @@ describe('a row edit is saved as the edits typed, and the segment keeps its id (
     expect(glosses(doc._raw)).toEqual(['one:G1', 'two!:G2', 'three:G3']);
   });
 
+  it("punctuation the word layer leaves out, typed at a word's end, is in the segment and not the word (Luke, 2026-11-11)", async () => {
+    const raw = RAW();
+    layer(raw, 'wordL').config.plaid.ignoredTokens = { type: 'unicodePunctuation', whitelist: [] };
+    const server = segmentServer(raw);
+    const doc = open(server);
+    const ok = await doc.editAlignment('a-2', {
+      text: 'two!',
+      timeBegin: 1,
+      timeEnd: 2,
+      edits: { over: 'two', gaps: [{ start: 3, end: 3, value: '!' }] },
+    });
+    expect(ok).toBe(true);
+    await idle(doc);
+
+    const [write] = textWrites(server);
+    expect(write.args[1]).toEqual([{ type: 'insert', index: 7, value: '!', side: 'before' }]);
+    expect(server.body).toBe('one two! three');
+    expect(textOf(server.stored, 'a-2')).toBe('two!');
+    expect(glosses(server.stored)).toEqual(['one:G1', 'two:G2', 'three:G3']);
+    expect(textOf(doc._raw, 'a-2')).toBe('two!');
+    expect(glosses(doc._raw)).toEqual(['one:G1', 'two:G2', 'three:G3']);
+  });
+
   it("a word's sole morpheme spelled as the word follows its new spelling (Luke, H17)", async () => {
     const raw = RAW();
     layer(raw, 'morphL').tokens.find((t) => t.id === 'm-2').metadata = { form: 'two' };

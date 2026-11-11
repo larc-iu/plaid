@@ -962,6 +962,12 @@ Under the type `blacklist` the entries of `blacklist` are the words ignored, and
 The list of the other type is kept and not read.
 Punctuation and symbols are read from the Unicode 16 table the apps read.
 
+A character the word layer's rule leaves out of a word stays out of a word it is typed against.
+Under the punctuation rule that is a punctuation mark the built-in tokenizer parts words at (see <<New words for typed text>>), and under an explicit list a listed character.
+Typed at a word's start or end, the characters next to the word join it up to the first such character or whitespace, and the rest belongs to no word: after `kilu ama`, `, sipa` leaves the word `ama`, and `s,` makes it `amas`.
+Typed inside a word, it is part of the word, and a sentence or a row takes it as it takes any text.
+A word layer with no rule leaves nothing out.
+
 A replacement, or any change that deletes text and types new text in the same place, counts as a deletion followed by an insertion there.
 The text it shares with the old text at its start and at its end is no change.
 Where it replaces text over two or more words, that shared text is no change only back to a word edge, never inside a word, so no word keeps letters of another's: `ab a` replaced whole by `a` deletes both words, and the new `a` belongs to no word. One word typed over keeps what it shares: `cat` replaced by `cats` keeps the word, now `cats`.

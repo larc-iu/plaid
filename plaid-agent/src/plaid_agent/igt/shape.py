@@ -16,6 +16,7 @@ import dataclasses
 from typing import Any, Dict, List, Optional
 
 from plaid_client.constraints import value_set_allows
+from plaid_client.workflows.igt.word_breaks import is_kept_out
 
 from ..core.bidi import qv
 from ..core.args import whole
@@ -540,22 +541,32 @@ def _retype_effects(ws: Workspace, s: Sentence, at: int, old: str, text: str) ->
     plain rule decides: a word with a letter of it left keeps its token and
     its analysis, a word all of whose letters the edits replace or delete is
     deleted with its analysis, and text between words becomes new words with
-    none. The analyzed words an edit reaches are named, those that carry
-    their analysis onto a new spelling apart from those that lose it."""
+    none. A character the word layer's ignored-tokens rule leaves out of a
+    word, typed at its edge, stays out of it. The analyzed words an edit
+    reaches are named, those that carry their analysis onto a new spelling
+    apart from those that lose it."""
     from difflib import SequenceMatcher
     from .stats import _analyzed
     gaps = [(at + i1, at + i2, text[j1:j2])
             for tag, i1, i2, j1, j2 in SequenceMatcher(None, old, text, autojunk=False).get_opcodes()
             if tag != 'equal']
 
+    cfg = ws.project.ignored_cfg
+
+    def joins(c: str) -> bool:
+        # what a word takes typed against it: not whitespace, and not a
+        # character its layer's ignored-tokens rule leaves out of a word
+        return bool(c) and not c.isspace() and not is_kept_out(c, cfg)
+
     def reached(w) -> bool:
         for gb, ge, value in gaps:
             if gb < w.end and ge > w.begin:
                 return True
-            # Typed at an edge with no space between: the word takes it.
-            if gb == ge == w.end and value[:1] and not value[:1].isspace():
+            # Typed at an edge with no space or left-out character between:
+            # the word takes it.
+            if gb == ge == w.end and joins(value[:1]):
                 return True
-            if gb == ge == w.begin and value[-1:] and not value[-1:].isspace():
+            if gb == ge == w.begin and joins(value[-1:]):
                 return True
             if gb == ge and w.begin < gb < w.end:
                 return True

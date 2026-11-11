@@ -1308,3 +1308,104 @@
                 {:token/id [:a 1] :token/layer :a :token/begin 4 :token/end 5}]
         r (th/plain-edits "tat a" tokens [(rep 0 5 "tzz")] #{:s} #{:w} {:exclusive #{:w :a}})]
     (is (= [[:a 1]] (vec (sort (:deleted r)))))))
+
+(deftest a-character-the-word-layer-leaves-out-stays-out-of-a-word-typed-against
+  ;; Luke, 2026-11-11 (PROD-PUNCT's second route): a character the word
+  ;; layer's ignored-tokens rule leaves out of a word (the built-in
+  ;; tokenizer's break class under the rule) stays out of a word it is
+  ;; typed against. Typed at a word's edge, the run of other characters
+  ;; next to the word joins it, up to the first whitespace or such
+  ;; character, and the rest is in no word. Typed inside a word it is the
+  ;; word's, and letters join as before. `, sipa` typed after `kilu ama`
+  ;; gave the word `ama,`.
+  (let [rule (fn [r] (:kept-out? (ta/ignored-rule {"plaid" {"ignoredTokens" r}})))
+        default (rule {"type" "unicodePunctuation" "whitelist" []})
+        cases
+        [;; [id document op words]
+         ["comma then a word at the end" "|kilu| |ama|" (ins 8 ", sipa") ["kilu ama, sipa" "kilu" "ama"]]
+         ["a lone comma at the end" "|kilu| |ama|" (ins 8 ",") ["kilu ama," "kilu" "ama"]]
+         ["a letter then a comma" "|kilu| |ama|" (ins 8 "s,") ["kilu amas," "kilu" "amas"]]
+         ["a comma glued to a word" "|kilu| |ama|" (ins 8 ",sipa") ["kilu ama,sipa" "kilu" "ama"]]
+         ["a mark before a word" "|kilu| |ama|" (ins 0 "¿") ["¿kilu ama" "kilu" "ama"]]
+         ["letters then a mark before a word" "|kilu| |ama|" (ins 0 "(ka") ["(kakilu ama" "kakilu" "ama"]]
+         ["an apostrophe inside a word" "|kilu| |ama|" (ins 6 "'") ["kilu a'ma" "kilu" "a'ma"]]
+         ["a hyphen inside a word" "|kilu| |ama|" (ins 2 "-") ["ki-lu ama" "ki-lu" "ama"]]
+         ["a comma inside a word" "|kilu| |ama|" (ins 2 ", ") ["ki, lu ama" "ki, lu" "ama"]]
+         ["a mark before the next word" "|kilu| |ama|" (ins 5 "¿") ["kilu ¿ama" "kilu" "ama"]]
+         ["after a word, before the space" "|kilu| |ama|" (ins 4 ",") ["kilu, ama" "kilu" "ama"]]
+         ["its last letter typed over" "|kilu| |ama|" (rep 7 1 "e,") ["kilu ame," "kilu" "ame"]]
+         ["its first letter typed over" "|kilu| |ama|" (rep 0 1 "¿k") ["¿kilu ama" "kilu" "ama"]]
+         ["a deletion at its end" "|kilu,| |ama|" (del 4 1) ["kilu ama" "kilu" "ama"]]
+         ["between two words written together" "|ab||cd|" (ins 2 ",") ["ab,cd" "ab" "cd"]]
+         ["a letter between them" "|ab||cd|" (ins 2 "x") ["abxcd" "abx" "cd"]]
+         ["letters and a mark between them" "|ab||cd|" (ins 2 "x,y") ["abx,ycd" "abx" "ycd"]]
+         ["over the space between two words" "|ab| |cd|" (rep 1 3 "x,y") ["ax,yd" "ax" "yd"]]
+         ["an Arabic comma after a right-to-left word" "|كتاب| |שלום|" (ins 4 "، ب") ["كتاب، ب שלום" "كتاب" "שלום"]]
+         ["a sof pasuq after a Hebrew word" "|كتاب| |שלום|" (ins 9 "׃") ["كتاب שלום׃" "كتاب" "שלום"]]
+         ["a letter and its mark then a comma" "|kilu| |ama|" (ins 8 "é,") ["kilu amaé," "kilu" "amaé"]]]]
+    (doseq [[id s op want body-want] cases
+            :let [new (ta/edit-ops-body [op] (:body (doc s)))]]
+      (is (= want (edit-with s [op] {:kept-out? default})) (str id ", edits"))
+      ;; a whole-body save reads the change as its character diff, which
+      ;; can stand elsewhere than the edit did
+      (is (= (or body-want want) (let [{:keys [body tokens]} (doc s)]
+                                   (view (th/plain-body body new tokens #{:s} #{:w} {:kept-out? default})
+                                         (count (filter #(= :w (:token/layer %)) tokens)))))
+          (str id ", whole body")))
+    (testing "positions are code points"
+      ;; the marked documents above count UTF-16 units, so these are by hand
+      (let [body "𐌰𐌱 𐌲"
+            tokens [{:token/id [:s 0] :token/layer :s :token/begin 0 :token/end 4}
+                    {:token/id [:w 0] :token/layer :w :token/begin 0 :token/end 2}
+                    {:token/id [:w 1] :token/layer :w :token/begin 3 :token/end 4}
+                    {:token/id [:m 1] :token/layer :m :token/begin 3 :token/end 4}]
+            texts (fn [r l] (let [b (:text/body (:text r))]
+                              (vec (keep #(when (= l (:token/layer %)) (cp/cp-subs b (:token/begin %) (:token/end %)))
+                                         (sort-by :token/begin (:tokens r))))))]
+        (doseq [[v want] [[",𐌰" ["𐌰𐌱" "𐌲"]] ["𐌰," ["𐌰𐌱" "𐌲𐌰"]]]
+                [path r] [[:edits (th/plain-edits body tokens [(ins 4 v)] #{:s} #{:w} {:kept-out? default})]
+                          [:body (th/plain-body body (str body v) tokens #{:s} #{:w} {:kept-out? default})]]]
+          (is (= want (texts r :w)) (str v " " path))
+          (is (= [(peek want)] (texts r :m)) (str v " " path " morpheme")))))
+    (testing "a character the rule calls letter-like joins as a letter"
+      (is (= ["kilu ama'" "kilu" "ama'"]
+             (edit-with "|kilu| |ama|" [(ins 8 "'")] {:kept-out? (rule {"type" "unicodePunctuation" "whitelist" ["'"]})}))))
+    (testing "under an explicit list only the listed characters stay out"
+      (let [bl (rule {"type" "blacklist" "blacklist" ["," "."]})]
+        (is (= ["kilu ama, sipa" "kilu" "ama"] (edit-with "|kilu| |ama|" [(ins 8 ", sipa")] {:kept-out? bl})))
+        (is (= ["kilu ama; sipa" "kilu" "ama;"] (edit-with "|kilu| |ama|" [(ins 8 "; sipa")] {:kept-out? bl})))))
+    (testing "an empty explicit list, and no rule, leave nothing out, as before"
+      (doseq [kept-out? [(rule {"type" "blacklist" "blacklist" []}) (rule nil) nil]]
+        (is (= ["kilu ama, sipa" "kilu" "ama,"] (edit-with "|kilu| |ama|" [(ins 8 ", sipa")] {:kept-out? kept-out?})))
+        (is (= ["¿kilu ama" "¿kilu" "ama"] (edit-with "|kilu| |ama|" [(ins 0 "¿")] {:kept-out? kept-out?})))))
+    (testing "the side an edit names does not put such a character in a word"
+      (is (= ["ab,cd" "ab" "cd"] (edit-with "|ab||cd|" [(assoc (ins 2 ",") :side :after)] {:kept-out? default})))
+      (is (= ["ab,cd" "ab" "cd"] (edit-with "|ab||cd|" [(assoc (ins 2 ",") :side :before)] {:kept-out? default}))))
+    (testing "a sentence and a row still take it"
+      (let [tokens [{:token/id [:s 0] :token/layer :s :token/begin 0 :token/end 8}
+                    {:token/id [:s 1] :token/layer :s :token/begin 8 :token/end 12}
+                    {:token/id [:w 0] :token/layer :w :token/begin 0 :token/end 4}
+                    {:token/id [:w 1] :token/layer :w :token/begin 5 :token/end 8}
+                    {:token/id [:w 2] :token/layer :w :token/begin 9 :token/end 12}
+                    {:token/id [:a 0] :token/layer :a :token/begin 0 :token/end 8}
+                    {:token/id [:a 1] :token/layer :a :token/begin 9 :token/end 12}]
+            r (th/plain-edits "kilu ama tua" tokens [(ins 8 ",")] #{:s} #{:w} {:kept-out? default :exclusive #{:w :a}})
+            b (:text/body (:text r))
+            texts (fn [l] (vec (keep #(when (= l (:token/layer %)) (cp/cp-subs b (:token/begin %) (:token/end %)))
+                                     (sort-by :token/begin (:tokens r)))))]
+        (is (= "kilu ama, tua" b))
+        (is (= ["kilu" "ama" "tua"] (texts :w)))
+        (is (= ["kilu ama," " tua"] (texts :s)))
+        (is (= ["kilu ama," "tua"] (texts :a)))))
+    (testing "a layer's config gives the rule its words take"
+      (let [roles (ta/layer-roles [(ta/layer-of :s "partitioning" nil {})
+                                   (ta/layer-of :w "non-overlapping" :s {"plaid" {"ignoredTokens" {"type" "unicodePunctuation"
+                                                                                                   "whitelist" ["'"]}}})])]
+        (is ((:kept-out? roles) (int \,)))
+        (is (not ((:kept-out? roles) (int \'))))
+        (is (not ((:kept-out? roles) (int \a)))))
+      (is (nil? (:kept-out? (ta/layer-roles [(ta/layer-of :s "partitioning" nil {})
+                                             (ta/layer-of :w "non-overlapping" :s {})]))))
+      (testing "a rule on a layer that is no word layer is not read"
+        (is (nil? (:kept-out? (ta/layer-roles [(ta/layer-of :s "partitioning" nil {"plaid" {"ignoredTokens" {"type" "unicodePunctuation"}}})
+                                               (ta/layer-of :w "non-overlapping" :s {})]))))))))

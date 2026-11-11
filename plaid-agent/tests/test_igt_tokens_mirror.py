@@ -106,3 +106,22 @@ def test_split_words_cuts_text_as_the_editor_does(app):
     for cfg, answers in zip(CONFIGS, app['words']):
         for text, expected in zip(TEXTS, answers):
             assert [list(r) for r in split_words(text, 0, len(text), cfg)] == expected, (text, cfg)
+
+
+def test_what_a_word_keeps_out_is_the_tokenizer_break_under_a_rule():
+    """The server keeps a character out of a word typed against when the word
+    layer's rule has the tokenizer break a word at it, and under no rule
+    nothing (plaid-core ``:kept-out?``, Luke 2026-11-11). The assistant's
+    retype card reads it from here."""
+    from plaid_client.workflows.igt.word_breaks import is_kept_out
+    cases = [
+        (',', PUNCT, True), ('¿', PUNCT, True), ('=', PUNCT, True), ('-', PUNCT, True),
+        ('→', PUNCT, False), ('a', PUNCT, False), (' ', PUNCT, False),
+        ("'", {'type': 'unicodePunctuation', 'whitelist': ["'"]}, False),
+        ('.', {'type': 'blacklist', 'blacklist': ['.', '--']}, True),
+        (',', {'type': 'blacklist', 'blacklist': ['.', '--']}, False),
+        (',', {'type': 'blacklist', 'blacklist': []}, False),
+        (',', None, False), (',', {'type': 'something-else'}, False),
+    ]
+    for c, cfg, want in cases:
+        assert is_kept_out(c, cfg) is want, (c, cfg)

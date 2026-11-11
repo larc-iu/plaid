@@ -4,7 +4,7 @@
   sentences or two words meet. The generators and the judge are in
   `plaid.algos.plain-edits-oracle`."
   (:require [clojure.test :refer [deftest is testing]]
-            [plaid.algos.plain-edits-oracle :refer [cases-per-config configs cps gap-fill gen-doc gen-gaps keystrokes layout-tokens letters-left-problems problems punct? roles run save save-read server-gaps trim-ws ws?]]
+            [plaid.algos.plain-edits-oracle :refer [cases-per-config configs cps gap-fill gen-doc gen-gaps kept-out-of keystrokes layout-tokens letters-left-problems problems punct? roles run save save-read server-gaps trim-ws ws?]]
             [plaid.algos.text :as ta]
             [plaid.util.codepoint :as cp]))
 
@@ -54,7 +54,7 @@
           (when-let [gaps (and (some #(= :w (:token/layer %)) tokens) (select-type-over rng body tokens))]
             (let [ops (ta/gap-ops gaps)
                   r (run body tokens ops layout false)
-                  ps (-> (problems body tokens (server-gaps body ops tokens layout) r)
+                  ps (-> (problems body tokens (server-gaps body ops tokens layout) r (kept-out-of layout))
                          (into (letters-left-problems body tokens ops r))
                          (cond-> (not= (ta/edit-ops-body ops body) (:text/body (:text r))) (conj "body")))]
               (when (seq ps) (swap! fails conj {:config cname :seed seed :old body :gaps gaps :problems (take 3 ps)}))))))

@@ -219,6 +219,45 @@ test('a letter fixed inside a word and a word typed after it keep the word and i
   await expectScreenIsStored(page, S);
 });
 
+test("punctuation the word layer's rule leaves out, typed after a word, stays out of it", async ({
+  page,
+}) => {
+  // PROD-PUNCT (Luke, 2026-11-11): in a project whose word layer carries an
+  // ignored-tokens rule, as one shared with igt does, `, sipa` typed after
+  // `kilu ama` leaves the token `ama` and its word as they were. Without a
+  // rule, as a project made here has, the comma joins the token as before.
+  for (const [rule, ama] of [
+    [{ type: 'unicodePunctuation', whitelist: [] }, [5, 8]],
+    [null, [5, 9]],
+  ]) {
+    const body = 'kilu ama';
+    const S = await seed('punctuation', body, [
+      [0, 4],
+      [5, 8],
+    ]);
+    if (rule) {
+      const info = getUdLayerInfo(await S.client.projects.get(S.projectId));
+      await S.client.tokenLayers.setConfig(info.wordTokenLayer.id, 'plaid', 'ignoredTokens', rule);
+    }
+    const before = await stored(S);
+    await openEditor(page, S, body);
+
+    await caretAt(page, 8);
+    await page.keyboard.type(', sipa');
+    await save(page);
+    await saved(page);
+
+    await expect.poll(async () => (await stored(S)).body).toBe('kilu ama, sipa');
+    const { words, morphemes } = await stored(S);
+    expect(words).toEqual([
+      [before.words[0][0], 0, 4],
+      [before.words[1][0], ...ama],
+    ]);
+    expect(morphemes.map((m) => m.slice(1))).toEqual([[0, 4], ama]);
+    await expectScreenIsStored(page, S);
+  }
+});
+
 test('a token typed over whole asks first, Cancel keeps the text, and a yes deletes it', async ({
   page,
 }) => {

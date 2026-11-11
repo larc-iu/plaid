@@ -2,7 +2,7 @@
   "The plain-edits oracle on pastes over several words. The generators and the
   judge are in `plaid.algos.plain-edits-oracle`."
   (:require [clojure.test :refer [deftest is testing]]
-            [plaid.algos.plain-edits-oracle :refer [cps gen-doc layout-tokens letters-left-problems nbsp problems run server-gaps]]
+            [plaid.algos.plain-edits-oracle :refer [cps gen-doc kept-out-of layout-tokens letters-left-problems nbsp problems run server-gaps]]
             [plaid.algos.text :as ta]
             [plaid.util.codepoint :as cp]))
 
@@ -44,6 +44,8 @@
 (def ^:private paste-configs
   {:apps {:spaced 0.3 :sentences 4 :words 8}
    :apps-nodes-and-children {:spaced 0.2 :nodes true :child 0.5 :points 0.2 :sentences 4 :words 8}
+   ;; igt's default ignored-tokens rule on the words (Luke, 2026-11-11)
+   :ignoring {:spaced 0.2 :child 0.5 :sentences 4 :words 8 :layout :apps-ignoring}
    :long {:spaced 0.2 :sentences 10 :words 14 :sentence-segments true}
    :script {:spaced 0.3 :sentences 4 :words 8 :layout :script}
    :rooted {:spaced 0.2 :sub 1.0 :one-morph true :sentences 4 :words 8 :layout :rooted}
@@ -98,7 +100,7 @@
                              sent (assoc :line (over (:token/begin sent) (:token/end sent))))]
               (doseq [[rname ops] readings]
                 (let [r (run body tokens ops layout false)
-                      ps (-> (problems body tokens (server-gaps body ops tokens layout) r)
+                      ps (-> (problems body tokens (server-gaps body ops tokens layout) r (kept-out-of layout))
                              (into (letters-left-problems body tokens ops r)))]
                   (when (seq ps)
                     (swap! fails conj {:config cname :changes changes :seed seed :reading rname :old body :problems (take 3 ps)}))))))))

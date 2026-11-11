@@ -328,6 +328,24 @@ def test_a_retype_card_says_what_the_plain_rule_does_to_the_words():
     assert 'Analyzed words changed' not in w2.ops[0]['label']
 
 
+def test_a_retype_card_leaves_out_punctuation_typed_against_a_word():
+    """The server's plain rule keeps a character the word layer's
+    ignored-tokens rule leaves out of a word out of the word it is typed
+    against (Luke, 2026-11-11), so a comma typed after an analyzed word does
+    not change it, and the card does not name it. A letter typed there
+    still does."""
+    for text in ('Ali-di, gam akuna.', '¿Ali-di gam akuna.', 'Ali-di,gam akuna.'):
+        w = ws()
+        call_tool(w, 'retype_sentence', {'document': 'd1', 'ref': 's1', 'text': text})
+        assert 'Analyzed words changed' not in w.ops[0]['label'], text
+    w = ws()
+    call_tool(w, 'retype_sentence', {'document': 'd1', 'ref': 's1', 'text': 'Ali-dis, gam akuna.'})
+    assert 'Analyzed words changed: Ali-di' in w.ops[0]['label']
+    w = ws()
+    call_tool(w, 'retype_sentence', {'document': 'd1', 'ref': 's1', 'text': 'Ali-d,i gam akuna.'})
+    assert 'Analyzed words changed: Ali-di' in w.ops[0]['label']
+
+
 def test_every_reshaping_tool_refuses_a_plan_a_corpus_wide_change_reaches():
     """Nine kinds count as a reshape when a corpus-wide change looks for one,
     and only five of the tools looked the other way. A sentence split or an

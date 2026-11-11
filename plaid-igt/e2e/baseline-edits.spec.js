@@ -192,6 +192,23 @@ test('letters typed at the end of a word join it, and a word typed after a space
   await showsStored(page, doc);
 });
 
+test('punctuation typed after a word stays out of it, and the word keeps its morpheme and gloss', async ({
+  page,
+}) => {
+  // PROD-PUNCT (Luke, 2026-11-11): under the word layer's ignored-tokens
+  // rule, `, sipa` typed after `kilu ama` made the word `ama,`.
+  const doc = await makeDocument('kilu ama');
+  await openBaseline(page, doc);
+  await page.getByRole('button', { name: 'Edit text' }).click();
+  await caretAt(page, 8);
+  await page.keyboard.type(', sipa');
+  await save(page);
+  await expect.poll(async () => (await stored(doc)).body).toBe('kilu ama, sipa');
+  await expect.poll(async () => (await stored(doc)).words).toEqual(['ama', 'kilu', 'sipa']);
+  expect((await stored(doc)).morphemes).toEqual(expect.arrayContaining(['ama:AMA', 'kilu:KILU']));
+  await showsStored(page, doc);
+});
+
 test('Backspace over the space between two words keeps both words', async ({ page }) => {
   const doc = await makeDocument('uno dos tres');
   await openBaseline(page, doc);

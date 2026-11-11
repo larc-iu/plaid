@@ -663,6 +663,7 @@ The **ignored tokens** rule says which tokens carry no word-level annotation and
 Its exceptions are the **characters that behave as letters**, such as the apostrophe of an orthography that writes a glottal stop with one.
 Each listed character joins the word around it instead of splitting it, and stays on the word's form in the lexicon.
 **Explicit list** instead takes only the tokens you list, separated by commas.
+Punctuation the rule splits words at, typed at the start or end of a word on the Baseline or Media tab, stays out of the word.
 
 This section also holds the project's **tagsets** (see <<_tagsets>>) and the **document metadata** fields shown on every document's Details tab.
 

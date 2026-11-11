@@ -122,8 +122,10 @@ test("two users edit the same row: each edit keeps the segment and the word's gl
     isAdmin: false,
   });
   try {
-    // A types "!" at the end of row 2. The segment keeps its id, and the
-    // word, which the "!" joins, keeps its morpheme and gloss (M1).
+    // A types "!" at the end of row 2. The segment keeps its id and holds
+    // the "!", and the word keeps its morpheme and gloss (M1). The "!" stays
+    // out of the word, which the word layer's ignored-tokens rule leaves it
+    // out of (Luke, 2026-11-11).
     const rowA = A.page.getByLabel('Segment 2 text');
     await rowA.click();
     await rowA.press('End');
@@ -131,7 +133,11 @@ test("two users edit the same row: each edit keeps the segment and the word's gl
     await rowA.press('Enter');
     await expect.poll(async () => (await segments())[1][1]).toBe('dos!');
     expect((await segments()).map(([id]) => id)).toEqual(before.map(([id]) => id));
-    expect(await glosses()).toEqual(['uno:G1', 'dos!:G2', 'tres:G3']);
+    expect(await glosses()).toEqual(['uno:G1', 'dos:G2', 'tres:G3']);
+    const tl = await read();
+    expect(
+      layerOf(tl, ROLES.WORD).tokens.map((t) => cpSlice(tl.text.body, t.begin, t.end)),
+    ).toEqual(['uno', 'dos', 'tres']);
 
     // B, on the text as it was, types over row 2. Refused: the row shows
     // A's text with B's under it, on the same row.

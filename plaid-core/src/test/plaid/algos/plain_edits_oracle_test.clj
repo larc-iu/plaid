@@ -5,7 +5,7 @@
   `plaid.algos.plain-edits-oracle`."
   (:require [clojure.string :as str]
             [clojure.test :refer [deftest is testing]]
-            [plaid.algos.plain-edits-oracle :refer [cases-per-config configs gen-doc gen-gaps keystrokes layout-tokens letters-left-problems problems run save save-read server-gaps survivor-problems]]
+            [plaid.algos.plain-edits-oracle :refer [cases-per-config configs gen-doc gen-gaps kept-out-of keystrokes layout-tokens letters-left-problems problems run save save-read server-gaps survivor-problems]]
             [plaid.algos.text :as ta]
             [plaid.util.codepoint :as cp]))
 
@@ -25,11 +25,11 @@
                         :keys-right-to-left (keystrokes gaps true)}]
           (doseq [[rname ops] readings]
             (let [r (run body tokens ops layout false)
-                  ps (into (problems body tokens server r)
+                  ps (into (problems body tokens server r (kept-out-of layout))
                            (letters-left-problems body tokens ops r))]
               (when (seq ps) (swap! fails conj {:config cname :seed seed :reading rname :old body :gaps gaps :problems (take 3 ps)}))))
           (let [[bgaps r] (save-read body new-body tokens layout false)
-                ps (into (problems body tokens bgaps r) (survivor-problems body new-body tokens layout r))]
+                ps (into (problems body tokens bgaps r (kept-out-of layout)) (survivor-problems body new-body tokens layout r))]
             (when (seq ps) (swap! fails conj {:config cname :seed seed :reading :whole-body :old body :gaps bgaps :problems (take 3 ps)})))))
       (when (or (System/getenv "PLAIN_ORACLE_DEBUG") (System/getProperty "plain.oracle.debug"))
         (println cname (count @fails) (frequencies (map :reading @fails)))
@@ -74,6 +74,16 @@
       (let [gaps [{:start 5 :end 7 :value "ow"}]]
         (is (empty? (problems old tokens gaps (result "the cow sat" {} #{}))))
         (is (said? #"\[:w 2\] deleted though it has text" (problems old tokens gaps (result "the cow sat" {} #{[:w 2]}))))))
+    (testing "a character the words' rule leaves out, typed at a word's edge, stays out of it"
+      (let [comma? #(= % (int \,))
+            at-7 [{:start 7 :end 7 :value ",x"}]]
+        (is (empty? (problems old tokens at-7 (result "the cat,x sat" {[:s 0] {:token/end 13} [:a 0] {:token/end 9} [:w 3] {:token/begin 10 :token/end 13}} #{}) comma?)))
+        (is (said? #"\[:w 2\] took the left-out \",\"" (problems old tokens at-7 (result "the cat,x sat" {[:s 0] {:token/end 13} [:w 2] {:token/end 9} [:a 0] {:token/end 9} [:w 3] {:token/begin 10 :token/end 13}} #{}) comma?)))
+        (is (said? #"\[:w 2\] took the left-out" (problems old tokens [{:start 4 :end 4 :value ","}] (result "the ,cat sat" {[:s 0] {:token/end 12} [:w 2] {:token/begin 4 :token/end 8} [:a 0] {:token/begin 4 :token/end 8} [:w 3] {:token/begin 9 :token/end 12}} #{}) comma?)))
+        (is (empty? (problems old tokens [{:start 5 :end 5 :value ","}] (result "the c,at sat" {[:s 0] {:token/end 12} [:w 2] {:token/end 8} [:a 0] {:token/end 8} [:w 3] {:token/begin 9 :token/end 12}} #{}) comma?)))
+        (testing "and joins nothing to it"
+          (is (empty? (problems old tokens [{:start 7 :end 7 :value "q,x"}] (result "the catq,x sat" {[:s 0] {:token/end 14} [:w 2] {:token/end 8} [:a 0] {:token/end 10} [:w 3] {:token/begin 11 :token/end 14}} #{}) comma?)))
+          (is (said? #"new letter at 7 joined" (problems old tokens [{:start 7 :end 7 :value "q,x"}] (result "the catq,x sat" {[:s 0] {:token/end 14} [:a 0] {:token/end 10} [:w 3] {:token/begin 11 :token/end 14}} #{}) comma?))))))
     (testing "text typed at a word's edge with whitespace between stays out of it"
       (let [gaps [{:start 7 :end 7 :value " x"}]]
         (is (empty? (problems old tokens gaps (result "the cat x sat" {[:s 0] {:token/end 13} [:w 3] {:token/begin 10 :token/end 13}} #{}))))

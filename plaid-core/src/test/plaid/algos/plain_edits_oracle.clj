@@ -29,6 +29,11 @@
     in a word, unless it was typed over exactly a sentence's or a row's
     text, which keeps it, and a new letter in a word is inside the word,
     joined to its letters, or typed strictly inside its old text,
+  - where the word layer's ignored-tokens rule leaves a character out of a
+    word (`:kept-out?`, the `:apps-ignoring` layout), such a character
+    typed is no letter to the point above and joins nothing to a word, and
+    one in a word was typed strictly inside its old text (Luke,
+    2026-11-11),
   - a word's morphemes keep its extent, go with it, and are never moved
     onto another word,
   - a word inside a segment stays inside it, and every word stays inside
@@ -244,9 +249,18 @@
         e (loop [x e] (if (and (> x b) (ws? (aget cs (dec x)))) (recur (dec x)) x))]
     [b e]))
 
+(declare ^:private problems*)
+
 (defn problems
-  "What is wrong with `result` for `tokens` of `old` and the change `gaps`."
-  [^String old tokens gaps {:keys [text] :as result}]
+  "What is wrong with `result` for `tokens` of `old` and the change `gaps`,
+  `kept-out?` the code points the word layer's rule leaves out of a word,
+  or nil."
+  ([old tokens gaps result] (problems old tokens gaps result nil))
+  ([^String old tokens gaps {:keys [text] :as result} kept-out?]
+   (problems* old tokens gaps text result (or kept-out? (constantly false)))))
+
+(defn- problems*
+  [^String old tokens gaps text result kept-out?]
   (let [o (cps old)
         new-body (:text/body text)
         nw (cps new-body)
@@ -383,7 +397,7 @@
         ;; was typed over exactly a sentence's or a row's text, which keeps
         ;; it
         (dotimes [p (alength nw)]
-          (when (and (aget inserted p) (not (ws? (aget nw p))) (not (aget word-at p))
+          (when (and (aget inserted p) (not (ws? (aget nw p))) (not (kept-out? (aget nw p))) (not (aget word-at p))
                      (not-any? (fn [g] (let [na (gap-new g)]
                                          (and (<= na p) (< p (+ na (cp/cp-count (:value g))))
                                               (or (some #(and (holds (:token/layer %))
@@ -404,10 +418,20 @@
                           (loop [q (step p)]
                             (cond
                               (or (neg? q) (>= q (alength nw)) (ws? (aget nw q))) false
-                              (aget inserted q) (recur (step q))
+                              (aget inserted q) (if (kept-out? (aget nw q)) false (recur (step q)))
                               :else (aget word-letter q))))]
               (when (or (reach dec) (reach inc))
-                (bad! "new letter at " p " joined to a word is in none " (pr-str new-body)))))))
+                (bad! "new letter at " p " joined to a word is in none " (pr-str new-body))))))
+        ;; a character the words' rule leaves out, typed, is in a word only
+        ;; strictly inside the word's old text (Luke, 2026-11-11)
+        (doseq [t tokens :when (and (= wl (:token/layer t)) (not (gone (:token/id t))))
+                :let [now (by-id (:token/id t))
+                      letters (keep #(when-not (ws? (aget o %)) (aget newpos %)) (kept-of t))]
+                :when now
+                p (range (:token/begin now) (:token/end now))
+                :when (and (aget inserted p) (kept-out? (aget nw p)))]
+          (when-not (and (seq letters) (< (reduce min letters) p (reduce max letters)))
+            (bad! (:token/id t) " took the left-out " (pr-str (str (char (aget nw p)))) " typed at its edge (" (pr-str new-body) ")"))))
       ;; morphemes and child tokens with their word
       (doseq [{:token/keys [id]} tokens :when (= :ms (first id))]
         (let [w [:w (second id)] m* (by-id id) w* (by-id w)]
@@ -472,6 +496,17 @@
                 {:id :a :overlap-mode "non-overlapping"}
                 {:id :ss :overlap-mode "non-overlapping"}
                 {:id :u :overlap-mode "any"}]
+   ;; the same as igt makes them, its default ignored-tokens rule on the
+   ;; words, which leaves punctuation out of a word typed against
+   :apps-ignoring [{:id :s :overlap-mode "partitioning"}
+                   {:id :w :overlap-mode "non-overlapping" :parent :s
+                    :kept-out? (:kept-out? (ta/ignored-rule {"plaid" {"ignoredTokens" {"type" "unicodePunctuation" "whitelist" []}}}))}
+                   {:id :m :overlap-mode "any" :parent :w}
+                   {:id :x :overlap-mode "non-overlapping" :parent :w}
+                   {:id :a :overlap-mode "non-overlapping"}
+                   {:id :ss :overlap-mode "non-overlapping"}
+                   {:id :rw :overlap-mode "non-overlapping"}
+                   {:id :u :overlap-mode "any"}]
    ;; a script's layers, no app config: sentences, words on a layer with no
    ;; parent, morphemes under them
    :script [{:id :s :overlap-mode "partitioning"}
@@ -503,7 +538,13 @@
   ([old tokens ops] (run old tokens ops :apps false))
   ([old tokens ops layout split?]
    (let [{:keys [partitioning deciders] :as r} (roles layout split?)]
-     (th/plain-edits old tokens ops partitioning deciders (select-keys r [:split-on-space :children :dealt :exclusive :head-layers])))))
+     (th/plain-edits old tokens ops partitioning deciders (select-keys r [:split-on-space :children :dealt :exclusive :head-layers :kept-out?])))))
+
+(defn kept-out-of
+  "What the words of `layout` leave out of a word they are typed against,
+  or nil."
+  [layout]
+  (:kept-out? (roles layout false)))
 
 (defn letters-left-problems
   "The words and sentences `r` deletes though an old letter of theirs, not
@@ -534,7 +575,7 @@
   "`[gaps result]` of a whole-body save of `new`, the layers as `layout` has
   them (see `plain-body-gaps`)."
   [old new tokens layout split?]
-  (let [roles (select-keys (roles layout split?) [:partitioning :deciders :split-on-space :children :dealt :exclusive :head-layers])
+  (let [roles (select-keys (roles layout split?) [:partitioning :deciders :split-on-space :children :dealt :exclusive :head-layers :kept-out?])
         gaps (ta/plain-body-gaps old new)]
     [gaps (ta/apply-plain-gaps old tokens gaps roles)]))
 
@@ -553,6 +594,9 @@
    :lamkang-like {:carets 3 :spaced 0.39 :reach 30}
    :written-together {:carets 3 :glue 0.3 :spaced 0.3}
    :nested-layer {:carets 3 :child 0.7 :spaced 0.3 :glue 0.1}
+   ;; igt's default ignored-tokens rule on the words (Luke, 2026-11-11)
+   :ignoring {:carets 3 :child 0.5 :spaced 0.3 :glue 0.2 :layout :apps-ignoring}
+   :ignoring-across-words {:carets 2 :reach 40 :glue 0.3 :layout :apps-ignoring}
    ;; UMR's nodes beside the words: the words decide, the nodes follow
    :nodes-beside-words {:carets 3 :nodes true :spaced 0.3 :glue 0.1}
    ;; empty time-alignment segments at word and segment edges (REV-r4d: text

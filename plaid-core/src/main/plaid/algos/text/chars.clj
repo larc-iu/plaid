@@ -130,7 +130,12 @@
   - `:ignored-word?`: whether a word spelled with the given code points is
     one the rule ignores (plaid-ui `isTokenIgnored`): under the punctuation
     rule, all of it punctuation to the text rules (see `punct?`), and under
-    an explicit list, an entry of it. Under no rule, none is."
+    an explicit list, an entry of it. Under no rule, none is.
+  - `:kept-out?`: whether a code point typed against a word's edge stays
+    out of the word (see `apply-plain-gaps`): one the rule has the built-in
+    tokenizer leave out of a word, so `:break?` under a rule, and nil under
+    no rule, which leaves nothing out.
+  A rule of another type, or one that is no object, is no rule."
   [config]
   (let [rule (get-in config ["plaid" "ignoredTokens"])
         type (when (map? rule) (get rule "type"))
@@ -138,16 +143,21 @@
         break-class? (fn [c] (in-ranges? (punct-classes "break") c))]
     (case type
       "unicodePunctuation"
-      (let [letter-like (single-code-points (entries "whitelist"))]
+      (let [letter-like (single-code-points (entries "whitelist"))
+            break? (fn [c] (and (break-class? c) (not (contains? letter-like (int c)))))]
         {:letter-like letter-like
-         :break? (fn [c] (and (break-class? c) (not (contains? letter-like (int c)))))
-         :ignored-word? (fn [cps] (every? (partial punct? letter-like) cps))})
+         :break? break?
+         :ignored-word? (fn [cps] (every? (partial punct? letter-like) cps))
+         :kept-out? break?})
       "blacklist"
       (let [listed (single-code-points (entries "blacklist"))
-            words (set (filter string? (entries "blacklist")))]
+            words (set (filter string? (entries "blacklist")))
+            break? (fn [c] (contains? listed (int c)))]
         {:letter-like (fn [c] (and (in-ranges? (punct-classes "punct") c) (not (contains? listed (int c)))))
-         :break? (fn [c] (contains? listed (int c)))
-         :ignored-word? (fn [cps] (contains? words (String. (int-array cps) 0 (count cps))))})
+         :break? break?
+         :ignored-word? (fn [cps] (contains? words (String. (int-array cps) 0 (count cps))))
+         :kept-out? break?})
       {:letter-like #{}
        :break? break-class?
-       :ignored-word? (constantly false)})))
+       :ignored-word? (constantly false)
+       :kept-out? nil})))

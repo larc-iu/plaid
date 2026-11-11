@@ -870,6 +870,29 @@
       (is (= "ab 'x cd" (-> (get-text admin-request text) :body :text/body)))
       (is (= expect (extent (words 1))) (pr-str ignored)))))
 
+(deftest punctuation-the-words-rule-leaves-out-stays-out-of-a-word-typed-against
+  ;; PROD-PUNCT's second route (Luke, 2026-11-11): `, sipa` typed after
+  ;; `kilu ama` made the word `ama,`. Under the words' ignored-tokens rule
+  ;; the comma stays out of every word, "Tokenize new text" makes `sipa`,
+  ;; and the morpheme and gloss on `ama` stay where they were. With no
+  ;; rule, or one that leaves nothing out, as before.
+  (doseq [[ignored want] [[{:type "unicodePunctuation" :whitelist [] :blacklist []} [5 8 "ama"]]
+                          [{:type "blacklist" :whitelist [] :blacklist []} [5 9 "ama,"]]
+                          [nil [5 9 "ama,"]]]]
+    (let [{:keys [text words morphemes glosses layers]} (setup "kilu ama" :ignored ignored)
+          digest (-> (get-text admin-request text) :body :text/digest)
+          res (edit-text text {:edits [(ins 8 ", sipa")] :base digest :tokenize-layer (:words layers)})]
+      (assert-ok res)
+      (is (= "kilu ama, sipa" (-> (get-text admin-request text) :body :text/body)))
+      (is (= [0 4 "kilu"] (extent (words 0))) (pr-str ignored))
+      (is (= want (extent (words 1))) (pr-str ignored))
+      (is (= want (extent (morphemes 1))) (pr-str ignored))
+      (is (= 200 (:status (get-span admin-request (glosses 1)))))
+      (is (= [[10 14 "sipa"]] (keep #(when (= (str (:words layers)) (str (:layer %)))
+                                       [(:begin %) (:end %) (subs "kilu ama, sipa" (:begin %) (:end %))])
+                                    (-> res :body :reshape :tokens)))
+          (pr-str ignored)))))
+
 (defn- declare-preserved! [layer keys]
   (assert-status 204 (api-call admin-request {:method :put
                                               :path (str "/api/v1/token-layers/" layer "/config/plaid/preserveOnSplit")
