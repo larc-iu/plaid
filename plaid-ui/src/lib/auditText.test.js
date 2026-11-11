@@ -250,6 +250,86 @@ describe('readableDescription, every shape core writes', () => {
   });
 });
 
+// A name the user typed is shown whole, whatever it holds: core writes it
+// between quotes as typed, with no escaping, so a quote inside it is a bare
+// quote too. "Create document "Pear story in Manipuri" in project <id>" read
+// "Create document "Pear story" (REV-PB-C-4).
+const NAMES = [
+  'Notes on verbs',
+  'Trip to Imphal',
+  'Story for kids',
+  'Pear story in Manipuri',
+  'Songs from Ukhrul',
+  'Pear_Story_02 Gopendro',
+  'COMPLETE:Pear story in Meitei',
+  'Tones on nouns (draft)',
+  'Verbs and nouns',
+  'Merged into one',
+  'Uses of ka',
+  `Copy of ${ID}`,
+  `Notes on ${ID}`,
+  'The "pear" story in Manipuri',
+  "Ukhrul's songs for kids",
+  'Story (1 keys)',
+];
+const NAMED_SHAPES = [
+  [(n) => `Create document "${n}" in project ${ID}`, (n) => `Create document "${n}"`],
+  [
+    (n) => `Create document "${n}" in project ${ID} with 2 metadata keys`,
+    (n) => `Create document "${n}" with 2 metadata keys`,
+  ],
+  [
+    (n) => `Create document "${n}" in project ${ID} with 1 metadata keys`,
+    (n) => `Create document "${n}" with 1 metadata key`,
+  ],
+  [(n) => `Create text layer "${n}" in project ${ID}`, (n) => `Create text layer "${n}"`],
+  [(n) => `Create token layer "${n}" in text layer ${ID}`, (n) => `Create token layer "${n}"`],
+  [(n) => `Create span layer "${n}" in token layer ${ID}`, (n) => `Create span layer "${n}"`],
+  [
+    (n) => `Create relation layer "${n}" in span layer ${ID}`,
+    (n) => `Create relation layer "${n}"`,
+  ],
+  [(n) => `Delete project "${n}" (${ID})`, (n) => `Delete project "${n}"`],
+  [(n) => `Upload media file "${n}.wav" to document ${ID}`, (n) => `Upload media file "${n}.wav"`],
+  [(n) => `Upload media file "${n}" to document ${ID}`, (n) => `Upload media file "${n}"`],
+  [(n) => `Update document ${ID} name to "${n}"`, (n) => `Update document name to "${n}"`],
+  [(n) => `Update project ${ID} to name "${n}"`, (n) => `Update project to name "${n}"`],
+  [(n) => `Update vocab ${ID} name to "${n}"`, (n) => `Update vocab name to "${n}"`],
+  [(n) => `Copy "${n}" as "${n} 2"`, (n) => `Copy "${n}" as "${n} 2"`],
+  [
+    (n) => `Rename document "${n}" to "${n} 2": another document of the project had the same name`,
+    (n) => `Rename document "${n}" to "${n} 2": another document of the project had the same name`,
+  ],
+  [
+    (n) => `Create API token "${n}" for user ann@example.org`,
+    (n) => `Create API token "${n}" for user ann@example.org`,
+  ],
+  [(n) => `Create project "${n}"`, (n) => `Create project "${n}"`],
+  [(n) => `Create guideline "${n}"`, (n) => `Create guideline "${n}"`],
+  [(n) => `Create vocab '${n}'`, (n) => `Create vocab '${n}'`],
+  [(n) => `Create vocab item '${n}'`, (n) => `Create vocab item '${n}'`],
+  [
+    (n) => `Restore to ${TS} (after \u201c${n}\u201d)`,
+    (n) => `Restore to ${TS} (after \u201c${n}\u201d)`,
+  ],
+];
+
+describe('readableDescription, a name is kept whole', () => {
+  const rows = NAMED_SHAPES.flatMap(([stored, shown]) => NAMES.map((n) => [stored(n), shown(n)]));
+  it.each(rows)('%s', (stored, shown) => {
+    expect(readableDescription(stored)).toBe(shown);
+  });
+
+  it('still drops the ids around a name, and an apostrophe outside one is not a quote', () => {
+    expect(readableDescription(`Add maintainer o'brien@example.org to project ${ID}`)).toBe(
+      "Add maintainer o'brien@example.org",
+    );
+    expect(readableDescription(`Set metadata on document ${ID} with 1 keys`)).toBe(
+      'Set metadata with 1 key',
+    );
+  });
+});
+
 // An operation's kind, in the words its History row shows.
 describe('operationKindLabel', () => {
   it('names every kind the server accepts', () => {
