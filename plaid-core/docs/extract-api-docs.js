@@ -717,7 +717,7 @@ function generateHTML(title, bundles, lang) {
     ${lang === 'js' ? `
     <div class="preamble">
       <h2>Quick Start</h2>
-      <pre><code>import PlaidClient from 'plaid-client';
+      <pre><code>import { PlaidClient } from '@larc-iu/plaid-client';
 
 const client = await PlaidClient.login('http://localhost:8080', 'user@example.com', 'password');
 

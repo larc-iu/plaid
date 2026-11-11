@@ -65,7 +65,7 @@ Pass one or more project ids to serve just those projects; with none it serves e
 project the token can access, including ones created later. Run it once per model, with
 `--service-id`, to offer a project a choice of several.
 
-Requirements on top of `plaid-client`: `litellm` (`pip install litellm`, which needs
+Requirements on top of `larc-plaid-client`: `litellm` (`pip install litellm`, which needs
 Python 3.11 or newer). The service parses the model's PENMAN with its own reader, so
 nothing else has to be installed.
 
@@ -83,7 +83,7 @@ python services/umr_bootstrap_igt.py --url http://localhost:8085
 python services/umr_bootstrap_igt.py --url http://localhost:8085 --abbreviations arapaho.json
 ```
 
-No requirements beyond `plaid-client`.
+No requirements beyond `larc-plaid-client`.
 
 ## Adjudicating with AnCast
 
@@ -97,7 +97,7 @@ twice, which is what Copy document makes.
 python services/umr_ancast.py --url http://localhost:8085
 ```
 
-Requirements on top of `plaid-client`: `ancast` (`pip install ancast`, which brings numpy).
+Requirements on top of `larc-plaid-client`: `ancast` (`pip install ancast`, which brings numpy).
 
 ## Testing
 
