@@ -1520,3 +1520,78 @@
       (assert-no-content (api-call admin-request {:method :delete
                                                   :path (str "/api/v1/vocab-layers/" vocab-id)}))
       (assert-not-found (get-vocab-layer admin-request vocab-id)))))
+
+(deftest vocab-delete-only-in-project-keeps-the-maintainer-rule
+  ;; REV-PB-A-1: with only-in-project BOTH rules apply, R58 (no other
+  ;; project links it) and SEAM-2 (no live project the caller does not
+  ;; maintain links it). Naming a project the caller does not maintain
+  ;; neither deletes its links nor, in the dry run, counts them.
+  (let [proj-b (create-test-project admin-request "TheirsB")
+        vocab-id (-> (create-vocab-layer admin-request "Shared lexicon") :body :id)
+        item (-> (create-vocab-item admin-request vocab-id "kai") :body :id)
+        tl (-> (create-text-layer admin-request proj-b "TL") :body :id)
+        tkl (-> (create-token-layer admin-request tl "TKL") :body :id)
+        doc (create-test-document admin-request proj-b "Doc")
+        text (-> (create-text admin-request tl doc "kai kai kai") :body :id)
+        delete! (fn [req project-id & {:keys [dry-run]}]
+                  (api-call req {:method :delete
+                                 :path (str "/api/v1/vocab-layers/" vocab-id
+                                            "?only-in-project=" project-id
+                                            (when dry-run "&dry-run=true"))}))]
+    (assert-no-content (link-vocab-to-project admin-request proj-b vocab-id))
+    (doseq [[s e] [[0 3] [4 7] [8 11]]]
+      (assert-created (create-vocab-link admin-request item
+                                         [(-> (create-token admin-request tkl text s e) :body :id)])))
+    (assert-no-content (add-vocab-maintainer admin-request vocab-id "user1@example.com"))
+    (testing "naming the one project that links it, which the caller does not maintain, is refused"
+      (doseq [resp [(delete! user1-request proj-b :dry-run true) (delete! user1-request proj-b)]]
+        (assert-status 409 resp)
+        (is (= "1 other project uses this vocabulary." (-> resp :body :error)))
+        (is (= 1 (-> resp :body :other-projects)))
+        (is (not-any? (-> resp :body keys set) [:links :projects])))
+      (assert-ok (get-vocab-layer admin-request vocab-id))
+      (is (= 3 (count (psc/q fix/db {:select [:id] :from [:vocab_links]})))))
+    (testing "a reader of that project is refused the same way"
+      (assert-no-content (add-project-reader admin-request proj-b "user1@example.com"))
+      (assert-status 409 (delete! user1-request proj-b :dry-run true))
+      (assert-status 409 (delete! user1-request proj-b)))
+    (testing "once the caller maintains it, the dry run counts and the delete goes"
+      (assert-no-content (api-call admin-request {:method :post
+                                                  :path (str "/api/v1/projects/" proj-b
+                                                             "/maintainers/user1@example.com")}))
+      (let [resp (delete! user1-request proj-b :dry-run true)]
+        (assert-ok resp)
+        (is (= {:projects 1 :links 3} (:body resp))))
+      (assert-no-content (delete! user1-request proj-b))
+      (assert-not-found (get-vocab-layer admin-request vocab-id)))
+    (assert-no-content (delete-test-project admin-request proj-b))))
+
+(deftest vocab-delete-only-in-project-after-an-unfinished-import-is-deleted
+  ;; The unfinished import's Delete (igt UnfinishedImport): the project is
+  ;; deleted first, then each vocabulary it made with only-in-project naming
+  ;; it. A project maintainer who also maintains the vocabulary gets it
+  ;; deleted, and one that another project links stays (409).
+  (let [proj-a (create-test-project admin-request "Import")
+        maintain! (fn [proj] (assert-no-content
+                              (api-call admin-request {:method :post
+                                                       :path (str "/api/v1/projects/" proj
+                                                                  "/maintainers/user1@example.com")})))
+        made (fn [name]
+               (let [v (-> (create-vocab-layer admin-request name) :body :id)]
+                 (assert-no-content (add-vocab-maintainer admin-request v "user1@example.com"))
+                 (assert-no-content (link-vocab-to-project admin-request proj-a v))
+                 v))
+        only-a (made "Only in the import")
+        shared (made "Also elsewhere")
+        proj-b (create-test-project admin-request "Elsewhere")
+        delete! (fn [v] (api-call user1-request {:method :delete
+                                                 :path (str "/api/v1/vocab-layers/" v
+                                                            "?only-in-project=" proj-a)}))]
+    (maintain! proj-a)
+    (assert-no-content (link-vocab-to-project admin-request proj-b shared))
+    (assert-no-content (delete-test-project user1-request proj-a))
+    (assert-no-content (delete! only-a))
+    (assert-not-found (get-vocab-layer admin-request only-a))
+    (assert-status 409 (delete! shared))
+    (assert-ok (get-vocab-layer admin-request shared))
+    (assert-no-content (delete-test-project admin-request proj-b))))

@@ -359,40 +359,38 @@
 (defn- projects-in-the-way
   "The ids of the projects whose link to vocab layer `eid` (a row of
   `project_vocabs`, whatever the number of links in its documents) stands
-  in the way of deleting it.
+  in the way of deleting it, under two rules, both always applied.
 
-  With `only-in-project`, every project but that one, whether or not the
-  caller can read it (R58: an unfinished import's Delete takes the
-  vocabulary it made only when no other project uses it).
-
-  Otherwise every project the caller (`user-id`) does not maintain, unless
-  the caller is an admin (`admin?`), who maintains everything: a delete
+  Every live project the caller (`user-id`) does not maintain, unless the
+  caller is an admin (`admin?`), who maintains everything: a delete
   removes every link in those projects' documents, and nothing brings them
   back (SEAM-2, Luke 2026-11-11). A project being deleted stands in no
-  one's way: its links go unaudited with it (R39)."
+  one's way: its links go unaudited with it (R39).
+
+  With `only-in-project`, also every project but that one, whether or not
+  the caller can read it (R58: an unfinished import's Delete takes the
+  vocabulary it made only when no other project uses it). Naming a project
+  does not lift the first rule for it (REV-PB-A-1)."
   [tx eid {:keys [only-in-project user-id admin?]}]
-  (cond
-    only-in-project
-    (->> (fetch-vocab-project-grants tx eid)
-         (remove #(= (str %) (str only-in-project))))
-
-    admin?
-    []
-
-    :else
-    (->> (psc/q tx {:select [:pv.project_id]
-                    :from [[:project_vocabs :pv]]
-                    :join [[:projects :p] [:= :p.id :pv.project_id]]
-                    :where [:and
-                            [:= :pv.vocab_layer_id eid]
-                            [:= :p.deleted_at nil]
-                            [:not [:exists {:select [1]
-                                            :from [[:project_users :pu]]
-                                            :where [:and
-                                                    [:= :pu.project_id :pv.project_id]
-                                                    [:= :pu.user_id user-id]
-                                                    [:= :pu.role "maintainer"]]}]]]})
-         (mapv :project_id))))
+  (distinct
+   (concat
+    (when only-in-project
+      (->> (fetch-vocab-project-grants tx eid)
+           (remove #(= (str %) (str only-in-project)))))
+    (when-not admin?
+      (->> (psc/q tx {:select [:pv.project_id]
+                      :from [[:project_vocabs :pv]]
+                      :join [[:projects :p] [:= :p.id :pv.project_id]]
+                      :where [:and
+                              [:= :pv.vocab_layer_id eid]
+                              [:= :p.deleted_at nil]
+                              [:not [:exists {:select [1]
+                                              :from [[:project_users :pu]]
+                                              :where [:and
+                                                      [:= :pu.project_id :pv.project_id]
+                                                      [:= :pu.user_id user-id]
+                                                      [:= :pu.role "maintainer"]]}]]]})
+           (mapv :project_id))))))
 
 (defn- refuse-projects-in-the-way!
   "Throw the 409 a delete of `eid` is refused with when a project stands in
@@ -449,10 +447,10 @@
       the grant transition.
 
   The delete is refused (409, nothing written) while a project stands in
-  its way (`projects-in-the-way`): with `only-in-project`, any project but
-  that one, otherwise any project `user-id` does not maintain, unless
-  `admin?`. With neither `admin?` nor a user who maintains every linking
-  project, `opts` nil, that is every linking project."
+  its way (`projects-in-the-way`): any live project `user-id` does not
+  maintain, unless `admin?`, and with `only-in-project` also any project
+  but that one. With `opts` nil, every live linking project `user-id` does
+  not maintain."
   ([db eid user-id] (delete db eid user-id nil))
   ([db eid user-id opts]
    (submit-operation! [tx db {:type :vocab/delete

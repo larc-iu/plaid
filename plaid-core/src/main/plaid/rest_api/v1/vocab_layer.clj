@@ -145,7 +145,7 @@
      :delete {:summary (str "Delete a vocab layer, with its entries and every link to them. Refused (409) while a project "
                             "the caller does not maintain links it (an admin maintains every project), the body "
                             "counting those projects as <body>other-projects</body> without naming them. A project being "
-                            "deleted stands in no one's way. With <query>only-in-project</query>, refused (409) "
+                            "deleted stands in no one's way. With <query>only-in-project</query>, also refused (409) "
                             "when any other project links it, including projects the caller cannot read. With "
                             "<query>dry-run</query> true nothing is written: the same refusals, or "
                             "{projects, links}, the projects linking it and the links in their documents that the delete "
