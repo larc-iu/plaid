@@ -456,3 +456,96 @@ def test_the_deadline_is_a_silence_not_the_length_of_the_reply():
     finally:
         server.shutdown()
     assert litellm  # imported for real, not the fake
+
+
+class _Upstream:
+    """A local OpenAI-shaped server that streams ``total`` chunks, 10 ms
+    apart, and records at which chunk the client went away (None while it is
+    still sending, or once it sent them all)."""
+
+    def __init__(self, total=1500, content=lambda i: f'word{i} '):
+        import http.server
+        import json as _json
+        up = self
+        self.requests = 0
+        self.sent = 0
+        self.gone_at = None
+        self.done = threading.Event()
+
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def log_message(self, *a):
+                pass
+
+            def do_POST(self):
+                self.rfile.read(int(self.headers.get('Content-Length') or 0))
+                up.requests += 1
+                self.send_response(200)
+                self.send_header('Content-Type', 'text/event-stream')
+                self.end_headers()
+                try:
+                    for i in range(total):
+                        body = {'id': 'c', 'object': 'chat.completion.chunk', 'created': 0, 'model': 'x',
+                                'choices': [{'index': 0, 'delta': {'content': content(i)}, 'finish_reason': None}]}
+                        self.wfile.write(f'data: {_json.dumps(body)}\n\n'.encode())
+                        self.wfile.flush()
+                        up.sent += 1
+                        time.sleep(0.01)
+                    self.wfile.write(b'data: [DONE]\n\n')
+                except (BrokenPipeError, ConnectionResetError):
+                    up.gone_at = up.sent
+                finally:
+                    up.done.set()
+
+        self.server = http.server.ThreadingHTTPServer(('127.0.0.1', 0), Handler)
+        threading.Thread(target=self.server.serve_forever, daemon=True).start()
+        self.base = f'http://127.0.0.1:{self.server.server_address[1]}/v1'
+
+    def close(self):
+        self.server.shutdown()
+
+
+def test_a_stop_ends_the_request_at_the_provider():
+    """Through the real litellm against a local server: a run stopped one
+    second into a reply of 1,500 chunks leaves the provider at once, not at
+    the end of the reply (REV-PB-C-1). litellm's stream wrapper has no close
+    of its own, so closing it closed nothing."""
+    pytest.importorskip('litellm')
+    up = _Upstream()
+    try:
+        stop = threading.Event()
+        threading.Thread(target=lambda: (time.sleep(1.0), stop.set()), daemon=True).start()
+        with pytest.raises(ServiceCancelled):
+            llm.ChatModel('openai/x', api_base=up.base, api_key='k').complete('sys', 'user',
+                                                                              should_stop=stop.is_set)
+        assert up.done.wait(3), 'the provider was still writing 3 seconds after the stop'
+        assert up.gone_at is not None and up.gone_at < 400
+    finally:
+        up.close()
+
+
+def test_a_stream_is_closed_through_the_provider_stream_under_litellms_wrapper():
+    inner = types.SimpleNamespace(closed=0)
+    inner.close = lambda: setattr(inner, 'closed', inner.closed + 1)
+    llm.close_stream(types.SimpleNamespace(completion_stream=inner))
+    assert inner.closed == 1
+    llm.close_stream(None)  # nothing opened, nothing to close
+
+
+def test_a_stream_that_will_not_close_does_not_hide_what_happened(capsys):
+    def refuse():
+        raise OSError('socket gone')
+    llm.close_stream(types.SimpleNamespace(completion_stream=types.SimpleNamespace(close=refuse)))
+    assert 'socket gone' in capsys.readouterr().err
+
+
+def test_a_stream_that_fails_partway_is_closed(monkeypatch):
+    class _Broken(_Stream):
+        def __iter__(self):
+            yield _chunk('half')
+            raise RuntimeError('the reader failed')
+
+    stream = _Broken([])
+    _install(monkeypatch, _fake_litellm([stream]))
+    with pytest.raises(RuntimeError):
+        llm.ChatModel('openai/x').complete('sys', 'user')
+    assert stream.closed

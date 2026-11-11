@@ -25,7 +25,8 @@ import litellm
 # services' own (one loop for every caller of a model). RETRIES and
 # TIMEOUT_RETRIES are imported for the docstrings and tests that name them.
 from plaid_client import ServiceCancelled
-from plaid_client.workflows.llm import RETRIES, TIMEOUT_RETRIES, is_timeout, retrying, transient_errors  # noqa: F401
+from plaid_client.workflows.llm import (RETRIES, TIMEOUT_RETRIES, close_stream, is_timeout, retrying,  # noqa: F401
+                                        transient_errors)
 
 from .bidi import for_model
 from .conversation import DROPPED
@@ -373,7 +374,7 @@ def _complete_once(cfg: ModelConfig, kwargs: Dict[str, Any], on_text: Callable[[
             return stream  # a whole response (a test double, a provider that ignored stream=)
         for chunk in stream:
             if abandoned is not None and abandoned.is_set():
-                _close(stream)
+                close_stream(stream)
                 raise TurnCancelled()
             chunks.append(chunk)
             choices = getattr(chunk, 'choices', None) or []
@@ -406,7 +407,7 @@ def _complete_once(cfg: ModelConfig, kwargs: Dict[str, Any], on_text: Callable[[
     except TurnCancelled:
         raise
     except Repeating as e:
-        _close(stream)
+        close_stream(stream)
         print(f'{kwargs.get("model")}: a model call began repeating itself and was stopped '
               f'({REPEAT_MIN_TIMES} copies in a row of "{str(e)[:80]}")')
         if thought:
@@ -418,7 +419,7 @@ def _complete_once(cfg: ModelConfig, kwargs: Dict[str, Any], on_text: Callable[[
         # A stop the client saw as it sent the text so far (a stop asked for,
         # or a request the server no longer knows): the stream is closed as
         # at a stop seen here, so the provider can stop writing.
-        _close(stream)
+        close_stream(stream)
         raise
     except Exception as e:
         # A timeout, a rate limit or a provider that is down is not a provider
@@ -452,21 +453,6 @@ def _complete_once(cfg: ModelConfig, kwargs: Dict[str, Any], on_text: Callable[[
     if thought and msg is not None:
         msg.reasoning_content = thought
     return resp
-
-
-def _close(stream: Any) -> None:
-    """Close a stream so the provider stops writing. litellm's stream wrapper
-    has no close of its own: the provider's stream under it
-    (``completion_stream``, the openai SDK's, whose close ends the HTTP
-    response) is closed."""
-    for s in (stream, getattr(stream, 'completion_stream', None)):
-        close = getattr(s, 'close', None)
-        if callable(close):
-            try:
-                close()
-            except Exception:  # noqa: BLE001 - a stream that will not close is left to end on its own
-                traceback.print_exc()
-            return
 
 
 def _assembled(chunks: List[Any]):

@@ -37,6 +37,7 @@ until its token limit.
 import random
 import threading
 import time
+import traceback
 from dataclasses import dataclass, field
 from types import SimpleNamespace
 from typing import Any, Callable, Dict, List, Optional
@@ -425,20 +426,19 @@ def _streamed(litellm, kwargs, abandoned: Optional[threading.Event] = None):
     neither a timeout nor one that passes) is asked again without streaming,
     as the assistants' calls are (plaid-agent ``core/agent.py``
     ``_complete_once``). Once ``abandoned`` is set the stream is closed at its
-    next chunk."""
+    next chunk, and so is a stream that fails partway (:func:`close_stream`)."""
     chunks: List[Any] = []
+    stream = None
     try:
         # The provider's own count of what it sent, in its last chunk. A
         # provider that has no such option has it dropped, not refused.
         stream = litellm.completion(**kwargs, stream=True, stream_options={'include_usage': True},
                                     drop_params=True)
         if hasattr(stream, 'choices'):
-            return stream  # a whole response (a test double, a provider that ignored stream=)
+            whole, stream = stream, None
+            return whole  # a whole response (a test double, a provider that ignored stream=)
         for chunk in stream:
             if abandoned is not None and abandoned.is_set():
-                close = getattr(stream, 'close', None)
-                if callable(close):
-                    close()
                 raise ServiceCancelled('The requester stopped this request')
             chunks.append(chunk)
     except ServiceCancelled:
@@ -449,7 +449,32 @@ def _streamed(litellm, kwargs, abandoned: Optional[threading.Event] = None):
         if abandoned is not None and abandoned.is_set():
             raise ServiceCancelled('The requester stopped this request') from e
         return litellm.completion(**kwargs)
+    finally:
+        # On every way out, a stop and a failure partway included, so the
+        # provider stops writing a reply nobody will read.
+        close_stream(stream)
     return _joined(litellm, chunks, kwargs.get('messages'))
+
+
+def close_stream(stream: Any) -> None:
+    """Close a model's stream so the provider stops writing. litellm's
+    stream wrapper has no close of its own (``CustomStreamWrapper`` has only
+    ``aclose``), so the provider's stream under it is closed:
+    ``completion_stream``, the openai SDK's ``Stream``, whose close ends the
+    HTTP response. Closing a stream twice, or one that has ended, does
+    nothing more. A stream that will not close is left to end on its own,
+    with the reason on the log. The assistants close theirs here too
+    (plaid-agent ``core/agent.py``)."""
+    if stream is None:
+        return
+    for s in (stream, getattr(stream, 'completion_stream', None)):
+        close = getattr(s, 'close', None)
+        if callable(close):
+            try:
+                close()
+            except Exception:  # noqa: BLE001 - a stream that will not close is left to end on its own
+                traceback.print_exc()
+            return
 
 
 def _joined(litellm, chunks, messages):

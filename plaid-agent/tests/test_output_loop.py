@@ -140,7 +140,7 @@ def test_a_litellm_stream_is_closed_through_the_response_under_it():
     closed."""
     inner = SimpleNamespace(closed=False)
     inner.close = lambda: setattr(inner, 'closed', True)
-    agent._close(SimpleNamespace(completion_stream=inner))
+    agent.close_stream(SimpleNamespace(completion_stream=inner))
     assert inner.closed
 
 
