@@ -223,10 +223,10 @@ describe('skippedLines', () => {
 describe('keptLines', () => {
   it('counts the links kept as they are now, singular and plural', () => {
     expect(keptLines([{ kind: 'vocab-link', count: 1 }])).toEqual([
-      'Kept: 1 vocabulary link whose entry no longer exists.',
+      'Kept: 1 vocabulary link. The entry it had then no longer exists.',
     ]);
     expect(keptLines([{ kind: 'vocab-link', count: 3 }])).toEqual([
-      'Kept: 3 vocabulary links whose entries no longer exist.',
+      'Kept: 3 vocabulary links. The entries they had then no longer exist.',
     ]);
     expect(keptLines(undefined)).toEqual([]);
     expect(keptLines([])).toEqual([]);

@@ -179,7 +179,11 @@ describe('RestoreDialog', () => {
     view = await mount({ documents: { restore, audit: async () => [] } }, vi.fn(), {});
     await settle(view);
     expect(
-      byText(document.body, 'p', 'Kept: 1 vocabulary link whose entry no longer exists.'),
+      byText(
+        document.body,
+        'p',
+        'Kept: 1 vocabulary link. The entry it had then no longer exists.',
+      ),
     ).not.toBeNull();
     expect(byText(document.body, 'p', 'Removed')).toBeNull();
     expect(document.body.textContent).not.toMatch(/cannot come back/);
@@ -195,7 +199,11 @@ describe('RestoreDialog', () => {
     view = await mount({ documents: { restore, audit: async () => [] } }, vi.fn(), {});
     await settle(view);
     expect(
-      byText(document.body, 'p', 'Kept: 2 vocabulary links whose entries no longer exist.'),
+      byText(
+        document.body,
+        'p',
+        'Kept: 2 vocabulary links. The entries they had then no longer exist.',
+      ),
     ).not.toBeNull();
     expect(byText(document.body, 'p', 'Nothing differs from the current state.')).toBeNull();
     expect(byText(document.body, 'button', 'Restore').disabled).toBe(true);

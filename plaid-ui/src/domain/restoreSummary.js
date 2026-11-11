@@ -186,9 +186,11 @@ export const keptLines = (kept) =>
     .filter((k) => k.kind === 'vocab-link' && k.count > 0)
     .map(
       (k) =>
-        `Kept: ${countOf(k.count, 'vocabulary link')} whose ${
-          k.count === 1 ? 'entry no longer exists' : 'entries no longer exist'
-        }.`,
+        `Kept: ${countOf(k.count, 'vocabulary link')}. ${
+          k.count === 1
+            ? 'The entry it had then no longer exists.'
+            : 'The entries they had then no longer exist.'
+        }`,
     );
 
 // A restore keeps the document's current name when the name it had then
