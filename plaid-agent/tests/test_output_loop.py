@@ -128,7 +128,8 @@ def test_a_looping_call_is_stopped_closed_and_not_tried_again(monkeypatch, field
     assert str(e.value) == REPEATING_LINE
     [stream] = streams
     assert stream.closed, 'the provider is told to stop writing'
-    assert stream.read <= REPEAT_MIN_TIMES + 3, 'stopped as soon as the rule is met'
+    assert stream.read <= REPEAT_MIN_TIMES + 3 + agent.REPEAT_CHECK_CHARS // len(LOOP), \
+        'stopped once the rule is met, within REPEAT_CHECK_CHARS'
     seen = texts if field == 'content' else thoughts
     assert seen[-1].startswith('Staged 47 changes.') and seen[-1].count(LOOP) >= REPEAT_MIN_TIMES, \
         'the text so far is handed on whole before the call ends'
@@ -377,3 +378,19 @@ def test_litellms_repeat_guard_through_a_real_stream(tmp_path):
         assert state['requests'] == 1 and state['gone_at'] is not None and state['gone_at'] < 300
     finally:
         server.shutdown()
+
+
+def test_the_guard_reads_the_text_again_only_once_it_has_grown(monkeypatch):
+    """The rule cost 0.2 to 0.3 ms of CPU a chunk whatever its size, 4 to 7 s
+    over a reply of 100,000 characters in chunks of 4 (REV-PB-C, S5). It is
+    read again once the text or the reasoning has grown by
+    REPEAT_CHECK_CHARS, so a loop runs at most that much further."""
+    monkeypatch.setattr(agent, 'STREAM_INTERVAL_S', 0)
+    seen = []
+    real = agent.repeating
+    monkeypatch.setattr(agent, 'repeating', lambda t: seen.append(len(t)) or real(t))
+    pieces = ['word'] * 25_000
+    monkeypatch.setattr(agent.litellm, 'completion', lambda **kw: _Stream(lambda: iter(pieces)))
+    agent._complete_once(ModelConfig(model='m'), {'model': 'm', 'messages': []}, lambda t: None)
+    assert len(seen) <= 100_000 // agent.REPEAT_CHECK_CHARS + 1
+    assert all(b - a >= agent.REPEAT_CHECK_CHARS for a, b in zip(seen, seen[1:]))

@@ -169,6 +169,11 @@ REPEAT_UNIT_MIN_CHARS = 12
 #: How many copies in a row end the call. A table or a list repeats its
 #: shape, never a whole row word for word twenty times.
 REPEAT_MIN_TIMES = 20
+#: How much the text (or the reasoning) grows before the rule reads it again.
+#: Read after every chunk it cost 0.2 to 0.3 ms of CPU a chunk, 4 to 7 s over
+#: a reply of 100,000 characters in chunks of 4 (REV-PB-C). A loop runs at
+#: most this much further before it is caught.
+REPEAT_CHECK_CHARS = 200
 _REPEAT_TAIL = REPEAT_UNIT_MAX_CHARS * REPEAT_MIN_TIMES
 _SPACES = re.compile(r'\s+')
 
@@ -384,6 +389,7 @@ def _complete_once(cfg: ModelConfig, kwargs: Dict[str, Any], on_text: Callable[[
     seam = False  # a tool call or reasoning came after the last text piece
     last = 0.0
     last_thought = 0.0
+    read_text = read_thought = 0  # how long each was when the rule last read it
     stream = None
     try:
         # The provider's own count of what it sent, the thinking included, in
@@ -409,9 +415,11 @@ def _complete_once(cfg: ModelConfig, kwargs: Dict[str, Any], on_text: Callable[[
                 if now - last_thought >= STREAM_INTERVAL_S:
                     last_thought = now
                     on_thinking(clean_reasoning(thought) or '')
-                unit = repeating(thought)
-                if unit is not None:
-                    raise Repeating(unit)
+                if len(thought) - read_thought >= REPEAT_CHECK_CHARS:
+                    read_thought = len(thought)
+                    unit = repeating(thought)
+                    if unit is not None:
+                        raise Repeating(unit)
             if piece:
                 if seam and text and not text[-1].isspace() and not piece[0].isspace():
                     text += '\n\n'
@@ -421,9 +429,11 @@ def _complete_once(cfg: ModelConfig, kwargs: Dict[str, Any], on_text: Callable[[
                 if now - last >= STREAM_INTERVAL_S:
                     last = now
                     on_text(text)
-                unit = repeating(text)
-                if unit is not None:
-                    raise Repeating(unit)
+                if len(text) - read_text >= REPEAT_CHECK_CHARS:
+                    read_text = len(text)
+                    unit = repeating(text)
+                    if unit is not None:
+                        raise Repeating(unit)
     except TurnCancelled:
         raise
     except Exception as e:
