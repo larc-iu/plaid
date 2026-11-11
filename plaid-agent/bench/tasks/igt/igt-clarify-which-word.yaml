@@ -10,4 +10,8 @@ turns:
 check: igt_changes
 args:
   plan: none
-  match: ['\?', 'sentence']
+  match:
+    # a question, or a request for the user's choice phrased as one ("Tell me
+    # which sentence"), as ud-fr-clarify-de reads it
+    - '\?|\btell me\b|\blet me know\b'
+    - 'sentence'

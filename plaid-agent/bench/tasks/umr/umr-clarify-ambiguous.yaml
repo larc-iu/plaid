@@ -12,4 +12,8 @@ check: umr_answer
 args:
   reader: umr
   no_plan: true
-  match: ['\?', '(which|several|five|\b5\b|more than one|multiple|each|all of them)']
+  match:
+    # a question, or a request for the user's choice phrased as one ("Let me
+    # know which one"), as ud-fr-clarify-de reads it
+    - '\?|\btell me\b|\blet me know\b'
+    - '(which|several|five|\b5\b|more than one|multiple|each|all of them)'
