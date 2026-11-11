@@ -223,7 +223,7 @@ Open it by right-clicking the node, with the **⋯** button at its top right, or
 * The arrows move between nodes: up to the parent, down to the first child, and left and right along a row. In a right-to-left document they follow the screen.
 * Alt+Left and Alt+Right move the focused node earlier or later among its siblings in the written order, the order used by the export and Text mode. In a right-to-left sentence the two keys trade places, so the node moves the way the arrow points.
 * PageDown and PageUp go to the next or previous sentence's root, turning the page when needed.
-* Shift+Tab leaves the block.
+* Shift+Tab steps back one control per press, through the sentence's chain chips and its header, then into the sentence before.
 
 == Making nodes and edges
 
