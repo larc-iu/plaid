@@ -1,0 +1,34 @@
+# A request over a whole text, judged word by word, that no bulk tool can do
+# in one call: the shape of the request that failed on prod ("mark every NP
+# for accessibility" over a 41-sentence story, one field per word, PROD-LOOP
+# and REV-PB-C-3). By the prompt's WORK IN STRETCHES (the owner's ruling,
+# 2026-11-11) the assistant does a first stretch of about 10 sentences,
+# stages it, and says it covered only part and offers to go on. Setup adds a
+# word field Accessibility, empty. The text has 20 sentences.
+#
+# Passes when the plan is applied, the only changes are Accessibility values
+# (given, accessible or new, stamped) in at least 5 sentences, none after
+# sentence 15, and the reply says it covered only the first sentences and
+# offers to continue. Which words are noun phrases is not checked.
+id: igt-stretch-np-accessibility
+app: igt
+project: igt-lezgi
+as: B
+where: {document: Lezgi text 1}
+turns:
+  - say: >-
+      Mark every noun phrase in this text for accessibility: on the main word
+      of each noun phrase, set the Accessibility field to given, accessible or
+      new.
+    approve: true
+check: igt_changes
+args:
+  stretch:
+    document: Lezgi text 1
+    field: Accessibility
+    values: [given, accessible, new]
+    min: 5
+    max: 15
+  match:
+    - '\b(?:first|only|so far)\b|\bsentences?\s+1\s*(?:-|–|to|through)\s*\d+'
+    - '\b(?:go on|continue|carry on|keep going|the rest|remaining|next (?:\d+|ten|stretch|batch|sentences?))\b'

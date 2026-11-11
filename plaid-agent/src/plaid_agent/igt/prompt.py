@@ -97,7 +97,8 @@ SYSTEM = shared.filled(_SYSTEM, {
     'user_values': shared.user_values('a gloss, a form, a part of speech, a translation'),
     'one_turn': shared.one_turn(),
     'in_stretches': shared.in_stretches(
-        'segmenting and glossing', 'one field, such as a free translation or a note',
+        'segmenting and glossing, marking every noun phrase, a field on every word',
+        ', such as a free translation or a note,',
         'replace_in_field, set_field_for_form, set_analysis_for_form, respell_all, confirm'),
     'final_message': shared.final_message('items'),
     'read_budget': shared.read_budget('search, concordance, frequency_list, worklist or check_consistency'),

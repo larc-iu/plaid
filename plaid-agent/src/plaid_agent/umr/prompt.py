@@ -96,7 +96,7 @@ SYSTEM = shared.filled(_SYSTEM, {
     'stage_now': shared.stage_now(),
     'user_values': shared.user_values('a concept, an aspect, a role, a modal strength'),
     'one_turn': shared.one_turn(),
-    'in_stretches': shared.in_stretches('a sentence graph', 'one attribute, such as an aspect',
+    'in_stretches': shared.in_stretches('a sentence graph, an attribute on every event or entity', '',
                                         'set_attribute_for_concept'),
     'final_message': shared.final_message('nodes'),
     'read_budget': shared.read_budget('find_nodes or frequency_list'),

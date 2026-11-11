@@ -102,15 +102,40 @@ def test_every_prompt_says_how_much_to_analyse_at_once_and_what_that_leaves_alon
     output cap four times running. The owner's rule (2026-11-11): about ten
     sentences of full analysis a turn, the first stretch staged and the next
     offered, which leaves reads and the tools that change many sentences in
-    one call alone."""
+    one call alone. Ruled again the same day (REV-PB-C-3): anything judged
+    word by word or phrase by phrase is full analysis, the request that
+    failed on prod ("mark every NP for accessibility") among it, and only one
+    value per sentence, such as a free translation or a note, may cover
+    more."""
     from plaid_agent.core.limits import STRETCH_SENTENCES
-    full = {'igt': 'segmenting and glossing', 'ud': 'a full parse', 'umr': 'a sentence graph'}
+    full = {'igt': 'segmenting and glossing, marking every noun phrase, a field on every word',
+            'ud': 'a parse, a lemma, a feature or a relation on every word',
+            'umr': 'a sentence graph, an attribute on every event or entity'}
+    light = {'igt': 'Only ONE value per sentence, such as a free translation or a note, may cover more',
+             'ud': 'Only ONE value per sentence, such as a note on it, may cover more',
+             'umr': 'Only ONE value per sentence may cover more'}
     bulk = {'igt': 'replace_in_field', 'ud': 'replace_in_field', 'umr': 'set_attribute_for_concept'}
     for app, text in _built().items():
         line = next(x for x in text.splitlines() if x.startswith('- WORK IN STRETCHES.'))
-        assert f'({full[app]}) of more than about {STRETCH_SENTENCES} sentences' in line, app
+        assert f'Work judged word by word or phrase by phrase ({full[app]}) is done about ' \
+               f'{STRETCH_SENTENCES} sentences at a time' in line, app
         assert f'do the first {STRETCH_SENTENCES} or so' in line, app
         assert 'once they approve this plan' in line, 'a plan per stretch, as ONE_TURN has it'
+        assert light[app] in line, app
+        # Nothing judged per word reads as light work any more.
+        for word in ('Lighter', 'one field', 'one column', 'one attribute'):
+            assert word not in line, (app, word)
         assert bulk[app] in line and 'a question about a whole document' in line, app
         # Next to the rule it must agree with.
         assert text.index('A plan lives for ONE turn') < text.index('- WORK IN STRETCHES.'), app
+
+
+def test_staging_now_and_working_in_stretches_agree():
+    """STAGE_NOW says there is no later turn to do a promised change in, and
+    WORK IN STRETCHES leaves the rest of a long request for the user to ask
+    for: the one says the other is its exception (REV-PB-C, S5)."""
+    for app, text in _built().items():
+        stage = next(x for x in text.splitlines() if x.startswith('- Once the request is clear, STAGE'))
+        assert stage.endswith('so stage it now. The one exception is the rest of a request done in '
+                              'stretches (WORK IN STRETCHES), which waits until the user asks you to go on.'), app
+        assert text.index(stage) < text.index('- WORK IN STRETCHES.'), app

@@ -52,7 +52,8 @@ STAGE_NOW = '''- Once the request is clear, STAGE the changes with the plan tool
 the user to confirm in chat before staging: the staged plan is what they confirm, with Approve and Discard on \
 the plan card. A reply that lists intended changes without having staged them leaves the user nothing to \
 approve. Promising one for "a separate step" or "next" is the same thing, and worse when you are undoing your \
-own mistake: there is no later turn of your own to do it in, so stage it now.'''
+own mistake: there is no later turn of your own to do it in, so stage it now. The one exception is the rest \
+of a request done in stretches (WORK IN STRETCHES), which waits until the user asks you to go on.'''
 
 # Three of the benchmark's model errors of 2026-10-08 followed the data over
 # the request: the aspect of a similar sentence for the one the user named,
@@ -77,12 +78,16 @@ when it holds two of them promises six and delivers two.'''
 # sentence in one call until its output cap, four times running, and then
 # wrote one sentence 1,635 times (PROD-LOOP, 2026-11-10). The owner's rule
 # (2026-11-11): do a first stretch, say so, and offer the next. A plan per
-# stretch, each approved before the next is staged, as ONE_TURN has it.
-IN_STRETCHES = '''- WORK IN STRETCHES. Asked for your own full analysis ({full}) of more than about {n} sentences, \
-do the first {n} or so, stage them, and say in your reply that the request is more than you do at once, which \
-sentences you covered, and that they can ask you to go on once they approve this plan. Lighter work per sentence \
-({light}) may cover more, and a search, a count, a question about a whole document or a single call that changes \
-many sentences ({bulk}) is not limited by this.'''
+# stretch, each approved before the next is staged, as ONE_TURN has it. What
+# counts (ruled the same day, REV-PB-C-3): anything judged word by word or
+# phrase by phrase, so "mark every NP for accessibility" over a 41-sentence
+# story, the request that failed, is full analysis. Only one value per
+# sentence (a free translation, a note) may cover more.
+IN_STRETCHES = '''- WORK IN STRETCHES. Work judged word by word or phrase by phrase ({full}) is done about {n} \
+sentences at a time. Asked for it over more sentences, do the first {n} or so, stage them, and say in your reply \
+which sentences you covered, that the request is more than you do at once, and that they can ask you to go on \
+once they approve this plan. Only ONE value per sentence{light} may cover more, and a search, a count, a question \
+about a whole document or a single call that changes many sentences ({bulk}) is not limited by this.'''
 
 FINAL_MESSAGE = '''- The reply the user reads is your LAST message of the turn. Text you write beside a tool call goes \
 into the folded list of steps, which they may never open. So the last message answers every question they \
@@ -216,10 +221,11 @@ def one_turn() -> str:
 
 def in_stretches(full: str, light: str, bulk: str) -> str:
     """Analyse a long request a stretch of sentences at a time, the first
-    in this turn, and offer the next. ``full`` is the app's full analysis of
-    a sentence, ``light`` work that costs a sentence little, and ``bulk``
-    the app's tools that change many sentences in one call, all in the app's
-    own words."""
+    in this turn, and offer the next. ``full`` names the app's work judged
+    word by word or phrase by phrase, ``light`` the app's examples of one
+    value per sentence (", such as ...,", or "" for none), and ``bulk`` the
+    app's tools that change many sentences in one call, all in the app's own
+    words."""
     return (IN_STRETCHES.replace('{n}', str(STRETCH_SENTENCES)).replace('{full}', full)
             .replace('{light}', light).replace('{bulk}', bulk))
 

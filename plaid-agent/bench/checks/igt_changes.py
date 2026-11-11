@@ -32,6 +32,12 @@ args:
             value (e.g. linking a newly segmented morpheme to its entry).
   prov:     verified (default) | any. verified: every expected document
             value and link carries the approved-plan stamp.
+  stretch:  {document, field, min, max, values?}: a request over the whole
+            document done one stretch at a time (the prompt's WORK IN
+            STRETCHES). Any value of that word or morpheme field in sentences
+            1 to max may change (to one of `values`, when given), at least
+            `min` sentences must change, and a change in a later sentence is
+            collateral.
   plan:     required (default) | none
   match / reject: as checks/answer.py, on the last reply (optional).
   numbers:  {after: regex, expect: [int, ...]}: the integers in the reply
@@ -113,6 +119,28 @@ def _rules(ctx, base_docs, base_labels):
     return exp
 
 
+def _sentence(key):
+    return int(key.split('|', 1)[1].split('.', 1)[0][1:])
+
+
+def _stretch(spec, flat, after):
+    """(ok, keys): the changes of ``flat`` a ``stretch`` arg allows, and
+    whether they cover at least its ``min`` sentences."""
+    if not spec:
+        return True, set()
+    field = re.escape(spec['field'])
+    shape = re.compile(rf'^{re.escape(spec["document"])}\|s(\d+)\.w\d+(?:\.m\d+)?:{field}(#prov)?$')
+    keys = set()
+    for k in flat:
+        m = shape.match(k)
+        if not m or int(m.group(1)) > spec['max']:
+            continue
+        value = after[spec['document']].get(k.split('|', 1)[1].split('#', 1)[0])
+        if m.group(2) or not spec.get('values') or value in spec['values']:
+            keys.add(k)
+    return len({_sentence(k) for k in keys if not k.endswith('#prov')}) >= spec['min'], keys
+
+
 def check(ctx):
     a = ctx.args
     vocab_id = ctx.project['vocabs'][0]['id']
@@ -165,6 +193,8 @@ def check(ctx):
     for k, v in optional.items():
         if now_of(k) == v:
             allowed |= {k, k + '#prov'}
+    stretch_ok, stretched = _stretch(a.get('stretch'), flat, after)
+    allowed |= stretched
     extra = [k for k in flat if k not in allowed and not any(p.search(k) for p in allow_re)]
 
     prov_ok = None
@@ -182,6 +212,10 @@ def check(ctx):
                 continue
             if sp is not None and ':form' not in addr:
                 ok.append(c.verified_machine(sp))
+        for k in stretched:
+            doc, addr = k.split('|', 1)
+            if not addr.endswith('#prov') and after[doc].get(addr) is not None:
+                ok.append(c.verified_machine(c.igt_spans(raws[doc])[addr]))
         prov_ok = all(ok) if ok else None
 
     plans = plan_items(ctx.conversation)
@@ -213,7 +247,7 @@ def check(ctx):
     reply_ok = nums_ok and ((not pats and not bad) or (bool(replies) and replies[-1].get('kind') == 'assistant'
                                           and all(matched) and not bad))
 
-    passed = all(hits.values()) and not extra and plan_ok and prov_ok is not False and reply_ok
+    passed = all(hits.values()) and not extra and plan_ok and prov_ok is not False and reply_ok and stretch_ok
     measures = {
         'target_ok': f'{sum(hits.values())}/{len(hits)}',
         'collateral': len(extra),
@@ -225,6 +259,8 @@ def check(ctx):
     }
     if a.get('numbers'):
         measures['numbers'] = got_nums
+    if a.get('stretch'):
+        measures['stretch_sentences'] = sorted({_sentence(k) for k in stretched if not k.endswith('#prov')})
     if pats or a.get('reject') or a.get('numbers'):
         measures.update(matched=f'{sum(matched)}/{len(matched)}', rejected_hits=bad, reply=plain[:300])
     missed = {k: [now_of(k), v] for k, v in expect.items() if not hits[k]}
