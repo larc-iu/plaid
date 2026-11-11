@@ -438,7 +438,7 @@ Past 85 percent the bar turns amber, and a full conversation sends nothing more.
 
 The assistant is a service that your server's operator runs.
 In a project with none connected, the Assistant tab, the button and **Ask** are not shown.
-On a screen outside any project the button is always shown, and the panel says so when the project you pick has no assistant.
+On the project list the button is shown whether or not an assistant is connected, and the panel says so when the project you pick has none.
 Saved conversations still open from their links.
 
 = Keyboard reference
