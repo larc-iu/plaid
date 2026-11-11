@@ -20,6 +20,9 @@ turns:
     approve: true
 check: ud_tree
 args:
+  # "it should be le" may be drafted as a guideline, one that names the
+  # lemma le. Any other guideline stays collateral.
+  allow_guidelines: {match: '\ble\b'}
   document: French 1
   base: snapshot
   expect:

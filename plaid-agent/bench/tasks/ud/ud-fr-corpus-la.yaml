@@ -16,6 +16,10 @@ turns:
     approve: true
 check: ud_tree
 args:
+  # "In this treebank every form of the definite article has the lemma le"
+  # is a convention the user states, so a drafted guideline is what the
+  # prompt asks for.
+  allow_guidelines: true
   document: French 1
   base: snapshot
   expect:

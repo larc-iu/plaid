@@ -13,6 +13,15 @@ def right(ctx):
                        for d, refs in LA.items()])
 
 
+def right_with_guideline(ctx):
+    # The convention the user states, drafted as a guideline beside the fix
+    # (glm53-1's draft, BL-BENCH2 2).
+    right(ctx)
+    h.add_guideline(ctx, 'Definite article lemma',
+                    "Every form of the definite article (le, la, l', les) takes the lemma le, whatever its "
+                    'capitalization. This applies to the determiner only.')
+
+
 def wrong_blind_replace(ctx):
     # Every lemma "la", the Spanish X word in French 2 too.
     udplan.apply(ctx, [('replace_in_field', {'field': 'lemma', 'pattern': 'la', 'replacement': 'le',

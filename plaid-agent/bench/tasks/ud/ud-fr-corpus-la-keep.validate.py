@@ -25,6 +25,22 @@ def right(ctx):
                        for d, refs in LA.items()])
 
 
+def right_with_guideline(ctx):
+    # The convention, drafted as a guideline that names the lemma le
+    # (glm53-1's draft, BL-BENCH2 2).
+    right(ctx)
+    h.add_guideline(ctx, 'Definite article lemmas',
+                    'The French definite article "la" is lemmatized "le", not "la": the project lemmatizes all forms '
+                    'of the definite article (le, la, les, l\') to "le". A "la" of another language keeps its own '
+                    'lemma.')
+
+
+def wrong_guideline_off(ctx):
+    # The fix, and a guideline about something else.
+    right(ctx)
+    h.add_guideline(ctx, 'Spanish words', 'A word in Spanish is tagged X with Foreign=Yes.')
+
+
 def wrong_keep_loses(ctx):
     # The replace rewrote the kept word too.
     right(ctx)
