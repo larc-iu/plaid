@@ -205,6 +205,68 @@ test('the note under a lost word field covers no other cell', async ({ browser }
   }
 });
 
+// REV-BL-B-1: only the row that holds the note makes room for it, in every
+// column and its label. The rows above it keep their place, every other row
+// keeps its height, and each row stays in line with its label.
+test('the note under a lost cell makes only its own row taller', async ({ browser }) => {
+  const A = await openTab(browser);
+  const B = await openTab(browser);
+  // Tops from the grid's own top: focus on a cell may scroll the grid's box.
+  const rows = (page) =>
+    page.evaluate(() => {
+      const grid = document.querySelector('.igt-tokens');
+      const top = grid.getBoundingClientRect().top;
+      return [...grid.querySelectorAll('[data-row]')].map((el) => {
+        const b = el.getBoundingClientRect();
+        return { row: el.dataset.row, top: b.top - top, height: b.height };
+      });
+    });
+  // B types `mine` into the cell `key` with its write held, A stores `theirs`
+  // there, and B's write goes out after it.
+  const lose = async (key, mine, theirs) => {
+    const cell = (page) => page.locator(`.igt-field[data-cell-key="${key}"]`);
+    const release = B.hold();
+    await cell(B.page).click();
+    await B.page.keyboard.type(mine);
+    await B.page.keyboard.press('Tab');
+    const before = await rows(B.page);
+    await cell(A.page).click();
+    await A.page.keyboard.type(theirs);
+    await A.page.keyboard.press('Tab');
+    await settled(A.page);
+    release();
+    await settled(B.page);
+    await expect(B.page.locator('.igt-field-conflict')).toHaveText(
+      `Yours: ${mine} · Enter to keep yours`,
+    );
+    const after = await rows(B.page);
+    // Escape lets the note go, so the next one starts from a grid without one.
+    await cell(B.page).click();
+    await B.page.keyboard.press('Escape');
+    await expect(B.page.locator('.igt-field-conflict')).toHaveCount(0);
+    return { before, after };
+  };
+  const check = ({ before, after }, noted) => {
+    expect(after.map((r) => r.row)).toEqual(before.map((r) => r.row));
+    const notedTop = before.find((r) => r.row === noted).top;
+    after.forEach((r, i) => {
+      const was = before[i];
+      if (r.row === noted) expect(r.height, r.row).toBeGreaterThan(was.height);
+      else expect(r.height, r.row).toBe(was.height);
+      if (was.top <= notedTop) expect(r.top, r.row).toBe(was.top);
+      // Each row's cells are in line with its label (one band here).
+      expect(Math.abs(r.top - after.find((x) => x.row === r.row).top), r.row).toBeLessThan(0.5);
+    });
+  };
+  try {
+    check(await lose(`wa:${wordIds[1]}:Part of Speech`, 'NOUN', 'ADV'), 'word:Part of Speech');
+    check(await lose(`ma:${morphs[0]}:Gloss`, 'dog', 'canine'), 'morph:Gloss');
+  } finally {
+    await A.ctx.close();
+    await B.ctx.close();
+  }
+});
+
 // REV-UI-1: a gloss lost to a split of its word that also re-cases the kept
 // part ("tres" to "Tr" + "es") keeps nothing on Enter: it was typed for a word
 // that is gone.

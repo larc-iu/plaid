@@ -1816,22 +1816,89 @@
   border-radius: 2px;
   cursor: text;
 }
-/* Room under the last tier for its note, which the grid's own scroll box
-   would otherwise clip. */
 /* After a split or merge the note is there to copy from. */
 .igt-field-conflict--copy {
   user-select: text;
 }
-.igt-grid:has(.igt-field-conflict) {
-  padding-bottom: 14px;
-}
-/* A note hangs over the row under its cell, so while a sentence's grid has
-   one, every row of it, in each column and its label, is that much taller
-   with the room at its foot. The note covers no cell, and the rows stay in
-   line. A minimized row stays as it is. */
-.igt-tokens:has(.igt-field-conflict) [data-row]:not(.is-row-collapsed) {
+/* A note hangs over the row under its cell, so the row that holds it is that
+   much taller, with the room at its foot, in each column and its label. The
+   rest of the grid stays as it is. 16px, since a morpheme field stands 1px out
+   of its row. CSS cannot match one row's key across columns, so a row is found
+   by its place: an orthography or word row is the same child of its word's
+   column as of the labels, and a morpheme row the same child from the end of
+   its morpheme's column as of the labels. The first 12 word rows and 10
+   morpheme rows are listed. The last row's room is inside the grid, so its
+   scroll box clips no note. A minimized row stays as it is. */
+:is(
+  .igt-tokens:has(> .igt-token-col > [data-row]:nth-child(2) .igt-field-conflict)
+    > *
+    > [data-row]:nth-child(2),
+  .igt-tokens:has(> .igt-token-col > [data-row]:nth-child(3) .igt-field-conflict)
+    > *
+    > [data-row]:nth-child(3),
+  .igt-tokens:has(> .igt-token-col > [data-row]:nth-child(4) .igt-field-conflict)
+    > *
+    > [data-row]:nth-child(4),
+  .igt-tokens:has(> .igt-token-col > [data-row]:nth-child(5) .igt-field-conflict)
+    > *
+    > [data-row]:nth-child(5),
+  .igt-tokens:has(> .igt-token-col > [data-row]:nth-child(6) .igt-field-conflict)
+    > *
+    > [data-row]:nth-child(6),
+  .igt-tokens:has(> .igt-token-col > [data-row]:nth-child(7) .igt-field-conflict)
+    > *
+    > [data-row]:nth-child(7),
+  .igt-tokens:has(> .igt-token-col > [data-row]:nth-child(8) .igt-field-conflict)
+    > *
+    > [data-row]:nth-child(8),
+  .igt-tokens:has(> .igt-token-col > [data-row]:nth-child(9) .igt-field-conflict)
+    > *
+    > [data-row]:nth-child(9),
+  .igt-tokens:has(> .igt-token-col > [data-row]:nth-child(10) .igt-field-conflict)
+    > *
+    > [data-row]:nth-child(10),
+  .igt-tokens:has(> .igt-token-col > [data-row]:nth-child(11) .igt-field-conflict)
+    > *
+    > [data-row]:nth-child(11),
+  .igt-tokens:has(> .igt-token-col > [data-row]:nth-child(12) .igt-field-conflict)
+    > *
+    > [data-row]:nth-child(12),
+  .igt-tokens:has(> .igt-token-col > [data-row]:nth-child(13) .igt-field-conflict)
+    > *
+    > [data-row]:nth-child(13),
+  .igt-tokens:has(.igt-morph-col > :nth-last-child(1) .igt-field-conflict)
+    :is(.igt-labels, .igt-morph-col)
+    > [data-row]:nth-last-child(1),
+  .igt-tokens:has(.igt-morph-col > :nth-last-child(2) .igt-field-conflict)
+    :is(.igt-labels, .igt-morph-col)
+    > [data-row]:nth-last-child(2),
+  .igt-tokens:has(.igt-morph-col > :nth-last-child(3) .igt-field-conflict)
+    :is(.igt-labels, .igt-morph-col)
+    > [data-row]:nth-last-child(3),
+  .igt-tokens:has(.igt-morph-col > :nth-last-child(4) .igt-field-conflict)
+    :is(.igt-labels, .igt-morph-col)
+    > [data-row]:nth-last-child(4),
+  .igt-tokens:has(.igt-morph-col > :nth-last-child(5) .igt-field-conflict)
+    :is(.igt-labels, .igt-morph-col)
+    > [data-row]:nth-last-child(5),
+  .igt-tokens:has(.igt-morph-col > :nth-last-child(6) .igt-field-conflict)
+    :is(.igt-labels, .igt-morph-col)
+    > [data-row]:nth-last-child(6),
+  .igt-tokens:has(.igt-morph-col > :nth-last-child(7) .igt-field-conflict)
+    :is(.igt-labels, .igt-morph-col)
+    > [data-row]:nth-last-child(7),
+  .igt-tokens:has(.igt-morph-col > :nth-last-child(8) .igt-field-conflict)
+    :is(.igt-labels, .igt-morph-col)
+    > [data-row]:nth-last-child(8),
+  .igt-tokens:has(.igt-morph-col > :nth-last-child(9) .igt-field-conflict)
+    :is(.igt-labels, .igt-morph-col)
+    > [data-row]:nth-last-child(9),
+  .igt-tokens:has(.igt-morph-col > :nth-last-child(10) .igt-field-conflict)
+    :is(.igt-labels, .igt-morph-col)
+    > [data-row]:nth-last-child(10)
+):not(.is-row-collapsed) {
   box-sizing: content-box;
-  padding-bottom: 14px;
+  padding-bottom: 16px;
 }
 .igt-field-conflict__hint {
   position: absolute;
