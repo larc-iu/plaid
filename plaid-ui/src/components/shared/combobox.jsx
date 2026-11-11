@@ -1,6 +1,7 @@
 import * as React from 'react';
 import * as PopoverPrimitive from '@radix-ui/react-popover';
 import { cn } from '../../lib/utils.js';
+import { scrollThroughLock } from '../../lib/scrollThroughLock.js';
 import { isImeKey } from '../../lib/chords.js';
 import { normalizeOptions, flattenOptions, defaultFilter } from './comboboxOptions.js';
 
@@ -222,12 +223,14 @@ export const Combobox = React.forwardRef(function Combobox(
             if (inputRef.current?.contains(event.target)) event.preventDefault();
           }}
           className={cn(
-            'z-50 max-h-60 w-max overflow-y-auto rounded-md border bg-popover p-1 text-popover-foreground shadow-md',
+            'z-50 max-h-60 w-max overflow-y-auto overscroll-contain rounded-md border bg-popover p-1 text-popover-foreground shadow-md',
             listClassName,
           )}
           // As wide as its content, but never narrower than the field: an
           // annotation cell can be four characters wide and its tags are not.
           style={{ minWidth: 'var(--radix-popover-trigger-width)' }}
+          // Scrolls inside a modal dialog too (lib/scrollThroughLock.js).
+          {...scrollThroughLock()}
         >
           <div ref={listRef} id={listId} role="listbox">
             {visible.map((entry, groupIndex) =>
