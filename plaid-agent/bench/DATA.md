@@ -36,6 +36,33 @@ Everything in the benchmark database comes from the public sources below, fetche
 
 A = `a@b.com` (admin), B = `b@x.com` and C = `c@x.com`, writers on every project and maintainers of every vocabulary, and `reader@x.com` with no membership. Each of A, B and C has a named API token "bench" in the manifest. These are sandbox credentials on a private database.
 
+## The source files
+
+The 20 files of `fixtures/src/`, with the sha256 of each, to check a copy or a new fetch against (`sha256sum -c` from inside `fixtures/src/`):
+
+```
+8b34bdb37ab09f8deedf3a2925477064c25fb1cf2a7c6ba1e8a732d47330e34b  sigmorphon2023/COMMIT
+38762e3777f4ec00a6f769062a7c3f704fb78ce08303ecff88558da4c49cf9ea  sigmorphon2023/Gitksan/LICENSE
+7beb1fb845bb2ff6051f8a301e2fcbf6e3372d4a903fc44e35299b6498b581ec  sigmorphon2023/Gitksan/git-dev-track2-uncovered
+41003d4a74749c0220e33dd415042164b5a1093ed401f36277234f772d22d3d0  sigmorphon2023/Lezgi/LICENSE
+fe6bcfbc74fcd0f20c7cf4d5782e318ac18face128def2f45b7f384e9e156c77  sigmorphon2023/Lezgi/lez-dev-track2-uncovered
+41003d4a74749c0220e33dd415042164b5a1093ed401f36277234f772d22d3d0  sigmorphon2023/Natugu/LICENSE
+848bf66bc4df867f66493ed2c246f88b6876c2fe4620be9a0288c8c2bebb3ba5  sigmorphon2023/Natugu/ntu-dev-track2-uncovered
+79e211ff70191c7f5cf0e33a8cf2bfa5799318d51ae7a5fd1a065abcb3e3ab05  ud-r2.18/UD_Arabic-PADT/LICENSE.txt
+ee3cdabcd72b433349bfb2b906f09dd068b5ed513d2e5abe528a957a7b1038ff  ud-r2.18/UD_Arabic-PADT/README.md
+0d95ee511cf2f26a64e229e86e5e9b37851555ebc8b53c5ebb261f2dfbc185e7  ud-r2.18/UD_Arabic-PADT/ar_padt-ud-dev.conllu
+899b1804a12ebc090b96339614eede1b64b686721b650a71430b55b5235f7f79  ud-r2.18/UD_French-GSD/LICENSE.txt
+d1a541bb6790fc3d02ed70a281bd4320593b98b8b06ed71371004c98bd74e37d  ud-r2.18/UD_French-GSD/README.md
+9221e5084cc6a1b1540671cfbd2fc0456efc223b2fe8dd2146c2bad921be02d4  ud-r2.18/UD_French-GSD/fr_gsd-ud-dev.conllu
+899b1804a12ebc090b96339614eede1b64b686721b650a71430b55b5235f7f79  ud-r2.18/UD_Russian-GSD/LICENSE.txt
+9de2b999444f417d186a41339d56651f10f3720d957316f35de7d251b7823d6b  ud-r2.18/UD_Russian-GSD/README.md
+e3e3d4e8d1d7544e531b2b81ae64257efacc97f93276ce6d2ce52fd1de052fa2  ud-r2.18/UD_Russian-GSD/ru_gsd-ud-dev.conllu
+f9412cf3769220edbbb8c8712ecc0f64f7ea393acd1ba6bcd80cc2d97a2585a8  umr2.0/RELEASE-README.md
+201b3ca9e7c19cc5b3f45175516f059ce04a4746b8d35039e7c3343e84a25bc2  umr2.0/kukama/README.md
+7f1716661dfa0681899343d178413dd0b821273f13d016a0df6a8127b201fac7  umr2.0/kukama/umr_data/kukama_umr-0001.umr
+7d40dfb813e1564116a98097e36cb2279b9a0673946bd2bbd37f350d0597b204  umr2.0/kukama/umr_data/kukama_umr-0002.umr
+```
+
 ## Sharing
 
 The UD and SIGMORPHON data are redistributable under their licenses with attribution (some non-commercial). Kukama and Gitksan are CC BY-NC-ND 4.0: the benchmark may use them and a published benchmark may point to them, but should not redistribute a modified version (the built database is one). Publishing the task set with `fixtures/build.sh` and the source URLs, rather than the built database, respects all of them.
