@@ -14,7 +14,9 @@
 5. umr: Kukama text 2 of UMR 2.0, its interlinear lines as an igt project
    (umr_to_cldf.py, the CLDF import), then adopted for UMR and its graphs
    attached onto that document (plaid-umr's adoptSubstrate and importUmrDocument).
-6. B and C become writers on every project and maintainers of every vocabulary.
+6. B and C become maintainers of every project that holds a vocabulary of its
+   own (its rights are that project's roles: the lexicon tasks rename, merge
+   and delete entries as B), and writers on every other project.
 7. Every document is saved as baseline/<id>.json (the read the checkers diff
    against), the core is stopped, and the database directory is copied to
    snapshot/ with manifest.json (project and document ids, tokens, versions).
@@ -137,14 +139,11 @@ def main():
         # Members, vocabularies, baselines.
         (WORK / 'baseline').mkdir()
         for key, p in projects.items():
-            for u in ('B', 'C'):
-                a.projects.add_writer(p['id'], bl.USERS[u][0])
             proj = a.projects.get(p['id'])
-            p['vocabs'] = []
-            for v in proj.get('vocabs') or []:
-                for u in ('B', 'C'):
-                    a.vocab_layers.add_maintainer(v['id'], bl.USERS[u][0])
-                p['vocabs'].append({'id': v['id'], 'name': v.get('name')})
+            p['vocabs'] = [{'id': v['id'], 'name': v.get('name')} for v in proj.get('vocabs') or []]
+            owns = any(v.get('project') == p['id'] for v in proj.get('vocabs') or [])
+            for u in ('B', 'C'):
+                (a.projects.add_maintainer if owns else a.projects.add_writer)(p['id'], bl.USERS[u][0])
             for d in p['documents']:
                 body = a.documents.get(d['id'], include_body=True)
                 (WORK / 'baseline' / f'{d["id"]}.json').write_text(json.dumps(body, ensure_ascii=False))

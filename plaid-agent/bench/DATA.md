@@ -34,7 +34,7 @@ Everything in the benchmark database comes from the public sources below, fetche
 
 ## Users
 
-A = `a@b.com` (admin), B = `b@x.com` and C = `c@x.com`, writers on every project and maintainers of every vocabulary, and `reader@x.com` with no membership. Each of A, B and C has a named API token "bench" in the manifest. These are sandbox credentials on a private database.
+A = `a@b.com` (admin), B = `b@x.com` and C = `c@x.com`, maintainers of every project that holds a vocabulary of its own (the three igt projects, whose lexicons' rights are their projects' roles) and writers on the others, and `reader@x.com` with no membership. Each of A, B and C has a named API token "bench" in the manifest. These are sandbox credentials on a private database.
 
 ## The source files
 

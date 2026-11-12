@@ -92,7 +92,7 @@ The run's database is deleted after extraction unless `--keep-db`. Without it, `
 id: igt-gloss-copula            # the file name without .yaml, by convention
 app: igt                        # igt | ud | umr: which assistant answers
 project: igt-lezgi              # a key of manifest.json "projects"
-as: B                           # A (admin), B or C. B is a plain writer, the usual user
+as: B                           # A (admin), B or C, the usual user (DATA.md, Users)
 where: {document: Lezgi text 1} # or {lexicon: Lexicon}, or leave out for the project at large
 turns:
   - say: >-
