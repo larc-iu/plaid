@@ -11,20 +11,27 @@
 
   `up` runs in steps, each safe to run again after a crash:
 
-  0. Refuse while a vocabulary no project links exists, naming each and the
+  0. Check every plan an earlier, stopped run made (`replan-broken!`): a
+     planned home that is no longer a live project linking the vocabulary
+     (the old version ran in between and unlinked or deleted it) is cleared,
+     with its marker, so the rule plans that vocabulary again. Then refuse
+     while a vocabulary no live project links exists, naming each and the
      script that gives it a project (`vocab_home_orphans.py`, run against the
-     server before upgrading). Nothing is written.
+     server before upgrading). Nothing else is written.
   1. Add the column if it is missing, then, in one transaction, set the home
      of every vocabulary that has none by `home-rule`, from the data as it is.
      Unaudited: step 2 audits it. The plan is fixed here, so a restart cannot
-     choose differently once step 2 has promoted people.
+     choose differently once step 2 has promoted people, unless step 0 finds
+     it broken.
   2. One audited operation per vocabulary, under its home, by nobody: each of
      its maintainers who does not maintain the home is made a maintainer there
-     (from reader, writer or no role), and the vocabulary row is recorded with
-     its `project_id`. A marker `vocab-home:<id>` in `data_migrations`, written
-     in the same transaction, makes a restart skip it.
-  3. Rebuild `vocab_layers` with the column NOT NULL and the foreign key, and
-     drop `vocab_maintainers`, on one connection with foreign keys off (with
+     (from reader, writer or no role). A deactivated account is not made one,
+     and is named in the log. The vocabulary row is recorded with its
+     `project_id`. A marker `vocab-home:<id>` in `data_migrations`, written in
+     the same transaction, makes a restart skip it.
+  3. Refuse unless every vocabulary's home is a live project holding its
+     `project_vocabs` row. Rebuild `vocab_layers` with the column NOT NULL and
+     the foreign key, and drop `vocab_maintainers`, on one connection with foreign keys off (with
      them on, dropping `vocab_layers` would cascade away every entry, link,
      project link and comment). Refused, and rolled back, when any row count
      moves or `PRAGMA foreign_key_check` finds a row. The connection is then
@@ -79,12 +86,13 @@
 (def orphan-script "vocab_home_orphans.py")
 
 (defn- orphans
-  "Every vocabulary no project links and with no home yet, as maps of `:id`,
+  "Every vocabulary no live project links and with no home yet, as maps of `:id`,
   `:name` and `:entries`."
   [ds]
   (q ds (str "SELECT v.id, v.name, (SELECT count(*) FROM vocab_items i WHERE i.vocab_layer_id = v.id) AS entries "
              "FROM vocab_layers v "
-             "WHERE NOT EXISTS (SELECT 1 FROM project_vocabs pv WHERE pv.vocab_layer_id = v.id)"
+             "WHERE NOT EXISTS (SELECT 1 FROM project_vocabs pv JOIN projects p ON p.id = pv.project_id "
+             "                  WHERE pv.vocab_layer_id = v.id AND p.deleted_at IS NULL)"
              (when (column ds "vocab_layers" "project_id") " AND v.project_id IS NULL")
              " ORDER BY v.name, v.id")))
 
@@ -120,16 +128,53 @@
        (not= (:links a) (:links b)) 2
        :else 3)]))
 
-(defn- candidates [con vocab-id]
+(defn- candidates
+  "The live projects that link `vocab-id`, as `home-rule` takes them."
+  [con vocab-id]
   (q con (str "SELECT pv.project_id, "
               "(SELECT count(*) FROM vocab_maintainers vm JOIN project_users pu "
               "   ON pu.user_id = vm.user_id AND pu.project_id = pv.project_id AND pu.role = 'maintainer' "
+              "   JOIN users u ON u.id = vm.user_id AND u.deactivated_at IS NULL "
               " WHERE vm.vocab_layer_id = pv.vocab_layer_id) AS maintainers, "
               "(SELECT count(*) FROM vocab_links l JOIN vocab_items i ON i.id = l.vocab_item_id "
               "   JOIN documents d ON d.id = l.document_id "
               " WHERE i.vocab_layer_id = pv.vocab_layer_id AND d.project_id = pv.project_id) AS links "
-              "FROM project_vocabs pv WHERE pv.vocab_layer_id = ?")
+              "FROM project_vocabs pv JOIN projects p ON p.id = pv.project_id "
+              "WHERE pv.vocab_layer_id = ? AND p.deleted_at IS NULL")
      vocab-id))
+
+(def ^:private broken-plans-sql
+  "The vocabularies whose planned home is not a live project holding their
+  `project_vocabs` row, with why."
+  (str "SELECT v.id, v.name, v.project_id, p.name AS project_name, "
+       "CASE WHEN p.id IS NULL THEN 'no longer exists' "
+       "     WHEN p.deleted_at IS NOT NULL THEN 'is being deleted' "
+       "     ELSE 'no longer links it' END AS why "
+       "FROM vocab_layers v LEFT JOIN projects p ON p.id = v.project_id "
+       "WHERE v.project_id IS NOT NULL AND (p.id IS NULL OR p.deleted_at IS NOT NULL OR NOT EXISTS "
+       "  (SELECT 1 FROM project_vocabs pv WHERE pv.project_id = v.project_id AND pv.vocab_layer_id = v.id)) "
+       "ORDER BY v.id"))
+
+(defn- replan-broken!
+  "Step 0. Clear the plan of every vocabulary whose planned home no longer
+  holds (`broken-plans-sql`): the old version ran on the database after a
+  stopped run of this migration and unlinked the vocabulary from that
+  project, or deleted the project. Its home and its marker go, so steps 1
+  and 2 plan and audit it again by the rule, from the data as it is now:
+  never a home that does not link it, nor one whose removal would take the
+  vocabulary with it. People promoted by the old plan stay maintainers.
+  Returns how many plans were cleared."
+  [ds]
+  (if-not (column ds "vocab_layers" "project_id")
+    0
+    (psd/with-tx [tx ds]
+      (let [broken (q tx broken-plans-sql)]
+        (doseq [{:keys [id name project_id project_name why]} broken]
+          (log/warn (format "Vocabulary \"%s\" (%s): its planned home %s(%s) %s since the plan was made; planning it again"
+                            name id (if project_name (str "\"" project_name "\" ") "") project_id why))
+          (q tx "UPDATE vocab_layers SET project_id = NULL WHERE id = ?" id)
+          (q tx "DELETE FROM data_migrations WHERE id = ?" (str "vocab-home:" id)))
+        (count broken)))))
 
 (defn- names-of [con table ids]
   (into {} (for [id ids] [id (:name (first (q con (str "SELECT name FROM " table " WHERE id = ?") id)))])))
@@ -172,7 +217,11 @@
                                      :user nil
                                      :skip-lock-check? true
                                      :skip-doc-version-bump? true}]
-                             (doseq [{:keys [user_id]} (q tx "SELECT user_id FROM vocab_maintainers WHERE vocab_layer_id = ? ORDER BY user_id" id)
+                             (doseq [{:keys [user_id]} (q tx (str "SELECT vm.user_id FROM vocab_maintainers vm "
+                                                                  "JOIN users u ON u.id = vm.user_id "
+                                                                  "WHERE vm.vocab_layer_id = ? AND u.deactivated_at IS NULL "
+                                                                  "ORDER BY vm.user_id")
+                                                          id)
                                      :let [role (prj/role-of tx project_id user_id)]
                                      :when (not= :project/maintainers role)]
                                (prj/add-role! tx project_id user_id "maintainer")
@@ -190,6 +239,13 @@
                                         "AND NOT EXISTS (SELECT 1 FROM project_users h WHERE h.project_id = ? "
                                         "  AND h.user_id = pu.user_id AND h.role IN ('writer', 'maintainer'))")
                                 id project_id project_id)))]
+      (when-let [skipped (seq (q ds (str "SELECT vm.user_id FROM vocab_maintainers vm JOIN users u ON u.id = vm.user_id "
+                                         "WHERE vm.vocab_layer_id = ? AND u.deactivated_at IS NOT NULL "
+                                         "AND NOT EXISTS (SELECT 1 FROM project_users pu WHERE pu.project_id = ? "
+                                         "  AND pu.user_id = vm.user_id AND pu.role = 'maintainer') ORDER BY vm.user_id")
+                                 id project_id))]
+        (log/info (format "Vocabulary \"%s\" (%s): not made maintainer of \"%s\", deactivated: %s"
+                          name id pname (str/join ", " (map :user_id skipped)))))
       (when (seq @promoted)
         (log/info (format "Vocabulary \"%s\" (%s): made maintainer of \"%s\": %s (were %s)"
                           name id pname (str/join ", " (map first @promoted))
@@ -233,9 +289,15 @@
       (exec! con "BEGIN IMMEDIATE")
       (try
         (let [before (counts con)]
-          (when-let [bad (seq (q con (str "SELECT v.id FROM vocab_layers v WHERE v.project_id IS NULL "
-                                          "OR NOT EXISTS (SELECT 1 FROM projects p WHERE p.id = v.project_id)")))]
-            (throw (ex-info (str "Vocabularies without a project: " (str/join ", " (map :id bad))) {})))
+          (when-let [bad (seq (q con (str "SELECT v.id, v.name FROM vocab_layers v WHERE v.project_id IS NULL OR "
+                                          "NOT EXISTS (SELECT 1 FROM projects p JOIN project_vocabs pv ON pv.project_id = p.id "
+                                          "  WHERE p.id = v.project_id AND p.deleted_at IS NULL AND pv.vocab_layer_id = v.id)")))]
+            (throw (ex-info (str "The database was not migrated: " (count bad)
+                                 (if (= 1 (count bad)) " vocabulary has" " vocabularies have")
+                                 " no live project linking it as its home: "
+                                 (str/join ", " (map (fn [{:keys [id name]}] (str "\"" name "\" (" id ")")) bad))
+                                 ". Start the server again: the migration plans them again.")
+                            {})))
           (exec! con "DROP TABLE IF EXISTS vocab_layers_new")
           (exec! con (str "CREATE TABLE vocab_layers_new ("
                           "id TEXT PRIMARY KEY, "
@@ -273,6 +335,7 @@
 (defn up [config]
   (let [ds (get-in config [:db :datasource])]
     (when-not (migrated? ds)
+      (replan-broken! ds)
       (when-let [found (seq (orphans ds))]
         (throw (ex-info (orphans-refusal found) {:orphans (mapv :id found)})))
       (let [steps (plan! ds)

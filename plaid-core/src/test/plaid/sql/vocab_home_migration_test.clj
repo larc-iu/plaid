@@ -18,6 +18,7 @@
             [next.jdbc.result-set :as rs]
             [plaid.fixtures :refer [with-db with-mount-states]]
             [plaid.history.read :as hread]
+            [plaid.server.project-removal :as removal]
             [plaid.server.sql :as server-sql]
             [plaid.sql.audit-write :as psaw]
             [plaid.sql.common :as psc]
@@ -433,6 +434,104 @@
                     "schema_migrations WHERE id = -1\", and start again.")
                (some-> thrown ex-message)))
         (is (= before (schema ds)) "nothing was written")))))
+
+;; ============================================================
+;; The old version run between a stopped run and the next
+;; ============================================================
+
+(defn- old-unlink!
+  "What the old version's unlink of `vid` from `pid` leaves: no
+  `project_vocabs` row (its links in `pid`'s documents go too, and these
+  fixtures have none there)."
+  [ds pid vid]
+  (q ds "DELETE FROM project_vocabs WHERE project_id = ? AND vocab_layer_id = ?" pid vid))
+
+(defn- old-hide!
+  "What the old version's project delete leaves before its removal runs: the
+  project stamped deleted, its roles, vocabulary links and invites gone."
+  [ds pid]
+  (q ds "UPDATE projects SET deleted_at = '2026-11-12T00:00:00Z' WHERE id = ?" pid)
+  (doseq [t ["project_users" "project_vocabs" "invites"]]
+    (q ds (str "DELETE FROM " t " WHERE project_id = ?") pid)))
+
+(defn- give-project!
+  "What `vocab_home_orphans.py` does for one vocabulary: a project of its own,
+  linking it."
+  [ds vid pname]
+  (let [pid (u (str "own:" vid))]
+    (project! ds pid pname [[(email "admin") "maintainer"]])
+    (link-project! ds pid vid)
+    pid))
+
+(defn- after-a-stopped-run
+  "A database whose migration was stopped inside step 3, so every vocabulary
+  has its planned home and its marker, on which the old version then ran
+  `old!`."
+  [old!]
+  (fn [ds]
+    (build! ds) (give-orphans-projects! ds)
+    (try
+      (binding [vh/*before-rebuild-commit* (fn [] (throw (ex-info "cut" {})))]
+        (migratus/migrate (cfg ds)))
+      (catch Exception _))
+    (old! ds)))
+
+(defn- refusal-of [ds]
+  (try (migratus/migrate (cfg ds)) nil (catch Exception e (ex-message e))))
+
+(deftest a-plan-the-old-version-broke-is-made-again
+  (testing "the planned home unlinked it, another project still links it"
+    (with-temp-db
+      (fn [ds]
+        ((after-a-stopped-run #(old-unlink! % (u "p30") (u "x1"))) ds)
+        (is (= (u "p30") (get (homes ds) (u "x1"))) "the stopped run planned p30")
+        (migratus/migrate (cfg ds))
+        (is (= (u "p31") (get (homes ds) (u "x1"))) "planned again among the projects that link it")
+        (is (seq (q ds "SELECT 1 FROM project_vocabs WHERE project_id = ? AND vocab_layer_id = ?" (u "p31") (u "x1"))))
+        (is (contains? (roles ds) [(u "p31") (email "xb") "maintainer"]) "its maintainers maintain the new home")
+        (is (= 1 (count (q ds "SELECT 1 FROM operations WHERE op_type = 'vocab/home' AND project_id = ?" (u "p31"))))
+            "audited under the new home"))))
+  (testing "its only linking project unlinked it: refused as unlinked, until it is given a project"
+    (with-temp-db
+      (fn [ds]
+        ((after-a-stopped-run #(old-unlink! % (u "p5") (u "v5"))) ds)
+        (let [msg (refusal-of ds)]
+          (is (str/starts-with? (str msg) (str "1 vocabulary is linked by no project: \"V5\" (" (u "v5") ", 2 entries)"))
+              msg))
+        (let [own (give-project! ds (u "v5") "V5")]
+          (migratus/migrate (cfg ds))
+          (is (= own (get (homes ds) (u "v5"))))
+          (is (empty? (q ds "SELECT 1 FROM sqlite_master WHERE name = 'vocab_maintainers'")))))))
+  (testing "its only linking project was deleted and removed: refused as unlinked, until it is given a project"
+    (with-temp-db
+      (fn [ds]
+        ((after-a-stopped-run (fn [ds] (old-hide! ds (u "p6")) (q ds "DELETE FROM projects WHERE id = ?" (u "p6")))) ds)
+        (is (str/starts-with? (str (refusal-of ds)) "1 vocabulary is linked by no project: \"V6\""))
+        (let [own (give-project! ds (u "v6") "V6")]
+          (migratus/migrate (cfg ds))
+          (is (= own (get (homes ds) (u "v6")))))))))
+
+(deftest a-vocabulary-is-not-removed-with-a-home-the-old-version-deleted-after-the-plan
+  (testing "the planned home is being deleted, its removal still to run"
+    (with-temp-db
+      (fn [ds]
+        ((after-a-stopped-run #(old-hide! % (u "p0"))) ds)
+        (migratus/migrate (cfg ds))
+        (is (= (u "p40") (get (homes ds) (u "v0"))) "p40, which borrowed it, is its home")
+        (removal/remove-project! ds (u "p0"))
+        (is (empty? (q ds "SELECT 1 FROM projects WHERE id = ?" (u "p0"))) "the deleted project is removed")
+        (is (= 2 (count (q ds "SELECT 1 FROM vocab_items WHERE vocab_layer_id = ?" (u "v0"))))
+            "the vocabulary and its entries are still there")
+        (is (= 1 (count (q ds "SELECT 1 FROM comments WHERE vocab_layer_id = ?" (u "v0")))))))))
+
+(deftest a-deactivated-maintainer-is-not-made-maintainer-of-the-home
+  (with-temp-db
+    (fn [ds]
+      (build! ds) (give-orphans-projects! ds)
+      (q ds "UPDATE users SET deactivated_at = '2026-11-01T00:00:00Z' WHERE id = ?" (email "stranger"))
+      (migratus/migrate (cfg ds))
+      (is (not (contains? (roles ds) [(u "p2") (email "stranger") "maintainer"])))
+      (is (contains? (roles ds) [(u "p0") (email "reader") "maintainer"]) "an active one is"))))
 
 (deftest a-fresh-install-migrates
   (with-temp-db
