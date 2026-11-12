@@ -120,6 +120,11 @@
    ;; client_events: FK-cascades off projects, listed explicitly for the
    ;; same reason as comments.
    "client_events"
+   ;; jobs and their rows: FK-cascade off projects, listed explicitly for the
+   ;; same reason as comments, and before the users wipe (jobs.started_by).
+   "job_decisions"
+   "job_documents"
+   "jobs"
    ;; guidelines: FK-cascades off projects, listed explicitly for the same
    ;; reason as comments — a deftest's guidelines are gone even when its
    ;; project is not, and a stale title would collide with the next one's.

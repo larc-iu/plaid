@@ -298,6 +298,10 @@ with c.operation("Import ELAN corpus", kind="import", ref="format:elan"):
 |`review`
 |A person accepting machine or contributed work as it stands.
 |none
+
+|`job`
+|An assistant job's work in one document, or its removal of the unlinked entries it made.
+|`job:<job>/doc:<document>/pass:gloss`, `job:<job>/doc:<document>/pass:harmonize`, or `job:<job>/pass:entries`
 |===
 
 === Custom messages for single writes

@@ -40,6 +40,7 @@
             [plaid.rest-api.v1.comment :refer [comment-routes]]
             [plaid.rest-api.v1.client-event :refer [client-event-routes]]
             [plaid.rest-api.v1.guideline :refer [guideline-routes]]
+            [plaid.rest-api.v1.job :refer [job-routes]]
             [plaid.rest-api.v1.query :refer [query-routes]]
             [plaid.rest-api.v1.health :refer [health-routes]]
             [plaid.rest-api.v1.info :refer [info-routes]]))
@@ -159,6 +160,7 @@
              comment-routes
              ["" {:plaid/raw-text true} client-event-routes]
              guideline-routes
+             job-routes
              ["" {:plaid/token-scope pra/query-token-scope :plaid/raw-text true} query-routes]]
 
             [""

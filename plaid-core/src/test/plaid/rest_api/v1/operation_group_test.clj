@@ -379,7 +379,7 @@
 
 (deftest every-documented-kind-is-accepted
   (let [{:keys [span]} (setup-span admin-request "GrpKinds")]
-    (doseq [kind ["assistant-plan" "service-run" "import" "bulk-edit" "guess-adoption" "repair" "review"]]
+    (doseq [kind ["assistant-plan" "service-run" "import" "bulk-edit" "guess-adoption" "repair" "review" "job"]]
       (let [gid (random-uuid)]
         (assert-ok (patch-meta admin-request span (kind-query gid nil kind nil)
                                [{:op "set" :path [kind] :value 1}]))

@@ -70,14 +70,17 @@
   ([secret-key id password-changes ttl-seconds project-ids runner]
    (sign-user-token secret-key id password-changes ttl-seconds project-ids runner nil))
   ([secret-key id password-changes ttl-seconds project-ids runner api-token-id]
+   (sign-user-token secret-key id password-changes ttl-seconds project-ids runner api-token-id nil))
+  ([secret-key id password-changes ttl-seconds project-ids runner api-token-id jti]
    (jwt/sign (cond-> {:user/id id
                       :version password-changes
                       :exp (exp-seconds ttl-seconds)}
                ;; A scoped token: see the Scoped tokens section below. Its
                ;; `:jti` tells it apart from every other token of its user,
                ;; so it alone may relabel the operation groups it created.
+               ;; A job's tokens share one (`issue-job-token!`).
                (some? project-ids) (assoc :scope/projects (vec project-ids)
-                                          :jti (str (random-uuid)))
+                                          :jti (or jti (str (random-uuid))))
                ;; Who runs the service holding it, when that is someone else
                ;; (see `runner-reach`).
                (some? runner) (assoc :scope/runner runner)
@@ -158,6 +161,31 @@
                       (vec (distinct (map (comp str/lower-case str) project-ids)))
                       (when (and runner (not= runner (:user/id account))) runner)
                       api-token-id))))
+
+(defn issue-job-token!
+  "Sign the token a job worker writes with: a delegated token for the job's
+  STARTER `user-id`, scoped to the job's project, as `issue-delegated-token!`
+  mints one for a delegating service, with `runner` the worker's account and
+  `api-token-id` the named API token the worker's request came with. One
+  difference: its `:jti` is `job:<job id>`, the same for every token of one
+  job. A scoped token joins only an operation group its own `:jti` created,
+  and a job writes one History entry per document over hours, under many
+  renewed tokens. Minted by the claim and every heartbeat, and only while
+  the starter may still write the project (`plaid.sql.job/starter-writes?`).
+  `not-after` bounds its `exp` as for a delegated token. Returns nil if the
+  user is missing."
+  [db secret-key user-id project-id job-id not-after runner api-token-id]
+  (when-let [account (user/get-internal db user-id)]
+    (sign-user-token secret-key
+                     (:user/id account)
+                     (:user/password-changes account)
+                     (cond-> (delegated-token-ttl-seconds)
+                       (number? not-after)
+                       (min (- (long not-after) (quot (System/currentTimeMillis) 1000))))
+                     [(str/lower-case (str project-id))]
+                     (when (and runner (not= runner (:user/id account))) runner)
+                     api-token-id
+                     (str "job:" job-id))))
 
 ;; ---------------------------------------------------------------------------
 ;; Link tokens

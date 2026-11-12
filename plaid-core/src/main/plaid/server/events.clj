@@ -533,6 +533,53 @@
           @inflight-requests))
 
 ;; =============================================================================
+;; The job worker (see plaid.sql.job)
+;; =============================================================================
+;;
+;; The job worker is not a service: it opens no channel. What the apps want to
+;; know of it, whether one is running and which model it runs, is when it last
+;; asked core for work or reported on a job, kept here and forgotten at a
+;; restart. And what the worker wants to know before each model call is
+;; whether people are using the model key it draws on, which is read from the
+;; service registry above.
+
+(defonce ^:private job-worker (atom {:seen-at nil :model nil}))
+
+(defn record-job-worker!
+  "Note that a job worker asked for work or reported now, and the model it
+  runs when it names one."
+  [model]
+  (swap! job-worker (fn [w] (cond-> (assoc w :seen-at (System/currentTimeMillis))
+                              model (assoc :model model))))
+  nil)
+
+(defn job-worker-seen
+  "`{:seen-at <ms or nil> :model <string or nil>}`: when a job worker last
+  asked for work or reported, since core started."
+  []
+  @job-worker)
+
+(defn model-pool-load
+  "The load on model pool `pool`: `{:in-flight n :last-finished-at <ms or
+  nil>}`. Counted over the requests in the registry (unfinished, and those
+  finished within `finished-request-ttl-ms`) whose service, connected on the
+  request's project now, declares `model-pool` equal to `pool` in its extras.
+  A service that declares no pool is not counted. Zero and nil when the
+  registries are not running."
+  [pool]
+  (let [state inflight-requests
+        reqs (when (instance? clojure.lang.IDeref state) @state)
+        services service-channels
+        live (when (instance? clojure.lang.IDeref services) @services)
+        in-pool (if (and (map? reqs) (map? live))
+                  (filter (fn [{:keys [project-id service-id]}]
+                            (= pool (get-in live [project-id service-id :extras :model-pool])))
+                          (vals reqs))
+                  [])]
+    {:in-flight (count (remove :result in-pool))
+     :last-finished-at (some->> (keep :finished-at in-pool) seq (apply max))}))
+
+;; =============================================================================
 ;; Helper Functions
 ;; =============================================================================
 
@@ -788,6 +835,7 @@
   run before / outside `mount/start`."
   []
   (reset! event-bus-drop-count 0)
+  (reset! job-worker {:seen-at nil :model nil})
   (try (reset! client-registry {}) (catch Exception _))
   (try (reset! channel-mappings {}) (catch Exception _))
   (try (reset! heartbeat-registry {}) (catch Exception _))

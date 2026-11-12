@@ -30,8 +30,10 @@
     repair          an app's own repair of stored data, such as the layer
                     rules it sets up
     review          a person accepting machine or contributed work already
-                    stored, as it stands"
-  #{"assistant-plan" "service-run" "import" "bulk-edit" "guess-adoption" "repair" "review"})
+                    stored, as it stands
+    job             an assistant job's writes in one document, or its
+                    clearing of the lexicon entries it made (`plaid.sql.job`)"
+  #{"assistant-plan" "service-run" "import" "bulk-edit" "guess-adoption" "repair" "review" "job"})
 
 (def ref-max-length
   "The longest `?group-ref=` accepted. A ref is a key a reader joins on, so
