@@ -27,6 +27,8 @@ import { CONFIRM_DELETE_CLASS } from '../../lib/destructive.js';
  * - `onConfirm(event)`: runs the deletion. The dialog closes on the click
  *   unless the handler calls `event.preventDefault()`, which a caller that
  *   shows its own progress inside the dialog does.
+ * - `cancelOnly`: no confirm button, only Cancel, for a body that says why it
+ *   cannot be done.
  * - `children`: the body, re-rendered live.
  * - `description`: for a body that holds a control (a field, a choice), the
  *   sentence a screen reader gives as the dialog's description. The children
@@ -41,6 +43,7 @@ export function ConfirmDeleteDialog({
   confirmDisabled = false,
   busy = false,
   onConfirm,
+  cancelOnly = false,
   description,
   children,
 }) {
@@ -70,13 +73,15 @@ export function ConfirmDeleteDialog({
         )}
         <AlertDialogFooter>
           <AlertDialogCancel disabled={busy}>Cancel</AlertDialogCancel>
-          <AlertDialogAction
-            className={CONFIRM_DELETE_CLASS}
-            disabled={confirmDisabled || busy}
-            onClick={onConfirm}
-          >
-            {confirmLabel}
-          </AlertDialogAction>
+          {!cancelOnly && (
+            <AlertDialogAction
+              className={CONFIRM_DELETE_CLASS}
+              disabled={confirmDisabled || busy}
+              onClick={onConfirm}
+            >
+              {confirmLabel}
+            </AlertDialogAction>
+          )}
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>

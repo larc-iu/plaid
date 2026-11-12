@@ -60,6 +60,19 @@ describe('what a person is told', () => {
     expect(humanizeError(httpError(409, 'conflict'))).toMatch(/Redo your edit/);
   });
 
+  // A delete refused while other projects use a vocabulary: core counts them
+  // (`other-projects`) and says so. Nothing changed elsewhere.
+  it('says how many other projects stand in the way of a delete', () => {
+    const refused = (said, n) =>
+      Object.assign(httpError(409, said), { responseData: { error: said, 'other-projects': n } });
+    expect(humanizeError(refused('1 other project uses a vocabulary of this project.', 1))).toBe(
+      '1 other project uses a vocabulary of this project.',
+    );
+    expect(humanizeError(refused('3 other projects use this vocabulary.', 3))).toBe(
+      '3 other projects use this vocabulary.',
+    );
+  });
+
   // An overlap refusal changed nothing elsewhere, so it is not "Redo your edit".
   it('says what an overlap refusal is, not that something changed elsewhere', () => {
     const said =

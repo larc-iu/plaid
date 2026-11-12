@@ -78,4 +78,15 @@ describe('ConfirmDeleteDialog', () => {
     expect(box.querySelector('input[aria-label="Name"]')).not.toBe(null);
     await view.unmount();
   });
+
+  it('offers only Cancel when the body says it cannot be done', async () => {
+    const view = await renderComponent(
+      <ConfirmDeleteDialog open onOpenChange={() => {}} title="T" cancelOnly onConfirm={() => {}}>
+        <p>2 other projects use it.</p>
+      </ConfirmDeleteDialog>,
+    );
+    expect(button('Delete')).toBeUndefined();
+    expect(button('Cancel')).toBeTruthy();
+    await view.unmount();
+  });
 });

@@ -11,7 +11,9 @@ import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 /**
  * The end of a project, at the foot of its General settings in every app: a
  * red-bordered card with an outline "Delete project" button, and the confirm
- * that asks for the project's name typed out (DeleteProjectDialog).
+ * that asks for the project's name typed out (DeleteProjectDialog). The
+ * confirm names the project's own vocabularies, which go with it, or says
+ * why it cannot be deleted while another project uses one of them.
  *
  * The server hides the project at once and removes it in the background, so
  * the request returns quickly and the reader lands on the project list.
@@ -21,7 +23,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
  * which the confirm says after the consequence.
  */
 export const DeleteProjectCard = ({ project, note = null }) => {
-  const { getClient } = useAuth();
+  const { client, getClient } = useAuth();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
 
@@ -54,6 +56,7 @@ export const DeleteProjectCard = ({ project, note = null }) => {
         open={open}
         onOpenChange={setOpen}
         project={project}
+        client={client}
         consequence={
           note ? (
             <>

@@ -212,6 +212,12 @@ export const humanizeError = (error, fallback = 'Something went wrong.') => {
   if (statusOf(error) === 409 && error?.responseData?.['media-exists'] === true) {
     return 'Another recording was added elsewhere. Now showing it.';
   }
+  // A vocabulary or project delete refused while other projects use the
+  // vocabulary: core counts them and says so. Nothing changed elsewhere.
+  if (statusOf(error) === 409 && Number.isInteger(error?.responseData?.['other-projects'])) {
+    const said = String(error.responseData.error ?? '').trim();
+    if (said && !namesAnId(said)) return said;
+  }
   // The server words the first violation by layer name, never by app.
   if (isConstraintViolation(error)) {
     const said = String(error.responseData.error ?? '').trim();
