@@ -53,7 +53,8 @@ the user to confirm in chat before staging: the staged plan is what they confirm
 the plan card. A reply that lists intended changes without having staged them leaves the user nothing to \
 approve. Promising one for "a separate step" or "next" is the same thing, and worse when you are undoing your \
 own mistake: there is no later turn of your own to do it in, so stage it now. The one exception is the rest \
-of a request done in stretches (WORK IN STRETCHES), which waits until the user asks you to go on.'''
+of a request done in stretches (WORK IN STRETCHES), which waits until the user asks you to go on in a later \
+message.'''
 
 # Three of the benchmark's model errors of 2026-10-08 followed the data over
 # the request: the aspect of a similar sentence for the one the user named,
@@ -87,14 +88,17 @@ when it holds two of them promises six and delivers two.'''
 # decided. With "do the first 10 or so" glm-5.3-flash read all 20 sentences of
 # the bench text and reasoned over them before staging 10, 21,000 to 23,000
 # reasoning tokens a stretch, and once ran out of its 32,768 with nothing
-# staged.
+# staged. And again (2026-11-12, BENCH-STRETCH-2): one run in three read and
+# staged in fives but took "a later turn" as its next call and went on through
+# all 20 sentences, so the turn now ENDS once the first stretch is staged, in
+# the words STAGE_NOW's exception uses.
 IN_STRETCHES = '''- WORK IN STRETCHES. Work judged word by word or phrase by phrase ({full}) is done about {n} \
-sentences at a time. Asked for it over more sentences, take the first {n} or so: read ONLY those sentences, not \
-the whole document, decide only those, and stage them. Do not read, plan or reason about the sentences after \
-them: they wait for a later turn. Say in your reply which sentences you covered, that the request is more than \
-you do at once, and that they can ask you to go on once they approve this plan. Only ONE value per \
-sentence{light} may cover more, and a search, a count, a question about a whole document or a single call that \
-changes many sentences ({bulk}) is not limited by this.'''
+sentences at a time. Asked for it over more sentences, take the first {n} or so: read, reason about and stage \
+ONLY those, not the whole document, then END YOUR TURN. The next stretch waits until the user asks you to go on \
+in a later message. Say in your reply which sentences you covered, that the request is more than you do at \
+once, and that they can ask you to go on once they approve this plan. Only ONE value per sentence{light} may \
+cover more, and a search, a count, a question about a whole document or a single call that changes many \
+sentences ({bulk}) is not limited by this.'''
 
 FINAL_MESSAGE = '''- The reply the user reads is your LAST message of the turn. Text you write beside a tool call goes \
 into the folded list of steps, which they may never open. So the last message answers every question they \

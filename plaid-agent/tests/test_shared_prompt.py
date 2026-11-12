@@ -110,7 +110,10 @@ def test_every_prompt_says_how_much_to_analyse_at_once_and_what_that_leaves_alon
     decides only those. Run on glm-5.3-flash it read all 20 sentences of the
     bench text and reasoned over them before staging 10, 21,000 to 23,000
     reasoning tokens a stretch, and once ran out of its 32,768 with nothing
-    staged (BENCH-STRETCH)."""
+    staged (BENCH-STRETCH). And again (2026-11-12, after BENCH-STRETCH-2): the
+    turn ends once the first stretch is staged, since one run in three read
+    and staged in fives and went on through all 20 sentences in the same
+    turn."""
     from plaid_agent.core.limits import STRETCH_SENTENCES
     full = {'igt': 'segmenting and glossing, marking every noun phrase, a field on every word',
             'ud': 'a parse, a lemma, a feature or a relation on every word',
@@ -124,10 +127,9 @@ def test_every_prompt_says_how_much_to_analyse_at_once_and_what_that_leaves_alon
         assert f'Work judged word by word or phrase by phrase ({full[app]}) is done about ' \
                f'{STRETCH_SENTENCES} sentences at a time' in line, app
         assert STRETCH_SENTENCES == 5, 'the owner\'s figure (2026-11-11, after BENCH-STRETCH)'
-        assert f'take the first {STRETCH_SENTENCES} or so: read ONLY those sentences, not the whole ' \
-               'document, decide only those, and stage them' in line, app
-        assert 'Do not read, plan or reason about the sentences after them: they wait for a later turn.' \
-            in line, app
+        assert f'take the first {STRETCH_SENTENCES} or so: read, reason about and stage ONLY those, not the ' \
+               'whole document, then END YOUR TURN.' in line, app
+        assert 'The next stretch waits until the user asks you to go on in a later message.' in line, app
         assert not re.search(r'\b(?:10|ten)\b', line), app
         assert 'once they approve this plan' in line, 'a plan per stretch, as ONE_TURN has it'
         assert light[app] in line, app
@@ -146,5 +148,6 @@ def test_staging_now_and_working_in_stretches_agree():
     for app, text in _built().items():
         stage = next(x for x in text.splitlines() if x.startswith('- Once the request is clear, STAGE'))
         assert stage.endswith('so stage it now. The one exception is the rest of a request done in '
-                              'stretches (WORK IN STRETCHES), which waits until the user asks you to go on.'), app
+                              'stretches (WORK IN STRETCHES), which waits until the user asks you to go on in a '
+                              'later message.'), app
         assert text.index(stage) < text.index('- WORK IN STRETCHES.'), app
