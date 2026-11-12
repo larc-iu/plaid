@@ -97,7 +97,7 @@ def test_search(proj):
                  {'pattern': 'gam', 'where': 'lexicon'}):
         same(proj, 'search', args)
     out = same(proj, 'search', {'pattern': 'gam'})
-    assert out.startswith('2 hits:') and 's1.w2 gam || Ali-di gam akuna.' in out
+    assert out.startswith('2 hits:\n[s1] Ali-di gam akuna.\n  s1.w2 gam\n')
     # A morpheme search counts the words it hits and, apart, the morphemes:
     # "N hits" was read as N morphemes where a word held two.
     out = same(proj, 'search', {'pattern': '.*', 'regex': True, 'where': 'morpheme'})
