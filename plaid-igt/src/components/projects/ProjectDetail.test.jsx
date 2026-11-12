@@ -42,6 +42,12 @@ vi.mock('@ui/components/assistant/subject.js', () => ({
   useAskAssistant: () => () => {},
 }));
 vi.mock('./assistant/adapter.js', () => ({ IGT_ASSISTANT: { app: 'plaid-igt-agent' } }));
+// The Jobs tab is a stand-in that says what it was handed.
+vi.mock('./jobs/ProjectJobs.jsx', () => ({
+  ProjectJobs: ({ startJob }) => (
+    <div data-testid="jobs-tab">{startJob ? 'with start' : 'without start'}</div>
+  ),
+}));
 
 const auth = vi.hoisted(() => ({
   client: null,
@@ -214,6 +220,7 @@ describe('the project page header', () => {
       'Documents',
       'Search',
       'Guidelines',
+      'Jobs',
       'Bulk Edit',
       'Validation',
       'Activity',
@@ -250,6 +257,7 @@ describe('the project page header', () => {
         'Documents',
         'Search',
         'Guidelines',
+        'Jobs',
         'Export',
       ]);
       await view.unmount();

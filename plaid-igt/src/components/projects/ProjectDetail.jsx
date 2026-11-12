@@ -47,6 +47,7 @@ const GuidelinesTab = lazyNamed(
   'GuidelinesTab',
 );
 const ProjectExport = lazyNamed(() => import('./ProjectExport.jsx'), 'ProjectExport');
+const ProjectJobs = lazyNamed(() => import('./jobs/ProjectJobs.jsx'), 'ProjectJobs');
 
 // The settings sections live behind these path suffixes; keeping them in the
 // URL means deep links and the back button still land on the right section.
@@ -130,6 +131,7 @@ const ProjectTabs = ({ projectId, project }) => {
       show: assistantAvailable,
       alsoWhenActive: true,
     },
+    { value: 'jobs', label: 'Jobs', to: tabHref(at, 'jobs') },
     { value: 'bulk', label: 'Bulk Edit', to: tabHref(at, 'bulk'), show: canManage },
     { value: 'validate', label: 'Validation', to: tabHref(at, 'validate'), show: canManage },
     { value: 'activity', label: 'Activity', to: tabHref(at, 'activity'), show: canManage },
@@ -236,6 +238,8 @@ const ProjectBody = ({ project, projectId, client, documents, reload }) => {
         href={(documentId) => `/projects/${projectId}/documents/${documentId}`}
       />
     );
+  } else if (active === 'jobs') {
+    body = <ProjectJobs projectId={projectId} client={client} />;
   } else if (active === 'search') {
     body = (
       <>

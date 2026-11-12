@@ -6,7 +6,8 @@
 // Bulk Edit, Validation and Activity are maintainers-only. The Assistant is
 // open to everyone, since it acts under the reader's own permissions, and so
 // are Guidelines: a reader reads the manual, and the writes inside it are
-// gated on the tab's own canWrite.
+// gated on the tab's own canWrite. So are Jobs: a reader sees what a job did,
+// and Start job and Stop are gated on their own.
 const CONTENT_TABS = [
   'documents',
   'search',
@@ -15,6 +16,7 @@ const CONTENT_TABS = [
   'validate',
   'activity',
   'assistant',
+  'jobs',
 ];
 
 const MAINTAINER_TABS = new Set(['bulk', 'validate', 'activity']);

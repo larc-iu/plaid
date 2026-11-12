@@ -32,7 +32,20 @@ const mount = async (initial, canManage) => {
 describe('contentTabsFor', () => {
   it('gives a maintainer every tab and a reader the open ones', () => {
     expect(contentTabsFor(true)).toContain('bulk');
-    expect(contentTabsFor(false)).toEqual(['documents', 'search', 'guidelines', 'assistant']);
+    expect(contentTabsFor(false)).toEqual([
+      'documents',
+      'search',
+      'guidelines',
+      'assistant',
+      'jobs',
+    ]);
+  });
+
+  it('opens the Jobs tab to a reader from a link', async () => {
+    const { read, unmount } = await mount('/projects/p1?tab=jobs', false);
+    expect(read().active).toBe('jobs');
+    expect(read().search).toBe('?tab=jobs');
+    await unmount();
   });
 });
 
