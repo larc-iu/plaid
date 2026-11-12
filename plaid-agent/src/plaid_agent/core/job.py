@@ -31,7 +31,8 @@ from plaid_client import PlaidAPIError
 from plaid_client.workflows.llm import did_not_answer, is_busy, is_timeout, transient_errors
 
 from .agent import REPEATING_LINE, TurnCancelled, TurnFailed, token_counter, too_long
-from .limits import (HARMONIZE_MAJORITY, JOB_CALL_DECIDE_AT_TOKENS, JOB_DECISIONS_PER_CALL, JOB_CALL_MAX_PROMPT_TOKENS,
+from .limits import (HARMONIZE_MAJORITY, JOB_CALL_DECIDE_AT_TOKENS, JOB_CORE_TRIES, JOB_CORE_WAIT_S,
+                     JOB_DECISIONS_PER_CALL, JOB_CALL_MAX_PROMPT_TOKENS,
                      JOB_HEARTBEAT_S, JOB_MODEL_RETRY_S, JOB_REPORT_LIST_MAX, JOB_STRETCH_DECIDE_AT_ROUNDS,
                      JOB_STRETCH_MAX_ROUNDS, JOB_STRETCH_MAX_SENT_TOKENS, JOB_YIELD_POLL_S, JOB_YIELD_QUIET_S)
 from .prompt import JOB_DECIDE_NOW
@@ -254,7 +255,9 @@ def core_fault(e: Optional[BaseException]) -> Optional[str]:
     """What a refusal of core (or a network error to it) in ``e`` means to a
     job: ``mine`` (the job is no longer this worker's, :func:`no_longer_mine`),
     ``passing`` (core busy, down or unreachable for a while: a 5xx, a network
-    error, 423, 429, tried again), or ``other`` (anything else core refused).
+    error, 423, 429, tried again), ``access`` (the job's token refused, or a
+    403 that is not core's "names nothing": the starter's right to write is
+    gone, :meth:`Job.access_lost`), or ``other`` (anything else core refused).
     None when ``e`` holds no refusal of core."""
     err = plaid_error(e)
     if err is None:
@@ -264,6 +267,9 @@ def core_fault(e: Optional[BaseException]) -> Optional[str]:
     status = err.status or 0
     if status == 0 or status in (423, 429) or status >= 500:
         return 'passing'
+    data = err.response_data if isinstance(err.response_data, dict) else {}
+    if status == 401 or (status == 403 and not data.get('unresolved')):
+        return 'access'
     return 'other'
 
 
@@ -376,6 +382,16 @@ class Job:
         still gets the job's report). Nothing more is written."""
         self.beat()
         return JobStopped(self.lost or 'finished')
+
+    def access_lost(self) -> JobStopped:
+        """Core refused the starter's token its access (SPEC 12): the job
+        ends failed, ``starter-access``, with its report, unless the heartbeat
+        says it already ended otherwise. Nothing is called gone for it."""
+        self.beat()
+        if self.lost and self.lost != 'failed':
+            return JobStopped(self.lost)
+        self.reason = self.reason or 'starter-access'
+        return JobStopped('failed')
 
     def set(self, **status) -> None:
         """Change what the heartbeat says (phase, message, waiting_for,
@@ -520,12 +536,14 @@ def run_job(job: Job, runner) -> Optional[Dict[str, Any]]:
         # of a stop: asked again before anything of the phase is written.
         job.set(phase=HARMONIZING, current_document=None, message='Making the job\'s analyses consistent.')
         job.check()
-        harmonize = runner.harmonize(job)
+        harmonize = _passing(job, lambda: runner.harmonize(job))
         job.check()
-        entries = runner.entries(job)
+        entries = _passing(job, lambda: runner.entries(job))
         job.set(phase=REPORTING, current_document=None, message='Writing the report.')
         return _finish(job, 'done', runner, harmonize, entries)
     except Exception as e:  # noqa: BLE001 - a stop, core saying the job is no longer this worker's, or a fault
+        if core_fault(e) == 'access':
+            e = job.access_lost()
         if not isinstance(e, JobStopped) and not no_longer_mine(e):
             # No rule covers it: the job fails with what happened, rather
             # than being skipped past or taken again to fail the same way.
@@ -539,6 +557,21 @@ def run_job(job: Job, runner) -> Optional[Dict[str, Any]]:
             return _finish(job, 'failed', runner, harmonize, entries, reason=job.reason or 'starter-access')
         logger.warning('Job %s: dropped (%s)', job.id, stop.why)
         return None
+
+
+def _passing(job: Job, step: Callable[[], Any]):
+    """Run a phase's ``step``, again from its start while core is busy or
+    out of reach (:func:`core_fault` ``passing``), :data:`JOB_CORE_TRIES`
+    times with a growing wait. A phase reads the documents as they are, so
+    doing it again is safe (SPEC 3.8)."""
+    for n in range(1, JOB_CORE_TRIES + 1):
+        try:
+            return step()
+        except Exception as e:  # noqa: BLE001 - core's passing trouble is tried again, the rest goes up
+            if core_fault(e) != 'passing' or n == JOB_CORE_TRIES:
+                raise
+            logger.warning('Job %s: core did not take a call (%s of %s): %s', job.id, n, JOB_CORE_TRIES, e)
+            job.sleep(JOB_CORE_WAIT_S * n)
 
 
 def _stopped_parts(job: Job, runner, harmonize, entries):

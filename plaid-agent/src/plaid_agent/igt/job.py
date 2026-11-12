@@ -491,11 +491,26 @@ class IgtRunner:
         try:
             doc = ws.load_doc(document_id)
         except PlaidAPIError as e:
-            if e.status in (403, 404):
-                raise Gone(document_id) from e
-            raise
+            raise self.refused(e, document_id) from e
         self.names[document_id] = doc.name
         return doc
+
+    def refused(self, e: PlaidAPIError, document_id: str) -> Exception:
+        """What a refusal of a document's read, lock or write means: the
+        document is :class:`Gone` when core no longer finds it (404, or 403
+        naming nothing, ``unresolved``), the job's right to write is gone
+        on any other 403 or a 401 (``Job.access_lost``: the job fails
+        ``starter-access``, and no document is called gone for it), and
+        anything else is the refusal itself."""
+        fault = core_job.core_fault(e)
+        if fault == 'mine':
+            return self.job.ended()
+        if fault == 'access':
+            return self.job.access_lost()
+        data = e.response_data if isinstance(e.response_data, dict) else {}
+        if e.status == 404 or (e.status == 403 and data.get('unresolved')):
+            return Gone(document_id)
+        return e
 
     # --- the checks (SPEC 3.2) -----------------------------------------------------
 
@@ -584,9 +599,7 @@ class IgtRunner:
         try:
             page = client.documents.audit_page(document_id, order='desc', limit=1) or {}
         except PlaidAPIError as e:
-            if e.status in (403, 404):
-                raise Gone(document_id) from e
-            raise
+            raise self.refused(e, document_id) from e
         entries = page.get('entries') if isinstance(page, dict) else page
         if not entries:
             return False
@@ -621,6 +634,8 @@ class IgtRunner:
                 fault = core_job.core_fault(e)
                 if fault == 'mine':
                     raise job.ended() from e
+                if fault == 'access':
+                    raise job.access_lost() from e
                 if fault != 'passing':
                     raise
                 faults += 1
@@ -908,10 +923,8 @@ class IgtRunner:
                     break
                 except PlaidAPIError as e:
                     lock = None
-                    if e.status in (403, 404):
-                        raise Gone(document_id) from e
                     if e.status != 423:
-                        raise
+                        raise self.refused(e, document_id) from e
                     if i + 1 < JOB_LOCK_TRIES:
                         job.sleep(JOB_LOCK_WAIT_S)
             if lock is None:
@@ -1336,10 +1349,11 @@ class IgtRunner:
             except Gone:
                 return set()
             except PlaidAPIError as e:
-                if e.status in (403, 404):
-                    return set()
                 if e.status != 423:
-                    raise
+                    why = self.refused(e, document_id)
+                    if isinstance(why, Gone):
+                        return set()
+                    raise why from e
             except PlanError as e:
                 if _status(e) not in (409, 423):
                     raise
