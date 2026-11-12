@@ -1187,7 +1187,25 @@
 ;; Vocab management (project_vocabs join + cascade vocab_links)
 ;; ============================================================
 
-(defn add-vocab [db project-id vocab-id actor-user-id]
+(defn admin-id?
+  "Is `user-id` an admin, read in `db` (inside a write's transaction, where
+  the route gate's reading of the user is a moment old)?"
+  [db user-id]
+  (contains? #{1 true} (:is_admin (psc/q1 db {:select [:is_admin] :from [:users] :where [:= :id user-id]}))))
+
+(def borrow-refusal
+  "The refusal of a borrow by someone with no role on the vocabulary's home."
+  "Linking a vocabulary needs access to the project it belongs to.")
+
+(defn add-vocab
+  "Link vocab layer `vocab-id` to project `project-id`, which then borrows
+  it. The route checks that `actor-user-id` maintains the project and holds a
+  role on the vocabulary's home (or is an admin), and this checks it again
+  inside the transaction, with the home live: a home deleted, or a role
+  taken away, between the route's check and this write would otherwise
+  leave the project borrowing a vocabulary its maintainer cannot reach, or
+  one whose home's removal is about to delete it with the borrower's links."
+  [db project-id vocab-id actor-user-id]
   (submit-operation! [tx db {:type :project/add-vocab
                              :project project-id
                              :document nil
@@ -1196,9 +1214,19 @@
                      (when (nil? (psc/fetch-by-id tx :projects project-id))
                        (throw (ex-info (psc/err-msg-not-found "Project" project-id)
                                        {:code 404 :id project-id})))
-                     (when (nil? (psc/fetch-by-id tx :vocab_layers vocab-id))
-                       (throw (ex-info (psc/err-msg-not-found "Vocab" vocab-id)
-                                       {:code 400 :id vocab-id})))
+                     (let [vocab (psc/fetch-by-id tx :vocab_layers vocab-id)]
+                       (when (nil? vocab)
+                         (throw (ex-info (psc/err-msg-not-found "Vocab" vocab-id)
+                                         {:code 400 :id vocab-id})))
+                       (when (hidden? tx (:project_id vocab))
+                         (throw (ex-info (psc/err-msg-not-found "Vocab" vocab-id) {:code 404 :id vocab-id})))
+                       (when-not (or (nil? actor-user-id) (admin-id? tx actor-user-id))
+                         (when-not (= :project/maintainers (role-of tx project-id actor-user-id))
+                           (throw (ex-info (str "User " actor-user-id " lacks sufficient privileges to maintain the "
+                                                "project this entity belongs to")
+                                           {:code 403 :id project-id})))
+                         (when-not (role-of tx (:project_id vocab) actor-user-id)
+                           (throw (ex-info borrow-refusal {:code 403 :id vocab-id})))))
                      ;; Snapshot the pre-state vocab grant list so the
                      ;; synthetic audit row (emitted after the write)
                      ;; carries an accurate pre-image.

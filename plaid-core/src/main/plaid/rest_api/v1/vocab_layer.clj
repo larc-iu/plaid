@@ -20,8 +20,7 @@
   [{params :parameters}]
   (-> params :path :id))
 
-(def ^:private move-refusal
-  "Moving a vocabulary needs maintainer rights on both projects.")
+(def ^:private move-refusal vocab/move-refusal)
 
 ;; ============================================================
 ;; History

@@ -305,6 +305,22 @@
                              (op/bump-document-versions! tx (linked-document-ids tx eid)))
                            eid)))))
 
+(def move-refusal
+  "The refusal of a move by someone who does not maintain both projects."
+  "Moving a vocabulary needs maintainer rights on both projects.")
+
+(defn- maintains?
+  "Does `user-id` maintain live project `pid`, or is an admin? Read in `tx`.
+  (`plaid.sql.project` requires this namespace, so its own helpers are out
+  of reach here.)"
+  [tx pid user-id]
+  (or (contains? #{1 true} (:is_admin (psc/q1 tx {:select [:is_admin] :from [:users] :where [:= :id user-id]})))
+      (some? (psc/q1 tx {:select [1]
+                         :from [[:project_users :pu]]
+                         :join [[:projects :p] [:= :p.id :pu.project_id]]
+                         :where [:and [:= :pu.project_id pid] [:= :pu.user_id user-id]
+                                 [:= :pu.role "maintainer"] [:= :p.deleted_at nil]]}))))
+
 (defn move
   "Make project `target` the home of vocab layer `eid`. The old home keeps its
   `project_vocabs` row and so becomes a borrower, the target gains its row
@@ -312,7 +328,12 @@
   rights, so its Activity says so, and heard by the new home's listeners
   too. Bumps no document: no deep read changes but each vocabulary's
   `project`, which is not restated content. A move to the current home
-  writes nothing (`{:success true :extra eid}` without an operation)."
+  writes nothing (`{:success true :extra eid}` without an operation).
+
+  The route checks that `user-id` maintains both projects, and this checks
+  it again inside the transaction, against the home as it is there: of two
+  moves at once, the second would otherwise run against the home the first
+  gave the vocabulary, which its caller was never checked on."
   [db eid target user-id]
   (let [home (home-of db eid)]
     (if (and home (= (str home) (str target)))
@@ -323,9 +344,19 @@
                                  :description (str "Move vocabulary “" (vocab-name db eid) "” to project “"
                                                    (project-name db target) "”")
                                  :user user-id}]
-                         (when (nil? (psc/fetch-by-id tx :vocab_layers eid))
-                           (throw (ex-info (psc/err-msg-not-found "Vocab" eid) {:code 404 :id eid})))
+                         (let [row (psc/fetch-by-id tx :vocab_layers eid)]
+                           (when (nil? row)
+                             (throw (ex-info (psc/err-msg-not-found "Vocab" eid) {:code 404 :id eid})))
+                           ;; The home this operation is filed under, read
+                           ;; before the transaction: another move since then
+                           ;; makes it stale.
+                           (when (not= (str home) (str (:project_id row)))
+                             (throw (ex-info "The vocabulary was moved meanwhile." {:code 409 :id eid}))))
                          (assert-live-project! tx target)
+                         ;; The route's check of both projects, again under
+                         ;; the write lock.
+                         (when-not (or (nil? user-id) (every? #(maintains? tx % user-id) [home target]))
+                           (throw (ex-info move-refusal {:code 403 :id eid})))
                          (crud/update-by-id! tx :vocab_layers eid {:project_id target :modified_at (op/op-ts)})
                          (link-project! tx target eid)
                          (when-let [a (:affected-projects psaw/*op*)]

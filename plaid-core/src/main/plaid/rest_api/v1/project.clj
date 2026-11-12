@@ -147,7 +147,7 @@
             :middleware [[pra/wrap-maintainer-required get-project-id]
                          [pra/wrap-vocab-home-member-required
                           (fn [{p :parameters}] (-> p :path :vocab-id))
-                          "Linking a vocabulary needs access to the project it belongs to."]]
+                          prj/borrow-refusal]]
             :handler (fn [{{{:keys [id vocab-id]} :path} :parameters db :db user-id :user/id :as req}]
                        (if (= (str id) (str (vocab/home-of db vocab-id)))
                          {:status 204}
