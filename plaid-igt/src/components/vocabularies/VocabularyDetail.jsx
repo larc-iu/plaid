@@ -1564,6 +1564,7 @@ export const VocabularyDetail = () => {
                     client={client}
                     user={user}
                     vocabulary={vocabulary}
+                    home={home}
                   />
 
                   <div className="border-t" />

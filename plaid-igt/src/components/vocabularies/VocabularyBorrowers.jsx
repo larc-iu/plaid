@@ -4,6 +4,7 @@ import { Button } from '@ui/components/ui/button';
 import { useConfirm } from '@ui/components/shared/ConfirmProvider';
 import { Loading } from '@ui/components/shared/Loading.jsx';
 import { isolate } from '@ui/lib/bidi.js';
+import { canUnlinkVocabulary } from '@ui/domain/permissions.js';
 import { countOf, plural } from '@ui/lib/plural.js';
 import { notifyError } from '@/utils/feedback';
 import { entryMorphTypesOf } from '@/domain/vocabLookup';
@@ -15,7 +16,7 @@ const quoted = (name) => `“${isolate(name)}”`;
 // that vocabulary's Settings tab, for a maintainer of its project. Each can be
 // unlinked from here. A project this person cannot read is listed without its
 // name, each as "Another project", so only how many there are is learnt.
-export const VocabularyBorrowers = ({ client, user, vocabulary }) => {
+export const VocabularyBorrowers = ({ client, user, vocabulary, home }) => {
   const confirm = useConfirm();
   // `[{ id, name }]`, `name` null where this person cannot read the project.
   // Null while read.
@@ -112,14 +113,16 @@ export const VocabularyBorrowers = ({ client, user, vocabulary }) => {
                 ) : (
                   <span className="text-muted-foreground">Another project</span>
                 )}
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  aria-label={b.name ? `Unlink from ${b.name}` : 'Unlink from another project'}
-                  onClick={() => unlink(b)}
-                >
-                  Unlink
-                </Button>
+                {canUnlinkVocabulary(vocabulary, { id: b.id }, home, user) && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    aria-label={b.name ? `Unlink from ${b.name}` : 'Unlink from another project'}
+                    onClick={() => unlink(b)}
+                  >
+                    Unlink
+                  </Button>
+                )}
               </li>
             ))}
           </ul>

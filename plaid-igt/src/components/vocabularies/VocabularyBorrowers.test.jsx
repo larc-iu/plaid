@@ -42,10 +42,13 @@ const server = ({ borrowers, links = {}, unlink } = {}) => {
   });
 };
 
-const mount = async (client) => {
+// The home as its maintainer reads it.
+const HOME = { id: 'A', maintainers: ['u'], writers: [], readers: [] };
+
+const mount = async (client, home = HOME) => {
   const view = await renderComponent(
     <MemoryRouter>
-      <VocabularyBorrowers client={client} user={{ id: 'u' }} vocabulary={VOCAB} />
+      <VocabularyBorrowers client={client} user={{ id: 'u' }} vocabulary={VOCAB} home={home} />
     </MemoryRouter>,
   );
   await view.step(() => settle(3));
@@ -188,5 +191,12 @@ describe('the projects that use a vocabulary', () => {
     );
     expect(rows()).toEqual(['Another projectUnlink']);
     await view.unmount();
+  });
+
+  it('offers no Unlink to someone who does not maintain its project', async () => {
+    const client = server({ borrowers: [{ id: 'B', name: 'Beeworth' }] });
+    await mount(client, { id: 'A', maintainers: [], writers: ['u'], readers: [] });
+    expect(rows()).toEqual(['Beeworth']);
+    expect(unlinkOf('Unlink from Beeworth')).toBeUndefined();
   });
 });

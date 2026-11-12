@@ -88,7 +88,7 @@ const EntryDetail = ({ item, fields, nameOf, client }) => {
           </>
         )}
       </dl>
-      <ExamplesPanel item={item} client={client} linkedTokenIds={null} canManage={false} />
+      <ExamplesPanel item={item} client={client} linkedTokenIds={null} canEdit={false} />
     </div>
   );
 };
