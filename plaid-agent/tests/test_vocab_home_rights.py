@@ -266,6 +266,29 @@ def test_a_link_into_a_lexicon_no_longer_linked_here_is_out_of_date():
     assert e.value.reasons == ['a lexicon this plan links words to is no longer linked to this project']
 
 
+@pytest.mark.parametrize('own_lexicon', [False, True])
+def test_a_link_into_a_lexicon_whose_home_ended_the_borrowing_is_out_of_date_for_that_reason(own_lexicon):
+    # The home's maintainer ended the borrowing: the entry is still there,
+    # but a delegated token, scoped to this project, is refused its read
+    # (403), as core refuses any entry the token cannot reach. The reason is
+    # the unlinking, never "deleted or merged away", whether or not the
+    # project still has a lexicon of its own.
+    from plaid_client import PlaidAPIError
+    from plaid_agent.igt.plan import execute_plan
+    w = _ws('BW')
+    call_tool(w, *LINK_CALL)
+    gone = _raw('BW')
+    own = copy.deepcopy(gone['vocabs'][0])
+    gone['vocabs'] = [{**own, 'id': 'v-own', 'name': 'Own', 'project': PID}] if own_lexicon else []
+    c = FakeClient(project=gone)
+    c.fails['vocab_items.get'] = PlaidAPIError('Forbidden', status=403)
+    with pytest.raises(PlanOutOfDate) as e:
+        execute_plan(c, w.plan_payload()['ops'], source='s', label='l', project=load_project(c, PID),
+                     requester=USER)
+    assert e.value.reasons == ['a lexicon this plan links words to is no longer linked to this project']
+    assert not [k for k, _ in c.calls if k not in ('read', 'lock', 'unlock')], 'nothing is written'
+
+
 def test_a_plan_still_within_the_users_rights_applies():
     for column, call in (('HM', MAINTAINER_CALLS[0]), ('HW', WRITER_CALLS[3]), ('BW', LINK_CALL)):
         w = _ws(column)

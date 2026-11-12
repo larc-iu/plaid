@@ -546,6 +546,20 @@ def no_scope_reaches(ws: Workspace, doc_id: Optional[str], where: str, placed: b
                         'Apply it first, then plan this.', kind='conflict')
 
 
+def _borrowed_lexicon(ws: Workspace, kind: str, target) -> Dict[str, Any]:
+    """``{'entry_lexicon': id}`` for a link to an existing entry of a lexicon
+    this project borrows, else nothing. That lexicon's own project may end the
+    borrowing before approval, and then the entry cannot be read here to learn
+    its lexicon (core refuses it as it refuses a deleted one): the approval
+    check (``plan.check_entries``) says the lexicon is no longer linked. An
+    entry of the project's own lexicon needs nothing, as its own lexicon
+    cannot be unlinked from it."""
+    if kind != 'existing':
+        return {}
+    v = ws.vocab_of_item(target['id'])
+    return {'entry_lexicon': v['id']} if v and v.get('borrowed') else {}
+
+
 def _entry_named(ws: Workspace, entry_form, lexicon, entry_id, entry_gloss):
     """The entry a link names. A read marks a link's entry ("link=Ali^"), so a
     form copied from one names the entry without its mark, unless an entry is
@@ -618,7 +632,7 @@ def t_link_entry(ws: Workspace, document: str, refs, entry_form: Optional[str] =
             untype = {'untype': True, **({'untype_record': True}
                                          if (obj.metadata or {}).get(EQUALS_TYPE_KEY) is not None else {})}
         staged.append({'kind': 'link', 'token_id': obj.id, **untype,
-                       'item_id': target['id'] if kind == 'existing' else None,
+                       'item_id': target['id'] if kind == 'existing' else None, **_borrowed_lexicon(ws, kind, target),
                        'new_entry_key': target if kind == 'new' else None,
                        'existing_link_id': obj.link.id if obj.link else None, 'entry_form': form,
                        **labelled(f'{ws.doc_label(doc.id)} {plain_ref(doc, ref)} {qv(what)}',
@@ -758,7 +772,7 @@ def _planned_link_op(ws: Workspace, doc: IgtDoc, ref: str, place: _Place, kind: 
     return {'kind': 'link', 'token_id': None, 'analysis_word_id': place.word.id, 'morpheme_index': place.index,
             'morpheme_form': m['form'], 'reuses_morpheme_id': place.kept.id if place.kept is not None else None,
             'doc': doc.id,
-            'item_id': target['id'] if kind == 'existing' else None,
+            'item_id': target['id'] if kind == 'existing' else None, **_borrowed_lexicon(ws, kind, target),
             'new_entry_key': target if kind == 'new' else None,
             'existing_link_id': old.id if old else None, 'entry_form': form,
             **labelled(f'{ws.doc_label(doc.id)} {plain_ref(doc, ref)} {qv(m["form"])}',
@@ -919,7 +933,7 @@ def t_link_phrase(ws: Workspace, document: str, refs, entry_form: Optional[str] 
                          if not (op.get('kind') == 'unlink' and op.get('link_id') == existing.id)]
             ws.replaced += before - len(ws.ops)
         ws.add_op({'kind': 'link_phrase', 'token_ids': token_ids,
-                   'item_id': target['id'] if kind == 'existing' else None,
+                   'item_id': target['id'] if kind == 'existing' else None, **_borrowed_lexicon(ws, kind, target),
                    'new_entry_key': target if kind == 'new' else None,
                    'existing_link_id': existing.id if existing is not None else None, 'entry_form': form,
                    **labelled(f'{ws.doc_label(doc.id)} s{s.index} {where} {qv(surfaces)}',

@@ -21,6 +21,7 @@ from live import _Session, live_client, seed  # noqa: F401 - fixture
 from test_tagset_tools import _user
 
 from plaid_client import PlaidAPIError, PlaidClient
+from plaid_agent.core.plan import PlanOutOfDate
 from plaid_agent.igt.plan import execute_plan
 from plaid_agent.igt.project import load_project
 from plaid_agent.igt.toolkit import call_tool
@@ -189,3 +190,20 @@ def test_section_one_two_over_a_real_core(live_client, people, world, column):
         assert [it['form'] for it in after.values()].count('gam') == 1, column
     else:
         assert after[items['Ali']]['form'] == 'Ali' and items['-di'] in after, column
+
+
+def test_a_link_planned_before_the_home_ended_the_borrowing_is_out_of_date_for_that_reason(live_client, people,
+                                                                                            world):
+    B, vid = world['B'].project_id, world['vocab']
+    token = _delegated(live_client, people['BW'], B)
+    ws = Workspace(token, load_project(token, B))
+    ws.requester_id = USERS['BW']
+    out = call_tool(ws, *LINK_CALL)
+    assert ws.ops, out
+    people['HM'].projects.unlink_vocab(B, vid)
+    with pytest.raises(PlanOutOfDate) as e:
+        execute_plan(token, ws.plan_payload()['ops'], source='service:igt:assist:vh', label='vh',
+                     project=load_project(token, B), requester=USERS['BW'])
+    assert e.value.reasons == ['a lexicon this plan links words to is no longer linked to this project']
+    gam = [it for it in live_client.vocab_layers.get(vid, include_items=True)['items'] if it['form'] == 'gam']
+    assert len(gam) == 2, 'the entry is still there'

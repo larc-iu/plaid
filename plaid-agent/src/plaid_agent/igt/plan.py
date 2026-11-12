@@ -1412,6 +1412,14 @@ def check_entries(client, ops: List[Dict[str, Any]], project=None, requester: Op
     unsure: Dict[str, Dict[str, Any]] = {}
     # Each entry as it is now, by id.
     now: Dict[str, Dict[str, Any]] = {}
+    # A link into a borrowed lexicon names that lexicon (``entry_lexicon``,
+    # see ``tools._borrowed_lexicon``). Once the borrowing has ended, its
+    # entries cannot be read here, and a 403 would read as a deletion: the
+    # reason is the lexicon no longer linked (:func:`_lexicon_moved`), and the
+    # entry is not read.
+    unlinked = {item_id: op['entry_lexicon'] for item_id, op in named.items()
+                if project is not None and op.get('entry_lexicon') and op['entry_lexicon'] not in vocab_ids}
+    named = {item_id: op for item_id, op in named.items() if item_id not in unlinked}
     layers: Dict[str, List[Dict[str, Any]]] = {}
 
     def lexicon(vid: str) -> List[Dict[str, Any]]:
@@ -1485,7 +1493,8 @@ def check_entries(client, ops: List[Dict[str, Any]], project=None, requester: Op
         changed.add(item_id)
         reasons.append(f'the lexicon entry "{item.get("form") or item_id}" changed since the plan was made')
     if project is not None:
-        reasons.extend(_lexicon_moved(client, ops, project, {i: it.get('layer') for i, it in now.items()}, requester))
+        reasons.extend(_lexicon_moved(client, ops, project,
+                                      {**unlinked, **{i: it.get('layer') for i, it in now.items()}}, requester))
     if reasons:
         raise PlanOutOfDate(reasons)
 
