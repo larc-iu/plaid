@@ -14,14 +14,14 @@ import { createScratchProject, roleOf } from './fixtureProject.js';
 // as `roles` says: `{ hw: { A: 'writer' }, bm: { B: 'maintainer' } }`.
 
 const PASSWORD = 'vh-pass-1';
-export const emailOf = (key) => `vh-${key}@x.com`;
+const emailOf = (key) => `vh-${key}@x.com`;
 
 export const adminClient = () => new PlaidClient(CORE, readToken().token);
 
 // The account for `key`, made when the database lacks it, and a signed-in
 // session as it. The create is refused to a named token, so the admin signs in.
 const sessions = new Map();
-export async function person(key) {
+async function person(key) {
   if (!sessions.has(key)) {
     sessions.set(
       key,
