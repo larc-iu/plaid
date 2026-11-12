@@ -32,6 +32,8 @@ dev = ["pytest", "pyyaml"]
 plaid-igt-agent = "plaid_agent.igt.service:main"
 plaid-ud-agent = "plaid_agent.ud.service:main"
 plaid-umr-agent = "plaid_agent.umr.service:main"
+# The worker of unattended jobs, one per server (plaid_agent/jobworker.py).
+plaid-job-worker = "plaid_agent.jobworker:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/plaid_agent"]

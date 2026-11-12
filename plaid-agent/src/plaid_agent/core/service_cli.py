@@ -8,7 +8,7 @@ import re
 import time
 from urllib.parse import urlsplit
 
-from plaid_client.workflows.llm import add_timeout_argument, is_busy, provider_secrets
+from plaid_client.workflows.llm import add_model_pool_argument, add_timeout_argument, is_busy, provider_secrets
 
 from .agent import (DEFAULT_MAX_OUTPUT_TOKENS, ModelConfig, ModelTooSlow, PING_TIMEOUT_S, context_window, output_cap,
                     ping_model)
@@ -34,6 +34,7 @@ class ServiceCli:
                                  f'{DEFAULT_MAX_OUTPUT_TOKENS}, or less for a model known to write less). '
                                  'A call that reaches it ends the turn with a message to the user.')
         add_timeout_argument(parser)
+        add_model_pool_argument(parser)
         parser.add_argument('--context-window', type=_positive_int, default=None, metavar='TOKENS',
                             help='How many tokens the model can be sent. The conversation gauge shows '
                                  'how full a conversation is against it and warns near the limit. '
@@ -100,6 +101,10 @@ class ServiceCli:
         # The operator's own statement for users (`--disclosure`): Plaid cannot
         # know where a given site's model runs or where what is sent to it
         # goes, so whoever runs the assistant says, and the panel shows it.
+        # The model key it draws on (`--model-pool`), which the job worker
+        # waits on while this assistant's turns are in flight.
+        if getattr(args, 'model_pool', None):
+            self.extras['model_pool'] = args.model_pool
         disclosure = (getattr(args, 'disclosure', None) or '').strip()
         if disclosure:
             self.extras['disclosure'] = disclosure

@@ -1489,7 +1489,7 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
             text = (d.get('content') or '').strip()
             if pace is not None:
                 # Nobody reads a job's reply: what it staged is its answer.
-                return done(text)
+                return done(text, *reply_round_of(rounds + 1, thinking, asked if rounds == 0 else None))
             if not text:
                 # Some models end a tool-heavy turn with an empty message (or
                 # reasoning only). Ask once, without tools, for the reply.
