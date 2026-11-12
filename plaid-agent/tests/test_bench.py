@@ -212,3 +212,11 @@ def test_a_run_that_wrote_nothing_is_rescored_without_its_database(bench_path, t
     assert wrote_nothing(rd)
     (rd / 'extract' / 'units.jsonl').write_text('{"kind": "assistant-plan", "counts": {"spans.update": 1}}\n')
     assert not wrote_nothing(rd)
+
+
+def test_a_bench_job_run_keeps_its_transcript(bench_path, tmp_path):
+    """A job's run keeps every model call of every stretch with the run, as a
+    panel run keeps its rounds (REV-J-B S3-9, feedback_assistant_transparency)."""
+    run = _load(BENCH / 'run.py')
+    cmd = run.worker_command('m', 'http://gate', 'http://core', trace_dir=tmp_path / 'transcript')
+    assert cmd[cmd.index('--trace-dir') + 1] == str(tmp_path / 'transcript')

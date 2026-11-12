@@ -220,11 +220,13 @@ class _JobDone(Exception):
     """A job task's run is checked: the rest of run_one is a panel's."""
 
 
-def worker_command(model, api_base, core_url, window=None):
-    """The job worker's command line, taking one job and exiting."""
+def worker_command(model, api_base, core_url, window=None, trace_dir=None):
+    """The job worker's command line, taking one job and exiting, keeping
+    every model call of every stretch in ``trace_dir``."""
     return [str(bl.AGENT_PY), '-m', 'plaid_agent.jobworker', '--url', core_url, '--model', f'openai/{model}',
             '--api-base', api_base, '--timeout', str(SERVICE_TIMEOUT_S), '--once',
-            *(['--context-window', str(window)] if window else [])]
+            *(['--context-window', str(window)] if window else []),
+            *(['--trace-dir', str(trace_dir)] if trace_dir else [])]
 
 
 def run_job_task(task, model, ctx, admin, user, project, core_url, api_base, sd: Path, env, rd: Path, turns,
@@ -233,7 +235,9 @@ def run_job_task(task, model, ctx, admin, user, project, core_url, api_base, sd:
     user starts it (``job: {tasks, documents, note}``, documents by name, all
     of the project's when left out), the worker takes it and runs it to its
     end, and the checker reads the job as ``ctx.job``. The job's record is
-    kept as job.json, and its one "turn" is the worker's run."""
+    kept as job.json, what the model saw and did in transcript/ (the worker's
+    --trace-dir: a folder per stretch, a file per model call), and its one
+    "turn" is the worker's run."""
     spec = task['job']
     names = spec.get('documents')
     docs = None
@@ -243,7 +247,8 @@ def run_job_task(task, model, ctx, admin, user, project, core_url, api_base, sd:
     made = user.jobs.create(project['id'], task['app'], list(spec['tasks']), docs, spec.get('note'))
     started = time.time()
     with open(rd / 'worker.log', 'ab') as log:
-        proc = subprocess.Popen(worker_command(model, api_base, core_url, window), cwd=sd, env=env, stdout=log,
+        proc = subprocess.Popen(worker_command(model, api_base, core_url, window, trace_dir=rd / 'transcript'),
+                                cwd=sd, env=env, stdout=log,
                                 stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, start_new_session=True)
         try:
             proc.wait(timeout=task.get('max_wall_s', 3600))

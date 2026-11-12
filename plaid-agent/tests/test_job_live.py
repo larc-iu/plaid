@@ -9,6 +9,7 @@ Runs on the session's core (``live.py``), or the one PLAID_TEST_URL names.
 """
 
 import json
+import time
 import uuid
 
 import pytest
@@ -68,9 +69,17 @@ def test_a_two_document_job_end_to_end(world, monkeypatch):
     made = writer.jobs.create(s.project_id, 'igt', ['gloss'])
     assert made['state'] == 'waiting'
     from plaid_client import PlaidClient
+    waited = []
+
+    def sleep(seconds):
+        # The writer seeded the documents just before starting the job: that
+        # is no person in them, and nothing waits out the quiet window.
+        waited.append(seconds)
+        assert sum(waited) < 60, f'the job waited {sum(waited)} s'
+        time.sleep(seconds)
     worker = Worker(admin, {'igt': runner_factory(ModelConfig(model='fake/m', stream=False, max_steps=1000),
                                                   count=count_chars)},
-                    'fake/m', client_for=lambda token: PlaidClient(core_url(), token))
+                    'fake/m', client_for=lambda token: PlaidClient(core_url(), token), sleep=sleep)
     assert worker.once()
     job = writer.jobs.get(made['id'])
     assert job['state'] == 'done', job
