@@ -18,7 +18,11 @@ const PROJECT = {
   maintainers: ['m'],
   writers: ['w', 'w2'],
   readers: ['r'],
-  vocabs: [{ id: 'v1', name: 'Kukama lexicon' }],
+  vocabs: [
+    { id: 'v1', name: 'Kukama lexicon' },
+    { id: 'v2', name: 'Borrowed lexicon' },
+    { id: 'v3', name: 'Spanish loans' },
+  ],
 };
 
 const jobOf = (over = {}) => ({
@@ -130,6 +134,7 @@ const REPORT = {
     createdMore: 3,
     deletedMore: 0,
     unlinkedMore: 0,
+    lexicons: ['v1', 'v3'],
   },
 };
 
@@ -336,6 +341,11 @@ describe('the job page', () => {
     expect(byText(report, 'a', 'Machine drafts in Kukama lexicon').getAttribute('href')).toBe(
       '/vocabularies/v1?status=machine',
     );
+    // Only a lexicon the job created entries in, one past the list's cut too.
+    expect(byText(report, 'a', 'Machine drafts in Spanish loans').getAttribute('href')).toBe(
+      '/vocabularies/v3?status=machine',
+    );
+    expect(t).not.toContain('Borrowed lexicon');
     await v.unmount();
   });
 
@@ -345,7 +355,7 @@ describe('the job page', () => {
       tasks: ['translate'],
       stopped: 'without-worker',
       harmonize: { changed: [], left: [], changedMore: 0, leftMore: 0 },
-      entries: { created: [], deleted: [], unlinked: [] },
+      entries: { created: [], deleted: [], unlinked: [], lexicons: [] },
     };
     const job = jobOf({ state: 'cancelled', tasks: ['translate'], report });
     const v = await mount(clientOf(job));

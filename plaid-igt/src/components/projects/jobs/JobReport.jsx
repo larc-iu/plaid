@@ -71,6 +71,9 @@ export const JobReport = ({ report, projectId, vocabs = [] }) => {
   const changed = harmonize.changed || [];
   const left = harmonize.left || [];
   const linked = (report.tasks || []).includes('link');
+  // The project's lexicons the job created entries in, in the project's order.
+  const madeIn = new Set(entries.lexicons || []);
+  const draftLexicons = vocabs.filter((v) => madeIn.has(v.id));
 
   return (
     <section aria-label="Report">
@@ -205,9 +208,9 @@ export const JobReport = ({ report, projectId, vocabs = [] }) => {
               </div>
             ) : null,
           )}
-          {vocabs.length > 0 && (
+          {draftLexicons.length > 0 && (
             <ul className="flex flex-col gap-1 text-sm">
-              {vocabs.map((v) => (
+              {draftLexicons.map((v) => (
                 <li key={v.id}>
                   <Link className="underline" to={`/vocabularies/${v.id}?status=machine`}>
                     Machine drafts in {v.name}

@@ -343,6 +343,7 @@ def test_fake_cancel_follows_each_path():
     assert [r['state'] for r in gone['documents']] == ['done'], 'a done row stays done'
     assert report['harmonize'] == {'changed': [], 'left': [], 'changed_more': 0, 'left_more': 0}
     assert report['entries']['created'] == []
+    assert report['entries']['lexicons'] == []
 
 
 def test_fake_a_running_job_may_end_cancelled_and_core_settles_unreached_rows():

@@ -274,6 +274,7 @@
             (is (= "cancelled" (:state report)))
             (is (= {:changed [] :left [] :changed-more 0 :left-more 0} (:harmonize report)))
             (is (= [] (-> report :entries :created)))
+            (is (= [] (-> report :entries :lexicons)) "a report core writes names no lexicon")
             (is (= 1 (-> report :totals :documents-done)))
             (is (= 1 (-> report :totals :documents-not-reached)))
             (is (= 8 (-> report :totals :sentences)))

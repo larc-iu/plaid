@@ -36,7 +36,8 @@ def test_the_report_has_the_contracts_shape_and_cuts_its_lists():
                            'changed': 1, 'protected': 0},
                    skipped=[{'sentence': 's4', 'sentence_id': 'x', 'reason': 'too-long', 'kind': None}])
     job.update_row('d2', state='in-use')
-    created = [{'id': f'e{i}', 'lexicon': 'v1', 'form': f'f{i}', 'gloss': 'g'} for i in range(JOB_REPORT_LIST_MAX + 3)]
+    created = [{'id': f'e{i}', 'lexicon': 'v1' if i < JOB_REPORT_LIST_MAX else 'v2', 'form': f'f{i}', 'gloss': 'g'}
+               for i in range(JOB_REPORT_LIST_MAX + 3)]
     report = build_report(job, 'done', None, runner(job).document_reports(job),
                           {'changed': [{'form': 'ka', 'to': 'ka ‘go’', 'by': 'majority', 'from': []}], 'left': []},
                           {'created': created, 'deleted': [], 'unlinked': []})
@@ -48,6 +49,8 @@ def test_the_report_has_the_contracts_shape_and_cuts_its_lists():
     assert (t['sentences'], t['words'], t['links'], t['changed'], t['skipped_too_long']) == (3, 5, 4, 1, 1)
     assert t['entries'] == JOB_REPORT_LIST_MAX + 3, 'counted whole, listed cut'
     assert len(report['entries']['created']) == JOB_REPORT_LIST_MAX and report['entries']['created_more'] == 3
+    assert {e['lexicon'] for e in report['entries']['created']} == {'v1'}
+    assert report['entries']['lexicons'] == ['v1', 'v2'], 'every lexicon it created in, the cut ones too'
     assert report['harmonize']['changed_more'] == 0 and report['harmonize']['left_more'] == 0
     assert [d['document_id'] for d in report['documents']] == ['d1', 'd2']
     assert report['documents'][1]['state'] == 'in-use'

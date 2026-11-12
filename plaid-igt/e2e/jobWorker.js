@@ -76,5 +76,6 @@ export const stoppedReport = ({ tasks, document, startedAt }) => ({
     createdMore: 0,
     deletedMore: 0,
     unlinkedMore: 0,
+    lexicons: [],
   },
 });

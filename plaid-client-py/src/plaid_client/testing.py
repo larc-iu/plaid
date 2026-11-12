@@ -1971,7 +1971,7 @@ class _FakeJobs:
                             'skipped', 'gloss_group', 'harmonize_group')} for r in rows],
             'harmonize': {'changed': [], 'left': [], 'changed_more': 0, 'left_more': 0},
             'entries': {'created': [], 'deleted': [], 'unlinked': [],
-                        'created_more': 0, 'deleted_more': 0, 'unlinked_more': 0},
+                        'created_more': 0, 'deleted_more': 0, 'unlinked_more': 0, 'lexicons': []},
         }
 
     def _end(self, job, state, reason, *, stopped=_client._UNSET):

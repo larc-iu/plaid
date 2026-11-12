@@ -348,7 +348,8 @@
 
 (def ^:private empty-harmonize {:changed [] :left [] :changed-more 0 :left-more 0})
 (def ^:private empty-entries {:created [] :deleted [] :unlinked []
-                              :created-more 0 :deleted-more 0 :unlinked-more 0})
+                              :created-more 0 :deleted-more 0 :unlinked-more 0
+                              :lexicons []})
 
 (defn- settle-rows!
   "Mark every document row a job did not finish `not-reached`."

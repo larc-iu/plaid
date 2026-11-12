@@ -249,7 +249,7 @@
  * @property {Record<string, number>} totals
  * @property {Array<{documentId: string, name: string | null, state: string, sentences: number | null, targets: number | null, done: number | null, counts: Record<string, number>, skipped: JobSkipped[], glossGroup: string | null, harmonizeGroup: string | null}>} documents
  * @property {{changed: object[], left: object[], changedMore: number, leftMore: number}} harmonize
- * @property {{created: object[], deleted: object[], unlinked: object[], createdMore: number, deletedMore: number, unlinkedMore: number}} entries
+ * @property {{created: object[], deleted: object[], unlinked: object[], createdMore: number, deletedMore: number, unlinkedMore: number, lexicons: string[]}} entries
  */
 
 /**

@@ -498,6 +498,9 @@ def build_report(job: Job, state: str, reason: Optional[str], documents: List[Di
     lists = {}
     for name in ('created', 'deleted', 'unlinked'):
         lists[name], lists[f'{name}_more'] = cut(entries.get(name) or [])
+    # Every lexicon the job created an entry in, taken before the cut, so the
+    # job page links each one's machine drafts.
+    lists['lexicons'] = list(dict.fromkeys(e['lexicon'] for e in created))
     return {
         'state': state, 'reason': reason, 'tasks': job.tasks, 'note': job.note, 'started_by': job.starter,
         'model': job.model, 'started_at': job.started_at,
