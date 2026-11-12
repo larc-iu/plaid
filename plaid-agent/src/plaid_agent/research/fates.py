@@ -34,6 +34,8 @@ TABLES = ('tokens', 'spans', 'relations', 'vocab_links', 'vocab_items')
 ACTOR = {
     'assistant-plan': 'assistant',
     'service-run': 'machine',
+    # An unattended job's writes: machine proposals in the starter's name.
+    'job': 'machine',
     'untagged-machine': 'machine',
     'import': 'import',
     'repair': 'repair',
@@ -42,7 +44,7 @@ ACTOR = {
     'guess-adoption': 'person',
     'person-untagged': 'person',
 }
-DEFAULT_TRACK = ('assistant-plan', 'service-run', 'guess-adoption', 'untagged-machine')
+DEFAULT_TRACK = ('assistant-plan', 'service-run', 'job', 'guess-adoption', 'untagged-machine')
 LEGACY_ASSISTANT_LABELS = ('Assistant: ', 'Assistant, partly applied: ')
 # The provSource an importer stamps on what the imported file says a machine
 # made (FLEx's parser guesses). An untagged unit whose machine stamps all

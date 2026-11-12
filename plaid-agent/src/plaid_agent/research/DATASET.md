@@ -218,6 +218,7 @@ One row per machine unit followed. A unit is an operation group, else a batch, e
 
 - `assistant-plan`: an approved assistant plan being applied. `legacy: true` when the operation has no kind and was recognized by its `Assistant: ` label.
 - `service-run`: a service's run, or an app's in-browser rule (`ref` is `builtin:<name>`).
+- `job`: an unattended assistant job's writes, machine proposals made in the name of the person who started it (`ref` is `job:<job id>/doc:<document id>/pass:gloss` or `/pass:harmonize`, or `job:<job id>/pass:entries`). Its actor class is `machine`.
 - `guess-adoption`: a person taking a suggested value (an igt guess) as their own.
 - `untagged-machine`: a unit with no kind (older than kinds) that wrote machine provenance (`prov` set, not confirmed, not contributed). An untagged unit whose machine stamps are all an importer's (`flex-import`) is an `import` instead.
 
@@ -225,7 +226,7 @@ One row per machine unit followed. A unit is an operation group, else a batch, e
 |---|---|
 | unit_id | the group, batch or operation id |
 | kind, legacy | as above |
-| ref | the operation's reference: `conv:<id>/plan:<id>/service:<id>` for a plan, `service:<id>` or `builtin:<name>` for a run |
+| ref | the operation's reference: `conv:<id>/plan:<id>/service:<id>` for a plan, `service:<id>` or `builtin:<name>` for a run, `job:<id>/...` for a job |
 | conversation_id, plan_id, service | read from ref |
 | plan_found | for a plan's unit: its plan is in a conversation record |
 | plan_record | for a plan's unit: `found`, `deleted` (no record holds its plan: its conversation was deleted, which deletes its plans, or an older operation without a reference matched no plan), or `missing` (its conversation is there but the plan is not) |
