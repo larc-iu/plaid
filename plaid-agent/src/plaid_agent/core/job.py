@@ -508,6 +508,9 @@ def _stopped_parts(job: Job, runner, harmonize, entries):
 def _finish(job: Job, state: str, runner, harmonize, entries, reason: Optional[str] = None):
     if state != 'done':
         harmonize, entries = _stopped_parts(job, runner, harmonize, entries)
+    # The app's part with nothing in it (``runner.NO_ENTRIES``), for a job
+    # that never reached its entries.
+    entries = entries or dict(getattr(runner, 'NO_ENTRIES', {}))
     report = build_report(job, state, reason, runner.document_reports(job), harmonize, entries)
     try:
         return job.admin.jobs.finish(job.id, job.worker_id, state, report, reason=reason)
@@ -549,9 +552,9 @@ def build_report(job: Job, state: str, reason: Optional[str], documents: List[Di
     lists = {}
     for name in ('created', 'deleted', 'unlinked'):
         lists[name], lists[f'{name}_more'] = cut(entries.get(name) or [])
-    # Every lexicon the job created an entry in, taken before the cut, so the
-    # job page links each one's machine drafts.
-    lists['lexicons'] = list(dict.fromkeys(e['lexicon'] for e in created))
+    # The app's own keys of the part (what the job page links to), as the
+    # app gave them, taken before the cut.
+    lists.update({k: v for k, v in entries.items() if k not in ('created', 'deleted', 'unlinked')})
     return {
         'state': state, 'reason': reason, 'tasks': job.tasks, 'note': job.note, 'started_by': job.starter,
         'model': job.model, 'started_at': job.started_at,

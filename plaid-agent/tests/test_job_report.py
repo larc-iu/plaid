@@ -5,6 +5,7 @@ from job_fixtures import JobClient, Model, document, reply, runner, start, use
 
 from plaid_agent.core.job import build_report, run_job
 from plaid_agent.core.limits import JOB_REPORT_LIST_MAX
+from plaid_agent.igt.job import entries_part
 
 KEYS = {'state', 'reason', 'tasks', 'note', 'started_by', 'model', 'started_at', 'finished_at',
         'paused_for_people_s', 'paused_for_model_s', 'stopped', 'totals', 'documents', 'harmonize', 'entries'}
@@ -40,7 +41,7 @@ def test_the_report_has_the_contracts_shape_and_cuts_its_lists():
                for i in range(JOB_REPORT_LIST_MAX + 3)]
     report = build_report(job, 'done', None, runner(job).document_reports(job),
                           {'changed': [{'form': 'ka', 'to': 'ka ‘go’', 'by': 'majority', 'from': []}], 'left': []},
-                          {'created': created, 'deleted': [], 'unlinked': []})
+                          entries_part(created, [], []))
     assert set(report) == KEYS
     assert report['note'] == 'Gloss loans whole.' and report['tasks'] == ['gloss', 'link']
     assert report['stopped'] is None

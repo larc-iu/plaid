@@ -416,10 +416,20 @@ class DiskRounds:
         return True
 
 
+def entries_part(created, deleted, unlinked) -> Dict[str, Any]:
+    """The report's entries part (CONTRACT 5.3), uncut, with ``lexicons``:
+    every lexicon the job created an entry in, in the order first met, so
+    the job page links each one's machine drafts (J-INT)."""
+    return {'created': created, 'deleted': deleted, 'unlinked': unlinked,
+            'lexicons': list(dict.fromkeys(e['lexicon'] for e in created))}
+
+
 class IgtRunner:
     """One job over interlinear text, run by ``core.job.run_job``."""
 
     WORK_PHASE = WORK_PHASE
+    #: The entries part of a job that never reached its entries.
+    NO_ENTRIES = entries_part([], [], [])
 
     def __init__(self, job, cfg: ModelConfig, trace_dir: Optional[str] = None, count=None):
         self.job = job
@@ -1154,7 +1164,7 @@ class IgtRunner:
         ``delete`` False (a job that stopped) nothing is deleted: the entries
         are only read for the report."""
         if 'link' not in job.tasks:
-            return {'created': [], 'deleted': [], 'unlinked': []}
+            return entries_part([], [], [])
         project = self.project()
         client = job.client()
         ws = Workspace(client, project)
@@ -1196,7 +1206,7 @@ class IgtRunner:
                     unlinked.append(e)
                 else:
                     deleted.append({k: e[k] for k in ('id', 'form', 'gloss')})
-        return {'created': created, 'deleted': deleted, 'unlinked': unlinked}
+        return entries_part(created, deleted, unlinked)
 
     def nothing_hangs_on(self, client, v: Dict[str, Any], items: List[Dict[str, Any]], it: Dict[str, Any],
                          commented: set) -> bool:
