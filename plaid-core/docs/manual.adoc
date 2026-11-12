@@ -300,7 +300,7 @@ with c.operation("Import ELAN corpus", kind="import", ref="format:elan"):
 |none
 
 |`job`
-|An assistant job's work in one document, or its removal of the unlinked entries it made.
+|An assistant job's work in one document, or its removal of the unlinked entries it made (see <<Assistant jobs>>).
 |`job:<job>/doc:<document>/pass:gloss`, `job:<job>/doc:<document>/pass:harmonize`, or `job:<job>/pass:entries`
 |===
 
@@ -757,6 +757,57 @@ A delegating service acts for people other than the one running it only in proje
 The assistants (`plaid-agent` in the source tree) are delegating services.
 Their edits are proposed as plans, which the user approves before they are applied under the user's own account.
 Whoever runs an assistant can state where its model runs and where users' messages go with `--disclosure "..."`, and the Assistant panel shows that text.
+
+== Assistant jobs
+
+An **assistant job** is unattended work by an assistant over many documents of a project, such as glossing every blank word.
+A writer of the project starts one, naming the app, its tasks, the documents in order (all of them if left out) and an optional note for the model.
+A separate program, the **job worker**, does the work, one job at a time across the server, in the order the jobs were started.
+Its edits are recorded under the name of the person who started the job, with the operation kind `job`.
+
+A job is `waiting` until the worker takes it, then `running`, and ends `done`, `cancelled` or `failed`.
+A project has at most one job that has not ended, and starting a second is refused with 409 and `job-active`.
+Stopping a job that is running makes it `stopping`, and the worker ends it after the work in hand.
+Jobs themselves are not recorded in the audit log.
+
+[cols="2,3"]
+|===
+|Route |Who may
+
+|`POST /api/v1/projects/{id}/jobs` (start)
+|a writer or maintainer of the project
+
+|`GET /api/v1/projects/{id}/jobs`, `.../jobs/active`, `GET /api/v1/jobs/{id}`
+|a reader of the project
+
+|`POST /api/v1/jobs/{id}/cancel` (stop)
+|the person who started the job while they write the project, a maintainer, an admin
+
+|`GET /api/v1/jobs/worker`
+|anyone signed in
+
+|`POST /api/v1/jobs/claim`, `GET /api/v1/jobs/model-busy`, and a job's `heartbeat`, `documents/{id}`, `decisions` and `finish`
+|an admin
+|===
+
+A delegated token can neither start nor stop a job.
+
+=== The job worker
+
+The worker runs under an administrator's named API token.
+It asks for work with `jobs.claim`, which answers the next job or nothing, and a token for the person who started the job.
+While it works it sends `jobs.heartbeat` every 30 seconds, which answers the job's state and a fresh token.
+A job whose worker has sent nothing for two minutes is taken by the next worker that asks, and the old worker's next call is refused with `job-taken`.
+
+The worker writes into documents only with the token of the person who started the job.
+That token reaches only the job's project and does only what that person may there.
+Once they can no longer write in the project, the job fails, and no further token is issued.
+
+=== Model pools
+
+A job waits while people use the model it draws on.
+Every service and assistant that uses the same model key is started with the same `--model-pool NAME`, and so is the worker.
+Before each call to the model the worker asks `GET /api/v1/jobs/model-busy?pool=NAME` how many requests to those services are running, and waits until none has run for a minute.
 
 = Layer Types
 
