@@ -406,6 +406,7 @@ describe('the job page', () => {
       touched: 'Changed since the job wrote it',
       commented: 'Has a comment',
       'in-mwe': 'In a multi-word expression',
+      refused: 'Could not be written',
     };
     const left = Object.keys(reasons).map((reason) => ({
       form: 'ka',

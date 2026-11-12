@@ -46,6 +46,7 @@ export const HARMONIZE_LEFT_TEXT = {
   touched: 'Changed since the job wrote it',
   commented: 'Has a comment',
   'in-mwe': 'In a multi-word expression',
+  refused: 'Could not be written',
 };
 
 export const HARMONIZE_BY_TEXT = {

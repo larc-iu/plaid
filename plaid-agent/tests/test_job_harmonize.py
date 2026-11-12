@@ -367,3 +367,72 @@ def test_harmonize_waits_three_times_for_a_document_in_use_before_leaving_it():
     runner(job).harmonize(job)
     from plaid_agent.core.limits import JOB_DEFER_WAIT_S
     assert sum(slept) == 3 * JOB_DEFER_WAIT_S
+
+
+# --- nothing harmonize does not write goes unsaid (REV-J-B2 S3-2) ------------------------
+
+def test_a_value_off_the_tagset_is_written_as_a_stretch_writes_it(monkeypatch):
+    """The job's own majority holds a tag the tagset does not list: harmonize
+    stages through the job's workspace, which lets a machine value off the
+    list through as a stretch's staging does (SPEC 6.4)."""
+    staged = _staged(monkeypatch)
+    client, job, out, tags = _run({'d1': [{'words': [w('ka', 'XYZ'), w('ka', 'XYZ'), w('ka', 'XYZ'),
+                                                     w('ka', 'come')]}]})
+    assert [o['word_id'] for o in staged if o.get('kind') == 'set_analysis'] == ['d1-s1w4']
+    assert out['changed'][0]['to'] == 'ka ‘XYZ’' and out['left'] == []
+
+
+def _linked(entry):
+    return ('ka', [('ka', 'go', entry)], J)
+
+
+def _run_linking(docs, monkeypatch):
+    client = JobClient({d: document(d, f'Story {d}', s) for d, s in docs.items()})
+    job = start(client, ['gloss', 'link'], id=J)
+    for d in docs:
+        job.update_row(d, state='done')
+    recorded(job)
+    return client, job, runner(job).harmonize(job)
+
+
+def test_a_rewrite_refused_is_listed_left_and_nothing_of_the_word_is_staged(monkeypatch):
+    """The analysis most words hold links an entry nobody can link any more
+    (deleted since): staging the link is refused, so nothing of that word is
+    written, and the form is listed with the reason."""
+    staged = _staged(monkeypatch)
+    client, job, out = _run_linking({'d1': [{'words': [_linked('e-gone'), _linked('e-gone'), _linked('e-gone'),
+                                                       _linked('vi-ali')]}]}, monkeypatch)
+    assert staged == [], 'the word whose link was refused keeps everything it held'
+    assert out['changed'] == []
+    assert out['left'] == [{'form': 'ka', 'reason': 'refused', 'analyses': [{'analysis': 'ka ‘go’', 'count': 1}]}]
+
+
+def test_a_word_changed_before_the_lock_is_listed_with_why(monkeypatch):
+    """Between harmonize's read and its lock a person commented on the word
+    (or changed it): it is not rewritten, and it is listed."""
+    staged = _staged(monkeypatch)
+    client = JobClient({'d1': document('d1', 'A', [{'words': [w('ka', 'go'), w('ka', 'go'), w('ka', 'come')]}])})
+    job = start(client, ['gloss'], id=J)
+    job.update_row('d1', state='done')
+    recorded(job)
+    client.on_lock['d1'] = document('d1', 'A', [{'words': [w('ka', 'go'), w('ka', 'go'), w('ka', 'walk')]}])
+    out = runner(job).harmonize(job)
+    assert staged == [] and out['changed'] == []
+    assert out['left'] == [{'form': 'ka', 'reason': 'touched', 'analyses': [{'analysis': 'ka ‘come’', 'count': 1}]}]
+
+
+def test_a_document_gone_before_harmonize_writes_is_reported_gone():
+    from plaid_client import PlaidAPIError
+    client = JobClient({'d1': document('d1', 'A', [{'words': [w('ka', 'go'), w('ka', 'go')]}]),
+                        'd2': document('d2', 'B', [{'words': [w('ka', 'come')]}])})
+    job = start(client, ['gloss'], id=J)
+    for d in ('d1', 'd2'):
+        job.update_row(d, state='done')
+    recorded(job)
+
+    def locked(document_id, **kw):
+        raise PlaidAPIError('HTTP 404', status=404)
+    client.documents.locked = locked
+    out = runner(job).harmonize(job)
+    assert out['changed'] == []
+    assert job.rows['d2']['state'] == 'gone' and client.jobs.rows[J]['documents'][1]['state'] == 'gone'

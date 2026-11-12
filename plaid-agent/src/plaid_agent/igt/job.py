@@ -204,6 +204,9 @@ def job_owned(w: Word, job_id: str) -> bool:
 #: Why harmonize leaves a word the job wrote on, as its report lists it
 #: (CONTRACT, added by J-FIX-B and J-FIX-B2), and the word it never looks at.
 TOUCHED, COMMENTED, IN_MWE, NOT_THE_JOBS = 'touched', 'commented', 'in-mwe', 'not-the-jobs'
+#: A rewrite the staging refused (a guard of the tools), so nothing of the
+#: word was written (REV-J-B2 S3-2).
+REFUSED = 'refused'
 
 
 def word_ids(w: Word) -> set:
@@ -1396,6 +1399,7 @@ class IgtRunner:
             try:
                 docs[d] = self.read(project, d, client)
             except Gone:
+                job.update_row(d, state='gone')
                 continue
         recorded = self.recorded_analyses({form_key(w.surface) for doc in docs.values() for s in doc.sentences
                                            for w in s.words if any(job_piece(p, job.id) for p in word_pieces(w))})
@@ -1467,8 +1471,11 @@ class IgtRunner:
                 for d, wid in v['words']:
                     rewrites.setdefault(d, []).append((wid, to))
         written: set = set()
-        in_use: List[str] = []
-        self.harmonize_done = self.harmonize_report(moves, left, written, in_use, gloss)
+        #: (document, word) -> why a word to rewrite was not: its document
+        #: stayed in use, or under the lock it was found changed, or its
+        #: rewrite was refused
+        unwritten: Dict[Tuple[str, str], str] = {}
+        self.harmonize_done = self.harmonize_report(moves, left, written, unwritten, gloss)
         for d in job.order:
             if d not in rewrites:
                 continue
@@ -1476,35 +1483,38 @@ class IgtRunner:
             job.check()
             done = self.rewrite(project, d, rewrites[d], recorded)
             if done is None:
-                in_use.append(d)
+                unwritten.update({(d, wid): 'in-use' for wid, _ in rewrites[d]})
             else:
-                written |= {(d, wid) for wid in done}
-            self.harmonize_done = self.harmonize_report(moves, left, written, in_use, gloss)
+                written |= {(d, wid) for wid in done['written']}
+                unwritten.update({(d, wid): why for wid, why in done['left'].items()})
+            self.harmonize_done = self.harmonize_report(moves, left, written, unwritten, gloss)
         return self.harmonize_done
 
     @staticmethod
-    def harmonize_report(moves, left, written: set, in_use: List[str], gloss) -> Dict[str, Any]:
+    def harmonize_report(moves, left, written: set, unwritten: Dict[Tuple[str, str], str], gloss) -> Dict[str, Any]:
         """Harmonize's part of the report from what was written: a form is
         changed with the words rewritten (each analysis's count and the
-        documents it was rewritten in), and left as ``in-use`` with the
-        words of a document that stayed in use. A word not rewritten for any
-        other reason (the document gone, the word touched meanwhile, a stop)
-        is in neither."""
+        documents it was rewritten in), and left, by reason, with the words
+        that were to be rewritten and were not (``unwritten``: their
+        document stayed in use, they changed before the lock, their rewrite
+        was refused). Only a word of a document gone or not reached before a
+        stop is in neither: the document's row says so."""
         changed, held = [], []
         for m in moves:
-            moved, kept = [], []
+            moved = []
+            kept: Dict[str, List[Dict[str, Any]]] = {}
             for v in m['from'].values():
                 done = [(d, w) for d, w in v['words'] if (d, w) in written]
                 if done:
                     moved.append({'analysis': rendering(v['analysis'], gloss), 'count': len(done),
                                   'documents': sorted({d for d, _ in done})})
-                waiting = [(d, w) for d, w in v['words'] if d in in_use]
-                if waiting:
-                    kept.append({'analysis': rendering(v['analysis'], gloss), 'count': len(waiting)})
+                why = Counter(unwritten[x] for x in v['words'] if x in unwritten)
+                for reason, n in sorted(why.items()):
+                    kept.setdefault(reason, []).append({'analysis': rendering(v['analysis'], gloss), 'count': n})
             if moved:
                 changed.append({'form': m['form'], 'to': rendering(m['to'], gloss), 'by': m['by'], 'from': moved})
-            if kept:
-                held.append({'form': m['form'], 'reason': 'in-use', 'analyses': kept})
+            for reason, analyses in sorted(kept.items()):
+                held.append({'form': m['form'], 'reason': reason, 'analyses': analyses})
         return {'changed': changed, 'left': list(left) + held}
 
     def recorded_analyses(self, forms) -> set:
@@ -1524,10 +1534,14 @@ class IgtRunner:
         return {c.get('entity_id') for c in client.comments.list(project.id, document_id=document_id) or []}
 
     def rewrite(self, project: IgtProject, document_id: str, words: List[Tuple[str, Dict[str, Any]]],
-                recorded: set) -> Optional[set]:
+                recorded: set) -> Optional[Dict[str, Any]]:
         """Set each of ``words`` to its target analysis, under the lock, as
-        one History entry of its own. The ids of the words rewritten (none
-        when the document is gone), or None when it stayed in use."""
+        one History entry of its own, through the job's workspace and its
+        guards, as a stretch stages (REV-J-B2 S3-2). ``{written: ids, left:
+        {id: reason}}``: the words rewritten, and those not with why (found
+        changed under the lock, ``harmonize_bar``'s reason or ``touched``
+        for a word gone, or ``refused`` by staging). Nothing when the
+        document is gone (its row says so), None when it stayed in use."""
         job = self.job
         # A look, then JOB_DEFER_ROUNDS waits for people, as the walk waits.
         for attempt in range(JOB_DEFER_ROUNDS + 1):
@@ -1542,19 +1556,27 @@ class IgtRunner:
                 group = uuid7()
                 job.update_row(document_id, harmonize_group=group)
             try:
-                staged = set()
+                staged, held = set(), {}
                 with locked_for_writes(client, document_id):
-                    ws = Workspace(client, project)
+                    ws = JobWorkspace(client, project, job.tasks)
                     doc = self.read(project, document_id, client)
                     ws._docs[document_id] = doc
                     doc = ws.doc(document_id)
                     commented = self.commented(client, project, document_id)
                     for wid, to in words:
                         hit = doc.find(wid)
-                        if not hit or hit[1] is None or harmonize_bar(hit[1], job.id, recorded, commented) is not None:
-                            continue
-                        if self.stage(ws, doc, hit[0], hit[1], to):
+                        why = harmonize_bar(hit[1], job.id, recorded, commented) \
+                            if hit and hit[1] is not None else TOUCHED
+                        if why is None:
+                            refusal = self.stage(ws, doc, hit[0], hit[1], to)
+                            if refusal is not None:
+                                logger.warning('Job %s: harmonize\'s rewrite of %s in %s was refused: %s', job.id, wid,
+                                               document_id, refusal)
+                                why = REFUSED
+                        if why is None:
                             staged.add(wid)
+                        else:
+                            held[wid] = TOUCHED if why == NOT_THE_JOBS else why
                     if ws.ops:
                         seed_id = uuid7()
                         with client.operation(HARMONIZE_LABEL, kind='job',
@@ -1562,14 +1584,16 @@ class IgtRunner:
                                               keys={'seed': seed_id, 'stamps': {}}):
                             execute_plan(client, list(ws.ops), source=self.source, label=HARMONIZE_LABEL,
                                          project=project, stamp_mode='machine', detail=self.detail, seed=seed_id)
-                return staged
+                return {'written': staged, 'left': held}
             except Gone:
-                return set()
+                job.update_row(document_id, state='gone')
+                return {'written': set(), 'left': {}}
             except PlaidAPIError as e:
                 if e.status != 423:
                     why = self.refused(e, document_id)
                     if isinstance(why, Gone):
-                        return set()
+                        job.update_row(document_id, state='gone')
+                        return {'written': set(), 'left': {}}
                     raise why from e
             except PlanError as e:
                 if _status(e) not in (409, 423):
@@ -1577,31 +1601,34 @@ class IgtRunner:
         return None
 
     @staticmethod
-    def stage(ws: Workspace, doc, s: Sentence, w: Word, to: Dict[str, Any]) -> bool:
+    def stage(ws: Workspace, doc, s: Sentence, w: Word, to: Dict[str, Any]) -> Optional[str]:
         """Stage ``to`` on word ``w``: its analysis, its links, and every word
         field the word holds set to ``to``'s value for it, or cleared where
         ``to`` has none, through the tools, so every guard of theirs applies.
-        Asked only of a word wholly the job's own (``job_owned``), so each
-        field it holds is one the job wrote: harmonize rewrites everything
-        the job wrote on the word and nothing else, and adds no field the word
-        does not hold (the owner, 2026-11-12). False when the analysis was
-        refused, and nothing was staged."""
+        Asked only of a word harmonize may rewrite (``harmonize_bar``), so
+        each field it holds is one the job wrote: harmonize rewrites
+        everything the job wrote on the word and nothing else, and adds no
+        field the word does not hold (the owner, 2026-11-12). None when all
+        of it was staged, else the refusal, and nothing of the word is
+        staged: a word is rewritten whole or not at all."""
         ref = f's{s.index}.w{w.index}'
         name = doc.name
-        out = toolkit.call_tool(ws, 'set_analysis', {'document': name, 'ref': ref, 'morphemes': [
+        calls = [('set_analysis', {'document': name, 'ref': ref, 'morphemes': [
             {'form': m['form'], **({'type': m['type']} if m.get('type') else {}), 'equals': bool(m.get('equals')),
-             'fields': dict(m.get('fields') or {})} for m in to['morphemes']]})
-        if isinstance(out, Refusal):
-            return False
-        for i, m in enumerate(to['morphemes'], start=1):
-            if m.get('entry'):
-                toolkit.call_tool(ws, 'link_entry', {'document': name, 'refs': [f'{ref}.m{i}'],
-                                                     'entry_id': m['entry']})
+             'fields': dict(m.get('fields') or {})} for m in to['morphemes']]})]
+        calls += [('link_entry', {'document': name, 'refs': [f'{ref}.m{i}'], 'entry_id': m['entry']})
+                  for i, m in enumerate(to['morphemes'], start=1) if m.get('entry')]
         values = {field: (to.get('word') or {}).get(field, '') for field, sp in sorted(w.fields.items())
                   if (to.get('word') or {}).get(field, '') != _nfc(sp.value)}
         if values:
-            toolkit.call_tool(ws, 'set_field', {'document': name, 'refs': [ref], 'values': values})
-        return True
+            calls.append(('set_field', {'document': name, 'refs': [ref], 'values': values}))
+        saved = ws.snapshot()
+        for tool, args in calls:
+            out = toolkit.call_tool(ws, tool, args)
+            if isinstance(out, Refusal):
+                ws.restore(saved)
+                return str(out)
+        return None
 
     # --- the entries pass (SPEC 7.5) ------------------------------------------------------
 
