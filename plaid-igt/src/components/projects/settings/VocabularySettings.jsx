@@ -1,9 +1,11 @@
 import { useState } from 'react';
-import { AlertTriangle } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { AlertTriangle, Plus } from 'lucide-react';
+import { Button } from '@ui/components/ui/button';
 import { VocabularyManager } from './VocabularyManager';
 import { notifyError } from '@/utils/feedback';
 import { useAuth } from '@/contexts/AuthContext.jsx';
-import { canManageVocabulary } from '@ui/domain/permissions.js';
+import { canLinkVocabulary, canManageProject, isBorrowed } from '@ui/domain/permissions.js';
 import { TYPE } from '@ui/lib/typeScale.js';
 import { vocabImporting, withLiveMarks } from '@/domain/igtConfig';
 import { entryMorphTypesOf } from '@/domain/vocabLookup';
@@ -25,25 +27,42 @@ export const VocabularySettings = ({ project, projectId, client, onProjectUpdate
     try {
       setHasError(false);
 
-      // Get all available vocabularies
-      const allVocabs = await withLiveMarks(client, await client.vocabLayers.list());
+      // Every vocabulary the user can read, and the projects they can read
+      // with their role lists: a vocabulary's home is one of them, or one the
+      // user holds no role in.
+      const [listed, readable] = await Promise.all([
+        client.vocabLayers.list(),
+        client.projects.list(),
+      ]);
+      const allVocabs = await withLiveMarks(client, listed);
+      const homes = new Map((readable || []).map((p) => [p.id, p]));
 
       const linkedVocabIds = (project.vocabs || []).map((v) => v.id);
 
-      // Transform to component format. Linking a vocabulary takes one of its
-      // maintainers, so a row the user does not maintain cannot be ticked.
-      // Unlinking stays open to any project maintainer.
-      const vocabularies = allVocabs.map((vocab) => ({
-        name: vocab.name || vocab.id,
-        id: vocab.id,
-        enabled: linkedVocabIds.includes(vocab.id),
-        isCustom: false, // All existing vocabs from API are not custom
-        // One an unfinished import made is linked into no other project (R58).
-        canLink: canManageVocabulary(vocab, user) && !vocabImporting(vocab.config),
-        // The unlink confirm says when the user could not link it again.
-        maintained: canManageVocabulary(vocab, user),
-        ...(vocabImporting(vocab.config) ? { lockNote: 'Import did not finish.' } : {}),
-      }));
+      // Transform to component format. This project's own vocabularies are
+      // linked for good (core refuses to unlink a vocabulary from its home).
+      // Borrowing one takes a maintainer of this project with a role in its
+      // home, so a row the user may not link cannot be ticked. Unlinking a
+      // borrowed one stays open to any project maintainer.
+      const vocabularies = allVocabs.map((vocab) => {
+        const own = !isBorrowed(vocab, project);
+        const home = own ? project : (homes.get(vocab.project) ?? null);
+        const canRelink = !own && canLinkVocabulary(vocab, home, project, user);
+        return {
+          name: vocab.name || vocab.id,
+          id: vocab.id,
+          enabled: own || linkedVocabIds.includes(vocab.id),
+          isCustom: false, // All existing vocabs from API are not custom
+          own,
+          // The home's name where the user can read it, else null.
+          ...(own ? {} : { from: home?.name ?? null }),
+          // One an unfinished import made is linked into no other project (R58).
+          canLink: canRelink && !vocabImporting(vocab.config),
+          // The unlink confirm says when the user could not link it again.
+          canRelink,
+          ...(vocabImporting(vocab.config) ? { lockNote: 'Import did not finish.' } : {}),
+        };
+      });
 
       return { vocabularies };
     } catch (error) {
@@ -146,6 +165,14 @@ export const VocabularySettings = ({ project, projectId, client, onProjectUpdate
         client={client}
         onCountLinks={handleCountLinks}
       />
+
+      {canManageProject(project, user) && (
+        <Button asChild variant="outline" size="sm" className="mt-4">
+          <Link to={`/vocabularies/new?project=${encodeURIComponent(projectId)}`}>
+            <Plus className="h-4 w-4" /> New vocabulary
+          </Link>
+        </Button>
+      )}
     </div>
   );
 };

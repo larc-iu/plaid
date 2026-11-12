@@ -1,29 +1,47 @@
 import { VocabularyManager } from '../settings/VocabularyManager.jsx';
 import { useAuth } from '@/contexts/AuthContext.jsx';
-import { canManageVocabulary } from '@ui/domain/permissions.js';
+import { canLinkVocabulary } from '@ui/domain/permissions.js';
 import { vocabImporting, withLiveMarks } from '@/domain/igtConfig';
 
-export const VocabularyStep = ({ data, onDataChange, client }) => {
+export const VocabularyStep = ({ data, onDataChange, client, projectId, isNewProject }) => {
   const { user } = useAuth();
+  // The project being set up, which only its maintainers do (the wizard's
+  // guard). Its role lists are not needed past that, and a new one has no id.
+  const settingUp = { id: isNewProject ? undefined : projectId, maintainers: [user?.id] };
   // Load vocabularies from API on mount
   const handleLoadData = async () => {
     try {
       if (!client) throw new Error('Not authenticated');
 
-      const vocabList = await withLiveMarks(client, (await client.vocabLayers.list()) || []);
+      const [listed, readable] = await Promise.all([
+        client.vocabLayers.list(),
+        client.projects.list(),
+      ]);
+      const vocabList = await withLiveMarks(client, listed || []);
+      const homes = new Map((readable || []).map((p) => [p.id, p]));
 
-      // Transform API vocabs into our format
-      const initialVocabs = (vocabList || []).map((vocab) => ({
-        name: vocab.name || vocab.id,
-        id: vocab.id,
-        enabled: false, // Default to disabled
-        isCustom: false, // Existing vocabs from API
-        // Setup links the ticked ones at the end, and only a maintainer of a
-        // vocabulary may link it, so the others cannot be ticked here.
-        // One an unfinished import made is linked into no project (R58).
-        canLink: canManageVocabulary(vocab, user) && !vocabImporting(vocab.config),
-        ...(vocabImporting(vocab.config) ? { lockNote: 'Import did not finish.' } : {}),
-      }));
+      // Transform API vocabs into our format. A project set up again already
+      // holds its own vocabularies, linked for good.
+      const initialVocabs = (vocabList || []).map((vocab) => {
+        const own = !!settingUp.id && vocab.project === settingUp.id;
+        const home = homes.get(vocab.project) ?? null;
+        return {
+          name: vocab.name || vocab.id,
+          id: vocab.id,
+          enabled: own,
+          isCustom: false, // Existing vocabs from API
+          own,
+          ...(own ? {} : { from: home?.name ?? null }),
+          // Setup links the ticked ones at the end, and linking one takes a
+          // role in the project it belongs to, so the others cannot be ticked
+          // here. One an unfinished import made is linked into no project (R58).
+          canLink:
+            !own &&
+            canLinkVocabulary(vocab, home, settingUp, user) &&
+            !vocabImporting(vocab.config),
+          ...(vocabImporting(vocab.config) ? { lockNote: 'Import did not finish.' } : {}),
+        };
+      });
 
       return { vocabularies: initialVocabs };
     } catch (err) {
@@ -42,8 +60,8 @@ export const VocabularyStep = ({ data, onDataChange, client }) => {
       {/* Explanatory header */}
       <div>
         <p className="text-sm">
-          A vocabulary is a shared lexicon. Link words and morphemes to its entries so the same
-          entry is glossed the same way everywhere, in this project and in others that share it.
+          A vocabulary is a lexicon. Words and morphemes link to its entries, so one entry is
+          glossed the same way everywhere. A vocabulary of another project is read only here.
         </p>
         {/* It starts empty and stays empty until someone puts entries in it,
           which the sentence above does not say. A linguist read it, made one,

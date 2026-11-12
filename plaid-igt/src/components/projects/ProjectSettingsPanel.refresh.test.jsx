@@ -39,11 +39,12 @@ const { ProjectSettingsPanel } = await import('./ProjectSettingsPanel.jsx');
 
 const role = (r, extra = {}) => ({ plaid: { role: r }, ...extra });
 const VOCABS = {
-  v1: { id: 'v1', name: 'Lexicon', maintainers: ['me@x.org'], config: { igt: { fields: {} } } },
+  v1: { id: 'v1', name: 'Lexicon', project: 'p1', config: { igt: { fields: {} } } },
+  // A vocabulary of another project the user reads, which this one borrows.
   v2: {
     id: 'v2',
     name: 'Botany',
-    maintainers: ['me@x.org'],
+    project: 'p2',
     config: { igt: { fields: { habitat: {} } } },
   },
 };
@@ -53,6 +54,7 @@ const fakeClient = () => {
   const project = () => ({
     id: 'p1',
     name: 'P',
+    maintainers: ['me@x.org'],
     config: {},
     vocabs: linked.map((id) => VOCABS[id]),
     textLayers: [
@@ -78,6 +80,10 @@ const fakeClient = () => {
   return {
     projects: {
       get: vi.fn(async () => project()),
+      list: vi.fn(async () => [
+        { id: 'p1', name: 'P', maintainers: ['me@x.org'] },
+        { id: 'p2', name: 'Plants', readers: ['me@x.org'] },
+      ]),
       linkVocab: vi.fn(async (pid, id) => {
         linked.push(id);
       }),

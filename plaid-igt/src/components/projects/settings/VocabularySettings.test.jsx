@@ -2,11 +2,12 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import { renderComponent, all, byText } from '@ui/test/renderComponent.jsx';
 
-// Linking a vocabulary to a project takes a maintainer of the vocabulary as
-// well as of the project, since the link lets every project member read and
-// write it. The list shows every vocabulary the user can read, so a row they
-// do not maintain is shown but cannot be ticked, and a refusal the server
-// still sends is shown as the server words it.
+// A vocabulary belongs to one project, its home. Linking it into this project
+// (borrowing it) takes a maintainer of this project who holds a role in the
+// home. The list shows every vocabulary the user can read: this project's own
+// ones ticked and locked, the others with the project they come from, and a
+// row the user may not link is shown but cannot be ticked. A refusal the
+// server still sends is shown as the server words it.
 
 const notifyError = vi.fn();
 vi.mock('@/utils/feedback', () => ({ notifyError: (...a) => notifyError(...a) }));
@@ -16,7 +17,7 @@ vi.mock('@/contexts/AuthContext.jsx', () => ({ useAuth: () => auth }));
 
 import { VocabularySettings } from './VocabularySettings.jsx';
 
-const REFUSAL = 'Only a maintainer of this vocabulary can link it to a project.';
+const REFUSAL = 'Linking a vocabulary needs access to the project it belongs to.';
 const refused = () => {
   const e = new Error(`HTTP 403 ${REFUSAL} at http://localhost/api/v1/projects/p1/vocabs/v2`);
   e.status = 403;
@@ -51,16 +52,33 @@ const batching = (client) => {
   return client;
 };
 
-const makeClient = ({ linked = [], link } = {}) =>
+// The home projects as `projects.list()` gives them, with their role lists.
+// "Field notes" holds Mine, and the user reads it. Theirs's home is a project
+// the user holds no role in, which only an admin's list carries.
+const FIELD_NOTES = {
+  id: 'pa',
+  name: 'Field notes',
+  maintainers: [],
+  writers: [],
+  readers: ['me@x.org'],
+};
+const CLOSED = { id: 'pb', name: 'Closed', maintainers: ['other@x.org'], writers: [], readers: [] };
+const homesFor = () => (auth.user.isAdmin ? [FIELD_NOTES, CLOSED] : [FIELD_NOTES]);
+const VOCABS = {
+  v1: { id: 'v1', name: 'Mine', project: 'pa' },
+  v2: { id: 'v2', name: 'Theirs', project: 'pb' },
+};
+// This project, as the page reads it: the user maintains it.
+const thisProject = (vocabs) => ({ id: 'p1', name: 'Story', maintainers: ['me@x.org'], vocabs });
+
+const makeClient = ({ linked = [], link, own = [] } = {}) =>
   batching({
     vocabLayers: {
-      list: vi.fn(async () => [
-        { id: 'v1', name: 'Mine', maintainers: ['me@x.org'] },
-        { id: 'v2', name: 'Theirs', maintainers: ['other@x.org'] },
-      ]),
+      list: vi.fn(async () => [...own, VOCABS.v1, VOCABS.v2]),
     },
     projects: {
-      get: vi.fn(async () => ({ id: 'p1', vocabs: linked.map((id) => ({ id })) })),
+      get: vi.fn(async () => thisProject([...own, ...linked.map((id) => VOCABS[id])])),
+      list: vi.fn(async () => homesFor()),
       linkVocab: vi.fn(link ?? (async () => {})),
       unlinkVocab: vi.fn(async () => {}),
     },
@@ -89,14 +107,15 @@ beforeEach(() => {
 });
 
 describe('Project settings, Vocabularies', () => {
-  it('will not tick a vocabulary the user does not maintain', async () => {
+  it('will not tick a vocabulary of a project the user holds no role in', async () => {
     const client = makeClient();
     const view = await mount(client);
     expect(boxOf(view.container, 'Mine').disabled).toBe(false);
     expect(boxOf(view.container, 'Theirs').disabled).toBe(true);
     expect(rowOf(view.container, 'Theirs').textContent).toContain(
-      'Only its maintainers can link it.',
+      'Needs access to the project it belongs to.',
     );
+    expect(rowOf(view.container, 'Mine').textContent).not.toContain('Needs access');
     await view.step(() => rowOf(view.container, 'Theirs').click());
     expect(client.projects.linkVocab).not.toHaveBeenCalled();
     await view.step(() => rowOf(view.container, 'Mine').click());
@@ -104,7 +123,7 @@ describe('Project settings, Vocabularies', () => {
     await view.unmount();
   });
 
-  it('leaves a linked vocabulary free to unlink, maintained or not', async () => {
+  it('leaves a borrowed vocabulary free to unlink, linkable or not', async () => {
     const view = await mount(makeClient({ linked: ['v2'] }));
     expect(boxOf(view.container, 'Theirs').disabled).toBe(false);
     expect(boxOf(view.container, 'Theirs').checked).toBe(true);
@@ -151,13 +170,14 @@ describe('Project settings, Vocabularies, before the server answers', () => {
     batching({
       vocabLayers: {
         list: vi.fn(async () => [
-          { id: 'v1', name: 'Alpha', maintainers: ['me@x.org'] },
-          { id: 'v3', name: 'Gamma', maintainers: ['me@x.org'] },
-          { id: 'v4', name: 'Delta', maintainers: ['me@x.org'] },
+          { id: 'v1', name: 'Alpha', project: 'pa' },
+          { id: 'v3', name: 'Gamma', project: 'pa' },
+          { id: 'v4', name: 'Delta', project: 'pa' },
         ]),
       },
       projects: {
-        get: vi.fn(async () => ({ id: 'p1', vocabs: [{ id: 'v4' }] })),
+        get: vi.fn(async () => thisProject([{ id: 'v4', project: 'pa' }])),
+        list: vi.fn(async () => homesFor()),
         linkVocab: vi.fn(linkVocab),
         unlinkVocab: vi.fn(async () => {}),
       },
@@ -221,12 +241,55 @@ describe('Project settings, Vocabularies, before the server answers', () => {
 });
 
 describe('Project settings, Vocabularies, a row the user may not link', () => {
-  it('locks again once a vocabulary they do not maintain is unlinked', async () => {
+  it('locks again once a vocabulary they may not link is unlinked', async () => {
     const view = await mount(makeClient({ linked: ['v2'] }));
     await view.step(() => rowOf(view.container, 'Theirs').click());
     await view.step(() => byText(document.body, '[role=alertdialog] button', 'Unlink').click());
     expect(boxOf(view.container, 'Theirs').checked).toBe(false);
     expect(boxOf(view.container, 'Theirs').disabled).toBe(true);
+    await view.unmount();
+  });
+});
+
+// A vocabulary of this project is linked for good: core refuses to unlink it
+// from its own project. Every other row says which project it comes from, by
+// name where the user can read that project.
+describe('Project settings, Vocabularies, own and borrowed', () => {
+  const OWN = { id: 'v0', name: 'Home lexicon', project: 'p1' };
+
+  it('shows this project’s own vocabulary ticked and locked, and sends nothing for it', async () => {
+    const client = makeClient({ own: [OWN] });
+    const view = await mount(client);
+    const box = boxOf(view.container, 'Home lexicon');
+    expect(box.checked).toBe(true);
+    expect(box.disabled).toBe(true);
+    expect(rowOf(view.container, 'Home lexicon').textContent).toContain('Belongs to this project.');
+    expect(rowOf(view.container, 'Home lexicon').querySelector('button')).toBeNull();
+    await view.step(() => rowOf(view.container, 'Home lexicon').click());
+    expect(document.body.querySelector('[role=alertdialog]')).toBeNull();
+    expect(client.projects.unlinkVocab).not.toHaveBeenCalled();
+    expect(client.projects.linkVocab).not.toHaveBeenCalled();
+    await view.unmount();
+  });
+
+  it('names the project a borrowed vocabulary comes from, or says another project', async () => {
+    const view = await mount(makeClient({ linked: ['v1', 'v2'] }));
+    expect(rowOf(view.container, 'Mine').textContent).toContain('From “Field notes”.');
+    expect(rowOf(view.container, 'Theirs').textContent).toContain('From another project.');
+    expect(rowOf(view.container, 'Mine').textContent).not.toContain('Belongs to this project.');
+    await view.unmount();
+  });
+
+  it('offers a borrowed vocabulary the Unlink control', async () => {
+    const view = await mount(makeClient({ linked: ['v1'] }));
+    expect(rowOf(view.container, 'Mine').querySelector('button[title=Unlink]')).not.toBeNull();
+    await view.unmount();
+  });
+
+  it('links to a new vocabulary of this project', async () => {
+    const view = await mount(makeClient());
+    const a = byText(view.container, 'a', 'New vocabulary');
+    expect(a.getAttribute('href')).toBe('/vocabularies/new?project=p1');
     await view.unmount();
   });
 });
@@ -238,11 +301,14 @@ describe('Project settings, Vocabularies, entry counts', () => {
     const client = {
       vocabLayers: {
         list: vi.fn(async () => [
-          { id: 'v1', name: 'Lexicon', maintainers: ['me@x.org'] },
-          { id: 'v2', name: 'Lexicon', maintainers: ['me@x.org'] },
+          { id: 'v1', name: 'Lexicon', project: 'pa' },
+          { id: 'v2', name: 'Lexicon', project: 'pa' },
         ]),
       },
-      projects: { get: vi.fn(async () => ({ id: 'p1', vocabs: [] })) },
+      projects: {
+        get: vi.fn(async () => thisProject([])),
+        list: vi.fn(async () => homesFor()),
+      },
       // Every entry counts, senses included, as on the vocabulary's page.
       query: vi.fn(async () => ({
         results: [
@@ -253,7 +319,10 @@ describe('Project settings, Vocabularies, entry counts', () => {
     };
     const view = await mount(client);
     const rows = all(view.container, 'tbody tr').map((r) => r.textContent);
-    expect(rows).toEqual(['Lexicon1 entry', 'Lexicon1,207 entries']);
+    expect(rows).toEqual([
+      'Lexicon1 entryFrom “Field notes”.',
+      'Lexicon1,207 entriesFrom “Field notes”.',
+    ]);
     await view.unmount();
   });
 });
@@ -293,27 +362,28 @@ describe('Project settings, Vocabularies, the unlink confirm', () => {
     await view.unmount();
   });
 
-  // SEAM-4: unlinking is any project maintainer's, linking again only the
-  // vocabulary's maintainers', so the confirm says so first.
-  it('says the user cannot link again a vocabulary they do not maintain', async () => {
+  // SEAM-4: unlinking is any project maintainer's, linking again only for
+  // someone with a role in the vocabulary's project, so the confirm says so
+  // first.
+  it('says the user cannot link again a vocabulary of a project they hold no role in', async () => {
     const client = makeClient({ linked: ['v1', 'v2'] });
     client.query = vi.fn(async (q) => (linkQuery(q) ? { results: [[4]] } : { results: [] }));
     const view = await mount(client);
     await view.step(() => rowOf(view.container, 'Theirs').click());
-    expect(dialogText()).toContain('You do not maintain this vocabulary and cannot link it again.');
+    expect(dialogText()).toContain('You cannot link it again.');
     expect(dialogText()).toContain('This project has 4 links to its entries.');
     await view.step(() => byText(document.body, '[role=alertdialog] button', 'Cancel').click());
     await view.step(() => rowOf(view.container, 'Mine').click());
     expect(dialogText()).toContain('This project has 4 links to its entries.');
-    expect(dialogText()).not.toContain('You do not maintain');
+    expect(dialogText()).not.toContain('You cannot link it again.');
     await view.unmount();
   });
 
-  it('says nothing of maintaining to an admin', async () => {
+  it('says nothing of linking again to an admin', async () => {
     auth = { user: { id: 'admin@x.org', isAdmin: true } };
     const view = await mount(counted(async () => ({ results: [[0]] })));
     await view.step(() => rowOf(view.container, 'Mine').click());
-    expect(dialogText()).not.toContain('You do not maintain');
+    expect(dialogText()).not.toContain('You cannot link it again.');
     await view.unmount();
   });
 

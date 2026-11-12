@@ -15,11 +15,26 @@ import { countOf } from '@ui/lib/plural.js';
 import { sameNameIgnoringCase } from '@/domain/nameMatch';
 import { RowControls } from '@/components/shared/RowControls';
 
-// A row the user may not link: an unlinked vocabulary whose row says so
-// (`canLink: false`, set by the screen that loaded it, with `lockNote` when
-// the reason is not maintainership). A linked row is always
-// free to unlink, and once unlinked it locks again.
-const isLocked = (vocab) => !vocab.enabled && vocab.canLink === false;
+// A row the user may not change: a vocabulary of this project (`own`, linked
+// for good), or an unlinked vocabulary whose row says so (`canLink: false`,
+// set by the screen that loaded it, with `lockNote` when the reason is not
+// access to its project). A borrowed linked row is always free to unlink, and
+// once unlinked it locks again.
+const isLocked = (vocab) => !!vocab.own || (!vocab.enabled && vocab.canLink === false);
+
+// Where a server row comes from, under its name: this project, or the project
+// it belongs to (`from`, null when the user cannot read that project). A row
+// the wizard adds carries neither.
+const Origin = ({ record }) => {
+  if (record.own) return 'Belongs to this project.';
+  if (record.from === undefined) return null;
+  if (record.from === null) return 'From another project.';
+  return (
+    <>
+      From “<span dir="auto">{record.from}</span>”.
+    </>
+  );
+};
 
 // A temporary id for a vocabulary the wizard will create.
 const customVocabId = () => `new-${Date.now()}`;
@@ -147,7 +162,7 @@ export const VocabularyManager = ({
 
   const handleVocabToggle = (vocabId, enabled) => {
     const row = vocabularies.find((v) => v.id === vocabId);
-    if (enabled && row && isLocked(row)) return;
+    if (row?.own || (enabled && row && isLocked(row))) return;
     // In settings an unlink asks first.
     if (isSettings && !enabled) {
       const vocab = vocabularies.find((v) => v.id === vocabId);
@@ -344,16 +359,22 @@ export const VocabularyManager = ({
                             {countOf(entryCounts[record.id], 'entry', 'entries')}
                           </span>
                         )}
-                        {isLocked(record) && (
+                        {(record.own || record.from !== undefined) && (
                           <span className="block text-xs not-italic text-muted-foreground">
-                            {record.lockNote ?? 'Only its maintainers can link it.'}
+                            <Origin record={record} />
+                          </span>
+                        )}
+                        {isLocked(record) && !record.own && (
+                          <span className="block text-xs not-italic text-muted-foreground">
+                            {record.lockNote ?? 'Needs access to the project it belongs to.'}
                           </span>
                         )}
                       </span>
                       {/* Setup orders the linked vocabularies and removes the
                           ones it made. Settings unlinks. */}
                       {isSettings ? (
-                        record.enabled && (
+                        record.enabled &&
+                        !record.own && (
                           <RowControls
                             name={record.name}
                             onRemove={() => handleVocabToggle(record.id, false)}
@@ -420,9 +441,7 @@ export const VocabularyManager = ({
           Every link from this project to the vocabulary's entries is removed. The vocabulary
           remains available to other projects.
         </p>
-        {vocabToUnlink?.maintained === false && (
-          <p>You do not maintain this vocabulary and cannot link it again.</p>
-        )}
+        {vocabToUnlink?.canRelink === false && <p>You cannot link it again.</p>}
         {onCountLinks && (
           <p>
             {unlinkCount === undefined && 'Counting links…'}
