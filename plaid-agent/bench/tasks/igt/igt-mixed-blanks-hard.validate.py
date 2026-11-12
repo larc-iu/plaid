@@ -45,3 +45,18 @@ def wrong_answer_only(ctx):
 
 def wrong_nothing(ctx):
     return h.no_plan()
+
+
+def right_with_guideline(ctx):
+    # The convention drafted as a guideline.
+    _fill(ctx, YUKW, 'IPFV')
+    h.add_guideline(ctx, 'Imperfective yukw', 'The morpheme yukw is the imperfective, glossed IPFV.')
+    return _say("5 morphemes have no gloss: three yukw and two 'nii. I staged IPFV on the three yukw, and drafted "
+                "a guideline that yukw is glossed IPFV.")
+
+
+def wrong_guideline_off(ctx):
+    # The fix, and a guideline about something else.
+    _fill(ctx, YUKW, 'IPFV')
+    h.add_guideline(ctx, "Blank 'nii", "A blank 'nii is left for the linguist to gloss.")
+    return _say("5 morphemes have no gloss: three yukw and two 'nii. I staged IPFV on the three yukw.")

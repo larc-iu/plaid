@@ -32,3 +32,19 @@ def wrong_one_missed(ctx):
 
 def wrong_nothing(ctx):
     return h.no_plan()
+
+
+def right_with_guideline(ctx):
+    # The convention drafted as a guideline (glm53-stretch-2 rep 1's draft).
+    right(ctx)
+    h.add_guideline(ctx, 'Articles vs demonstratives',
+                    'French articles take **PronType=Art**, never Dem:\n\n- definite articles (*le, la, les, l\'*) '
+                    'carry `Definite=Def`\n- indefinite (*un, une*) and partitive (*du*) carry `Definite=Ind`\n\nThe '
+                    'true demonstratives (*ce, cette, ceux, celui*, ...) take **PronType=Dem** and carry no Definite '
+                    'feature.')
+
+
+def wrong_guideline_off(ctx):
+    # The fix, and a guideline about something else.
+    right(ctx)
+    h.add_guideline(ctx, 'Article lemmas', 'Every form of the definite article has the lemma le.')

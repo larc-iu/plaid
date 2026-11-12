@@ -15,6 +15,11 @@ turns:
     approve: true
 check: ud_tree
 args:
+  # The user states the convention (the UD value is Aspect=Imp), so a
+  # guideline that names Aspect=Imp may be drafted (the owner's ruling of
+  # 2026-11-12, after glm53-stretch-2 failed two runs of three on that draft
+  # alone). Any other guideline stays collateral.
+  allow_guidelines: {match: 'Aspect\s*=\s*Imp\b'}
   document: Russian 1
   base: snapshot
   expect:

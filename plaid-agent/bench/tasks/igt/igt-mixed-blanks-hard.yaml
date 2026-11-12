@@ -16,6 +16,11 @@ turns:
     approve: true
 check: igt_changes
 args:
+  # The user states what yukw is across the project (the imperfective,
+  # IPFV), so a guideline that names IPFV may be drafted (the owner's
+  # ruling of 2026-11-12, as igt-gloss-fill-form). Any other guideline
+  # stays collateral.
+  allow_guidelines: {match: '\bIPFV\b'}
   expect:
     "Gitksan text 1|s1.w2.m1:Gloss": IPFV
     "Gitksan text 1|s4.w8.m1:Gloss": IPFV

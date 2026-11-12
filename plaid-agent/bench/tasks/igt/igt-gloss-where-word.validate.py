@@ -27,3 +27,16 @@ def wrong_both_morphemes(ctx):
 
 def wrong_nothing(ctx):
     return h.no_plan()
+
+
+def right_with_guideline(ctx):
+    # The convention drafted as a guideline.
+    right(ctx)
+    h.add_guideline(ctx, 'The light verb wil', 'In the word wihl the morpheme wil is the light verb, glossed LVB, '
+                    'never COMP. COMP stays on other words such as win.')
+
+
+def wrong_guideline_off(ctx):
+    # The fix, and a guideline about something else.
+    right(ctx)
+    h.add_guideline(ctx, 'Complementizers', 'The complementizer win is glossed COMP.')

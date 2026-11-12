@@ -26,3 +26,17 @@ def wrong_feature_sets(ctx):
 
 def wrong_nothing(ctx):
     return h.no_plan()
+
+
+def right_with_guideline(ctx):
+    # The convention drafted as a guideline (glm53-stretch-2 rep 3's draft).
+    right(ctx)
+    h.add_guideline(ctx, 'Imperfective aspect is Aspect=Imp',
+                    'The imperfective value of the Aspect feature is written Aspect=Imp, following the Universal '
+                    'Dependencies feature inventory, never Aspect=Impf.')
+
+
+def wrong_guideline_off(ctx):
+    # The fix, and a guideline about something else.
+    right(ctx)
+    h.add_guideline(ctx, 'Perfective aspect', 'Perfective verbs carry Aspect=Perf.')

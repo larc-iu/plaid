@@ -39,3 +39,16 @@ def wrong_head(ctx):
 
 def wrong_nothing(ctx):
     return h.no_plan()
+
+
+def right_with_guideline(ctx):
+    # The convention drafted as a guideline.
+    right(ctx)
+    h.add_guideline(ctx, 'Contractions', 'In this treebank "aux" is a multiword token holding the two words "à" '
+                    'and "les".')
+
+
+def wrong_guideline_off(ctx):
+    # The fix, and a guideline about something else (the UPOS AUX).
+    right(ctx)
+    h.add_guideline(ctx, 'Auxiliaries', 'être and avoir as auxiliaries are tagged AUX and attached as aux.')

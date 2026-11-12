@@ -15,6 +15,10 @@ turns:
     approve: true
 check: igt_changes
 args:
+  # The user states a convention for the whole project (wil in wihl is the
+  # light verb, LVB), so a guideline that names LVB may be drafted (the
+  # owner's ruling of 2026-11-12). Any other guideline stays collateral.
+  allow_guidelines: {match: '\bLVB\b'}
   expect:
     "Gitksan text 1|s1.w7.m1:Gloss": LVB
     "Gitksan text 2|s6.w9.m1:Gloss": LVB
