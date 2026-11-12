@@ -39,3 +39,21 @@
 (deftest in-memory-db-skips-the-lock
   (is (nil? (acquire! nil)) "nil path (in-memory) is a no-op")
   (is (nil? (acquire! "")) "empty path (in-memory) is a no-op"))
+
+(deftest a-second-path-to-the-same-file-meets-the-same-lock
+  ;; Two servers on one database through a symlink ran the migration at once
+  ;; (REV-VH-C S5-10): each took the lock beside the path it was given.
+  (let [db-path (temp-db-path)
+        link (str db-path "-link.db")]
+    (Files/createSymbolicLink (.toPath (java.io.File. link)) (.toPath (java.io.File. db-path))
+                              (make-array java.nio.file.attribute.FileAttribute 0))
+    (let [held (acquire! db-path)]
+      (try
+        (let [thrown (try (acquire! link) nil
+                          (catch clojure.lang.ExceptionInfo e e))]
+          (is (some? thrown) "the symlink's acquire throws")
+          (is (re-find #"Another plaid instance" (str (some-> thrown ex-message)))))
+        (finally
+          (.release ^java.nio.channels.FileLock (:lock held))
+          (.close ^java.nio.channels.FileChannel (:channel held))
+          (.delete (java.io.File. link)))))))

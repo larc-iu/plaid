@@ -508,7 +508,8 @@
 (defonce ^:private instance-lock (atom nil))
 
 (defn- acquire-instance-lock!
-  "Take an exclusive OS-level lock on `<db-path>.lock` so a second plaid
+  "Take an exclusive OS-level lock on `<db-path>.lock` (the path with its
+  symlinks resolved) so a second plaid
   instance can't run against the same SQLite database. SQLite's own
   cross-process locking keeps row data safe, but everything in-memory
   diverges between two instances: document locks (423 enforcement
@@ -523,7 +524,9 @@
   holder for diagnostics."
   [db-path]
   (when (and (string? db-path) (not= "" db-path))
-    (let [lock-file (java.io.File. (str db-path ".lock"))
+    ;; Beside the file itself, symlinks resolved, so two paths to one
+    ;; database (a symlinked file or folder) meet the same lock.
+    (let [lock-file (java.io.File. (str (.getCanonicalPath (java.io.File. ^String db-path)) ".lock"))
           _ (some-> (.getParentFile lock-file) (.mkdirs))
           channel (.getChannel (java.io.RandomAccessFile. lock-file "rw"))
           lock (try (.tryLock channel)
