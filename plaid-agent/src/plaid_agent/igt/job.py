@@ -518,6 +518,8 @@ class IgtRunner:
         self.harmonize_done: Optional[Dict[str, Any]] = None
         #: document id -> the sentences whose record is in core (their marks)
         self.recorded: Dict[str, Dict[str, Dict[str, int]]] = {}
+        #: documents the job has waited for once at least: their defers count
+        self.waited: set = set()
         #: document id -> sentences skipped past the cap of the row's list:
         #: failed or changed, and too long for a stretch
         self.unlisted: Dict[str, set] = {}
@@ -626,6 +628,7 @@ class IgtRunner:
             # Every pass over put-off documents waits the quiet window first,
             # and says what it waits for (REV-J-B S3-5).
             self.wait_for_people(deferred)
+            self.waited.update(deferred)
             still = []
             for d in deferred:
                 if self.document(d) == 'deferred':
@@ -651,8 +654,12 @@ class IgtRunner:
                 job.set(message=said)
 
     def defer(self, document_id: str) -> str:
+        """Put a document off. A defer counts only after the job has waited
+        for it (:meth:`wait_for_people`): a document in use is waited for
+        JOB_DEFER_ROUNDS times before it ends ``in-use`` (SPEC 5.3), never
+        counted twice within a second by passes with no wait between."""
         row = self.job.rows.get(document_id) or {}
-        defers = (row.get('defers') or 0) + 1
+        defers = (row.get('defers') or 0) + (1 if document_id in self.waited else 0)
         self.job.update_row(document_id, defers=defers,
                             state='in-use' if defers >= JOB_DEFER_ROUNDS else 'deferred')
         return 'deferred'
@@ -1385,7 +1392,8 @@ class IgtRunner:
         one History entry of its own. The ids of the words rewritten (none
         when the document is gone), or None when it stayed in use."""
         job = self.job
-        for attempt in range(JOB_DEFER_ROUNDS):
+        # A look, then JOB_DEFER_ROUNDS waits for people, as the walk waits.
+        for attempt in range(JOB_DEFER_ROUNDS + 1):
             if attempt:
                 self.wait_for_people([document_id])
             client = job.client()

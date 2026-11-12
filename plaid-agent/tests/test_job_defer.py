@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from job_fixtures import JobClient, Model, call, document, reply, runner, start, use
 
 from plaid_client import PlaidAPIError
-from plaid_agent.core.limits import JOB_DEFER_WAIT_S, JOB_LOCK_WAIT_S
+from plaid_agent.core.limits import JOB_DEFER_WAIT_S, JOB_LOCK_WAIT_S, JOB_PERSON_QUIET_S
 from plaid_agent.core.plan import PlanError
 from plaid_agent.igt import job as igt_job
 
@@ -63,7 +63,8 @@ def test_a_recent_entry_by_someone_else_defers_and_the_jobs_own_does_not(monkeyp
     _edit(client, 'd1', NOW - 60)
     r = runner(job)
     assert r.document('d1') == 'deferred'
-    assert job.rows['d1']['state'] == 'deferred' and job.rows['d1']['defers'] == 1
+    assert job.rows['d1']['state'] == 'deferred' and job.rows['d1']['defers'] == 0, \
+        'a defer counts only once the job has waited'
     client._holder('d1')['audit'].clear()
     _edit(client, 'd1', NOW - 60, ref=f'job:{job.id}/doc:d1/pass:gloss')
     assert r.document('d1') == 'done'
@@ -126,10 +127,11 @@ def test_a_document_put_off_three_times_ends_in_use_after_the_waits(monkeypatch)
     model = _model(monkeypatch)
     for t in range(0, 4000, 100):
         _edit(client, 'd1', NOW + t)
+    assert NOW + 3900 > NOW + 3 * JOB_DEFER_WAIT_S - JOB_PERSON_QUIET_S
     runner(job).work(job)
     assert job.rows['d1']['state'] == 'in-use' and job.rows['d1']['defers'] == 3
     assert job.rows['d2']['state'] == 'done'
-    assert sum(clock.slept) == 2 * JOB_DEFER_WAIT_S, 'a wait before each pass over the put-off documents'
+    assert sum(clock.slept) == 3 * JOB_DEFER_WAIT_S, 'three waits of the interval before it ends in-use (SPEC 5.3)'
     assert all('Story 1' not in c['asked'] for c in model.calls)
 
 
@@ -157,8 +159,10 @@ def test_every_pass_over_put_off_documents_waits_first_and_says_for_what(monkeyp
     _edit(client, 'd1', NOW - 10)
     r = runner(job)
     r.work(job)
-    assert job.rows['d1']['state'] == 'done' and job.rows['d1']['defers'] == 1
+    assert job.rows['d1']['state'] == 'done' and job.rows['d1']['defers'] == 0
     assert sum(clock.slept) >= JOB_DEFER_WAIT_S, 'the second pass waited the quiet window'
     beats = [c[1] for c in client.jobs.calls if c[0] == 'heartbeat']
     waiting = [b['message'] for b in beats if (b.get('message') or '').startswith('Waiting for')]
     assert waiting == ['Waiting for people to finish in "Story 1". Trying again in 10 minutes.']
+    told = next(b for b in beats if (b.get('message') or '').startswith('Waiting for'))
+    assert told.get('current_document', 'unset') is None, 'not shown working in the document it waits on'

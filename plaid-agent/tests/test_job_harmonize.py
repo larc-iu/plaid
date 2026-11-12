@@ -224,3 +224,22 @@ def test_a_rewrite_in_a_document_gone_meanwhile_is_not_reported_as_done():
     out = r.harmonize(job)
     client.documents.locked = real
     assert out['changed'] == []
+
+
+def test_harmonize_waits_three_times_for_a_document_in_use_before_leaving_it():
+    from datetime import datetime, timezone
+    client = JobClient({'d1': document('d1', 'A', [{'words': [w('ka', 'go'), w('ka', 'go')]}]),
+                        'd2': document('d2', 'B', [{'words': [w('ka', 'come')]}])})
+    future = datetime.fromtimestamp(datetime.now(timezone.utc).timestamp() + 5000, timezone.utc) \
+        .isoformat().replace('+00:00', 'Z')
+    client._holder('d2')['audit'].append({'id': 'a1', 'time': future, 'ref': None, 'kind': None,
+                                          'documents': [{'id': 'd2'}], 'ops': []})
+    job = start(client, ['gloss'], id=J)
+    slept = []
+    real = job._sleep
+    job._sleep = lambda s: (slept.append(s), real(s))
+    for d in ('d1', 'd2'):
+        job.update_row(d, state='done')
+    runner(job).harmonize(job)
+    from plaid_agent.core.limits import JOB_DEFER_WAIT_S
+    assert sum(slept) == 3 * JOB_DEFER_WAIT_S
