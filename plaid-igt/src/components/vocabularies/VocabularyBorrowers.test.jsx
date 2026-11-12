@@ -23,7 +23,7 @@ const feedback = await import('@/utils/feedback');
 
 const VOCAB = { id: 'V', name: 'Lexicon', project: 'A' };
 
-const server = ({ borrowers, links = {}, unlink } = {}) => {
+const server = ({ borrowers, links = {}, unlink, projects = {} } = {}) => {
   let list = structuredClone(borrowers);
   return fakeClient({
     answer: (req) => {
@@ -36,6 +36,11 @@ const server = ({ borrowers, links = {}, unlink } = {}) => {
         return {};
       }
       if (req.kind === 'vocabLayers.get') return { ...VOCAB, items: [] };
+      if (req.kind === 'projects.get') {
+        const p = projects[req.args[0]];
+        if (!p) throw refusal(403, { error: 'Forbidden' });
+        return p;
+      }
       if (req.kind === 'query') return { results: [] };
       return undefined;
     },
@@ -98,7 +103,11 @@ describe('the projects that use a vocabulary', () => {
   });
 
   it('sends only the read of the unlink when the confirm opens, and says how many links go', async () => {
-    const client = server({ borrowers: [{ id: 'B', name: 'Beeworth' }], links: { B: 14 } });
+    const client = server({
+      borrowers: [{ id: 'B', name: 'Beeworth' }],
+      links: { B: 14 },
+      projects: { B: { id: 'B', name: 'Beeworth', maintainers: ['u'], writers: [], readers: [] } },
+    });
     const view = await mount(client);
     const before = client.requests.length;
     await view.step(async () => {
@@ -107,6 +116,8 @@ describe('the projects that use a vocabulary', () => {
     });
     expect(sentSince(client, before)).toEqual([
       ['GET', '/api/v1/projects/B/vocabs/V/unlinking', {}],
+      // Whether this person can write B, which keeps the types.
+      ['GET', '/api/v1/projects/B', {}],
     ]);
     expect(confirm).toHaveBeenCalledWith({
       title: 'Unlink “⁨Lexicon⁩” from “⁨Beeworth⁩”?',
@@ -161,7 +172,7 @@ describe('the projects that use a vocabulary', () => {
       await settle(5);
     });
     expect(confirm.mock.calls[0][0].description).toBe(
-      '1 word/morpheme in that project is linked to its entries. Those links will be removed.',
+      '1 word/morpheme in that project is linked to its entries. Those links will be removed. Morphemes there that took their type from an entry will have none.',
     );
     await view.unmount();
   });
@@ -194,5 +205,69 @@ describe('the projects that use a vocabulary', () => {
     await mount(client, { id: 'A', maintainers: [], writers: ['u'], readers: [] });
     expect(rows()).toEqual(['Beeworth']);
     expect(unlinkOf('Unlink from Beeworth')).toBeUndefined();
+  });
+});
+
+// REV-VH-B-1: a morpheme that went by its entry's type keeps that type when
+// the link goes only where the person can write the project (planKeptTypes).
+// Ending the borrowing of a project they cannot write leaves those morphemes
+// with none, and the confirm says so first.
+describe('the types an Unlink takes', () => {
+  const LOSS = 'Morphemes there that took their type from an entry will have none.';
+
+  it('says the types go for a project the person cannot read', async () => {
+    const client = server({ borrowers: [{ id: 'X', name: null }], links: { X: 2 } });
+    const view = await mount(client);
+    await view.step(async () => {
+      unlinkOf('Unlink from another project').click();
+      await settle(5);
+    });
+    expect(confirm.mock.calls[0][0].description).toBe(
+      `2 words/morphemes in that project are linked to its entries. Those links will be removed. ${LOSS}`,
+    );
+    await view.unmount();
+  });
+
+  it('says the types go for a project the person reads and cannot write', async () => {
+    const client = server({
+      borrowers: [{ id: 'B', name: 'Beeworth' }],
+      links: { B: 1 },
+      projects: { B: { id: 'B', name: 'Beeworth', maintainers: [], writers: [], readers: ['u'] } },
+    });
+    const view = await mount(client);
+    await view.step(async () => {
+      unlinkOf('Unlink from Beeworth').click();
+      await settle(5);
+    });
+    expect(confirm.mock.calls[0][0].description).toContain(LOSS);
+    await view.unmount();
+  });
+
+  it('says nothing of types where the person can write the project, which keeps them', async () => {
+    const client = server({
+      borrowers: [{ id: 'B', name: 'Beeworth' }],
+      links: { B: 1 },
+      projects: { B: { id: 'B', name: 'Beeworth', maintainers: [], writers: ['u'], readers: [] } },
+    });
+    const view = await mount(client);
+    await view.step(async () => {
+      unlinkOf('Unlink from Beeworth').click();
+      await settle(5);
+    });
+    expect(confirm.mock.calls[0][0].description).toBe(
+      '1 word/morpheme in “⁨Beeworth⁩” is linked to its entries. Those links will be removed.',
+    );
+    await view.unmount();
+  });
+
+  it('says nothing of types when no word is linked', async () => {
+    const client = server({ borrowers: [{ id: 'X', name: null }], links: { X: 0 } });
+    const view = await mount(client);
+    await view.step(async () => {
+      unlinkOf('Unlink from another project').click();
+      await settle(5);
+    });
+    expect(confirm.mock.calls[0][0].description).toBe('');
+    await view.unmount();
   });
 });

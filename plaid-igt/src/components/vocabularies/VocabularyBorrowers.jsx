@@ -4,7 +4,7 @@ import { Button } from '@ui/components/ui/button';
 import { useConfirm } from '@ui/components/shared/ConfirmProvider';
 import { Loading } from '@ui/components/shared/Loading.jsx';
 import { isolate } from '@ui/lib/bidi.js';
-import { canUnlinkVocabulary } from '@ui/domain/permissions.js';
+import { canEditProject, canUnlinkVocabulary } from '@ui/domain/permissions.js';
 import { countOf, plural } from '@ui/lib/plural.js';
 import { notifyError } from '@/utils/feedback';
 import { entryMorphTypesOf } from '@/domain/vocabLookup';
@@ -51,10 +51,18 @@ export const VocabularyBorrowers = ({ client, user, vocabulary, home }) => {
       return;
     }
     const n = links ?? 0;
+    // A morpheme that went by its entry's type keeps it only where this person
+    // can write the project (planKeptTypes below). Elsewhere it is left with
+    // none, which the confirm says first.
+    let writable = false;
+    if (n && borrower.name) {
+      writable = canEditProject(await client.projects.get(borrower.id).catch(() => null), user);
+    }
     const ok = await confirm({
       title: `Unlink ${quoted(vocabulary.name)} from ${where}?`,
       description: n
-        ? `${countOf(n, 'word')}/${plural(n, 'morpheme')} in ${borrower.name ? where : 'that project'} ${n === 1 ? 'is' : 'are'} linked to its entries. Those links will be removed.`
+        ? `${countOf(n, 'word')}/${plural(n, 'morpheme')} in ${borrower.name ? where : 'that project'} ${n === 1 ? 'is' : 'are'} linked to its entries. Those links will be removed.` +
+          (writable ? '' : ' Morphemes there that took their type from an entry will have none.')
         : '',
       confirmLabel: 'Unlink',
       destructive: true,

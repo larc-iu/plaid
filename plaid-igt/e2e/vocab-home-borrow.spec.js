@@ -102,6 +102,10 @@ test("the vocabulary's maintainer ends a borrowing, and opening the confirm only
       '1 word/morpheme in that project is linked to its entries. Those links will be removed.',
     ),
   ).toBeVisible();
+  // hm cannot write B, so its morphemes keep no type (REV-VH-B-1).
+  await expect(
+    dialog.getByText('Morphemes there that took their type from an entry will have none.'),
+  ).toBeVisible();
   expect(asked).toEqual([`GET /api/v1/projects/${world.B.id}/vocabs/${world.V.id}/unlinking`]);
   expect(seen).toEqual([]);
   expect(await borrows()).toBe(true);
