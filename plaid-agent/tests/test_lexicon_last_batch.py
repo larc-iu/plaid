@@ -78,8 +78,9 @@ def test_a_delete_refused_for_links_elsewhere_leaves_its_senses(live_client):
         assert h.errors and 'linked in projects this assistant cannot open' in ' '.join(h.errors), h.errors
         assert (entry(c, s, 'vi-ali-s1').get('metadata') or {}).get('parent') == s.ids['vi-ali']
     finally:
-        s.delete()
+        # The borrower first: core refuses to delete the lexicon's project while another links it.
         other.delete()
+        s.delete()
 
 
 def test_a_delete_with_its_repairs_beside_a_document_write_applies(live_client):

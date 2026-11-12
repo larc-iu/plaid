@@ -30,8 +30,7 @@ def lex(live_client):
     s = seed(live_client, project_raw(), {'d1': document_raw()}, {VOCAB: lexicon_raw()},
              name='igt-agent dictionary test')
     c = s.client
-    v = c.vocab_layers.create('LiveLex')
-    c.projects.link_vocab(s.project_id, v['id'])
+    v = c.vocab_layers.create(s.project_id, 'LiveLex')
     c.vocab_layers.set_config(v['id'], 'igt', 'fields', FIELDS)
 
     def mk(form, meta):
@@ -43,7 +42,6 @@ def lex(live_client):
     ids['ferment'] = mk('kwatha', {'gloss': 'ferment', 'parent': ids['kwatha'], 'senseOrder': 2})
     ids['phika'] = mk('phika', {'gloss': 'cook', 'variantOf': ids['kwatha']})
     ids['nyumba'] = mk('nyumba', {'gloss': 'house', 'seeAlso': [ids['kwatha'], ids['phika']]})
-    s.vocab_ids.append(v['id'])
     s.lex_id, s.item_ids = v['id'], ids
     yield s
     s.delete()

@@ -188,7 +188,6 @@ class Seeded:
     def __init__(self, client, project_raw: dict, documents: dict, lexicons: dict, name: str):
         self.client = client
         self.ids = _Ids()
-        self.vocab_ids: list = []
         self.roles: dict = {}  # fixture token layer id -> role
         self.project_id = client.projects.create(name, id=uuid7())['id']
         with client.batched() as b:
@@ -231,9 +230,8 @@ class Seeded:
 
     def _vocab(self, b, v: dict) -> str:
         vid = self._mint(v['id'])
-        b.vocab_layers.create(v.get('name') or v['id'], id=vid)
-        b.projects.link_vocab(self.project_id, vid)
-        self.vocab_ids.append(vid)
+        # Made in the project, its home: the project links it from then on.
+        b.vocab_layers.create(self.project_id, v.get('name') or v['id'], id=vid)
         return vid
 
     @staticmethod
@@ -303,14 +301,8 @@ class Seeded:
         return self.ids[item['id']]
 
     def delete(self):
-        try:
-            self.client.projects.delete(self.project_id)
-        finally:
-            for vid in self.vocab_ids:
-                try:
-                    self.client.vocab_layers.delete(vid)
-                except Exception:
-                    pass
+        # The project's own vocabularies go with it.
+        self.client.projects.delete(self.project_id)
 
 
 def seed(client, project_raw, documents, lexicons, name='igt-agent test'):
