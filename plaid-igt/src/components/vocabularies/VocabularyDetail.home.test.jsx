@@ -314,24 +314,33 @@ describe('moving a vocabulary', () => {
     await view.unmount();
   });
 
-  it('goes back to its project when the move is refused', async () => {
+  // Refused because u no longer maintains Cedar (taken off it meanwhile):
+  // core's sentence is said, and Cedar is no longer offered.
+  it('goes back to its project when the move is refused, says why, and offers it no more', async () => {
+    let refused = false;
     const client = server((req) => {
-      if (req.kind === 'vocabLayers.move')
+      if (req.kind === 'vocabLayers.move') {
+        refused = true;
         throw refusal(403, {
           error: 'Moving a vocabulary needs maintainer rights on both projects.',
         });
+      }
+      if (refused && req.method === 'GET' && req.path === '/api/v1/projects')
+        return { entries: structuredClone([A, { ...C, maintainers: [] }, W]), nextCursor: null };
       return undefined;
     });
     const view = await mount(client, '/vocabularies/V?tab=settings');
+    expect(options(moveSelect())).toEqual(['Cedar']);
     await view.step(async () => {
       setValue(moveSelect(), 'C');
       await settle(10);
     });
     expect(feedback.notifyError).toHaveBeenCalledWith(
-      expect.anything(),
+      'Moving a vocabulary needs maintainer rights on both projects.',
       'Failed to move the vocabulary',
     );
     expect(projectLine()).toBe('Project: Ayvale');
+    expect(moveSelect()).toBeUndefined();
     await view.unmount();
   });
 

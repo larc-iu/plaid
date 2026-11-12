@@ -32,7 +32,7 @@ import {
 } from '@/domain/igtConfig';
 import { entryMorphTypesOf } from '@/domain/vocabLookup';
 import { planKeptTypes, queueKeptTypes, busyLinkedDocument } from '@/domain/keptMorphType';
-import { statusOf } from '@ui/lib/errors.js';
+import { refusalSaid, statusOf } from '@ui/lib/errors.js';
 import { countOf, plural } from '@ui/lib/plural.js';
 import {
   normalizeVocabFields,
@@ -217,21 +217,24 @@ export const VocabularyDetail = () => {
   // The projects this person can read, with their role lists: the comment
   // gate, the New vocabulary project list and the Move list. Null until read.
   const [projects, setProjects] = useState(null);
-  useEffect(() => {
-    if (!client || !user) return undefined;
-    let alive = true;
+  const readProjects = (alive = () => true) =>
     client.projects
       .list()
       .then((list) => {
-        if (alive) setProjects(list || []);
+        if (alive()) setProjects(list || []);
       })
       .catch((err) => {
         console.error('Error reading the projects:', err);
-        if (alive) setProjects([]);
+        if (alive()) setProjects([]);
       });
+  useEffect(() => {
+    if (!client || !user) return undefined;
+    let alive = true;
+    readProjects(() => alive);
     return () => {
       alive = false;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [client, user]);
   const role = vocabularyRole(vocabulary, home, user);
   const canManage = canManageVocabulary(vocabulary, home, user);
@@ -629,9 +632,12 @@ export const VocabularyDetail = () => {
       `Move vocabulary “${vocabulary.name}” to project “${target.name}”`,
       () => client.vocabLayers.move(vocabularyId, target.id),
       {
+        // Core's sentence says what was missing, and the projects are read
+        // again: a role taken away meanwhile drops one from the Move list.
         refused: (err) => {
           console.error('Error moving vocabulary:', err);
-          notifyError(err, 'Failed to move the vocabulary');
+          notifyError(refusalSaid(err) ?? err, 'Failed to move the vocabulary');
+          readProjects();
         },
         resync: resyncSchema,
       },
