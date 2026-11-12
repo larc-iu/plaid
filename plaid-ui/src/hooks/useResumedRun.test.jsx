@@ -19,6 +19,7 @@ const notify = vi.hoisted(() => ({
   notifySuccess: vi.fn(),
   notifyWarning: vi.fn(),
   notifyInfo: vi.fn(),
+  notifyError: vi.fn(),
 }));
 vi.mock('../lib/notify.js', () => notify);
 
@@ -68,6 +69,8 @@ describe('useResumedRun', () => {
       notices = { 'draft-graph': drafted },
       label = 'Draft',
       stepsAfter,
+      step: stepName,
+      fails,
     } = {},
   ) => {
     writeRunRecord('d1', {
@@ -76,8 +79,9 @@ describe('useResumedRun', () => {
       label,
       task,
       ...(stepsAfter ? { stepsAfter } : {}),
+      ...(stepName ? { step: stepName } : {}),
     });
-    attach = () => Promise.resolve(result);
+    attach = () => (fails ? Promise.reject(fails) : Promise.resolve(result));
     const lock = { step: vi.fn(), report: vi.fn(), onProgress: vi.fn(), release: vi.fn() };
     const Probe = () => {
       useResumedRun({}, { id: 'd1', _reload: async () => {} }, () => lock, notices);
@@ -165,6 +169,54 @@ describe('useResumedRun', () => {
       'Proposed analyses for 3 words.',
       'Auto-analyze',
     );
+  });
+
+  // REV-RUN-1: what a left Auto-analyze run's step came to is said once, by
+  // the page that comes back, and the steps after it did not run whatever it
+  // came to.
+  const left = {
+    ...step,
+    step: 'Propose translations',
+    stepsAfter: ['Copy previous analyses', 'Link to the lexicon'],
+  };
+
+  it('names the steps that did not run when the step is gone from the server', async () => {
+    await rejoin(null, { ...left, fails: Object.assign(new Error('gone'), { status: 404 }) });
+    expect(notify.notifyWarning).toHaveBeenCalledWith(
+      'Copy previous analyses and Link to the lexicon did not run.',
+      'Auto-analyze',
+    );
+    expect(notify.notifyError).not.toHaveBeenCalled();
+    expect(readRunRecord('d1')).toBe(null);
+  });
+
+  it('says nothing of a run of one request that is gone from the server', async () => {
+    await rejoin(null, { fails: Object.assign(new Error('gone'), { status: 404 }) });
+    for (const fn of Object.values(notify)) expect(fn).not.toHaveBeenCalled();
+  });
+
+  it('says a step that failed failed, and names the steps that did not run', async () => {
+    await rejoin(null, { ...left, fails: new Error('The model is not loaded') });
+    expect(notify.notifyError).toHaveBeenCalledTimes(1);
+    expect(notify.notifyError).toHaveBeenCalledWith(
+      'Propose translations failed: The model is not loaded. Copy previous analyses and Link to the lexicon did not run.',
+      'Auto-analyze',
+    );
+    expect(notify.notifyWarning).not.toHaveBeenCalled();
+  });
+
+  it('says a run of one request that failed failed, by its name', async () => {
+    await rejoin(null, { fails: new Error('The model is not loaded.') });
+    expect(notify.notifyError).toHaveBeenCalledWith(
+      'Draft failed: The model is not loaded.',
+      'Draft',
+    );
+  });
+
+  it('says it could not rejoin when the server would not answer', async () => {
+    await rejoin(null, { fails: Object.assign(new Error('HTTP 500'), { status: 500 }) });
+    expect(notify.notifyWarning).toHaveBeenCalledWith('Failed to rejoin the run.', 'Draft');
+    expect(notify.notifyError).not.toHaveBeenCalled();
   });
 
   it('says a stopped run stopped, whatever its counts', async () => {

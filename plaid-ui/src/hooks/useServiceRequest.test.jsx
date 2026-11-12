@@ -157,6 +157,52 @@ describe('a run the client stopped waiting for', () => {
   });
 });
 
+// REV-RUN-1: a page that has been left mid-run (Auto-analyze stops after the
+// step in flight) said the step out loud wherever the person had gone, while
+// the page they come back to says it again. `quiet` is read when the request
+// settles, not when it starts.
+describe('a request whose page asks for quiet', () => {
+  it.each([
+    ['a success', () => ({ words: 3 })],
+    ['a stop', () => ({ stopped: true })],
+    ['a failure', () => new Error('The service broke')],
+    ['lost contact', () => Object.assign(new Error('Timed out'), { pending: true })],
+  ])('says nothing of %s once quiet, and still marks a failure said', async (_, answer) => {
+    let left = false;
+    let settle;
+    const client = fakeClient(answer);
+    const asked = client.messages.requestService;
+    asked.mockImplementation(
+      () =>
+        new Promise((resolve, reject) => {
+          settle = () => {
+            const result = answer();
+            return result instanceof Error ? reject(result) : resolve(result);
+          };
+        }),
+    );
+    const r = await mount(client);
+    let thrown = null;
+    let going;
+    await r.step(() => {
+      going = r
+        .hook()
+        .requestService('p1', 'd1', 'svc', {}, { ...COPY, quiet: () => left })
+        .catch((err) => {
+          thrown = err;
+        });
+    });
+    left = true;
+    await r.step(async () => {
+      settle();
+      await going;
+    });
+    for (const fn of Object.values(notify)) expect(fn).not.toHaveBeenCalled();
+    if (thrown) expect(thrown.reported).toBe(true);
+    await r.unmount();
+  });
+});
+
 // A client whose discovery answers only when the test says so, one deferred
 // promise per project.
 const deferredDiscovery = () => {

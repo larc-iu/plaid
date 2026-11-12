@@ -91,6 +91,26 @@ const answer = (data = { sentencesWritten: 0 }) => {
   h.resolve();
 };
 
+// Let the oldest held request fail, as a service reports its own error.
+const failHeld = (message) => {
+  const h = held.shift();
+  h.helper.error(message);
+  h.resolve();
+};
+
+const toasts = (page) => page.locator('[data-sonner-toast]');
+
+// Every toast text seen over `ms`, sampled: a toast may come and go.
+const toastsOver = async (page, ms) => {
+  const seen = new Set();
+  const until = Date.now() + ms;
+  while (Date.now() < until) {
+    for (const t of await toasts(page).allInnerTexts()) seen.add(t);
+    await page.waitForTimeout(100);
+  }
+  return [...seen];
+};
+
 const open = async (page) => {
   if (page.url() !== 'about:blank') await page.goto('about:blank');
   await seedAuth(page);
@@ -166,6 +186,53 @@ test('leaving the document stops Auto-analyze after the step in flight, and comi
   await expect(
     page.locator('[data-sonner-toast]', { hasText: 'Link to the lexicon did not run.' }),
   ).toBeVisible();
+  // Said once: the page that was left says nothing of the step (REV-RUN-1).
+  await page.waitForTimeout(1000);
+  await expect(toasts(page)).toHaveCount(1);
+});
+
+// REV-RUN-1: the page that was left announced the step wherever the person
+// had gone. What the step came to is said once, on the document.
+test('a step that answers while the document is away is said once, on coming back', async ({
+  page,
+}) => {
+  await open(page);
+  await start(page);
+  await expect(banner(page)).toBeVisible();
+
+  await page.goto(`/#/projects/${projectId}`);
+  await expect(banner(page)).toHaveCount(0);
+  answer();
+  // The answer reaches the page that was left in well under this.
+  expect(await toastsOver(page, 3000)).toEqual([]);
+
+  await page.goto(`/#/projects/${projectId}/documents/${documentId}?tab=analyze`);
+  await expect(toasts(page).filter({ hasText: 'Link to the lexicon did not run.' })).toBeVisible({
+    timeout: 15000,
+  });
+  await expect(banner(page)).toHaveCount(0, { timeout: 15000 });
+  await page.waitForTimeout(1000);
+  await expect(toasts(page)).toHaveCount(1);
+});
+
+test('a step that fails while the document is away is said once, as a failure, on coming back', async ({
+  page,
+}) => {
+  await open(page);
+  await start(page);
+  await expect(banner(page)).toBeVisible();
+
+  await page.goto(`/#/projects/${projectId}`);
+  await expect(banner(page)).toHaveCount(0);
+  failHeld('The model is not loaded');
+  expect(await toastsOver(page, 3000)).toEqual([]);
+
+  await page.goto(`/#/projects/${projectId}/documents/${documentId}?tab=analyze`);
+  await expect(toasts(page)).toHaveText(
+    [/Propose translations failed: The model is not loaded\. Link to the lexicon did not run\./],
+    { timeout: 15000 },
+  );
+  await expect(banner(page)).toHaveCount(0, { timeout: 15000 });
 });
 
 test('reloading mid-run asks first, and the reloaded page rejoins the run', async ({ page }) => {

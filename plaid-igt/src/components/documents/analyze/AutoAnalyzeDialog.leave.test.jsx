@@ -96,6 +96,7 @@ beforeEach(() => {
   __resetUnloadingForTests();
   requestService.mockReset();
   runBuiltinAnalysis.mockReset();
+  vi.clearAllMocks();
   doc.reload.mockClear();
 });
 
@@ -149,6 +150,45 @@ describe('Auto-analyze when its document is left', () => {
     expect(readRunRecord('d1')).toMatchObject({
       requestId: 'req-1',
       label: 'Auto-analyze',
+      stepsAfter: ['Copy previous analyses'],
+    });
+  });
+
+  // REV-RUN-1: the page that was left said the step out loud wherever the
+  // person had gone ("Translation complete" on the documents list), and the
+  // page they came back to said it again.
+  it.each([
+    ['answers', (answer) => answer.resolve({ sentencesWritten: 3 })],
+    ['fails', (answer) => answer.reject(Object.assign(new Error('broke'), { reported: true }))],
+  ])('says nothing on the page that left when a service step %s', async (_, settle) => {
+    steps({ translate: true, copy: true });
+    let answer;
+    let options;
+    requestService.mockImplementation((_p, _d, _s, _args, opts) => {
+      options = opts;
+      opts.onRequestId('req-1');
+      answer = {};
+      return new Promise((resolve, reject) => Object.assign(answer, { resolve, reject }));
+    });
+    const view = await renderComponent(<Page />);
+    await view.step(() => view.container.querySelector('[data-run]').click());
+    // The request's own toasts, read when it settles.
+    expect(options.quiet()).toBe(false);
+
+    await view.unmount();
+    await tick();
+    expect(options.quiet()).toBe(true);
+    settle(answer);
+    await tick();
+    await tick();
+    const feedback = await import('@/utils/feedback');
+    for (const say of ['notifySuccess', 'notifyError', 'notifyInfo', 'notifyWarning']) {
+      expect(feedback[say]).not.toHaveBeenCalled();
+    }
+    // The page that comes back says it, by the step's name.
+    expect(readRunRecord('d1')).toMatchObject({
+      requestId: 'req-1',
+      step: 'Propose translations',
       stepsAfter: ['Copy previous analyses'],
     });
   });

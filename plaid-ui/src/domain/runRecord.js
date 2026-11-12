@@ -54,17 +54,26 @@ export function __resetUnloadingForTests() {
 // `stepsAfter` names the steps after this one of a run the browser was
 // ordering (Auto-analyze): rejoining reaches the step that was in flight and
 // NOT the steps after it, which the resume names as not run.
+// `step` names that step, for the resume to say it failed by its name.
 // `task` is the run's task (TASKS), by which a rejoined run finds the app's
 // words for its result's counts (useResumedRun).
 export function writeRunRecord(
   documentId,
-  { requestId, projectId, label, task = null, stepsAfter = [] },
+  { requestId, projectId, label, task = null, step = null, stepsAfter = [] },
 ) {
   if (!documentId || !requestId) return;
   try {
     localStorage.setItem(
       key(documentId),
-      JSON.stringify({ requestId, projectId, label, task, stepsAfter, startedAt: Date.now() }),
+      JSON.stringify({
+        requestId,
+        projectId,
+        label,
+        task,
+        step,
+        stepsAfter,
+        startedAt: Date.now(),
+      }),
     );
   } catch {
     /* a blocked store only costs the resume */

@@ -195,8 +195,12 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc }) => {
         projectId: project.id,
         label: 'Auto-analyze',
         task,
+        step: plan.find((p) => p.key === key).label,
         stepsAfter: plan.slice(plan.findIndex((p) => p.key === key) + 1).map((p) => p.label),
       });
+    // A service step's request says nothing once the document has been left:
+    // the page that comes back rejoins it and says how it went (REV-RUN-1).
+    const quiet = () => left;
     const info = doc.layerInfo;
     let stillOut = false; // the request survived our giving up on it
     // Whether anything actually landed. A run where every sentence failed still
@@ -251,6 +255,7 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc }) => {
             errorMessage: `${service.serviceName} reported an error.`,
             stoppedTitle: 'Auto-analyze',
             onRequestId: recordStep('translate', TASKS.TRANSLATE),
+            quiet,
             onProgress,
             timeout: ANALYZE_TIMEOUT_MS,
           },
@@ -319,6 +324,7 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc }) => {
             errorMessage: `${service.serviceName} reported an error.`,
             stoppedTitle: 'Auto-analyze',
             onRequestId: recordStep('analyze', TASKS.ANALYZE),
+            quiet,
             onProgress,
             timeout: ANALYZE_TIMEOUT_MS,
           },
@@ -372,6 +378,7 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc }) => {
               errorMessage: `${service.serviceName} reported an error.`,
               stoppedTitle: 'Auto-analyze',
               onRequestId: recordStep('link', TASKS.LINK_VOCAB),
+              quiet,
               onProgress,
             },
           );
@@ -405,7 +412,7 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc }) => {
       // `isProcessing`, which the closure fixes at false for the whole run, so
       // every service failure was toasted twice: once by its own name, and
       // again as "Auto-analyze failed".
-      if (!err?.reported) notifyError('Try again.', 'Failed to run Auto-analyze');
+      if (!err?.reported && !left) notifyError('Try again.', 'Failed to run Auto-analyze');
     } finally {
       // A record a left run keeps is for the page that comes back.
       if (!stillOut && !left) clearRunRecord(doc.id);

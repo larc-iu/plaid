@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
-import { notifySuccess, notifyWarning, notifyInfo } from '../lib/notify.js';
+import { notifySuccess, notifyWarning, notifyInfo, notifyError } from '../lib/notify.js';
+import { humanizeError } from '../lib/errors.js';
 import { showRunNotice } from '../lib/runNotice.js';
 import { clearRunRecord, readRunRecord } from '../domain/runRecord.js';
 import { reloadAfterRun } from '../lib/runReload.js';
@@ -33,6 +34,11 @@ export function useResumedRun(client, doc, acquireWriteLock, notices = {}) {
 
     const record = readRunRecord(documentId);
     if (!record) return;
+    // Auto-analyze's steps are ordered in the browser, so the page that went
+    // away took the steps after this one with it: whatever this step came to,
+    // they did not run.
+    const notRun = Array.isArray(record.stepsAfter) ? record.stepsAfter : [];
+    const after = notRun.length ? `${andList(notRun)} did not run.` : '';
 
     // The record's start, so the banner's clock counts the whole run and not
     // just the time since the reload. What it knows is one step, the one in
@@ -45,11 +51,13 @@ export function useResumedRun(client, doc, acquireWriteLock, notices = {}) {
     lock.report({ message: 'Rejoining…' });
 
     let stillOut = false; // the request survived our giving up on it
+    let answered = false; // the request's own answer came, so a throw is ours
     (async () => {
       try {
         const result = await attachToRequest(record.projectId, record.requestId, {
           onProgress: lock.onProgress,
         });
+        answered = true;
         lock.report({ percent: null, message: 'Loading results…' });
         await reloadAfterRun(() => doc._reload());
         if (result?.stopped === true) {
@@ -62,12 +70,8 @@ export function useResumedRun(client, doc, acquireWriteLock, notices = {}) {
           // failed every item still comes back a success, and only the counts
           // say so. A task the app words nothing for is said to have finished.
           const notice = record.task ? notices?.[record.task]?.(result) : null;
-          const notRun = Array.isArray(record.stepsAfter) ? record.stepsAfter : [];
-          if (notRun.length) {
-            // Auto-analyze's steps are ordered here, in the browser, so the
-            // page that went away took the steps after this one with it. The
-            // step's own words come first, then the steps that did not run.
-            const after = `${andList(notRun)} did not run.`;
+          if (after) {
+            // The step's own words come first, then the steps that did not run.
             notifyWarning(
               notice?.message
                 ? `${notice.message} ${after}`
@@ -82,7 +86,9 @@ export function useResumedRun(client, doc, acquireWriteLock, notices = {}) {
         if (error?.status === 404) {
           // Gone: it expired, or it finished and its result was collected by
           // the page that made it. Reload so anything it wrote is on screen.
+          // What it came to is lost with it, but not which steps did not run.
           await reloadAfterRun(() => doc._reload());
+          if (after) notifyWarning(after, record.label);
         } else if (error?.pending) {
           // Still out there: we stopped waiting, it did not stop working. Keep
           // the record so the next reload rejoins it again. (attachToRequest
@@ -90,6 +96,19 @@ export function useResumedRun(client, doc, acquireWriteLock, notices = {}) {
           stillOut = true;
           notifyWarning(
             'Lost contact with the service. It is still running. Reload to pick it back up.',
+            record.label,
+          );
+        } else if (!answered && !Number.isFinite(error?.status)) {
+          // The service's own error, kept by the server for the page that
+          // comes back: a refusal of the rejoin itself carries its status.
+          // Said as the page that started it would have said it.
+          await reloadAfterRun(() => doc._reload());
+          const said = humanizeError(error, 'The service reported an error.');
+          const stop = /[.!?]$/.test(said) ? '' : '.';
+          notifyError(
+            [`${record.step || record.label} failed: ${said}${stop}`, after]
+              .filter(Boolean)
+              .join(' '),
             record.label,
           );
         } else {

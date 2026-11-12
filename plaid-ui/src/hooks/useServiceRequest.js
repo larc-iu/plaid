@@ -161,6 +161,11 @@ export const useServiceRequest = (client) => {
         // that shows it somewhere this hook's state does not reach: the write
         // lock's banner, which outlives the tab whose hook made the request.
         onProgress,
+        // Read when the request settles: true says nothing out loud. For a
+        // page that was left while its request was out (Auto-analyze): the
+        // page that comes back to the document rejoins the request and is the
+        // one that says how it went (REV-RUN-1).
+        quiet,
       } = options;
 
       const requestId = uuidv4();
@@ -183,15 +188,20 @@ export const useServiceRequest = (client) => {
           undefined,
           { requestId, noOperation: !inOperation },
         );
-        succeed(result, { successMessage, successTitle, stoppedTitle, stoppedMessage, notice });
+        if (!quiet?.()) {
+          succeed(result, { successMessage, successTitle, stoppedTitle, stoppedMessage, notice });
+        }
         return result;
       } catch (error) {
         console.error('Failed to request service:', error);
         const serviceName = servicesSeen.current.find(
           (s) => s.serviceId === serviceId,
         )?.serviceName;
-        fail(error, { errorMessage, errorTitle, stoppedTitle, lostMessage, serviceName });
-        // Said out loud already, so a caller's own catch does not say it again.
+        if (!quiet?.()) {
+          fail(error, { errorMessage, errorTitle, stoppedTitle, lostMessage, serviceName });
+        }
+        // Said out loud already (or kept quiet on purpose), so a caller's own
+        // catch does not say it again.
         if (error && typeof error === 'object') error.reported = true;
         throw error;
       } finally {
