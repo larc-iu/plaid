@@ -1983,14 +1983,20 @@ class _FakeJobs:
                         'created_more': 0, 'deleted_more': 0, 'unlinked_more': 0, 'lexicons': []},
         }
 
-    def _end(self, job, state, reason, *, stopped=_client._UNSET):
-        """Settle a job as core does: a final state, its time, and when
-        ``stopped`` is given, the report core writes from the rows."""
-        job.update(state=state, reason=reason, finished_at=self._iso(),
-                   current_document=None, waiting_for=None)
+    def _settle_rows(self, job):
+        """Every end, whoever decides it: the rows the job did not finish
+        are ``not-reached``."""
         for row in job['documents']:
             if row['state'] in ('waiting', 'working', 'deferred'):
-                row['state'] = 'not-reached'
+                row.update(state='not-reached', updated_at=self._iso())
+
+    def _end(self, job, state, reason, *, stopped=_client._UNSET):
+        """Settle a job as core does when core decides the end: a final
+        state, its time, the worker's line cleared, the rows settled, and
+        when ``stopped`` is given, the report core writes from the rows."""
+        job.update(state=state, reason=reason, finished_at=self._iso(), message=None,
+                   current_document=None, waiting_for=None)
+        self._settle_rows(job)
         if stopped is not _client._UNSET:
             job['report'] = self._report_from_rows(job, stopped)
 
@@ -2204,8 +2210,10 @@ class _FakeJobs:
                                                   f"A job's report is at most {_JOB_REPORT_MAX_BYTES:,}.")
         if reason is None:
             reason = {'cancelled': 'cancelled', 'failed': job['reason'] if job['core_failed'] else None}.get(state)
-        job.update(state=state, reason=reason, finished_at=self._iso(), current_document=None,
-                   waiting_for=None)
+        # A job core failed keeps the time it failed, as core keeps it.
+        at = job['finished_at'] if now == 'failed' else self._iso()
+        job.update(state=state, reason=reason, finished_at=at, current_document=None, waiting_for=None)
+        self._settle_rows(job)
         job['report'] = transform_response(json.loads(wire))
         return self._shape(job)
 

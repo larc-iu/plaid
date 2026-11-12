@@ -464,6 +464,57 @@ def test_fake_an_ended_job_takes_no_row_or_decision():
     _refused(lambda: jobs.add_decisions(failed['id'], 'w1', decision), 409, code='job-finished')
 
 
+def test_fake_an_end_core_decides_clears_the_workers_line():
+    client, clock = _fake()
+    jobs = client.jobs
+    line = 'Sentences 1 to 5 of 40.'
+    lapsed = jobs.create('p1', 'igt', ['gloss'])
+    jobs.claim('w1', 'm', ['igt'])
+    jobs.heartbeat(lapsed['id'], 'w1', message=line)
+    clock['t'] += 121
+    assert jobs.cancel(lapsed['id'])['message'] is None, 'a lapsed lease cancelled by core'
+
+    at_beat = jobs.create('p1', 'igt', ['gloss'])
+    jobs.claim('w1', 'm', ['igt'])
+    jobs.heartbeat(at_beat['id'], 'w1', message=line)
+    jobs.can_write = lambda user, project: False
+    _refused(lambda: jobs.heartbeat(at_beat['id'], 'w1'), 409, code='job-failed')
+    assert jobs.get(at_beat['id'])['message'] is None, 'starter-access at the heartbeat'
+    failed_at = jobs.get(at_beat['id'])['finished_at']
+    clock['t'] += 5
+    assert jobs.finish(at_beat['id'], 'w1', 'failed', {})['finished_at'] == failed_at, \
+        'the worker\'s report keeps the time core failed it, as core does'
+
+    jobs.can_write = lambda user, project: True
+    at_claim = jobs.create('p1', 'igt', ['gloss'])
+    jobs.claim('w1', 'm', ['igt'])
+    jobs.heartbeat(at_claim['id'], 'w1', message=line)
+    clock['t'] += 121
+    jobs.can_write = lambda user, project: False
+    assert jobs.claim('w2', 'm', ['igt']) is None
+    assert jobs.get(at_claim['id'])['message'] is None, 'starter-access at the claim'
+
+    jobs.can_write = lambda user, project: True
+    by_worker = jobs.create('p1', 'igt', ['gloss'])
+    jobs.claim('w1', 'm', ['igt'])
+    jobs.heartbeat(by_worker['id'], 'w1', message=line)
+    assert jobs.finish(by_worker['id'], 'w1', 'done', {})['message'] == line, 'an end the worker sends keeps it'
+
+
+def test_fake_every_end_settles_the_rows_it_did_not_finish():
+    client, _ = _fake()
+    jobs = client.jobs
+    waiting = jobs.create('p1', 'igt', ['gloss'])
+    assert [r['state'] for r in jobs.cancel(waiting['id'])['documents']] == ['not-reached', 'not-reached']
+    for to in ('done', 'cancelled', 'failed'):
+        job = jobs.create('p1', 'igt', ['gloss'])
+        jobs.claim('w1', 'm', ['igt'])
+        jobs.update_document(job['id'], 'd2', 'w1', state='done')
+        jobs.update_document(job['id'], 'd1', 'w1', state='working')
+        ended = jobs.finish(job['id'], 'w1', to, {})
+        assert [r['state'] for r in ended['documents']] == ['done', 'not-reached'], to
+
+
 def test_fake_model_busy_answers_the_load_a_test_sets():
     client, _ = _fake()
     assert client.jobs.model_busy('glm') == {'in_flight': 0, 'last_finished_at': None}

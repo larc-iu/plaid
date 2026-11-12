@@ -97,7 +97,7 @@ def test_a_stop_during_a_write_lets_the_write_finish(monkeypatch):
     assert finished['state'] == 'cancelled'
     assert "'blank'" in str(_written(client)), 'the write that had begun was finished'
     rows = {r['document_id']: r for r in client.jobs.rows[job.id]['documents']}
-    assert rows['d2']['state'] == 'waiting', 'nothing after the stop'
+    assert rows['d2']['state'] == 'not-reached', 'nothing after the stop'
 
 
 def test_a_job_taken_by_another_worker_is_dropped_with_nothing_more_written(monkeypatch):
