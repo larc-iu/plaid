@@ -24,18 +24,26 @@ export const CatalogProvider = ({ children }) => {
     () => allVocabularies.filter((v) => !vocabImporting(v.config)),
     [allVocabularies],
   );
+  // The projects the user can read, with their role lists: a vocabulary's
+  // rights are its project's roles, so these say who may set up or edit a
+  // dictionary.
+  const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   // vocabLayerId -> entry count. Null until the query answers, and left null
-  // when it cannot run: a vocabulary-only maintainer has no project access, so
-  // the count query 400s for them. Counts are a nicety, never a blocker.
+  // when it cannot run. Counts are a nicety, never a blocker.
   const [itemCounts, setItemCounts] = useState(null);
 
   const reload = useCallback(async () => {
     if (!client) return;
     setLoading(true);
     try {
-      setAllVocabularies(await withLiveMarks(client, await client.vocabLayers.list()));
+      const [listed, readable] = await Promise.all([
+        client.vocabLayers.list(),
+        client.projects.list(),
+      ]);
+      setAllVocabularies(await withLiveMarks(client, listed));
+      setProjects(readable);
       setError('');
     } catch (err) {
       if (err.status === 401) {
@@ -61,13 +69,10 @@ export const CatalogProvider = ({ children }) => {
     let cancelled = false;
     (async () => {
       try {
-        const [res, projects] = await Promise.all([
-          client.query({
-            where: [['vocab', '?v', { layer: '?l' }]],
-            return: { group: ['?l'], aggregates: [['count']] },
-          }),
-          client.projects.list(),
-        ]);
+        const res = await client.query({
+          where: [['vocab', '?v', { layer: '?l' }]],
+          return: { group: ['?l'], aggregates: [['count']] },
+        });
         // The query reaches a vocabulary through the projects that link it,
         // and gives no row for one with no entries. So a vocabulary a listed
         // project links counts 0 until the query says otherwise, and one no
@@ -86,11 +91,11 @@ export const CatalogProvider = ({ children }) => {
     return () => {
       cancelled = true;
     };
-  }, [client, vocabularies]);
+  }, [client, vocabularies, projects]);
 
   return (
     <CatalogContext.Provider
-      value={{ vocabularies, allVocabularies, itemCounts, loading, error, reload }}
+      value={{ vocabularies, allVocabularies, projects, itemCounts, loading, error, reload }}
     >
       {children}
     </CatalogContext.Provider>

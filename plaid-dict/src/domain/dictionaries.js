@@ -1,20 +1,28 @@
 // Which of the vocabularies a user can see are dictionaries, and which ones
 // they could turn into dictionaries.
 
-import { canManageProject } from '@ui/domain/permissions.js';
+import { canManageVocabulary } from '@ui/domain/permissions.js';
 import { isDictionary, readDictRecord, dictTitle } from './dictConfig.js';
 
 /**
+ * Whether `user` may set up or edit the dictionary of `vocab`: a publication
+ * record is the vocabulary's settings, so a maintainer of its project (its
+ * home, found among `projects`, the user's `projects.list()`) or an admin.
+ */
+export const canManageDictionary = (vocab, projects, user) =>
+  canManageVocabulary(vocab, (projects || []).find((p) => p.id === vocab?.project) ?? null, user);
+
+/**
  * The vocabulary list split for the landing screen: the dictionaries anyone
- * here can read, and the vocabularies this user maintains that have no
+ * here can read, and the vocabularies this user may set up that have no
  * publication record yet. Both sorted by the name shown.
  */
-export const classifyVocabularies = (vocabs, user) => {
+export const classifyVocabularies = (vocabs, projects, user) => {
   const dictionaries = [];
   const unpublished = [];
   for (const v of vocabs || []) {
     if (isDictionary(v)) dictionaries.push(v);
-    else if (canManageProject(v, user)) unpublished.push(v);
+    else if (canManageDictionary(v, projects, user)) unpublished.push(v);
   }
   const byName = (a, b) => dictTitle(a).localeCompare(dictTitle(b));
   return { dictionaries: dictionaries.sort(byName), unpublished: unpublished.sort(byName) };

@@ -124,3 +124,31 @@ describe('a vocabulary marked for a project that is gone', () => {
     await view.unmount();
   });
 });
+
+// Who may set up or edit a dictionary is the vocabulary's project's
+// maintainers, so the catalog loads the user's projects, with their role
+// lists, together with the vocabularies.
+describe('the catalog’s projects', () => {
+  it('holds the projects the user can read', async () => {
+    const p1 = { id: 'p1', name: 'P', maintainers: ['ann@x.com'], writers: [], readers: [] };
+    const client = {
+      vocabLayers: { list: async () => [{ id: 'v', project: 'p1', config: {} }] },
+      query: async () => ({ results: [] }),
+      projects: { list: async () => [p1] },
+    };
+    auth.current = { client, logout: () => {} };
+    let seen = null;
+    const Probe = () => {
+      seen = useCatalog();
+      return null;
+    };
+    const view = await renderComponent(
+      <CatalogProvider>
+        <Probe />
+      </CatalogProvider>,
+    );
+    await view.step(() => new Promise((r) => setTimeout(r, 0)));
+    expect(seen.projects).toEqual([p1]);
+    await view.unmount();
+  });
+});

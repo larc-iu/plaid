@@ -4,8 +4,7 @@ import { ArrowLeft, ExternalLink } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useCatalog } from '@/contexts/CatalogContext';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
-import { takenSlugs } from '@/domain/dictionaries';
-import { canManageProject } from '@ui/domain/permissions.js';
+import { canManageDictionary, takenSlugs } from '@/domain/dictionaries';
 import { dictionaryAddress, dictionaryPath } from '@/domain/paths';
 import {
   dictCollator,
@@ -147,7 +146,7 @@ export const Setup = () => {
   const { vocabularyId } = useParams();
   const navigate = useNavigate();
   const { client, user } = useAuth();
-  const { vocabularies, allVocabularies, loading: catalogLoading, reload } = useCatalog();
+  const { vocabularies, allVocabularies, projects, loading: catalogLoading, reload } = useCatalog();
 
   const vocab = useMemo(
     () => vocabularies.find((v) => v.id === vocabularyId) || null,
@@ -264,7 +263,7 @@ export const Setup = () => {
     );
   }
 
-  if (!vocab || !canManageProject(vocab, user)) {
+  if (!vocab || !canManageDictionary(vocab, projects, user)) {
     return (
       <div className="mx-auto max-w-3xl px-4 py-10">
         <p className="text-sm">This vocabulary cannot be set up as a dictionary.</p>

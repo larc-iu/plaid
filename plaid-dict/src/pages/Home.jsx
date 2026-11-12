@@ -4,8 +4,7 @@ import { BookOpen, Settings } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useCatalog } from '@/contexts/CatalogContext';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
-import { classifyVocabularies } from '@/domain/dictionaries';
-import { canManageProject } from '@ui/domain/permissions.js';
+import { canManageDictionary, classifyVocabularies } from '@/domain/dictionaries';
 import { readDictRecord, dictTitle } from '@/domain/dictConfig';
 import { dictionaryAddress, dictionaryPath } from '@/domain/paths';
 import { Button } from '@ui/components/ui/button';
@@ -17,7 +16,7 @@ const entryCount = (counts, id) => {
   return typeof n === 'number' ? `${n.toLocaleString()} ${n === 1 ? 'entry' : 'entries'}` : '';
 };
 
-const DictionaryCard = ({ vocab, user, counts }) => {
+const DictionaryCard = ({ vocab, projects, user, counts }) => {
   const record = readDictRecord(vocab.config);
   const language = record?.languages?.object?.name || '';
   return (
@@ -35,7 +34,7 @@ const DictionaryCard = ({ vocab, user, counts }) => {
             .join(' · ')}
         </p>
       </div>
-      {canManageProject(vocab, user) && (
+      {canManageDictionary(vocab, projects, user) && (
         <Button asChild variant="ghost" size="sm">
           <Link to={`/setup/${vocab.id}`}>
             <Settings className="mr-1.5 h-4 w-4" />
@@ -50,10 +49,10 @@ const DictionaryCard = ({ vocab, user, counts }) => {
 export const Home = () => {
   useDocumentTitle();
   const { user } = useAuth();
-  const { vocabularies, itemCounts, loading, error } = useCatalog();
+  const { vocabularies, projects, itemCounts, loading, error } = useCatalog();
   const { dictionaries, unpublished } = useMemo(
-    () => classifyVocabularies(vocabularies, user),
-    [vocabularies, user],
+    () => classifyVocabularies(vocabularies, projects, user),
+    [vocabularies, projects, user],
   );
 
   if (loading) {
@@ -80,7 +79,13 @@ export const Home = () => {
           <h1 className="mb-3 font-serif text-2xl font-semibold">Dictionaries</h1>
           <ul className="flex flex-col gap-2">
             {dictionaries.map((v) => (
-              <DictionaryCard key={v.id} vocab={v} user={user} counts={itemCounts} />
+              <DictionaryCard
+                key={v.id}
+                vocab={v}
+                projects={projects}
+                user={user}
+                counts={itemCounts}
+              />
             ))}
           </ul>
         </section>

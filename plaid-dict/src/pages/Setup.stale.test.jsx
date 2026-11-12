@@ -57,22 +57,25 @@ vi.mock('@/contexts/AuthContext', () => {
       throw err;
     }
   };
-  return { useAuth: () => ({ client, user: { id: 'a@b.com', isAdmin: true } }) };
+  return { useAuth: () => ({ client, user: { id: 'a@b.com', isAdmin: false } }) };
 });
 
 vi.mock('@/contexts/CatalogContext', async () => {
   const vocab = () => ({
     id: 'v1',
     name: 'Sena',
-    maintainers: ['a@b.com'],
+    project: 'p1',
     config: { dict: server.dict },
   });
+  // The vocabulary's project, which the signed-in user maintains.
+  const projects = [{ id: 'p1', name: 'P', maintainers: ['a@b.com'], writers: [], readers: [] }];
   return {
     useCatalog: () => {
       const [vocabularies, setVocabularies] = useState(() => [vocab()]);
       return {
         vocabularies,
         allVocabularies: vocabularies,
+        projects,
         loading: false,
         reload: async () => setVocabularies([vocab()]),
       };
