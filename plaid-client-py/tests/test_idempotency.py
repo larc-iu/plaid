@@ -412,7 +412,7 @@ CREATES = [
     ('token_layers.create', lambda c, **o: c.token_layers.create('tl', 'W', **o)),
     ('span_layers.create', lambda c, **o: c.span_layers.create('tk', 'S', **o)),
     ('relation_layers.create', lambda c, **o: c.relation_layers.create('sl', 'R', **o)),
-    ('vocab_layers.create', lambda c, **o: c.vocab_layers.create('V', **o)),
+    ('vocab_layers.create', lambda c, **o: c.vocab_layers.create('p', 'V', **o)),
     ('tokens.create', lambda c, **o: c.tokens.create('tk', 't', 0, 1, **o)),
     ('tokens.split', lambda c, **o: c.tokens.split('t', 1, **o)),
     ('spans.create', lambda c, **o: c.spans.create('sl', ['t'], 'N', **o)),

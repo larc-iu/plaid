@@ -149,8 +149,9 @@ export async function use(c: PlaidClient): Promise<void> {
   const maintainers: string[] = (await c.projects.get("p")).maintainers;
   const parent: string | null = (await c.tokenLayers.get("L")).parentTokenLayer;
   const overSpans: string = (await c.relationLayers.update("L", "n")).spanLayer;
-  const vocabMaintainers: string[] = (await c.vocabLayers.get("v"))
-    .maintainers;
+  const vocabHome: string | null = (await c.vocabLayers.get("v")).project;
+  const borrower: string | null = (await c.vocabLayers.borrowers("v"))[0].name;
+  const moved: string | null = (await c.vocabLayers.move("v", "p")).project;
   const admin: boolean = (await c.users.get("u")).isAdmin;
   const lockId: string = (await c.documents.acquireLock("d")).lockId;
   const restored: number = (await c.documents.restore("d", "t")).tokens
@@ -218,6 +219,6 @@ export async function use(c: PlaidClient): Promise<void> {
   console.log(lockHolder, edits, counts, n, s);
   console.log(ends, made, label, spanTokens, tokenText, linked, form);
   console.log(docVersion, relationsRead, digest, maintainers, parent);
-  console.log(overSpans, vocabMaintainers, admin, lockId, restored, right);
+  console.log(overSpans, vocabHome, borrower, moved, admin, lockId, restored, right);
   console.log(group, queryCount, stats, nothing);
 }

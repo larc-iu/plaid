@@ -484,12 +484,18 @@ class VocabLayersResource(_ConfigMethods, _Resource):
         return iter_pages(self._client, '/api/v1/vocab-layers',
                           page_size=page_size)
 
-    def create(self, name: str, audit_message=None, *, id: str | None = None) -> Any:
-        """Create a new vocab layer.
+    def create(self, project_id: str, name: str, audit_message=None, *,
+               id: str | None = None) -> Any:
+        """Create a new vocabulary in a project, its home.
 
-        Also registers the current user as a maintainer.
+        The project's roles are the vocabulary's rights: its maintainers
+        rename, move and delete the vocabulary and rename, merge, delete and
+        restore entries, its writers add entries and change what is stored
+        on one, its readers read. Only a maintainer of the project may create
+        one (403 otherwise).
 
         Args:
+            project_id: The home project's ID
             name: The name
             id: Optional. The id to create it under, a UUIDv7 this client
                 minted (``plaid_client.uuid7()``), so a create sent again after
@@ -497,7 +503,9 @@ class VocabLayersResource(_ConfigMethods, _Resource):
                 id was used before).
         """
         return self._request('POST', '/api/v1/vocab-layers',
-                             body=_body_of(id=_UNSET if id is None else id, name=name), audit_message=audit_message)
+                             body=_body_of(id=_UNSET if id is None else id, name=name,
+                                           project_id=project_id),
+                             audit_message=audit_message)
 
     def update(self, id: str, name: str, audit_message=None) -> Any:
         """Update a vocab layer's name.
@@ -512,26 +520,50 @@ class VocabLayersResource(_ConfigMethods, _Resource):
         return self._request('PATCH', f'/api/v1/vocab-layers/{id}',
                              body=_body_of(name=name), audit_message=audit_message)
 
-    def delete(self, id: str, audit_message=None, *, only_in_project: str | None = None,
-               dry_run: bool = False) -> Any:
-        """Delete a vocab layer, with its entries and every link to them.
-        Refused (409) while a project the caller does not maintain links it
-        (an admin maintains every project): the error's ``response_data``
-        counts those projects as ``'other-projects'`` and names none. With
-        ``only_in_project``, refused (409) when any other project links it,
-        including projects the caller cannot read. With ``dry_run`` nothing
-        is written: the same refusals, or ``{'projects', 'links'}``, the
-        projects linking it and the links in their documents the delete
-        would remove.
+    def delete(self, id: str, audit_message=None, *, dry_run: bool = False) -> Any:
+        """Delete a vocabulary, with its entries and every link to them.
+
+        A maintainer of its home project only. Refused (409) while any other
+        project links (borrows) it, for everyone, admins included: the
+        error's ``response_data`` counts those projects as
+        ``'other-projects'`` and names none. With ``dry_run`` nothing is
+        written: the same refusal, or ``{'links'}``, the links in the home's
+        documents the delete would remove.
 
         Args:
             id: The resource ID
-            only_in_project: The one project allowed to link it
             dry_run: Write nothing, answer what would go
         """
         return self._request('DELETE', f'/api/v1/vocab-layers/{id}', audit_message=audit_message,
-                             query_params={'only-in-project': only_in_project,
-                                           'dry-run': 'true' if dry_run else None})
+                             query_params={'dry-run': 'true' if dry_run else None})
+
+    def move(self, id: str, project_id: str, audit_message=None) -> Any:
+        """Move a vocabulary to another project, which becomes its home.
+
+        Needs maintainer rights on both projects (403 otherwise). The old
+        home keeps the vocabulary linked, as a borrower. A move to the
+        current home writes nothing. Returns the vocabulary, its ``project``
+        the new home.
+
+        Args:
+            id: The vocabulary ID
+            project_id: The new home project's ID
+        """
+        return self._request('POST', f'/api/v1/vocab-layers/{id}/move',
+                             body=_body_of(project_id=project_id), audit_message=audit_message)
+
+    def borrowers(self, id: str) -> Any:
+        """The projects other than its home that link (borrow) a vocabulary,
+        as ``[{'id', 'name'}]`` ordered by id.
+
+        A maintainer of the home only. ``name`` is None for a project the
+        caller cannot read: the id is still given, so the home's maintainer
+        can end that borrowing with ``projects.unlink_vocab``.
+
+        Args:
+            id: The vocabulary ID
+        """
+        return self._request('GET', f'/api/v1/vocab-layers/{id}/borrowers')
 
     def audit(self, id: str, *, start_time: str | None = None,
               end_time: str | None = None,
@@ -598,7 +630,7 @@ class VocabLayersResource(_ConfigMethods, _Resource):
         X-Document-Versions (or, past fifty documents,
         X-Document-Versions-Omitted), which the client takes up as on any
         write. A time when the entry did not exist is a 400. Maintainers of
-        the vocabulary only.
+        the vocabulary's home project only.
 
         Args:
             id: The vocabulary ID
@@ -613,24 +645,6 @@ class VocabLayersResource(_ConfigMethods, _Resource):
                              query_params={'as-of': as_of,
                                            'dry-run': 'true' if dry_run else None},
                              audit_message=audit_message)
-
-    def add_maintainer(self, id: str, user_id: str, audit_message=None) -> Any:
-        """Assign a user as a maintainer for this vocab layer.
-
-        Args:
-            id: The resource ID
-            user_id: The user ID
-        """
-        return self._request('POST', f'/api/v1/vocab-layers/{id}/maintainers/{user_id}', audit_message=audit_message)
-
-    def remove_maintainer(self, id: str, user_id: str, audit_message=None) -> Any:
-        """Remove a user's maintainer privileges for this vocab layer.
-
-        Args:
-            id: The resource ID
-            user_id: The user ID
-        """
-        return self._request('DELETE', f'/api/v1/vocab-layers/{id}/maintainers/{user_id}', audit_message=audit_message)
 
 
 class RelationsResource(_MetadataMethods, _Resource):
@@ -1087,8 +1101,8 @@ class UsersResource(_Resource):
         """Deactivate a user.
 
         Users are never hard-deleted: deactivation rejects their logins and
-        tokens, strips their project memberships and vocab maintainerships,
-        and revokes their API tokens. The user stays visible in listings with
+        tokens, strips their project memberships, and revokes their API
+        tokens. The user stays visible in listings with
         a ``deactivated-at`` timestamp. Reversible via :meth:`activate`,
         which restores login only.
 
@@ -1100,7 +1114,7 @@ class UsersResource(_Resource):
     def activate(self, id: str, audit_message=None) -> Any:
         """Reactivate a deactivated user, restoring their ability to log in.
 
-        Project memberships, vocab maintainerships, and API tokens removed at
+        Project memberships and API tokens removed at
         deactivation are NOT restored — re-grant them deliberately.
 
         Args:
@@ -2624,19 +2638,29 @@ class ProjectsResource(_ConfigMethods, _Resource):
         return self._request('PATCH', f'/api/v1/projects/{id}',
                              body=_body_of(name=name), audit_message=audit_message)
 
-    def delete(self, id: str, audit_message=None, timeout=_UNSET) -> Any:
-        """Delete a project and everything in it. This is irrecoverable. The
-        project is gone when this returns, and what it holds is removed on
-        the server afterwards.
+    def delete(self, id: str, audit_message=None, timeout=_UNSET, *,
+               dry_run: bool = False) -> Any:
+        """Delete a project and everything in it, its own vocabularies
+        included. This is irrecoverable. The project is gone when this
+        returns, and what it holds is removed on the server afterwards.
+
+        Refused (409) while another project links (borrows) one of its
+        vocabularies, for everyone, admins included: the error's
+        ``response_data`` counts those projects as ``'other-projects'`` and
+        names none. With ``dry_run`` nothing is written: the same refusal, or
+        ``{'vocabularies'}``, the vocabularies the delete would take, as
+        ``{'id', 'name'}`` by name.
 
         Args:
             id: The resource ID
             audit_message: Custom audit-log message.
             timeout: Per-request timeout in seconds, the client's own by
                 default. ``None`` or 0 disables it.
+            dry_run: Write nothing, answer what would go
         """
         return self._request('DELETE', f'/api/v1/projects/{id}',
                               audit_message=audit_message,
+                              query_params={'dry-run': 'true' if dry_run else None},
                               **_body_of(timeout=timeout))
 
     def add_writer(self, id: str, user_id: str, audit_message=None) -> Any:
@@ -2761,7 +2785,12 @@ class ProjectsResource(_ConfigMethods, _Resource):
                              skip_response_transform=True)
 
     def link_vocab(self, id: str, vocab_id: str, audit_message=None) -> Any:
-        """Link a vocabulary to a project.
+        """Link (borrow) another project's vocabulary into this project.
+
+        Its members read it and link their tokens to its entries, and change
+        no entry. Needs a maintainer of this project who holds a role in the
+        vocabulary's home project (403 otherwise). Linking a vocabulary to
+        its own home writes nothing.
 
         Args:
             id: The resource ID
@@ -2769,14 +2798,24 @@ class ProjectsResource(_ConfigMethods, _Resource):
         """
         return self._request('POST', f'/api/v1/projects/{id}/vocabs/{vocab_id}', audit_message=audit_message)
 
-    def unlink_vocab(self, id: str, vocab_id: str, audit_message=None) -> Any:
-        """Unlink a vocabulary from a project.
+    def unlink_vocab(self, id: str, vocab_id: str, audit_message=None, *,
+                     dry_run: bool = False) -> Any:
+        """End a project's borrowing of a vocabulary, removing that project's
+        links to its entries.
+
+        Allowed to a maintainer of this project, and to a maintainer of the
+        vocabulary's home project, who need not be able to read this one.
+        Refused (409) for the vocabulary's own home. With ``dry_run`` nothing
+        is written: the same refusal, or ``{'links'}``, the links in this
+        project's documents the unlink would remove.
 
         Args:
             id: The resource ID
             vocab_id: The vocab layer ID
+            dry_run: Write nothing, answer what would go
         """
-        return self._request('DELETE', f'/api/v1/projects/{id}/vocabs/{vocab_id}', audit_message=audit_message)
+        return self._request('DELETE', f'/api/v1/projects/{id}/vocabs/{vocab_id}', audit_message=audit_message,
+                             query_params={'dry-run': 'true' if dry_run else None})
 
 
 class TextLayersResource(_ConfigMethods, _LayerMethods, _Resource):
@@ -2813,6 +2852,9 @@ class VocabItemsResource(_MetadataMethods, _Resource):
                *, id: str | None = None) -> Any:
         """Create a new vocab item.
 
+        A writer or maintainer of the vocabulary's home project, whatever
+        project the caller works in.
+
         Args:
             vocab_layer_id: The vocab layer ID
             form: The vocab item form
@@ -2831,7 +2873,8 @@ class VocabItemsResource(_MetadataMethods, _Resource):
 
         A document read carries the entry's form on every link to it, so a
         rename restates those documents: each has its version bumped, and a
-        strict-mode client picks up their new versions from the response.
+        strict-mode client picks up their new versions from the response. A
+        maintainer of the vocabulary's home project only.
 
         Args:
             id: The resource ID
@@ -2844,7 +2887,8 @@ class VocabItemsResource(_MetadataMethods, _Resource):
         """Delete a vocab item, and every link to it.
 
         Every document holding one of those links has its version bumped, and a
-        strict-mode client picks up their new versions from the response.
+        strict-mode client picks up their new versions from the response. A
+        maintainer of the vocabulary's home project only.
 
         Args:
             id: The resource ID
@@ -2859,8 +2903,9 @@ class VocabItemsResource(_MetadataMethods, _Resource):
     def bulk_create(self, body: list, audit_message=None) -> dict:
         """Create multiple vocab items in a single operation.
 
-        Entries may target different vocab layers; the user must have write
-        access to each. Each entry is a dict with keys ``vocab_layer_id``,
+        Entries may target different vocabularies of one home project (400
+        when their homes differ); the user must be a writer or maintainer of
+        that project. Each entry is a dict with keys ``vocab_layer_id``,
         ``form``, and optional ``metadata``.
 
         Args:
@@ -2878,8 +2923,10 @@ class VocabItemsResource(_MetadataMethods, _Resource):
 
         Each entry is a dict with ``id`` and either or both of ``form`` (set
         only when the key is present) and ``metadata`` (a list of metadata
-        ops, as for ``patch_metadata``). The entries may lie in several vocab
-        layers; the user must have write access to each. An unknown id
+        ops, as for ``patch_metadata``). The entries may lie in several
+        vocabularies of one home project (400 when their homes differ); the
+        user must be a writer of that project, and a maintainer of it when a
+        form changes. An unknown id
         refuses the whole update, and an id may appear only once. Only an
         entry whose form really changes restates the documents linking it,
         and a strict-mode client picks up their new versions from the
@@ -2896,7 +2943,9 @@ class VocabItemsResource(_MetadataMethods, _Resource):
     def bulk_delete(self, body: list, audit_message=None) -> Any:
         """Delete multiple vocab items in a single operation. Provide a list of IDs.
 
-        Each item's descendant vocab links are deleted too. Every document
+        Each item's descendant vocab links are deleted too. All must be in
+        vocabularies of one home project (400 when their homes differ), and
+        only a maintainer of that project may delete them. Every document
         holding one of those links has its version bumped, and a strict-mode
         client picks up their new versions from the response.
 
@@ -2917,7 +2966,8 @@ class VocabItemsResource(_MetadataMethods, _Resource):
         loser by its id, in the vocabulary's other entries and in the documents
         of every project it is linked to, is rewritten to name the survivor. A
         reference to a loser in the survivor's own metadata is the caller's to
-        rewrite, in the same batch. Needs maintainer rights on the vocabulary.
+        rewrite, in the same batch. Needs maintainer rights on the
+        vocabulary's home project.
 
         Args:
             survivor_id: The entry that stays

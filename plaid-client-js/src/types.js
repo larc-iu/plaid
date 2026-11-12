@@ -334,7 +334,7 @@
 /**
  * A project. `textLayers` nests its layers in their display order, each
  * with the layers built on it, and `vocabs` lists the vocabularies linked to
- * it.
+ * it: its own (`vocab.project === project.id`) and the ones it borrows.
  * @typedef {object} Project
  * @property {string} id
  * @property {string} name
@@ -354,7 +354,7 @@
  *   constraints: Record<string, LayerConstraint[]>, relationLayers: ProjectRelationLayer[]}} ProjectSpanLayer
  * @typedef {{id: string, name: string, config: Record<string, any>,
  *   constraints: Record<string, LayerConstraint[]>}} ProjectRelationLayer
- * @typedef {{id: string, name: string, maintainers: string[], config: Record<string, any>}} ProjectVocab
+ * @typedef {{id: string, name: string, project: string | null, config: Record<string, any>}} ProjectVocab
  */
 
 /**
@@ -490,14 +490,16 @@
  */
 
 /**
- * A vocabulary. `items` is there on a read made with `includeItems`.
+ * A vocabulary. `project` is its home project's id, null only in a read as of
+ * a time before vocabularies had homes. `items` is there on a read made with
+ * `includeItems`.
  * @typedef {object} VocabLayer
  * @property {string} id
  * @property {string} name
+ * @property {string | null} project
  * @property {string} timeCreated
  * @property {string} timeModified
  * @property {Record<string, any>} config
- * @property {string[]} maintainers
  * @property {VocabItem[]} [items]
  */
 

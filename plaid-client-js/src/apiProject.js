@@ -207,19 +207,26 @@ export function projectsApi(client) {
         body: bodyOf({ name }),
       }),
     /**
-     * Delete a project and everything in it. This is irrecoverable. The
-     * project is gone when this returns, and what it holds is removed on
-     * the server afterwards.
+     * Delete a project and everything in it, its own vocabularies included.
+     * This is irrecoverable. The project is gone when this returns, and what
+     * it holds is removed on the server afterwards. Refused (409) while
+     * another project links (borrows) one of its vocabularies, for everyone,
+     * admins included: the error's `responseData` counts those projects as
+     * `"other-projects"` and names none. With `dryRun` nothing is written:
+     * the same refusal, or `{vocabularies}`, the vocabularies the delete
+     * would take, as `{id, name}` by name.
      * @param {string} id - The resource ID
      * @param {string} [auditMessage] - Custom audit-log message
      * @param {object} [options]
      * @param {number} [options.timeout] - Per-request timeout in ms, the client's own by default (0/null disables)
-     * @returns {Promise<void>}
+     * @param {boolean} [options.dryRun] - Write nothing, answer what would go
+     * @returns {Promise<void | {vocabularies: Array<{id: string, name: string}>}>}
      */
-    delete: (id, auditMessage, { timeout } = {}) =>
+    delete: (id, auditMessage, { timeout, dryRun } = {}) =>
       client._request("DELETE", `/api/v1/projects/${id}`, {
         auditMessage,
         timeout,
+        ...(dryRun ? { queryParams: { "dry-run": "true" } } : {}),
       }),
     /**
      * Set a user's access level to read and write for this project.
@@ -304,7 +311,11 @@ export function projectsApi(client) {
         skipResponseTransform: true,
       }),
     /**
-     * Link a vocabulary to a project.
+     * Link (borrow) another project's vocabulary into this project: its
+     * members read it and link their tokens to its entries, and change no
+     * entry. Needs a maintainer of this project who holds a role in the
+     * vocabulary's home project (403 otherwise). Linking a vocabulary to its
+     * own home writes nothing.
      * @param {string} id - The resource ID
      * @param {string} vocabId - The vocab layer ID
      * @param {string} [auditMessage] - Audit message for this write
@@ -315,15 +326,23 @@ export function projectsApi(client) {
         auditMessage,
       }),
     /**
-     * Unlink a vocabulary from a project.
+     * End a project's borrowing of a vocabulary, removing that project's
+     * links to its entries. Allowed to a maintainer of this project, and to
+     * a maintainer of the vocabulary's home project, who need not be able to
+     * read this one. Refused (409) for the vocabulary's own home. With
+     * `dryRun` nothing is written: the same refusal, or `{links}`, the links
+     * in this project's documents the unlink would remove.
      * @param {string} id - The resource ID
      * @param {string} vocabId - The vocab layer ID
      * @param {string} [auditMessage] - Audit message for this write
-     * @returns {Promise<void>}
+     * @param {object} [opts]
+     * @param {boolean} [opts.dryRun] - Write nothing, answer what would go
+     * @returns {Promise<void | {links: number}>}
      */
-    unlinkVocab: (id, vocabId, auditMessage) =>
+    unlinkVocab: (id, vocabId, auditMessage, { dryRun } = {}) =>
       client._request("DELETE", `/api/v1/projects/${id}/vocabs/${vocabId}`, {
         auditMessage,
+        ...(dryRun ? { queryParams: { "dry-run": "true" } } : {}),
       }),
     ...configMethods(client, "projects"),
     ...auditMethods(client, "projects"),

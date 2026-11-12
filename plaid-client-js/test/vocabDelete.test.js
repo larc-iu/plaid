@@ -1,6 +1,7 @@
-// vocabLayers.delete: a dry run sends dry-run=true and answers what the delete
-// would remove, and the refusal while projects the caller does not maintain
-// link the vocabulary keeps core's count on the error (SEAM-2).
+// vocabLayers.delete: a dry run sends dry-run=true and answers the links the
+// delete would remove, and the refusal while another project borrows the
+// vocabulary keeps core's count on the error. The same as plaid-client-py's
+// tests/test_vocab_delete.py.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -25,17 +26,30 @@ function stubFetch(status, body) {
   return { seen, restore: () => (globalThis.fetch = real) };
 }
 
-test("a dry run asks with dry-run=true and answers the counts", async () => {
+test("a dry run asks with dry-run=true and answers the links", async () => {
   const client = new PlaidClient("http://plaid.test", "tok");
-  const { seen, restore } = stubFetch(200, { projects: 2, links: 14 });
+  const { seen, restore } = stubFetch(200, { links: 14 });
   try {
     const res = await client.vocabLayers.delete("v1", undefined, { dryRun: true });
-    assert.deepEqual(res, { projects: 2, links: 14 });
+    assert.deepEqual(res, { links: 14 });
   } finally {
     restore();
   }
   assert.equal(seen[0].method, "DELETE");
-  assert.equal(new URL(seen[0].url).searchParams.get("dry-run"), "true");
+  const query = new URL(seen[0].url).searchParams;
+  assert.equal(query.get("dry-run"), "true");
+  assert.deepEqual([...query.keys()], ["dry-run"]);
+});
+
+test("a delete takes no project to keep", async () => {
+  const client = new PlaidClient("http://plaid.test", "tok");
+  const { seen, restore } = stubFetch(204, null);
+  try {
+    await client.vocabLayers.delete("v1", undefined, { onlyInProject: "p1" });
+  } finally {
+    restore();
+  }
+  assert.equal(new URL(seen[0].url).searchParams.get("only-in-project"), null);
 });
 
 test("a refusal carries the number of other projects and its sentence", async () => {

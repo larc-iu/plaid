@@ -213,8 +213,8 @@ export function usersApi(client) {
       }),
     /**
      * Deactivate a user. Users are never hard-deleted: deactivation
-     * rejects their logins and tokens, strips their project memberships
-     * and vocab maintainerships, and revokes their API tokens. The user
+     * rejects their logins and tokens, strips their project memberships,
+     * and revokes their API tokens. The user
      * stays visible in listings with a deactivated-at timestamp.
      * Reversible via activate(), which restores login only.
      * @param {string} id - The resource ID
@@ -225,7 +225,7 @@ export function usersApi(client) {
       client._request("DELETE", `/api/v1/users/${id}`, { auditMessage }),
     /**
      * Reactivate a deactivated user, restoring their ability to log in.
-     * Project memberships, vocab maintainerships, and API tokens removed
+     * Project memberships and API tokens removed
      * at deactivation are NOT restored — re-grant them deliberately.
      * @param {string} id - The resource ID
      * @param {string} [auditMessage] - Audit message for this write

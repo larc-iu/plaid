@@ -259,7 +259,7 @@ def test_guidelines_comments_and_a_restore():
 
 
 def test_a_vocabularys_reads_log_and_entry_restore():
-    lex = {'id': 'v1', 'name': 'Lex', 'items': [{'id': 'i1', 'form': 'kai'}]}
+    lex = {'id': 'v1', 'name': 'Lex', 'project': 'p', 'items': [{'id': 'i1', 'form': 'kai'}]}
     log = [{'id': 'a1', 'time': '2026-01-01T00:00:00Z',
             'ops': [{'type': 'vocab-item/delete', 'time': '2026-01-01T00:00:00Z'}]},
            {'id': 'a2', 'time': '2026-02-01T00:00:00Z',
@@ -267,7 +267,7 @@ def test_a_vocabularys_reads_log_and_entry_restore():
     c = _project_client(vocabularies={'v1': lex}, vocab_audit={'v1': log, ('v1', 'i1'): log[:1]},
                         vocab_restore_summary={'inserted': True, 'form': False,
                                                'metadata': False, 'total': 1})
-    assert 'items' not in c.vocab_layers.get('v1', as_of='T')
+    assert c.vocab_layers.get('v1', as_of='T') == {'id': 'v1', 'name': 'Lex', 'project': 'p'}
     assert c.vocab_layers.get('v1', include_items=True)['items'] == lex['items']
     assert c.vocab_layers.get_item_at('v1', 'i1', 'T') == {'id': 'i1', 'form': 'kai'}
     with pytest.raises(PlaidAPIError) as e:

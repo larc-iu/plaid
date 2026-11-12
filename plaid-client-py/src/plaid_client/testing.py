@@ -1015,8 +1015,8 @@ class FakeClient:
     ``messages.discover_services`` answers for each project.
 
     ``vocabularies`` is ``{vid: vocabulary}``, each as the server's
-    ``vocab_layers.get(..., include_items=True)`` answers (``items`` included),
-    and ``vocab_audit`` is ``{vid: [audit entries]}``, with a key ``(vid,
+    ``vocab_layers.get(..., include_items=True)`` answers (``items`` included,
+    ``project`` its home project's id), and ``vocab_audit`` is ``{vid: [audit entries]}``, with a key ``(vid,
     item_id)`` for what an ``item_id=`` read answers. ``vocab_layers.get``,
     ``get_item_at``, ``audit`` and ``audit_page`` answer from them, and an
     entry restore answers, done or dry, with ``vocab_restore_summary``. An

@@ -154,17 +154,22 @@ export function vocabLayersApi(client) {
         pageSize,
       }),
     /**
-     * Create a new vocab layer. Note: this also registers the user as a maintainer.
+     * Create a new vocabulary in a project, its home. The project's roles
+     * are the vocabulary's rights: its maintainers rename, move and delete
+     * the vocabulary and rename, merge, delete and restore entries, its
+     * writers add entries and change what is stored on one, its readers
+     * read. Only a maintainer of the project may create one (403 otherwise).
+     * @param {string} projectId - The home project's ID
      * @param {string} name - The name
      * @param {string} [auditMessage] - Audit message for this write
      * @param {object} [opts]
      * @param {string} [opts.id] - The new entity's id, minted by the caller (see uuidv7)
      * @returns {Promise<Created>}
      */
-    create: (name, auditMessage, { id } = {}) =>
+    create: (projectId, name, auditMessage, { id } = {}) =>
       client._request("POST", "/api/v1/vocab-layers", {
         auditMessage,
-        body: bodyOf({ id, name }),
+        body: bodyOf({ id, name, "project-id": projectId }),
       }),
     /**
      * Update a vocab layer's name. A new name restates every document
@@ -181,33 +186,48 @@ export function vocabLayersApi(client) {
         body: bodyOf({ name }),
       }),
     /**
-     * Delete a vocab layer, with its entries and every link to them.
-     * Refused (409) while a project the caller does not maintain links it
-     * (an admin maintains every project): the error's `responseData` counts
-     * those projects as `"other-projects"` and names none. With
-     * `onlyInProject`, refused (409) when any other project links it,
-     * including projects the caller cannot read. With `dryRun` nothing is
-     * written: the same refusals, or `{projects, links}`, the projects
-     * linking it and the links in their documents the delete would remove.
+     * Delete a vocabulary, with its entries and every link to them. A
+     * maintainer of its home project only. Refused (409) while any other
+     * project links (borrows) it, for everyone, admins included: the
+     * error's `responseData` counts those projects as `"other-projects"` and
+     * names none. With `dryRun` nothing is written: the same refusal, or
+     * `{links}`, the links in the home's documents the delete would remove.
      * @param {string} id - The resource ID
      * @param {string} [auditMessage] - Audit message for this write
      * @param {object} [opts]
-     * @param {string} [opts.onlyInProject] - The one project allowed to link it
      * @param {boolean} [opts.dryRun] - Write nothing, answer what would go
-     * @returns {Promise<void | {projects: number, links: number}>}
+     * @returns {Promise<void | {links: number}>}
      */
-    delete: (id, auditMessage, { onlyInProject, dryRun } = {}) =>
+    delete: (id, auditMessage, { dryRun } = {}) =>
       client._request("DELETE", `/api/v1/vocab-layers/${id}`, {
         auditMessage,
-        ...(onlyInProject || dryRun
-          ? {
-              queryParams: {
-                ...(onlyInProject ? { "only-in-project": onlyInProject } : {}),
-                ...(dryRun ? { "dry-run": "true" } : {}),
-              },
-            }
-          : {}),
+        ...(dryRun ? { queryParams: { "dry-run": "true" } } : {}),
       }),
+    /**
+     * Move a vocabulary to another project, which becomes its home. Needs
+     * maintainer rights on both projects (403 otherwise). The old home keeps
+     * the vocabulary linked, as a borrower. A move to the current home
+     * writes nothing. Resolves to the vocabulary, its `project` the new home.
+     * @param {string} id - The vocabulary ID
+     * @param {string} projectId - The new home project's ID
+     * @param {string} [auditMessage] - Audit message for this write
+     * @returns {Promise<VocabLayer>}
+     */
+    move: (id, projectId, auditMessage) =>
+      client._request("POST", `/api/v1/vocab-layers/${id}/move`, {
+        auditMessage,
+        body: bodyOf({ "project-id": projectId }),
+      }),
+    /**
+     * The projects other than its home that link (borrow) a vocabulary,
+     * ordered by id. A maintainer of the home only. `name` is null for a
+     * project the caller cannot read: the id is still given, so the home's
+     * maintainer can end that borrowing with `projects.unlinkVocab`.
+     * @param {string} id - The vocabulary ID
+     * @returns {Promise<Array<{id: string, name: string | null}>>}
+     */
+    borrowers: (id) =>
+      client._request("GET", `/api/v1/vocab-layers/${id}/borrowers`),
     /**
      * Get the audit log of a vocabulary: every change to it or to its
      * entries, folded into entries as the document log is. Links are not
@@ -270,7 +290,7 @@ export function vocabLayersApi(client) {
      * come back in X-Document-Versions (or, past fifty documents,
      * X-Document-Versions-Omitted), which the client takes up as on any
      * write. A time when the entry did not exist is a 400. Maintainers of
-     * the vocabulary only.
+     * the vocabulary's home project only.
      * @param {string} id - The vocabulary ID
      * @param {string} itemId - The entry ID
      * @param {string} asOf - The moment to go back to (ISO-8601 instant),
@@ -292,32 +312,6 @@ export function vocabLayersApi(client) {
           auditMessage,
         },
       ),
-    /**
-     * Assign a user as a maintainer for this vocab layer.
-     * @param {string} id - The resource ID
-     * @param {string} userId - The user ID
-     * @param {string} [auditMessage] - Audit message for this write
-     * @returns {Promise<void>}
-     */
-    addMaintainer: (id, userId, auditMessage) =>
-      client._request(
-        "POST",
-        `/api/v1/vocab-layers/${id}/maintainers/${userId}`,
-        { auditMessage },
-      ),
-    /**
-     * Remove a user's maintainer privileges for this vocab layer.
-     * @param {string} id - The resource ID
-     * @param {string} userId - The user ID
-     * @param {string} [auditMessage] - Audit message for this write
-     * @returns {Promise<void>}
-     */
-    removeMaintainer: (id, userId, auditMessage) =>
-      client._request(
-        "DELETE",
-        `/api/v1/vocab-layers/${id}/maintainers/${userId}`,
-        { auditMessage },
-      ),
     ...configMethods(client, "vocab-layers"),
   };
 }
@@ -333,7 +327,8 @@ export function vocabItemsApi(client) {
     get: (id) =>
       client._request("GET", `/api/v1/vocab-items/${id}`),
     /**
-     * Create a new vocab item
+     * Create a new vocab item. A writer or maintainer of the vocabulary's
+     * home project, whatever project the caller works in.
      * @param {string} vocabLayerId - The vocab layer ID
      * @param {string} form - The vocab item form
      * @param {any} [metadata] - Metadata map. Omit to leave unset; pass null to send JSON null.
@@ -351,7 +346,7 @@ export function vocabItemsApi(client) {
      * Update a vocab item's form. A document read carries the entry's form on
      * every link to it, so a rename restates those documents: each has its
      * version bumped, and a strict-mode client picks up their new versions
-     * from the response.
+     * from the response. A maintainer of the vocabulary's home project only.
      * @param {string} id - The resource ID
      * @param {string} form - The vocab item form
      * @param {string} [auditMessage] - Audit message for this write
@@ -365,7 +360,8 @@ export function vocabItemsApi(client) {
     /**
      * Delete a vocab item, and every link to it. Every document holding one
      * of those links has its version bumped, and a strict-mode client picks
-     * up their new versions from the response.
+     * up their new versions from the response. A maintainer of the
+     * vocabulary's home project only.
      * @param {string} id - The resource ID
      * @param {string} [auditMessage] - Audit message for this write
      * @param {{expectedLinkCount?: number}} [options] - `expectedLinkCount`: the
@@ -380,7 +376,8 @@ export function vocabItemsApi(client) {
       }),
     /**
      * Create multiple vocab items in a single operation. Entries may target
-     * different vocab layers; the user must have write access to each.
+     * different vocabularies of one home project (400 when their homes
+     * differ); the user must be a writer or maintainer of that project.
      * @param {Array<{vocabLayerId: string, form: string, metadata?: any}>} body - The vocab items to create
      * @param {string} [auditMessage] - Audit message for this write
      * @returns {Promise<{ids: string[]}>}
@@ -393,7 +390,7 @@ export function vocabItemsApi(client) {
     /**
      * Update many vocab items in a single operation: set forms and/or patch
      * metadata.
-     * @param {Array<{id: string, form?: string, metadata?: Array<object>}>} body - `form` is set only when the key is present; `metadata` is a list of metadata ops, as for patchMetadata. The entries may lie in several vocab layers; the user must have write access to each. An unknown id refuses the whole update, and an id may appear only once. Only an entry whose form really changes restates the documents linking it, and a strict-mode client picks up their new versions from the response.
+     * @param {Array<{id: string, form?: string, metadata?: Array<object>}>} body - `form` is set only when the key is present; `metadata` is a list of metadata ops, as for patchMetadata. The entries may lie in several vocabularies of one home project (400 when their homes differ); the user must be a writer of that project, and a maintainer of it when a form changes. An unknown id refuses the whole update, and an id may appear only once. Only an entry whose form really changes restates the documents linking it, and a strict-mode client picks up their new versions from the response.
      * @param {string} [auditMessage] - Audit message for this write
      * @returns {Promise<{count: number}>} How many vocab items were updated.
      */
@@ -404,7 +401,9 @@ export function vocabItemsApi(client) {
       }),
     /**
      * Delete multiple vocab items in a single operation. Each item's
-     * descendant vocab links are deleted too. Provide an array of IDs.
+     * descendant vocab links are deleted too. Provide an array of IDs, all in
+     * vocabularies of one home project (400 when their homes differ). A
+     * maintainer of that project only.
      *
      * Every document holding one of those links has its version bumped, and
      * a strict-mode client picks up their new versions from the response.
@@ -429,7 +428,7 @@ export function vocabItemsApi(client) {
      * project it is linked to, is rewritten to name the survivor. A
      * reference to a loser in the survivor's own metadata is the caller's to
      * rewrite, in the same batch.
-     * Needs maintainer rights on the vocabulary.
+     * Needs maintainer rights on the vocabulary's home project.
      * @param {string} survivorId - The entry that stays
      * @param {string[]} loserIds - The entries merged into it
      * @param {string} [auditMessage] - Audit message for this write
