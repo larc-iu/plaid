@@ -450,6 +450,8 @@ def test_the_history_label_of_a_partly_applied_plan_names_what_was_written(monke
     in full."""
     spec = APPS['igt']()
     client = spec['client']()
+    # Deleting an entry is for a maintainer of the lexicon's project.
+    client.project['maintainers'] = ['u@x']
     # An entry delete is in the igt executor's second batch.
     plan = _plan_of(spec, client,
                     ('set_field', {'document': 'd1', 'refs': ['s1.w2'], 'field': 'Gloss', 'value': 'fish'}),

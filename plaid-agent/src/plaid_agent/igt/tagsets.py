@@ -20,7 +20,6 @@ import json
 from typing import Any, Dict, List, Optional, Tuple
 
 from plaid_client.constraints import value_parts, value_set_allows
-from plaid_client.provenance import project_role
 from plaid_client.workflows.igt.config import read_igt, read_igt_namespace, read_scope, read_vocab_fields
 from plaid_client.workflows.igt.glossing import is_lexical_part
 from plaid_client.workflows.igt.tagsets import (CLOSED, MIXED, MODES, field_constraints, mode_rule, normalize_tagset,
@@ -413,21 +412,18 @@ def _field(ws, owner: str, fields: List[dict], name: str) -> dict:
 
 def _require_maintainer(ws, lexicon: Optional[dict]) -> None:
     """Refuse what the requester could not approve: settings are a
-    maintainer's. Unknown requesters (no id) are left to the server."""
+    maintainer's, of this project for its own tagsets and its own lexicons'.
+    A lexicon another project lends this one is that project's to set up.
+    Unknown requesters (no id) are left to the server."""
+    if lexicon is not None and lexicon.get('borrowed'):
+        raise ToolError(f'The lexicon {qv(lexicon["name"])} belongs to another project, and its tagsets are changed '
+                        'there, by a maintainer of that project. Nothing was planned.', kind='not-allowed')
     uid = getattr(ws, 'requester_id', None)
-    if uid is None or ws.requester_is_admin():
+    if uid is None or ws.requester_role() == 'maintainer' or ws.requester_is_admin():
         return
-    if lexicon is not None:
-        held, what = lexicon, f'the lexicon {qv(lexicon["name"])}'
-    else:
-        try:
-            held = ws.client.projects.get(ws.project.id)
-        except Exception:  # noqa: BLE001 - unreadable: the server decides at approval
-            return
-        what = 'this project'
-    if project_role(held, uid) != 'maintainer':
-        raise ToolError(f'Only a maintainer of {what} may change its tagsets, and the user is not one. '
-                        'Tell them who can.', kind='not-allowed')
+    where = f'the lexicon {qv(lexicon["name"])}' if lexicon is not None else 'the project'
+    raise ToolError(f'Only a maintainer of this project may change the tagsets of {where}, and the user is not one. '
+                    'Tell them who can.', kind='not-allowed')
 
 
 def _values(raw, name: str) -> List[dict]:

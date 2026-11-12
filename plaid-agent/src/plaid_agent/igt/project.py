@@ -140,7 +140,9 @@ class IgtProject:
     fields: Dict[str, Field]
     orthographies: List[str]
     ignored_cfg: Optional[dict]
-    vocabs: List[dict]  # [{id, name, fields: [spec], tagsets: {field name: tagset}}]
+    # [{id, name, project, borrowed, fields: [spec], tagsets: {field name: tagset}}]: ``project`` is
+    # the lexicon's home, and ``borrowed`` says it is another project's, read only here.
+    vocabs: List[dict]
     document_metadata: List[str]
     # document metadata field -> tagset (dataclasses.field spelled out: the class has a field() method)
     metadata_tagsets: Dict[str, dict] = dataclasses.field(default_factory=dict)
@@ -158,6 +160,9 @@ class IgtProject:
     # The time alignment's token layer (role ``time-alignment``), read only
     # (media.py), or None.
     alignment_layer_id: Optional[str] = None
+    # The project's role lists as read with it (maintainers, writers,
+    # readers), which are the rights over its own lexicons too.
+    roles: Dict[str, List[str]] = dataclasses.field(default_factory=dict)
 
     def field(self, name: str) -> Field:
         """Case-insensitive field lookup by display name, falling back to the
@@ -358,20 +363,23 @@ def load_project(client, project_id: str) -> IgtProject:
         orthographies=[o['name'] for o in (read_igt(word.get('config'), 'orthographies') or [])],
         ignored_cfg=read_ignored_tokens(word.get('config')),
         tokenize_new_text=read_tokenize_new_text(word.get('config')),
-        vocabs=[_vocab_entry(v) for v in (p.get('vocabs') or [])],
+        vocabs=[_vocab_entry(v, p['id']) for v in (p.get('vocabs') or [])],
         document_metadata=[m['name'] for m in metadata],
         metadata_tagsets=metadata_tagsets,
         tagsets=tagsets, metadata_tagset_names=metadata_tagset_names,
         guidelines=guidelines,
         alignment_layer_id=aligned['id'] if aligned else None,
+        roles={k: list(p.get(k) or []) for k in ('maintainers', 'writers', 'readers')},
     )
 
 
-def _vocab_entry(v: dict) -> dict:
+def _vocab_entry(v: dict, project_id: str) -> dict:
     """A lexicon as the tools see it: its entry fields as full specs (name,
     type, many, scope, and the rest, read the way the app's own editor reads
     them), and for each field a tagset holds, the tagset (the vocabulary's own,
-    never the project's)."""
+    never the project's). ``project`` is its home, the project whose roles are
+    the rights over it, and ``borrowed`` says that is not ``project_id``: the
+    lexicon is another project's, linked here to be read and linked to."""
     fields = normalize_vocab_fields(read_vocab_fields(v.get('config')))
     tagsets = {}
     for f in fields:
@@ -380,7 +388,7 @@ def _vocab_entry(v: dict) -> dict:
             tagsets[f['name']] = t
     return {'id': v['id'], 'name': v['name'], 'fields': fields, 'tagsets': tagsets,
             'all_tagsets': read_tagsets(v.get('config')),
-            'maintainers': list(v.get('maintainers') or [])}
+            'project': v.get('project'), 'borrowed': v.get('project') != project_id}
 
 
 # --- document ---------------------------------------------------------------
@@ -1139,10 +1147,23 @@ def tagset_lines(project: IgtProject, max_values: Optional[int] = None) -> List[
     return lines
 
 
-def render_overview(project: IgtProject, documents: List[dict], fill: Optional[Dict[str, Any]] = None) -> str:
+#: How a lexicon another project lends this one is marked wherever the
+#: project's lexicons are listed.
+BORROWED_MARK = " (another project's lexicon: read only here, words link to its entries)"
+
+
+def lexicon_label(v: dict) -> str:
+    """A lexicon's name as the project's lexicons are listed, marked when it
+    is another project's."""
+    return v['name'] + (BORROWED_MARK if v.get('borrowed') else '')
+
+
+def render_overview(project: IgtProject, documents: List[dict], fill: Optional[Dict[str, Any]] = None,
+                    rights: Optional[str] = None) -> str:
     """The project at a glance. ``fill`` (:func:`.queries.q_field_fill`) adds
     how many of a scope's items hold a value in each field, so an empty field
-    is seen before it is searched (survey item 9)."""
+    is seen before it is searched (survey item 9). ``rights`` is a line on
+    what the user may change in the project's own lexicons, after them."""
     lines = [f'Project "{project.name}"']
     for scope in SCOPES:
         fs = project.fields_by_scope(scope)
@@ -1155,9 +1176,11 @@ def render_overview(project: IgtProject, documents: List[dict], fill: Optional[D
         lines.append('Treated as the gloss where a tool takes no field= (' + ', '.join(defaults) + ')')
     lines.extend(tagset_lines(project))
     lines.append('Orthographies: ' + (', '.join(project.orthographies) or '(none)'))
-    lines.append('Lexicons: ' + (', '.join(v['name']
+    lines.append('Lexicons: ' + (', '.join(lexicon_label(v)
                                            + (f' (entry fields: {", ".join(vocab_field_summary(v))})' if v.get('fields') else '')
                                            for v in project.vocabs) or '(none)'))
+    if rights:
+        lines.append(rights)
     if project.document_metadata:
         lines.append('Document metadata fields: ' + ', '.join(project.document_metadata))
     lines.extend(overview_documents(documents, document_lines))

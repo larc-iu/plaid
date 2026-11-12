@@ -78,9 +78,12 @@ ERROR_CLASSES: List[Tuple[str, re.Pattern]] = [(name, re.compile(rx, re.I)) for 
     ('conflict', r'could not be read: HTTP (409|423)\b'),
     ('too-large', r'could not be read: HTTP (408|413)\b'),
     ('invalid-argument', r'could not be read: HTTP (400|422)\b'),
-    # What this user or this assistant may not do: a lexicon they do not
-    # maintain, a turn that read the web, a conversation planning elsewhere.
-    ('not-allowed', r'^Only a maintainer|does not maintain the lexicon|needs maintainer access|'
+    # What this user or this assistant may not do: a lexicon of a project
+    # where their role does not reach (the wording since the vocabulary home,
+    # and before it "does not maintain the lexicon"), another project's
+    # lexicon, a turn that read the web, a conversation planning elsewhere.
+    ('not-allowed', r'^Only a (writer or )?maintainer|does not maintain the lexicon|needs maintainer access|'
+                    r'belongs to another project|'
                     r'cannot also plan changes|^This conversation plans changes in "'),
     # A value a closed list does not take.
     ('invalid-argument', r'is not on the list .* is held to|is not a value of \S+ here|'

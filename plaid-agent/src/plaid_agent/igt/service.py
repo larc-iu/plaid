@@ -8,6 +8,7 @@ citation resolves to an example card, and how an approved plan is applied.
 
 from typing import Dict, Optional
 
+from plaid_client import PlaidAPIError
 from plaid_client.provenance import project_role
 
 from ..core.provenance import Requester
@@ -97,21 +98,30 @@ class AssistantService(BaseAssistantService):
         return False
 
     def may_approve(self, client, project_id: str, user_id: str, ops) -> Optional[str]:
-        # Settings are a maintainer's: of the project, or of the lexicon whose
-        # tagsets they are. An administrator may approve any.
+        # Settings are a maintainer's: of the project, or of the project a
+        # lexicon whose tagsets they are belongs to, asked of that project
+        # (a project the user cannot read refuses: they hold no role there).
+        # An administrator may approve any.
         if not ops or not all(op.get('kind') in SETTINGS_KINDS for op in ops):
             return None
         if Requester(client, user_id).is_admin():
             return None
         for owner in dict.fromkeys(op.get('owner') for op in ops):
             if owner == 'project':
-                held, what = client.projects.get(project_id) or {}, 'this project'
+                home, what = project_id, 'this project may approve its tagset changes'
             else:
                 held = client.vocab_layers.get(owner) or {}
-                what = f'the lexicon "{held.get("name") or owner}"'
-            if project_role(held, user_id) != 'maintainer':
-                return (f'Only a maintainer of {what} may approve its tagset changes. '
-                        'Nothing was written.')
+                home = held.get('project')
+                what = (f'the project the lexicon "{held.get("name") or owner}" belongs to may approve changes '
+                        'to its tagsets')
+            try:
+                project = client.projects.get(home) if home else {}
+            except PlaidAPIError as e:
+                if e.status not in (403, 404):
+                    raise
+                project = {}
+            if project_role(project, user_id) != 'maintainer':
+                return f'Only a maintainer of {what}. Nothing was written.'
         return None
 
     def place(self, ws, where: Optional[dict]) -> Optional[tuple]:

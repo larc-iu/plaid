@@ -8,7 +8,7 @@ what run_code is for. Everything here is IGT's own.
 from ..core import prompt as shared, sandbox, webtools
 from ..core.guidelines import section as guidelines_section
 from ..core.limits import OVERVIEW_DOCS
-from .project import IgtProject, SCOPES, tagset_lines
+from .project import IgtProject, SCOPES, lexicon_label, tagset_lines
 
 # Values of one tagset shown in the system prompt. Project_overview lists the rest.
 PROMPT_TAGSET_VALUES = 120
@@ -158,7 +158,7 @@ def shape_lines(project: IgtProject, max_tagset_values: int = PROMPT_TAGSET_VALU
     for i, line in enumerate(tagset_lines(project, max_values=max_tagset_values)):
         lines.append(('- ' if i == 0 else '') + line)
     lines.append('- Orthographies: ' + (', '.join(project.orthographies) or 'none'))
-    lines.append('- Lexicons: ' + (', '.join(v['name'] for v in project.vocabs) or 'none'))
+    lines.append('- Lexicons: ' + (', '.join(lexicon_label(v) for v in project.vocabs) or 'none'))
     return lines
 
 

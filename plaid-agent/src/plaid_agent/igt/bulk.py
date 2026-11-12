@@ -222,8 +222,9 @@ def _lexicon_renames(ws: Workspace, rep, earlier=()) -> List[Dict[str, Any]]:
     same plan takes away: the removals before the rule in plan order
     (``ws.rule_removed``), at staging and at approval alike. A headword an
     ``earlier`` rule renames is read as it leaves it, as the words are. A
-    lexicon the user does not maintain is left as it is (`_kept_lexicons`
-    says so), since only a maintainer may rename."""
+    lexicon whose headwords the user may not rename (another project's, or
+    this project's for anyone but a maintainer of it) is left as it is
+    (`_kept_lexicons` says so)."""
     from .queries import STORED, respelled_before
     _w, _m, renamed = respelled_before(earlier)
     out = []
@@ -257,7 +258,7 @@ def _lexicon_renames(ws: Workspace, rep, earlier=()) -> List[Dict[str, Any]]:
 
 def _kept_lexicons(ws: Workspace, rep) -> str:
     """The note on a respelling that leaves the headwords of a lexicon the
-    user does not maintain as they are, or ''."""
+    user may not rename as they are, or ''."""
     kept = []
     for v in ws.project.vocabs:
         if ws.can_manage_vocab(v):
@@ -265,11 +266,11 @@ def _kept_lexicons(ws: Workspace, rep) -> str:
         n = sum(1 for it in ws.view(v).items
                 if (it.get('form') or '') != rep(it.get('form') or '') and rep(it.get('form') or '').strip())
         if n:
-            kept.append(f'{n} in "{v["name"]}"')
+            kept.append(f'{n} in "{v["name"]}"' + (' (another project\'s lexicon)' if v.get('borrowed') else ''))
     if not kept:
         return ''
-    return ('\nHeadwords left as they are, since only a maintainer of their lexicon can rename them: '
-            + ', '.join(kept) + '. Tell the user.')
+    return ('\nHeadwords left as they are, since only a maintainer of the project a lexicon belongs to can rename '
+            'them: ' + ', '.join(kept) + '. Tell the user.')
 
 
 def _scoped_respell(ws: Workspace, a: Dict[str, Any], cap: int) -> List[Dict[str, Any]]:

@@ -19,7 +19,7 @@ def project_raw():
                                                    'values': [{'value': 'PL', 'description': 'plural'},
                                                               {'value': 'ERG'}]}}}},
         # The lexicon as setup makes it: gloss and pos hold their roles.
-        'vocabs': [{'id': VOCAB, 'name': 'Lexicon', 'config': {'igt': {'fields': {
+        'vocabs': [{'id': VOCAB, 'name': 'Lexicon', 'project': PID, 'config': {'igt': {'fields': {
             'gloss': {'inline': True, 'role': 'gloss'}, 'pos': {'inline': True, 'role': 'pos'}}}}}],
         'text_layers': [{
             'id': TEXT_LAYER, 'name': 'Text', 'config': {'plaid': {'role': 'baseline'}},
@@ -60,7 +60,7 @@ def document_raw():
                     {'id': 'w-4', 'begin': 18, 'end': 24},
                     {'id': 'w-p2', 'begin': 24, 'end': 25}],
                  'span_layers': [{'id': GLOSS, 'spans': [{'id': 'sp-g1', 'value': 'Ali', 'tokens': ['w-1']}]}],
-                 'vocabs': [{'id': VOCAB, 'name': 'Lexicon', 'vocab_links': [
+                 'vocabs': [{'id': VOCAB, 'name': 'Lexicon', 'project': PID, 'vocab_links': [
                      {'id': 'l-1', 'vocab_item': {'id': 'vi-ali', 'form': 'Ali'}, 'tokens': ['w-1']}]}]},
                 {'id': MORPH_LAYER, 'tokens': [
                     {'id': 'm-1a', 'begin': 0, 'end': 6, 'precedence': 1, 'metadata': {'form': 'Ali'}},
@@ -73,14 +73,14 @@ def document_raw():
                  'span_layers': [{'id': MGLOSS, 'spans': [
                      {'id': 'sp-m1a', 'value': 'Ali', 'tokens': ['m-1a']},
                      {'id': 'sp-m1b', 'value': 'ERG', 'tokens': ['m-1b']}]}],
-                 'vocabs': [{'id': VOCAB, 'name': 'Lexicon', 'vocab_links': [
+                 'vocabs': [{'id': VOCAB, 'name': 'Lexicon', 'project': PID, 'vocab_links': [
                      {'id': 'l-2', 'vocab_item': {'id': 'vi-erg', 'form': '-di'}, 'tokens': ['m-1b']}]}]},
             ]}],
     }
 
 
 def lexicon_raw():
-    return {'id': VOCAB, 'name': 'Lexicon', 'items': [
+    return {'id': VOCAB, 'name': 'Lexicon', 'project': PID, 'items': [
         {'id': 'vi-ali', 'form': 'Ali', 'metadata': {'gloss': 'Ali', 'pos': 'N'}},
         {'id': 'vi-erg', 'form': '-di', 'metadata': {'gloss': 'ERG', 'morphType': 'suffix'}},
         {'id': 'vi-gam', 'form': 'gam', 'metadata': {'gloss': 'fish'}},
@@ -176,8 +176,8 @@ ODD_VOCAB, ODD_VOCAB2 = 'v-odd', 'v-plain'
 def odd_project_raw():
     return {
         'id': PID, 'name': 'Odd', 'config': {'igt': {'initialized': True, 'documentMetadata': []}},
-        'vocabs': [{'id': ODD_VOCAB, 'name': 'Wordlist', 'config': {'igt': {'fields': {'meaning': {'role': 'gloss'}, 'category': {'role': 'pos'}}}}},
-                   {'id': ODD_VOCAB2, 'name': 'Plain', 'config': {}}],
+        'vocabs': [{'id': ODD_VOCAB, 'name': 'Wordlist', 'project': PID, 'config': {'igt': {'fields': {'meaning': {'role': 'gloss'}, 'category': {'role': 'pos'}}}}},
+                   {'id': ODD_VOCAB2, 'name': 'Plain', 'project': PID, 'config': {}}],
         'text_layers': [{
             'id': TEXT_LAYER, 'name': 'Text', 'config': {'plaid': {'role': 'baseline'}},
             'token_layers': [
@@ -215,7 +215,7 @@ def odd_document_raw():
                                                            {'id': 'sp-c2', 'value': 'N', 'tokens': ['w-2']}]},
                                  {'id': ODD_MEAN, 'spans': [{'id': 'sp-m1', 'value': 'Ali.ERG', 'tokens': ['w-1']},
                                                             {'id': 'sp-m2', 'value': 'fish', 'tokens': ['w-2']}]}],
-                 'vocabs': [{'id': ODD_VOCAB, 'name': 'Wordlist', 'vocab_links': [
+                 'vocabs': [{'id': ODD_VOCAB, 'name': 'Wordlist', 'project': PID, 'vocab_links': [
                      {'id': 'l-1', 'vocab_item': {'id': 'oi-gam', 'form': 'gam'}, 'tokens': ['w-2']},
                      {'id': 'l-2', 'vocab_item': {'id': 'oi-gam2', 'form': 'gam'}, 'tokens': ['w-4']}]}]},
             ]}],

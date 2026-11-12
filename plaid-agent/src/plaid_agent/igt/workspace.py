@@ -33,29 +33,29 @@ from ..core.refs import read_ref, same_form
 from ..core.tools import ToolError
 from ..core.workspace import BaseWorkspace
 
-from .plan import (ANALYSIS, ENTRY, ENTRY_READ, KIND, MORPHEME_KEY, MORPHEME_WRITERS, SETTINGS_KINDS, TEXT_SHAPE,
-                   _found, analysed_morphemes, entry_stamp, pinned_entry, planned_morpheme, removed_entries,
-                   settle_merges)
+from .plan import (ANALYSIS, ENTRY_READ, KIND, LEXICON_MAINTAINER, LEXICON_WRITER, MORPHEME_KEY,
+                   MORPHEME_WRITERS, SETTINGS_KINDS, TEXT_SHAPE, _found, analysed_morphemes, entry_stamp,
+                   lexicon_need, pinned_entry, planned_morpheme, removed_entries, settle_merges)
 
-# What only a maintainer of the lexicon may do to its entries, and what a tool
-# says to anyone else. The app's own screens are the rule (ruling A1-IGT-6):
-# a writer creates entries by their form alone (the link popover's Create
-# sends nothing else) and links words to them, and every change to an entry
-# that exists (its fields, its type, its senses, examples and homograph order,
-# its form) is in the entry editor and the sense tree, which only a maintainer
-# may use. Adding a sense is a change to the entry it sits under, and a new
-# entry's fields and type are what the entry editor would set (ruled
-# 2026-10-06). Core is looser, so the assistant must not be the way around the
-# app.
-# Which ops those are is the registry's: every kind placed at an entry
-# (`at_kind=ENTRY`), read at the entry it removes when it removes one.
-MAINTAINERS_ONLY = ('Only a maintainer of the lexicon "{lexicon}" can change its existing entries (their '
-                    'fields, type, senses, examples or homograph order) or rename, delete or merge them, and '
-                    'the person you are acting for does not maintain it. Nothing was planned. They can '
-                    'still create new entries by their form alone (not senses) and link words to entries. '
-                    'Tell them a maintainer of that lexicon has to make this change.')
-# The types the app's Create gives a new entry over several words.
-PHRASE_TYPES = frozenset({'phrase', 'discontiguous phrase'})
+# Who may change a lexicon's entries, and what a tool says to anyone else. A
+# lexicon belongs to one project, its home, and its rights are that project's
+# roles, as core holds them: a writer of the home adds entries and changes
+# anything stored on one (its fields, type, senses, examples and homograph
+# order), and only a maintainer of the home renames, merges, deletes or
+# restores entries. Another project may link the lexicon (it borrows it): there
+# words link to its entries and no entry is changed. The assistant reads only
+# the roles of the project it works in, so a borrowed lexicon is read only here
+# whoever asks, and is changed from its own project.
+# Which ops need which is the registry's (``lexicon_right``), and the lexicon an
+# op writes is its ``vocab_id`` or that of the entry it is placed at.
+MAINTAINER_ACTS = ('Only a maintainer of {project} can rename, merge, delete or restore entries of the lexicon '
+                   '{lexicon}, and the person you are acting for is not one. Nothing was planned. Tell them a '
+                   'maintainer of that project has to make this change.')
+WRITER_ACTS = ('Only a writer or maintainer of {project} can change the lexicon {lexicon}, and the person you '
+               'are acting for is {role}. Nothing was planned.')
+BORROWED = ('The lexicon {lexicon} belongs to another project and is read only here: words link to its entries, '
+            'and no entry is added or changed. Nothing was planned. Tell the user its entries are changed in its '
+            'own project, by a writer or maintainer of that project.')
 
 # The kinds of field a staged value may be for besides an annotation field's
 # layer (Workspace.staged_values).
@@ -77,10 +77,6 @@ def tagset_rules(tagset: Optional[dict]) -> List[dict]:
         return []
     return [{'type': 'value-set', 'values': [t['value'] for t in tagset.get('values') or []],
              'delimiters': tagset.get('delimiters') or '', 'parts': 'all'}]
-NEW_ENTRY_FORM_ONLY = ('The person you are acting for does not maintain the lexicon "{lexicon}", so an entry '
-                       'they create has its form and nothing else (a phrase entry also its type), as in the '
-                       'app. Its fields and its type are for a maintainer of that lexicon to fill in. Nothing was planned. Create the '
-                       'entry with its form alone, and tell them a maintainer has to add the rest.')
 from .project import (BAD_REF, FORMAT_LEGEND, MARKERS, IgtProject, IgtDoc, Morpheme, Sentence, Word, is_virtual,
                       load_document, read_view, render_document, resolve)
 from .lexview import FLEX_MORPH_TYPES, LexView, _dict_hits, entry_line
@@ -824,15 +820,52 @@ class Workspace(BaseWorkspace):
                 return v
         return None
 
-    def can_manage_vocab(self, v: dict) -> bool:
-        """Whether the user the turn acts for may change the entries of
-        lexicon ``v`` once they exist (see :meth:`lexicon_maintained_by`): a
-        maintainer of it or an administrator. A writer of a project that
-        links it creates entries and links words to them, and no more, as in
-        the app."""
+    def requester_role(self) -> Optional[str]:
+        """The role of the user the turn acts for in this project, from its
+        role lists as loaded with it, or None (no role, or no user)."""
+        return project_role(self.project.roles, self.requester_id)
+
+    def lexicon_refusal(self, v: dict, right: str) -> Optional[str]:
+        """What a tool says when the user the turn acts for may not make a
+        change needing ``right`` (``plan.LEXICON_WRITER`` or
+        ``LEXICON_MAINTAINER``) to lexicon ``v``, or None when they may. A
+        borrowed lexicon is read only for everyone. In the project's own, the
+        role is theirs in this project, and an administrator may do anything.
+        No user (a script, a test) is left to the server."""
+        if v.get('borrowed'):
+            return BORROWED.format(lexicon=qv(v['name']))
         if self.requester_id is None:
-            return True
-        return project_role(v, self.requester_id) == 'maintainer' or self.requester_is_admin()
+            return None
+        role = self.requester_role()
+        if role == LEXICON_MAINTAINER or (right == LEXICON_WRITER and role == LEXICON_WRITER):
+            return None
+        if self.requester_is_admin():
+            return None
+        project = qv(self.project.name)
+        if right == LEXICON_MAINTAINER:
+            return MAINTAINER_ACTS.format(project=project, lexicon=qv(v['name']))
+        return WRITER_ACTS.format(project=project, lexicon=qv(v['name']),
+                                  role='a reader' if role == 'reader' else 'not one')
+
+    def lexicon_rights(self) -> Optional[str]:
+        """What the overview says the user the turn acts for may change in
+        the project's own lexicons, when that is less than everything, or
+        None."""
+        if self.requester_id is None or not any(not v.get('borrowed') for v in self.project.vocabs):
+            return None
+        role = self.requester_role()
+        if role == LEXICON_MAINTAINER or role not in (LEXICON_WRITER, 'reader') or self.requester_is_admin():
+            return None
+        if role == LEXICON_WRITER:
+            return ("The user is a writer here: in this project's own lexicons they may add entries and change what "
+                    'is stored on them, and only a maintainer of this project renames, merges, deletes or restores '
+                    'entries.')
+        return "The user is a reader here: no lexicon entry can be added or changed for them."
+
+    def can_manage_vocab(self, v: dict) -> bool:
+        """Whether the user the turn acts for may rename, merge or delete
+        the entries of lexicon ``v`` (see :meth:`lexicon_refusal`)."""
+        return self.lexicon_refusal(v, LEXICON_MAINTAINER) is None
 
     def op_fields(self, op: Dict[str, Any]) -> set:
         # An orthography is named as the tools take it, without its key's prefix.
@@ -1024,43 +1057,14 @@ class Workspace(BaseWorkspace):
         settings = op.get('kind') in SETTINGS_KINDS
         if others and any((o.get('kind') in SETTINGS_KINDS) != settings for o in others):
             raise ToolError(SETTINGS_APART, kind='conflict')
-        v = self.lexicon_maintained_by(op)
-        if v is not None and not self.can_manage_vocab(v):
-            if op.get('kind') == 'create_entry' and not (op.get('metadata') or {}).get(PARENT_KEY):
-                raise ToolError(NEW_ENTRY_FORM_ONLY.format(lexicon=v['name']), kind='not-allowed')
-            raise ToolError(MAINTAINERS_ONLY.format(lexicon=v['name']), kind='not-allowed')
-
-    def guard_new_entry_field(self, vocab_id: Optional[str]) -> None:
-        """Refuse a field set on an entry this plan creates when the user
-        the turn acts for may give a new entry its form alone (see
-        :meth:`lexicon_maintained_by`). The field is written onto the create
-        in place, past :meth:`guard_op`, so it is asked here."""
-        v = next((x for x in self.project.vocabs if x['id'] == vocab_id), None)
-        if v is not None and not self.can_manage_vocab(v):
-            raise ToolError(NEW_ENTRY_FORM_ONLY.format(lexicon=v['name']), kind='not-allowed')
-
-    def lexicon_maintained_by(self, op: Dict[str, Any]) -> Optional[dict]:
-        """The lexicon whose maintainers alone may make ``op``, or None for an
-        op anyone who may write may make: a change to an entry that exists,
-        a merge (it deletes the entry it folds away), a new sense, which
-        changes the entry it is added under, and a new entry that carries
-        anything but its form (a field or a type), which the app's Create
-        never sends. A phrase entry's type is an exception: the app's Create
-        over several words sends it (``mweMorphType``). So is the type a
-        form's markers name (``typed_from_form``), which the app's Create
-        takes from them for any writer (``asEntry``)."""
-        kind = op.get('kind')
-        if kind == 'create_entry':
-            meta = op.get('metadata') or {}
-            if not meta or (set(meta) == {'morphType'}
-                            and (meta['morphType'] in PHRASE_TYPES or op.get('typed_from_form'))):
-                return None
-            return next((v for v in self.project.vocabs if v['id'] == op.get('vocab_id')), None)
-        spec = KIND.get(kind)
-        if spec is None or not spec.at or spec.at_kind != ENTRY:
-            return None
-        item = op.get((spec.extra.get('removes_entry') or spec.at)[0])
-        return self.vocab_of_item(item) if item else None
+        need = lexicon_need(op)
+        if need is not None:
+            right, vocab_id, item_id = need
+            v = (next((x for x in self.project.vocabs if x['id'] == vocab_id), None) if vocab_id
+                 else self.vocab_of_item(item_id) if item_id else None)
+            refusal = self.lexicon_refusal(v, right) if v is not None else None
+            if refusal:
+                raise ToolError(refusal, kind='not-allowed')
 
     # --- plan --------------------------------------------------------------
 

@@ -100,8 +100,9 @@ from ..core import opkind as ok
 from ..core import rules
 from ..core.bidi import qv
 from ..core.opkind import OpKind
+from ..core.provenance import Requester
 from plaid_client import PlaidAPIError, metadata_ops
-from plaid_client.provenance import is_machine
+from plaid_client.provenance import is_machine, project_role
 from plaid_client.workflows.igt.interlinear import EQUALS_BEFORE_KEY, EQUALS_TYPE_KEY
 
 from plaid_client.service import requester_message
@@ -1043,6 +1044,14 @@ def _replaces_delete_entry(ws: 'Workspace', op: Dict[str, Any]) -> List[str]:
     return list(op.get('links') or [])
 
 
+# What a change to a lexicon needs of the person it is made for, by kind
+# (``extra['lexicon_right']``): a writer of the lexicon's own project, who adds
+# entries and changes anything stored on one, or a maintainer of it, who also
+# renames, merges and deletes them (core's vocabulary home rules).
+LEXICON_WRITER = 'writer'
+LEXICON_MAINTAINER = 'maintainer'
+
+
 KIND = ok.registry([
     # The project's annotation manual. Shared with the other app: a
     # guideline has the same shape whatever the project annotates.
@@ -1096,15 +1105,16 @@ KIND = ok.registry([
     # The lexicon: an entry is not a document's annotation.
     OpKind('create_entry', ('new lexicon entry', 'new lexicon entries'), replaces=None,
            required=('vocab_id', 'form', 'key'),
-           apply=_apply_create_entry, writes=_create_entry_writes, extra={'hangs_off': _create_entry_writes}),
+           apply=_apply_create_entry, writes=_create_entry_writes,
+           extra={'hangs_off': _create_entry_writes, 'lexicon_right': LEXICON_WRITER}),
     OpKind('set_entry_field', ('entry field', 'entry fields'), replaces=None, required=('item_id', 'field'),
            apply=_apply_set_entry_field, at=('item_id',), at_kind=ENTRY, token_keys=('item_id',),
            target=lambda op: ('entry_field', op.get('item_id'), op.get('field')),
-           extra={'names_entry': ('item_id',), 'pins_entry': 'item_id'}),
+           extra={'names_entry': ('item_id',), 'pins_entry': 'item_id', 'lexicon_right': LEXICON_WRITER}),
     OpKind('set_entry_metadata', ('entry structure change', 'entry structure changes'), replaces=None,
            required=('item_id', 'patch'), apply=_apply_set_entry_metadata, at=('item_id',), at_kind=ENTRY,
            token_keys=('item_id',), extra={'names_entry': ('item_id',), 'hangs_off': _sense_moved_under,
-                                            'pins_entry': 'item_id'},
+                                            'pins_entry': 'item_id', 'lexicon_right': LEXICON_WRITER},
            # Keyed by the keys it writes, so renumbering a sense and promoting
            # an example on one entry are two changes rather than one replacing
            # the other.
@@ -1118,20 +1128,21 @@ KIND = ok.registry([
            required=('keep_id', 'remove_id'),
            apply=_apply_merge_entries, at=('keep_id',), at_kind=ENTRY,
            deletes=lambda op: [op['remove_id']] + [l['link_id'] for l in op.get('links') or []],
-           extra={'removes_entry': ('remove_id',), 'names_entry': ('keep_id', 'remove_id')}),
+           extra={'removes_entry': ('remove_id',), 'names_entry': ('keep_id', 'remove_id'),
+                  'lexicon_right': LEXICON_MAINTAINER}),
     OpKind('delete_entry', ('deleted entry', 'deleted entries'), replaces=_replaces_delete_entry,
            required=('item_id',),
            apply=_apply_delete_entry, at=('item_id',), at_kind=ENTRY,
            target=lambda op: ('delete_entry', op.get('item_id')),
            deletes=lambda op: [op['item_id']] + list(op.get('links') or []),
-           extra={'removes_entry': ('item_id',), 'names_entry': ('item_id',)}),
+           extra={'removes_entry': ('item_id',), 'names_entry': ('item_id',), 'lexicon_right': LEXICON_MAINTAINER}),
     OpKind('rename_entry', ('renamed entry', 'renamed entries'), replaces=None, required=('item_id', 'form'),
            apply=_apply_rename_entry, at=('item_id',), at_kind=ENTRY, token_keys=('item_id',),
            target=lambda op: ('rename_entry', op.get('item_id')),
            # Pinned too: it writes the headword, and the type the new one's
            # markers name, over what was read (REV-FX-R1-1).
            compact_each=('item_id', 'form', ENTRY_READ),
-           extra={'names_entry': ('item_id',), 'pins_entry': 'item_id'}),
+           extra={'names_entry': ('item_id',), 'pins_entry': 'item_id', 'lexicon_right': LEXICON_MAINTAINER}),
     # Settings: the app writes them on approval and the executor reads them
     # back (`_execute`), so no pass of the executor applies one.
     # Settings, not annotation: nobody's work is in a tagset's list.
@@ -1343,6 +1354,24 @@ def entry_stamp(item: Dict[str, Any]) -> str:
     return hashlib.sha256(raw.encode('utf-8')).hexdigest()[:16]
 
 
+def lexicon_need(op: Dict[str, Any]) -> Optional[Tuple[str, Optional[str], Optional[str]]]:
+    """What ``op`` asks of the lexicon it writes: ``(right, vocab id, entry
+    id)``, the lexicon named by a create (``vocab_id``) and otherwise by the
+    entry the change is placed at, or None for a change that writes no lexicon
+    (a link writes a document). A kind placed at an entry that declares no
+    right is a maintainer's, so a kind added later is never let through by
+    being left out."""
+    spec = KIND.get(op.get('kind'))
+    if spec is None:
+        return None
+    right = spec.extra.get('lexicon_right') or (LEXICON_MAINTAINER if spec.at and spec.at_kind == ENTRY else None)
+    if right is None:
+        return None
+    if not spec.at:
+        return right, op.get('vocab_id'), None
+    return right, None, op.get((spec.extra.get('removes_entry') or spec.at)[0])
+
+
 def pinned_entry(op: Dict[str, Any]) -> Optional[str]:
     """The entry ``op`` is written over as it was read, or None."""
     spec = KIND.get(op.get('kind'))
@@ -1350,11 +1379,12 @@ def pinned_entry(op: Dict[str, Any]) -> Optional[str]:
     return op.get(key) if key else None
 
 
-def check_entries(client, ops: List[Dict[str, Any]], project=None) -> None:
+def check_entries(client, ops: List[Dict[str, Any]], project=None, requester: Optional[str] = None) -> None:
     """Refuse the plan, before anything is written, when an entry it names is
     gone from the server, or one it changes as it read it (:data:`ENTRY_READ`)
     has changed since, or one it deletes or merges away has a sense under it
-    the plan did not read (:data:`SENSES_READ`).
+    the plan did not read (:data:`SENSES_READ`), or a lexicon it writes or
+    links to is no longer one the user ``requester`` may (:func:`_lexicon_moved`).
 
     An entry deleted or merged away since the plan was made, where no
     document the plan pins links it, moved no version the staleness check
@@ -1372,6 +1402,10 @@ def check_entries(client, ops: List[Dict[str, Any]], project=None) -> None:
     a 403 counts as gone."""
     named = named_entries(ops)
     if not named:
+        if project is not None:
+            moved = _lexicon_moved(client, ops, project, {}, requester)
+            if moved:
+                raise PlanOutOfDate(moved)
         return
     vocab_ids = [v['id'] for v in (getattr(project, 'vocabs', None) or []) if v.get('id')]
     reasons = []
@@ -1384,7 +1418,8 @@ def check_entries(client, ops: List[Dict[str, Any]], project=None) -> None:
         """The items of the project's lexicon ``vid`` as they are now, read once."""
         if vid not in layers:
             try:
-                layers[vid] = list(client.vocab_layers.get(vid, include_items=True).get('items') or [])
+                layers[vid] = [{**it, 'layer': vid}
+                               for it in client.vocab_layers.get(vid, include_items=True).get('items') or []]
             except Exception as e:  # noqa: BLE001 - the entries cannot be checked: the plan cannot apply
                 name = next((v.get('name') for v in project.vocabs if v.get('id') == vid), None)
                 where = f'the lexicon "{name}"' if name else 'a lexicon of this project'
@@ -1449,8 +1484,60 @@ def check_entries(client, ops: List[Dict[str, Any]], project=None) -> None:
             continue
         changed.add(item_id)
         reasons.append(f'the lexicon entry "{item.get("form") or item_id}" changed since the plan was made')
+    if project is not None:
+        reasons.extend(_lexicon_moved(client, ops, project, {i: it.get('layer') for i, it in now.items()}, requester))
     if reasons:
         raise PlanOutOfDate(reasons)
+
+
+def _lexicon_moved(client, ops: List[Dict[str, Any]], project, layer_of: Dict[str, Optional[str]],
+                   requester: Optional[str]) -> List[str]:
+    """What stands, at approval, between the plan and the lexicons it writes
+    or links words to, as the project has them now (``project.vocabs``,
+    read for the approval): a lexicon taken out of the project, one that now
+    belongs to another project (a move), which is read only here, or a right
+    over a lexicon of this project the user ``requester`` no longer holds
+    (:meth:`Workspace.lexicon_refusal` asked again). ``layer_of`` is the
+    lexicon of each existing entry the plan names, as read for the check."""
+    vocabs = {v['id']: v for v in project.vocabs if v.get('id')}
+    out: List[str] = []
+    admin = None
+
+    def say(reason):
+        if reason not in out:
+            out.append(reason)
+    for op in ops:
+        need = lexicon_need(op)
+        spec = KIND.get(op.get('kind'))
+        if need is None:
+            # A link to an entry: its lexicon must still be linked here.
+            for key in (spec.extra.get('names_entry') or () if spec is not None else ()):
+                vid = layer_of.get(op.get(key))
+                if vid and vid not in vocabs:
+                    say('a lexicon this plan links words to is no longer linked to this project')
+            continue
+        right, vid, item = need
+        vid = vid or layer_of.get(item)
+        if not vid:
+            continue
+        v = vocabs.get(vid)
+        if v is None:
+            say('a lexicon this plan changes is no longer linked to this project')
+            continue
+        if v.get('borrowed'):
+            say(f'the lexicon "{v["name"]}" now belongs to another project and is read only here')
+            continue
+        role = project_role(getattr(project, 'roles', None), requester) if requester else LEXICON_MAINTAINER
+        if role == LEXICON_MAINTAINER or (right == LEXICON_WRITER and role == LEXICON_WRITER):
+            continue
+        if admin is None:
+            admin = Requester(client, requester).is_admin()
+        if admin:
+            continue
+        say(f'only a maintainer of this project can rename, merge, delete or restore entries of the lexicon '
+            f'"{v["name"]}"' if right == LEXICON_MAINTAINER
+            else f'only a writer or maintainer of this project can change the lexicon "{v["name"]}"')
+    return out
 
 
 def move_phrase(n: int) -> str:
@@ -1786,7 +1873,7 @@ def execute_plan(client, ops: List[Dict[str, Any]], *, source: str, label: str, 
     return run_plan(
         KIND, client, ops, source=source, stamp_mode=stamp_mode, contributor=contributor, detail=detail, seed=seed,
         validate=validate_ops, resolve=lambda o: resolve_scopes(client, project, o, requester),
-        normalize=normalize_ops, check=lambda o: check_entries(client, o, project),
+        normalize=normalize_ops, check=lambda o: check_entries(client, o, project, requester),
         execute=lambda o, notes, stamps, ids, tracker: _execute(
             client, o, label=label, project=project, counts=Counter(), notes=notes, stamps=stamps, tracker=tracker,
             ids=ids))

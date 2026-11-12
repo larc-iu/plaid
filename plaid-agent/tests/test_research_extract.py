@@ -31,7 +31,15 @@ from plaid_agent.research.records import error_class, snake, turn_end, uuid7_tim
     ('Error: The comments could not be read: HTTP 404 Not found at /x', 'not-found'),
     ('Error: The comments could not be read: HTTP 403 Forbidden at /x', 'not-allowed'),
     ('Error: The comments could not be read: HTTP 503 Unavailable at /x', 'unavailable'),
+    # Before the vocabulary home, and the three refusals since.
     ('Error: Only a maintainer of the lexicon "L" can change its existing entries', 'not-allowed'),
+    ('Error: Only a maintainer of "P" can rename, merge, delete or restore entries of the lexicon "L", and the '
+     'person you are acting for is not one.', 'not-allowed'),
+    ('Error: Only a writer or maintainer of "P" can change the lexicon "L", and the person you are acting for is '
+     'a reader. Nothing was planned.', 'not-allowed'),
+    ('Error: The lexicon "L" belongs to another project and is read only here: words link to its entries',
+     'not-allowed'),
+    ('Error: The lexicon "L" belongs to another project, and its tagsets are changed there', 'not-allowed'),
     ('Error: This turn has read the web, so it cannot also plan changes. Tell the user', 'not-allowed'),
     ('Error: This conversation plans changes in "Home" only. Tell the user', 'not-allowed'),
     ('Error: Restoring a document needs maintainer access to the project.', 'not-allowed'),
