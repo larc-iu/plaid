@@ -4,8 +4,11 @@
 ;; maintainer there, and `vocab_maintainers` goes. Code, not SQL, so each
 ;; vocabulary's home is an audited operation under that project, and so the
 ;; table rebuild can run with foreign keys off. Refuses to run while a
-;; vocabulary no project links exists (see plaid.sql.vocab-home).
+;; vocabulary no project links exists (see plaid.sql.vocab-home). Every step
+;; is safe to run again after a stop at any point, so a start that finds this
+;; migration interrupted runs it again (`:plaid/resumable`, plaid.server.sql).
 {:ns plaid.sql.vocab-home
  :up-fn "up"
  :down-fn "down"
- :transaction? false}
+ :transaction? false
+ :plaid/resumable true}

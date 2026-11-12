@@ -18,6 +18,7 @@
             [next.jdbc.result-set :as rs]
             [plaid.fixtures :refer [with-db with-mount-states]]
             [plaid.history.read :as hread]
+            [plaid.server.sql :as server-sql]
             [plaid.sql.audit-write :as psaw]
             [plaid.sql.common :as psc]
             [plaid.sql.datasource :as psd]
@@ -373,6 +374,65 @@
                 (is (= 1 (:foreign_keys (jdbc/execute-one! c ["PRAGMA foreign_keys"] {:builder-fn rs/as-unqualified-maps}))))))
             (migratus/migrate (cfg ds))
             (is (= @single (outcome ds)))))))))
+
+(defn- stopped-start!
+  "Leave the database as a start killed at that point leaves it: whatever
+  `cut!` committed, and migratus' reservation row, which its `finally` would
+  have removed."
+  [ds cut!]
+  (cut! ds)
+  (q ds "INSERT INTO schema_migrations (id) VALUES (-1)"))
+
+(def ^:private stop-points
+  {"after step 1" (fn [ds]
+                    (jdbc/execute! ds ["ALTER TABLE vocab_layers ADD COLUMN project_id TEXT"])
+                    (#'vh/plan! ds))
+   "after 7 vocabularies of step 2" (fn [ds]
+                                      (try
+                                        (binding [vh/*after-vocabulary* (fn [n] (when (= n 7) (throw (ex-info "cut" {}))))]
+                                          (migratus/migrate (cfg ds)))
+                                        (catch Exception _)))
+   "inside step 3, before its COMMIT" (fn [ds]
+                                        (try
+                                          (binding [vh/*before-rebuild-commit* (fn [] (throw (ex-info "cut" {})))]
+                                            (migratus/migrate (cfg ds)))
+                                          (catch Exception _)))
+   "after step 3's COMMIT, before migratus recorded the migration" (fn [ds] (vh/up (cfg ds)))})
+
+(deftest a-start-stopped-during-the-migration-is-resumed-by-the-next
+  (let [single (atom nil)]
+    (with-temp-db
+      (fn [ds]
+        (build! ds) (give-orphans-projects! ds)
+        (migratus/migrate (cfg ds))
+        (reset! single (outcome ds))))
+    (doseq [[point cut!] stop-points]
+      (testing (str "stopped " point ", then started again holding the instance lock")
+        (with-temp-db
+          (fn [ds]
+            (build! ds) (give-orphans-projects! ds)
+            (stopped-start! ds cut!)
+            (server-sql/run-migrations! ds {:db-path "plaid.db" :lock-held? true})
+            (is (= @single (outcome ds)) "the outcome of one uninterrupted run")
+            (is (empty? (q ds "SELECT id FROM schema_migrations WHERE id = -1")) "the mark is gone")
+            (is (seq (q ds "SELECT id FROM schema_migrations WHERE id = ?" migration)) "the migration is recorded")))))))
+
+(deftest a-stopped-migration-is-refused-without-the-instance-lock
+  (with-temp-db
+    (fn [ds]
+      (build! ds) (give-orphans-projects! ds)
+      (stopped-start! ds (stop-points "after 7 vocabularies of step 2"))
+      (let [before (schema ds)
+            thrown (try (server-sql/run-migrations! ds {:db-path "/srv/plaid/plaid.db" :lock-held? false})
+                        nil
+                        (catch Exception e e))]
+        (is (= (str "The database was not migrated: the last start was stopped during migration "
+                    "20261112120000-vocab-home-project, which cannot be resumed by the server. Restore the backup "
+                    "taken before upgrading and start again. To run the migration again on this database instead, "
+                    "remove the mark the stopped start left, with sqlite3 /srv/plaid/plaid.db \"DELETE FROM "
+                    "schema_migrations WHERE id = -1\", and start again.")
+               (some-> thrown ex-message)))
+        (is (= before (schema ds)) "nothing was written")))))
 
 (deftest a-fresh-install-migrates
   (with-temp-db

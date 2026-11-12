@@ -15,7 +15,7 @@
   (let [path (temp-db-path)
         ds (psd/build-datasource path)]
     (try
-      (#'server-sql/run-migrations! ds)
+      (server-sql/run-migrations! ds {:db-path path})
       (let [wal (File. (str path "-wal"))]
         (is (or (not (.exists wal)) (zero? (.length wal)))
             (str "WAL is " (.length wal) " bytes after the migrations")))

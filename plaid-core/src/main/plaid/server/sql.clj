@@ -1,8 +1,11 @@
 (ns plaid.server.sql
   "Mount state for the SQL datasource. Starts a HikariCP pool around SQLite, runs Migratus migrations, and
   prompts to create an admin user if none exists."
-  (:require [clojure.string :as str]
+  (:require [clojure.edn :as edn]
+            [clojure.java.io :as io]
+            [clojure.string :as str]
             [migratus.core :as migratus]
+            [migratus.protocols]
             [mount.core :refer [defstate]]
             [plaid.server.config :refer [config]]
             [plaid.sql.common :as psc]
@@ -20,18 +23,139 @@
 
 (declare checkpoint-wal!)
 
-(defn- run-migrations!
-  "Apply pending migrations, then empty the WAL. A migration runs in one
-  transaction, so a table rewrite puts every page it writes in the WAL
-  first (3.6 GB for the 2026-09-27 `audit_writes` rebuild on a 4.2 GB
-  copy). SQLite reuses the WAL after a checkpoint but never shrinks it, so
-  without the TRUNCATE checkpoint that disk stays taken until shutdown.
-  Nothing else holds a connection yet, so the checkpoint completes."
+;; ============================================================
+;; Migrations
+;; ============================================================
+
+(def ^:private reservation-id
+  "The row migratus puts in `schema_migrations` while a migration runs, and
+  takes out in a `finally`, which a killed process never reaches."
+  -1)
+
+(defn- reservation-held?
+  "Is migratus' reservation row in `schema_migrations`? False when the table
+  does not exist yet (a fresh database)."
   [datasource]
-  (log/info "Running Migratus migrations...")
-  (migratus/migrate (migratus-config datasource))
-  (checkpoint-wal! datasource)
-  (log/info "Migrations complete."))
+  (try
+    (with-open [conn (.getConnection ^javax.sql.DataSource datasource)
+                stmt (.prepareStatement conn "SELECT 1 FROM schema_migrations WHERE id = ?")]
+      (.setLong stmt 1 reservation-id)
+      (with-open [rs (.executeQuery stmt)]
+        (.next rs)))
+    (catch java.sql.SQLException _ false)))
+
+(defn- remove-reservation! [datasource]
+  (with-open [conn (.getConnection ^javax.sql.DataSource datasource)
+              stmt (.prepareStatement conn "DELETE FROM schema_migrations WHERE id = ?")]
+    (.setLong stmt 1 reservation-id)
+    (.executeUpdate stmt)))
+
+(defn- write-refusal
+  "Why `datasource` cannot be written, from SQLite itself: a write that is
+  rolled back at once. Nil when it can be."
+  [datasource]
+  (try
+    (with-open [conn (.getConnection ^javax.sql.DataSource datasource)
+                stmt (.createStatement conn)]
+      (.execute stmt "BEGIN IMMEDIATE")
+      (try
+        (.execute stmt "CREATE TABLE plaid_write_probe (x INTEGER)")
+        (finally
+          (.execute stmt "ROLLBACK")))
+      nil)
+    (catch java.sql.SQLException e (ex-message e))))
+
+(defn- pending-migrations
+  "The migrations not yet recorded as run, oldest first, as `{:id :name}`."
+  [cfg]
+  (migratus/with-store [store (migratus.protocols/make-store cfg)]
+    (->> (migratus/uncompleted-migrations cfg store)
+         (sort-by migratus.protocols/id)
+         (mapv (fn [m] {:id (migratus.protocols/id m) :name (migratus.protocols/name m)})))))
+
+(defn- migration-label [{:keys [id name]}] (str id "-" name))
+
+(defn- resumable?
+  "Is migration `m` written to be run again after a stop at any point
+  (`:plaid/resumable true` in its .edn file)? An SQL migration never is: a
+  stop between its commit and migratus recording it would run it twice."
+  [{:keys [id name]}]
+  (boolean (some-> (io/resource (str "migrations/" id "-" name ".edn"))
+                   slurp
+                   edn/read-string
+                   :plaid/resumable)))
+
+(defn- refuse! [message]
+  (throw (ex-info message {:type :plaid/migrations-not-run})))
+
+(defn interrupted-refusal
+  "The refusal for a start after one that was stopped during migration `m`
+  of the database at `db-path`, when the server does not resume it itself."
+  [db-path m]
+  (str "The database was not migrated: the last start was stopped during migration " (migration-label m)
+       ", which cannot be resumed by the server. Restore the backup taken before upgrading and start again. "
+       "To run the migration again on this database instead, remove the mark the stopped start left, with "
+       "sqlite3 " db-path " \"DELETE FROM schema_migrations WHERE id = -1\", and start again."))
+
+(defn run-migrations!
+  "Apply pending migrations, then empty the WAL, or refuse to start (throw)
+  unless every migration has run.
+
+  A start stopped during a migration (kill -9, a SIGTERM such as `systemctl
+  restart`, a power cut) leaves migratus' reservation row behind, and while
+  it is there migratus runs nothing and says so only at INFO. When the first
+  pending migration is written to be resumed (`resumable?`) and this process
+  holds the instance lock (`lock-held?`: no other server has the database),
+  the row is removed with a WARN line and the migration runs again.
+  Otherwise the start is refused with `interrupted-refusal`. A database that
+  cannot be written, a migration that fails, and anything still pending
+  after the run are refused too, each with what was found.
+
+  A migration runs in one transaction, so a table rewrite puts every page it
+  writes in the WAL first (3.6 GB for the 2026-09-27 `audit_writes` rebuild
+  on a 4.2 GB copy). SQLite reuses the WAL after a checkpoint but never
+  shrinks it, so without the TRUNCATE checkpoint that disk stays taken until
+  shutdown. Nothing else holds a connection yet, so the checkpoint
+  completes."
+  [datasource {:keys [db-path lock-held?]}]
+  (let [cfg (migratus-config datasource)]
+    (log/info "Running Migratus migrations...")
+    (when (reservation-held? datasource)
+      (let [[first-pending] (pending-migrations cfg)]
+        (cond
+          (nil? first-pending)
+          (do (log/warn "The last start was stopped after its migrations ran; removing the mark it left.")
+              (remove-reservation! datasource))
+
+          (and lock-held? (resumable? first-pending))
+          (do (log/warn (str "The last start was stopped during migration " (migration-label first-pending)
+                             ". No other server holds this database and the migration is written to be "
+                             "resumed: running it again."))
+              (remove-reservation! datasource))
+
+          :else
+          (refuse! (interrupted-refusal db-path first-pending)))))
+    (let [result (migratus/migrate cfg)
+          pending (pending-migrations cfg)]
+      (cond
+        (= :ignore result)
+        (if-let [why (write-refusal datasource)]
+          (refuse! (str "The database was not migrated: " db-path " cannot be written (" why "). "
+                        "Make the file and its folder writable by the server and start again."))
+          (refuse! (str "The database was not migrated: another process is migrating it (the row with id -1 "
+                        "in schema_migrations). Stop it and start again.")))
+
+        (= :failure result)
+        (refuse! (str "The database was not migrated: "
+                      (if-let [m (first pending)] (str "migration " (migration-label m)) "a migration")
+                      " did not finish. See the lines above."))
+
+        (seq pending)
+        (refuse! (str "The database was not migrated: " (count pending)
+                      (if (= 1 (count pending)) " migration has" " migrations have")
+                      " not run (" (str/join ", " (map migration-label pending)) ")."))))
+    (checkpoint-wal! datasource)
+    (log/info "Migrations complete.")))
 
 (defn- read-line-secret
   "Read one line without echo, or nil at the end of input."
@@ -473,7 +597,7 @@
                _ (alter-var-root #'psc/*slow-query-threshold-ms*
                                  (constantly threshold-ms))
                ds (psd/build-datasource db-path pool-cfg)]
-           (run-migrations! ds)
+           (run-migrations! ds {:db-path db-path :lock-held? (some? @instance-lock)})
            (when (and (empty? (pxu/get-all ds))
                       (not (System/getenv "SKIP_ACCOUNT_CREATION_PROMPT")))
              (make-admin-user ds))
