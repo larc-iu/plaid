@@ -63,7 +63,7 @@ def test_a_persons_calls_create_list_get_active_cancel_worker():
         WIRE_JOB,
         Response(204),
         WIRE_JOB,
-        {'seen-at': None, 'model': None, 'note-max-chars': 2000},
+        {'seen-at': None, 'model': None, 'note-max-chars': 2000, 'documents-max': 500},
     ])
     made = client.jobs.create('p1', 'igt', ['gloss', 'link'], note='Gloss -ka as PST.', id='j1')
     assert made['started_by'] == 'a@b.com'
@@ -79,7 +79,7 @@ def test_a_persons_calls_create_list_get_active_cancel_worker():
     assert client.jobs.active('p1')['state'] == 'running'
     assert client.jobs.active('p1') is None, '204: no active job'
     assert client.jobs.cancel('j1')['id'] == 'j1'
-    assert client.jobs.worker() == {'seen_at': None, 'model': None, 'note_max_chars': 2000}
+    assert client.jobs.worker() == {'seen_at': None, 'model': None, 'note_max_chars': 2000, 'documents_max': 500}
     sent = _sent(client)
     assert [f"{s['method']} {s['path']}" for s in sent] == [
         'POST /api/v1/projects/p1/jobs',
@@ -272,7 +272,8 @@ def test_fake_claim_takes_the_oldest_and_holds_the_one_slot_until_the_lease_laps
     client, clock = _fake()
     jobs = client.jobs
     assert jobs.claim('w1', 'm', ['igt']) is None
-    assert jobs.worker() == {'seen_at': '1970-01-12T13:46:40.000Z', 'model': 'm', 'note_max_chars': 2000}
+    assert jobs.worker() == {'seen_at': '1970-01-12T13:46:40.000Z', 'model': 'm', 'note_max_chars': 2000,
+                            'documents_max': 500}
     first = jobs.create('p2', 'igt', ['gloss'])
     second = jobs.create('p1', 'igt', ['gloss'])
     claimed = jobs.claim('w1', 'm', ['igt'])

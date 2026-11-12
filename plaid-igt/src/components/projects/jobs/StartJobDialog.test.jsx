@@ -16,9 +16,9 @@ const DOCS = [
   { id: 'd3', name: 'Story C' },
 ];
 
-const fakeClient = ({ seenAt = new Date().toISOString(), create } = {}) => ({
+const fakeClient = ({ seenAt = new Date().toISOString(), create, documentsMax = 10 } = {}) => ({
   jobs: {
-    worker: vi.fn(async () => ({ seenAt, model: 'm', noteMaxChars: 20 })),
+    worker: vi.fn(async () => ({ seenAt, model: 'm', noteMaxChars: 20, documentsMax })),
     create: vi.fn(create ?? (async (_p, body) => ({ id: body.id, state: 'waiting' }))),
   },
   projects: { listDocuments: vi.fn(async () => DOCS) },
@@ -36,6 +36,18 @@ const typeNote = (value) => {
 };
 
 const box = (label) => byText(document.body, 'label', label).querySelector('input');
+const button = (label) =>
+  all(document.body, 'button').find((b) => b.textContent.trim() === label) ?? null;
+const search = (value) => {
+  const input = document.body.querySelector('input[aria-label="Search documents"]');
+  Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, value);
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+};
+const listed = () =>
+  all(document.body, '[role="group"][aria-label="Documents"] label').map((l) =>
+    l.textContent.trim(),
+  );
+const LIMIT = 'A job takes at most 2 documents.';
 const startButton = () =>
   all(document.body, 'button').find((b) => b.textContent.trim() === 'Start');
 
@@ -160,6 +172,63 @@ describe('Start job', () => {
     await v.step(() => startButton().click());
     await v.step(async () => {});
     expect(client.jobs.create.mock.calls[0][1].documents).toEqual(['d2']);
+    await v.unmount();
+  });
+
+  // A project of more documents than a job takes (REV-J-C-5): the limit is
+  // core's, read from jobs.worker(), and said as a fact.
+  it('says the limit on a project over it, and offers only Selected documents', async () => {
+    const client = fakeClient({ documentsMax: 2 });
+    const { v } = await open(client, { documents: DOCS });
+    expect(document.body.textContent).toContain(LIMIT);
+    expect(box('All documents').disabled).toBe(true);
+    expect(box('All documents').checked).toBe(false);
+    expect(box('Selected documents').checked).toBe(true);
+    expect(startButton().disabled).toBe(true);
+    await v.step(() => box('Story A').click());
+    await v.step(() => box('Story B').click());
+    expect(startButton().disabled).toBe(false);
+    await v.step(() => box('Story C').click());
+    expect(startButton().disabled).toBe(true);
+    await v.step(() => box('Story C').click());
+    await v.step(() => startButton().click());
+    await v.step(async () => {});
+    expect(client.jobs.create.mock.calls[0][1].documents).toEqual(['d1', 'd2']);
+    await v.unmount();
+  });
+
+  it('says no limit and offers All documents on a project within it', async () => {
+    const { v } = await open(fakeClient({ documentsMax: 3 }), { documents: DOCS });
+    expect(document.body.textContent).not.toContain('A job takes at most');
+    expect(box('All documents').disabled).toBe(false);
+    expect(box('All documents').checked).toBe(true);
+    await v.unmount();
+  });
+
+  it('narrows the list by name, selects what it shows, and clears', async () => {
+    const { v } = await open(fakeClient({ documentsMax: 2 }), { documents: DOCS });
+    expect(listed()).toEqual(['Story A', 'Story B', 'Story C']);
+    await v.step(() => search('b'));
+    expect(listed()).toEqual(['Story B']);
+    await v.step(() => button('Select shown').click());
+    await v.step(() => search(''));
+    expect(box('Story B').checked).toBe(true);
+    expect(box('Story A').checked).toBe(false);
+    expect(document.body.textContent).toContain('1 selected');
+    await v.step(() => button('Select shown').click());
+    expect(['Story A', 'Story B', 'Story C'].map((n) => box(n).checked)).toEqual([
+      true,
+      true,
+      true,
+    ]);
+    expect(document.body.textContent).toContain('3 selected');
+    expect(startButton().disabled).toBe(true);
+    await v.step(() => button('Clear').click());
+    expect(['Story A', 'Story B', 'Story C'].map((n) => box(n).checked)).toEqual([
+      false,
+      false,
+      false,
+    ]);
     await v.unmount();
   });
 

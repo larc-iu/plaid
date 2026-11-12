@@ -3704,8 +3704,10 @@ class JobsResource(_Resource):
 
     def worker(self) -> Any:
         """When a job worker last asked for work since core started, and the
-        model it runs: ``{seen_at, model, note_max_chars}``, ``seen_at`` and
-        ``model`` None when none has asked."""
+        model it runs: ``{seen_at, model, note_max_chars, documents_max}``,
+        ``seen_at`` and ``model`` None when none has asked. ``note_max_chars``
+        is the longest note a job takes, ``documents_max`` the most
+        documents."""
         return self._request('GET', '/api/v1/jobs/worker')
 
     def claim(self, worker_id: str, model: str, apps: list) -> Any:

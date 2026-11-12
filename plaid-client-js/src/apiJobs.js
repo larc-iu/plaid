@@ -118,9 +118,10 @@ export function jobsApi(client) {
       client._request("POST", `/api/v1/jobs/${jobId}/cancel`, { noOperation: true }),
     /**
      * When a job worker last asked for work since core started, and the
-     * model it runs: `{seenAt, model, noteMaxChars}`, `seenAt` and `model`
-     * null when none has asked.
-     * @returns {Promise<{seenAt: string | null, model: string | null, noteMaxChars: number}>}
+     * model it runs: `{seenAt, model, noteMaxChars, documentsMax}`, `seenAt`
+     * and `model` null when none has asked. `noteMaxChars` is the longest
+     * note a job takes, `documentsMax` the most documents.
+     * @returns {Promise<{seenAt: string | null, model: string | null, noteMaxChars: number, documentsMax: number}>}
      */
     worker: () => client._request("GET", "/api/v1/jobs/worker"),
     /**

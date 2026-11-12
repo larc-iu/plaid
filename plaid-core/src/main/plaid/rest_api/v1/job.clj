@@ -170,12 +170,13 @@
     ["/worker"
      {:conflicting true
       :get {:summary (str "When a job worker last asked for work or reported, since the server started, "
-                          "and the model it runs.")
+                          "and the model it runs, with the longest note and the most documents a job takes.")
             :handler (fn [_]
                        (let [{:keys [seen-at model]} (events/job-worker-seen)]
                          {:status 200 :body {:seen-at (iso seen-at)
                                              :model model
-                                             :note-max-chars job/note-max-chars}}))}}]
+                                             :note-max-chars job/note-max-chars
+                                             :documents-max job/documents-max}}))}}]
 
     ["/model-busy"
      {:conflicting true

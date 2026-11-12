@@ -13,6 +13,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@ui/components/ui/dialog';
+import { SearchInput } from '@ui/components/shared/list-search';
 import { createOnce } from '@ui/lib/createOnce.js';
 import { statusOf } from '@ui/lib/errors.js';
 import { jobTaskText, workerSeen } from '@ui/domain/jobs.js';
@@ -69,6 +70,7 @@ const StartJobDialog = ({ projectId, client, documents: given, documentId, onClo
   const [worker, setWorker] = useState(null);
   const [all, setAll] = useState(!documentId);
   const [chosen, setChosen] = useState(() => new Set(documentId ? [documentId] : []));
+  const [query, setQuery] = useState('');
   const [tasks, setTasks] = useState(() => new Set(JOB_TASKS));
   const [note, setNote] = useState('');
   const [starting, setStarting] = useState(false);
@@ -97,7 +99,15 @@ const StartJobDialog = ({ projectId, client, documents: given, documentId, onClo
   const documents = useMemo(() => [...(listed || [])].sort(byName), [listed]);
   const noteMax = worker?.noteMaxChars ?? null;
   const noteOver = noteMax !== null && noteLength(note) > noteMax;
-  const picked = all ? documents.length : documents.filter((d) => chosen.has(d.id)).length;
+  // The most documents a job takes, core's (jobs.worker()). A project of more
+  // cannot name them all, so All documents is not offered there.
+  const documentsMax = worker?.documentsMax ?? null;
+  const tooMany = documentsMax !== null && documents.length > documentsMax;
+  const allChosen = all && !tooMany;
+  const picked = allChosen ? documents.length : documents.filter((d) => chosen.has(d.id)).length;
+  const pickedOver = documentsMax !== null && picked > documentsMax;
+  const q = query.trim().toLowerCase();
+  const shown = q ? documents.filter((d) => (d.name || '').toLowerCase().includes(q)) : documents;
 
   const toggleTask = (value, on) =>
     setTasks((prev) => {
@@ -117,7 +127,10 @@ const StartJobDialog = ({ projectId, client, documents: given, documentId, onClo
       return next;
     });
 
-  const canStart = !starting && tasks.size > 0 && picked > 0 && !noteOver && listed !== null;
+  const selectShown = () => setChosen((prev) => new Set([...prev, ...shown.map((d) => d.id)]));
+
+  const canStart =
+    !starting && tasks.size > 0 && picked > 0 && !pickedOver && !noteOver && listed !== null;
 
   const start = async () => {
     setStarting(true);
@@ -127,7 +140,7 @@ const StartJobDialog = ({ projectId, client, documents: given, documentId, onClo
         app: 'igt',
         tasks: JOB_TASKS.filter((t) => tasks.has(t)),
       };
-      if (!all) body.documents = documents.filter((d) => chosen.has(d.id)).map((d) => d.id);
+      if (!allChosen) body.documents = documents.filter((d) => chosen.has(d.id)).map((d) => d.id);
       if (note.trim()) body.note = note.trim();
       const job = await createOnce(mint, (id) => client.jobs.create(projectId, { ...body, id }));
       onClose();
@@ -156,47 +169,88 @@ const StartJobDialog = ({ projectId, client, documents: given, documentId, onClo
         <div className="flex flex-col gap-4">
           <fieldset className="flex flex-col gap-2">
             <legend className="mb-2 text-sm font-medium">Documents</legend>
-            <label className="flex cursor-pointer items-center gap-2 text-sm">
+            <label
+              className={`flex items-center gap-2 text-sm ${tooMany ? 'text-muted-foreground' : 'cursor-pointer'}`}
+            >
               <input
                 type="radio"
                 name="job-documents"
-                checked={all}
+                checked={allChosen}
+                disabled={tooMany}
                 onChange={() => setAll(true)}
               />
               <span>All documents ({documents.length.toLocaleString()})</span>
             </label>
+            {tooMany && (
+              <p className="ml-6 text-xs text-muted-foreground">
+                A job takes at most {documentsMax.toLocaleString()} documents.
+              </p>
+            )}
             <label className="flex cursor-pointer items-center gap-2 text-sm">
               <input
                 type="radio"
                 name="job-documents"
-                checked={!all}
+                checked={!allChosen}
                 onChange={() => setAll(false)}
               />
               <span>Selected documents</span>
             </label>
-            {!all && (
-              <div
-                className="flex max-h-48 flex-col gap-1 overflow-y-auto rounded-md border p-2"
-                aria-label="Documents"
-                role="group"
-              >
-                {documents.map((d) => (
-                  <label
-                    key={d.id}
-                    className="flex cursor-pointer items-center gap-2 rounded-sm px-1 py-0.5 text-sm hover:bg-muted/50"
+            {!allChosen && (
+              <>
+                <div className="flex flex-wrap items-center gap-2">
+                  <SearchInput
+                    className="min-w-40 flex-1"
+                    placeholder="Search documents…"
+                    value={query}
+                    onChange={setQuery}
+                  />
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={selectShown}
+                    disabled={!shown.length}
                   >
-                    <input
-                      type="checkbox"
-                      checked={chosen.has(d.id)}
-                      onChange={(e) => toggleDocument(d.id, e.target.checked)}
-                    />
-                    <span className="flex-1 truncate">{d.name}</span>
-                  </label>
-                ))}
-                {listed !== null && !documents.length && (
-                  <p className="px-1 py-2 text-sm text-muted-foreground">No documents.</p>
-                )}
-              </div>
+                    Select shown
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setChosen(new Set())}
+                    disabled={!picked}
+                  >
+                    Clear
+                  </Button>
+                  <span
+                    className={`whitespace-nowrap text-xs ${pickedOver ? 'text-destructive' : 'text-muted-foreground'}`}
+                  >
+                    {picked.toLocaleString()} selected
+                  </span>
+                </div>
+                <div
+                  className="flex max-h-48 flex-col gap-1 overflow-y-auto rounded-md border p-2"
+                  aria-label="Documents"
+                  role="group"
+                >
+                  {shown.map((d) => (
+                    <label
+                      key={d.id}
+                      className="flex cursor-pointer items-center gap-2 rounded-sm px-1 py-0.5 text-sm hover:bg-muted/50"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={chosen.has(d.id)}
+                        onChange={(e) => toggleDocument(d.id, e.target.checked)}
+                      />
+                      <span className="flex-1 truncate">{d.name}</span>
+                    </label>
+                  ))}
+                  {listed !== null && !shown.length && (
+                    <p className="px-1 py-2 text-sm text-muted-foreground">
+                      {documents.length ? 'No documents match.' : 'No documents.'}
+                    </p>
+                  )}
+                </div>
+              </>
             )}
           </fieldset>
 

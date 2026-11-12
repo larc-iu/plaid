@@ -77,7 +77,10 @@ test("a person's calls: create, list, get, active, cancel, worker", async () => 
     { status: 200, body: WIRE_JOB },
     { status: 204 },
     { status: 200, body: WIRE_JOB },
-    { status: 200, body: { "seen-at": null, model: null, "note-max-chars": 2000 } },
+    {
+      status: 200,
+      body: { "seen-at": null, model: null, "note-max-chars": 2000, "documents-max": 500 },
+    },
   ]);
   try {
     const client = new PlaidClient("http://x", "tok");
@@ -108,6 +111,7 @@ test("a person's calls: create, list, get, active, cancel, worker", async () => 
       seenAt: null,
       model: null,
       noteMaxChars: 2000,
+      documentsMax: 500,
     });
     assert.deepEqual(
       net.sent.map((s) => `${s.method} ${s.path}`),

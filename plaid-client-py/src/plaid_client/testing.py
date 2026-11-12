@@ -2096,7 +2096,7 @@ class _FakeJobs:
 
     def worker(self):
         self.calls.append(('worker', {}))
-        return {**self._seen, 'note_max_chars': _JOB_NOTE_MAX_CHARS}
+        return {**self._seen, 'note_max_chars': _JOB_NOTE_MAX_CHARS, 'documents_max': _JOB_DOCUMENTS_MAX}
 
     # -- the worker's calls --
     def claim(self, worker_id, model, apps):
