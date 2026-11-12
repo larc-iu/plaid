@@ -404,8 +404,18 @@ describe('operationKindLabel', () => {
         'guess-adoption',
         'repair',
         'review',
+        'job',
       ].map(operationKindLabel),
-    ).toEqual(['Assistant', 'Automatic', 'Import', 'Bulk edit', 'Guess taken', 'Repair', 'Review']);
+    ).toEqual([
+      'Assistant',
+      'Automatic',
+      'Import',
+      'Bulk edit',
+      'Guess taken',
+      'Repair',
+      'Review',
+      'Job',
+    ]);
   });
 
   it('names nothing for an operation with no kind', () => {

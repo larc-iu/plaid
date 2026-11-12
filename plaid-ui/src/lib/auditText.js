@@ -75,6 +75,7 @@ const KIND_LABELS = {
   'guess-adoption': 'Guess taken',
   repair: 'Repair',
   review: 'Review',
+  job: 'Job',
 };
 
 export const operationKindLabel = (kind) => KIND_LABELS[kind] ?? null;
