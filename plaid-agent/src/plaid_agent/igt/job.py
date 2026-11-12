@@ -41,9 +41,10 @@ from ..core.guidelines import manual_chars
 from ..core.job import (BUDGET, ROW_FINAL, SKIPPED_MORE, JobStopped, Pace, StretchFailed, canonical, analysis_key,
                         empty_counts, failure_kind, halve, harmonized, not_answering)
 from ..core.limits import (JOB_ANALYSIS_MAX_CHARS, JOB_CONTEXT_SENTENCES, JOB_CORE_TRIES, JOB_CORE_WAIT_S,
-                           JOB_DECISIONS_PER_CALL, JOB_DEFER_ROUNDS, JOB_DEFER_WAIT_S, JOB_GUIDELINES_MAX_CHARS, JOB_LOCK_TRIES,
-                           JOB_LOCK_WAIT_S, JOB_PERSON_QUIET_S, JOB_PRECEDENT_CHARS, JOB_PRECEDENT_PER_FORM,
-                           JOB_SENTENCE_MAX_CHARS, JOB_SKIPPED_PER_DOCUMENT, JOB_STRETCH_SENTENCES)
+                           JOB_DECISIONS_PER_CALL, JOB_DEFER_ROUNDS, JOB_DEFER_WAIT_S, JOB_GUIDELINES_MAX_CHARS,
+                           JOB_LOCK_TRIES, JOB_LOCK_WAIT_S, JOB_PERSON_QUIET_S, JOB_PRECEDENT_CHARS,
+                           JOB_PRECEDENT_PER_FORM, JOB_SENTENCE_MAX_CHARS, JOB_SKIPPED_PER_DOCUMENT,
+                           JOB_STRETCH_SENTENCES)
 from ..core.plan import JOB_DETAIL_KEY, PlanError, held_changes
 from ..core.tools import Refusal, ToolError
 from ..core.version import agent_version
@@ -786,7 +787,7 @@ class IgtRunner:
             return None
         ws.stretch = st
         prints = {s.id: ws.sentence_print(doc, s) for s in part}
-        system = build_job_prompt(project)
+        system = build_job_prompt(project, job.tasks)
         message = self.message(ws, project, doc, part, st)
         transcript = [{'role': 'user', 'content': message}]
         seed(ws.seen, system, transcript, lambda tool, args: True)
@@ -837,8 +838,9 @@ class IgtRunner:
             lines += ['', f'Instructions from {self.job.starter_name}:', self.job.note]
         refs = ', '.join(f's{s.index}' for s in part)
         context_refs = ', '.join(f's{s.index}' for s in context)
-        lines += ['', f'Analyse {refs}.' + (f' {context_refs} {"is" if len(context) == 1 else "are"} context.'
-                                             if context else '')]
+        verb = 'Analyse' if 'gloss' in self.job.tasks else 'Translate'
+        lines += ['', f'{verb} {refs}.' + (f' {context_refs} {"is" if len(context) == 1 else "are"} context.'
+                                           if context else '')]
         return '\n'.join(lines)
 
     # --- precedent ------------------------------------------------------------------

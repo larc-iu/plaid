@@ -114,7 +114,8 @@ def render_job() -> str:
         'rendered for the small project the tests use (`tests/fixtures.py`, project "Demo") for a job of every '
         'task. This file is a snapshot for browsing and may lag behind the code: the prompt is built in '
         '`src/plaid_agent/igt/prompt.py` (`build_job_prompt`) and the tools are chosen in '
-        '`src/plaid_agent/igt/toolkit.py` (`job_tools`). A job of fewer tasks is offered fewer plan tools. '
+        '`src/plaid_agent/igt/toolkit.py` (`job_tools`). A job of fewer tasks is told only of those tasks and '
+        'offered only their plan tools, shown at the end. '
         'Regenerate it with', width=80)
     turn = ('Each stretch is a conversation of its own: this system prompt, one message the\n'
             'worker builds (the target sentences, the context before them, how their forms\n'
@@ -125,6 +126,14 @@ def render_job() -> str:
              f'## Tools\n\n{len(tools)} tools, in the order the model receives them: '
              f'{len(toolkit.job_plan_names(tasks))} plan a change (`PLAN:`), the rest read the project.\n']
     parts += [render_tool(t) for t in tools]
+    # What a job of fewer tasks is told instead: the prompt from "What to
+    # stage" on, the rest being the same, and the plan tools it is offered.
+    for fewer in (('translate',), ('gloss',), ('gloss', 'link'), ('translate', 'gloss')):
+        text = prompt.build_job_prompt(ws.project, fewer)
+        names = ', '.join(toolkit.job_plan_names(fewer))
+        parts += [f'\n## A job of {" and ".join(fewer)}\n',
+                  f'The same prompt down to "What to stage", then:\n', '```text',
+                  text[text.index('What to stage:'):].rstrip(), '```\n', f'Plan tools: {names}.\n']
     return '\n'.join(parts)
 
 

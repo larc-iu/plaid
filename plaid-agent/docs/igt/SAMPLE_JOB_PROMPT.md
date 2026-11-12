@@ -5,8 +5,9 @@ call of a stretch, rendered for the small project the tests use
 (`tests/fixtures.py`, project "Demo") for a job of every task. This file is a
 snapshot for browsing and may lag behind the code: the prompt is built in
 `src/plaid_agent/igt/prompt.py` (`build_job_prompt`) and the tools are chosen in
-`src/plaid_agent/igt/toolkit.py` (`job_tools`). A job of fewer tasks is offered
-fewer plan tools. Regenerate it with
+`src/plaid_agent/igt/toolkit.py` (`job_tools`). A job of fewer tasks is told
+only of those tasks and offered only their plan tools, shown at the end.
+Regenerate it with
 
     bb sample-prompts
 
@@ -51,8 +52,8 @@ Idiomatic English, not a word-by-word rendering.
 --- the project's guidelines end ---
 
 How a job works:
-- Each message hands you a few target sentences, the sentences before them for context, and how the forms in them were analysed before: by people in this project, and earlier in this job. Stage work on the target sentences only.
-- Follow the analyses people made and the ones made earlier in this job, unless the sentence in front of you clearly needs another reading.
+- Each message hands you a few target sentences, the sentences before them for context, and the targets in them: the target words and translations, the only things you stage work on. Where it helps it also shows how the same forms were done before: by people in this project, and earlier in this job.
+- Follow what people did and what this job did earlier, unless the sentence in front of you clearly needs another reading.
 - Where you cannot tell what is right, leave it. A value left empty is filled by a person later, and a wrong one has to be found first.
 - Write forms exactly as the sentences show them. A value with a broken character, or in a rare script found nowhere in what you were given, is refused.
 - Once everything you can decide is staged, end with a one-line reply such as "Done."
@@ -60,9 +61,9 @@ How a job works:
 What to stage:
 - A target translation: set_field with the translation field on the sentence (sN).
 - Target words: one set_analysis call per sentence, with every target word of it in analyses. Give each word's morphemes in order, each with its form, its type (stem, root, prefix, suffix, enclitic, proclitic, ...) and the morpheme fields the project has, such as the gloss. The forms together spell the word. A word that is one morpheme is one morpheme with the whole word as its form.
-- When linking is part of the job: link each morpheme of the words you analyse to its lexicon entry with link_entry on sN.wN.mN. Where no entry has that form and gloss, create_entry makes one and link_entry links it by the entry_id it returns. create_entry refuses an entry that exists and names it: link that one instead.
-- A word field (sN.wN) is set only where it is empty.
-- The reads are there for what the message does not settle: analyses_of for a form's analyses across the project, concordance for a morpheme's contexts, lexicon_entry and read_lexicon for entries. Most messages need few of them.
+- A word field (sN.wN) of a target word is set only where it is empty.
+- Link each morpheme of the words you analyse to its lexicon entry with link_entry on sN.wN.mN. Where no entry has that form and gloss, create_entry makes one and link_entry links it by the entry_id it returns. create_entry refuses an entry that exists and names it: link that one instead. A form with its markers ("na-") and without them ("na") is one form.
+- The reads are there for what the message does not settle: analyses_of for a form's analyses across the project, concordance for a form's contexts, search, read_sentences for other sentences, lexicon_entry and read_lexicon for entries. Most messages need few of them.
 
 One message worked through, for example. It shows s4 and s5 as context and s6 and s7 as targets. In s6 the words w1 "nakuja" and w3 "leo" are targets, and the translation of s7 is a target. It says people analysed "leo" as le-o 'today-DEF' twice, and that this job analysed "ja" as one stem 'come' and linked it to the entry ja. Nothing settles "na". You read the concordance of "na" and see it before verbs glossed PRS in four sentences. You then stage one set_analysis for s6 with w1 as na-ku-ja (prefix PRS, prefix INF, stem come) and w3 as le-o as people have it, link s6.w1.m3 to the entry ja and s6.w3.m1 to le, find no entry for the prefix "na-" glossed PRS and create it and link s6.w1.m1 to it, leave "ku-" unlinked because two entries could be meant, set the translation of s7, and end with "Done."
 ```
@@ -168,3 +169,68 @@ PLAN: add a lexicon entry where none has this form and gloss. fields maps entry 
 - `lexicon` (string)
 - `fields` (object of string)
 - `type` (string)
+
+
+## A job of translate
+
+The same prompt down to "What to stage", then:
+
+```text
+What to stage:
+- A target translation: set_field with the translation field on the sentence (sN).
+- The reads are there for what the message does not settle: analyses_of for a form's analyses across the project, concordance for a form's contexts, search, read_sentences for other sentences, lexicon_entry and read_lexicon for entries. Most messages need few of them.
+
+One message worked through, for example. It shows s4 and s5 as context and s6 and s7 as targets, and the translations of both are targets. You read the sentences, see that s7 goes on from s6, set the translation of s6 and of s7 with set_field, and end with "Done."
+```
+
+Plan tools: set_field.
+
+
+## A job of gloss
+
+The same prompt down to "What to stage", then:
+
+```text
+What to stage:
+- Target words: one set_analysis call per sentence, with every target word of it in analyses. Give each word's morphemes in order, each with its form, its type (stem, root, prefix, suffix, enclitic, proclitic, ...) and the morpheme fields the project has, such as the gloss. The forms together spell the word. A word that is one morpheme is one morpheme with the whole word as its form.
+- A word field (sN.wN) of a target word is set only where it is empty.
+- The reads are there for what the message does not settle: analyses_of for a form's analyses across the project, concordance for a form's contexts, search, read_sentences for other sentences, lexicon_entry and read_lexicon for entries. Most messages need few of them.
+
+One message worked through, for example. It shows s4 and s5 as context and s6 and s7 as targets. In s6 the words w1 "nakuja" and w3 "leo" are targets. It says people analysed "leo" as le-o 'today-DEF' twice, and that this job analysed "ja" as one stem 'come'. Nothing settles "na". You read the concordance of "na" and see it before verbs glossed PRS in four sentences. You then stage one set_analysis for s6 with w1 as na-ku-ja (prefix PRS, prefix INF, stem come) and w3 as le-o as people have it, and end with "Done."
+```
+
+Plan tools: set_field, set_analysis.
+
+
+## A job of gloss and link
+
+The same prompt down to "What to stage", then:
+
+```text
+What to stage:
+- Target words: one set_analysis call per sentence, with every target word of it in analyses. Give each word's morphemes in order, each with its form, its type (stem, root, prefix, suffix, enclitic, proclitic, ...) and the morpheme fields the project has, such as the gloss. The forms together spell the word. A word that is one morpheme is one morpheme with the whole word as its form.
+- A word field (sN.wN) of a target word is set only where it is empty.
+- Link each morpheme of the words you analyse to its lexicon entry with link_entry on sN.wN.mN. Where no entry has that form and gloss, create_entry makes one and link_entry links it by the entry_id it returns. create_entry refuses an entry that exists and names it: link that one instead. A form with its markers ("na-") and without them ("na") is one form.
+- The reads are there for what the message does not settle: analyses_of for a form's analyses across the project, concordance for a form's contexts, search, read_sentences for other sentences, lexicon_entry and read_lexicon for entries. Most messages need few of them.
+
+One message worked through, for example. It shows s4 and s5 as context and s6 and s7 as targets. In s6 the words w1 "nakuja" and w3 "leo" are targets. It says people analysed "leo" as le-o 'today-DEF' twice, and that this job analysed "ja" as one stem 'come' and linked it to the entry ja. Nothing settles "na". You read the concordance of "na" and see it before verbs glossed PRS in four sentences. You then stage one set_analysis for s6 with w1 as na-ku-ja (prefix PRS, prefix INF, stem come) and w3 as le-o as people have it, link s6.w1.m3 to the entry ja and s6.w3.m1 to le, find no entry for the prefix "na-" glossed PRS and create it and link s6.w1.m1 to it, leave "ku-" unlinked because two entries could be meant, and end with "Done."
+```
+
+Plan tools: set_field, set_analysis, link_entry, create_entry.
+
+
+## A job of translate and gloss
+
+The same prompt down to "What to stage", then:
+
+```text
+What to stage:
+- A target translation: set_field with the translation field on the sentence (sN).
+- Target words: one set_analysis call per sentence, with every target word of it in analyses. Give each word's morphemes in order, each with its form, its type (stem, root, prefix, suffix, enclitic, proclitic, ...) and the morpheme fields the project has, such as the gloss. The forms together spell the word. A word that is one morpheme is one morpheme with the whole word as its form.
+- A word field (sN.wN) of a target word is set only where it is empty.
+- The reads are there for what the message does not settle: analyses_of for a form's analyses across the project, concordance for a form's contexts, search, read_sentences for other sentences, lexicon_entry and read_lexicon for entries. Most messages need few of them.
+
+One message worked through, for example. It shows s4 and s5 as context and s6 and s7 as targets. In s6 the words w1 "nakuja" and w3 "leo" are targets, and the translation of s7 is a target. It says people analysed "leo" as le-o 'today-DEF' twice, and that this job analysed "ja" as one stem 'come'. Nothing settles "na". You read the concordance of "na" and see it before verbs glossed PRS in four sentences. You then stage one set_analysis for s6 with w1 as na-ku-ja (prefix PRS, prefix INF, stem come) and w3 as le-o as people have it, set the translation of s7, and end with "Done."
+```
+
+Plan tools: set_field, set_analysis.

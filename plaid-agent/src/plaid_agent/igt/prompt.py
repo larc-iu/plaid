@@ -201,38 +201,78 @@ translation per sentence, and a lexicon of entries that morphemes link to.
 {job_rules}
 
 What to stage:
-- A target translation: set_field with the translation field on the sentence (sN).
-- Target words: one set_analysis call per sentence, with every target word of it in analyses. Give each \
-word's morphemes in order, each with its form, its type (stem, root, prefix, suffix, enclitic, proclitic, ...) \
-and the morpheme fields the project has, such as the gloss. The forms together spell the word. A word that is \
-one morpheme is one morpheme with the whole word as its form.
-- When linking is part of the job: link each morpheme of the words you analyse to its lexicon entry with \
-link_entry on sN.wN.mN. Where no entry has that form and gloss, create_entry makes one and link_entry links it \
-by the entry_id it returns. create_entry refuses an entry that exists and names it: link that one instead.
-- A word field (sN.wN) is set only where it is empty.
-- The reads are there for what the message does not settle: analyses_of for a form's analyses across the \
-project, concordance for a morpheme's contexts, lexicon_entry and read_lexicon for entries. Most messages \
-need few of them.
+{what_to_stage}
 
-One message worked through, for example. It shows s4 and s5 as context and s6 and s7 as targets. In s6 the \
-words w1 "nakuja" and w3 "leo" are targets, and the translation of s7 is a target. It says people analysed \
-"leo" as le-o 'today-DEF' twice, and that this job analysed "ja" as one stem 'come' and linked it to the \
-entry ja. Nothing settles "na". You read the concordance of "na" and see it before verbs glossed PRS in four \
-sentences. You then stage one set_analysis for s6 with w1 as na-ku-ja (prefix PRS, prefix INF, stem come) and \
-w3 as le-o as people have it, link s6.w1.m3 to the entry ja and s6.w3.m1 to le, find no entry for the prefix \
-"na-" glossed PRS and create it and link s6.w1.m1 to it, leave "ku-" unlinked because two entries could be \
-meant, set the translation of s7, and end with "Done."'''
+One message worked through, for example. {example}'''
 
-JOB_SYSTEM = shared.filled(_JOB_SYSTEM, {
-    'job_contract': shared.job_contract(),
-    'project_shape': shared.project_shape(),
-    'job_rules': shared.job_rules(),
-})
+# What to stage, a line per task (and the reads, for every job). A job is
+# told only of the tasks it was asked and the tools it has (REV-J-B S3-4).
+_STAGE_TRANSLATE = '- A target translation: set_field with the translation field on the sentence (sN).'
+_STAGE_GLOSS = (
+    '- Target words: one set_analysis call per sentence, with every target word of it in analyses. Give each '
+    'word\'s morphemes in order, each with its form, its type (stem, root, prefix, suffix, enclitic, proclitic, ...) '
+    'and the morpheme fields the project has, such as the gloss. The forms together spell the word. A word that is '
+    'one morpheme is one morpheme with the whole word as its form.\n'
+    '- A word field (sN.wN) of a target word is set only where it is empty.')
+_STAGE_LINK = (
+    '- Link each morpheme of the words you analyse to its lexicon entry with link_entry on sN.wN.mN. Where no '
+    'entry has that form and gloss, create_entry makes one and link_entry links it by the entry_id it returns. '
+    'create_entry refuses an entry that exists and names it: link that one instead. A form with its markers '
+    '("na-") and without them ("na") is one form.')
+_STAGE_READS = (
+    '- The reads are there for what the message does not settle: analyses_of for a form\'s analyses across the '
+    'project, concordance for a form\'s contexts, search, read_sentences for other sentences, lexicon_entry and '
+    'read_lexicon for entries. Most messages need few of them.')
 
 
-def build_job_prompt(project: IgtProject) -> str:
-    """The system prompt of every stretch of a job on ``project``: the job's
-    contract and rules, the project's shape and its guidelines, whole."""
+def _example(tasks) -> str:
+    """One worked message for a job of ``tasks``, its calls told in prose."""
+    gloss, link, translate = 'gloss' in tasks, 'link' in tasks, 'translate' in tasks
+    if not gloss:
+        return ('It shows s4 and s5 as context and s6 and s7 as targets, and the translations of both are '
+                'targets. You read the sentences, see that s7 goes on from s6, set the translation of s6 and of s7 '
+                'with set_field, and end with "Done."')
+    targets = 'In s6 the words w1 "nakuja" and w3 "leo" are targets'
+    targets += ', and the translation of s7 is a target.' if translate else '.'
+    said = ('It says people analysed "leo" as le-o \'today-DEF\' twice, and that this job analysed "ja" as one '
+            'stem \'come\'')
+    said += ' and linked it to the entry ja.' if link else '.'
+    staged = ('You then stage one set_analysis for s6 with w1 as na-ku-ja (prefix PRS, prefix INF, stem come) and '
+              'w3 as le-o as people have it')
+    if link:
+        staged += (', link s6.w1.m3 to the entry ja and s6.w3.m1 to le, find no entry for the prefix "na-" glossed '
+                   'PRS and create it and link s6.w1.m1 to it, leave "ku-" unlinked because two entries could be '
+                   'meant')
+    staged += ', set the translation of s7' if translate else ''
+    return (f'It shows s4 and s5 as context and s6 and s7 as targets. {targets} {said} Nothing settles "na". You '
+            f'read the concordance of "na" and see it before verbs glossed PRS in four sentences. {staged}, and end '
+            'with "Done."')
+
+
+def job_system(tasks) -> str:
+    """The job's system prompt for a job of ``tasks``, before the project is
+    filled in."""
+    lines = ([_STAGE_TRANSLATE] if 'translate' in tasks else []) + ([_STAGE_GLOSS] if 'gloss' in tasks else []) \
+        + ([_STAGE_LINK] if 'link' in tasks else []) + [_STAGE_READS]
+    return shared.filled(_JOB_SYSTEM, {
+        'job_contract': shared.job_contract(),
+        'project_shape': shared.project_shape(),
+        'job_rules': shared.job_rules(),
+        'what_to_stage': '\n'.join(lines),
+        'example': _example(tasks),
+    })
+
+
+#: Every task's prompt, the one the job's version is taken over.
+JOB_TASKS = ('translate', 'gloss', 'link')
+JOB_SYSTEM = job_system(JOB_TASKS)
+
+
+def build_job_prompt(project: IgtProject, tasks=JOB_TASKS) -> str:
+    """The system prompt of every stretch of a job of ``tasks`` on
+    ``project``: the job's contract and rules, what to stage for those tasks
+    alone, the project's shape and its guidelines, whole."""
     from ..core.guidelines import job_section
-    out = JOB_SYSTEM.replace('{project_name}', project.name).replace('{shape}', '\n'.join(shape_lines(project)))
+    out = job_system(tasks).replace('{project_name}', project.name)
+    out = out.replace('{shape}', '\n'.join(shape_lines(project)))
     return out.replace('{guidelines}', job_section(project.guidelines))

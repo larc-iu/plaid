@@ -385,11 +385,11 @@ of the project's other machine helpers. Nothing a person wrote or confirmed is e
 
 #: How a job works, the same in every app.
 JOB_RULES = '''How a job works:
-- Each message hands you a few target sentences, the sentences before them for context, and how the forms in \
-them were analysed before: by people in this project, and earlier in this job. Stage work on the target \
-sentences only.
-- Follow the analyses people made and the ones made earlier in this job, unless the sentence in front of you \
-clearly needs another reading.
+- Each message hands you a few target sentences, the sentences before them for context, and the targets in \
+them: the target words and translations, the only things you stage work on. Where it helps it also shows how \
+the same forms were done before: by people in this project, and earlier in this job.
+- Follow what people did and what this job did earlier, unless the sentence in front of you clearly needs \
+another reading.
 - Where you cannot tell what is right, leave it. A value left empty is filled by a person later, and a wrong \
 one has to be found first.
 - Write forms exactly as the sentences show them. A value with a broken character, or in a rare script found \
@@ -399,7 +399,7 @@ nowhere in what you were given, is refused.
 #: The line a stretch's model is sent once it has used most of its calls or
 #: its prompt has grown near its cap (CONTRACT 1). The calls after it are
 #: offered the plan tools alone.
-JOB_DECIDE_NOW = '(system) Decide now with what you have: stage the analyses of the target sentences and end.'
+JOB_DECIDE_NOW = '(system) Decide now with what you have: stage your work on the targets and end.'
 
 
 def job_contract() -> str:
@@ -408,6 +408,6 @@ def job_contract() -> str:
 
 
 def job_rules() -> str:
-    """How a job works: the target sentences only, people's analyses first,
+    """How a job works: the targets only, what people did first,
     leave what is unclear, copy forms, end."""
     return JOB_RULES
