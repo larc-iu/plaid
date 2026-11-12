@@ -173,8 +173,10 @@ describe('the vocabulary field settings, Role', () => {
 // Every vocabulary has a field holding the Status role (Luke, 2026-11-12): a
 // job marks the entries it makes there, and the Entries screen filters on it.
 describe('the field holding the Status role', () => {
-  const rowOf = (name) => document.querySelector(`[data-trigger="type-${name}"]`)?.closest('tr');
+  const rowOf = (name) => document.getElementById(`inline-${name}`)?.closest('tr');
   const removeOf = (name) => rowOf(name)?.querySelector('button[title="Remove"]');
+  const selectOf = (what, name) =>
+    document.querySelector(`[data-trigger="${what}-${name}"]`)?.closest('select');
 
   it('cannot be removed, and says it is required', async () => {
     const { server, client } = serverOf({
@@ -199,6 +201,31 @@ describe('the field holding the Status role', () => {
     const view = await mount(client);
     expect(roleSelect('state')).toBeFalsy();
     expect(rowOf('state').textContent).toContain('Status');
+    await view.unmount();
+  });
+
+  // A type of Entry would clear every Status value and hold the field to no
+  // list (REV-J-C-1). Where it is shown is fixed with it.
+  it('keeps its type and where it is shown: each reads as it is stored, with nothing to change it to', async () => {
+    const { server, client } = serverOf({
+      state: { tagset: 'Status', role: 'status', scope: 'entry', lang: 'en' },
+      note: {},
+    });
+    const view = await mount(client);
+    expect(selectOf('type', 'state')).toBeFalsy();
+    expect(selectOf('scope', 'state')).toBeFalsy();
+    const cells = [...rowOf('state').querySelectorAll('td')].map((td) => td.textContent);
+    expect(cells[2]).toBe('Text');
+    expect(cells[3]).toBe('Headword only');
+    // Every other field keeps both.
+    expect(selectOf('type', 'note')).toBeTruthy();
+    expect(selectOf('scope', 'note')).toBeTruthy();
+    expect(server.config.igt.fields.state).toEqual({
+      tagset: 'Status',
+      role: 'status',
+      scope: 'entry',
+      lang: 'en',
+    });
     await view.unmount();
   });
 

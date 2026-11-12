@@ -134,6 +134,8 @@ const TYPE_CHOICES = [
 ];
 const typeChoiceOf = (field) =>
   field.type === FIELD_TYPES.ITEM ? (field.many ? 'items' : 'item') : 'text';
+const typeLabelOf = (field) => TYPE_CHOICES.find((c) => c.key === typeChoiceOf(field)).label;
+const SCOPE_LABELS = { [FIELD_SCOPES.SENSE]: 'Every sense', [FIELD_SCOPES.ENTRY]: 'Headword only' };
 
 // Core refuses to delete a vocabulary while another project uses it (409),
 // for everyone, and counts them as `other-projects`, naming none. The count,
@@ -864,7 +866,9 @@ export const VocabularyDetail = () => {
 
   const handleSetType = async (fieldName, key) => {
     const choice = TYPE_CHOICES.find((c) => c.key === key);
-    if (!choice) return;
+    // The Status field's type is fixed, as its role is: Entry would clear
+    // every Status value. The table offers no choice for it.
+    if (!choice || fieldName === statusKey) return;
     const before = fields.find((f) => f.name === fieldName);
     const next = fields.map((f) =>
       f.name === fieldName
@@ -945,6 +949,7 @@ export const VocabularyDetail = () => {
   };
 
   const handleSetScope = async (fieldName, scope) => {
+    if (fieldName === statusKey) return;
     await saveFields(fields.map((f) => (f.name === fieldName ? { ...f, scope } : f)));
   };
 
@@ -1134,8 +1139,9 @@ export const VocabularyDetail = () => {
                       />
                     </td>
                     <td className="px-3 py-1.5">
-                      {field.immutable ? (
-                        <span className="text-xs text-muted-foreground">Text</span>
+                      {/* Morph type and the Status field keep their type. */}
+                      {field.immutable || field.name === statusKey ? (
+                        <span className="text-xs text-muted-foreground">{typeLabelOf(field)}</span>
                       ) : (
                         <Select
                           value={typeChoiceOf(field)}
@@ -1159,8 +1165,10 @@ export const VocabularyDetail = () => {
                       )}
                     </td>
                     <td className="px-3 py-1.5">
-                      {field.immutable ? (
-                        <span className="text-xs text-muted-foreground">Every sense</span>
+                      {field.immutable || field.name === statusKey ? (
+                        <span className="text-xs text-muted-foreground">
+                          {SCOPE_LABELS[field.scope]}
+                        </span>
                       ) : (
                         <Select
                           value={field.scope}
