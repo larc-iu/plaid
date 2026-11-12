@@ -217,3 +217,31 @@ def test_the_plan_contract_says_the_user_chooses_and_nothing_of_the_assistant_de
     assert ('When they approve, the user chooses whether the changes are recorded as verified or as unverified '
             'proposals.') in PLAN_CONTRACT
     assert 'you chose' not in PLAN_CONTRACT and 'recorded as verified (made by you' not in PLAN_CONTRACT
+
+
+@pytest.mark.parametrize('button', sorted(BUTTONS))
+def test_a_contributors_approval_writes_their_contribution_or_the_assistants_proposal(button):
+    # The project reviews the approver's work (the provenance convention's
+    # contributor rule): "Approve as your contribution" (the card's verified
+    # button for them) writes their contribution, never a verification, and
+    # "Approve as unverified" leaves every change the assistant's proposal.
+    client = FakeClient()
+    store = _seed_plan(client, request_id=None)
+    _set_meta(client, pending=None)
+    svc = _service()
+    svc._reviewed = lambda *a: True
+    svc.process_request(_req(client, 'approve', plan_id=PLAN1, as_unverified=BUTTONS[button]), Helper('r9'))
+    md = _created(client)
+    assert 'provConfirmed' not in md, md
+    item = store.load('c1')[0]['display'][1]
+    if button == 'unverified':
+        assert md['prov'] == 'inferred' and md['provSource'] == SOURCE
+        assert item.get('as_unverified') is True and not item.get('contributed')
+    else:
+        assert md['prov'] == 'contributed' and md['provSource'] == 'user:u@x', md
+        assert item.get('contributed') is True and not item.get('as_unverified')
+
+
+def test_the_plan_contract_says_a_reviewed_users_verified_approval_is_their_contribution():
+    assert ("Where the project reviews that user's work, what they approve as verified is their own contribution "
+            'awaiting a reviewer.') in PLAN_CONTRACT
