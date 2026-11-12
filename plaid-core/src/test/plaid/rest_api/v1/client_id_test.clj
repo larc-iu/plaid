@@ -219,6 +219,13 @@
           (is (= 409 (:status r)))
           (is (true? (get-in r [:body :deleted])))
           (is (re-find #"^A span with id .* existed" (str (get-in r [:body :message])))))))
+    (testing "an id a job holds"
+      (let [job (psc/new-uuid)]
+        (is (= 201 (:status (post (str "/api/v1/projects/" (:proj s) "/jobs")
+                                  {:id job :app "igt" :tasks ["gloss"]}))))
+        (let [r (post "/api/v1/comments" {:id job :entity-type "document" :entity-id (:doc s) :body "c"})]
+          (is (= 409 (:status r)))
+          (is (re-find #"^A job with id" (str (get-in r [:body :message])))))))
     (testing "in a bulk create"
       (let [r (api-call admin-request {:method :post :path "/api/v1/tokens/bulk"
                                        :body [{:id (psc/new-uuid) :token-layer-id (:tkl s) :text (:text s) :begin 10 :end 12}

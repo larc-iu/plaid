@@ -21,7 +21,7 @@
 (def ^:private id-tables
   ["projects" "documents" "texts" "text_layers" "token_layers" "span_layers"
    "relation_layers" "vocab_layers" "tokens" "spans" "relations" "vocab_items"
-   "vocab_links" "guidelines" "comments"])
+   "vocab_links" "guidelines" "comments" "jobs"])
 
 (defn- build!
   "The tables a claim reads, analysed while the audit log held 13 delete

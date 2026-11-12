@@ -429,7 +429,7 @@
    :relation_layers "relation layer" :vocab_layers "vocabulary"
    :tokens "token" :spans "span" :relations "relation"
    :vocab_items "vocabulary item" :vocab_links "vocabulary link"
-   :guidelines "guideline" :comments "comment"})
+   :guidelines "guideline" :comments "comment" :jobs "job"})
 
 (defn claim-ids!
   "Refuse the create unless every client-named id in `ids` (nils are the
