@@ -2133,15 +2133,37 @@ $ python3 -c "import sqlite3; print(sqlite3.connect('file:plaid.db?mode=ro', uri
 
 Take a backup and copy it off the machine, replace `plaid.jar`, and restart the service.
 Database migrations run on startup, and the bundled apps are part of the jar, so they upgrade with it.
+Then reload every open browser tab of Plaid, so that no page of the old version goes on talking to the new one.
+Do the same after going back to an older version.
+
+An upgraded database cannot be used by the version before it.
+To go back to that version, restore the backup taken before the upgrade, then start it.
+
+=== Interrupted migrations
+
+The server starts only once every migration has run.
+A start stopped while it migrates the database, by a crash, a power cut or a restart, leaves the migration unfinished.
+The next start runs it again when the migration is written to be resumed, as the one that gives every vocabulary a project is, and says so in its log.
+For any other migration the server refuses to start, and its log names the migration and the two ways on: restore the backup taken before upgrading and start again, or remove the mark the stopped start left, with `sqlite3 data/plaid.db "DELETE FROM schema_migrations WHERE id = -1"`, and start again.
+The server also refuses to start on a database file it cannot write.
+Do not run the older version on a database whose upgrade stopped partway.
+Restore the backup instead.
+
+=== Vocabularies without a project
 
 The version that gives every vocabulary a project refuses to start while a vocabulary exists that no project links.
-Before upgrading to it, with the old version still running:
+The script that gives each one a project is `plaid-core/scripts/vocab_home_orphans.py` in the Plaid repository.
+It needs Python 3.11 and the Plaid Python client, `plaid-client-py` in the same repository.
+Before upgrading, with the old version still running:
 
-. Run `vocab_home_orphans.py BASE_URL TOKEN_FILE` with an admin's API token. It lists every vocabulary no project links and writes nothing.
+. Run `python vocab_home_orphans.py BASE_URL TOKEN_FILE`, the file holding an admin's API token. It lists every vocabulary no project links and writes nothing.
 . If it lists any, run it again with `--apply`. Each such vocabulary gets a project of its own, named after it, whose maintainers are the vocabulary's maintainers. Then run it once more without `--apply`: it must list none.
 . Take the backup and copy it off the machine.
-. Optionally, start the new version on a copy of the database, on a spare port, and read its log.
+. Optionally, start the new version on a copy of the database made from that backup, on a spare port, and read its log.
 . Replace the jar and restart.
+
+A deactivated account is not made a maintainer.
+A vocabulary whose maintainers are all deactivated gets a project maintained only by the admin who ran the script, and the script says so.
 
 The upgrade gives each vocabulary its project and logs every choice.
 A vocabulary that several projects link goes to the one whose maintainers include the most of its maintainers, then the one with the most links into it, then the one with the smallest id.

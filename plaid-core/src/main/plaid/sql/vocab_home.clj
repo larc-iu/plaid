@@ -83,7 +83,11 @@
 ;; Step 0: vocabularies no project links
 ;; ============================================================
 
-(def orphan-script "vocab_home_orphans.py")
+(def orphan-script
+  "Where an operator finds the script that gives an unlinked vocabulary a
+  project, and how it runs."
+  (str "plaid-core/scripts/vocab_home_orphans.py, in the Plaid repository, against the server on the version "
+       "before this one: python vocab_home_orphans.py BASE_URL TOKEN_FILE, with an admin's API token in the file"))
 
 (defn- orphans
   "Every vocabulary no live project links and with no home yet, as maps of `:id`,
@@ -105,7 +109,7 @@
        (str/join ", " (map (fn [{:keys [id name entries]}]
                              (str "\"" name "\" (" id ", " entries (if (= 1 entries) " entry" " entries") ")"))
                            found))
-       ". Run " orphan-script " against the server before upgrading (see the manual's Upgrading section)."))
+       ". Run " orphan-script " (see the manual's Upgrading section)."))
 
 ;; ============================================================
 ;; Step 1: the plan
