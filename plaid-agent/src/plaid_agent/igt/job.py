@@ -222,12 +222,15 @@ def unmade(analysis: Dict[str, Any]) -> Dict[str, Any]:
     return {**analysis, 'morphemes': [{**m, 'made': False} for m in analysis['morphemes']]}
 
 
-def harmonized_part(analysis: Dict[str, Any]) -> Dict[str, Any]:
+def harmonized_part(analysis: Dict[str, Any], tasks) -> Dict[str, Any]:
     """What harmonize compares and rewrites of an analysis: the morphemes
-    (form, type, "=", their fields, their entries). Never the word fields,
-    never ``made``: harmonize writes only what a stretch of this job writes
-    on a word by its analysis."""
-    return {'morphemes': [{**m, 'made': False} for m in analysis['morphemes']], 'word': {}}
+    (form, type, "=", their fields) and, only for a job asked to link, their
+    entries. Never the word fields, never ``made``: harmonize writes only
+    what a stretch of this job may write on a word by its analysis, so a
+    person's links never come along into a job that makes none."""
+    links = 'link' in tasks
+    return {'morphemes': [{**m, 'made': False, 'entry': m.get('entry') if links else None}
+                          for m in analysis['morphemes']], 'word': {}}
 
 
 def rendering(analysis: Dict[str, Any], gloss: Optional[str], entries: Optional[Dict[str, str]] = None) -> str:
@@ -1232,7 +1235,7 @@ class IgtRunner:
                     into = mine if job_owned(w, job.id) else touched if job_touched(w, job.id) else None
                     if into is None:
                         continue
-                    a = harmonized_part(word_analysis(w))
+                    a = harmonized_part(word_analysis(w), job.tasks)
                     slot = into.setdefault(form_key(w.surface), {}).setdefault(
                         analysis_key(canonical(a)), {'analysis': a, 'words': []})
                     slot['words'].append((d, w.id))
@@ -1244,7 +1247,7 @@ class IgtRunner:
                 continue
             theirs: Dict[str, Dict[str, Any]] = {}
             for x in people.get(form, {}).values():
-                a = harmonized_part(x['analysis'])
+                a = harmonized_part(x['analysis'], job.tasks)
                 slot = theirs.setdefault(analysis_key(canonical(a)), {'analysis': a, 'count': 0})
                 slot['count'] += x['count']
             target, by = harmonized({k: len(v['words']) for k, v in keys.items()},
