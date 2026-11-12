@@ -12,18 +12,17 @@
       WRITE. A comment is a mark left on someone's data, so it takes the
       same standing that annotating takes, and readers are deliberately
       excluded;
-    * a vocab item: the vocab layer's own gates, which already answer the
-      question for entries (a maintainer, an admin, or a writer of a project
-      that links the vocabulary may write; anyone with a role on such a
-      project may read).
+    * a vocab item: a writer of a project that links the vocabulary (its
+      home or a borrower), or an admin, may write; anyone with a role on such
+      a project may read.
 
   On top of that role, two rules are the whole point of the feature:
 
     * Only the AUTHOR may edit a comment. Nobody else, maintainers and
       admins included — rewriting someone else's words under their name is
       not an administrative action.
-    * The author OR a maintainer of the owner (project or vocab layer) may
-      delete one. Maintainers need a way to clear something abusive or
+    * The author OR a maintainer of the owner (project, or a vocab layer's
+      home project) may delete one. Maintainers need a way to clear something abusive or
       misfiled, and deleting attributes nothing to anyone.
 
   `author_id` is always stamped from the authenticated caller and is never
@@ -34,7 +33,6 @@
             [plaid.sql.comment :as pcm]
             [plaid.sql.operation :as op]
             [plaid.sql.user :as user]
-            [plaid.sql.vocab-layer :as vocab]
             [reitit.coercion.malli]))
 
 ;; ============================================================
@@ -79,7 +77,7 @@
   (wrap-owner-required handler pra/wrap-reader-required pra/wrap-vocab-reader-required resolve-owner))
 
 (defn- wrap-owner-writer-required [handler resolve-owner]
-  (wrap-owner-required handler pra/wrap-writer-required pra/wrap-vocab-writer-required resolve-owner))
+  (wrap-owner-required handler pra/wrap-writer-required pra/wrap-vocab-linking-writer-required resolve-owner))
 
 ;; ============================================================
 ;; Authorship middleware
@@ -109,11 +107,11 @@
 
 (defn- owner-maintainer?
   "Is the caller an admin, or a maintainer of the comment's owner (its
-  project, or its vocab layer)?"
+  project, or its vocab layer's home project)?"
   [{db :db :as request} row]
   (or (user/admin? (:user/record request))
       (if-let [vid (:vocab_layer_id row)]
-        (vocab/maintainer? db vid (pra/->user-id request))
+        (pra/vocab-maintainer? db vid (pra/->user-id request) (:user/record request))
         (pra/privileged? request :project/maintainers (constantly (:project_id row))))))
 
 (defn wrap-author-or-maintainer-required
@@ -138,7 +136,7 @@
         (handler request)
         :else
         {:status 403
-         :body {:error "You can only delete your own comments unless you maintain the project or vocabulary."}}))))
+         :body {:error "You can only delete your own comments unless you maintain the project."}}))))
 
 ;; ============================================================
 ;; Live updates
@@ -154,9 +152,9 @@
   second serialization shape of a comment to keep in sync with the REST one,
   and no partial-update merge for clients to get wrong.
 
-  A comment on a vocabulary entry has no project stream to go on (streams
-  are per project, a vocabulary belongs to none), so nothing is published:
-  a vocabulary's threads are re-read when they are opened.
+  A comment on a vocabulary entry is not published (streams are per
+  project, and the entry is read from every project that links its
+  vocabulary): a vocabulary's threads are re-read when they are opened.
 
   Published once the change commits: inside a batch, or a write sent with an
   Idempotency-Key, the transaction is still open here and may roll back."
@@ -265,7 +263,7 @@
     [""
      {:post {:summary (str "Post a comment on an entity. Commentable types: document, text, "
                            "token, span, relation, vocab-item. Requires write access to the "
-                           "entity's project, or to the vocabulary for a vocab-item; the author is "
+                           "entity's project, or to a project that links the vocabulary for a vocab-item; the author is "
                            "the authenticated caller. <code>anchor-label</code> is an optional "
                            "caption saying what the comment is about (at most 200 characters), "
                            "shown once the anchor has been deleted. Comments are not audited and "
@@ -316,7 +314,7 @@
                                :body {:error (ex-message e)}})))}
 
        :delete {:summary (str "Delete a comment. The author may delete their own; a maintainer of "
-                              "its project or vocabulary (or an admin) may delete any.")
+                              "its project, or of its vocabulary's project (or an admin), may delete any.")
                 :middleware [[wrap-owner-writer-required comment-owner]
                              wrap-author-or-maintainer-required]
                 :handler (fn [{{{:keys [comment-id]} :path} :parameters db :db}]

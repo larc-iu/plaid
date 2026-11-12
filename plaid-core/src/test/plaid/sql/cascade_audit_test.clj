@@ -8,11 +8,12 @@
     (the schema CHECK constraint accepts it).
 
   - #33 — `user/deactivate` (formerly hard delete) previously relied on FK ON DELETE CASCADE to
-    sweep project_users + vocab_maintainers rows, leaving the audit
-    log with no record of the membership/maintainership loss. The
-    delete now walks both junction tables and emits synthetic
-    `:projects` / `:vocab_layers` audit rows in the parent-row-carries-
-    junction shape established by tasks #28 / #34."
+    sweep project_users rows, leaving the audit log with no record of
+    the membership loss. The delete now walks the junction table and
+    emits synthetic `:projects` audit rows in the parent-row-carries-
+    junction shape established by tasks #28 / #34. A vocabulary has no
+    members of its own (its rights are its home project's), so a
+    deactivation writes nothing for one."
   (:require [clojure.test :refer :all]
             [plaid.sql.common :as psc]
             [plaid.sql.user :as user]
@@ -70,7 +71,7 @@
         (is (some? (:modified_at post)) "post-image carries modified_at")))))
 
 ;; ============================================================
-;; #33 — user/deactivate walks project_users + vocab_maintainers
+;; #33 — user/deactivate walks project_users
 ;; ============================================================
 
 (defn- create-extra-user!
@@ -83,27 +84,21 @@
     eid))
 
 (deftest user-deactivate-audits-project-and-vocab-cascade
-  (testing "deactivating a user emits synthetic :projects + :vocab_layers
-            audit rows for every membership / maintainership FK-cascade
-            that would otherwise have been swept silently"
+  (testing "deactivating a user emits synthetic :projects audit rows for
+            every membership FK-cascade that would otherwise have been
+            swept silently, and no :vocab_layers row"
     (let [victim (create-extra-user! "cascade-victim@example.com")
           ;; Project the user will be a reader on.
           proj (create-test-project admin-request "CascadeReaderProj")
           _    (add-project-reader admin-request proj victim)
-          ;; Vocab layer the user will maintain.
-          vid  (-> (create-vocab-layer admin-request "CascadeMaintVocab") :body :id)
-          _    (add-vocab-maintainer admin-request vid victim)
-          ;; Sanity-check setup: user is on both junction tables.
+          ;; A vocabulary of that project, which the user reads through it.
+          vid  (-> (create-vocab-layer admin-request proj "CascadeReaderVocab") :body :id)
+          ;; Sanity-check setup: user is on the junction table.
           _    (is (= 1 (count (psc/q db {:select [:*] :from [:project_users]
                                           :where [:and
                                                   [:= :project_id proj]
                                                   [:= :user_id victim]]})))
                    "victim is on project_users for proj")
-          _    (is (= 1 (count (psc/q db {:select [:*] :from [:vocab_maintainers]
-                                          :where [:and
-                                                  [:= :vocab_layer_id vid]
-                                                  [:= :user_id victim]]})))
-                   "victim is on vocab_maintainers for vid")
           ;; The actual deactivation (admin DELETE route).
           resp (api-call admin-request
                          {:method :delete :path (str "/api/v1/users/" victim)})
@@ -125,9 +120,6 @@
       (is (zero? (count (psc/q db {:select [:*] :from [:project_users]
                                    :where [:= :user_id victim]})))
           "project_users for victim is gone")
-      (is (zero? (count (psc/q db {:select [:*] :from [:vocab_maintainers]
-                                   :where [:= :user_id victim]})))
-          "vocab_maintainers for victim is gone")
       ;; The synthetic :projects audit (parent row + ACL vectors).
       (let [proj-writes (filter #(and (= "projects" (:target_table %))
                                       (= (str proj) (str (:target_id %))))
@@ -149,23 +141,11 @@
           (is (nil? (:pre_image w)) "pre-image is not persisted (post-image-only log)")
           (is (not (contains? post-readers (str victim)))
               (str "post-image readers no longer contains the victim id (was: " post-readers ")"))))
-      ;; The synthetic :vocab_layers audit (vocab row + maintainers).
-      (let [vocab-writes (filter #(and (= "vocab_layers" (:target_table %))
-                                       (= (str vid) (str (:target_id %))))
-                                 writes)]
-        (is (= 1 (count vocab-writes))
-            (str "expected 1 :vocab_layers audit row for the vocab the user maintained, got "
-                 (count vocab-writes)))
-        (let [w (first vocab-writes)
-              post (psc/read-json (:post_image w))
-              ;; Same namespace-stripping caveat as the :projects audit.
-              post-maints (set (:maintainers post))]
-          (is (= "update" (:change_type w))
-              "synthetic maintainers change is a :vocab_layers :update")
-          (is (nil? (:pre_image w)) "pre-image is not persisted (post-image-only log)")
-          (is (not (contains? post-maints (str victim)))
-              (str "post-image maintainers no longer contains the victim id (was: "
-                   post-maints ")"))))
+      ;; The vocabulary is untouched: no :vocab_layers row.
+      (is (empty? (filter #(and (= "vocab_layers" (:target_table %))
+                                (= (str vid) (str (:target_id %))))
+                          writes))
+          "no :vocab_layers audit row for the project's vocabulary")
       ;; The user row itself is audited as an :update whose post image
       ;; carries the deactivation timestamp (users are never hard-deleted).
       (let [user-writes (filter #(and (= "users" (:target_table %))

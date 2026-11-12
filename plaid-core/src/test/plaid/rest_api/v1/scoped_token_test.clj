@@ -35,21 +35,21 @@
 (defn- ok? [resp] (< 199 (:status resp) 300))
 
 (defn- world!
-  "Two projects, each with a document, and three vocabularies: one linked to
-  P, one linked to Q, one linked to both. user2 reads P and writes Q."
+  "Two projects, each with a document, and three vocabularies: one of P,
+  one of Q, and one of Q that P borrows. user2 reads P and writes Q."
   []
   (let [p (h/create-test-project admin-request "Scoped P")
         q (h/create-test-project admin-request "Scoped Q")
         doc-p (h/create-test-document admin-request p "doc p")
         doc-q (h/create-test-document admin-request q "doc q")
-        vocab (fn [name & pids]
-                (let [v (id (call admin-request :post "/api/v1/vocab-layers" {:name name}))]
-                  (doseq [pid pids]
+        vocab (fn [name home & borrowers]
+                (let [v (id (call admin-request :post "/api/v1/vocab-layers" {:name name :project-id home}))]
+                  (doseq [pid borrowers]
                     (fix/assert-no-content (call admin-request :post (str "/api/v1/projects/" pid "/vocabs/" v))))
                   v))
         v-p (vocab "v p" p)
         v-q (vocab "v q" q)
-        v-pq (vocab "v pq" p q)]
+        v-pq (vocab "v pq" q p)]
     (call admin-request :post (str "/api/v1/projects/" p "/readers/user2@example.com"))
     (call admin-request :post (str "/api/v1/projects/" q "/writers/user2@example.com"))
     {:p p :q q :doc-p doc-p :doc-q doc-q :v-p v-p :v-q v-q :v-pq v-pq}))
@@ -143,7 +143,7 @@
                                 [:get "/api/v1/users/admin@example.com/tokens"]
                                 [:get "/api/v1/users/user2@example.com/data/x"]
                                 [:get "/api/v1/vocab-layers"]
-                                [:post "/api/v1/vocab-layers" {:name "another"}]
+                                [:post "/api/v1/vocab-layers" {:name "another" :project-id p}]
                                 [:get "/api/v1/admin/server"]
                                 [:get "/api/v1/admin/logs"]
                                 [:post "/api/v1/logout"]]]
@@ -173,8 +173,8 @@
         "and another user's, in any case, is still refused")))
 
 (deftest a-role-counts-only-on-a-project-in-scope
-  ;; user2 reads P and writes Q, and v-pq is linked to both. Scoped to P,
-  ;; user2 reads v-pq but cannot write it: the write would come through Q.
+  ;; user2 reads P and writes Q, and v-pq is Q's, borrowed by P. Scoped to
+  ;; P, user2 reads v-pq but cannot write it: the write needs its home, Q.
   (let [{:keys [p q v-pq]} (world!)
         user2 (scoped "user2@example.com" p)
         user2-in-q (scoped "user2@example.com" q)]

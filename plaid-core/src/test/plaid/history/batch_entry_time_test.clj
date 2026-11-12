@@ -70,8 +70,7 @@
 
 (deftest batch-ending-on-a-vocabulary-entry
   (let [{:keys [proj doc-a span]} (setup!)
-        vocab (-> (create-vocab-layer admin-request "Lexicon") :body :id)
-        _ (link-vocab-to-project admin-request proj vocab)
+        vocab (-> (create-vocab-layer admin-request proj "Lexicon") :body :id)
         resp (api-call admin-request
                        {:method :post :path "/api/v1/batch"
                         :body [{:path (str "/api/v1/spans/" span) :method "patch" :body {:value "after"}}

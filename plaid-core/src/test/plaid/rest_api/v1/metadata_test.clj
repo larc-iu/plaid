@@ -87,7 +87,7 @@
 
 (deftest put-vocab-item-overdeep-metadata-returns-400
   (testing "PUT /vocab-items/:id/metadata rejects a 12-deep map with 400"
-    (let [vocab (-> (create-vocab-layer admin-request "VItemShapePutVocab") :body :id)
+    (let [vocab (-> (create-vocab-layer admin-request (create-test-project admin-request "VItemShapePutVocabProj") "VItemShapePutVocab") :body :id)
           item (-> (create-vocab-item admin-request vocab "w") :body :id)
           res (update-vocab-item-metadata admin-request item (nested-map 12))]
       (assert-status 400 res)
@@ -95,7 +95,7 @@
 
 (deftest patch-vocab-item-overdeep-metadata-returns-400
   (testing "PATCH /vocab-items/:id/metadata rejects a set op whose value is a 12-deep map with 400"
-    (let [vocab (-> (create-vocab-layer admin-request "VItemShapePatchVocab") :body :id)
+    (let [vocab (-> (create-vocab-layer admin-request (create-test-project admin-request "VItemShapePatchVocabProj") "VItemShapePatchVocab") :body :id)
           item (-> (create-vocab-item admin-request vocab "w") :body :id)
           res (patch-vocab-item-metadata admin-request item
                                          [{:op "set" :path ["deep"] :value (nested-map 12)}])]
@@ -104,7 +104,7 @@
 
 (deftest vocab-item-shallow-metadata-still-ok
   (testing "well-shaped vocab-item metadata still succeeds via PUT and PATCH"
-    (let [vocab (-> (create-vocab-layer admin-request "VItemShapeOkVocab") :body :id)
+    (let [vocab (-> (create-vocab-layer admin-request (create-test-project admin-request "VItemShapeOkVocabProj") "VItemShapeOkVocab") :body :id)
           item (-> (create-vocab-item admin-request vocab "w") :body :id)]
       (assert-ok (update-vocab-item-metadata admin-request item {"a" "1"}))
       (assert-ok (patch-vocab-item-metadata admin-request item [{:op "set" :path ["b"] :value "2"}])))))

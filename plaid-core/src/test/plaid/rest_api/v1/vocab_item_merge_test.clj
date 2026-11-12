@@ -13,7 +13,7 @@
             [plaid.test-helpers :refer [create-test-project create-text-layer
                                         create-token-layer create-text create-token
                                         create-vocab-layer create-vocab-item
-                                        create-vocab-link link-vocab-to-project
+                                        create-vocab-link
                                         get-document]]))
 
 (use-fixtures :once with-db with-mount-states with-rest-handler with-admin with-test-users)
@@ -39,17 +39,15 @@
   (-> (get-document admin-request doc) :body :document/version))
 
 (defn- setup!
-  "Three documents with one word each, two vocabularies linked to the
-  project, and entries: `s` (the survivor), `l1`, `l2` in the first, `x` in
+  "Three documents with one word each, two vocabularies of the project, and
+  entries: `s` (the survivor), `l1`, `l2` in the first, `x` in
   the second."
   []
   (let [proj (create-test-project admin-request "Merge")
         tl (-> (create-text-layer admin-request proj "T") :body :id)
         tkl (-> (create-token-layer admin-request tl "W") :body :id)
-        vocab (-> (create-vocab-layer admin-request "Lex") :body :id)
-        other (-> (create-vocab-layer admin-request "Other") :body :id)
-        _ (assert-no-content (link-vocab-to-project admin-request proj vocab))
-        _ (assert-no-content (link-vocab-to-project admin-request proj other))
+        vocab (-> (create-vocab-layer admin-request proj "Lex") :body :id)
+        other (-> (create-vocab-layer admin-request proj "Other") :body :id)
         docs (vec (for [i (range 3)]
                     (let [doc (-> (api-call admin-request {:method :post :path "/api/v1/documents"
                                                            :body {:project-id proj :name (str "D" i)}})

@@ -3,9 +3,9 @@
   vocabulary rename and a config change restate every document that links
   the vocabulary. Each bumps those documents' versions and names them in
   X-Document-Versions (R14, R22). A document that links no entry of the
-  vocabulary reads the same and keeps its version. A maintainer change and a
-  user deactivation bump nothing (R22), and the header names only documents
-  the caller may read."
+  vocabulary reads the same and keeps its version. A change of the home
+  project's maintainers and a user deactivation bump nothing (R22), and the
+  header names only documents the caller may read."
   (:require [clojure.data.json :as json]
             [clojure.test :refer [deftest is testing use-fixtures]]
             [ring.mock.request :as mock]
@@ -16,8 +16,7 @@
                                         create-token-layer create-text create-token
                                         create-vocab-layer create-vocab-item
                                         create-vocab-link link-vocab-to-project
-                                        update-vocab-layer add-vocab-maintainer
-                                        remove-vocab-maintainer get-document]]))
+                                        update-vocab-layer get-document]]))
 
 (use-fixtures :once with-db with-mount-states with-rest-handler with-admin with-test-users)
 (use-fixtures :each with-clean-db)
@@ -35,12 +34,13 @@
 
 (defn- setup!
   "Two documents linking an entry of `vocab`, and a third in the same project
-  linking nothing."
-  []
+  linking nothing. The documents' project is the vocabulary's home, or, with
+  `home`, borrows it from that project."
+  [& [home]]
   (let [proj (create-test-project admin-request "Restate")
         tl (-> (create-text-layer admin-request proj "T") :body :id)
         tkl (-> (create-token-layer admin-request tl "W") :body :id)
-        vocab (-> (create-vocab-layer admin-request "Lex") :body :id)
+        vocab (-> (create-vocab-layer admin-request (or home proj) "Lex") :body :id)
         _ (assert-no-content (link-vocab-to-project admin-request proj vocab))
         item (-> (create-vocab-item admin-request vocab "cat") :body :id)
         linked (vec (for [i (range 2)]
@@ -48,7 +48,7 @@
                         (create-vocab-link admin-request item [token])
                         doc)))
         unlinked (:doc (new-doc! proj tl tkl "Bare"))]
-    {:vocab vocab :linked linked :unlinked unlinked}))
+    {:proj proj :vocab vocab :linked linked :unlinked unlinked}))
 
 (defn- header-versions [resp]
   (some-> (get-in resp [:headers "X-Document-Versions"]) json/read-str))
@@ -112,32 +112,36 @@
 (defn- doc-modified-at [doc]
   (-> (get-document admin-request doc) :body :document/time-modified))
 
+(defn- role-path [proj role email]
+  (str "/api/v1/projects/" proj "/" role "s/" email))
+
 (deftest a-maintainer-change-bumps-nothing
-  ;; R22: who maintains a vocabulary is not a document's change. No version,
-  ;; no modified time, no header.
-  (let [{:keys [vocab linked]} (setup!)
+  ;; R22: who maintains a vocabulary (now its home project's maintainers) is
+  ;; not a document's change. No version, no modified time, no header.
+  (let [{:keys [proj linked]} (setup!)
         _ (assert-status 201 (rest-handler (-> (admin-request :post "/api/v1/users")
                                                (mock/json-body {:email "m@example.com"
                                                                 :password "hunter22"
                                                                 :is-admin false}))))
         before (mapv doc-version linked)
         before-at (mapv doc-modified-at linked)]
-    (let [resp (add-vocab-maintainer admin-request vocab "m@example.com")]
+    (let [resp (api-call admin-request {:method :post :path (role-path proj "maintainer" "m@example.com")})]
       (assert-no-content resp)
       (is (nil? (header-versions resp))))
-    (let [resp (remove-vocab-maintainer admin-request vocab "m@example.com")]
+    (let [resp (api-call admin-request {:method :delete :path (role-path proj "maintainer" "m@example.com")})]
       (assert-no-content resp)
       (is (nil? (header-versions resp))))
     (is (= before (mapv doc-version linked)))
     (is (= before-at (mapv doc-modified-at linked)))))
 
 (deftest a-deactivation-bumps-nothing
-  (let [{:keys [vocab linked]} (setup!)
+  (let [{:keys [proj linked]} (setup!)
         _ (assert-status 201 (rest-handler (-> (admin-request :post "/api/v1/users")
                                                (mock/json-body {:email "gone@example.com"
                                                                 :password "hunter22"
                                                                 :is-admin false}))))
-        _ (assert-no-content (add-vocab-maintainer admin-request vocab "gone@example.com"))
+        _ (assert-no-content (api-call admin-request {:method :post
+                                                      :path (role-path proj "maintainer" "gone@example.com")}))
         before (mapv doc-version linked)
         before-at (mapv doc-modified-at linked)
         resp (api-call admin-request {:method :delete :path "/api/v1/users/gone@example.com"})]
@@ -147,10 +151,13 @@
     (is (= before-at (mapv doc-modified-at linked)))))
 
 (deftest the-header-names-only-documents-the-caller-may-read
-  ;; A vocabulary maintainer with no role on the linking project renames it:
-  ;; the documents are bumped, and the answer does not name them (C4).
-  (let [{:keys [vocab linked]} (setup!)
-        _ (assert-no-content (add-vocab-maintainer admin-request vocab "user1@example.com"))
+  ;; A maintainer of the vocabulary's home with no role on the borrowing
+  ;; project renames it: the borrower's documents are bumped, and the answer
+  ;; does not name them (C4).
+  (let [home (create-test-project admin-request "Home")
+        _ (assert-no-content (api-call admin-request {:method :post
+                                                      :path (role-path home "maintainer" "user1@example.com")}))
+        {:keys [vocab linked]} (setup! home)
         before (mapv doc-version linked)
         resp (update-vocab-layer user1-request vocab {:name "Renamed"})]
     (assert-status 200 resp)

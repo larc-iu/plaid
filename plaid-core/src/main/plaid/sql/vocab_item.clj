@@ -16,8 +16,8 @@
 ;; ============================================================
 ;; Linked documents
 ;;
-;; An entry is global: its op carries `:project nil :document nil`, so the
-;; post-body version bump never fires. But a deep document
+;; An entry's op carries its vocabulary's home as `:project` and
+;; `:document nil`, so the post-body version bump never fires. But a deep document
 ;; read embeds the entry's `form` on every vocab_link that points at it
 ;; (`plaid.sql.document/get-with-layer-data`), so a rename makes those
 ;; documents' bodies stale, and a delete removes rows from them outright,
@@ -48,6 +48,46 @@
                     :where [:and [:in :vl.vocab_item_id (vec ids)] [:= :p.deleted_at nil]]})
          (mapv :document_id))
     []))
+
+;; ============================================================
+;; The project an entry write is audited under: its vocabulary's home
+;; ============================================================
+
+(defn- homes-of-layers
+  "The distinct homes of the vocab layers `layer-ids` that exist."
+  [db layer-ids]
+  (if-let [ids (seq (distinct (remove nil? layer-ids)))]
+    (->> (psc/q db {:select-distinct [:project_id] :from [:vocab_layers] :where [:in :id (vec ids)]})
+         (mapv :project_id))
+    []))
+
+(defn- homes-of-items
+  "The distinct homes of the vocabularies of the entries `item-ids` that exist."
+  [db item-ids]
+  (if-let [ids (seq (distinct (remove nil? item-ids)))]
+    (->> (psc/q db {:select-distinct [:v.project_id]
+                    :from [[:vocab_items :i]]
+                    :join [[:vocab_layers :v] [:= :v.id :i.vocab_layer_id]]
+                    :where [:in :i.id (vec ids)]})
+         (mapv :project_id))
+    []))
+
+(def two-homes
+  "The refusal of one call writing entries of vocabularies of two projects:
+  an operation has one project."
+  "Entries in one call must be in vocabularies of one project.")
+
+(defn- op-project
+  "The `:project` of an operation writing entries whose vocabularies have
+  `homes`: the one home, nil for none (the body then refuses the unknown
+  ids as it always has) or for two, which `refuse-two-homes!` refuses."
+  [homes]
+  (when (= 1 (count homes)) (first homes)))
+
+(defn- refuse-two-homes!
+  [homes]
+  (when (< 1 (count homes))
+    (throw (ex-info two-homes {:code 400}))))
 
 ;; ============================================================
 ;; Row mapper
@@ -131,7 +171,7 @@
               :form form
               :vocab_layer_id layer}]
      (submit-operation! [tx db {:type :vocab-item/create
-                                :project nil
+                                :project (op-project (homes-of-layers db [layer]))
                                 :document nil
                                 :description (str "Create vocab item '" form "'")
                                 :user user-id}]
@@ -165,7 +205,7 @@
   :vocab-item/form."
   [db eid m user-id]
   (submit-operation! [tx db {:type :vocab-item/merge
-                             :project nil
+                             :project (op-project (homes-of-items db [eid]))
                              :document nil
                              :description (str "Update vocab item " eid)
                              :user user-id}]
@@ -245,7 +285,7 @@
   being deleted is not counted, as no reader counts it."
   [db eid user-id expected-link-count links-found]
   (submit-operation! [tx db {:type :vocab-item/delete
-                             :project nil
+                             :project (op-project (homes-of-items db [eid]))
                              :document nil
                              :description (str "Delete vocab item " eid)
                              :user user-id}]
@@ -332,7 +372,7 @@
    (bulk-create db attrs-vec user-id nil))
   ([db attrs-vec user-id doc-id]
    (submit-operation! [tx db {:type :vocab-item/bulk-create
-                              :project nil
+                              :project (op-project (homes-of-layers db (map :vocab-item/layer attrs-vec)))
                               :document nil
                               :description (str "Create " (psc/counted (count attrs-vec) "vocab item"))
                               :user user-id}]
@@ -341,6 +381,7 @@
                       (assert-document-version! tx doc-id)
                       (when (empty? attrs-vec)
                         (throw (ex-info "Bulk create requires at least one vocab item" {:code 400})))
+                      (refuse-two-homes! (homes-of-layers tx (map :vocab-item/layer attrs-vec)))
                       (doseq [a attrs-vec] (storable/assert-storable! "Form" (:vocab-item/form a)))
                       (psc/claim-ids! tx :vocab_items "vocabulary item" (map :vocab-item/id attrs-vec))
                       (let [layer-ids (->> attrs-vec (map :vocab-item/layer) distinct vec)
@@ -401,7 +442,7 @@
   [db items user-id]
   (let [ids (mapv :id items)]
     (submit-operation! [tx db {:type :vocab-item/bulk-merge
-                               :project nil
+                               :project (op-project (homes-of-items db ids))
                                :document nil
                                :description (str "Update " (psc/counted (count items) "vocab item"))
                                :user user-id}]
@@ -409,6 +450,7 @@
                        ;; ExceptionInfo to a structured 4xx response.
                        (when (empty? items)
                          (throw (ex-info "Bulk update requires at least one vocab item" {:code 400})))
+                       (refuse-two-homes! (homes-of-items tx ids))
                        (when (not= (count ids) (count (distinct ids)))
                          (throw (ex-info "A vocab item may appear only once in a bulk update"
                                          {:code 400})))
@@ -451,10 +493,11 @@
   [db eids user-id]
   (let [eids (vec (distinct eids))]
     (submit-operation! [tx db {:type :vocab-item/bulk-delete
-                               :project nil
+                               :project (op-project (homes-of-items db eids))
                                :document nil
                                :description (str "Delete " (psc/counted (count eids) "vocab item"))
                                :user user-id}]
+                       (refuse-two-homes! (homes-of-items tx eids))
                        (let [existing-ids (->> (psc/fetch-ids tx :vocab_items eids)
                                                (keep :id) vec)
                              ;; Resolved BEFORE the rows go away: afterwards there is
@@ -591,7 +634,7 @@
   [db survivor-id loser-ids user-id]
   (let [loser-ids (vec (distinct loser-ids))]
     (submit-operation! [tx db {:type :vocab-item/merge-into
-                               :project nil
+                               :project (op-project (homes-of-items db [survivor-id]))
                                :document nil
                                :description (str "Merge " (count loser-ids) " vocab items into " survivor-id)
                                :user user-id}]

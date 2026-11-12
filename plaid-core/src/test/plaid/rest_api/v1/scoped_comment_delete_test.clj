@@ -1,7 +1,7 @@
 (ns plaid.rest-api.v1.scoped-comment-delete-test
   "A delegated token deletes only its own user's comments, never another
-  member's, even when its user maintains the project or the vocabulary or
-  is an admin (ruled 2026-10-08). Sessions keep the maintainer's recourse."
+  member's, even when its user maintains the project or the vocabulary's
+  project or is an admin (ruled 2026-10-08). Sessions keep the maintainer's recourse."
   (:require [clojure.test :refer [deftest is testing use-fixtures]]
             [plaid.fixtures :as fix :refer [with-db with-mount-states with-clean-db
                                             with-rest-handler with-admin with-test-users
@@ -79,13 +79,14 @@
         (is (not (exists? cid)))))))
 
 (deftest a-vocabulary-maintainers-delegated-token-cannot-delete-another-members-comment
-  (let [vocab (-> (h/create-vocab-layer admin-request "V") :body :id)
-        item (-> (h/create-vocab-item admin-request vocab "gam") :body :id)
-        p (h/create-test-project admin-request "V Proj")]
-    (h/link-vocab-to-project admin-request p vocab)
+  ;; user2 maintains the vocabulary's home project, which makes them its
+  ;; maintainer.
+  (let [p (h/create-test-project admin-request "V Proj")
+        vocab (-> (h/create-vocab-layer admin-request p "V") :body :id)
+        item (-> (h/create-vocab-item admin-request vocab "gam") :body :id)]
     (h/add-project-writer admin-request p "user1@example.com")
-    (h/add-project-writer admin-request p "user2@example.com")
-    (h/add-vocab-maintainer admin-request vocab "user2@example.com")
+    (fix/assert-no-content (api-call admin-request {:method :post
+                                                    :path (str "/api/v1/projects/" p "/maintainers/user2@example.com")}))
     (let [cid (post-comment user1-request "vocab-item" item "the writer's")
           resp (del (scoped "user2@example.com" p) cid)]
       (is (= 403 (:status resp)))

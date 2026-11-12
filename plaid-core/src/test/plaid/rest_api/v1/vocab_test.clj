@@ -13,10 +13,23 @@
 (use-fixtures :once with-db with-mount-states with-rest-handler with-admin with-test-users)
 (use-fixtures :each with-clean-db)
 
+(defn- home!
+  "A fresh project, to be a vocabulary's home."
+  []
+  (create-test-project admin-request (str "Home " (random-uuid))))
+
+(defn- add-role! [project-id role email]
+  (assert-no-content (api-call admin-request {:method :post
+                                              :path (str "/api/v1/projects/" project-id "/" role "s/" email)})))
+
+(defn- remove-role! [project-id role email]
+  (assert-no-content (api-call admin-request {:method :delete
+                                              :path (str "/api/v1/projects/" project-id "/" role "s/" email)})))
+
 (deftest vocab-layer-functionality
   (testing "Vocab layer basic CRUD operations"
     ;; Create vocab layer
-    (let [vocab-res (create-vocab-layer admin-request "Test Vocab Layer")
+    (let [vocab-res (create-vocab-layer admin-request (home!) "Test Vocab Layer")
           vocab-id (-> vocab-res :body :id)]
       (assert-created vocab-res)
 
@@ -36,7 +49,7 @@
       (assert-not-found (get-vocab-layer admin-request vocab-id))))
 
   (testing "Vocab layer config round-trips with mixed-case keys"
-    (let [vocab-res (create-vocab-layer admin-request "Config Vocab")
+    (let [vocab-res (create-vocab-layer admin-request (home!) "Config Vocab")
           vocab-id (-> vocab-res :body :id)]
       (assert-created vocab-res)
 
@@ -65,13 +78,15 @@
 
       (assert-no-content (delete-vocab-layer admin-request vocab-id))))
 
-  (testing "Vocab layer maintainer management"
-    (let [vocab-res (create-vocab-layer admin-request "Maintainer Test Vocab")
+  (testing "Vocab layer access follows its home project's roles"
+    (let [home (home!)
+          vocab-res (create-vocab-layer admin-request home "Maintainer Test Vocab")
           vocab-id (-> vocab-res :body :id)]
       (assert-created vocab-res)
+      (is (= (str home) (str (-> (get-vocab-layer admin-request vocab-id) :body :vocab/project))))
 
-      ;; Add user1 as maintainer
-      (assert-no-content (add-vocab-maintainer admin-request vocab-id "user1@example.com"))
+      ;; Make user1 a maintainer of the home
+      (add-role! home "maintainer" "user1@example.com")
 
       ;; Verify user1 can now access the vocab
       (assert-ok (get-vocab-layer user1-request vocab-id))
@@ -79,14 +94,15 @@
       ;; Verify user2 cannot access the vocab
       (assert-status 403 (get-vocab-layer user2-request vocab-id))
 
-      ;; User1 (as maintainer) can add another maintainer
-      (assert-no-content (add-vocab-maintainer user1-request vocab-id "user2@example.com"))
+      ;; User1 (as the home's maintainer) can give user2 a role there
+      (assert-no-content (api-call user1-request {:method :post
+                                                  :path (str "/api/v1/projects/" home "/readers/user2@example.com")}))
 
       ;; Now user2 can access
       (assert-ok (get-vocab-layer user2-request vocab-id))
 
-      ;; Remove user1 as maintainer
-      (assert-no-content (remove-vocab-maintainer admin-request vocab-id "user1@example.com"))
+      ;; Remove user1 from the home
+      (remove-role! home "maintainer" "user1@example.com")
 
       ;; User1 can no longer access
       (assert-status 403 (get-vocab-layer user1-request vocab-id))
@@ -95,7 +111,7 @@
       (assert-no-content (delete-vocab-layer admin-request vocab-id))))
 
   (testing "Vocab layer authorization edge cases"
-    (let [vocab-res (create-vocab-layer admin-request "Auth Test Vocab")
+    (let [vocab-res (create-vocab-layer admin-request (home!) "Auth Test Vocab")
           vocab-id (-> vocab-res :body :id)]
       (assert-created vocab-res)
 
@@ -104,18 +120,21 @@
       (assert-status 403 (update-vocab-layer user1-request vocab-id {:name "Hacked"}))
       (assert-status 403 (delete-vocab-layer user1-request vocab-id))
 
-      ;; Cannot add/remove maintainers without permission
-      (assert-status 403 (add-vocab-maintainer user1-request vocab-id "user2@example.com"))
-      (assert-status 403 (remove-vocab-maintainer user1-request vocab-id "admin@example.com"))
+      ;; Cannot move it or list its borrowers without permission
+      (assert-status 403 (api-call user1-request {:method :post
+                                                  :path (str "/api/v1/vocab-layers/" vocab-id "/move")
+                                                  :body {:project-id (home!)}}))
+      (assert-status 403 (api-call user1-request {:method :get
+                                                  :path (str "/api/v1/vocab-layers/" vocab-id "/borrowers")}))
 
       ;; Clean up
       (assert-no-content (delete-vocab-layer admin-request vocab-id))))
 
   (testing "Vocab layer invalid operations"
     ;; Create with duplicate name should work (names not unique globally)
-    (let [vocab1-res (create-vocab-layer admin-request "Duplicate Name")
+    (let [vocab1-res (create-vocab-layer admin-request (home!) "Duplicate Name")
           vocab1-id (-> vocab1-res :body :id)
-          vocab2-res (create-vocab-layer admin-request "Duplicate Name")
+          vocab2-res (create-vocab-layer admin-request (home!) "Duplicate Name")
           vocab2-id (-> vocab2-res :body :id)]
       (assert-created vocab1-res)
       (assert-created vocab2-res)
@@ -129,12 +148,16 @@
       (assert-not-found (update-vocab-layer admin-request fake-id {:name "Test"}))
       (assert-not-found (delete-vocab-layer admin-request fake-id))
       ;; A vocabulary the path names that does not exist is a 404 to an
-      ;; admin, as an unknown id is everywhere (a missing USER stays 400).
-      (assert-not-found (add-vocab-maintainer admin-request fake-id "user1@example.com"))
-      (assert-not-found (remove-vocab-maintainer admin-request fake-id "user1@example.com")))))
+      ;; admin, as an unknown id is everywhere.
+      (assert-not-found (api-call admin-request {:method :get
+                                                 :path (str "/api/v1/vocab-layers/" fake-id "/borrowers")}))
+      (assert-not-found (api-call admin-request {:method :post
+                                                 :path (str "/api/v1/vocab-layers/" fake-id "/move")
+                                                 :body {:project-id (home!)}})))))
 
 (deftest vocab-item-functionality
-  (let [vocab-res (create-vocab-layer admin-request "Test Vocab for Items")
+  (let [home (home!)
+        vocab-res (create-vocab-layer admin-request home "Test Vocab for Items")
         vocab-id (-> vocab-res :body :id)]
     (assert-created vocab-res)
 
@@ -191,8 +214,8 @@
         (assert-no-content (delete-vocab-item admin-request item-id))))
 
     (testing "Vocab item authorization through vocab layer"
-      ;; Add user1 as vocab maintainer
-      (assert-no-content (add-vocab-maintainer admin-request vocab-id "user1@example.com"))
+      ;; Make user1 a maintainer of the vocab's home
+      (add-role! home "maintainer" "user1@example.com")
 
       ;; User1 can create, read, update, delete vocab items
       (let [item-res (create-vocab-item user1-request vocab-id "user1-word")
@@ -214,8 +237,8 @@
         ;; Clean up
         (assert-no-content (delete-vocab-item admin-request item-id)))
 
-      ;; Remove user1 as maintainer
-      (assert-no-content (remove-vocab-maintainer admin-request vocab-id "user1@example.com"))
+      ;; Remove user1 from the home
+      (remove-role! home "maintainer" "user1@example.com")
 
       ;; User1 can no longer access
       (assert-status 403 (create-vocab-item user1-request vocab-id "should-fail")))
@@ -337,7 +360,8 @@
                                                    :text text-id
                                                    :begin 12 :end 16}}) ; "test"
         token3-id (-> token3-res :body :id)
-        vocab-res (create-vocab-layer admin-request "VocabLinkVocab")
+        vocab-home (home!)
+        vocab-res (create-vocab-layer admin-request vocab-home "VocabLinkVocab")
         vocab-id (-> vocab-res :body :id)
         item-res (create-vocab-item admin-request vocab-id "greeting")
         item-id (-> item-res :body :id)]
@@ -353,7 +377,8 @@
     (assert-created vocab-res)
     (assert-created item-res)
 
-    ;; Link vocab layer to project before creating vocab links
+    ;; The project borrows the vocab (its home is another project) before
+    ;; creating vocab links
     (assert-no-content (api-call admin-request {:method :post
                                                 :path (str "/api/v1/projects/" proj-id "/vocabs/" vocab-id)}))
 
@@ -419,13 +444,13 @@
       (assert-no-content (api-call admin-request {:method :delete
                                                   :path (str "/api/v1/projects/" proj-id "/vocabs/" vocab-id)}))
 
-      ;; Add user1 as project writer but not vocab maintainer
+      ;; Add user1 as project writer, with no role in the vocab's home
       (let [add-writer-res (api-call admin-request {:method :post
                                                     :path (str "/api/v1/projects/" proj-id "/writers/user1@example.com")})]
         (assert-no-content add-writer-res))
 
-      ;; Add user2 as vocab maintainer but not project member
-      (assert-no-content (add-vocab-maintainer admin-request vocab-id "user2@example.com"))
+      ;; Add user2 as maintainer of the vocab's home but not project member
+      (add-role! vocab-home "maintainer" "user2@example.com")
 
       ;; User1 has project write but the vocab is not linked - should fail
       (assert-status 403 (create-vocab-link user1-request item-id [token1-id]))
@@ -593,10 +618,12 @@
           (assert-no-content (delete-vocab-item admin-request item2-id))
           (assert-no-content (delete-vocab-item admin-request item3-id)))))
 
-    ;; Clean up
+    ;; Clean up: the borrowing ends before the vocab can be deleted
     (assert-no-content (delete-vocab-item admin-request item-id))
+    (assert-no-content (unlink-vocab-from-project admin-request proj-id vocab-id))
     (assert-no-content (delete-vocab-layer admin-request vocab-id))
-    (assert-no-content (delete-test-project admin-request proj-id))))
+    (assert-no-content (delete-test-project admin-request proj-id))
+    (assert-no-content (delete-test-project admin-request vocab-home))))
 
 (deftest vocab-integration-scenarios
   (testing "Document enhancement with vocab data - token-layer/vocabs"
@@ -643,11 +670,11 @@
           token4-id (-> token4-res :body :id)
 
           ;; Create vocab layers and items
-          vocab1-res (create-vocab-layer admin-request "Articles")
+          vocab1-res (create-vocab-layer admin-request proj-id "Articles")
           vocab1-id (-> vocab1-res :body :id)
-          vocab2-res (create-vocab-layer admin-request "Adjectives")
+          vocab2-res (create-vocab-layer admin-request proj-id "Adjectives")
           vocab2-id (-> vocab2-res :body :id)
-          vocab3-res (create-vocab-layer admin-request "Animals")
+          vocab3-res (create-vocab-layer admin-request proj-id "Animals")
           vocab3-id (-> vocab3-res :body :id)
 
           article-item-res (create-vocab-item admin-request vocab1-id "definite-article" {"pos" "DT"})
@@ -673,14 +700,6 @@
       (assert-created adjective1-res)
       (assert-created adjective2-res)
       (assert-created animal-item-res)
-
-      ;; Link vocab layers to project before creating vocab links
-      (assert-no-content (api-call admin-request {:method :post
-                                                  :path (str "/api/v1/projects/" proj-id "/vocabs/" vocab1-id)}))
-      (assert-no-content (api-call admin-request {:method :post
-                                                  :path (str "/api/v1/projects/" proj-id "/vocabs/" vocab2-id)}))
-      (assert-no-content (api-call admin-request {:method :post
-                                                  :path (str "/api/v1/projects/" proj-id "/vocabs/" vocab3-id)}))
 
       ;; Create vocab links
       (let [link1-res (create-vocab-link admin-request article-item-id [token1-id] {"confidence" 1.0})
@@ -774,10 +793,12 @@
         (delete-test-project admin-request proj-id))))
 
   (testing "Cross-project vocab access through project configuration"
-    ;; Create two projects and one shared vocab
+    ;; Create two projects and one shared vocab, whose home is a third
+    ;; project user1 has no role in
     (let [proj1-id (create-test-project admin-request "Project1")
           proj2-id (create-test-project admin-request "Project2")
-          shared-vocab-res (create-vocab-layer admin-request "SharedVocab")
+          shared-home (home!)
+          shared-vocab-res (create-vocab-layer admin-request shared-home "SharedVocab")
           shared-vocab-id (-> shared-vocab-res :body :id)
           item-res (create-vocab-item admin-request shared-vocab-id "shared-term")
           item-id (-> item-res :body :id)]
@@ -854,7 +875,7 @@
                                                     :text text-id
                                                     :begin 0 :end 4}}) ; "test"
           token-id (-> token-res :body :id)
-          vocab-res (create-vocab-layer admin-request "CascadeVocab")
+          vocab-res (create-vocab-layer admin-request proj-id "CascadeVocab")
           vocab-id (-> vocab-res :body :id)]
 
       (assert-created tl-res)
@@ -862,10 +883,6 @@
       (assert-created tkl-res)
       (assert-created token-res)
       (assert-created vocab-res)
-
-      ;; Link vocab layer to project before creating vocab links
-      (assert-no-content (api-call admin-request {:method :post
-                                                  :path (str "/api/v1/projects/" proj-id "/vocabs/" vocab-id)}))
 
       ;; Create vocab items and links
       (let [item1-res (create-vocab-item admin-request vocab-id "term1")
@@ -904,7 +921,7 @@
 
 (deftest vocab-edge-cases
   (testing "Complex unicode and special characters in vocab forms"
-    (let [vocab-res (create-vocab-layer admin-request "UnicodeVocab")
+    (let [vocab-res (create-vocab-layer admin-request (home!) "UnicodeVocab")
           vocab-id (-> vocab-res :body :id)]
       (assert-created vocab-res)
 
@@ -934,7 +951,7 @@
       (assert-no-content (delete-vocab-layer admin-request vocab-id))))
 
   (testing "Large metadata structures and boundary conditions"
-    (let [vocab-res (create-vocab-layer admin-request "MetadataTestVocab")
+    (let [vocab-res (create-vocab-layer admin-request (home!) "MetadataTestVocab")
           vocab-id (-> vocab-res :body :id)]
       (assert-created vocab-res)
 
@@ -953,8 +970,10 @@
       (assert-no-content (delete-vocab-layer admin-request vocab-id))))
 
   (testing "Permission edge cases and complex inheritance"
-    ;; Test complex permission scenarios
-    (let [vocab-res (create-vocab-layer admin-request "PermissionTestVocab")
+    ;; Test complex permission scenarios: the vocab's home is a third
+    ;; project, which user1 maintains, and the others borrow it
+    (let [home (home!)
+          vocab-res (create-vocab-layer admin-request home "PermissionTestVocab")
           vocab-id (-> vocab-res :body :id)
           item-res (create-vocab-item admin-request vocab-id "perm-test-item")
           item-id (-> item-res :body :id)
@@ -965,32 +984,28 @@
       (assert-created item-res)
 
       ;; Set up permissions
-      (assert-no-content (add-vocab-maintainer admin-request vocab-id "user1@example.com"))
+      (add-role! home "maintainer" "user1@example.com")
       (assert-no-content (api-call admin-request {:method :post
                                                   :path (str "/api/v1/projects/" proj1-id "/writers/user2@example.com")}))
       (assert-no-content (api-call admin-request {:method :post
                                                   :path (str "/api/v1/projects/" proj2-id "/maintainers/user2@example.com")}))
-      ;; Link vocab to project1
+      ;; Project1 borrows the vocab
       (assert-no-content (api-call admin-request {:method :post
                                                   :path (str "/api/v1/projects/" proj1-id "/vocabs/" vocab-id)}))
 
       ;; Test access patterns
-      ;; user1 can access vocab (maintainer)
+      ;; user1 can access vocab (maintainer of its home)
       (assert-ok (get-vocab-layer user1-request vocab-id))
       (assert-ok (get-vocab-item user1-request item-id))
       (assert-ok (update-vocab-item user1-request item-id "updated-by-user1"))
 
-      ;; user2 can read AND write vocab through project1 (as a project writer),
-      ;; but renaming an entry is for the vocabulary's maintainers
-      ;; (acl-shared-vocab-writers).
+      ;; user2 reads the vocab through project1 (a writer of a borrowing
+      ;; project), and changes no entry: a borrower's members link to it
       (assert-ok (get-vocab-layer user2-request vocab-id))
       (assert-ok (get-vocab-item user2-request item-id))
       (assert-status 403 (update-vocab-item user2-request item-id "updated-by-user2"))
-      (let [new-item-res (create-vocab-item user2-request vocab-id "created-by-user2")
-            new-item-id (-> new-item-res :body :id)]
-        (assert-created new-item-res)
-        ;; Clean up the item
-        (assert-no-content (delete-vocab-item admin-request new-item-id)))
+      (assert-status 403 (create-vocab-item user2-request vocab-id "created-by-user2"))
+      (assert-status 403 (update-vocab-item-metadata user2-request item-id {"by" "user2"}))
 
       ;; Remove vocab from project1 - user2 loses access
       (assert-no-content (api-call admin-request {:method :delete
@@ -998,32 +1013,38 @@
       (assert-status 403 (get-vocab-layer user2-request vocab-id))
       (assert-status 403 (get-vocab-item user2-request item-id))
 
-      ;; Add vocab to project2 - user2 regains access (as project2 maintainer)
+      ;; Project2 borrows it - user2 regains access (as project2 maintainer)
       (assert-no-content (api-call admin-request {:method :post
                                                   :path (str "/api/v1/projects/" proj2-id "/vocabs/" vocab-id)}))
       (assert-ok (get-vocab-layer user2-request vocab-id))
       (assert-ok (get-vocab-item user2-request item-id))
 
-      ;; Clean up
+      ;; Clean up: the borrowing ends before the vocab can be deleted
       (assert-no-content (delete-vocab-item admin-request item-id))
+      (assert-no-content (unlink-vocab-from-project admin-request proj2-id vocab-id))
       (assert-no-content (delete-vocab-layer admin-request vocab-id))
       (delete-test-project admin-request proj1-id)
       (delete-test-project admin-request proj2-id)))
 
   (testing "Invalid requests and malformed data"
     ;; Test various invalid request scenarios
-    (let [vocab-res (create-vocab-layer admin-request "InvalidTestVocab")
+    (let [home (home!)
+          vocab-res (create-vocab-layer admin-request home "InvalidTestVocab")
           vocab-id (-> vocab-res :body :id)]
       (assert-created vocab-res)
 
       ;; Invalid vocab layer operations
       (assert-bad-request (api-call admin-request {:method :post
                                                    :path "/api/v1/vocab-layers"
-                                                   :body {}})) ; Missing name
+                                                   :body {:project-id home}})) ; Missing name
 
       (assert-bad-request (api-call admin-request {:method :post
                                                    :path "/api/v1/vocab-layers"
-                                                   :body {:name ""}})) ; Empty name
+                                                   :body {:name "" :project-id home}})) ; Empty name
+
+      (assert-bad-request (api-call admin-request {:method :post
+                                                   :path "/api/v1/vocab-layers"
+                                                   :body {:name "No home"}})) ; Missing project
 
       ;; Invalid vocab item operations
       (assert-bad-request (api-call admin-request {:method :post
@@ -1072,7 +1093,7 @@
   (testing "vocab link creation should fail if project is not linked to vocab layer"
     (let [project1-id (create-test-project admin-request "Project 1")
           project2-id (create-test-project admin-request "Project 2")
-          vocab-id (-> (create-vocab-layer admin-request "TestVocab") :body :id)
+          vocab-id (-> (create-vocab-layer admin-request project1-id "TestVocab") :body :id)
           doc1-id (create-test-document admin-request project1-id "Doc1")
           doc2-id (create-test-document admin-request project2-id "Doc2")
 
@@ -1110,9 +1131,7 @@
             _ (assert-created item-res)
             item-id (-> item-res :body :id)]
 
-        ;; Link vocab to project1 only
-        (assert-no-content (api-call admin-request {:method :post
-                                                    :path (str "/api/v1/projects/" project1-id "/vocabs/" vocab-id)}))
+        ;; The vocab is project1's only
 
         ;; Should succeed: creating vocab link with token from project1 (linked to vocab)
         (let [link-res (create-vocab-link admin-request item-id [token1-id])]
@@ -1133,10 +1152,11 @@
       (assert-no-content (delete-test-project admin-request project2-id)))))
 
 (deftest vocab-unlink-cleanup
-  "Test that unlinking a vocab from a project deletes all associated vocab links"
+  "Test that unlinking a vocab from a project that borrows it deletes all associated vocab links"
   (testing "unlinking vocab should delete all vocab links for that project"
     (let [project-id (create-test-project admin-request "TestProject")
-          vocab-id (-> (create-vocab-layer admin-request "TestVocab") :body :id)
+          vocab-home (home!)
+          vocab-id (-> (create-vocab-layer admin-request vocab-home "TestVocab") :body :id)
           doc-id (create-test-document admin-request project-id "TestDoc")
 
           ;; Create layers and text
@@ -1174,7 +1194,7 @@
             item2-id (-> item2-res :body :id)
             item3-id (-> item3-res :body :id)]
 
-        ;; Link vocab to project
+        ;; The project borrows the vocab
         (assert-no-content (api-call admin-request {:method :post
                                                     :path (str "/api/v1/projects/" project-id "/vocabs/" vocab-id)}))
 
@@ -1215,14 +1235,15 @@
 
       ;; Clean up project and vocab
       (assert-no-content (delete-vocab-layer admin-request vocab-id))
-      (assert-no-content (delete-test-project admin-request project-id)))))
+      (assert-no-content (delete-test-project admin-request project-id))
+      (assert-no-content (delete-test-project admin-request vocab-home)))))
 
 (deftest vocab-multi-project-scenario
   "Test complex scenario with multiple projects and selective unlinking"
   (testing "unlinking vocab should only affect links from that specific project"
     (let [project1-id (create-test-project admin-request "Project1")
           project2-id (create-test-project admin-request "Project2")
-          vocab-id (-> (create-vocab-layer admin-request "SharedVocab") :body :id)
+          vocab-id (-> (create-vocab-layer admin-request project2-id "SharedVocab") :body :id)
 
           ;; Setup project 1
           doc1-id (create-test-document admin-request project1-id "Doc1")
@@ -1259,11 +1280,9 @@
             _ (assert-created item-res)
             item-id (-> item-res :body :id)]
 
-        ;; Link vocab to both projects
+        ;; Project1 borrows the vocab of project2
         (assert-no-content (api-call admin-request {:method :post
                                                     :path (str "/api/v1/projects/" project1-id "/vocabs/" vocab-id)}))
-        (assert-no-content (api-call admin-request {:method :post
-                                                    :path (str "/api/v1/projects/" project2-id "/vocabs/" vocab-id)}))
 
         ;; Create vocab links in both projects
         (let [link1-res (create-vocab-link admin-request item-id [token1-id])
@@ -1301,18 +1320,22 @@
     (let [;; Create two projects and a vocab layer
           proj-a (create-test-project admin-request "VocabLinkProjA")
           proj-b (create-test-project admin-request "VocabLinkProjB")
-          vocab-res (create-vocab-layer admin-request "LinkTestVocab")
+          proj-c (create-test-project admin-request "VocabLinkProjC")
+          vocab-res (create-vocab-layer admin-request proj-c "LinkTestVocab")
           vocab-id (-> vocab-res :body :id)
           _ (assert-created vocab-res)]
 
-      ;; Vocab layer should already be linked to no projects
-      ;; Link vocab to project B
+      ;; Vocab layer is linked to its home, C, only
+      (is (some #(= vocab-id (:vocab/id %)) (-> (get-test-project admin-request proj-c) :body :project/vocabs)))
+      ;; Project B borrows it
       (assert-no-content (link-vocab-to-project admin-request proj-b vocab-id))
 
-      ;; Verify project B now lists the vocab
+      ;; Verify project B now lists the vocab, with its home
       (let [proj-b-res (get-test-project admin-request proj-b)]
         (assert-ok proj-b-res)
-        (is (some #(= vocab-id (:vocab/id %)) (-> proj-b-res :body :project/vocabs))))
+        (is (some #(= vocab-id (:vocab/id %)) (-> proj-b-res :body :project/vocabs)))
+        (is (= (str proj-c) (str (:vocab/project (some #(when (= vocab-id (:vocab/id %)) %)
+                                                       (-> proj-b-res :body :project/vocabs)))))))
 
       ;; Project A should NOT have the vocab
       (let [proj-a-res (get-test-project admin-request proj-a)]
@@ -1330,7 +1353,8 @@
       ;; Clean up
       (assert-no-content (delete-vocab-layer admin-request vocab-id))
       (assert-no-content (delete-test-project admin-request proj-a))
-      (assert-no-content (delete-test-project admin-request proj-b)))))
+      (assert-no-content (delete-test-project admin-request proj-b))
+      (assert-no-content (delete-test-project admin-request proj-c)))))
 
 (deftest vocab-get-accessible-shape-matches-get
   ;; Regression guard for Task #67: `get-accessible` was rewritten from
@@ -1339,14 +1363,9 @@
   ;; shape drift breaks `GET /vocab-layers`. Mirrors
   ;; `project-test/get-accessible-shape-matches-get`.
   (testing "batched batch-hydrate-vocab-layers entry equals (get db id)"
-    (let [vocab-res (create-vocab-layer admin-request "Shape Parity Vocab")
+    (let [vocab-res (create-vocab-layer admin-request (home!) "Shape Parity Vocab")
           vocab-id (-> vocab-res :body :id)
           _ (assert-created vocab-res)
-          ;; Give the vocab a maintainer so the :vocab/maintainers
-          ;; vector is non-empty (otherwise the test would pass
-          ;; trivially even if batch-hydrate dropped the key).
-          _ (assert-no-content
-             (add-vocab-maintainer admin-request vocab-id "user1@example.com"))
           db fix/db
           single (vl/get db vocab-id)
           batched-list (vl/batch-hydrate-vocab-layers db [vocab-id])
@@ -1360,8 +1379,9 @@
       (is (= (:vocab/id single) (:vocab/id batched)))
       (is (= (:vocab/name single) (:vocab/name batched)))
       (is (= (:config single) (:config batched)))
-      (is (= (set (:vocab/maintainers single))
-             (set (:vocab/maintainers batched))))
+      ;; The home is set, so the comparison is not of two nils.
+      (is (some? (:vocab/project single)))
+      (is (= (:vocab/project single) (:vocab/project batched)))
       ;; Clean up
       (assert-no-content (delete-vocab-layer admin-request vocab-id))))
 
@@ -1371,26 +1391,28 @@
       (is (vector? result)
           "must return a vector (not a lazy seq)"))))
 
-(deftest linking-a-vocab-requires-maintaining-it
-  ;; A project maintainer who does not maintain a vocabulary must not be able
-  ;; to link it to their project, since the link grants every member of the
-  ;; project read and write over it. Unlinking only withdraws that grant, so it
-  ;; stays a project-maintainer act.
+(deftest linking-a-vocab-requires-access-to-its-home
+  ;; Linking a vocabulary to a project (borrowing it) lets every member of
+  ;; that project read it and link tokens to it, so it takes a maintainer of
+  ;; the borrowing project who also holds a role in the vocabulary's home (or
+  ;; an admin). Unlinking only withdraws that, so it stays a maintainer act
+  ;; of the borrowing project.
   (let [proj (create-test-project admin-request "LinkGateProj")
-        other-vocab (-> (create-vocab-layer admin-request "NotUser1s") :body :id)
-        own-vocab (-> (create-vocab-layer admin-request "User1s") :body :id)
+        other-home (create-test-project admin-request "NotUser1s home")
+        own-home (create-test-project admin-request "User1s home")
+        other-vocab (-> (create-vocab-layer admin-request other-home "NotUser1s") :body :id)
+        own-vocab (-> (create-vocab-layer admin-request own-home "User1s") :body :id)
         item (-> (create-vocab-item admin-request other-vocab "secret") :body :id)
         link-op (fn [vocab-id] {:path (str "/api/v1/projects/" proj "/vocabs/" vocab-id)
                                 :method "POST"})]
-    (assert-no-content (api-call admin-request {:method :post
-                                                :path (str "/api/v1/projects/" proj "/maintainers/user1@example.com")}))
-    (assert-no-content (add-vocab-maintainer admin-request own-vocab "user1@example.com"))
-    (assert-no-content (add-vocab-maintainer admin-request other-vocab "user2@example.com"))
+    (add-role! proj "maintainer" "user1@example.com")
+    (add-role! own-home "reader" "user1@example.com")
+    (add-role! other-home "maintainer" "user2@example.com")
 
-    (testing "a project maintainer cannot link a vocabulary they do not maintain"
+    (testing "a project maintainer cannot link a vocabulary whose home they have no role in"
       (let [r (link-vocab-to-project user1-request proj other-vocab)]
         (assert-status 403 r)
-        (is (= "Only a maintainer of this vocabulary can link it to a project."
+        (is (= "Linking a vocabulary needs access to the project it belongs to."
                (-> r :body :error))))
       (assert-status 403 (get-vocab-item user1-request item)))
 
@@ -1399,24 +1421,22 @@
                                                   :body [(link-op other-vocab)]}))
       (assert-status 403 (get-vocab-item user1-request item)))
 
-    (testing "nor can one who writes the vocabulary through another project it is granted to"
+    (testing "nor can one who reads the vocabulary through another project that borrows it"
       (let [other-proj (create-test-project admin-request "LinkGateOther")]
         (assert-no-content (link-vocab-to-project admin-request other-proj other-vocab))
-        (assert-no-content (api-call admin-request {:method :post
-                                                    :path (str "/api/v1/projects/" other-proj "/writers/user1@example.com")}))
+        (add-role! other-proj "writer" "user1@example.com")
         (assert-ok (get-vocab-item user1-request item))
         (assert-status 403 (link-vocab-to-project user1-request proj other-vocab))
-        (assert-no-content (api-call admin-request {:method :delete
-                                                    :path (str "/api/v1/projects/" other-proj "/writers/user1@example.com")}))
+        (remove-role! other-proj "writer" "user1@example.com")
         (assert-status 403 (get-vocab-item user1-request item))))
 
     (testing "an unknown vocabulary id answers 403 to a non-admin"
       (assert-status 403 (link-vocab-to-project user1-request proj (random-uuid))))
 
-    (testing "a vocabulary maintainer who does not maintain the project cannot link it"
+    (testing "a maintainer of the vocabulary's home who does not maintain the project cannot link it"
       (assert-status 403 (link-vocab-to-project user2-request proj other-vocab)))
 
-    (testing "a project maintainer who maintains the vocabulary can link it"
+    (testing "a project maintainer with any role in the vocabulary's home can link it"
       (assert-no-content (link-vocab-to-project user1-request proj own-vocab)))
 
     (testing "unlinking stays with the project maintainer"
@@ -1425,39 +1445,34 @@
       (assert-no-content (unlink-vocab-from-project user1-request proj other-vocab))
       (assert-status 403 (get-vocab-item user1-request item)))))
 
-(deftest vocab-delete-only-in-project
-  ;; R58: an unfinished import's Delete removes a vocabulary the import made
-  ;; only when no other project links it, whether or not the person deleting
-  ;; can read that project. Core is the one that knows every link.
+(deftest vocab-delete-refused-while-another-project-links-it
+  ;; R58, kept under the home model: a vocabulary is deleted only when no
+  ;; other project links it, whether or not the person deleting can read
+  ;; that project. Core is the one that knows every link.
   (let [proj-a (create-test-project admin-request "OnlyInA")
         proj-b (create-test-project admin-request "OnlyInB")
-        vocab-id (-> (create-vocab-layer admin-request "OnlyInVocab") :body :id)
-        delete-only-in (fn [project-id]
-                         (api-call admin-request {:method :delete
-                                                  :path (str "/api/v1/vocab-layers/" vocab-id
-                                                             "?only-in-project=" project-id)}))]
-    (assert-no-content (link-vocab-to-project admin-request proj-a vocab-id))
+        vocab-id (-> (create-vocab-layer admin-request proj-a "OnlyInVocab") :body :id)]
     (assert-no-content (link-vocab-to-project admin-request proj-b vocab-id))
     (testing "refused while another project links it, and nothing goes"
-      (assert-status 409 (delete-only-in proj-a))
+      (assert-status 409 (delete-vocab-layer admin-request vocab-id))
       (assert-ok (get-vocab-layer admin-request vocab-id)))
-    (testing "deleted once only that project links it"
+    (testing "deleted once only its home links it"
       (assert-no-content (unlink-vocab-from-project admin-request proj-b vocab-id))
-      (assert-no-content (delete-only-in proj-a))
+      (assert-no-content (delete-vocab-layer admin-request vocab-id))
       (assert-not-found (get-vocab-layer admin-request vocab-id)))
     (assert-no-content (delete-test-project admin-request proj-a))
     (assert-no-content (delete-test-project admin-request proj-b))))
 
-(deftest vocab-delete-refused-while-a-project-the-caller-does-not-maintain-links-it
-  ;; SEAM-2 (Luke 2026-11-11, "Refuse while others link it"): a vocabulary
-  ;; linked to a project the caller does not maintain is not deleted. The
-  ;; 409 counts those projects and names none of them. An admin maintains
-  ;; everything. A project being deleted stands in no one's way. The dry
-  ;; run answers the same refusal, or what the delete would remove.
+(deftest vocab-delete-refused-while-borrowed
+  ;; SEAM-2 under the home model (Luke 2026-11-12): a vocabulary another
+  ;; project borrows is not deleted, by its home's maintainer nor by an
+  ;; admin. The 409 counts those projects and names none of them. A project
+  ;; being deleted stands in no one's way. The dry run answers the same
+  ;; refusal, or the links the delete would remove.
   (let [proj-a (create-test-project admin-request "MineA")
         proj-b (create-test-project admin-request "TheirsB")
         proj-c (create-test-project admin-request "TheirsC")
-        vocab-id (-> (create-vocab-layer admin-request "Shared lexicon") :body :id)
+        vocab-id (-> (create-vocab-layer admin-request proj-a "Shared lexicon") :body :id)
         item (-> (create-vocab-item admin-request vocab-id "kai") :body :id)
         linked-doc! (fn [proj]
                       (let [tl (-> (create-text-layer admin-request proj "TL") :body :id)
@@ -1472,19 +1487,20 @@
         delete! (fn [req & {:keys [dry-run]}]
                   (api-call req {:method :delete
                                  :path (str "/api/v1/vocab-layers/" vocab-id
-                                            (when dry-run "?dry-run=true"))}))
-        maintain! (fn [proj] (assert-no-content
-                              (api-call admin-request {:method :post
-                                                       :path (str "/api/v1/projects/" proj
-                                                                  "/maintainers/user1@example.com")})))]
-    (assert-no-content (add-vocab-maintainer admin-request vocab-id "user1@example.com"))
-    (doseq [p [proj-a proj-b proj-c]]
+                                            (when dry-run "?dry-run=true"))}))]
+    (linked-doc! proj-a)
+    (doseq [p [proj-b proj-c]]
       (assert-no-content (link-vocab-to-project admin-request p vocab-id))
       (linked-doc! p))
-    (maintain! proj-a)
-    (assert-no-content (add-project-reader admin-request proj-b "user1@example.com"))
-    (testing "refused while projects the caller does not maintain link it, counted and not named"
-      (doseq [resp [(delete! user1-request) (delete! user1-request :dry-run true)]]
+    (add-role! proj-a "maintainer" "user1@example.com")
+    (add-role! proj-b "reader" "user1@example.com")
+    (testing "a member of the home who does not maintain it may not delete it"
+      (add-role! proj-a "writer" "user2@example.com")
+      (assert-status 403 (delete! user2-request))
+      (assert-status 403 (delete! user2-request :dry-run true)))
+    (testing "refused while other projects link it, counted and not named, to its maintainer and an admin"
+      (doseq [resp [(delete! user1-request) (delete! user1-request :dry-run true)
+                    (delete! admin-request) (delete! admin-request :dry-run true)]]
         (assert-status 409 resp)
         (is (= 2 (-> resp :body :other-projects)))
         (is (= "2 other projects use this vocabulary." (-> resp :body :error)))
@@ -1492,106 +1508,47 @@
         (is (not (re-find (re-pattern (str proj-b "|" proj-c)) (pr-str (:body resp))))))
       (assert-ok (get-vocab-layer admin-request vocab-id))
       (is (= 6 (count (psc/q fix/db {:select [:id] :from [:vocab_links]})))))
-    (testing "the dry run counts the projects and the links an admin's delete would remove"
-      (let [resp (delete! admin-request :dry-run true)]
-        (assert-ok resp)
-        (is (= {:projects 3 :links 6} (:body resp)))))
     (testing "one project left in the way is said in the singular"
-      (maintain! proj-b)
+      (assert-no-content (unlink-vocab-from-project admin-request proj-b vocab-id))
       (let [resp (delete! user1-request :dry-run true)]
         (assert-status 409 resp)
         (is (= 1 (-> resp :body :other-projects)))
         (is (= "1 other project uses this vocabulary." (-> resp :body :error)))))
-    (testing "a project being deleted stands in no one's way, nor counts"
+    (testing "a project being deleted stands in no one's way"
       (psc/execute! fix/db {:update :projects :set {:deleted_at "2026-11-11T00:00:00Z"}
                             :where [:= :id proj-c]})
       (let [resp (delete! user1-request :dry-run true)]
         (assert-ok resp)
-        (is (= {:projects 2 :links 4} (:body resp))))
+        (is (= {:links 2} (:body resp)) "the links in the home's documents"))
       (assert-ok (get-vocab-layer admin-request vocab-id)))
-    (testing "deleted once the caller maintains every project linking it"
+    (testing "deleted once no other live project links it"
       (assert-no-content (delete! user1-request))
       (assert-not-found (get-vocab-layer admin-request vocab-id))
       (is (empty? (psc/q fix/db {:select [:id] :from [:vocab_links]})))))
-  (testing "an admin's delete goes through whoever maintains the projects"
+  (testing "an admin deletes a vocabulary no other project links"
     (let [proj (create-test-project admin-request "Elsewhere")
-          vocab-id (-> (create-vocab-layer admin-request "Admin's") :body :id)]
-      (assert-no-content (link-vocab-to-project admin-request proj vocab-id))
+          vocab-id (-> (create-vocab-layer admin-request proj "Admin's") :body :id)]
       (assert-no-content (api-call admin-request {:method :delete
                                                   :path (str "/api/v1/vocab-layers/" vocab-id)}))
       (assert-not-found (get-vocab-layer admin-request vocab-id)))))
 
-(deftest vocab-delete-only-in-project-keeps-the-maintainer-rule
-  ;; REV-PB-A-1: with only-in-project BOTH rules apply, R58 (no other
-  ;; project links it) and SEAM-2 (no live project the caller does not
-  ;; maintain links it). Naming a project the caller does not maintain
-  ;; neither deletes its links nor, in the dry run, counts them.
-  (let [proj-b (create-test-project admin-request "TheirsB")
-        vocab-id (-> (create-vocab-layer admin-request "Shared lexicon") :body :id)
-        item (-> (create-vocab-item admin-request vocab-id "kai") :body :id)
-        tl (-> (create-text-layer admin-request proj-b "TL") :body :id)
-        tkl (-> (create-token-layer admin-request tl "TKL") :body :id)
-        doc (create-test-document admin-request proj-b "Doc")
-        text (-> (create-text admin-request tl doc "kai kai kai") :body :id)
-        delete! (fn [req project-id & {:keys [dry-run]}]
-                  (api-call req {:method :delete
-                                 :path (str "/api/v1/vocab-layers/" vocab-id
-                                            "?only-in-project=" project-id
-                                            (when dry-run "&dry-run=true"))}))]
-    (assert-no-content (link-vocab-to-project admin-request proj-b vocab-id))
-    (doseq [[s e] [[0 3] [4 7] [8 11]]]
-      (assert-created (create-vocab-link admin-request item
-                                         [(-> (create-token admin-request tkl text s e) :body :id)])))
-    (assert-no-content (add-vocab-maintainer admin-request vocab-id "user1@example.com"))
-    (testing "naming the one project that links it, which the caller does not maintain, is refused"
-      (doseq [resp [(delete! user1-request proj-b :dry-run true) (delete! user1-request proj-b)]]
-        (assert-status 409 resp)
-        (is (= "1 other project uses this vocabulary." (-> resp :body :error)))
-        (is (= 1 (-> resp :body :other-projects)))
-        (is (not-any? (-> resp :body keys set) [:links :projects])))
-      (assert-ok (get-vocab-layer admin-request vocab-id))
-      (is (= 3 (count (psc/q fix/db {:select [:id] :from [:vocab_links]})))))
-    (testing "a reader of that project is refused the same way"
-      (assert-no-content (add-project-reader admin-request proj-b "user1@example.com"))
-      (assert-status 409 (delete! user1-request proj-b :dry-run true))
-      (assert-status 409 (delete! user1-request proj-b)))
-    (testing "once the caller maintains it, the dry run counts and the delete goes"
-      (assert-no-content (api-call admin-request {:method :post
-                                                  :path (str "/api/v1/projects/" proj-b
-                                                             "/maintainers/user1@example.com")}))
-      (let [resp (delete! user1-request proj-b :dry-run true)]
-        (assert-ok resp)
-        (is (= {:projects 1 :links 3} (:body resp))))
-      (assert-no-content (delete! user1-request proj-b))
-      (assert-not-found (get-vocab-layer admin-request vocab-id)))
-    (assert-no-content (delete-test-project admin-request proj-b))))
-
-(deftest vocab-delete-only-in-project-after-an-unfinished-import-is-deleted
-  ;; The unfinished import's Delete (igt UnfinishedImport): the project is
-  ;; deleted first, then each vocabulary it made with only-in-project naming
-  ;; it. A project maintainer who also maintains the vocabulary gets it
-  ;; deleted, and one that another project links stays (409).
+(deftest deleting-an-unfinished-import-takes-its-vocabularies
+  ;; The unfinished import's Delete (igt UnfinishedImport) deletes the
+  ;; project, which takes the vocabularies whose home it is. It is refused
+  ;; while another project borrows one of them, until that borrowing ends.
   (let [proj-a (create-test-project admin-request "Import")
-        maintain! (fn [proj] (assert-no-content
-                              (api-call admin-request {:method :post
-                                                       :path (str "/api/v1/projects/" proj
-                                                                  "/maintainers/user1@example.com")})))
-        made (fn [name]
-               (let [v (-> (create-vocab-layer admin-request name) :body :id)]
-                 (assert-no-content (add-vocab-maintainer admin-request v "user1@example.com"))
-                 (assert-no-content (link-vocab-to-project admin-request proj-a v))
-                 v))
-        only-a (made "Only in the import")
-        shared (made "Also elsewhere")
-        proj-b (create-test-project admin-request "Elsewhere")
-        delete! (fn [v] (api-call user1-request {:method :delete
-                                                 :path (str "/api/v1/vocab-layers/" v
-                                                            "?only-in-project=" proj-a)}))]
-    (maintain! proj-a)
+        only-a (-> (create-vocab-layer admin-request proj-a "Only in the import") :body :id)
+        shared (-> (create-vocab-layer admin-request proj-a "Also elsewhere") :body :id)
+        proj-b (create-test-project admin-request "Elsewhere")]
+    (add-role! proj-a "maintainer" "user1@example.com")
     (assert-no-content (link-vocab-to-project admin-request proj-b shared))
-    (assert-no-content (delete-test-project user1-request proj-a))
-    (assert-no-content (delete! only-a))
-    (assert-not-found (get-vocab-layer admin-request only-a))
-    (assert-status 409 (delete! shared))
-    (assert-ok (get-vocab-layer admin-request shared))
+    (let [resp (delete-test-project user1-request proj-a)]
+      (assert-status 409 resp)
+      (is (= "1 other project uses a vocabulary of this project." (-> resp :body :error))))
+    (assert-ok (get-vocab-layer admin-request only-a))
+    (testing "the home's maintainer ends the borrowing, then the project and both vocabularies go"
+      (assert-no-content (unlink-vocab-from-project user1-request proj-b shared))
+      (assert-no-content (delete-test-project user1-request proj-a))
+      (assert-not-found (get-vocab-layer admin-request only-a))
+      (assert-not-found (get-vocab-layer admin-request shared)))
     (assert-no-content (delete-test-project admin-request proj-b))))

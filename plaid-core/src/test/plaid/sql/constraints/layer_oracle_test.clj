@@ -352,7 +352,7 @@
         deps (id (create-relation-layer admin-request lemma "Deps"))
         enh (id (create-relation-layer admin-request lemma "Enhanced"))
         txt (id (create-text admin-request tl doc body))
-        vocab (id (create-vocab-layer admin-request "Lex"))
+        vocab (id (create-vocab-layer admin-request proj "Lex"))
         _ (link-vocab-to-project admin-request proj vocab)
         items (vec (for [w ["ab" "cd" "x"]] (id (create-vocab-item admin-request vocab w))))
         ;; tokens, sentence by sentence

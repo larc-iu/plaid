@@ -5,9 +5,7 @@
             [plaid.rest-api.v1.middleware :as prm]
             [reitit.coercion.malli]
             [plaid.sql.document :as doc]
-            [plaid.sql.user :as user]
-            [plaid.sql.vocab-item :as vocab-item]
-            [plaid.sql.vocab-layer :as vocab-layer]))
+            [plaid.sql.vocab-item :as vocab-item]))
 
 (defn get-vocab-id-from-layer
   "Get vocab layer ID from request parameters (for create operations)"
@@ -21,28 +19,25 @@
     (when-let [item (vocab-item/get db item-id)]
       (:vocab-item/layer item))))
 
-;; Renaming or deleting an entry changes what every project the vocabulary
-;; is shared with reads: a rename restates their documents, a delete takes
-;; its links out of them. So those two verbs need maintainer rights on the
-;; vocabulary itself (acl-shared-vocab-writers, ruled 2026-09-27). Adding
-;; entries and linking words to them stay open to the writers of any
-;; project the vocabulary is shared with, and so does editing an entry's
-;; fields.
+;; An entry's rights are its vocabulary's home project's roles (2026-11-12),
+;; whatever project the caller works from. A writer or maintainer of the
+;; home adds entries and edits their fields (acl-shared-vocab-writers,
+;; ruled 2026-09-27, kept 2026-11-11). Renaming, merging and deleting
+;; entries change what every project linking the vocabulary reads (a
+;; rename restates their documents, a delete takes its links out of them),
+;; so they need a maintainer of the home. A borrowing project's members
+;; change no entry. Linking words to entries is a document's annotation,
+;; open to the writers of any linking project (`plaid.rest-api.v1.vocab-link`).
 (def ^:private maintainers-only
-  "Only a maintainer of the vocabulary can rename or delete its entries.")
+  "Only a maintainer of the vocabulary's project can rename, merge or delete its entries.")
 
 (defn- maintainer-refusal
-  "The 403 when the caller is neither an admin nor a maintainer of every
-  vocabulary in `layer-ids`, or nil. Every caller has already passed the
-  writer gate on these vocabularies. Under a delegated token the user
-  record comes without admin, and an admin counts as a maintainer on a
-  vocabulary the scope reaches, as `pra/wrap-vocab-maintainer-required`
-  counts it for a single delete. The writer gate before this one is what
-  checked the reach."
-  [db layer-ids {user-id :user/id record :user/record scope :auth/token-scope}]
-  (when-not (or (user/admin? record)
-                (:admin? scope)
-                (every? #(vocab-layer/maintainer? db % user-id) (distinct layer-ids)))
+  "The 403 when the caller does not maintain the home of every vocabulary in
+  `layer-ids` and is no admin, or nil (`pra/vocab-maintainer?`, which under
+  a delegated token asks for the home in scope). Every caller has already
+  passed the writer gate on these vocabularies."
+  [db layer-ids {user-id :user/id record :user/record}]
+  (when-not (every? #(pra/vocab-maintainer? db % user-id record) (distinct layer-ids))
     {:status 403 :body {:error maintainers-only}}))
 
 ;; Bulk auth resolvers. Create reads :vocab-layer-id off an entry, delete
@@ -138,7 +133,7 @@
                                   "<body>form</body>, the item's form\n"
                                   "<body>metadata</body>, an optional map of metadata\n"
                                   "<body>id</body>, optional, the new item's id, a UUIDv7 the client minted (else the server mints one). An id used before is refused with 409 and <body>id-taken</body>, and one named twice with 400.\n"
-                                  "Entries may target different vocab layers; the user must have write access to each. "
+                                  "Entries may target different vocab layers of one project; the user must be a writer or maintainer of that project. Entries in vocabularies of two projects are refused with 400. "
                                   "<query>document-version</query> is checked against <query>document-id</query>, as on a single create.")
                     ;; vocab-WRITER on the first entry's layer is the coarse
                     ;; gate; the handler then checks write access on EVERY
@@ -169,7 +164,7 @@
                                    "<body>id</body>, the vocab item to update\n"
                                    "<body>form</body>, an optional new form (set only when the key is present)\n"
                                    "<body>metadata</body>, an optional list of metadata ops, as for PATCH on one entry's metadata\n"
-                                   "Entries may target different vocab layers; the user must have write access to each, and maintainer rights on the vocabulary of every entry whose form changes. An unknown id refuses the whole update, and an id may appear only once. "
+                                   "Entries may target different vocab layers of one project; the user must be a writer or maintainer of that project, and a maintainer of it when a form changes. Entries in vocabularies of two projects are refused with 400. An unknown id refuses the whole update, and an id may appear only once. "
                                    "Only an entry whose form actually changes restates the documents linking it; every document so restated has its version bumped, and their new versions are returned in X-Document-Versions (past fifty documents, only their number, in X-Document-Versions-Omitted).")
                      ;; Same two-step gate as the other bulk verbs: the coarse
                      ;; vocab-WRITER check runs on the first entry's layer, and
@@ -195,7 +190,7 @@
                                           (prm/assoc-document-versions-in-header
                                            {:status 200 :body {:count (count extra)}} db (pra/readable-document-ids req documents))
                                           (prm/op-error result))))))}
-             :delete {:summary (str "Delete multiple vocab items in a single operation. Provide an array of IDs. Needs maintainer rights on the vocabulary of every item. "
+             :delete {:summary (str "Delete multiple vocab items in a single operation. Provide an array of IDs, of vocabularies of one project (else 400). Needs maintainer rights on that project. "
                                     "Each item's descendant vocab links are deleted too. Every document holding a link to the entry has its version bumped, and their new versions are returned in X-Document-Versions (past fifty documents, only their number, in X-Document-Versions-Omitted).")
                       :middleware [[pra/wrap-bulk-delete-of-nothing bulk-get-layer-id-from-item]
                                    [pra/wrap-vocab-writer-required bulk-get-layer-id-from-item]]
@@ -225,7 +220,7 @@
 
      :patch {:summary (str "Update a vocab item's form. A document read carries the entry's form on "
                            "every link to it, so a rename restates those documents. Every document holding a link to the entry has its version bumped, and their new versions are returned in X-Document-Versions (past fifty documents, only their number, in X-Document-Versions-Omitted). "
-                           "Changing the form needs maintainer rights on the vocabulary.")
+                           "Changing the form needs maintainer rights on the vocabulary's home project.")
              :middleware [[pra/wrap-vocab-writer-required get-vocab-id-from-item]]
              :parameters {:body [:map [:form string?]]}
              :handler (fn [{{{:keys [id]} :path {:keys [form]} :body} :parameters
@@ -245,7 +240,7 @@
                                 (prm/op-error result {:message nil})))))}
 
      :delete {:summary (str "Delete a vocab item, and every link to it. Every document holding a link to the entry has its version bumped, and their new versions are returned in X-Document-Versions (past fifty documents, only their number, in X-Document-Versions-Omitted). "
-                            "Needs maintainer rights on the vocabulary. With <query>expected-link-count</query> the delete is refused with a 409 "
+                            "Needs maintainer rights on the vocabulary's home project. With <query>expected-link-count</query> the delete is refused with a 409 "
                             "when the entry no longer has that many links, so a delete confirmed over a count does not take a link made since. "
                             "The 409 body carries the number it has now as <body>links</body>.")
               :middleware [[pra/wrap-vocab-maintainer-required get-vocab-id-from-item maintainers-only]]
@@ -270,7 +265,7 @@
                           "The losers are then deleted. Links are read when the merge runs, so a link made after the caller looked is moved too. "
                           "Every loser must be in this entry's vocabulary. A loser that no longer exists is skipped, so repeating a merge changes nothing. "
                           "Metadata naming a loser by its id, in the vocabulary's other entries and in the documents of every project the vocabulary is linked to, is rewritten to name this entry. A reference to a loser in this entry's own metadata is the caller's to rewrite, in the same batch. "
-                          "Needs maintainer rights on the vocabulary. Answers {moved, duplicates, removed}: the links moved, the links deleted as duplicates, and the ids of the entries deleted. "
+                          "Needs maintainer rights on the vocabulary's home project. Answers {moved, duplicates, removed}: the links moved, the links deleted as duplicates, and the ids of the entries deleted. "
                           "Every document holding a moved or deleted link has its version bumped, and their new versions are returned in X-Document-Versions (past fifty documents, only their number, in X-Document-Versions-Omitted).")
             :middleware [[pra/wrap-vocab-maintainer-required get-vocab-id-from-item maintainers-only]]
             :parameters {:body [:map [:losers [:sequential :uuid]]]}

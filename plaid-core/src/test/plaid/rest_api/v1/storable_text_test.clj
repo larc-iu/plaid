@@ -72,7 +72,7 @@
         doc (create-test-document admin-request proj "Doc")
         tl (-> (create-text-layer admin-request proj "TL") :body :id)
         tid (-> (create-text admin-request tl doc "kai") :body :id)
-        vocab (-> (create-vocab-layer admin-request "Lex") :body :id)
+        vocab (-> (create-vocab-layer admin-request proj "Lex") :body :id)
         item (-> (call :post "/api/v1/vocab-items" {:vocab-layer-id vocab :form "kai"}) :body :id)]
     (doseq [[label s] bad-strings]
       (testing label

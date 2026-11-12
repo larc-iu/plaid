@@ -151,7 +151,7 @@
   ;; path (vocab layers are global; reachable only via a grant to an in-scope
   ;; project) — exercised here end-to-end, unlike the span-layer paths above.
   (let [pid (h/create-test-project admin-request "VLVProj")
-        vl  (id (h/create-vocab-layer admin-request "lexicon"))
+        vl  (id (h/create-vocab-layer admin-request pid "lexicon"))
         _   (h/link-vocab-to-project admin-request pid vl)
         dog (id (h/create-vocab-item admin-request vl "dog"))
         _   (id (h/create-vocab-item admin-request vl "cat"))]

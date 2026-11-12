@@ -80,7 +80,7 @@
         tokl (id (h/create-token-layer admin-request txtl "words"))
         sl   (id (h/create-span-layer admin-request tokl "pos"))
         rl   (id (h/create-relation-layer admin-request sl "dep"))
-        vl   (id (h/create-vocab-layer admin-request "lex"))
+        vl   (id (h/create-vocab-layer admin-request pid "lex"))
         _    (h/link-vocab-to-project admin-request pid vl)
         d1   (h/create-test-document admin-request pid "doc-1")
         text (id (h/create-text admin-request txtl d1 "aa bb"))

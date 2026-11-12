@@ -1,6 +1,5 @@
 (ns plaid.rest-api.v1.vocab-layer
   (:require [plaid.history.read :as hread]
-            [plaid.rest-api.v1.schema :as schema]
             [plaid.history.vocab-restore :as vrestore]
             [plaid.rest-api.v1.audit :as audit-routes]
             [plaid.rest-api.v1.auth :as pra]
@@ -9,6 +8,8 @@
             [plaid.rest-api.v1.pagination :as pagination]
             [reitit.coercion.malli]
             [plaid.sql.audit :as audit]
+            [plaid.sql.common :as psc]
+            [plaid.sql.project :as prj]
             [plaid.sql.user :as user]
             [plaid.sql.vocab-layer :as vocab])
   (:import (java.time Instant)
@@ -19,6 +20,9 @@
   [{params :parameters}]
   (-> params :path :id))
 
+(def ^:private move-refusal
+  "Moving a vocabulary needs maintainer rights on both projects.")
+
 ;; ============================================================
 ;; History
 ;;
@@ -26,12 +30,16 @@
 ;; (`plaid.history.read`): the vocabulary as it was at a time, one entry as
 ;; it was, the list of changes, and putting one entry back
 ;; (audit-vocab-history, ruled 2026-09-27). Access is today's: a reader of
-;; the vocabulary now may read any of its past, and only a maintainer may
-;; put an entry back.
+;; the vocabulary now may read any of its past, and only a maintainer of its
+;; home project may put an entry back.
 ;;
-;; The routes that act on the vocabulary as a whole (rename, delete,
-;; maintainers, config, restore) carry `:plaid/vocabulary-admin`, which
-;; refuses a delegated token (`pra/token-scope-gate`).
+;; A vocabulary belongs to one project, its home (2026-11-12). Its rights
+;; are that project's roles: a maintainer manages it, a writer adds and
+;; edits entries, a reader reads. Another project may link it as a borrower,
+;; read only. The routes that act on the vocabulary as a whole (rename,
+;; move, delete, config, restore, its borrowers) carry
+;; `:plaid/vocabulary-admin`, which refuses a delegated token
+;; (`pra/token-scope-gate`).
 ;; ============================================================
 
 (def ^:private as-of-routes
@@ -82,14 +90,18 @@
                       (pagination/list-response
                        query
                        (fn [opts] (vocab/get-accessible db user-id opts))))}
-     :post {:summary (str "Create a new vocab layer. Note: this also registers the user as a maintainer. "
+     :post {:summary (str "Create a new vocab layer in project <body>project-id</body>, its home: the project's "
+                          "maintainers manage it, its writers add and edit entries, its readers read it. Requires "
+                          "maintainer rights on that project. "
                           "<body>id</body>, optional, is the new vocab layer's id, a UUIDv7 the client minted (else the server mints one). An id used before is refused with 409 and <body>id-taken</body>.")
+            :middleware [[pra/wrap-maintainer-required (fn [{p :parameters}] (-> p :body :project-id))]]
             :parameters {:body [:map
                                 [:id {:optional true} :uuid]
-                                [:name string?]]}
-            :handler (fn [{{{:keys [id name]} :body} :parameters db :db user-id :user/id :as req}]
+                                [:name string?]
+                                [:project-id :uuid]]}
+            :handler (fn [{{{:keys [id name project-id]} :body} :parameters db :db user-id :user/id :as req}]
                        (let [result (vocab/create db (cond-> {:vocab/name name
-                                                              :vocab/maintainers [user-id]}
+                                                              :vocab/project project-id}
                                                        (some? id) (assoc :vocab/id id))
                                                   user-id)]
                          (if (:success result)
@@ -99,9 +111,11 @@
 
    ["/:id"
     {:parameters {:path [:map [:id :uuid]]}
-     :get {:summary (str "Get a vocab layer by ID. With <query>as-of</query> (an ISO-8601 instant), the vocabulary "
+     :get {:summary (str "Get a vocab layer by ID. <body>project</body> is its home project's id. With "
+                         "<query>as-of</query> (an ISO-8601 instant), the vocabulary "
                          "as it was at that time, entries included with <query>include-items</query>, read from its "
-                         "history; 404 when it did not exist then.")
+                         "history; 404 when it did not exist then. A vocabulary read as of a time before it had a home "
+                         "has <body>project</body> null. Rights are always the live home's.")
            :middleware [[pra/wrap-vocab-reader-required get-vocab-id]]
            :parameters {:query [:map
                                 [:include-items {:optional true} boolean?]
@@ -127,7 +141,8 @@
                                                  "Vocab layer not found")}}))
                             (catch clojure.lang.ExceptionInfo e (history-error e))))))}
 
-     :patch {:summary (str "Update a vocab layer's name. A new name restates every document linking the vocabulary: "
+     :patch {:summary (str "Update a vocab layer's name. Requires maintainer rights on its home project. A new name "
+                           "restates every document linking the vocabulary: "
                            "their versions are bumped and returned in X-Document-Versions.")
              :middleware [[pra/wrap-vocab-maintainer-required get-vocab-id]]
              :plaid/vocabulary-admin true
@@ -142,42 +157,78 @@
                              {:status 200 :body (vocab/get db id)} db (pra/readable-document-ids req documents))
                             (prm/op-error result {:message nil}))))}
 
-     :delete {:summary (str "Delete a vocab layer, with its entries and every link to them. Refused (409) while a project "
-                            "the caller does not maintain links it (an admin maintains every project), the body "
-                            "counting those projects as <body>other-projects</body> without naming them. A project being "
-                            "deleted stands in no one's way. With <query>only-in-project</query>, also refused (409) "
-                            "when any other project links it, including projects the caller cannot read. With "
+     :delete {:summary (str "Delete a vocab layer, with its entries and every link to them. Requires maintainer rights "
+                            "on its home project. Refused (409) while another project links it, for everyone, admins "
+                            "included, the body counting those projects as <body>other-projects</body> without naming "
+                            "them. A project being deleted stands in no one's way. With "
                             "<query>dry-run</query> true nothing is written: the same refusals, or "
-                            "{projects, links}, the projects linking it and the links in their documents that the delete "
-                            "would remove.")
+                            "{links}, the links in the home's documents that the delete would remove.")
               :middleware [[pra/wrap-vocab-maintainer-required get-vocab-id]]
               :plaid/vocabulary-admin true
               :parameters {:query [:map
-                                   [:only-in-project {:optional true} :uuid]
                                    [:dry-run {:optional true} :boolean]]}
               :handler (fn [{{{:keys [id]} :path
-                              {:keys [only-in-project dry-run]} :query} :parameters
+                              {:keys [dry-run]} :query} :parameters
                              db :db
                              user-id :user/id :as req}]
-                         (let [opts {:only-in-project only-in-project
-                                     :admin? (user/admin? (:user/record req))}]
-                           (if dry-run
-                             (try
-                               {:status 200 :body (vocab/delete-preview db id (assoc opts :user-id user-id))}
-                               (catch clojure.lang.ExceptionInfo e
-                                 (let [{:keys [code] :plaid/keys [body]} (ex-data e)]
-                                   (if (and code (< code 500))
-                                     {:status code :body (merge {:error (ex-message e)} body)}
-                                     (throw e)))))
-                             (let [{:keys [success documents] :as result} (vocab/delete db id user-id opts)]
-                               (if success
+                         (if dry-run
+                           (try
+                             {:status 200 :body (vocab/delete-preview db id)}
+                             (catch clojure.lang.ExceptionInfo e
+                               (let [{:keys [code] :plaid/keys [body]} (ex-data e)]
+                                 (if (and code (< code 500))
+                                   {:status code :body (merge {:error (ex-message e)} body)}
+                                   (throw e)))))
+                           (let [{:keys [success documents] :as result} (vocab/delete db id user-id)]
+                             (if success
                                  ;; Deleting a vocabulary unlinks it from the
                                  ;; documents that used it, which bumps their
                                  ;; versions: a client told nothing here is
                                  ;; refused on its own next write.
-                                 (prm/assoc-document-versions-in-header
-                                  {:status 204} db (pra/readable-document-ids req documents))
-                                 (prm/op-error result {:extras? true}))))))}}]
+                               (prm/assoc-document-versions-in-header
+                                {:status 204} db (pra/readable-document-ids req documents))
+                               (prm/op-error result {:extras? true})))))}}]
+
+   ["/:id/move"
+    {:parameters {:path [:map [:id :uuid]]}
+     :plaid/vocabulary-admin true
+     :post {:summary (str "Move a vocab layer to project <body>project-id</body>, which becomes its home. The old "
+                          "home keeps it linked, as a borrower, and the new one links it if it did not. Requires "
+                          "maintainer rights on both projects. A move to its current home changes nothing. Bumps "
+                          "no document. Answers the vocabulary.")
+            :middleware [[pra/wrap-vocab-maintainer-required get-vocab-id move-refusal]]
+            :parameters {:body [:map [:project-id :uuid]]}
+            :handler (fn [{{{:keys [id]} :path {:keys [project-id]} :body} :parameters
+                           db :db
+                           user-id :user/id :as req}]
+                       (cond
+                         (and (user/admin? (:user/record req)) (prj/hidden? db project-id))
+                         {:status 404 :body {:error "Project not found"}}
+
+                         (not (pra/privileged? req :project/maintainers (constantly project-id)))
+                         {:status 403 :body {:error move-refusal}}
+
+                         :else
+                         (let [result (vocab/move db id project-id user-id)]
+                           (if (:success result)
+                             {:status 200 :body (vocab/get db id)}
+                             (prm/op-error result)))))}}]
+
+   ["/:id/borrowers"
+    {:parameters {:path [:map [:id :uuid]]}
+     :plaid/vocabulary-admin true
+     :get {:summary (str "The projects other than its home that link a vocab layer, its borrowers, ordered by id, as "
+                         "[{id, name}]. <body>name</body> is null for a project the caller cannot read. Requires "
+                         "maintainer rights on its home project, who may end any of them with "
+                         "DELETE /projects/{id}/vocabs/{vocab-id}.")
+           :middleware [[pra/wrap-vocab-maintainer-required get-vocab-id]]
+           :handler (fn [{{{:keys [id]} :path} :parameters db :db :as req}]
+                      {:status 200
+                       :body (mapv (fn [pid]
+                                     {:id pid
+                                      :name (when (pra/privileged? req :project/readers (constantly pid))
+                                              (:name (psc/fetch-by-id db :projects pid)))})
+                                   (vocab/borrower-ids db id))})}}]
 
    ["/:id/audit"
     {:parameters {:path [:map [:id :uuid]]}
@@ -222,7 +273,7 @@
                           "<body>metadata</body> say what changed, <body>total</body> is zero when nothing did. "
                           "With <query>dry-run</query> true nothing is written and the summary says what would "
                           "change. A form set back restates every document linking the entry: their versions are "
-                          "bumped and returned in X-Document-Versions (past fifty documents, only their number, in X-Document-Versions-Omitted). Requires maintainer rights on the vocabulary.")
+                          "bumped and returned in X-Document-Versions (past fifty documents, only their number, in X-Document-Versions-Omitted). Requires maintainer rights on the vocabulary's home project.")
             :middleware [[pra/wrap-vocab-maintainer-required get-vocab-id]]
             :parameters {:query [:map
                                  [:as-of :string]
@@ -247,31 +298,6 @@
                                (prm/assoc-document-versions-in-header
                                 {:status 200 :body extra} db (pra/readable-document-ids req documents))
                                (prm/op-error result))))))}}]
-
-   ;; Maintainer management endpoints
-   ["/:id"
-    {:middleware [[pra/wrap-vocab-maintainer-required get-vocab-id]]
-     :plaid/vocabulary-admin true}
-    ["/maintainers/:user-id"
-     {:post {:summary "Assign a user as a maintainer for this vocab layer."
-             :parameters {:path [:map [:id :uuid] [:user-id schema/user-id]]}
-             :handler (fn [{{{:keys [id user-id]} :path} :parameters
-                            db :db
-                            actor-user-id :user/id :as req}]
-                        (let [{:keys [success] :as result} (vocab/add-maintainer db id user-id actor-user-id)]
-                          (if success
-                            {:status 204}
-                            (prm/op-error result {:message nil}))))}
-
-      :delete {:summary "Remove a user's maintainer privileges for this vocab layer."
-               :parameters {:path [:map [:id :uuid] [:user-id schema/user-id]]}
-               :handler (fn [{{{:keys [id user-id]} :path} :parameters
-                              db :db
-                              actor-user-id :user/id :as req}]
-                          (let [{:keys [success] :as result} (vocab/remove-maintainer db id user-id actor-user-id)]
-                            (if success
-                              {:status 204}
-                              (prm/op-error result {:message nil}))))}}]]
 
    ;; Config endpoints
    ["/:id"

@@ -226,7 +226,7 @@
                                 WHERE vl.document_id = ?
                                 GROUP BY vl.id"
                                id]))
-          ;; --- 7. Vocab item / vocab layer / maintainers hydration. ---
+          ;; --- 7. Vocab item / vocab layer hydration. ---
           vi-ids (->> vl-rows (map :vocab_item_id) distinct vec)
           vi-rows (if (empty? vi-ids)
                     []
@@ -239,16 +239,10 @@
                         (psc/q db {:select [:*]
                                    :from [:vocab_layers]
                                    :where [:in :id vlayer-ids]}))
-          vm-rows (if (empty? vlayer-ids)
-                    []
-                    (psc/q db {:select [:vocab_layer_id :user_id]
-                               :from [:vocab_maintainers]
-                               :where [:in :vocab_layer_id vlayer-ids]}))
           ;; --- 8. Metadata for every row of the document, one query per
           ;; kind, folded onto the row it belongs to the way the as-of read
           ;; folds it out of the audit images. ---
-          with-token-list (fn [r] (assoc r :tokens (decode-token-id-array (:token_ids r))))
-          maintainers-by-vlayer (group-by :vocab_layer_id vm-rows)]
+          with-token-list (fn [r] (assoc r :tokens (decode-token-id-array (:token_ids r))))]
       ;; One assembler, two sources: `plaid.sql.document-rows/assemble` decides
       ;; the whole nested shape and every order in it, here and in the as-of
       ;; read (`plaid.history.read`). Everything above is this read's own job:
@@ -265,11 +259,7 @@
         :relations (drows/with-metadata db "relation" relation-rows)
         :vocab-links (drows/with-metadata db "vocab-link" (mapv with-token-list vl-rows))
         :vocab-items vi-rows
-        :vocab-layers (mapv (fn [r]
-                              (assoc r :maintainers
-                                     (mapv :user_id
-                                           (clojure.core/get maintainers-by-vlayer (:id r) []))))
-                            vlayer-rows)}))))
+        :vocab-layers vlayer-rows}))))
 
 ;; ============================================================
 ;; Layer subsetting

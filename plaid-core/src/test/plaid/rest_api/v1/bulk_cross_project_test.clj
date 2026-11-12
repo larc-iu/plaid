@@ -13,7 +13,7 @@
                                         create-token-layer create-span-layer create-relation-layer
                                         create-text create-token create-span create-relation
                                         create-vocab-layer create-vocab-item create-vocab-link
-                                        add-project-writer add-vocab-maintainer]]))
+                                        add-project-writer]]))
 
 (use-fixtures :once with-db with-mount-states with-rest-handler with-admin with-test-users)
 (use-fixtures :each with-clean-db)
@@ -37,9 +37,7 @@
         s1 (id (create-span admin-request span-layer [t1] "a"))
         s2 (id (create-span admin-request span-layer [t2] "b"))
         relation (id (create-relation admin-request relation-layer s1 s2 "r"))
-        vocab (id (create-vocab-layer admin-request (str label " vocab")))
-        _ (assert-status 204 (api-call admin-request {:method :post
-                                                      :path (str "/api/v1/projects/" project "/vocabs/" vocab)}))
+        vocab (id (create-vocab-layer admin-request project (str label " vocab")))
         item (id (create-vocab-item admin-request vocab "alpha"))
         link (id (create-vocab-link admin-request item [t1]))]
     {:project project :document document :token-layer token-layer :span-layer span-layer
@@ -97,12 +95,14 @@
       (let [a (world "A")
             b (world "B")
             _ (assert-status 204 (add-project-writer admin-request (:project a) "user1@example.com"))
-            ;; A's vocabulary is shared with B too, so a link from A's entry to
-            ;; B's token is stopped by the project check alone.
+            ;; B borrows A's vocabulary too, so a link from A's entry to B's
+            ;; token is stopped by the project check alone.
             _ (assert-status 204 (api-call admin-request {:method :post
                                                           :path (str "/api/v1/projects/" (:project b) "/vocabs/" (:vocab a))}))
-            ;; So a delete or a rename of A's entries passes A's own gate too.
-            _ (is (<= 200 (:status (add-vocab-maintainer admin-request (:vocab a) "user1@example.com")) 299))
+            ;; A maintainer of A, the vocabulary's home, so a delete or a rename
+            ;; of A's entries passes A's own gate too.
+            _ (assert-status 204 (api-call admin-request {:method :post
+                                                          :path (str "/api/v1/projects/" (:project a) "/maintainers/user1@example.com")}))
             ;; A link of A's entry in B's document, which A's gates pass.
             b (assoc b :shared-link (id (create-vocab-link admin-request (:item a) [(:t2 b)])))
             [_ _ _ body] (some #(when (= label (first %)) %) (bulk-cases a b))

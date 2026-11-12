@@ -1,9 +1,9 @@
 (ns plaid.sql.query.exec-scope-test
   "The query's access boundary for variables that name no layer id: every
   kind of variable a reader can bind sees its own projects' rows and no
-  other's, a vocabulary is visible through a grant to a readable project, a
-  vocabulary granted to no project is visible to nobody, a deleted project's
-  rows are gone, and the admin sees every project."
+  other's, a vocabulary is visible through its home or a borrowing project
+  that is readable, a deleted project's rows and vocabularies are gone, and
+  the admin sees every live project."
   (:require [clojure.test :refer [deftest is testing use-fixtures]]
             [plaid.fixtures :refer [with-db with-mount-states with-clean-db
                                     with-rest-handler with-admin with-test-users
@@ -15,12 +15,11 @@
 (use-fixtures :each with-clean-db)
 
 (defn- build!
-  "Project `pname`: one text 'aa bb', two word tokens, a NOUN span on each, a
-  relation between the spans, the vocabularies `vocabs` granted to it, and a
-  link from the first word to `item`."
-  [pname vocabs item]
-  (let [pid  (h/create-test-project admin-request pname)
-        _    (doseq [v vocabs] (h/link-vocab-to-project admin-request pid v))
+  "Project `pid`: one text 'aa bb', two word tokens, a NOUN span on each, a
+  relation between the spans, the vocabularies `vocabs` linked to it (its own
+  or borrowed), and a link from the first word to `item`."
+  [pid vocabs item]
+  (let [_    (doseq [v vocabs] (h/link-vocab-to-project admin-request pid v))
         txtl (id (h/create-text-layer admin-request pid "text"))
         tokl (id (h/create-token-layer admin-request txtl "words"))
         sl   (id (h/create-span-layer admin-request tokl "pos"))
@@ -47,17 +46,21 @@
       :results first first))
 
 (deftest a-variable-without-a-layer-id-sees-only-readable-projects
-  (let [shared (id (h/create-vocab-layer admin-request "Shared lexicon"))
-        own2   (id (h/create-vocab-layer admin-request "P2 lexicon"))
-        orphan (id (h/create-vocab-layer admin-request "Granted to nobody"))
+  (let [p1 (h/create-test-project admin-request "Scope C1")
+        p2 (h/create-test-project admin-request "Scope C2")
+        p3 (h/create-test-project admin-request "Scope C3")
+        shared (id (h/create-vocab-layer admin-request p1 "Shared lexicon"))
+        own2   (id (h/create-vocab-layer admin-request p2 "P2 lexicon"))
+        orphan (id (h/create-vocab-layer admin-request p3 "Of a deleted project"))
         shared-item (id (h/create-vocab-item admin-request shared "shared"))
         own2-item   (id (h/create-vocab-item admin-request own2 "p2only"))
         _           (id (h/create-vocab-item admin-request orphan "orphan"))
-        c1 (build! "Scope C1" [shared] shared-item)
-        c2 (build! "Scope C2" [shared own2] own2-item)
-        c3 (build! "Scope C3" [shared] shared-item)]
+        c1 (build! p1 [shared] shared-item)
+        c2 (build! p2 [shared own2] own2-item)
+        c3 (build! p3 [shared orphan] shared-item)]
     (h/add-project-reader admin-request (:pid c1) "user1@example.com")
-    ;; a deleted project's rows are gone, whatever referenced them
+    ;; a deleted project's rows are gone, its own vocabulary too, whatever
+    ;; referenced them
     (assert-no-content (h/delete-test-project admin-request (:pid c3)))
 
     (testing "a reader of one project"
@@ -86,11 +89,11 @@
                  (into (q u "?a" [["span" "?a" {}] ["related*" "?a" "?b" {"layer" (:rl c1)}]])
                        (q u "?b" [["span" "?a" {}] ["related*" "?a" "?b" {"layer" (:rl c1)}]])))))))
 
-    (testing "the admin sees every live project, and no vocabulary granted to none"
+    (testing "the admin sees every live project, and no vocabulary of a deleted one"
       (let [u "admin@example.com"]
         (is (= (into (strs (:spans c1)) (strs (:spans c2))) (q u "?s" [["span" "?s" {"value" "NOUN"}]])))
         (is (= #{(str shared) (str own2)} (q u "?x" [["vocab-layer" "?x" {}]])))
         (is (= #{(str shared-item) (str own2-item)} (q u "?v" [["vocab" "?v" {}]])))
-        (testing "a vocabulary granted to several projects counts once"
+        (testing "a vocabulary linked to several projects counts once"
           (is (= 2 (agg-count u [["vocab" "?v" {}]])))
           (is (= 2 (agg-count u [["vocab-layer" "?x" {}]]))))))))

@@ -168,7 +168,7 @@
       (is (= {"igt" {"lábel" {"tags" ["nég"]}}}
              (psc/parse-config (:config (psc/fetch-by-id db :token_layers words))))))
     (testing "vocabulary: layer name, form and fields"
-      (let [vl (id-of (create-vocab-layer admin-request "Le\u0301xico"))
+      (let [vl (id-of (create-vocab-layer admin-request proj "Le\u0301xico"))
             item (id-of (create-vocab-item admin-request vl "ca\u0301sa" {"glo\u0301sa" "house"}))]
         (is (= "Léxico" (:name (psc/fetch-by-id db :vocab_layers vl))))
         (is (= "cása" (:vocab-item/form (:body (get-vocab-item admin-request item)))))

@@ -18,7 +18,7 @@
   (:import (java.io File)))
 
 (defn- build-history!
-  "The three tables the purge touches, cut down to the columns it reads,
+  "The tables the purge touches (and `vocab_layers`, which it reads), cut down to the columns it reads,
   statistics taken while each held one row, then `gone` ops for the deleted
   project and `kept` audit rows under a surviving one."
   [db-path gone kept]
@@ -28,7 +28,9 @@
                  "CREATE TABLE operations (id TEXT PRIMARY KEY, op_type TEXT, project_id TEXT, group_id TEXT)"
                  "CREATE INDEX idx_operations_project ON operations(project_id)"
                  (str "CREATE TABLE audit_writes (id INTEGER PRIMARY KEY, "
-                      "op_id TEXT NOT NULL REFERENCES operations(id) ON DELETE CASCADE, seq INTEGER)")
+                      "op_id TEXT NOT NULL REFERENCES operations(id) ON DELETE CASCADE, seq INTEGER, "
+                      "vocab_layer_id TEXT)")
+                 "CREATE TABLE vocab_layers (id TEXT PRIMARY KEY, project_id TEXT NOT NULL)"
                  "CREATE UNIQUE INDEX idx_audit_writes_op_seq ON audit_writes(op_id, seq)"
                  "CREATE TABLE operation_groups (id TEXT PRIMARY KEY)"
                  "CREATE TABLE saves (id INTEGER PRIMARY KEY, v TEXT)"

@@ -72,18 +72,20 @@
 
 (defn- setup-fixture!
   "Three docs, one vocab with one item, one vocab_link per doc. Returns
-  {:proj :vocab :item :docs [{:doc :token :link}]}."
-  [name-prefix]
+  {:proj :vocab :item :docs [{:doc :token :link}]}. The vocab's home is
+  `proj`, or with `borrowed?` another project `proj` borrows it from."
+  [name-prefix & [borrowed?]]
   (let [proj (create-test-project admin-request (str name-prefix "Proj"))
+        home (if borrowed? (create-test-project admin-request (str name-prefix "Home")) proj)
         tl   (-> (create-text-layer admin-request proj (str name-prefix "TL"))
                  :body :id)
         tkl  (-> (create-token-layer admin-request tl (str name-prefix "TKL"))
                  :body :id)
-        vocab (-> (create-vocab-layer admin-request (str name-prefix "Vocab"))
-                  :body :id)
-        item  (-> (create-vocab-item admin-request vocab "greeting")
+        vocab (-> (create-vocab-layer admin-request home (str name-prefix "Vocab"))
                   :body :id)
         _ (assert-no-content (link-vocab-to-project admin-request proj vocab))
+        item  (-> (create-vocab-item admin-request vocab "greeting")
+                  :body :id)
         docs (vec
               (for [i (range 3)]
                 (let [{:keys [doc token]}
@@ -120,10 +122,10 @@
                    ", got rows for " bumped-doc-ids)))))))
 
 (deftest project-remove-vocab-bumps-affected-doc-versions
-  (testing "project/remove-vocab bumps version of every doc in the project
-            that loses a vocab_link and emits one :doc-version-bump audit
+  (testing "project/remove-vocab (a borrower unlinking) bumps version of
+            every doc in the project that loses a vocab_link and emits one :doc-version-bump audit
             row per affected doc"
-    (let [{:keys [proj vocab docs]} (setup-fixture! "ProjRmVocab")
+    (let [{:keys [proj vocab docs]} (setup-fixture! "ProjRmVocab" true)
           pre-versions (mapv (comp doc-version :doc) docs)]
       (assert-no-content (unlink-vocab-from-project admin-request proj vocab))
       (let [post-versions (mapv (comp doc-version :doc) docs)]

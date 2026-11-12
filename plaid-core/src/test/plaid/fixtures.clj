@@ -127,7 +127,6 @@
    "vocab_link_tokens"
    "vocab_links"
    "vocab_items"
-   "vocab_maintainers"
    "project_vocabs"
    "vocab_layers"
    "span_tokens"

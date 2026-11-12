@@ -2,9 +2,10 @@
   "R39: a vocabulary delete writes no audit rows for the links that sit in a
   project already being deleted, since nothing can travel back to that
   project. The links still go, and the purge never reaches rows written
-  under an operation with no project, so audited ones would stay for good
-  (FX-STALL finding 5). Links in live projects and the vocabulary's own
-  delete stay audited."
+  under an operation of another project (a vocabulary's are under its home),
+  so audited ones would stay for good (FX-STALL finding 5). Links in live
+  projects and the vocabulary's own delete stay audited. The vocabulary's
+  home is the live project, and the doomed one borrows it."
   (:require [clojure.test :refer [deftest is testing use-fixtures]]
             [plaid.fixtures :refer [db with-db with-mount-states with-rest-handler
                                     admin-request with-admin api-call
@@ -21,10 +22,10 @@
 (use-fixtures :each with-clean-db)
 
 (defn- project-with-link!
-  "A project granted `vocab`, with one document whose one token links `item`."
-  [pname vocab item]
-  (let [proj (create-test-project admin-request pname)
-        tl (-> (create-text-layer admin-request proj "TL") :body :id)
+  "Project `proj` linking `vocab` (its home, or a borrower), with one
+  document whose one token links `item`."
+  [proj vocab item]
+  (let [tl (-> (create-text-layer admin-request proj "TL") :body :id)
         tkl (-> (create-token-layer admin-request tl "TKL") :body :id)
         _ (assert-no-content (link-vocab-to-project admin-request proj vocab))
         doc (-> (api-call admin-request {:method :post :path "/api/v1/documents"
@@ -43,10 +44,11 @@
                :from [:audit_writes] :where [:= :op_id op-id]})))
 
 (deftest a-vocab-delete-audits-no-link-in-a-project-being-deleted
-  (let [vocab (-> (create-vocab-layer admin-request "Shared") :body :id)
+  (let [live-proj (create-test-project admin-request "Live")
+        vocab (-> (create-vocab-layer admin-request live-proj "Shared") :body :id)
         item (-> (create-vocab-item admin-request vocab "greeting") :body :id)
-        doomed (project-with-link! "Doomed" vocab item)
-        live (project-with-link! "Live" vocab item)]
+        doomed (project-with-link! (create-test-project admin-request "Doomed") vocab item)
+        live (project-with-link! live-proj vocab item)]
     ;; The delete's first step alone, as the background removal has not yet
     ;; reached the documents.
     (is (:success (prj/delete db (:proj doomed) "admin@example.com")))
@@ -83,10 +85,11 @@
         rows))
 
 (deftest an-entry-delete-counts-and-audits-no-link-in-a-project-being-deleted
-  (let [vocab (-> (create-vocab-layer admin-request "Shared") :body :id)
+  (let [live-proj (create-test-project admin-request "Live")
+        vocab (-> (create-vocab-layer admin-request live-proj "Shared") :body :id)
         item (-> (create-vocab-item admin-request vocab "greeting") :body :id)
-        doomed (project-with-link! "Doomed" vocab item)
-        live (project-with-link! "Live" vocab item)
+        doomed (project-with-link! (create-test-project admin-request "Doomed") vocab item)
+        live (project-with-link! live-proj vocab item)
         del (fn [n] (api-call admin-request {:method :delete
                                              :path (str "/api/v1/vocab-items/" item "?expected-link-count=" n)}))]
     (is (:success (prj/delete db (:proj doomed) "admin@example.com")))
@@ -108,10 +111,11 @@
                              :where [:in :id [(:link doomed) (:link live)]]}))))))
 
 (deftest a-bulk-entry-delete-audits-no-link-in-a-project-being-deleted
-  (let [vocab (-> (create-vocab-layer admin-request "Shared") :body :id)
+  (let [live-proj (create-test-project admin-request "Live")
+        vocab (-> (create-vocab-layer admin-request live-proj "Shared") :body :id)
         item (-> (create-vocab-item admin-request vocab "greeting") :body :id)
-        doomed (project-with-link! "Doomed" vocab item)
-        live (project-with-link! "Live" vocab item)]
+        doomed (project-with-link! (create-test-project admin-request "Doomed") vocab item)
+        live (project-with-link! live-proj vocab item)]
     (is (:success (prj/delete db (:proj doomed) "admin@example.com")))
     (assert-no-content (api-call admin-request {:method :delete :path "/api/v1/vocab-items/bulk" :body [item]}))
     (let [rows (op-rows "vocab-item/bulk-delete")]
@@ -124,10 +128,11 @@
   ;; PB-17: a write that restates the documents linking an entry or a
   ;; vocabulary bumps only those of live projects, so it leaves no audit row
   ;; for a hidden project's document, which the purge never reaches
-  (let [vocab (-> (create-vocab-layer admin-request "Shared") :body :id)
+  (let [live-proj (create-test-project admin-request "Live")
+        vocab (-> (create-vocab-layer admin-request live-proj "Shared") :body :id)
         item (-> (create-vocab-item admin-request vocab "greeting") :body :id)
-        doomed (project-with-link! "Doomed" vocab item)
-        live (project-with-link! "Live" vocab item)
+        doomed (project-with-link! (create-test-project admin-request "Doomed") vocab item)
+        live (project-with-link! live-proj vocab item)
         before (do (Thread/sleep 5) (str (java.time.Instant/now)))
         _ (Thread/sleep 5)
         version (fn [{:keys [doc]}] (:version (psc/q1 db {:select [:version] :from [:documents] :where [:= :id doc]})))
@@ -165,11 +170,12 @@
   ;; vocab_links update and a doc-version-bump for a hidden project's
   ;; document, which the purge never reaches. That link is now left to the
   ;; losers' delete, which removes it unaudited, and is not counted as moved.
-  (let [vocab (-> (create-vocab-layer admin-request "Shared") :body :id)
+  (let [live-proj (create-test-project admin-request "Live")
+        vocab (-> (create-vocab-layer admin-request live-proj "Shared") :body :id)
         survivor (-> (create-vocab-item admin-request vocab "keep") :body :id)
         loser (-> (create-vocab-item admin-request vocab "lose") :body :id)
-        doomed (project-with-link! "Doomed" vocab loser)
-        live (project-with-link! "Live" vocab loser)
+        doomed (project-with-link! (create-test-project admin-request "Doomed") vocab loser)
+        live (project-with-link! live-proj vocab loser)
         version (fn [{:keys [doc]}] (:version (psc/q1 db {:select [:version] :from [:documents] :where [:= :id doc]})))
         doomed-version (version doomed)]
     (is (:success (prj/delete db (:proj doomed) "admin@example.com")))

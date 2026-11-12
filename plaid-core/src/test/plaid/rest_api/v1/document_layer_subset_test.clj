@@ -46,8 +46,7 @@
         ;; A vocab link on the Words layer. Vocab links attach to token layers
         ;; via the tokens they cover, so they exercise a path the row-narrowing
         ;; special-cases: with no fetched tokens there is nothing to attach to.
-        vocab (-> (create-vocab-layer admin-request "LSVocab") :body :id)
-        _ (assert-status 204 (link-vocab-to-project admin-request proj vocab))
+        vocab (-> (create-vocab-layer admin-request proj "LSVocab") :body :id)
         item (-> (create-vocab-item admin-request vocab "dog") :body :id)
         _ (assert-created (create-vocab-link admin-request item [t2]))]
     {:project proj :document document

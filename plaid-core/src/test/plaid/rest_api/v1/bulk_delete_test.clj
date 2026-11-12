@@ -24,8 +24,8 @@
   tokens, a span over each, two relations between them, and a vocab link on
   each of two tokens. Two of every kind, so one list can lead with a stale id
   and another can trail one. Two entries of their own (`:v1`, `:v2`), linked
-  to nothing. With `:writer? false`, user1 is in neither the project nor
-  its vocabulary."
+  to nothing. user1 also maintains the project, the vocabulary's home, so may
+  delete its entries. With `:writer? false`, user1 is not in the project."
   ([] (setup {:writer? true}))
   ([{:keys [writer?]}]
    (let [proj (create-test-project admin-request "BulkDelete")
@@ -45,9 +45,10 @@
          rl (-> (create-relation-layer admin-request sl "Rels") :body :id)
          r1 (-> (create-relation admin-request rl s1 s2 "dep") :body :id)
          r2 (-> (create-relation admin-request rl s2 s3 "dep") :body :id)
-         vocab (-> (create-vocab-layer admin-request (str "V " (random-uuid))) :body :id)
-         _ (link-vocab-to-project admin-request proj vocab)
-         _ (when writer? (assert-no-content (add-vocab-maintainer admin-request vocab user1)))
+         vocab (-> (create-vocab-layer admin-request proj (str "V " (random-uuid))) :body :id)
+         ;; Deleting entries is the vocabulary's home maintainer's.
+         _ (when writer? (assert-no-content (api-call admin-request {:method :post
+                                                                     :path (str "/api/v1/projects/" proj "/maintainers/" user1)})))
          item (-> (create-vocab-item admin-request vocab "dogs") :body :id)
          l1 (-> (create-vocab-link admin-request item [t1]) :body :id)
          l2 (-> (create-vocab-link admin-request item [t2]) :body :id)

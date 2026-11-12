@@ -52,7 +52,9 @@
             ;; Linking annotates the DOCUMENT, not the vocabulary — the
             ;; vocab itself is untouched. So the gate is project-WRITER
             ;; (below) + vocab-READER (the vocab must be visible to the
-            ;; user); vocab-writer was over-restrictive (decided 2026-06-10).
+            ;; user), as for a borrowing project's writers; vocab-writer
+            ;; was over-restrictive (decided 2026-06-10), and since
+            ;; 2026-11-12 it means the vocabulary's home alone.
             :middleware [[pra/wrap-vocab-reader-required get-vocab-id-from-vocab-item-body]
                          [pra/wrap-writer-required get-project-id-from-tokens]
                          [prm/wrap-document-version get-document-id-from-tokens]
@@ -113,10 +115,11 @@
                                   (not-any? #(vocab-item/get db %) unreadable) (assoc :unresolved true))})))
      :delete-summary "Delete multiple vocab links in a single operation. Provide an array of IDs."
      :bulk-delete vocab-link/bulk-delete
-     ;; Mirror single delete's gate: project-WRITER + vocab-WRITER on each
-     ;; distinct vocab layer touched.
+     ;; Mirror single delete's gate: project-WRITER + vocab-READER on each
+     ;; distinct vocab layer touched, as create is: a borrowing project's
+     ;; writers delete the links they may make.
      :delete-check (fn [{db :db user-id :user/id} ids]
-                     (pra/vocab-layers-refusal db (keep #(vocab-link/get-vocab-layer db %) ids) user-id))
+                     (pra/vocab-layers-read-refusal db (keep #(vocab-link/get-vocab-layer db %) ids) user-id))
      :project-fn bulk-get-project-id
      :document-fn bulk-get-document-id})
 
@@ -137,7 +140,8 @@
                                :body {:error "vocab link not found"}})))}
 
          :delete {:summary "Delete a vocab link"
-                  :middleware [[pra/wrap-vocab-writer-required get-vocab-id-from-vocab-link-path]
+                  ;; As create: project-WRITER + vocab-READER.
+                  :middleware [[pra/wrap-vocab-reader-required get-vocab-id-from-vocab-link-path]
                                [pra/wrap-writer-required get-project-id-from-vocab-link]
                                [prm/wrap-document-version get-document-id-from-vocab-link]]
                   :parameters {:query [:map [:document-version {:optional true} :int]]}

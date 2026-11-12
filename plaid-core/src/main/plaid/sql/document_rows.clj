@@ -121,12 +121,12 @@
       the document's own rows, in any order, with `:tokens` folded onto
       spans and vocab links and `:metadata` folded onto any of them;
     `:vocab-items` `:vocab-layers`
-      the entries the links name and the layers those live in, with
-      `:maintainers` folded onto a layer.
+      the entries the links name and the layers those live in, each with
+      its home's `:project_id`.
 
   ORDER IS DECIDED HERE, not by the caller: layers by `order_idx`,
-  tokens by the canonical token order, spans, relations and links by id,
-  a vocabulary's maintainers sorted. The live read
+  tokens by the canonical token order, spans, relations and links by id.
+  The live read
   (`plaid.sql.document/get-with-layer-data`) and the as-of read
   (`plaid.history.read/get-with-layer-data-at`) both hand their rows to
   this function, so the same state reads back the same way through
@@ -198,7 +198,7 @@
                                     (when-let [r (vocab-layer-by-id vocab-layer-id)]
                                       {:vocab/id vocab-layer-id
                                        :vocab/name (:name r)
-                                       :vocab/maintainers (vec (sort (map str (or (:maintainers r) []))))
+                                       :vocab/project (:project_id r)
                                        :config (psc/parse-config (:config r))
                                        :vocab-layer/vocab-links ls})))
                             vec))

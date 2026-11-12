@@ -470,7 +470,8 @@
 (deftest kinds-filter-on-the-vocabulary-read-and-with-a-time-window
   ;; The vocabulary read goes through its own source subquery, and a time
   ;; window narrows the walk and the members together with the kinds.
-  (let [v (-> (api-call admin-request {:method :post :path "/api/v1/vocab-layers" :body {:name "V"}})
+  (let [pid (create-test-project admin-request "GrpKindsVocab")
+        v (-> (api-call admin-request {:method :post :path "/api/v1/vocab-layers" :body {:name "V" :project-id pid}})
               :body :id)
         create! (fn [q form]
                   (let [r (api-call admin-request {:method :post

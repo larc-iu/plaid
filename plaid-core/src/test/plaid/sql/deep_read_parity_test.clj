@@ -10,8 +10,8 @@
   `plaid.history.read-test` asserts equality for one scenario. This
   namespace pins what the two reads used to decide for themselves, each
   in its own reduce over its own row shape: which order a token layer's
-  vocabulary links arrive in, which order a vocabulary's maintainers
-  arrive in, and which order tokens, spans and relations arrive in. It
+  vocabulary links arrive in, and which order tokens, spans and relations
+  arrive in, and that each vocabulary names its own home. It
   also pins that the assembler, not its caller, decides all of that —
   hand it the same rows shuffled and it must build the same document."
   (:require [clojure.test :refer :all]
@@ -36,8 +36,9 @@
   "Two text layers, two token layers over the first text, tokens that
   only the canonical token order sorts (same extent with and without a
   precedence, a zero-width one), spans, relations, two vocabularies
-  whose links interleave on one token layer, maintainers added in
-  reverse order, and metadata on every kind."
+  whose links interleave on one token layer (one of them at home in the
+  project, the other borrowed from another project), and metadata on
+  every kind."
   []
   (let [proj (create-test-project admin-request "Parity")
         doc-id (create-test-document admin-request proj "Doc")
@@ -70,13 +71,10 @@
         s-noun (-> (create-span admin-request pos [t-fox] "NOUN") :body :id)
         _ (assert-created (create-relation admin-request dep s-adj s-noun "amod" {"by" "hand"}))
         _ (assert-created (create-relation admin-request dep s-det s-noun "det"))
-        lex (-> (create-vocab-layer admin-request "Lexicon") :body :id)
-        gloss (-> (create-vocab-layer admin-request "Glosses") :body :id)
-        _ (assert-status 204 (link-vocab-to-project admin-request proj lex))
+        lex (-> (create-vocab-layer admin-request proj "Lexicon") :body :id)
+        elsewhere (create-test-project admin-request "Elsewhere")
+        gloss (-> (create-vocab-layer admin-request elsewhere "Glosses") :body :id)
         _ (assert-status 204 (link-vocab-to-project admin-request proj gloss))
-        ;; Added highest-id-first, so the sorted list is not the insertion list.
-        _ (assert-status 204 (add-vocab-maintainer admin-request lex "user2@example.com"))
-        _ (assert-status 204 (add-vocab-maintainer admin-request lex "user1@example.com"))
         i-the (-> (create-vocab-item admin-request lex "the") :body :id)
         i-fox (-> (create-vocab-item admin-request lex "fox") :body :id)
         g-def (-> (create-vocab-item admin-request gloss "DEF") :body :id)
@@ -97,7 +95,7 @@
     (assert-ok (update-text-metadata admin-request text1 {"note" "primary"}))
     (assert-ok (update-span-metadata admin-request s-noun {"dc/source" "test"}))
     (assert-ok (update-document-metadata admin-request doc-id {"lang" "en" "dc/title" "T"}))
-    {:project proj :document doc-id
+    {:project proj :elsewhere elsewhere :document doc-id
      :text-layers [tl1 tl2] :texts [text1 text2]
      :token-layers [words morphs aside]
      :tokens [t-the t-quick t-quick-alt t-empty t-fox m-the m-fox a-tok]
@@ -149,21 +147,19 @@
 ;; ============================================================
 
 (deftest every-order-in-the-read-is-decided-by-id-or-by-rank
-  (let [{:keys [document]} (build-scenario!)
+  (let [{:keys [document project elsewhere] [lex gloss] :vocabs} (build-scenario!)
         live (doc/get-with-layer-data db document)
         tls (token-layers-of live)]
     (testing "a token layer's links arrive in id order, whichever vocabulary they are from"
       (doseq [tl tls, v (:token-layer/vocabs tl)]
         (let [own (mapv (comp str :vocab-link/id) (:vocab-layer/vocab-links v))]
           (is (= (sort own) own)))))
-    (testing "a vocabulary's maintainers arrive sorted"
-      (doseq [tl tls, v (:token-layer/vocabs tl)]
-        (is (= (sort (:vocab/maintainers v)) (:vocab/maintainers v)))))
-    (testing "the maintainers are sorted, not in the order they were added in"
-      ;; The vocabulary's creator is a maintainer, then user2, then user1.
-      (is (some #{["admin@example.com" "user1@example.com" "user2@example.com"]}
-                (for [tl tls, v (:token-layer/vocabs tl)]
-                  (:vocab/maintainers v)))))
+    (testing "a vocabulary names its home, the borrowed one included"
+      (is (= #{[(str lex) (str project)] [(str gloss) (str elsewhere)]}
+             (set (for [tl tls, v (:token-layer/vocabs tl)]
+                    [(str (:vocab/id v)) (str (:vocab/project v))]))))
+      (is (not-any? #(contains? % :vocab/maintainers)
+                    (for [tl tls, v (:token-layer/vocabs tl)] v))))
     (testing "tokens arrive in the canonical order: begin, then precedence NULLS LAST, then end"
       (let [words (first tls)
             ts (:token-layer/tokens words)]
@@ -195,9 +191,7 @@
         span-layers (by :span_layers :token_layer_id (map :id token-layers))
         relation-layers (by :relation_layers :span_layer_id (map :id span-layers))
         items (by :vocab_items :id (distinct (map :vocab_item_id (:vocab-links rows))))
-        vocabs (by :vocab_layers :id (distinct (map :vocab_layer_id items)))
-        maintainers (group-by :vocab_layer_id
-                              (by :vocab_maintainers :vocab_layer_id (map :id vocabs)))]
+        vocabs (by :vocab_layers :id (distinct (map :vocab_layer_id items)))]
     {:text-layers text-layers
      :token-layers token-layers
      :span-layers span-layers
@@ -208,9 +202,7 @@
      :relations (:relations rows)
      :vocab-links (:vocab-links rows)
      :vocab-items items
-     :vocab-layers (mapv (fn [v] (assoc v :maintainers
-                                        (mapv :user_id (get maintainers (:id v) []))))
-                         vocabs)}))
+     :vocab-layers vocabs}))
 
 (deftest shuffling-the-rows-does-not-change-the-document
   (let [{:keys [document]} (build-scenario!)

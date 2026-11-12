@@ -136,8 +136,7 @@
                :body :id)
         rel (-> (create-relation admin-request dep (nth pos-spans 3) (nth pos-spans 4) "nsubj" {"conf" 0.9})
                 :body :id)
-        vocab (-> (create-vocab-layer admin-request "Lexicon") :body :id)
-        _ (assert-status 204 (link-vocab-to-project admin-request proj vocab))
+        vocab (-> (create-vocab-layer admin-request proj "Lexicon") :body :id)
         fox-item (-> (create-vocab-item admin-request vocab "fox") :body :id)
         ;; One single-token link and one over two tokens, so the ordered
         ;; token list has something to get wrong.
@@ -249,8 +248,7 @@
         a (-> (create-span admin-request sl [one] "a") :body :id)
         b (-> (create-span admin-request sl [two] "b") :body :id)
         rel (-> (create-relation admin-request rl a b "arg" {"from" (str a)}) :body :id)
-        vocab (-> (create-vocab-layer admin-request "Lexicon") :body :id)
-        _ (assert-status 204 (link-vocab-to-project admin-request proj vocab))
+        vocab (-> (create-vocab-layer admin-request proj "Lexicon") :body :id)
         item (-> (create-vocab-item admin-request vocab "one") :body :id)
         link (-> (create-vocab-link admin-request item [one] {"doc" (str doc-id)}) :body :id)
         b-meta {"umr" {"sentence" (str one)

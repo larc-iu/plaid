@@ -41,8 +41,7 @@
         s3 (-> (create-span admin-request sl [t3 t4] "x") :body :id)
         rl (-> (create-relation-layer admin-request sl "RL") :body :id)
         r1 (-> (create-relation admin-request rl s1 s2 "dep" {"k" "v"}) :body :id)
-        vid (-> (create-vocab-layer admin-request (str proj-name "-V")) :body :id)
-        _ (assert-status 204 (link-vocab-to-project admin-request proj vid))
+        vid (-> (create-vocab-layer admin-request proj (str proj-name "-V")) :body :id)
         item (-> (create-vocab-item admin-request vid "hello" {"gloss" "greeting"}) :body :id)
         l1 (-> (create-vocab-link admin-request item [t1 t2] {"conf" 1}) :body :id)]
     {:proj proj :doc doc-id :text text-id :tokens [t1 t2 t3 t4] :spans [s1 s2 s3]

@@ -30,8 +30,9 @@
       (is (= #{"other"} (namespaces (read)))))))
 
 (deftest a-vocabulary-unset-whole-has-no-namespace
-  (let [vid (:id (:body (api-call admin-request {:method :post :path "/api/v1/vocab-layers"
-                                                 :body {:name "Lex"}})))
+  (let [pid (create-test-project admin-request "Lex home")
+        vid (:id (:body (api-call admin-request {:method :post :path "/api/v1/vocab-layers"
+                                                 :body {:name "Lex" :project-id pid}})))
         base (str "/api/v1/vocab-layers/" vid "/config/igt/fields")
         read #(:config (:body (api-call admin-request {:method :get :path (str "/api/v1/vocab-layers/" vid)})))]
     (assert-status 204 (api-call admin-request {:method :put :path base :body {:gloss {:inline true}}}))

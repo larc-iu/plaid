@@ -107,7 +107,7 @@
           s0 (id (h/create-span admin-request sl [t0] "NOUN"))
           s1 (id (h/create-span admin-request sl [t1] "VERB"))
           r0 (id (h/create-relation admin-request rl s1 s0 "nsubj"))
-          vl (id (h/create-vocab-layer admin-request "EntKinds-lex"))
+          vl (id (h/create-vocab-layer admin-request pid "EntKinds-lex"))
           _  (h/link-vocab-to-project admin-request pid vl)
           kemal (id (h/create-vocab-item admin-request vl "Kemal"))
           _  (h/create-vocab-link admin-request kemal [t0])]
@@ -141,7 +141,7 @@
         tokl (id (h/create-token-layer admin-request txtl "words"))
         sl   (id (h/create-span-layer admin-request tokl "pos"))
         rl   (id (h/create-relation-layer admin-request sl "dep"))
-        vl   (id (h/create-vocab-layer admin-request "EntOracle-lex"))
+        vl   (id (h/create-vocab-layer admin-request pid "EntOracle-lex"))
         _    (h/link-vocab-to-project admin-request pid vl)
         docs (vec (for [d (range 3)]
                     (let [doc (h/create-test-document admin-request pid (str "d" d))

@@ -55,8 +55,10 @@
   "A project with one document: a text, three word tokens, a span on each
   and a second one on the first (`s4`), two relations, three entries and
   four links (`l4` puts a second entry on the first word), every one of
-  them and each of the four layers with metadata."
-  []
+  them and each of the four layers with metadata. The vocabulary's home is
+  the project, or with `borrowed?` a second project (`:home`) the project
+  borrows it from."
+  [& [borrowed?]]
   (let [md {"note" "x"}
         proj (create-test-project admin-request (str "Sweep " (random-uuid)))
         doc (create-test-document admin-request proj "Doc")
@@ -72,8 +74,9 @@
         rl (id (create-relation-layer admin-request sl "Rels"))
         r1 (id (create-relation admin-request rl s1 s2 "dep"))
         r2 (id (create-relation admin-request rl s2 s3 "dep"))
-        vocab (id (create-vocab-layer admin-request (str "V " (random-uuid))))
-        _ (link-vocab-to-project admin-request proj vocab)
+        home (when borrowed? (create-test-project admin-request (str "Home " (random-uuid))))
+        vocab (id (create-vocab-layer admin-request (or home proj) (str "V " (random-uuid))))
+        _ (when home (assert-success (link-vocab-to-project admin-request proj vocab)))
         [i1 i2 i3] (mapv #(id (create-vocab-item admin-request vocab %)) ["dogs" "run" "cat"])
         l1 (id (create-vocab-link admin-request i1 [t1]))
         l2 (id (create-vocab-link admin-request i2 [t2]))
@@ -89,7 +92,7 @@
     (doseq [[etype eid] [["text-layer" tl] ["token-layer" wl] ["span-layer" sl] ["relation-layer" rl]]]
       (psc/execute! db ["INSERT INTO entity_metadata (entity_type, entity_id, key, value) VALUES (?, ?, ?, ?)"
                         etype (str eid) "note" "\"x\""]))
-    {:proj proj :doc doc :tl tl :wl wl :sl sl :rl rl :vocab vocab
+    {:proj proj :home home :doc doc :tl tl :wl wl :sl sl :rl rl :vocab vocab
      :t1 t1 :s1 s1 :s2 s2 :r1 r1 :r2 r2 :i1 i1 :i2 i2 :l1 l1 :l2 l2}))
 
 (def ^:private cases
@@ -103,8 +106,9 @@
    ["an entry bulk delete" (fn [{:keys [i1 i2]}] (bulk-delete-vocab-items admin-request [i1 i2]))]
    ["an entry merge" (fn [{:keys [i1 i2]}] (call :post (str "/vocab-items/" i1 "/merge") {:losers [i2]}))]
    ["a vocabulary delete" (fn [{:keys [vocab]}] (call :delete (str "/vocab-layers/" vocab)))]
-   ["a vocabulary removed from the project"
-    (fn [{:keys [proj vocab]}] (unlink-vocab-from-project admin-request proj vocab))]
+   ["a vocabulary removed from the project that borrows it"
+    (fn [{:keys [proj vocab]}] (unlink-vocab-from-project admin-request proj vocab))
+    :borrowed]
    ["a token delete" (fn [{:keys [t1]}] (call :delete (str "/tokens/" t1)))]
    ["a relation layer delete" (fn [{:keys [rl]}] (call :delete (str "/relation-layers/" rl)))]
    ["a span layer delete" (fn [{:keys [sl]}] (call :delete (str "/span-layers/" sl)))]
@@ -119,9 +123,9 @@
       (call :post (str "/token-layers/" wl "/constraints/repair") {:constraints [{:type "single-link"}]}))]])
 
 (deftest every-delete-path-sweeps-the-metadata-of-what-it-removes
-  (doseq [[label f] cases]
+  (doseq [[label f borrowed] cases]
     (testing label
-      (let [w (world)
+      (let [w (world (= :borrowed borrowed))
             before (entities-with-metadata)]
         (is (= (set (keys parent-table)) (metadata-types)) "every kind of row carries metadata")
         (assert-success (f w))
@@ -129,4 +133,5 @@
         (is (= [] (orphans)))
         ;; The next case starts from nothing.
         (drop-orphans!)
-        (assert-success (delete-test-project admin-request (:proj w)))))))
+        (assert-success (delete-test-project admin-request (:proj w)))
+        (when (:home w) (assert-success (delete-test-project admin-request (:home w))))))))

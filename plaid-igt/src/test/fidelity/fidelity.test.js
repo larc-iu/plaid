@@ -278,6 +278,7 @@ const TABLES = {
     version: notData('optimistic-concurrency counter'),
     created_at: notData('bookkeeping'),
     modified_at: notData('bookkeeping'),
+    name_key: notData('the name folded for comparison, derived from the name'),
   },
   text_layers: {
     id: notData('identity'),
@@ -388,6 +389,7 @@ const TABLES = {
     config: notData('checked key by key below'),
     created_at: notData('bookkeeping'),
     modified_at: notData('bookkeeping'),
+    project_id: notData('ownership, the importing project is the home of what it imports'),
   },
   vocab_items: {
     id: notData('identity'),
@@ -483,7 +485,6 @@ const TABLES = {
   user_avatars: notData('user profiles'),
   user_data: notData('per-user preferences'),
   users: notData('user accounts'),
-  vocab_maintainers: notData('permissions'),
 };
 
 // Every config key plaid-igt and plaid-ui write, by resource, namespace and key.

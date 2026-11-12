@@ -91,7 +91,7 @@
         txtl (-> (create-text-layer admin-request pid "T") :body :id)
         tokl (-> (create-token-layer admin-request txtl "W") :body :id)
         sl (-> (create-span-layer admin-request tokl "Gloss") :body :id)
-        vocab (-> (api-call admin-request {:method :post :path "/api/v1/vocab-layers" :body {:name "Lex"}}) :body :id)]
+        vocab (-> (api-call admin-request {:method :post :path "/api/v1/vocab-layers" :body {:name "Lex" :project-id pid}}) :body :id)]
     (doseq [base [(str "/api/v1/text-layers/" txtl)
                   (str "/api/v1/token-layers/" tokl)
                   (str "/api/v1/span-layers/" sl)

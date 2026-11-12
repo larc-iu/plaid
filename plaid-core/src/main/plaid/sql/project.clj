@@ -55,11 +55,14 @@
    :config              (psc/parse-config (:config row))
    :constraints         (psc/parse-config (:constraints row))})
 
-(defn- row->vocab-layer [row maintainers]
-  {:vocab/id           (:id row)
-   :vocab/name         (:name row)
-   :vocab/maintainers  (vec maintainers)
-   :config             (psc/parse-config (:config row))})
+(defn- row->vocab-layer
+  "A vocabulary as a project lists it. `:vocab/project` is its home: the
+  project's own vocabulary when it is this project, else a borrowed one."
+  [row]
+  {:vocab/id      (:id row)
+   :vocab/name    (:name row)
+   :vocab/project (:project_id row)
+   :config        (psc/parse-config (:config row))})
 
 ;; ============================================================
 ;; ACL helpers (project_users join table)
@@ -116,21 +119,12 @@
                              :where [:in :span_layer_id sl-ids]
                              :order-by [:order_idx]}))
         rl-by-sl (group-by :span_layer_id rl-rows)
-        ;; vocabs (and their maintainers)
+        ;; vocabs, its own and borrowed
         vocab-rows (psc/q db {:select [:vl.*]
                               :from [[:vocab_layers :vl]]
                               :join [[:project_vocabs :pv]
                                      [:= :pv.vocab_layer_id :vl.id]]
                               :where [:= :pv.project_id project-id]})
-        vocab-ids (mapv :id vocab-rows)
-        vm-rows (if (empty? vocab-ids)
-                  []
-                  (psc/q db {:select [:vocab_layer_id :user_id]
-                             :from [:vocab_maintainers]
-                             :where [:in :vocab_layer_id vocab-ids]}))
-        maintainers-by-vocab (reduce (fn [acc {:keys [vocab_layer_id user_id]}]
-                                       (update acc vocab_layer_id (fnil conj []) user_id))
-                                     {} vm-rows)
         ;; Bottom-up assembly
         build-rl (fn [rl-row] (row->relation-layer rl-row))
         build-sl (fn [sl-row]
@@ -146,8 +140,7 @@
                             :text-layer/token-layers
                             (mapv build-tokl (clojure.core/get tokl-by-txtl (:id txtl-row) []))))
         enriched-text-layers (mapv build-txtl txtl-rows)
-        enriched-vocabs (mapv #(row->vocab-layer % (clojure.core/get maintainers-by-vocab (:id %) []))
-                              vocab-rows)]
+        enriched-vocabs (mapv row->vocab-layer vocab-rows)]
     (assoc project-bare
            :project/text-layers enriched-text-layers
            :project/vocabs enriched-vocabs)))
@@ -288,13 +281,13 @@
 (defn- batch-hydrate-projects
   "Hydrate `project-ids` into the same per-project shape as `(get db id)`
   — :project/readers/writers/maintainers, :project/text-layers (with
-  nested token/span/relation layers), and :project/vocabs (with
-  maintainers). Preserves the order of `project-ids`.
+  nested token/span/relation layers), and :project/vocabs. Preserves the
+  order of `project-ids`.
 
   Round-trip count is O(layer-kinds) instead of O(projects × layer-kinds):
   one SELECT for projects, one per layer-kind (text/token/span/relation,
   filtered by denormalized project_id), one for vocab_layers joined to
-  project_vocabs, one for vocab_maintainers, one for project_users (ACL).
+  project_vocabs, one for project_users (ACL).
 
   SQLite/Postgres dialect note: grouping is done Clojure-side rather than
   with `json_group_array` (SQLite) / `json_agg` (Postgres). The existing
@@ -345,25 +338,16 @@
           rl-by-sl (group-by :span_layer_id rl-rows)
           ;; 7) vocab layers granted to these projects (one join query
           ;; carrying the project_id back so we can re-bucket Clojure-side)
-          vocab-rows (psc/q db {:select [:vl.* [:pv.project_id :project_id]]
+          ;; (`linking_project_id`, as the row's own `project_id` is the
+          ;; vocabulary's home)
+          vocab-rows (psc/q db {:select [:vl.* [:pv.project_id :linking_project_id]]
                                 :from [[:vocab_layers :vl]]
                                 :join [[:project_vocabs :pv]
                                        [:= :pv.vocab_layer_id :vl.id]]
-                                :where [:in :pv.project_id project-ids]})
-          vocab-by-project (group-by :project_id vocab-rows)
-          vocab-ids (into #{} (map :id) vocab-rows)
-          ;; 8) vocab maintainers — fetched once across every vocab in
-          ;; play; a vocab may be granted to several projects but its
-          ;; maintainer set is shared.
-          vm-rows (if (empty? vocab-ids)
-                    []
-                    (psc/q db {:select [:vocab_layer_id :user_id]
-                               :from [:vocab_maintainers]
-                               :where [:in :vocab_layer_id (vec vocab-ids)]}))
-          maintainers-by-vocab (reduce (fn [acc {:keys [vocab_layer_id user_id]}]
-                                         (update acc vocab_layer_id (fnil conj []) user_id))
-                                       {} vm-rows)
-          ;; 9) per-project document count + last-modified (one grouped query).
+                                :where [:in :pv.project_id project-ids]}
+                            {:uuid-cols #{:linking_project_id}})
+          vocab-by-project (group-by :linking_project_id vocab-rows)
+          ;; 8) per-project document count + last-modified (one grouped query).
           ;; modified_at is ISO-8601 text, so MAX is chronological. Powers
           ;; last-updated + doc-count on list views without N count queries.
           doc-stat-rows (psc/q db {:select [:project_id
@@ -392,12 +376,7 @@
                           (let [role-map (clojure.core/get acl-by-project pid {})
                                 txt-layers (mapv build-txtl
                                                  (clojure.core/get txtl-by-project pid []))
-                                vocabs (mapv (fn [vrow]
-                                               (row->vocab-layer
-                                                vrow
-                                                (clojure.core/get maintainers-by-vocab
-                                                                  (:id vrow) [])))
-                                             (clojure.core/get vocab-by-project pid []))]
+                                vocabs (mapv row->vocab-layer (clojure.core/get vocab-by-project pid []))]
                             (assoc bare
                                    :project/readers     (vec (clojure.core/get role-map "reader" []))
                                    :project/writers     (vec (clojure.core/get role-map "writer" []))
@@ -509,6 +488,44 @@
                            (crud/update-by-id! tx :projects eid attrs))
                          eid))))
 
+(defn- borrowing-project-ids
+  "The live projects other than `eid` that link a vocabulary whose home is
+  `eid`, distinct."
+  [db eid]
+  (->> (psc/q db {:select-distinct [:pv.project_id]
+                  :from [[:project_vocabs :pv]]
+                  :join [[:vocab_layers :v] [:= :v.id :pv.vocab_layer_id]
+                         [:projects :p] [:= :p.id :pv.project_id]]
+                  :where [:and [:= :v.project_id eid] [:<> :pv.project_id eid] [:= :p.deleted_at nil]]})
+       (mapv :project_id)))
+
+(defn- refuse-borrowed-vocabularies!
+  "Throw the 409 a delete of project `eid` is refused with while another
+  project links one of its vocabularies. The body counts the borrowing
+  projects as `other-projects` and names none."
+  [db eid]
+  (let [n (count (borrowing-project-ids db eid))]
+    (when (pos? n)
+      (throw (ex-info (str n (if (= 1 n) " other project uses" " other projects use")
+                           " a vocabulary of this project.")
+                      {:code 409 :id eid :plaid/body {:other-projects n}})))))
+
+(defn delete-preview
+  "What deleting project `eid` would take beside its documents, without
+  writing: `{:vocabularies [{:id :name}]}`, its own vocabularies, by name.
+  Throws the delete's own refusals (404, and the 409 while another project
+  borrows one of them)."
+  [db eid]
+  (let [existing (psc/fetch-by-id db :projects eid)]
+    (when (or (nil? existing) (some? (:deleted_at existing)))
+      (throw (ex-info (psc/err-msg-not-found "Project" eid) {:code 404 :id eid}))))
+  (refuse-borrowed-vocabularies! db eid)
+  {:vocabularies (mapv (fn [r] {:id (:id r) :name (:name r)})
+                       (psc/q db {:select [:id :name]
+                                  :from [:vocab_layers]
+                                  :where [:= :project_id eid]
+                                  :order-by [:name :id]}))})
+
 (defn delete
   "Delete a project, and truly delete it: not recoverable, not
   time-travelable. In ONE SHORT STEP, so saves elsewhere on the server are
@@ -519,10 +536,13 @@
     `get-accessible-ids` leave it out (the project list, the query
     language's scope) and the route gate refuses it
     (`plaid.rest-api.v1.auth/wrap-project-privileges-required`, via `hidden?`).
-  - Its roles (`project_users`), vocabulary grants (`project_vocabs`) and
-    pending invites are removed, so nothing reached through membership
-    or a grant still leads into it. These are unaudited, as the cascade that
-    used to remove them was.
+  - Its roles (`project_users`), vocabulary links (`project_vocabs`, its
+    borrowings and its own vocabularies' home rows) and pending invites are
+    removed, so nothing reached through membership or a link still leads
+    into it. These are unaudited, as the cascade that used to remove them
+    was. Its own vocabularies stay until the removal, unreachable meanwhile
+    (no roles, and the vocabulary gates treat a hidden home as a hidden
+    project).
   - Exactly ONE audit row is emitted: `:projects` `:delete` with the project
     row as its pre-image, as before.
 
@@ -531,6 +551,11 @@
   (`remove-hidden-document!`, then `remove-hidden-project!`). Removing a
   400-document project in one transaction held the write lock for 18 s,
   and every save on the server waited for it.
+
+  Refused (409, nothing written) while another project borrows one of its
+  vocabularies (`refuse-borrowed-vocabularies!`), whoever asks, admins
+  included (Luke 2026-11-12): the delete takes its vocabularies, and the
+  borrowers' links with them.
 
   A project already being deleted answers 404, as a removed one does."
   [db eid user-id]
@@ -549,6 +574,7 @@
                      (let [existing (psc/fetch-by-id tx :projects eid)]
                        (when (or (nil? existing) (some? (:deleted_at existing)))
                          (throw (ex-info (psc/err-msg-not-found "Project" eid) {:code 404 :id eid})))
+                       (refuse-borrowed-vocabularies! tx eid)
                        (psc/execute! tx {:update :projects
                                          :set {:deleted_at (psc/now-iso)}
                                          :where [:= :id eid]})
@@ -596,14 +622,38 @@
       (psc/execute! tx {:delete-from :documents :where [:= :id doc-id]})
       doc-id)))
 
+(defn remove-hidden-vocabulary!
+  "Remove ONE vocabulary of project `pid`, which must be being deleted and
+  hold no documents, in one transaction: its entries' metadata, then the
+  vocabulary row, whose FK cascade takes its entries, their links (none are
+  left in its own documents, and the delete refused while another project
+  linked it) and the comments on them. Raw and unaudited: the project's one
+  `:delete` audit row covers it. Returns the removed vocabulary's id, or nil
+  when there is none left (or the project is not in that state)."
+  [datasource pid]
+  (psd/with-tx [tx datasource]
+    (when (and (psc/q1 tx {:select [:id] :from [:projects]
+                           :where [:and [:= :id pid] [:<> :deleted_at nil]]})
+               (nil? (psc/q1 tx {:select [:id] :from [:documents]
+                                 :where [:= :project_id pid] :limit 1})))
+      (when-let [vid (:id (psc/q1 tx {:select [:id] :from [:vocab_layers]
+                                      :where [:= :project_id pid] :limit 1}))]
+        (cascade-stats/prepare! tx)
+        (sweep-metadata! tx "vocab-item" :vocab_items [:= :vocab_layer_id vid])
+        (psc/execute! tx {:delete-from :vocab_layers :where [:= :id vid]})
+        vid))))
+
 (defn remove-hidden-project!
   "The last step of removing project `pid`, once `remove-hidden-document!`
-  has taken every document: the layers' and the project's own metadata, then
-  the project row, whose FK cascade takes its layers, comments, guidelines
-  and whatever else still names it. One transaction, and a short one with the
-  documents gone. Returns true when it removed the row. Does nothing to a
-  project that is not being deleted or still has documents."
+  has taken every document: its vocabularies, one transaction each
+  (`remove-hidden-vocabulary!`), then the layers' and the project's own
+  metadata, then the project row, whose FK cascade takes its layers,
+  comments, guidelines and whatever else still names it. One transaction,
+  and a short one with the documents gone. Returns true when it removed the
+  row. Does nothing to a project that is not being deleted or still has
+  documents."
   [datasource pid]
+  (while (remove-hidden-vocabulary! datasource pid))
   (psd/with-tx [tx datasource]
     (when (and (psc/q1 tx {:select [:id] :from [:projects]
                            :where [:and [:= :id pid] [:<> :deleted_at nil]]})
@@ -655,9 +705,21 @@
 
 (defn- history-to-purge
   "The operations of project `project-id` a purge removes: all but the
-  delete's own."
+  delete's own, and all but those that wrote a row of a vocabulary that
+  still exists and belongs to another project now. A vocabulary moved away
+  from the project keeps the history it made there. The project's own
+  vocabularies still exist during the purge (they go just before the project
+  row) or are gone, and either way their history goes with the project."
   [project-id]
-  [:and [:= :project_id project-id] [:<> :op_type delete-op-type]])
+  [:and
+   [:= :project_id project-id]
+   [:<> :op_type delete-op-type]
+   ;; Read through the operation's own audit rows by their index whatever
+   ;; the planner statistics say: on stale ones it planned a scan of
+   ;; `audit_writes` per operation (see `purge-chunking`).
+   [:raw ["NOT EXISTS (SELECT 1 FROM audit_writes aw INDEXED BY idx_audit_writes_op_seq "
+          "JOIN vocab_layers v ON v.id = aw.vocab_layer_id "
+          "WHERE aw.op_id = operations.id AND v.project_id <> " [:lift (str project-id)] ")"]]])
 
 (defn purge-deleted-project-history!
   "Reclaim the `operations` + `audit_writes` a project accumulated over its
@@ -977,14 +1039,13 @@
 
 (defn- editor-config-project-id
   "Project id to attribute an editor-config op to: the layer's
-  denormalized project_id, the project itself when `layer-id` IS a
-  project, nil for vocab layers (global — linked to projects only via
-  project_vocabs) and for an id that is not in `table` (the op body then 400s)."
+  denormalized project_id (a vocabulary's home), the project itself when
+  `layer-id` IS a project, nil for an id that is not in `table` (the op body
+  then 400s)."
   [db table layer-id]
   (when-let [row (psc/fetch-by-id db table layer-id)]
     (case table
       :projects (:id row)
-      :vocab_layers nil
       (:project_id row))))
 
 (defn- config-update-attrs
@@ -1147,9 +1208,33 @@
                                                   :vocab_layer_id vocab-id})
                        (audit-project-vocabs-change! tx project-id pre-vocabs))))
 
+(def own-vocabulary-unlink
+  "The refusal of unlinking a vocabulary from its home."
+  "A vocabulary cannot be unlinked from its own project.")
+
+(defn- refuse-own-vocabulary!
+  [db project-id vocab-id]
+  (when (= (str project-id) (str (:project_id (psc/fetch-by-id db :vocab_layers vocab-id))))
+    (throw (ex-info own-vocabulary-unlink {:code 409 :id vocab-id}))))
+
+(defn remove-vocab-preview
+  "What unlinking vocab layer `vocab-id` from project `project-id` would
+  remove, without writing: `{:links n}`, its links in that project's
+  documents, and nothing else about them. Throws the unlink's own refusals."
+  [db project-id vocab-id]
+  (when (nil? (psc/fetch-by-id db :vocab_layers vocab-id))
+    (throw (ex-info (psc/err-msg-not-found "Vocab" vocab-id) {:code 400 :id vocab-id})))
+  (refuse-own-vocabulary! db project-id vocab-id)
+  {:links (:n (psc/q1 db {:select [[[:count :*] :n]]
+                          :from [[:vocab_links :l]]
+                          :join [[:vocab_items :i] [:= :i.id :l.vocab_item_id]
+                                 [:documents :d] [:= :d.id :l.document_id]]
+                          :where [:and [:= :i.vocab_layer_id vocab-id] [:= :d.project_id project-id]]}))})
+
 (defn remove-vocab
-  "Remove a vocab from a project. Also deletes vocab_links for that
-  vocab's items that belong to documents in this project."
+  "Remove a vocab from a project that borrows it. Also deletes vocab_links
+  for that vocab's items that belong to documents in this project. Refused
+  (409) for the vocabulary's home, which cannot unlink its own vocabulary."
   [db project-id vocab-id actor-user-id]
   (submit-operation! [tx db {:type :project/remove-vocab
                              :project project-id
@@ -1162,6 +1247,7 @@
                      (when (nil? (psc/fetch-by-id tx :vocab_layers vocab-id))
                        (throw (ex-info (psc/err-msg-not-found "Vocab" vocab-id)
                                        {:code 400 :id vocab-id})))
+                     (refuse-own-vocabulary! tx project-id vocab-id)
                      ;; Delete project-scoped vocab_links: any vocab_link
                      ;; whose vocab_item belongs to this vocab AND whose
                      ;; document belongs to this project. Capture the

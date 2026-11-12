@@ -924,8 +924,7 @@
         w (bulk-create-tokens admin-request (toks word text-id [[0 4] [5 8]]))
         [t1 t2] (-> w :body :ids)
         _ (assert-created w)
-        vocab (-> (create-vocab-layer admin-request "V") :body :id)
-        _ (link-vocab-to-project admin-request proj vocab)
+        vocab (-> (create-vocab-layer admin-request proj "V") :body :id)
         item (-> (create-vocab-item admin-request vocab "dogs run") :body :id)
         link (-> (create-vocab-link admin-request item [t1 t2]) :body :id)]
     (testing "deleting one token of a 2-token vocab-link keeps the link with the remaining token"
@@ -955,8 +954,7 @@
           span-res (create-span admin-request sl [m03] "DOG")
           span-id (-> span-res :body :id)
           _ (assert-created span-res)
-          vocab (-> (create-vocab-layer admin-request "V") :body :id)
-          _ (link-vocab-to-project admin-request project vocab)
+          vocab (-> (create-vocab-layer admin-request project "V") :body :id)
           item (-> (create-vocab-item admin-request vocab "dog") :body :id)
           link-res (create-vocab-link admin-request item [m03])
           link-id (-> link-res :body :id)
@@ -979,8 +977,7 @@
           span-res (create-span admin-request sl [w2] "VERB")
           span-id (-> span-res :body :id)
           _ (assert-created span-res)
-          vocab (-> (create-vocab-layer admin-request "V") :body :id)
-          _ (link-vocab-to-project admin-request project vocab)
+          vocab (-> (create-vocab-layer admin-request project "V") :body :id)
           item (-> (create-vocab-item admin-request vocab "run") :body :id)
           link-res (create-vocab-link admin-request item [w2])
           link-id (-> link-res :body :id)
@@ -1055,8 +1052,7 @@
         ;; dependents hanging off DESCENDANT-layer tokens
         sl (-> (create-span-layer admin-request morphemes "gloss") :body :id)
         span-id (-> (create-span admin-request sl [mt] "DOG") :body :id)
-        vocab (-> (create-vocab-layer admin-request "V") :body :id)
-        _ (link-vocab-to-project admin-request proj vocab)
+        vocab (-> (create-vocab-layer admin-request proj "V") :body :id)
         item (-> (create-vocab-item admin-request vocab "dog") :body :id)
         link-id (-> (create-vocab-link admin-request item [st]) :body :id)]
     (testing "deleting the root token layer cascades to descendant layers, their tokens, and dependents"

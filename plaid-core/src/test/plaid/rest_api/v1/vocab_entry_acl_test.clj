@@ -1,9 +1,9 @@
 (ns plaid.rest-api.v1.vocab-entry-acl-test
   "Renaming or deleting a vocabulary entry needs maintainer rights on the
-  vocabulary; adding entries, editing their fields and linking stay open to
-  the writers of a project the vocabulary is shared with
-  (acl-shared-vocab-writers, ruled 2026-09-27). Every route to a rename or a
-  delete is checked: single, bulk, and inside a batch."
+  vocabulary's home project; adding entries, editing their fields and linking
+  stay open to the home's writers (acl-shared-vocab-writers, ruled
+  2026-09-27, kept under the home model of 2026-11-12). Every route to a
+  rename or a delete is checked: single, bulk, and inside a batch."
   (:require [clojure.test :refer [deftest is testing use-fixtures]]
             [plaid.fixtures :refer [with-db with-mount-states with-rest-handler
                                     admin-request user1-request with-admin with-test-users
@@ -17,13 +17,12 @@
 (def ^:private user1 "user1@example.com")
 
 (defn- setup!
-  "Vocabulary V shared by two projects, user1 a writer of the first.
-  A document in the first with one token."
+  "Vocabulary V of project One, borrowed by project Two, user1 a writer of
+  One. A document in One with one token."
   []
-  (let [v (-> (create-vocab-layer admin-request "Shared") :body :id)
-        p1 (create-test-project admin-request "One")
+  (let [p1 (create-test-project admin-request "One")
         p2 (create-test-project admin-request "Two")
-        _ (assert-no-content (link-vocab-to-project admin-request p1 v))
+        v (-> (create-vocab-layer admin-request p1 "Shared") :body :id)
         _ (assert-no-content (link-vocab-to-project admin-request p2 v))
         _ (assert-no-content (add-project-writer admin-request p1 user1))
         tl (-> (create-text-layer admin-request p1 "Text") :body :id)
@@ -32,7 +31,7 @@
         text (-> (create-text admin-request tl doc "kai") :body :id)
         tok (-> (create-token admin-request tkl text 0 3) :body :id)
         item (-> (create-vocab-item admin-request v "kai") :body :id)]
-    {:v v :item item :token tok}))
+    {:v v :p1 p1 :item item :token tok}))
 
 (defn- form-of [item]
   (-> (get-vocab-item admin-request item) :body :vocab-item/form))
@@ -67,13 +66,14 @@
       (is (= "kai" (form-of item)) "nothing was renamed")
       (assert-ok (get-vocab-item admin-request item)))
     (testing "the refusal says why"
-      (is (= "Only a maintainer of the vocabulary can rename or delete its entries."
+      (is (= "Only a maintainer of the vocabulary's project can rename, merge or delete its entries."
              (-> (delete-vocab-item user1-request item) :body :error))))))
 
-(deftest a-maintainer-of-the-vocabulary-renames-and-deletes
-  (let [{:keys [v item]} (setup!)
+(deftest a-maintainer-of-the-vocabularys-project-renames-and-deletes
+  (let [{:keys [v p1 item]} (setup!)
         other (-> (create-vocab-item admin-request v "mata") :body :id)]
-    (assert-no-content (add-vocab-maintainer admin-request v user1))
+    (assert-no-content (api-call admin-request {:method :post
+                                                :path (str "/api/v1/projects/" p1 "/maintainers/" user1)}))
     (assert-ok (update-vocab-item user1-request item "kay"))
     (assert-ok (bulk-update-vocab-items user1-request [{:id item :form "kei"}]))
     (is (= "kei" (form-of item)))
@@ -81,12 +81,22 @@
     (assert-no-content (bulk-delete-vocab-items user1-request [other]))))
 
 (deftest a-bulk-rename-needs-every-renamed-entrys-vocabulary
+  ;; user1 maintains Three, the home of Mine, and writes on One, the home of
+  ;; V. A call reaching both is refused: 403 when a rename or delete touches
+  ;; V, which user1 does not maintain, else 400, since its entries are in
+  ;; vocabularies of two projects.
   (let [{:keys [v item]} (setup!)
-        mine (-> (create-vocab-layer user1-request "Mine") :body :id)
+        p3 (create-test-project admin-request "Three")
+        _ (assert-no-content (api-call admin-request {:method :post
+                                                      :path (str "/api/v1/projects/" p3 "/maintainers/" user1)}))
+        mine (-> (create-vocab-layer user1-request p3 "Mine") :body :id)
         own (-> (create-vocab-item user1-request mine "x") :body :id)]
-    (testing "renaming in the vocabulary it maintains, editing fields in the shared one"
-      (assert-ok (bulk-update-vocab-items user1-request [{:id own :form "y"}
-                                                         {:id item :metadata [{:op "set" :path ["g"] :value 1}]}])))
+    (testing "renaming in the vocabulary it maintains"
+      (assert-ok (bulk-update-vocab-items user1-request [{:id own :form "y"}])))
+    (testing "renaming there while editing fields in V is refused for the two projects"
+      (assert-status 400 (bulk-update-vocab-items user1-request [{:id own :form "w"}
+                                                                 {:id item :metadata [{:op "set" :path ["g"] :value 1}]}]))
+      (is (= "y" (form-of own))))
     (testing "renaming in both is refused, and neither changes"
       (assert-status 403 (bulk-update-vocab-items user1-request [{:id own :form "z"}
                                                                  {:id item :form "kay"}]))

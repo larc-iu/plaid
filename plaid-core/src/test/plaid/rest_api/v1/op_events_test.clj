@@ -46,8 +46,7 @@
         tok-res (create-token admin-request tkl text-id 0 5)
         tok (-> tok-res :body :id)
         _ (assert-created tok-res)
-        vid (-> (create-vocab-layer admin-request "OEVocab") :body :id)
-        _ (assert-status 204 (link-vocab-to-project admin-request proj vid))
+        vid (-> (create-vocab-layer admin-request proj "OEVocab") :body :id)
         item (-> (create-vocab-item admin-request vid "hello") :body :id)
         link-res (create-vocab-link admin-request item [tok])
         _ (assert-created link-res)
@@ -60,20 +59,18 @@
       (is (contains? (set (map str (:audit/documents evt))) (str doc))
           "event names the document whose vocab_link was wiped (its version was bumped)")
       (is (contains? (set (map str (:audit/projects evt))) (str proj))
-          "the event goes to the bumped document's project, although the op names none"))))
+          "the event goes to the bumped document's project"))))
 
 (deftest vocab-rename-event-reaches-the-linking-documents-projects
-  ;; A vocabulary write carries `:project nil`. The bus fans out by project,
-  ;; so without the bumped documents' projects nobody with the document open
-  ;; hears the rename (REV-W3-REST C1).
+  ;; The bus fans out by project, so without the bumped documents' projects
+  ;; nobody with the document open hears the rename (REV-W3-REST C1).
   (let [proj (create-test-project admin-request "OpEvtRenameProj")
         doc (create-test-document admin-request proj "OpEvtRenameDoc")
         tl (-> (create-text-layer admin-request proj "OERTL") :body :id)
         text-id (-> (create-text admin-request tl doc "hello") :body :id)
         tkl (-> (create-token-layer admin-request tl "OERTKL") :body :id)
         tok (-> (create-token admin-request tkl text-id 0 5) :body :id)
-        vid (-> (create-vocab-layer admin-request "OERVocab") :body :id)
-        _ (assert-status 204 (link-vocab-to-project admin-request proj vid))
+        vid (-> (create-vocab-layer admin-request proj "OERVocab") :body :id)
         item (-> (create-vocab-item admin-request vid "hello") :body :id)
         _ (assert-created (create-vocab-link admin-request item [tok]))
         published (atom [])]
@@ -100,16 +97,20 @@
     {:proj proj :doc doc}))
 
 (deftest a-vocabulary-event-tells-each-project-only-its-own-documents
-  ;; A vocabulary linked from two projects: its rename reaches both, and each
+  ;; A vocabulary borrowed by two projects: its rename reaches both, and each
   ;; project's listeners hear only that project and its documents, so a reader
-  ;; of one learns no id from the other (REV-W3F F3, HUNT-recent 11).
-  (let [vid (-> (create-vocab-layer admin-request "OENVocab") :body :id)
+  ;; of one learns no id from the other (REV-W3F F3, HUNT-recent 11). The
+  ;; home's listeners hear it too, the op being the home's, with no document.
+  (let [home (create-test-project admin-request "OENHome")
+        vid (-> (create-vocab-layer admin-request home "OENVocab") :body :id)
         p (linked-project! vid "hello" "OENP")
         q (linked-project! vid "hullo" "OENQ")
         pid (parse-uuid (str (:proj p)))
         qid (parse-uuid (str (:proj q)))
+        hid (parse-uuid (str home))
         p-chan (async/chan 10)
         q-chan (async/chan 10)
+        h-chan (async/chan 10)
         audit-event (fn [ch]
                       (loop []
                         (let [[e c] (async/alts!! [ch (async/timeout 3000)])]
@@ -119,12 +120,17 @@
     (mount/start #'events/client-registry #'events/event-bus)
     (events/register-client! pid p-chan)
     (events/register-client! qid q-chan)
+    (events/register-client! hid h-chan)
     (try
       (assert-status 200 (update-vocab-layer admin-request vid {:name "OENVocab2"}))
       (let [pe (audit-event p-chan)
-            qe (audit-event q-chan)]
+            qe (audit-event q-chan)
+            he (audit-event h-chan)]
         (is (some? pe) "P's listener hears the rename")
         (is (some? qe) "Q's listener hears the rename")
+        (is (some? he) "the home's listener hears the rename")
+        (is (= #{(str home)} (set (map str (:audit/projects he)))))
+        (is (empty? (:audit/documents he)) "the home has no document linking it")
         (is (= #{(str (:proj p))} (set (map str (:audit/projects pe)))))
         (is (= #{(str (:doc p))} (set (map str (:audit/documents pe)))))
         (is (= #{(str (:proj q))} (set (map str (:audit/projects qe)))))
@@ -134,6 +140,7 @@
       (finally
         (events/unregister-client! pid p-chan)
         (events/unregister-client! qid q-chan)
+        (events/unregister-client! hid h-chan)
         (mount/stop #'events/event-bus #'events/client-registry)))))
 
 (deftest editor-config-op-attributed-to-project-and-actor

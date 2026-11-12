@@ -26,8 +26,7 @@
         tl (-> (create-text-layer admin-request proj "T") :body :id)
         tkl (-> (create-token-layer admin-request tl "W") :body :id)
         sl (-> (create-span-layer admin-request tkl "S") :body :id)
-        vocab (-> (create-vocab-layer admin-request "Lex") :body :id)
-        _ (assert-no-content (link-vocab-to-project admin-request proj vocab))
+        vocab (-> (create-vocab-layer admin-request proj "Lex") :body :id)
         doc (-> (api-call admin-request {:method :post :path "/api/v1/documents"
                                          :body {:project-id proj :name "D"}})
                 :body :id)
@@ -204,11 +203,11 @@
       (assert-status 200 (batch [(create-entry vocab "cat" (str "?document-version=" v))])))))
 
 (deftest a-caller-who-cannot-read-the-document-learns-nothing-of-it
-  ;; user1 writes to the vocabulary through a project of their own, and has
-  ;; no access to the admin's project, where the document is.
-  (let [{:keys [vocab doc]} (setup!)
+  ;; user1 writes to a vocabulary of a project of their own, and has no
+  ;; access to the admin's project, where the document is.
+  (let [{:keys [doc]} (setup!)
         own (create-test-project user1-request "Mine")
-        _ (assert-no-content (link-vocab-to-project admin-request own vocab))
+        vocab (-> (create-vocab-layer user1-request own "Lex") :body :id)
         v (version doc)
         create (fn [q] (api-call user1-request {:method :post :path (str "/api/v1/vocab-items" q)
                                                 :body {:vocab-layer-id vocab :form "probe"}}))]

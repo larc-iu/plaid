@@ -46,14 +46,37 @@ function balanced(s, open) {
 
 const CONSTRAINT = /^(PRIMARY|FOREIGN|UNIQUE|CHECK|CONSTRAINT)\b/i;
 
-/** `{table: Set(columns)}` after applying every `*.up.sql` in order. */
+// What the code migrations (`*.edn`, a Clojure function, not SQL) do to the
+// tables, as the SQL that would do it. A code migration this map does not know
+// fails the test, so the next one has to be written down here.
+const CODE_MIGRATIONS = {
+  '20261016120000-document-names-unique.edn': '',
+  '20261016130000-document-names-fold.edn': 'ALTER TABLE documents ADD COLUMN name_key TEXT',
+  '20261016140000-document-names-casefold.edn': '',
+  '20261112120000-vocab-home-project.edn':
+    'ALTER TABLE vocab_layers ADD COLUMN project_id TEXT;\nDROP TABLE vocab_maintainers',
+};
+
+/**
+ * `{table: Set(columns)}` after applying every `*.up.sql`, and every code
+ * migration as `CODE_MIGRATIONS` writes it, in order.
+ */
 export function coreSchema(migrationsDir) {
   const tables = new Map();
   const files = readdirSync(migrationsDir)
-    .filter((f) => f.endsWith('.up.sql'))
+    .filter((f) => f.endsWith('.up.sql') || f.endsWith('.edn'))
     .sort();
   for (const file of files) {
-    const sql = readFileSync(join(migrationsDir, file), 'utf8').replace(/--[^\n]*/g, '');
+    if (file.endsWith('.edn') && !(file in CODE_MIGRATIONS)) {
+      throw new Error(
+        `code migration ${file} is new: write what it does to the tables in CODE_MIGRATIONS`,
+      );
+    }
+    const sql = (
+      file.endsWith('.edn')
+        ? CODE_MIGRATIONS[file]
+        : readFileSync(join(migrationsDir, file), 'utf8')
+    ).replace(/--[^\n]*/g, '');
     for (const stmt of sql.split(/;\s*(?:\n|$)/)) {
       const create = /CREATE TABLE (?:IF NOT EXISTS )?(\w+)\s*\(/i.exec(stmt);
       if (create) {

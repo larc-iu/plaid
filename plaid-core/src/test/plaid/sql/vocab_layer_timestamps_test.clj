@@ -4,7 +4,7 @@
   A vocabulary had no notion of when it last changed, so vocabulary lists
   could not show the \"Updated\" column that project and document lists show.
   `modified_at` is now stamped by every write to the vocabulary: the layer
-  itself (rename, config, a real maintainer change) and every item write,
+  itself (rename, config, a move to another project) and every item write,
   the latter via `plaid.sql.operation/touch-vocab-layers!` since an item
   write never touches the layer row on its own.
 
@@ -23,7 +23,6 @@
                                         create-vocab-layer
                                         get-vocab-layer
                                         update-vocab-layer
-                                        add-vocab-maintainer
                                         create-vocab-item
                                         update-vocab-item
                                         delete-vocab-item
@@ -32,14 +31,10 @@
                                         delete-vocab-item-metadata
                                         bulk-create-vocab-items
                                         bulk-delete-vocab-items
-                                        create-vocab-link
-                                        link-vocab-to-project]]))
+                                        create-vocab-link]]))
 
 (use-fixtures :once with-db with-mount-states with-rest-handler with-admin with-test-users)
 (use-fixtures :each with-clean-db)
-
-(def ^:private admin "admin@example.com")
-(def ^:private user1 "user1@example.com")
 
 (defn- times
   "[time-created time-modified] as served by the vocab-layer GET."
@@ -47,8 +42,9 @@
   (let [b (:body (get-vocab-layer admin-request vocab-id))]
     [(:vocab/time-created b) (:vocab/time-modified b)]))
 
-(defn- new-vocab! [name]
-  (-> (create-vocab-layer admin-request name) :body :id))
+(defn- new-vocab!
+  ([name] (new-vocab! (create-test-project admin-request (str name " project")) name))
+  ([proj name] (-> (create-vocab-layer admin-request proj name) :body :id)))
 
 (defn- vocab-layer-audit-rows
   "audit_writes rows targeting `vocab-id` from the most recent op of
@@ -126,10 +122,20 @@
                                 :body "blue"})))
       (is (= 1 (count (vocab-layer-audit-rows "layer/assoc-editor-config-pair" v)))
           "the config write folds modified_at into its own audit row"))
-    (testing "a real maintainer change"
-      (is (bumps? v #(assert-no-content (add-vocab-maintainer admin-request v user1)))))
-    (testing "a maintainer add that grants nothing does not"
-      (is (not (bumps? v #(add-vocab-maintainer admin-request v admin)))))))
+    (testing "a move to another project"
+      (let [other (create-test-project admin-request "LayerWrites elsewhere")]
+        (is (bumps? v #(assert-ok (api-call admin-request
+                                            {:method :post
+                                             :path (str "/api/v1/vocab-layers/" v "/move")
+                                             :body {:project-id other}}))))
+        (is (= 1 (count (vocab-layer-audit-rows "vocab/move" v)))
+            "the move folds modified_at into its own audit row")))
+    (testing "a move to its current home does not"
+      (let [home (:vocab/project (:body (get-vocab-layer admin-request v)))]
+        (is (not (bumps? v #(api-call admin-request
+                                      {:method :post
+                                       :path (str "/api/v1/vocab-layers/" v "/move")
+                                       :body {:project-id home}}))))))))
 
 (deftest vocab-links-do-not-bump-the-layer
   (let [proj (create-test-project admin-request "LinkProj")
@@ -141,8 +147,7 @@
                 :body :id)
         text (-> (create-text admin-request tl doc "hello world") :body :id)
         tok (-> (create-token admin-request tkl text 0 5) :body :id)
-        v (new-vocab! "LinkVocab")
-        _ (link-vocab-to-project admin-request proj v)
+        v (new-vocab! proj "LinkVocab")
         item (-> (create-vocab-item admin-request v "hello") :body :id)]
     (is (not (bumps? v #(create-vocab-link admin-request item [tok])))
         "linking a word to an entry annotates the document, not the vocabulary")))

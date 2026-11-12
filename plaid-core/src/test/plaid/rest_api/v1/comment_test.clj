@@ -27,7 +27,7 @@
                                         create-relation-layer create-relation
                                         add-project-reader add-project-writer
                                         create-vocab-layer create-vocab-item
-                                        add-vocab-maintainer link-vocab-to-project]]))
+                                        link-vocab-to-project]]))
 
 (use-fixtures :once with-db with-mount-states with-rest-handler with-admin with-test-users)
 (use-fixtures :each with-clean-db)
@@ -100,14 +100,19 @@
   (api-call req {:method :get :path (str "/api/v1/vocab-layers/" vocab-id "/comments" (query-string query))}))
 
 (defn- setup-vocab
-  "A vocabulary with one entry, linked to a fresh project. The admin creates
-  it and so maintains it."
+  "A vocabulary with one entry, its home a fresh project."
   [name]
-  (let [vocab (-> (create-vocab-layer admin-request name) :body :id)
-        item (-> (create-vocab-item admin-request vocab "gam") :body :id)
-        proj (create-test-project admin-request (str name " Proj"))]
-    (link-vocab-to-project admin-request proj vocab)
+  (let [proj (create-test-project admin-request (str name " Proj"))
+        vocab (-> (create-vocab-layer admin-request proj name) :body :id)
+        item (-> (create-vocab-item admin-request vocab "gam") :body :id)]
     {:vocab vocab :item item :project proj}))
+
+(defn- borrower!
+  "A fresh project that borrows `vocab`."
+  [vocab name]
+  (let [proj (create-test-project admin-request name)]
+    (assert-status 204 (link-vocab-to-project admin-request proj vocab))
+    proj))
 
 (defn- comment-count-rows
   "Raw row count straight from SQL. Used where the REST surface can't answer
@@ -452,7 +457,7 @@
       (is (= "gam" (:comment/anchor-label created))))))
 
 (deftest vocab-item-comments-take-the-vocab-gates
-  (testing "who may post: a vocab maintainer, a writer through a linking project; not a reader, not a stranger"
+  (testing "who may post: a writer of the home or of a borrowing project; not a reader, not a stranger"
     (let [{:keys [vocab item project]} (setup-vocab "VocabGates")]
       (add-project-reader admin-request project "user1@example.com")
       (add-project-writer admin-request project "user2@example.com")
@@ -466,24 +471,30 @@
                                  :path (str "/api/v1/projects/" project "/readers/user1@example.com")})
         (assert-status 403 (post-comment user1-request "vocab-item" item "stranger"))
         (assert-status 403 (list-vocab-comments user1-request vocab)))
-      (testing "a vocab maintainer with no project at all may post"
-        (add-vocab-maintainer admin-request vocab "user1@example.com")
-        (assert-status 201 (post-comment user1-request "vocab-item" item "maintainer posts"))))))
+      (testing "a reader of a borrowing project may not post, a writer there may"
+        (let [b (borrower! vocab "VocabGates Borrower")]
+          (add-project-reader admin-request b "user1@example.com")
+          (assert-status 403 (post-comment user1-request "vocab-item" item "reader through a borrower"))
+          (assert-status 200 (list-vocab-comments user1-request vocab))
+          (add-project-writer admin-request b "user1@example.com")
+          (assert-status 201 (post-comment user1-request "vocab-item" item "writer through a borrower")))))))
 
 (deftest vocab-item-comment-delete-is-author-or-vocab-maintainer
-  (testing "another writer cannot delete; the vocabulary's maintainer can; a project maintainer cannot"
-    (let [{:keys [vocab item project]} (setup-vocab "VocabDel")]
-      (add-project-writer admin-request project "user1@example.com")
-      (add-project-writer admin-request project "user2@example.com")
+  (testing "another writer cannot delete; a maintainer of the vocabulary's home can; a borrower's maintainer cannot"
+    (let [{:keys [vocab item project]} (setup-vocab "VocabDel")
+          b (borrower! vocab "VocabDel Borrower")]
+      (add-project-writer admin-request b "user1@example.com")
+      (add-project-writer admin-request b "user2@example.com")
       (let [cid (-> (post-comment user1-request "vocab-item" item "mine") :body :comment/id)
             del (fn [req] (api-call req {:method :delete :path (str "/api/v1/comments/" cid)}))]
         (assert-status 403 (del user2-request))
-        (testing "maintaining the PROJECT is not enough: the vocabulary is the owner"
-          (api-call admin-request {:method :post
-                                   :path (str "/api/v1/projects/" project "/maintainers/user2@example.com")})
+        (testing "maintaining the BORROWING project is not enough: the vocabulary's home is the owner"
+          (assert-status 204 (api-call admin-request {:method :post
+                                                      :path (str "/api/v1/projects/" b "/maintainers/user2@example.com")}))
           (assert-status 403 (del user2-request)))
-        (testing "maintaining the vocabulary is"
-          (add-vocab-maintainer admin-request vocab "user2@example.com")
+        (testing "maintaining the home is"
+          (assert-status 204 (api-call admin-request {:method :post
+                                                      :path (str "/api/v1/projects/" project "/maintainers/user2@example.com")}))
           (assert-status 204 (del user2-request)))))))
 
 (deftest vocab-comments-are-listed-and-counted-per-vocabulary-not-per-project
@@ -497,7 +508,7 @@
       (is (= ["three"] (map :comment/body (-> (list-vocab-comments admin-request vocab :entity-id item2)
                                               :body :entries))))
       (is (empty? (-> (list-comments admin-request project) :body :entries))
-          "a project that links the vocabulary does not list its comments")
+          "the vocabulary's project does not list its comments")
       (let [counts (-> (api-call admin-request {:method :get
                                                 :path (str "/api/v1/vocab-layers/" vocab "/comments/counts")})
                        :body)]

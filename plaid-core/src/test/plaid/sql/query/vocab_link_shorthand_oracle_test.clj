@@ -1,7 +1,7 @@
 (ns plaid.sql.query.vocab-link-shorthand-oracle-test
   "The `vocab-link` shorthand judged against an evaluator that never goes near
-  the compiler. Random documents in two projects share one vocabulary and one
-  of them has a second. Links cover one to three tokens, an entry reaches a
+  the compiler. Random documents in two projects share one vocabulary (the
+  first project's, borrowed by the second) and the first has a second. Links cover one to three tokens, an entry reaches a
   token through several links, and links are deleted, trimmed by a token
   delete, moved by a token merge, copied with a document and put back by a
   restore. Random queries built on the shorthand (aggregates, ids and counts,
@@ -104,9 +104,8 @@
         (api-call admin-request {:method :post :path (str "/api/v1/documents/" d "/copy")
                                  :body {:name (str dname " copy")}})))))
 
-(defn- build-project! [rnd pname vls items]
-  (let [pid (h/create-test-project admin-request pname)
-        txtl (id (h/create-text-layer admin-request pid "text"))
+(defn- build-project! [rnd pid pname vls items]
+  (let [txtl (id (h/create-text-layer admin-request pid "text"))
         words (id (h/create-token-layer admin-request txtl "words"))
         morphs (id (h/create-token-layer admin-request txtl "morphs" "any"))
         pos (id (h/create-span-layer admin-request words "pos"))
@@ -118,12 +117,14 @@
     p))
 
 (defn- build! [rnd seed]
-  (let [vl1 (id (h/create-vocab-layer admin-request (str "shared " seed)))
-        vl2 (id (h/create-vocab-layer admin-request (str "A only " seed)))
+  (let [pa (h/create-test-project admin-request (str "A" seed))
+        pb (h/create-test-project admin-request (str "B" seed))
+        vl1 (id (h/create-vocab-layer admin-request pa (str "shared " seed)))
+        vl2 (id (h/create-vocab-layer admin-request pa (str "A only " seed)))
         items1 (vec (for [i (range 4)] (id (h/create-vocab-item admin-request vl1 (str "s" i)))))
         items2 (vec (for [i (range 3)] (id (h/create-vocab-item admin-request vl2 (str "a" i)))))
-        a (build-project! rnd (str "A" seed) [vl1 vl2] (into items1 items2))
-        b (build-project! rnd (str "B" seed) [vl1] items1)]
+        a (build-project! rnd pa (str "A" seed) [vl1 vl2] (into items1 items2))
+        b (build-project! rnd pb (str "B" seed) [vl1] items1)]
     (h/add-project-reader admin-request (:pid a) "user1@example.com")
     {:vl1 vl1 :vl2 vl2 :a a :b b}))
 

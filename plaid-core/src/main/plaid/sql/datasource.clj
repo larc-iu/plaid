@@ -294,7 +294,7 @@
   (with-open [stmt (.createStatement con)]
     (.execute stmt sql)))
 
-(defn- discard-connection!
+(defn discard-connection!
   "Make sure `con` never serves another borrower. From Hikari: evict it, and
   Hikari closes it when it is returned. From any other source: close the
   physical connection under it now, since the source's own close may only

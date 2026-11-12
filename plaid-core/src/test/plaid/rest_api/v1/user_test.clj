@@ -331,7 +331,9 @@
 
   (testing "a non-admin, non-maintainer may NOT list users (403)"
     (let [resp (rest-handler (user1-request :get "/api/v1/users"))]
-      (is (= 403 (:status resp)))))
+      (is (= 403 (:status resp)))
+      (is (= "Listing users requires admin or project-maintainer privileges."
+             (:error (parse-response-body resp))))))
 
   (testing "once user1 maintains a project, they MAY list users (200)"
     (let [created (rest-handler (-> (user1-request :post "/api/v1/projects")
@@ -339,19 +341,6 @@
       (is (= 201 (:status created)))
       (let [resp (rest-handler (user1-request :get "/api/v1/users"))]
         (is (= 200 (:status resp)))))))
-
-(deftest user-directory-vocab-maintainer-access
-  ;; A vocab-only maintainer (maintains no project) can also read the directory:
-  ;; they need it to find users to grant vocab maintainership. Fresh DB via the
-  ;; :each fixture, so user1 maintains nothing at the start.
-  (testing "a non-admin who maintains nothing may NOT list users (403)"
-    (is (= 403 (:status (rest-handler (user1-request :get "/api/v1/users"))))))
-
-  (testing "once user1 maintains a vocab layer, they MAY list users (200)"
-    (let [created (rest-handler (-> (user1-request :post "/api/v1/vocab-layers")
-                                    (mock/json-body {:name "user1 vocab"})))]
-      (is (= 201 (:status created)))
-      (is (= 200 (:status (rest-handler (user1-request :get "/api/v1/users"))))))))
 
 (deftest a-short-password-is-refused
   (testing "creating an account with a password under eight characters is a 400 that says why"

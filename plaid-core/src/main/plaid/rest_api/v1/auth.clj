@@ -471,11 +471,12 @@
 ;; - The project gate (`holds-privilege?`, behind every `wrap-*-required` and
 ;;   `privileged?`) passes only on a project in scope. An admin counts as a
 ;;   maintainer there, and nowhere else.
-;; - The vocab gates (`vocab-reader?`, `vocab-writer?`,
-;;   `wrap-vocab-maintainer-required`) pass only on a vocabulary linked to a
-;;   project in scope, the way a project's own readers reach it. The right
-;;   itself is the usual one (admin, vocab maintainer, or the role on a
-;;   project that links it), except that a role counts only on a project in
+;; - The vocab gates follow a vocabulary's home project (2026-11-12). A
+;;   scoped token reads a vocabulary (`vocab-reader?`) through a project in
+;;   scope that links it, home or borrower, where the user holds a role. It
+;;   writes entries (`vocab-writer?`) and does a maintainer's acts on them
+;;   (`vocab-maintainer?`) only when the HOME is in scope and the user holds
+;;   that role there. An admin counts as holding every role on a project in
 ;;   scope.
 ;; - `token-scope-gate`, the innermost middleware of every login-required
 ;;   route, refuses the request unless one of those gates passed it, or the
@@ -486,13 +487,13 @@
 ;;   (admin screens, users, tokens, invites, project creation, listings) is
 ;;   refused without having to be listed.
 ;; - A route that acts on a vocabulary as a whole carries
-;;   `:plaid/vocabulary-admin` in its data: renaming or deleting the
-;;   vocabulary, adding or removing its maintainers, linking it to or
-;;   unlinking it from a project, restoring its entries, its config.
-;;   `token-scope-gate` refuses a scoped token there whatever its user's
-;;   rights, since such a change reaches every project the vocabulary is
-;;   shared with and a maintainer grant outlasts the token (ruled 2026-09-27).
-;;   Renaming, merging and deleting single entries stay open to it.
+;;   `:plaid/vocabulary-admin` in its data: renaming, moving or deleting the
+;;   vocabulary, linking it to or unlinking it from a project, restoring its
+;;   entries, its config, listing who borrows it. `token-scope-gate` refuses
+;;   a scoped token there whatever its user's rights, since such a change
+;;   reaches every project the vocabulary is shared with (ruled 2026-09-27).
+;;   Creating one is a project maintainer's act, refused below. Renaming,
+;;   merging and deleting single entries stay open to it.
 ;; - A route behind the project maintainer gate (`wrap-maintainer-required`)
 ;;   refuses a scoped token the same way, whatever its user's rights: adding
 ;;   or removing members, renaming or deleting the project, its config and
@@ -583,8 +584,8 @@
 
 (def ^:private vocabulary-admin-refusal
   {:status 403
-   :body {:error (str "A delegated token cannot rename or delete a vocabulary, change its maintainers "
-                      "or settings, link or unlink it, or restore its entries.")}})
+   :body {:error (str "A delegated token cannot rename, move or delete a vocabulary, change its settings, "
+                      "link or unlink it, or restore its entries.")}})
 
 (def project-admin-refusal
   "The answer to a scoped token on a route that needs maintainer rights on a
@@ -921,18 +922,17 @@
 
 (defn wrap-user-directory-access
   "Allows reading the user directory (list/search) to admins OR any user who
-  maintains at least one project OR at least one vocab layer — maintainers need
-  it to find users to grant project/vocab access. Everyone else gets 403 (the
-  roster stays unenumerable for ordinary readers/writers; see the
-  account-enumeration note on the list route)."
+  maintains at least one project — maintainers need it to find users to
+  grant project access. Everyone else gets 403 (the roster stays
+  unenumerable for ordinary readers/writers; see the account-enumeration
+  note on the list route)."
   [handler]
   (fn [request]
     (if (or (user/admin? (:user/record request))
-            (prj/maintainer-of-any? (:db request) (->user-id request))
-            (vocab/maintainer-of-any? (:db request) (->user-id request)))
+            (prj/maintainer-of-any? (:db request) (->user-id request)))
       (handler request)
       {:status 403
-       :body {:error "Listing users requires admin or project/vocab-maintainer privileges."}})))
+       :body {:error "Listing users requires admin or project-maintainer privileges."}})))
 
 (def ^:private levels
   {:project/readers [:project/readers :project/writers :project/maintainers]
@@ -1250,26 +1250,42 @@
          (filter #(in-scope? scope %)))))
 
 (defn- scoped-vocab-right?
-  "A vocab right under a scoped token. The vocabulary must be linked to a
-  project in scope, which is how a project's own readers reach it. Then an
-  admin or the vocabulary's maintainer holds every right on it, and anyone
-  else holds what their role gives them on one of those projects (`key`,
-  as for `holds-privilege?`), never through a project outside the scope.
-  `key` nil asks for maintainer rights, which no project role gives."
+  "A vocab right under a scoped token. `key` `:project/readers` reads
+  through a project in scope that links the vocabulary (its home or a
+  borrower), where the user holds a role. `:project/writers` and
+  `:project/maintainers` hold only through the home, which must be in scope.
+  `:linking-writer` is a writer's role on a linking project in scope (the
+  comment gate). An admin holds every role on a project in scope."
   [db scope vocab-id user-id key]
-  (let [linking (scoped-projects-linking db scope vocab-id)]
-    (boolean (and (seq linking)
-                  (or (:admin? scope)
-                      (vocab/maintainer? db vocab-id user-id)
-                      (and key (some #(member-at? db key % user-id) linking)))
-                  (pass-scope! scope)))))
+  (let [holds? (fn [k pid] (or (:admin? scope) (member-at? db k pid user-id)))]
+    (boolean
+     (and vocab-id
+          (not (vocab/hidden-home? db vocab-id))
+          (case key
+            :project/readers (some #(holds? :project/readers %) (scoped-projects-linking db scope vocab-id))
+            :linking-writer (some #(holds? :project/writers %) (scoped-projects-linking db scope vocab-id))
+            (let [home (vocab/home-of db vocab-id)]
+              (and (in-scope? scope home) (holds? key home))))
+          (pass-scope! scope)))))
+
+(defn- admin-on?
+  "Is `user-record` an admin's, and the vocabulary's home not being deleted?
+  An id that names no vocabulary (nil, or one deleted since) passes, as an
+  admin always has: the route answers it 404 or 400 itself."
+  [db user-record vocab-id]
+  (and (user/admin? user-record) (not (vocab/hidden-home? db vocab-id))))
+
+(defn- home-at?
+  "Does `user-id` hold at least `key` by a role on the home of `vocab-id`?"
+  [db key vocab-id user-id]
+  (and vocab-id (member-at? db key (vocab/home-of db vocab-id) user-id)))
 
 (defn vocab-reader?
-  "Does `user-id` hold read access to vocab layer `vocab-id` — admin, a
-  maintainer of the vocabulary, or a member of a project the vocabulary is
-  granted to? The predicate behind `wrap-vocab-reader-required`, exposed
-  because a bulk handler can touch N vocabularies, which the single-id
-  middleware cannot express, and the check must be the same one.
+  "Does `user-id` hold read access to vocab layer `vocab-id`: an admin, or a
+  member of a project that links it (its home or a borrower)? The predicate
+  behind `wrap-vocab-reader-required`, exposed because a bulk handler can
+  touch N vocabularies, which the single-id middleware cannot express, and
+  the check must be the same one.
 
   `user-record` is the caller's already-loaded user row where there is one."
   ([db vocab-id user-id]
@@ -1277,16 +1293,15 @@
   ([db vocab-id user-id user-record]
    (if-let [scope (scope-for user-id)]
      (scoped-vocab-right? db scope vocab-id user-id :project/readers)
-     (boolean (or (user/admin? user-record)
-                  (and vocab-id
-                       (or (vocab/maintainer? db vocab-id user-id)
-                           (vocab/accessible-through-project? db vocab-id user-id))))))))
+     (boolean (or (admin-on? db user-record vocab-id)
+                  (and vocab-id (vocab/accessible-through-project? db vocab-id user-id)))))))
 
 (defn vocab-writer?
-  "Does `user-id` hold write access to vocab layer `vocab-id` — admin, a
-  maintainer of the vocabulary, or a writer on a project the vocabulary is
-  granted to? The predicate behind `wrap-vocab-writer-required`, exposed for
-  the bulk handlers the way `vocab-reader?` is.
+  "Does `user-id` hold write access to the entries of vocab layer
+  `vocab-id`: an admin, or a writer or maintainer of its HOME project, from
+  whatever project they work (a borrower's members change no entry)? The
+  predicate behind `wrap-vocab-writer-required`, exposed for the bulk
+  handlers the way `vocab-reader?` is.
 
   `user-record` is the caller's already-loaded user row where there is one."
   ([db vocab-id user-id]
@@ -1294,77 +1309,139 @@
   ([db vocab-id user-id user-record]
    (if-let [scope (scope-for user-id)]
      (scoped-vocab-right? db scope vocab-id user-id :project/writers)
-     (boolean (or (user/admin? user-record)
-                  (and vocab-id
-                       (or (vocab/maintainer? db vocab-id user-id)
-                           (vocab/write-accessible-through-project? db vocab-id user-id))))))))
+     (boolean (or (admin-on? db user-record vocab-id)
+                  (home-at? db :project/writers vocab-id user-id))))))
+
+(defn vocab-maintainer?
+  "Does `user-id` hold a maintainer's rights over vocab layer `vocab-id`
+  and its entries: an admin, or a maintainer of its home project?"
+  ([db vocab-id user-id]
+   (vocab-maintainer? db vocab-id user-id (user/get db user-id)))
+  ([db vocab-id user-id user-record]
+   (if-let [scope (scope-for user-id)]
+     (scoped-vocab-right? db scope vocab-id user-id :project/maintainers)
+     (boolean (or (admin-on? db user-record vocab-id)
+                  (home-at? db :project/maintainers vocab-id user-id))))))
+
+(defn vocab-linking-writer?
+  "Does `user-id` write for some project that links vocab layer `vocab-id`
+  (its home or a borrower), or is an admin? Not a right over entries: the
+  gate for commenting on one."
+  ([db vocab-id user-id user-record]
+   (if-let [scope (scope-for user-id)]
+     (scoped-vocab-right? db scope vocab-id user-id :linking-writer)
+     (boolean (or (admin-on? db user-record vocab-id)
+                  (and vocab-id (vocab/linking-writer? db vocab-id user-id)))))))
+
+(defn- vocab-layers-refusal*
+  [allowed? what db layer-ids user-id]
+  (let [refused (vec (remove #(allowed? db % user-id) (distinct layer-ids)))]
+    (when (seq refused)
+      {:status 403
+       :body {:error (str "User " user-id " lacks " what " access to vocab layer(s) " refused)}})))
 
 (defn vocab-layers-refusal
-  "The 403 for a bulk vocab write when `user-id` lacks write access to any of
+  "The 403 for a bulk entry write when `user-id` lacks write access to any of
   `layer-ids` (checked with `vocab-writer?`), or nil when every layer is
   writable. The single-id gate is `wrap-vocab-writer-required`, this is the
   check a bulk handler runs on every distinct layer its entries touch."
   [db layer-ids user-id]
-  (let [unwritable (vec (remove #(vocab-writer? db % user-id) (distinct layer-ids)))]
-    (when (seq unwritable)
-      {:status 403
-       :body {:error (str "User " user-id " lacks write access to vocab layer(s) " unwritable)}})))
+  (vocab-layers-refusal* vocab-writer? "write" db layer-ids user-id))
+
+(defn vocab-layers-read-refusal
+  "The 403 when `user-id` cannot read one of `layer-ids` (`vocab-reader?`),
+  or nil: the bulk form of `wrap-vocab-reader-required`."
+  [db layer-ids user-id]
+  (vocab-layers-refusal* vocab-reader? "read" db layer-ids user-id))
+
+(defn- wrap-vocab-gate
+  "Refuse the request unless `(allowed? db vocab-id user-id user-record)`
+  for the vocabulary `get-vocab-id` resolves. A vocabulary whose home is
+  being deleted answers an admin 404, as a project being deleted does, and
+  everyone else the 403. An id that resolves to no vocabulary (an entry
+  deleted since the caller read it) is refused with `unknown`, never
+  `refusal`, and `unresolved: true`, so a client can read it as changed or
+  removed. The status stays 403 (the core ruling on unknown ids)."
+  [handler allowed? get-vocab-id {:keys [unknown refusal]}]
+  (fn [{db :db :as request}]
+    (let [user-id (->user-id request)
+          record (:user/record request)
+          vocab-id (get-vocab-id {:parameters (:parameters request) :db db})]
+      (cond
+        (allowed? db vocab-id user-id record)
+        (or (unknown-vocab-layer request vocab-id) (handler request))
+
+        (and (user/admin? record) (vocab/hidden-home? db vocab-id))
+        {:status 404 :body {:error "Vocab layer not found"}}
+
+        :else
+        {:status 403
+         :body (unresolved-if (nil? vocab-id)
+                              {:error (cond
+                                        (nil? vocab-id) (unknown user-id nil)
+                                        refusal refusal
+                                        :else (unknown user-id vocab-id))})}))))
 
 (defn wrap-vocab-maintainer-required
-  "Requires that the user is a maintainer of the vocab layer or an admin.
-  `refusal`, when given, is the 403's message in place of the generic one,
-  for a route whose refusal a client shows as it stands.
-
-  An id that resolves to no vocabulary (an entry deleted since the caller
-  read it) is refused with the generic unknown-id wording, never `refusal`:
-  it names no vocabulary, as the reader and writer gates' refusal does for
-  such an id, so a client can tell it from a real refusal and read it as
-  changed or removed. The status stays 403 (the core ruling on unknown ids)."
+  "Requires that the user maintains the vocab layer's home project, or is an
+  admin. `refusal`, when given, is the 403's message in place of the
+  generic one, for a route whose refusal a client shows as it stands."
   ([handler get-vocab-id]
    (wrap-vocab-maintainer-required handler get-vocab-id nil))
   ([handler get-vocab-id refusal]
-   (fn [{db :db :as request}]
-     (let [user-id (->user-id request)
-           vocab-id (get-vocab-id {:parameters (:parameters request)
-                                   :db db})
-           scope (scope-for user-id)
-           allowed? (if scope
-                      (scoped-vocab-right? db scope vocab-id user-id nil)
-                      (or (user/admin? (:user/record request))
-                          (and vocab-id
-                               (vocab/maintainer? db vocab-id user-id))))]
-       (if-not allowed?
-         {:status 403
-          :body (unresolved-if (nil? vocab-id)
-                               {:error (cond
-                                         (nil? vocab-id) (str "User " user-id " lacks maintainer access to vocab layer")
-                                         refusal refusal
-                                         :else (str "User " user-id " lacks maintainer privileges for vocab layer " vocab-id))})}
-         (or (unknown-vocab-layer request vocab-id) (handler request)))))))
+   (wrap-vocab-gate handler vocab-maintainer? get-vocab-id
+                    {:refusal refusal
+                     :unknown (fn [user-id vocab-id]
+                                (if vocab-id
+                                  (str "User " user-id " lacks maintainer privileges for vocab layer " vocab-id)
+                                  (str "User " user-id " lacks maintainer access to vocab layer")))})))
+
+(defn wrap-vocab-home-member-required
+  "Requires that the user holds any role on the vocab layer's home project,
+  or is an admin: the vocabulary's side of borrowing it."
+  [handler get-vocab-id refusal]
+  (wrap-vocab-gate handler
+                   (fn [db vocab-id user-id record]
+                     (or (admin-on? db record vocab-id)
+                         (boolean (home-at? db :project/readers vocab-id user-id))))
+                   get-vocab-id
+                   {:refusal refusal
+                    :unknown (fn [user-id vocab-id] (str "User " user-id " lacks read access to vocab layer " vocab-id))}))
 
 (defn wrap-vocab-reader-required
-  "Requires that the user has read access to the vocab layer through a project or is a maintainer/admin."
+  "Requires that the user has read access to the vocab layer through a
+  project that links it, or is an admin."
   [handler get-vocab-id]
-  (fn [{db :db :as request}]
-    (let [user-id (->user-id request)
-          vocab-id (get-vocab-id {:parameters (:parameters request)
-                                  :db db})]
-      (if-not (vocab-reader? db vocab-id user-id (:user/record request))
-        {:status 403
-         :body (unresolved-if (nil? vocab-id)
-                              {:error (str "User " user-id " lacks read access to vocab layer " vocab-id)})}
-        (or (unknown-vocab-layer request vocab-id) (handler request))))))
+  (wrap-vocab-gate handler vocab-reader? get-vocab-id
+                   {:unknown (fn [user-id vocab-id] (str "User " user-id " lacks read access to vocab layer " vocab-id))}))
 
 (defn wrap-vocab-writer-required
-  "Requires that the user has write access to vocab items through a project or is a maintainer/admin."
+  "Requires that the user may write the vocab layer's entries: a writer or
+  maintainer of its home project, or an admin."
   [handler get-vocab-id]
-  (fn [{db :db :as request}]
-    (let [user-id (->user-id request)
-          vocab-id (get-vocab-id {:parameters (:parameters request)
-                                  :db db})]
-      (if-not (vocab-writer? db vocab-id user-id (:user/record request))
-        {:status 403
-         :body (unresolved-if (nil? vocab-id)
-                              {:error (str "User " user-id " lacks write access to vocab layer " vocab-id)})}
-        (or (unknown-vocab-layer request vocab-id) (handler request))))))
+  (wrap-vocab-gate handler vocab-writer? get-vocab-id
+                   {:unknown (fn [user-id vocab-id] (str "User " user-id " lacks write access to vocab layer " vocab-id))}))
 
+(defn wrap-vocab-linking-writer-required
+  "Requires that the user writes for a project linking the vocab layer, or
+  is an admin: the gate for commenting on an entry."
+  [handler get-vocab-id]
+  (wrap-vocab-gate handler vocab-linking-writer? get-vocab-id
+                   {:unknown (fn [user-id vocab-id] (str "User " user-id " lacks write access to vocab layer " vocab-id))}))
+
+(defn wrap-vocab-unlink-required
+  "The gate of unlinking a vocabulary from a project: a maintainer of the
+  project (or an admin), as any project maintainer act, or a maintainer of
+  the vocabulary's home when the project links it, whether or not they can
+  read that project (ending another project's borrowing, Luke 2026-11-12)."
+  [handler get-project-id get-vocab-id]
+  (let [via-project (wrap-maintainer-required handler get-project-id)]
+    (fn [{db :db :as request}]
+      (let [pid (resolve-project-id request get-project-id)
+            vid (get-vocab-id {:parameters (:parameters request) :db db})]
+        (if (and pid vid
+                 (not (prj/hidden? db pid))
+                 (vocab/links? db pid vid)
+                 (vocab-maintainer? db vid (->user-id request) (:user/record request)))
+          (handler request)
+          (via-project request))))))

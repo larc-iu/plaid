@@ -15,7 +15,7 @@
             [plaid.sql.vocab-item :as vocab-item]
             [plaid.fixtures :refer [db with-db with-mount-states with-rest-handler
                                     admin-request with-admin with-clean-db]]
-            [plaid.test-helpers :refer [create-vocab-layer
+            [plaid.test-helpers :refer [create-test-project create-vocab-layer
                                         create-vocab-item]]))
 
 (use-fixtures :once with-db with-mount-states with-rest-handler with-admin)
@@ -25,7 +25,7 @@
   (testing "vocab-item/create with metadata emits exactly ONE
             :vocab_items audit row with change_type :insert and
             :metadata folded into post_image — NOT a separate :update"
-    (let [vocab (-> (create-vocab-layer admin-request "VocabItemMetaFoldVocab")
+    (let [vocab (-> (create-vocab-layer admin-request (create-test-project admin-request "P") "VocabItemMetaFoldVocab")
                     :body :id)
           metadata {:pos "noun" :gloss "greeting"}
           item-res (create-vocab-item admin-request vocab "hello" metadata)
@@ -64,7 +64,7 @@
 (deftest vocab-item-create-without-metadata-still-emits-insert
   (testing "create with no metadata still emits a single :insert audit
             row, no extras"
-    (let [vocab (-> (create-vocab-layer admin-request "VocabItemNoMetaVocab")
+    (let [vocab (-> (create-vocab-layer admin-request (create-test-project admin-request "P") "VocabItemNoMetaVocab")
                     :body :id)
           item-res (create-vocab-item admin-request vocab "bare")
           item-id (-> item-res :body :id)
@@ -89,7 +89,7 @@
 (deftest the-entry-list-reads-metadata-once-and-as-each-entry-does
   ;; A vocabulary's entry list read each entry's metadata with its own query.
   ;; It reads them together now, and every entry is what its own read gives.
-  (let [vocab (-> (create-vocab-layer admin-request "ListMetaVocab") :body :id)
+  (let [vocab (-> (create-vocab-layer admin-request (create-test-project admin-request "P") "ListMetaVocab") :body :id)
         ids (vec (for [i (range 12)]
                    (-> (if (even? i)
                          (create-vocab-item admin-request vocab (str "w" i) {:gloss (str "g" i) :n i})

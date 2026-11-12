@@ -474,26 +474,6 @@
                                   [:= :user_id user-id]]})
         (emit-audit tx pid pre-acl)))))
 
-(defn- audit-and-cascade-vocab-maintainerships!
-  "For every vocab layer this user maintained, snapshot the maintainer
-  list, explicitly delete the vocab_maintainers row, and emit a
-  synthetic :vocab_layers audit. Same FK-cascade-blinds-ETL rationale
-  as `audit-and-cascade-project-memberships!`."
-  [tx user-id]
-  (let [fetch-maintainers (requiring-resolve 'plaid.sql.vocab-layer/fetch-vocab-maintainer-ids)
-        emit-audit (requiring-resolve 'plaid.sql.vocab-layer/audit-vocab-maintainers-change!)
-        vocab-ids (->> (psc/q tx {:select [:vocab_layer_id]
-                                  :from [:vocab_maintainers]
-                                  :where [:= :user_id user-id]})
-                       (mapv :vocab_layer_id))]
-    (doseq [vid vocab-ids]
-      (let [pre-maintainers (fetch-maintainers tx vid)]
-        (psc/execute! tx {:delete-from :vocab_maintainers
-                          :where [:and
-                                  [:= :vocab_layer_id vid]
-                                  [:= :user_id user-id]]})
-        (emit-audit tx vid pre-maintainers)))))
-
 (defn- projects-where-user-is-sole-maintainer
   "Return project ids for which `eid` is the ONLY user holding the
   'maintainer' role. Used by `deactivate` to reject the FK-cascade-driven
@@ -531,7 +511,7 @@
       reject deactivated users),
     - bumps `password_changes` so live session tokens die immediately
       (belt and braces alongside the JWT-validation check),
-    - strips project memberships + vocab maintainerships (audited
+    - strips project memberships (audited
       synthetic rows, same as the old delete),
     - revokes all the user's API tokens (audited),
     - releases every service id the user claimed (unaudited, as claims
@@ -576,7 +556,6 @@
                                           (clojure.string/join ", " names) ".")
                                      {:code 400 :id eid :projects orphan-projects})))))
                        (audit-and-cascade-project-memberships! tx eid)
-                       (audit-and-cascade-vocab-maintainerships! tx eid)
                        (let [ts (:ts psaw/*op*)]
                          (revoke-all-api-tokens! tx eid ts)
                          (service-registry/release-all-of! tx eid)
@@ -587,7 +566,7 @@
 
 (defn reactivate
   "Clear a user's `deactivated_at`, restoring their ability to log in.
-  Does NOT restore project memberships, vocab maintainerships, or API
+  Does NOT restore project memberships or API
   tokens — those were genuinely removed (audited) at deactivation and
   must be re-granted deliberately. `password_changes` keeps its bumped
   value (it's a monotonic counter; old tokens stay dead)."

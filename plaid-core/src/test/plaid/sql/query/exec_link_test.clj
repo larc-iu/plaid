@@ -35,7 +35,7 @@
         t1 (id (h/create-token admin-request word text 3 5))
         t2 (id (h/create-token admin-request word text 6 8))
         t3 (id (h/create-token admin-request word text 9 11))
-        vl (id (h/create-vocab-layer admin-request (str pname "-lex")))
+        vl (id (h/create-vocab-layer admin-request pid (str pname "-lex")))
         _  (h/link-vocab-to-project admin-request pid vl)
         kemal (id (h/create-vocab-item admin-request vl "Kemal"))
         other (id (h/create-vocab-item admin-request vl "other"))

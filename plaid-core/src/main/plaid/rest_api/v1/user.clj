@@ -83,8 +83,8 @@
     {:get {:summary "List/search users, keyset-paginated by display name"
            ;; The roster is locked down to admins (it was an account-
            ;; enumeration surface for any authenticated caller). It's now also
-           ;; open to project AND vocab MAINTAINERS, who need to find users to
-           ;; grant project/vocab access — see `wrap-user-directory-access`. Ordinary
+           ;; open to project MAINTAINERS, who need to find users to grant
+           ;; project access — see `wrap-user-directory-access`. Ordinary
            ;; readers/writers still get 403. Optional `?q=` filters to users
            ;; whose display name contains that text or whose email starts with
            ;; it (contains it, when the text has an @). Returns the
@@ -185,7 +185,7 @@
 
       :delete {:summary (str "Deactivate a user. Users are never hard-deleted (audit attribution must "
                              "survive); deactivation rejects their logins and tokens, strips their project "
-                             "memberships and vocab maintainerships, and revokes their API tokens. The "
+                             "memberships, and revokes their API tokens. The "
                              "email address stays reserved and the user remains visible in listings with a "
                              "<body>deactivated-at</body> timestamp. Reversible via the activate endpoint, "
                              "which restores login only (not memberships or tokens). Needs a signed-in session: a "
@@ -276,7 +276,7 @@
                                 (prm/op-error result {:message nil})))))}}]
     ["/activate"
      {:post {:summary (str "Reactivate a deactivated user, restoring their ability to log in. Project "
-                           "memberships, vocab maintainerships, and API tokens removed at deactivation "
+                           "memberships and API tokens removed at deactivation "
                            "are NOT restored — re-grant them deliberately. 400 if the user is not "
                            "deactivated. Needs a signed-in session: a request signed with a named API token is "
                            "refused (403).")

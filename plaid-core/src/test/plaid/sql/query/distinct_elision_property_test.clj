@@ -35,7 +35,7 @@
         words (id (h/create-token-layer admin-request txtl "words"))
         morphs (id (h/create-token-layer admin-request txtl "morphs" "any"))
         sl    (id (h/create-span-layer admin-request words "pos"))
-        vl    (id (h/create-vocab-layer admin-request (str "DistinctElision lexicon " seed)))
+        vl    (id (h/create-vocab-layer admin-request pid (str "DistinctElision lexicon " seed)))
         _     (h/link-vocab-to-project admin-request pid vl)
         items (vec (for [i (range 5)] (id (h/create-vocab-item admin-request vl (str "e" i)))))]
     (doseq [i (range 3)]
@@ -168,7 +168,7 @@
         tx   (id (h/create-text admin-request txtl doc "aa bb"))
         t0   (id (h/create-token admin-request words tx 0 2))
         t1   (id (h/create-token admin-request words tx 3 5))
-        vl   (id (h/create-vocab-layer admin-request "TwiceLinked lexicon"))
+        vl   (id (h/create-vocab-layer admin-request pid "TwiceLinked lexicon"))
         _    (h/link-vocab-to-project admin-request pid vl)
         e    (id (h/create-vocab-item admin-request vl "aa bb"))]
     (h/create-vocab-link admin-request e [t0 t1])

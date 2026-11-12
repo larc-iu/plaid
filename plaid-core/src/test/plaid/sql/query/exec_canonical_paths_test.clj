@@ -43,7 +43,7 @@
         rl   (id (h/create-relation-layer admin-request sl "dep"))
         doc  (h/create-test-document admin-request pid "d")
         text (id (h/create-text admin-request txtl doc (str ai " " ai " " e-acute " x")))
-        vl   (id (h/create-vocab-layer admin-request "CanonLex"))
+        vl   (id (h/create-vocab-layer admin-request pid "CanonLex"))
         _    (h/link-vocab-to-project admin-request pid vl)
         mk   (fn [b e form]
                (let [t (id (h/create-token admin-request tokl text b e nil {"form" form}))

@@ -61,8 +61,7 @@
         l-de (id-of (create-span admin-request lemma [de] "de"))
         l-el (id-of (create-span admin-request lemma [el] "el"))
         rel (id-of (create-relation admin-request deps l-el l-de "case"))
-        vocab (id-of (create-vocab-layer admin-request (str "V " (random-uuid))))
-        _ (link-vocab-to-project admin-request proj vocab)
+        vocab (id-of (create-vocab-layer admin-request proj (str "V " (random-uuid))))
         item (id-of (create-vocab-item admin-request vocab "del"))
         link (id-of (create-vocab-link admin-request item [del]))
         base (-> (get-text admin-request text) :body :text/digest)]

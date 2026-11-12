@@ -12,8 +12,7 @@
                                     api-call assert-status assert-no-content with-clean-db]]
             [plaid.test-helpers :refer [create-test-project create-vocab-layer
                                         create-vocab-item delete-vocab-item
-                                        link-vocab-to-project add-project-writer
-                                        add-vocab-maintainer get-vocab-item]]))
+                                        add-project-writer get-vocab-item]]))
 
 (use-fixtures :once with-db with-mount-states with-rest-handler with-admin with-test-users)
 (use-fixtures :each with-clean-db)
@@ -31,15 +30,14 @@
                         :body {:losers losers}}))
 
 (defn- setup!
-  "Vocabulary V, linked to a project user1 and user2 write in. user1
-  maintains V, user2 does not. Entries dog1 and dog2."
+  "Vocabulary V of project P. user1 maintains P, user2 writes in it.
+  Entries dog1 and dog2."
   []
-  (let [v (-> (create-vocab-layer admin-request "Lex") :body :id)
-        p (create-test-project admin-request "P")
-        _ (assert-no-content (link-vocab-to-project admin-request p v))
-        _ (assert-no-content (add-project-writer admin-request p user1))
+  (let [p (create-test-project admin-request "P")
+        v (-> (create-vocab-layer admin-request p "Lex") :body :id)
+        _ (assert-no-content (api-call admin-request {:method :post
+                                                      :path (str "/api/v1/projects/" p "/maintainers/" user1)}))
         _ (assert-no-content (add-project-writer admin-request p user2))
-        _ (assert-no-content (add-vocab-maintainer admin-request v user1))
         dog1 (-> (create-vocab-item admin-request v "dog") :body :id)
         dog2 (-> (create-vocab-item admin-request v "dog") :body :id)]
     {:v v :dog1 dog1 :dog2 dog2}))
@@ -67,7 +65,7 @@
   (let [{:keys [dog1 dog2]} (setup!)]
     (doseq [r [(merge! user2-request dog1 [dog2]) (delete-vocab-item user2-request dog1)]]
       (assert-status 403 r)
-      (is (= "Only a maintainer of the vocabulary can rename or delete its entries."
+      (is (= "Only a maintainer of the vocabulary's project can rename, merge or delete its entries."
              (-> r :body :error)))
       (is (not (re-find gone-wording (-> r :body :error)))))))
 

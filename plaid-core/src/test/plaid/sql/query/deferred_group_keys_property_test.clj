@@ -33,7 +33,7 @@
         txtl (id (h/create-text-layer admin-request pid "text"))
         tokl (id (h/create-token-layer admin-request txtl "words"))
         sl   (id (h/create-span-layer admin-request tokl "pos"))
-        vl   (id (h/create-vocab-layer admin-request (str "DeferredGroupKeys lexicon " seed)))
+        vl   (id (h/create-vocab-layer admin-request pid (str "DeferredGroupKeys lexicon " seed)))
         _    (h/link-vocab-to-project admin-request pid vl)
         items (vec (for [i (range 4)]
                      (id (h/create-vocab-item admin-request vl (str "e" i) (random-metadata rnd)))))]

@@ -13,7 +13,7 @@
 
 (defn- setup
   "Project + doc + text-layer + text 'dogs run cat' + a word token layer with
-  three tokens, plus a vocab layer linked to the project with two items."
+  three tokens, plus a vocab layer of the project with two items."
   []
   (let [proj (create-test-project admin-request "BulkVL")
         doc (create-test-document admin-request proj "Doc")
@@ -24,8 +24,7 @@
                                     (mapv (fn [[b e]] {:token-layer-id word :text text-id :begin b :end e})
                                           [[0 4] [5 8] [9 12]]))
         [t1 t2 t3] (-> tok-res :body :ids)
-        vocab (-> (create-vocab-layer admin-request "V") :body :id)
-        _ (link-vocab-to-project admin-request proj vocab)
+        vocab (-> (create-vocab-layer admin-request proj "V") :body :id)
         item-a (-> (create-vocab-item admin-request vocab "dogs") :body :id)
         item-b (-> (create-vocab-item admin-request vocab "run") :body :id)]
     (assert-created tok-res)
@@ -109,7 +108,8 @@
   ;; as "lacks read access" with no `unresolved`, so a client could not tell
   ;; it from a real refusal.
   (let [{:keys [proj t1 t2 item-a item-b]} (setup)
-        other (-> (create-vocab-layer admin-request "Theirs") :body :id)
+        elsewhere (create-test-project admin-request "Elsewhere")
+        other (-> (create-vocab-layer admin-request elsewhere "Theirs") :body :id)
         theirs (-> (create-vocab-item admin-request other "cat") :body :id)]
     (add-project-writer admin-request proj "user1@example.com")
     (assert-no-content (delete-vocab-item admin-request item-a))

@@ -180,10 +180,11 @@
         (is (= 403 (:status r)))
         (is (re-find #"was handed to this service by a request in project" (str (-> r :body :error))))
         (is (= 0 (docs-named "service in q")))))
-    (testing "nor with a write that is in no project"
-      (is (= 201 (:status (call user2-request :post "/api/v1/vocab-layers" {:name "Lex alone"})))
+    (testing "nor with a vocabulary created in another project"
+      (call admin-request :post (str "/api/v1/projects/" q "/maintainers/user2@example.com"))
+      (is (= 201 (:status (call user2-request :post "/api/v1/vocab-layers" {:name "Lex alone" :project-id q})))
           "the same write outside the group lands")
-      (let [r (call user2-request :post (str "/api/v1/vocab-layers?group-id=" g) {:name "Lex under g"})]
+      (let [r (call user2-request :post (str "/api/v1/vocab-layers?group-id=" g) {:name "Lex under g" :project-id q})]
         (is (= 403 (:status r)))
         (is (= 0 (count (psc/q fix/db {:select [:id] :from [:vocab_layers]
                                        :where [:= :name "Lex under g"]}))))))

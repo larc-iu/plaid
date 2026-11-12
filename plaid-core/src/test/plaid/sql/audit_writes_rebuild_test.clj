@@ -13,7 +13,7 @@
                                     admin-request with-admin with-clean-db]]
             [plaid.sql.common :as psc]
             [plaid.sql.datasource :as psd]
-            [plaid.test-helpers :refer [temp-db-path create-vocab-layer create-vocab-item
+            [plaid.test-helpers :refer [temp-db-path create-test-project create-vocab-layer create-vocab-item
                                         update-vocab-item delete-vocab-item
                                         bulk-create-vocab-items bulk-delete-vocab-items
                                         update-vocab-item-metadata]])
@@ -88,8 +88,9 @@
              :order-by [:ts :seq]}))
 
 (deftest every-vocabulary-write-is-stamped-with-its-vocabulary
-  (let [v (-> (create-vocab-layer admin-request "Stamped") :body :id)
-        other (-> (create-vocab-layer admin-request "Other") :body :id)
+  (let [proj (create-test-project admin-request "P")
+        v (-> (create-vocab-layer admin-request proj "Stamped") :body :id)
+        other (-> (create-vocab-layer admin-request proj "Other") :body :id)
         item (-> (create-vocab-item admin-request v "kai") :body :id)
         _ (update-vocab-item admin-request item "kay")
         _ (update-vocab-item-metadata admin-request item {"gloss" "eat"})

@@ -69,9 +69,9 @@
   strings). Layers are identified by id only, so this is just the id universe a
   scalar reference is checked against — no name- or path-based lookup.
 
-  Vocab layers are global (no project_id column); they are scoped by the
-  `project_vocabs` grants of the in-scope projects, so a vocab layer is visible iff
-  some in-scope project has been granted it."
+  Vocab layers are scoped by the `project_vocabs` rows of the in-scope
+  projects, which hold a vocabulary's home and its borrowers alike, so a vocab
+  layer is visible iff some in-scope project links it."
   [db scope kind]
   (->> (when (seq scope)
          (if (= kind :vocab)

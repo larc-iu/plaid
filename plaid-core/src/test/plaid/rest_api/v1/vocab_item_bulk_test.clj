@@ -2,10 +2,10 @@
   "Tests for POST/PATCH/DELETE /vocab-items/bulk — the bulk vocab-item endpoints,
   sibling to the vocab-link bulk variants. Unlike vocab links, vocab items
   hang off a vocab LAYER (not a document), so there is no document/OCC
-  version and entries may target different layers in one call."
+  version and entries may target different layers of one project in one call."
   (:require [clojure.string :as str]
             [clojure.test :refer :all]
-            [plaid.fixtures :refer [with-db with-mount-states with-rest-handler
+            [plaid.fixtures :refer [with-db with-mount-states with-rest-handler api-call
                                     admin-request assert-status assert-created assert-ok
                                     assert-no-content assert-bad-request assert-forbidden
                                     with-admin with-test-users user1-request with-clean-db]]
@@ -17,14 +17,16 @@
 (def ^:private user1 "user1@example.com")
 
 (defn- setup
-  "A project plus two vocab layers, both granted to the project."
+  "A project plus two vocab layers, the project their home."
   []
   (let [proj (create-test-project admin-request "BulkVI")
-        v1 (-> (create-vocab-layer admin-request "V1") :body :id)
-        v2 (-> (create-vocab-layer admin-request "V2") :body :id)]
-    (link-vocab-to-project admin-request proj v1)
-    (link-vocab-to-project admin-request proj v2)
+        v1 (-> (create-vocab-layer admin-request proj "V1") :body :id)
+        v2 (-> (create-vocab-layer admin-request proj "V2") :body :id)]
     {:proj proj :v1 v1 :v2 v2}))
+
+(defn- add-project-maintainer [proj user]
+  (assert-no-content (api-call admin-request {:method :post
+                                              :path (str "/api/v1/projects/" proj "/maintainers/" user)})))
 
 (deftest bulk-create-heterogeneous
   (testing "creates items across DIFFERENT vocab layers in one call"
@@ -43,6 +45,17 @@
       (is (= v2 (-> (get-vocab-item admin-request (nth ids 1)) :body :vocab-item/layer)))
       (is (= "run" (-> (get-vocab-item admin-request (nth ids 1)) :body :vocab-item/form)))
       (is (= v1 (-> (get-vocab-item admin-request (nth ids 2)) :body :vocab-item/layer))))))
+
+(deftest bulk-create-across-two-projects-is-refused
+  (testing "entries in vocabularies of two projects are refused whole (400)"
+    (let [{:keys [v1]} (setup)
+          other (create-test-project admin-request "BulkVI other")
+          w (-> (create-vocab-layer admin-request other "W") :body :id)
+          res (bulk-create-vocab-items admin-request [{:vocab-layer-id v1 :form "dogs"}
+                                                      {:vocab-layer-id w :form "run"}])]
+      (assert-bad-request res)
+      (is (= "Entries in one call must be in vocabularies of one project." (-> res :body :error)))
+      (is (empty? (-> (get-vocab-layer admin-request v1 true) :body :vocab/items))))))
 
 (deftest bulk-create-with-metadata
   (testing "inline metadata is folded onto each created item"
@@ -103,8 +116,8 @@
   (testing "a writer whose list starts with a stale id still deletes the rest"
     (let [{:keys [proj v1]} (setup)
           _ (add-project-writer admin-request proj user1)
-          ;; Deleting entries is for the vocabulary's maintainers.
-          _ (add-vocab-maintainer admin-request v1 user1)
+          ;; Deleting entries is for the maintainers of the vocabulary's project.
+          _ (add-project-maintainer proj user1)
           [i1 i2] (-> (bulk-create-vocab-items admin-request [{:vocab-layer-id v1 :form "dogs"}
                                                               {:vocab-layer-id v1 :form "run"}])
                       :body :ids)
@@ -125,7 +138,7 @@
       (assert-forbidden (bulk-delete-vocab-items user1-request ids)))))
 
 (deftest writer-can-bulk
-  (testing "a non-admin project writer (with the vocab granted) can bulk create, and only a vocab maintainer can bulk delete"
+  (testing "a non-admin writer of the vocab's project can bulk create, and only a maintainer of it can bulk delete"
     (let [{:keys [proj v1]} (setup)
           _ (add-project-writer admin-request proj user1)
           res (bulk-create-vocab-items user1-request [{:vocab-layer-id v1 :form "dogs"}
@@ -135,7 +148,7 @@
       (is (= 2 (count ids)))
       (assert-forbidden (bulk-delete-vocab-items user1-request ids))
       (assert-ok (get-vocab-item admin-request (first ids)))
-      (add-vocab-maintainer admin-request v1 user1)
+      (add-project-maintainer proj user1)
       (assert-no-content (bulk-delete-vocab-items user1-request ids))
       (is (= 404 (:status (get-vocab-item admin-request (first ids))))))))
 
@@ -203,8 +216,8 @@
   (testing "a writer whose list starts with a stale id gets the 404 naming it"
     (let [{:keys [proj v1]} (setup)
           _ (add-project-writer admin-request proj user1)
-          ;; Renaming entries is for the vocabulary's maintainers.
-          _ (add-vocab-maintainer admin-request v1 user1)
+          ;; Renaming entries is for the maintainers of the vocabulary's project.
+          _ (add-project-maintainer proj user1)
           id (-> (bulk-create-vocab-items admin-request [{:vocab-layer-id v1 :form "dogs"}])
                  :body :ids first)
           stale (random-uuid)
@@ -227,10 +240,10 @@
                  :body :ids first)]
       (assert-forbidden (bulk-update-vocab-items user1-request [{:id id :form "dog"}]))
       (add-project-writer admin-request proj user1)
-      (testing "a writer edits fields, but a rename needs a maintainer of the vocabulary"
+      (testing "a writer edits fields, but a rename needs a maintainer of the vocabulary's project"
         (assert-ok (bulk-update-vocab-items user1-request [{:id id :metadata [{:op "set" :path ["gloss"] :value "dog"}]}]))
         (assert-forbidden (bulk-update-vocab-items user1-request [{:id id :form "dog"}]))
         (is (= "dogs" (-> (get-vocab-item admin-request id) :body :vocab-item/form)))
-        (add-vocab-maintainer admin-request v1 user1)
+        (add-project-maintainer proj user1)
         (assert-ok (bulk-update-vocab-items user1-request [{:id id :form "dog"}]))
         (is (= "dog" (-> (get-vocab-item admin-request id) :body :vocab-item/form)))))))

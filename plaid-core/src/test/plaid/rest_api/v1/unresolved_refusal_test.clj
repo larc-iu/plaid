@@ -12,9 +12,7 @@
                                     with-admin with-test-users
                                     api-call assert-status assert-no-content with-clean-db]]
             [plaid.test-helpers :refer [create-test-project create-vocab-layer
-                                        create-vocab-item delete-vocab-item
-                                        link-vocab-to-project add-project-writer
-                                        add-vocab-maintainer]]))
+                                        create-vocab-item delete-vocab-item]]))
 
 (use-fixtures :once with-db with-mount-states with-rest-handler with-admin with-test-users)
 (use-fixtures :each with-clean-db)
@@ -25,17 +23,15 @@
   (true? (-> r :body :unresolved)))
 
 (defn- setup!
-  "Vocabulary Lex, linked to project P, where user1 writes and maintains
-  Lex, with entry dog. Vocabulary Other, linked to nothing user1 is in,
-  with entry cat. Project Q, user1 not a member."
+  "Vocabulary Lex of project P, which user1 maintains, with entry dog.
+  Vocabulary Other of project Q, user1 not a member, with entry cat."
   []
-  (let [lex (-> (create-vocab-layer admin-request "Lex") :body :id)
-        other (-> (create-vocab-layer admin-request "Other") :body :id)
-        p (create-test-project admin-request "P")
+  (let [p (create-test-project admin-request "P")
         q (create-test-project admin-request "Q")
-        _ (assert-no-content (link-vocab-to-project admin-request p lex))
-        _ (assert-no-content (add-project-writer admin-request p user1))
-        _ (assert-no-content (add-vocab-maintainer admin-request lex user1))
+        lex (-> (create-vocab-layer admin-request p "Lex") :body :id)
+        other (-> (create-vocab-layer admin-request q "Other") :body :id)
+        _ (assert-no-content (api-call admin-request {:method :post
+                                                      :path (str "/api/v1/projects/" p "/maintainers/" user1)}))
         dog (-> (create-vocab-item admin-request lex "dog") :body :id)
         cat (-> (create-vocab-item admin-request other "cat") :body :id)]
     {:q q :dog dog :cat cat}))

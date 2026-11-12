@@ -9,7 +9,8 @@
   - The document and vocabulary feeds, walked page by page, give the units a
     whole-scope sort gives, across groups and batches that write both.
   - A rename needs the same right as a delete on every route, including
-    under a delegated token, where an admin counts as a maintainer."
+    under a delegated token, where an admin counts as a maintainer of a
+    project in its scope."
   (:require [clojure.test :refer [deftest is testing use-fixtures]]
             [plaid.fixtures :as fix :refer [db with-db with-mount-states with-rest-handler
                                             admin-request user1-request with-admin with-test-users
@@ -43,9 +44,9 @@
 
 (defn- churn!
   "`steps` seeded random writes to `vocab` through every entry verb and
-  the vocabulary's own. Returns `[[ts live-read] ...]`, one per write that
-  landed, taken right after it."
-  [vocab seed steps]
+  the vocabulary's own (a rename, a move between `homes`). Returns
+  `[[ts live-read] ...]`, one per write that landed, taken right after it."
+  [vocab homes seed steps]
   (let [rng (java.util.Random. seed)
         pick (fn [xs] (when (seq xs) (nth (vec xs) (.nextInt rng (count xs)))))
         live-ids #(set (map :vocab-item/id (:vocab/items (live-vocab vocab))))
@@ -84,10 +85,9 @@
                 ;; a living entry set back to an earlier state of itself
                 (let [x (pick (filter ids (keys @seen-at)))]
                   (when x (restore-item! vocab x (get @seen-at x))))
-                (= roll 12) (add-vocab-maintainer admin-request vocab
-                                                  (pick ["user1@example.com" "user2@example.com"]))
-                (= roll 13) (remove-vocab-maintainer admin-request vocab
-                                                     (pick ["user1@example.com" "user2@example.com"]))
+                (#{12 13} roll) (api-call admin-request {:method :post
+                                                         :path (str "/api/v1/vocab-layers/" vocab "/move")
+                                                         :body {:project-id (pick homes)}})
                 :else (update-vocab-layer admin-request vocab {:name (str "Lexicon " i)}))]
         (when (and r (< 199 (:status r) 300))
           (let [ts (latest-op-ts)
@@ -99,10 +99,14 @@
 
 (deftest the-vocabulary-at-every-past-write-under-churn
   (doseq [seed [11 12 13]]
-    (let [vocab (-> (create-vocab-layer admin-request (str "Churn " seed)) :body :id)
-          snapshots (churn! vocab seed 70)]
+    (let [homes [(create-test-project admin-request (str "Home A " seed))
+                 (create-test-project admin-request (str "Home B " seed))]
+          vocab (-> (create-vocab-layer admin-request (first homes) (str "Churn " seed)) :body :id)
+          snapshots (churn! vocab homes seed 70)]
       (testing (str "seed " seed)
         (is (< 40 (count snapshots)) "most writes landed")
+        (is (< 1 (count (distinct (map (comp :vocab/project second) snapshots))))
+            "the churn moved the vocabulary")
         (is (some #(= :vocab-item/restore %)
                   (map (comp keyword :op_type)
                        (psc/q db {:select [:op_type] :from [:operations]
@@ -156,11 +160,10 @@
 (defn- with-group [path g] (str path (if (re-find #"\?" path) "&" "?") "group-id=" g))
 
 (deftest the-document-and-vocabulary-feeds-match-a-whole-scope-sort
-  (let [vocab (-> (create-vocab-layer admin-request "Feed") :body :id)
-        proj (create-test-project admin-request "Feed")
+  (let [proj (create-test-project admin-request "Feed")
+        vocab (-> (create-vocab-layer admin-request proj "Feed") :body :id)
         tl (-> (create-text-layer admin-request proj "Text") :body :id)
         tkl (-> (create-token-layer admin-request tl "Words") :body :id)
-        _ (assert-no-content (link-vocab-to-project admin-request proj vocab))
         doc (create-test-document admin-request proj "Doc")
         text (-> (create-text admin-request tl doc "kai mata kai mata kai mata") :body :id)
         toks (vec (for [b [0 4 9 13 18 22]] (-> (create-token admin-request tkl text b (+ b 3)) :body :id)))
@@ -234,14 +237,14 @@
         (mock/header "Authorization" (str "Bearer " token)))))
 
 (deftest a-delegated-admin-renames-where-it-deletes
-  ;; The vocabulary is user1's, linked to P. The admin is not its maintainer,
-  ;; and under a token scoped to P an admin counts as a maintainer there
-  ;; (`plaid.rest-api.v1.auth`, Scoped tokens). Rename and delete need the
-  ;; same right, so they must answer alike on every route.
-  (let [vocab (-> (create-vocab-layer user1-request "Theirs") :body :id)
-        p (create-test-project admin-request "Scoped P")
-        _ (assert-no-content (link-vocab-to-project admin-request p vocab))
-        _ (is (not (some #{"admin@example.com"} (:vocab/maintainers (live-vocab vocab)))))
+  ;; The vocabulary's home is user1's project P, where the admin has no
+  ;; role, and under a token scoped to P an admin counts as a maintainer
+  ;; there (`plaid.rest-api.v1.auth`, Scoped tokens). Rename and delete need
+  ;; the same right, so they must answer alike on every route.
+  (let [p (create-test-project user1-request "Scoped P")
+        vocab (-> (create-vocab-layer user1-request p "Theirs") :body :id)
+        _ (is (not (some #{"admin@example.com"}
+                         (map str (:project/maintainers (:body (get-test-project user1-request p)))))))
         [a b c d] (vec (for [f ["a" "b" "c" "d"]] (-> (create-vocab-item user1-request vocab f) :body :id)))
         admin (as-token (auth/issue-delegated-token! db "fake-secret" "admin@example.com" [p]))]
     (testing "rename, one and many"
@@ -250,8 +253,10 @@
     (testing "delete, one and many"
       (assert-no-content (delete-vocab-item admin c))
       (assert-no-content (bulk-delete-vocab-items admin [d])))
-    (testing "outside the scope, still refused"
-      (let [q-vocab (-> (create-vocab-layer user1-request "Elsewhere") :body :id)
+    (testing "a vocabulary whose home is outside the scope, still refused, though P borrows it"
+      (let [q (create-test-project user1-request "Elsewhere")
+            q-vocab (-> (create-vocab-layer user1-request q "Elsewhere") :body :id)
+            _ (assert-no-content (link-vocab-to-project user1-request p q-vocab))
             e (-> (create-vocab-item user1-request q-vocab "e") :body :id)]
         (assert-status 403 (update-vocab-item admin e "e2"))
         (assert-status 403 (bulk-update-vocab-items admin [{:id e :form "e2"}]))

@@ -55,8 +55,7 @@
       ;; (project/delete is no longer such a case: it is a TRUE delete that
       ;; relies on FK ON DELETE CASCADE and does not audit descendants — see
       ;; plaid.sql.audit-cascade-test.)
-      (let [vid (-> (create-vocab-layer admin-request "AuditDocAttrVocab") :body :id)
-            _ (assert-no-content (link-vocab-to-project admin-request proj vid))
+      (let [vid (-> (create-vocab-layer admin-request proj "AuditDocAttrVocab") :body :id)
             item (-> (create-vocab-item admin-request vid "form") :body :id)
             vl (-> (create-vocab-link admin-request item [tok]) :body :id)]
         (assert-no-content (delete-vocab-layer admin-request vid))

@@ -441,14 +441,11 @@
 
 ;; Vocab layer helpers
 (defn create-vocab-layer
-  ([user-request-fn name]
-   (api-call user-request-fn {:method :post
-                              :path "/api/v1/vocab-layers"
-                              :body {:name name}}))
-  ([user-request-fn name _config]
-   (api-call user-request-fn {:method :post
-                              :path "/api/v1/vocab-layers"
-                              :body {:name name}})))
+  "Create a vocabulary in project `project-id`, its home."
+  [user-request-fn project-id name]
+  (api-call user-request-fn {:method :post
+                             :path "/api/v1/vocab-layers"
+                             :body {:name name :project-id project-id}}))
 
 (defn get-vocab-layer
   ([user-request-fn vocab-id]
@@ -467,14 +464,6 @@
 (defn delete-vocab-layer [user-request-fn vocab-id]
   (api-call user-request-fn {:method :delete
                              :path (str "/api/v1/vocab-layers/" vocab-id)}))
-
-(defn add-vocab-maintainer [user-request-fn vocab-id user-id]
-  (api-call user-request-fn {:method :post
-                             :path (str "/api/v1/vocab-layers/" vocab-id "/maintainers/" user-id)}))
-
-(defn remove-vocab-maintainer [user-request-fn vocab-id user-id]
-  (api-call user-request-fn {:method :delete
-                             :path (str "/api/v1/vocab-layers/" vocab-id "/maintainers/" user-id)}))
 
 ;; Vocab item helpers
 (defn create-vocab-item

@@ -17,7 +17,7 @@
   no orphans.
 
   Junction tables (span_tokens, vocab_link_tokens, project_users,
-  project_vocabs, vocab_maintainers) are never directly audited under any
+  project_vocabs) are never directly audited under any
   policy — here they simply ride FK CASCADE."
   (:require [clojure.test :refer :all]
             [plaid.sql.common :as psc]
@@ -136,13 +136,12 @@
 ;; Junction tables MUST NOT appear in audit_writes
 ;; ---------------------------------------------------------------------------
 ;; Policy: junction-table state changes (span_tokens, vocab_link_tokens,
-;; project_users, vocab_maintainers, project_vocabs) are NEVER directly
+;; project_users, project_vocabs) are NEVER directly
 ;; audited. Under the true-delete policy this is trivially upheld — the only
 ;; audited row on a project delete is the project itself.
 
 (def ^:private junction-tables
-  #{"span_tokens" "vocab_link_tokens" "project_users"
-    "vocab_maintainers" "project_vocabs"})
+  #{"span_tokens" "vocab_link_tokens" "project_users" "project_vocabs"})
 
 (deftest project-delete-emits-no-junction-table-audits
   ;; Build a subtree that ALSO populates every junction we care about, then
@@ -161,9 +160,8 @@
         ;; span_tokens junction — span referencing two tokens.
         _    (-> (create-span admin-request sl [t1 t2] "two-token-span") :body :id)
         ;; project_users is already populated (creator is maintainer).
-        ;; vocab + project_vocabs + vocab_maintainers + vocab_link_tokens.
-        vid  (-> (create-vocab-layer admin-request "JunctionAuditVocab") :body :id)
-        _    (assert-no-content (link-vocab-to-project admin-request proj vid))
+        ;; vocab + project_vocabs + vocab_link_tokens.
+        vid  (-> (create-vocab-layer admin-request proj "JunctionAuditVocab") :body :id)
         item (-> (create-vocab-item admin-request vid "form") :body :id)
         _    (-> (create-vocab-link admin-request item [t1]) :body :id)]
     (assert-no-content (delete-test-project admin-request proj))

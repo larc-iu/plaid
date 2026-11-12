@@ -42,9 +42,8 @@
           token-ids (mapv (fn [i]
                             (-> (create-token admin-request tkl (nth text-ids i) 0 3) :body :id))
                           (range 3))
-          ;; A vocab layer, granted to the project, with one item.
-          vocab-id (-> (create-vocab-layer admin-request "BumpVocab") :body :id)
-          _ (assert-no-content (link-vocab-to-project admin-request proj vocab-id))
+          ;; A vocab layer of the project, with one item.
+          vocab-id (-> (create-vocab-layer admin-request proj "BumpVocab") :body :id)
           item-id  (-> (create-vocab-item admin-request vocab-id "form") :body :id)
           ;; A vocab_link in each doc — vocab/delete will wipe these +
           ;; emit a :doc-version-bump per doc.

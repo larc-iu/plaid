@@ -208,7 +208,8 @@
                                    ["d8" "p1" "a (5)" "2026-01-08T00:00:00Z"]]]
         (q "INSERT INTO documents (id, name, project_id, version, created_at, modified_at) VALUES (?, ?, ?, 1, ?, ?)"
            id name p created created))
-      (migratus/migrate (cfg ds))
+      ;; Up to the vocabulary homes, whose migration cannot be rolled back.
+      (migratus/migrate-until-just-before (cfg ds) 20261112120000)
       (let [by-id (into {} (map (juxt :id identity)) (q "SELECT * FROM documents"))]
         (testing "the oldest keeps the name, the others take the first free one"
           (is (= {"d1" "A (3)" "d2" "A" "d3" "A (4)" "d4" "A (2)" "d5" "B" "d6" "A"

@@ -31,8 +31,7 @@
         tkl (-> (create-token-layer admin-request tl "W") :body :id)
         sl (-> (create-span-layer admin-request tkl "S") :body :id)
         rl (-> (create-relation-layer admin-request sl "R") :body :id)
-        vocab (-> (create-vocab-layer admin-request "Lex") :body :id)
-        _ (link-vocab-to-project admin-request proj vocab)
+        vocab (-> (create-vocab-layer admin-request proj "Lex") :body :id)
         doc (-> (post "/api/v1/documents" {:project-id proj :name "D"}) :body :id)
         text (-> (create-text admin-request tl doc "dog barks loud") :body :id)
         tok (-> (create-token admin-request tkl text 0 3) :body :id)
@@ -53,7 +52,7 @@
    ["token layer" :token_layers "/api/v1/token-layers" (fn [s id] {:id id :text-layer-id (:tl s) :name "W2"})]
    ["span layer" :span_layers "/api/v1/span-layers" (fn [s id] {:id id :token-layer-id (:tkl s) :name "S2"})]
    ["relation layer" :relation_layers "/api/v1/relation-layers" (fn [s id] {:id id :span-layer-id (:sl s) :name "R2"})]
-   ["vocab layer" :vocab_layers "/api/v1/vocab-layers" (fn [_ id] {:id id :name "V2"})]
+   ["vocab layer" :vocab_layers "/api/v1/vocab-layers" (fn [s id] {:id id :project-id (:proj s) :name "V2"})]
    ["text" :texts "/api/v1/texts"
     (fn [s id]
       (let [doc (-> (post "/api/v1/documents" {:project-id (:proj s) :name (str "Dt" (rand-int 100000))}) :body :id)]

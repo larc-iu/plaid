@@ -482,8 +482,9 @@
 
 (defn vocab-rows-at
   "The vocabulary `vocab-id` at time `ts`, as the audit log folds it:
-  `{:vocab-layer row :vocab-items [row ...]}`, the layer row with its
-  `:maintainers` fold, each entry row with its `:metadata` fold where it
+  `{:vocab-layer row :vocab-items [row ...]}`, the layer row (its
+  `project_id` absent before the migration that gave vocabularies a home,
+  and a `:maintainers` fold from before it, which nothing reads), each entry row with its `:metadata` fold where it
   had any, entries in the order the live list gives them. nil when the
   vocabulary did not exist at `ts`."
   [db vocab-id ts]
@@ -519,8 +520,8 @@
              :vocab/name (:name vocab-layer)
              :vocab/time-created (:created_at vocab-layer)
              :vocab/time-modified (:modified_at vocab-layer)
-             :config (psc/parse-config (:config vocab-layer))
-             :vocab/maintainers (vec (:maintainers vocab-layer))}
+             :vocab/project (:project_id vocab-layer)
+             :config (psc/parse-config (:config vocab-layer))}
       include-items? (assoc :vocab/items (mapv build-vocab-item vocab-items)))))
 
 (defn vocab-item-row-at

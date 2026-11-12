@@ -21,8 +21,7 @@
         wl (id (h/create-token-layer admin-request tl "Word"))
         sl (id (h/create-span-layer admin-request wl "Gloss"))
         rl (id (h/create-relation-layer admin-request sl "Deps"))
-        vocab (id (h/create-vocab-layer admin-request "Lex"))
-        _ (h/link-vocab-to-project admin-request proj vocab)
+        vocab (id (h/create-vocab-layer admin-request proj "Lex"))
         item (id (h/create-vocab-item admin-request vocab "dog"))
         text (id (h/create-text admin-request tl doc "dog barks"))
         t1 (id (h/create-token admin-request wl text 0 3))
@@ -36,6 +35,10 @@
     (testing "a span's token count reads in plain words"
       (is (some #(= % (str "Create span " s1 " with 1 token in layer " sl)) said) (pr-str said))
       (is (some #(= % (str "Update tokens of span " s2 " to 2 tokens")) said) (pr-str said)))
+    (testing "a vocabulary, in its project's History"
+      (let [in-project (->> (h/get-project-audit admin-request proj)
+                            :body :entries (mapcat :audit/ops) (map :op/description))]
+        (is (some #(= % "Create vocabulary “Lex”") in-project) (pr-str in-project))))
     (doseq [[what said-as] [["span" (str "Create span " s1 " ")]
                             ["relation" (str "Create relation " r " ")]
                             ["vocab link" (str "Create vocab mapping " l)]]]
@@ -69,8 +72,7 @@
         doc (h/create-test-document admin-request proj "D")
         tl (id (h/create-text-layer admin-request proj "T"))
         wl (id (h/create-token-layer admin-request tl "Word"))
-        vocab (id (h/create-vocab-layer admin-request "Lex"))
-        _ (h/link-vocab-to-project admin-request proj vocab)
+        vocab (id (h/create-vocab-layer admin-request proj "Lex"))
         item (id (h/create-vocab-item admin-request vocab "dog"))
         text (id (h/create-text admin-request tl doc "dog barks"))
         t1 (id (h/create-token admin-request wl text 0 3))

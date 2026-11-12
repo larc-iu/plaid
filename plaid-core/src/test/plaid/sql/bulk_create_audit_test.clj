@@ -122,8 +122,7 @@
                                         [{:relation-layer-id rl :source (first spans) :target (second spans)
                                           :value "r" :metadata {"k" "r"}}])
                  :body :ids)
-        vocab (-> (create-vocab-layer admin-request "MVocab") :body :id)
-        _    (link-vocab-to-project admin-request proj vocab)
+        vocab (-> (create-vocab-layer admin-request proj "MVocab") :body :id)
         item (-> (create-vocab-item admin-request vocab "abcd") :body :id)
         links (-> (bulk-create-vocab-links admin-request
                                            [{:vocab-item item :tokens [(first toks)] :metadata {"k" "l"}}])

@@ -133,7 +133,7 @@
         t1 (id (h/create-token admin-request tokl text 3 5))
         sp-cat (id (h/create-span admin-request sl [t0] "cat"))
         _      (id (h/create-span admin-request sl [t1] "dog"))
-        vl  (id (h/create-vocab-layer admin-request "lex"))
+        vl  (id (h/create-vocab-layer admin-request pid "lex"))
         _   (h/link-vocab-to-project admin-request pid vl)
         v-cat (id (h/create-vocab-item admin-request vl "cat"))]
     (testing "shared value-var joins span :value (JSON) to vocab :form (plain) by value"
@@ -213,7 +213,7 @@
                    ["span" "?b" {"layer" sl "value" {"var" "?v"}}]
                    ["!=" "?a" "?b"]]))))
     (testing "span value = vocab form: only the string joins the form \"3\""
-      (let [vl (id (h/create-vocab-layer admin-request "Lex"))
+      (let [vl (id (h/create-vocab-layer admin-request pid "Lex"))
             _ (h/link-vocab-to-project admin-request pid vl)
             v (id (h/create-vocab-item admin-request vl "3"))]
         (is (= #{[(str s-str) (str v)]}

@@ -192,8 +192,7 @@
     "token-layer/update"
     "user/create" "user/deactivate" "user/reactivate" "user/update"
     "api-token/create" "api-token/revoke"
-    "vocab/add-maintainer" "vocab/create" "vocab/delete"
-    "vocab/remove-maintainer" "vocab/update"
+    "vocab/create" "vocab/delete" "vocab/home" "vocab/move" "vocab/update"
     "vocab-item/create" "vocab-item/delete" "vocab-item/delete-metadata"
     "vocab-item/merge" "vocab-item/patch-metadata" "vocab-item/set-metadata"
     "vocab-link/create" "vocab-link/delete" "vocab-link/delete-metadata"
@@ -206,8 +205,11 @@
 ;; span/remove-token, was deleted as dead code 2026-06-10 — span-token
 ;; removal happens via PUT /spans/:id/tokens → span/update-tokens, or via
 ;; the token-delete cascade's synthetic :update / orphan :delete rows.)
+;; vocab/home is written only by the vocab-home migration
+;; (20261112120000), which gave every vocabulary of the old model its home
+;; project; no route writes it.
 (def ^:private rest-unreachable-op-types
-  #{})
+  #{"vocab/home"})
 
 (def ^:private expected-op-types
   (set/difference known-op-types rest-unreachable-op-types))
@@ -438,11 +440,8 @@
             _ (assert-status 204 (constraints-call :delete "span-layers" slA "fc" nil))
 
             ;; ---- vocab ----
-            vS (-> (create-vocab-layer admin-request "FC-Vocab") :body :id)  ; vocab/create
+            vS (-> (create-vocab-layer admin-request proj "FC-Vocab") :body :id) ; vocab/create
             _ (assert-ok (update-vocab-layer admin-request vS {:name "FC-Vocab-2"})) ; vocab/update
-            _ (assert-status 204 (link-vocab-to-project admin-request proj vS)) ; project/add-vocab
-            _ (assert-status 204 (add-vocab-maintainer admin-request vS u-acl)) ; vocab/add-maintainer
-            _ (assert-status 204 (remove-vocab-maintainer admin-request vS u-acl)) ; vocab/remove-maintainer
             viS (-> (create-vocab-item admin-request vS "hello") :body :id)  ; vocab-item/create
             _ (assert-ok (update-vocab-item admin-request viS "hallo"))      ; vocab-item/merge (PATCH form)
             _ (assert-ok (update-vocab-item-metadata admin-request viS {"gloss" "hi"})) ; vocab-item/set-metadata
@@ -459,10 +458,17 @@
             _ (assert-ok (delete-vocab-link-metadata admin-request vl-throw)) ; vocab-link/delete-metadata
             _ (assert-status 204 (delete-vocab-link admin-request vl-throw)) ; vocab-link/delete
 
-            ;; throwaway vocab to exercise vocab/delete + project/remove-vocab
-            vT (-> (create-vocab-layer admin-request "FC-VocabThrow") :body :id)
-            _ (assert-status 204 (link-vocab-to-project admin-request proj vT))
-            _ (assert-status 204 (unlink-vocab-from-project admin-request proj vT)) ; project/remove-vocab
+            ;; throwaway vocab, at home in another project, to exercise
+            ;; project/add-vocab (a borrow), project/remove-vocab, vocab/move
+            ;; and vocab/delete
+            vT-home (create-test-project admin-request "FC-VocabHome")
+            vT (-> (create-vocab-layer admin-request vT-home "FC-VocabThrow") :body :id)
+            _ (assert-status 204 (link-vocab-to-project admin-request proj vT)) ; project/add-vocab
+            ;; the old home keeps it linked, as a borrower
+            _ (assert-ok (api-call admin-request {:method :post
+                                                  :path (str "/api/v1/vocab-layers/" vT "/move")
+                                                  :body {:project-id proj}})) ; vocab/move
+            _ (assert-status 204 (unlink-vocab-from-project admin-request vT-home vT)) ; project/remove-vocab
             _ (assert-status 204 (delete-vocab-layer admin-request vT))      ; vocab/delete
 
             ;; ---- throwaway document for document/delete-metadata + document/delete ----

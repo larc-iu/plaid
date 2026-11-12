@@ -52,8 +52,7 @@
                      {:entity_type "token" :entity_id t :key k :value v}))
         ;; The vocabulary, linked to a small project, and one pointer in it.
         proj (create-test-project admin-request "Small")
-        vocab (id (create-vocab-layer admin-request "Lex"))
-        _ (link-vocab-to-project admin-request proj vocab)
+        vocab (id (create-vocab-layer admin-request proj "Lex"))
         [tok] (document-with-tokens! proj 1)
         survivor (id (create-vocab-item admin-request vocab "s"))
         losers (mapv (fn [_] (str (psc/new-uuid))) (range n-losers))

@@ -2,8 +2,7 @@
   "Every bulk vocab write checks write access on each distinct vocab layer its
   entries touch, not only the first entry's (`pra/vocab-layers-refusal`). One
   case per vocab item route that runs the check. The vocab link bulk delete
-  runs it too, but a link lives in a project the vocabulary is granted to,
-  and a writer there may write the vocabulary, so no request reaches its 403."
+  runs it too, but it asks only read access, so it is not here."
   (:require [clojure.string :as str]
             [clojure.test :refer :all]
             [plaid.fixtures :refer [with-db with-mount-states with-rest-handler
@@ -17,15 +16,13 @@
 (def ^:private user1 "user1@example.com")
 
 (defn- setup
-  "user1 writes on project P, which holds V1. V2 is granted to a project user1
+  "user1 writes on project P, the home of V1. V2's home is a project user1
   is not on, so user1 may write V1 and not V2."
   []
   (let [proj (create-test-project admin-request "Bug hunt fix META writable")
         other (create-test-project admin-request "Bug hunt fix META other")
-        v1 (-> (create-vocab-layer admin-request "V1") :body :id)
-        v2 (-> (create-vocab-layer admin-request "V2") :body :id)]
-    (link-vocab-to-project admin-request proj v1)
-    (link-vocab-to-project admin-request other v2)
+        v1 (-> (create-vocab-layer admin-request proj "V1") :body :id)
+        v2 (-> (create-vocab-layer admin-request other "V2") :body :id)]
     (add-project-writer admin-request proj user1)
     {:proj proj :v1 v1 :v2 v2
      :a (-> (create-vocab-item admin-request v1 "dogs") :body :id)

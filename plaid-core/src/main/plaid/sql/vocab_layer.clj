@@ -1,11 +1,18 @@
 (ns plaid.sql.vocab-layer
-  "Vocab layers: the `vocab_layers` table, their maintainers in
-  `vocab_maintainers` and their project grants in `project_vocabs`.
+  "Vocab layers: the `vocab_layers` table and their project links in
+  `project_vocabs`.
+
+  A vocabulary belongs to one project, its home (`project_id`, 2026-11-12):
+  its rights are that project's roles, and its operations are audited under
+  that project. Other projects may link it as borrowers, read only. The home's
+  own row is in `project_vocabs` too, so every reader of \"the vocabularies of
+  a project\" sees it: for every vocabulary of a live project, the row
+  `(project_id, id)` exists there (written by `create` and `move`, never
+  removed while the home lives).
 
   Items live in `vocab_items` (see plaid.sql.vocab-item) and are
   cascade-deleted by the FK when a vocab layer is dropped."
-  (:require [taoensso.timbre :as log]
-            [plaid.sql.audit-write :as psaw]
+  (:require [plaid.sql.audit-write :as psaw]
             [plaid.sql.common :as psc]
             [plaid.sql.crud :as crud]
             [plaid.sql.operation :as op :refer [submit-operation!]]
@@ -15,51 +22,29 @@
   (:refer-clojure :exclude [get merge]))
 
 ;; ============================================================
-;; Row mapper + enrichment
+;; Row mapper
 ;; ============================================================
 
 (defn- row->vocab-bare
-  "Translate a `vocab_layers` row to the namespaced shape. Does NOT
-  populate :vocab/maintainers; callers stitch those in.
+  "Translate a `vocab_layers` row to the namespaced shape.
 
   :vocab/time-created and :vocab/time-modified mirror the document shape
   (`created_at` / `modified_at` columns). Both are nil for vocabularies
-  created before those columns existed, so readers must tolerate absence."
+  created before those columns existed, so readers must tolerate absence.
+  :vocab/project is the home project's id."
   [row]
   (when row
     {:vocab/id            (:id row)
      :vocab/name          (:name row)
+     :vocab/project       (:project_id row)
      :vocab/time-created  (:created_at row)
      :vocab/time-modified (:modified_at row)
      :config              (psc/parse-config (:config row))}))
 
-(defn- attach-maintainers
-  "Add :vocab/maintainers (vector of user-ids) to a bare vocab record,
-  ordered by user id: the order the audit images fold them in, so the
-  vocabulary read at a past time (`plaid.history.read/get-vocab-at`) and
-  the live read agree."
-  [db vocab-id record]
-  (let [maintainers (->> (psc/q db {:select [:user_id]
-                                    :from [:vocab_maintainers]
-                                    :where [:= :vocab_layer_id vocab-id]
-                                    :order-by [:user_id]})
-                         (mapv :user_id))]
-    (assoc record :vocab/maintainers maintainers)))
-
-(defn maintainer-of-any?
-  "True iff `user-id` maintains at least one vocab layer. Gates user-directory
-  access alongside project maintainership — vocab maintainers also need to find
-  users to grant vocab maintainership."
-  [db user-id]
-  (boolean (psc/q1 db {:select [[1 :one]]
-                       :from [:vocab_maintainers]
-                       :where [:= :user_id user-id]
-                       :limit 1})))
-
-(declare get-items-fn fetch-vocab-maintainer-ids)
+(declare get-items-fn)
 
 (defn get
-  "Get a vocab layer by ID, fully enriched.
+  "Get a vocab layer by ID.
 
   When `include-items?` is true, also assoc :vocab/items via
   plaid.sql.vocab-item/get-all-in-layer (resolved at call time to dodge
@@ -68,7 +53,7 @@
    (get db id false))
   ([db id include-items?]
    (when-let [bare (row->vocab-bare (psc/fetch-by-id db :vocab_layers id))]
-     (cond-> (attach-maintainers db id bare)
+     (cond-> bare
        include-items?
        (assoc :vocab/items (get-items-fn db id))))))
 
@@ -79,33 +64,58 @@
     (v db id)))
 
 ;; ============================================================
-;; Accessibility queries
+;; Homes and accessibility
 ;; ============================================================
 
-(defn- get-all-ids [db]
-  (->> (psc/q db {:select [:id] :from [:vocab_layers]})
-       (mapv :id)))
-
-(defn maintainer-ids
-  "Vector of user IDs that maintain `vocab-id`."
+(defn home-of
+  "The id of the project vocab layer `vocab-id` belongs to, nil when there is
+  no such vocabulary."
   [db vocab-id]
-  (->> (psc/q db {:select [:user_id]
-                  :from [:vocab_maintainers]
-                  :where [:= :vocab_layer_id vocab-id]})
-       (mapv :user_id)))
+  (when vocab-id
+    (:project_id (psc/q1 db {:select [:project_id] :from [:vocab_layers] :where [:= :id vocab-id]}))))
 
-(defn maintainer?
-  "True iff `user-id` is a maintainer of `vocab-id`."
-  [db vocab-id user-id]
-  (some? (psc/q1 db {:select [:user_id]
-                     :from [:vocab_maintainers]
-                     :where [:and
-                             [:= :vocab_layer_id vocab-id]
-                             [:= :user_id user-id]]})))
+(defn homes-of
+  "The distinct home project ids of the vocab layers `vocab-ids` that exist."
+  [db vocab-ids]
+  (if-let [ids (seq (distinct (remove nil? vocab-ids)))]
+    (->> (psc/q db {:select-distinct [:project_id] :from [:vocab_layers] :where [:in :id (vec ids)]})
+         (mapv :project_id))
+    []))
+
+(defn hidden-home?
+  "Is the home of `vocab-id` a project being deleted?"
+  [db vocab-id]
+  (boolean (and vocab-id
+                (psc/q1 db {:select [1]
+                            :from [[:vocab_layers :v]]
+                            :join [[:projects :p] [:= :p.id :v.project_id]]
+                            :where [:and [:= :v.id vocab-id] [:<> :p.deleted_at nil]]}))))
+
+(defn borrower-ids
+  "The live projects that link `vocab-id` and are not its home, ordered by id."
+  [db vocab-id]
+  (->> (psc/q db {:select [:pv.project_id]
+                  :from [[:project_vocabs :pv]]
+                  :join [[:vocab_layers :v] [:= :v.id :pv.vocab_layer_id]
+                         [:projects :p] [:= :p.id :pv.project_id]]
+                  :where [:and
+                          [:= :pv.vocab_layer_id vocab-id]
+                          [:<> :pv.project_id :v.project_id]
+                          [:= :p.deleted_at nil]]
+                  :order-by [:pv.project_id]})
+       (mapv :project_id)))
+
+(defn links?
+  "Does project `project-id` link vocab layer `vocab-id` (as its home or a
+  borrower)?"
+  [db project-id vocab-id]
+  (some? (psc/q1 db {:select [1]
+                     :from [:project_vocabs]
+                     :where [:and [:= :project_id project-id] [:= :vocab_layer_id vocab-id]]})))
 
 (defn accessible-through-project?
-  "True iff `user-id` has any role on any project whose project_vocabs
-  grants include `vocab-id`. (Read access via project grant.)"
+  "True iff `user-id` has any role on any project that links `vocab-id`
+  (its home or a borrower): read access."
   [db vocab-id user-id]
   (some? (psc/q1 db {:select [[:pv.project_id :pid]]
                      :from [[:project_vocabs :pv]]
@@ -117,9 +127,10 @@
                      :limit 1}
                  {:uuid-cols #{:pid}})))
 
-(defn write-accessible-through-project?
-  "True iff `user-id` has writer or maintainer role on any project whose
-  project_vocabs grants include `vocab-id`. (Write access for items.)"
+(defn linking-writer?
+  "True iff `user-id` has writer or maintainer role on any project that links
+  `vocab-id`. Not a right over entries (those follow the home's roles): the
+  gate for commenting on an entry."
   [db vocab-id user-id]
   (some? (psc/q1 db {:select [[:pv.project_id :pid]]
                      :from [[:project_vocabs :pv]]
@@ -133,69 +144,42 @@
                  {:uuid-cols #{:pid}})))
 
 (defn get-accessible-ids
-  "Vocab IDs the user can see: union of vocabs they directly maintain
-  and vocabs granted to projects they have any role on. Admins see all."
+  "Vocab IDs the user can see: those linked by a project they have any role
+  on. An admin sees every vocabulary whose home is not being deleted."
   [db user-id]
   (let [user-rec (user/get db user-id)]
     (if (user/admin? user-rec)
-      (get-all-ids db)
-      (let [maintainer-ids (->> (psc/q db {:select [:vocab_layer_id]
-                                           :from [:vocab_maintainers]
-                                           :where [:= :user_id user-id]})
-                                (mapv :vocab_layer_id))
-            project-vocab-ids (->> (psc/q db {:select-distinct [:pv.vocab_layer_id]
-                                              :from [[:project_vocabs :pv]]
-                                              :join [[:project_users :pu]
-                                                     [:= :pu.project_id :pv.project_id]]
-                                              :where [:= :pu.user_id user-id]})
-                                   (mapv :vocab_layer_id))]
-        (vec (distinct (concat maintainer-ids project-vocab-ids)))))))
+      (->> (psc/q db {:select [:v.id]
+                      :from [[:vocab_layers :v]]
+                      :join [[:projects :p] [:= :p.id :v.project_id]]
+                      :where [:= :p.deleted_at nil]})
+           (mapv :id))
+      (->> (psc/q db {:select-distinct [:pv.vocab_layer_id]
+                      :from [[:project_vocabs :pv]]
+                      :join [[:project_users :pu]
+                             [:= :pu.project_id :pv.project_id]]
+                      :where [:= :pu.user_id user-id]})
+           (mapv :vocab_layer_id)))))
 
 (defn batch-hydrate-vocab-layers
-  "Hydrate `vocab-ids` into the same per-vocab shape as `(get db id)` —
-  :vocab/id, :vocab/name, :config (parsed), :vocab/maintainers.
-  Preserves the order of `vocab-ids` and drops ids that have no
-  matching row.
-
-  Round-trip count is O(1) regardless of `(count vocab-ids)`: one
-  SELECT for vocab_layers rows, one for vocab_maintainers joined to
-  user_ids. (Note: `get`'s 2-arg form can also include :vocab/items, but
-  the per-id `get` shape exposed by `get-accessible` did NOT include
-  items, so neither does this helper.)
-
-  Mirrors `plaid.sql.project/batch-hydrate-projects`."
+  "Hydrate `vocab-ids` into the same per-vocab shape as `(get db id)`.
+  Preserves the order of `vocab-ids` and drops ids that have no matching
+  row. One SELECT whatever the number of ids."
   [db vocab-ids]
   (if (empty? vocab-ids)
     []
-    (let [;; 1) vocab_layers themselves
-          vl-rows (psc/q db {:select [:*]
+    (let [vl-rows (psc/q db {:select [:*]
                              :from [:vocab_layers]
                              :where [:in :id vocab-ids]})
-          vl-by-id (into {} (map (juxt :id row->vocab-bare) vl-rows))
-          ;; 2) vocab_maintainers — grouped per vocab-layer
-          vm-rows (psc/q db {:select [:vocab_layer_id :user_id]
-                             :from [:vocab_maintainers]
-                             :where [:in :vocab_layer_id vocab-ids]})
-          maintainers-by-vocab (reduce (fn [acc {:keys [vocab_layer_id user_id]}]
-                                         (update acc vocab_layer_id (fnil conj []) user_id))
-                                       {} vm-rows)
-          hydrate-one (fn [vid]
-                        (when-let [bare (clojure.core/get vl-by-id vid)]
-                          (assoc bare :vocab/maintainers
-                                 (vec (clojure.core/get maintainers-by-vocab vid [])))))]
+          vl-by-id (into {} (map (juxt :id row->vocab-bare) vl-rows))]
       (->> vocab-ids
-           (mapv hydrate-one)
-           (filterv some?)))))
+           (keep #(clojure.core/get vl-by-id %))
+           vec))))
 
 (defn get-accessible
   "Hydrated vocab records accessible to `user-id`."
   ([db user-id]
-   (let [ids (get-accessible-ids db user-id)]
-     ;; Was `(mapv #(get db %) ids)` — N+1 over `ids` with each `get`
-     ;; firing fetch-by-id + attach-maintainers (~2 queries per vocab).
-     ;; Now a constant number of bulk SELECTs regardless of vocab count
-     ;; (mirrors project/batch-hydrate-projects).
-     (batch-hydrate-vocab-layers db ids)))
+   (batch-hydrate-vocab-layers db (get-accessible-ids db user-id)))
   ([db user-id {:keys [limit cursor-vals]}]
    ;; Paginated arity: shape the (bounded, per-user) accessible set into the
    ;; uniform {:entries :next-cursor} envelope. Sorted by (name, id) —
@@ -205,63 +189,83 @@
                              limit cursor-vals)))
 
 ;; ============================================================
-;; Writes: create / merge / delete
+;; Writes: create / merge / move / delete
 ;; ============================================================
 
-(defn create
-  "Create a new vocab layer, granting the maintainer role to every user-id in
-  `:vocab/maintainers` (the REST handler passes the creating user).
-  `:vocab/id` names its id (a client's UUIDv7), else the server mints one. Returns
-  {:success true :extra <new-id>}.
+(defn- vocab-name [db id]
+  (:name (psc/q1 db {:select [:name] :from [:vocab_layers] :where [:= :id id]})))
 
-  Audit shape mirrors project/create: ONE :vocab_layers audit row with
-  change_type :insert whose post-image folds the maintainer-id vector under
-  :maintainers (UNNAMESPACED — the audit \"extras\" shape; see
-  `audit-vocab-maintainers-change!`). Manual insert (`execute!`, no auto-audit)
-  + folded audit so the maintainer grant rides the SAME audit row. Without the
-  grant a non-admin creator would NOT be a maintainer of their own vocab and
-  couldn't manage it (the route summary already promised this registration)."
+(defn- project-name [db id]
+  (:name (psc/q1 db {:select [:name] :from [:projects] :where [:= :id id]})))
+
+(defn- fetch-project-vocab-ids
+  "The vocab layer ids `project-id` links, ordered by id: the `:vocabs` fold
+  of a synthetic `:projects` audit row, ordered as `plaid.sql.project` orders
+  it."
+  [tx project-id]
+  (->> (psc/q tx {:select [:vocab_layer_id]
+                  :from [:project_vocabs]
+                  :where [:= :project_id project-id]
+                  :order-by [:vocab_layer_id]})
+       (mapv :vocab_layer_id)))
+
+(defn- link-project!
+  "Give `project-id` its `project_vocabs` row for `vocab-id` when it has none,
+  with the synthetic `:projects` audit row whose `:vocabs` gains the id."
+  [tx project-id vocab-id]
+  (let [pre (fetch-project-vocab-ids tx project-id)]
+    (crud/add-join-if-absent! tx :project_vocabs {:project_id project-id :vocab_layer_id vocab-id})
+    (let [post (fetch-project-vocab-ids tx project-id)]
+      (when (not= pre post)
+        (let [row (psc/fetch-by-id tx :projects project-id)]
+          (psaw/record-audit-write! tx :projects project-id :update
+                                    (assoc row :vocabs pre) (assoc row :vocabs post)))))))
+
+(defn- assert-live-project!
+  [tx project-id]
+  (let [row (psc/fetch-by-id tx :projects project-id)]
+    (when (or (nil? row) (some? (:deleted_at row)))
+      (throw (ex-info (str "Not a valid project ID: " project-id) {:code 400 :id project-id})))))
+
+(defn create
+  "Create a new vocab layer in project `:vocab/project`, its home.
+  `:vocab/id` names its id (a client's UUIDv7), else the server mints one.
+  Returns {:success true :extra <new-id>}.
+
+  Audited under the home: one `:vocab_layers` insert (its image carries
+  `project_id`), and one synthetic `:projects` update whose `:vocabs` gains
+  the id (the home's row in `project_vocabs`)."
   [db attrs user-id]
-  (let [{:vocab/keys [name maintainers]} attrs
+  (let [{:vocab/keys [name project]} attrs
         new-id (or (:vocab/id attrs) (psc/new-uuid))
         config (clojure.core/get attrs :config {})]
     (submit-operation! [tx db {:type :vocab/create
-                               :project nil
+                               :project project
                                :document nil
-                               :description (str "Create vocab '" name "'")
+                               :description (str "Create vocabulary “" name "”")
                                :user user-id}]
                        (psc/assert-valid-name! name)
+                       (assert-live-project! tx project)
                        (psc/claim-ids! tx :vocab_layers "vocabulary" [(:vocab/id attrs)])
                        ;; Stamped from the op's ts (not a fresh now-iso) so the
                        ;; timestamps agree with the operations row, as documents do.
                        (let [ts (op/op-ts)]
-                         (psc/execute! tx {:insert-into :vocab_layers
-                                           :values [{:id new-id
-                                                     :name name
-                                                     :config (psc/serialize-config config)
-                                                     :created_at ts
-                                                     :modified_at ts}]}))
-                       ;; Grant the maintainer role to the creator (and any
-                       ;; other requested maintainers). vocab_maintainers rows
-                       ;; are unaudited; their state is folded into the :insert
-                       ;; image below.
-                       (doseq [uid (distinct maintainers)]
-                         (when (nil? (psc/fetch-by-id tx :users uid))
-                           (throw (ex-info (str "Not a valid user ID: " uid) {:id uid :code 400})))
-                         (crud/add-join! tx :vocab_maintainers
-                                         {:vocab_layer_id new-id :user_id uid}))
-                       (let [vl-row (psc/fetch-by-id tx :vocab_layers new-id)
-                             post-image (assoc vl-row :maintainers (fetch-vocab-maintainer-ids tx new-id))]
-                         (psaw/record-audit-write! tx :vocab_layers new-id :insert nil post-image))
+                         (crud/insert! tx :vocab_layers {:id new-id
+                                                         :name name
+                                                         :config (psc/serialize-config config)
+                                                         :created_at ts
+                                                         :modified_at ts
+                                                         :project_id project}))
+                       (link-project! tx project new-id)
                        new-id)))
 
 (defn linked-document-ids
   "Ids of every document holding a link to an entry of `vocab-id`. A deep
   document read names each linked vocabulary's name and config, so a write
-  to either restates exactly these documents and bumps them (R14). A
-  maintainer change bumps none of them, by ruling (R22). A document of a
-  project being deleted is left out, as `vocab-item/linked-document-ids`
-  leaves it out (R39)."
+  to either restates exactly these documents and bumps them (R14). A move
+  bumps none of them (the home is not restated content, as R22 ruled for
+  maintainers). A document of a project being deleted is left out, as
+  `vocab-item/linked-document-ids` leaves it out (R39)."
   [tx vocab-id]
   (->> (psc/q tx {:select-distinct [:vl.document_id]
                   :from [[:vocab_links :vl]]
@@ -275,155 +279,84 @@
   "Update mutable vocab fields. Currently supports :vocab/name. A new name
   bumps every document linking the vocabulary (`linked-document-ids`)."
   [db eid m user-id]
-  (submit-operation! [tx db {:type :vocab/update
-                             :project nil
-                             :document nil
-                             :description (str "Update vocab " eid
-                                               (when (:vocab/name m)
-                                                 (str " name to \"" (:vocab/name m) "\"")))
-                             :user user-id}]
-                     (when (contains? m :vocab/name)
-                       (psc/assert-valid-name! (:vocab/name m)))
-                     (let [existing (psc/fetch-by-id tx :vocab_layers eid)]
-                       (when (nil? existing)
-                         (throw (ex-info (psc/err-msg-not-found "Vocab" eid) {:code 404 :id eid})))
-                       (let [attrs (cond-> {}
-                                     (some? (:vocab/name m))
-                                     (assoc :name (:vocab/name m)))]
-                         (when (seq attrs)
-                           ;; Folded rather than a separate touch-vocab-layer! call:
-                           ;; this op already writes the row, so one audit row carries
-                           ;; both the new name and the new modified_at.
-                           (crud/update-by-id! tx :vocab_layers eid
-                                               (assoc attrs :modified_at (op/op-ts))))
-                         (when (and (contains? attrs :name) (not= (:name attrs) (:name existing)))
-                           (op/bump-document-versions! tx (linked-document-ids tx eid)))
+  (let [old-name (vocab-name db eid)]
+    (submit-operation! [tx db {:type :vocab/update
+                               :project (home-of db eid)
+                               :document nil
+                               :description (if (:vocab/name m)
+                                              (str "Rename vocabulary “" old-name "” to “" (:vocab/name m) "”")
+                                              (str "Update vocabulary “" old-name "”"))
+                               :user user-id}]
+                       (when (contains? m :vocab/name)
+                         (psc/assert-valid-name! (:vocab/name m)))
+                       (let [existing (psc/fetch-by-id tx :vocab_layers eid)]
+                         (when (nil? existing)
+                           (throw (ex-info (psc/err-msg-not-found "Vocab" eid) {:code 404 :id eid})))
+                         (let [attrs (cond-> {}
+                                       (some? (:vocab/name m))
+                                       (assoc :name (:vocab/name m)))]
+                           (when (seq attrs)
+                             ;; Folded rather than a separate touch-vocab-layer! call:
+                             ;; this op already writes the row, so one audit row carries
+                             ;; both the new name and the new modified_at.
+                             (crud/update-by-id! tx :vocab_layers eid
+                                                 (assoc attrs :modified_at (op/op-ts))))
+                           (when (and (contains? attrs :name) (not= (:name attrs) (:name existing)))
+                             (op/bump-document-versions! tx (linked-document-ids tx eid)))
+                           eid)))))
+
+(defn move
+  "Make project `target` the home of vocab layer `eid`. The old home keeps its
+  `project_vocabs` row and so becomes a borrower, the target gains its row
+  when it had none. Audited under the OLD home, the project losing the
+  rights, so its Activity says so, and heard by the new home's listeners
+  too. Bumps no document: no deep read changes but each vocabulary's
+  `project`, which is not restated content. A move to the current home
+  writes nothing (`{:success true :extra eid}` without an operation)."
+  [db eid target user-id]
+  (let [home (home-of db eid)]
+    (if (and home (= (str home) (str target)))
+      {:success true :extra eid}
+      (submit-operation! [tx db {:type :vocab/move
+                                 :project home
+                                 :document nil
+                                 :description (str "Move vocabulary “" (vocab-name db eid) "” to project “"
+                                                   (project-name db target) "”")
+                                 :user user-id}]
+                         (when (nil? (psc/fetch-by-id tx :vocab_layers eid))
+                           (throw (ex-info (psc/err-msg-not-found "Vocab" eid) {:code 404 :id eid})))
+                         (assert-live-project! tx target)
+                         (crud/update-by-id! tx :vocab_layers eid {:project_id target :modified_at (op/op-ts)})
+                         (link-project! tx target eid)
+                         (when-let [a (:affected-projects psaw/*op*)]
+                           (swap! a update target (fnil identity #{})))
                          eid))))
 
-(defn fetch-vocab-maintainer-ids
-  "Vector of user-ids that maintain `vocab-id` (snapshot helper used by
-  synthetic audit rows on `:vocab_layers`).
-
-  Public so cross-namespace callers (notably `plaid.sql.user/delete`,
-  which audits user → vocab_maintainers FK cascade losses) can reuse it."
-  [tx vocab-id]
-  ;; ORDER BY user_id so the folded :maintainers audit image is
-  ;; deterministically ordered.
-  (->> (psc/q tx {:select [:user_id]
-                  :from [:vocab_maintainers]
-                  :where [:= :vocab_layer_id vocab-id]
-                  :order-by [:user_id]})
-       (mapv :user_id)))
-
-(defn- fetch-vocab-project-grants
-  "Vector of project-ids that have `vocab-id` granted via project_vocabs.
-  Used in `delete` to emit per-project audit rows showing the grant
-  going away."
-  [tx vocab-id]
-  ;; ORDER BY project_id so the per-project audit rows in `delete` are
-  ;; emitted in a deterministic order — (op_id, seq) assignment depends
-  ;; on it.
-  (->> (psc/q tx {:select [:project_id]
-                  :from [:project_vocabs]
-                  :where [:= :vocab_layer_id vocab-id]
-                  :order-by [:project_id]})
-       (mapv :project_id)))
-
-(defn audit-vocab-maintainers-change!
-  "Emit a synthetic :vocab_layers audit row for a vocab_maintainers
-  mutation. Pre/post images = the vocab_layer row + the maintainer-id
-  vector under :maintainers (UNNAMESPACED, as on the project side: the
-  audit-row \"extras\" shape is intentionally distinct
-  from the REST-API shape that uses `:vocab/maintainers`). Skips audit
-  when pre == post (no-op add/remove, mirroring update-by-id!'s noise
-  rule).
-
-  Public so cross-namespace callers (e.g. `plaid.sql.user/deactivate`)
-  can emit the same synthetic audit shape on FK cascade losses."
-  [tx vocab-id pre-maintainers]
-  (let [post-maintainers (fetch-vocab-maintainer-ids tx vocab-id)]
-    (when (not= pre-maintainers post-maintainers)
-      ;; Who may write a vocabulary is part of the vocabulary, so a real
-      ;; maintainer change bumps modified_at. Stamped here rather than by
-      ;; touch-vocab-layer! at the call sites so it inherits this fn's no-op
-      ;; rule (an add that grants nothing changes nothing) and so it rides the
-      ;; synthetic audit row below instead of adding a second one.
-      (psc/execute! tx {:update :vocab_layers
-                        :set {:modified_at (op/op-ts)}
-                        :where [:= :id vocab-id]})
-      (let [vl-row (psc/fetch-by-id tx :vocab_layers vocab-id)
-            pre-image (assoc vl-row :maintainers pre-maintainers)
-            post-image (assoc vl-row :maintainers post-maintainers)]
-        (psaw/record-audit-write! tx :vocab_layers vocab-id :update pre-image post-image)))))
-
-(defn- projects-in-the-way
-  "The ids of the projects whose link to vocab layer `eid` (a row of
-  `project_vocabs`, whatever the number of links in its documents) stands
-  in the way of deleting it, under two rules, both always applied.
-
-  Every live project the caller (`user-id`) does not maintain, unless the
-  caller is an admin (`admin?`), who maintains everything: a delete
-  removes every link in those projects' documents, and nothing brings them
-  back (SEAM-2, Luke 2026-11-11). A project being deleted stands in no
-  one's way: its links go unaudited with it (R39).
-
-  With `only-in-project`, also every project but that one, whether or not
-  the caller can read it (R58: an unfinished import's Delete takes the
-  vocabulary it made only when no other project uses it). Naming a project
-  does not lift the first rule for it (REV-PB-A-1)."
-  [tx eid {:keys [only-in-project user-id admin?]}]
-  (distinct
-   (concat
-    (when only-in-project
-      (->> (fetch-vocab-project-grants tx eid)
-           (remove #(= (str %) (str only-in-project)))))
-    (when-not admin?
-      (->> (psc/q tx {:select [:pv.project_id]
-                      :from [[:project_vocabs :pv]]
-                      :join [[:projects :p] [:= :p.id :pv.project_id]]
-                      :where [:and
-                              [:= :pv.vocab_layer_id eid]
-                              [:= :p.deleted_at nil]
-                              [:not [:exists {:select [1]
-                                              :from [[:project_users :pu]]
-                                              :where [:and
-                                                      [:= :pu.project_id :pv.project_id]
-                                                      [:= :pu.user_id user-id]
-                                                      [:= :pu.role "maintainer"]]}]]]})
-           (mapv :project_id))))))
-
-(defn- refuse-projects-in-the-way!
-  "Throw the 409 a delete of `eid` is refused with when a project stands in
-  its way (`projects-in-the-way`). The body counts them as
-  `other-projects` and names none, since the caller may not be able to
-  read them."
-  [tx eid opts]
-  (let [n (count (projects-in-the-way tx eid opts))]
+(defn- refuse-borrowers!
+  "Throw the 409 a delete of `eid` is refused with while any live project
+  other than its home links it (`borrower-ids`), whoever asks, admins
+  included (Luke 2026-11-12). The body counts them as `other-projects` and
+  names none, since the caller may not be able to read them."
+  [tx eid]
+  (let [n (count (borrower-ids tx eid))]
     (when (pos? n)
       (throw (ex-info (str n (if (= 1 n) " other project uses" " other projects use") " this vocabulary.")
                       {:code 409 :id eid :plaid/body {:other-projects n}})))))
 
 (defn delete-preview
   "What deleting vocab layer `eid` would remove, without writing:
-  `{:projects n :links m}`, the projects linking it and the links in their
-  documents, a project being deleted left out of both. Throws the delete's
-  own refusals (404, and the 409 of `refuse-projects-in-the-way!`). `opts`
-  as for `delete`."
-  [db eid opts]
+  `{:links n}`, the links in its home's documents. Throws the delete's own
+  refusals (404, and the 409 while a borrower links it)."
+  [db eid]
   (when (nil? (psc/fetch-by-id db :vocab_layers eid))
     (throw (ex-info (psc/err-msg-not-found "Vocab" eid) {:code 404 :id eid})))
-  (refuse-projects-in-the-way! db eid opts)
-  (let [live [:= :p.deleted_at nil]]
-    {:projects (:n (psc/q1 db {:select [[[:count :*] :n]]
-                               :from [[:project_vocabs :pv]]
-                               :join [[:projects :p] [:= :p.id :pv.project_id]]
-                               :where [:and [:= :pv.vocab_layer_id eid] live]}))
-     :links (:n (psc/q1 db {:select [[[:count :*] :n]]
-                            :from [[:vocab_links :l]]
-                            :join [[:vocab_items :i] [:= :i.id :l.vocab_item_id]
-                                   [:documents :d] [:= :d.id :l.document_id]
-                                   [:projects :p] [:= :p.id :d.project_id]]
-                            :where [:and [:= :i.vocab_layer_id eid] live]}))}))
+  (refuse-borrowers! db eid)
+  {:links (:n (psc/q1 db {:select [[[:count :*] :n]]
+                          :from [[:vocab_links :l]]
+                          :join [[:vocab_items :i] [:= :i.id :l.vocab_item_id]
+                                 [:documents :d] [:= :d.id :l.document_id]
+                                 [:projects :p] [:= :p.id :d.project_id]]
+                          :where [:and [:= :i.vocab_layer_id eid] [:= :p.deleted_at nil]]}))})
 
 (defn delete
   "Delete a vocab layer. Walks the descendant subtree (vocab_items
@@ -433,40 +366,29 @@
   The exception is a link in a project being deleted (R39): it is removed
   unaudited, with no version bump, since nothing travels back to it.
 
-  Junction-table cascades: `vocab_maintainers` and
-  `project_vocabs` would also FK-CASCADE silently. Two synthetic
-  audits address that:
-    - The vocab_layer's own :delete audit carries `:maintainers`
-      (unnamespaced) in the pre-image (post = nil); the
-      maintainer list going from [...] to nil is implicit in the layer
-      disappearing.
-    - For each project that loses a vocab grant via project_vocabs FK
-      cascade, we emit a :projects :update audit (pre = grants before
-      the cascade, post = grants after the cascade — i.e. with `eid`
-      removed) under the unnamespaced `:vocabs` key so ETL replay sees
-      the grant transition.
+  The `project_vocabs` rows (the home's) would also FK-CASCADE silently,
+  so each project that loses one gets a synthetic `:projects` update under
+  the unnamespaced `:vocabs` key.
 
-  The delete is refused (409, nothing written) while a project stands in
-  its way (`projects-in-the-way`): any live project `user-id` does not
-  maintain, unless `admin?`, and with `only-in-project` also any project
-  but that one. With `opts` nil, every live linking project `user-id` does
-  not maintain."
-  ([db eid user-id] (delete db eid user-id nil))
-  ([db eid user-id opts]
-   (submit-operation! [tx db {:type :vocab/delete
-                              :project nil
-                              :document nil
-                              :description (str "Delete vocab " eid)
-                              :user user-id}]
-                      (let [existing (psc/fetch-by-id tx :vocab_layers eid)]
-                        (when (nil? existing)
-                          (throw (ex-info (psc/err-msg-not-found "Vocab" eid) {:code 404 :id eid})))
-                        (refuse-projects-in-the-way! tx eid (assoc opts :user-id user-id))
-                        (let [vi-ids (->> (psc/q tx {:select [:id]
-                                                     :from :vocab_items
-                                                     :where [:= :vocab_layer_id eid]})
-                                          (mapv :id))]
-                          (when (seq vi-ids)
+  Refused (409, nothing written) while a borrower links it
+  (`refuse-borrowers!`). Audited under the home."
+  [db eid user-id]
+  (submit-operation! [tx db {:type :vocab/delete
+                             :project (home-of db eid)
+                             :document nil
+                             :description (if-let [n (vocab-name db eid)]
+                                            (str "Delete vocabulary “" n "”")
+                                            (str "Delete vocabulary " eid))
+                             :user user-id}]
+                     (let [existing (psc/fetch-by-id tx :vocab_layers eid)]
+                       (when (nil? existing)
+                         (throw (ex-info (psc/err-msg-not-found "Vocab" eid) {:code 404 :id eid})))
+                       (refuse-borrowers! tx eid)
+                       (let [vi-ids (->> (psc/q tx {:select [:id]
+                                                    :from :vocab_items
+                                                    :where [:= :vocab_layer_id eid]})
+                                         (mapv :id))]
+                         (when (seq vi-ids)
                            ;; The items by the one item delete path: the
                            ;; links audited, a version bump on every
                            ;; document that lost one (the op-attrs carry
@@ -474,96 +396,18 @@
                            ;; fire), a link in a project being deleted
                            ;; removed unaudited (R39), then the items with
                            ;; their metadata.
-                            (vocab-item/delete-items! tx vi-ids)))
-                       ;; Snapshot junction-table state BEFORE the row
-                       ;; goes away (FK CASCADE would erase
-                       ;; vocab_maintainers + project_vocabs rows
-                       ;; silently otherwise).
-                        (let [pre-maintainers (fetch-vocab-maintainer-ids tx eid)
-                              grant-project-ids (fetch-vocab-project-grants tx eid)
-                             ;; Per-project pre-image of vocab grants (one snapshot per
-                             ;; project) so the synthetic :projects audits show the right
-                             ;; "before" state.
-                             ;; ORDER BY vocab_layer_id: the folded :vocabs
-                             ;; vectors must be deterministically ordered —
-                             ;; and ordered the SAME way as project.clj's
-                             ;; fetch-project-vocab-grants — or scan-order
-                             ;; variance registers as spurious history
-                             ;; "changes".
-                              pre-grants-by-proj
-                              (into {}
-                                    (map (fn [pid] [pid (->> (psc/q tx {:select [:vocab_layer_id]
-                                                                        :from [:project_vocabs]
-                                                                        :where [:= :project_id pid]
-                                                                        :order-by [:vocab_layer_id]})
-                                                             (mapv :vocab_layer_id))]))
-                                    grant-project-ids)
-                             ;; Emit the vocab_layer's :delete audit with
-                             ;; maintainers folded into the pre-image —
-                             ;; matches the parent-row-carries-junction
-                             ;; pattern that ETL relies on. We do this
-                             ;; manually (vs. crud/delete-by-id!) so the
-                             ;; pre-image carries :maintainers
-                             ;; (unnamespaced) rather than just
-                             ;; the raw row.
-                              vl-row (psc/fetch-by-id tx :vocab_layers eid)
-                              vl-pre-image (assoc vl-row :maintainers pre-maintainers)]
-                          (psc/execute! tx {:delete-from :vocab_layers
-                                            :where [:= :id eid]})
-                          (psaw/record-audit-write! tx :vocab_layers eid :delete vl-pre-image nil)
-                         ;; Per-project audits for the project_vocabs
-                         ;; FK-cascade losses. Each project sees one
-                         ;; :update row showing its vocab-grant list
-                         ;; shrink by `eid` under the unnamespaced
-                         ;; `:vocabs` key.
-                          (doseq [pid grant-project-ids]
-                            (let [proj-row (psc/fetch-by-id tx :projects pid)
-                                  pre-grants (clojure.core/get pre-grants-by-proj pid [])
-                                  post-grants (vec (remove #(= % eid) pre-grants))
-                                  pre-image (assoc proj-row :vocabs pre-grants)
-                                  post-image (assoc proj-row :vocabs post-grants)]
-                              (psaw/record-audit-write! tx :projects pid :update pre-image post-image))))
-                        eid))))
-
-;; ============================================================
-;; Maintainer management (vocab_maintainers join table)
-;; ============================================================
-
-(defn- assert-user-and-vocab!
-  [tx vocab-id user-id]
-  (when (nil? (psc/fetch-by-id tx :users user-id))
-    (throw (ex-info (str "Not a valid user ID: " user-id) {:id user-id :code 400})))
-  (when (nil? (psc/fetch-by-id tx :vocab_layers vocab-id))
-    (throw (ex-info (psc/err-msg-not-found "Vocab" vocab-id) {:id vocab-id :code 400}))))
-
-(defn add-maintainer
-  [db vocab-id user-id actor-user-id]
-  (submit-operation! [tx db {:type :vocab/add-maintainer
-                             :project nil
-                             :document nil
-                             :description (str "Add maintainer " user-id " to vocab " vocab-id)
-                             :user actor-user-id}]
-                     (assert-user-and-vocab! tx vocab-id user-id)
-                     ;; Snapshot the maintainer-set BEFORE the mutation so
-                     ;; the synthetic :vocab_layers audit row's pre-image
-                     ;; is accurate. Audit emission is skipped when the
-                     ;; write is a no-op (user is already a maintainer).
-                     (let [pre-maintainers (fetch-vocab-maintainer-ids tx vocab-id)]
-                       (crud/add-join-if-absent! tx :vocab_maintainers
-                                                 {:vocab_layer_id vocab-id
-                                                  :user_id user-id})
-                       (audit-vocab-maintainers-change! tx vocab-id pre-maintainers))))
-
-(defn remove-maintainer
-  [db vocab-id user-id actor-user-id]
-  (submit-operation! [tx db {:type :vocab/remove-maintainer
-                             :project nil
-                             :document nil
-                             :description (str "Remove maintainer " user-id " from vocab " vocab-id)
-                             :user actor-user-id}]
-                     (assert-user-and-vocab! tx vocab-id user-id)
-                     (let [pre-maintainers (fetch-vocab-maintainer-ids tx vocab-id)]
-                       (crud/remove-join! tx :vocab_maintainers
-                                          {:vocab_layer_id vocab-id
-                                           :user_id user-id})
-                       (audit-vocab-maintainers-change! tx vocab-id pre-maintainers))))
+                           (vocab-item/delete-items! tx vi-ids)))
+                       (let [grants (->> (psc/q tx {:select [:project_id]
+                                                    :from [:project_vocabs]
+                                                    :where [:= :vocab_layer_id eid]
+                                                    :order-by [:project_id]})
+                                         (mapv :project_id))
+                             pre-by-project (into {} (map (fn [pid] [pid (fetch-project-vocab-ids tx pid)])) grants)]
+                         (crud/delete-by-id! tx :vocab_layers eid)
+                         (doseq [pid grants]
+                           (let [row (psc/fetch-by-id tx :projects pid)
+                                 pre (clojure.core/get pre-by-project pid [])]
+                             (psaw/record-audit-write! tx :projects pid :update
+                                                       (assoc row :vocabs pre)
+                                                       (assoc row :vocabs (vec (remove #(= % eid) pre)))))))
+                       eid)))

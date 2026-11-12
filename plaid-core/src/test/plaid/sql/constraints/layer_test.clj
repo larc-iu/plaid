@@ -62,7 +62,7 @@
         tok (into {} (for [[w b e] words] [w (id (create-token admin-request wl txt b e))]))
         sw (into {} (for [[w b e] words] [w (id (create-token admin-request swl txt b e))]))
         span (into {} (for [[w] words] [w (id (create-span admin-request lemma [(tok w)] w))]))
-        vocab (id (create-vocab-layer admin-request "Lex"))
+        vocab (id (create-vocab-layer admin-request proj "Lex"))
         _ (link-vocab-to-project admin-request proj vocab)
         item (id (create-vocab-item admin-request vocab "cat"))]
     {:proj proj :doc doc :tl tl :sl sl :wl wl :swl swl :lemma lemma :deps deps :txt txt

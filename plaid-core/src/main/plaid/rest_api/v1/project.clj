@@ -7,10 +7,20 @@
             [plaid.server.project-removal :as removal]
             [reitit.coercion.malli]
             [plaid.sql.operation :as op]
-            [plaid.sql.project :as prj]))
+            [plaid.sql.project :as prj]
+            [plaid.sql.vocab-layer :as vocab]))
 
 (defn get-project-id [{params :parameters}]
   (-> params :path :id))
+
+(defn- refusal-response
+  "A thrown 4xx refusal (an ex-info with `:code`) as a response, with the
+  fields its `:plaid/body` adds. Anything else is thrown on."
+  [e]
+  (let [{:keys [code] :plaid/keys [body]} (ex-data e)]
+    (if (and code (< code 500))
+      {:status code :body (merge {:error (ex-message e)} body)}
+      (throw e))))
 
 (def project-routes
   ["/projects"
@@ -61,17 +71,28 @@
                              :body (prj/get db id)}
                             (prm/op-error result {:message nil}))))}
 
-     :delete {:summary "Delete a project. It is gone at once, and what it holds is removed in the background."
+     :delete {:summary (str "Delete a project, with its own vocabularies. It is gone at once, and what it holds is "
+                            "removed in the background. Refused (409) while another project links one of its "
+                            "vocabularies, for everyone, admins included, the body counting those projects as "
+                            "<body>other-projects</body> without naming them. With <query>dry-run</query> true nothing "
+                            "is written: the same refusals, or {vocabularies: [{id, name}]}, the vocabularies the "
+                            "delete would take.")
               :middleware [[pra/wrap-maintainer-required get-project-id]]
-              :handler (fn [{{{:keys [id]} :path} :parameters datasource :plaid/datasource user-id :user/id db :db}]
-                         (let [{:keys [success] :as result} (prj/delete db id user-id)]
-                           (if success
-                             (do
-                               ;; After the commit: inside an atomic batch the
-                               ;; delete may still roll back.
-                               (op/after-commit! #(removal/schedule! datasource id))
-                               {:status 204})
-                             (prm/op-error result))))}}]
+              :parameters {:query [:map [:dry-run {:optional true} :boolean]]}
+              :handler (fn [{{{:keys [id]} :path {:keys [dry-run]} :query} :parameters
+                             datasource :plaid/datasource user-id :user/id db :db}]
+                         (if dry-run
+                           (try
+                             {:status 200 :body (prj/delete-preview db id)}
+                             (catch clojure.lang.ExceptionInfo e (refusal-response e)))
+                           (let [{:keys [success] :as result} (prj/delete db id user-id)]
+                             (if success
+                               (do
+                                 ;; After the commit: inside an atomic batch the
+                                 ;; delete may still roll back.
+                                 (op/after-commit! #(removal/schedule! datasource id))
+                                 {:status 204})
+                               (prm/op-error result {:extras? true})))))}}]
 
    ;; Documents (keyset-paginated)
    ["/:id/documents"
@@ -109,39 +130,55 @@
                  :parameters parameters
                  :handler (handler prj/revoke-role)}}])]
 
-   ;; Vocabs
-   ["/:id"
-    {:middleware [[pra/wrap-maintainer-required get-project-id]]}
-    ["/vocabs/:vocab-id"
-     ;; Linking or unlinking changes who reaches the vocabulary, which a
-     ;; delegated token may not do (`pra/token-scope-gate`).
-     {:plaid/vocabulary-admin true
-      :post {:summary "Link a vocabulary to a project. Requires maintaining both the project and the vocabulary."
-             ;; The link grants every member of the project access to the
-             ;; vocabulary, so only someone who already controls who touches
-             ;; it may make one. Unlinking only withdraws that grant, so it
-             ;; stays with the project maintainer.
-             :middleware [[pra/wrap-vocab-maintainer-required
-                           (fn [{p :parameters}] (-> p :path :vocab-id))
-                           "Only a maintainer of this vocabulary can link it to a project."]]
-             :parameters {:path [:map [:id :uuid] [:vocab-id :uuid]]}
-             :handler (fn [{{{:keys [id vocab-id]} :path} :parameters db :db user-id :user/id :as req}]
-                        (let [{:keys [success] :as result} (prj/add-vocab db id vocab-id user-id)]
-                          (if success
-                            {:status 204}
-                            (prm/op-error result {:message nil}))))}
+   ;; Vocabs. A vocabulary belongs to one project, its home; another project
+   ;; may link it as a borrower, read only. Linking or unlinking changes who
+   ;; reaches the vocabulary, which a delegated token may not do
+   ;; (`pra/token-scope-gate`).
+   ["/:id/vocabs/:vocab-id"
+    {:plaid/vocabulary-admin true
+     :parameters {:path [:map [:id :uuid] [:vocab-id :uuid]]}
+     :post {:summary (str "Link a vocabulary to a project, which then borrows it: its members read it and link "
+                          "tokens to its entries, and change none. Requires maintainer rights on the project and "
+                          "any role on the vocabulary's home project. Linking a vocabulary to its home changes "
+                          "nothing.")
+            ;; The link grants every member of the project read access to
+            ;; the vocabulary, so the person making it must reach the
+            ;; vocabulary's home themselves.
+            :middleware [[pra/wrap-maintainer-required get-project-id]
+                         [pra/wrap-vocab-home-member-required
+                          (fn [{p :parameters}] (-> p :path :vocab-id))
+                          "Linking a vocabulary needs access to the project it belongs to."]]
+            :handler (fn [{{{:keys [id vocab-id]} :path} :parameters db :db user-id :user/id :as req}]
+                       (if (= (str id) (str (vocab/home-of db vocab-id)))
+                         {:status 204}
+                         (let [{:keys [success] :as result} (prj/add-vocab db id vocab-id user-id)]
+                           (if success
+                             {:status 204}
+                             (prm/op-error result {:message nil})))))}
 
-      :delete {:summary "Unlink a vocabulary to a project."
-               :parameters {:path [:map [:id :uuid] [:vocab-id :uuid]]}
-               :handler (fn [{{{:keys [id vocab-id]} :path} :parameters db :db user-id :user/id :as req}]
-                          (let [{:keys [success documents] :as result}
-                                (prj/remove-vocab db id vocab-id user-id)]
-                            (if success
-                              ;; Unlinking drops the vocabulary's links in this
-                              ;; project's documents and bumps their versions.
-                              (prm/assoc-document-versions-in-header
-                               {:status 204} db documents)
-                              (prm/op-error result {:message nil}))))}}]]
+     :delete {:summary (str "Unlink a vocabulary from a project that borrows it, removing its links in that "
+                            "project's documents. Requires maintainer rights on that project, or on the "
+                            "vocabulary's home project, whose maintainers may end any project's borrowing. Refused "
+                            "(409) for the vocabulary's home, which cannot unlink its own vocabulary. With "
+                            "<query>dry-run</query> true nothing is written: the same refusals, or {links}, the "
+                            "number of links the unlink would remove.")
+              :middleware [[pra/wrap-vocab-unlink-required get-project-id (fn [{p :parameters}] (-> p :path :vocab-id))]]
+              :parameters {:query [:map [:dry-run {:optional true} :boolean]]}
+              :handler (fn [{{{:keys [id vocab-id]} :path {:keys [dry-run]} :query} :parameters
+                             db :db user-id :user/id :as req}]
+                         (if dry-run
+                           (try
+                             {:status 200 :body (prj/remove-vocab-preview db id vocab-id)}
+                             (catch clojure.lang.ExceptionInfo e (refusal-response e)))
+                           (let [{:keys [success documents] :as result}
+                                 (prj/remove-vocab db id vocab-id user-id)]
+                             (if success
+                               ;; Unlinking drops the vocabulary's links in this
+                               ;; project's documents and bumps their versions,
+                               ;; named only where the caller may read them.
+                               (prm/assoc-document-versions-in-header
+                                {:status 204} db (pra/readable-document-ids req documents))
+                               (prm/op-error result {:message nil})))))}}]
 
    ;; Config endpoints
    ["/:id"

@@ -18,8 +18,7 @@
                                     admin-request with-admin api-call assert-status with-clean-db]]
             [plaid.test-helpers :as h :refer [evict-pool! id create-test-project create-test-document create-text-layer
                                               create-token-layer-opts create-span-layer create-relation-layer
-                                              create-text create-vocab-layer create-vocab-item
-                                              link-vocab-to-project]])
+                                              create-text create-vocab-layer create-vocab-item]])
   (:import (java.time Instant)))
 
 (use-fixtures :once with-db with-mount-states with-rest-handler with-admin)
@@ -57,8 +56,7 @@
   "One relation and one vocabulary link in a tiny project, then ANALYZE."
   []
   (let [p (create-test-project admin-request "Tiny")
-        v (id (create-vocab-layer admin-request "Tiny vocab"))
-        _ (link-vocab-to-project admin-request p v)
+        v (id (create-vocab-layer admin-request p "Tiny vocab"))
         {:keys [sl rl toks]} (annotated-document p v "d" 2)
         sps (ids (call :post "/api/v1/spans/bulk" (mapv (fn [t] {:span-layer-id sl :tokens [t] :value "x"}) toks)))
         item (id (create-vocab-item admin-request v "x"))]
@@ -74,8 +72,7 @@
   "`n` relations, vocabulary links and link tokens of another document,
   put in with plain inserts after the statistics were taken."
   [proj n]
-  (let [v (id (create-vocab-layer admin-request "Other vocab"))
-        _ (link-vocab-to-project admin-request proj v)
+  (let [v (id (create-vocab-layer admin-request proj "Other vocab"))
         {:keys [doc sl rl toks]} (annotated-document proj v "Other" 2)
         [s1 s2] (ids (call :post "/api/v1/spans/bulk" (mapv (fn [t] {:span-layer-id sl :tokens [t] :value "x"}) toks)))
         item (id (create-vocab-item admin-request v "y"))
@@ -91,13 +88,16 @@
 
 (defn- run-route
   "Stale statistics, a project with `n-parents` of something to delete
-  (`setup`), `n` bystanders, then the route (`route`), timed."
-  [setup route n]
+  (`setup`), `n` bystanders, then the route (`route`), timed. The
+  vocabulary's home is the project, or with `borrowed?` another project the
+  project borrows it from."
+  [setup route n borrowed?]
   (stale-statistics!)
   (try
     (let [proj (create-test-project admin-request "P")
-          vocab (id (create-vocab-layer admin-request "V"))
-          _ (link-vocab-to-project admin-request proj vocab)
+          home (if borrowed? (create-test-project admin-request "Home") proj)
+          vocab (id (create-vocab-layer admin-request home "V"))
+          _ (when borrowed? (assert-status 204 (call :post (str "/api/v1/projects/" proj "/vocabs/" vocab))))
           fx (setup (annotated-document proj vocab "D" n-parents))
           _ (bystanders! proj n)
           _ (evict-pool!)
@@ -125,9 +125,11 @@
                            (mapv (fn [i] {:vocab-layer-id vocab :form (str "f" i)}) (range n-parents))))))
 
 (def ^:private routes
-  "[name, setup, route]: each route deletes `n-parents` cascade parents."
-  [["unlink a vocabulary from the project" links-on
-    (fn [{:keys [proj vocab]}] (call :delete (str "/api/v1/projects/" proj "/vocabs/" vocab)))]
+  "[name, setup, route, borrowed?]: each route deletes `n-parents` cascade
+  parents. Only a borrower can unlink a vocabulary."
+  [["unlink a vocabulary from the project that borrows it" links-on
+    (fn [{:keys [proj vocab]}] (call :delete (str "/api/v1/projects/" proj "/vocabs/" vocab)))
+    true]
    ["merge entries" items-in
     (fn [{:keys [survivor items]}] (call :post (str "/api/v1/vocab-items/" survivor "/merge") {:losers items}))]
    ["repair a single-span layer" (comp (fn [fx] (spans-on (dissoc fx :spans))) spans-on)
@@ -153,10 +155,10 @@
 
 (defmacro ^:private route-test [sym n]
   `(deftest ~sym
-     (let [[label# setup# route#] (nth routes ~n)
+     (let [[label# setup# route# borrowed#] (nth routes ~n)
            small# (atom nil)
-           _# (with-clean-db #(reset! small# (run-route setup# route# few-bystanders)))
-           [resp# ms#] (run-route setup# route# bystanders)]
+           _# (with-clean-db #(reset! small# (run-route setup# route# few-bystanders borrowed#)))
+           [resp# ms#] (run-route setup# route# bystanders borrowed#)]
        (testing label#
          (is (< (:status (first @small#)) 300) (pr-str (:body (first @small#))))
          (is (< (:status resp#) 300) (pr-str (:body resp#)))

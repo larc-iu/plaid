@@ -146,12 +146,7 @@
     (testing "and removed by another case"
       (assert-no-content (api-call admin-request {:method :delete
                                                   :path (str "/api/v1/projects/" pid "/writers/USER2@example.com")}))
-      (is (empty? (-> (h/get-test-project admin-request pid) :body :project/writers)))))
-  (let [vid (-> (h/create-vocab-layer admin-request "Case Vocab") :body :id)]
-    (testing "a vocabulary maintainer added by another case is the account"
-      (assert-no-content (api-call admin-request {:method :post
-                                                  :path (str "/api/v1/vocab-layers/" vid "/maintainers/USER2@Example.com")}))
-      (is (some #{"user2@example.com"} (-> (h/get-vocab-layer admin-request vid) :body :vocab/maintainers))))))
+      (is (empty? (-> (h/get-test-project admin-request pid) :body :project/writers))))))
 
 (deftest invites-take-any-case
   (let [pid (h/create-test-project admin-request "Invite Case")

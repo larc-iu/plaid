@@ -1,10 +1,11 @@
 (ns plaid.rest-api.v1.scoped-vocabulary-admin-test
   "A delegated (scoped) token cannot act on a vocabulary as a whole, even for a
-  requester who maintains it or is an admin: no rename or delete of the
-  vocabulary, no maintainer added or removed, no link to or unlink from a
-  project, no restore of an entry, no config change (REV-R-SEC Q1, ruled (c)
-  2026-09-27). Entry-level rename, merge and delete stay open to it, so an
-  assistant can still tidy a shared lexicon. Sessions are unaffected. See
+  requester who maintains it (its home project) or is an admin: no rename,
+  move or delete of the vocabulary, no list of its borrowers, no link to or
+  unlink from a project, no restore of an entry, no config change (REV-R-SEC
+  Q1, ruled (c) 2026-09-27, the move and borrowers added with the home model
+  of 2026-11-12). Entry-level rename, merge and delete stay open to it, with
+  the home in scope, so an assistant can still tidy a lexicon. Sessions are unaffected. See
   `plaid.rest-api.v1.auth` \"Scoped tokens\"."
   (:require [clojure.test :refer [deftest is testing use-fixtures]]
             [plaid.fixtures :as fix :refer [with-db with-mount-states with-clean-db
@@ -21,7 +22,7 @@
 (use-fixtures :each with-clean-db)
 
 (def ^:private refusal
-  "A delegated token cannot rename or delete a vocabulary, change its maintainers or settings, link or unlink it, or restore its entries.")
+  "A delegated token cannot rename, move or delete a vocabulary, change its settings, link or unlink it, or restore its entries.")
 
 (defn- scoped [user-id & project-ids]
   (let [token (auth/issue-delegated-token! fix/db "fake-secret" user-id project-ids)]
@@ -38,19 +39,16 @@
 (defn- enc [ts] (java.net.URLEncoder/encode (str ts) "UTF-8"))
 
 (defn- world!
-  "Projects P and P2, both maintained by user2. A vocabulary V that user2
-  created (so user2 maintains it and the admin does not), with user1 as a
-  second maintainer, a config value, linked to P only. Entries kai, kaj,
-  kak and kal, and a token in P linked to kaj."
+  "Projects P and P2, both maintained by user2. A vocabulary V of P that
+  user2 created, with a config value, that no other project borrows.
+  Entries kai, kaj, kak and kal, and a token in P linked to kaj."
   []
   (let [p (h/create-test-project admin-request "Scoped P")
         p2 (h/create-test-project admin-request "Scoped P2")
         _ (doseq [pid [p p2]]
             (fix/assert-no-content (call admin-request :post (str "/api/v1/projects/" pid "/maintainers/user2@example.com"))))
-        v (id (h/create-vocab-layer user2-request "Lexicon"))
-        _ (fix/assert-no-content (call user2-request :post (str "/api/v1/vocab-layers/" v "/maintainers/user1@example.com")))
+        v (id (h/create-vocab-layer user2-request p "Lexicon"))
         _ (fix/assert-no-content (call user2-request :put (str "/api/v1/vocab-layers/" v "/config/igt/colour") "red"))
-        _ (fix/assert-no-content (h/link-vocab-to-project admin-request p v))
         entry (fn [form] (id (call user2-request :post "/api/v1/vocab-items" {:vocab-layer-id v :form form})))
         [kai kaj kak kal] (mapv entry ["kai" "kaj" "kak" "kal"])
         tl (id (h/create-text-layer admin-request p "Text"))
@@ -64,19 +62,23 @@
      :ts (java.time.Instant/now)}))
 
 (defn- vocabulary-actions
-  "Every vocabulary-level action, as [label method path body], on `w`."
+  "Every vocabulary-level action, as [label method path body], on `w`. In
+  this order a session can do them all: P2 borrows V and gives it back,
+  and V moves to P2, which leaves P borrowing it, so P lets it go before it
+  is deleted."
   [{:keys [p p2 v kai ts]}]
   (let [vl (str "/api/v1/vocab-layers/" v)]
     [["rename the vocabulary" :patch vl {:name "Renamed"}]
      ["delete the vocabulary" :delete vl nil]
-     ["add a maintainer" :post (str vl "/maintainers/admin@example.com") nil]
-     ["remove a maintainer" :delete (str vl "/maintainers/user1@example.com") nil]
      ["set a config value" :put (str vl "/config/igt/colour") "blue"]
      ["remove a config value" :delete (str vl "/config/igt/colour") nil]
      ["link it to a project" :post (str "/api/v1/projects/" p2 "/vocabs/" v) nil]
-     ["unlink it from a project" :delete (str "/api/v1/projects/" p "/vocabs/" v) nil]
+     ["list its borrowers" :get (str vl "/borrowers") nil]
+     ["unlink it from a project" :delete (str "/api/v1/projects/" p2 "/vocabs/" v) nil]
      ["restore an entry" :post (str vl "/items/" kai "/restore?as-of=" (enc ts)) nil]
-     ["preview an entry's restore" :post (str vl "/items/" kai "/restore?as-of=" (enc ts) "&dry-run=true") nil]]))
+     ["preview an entry's restore" :post (str vl "/items/" kai "/restore?as-of=" (enc ts) "&dry-run=true") nil]
+     ["move it to another project" :post (str vl "/move") {:project-id p2}]
+     ["unlink it from its old home" :delete (str "/api/v1/projects/" p "/vocabs/" v) nil]]))
 
 (defn- vocabulary-state
   "What the vocabulary-level actions would change, read straight from the
@@ -84,13 +86,12 @@
   [v]
   {:name (:name (psc/q1 fix/db {:select [:name] :from [:vocab_layers] :where [:= :id v]}))
    :config (:config (psc/q1 fix/db {:select [:config] :from [:vocab_layers] :where [:= :id v]}))
-   :maintainers (set (map :user_id (psc/q fix/db {:select [:user_id] :from [:vocab_maintainers]
-                                                  :where [:= :vocab_layer_id v]})))
+   :home (:project_id (psc/q1 fix/db {:select [:project_id] :from [:vocab_layers] :where [:= :id v]}))
    :projects (set (map :project_id (psc/q fix/db {:select [:project_id] :from [:project_vocabs]
                                                   :where [:= :vocab_layer_id v]})))})
 
 (deftest a-scoped-token-cannot-act-on-a-vocabulary-as-a-whole
-  (doseq [[requester user-id] [["a maintainer of the vocabulary and both projects" "user2@example.com"]
+  (doseq [[requester user-id] [["a maintainer of the vocabulary's project and the other" "user2@example.com"]
                                ["an admin" "admin@example.com"]]]
     (testing requester
       (let [{:keys [p p2 v] :as w} (world!)
@@ -133,8 +134,7 @@
                                ["the admin's session" admin-request]]]
     (testing requester
       (let [{:keys [v] :as w} (world!)
-            ;; Deleting the vocabulary goes last, and the maintainer added
-            ;; is the admin, whom user2 then still has beside them.
+            ;; Deleting the vocabulary goes last.
             actions (let [[rename del & more] (vocabulary-actions w)]
                       (concat [rename] more [del]))]
         (doseq [[label method path body] actions]
@@ -146,8 +146,8 @@
   "The routes that act on a vocabulary as a whole, as [method template]."
   #{[:patch "/api/v1/vocab-layers/:id"]
     [:delete "/api/v1/vocab-layers/:id"]
-    [:post "/api/v1/vocab-layers/:id/maintainers/:user-id"]
-    [:delete "/api/v1/vocab-layers/:id/maintainers/:user-id"]
+    [:post "/api/v1/vocab-layers/:id/move"]
+    [:get "/api/v1/vocab-layers/:id/borrowers"]
     [:put "/api/v1/vocab-layers/:id/config/:namespace/:config-key"]
     [:delete "/api/v1/vocab-layers/:id/config/:namespace/:config-key"]
     [:post "/api/v1/vocab-layers/:id/items/:item-id/restore"]

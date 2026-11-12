@@ -5,7 +5,7 @@
 
   The central claim, as for documents: the vocabulary read at the time of
   any past write equals what the live read served right after that write,
-  entries, fields, maintainers and order included."
+  entries, fields, home and order included."
   (:require [clojure.test :refer [deftest is testing use-fixtures]]
             [plaid.fixtures :refer [db with-db with-mount-states with-rest-handler
                                     admin-request user1-request with-admin with-test-users
@@ -40,11 +40,16 @@
                  :path (str "/api/v1/vocab-layers/" vocab "/audit"
                             (when query (str "?" query)))}))
 
+(defn- home!
+  "A project to be a vocabulary's home."
+  []
+  (create-test-project admin-request "Linked"))
+
 (defn- linked-doc!
-  "A project using `vocab`, one document with one token. Returns ids."
-  [vocab]
-  (let [proj (create-test-project admin-request "Linked")
-        tl (-> (create-text-layer admin-request proj "Text") :body :id)
+  "One document with one token in `proj`, which links `vocab` (its home, or
+  a borrower). Returns ids."
+  [proj vocab]
+  (let [tl (-> (create-text-layer admin-request proj "Text") :body :id)
         tkl (-> (create-token-layer admin-request tl "Words") :body :id)
         _ (assert-no-content (link-vocab-to-project admin-request proj vocab))
         doc (create-test-document admin-request proj "Doc")
@@ -53,7 +58,7 @@
     {:proj proj :doc doc :token tok}))
 
 (deftest the-vocabulary-at-any-past-write-is-what-the-live-read-served
-  (let [vocab (-> (create-vocab-layer admin-request "Lexicon") :body :id)
+  (let [vocab (-> (create-vocab-layer admin-request (home!) "Lexicon") :body :id)
         snapshots (atom [])
         snap! (fn [] (swap! snapshots conj [(latest-op-ts) (live-vocab vocab)]))
         _ (snap!)
@@ -73,11 +78,9 @@
         _ (assert-ok (bulk-update-vocab-items admin-request [{:id b1 :form "aa"}
                                                              {:id b2 :metadata [{:op "delete" :path ["pos"]}]}]))
         _ (snap!)
-        ;; Added out of alphabetical order: the live read and the history
-        ;; must agree on the order anyway.
-        _ (assert-no-content (add-vocab-maintainer admin-request vocab "user2@example.com"))
-        _ (snap!)
-        _ (assert-no-content (add-vocab-maintainer admin-request vocab "user1@example.com"))
+        ;; A move: the history must name the home the vocabulary had then.
+        _ (assert-ok (api-call admin-request {:method :post :path (str "/api/v1/vocab-layers/" vocab "/move")
+                                              :body {:project-id (create-test-project admin-request "New home")}}))
         _ (snap!)
         _ (assert-ok (api-call admin-request {:method :patch :path (str "/api/v1/vocab-layers/" vocab)
                                               :body {:name "Lexicon 2"}}))
@@ -96,6 +99,9 @@
         (let [r (vocab-at admin-request vocab ts)]
           (assert-ok r)
           (is (= expected (:body r))))))
+    (testing "the move shows in the history"
+      (is (not= (:vocab/project (second (first @snapshots)))
+                (:vocab/project (live-vocab vocab)))))
     (testing "at now it is the live read"
       (is (= (live-vocab vocab)
              (:body (vocab-at admin-request vocab (java.time.Instant/now))))))
@@ -111,8 +117,9 @@
       (assert-status 400 (vocab-at admin-request vocab "yesterday")))))
 
 (deftest one-entry-at-a-time-also-after-its-delete
-  (let [vocab (-> (create-vocab-layer admin-request "Lexicon") :body :id)
-        other (-> (create-vocab-layer admin-request "Other") :body :id)
+  (let [proj (home!)
+        vocab (-> (create-vocab-layer admin-request proj "Lexicon") :body :id)
+        other (-> (create-vocab-layer admin-request proj "Other") :body :id)
         kai (-> (create-vocab-item admin-request vocab "kai" {"gloss" "eat"}) :body :id)
         t1 (latest-op-ts)
         _ (assert-no-content (delete-vocab-item admin-request kai))
@@ -132,8 +139,9 @@
                                                   :path (str "/api/v1/vocab-layers/" vocab "/items/" kai)})))))
 
 (deftest putting-a-deleted-entry-back
-  (let [vocab (-> (create-vocab-layer admin-request "Lexicon") :body :id)
-        {:keys [doc token]} (linked-doc! vocab)
+  (let [proj (home!)
+        vocab (-> (create-vocab-layer admin-request proj "Lexicon") :body :id)
+        {:keys [doc token]} (linked-doc! proj vocab)
         kai (-> (create-vocab-item admin-request vocab "kai" {"gloss" "eat" "pos" "V"}) :body :id)
         link (-> (create-vocab-link admin-request kai [token]) :body :id)
         _ (is (some? link))
@@ -170,8 +178,9 @@
       (assert-status 400 (restore-item! admin-request vocab kai "2020-01-01T00:00:00Z")))))
 
 (deftest setting-a-living-entry-back
-  (let [vocab (-> (create-vocab-layer admin-request "Lexicon") :body :id)
-        {:keys [doc token]} (linked-doc! vocab)
+  (let [proj (home!)
+        vocab (-> (create-vocab-layer admin-request proj "Lexicon") :body :id)
+        {:keys [doc token]} (linked-doc! proj vocab)
         kai (-> (create-vocab-item admin-request vocab "kai" {"gloss" "eat"}) :body :id)
         _ (create-vocab-link admin-request kai [token])
         t (latest-op-ts)
@@ -192,8 +201,9 @@
              (:body (restore-item! admin-request vocab kai t :dry-run true)))))))
 
 (deftest the-vocabulary-log
-  (let [vocab (-> (create-vocab-layer admin-request "Lexicon") :body :id)
-        {:keys [token]} (linked-doc! vocab)
+  (let [proj (home!)
+        vocab (-> (create-vocab-layer admin-request proj "Lexicon") :body :id)
+        {:keys [token]} (linked-doc! proj vocab)
         kai (-> (create-vocab-item admin-request vocab "kai") :body :id)
         _ (create-vocab-link admin-request kai [token])
         _ (assert-ok (update-vocab-item admin-request kai "kay"))
@@ -208,8 +218,10 @@
                    (get-in (vocab-audit admin-request vocab "order=asc") [:body :entries])))))))
 
 (deftest who-may-read-and-restore
-  (let [vocab (-> (create-vocab-layer admin-request "Lexicon") :body :id)
-        {:keys [proj]} (linked-doc! vocab)
+  (let [home (home!)
+        vocab (-> (create-vocab-layer admin-request home "Lexicon") :body :id)
+        proj (create-test-project admin-request "Borrower")
+        _ (linked-doc! proj vocab)
         kai (-> (create-vocab-item admin-request vocab "kai") :body :id)
         t (latest-op-ts)
         _ (assert-no-content (delete-vocab-item admin-request kai))]
@@ -218,19 +230,23 @@
       (assert-status 403 (item-at user1-request vocab kai t))
       (assert-status 403 (vocab-audit user1-request vocab)))
     (assert-no-content (add-project-writer admin-request proj "user1@example.com"))
-    (testing "a writer of a project it is shared with reads its past"
+    (testing "a writer of a project that borrows it reads its past"
       (assert-ok (vocab-at user1-request vocab t))
       (assert-ok (item-at user1-request vocab kai t))
       (assert-ok (vocab-audit user1-request vocab)))
     (testing "but cannot put an entry back"
       (assert-status 403 (restore-item! user1-request vocab kai t))
       (assert-status 403 (restore-item! user1-request vocab kai t :dry-run true)))
-    (testing "a maintainer of the vocabulary can"
-      (assert-no-content (add-vocab-maintainer admin-request vocab "user1@example.com"))
+    (testing "nor can a writer of its home"
+      (assert-no-content (add-project-writer admin-request home "user1@example.com"))
+      (assert-status 403 (restore-item! user1-request vocab kai t)))
+    (testing "a maintainer of its home can"
+      (assert-no-content (api-call admin-request {:method :post
+                                                  :path (str "/api/v1/projects/" home "/maintainers/user1@example.com")}))
       (assert-ok (restore-item! user1-request vocab kai t)))))
 
 (deftest as-of-is-refused-where-it-means-nothing
-  (let [vocab (-> (create-vocab-layer admin-request "Lexicon") :body :id)
+  (let [vocab (-> (create-vocab-layer admin-request (home!) "Lexicon") :body :id)
         kai (-> (create-vocab-item admin-request vocab "kai") :body :id)
         t (enc (latest-op-ts))]
     (doseq [[method path] [[:patch (str "/api/v1/vocab-layers/" vocab "?as-of=" t)]
@@ -244,8 +260,9 @@
 (deftest every-entry-change-moves-the-vocabularys-time
   ;; What a client checks before reusing its copy of the entries
   ;; (perf-vocab-cache): every write that changes an entry moves it.
-  (let [vocab (-> (create-vocab-layer admin-request "Lexicon") :body :id)
-        {:keys [token]} (linked-doc! vocab)
+  (let [proj (home!)
+        vocab (-> (create-vocab-layer admin-request proj "Lexicon") :body :id)
+        {:keys [token]} (linked-doc! proj vocab)
         stamp #(:vocab/time-modified (live-vocab vocab))
         moved? (fn [label write!]
                  (let [before (stamp)]
@@ -271,9 +288,10 @@
         (is (= before (stamp)))))))
 
 (deftest one-entrys-log
-  (let [vocab (-> (create-vocab-layer admin-request "Lexicon") :body :id)
-        other-vocab (-> (create-vocab-layer admin-request "Other") :body :id)
-        {:keys [token]} (linked-doc! vocab)
+  (let [proj (home!)
+        vocab (-> (create-vocab-layer admin-request proj "Lexicon") :body :id)
+        other-vocab (-> (create-vocab-layer admin-request proj "Other") :body :id)
+        {:keys [token]} (linked-doc! proj vocab)
         kai (-> (create-vocab-item admin-request vocab "kai" {"gloss" "eat"}) :body :id)
         mata (-> (create-vocab-item admin-request vocab "mata") :body :id)
         _ (create-vocab-link admin-request kai [token])

@@ -49,9 +49,7 @@
         s1 (id (create-span req span-layer [t1] "a"))
         s2 (id (create-span req span-layer [t2] "b"))
         relation (id (create-relation req relation-layer s1 s2 "r"))
-        vocab (id (create-vocab-layer req (str label " vocab")))
-        _ (assert-status 204 (api-call req {:method :post
-                                            :path (str "/api/v1/projects/" project "/vocabs/" vocab)}))
+        vocab (id (create-vocab-layer req project (str label " vocab")))
         item (id (create-vocab-item req vocab "alpha"))]
     {:project project :document document :text-layer text-layer :token-layer token-layer
      :span-layer span-layer :relation-layer relation-layer :text text :tokens [t1 t2]

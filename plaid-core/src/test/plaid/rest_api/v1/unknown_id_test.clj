@@ -119,7 +119,7 @@
   ;; still there, and an admin still reads it.
   (let [p (create-test-project admin-request "Real")
         d (create-test-document admin-request p "Doc")
-        v (-> (api-call admin-request {:method :post :path "/api/v1/vocab-layers" :body {:name "V"}})
+        v (-> (api-call admin-request {:method :post :path "/api/v1/vocab-layers" :body {:name "V" :project-id p}})
               :body :id)]
     (assert-status 204 (api-call admin-request {:method :delete :path (str "/api/v1/documents/" d)}))
     (assert-status 204 (api-call admin-request {:method :delete :path (str "/api/v1/vocab-layers/" v)}))

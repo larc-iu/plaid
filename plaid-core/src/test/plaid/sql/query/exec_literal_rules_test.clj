@@ -50,7 +50,7 @@
         sl   (id (h/create-span-layer admin-request tokl "gloss"))
         doc  (h/create-test-document admin-request pid "Doc 1")
         text (id (h/create-text admin-request txtl doc "aa bb 3.0"))
-        vl   (id (h/create-vocab-layer admin-request "Lex"))
+        vl   (id (h/create-vocab-layer admin-request pid "Lex"))
         _    (h/link-vocab-to-project admin-request pid vl)
         t1   (id (h/create-token admin-request tokl text 0 2))
         t2   (id (h/create-token admin-request tokl text 3 5))

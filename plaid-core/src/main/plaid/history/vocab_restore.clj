@@ -99,7 +99,7 @@
   [db vocab-id item-id ts user-id]
   (submit-operation!
    [tx db {:type :vocab-item/restore
-           :project nil
+           :project (:project_id (psc/q1 db {:select [:project_id] :from [:vocab_layers] :where [:= :id vocab-id]}))
            :document nil
            :description (str "Restore vocab item " item-id " to " (hread/->ts-iso ts))
            :user user-id}]

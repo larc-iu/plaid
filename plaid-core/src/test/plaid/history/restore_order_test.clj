@@ -59,8 +59,7 @@
         sl (id-of (create-span-layer admin-request word "Lemma"))
         ml (id-of (create-span-layer admin-request morph "Gloss"))
         rl (id-of (create-relation-layer admin-request sl "Deps"))
-        vocab (id-of (create-vocab-layer admin-request "Lex"))
-        _ (link-vocab-to-project admin-request proj vocab)
+        vocab (id-of (create-vocab-layer admin-request proj "Lex"))
         item (id-of (create-vocab-item admin-request vocab "aa"))
         doc-id (create-test-document admin-request proj "Doc")
         text-id (id-of (create-text admin-request tl doc-id "aa bb cc dd"))]
@@ -238,8 +237,7 @@
                       rl (id-of (create-relation-layer admin-request sl (str nm " relations")))]
                   {:tl tl :word word :sub sub :sl sl :subl subl :rl rl :body body}))
         stacks [(stack "igt" "aa bb cc") (stack "ud" "dd ee ff") (stack "umr" "gg hh ii")]
-        vocab (id-of (create-vocab-layer admin-request "Lex"))
-        _ (link-vocab-to-project admin-request proj vocab)
+        vocab (id-of (create-vocab-layer admin-request proj "Lex"))
         item (id-of (create-vocab-item admin-request vocab "aa"))
         doc-id (create-test-document admin-request proj "Doc")
         built (vec (for [{:keys [tl word sub sl subl rl body] :as st} stacks]

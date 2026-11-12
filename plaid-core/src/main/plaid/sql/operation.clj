@@ -224,8 +224,9 @@
 
   `:audit/projects` is likewise the op's `:project` and the projects of
   the bumped documents (`:projects`). The bus fans out by project, so a
-  vocabulary write (`:project nil`) that bumps documents reaches their
-  projects' subscribers only through this union.
+  vocabulary write (whose `:project` is the vocabulary's home) that bumps
+  documents of a borrowing project reaches that project's subscribers only
+  through this union.
 
   `:audit/documents-by-project` names, for each project in
   `:audit/projects`, the documents of that project in `:audit/documents`.
@@ -432,9 +433,8 @@
 
   An ordinary `:update` audit row, not a sentinel change_type like
   `:doc-version-bump`: this is a real column write with no ETL consumer
-  that needs to tell it apart, and `fold-rows` merges post-images key-wise
-  so the `:maintainers` fold carried by the synthetic vocab_layers rows
-  survives it. No-ops on a missing row (a layer dropped earlier in the
+  that needs to tell it apart, and `fold-rows` merges post-images key-wise.
+  No-ops on a missing row (a layer dropped earlier in the
   same op) and on an unchanged value, via `update-by-id!`.
 
   Deliberately NOT called for vocab_links: a link is an annotation on a

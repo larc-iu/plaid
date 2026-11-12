@@ -1,0 +1,11 @@
+;; A vocabulary belongs to one project, its home (2026-11-12): every
+;; vocabulary is given the project that links it (by a fixed rule when several
+;; do), each of its maintainers who does not maintain that project is made a
+;; maintainer there, and `vocab_maintainers` goes. Code, not SQL, so each
+;; vocabulary's home is an audited operation under that project, and so the
+;; table rebuild can run with foreign keys off. Refuses to run while a
+;; vocabulary no project links exists (see plaid.sql.vocab-home).
+{:ns plaid.sql.vocab-home
+ :up-fn "up"
+ :down-fn "down"
+ :transaction? false}
