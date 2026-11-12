@@ -667,6 +667,20 @@ def add_model_arguments(parser, default_service_id: Optional[str] = None) -> Non
                         if default_service_id else 'Registered service id; set one per model to run several')
     parser.add_argument('--service-name', default=None,
                         help='Display name (default is the service plus the model)')
+    add_model_pool_argument(parser)
+
+
+def add_model_pool_argument(parser) -> None:
+    """``--model-pool NAME``, the model key a service draws on, which
+    :func:`setup_service` declares in the service's extras (``model-pool`` on
+    the wire). The job worker asks core how busy that pool is before each
+    model call and waits while people use it. Its own function so a model
+    caller that does not use :func:`add_model_arguments` (the assistants and
+    the job worker in plaid-agent) takes the same flag with the same help."""
+    parser.add_argument('--model-pool', default=None, metavar='NAME',
+                        help='A name for the model key this service draws on. Services and the job '
+                             'worker that share a key use the same name, so the worker waits while '
+                             'they work.')
 
 
 def add_timeout_argument(parser) -> None:
@@ -679,7 +693,8 @@ def add_timeout_argument(parser) -> None:
 
 
 def setup_service(service, args) -> ChatModel:
-    """Build the model, take the operator's identity overrides, and keep the
+    """Build the model, take the operator's identity overrides, declare the
+    model pool in the service's extras when one is named, and keep the
     provider key out of everything a requester sees. Returns the model, which
     it has also set as ``service.model``."""
     service.model = ChatModel(args.model, api_base=args.api_base, api_key=args.api_key,
@@ -689,5 +704,7 @@ def setup_service(service, args) -> ChatModel:
     if args.service_id:
         service.service_id = args.service_id
     service.service_name = args.service_name or f'{service.service_name} ({args.model})'
+    if args.model_pool:
+        service.extras['model_pool'] = args.model_pool
     print(f'Model: {args.model}' + (f' via {args.api_base}' if args.api_base else ''))
     return service.model

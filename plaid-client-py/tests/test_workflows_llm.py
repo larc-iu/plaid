@@ -266,7 +266,8 @@ def test_setup_service_takes_the_operators_identity_overrides():
 
     args = types.SimpleNamespace(model='ollama/llama3.1', api_base=None, api_key='sk-flag',
                                  temperature=0.0, max_tokens=None, timeout=60,
-                                 service_id='llm-analyzer-llama', service_name=None)
+                                 service_id='llm-analyzer-llama', service_name=None,
+                                 model_pool=None)
     svc = _Service()
     model = llm.setup_service(svc, args)
     assert svc.model is model and model.model == 'ollama/llama3.1'
