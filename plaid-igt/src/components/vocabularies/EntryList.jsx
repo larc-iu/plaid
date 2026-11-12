@@ -8,6 +8,9 @@ import {
   Replace,
   List,
   ListTree,
+  Bot,
+  Check,
+  Trash2,
 } from 'lucide-react';
 import { Button } from '@ui/components/ui/button';
 import { SearchInput, ListCount, ListPager, SortHeader } from '@ui/components/shared/list-search';
@@ -37,6 +40,14 @@ export const EntryList = ({
   emptyField,
   emptyCount,
   offTagsetIds,
+  // The machine drafts (Status machine): how many, whether the list shows
+  // them alone, the toggle's address, and the two actions over every one the
+  // list shows (null where this person may not).
+  machineCount = 0,
+  machineOnly = false,
+  machineTo = null,
+  onMarkReviewed = null,
+  onDeleteDrafts = null,
   items,
   fieldNames,
   hasGloss,
@@ -157,6 +168,39 @@ export const EntryList = ({
             <AlertTriangle className="h-3 w-3" />
             {offTagsetIds.size.toLocaleString()} outside tagset
           </button>
+        )}
+        {machineCount > 0 && machineTo && (
+          <Link
+            to={machineTo(!machineOnly)}
+            aria-current={machineOnly ? 'true' : undefined}
+            title={machineOnly ? 'Show every entry' : 'Show only the machine drafts'}
+            className={cn(
+              'inline-flex w-fit items-center gap-1 rounded-md px-1.5 py-0.5 text-xs text-muted-foreground no-underline hover:underline',
+              machineOnly ? 'bg-accent' : 'bg-muted',
+            )}
+          >
+            <Bot className="h-3 w-3" />
+            {countOf(machineCount, 'machine draft')}
+          </Link>
+        )}
+        {machineOnly && (onMarkReviewed || onDeleteDrafts) && (
+          <div className="flex flex-wrap items-center gap-2">
+            {onMarkReviewed && (
+              <Button variant="outline" size="sm" className="h-7" onClick={onMarkReviewed}>
+                <Check className="h-3.5 w-3.5" /> Mark reviewed
+              </Button>
+            )}
+            {onDeleteDrafts && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 text-destructive hover:text-destructive"
+                onClick={onDeleteDrafts}
+              >
+                <Trash2 className="h-3.5 w-3.5" /> Delete
+              </Button>
+            )}
+          </div>
         )}
       </div>
 

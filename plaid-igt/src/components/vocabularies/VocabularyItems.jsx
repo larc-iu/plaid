@@ -38,6 +38,8 @@ import {
   statusFieldKey,
   itemLabel,
   morphTypeOf,
+  planDeleteRefs,
+  MACHINE_STATUS,
 } from '@/domain/vocabDictionary';
 import { dropPrecedent } from '@/domain/precedentCache';
 import { metadataPatchTo } from '@/domain/metadataPatch';
@@ -67,6 +69,8 @@ import {
 import { useEntryList } from './useEntryList';
 import { useVocabEntries } from './useVocabEntries';
 import { useEntryDelete } from './useEntryDelete';
+import { countLinksTo, isMachineDraft, sendDeleteDrafts, sendMarkReviewed } from './machineDrafts';
+import { countOf } from '@ui/lib/plural.js';
 import { useSenseMoves } from './useSenseMoves';
 import { EntryList } from './EntryList';
 import { assistantProjectOf } from '@/domain/vocabProject';
@@ -135,7 +139,7 @@ export const VocabularyItems = ({
   const [itemParam, setItemParam, itemHref] = useDetailParam('item', {
     companions: ITEM_COMPANIONS,
   });
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const selectedId = itemParam === 'new' ? NEW_ID : itemParam;
   const isNew = selectedId === NEW_ID;
   const newParent = itemParam === 'new' ? searchParams.get('parent') : null;
@@ -189,6 +193,7 @@ export const VocabularyItems = ({
     sendInTurn,
     sendPlanned,
     commitMetadata,
+    foldPatches,
   } = entries;
 
   // Size the sticky left pane to fit from its own top to the viewport bottom, so
@@ -295,6 +300,28 @@ export const VocabularyItems = ({
     if (!emptyField || emptyCount === 0) dispatch({ type: 'scope/clearEmptyOnly' });
   }, [emptyField, emptyCount]);
   const emptyOnly = scope.emptyOnly && !!emptyField && emptyCount > 0;
+
+  // The machine drafts (Status `machine`, what a job writes on the entries it
+  // makes), listed on their own while the address says `?status=machine`, so
+  // a job's report can link there. With none left the address drops it, and
+  // the list is every entry again.
+  const machineIds = useMemo(
+    () => new Set(items.filter((it) => isMachineDraft(it, statusKey)).map((it) => it.id)),
+    [items, statusKey],
+  );
+  const machineAsked = searchParams.get('status') === MACHINE_STATUS;
+  const machineOnly = machineAsked && machineIds.size > 0;
+  useEffect(() => {
+    if (loading || !machineAsked || machineIds.size > 0) return;
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete('status');
+        return next;
+      },
+      { replace: true },
+    );
+  }, [loading, machineAsked, machineIds, setSearchParams]);
 
   // An entry made a moment ago is known by a pending id until the server
   // answers (see the writes below), and `?item=` can still hold it.
@@ -420,6 +447,8 @@ export const VocabularyItems = ({
     scope,
     emptyOnly,
     offTagsetIds,
+    machineOnly,
+    machineIds,
     fieldNames,
     searchTextOf,
     emptyOf,
@@ -428,6 +457,70 @@ export const VocabularyItems = ({
     tree,
     selectedId,
   });
+
+  // ---- the machine drafts the list shows: marked reviewed, or deleted ----
+  // The toggle's address: this one with `?status=machine` on or off.
+  const machineTo = (on) => {
+    const next = new URLSearchParams(searchParams);
+    if (on) next.set('status', MACHINE_STATUS);
+    else next.delete('status');
+    const query = next.toString();
+    return `${pathname}${query ? `?${query}` : ''}`;
+  };
+  // Every draft the list shows, on every page, the search on top included.
+  const shownDrafts = () => list.filteredItems.filter((it) => machineIds.has(it.id));
+  const handleMarkReviewed = async () => {
+    const shown = shownDrafts();
+    if (!shown.length) return;
+    const confirmed = await confirm({
+      title: `Mark ${countOf(shown.length, 'entry', 'entries')} reviewed?`,
+      confirmLabel: 'Mark reviewed',
+    });
+    if (!confirmed) return;
+    foldPatches(
+      shown.map((it) => ({ id: it.id, metadata: { ...it.metadata, [statusKey]: 'reviewed' } })),
+    );
+    // An open draft shows what was stored: filled again, unless typed in.
+    unseedUnlessTyped();
+    const { error } = await sendMarkReviewed({
+      sendPlanned,
+      client,
+      vocabularyId,
+      statusKey,
+      ids: shown.map((it) => settledId(it.id)),
+    });
+    if (error) notifyError(error, 'Not marked reviewed');
+  };
+  const handleDeleteDrafts = async () => {
+    const shown = shownDrafts();
+    if (!shown.length) return;
+    const ids = shown.map((it) => settledId(it.id));
+    const links = (await vocabLinked()) ? await countLinksTo(client, ids) : 0;
+    const confirmed = await confirm({
+      title: `Delete ${countOf(shown.length, 'entry', 'entries')}?`,
+      description: links
+        ? `${countOf(links, 'link')} to ${shown.length === 1 ? 'it' : 'them'} ${links === 1 ? 'is' : 'are'} removed.`
+        : undefined,
+      confirmLabel: 'Delete',
+      destructive: true,
+    });
+    if (!confirmed) return;
+    const gone = new Set(shown.map((it) => it.id));
+    const patches = planDeleteRefs(items, fields, [...gone]);
+    if (selectedId && gone.has(selectedId)) goItem(null, { replace: true });
+    if (patches.length) foldPatches(patches);
+    setItems((prev) => prev.filter((it) => !gone.has(it.id)));
+    const { error } = await sendDeleteDrafts({
+      sendPlanned,
+      client,
+      user,
+      vocabularyId,
+      fields,
+      statusKey,
+      ids,
+    });
+    if (error) notifyError(error, 'Entries not deleted');
+  };
 
   // The pending id a create has sent the URL to, until a render shows it
   // there: a refusal can arrive first.
@@ -896,6 +989,11 @@ export const VocabularyItems = ({
         emptyField={emptyField}
         emptyCount={emptyCount}
         offTagsetIds={offTagsetIds}
+        machineCount={machineIds.size}
+        machineOnly={machineOnly}
+        machineTo={machineTo}
+        onMarkReviewed={canEdit ? handleMarkReviewed : null}
+        onDeleteDrafts={canManage ? handleDeleteDrafts : null}
         items={items}
         fieldNames={fieldNames}
         hasGloss={hasGloss}

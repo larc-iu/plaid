@@ -18,6 +18,8 @@ export function useEntryList({
   scope,
   emptyOnly,
   offTagsetIds,
+  machineOnly = false,
+  machineIds = null,
   fieldNames,
   searchTextOf,
   emptyOf,
@@ -47,7 +49,11 @@ export function useEntryList({
     () =>
       sortVocabItems(
         filterVocabItems(
-          scope.offTagsetOnly ? items.filter((it) => offTagsetIds.has(it.id)) : items,
+          items.filter(
+            (it) =>
+              (!scope.offTagsetOnly || offTagsetIds.has(it.id)) &&
+              (!machineOnly || machineIds.has(it.id)),
+          ),
           {
             query: scope.search,
             field: scope.field,
@@ -65,6 +71,8 @@ export function useEntryList({
       scope.search,
       scope.field,
       scope.offTagsetOnly,
+      machineOnly,
+      machineIds,
       emptyOnly,
       fieldNames,
       searchTextOf,
@@ -103,7 +111,7 @@ export function useEntryList({
   // page this vocabulary was left on survives the mount; jump the list back to
   // top when the page changes.
   useResetOnChange(
-    `${scope.search}|${scope.field}|${emptyOnly}|${scope.offTagsetOnly}|${sort.key}|${sort.dir}|${treeView}`,
+    `${scope.search}|${scope.field}|${emptyOnly}|${scope.offTagsetOnly}|${machineOnly}|${sort.key}|${sort.dir}|${treeView}`,
     () => setPage(0),
   );
   useEffect(() => {
