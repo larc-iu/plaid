@@ -350,7 +350,8 @@ The usual drafting service is a language model working from the words and their 
 
 Sentences that already have a graph are skipped.
 **Overwrite existing graphs** redrafts only graphs a service wrote, including what a person deleted from them, and keeps any sentence with work a person made or accepted.
-The report names each sentence that could not be drafted and why, and **Stop** ends a run early.
+While a run writes, a banner at the top of the document shows its progress, and its **Stop** ends the run early.
+The report names each sentence that could not be drafted and why.
 A run stops early when the model gives no answer for two sentences in a row.
 
 == Compare

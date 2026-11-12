@@ -590,9 +590,11 @@ An analysis service writes its glosses into the morpheme field whose lexicon fie
 With no such field the dialog asks for one.
 
 A run over a long document takes minutes.
-The dialog ticks off the steps as they finish, and you can close it: the **Auto-analyze** button shows the elapsed time until the run ends.
+The dialog closes when the run starts, and a banner at the top of the document lists the steps, ticks them off as they finish and shows the progress and elapsed time of the step under way.
 Editing is paused while the run writes.
-**Stop** ends the run at the step it is on, and what that step wrote stays.
+**Stop** on the banner ends the run at the step it is on, and what that step wrote stays.
+Leaving the document ends the run after the step under way, and reopening it says which steps did not run.
+Closing or reloading the tab asks first.
 When the run finishes, a message says what was done.
 
 Then review the result with **Ctrl/Cmd+Enter**, which accepts a whole word, **Ctrl/Cmd+Backspace**, which discards its proposal, and **Ctrl/Cmd+Shift+↑/↓**, which jumps between the words that still have unconfirmed material.
@@ -908,12 +910,14 @@ Some tasks ship with a built-in method that needs no service at all.
 
 Every service run works the same way.
 A button in the header of the panel its results land in opens a dialog with the **Method** to use, that method's options, and the button that starts the run.
-A run keeps going if you close the dialog, and the button shows how long it has been going and how far it has got.
+The dialog closes when the run starts.
 
 A run that writes to the document makes it read-only until it finishes, and only one such run goes at a time.
-Speech detection writes nothing, so it can run while you work.
+A banner at the top of the document shows the run on every tab: its progress, what it is doing and how long it has been going.
+Its button spins until the run ends.
 A run also outlives the page that started it: reopen the document and the run is picked up where it got to.
-**Stop**, on the banner or in the dialog, ends a run, and whatever it wrote stays.
+**Stop** on the banner ends a run, and whatever it wrote stays.
+Speech detection writes nothing, so it can run while you work, and its dialog shows its progress and **Stop** instead of the banner.
 A run that asks a model about each sentence stops early when the model gives no answer for two sentences in a row.
 
 There are six integration points:

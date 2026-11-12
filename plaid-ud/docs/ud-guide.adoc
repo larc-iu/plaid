@@ -611,10 +611,11 @@ A maintainer can make one the default for its task under **Settings → Services
 * **Tokenization** splits the saved text into sentences, tokens and words. The built-in method uses the browser's own segmentation and is always available.
 * **Parsing** fills in lemmas, parts of speech, features and dependency relations. There is no built-in method, so it needs a connected service, such as the bundled Stanza parser. Sentences a person has annotated are left alone unless you say otherwise.
 
-**Tokenize** and **Parse** each open a dialog with the **Method** to use and its options.
-While a run writes to a document, the document is read-only and says so at the top.
-A run keeps going if you close the dialog or the tab, and reopening the document picks it up.
-**Stop** ends a run, and whatever it wrote stays. A parse that stops partway can be run again to finish.
+**Tokenize** and **Parse** each open a dialog with the **Method** to use and its options, which closes when the run starts.
+While a run writes to a document, the document is read-only, and a banner at the top shows the run's progress and how long it has been going.
+A run keeps going if you leave the document or close the tab, and reopening the document picks it up.
+Closing or reloading the tab asks first.
+**Stop** on the banner ends a run, and whatever it wrote stays. A parse that stops partway can be run again to finish.
 
 Everything a service produces is marked in violet until a person confirms it (see <<_machine_vs_human_annotations>>).
 A run that changed nothing says so.
