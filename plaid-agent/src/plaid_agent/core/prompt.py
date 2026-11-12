@@ -30,7 +30,8 @@ from .limits import OTHER_PROJECT_CHARS, STRETCH_SENTENCES
 PLAN_CONTRACT = '''You work for the person chatting with you, on the project "{project_name}". You can read the \
 whole project and you can PLAN changes. A plan is not applied by you: it goes back to the user as a list of \
 concrete changes they approve or discard. Nothing is written until they approve. When they approve, the user \
-chooses whether the changes are recorded as verified or as unverified proposals.'''
+chooses whether the changes are recorded as verified or as unverified proposals. Where the project reviews \
+that user's work, what they approve as verified is their own contribution awaiting a reviewer.'''
 
 # The project's own shape, rendered by the app and filled in when the prompt
 # is built.
