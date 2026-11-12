@@ -68,6 +68,14 @@ def _calls(doc):
         call(14, 'link_entry', {'document': doc, 'refs': ['s1.w1.m1'], 'entry_form': 'nothing-like-it'}),
         call(15, 'discard_plan', {}),
         call(16, 'run_code', {'code': 'print(1)'}),
+        # Refusals of the reads and the links (REV-J-B2 S4): an id that names
+        # nothing, and a new: id no entry staged here has.
+        call(17, 'lexicon_entry', {'entry_id': 'nope'}),
+        call(18, 'lexicon_entry', {'entry_id': 'new:v1:zz#9'}),
+        call(19, 'link_entry', {'document': doc, 'refs': ['s1.w1.m1'], 'entry_id': 'nope'}),
+        call(20, 'link_entry', {'document': doc, 'refs': ['s1.w1.m1'], 'entry_id': 'new:v1:zz#9'}),
+        call(21, 'read_lexicon', {'lexicon': 'No such lexicon'}),
+        call(22, 'analyses_of', {'form': 'ka', 'document': 'No such document'}),
     ]
 
 
@@ -80,10 +88,34 @@ def test_no_job_tool_result_speaks_of_a_conversation_or_another_tool(monkeypatch
         return reply(calls=_calls('Story')) if n == 1 else reply('Done.')
     model = use(monkeypatch, Model(answer))
     # A read that breaks: the tool's own fault, told to the model.
-    monkeypatch.setitem(toolkit._IMPL, 'lexicon_entry', lambda ws, **kw: 1 / 0)
+    real = toolkit._IMPL['concordance']
+    monkeypatch.setitem(toolkit._IMPL, 'concordance', lambda ws, **kw: 1 / 0)
     runner(job).document('d1')
+    monkeypatch.setitem(toolkit._IMPL, 'concordance', real)
     offered = [t['function']['name'] for t in toolkit.job_tools(list(tasks))]
     results = [m['content'] for c in model.calls for m in c['kwargs']['messages'] if m.get('role') == 'tool']
     assert len(results) == len(_calls('Story'))
     bad = [(r, _faults(r, offered)) for r in results if _faults(r, offered)]
     assert not bad, bad
+
+
+@pytest.mark.parametrize('tasks', COMBOS, ids=['+'.join(c) for c in COMBOS])
+def test_no_job_prompt_speaks_of_a_conversation_or_another_tool(tasks):
+    """The job's whole system prompt for each task set, over a project with a
+    tagset longer than the prompt lists (REV-J-B2 S4)."""
+    from job_fixtures import job_project
+    from fixtures import FakeClient
+    from plaid_agent.igt.project import load_project
+    from plaid_agent.igt.prompt import PROMPT_TAGSET_VALUES, build_job_prompt
+    raw = job_project()
+    tagsets = raw['config']['igt']['tagsets']
+    name = next(iter(tagsets))
+    tagsets[name]['values'] = [{'value': f'T{i}'} for i in range(PROMPT_TAGSET_VALUES + 5)]
+    project = load_project(FakeClient(project=raw), raw['id'])
+    text = build_job_prompt(project, list(tasks))
+    offered = [t['function']['name'] for t in toolkit.job_tools(list(tasks))]
+    assert 'Tagsets:' in text and 'more' in text, 'the long tagset is in the prompt, cut'
+    # A job's prompt says how a stretch ends, with a one-line reply nobody
+    # reads: the word itself is the job's.
+    faults = [f for f in _faults(text, offered) if f.lower() not in ('reply', 'replies')]
+    assert not faults, (tasks, faults)

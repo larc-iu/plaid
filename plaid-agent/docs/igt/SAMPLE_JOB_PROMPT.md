@@ -28,7 +28,7 @@ Project shape:
 - Word fields: Gloss
 - Morpheme fields: Morph Gloss
 - Sentence fields: Translation
-- Tagsets: the user sees a value outside a field's list as invalid, so use the listed spellings, and write an unlisted value only where no listed one means the same thing.
+- Tagsets: use the listed spellings, and write an unlisted value only where no listed one means the same thing.
   "Leipzig" on Morph Gloss. A grammatical tag, written in capitals or digits, must be a listed value, and so must a known abbreviation written in lowercase beside a tag in the same morpheme (the pfv of sbj:3.pfv). A lexical gloss, an ordinary word in lowercase or in a script without capitals, may be anything. A composite value joins its parts with '.' or ':'.
     PL: plural
     ERG

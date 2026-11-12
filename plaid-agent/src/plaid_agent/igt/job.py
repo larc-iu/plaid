@@ -390,6 +390,14 @@ class JobWorkspace(Workspace):
         held = self.staged_count()
         return f'[Staged: {_n(held, "change")}.]' if held else '[Staged: nothing yet.]'
 
+    def entry_id_note(self) -> str:
+        made = 'create_entry, or a list of candidates' if 'link' in self.tasks else 'a list of candidates'
+        return f'entry_id takes only an id a tool gave ({made}).'
+
+    def unknown_new_entry(self, entry_id: str) -> str:
+        return (f'No entry staged in this stretch has id {entry_id}. Name an entry made before it by its form, '
+                'with its number if several share it ("gam#2"), as read_lexicon shows it.')
+
     @staticmethod
     def passes_up(e: BaseException) -> bool:
         """A tool's failure that is not the model's to hear of: core

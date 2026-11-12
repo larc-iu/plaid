@@ -1111,7 +1111,15 @@ def time_head(doc: IgtDoc, recording: Optional[Tuple[bool, Optional[float]]] = N
     return (' | ' + '; '.join(bits)) if bits else ''
 
 
-def tagset_lines(project: IgtProject, max_values: Optional[int] = None) -> List[str]:
+#: The first line of the tagsets in the chat's prompt, and what follows a
+#: list cut short (a job's prompt says its own, ``prompt.build_job_prompt``).
+TAGSET_LEAD = ('Tagsets: the user sees a value outside a field\'s list as invalid, so use the listed spellings, '
+               'and write an unlisted value only where no listed one means the same thing.')
+TAGSET_MORE = ' (project_overview lists them all)'
+
+
+def tagset_lines(project: IgtProject, max_values: Optional[int] = None, lead: str = TAGSET_LEAD,
+                 more: str = TAGSET_MORE) -> List[str]:
     """The tagsets in use, a block each: the fields it holds, the rule its
     mode sets, and its values, so the model proposes the project's own
     spellings. Empty when nothing is governed. Nothing is enforced on a
@@ -1134,15 +1142,14 @@ def tagset_lines(project: IgtProject, max_values: Optional[int] = None) -> List[
             use(v['id'], t, f'entry field {name}')
     if not groups:
         return []
-    lines = ['Tagsets: the user sees a value outside a field\'s list as invalid, so use the listed spellings, '
-             'and write an unlisted value only where no listed one means the same thing.']
+    lines = [lead]
     by_id = {v['id']: v['name'] for v in project.vocabs}
     for (owner, name), (t, where) in groups.items():
         label = f'"{name}"' + (f' (lexicon {by_id[owner]})' if owner else '')
         lines.append(f'  {label} on {", ".join(where)}. {mode_rule(t)}')
         vl = value_lines(t, max_values)
         if max_values is not None and len(t.get('values') or []) > max_values:
-            vl[-1] += ' (project_overview lists them all)'
+            vl[-1] += more
         lines.extend('    ' + line for line in vl)
     return lines
 

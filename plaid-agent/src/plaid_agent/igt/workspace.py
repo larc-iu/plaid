@@ -551,6 +551,17 @@ class Workspace(BaseWorkspace):
             return f'"{item.get("form") or item["id"]}"'
         return self.view(v, removed=True).label(item['id'])
 
+    # What a refusal of an entry_id says of ids, the chat's (a job's
+    # workspace words its own).
+
+    def entry_id_note(self) -> str:
+        return _ENTRY_ID_IS
+
+    def unknown_new_entry(self, entry_id: str) -> str:
+        return (f'No entry in this plan has id {entry_id}. A new: id names an entry only within the plan that '
+                'created it. Once that plan is approved, name the entry by its form, with its number if several '
+                'share it ("gam#2"), as read_lexicon shows it.')
+
     def find_entry(self, form: Optional[str], lexicon: Optional[str], entry_id: Optional[str],
                    gloss: Optional[str] = None):
         """-> ('existing', item) | ('new', key). Errors list candidates.
@@ -566,10 +577,7 @@ class Workspace(BaseWorkspace):
             if entry_id.startswith('new:'):
                 # A model passed the id an earlier message's plan gave a new
                 # entry (2026-10-12 survey).
-                raise ToolError(f'No entry in this plan has id {entry_id}. A new: id names an entry only within '
-                                'the plan that created it. Once that plan is approved, name the entry by its '
-                                'form, with its number if several share it ("gam#2"), as read_lexicon shows it.',
-                                kind='not-found')
+                raise ToolError(self.unknown_new_entry(entry_id), kind='not-found')
             # A value one of the entry's fields holds, which reads like an id,
             # or the source id an import stamped (an import's
             # "cldfEntry=e107/e107-1", which read_lexicon printed until the
@@ -585,11 +593,12 @@ class Workspace(BaseWorkspace):
                             name = view.label(it['id'])
                             part = '' if str(val).strip() == entry_id.strip() else 'part of '
                             what = 'import stamp' if k in ENTRY_IMPORT_STAMP_KEYS else 'field'
-                            raise ToolError(f'"{entry_id}" is {part}the {k} {what} of {name}, not an id. Name it with '
-                                            f'entry_form {name}, as read_lexicon numbers it. {_ENTRY_ID_IS}',
+                            raise ToolError(f'"{entry_id}" is {part}the {k} {what} of {name}, not an id. Name it '
+                                            f'with entry_form {name}, as read_lexicon numbers it. '
+                                            f'{self.entry_id_note()}',
                                             kind='invalid-argument')
-            raise ToolError(f'No lexicon entry with id {entry_id}. {_ENTRY_ID_IS} Name an entry by its form with '
-                            'entry_form ("gam", "gam#2", "kwatha#1.2" for a sense), as read_lexicon shows it.',
+            raise ToolError(f'No lexicon entry with id {entry_id}. {self.entry_id_note()} Name an entry by its form '
+                            'with entry_form ("gam", "gam#2", "kwatha#1.2" for a sense), as read_lexicon shows it.',
                             kind='not-found')
 
         if not form:

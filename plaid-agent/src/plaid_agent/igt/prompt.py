@@ -8,7 +8,7 @@ what run_code is for. Everything here is IGT's own.
 from ..core import prompt as shared, sandbox, webtools
 from ..core.guidelines import section as guidelines_section
 from ..core.limits import OVERVIEW_DOCS
-from .project import IgtProject, SCOPES, lexicon_label, tagset_lines
+from .project import TAGSET_LEAD, TAGSET_MORE, IgtProject, SCOPES, lexicon_label, tagset_lines
 
 # Values of one tagset shown in the system prompt. Project_overview lists the rest.
 PROMPT_TAGSET_VALUES = 120
@@ -142,11 +142,13 @@ def lexicon_focus_note(name: str) -> str:
             f'Open another vocabulary only when the question names it or asks you to compare.')
 
 
-def shape_lines(project: IgtProject, max_tagset_values: int = PROMPT_TAGSET_VALUES) -> list:
+def shape_lines(project: IgtProject, max_tagset_values: int = PROMPT_TAGSET_VALUES, tagset_lead: str = TAGSET_LEAD,
+                tagset_more: str = TAGSET_MORE) -> list:
     """The project's shape as the prompt states it: its fields, its tagsets,
     its orthographies and its lexicons. The whole prompt says it of the
     project the user is in, and a turn that may read other projects says it
-    of each of them too, more briefly."""
+    of each of them too, more briefly. A job's prompt words the tagsets'
+    lead line and their cut for a job (``tagset_lead``, ``tagset_more``)."""
     lines = []
     for scope in SCOPES:
         fs = project.fields_by_scope(scope)
@@ -154,7 +156,7 @@ def shape_lines(project: IgtProject, max_tagset_values: int = PROMPT_TAGSET_VALU
             lines.append(f'- {scope} fields: ' + ', '.join(f.name for f in fs))
     if not project.morpheme_layer_id:
         lines.append('- No morpheme layer (words cannot be segmented here).')
-    for i, line in enumerate(tagset_lines(project, max_values=max_tagset_values)):
+    for i, line in enumerate(tagset_lines(project, max_values=max_tagset_values, lead=tagset_lead, more=tagset_more)):
         lines.append(('- ' if i == 0 else '') + line)
     lines.append('- Orthographies: ' + (', '.join(project.orthographies) or 'none'))
     lines.append('- Lexicons: ' + (', '.join(lexicon_label(v) for v in project.vocabs) or 'none'))
@@ -263,6 +265,12 @@ def job_system(tasks) -> str:
     })
 
 
+#: The tagsets' first line in a job's prompt: nobody sees the value as the
+#: job stages it, and an off-list one is stored as the job wrote it (SPEC 6.4).
+JOB_TAGSET_LEAD = ('Tagsets: use the listed spellings, and write an unlisted value only where no listed one means '
+                   'the same thing.')
+
+
 #: Every task's prompt, the one the job's version is taken over.
 JOB_TASKS = ('translate', 'gloss', 'link')
 JOB_SYSTEM = job_system(JOB_TASKS)
@@ -274,5 +282,5 @@ def build_job_prompt(project: IgtProject, tasks=JOB_TASKS) -> str:
     alone, the project's shape and its guidelines, whole."""
     from ..core.guidelines import job_section
     out = job_system(tasks).replace('{project_name}', project.name)
-    out = out.replace('{shape}', '\n'.join(shape_lines(project)))
+    out = out.replace('{shape}', '\n'.join(shape_lines(project, tagset_lead=JOB_TAGSET_LEAD, tagset_more='')))
     return out.replace('{guidelines}', job_section(project.guidelines))
