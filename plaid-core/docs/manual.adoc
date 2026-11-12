@@ -2166,7 +2166,7 @@ $ PYTHONPATH=plaid-client-py/src python3 plaid-core/scripts/vocab_home_orphans.p
 ----
 . If it lists any, run the same line with `--apply` at the end. Each such vocabulary gets a project of its own, named after it, whose maintainers are the vocabulary's maintainers. Then run it once more without `--apply`: it must list none.
 . Take the backup and copy it off the machine.
-. Optionally, start the new version on a copy of the database made from that backup, on a spare port, and read its log.
+. Optionally, try the new version on a copy of that backup, as <<Trying an upgrade on a copy>> says.
 . Replace the jar and restart.
 
 A deactivated account is not made a maintainer.
@@ -2178,6 +2178,25 @@ A maintainer of the vocabulary who does not maintain that project is made a main
 If the choice is wrong, move the vocabulary afterwards.
 A migration that rebuilds the audit log keeps the server from answering for a few minutes and cannot be undone, which is why the copy goes off the machine first.
 The database file does not shrink after such a rebuild: to return the space, stop the service, run `+python3 -c "import sqlite3; sqlite3.connect('data/plaid.db').execute('VACUUM')"+`, and start it again.
+
+=== Trying an upgrade on a copy
+
+A copy of the database is started as a server of its own, in a new directory outside the live server's and on a port of its own.
+Never start it beside the live database.
+A server deletes every recording in the `media/` directory next to its database that its database does not know, so a copy started in the live `data/` directory deletes the recordings uploaded since the backup.
+Without a port of its own, it also takes the live server's.
+
+[source,console]
+----
+$ sudo mkdir -p /srv/plaid-trial/data
+$ sudo unzip /srv/plaid/data/backups/plaid-backup-<stamp>.zip -d /srv/plaid-trial/data
+$ printf '[server]\nport = 8090\n' | sudo tee /srv/plaid-trial/data/config.toml
+$ sudo cp plaid-<version>.jar /srv/plaid-trial/
+$ sudo chown -R plaid:plaid /srv/plaid-trial
+$ cd /srv/plaid-trial && sudo -u plaid java -jar plaid-<version>.jar
+----
+
+Read its log as it starts and migrates, stop it with Ctrl+C, and delete `/srv/plaid-trial`.
 
 == Bringing in a class
 
