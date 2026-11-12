@@ -498,7 +498,7 @@ A new vocabulary starts with a few built in:
 * **Status**: how far along the entry is, held to a closed list (machine, draft, reviewed, published). Machine, shown as **Machine draft**, marks an entry an assistant job created (see <<_machine_draft_entries>>). The values machine and published are reserved: neither the tagset editor nor Replace renames or removes them.
 
 You can add your own fields, reorder them, and remove any except Form, Morph Type, Gloss and Status.
-Every vocabulary has a Status field, and its role cannot be changed.
+Every vocabulary has a Status field, and its role, its type and where it is shown cannot be changed.
 A field marked **inline** also shows on each entry's row in the link popover.
 Other fields stay on the entry's own edit form.
 
@@ -909,11 +909,12 @@ A job can take hours, and it goes on after you close the browser.
 
 **Start job**, beside **New document** on the **Documents** tab, on the **Jobs** tab and in a document's header, needs Writer access.
 Its dialog asks for the documents (all of them, or a selection, with the open document chosen when started from one), the tasks, and optional **Instructions** that the model reads with every stretch of sentences.
+A job takes at most 500 documents, so a larger project starts one on a selection: **Select shown** selects every document the search above the list shows.
 The tasks are:
 
 * **Translate**. Writes a free translation for each sentence that has none, and replaces translations made by a machine.
 * **Segment and gloss**. Analyzes each word that has no analysis at all: its morphemes, their types and their glosses.
-* **Link to lexicon**. Links the morphemes it analyzes to lexicon entries. It needs **Segment and gloss**.
+* **Link to lexicon**. Links the morphemes it analyzes to lexicon entries. It needs **Segment and gloss** and a lexicon the project links.
 
 A project has one job at a time.
 Jobs run one after another across the server, and a waiting job's page says how many are ahead of it.
