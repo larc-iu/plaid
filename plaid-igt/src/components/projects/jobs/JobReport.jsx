@@ -79,6 +79,7 @@ export const JobReport = ({ report, projectId, vocabs = [] }) => {
     ['Created', entries.created, entries.createdMore],
     ['Deleted as unlinked', entries.deleted, entries.deletedMore],
     ['Machine drafts with no links', entries.unlinked, entries.unlinkedMore],
+    ['Proposed and not created, as nothing linked them', entries.proposed, entries.proposedMore],
   ].filter(([, list = [], more = 0]) => list.length || more);
 
   return (
@@ -207,7 +208,7 @@ export const JobReport = ({ report, projectId, vocabs = [] }) => {
               <p className="font-medium">{label}</p>
               <ul className="ml-4 list-disc">
                 {list.map((e) => (
-                  <EntryLine key={e.id} entry={e} />
+                  <EntryLine key={e.id ?? `${e.lexicon} ${e.form} ${e.gloss}`} entry={e} />
                 ))}
               </ul>
               <More n={more} noun="entry" />

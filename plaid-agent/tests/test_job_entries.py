@@ -177,3 +177,25 @@ def test_a_draft_with_nothing_on_it_is_deleted_through_the_apps_delete_rules():
         igt_job.execute_plan = real
     assert [o['kind'] for o in staged] == ['delete_entry'] and staged[0]['item_id'] == 'e-unlinked'
     assert [e['id'] for e in out['deleted']] == ['e-unlinked']
+
+
+def test_an_entry_the_model_staged_and_nothing_linked_is_listed_and_not_created(monkeypatch):
+    """J-INT 4: a create_entry no link names is not written, and the report
+    says what the model wanted."""
+    from plaid_agent.core.job import run_job
+    client = JobClient({'d1': document('d1', 'Story', [{'words': ['tok']}])})
+    job = start(client, TASKS)
+
+    def answer(asked, n, kwargs):
+        if n == 1:
+            return reply(calls=[
+                call(1, 'set_analysis', {'document': 'Story', 'ref': 's1.w1',
+                                         'morphemes': [{'form': 'tok', 'type': 'stem',
+                                                        'fields': {'Morph Gloss': 'stone'}}]}),
+                call(2, 'create_entry', {'form': 'tok', 'fields': {'gloss': 'stone'}}),
+            ])
+        return reply('Done.')
+    use(monkeypatch, Model(answer))
+    finished = run_job(job, runner(job))
+    assert not [p for k, p in client.calls if k == 'vocab_items.create']
+    assert finished['report']['entries']['proposed'] == [{'lexicon': 'v1', 'form': 'tok', 'gloss': 'stone'}]

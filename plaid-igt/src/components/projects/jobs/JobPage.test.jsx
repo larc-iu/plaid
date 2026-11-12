@@ -135,6 +135,8 @@ const REPORT = {
     deletedMore: 0,
     unlinkedMore: 0,
     lexicons: ['v1', 'v3'],
+    proposed: [{ lexicon: 'v1', form: 'tok', gloss: 'stone' }],
+    proposedMore: 0,
   },
 };
 
@@ -382,6 +384,9 @@ describe('the job page', () => {
     expect(t).toContain('Machine drafts with no links');
     expect(t).toContain('ra ‘eat’');
     expect(t).not.toContain('Deleted as unlinked');
+    // What the model wanted and nothing linked: listed, never created.
+    expect(t).toContain('Proposed and not created, as nothing linked them');
+    expect(t).toContain('tok ‘stone’');
     expect(byText(report, 'a', 'Machine drafts in Kukama lexicon').getAttribute('href')).toBe(
       '/vocabularies/v1?status=machine',
     );

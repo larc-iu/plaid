@@ -484,12 +484,16 @@ class DiskRounds:
         return True
 
 
-def entries_part(created, deleted, unlinked) -> Dict[str, Any]:
-    """The report's entries part (CONTRACT 5.3), uncut, with ``lexicons``:
-    every lexicon the job created an entry in, in the order first met, so
-    the job page links each one's machine drafts (J-INT)."""
+def entries_part(created, deleted, unlinked, proposed=()) -> Dict[str, Any]:
+    """The report's entries part (CONTRACT 5.3), its three lists uncut, with
+    ``lexicons``: every lexicon the job created an entry in, in the order
+    first met, so the job page links each one's machine drafts (J-INT), and
+    ``proposed``: the entries the model staged that no link it kept named,
+    which were not created (cut here, with ``proposed_more``)."""
+    shown, more = core_job.cut(list(proposed))
     return {'created': created, 'deleted': deleted, 'unlinked': unlinked,
-            'lexicons': list(dict.fromkeys(e['lexicon'] for e in created))}
+            'lexicons': list(dict.fromkeys(e['lexicon'] for e in created)),
+            'proposed': shown, 'proposed_more': more}
 
 
 class IgtRunner:
@@ -518,6 +522,8 @@ class IgtRunner:
         self.harmonize_done: Optional[Dict[str, Any]] = None
         #: document id -> the sentences whose record is in core (their marks)
         self.recorded: Dict[str, Dict[str, Dict[str, int]]] = {}
+        #: (lexicon, form, gloss) -> an entry the model staged and nothing linked
+        self.proposed: Dict[Tuple[Any, Any, Any], Dict[str, Any]] = {}
         #: documents the job has waited for once at least: their defers count
         self.waited: set = set()
         #: document id -> sentences skipped past the cap of the row's list:
@@ -1067,8 +1073,21 @@ class IgtRunner:
                 continue
             kept.append(op)
         keys = {o.get('new_entry_key') for o in kept if o.get('kind') == 'link'}
+        for o in kept:
+            if o.get('kind') == 'create_entry' and o.get('key') not in keys:
+                self.propose(project, o)
         kept = [o for o in kept if o.get('kind') != 'create_entry' or o.get('key') in keys]
         return kept, counts, changed
+
+    def propose(self, project: IgtProject, op: Dict[str, Any]) -> None:
+        """An entry the model staged that nothing it kept links: not
+        created (a job writes no entry nobody uses), and listed in the
+        report so a person sees what the model wanted (J-INT 4)."""
+        v = next((x for x in project.vocabs if x['id'] == op.get('vocab_id')), None)
+        gloss = IgtProject.lexicon_field(v, ROLE_GLOSS) if v else None
+        entry = {'lexicon': op.get('vocab_id'), 'form': op.get('form'),
+                 'gloss': (op.get('metadata') or {}).get(gloss) if gloss else None}
+        self.proposed.setdefault((entry['lexicon'], entry['form'], entry['gloss']), entry)
 
     def machine_status(self, project: IgtProject, ops: List[Dict[str, Any]]) -> None:
         """Every entry the job creates carries Status ``machine``, whatever
@@ -1504,7 +1523,7 @@ class IgtRunner:
                     unlinked.append(e)
                 else:
                     deleted.append({k: e[k] for k in ('id', 'form', 'gloss')})
-        return entries_part(created, deleted, unlinked)
+        return entries_part(created, deleted, unlinked, self.proposed.values())
 
     @staticmethod
     def linked(ws: Workspace, item_id: str) -> bool:
