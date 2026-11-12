@@ -280,6 +280,7 @@
  * @property {string | null} heartbeatAt
  * @property {string | null} finishedAt
  * @property {number} leaseS
+ * @property {boolean} lapsed - Running or stopping with no heartbeat within `leaseS` seconds: its worker has gone silent
  * @property {number | null} ahead
  * @property {JobDocument[]} [documents]
  * @property {number} [documentCount] - On a list's entries: how many documents the job holds

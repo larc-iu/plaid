@@ -3683,7 +3683,10 @@ class JobsResource(_Resource):
 
     def get(self, job_id: str) -> Any:
         """Read one job, with its documents (in the job's order) and, once it
-        has ended, its report. Any reader of its project."""
+        has ended, its report. Any reader of its project. ``lapsed`` is True
+        while it is running or stopping and no heartbeat came within
+        ``lease_s`` seconds (the last at ``heartbeat_at``), on every job read:
+        its worker has gone silent. A read changes nothing."""
         return self._request('GET', f'/api/v1/jobs/{job_id}')
 
     def active(self, project_id: str) -> Any:

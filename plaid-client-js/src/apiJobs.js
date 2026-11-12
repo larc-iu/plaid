@@ -91,7 +91,10 @@ export function jobsApi(client) {
       iterPages(client, `/api/v1/projects/${projectId}/jobs`, { pageSize }),
     /**
      * Read one job, with its documents (in the job's order) and, once it has
-     * ended, its report. Any reader of its project.
+     * ended, its report. Any reader of its project. `lapsed` is true while
+     * it is running or stopping and no heartbeat came within `leaseS`
+     * seconds (the last at `heartbeatAt`), on every job read: its worker has
+     * gone silent. A read changes nothing.
      * @param {string} jobId - The job
      * @returns {Promise<Job>}
      */

@@ -117,6 +117,32 @@
         entries (:entries (:body (call st :get (str "/api/v1/projects/" p "/jobs"))))]
     (is (= [[one 1] [all 2]] (mapv (juxt :job/id :job/document-count) entries)))))
 
+;; A worker that went silent: every read says the lease has lapsed, by the
+;; server's clock, and writes nothing (REV-J-C-3).
+(deftest every-read-says-whether-the-lease-has-lapsed
+  (let [{:keys [p st]} (jh/world!)
+        reads (fn [j]
+                [(:job/lapsed (get-job j))
+                 (:job/lapsed (:body (call st :get (str "/api/v1/projects/" p "/jobs/active"))))
+                 (-> (call st :get (str "/api/v1/projects/" p "/jobs")) :body :entries first :job/lapsed)])
+        j (job-id (start! st p))]
+    (is (= [false false false] (reads j)) "waiting")
+    (claim! jh/worker-a)
+    (is (= [false false false] (reads j)) "running, the lease live")
+    (lapse! j)
+    (is (= [true true true] (reads j)) "running, the lease lapsed")
+    (is (= "running" (:job/state (get-job j))) "a read settles nothing")
+    (is (= "2020-01-01T00:00:00.000000000Z" (:job/heartbeat-at (get-job j))))
+    (fix/assert-ok (heartbeat! j jh/worker-a))
+    (fix/assert-ok (call st :post (str "/api/v1/jobs/" j "/cancel")))
+    (is (= [false false false] (reads j)) "stopping, the lease live")
+    (lapse! j)
+    (is (= [true true true] (reads j)) "stopping, the lease lapsed")
+    (is (= "stopping" (:job/state (get-job j))) "a read settles nothing")
+    (fix/assert-ok (call st :post (str "/api/v1/jobs/" j "/cancel")))
+    (is (= "cancelled" (:job/state (get-job j))) "a second Stop settles it at once")
+    (is (false? (:job/lapsed (get-job j))) "an ended job is not lapsed")))
+
 ;; ------------------------------------------------------------------
 ;; Claim
 ;; ------------------------------------------------------------------

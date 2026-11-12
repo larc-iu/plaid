@@ -1913,6 +1913,7 @@ class _FakeJobs:
                if k not in ('documents', 'report', 'heartbeat_s_at', 'seq', 'core_failed',
                             'worker_id', 'worker_user')}
         out['lease_s'] = _JOB_LEASE_S
+        out['lapsed'] = job['state'] in ('running', 'stopping') and not self._live_lease(job)
         out['ahead'] = (sum(1 for j in self.rows.values()
                             if j['state'] in _JOB_ACTIVE and j['seq'] < job['seq'])
                         if job['state'] == 'waiting' else None)

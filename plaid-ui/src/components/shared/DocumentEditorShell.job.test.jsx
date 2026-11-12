@@ -184,6 +184,43 @@ describe('the job banner', () => {
     await view.unmount();
   });
 
+  // A worker that went silent: core says so on every read (`lapsed`), and a
+  // Stop then ends the job at once (REV-J-C-3).
+  it('says when a running job’s worker has gone silent, without turning, and offers Stop', async () => {
+    client.jobs.active.mockResolvedValue(
+      runningJob({ lapsed: true, heartbeatAt: '2026-11-12T14:05:00Z' }),
+    );
+    await mount('d1');
+    const banner = banners()[0];
+    expect(banner.textContent).toContain('No worker has reported since ');
+    expect(banner.textContent).not.toContain('Sentences 11 to 15 of 40.');
+    expect(banner.querySelector('.animate-spin')).toBe(null);
+    expect(stopButton()).toBeDefined();
+    await view.unmount();
+  });
+
+  it('offers Stop again on a stopping job whose worker has gone silent, which ends it', async () => {
+    client.jobs.active.mockResolvedValue(
+      runningJob({ state: 'stopping', lapsed: true, heartbeatAt: '2026-11-12T14:05:00Z' }),
+    );
+    client.jobs.cancel.mockResolvedValue(runningJob({ state: 'cancelled', lapsed: false }));
+    await mount('d1');
+    expect(banners()[0].textContent).toContain('No worker has reported since ');
+    expect(banners()[0].textContent).not.toContain('Stopping…');
+    client.jobs.active.mockResolvedValue(null);
+    await view.step(() => stopButton().click());
+    await settle();
+    expect(client.jobs.cancel).toHaveBeenCalledWith('j1');
+    expect(banners()).toHaveLength(0);
+    await view.unmount();
+  });
+
+  it('turns while the worker reports', async () => {
+    await mount('d1');
+    expect(banners()[0].querySelector('.animate-spin')).not.toBe(null);
+    await view.unmount();
+  });
+
   it('says a Stop that was refused', async () => {
     const refused = Object.assign(new Error('This job has ended.'), { status: 409 });
     client.jobs.cancel.mockRejectedValueOnce(refused);

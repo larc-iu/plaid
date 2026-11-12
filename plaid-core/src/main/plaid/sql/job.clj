@@ -236,6 +236,10 @@
              :job/heartbeat-at (:heartbeat_at row)
              :job/finished-at (:finished_at row)
              :job/lease-s lease-s
+             ;; Read only: a lapsed job stays as it is until a worker claims
+             ;; it (a resume after a crash) or someone stops it.
+             :job/lapsed (and (contains? #{"running" "stopping"} (:state row))
+                              (not (lease-live? row (Instant/now))))
              :job/ahead (ahead db row)}
       (:documents parts) (assoc :job/documents (mapv row->document (document-rows db (:id row))))
       (:report parts) (assoc :job/report (psc/read-json (:report row))))))

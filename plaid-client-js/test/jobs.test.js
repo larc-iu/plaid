@@ -52,6 +52,7 @@ const WIRE_JOB = {
   "job/waiting-for": null,
   "job/current-document": "d1",
   "job/lease-s": 120,
+  "job/lapsed": false,
   "job/documents": [
     {
       "document-id": "d1",
@@ -100,6 +101,7 @@ test("a person's calls: create, list, get, active, cancel, worker", async () => 
       kind: "budget",
     });
     assert.equal(made.leaseS, 120);
+    assert.equal(made.lapsed, false);
     const listed = await client.jobs.list("p1");
     assert.equal(listed[0].id, "j1");
     assert.equal(listed[0].documentCount, 1, "a list entry counts its documents");

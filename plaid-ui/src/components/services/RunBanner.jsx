@@ -18,7 +18,8 @@ import { formatElapsed, overallPercent } from '../../hooks/useRunProgress.js';
 // The props are the write lock's holder (useWriteLock): `steps` always names
 // at least one, `percent` null is unknown and pulses, `cancel` is Stop.
 // `paused` false leaves out "Editing paused.", for an assistant job, which
-// holds no write lock and leaves the document editable.
+// holds no write lock and leaves the document editable. `still` keeps the
+// icon from turning, for a job whose worker has gone silent.
 const Running = ({ className, ...rest }) => (
   <Loader2 className={cn(className, 'animate-spin')} {...rest} />
 );
@@ -32,6 +33,7 @@ export function RunBanner({
   message,
   cancel,
   paused = true,
+  still = false,
 }) {
   const [elapsedMs, setElapsedMs] = useState(0);
 
@@ -50,7 +52,12 @@ export function RunBanner({
   const overall = overallPercent(stepCount, stepIndex, percent);
 
   return (
-    <Notice tone="info" icon={Running} className="mb-4 px-4 py-3" data-run-banner="">
+    <Notice
+      tone="info"
+      icon={still ? Loader2 : Running}
+      className="mb-4 px-4 py-3"
+      data-run-banner=""
+    >
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
         <p className="font-medium">{label}</p>
         {paused && <p className="text-xs text-muted-foreground">Editing paused.</p>}

@@ -21,6 +21,7 @@ import {
   jobDocumentStateText,
   jobPhaseText,
   jobReasonText,
+  jobSilentText,
   jobStateText,
   jobStoppable,
 } from '@ui/domain/jobs.js';
@@ -151,6 +152,7 @@ const JobStatus = ({ job }) => {
           <span className="text-muted-foreground">{countOf(job.ahead, 'job')} ahead</span>
         )}
       </div>
+      {jobSilentText(job) && <p>{jobSilentText(job)}</p>}
       {failed ? (
         <p>{jobReasonText(job)}</p>
       ) : (

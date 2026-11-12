@@ -20,9 +20,31 @@ export const isJobActive = (job) => ACTIVE.has(job?.state);
 
 /**
  * Whether Stop is offered (to whoever may stop it, `canStopJob`): while the job
- * waits or runs. Once Stop was asked (`stopping`) nothing offers it again.
+ * waits or runs. Once Stop was asked (`stopping`) it is offered again only when
+ * the worker has gone silent (`lapsed`), as core then ends the job at once.
  */
-export const jobStoppable = (job) => job?.state === 'waiting' || job?.state === 'running';
+export const jobStoppable = (job) =>
+  job?.state === 'waiting' ||
+  job?.state === 'running' ||
+  (job?.state === 'stopping' && !!job.lapsed);
+
+const sameDay = (a, b) => a.toDateString() === b.toDateString();
+
+/**
+ * For a job whose worker sent no heartbeat within its lease (core's `lapsed`,
+ * true only while it runs or stops), when it last did, in the viewer's time:
+ * "No worker has reported since 14:05.", with the date when it was not today.
+ * Null for any other job.
+ */
+export const jobSilentText = (job, now = Date.now()) => {
+  if (!job?.lapsed) return null;
+  const at = new Date(job.heartbeatAt ?? '');
+  if (Number.isNaN(at.getTime())) return 'No worker has reported.';
+  const when = sameDay(at, new Date(now))
+    ? at.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    : at.toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' });
+  return `No worker has reported since ${when}.`;
+};
 
 const STATE_WORDS = {
   waiting: 'Waiting',
@@ -89,6 +111,8 @@ export const workerSeen = (worker, now = Date.now()) => {
  * while they are not counted yet or there are none. The banner says nothing
  * about editing: a job holds no write lock, and the document stays editable.
  * Once Stop was asked, its line is the state's word in place of the worker's.
+ * A job whose worker has gone silent says so in its place, and the banner's
+ * icon stops turning (`still`).
  */
 export const bannerProps = (job, documentId) => {
   if (!WORKING.has(job?.state) || !documentId || job.currentDocument !== documentId) return null;
@@ -99,7 +123,10 @@ export const bannerProps = (job, documentId) => {
     label: 'Assistant job',
     startedAt: Number.isFinite(startedAt) ? startedAt : undefined,
     percent,
-    message: job.state === 'stopping' ? jobStateText(job.state) : (job.message ?? null),
+    message:
+      jobSilentText(job) ??
+      (job.state === 'stopping' ? jobStateText(job.state) : (job.message ?? null)),
     paused: false,
+    still: !!job.lapsed,
   };
 };

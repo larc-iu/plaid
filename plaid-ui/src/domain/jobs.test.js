@@ -9,6 +9,7 @@ import {
   jobPhaseText,
   jobReasonText,
   jobStateText,
+  jobSilentText,
   jobStoppable,
   jobTaskText,
   workerSeen,
@@ -55,6 +56,7 @@ describe('bannerProps', () => {
       percent: 25,
       message: 'Sentences 11 to 15 of 40.',
       paused: false,
+      still: false,
     });
   });
 
@@ -104,6 +106,41 @@ describe('jobStoppable', () => {
       ),
     ).toEqual([true, true, false, false, false, false]);
     expect(jobStoppable(null)).toBe(false);
+  });
+
+  // Core settles a stopping job whose worker went silent on a second Stop
+  // (REV-J-C-3), so Stop is offered again then.
+  it('is true again for a stopping job whose worker has gone silent', () => {
+    expect(jobStoppable({ state: 'stopping', lapsed: true })).toBe(true);
+    expect(jobStoppable({ state: 'running', lapsed: true })).toBe(true);
+  });
+});
+
+// A job whose worker sent no heartbeat within its lease (core's `lapsed`).
+describe('a job whose worker has gone silent', () => {
+  const at = '2026-11-12T14:05:00Z';
+  const local = new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const sameDay = Date.parse(at) + 3600_000;
+
+  it('says when its worker last reported, in the viewer’s time', () => {
+    expect(jobSilentText({ state: 'running', lapsed: true, heartbeatAt: at }, sameDay)).toBe(
+      `No worker has reported since ${local}.`,
+    );
+    const days = jobSilentText(
+      { state: 'running', lapsed: true, heartbeatAt: at },
+      Date.parse(at) + 3 * 86_400_000,
+    );
+    expect(days).toMatch(/^No worker has reported since .+\.$/);
+    expect(days).not.toBe(`No worker has reported since ${local}.`);
+    expect(jobSilentText({ state: 'running', lapsed: false, heartbeatAt: at })).toBe(null);
+  });
+
+  it('is said on the banner in place of the worker’s line, which stops turning', () => {
+    for (const state of ['running', 'stopping']) {
+      const props = bannerProps(job({ state, lapsed: true, heartbeatAt: at }), 'd1');
+      expect(props.message).toMatch(/^No worker has reported since /);
+      expect(props.still).toBe(true);
+    }
   });
 });
 

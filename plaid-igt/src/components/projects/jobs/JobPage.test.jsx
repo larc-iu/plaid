@@ -290,6 +290,48 @@ describe('the job page', () => {
     await v.unmount();
   });
 
+  // A worker that went silent (REV-J-C-3): core says so on every read
+  // (`lapsed`), and a Stop ends the job at once, a stopping one included.
+  it('says when a running job’s worker last reported, and offers Stop', async () => {
+    const v = await mount(clientOf(jobOf({ lapsed: true, heartbeatAt: '2026-11-12T14:05:00Z' })));
+    expect(text(v.container.querySelector('[role="status"]'))).toContain(
+      'No worker has reported since ',
+    );
+    expect(stopButton(v.container)).not.toBe(null);
+    await v.unmount();
+  });
+
+  it('offers Stop again on a stopping job whose worker went silent, and shows it stopped', async () => {
+    const client = clientOf(
+      jobOf({ state: 'stopping', lapsed: true, heartbeatAt: '2026-11-12T14:05:00Z' }),
+    );
+    client.jobs.cancel.mockResolvedValue(
+      jobOf({
+        state: 'cancelled',
+        reason: 'cancelled',
+        message: null,
+        lapsed: false,
+        finishedAt: '2026-11-12T14:10:00Z',
+        report: { ...REPORT, state: 'cancelled', stopped: 'without-worker' },
+      }),
+    );
+    const v = await mount(client);
+    const status = () => text(v.container.querySelector('[role="status"]'));
+    expect(status()).toContain('Stopping…');
+    expect(status()).toContain('No worker has reported since ');
+    await v.step(() => stopButton(v.container).click());
+    const confirmStop = all(document.body, '[role="alertdialog"] button').find(
+      (b) => b.textContent.trim() === 'Stop',
+    );
+    await v.step(() => confirmStop.click());
+    await v.step(async () => {});
+    expect(client.jobs.cancel).toHaveBeenCalledWith('j1');
+    expect(status()).toContain('Stopped');
+    expect(status()).not.toContain('No worker has reported');
+    expect(stopButton(v.container)).toBe(null);
+    await v.unmount();
+  });
+
   it('reads a finished job once', async () => {
     vi.useFakeTimers();
     const client = clientOf(jobOf({ state: 'cancelled', finishedAt: '2026-11-12T11:00:00Z' }));

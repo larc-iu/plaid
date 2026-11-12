@@ -28,6 +28,7 @@ WIRE_JOB = {
     'job/waiting-for': None,
     'job/current-document': 'd1',
     'job/lease-s': 120,
+    'job/lapsed': False,
     'job/documents': [{
         'document-id': 'd1', 'name': 'One', 'position': 0, 'state': 'working', 'targets': 4,
         'done': 1, 'last-sentence': 's1', 'counts': {'words': 3, 'links': 2},
@@ -72,6 +73,7 @@ def test_a_persons_calls_create_list_get_active_cancel_worker():
     assert made['documents'][0]['skipped'][0] == {'sentence': 's2', 'sentence_id': 't2',
                                                   'reason': 'failed', 'kind': 'budget'}
     assert made['lease_s'] == 120
+    assert made['lapsed'] is False
     listed = client.jobs.list('p1')
     assert listed[0]['id'] == 'j1'
     assert listed[0]['document_count'] == 1, 'a list entry counts its documents'
@@ -308,6 +310,29 @@ def test_fake_heartbeat_sets_what_is_given_clears_none_and_leaves_the_rest():
     _refused(lambda: jobs.heartbeat('nope', 'w1'), 404, 'Job not found')
     jobs.hidden_projects.add('p1')
     _refused(lambda: jobs.heartbeat(job['id'], 'w1'), 404, 'Job not found')
+
+
+def test_fake_every_read_says_whether_the_lease_has_lapsed_and_settles_nothing():
+    client, clock = _fake()
+    jobs = client.jobs
+
+    def reads(job_id):
+        return [jobs.get(job_id)['lapsed'], jobs.active('p1')['lapsed'], jobs.list('p1')[0]['lapsed']]
+
+    job = jobs.create('p1', 'igt', ['gloss'])
+    assert reads(job['id']) == [False, False, False], 'waiting'
+    jobs.claim('w1', 'm', ['igt'])
+    assert reads(job['id']) == [False, False, False], 'running, the lease live'
+    clock['t'] += 121
+    assert reads(job['id']) == [True, True, True], 'running, the lease lapsed'
+    assert jobs.get(job['id'])['state'] == 'running', 'a read settles nothing'
+    jobs.heartbeat(job['id'], 'w1')
+    assert jobs.cancel(job['id'])['state'] == 'stopping'
+    assert reads(job['id']) == [False, False, False], 'stopping, the lease live'
+    clock['t'] += 121
+    assert reads(job['id']) == [True, True, True], 'stopping, the lease lapsed'
+    ended = jobs.cancel(job['id'])
+    assert (ended['state'], ended['lapsed']) == ('cancelled', False), 'a second Stop settles it at once'
 
 
 def test_fake_cancel_follows_each_path():
