@@ -801,6 +801,8 @@ A job whose worker has sent nothing for two minutes is taken by the next worker 
 
 The worker writes into documents only with the token of the person who started the job.
 That token reaches only the job's project and does only what that person may there.
+It works only while the job is running or stopping on the worker it was issued to.
+Once the job ends, or another worker takes it, the token is refused with 401 and `job-ended`.
 Once they can no longer write in the project, the job fails, and no further token is issued.
 
 === Model pools

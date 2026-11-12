@@ -11,6 +11,7 @@
             [plaid.sql.api-token :as api-token]
             [plaid.sql.common :as psc]
             [plaid.sql.crud :as crud]
+            [plaid.sql.job :as job]
             [plaid.sql.operation :as op]
             [plaid.sql.project :as prj]
             [plaid.sql.user :as user]
@@ -72,6 +73,8 @@
   ([secret-key id password-changes ttl-seconds project-ids runner api-token-id]
    (sign-user-token secret-key id password-changes ttl-seconds project-ids runner api-token-id nil))
   ([secret-key id password-changes ttl-seconds project-ids runner api-token-id jti]
+   (sign-user-token secret-key id password-changes ttl-seconds project-ids runner api-token-id jti nil))
+  ([secret-key id password-changes ttl-seconds project-ids runner api-token-id jti job-worker]
    (jwt/sign (cond-> {:user/id id
                       :version password-changes
                       :exp (exp-seconds ttl-seconds)}
@@ -86,7 +89,9 @@
                (some? runner) (assoc :scope/runner runner)
                ;; The named API token whose request obtained it, when one
                ;; did: it dies when that token is revoked (`wrap-read-jwt`).
-               (some? api-token-id) (assoc :delegated/api-token (str api-token-id)))
+               (some? api-token-id) (assoc :delegated/api-token (str api-token-id))
+               ;; The worker a job token was minted for (`issue-job-token!`).
+               (some? job-worker) (assoc :job/worker (str job-worker)))
              secret-key)))
 
 (defn- sign-api-token
@@ -162,6 +167,22 @@
                       (when (and runner (not= runner (:user/id account))) runner)
                       api-token-id))))
 
+(def ^:private job-jti-prefix "job:")
+
+(def job-ended-refusal
+  "The answer to a job token whose job has ended or moved to another worker."
+  {:status 401
+   :body {:error "This job has ended, or another worker holds it." :code "job-ended"}})
+
+(defn- job-token-ended?
+  "Is `token-data` a job token (`issue-job-token!`) whose job no longer runs
+  on the worker it was minted for?"
+  [db token-data]
+  (let [jti (:jti token-data)]
+    (and (string? jti)
+         (str/starts-with? jti job-jti-prefix)
+         (not (job/token-live? db (subs jti (count job-jti-prefix)) (:job/worker token-data))))))
+
 (defn issue-job-token!
   "Sign the token a job worker writes with: a delegated token for the job's
   STARTER `user-id`, scoped to the job's project, as `issue-delegated-token!`
@@ -172,9 +193,13 @@
   and a job writes one History entry per document over hours, under many
   renewed tokens. Minted by the claim and every heartbeat, and only while
   the starter may still write the project (`plaid.sql.job/starter-writes?`).
+  It also carries `:job/worker`, the `worker-id` of the worker it is minted
+  for, and `wrap-read-jwt` accepts it only while its job is running or
+  stopping on that worker (`plaid.sql.job/token-live?`): a job that ended,
+  or that another worker took, ends its tokens at once.
   `not-after` bounds its `exp` as for a delegated token. Returns nil if the
   user is missing."
-  [db secret-key user-id project-id job-id not-after runner api-token-id]
+  [db secret-key user-id project-id job-id worker-id not-after runner api-token-id]
   (when-let [account (user/get-internal db user-id)]
     (sign-user-token secret-key
                      (:user/id account)
@@ -185,7 +210,8 @@
                      [(str/lower-case (str project-id))]
                      (when (and runner (not= runner (:user/id account))) runner)
                      api-token-id
-                     (str "job:" job-id))))
+                     (str job-jti-prefix job-id)
+                     worker-id)))
 
 ;; ---------------------------------------------------------------------------
 ;; Link tokens
@@ -911,6 +937,12 @@
                       (:user/password-changes user))
                 {:status 401
                  :body {:error (str "Token invalid because password has changed.")}}
+
+                ;; A job token lives only while its job runs on the worker it
+                ;; was minted for: not after the job ends, nor once another
+                ;; worker has taken it.
+                (and (not link?) (job-token-ended? db token-data))
+                job-ended-refusal
 
                 :else
                 (proceed)))))))

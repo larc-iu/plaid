@@ -588,6 +588,8 @@ class IgtRunner:
                 self.job.check()
                 raise JobStopped('cancelled')
             except Exception as e:  # noqa: BLE001 - sorted into the kinds of SPEC 3.6 and 3.7
+                if core_job.no_longer_mine(e):
+                    raise self.job.ended() from e
                 if not_answering(e):
                     self.job.wait_for_model()
                     continue

@@ -221,6 +221,19 @@ def api_code(e: BaseException) -> Optional[str]:
     return data.get('code') if isinstance(data, dict) else None
 
 
+def no_longer_mine(e: Optional[BaseException]) -> bool:
+    """Was ``e``, or what caused it, core saying the job is no longer this
+    worker's to work: its token refused because the job ended or another
+    worker took it (401 ``job-ended``), or a row or decision refused for the
+    same reasons (409 ``job-finished``, ``job-taken``)?"""
+    while e is not None:
+        if isinstance(e, PlaidAPIError):
+            return ((e.status == 401 and api_code(e) == 'job-ended')
+                    or (e.status == 409 and api_code(e) in ('job-finished', 'job-taken')))
+        e = e.__cause__ or e.__context__
+    return False
+
+
 class Job:
     """The worker's hold on one claimed job: the job as claimed, its rows,
     the token to write with, the heartbeat that keeps the lease and learns of
@@ -311,6 +324,14 @@ class Job:
             if isinstance(answer, dict):
                 self.state = answer.get('state') or self.state
                 self.token = answer.get('token') or self.token
+
+    def ended(self) -> JobStopped:
+        """Core refused a write (:func:`no_longer_mine`): the job ended or
+        moved to another worker before the heartbeat said so. Ask the
+        heartbeat why, and stop as it says (a starter who can no longer write
+        still gets the job's report). Nothing more is written."""
+        self.beat()
+        return JobStopped(self.lost or 'finished')
 
     def set(self, **status) -> None:
         """Change what the heartbeat says (phase, message, waiting_for,
@@ -453,12 +474,15 @@ def run_job(job: Job, runner) -> Optional[Dict[str, Any]]:
         entries = runner.entries(job)
         job.set(phase=REPORTING, current_document=None, message='Writing the report.')
         return _finish(job, 'done', runner, harmonize, entries)
-    except JobStopped as e:
-        if e.why == 'cancelled':
+    except Exception as e:  # noqa: BLE001 - a stop, or core saying the job is no longer this worker's
+        if not isinstance(e, JobStopped) and not no_longer_mine(e):
+            raise
+        stop = e if isinstance(e, JobStopped) else job.ended()
+        if stop.why == 'cancelled':
             return _finish(job, 'cancelled', runner, harmonize, entries, reason='cancelled')
-        if e.why == 'failed':
+        if stop.why == 'failed':
             return _finish(job, 'failed', runner, harmonize, entries, reason=job.reason or 'starter-access')
-        logger.warning('Job %s: dropped (%s)', job.id, e.why)
+        logger.warning('Job %s: dropped (%s)', job.id, stop.why)
         return None
 
 

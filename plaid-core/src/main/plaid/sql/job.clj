@@ -142,6 +142,20 @@
 ;; Reads
 ;; ============================================================
 
+(defn token-live?
+  "May a token of job `job-id` minted for worker `worker-id` still be used:
+  is the job running or stopping, held by that worker? A `stopping` job's
+  worker still finishes the write it has begun (SPEC 1.3), and only the
+  worker knows whether one has. Ended, taken by another worker or gone, no."
+  [db job-id worker-id]
+  (boolean
+   (and (some? worker-id)
+        (psc/q1 db {:select [:id]
+                    :from [:jobs]
+                    :where [:and [:= :id (str job-id)]
+                            [:in :state ["running" "stopping"]]
+                            [:= :worker_id (str worker-id)]]}))))
+
 (defn- job-row [db id]
   (psc/q1 db {:select [:j.*]
               :from [[:jobs :j]]

@@ -72,9 +72,10 @@
 
 (defn- job-token
   "A job token for the starter of `job-id` on `project-id`, minted for the
-  worker whose `request` asks (`pra/issue-job-token!`)."
-  [{db :db :as request} project-id job-id starter]
-  (pra/issue-job-token! db (:secret-key request) starter project-id job-id
+  worker `worker-id` whose `request` asks (`pra/issue-job-token!`). It
+  works while that worker holds the job and the job runs."
+  [{db :db :as request} project-id job-id worker-id starter]
+  (pra/issue-job-token! db (:secret-key request) starter project-id job-id worker-id
                         (-> request :jwt-data :exp)
                         (:user/id request)
                         (or (:api-token/id request) (-> request :jwt-data :delegated/api-token))))
@@ -162,7 +163,7 @@
                                                           :model model :apps apps})]
                                  {:status 200
                                   :body {:job j
-                                         :token (job-token request (:job/project j) (:job/id j) (:job/started-by j))
+                                         :token (job-token request (:job/project j) (:job/id j) worker-id (:job/started-by j))
                                          :heartbeat-s 30}}
                                  {:status 204}))})}]
 
@@ -236,7 +237,7 @@
                                                :reason "starter-access"}}
                                        {:status 200
                                         :body {:state (:state r)
-                                               :token (job-token request (:project-id r) job-id (:started-by r))
+                                               :token (job-token request (:project-id r) job-id worker-id (:started-by r))
                                                :lease-s job/lease-s}})))))})}]
 
      ["/documents/:document-id"

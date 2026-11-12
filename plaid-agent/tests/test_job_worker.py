@@ -8,6 +8,7 @@ import json
 
 import litellm
 import pytest
+from plaid_client import PlaidAPIError
 
 from job_fixtures import JobClient, Model, call, document, reply, runner, start, use
 
@@ -112,6 +113,49 @@ def test_a_job_taken_by_another_worker_is_dropped_with_nothing_more_written(monk
     assert run_job(job, runner(job)) is None
     assert not _written(client)
     assert not [c for c in client.jobs.calls if c[0] == 'finish']
+
+
+def _token_refused(method='POST', path='/api/v1/batch'):
+    # What core answers a job token whose job ended or moved to another worker.
+    return PlaidAPIError('HTTP 401', status=401, url=path, method=method,
+                         response_data={'error': 'This job has ended, or another worker holds it.',
+                                        'code': 'job-ended'})
+
+
+def test_a_refused_token_drops_a_job_another_worker_took_with_nothing_more_written(monkeypatch):
+    # The worker slept past its lease mid-stretch and another worker took the
+    # job: its heartbeat has not said so yet, and core refuses the write.
+    client = _client(2)
+    job = start(client)
+    model = use(monkeypatch, Model(_analyse))
+
+    calls_then = []
+
+    def execute(c, ops, **kw):
+        client.jobs.rows[job.id]['worker_id'] = 'worker-2'
+        calls_then.append(len(client.jobs.calls))
+        raise _token_refused()
+    monkeypatch.setattr(igt_job, 'execute_plan', execute)
+    assert run_job(job, runner(job)) is None
+    assert job.lost == 'taken', 'the heartbeat said why'
+    assert len(model.calls) == 2, 'one stretch (a call and its answer), not halved and asked again'
+    assert not [c for c in client.jobs.calls if c[0] == 'finish']
+    later = [c[0] for c in client.jobs.calls[calls_then[0]:]]
+    assert later == ['heartbeat'], 'after the refusal only the heartbeat that learns why'
+
+
+def test_a_refused_token_of_a_starter_who_lost_access_fails_the_job_with_its_report(monkeypatch):
+    client = _client(1)
+    job = start(client)
+    use(monkeypatch, Model(_analyse))
+
+    def execute(c, ops, **kw):
+        client.jobs.can_write = lambda user, project: False
+        raise _token_refused()
+    monkeypatch.setattr(igt_job, 'execute_plan', execute)
+    finished = run_job(job, runner(job))
+    assert finished['state'] == 'failed' and finished['reason'] == 'starter-access'
+    assert client.jobs.rows[job.id]['report']['state'] == 'failed'
 
 
 def test_a_starter_who_can_no_longer_write_fails_the_job_with_its_report(monkeypatch):

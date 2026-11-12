@@ -127,7 +127,9 @@ export function jobsApi(client) {
      * The worker asks for a job. Admin only. Answers the job it now holds,
      * the token to write with (the starter's, scoped to the job's project)
      * and how often to send a heartbeat, or null when no job is waiting or
-     * another job holds the server's one slot.
+     * another job holds the server's one slot. The token works while the
+     * job runs or stops on this worker, and is refused with 401 `job-ended`
+     * once the job ends or another worker takes it.
      * @param {string} workerId - The worker's id, a UUID it minted when it started
      * @param {object} [opts]
      * @param {string} [opts.model] - The model the worker runs

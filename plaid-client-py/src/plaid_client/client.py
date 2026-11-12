@@ -3714,7 +3714,9 @@ class JobsResource(_Resource):
         Answers ``{job, token, heartbeat_s}``: the job it now holds, the token
         to write with (the starter's, scoped to the job's project) and how
         often to send a heartbeat. None when no job is waiting or another job
-        holds the server's one slot.
+        holds the server's one slot. The token works while the job runs or
+        stops on this worker, and is refused with 401 ``job-ended`` once the
+        job ends or another worker takes it.
 
         Args:
             worker_id: The worker's id, a UUID it minted when it started
