@@ -69,7 +69,7 @@ import { useVocabEntries } from './useVocabEntries';
 import { useEntryDelete } from './useEntryDelete';
 import { useSenseMoves } from './useSenseMoves';
 import { EntryList } from './EntryList';
-import { soleProjectLinking } from '@/domain/vocabProject';
+import { assistantProjectOf } from '@/domain/vocabProject';
 import { linksUmrProject, readRoleset, rolesetProblem } from '@/domain/vocabUmr';
 import { EntryEditor } from './EntryEditor';
 import { ConcordancePanel } from './ConcordancePanel';
@@ -320,9 +320,11 @@ export const VocabularyItems = ({
   // discovery is per project, and a conversation's record is keyed by it. So
   // the project has to be resolved backwards, from the projects that link this
   // vocabulary. `projects.list()` carries each project's vocabs, so that is one
-  // call. When exactly one project links it, that is the answer. When several
-  // do the pane is not offered at all: filing the thread under a project the
-  // user did not choose puts it in an Assistant tab they were never on.
+  // call. The vocabulary's own project is the answer when this person can
+  // read it, else the one readable project that links it. When several do
+  // and the own project is not readable, the pane is not offered at all:
+  // filing the thread under a project the user did not choose puts it in an
+  // Assistant tab they were never on.
   // The project itself, not just its id: the panel's write gate is a question
   // about the PROJECT (a writer there may edit the corpus the assistant plans
   // over) and not about who maintains this vocabulary.
@@ -338,7 +340,7 @@ export const VocabularyItems = ({
     readableProjects()
       .then((projects) => {
         if (!alive) return;
-        const id = soleProjectLinking(projects, vocabularyId);
+        const id = assistantProjectOf(projects, { id: vocabularyId, project: vocabulary?.project });
         setAssistantProject(id ? (projects || []).find((p) => p.id === id) || null : null);
         setUmrLinked(linksUmrProject(projects, vocabularyId));
       })
@@ -353,9 +355,10 @@ export const VocabularyItems = ({
       alive = false;
     };
     // `readableProjects` is rebuilt every render and reads the vocabulary it
-    // is keyed on, so these two are what the lookup depends on.
+    // is keyed on, so these, and the vocabulary's project (a move changes
+    // it), are what the lookup depends on.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [client, vocabularyId]);
+  }, [client, vocabularyId, vocabulary?.project]);
   const assistantAvailable = useAssistantAvailable(client, assistantProject?.id, IGT_ASSISTANT.app);
   // Ask sets a focus and the SHELL opens the panel on it, so in a window with
   // no room for a panel the button did nothing at all when pressed.

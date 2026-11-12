@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { soleProjectLinking } from './vocabProject.js';
+import { soleProjectLinking, assistantProjectOf } from './vocabProject.js';
 
 const P = (id, ...vocabIds) => ({ id, vocabs: vocabIds.map((v) => ({ id: v })) });
 
@@ -21,5 +21,23 @@ describe('soleProjectLinking', () => {
     expect(soleProjectLinking([P('p1', 'v1')], null)).toBeNull();
     expect(soleProjectLinking(null, 'v1')).toBeNull();
     expect(soleProjectLinking([{ id: 'p1' }, {}, null], 'v1')).toBeNull();
+  });
+});
+
+describe('assistantProjectOf', () => {
+  const V = { id: 'v1', project: 'home' };
+  it("takes the vocabulary's own project when the person can read it", () => {
+    // After a move the old home still links it, and a member of both would
+    // otherwise lose the pane. A member of the home who also reads a
+    // borrower gets one too.
+    expect(assistantProjectOf([P('old', 'v1'), P('home', 'v1')], V)).toBe('home');
+    expect(assistantProjectOf([P('home', 'v1'), P('b1', 'v1'), P('b2', 'v1')], V)).toBe('home');
+  });
+
+  it('else the one readable project that links it, else nothing', () => {
+    expect(assistantProjectOf([P('b1', 'v1')], V)).toBe('b1');
+    expect(assistantProjectOf([P('b1', 'v1'), P('b2', 'v1')], V)).toBeNull();
+    expect(assistantProjectOf([], V)).toBeNull();
+    expect(assistantProjectOf([P('home', 'v1')], null)).toBeNull();
   });
 });
