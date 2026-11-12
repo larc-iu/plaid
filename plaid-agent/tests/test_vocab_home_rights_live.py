@@ -192,6 +192,30 @@ def test_section_one_two_over_a_real_core(live_client, people, world, column):
         assert after[items['Ali']]['form'] == 'Ali' and items['-di'] in after, column
 
 
+def test_a_home_maintainer_working_in_the_borrower_gets_no_lexicon_change_from_the_assistant(live_client, people,
+                                                                                               world):
+    # The rule, not an accident: the assistant does not change a lexicon
+    # linked from another project, whatever the user's role in that
+    # project. Its delegated token is scoped to the project the conversation
+    # is in, and core refuses that token an entry write unless the
+    # lexicon's own project is in scope. The apps, signed in as the person,
+    # let a member of the home change entries wherever they stand.
+    B, vid = world['B'].project_id, world['vocab']
+    live_client.projects.add_writer(B, USERS['HM'])
+    own = people['HM']
+    token = _delegated(live_client, own, B)
+    for name, args in (WRITER_CALLS[1], MAINTAINER_CALLS[1]):
+        ws = Workspace(token, load_project(token, B))
+        ws.requester_id = USERS['HM']
+        out = call_tool(ws, name, args)
+        assert BORROWED in out and 'Tell the user its entries are changed in its own project' in out, (name, out)
+        assert ws.ops == [], name
+    assert _refused_by_core(lambda: token.vocab_items.create(vid, 'zt', {})), 'the token scoped to B is refused'
+    made = own.vocab_items.create(vid, 'zz', {})
+    assert made['id'], 'the person, signed in, adds the entry'
+    own.vocab_items.delete(made['id'])
+
+
 def test_a_link_planned_before_the_home_ended_the_borrowing_is_out_of_date_for_that_reason(live_client, people,
                                                                                             world):
     B, vid = world['B'].project_id, world['vocab']

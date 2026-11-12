@@ -823,7 +823,8 @@ Tick **Record as human-made** before approving to record them as your own work i
 If your work is reviewed in this project, what you approve waits for a reviewer, as anything you enter does.
 Applying a plan needs Writer access.
 Adding a lexicon's entries and changing their fields needs a writer of the lexicon's project, and renaming, merging or deleting them a maintainer of it or an administrator.
-A lexicon linked from another project is read only.
+The assistant does not change a lexicon linked from another project, whatever your role in the lexicon's own project.
+Ask it from that project instead.
 
 A plan is refused when a sentence it changes has been edited since it was made, and the card then reads **Out of date**.
 Ask again to have it planned on the current text.
