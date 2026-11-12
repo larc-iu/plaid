@@ -14,11 +14,18 @@ import { useEffect } from 'react';
 // document while it is open (`useSavingGuard(doc)`), and a document it lets go
 // of is kept watched until its queue has drained, however long a send waiting
 // for the network takes to land.
+//
+// It is also asked while a service run holds a document's write lock
+// (`holdRun`, which useWriteLock calls): leaving stops a run the browser
+// orders, Auto-analyze, after the step in flight. One handler for both, so the
+// browser never has two listeners to reconcile.
 
 // document -> how many screens hold it right now.
 const held = new Map();
 // Documents no screen holds that are still sending, watched until they finish.
 const draining = new Map(); // document -> unsubscribe
+// How many runs hold a document's write lock right now.
+let runsHeld = 0;
 
 /**
  * Whether any document the app has opened still has writes to send, or a
@@ -31,7 +38,7 @@ export const anyDocumentSaving = () => {
 };
 
 const onBeforeUnload = (e) => {
-  if (!anyDocumentSaving()) return;
+  if (!anyDocumentSaving() && runsHeld === 0) return;
   e.preventDefault();
   e.returnValue = '';
 };
@@ -43,7 +50,7 @@ const listen = () => {
   window.addEventListener('beforeunload', onBeforeUnload);
 };
 const stopIfIdle = () => {
-  if (!listening || held.size || draining.size) return;
+  if (!listening || held.size || draining.size || runsHeld) return;
   listening = false;
   window.removeEventListener('beforeunload', onBeforeUnload);
 };
@@ -82,6 +89,22 @@ const holdDocument = (doc) => {
       draining.set(doc, unsubscribe);
       return;
     }
+    stopIfIdle();
+  };
+};
+
+/**
+ * Ask before the page goes for as long as a run holds a document's write
+ * lock. Returns the release, which may be called more than once.
+ */
+export const holdRun = () => {
+  runsHeld += 1;
+  listen();
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    runsHeld -= 1;
     stopIfIdle();
   };
 };

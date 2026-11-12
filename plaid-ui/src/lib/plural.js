@@ -12,3 +12,7 @@ export const plural = (n, noun) => {
 // not make ("entry", "entries" it does: "person", "people" it does not).
 export const countOf = (n, one, many) =>
   `${n.toLocaleString()} ${many === undefined ? plural(n, one) : n === 1 ? one : many}`;
+
+// Names in a running list: "A", "A and B", "A, B and C".
+export const andList = (names) =>
+  names.length <= 1 ? (names[0] ?? '') : `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`;

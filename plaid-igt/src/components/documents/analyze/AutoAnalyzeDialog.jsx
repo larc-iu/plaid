@@ -167,11 +167,21 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc }) => {
       return;
     }
     stopRef.current = false;
+    // Set when the document is left inside the app (its page unmounts). The
+    // run then stops after the step in flight (Luke, 2026-11-12): a built-in
+    // step at its next checkpoint, a service step left to finish on the
+    // server, its record kept for the page that comes back to rejoin. No
+    // later step starts.
+    let left = false;
+    const halted = () => stopRef.current || left;
     // Held for the whole run: four steps of writes with a reload after each.
     // The banner over the document shows the run: its steps, the one it is
     // on and what the worker says.
     const lock = acquireWriteLock('Auto-analyze', {
       onCancel: stopRun,
+      onLeave: () => {
+        left = true;
+      },
       steps: plan.map((p) => p.label),
     });
     if (!lock) return;
@@ -182,15 +192,15 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc }) => {
     // What a step reports, built-in or service.
     const onProgress = lock.onProgress;
     // Only the step in flight can be rejoined: the ordering happens here, in
-    // the browser, so `multiStep` tells the resume to say the steps after it
-    // did not run. The step's task words its counts.
+    // the browser, so the record names the steps after it for the resume to
+    // say they did not run. The step's task words its counts.
     const recordStep = (key, task) => (requestId) =>
       writeRunRecord(doc.id, {
         requestId,
         projectId: project.id,
         label: 'Auto-analyze',
         task,
-        multiStep: plan.findIndex((p) => p.key === key) < plan.length - 1,
+        stepsAfter: plan.slice(plan.findIndex((p) => p.key === key) + 1).map((p) => p.label),
       });
     const info = doc.layerInfo;
     let stillOut = false; // the request survived our giving up on it
@@ -217,7 +227,8 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc }) => {
     // hook has already said so, hence no toast of our own.
     const stopped = (result) => result?.stopped === true;
     // A stop noticed anywhere else has nobody else to report it: a built-in
-    // step's checkpoint, or between steps while a reload was in flight.
+    // step's checkpoint, or between steps while a reload was in flight. The
+    // same when the document was left there, since no page will rejoin it.
     const halt = () =>
       notifyInfo('Stopped partway. What ran before the stop is in the document.', 'Auto-analyze');
     // A reload after each service step costs seconds on a large document and
@@ -249,13 +260,16 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc }) => {
             timeout: ANALYZE_TIMEOUT_MS,
           },
         );
+        // Left meanwhile: the record stays for the page that comes back, which
+        // reads the document and names the steps that did not run.
+        if (left) return;
         // What ran before the stop is in the document, and the request
         // hook's toast says so: it is read again while the lock is held.
         if (stopped(result)) return await reload();
         await reload();
         note(translateParts(result));
       }
-      if (stopRef.current) return halt();
+      if (halted()) return halt();
       // 2. copy previous analyses (built-in). The words it writes are the
       // model step's to leave alone, Overwrite or not: the model only sees what
       // precedent cannot answer.
@@ -278,7 +292,7 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc }) => {
           // Reading precedent means fetching other documents one at a time —
           // the slowest built-in step, and the one that used to look stalled.
           onProgress,
-          shouldStop: () => stopRef.current,
+          shouldStop: halted,
         });
         if (!ok) return; // the domain layer toasted the failure
         if (wasStopped) return halt();
@@ -288,7 +302,7 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc }) => {
           wrote = true;
         }
       }
-      if (stopRef.current) return halt();
+      if (halted()) return halt();
       // 3. propose segmentation + glosses (service)
       if (analyzeOn) {
         at('analyze');
@@ -314,13 +328,14 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc }) => {
             timeout: ANALYZE_TIMEOUT_MS,
           },
         );
+        if (left) return;
         // What ran before the stop is in the document, and the request
         // hook's toast says so: it is read again while the lock is held.
         if (stopped(result)) return await reload();
         await reload();
         note(analyzeParts(result));
       }
-      if (stopRef.current) return halt();
+      if (halted()) return halt();
       // 4. link to the lexicon
       if (linkOn) {
         at('link');
@@ -336,7 +351,7 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc }) => {
             // and what it left unlinked is linked now (H5-5).
             leave: copiedWordIds,
             onProgress,
-            shouldStop: () => stopRef.current,
+            shouldStop: halted,
           });
           if (!ok) return;
           if (wasStopped) return halt();
@@ -365,6 +380,7 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc }) => {
               onProgress,
             },
           );
+          if (left) return;
           if (stopped(result)) return await reload();
           await reload();
           parts.push('ran the linking service');
@@ -383,7 +399,7 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc }) => {
       // A run that failed may still have written (its answer lost, or stopped
       // partway), so the document is read again while the lock is held. Not
       // while it is still out: its results are read when it finishes.
-      if (!stillOut) {
+      if (!stillOut && !left) {
         await doc
           .reload()
           .catch((e) =>
@@ -396,7 +412,8 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc }) => {
       // again as "Auto-analyze failed".
       if (!err?.reported) notifyError('Try again.', 'Failed to run Auto-analyze');
     } finally {
-      if (!stillOut) clearRunRecord(doc.id);
+      // A record a left run keeps is for the page that comes back.
+      if (!stillOut && !left) clearRunRecord(doc.id);
       lock.release();
       lockRef.current = null;
     }

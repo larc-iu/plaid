@@ -28,11 +28,15 @@ const key = (documentId) => `${appPrefix()}_run_${documentId}`;
 // run ended" apart from "this page ended".
 let unloading = false;
 if (typeof window !== 'undefined') {
-  const going = () => {
+  // `pagehide` and not `beforeunload`: a page asks before it goes while a run
+  // holds a document (useSavingGuard), and one whose person answered Stay is
+  // not going away. Had `beforeunload` set the flag, the run that page went
+  // on to finish would have left its record behind, and opening the document
+  // again would have announced the run a second time, saying its later steps
+  // had not run. `pagehide` comes before the page's streams are torn down.
+  window.addEventListener('pagehide', () => {
     unloading = true;
-  };
-  window.addEventListener('pagehide', going);
-  window.addEventListener('beforeunload', going);
+  });
   // `pagehide` also fires when a page goes into the back/forward cache, and
   // such a page comes back alive. Without this the flag would stay set for the
   // rest of its life and no record would ever be cleared again.
@@ -47,19 +51,20 @@ export function __resetUnloadingForTests() {
   unloading = false;
 }
 
-// `multiStep` marks a run the browser was orchestrating (Auto-analyze), where
-// rejoining reaches the step that was in flight and NOT the steps after it.
+// `stepsAfter` names the steps after this one of a run the browser was
+// ordering (Auto-analyze): rejoining reaches the step that was in flight and
+// NOT the steps after it, which the resume names as not run.
 // `task` is the run's task (TASKS), by which a rejoined run finds the app's
 // words for its result's counts (useResumedRun).
 export function writeRunRecord(
   documentId,
-  { requestId, projectId, label, task = null, multiStep = false },
+  { requestId, projectId, label, task = null, stepsAfter = [] },
 ) {
   if (!documentId || !requestId) return;
   try {
     localStorage.setItem(
       key(documentId),
-      JSON.stringify({ requestId, projectId, label, task, multiStep, startedAt: Date.now() }),
+      JSON.stringify({ requestId, projectId, label, task, stepsAfter, startedAt: Date.now() }),
     );
   } catch {
     /* a blocked store only costs the resume */

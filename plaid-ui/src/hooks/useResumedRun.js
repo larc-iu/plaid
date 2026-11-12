@@ -3,6 +3,7 @@ import { notifySuccess, notifyWarning, notifyInfo } from '../lib/notify.js';
 import { showRunNotice } from '../lib/runNotice.js';
 import { clearRunRecord, readRunRecord } from '../domain/runRecord.js';
 import { reloadAfterRun } from '../lib/runReload.js';
+import { andList } from '../lib/plural.js';
 import { useServiceRequest } from './useServiceRequest.js';
 
 // Picks a service run back up after the page that started it went away.
@@ -61,11 +62,12 @@ export function useResumedRun(client, doc, acquireWriteLock, notices = {}) {
           // failed every item still comes back a success, and only the counts
           // say so. A task the app words nothing for is said to have finished.
           const notice = record.task ? notices?.[record.task]?.(result) : null;
-          if (record.multiStep) {
+          const notRun = Array.isArray(record.stepsAfter) ? record.stepsAfter : [];
+          if (notRun.length) {
             // Auto-analyze's steps are ordered here, in the browser, so the
             // page that went away took the steps after this one with it. The
-            // step's own words come first, then that the rest did not run.
-            const after = 'The steps after it did not run.';
+            // step's own words come first, then the steps that did not run.
+            const after = `${andList(notRun)} did not run.`;
             notifyWarning(
               notice?.message
                 ? `${notice.message} ${after}`

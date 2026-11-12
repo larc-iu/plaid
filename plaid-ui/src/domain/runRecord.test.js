@@ -26,7 +26,7 @@ describe('runRecord', () => {
       requestId: 'req-1',
       projectId: 'proj-1',
       label: 'Transcribe',
-      multiStep: false,
+      stepsAfter: [],
     });
     expect(rec.startedAt).toBeTypeOf('number');
 
@@ -44,14 +44,35 @@ describe('runRecord', () => {
     expect(readRunRecord('doc-2').requestId).toBe('req-2');
   });
 
-  it('marks a browser-ordered run, so a resume can say the rest did not run', () => {
+  it("names the steps after a browser-ordered run's step, so a resume can say they did not run", () => {
     writeRunRecord('doc-1', {
       requestId: 'req-1',
       projectId: 'p',
       label: 'Auto-analyze',
-      multiStep: true,
+      stepsAfter: ['Copy previous analyses', 'Link to the lexicon'],
     });
-    expect(readRunRecord('doc-1').multiStep).toBe(true);
+    expect(readRunRecord('doc-1').stepsAfter).toEqual([
+      'Copy previous analyses',
+      'Link to the lexicon',
+    ]);
+  });
+
+  // Closing or reloading the tab asks first while a run holds the document,
+  // and a page whose person said Stay is not going away: the run it finishes
+  // is collected, and a record left behind would announce it again, as if its
+  // later steps had not run.
+  it('is cleared after a leave question the person answered with Stay', () => {
+    writeRunRecord('doc-1', { requestId: 'req-1', projectId: 'p', label: 'Auto-analyze' });
+    window.dispatchEvent(new Event('beforeunload', { cancelable: true }));
+    clearRunRecord('doc-1');
+    expect(readRunRecord('doc-1')).toBe(null);
+  });
+
+  it('is kept by a page that is going away', () => {
+    writeRunRecord('doc-1', { requestId: 'req-1', projectId: 'p', label: 'Auto-analyze' });
+    window.dispatchEvent(new Event('pagehide'));
+    clearRunRecord('doc-1');
+    expect(readRunRecord('doc-1')).not.toBe(null);
   });
 
   it('writes nothing without an id to point at', () => {

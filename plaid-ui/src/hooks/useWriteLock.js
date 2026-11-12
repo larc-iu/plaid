@@ -1,4 +1,5 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { holdRun } from './useSavingGuard.js';
 
 // The document's write lock, held while a service run is writing to it.
 //
@@ -30,6 +31,13 @@ import { useCallback, useRef, useState } from 'react';
 // `steps` names the steps of a run the browser orders (Auto-analyze, a
 // transcript per channel). A run of one step names none.
 //
+// Closing or reloading the tab while a run holds the lock asks first
+// (useSavingGuard's one leave question). Leaving the document inside the app
+// unmounts the page that owns the lock: the holder's `onLeave` is called and
+// the lock is let go. Auto-analyze stops after the step in flight then (Luke,
+// 2026-11-12), and a service step's run record stays for the page that comes
+// back to rejoin. Every other run is one request, which goes on regardless.
+//
 // `acquire` returns `{release, step, report, onProgress}`, or null when the lock is
 // already held, which is also what stops a second run from starting on top of
 // the first. (Each spot has its own useServiceRequest, so its `isProcessing`
@@ -40,51 +48,76 @@ export function useWriteLock() {
   // The state is one render behind a synchronous second acquire, so the ref is
   // what actually arbitrates.
   const heldRef = useRef(false);
+  // The holder's leave and release, for the page going away.
+  const holderRef = useRef(null);
+  // Whether the page is mounted. StrictMode unmounts and mounts again at once,
+  // which is not leaving, so a leave waits a tick to see that it stayed gone.
+  const mountedRef = useRef(false);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      setTimeout(() => {
+        const holder = holderRef.current;
+        if (mountedRef.current || !holder) return;
+        holder.onLeave?.();
+        holder.release();
+      }, 0);
+    };
+  }, []);
 
-  const acquire = useCallback((label, { onCancel = null, startedAt = null, steps = null } = {}) => {
-    if (heldRef.current) return null;
-    heldRef.current = true;
-    setHeld({
-      label,
-      startedAt: Number.isFinite(startedAt) ? startedAt : Date.now(),
-      steps: steps?.length ? steps : [label],
-      stepIndex: 0,
-      // Unknown until the worker says otherwise, never 0%.
-      percent: null,
-      message: '',
-      cancel: onCancel,
-    });
-    let released = false;
-    // Ignored once released, so a late progress event cannot resurrect a
-    // finished run, or write into the run that holds the lock after it.
-    const update = (patch) => {
-      if (released) return;
-      setHeld((cur) => (cur ? { ...cur, ...patch } : cur));
-    };
-    // What the worker reports. A percent left out stays as it was, and null
-    // means unknown. An empty message keeps the last real one.
-    const report = ({ percent, message } = {}) => {
-      const patch = {};
-      if (percent !== undefined) patch.percent = Number.isFinite(percent) ? percent : null;
-      if (message) patch.message = message;
-      if (Object.keys(patch).length) update(patch);
-    };
-    return {
-      release: () => {
+  const acquire = useCallback(
+    (label, { onCancel = null, onLeave = null, startedAt = null, steps = null } = {}) => {
+      if (heldRef.current) return null;
+      heldRef.current = true;
+      const unhold = holdRun();
+      setHeld({
+        label,
+        startedAt: Number.isFinite(startedAt) ? startedAt : Date.now(),
+        steps: steps?.length ? steps : [label],
+        stepIndex: 0,
+        // Unknown until the worker says otherwise, never 0%.
+        percent: null,
+        message: '',
+        cancel: onCancel,
+      });
+      let released = false;
+      // Ignored once released, so a late progress event cannot resurrect a
+      // finished run, or write into the run that holds the lock after it.
+      const update = (patch) => {
+        if (released) return;
+        setHeld((cur) => (cur ? { ...cur, ...patch } : cur));
+      };
+      // What the worker reports. A percent left out stays as it was, and null
+      // means unknown. An empty message keeps the last real one.
+      const report = ({ percent, message } = {}) => {
+        const patch = {};
+        if (percent !== undefined) patch.percent = Number.isFinite(percent) ? percent : null;
+        if (message) patch.message = message;
+        if (Object.keys(patch).length) update(patch);
+      };
+      const release = () => {
         if (released) return; // a release called twice must not free a later run
         released = true;
         heldRef.current = false;
+        if (holderRef.current?.release === release) holderRef.current = null;
+        unhold();
         setHeld(null);
-      },
-      // Move to step `index`. A step starts with its fraction unknown, and its
-      // name is the status line until the worker says something.
-      step: (index) => update({ stepIndex: index, percent: null, message: '' }),
-      report,
-      // A service's progress event, as a request's `onProgress`: one with no
-      // percent says the fraction is unknown.
-      onProgress: (event) => report({ percent: event?.percent ?? null, message: event?.message }),
-    };
-  }, []);
+      };
+      holderRef.current = { onLeave, release };
+      return {
+        release,
+        // Move to step `index`. A step starts with its fraction unknown, and its
+        // name is the status line until the worker says something.
+        step: (index) => update({ stepIndex: index, percent: null, message: '' }),
+        report,
+        // A service's progress event, as a request's `onProgress`: one with no
+        // percent says the fraction is unknown.
+        onProgress: (event) => report({ percent: event?.percent ?? null, message: event?.message }),
+      };
+    },
+    [],
+  );
 
   return { held, acquire };
 }

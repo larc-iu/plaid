@@ -63,14 +63,19 @@ describe('useResumedRun', () => {
       : { level: 'warning', title: 'Nothing drafted', message: 'Sentence 1 failed.', sticky: true };
   const rejoin = async (
     result,
-    { task = 'draft-graph', notices = { 'draft-graph': drafted }, label = 'Draft', multiStep } = {},
+    {
+      task = 'draft-graph',
+      notices = { 'draft-graph': drafted },
+      label = 'Draft',
+      stepsAfter,
+    } = {},
   ) => {
     writeRunRecord('d1', {
       requestId: 'r1',
       projectId: 'p1',
       label,
       task,
-      ...(multiStep ? { multiStep } : {}),
+      ...(stepsAfter ? { stepsAfter } : {}),
     });
     attach = () => Promise.resolve(result);
     const lock = { step: vi.fn(), report: vi.fn(), onProgress: vi.fn(), release: vi.fn() };
@@ -113,7 +118,7 @@ describe('useResumedRun', () => {
   });
 
   // REV-W3-SVC F2: a rejoined Auto-analyze step words its own counts, then
-  // says the steps after it did not run.
+  // names the steps after it, which did not run (RUN-UX 4).
   const analyzed = (result) => ({
     level: result.wordsWritten ? 'success' : 'warning',
     title: 'Auto-analyze',
@@ -123,11 +128,33 @@ describe('useResumedRun', () => {
   });
   const step = { task: 'analyze', notices: { analyze: analyzed }, label: 'Auto-analyze' };
 
-  it("words a rejoined step's counts and says the steps after it did not run", async () => {
-    await rejoin({ wordsWritten: 0, sentencesFailed: [{}, {}] }, { ...step, multiStep: true });
+  it("words a rejoined step's counts and names the steps after it that did not run", async () => {
+    await rejoin(
+      { wordsWritten: 0, sentencesFailed: [{}, {}] },
+      { ...step, stepsAfter: ['Link to the lexicon'] },
+    );
     expect(notify.notifySuccess).not.toHaveBeenCalled();
     expect(notify.notifyWarning).toHaveBeenCalledWith(
-      'Could not analyze 2 sentences. The steps after it did not run.',
+      'Could not analyze 2 sentences. Link to the lexicon did not run.',
+      'Auto-analyze',
+    );
+  });
+
+  it('names every step after it, and says so after a step that went well too', async () => {
+    await rejoin(
+      { wordsWritten: 3 },
+      {
+        ...step,
+        stepsAfter: [
+          'Copy previous analyses',
+          'Propose segmentation and glosses',
+          'Link to the lexicon',
+        ],
+      },
+    );
+    expect(notify.notifySuccess).not.toHaveBeenCalled();
+    expect(notify.notifyWarning).toHaveBeenCalledWith(
+      'Proposed analyses for 3 words. Copy previous analyses, Propose segmentation and glosses and Link to the lexicon did not run.',
       'Auto-analyze',
     );
   });
