@@ -204,3 +204,57 @@ describe('the audit feed and long entries', () => {
     await view.unmount();
   });
 });
+
+// Since the vocabulary home (05a54a802) a project's feed lists the operations
+// on its own vocabularies. Core puts them under the home with no document,
+// and names the vocabulary in the description, so the row says which
+// vocabulary and its Where is the project.
+describe('a vocabulary operation in a project feed', () => {
+  it('names the vocabulary and places it in its project', async () => {
+    const d = deferred();
+    d.at('A');
+    const view = await renderComponent(feed(d, 'A'));
+    await view.step(async () =>
+      d.settle('A', [
+        {
+          id: 'op1',
+          time: '2026-11-12T00:00:00Z',
+          projects: [{ id: 'p1', name: 'Kukama' }],
+          documents: [],
+          ops: [
+            {
+              type: 'vocab/move',
+              description: 'Move vocabulary “Lexicon” to project “Kukama (UMR)”',
+            },
+          ],
+          user: { id: 'u', displayName: 'u' },
+        },
+        {
+          id: 'op2',
+          time: '2026-11-12T00:00:01Z',
+          projects: [{ id: 'p1', name: 'Kukama' }],
+          documents: [],
+          ops: [
+            {
+              type: 'vocab-item/merge',
+              description: 'Merge 3 vocab items into 019a2b3c-0b1c-7a3e-9f00-1c2d3e4f5a6b',
+            },
+          ],
+          user: { id: 'u', displayName: 'u' },
+        },
+      ]),
+    );
+    const cells = texts(view.container, 'td');
+    expect(cells).toContain('Move vocabulary “Lexicon” to project “Kukama (UMR)”');
+    expect(cells).toContain('Merge 3 vocab items');
+    const where = [...view.container.querySelectorAll('td a')].map((a) => [
+      a.textContent,
+      a.getAttribute('href'),
+    ]);
+    expect(where).toEqual([
+      ['Kukama', '/projects/p1'],
+      ['Kukama', '/projects/p1'],
+    ]);
+    await view.unmount();
+  });
+});

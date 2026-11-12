@@ -175,19 +175,37 @@ const CORE_SHAPES = [
   [`Remove writer ben@example.org from project ${ID}`, 'Remove writer ben@example.org'],
   [`Set editor config ud/dependency on layer ${ID}`, 'Set editor config ud/dependency'],
   [`Unset editor config igt/import on layer ${ID}`, 'Unset editor config igt/import'],
+  // A project borrows a vocabulary, and a borrowing ends (by that project's
+  // maintainer or the home's), in the borrowing project's Activity.
   [`Add vocab ${ID} to project ${ID2}`, 'Add vocab'],
   [`Remove vocab ${ID} from project ${ID2}`, 'Remove vocab'],
   // guideline.clj
   ['Create guideline "Clitic se"', 'Create guideline "Clitic se"'],
   [`Update guideline ${ID}`, 'Update guideline'],
   [`Delete guideline ${ID}`, 'Delete guideline'],
-  // vocab_layer.clj, vocab_item.clj, vocab_link.clj, vocab_restore.clj
+  // vocab_layer.clj and vocab_home.clj, since the vocabulary home (05a54a802):
+  // listed in the home project's Activity. The name is quoted as typed.
+  ['Create vocabulary “Lexicon”', 'Create vocabulary “Lexicon”'],
+  ['Rename vocabulary “Lexicon” to “Lexicon 2”', 'Rename vocabulary “Lexicon” to “Lexicon 2”'],
+  ['Update vocabulary “Lexicon”', 'Update vocabulary “Lexicon”'],
+  ['Delete vocabulary “Lexicon”', 'Delete vocabulary “Lexicon”'],
+  [`Delete vocabulary ${ID}`, 'Delete vocabulary'],
+  [
+    'Move vocabulary “Lexicon” to project “Kukama”',
+    'Move vocabulary “Lexicon” to project “Kukama”',
+  ],
+  [
+    'Vocabulary “Lexicon” belongs to project “Kukama”',
+    'Vocabulary “Lexicon” belongs to project “Kukama”',
+  ],
+  // Before the vocabulary home, still in a vocabulary's History.
   ["Create vocab 'Lexicon'", "Create vocab 'Lexicon'"],
   [`Update vocab ${ID} name to "Lexicon 2"`, 'Update vocab name to "Lexicon 2"'],
   [`Update vocab ${ID}`, 'Update vocab'],
   [`Delete vocab ${ID}`, 'Delete vocab'],
   [`Add maintainer ann@example.org to vocab ${ID}`, 'Add maintainer ann@example.org'],
   [`Remove maintainer ann@example.org from vocab ${ID}`, 'Remove maintainer ann@example.org'],
+  // vocab_item.clj, vocab_link.clj, vocab_restore.clj
   ["Create vocab item 'kai'", "Create vocab item 'kai'"],
   [`Update vocab item ${ID}`, 'Update vocab item'],
   [`Delete vocab item ${ID}`, 'Delete vocab item'],
@@ -307,6 +325,20 @@ const NAMED_SHAPES = [
   [(n) => `Create project "${n}"`, (n) => `Create project "${n}"`],
   [(n) => `Create guideline "${n}"`, (n) => `Create guideline "${n}"`],
   [(n) => `Create vocab '${n}'`, (n) => `Create vocab '${n}'`],
+  [(n) => `Create vocabulary \u201c${n}\u201d`, (n) => `Create vocabulary \u201c${n}\u201d`],
+  [
+    (n) => `Rename vocabulary \u201c${n}\u201d to \u201c${n} 2\u201d`,
+    (n) => `Rename vocabulary \u201c${n}\u201d to \u201c${n} 2\u201d`,
+  ],
+  [(n) => `Delete vocabulary \u201c${n}\u201d`, (n) => `Delete vocabulary \u201c${n}\u201d`],
+  [
+    (n) => `Move vocabulary \u201c${n}\u201d to project \u201c${n} 2\u201d`,
+    (n) => `Move vocabulary \u201c${n}\u201d to project \u201c${n} 2\u201d`,
+  ],
+  [
+    (n) => `Vocabulary \u201c${n}\u201d belongs to project \u201c${n} 2\u201d`,
+    (n) => `Vocabulary \u201c${n}\u201d belongs to project \u201c${n} 2\u201d`,
+  ],
   [(n) => `Create vocab item '${n}'`, (n) => `Create vocab item '${n}'`],
   [
     (n) => `Restore to ${TS} (after \u201c${n}\u201d)`,
