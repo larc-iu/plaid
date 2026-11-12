@@ -499,7 +499,8 @@ export const mwe = {
   },
 
   // The popover's type row in MWE mode: an existing entry's type (editable by
-  // the vocab's maintainers), or the type a new entry will get.
+  // a writer of the vocabulary's project, canEditEntries), or the type a new
+  // entry will get.
   _mweTypeRow(currentItem) {
     const linked = !!currentItem?.vocabId;
     const vocab = linked ? this.doc.vocabularies?.[currentItem.vocabId] : null;
@@ -507,11 +508,11 @@ export const mwe = {
     const current = linked
       ? (this._vocabMemoFor(currentItem.vocabId).morphTypeOf(currentItem.id) ?? '')
       : preset;
-    const canEditEntry = linked && !!vocab && this.canManageVocab(vocab);
+    const canEditEntry = linked && !!vocab && this.canEditEntries(vocab);
     const title = linked
       ? canEditEntry
         ? 'Type of the linked lexicon entry'
-        : 'Type comes from the linked lexicon entry. Only its maintainers can change it.'
+        : 'Type comes from the linked lexicon entry'
       : 'The type a new entry gets: multi-word expression';
     return html`
       <label class="igt-vocab-pop__type" title=${title} @click=${(e) => e.stopPropagation()}>

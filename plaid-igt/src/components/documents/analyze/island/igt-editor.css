@@ -1159,6 +1159,14 @@
   color: var(--igt-hint);
   text-align: center;
 }
+/* In place of the create row when the lexicon is another project's. */
+.igt-vocab-pop__borrowed {
+  margin-top: 4px;
+  padding: 6px;
+  border-top: 1px solid var(--igt-gray-200);
+  font-size: 12px;
+  color: var(--igt-gray-500);
+}
 .igt-vocab-pop__create {
   width: 100%;
   margin-top: 4px;

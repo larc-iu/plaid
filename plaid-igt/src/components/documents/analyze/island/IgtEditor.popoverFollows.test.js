@@ -45,13 +45,13 @@ function mount() {
     raw,
     project: { id: 'proj-1', vocabs: [{ id: 'v1' }], config: { plaid: {} } },
     vocabularies: {
-      v1: { id: 'v1', name: 'Lexicon', maintainers: [], items: [], vocabLinks: [] },
+      v1: { id: 'v1', name: 'Lexicon', project: 'proj-1', items: [], vocabLinks: [] },
     },
     client,
     user: { id: 'wren@example.com' },
   });
   client.documents.get = async () => doc.raw;
-  ({ host, editor } = mountIsland(doc, { canManageVocab: () => true }));
+  ({ host, editor } = mountIsland(doc, { canEditEntries: () => true }));
   return { doc, release };
 }
 

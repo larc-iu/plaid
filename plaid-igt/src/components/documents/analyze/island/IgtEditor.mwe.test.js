@@ -54,7 +54,7 @@ function mount({ links = [], maintainer = false } = {}) {
     client,
   });
   client.documents.get = async () => doc.raw;
-  ({ host, editor } = mountIsland(doc, maintainer ? { canManageVocab: () => true } : {}));
+  ({ host, editor } = mountIsland(doc, maintainer ? { canEditEntries: () => true } : {}));
   return { doc, client };
 }
 

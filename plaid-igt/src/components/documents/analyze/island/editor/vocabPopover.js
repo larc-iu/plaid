@@ -222,22 +222,28 @@ export const vocabPopover = {
     // spread over the words spelled the same, which needs no lexicon at all
     // and used to be unreachable because this popover never opened.
     if (!vocabs.length) return this._spreadPopover(tokenId, formText, kind);
-    // The popover is scoped to ONE vocabulary at a time, chosen by the thin
-    // selector at the bottom. Default to the linked item's vocab (so an existing
-    // link is visible), else the first. The list, create, and manage row all
-    // follow the active vocab.
-    const activeVocab =
-      vocabs.find((v) => v.id === this._popoverVocabId) ||
-      vocabs.find((v) => v.id === currentItem?.vocabId) ||
-      vocabs[0] ||
-      null;
-    this._popoverVocabId = activeVocab?.id ?? null;
-
     const search = this._popoverSearch || '';
     // A morpheme's chip lists the pair picker's rows (pairPicker.js), each a
     // sense and a value, from every vocabulary. A word's and an expression's
     // list entries.
     const pairs = kind === 'morpheme' ? this._chipPairs(tokenId, search) : null;
+    // The vocabularies a new entry may go into: those of this project, for a
+    // writer of it (canEditEntries). One this project borrows is read only
+    // here, though its entries are linked to like any other's.
+    const canAddTo = (v) => !!v && !this.readOnly && this.canEditEntries(v);
+    // The popover is scoped to ONE vocabulary at a time, chosen by the thin
+    // selector at the bottom. Default to the linked item's vocab (so an existing
+    // link is visible), else the first. The list, create, and manage row all
+    // follow the active vocab. On a morpheme's chip the selector only chooses
+    // where "+ Create" puts a new entry, so it offers only the vocabularies
+    // one may go into.
+    const tabVocabs = pairs && !this.readOnly ? vocabs.filter(canAddTo) : vocabs;
+    const activeVocab =
+      tabVocabs.find((v) => v.id === this._popoverVocabId) ||
+      tabVocabs.find((v) => v.id === currentItem?.vocabId) ||
+      tabVocabs[0] ||
+      null;
+    this._popoverVocabId = activeVocab?.id ?? null;
     const isMwe = kind === 'mwe';
     const precForm = isMwe ? formText : this._precedentForm(formText, kind);
     const { limited, truncated, best } = pairs
@@ -247,11 +253,23 @@ export const vocabPopover = {
     // punctuation trimmed by the project's own ignored-tokens rule
     // (`derechos.` → `derechos`; user decision 2026-08-26).
     const createForm = trimIgnoredEdges(formText || '', this._ignoredCfg);
-    // A single "+ Create" row, into the active vocab, when there's a form.
-    // Adding an entry needs only write access to the document, like linking
-    // (acl-shared-vocab-writers b). Renaming and deleting are the
+    // A single "+ Create" row, into the active vocab, when there's a form and
+    // a new entry may go there (canAddTo). Renaming and deleting are the
     // vocabulary's maintainers', and the popover offers neither.
-    const canCreate = !!(createForm && activeVocab && !this.readOnly);
+    const canCreate = !!(createForm && canAddTo(activeVocab));
+    // Where no "+ Create" row is offered only because the lexicon is
+    // another project's, one line says so in its place: the lexicon shown,
+    // or on a morpheme's chip every lexicon when none takes a new entry.
+    const readOnlyLexicons =
+      createForm && !canCreate && !this.readOnly
+        ? pairs
+          ? tabVocabs.length
+            ? []
+            : vocabs
+          : activeVocab
+            ? [activeVocab]
+            : []
+        : [];
     // While the row is being edited the entry's form is whatever is typed.
     const editingCreate = canCreate && this._popoverCreateEdit != null;
     // The values the cells hold in fields that name a lexicon field
@@ -662,7 +680,9 @@ export const vocabPopover = {
               >
                 ${createMark} “${createForm}${numHtml(newFormSub, 'igt-vocab-pop')}” ${createExtras}
               </button>`
-          : nothing}
+          : readOnlyLexicons.length
+            ? this._borrowedNote(readOnlyLexicons)
+            : nothing}
         ${extraRows.map((r, j) => {
           const idx = limited.length + (canCreate ? 1 : 0) + j;
           return html`<button
@@ -739,7 +759,7 @@ export const vocabPopover = {
           : isMwe
             ? this._mweTypeRow(editingCreate ? null : currentItem)
             : nothing}
-        ${vocabs.length
+        ${tabVocabs.length
           ? html`<div class="igt-vocab-pop__vocabsel">
               ${
                 // On a morpheme's chip the tabs only choose where "+ Create"
@@ -757,7 +777,7 @@ export const vocabPopover = {
                 role="tablist"
                 aria-label=${pairs ? 'New entry in' : 'Choose lexicon'}
               >
-                ${vocabs.map((v) => {
+                ${tabVocabs.map((v) => {
                   const isActive = v.id === activeVocab?.id;
                   // An inactive chip scopes the popover to that lexicon; the active
                   // chip is a link to the full vocab view (new tab). So the first
@@ -794,6 +814,26 @@ export const vocabPopover = {
           : nothing}
       </div>
     `;
+  },
+
+  // The line in place of "+ Create" when the lexicons a new entry would go
+  // into belong to other projects: “X” belongs to another project. Each
+  // name is data and takes its own direction.
+  _borrowedNote(list) {
+    const names = list.map(
+      (v, i) =>
+        html`${i === 0 ? '' : i === list.length - 1 ? ' and ' : ', '}“<span dir="auto"
+            >${v.name}</span
+          >”`,
+    );
+    const homes = new Set(list.map((v) => v.project ?? null));
+    const tail =
+      list.length === 1
+        ? 'belongs to another project.'
+        : homes.size === 1
+          ? 'belong to another project.'
+          : 'belong to other projects.';
+    return html`<div class="igt-vocab-pop__borrowed">${names} ${tail}</div>`;
   },
 
   // A row of the list: a button the pointer makes active and a click picks,
@@ -981,10 +1021,10 @@ export const vocabPopover = {
   // and the form are untouched; the display-only affix joints ("-"/"=") react
   // immediately.
   // A morpheme linked to an entry that has a type goes by the entry's (R2),
-  // so the row shows and edits the entry, for vocab maintainers, and says the
-  // change applies to every use. Linked to an entry with none, it goes by its
-  // own, so the row shows and edits that, as on an unlinked morpheme
-  // (REV-CLITIC CL-3).
+  // so the row shows and edits the entry, for a writer of the vocabulary's
+  // project (canEditEntries), and says the change applies to every use.
+  // Linked to an entry with none, it goes by its own, so the row shows and
+  // edits that, as on an unlinked morpheme (REV-CLITIC CL-3).
   _morphTypeRow(morphemeId, currentItem) {
     const morph = (this.doc.layerInfo.morphemeTokenLayer?.tokens || []).find(
       (m) => m.id === morphemeId,
@@ -996,13 +1036,9 @@ export const vocabPopover = {
       : null;
     const editsEntry = !!fromItem;
     const current = (editsEntry ? fromItem : morph?.metadata?.morphType) || '';
-    const canEditEntry = editsEntry && !!vocab && this.canManageVocab(vocab);
+    const canEditEntry = editsEntry && !!vocab && this.canEditEntries(vocab);
     const disabled = this.readOnly || (editsEntry && !canEditEntry);
-    const title = !editsEntry
-      ? 'Type of this morpheme'
-      : canEditEntry
-        ? 'Type of the linked lexicon entry'
-        : 'Type of the linked lexicon entry. Only its maintainers can change it.';
+    const title = editsEntry ? 'Type of the linked lexicon entry' : 'Type of this morpheme';
     return html`
       <label class="igt-vocab-pop__type" title=${title} @click=${(e) => e.stopPropagation()}>
         <span>${editsEntry ? 'Type (entry)' : 'Type'}</span>

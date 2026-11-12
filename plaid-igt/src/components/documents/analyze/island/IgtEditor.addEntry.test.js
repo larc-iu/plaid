@@ -1,7 +1,9 @@
-// Who may add an entry from the Analyze popover (acl-shared-vocab-writers b,
-// and Luke's answer to FIX-R-CREATE Q1): anyone who can write the document,
-// for a word and for a multi-word expression. Changing a linked entry's type
-// stays with the vocabulary's maintainers.
+// Who may add an entry from the Analyze popover: a writer of the lexicon's
+// own project (canEditEntries, SPEC 5.4 and Luke's ruling 11.4), for a word,
+// a morpheme and a multi-word expression, and the same person changes a
+// linked entry's type. A lexicon the project borrows is read only there: its
+// entries are linked to and none is added or changed. AnalyzeIsland.vocabHome
+// asks the same of the project's role lists.
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
   buildRawDoc,
@@ -22,9 +24,10 @@ vi.mock('@/utils/feedback', () => ({
 let host;
 let editor;
 
-// "the cat sat down", the word "cat" linked, and a writer who does not
-// maintain the lexicon.
-function mount(text = null) {
+// "the cat sat down", the word "cat" linked, and a writer of the lexicon's
+// project who does not maintain it (`canEditEntries` true), or a writer of a
+// project that borrows the lexicon (false).
+function mount(text = null, { canEditEntries = true } = {}) {
   const raw = buildRawDoc(
     text ?? {
       body: 'the cat sat down',
@@ -48,7 +51,7 @@ function mount(text = null) {
       v1: {
         id: 'v1',
         name: 'Lexicon',
-        maintainers: ['mara@example.com'],
+        project: 'proj-1',
         items: [{ id: 'i-cat', form: 'cat', metadata: { morphType: 'stem' } }],
         vocabLinks: [{ id: 'lk-cat', tokens: ['m-2'], vocabItem: { id: 'i-cat', form: 'cat' } }],
       },
@@ -57,7 +60,7 @@ function mount(text = null) {
     user: { id: 'wren@example.com' },
   });
   client.documents.get = async () => doc.raw;
-  ({ host, editor } = mountIsland(doc, { canManageVocab: () => false }));
+  ({ host, editor } = mountIsland(doc, { canEditEntries: () => canEditEntries }));
   return { doc, client };
 }
 
@@ -111,7 +114,7 @@ describe('the create row', () => {
   });
 });
 
-describe('a writer who does not maintain the lexicon', () => {
+describe("a writer of the lexicon's project who does not maintain it", () => {
   it('is offered "+ Create" on a word, and it makes and links the entry', async () => {
     const { doc, client } = mount();
     openOn('m-1');
@@ -197,7 +200,7 @@ describe('a writer who does not maintain the lexicon', () => {
       user: { id: 'wren@example.com' },
     });
     client.documents.get = async () => doc.raw;
-    ({ host, editor } = mountIsland(doc, { canManageVocab: () => false }));
+    ({ host, editor } = mountIsland(doc, { canEditEntries: () => true }));
     openOn('w-1');
     click(popover().querySelector('.igt-vocab-pop__create'));
     click(popover().querySelector('.igt-vocab-pop__create'));
@@ -216,12 +219,99 @@ describe('a writer who does not maintain the lexicon', () => {
     expect(create.textContent).toContain('“sat down”');
   });
 
-  it('cannot change the type of a linked entry', () => {
-    mount();
+  it('changes the type of a linked entry', async () => {
+    const { client } = mount();
     openOn('m-2');
-    const type = popover().querySelector('.igt-vocab-pop__type select');
-    expect(type).not.toBeNull();
-    expect(type.disabled).toBe(true);
+    const row = popover().querySelector('.igt-vocab-pop__type');
+    const type = row.querySelector('select');
+    expect(type.disabled).toBe(false);
+    expect(row.title).toBe('Type of the linked lexicon entry');
+    expect(popover().querySelector('.igt-vocab-pop__type-note').textContent).toBe(
+      'Applies to every use of this entry.',
+    );
+    type.value = 'root';
+    type.dispatchEvent(new Event('change', { bubbles: true }));
+    await settle(4);
+    expect(client.calls.some((c) => c.kind === 'vocabItems.patchMetadata')).toBe(true);
+  });
+});
+
+describe('a writer of a project that borrows the lexicon', () => {
+  const borrowed = () => mount(null, { canEditEntries: false });
+  const note = () => popover().querySelector('.igt-vocab-pop__borrowed');
+
+  it('is offered no "+ Create" on a word, and one line says whose the lexicon is', () => {
+    borrowed();
+    openOn('w-1');
+    expect(popover().querySelector('.igt-vocab-pop__create')).toBeNull();
+    expect(note().textContent.replace(/\s+/g, ' ').trim()).toBe(
+      '“Lexicon” belongs to another project.',
+    );
+    expect(note().querySelector('[dir="auto"]').textContent).toBe('Lexicon');
+    // Once, not on every row.
+    expect(popover().querySelectorAll('.igt-vocab-pop__borrowed')).toHaveLength(1);
+  });
+
+  it('is offered no "+ Create" on a morpheme, and no lexicon to put a new entry in', () => {
+    borrowed();
+    openOn('m-1');
+    expect(popover().querySelector('.igt-vocab-pop__create')).toBeNull();
+    expect(popover().querySelector('.igt-vocab-pop__vocabsel')).toBeNull();
+    expect(note().textContent.replace(/\s+/g, ' ').trim()).toBe(
+      '“Lexicon” belongs to another project.',
+    );
+  });
+
+  it('is offered no "+ Create" for a multi-word expression', () => {
+    borrowed();
+    click(form('w-3'), { shiftKey: true });
+    click(form('w-4'), { shiftKey: true });
+    key(label('mwe:new'), 'Enter');
+    expect(popover()).not.toBeNull();
+    expect(popover().querySelector('.igt-vocab-pop__create')).toBeNull();
+    expect(note()).not.toBeNull();
+  });
+
+  // Every key that reaches "+ Create" goes through the row: with no row,
+  // Enter, the create-now chord and the create-and-link-all chord on a form
+  // no entry is spelled like make nothing.
+  it('makes no entry from the keyboard', async () => {
+    const { client } = borrowed();
+    for (const open of [() => openOn('w-1'), () => openOn('m-1')]) {
+      open();
+      const search = popover().querySelector('.igt-vocab-pop__search');
+      key(search, 'Enter');
+      key(search, 'Enter', { ctrlKey: true });
+      key(search, 'Enter', { metaKey: true });
+      key(search, 'Enter', { ctrlKey: true, shiftKey: true });
+      key(search, 'Enter', { metaKey: true, shiftKey: true });
+      await settle(4);
+      expect(popover()?.querySelector('.igt-vocab-pop__create-input') ?? null).toBeNull();
+      if (popover()) key(popover().querySelector('.igt-vocab-pop__search'), 'Escape');
+    }
+    expect(client.calls.some((c) => c.kind === 'vocabItems.create')).toBe(false);
+  });
+
+  it('links a word to an entry that is there', async () => {
+    const { client } = borrowed();
+    openOn('w-2');
+    const row = [...popover().querySelectorAll('.igt-vocab-pop__item')].find((el) =>
+      el.textContent.includes('cat'),
+    );
+    click(row);
+    await settle(4);
+    const link = client.calls.find((c) => c.kind === 'vocabLinks.create');
+    expect(link.args.slice(0, 2)).toEqual(['i-cat', ['w-2']]);
+    expect(client.calls.some((c) => c.kind === 'vocabItems.create')).toBe(false);
+  });
+
+  it('cannot change the type of a linked entry', () => {
+    borrowed();
+    openOn('m-2');
+    const row = popover().querySelector('.igt-vocab-pop__type');
+    expect(row.querySelector('select').disabled).toBe(true);
+    expect(row.title).toBe('Type of the linked lexicon entry');
+    expect(popover().querySelector('.igt-vocab-pop__type-note')).toBeNull();
   });
 });
 
@@ -252,7 +342,7 @@ describe('the type row of a morpheme linked to an untyped entry', () => {
         v1: {
           id: 'v1',
           name: 'Lexicon',
-          maintainers: ['wren@example.com'],
+          project: 'proj-1',
           items: [{ id: 'i-ri', form: 'ri', metadata: {} }],
           vocabLinks: [{ id: 'lk-ri', tokens: ['m-2'], vocabItem: { id: 'i-ri', form: 'ri' } }],
         },
@@ -261,7 +351,7 @@ describe('the type row of a morpheme linked to an untyped entry', () => {
       user: { id: 'wren@example.com' },
     });
     client.documents.get = async () => doc.raw;
-    ({ host, editor } = mountIsland(doc, { canManageVocab: () => true }));
+    ({ host, editor } = mountIsland(doc, { canEditEntries: () => true }));
     openOn('m-2');
     const row = popover().querySelector('.igt-vocab-pop__type');
     expect(row.querySelector('option[selected]').value).toBe('enclitic');
@@ -317,7 +407,7 @@ describe('the lexicon popover', () => {
     const fresh = {
       id: 'v1',
       name: 'Lexicon',
-      maintainers: ['mara@example.com'],
+      project: 'proj-1',
       timeModified: 2,
       items: [
         { id: 'i-cat', form: 'cat', metadata: { morphType: 'stem' } },
@@ -350,7 +440,7 @@ describe('the lexicon popover', () => {
     const fresh = {
       id: 'v1',
       name: 'Lexicon',
-      maintainers: ['mara@example.com'],
+      project: 'proj-1',
       timeModified: 2,
       items: [
         { id: 'i-cat', form: 'cat', metadata: { morphType: 'stem' } },

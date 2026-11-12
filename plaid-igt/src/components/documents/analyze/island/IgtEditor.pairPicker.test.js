@@ -92,7 +92,7 @@ function mount({
   const lexicon = {
     id: 'v1',
     name: 'Lexicon',
-    maintainers: [],
+    project: 'proj-1',
     config: {
       igt: { fields: Object.fromEntries(inlineFields.map((n) => [n, { inline: true }])) },
     },
@@ -142,7 +142,7 @@ function mount({
     user: { id: 'wren@example.com' },
   });
   client.documents.get = async () => doc.raw;
-  ({ host, editor } = mountIsland(doc, { canManageVocab: () => true }));
+  ({ host, editor } = mountIsland(doc, { canEditEntries: () => true }));
   return { doc, client, release };
 }
 

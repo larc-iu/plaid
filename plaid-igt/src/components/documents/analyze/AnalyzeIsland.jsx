@@ -5,7 +5,7 @@ import { IgtEditor } from './island/IgtEditor.js';
 import { AutoAnalyzeDialog } from './AutoAnalyzeDialog.jsx';
 import { useDocumentCtx } from '../contexts/DocumentContext.jsx';
 import { useAuth } from '../../../contexts/AuthContext.jsx';
-import { canManageVocabulary } from '@ui/domain/permissions.js';
+import { canEditVocabularyEntries } from '@ui/domain/permissions.js';
 import { useAskAssistant } from '@ui/components/assistant/subject.js';
 import { onSentenceFocus } from '../hooks/focusHandoff.js';
 
@@ -65,10 +65,17 @@ export const AnalyzeIsland = () => {
     [],
   );
 
-  // A linked entry's type is the vocabulary's maintainers' to change. Adding
-  // an entry and linking a word need only write access to the document.
+  // Adding an entry and changing a linked entry's type are for a writer of
+  // the vocabulary's project, from that project's own documents. A vocabulary
+  // this project borrows is read only here (its home is not passed), admins
+  // included. Linking a word to an entry needs only write access to the
+  // document.
   const { user } = useAuth();
-  const canManageVocab = (vocab) => canManageVocabulary(vocab, user);
+  const canEditEntries = (vocab) => {
+    const project = doc?.project;
+    const home = project && vocab?.project === project.id ? project : null;
+    return canEditVocabularyEntries(vocab, home, user);
+  };
 
   // The island is built once, so the confirm it holds reads through a ref and
   // its identity never has to change. Same dialog the entry panel asks with:
@@ -84,7 +91,7 @@ export const AnalyzeIsland = () => {
       // Not `!readOnly`: an Auto-analyze run takes the document read-only for
       // as long as it writes, and its button carries the run's progress.
       canAutoAnalyze: canWrite,
-      canManageVocab,
+      canEditEntries,
       // The SAME store the Comments tab renders from, so a comment posted on a
       // word is already there when you switch tabs.
       comments,

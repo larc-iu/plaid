@@ -47,7 +47,7 @@ function mount({
           v1: {
             id: 'v1',
             name: 'Lexicon',
-            maintainers: ['wren@example.com'],
+            project: 'proj-1',
             items: [item],
             vocabLinks: linked
               ? [{ id: 'lk-ri', tokens: ['m-2'], vocabItem: { id: 'i-ri', form: 'ri' } }]
@@ -59,7 +59,7 @@ function mount({
     user: { id: 'wren@example.com' },
   });
   client.documents.get = async () => doc.raw;
-  ({ host, editor } = mountIsland(doc, { canManageVocab: () => true }));
+  ({ host, editor } = mountIsland(doc, { canEditEntries: () => true }));
   return { doc, client };
 }
 

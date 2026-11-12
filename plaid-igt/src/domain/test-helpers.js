@@ -210,8 +210,9 @@ export function makeFakeClient(opts = {}) {
     // Mirrors the real endpoint: returns the layer + items but NOT vocab-links
     // (those are embedded in the document GET under tokenLayer.vocabs[] and
     // folded in by mergeRawVocabLinks). Tests pass `opts.vocabularies` to
-    // pre-seed links on the loaded table directly.
-    'vocabLayers.get': (id) => opts.vocabularies?.[id] ?? { id, items: [] },
+    // pre-seed links on the loaded table directly. A vocabulary no test
+    // describes belongs to the fake project.
+    'vocabLayers.get': (id) => opts.vocabularies?.[id] ?? { id, project: project().id, items: [] },
     // A query answers what `opts.query(body)` gives, else no rows.
     query: async (body) => (await opts.query?.(body)) ?? { results: [] },
   };

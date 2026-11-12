@@ -63,7 +63,7 @@ export class IgtEditor {
     {
       readOnly = false,
       canAutoAnalyze = false,
-      canManageVocab = null,
+      canEditEntries = null,
       comments = null,
       canComment = false,
       canDeleteAnyComment = false,
@@ -125,11 +125,12 @@ export class IgtEditor {
     // (editor/comments.js).
     this._cmtEditingId = null;
     this._cmtEditDraft = '';
-    // Does the current user maintain a vocab? Only a maintainer (or an
-    // admin) changes a linked entry's type from the popover. Adding an entry
-    // and linking need only write access to the document. Default: assume
-    // yes (dev/tests).
-    this.canManageVocab = typeof canManageVocab === 'function' ? canManageVocab : () => true;
+    // Whether the current user adds entries to a vocabulary and changes what
+    // is stored on one ("+ Create", a linked entry's type): a writer of its
+    // project, asked of a vocabulary this project owns. A borrowed one is read
+    // only here. Linking needs only write access to the document. Default:
+    // assume yes (dev/tests).
+    this.canEditEntries = typeof canEditEntries === 'function' ? canEditEntries : () => true;
     this.container = container;
     // The alternatives popup renders into its OWN root, not into the grid
     // template. It is position:fixed, so it does not need to be a sibling of
