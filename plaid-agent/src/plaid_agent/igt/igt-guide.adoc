@@ -36,7 +36,7 @@ Key features include:
 
 * **Transcription.** Attach audio or video to a document and transcribe it one time-aligned segment at a time, with playback speed control and a speaker label on each segment. The transcript is the text that is then analyzed.
 * **Interlinear analysis.** Divide the text into sentences, words, and morphemes, and annotate them with the fields your project defines: glosses, parts of speech, free translations, and others.
-* **Vocabulary linking.** Words and morphemes may be linked to entries in a shared vocabulary. A linked entry supplies its gloss wherever the form occurs, so a word is analyzed consistently across the corpus. Homonyms, affixes and clitics, and multi-word expressions are supported.
+* **Vocabulary linking.** Words and morphemes may be linked to entries in a vocabulary. A linked entry supplies its gloss wherever the form occurs, so a word is analyzed consistently across the corpus. Homonyms, affixes and clitics, and multi-word expressions are supported.
 * **Import and export.** Import a FieldWorks (FLEx) backup or interlinear texts, ELAN files, or a CLDF dataset. Export to FLEx (`.flextext` with a LIFT lexicon), ELAN (`.eaf`), CLDF, plain text, or a LaTeX book, or copy a sentence as LaTeX.
 * **Collaboration.** A project is shared with its members, each of which may have reader, writer, or maintainer privileges. A central database lets all users see the latest state of the data, with no import/export required.
 * **Audited edits.** Every change is recorded in an audit log with its author, and any document can be viewed as it was at an earlier time.
@@ -65,7 +65,7 @@ The editor has a few levels you move between:
 * **Documents**: the texts inside one project. Beside the document list sit the project's own tabs: **Search**, **Guidelines**, **Assistant** (when an assistant is running), and **Export** for everyone, and **Bulk Edit**, **Validation**, **Activity**, and **Settings** for maintainers.
 * **A document's tabs**: **Baseline**, **Media**, **Tokenize**, **Analyze**, **Comments**, **Export**, and **Details**, switched at the top of an open document.
 
-The **Vocabularies** link in the header leads to the shared lexicons (see <<_vocabularies>>), and **Guide** opens this document.
+The **Vocabularies** link in the header leads to the vocabularies (see <<_vocabularies>>), and **Guide** opens this document.
 
 TIP: The Tokenize, Analyze, and Media tabs each have a **?** button that opens a legend of the gestures and keys that tab answers to. If you forget a shortcut, that is the quickest place to look.
 
@@ -320,7 +320,7 @@ What you do here:
 * **Gloss and annotate**. Fill the gloss and any other word- or morpheme-scope fields your project defines. The editor offers faint **guesses**, such as a gloss it has seen before for the same form, which you accept with Enter or type over.
 * **Pick from what the project already uses**. On a cell, **Alt+↓** lists every value the project has given that form, with counts. On a morpheme field with a lexicon field, such as Gloss, each row pairs a value with the lexicon sense it goes with, and taking one sets both. A field held to a tagset opens its list on its own and narrows it as you type.
 * **Respell a word**. **Respell** in a word's popover, or **F2** on any of its cells, opens a box over the word with its text selected. **Enter** saves the new spelling, and **Esc** or clicking elsewhere cancels. The word keeps its morphemes, glosses, lexicon links, multi-word expressions, and comments. A word with one morpheme spelled as the word gets the new spelling there too, and a word split into morphemes keeps their forms as they are. A spelling must have at least one character and no space: split a word on the Tokenize tab, and make larger changes on the Baseline tab.
-* **Link vocabulary**. Connect a word or morpheme to an entry in a shared lexicon (see <<_vocabularies>>). When the same form occurs unlinked elsewhere in the text, **all ×N** in the popover links every one of them at once.
+* **Link vocabulary**. Connect a word or morpheme to an entry in a lexicon the project links (see <<_vocabularies>>). When the same form occurs unlinked elsewhere in the text, **all ×N** in the popover links every one of them at once.
 * **Reuse an analysis**. Once you have analyzed a word, its popover offers **Analyze every "…" in this text like this**, which copies the analysis onto the unanalyzed words spelled the same. To draw on the rest of the project, use Auto-analyze (see <<_copying_previous_analyses>>).
 * **Auto-analyze**. Let the machine make a first pass over the whole document: translations, analyses copied from earlier work, a model's segmentation and glosses, and lexicon links (see <<_auto_analyze>>).
 * **Review machine work**. **Ctrl/Cmd+Enter** accepts everything proposed on a word and moves to the next. **Ctrl/Cmd+Backspace** discards a word's proposal. **Ctrl/Cmd+Shift+↑/↓** jumps between the words that still have one.
@@ -350,7 +350,7 @@ A copied analysis (Analyze every, Auto-analyze, Bulk Edit) carries each `=` with
 
 The **Type** list in a morpheme's link popover sets its type, and **—** clears it.
 On an unlinked morpheme it sets the morpheme's own type.
-On a morpheme linked to an entry with a type, it shows the entry's type, and a change applies to every use of the entry. Only the vocabulary's maintainers can change it.
+On a morpheme linked to an entry with a type, it shows the entry's type, and a change applies to every use of the entry. Only writers and maintainers of the vocabulary's project can change it.
 Linked to an entry with no type, the morpheme goes by its own, and the list shows and sets that, not the entry's.
 While the form of the **+** row is open, the list reads **Type (new entry)** and sets the type of the entry being created.
 It starts on the type the list showed before (the linked entry's, else the morpheme's own), or on **—** when there is none, and an entry created as is takes that type.
@@ -414,29 +414,50 @@ Open the entry to read or add to its thread, and the vocabulary's own **Comments
 
 = Vocabularies
 
-A **vocabulary** is a shared lexicon: a list of **entries** (words or morphemes) that carry their own fields, such as a gloss or a part of speech.
-A vocabulary lives outside any single project, and a project links to one or more of them.
+A **vocabulary** is a lexicon: a list of **entries** (words or morphemes) that carry their own fields, such as a gloss or a part of speech.
+Every vocabulary belongs to one project, and that project's roles decide who may change it (see <<_a_vocabularys_project>>).
+Other projects can link it too, and there it is read only.
 While you analyze, you connect a word or morpheme to an entry, by hand with the link button on the word or morpheme, or in bulk with **Auto-analyze**.
 
 Linking keeps the same word analyzed the same way everywhere it appears.
 A linked entry offers a guess in each field that has a **lexicon field** (see <<_annotation>>): the entry's value in that lexicon field.
-Because a vocabulary is shared, editing an entry changes it for every document linked to it.
+Editing an entry changes it for every document linked to it, in every project that links the vocabulary.
 A value already in a document's field stays as it was.
 
 In the link popover, the linked entry's form opens the entry in its vocabulary.
 When no entry fits, the **+** row under the list adds one with the word's or morpheme's form and links it.
 The new entry also takes the values the word or morpheme holds in fields that have a lexicon field, such as its gloss.
 On a word or multi-word expression that no entry is spelled like or starts with, the popover starts on the **+** row.
-Anyone who can edit the document can add an entry this way.
+Writers and maintainers of the vocabulary's project can add an entry this way, and the **+** row is not offered for a vocabulary of another project.
 
 An entry can carry a morpheme **type**: stem, prefix, suffix, enclitic, and so on, following the FieldWorks inventory.
 A linked morpheme takes its type from the entry, or goes by its own when the entry has none. The type decides how it attaches to its neighbours in the grid and in exports (`=` for clitics, `-` otherwise).
 In the Analyze grid, a morpheme's link popover sets the type (see <<_morpheme_types>>).
-Only a vocabulary's maintainers can change an entry's type.
+Writers and maintainers of the vocabulary's project can change an entry's type.
 
-Vocabularies have their own area in the app, under **Vocabularies** in the header.
-There you browse and edit entries, define the fields an entry carries, and manage who maintains the vocabulary.
+Vocabularies have their own area in the app, under **Vocabularies** in the header, grouped by the project each belongs to.
+There you browse and edit entries and define the fields an entry carries.
 Which vocabularies a project draws on is part of the project's settings (see <<_text_and_vocab>>).
+
+[[_a_vocabularys_project]]
+== A vocabulary's project
+
+A vocabulary belongs to the project it was made in, which its page names under its title.
+That project's members have the same role in the vocabulary:
+
+* **Reader**: reads the entries.
+* **Writer**: also adds entries and changes anything stored on one, such as its fields, type, senses and examples.
+* **Maintainer**: also renames, merges, deletes and restores entries, changes the vocabulary's settings, and renames, moves or deletes the vocabulary.
+
+**New vocabulary** makes one in a project you maintain, and a new project or an import makes its vocabularies inside the new project.
+
+Another project can link the vocabulary when a maintainer of that project is also a member of the vocabulary's project.
+There its members read the entries and link words and morphemes to them, but change no entry.
+The vocabulary's **Settings** tab lists them under **Used by other projects**, and **Unlink** ends one's link and removes its links to the entries, after saying how many there are.
+A project you cannot open is listed without its name.
+
+A maintainer of two projects can move a vocabulary from one to the other on its page, and the old project keeps it linked.
+A vocabulary cannot be deleted while another project links it, and neither can its project.
 
 == Managing entries
 
@@ -445,9 +466,9 @@ The search box reads every column, or one field chosen beside it: pick **Gloss**
 With a field chosen, a count of the entries that have nothing in that field appears under the box, and clicking it shows just those.
 A **Uses** column counts the words and morphemes linked to each entry, and an entry's **Concordance** shows every place it is linked.
 
-A vocabulary's maintainers edit its entries and fields here.
+Writers and maintainers of the vocabulary's project add entries and edit their fields here.
 **Enter** in a one-line field, or **Ctrl/Cmd+Enter** anywhere in the entry, saves it.
-A project's writers can link words to entries and create new ones from the link popover, but only a maintainer renames or deletes an entry.
+Only a maintainer of the vocabulary's project renames, merges or deletes an entry.
 
 **Bulk Add** takes rows pasted from a spreadsheet or read from a CSV or TSV file.
 Save an `.xlsx` or `.ods` file as CSV first.
@@ -455,7 +476,7 @@ You map the columns onto the entry fields, and each row is checked against the e
 When a file has a title or extra lines above its header, set the row the table starts at.
 **The same value on every row** gives every new entry one value in a field, such as a source or a status.
 
-**Replace** finds and replaces text in one field of every entry, the form included, as plain text, as a whole value, or as a regular expression.
+**Replace** finds and replaces text in one field of every entry, the form included for a maintainer, as plain text, as a whole value, or as a regular expression.
 Plain text ignores case, and keeps each match's capitals when both boxes are typed in small letters: `ka` to `ga` makes `Kalamang` `Galamang`.
 A fourth kind, **is empty**, fills the field on the entries that have no value in it.
 Each entry it would change is listed with its old and new value, and only the ticked ones are written.
@@ -614,7 +635,8 @@ Each row also counts the documents the person touched, with a bar for each day o
 Below it, the members who have made no changes in that window are named.
 
 The lower table is the project's history as a feed, newest first, each row naming the person, what they did, and the document it happened to.
-Changes made in a lexicon, such as merging, renaming or deleting entries, do not appear here, only in the vocabulary's History and in that of each document they changed.
+Changes made in this project's vocabularies, such as merging, renaming or deleting entries, appear here.
+Changes made in a vocabulary linked from another project appear only in that vocabulary's History and in that of each document they changed.
 For one document's history, and for putting a document back the way it was, see <<_history>>.
 
 = Settings
@@ -625,6 +647,7 @@ It has five sections, listed down the left side.
 == General
 
 The project's name, its languages, the **Research** and **Project plaid** switches, and the option to delete the project.
+Deleting a project deletes its vocabularies with it, and is refused while another project links one of them.
 
 Two languages are recorded: the **object language**, which the baseline text is in, and the **meta language**, which glosses and translations are written in.
 Each has a name, an ISO 639-3 code, a Glottocode, and a **writing system tag**, the label FLEx and ELAN files carry on their text (`oni`, `pmy`, `en`).
@@ -640,7 +663,7 @@ Under **Project plaid**, **Show the project's plaid** draws the project's plaid 
 Three things live here:
 
 * The extra **orthographies** each word can carry beside the baseline form, such as a phonetic transcription or a practical spelling.
-* Which **vocabularies** the project draws on (see <<_vocabularies>>).
+* Which **vocabularies** the project draws on (see <<_vocabularies>>). The project's own are always linked, and **New vocabulary** makes another. A vocabulary of another project can be linked by a maintainer who is also a member of that project.
 * The project's **special characters**: the backslash codes that type characters your keyboard lacks (see <<_typing_special_characters>>).
 
 == Annotation
@@ -769,8 +792,8 @@ There are four operations:
 * **Re-analyze a word**: give every occurrence of a word the same analysis, chosen from the analyses it already has in the project.
 * **Merge lexicon entries**: fold duplicate entries into one, moving every link and reference to the survivor.
 
-Respelling a lexicon entry and merging entries need a maintainer of the entry's vocabulary.
-Entries of a vocabulary you do not maintain are listed as *maintainers only* and left as they are.
+Respelling a lexicon entry and merging entries need a maintainer of the project the entry's vocabulary belongs to.
+Entries of any other vocabulary are listed as *maintainers only* and left as they are.
 
 Respelling and replacing match the way Search does: a match **contains** the text, **is exactly** it, or **matches** a regular expression.
 Contains ignores case, and keeps each match's capitals when both boxes are typed in small letters: `ka` to `ga` makes `Kalamang` `Galamang`.
@@ -798,7 +821,9 @@ A change over the whole project, such as replacing a gloss everywhere, is one ro
 Approved changes are recorded as the assistant's work accepted by you.
 Tick **Record as human-made** before approving to record them as your own work instead.
 If your work is reviewed in this project, what you approve waits for a reviewer, as anything you enter does.
-Applying a plan needs Writer access, and changing a lexicon's entries beyond creating and linking them needs a maintainer of that lexicon or an administrator.
+Applying a plan needs Writer access.
+Adding a lexicon's entries and changing their fields needs a writer of the lexicon's project, and renaming, merging or deleting them a maintainer of it or an administrator.
+A lexicon linked from another project is read only.
 
 A plan is refused when a sentence it changes has been edited since it was made, and the card then reads **Out of date**.
 Ask again to have it planned on the current text.
@@ -952,9 +977,9 @@ A file imported before says so on its row, and you choose whether to keep that d
 An import that stops before it finishes, whether you stop it, it fails, or the tab is closed, leaves a project that does not open.
 Wherever it would open, it reads **This import did not finish. Delete it and import again.**, with **Delete** for a project maintainer.
 A vocabulary the import made does not open either, and cannot be linked into another project, until the import is deleted.
-**Delete** asks for the project's name, and deletes the project and the vocabularies the import made for it.
-A vocabulary another project uses stays, and so does a lexicon you chose to import into.
-Entries the import added to such a lexicon stay there, and the screen says how many.
+**Delete** asks for the project's name, and deletes the project with the vocabularies the import made in it.
+It is refused while another project links one of them.
+A lexicon of another project you chose to import into stays, with the entries the import added to it.
 Nothing deletes it on its own, since the import may still be running in another tab.
 An import that finished but could not be marked done says so on the import screen, with **Try again**.
 
@@ -1090,15 +1115,15 @@ Selecting a history entry shows the vocabulary's entries as they were at that po
 
 To put one entry back as it was, open it in the past state and click **Restore**.
 An entry deleted since comes back whole, but without its links in documents.
-Restoring an entry is for the vocabulary's maintainers.
+Restoring an entry is for maintainers of the vocabulary's project.
 
 = Sharing and Permissions
 
 Projects are shared by adding members, each with a role:
 
 * **Reader**: can view everything but make no edits, comments included.
-* **Writer**: can edit and delete documents and link vocabulary.
-* **Maintainer**: can also change project settings, manage members, and delete the project.
+* **Writer**: can edit and delete documents, link vocabulary, and add and edit entries of the project's vocabularies.
+* **Maintainer**: can also change project settings, manage members, and delete the project and its vocabularies.
 
 Add and manage members under the project's **Settings**, in **Access**.
 Members are found by name or by email address.
