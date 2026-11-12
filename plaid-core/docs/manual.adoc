@@ -1147,8 +1147,8 @@ Its rights are that project's roles:
 * **Readers** read it.
 
 Another project may link the vocabulary with `projects.linkVocab(projectId, vocabId)`, which needs a maintainer of that project who also holds a role in the vocabulary's project.
-That project borrows it: its members read it and link their documents' tokens to its entries, and change no entry.
-Rights over the entries follow a person's role in the vocabulary's project, whatever project they work in.
+That project borrows it: its members read it and link their documents' tokens to its entries.
+Rights over the entries follow a person's role in the vocabulary's project, whatever project they work in, so a member of the borrowing project who holds no role there changes no entry.
 
 A vocabulary cannot be unlinked from its own project.
 A borrowing project's maintainers unlink it with `projects.unlinkVocab(projectId, vocabId)`, which removes its links in that project's documents.
