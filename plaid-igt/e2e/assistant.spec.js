@@ -115,7 +115,7 @@ const readPos = async () => {
     .tokenLayers.find((l) => roleOf(l) === ROLES.WORD);
   const layer = word.spanLayers.find((s) => s.id === pos.id);
   const span = (layer.spans || []).find((s) => (s.tokens || []).includes(doc.wordId));
-  return span ? { id: span.id, value: span.value } : null;
+  return span ? { id: span.id, value: span.value, metadata: span.metadata || {} } : null;
 };
 
 test.beforeAll(async () => {
@@ -323,59 +323,81 @@ test('opening a conversation leaves the list in the order it was in', async ({ p
   expect(before.filter((h) => h.includes(ids[0]))).toHaveLength(1);
 });
 
-test('approving a plan applies it under the user and settles the card', async ({ page }) => {
-  test.setTimeout(150_000);
-  skipUnlessAgent(test);
-  const serviceId = 'igt:assist:e2e-fake';
-  const service = await startIgtAssistant({ token: readToken().token, projectId, serviceId });
-  try {
-    await expect
-      .poll(
-        async () =>
-          (await client.messages.discoverServices(projectId)).some(
-            (s) => s.serviceId === serviceId && s.online,
-          ),
-        { timeout: 90_000, message: () => `the assistant never came online:\n${service.log()}` },
-      )
-      .toBe(true);
-    const value = `E2E-${Date.now()}`;
-    const conversation = planConversation(value);
-    // The turn that staged a plan records the assistant that proposed it, and
-    // the service refuses a plan that does not say (its writes are stamped
-    // with that name).
-    conversation.display[1].service = serviceId;
-    const id = await seedConversation(conversation);
-    // The service refuses a plan whose assistant is not the one asked; the
-    // conversation names the one started here.
-    await client.userData.put(userId, key('meta', id), {
-      ...(await client.userData.get(userId, key('meta', id))).value,
-      serviceId,
-    });
-    await page.goto(`/#/projects/${projectId}?tab=assistant&conversation=${id}`);
-    await page.getByRole('button', { name: 'Approve as verified' }).click();
-    await expect(page.getByText('Applied', { exact: true })).toBeVisible({ timeout: 30_000 });
-    await expect.poll(async () => (await readPos())?.value).toBe(value);
-    const record = (await client.userData.get(userId, key('conv', id))).value;
-    expect(record.display[1].status).toBe('applied');
-    expect(record.messages.at(-1).content).toMatch(/approved and applied/);
-    expect((await client.userData.get(userId, key('meta', id))).value.pending).toBeNull();
-  } finally {
-    await test.info().attach('assistant service log', {
-      body: service.log(),
-      contentType: 'text/plain',
-    });
-    await service.stop();
-    // Forgotten once its channel has closed (a live one is refused, 409), so
-    // no offline assistant is left on the fixture project.
-    await expect
-      .poll(
-        () =>
-          client.messages.discardService(projectId, serviceId).then(
-            () => true,
-            () => false,
-          ),
-        { timeout: 30_000 },
-      )
-      .toBe(true);
-  }
-});
+// The card's two buttons (2026-11-12): each writes every change as it says,
+// and the settled card says which was pressed.
+for (const [button, unverified] of [
+  ['Approve as unverified', true],
+  ['Approve as verified', false],
+]) {
+  test(`${button} applies the plan under the user and settles the card`, async ({ page }) => {
+    test.setTimeout(150_000);
+    skipUnlessAgent(test);
+    const serviceId = 'igt:assist:e2e-fake';
+    const service = await startIgtAssistant({ token: readToken().token, projectId, serviceId });
+    try {
+      await expect
+        .poll(
+          async () =>
+            (await client.messages.discoverServices(projectId)).some(
+              (s) => s.serviceId === serviceId && s.online,
+            ),
+          { timeout: 90_000, message: () => `the assistant never came online:\n${service.log()}` },
+        )
+        .toBe(true);
+      const value = `E2E-${Date.now()}`;
+      const conversation = planConversation(value);
+      // The span as it is now: the other button's test may have made it.
+      conversation.display[1].plan.ops[0].spanId = (await readPos())?.id ?? null;
+      conversation.display[1].plan.documents[0].version = (
+        await client.documents.get(doc.id, true)
+      ).version;
+      // The turn that staged a plan records the assistant that proposed it, and
+      // the service refuses a plan that does not say (its writes are stamped
+      // with that name).
+      conversation.display[1].service = serviceId;
+      const id = await seedConversation(conversation);
+      // The service refuses a plan whose assistant is not the one asked; the
+      // conversation names the one started here.
+      await client.userData.put(userId, key('meta', id), {
+        ...(await client.userData.get(userId, key('meta', id))).value,
+        serviceId,
+      });
+      await page.goto(`/#/projects/${projectId}?tab=assistant&conversation=${id}`);
+      await page.getByRole('button', { name: button, exact: true }).click();
+      await expect(page.getByText('Applied', { exact: true })).toBeVisible({ timeout: 30_000 });
+      await expect(
+        page.getByText(unverified ? 'Approved as unverified.' : 'Approved as verified.'),
+      ).toBeVisible();
+      await expect.poll(async () => (await readPos())?.value).toBe(value);
+      const md = (await readPos()).metadata;
+      expect(md.prov).toBe('inferred');
+      expect(md.provSource).toBe(`service:${serviceId}`);
+      expect(md.provConfirmed).toBe(unverified ? undefined : true);
+      const record = (await client.userData.get(userId, key('conv', id))).value;
+      expect(record.display[1].status).toBe('applied');
+      expect(!!record.display[1].asUnverified).toBe(unverified);
+      expect(record.messages.at(-1).content).toMatch(
+        unverified ? /approved as unverified and applied/ : /approved and applied/,
+      );
+      expect((await client.userData.get(userId, key('meta', id))).value.pending).toBeNull();
+    } finally {
+      await test.info().attach('assistant service log', {
+        body: service.log(),
+        contentType: 'text/plain',
+      });
+      await service.stop();
+      // Forgotten once its channel has closed (a live one is refused, 409), so
+      // no offline assistant is left on the fixture project.
+      await expect
+        .poll(
+          () =>
+            client.messages.discardService(projectId, serviceId).then(
+              () => true,
+              () => false,
+            ),
+          { timeout: 30_000 },
+        )
+        .toBe(true);
+    }
+  });
+}
