@@ -1215,6 +1215,27 @@ def waiting_phrase(waiting: Dict[str, Any], the: str = 'the') -> str:
     return f'{the} plan of {n} change{"s" if n != 1 else ""}{summary} from your earlier message'
 
 
+def plan_line(ws) -> str:
+    """The one fixed line every tool result of a turn ends with: what this
+    turn's plan holds, as the card counts it, or that it holds nothing.
+
+    A reply once told the user "The plan card holds three changes" in a turn
+    that had staged nothing: the model had read two documents, decided the
+    values in its reasoning, and written the reply the prompt scripted
+    (bench glm53-stretch-2, the stretch task's rep 1). Nothing it
+    had been shown said what the plan held. Now every result does, and the
+    prompt's reply rule reports the plan from it (owner, 2026-11-12: the
+    prompt and what the tools tell the model, not a check of the reply)."""
+    held = held_changes(ws)
+    if held:
+        return f'[Plan of this turn: {held} change{"s" if held != 1 else ""}.]'
+    waiting = getattr(ws, 'waiting', None)
+    if waiting:
+        return (f'[Plan of this turn: nothing staged. {waiting_phrase(waiting, "The")} still waits on its '
+                'card.]')
+    return '[Plan of this turn: nothing staged.]'
+
+
 def keep_waiting() -> str:
     """How to keep a waiting plan's changes once this turn has staged."""
     return ('To keep those changes, discard_plan and ask the user to approve that plan first, or plan them again '

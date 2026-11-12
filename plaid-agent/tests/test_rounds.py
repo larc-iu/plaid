@@ -92,7 +92,9 @@ def test_text_and_two_calls_then_a_reply(monkeypatch):
     assert rnd['said'] == 'Let me look.' and rnd['asked'] == '[In "Text 1"] hi' and rnd['n'] == 1
     tool_messages = {m['tool_call_id']: m['content'] for m in turn.messages if m['role'] == 'tool'}
     assert [(c['id'], c['arguments'], c['result'], c['chars']) for c in rnd['calls']] == [
-        ('c1', '{"q": "kai"}', tool_messages['c1'], 7), ('c2', '{"q": "ko"}', tool_messages['c2'], 6)]
+        ('c1', '{"q": "kai"}', tool_messages['c1'], len(tool_messages['c1'])),
+        ('c2', '{"q": "ko"}', tool_messages['c2'], len(tool_messages['c2']))]
+    assert tool_messages['c1'] == '3 words\n[Plan of this turn: nothing staged.]'
     assert rnd['conversation_id'] == 'c1' and rnd['model'] == 'fake/m'
     # The reply's round holds nothing the steps' do not, so none is stored.
     assert turn.reply_round is None and turn.text == 'Two words.'

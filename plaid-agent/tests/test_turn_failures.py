@@ -494,8 +494,9 @@ def test_a_plan_call_repeated_to_no_effect_is_not_staged_again_and_ends_the_turn
     assert script.calls == 6, 'the first call, another, three repeats, and the reply'
     assert turn.text == 'Planned it.\n\n*(Stopped after the same step was repeated 3 times.)*'
     results = [m['content'] for m in turn.messages if m.get('role') == 'tool']
-    assert results[:2] == ['Planned. 1 earlier planned change on the same target superseded.'] * 2
-    assert results[2:] == [agent.ALREADY_PLANNED] * 3
+    said = 'Planned. 1 earlier planned change on the same target superseded.'
+    assert results[:2] == [said + '\n[Plan of this turn: 1 change.]', said + '\n[Plan of this turn: 2 changes.]']
+    assert results[2:] == [agent.ALREADY_PLANNED + '\n[Plan of this turn: 2 changes.]'] * 3
     assert len(ws.ops) == 2 and not any(s.get('failed') for s in turn.steps)
 
 

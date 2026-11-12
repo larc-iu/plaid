@@ -16,6 +16,8 @@ import pytest
 
 from fixtures import FakeClient
 
+NOTHING = '[Plan of this turn: nothing staged.]'
+
 from plaid_agent.core import agent
 from plaid_agent.core import turn as turn_mod
 from plaid_agent.core.agent import ModelConfig, Toolkit, TurnCancelled, run_turn, turn_trace
@@ -92,8 +94,8 @@ def test_a_failed_turn_carries_the_calls_it_made(monkeypatch):
     [rnd] = _rounds(client)
     assert steps[0]['round'] == steps[1]['round'] == rnd['id']
     assert [{k: c[k] for k in ('id', 'name', 'arguments', 'result')} for c in rnd['calls']] == [
-        {'id': 'c1', 'name': 'search', 'arguments': '{"q": "kai"}', 'result': '3 words'},
-        {'id': 'c2', 'name': 'search', 'arguments': '{"q": "nope"}', 'result': 'Error: No word nope.'}]
+        {'id': 'c1', 'name': 'search', 'arguments': '{"q": "kai"}', 'result': '3 words\n' + NOTHING},
+        {'id': 'c2', 'name': 'search', 'arguments': '{"q": "nope"}', 'result': 'Error: No word nope.\n' + NOTHING}]
     assert partial == ''
 
 

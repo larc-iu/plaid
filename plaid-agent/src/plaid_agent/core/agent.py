@@ -34,7 +34,7 @@ from .filetools import vouches
 from .limits import cuts
 from .rounds import call_record, new_round
 from .tools import Refusal, refused
-from .plan import held_changes
+from .plan import held_changes, plan_line
 from .trace import META, META_TOOLS, PLAN, Tracer, again_label, summarize_steps, trace_step
 
 try:  # litellm raises the openai SDK's exception classes, its own included
@@ -1656,6 +1656,8 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
                 # not the call's.
                 keeper.text = ''
                 keeper.thinking = ''
+            # Every result ends with what the plan holds (core.plan.plan_line).
+            result = f'{result}\n{plan_line(ws)}'
             new.append({'role': 'tool', 'tool_call_id': c['id'], 'content': result})
             rnd['calls'].append(call_record(c['id'], name, raw, result, cut=cut))
             if (failed or repeated) and failing['call'] == key and failing['repeated'] == repeated:
