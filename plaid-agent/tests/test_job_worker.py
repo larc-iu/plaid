@@ -190,8 +190,8 @@ def test_a_model_that_does_not_answer_is_waited_for_and_asked_again(monkeypatch)
     assert r.document('d1') == 'done'
     assert job.now() - before >= JOB_MODEL_RETRY_S
     beats = [c[1] for c in client.jobs.calls if c[0] == 'heartbeat']
-    assert any(b.get('waiting_for') == 'model' and b['message'].startswith('The model is not answering. Trying '
-                                                                            'again at ') for b in beats)
+    assert any(b.get('waiting_for') == 'model' and b['message'] == 'The model is not answering. Trying again in '
+               '5 minutes.' for b in beats), 'no clock time: the worker\'s is not the reader\'s'
     assert beats[-1].get('waiting_for') is None
     assert job.paused['model'] >= JOB_MODEL_RETRY_S
     assert not job.rows['d1'].get('skipped'), 'not the stretch\'s fault'

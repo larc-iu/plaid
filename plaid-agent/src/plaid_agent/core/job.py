@@ -46,8 +46,11 @@ BUDGET, CONTEXT, OUTPUT, REPEATING = 'budget', 'context', 'output', 'repeating'
 PAUSED_FOR_PEOPLE = 'Paused while people use the model.'
 
 
-def not_answering_line(at: datetime) -> str:
-    return f'The model is not answering. Trying again at {at.strftime("%H:%M")}.'
+def not_answering_line(seconds: float) -> str:
+    """The job's line while the model does not answer. It says how long,
+    never a clock time: the worker's clock is not the reader's."""
+    minutes = max(1, round(seconds / 60))
+    return f'The model is not answering. Trying again in {minutes} minute{"" if minutes == 1 else "s"}.'
 
 
 class StretchFailed(Exception):
@@ -459,8 +462,7 @@ class Job:
         """The model did not answer: say so, wait :data:`JOB_MODEL_RETRY_S`
         and let the caller ask again (SPEC 3.7). A stop ends the wait."""
         began, said = self.now(), self.status.get('message')
-        at = datetime.fromtimestamp(began + JOB_MODEL_RETRY_S).astimezone()
-        self.set(waiting_for='model', message=not_answering_line(at))
+        self.set(waiting_for='model', message=not_answering_line(JOB_MODEL_RETRY_S))
         try:
             self.sleep(JOB_MODEL_RETRY_S)
         finally:
