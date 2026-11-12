@@ -201,11 +201,54 @@ def job_owned(w: Word, job_id: str) -> bool:
     return bool(pieces) and all(job_piece(p, job_id) for p in pieces)
 
 
-def job_touched(w: Word, job_id: str) -> bool:
-    """A word holding some of this job's work and something of someone
-    else's: harmonize leaves it, and lists it."""
+#: Why harmonize leaves a word the job wrote on, as its report lists it
+#: (CONTRACT, added by J-FIX-B and J-FIX-B2), and the word it never looks at.
+TOUCHED, COMMENTED, IN_MWE, NOT_THE_JOBS = 'touched', 'commented', 'in-mwe', 'not-the-jobs'
+
+
+def word_ids(w: Word) -> set:
+    """Every id a comment on a word or on a piece of it is anchored to: the
+    word, its morphemes, their spans and links, its word fields and link."""
+    ids = {w.id} | {sp.id for sp in w.fields.values()} | ({w.link.id} if w.link is not None else set())
+    for m in w.morphemes:
+        if m.virtual:
+            continue
+        ids |= {m.id} | {sp.id for sp in m.fields.values()} | ({m.link.id} if m.link is not None else set())
+    return ids
+
+
+def recorded_key(analysis: Dict[str, Any]) -> str:
+    """What an analysis is compared by against those the job recorded (its
+    decisions): its canonical text, ``made`` left out."""
+    return analysis_key(canonical(unmade(analysis)))
+
+
+def harmonize_bar(w: Word, job_id: str, recorded: set, commented: set) -> Optional[str]:
+    """THE rule for what harmonize may rewrite (SPEC 6.5 and 8.1, the owner's
+    rulings on REV-J-B2 S3-1), in one place, asked when harmonize collects
+    the job's words and again under the document's lock. None when the word
+    is this job's to rewrite, else why it is left:
+
+    * ``NOT_THE_JOBS``: nothing on it is this job's, so it is no business of
+      harmonize's and is not listed,
+    * ``touched``: something on it is not this job's own unverified work
+      (:func:`job_owned`), or its analysis is not one the job recorded for
+      its form (``recorded``, pairs of form and :func:`recorded_key`), so a
+      piece a person deleted or changed is never put back,
+    * ``commented``: a comment hangs on the word or a piece of it
+      (``commented``, the ids the document's comments are anchored to),
+    * ``in-mwe``: the word is a member of a multi-word expression, which a
+      job never makes."""
     pieces = word_pieces(w)
-    return any(job_piece(p, job_id) for p in pieces) and not job_owned(w, job_id)
+    if not any(job_piece(p, job_id) for p in pieces):
+        return NOT_THE_JOBS
+    if not job_owned(w, job_id) or (form_key(w.surface), recorded_key(word_analysis(w))) not in recorded:
+        return TOUCHED
+    if word_ids(w) & commented:
+        return COMMENTED
+    if any(not job_piece(link.metadata, job_id) for link in w.mwes):
+        return IN_MWE
+    return None
 
 
 # --- an analysis as the decisions and harmonize key it -----------------------------
@@ -1346,25 +1389,29 @@ class IgtRunner:
         self.read_people(project)
         people = self.people
         gloss = getattr(project.gloss_field('Morpheme'), 'name', None)
-        # form -> key -> {analysis, words: [(document, word)]}: the words
-        # wholly the job's own, which vote and may be rewritten, and those
-        # holding something of someone else's too, which are left whole.
-        mine: Dict[str, Dict[str, Dict[str, Any]]] = {}
-        touched: Dict[str, Dict[str, Dict[str, Any]]] = {}
         docs = {}
         for d in job.order:
             if (job.rows.get(d) or {}).get('state') == 'gone':
                 continue
             try:
-                doc = self.read(project, d, client)
+                docs[d] = self.read(project, d, client)
             except Gone:
                 continue
-            docs[d] = doc
+        recorded = self.recorded_analyses({form_key(w.surface) for doc in docs.values() for s in doc.sentences
+                                           for w in s.words if any(job_piece(p, job.id) for p in word_pieces(w))})
+        # form -> key -> {analysis, words: [(document, word)]}: the words the
+        # job may rewrite, which vote, and per reason those it leaves whole
+        # (``harmonize_bar``), which neither vote nor change.
+        mine: Dict[str, Dict[str, Dict[str, Any]]] = {}
+        held: Dict[str, Dict[str, Dict[str, Dict[str, Any]]]] = {}
+        for d, doc in docs.items():
+            commented = self.commented(client, project, d)
             for s in doc.sentences:
                 for w in s.words:
-                    into = mine if job_owned(w, job.id) else touched if job_touched(w, job.id) else None
-                    if into is None:
+                    why = harmonize_bar(w, job.id, recorded, commented)
+                    if why == NOT_THE_JOBS:
                         continue
+                    into = mine if why is None else held.setdefault(why, {})
                     full = word_analysis(w)
                     a = harmonized_part(full, job.tasks)
                     slot = into.setdefault(form_key(w.surface), {}).setdefault(
@@ -1374,8 +1421,11 @@ class IgtRunner:
         left: List[Dict[str, Any]] = []
         moves: List[Dict[str, Any]] = []
         rewrites: Dict[str, List[Tuple[str, Dict[str, Any]]]] = {}
-        for form, keys in sorted(mine.items()):
-            if len(keys) < 2:
+        forms = set(mine) | {form for by_form in held.values() for form in by_form}
+        for form in sorted(forms):
+            keys = mine.get(form) or {}
+            kept = {why: by_form[form] for why, by_form in sorted(held.items()) if by_form.get(form)}
+            if len(set(keys) | {k for slots in kept.values() for k in slots}) < 2:
                 continue
             theirs: Dict[str, Dict[str, Any]] = {}
             for x in people.get(form, {}).values():
@@ -1383,12 +1433,28 @@ class IgtRunner:
                 slot = theirs.setdefault(analysis_key(canonical(a)), {'analysis': a, 'count': 0, 'word': Counter()})
                 slot['count'] += x['count']
                 slot['word'][canonical(x['analysis'].get('word') or {})] += x['count']
-            target, by = harmonized({k: len(v['words']) for k, v in keys.items()},
-                                    {k: x['count'] for k, x in theirs.items()})
-            if target is None:
+            # SPEC 8.2: only a form the job's rewritable words hold two or
+            # more ways is made consistent. A form they hold one way is left
+            # as it is, and its words harmonize leaves are listed all the same.
+            if len(keys) >= 2:
+                target, by = harmonized({k: len(v['words']) for k, v in keys.items()},
+                                        {k: x['count'] for k, x in theirs.items()})
+            else:
+                target, by = next(iter(keys), None), None
+            if by is not None and target is None:
                 left.append({'form': form, 'reason': by,
                              'analyses': [{'analysis': rendering(v['analysis'], gloss), 'count': len(v['words'])}
                                           for v in keys.values()]})
+            # The job's analyses of the form on words harmonize leaves whole
+            # (``harmonize_bar``), listed by reason, but for those already
+            # the analysis the form is set to.
+            for why, slots in kept.items():
+                others = [v for k, v in slots.items() if k != target]
+                if others:
+                    left.append({'form': form, 'reason': why,
+                                 'analyses': [{'analysis': rendering(v['analysis'], gloss),
+                                               'count': len(v['words'])} for v in others]})
+            if by is None or target is None:
                 continue
             chosen = keys.get(target) or theirs.get(target)
             # The word fields go with the analysis: the values most of the
@@ -1400,13 +1466,6 @@ class IgtRunner:
             for v in moving.values():
                 for d, wid in v['words']:
                     rewrites.setdefault(d, []).append((wid, to))
-            # The job's analyses of the form on words someone else has also
-            # written on: not the job's to change, so listed.
-            others = [v for k, v in (touched.get(form) or {}).items() if k != target]
-            if others:
-                left.append({'form': form, 'reason': 'touched',
-                             'analyses': [{'analysis': rendering(v['analysis'], gloss), 'count': len(v['words'])}
-                                          for v in others]})
         written: set = set()
         in_use: List[str] = []
         self.harmonize_done = self.harmonize_report(moves, left, written, in_use, gloss)
@@ -1415,7 +1474,7 @@ class IgtRunner:
                 continue
             # A stop is asked before each document: nothing is written after it.
             job.check()
-            done = self.rewrite(project, d, rewrites[d])
+            done = self.rewrite(project, d, rewrites[d], recorded)
             if done is None:
                 in_use.append(d)
             else:
@@ -1448,8 +1507,24 @@ class IgtRunner:
                 held.append({'form': m['form'], 'reason': 'in-use', 'analyses': kept})
         return {'changed': changed, 'left': list(left) + held}
 
-    def rewrite(self, project: IgtProject, document_id: str,
-                words: List[Tuple[str, Dict[str, Any]]]) -> Optional[set]:
+    def recorded_analyses(self, forms) -> set:
+        """(form, :func:`recorded_key`) of every analysis the job recorded of
+        ``forms`` among its decisions."""
+        out = set()
+        for r in self.job.lookup_decisions(sorted(forms)):
+            try:
+                out.add((r.get('form'), recorded_key(json.loads(r['analysis']))))
+            except (ValueError, TypeError, KeyError, AttributeError):
+                continue
+        return out
+
+    @staticmethod
+    def commented(client, project: IgtProject, document_id: str) -> set:
+        """The ids the comments in a document are anchored to."""
+        return {c.get('entity_id') for c in client.comments.list(project.id, document_id=document_id) or []}
+
+    def rewrite(self, project: IgtProject, document_id: str, words: List[Tuple[str, Dict[str, Any]]],
+                recorded: set) -> Optional[set]:
         """Set each of ``words`` to its target analysis, under the lock, as
         one History entry of its own. The ids of the words rewritten (none
         when the document is gone), or None when it stayed in use."""
@@ -1473,9 +1548,10 @@ class IgtRunner:
                     doc = self.read(project, document_id, client)
                     ws._docs[document_id] = doc
                     doc = ws.doc(document_id)
+                    commented = self.commented(client, project, document_id)
                     for wid, to in words:
                         hit = doc.find(wid)
-                        if not hit or hit[1] is None or not job_owned(hit[1], job.id):
+                        if not hit or hit[1] is None or harmonize_bar(hit[1], job.id, recorded, commented) is not None:
                             continue
                         if self.stage(ws, doc, hit[0], hit[1], to):
                             staged.add(wid)

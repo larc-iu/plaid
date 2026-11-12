@@ -5,7 +5,7 @@ what was done. Each point a stop can arrive at: before the first stretch,
 during a stretch, between documents, during harmonize, during the entries
 pass."""
 
-from job_fixtures import JobClient, Model, call, document, reply, runner, start, use
+from job_fixtures import JobClient, Model, call, document, recorded, reply, runner, start, use
 
 from plaid_agent.core.job import run_job
 from plaid_agent.igt import job as igt_job
@@ -79,6 +79,7 @@ def _harmonize_job(monkeypatch, tasks=('gloss',)):
     job = start(client, list(tasks), id=J)
     for d in ('d1', 'd2'):
         job.update_row(d, state='done')
+    recorded(job)
     job.status['phase'] = 'harmonizing'
     return client, job
 
@@ -101,8 +102,8 @@ def test_a_stop_during_harmonize_writes_no_further_document_and_reports_what_was
     real = r.rewrite
     done = []
 
-    def rewrite(project, d, words):
-        out = real(project, d, words)
+    def rewrite(project, d, *a):
+        out = real(project, d, *a)
         done.append(d)
         _stop(client, job)
         return out

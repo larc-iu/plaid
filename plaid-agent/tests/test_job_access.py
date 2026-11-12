@@ -4,7 +4,7 @@ document is called gone for it. A document core no longer finds is gone."""
 
 import pytest
 
-from job_fixtures import JobClient, Model, call, document, reply, runner, start, use
+from job_fixtures import JobClient, Model, call, document, recorded, reply, runner, start, use
 
 from plaid_client import PlaidAPIError
 from plaid_agent.core.job import run_job
@@ -64,6 +64,7 @@ def test_harmonize_refused_access_ends_the_job_failed_and_not_done(monkeypatch):
     client = JobClient({'d1': document('d1', 'A', [{'words': [w('go'), w('go'), w('come')]}])})
     job = start(client, ['gloss'], id='JA')
     job.update_row('d1', state='done')
+    recorded(job)
     job.status['phase'] = 'harmonizing'
     _refuse_lock(client, PlaidAPIError('HTTP 403', status=403, response_data={'error': 'Write access required.'}))
     finished = run_job(job, runner(job))

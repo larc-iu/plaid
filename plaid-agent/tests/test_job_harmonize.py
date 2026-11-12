@@ -8,7 +8,7 @@ import json
 
 import pytest
 
-from job_fixtures import JobClient, document, runner, start
+from job_fixtures import WORD_LAYER, JobClient, document, recorded, runner, start
 
 from plaid_agent.core.job import harmonized
 
@@ -31,11 +31,26 @@ def w(form, gloss, who=J):
     return (form, [(form, gloss)], who)
 
 
-def _run(docs):
-    client = JobClient({d: document(d, f'Story {d}', s) for d, s in docs.items()})
+def _run(docs, after=None, comments=(), mwes=()):
+    """Harmonize over ``docs``, recorded as the job's stretches would have
+    recorded them, then read as ``after`` holds them (a person's edits since)
+    with ``comments`` (anchored ids) and ``mwes`` (pairs of word ids, a
+    person's multi-word expressions)."""
+    client = JobClient({d: document(d, f'Story {d}', s) for d, s in docs.items()},
+                       comments=[{'id': f'c{i}', 'document_id': d, 'entity_type': 'token', 'entity_id': e,
+                                  'body': 'Is this right?'} for i, (d, e) in enumerate(comments)])
     job = start(client, ['gloss'], id=J)
     for d in docs:
         job.update_row(d, state='done')
+    recorded(job)
+    for d, sentences in (after or {}).items():
+        client._holder(d)['documents'][d] = document(d, f'Story {d}', sentences)
+    for i, (a, b) in enumerate(mwes):
+        d = a.split('-')[0]
+        layer = next(tl for tl in client._holder(d)['documents'][d]['text_layers'][0]['token_layers']
+                     if tl['id'] == WORD_LAYER)
+        layer['vocabs'][0]['vocab_links'].append({'id': f'mwe{i}', 'vocab_item': {'id': f'e-mwe{i}', 'form': 'x y'},
+                                                  'tokens': [a, b], 'metadata': {}})
     tags = []
     real = client.operation
 
@@ -159,8 +174,60 @@ def test_harmonize_adds_no_word_field_a_word_does_not_hold(monkeypatch):
     assert _word_ops(staged) == {}, 'only what the job wrote on the word is rewritten'
 
 
+def test_a_piece_a_person_deleted_is_never_put_back(monkeypatch):
+    """A person cleared the gloss of the job's -ni on one word: its analysis
+    is one the job never recorded, and harmonize leaves it (REV-J-B2 S3-1)."""
+    staged = _staged(monkeypatch)
+    sani = lambda g: {'form': 'sani', 'morphs': [('sa', 'go'), ('ni', g)], 'who': J}  # noqa: E731
+    client, job, out, tags = _run({'d1': [{'words': [sani('now'), sani('now'), sani('now'), sani('then')]}]},
+                                  after={'d1': [{'words': [sani('now'), sani('now'), sani('now'), sani(None)]}]})
+    assert staged == [] and tags == [], 'the word a person changed is not rewritten'
+    assert out['changed'] == []
+    assert out['left'] == [{'form': 'sani', 'reason': 'touched', 'analyses': [{'analysis': 'sa-ni ‘go-_’', 'count': 1}]}]
+
+
+def test_a_word_whose_analysis_the_job_never_recorded_is_left(monkeypatch):
+    """The same word changed by a person to another value, every piece still
+    stamped as the job's."""
+    staged = _staged(monkeypatch)
+    client, job, out, tags = _run({'d1': [{'words': [w('ka', 'go'), w('ka', 'go'), w('ka', 'come')]}]},
+                                  after={'d1': [{'words': [w('ka', 'go'), w('ka', 'go'), w('ka', 'walk')]}]})
+    assert staged == [] and out['changed'] == []
+    assert out['left'] == [{'form': 'ka', 'reason': 'touched', 'analyses': [{'analysis': 'ka ‘walk’', 'count': 1}]}]
+
+
+@pytest.mark.parametrize('anchor', ['d1-s1w3', 'd1-s1w3m1', 'sp-d1-s1w3m1'])
+def test_a_comment_on_the_word_or_a_piece_of_it_keeps_harmonize_off_it(monkeypatch, anchor):
+    staged = _staged(monkeypatch)
+    client, job, out, tags = _run({'d1': [{'words': [w('ka', 'go'), w('ka', 'go'), w('ka', 'come')]}]},
+                                  comments=[('d1', anchor)])
+    assert staged == [] and out['changed'] == []
+    assert out['left'] == [{'form': 'ka', 'reason': 'commented',
+                            'analyses': [{'analysis': 'ka ‘come’', 'count': 1}]}]
+
+
+def test_a_word_in_a_multi_word_expression_is_left(monkeypatch):
+    staged = _staged(monkeypatch)
+    client, job, out, tags = _run({'d1': [{'words': [w('ka', 'go'), w('ka', 'go'), w('ka', 'come'), 'xo']}]},
+                                  mwes=[('d1-s1w3', 'd1-s1w4')])
+    assert staged == [] and out['changed'] == []
+    assert out['left'] == [{'form': 'ka', 'reason': 'in-mwe', 'analyses': [{'analysis': 'ka ‘come’', 'count': 1}]}]
+
+
+def test_the_rest_of_the_form_is_still_made_consistent_around_a_word_left(monkeypatch):
+    staged = _staged(monkeypatch)
+    client, job, out, tags = _run({'d1': [{'words': [w('ka', 'go'), w('ka', 'go'), w('ka', 'go'), w('ka', 'come'),
+                                                     w('ka', 'come')]}]}, comments=[('d1', 'd1-s1w5')])
+    assert [o['word_id'] for o in staged if o.get('kind') == 'set_analysis'] == ['d1-s1w4']
+    assert {'form': 'ka', 'reason': 'commented', 'analyses': [{'analysis': 'ka ‘come’', 'count': 1}]} in out['left']
+
+
 PIECES = ('token', 'span', 'link')
 WHO = (J,) * 8 + ('human', 'machine', f'confirmed:{J}', 'J-other')
+#: what a person may have done since the job wrote a word: nothing (mostly),
+#: deleted its gloss, commented on it or a piece of it, made a multi-word
+#: expression of it and the next word
+SINCE = (None,) * 6 + ('deleted', 'commented', 'mwe')
 
 
 def _random_word(rng, gloss):
@@ -172,24 +239,34 @@ def _random_word(rng, gloss):
     return w
 
 
-@pytest.mark.parametrize('seed', range(40))
+@pytest.mark.parametrize('seed', range(60))
 def test_harmonize_never_changes_a_word_holding_anything_not_the_jobs_own(monkeypatch, seed):
     """For random mixes of a person's, another producer's and the job's
-    content on a word, harmonize stages nothing on a word unless every piece
-    of it is the job's own unverified work."""
+    content on a word, and what a person did since (a piece deleted, a
+    comment, a multi-word expression), harmonize stages nothing on a word
+    unless every piece of it is the job's own unverified work as the job
+    recorded it and nothing of a person's hangs on it."""
     import random
     rng = random.Random(seed)
     words = [_random_word(rng, rng.choice(['go', 'go', 'come'])) for _ in range(6)]
+    since = [rng.choice(SINCE) for _ in words]
+    after = [dict(x, morphs=[('ka', None, 'e-ka')]) if since[i] == 'deleted' else x for i, x in enumerate(words)]
+    comments = [('d1', rng.choice([f'd1-s1w{i}', f'd1-s1w{i}m1', f'l-d1-s1w{i}m1']))
+                for i, why in enumerate(since, start=1) if why == 'commented']
+    mwes = [(f'd1-s1w{i}', f'd1-s1w{i + 1}') for i, why in enumerate(since, start=1) if why == 'mwe' and i < 6]
+    in_mwe = {x for pair in mwes for x in pair}
     staged = _staged(monkeypatch)
-    client, job, out, tags = _run({'d1': [{'words': words}]})
+    client, job, out, tags = _run({'d1': [{'words': words}]}, after={'d1': [{'words': after}]}, comments=comments,
+                                  mwes=mwes)
     own = set()
     for i, w in enumerate(words, start=1):
         # The one morpheme spells the word and has no type: a token with no
         # stamp is its default morpheme, not anyone's content.
         pieces = [w['who'][p] for p in PIECES if p != 'token' or w['who'][p] != 'human'] \
             + ([w['gloss'][1]] if w.get('gloss') else [])
-        if all(p == J for p in pieces):
-            own.add(f'd1-s1w{i}')
+        wid = f'd1-s1w{i}'
+        if all(p == J for p in pieces) and since[i - 1] in (None, 'mwe') and wid not in in_mwe:
+            own.add(wid)
     touched = {o.get('word_id') or o.get('analysis_word_id') or str(o.get('token_id', '')).split('m')[0]
                for o in staged}
     assert touched <= own, (seed, words, staged)
@@ -230,6 +307,7 @@ def test_a_document_in_use_keeps_its_minority_and_the_form_is_listed():
     job = start(client, ['gloss'], id=J)
     for d in ('d1', 'd2'):
         job.update_row(d, state='done')
+    recorded(job)
     out = runner(job).harmonize(job)
     assert {'form': 'ka', 'reason': 'in-use', 'analyses': [{'analysis': 'ka ‘come’', 'count': 1}]} in out['left']
     assert not [c for c in client.calls if c[0].startswith(('spans', 'tokens'))]
@@ -246,6 +324,7 @@ def test_a_form_whose_only_rewrite_stayed_in_use_is_listed_left_and_not_changed(
     job = start(client, ['gloss'], id=J)
     for d in ('d1', 'd2'):
         job.update_row(d, state='done')
+    recorded(job)
     out = runner(job).harmonize(job)
     assert out['changed'] == [], 'nothing was rewritten, so nothing is reported changed'
     assert [entry['reason'] for entry in out['left']] == ['in-use']
@@ -258,6 +337,7 @@ def test_a_rewrite_in_a_document_gone_meanwhile_is_not_reported_as_done():
     job = start(client, ['gloss'], id=J)
     for d in ('d1', 'd2'):
         job.update_row(d, state='done')
+    recorded(job)
     r = runner(job)
     real = client.documents.locked
 
@@ -283,6 +363,7 @@ def test_harmonize_waits_three_times_for_a_document_in_use_before_leaving_it():
     job._sleep = lambda s: (slept.append(s), real(s))
     for d in ('d1', 'd2'):
         job.update_row(d, state='done')
+    recorded(job)
     runner(job).harmonize(job)
     from plaid_agent.core.limits import JOB_DEFER_WAIT_S
     assert sum(slept) == 3 * JOB_DEFER_WAIT_S

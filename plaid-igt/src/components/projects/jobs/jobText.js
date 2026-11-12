@@ -44,6 +44,8 @@ export const HARMONIZE_LEFT_TEXT = {
   'no-clear-majority': 'No two-thirds majority',
   'in-use': 'Document in use',
   touched: 'Changed since the job wrote it',
+  commented: 'Has a comment',
+  'in-mwe': 'In a multi-word expression',
 };
 
 export const HARMONIZE_BY_TEXT = {

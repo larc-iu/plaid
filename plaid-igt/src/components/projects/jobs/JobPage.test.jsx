@@ -398,6 +398,30 @@ describe('the job page', () => {
     await v.unmount();
   });
 
+  it('words every reason a form is left inconsistent', async () => {
+    const reasons = {
+      'people-differ': 'People analyzed it in more than one way',
+      'no-clear-majority': 'No two-thirds majority',
+      'in-use': 'Document in use',
+      touched: 'Changed since the job wrote it',
+      commented: 'Has a comment',
+      'in-mwe': 'In a multi-word expression',
+    };
+    const left = Object.keys(reasons).map((reason) => ({
+      form: 'ka',
+      reason,
+      analyses: [{ analysis: 'ka ‘go’', count: 1 }],
+    }));
+    const report = { ...REPORT, harmonize: { ...REPORT.harmonize, left, leftMore: 0 } };
+    const v = await mount(clientOf(jobOf({ state: 'done', report })));
+    const t = text(v.container.querySelector('section[aria-label="Report"]'));
+    for (const [code, words] of Object.entries(reasons)) {
+      expect(t).toContain(words);
+      expect(t).not.toContain(` ${code} `);
+    }
+    await v.unmount();
+  });
+
   it('draws no Entries section for a linking job that made, deleted and left no entry', async () => {
     const report = {
       ...REPORT,

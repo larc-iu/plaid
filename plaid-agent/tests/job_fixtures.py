@@ -171,6 +171,17 @@ def runner(job, **kw):
     return IgtRunner(job, ModelConfig(model='fake/m', stream=False, max_steps=1000), count=_count, **kw)
 
 
+def recorded(job):
+    """The job's record of every word it holds in its documents as they read
+    now, as its stretches would have left it among its decisions: harmonize
+    rewrites only an analysis the job recorded (REV-J-B2 S3-1)."""
+    r = runner(job)
+    project = r.project()
+    for d in job.order:
+        r.settle(project, d, r.read(project, d))
+    return job
+
+
 def _count(value):
     """Tokens as the tests count them: a quarter of the JSON's characters."""
     text = value if isinstance(value, str) else json.dumps(value, ensure_ascii=False)
