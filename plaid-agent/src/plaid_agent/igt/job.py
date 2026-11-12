@@ -435,6 +435,8 @@ class IgtRunner:
         self.stretches = 0
         self.people: Optional[Dict[str, Any]] = None
         self.link_counts: Counter = Counter()
+        #: what harmonize has written so far, for the report of a job stopped in it
+        self.harmonize_done: Optional[Dict[str, Any]] = None
 
     # --- reading ---------------------------------------------------------------
 
@@ -1003,7 +1005,8 @@ class IgtRunner:
                     slot = into.setdefault(form_key(w.surface), {}).setdefault(
                         analysis_key(canonical(a)), {'analysis': a, 'words': []})
                     slot['words'].append((d, w.id))
-        changed, left = [], []
+        left: List[Dict[str, Any]] = []
+        moves: List[Dict[str, Any]] = []
         rewrites: Dict[str, List[Tuple[str, Dict[str, Any]]]] = {}
         for form, keys in sorted(mine.items()):
             if len(keys) < 2:
@@ -1021,15 +1024,11 @@ class IgtRunner:
                                           for v in keys.values()]})
                 continue
             to = (keys.get(target) or theirs.get(target))['analysis']
-            moved = []
-            for k, v in keys.items():
-                if k == target:
-                    continue
-                moved.append({'analysis': rendering(v['analysis'], gloss), 'count': len(v['words']),
-                              'documents': sorted({d for d, _ in v['words']})})
+            moving = {k: v for k, v in keys.items() if k != target}
+            moves.append({'form': form, 'to': to, 'by': by, 'from': moving})
+            for v in moving.values():
                 for d, wid in v['words']:
                     rewrites.setdefault(d, []).append((wid, to))
-            changed.append({'form': form, 'to': rendering(to, gloss), 'by': by, 'from': moved})
             # The job's analyses of the form on words someone else has also
             # written on: not the job's to change, so listed.
             others = [v for k, v in (touched.get(form) or {}).items() if k != target]
@@ -1037,22 +1036,52 @@ class IgtRunner:
                 left.append({'form': form, 'reason': 'touched',
                              'analyses': [{'analysis': rendering(v['analysis'], gloss), 'count': len(v['words'])}
                                           for v in others]})
-        in_use_docs = []
-        for d, words in rewrites.items():
-            if not self.rewrite(project, d, words):
-                in_use_docs.append(d)
-        if in_use_docs:
-            moved_forms = {c['form'] for c in changed if any(set(f['documents']) & set(in_use_docs)
-                                                             for f in c['from'])}
-            for c in changed:
-                if c['form'] in moved_forms:
-                    left.append({'form': c['form'], 'reason': 'in-use',
-                                 'analyses': [{'analysis': f['analysis'], 'count': f['count']} for f in c['from']]})
-        return {'changed': changed, 'left': left}
+        written: set = set()
+        in_use: List[str] = []
+        self.harmonize_done = self.harmonize_report(moves, left, written, in_use, gloss)
+        for d in job.order:
+            if d not in rewrites:
+                continue
+            # A stop is asked before each document: nothing is written after it.
+            job.check()
+            done = self.rewrite(project, d, rewrites[d])
+            if done is None:
+                in_use.append(d)
+            else:
+                written |= {(d, wid) for wid in done}
+            self.harmonize_done = self.harmonize_report(moves, left, written, in_use, gloss)
+        return self.harmonize_done
 
-    def rewrite(self, project: IgtProject, document_id: str, words: List[Tuple[str, Dict[str, Any]]]) -> bool:
+    @staticmethod
+    def harmonize_report(moves, left, written: set, in_use: List[str], gloss) -> Dict[str, Any]:
+        """Harmonize's part of the report from what was written: a form is
+        changed with the words rewritten (each analysis's count and the
+        documents it was rewritten in), and left as ``in-use`` with the
+        words of a document that stayed in use. A word not rewritten for any
+        other reason (the document gone, the word touched meanwhile, a stop)
+        is in neither."""
+        changed, held = [], []
+        for m in moves:
+            moved, kept = [], []
+            for v in m['from'].values():
+                done = [(d, w) for d, w in v['words'] if (d, w) in written]
+                if done:
+                    moved.append({'analysis': rendering(v['analysis'], gloss), 'count': len(done),
+                                  'documents': sorted({d for d, _ in done})})
+                waiting = [(d, w) for d, w in v['words'] if d in in_use]
+                if waiting:
+                    kept.append({'analysis': rendering(v['analysis'], gloss), 'count': len(waiting)})
+            if moved:
+                changed.append({'form': m['form'], 'to': rendering(m['to'], gloss), 'by': m['by'], 'from': moved})
+            if kept:
+                held.append({'form': m['form'], 'reason': 'in-use', 'analyses': kept})
+        return {'changed': changed, 'left': list(left) + held}
+
+    def rewrite(self, project: IgtProject, document_id: str,
+                words: List[Tuple[str, Dict[str, Any]]]) -> Optional[set]:
         """Set each of ``words`` to its target analysis, under the lock, as
-        one History entry of its own. False when the document stayed in use."""
+        one History entry of its own. The ids of the words rewritten (none
+        when the document is gone), or None when it stayed in use."""
         job = self.job
         for attempt in range(JOB_DEFER_ROUNDS):
             client = job.client()
@@ -1066,6 +1095,7 @@ class IgtRunner:
                 group = uuid7()
                 job.update_row(document_id, harmonize_group=group)
             try:
+                staged = set()
                 with locked_for_writes(client, document_id):
                     ws = Workspace(client, project)
                     doc = self.read(project, document_id, client)
@@ -1075,7 +1105,8 @@ class IgtRunner:
                         hit = doc.find(wid)
                         if not hit or hit[1] is None or not job_owned(hit[1], job.id):
                             continue
-                        self.stage(ws, doc, hit[0], hit[1], to)
+                        if self.stage(ws, doc, hit[0], hit[1], to):
+                            staged.add(wid)
                     if ws.ops:
                         seed_id = uuid7()
                         with client.operation(HARMONIZE_LABEL, kind='job',
@@ -1083,37 +1114,45 @@ class IgtRunner:
                                               keys={'seed': seed_id, 'stamps': {}}):
                             execute_plan(client, list(ws.ops), source=self.source, label=HARMONIZE_LABEL,
                                          project=project, stamp_mode='machine', detail=self.detail, seed=seed_id)
-                return True
+                return staged
+            except Gone:
+                return set()
             except PlaidAPIError as e:
                 if e.status in (403, 404):
-                    return True
+                    return set()
                 if e.status != 423:
                     raise
             except PlanError as e:
                 if _status(e) not in (409, 423):
                     raise
-        return False
+        return None
 
     @staticmethod
-    def stage(ws: Workspace, doc, s: Sentence, w: Word, to: Dict[str, Any]) -> None:
+    def stage(ws: Workspace, doc, s: Sentence, w: Word, to: Dict[str, Any]) -> bool:
         """Stage ``to`` on word ``w``: its analysis and its links, through
         the tools, so every guard of theirs applies. Word fields are never
-        harmonize's (:func:`harmonized_part`)."""
+        harmonize's (:func:`harmonized_part`). False when the analysis was
+        refused, and nothing was staged."""
         ref = f's{s.index}.w{w.index}'
         name = doc.name
         out = toolkit.call_tool(ws, 'set_analysis', {'document': name, 'ref': ref, 'morphemes': [
             {'form': m['form'], **({'type': m['type']} if m.get('type') else {}), 'equals': bool(m.get('equals')),
              'fields': dict(m.get('fields') or {})} for m in to['morphemes']]})
         if isinstance(out, Refusal):
-            return
+            return False
         for i, m in enumerate(to['morphemes'], start=1):
             if m.get('entry'):
                 toolkit.call_tool(ws, 'link_entry', {'document': name, 'refs': [f'{ref}.m{i}'],
                                                      'entry_id': m['entry']})
+        return True
 
     # --- the entries pass (SPEC 7.5) ------------------------------------------------------
 
-    def entries(self, job) -> Dict[str, Any]:
+    def entries(self, job, delete: bool = True) -> Dict[str, Any]:
+        """The entries this job made, after the job's last write: those it
+        created, its unlinked drafts deleted (SPEC 7.5) and those left. With
+        ``delete`` False (a job that stopped) nothing is deleted: the entries
+        are only read for the report."""
         if 'link' not in job.tasks:
             return {'created': [], 'deleted': [], 'unlinked': []}
         project = self.project()
@@ -1143,7 +1182,7 @@ class IgtRunner:
                     continue
                 if comments is None:
                     comments = {c.get('entity_id') for c in client.comments.list_in_vocab(v['id']) or []}
-                if maintains and self.nothing_hangs_on(client, v, items, it, comments):
+                if delete and maintains and self.nothing_hangs_on(client, v, items, it, comments):
                     doomed.append(entry)
                 else:
                     created.append(entry)

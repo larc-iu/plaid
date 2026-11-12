@@ -469,8 +469,12 @@ def run_job(job: Job, runner) -> Optional[Dict[str, Any]]:
             job.set(phase=runner.WORK_PHASE)
             runner.work(job)
         job.check()
+        # Each change of phase is a heartbeat, which may be the first to hear
+        # of a stop: asked again before anything of the phase is written.
         job.set(phase=HARMONIZING, current_document=None, message='Making the job\'s analyses consistent.')
+        job.check()
         harmonize = runner.harmonize(job)
+        job.check()
         entries = runner.entries(job)
         job.set(phase=REPORTING, current_document=None, message='Writing the report.')
         return _finish(job, 'done', runner, harmonize, entries)
@@ -486,11 +490,34 @@ def run_job(job: Job, runner) -> Optional[Dict[str, Any]]:
         return None
 
 
+def _stopped_parts(job: Job, runner, harmonize, entries):
+    """What a job that stopped early reports of harmonize and of its
+    entries: what harmonize wrote before the stop (``runner.harmonize_done``),
+    and the entries the job made, read and never deleted. Reads only, and a
+    read that fails leaves its part empty."""
+    harmonize = harmonize or getattr(runner, 'harmonize_done', None) or {}
+    if not entries and job.status.get('phase') not in (None, CHECKING):
+        try:
+            entries = runner.entries(job, delete=False)
+        except Exception as e:  # noqa: BLE001 - a report without its entries rather than none
+            logger.warning('Job %s: its entries could not be read for the report: %s', job.id, e)
+            entries = {}
+    return harmonize, entries
+
+
 def _finish(job: Job, state: str, runner, harmonize, entries, reason: Optional[str] = None):
+    if state != 'done':
+        harmonize, entries = _stopped_parts(job, runner, harmonize, entries)
     report = build_report(job, state, reason, runner.document_reports(job), harmonize, entries)
     try:
         return job.admin.jobs.finish(job.id, job.worker_id, state, report, reason=reason)
     except PlaidAPIError as e:
+        if state == 'done' and api_code(e) == 'job-state':
+            # A stop came after the last check: the job ends as stopped, with
+            # what it did.
+            job.beat()
+            if job.state == 'stopping':
+                return _finish(job, 'cancelled', runner, harmonize, entries, reason='cancelled')
         logger.warning('Job %s: the finish was refused: %s', job.id, e)
         return None
 

@@ -190,3 +190,37 @@ def test_a_document_in_use_keeps_its_minority_and_the_form_is_listed():
     out = runner(job).harmonize(job)
     assert {'form': 'ka', 'reason': 'in-use', 'analyses': [{'analysis': 'ka ‘come’', 'count': 1}]} in out['left']
     assert not [c for c in client.calls if c[0].startswith(('spans', 'tokens'))]
+
+
+def test_a_form_whose_only_rewrite_stayed_in_use_is_listed_left_and_not_changed():
+    from datetime import datetime, timezone
+    client = JobClient({'d1': document('d1', 'A', [{'words': [w('ka', 'go'), w('ka', 'go')]}]),
+                        'd2': document('d2', 'B', [{'words': [w('ka', 'come')]}])})
+    now = datetime.fromtimestamp(datetime.now(timezone.utc).timestamp() + 5000, timezone.utc) \
+        .isoformat().replace('+00:00', 'Z')
+    client._holder('d2')['audit'].append({'id': 'a1', 'time': now, 'ref': None, 'kind': None,
+                                          'documents': [{'id': 'd2'}], 'ops': []})
+    job = start(client, ['gloss'], id=J)
+    for d in ('d1', 'd2'):
+        job.update_row(d, state='done')
+    out = runner(job).harmonize(job)
+    assert out['changed'] == [], 'nothing was rewritten, so nothing is reported changed'
+    assert [entry['reason'] for entry in out['left']] == ['in-use']
+
+
+def test_a_rewrite_in_a_document_gone_meanwhile_is_not_reported_as_done():
+    from plaid_client import PlaidAPIError
+    client = JobClient({'d1': document('d1', 'A', [{'words': [w('ka', 'go'), w('ka', 'go')]}]),
+                        'd2': document('d2', 'B', [{'words': [w('ka', 'come')]}])})
+    job = start(client, ['gloss'], id=J)
+    for d in ('d1', 'd2'):
+        job.update_row(d, state='done')
+    r = runner(job)
+    real = client.documents.locked
+
+    def locked(document_id, **kw):
+        raise PlaidAPIError('HTTP 404', status=404)
+    client.documents.locked = locked
+    out = r.harmonize(job)
+    client.documents.locked = real
+    assert out['changed'] == []
