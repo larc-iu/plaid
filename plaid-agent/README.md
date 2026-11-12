@@ -564,6 +564,28 @@ The modules below are `igt/` unless they say otherwise.
   a page older than this and is told to reload, and the service advertises
   `extras.record: 2` for the pages that send ops.
 
+## Unattended jobs
+
+`plaid-job-worker` runs the jobs a project's writers start in the app (the core
+manual, "Assistant jobs"): one at a time across the server, under an
+administrator's API token in `.token`, writing as the person who started each.
+
+```sh
+plaid-job-worker --url http://localhost:8080 --model openai/<name> --api-base <base> \
+  --context-window 196608 --model-pool <key name> [--trace-dir DIR]
+```
+
+`--model-pool` names the model key it shares with the assistants and the model
+services (give them the same `--model-pool`), so a job waits while people use
+the model. Without it a job waits for nobody. `--trace-dir` keeps every model
+call of every stretch on the worker's disk. `--scripted-model PATH` answers
+from a file, for tests and rehearsals. The job's prompt and tools are its own
+(`docs/igt/SAMPLE_JOB_PROMPT.md`): `jobworker.py` (the command line),
+`core/job.py` (the loop, the heartbeat, the budgets and halving, yielding, the
+report) and `igt/job.py` (targets, the stretch's input, the job's guards, the
+write under the lock, harmonize, the entries pass). Its writes are machine
+proposals (`core/plan.py`, stamp mode `machine`), never verified work.
+
 ## Research dataset
 
 `plaid_agent.research` extracts a pseudonymized dataset for studying how
