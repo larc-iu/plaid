@@ -124,4 +124,18 @@ describe('RunBanner', () => {
     expect(view.container.querySelector('button')).toBe(null);
     await view.unmount();
   });
+
+  // An assistant job (the jobs round, 2026-11-12) holds no write lock, so its
+  // banner says nothing about editing. Every run's banner still does.
+  it('says editing is paused unless told it is not', async () => {
+    const at = (paused) => (
+      <RunBanner label="Assistant job" startedAt={Date.now()} percent={null} paused={paused} />
+    );
+    const view = await renderComponent(at(undefined));
+    expect(view.container.textContent).toContain('Editing paused.');
+    await view.rerender(at(false));
+    expect(view.container.textContent).not.toContain('Editing paused.');
+    expect(view.container.textContent).toMatch(/^Assistant job0:00/);
+    await view.unmount();
+  });
 });

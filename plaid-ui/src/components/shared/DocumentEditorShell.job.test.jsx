@@ -128,6 +128,8 @@ describe('the job banner', () => {
     const banner = banners()[0];
     expect(banner.textContent).toContain('Assistant job');
     expect(banner.textContent).toContain('Sentences 11 to 15 of 40.');
+    // A job holds no write lock: the document stays editable.
+    expect(banner.textContent).not.toContain('Editing paused.');
     expect(banner.querySelector('[role="progressbar"]').getAttribute('aria-valuenow')).toBe('25');
     await view.unmount();
   });
