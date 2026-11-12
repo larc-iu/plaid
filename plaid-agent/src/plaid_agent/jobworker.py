@@ -105,6 +105,8 @@ def main(argv=None) -> int:
             return 2
         from .core import agent
         agent.litellm.completion = ScriptedModel.load(args.scripted_model)
+        # A scripted model has no provider: litellm's "Provider List" banner says nothing here.
+        agent.litellm.suppress_debug_info = True
         count = count_chars
         print(f'Model: scripted, from {args.scripted_model}')
     cfg = ModelConfig(model=args.model, api_base=args.api_base, api_key=args.api_key, max_steps=1000,

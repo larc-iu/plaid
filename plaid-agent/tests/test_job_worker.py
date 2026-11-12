@@ -275,3 +275,17 @@ def test_the_trace_folder_is_the_operators_alone_and_a_resumed_run_gets_its_own(
         mode = stat.S_IMODE(path.stat().st_mode)
         assert mode & 0o077 == 0, (path, oct(mode))
     assert files[0].parent != files[1].parent, 'each run\'s stretch in a folder of its own'
+
+
+def test_a_scripted_worker_starts_without_the_providers_banner(tmp_path, capsys, monkeypatch):
+    import litellm as _litellm
+    monkeypatch.setattr(_litellm, 'suppress_debug_info', _litellm.suppress_debug_info)
+    path = tmp_path / 'model.json'
+    path.write_text('[{"content": "Done."}]')
+
+    def no_core(url):
+        raise SystemExit(0)
+    monkeypatch.setattr(jobworker.BaseService, 'get_client', staticmethod(no_core))
+    with pytest.raises(SystemExit):
+        jobworker.main(['--url', 'http://localhost:1', '--model', 'fake/m', '--scripted-model', str(path), '--once'])
+    assert 'Provider List' not in capsys.readouterr().out
