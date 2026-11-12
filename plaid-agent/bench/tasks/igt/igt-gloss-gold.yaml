@@ -1,0 +1,23 @@
+# Glossing scored against gold (FABLE-REVIEW 2026-11-12, "what the bench does
+# not measure"): the assistant's main job, and the whole of the unattended
+# job. Setup strips the analysis of sentences 1 to 5 of Gitksan text 2 (53
+# words, 78 morphemes in the SIGMORPHON 2023 gold). The user asks for them to
+# be segmented and glossed, one stretch. The checker reports a score (the F1
+# of form and gloss pairs per word against the gold), segmentation, and how
+# far the glosses agree with the rest of the project, and passes at 0.5.
+id: igt-gloss-gold
+app: igt
+project: igt-gitksan
+as: B
+where: {document: Gitksan text 2}
+turns:
+  - say: >-
+      Sentences 1 to 5 of this text have no analysis yet. Segment every word
+      of them into morphemes and gloss each morpheme, the way the rest of the
+      project analyses the same forms.
+    approve: true
+check: igt_gold
+args:
+  document: Gitksan text 2
+  sentences: [1, 2, 3, 4, 5]
+  min_score: 0.5

@@ -294,6 +294,24 @@ def one(stamp):
               table(['app', 'task', 'model', 'record KB', 'rounds KB', 'tool results dropped', 'undecided plan KB',
                      'its changes', 'B per change', 'plans in record KB', 'their changes', 'B per change',
                      'approval s', 'approval until started s', 'send until recorded s'], rows), '']
+    # A checker that scores against gold (checks/igt_gold.py) reports a
+    # number as well as a pass: its mean, and the range over the runs.
+    scored = defaultdict(list)
+    for s in ss:
+        if not s.get('infra') and isinstance((s.get('measures') or {}).get('score'), (int, float)):
+            scored[(s['app'], s['task'], s['model'])].append(s['measures'])
+    if scored:
+        def mean_of(ms, k):
+            xs = [m[k] for m in ms if isinstance(m.get(k), (int, float))]
+            return f'{mean(xs):.3g}' if xs else ''
+        lines += ['## Scores', '', 'Means over the counted runs of the tasks scored against gold. score is the F1 of '
+                  '(form, gloss) pairs per word, seg exact the share of words segmented as the gold, consistency the '
+                  'share of glosses that agree with the rest of the project.', '',
+                  table(['app', 'task', 'model', 'runs', 'score', 'lowest', 'highest', 'seg exact', 'form F1',
+                         'consistency'],
+                        [[app, task, model, len(ms), mean_of(ms, 'score'), f"{min(m['score'] for m in ms):.3g}",
+                          f"{max(m['score'] for m in ms):.3g}", mean_of(ms, 'seg_exact'), mean_of(ms, 'form_f1'),
+                          mean_of(ms, 'consistency')] for (app, task, model), ms in sorted(scored.items())]), '']
     lines += ['## Tasks', '', table(['app', 'task', 'model', 'passed', 'infra', 'tool calls', 'failed calls',
                                      'turn wall s', 'turn ends', 'would time out in production', 'harness error'],
                                     task_rows), '']

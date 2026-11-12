@@ -144,3 +144,42 @@ def test_storage_reads_the_record_the_turns_and_the_extract(tmp_path):
                   'settled_bytes': st['settled_bytes'], 'settled_changes': 2, 'approve_s': 1.5,
                   'approve_first_s': None, 'send_first_s': None}
     assert report.per_change(900, 3) == 300
+
+
+def test_a_task_scored_against_gold_reports_its_score(tmp_path, monkeypatch):
+    for rep, score in ((1, 0.8), (2, 0.6)):
+        run = tmp_path / SMOKE / 'igt-gloss-gold' / 'glm-5.2' / str(rep)
+        run.mkdir(parents=True)
+        (run / 'score.json').write_text(json.dumps({
+            'app': 'igt', 'task': 'igt-gloss-gold', 'model': 'glm-5.2', 'rep': rep, 'pass': True,
+            'turn_ends': ['answered'], 'request_errors': [], 'endpoint_errors': [], 'tool_calls': 9,
+            'failed_calls': 0, 'turn_wall_s': 60.0,
+            'measures': {'score': score, 'seg_exact': 0.9, 'form_f1': 0.95, 'consistency': 0.75}}))
+        (run / 'gate.jsonl').write_text('')
+    part = report.one(SMOKE).split('## Scores', 1)[1].split('## Tasks', 1)[0]
+    assert '| igt | igt-gloss-gold | glm-5.2 | 2 | 0.7 | 0.6 | 0.8 | 0.9 | 0.95 | 0.75 |' in part, part
+    assert '## Scores' not in report.one(SMOKE).split('## Scores', 1)[1]
+
+
+def test_the_gold_scorer_on_right_partly_right_and_wrong_answers():
+    import sys
+    sys.path.insert(0, str(Path(__file__).parent / 'checks'))
+    from igt_gold import score
+    gold = {'s1.w1': 'kitablar', 's1.w1.m1:form': 'kitab', 's1.w1.m1:Gloss': 'book',
+            's1.w1.m2:form': 'lar', 's1.w1.m2:Gloss': 'PL',
+            's1.w2': 'gel', 's1.w2.m1:form': 'gel', 's1.w2.m1:Gloss': 'come',
+            's2.w1': 'kitab', 's2.w1.m1:form': 'kitab', 's2.w1.m1:Gloss': 'book'}
+    right = score(gold, gold, {1})
+    assert right['score'] == right['form_f1'] == right['seg_exact'] == 1.0 and right['words'] == 2
+    assert right['consistency'] == 1.0  # kitab is book in s2 too
+    partly = dict(gold, **{'s1.w1.m2:Gloss': 'PLURAL'})
+    p = score(gold, partly, {1})
+    assert p['form_f1'] == 1.0 and p['gloss_p'] == p['gloss_r'] == round(2 / 3, 3)
+    unsegmented = {k: v for k, v in gold.items() if not k.startswith('s1.w1.m2')}
+    unsegmented.update({'s1.w1.m1:form': 'kitablar', 's1.w1.m1:Gloss': 'books'})
+    u = score(gold, unsegmented, {1})
+    assert u['seg_exact'] == 0.5 and u['gloss_r'] == round(1 / 3, 3) and u['gloss_p'] == 0.5
+    assert u['consistency'] is None  # kitablar and gel are glossed nowhere else
+    nothing = {k: v for k, v in gold.items() if not k.startswith('s1.w')} | {'s1.w1': 'kitablar', 's1.w2': 'gel'}
+    n = score(gold, nothing, {1})
+    assert n['score'] == 0.0 and n['seg_exact'] == 0.0
