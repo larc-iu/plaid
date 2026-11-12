@@ -154,19 +154,41 @@ describe('the Entries tab at a past state', () => {
   });
 
   // A past state is read-only for everyone, and the banner over the tab says
-  // so ("Read-only. This is the vocabulary as of ..."). The line about the
-  // maintainers' role told the vocabulary's own maintainer they could not
-  // edit (GUIDE-IGT S5).
-  const MAINTAINERS = 'Only this vocabulary’s maintainers can edit entries.';
+  // so ("Read-only. This is the vocabulary as of ..."). The note that tells a
+  // reader why they cannot edit (VocabularyDetail's `readOnlyNote`) belongs
+  // to the present state only: at a past state it would tell the
+  // vocabulary's own maintainer, or a writer, that a role keeps them out
+  // (GUIDE-IGT S5).
+  const NOTE = 'Read only: you have reader access to “P”.';
+  const READER = { canManage: false, canEditEntries: false, canRestore: false };
+
+  it('says why a reader cannot edit, at the present state', async () => {
+    const view = await mount(makeClient(), '/vocabularies/v1?item=a', {
+      ...READER,
+      past: null,
+      readOnlyNote: NOTE,
+    });
+    const text = view.container.textContent;
+    await view.unmount();
+    expect(text).toContain(NOTE);
+  });
+
   it.each([
     ['a maintainer', {}],
-    ['someone who does not maintain it', { canManage: false, canRestore: false }],
-    ['anyone, while the past state is read', { past: null, historyPending: true }],
-  ])('does not blame the role, for %s', async (_who, props) => {
-    const view = await mount(makeClient(), '/vocabularies/v1?item=a', props);
-    const text = document.body.textContent;
+    ['a writer', { canManage: false, canEditEntries: true, canRestore: false }],
+    ['a reader', READER],
+    ['a reader, while the past state is read', { ...READER, past: null, historyPending: true }],
+  ])('does not say it at a past state, for %s', async (_who, props) => {
+    const view = await mount(makeClient(), '/vocabularies/v1?item=a', {
+      readOnlyNote: NOTE,
+      ...props,
+    });
+    // The entry is open, where the note would be said.
+    const form = view.container.querySelector('input[id$="-form"]');
+    const text = view.container.textContent;
     await view.unmount();
-    expect(text).not.toContain(MAINTAINERS);
+    expect(form).not.toBeNull();
+    expect(text).not.toContain(NOTE);
   });
 
   it('offers no restore to someone who does not maintain the vocabulary', async () => {
