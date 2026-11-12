@@ -526,7 +526,7 @@ def run_job(job: Job, runner) -> Optional[Dict[str, Any]]:
         job.check()
         if job.status.get('phase') in (None, CHECKING):
             job.set(phase=CHECKING, message='Checking the project and its documents.')
-            failure = runner.check(job)
+            failure = through_core(job, lambda: runner.check(job))
             if failure is not None:
                 reason, message = failure
                 job.set(message=message)
@@ -539,9 +539,9 @@ def run_job(job: Job, runner) -> Optional[Dict[str, Any]]:
         # of a stop: asked again before anything of the phase is written.
         job.set(phase=HARMONIZING, current_document=None, message='Making the job\'s analyses consistent.')
         job.check()
-        harmonize = _passing(job, lambda: runner.harmonize(job))
+        harmonize = through_core(job, lambda: runner.harmonize(job))
         job.check()
-        entries = _passing(job, lambda: runner.entries(job))
+        entries = through_core(job, lambda: runner.entries(job))
         job.set(phase=REPORTING, current_document=None, message='Writing the report.')
         return _finish(job, 'done', runner, harmonize, entries)
     except Exception as e:  # noqa: BLE001 - a stop, core saying the job is no longer this worker's, or a fault
@@ -562,18 +562,27 @@ def run_job(job: Job, runner) -> Optional[Dict[str, Any]]:
         return None
 
 
-def _passing(job: Job, step: Callable[[], Any]):
-    """Run a phase's ``step``, again from its start while core is busy or
-    out of reach (:func:`core_fault` ``passing``), :data:`JOB_CORE_TRIES`
-    times with a growing wait. A phase reads the documents as they are, so
-    doing it again is safe (SPEC 3.8)."""
+def through_core(job: Job, step: Callable[[], Any], gave_up: Optional[Callable[[], Any]] = None):
+    """THE way every call the worker makes to core is made (REV-J-B2 S3-4):
+    ``step`` is a call, or a step of calls that is safe to make again from
+    its start (each reads the documents and the job's record as they are,
+    SPEC 3.8). While core is busy or out of reach (:func:`core_fault`
+    ``passing``: a 5xx, a network error, 423, 429) it is made again,
+    :data:`JOB_CORE_TRIES` times in all with a growing wait. When the trouble
+    outlasts them, ``gave_up()`` answers where it is given, else the error
+    goes up. Anything else goes up at once, for :func:`run_job` to sort: the
+    job no longer this worker's, the starter's access gone, a fault."""
     for n in range(1, JOB_CORE_TRIES + 1):
         try:
             return step()
         except Exception as e:  # noqa: BLE001 - core's passing trouble is tried again, the rest goes up
-            if core_fault(e) != 'passing' or n == JOB_CORE_TRIES:
+            if core_fault(e) != 'passing':
                 raise
             logger.warning('Job %s: core did not take a call (%s of %s): %s', job.id, n, JOB_CORE_TRIES, e)
+            if n == JOB_CORE_TRIES:
+                if gave_up is None:
+                    raise
+                return gave_up()
             job.sleep(JOB_CORE_WAIT_S * n)
 
 

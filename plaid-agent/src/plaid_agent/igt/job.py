@@ -40,7 +40,7 @@ from ..core.garble import seed
 from ..core.guidelines import manual_chars
 from ..core.job import (BUDGET, ROW_FINAL, SKIPPED_MORE, JobStopped, Pace, StretchFailed, canonical, analysis_key,
                         empty_counts, failure_kind, halve, harmonized, not_answering)
-from ..core.limits import (JOB_ANALYSIS_MAX_CHARS, JOB_CONTEXT_SENTENCES, JOB_CORE_TRIES, JOB_CORE_WAIT_S,
+from ..core.limits import (JOB_ANALYSIS_MAX_CHARS, JOB_CONTEXT_SENTENCES,
                            JOB_DECISIONS_PER_CALL, JOB_DEFER_ROUNDS, JOB_DEFER_WAIT_S, JOB_GUIDELINES_MAX_CHARS,
                            JOB_LOCK_TRIES, JOB_LOCK_WAIT_S, JOB_PERSON_QUIET_S, JOB_PRECEDENT_CHARS,
                            JOB_PRECEDENT_PER_FORM, JOB_SENTENCE_MAX_CHARS, JOB_SKIPPED_PER_DOCUMENT,
@@ -703,14 +703,14 @@ class IgtRunner:
 
         A refusal of core is never the model's: the job's own end
         (:func:`core_job.no_longer_mine`) stops it, core busy or out of reach
-        is tried again :data:`JOB_CORE_TRIES` times with a growing wait and
-        the document is then put off, and anything else goes up to end the
-        job (``worker-error``)."""
+        is tried again (:func:`core_job.through_core`, the row of a document
+        put off or gone included) and the document is then put off, and
+        anything else goes up to end the job (``worker-error``)."""
         job = self.job
         job.check()
         job.set(current_document=document_id)
-        faults = 0
-        while True:
+
+        def step():
             try:
                 return self.walk(document_id)
             except Deferred:
@@ -718,20 +718,16 @@ class IgtRunner:
             except Gone:
                 job.update_row(document_id, state='gone')
                 return 'gone'
-            except Exception as e:  # noqa: BLE001 - core's refusals sorted, the rest goes up
-                fault = core_job.core_fault(e)
-                if fault == 'mine':
-                    raise job.ended() from e
-                if fault == 'access':
-                    raise job.access_lost() from e
-                if fault != 'passing':
-                    raise
-                faults += 1
-                logger.warning('Job %s: core did not take a call in %s (%s of %s): %s', job.id, document_id,
-                               faults, JOB_CORE_TRIES, e)
-                if faults >= JOB_CORE_TRIES:
-                    return self.defer(document_id)
-                job.sleep(JOB_CORE_WAIT_S * faults)
+        try:
+            return core_job.through_core(job, step, gave_up=lambda: core_job.through_core(
+                job, lambda: self.defer(document_id)))
+        except Exception as e:  # noqa: BLE001 - core's refusals sorted, the rest goes up
+            fault = core_job.core_fault(e)
+            if fault == 'mine':
+                raise job.ended() from e
+            if fault == 'access':
+                raise job.access_lost() from e
+            raise
 
     def walk(self, document_id: str) -> str:
         job = self.job
