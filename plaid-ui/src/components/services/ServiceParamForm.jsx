@@ -38,16 +38,21 @@ export function ServiceParamForm({
   );
 }
 
+const FIELD_WIDTH = 260;
+
 function ParamField({ param, value, error, onChange, fields, disabled }) {
   const id = `svc-param-${param.key}`;
   const names = param.type === 'field' ? fields?.[param.scope] : null;
   const control = Array.isArray(names)
     ? fieldControl(id, names, value, onChange, disabled)
     : renderControl(id, param, value, onChange, disabled);
+  // Every field is one column wide, so the fields of each row line up with the
+  // rows above and below whatever their labels and descriptions say. Only a
+  // list of choices may grow past it, to show its longest choice whole.
   return (
     <div
       className="flex flex-col gap-1.5"
-      style={{ minWidth: param.type === 'number' && param.slider ? 260 : 180 }}
+      style={param.type === 'enum' ? { minWidth: FIELD_WIDTH } : { width: FIELD_WIDTH }}
     >
       <Label htmlFor={id} className="flex items-baseline justify-between gap-3 text-xs">
         <span>
