@@ -2,6 +2,7 @@
 // rest, a confirm that wants the name typed, solid red only on that confirm's
 // own button, and Enter in the name field submitting it.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { useState } from 'react';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import { renderComponent, all } from '../../test/renderComponent.jsx';
 import { configureUi } from '../../lib/uiConfig.js';
@@ -69,6 +70,14 @@ afterEach(async () => {
 });
 
 describe('DeleteProjectCard', () => {
+  // b861e39ff passed the client to the confirm, whose dry run the client of
+  // the day sent as a real DELETE: opening the confirm deleted the project.
+  it('sends nothing when the confirm opens', async () => {
+    await mount();
+    await openConfirm();
+    expect(remove).not.toHaveBeenCalled();
+  });
+
   it('rests as an outline red button, never a solid one', async () => {
     await mount();
     const rest = button(view.container, 'Delete project');
@@ -152,12 +161,41 @@ const refusedWith = (n) =>
     },
   });
 
+// The dialog on its own, given the client: the card passes none until the
+// client sends `dryRun` (plaid-client-js's lane), since an older client sends
+// the dry run as a real delete.
+const { DeleteProjectDialog } = await import('./DeleteProjectDialog.jsx');
+const dialogBox = () => document.body.querySelector('[role=alertdialog]');
+const mountDialog = async () => {
+  const project = { id: 'p1', name: 'Lezgian Texts' };
+  const Harness = () => {
+    const [open, setOpen] = useState(true);
+    return open ? (
+      <DeleteProjectDialog
+        open
+        onOpenChange={setOpen}
+        project={project}
+        client={auth.client}
+        consequence="Lezgian Texts and all of its documents, annotations and settings are deleted. This cannot be undone."
+        onDelete={async () => {
+          await auth.client.projects.delete('p1');
+          setOpen(false);
+        }}
+      />
+    ) : (
+      <p>the project list</p>
+    );
+  };
+  view = await renderComponent(<Harness />);
+  return view;
+};
+
 describe('what the delete takes', () => {
   it('asks a dry run on open, and Delete waits for it with the name typed', async () => {
     let answer;
     preview = () => new Promise((resolve) => (answer = resolve));
-    await mount();
-    const box = await openConfirm();
+    await mountDialog();
+    const box = dialogBox();
     expect(remove).toHaveBeenCalledWith('p1', undefined, { dryRun: true });
     await view.step(() => typeInto(box.querySelector('#delete-project-confirm'), 'Lezgian Texts'));
     expect(button(box, 'Delete project').disabled).toBe(true);
@@ -168,8 +206,8 @@ describe('what the delete takes', () => {
 
   it('names the one vocabulary the project owns', async () => {
     preview = async () => ({ vocabularies: [{ id: 'v1', name: 'Lezgian Lexicon' }] });
-    await mount();
-    const box = await openConfirm();
+    await mountDialog();
+    const box = dialogBox();
     expect(box.textContent).toContain(
       'This cannot be undone. Its vocabulary “Lezgian Lexicon” is deleted with it.',
     );
@@ -183,8 +221,8 @@ describe('what the delete takes', () => {
         { id: 'v3', name: 'Affixes' },
       ],
     });
-    await mount();
-    const box = await openConfirm();
+    await mountDialog();
+    const box = dialogBox();
     expect(box.textContent).toContain(
       'Its vocabularies “Lexicon”, “Roots” and “Affixes” are deleted with it.',
     );
@@ -194,8 +232,8 @@ describe('what the delete takes', () => {
     preview = async () => {
       throw refusedWith(1);
     };
-    await mount();
-    const box = await openConfirm();
+    await mountDialog();
+    const box = dialogBox();
     expect(box.textContent).toContain(
       '1 other project uses a vocabulary of this project. It can be deleted once that project unlinks it.',
     );
@@ -210,8 +248,8 @@ describe('what the delete takes', () => {
     preview = async () => {
       throw refusedWith(3);
     };
-    await mount();
-    const box = await openConfirm();
+    await mountDialog();
+    const box = dialogBox();
     expect(box.textContent).toContain(
       '3 other projects use a vocabulary of this project. It can be deleted once they unlink it.',
     );
@@ -222,13 +260,13 @@ describe('what the delete takes', () => {
       if (opts?.dryRun) return { vocabularies: [{ id: 'v1', name: 'Lexicon' }] };
       throw refusedWith(2);
     });
-    await mount();
-    const box = await openConfirm();
+    await mountDialog();
+    const box = dialogBox();
     await view.step(() => typeInto(box.querySelector('#delete-project-confirm'), 'Lezgian Texts'));
     await view.step(() => button(box, 'Delete project').click());
     expect(deletes()).toHaveLength(1);
     expect(notify.notifyError).not.toHaveBeenCalled();
-    const still = document.body.querySelector('[role=alertdialog]');
+    const still = dialogBox();
     expect(still.textContent).toContain(
       '2 other projects use a vocabulary of this project. It can be deleted once they unlink it.',
     );
@@ -240,8 +278,8 @@ describe('what the delete takes', () => {
       throw Object.assign(new Error('HTTP 500'), { status: 500 });
     };
     const quiet = vi.spyOn(console, 'error').mockImplementation(() => {});
-    await mount();
-    const box = await openConfirm();
+    await mountDialog();
+    const box = dialogBox();
     await view.step(() => typeInto(box.querySelector('#delete-project-confirm'), 'Lezgian Texts'));
     expect(button(box, 'Delete project').disabled).toBe(false);
     quiet.mockRestore();
