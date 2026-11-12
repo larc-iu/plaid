@@ -100,7 +100,7 @@ def _apply_set_concept(ctx: Context, op) -> int:
     """The new concept, restamped. A node picked from a vocabulary entry
     forgets it (``umr_unset``, the app's ``entryRecord(null)``), since the
     concept is no longer the entry's."""
-    ops = metadata_ops(ctx.restamp(op))
+    ops = metadata_ops(ctx.restamp())
     ops += [{'op': 'delete', 'path': [UMR, k]} for k in op.get('umr_unset') or ()]
     ctx.b.update('spans', op['span_id'], value=op['concept'], metadata=ops)
     return 1
@@ -114,7 +114,7 @@ def _apply_span_meta(ctx: Context, op) -> int:
     touch only their own key and cannot undo each other. An attribute set a
     reorder only renumbers (``renumber``) carries no stamp, so an untouched
     machine attribute stays unverified, as the app writes it."""
-    ops = [] if op.get('renumber') else metadata_ops(ctx.restamp(op))
+    ops = [] if op.get('renumber') else metadata_ops(ctx.restamp())
     ops += [{'op': 'delete', 'path': [UMR, k]} for k in op.get('umr_unset') or ()]
     ops += [{'op': 'set', 'path': [UMR, k], 'value': v} for k, v in (op.get('umr_set') or {}).items()]
     ctx.b.update('spans', op['span_id'], metadata=ops)
@@ -128,7 +128,7 @@ def _apply_set_edge_order(ctx: Context, op) -> int:
     none, so an untouched machine edge stays unverified."""
     ops = [{'op': 'set', 'path': [UMR, 'order'], 'value': op['order']}]
     if op.get('moved'):
-        ops += metadata_ops(ctx.restamp(op))
+        ops += metadata_ops(ctx.restamp())
     ctx.b.update('relations', op['relation_id'], metadata=ops)
     return 1
 
@@ -190,7 +190,7 @@ def _apply_create_node(ctx: Context, op) -> int:
         batch.tokens.bulk_create([{'token_layer_id': o['node_layer_id'], 'text': o['text_id'], **p, 'id': a}
                                   for p, a in zip(pieces, anchors)])
         batch.spans.create(o['concept_layer_id'], anchors, o.get('concept') or '',
-                           {**ctx.stamp(op), UMR: m}, id=span)
+                           {**ctx.stamp(), UMR: m}, id=span)
 
     ctx.b.add(queue, weight=1 + len(anchors), count=2)
     ctx.span_at[(op['document_id'], op['var'])] = span
@@ -200,7 +200,7 @@ def _apply_create_node(ctx: Context, op) -> int:
 def _apply_create_edge(ctx: Context, op) -> int:
     ctx.b.add(lambda batch, o=op: batch.relations.create(
         o['relation_layer_id'], ctx.end_of(o, 'source'), ctx.end_of(o, 'target'),
-        o['role'], {**ctx.stamp(op), UMR: {'order': o.get('order') or 0}}, id=ctx.b.new_id()))
+        o['role'], {**ctx.stamp(), UMR: {'order': o.get('order') or 0}}, id=ctx.b.new_id()))
     return 1
 
 
@@ -214,7 +214,7 @@ def _apply_create_triple(ctx: Context, op) -> int:
     (``held``), is stored as the import stores a triple, with no stamp: it
     is the file's, not the approver's (the app's ``_heldResolved``)."""
     meta: Dict[str, Any] = {'group': op['group']}
-    stamp = {} if op.get('held') else ctx.stamp(op)
+    stamp = {} if op.get('held') else ctx.stamp()
     triple = ctx.b.new_id()
 
     def queue(batch, o=op):

@@ -12,17 +12,21 @@ import common as c
 SERVICE = 'service:{app}:assist:openai-glm-5.2'
 
 
-def stamp(app):
-    return {'prov': 'inferred', 'provConfirmed': True, 'provSource': SERVICE.format(app=app)}
+def stamp(app, unverified=False):
+    """The stamp of "Approve as verified", or of "Approve as unverified"
+    (``unverified``: no confirmation)."""
+    return {'prov': 'inferred', **({} if unverified else {'provConfirmed': True}),
+            'provSource': SERVICE.format(app=app)}
 
 
 def doc_of(ctx, name):
     return next(d for d in ctx.project['documents'] if d['name'] == name)
 
 
-def set_span(ctx, document, address, value, verified=True, reader=None):
+def set_span(ctx, document, address, value, verified=True, reader=None, unverified=False):
     """Set the value of the span at `address` (igt or ud addressing), stamped
-    as an approved plan would stamp it unless verified=False."""
+    as a plan approved as verified would stamp it (as unverified with
+    ``unverified``), or with no stamp when verified=False."""
     reader = reader or ctx.app
     d = doc_of(ctx, document)
     raw = ctx.client.documents.get(d['id'], include_body=True)
@@ -33,7 +37,7 @@ def set_span(ctx, document, address, value, verified=True, reader=None):
     for k in c.PROV_KEYS:
         meta.pop(k, None)
     if verified:
-        meta.update(stamp(ctx.app))
+        meta.update(stamp(ctx.app, unverified))
     ctx.user.spans.set_metadata(sp['id'], meta)
     return sp['id']
 

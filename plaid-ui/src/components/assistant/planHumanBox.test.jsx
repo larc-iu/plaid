@@ -65,16 +65,14 @@ const settle = async (m) => {
   for (let i = 0; i < 8; i++) await m.step(() => new Promise((r) => setTimeout(r, 0)));
 };
 
-const approveSent = async (m, client) => {
-  const approve = all(m.container, 'button').find(
-    (b) => b.textContent.trim() === 'Approve and apply',
-  );
+const approveSent = async (m, client, name = 'Approve as verified', fields = ['asHuman']) => {
+  const approve = all(m.container, 'button').find((b) => b.textContent.trim() === name);
   await m.step(() => approve.click());
   await settle(m);
   return client.messages.requestService.mock.calls
     .map((c) => c[2])
     .filter((d) => d.op === 'approve')
-    .map((d) => [d.planId, d.asHuman]);
+    .map((d) => [d.planId, ...fields.map((f) => d[f])]);
 };
 
 beforeEach(() => {
@@ -126,6 +124,23 @@ describe('the human-made box belongs to its plan', () => {
     await m.rerender(turn('plan-B'));
     expect(m.container.textContent).toContain('Plan plan-B');
     expect(m.container.querySelector('input[type=checkbox]').checked).toBe(false);
+    await m.unmount();
+  });
+});
+
+describe('the approval sends the button pressed', () => {
+  // The owner's ruling (2026-11-12): the service is told which of the two
+  // buttons was pressed, and the box wins over both.
+  it.each([
+    ['Approve as unverified', false, [['plan-A', false, true]]],
+    ['Approve as verified', false, [['plan-A', false, false]]],
+    ['Approve', true, [['plan-A', true, false]]],
+  ])('%s (box ticked: %s)', async (name, tick, sent) => {
+    const client = twoConversations(convOf('plan-A', 'Plan in A'));
+    const m = await renderComponent(element(client, 'c1'));
+    await settle(m);
+    if (tick) await m.step(() => m.container.querySelector('input[type=checkbox]').click());
+    expect(await approveSent(m, client, name, ['asHuman', 'asUnverified'])).toEqual(sent);
     await m.unmount();
   });
 });

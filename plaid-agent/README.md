@@ -108,9 +108,12 @@ Users reach it from the **Assistant** tab on a project page. They can ask
 analytic questions about the corpus and lexicon, or ask for edits. The
 assistant never writes on its own: an edit request comes back as a plan the
 user approves or discards, and an approved plan is applied under the user's
-own account, in one audit-log entry. Approval is the human check, so what a
-plan writes is recorded as **verified** (made by the assistant, confirmed by
-the approver); the approver can instead have it recorded as human-made.
+own account, in one audit-log entry. The plan card has two approve buttons,
+and the approver chooses: **Approve as verified** records every change as made
+by the assistant and confirmed by the approver, **Approve as unverified**
+records every change as the assistant's proposal, unconfirmed, as a service's
+proposal is. Ticking **Record as human-made** records it as the approver's
+own work instead.
 
 Replies cite evidence with a tag, `<cite doc="Text 1" ref="s3"/>` (`ref` may
 also be a word, `s3.w2`, or a morpheme, `s3.w2.m1`); the service resolves each

@@ -1275,10 +1275,6 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
 
     rounds = 0
     asked = _asked(history)
-    # What the plan tools mark a change the assistant chose against
-    # (core.plan.mark_proposal): the message the user sent in this turn.
-    if hasattr(ws, 'user_message'):
-        ws.user_message = asked
     # The line the reader last saw from this loop, which a wait for a busy
     # model stands in for while it lasts and then gives back.
     shown: Dict[str, Any] = {'pct': 0, 'msg': ''}

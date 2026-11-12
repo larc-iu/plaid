@@ -4,13 +4,13 @@ import { Button } from '../ui/button.jsx';
 import { Badge } from '../ui/badge.jsx';
 import { cn } from '../../lib/utils.js';
 import {
+  approvedLine,
   collapseGroups,
   changeCount,
   changesOmitted,
   groupRows,
   omittedLine,
   planRows,
-  proposalLine,
   ROWS_COLLAPSED,
   rowsOmitted,
   RULE_DOCUMENTS_SHOWN,
@@ -45,7 +45,10 @@ export const PlanCard = ({
   // An out-of-date plan: why, in the service's words (what a rule matched
   // when planned and now, a document that changed).
   reason = null,
+  // How a plan that wrote was approved, as the record keeps it.
   recordedAsHuman,
+  recordedAsUnverified = false,
+  recordedAsContribution = false,
   // An out-of-date plan the reader discarded. It stays out of date (the
   // record of an approval that was refused) and offers nothing more.
   dismissed = false,
@@ -189,8 +192,14 @@ export const PlanCard = ({
           {unknown && ' The server did not answer for the rest.'}
         </p>
       )}
-      {applied && recordedAsHuman && (
-        <p className="mt-2 text-xs text-muted-foreground">Recorded as human-made.</p>
+      {(applied || partial) && (
+        <p className="mt-2 text-xs text-muted-foreground" data-testid="plan-approved-as">
+          {approvedLine({
+            asHuman: recordedAsHuman,
+            asUnverified: recordedAsUnverified,
+            contributed: recordedAsContribution,
+          })}
+        </p>
       )}
       {applied && notes?.length > 0 && (
         <div className="mt-2 text-xs text-muted-foreground" data-testid="apply-notes">
@@ -205,13 +214,6 @@ export const PlanCard = ({
           {rewrites === 1
             ? `1 change rewrites ${adapter.textName}.`
             : `${rewrites.toLocaleString('en-US')} changes rewrite ${adapter.textName}.`}
-        </p>
-      )}
-      {/* "Record as human-made" wins over both, so the line goes while it
-          is ticked, and with it once the plan was so recorded. */}
-      {proposalLine(plan.proposals, contributor) && !unwritable && !asHuman && !recordedAsHuman && (
-        <p className="mt-1.5 text-xs text-muted-foreground" data-testid="plan-proposals">
-          {proposalLine(plan.proposals, contributor)}
         </p>
       )}
       {replaced > 0 && !unwritable && (
@@ -336,10 +338,49 @@ export const PlanCard = ({
       )}
       {undecided && !nothingToWrite && !readOnly && (
         <div className="mt-2 flex flex-wrap items-center gap-2">
-          {canWrite ? (
-            <Button type="button" size="sm" onClick={() => onApprove({ asHuman })} disabled={busy}>
-              <Check className="h-4 w-4" /> Approve and apply
+          {/* Two buttons of equal weight, always, and the person chooses how
+              every change is recorded (the owner's ruling, 2026-11-12). Neither
+              is the default, and none is focused, so Enter approves nothing.
+              "Record as human-made" wins over both: ticked, one Approve. */}
+          {canWrite && asHuman ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="secondary"
+              title="Record every change as your own work."
+              onClick={() => onApprove({ asHuman: true, asUnverified: false })}
+              disabled={busy}
+            >
+              <Check className="h-4 w-4" /> Approve
             </Button>
+          ) : canWrite ? (
+            <>
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                title="Record every change as the assistant's proposal, unconfirmed."
+                onClick={() => onApprove({ asHuman: false, asUnverified: true })}
+                disabled={busy}
+              >
+                <Check className="h-4 w-4" /> Approve as unverified
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                title={
+                  contributor
+                    ? 'Record every change as your contribution, for a reviewer.'
+                    : "Record every change as the assistant's work, verified by you."
+                }
+                onClick={() => onApprove({ asHuman: false, asUnverified: false })}
+                disabled={busy}
+              >
+                <Check className="h-4 w-4" />{' '}
+                {contributor ? 'Approve as your contribution' : 'Approve as verified'}
+              </Button>
+            </>
           ) : (
             <span className="text-muted-foreground">Applying needs write access.</span>
           )}
@@ -350,7 +391,7 @@ export const PlanCard = ({
             <label
               htmlFor={humanId}
               className="ml-auto flex cursor-pointer items-center gap-1.5 whitespace-nowrap text-xs text-muted-foreground"
-              title="By default the changes are recorded as made by the assistant and verified by you. Tick this to record them as if you had made them yourself (no machine provenance)."
+              title="Record every change as your own work."
             >
               <input
                 id={humanId}

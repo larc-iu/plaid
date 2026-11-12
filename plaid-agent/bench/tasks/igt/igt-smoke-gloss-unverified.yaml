@@ -1,0 +1,20 @@
+# Smoke: igt-smoke-gloss approved with "Approve as unverified": the value is
+# written as the assistant's proposal, unconfirmed, and nothing else changes.
+id: igt-smoke-gloss-unverified
+app: igt
+project: igt-lezgi
+as: B
+where: {document: Lezgi text 1}
+turns:
+  - say: >-
+      In sentence 2 of this text, the word я is glossed "was", but it is the
+      copula. Change its gloss to COP.
+    approve: true
+    approve_as: unverified
+check: exact_changes
+args:
+  reader: igt
+  document: Lezgi text 1
+  expect:
+    "s2.w3.m1:Gloss": COP
+  prov: unverified

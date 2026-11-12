@@ -101,7 +101,8 @@ turns:
       In sentence 2 of this text, the word я is glossed "was", but it is
       the copula. Change its gloss to COP.
     approve: true               # approve the plan this turn ends with, if any
-  # more turns: each may have its own where, approve, as_human
+    approve_as: verified        # the card's button it presses: verified (the default) or unverified
+  # more turns: each may have its own where, approve, approve_as, as_human
   # approve: open approves the plan this turn ends with, or, when the turn
   # made none, the conversation's newest plan that is still undecided (a later
   # turn that finds an earlier one already did what it asks). Used by
@@ -167,4 +168,4 @@ The service's model timeout is raised to 1500 s (the default is 120) because a c
 
 ## Smoke tasks
 
-`igt-smoke-gloss`, `ud-smoke-upos`, `umr-smoke-attr`: one value changed on request in the open document, plan approved, verified stamp checked, nothing else changed. They prove the harness end to end, not the assistants.
+`igt-smoke-gloss`, `ud-smoke-upos`, `umr-smoke-attr`: one value changed on request in the open document, plan approved, verified stamp checked, nothing else changed. `igt-smoke-gloss-unverified` is `igt-smoke-gloss` approved with **Approve as unverified** (`approve_as: unverified`), and checks the assistant's unconfirmed stamp (`prov: unverified`). They prove the harness end to end, not the assistants.

@@ -33,8 +33,10 @@ corpus, segment and gloss words, link words to lexicon entries, add entries,
 respell words, fill in an orthography, confirm or discard what another service
 produced. It never writes on its own: a request that changes data comes back
 as a **plan** you approve or discard. Approved changes are applied under your
-own account, in one audit-log entry, and recorded as **verified** (made by the
-assistant, confirmed by you), or as human-made if you say so when approving.
+own account, in one audit-log entry. **Approve as verified** records them as
+made by the assistant and confirmed by you, **Approve as unverified** as the
+assistant's proposals for review, and **Record as human-made** as your own
+work.
 
 Readers can use it for questions; planning and applying changes needs write
 access.

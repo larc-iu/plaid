@@ -7,7 +7,8 @@ is a request-only client of it, as the page is:
 A turn asks the service `{op: 'send', text, where, create}` (create on the
 first), with a request id minted here and no open operation. The service
 appends the message, answers it, and writes the record before it answers.
-An approval asks `{op: 'approve', plan_id, as_human}`. A plan the app writes
+An approval asks `{op: 'approve', plan_id, as_unverified, as_human}`: the
+button pressed (Approve as unverified or Approve as verified) and the box. A plan the app writes
 itself (every op of a kind the registry stages `APP`, igt's tagset changes)
 goes as jobs.js sends it: a preflight (`preflight: true`), on `ready` igt's
 own `writeTagsetPlan` under node with the user's token
@@ -96,12 +97,13 @@ class Panel:
         self.created = True
         return out
 
-    def approve(self, plan_id: str, as_human: bool = False) -> Dict[str, Any]:
+    def approve(self, plan_id: str, as_human: bool = False, as_unverified: bool = False) -> Dict[str, Any]:
         conv, _ = self.load()
         item = next((d for d in conv['display'] if (d.get('plan') or {}).get('id') == plan_id), None)
         plan = (item or {}).get('plan') or {}
         base = {'project_id': self.project_id, 'conversation_id': self.conv_id, 'tab': self.tab}
-        approve = {**base, 'op': 'approve', 'plan_id': plan_id, 'as_human': as_human}
+        approve = {**base, 'op': 'approve', 'plan_id': plan_id, 'as_human': as_human,
+                   'as_unverified': as_unverified}
         if not self._writes_first(plan.get('ops') or []):
             return self._ask(approve, str(uuid.uuid4()))
         ready = self._ask({**approve, 'preflight': True}, str(uuid.uuid4()))

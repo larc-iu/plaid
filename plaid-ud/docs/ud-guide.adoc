@@ -331,14 +331,18 @@ A line above each answer sums up the work behind it, such as "read 87 sentences 
 Opened, it lists each step the assistant took, and a step opens to what the assistant was given and what it got back.
 
 When you ask the assistant to change something, it does not touch the data.
-It proposes a **plan**, which you **Approve and apply** or **Discard**.
+It proposes a **plan**, which you approve with **Approve as unverified** or **Approve as verified**, or **Discard**.
 Every change is listed under its document and links to that sentence in the annotation editor, so a plan can be checked before it is approved.
 A change to something a person made or accepted is marked **Accepted** and counted separately.
 A change over a whole document or the whole project, such as confirming everything waiting in a document or replacing a lemma everywhere, is one row with its counts, and **Show where** lists the documents and a few examples.
 
-Approved changes are written under your account and recorded as the assistant's work accepted by you.
-Tick **Record as human-made** before approving to record them as your own work instead.
-If your work is reviewed in this project, what you approve waits for a reviewer, as anything you enter does.
+Approved changes are written under your account.
+**Approve as unverified** records every change as the assistant's proposal, unconfirmed, as a service's proposals are, to be confirmed later in the editor.
+Confirmations in a plan approved this way write nothing.
+**Approve as verified** records every change as the assistant's work accepted by you.
+Tick **Record as human-made** to record them as your own work instead, and the card then offers a single **Approve**.
+If your work is reviewed in this project, the second button reads **Approve as your contribution**, and what you approve with it waits for a reviewer, as anything you enter does.
+Once a plan is applied, its card says how it was approved, such as **Approved as unverified**.
 Reading needs Reader access, and applying a plan needs Writer.
 
 A plan is **Out of date** once a sentence it changes has been edited, and can then only be discarded. Ask again to have it planned on the current text.

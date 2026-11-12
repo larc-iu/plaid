@@ -16,7 +16,7 @@ from .plan import DocumentsBusy, PlanError, PlanOutOfDate, ScopeMoved, holding, 
 from .conversation import WROTE
 from .staleness import _named, stale_documents
 from .record_ops import _marks
-from .outcome import Outcome, _sentence, partly_applied
+from .outcome import Outcome, _sentence, approval_mode, partly_applied, recorded_as
 
 
 class Approval:
@@ -125,7 +125,8 @@ class Approving:
                 ctx.helper.error(str(e))
                 return
             self._apply(ctx.client, project, ctx.store, ctx.conv_id, conv, meta,
-                        {'plan_id': plan_id, 'as_human': ctx.data.get('as_human')}, ctx.request_id, ctx.helper)
+                        {'plan_id': plan_id, 'as_human': ctx.data.get('as_human'),
+                         'as_unverified': ctx.data.get('as_unverified')}, ctx.request_id, ctx.helper)
         finally:
             self._leave(ctx)
 
@@ -190,10 +191,11 @@ class Approving:
             settled()
             response_helper.error(self._review_unread(e))
             return
-        stamp_mode = 'contributed' if contributor else 'human' if approve.get('as_human') else 'verified'
+        stamp_mode = approval_mode(bool(approve.get('as_human')), bool(approve.get('as_unverified')), contributor)
         self._mark_stamp(store, conv_id, request_id, stamp_mode)
         documents = plan.get('documents') or []
-        ap.run_with(ops, documents, plan.get('summary') or self.summarize(ops), stamp_mode, contributor,
+        ap.run_with(ops, documents, plan.get('summary') or self.summarize(ops), stamp_mode,
+                    contributor if stamp_mode == 'contributed' else None,
                     detail=proposed_by(item), proposer=item['service'])
         # The plan is written in several requests, and a document opened in
         # between is half written: its editor's repair on open can delete what
@@ -265,7 +267,9 @@ class Approving:
         # confirmation of only other contributors' work), which the card does
         # not show as applied.
         unwritten = counts.pop('unwritten', [])
-        note = f'(note) The plan was approved and applied: {ap.summary}.' + (' ' + '; '.join(notes) if notes else '')
+        how = ' as unverified' if ap.stamp_mode == 'unverified' else ''
+        note = (f'(note) The plan was approved{how} and applied: {ap.summary}.'
+                + (' ' + '; '.join(notes) if notes else ''))
         # Settled even when the conversation moved on (`settled`), so the card
         # never offers Approve over work already done.
         # What the record keeps of the outcome: how the approval was recorded,
@@ -379,8 +383,8 @@ NOTHING_TO_WRITE_NOTE = ('(note) The plan only kept values as they are, so it wa
 
 def _recorded(ap: 'Approval') -> Dict[str, Any]:
     """How the run wrote, kept on the record of a plan that wrote (applied
-    or partly applied): as the approver's own work, or as a contribution."""
-    return {'as_human': ap.stamp_mode == 'human', **({'contributed': True} if ap.contributor else {})}
+    or partly applied): `recorded_as`."""
+    return recorded_as(ap.stamp_mode)
 
 
 def _moved_on(store: ConversationStore, conv_id: str, plan_id: str) -> str:

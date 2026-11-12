@@ -63,6 +63,22 @@ def say(*a):
         print(*a, flush=True)
 
 
+#: The plan card's two approve buttons, as a task's turn names them
+#: (``approve_as``). Verified is the default, as every task before the two
+#: buttons (2026-11-12) was approved with it.
+APPROVE_BUTTONS = ('verified', 'unverified')
+
+
+def approve_button(turn) -> str:
+    """The button a turn's approval presses: its ``approve_as``, or
+    verified. Any other name is refused, so a typo never approves the other
+    way."""
+    button = turn.get('approve_as', 'verified')
+    if button not in APPROVE_BUTTONS:
+        raise SystemExit(f'approve_as must be one of {APPROVE_BUTTONS}, not {button!r}')
+    return button
+
+
 def load_tasks(names):
     paths = sorted((HERE / 'tasks').glob('*/*.yaml'))
     if names:
@@ -85,6 +101,8 @@ def load_tasks(names):
         t.setdefault('id', p.stem)
         t.setdefault('app', p.parent.name)
         t['_path'] = str(p)
+        for turn in t.get('turns') or []:
+            approve_button(turn)
         tasks.append(t)
     return tasks
 
@@ -345,9 +363,14 @@ def run_one(task, model, rep, stamp_dir: Path, gate: Gate, code: Path, man, keep
             if turn.get('approve') == 'open' and not item:
                 item = panel.open_plan()
             if turn.get('approve') and item and item.get('status') is None:
-                a = panel.approve(item['plan']['id'], as_human=bool(turn.get('as_human')))
+                # The card's button the turn presses: approve_as names it,
+                # verified unless the task says unverified.
+                button = approve_button(turn)
+                a = panel.approve(item['plan']['id'], as_human=bool(turn.get('as_human')),
+                                  as_unverified=button == 'unverified')
                 a['n'] = i
                 a['kind'] = 'approve'
+                a['button'] = button
                 turns.append(a)
                 say(f'  {task["id"]}/{model}/{rep} approve {i}: {a["wall_s"]}s'
                     f'{" ERROR " + a["error"][:120] if a["error"] else ""}')

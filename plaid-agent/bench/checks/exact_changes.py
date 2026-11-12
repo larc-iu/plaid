@@ -4,14 +4,16 @@ args:
   reader:   igt | ud | umr (common.<reader>_values)
   document: the document the expected changes are in
   expect:   {address: value}  (value null: the address must be gone)
-  prov:     verified | human | any   (default verified: what an approved plan
-            stamps unless "Record as human-made" was ticked)
+  prov:     verified | unverified | human | any   (default verified: what a
+            plan approved with "Approve as verified" stamps unless "Record as
+            human-made" was ticked. unverified: what "Approve as unverified"
+            stamps, for a task whose turn says approve_as: unverified)
   plan:     required | none          (default required: a plan was made and
             applied. none: nothing may be written, for a question or a refusal)
 
 Pass when every expected address has its value, no other address in any of
-the project's documents changed, and (for verified) every expected span
-carries the verified machine stamp.
+the project's documents changed, and (for verified or unverified) every
+expected span carries that machine stamp.
 
 Measures: target_ok (expected addresses right / expected), collateral (count
 and the first few addresses), prov_ok, plan_status, plan_rows.
@@ -64,7 +66,8 @@ def check(ctx):
             else:
                 sp = spans(after).get(k)
             p = c.prov_of(sp)
-            ok.append(c.approved(sp) if want_prov == 'verified' else not p)
+            ok.append(c.verified_machine(sp) if want_prov == 'verified' else
+                      c.unverified_machine(sp) if want_prov == 'unverified' else not p)
         prov_ok = all(ok)
 
     plans = plan_items(ctx.conversation)

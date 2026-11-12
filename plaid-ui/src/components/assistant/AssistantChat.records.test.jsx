@@ -142,8 +142,10 @@ describe('an approval whose assistant stopped, before the service says so (H14-A
     const m = await mount(client);
     await flush(m, 12);
     expect(m.container.textContent).toContain('Applying…');
-    const approve = button(m, 'Approve and apply');
-    expect(!approve || approve.disabled).toBe(true);
+    for (const name of ['Approve as unverified', 'Approve as verified']) {
+      const approve = button(m, name);
+      expect(!approve || approve.disabled).toBe(true);
+    }
     const discard = button(m, 'Discard');
     expect(!discard || discard.disabled).toBe(true);
     await m.unmount();
@@ -287,7 +289,8 @@ describe('one tab at a time', () => {
     const m = await mount(client);
     await flush(m, 10);
     expect(m.container.textContent).toContain('Open in another tab.');
-    expect(button(m, 'Approve and apply')).toBeUndefined();
+    expect(button(m, 'Approve as unverified')).toBeUndefined();
+    expect(button(m, 'Approve as verified')).toBeUndefined();
     expect(button(m, 'Discard')).toBeUndefined();
     expect(m.container.querySelector('[title="Send"]').disabled).toBe(true);
     expect(client.records.get(KEYS.meta).holder.tab).toBe('another-tab');
@@ -301,7 +304,8 @@ describe('one tab at a time', () => {
     expect(mine).not.toBe('another-tab');
     expect(client.records.get(KEYS.meta).holder.tab).toBe(mine);
     expect(m.container.textContent).not.toContain('Open in another tab.');
-    expect(button(m, 'Approve and apply')).toBeTruthy();
+    expect(button(m, 'Approve as unverified')).toBeTruthy();
+    expect(button(m, 'Approve as verified')).toBeTruthy();
     await m.unmount();
   });
 

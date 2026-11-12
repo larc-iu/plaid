@@ -5,6 +5,7 @@
 
 import { fencedLines, linkifyCitations, markdownText } from './citations.js';
 import {
+  approvedAs,
   omittedLine,
   planRows,
   changesOmitted,
@@ -70,10 +71,10 @@ export const replyToMarkdown = (text, citations, ctx) => {
 // A plan that stopped partway says how much was written in the service's own
 // count (`outcome` on the record), which counts each change a folded row
 // stands for, as the card's message did.
-const planToMarkdown = (plan, status, outcome, inProject, reason) => {
+const planToMarkdown = (plan, status, outcome, inProject, reason, recorded) => {
   const said =
     status === 'applied'
-      ? 'Approved and applied.'
+      ? `Approved as ${approvedAs(recorded)} and applied.`
       : status === 'partial'
         ? `Partly applied: ${outcome}`
         : status === 'discarded'
@@ -190,7 +191,9 @@ export const conversationToMarkdown = (conv, meta, { origin, projectId, projectN
       }
       if (d.plan)
         out.push(
-          plain(planToMarkdown(d.plan, d.status, d.outcome, planProjectAt(display, i), d.reason)),
+          plain(
+            planToMarkdown(d.plan, d.status, d.outcome, planProjectAt(display, i), d.reason, d),
+          ),
           '',
         );
     }

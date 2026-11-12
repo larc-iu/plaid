@@ -279,6 +279,24 @@ def test_a_plan_with_no_labels_counts_its_rows_from_its_changes():
     assert got['rows'] == 231
 
 
+def test_a_plan_row_says_which_button_approved_it():
+    """Approve as unverified or Approve as verified (2026-11-12), as the
+    record keeps it (core.outcome.recorded_as)."""
+    from plaid_agent.research.records import Conversations
+    rows = Conversations(Pseudonyms(b'salt'))
+    plan = {'id': '01a10fc5-61d6-7000-8588-500000000004', 'summary': 'x', 'ops': []}
+    conv = {'messages': [{'role': 'user', 'content': 'q'}, {'role': 'assistant', 'content': 'a'}],
+            'display': [{'kind': 'user', 'text': 'q'},
+                        {'kind': 'assistant', 'text': 'a', 'plan': plan, 'status': 'applied', 'as_human': False,
+                         'as_unverified': True},
+                        {'kind': 'assistant', 'text': 'b', 'status': 'applied', 'as_human': False,
+                         'plan': {**plan, 'id': '01a10fc5-61d6-7000-8588-500000000005'}}]}
+    rows.add('u@x', 'igt', 'p1', 'c1', conv, {}, 10, None)
+    first, second = rows.plans
+    assert (first['as_unverified'], first['as_human']) == (True, False)
+    assert (second['as_unverified'], second['as_human']) == (False, False)
+
+
 def _fate_rows():
     """A service run writes a gloss NFD, a person edits a second gloss, then a
     conversion (an operation of kind repair, run as the admin) composes both

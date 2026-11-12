@@ -292,6 +292,30 @@ def test_a_discard_records_the_lost_approvals_box(proj):
     assert item['status'] == 'applied' and item['as_human'] is True and not item.get('contributed'), item
 
 
+@pytest.mark.parametrize('unverified', [True, False])
+def test_the_button_pressed_is_recorded_on_a_plan_its_page_wrote(proj, unverified):
+    # Settings carry no stamp, so both buttons write them the same: the record
+    # still says which was pressed, through the preflight's mark too.
+    ws, plan = _planned(proj)
+    store = _seed(proj, plan)
+    assert _ready(_ask(proj, plan, preflight=True, as_unverified=unverified))
+    assert bool(_item(store)[0]['plan']['page_writing'].get('as_unverified')) is unverified
+    _page_write(proj, ws, plan)
+    assert _applied(_ask(proj, plan, request_id='r10', wrote_first=True, as_unverified=unverified))
+    item, _ = _item(store)
+    assert item['status'] == 'applied' and bool(item.get('as_unverified')) is unverified, item
+
+
+def test_a_discard_records_the_lost_approvals_button(proj):
+    ws, plan = _planned(proj)
+    store = _seed(proj, plan)
+    assert _ready(_ask(proj, plan, preflight=True, as_unverified=True))
+    _page_write(proj, ws, plan)
+    _ask(proj, plan, op='discard', request_id='r10')
+    item, _ = _item(store)
+    assert item['status'] == 'applied' and item.get('as_unverified') is True and item['as_human'] is False, item
+
+
 def test_a_discard_records_a_reviewed_approver_as_the_preflight_read_them(proj):
     from plaid_client.provenance import REVIEW_KEY
     proj.client.projects.set_config(proj.project_id, 'plaid', REVIEW_KEY, {'users': [_Session.user], 'roles': []})

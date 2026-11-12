@@ -377,13 +377,16 @@ A line above each answer sums up the work behind it, such as "read 87 sentences 
 Open it to see each step, what the step read, and what the assistant was given back.
 
 When you ask for a change, the assistant does not touch the data.
-It proposes a **plan**, which you **Approve and apply** or **Discard**.
+It proposes a **plan**, which you approve with **Approve as unverified** or **Approve as verified**, or **Discard**.
 The plan lists every change under its document, and each node links to its place on the canvas.
 A change to work a person made or accepted is marked **Accepted**.
 One attribute set on every node of a concept is one row with its count, and **Show where** lists a few of the nodes.
 
-Approved changes are recorded as the assistant's work accepted by you.
-Tick **Record as human-made** before approving to record them as your own work instead.
+**Approve as unverified** records every change as the assistant's proposal, unconfirmed, as a service's proposals are, to be confirmed later in the editor.
+Confirmations in a plan approved this way write nothing.
+**Approve as verified** records every change as the assistant's work accepted by you.
+Tick **Record as human-made** to record them as your own work instead, and the card then offers a single **Approve**.
+Once a plan is applied, its card says how it was approved, such as **Approved as unverified**.
 Reading needs Reader access, and approving a plan needs Writer.
 
 A plan can no longer be approved once a sentence it changes has been edited, and its card reads **Out of date**.

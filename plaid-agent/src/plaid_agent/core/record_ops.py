@@ -16,6 +16,7 @@ from .conversation import (DIED_NOTE, DIED_OUTCOME, DISCARDED_NOTE, MESSAGE_ROOM
                            error_item, find_plan, kept_meta, now_iso, prune, record_budget, rewind_for_retry,
                            settle_plan, title_from, turn_ending, user_item, value_cap)
 from .files import store_parts, sweep_orphans
+from .outcome import recorded_as
 from .ops import CONVERSATION_FULL, MESSAGE_TOO_LONG, about_of, busy_why, hold_free, refused
 
 
@@ -78,7 +79,7 @@ class RecordOps:
                 return stored
             stamp = pending.get('stamp')
             return settle_plan(stored, index, 'partial', DIED_NOTE, written=[], outcome=DIED_OUTCOME,
-                               as_human=stamp == 'human', **({'contributed': True} if stamp == 'contributed' else {}))
+                               **recorded_as(stamp))
         out = {}
 
         def meta_of(conv, prev):

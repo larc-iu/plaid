@@ -838,7 +838,7 @@ export const AssistantChat = ({
     return stopJob(client, projectId, jobFor(activeRef.current?.id));
   };
 
-  const approve = (plan, { asHuman = false } = {}, proposer = null) => {
+  const approve = (plan, { asHuman = false, asUnverified = false } = {}, proposer = null) => {
     const conv = activeRef.current;
     if (!conv || !canSend) return;
     setStopped(null);
@@ -850,6 +850,7 @@ export const AssistantChat = ({
         conv,
         plan,
         asHuman,
+        asUnverified,
         docked: !toastOnApply,
         tab: held.tab,
         // On a client of its own (tracked by the session, its retries shown

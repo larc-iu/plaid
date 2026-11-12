@@ -258,7 +258,7 @@ def _prov_ok(entity, want) -> bool:
     if want == 'any':
         return True
     p = c.prov_of(entity)
-    return c.approved(entity) if want == 'verified' else not p
+    return c.verified_machine(entity) if want == 'verified' else not p
 
 
 def _node_of_address(g, address):

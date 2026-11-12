@@ -157,6 +157,7 @@ One row per plan.
 | op_count | the plan's operations as the card stored them (a bulk row is one) |
 | rows | rows on the plan card, those a settled plan of more than 200 no longer keeps included |
 | as_human | the approver had the changes recorded as their own work, not the assistant's |
+| as_unverified | the approver pressed Approve as unverified: the changes were written as the assistant's unverified proposals and confirmed nothing. False is Approve as verified (or a plan approved before the two buttons, 2026-11-12) |
 | contributed | the approver's work is reviewed in the project, so the changes were stamped as their contribution |
 | partly_applied, rows_written | for a partial plan: the card rows written in full |
 | outcome_unknown | the server did not answer for part of it, or the approval's run died and which rows were written is not known (R53, `rows_written` is then 0) |

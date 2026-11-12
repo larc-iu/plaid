@@ -40,9 +40,6 @@ class Workspace(BaseWorkspace):
     """One turn's view of a treebank project: what it has loaded and the plan
     it is proposing."""
 
-    #: The values a change writes here beside the shared ones: a relation's label.
-    VALUE_KEYS = BaseWorkspace.VALUE_KEYS + ('deprel',)
-
     KIND = KIND
     PLAN_NOTE = PLAN_NOTE
     SPAN_KIND = 'set_span'

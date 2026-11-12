@@ -654,9 +654,10 @@ export const applyToasts = (j, summary, { docked = false } = {}) => {
 export const changesTheView = (j) =>
   !!j.done && j.kind === 'apply' && !j.error?.pending && j.outcome?.kind !== 'refused';
 
-// Apply `plan`. What a plan writes is recorded as verified (made by the
-// assistant, confirmed by the approver) unless the user asks for it to count
-// as human-made. The service marks the conversation, refuses while other work
+// Apply `plan`. What a plan writes is recorded as the button pressed says:
+// as unverified (`asUnverified`, the assistant's proposals) or as verified
+// (made by the assistant, confirmed by the approver), unless the user asks
+// for it to count as human-made (`asHuman`), which wins. The service marks the conversation, refuses while other work
 // runs there, and settles the plan in the record. `writeFirst` is the app's
 // own write for a plan the service may not make with its delegated token
 // (settings): made with the user's session before the approval is sent, which
@@ -672,6 +673,7 @@ export const startApply = ({
   conv,
   plan,
   asHuman,
+  asUnverified = false,
   docked = false,
   tab = null,
   writeFirst = null,
@@ -704,6 +706,7 @@ export const startApply = ({
             op: 'approve',
             planId: plan.id,
             asHuman,
+            asUnverified,
             preflight: true,
           },
           REQUEST_TIMEOUT_MS,
@@ -742,6 +745,7 @@ export const startApply = ({
           op: 'approve',
           planId: plan.id,
           asHuman,
+          asUnverified,
           ...(j.wroteFirst ? { wroteFirst: true } : {}),
         },
         REQUEST_TIMEOUT_MS,

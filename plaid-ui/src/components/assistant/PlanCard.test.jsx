@@ -488,7 +488,8 @@ describe('a plan that writes nothing', () => {
     );
     expect(byText(view.container, 'span', 'Nothing to write')).toBeNull();
     expect(all(view.container, 'button').map((b) => b.textContent.trim())).toEqual([
-      'Approve and apply',
+      'Approve as unverified',
+      'Approve as verified',
       'Discard',
     ]);
     await view.unmount();
@@ -502,50 +503,123 @@ describe('a plan that writes nothing', () => {
   });
 });
 
-describe("a plan holding the assistant's own choices", () => {
-  // The owner's ruling (2026-11-12): a value the assistant chose is written
-  // unconfirmed, for review, and one the user gave is recorded as theirs.
-  // The card states both counts.
-  const proposed = (proposals) => ({ ...plan([{ label: 'a' }, { label: 'b' }]), proposals });
-  const line = (view) =>
-    view.container.querySelector('[data-testid="plan-proposals"]')?.textContent;
+describe('the two approve buttons', () => {
+  // The owner's ruling (2026-11-12): two buttons, always, and the person
+  // chooses. Nothing about a change decides how it is recorded.
+  const names = (view) => all(view.container, 'button').map((b) => b.textContent.trim());
+  const button = (view, name) =>
+    all(view.container, 'button').find((b) => b.textContent.trim() === name);
+  const one = () => plan([{ label: 'Doc A s1.w3: Gloss = "eat"' }]);
 
-  it('states how many changes are its choices and how many are values the user gave', async () => {
-    const view = await mount(proposed({ chosen: 9, given: 3 }));
-    expect(line(view)).toBe(
-      "9 changes are the assistant's choices, recorded unconfirmed for review. " +
-        '3 changes are values you gave, recorded as confirmed by you.',
-    );
+  it('offers both, unverified first, with equal weight and what each does', async () => {
+    const view = await mount(one());
+    expect(names(view)).toEqual(['Approve as unverified', 'Approve as verified', 'Discard']);
+    const unverified = button(view, 'Approve as unverified');
+    const verified = button(view, 'Approve as verified');
+    expect(unverified.className).toBe(verified.className);
+    expect(unverified.title).toBe("Record every change as the assistant's proposal, unconfirmed.");
+    expect(verified.title).toBe("Record every change as the assistant's work, verified by you.");
+    await view.unmount();
   });
 
-  it('says one of each in the singular, and a contributor reads "your contribution"', async () => {
-    const view = await mount(proposed({ chosen: 1, given: 1 }), { contributor: true });
-    expect(line(view)).toBe(
-      "1 change is the assistant's choice, recorded unconfirmed for review. " +
-        '1 change is a value you gave, recorded as your contribution.',
-    );
+  it('sends what was pressed', async () => {
+    const sent = [];
+    const view = await mount(one(), { onApprove: (o) => sent.push(o) });
+    await view.step(() => button(view, 'Approve as unverified').click());
+    await view.step(() => button(view, 'Approve as verified').click());
+    expect(sent).toEqual([
+      { asHuman: false, asUnverified: true },
+      { asHuman: false, asUnverified: false },
+    ]);
+    await view.unmount();
   });
 
-  it('says nothing when the assistant chose nothing, or once recorded as human-made', async () => {
-    expect(line(await mount(proposed(undefined)))).toBeUndefined();
-    expect(
-      line(
-        await mount(proposed({ chosen: 2, given: 0 }), {
-          status: 'applied',
-          recordedAsHuman: true,
-        }),
-      ),
-    ).toBeUndefined();
-  });
-
-  it('goes while "Record as human-made" is ticked, which wins over both', async () => {
-    const view = await mount(proposed({ chosen: 2, given: 0 }));
-    expect(line(view)).toBe(
-      "2 changes are the assistant's choices, recorded unconfirmed for review.",
-    );
+  it('is one Approve while "Record as human-made" is ticked', async () => {
+    const sent = [];
+    const view = await mount(one(), { onApprove: (o) => sent.push(o) });
     const box = view.container.querySelector('input[type="checkbox"]');
-    const { act } = await import('react');
-    await act(async () => box.click());
-    expect(line(view)).toBeUndefined();
+    await view.step(() => box.click());
+    expect(names(view)).toEqual(['Approve', 'Discard']);
+    expect(button(view, 'Approve').title).toBe('Record every change as your own work.');
+    await view.step(() => button(view, 'Approve').click());
+    expect(sent).toEqual([{ asHuman: true, asUnverified: false }]);
+    await view.step(() => view.container.querySelector('input[type="checkbox"]').click());
+    expect(names(view)).toEqual(['Approve as unverified', 'Approve as verified', 'Discard']);
+    await view.unmount();
+  });
+
+  it('for a contributor names the second as their contribution, with no box', async () => {
+    const view = await mount(one(), { contributor: true });
+    expect(names(view)).toEqual([
+      'Approve as unverified',
+      'Approve as your contribution',
+      'Discard',
+    ]);
+    expect(button(view, 'Approve as your contribution').title).toBe(
+      'Record every change as your contribution, for a reviewer.',
+    );
+    expect(view.container.querySelector('input[type="checkbox"]')).toBeNull();
+    await view.unmount();
+  });
+
+  it('are both disabled while an approval is in flight', async () => {
+    const view = await mount(one(), { busy: true, applying: true });
+    expect(button(view, 'Approve as unverified').disabled).toBe(true);
+    expect(button(view, 'Approve as verified').disabled).toBe(true);
+    await view.unmount();
+  });
+
+  it('take no key: nothing on the card is focused or approves on Enter', async () => {
+    const sent = [];
+    const view = await mount(one(), { onApprove: (o) => sent.push(o) });
+    expect(view.container.contains(document.activeElement)).toBe(false);
+    const card = view.container.firstElementChild;
+    await view.step(() =>
+      card.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })),
+    );
+    expect(sent).toEqual([]);
+    await view.unmount();
+  });
+
+  it.each([
+    [{}, 'Approved as verified.'],
+    [{ recordedAsUnverified: true }, 'Approved as unverified.'],
+    [{ recordedAsHuman: true }, 'Recorded as human-made.'],
+    [{ recordedAsContribution: true }, 'Approved as a contribution.'],
+  ])('a settled plan says how it was approved (%o)', async (recorded, said) => {
+    for (const status of ['applied', 'partial']) {
+      const view = await mount(one(), { status, outcome: '1 of 2 changes written.', ...recorded });
+      expect(view.container.querySelector('[data-testid="plan-approved-as"]')?.textContent).toBe(
+        said,
+      );
+      expect(all(view.container, 'button').map((b) => b.textContent.trim())).not.toContain(
+        'Approve as verified',
+      );
+      await view.unmount();
+    }
+  });
+
+  it('says nothing of an approval on a plan not approved', async () => {
+    for (const status of [null, 'discarded', 'stale', 'replaced']) {
+      const view = await mount(one(), { status });
+      expect(view.container.querySelector('[data-testid="plan-approved-as"]')).toBeNull();
+      await view.unmount();
+    }
+  });
+
+  it.each([
+    [{}, '(Approved as verified and applied.)'],
+    [{ asUnverified: true }, '(Approved as unverified and applied.)'],
+    [{ asHuman: true }, '(Approved as human-made and applied.)'],
+    [{ contributed: true }, '(Approved as a contribution and applied.)'],
+  ])('is exported with how it was approved (%o)', (recorded, said) => {
+    const conv = {
+      display: [
+        { kind: 'assistant', text: 'Planned.', plan: one(), status: 'applied', ...recorded },
+      ],
+    };
+    expect(conversationToMarkdown(conv, { title: 'T' }, { adapter: { ...adapter } })).toContain(
+      said,
+    );
   });
 });

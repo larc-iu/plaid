@@ -7,7 +7,7 @@ request naming an ``op`` and the tab it was sent from:
 
 ``send``     text, where, files, projects, create: append the user's message and answer it
 ``retry``    send the last message again, after the attempt that did not finish
-``approve``  plan_id, as_human: apply a plan. With ``preflight``: only the checks, for a plan the page
+``approve``  plan_id, as_unverified, as_human: apply a plan. With ``preflight``: only the checks, for a plan the page
              writes itself, marking it; with ``wrote_first``: the page wrote it
 ``discard``  plan_id: settle a plan as discarded, or dismiss one out of date
 ``attach``   file {id, name, bytes, lines, parts}: store one file's parts before a send

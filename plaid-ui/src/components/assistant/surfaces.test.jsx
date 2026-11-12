@@ -70,7 +70,7 @@ const shell = (m) => {
 };
 
 const approve = async (m) => {
-  const button = byText(m.container, 'button', 'Approve and apply');
+  const button = byText(m.container, 'button', 'Approve as verified');
   expect(button).not.toBeNull();
   await m.step(() => button.click());
   for (let i = 0; i < 20 && jobs.size; i++) await flush(m, 1);

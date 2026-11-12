@@ -510,7 +510,8 @@ class Conversations:
             # rows are its `changes`.
             'rows': len(plan.get('changes') or plan.get('labels') or [])
             + int((plan.get('omitted') or {}).get('count') or 0),
-            'as_human': item.get('as_human'), 'contributed': bool(item.get('contributed')),
+            'as_human': item.get('as_human'), 'as_unverified': bool(item.get('as_unverified')),
+            'contributed': bool(item.get('contributed')),
             'partly_applied': status == 'partial', 'rows_written': len(item.get('written') or []),
             # A dead run's plan (R53) is settled with no row known written:
             # which were is not known, as when the server stopped answering.

@@ -36,28 +36,22 @@ from plaid_client.services import UNKNOWN_OUTCOME, requester_message
 from plaid_client.provenance import (CONTRIBUTED_STATE, MACHINE, PROVENANCE_KEYS, PROV_CONFIRMED_KEY,
                                      WriterPolicy, stamp_inferred)
 
-# How an approval is recorded. 'verified' is the default: the assistant made
-# it, a reviewer confirmed it. 'human' is the reviewer saying the work is
-# their own. 'contributed' is a contributor's approval, which is their own
-# unreviewed work rather than a confirmation of anyone's. 'machine' is no
+# How an approval is recorded. The card's two buttons (the owner's ruling,
+# 2026-11-12): 'verified' is "Approve as verified", the assistant made it and
+# the approver confirmed it. 'unverified' is "Approve as unverified", every
+# change written as the assistant's machine proposal (unverified, the
+# assistant its source), as a service's proposal is, for review later.
+# 'human' is the approver saying the work is their own ("Record as
+# human-made", which wins over both). 'contributed' is a contributor's
+# verified approval, which is their own unreviewed work rather than a
+# confirmation of anyone's. 'machine' is no
 # approval at all: an unattended job's writes, machine proposals nobody has
 # looked at (machine-unverified, with the job named in provDetail), which a
 # person reviews later as they review any service's output. Only a job asks
 # for it, by name: no approval ever reaches it.
-STAMP_MODES = ('verified', 'human', 'contributed', 'machine')
+STAMP_MODES = ('verified', 'unverified', 'human', 'contributed', 'machine')
 #: The provDetail key naming the job a machine write belongs to.
 JOB_DETAIL_KEY = 'job'
-#: The op key marking a change whose values the assistant chose: approved,
-#: it is written as the assistant's machine proposal (unverified, the
-#: assistant its source), not as the approver's confirmed work. The owner's
-#: ruling (2026-11-12): "Machine proposals for judged work". Set at staging
-#: (``mark_proposal``) and read by ``Stamps.stamp``.
-PROPOSAL = 'proposal'
-#: The op keys that hold a value a change writes in every app, and so decide
-#: whether the user gave it. An app adds its own (``VALUE_KEYS`` on its
-#: workspace). Everything else an op holds (ids, a label, a type, a target)
-#: is not a value the user could have typed for it.
-VALUE_KEYS = ('value', 'values', 'form', 'metadata', 'fields', 'replacement')
 # Fragments, sent with metadata_ops, which turns a None into a delete.
 CLEAR_PROV = {k: None for k in PROVENANCE_KEYS}
 CONFIRM = {PROV_CONFIRMED_KEY: True}
@@ -698,7 +692,9 @@ class Stamps:
     writer's policy (``WriterPolicy``) for a verifier or for the contributor.
     'human' is the agent's own mode. 'machine' is a machine writer's
     (``stamp_inferred``): unverified, with ``detail`` naming the job that
-    wrote it, and it confirms nothing.
+    wrote it, and it confirms nothing. 'unverified' writes the same stamp
+    for an approval made with "Approve as unverified", with ``detail``
+    naming the turn that proposed it, and it confirms nothing either.
     """
 
     def __init__(self, mode: str, source: str, contributor: Optional[str] = None,
@@ -727,22 +723,21 @@ class Stamps:
     def machine(self) -> bool:
         return self.mode == 'machine'
 
-    def stamp(self, op: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-        """What a write of ``op`` carries. A change the assistant chose the
-        values of (``op[PROPOSAL]``) is its machine proposal, unverified with
-        the assistant as its source, whoever approved it, unless the approver
-        records the plan as human-made, which wins (the owner's ruling,
-        2026-11-12)."""
+    @property
+    def unverified(self) -> bool:
+        return self.mode == 'unverified'
+
+    def stamp(self) -> Dict[str, Any]:
         if self.human:
             return {}
-        if self.machine or (op is not None and op.get(PROPOSAL)):
+        if self.machine or self.unverified:
             return stamp_inferred(self.source, detail=self.detail)
         return self.policy.adopt_stamp(self.source, self.detail)
 
-    def restamp(self, op: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    def restamp(self) -> Dict[str, Any]:
         # Every key goes: what an earlier producer recorded (its detail, its
         # probability) describes a value this write replaces.
-        return {**CLEAR_PROV, **self.stamp(op)}
+        return {**CLEAR_PROV, **self.stamp()}
 
     def confirm(self, contributed_work: bool) -> Optional[Dict[str, Any]]:
         """What a confirmation patches onto one piece awaiting review, or None
@@ -755,56 +750,15 @@ class Stamps:
         another contributor's. Any other approval confirms it. The policy
         says whether the piece is this writer's to review
         (``reviewable_state``) and what its confirm merges
-        (``confirm_fragment``). A machine writer reviews nothing."""
-        if self.machine:
+        (``confirm_fragment``). A machine writer reviews nothing, and an
+        approval as unverified verifies nothing."""
+        if self.machine or self.unverified:
             return None
         if self.human:
             return dict(CONFIRM)
         if not self.policy.reviewable_state(CONTRIBUTED_STATE if contributed_work else MACHINE):
             return None
         return self.policy.confirm_fragment()
-
-
-def _values(x, keys) -> List[str]:
-    """The strings a value key holds: a string, each of a list, and of a
-    map either its value keys (the parts of one item a change writes, never
-    its role or type) or, where it has none, every value (a field map, an
-    entry's metadata), provenance keys aside."""
-    if isinstance(x, str):
-        return [x]
-    if isinstance(x, list):
-        return [v for i in x for v in _values(i, keys)]
-    if isinstance(x, dict):
-        held = [k for k in keys if k in x]
-        if held:
-            return [v for k in held for v in _values(x[k], keys)]
-        return [v for k, i in x.items() if k not in PROVENANCE_KEYS for v in _values(i, keys)]
-    return []
-
-
-def written_values(op: Dict[str, Any], keys=VALUE_KEYS) -> List[str]:
-    """Every non-empty value ``op`` writes, held under ``keys``."""
-    return [v for k in keys if k in op for v in _values(op[k], keys) if v.strip()]
-
-
-def mark_proposal(op: Dict[str, Any], asked: Optional[str], keys=VALUE_KEYS) -> None:
-    """Mark ``op`` a proposal when a value it writes is not in ``asked``,
-    the message the user sent in this turn: a fixed rule, dumb on purpose.
-    A value whose exact text the user wrote was asked for by value, and is
-    written as confirmed when approved. Any other the assistant chose. A
-    change that writes no value (a delete, a split, a confirmation) is not
-    marked and is written as it always was. Nothing is marked where no
-    message is known (a script, a test)."""
-    if asked is None:
-        return
-    op.pop(PROPOSAL, None)
-    if any(v not in asked for v in written_values(op, keys)):
-        op[PROPOSAL] = True
-
-
-def proposal_count(ops: List[Dict[str, Any]]) -> int:
-    """How many of a plan's changes are the assistant's proposals."""
-    return sum(changes_of(op) for op in ops if op.get(PROPOSAL))
 
 
 def confirm_preview(machine: int, theirs: int) -> str:

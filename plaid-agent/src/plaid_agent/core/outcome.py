@@ -11,6 +11,31 @@ from . import rules
 from .conversation import partial_note, partial_tally
 
 
+def approval_mode(as_human: bool, as_unverified: bool, contributor: Optional[str]) -> str:
+    """The stamp mode (core.plan.STAMP_MODES) an approval writes by: the
+    button the approver pressed (``as_unverified``: "Approve as unverified",
+    else "Approve as verified") and the "Record as human-made" box
+    (``as_human``), which wins over both (the owner's ruling, 2026-11-12).
+    ``contributor`` is the approver when the project reviews their work: their
+    verified approval, or one recorded as human-made, is their contribution.
+    Nothing else decides it."""
+    if as_human:
+        return 'contributed' if contributor else 'human'
+    if as_unverified:
+        return 'unverified'
+    return 'contributed' if contributor else 'verified'
+
+
+def recorded_as(stamp_mode: Optional[str]) -> Dict[str, Any]:
+    """How the record keeps the way a plan that wrote was approved, for the
+    card's settled line and the research dataset: as the approver's own work
+    (``as_human``), as the assistant's unverified proposals
+    (``as_unverified``), or as a contribution (``contributed``). Verified is
+    none of them."""
+    return {'as_human': stamp_mode == 'human', **({'as_unverified': True} if stamp_mode == 'unverified' else {}),
+            **({'contributed': True} if stamp_mode == 'contributed' else {})}
+
+
 @dataclass(frozen=True)
 class Outcome:
     """How an approval's run ended.
@@ -62,7 +87,7 @@ def partly_applied(ops: List[Dict[str, Any]], e, why: str, recorded: Dict[str, A
     ruling Q4): no Approve that cannot work, the card marks the changes
     written in full, and the model is told which, so the user asks it to
     finish. ``why`` is the failure as the clause after "Failed to apply the
-    plan:". ``recorded`` is how the run wrote (`as_human`, `contributed`),
+    plan:". ``recorded`` is how the run wrote (`recorded_as`),
     kept on the record as an applied plan keeps it. The count is of the
     card's rows: `applied` counts batch calls, and one change can be
     several."""

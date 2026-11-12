@@ -13,6 +13,7 @@ from .conversation import find_plan, now_iso, plan_settling
 from .ops import parse_time
 from .conversation import WROTE
 from .approval import decided_refusal
+from .outcome import approval_mode, recorded_as
 
 
 class PageWrites:
@@ -56,7 +57,8 @@ class PageWrites:
             except Exception as e:  # noqa: BLE001 - the reason goes to the requester as one line
                 ctx.helper.error(self._review_unread(e))
                 return
-            facts = {'as_human': bool(ctx.data.get('as_human')), 'reviewed': reviewed}
+            facts = {'as_human': bool(ctx.data.get('as_human')),
+                     **({'as_unverified': True} if ctx.data.get('as_unverified') else {}), 'reviewed': reviewed}
             if not self._set_mark(ctx, plan_id, facts):
                 self._refuse(ctx, 'gone')
                 return
@@ -80,6 +82,7 @@ class PageWrites:
         facts = item['plan'][PAGE_WRITING]
         facts = facts if isinstance(facts, dict) else {}
         written = self._settle_written(ctx, item, plan_id, as_human=bool(facts.get('as_human')),
+                                       as_unverified=bool(facts.get('as_unverified')),
                                        reviewed=bool(facts.get('reviewed')))
         self._refuse(ctx, 'decided', ALREADY_WRITTEN,
                      meta=written if written is not None else meta)
@@ -213,14 +216,15 @@ class PageWrites:
         return True
 
     def _settle_written(self, ctx, item, plan_id, as_human: Optional[bool] = None,
-                        reviewed: Optional[bool] = None, note: Optional[str] = None) -> Optional[Dict[str, Any]]:
+                        reviewed: Optional[bool] = None, note: Optional[str] = None,
+                        as_unverified: Optional[bool] = None) -> Optional[Dict[str, Any]]:
         """Settle a plan its page wrote as applied, recorded as the
-        approval's own path records it: by this approval's box and the
-        approver's review as the preflight's mark stored it (read now when
-        there is no mark, raising on a failed read), or by ``as_human`` and
-        ``reviewed`` as the preflight of an approval that never came stored
-        them. The sidebar entry as written, or None when the conversation is
-        gone."""
+        approval's own path records it: by this approval's button and box and
+        the approver's review as the preflight's mark stored it (read now when
+        there is no mark, raising on a failed read), or by ``as_human``,
+        ``as_unverified`` and ``reviewed`` as the preflight of an approval
+        that never came stored them. The sidebar entry as written, or None
+        when the conversation is gone."""
         plan = item['plan']
         ops = plan.get('ops') or []
         summary = plan.get('summary') or self.summarize(ops)
@@ -231,7 +235,9 @@ class PageWrites:
             reviewed = self._reviewed_now(ctx, item)
         if as_human is None:
             as_human = bool(ctx.data.get('as_human'))
-        outcome = {'as_human': not reviewed and as_human, **({'contributed': True} if reviewed else {})}
+        if as_unverified is None:
+            as_unverified = bool(ctx.data.get('as_unverified'))
+        outcome = recorded_as(approval_mode(as_human, as_unverified, ctx.store.user_id if reviewed else None))
         change = plan_settling(plan_id, 'applied', note, **outcome)
         if not self._write(ctx.store, ctx.conv_id, change, None):
             return None

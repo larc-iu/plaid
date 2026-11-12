@@ -391,13 +391,25 @@ def test_the_panel_writes_no_user_data():
     out = panel.turn('hello', where={'kind': 'document', 'id': 'd1', 'name': 'Text 1'})
     panel.turn('again')
     panel.approve('plan-1', as_human=True)
+    panel.approve('plan-1', as_unverified=True)
     assert out['first_progress_s'] is not None
     assert client.user_data.writes == []
     sent = client.messages.asked
-    assert [d['op'] for d in sent] == ['send', 'send', 'approve']
+    assert [d['op'] for d in sent] == ['send', 'send', 'approve', 'approve']
     assert sent[0]['create'] is True and sent[1]['create'] is False
     assert len({d['tab'] for d in sent}) == 1 and sent[0]['where']['name'] == 'Text 1'
-    assert sent[2]['plan_id'] == 'plan-1' and sent[2]['as_human'] is True
+    assert sent[2]['plan_id'] == 'plan-1' and sent[2]['as_human'] is True and sent[2]['as_unverified'] is False
+    assert sent[3]['as_human'] is False and sent[3]['as_unverified'] is True
+
+
+def test_a_turn_names_the_button_its_approval_presses():
+    import run as R
+    assert R.approve_button({'approve': True}) == 'verified'
+    assert R.approve_button({'approve': True, 'approve_as': 'unverified'}) == 'unverified'
+    with pytest.raises(SystemExit, match='approve_as'):
+        R.approve_button({'approve': True, 'approve_as': 'unverfied'})
+    task = next(t for t in R.load_tasks(['igt-smoke-gloss-unverified']))
+    assert R.approve_button(task['turns'][0]) == 'unverified' and task['args']['prov'] == 'unverified'
 
 
 def _tagset_panel(answers):

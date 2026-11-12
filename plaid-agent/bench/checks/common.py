@@ -288,22 +288,19 @@ def prov_of(span: Optional[dict]) -> Dict[str, object]:
 
 
 def verified_machine(span: Optional[dict]) -> bool:
-    """What an approved plan stamps on what it writes (not 'as human')."""
+    """What a plan approved with "Approve as verified" stamps on what it
+    writes (not 'as human')."""
     p = prov_of(span)
     return p.get('prov') == 'inferred' and p.get('provConfirmed') is True and \
         str(p.get('provSource') or '').startswith('service:')
 
 
-def approved(span: Optional[dict]) -> bool:
-    """What an approved plan stamps on what it writes (not 'as human'): the
-    verified stamp on a value the user gave, or, since the owner's ruling of
-    2026-11-12, the assistant's unconfirmed proposal on a value it chose
-    (prov inferred, the assistant its source, no provConfirmed). Which of the
-    two a value gets is plaid-agent's rule and its tests' (core.plan
-    PROPOSAL): a checker asks only that the approval stamped it."""
+def unverified_machine(span: Optional[dict]) -> bool:
+    """What a plan approved with "Approve as unverified" stamps on what it
+    writes: the assistant's proposal, unconfirmed, as a service's is."""
     p = prov_of(span)
-    return verified_machine(span) or (p.get('prov') == 'inferred' and 'provConfirmed' not in p and
-                                      str(p.get('provSource') or '').startswith('service:'))
+    return p.get('prov') == 'inferred' and not p.get('provConfirmed') and \
+        str(p.get('provSource') or '').startswith('service:')
 
 
 def project_docs(client, project_id) -> List[dict]:

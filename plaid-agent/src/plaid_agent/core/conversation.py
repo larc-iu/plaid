@@ -908,7 +908,7 @@ def plan_settling(plan_id: str, status: Optional[str] = None, note: Optional[str
         # Another process took this run for dead and settled the plan on a
         # guess (`DIED_OUTCOME`): the run's own outcome replaces the guess.
         if status in WROTE and was == 'partial' and item.get('outcome') == DIED_OUTCOME:
-            guess = ('written', 'outcome', 'contributed')
+            guess = ('written', 'outcome', 'contributed', 'as_unverified')
             plain = {k: v for k, v in item.items() if k not in guess}
             return settle_plan({**stored, 'display': [plain if i == index else d
                                                       for i, d in enumerate(stored['display'])]},

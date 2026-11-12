@@ -174,7 +174,7 @@ describe('conversationToMarkdown', () => {
         '',
         'Planned it.',
         '',
-        '**Proposed changes:** 1 field value (Approved and applied.)',
+        '**Proposed changes:** 1 field value (Approved as verified and applied.)',
         '',
         '1. Text 1 s1.w2 "gam": Gloss = "fish"',
         '',

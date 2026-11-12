@@ -352,7 +352,7 @@ test('approving a plan applies it under the user and settles the card', async ({
       serviceId,
     });
     await page.goto(`/#/projects/${projectId}?tab=assistant&conversation=${id}`);
-    await page.getByRole('button', { name: 'Approve and apply' }).click();
+    await page.getByRole('button', { name: 'Approve as verified' }).click();
     await expect(page.getByText('Applied', { exact: true })).toBeVisible({ timeout: 30_000 });
     await expect.poll(async () => (await readPos())?.value).toBe(value);
     const record = (await client.userData.get(userId, key('conv', id))).value;

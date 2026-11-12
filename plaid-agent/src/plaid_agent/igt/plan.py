@@ -6,11 +6,14 @@ to the user with the turn. The user approves it in the UI, and the next
 request carries the same operations back for :func:`execute_plan` to apply,
 under one audit-log operation, with the requester's own client.
 
-Approval is a human decision, so what a plan writes is VERIFIED by default:
+The approver chooses how a plan is written, with one of the card's two
+buttons. "Approve as verified" (``stamp_mode='verified'``) writes it
 machine-made (``prov: inferred`` with the assistant as ``provSource``, so the
 origin stays traceable) and confirmed (``provConfirmed: true``), exactly the
-state a person reaches by checking a service's output in the editor. The user
-may instead approve a plan as HUMAN-made (``stamp_mode='human'``): nothing is
+state a person reaches by checking a service's output in the editor. "Approve
+as unverified" (``stamp_mode='unverified'``) writes it as the assistant's
+proposal, unconfirmed, as a service's output is written, and confirms nothing.
+The user may instead approve a plan as HUMAN-made (``stamp_mode='human'``): nothing is
 stamped, and rewritten entities lose their machine keys. When the approver is
 a CONTRIBUTOR (a writer whose work the project reviews), their approval is a
 contribution, not a verification: ``stamp_mode='contributed'`` with the
@@ -269,7 +272,7 @@ def _token(ctx: Context, op, token_id: str, metadata: Optional[Dict[str, Any]] =
         raise ValueError(f'{op.get("label") or op.get("kind")}: names the morpheme of an unsegmented word '
                          'without the word it is made on')
     made = ctx.materialized[token_id] = ctx.b.new_id()
-    meta = {**(metadata or {}), **ctx.stamp(op)}
+    meta = {**(metadata or {}), **ctx.stamp()}
     ctx.b.add(lambda batch: batch.tokens.create(at['layer_id'], at['text_id'], at['begin'], at['end'],
                                                 precedence=1, metadata=meta, id=made))
     return made
@@ -317,10 +320,10 @@ def _apply_set_span(ctx: Context, op) -> int:
     if span_id and value == '':
         ctx.drop('spans', span_id)
     elif span_id:
-        ctx.b.update('spans', span_id, value=value, metadata=metadata_ops(ctx.restamp(op)))
+        ctx.b.update('spans', span_id, value=value, metadata=metadata_ops(ctx.restamp()))
     elif value != '':
         token = _token(ctx, op, op['token_id'])
-        ctx.b.add(lambda batch, o=op, v=value: batch.spans.create(o['layer_id'], [token], v, ctx.stamp(op),
+        ctx.b.add(lambda batch, o=op, v=value: batch.spans.create(o['layer_id'], [token], v, ctx.stamp(),
                                                                   id=ctx.b.new_id()))
     else:
         return 0  # nothing to clear
@@ -347,20 +350,20 @@ def _apply_set_analysis(ctx: Context, op) -> int:
         b.add(lambda batch, mid=m0['id'], f=first: batch.tokens.patch_metadata(
             mid, metadata_ops({'form': f['form'], 'morphType': f.get('morph_type'),
                                EQUALS_TYPE_KEY: f.get('type_from_equals'), EQUALS_BEFORE_KEY: None,
-                               **ctx.restamp(op)})))
+                               **ctx.restamp()})))
         # Keep the chain's numbering contiguous from 1 whatever the
         # first morpheme's precedence was before.
         b.add(lambda batch, mid=m0['id']: batch.tokens.update(mid, precedence=1))
         for fv in first.get('fields') or []:
             if fv.get('value') not in (None, ''):
                 b.add(lambda batch, mid=m0['id'], fv=fv: batch.spans.create(
-                    fv['layer_id'], [mid], fv['value'], ctx.stamp(op), id=b.new_id()))
+                    fv['layer_id'], [mid], fv['value'], ctx.stamp(), id=b.new_id()))
         rest = list(enumerate(morphemes))[1:]
     else:
         slots = []
         rest = list(enumerate(morphemes))
     for j, m in rest:
-        meta = {'form': m['form'], **ctx.stamp(op)}
+        meta = {'form': m['form'], **ctx.stamp()}
         if m.get('morph_type'):
             meta['morphType'] = m['morph_type']
         # A typed "=" before it, and the type the grid's rule gives (R47).
@@ -378,7 +381,7 @@ def _apply_set_analysis(ctx: Context, op) -> int:
         for fv in m.get('fields') or []:
             if fv.get('value') not in (None, ''):
                 b.add(lambda batch, i=made, fv=fv: batch.spans.create(
-                    fv['layer_id'], [i], fv['value'], ctx.stamp(op), id=b.new_id()))
+                    fv['layer_id'], [i], fv['value'], ctx.stamp(), id=b.new_id()))
     ctx.chains[op['word_id']] = slots
     return 1
 
@@ -406,7 +409,7 @@ def _link(ctx: Context, op, tokens: List[str], untype: List[tuple] = ()) -> int:
     if op.get('existing_link_id'):
         ctx.drop('vocab_links', op['existing_link_id'])
     if op.get('item_id'):
-        ctx.b.add(lambda batch, o=op, t=tokens: batch.vocab_links.create(o['item_id'], t, ctx.stamp(op),
+        ctx.b.add(lambda batch, o=op, t=tokens: batch.vocab_links.create(o['item_id'], t, ctx.stamp(),
                                                                           id=ctx.b.new_id()))
         _untype(ctx, untype)
     elif op.get('new_entry_key') in ctx.entry_ids:
@@ -430,7 +433,7 @@ def _link_planned_morpheme(ctx: Context, op) -> None:
     entry = op.get('item_id') or ctx.entry_ids[op['new_entry_key']]
     ctx.drop('vocab_links', op.get('existing_link_id'))
     ctx.b.add(lambda batch, e=entry, m=slots[k - 1]: batch.vocab_links.create(
-        e, [m], ctx.stamp(op), id=ctx.b.new_id()))
+        e, [m], ctx.stamp(), id=ctx.b.new_id()))
     # A type its analysis gave it is the entry's to give now (R2).
     # An untyped entry leaves it the type the "=" rule gave (R47).
     typed = ctx.analysis_typed.get(slots[k - 1])
@@ -532,7 +535,7 @@ def _apply_set_morph_type(ctx: Context, op) -> int:
     ctx.b.update('tokens', _token(ctx, op, mid),
                  metadata=metadata_ops({'morphType': morph_type, EQUALS_TYPE_KEY: op.get('equals_type'),
                                         **({EQUALS_BEFORE_KEY: None} if mid in taken else {}),
-                                        **ctx.restamp(op)}))
+                                        **ctx.restamp()}))
     for other in taken:
         if other != mid:
             ctx.b.update('tokens', other, metadata=metadata_ops({EQUALS_BEFORE_KEY: None}))
@@ -542,7 +545,7 @@ def _apply_set_morph_type(ctx: Context, op) -> int:
 def _apply_create_entry(ctx: Context, op) -> int:
     made = ctx.entry_ids[op['key']] = ctx.b.new_id()
     ctx.b.add(lambda batch, o=op, i=made: batch.vocab_items.create(
-        o['vocab_id'], o['form'], {**(o.get('metadata') or {}), **ctx.stamp(op)}, id=i))
+        o['vocab_id'], o['form'], {**(o.get('metadata') or {}), **ctx.stamp()}, id=i))
     return 1
 
 
@@ -632,7 +635,7 @@ def _apply_set_morpheme_form(ctx: Context, op) -> int:
     if is_virtual(mid) and mid not in ctx.materialized:
         _token(ctx, op, mid, {'form': op['form']})
         return 1
-    stamp = ctx.restamp(op) if op.get('restamp') else {}
+    stamp = ctx.restamp() if op.get('restamp') else {}
     ctx.b.update('tokens', _token(ctx, op, mid), metadata=metadata_ops({'form': op['form'], **stamp}))
     return 1
 
@@ -758,7 +761,9 @@ def _apply_confirm(ctx: Context, op) -> int:
         nonlocal written
         frag = ctx.stamps.confirm(i in theirs)
         if frag is None:
-            ctx.confirm_left += 1
+            # Left for a reviewer, or (approved as unverified) left as it is.
+            if ctx.stamps.contributed:
+                ctx.confirm_left += 1
             return None
         written += 1
         if ctx.stamps.contributed:
@@ -1869,7 +1874,8 @@ def execute_plan(client, ops: List[Dict[str, Any]], *, source: str, label: str, 
     Returns per-kind counts of what was applied (plus ``notes`` for anything
     dropped). ``project`` (an IgtProject) is needed only by document-creating
     ops. ``stamp_mode`` is ``'verified'`` (machine-made, human-confirmed: the
-    default), ``'human'`` (no provenance keys at all) or ``'contributed'``
+    default), ``'unverified'`` (machine-made, unconfirmed), ``'human'`` (no
+    provenance keys at all) or ``'contributed'``
     (the approver's own unreviewed work; needs ``contributor``, their user
     id). ``requester`` is the user the plan acts for: a corpus-wide change
     worked out again here leaves out what that user may not change, as its
