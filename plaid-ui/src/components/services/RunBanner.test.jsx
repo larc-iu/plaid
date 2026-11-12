@@ -44,6 +44,28 @@ describe('RunBanner', () => {
     await view.unmount();
   });
 
+  // REV-RUN-4: a run of several steps whose current step has said no fraction
+  // sat at a fixed 0% on its first step, which reads as a hang.
+  it('pulses its bar while the step it is on has no fraction, in a run of several', async () => {
+    const at = (stepIndex, percent) => (
+      <RunBanner
+        label="Auto-analyze"
+        startedAt={Date.now()}
+        steps={['Propose translations', 'Link to the lexicon']}
+        stepIndex={stepIndex}
+        percent={percent}
+      />
+    );
+    const view = await renderComponent(at(0, null));
+    expect(bar(view).getAttribute('aria-valuenow')).toBe(null);
+    expect(bar(view).querySelector('.animate-pulse')).not.toBe(null);
+    await view.rerender(at(1, null));
+    expect(bar(view).getAttribute('aria-valuenow')).toBe(null);
+    await view.rerender(at(1, 50));
+    expect(bar(view).getAttribute('aria-valuenow')).toBe('75');
+    await view.unmount();
+  });
+
   it('lists the steps of a run that has several, marks the one it is on and counts it', async () => {
     const view = await renderComponent(
       <RunBanner

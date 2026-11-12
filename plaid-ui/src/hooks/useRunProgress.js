@@ -90,12 +90,14 @@ export function useRunProgress() {
 }
 
 // A run's fraction across all its steps, from the step it is on and that
-// step's own fraction. Null (indeterminate) only when there is genuinely
-// nothing to go on: a single step of unknown length.
+// step's own fraction. Null (indeterminate, a pulsing bar) whenever the step
+// it is on has not said its fraction: a determinate bar standing still reads
+// as a hang, and on a first step it stood at 0% (REV-RUN-4). The step list
+// says how many steps are done.
 export function overallPercent(stepCount, stepIndex, percent) {
-  if (stepCount <= 1) return Number.isFinite(percent) ? percent : null;
-  const within = Number.isFinite(percent) ? percent / 100 : 0;
-  return ((stepIndex + within) / stepCount) * 100;
+  if (!Number.isFinite(percent)) return null;
+  if (stepCount <= 1) return percent;
+  return ((stepIndex + percent / 100) / stepCount) * 100;
 }
 
 // m:ss, counting past an hour rather than wrapping.

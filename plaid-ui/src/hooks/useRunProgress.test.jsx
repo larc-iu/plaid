@@ -48,15 +48,17 @@ describe('useRunProgress', () => {
     const { run, step } = await mount();
     await step(() => run().start(['One', 'Two', 'Three', 'Four']));
     expect(run().stepCount).toBe(4);
-    expect(run().percent).toBe(0);
+    // The first step's fraction is unknown, so the bar pulses: never 0%.
+    expect(run().percent).toBe(null);
 
     await step(() => run().report({ percent: 50 }));
     expect(run().percent).toBe(12.5); // half of the first quarter
 
     await step(() => run().step(2));
-    expect(run().percent).toBe(50); // two of four done
+    // A new step starts with its own fraction unknown, not inherited, and
+    // the bar pulses until it is known.
+    expect(run().percent).toBe(null);
     expect(run().message).toBe('Three');
-    // A new step starts with its own fraction unknown, not inherited.
     await step(() => run().report({ percent: 50 }));
     expect(run().percent).toBe(62.5);
   });
