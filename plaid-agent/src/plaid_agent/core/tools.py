@@ -190,7 +190,13 @@ def run_tool(ws, name: str, fn_: Callable, args: Optional[Dict[str, Any]],
         return out if reading else planned_where(ws, name, after(out) if after else out)
     except (ToolError, ValueError) as e:  # ValueError: a name or reference lookup failed
         return refused_for(e)
-    except Exception:  # noqa: BLE001 - the model gets a sentence; the log gets the trace
+    except Exception as e:  # noqa: BLE001 - the model gets a sentence; the log gets the trace
+        # A workspace whose caller must hear of a failure itself rather than
+        # its model (an unattended job, for core refusing or out of reach)
+        # says so with ``passes_up(e)``. A chat's workspace has none.
+        passes_up = getattr(ws, 'passes_up', None)
+        if passes_up is not None and passes_up(e):
+            raise
         wrong = mistyped(args, schema)
         if wrong:
             return refused(f'{name}: {wrong}', 'invalid-argument')

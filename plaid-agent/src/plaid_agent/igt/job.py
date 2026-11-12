@@ -40,9 +40,10 @@ from ..core.garble import seed
 from ..core.guidelines import manual_chars
 from ..core.job import (BUDGET, ROW_FINAL, JobStopped, Pace, StretchFailed, canonical, analysis_key,
                         empty_counts, failure_kind, halve, harmonized, not_answering)
-from ..core.limits import (JOB_CONTEXT_SENTENCES, JOB_DEFER_ROUNDS, JOB_DEFER_WAIT_S, JOB_GUIDELINES_MAX_CHARS,
-                           JOB_LOCK_TRIES, JOB_LOCK_WAIT_S, JOB_PERSON_QUIET_S, JOB_PRECEDENT_CHARS,
-                           JOB_PRECEDENT_PER_FORM, JOB_SENTENCE_MAX_CHARS, JOB_STRETCH_SENTENCES)
+from ..core.limits import (JOB_ANALYSIS_MAX_CHARS, JOB_CONTEXT_SENTENCES, JOB_CORE_TRIES, JOB_CORE_WAIT_S,
+                           JOB_DECISIONS_PER_CALL, JOB_DEFER_ROUNDS, JOB_DEFER_WAIT_S, JOB_GUIDELINES_MAX_CHARS, JOB_LOCK_TRIES,
+                           JOB_LOCK_WAIT_S, JOB_PERSON_QUIET_S, JOB_PRECEDENT_CHARS, JOB_PRECEDENT_PER_FORM,
+                           JOB_SENTENCE_MAX_CHARS, JOB_STRETCH_SENTENCES)
 from ..core.plan import JOB_DETAIL_KEY, PlanError
 from ..core.tools import Refusal, ToolError
 from ..core.version import agent_version
@@ -66,6 +67,15 @@ LABELS = {('translate',): 'translations', ('gloss',): 'analyses', ('gloss', 'lin
           ('translate', 'gloss', 'link'): 'translations, analyses and lexicon links'}
 HARMONIZE_LABEL = 'Assistant job: analyses made consistent'
 ENTRIES_LABEL = 'Assistant job: delete unlinked machine drafts'
+
+
+#: The form of a sentence's record among the job's decisions: a space, then
+#: words no word form has (a word never holds a space), then the sentence id.
+RECORD_FORM = ' sentence '
+
+
+def mark_form(sentence_id: str) -> str:
+    return RECORD_FORM + sentence_id
 
 
 def gloss_label(tasks) -> str:
@@ -294,6 +304,19 @@ class JobWorkspace(Workspace):
             self.job_guard(op)
         super().guard_op(op, replacing=replacing)
 
+    @staticmethod
+    def passes_up(e: BaseException) -> bool:
+        """A tool's failure that is not the model's to hear of: core
+        refusing the job's token or its access, busy or out of reach. The
+        job's runner sorts it (``core_job.core_fault``). A request core
+        refused (a 400, an id that names nothing) stays the model's."""
+        err = core_job.plaid_error(e)
+        if err is None:
+            return False
+        data = err.response_data if isinstance(err.response_data, dict) else {}
+        return core_job.core_fault(err) in ('mine', 'passing') or err.status == 401 \
+            or (err.status == 403 and not data.get('unresolved'))
+
     def refuse_off_list(self, op: Dict[str, Any]) -> None:
         """Nothing: a job's values are unverified machine values, which no
         tagset refuses (core's value-set rule exempts them, SPEC 6.4). An
@@ -447,6 +470,11 @@ class IgtRunner:
         self.link_counts: Counter = Counter()
         #: what harmonize has written so far, for the report of a job stopped in it
         self.harmonize_done: Optional[Dict[str, Any]] = None
+        #: document id -> the sentences whose record is in core (their marks)
+        self.recorded: Dict[str, Dict[str, Dict[str, int]]] = {}
+        #: document id -> counts of a stretch none of whose sentences was
+        #: recorded yet (all taken again), added to the next record
+        self.carry: Dict[str, Counter] = {}
 
     # --- reading ---------------------------------------------------------------
 
@@ -560,48 +588,75 @@ class IgtRunner:
 
     def document(self, document_id: str) -> str:
         """Work one document from its cursor: ``done``, ``deferred`` or
-        ``gone``."""
+        ``gone``.
+
+        A refusal of core is never the model's: the job's own end
+        (:func:`core_job.no_longer_mine`) stops it, core busy or out of reach
+        is tried again :data:`JOB_CORE_TRIES` times with a growing wait and
+        the document is then put off, and anything else goes up to end the
+        job (``worker-error``)."""
         job = self.job
         job.check()
         job.set(current_document=document_id)
-        try:
-            project = self.project()
-            self.people = None
-            if (job.rows.get(document_id) or {}).get('state') != 'working':
-                job.update_row(document_id, state='working')
-            while True:
-                job.check()
-                client = job.client()
-                if self.in_use(client, document_id, f'job:{job.id}/'):
+        faults = 0
+        while True:
+            try:
+                return self.walk(document_id)
+            except Deferred:
+                return self.defer(document_id)
+            except Gone:
+                job.update_row(document_id, state='gone')
+                return 'gone'
+            except Exception as e:  # noqa: BLE001 - core's refusals sorted, the rest goes up
+                fault = core_job.core_fault(e)
+                if fault == 'mine':
+                    raise job.ended() from e
+                if fault != 'passing':
+                    raise
+                faults += 1
+                logger.warning('Job %s: core did not take a call in %s (%s of %s): %s', job.id, document_id,
+                               faults, JOB_CORE_TRIES, e)
+                if faults >= JOB_CORE_TRIES:
                     return self.defer(document_id)
-                doc = self.read(project, document_id, client)
-                pending = self.pending(doc, project, document_id)
-                if not pending:
-                    job.update_row(document_id, state='done')
-                    return 'done'
-                total = (job.rows.get(document_id) or {}).get('targets') or 0
-                done = (job.rows.get(document_id) or {}).get('done') or 0
-                part = pending[:JOB_STRETCH_SENTENCES]
-                job.set(message=f'Sentences {done + 1} to {min(done + len(part), max(total, done + len(part)))} '
-                                f'of {max(total, done + len(part))}.')
-                halve([s.id for s in part], lambda ids: self.attempt(project, document_id, ids),
-                      lambda sid, kind: self.skip(document_id, doc, sid, 'failed', kind))
-        except Deferred:
-            return self.defer(document_id)
-        except Gone:
-            job.update_row(document_id, state='gone')
-            return 'gone'
+                job.sleep(JOB_CORE_WAIT_S * faults)
+
+    def walk(self, document_id: str) -> str:
+        job = self.job
+        project = self.project()
+        self.people = None
+        if (job.rows.get(document_id) or {}).get('state') != 'working':
+            job.update_row(document_id, state='working')
+        while True:
+            job.check()
+            client = job.client()
+            if self.in_use(client, document_id, f'job:{job.id}/'):
+                return self.defer(document_id)
+            doc = self.read(project, document_id, client)
+            self.settle(project, document_id, doc)
+            pending = self.pending(doc, project, document_id)
+            if not pending:
+                job.update_row(document_id, state='done')
+                return 'done'
+            row = job.rows.get(document_id) or {}
+            total, done = row.get('targets') or 0, row.get('done') or 0
+            part = pending[:JOB_STRETCH_SENTENCES]
+            last = done + len(part)
+            job.set(message=f'Sentences {done + 1} to {last} of {max(total, last)}.')
+            halve([s.id for s in part], lambda ids: self.attempt(project, document_id, ids),
+                  lambda sid, kind: self.skip(document_id, doc, sid, 'failed', kind))
 
     def pending(self, doc, project: IgtProject, document_id: str) -> List[Sentence]:
-        """The target sentences after the cursor, in document order. A cursor
-        whose sentence is gone starts from the top (SPEC 3.8)."""
+        """The target sentences after the cursor, in document order, less
+        those skipped and those recorded already. A cursor whose sentence is
+        gone starts from the top (SPEC 3.8)."""
         row = self.job.rows.get(document_id) or {}
         skipped = {s.get('sentence_id') for s in row.get('skipped') or []}
+        recorded = self.recorded.get(document_id) or {}
         ids = [s.id for s in doc.sentences]
         start = ids.index(row['last_sentence']) + 1 if row.get('last_sentence') in ids else 0
         out = []
         for s in doc.sentences[start:]:
-            if s.id in skipped:
+            if s.id in skipped or s.id in recorded:
                 continue
             words, translate = sentence_targets(s, project, self.job.tasks, self.job.id)
             if words or translate:
@@ -613,10 +668,10 @@ class IgtRunner:
         s = next((x for x in doc.sentences if x.id == sentence_id), None)
         skipped = list(row.get('skipped') or []) + [{
             'sentence': f's{s.index}' if s else '?', 'sentence_id': sentence_id, 'reason': reason, 'kind': kind}]
-        fields = {'skipped': skipped, 'done': (row.get('done') or 0) + 1}
+        fields = {'skipped': skipped}
         if self._after_cursor(row, doc, sentence_id):
             fields['last_sentence'] = sentence_id
-        self.job.update_row(document_id, **fields)
+        self.job.update_row(document_id, **fields, **self.tally(document_id, skipped))
 
     @staticmethod
     def _after_cursor(row, doc, sentence_id) -> bool:
@@ -627,20 +682,23 @@ class IgtRunner:
     # --- one stretch ------------------------------------------------------------------
 
     def attempt(self, project: IgtProject, document_id: str, sentence_ids: List[str]) -> None:
-        """One stretch, asked again for as long as the model is not answering
-        (SPEC 3.7). A stop ends it with nothing written."""
+        """One stretch: the model's work, asked again for as long as the model
+        is not answering (SPEC 3.7), and then its write. Only a failure of the
+        model's work is the stretch's (:class:`StretchFailed`, halved). The
+        write, the row and the decisions come after the model has finished,
+        and nothing that goes wrong there is told as the model's."""
         while True:
             try:
-                self.stretch(project, document_id, sentence_ids)
-                return
+                staged = self.model_work(project, document_id, sentence_ids)
+                break
             except (StretchFailed, JobStopped, Deferred, Gone):
                 raise
             except TurnCancelled:
                 self.job.check()
                 raise JobStopped('cancelled')
             except Exception as e:  # noqa: BLE001 - sorted into the kinds of SPEC 3.6 and 3.7
-                if core_job.no_longer_mine(e):
-                    raise self.job.ended() from e
+                if core_job.core_fault(e) is not None:
+                    raise
                 if not_answering(e):
                     self.job.wait_for_model()
                     continue
@@ -648,8 +706,12 @@ class IgtRunner:
                 if kind is None:
                     raise
                 raise StretchFailed(kind, str(e)) from e
+        if staged is not None:
+            self.write(project, document_id, *staged)
 
-    def stretch(self, project: IgtProject, document_id: str, sentence_ids: List[str]) -> None:
+    def model_work(self, project: IgtProject, document_id: str, sentence_ids: List[str]):
+        """The model's part of a stretch: what it staged, with what the write
+        needs, or None when the stretch had nothing left to do."""
         job = self.job
         job.check()
         client = job.client()
@@ -660,8 +722,8 @@ class IgtRunner:
         part = [s for s in doc.sentences if s.id in sentence_ids]
         st = Stretch(doc, project, part, job.tasks, job.id)
         if st.empty():
-            self.finished(project, document_id, doc, part, st, Counter(), [])
-            return
+            self.record(project, document_id, doc, part, st, Counter(), [])
+            return None
         ws.stretch = st
         prints = {s.id: ws.sentence_print(doc, s) for s in part}
         system = build_job_prompt(project)
@@ -687,7 +749,7 @@ class IgtRunner:
         if result.failure is not None:
             raise result.failure
         job.check()
-        self.write(ws, project, document_id, doc, part, st, prints, list(ws.ops))
+        return ws, doc, part, st, prints, list(ws.ops)
 
     def message(self, ws: JobWorkspace, project: IgtProject, doc, part: List[Sentence], st: Stretch) -> str:
         """What a stretch is handed (SPEC 3.4): the context and target
@@ -801,8 +863,12 @@ class IgtRunner:
 
     # --- the write (SPEC 5.4) --------------------------------------------------------
 
-    def write(self, ws: JobWorkspace, project: IgtProject, document_id: str, doc, part: List[Sentence],
+    def write(self, project: IgtProject, document_id: str, ws: JobWorkspace, doc, part: List[Sentence],
               st: Stretch, prints: Dict[str, str], ops: List[Dict[str, Any]]) -> None:
+        """The stretch's write under the document's lock (SPEC 5.4), then its
+        record (:meth:`record`). Safe to do again after a failure anywhere in
+        it: a word written is no longer a target, a translation written is
+        the job's own, and a sentence recorded is not recorded again."""
         job = self.job
         row = job.rows.get(document_id) or {}
         group = row.get('gloss_group')
@@ -853,7 +919,7 @@ class IgtRunner:
             break
         after = self.read(project, document_id, client)
         made = frozenset(self.job_entries(Workspace(client, project), project) - before)
-        self.finished(project, document_id, after, part, st, counts, written_ops, made, changed)
+        self.record(project, document_id, after, part, st, counts, written_ops, made, changed)
 
     def recheck(self, ws: JobWorkspace, project: IgtProject, fresh, st: Stretch, prints: Dict[str, str],
                 ops: List[Dict[str, Any]]):
@@ -917,53 +983,53 @@ class IgtRunner:
                     out.add(it['id'])
         return out
 
-    def finished(self, project: IgtProject, document_id: str, doc, part: List[Sentence], st: Stretch,
-                 dropped: Counter, ops: List[Dict[str, Any]], made: frozenset = frozenset(),
-                 changed=frozenset()) -> None:
-        """After a stretch's write: the row's counts and cursor, then the
-        decisions (SPEC 3.8, 7.3)."""
+    # --- the record of a stretch (SPEC 3.8, 7.3) ---------------------------------------
+
+    def record(self, project: IgtProject, document_id: str, doc, part: List[Sentence], st: Stretch,
+               dropped: Counter, ops: List[Dict[str, Any]], made: frozenset = frozenset(),
+               changed=frozenset()) -> None:
+        """After a stretch's write: each finished sentence's counts and
+        decisions, stored once (:meth:`commit`), and the row's cursor."""
         job = self.job
         row = job.rows.get(document_id) or {}
-        counts = {**empty_counts(), **(row.get('counts') or {})}
-        counts['changed'] += dropped.get('changed', 0)
-        counts['protected'] += dropped.get('protected', 0)
         now = {s.id: s for s in doc.sentences}
         translated = {o.get('token_id'): o for o in ops if o.get('kind') == 'set_span'}
-        decisions: Dict[Tuple[str, str], Dict[str, Any]] = {}
-        done = 0
+        extra = self.carry.pop(document_id, Counter())
+        extra['changed'] += dropped.get('changed', 0)
+        extra['protected'] += dropped.get('protected', 0)
+        extra['entries'] += len(made)
+        records = []
         last = None
         retry = []
+        skipped = list(row.get('skipped') or [])
         for s in part:
             if s.id in changed:
                 self.changed[s.id] += 1
                 if self.changed[s.id] < 2:
                     retry.append(s.id)
                     continue
-            cur = now.get(s.id, s)
-            done += 1
+                skipped.append({'sentence': f's{s.index}', 'sentence_id': s.id, 'reason': 'changed', 'kind': None})
+                if not retry:
+                    last = s.id
+                continue
             if not retry:
                 last = s.id
-            for w in cur.words:
-                if w.id in st.words and job_owned(w, job.id):
-                    counts['words'] += 1
-                    a = word_analysis(w, made)
-                    counts['links'] += sum(1 for m in a['morphemes'] if m['entry'])
-                    text = canonical(a)
-                    key = (form_key(w.surface), analysis_key(text))
-                    slot = decisions.setdefault(key, {'form': key[0], 'key': key[1], 'analysis': text, 'count': 0,
-                                                      'document_id': document_id, 'sentence_id': s.id})
-                    slot['count'] += 1
-                elif w.id in st.words and word_target(w):
-                    counts['left'] += 1
+            cur = now.get(s.id, s)
+            words = [w for w in cur.words if w.id in st.words]
+            translation = None
             if s.id in st.translations:
                 state = translation_state(cur, project, job.id)
                 if state == 'own' and s.id in translated:
-                    was = (translated[s.id].get('span_id') is not None)
-                    counts['refreshed' if was else 'translations'] += 1
+                    translation = 'refreshed' if translated[s.id].get('span_id') is not None else 'translations'
                 else:
-                    counts['left'] += 1
-        counts['entries'] += len(made)
-        fields = {'counts': counts, 'done': (row.get('done') or 0) + done}
+                    translation = 'left' if state in ('empty', 'machine') else None
+            records.append(self.sentence_record(document_id, cur, words, translation, made))
+        if records:
+            for k, n in extra.items():
+                records[0]['counts'][k] = records[0]['counts'].get(k, 0) + n
+        elif any(extra.values()):
+            self.carry[document_id] = extra
+        fields: Dict[str, Any] = {}
         if retry:
             first = retry[0]
             ids = [x.id for x in doc.sentences]
@@ -973,13 +1039,128 @@ class IgtRunner:
                 fields['last_sentence'] = before
         elif last is not None and self._after_cursor(row, doc, last):
             fields['last_sentence'] = last
-        for s in part:
-            if s.id in changed and self.changed[s.id] >= 2:
-                fields['skipped'] = list(fields.get('skipped') or row.get('skipped') or []) + [
-                    {'sentence': f's{s.index}', 'sentence_id': s.id, 'reason': 'changed', 'kind': None}]
-        job.update_row(document_id, **fields)
-        if decisions:
-            job.add_decisions(list(decisions.values()))
+        if len(skipped) != len(row.get('skipped') or []):
+            fields['skipped'] = skipped
+        self.commit(document_id, records, fields)
+
+    def sentence_record(self, document_id: str, s: Sentence, words: List[Word], translation: Optional[str],
+                        made: frozenset = frozenset()) -> Dict[str, Any]:
+        """One sentence's part of a stretch's record: what the job wrote on
+        ``words`` (those of them now the job's own), what it left blank of
+        them, the translation's outcome (``translations``, ``refreshed``,
+        ``left`` or None), and the decisions of the words written."""
+        counts = Counter()
+        decisions: Dict[Tuple[str, str], Dict[str, Any]] = {}
+        for w in words:
+            if job_owned(w, self.job.id):
+                counts['words'] += 1
+                a = word_analysis(w, made)
+                counts['links'] += sum(1 for m in a['morphemes'] if m['entry'])
+                text = canonical(a)
+                if len(text) > JOB_ANALYSIS_MAX_CHARS:
+                    # Core keeps no analysis this long: the word is counted,
+                    # and its analysis is not offered as a decision.
+                    continue
+                key = (form_key(w.surface), analysis_key(text))
+                slot = decisions.setdefault(key, {'form': key[0], 'key': key[1], 'analysis': text, 'count': 0,
+                                                  'document_id': document_id, 'sentence_id': s.id})
+                slot['count'] += 1
+            elif word_target(w):
+                counts['left'] += 1
+        if translation:
+            counts[translation] += 1
+        return {'sentence': s.id, 'counts': dict(counts), 'decisions': list(decisions.values())}
+
+    def commit(self, document_id: str, records: List[Dict[str, Any]], fields: Dict[str, Any]) -> None:
+        """Store each sentence's record once, then the row.
+
+        A sentence's decisions go to core in one call with a MARK of their
+        own, a decision row whose form is ``RECORD_FORM`` and the sentence id
+        (a form with a space, which no word has) and whose analysis holds the
+        sentence's counts. A mark core holds says the sentence was recorded:
+        before a call the marks are asked again, so a call that landed before
+        an error, or before a crash, is never sent twice. The row's counts
+        and ``done`` are then the sum of the document's marks and its skipped
+        sentences, written whole, so writing them again changes nothing."""
+        job = self.job
+        marks = self.recorded.setdefault(document_id, {})
+        fresh = [r for r in records if r['sentence'] not in marks]
+        if fresh:
+            there = self.marks_in_core([r['sentence'] for r in fresh])
+            batch: List[Dict[str, Any]] = []
+            for r in fresh:
+                if r['sentence'] in there:
+                    continue
+                text = canonical({'counts': r['counts'], 'document': document_id})
+                group = r['decisions'] + [{'form': mark_form(r['sentence']), 'key': analysis_key(text),
+                                           'analysis': text, 'count': 1, 'document_id': document_id,
+                                           'sentence_id': r['sentence']}]
+                if len(batch) + len(group) > JOB_DECISIONS_PER_CALL:
+                    job.add_decisions(batch)
+                    batch = []
+                batch += group
+            if batch:
+                job.add_decisions(batch)
+            for r in fresh:
+                marks[r['sentence']] = r['counts']
+        row = job.rows.get(document_id) or {}
+        job.update_row(document_id, **fields, **self.tally(document_id, fields.get('skipped', row.get('skipped'))))
+
+    def tally(self, document_id: str, skipped) -> Dict[str, Any]:
+        """A row's counts and ``done`` as its record makes them: the counts of
+        the document's recorded sentences, and how many sentences were
+        finished, each once (recorded or skipped). ``targets`` grows with a
+        sentence that became a target after the checks, so done never passes
+        it."""
+        marks = self.recorded.get(document_id) or {}
+        counts = empty_counts()
+        for c in marks.values():
+            for k, n in c.items():
+                counts[k] = counts.get(k, 0) + n
+        done = len(set(marks) | {s.get('sentence_id') for s in skipped or []})
+        row = self.job.rows.get(document_id) or {}
+        out = {'counts': counts, 'done': done}
+        if done > (row.get('targets') or 0):
+            out['targets'] = done
+        return out
+
+    def marks_in_core(self, sentence_ids: List[str]) -> Dict[str, Dict[str, int]]:
+        """The sentences of ``sentence_ids`` core holds a record of, with the
+        counts each was recorded with."""
+        out = {}
+        for r in self.job.lookup_decisions([mark_form(sid) for sid in sentence_ids]):
+            form = r.get('form') or ''
+            if form.startswith(RECORD_FORM):
+                try:
+                    out[form[len(RECORD_FORM):]] = dict(json.loads(r['analysis']).get('counts') or {})
+                except (ValueError, TypeError, AttributeError):
+                    out[form[len(RECORD_FORM):]] = {}
+        return out
+
+    def settle(self, project: IgtProject, document_id: str, doc) -> None:
+        """Before a document's stretches: what core holds of its record (once
+        per document a runner visits), and a record for every sentence the
+        job wrote in without recording it, which a crash or an error between
+        a write and its record leaves (SPEC 3.8). Those are recorded from the
+        document as it is: the job's own words and translation."""
+        job = self.job
+        if document_id not in self.recorded:
+            self.recorded[document_id] = self.marks_in_core([s.id for s in doc.sentences])
+            row = job.rows.get(document_id) or {}
+            if self.recorded[document_id]:
+                job.update_row(document_id, **self.tally(document_id, row.get('skipped')))
+        marks = self.recorded[document_id]
+        skipped = {s.get('sentence_id') for s in (job.rows.get(document_id) or {}).get('skipped') or []}
+        orphans = []
+        for s in doc.sentences:
+            if s.id in marks or s.id in skipped:
+                continue
+            words = [w for w in s.words if job_owned(w, job.id)]
+            own = 'translate' in job.tasks and translation_state(s, project, job.id) == 'own'
+            if words or own:
+                orphans.append(self.sentence_record(document_id, s, words, 'translations' if own else None))
+        if orphans:
+            self.commit(document_id, orphans, {})
 
     # --- harmonize (SPEC 8) -------------------------------------------------------------
 

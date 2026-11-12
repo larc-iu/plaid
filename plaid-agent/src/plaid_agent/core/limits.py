@@ -241,3 +241,16 @@ JOB_DEFER_WAIT_S = 600
 HARMONIZE_MAJORITY = (2, 3)
 #: The most entries one list of a job's report holds. The rest are counted.
 JOB_REPORT_LIST_MAX = 500
+#: A call to core that failed for a while (a 5xx, a network error, 423 or
+#: 429) is tried this many times in a document, waiting JOB_CORE_WAIT_S times
+#: the try's number before each next one, and the document is then put off.
+JOB_CORE_TRIES = 3
+JOB_CORE_WAIT_S = 30
+#: Core's caps on what a worker sends (CONTRACT 1, core's to set): the longest
+#: decision analysis, in characters, and the most skipped sentences a
+#: document row lists. The worker keeps under them, never sends past them.
+JOB_ANALYSIS_MAX_CHARS = 4000
+JOB_SKIPPED_PER_DOCUMENT = 500
+#: The most decisions one call adds, and the most forms one lookup names
+#: (core's JOB_DECISIONS_PER_CALL).
+JOB_DECISIONS_PER_CALL = 1000

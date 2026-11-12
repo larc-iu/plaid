@@ -31,7 +31,7 @@ from plaid_client import PlaidAPIError
 from plaid_client.workflows.llm import did_not_answer, is_busy, is_timeout, transient_errors
 
 from .agent import REPEATING_LINE, TurnCancelled, TurnFailed, token_counter, too_long
-from .limits import (HARMONIZE_MAJORITY, JOB_CALL_DECIDE_AT_TOKENS, JOB_CALL_MAX_PROMPT_TOKENS,
+from .limits import (HARMONIZE_MAJORITY, JOB_CALL_DECIDE_AT_TOKENS, JOB_DECISIONS_PER_CALL, JOB_CALL_MAX_PROMPT_TOKENS,
                      JOB_HEARTBEAT_S, JOB_MODEL_RETRY_S, JOB_REPORT_LIST_MAX, JOB_STRETCH_DECIDE_AT_ROUNDS,
                      JOB_STRETCH_MAX_ROUNDS, JOB_STRETCH_MAX_SENT_TOKENS, JOB_YIELD_POLL_S, JOB_YIELD_QUIET_S)
 from .prompt import JOB_DECIDE_NOW
@@ -82,18 +82,23 @@ def not_answering(e: BaseException) -> bool:
 
 def failure_kind(e: BaseException) -> Optional[str]:
     """The kind of a stretch's failure ``e``, or None when ``e`` is not one
-    (a stop, a model that does not answer): a budget spent, a context the
-    endpoint refused, a call that reached the output cap, a model repeating
-    itself. Any other refusal of the model is told as the output's."""
+    (SPEC 3.6): a budget spent, a context the endpoint refused, a call that
+    reached the output cap or that the model's provider refused, a model
+    repeating itself. A stop, a model that does not answer, and anything
+    that did not come from the model call (a refusal of core, a network
+    error to core, a fault of the worker's own) are not, and are never
+    halved: the caller sorts them (:func:`core_fault`)."""
     if isinstance(e, StretchFailed):
         return e.kind
     if isinstance(e, TurnCancelled) or not_answering(e):
         return None
     if too_long(e):
         return CONTEXT
-    if isinstance(e, TurnFailed) and str(e) == REPEATING_LINE:
-        return REPEATING
-    return OUTPUT
+    if isinstance(e, TurnFailed):
+        return REPEATING if str(e) == REPEATING_LINE else OUTPUT
+    if type(e).__module__.split('.')[0] in ('litellm', 'openai'):
+        return OUTPUT
+    return None
 
 
 class Pace:
@@ -221,17 +226,56 @@ def api_code(e: BaseException) -> Optional[str]:
     return data.get('code') if isinstance(data, dict) else None
 
 
+def plaid_error(e: Optional[BaseException]) -> Optional[PlaidAPIError]:
+    """The refusal of core in ``e`` or in what caused it, or None."""
+    while e is not None:
+        if isinstance(e, PlaidAPIError):
+            return e
+        e = e.__cause__ or e.__context__
+    return None
+
+
 def no_longer_mine(e: Optional[BaseException]) -> bool:
     """Was ``e``, or what caused it, core saying the job is no longer this
     worker's to work: its token refused because the job ended or another
-    worker took it (401 ``job-ended``), or a row or decision refused for the
-    same reasons (409 ``job-finished``, ``job-taken``)?"""
-    while e is not None:
-        if isinstance(e, PlaidAPIError):
-            return ((e.status == 401 and api_code(e) == 'job-ended')
-                    or (e.status == 409 and api_code(e) in ('job-finished', 'job-taken')))
-        e = e.__cause__ or e.__context__
-    return False
+    worker took it (401 ``job-ended``), a row or decision refused for the
+    same reasons or because core failed the job (409 ``job-finished``,
+    ``job-taken``, ``job-failed``), or the job gone (404 "Job not found")?"""
+    err = plaid_error(e)
+    if err is None:
+        return False
+    data = err.response_data if isinstance(err.response_data, dict) else {}
+    return ((err.status == 401 and api_code(err) == 'job-ended')
+            or (err.status == 409 and api_code(err) in ('job-finished', 'job-taken', 'job-failed'))
+            or (err.status == 404 and data.get('error') == 'Job not found'))
+
+
+def core_fault(e: Optional[BaseException]) -> Optional[str]:
+    """What a refusal of core (or a network error to it) in ``e`` means to a
+    job: ``mine`` (the job is no longer this worker's, :func:`no_longer_mine`),
+    ``passing`` (core busy, down or unreachable for a while: a 5xx, a network
+    error, 423, 429, tried again), or ``other`` (anything else core refused).
+    None when ``e`` holds no refusal of core."""
+    err = plaid_error(e)
+    if err is None:
+        return None
+    if no_longer_mine(err):
+        return 'mine'
+    status = err.status or 0
+    if status == 0 or status in (423, 429) or status >= 500:
+        return 'passing'
+    return 'other'
+
+
+#: The reason a job ends with when the worker meets an error it has no rule
+#: for (added to CONTRACT 6 by J-FIX-B): never a skip, never a loop.
+WORKER_ERROR = 'worker-error'
+
+
+def error_line(e: BaseException) -> str:
+    """The job's message for an error the worker has no rule for, at most
+    the 300 characters core keeps."""
+    return f'The job worker met an error: {type(e).__name__}: {e}'[:300]
 
 
 class Job:
@@ -416,14 +460,14 @@ class Job:
         self.admin.jobs.update_document(self.id, document_id, self.worker_id, **fields)
 
     def add_decisions(self, decisions: List[Dict[str, Any]]) -> None:
-        for i in range(0, len(decisions), 1000):
-            self.admin.jobs.add_decisions(self.id, self.worker_id, decisions[i:i + 1000])
+        for i in range(0, len(decisions), JOB_DECISIONS_PER_CALL):
+            self.admin.jobs.add_decisions(self.id, self.worker_id, decisions[i:i + JOB_DECISIONS_PER_CALL])
 
     def lookup_decisions(self, forms: List[str]) -> List[Dict[str, Any]]:
         out: List[Dict[str, Any]] = []
         forms = list(dict.fromkeys(f for f in forms if f))
-        for i in range(0, len(forms), 1000):
-            out.extend(self.admin.jobs.lookup_decisions(self.id, forms[i:i + 1000]) or [])
+        for i in range(0, len(forms), JOB_DECISIONS_PER_CALL):
+            out.extend(self.admin.jobs.lookup_decisions(self.id, forms[i:i + JOB_DECISIONS_PER_CALL]) or [])
         return out
 
     def decisions(self) -> List[Dict[str, Any]]:
@@ -478,9 +522,13 @@ def run_job(job: Job, runner) -> Optional[Dict[str, Any]]:
         entries = runner.entries(job)
         job.set(phase=REPORTING, current_document=None, message='Writing the report.')
         return _finish(job, 'done', runner, harmonize, entries)
-    except Exception as e:  # noqa: BLE001 - a stop, or core saying the job is no longer this worker's
+    except Exception as e:  # noqa: BLE001 - a stop, core saying the job is no longer this worker's, or a fault
         if not isinstance(e, JobStopped) and not no_longer_mine(e):
-            raise
+            # No rule covers it: the job fails with what happened, rather
+            # than being skipped past or taken again to fail the same way.
+            logger.exception('Job %s: ended on an error', job.id)
+            job.set(message=error_line(e))
+            return _finish(job, 'failed', runner, harmonize, entries, reason=WORKER_ERROR)
         stop = e if isinstance(e, JobStopped) else job.ended()
         if stop.why == 'cancelled':
             return _finish(job, 'cancelled', runner, harmonize, entries, reason='cancelled')
