@@ -561,6 +561,29 @@
             (pr-str lines))
         (is (empty? (q ds "SELECT 1 FROM sqlite_master WHERE name = 'vocab_maintainers'")))))))
 
+(deftest a-replanned-vocabulary-names-who-stays-maintainer-of-the-old-plan
+  ;; X1 was planned for P30 and the stopped run audited it there, then the old
+  ;; version unlinked it from P30. The re-plan gives it P31 and keeps every
+  ;; role (nothing is taken away), so the log names the vocabulary's
+  ;; maintainers who stay maintainers of P30, and X1's History lists the
+  ;; stale home, then the home it got.
+  (with-temp-db
+    (fn [ds]
+      ((after-a-stopped-run #(old-unlink! % (u "p30") (u "x1"))) ds)
+      (let [lines (logged #(migratus/migrate (cfg ds)))]
+        (is (some #(= % (str "Vocabulary \"X1 by maintainers\" (" (u "x1") "): its planned home \"P30\" ("
+                             (u "p30") ") no longer links it since the plan was made. Planning it again. "
+                             "Its maintainers stay maintainers of \"P30\": " (email "xa") ", " (email "xb")))
+                  lines)
+            (pr-str (filter #(str/includes? % "Planning it again") lines)))
+        (is (contains? (roles ds) [(u "p30") (email "xb") "maintainer"]) "the promotion under the old plan stays")
+        (is (= [(u "p30") (u "p31")]
+               (map :project_id (q ds (str "SELECT o.project_id FROM operations o WHERE o.op_type = 'vocab/home' "
+                                           "AND EXISTS (SELECT 1 FROM audit_writes aw WHERE aw.op_id = o.id "
+                                           "AND aw.vocab_layer_id = ?) ORDER BY o.ts")
+                                   (u "x1"))))
+            "its History: the stale home, then the one it got")))))
+
 (deftest a-vocabulary-is-not-removed-with-a-home-the-old-version-deleted-after-the-plan
   (testing "the planned home is being deleted, its removal still to run"
     (with-temp-db

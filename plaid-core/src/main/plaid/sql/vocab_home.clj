@@ -169,16 +169,28 @@
   project, or deleted the project. Its home and its marker go, so steps 1
   and 2 plan and audit it again by the rule, from the data as it is now:
   never a home that does not link it, nor one whose removal would take the
-  vocabulary with it. People promoted by the old plan stay maintainers.
+  vocabulary with it. People promoted by the old plan stay maintainers
+  (nothing is taken away), and the warning names the vocabulary's
+  maintainers who maintain the dropped home. The vocabulary's History keeps
+  the dropped plan's `vocab/home` entry, and step 2's new one follows it.
   Returns how many plans were cleared."
   [ds]
   (if-not (column ds "vocab_layers" "project_id")
     0
     (psd/with-tx [tx ds]
       (let [broken (q tx broken-plans-sql)]
-        (doseq [{:keys [id name project_id project_name why]} broken]
-          (log/warn (format "Vocabulary \"%s\" (%s): its planned home %s(%s) %s since the plan was made. Planning it again"
-                            name id (if project_name (str "\"" project_name "\" ") "") project_id why))
+        (doseq [{:keys [id name project_id project_name why]} broken
+                :let [stay (q tx (str "SELECT vm.user_id FROM vocab_maintainers vm "
+                                      "JOIN users u ON u.id = vm.user_id AND u.deactivated_at IS NULL "
+                                      "JOIN project_users pu ON pu.user_id = vm.user_id AND pu.project_id = ? "
+                                      "  AND pu.role = 'maintainer' "
+                                      "WHERE vm.vocab_layer_id = ? ORDER BY vm.user_id")
+                              project_id id)]]
+          (log/warn (str (format "Vocabulary \"%s\" (%s): its planned home %s(%s) %s since the plan was made. Planning it again"
+                                 name id (if project_name (str "\"" project_name "\" ") "") project_id why)
+                         (when (seq stay)
+                           (format ". Its maintainers stay maintainers of \"%s\": %s"
+                                   project_name (str/join ", " (map :user_id stay))))))
           (q tx "UPDATE vocab_layers SET project_id = NULL WHERE id = ?" id)
           (q tx "DELETE FROM data_migrations WHERE id = ?" (str "vocab-home:" id)))
         (count broken)))))
