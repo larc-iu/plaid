@@ -37,7 +37,7 @@ test('a vocabulary another project uses is not deleted, and is once that project
   const dialog = page.getByRole('dialog');
   await expect(
     dialog.getByText(
-      '1 other project uses this vocabulary. It can be deleted once that project unlinks it.',
+      '1 other project uses this vocabulary. Unlink it from that project under Used by other projects first.',
     ),
   ).toBeVisible();
   await expect(dialog.getByRole('button')).toHaveText(['Cancel', 'Close']);

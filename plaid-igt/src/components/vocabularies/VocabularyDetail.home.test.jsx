@@ -397,7 +397,7 @@ describe('the delete question, as the client sends it', () => {
     });
     expect(sentSince(client, before)).toEqual([['GET', '/api/v1/vocab-layers/V/deletion', {}]]);
     expect(dialogText()).toContain(
-      '1 other project uses this vocabulary. It can be deleted once that project unlinks it.',
+      '1 other project uses this vocabulary. Unlink it from that project under Used by other projects first.',
     );
     expect(dialogButtons()).toEqual(['Cancel']);
     await view.unmount();

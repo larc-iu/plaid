@@ -1691,9 +1691,12 @@ export const VocabularyDetail = () => {
 
           <div className="flex flex-col gap-4">
             {deleteCheck?.otherProjects ? (
+              // Only a maintainer of its project opens this, and they end
+              // each borrowing on this tab.
               <p className="text-sm">
-                {otherProjectsSaid(deleteCheck.otherProjects)} It can be deleted once{' '}
-                {deleteCheck.otherProjects === 1 ? 'that project unlinks it' : 'they unlink it'}.
+                {otherProjectsSaid(deleteCheck.otherProjects)} Unlink it from{' '}
+                {deleteCheck.otherProjects === 1 ? 'that project' : 'them'} under Used by other
+                projects first.
               </p>
             ) : (
               <>

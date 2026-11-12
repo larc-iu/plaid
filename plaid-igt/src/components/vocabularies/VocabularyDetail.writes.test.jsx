@@ -692,7 +692,7 @@ describe('the delete question', () => {
       await settle(5);
     });
     expect(dialogText()).toContain(
-      '3 other projects use this vocabulary. It can be deleted once they unlink it.',
+      '3 other projects use this vocabulary. Unlink it from them under Used by other projects first.',
     );
     expect(document.getElementById('vocabulary-delete-confirm')).toBeNull();
     expect(dialogButton('Delete vocabulary')).toBeUndefined();
@@ -729,7 +729,7 @@ describe('the delete question', () => {
       await settle(5);
     });
     expect(dialogText()).toContain(
-      '1 other project uses this vocabulary. It can be deleted once that project unlinks it.',
+      '1 other project uses this vocabulary. Unlink it from that project under Used by other projects first.',
     );
     expect(feedback.notifyError).toHaveBeenCalledWith(
       '1 other project uses this vocabulary.',
