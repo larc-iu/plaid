@@ -180,7 +180,18 @@ try {
     onProgress: ({ done, total, name }) =>
       name && console.log(`  flex ${done + 1}/${total} ${name}`),
   });
-  check(flex.warnings.length === 0, 'flextext export has no warnings', flex.warnings.join('; '));
+  // The one warning is H5-7's count of untyped morphemes in longer words
+  // (1761cbfdc): the slice holds one, "вушата" before the suffix "-ни" in
+  // text 14, whose FLEx bundle has a form and no morph, so FLEx itself gives it
+  // no type. Anything else is a fault.
+  check(
+    JSON.stringify(flex.warnings) ===
+      JSON.stringify([
+        '1 morpheme in words of two or more morphemes has no type. FLEx reads it as a stem unless its entry carries a morph type.',
+      ]),
+    'flextext export warns only of the one untyped morpheme',
+    flex.warnings.join('; '),
+  );
   const flexEntries = unzipSync(new Uint8Array(await flex.blob.arrayBuffer()));
   const flexPaths = Object.keys(flexEntries);
   const flexDocs = flexPaths.filter((p) => p.endsWith('.flextext'));
