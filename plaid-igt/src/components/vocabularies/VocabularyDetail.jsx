@@ -613,6 +613,7 @@ export const VocabularyDetail = () => {
   // Make another project the vocabulary's home. Shown at once, with the
   // rights the person holds there, and put back if refused. The old project
   // keeps it linked, as a project that uses it.
+  const [borrowersRead, setBorrowersRead] = useState(0);
   const handleMove = async (targetId) => {
     const target = moveTargets.find((p) => p.id === targetId);
     if (!target || !vocabulary) return;
@@ -624,7 +625,7 @@ export const VocabularyDetail = () => {
     if (!ok) return;
     setHomeState({ id: target.id, project: target });
     setVocabulary((v) => ({ ...v, project: target.id }));
-    keyedSend(
+    const landed = keyedSend(
       writes.schema,
       client,
       `Move vocabulary “${vocabulary.name}” to project “${target.name}”`,
@@ -637,6 +638,9 @@ export const VocabularyDetail = () => {
         resync: resyncSchema,
       },
     );
+    // The old project now uses it from outside: the list is read again once
+    // the move has landed.
+    if (await landed) setBorrowersRead((n) => n + 1);
   };
 
   const handleAddField = async () => {
@@ -1556,7 +1560,7 @@ export const VocabularyDetail = () => {
 
                   <VocabularyBorrowers
                     // A move makes the old project one of them.
-                    key={vocabulary.project}
+                    key={borrowersRead}
                     client={client}
                     user={user}
                     vocabulary={vocabulary}

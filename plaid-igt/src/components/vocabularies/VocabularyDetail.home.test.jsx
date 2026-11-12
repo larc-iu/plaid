@@ -11,7 +11,20 @@ import { settle } from '@/domain/test-helpers.js';
 
 vi.mock('./VocabularyItems', () => ({ VocabularyItems: () => null }));
 vi.mock('./VocabularyCommentsTab', () => ({ VocabularyCommentsTab: () => null }));
-vi.mock('./VocabularyBorrowers', () => ({ VocabularyBorrowers: () => null }));
+// Counts each time the list of projects that use it is mounted, which is when
+// it is read.
+const borrowerReads = vi.hoisted(() => ({ n: 0 }));
+vi.mock('./VocabularyBorrowers', async () => {
+  const { useEffect } = await import('react');
+  return {
+    VocabularyBorrowers: () => {
+      useEffect(() => {
+        borrowerReads.n += 1;
+      }, []);
+      return null;
+    },
+  };
+});
 vi.mock('@/components/projects/settings/TagsetsManager.jsx', () => ({
   TagsetsManager: () => null,
 }));
@@ -259,6 +272,32 @@ describe('moving a vocabulary', () => {
     expect(document.getElementById('vocabulary-rename')).not.toBeNull();
     // Ayvale is a project it can move back to.
     expect(options(moveSelect())).toEqual(['Ayvale']);
+    await view.unmount();
+  });
+
+  // Read before the move is answered, the list would not hold Ayvale yet.
+  it('reads the projects that use it again once the move is answered, not before', async () => {
+    let answer;
+    const answered = new Promise((r) => {
+      answer = r;
+    });
+    const client = server((req, vocabulary) => {
+      if (req.kind !== 'vocabLayers.move') return undefined;
+      return answered.then(() => ({ ...vocabulary, project: 'C' }));
+    });
+    const view = await mount(client, '/vocabularies/V?tab=settings');
+    const reads = borrowerReads.n;
+    await view.step(async () => {
+      setValue(moveSelect(), 'C');
+      await settle(5);
+    });
+    expect(projectLine()).toBe('Project: Cedar');
+    expect(borrowerReads.n).toBe(reads);
+    await view.step(async () => {
+      answer();
+      await settle(5);
+    });
+    expect(borrowerReads.n).toBe(reads + 1);
     await view.unmount();
   });
 
