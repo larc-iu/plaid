@@ -1,13 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Badge } from '@ui/components/ui/badge';
 import { DataTable } from '@ui/components/shared/data-table';
 import { notifyError, humanizeError } from '@/utils/feedback';
 import { textIncludes } from '@ui/domain/collation.js';
 
-// Vocabularies are shared across projects, so which projects use one is
-// invisible from inside any of them. This is the join, plus the vocabularies
-// no project uses at all.
+// Every vocabulary belongs to one project and other projects may link it, so
+// which projects use one is invisible from inside any of them. This is the
+// join: its project first, then the projects that link it.
 
 export const AdminVocabularies = ({ client }) => {
   const [vocabs, setVocabs] = useState([]);
@@ -36,15 +35,24 @@ export const AdminVocabularies = ({ client }) => {
   }, [load]);
 
   const rows = useMemo(() => {
+    const byId = new Map(projects.map((p) => [p.id, p]));
     const usedBy = new Map();
     projects.forEach((p) => {
       (p.vocabs || []).forEach((v) => {
-        const id = v.id || v;
-        if (!usedBy.has(id)) usedBy.set(id, []);
-        usedBy.get(id).push(p);
+        if (!usedBy.has(v.id)) usedBy.set(v.id, []);
+        usedBy.get(v.id).push(p);
       });
     });
-    return vocabs.map((v) => ({ ...v, projects: usedBy.get(v.id) || [] }));
+    return vocabs.map((v) => {
+      const home = byId.get(v.project) ?? null;
+      const others = (usedBy.get(v.id) || []).filter((p) => p.id !== v.project);
+      return {
+        ...v,
+        // The project's name, or its id when the list does not hold it.
+        homeLabel: home?.name ?? v.project,
+        projects: home ? [home, ...others] : others,
+      };
+    });
   }, [vocabs, projects]);
 
   const columns = [
@@ -59,32 +67,33 @@ export const AdminVocabularies = ({ client }) => {
       ),
     },
     {
-      key: 'maintainers',
-      label: 'Maintainers',
-      sort: (v) => (v.maintainers || []).length,
-      className: 'text-muted-foreground',
-      render: (v) => (v.maintainers || []).join(', ') || 'None',
+      key: 'project',
+      label: 'Project',
+      sort: (v) => (v.homeLabel || '').toLowerCase(),
+      render: (v) => (
+        <Link to={`/projects/${v.project}`} dir="auto" className="hover:underline">
+          {v.homeLabel}
+        </Link>
+      ),
     },
     {
       key: 'projects',
       label: 'Used by',
       sort: (v) => v.projects.length,
-      render: (v) =>
-        v.projects.length === 0 ? (
-          <Badge variant="outline">No project</Badge>
-        ) : (
-          <span className="flex flex-wrap gap-x-2 gap-y-1">
-            {v.projects.map((p) => (
-              <Link
-                key={p.id}
-                to={`/projects/${p.id}`}
-                className="text-muted-foreground hover:underline"
-              >
-                {p.name}
-              </Link>
-            ))}
-          </span>
-        ),
+      render: (v) => (
+        <span className="flex flex-wrap gap-x-2 gap-y-1">
+          {v.projects.map((p) => (
+            <Link
+              key={p.id}
+              to={`/projects/${p.id}`}
+              dir="auto"
+              className="text-muted-foreground hover:underline"
+            >
+              {p.name}
+            </Link>
+          ))}
+        </span>
+      ),
     },
   ];
 
