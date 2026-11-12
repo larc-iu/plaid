@@ -141,10 +141,12 @@ A task may run an unattended job in place of panel turns: `job: {tasks: [gloss],
 instead of `turns` (documents by name, every document of the project when left out, and `note` for the
 starter's instructions). The task's user starts the job, `plaid-job-worker --once` takes it with the run's model
 through the gate and runs it to its end, and the checker reads the job as `ctx.job` (kept as `job.json` beside
-`worker.log`, and every model call of every stretch in `transcript/`, the worker's `--trace-dir`). `checks/igt_job.py` judges an igt job: the job ended done, nothing a person made changed, every
-word that changed was a target and is the job's own machine proposal, no entry repeated, and per task either a
-stretch's targets analysed or left (`mode: stretch`) or a form's job words carrying the one analysis people gave
-it (`mode: harmonize`). `checks/igt_job_hand.py` makes a job's result by hand for `./validate`.
+`worker.log`, and every model call of every stretch in `transcript/`, the worker's `--trace-dir`). `checks/igt_job.py` judges an igt job by rules of its own, never the worker's: the job ended done, nothing a
+person made changed, every word that changed was blank and is wholly the job's own machine proposal, no entry
+repeated, and per task either a stretch's targets analysed or left (`mode: stretch`) or SPEC 8 for a form
+(`mode: harmonize`): the job's words of the form carry one analysis, and each History entry of its harmonize
+pass, read against the document just before it, changed only words wholly the job's own, to the analysis people
+gave the form. `checks/igt_job_hand.py` makes a job's result by hand for `./validate`.
 `igt-job-stretch` and `igt-job-harmonize` are the two, validated only, never run against a model in the round
 that added them.
 

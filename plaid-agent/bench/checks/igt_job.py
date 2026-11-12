@@ -1,15 +1,18 @@
 """Checks an unattended job's run (tasks whose yaml says `job:` in place of
-turns). Reads the documents with the assistant's own parser and the job's own
-rules (plaid_agent.igt.job), so a word is a target, protected or the job's
-exactly as the worker decides it.
+turns). Reads the documents with the assistant's parser, and judges them by
+rules of its own, written here from the SPEC of the jobs round and never
+taken from the worker (plaid_agent.igt.job): a bug in the worker's rules
+must not pass its own check (REV-J-B S3-8).
 
 Every job task:
 - the job ended `done`,
-- nothing protected changed: a word that was not a target keeps its analysis
+- nothing protected changed: a word that was not blank keeps its analysis
   and its provenance, a translation a person wrote keeps its value,
-- every word that changed was a target and is now the job's own analysis,
-  machine-unverified with the job's id in provDetail (or was left blank),
-- every translation that changed was a target and is now the job's own,
+- every word that changed was blank and is now wholly the job's own work,
+  every piece machine-unverified with the job's id in provDetail (or was left
+  blank),
+- every translation that changed was empty or a machine draft and is now the
+  job's own,
 - no two entries the job made share a form and gloss, and none repeats an
   entry that was there before.
 
@@ -17,19 +20,149 @@ args:
   mode: stretch | harmonize
   document, sentences: (stretch) the target sentences, every target word of
     which is analysed or left, at least one analysed
-  form: (harmonize) every word of this form the job analysed carries the one
-    analysis people gave it (SPEC 8: a person's one analysis wins)
+  form: (harmonize) SPEC 8 for that form. People analysed it one way (the
+    task's setup). Each History entry of the job's harmonize pass is read
+    against the document as it was just before it: every word it changed was
+    then wholly the job's own unverified work (a word holding anything of a
+    person's or another producer's is never harmonize's), and is now the
+    job's own and, for the form, the people's analysis. After the job the
+    job's words of the form carry one analysis: harmonize leaves a form the
+    job analysed one way as it is, whatever people did.
 """
-from plaid_agent.core.job import canonical
-from plaid_agent.igt.job import (form_key, job_owned, translation_state, unmade, word_analysis, word_state,
-                                 word_target)
+import json
+from datetime import datetime, timedelta, timezone
+
 from plaid_agent.igt.project import load_document, load_project, parse_document
 
 import common as c
 
 
-def _gloss_of(project, v):
-    return project.lexicon_field(v, 'gloss')
+# --- the rules, the checker's own ----------------------------------------------------
+
+def _job_piece(md, jid):
+    """Machine-unverified and naming the job (SPEC 6.4)."""
+    md = md or {}
+    return md.get('prov') == 'inferred' and not md.get('provConfirmed') \
+        and isinstance(md.get('provDetail'), dict) and md['provDetail'].get('job') == jid
+
+
+def _real(w):
+    return [m for m in w.morphemes if not m.virtual]
+
+
+def _pieces(w):
+    """Everything on a word anyone wrote: stamped morpheme tokens, morpheme
+    spans and links, word-scope spans, the word's own link."""
+    out = []
+    for m in _real(w):
+        if (m.metadata or {}).get('prov') is not None:
+            out.append(m.metadata)
+        out += [sp.metadata for sp in m.fields.values()]
+        if m.link is not None:
+            out.append(m.link.metadata)
+    out += [sp.metadata for sp in w.fields.values()]
+    if w.link is not None:
+        out.append(w.link.metadata)
+    return out
+
+
+def _blank(w):
+    """No analysis and no word value (SPEC 6.1): no morpheme span or link,
+    no morpheme but the word's own default one, no word field."""
+    ms = _real(w)
+    if any(m.fields or m.link is not None for m in ms):
+        return False
+    if len(ms) > 1 or any(m.morph_type or (m.form not in (None, '') and m.form != w.surface) for m in ms):
+        return False
+    return not any(sp.value not in (None, '') for sp in w.fields.values())
+
+
+def _job_own(w, jid):
+    pieces = _pieces(w)
+    return bool(pieces) and not _blank(w) and all(_job_piece(p, jid) for p in pieces)
+
+
+def _analysis(w):
+    """The analysis as harmonize writes it: morphemes, types, "=", fields."""
+    return json.dumps([[m.form, m.morph_type or None, bool(m.equals_before),
+                        sorted((n, sp.value) for n, sp in m.fields.items() if sp.value not in (None, ''))]
+                       for m in _real(w)], ensure_ascii=False)
+
+
+def _everything(w):
+    return json.dumps([_analysis(w), [[m.link.item_id if m.link else None, m.metadata] for m in _real(w)],
+                       sorted((n, sp.value, json.dumps(sp.metadata, sort_keys=True)) for n, sp in w.fields.items()),
+                       [json.dumps(sp.metadata, sort_keys=True) for m in _real(w) for sp in m.fields.values()]],
+                      ensure_ascii=False, sort_keys=True, default=str)
+
+
+def _translation(s, project):
+    f = project.gloss_field('Sentence')
+    sp = s.fields.get(f.name) if f else None
+    return (None, None) if sp is None or (sp.value or '') == '' else (sp.value, sp.metadata or {})
+
+
+def _translation_target(s, project):
+    value, md = _translation(s, project)
+    return value is None or (md.get('prov') == 'inferred' and not md.get('provConfirmed'))
+
+
+def _form(surface):
+    import unicodedata
+    return unicodedata.normalize('NFC', surface or '').casefold()
+
+
+def _just_before(iso):
+    t = datetime.fromisoformat(str(iso).replace('Z', '+00:00')) - timedelta(milliseconds=1)
+    return t.astimezone(timezone.utc).isoformat(timespec='milliseconds').replace('+00:00', 'Z')
+
+
+# --- the check -------------------------------------------------------------------------
+
+def _harmonize(ctx, project, jid, docs, args, problems):
+    key = _form(args['form'])
+    people = set()
+    for doc in docs.values():
+        for s in doc.sentences:
+            for w in s.words:
+                if _form(w.surface) == key and _real(w) and any(not _job_piece(p, jid) and (p or {}).get('prov') is None
+                                                                for p in _pieces(w)):
+                    people.add(_analysis(w))
+    if len(people) != 1:
+        problems.append(f'the task wants one analysis by people of {args["form"]}, found {len(people)}')
+        return
+    (theirs,) = people
+    mine = {}
+    for name, doc in docs.items():
+        for s in doc.sentences:
+            for w in s.words:
+                if _form(w.surface) == key and _job_own(w, jid):
+                    mine[f'{name} s{s.index}.w{w.index}'] = _analysis(w)
+    if not mine:
+        problems.append(f'the job analysed no {args["form"]}')
+    elif len(set(mine.values())) > 1:
+        problems.append(f'the job left {args["form"]} analysed {len(set(mine.values()))} ways')
+    for d in ctx.project['documents']:
+        after = docs[d['name']]
+        units = [e for e in ctx.client.documents.audit(d['id'], kinds=['job']) or []
+                 if str(e.get('ref') or '').startswith(f'job:{jid}/') and str(e.get('ref')).endswith('/pass:harmonize')]
+        for unit in units:
+            raw = ctx.client.documents.get(d['id'], include_body=True, as_of=_just_before(unit['time']),
+                                           layers=project.read_layer_ids())
+            before = parse_document(raw, project)
+            now = {w.id: (s, w) for s in after.sentences for w in s.words}
+            for s in before.sentences:
+                for w in s.words:
+                    hit = now.get(w.id)
+                    if hit is None or _everything(w) == _everything(hit[1]):
+                        continue
+                    where = f'{d["name"]} s{s.index}.w{w.index}'
+                    if not _job_own(w, jid):
+                        problems.append(f'{where}: harmonize changed a word that held something not the job\'s')
+                    elif not _job_own(hit[1], jid):
+                        problems.append(f'{where}: harmonize left a word not the job\'s own')
+                    elif _form(w.surface) == key and _analysis(hit[1]) != theirs:
+                        problems.append(f'{where}: harmonize set {args["form"]} to an analysis people did not make')
 
 
 def check(ctx):
@@ -51,9 +184,9 @@ def check(ctx):
             if t is None:
                 problems.append(f'{d["name"]} s{s.index}: gone')
                 continue
-            if translation_state(s, project, jid) != translation_state(t, project, jid):
-                if translation_state(s, project, jid) not in ('empty', 'machine') \
-                        or translation_state(t, project, jid) != 'own':
+            if _translation(s, project) != _translation(t, project):
+                value, md = _translation(t, project)
+                if not _translation_target(s, project) or value is None or not _job_piece(md, jid):
                     problems.append(f'{d["name"]} s{s.index}: translation changed and is not the job\'s')
             words = {w.id: w for w in t.words}
             for w in s.words:
@@ -61,54 +194,33 @@ def check(ctx):
                 if x is None:
                     problems.append(f'{d["name"]} s{s.index}.w{w.index}: gone')
                     continue
-                same = canonical(word_analysis(w)) == canonical(word_analysis(x)) and word_state(w) == word_state(x)
-                if same:
+                if _everything(w) == _everything(x):
                     continue
-                if not word_target(w):
+                if not _blank(w):
                     problems.append(f'{d["name"]} s{s.index}.w{w.index}: not a target, changed')
-                elif not job_owned(x, jid):
+                elif not _job_own(x, jid):
                     problems.append(f'{d["name"]} s{s.index}.w{w.index}: changed, not the job\'s own machine work')
     if args.get('mode') == 'stretch':
         doc = docs[args['document']]
         before = parse_document(c.baseline(next(d['id'] for d in ctx.project['documents']
                                                 if d['name'] == args['document']), ctx.baseline_dir), project)
-        targets = {w.id for s in before.sentences if s.index in args['sentences'] for w in s.words
-                   if word_target(w)}
+        targets = {w.id for s in before.sentences if s.index in args['sentences'] for w in s.words if _blank(w)}
         for s in doc.sentences:
             for w in s.words:
                 if w.id in targets:
-                    if job_owned(w, jid):
+                    if _job_own(w, jid):
                         analysed += 1
-                    elif word_target(w):
+                    elif _blank(w):
                         left += 1
         if not analysed:
             problems.append('no target word was analysed')
     if args.get('mode') == 'harmonize':
-        key = form_key(args['form'])
-        people, mine = set(), {}
-        for name, doc in docs.items():
-            for s in doc.sentences:
-                for w in s.words:
-                    if form_key(w.surface) != key:
-                        continue
-                    if word_state(w) == 'protected':
-                        people.add(canonical(unmade(word_analysis(w))))
-                    elif job_owned(w, jid):
-                        mine[f'{name} s{s.index}.w{w.index}'] = canonical(unmade(word_analysis(w)))
-        if len(people) != 1:
-            problems.append(f'the task wants one analysis by people of {args["form"]}, found {len(people)}')
-        elif not mine:
-            problems.append(f'the job analysed no {args["form"]}')
-        else:
-            (theirs,) = people
-            off = sorted(a for a, k in mine.items() if k != theirs)
-            if off:
-                problems.append(f'not the people\'s analysis of {args["form"]}: {off}')
+        _harmonize(ctx, project, jid, docs, args, problems)
     seen = {}
     for v in project.vocabs:
         if v.get('borrowed'):
             continue
-        gloss = _gloss_of(project, v)
+        gloss = project.lexicon_field(v, 'gloss')
         items = ctx.client.vocab_layers.get(v['id'], include_items=True).get('items') or []
         for it in items:
             k = (v['id'], it.get('form'), (it.get('metadata') or {}).get(gloss))

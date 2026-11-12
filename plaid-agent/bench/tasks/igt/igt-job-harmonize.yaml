@@ -1,6 +1,7 @@
-# A two-document job over a form people analysed one way elsewhere: whatever
-# the model does per stretch, every word of the form the job analysed ends with
-# the people's analysis (SPEC 8: a person's one analysis wins).
+# A two-document job over a form people analysed one way elsewhere: the job's
+# words of the form end with one analysis, and where the job analysed it in
+# two or more ways harmonize set them to the people's (SPEC 8: a person's one
+# analysis wins), touching no word that held anything not the job's.
 id: igt-job-harmonize
 app: igt
 project: igt-lezgi
