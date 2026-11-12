@@ -604,14 +604,32 @@ class IgtRunner:
             if self.document(d) == 'deferred':
                 deferred.append(d)
         while deferred:
+            # Every pass over put-off documents waits the quiet window first,
+            # and says what it waits for (REV-J-B S3-5).
+            self.wait_for_people(deferred)
             still = []
             for d in deferred:
                 if self.document(d) == 'deferred':
                     if (job.rows.get(d) or {}).get('state') != 'in-use':
                         still.append(d)
-            if still and len(still) == len(deferred):
-                job.sleep(JOB_DEFER_WAIT_S)
             deferred = still
+
+    def wait_for_people(self, documents: List[str]) -> None:
+        """Wait :data:`JOB_DEFER_WAIT_S` before taking ``documents`` again,
+        saying so: what for, and how long, never a clock time (whose clock is
+        the worker's, not the reader's)."""
+        job = self.job
+        name = self.names.get(documents[0]) or (job.rows.get(documents[0]) or {}).get('name')
+        where = (f'"{name}"' if name else 'a document') if len(documents) == 1 else f'{len(documents)} documents'
+        minutes = round(JOB_DEFER_WAIT_S / 60)
+        said = job.status.get('message')
+        job.set(current_document=None,
+                message=f'Waiting for people to finish in {where}. Trying again in {minutes} minutes.')
+        try:
+            job.sleep(JOB_DEFER_WAIT_S)
+        finally:
+            if not job.lost:
+                job.set(message=said)
 
     def defer(self, document_id: str) -> str:
         row = self.job.rows.get(document_id) or {}
@@ -621,8 +639,8 @@ class IgtRunner:
         return 'deferred'
 
     def in_use(self, client, document_id: str, job_ref: str) -> bool:
-        """Someone else wrote in the document within the quiet window: a
-        person, a service run, another job (SPEC 5.2)."""
+        """Someone else wrote in the document within the quiet window, since
+        the job was made: a person, a service run, another job (SPEC 5.2)."""
         try:
             page = client.documents.audit_page(document_id, order='desc', limit=1) or {}
         except PlaidAPIError as e:
@@ -634,7 +652,15 @@ class IgtRunner:
         if str(last.get('ref') or '').startswith(job_ref):
             return False
         when = core_job._iso_seconds(last.get('time') or last.get('timestamp') or last.get('created_at'))
-        return when is not None and self.job.now() - when < JOB_PERSON_QUIET_S
+        if when is None:
+            return False
+        # Only what was written after the job was made counts: the edit its
+        # starter made just before pressing Start is not a person in the
+        # document (both times are core's, REV-J-B S3-5).
+        created = core_job._iso_seconds(self.job.job.get('created_at'))
+        if created is not None and when <= created:
+            return False
+        return self.job.now() - when < JOB_PERSON_QUIET_S
 
     def document(self, document_id: str) -> str:
         """Work one document from its cursor: ``done``, ``deferred`` or
@@ -1343,9 +1369,9 @@ class IgtRunner:
         when the document is gone), or None when it stayed in use."""
         job = self.job
         for attempt in range(JOB_DEFER_ROUNDS):
-            client = job.client()
             if attempt:
-                job.sleep(JOB_DEFER_WAIT_S)
+                self.wait_for_people([document_id])
+            client = job.client()
             if self.in_use(client, document_id, f'job:{job.id}/'):
                 continue
             row = job.rows.get(document_id) or {}

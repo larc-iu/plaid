@@ -38,6 +38,8 @@ def _job(n_docs=1):
     clock = Clock()
     job = start(client, ['gloss'], now=clock.now)
     job._sleep = clock.sleep
+    # Made an hour ago: the edits these tests leave are the job's to see.
+    job.job['created_at'] = _iso(NOW - 3600)
     return client, job, clock
 
 
@@ -127,5 +129,36 @@ def test_a_document_put_off_three_times_ends_in_use_after_the_waits(monkeypatch)
     runner(job).work(job)
     assert job.rows['d1']['state'] == 'in-use' and job.rows['d1']['defers'] == 3
     assert job.rows['d2']['state'] == 'done'
-    assert sum(clock.slept) == JOB_DEFER_WAIT_S, 'one wait, after the pass of put-off documents that found it in use'
+    assert sum(clock.slept) == 2 * JOB_DEFER_WAIT_S, 'a wait before each pass over the put-off documents'
     assert all('Story 1' not in c['asked'] for c in model.calls)
+
+
+# --- edits made before the job, and the wait before a pass (REV-J-B S3-5) ---------
+
+def test_an_edit_made_before_the_job_was_created_does_not_put_the_document_off(monkeypatch):
+    client, job, clock = _job()
+    _model(monkeypatch)
+    job.job['created_at'] = _iso(NOW - 30)
+    _edit(client, 'd1', NOW - 31)
+    assert runner(job).document('d1') == 'done', 'the starter edited, then started the job'
+
+
+def test_an_edit_made_after_the_job_was_created_puts_the_document_off(monkeypatch):
+    client, job, clock = _job()
+    _model(monkeypatch)
+    job.job['created_at'] = _iso(NOW - 30)
+    _edit(client, 'd1', NOW - 29)
+    assert runner(job).document('d1') == 'deferred'
+
+
+def test_every_pass_over_put_off_documents_waits_first_and_says_for_what(monkeypatch):
+    client, job, clock = _job(2)
+    _model(monkeypatch)
+    _edit(client, 'd1', NOW - 10)
+    r = runner(job)
+    r.work(job)
+    assert job.rows['d1']['state'] == 'done' and job.rows['d1']['defers'] == 1
+    assert sum(clock.slept) >= JOB_DEFER_WAIT_S, 'the second pass waited the quiet window'
+    beats = [c[1] for c in client.jobs.calls if c[0] == 'heartbeat']
+    waiting = [b['message'] for b in beats if (b.get('message') or '').startswith('Waiting for')]
+    assert waiting == ['Waiting for people to finish in "Story 1". Trying again in 10 minutes.']
