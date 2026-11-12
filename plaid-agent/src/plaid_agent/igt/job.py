@@ -520,7 +520,10 @@ class IgtRunner:
         self.stretches = 0
         #: this run of the job on this worker, the trace folder's own
         self.run_id = f'run-{uuid7()}'
+        #: people's analyses as last read (``read_people``), and per document
+        #: the version it was read at and its part of them
         self.people: Optional[Dict[str, Any]] = None
+        self.people_read: Dict[str, Tuple[Any, Dict[str, Any]]] = {}
         #: what harmonize has written so far, for the report of a job stopped in it
         self.harmonize_done: Optional[Dict[str, Any]] = None
         #: document id -> the sentences whose record is in core (their marks)
@@ -732,6 +735,7 @@ class IgtRunner:
     def walk(self, document_id: str) -> str:
         job = self.job
         project = self.project()
+        self.read_people(project)
         if (job.rows.get(document_id) or {}).get('state') != 'working':
             job.update_row(document_id, state='working')
         while True:
@@ -905,33 +909,59 @@ class IgtRunner:
 
     def people_index(self, ws: Workspace, project: IgtProject) -> Dict[str, Dict[str, Any]]:
         """form -> {key: {analysis, count}} over every word people analysed
-        in the project (``protected``), read once per job (a walk of the
-        project's documents, REV-J-B S3-10) and kept: the job writes no
-        person's analysis, so its own writes never change it. A person's
-        analysis made during the job is not seen until the next job."""
-        if self.people is not None:
-            return self.people
-        index: Dict[str, Dict[str, Any]] = {}
-        docs = ws.documents()
-        ws.read_ahead(docs)
-        for d in docs:
+        in the project (``protected``), as :meth:`read_people` last read it,
+        read now when it never was."""
+        if self.people is None:
+            self.read_people(project)
+        return self.people
+
+    def read_people(self, project: IgtProject) -> None:
+        """Read people's analyses as the project is now (REV-J-B2 S2-1): as
+        each document's walk begins, so a stretch sees a correction a person
+        made since the job started, and as harmonize begins, so it decides
+        by people's work as it is then. Each read lists the project's
+        documents (one request) and reads again only those whose version
+        moved since they were read last (the job's own writes and people's),
+        never the whole project twice (REV-J-B S3-10)."""
+        ws = Workspace(self.job.client(), project)
+        listed = ws.documents()
+        stale = [d for d in listed if d.get('version') is None
+                 or (self.people_read.get(d['id']) or (None,))[0] != d.get('version')]
+        ws.read_ahead(stale)
+        for d in stale:
             try:
                 doc = ws.doc(d['id'])
             except Exception as e:  # noqa: BLE001 - a document that cannot be read gives no precedent
                 if core_job.core_fault(e) in ('mine', 'access', 'passing'):
                     raise
+                self.people_read.pop(d['id'], None)
                 continue
-            for s in doc.sentences:
-                for w in s.words:
-                    if word_state(w) != 'protected':
-                        continue
-                    a = word_analysis(w)
-                    text = canonical(a)
-                    slot = index.setdefault(form_key(w.surface), {}).setdefault(analysis_key(text),
-                                                                                {'analysis': a, 'count': 0})
-                    slot['count'] += 1
+            self.people_read[d['id']] = (d.get('version'), self.people_of(doc))
+        listed_ids = {d['id'] for d in listed}
+        index: Dict[str, Dict[str, Any]] = {}
+        for did, (_, part) in self.people_read.items():
+            if did not in listed_ids:
+                continue
+            for form, keys in part.items():
+                for key, x in keys.items():
+                    slot = index.setdefault(form, {}).setdefault(key, {'analysis': x['analysis'], 'count': 0})
+                    slot['count'] += x['count']
         self.people = index
-        return index
+
+    @staticmethod
+    def people_of(doc) -> Dict[str, Dict[str, Any]]:
+        """One document's part of the index: form -> {key: {analysis,
+        count}} over its words people analysed."""
+        part: Dict[str, Dict[str, Any]] = {}
+        for s in doc.sentences:
+            for w in s.words:
+                if word_state(w) != 'protected':
+                    continue
+                a = word_analysis(w)
+                slot = part.setdefault(form_key(w.surface), {}).setdefault(analysis_key(canonical(a)),
+                                                                           {'analysis': a, 'count': 0})
+                slot['count'] += 1
+        return part
 
     def entry_forms(self, ws: Workspace, project: IgtProject) -> Dict[str, str]:
         out = {}
@@ -1313,8 +1343,8 @@ class IgtRunner:
             return {'changed': [], 'left': []}
         project = self.project()
         client = job.client()
-        ws = Workspace(client, project)
-        people = self.people_index(ws, project)
+        self.read_people(project)
+        people = self.people
         gloss = getattr(project.gloss_field('Morpheme'), 'name', None)
         # form -> key -> {analysis, words: [(document, word)]}: the words
         # wholly the job's own, which vote and may be rewritten, and those
