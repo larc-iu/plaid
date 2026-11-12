@@ -246,9 +246,10 @@ def test_the_trace_folder_keeps_every_model_call_of_a_stretch_on_disk(monkeypatc
     use(monkeypatch, Model(_analyse))
     runner(job, trace_dir=str(tmp_path)).document('d1')
     files = sorted(tmp_path.rglob('round-*.json'))
-    assert len(files) == 1 and files[0].parent.parent.name == 'd1', 'the call that staged; the reply had no reasoning'
-    first = json.loads(files[0].read_text())
+    assert len(files) == 2 and files[0].parent.parent.name == 'd1', 'both calls: the one that staged and the end'
+    first, last = (json.loads(f.read_text()) for f in files)
     assert 'unattended' in first['system'] and first['tools'] and first['calls'][0]['name'] == 'set_analysis'
+    assert (last['n'], last['said'], last['calls']) == (2, 'Done.', []), 'the last call\'s round, what it wrote'
     assert not [k for k, _ in client.calls if k.startswith('user_data')], 'to disk only'
 
 
@@ -270,11 +271,11 @@ def test_the_trace_folder_is_the_operators_alone_and_a_resumed_run_gets_its_own(
     finally:
         os.umask(old)
     files = sorted(tmp_path.rglob('round-*.json'))
-    assert len(files) == 2
+    assert len(files) == 4, 'two calls a stretch, a stretch a run'
     for path in [*files, *[p for p in tmp_path.rglob('*') if p.is_dir()]]:
         mode = stat.S_IMODE(path.stat().st_mode)
         assert mode & 0o077 == 0, (path, oct(mode))
-    assert files[0].parent != files[1].parent, 'each run\'s stretch in a folder of its own'
+    assert len({f.parent for f in files}) == 2, 'each run\'s stretch in a folder of its own'
 
 
 def test_a_scripted_worker_starts_without_the_providers_banner(tmp_path, capsys, monkeypatch):
