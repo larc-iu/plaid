@@ -13,7 +13,7 @@ import { grantRoleHints, projectRoleOptions } from '@ui/domain/projectRoles.js';
 
 export const ROLE_OPTIONS = projectRoleOptions({
   readerHint: 'Reads the texts and the lexicon. Cannot comment.',
-  writerHint: 'Also edits and deletes documents, and links vocabulary.',
+  writerHint: 'Also edits and deletes documents, links vocabulary and adds its entries.',
 });
 
 // The three a link or a search result can be granted, by value, for a picker

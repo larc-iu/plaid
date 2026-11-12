@@ -8,4 +8,13 @@ describe('the role hints', () => {
     const writer = ROLE_OPTIONS.find((o) => o.value === 'writer');
     expect(writer.hint).toMatch(/deletes documents/);
   });
+
+  // A writer of a vocabulary's project adds its entries and edits their
+  // fields (SPEC 5.4, Luke's ruling 11.4).
+  it('say a writer links vocabulary and adds its entries', () => {
+    const writer = ROLE_OPTIONS.find((o) => o.value === 'writer');
+    expect(writer.hint).toBe(
+      'Also edits and deletes documents, links vocabulary and adds its entries.',
+    );
+  });
 });
