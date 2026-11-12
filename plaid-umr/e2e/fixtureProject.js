@@ -323,22 +323,21 @@ async function ensureGlossedFixture() {
       },
     ]);
   }
-  // A vocabulary linked to the project, with the stem of "left" analyzed as
-  // its entry "leave", on the morpheme as IGT links it: what the concept
-  // picker offers first for that word.
+  // The project's own vocabulary, with the stem of "left" analyzed as its
+  // entry "leave", on the morpheme as IGT links it: what the concept picker
+  // offers first for that word. Made inside the project, which links it.
   const LEXICON_NAME = 'E2E UMR Lexicon';
-  let vocab = (await client.vocabLayers.list()).find((v) => v.name === LEXICON_NAME);
+  let vocab = ((await client.projects.get(projectId)).vocabs || []).find(
+    (v) => v.project === projectId && v.name === LEXICON_NAME,
+  );
   if (!vocab) {
-    const created = await client.vocabLayers.create(LEXICON_NAME);
+    const created = await client.vocabLayers.create(projectId, LEXICON_NAME);
     vocab = { id: created?.id || created, name: LEXICON_NAME };
     await client.vocabItems.create(vocab.id, 'leave', { gloss: 'go away' });
     await client.vocabItems.create(vocab.id, 'lunch', {
       gloss: 'midday meal',
       umr: { roleset: 'lunch-01', args: { ARG0: 'eater' } },
     });
-  }
-  if (!(await client.projects.get(projectId)).vocabs?.some((v) => v.id === vocab.id)) {
-    await client.projects.linkVocab(projectId, vocab.id);
   }
   const items = (await client.vocabLayers.get(vocab.id, true)).items || [];
   const leave = items.find((it) => it.form === 'leave');
