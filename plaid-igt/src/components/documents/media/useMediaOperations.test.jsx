@@ -816,67 +816,55 @@ describe('useMediaOperations: playing before the recording has loaded', () => {
   });
 });
 
-// Stop is offered from the moment the run starts (the dialog and the banner),
-// and its first phase has no request for Stop to cancel: the wait for the
+// Stop is offered from the moment the run starts (on the banner), and its
+// first phase has no request for Stop to cancel: the wait for the
 // edits made before the run. A Stop pressed there used to do nothing, and the
 // run went on to ask the service.
 describe('useMediaOperations: stopping a transcription before the service is asked', () => {
-  const STOPS = [
-    ['the banner', (h) => h.locks.state.held.options.onCancel()],
-    ['the dialog', (h) => h.api.stopTranscribe()],
-  ];
+  it('from the banner while earlier edits save, it ends and writes nothing', async () => {
+    const saved = deferred();
+    const operations = [];
+    const client = fakeClient({
+      withOperation: async (label, fn) => {
+        operations.push(label);
+        return fn();
+      },
+      messages: { discoverServices: vi.fn(async () => SERVICES) },
+    });
+    const doc = withMedia('/api/v1/documents/doc-1/media?v=a', {
+      body: '',
+      whenSaved: vi.fn(() => saved.promise),
+    });
+    const h = await mountMedia({ doc, client });
+    let settled = false;
+    await h.step(async () => {
+      h.api.handleTranscribe().then(() => {
+        settled = true;
+      });
+      await settle();
+    });
+    expect(h.locks.state.held?.label).toBe('Transcribe');
 
-  it.each(STOPS)(
-    'from %s while earlier edits save, it ends and writes nothing',
-    async (_where, stop) => {
-      const saved = deferred();
-      const operations = [];
-      const client = fakeClient({
-        withOperation: async (label, fn) => {
-          operations.push(label);
-          return fn();
-        },
-        messages: { discoverServices: vi.fn(async () => SERVICES) },
-      });
-      const doc = withMedia('/api/v1/documents/doc-1/media?v=a', {
-        body: '',
-        whenSaved: vi.fn(() => saved.promise),
-      });
-      const h = await mountMedia({ doc, client });
-      let settled = false;
-      await h.step(async () => {
-        h.api.handleTranscribe().then(() => {
-          settled = true;
-        });
-        await settle();
-      });
-      expect(h.api.transcribeRun.running).toBe(true);
+    await h.step(async () => {
+      await h.locks.state.held.options.onCancel();
+      await settle();
+      await settle();
+    });
+    expect(settled).toBe(true);
+    expect(h.locks.state.held).toBeNull();
+    expect(operations).toEqual([]);
+    expect(client.messages.requestService).not.toHaveBeenCalled();
+    expect(doc.reload).not.toHaveBeenCalled();
+    expect(notifyInfo).toHaveBeenCalledWith('Stopped. The transcript is unchanged.', 'Transcribe');
 
-      await h.step(async () => {
-        await stop(h);
-        await settle();
-        await settle();
-      });
-      expect(settled).toBe(true);
-      expect(h.api.transcribeRun.running).toBe(false);
-      expect(h.locks.state.held).toBeNull();
-      expect(operations).toEqual([]);
-      expect(client.messages.requestService).not.toHaveBeenCalled();
-      expect(doc.reload).not.toHaveBeenCalled();
-      expect(notifyInfo).toHaveBeenCalledWith(
-        'Stopped. The transcript is unchanged.',
-        'Transcribe',
-      );
-
-      // The edits landing later start nothing.
-      await h.step(async () => {
-        saved.resolve();
-        await settle();
-      });
-      expect(client.messages.requestService).not.toHaveBeenCalled();
-      await h.unmount();
-    },
-  );
+    // The edits landing later start nothing.
+    await h.step(async () => {
+      saved.resolve();
+      await settle();
+    });
+    expect(client.messages.requestService).not.toHaveBeenCalled();
+    await h.unmount();
+  });
 
   // N2-SERVICES-1: the run used to ask "Replace existing transcript?" and
   // clear the whole text before asking the service, so every word, gloss

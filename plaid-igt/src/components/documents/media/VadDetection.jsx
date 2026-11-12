@@ -53,7 +53,7 @@ export function VadDetection({ mediaOps, readOnly = false, disabled = false }) {
         iconOnly
         variant="ghost"
         onClick={() => setOpen(true)}
-        progress={detectRun}
+        running={running}
         disabled={readOnly || disabled}
       />
 

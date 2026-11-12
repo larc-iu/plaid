@@ -232,14 +232,9 @@ export const useMediaOperations = () => {
     storageId: 'detect_speech',
   });
 
-  // One run clock per spot, so a closed dialog's button can still show it.
-  const transcribeRun = useRunProgress();
+  // Speech detection's run clock. It takes no lock, so it has no banner, and
+  // its dialog shows it. A transcription is shown by the banner (its lock).
   const detectRun = useRunProgress();
-  useMirroredProgress(transcribeRun, {
-    percent: progressPercent,
-    message: progressMessage,
-    active: transcribeRun.running,
-  });
   // A detect-speech SERVICE reports over the same channel; the built-in model
   // reports its own fraction, mirrored just below where `vad` is built.
   useMirroredProgress(detectRun, {
@@ -934,7 +929,7 @@ export const useMediaOperations = () => {
     }
   }, [doc, confirm]);
 
-  // Stop for a transcription, from the dialog or the banner. The run's first
+  // Stop for a transcription, from the banner. The run's first
   // phases have no request to cancel: the wait for the edits made before it,
   // and the clearing of the old transcript. A Stop there ends the run before
   // the service is asked. Once it is asked, Stop asks the service to stop.
@@ -1009,7 +1004,6 @@ export const useMediaOperations = () => {
       });
       transcribeStopRef.current = () => {
         stopped = true;
-        transcribeRun.report({ percent: null, message: 'Stopping…' });
         lock.report({ percent: null, message: 'Stopping…' });
         onStop();
       };
@@ -1020,7 +1014,6 @@ export const useMediaOperations = () => {
         // It is a service run naming the service, which the service's writes
         // keep when they join it.
         const label = `Transcribe audio (${service.serviceName || serviceId})`;
-        transcribeRun.start(runs.length > 1 ? runs.map(nameOf) : ['Transcribe']);
         // The client holds one open operation, and an edit still saving holds
         // one: opened now, this run's would join it and be recorded as that
         // edit. The lock keeps new edits out, so the wait is for those already
@@ -1034,16 +1027,12 @@ export const useMediaOperations = () => {
           label,
           async () => {
             if (stopped) return;
-            transcribeRun.report({ message: 'Starting the service…' });
             lock.report({ message: 'Starting the service…' });
             asked = true;
 
             for (const [i, run] of runs.entries()) {
               if (stopped) return;
-              if (runs.length > 1) {
-                transcribeRun.step(i);
-                lock.step(i);
-              }
+              if (runs.length > 1) lock.step(i);
               // A channel's notice names its speaker, since each channel is a
               // run of its own and says its own counts.
               const notice = (result) => {
@@ -1097,7 +1086,6 @@ export const useMediaOperations = () => {
         // A full reload of a freshly transcribed document is seconds of work
         // with nothing else on screen to show for it, so it is named like any
         // other step rather than left as dead air.
-        transcribeRun.report({ percent: null, message: 'Loading the transcript…' });
         lock.report({ percent: null, message: 'Loading the transcript…' });
         await reloadAfterRun(() => doc.reload());
       } catch (error) {
@@ -1109,20 +1097,10 @@ export const useMediaOperations = () => {
       } finally {
         if (!stillOut) clearRunRecord(documentId);
         transcribeStopRef.current = null;
-        transcribeRun.finish();
         lock.release();
       }
     },
-    [
-      doc,
-      project,
-      requestService,
-      isProcessing,
-      transcribeSpot,
-      transcribeRun,
-      acquireWriteLock,
-      stopTranscribe,
-    ],
+    [doc, project, requestService, isProcessing, transcribeSpot, acquireWriteLock, stopTranscribe],
   );
 
   // Speech detection: the built-in runs in this tab, a service returns regions
@@ -1533,9 +1511,8 @@ export const useMediaOperations = () => {
     pixelsPerSecond,
     setPixelsPerSecond,
 
-    // Service spots (method + options) and their run clocks
+    // Service spots (method + options), and speech detection's run clock
     transcribeSpot,
-    transcribeRun,
     detectSpot,
     detectRun,
     isProcessing,
@@ -1589,7 +1566,6 @@ export const useMediaOperations = () => {
 
     // ASR + speech detection
     cancelRequest,
-    stopTranscribe,
     handleTranscribe,
     handleDetectSpeech,
 

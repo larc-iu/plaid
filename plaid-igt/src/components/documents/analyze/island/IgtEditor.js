@@ -412,14 +412,13 @@ export class IgtEditor {
     this._render(true);
   }
 
-  // The Auto-analyze run's live status, pushed in by the React shell: a run
-  // outlives its dialog, so the button that opened it is where a linguist who
-  // closed the box still sees the work moving.
-  setAutoAnalyzeStatus(status) {
-    const next = status || null;
-    const before = this._autoAnalyzeStatus;
-    if (before?.running === next?.running && before?.label === next?.label) return;
-    this._autoAnalyzeStatus = next;
+  // Whether an Auto-analyze run holds the document, pushed in by the React
+  // shell. Its button then turns and is disabled: the banner over the
+  // document shows the run, with its clock and Stop.
+  setAutoAnalyzeRunning(running) {
+    const next = !!running;
+    if (this._autoAnalyzeRunning === next) return;
+    this._autoAnalyzeRunning = next;
     this._render(true);
   }
 

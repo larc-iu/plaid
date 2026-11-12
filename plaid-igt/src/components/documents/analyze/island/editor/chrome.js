@@ -221,35 +221,30 @@ export const chrome = {
   // the start, the help toggle at the end, the legend under the row.
   _toolbar(sentences, ctx, pageCount = 1) {
     const nSent = sentences.length;
-    const running = this._autoAnalyzeStatus?.running;
+    const running = this._autoAnalyzeRunning;
     return html`
       <div class="igt-toolbar ${RUN_BAR}">
         ${
           /* Gated on canAutoAnalyze rather than readOnly: an Auto-analyze run
-              takes the document read-only, and this button is where that
-              run's progress shows and how the dialog is reopened, so it must
-              outlive the lock it caused. */
+              takes the document read-only, and this button turns while it
+              runs, so it must outlive the lock it caused. */
           this.canAutoAnalyze
             ? html`<button
                 type="button"
                 class="igt-toolbar__btn ${RUN_BUTTON}"
-                data-running=${running ? 'true' : nothing}
-                title=${running
-                  ? `Auto-analyze, ${this._autoAnalyzeStatus.label}`
-                  : /* A phrase, like every other button here. The steps it
-                       can run are the dialog's own checkboxes. */
-                    'Analyze the document automatically'}
+                aria-busy=${running ? 'true' : nothing}
+                ?disabled=${running}
+                title=${
+                  /* A phrase, like every other button here. The steps it can
+                     run are the dialog's own checkboxes. */
+                  'Analyze the document automatically'
+                }
                 @click=${(e) => {
                   e.stopPropagation();
                   this._openAutoAnalyze();
                 }}
               >
-                ${running ? ICON(SPINNER, 'animate-spin') : ICON(SPARKLES)}
-                Auto-analyze${running
-                  ? html` <span class="igt-toolbar__elapsed"
-                      >${this._autoAnalyzeStatus.label}</span
-                    >`
-                  : nothing}
+                ${running ? ICON(SPINNER, 'animate-spin') : ICON(SPARKLES)} Auto-analyze
               </button>`
             : nothing
         }

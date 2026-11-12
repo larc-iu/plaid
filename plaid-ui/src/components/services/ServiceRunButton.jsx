@@ -1,11 +1,11 @@
 import { Loader2 } from 'lucide-react';
 import { Button } from '../ui/button.jsx';
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '../ui/tooltip.jsx';
-import { formatElapsed } from '../../hooks/useRunProgress.js';
 
-// The button that opens a run dialog, and the run's progress indicator once it
-// is closed. A run outlives its dialog, so this is where a linguist who shut
-// the box still sees the work moving.
+// The button that opens a run dialog. While its run is going it turns, and
+// `disabled` is the caller's: the dialog closes when the run starts, and the
+// banner over the document shows the run with its clock, its progress and
+// Stop, so a writing run's opener is disabled until it ends.
 //
 // `iconOnly` is for a dense icon row (the Recording header), where the tooltip
 // carries the label; everywhere else the verb is on the button. It brings its
@@ -14,15 +14,12 @@ export function ServiceRunButton({
   label,
   icon: Icon,
   onClick,
-  progress,
+  running = false,
   disabled = false,
   iconOnly = false,
   variant = 'outline',
   size,
 }) {
-  const running = progress?.running;
-  const percent = progress?.percent;
-
   const button = (
     <Button
       variant={variant}
@@ -32,6 +29,7 @@ export function ServiceRunButton({
       onClick={onClick}
       disabled={disabled}
       aria-label={iconOnly ? label : undefined}
+      aria-busy={running || undefined}
     >
       {running ? (
         <Loader2 className="h-4 w-4 animate-spin" />
@@ -43,21 +41,13 @@ export function ServiceRunButton({
   );
 
   // A tooltip that only repeats a visible label is noise. It earns its place
-  // when the button is an icon, or when a run is on and it can say how far.
-  // The tree is the same either way, so the button keeps focus when a run
-  // starts and ends under it.
-  const tip = iconOnly || running;
-  const status = running
-    ? `${label}, ${formatElapsed(progress.elapsedMs)}${
-        Number.isFinite(percent) ? `, ${Math.round(percent)}%` : ''
-      }`
-    : label;
-
+  // when the button is an icon. The tree is the same either way, so the button
+  // keeps focus when a run starts and ends under it.
   return (
     <TooltipProvider>
       <Tooltip>
         <TooltipTrigger asChild>{button}</TooltipTrigger>
-        {tip && <TooltipContent>{status}</TooltipContent>}
+        {iconOnly && <TooltipContent>{label}</TooltipContent>}
       </Tooltip>
     </TooltipProvider>
   );

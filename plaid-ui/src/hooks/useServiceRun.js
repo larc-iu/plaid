@@ -1,6 +1,5 @@
 import { useCallback } from 'react';
 import { useServiceSpot } from './useServiceSpot.js';
-import { useRunProgress, useMirroredProgress } from './useRunProgress.js';
 import { writeRunRecord, clearRunRecord } from '../domain/runRecord.js';
 import { reloadAfterRun } from '../lib/runReload.js';
 import { notifyError } from '../lib/notify.js';
@@ -38,8 +37,7 @@ export const useServiceRun = ({
   args,
   copy,
 }) => {
-  const { availableServices, requestService, cancelRequest, progressPercent, progressMessage } =
-    request;
+  const { availableServices, requestService, cancelRequest } = request;
 
   const spot = useServiceSpot({
     task,
@@ -48,17 +46,6 @@ export const useServiceRun = ({
     builtins,
     storageId,
     seedParams,
-  });
-
-  const run = useRunProgress();
-  useMirroredProgress(run, {
-    percent: progressPercent,
-    message: progressMessage,
-    // Only this hook's own run mirrors the request. A builtin that runs in the
-    // browser keeps progress of its own and never starts this one. Not tied to
-    // `spot.service`: the service list can change mid-run, and the run under
-    // way is still the service's.
-    active: run.running,
   });
 
   const start = useCallback(
@@ -72,7 +59,6 @@ export const useServiceRun = ({
       const lock = acquireWriteLock(label, { onCancel: cancelRequest });
       if (!lock) return;
       lock.report({ message: 'Starting the service…' });
-      run.start([label]);
       let stillOut = false; // the request survived our giving up on it
       try {
         await requestService(
@@ -95,7 +81,6 @@ export const useServiceRun = ({
         );
         // Re-reading a large document is seconds of work, so it is named rather
         // than left as dead air.
-        run.report({ percent: null, message: 'Loading results…' });
         lock.report({ percent: null, message: 'Loading results…' });
         await reloadAfterRun(() => doc.reload());
       } catch (error) {
@@ -113,7 +98,6 @@ export const useServiceRun = ({
         }
       } finally {
         if (!stillOut) clearRunRecord(doc.id);
-        run.finish();
         lock.release();
       }
     },
@@ -123,7 +107,6 @@ export const useServiceRun = ({
       requestService,
       projectId,
       doc,
-      run,
       spot,
       label,
       timeout,
@@ -133,5 +116,5 @@ export const useServiceRun = ({
     ],
   );
 
-  return { spot, run, start, cancel: cancelRequest };
+  return { spot, start };
 };

@@ -2,30 +2,28 @@ import { useState } from 'react';
 import { ServiceRunDialog } from './ServiceRunDialog.jsx';
 import { ServiceMethodRow } from './ServiceMethodRow.jsx';
 import { ServiceRunButton } from './ServiceRunButton.jsx';
-import { runHeldNotice } from './runHeld.js';
+import { heldBy, runHeldNotice } from './runHeld.js';
 
 // A run of one service spot: the button and the dialog behind it, with one
-// method row. The run belongs to the caller, so closing the dialog never
-// cancels it and the button carries the clock until it ends.
+// method row. The dialog closes when the run is started, and the run belongs
+// to the caller: the banner over the document shows it, with Stop. While it
+// holds the document (`writeLock` names it by `label`), the button turns and
+// is disabled.
 //
 // What blocks a run is said in the dialog, beside the Run it disables:
 // `blockedHint` (the app's own reason), else another run holding the document
 // (`writeLock`). No service online is the method row's to say, once: with a
 // `noun`, as "No parsing service is online for this project.", or "Looking
 // for a parsing service." while `isDiscovering`. `blocked` disables Run with
-// nothing said. `running` defaults to the run's own. `onOpen` runs each time
-// the dialog opens. `closeFirst` closes the dialog before `onRun`, else after
-// it settles. `size` is the button's (`sm` on an annotation tab's RunBar).
-// `children` sit under the method row: what else the run takes (the
-// channels of a recording, say).
+// nothing said. `onOpen` runs each time the dialog opens. `size` is the
+// button's (`sm` on an annotation tab's RunBar). `children` sit under the
+// method row: what else the run takes (the channels of a recording, say).
 export function ServiceSpotDialog({
   label,
   icon,
   description,
-  run,
   spot,
   onRun,
-  onCancel,
   writeLock = null,
   blockedHint = null,
   noun = null,
@@ -33,13 +31,12 @@ export function ServiceSpotDialog({
   onOpen = null,
   disabled = false,
   blocked = false,
-  running = run.running,
-  closeFirst = true,
   size,
   children = null,
 }) {
   const [open, setOpen] = useState(false);
-  const notice = running ? null : (blockedHint ?? runHeldNotice(writeLock, running));
+  const running = heldBy(writeLock, label);
+  const notice = blockedHint ?? runHeldNotice(writeLock);
   const emptyHint = !noun
     ? undefined
     : isDiscovering
@@ -55,8 +52,8 @@ export function ServiceSpotDialog({
           setOpen(true);
           onOpen?.();
         }}
-        progress={run}
-        disabled={disabled}
+        running={running}
+        disabled={disabled || running}
         size={size}
       />
 
@@ -66,24 +63,17 @@ export function ServiceSpotDialog({
         title={label}
         icon={icon}
         description={description}
-        progress={run}
         notice={notice}
         runLabel={label}
-        onRun={async () => {
-          if (closeFirst) setOpen(false);
-          await onRun();
-          if (!closeFirst) setOpen(false);
+        onRun={() => {
+          setOpen(false);
+          onRun();
         }}
-        onCancel={onCancel}
         runDisabled={
-          running ||
-          blocked ||
-          !!notice ||
-          !!spot.empty ||
-          Object.keys(spot.params.errors).length > 0
+          blocked || !!notice || !!spot.empty || Object.keys(spot.params.errors).length > 0
         }
       >
-        <ServiceMethodRow spot={spot} disabled={running} emptyHint={emptyHint} />
+        <ServiceMethodRow spot={spot} emptyHint={emptyHint} />
         {children}
       </ServiceRunDialog>
     </>

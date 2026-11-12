@@ -10,32 +10,21 @@ import { useChosenChannels } from './useChosenChannels.js';
 // a speaker on each channel, the channels to transcribe, one request each.
 export function TranscribeDialog({ mediaOps, readOnly = false }) {
   const { writeLock } = useDocumentCtx();
-  const {
-    transcribeSpot,
-    transcribeRun,
-    handleTranscribe,
-    isUploading,
-    stopTranscribe,
-    channelSpeakers,
-    channelCount,
-  } = mediaOps;
+  const { transcribeSpot, handleTranscribe, isUploading, channelSpeakers, channelCount } = mediaOps;
   const channels = useChosenChannels(channelSpeakers, channelCount);
   return (
     <ServiceSpotDialog
       label="Transcribe"
       icon={Mic}
       description="Segments and their text are written to this document."
-      run={transcribeRun}
       spot={transcribeSpot}
       onRun={() => handleTranscribe({ channels: channels.chosen })}
-      closeFirst={false}
-      onCancel={stopTranscribe}
       writeLock={writeLock}
       noun="transcription"
       disabled={readOnly || isUploading}
       blocked={!transcribeSpot.service || isUploading || channels.none || channels.waiting}
     >
-      <ChannelChecklist channels={channels} disabled={transcribeRun.running} />
+      <ChannelChecklist channels={channels} />
     </ServiceSpotDialog>
   );
 }

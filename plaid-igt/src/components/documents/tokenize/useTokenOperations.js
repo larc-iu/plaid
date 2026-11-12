@@ -36,7 +36,7 @@ export const useTokenOperations = () => {
   const project = doc.project;
 
   const request = useServiceRequest(client);
-  const { isDiscovering, discoverServices, isProcessing, cancelRequest, hasServices } = request;
+  const { isDiscovering, discoverServices, isProcessing, hasServices } = request;
 
   // The built-in run and the two clears, which are not service runs.
   const [busy, setBusy] = useState(false);
@@ -72,7 +72,7 @@ export const useTokenOperations = () => {
       notice: tokenizeNotice,
     },
   });
-  const { spot, run: tokenizeRun } = service;
+  const { spot } = service;
   // `overwrite` is granted only after the user confirms a destructive
   // re-tokenize (see handleTokenize / pendingTokenize): it lets the run discard
   // the existing annotations the sentence-partition reset cascade-deletes.
@@ -245,7 +245,6 @@ export const useTokenOperations = () => {
     const lock = acquireWriteLock('Tokenize');
     if (!lock) return;
     setBusy(true);
-    tokenizeRun.start(['Tokenize']);
     try {
       const created = await doc.tokenize(); // built-in rule-based; reloads internally
       // null = failure (already toasted by the domain via doc.onError); 0 = nothing
@@ -258,7 +257,6 @@ export const useTokenOperations = () => {
       notifyError(humanizeError(error), 'Failed to tokenize');
     } finally {
       setBusy(false);
-      tokenizeRun.finish();
       lock.release();
     }
   };
@@ -309,11 +307,9 @@ export const useTokenOperations = () => {
     handleTokenize,
     handleClearTokens,
     handleClearSentences,
-    // method + run clock
+    // method and run
     spot,
-    tokenizeRun,
-    cancelRequest,
-    isTokenizing: busy || tokenizeRun.running,
+    isTokenizing: busy,
     // service discovery
     isDiscovering,
     discoverServices,

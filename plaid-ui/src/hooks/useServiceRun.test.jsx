@@ -53,10 +53,10 @@ const mount = async (over = {}) => {
 beforeEach(() => localStorage.clear());
 
 describe('a run of one integration spot', () => {
-  it('offers the service the spot is for, and is not running until it is asked', async () => {
-    const { view, run } = await mount();
+  it('offers the service the spot is for, and takes no lock until it is asked', async () => {
+    const { view, run, acquireWriteLock } = await mount();
     expect(run().spot.selection).toBe('service:svc');
-    expect(run().run.running).toBe(false);
+    expect(acquireWriteLock).not.toHaveBeenCalled();
     await view.unmount();
   });
 

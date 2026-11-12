@@ -12,7 +12,7 @@ import {
 import { ServiceRunDialog } from '@ui/components/services/ServiceRunDialog.jsx';
 import { ServiceMethodRow } from '@ui/components/services/ServiceMethodRow.jsx';
 import { ServiceRunButton } from '@ui/components/services/ServiceRunButton.jsx';
-import { runHeldNotice } from '@ui/components/services/runHeld.js';
+import { heldBy, runHeldNotice } from '@ui/components/services/runHeld.js';
 import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
 import { canEditProject } from '@ui/domain/permissions.js';
 import { useAuth } from '../../contexts/AuthContext.jsx';
@@ -340,8 +340,8 @@ function GraphColumn({ title, text, marks, hrefFor, placeholder }) {
 }
 
 // The Compare button and its dialog: which document to score against, the
-// method, the run. The run belongs to the shell, so closing the dialog never
-// cancels it.
+// method, the run. The dialog closes when the run starts. The run belongs to
+// the shell, and the banner over the document shows it.
 function CompareDialog({
   compare,
   isDiscovering,
@@ -352,44 +352,45 @@ function CompareDialog({
   onChoose,
 }) {
   const [open, setOpen] = useState(false);
-  const { spot, run, start } = compare;
-  const running = run.running;
+  const { spot, start } = compare;
+  const running = heldBy(writeLockHeld, 'Compare');
 
   // No service online is the method row's to say, and said once.
-  const notice = running
-    ? null
-    : runHeldNotice(writeLockHeld, running) ||
-      listError ||
-      (documents && documents.length === 0
-        ? 'This project has no other document to compare with.'
-        : !chosenId
-          ? 'Choose a document to compare with.'
-          : null);
+  const notice =
+    runHeldNotice(writeLockHeld) ||
+    listError ||
+    (documents && documents.length === 0
+      ? 'This project has no other document to compare with.'
+      : !chosenId
+        ? 'Choose a document to compare with.'
+        : null);
 
   return (
     <>
-      <ServiceRunButton label="Compare" icon={Scale} onClick={() => setOpen(true)} progress={run} />
+      <ServiceRunButton
+        label="Compare"
+        icon={Scale}
+        onClick={() => setOpen(true)}
+        running={running}
+        disabled={running}
+      />
       <ServiceRunDialog
         open={open}
         onOpenChange={setOpen}
         title="Compare"
         icon={Scale}
         description="Scores this document's graphs against another document of the same text, and writes the report on this document."
-        progress={run}
         notice={notice}
         runLabel="Compare"
         onRun={() => {
           setOpen(false);
           start({ against: chosenId });
         }}
-        onCancel={compare.cancel}
-        runDisabled={
-          !!notice || running || spot.empty || Object.keys(spot.params.errors).length > 0
-        }
+        runDisabled={!!notice || spot.empty || Object.keys(spot.params.errors).length > 0}
       >
         <div className="flex flex-col gap-2">
           <Label className="text-xs">Compare with</Label>
-          <Select value={chosenId ?? ''} onValueChange={onChoose} disabled={running || !documents}>
+          <Select value={chosenId ?? ''} onValueChange={onChoose} disabled={!documents}>
             <SelectTrigger data-testid="compare-against">
               <SelectValue placeholder="Document" />
             </SelectTrigger>
@@ -404,7 +405,6 @@ function CompareDialog({
         </div>
         <ServiceMethodRow
           spot={spot}
-          disabled={running}
           emptyHint={
             isDiscovering
               ? 'Looking for a comparison service.'

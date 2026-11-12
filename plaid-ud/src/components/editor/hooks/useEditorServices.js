@@ -4,7 +4,6 @@ import { useServiceRequest } from '@ui/hooks/useServiceRequest.js';
 import { useConfirm } from '@ui/components/shared/ConfirmProvider';
 import { lossPhrase } from '@ui/domain/annotationLoss.js';
 import { useServiceRun } from '@ui/hooks/useServiceRun.js';
-import { useRunProgress } from '@ui/hooks/useRunProgress.js';
 import { notifySuccess } from '../../../utils/feedback.jsx';
 import { BUILTIN_TOKENIZE_SEGMENTER, languageParamSeed } from '../../../utils/serviceDefaults.js';
 import { readProjectLanguage } from '../../../domain/udConfig.js';
@@ -39,7 +38,7 @@ const TOKENIZE_BUILTINS = [
 export const useEditorServices = ({ client, projectId, doc, project, acquireWriteLock }) => {
   const request = useServiceRequest(client);
   const confirm = useConfirm();
-  const { isDiscovering, discoverServices, cancelRequest, isProcessing } = request;
+  const { isDiscovering, discoverServices } = request;
 
   useEffect(() => {
     if (projectId) discoverServices(projectId);
@@ -99,26 +98,21 @@ export const useEditorServices = ({ client, projectId, doc, project, acquireWrit
     },
   });
 
-  // The builtin runs in the browser, so it reports its own progress rather than
-  // the request's; it still needs a run to show in the banner.
-  const builtinRun = useRunProgress();
-
   // The built-in runs here in the browser and reloads on its own, so it takes
-  // the lock but writes no record: it dies with the page that started it.
+  // the lock, which the banner shows, but writes no record: it dies with the
+  // page that started it.
   const runBuiltinTokenize = useCallback(
     async (textContent) => {
       const lock = acquireWriteLock('Tokenize');
       if (!lock) return;
-      builtinRun.start(['Tokenize']);
       try {
         const ok = await doc.tokenize(textContent);
         if (ok) notifySuccess('Tokenized');
       } finally {
-        builtinRun.finish();
         lock.release();
       }
     },
-    [acquireWriteLock, doc, builtinRun],
+    [acquireWriteLock, doc],
   );
 
   // `overwrite` is the service's leave to delete a person's work, given when
@@ -160,22 +154,8 @@ export const useEditorServices = ({ client, projectId, doc, project, acquireWrit
 
   return {
     isDiscovering,
-    isProcessing,
-    cancelRequest,
     discoverServices: useCallback(() => discoverServices(projectId), [discoverServices, projectId]),
     parse: { ...parse, start: startParse },
-    // The banner watches whichever run is out: the service's, or the builtin's.
-    // A run in flight keeps the runner it started with, whatever the service
-    // list says now: a tokenizer coming online (or going away) mid-run must not
-    // swap the banner onto a run nobody started. Idle, the spot decides.
-    tokenize: {
-      ...tokenize,
-      run: builtinRun.running
-        ? builtinRun
-        : tokenize.run.running || tokenize.spot.service
-          ? tokenize.run
-          : builtinRun,
-      start: runTokenize,
-    },
+    tokenize: { ...tokenize, start: runTokenize },
   };
 };

@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useConfirm } from '@ui/components/shared/ConfirmProvider';
+import { heldBy } from '@ui/components/services/runHeld.js';
 import { IgtEditor } from './island/IgtEditor.js';
 import { AutoAnalyzeDialog } from './AutoAnalyzeDialog.jsx';
 import { useDocumentCtx } from '../contexts/DocumentContext.jsx';
@@ -25,8 +26,17 @@ const pageFromParam = (raw) => {
 };
 
 export const AnalyzeIsland = () => {
-  const { doc, client, readOnly, comments, canWrite, canManage, assistantOnline, goToTab } =
-    useDocumentCtx();
+  const {
+    doc,
+    client,
+    readOnly,
+    comments,
+    canWrite,
+    canManage,
+    assistantOnline,
+    goToTab,
+    writeLock,
+  } = useDocumentCtx();
   const hostRef = useRef(null);
   const editorRef = useRef(null);
   // The island's Auto-analyze toolbar button opens this React-side modal
@@ -58,13 +68,6 @@ export const AnalyzeIsland = () => {
 
   // A citation in the panel into this document, while the grid is up.
   useEffect(() => onSentenceFocus((req) => editorRef.current?.focusSentence(req)), []);
-
-  // An Auto-analyze run keeps going when the dialog is closed, so its status
-  // goes onto the toolbar button that opened it.
-  const handleRunStatus = useCallback(
-    (status) => editorRef.current?.setAutoAnalyzeStatus(status),
-    [],
-  );
 
   // Adding an entry and changing a linked entry's type are for a writer of
   // the vocabulary's project, wherever they stand: for a vocabulary this
@@ -150,6 +153,14 @@ export const AnalyzeIsland = () => {
     editorRef.current?.setCanAutoAnalyze(canWrite);
   }, [canWrite]);
 
+  // While an Auto-analyze run holds the document, whichever page started it,
+  // its button turns and is disabled: the banner shows the run and has Stop.
+  // Told again when the island is built anew (a new doc, a tab come back to).
+  const autoAnalyzing = heldBy(writeLock, 'Auto-analyze');
+  useEffect(() => {
+    editorRef.current?.setAutoAnalyzeRunning(autoAnalyzing);
+  }, [autoAnalyzing, doc, comments]);
+
   useEffect(() => {
     editorRef.current?.setAssistantOnline(assistantOnline);
   }, [assistantOnline]);
@@ -170,12 +181,7 @@ export const AnalyzeIsland = () => {
       )}
       <div ref={hostRef} className="igt-island" style={{ display: doc ? 'block' : 'none' }} />
       {doc && (
-        <AutoAnalyzeDialog
-          open={autoAnalyzeOpen}
-          onOpenChange={setAutoAnalyzeOpen}
-          doc={doc}
-          onRunStatus={handleRunStatus}
-        />
+        <AutoAnalyzeDialog open={autoAnalyzeOpen} onOpenChange={setAutoAnalyzeOpen} doc={doc} />
       )}
     </div>
   );

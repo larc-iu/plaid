@@ -4,7 +4,6 @@ import { TASKS } from '@larc-iu/plaid-client';
 import { notifySuccess, notifyError, notifyInfo, notifyWarning } from '@/utils/feedback';
 import { useServiceRequest } from '@ui/hooks/useServiceRequest.js';
 import { useServiceSpot } from '@ui/hooks/useServiceSpot.js';
-import { useRunProgress, useMirroredProgress, formatElapsed } from '@ui/hooks/useRunProgress.js';
 import { ServiceRunDialog } from '@ui/components/services/ServiceRunDialog.jsx';
 import { ServiceMethodRow } from '@ui/components/services/ServiceMethodRow.jsx';
 import { runBuiltinAnalysis } from '@/domain/autoPass';
@@ -42,9 +41,10 @@ const LINK_BUILTINS = [
 //
 // This is the one composite in the app: four runs under one Run button. It
 // wears the same shell as the single-spot dialogs (ServiceRunDialog), and each
-// step's method is the same ServiceMethodRow the others use. What it adds is a
-// step list in the status area, because a four-step run that reports one
-// percentage cannot say which minute of the wait you are in.
+// step's method is the same ServiceMethodRow the others use. The dialog closes
+// when the run starts, and the banner over the document shows it with its
+// steps, because a four-step run that reports one percentage cannot say which
+// minute of the wait you are in.
 // Opened by the island's toolbar button, through AnalyzeIsland's onOpenAutoAnalyze.
 const readSteps = () => {
   try {
@@ -54,20 +54,11 @@ const readSteps = () => {
   }
 };
 
-export const AutoAnalyzeDialog = ({ open, onOpenChange, doc, onRunStatus }) => {
+export const AutoAnalyzeDialog = ({ open, onOpenChange, doc }) => {
   const project = doc?.project;
   const { client, writeLock, acquireWriteLock } = useDocumentCtx();
-  const {
-    availableServices,
-    isDiscovering,
-    discoverServices,
-    isProcessing,
-    requestService,
-    cancelRequest,
-    progressPercent,
-    progressMessage,
-  } = useServiceRequest(client);
-  const [busy, setBusy] = useState(false);
+  const { availableServices, isDiscovering, discoverServices, requestService, cancelRequest } =
+    useServiceRequest(client);
   // Set by Stop, read at every step boundary and by the built-in phases'
   // checkpoints. Cleared when a run starts.
   const stopRef = useRef(false);
@@ -108,28 +99,16 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc, onRunStatus }) => {
     storageId: 'link_vocab',
   });
 
-  const progress = useRunProgress();
-  // Whatever service is running reports over the one channel; the step list
-  // says which step that is.
-  useMirroredProgress(progress, {
-    percent: progressPercent,
-    message: progressMessage,
-    active: progress.running && isProcessing,
-  });
-
-  // One Stop for the whole run, whichever kind of step is in flight. Two of the
-  // four steps are built-in and have no request to cancel, so a Stop wired only
-  // to the service was a dead button for the slowest part of the run, and the
-  // banner, which cannot see which step it is, showed it throughout.
-  // Saying "Stopping…" here is the point: a checkpoint may be a document read
-  // away, and nothing else would acknowledge the press.
-  const report = progress.report;
+  // One Stop for the whole run, the banner's, whichever kind of step is in
+  // flight. Two of the four steps are built-in and have no request to cancel,
+  // so a Stop wired only to the service was a dead button for the slowest part
+  // of the run. Saying "Stopping…" here is the point: a checkpoint may be a
+  // document read away, and nothing else would acknowledge the press.
   const stopRun = useCallback(async () => {
     stopRef.current = true;
-    report({ percent: null, message: 'Stopping…' });
     lockRef.current?.report({ percent: null, message: 'Stopping…' });
     await cancelRequest();
-  }, [cancelRequest, report]);
+  }, [cancelRequest]);
 
   // Step toggles: remembered per user; the copy step's default comes from the
   // project's built-in-analysis settings, the model step defaults on whenever
@@ -157,14 +136,13 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc, onRunStatus }) => {
     }
   };
 
-  const running = busy || isProcessing;
   const translateOn = steps.translate && !!translateSpot.service;
   const analyzeOn = steps.analyze && !!analyzeSpot.service;
   const linkOn = steps.link && hasVocabs;
   const nothingToRun = !translateOn && !steps.copy && !analyzeOn && !linkOn;
 
-  // The steps this Run will actually take, in order — the same list the status
-  // area ticks through, so what is promised and what is reported cannot drift.
+  // The steps this Run will actually take, in order: the same list the banner
+  // ticks through, so what is promised and what is reported cannot drift.
   const plan = useMemo(() => {
     const out = [];
     if (translateOn) out.push({ key: 'translate', label: 'Propose translations' });
@@ -183,7 +161,7 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc, onRunStatus }) => {
   }, [translateOn, translateSpot, analyzeOn, analyzeSpot, linkOn, linkSpot]);
 
   const run = async () => {
-    if (running || !doc || nothingToRun) return;
+    if (!doc || nothingToRun) return;
     if (blockingErrors.length) {
       notifyError(blockingErrors[0], 'Missing required option');
       return;
@@ -198,18 +176,11 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc, onRunStatus }) => {
     });
     if (!lock) return;
     lockRef.current = lock;
-    setBusy(true);
-    progress.start(plan.map((p) => p.label));
-    const at = (key) => {
-      const i = plan.findIndex((p) => p.key === key);
-      progress.step(i);
-      lock.step(i);
-    };
+    // Started: the banner shows it from here, and has its Stop.
+    onOpenChange(false);
+    const at = (key) => lock.step(plan.findIndex((p) => p.key === key));
     // What a step reports, built-in or service.
-    const onProgress = (p) => {
-      progress.report(p);
-      lock.report({ percent: p?.percent ?? null, message: p?.message });
-    };
+    const onProgress = lock.onProgress;
     // Only the step in flight can be rejoined: the ordering happens here, in
     // the browser, so `multiStep` tells the resume to say the steps after it
     // did not run. The step's task words its counts.
@@ -402,7 +373,6 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc, onRunStatus }) => {
       }
       const { level, title, message } = partsNotice({ parts, wrote });
       (level === 'success' ? notifySuccess : notifyWarning)(message, title);
-      onOpenChange(false);
     } catch (err) {
       // Service failures are toasted by the request hook; anything else here.
       console.error('Auto-analyze failed:', err);
@@ -427,28 +397,10 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc, onRunStatus }) => {
       if (!err?.reported) notifyError('Try again.', 'Failed to run Auto-analyze');
     } finally {
       if (!stillOut) clearRunRecord(doc.id);
-      progress.finish();
-      setBusy(false);
       lock.release();
       lockRef.current = null;
     }
   };
-
-  // The island's toolbar button is the opener here, so it is where the run
-  // shows once the dialog is shut. Same contract as ServiceRunButton.
-  useEffect(() => {
-    if (!onRunStatus) return;
-    onRunStatus(
-      progress.running
-        ? {
-            running: true,
-            label: `${formatElapsed(progress.elapsedMs)}${
-              Number.isFinite(progress.percent) ? `, ${Math.round(progress.percent)}%` : ''
-            }`,
-          }
-        : null,
-    );
-  }, [onRunStatus, progress.running, progress.elapsedMs, progress.percent]);
 
   const serviceHint = (spot, absent) =>
     spot.service ? null : isDiscovering ? 'Discovering services…' : absent;
@@ -459,13 +411,10 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc, onRunStatus }) => {
       onOpenChange={onOpenChange}
       title="Auto-analyze"
       icon={Sparkles}
-      progress={progress}
       runLabel="Run"
       onRun={run}
-      // Stops the step in flight; the steps after it do not run.
-      onCancel={stopRun}
-      notice={runHeldNotice(writeLock, running)}
-      runDisabled={nothingToRun || blockingErrors.length > 0 || (!!writeLock && !running)}
+      notice={runHeldNotice(writeLock)}
+      runDisabled={nothingToRun || blockingErrors.length > 0 || !!writeLock}
     >
       <Step
         n={1}
@@ -473,16 +422,13 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc, onRunStatus }) => {
         label="Propose translations"
         on={translateOn}
         disabled={!translateSpot.service}
-        running={running}
         onToggle={toggleStep}
         hint={
           serviceHint(translateSpot, 'No translation service is online.') ??
           'A model drafts a free translation for every sentence, from the words and any glosses. Translations a person wrote are left alone. Earlier machine drafts are refreshed.'
         }
       >
-        {steps.translate && translateSpot.service && (
-          <ServiceMethodRow spot={translateSpot} disabled={running} />
-        )}
+        {steps.translate && translateSpot.service && <ServiceMethodRow spot={translateSpot} />}
       </Step>
 
       <Step
@@ -490,7 +436,6 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc, onRunStatus }) => {
         stepKey="copy"
         label="Copy previous analyses"
         on={steps.copy}
-        running={running}
         onToggle={toggleStep}
         hint="Words with an uncontested analysis elsewhere in the project get it copied: segmentation, links, and field values. Only words with no analysis at all are touched."
       />
@@ -501,16 +446,13 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc, onRunStatus }) => {
         label="Propose segmentation and glosses"
         on={analyzeOn}
         disabled={!analyzeSpot.service}
-        running={running}
         onToggle={toggleStep}
         hint={
           serviceHint(analyzeSpot, 'No analysis service is online.') ??
           'A model analyzes every sentence. Words a person analyzed are left alone. Earlier machine proposals are refreshed.'
         }
       >
-        {steps.analyze && analyzeSpot.service && (
-          <ServiceMethodRow spot={analyzeSpot} disabled={running} />
-        )}
+        {steps.analyze && analyzeSpot.service && <ServiceMethodRow spot={analyzeSpot} />}
       </Step>
 
       <Step
@@ -519,7 +461,6 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc, onRunStatus }) => {
         label="Link to the lexicon"
         on={linkOn}
         disabled={!hasVocabs}
-        running={running}
         onToggle={toggleStep}
         hint={
           hasVocabs
@@ -527,7 +468,7 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc, onRunStatus }) => {
             : 'This project has no lexicon.'
         }
       >
-        {steps.link && hasVocabs && <ServiceMethodRow spot={linkSpot} disabled={running} />}
+        {steps.link && hasVocabs && <ServiceMethodRow spot={linkSpot} />}
       </Step>
     </ServiceRunDialog>
   );
@@ -535,14 +476,14 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc, onRunStatus }) => {
 
 // One numbered, toggleable step: the checkbox and its hint, with the step's
 // method indented underneath when it has one.
-const Step = ({ n, stepKey, label, on, disabled, running, onToggle, hint, children }) => (
+const Step = ({ n, stepKey, label, on, disabled, onToggle, hint, children }) => (
   <section className="flex flex-col gap-2">
     <label className="flex items-start gap-2">
       <input
         type="checkbox"
         className="mt-0.5 h-4 w-4 accent-primary"
         checked={on}
-        disabled={disabled || running}
+        disabled={disabled}
         onChange={(e) => onToggle(stepKey, e.target.checked)}
         aria-label={label}
       />

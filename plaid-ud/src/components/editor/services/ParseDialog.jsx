@@ -20,10 +20,8 @@ export function ParseDialog({
       label="Parse"
       icon={Zap}
       description="Lemmas, parts of speech, features and dependency relations, written into this document."
-      run={parse.run}
       spot={parse.spot}
       onRun={() => parse.start()}
-      onCancel={parse.cancel}
       writeLock={writeLockHeld}
       blockedHint={blockedHint}
       noun="parsing"

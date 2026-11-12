@@ -13,7 +13,6 @@ vi.mock('@ui/components/services/ServiceMethodRow.jsx', () => ({
 }));
 
 const HELD = 'Auto-analyze is running. One run at a time on a document.';
-const idle = { running: false, elapsedMs: 0, percent: null };
 const spot = { service: { serviceId: 's' }, params: { errors: {} } };
 
 const open = async (opener, ui) => {
@@ -31,12 +30,7 @@ const runButton = (label) =>
 
 describe('a run dialog while another run holds the document', () => {
   it('Tokenize says which run, and Run is disabled', async () => {
-    const view = await open(
-      'Tokenize',
-      <TokenizeDialog
-        ops={{ spot, tokenizeRun: idle, handleTokenize: vi.fn(), cancelRequest: vi.fn() }}
-      />,
-    );
+    const view = await open('Tokenize', <TokenizeDialog ops={{ spot, handleTokenize: vi.fn() }} />);
     expect(document.body.textContent).toContain(HELD);
     expect(runButton('Tokenize').disabled).toBe(true);
     await view.unmount();
@@ -45,17 +39,32 @@ describe('a run dialog while another run holds the document', () => {
   it('Transcribe says the same', async () => {
     const view = await open(
       'Transcribe',
-      <TranscribeDialog
-        mediaOps={{ transcribeSpot: spot, transcribeRun: idle, handleTranscribe: vi.fn() }}
-      />,
+      <TranscribeDialog mediaOps={{ transcribeSpot: spot, handleTranscribe: vi.fn() }} />,
     );
     expect(document.body.textContent).toContain(HELD);
     expect(runButton('Transcribe').disabled).toBe(true);
     await view.unmount();
   });
 
-  it('says nothing for its own run, or with no run', () => {
-    expect(runHeldNotice({ label: 'Tokenize' }, true)).toBeNull();
-    expect(runHeldNotice(null, false)).toBeNull();
+  it('says nothing with no run', () => {
+    expect(runHeldNotice(null)).toBeNull();
+  });
+});
+
+describe("a run dialog's opener while its own run holds the document", () => {
+  it.each([
+    ['Tokenize', <TokenizeDialog key="t" ops={{ spot, handleTokenize: vi.fn() }} />],
+    [
+      'Transcribe',
+      <TranscribeDialog key="tr" mediaOps={{ transcribeSpot: spot, handleTranscribe: vi.fn() }} />,
+    ],
+  ])('%s turns and is disabled', async (label, ui) => {
+    const view = await renderComponent(
+      <DocumentProvider value={{ writeLock: { label } }}>{ui}</DocumentProvider>,
+    );
+    const opener = byText(document.body, 'button', label);
+    expect(opener.disabled).toBe(true);
+    expect(opener.querySelector('svg.animate-spin')).not.toBe(null);
+    await view.unmount();
   });
 });

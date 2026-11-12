@@ -21,12 +21,8 @@ export function TokenizeDialog({
       label="Tokenize"
       icon={Scissors}
       description="Splits untokenized text into tokens and words, and a text with no sentences into sentences."
-      run={tokenize.run}
       spot={spot}
       onRun={() => tokenize.start(text)}
-      // Only a service run can be stopped. The browser's segmenter is local
-      // and finishes in one pass.
-      onCancel={spot.service ? tokenize.cancel : undefined}
       writeLock={writeLockHeld}
       blockedHint={blockedHint}
       onOpen={onOpen}

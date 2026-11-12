@@ -170,14 +170,6 @@
 .igt-toolbar {
   margin-bottom: 8px;
 }
-/* A run outlives its dialog; the button carries the clock until it is done. */
-.igt-toolbar__btn[data-running] {
-  border-style: dashed;
-}
-.igt-toolbar__elapsed {
-  font-variant-numeric: tabular-nums;
-  opacity: 0.75;
-}
 
 /* ---- sentence pager: plaid-ui's RunBarPager strings (runBar.js), in the
    toolbar at the top and centred under the last sentence. ---- */

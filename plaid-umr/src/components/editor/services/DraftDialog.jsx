@@ -8,10 +8,8 @@ export function DraftDialog({ draft, isDiscovering, writeLockHeld, disabled = fa
       label="Draft"
       icon={Sparkles}
       description="A first graph for each sentence, written into this document."
-      run={draft.run}
       spot={draft.spot}
       onRun={() => draft.start()}
-      onCancel={draft.cancel}
       writeLock={writeLockHeld}
       noun="drafting"
       isDiscovering={isDiscovering}

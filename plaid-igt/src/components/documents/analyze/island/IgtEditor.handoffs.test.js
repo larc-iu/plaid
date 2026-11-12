@@ -99,6 +99,26 @@ describe('onOpenAutoAnalyze', () => {
     click(button);
     expect(onOpenAutoAnalyze).toHaveBeenCalledTimes(1);
   });
+
+  // The banner over the document shows a run and has its Stop, so while one
+  // holds the document the button turns, carries no clock, and opens nothing.
+  it('turns and is disabled while an Auto-analyze run holds the document', () => {
+    const onOpenAutoAnalyze = vi.fn();
+    const { host, editor } = mount({ canAutoAnalyze: true, onOpenAutoAnalyze });
+    const button = () =>
+      [...host.querySelectorAll('.igt-toolbar__btn')].find((b) =>
+        b.textContent.includes('Auto-analyze'),
+      );
+    editor.setAutoAnalyzeRunning(true);
+    expect(button().disabled).toBe(true);
+    expect(button().querySelector('svg.animate-spin')).not.toBe(null);
+    expect(button().textContent.trim()).toBe('Auto-analyze');
+    click(button());
+    expect(onOpenAutoAnalyze).not.toHaveBeenCalled();
+    editor.setAutoAnalyzeRunning(false);
+    expect(button().disabled).toBe(false);
+    expect(button().querySelector('svg.animate-spin')).toBe(null);
+  });
 });
 
 describe('onAskAssistant', () => {

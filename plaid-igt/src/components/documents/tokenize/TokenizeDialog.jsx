@@ -10,7 +10,7 @@ import { useDocumentCtx } from '../contexts/DocumentContext.jsx';
 // confirmation in a dialog of its own.
 export function TokenizeDialog({ ops, blockedHint = null }) {
   const { writeLock } = useDocumentCtx();
-  const { spot, tokenizeRun, handleTokenize, isTokenizing, isProcessing, cancelRequest } = ops;
+  const { spot, handleTokenize } = ops;
   return (
     <ServiceSpotDialog
       label="Tokenize"
@@ -20,12 +20,8 @@ export function TokenizeDialog({ ops, blockedHint = null }) {
           ? "Where the service splits a sentence differently, that sentence's words are made again."
           : 'Existing words are kept.'
       }
-      run={tokenizeRun}
-      running={tokenizeRun.running || isTokenizing || isProcessing}
       spot={spot}
       onRun={handleTokenize}
-      // Only a service run can be stopped; the built-in is local and quick.
-      onCancel={spot.service ? cancelRequest : undefined}
       writeLock={writeLock}
       blockedHint={blockedHint}
     />

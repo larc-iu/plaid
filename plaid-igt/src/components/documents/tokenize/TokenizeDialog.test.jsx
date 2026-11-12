@@ -23,11 +23,7 @@ const render = (service) =>
       <TokenizeDialog
         ops={{
           spot: { service, params: { errors: {} } },
-          tokenizeRun: { running: false },
           handleTokenize: async () => {},
-          isTokenizing: false,
-          isProcessing: false,
-          cancelRequest: async () => {},
         }}
       />
     </DocumentProvider>,

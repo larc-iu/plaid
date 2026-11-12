@@ -51,7 +51,7 @@ vi.mock('@/utils/feedback', () => ({
   notifyWarning: vi.fn(),
 }));
 
-const mount = async () => {
+const mount = async ({ onOpenChange = () => {} } = {}) => {
   const doc = {
     id: 'd1',
     project: { id: 'p1', config: {} },
@@ -66,7 +66,7 @@ const mount = async () => {
   const lock = { release: vi.fn(), step: () => {}, report: () => {}, onProgress: () => {} };
   const view = await renderComponent(
     <DocumentProvider value={{ doc, client: {}, acquireWriteLock: () => lock, writeLock: null }}>
-      <AutoAnalyzeDialog open onOpenChange={() => {}} doc={doc} />
+      <AutoAnalyzeDialog open onOpenChange={onOpenChange} doc={doc} />
     </DocumentProvider>,
   );
   return { doc, lock, view };
@@ -118,6 +118,23 @@ describe('an Auto-analyze run the model stopped answering', () => {
       'Could not translate 2 sentences, stopped early: the model did not answer (1 sentence not asked).',
       'Auto-analyze',
     );
+    await view.unmount();
+  });
+});
+
+// Luke (2026-11-12): "modal should be closed as soon as you hit start". The
+// banner over the document shows the run from then on.
+describe('Auto-analyze on Run', () => {
+  it('closes its dialog as the run starts, before the first step answers', async () => {
+    let answer;
+    requestService.mockReturnValue(new Promise((resolve) => (answer = resolve)));
+    const onOpenChange = vi.fn();
+    const { view } = await mount({ onOpenChange });
+    await view.step(() => view.container.querySelector('[data-run]').click());
+    expect(requestService).toHaveBeenCalledTimes(1);
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+    await view.step(async () => answer({}));
+    expect(onOpenChange).toHaveBeenCalledTimes(1);
     await view.unmount();
   });
 });

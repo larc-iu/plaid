@@ -14,14 +14,18 @@ import { formatElapsed } from '../../hooks/useRunProgress.js';
 // The one shape every service run wears (tokenize, transcribe, detect speech,
 // auto-analyze). Body slots, in order:
 //   1. what the run does and where its results land (`description`)
-//   2. the method and its options (`children` — one ServiceMethodRow, or a
+//   2. the method and its options (`children`, one ServiceMethodRow, or a
 //      composite's several)
-//   3. status: the bar, the step, the elapsed clock, the last message, or a
-//      `notice` saying why the run cannot start
+//   3. status: a `notice` saying why the run cannot start, an `error`, a
+//      `result`
 // Footer: a secondary action on the left, then Close and the run verb.
 //
-// The dialog can always be closed, and closing never cancels: a run outlives
-// it, and the button that opened it carries the progress (ServiceRunButton).
+// A run that writes takes the document's lock, and its caller closes the
+// dialog when the verb is pressed: the banner over the document shows the run
+// (RunBanner), and the opener stays disabled until it ends. Only a run that
+// takes no lock, and so has no banner (speech detection), passes `progress`
+// and `onCancel`: its dialog shows the bar, the steps, the clock and Stop
+// while it runs. The dialog can always be closed, and closing never cancels.
 export function ServiceRunDialog({
   open,
   onOpenChange,

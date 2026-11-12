@@ -615,10 +615,10 @@ describe('the tokenize service', () => {
 });
 
 describe('a tokenize run while the service list changes', () => {
-  it('keeps the runner it started with, and its progress', async () => {
+  it('keeps the document locked by the run it started until that run ends', async () => {
     // The built-in is running when a tokenizer service comes online. The run
-    // under way is still the built-in's, so the banner must keep watching it
-    // rather than switch to a service run nobody started.
+    // under way is still the built-in's, and the lock (which the banner and
+    // the opener show) is its until it ends.
     localStorage.setItem(TOKENIZE_KEY, 'service:tok:punkt');
     const settle = deferred();
     const doc = makeDoc({
@@ -635,18 +635,24 @@ describe('a tokenize run while the service list changes', () => {
     await view.step(() => {
       running = view.api().tokenize.start('some text');
     });
-    expect(view.api().tokenize.run.running).toBe(true);
+    expect(lockHeld).toBe(true);
 
     client.messages.discoverServices.mockResolvedValue([TOKENIZE_SERVICE]);
     await view.step(() => view.api().discoverServices());
     expect(view.api().tokenize.spot.service?.serviceId).toBe('tok:punkt');
-    expect(view.api().tokenize.run.running).toBe(true);
+    expect(lockHeld).toBe(true);
 
     await view.step(async () => {
       settle.resolve();
       await running;
     });
-    expect(view.api().tokenize.run.running).toBe(false);
+    expect(lockHeld).toBe(false);
+    expect(seq).toEqual([
+      'lock:acquire(Tokenize)',
+      'doc:tokenize',
+      'toast:success',
+      'lock:release',
+    ]);
     await view.unmount();
   });
 });
