@@ -25,7 +25,7 @@ export const useActiveJob = (client, projectId) => {
     const read = async () => {
       clearTimeout(timer);
       const mine = ++latest;
-      let answer = null;
+      let answer;
       try {
         answer = await client.jobs.active(projectId);
       } catch {

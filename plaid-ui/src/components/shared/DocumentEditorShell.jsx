@@ -18,7 +18,10 @@ import { useTabParam } from '../../hooks/useTabParam.js';
 import { useDocumentTitle } from '../../hooks/useDocumentTitle.js';
 import { useValidateOnOpen } from '../../hooks/useValidateOnOpen.js';
 import { RunBanner } from '../services/RunBanner.jsx';
-import { canEditProject, canManageProject } from '../../domain/permissions.js';
+import { canEditProject, canManageProject, canStopJob } from '../../domain/permissions.js';
+import { bannerProps } from '../../domain/jobs.js';
+import { useActiveJob } from '../../hooks/useActiveJob.js';
+import { useConfirm } from './ConfirmProvider.jsx';
 import { dismissIntegrityFindings } from '../../lib/integrityToast.js';
 import { humanizeError, isGone, statusOf } from '../../lib/errors.js';
 import { notifyError } from '../../lib/notify.js';
@@ -92,6 +95,8 @@ import { cn } from '../../lib/utils.js';
 //   sentence, and `sentenceHint(sentence, doc)` what the sentence says, where
 //   it has no `text` of its own.
 // - `wordCount(doc)`, optional: the length the long-document notice weighs.
+// - `headerActions(context)`, optional: the app's controls drawn beside
+//   History, given what a tab is given.
 // - `runNotices`, optional: `{[task]: (result) => notice}`, the app's words
 //   for a run's counts by its task, for a run rejoined after a reload. The
 //   same functions the app's run spots pass as `notice`.
@@ -213,6 +218,27 @@ const DocumentEditor = ({ app, documentClient }) => {
   // A run this page did not finish, picked back up: the service kept working
   // while the tab was away, and the result is still waiting.
   useResumedRun(client, doc, writeLock.acquire, app.runNotices);
+
+  // The project's assistant job, read while the document is open. It shows
+  // the run banner on the document it is working in (bannerProps), and holds
+  // no write lock: the document stays editable under it.
+  const { job, refresh: refreshJob } = useActiveJob(client, projectId);
+  const jobBanner = bannerProps(job, documentId);
+  const confirm = useConfirm();
+  const stopJob = async () => {
+    const yes = await confirm({
+      title: 'Stop the job?',
+      description: 'What it wrote stays.',
+      confirmLabel: 'Stop',
+    });
+    if (!yes) return;
+    try {
+      await client.jobs.cancel(job.id);
+    } catch (err) {
+      notifyError(err, 'Failed to stop the job');
+    }
+    refreshJob();
+  };
 
   // The app's service runs. One instance for the whole shell, so a run started
   // on one tab keeps its lock, its banner and its progress on another.
@@ -522,25 +548,34 @@ const DocumentEditor = ({ app, documentClient }) => {
         sticky
         inset={DOC_GUTTER}
         actions={
-          // Not a tab: history is a drawer, and it keeps whatever tab you are
-          // on.
-          <Button
-            variant="outline"
-            size="sm"
-            className="gap-1.5"
-            onClick={history.drawerOpen ? history.closeHistory : history.openHistory}
-            aria-expanded={history.drawerOpen}
-            disabled={!doc || chromeBusy}
-          >
-            <History className="h-4 w-4" /> History
-          </Button>
+          <>
+            {app.headerActions?.(context)}
+            {/* Not a tab: history is a drawer, and it keeps whatever tab you
+                are on. */}
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1.5"
+              onClick={history.drawerOpen ? history.closeHistory : history.openHistory}
+              aria-expanded={history.drawerOpen}
+              disabled={!doc || chromeBusy}
+            >
+              <History className="h-4 w-4" /> History
+            </Button>
+          </>
         }
       />
 
-      {(pastEntry || writeLock.held) && (
+      {(pastEntry || writeLock.held || jobBanner) && (
         <div className={wide ? DOC_GUTTER : cn('max-w-[1320px]', DOC_GUTTER)}>
           <HistoricalBanner entry={pastEntry} loading={history.loadingSnapshot} className="mb-4" />
           {writeLock.held && <RunBanner {...writeLock.held} />}
+          {jobBanner && (
+            <RunBanner
+              {...jobBanner}
+              cancel={canStopJob(job, project, user) ? stopJob : undefined}
+            />
+          )}
         </div>
       )}
 

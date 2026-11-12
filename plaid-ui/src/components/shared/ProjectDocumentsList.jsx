@@ -8,6 +8,7 @@ import { SectionHeader } from './SectionHeader.jsx';
  *
  * - `newDocument`: a component drawn beside the heading when `canEdit`, given
  *   `{ projectId, documents }`.
+ * - `actions`: the app's other controls, drawn beside it when `canEdit`.
  * - `project`: the project, whose plaid an empty list shows.
  * - `wordLayerId`, `seedLayerId`, `wordValue`: what `DocumentTable` counts.
  * - `href(documentId, counts)`: where a row opens.
@@ -20,6 +21,7 @@ export const ProjectDocumentsList = ({
   client,
   canEdit,
   newDocument: NewDocument,
+  actions = null,
   wordLayerId,
   seedLayerId,
   wordValue,
@@ -31,7 +33,12 @@ export const ProjectDocumentsList = ({
     <SectionHeader
       title="Documents"
       actions={
-        canEdit && NewDocument && <NewDocument projectId={projectId} documents={documents} />
+        canEdit && (NewDocument || actions) ? (
+          <>
+            {NewDocument && <NewDocument projectId={projectId} documents={documents} />}
+            {actions}
+          </>
+        ) : null
       }
     />
 
