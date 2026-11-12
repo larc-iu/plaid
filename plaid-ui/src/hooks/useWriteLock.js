@@ -22,9 +22,9 @@ import { holdRun } from './useSavingGuard.js';
 // the step list, the bar and the status line from that.
 //
 // The holder also supplies `onCancel`, so the run can be stopped from wherever
-// the lock is visible. That matters most for a run this page did not start: a
-// rejoined run lives in its own hook, so the tab's own dialog has no handle on
-// it.
+// the lock is visible, and the banner says "Stopping…" as soon as it is. That
+// matters most for a run this page did not start: a rejoined run lives in its
+// own hook, so the tab's own dialog has no handle on it.
 //
 // `startedAt` is when the run began, for a run rejoined after a reload: its
 // banner clock goes on from there rather than starting again at 0:00.
@@ -71,16 +71,6 @@ export function useWriteLock() {
       if (heldRef.current) return null;
       heldRef.current = true;
       const unhold = holdRun();
-      setHeld({
-        label,
-        startedAt: Number.isFinite(startedAt) ? startedAt : Date.now(),
-        steps: steps?.length ? steps : [label],
-        stepIndex: 0,
-        // Unknown until the worker says otherwise, never 0%.
-        percent: null,
-        message: '',
-        cancel: onCancel,
-      });
       let released = false;
       // Ignored once released, so a late progress event cannot resurrect a
       // finished run, or write into the run that holds the lock after it.
@@ -96,6 +86,25 @@ export function useWriteLock() {
         if (message) patch.message = message;
         if (Object.keys(patch).length) update(patch);
       };
+      // Stop says so on the banner at once, for every run: a stop is answered
+      // at the worker's next checkpoint, which may be a while, and the banner
+      // is the only place the run shows (REV-RUN-2).
+      const cancel = onCancel
+        ? () => {
+            report({ percent: null, message: 'Stopping…' });
+            return onCancel();
+          }
+        : null;
+      setHeld({
+        label,
+        startedAt: Number.isFinite(startedAt) ? startedAt : Date.now(),
+        steps: steps?.length ? steps : [label],
+        stepIndex: 0,
+        // Unknown until the worker says otherwise, never 0%.
+        percent: null,
+        message: '',
+        cancel,
+      });
       const release = () => {
         if (released) return; // a release called twice must not free a later run
         released = true;

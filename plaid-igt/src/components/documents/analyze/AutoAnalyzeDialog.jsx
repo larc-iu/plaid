@@ -62,8 +62,6 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc }) => {
   // Set by Stop, read at every step boundary and by the built-in phases'
   // checkpoints. Cleared when a run starts.
   const stopRef = useRef(false);
-  // The run's lock handle, so Stop can say so on the banner from outside `run`.
-  const lockRef = useRef(null);
 
   const autoCfg = resolveAutoAnalysis(project?.config);
   const hasVocabs = Object.keys(doc?.vocabularies || {}).length > 0;
@@ -102,11 +100,9 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc }) => {
   // One Stop for the whole run, the banner's, whichever kind of step is in
   // flight. Two of the four steps are built-in and have no request to cancel,
   // so a Stop wired only to the service was a dead button for the slowest part
-  // of the run. Saying "Stopping…" here is the point: a checkpoint may be a
-  // document read away, and nothing else would acknowledge the press.
+  // of the run. The banner says "Stopping…" at once (useWriteLock).
   const stopRun = useCallback(async () => {
     stopRef.current = true;
-    lockRef.current?.report({ percent: null, message: 'Stopping…' });
     await cancelRequest();
   }, [cancelRequest]);
 
@@ -185,7 +181,6 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc }) => {
       steps: plan.map((p) => p.label),
     });
     if (!lock) return;
-    lockRef.current = lock;
     // Started: the banner shows it from here, and has its Stop.
     onOpenChange(false);
     const at = (key) => lock.step(plan.findIndex((p) => p.key === key));
@@ -415,7 +410,6 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc }) => {
       // A record a left run keeps is for the page that comes back.
       if (!stillOut && !left) clearRunRecord(doc.id);
       lock.release();
-      lockRef.current = null;
     }
   };
 

@@ -145,12 +145,33 @@ describe('useWriteLock', () => {
     await step(() => {
       handle = lock().acquire('Transcribe', { onCancel });
     });
-    expect(lock().held.cancel).toBe(onCancel);
-    lock().held.cancel();
+    await step(() => lock().held.cancel());
     expect(onCancel).toHaveBeenCalled();
 
     await step(() => handle.release());
     expect(lock().held).toBe(null);
+  });
+
+  // REV-RUN-2: the banner is the only place a run shows once its dialog has
+  // closed, and Stop on it said nothing until the worker next spoke for every
+  // run but the two that said so themselves.
+  it('says "Stopping…" on the banner as soon as Stop is pressed, for every run', async () => {
+    const { lock, step } = await mount();
+    let resolveCancel;
+    const onCancel = vi.fn(() => new Promise((r) => (resolveCancel = r)));
+    let handle;
+    await step(() => {
+      handle = lock().acquire('Parse', { onCancel });
+    });
+    await step(() => handle.report({ percent: 40, message: 'Sentence 3 of 40.' }));
+    await step(() => {
+      lock().held.cancel();
+    });
+    // Before the request to stop has even been answered.
+    expect(onCancel).toHaveBeenCalledTimes(1);
+    expect(lock().held).toMatchObject({ percent: null, message: 'Stopping…' });
+    resolveCancel();
+    await step(() => handle.release());
   });
 
   it('has no stop for a run that cannot be stopped', async () => {

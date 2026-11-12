@@ -1004,7 +1004,6 @@ export const useMediaOperations = () => {
       });
       transcribeStopRef.current = () => {
         stopped = true;
-        lock.report({ percent: null, message: 'Stopping…' });
         onStop();
       };
       try {
