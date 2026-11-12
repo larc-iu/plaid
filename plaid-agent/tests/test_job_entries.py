@@ -83,12 +83,14 @@ def _lexicon(job_id):
     ]}
 
 
-def _entries_job(maintainer):
+def _entries_job(maintainer, lexicon=None, ref_field=False):
     p = job_project()
+    if ref_field:
+        p['vocabs'][0]['config']['igt']['fields']['variantOf'] = {'type': 'item', 'inline': False}
     p['maintainers'] = ['user@example.com'] if maintainer else []
     p['writers'] = [] if maintainer else ['user@example.com']
     doc = document('d1', 'Story', [{'words': [('bb', [('bb', 'BB', 'e-linked')], 'J9')]}])
-    client = JobClient({'d1': doc}, lexicon=_lexicon('J9'), project=p)
+    client = JobClient({'d1': doc}, lexicon=lexicon or _lexicon('J9'), project=p)
     job = start(client, TASKS, id='J9')
     return client, job
 
@@ -110,3 +112,68 @@ def test_the_entries_pass_lists_the_draft_for_a_writer_and_deletes_nothing():
     out = runner(job).entries(job)
     assert not [k for k, _ in client.calls if k == 'vocab_items.delete']
     assert [e['id'] for e in out['unlinked']] == ['e-unlinked'] and out['deleted'] == []
+
+
+# --- what hangs on a draft keeps it (REV-J-B S2-1) ------------------------------
+
+def _hanging_job(extra_items=(), audit=None, comments=None, maintainer=True, ref_field=False):
+    """A maintainer's job J9 whose draft "aa" has no link, with ``extra_items``
+    beside it in the lexicon, the vocabulary's History of the draft
+    (``audit``, entries of {ref}) and comments on its entries."""
+    lexicon = _lexicon('J9')
+    lexicon['items'] = [lexicon['items'][0]] + list(extra_items)
+    client, job = _entries_job(maintainer, lexicon=lexicon, ref_field=ref_field)
+    client.vocab_audit[('v1', 'e-unlinked')] = list(audit or [{'id': 'a1', 'ref': 'job:J9/doc:d1/pass:gloss'}])
+    client.vocab_comments = {'v1': list(comments or [])}
+    return client, job
+
+
+def _deleted(client):
+    return [p for k, p in client.calls if k == 'vocab_items.delete']
+
+
+def test_a_draft_a_person_put_a_sense_under_is_kept_and_listed():
+    sense = {'id': 'e-sense', 'form': 'aa', 'metadata': {'gloss': 'AA2', 'parent': 'e-unlinked'}}
+    client, job = _hanging_job([sense])
+    out = runner(job).entries(job)
+    assert not _deleted(client) and out['deleted'] == []
+    assert [e['id'] for e in out['unlinked']] == ['e-unlinked']
+
+
+def test_a_draft_another_entry_refers_to_is_kept():
+    referring = {'id': 'e-ref', 'form': 'zz', 'metadata': {'gloss': 'ZZ', 'variantOf': 'e-unlinked'}}
+    client, job = _hanging_job([referring], ref_field=True)
+    out = runner(job).entries(job)
+    assert not _deleted(client) and out['deleted'] == []
+
+
+def test_a_draft_someone_else_changed_is_kept():
+    client, job = _hanging_job(audit=[{'id': 'a1', 'ref': 'job:J9/doc:d1/pass:gloss'},
+                                      {'id': 'a2', 'ref': None, 'kind': 'edit'}])
+    out = runner(job).entries(job)
+    assert not _deleted(client) and out['deleted'] == []
+
+
+def test_a_draft_with_a_comment_is_kept():
+    client, job = _hanging_job(comments=[{'id': 'c1', 'entity_type': 'vocab-item', 'entity_id': 'e-unlinked',
+                                          'body': 'Is this right?'}])
+    out = runner(job).entries(job)
+    assert not _deleted(client) and out['deleted'] == []
+
+
+def test_a_draft_with_nothing_on_it_is_deleted_through_the_apps_delete_rules():
+    client, job = _hanging_job()
+    staged = []
+    from plaid_agent.igt import job as igt_job
+    real = igt_job.execute_plan
+
+    def execute(c, ops, **kw):
+        staged.extend(ops)
+        return real(c, ops, **kw)
+    igt_job.execute_plan = execute
+    try:
+        out = runner(job).entries(job)
+    finally:
+        igt_job.execute_plan = real
+    assert [o['kind'] for o in staged] == ['delete_entry'] and staged[0]['item_id'] == 'e-unlinked'
+    assert [e['id'] for e in out['deleted']] == ['e-unlinked']

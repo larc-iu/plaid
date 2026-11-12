@@ -121,6 +121,11 @@ class JobClient(FakeClient):
         super().__init__(project=project or job_project(), documents=documents, audit=[],
                          lexicon=lexicon or lexicon_raw(), **kw)
         self.after_write = {}
+        #: vocabulary id -> the comments on its entries
+        self.vocab_comments = {}
+        comments = self.comments
+        comments.list_in_vocab = lambda vocab_id, entity_id=None: [
+            c for c in self.vocab_comments.get(vocab_id, []) if entity_id is None or c.get('entity_id') == entity_id]
         #: document id -> the document a person left once the job takes its lock
         self.on_lock = {}
         locked = self.documents.locked

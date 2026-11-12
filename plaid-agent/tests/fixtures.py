@@ -147,6 +147,12 @@ class FakeClient(AgentFakeClient):
             by_id = getattr(self.c, '_lexicons_by_id', None)
             return by_id[vid] if by_id else self.c._lexicon
 
+        def audit(self, vid, item_id=None, **kw):
+            """The History a test left for a lexicon, or for one entry of it
+            (``vocab_audit[(vid, item_id)]``)."""
+            self.c.fail_if_asked('vocab_layers.audit')
+            return list(self.c.vocab_audit.get((vid, item_id) if item_id else vid, []))
+
     @property
     def vocab_layers(self):
         return FakeClient._VocabLayers(self)

@@ -51,7 +51,7 @@ from .plan import execute_plan
 from .project import IgtProject, Sentence, Word, is_virtual, load_project, render_sentence
 from .prompt import JOB_SYSTEM, build_job_prompt
 from .trace import TRACER
-from .vocab import ROLE_GLOSS, ROLE_STATUS
+from .vocab import ROLE_GLOSS, ROLE_STATUS, references_to
 from .workspace import Workspace
 
 logger = logging.getLogger(__name__)
@@ -1130,29 +1130,73 @@ class IgtRunner:
                 continue
             status = IgtProject.lexicon_field(v, ROLE_STATUS)
             gloss = IgtProject.lexicon_field(v, ROLE_GLOSS)
-            for it in ws.lexicon(v):
+            items = ws.lexicon(v)
+            comments = None
+            for it in items:
                 md = it.get('metadata') or {}
                 if _job_of(md) != job.id:
                     continue
                 entry = {'id': it['id'], 'lexicon': v['id'], 'form': it.get('form'),
                          'gloss': md.get(gloss) if gloss else None}
-                if links.get(it['id']) or (status and md.get(status) != MACHINE_STATUS):
+                if links.get(it['id']) or not status or md.get(status) != MACHINE_STATUS:
                     created.append(entry)
-                elif maintains:
+                    continue
+                if comments is None:
+                    comments = {c.get('entity_id') for c in client.comments.list_in_vocab(v['id']) or []}
+                if maintains and self.nothing_hangs_on(client, v, items, it, comments):
                     doomed.append(entry)
                 else:
                     created.append(entry)
                     unlinked.append(entry)
         if doomed:
-            with client.operation(ENTRIES_LABEL, kind='job', ref=f'job:{job.id}/pass:entries'):
-                for e in doomed:
-                    try:
-                        client.vocab_items.delete(e['id'], expected_link_count=0)
-                        deleted.append({k: e[k] for k in ('id', 'form', 'gloss')})
-                    except PlaidAPIError as err:
-                        logger.warning('Job %s: entry %s was kept: %s', job.id, e['id'], err)
-                        created.append(e)
+            job.check()
+            kept = self.delete_entries(client, project, doomed)
+            for e in doomed:
+                if e['id'] in kept:
+                    created.append(e)
+                    unlinked.append(e)
+                else:
+                    deleted.append({k: e[k] for k in ('id', 'form', 'gloss')})
         return {'created': created, 'deleted': deleted, 'unlinked': unlinked}
+
+    def nothing_hangs_on(self, client, v: Dict[str, Any], items: List[Dict[str, Any]], it: Dict[str, Any],
+                         commented: set) -> bool:
+        """Whether nothing at all hangs on the job's draft ``it`` that the
+        job did not make (REV-J-B S2-1): the entry is the job's own
+        unverified work (:func:`job_piece`), no sense sits under it, no entry
+        refers to it, nobody commented on it, and every change in its History
+        is this job's. Links are counted by the caller."""
+        if not job_piece(it.get('metadata'), self.job.id) or it['id'] in commented:
+            return False
+        if references_to(items, v.get('fields'), it['id']):
+            return False
+        mine = f'job:{self.job.id}/'
+        return all(str(e.get('ref') or '').startswith(mine)
+                   for e in client.vocab_layers.audit(v['id'], item_id=it['id']) or [])
+
+    def delete_entries(self, client, project: IgtProject, doomed: List[Dict[str, Any]]) -> set:
+        """Delete the job's unlinked drafts ``doomed`` as the app deletes an
+        entry: through the plan's ``delete_entry`` (its links taken with it
+        and claimed by count, its senses freed and the references to it
+        cleared in the same operation, refused when anything changed since
+        it was read), as one History entry with no document. The ids kept."""
+        ws = Workspace(client, project)
+        kept = set()
+        for e in doomed:
+            if isinstance(toolkit.call_tool(ws, 'delete_entry', {'entry_id': e['id']}), Refusal):
+                kept.add(e['id'])
+        if not ws.ops:
+            return kept
+        seed_id = uuid7()
+        try:
+            with client.operation(ENTRIES_LABEL, kind='job', ref=f'job:{self.job.id}/pass:entries',
+                                  keys={'seed': seed_id, 'stamps': {}}):
+                execute_plan(client, list(ws.ops), source=self.source, label=ENTRIES_LABEL, project=project,
+                             stamp_mode='machine', detail=self.detail, seed=seed_id)
+        except PlanError as err:
+            logger.warning('Job %s: its unlinked drafts were kept: %s', self.job.id, err)
+            return {e['id'] for e in doomed}
+        return kept
 
     # --- the report (SPEC 9) --------------------------------------------------------------
 
