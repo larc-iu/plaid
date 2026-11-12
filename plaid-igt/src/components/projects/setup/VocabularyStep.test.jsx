@@ -86,13 +86,18 @@ describe('the setup wizard, Vocabularies', () => {
     await view.unmount();
   });
 
-  it('says what a vocabulary is, and that one of another project is read only', async () => {
+  // A writer or maintainer of a vocabulary's own project changes its
+  // entries from any project that links it (0b73a7993), so the step says
+  // who changes it, not that it is read only here.
+  it('says what a vocabulary is, and who changes one of another project', async () => {
     const view = await mount();
     expect(view.container.textContent).toContain(
       'A vocabulary is a lexicon. Words and morphemes link to its entries, so one entry is ' +
-        'glossed the same way everywhere. A vocabulary of another project is read only here.',
+        'glossed the same way everywhere. A vocabulary that belongs to another project is changed ' +
+        'by the writers and maintainers of that project.',
     );
     expect(view.container.textContent).not.toContain('shared lexicon');
+    expect(view.container.textContent).not.toContain('read only here');
     await view.unmount();
   });
 

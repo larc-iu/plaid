@@ -61,7 +61,8 @@ export const VocabularyStep = ({ data, onDataChange, client, projectId, isNewPro
       <div>
         <p className="text-sm">
           A vocabulary is a lexicon. Words and morphemes link to its entries, so one entry is
-          glossed the same way everywhere. A vocabulary of another project is read only here.
+          glossed the same way everywhere. A vocabulary that belongs to another project is changed
+          by the writers and maintainers of that project.
         </p>
         {/* It starts empty and stays empty until someone puts entries in it,
           which the sentence above does not say. A linguist read it, made one,
