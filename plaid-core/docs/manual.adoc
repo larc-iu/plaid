@@ -2144,7 +2144,7 @@ To go back to that version, restore the backup taken before the upgrade, then st
 The server starts only once every migration has run.
 A start stopped while it migrates the database, by a crash, a power cut or a restart, leaves the migration unfinished.
 The next start runs it again when the migration is written to be resumed, as the one that gives every vocabulary a project is, and says so in its log.
-For any other migration the server refuses to start, and its log names the migration and the two ways on: restore the backup taken before upgrading and start again, or remove the mark the stopped start left, with `sqlite3 data/plaid.db "DELETE FROM schema_migrations WHERE id = -1"`, and start again.
+For any other migration the server refuses to start, and its log names the migration and the two ways on: restore the backup taken before upgrading and start again, or remove the mark the stopped start left, with `+python3 -c "import sqlite3; c = sqlite3.connect('data/plaid.db'); c.execute('DELETE FROM schema_migrations WHERE id = -1'); c.commit()"+`, and start again.
 The server also refuses to start on a database file it cannot write.
 Do not run the older version on a database whose upgrade stopped partway.
 Restore the backup instead.
@@ -2170,7 +2170,7 @@ A vocabulary that several projects link goes to the one whose maintainers includ
 A maintainer of the vocabulary who does not maintain that project is made a maintainer of it.
 If the choice is wrong, move the vocabulary afterwards.
 A migration that rebuilds the audit log keeps the server from answering for a few minutes and cannot be undone, which is why the copy goes off the machine first.
-The database file does not shrink after such a rebuild: to return the space, stop the service, run `sqlite3 data/plaid.db VACUUM`, and start it again.
+The database file does not shrink after such a rebuild: to return the space, stop the service, run `+python3 -c "import sqlite3; sqlite3.connect('data/plaid.db').execute('VACUUM')"+`, and start it again.
 
 == Bringing in a class
 

@@ -95,7 +95,9 @@
   (str "The database was not migrated: the last start was stopped during migration " (migration-label m)
        ", which cannot be resumed by the server. Restore the backup taken before upgrading and start again. "
        "To run the migration again on this database instead, remove the mark the stopped start left, with "
-       "sqlite3 " db-path " \"DELETE FROM schema_migrations WHERE id = -1\", and start again."))
+       ;; Python, since a server often has python3 and no sqlite3 command.
+       "python3 -c \"import sqlite3; c = sqlite3.connect('" db-path "'); "
+       "c.execute('DELETE FROM schema_migrations WHERE id = -1'); c.commit()\", and start again."))
 
 (defn run-migrations!
   "Apply pending migrations, then empty the WAL, or refuse to start (throw)

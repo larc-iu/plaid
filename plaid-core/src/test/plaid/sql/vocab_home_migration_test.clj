@@ -434,8 +434,9 @@
         (is (= (str "The database was not migrated: the last start was stopped during migration "
                     "20261112120000-vocab-home-project, which cannot be resumed by the server. Restore the backup "
                     "taken before upgrading and start again. To run the migration again on this database instead, "
-                    "remove the mark the stopped start left, with sqlite3 /srv/plaid/plaid.db \"DELETE FROM "
-                    "schema_migrations WHERE id = -1\", and start again.")
+                    "remove the mark the stopped start left, with python3 -c \"import sqlite3; c = "
+                    "sqlite3.connect('/srv/plaid/plaid.db'); c.execute('DELETE FROM schema_migrations WHERE id = -1'); "
+                    "c.commit()\", and start again.")
                (some-> thrown ex-message)))
         (is (= before (schema ds)) "nothing was written")))))
 
