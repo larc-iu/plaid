@@ -34,13 +34,19 @@ from . import opkind as ok
 from .opkind import MEMBER, ROW
 from plaid_client.services import UNKNOWN_OUTCOME, requester_message
 from plaid_client.provenance import (CONTRIBUTED_STATE, MACHINE, PROVENANCE_KEYS, PROV_CONFIRMED_KEY,
-                                     WriterPolicy)
+                                     WriterPolicy, stamp_inferred)
 
 # How an approval is recorded. 'verified' is the default: the assistant made
 # it, a reviewer confirmed it. 'human' is the reviewer saying the work is
 # their own. 'contributed' is a contributor's approval, which is their own
-# unreviewed work rather than a confirmation of anyone's.
-STAMP_MODES = ('verified', 'human', 'contributed')
+# unreviewed work rather than a confirmation of anyone's. 'machine' is no
+# approval at all: an unattended job's writes, machine proposals nobody has
+# looked at (machine-unverified, with the job named in provDetail), which a
+# person reviews later as they review any service's output. Only a job asks
+# for it, by name: no approval ever reaches it.
+STAMP_MODES = ('verified', 'human', 'contributed', 'machine')
+#: The provDetail key naming the job a machine write belongs to.
+JOB_DETAIL_KEY = 'job'
 # Fragments, sent with metadata_ops, which turns a None into a delete.
 CLEAR_PROV = {k: None for k in PROVENANCE_KEYS}
 CONFIRM = {PROV_CONFIRMED_KEY: True}
@@ -679,7 +685,9 @@ class Stamps:
 
     'verified' and 'contributed' are the editor's rules, read from the
     writer's policy (``WriterPolicy``) for a verifier or for the contributor.
-    'human' is the agent's own mode.
+    'human' is the agent's own mode. 'machine' is a machine writer's
+    (``stamp_inferred``): unverified, with ``detail`` naming the job that
+    wrote it, and it confirms nothing.
     """
 
     def __init__(self, mode: str, source: str, contributor: Optional[str] = None,
@@ -688,6 +696,8 @@ class Stamps:
             raise ValueError(f'stamp_mode must be one of {STAMP_MODES}')
         if mode == 'contributed' and not contributor:
             raise ValueError("stamp_mode 'contributed' needs the contributor's user id")
+        if mode == 'machine' and not (detail or {}).get(JOB_DETAIL_KEY):
+            raise ValueError("stamp_mode 'machine' needs the job's id in detail")
         self.mode = mode
         self.source = source
         self.contributor = contributor
@@ -702,9 +712,15 @@ class Stamps:
     def contributed(self) -> bool:
         return self.mode == 'contributed'
 
+    @property
+    def machine(self) -> bool:
+        return self.mode == 'machine'
+
     def stamp(self) -> Dict[str, Any]:
         if self.human:
             return {}
+        if self.machine:
+            return stamp_inferred(self.source, detail=self.detail)
         return self.policy.adopt_stamp(self.source, self.detail)
 
     def restamp(self) -> Dict[str, Any]:
@@ -723,7 +739,9 @@ class Stamps:
         another contributor's. Any other approval confirms it. The policy
         says whether the piece is this writer's to review
         (``reviewable_state``) and what its confirm merges
-        (``confirm_fragment``)."""
+        (``confirm_fragment``). A machine writer reviews nothing."""
+        if self.machine:
+            return None
         if self.human:
             return dict(CONFIRM)
         if not self.policy.reviewable_state(CONTRIBUTED_STATE if contributed_work else MACHINE):
