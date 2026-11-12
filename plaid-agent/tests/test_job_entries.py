@@ -221,3 +221,82 @@ def test_a_proposed_entry_survives_a_new_worker_taking_the_job(monkeypatch):
     job.status['phase'] = 'harmonizing'
     finished = run_job(job, runner(job))  # a new runner, as a resumed worker builds
     assert finished['report']['entries']['proposed'] == [{'lexicon': 'v1', 'form': 'tok', 'gloss': 'stone'}]
+
+
+def _tok(link):
+    """A stretch's calls: tok analysed, an entry for it staged, and linked
+    when ``link``."""
+    calls = [call(1, 'set_analysis', {'document': 'Story', 'ref': 's1.w1', 'morphemes': [
+                 {'form': 'tok', 'type': 'stem', 'fields': {'Morph Gloss': 'stone'}}]}),
+             call(2, 'create_entry', {'form': 'tok', 'fields': {'gloss': 'stone'}})]
+    if link:
+        calls.append(call(3, 'link_entry', {'document': 'Story', 'refs': ['s1.w1.m1'], 'entry_id': 'new:v1:tok#1'}))
+    return reply(calls=calls)
+
+
+def _proposed_rows(client, job):
+    return [f for (f, _k) in client.jobs.decision_rows.get(job.id, {}) if f.startswith(' proposed ')]
+
+
+def test_an_entry_is_recorded_as_proposed_only_once_the_stretch_was_written(monkeypatch):
+    """REV-J-B2 S4: a stretch whose write never landed (refused twice as the
+    document moved under it, so put off) records no proposal. Taken again,
+    the model links the entry and it is created: the report never calls it
+    proposed."""
+    from plaid_client import PlaidAPIError
+    from plaid_agent.core.job import run_job
+    from plaid_agent.core.plan import PlanError
+    from plaid_agent.igt import job as igt_job
+    client = JobClient({'d1': document('d1', 'Story', [{'words': ['tok']}])})
+    job = start(client, TASKS)
+    real, refusals = igt_job.execute_plan, {'n': 2}
+
+    def execute(c, ops, **kw):
+        if refusals['n']:
+            refusals['n'] -= 1
+            try:
+                raise PlaidAPIError('HTTP 409', status=409)
+            except PlaidAPIError as e:
+                raise PlanError('moved', 0, len(ops)) from e
+        return real(c, ops, **kw)
+    monkeypatch.setattr(igt_job, 'execute_plan', execute)
+    stretches = []
+
+    def answer(asked, n, kwargs):
+        if n == 1:
+            stretches.append(1)
+            return _tok(link=len(stretches) > 1)
+        if len(stretches) == 1:
+            assert not _proposed_rows(client, job)
+        return reply('Done.')
+    use(monkeypatch, Model(answer))
+    finished = run_job(job, runner(job))
+    assert len(stretches) == 2, 'the stretch was asked again once the document was put off'
+    assert [p for k, p in client.calls if k == 'vocab_items.create'], 'linked the second time, so created'
+    assert not _proposed_rows(client, job), 'the write that would have proposed it never landed'
+    assert finished['report']['entries']['proposed'] == []
+
+
+def test_a_proposal_the_job_created_later_is_not_reported_as_proposed(monkeypatch):
+    """A proposal recorded by one stretch, the same entry created by a later
+    one: the report lists it created, never proposed as well."""
+    from plaid_agent.core.job import run_job
+    lexicon = _lexicon('J9')
+    lexicon['items'].append({'id': 'e-tok', 'form': 'tok', 'metadata': {'gloss': 'stone', 'status': 'machine',
+                                                                       **stamp('J9')}})
+    client = JobClient({'d1': document('d1', 'Story', [{'words': [('tok', [('tok', 'stone', 'e-tok')], 'J9')]}])},
+                       lexicon=lexicon)
+    job = start(client, TASKS, id='J9')
+    job.update_row('d1', state='done')
+    runner(job).propose(job_project_obj(client), {'kind': 'create_entry', 'vocab_id': 'v1', 'form': 'tok',
+                                                  'metadata': {'gloss': 'stone'}})
+    assert _proposed_rows(client, job)
+    job.status['phase'] = 'harmonizing'
+    use(monkeypatch, Model(lambda asked, n, kwargs: reply('Done.')))
+    finished = run_job(job, runner(job))
+    assert {e['form'] for e in finished['report']['entries']['created']} >= {'tok'}
+    assert finished['report']['entries']['proposed'] == []
+
+
+def job_project_obj(client):
+    return load_project(client, 'p1')

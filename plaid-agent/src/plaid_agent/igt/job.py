@@ -1126,6 +1126,11 @@ class IgtRunner:
             finally:
                 lock.__exit__(None, None, None)
             break
+        # The write landed: the entries the model staged that it did not
+        # create are reported as proposed, never before (REV-J-B2 S4).
+        for o in ops:
+            if o.get('kind') == 'create_entry' and not any(o is w for w in written_ops):
+                self.propose(project, o)
         after = self.read(project, document_id, client)
         made = self.made_entries(ws, after, st, written_ops)
         self.record(project, document_id, after, part, st, counts, written_ops, made, changed)
@@ -1165,10 +1170,9 @@ class IgtRunner:
                 counts['protected'] += 1
                 continue
             kept.append(op)
+        # An entry no kept link names is not created: it is reported as
+        # proposed once the stretch's write has landed (``write``).
         keys = {o.get('new_entry_key') for o in kept if o.get('kind') == 'link'}
-        for o in kept:
-            if o.get('kind') == 'create_entry' and o.get('key') not in keys:
-                self.propose(project, o)
         kept = [o for o in kept if o.get('kind') != 'create_entry' or o.get('key') in keys]
         return kept, counts, changed
 
@@ -1697,7 +1701,12 @@ class IgtRunner:
                     unlinked.append(e)
                 else:
                     deleted.append({k: e[k] for k in ('id', 'form', 'gloss')})
-        return entries_part(created, deleted, unlinked, self.proposed_entries())
+        # A proposal the job created later (another stretch staged it again
+        # and linked it) is reported created, never proposed as well.
+        made = {(e['lexicon'], _nfc(e['form']), _nfc(e['gloss'])) for e in created + doomed}
+        proposed = [p for p in self.proposed_entries()
+                    if (p.get('lexicon'), _nfc(p.get('form')), _nfc(p.get('gloss'))) not in made]
+        return entries_part(created, deleted, unlinked, proposed)
 
     def proposed_entries(self) -> List[Dict[str, Any]]:
         """Every entry the model staged and nothing linked, in this run and
