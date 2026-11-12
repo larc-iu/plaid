@@ -4,6 +4,8 @@ thirds of the job's words decide; anything less, or people who differ, leaves
 the form. Older machine drafts and words anyone touched since neither vote
 nor change. Each document's rewrites are one History entry of their own."""
 
+import json
+
 import pytest
 
 from job_fixtures import JobClient, document, runner, start
@@ -132,11 +134,29 @@ def test_a_touched_word_is_listed_as_left_where_its_form_was_made_consistent(mon
     assert {'form': 'ka', 'reason': 'touched', 'analyses': [{'analysis': 'ka ‘come’', 'count': 1}]} in out['left']
 
 
-def test_harmonize_rewrites_no_word_field(monkeypatch):
+def _word_ops(staged):
+    return {o['token_id']: o['value'] for o in staged if o.get('kind') == 'set_span' and o.get('layer_id') == 'sl-gloss'}
+
+
+def test_harmonize_sets_the_word_field_the_job_wrote_to_the_chosen_analysis(monkeypatch):
     staged = _staged(monkeypatch)
     client, job, out, tags = _run({'d1': [{'words': [_wg('go', 'go'), _wg('go', 'go'), _wg('come', 'come')]}]})
     assert out['changed'][0]['from'][0]['analysis'] == 'ka ‘come’'
-    assert [o['kind'] for o in staged] == ['set_analysis'], 'the word Gloss is not harmonize\'s to change'
+    assert _word_ops(staged) == {'d1-s1w3': 'go'}, 'the job\'s own word Gloss follows the analysis it was set to'
+
+
+def test_harmonize_clears_a_word_field_the_chosen_analysis_does_not_have(monkeypatch):
+    staged = _staged(monkeypatch)
+    w = lambda g: {'form': 'ka', 'morphs': [('ka', g)], 'who': J}  # noqa: E731
+    _run({'d1': [{'words': [w('go'), w('go'), w('go'), _wg('come', 'come')]}]})
+    assert _word_ops(staged) == {'d1-s1w4': ''}
+
+
+def test_harmonize_adds_no_word_field_a_word_does_not_hold(monkeypatch):
+    staged = _staged(monkeypatch)
+    w = lambda g: {'form': 'ka', 'morphs': [('ka', g)], 'who': J}  # noqa: E731
+    _run({'d1': [{'words': [_wg('go', 'go'), _wg('go', 'go'), w('come')]}]})
+    assert _word_ops(staged) == {}, 'only what the job wrote on the word is rewritten'
 
 
 PIECES = ('token', 'span', 'link')
@@ -173,7 +193,30 @@ def test_harmonize_never_changes_a_word_holding_anything_not_the_jobs_own(monkey
     touched = {o.get('word_id') or o.get('analysis_word_id') or str(o.get('token_id', '')).split('m')[0]
                for o in staged}
     assert touched <= own, (seed, words, staged)
-    assert all(o.get('kind') in ('set_analysis', 'link') for o in staged), 'only the analysis, and links'
+    assert all(o.get('kind') in ('set_analysis', 'link', 'set_span') for o in staged), 'the analysis, links, fields'
+    # Every word harmonize rewrote ends with all the job wrote on it agreeing
+    # with the chosen analysis: its morpheme gloss, and its word Gloss where
+    # it held one (that of most words of the chosen gloss, the first on a tie).
+    rewritten = {o['word_id']: o for o in staged if o.get('kind') == 'set_analysis'}
+    if rewritten:
+        chosen = out['changed'][0]['to'].split('‘')[1].rstrip('’')
+        of = [w.get('gloss', (None,))[0] or '' for i, w in enumerate(words, start=1)
+              if f'd1-s1w{i}' in own and w['morphs'][0][1] == chosen]
+        counts = {}
+        for v in of:
+            counts[v] = counts.get(v, 0) + 1
+        best = sorted(counts.items(), key=lambda kv: (-kv[1], json.dumps({'Gloss': kv[0]} if kv[0] else {})))[0][0]
+        fields = _word_ops(staged)
+        for i, w in enumerate(words, start=1):
+            wid = f'd1-s1w{i}'
+            if wid not in rewritten:
+                continue
+            assert [f['value'] for f in rewritten[wid]['morphemes'][0]['fields']] == [chosen]
+            had = (w.get('gloss') or (None,))[0]
+            if had is None:
+                assert wid not in fields, 'no field added'
+            elif had != best:
+                assert fields.get(wid) == best, (seed, wid, had, best, fields)
 
 
 def test_a_document_in_use_keeps_its_minority_and_the_form_is_listed():

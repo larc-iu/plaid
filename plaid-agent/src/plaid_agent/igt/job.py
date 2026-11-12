@@ -73,6 +73,9 @@ ENTRIES_LABEL = 'Assistant job: delete unlinked machine drafts'
 #: The form of a sentence's record among the job's decisions: a space, then
 #: words no word form has (a word never holds a space), then the sentence id.
 RECORD_FORM = ' sentence '
+#: The form of an entry the model staged and nothing linked (``propose``),
+#: kept among the decisions the same way, so a resumed job still reports it.
+PROPOSED_FORM = ' proposed '
 
 
 def _n(n: int, word: str) -> str:
@@ -228,11 +231,11 @@ def unmade(analysis: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def harmonized_part(analysis: Dict[str, Any], tasks) -> Dict[str, Any]:
-    """What harmonize compares and rewrites of an analysis: the morphemes
-    (form, type, "=", their fields) and, only for a job asked to link, their
-    entries. Never the word fields, never ``made``: harmonize writes only
-    what a stretch of this job may write on a word by its analysis, so a
-    person's links never come along into a job that makes none."""
+    """What harmonize compares an analysis by: the morphemes (form, type,
+    "=", their fields) and, only for a job asked to link, their entries.
+    Never ``made``, so a person's links never come along into a job that
+    makes none. The word fields do not decide a form's analysis: they go
+    with it (:meth:`IgtRunner.stage`)."""
     links = 'link' in tasks
     return {'morphemes': [{**m, 'made': False, 'entry': m.get('entry') if links else None}
                           for m in analysis['morphemes']], 'word': {}}
@@ -1087,7 +1090,14 @@ class IgtRunner:
         gloss = IgtProject.lexicon_field(v, ROLE_GLOSS) if v else None
         entry = {'lexicon': op.get('vocab_id'), 'form': op.get('form'),
                  'gloss': (op.get('metadata') or {}).get(gloss) if gloss else None}
-        self.proposed.setdefault((entry['lexicon'], entry['form'], entry['gloss']), entry)
+        k = (entry['lexicon'], entry['form'], entry['gloss'])
+        if k in self.proposed:
+            return
+        self.proposed[k] = entry
+        text = canonical(entry)
+        key = analysis_key(text)
+        self.job.add_decisions([{'form': PROPOSED_FORM + key, 'key': key, 'analysis': text, 'count': 1,
+                                 'document_id': None, 'sentence_id': None}])
 
     def machine_status(self, project: IgtProject, ops: List[Dict[str, Any]]) -> None:
         """Every entry the job creates carries Status ``machine``, whatever
@@ -1329,10 +1339,12 @@ class IgtRunner:
                     into = mine if job_owned(w, job.id) else touched if job_touched(w, job.id) else None
                     if into is None:
                         continue
-                    a = harmonized_part(word_analysis(w), job.tasks)
+                    full = word_analysis(w)
+                    a = harmonized_part(full, job.tasks)
                     slot = into.setdefault(form_key(w.surface), {}).setdefault(
-                        analysis_key(canonical(a)), {'analysis': a, 'words': []})
+                        analysis_key(canonical(a)), {'analysis': a, 'words': [], 'word': Counter()})
                     slot['words'].append((d, w.id))
+                    slot['word'][canonical(full['word'])] += 1
         left: List[Dict[str, Any]] = []
         moves: List[Dict[str, Any]] = []
         rewrites: Dict[str, List[Tuple[str, Dict[str, Any]]]] = {}
@@ -1342,8 +1354,9 @@ class IgtRunner:
             theirs: Dict[str, Dict[str, Any]] = {}
             for x in people.get(form, {}).values():
                 a = harmonized_part(x['analysis'], job.tasks)
-                slot = theirs.setdefault(analysis_key(canonical(a)), {'analysis': a, 'count': 0})
+                slot = theirs.setdefault(analysis_key(canonical(a)), {'analysis': a, 'count': 0, 'word': Counter()})
                 slot['count'] += x['count']
+                slot['word'][canonical(x['analysis'].get('word') or {})] += x['count']
             target, by = harmonized({k: len(v['words']) for k, v in keys.items()},
                                     {k: x['count'] for k, x in theirs.items()})
             if target is None:
@@ -1351,7 +1364,11 @@ class IgtRunner:
                              'analyses': [{'analysis': rendering(v['analysis'], gloss), 'count': len(v['words'])}
                                           for v in keys.values()]})
                 continue
-            to = (keys.get(target) or theirs.get(target))['analysis']
+            chosen = keys.get(target) or theirs.get(target)
+            # The word fields go with the analysis: the values most of the
+            # words of the chosen analysis have (the first in order on a tie).
+            word = json.loads(sorted(chosen['word'].items(), key=lambda kv: (-kv[1], kv[0]))[0][0])
+            to = {**chosen['analysis'], 'word': word}
             moving = {k: v for k, v in keys.items() if k != target}
             moves.append({'form': form, 'to': to, 'by': by, 'from': moving})
             for v in moving.values():
@@ -1459,9 +1476,13 @@ class IgtRunner:
 
     @staticmethod
     def stage(ws: Workspace, doc, s: Sentence, w: Word, to: Dict[str, Any]) -> bool:
-        """Stage ``to`` on word ``w``: its analysis and its links, through
-        the tools, so every guard of theirs applies. Word fields are never
-        harmonize's (:func:`harmonized_part`). False when the analysis was
+        """Stage ``to`` on word ``w``: its analysis, its links, and every word
+        field the word holds set to ``to``'s value for it, or cleared where
+        ``to`` has none, through the tools, so every guard of theirs applies.
+        Asked only of a word wholly the job's own (``job_owned``), so each
+        field it holds is one the job wrote: harmonize rewrites everything
+        the job wrote on the word and nothing else, and adds no field the word
+        does not hold (the owner, 2026-11-12). False when the analysis was
         refused, and nothing was staged."""
         ref = f's{s.index}.w{w.index}'
         name = doc.name
@@ -1474,6 +1495,10 @@ class IgtRunner:
             if m.get('entry'):
                 toolkit.call_tool(ws, 'link_entry', {'document': name, 'refs': [f'{ref}.m{i}'],
                                                      'entry_id': m['entry']})
+        values = {field: (to.get('word') or {}).get(field, '') for field, sp in sorted(w.fields.items())
+                  if (to.get('word') or {}).get(field, '') != _nfc(sp.value)}
+        if values:
+            toolkit.call_tool(ws, 'set_field', {'document': name, 'refs': [ref], 'values': values})
         return True
 
     # --- the entries pass (SPEC 7.5) ------------------------------------------------------
@@ -1523,7 +1548,20 @@ class IgtRunner:
                     unlinked.append(e)
                 else:
                     deleted.append({k: e[k] for k in ('id', 'form', 'gloss')})
-        return entries_part(created, deleted, unlinked, self.proposed.values())
+        return entries_part(created, deleted, unlinked, self.proposed_entries())
+
+    def proposed_entries(self) -> List[Dict[str, Any]]:
+        """Every entry the model staged and nothing linked, in this run and
+        in any run of the job before it (kept among its decisions)."""
+        out = dict(self.proposed)
+        for r in self.job.decisions():
+            if str(r.get('form') or '').startswith(PROPOSED_FORM):
+                try:
+                    e = json.loads(r['analysis'])
+                except (ValueError, TypeError):
+                    continue
+                out.setdefault((e.get('lexicon'), e.get('form'), e.get('gloss')), e)
+        return list(out.values())
 
     @staticmethod
     def linked(ws: Workspace, item_id: str) -> bool:

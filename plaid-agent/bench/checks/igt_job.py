@@ -25,7 +25,9 @@ args:
     against the document as it was just before it: every word it changed was
     then wholly the job's own unverified work (a word holding anything of a
     person's or another producer's is never harmonize's), and is now the
-    job's own and, for the form, the people's analysis. After the job the
+    job's own and, for the form, the people's analysis, with each word field
+    the job had written on it now the value the people's words hold (or
+    cleared) and no field added. After the job the
     job's words of the form carry one analysis: harmonize leaves a form the
     job analysed one way as it is, whatever people did.
 """
@@ -96,6 +98,10 @@ def _everything(w):
                       ensure_ascii=False, sort_keys=True, default=str)
 
 
+def _word_values(w):
+    return {n: sp.value for n, sp in w.fields.items() if sp.value not in (None, '')}
+
+
 def _translation(s, project):
     f = project.gloss_field('Sentence')
     sp = s.fields.get(f.name) if f else None
@@ -132,6 +138,17 @@ def _harmonize(ctx, project, jid, docs, args, problems):
         problems.append(f'the task wants one analysis by people of {args["form"]}, found {len(people)}')
         return
     (theirs,) = people
+    # The word fields that go with the people's analysis: those most of their
+    # words of the form hold (the first in order on a tie).
+    held = {}
+    for doc in docs.values():
+        for s in doc.sentences:
+            for w in s.words:
+                if _form(w.surface) == key and _real(w) and _analysis(w) == theirs \
+                        and not any(_job_piece(p, jid) for p in _pieces(w)):
+                    k = json.dumps(_word_values(w), sort_keys=True, ensure_ascii=False)
+                    held[k] = held.get(k, 0) + 1
+    their_words = json.loads(sorted(held.items(), key=lambda kv: (-kv[1], kv[0]))[0][0]) if held else {}
     mine = {}
     for name, doc in docs.items():
         for s in doc.sentences:
@@ -163,6 +180,14 @@ def _harmonize(ctx, project, jid, docs, args, problems):
                         problems.append(f'{where}: harmonize left a word not the job\'s own')
                     elif _form(w.surface) == key and _analysis(hit[1]) != theirs:
                         problems.append(f'{where}: harmonize set {args["form"]} to an analysis people did not make')
+                    elif _form(w.surface) == key:
+                        # What the job wrote on the word goes with the analysis:
+                        # each word field it held is now the people's value, or
+                        # cleared, and none was added.
+                        was, now_ = _word_values(w), _word_values(hit[1])
+                        if set(now_) - set(was) or any(now_.get(n) != their_words.get(n) for n in was):
+                            problems.append(f'{where}: harmonize left the job\'s word fields {now_}, '
+                                            f'the analysis carries {their_words}')
 
 
 def check(ctx):
