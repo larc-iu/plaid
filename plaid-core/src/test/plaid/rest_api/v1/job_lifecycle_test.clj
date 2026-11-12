@@ -109,6 +109,14 @@
     (is (not-any? #(contains? % :job/documents) (:entries page1)) "no documents in the list")
     (is (not-any? #(contains? % :job/report) (:entries page1)) "no report in the list")))
 
+(deftest a-list-entry-counts-its-documents
+  (let [{:keys [p d1 st]} (jh/world!)
+        all (job-id (start! st p))
+        _ (fix/assert-ok (call admin-request :post (str "/api/v1/jobs/" all "/cancel")))
+        one (job-id (start! st p {:documents [d1]}))
+        entries (:entries (:body (call st :get (str "/api/v1/projects/" p "/jobs"))))]
+    (is (= [[one 1] [all 2]] (mapv (juxt :job/id :job/document-count) entries)))))
+
 ;; ------------------------------------------------------------------
 ;; Claim
 ;; ------------------------------------------------------------------

@@ -66,6 +66,13 @@ export const ProjectJobs = ({ projectId, client, startJob = null }) => {
       sort: (j) => tasksText(j.tasks),
     },
     {
+      key: 'documents',
+      label: 'Documents',
+      align: 'right',
+      render: (j) => cell(j, j.documentCount.toLocaleString()),
+      sort: (j) => j.documentCount,
+    },
+    {
       key: 'startedBy',
       label: 'Started by',
       render: (j) => cell(j, j.startedByName),

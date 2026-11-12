@@ -2045,12 +2045,14 @@ class _FakeJobs:
         return self._shape(self.rows[job_id])
 
     def list(self, project_id):
-        """A project's jobs, newest first, each without documents and report."""
+        """A project's jobs, newest first, each without documents and report
+        and with ``document_count``."""
         self.calls.append(('list', {'project_id': project_id}))
         self._client._project(project_id, f'/api/v1/projects/{project_id}/jobs')
         jobs = sorted((j for j in self.rows.values() if j['project'] == project_id),
                       key=lambda j: j['seq'], reverse=True)
-        return [self._shape(j, documents=False, report=False) for j in jobs]
+        return [{**self._shape(j, documents=False, report=False), 'document_count': len(j['documents'])}
+                for j in jobs]
 
     def list_page(self, project_id, *, limit=None, cursor=None):
         """One page, as the envelope the real client hands back. The cursor

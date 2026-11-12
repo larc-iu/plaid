@@ -256,8 +256,9 @@
  * An unattended assistant job. `state` is one of `waiting`, `running`,
  * `stopping` (the active ones) and `done`, `cancelled`, `failed`. `ahead`
  * is, for a waiting job, how many active jobs were started before it on the
- * server. `documents` is left out of a list's entries, and `report` is null
- * until the job ends (and on `jobs.active` and a list).
+ * server. `documents` is left out of a list's entries, which carry
+ * `documentCount` instead, and `report` is null until the job ends (and on
+ * `jobs.active` and a list).
  * @typedef {object} Job
  * @property {string} id
  * @property {string} project
@@ -281,6 +282,7 @@
  * @property {number} leaseS
  * @property {number | null} ahead
  * @property {JobDocument[]} [documents]
+ * @property {number} [documentCount] - On a list's entries: how many documents the job holds
  * @property {JobReport | null} [report]
  */
 

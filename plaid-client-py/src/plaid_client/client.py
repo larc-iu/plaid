@@ -3652,13 +3652,15 @@ class JobsResource(_Resource):
 
     def list(self, project_id: str) -> Any:
         """A project's jobs, newest first, each without its documents and
-        report. Transparently follows pagination cursors and returns the full
-        flat list. Any reader of the project."""
+        report and with ``document_count``, how many documents it holds.
+        Transparently follows pagination cursors and returns the full flat
+        list. Any reader of the project."""
         return list_all(self._client, f'/api/v1/projects/{project_id}/jobs')
 
     def list_page(self, project_id: str, *, limit: int | None = None,
                   cursor: str | None = None) -> Any:
-        """One page of a project's jobs, newest first.
+        """One page of a project's jobs, newest first, each with
+        ``document_count`` in place of its documents.
 
         Args:
             project_id: The project

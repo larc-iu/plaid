@@ -12,6 +12,7 @@ const job = (id, over = {}) => ({
   id,
   tasks: ['gloss'],
   state: 'done',
+  documentCount: 1,
   startedByName: 'Wren',
   createdAt: '2026-11-10T10:00:00Z',
   finishedAt: '2026-11-10T11:00:00Z',
@@ -41,6 +42,7 @@ describe('the Jobs tab', () => {
             createdAt: '2026-11-11T10:00:00Z',
             state: 'cancelled',
             tasks: ['translate', 'gloss', 'link'],
+            documentCount: 1204,
           }),
         ]),
       },
@@ -50,10 +52,20 @@ describe('the Jobs tab', () => {
     const [first, second] = rows(v.container);
     expect(first[0]).toBe('Stopped');
     expect(first[1]).toBe('Translations, analyses and lexicon links');
-    expect(first[2]).toBe('Wren');
+    expect(first[2]).toBe('1,204');
+    expect(first[3]).toBe('Wren');
     expect(second[0]).toBe('Failed');
+    expect(second[2]).toBe('1');
+    expect(all(v.container, 'thead th').map((th) => th.textContent.trim())).toEqual([
+      'State',
+      'Tasks',
+      'Documents',
+      'Started by',
+      'Started',
+      'Ended',
+    ]);
     const links = all(v.container.querySelector('tbody tr'), 'td a');
-    expect(links.length).toBe(5);
+    expect(links.length).toBe(6);
     for (const a of links) expect(a.getAttribute('href')).toBe('/projects/p1/jobs/new');
     await v.unmount();
   });

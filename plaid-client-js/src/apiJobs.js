@@ -61,15 +61,16 @@ export function jobsApi(client) {
         body: bodyOf({ id, app, tasks, documents, note }),
       }),
     /**
-     * A project's jobs, newest first, each without its documents and report.
-     * Transparently follows pagination cursors and returns the full flat
+     * A project's jobs, newest first, each without its documents and report
+     * and with `documentCount`, how many documents it holds. Transparently follows pagination cursors and returns the full flat
      * array. Any reader of the project.
      * @param {string} projectId - The project
      * @returns {Promise<Job[]>}
      */
     list: (projectId) => listAll(client, `/api/v1/projects/${projectId}/jobs`),
     /**
-     * One page of a project's jobs, newest first.
+     * One page of a project's jobs, newest first, each with `documentCount`
+     * in place of its documents.
      * @param {string} projectId - The project
      * @param {object} [opts]
      * @param {number} [opts.limit] - Page size (1..1000; server default 100)

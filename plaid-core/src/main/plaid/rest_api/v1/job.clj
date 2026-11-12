@@ -130,7 +130,7 @@
                         (answer #(hash-map :status 201
                                            :body (job/create! db id body user-id))))}
 
-      :get {:summary "List the project's jobs, newest first; keyset-paginated. Entries carry no documents or report."
+      :get {:summary "List the project's jobs, newest first; keyset-paginated. Entries carry no documents or report, and count their documents."
             :middleware [[pra/wrap-reader-required (fn [r] (-> r :parameters :path :id))]]
             :parameters {:query (into [:map] pagination/query-params)}
             :handler (fn [{{{:keys [id]} :path query :query} :parameters db :db}]

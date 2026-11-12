@@ -246,17 +246,21 @@
 
 (defn list-page
   "One page of project `project-id`'s jobs, newest first by `(created_at,
-  id)`, each without its documents and report."
+  id)`, each without its documents and report, with `:job/document-count`,
+  the number of documents the job holds."
   [db project-id {:keys [limit cursor-vals]}]
   (let [lim (pg/clamp-limit limit)
         seek (pg/keyset-where [:created_at :id] cursor-vals :desc)
-        rows (psc/q db {:select [:*]
-                        :from [:jobs]
-                        :where (cond-> [:and [:= :project_id (str project-id)]]
+        rows (psc/q db {:select [:j.* [{:select [[[:count :*]]]
+                                        :from [[:job_documents :jd]]
+                                        :where [:= :jd.job_id :j.id]}
+                                       :document_count]]
+                        :from [[:jobs :j]]
+                        :where (cond-> [:and [:= :j.project_id (str project-id)]]
                                  seek (conj seek))
-                        :order-by [[:created_at :desc] [:id :desc]]
+                        :order-by [[:j.created_at :desc] [:j.id :desc]]
                         :limit lim})]
-    {:entries (mapv #(row->job db % #{}) rows)
+    {:entries (mapv #(assoc (row->job db % #{}) :job/document-count (:document_count %)) rows)
      :next-cursor (when (= (count rows) lim)
                     (let [r (peek rows)] [(:created_at r) (str (:id r))]))}))
 

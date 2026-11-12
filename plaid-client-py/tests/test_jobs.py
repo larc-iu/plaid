@@ -58,7 +58,7 @@ def _sent(client):
 def test_a_persons_calls_create_list_get_active_cancel_worker():
     client = _client([
         Response(201, WIRE_JOB),
-        {'entries': [WIRE_JOB], 'next-cursor': None},
+        {'entries': [{**WIRE_JOB, 'job/document-count': 1}], 'next-cursor': None},
         WIRE_JOB,
         WIRE_JOB,
         Response(204),
@@ -72,7 +72,9 @@ def test_a_persons_calls_create_list_get_active_cancel_worker():
     assert made['documents'][0]['skipped'][0] == {'sentence': 's2', 'sentence_id': 't2',
                                                   'reason': 'failed', 'kind': 'budget'}
     assert made['lease_s'] == 120
-    assert client.jobs.list('p1')[0]['id'] == 'j1'
+    listed = client.jobs.list('p1')
+    assert listed[0]['id'] == 'j1'
+    assert listed[0]['document_count'] == 1, 'a list entry counts its documents'
     assert client.jobs.get('j1')['current_document'] == 'd1'
     assert client.jobs.active('p1')['state'] == 'running'
     assert client.jobs.active('p1') is None, '204: no active job'
@@ -263,6 +265,7 @@ def test_fake_create_waits_with_its_rows_in_order_and_refuses_as_core_does():
     assert second['ahead'] == 1, 'the job of p1 was started before it'
     assert [j['id'] for j in jobs.list('p2')] == [second['id']]
     assert 'documents' not in jobs.list('p1')[0] and 'report' not in jobs.list('p1')[0]
+    assert jobs.list('p2')[0]['document_count'] == 1, 'a list entry counts its documents, as core\'s does'
 
 
 def test_fake_claim_takes_the_oldest_and_holds_the_one_slot_until_the_lease_lapses():

@@ -72,7 +72,7 @@ const WIRE_JOB = {
 test("a person's calls: create, list, get, active, cancel, worker", async () => {
   const net = capture([
     { status: 201, body: WIRE_JOB },
-    { status: 200, body: { entries: [WIRE_JOB], "next-cursor": null } },
+    { status: 200, body: { entries: [{ ...WIRE_JOB, "job/document-count": 1 }], "next-cursor": null } },
     { status: 200, body: WIRE_JOB },
     { status: 200, body: WIRE_JOB },
     { status: 204 },
@@ -99,6 +99,7 @@ test("a person's calls: create, list, get, active, cancel, worker", async () => 
     assert.equal(made.leaseS, 120);
     const listed = await client.jobs.list("p1");
     assert.equal(listed[0].id, "j1");
+    assert.equal(listed[0].documentCount, 1, "a list entry counts its documents");
     assert.equal((await client.jobs.get("j1")).currentDocument, "d1");
     assert.equal((await client.jobs.active("p1")).state, "running");
     assert.equal(await client.jobs.active("p1"), null, "204: no active job");
