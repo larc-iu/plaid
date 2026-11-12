@@ -7,7 +7,7 @@ import { buildReplacer, chainText, respellBarred } from './bulkPlan.js';
 import { planRespell, applyRespell } from './bulkRunner.js';
 import { notifyStopped, countOf, skippedNote, useRun, useWriter } from './bulkShared.js';
 import { scopeTextClass } from '@/domain/scopeColors';
-import { canManageVocabulary } from '@ui/domain/permissions.js';
+import { canManageVocabulary, isBorrowed } from '@ui/domain/permissions.js';
 import { useAuth } from '@/contexts/AuthContext';
 import {
   ApplyBar,
@@ -58,10 +58,19 @@ export const RespellPanel = ({ project, projectId, client, layerInfo }) => {
   const [includeMorphemes, setIncludeMorphemes] = useState(true);
   const [includeLexicon, setIncludeLexicon] = useState(false);
   const r = useRun();
-  // Respelling an entry renames it, which only its vocabulary's maintainers
-  // may do (core refuses anyone else). The others are listed, not ticked.
+  // Respelling an entry renames it, which only a maintainer of its
+  // vocabulary's project may do (core refuses anyone else). A vocabulary this
+  // project borrows is read only here. The others are listed, not ticked.
   const { user } = useAuth();
-  const canRespellIn = (vocab) => canManageVocabulary(vocab, user);
+  const canRespellIn = (vocab) =>
+    canManageVocabulary(vocab, isBorrowed(vocab, project) ? null : project, user);
+  // Who could respell a kept entry, by its vocabulary.
+  const lockedTitle = (vocabId) => {
+    const vocab = (project.vocabs || []).find((v) => v.id === vocabId);
+    return vocab && !isBorrowed(vocab, project)
+      ? `Needs a maintainer of “${project.name}”.`
+      : 'This vocabulary belongs to another project.';
+  };
   const writer = useWriter(project);
 
   const { apply, error } = useMemo(
@@ -254,8 +263,8 @@ export const RespellPanel = ({ project, projectId, client, layerInfo }) => {
                     />
                     <Change from={x.old} to={x.new} />
                     <span className="text-xs text-muted-foreground">
-                      {x.vocabName}
-                      {x.locked && ' · maintainers only'}
+                      <span dir="auto">{x.vocabName}</span>
+                      {x.locked && <span title={lockedTitle(x.vocabId)}> · maintainers only</span>}
                     </span>
                     {x.invalid === 'empty' && (
                       <span className="text-xs text-destructive">

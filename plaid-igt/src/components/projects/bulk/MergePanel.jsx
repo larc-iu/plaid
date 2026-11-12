@@ -30,7 +30,7 @@ import { countOf, useRun } from './bulkShared.js';
 import { ApplyBar, Checkbox, Progress } from './parts.jsx';
 import { usePreviewFocus } from './usePreviewFocus.js';
 import { textIncludes } from '@ui/domain/collation.js';
-import { canManageVocabulary } from '@ui/domain/permissions.js';
+import { canManageVocabulary, isBorrowed } from '@ui/domain/permissions.js';
 import { Notice } from '@ui/components/shared/Notice.jsx';
 import { useAuth } from '@/contexts/AuthContext';
 import { readVocabulary } from '@/domain/vocabCache';
@@ -98,10 +98,12 @@ export const MergePanel = ({ project, client }) => {
   const [vocabId, setVocabId] = useState(vocabs[0]?.id ?? '');
   const [items, setItems] = useState(null);
   const [fields, setFields] = useState([]);
-  // A merge deletes the merged entries, which only the vocabulary's
-  // maintainers may do (core refuses anyone else).
+  // A merge deletes the merged entries, which only a maintainer of the
+  // vocabulary's project may do (core refuses anyone else). A vocabulary this
+  // project borrows is read only here.
   const { user } = useAuth();
   const [canMerge, setCanMerge] = useState(false);
+  const [borrowed, setBorrowed] = useState(false);
   const [filter, setFilter] = useState('');
   const [chosen, setChosen] = useState(() => new Set());
   const [survivor, setSurvivor] = useState(null);
@@ -118,7 +120,9 @@ export const MergePanel = ({ project, client }) => {
     readVocabulary(client, vocabId)
       .then((layer) => {
         if (cancelled) return;
-        setCanMerge(canManageVocabulary(layer, user));
+        const own = !isBorrowed(layer, project);
+        setBorrowed(!own);
+        setCanMerge(canManageVocabulary(layer, own ? project : null, user));
         setItems(layer.items || []);
         setFields(normalizeVocabFields(readVocabFields(layer.config)));
       })
@@ -321,7 +325,13 @@ export const MergePanel = ({ project, client }) => {
         </p>
         {items && !canMerge && (
           <Notice tone="warning">
-            Only a maintainer of this vocabulary can merge its entries.
+            {borrowed ? (
+              'This vocabulary belongs to another project.'
+            ) : (
+              <>
+                Only a maintainer of “<span dir="auto">{project.name}</span>” can merge its entries.
+              </>
+            )}
           </Notice>
         )}
       </div>

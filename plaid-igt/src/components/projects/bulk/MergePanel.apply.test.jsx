@@ -43,7 +43,7 @@ const makeClient = ({ merged, refuse = null, links = LINKS } = {}) => {
         return {
           id,
           name: 'Lexicon',
-          maintainers: ['u1'],
+          project: 'p1',
           timeModified: null,
           config: {},
           ...(withItems ? { items: client.items } : {}),
@@ -75,7 +75,15 @@ const makeClient = ({ merged, refuse = null, links = LINKS } = {}) => {
 const mount = async (client) => {
   const view = await renderComponent(
     <MemoryRouter>
-      <MergePanel project={{ id: 'p1', vocabs: [{ id: 'v1', name: 'Lexicon' }] }} client={client} />
+      <MergePanel
+        project={{
+          id: 'p1',
+          name: 'Story',
+          maintainers: ['u1'],
+          vocabs: [{ id: 'v1', name: 'Lexicon', project: 'p1' }],
+        }}
+        client={client}
+      />
     </MemoryRouter>,
   );
   for (let i = 0; i < 4; i++) await view.step(async () => {});
