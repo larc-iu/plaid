@@ -132,6 +132,19 @@ max_wall_s: 1800                # per request (optional)
 
 5. Run it on the model once (`./run <id>`), read `record.json` and `check.json`, and make sure a failure is the assistant's and not the task's (an ambiguous prompt, a checker too strict about a reasonable alternative).
 
+## Job tasks
+
+A task may run an unattended job in place of panel turns: `job: {tasks: [gloss], documents: [Lezgi text 1]}`
+instead of `turns` (documents by name, every document of the project when left out, and `note` for the
+starter's instructions). The task's user starts the job, `plaid-job-worker --once` takes it with the run's model
+through the gate and runs it to its end, and the checker reads the job as `ctx.job` (kept as `job.json` beside
+`worker.log`). `checks/igt_job.py` judges an igt job: the job ended done, nothing a person made changed, every
+word that changed was a target and is the job's own machine proposal, no entry repeated, and per task either a
+stretch's targets analysed or left (`mode: stretch`) or a form's job words carrying the one analysis people gave
+it (`mode: harmonize`). `checks/igt_job_hand.py` makes a job's result by hand for `./validate`.
+`igt-job-stretch` and `igt-job-harmonize` are the two, validated only, never run against a model in the round
+that added them.
+
 ## The model gate
 
 `lib/gate.py` is an OpenAI-compatible proxy in `run.py`'s own process. `run.py` reads the key from the file `$PLAID_BENCH_KEY_FILE` names into the gate's memory once, and the gate sends requests on to `$PLAID_BENCH_UPSTREAM`. The key is sent upstream in a header and appears nowhere else: not in a file, a log, argv or a child's environment. The assistants get a dummy key and `--api-base http://127.0.0.1:<gate>/<run tag>/v1`.

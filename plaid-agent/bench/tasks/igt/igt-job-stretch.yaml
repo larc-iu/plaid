@@ -1,0 +1,15 @@
+# An unattended job over five blank sentences: one stretch, analysed or left,
+# written as the job's machine proposals, nothing a person made touched.
+id: igt-job-stretch
+app: igt
+project: igt-lezgi
+as: B
+job:
+  tasks: [gloss]
+  documents: [Lezgi text 1]
+check: igt_job
+args:
+  mode: stretch
+  document: Lezgi text 1
+  sentences: [1, 2, 3, 4, 5]
+max_wall_s: 3600

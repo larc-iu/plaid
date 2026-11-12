@@ -56,8 +56,11 @@ def test_every_task_loads_with_its_checker_setup_and_validation(bench_path):
     for t in tasks:
         path = pathlib.Path(t['_path'])
         assert t['id'] == path.stem and t['app'] == path.parent.name in APPS, path
-        assert t.get('project') and t.get('turns'), f'{t["id"]}: a task names a project and its turns'
-        assert all(isinstance(turn.get('say'), str) and turn['say'].strip() for turn in t['turns']), t['id']
+        assert t.get('project') and bool(t.get('turns')) != bool(t.get('job')), \
+            f'{t["id"]}: a task names a project and its turns, or the job it runs'
+        assert all(isinstance(turn.get('say'), str) and turn['say'].strip() for turn in t.get('turns') or []), t['id']
+        if t.get('job'):
+            assert t['job'].get('tasks') and set(t['job']['tasks']) <= {'translate', 'gloss', 'link'}, t['id']
         assert t.get('as', 'B') in ('A', 'B', 'C'), t['id']
         assert callable(load_checker(t['check'])), t['id']
         setup = path.with_suffix('.setup.py')

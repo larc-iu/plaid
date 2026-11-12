@@ -216,6 +216,48 @@ def service_command(task, model, api_base, core_url, project_id, window=None):
             *[str(x) for x in task.get('service_args') or []], project_id]
 
 
+class _JobDone(Exception):
+    """A job task's run is checked: the rest of run_one is a panel's."""
+
+
+def worker_command(model, api_base, core_url, window=None):
+    """The job worker's command line, taking one job and exiting."""
+    return [str(bl.AGENT_PY), '-m', 'plaid_agent.jobworker', '--url', core_url, '--model', f'openai/{model}',
+            '--api-base', api_base, '--timeout', str(SERVICE_TIMEOUT_S), '--once',
+            *(['--context-window', str(window)] if window else [])]
+
+
+def run_job_task(task, model, ctx, admin, user, project, core_url, api_base, sd: Path, env, rd: Path, turns,
+                 window=None):
+    """A task that runs an unattended job in place of panel turns: the task's
+    user starts it (``job: {tasks, documents, note}``, documents by name, all
+    of the project's when left out), the worker takes it and runs it to its
+    end, and the checker reads the job as ``ctx.job``. The job's record is
+    kept as job.json, and its one "turn" is the worker's run."""
+    spec = task['job']
+    names = spec.get('documents')
+    docs = None
+    if names:
+        by_name = {d['name']: d['id'] for d in project['documents']}
+        docs = [by_name[n] for n in names]
+    made = user.jobs.create(project['id'], task['app'], list(spec['tasks']), docs, spec.get('note'))
+    started = time.time()
+    with open(rd / 'worker.log', 'ab') as log:
+        proc = subprocess.Popen(worker_command(model, api_base, core_url, window), cwd=sd, env=env, stdout=log,
+                                stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, start_new_session=True)
+        try:
+            proc.wait(timeout=task.get('max_wall_s', 3600))
+        except subprocess.TimeoutExpired:
+            bl.kill_group(proc)
+    ctx.job = admin.jobs.get(made['id'])
+    (rd / 'job.json').write_text(json.dumps(ctx.job, ensure_ascii=False, indent=1, default=str))
+    state = ctx.job.get('state')
+    turns.append({'kind': 'job', 'n': 1, 'started': started, 'wall_s': round(time.time() - started, 1),
+                  'error': None if state == 'done' else f'the job ended {state}'})
+    ctx.conversation, ctx.meta = {'display': [], 'messages': []}, {}
+    say(f'  {task["id"]}/{model} job: {state} in {turns[-1]["wall_s"]}s')
+
+
 def run_one(task, model, rep, stamp_dir: Path, gate: Gate, code: Path, man, keep_db=False, windows=None):
     rd = stamp_dir / task['id'] / model / str(rep)
     rd.mkdir(parents=True, exist_ok=True)
@@ -244,6 +286,14 @@ def run_one(task, model, rep, stamp_dir: Path, gate: Gate, code: Path, man, keep
         env = dict(os.environ)
         env['PYTHONPATH'] = f'{code / "plaid-agent/src"}:{code / "plaid-client-py/src"}'
         env['OPENAI_API_KEY'] = 'bench-gate-holds-the-key'
+        if task.get('job'):
+            run_job_task(task, model, ctx, admin, user, project, core.url, gate.base(tag), sd, env, rd, turns,
+                         (windows or {}).get(model))
+            check = load_checker(task['check'])(ctx)
+            (rd / 'check.json').write_text(json.dumps(check, ensure_ascii=False, indent=1, default=str))
+            score['pass'] = bool(check.get('pass'))
+            score['measures'] = check.get('measures', {})
+            raise _JobDone()
         cmd = service_command(task, model, gate.base(tag), core.url, project['id'],
                               (windows or {}).get(model))
         svc = subprocess.Popen(cmd, cwd=sd, env=env, stdout=open(rd / 'service.log', 'ab'),
@@ -286,6 +336,8 @@ def run_one(task, model, rep, stamp_dir: Path, gate: Gate, code: Path, man, keep
         (rd / 'check.json').write_text(json.dumps(check, ensure_ascii=False, indent=1, default=str))
         score['pass'] = bool(check.get('pass'))
         score['measures'] = check.get('measures', {})
+    except _JobDone:
+        pass
     except Exception as e:  # noqa: BLE001
         score['harness_error'] = f'{type(e).__name__}: {e}'
         (rd / 'harness_error.txt').write_text(traceback.format_exc())
