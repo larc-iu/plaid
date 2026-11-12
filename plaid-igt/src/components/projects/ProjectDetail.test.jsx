@@ -42,7 +42,10 @@ vi.mock('@ui/components/assistant/subject.js', () => ({
   useAskAssistant: () => () => {},
 }));
 vi.mock('./assistant/adapter.js', () => ({ IGT_ASSISTANT: { app: 'plaid-igt-agent' } }));
-// The Jobs tab is a stand-in that says what it was handed.
+// The job screens are stand-ins that say what they were handed.
+vi.mock('./jobs/JobPage.jsx', () => ({
+  JobPage: ({ jobId }) => <div data-testid="job-page">{jobId}</div>,
+}));
 vi.mock('./jobs/ProjectJobs.jsx', () => ({
   ProjectJobs: ({ startJob }) => (
     <div data-testid="jobs-tab">{startJob ? 'with start' : 'without start'}</div>
@@ -233,6 +236,23 @@ describe('the project page header', () => {
     expect(drawn.find((t) => t.name === 'Settings').href).toBe('/projects/A/general');
     expect(drawn.find((t) => t.name === 'Export').href).toBe('/projects/A/export');
     await view.unmount();
+  });
+
+  it('opens a job’s page under the Jobs tab', async () => {
+    const d = deferred();
+    auth.client = d.client;
+    const page = await renderComponent(
+      <MemoryRouter initialEntries={['/projects/A/jobs/j1']}>
+        <Routes>
+          <Route path="/projects/:projectId/jobs/:jobId" element={<ProjectDetail />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    await page.step(async () => d.settle('A'));
+    await page.step(async () => {});
+    expect(tabs(page.container).find((t) => t.active).name).toBe('Jobs');
+    expect(page.container.querySelector('[data-testid="job-page"]').textContent).toBe('j1');
+    await page.unmount();
   });
 
   it('marks Settings active on a settings section', async () => {

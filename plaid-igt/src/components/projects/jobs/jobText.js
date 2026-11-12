@@ -21,5 +21,43 @@ export const tasksText = (tasks = []) => {
   return text[0].toUpperCase() + text.slice(1);
 };
 
+const FAILURE_TEXT = {
+  budget: 'over budget',
+  context: 'prompt too long',
+  output: 'answer too long',
+  repeating: 'model repeated itself',
+};
+
+// Why a sentence was left: `{reason, kind}` of a skipped entry.
+export const skippedText = ({ reason, kind }) => {
+  if (reason === 'too-long') return 'Too long';
+  if (reason === 'changed') return 'Changed during the job';
+  if (reason === 'failed') return FAILURE_TEXT[kind] ? `Failed: ${FAILURE_TEXT[kind]}` : 'Failed';
+  return reason;
+};
+
+export const HARMONIZE_LEFT_TEXT = {
+  'people-differ': 'People analyzed it in more than one way',
+  'no-clear-majority': 'No two-thirds majority',
+  'in-use': 'Document in use',
+};
+
+export const HARMONIZE_BY_TEXT = {
+  person: 'A person’s analysis',
+  majority: 'Majority',
+};
+
+// A stretch of time for a job, which runs for minutes or hours: "Under a
+// minute", "12 min", "2 h 5 min".
+export const durationText = (ms) => {
+  const minutes = Math.floor(Math.max(0, ms) / 60000);
+  if (minutes < 1) return 'Under a minute';
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  if (!hours) return `${minutes} min`;
+  return rest ? `${hours} h ${rest} min` : `${hours} h`;
+};
+
 // Where a job's page is.
 export const jobPath = (projectId, jobId) => `/projects/${projectId}/jobs/${jobId}`;
+export const jobsTabPath = (projectId) => `/projects/${projectId}?tab=jobs`;

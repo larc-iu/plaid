@@ -135,6 +135,8 @@ function App() {
                 <Route path="/projects/:projectId/services" element={<ProjectDetail />} />
                 <Route path="/projects/:projectId/export" element={<ProjectDetail />} />
                 <Route path="/projects/:projectId/export/:presetId" element={<ProjectDetail />} />
+                {/* A job's page, under the project's Jobs tab. */}
+                <Route path="/projects/:projectId/jobs/:jobId" element={<ProjectDetail />} />
                 <Route path="/projects/:projectId/general" element={<ProjectDetail />} />
                 <Route path="/projects/:projectId/text-and-vocab" element={<ProjectDetail />} />
                 <Route path="/projects/:projectId/annotation" element={<ProjectDetail />} />

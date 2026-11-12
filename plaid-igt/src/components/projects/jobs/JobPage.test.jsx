@@ -1,0 +1,375 @@
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { MemoryRouter } from 'react-router-dom';
+import { renderComponent, byText, all } from '@ui/test/renderComponent.jsx';
+import { ConfirmProvider } from '@ui/components/shared/ConfirmProvider';
+
+// The job page: the words for each state, the queue ahead of a waiting job,
+// Stop for whoever may stop it, the report once the job has ended, and a read
+// every JOB_POLL_MS that stops when the job does.
+const auth = vi.hoisted(() => ({ user: { id: 'w', isAdmin: false } }));
+vi.mock('../../../contexts/AuthContext', () => ({ useAuth: () => auth }));
+const feedback = vi.hoisted(() => ({ notifyError: vi.fn() }));
+vi.mock('@/utils/feedback', () => feedback);
+const { JobPage } = await import('./JobPage.jsx');
+const { JOB_POLL_MS } = await import('@ui/domain/jobs.js');
+
+const PROJECT = {
+  id: 'p1',
+  maintainers: ['m'],
+  writers: ['w', 'w2'],
+  readers: ['r'],
+  vocabs: [{ id: 'v1', name: 'Kukama lexicon' }],
+};
+
+const jobOf = (over = {}) => ({
+  id: 'j1',
+  project: 'p1',
+  app: 'igt',
+  tasks: ['translate', 'gloss', 'link'],
+  note: 'Gloss ka as GO.',
+  startedBy: 'w',
+  startedByName: 'Wren',
+  state: 'running',
+  phase: 'glossing',
+  reason: null,
+  message: 'Sentences 11 to 15 of 40.',
+  waitingFor: null,
+  currentDocument: 'd1',
+  model: 'glm-5.3-flash',
+  createdAt: '2026-11-12T10:00:00Z',
+  startedAt: '2026-11-12T10:01:00Z',
+  finishedAt: null,
+  ahead: null,
+  documents: [
+    {
+      documentId: 'd1',
+      name: 'Story A',
+      position: 0,
+      state: 'working',
+      sentences: 50,
+      targets: 40,
+      done: 10,
+      counts: { translations: 3, refreshed: 2, words: 31, links: 20, entries: 4 },
+      skipped: [],
+    },
+    {
+      documentId: 'd2',
+      name: null,
+      position: 1,
+      state: 'gone',
+      sentences: null,
+      targets: null,
+      done: null,
+      counts: {},
+      skipped: [],
+    },
+  ],
+  report: null,
+  ...over,
+});
+
+const REPORT = {
+  state: 'done',
+  tasks: ['translate', 'gloss', 'link'],
+  pausedForPeopleS: 720,
+  pausedForModelS: 0,
+  stopped: null,
+  totals: {
+    documentsDone: 1,
+    documentsInUse: 0,
+    documentsGone: 1,
+    documentsNotReached: 0,
+    sentences: 38,
+    translations: 3,
+    refreshed: 2,
+    words: 120,
+    links: 80,
+    entries: 9,
+    skippedTooLong: 1,
+    skippedFailed: 1,
+    skippedChanged: 0,
+    changed: 2,
+    protected: 0,
+  },
+  documents: [
+    {
+      documentId: 'd1',
+      name: 'Story A',
+      skipped: [
+        { sentence: 's12', sentenceId: 'sen12', reason: 'too-long', kind: null },
+        { sentence: 's30', sentenceId: 'sen30', reason: 'failed', kind: 'repeating' },
+      ],
+    },
+  ],
+  harmonize: {
+    changed: [
+      {
+        form: 'ka',
+        to: 'ka ‘go’',
+        by: 'person',
+        from: [{ analysis: 'ka ‘come’', count: 2, documents: ['d1'] }],
+      },
+    ],
+    left: [
+      {
+        form: 'tsa',
+        reason: 'no-clear-majority',
+        analyses: [
+          { analysis: 'tsa ‘that’', count: 2 },
+          { analysis: 'ts-a ‘DEM-3’', count: 2 },
+        ],
+      },
+    ],
+    changedMore: 0,
+    leftMore: 7,
+  },
+  entries: {
+    created: [{ id: 'e1', lexicon: 'v1', form: 'ka', gloss: 'go' }],
+    deleted: [],
+    unlinked: [{ id: 'e2', lexicon: 'v1', form: 'ra', gloss: 'eat' }],
+    createdMore: 3,
+    deletedMore: 0,
+    unlinkedMore: 0,
+  },
+};
+
+const mount = async (client, project = PROJECT) =>
+  renderComponent(
+    <MemoryRouter>
+      <ConfirmProvider>
+        <JobPage project={project} projectId="p1" jobId="j1" client={client} />
+      </ConfirmProvider>
+    </MemoryRouter>,
+  );
+
+const clientOf = (...answers) => {
+  let i = 0;
+  return {
+    jobs: {
+      get: vi.fn(async () => answers[Math.min(i++, answers.length - 1)]),
+      cancel: vi.fn(async () => jobOf({ state: 'stopping', message: null })),
+    },
+  };
+};
+
+const stopButton = (root) =>
+  all(root, 'button').find((b) => b.textContent.trim() === 'Stop') ?? null;
+const text = (root) => root.textContent.replace(/\s+/g, ' ');
+// The totals, label to value.
+const totals = (root) =>
+  Object.fromEntries(all(root, 'dl dt').map((dt) => [dt.textContent, dt.nextSibling.textContent]));
+
+beforeEach(() => {
+  auth.user = { id: 'w', isAdmin: false };
+  localStorage.clear();
+});
+afterEach(() => vi.useRealTimers());
+
+describe('the job page', () => {
+  it('says each state in words, the phase and message while running, a failure’s reason', async () => {
+    const cases = [
+      [
+        jobOf({ state: 'waiting', phase: null, message: null, ahead: 2 }),
+        ['Waiting', '2 jobs ahead'],
+      ],
+      [jobOf(), ['Running', 'Analyzing', 'Sentences 11 to 15 of 40.']],
+      [jobOf({ state: 'stopping' }), ['Stopping']],
+      [jobOf({ state: 'done', finishedAt: '2026-11-12T11:00:00Z' }), ['Done']],
+      [jobOf({ state: 'cancelled', reason: 'cancelled' }), ['Stopped']],
+      [
+        jobOf({ state: 'failed', reason: 'no-status-field', message: null }),
+        ['Failed', 'A lexicon has no Status field.'],
+      ],
+      [
+        jobOf({
+          state: 'failed',
+          reason: 'guidelines-too-long',
+          message: 'The project’s guidelines are 31,204 characters. A job reads at most 24,000.',
+        }),
+        ['Failed', 'The project’s guidelines are 31,204 characters.'],
+      ],
+    ];
+    for (const [job, words] of cases) {
+      const v = await mount(clientOf(job));
+      const status = v.container.querySelector('[role="status"]');
+      for (const w of words) expect(text(status)).toContain(w);
+      if (job.state !== 'running') expect(text(status)).not.toContain('Analyzing');
+      await v.unmount();
+    }
+    const first = await mount(clientOf(jobOf({ state: 'waiting', ahead: 0 })));
+    expect(text(first.container)).not.toContain('ahead');
+    await first.unmount();
+  });
+
+  it('lists the job’s facts and a row per document, a deleted one by that word', async () => {
+    const v = await mount(clientOf(jobOf()));
+    const t = text(v.container);
+    expect(t).toContain('Translations, analyses and lexicon links');
+    expect(t).toContain('Wren');
+    expect(t).toContain('glm-5.3-flash');
+    expect(t).toContain('Gloss ka as GO.');
+    const rows = all(v.container, 'tbody tr').map((r) => text(r));
+    expect(rows[0]).toContain('Story A');
+    expect(rows[0]).toContain('10 of 40');
+    expect(rows[0]).toContain('5'); // translations filled and replaced
+    expect(rows[1]).toContain('Deleted document');
+    expect(byText(v.container, 'a', 'Story A').getAttribute('href')).toBe(
+      '/projects/p1/documents/d1',
+    );
+    await v.unmount();
+  });
+
+  it('offers Stop to the starter, a maintainer and an admin, never to another writer or a reader', async () => {
+    const who = [
+      [{ id: 'w', isAdmin: false }, true],
+      [{ id: 'm', isAdmin: false }, true],
+      [{ id: 'a', isAdmin: true }, true],
+      [{ id: 'w2', isAdmin: false }, false],
+      [{ id: 'r', isAdmin: false }, false],
+    ];
+    for (const [user, shown] of who) {
+      auth.user = user;
+      const v = await mount(clientOf(jobOf()));
+      expect(!!stopButton(v.container)).toBe(shown);
+      await v.unmount();
+    }
+    // A starter who no longer writes the project cannot stop it.
+    auth.user = { id: 'w', isAdmin: false };
+    const demoted = await mount(clientOf(jobOf()), { ...PROJECT, writers: [], readers: ['w'] });
+    expect(stopButton(demoted.container)).toBe(null);
+    await demoted.unmount();
+    // Nor is there anything to stop once it is stopping or has ended.
+    for (const state of ['stopping', 'done', 'cancelled', 'failed']) {
+      const v = await mount(clientOf(jobOf({ state })));
+      expect(stopButton(v.container)).toBe(null);
+      await v.unmount();
+    }
+  });
+
+  it('asks before it stops the job, and shows what the cancel answers', async () => {
+    const client = clientOf(jobOf());
+    const v = await mount(client);
+    await v.step(() => stopButton(v.container).click());
+    expect(text(document.body)).toContain('Stop the job?');
+    expect(text(document.body)).toContain('What it wrote stays.');
+    expect(client.jobs.cancel).not.toHaveBeenCalled();
+    const confirmStop = all(document.body, '[role="alertdialog"] button').find(
+      (b) => b.textContent.trim() === 'Stop',
+    );
+    await v.step(() => confirmStop.click());
+    await v.step(async () => {});
+    expect(client.jobs.cancel).toHaveBeenCalledWith('j1');
+    expect(text(v.container.querySelector('[role="status"]'))).toContain('Stopping');
+    await v.unmount();
+  });
+
+  it('reads the job again while it is active, and stops reading once it has ended', async () => {
+    vi.useFakeTimers();
+    const client = clientOf(
+      jobOf(),
+      jobOf({ message: 'Sentences 16 to 20 of 40.' }),
+      jobOf({ state: 'done', finishedAt: '2026-11-12T11:00:00Z', report: REPORT }),
+    );
+    const v = await mount(client);
+    expect(client.jobs.get).toHaveBeenCalledTimes(1);
+    await v.step(() => vi.advanceTimersByTimeAsync(JOB_POLL_MS));
+    expect(client.jobs.get).toHaveBeenCalledTimes(2);
+    expect(text(v.container)).toContain('Sentences 16 to 20 of 40.');
+    await v.step(() => vi.advanceTimersByTimeAsync(JOB_POLL_MS));
+    expect(client.jobs.get).toHaveBeenCalledTimes(3);
+    expect(text(v.container)).toContain('Report');
+    await v.step(() => vi.advanceTimersByTimeAsync(JOB_POLL_MS * 4));
+    expect(client.jobs.get).toHaveBeenCalledTimes(3);
+    await v.unmount();
+  });
+
+  it('reads a finished job once', async () => {
+    vi.useFakeTimers();
+    const client = clientOf(jobOf({ state: 'cancelled', finishedAt: '2026-11-12T11:00:00Z' }));
+    const v = await mount(client);
+    await v.step(() => vi.advanceTimersByTimeAsync(JOB_POLL_MS * 3));
+    expect(client.jobs.get).toHaveBeenCalledTimes(1);
+    await v.unmount();
+  });
+
+  it('shows the report: totals, skipped sentences, harmonize, entries and their cuts', async () => {
+    const job = jobOf({ state: 'done', finishedAt: '2026-11-12T11:00:00Z', report: REPORT });
+    const v = await mount(clientOf(job));
+    const report = v.container.querySelector('section[aria-label="Report"]');
+    const t = text(report);
+    for (const heading of [
+      'Totals',
+      'Skipped sentences',
+      'Analyses made consistent',
+      'Forms left inconsistent',
+      'Entries',
+    ]) {
+      expect(all(report, 'h3').map((h) => h.textContent)).toContain(heading);
+    }
+    const sums = totals(report);
+    expect(sums['Documents deleted']).toBe('1');
+    expect(sums).not.toHaveProperty('Documents in use');
+    expect(sums['Words analyzed']).toBe('120');
+    expect(sums['Sentences skipped as too long']).toBe('1');
+    expect(sums['Changes not written, sentence changed meanwhile']).toBe('2');
+    expect(sums['Paused for people']).toBe('12 min');
+    expect(sums).not.toHaveProperty('Waiting for the model');
+    // A skipped sentence links to it on the grid, with why it was skipped.
+    const s12 = byText(report, 'a', 's12');
+    expect(s12.getAttribute('href')).toBe(
+      '/projects/p1/documents/d1?tab=analyze&focusSentence=sen12',
+    );
+    expect(t).toContain('s12 Too long');
+    expect(t).toContain('s30 Failed: model repeated itself');
+    // Harmonize.
+    expect(t).toContain('ka ‘go’');
+    expect(t).toContain('A person’s analysis');
+    expect(t).toContain('ka ‘come’ ×2');
+    expect(t).toContain('No two-thirds majority');
+    expect(t).toContain('And 7 more forms.');
+    // Entries, each list with its own cut, and the lexicon's machine drafts.
+    expect(t).toContain('ka ‘go’');
+    expect(t).toContain('And 3 more entries.');
+    expect(t).toContain('Machine drafts with no links');
+    expect(t).toContain('ra ‘eat’');
+    expect(t).not.toContain('Deleted as unlinked');
+    expect(byText(report, 'a', 'Machine drafts in Kukama lexicon').getAttribute('href')).toBe(
+      '/vocabularies/v1?status=machine',
+    );
+    await v.unmount();
+  });
+
+  it('leaves out what a job without linking did not do, and says when core stopped it', async () => {
+    const report = {
+      ...REPORT,
+      tasks: ['translate'],
+      stopped: 'without-worker',
+      harmonize: { changed: [], left: [], changedMore: 0, leftMore: 0 },
+      entries: { created: [], deleted: [], unlinked: [] },
+    };
+    const job = jobOf({ state: 'cancelled', tasks: ['translate'], report });
+    const v = await mount(clientOf(job));
+    const section = v.container.querySelector('section[aria-label="Report"]');
+    const t = text(section);
+    expect(t).toContain('Stopped with no worker running.');
+    expect(totals(section)['Translations filled']).toBe('3');
+    expect(totals(section)).not.toHaveProperty('Words analyzed');
+    expect(t).not.toContain('Machine drafts');
+    expect(t).not.toContain('Analyses made consistent');
+    await v.unmount();
+  });
+
+  it('says a job it cannot read is not found', async () => {
+    const client = {
+      jobs: {
+        get: vi.fn(async () => {
+          throw Object.assign(new Error('HTTP 403'), { status: 403 });
+        }),
+      },
+    };
+    const v = await mount(client);
+    expect(text(v.container)).toContain('Job not found.');
+    expect(byText(v.container, 'a', 'All jobs').getAttribute('href')).toBe('/projects/p1?tab=jobs');
+    await v.unmount();
+  });
+});

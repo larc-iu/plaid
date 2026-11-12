@@ -48,6 +48,7 @@ const GuidelinesTab = lazyNamed(
 );
 const ProjectExport = lazyNamed(() => import('./ProjectExport.jsx'), 'ProjectExport');
 const ProjectJobs = lazyNamed(() => import('./jobs/ProjectJobs.jsx'), 'ProjectJobs');
+const JobPage = lazyNamed(() => import('./jobs/JobPage.jsx'), 'JobPage');
 
 // The settings sections live behind these path suffixes; keeping them in the
 // URL means deep links and the back button still land on the right section.
@@ -69,12 +70,12 @@ const SECTION_TITLES = {
 // and a preset's editor is a page of its own at /projects/:id/export/:presetId.
 export const ProjectDetail = () => {
   const { projectId } = useParams();
-  const { section, onExport } = usePlace(projectId);
+  const { section, onExport, onJob } = usePlace(projectId);
   // "<Section> · <Project> · Plaid IGT" on a settings section, else
   // "<Project> · Plaid IGT".
   return (
     <ProjectTabPage
-      title={onExport ? 'Export' : section ? SECTION_TITLES[section] : null}
+      title={onExport ? 'Export' : onJob ? 'Job' : section ? SECTION_TITLES[section] : null}
       tabs={ProjectTabs}
       withDocuments
     >
@@ -83,21 +84,26 @@ export const ProjectDetail = () => {
   );
 };
 
-// Where on the project screen the path is: a settings section, Export, or
-// neither (a content tab, in `?tab=`). A section may carry a sub-path, as
-// /export/:presetId opens one preset's editor in place.
+// Where on the project screen the path is: a settings section, Export, a
+// job's page (under the Jobs tab), or none of them (a content tab, in
+// `?tab=`). A section may carry a sub-path, as /export/:presetId opens one
+// preset's editor in place.
 const usePlace = (projectId) => {
   const { pathname } = useLocation();
   const section =
     Object.keys(SECTION_TITLES).find((s) => pathname.startsWith(`/projects/${projectId}/${s}`)) ??
     null;
-  return { section, onExport: pathname.startsWith(`/projects/${projectId}/export`) };
+  return {
+    section,
+    onExport: pathname.startsWith(`/projects/${projectId}/export`),
+    onJob: pathname.startsWith(`/projects/${projectId}/jobs/`),
+  };
 };
 
 // The open tab, for the strip and the body alike.
 const useProjectTab = (projectId, project) => {
   const { user } = useAuth();
-  const { section, onExport } = usePlace(projectId);
+  const { section, onExport, onJob } = usePlace(projectId);
   const canManage = canManageProject(project, user);
   // `ready` while the project is still loading would correct a good link:
   // `canManage` answers false until it lands, so the list can still grow.
@@ -106,7 +112,13 @@ const useProjectTab = (projectId, project) => {
     aliases: TAB_ALIASES,
     ready: !!project,
   });
-  const active = onExport ? 'export' : section && canManage ? 'settings' : contentTab;
+  const active = onExport
+    ? 'export'
+    : onJob
+      ? 'jobs'
+      : section && canManage
+        ? 'settings'
+        : contentTab;
   return { active, section, tabHref, canManage };
 };
 
@@ -143,7 +155,7 @@ const ProjectTabs = ({ projectId, project }) => {
 };
 
 const ProjectBody = ({ project, projectId, client, documents, reload }) => {
-  const { presetId = null } = useParams();
+  const { presetId = null, jobId = null } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
   const { user } = useAuth();
@@ -239,7 +251,11 @@ const ProjectBody = ({ project, projectId, client, documents, reload }) => {
       />
     );
   } else if (active === 'jobs') {
-    body = <ProjectJobs projectId={projectId} client={client} />;
+    body = jobId ? (
+      <JobPage project={project} projectId={projectId} jobId={jobId} client={client} />
+    ) : (
+      <ProjectJobs projectId={projectId} client={client} />
+    );
   } else if (active === 'search') {
     body = (
       <>
