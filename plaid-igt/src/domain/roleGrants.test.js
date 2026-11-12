@@ -11,10 +11,10 @@ describe('the role hints', () => {
 
   // A writer of a vocabulary's project adds its entries and edits their
   // fields (SPEC 5.4, Luke's ruling 11.4).
-  it('say a writer links vocabulary and adds its entries', () => {
+  it('say a writer links vocabulary, and adds and edits its entries', () => {
     const writer = ROLE_OPTIONS.find((o) => o.value === 'writer');
     expect(writer.hint).toBe(
-      'Also edits and deletes documents, links vocabulary and adds its entries.',
+      'Also edits and deletes documents, links vocabulary, and adds and edits its entries.',
     );
   });
 });
