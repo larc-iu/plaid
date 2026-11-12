@@ -648,11 +648,20 @@ ALREADY_PLANNED = ('Nothing was staged again: the same call earlier in this turn
 # A reply that says this turn planned changes, when it planned none: the user
 # is told to approve a card that does not exist. Seen in every app on a 27B
 # model (bench build-q38-1: ten of 35 failed runs). The phrases are the ones
-# those replies used. Read sentence by sentence, and an offer ("I'll plan it",
-# "say the word") is not a claim that it was done.
+# those replies used, and those of glm-5.3-flash after the stretch line ("I
+# read the first five sentences and staged ...", "The plan card holds three
+# changes", bench glm53-stretch-2). Read sentence by sentence. A claim does
+# not count where the sentence offers to plan before it ("I'll plan it and you
+# approve it"), places the plan in an earlier message ("the plan from your
+# last message"), or where the three words before it deny it, make it a
+# condition or put it in the future ("nothing was staged", "can be staged",
+# "to be planned"). English only: a reply in another language is never read
+# as a claim.
+_DONE = r"(?:staged|planned|queued|prepared|drafted)"
 _CLAIMED = [re.compile(p, re.I) for p in (
-    # "I've staged", "I have planned the change", "I've prepared a plan".
-    r"\b(?:i['’]ve|i have|we['’]ve|we have)\s+(?:now\s+|just\s+|also\s+)?(?:staged|planned|prepared|queued)\b",
+    # "Twelve values are staged", "three changes have been staged".
+    rf"\b(?:is|are|was|were|been|be|being)\s+(?:(?:now|all|already|also|just|both)\s+)?{_DONE}\b"
+    r"(?!\s+(?:nothing|none|no)\b)",
     # "Here's the staged plan", "Staged plan:".
     r"\bstaged (?:plan|change|changes|edit|edits)\b",
     # "**Plan:**", "**Planned (1 change):**".
@@ -661,21 +670,68 @@ _CLAIMED = [re.compile(p, re.I) for p in (
     r"\b(?:the|a|your) pending (?:plan|split|merge|change|changes|card|edit|edits)\b",
     # "this turn's plan holds just that one change", "this turn holds just that".
     r"\b(?:plan|this turn) holds\b(?! nothing| no\b)",
+    # "The plan card holds three changes", "the card lists 12 words", "your plan is ready".
+    r"\b(?:the|this|your|my) (?:plan card|plan|card) (?:(?:now|already|also) )?(?:holds|contains|lists|has|sets"
+    r"|covers|marks|includes|shows|changes|touches|adds|fixes|restores|is ready|is waiting|waits)\b"
+    r"(?!\s+(?:nothing|no)\b)",
+    # "They are on the plan card".
+    r"\b(?:on|in) (?:the|your|this) (?:plan )?card\b",
+    # "waiting for your approval", "ready for your approval".
+    r"\b(?:waiting for|awaiting|ready for) (?:your )?approval\b|\bwaiting for you to approve\b",
 )]
-_APPROVE = re.compile(r"\bapprove (?:it|the|this|that|them|to|and|when|once)\b", re.I)
-_OFFER = re.compile(r"\b(?:i['’]ll|i will|i can|i could|i would|i['’]d|shall i|should i|want me|would you like"
-                    r"|if you['’]d like|if you want|say the word|let me know|tell me)\b", re.I)
-_SENTENCE = re.compile(r"(?<=[.!?:])\s+|\n+")
+# "I read the first five and staged ...", "we went through s1–s5 and queued
+# ...": a verb of _DONE whose nearest subject before it is I or we.
+_DONE_VERB = re.compile(rf"\b{_DONE}\b(?!\s+(?:nothing|none|no)\b)", re.I)
+_SUBJECT = re.compile(r"\b(i|we|you|they|he|she|someone|somebody|nobody)\b", re.I)
+_DETERMINER = re.compile(r"\b(?:the|a|an|this|that|these|those|your|my|our|its|any|every|each)\s+$", re.I)
+_APPROVE = re.compile(r"\bapprove (?:it|the|this|that|them|to|and|when|once|on)\b", re.I)
+# What the three words before a claim may not hold: a denial, a condition, a
+# future. Before "approve" only a denial counts, since "once you approve the
+# card" presupposes a card as much as "approve the card" does.
+_DENIED = re.compile(r"\b(?:no|not|nothing|none|never|without|nor)\b|n['’]t\b", re.I)
+_UNSAID = re.compile(r"\b(?:can|could|would|will|shall|should|might|may|must|if|once|when|until|unless)\b"
+                     r"|['’]ll\b|\bto be\b|\bto have\b|\bto$", re.I)
+_OFFER = re.compile(r"\b(?:i['’]ll|i will|i can|i could|i would|i['’]d|shall i|should i|(?:want|like) me to"
+                    r"|let me)\s+(?:\w+\s+){0,2}?(?:plan|stage|queue|prepare|draft|make|set|mark|fix|do|change"
+                    r"|write|add|apply)\b|\b(?:if you['’]d like|if you want|if you wish|say the word)\b", re.I)
+_EARLIER = re.compile(r"\b(?:earlier|previous(?:ly)?|last (?:message|turn|time|plan)|you approved"
+                      r"|(?:was|were|been) (?:applied|approved|written)|already (?:applied|approved))\b", re.I)
+_SENTENCE = re.compile(r"(?<=[.!?:;])\s+|\n+")
+
+
+def _last_words(text: str, n: int = 3) -> str:
+    return ' '.join(text.split()[-n:])
+
+
+def _said(s: str) -> bool:
+    """Whether the sentence ``s`` claims this turn's plan."""
+    if _EARLIER.search(s):
+        return False
+    for p in _CLAIMED:
+        for m in p.finditer(s):
+            before = s[:m.start()]
+            if not _OFFER.search(before) and not _DENIED.search(_last_words(before)) \
+                    and not _UNSAID.search(_last_words(before)):
+                return True
+    for m in _APPROVE.finditer(s):
+        before = s[:m.start()]
+        if not _OFFER.search(before) and not _DENIED.search(_last_words(before)):
+            return True
+    for m in _DONE_VERB.finditer(s):
+        before = s[:m.start()]
+        subjects = _SUBJECT.findall(before)
+        if subjects and subjects[-1].lower() in ('i', 'we') and not _DETERMINER.search(before) \
+                and not _OFFER.search(before) and not _DENIED.search(_last_words(before)) \
+                and not _UNSAID.search(_last_words(before)):
+            return True
+    return False
 
 
 def claims_a_plan(text: Optional[str]) -> bool:
-    """Whether ``text`` tells the user a plan was made: says it staged,
-    planned or prepared changes, or tells them to approve (unless the same
-    sentence offers to plan, "I'll plan it and you approve it")."""
-    for s in _SENTENCE.split(text or ''):
-        if any(p.search(s) for p in _CLAIMED) or (_APPROVE.search(s) and not _OFFER.search(s)):
-            return True
-    return False
+    """Whether ``text`` tells the user a plan was made in this turn: says it
+    staged, planned, queued, prepared or drafted changes, that they are on
+    the plan card or wait for approval, or tells them to approve."""
+    return any(_said(s) for s in _SENTENCE.split(text or ''))
 
 
 # A reply that writes a tool call out as text instead of making it: small
