@@ -439,6 +439,41 @@
       (is (some? row))
       (is (nil? (:name row))))))
 
+(deftest every-end-settles-the-rows-it-did-not-finish
+  ;; REV-J-A-2: the job page reads the rows, so a job that ended shows no
+  ;; document "Waiting" or "Working". A row the worker finished keeps its state.
+  (let [{:keys [p st d1 d2]} (jh/world!)
+        states (fn [j] (into {} (map (juxt :document-id :state)) (:job/documents (get-job j))))
+        put! (fn [j worker d state]
+               (fix/assert-ok (call admin-request :put (str "/api/v1/jobs/" j "/documents/" d)
+                                    {:worker-id worker :state state})))]
+    (testing "a waiting job cancelled"
+      (let [j (job-id (start! st p))]
+        (fix/assert-ok (call st :post (str "/api/v1/jobs/" j "/cancel")))
+        (is (= {d1 "not-reached" d2 "not-reached"} (states j)))))
+    (doseq [[from to] [["running" "done"] ["running" "cancelled"] ["running" "failed"]
+                       ["stopping" "cancelled"] ["stopping" "failed"]]]
+      (testing (str "a " from " job its worker finishes " to)
+        (let [j (running-job! st p from)]
+          (put! j jh/worker-a d2 "working")
+          (is (= {d1 "waiting" d2 "working"} (states j)))
+          (fix/assert-ok (finish! j jh/worker-a to))
+          (is (= {d1 "not-reached" d2 "not-reached"} (states j))))))
+    (testing "a deferred row, and a row the worker finished"
+      (let [j (running-job! st p "running")]
+        (put! j jh/worker-a d2 "done")
+        (put! j jh/worker-a d1 "deferred")
+        (fix/assert-ok (finish! j jh/worker-a "done"))
+        (is (= {d1 "not-reached" d2 "done"} (states j)))))
+    (testing "a job failed at a heartbeat, before its worker sends the report"
+      (let [j (running-job! st p "running")]
+        (put! j jh/worker-a d2 "working")
+        (fix/assert-no-content (call admin-request :delete (str "/api/v1/projects/" p "/writers/starter@example.com")))
+        (is (= "job-failed" (-> (heartbeat! j jh/worker-a) :body :code)))
+        (is (= {d1 "not-reached" d2 "not-reached"} (states j)))
+        (jh/grant! p "writers" "starter@example.com")
+        (fix/assert-ok (finish! j jh/worker-a "failed"))))))
+
 (deftest an-end-core-decides-clears-the-workers-line
   (let [{:keys [p st]} (jh/world!)
         line {:message "Sentences 1 to 5 of 40."}

@@ -366,7 +366,9 @@
                               :lexicons []})
 
 (defn- settle-rows!
-  "Mark every document row a job did not finish `not-reached`."
+  "Mark every document row a job did not finish `not-reached`. Every end
+  calls it, whoever decides the end, so a job that ended shows no document
+  waiting or working."
   [tx job-id now]
   (psc/execute! tx {:update :job_documents
                     :set {:state "not-reached" :updated_at now}
@@ -451,10 +453,11 @@
           by {:cancelled_by (or (:cancelled_by row) user-id)}]
       (case (:state row)
         "waiting"
-        (psc/execute! tx {:update :jobs
-                          :set (merge by {:state "cancelled" :reason "cancelled" :message nil
-                                          :finished_at (psc/instant->iso now)})
-                          :where [:= :id (str job-id)]})
+        (do (psc/execute! tx {:update :jobs
+                              :set (merge by {:state "cancelled" :reason "cancelled" :message nil
+                                              :finished_at (psc/instant->iso now)})
+                              :where [:= :id (str job-id)]})
+            (settle-rows! tx job-id (psc/instant->iso now)))
 
         ("running" "stopping")
         (if (lease-live? row now)
@@ -540,14 +543,16 @@
         (refuse 409 finished-body)
 
         (not (starter-writes? tx (:project_id row) (:started_by row)))
-        (do (psc/execute! tx {:update :jobs
-                              :set {:state "failed" :reason "starter-access" :message nil
-                                    :finished_at (psc/now-iso)
-                                    :current_document nil :waiting_for nil}
-                              :where [:= :id (str job-id)]})
+        (let [now (psc/now-iso)]
+          (psc/execute! tx {:update :jobs
+                            :set {:state "failed" :reason "starter-access" :message nil
+                                  :finished_at now
+                                  :current_document nil :waiting_for nil}
+                            :where [:= :id (str job-id)]})
+          (settle-rows! tx job-id now)
             ;; Committed, then refused: the worker learns of it from the
             ;; answer, and the job stays failed whatever it does next.
-            ::starter-access)
+          ::starter-access)
 
         :else
         (do (psc/execute! tx {:update :jobs
@@ -636,6 +641,7 @@
                                 :current_document nil
                                 :waiting_for nil}
                           :where [:= :id (str job-id)]})
+        (settle-rows! tx job-id (psc/now-iso))
         (get tx job-id)))))
 
 ;; ============================================================
