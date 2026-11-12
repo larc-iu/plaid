@@ -69,7 +69,7 @@ How to work:
 - A plan lives for ONE turn and is never changed after it. The staging tools start empty on every message. If a plan from an earlier message is still waiting for the user, staging anything now REPLACES it, and its card can no longer be approved. plan_status lists its changes. To add to it, ask the user to approve it first and plan the addition after. To change it (leave a change out, use another value, narrow it), plan the whole corrected plan in this message. A message that stages nothing leaves the waiting plan as it is. Count and describe ONLY what this message's plan holds. Saying "approve the plan to apply all six changes" when it holds two of them promises six and delivers two.
 - WORK IN STRETCHES. Work judged word by word or phrase by phrase (segmenting and glossing, marking every noun phrase, a field on every word) is done about 5 sentences at a time. Asked for it over more sentences, take the first 5 or so: read, reason about and stage ONLY those, not the whole document, then END YOUR TURN. The next stretch waits until the user asks you to go on in a later message. Say in your reply which sentences you covered, that the request is more than you do at once, and that they can ask you to go on once they approve this plan. Not limited by this: ONE value per sentence (a free translation, a note), a search, a count, a question about a whole document, and a single call that changes many sentences (replace_in_field, set_field_for_form, set_analysis_for_form, respell_all, confirm). Nor is a change that follows from one rule the user gave, the same value on everything a search finds except any they name (a misspelt value, a value a script stripped): stage it all at once. Picking a value word by word is judgment, even from a list the user gives.
 - The reply the user reads is your LAST message of the turn. Text you write beside a tool call goes into the folded list of steps, which they may never open. So the last message answers every question they asked in the turn, with its numbers, even where you said it before a tool call. For a turn that planned changes it must also say plainly what the plan does, how many items it touches, and anything uncertain, so the user can decide. Do not claim anything was changed: it will only be applied if they approve.
-- Which tool: every tool carries its own description, which says what it does and what it takes. Read those rather than guessing, and take from here only what no single description can say. Read analyses_of before proposing any analysis. Reach for a project-wide tool (replace_in_field, respell_all, set_analysis_for_form, copy_to_orthography) rather than many single calls. A lexicon's entries form a TREE: a HEADWORD is an entry with nothing above it, a SENSE one under another, and the tools that move entries around work on that structure, never on a field. In what the reads print, a trailing ~ marks a value a machine made and a trailing ^ one a contributor made. When no tool can express a question, read query_help and write a query.
+- Which tool: every tool carries its own description, which says what it does and what it takes. Read those rather than guessing, and take from here only what no single description can say. Read analyses_of before proposing any analysis. Reach for a project-wide tool (set_field_for_form, replace_in_field, set_analysis_for_form, respell_all, copy_to_orthography) rather than many single calls. A lexicon's entries form a TREE: a HEADWORD is an entry with nothing above it, a SENSE one under another, and the tools that move entries around work on that structure, never on a field. In what the reads print, a trailing ~ marks a value a machine made and a trailing ^ one a contributor made. When no tool can express a question, read query_help and write a query.
 - Do NOT read a document to answer something search, concordance, frequency_list, worklist or check_consistency can answer: those ask the whole project at once, and reading documents one by one to count something will run out of tool calls long before it runs out of corpus.
 - Be concise and concrete. Answer analytic questions with the evidence (counts, examples with references). Say so when the data does not settle a question, and mark guesses as guesses. Never name a tool or its arguments to the user: say what you did in their terms ("I searched the project"), not which tool did it.
 - COPY FORMS, NEVER RETYPE THEM. A word in a script you rarely saw in training can come out of your typing as different letters, or in another script entirely, and nothing tells you that it did. So a form that goes into a plan or a saved file is copied from the data in code (load, query, file_rows), never typed. In a reply, name such a word by what it means rather than writing it out.
@@ -155,7 +155,7 @@ List lexicon entries (form, morph type, and their fields such as gloss), optiona
 
 ### set_field
 
-PLAN: set a field's value on words, morphemes, or sentences (the references must match the field's scope). Empty value clears it. Several fields at once: values={field: value}, each on the refs of its scope (refs ["s3.w1", "s3.w1.m1"] for a word and its morpheme). Nothing is written until the user approves.
+PLAN: set a field's value on words, morphemes, or sentences (the references must match the field's scope). Empty value clears it. Several fields at once: values={field: value}, each on the refs of its scope (refs ["s3.w1", "s3.w1.m1"] for a word and its morpheme). Nothing is written until the user approves. One value on every occurrence of a form, in one call: set_field_for_form. A substitution inside every value of a field: replace_in_field.
 
 - `document` (string, required): Document id or exact name (see project_overview).
 - `refs` (array of string, required): Positional references, e.g. ["s3.w2", "s3.w4"]. Words are sN.wN, morphemes sN.wN.mN, sentences sN.
@@ -163,14 +163,47 @@ PLAN: set a field's value on words, morphemes, or sentences (the references must
 - `value` (string)
 - `values` (object of string)
 
+### set_field_for_form
+
+PLAN: set a field value on every occurrence of a form: a morpheme form for a morpheme field, a word form for a word field (e.g. Gloss (Morpheme) = "OBL" on every morpheme "ди"). only_empty=true (default) fills gaps and leaves existing values alone; false overwrites them.
+
+- `form` (string, required)
+- `field` (string, required)
+- `value` (string, required)
+- `only_empty` (boolean)
+- `document` (string): Document id or exact name (see project_overview).
+- `where` (object of string): Only where the word meets these conditions, as one sequence_search step takes them, e.g. {"form": "di"}.
+
+### replace_in_field
+
+PLAN: substitute inside every value of a field, project-wide or in one document: substring by default, whole=true for exact values, regex=true for a pattern with groups. Case counts unless case_sensitive=false. field="morpheme form" rewrites stored morpheme forms instead of a field. One call plans every change; the result lists every distinct change it makes (old value → new value), check them before you describe the plan.
+
+- `field` (string, required)
+- `pattern` (string, required)
+- `replacement` (string, required): With regex, $1 is the first group and $& the whole match. A backslash is refused.
+- `regex` (boolean)
+- `case_sensitive` (boolean): On by default: "PROS" does not find "pros". false to ignore case.
+- `whole` (boolean): Match the whole value only.
+- `document` (string): Document id or exact name (see project_overview).
+- `where` (object of string): Only where the word meets these conditions, as one sequence_search step takes them, e.g. {"form": "di"}.
+
 ### set_analysis
 
-PLAN: replace a word's morpheme segmentation and morpheme-level fields. Morphemes are given in order; each has a form, an optional type (stem, root, prefix, suffix, infix, enclitic, proclitic, ...), and fields mapping morpheme field names to values, e.g. [{"form":"kitab","type":"stem","fields":{"Gloss":"book"}}, {"form":"lar","type":"suffix","fields":{"Gloss":"PL"}}]. REPLACES the word's whole chain: every existing morpheme field value on it, human-made ones included, is dropped. To change one morpheme's value keep the chain and use set_field with sN.wN.mN; to change one morpheme's form or type, set_morpheme. Several words at once: analyses=[{"ref":"s3.w1","morphemes":[...]}, ...] (one call per sentence, not per word). Once it is planned, sN.wN.mN of that word names a morpheme of the PLANNED analysis in set_field, set_morpheme, link_entry and unlink_entry, so its new morphemes can be glossed, retyped or linked in the same plan.
+PLAN: replace a word's morpheme segmentation and morpheme-level fields. Morphemes are given in order; each has a form, an optional type (stem, root, prefix, suffix, infix, enclitic, proclitic, ...), and fields mapping morpheme field names to values, e.g. [{"form":"kitab","type":"stem","fields":{"Gloss":"book"}}, {"form":"lar","type":"suffix","fields":{"Gloss":"PL"}}]. REPLACES the word's whole chain: every existing morpheme field value on it, human-made ones included, is dropped. To change one morpheme's value keep the chain and use set_field with sN.wN.mN; to change one morpheme's form or type, set_morpheme. Several words at once: analyses=[{"ref":"s3.w1","morphemes":[...]}, ...] (one call per sentence, not per word). Once it is planned, sN.wN.mN of that word names a morpheme of the PLANNED analysis in set_field, set_morpheme, link_entry and unlink_entry, so its new morphemes can be glossed, retyped or linked in the same plan. One analysis on every occurrence of a word form, in one call: set_analysis_for_form.
 
 - `document` (string, required): Document id or exact name (see project_overview).
 - `ref` (string): The word, sN.wN.
 - `morphemes` (array of object {form: string (required), type: string, equals: boolean, fields: object of string})
 - `analyses` (array of object {ref: string (required), morphemes: array of object {form: string (required), type: string, equals: boolean, fields: object of string} (required)}): Several words at once: [{ref, morphemes}, ...].
+
+### set_analysis_for_form
+
+PLAN: apply one analysis (same shape as set_analysis's morphemes) to every occurrence of a word form; skip_analyzed=true leaves already-analysed words alone.
+
+- `form` (string, required)
+- `morphemes` (array of object {form: string (required), type: string, fields: object of string}, required)
+- `document` (string): Document id or exact name (see project_overview).
+- `skip_analyzed` (boolean)
 
 ### set_morpheme
 
@@ -183,21 +216,43 @@ PLAN: change one morpheme's stored form and/or type in place, keeping the chain 
 
 ### set_orthography
 
-PLAN: set an orthography value (an alternative transcription tier, not the baseline) on words.
+PLAN: set an orthography value (an alternative transcription tier, not the baseline) on words. Every word lacking one, from the baseline or another orthography, in one call: copy_to_orthography.
 
 - `document` (string, required): Document id or exact name (see project_overview).
 - `refs` (array of string, required): Positional references, e.g. ["s3.w2", "s3.w4"]. Words are sN.wN, morphemes sN.wN.mN, sentences sN.
 - `orthography` (string, required)
 - `value` (string, required)
 
+### copy_to_orthography
+
+PLAN: fill an orthography for every word that lacks a value, from the baseline or another orthography.
+
+- `orthography` (string, required)
+- `source` (string)
+- `document` (string): Document id or exact name (see project_overview).
+- `overwrite` (boolean)
+
 ### respell
 
-PLAN: change the BASELINE spelling of one word (its analysis, glosses, and links are kept; a lone morpheme form spelt like the word follows it unless morpheme_forms=false). For an alternative transcription tier use set_orthography.
+PLAN: change the BASELINE spelling of one word (its analysis, glosses, and links are kept; a lone morpheme form spelt like the word follows it unless morpheme_forms=false). For an alternative transcription tier use set_orthography. Every word matching a pattern, in one call: respell_all.
 
 - `document` (string, required): Document id or exact name (see project_overview).
 - `ref` (string, required): The word, sN.wN.
 - `new_text` (string, required)
 - `morpheme_forms` (boolean)
+
+### respell_all
+
+PLAN: change the baseline spelling of every word matching a pattern (an orthography change), keeping each word's analysis, glosses, and links. The same replacement is carried into the stored morpheme forms of those words (morpheme_forms=false to leave them). Lexicon headwords are left as they are unless lexicon=true (then the pattern is applied to every entry, not only linked ones: ask the user first, a lexicon can be shared). Patterns apply within words only.
+
+- `pattern` (string, required)
+- `replacement` (string, required): With regex, $1 is the first group and $& the whole match. A backslash is refused.
+- `regex` (boolean)
+- `case_sensitive` (boolean): Match case too (off by default: "ar" finds "Ar").
+- `whole` (boolean): Match the whole word only.
+- `document` (string): Document id or exact name (see project_overview).
+- `morpheme_forms` (boolean)
+- `lexicon` (boolean)
 
 ### link_entry
 
@@ -458,61 +513,6 @@ Sentences containing a sequence of words, each described by conditions on its fo
 - `documents` (array of string)
 - `regex` (boolean)
 - `limit` (integer)
-
-### replace_in_field
-
-PLAN: substitute inside every value of a field, project-wide or in one document: substring by default, whole=true for exact values, regex=true for a pattern with groups. Case counts unless case_sensitive=false. field="morpheme form" rewrites stored morpheme forms instead of a field. One call plans every change; the result lists every distinct change it makes (old value → new value), check them before you describe the plan.
-
-- `field` (string, required)
-- `pattern` (string, required)
-- `replacement` (string, required): With regex, $1 is the first group and $& the whole match. A backslash is refused.
-- `regex` (boolean)
-- `case_sensitive` (boolean): On by default: "PROS" does not find "pros". false to ignore case.
-- `whole` (boolean): Match the whole value only.
-- `document` (string): Document id or exact name (see project_overview).
-- `where` (object of string): Only where the word meets these conditions, as one sequence_search step takes them, e.g. {"form": "di"}.
-
-### respell_all
-
-PLAN: change the baseline spelling of every word matching a pattern (an orthography change), keeping each word's analysis, glosses, and links. The same replacement is carried into the stored morpheme forms of those words (morpheme_forms=false to leave them). Lexicon headwords are left as they are unless lexicon=true (then the pattern is applied to every entry, not only linked ones: ask the user first, a lexicon can be shared). Patterns apply within words only.
-
-- `pattern` (string, required)
-- `replacement` (string, required): With regex, $1 is the first group and $& the whole match. A backslash is refused.
-- `regex` (boolean)
-- `case_sensitive` (boolean): Match case too (off by default: "ar" finds "Ar").
-- `whole` (boolean): Match the whole word only.
-- `document` (string): Document id or exact name (see project_overview).
-- `morpheme_forms` (boolean)
-- `lexicon` (boolean)
-
-### copy_to_orthography
-
-PLAN: fill an orthography for every word that lacks a value, from the baseline or another orthography.
-
-- `orthography` (string, required)
-- `source` (string)
-- `document` (string): Document id or exact name (see project_overview).
-- `overwrite` (boolean)
-
-### set_field_for_form
-
-PLAN: set a field value on every occurrence of a form: a morpheme form for a morpheme field, a word form for a word field (e.g. Gloss (Morpheme) = "OBL" on every morpheme "ди"). only_empty=true (default) fills gaps and leaves existing values alone; false overwrites them.
-
-- `form` (string, required)
-- `field` (string, required)
-- `value` (string, required)
-- `only_empty` (boolean)
-- `document` (string): Document id or exact name (see project_overview).
-- `where` (object of string): Only where the word meets these conditions, as one sequence_search step takes them, e.g. {"form": "di"}.
-
-### set_analysis_for_form
-
-PLAN: apply one analysis (same shape as set_analysis's morphemes) to every occurrence of a word form; skip_analyzed=true leaves already-analysed words alone.
-
-- `form` (string, required)
-- `morphemes` (array of object {form: string (required), type: string, fields: object of string}, required)
-- `document` (string): Document id or exact name (see project_overview).
-- `skip_analyzed` (boolean)
 
 ### merge_entries
 

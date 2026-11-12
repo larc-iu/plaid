@@ -142,7 +142,8 @@ TOOLS = [
         'PLAN: set the attributes of ONE node, whole. Give every attribute the node should end up '
         'with, as a PENMAN attribute line (":aspect state :refer-number singular"); an empty line '
         'removes them all. An attribute that was already there keeps its place among the node\'s '
-        'children. Use apply_penman instead to change concepts or relations.',
+        'children. Use apply_penman instead to change concepts or relations. One attribute on every node of a '
+        'concept, in one call: set_attribute_for_concept.',
         {'document': _DOC, 'sentence': _SENTENCE, 'var': _VAR,
          'line': {'type': 'string',
                   'description': 'The attributes, e.g. ":aspect state :polarity -". Empty removes '

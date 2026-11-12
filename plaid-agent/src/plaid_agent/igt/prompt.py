@@ -55,8 +55,8 @@ decide.
 {final_message}
 - Which tool: every tool carries its own description, which says what it does and what it takes. Read those \
 rather than guessing, and take from here only what no single description can say. Read analyses_of before \
-proposing any analysis. Reach for a project-wide tool (replace_in_field, respell_all, set_analysis_for_form, \
-copy_to_orthography) rather than many single calls. A lexicon's entries form a TREE: a HEADWORD is an entry with \
+proposing any analysis. Reach for a project-wide tool (set_field_for_form, replace_in_field, set_analysis_for_form, \
+respell_all, copy_to_orthography) rather than many single calls. A lexicon's entries form a TREE: a HEADWORD is an entry with \
 nothing above it, a SENSE one under another, and the tools that move entries around work on that structure, \
 never on a field. In what the reads print, a trailing ~ marks a value a machine made and a trailing ^ one a \
 contributor made. When no tool can express a question, read query_help and write a query.

@@ -148,7 +148,9 @@ TOOLS = [
     _fn('set_field',
         'PLAN: set a field\'s value on words, morphemes, or sentences (the references must match the field\'s '
         'scope). Empty value clears it. Several fields at once: values={field: value}, each on the refs of its scope '
-        '(refs ["s3.w1", "s3.w1.m1"] for a word and its morpheme). Nothing is written until the user approves.',
+        '(refs ["s3.w1", "s3.w1.m1"] for a word and its morpheme). Nothing is written until the user approves. '
+        'One value on every occurrence of a form, in one call: set_field_for_form. A substitution inside every '
+        'value of a field: replace_in_field.',
         {'document': _DOC, 'refs': _REFS, 'field': {'type': 'string'}, 'value': {'type': 'string'},
          'values': {'type': 'object', 'additionalProperties': {'type': 'string'}}},
         ['document', 'refs']),
@@ -161,7 +163,8 @@ TOOLS = [
         'chain and use set_field with sN.wN.mN; to change one morpheme\'s form or type, set_morpheme. Several words '
         'at once: analyses=[{"ref":"s3.w1","morphemes":[...]}, ...] (one call per sentence, not per word). Once '
         'it is planned, sN.wN.mN of that word names a morpheme of the PLANNED analysis in set_field, set_morpheme, '
-        'link_entry and unlink_entry, so its new morphemes can be glossed, retyped or linked in the same plan.',
+        'link_entry and unlink_entry, so its new morphemes can be glossed, retyped or linked in the same plan. '
+        'One analysis on every occurrence of a word form, in one call: set_analysis_for_form.',
         {'document': _DOC, 'ref': {'type': 'string', 'description': 'The word, sN.wN.'},
          'morphemes': _MORPHEMES,
          'analyses': {'type': 'array', 'description': 'Several words at once: [{ref, morphemes}, ...].',
@@ -175,13 +178,14 @@ TOOLS = [
         {'document': _DOC, 'ref': {'type': 'string', 'description': 'The morpheme, sN.wN.mN.'},
          'form': {'type': 'string'}, 'type': {'type': 'string'}}, ['document', 'ref']),
     _fn('set_orthography',
-        'PLAN: set an orthography value (an alternative transcription tier, not the baseline) on words.',
+        'PLAN: set an orthography value (an alternative transcription tier, not the baseline) on words. Every '
+        'word lacking one, from the baseline or another orthography, in one call: copy_to_orthography.',
         {'document': _DOC, 'refs': _REFS, 'orthography': {'type': 'string'}, 'value': {'type': 'string'}},
         ['document', 'refs', 'orthography', 'value']),
     _fn('respell',
         'PLAN: change the BASELINE spelling of one word (its analysis, glosses, and links are kept; a lone '
         'morpheme form spelt like the word follows it unless morpheme_forms=false). For an alternative '
-        'transcription tier use set_orthography.',
+        'transcription tier use set_orthography. Every word matching a pattern, in one call: respell_all.',
         {'document': _DOC, 'ref': {'type': 'string', 'description': 'The word, sN.wN.'}, 'new_text': {'type': 'string'},
          'morpheme_forms': {'type': 'boolean'}},
         ['document', 'ref', 'new_text']),
@@ -531,6 +535,15 @@ _IMPL.update({'run_code': t_run_code, 'code_help': t_code_help})
 SCOPED_READS = ('search', 'concordance', 'analyses_of', 'check_consistency', 'corpus_stats', 'frequency_list',
                 'worklist', 'check_integrity', 'sequence_search')
 _IMPL.update({name: among_documents(_IMPL[name]) for name in SCOPED_READS})
+# Each project-wide tool comes straight after the one-item tool it does in
+# bulk, which is where a model choosing among them reads. set_field_for_form
+# was 47th of 65, far from set_field, and in 182 recorded runs it was never
+# called: four runs of the task written for it typed 49 references into
+# set_field instead (FABLE-REVIEW 2026-11-12).
+TOOLS = toolkit.follow(TOOLS, {'set_field_for_form': 'set_field', 'replace_in_field': 'set_field_for_form',
+                               'set_analysis_for_form': 'set_analysis', 'copy_to_orthography': 'set_orthography',
+                               'respell_all': 'respell'})
+
 TOOLS, WRITE_TOOLS, tools_for, call_tool = toolkit.build(
     TOOLS, _IMPL, manual='interlinear text: how this project glosses, segments and translates',
     web='this corpus and its lexicons', code='the texts and lexicons',

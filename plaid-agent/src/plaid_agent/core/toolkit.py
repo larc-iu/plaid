@@ -77,6 +77,21 @@ class Kit(NamedTuple):
     call_tool: Callable
 
 
+def follow(tools: List[Dict[str, Any]], after: Dict[str, str]) -> List[Dict[str, Any]]:
+    """``tools`` with each tool ``after`` names moved to just behind the
+    tool it maps to, in the order ``after`` lists them: a tool that does
+    another's work in bulk is read beside it. A name in ``after`` that is not
+    in ``tools`` is a typo and raises."""
+    out = list(tools)
+    for name, behind in after.items():
+        names = [t['function']['name'] for t in out]
+        if name not in names or behind not in names:
+            raise ValueError(f'no tool {name if name not in names else behind}')
+        moved = out.pop(names.index(name))
+        out.insert([t['function']['name'] for t in out].index(behind) + 1, moved)
+    return out
+
+
 def build(tools: List[Dict[str, Any]], impl: Dict[str, Callable], *, manual: str, web: str, code: str,
           code_functions: str = '',
           rewrite: Optional[Callable[[Callable, Dict[str, Any]], Dict[str, Any]]] = None) -> Kit:

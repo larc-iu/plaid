@@ -178,7 +178,7 @@ PLAN: replace one sentence's graph with the PENMAN text you give. Roles are UMR 
 
 ### set_attributes
 
-PLAN: set the attributes of ONE node, whole. Give every attribute the node should end up with, as a PENMAN attribute line (":aspect state :refer-number singular"); an empty line removes them all. An attribute that was already there keeps its place among the node's children. Use apply_penman instead to change concepts or relations.
+PLAN: set the attributes of ONE node, whole. Give every attribute the node should end up with, as a PENMAN attribute line (":aspect state :refer-number singular"); an empty line removes them all. An attribute that was already there keeps its place among the node's children. Use apply_penman instead to change concepts or relations. One attribute on every node of a concept, in one call: set_attribute_for_concept.
 
 - `document` (string, required): Document id or exact name (see project_overview).
 - `sentence` (integer or string, required): The sentence, 1-based: 3 or "s3".

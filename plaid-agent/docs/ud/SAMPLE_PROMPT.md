@@ -124,12 +124,24 @@ Read a document as tab-separated CoNLL-U rows: one line per word with its form, 
 
 ### set_field
 
-PLAN: set one annotation column on one or more words. An empty value clears it. features takes the whole set at once, in CoNLL-U form ("Case=Nom|Number=Sing").
+PLAN: set one annotation column on one or more words. An empty value clears it. features takes the whole set at once, in CoNLL-U form ("Case=Nom|Number=Sing"). A substitution in every value of a column across the project, in one call: replace_in_field.
 
 - `document` (string, required): Document id or exact name (see project_overview).
 - `refs` (array of string, required): Word references in the same document, e.g. ["s3.w2", "s3.w5"].
 - `field` (one of `lemma`, `upos`, `xpos`, `features`, required): Which column: lemma, upos, xpos or features.
 - `value` (string): The new value, or "" to clear the column.
+
+### replace_in_field
+
+PLAN: substitute inside every value of one column that matches a pattern, across the whole project or in one document: rename a lemma everywhere, retag a deprel, fix a feature spelling. A literal substring unless regex is true; whole matches the whole value; case counts unless case_sensitive is false. Empty values are never filled. The plan holds it as ONE change with its count; search shows every match first.
+
+- `field` (one of `lemma`, `upos`, `xpos`, `features`, `deprel`, required)
+- `pattern` (string, required)
+- `replacement` (string, required): With regex, $1 is the first group and $& the whole match. A backslash is refused.
+- `regex` (boolean)
+- `whole` (boolean)
+- `case_sensitive` (boolean)
+- `document` (string): Document id or exact name (see project_overview).
 
 ### set_feature
 
@@ -175,18 +187,6 @@ PLAN: throw away machine values nobody has confirmed, so the columns go back to 
 - `refs` (array of string): Word references in the same document, e.g. ["s3.w2", "s3.w5"].
 - `documents` (array of string): Several documents, by id or name; or ["all"].
 - `field` (one of `lemma`, `upos`, `xpos`, `features`, `deprel`)
-
-### replace_in_field
-
-PLAN: substitute inside every value of one column that matches a pattern, across the whole project or in one document: rename a lemma everywhere, retag a deprel, fix a feature spelling. A literal substring unless regex is true; whole matches the whole value; case counts unless case_sensitive is false. Empty values are never filled. The plan holds it as ONE change with its count; search shows every match first.
-
-- `field` (one of `lemma`, `upos`, `xpos`, `features`, `deprel`, required)
-- `pattern` (string, required)
-- `replacement` (string, required): With regex, $1 is the first group and $& the whole match. A backslash is refused.
-- `regex` (boolean)
-- `whole` (boolean)
-- `case_sensitive` (boolean)
-- `document` (string): Document id or exact name (see project_overview).
 
 ### run_parse
 

@@ -86,7 +86,8 @@ TOOLS = [
         ['document']),
     _fn('set_field',
         'PLAN: set one annotation column on one or more words. An empty value clears it. features '
-        'takes the whole set at once, in CoNLL-U form ("Case=Nom|Number=Sing").',
+        'takes the whole set at once, in CoNLL-U form ("Case=Nom|Number=Sing"). A substitution in every value '
+        'of a column across the project, in one call: replace_in_field.',
         {'document': _DOC, 'refs': _REFS, 'field': _FIELD,
          'value': {'type': 'string', 'description': 'The new value, or "" to clear the column.'}},
         ['document', 'refs', 'field']),
@@ -329,6 +330,10 @@ _IMPL.update({'run_code': t_run_code, 'code_help': t_code_help})
 # Every read that takes a document takes several in its place (core/scope.py).
 SCOPED_READS = ('search', 'grew_search', 'frequency_list', 'check_consistency', 'worklist')
 _IMPL.update({name: among_documents(_IMPL[name]) for name in SCOPED_READS})
+# The project-wide replace comes straight after the one-word tool it does in
+# bulk, where a model choosing between them reads (FABLE-REVIEW 2026-11-12).
+TOOLS = toolkit.follow(TOOLS, {'replace_in_field': 'set_field'})
+
 TOOLS, WRITE_TOOLS, tools_for, call_tool = toolkit.build(
     TOOLS, _IMPL, manual='this treebank: how this project annotates, and what it has decided about hard cases',
     web='this corpus', code='the treebank')
