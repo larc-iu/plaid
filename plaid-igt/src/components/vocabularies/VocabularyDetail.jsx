@@ -45,6 +45,7 @@ import {
   isReservedFieldName,
   FIELD_TYPES,
   FIELD_SCOPES,
+  ENTRY_ROLES,
 } from '@/domain/vocabFields';
 import { ENTRY_ROLE_CHOICES, proposeEntryRole } from '@/domain/entryRole';
 import {
@@ -54,6 +55,7 @@ import {
   statusTagset,
   statusFieldSeed,
   statusTagsetName,
+  statusFieldKey,
   dropsReservedStatus,
   reservedStatusMessage,
   RESERVED_STATUS_VALUES,
@@ -281,6 +283,14 @@ export const VocabularyDetail = () => {
   const [draftTagsets, setDraftTagsets] = useState(null);
   const tagsets = draftTagsets ?? readTagsets(vocabulary?.config);
   const tagsetNames = Object.keys(tagsets);
+  // The field holding the Status role. Every vocabulary has one (Luke,
+  // 2026-11-12): it cannot be removed, its role cannot be changed, and no
+  // other field takes the role while it holds it. A job marks the entries it
+  // makes there.
+  const statusKey = statusFieldKey(fields);
+  const roleChoices = statusKey
+    ? ENTRY_ROLE_CHOICES.filter((c) => c.role !== ENTRY_ROLES.STATUS)
+    : ENTRY_ROLE_CHOICES;
   // Which fields point at which tagset: the delete warning, the rename
   // repoint and the seed all read this.
   const tagsetUsage = useMemo(
@@ -351,9 +361,8 @@ export const VocabularyDetail = () => {
       setVocabulary({ name: '', config: {} });
       setEditedName('');
       // Seed a new vocab with the full core inventory, the same seed the
-      // setup wizard writes. Status is a row like any other, so the table
-      // below really is "these fields": a vocabulary that wants no editorial
-      // status can remove it here, before the vocabulary exists.
+      // setup wizard writes. Status is a row of the table below, and like
+      // every vocabulary's Status field it cannot be removed.
       setFields(
         normalizeVocabFields(
           statusFieldSeed({ fieldsConfig: seedDefaultFields(), tagsets: {} }).fieldsConfig,
@@ -538,8 +547,8 @@ export const VocabularyDetail = () => {
       if (isNewVocabulary) {
         const name = editedName.trim();
         const fieldsConfig = fieldsToConfig(fields);
-        // The list only goes in when a field points at it, since Status is a
-        // row the user may have removed above.
+        // The list goes in when a field points at it, as the Status field
+        // seeded above does.
         const needsStatusTagset = fields.some((f) => f.tagset === STATUS_TAGSET);
         // The layer and its config under ONE operation, so the audit log names
         // the three requests as the single gesture they are. Not atomic, and
@@ -671,16 +680,21 @@ export const VocabularyDetail = () => {
       return;
     }
 
+    const proposed = proposeEntryRole(trimmedName);
     await saveFields([
       ...fields,
-      { ...newVocabField(trimmedName), role: proposeEntryRole(trimmedName) },
+      {
+        ...newVocabField(trimmedName),
+        role: statusKey && proposed === ENTRY_ROLES.STATUS ? null : proposed,
+      },
     ]);
     setNewFieldName('');
   };
 
   const handleRemoveField = async (fieldName) => {
     const field = fields.find((f) => f.name === fieldName);
-    if (field?.immutable) return; // belt-and-suspenders; the UI hides the button
+    // belt-and-suspenders; the UI disables the button
+    if (field?.immutable || fieldName === statusKey) return;
     await saveFields(fields.filter((f) => f.name !== fieldName));
   };
 
@@ -938,6 +952,7 @@ export const VocabularyDetail = () => {
   // for the dictionary, the exports and the assistant. NO_ROLE clears it.
   const handleSetRole = async (fieldName, value) => {
     const role = value === NO_ROLE ? null : value;
+    if (fieldName === statusKey || (statusKey && role === ENTRY_ROLES.STATUS)) return;
     const next = fields.map((f) => (f.name === fieldName ? { ...f, role } : f));
     if (refusesStatus(next)) return;
     await saveFields(next);
@@ -1099,7 +1114,7 @@ export const VocabularyDetail = () => {
                     <td className="px-3 py-1.5">
                       <span className="flex items-center gap-2">
                         <span>{fieldLabel(field)}</span>
-                        {field.immutable ? (
+                        {field.immutable || field.name === statusKey ? (
                           <span className="rounded-sm bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">
                             Required
                           </span>
@@ -1187,7 +1202,9 @@ export const VocabularyDetail = () => {
                     </td>
                     <td className="px-3 py-1.5">
                       {/* name-ok: A15 built-in entry key */}
-                      {field.name !== 'morphType' && !isRef ? (
+                      {field.name === statusKey ? (
+                        <span className="text-xs text-muted-foreground">Status</span>
+                      ) : field.name !== 'morphType' && !isRef ? (
                         <Select
                           value={field.role ?? NO_ROLE}
                           onValueChange={(v) => handleSetRole(field.name, v)}
@@ -1201,7 +1218,7 @@ export const VocabularyDetail = () => {
                           </SelectTrigger>
                           <SelectContent>
                             <SelectItem value={NO_ROLE}>None</SelectItem>
-                            {ENTRY_ROLE_CHOICES.map((c) => (
+                            {roleChoices.map((c) => (
                               <SelectItem key={c.role} value={c.role}>
                                 {c.label}
                               </SelectItem>
@@ -1259,7 +1276,7 @@ export const VocabularyDetail = () => {
                           canUp={canMoveUp}
                           canDown={canMoveDown}
                           onRemove={() => handleRemoveField(field.name)}
-                          canRemove={!field.immutable}
+                          canRemove={!field.immutable && field.name !== statusKey}
                         />
                       </div>
                     </td>

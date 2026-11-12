@@ -134,11 +134,11 @@ describe('the vocabulary field settings, Role', () => {
     const view = await mount(client);
     await view.step(async () => {
       const select = roleSelect('Stage');
-      select.value = 'status';
+      select.value = 'pos';
       select.dispatchEvent(new Event('change', { bubbles: true }));
       await settle(5);
     });
-    expect(server.config.igt.fields.Stage).toEqual({ inline: false, role: 'status' });
+    expect(server.config.igt.fields.Stage).toEqual({ inline: false, role: 'pos' });
     await view.step(async () => {
       const select = roleSelect('Stage');
       select.value = select.options[0].value;
@@ -166,6 +166,69 @@ describe('the vocabulary field settings, Role', () => {
     }
     expect(server.config.igt.fields['Gloss (fr)']).toEqual({ inline: false, role: 'gloss' });
     expect(server.config.igt.fields.Etymology).toEqual({ inline: false });
+    await view.unmount();
+  });
+});
+
+// Every vocabulary has a field holding the Status role (Luke, 2026-11-12): a
+// job marks the entries it makes there, and the Entries screen filters on it.
+describe('the field holding the Status role', () => {
+  const rowOf = (name) => document.querySelector(`[data-trigger="type-${name}"]`)?.closest('tr');
+  const removeOf = (name) => rowOf(name)?.querySelector('button[title="Remove"]');
+
+  it('cannot be removed, and says it is required', async () => {
+    const { server, client } = serverOf({
+      gloss: { inline: true, role: 'gloss' },
+      state: { tagset: 'Status', role: 'status' },
+      note: {},
+    });
+    const view = await mount(client);
+    expect(removeOf('state').disabled).toBe(true);
+    expect(rowOf('state').textContent).toContain('Required');
+    expect(removeOf('note').disabled).toBe(false);
+    await view.step(async () => {
+      removeOf('state').click();
+      await settle(5);
+    });
+    expect(server.config.igt.fields.state).toEqual({ tagset: 'Status', role: 'status' });
+    await view.unmount();
+  });
+
+  it('keeps its role: it reads Status, with nothing to change it to', async () => {
+    const { client } = serverOf({ state: { tagset: 'Status', role: 'status' }, note: {} });
+    const view = await mount(client);
+    expect(roleSelect('state')).toBeFalsy();
+    expect(rowOf('state').textContent).toContain('Status');
+    await view.unmount();
+  });
+
+  it('is the only one: no other field is offered the role while it holds it', async () => {
+    const { client } = serverOf({ state: { tagset: 'Status', role: 'status' }, note: {} });
+    const view = await mount(client);
+    expect([...roleSelect('note').options].map((o) => o.textContent)).toEqual([
+      'None',
+      'Gloss',
+      'Definition',
+      'Part of speech',
+    ]);
+    await view.unmount();
+  });
+
+  it('is the only one: a field added by hand under the name Status is given no role', async () => {
+    const { server, client } = serverOf({ state: { tagset: 'Status', role: 'status' } });
+    const view = await mount(client);
+    const input = document.querySelector('input[placeholder="New field name"]');
+    const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+    await view.step(() => {
+      setter.call(input, 'Status');
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await view.step(async () => {
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+      await settle(5);
+    });
+    expect(server.config.igt.fields.Status).toEqual({ inline: false });
+    expect(server.config.igt.fields.state.role).toBe('status');
     await view.unmount();
   });
 });
