@@ -1154,7 +1154,7 @@ def run_turn(cfg: ModelConfig, kit: Toolkit, ws: Any, system: str, transcript: L
              cancelled: Callable[[], bool] = lambda: False,
              on_text: Callable[[str], None] = lambda t: None,
              on_thinking: Optional[Callable[[str], None]] = None,
-             shrink: Optional[Shrink] = None) -> TurnResult:
+             shrink: Optional[Shrink] = None, pace: Optional[Any] = None) -> TurnResult:
     """Run one turn: model call, tool calls, repeat, final text. ``cancelled``
     is polled before every tool call and while a model call waits; once it answers
     True the turn ends with :class:`TurnCancelled`. ``on_text`` receives the
@@ -1179,7 +1179,16 @@ def run_turn(cfg: ModelConfig, kit: Toolkit, ws: Any, system: str, transcript: L
     A model call the provider refuses as too long is asked once more after
     the window its refusal names is learned (`learn_window`) and ``shrink``
     (by default the workspace's, ``ws.shrink``, set by the service) dropped
-    older tool results to fit it."""
+    older tool results to fit it.
+
+    ``pace`` is an unattended job's (`core.job.Pace`), None in a chat. Before
+    each model call ``pace.note(rounds, kwargs)`` may raise to end the turn
+    (a budget spent) or answer a line the model is sent before the call (the
+    decide-now line), and ``pace.sending(kwargs)`` sees the call as it will go
+    out. With a pace nobody reads the reply: the turn ends at the first
+    answer with no tool calls, and the loop sends no note asking for words
+    (an empty reply, a claimed plan, a call written as text, a call that
+    keeps failing). A chat's turn is unchanged."""
     trace: List[Dict[str, Any]] = []
     live: Dict[str, Any] = {'round': None, 'text': '', 'n': 1}
     keeper = getattr(ws, 'rounds', None)
@@ -1191,7 +1200,7 @@ def run_turn(cfg: ModelConfig, kit: Toolkit, ws: Any, system: str, transcript: L
         shrink = getattr(ws, 'shrink', None)
     try:
         return _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text, trace, live, keeper,
-                         on_thinking, shrink)
+                         on_thinking, shrink, pace)
     except (Exception, ServiceCancelled) as e:
         rnd = live['round']
         if keeper is not None and rnd is not None and rnd['calls'] and not keeper.store(rnd):
@@ -1238,7 +1247,7 @@ def _asked(history: List[Dict[str, Any]]) -> Optional[str]:
 def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
               trace: List[Dict[str, Any]], live: Dict[str, Any], keeper,
               on_thinking: Callable[[str], None] = lambda t: None,
-              shrink: Optional[Shrink] = None) -> TurnResult:
+              shrink: Optional[Shrink] = None, pace: Optional[Any] = None) -> TurnResult:
     history = _clean_transcript(transcript)
     new: List[Dict[str, Any]] = []
     rounds = 0
@@ -1440,6 +1449,13 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
             kwargs['temperature'] = cfg.temperature
         if cfg.max_tokens:
             kwargs['max_tokens'] = cfg.max_tokens
+        if pace is not None:
+            note = pace.note(rounds, kwargs)
+            if note:
+                new.append({'role': 'user', 'content': note})
+                kwargs['messages'] = [{'role': 'system', 'content': system}] + history + new
+                kwargs['tools'] = kit.tools_for(ws)
+            pace.sending(kwargs)
         live['n'] = rounds + 1
         try:
             resp = ask(kwargs, lambda: [{'role': 'system', 'content': system}] + history + new)
@@ -1471,6 +1487,9 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
             rnd['thinking'] = thinking
         if not calls:
             text = (d.get('content') or '').strip()
+            if pace is not None:
+                # Nobody reads a job's reply: what it staged is its answer.
+                return done(text)
             if not text:
                 # Some models end a tool-heavy turn with an empty message (or
                 # reasoning only). Ask once, without tools, for the reply.
@@ -1647,6 +1666,9 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
         if keeper is not None and not keeper.store(rnd):
             _unstored(trace, rnd)
         live['round'] = None
+        if pace is not None and failing['times'] >= REPEATED_FAILURES:
+            return done(REPEAT_STOP.format(how='was repeated' if failing['repeated'] else 'failed',
+                                           times=REPEATED_FAILURES))
         if failing['times'] >= REPEATED_FAILURES:
             what = 'been repeated' if failing['repeated'] else 'failed'
             text, thinking = ask_for_the_reply(kwargs, f'(system) The same tool call has {what} '
