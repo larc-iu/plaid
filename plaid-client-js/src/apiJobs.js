@@ -173,7 +173,8 @@ export function jobsApi(client) {
     /**
      * The worker sets a document's row of a job it holds. Admin only. Each
      * field given replaces its column and one left out leaves it. Answers the
-     * row. 404 for a document the job does not hold.
+     * row. 404 for a document the job does not hold, 409 `job-finished` once
+     * the job has ended.
      * @param {string} jobId - The job
      * @param {string} documentId - The document
      * @param {string} workerId - The worker's id
@@ -234,6 +235,7 @@ export function jobsApi(client) {
     /**
      * The worker records how it analysed words: each decision's count is
      * added to its row (form and key). Admin only. At most 1,000 a call.
+     * Refused with 409 `job-finished` once the job has ended.
      * @param {string} jobId - The job
      * @param {string} workerId - The worker's id
      * @param {JobDecision[]} decisions - The decisions

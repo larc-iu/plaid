@@ -441,6 +441,29 @@ def test_fake_decisions_add_up_and_read_back_in_order():
     _refused(lambda: jobs.add_decisions(job['id'], 'w2', []), 409, code='job-taken')
 
 
+def test_fake_an_ended_job_takes_no_row_or_decision():
+    client, _ = _fake()
+    jobs = client.jobs
+    decision = [{'form': 'ka', 'key': 'k', 'analysis': '{}', 'count': 1}]
+    job = jobs.create('p1', 'igt', ['gloss'])
+    jobs.claim('w1', 'm', ['igt'])
+    jobs.finish(job['id'], 'w1', 'done', {})
+    _refused(lambda: jobs.update_document(job['id'], 'd1', 'w1', state='working'), 409, 'This job has ended.',
+             code='job-finished')
+    _refused(lambda: jobs.add_decisions(job['id'], 'w1', decision), 409, 'This job has ended.',
+             code='job-finished')
+    # A job core failed takes them until the worker's finish stores its report.
+    failed = jobs.create('p1', 'igt', ['gloss'])
+    jobs.claim('w1', 'm', ['igt'])
+    jobs.can_write = lambda user, project: False
+    _refused(lambda: jobs.heartbeat(failed['id'], 'w1'), 409, code='job-failed')
+    assert jobs.update_document(failed['id'], 'd1', 'w1', done=1)['done'] == 1
+    jobs.add_decisions(failed['id'], 'w1', decision)
+    jobs.finish(failed['id'], 'w1', 'failed', {})
+    _refused(lambda: jobs.update_document(failed['id'], 'd1', 'w1', done=2), 409, code='job-finished')
+    _refused(lambda: jobs.add_decisions(failed['id'], 'w1', decision), 409, code='job-finished')
+
+
 def test_fake_model_busy_answers_the_load_a_test_sets():
     client, _ = _fake()
     assert client.jobs.model_busy('glm') == {'in_flight': 0, 'last_finished_at': None}

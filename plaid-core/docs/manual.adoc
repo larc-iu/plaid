@@ -798,6 +798,7 @@ The worker runs under an administrator's named API token.
 It asks for work with `jobs.claim`, which answers the next job or nothing, and a token for the person who started the job.
 While it works it sends `jobs.heartbeat` every 30 seconds, which answers the job's state and a fresh token.
 A job whose worker has sent nothing for two minutes is taken by the next worker that asks, and the old worker's next call is refused with `job-taken`.
+Once a job has ended, its document rows and decisions are refused with 409 and `job-finished`, except for a job core failed whose report the worker has not yet sent.
 
 The worker writes into documents only with the token of the person who started the job.
 That token reaches only the job's project and does only what that person may there.

@@ -3760,7 +3760,8 @@ class JobsResource(_Resource):
         """The worker sets a document's row of a job it holds. Admin only.
 
         Each keyword given replaces its column, and one left out leaves it.
-        Answers the row. 404 for a document the job does not hold.
+        Answers the row. 404 for a document the job does not hold, 409
+        ``job-finished`` once the job has ended.
 
         Args:
             job_id: The job
@@ -3809,6 +3810,7 @@ class JobsResource(_Resource):
     def add_decisions(self, job_id: str, worker_id: str, decisions: list) -> None:
         """The worker records how it analysed words: each decision's count is
         added to its row (form and key). Admin only. At most 1,000 a call.
+        Refused with 409 ``job-finished`` once the job has ended.
 
         Args:
             job_id: The job

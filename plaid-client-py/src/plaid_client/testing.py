@@ -1941,6 +1941,15 @@ class _FakeJobs:
             raise self._refuse(409, method, path, 'Another worker holds this job.', code='job-taken')
         return job
 
+    def _working(self, job_id, worker_id, method, path):
+        """The job a document row or decision names: ``_held``'s refusals,
+        and 409 ``job-finished`` once it has ended, apart from a job core
+        failed whose report the worker has not sent yet."""
+        job = self._held(job_id, worker_id, method, path)
+        if job['state'] in _JOB_FINAL and not (job['core_failed'] and job['report'] is None):
+            raise self._refuse(409, method, path, 'This job has ended.', code='job-finished')
+        return job
+
     def _report_from_rows(self, job, stopped):
         """The report core writes itself, from the document rows."""
         rows = job['documents']
@@ -2167,7 +2176,7 @@ class _FakeJobs:
             if v is not _client._UNSET}
         self.calls.append(('update_document', {'job_id': job_id, 'document_id': document_id,
                                                'worker_id': worker_id, **fields}))
-        job = self._held(job_id, worker_id, 'PUT', path)
+        job = self._working(job_id, worker_id, 'PUT', path)
         row = next((r for r in job['documents'] if r['document_id'] == document_id), None)
         if row is None:
             raise self._refuse(404, 'PUT', path, 'Document not in job')
@@ -2204,7 +2213,7 @@ class _FakeJobs:
         path = f'/api/v1/jobs/{job_id}/decisions'
         self.calls.append(('add_decisions', {'job_id': job_id, 'worker_id': worker_id,
                                              'decisions': copy.deepcopy(list(decisions))}))
-        self._held(job_id, worker_id, 'POST', path)
+        self._working(job_id, worker_id, 'POST', path)
         if len(decisions) > _JOB_DECISIONS_PER_CALL:
             raise self._refuse(400, 'POST', path, f'decisions: at most {_JOB_DECISIONS_PER_CALL:,} in one call.')
         for i, d in enumerate(decisions):

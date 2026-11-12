@@ -523,6 +523,18 @@
       (refuse 409 taken-body))
     row))
 
+(defn- working-row!
+  "Job `job-id` for a document row or decision of worker `worker-id`, or a
+  refusal: those of `worker-row!`, and 409 `job-finished` once the job has
+  ended. A job core failed takes them until its worker's finish stores the
+  report, as the finish does (`may-end?`)."
+  [tx job-id worker-id]
+  (let [row (worker-row! tx job-id worker-id)]
+    (when (and (final-states (:state row))
+               (not (and (= "failed" (:state row)) (nil? (:report row)))))
+      (refuse 409 finished-body))
+    row))
+
 (def ^:private heartbeat-columns
   {:phase :phase :message :message :waiting-for :waiting_for :current-document :current_document})
 
@@ -576,13 +588,13 @@
 
 (defn update-document!
   "Set what worker `worker-id` reports of document `document-id` in job
-  `job-id` (CONTRACT 3.8). Each key of `fields` replaces its column. Returns
-  the row."
+  `job-id` (CONTRACT 3.8). Each key of `fields` replaces its column. Refused
+  once the job has ended (`working-row!`). Returns the row."
   [db job-id document-id worker-id fields]
   (when (> (count (:skipped fields)) skipped-per-document)
     (refuse 400 {:error (str "skipped: a document lists at most " skipped-per-document " sentences.")}))
   (psd/with-tx [tx db]
-    (worker-row! tx job-id worker-id)
+    (working-row! tx job-id worker-id)
     (let [where [:and [:= :job_id (str job-id)] [:= :document_id (str/lower-case (str document-id))]]]
       (when-not (psc/q1 tx {:select [:job_id] :from [:job_documents] :where where})
         (refuse 404 {:error "Document not in job"}))
@@ -651,7 +663,8 @@
 (defn add-decisions!
   "Add worker `worker-id`'s `decisions` to job `job-id` (CONTRACT 3.11):
   each `count` is added to its `(form, key)` row's, and a new row records
-  where the analysis was first written."
+  where the analysis was first written. Refused once the job has ended
+  (`working-row!`)."
   [db job-id worker-id decisions]
   (when (> (count decisions) decisions-per-call)
     (refuse 400 {:error (str "decisions: at most " (grouped decisions-per-call) " in one call.")}))
@@ -662,7 +675,7 @@
     (when (> (cp/cp-count key) key-max-chars)
       (refuse 400 {:error (str "decisions[" i "]: the key is longer than " key-max-chars " characters.")})))
   (psd/with-tx [tx db]
-    (worker-row! tx job-id worker-id)
+    (working-row! tx job-id worker-id)
     (doseq [{:keys [form key analysis count document-id sentence-id]} decisions]
       (psc/execute! tx [(str "INSERT INTO job_decisions "
                              "(job_id, form, key, analysis, count, first_document, first_sentence) "

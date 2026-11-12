@@ -416,6 +416,52 @@
         (is (str/starts-with? (-> r :body :error) "decisions[1]: ")))
       (is (= 400 (:status (add! (vec (repeat 1001 {:form "ka" :key "k1" :analysis "{}" :count 1})))))))))
 
+(deftest an-ended-job-takes-no-row-or-decision
+  ;; REV-J-A-4: a late write from a worker that missed the end would change
+  ;; what the job page shows for a finished job.
+  (let [{:keys [p st d1]} (jh/world!)
+        put! (fn [j] (call admin-request :put (str "/api/v1/jobs/" j "/documents/" d1)
+                           {:worker-id jh/worker-a :state "working"}))
+        add! (fn [j] (call admin-request :post (str "/api/v1/jobs/" j "/decisions")
+                           {:worker-id jh/worker-a :decisions [{:form "ka" :key "k" :analysis "{}" :count 1}]}))
+        ended? (fn [r] (and (= 409 (:status r))
+                            (= {:error "This job has ended." :code "job-finished"} (:body r))))]
+    (doseq [to ["done" "cancelled" "failed"]]
+      (testing (str "finished " to " by its worker")
+        (let [j (running-job! st p "running")]
+          (fix/assert-ok (finish! j jh/worker-a to))
+          (is (ended? (put! j)))
+          (is (ended? (add! j)))
+          (is (= "not-reached" (:state (first (filter #(= d1 (:document-id %)) (:job/documents (get-job j))))))
+              "the row as the end left it"))))
+    (testing "cancelled by core after its lease lapsed"
+      (let [j (running-job! st p "running")]
+        (lapse! j)
+        (fix/assert-ok (call st :post (str "/api/v1/jobs/" j "/cancel")))
+        (is (ended? (put! j)))
+        (is (ended? (add! j)))))
+    (testing "a stopping job still takes them"
+      (let [j (running-job! st p "stopping")]
+        (is (= 200 (:status (put! j))))
+        (is (= 204 (:status (add! j))))
+        (fix/assert-ok (finish! j jh/worker-a "cancelled"))))
+    (testing "a job core failed takes them until its worker's finish, which its report needs"
+      (let [j (running-job! st p "running")]
+        (fix/assert-no-content (call admin-request :delete (str "/api/v1/projects/" p "/writers/starter@example.com")))
+        (is (= "job-failed" (-> (heartbeat! j jh/worker-a) :body :code)))
+        (is (= 200 (:status (put! j))))
+        (is (= 204 (:status (add! j))))
+        (fix/assert-ok (finish! j jh/worker-a "failed"))
+        (is (ended? (put! j)))
+        (is (ended? (add! j)))
+        (jh/grant! p "writers" "starter@example.com")))
+    (testing "another worker's job is still job-taken"
+      (let [j (running-job! st p "running")]
+        (fix/assert-ok (finish! j jh/worker-a "done"))
+        (is (= "job-taken" (-> (call admin-request :put (str "/api/v1/jobs/" j "/documents/" d1)
+                                     {:worker-id jh/worker-b :state "done"})
+                               :body :code)))))))
+
 ;; ------------------------------------------------------------------
 ;; What a delete leaves
 ;; ------------------------------------------------------------------
