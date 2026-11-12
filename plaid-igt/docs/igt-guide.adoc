@@ -495,9 +495,10 @@ A new vocabulary starts with a few built in:
 * **Gloss**: the entry's gloss, offered as a guess in each field whose lexicon field is Gloss.
 * **POS**: the entry's part of speech.
 * **Definition**: a fuller definition or note.
-* **Status**: how far along the entry is, held to a closed list (draft, reviewed, published). The value published is reserved: neither the tagset editor nor Replace renames or removes it.
+* **Status**: how far along the entry is, held to a closed list (machine, draft, reviewed, published). Machine, shown as **Machine draft**, marks an entry an assistant job created (see <<_machine_draft_entries>>). The values machine and published are reserved: neither the tagset editor nor Replace renames or removes them.
 
-You can add your own fields, reorder them, and remove any except Form, Morph Type, and Gloss.
+You can add your own fields, reorder them, and remove any except Form, Morph Type, Gloss and Status.
+Every vocabulary has a Status field, and its role cannot be changed.
 A field marked **inline** also shows on each entry's row in the link popover.
 Other fields stay on the entry's own edit form.
 
@@ -899,6 +900,63 @@ The assistant is a service that your server's operator runs and picks the model 
 In a project with none connected, the tab, the button, the handle and **Ask** are not shown.
 On the project list the button is shown whether or not an assistant is connected, and the panel says so when the project you pick has none.
 Conversations already saved still open from their own links.
+
+= Assistant jobs
+
+An **assistant job** has an AI model work through documents on its own, with nobody at the screen.
+It fills what is blank and leaves everything a person wrote or confirmed as it is.
+A job can take hours, and it goes on after you close the browser.
+
+**Start job**, beside **New document** on the **Documents** tab, on the **Jobs** tab and in a document's header, needs Writer access.
+Its dialog asks for the documents (all of them, or a selection, with the open document chosen when started from one), the tasks, and optional **Instructions** that the model reads with every stretch of sentences.
+The tasks are:
+
+* **Translate**. Writes a free translation for each sentence that has none, and replaces translations made by a machine.
+* **Segment and gloss**. Analyzes each word that has no analysis at all: its morphemes, their types and their glosses.
+* **Link to lexicon**. Links the morphemes it analyzes to lexicon entries. It needs **Segment and gloss**.
+
+A project has one job at a time.
+Jobs run one after another across the server, and a waiting job's page says how many are ahead of it.
+
+== What a job writes
+
+The model works on about five sentences at a time, with the project's guidelines, the instructions, and how people in the project analyzed the same words.
+What it writes is a machine proposal (see <<_provenance>>), in the name of the person who started the job.
+It never changes a word that already has an analysis, a translation a person wrote, the text or its tokens.
+When it finishes, it makes its own analyses consistent: a word it analyzed in more than one way takes the analysis people gave that word, or else the one it gave at least two times in three.
+
+The job keeps out of the way of people.
+It waits while anyone's assistant or service run is using the AI model.
+A document someone is editing is left for later and taken up again after the others, and editing stays open while a job works in it.
+
+== Following and stopping a job
+
+The project's **Jobs** tab lists its jobs, and each opens to its own page.
+The page shows what the job is doing, each document's progress, and once the job has ended its report: what it wrote, the sentences it skipped and why, the analyses it made consistent, and the entries it created.
+A document the job is working in shows a banner with its progress.
+
+**Stop**, on the job's page or on the banner, is for the person who started the job and for maintainers.
+The job stops after the sentences in hand, and what it wrote stays.
+
+[[_machine_draft_entries]]
+== Machine draft entries
+
+An entry a job creates has the Status **Machine draft**, and a person's edit of it leaves that status as it is.
+On a vocabulary's **Entries** tab, **N machine drafts** lists only those entries, with any search on top, and its address can be shared.
+While it is on, **Mark reviewed** sets the status of every listed entry to reviewed.
+**Delete**, for a maintainer of the vocabulary's project, deletes them all with their links, and leaves the glosses.
+A job's report links to each lexicon's machine drafts.
+
+== Undoing a job
+
+Each document's History has one entry for the job's work in it, named **Assistant job:** with the tasks, and one for making its analyses consistent.
+A maintainer undoes either one by restoring the document to the moment before it (see <<_history>>).
+A restore leaves the lexicon as it is, so the job's entries stay as machine drafts with fewer links.
+
+== The job worker
+
+Jobs run only while the server's operator runs the job worker, `plaid-job-worker`, with an AI model.
+When no worker is running, a job waits, and the **Start job** dialog says so.
 
 = Services
 
