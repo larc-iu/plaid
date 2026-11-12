@@ -26,13 +26,16 @@ const byName = (a, b) => (a.name || '').localeCompare(b.name || '') || a.id.loca
 
 /**
  * Start job: the button and its dialog, from the project's Documents tab and
- * from a document's header. `documents` is the project's listing when the
- * caller already has it (the Documents tab), else it is read on open.
+ * from a document's header. `project` is the project as read, whose linked
+ * lexicons say whether Link to lexicon can be done. `documents` is the
+ * project's listing when the caller already has it (the Documents tab), else
+ * it is read on open.
  * `documentId` opens the dialog with that one document chosen. `small` draws
  * the button at the size of a document header's buttons.
  */
 export const StartJob = ({
   projectId,
+  project,
   client,
   documents: given = null,
   documentId = null,
@@ -52,6 +55,7 @@ export const StartJob = ({
       {open && (
         <StartJobDialog
           projectId={projectId}
+          linksLexicon={(project?.vocabs || []).length > 0}
           client={client}
           documents={given}
           documentId={documentId}
@@ -64,14 +68,25 @@ export const StartJob = ({
 
 // The dialog itself, mounted per opening: everything chosen in it, and the id
 // its job is made under, start fresh each time it opens.
-const StartJobDialog = ({ projectId, client, documents: given, documentId, onClose }) => {
+const StartJobDialog = ({
+  projectId,
+  linksLexicon,
+  client,
+  documents: given,
+  documentId,
+  onClose,
+}) => {
   const navigate = useNavigate();
   const [listed, setListed] = useState(given);
   const [worker, setWorker] = useState(null);
   const [all, setAll] = useState(!documentId);
   const [chosen, setChosen] = useState(() => new Set(documentId ? [documentId] : []));
   const [query, setQuery] = useState('');
-  const [tasks, setTasks] = useState(() => new Set(JOB_TASKS));
+  // Linking needs a lexicon the project links: without one a job could only
+  // fail its checks (no-lexicon), so it is not offered.
+  const [tasks, setTasks] = useState(
+    () => new Set(JOB_TASKS.filter((t) => t !== 'link' || linksLexicon)),
+  );
   const [note, setNote] = useState('');
   const [starting, setStarting] = useState(false);
   // The project's job already under way, when Start was refused for it.
@@ -262,10 +277,13 @@ const StartJobDialog = ({ projectId, client, documents: given, documentId, onClo
                   type="checkbox"
                   className="h-4 w-4 accent-primary"
                   checked={tasks.has(t)}
-                  disabled={t === 'link' && !tasks.has('gloss')}
+                  disabled={t === 'link' && (!tasks.has('gloss') || !linksLexicon)}
                   onChange={(e) => toggleTask(t, e.target.checked)}
                 />
                 <span>{jobTaskText(t)}</span>
+                {t === 'link' && !linksLexicon && (
+                  <span className="text-xs text-muted-foreground">The project has no lexicon.</span>
+                )}
               </label>
             ))}
           </fieldset>

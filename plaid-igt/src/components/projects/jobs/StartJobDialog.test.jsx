@@ -51,6 +51,9 @@ const LIMIT = 'A job takes at most 2 documents.';
 const startButton = () =>
   all(document.body, 'button').find((b) => b.textContent.trim() === 'Start');
 
+// A project that links a lexicon, as the callers pass it.
+const PROJECT = { id: 'p1', vocabs: [{ id: 'v1', name: 'Lexicon' }] };
+
 const open = async (client, props = {}) => {
   let at = null;
   const v = await renderComponent(
@@ -60,7 +63,7 @@ const open = async (client, props = {}) => {
           path="*"
           element={
             <>
-              <StartJob projectId="p1" client={client} {...props} />
+              <StartJob projectId="p1" project={PROJECT} client={client} {...props} />
               <Where onAt={(p) => (at = p)} />
             </>
           }
@@ -87,6 +90,33 @@ describe('Start job', () => {
     await v.step(() => box('Segment and gloss').click());
     expect(box('Link to lexicon').disabled).toBe(false);
     expect(box('Link to lexicon').checked).toBe(false);
+    await v.unmount();
+  });
+
+  // A link job on a project with no lexicon can only fail its checks
+  // (no-lexicon), possibly hours later (REV-J-C-7).
+  it('offers no Link to lexicon on a project that links no lexicon, and says why', async () => {
+    const client = fakeClient();
+    const { v } = await open(client, { documents: DOCS, project: { id: 'p1', vocabs: [] } });
+    expect(box('Link to lexicon').checked).toBe(false);
+    expect(box('Link to lexicon').disabled).toBe(true);
+    expect(byText(document.body, 'label', 'Link to lexicon').textContent).toContain(
+      'The project has no lexicon.',
+    );
+    // Segment and gloss off and on again leaves it as it is.
+    await v.step(() => box('Segment and gloss').click());
+    await v.step(() => box('Segment and gloss').click());
+    expect(box('Link to lexicon').disabled).toBe(true);
+    expect(box('Link to lexicon').checked).toBe(false);
+    await v.step(() => startButton().click());
+    await v.step(async () => {});
+    expect(client.jobs.create.mock.calls[0][1].tasks).toEqual(['translate', 'gloss']);
+    await v.unmount();
+  });
+
+  it('says nothing of a lexicon on a project that links one', async () => {
+    const { v } = await open(fakeClient(), { documents: DOCS });
+    expect(document.body.textContent).not.toContain('The project has no lexicon.');
     await v.unmount();
   });
 
