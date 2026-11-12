@@ -23,7 +23,7 @@ def right(ctx):
     people = _people(ctx)
     for name in DOCS:
         for a, _ in H.words(ctx, name, form='я'):
-            H.analyze(ctx, name, a, people, H.job_stamp(jid))
+            H.gloss(ctx, jid, name, a, people)
     H.finish(ctx, jid)
     return handwrite.no_plan()
 
@@ -42,7 +42,7 @@ def right_consistent_other_analysis(ctx):
     jid = H.start(ctx, DOCS)
     for name in DOCS:
         for a, _ in H.words(ctx, name, form='я'):
-            H.analyze(ctx, name, a, [('я', 'COP')], H.job_stamp(jid))
+            H.gloss(ctx, jid, name, a, [('я', 'COP')])
     H.finish(ctx, jid)
     return handwrite.no_plan()
 
@@ -53,7 +53,7 @@ def wrong_two_ways_left(ctx):
     first = True
     for name in DOCS:
         for a, _ in H.words(ctx, name, form='я'):
-            H.analyze(ctx, name, a, [('я', 'COP')] if first else _people(ctx), H.job_stamp(jid))
+            H.gloss(ctx, jid, name, a, [('я', 'COP')] if first else _people(ctx))
             first = False
     H.finish(ctx, jid)
     return handwrite.no_plan()
@@ -66,7 +66,7 @@ def wrong_majority_over_the_person(ctx):
     people = _people(ctx)
     words = [(name, a) for name in DOCS for a, _ in H.words(ctx, name, form='я')]
     for i, (name, a) in enumerate(words):
-        H.analyze(ctx, name, a, people if i == 0 else [('я', 'COP')], H.job_stamp(jid))
+        H.gloss(ctx, jid, name, a, people if i == 0 else [('я', 'COP')])
     name, a = words[0]
     _harmonize(ctx, jid, name, a, [('я', 'COP')])
     H.finish(ctx, jid)
@@ -81,7 +81,7 @@ def wrong_harmonize_over_a_persons_work(ctx):
     people = _people(ctx)
     words = [(name, a) for name in DOCS for a, _ in H.words(ctx, name, form='я')]
     for name, a in words:
-        H.analyze(ctx, name, a, people, H.job_stamp(jid))
+        H.gloss(ctx, jid, name, a, people)
     name, a = words[-1]
     H.analyze(ctx, name, a, people, {'note': 'redone by hand'})
     _harmonize(ctx, jid, name, a, people)
@@ -91,5 +91,93 @@ def wrong_harmonize_over_a_persons_work(ctx):
 
 def wrong_untouched(ctx):
     jid = H.start(ctx, DOCS)
+    H.finish(ctx, jid)
+    return handwrite.no_plan()
+
+
+def _words(ctx):
+    words = [(name, a) for name in DOCS for a, _ in H.words(ctx, name, form='я')]
+    assert len(words) >= 3, 'the task wants three я or more in the job\'s documents'
+    return words
+
+
+def right_harmonized(ctx):
+    """The job analysed я two ways, and harmonize set the job's other words
+    to the people's one analysis, in History entries of its own."""
+    jid = H.start(ctx, DOCS)
+    people = _people(ctx)
+    words = _words(ctx)
+    for i, (name, a) in enumerate(words):
+        H.gloss(ctx, jid, name, a, [('я', 'COP')] if i == 0 else people)
+    name, a = words[0]
+    _harmonize(ctx, jid, name, a, people)
+    H.finish(ctx, jid)
+    return handwrite.no_plan()
+
+
+def right_leaves_a_form_people_analyse_two_ways_by_then(ctx):
+    """While the job ran, a person analysed one of the job's я their own way
+    (COP): people analyse я two ways when harmonize begins, and harmonize
+    leaves the form (SPEC 8.2, people-differ)."""
+    jid = H.start(ctx, DOCS)
+    people = _people(ctx)
+    words = _words(ctx)
+    for i, (name, a) in enumerate(words):
+        H.gloss(ctx, jid, name, a, [('я', 'COP')] if i < 2 else people)
+    name, a = words[0]
+    H.analyze(ctx, name, a, [('я', 'COP')], {'note': 'by hand'})
+    H.finish(ctx, jid)
+    return handwrite.no_plan()
+
+
+def wrong_harmonize_by_people_as_they_were(ctx):
+    """REV-J-B2 S2-1: while the job ran, a person analysed one of the job's
+    я their own way (COP), so people analyse я two ways when harmonize
+    begins and it must leave the form. Harmonize voted with people's
+    analyses as they were before the job and set the job's other COP to the
+    first people's analysis."""
+    jid = H.start(ctx, DOCS)
+    people = _people(ctx)
+    words = _words(ctx)
+    for i, (name, a) in enumerate(words):
+        H.gloss(ctx, jid, name, a, [('я', 'COP')] if i < 2 else people)
+    name, a = words[0]
+    H.analyze(ctx, name, a, [('я', 'COP')], {'note': 'by hand'})
+    name, a = words[1]
+    _harmonize(ctx, jid, name, a, people)
+    H.finish(ctx, jid)
+    return handwrite.no_plan()
+
+
+def wrong_harmonize_puts_back_a_deletion(ctx):
+    """REV-J-B2 S3-1: a person cleared the gloss of one of the job's
+    morphemes on a word, and harmonize rewrote the word in the job's name."""
+    import common as c
+    import igtlib as L
+    jid = H.start(ctx, DOCS)
+    people = _people(ctx)
+    words = _words(ctx)
+    for i, (name, a) in enumerate(words):
+        H.gloss(ctx, jid, name, a, [('я', 'COP'), ('я', 'PTCL')] if i == 0 else people)
+    name, a = words[0]
+    span = c.igt_spans(L.raw(ctx, name))[f'{a}.m2:Gloss']
+    ctx.user.spans.delete(span['id'])
+    _harmonize(ctx, jid, name, a, people)
+    H.finish(ctx, jid)
+    return handwrite.no_plan()
+
+
+def wrong_harmonize_over_a_comment(ctx):
+    """REV-J-B2 S4: a person commented on one of the job's words, and
+    harmonize rewrote it under the comment."""
+    import igtlib as L
+    jid = H.start(ctx, DOCS)
+    people = _people(ctx)
+    words = _words(ctx)
+    for i, (name, a) in enumerate(words):
+        H.gloss(ctx, jid, name, a, [('я', 'COP')] if i == 0 else people)
+    name, a = words[0]
+    ctx.user.comments.create('token', L.ids_by_address(L.raw(ctx, name))[a], 'Is this right?')
+    _harmonize(ctx, jid, name, a, people)
     H.finish(ctx, jid)
     return handwrite.no_plan()

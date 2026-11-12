@@ -60,3 +60,11 @@ def words(ctx, document, sentences=None, form=None):
         if (sentences is None or s in sentences) and (form is None or surface.casefold() == form.casefold()):
             out.append((a, surface))
     return out
+
+
+def gloss(ctx, job_id, document, word_addr, morphs):
+    """A word analysed as the job's stretch writes it: stamped as the job's,
+    in a History entry of the job's glossing pass."""
+    did = L.doc_of(ctx, document)['id']
+    with ctx.user.operation('Assistant job: analyses', kind='job', ref=f'job:{job_id}/doc:{did}/pass:gloss'):
+        analyze(ctx, document, word_addr, morphs, job_stamp(job_id))

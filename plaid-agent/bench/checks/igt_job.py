@@ -10,7 +10,8 @@ Every job task:
   and its provenance, a translation a person wrote keeps its value,
 - every word that changed was blank and is now wholly the job's own work,
   every piece machine-unverified with the job's id in provDetail (or was left
-  blank),
+  blank), unless it holds a person's own work alone (a person's edit during
+  the job, no write of the job's),
 - every translation that changed was empty or a machine draft and is now the
   job's own,
 - no two entries the job made share a form and gloss, and none repeats an
@@ -20,16 +21,23 @@ args:
   mode: stretch | harmonize
   document, sentences: (stretch) the target sentences, every target word of
     which is analysed or left, at least one analysed
-  form: (harmonize) SPEC 8 for that form. People analysed it one way (the
-    task's setup). Each History entry of the job's harmonize pass is read
-    against the document as it was just before it: every word it changed was
+  form: (harmonize) SPEC 8 for that form, judged by people's analyses as
+    the project was when harmonize began (just before its first History
+    entry, REV-J-B2 S2-1). People analysed it one way then (the task's
+    setup): each History entry of the job's harmonize pass is read against
+    the document as it was just before it, and every word it changed was
     then wholly the job's own unverified work (a word holding anything of a
-    person's or another producer's is never harmonize's), and is now the
-    job's own and, for the form, the people's analysis, with each word field
-    the job had written on it now the value the people's words hold (or
-    cleared) and no field added. After the job the
-    job's words of the form carry one analysis: harmonize leaves a form the
-    job analysed one way as it is, whatever people did.
+    person's or another producer's is never harmonize's), exactly as the
+    job's own glossing left it (read just after that History entry: a word a
+    person changed or deleted a piece of since is never harmonize's), with
+    no comment on it or a piece of it and in no multi-word expression
+    (REV-J-B2 S3-1), and is now the job's own and, for the form, the
+    people's analysis, with each word field the job had written on it now
+    the value the people's words hold (or cleared) and no field added. After
+    the job the job's words of the form that harmonize may rewrite carry one
+    analysis: harmonize leaves a form the job analysed one way as it is,
+    whatever people did. People who analysed it two or more ways by then:
+    harmonize changes no word of the form.
 """
 import json
 from datetime import datetime, timedelta, timezone
@@ -125,48 +133,121 @@ def _just_before(iso):
 
 # --- the check -------------------------------------------------------------------------
 
+def _persons(md):
+    """A piece a person made or confirmed: what makes a word people's
+    analysis (SPEC 3.4, protected)."""
+    md = md or {}
+    return not md.get('prov') or bool(md.get('provConfirmed'))
+
+
+def _as_of(ctx, project, did, iso):
+    raw = ctx.client.documents.get(did, include_body=True, as_of=iso, layers=project.read_layer_ids())
+    return parse_document(raw, project)
+
+
+def _ids(w):
+    """The ids a comment on a word or on a piece of it is anchored to."""
+    out = {w.id} | {sp.id for sp in w.fields.values()} | ({w.link.id} if w.link is not None else set())
+    for m in _real(w):
+        out |= {m.id} | {sp.id for sp in m.fields.values()} | ({m.link.id} if m.link is not None else set())
+    return out
+
+
+def _job_units(ctx, did, jid):
+    """The document's History entries oldest first, each with the job's pass
+    it belongs to (``gloss``, ``harmonize``) or None."""
+    units = sorted(ctx.client.documents.audit(did) or [], key=lambda e: e.get('time') or '')
+    out = []
+    for e in units:
+        ref = str(e.get('ref') or '')
+        out.append((e, ref.rsplit('/pass:', 1)[1] if ref.startswith(f'job:{jid}/') and '/pass:' in ref else None))
+    return out
+
+
+def _people(docs, key, jid):
+    """form ``key``'s analyses by people in ``docs``: analysis -> the word
+    field values of each of their words."""
+    out = {}
+    for doc in docs:
+        for s in doc.sentences:
+            for w in s.words:
+                if _form(w.surface) == key and _real(w) and any(_persons(p) and not _job_piece(p, jid)
+                                                                for p in _pieces(w)):
+                    out.setdefault(_analysis(w), []).append(json.dumps(_word_values(w), sort_keys=True,
+                                                                       ensure_ascii=False))
+    return out
+
+
 def _harmonize(ctx, project, jid, docs, args, problems):
     key = _form(args['form'])
-    people = set()
-    for doc in docs.values():
-        for s in doc.sentences:
-            for w in s.words:
-                if _form(w.surface) == key and _real(w) and any(not _job_piece(p, jid) and (p or {}).get('prov') is None
-                                                                for p in _pieces(w)):
-                    people.add(_analysis(w))
-    if len(people) != 1:
-        problems.append(f'the task wants one analysis by people of {args["form"]}, found {len(people)}')
+    ids = {d['name']: d['id'] for d in ctx.project['documents']}
+    units = {name: _job_units(ctx, did, jid) for name, did in ids.items()}
+    begun = min((e['time'] for us in units.values() for e, kind in us if kind == 'harmonize'), default=None)
+    # People's analyses as the project was when harmonize began, or now
+    # when it never wrote (REV-J-B2 S2-1).
+    then = [_as_of(ctx, project, ids[name], _just_before(begun)) for name in ids] if begun else list(docs.values())
+    people = _people(then, key, jid)
+    if not people:
+        problems.append(f'the task wants an analysis by people of {args["form"]}, found none')
         return
-    (theirs,) = people
+    theirs = next(iter(people)) if len(people) == 1 else None
+    held = {}
+    for v in people.get(theirs, []):
+        held[v] = held.get(v, 0) + 1
     # The word fields that go with the people's analysis: those most of their
     # words of the form hold (the first in order on a tie).
-    held = {}
-    for doc in docs.values():
-        for s in doc.sentences:
-            for w in s.words:
-                if _form(w.surface) == key and _real(w) and _analysis(w) == theirs \
-                        and not any(_job_piece(p, jid) for p in _pieces(w)):
-                    k = json.dumps(_word_values(w), sort_keys=True, ensure_ascii=False)
-                    held[k] = held.get(k, 0) + 1
     their_words = json.loads(sorted(held.items(), key=lambda kv: (-kv[1], kv[0]))[0][0]) if held else {}
+    # What harmonize may rewrite (REV-J-B2 S3-1): a word as the job's own
+    # glossing left it, read just after the job's History entry that wrote
+    # it, with no comment on it and in no multi-word expression.
+    written, comments = {}, set()
+    for name, did in ids.items():
+        us = units[name]
+        for i, (e, kind) in enumerate(us):
+            if kind != 'gloss':
+                continue
+            before = _as_of(ctx, project, did, _just_before(e['time']))
+            after = _as_of(ctx, project, did, _just_before(us[i + 1][0]['time'])) if i + 1 < len(us) else docs[name]
+            was = {w.id: _everything(w) for s in before.sentences for w in s.words}
+            for s in after.sentences:
+                for w in s.words:
+                    if was.get(w.id) != _everything(w):
+                        written[w.id] = _everything(w)
+        comments |= {c_.get('entity_id') for c_ in ctx.client.comments.list(ctx.project['id'], document_id=did) or []}
+
+    def why_not(w):
+        if not _job_own(w, jid):
+            return 'held something not the job\'s'
+        if written.get(w.id) != _everything(w):
+            return 'was changed after the job\'s glossing wrote it'
+        if _ids(w) & comments:
+            return 'has a comment'
+        if w.mwes:
+            return 'is in a multi-word expression'
+        return None
+    rewritable = {}
+    for name, did in ids.items():
+        harmonized = [e for e, kind in units[name] if kind == 'harmonize']
+        before = _as_of(ctx, project, did, _just_before(harmonized[0]['time'])) if harmonized else docs[name]
+        for s in before.sentences:
+            for w in s.words:
+                if _form(w.surface) == key and why_not(w) is None:
+                    rewritable[w.id] = True
     mine = {}
     for name, doc in docs.items():
         for s in doc.sentences:
             for w in s.words:
-                if _form(w.surface) == key and _job_own(w, jid):
+                if _form(w.surface) == key and _job_own(w, jid) and w.id in rewritable:
                     mine[f'{name} s{s.index}.w{w.index}'] = _analysis(w)
-    if not mine:
+    if not any(_form(w.surface) == key and _job_own(w, jid) for doc in docs.values() for s in doc.sentences
+               for w in s.words):
         problems.append(f'the job analysed no {args["form"]}')
-    elif len(set(mine.values())) > 1:
+    if theirs is not None and len(set(mine.values())) > 1:
         problems.append(f'the job left {args["form"]} analysed {len(set(mine.values()))} ways')
     for d in ctx.project['documents']:
         after = docs[d['name']]
-        units = [e for e in ctx.client.documents.audit(d['id'], kinds=['job']) or []
-                 if str(e.get('ref') or '').startswith(f'job:{jid}/') and str(e.get('ref')).endswith('/pass:harmonize')]
-        for unit in units:
-            raw = ctx.client.documents.get(d['id'], include_body=True, as_of=_just_before(unit['time']),
-                                           layers=project.read_layer_ids())
-            before = parse_document(raw, project)
+        for unit in [e for e, kind in units[d['name']] if kind == 'harmonize']:
+            before = _as_of(ctx, project, d['id'], _just_before(unit['time']))
             now = {w.id: (s, w) for s in after.sentences for w in s.words}
             for s in before.sentences:
                 for w in s.words:
@@ -174,10 +255,14 @@ def _harmonize(ctx, project, jid, docs, args, problems):
                     if hit is None or _everything(w) == _everything(hit[1]):
                         continue
                     where = f'{d["name"]} s{s.index}.w{w.index}'
-                    if not _job_own(w, jid):
-                        problems.append(f'{where}: harmonize changed a word that held something not the job\'s')
+                    why = why_not(w)
+                    if why is not None:
+                        problems.append(f'{where}: harmonize changed a word that {why}')
                     elif not _job_own(hit[1], jid):
                         problems.append(f'{where}: harmonize left a word not the job\'s own')
+                    elif _form(w.surface) == key and theirs is None:
+                        problems.append(f'{where}: harmonize changed {args["form"]} while people analysed it '
+                                        f'{len(people)} ways')
                     elif _form(w.surface) == key and _analysis(hit[1]) != theirs:
                         problems.append(f'{where}: harmonize set {args["form"]} to an analysis people did not make')
                     elif _form(w.surface) == key:
@@ -220,6 +305,9 @@ def check(ctx):
                     problems.append(f'{d["name"]} s{s.index}.w{w.index}: gone')
                     continue
                 if _everything(w) == _everything(x):
+                    continue
+                if _pieces(x) and all(_persons(p) and not _job_piece(p, jid) for p in _pieces(x)):
+                    # A person's own work since: no write of the job's.
                     continue
                 if not _blank(w):
                     problems.append(f'{d["name"]} s{s.index}.w{w.index}: not a target, changed')
