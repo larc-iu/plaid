@@ -30,7 +30,10 @@
      `project_id`. A marker `vocab-home:<id>` in `data_migrations`, written in
      the same transaction, makes a restart skip it.
   3. Refuse unless every vocabulary's home is a live project holding its
-     `project_vocabs` row. Rebuild `vocab_layers` with the column NOT NULL and
+     `project_vocabs` row. Make maintainer of its home every vocabulary
+     maintainer still not one, as step 2 does (the old version may have added
+     one after step 2 audited the vocabulary), each in an audited operation
+     by nobody. Rebuild `vocab_layers` with the column NOT NULL and
      the foreign key, and drop `vocab_maintainers`, on one connection with foreign keys off (with
      them on, dropping `vocab_layers` would cascade away every entry, link,
      project link and comment). Refused, and rolled back, when any row count
@@ -208,6 +211,15 @@
 (def ^:private role-word
   {:project/readers "reader" :project/writers "writer" nil "none"})
 
+(defn- log-promoted!
+  "The line step 2 and step 3 log for the people `promoted`, pairs of user
+  id and the role they had."
+  [name id pname promoted]
+  (when (seq promoted)
+    (log/info (format "Vocabulary \"%s\" (%s): made maintainer of \"%s\": %s (were %s)"
+                      name id pname (str/join ", " (map first promoted))
+                      (str/join ", " (map second promoted))))))
+
 (defn- home-one!
   "Step 2 for vocabulary `v` (a row of `vocab_layers`). Returns the people
   made maintainer."
@@ -245,17 +257,7 @@
                                         "AND NOT EXISTS (SELECT 1 FROM project_users h WHERE h.project_id = ? "
                                         "  AND h.user_id = pu.user_id AND h.role IN ('writer', 'maintainer'))")
                                 id project_id project_id)))]
-      (when-let [skipped (seq (q ds (str "SELECT vm.user_id FROM vocab_maintainers vm JOIN users u ON u.id = vm.user_id "
-                                         "WHERE vm.vocab_layer_id = ? AND u.deactivated_at IS NOT NULL "
-                                         "AND NOT EXISTS (SELECT 1 FROM project_users pu WHERE pu.project_id = ? "
-                                         "  AND pu.user_id = vm.user_id AND pu.role = 'maintainer') ORDER BY vm.user_id")
-                                 id project_id))]
-        (log/info (format "Vocabulary \"%s\" (%s): not made maintainer of \"%s\", deactivated: %s"
-                          name id pname (str/join ", " (map :user_id skipped)))))
-      (when (seq @promoted)
-        (log/info (format "Vocabulary \"%s\" (%s): made maintainer of \"%s\": %s (were %s)"
-                          name id pname (str/join ", " (map first @promoted))
-                          (str/join ", " (map second @promoted)))))
+      (log-promoted! name id pname @promoted)
       (when (pos? writers)
         (log/info (format "Vocabulary \"%s\" (%s): borrowers' writers losing entry writes: %d" name id writers))))
     (assoc v :promoted @promoted)))
@@ -285,6 +287,38 @@
 (defn- counts [con]
   (into {} (for [t counted-tables] [t (:n (first (q con (str "SELECT count(*) AS n FROM " t))))])))
 
+(defn- promote-left!
+  "Step 3, inside its transaction on `con`, before `vocab_maintainers` is
+  dropped. Step 2 skips a vocabulary it has audited, so a maintainer the old
+  version added to one after that (it was run on the database between a
+  stopped start and this one) would otherwise lose every right over it. Each
+  such active account who does not maintain the vocabulary's home is made
+  its maintainer, as step 2 does, in one audited operation by nobody. Then
+  every vocabulary maintainer left out for a deactivated account is named,
+  once for the whole run."
+  [con]
+  (let [rows (q con (str "SELECT v.id, v.name, v.project_id, p.name AS project_name, vm.user_id, "
+                         "u.deactivated_at IS NOT NULL AS deactivated "
+                         "FROM vocab_maintainers vm JOIN vocab_layers v ON v.id = vm.vocab_layer_id "
+                         "JOIN projects p ON p.id = v.project_id JOIN users u ON u.id = vm.user_id "
+                         "WHERE NOT EXISTS (SELECT 1 FROM project_users pu WHERE pu.project_id = v.project_id "
+                         "  AND pu.user_id = vm.user_id AND pu.role = 'maintainer') "
+                         "ORDER BY v.id, vm.user_id"))]
+    (doseq [[[id name pid pname] rows] (group-by (juxt :id :name :project_id :project_name) rows)
+            :let [{active false deactivated true} (group-by #(= 1 (:deactivated %)) rows)]]
+      (when (seq deactivated)
+        (log/info (format "Vocabulary \"%s\" (%s): not made maintainer of \"%s\", deactivated: %s"
+                          name id pname (str/join ", " (map :user_id deactivated)))))
+      (log-promoted! name id pname
+                     (doall
+                      (for [{:keys [user_id]} active
+                            :let [was (role-word (prj/role-of con pid user_id))
+                                  r (prj/grant-role con pid user_id "maintainer" nil)]]
+                        (if (:success r)
+                          [user_id was]
+                          (throw (ex-info (str "Making " user_id " maintainer of " pid " failed: " (:error r))
+                                          {:result r})))))))))
+
 (defn- rebuild!
   "Step 3."
   [ds]
@@ -294,7 +328,7 @@
       (exec! con "PRAGMA foreign_keys = OFF")
       (exec! con "BEGIN IMMEDIATE")
       (try
-        (let [before (counts con)]
+        (do
           (when-let [bad (seq (q con (str "SELECT v.id, v.name FROM vocab_layers v WHERE v.project_id IS NULL OR "
                                           "NOT EXISTS (SELECT 1 FROM projects p JOIN project_vocabs pv ON pv.project_id = p.id "
                                           "  WHERE p.id = v.project_id AND p.deleted_at IS NULL AND pv.vocab_layer_id = v.id)")))]
@@ -304,28 +338,30 @@
                                  (str/join ", " (map (fn [{:keys [id name]}] (str "\"" name "\" (" id ")")) bad))
                                  ". Start the server again: the migration plans them again.")
                             {})))
-          (exec! con "DROP TABLE IF EXISTS vocab_layers_new")
-          (exec! con (str "CREATE TABLE vocab_layers_new ("
-                          "id TEXT PRIMARY KEY, "
-                          "name TEXT NOT NULL, "
-                          "config TEXT NOT NULL DEFAULT '{}', "
-                          "created_at TEXT NULL, "
-                          "modified_at TEXT NULL, "
-                          "project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE)"))
-          (exec! con (str "INSERT INTO vocab_layers_new (id, name, config, created_at, modified_at, project_id) "
-                          "SELECT id, name, config, created_at, modified_at, project_id FROM vocab_layers"))
-          (exec! con "DROP TABLE vocab_layers")
-          (exec! con "ALTER TABLE vocab_layers_new RENAME TO vocab_layers")
-          (exec! con "CREATE INDEX idx_vocab_layers_project ON vocab_layers(project_id)")
-          (exec! con "DROP TABLE vocab_maintainers")
-          (when-let [rows (seq (mapcat #(q con (str "PRAGMA foreign_key_check(" % ")"))
-                                       ["vocab_layers" "vocab_items" "project_vocabs" "comments"]))]
-            (throw (ex-info (str "The rebuilt tables break " (count rows) " foreign keys, first " (pr-str (first rows))) {})))
-          (let [after (counts con)]
-            (when (not= before after)
-              (throw (ex-info (str "The rebuild changed row counts: " (pr-str before) " to " (pr-str after)) {}))))
-          (when *before-rebuild-commit* (*before-rebuild-commit*))
-          (exec! con "COMMIT"))
+          (promote-left! con)
+          (let [before (counts con)]
+            (exec! con "DROP TABLE IF EXISTS vocab_layers_new")
+            (exec! con (str "CREATE TABLE vocab_layers_new ("
+                            "id TEXT PRIMARY KEY, "
+                            "name TEXT NOT NULL, "
+                            "config TEXT NOT NULL DEFAULT '{}', "
+                            "created_at TEXT NULL, "
+                            "modified_at TEXT NULL, "
+                            "project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE)"))
+            (exec! con (str "INSERT INTO vocab_layers_new (id, name, config, created_at, modified_at, project_id) "
+                            "SELECT id, name, config, created_at, modified_at, project_id FROM vocab_layers"))
+            (exec! con "DROP TABLE vocab_layers")
+            (exec! con "ALTER TABLE vocab_layers_new RENAME TO vocab_layers")
+            (exec! con "CREATE INDEX idx_vocab_layers_project ON vocab_layers(project_id)")
+            (exec! con "DROP TABLE vocab_maintainers")
+            (when-let [rows (seq (mapcat #(q con (str "PRAGMA foreign_key_check(" % ")"))
+                                         ["vocab_layers" "vocab_items" "project_vocabs" "comments"]))]
+              (throw (ex-info (str "The rebuilt tables break " (count rows) " foreign keys, first " (pr-str (first rows))) {})))
+            (let [after (counts con)]
+              (when (not= before after)
+                (throw (ex-info (str "The rebuild changed row counts: " (pr-str before) " to " (pr-str after)) {}))))
+            (when *before-rebuild-commit* (*before-rebuild-commit*))
+            (exec! con "COMMIT")))
         (catch Throwable t
           (try (exec! con "ROLLBACK") (catch Throwable _))
           (throw t)))

@@ -26,7 +26,8 @@
             [plaid.sql.document :as doc]
             [plaid.sql.operation :refer [submit-operation!]]
             [plaid.sql.vocab-home :as vh]
-            [plaid.test-helpers :refer [temp-db-path]]))
+            [plaid.test-helpers :refer [temp-db-path]]
+            [taoensso.timbre :as log]))
 
 (use-fixtures :once with-db with-mount-states)
 
@@ -513,6 +514,52 @@
         (let [own (give-project! ds (u "v6") "V6")]
           (migratus/migrate (cfg ds))
           (is (= own (get (homes ds) (u "v6")))))))))
+
+(defn- logged
+  "Run `f` and return what it logged at INFO and above, one string per line."
+  [f]
+  (let [lines (atom [])]
+    (log/with-merged-config
+      {:appenders {:capture {:enabled? true
+                             :min-level :info
+                             :fn (fn [{:keys [vargs]}] (swap! lines conj (str/join " " vargs)))}}}
+      (f))
+    @lines))
+
+(deftest a-maintainer-the-old-version-added-after-the-plan-is-made-maintainer-of-the-home
+  ;; The stopped run audited every vocabulary, then the old version made
+  ;; `late` a maintainer of V3 (a reader of P3) and `gone` one of V4 (a
+  ;; deactivated account). Step 2 skips a vocabulary it has done, so the
+  ;; rebuild, which drops `vocab_maintainers`, is the last place to see them.
+  (with-temp-db
+    (fn [ds]
+      ((after-a-stopped-run
+        (fn [ds]
+          (user! ds (email "late")) (user! ds (email "gone"))
+          (q ds "UPDATE users SET deactivated_at = '2026-11-01T00:00:00Z' WHERE id = ?" (email "gone"))
+          (q ds "INSERT INTO project_users (project_id, user_id, role) VALUES (?, ?, 'reader')" (u "p3") (email "late"))
+          (q ds "INSERT INTO vocab_maintainers (vocab_layer_id, user_id) VALUES (?, ?), (?, ?)"
+             (u "v3") (email "late") (u "v4") (email "gone"))))
+       ds)
+      (let [ops-before (count (q ds "SELECT 1 FROM operations"))
+            lines (logged #(migratus/migrate (cfg ds)))]
+        (is (contains? (roles ds) [(u "p3") (email "late") "maintainer"]) "made maintainer of the home")
+        (is (not (contains? (roles ds) [(u "p3") (email "late") "reader"])))
+        (is (not (some (fn [[_ uid]] (= uid (email "gone"))) (roles ds))) "a deactivated account is not")
+        (is (= [[(u "p3") nil]]
+               (map (juxt :project_id :user_id)
+                    (q ds "SELECT project_id, user_id FROM operations WHERE op_type = 'project/add-maintainer'")))
+            "one audited operation, under the home, by nobody")
+        (is (= (inc ops-before) (count (q ds "SELECT 1 FROM operations"))) "nothing else is written")
+        (is (some #(= % (str "Vocabulary \"V3\" (" (u "v3") "): made maintainer of \"P3\": " (email "late")
+                             " (were reader)"))
+                  lines)
+            (pr-str lines))
+        (is (some #(= % (str "Vocabulary \"V4\" (" (u "v4") "): not made maintainer of \"P4\", deactivated: "
+                             (email "gone")))
+                  lines)
+            (pr-str lines))
+        (is (empty? (q ds "SELECT 1 FROM sqlite_master WHERE name = 'vocab_maintainers'")))))))
 
 (deftest a-vocabulary-is-not-removed-with-a-home-the-old-version-deleted-after-the-plan
   (testing "the planned home is being deleted, its removal still to run"
