@@ -157,6 +157,10 @@ export const useServiceRequest = (client) => {
         // that opened an operation FOR this run, to hold its own writes beside
         // the service's, says so.
         inOperation = false,
+        // Each progress event as it lands, `{percent, message}`, for a caller
+        // that shows it somewhere this hook's state does not reach: the write
+        // lock's banner, which outlives the tab whose hook made the request.
+        onProgress,
       } = options;
 
       const requestId = uuidv4();
@@ -170,7 +174,12 @@ export const useServiceRequest = (client) => {
           serviceId,
           serviceParams,
           timeout,
-          applyProgress,
+          onProgress
+            ? (payload) => {
+                applyProgress(payload);
+                onProgress(payload);
+              }
+            : applyProgress,
           undefined,
           { requestId, noOperation: !inOperation },
         );
@@ -199,7 +208,7 @@ export const useServiceRequest = (client) => {
   // A 404 means it is gone (unknown, or finished and collected), which is not
   // an error worth showing: the caller just forgets it.
   const attachToRequest = useCallback(
-    async (projectId, requestId, { timeout = 20 * 60 * 1000 } = {}) => {
+    async (projectId, requestId, { timeout = 20 * 60 * 1000, onProgress } = {}) => {
       inFlight.current = { projectId, requestId };
       try {
         begin();
@@ -207,7 +216,12 @@ export const useServiceRequest = (client) => {
           projectId,
           requestId,
           timeout,
-          applyProgress,
+          onProgress
+            ? (payload) => {
+                applyProgress(payload);
+                onProgress(payload);
+              }
+            : applyProgress,
         );
       } finally {
         inFlight.current = null;

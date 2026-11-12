@@ -66,14 +66,11 @@ export function useRunProgress() {
   const steps = run?.steps ?? [];
   const stepCount = steps.length;
 
-  // Overall fraction across the whole run. Null (indeterminate) only when
-  // there is genuinely nothing to go on: a single step of unknown length.
-  const overall = useMemo(() => {
-    if (!run) return null;
-    if (stepCount <= 1) return Number.isFinite(percent) ? percent : null;
-    const within = Number.isFinite(percent) ? percent / 100 : 0;
-    return ((stepIndex + within) / stepCount) * 100;
-  }, [run, stepCount, stepIndex, percent]);
+  // Overall fraction across the whole run (overallPercent).
+  const overall = useMemo(
+    () => (run ? overallPercent(stepCount, stepIndex, percent) : null),
+    [run, stepCount, stepIndex, percent],
+  );
 
   return {
     running: !!run,
@@ -90,6 +87,15 @@ export function useRunProgress() {
     report,
     finish,
   };
+}
+
+// A run's fraction across all its steps, from the step it is on and that
+// step's own fraction. Null (indeterminate) only when there is genuinely
+// nothing to go on: a single step of unknown length.
+export function overallPercent(stepCount, stepIndex, percent) {
+  if (stepCount <= 1) return Number.isFinite(percent) ? percent : null;
+  const within = Number.isFinite(percent) ? percent / 100 : 0;
+  return ((stepIndex + within) / stepCount) * 100;
 }
 
 // m:ss, counting past an hour rather than wrapping.

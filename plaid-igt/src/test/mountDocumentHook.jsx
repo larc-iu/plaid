@@ -96,8 +96,13 @@ export const fakeWriteLock = () => {
       label,
       options,
       status: null,
-      setStatus: vi.fn((s) => {
-        lock.status = s;
+      // What the banner would say last.
+      step: vi.fn(),
+      report: vi.fn(({ message } = {}) => {
+        if (message) lock.status = message;
+      }),
+      onProgress: vi.fn((event) => {
+        if (event?.message) lock.status = event.message;
       }),
       release: vi.fn(() => {
         if (state.held === lock) state.held = null;

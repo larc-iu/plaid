@@ -127,7 +127,7 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc, onRunStatus }) => {
   const stopRun = useCallback(async () => {
     stopRef.current = true;
     report({ percent: null, message: 'Stopping…' });
-    lockRef.current?.setStatus('Stopping…');
+    lockRef.current?.report({ percent: null, message: 'Stopping…' });
     await cancelRequest();
   }, [cancelRequest, report]);
 
@@ -190,7 +190,12 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc, onRunStatus }) => {
     }
     stopRef.current = false;
     // Held for the whole run: four steps of writes with a reload after each.
-    const lock = acquireWriteLock('Auto-analyze', { onCancel: stopRun });
+    // The banner over the document shows the run: its steps, the one it is
+    // on and what the worker says.
+    const lock = acquireWriteLock('Auto-analyze', {
+      onCancel: stopRun,
+      steps: plan.map((p) => p.label),
+    });
     if (!lock) return;
     lockRef.current = lock;
     setBusy(true);
@@ -198,7 +203,12 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc, onRunStatus }) => {
     const at = (key) => {
       const i = plan.findIndex((p) => p.key === key);
       progress.step(i);
-      lock.setStatus(`Step ${i + 1} of ${plan.length}. ${plan[i].label}.`);
+      lock.step(i);
+    };
+    // What a step reports, built-in or service.
+    const onProgress = (p) => {
+      progress.report(p);
+      lock.report({ percent: p?.percent ?? null, message: p?.message });
     };
     // Only the step in flight can be rejoined: the ordering happens here, in
     // the browser, so `multiStep` tells the resume to say the steps after it
@@ -242,8 +252,7 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc, onRunStatus }) => {
     // A reload after each service step costs seconds on a large document and
     // shows nothing while it runs, so it gets its own line rather than a pause.
     const reload = async () => {
-      progress.report({ percent: null, message: 'Loading results…' });
-      lock.setStatus('Loading results…');
+      onProgress({ percent: null, message: 'Loading results…' });
       await reloadAfterRun(() => doc.reload());
       // The step is done and collected; nothing left for a reload to rejoin.
       clearRunRecord(doc.id);
@@ -265,6 +274,7 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc, onRunStatus }) => {
             errorMessage: `${service.serviceName} reported an error.`,
             stoppedTitle: 'Auto-analyze',
             onRequestId: recordStep('translate', TASKS.TRANSLATE),
+            onProgress,
             timeout: ANALYZE_TIMEOUT_MS,
           },
         );
@@ -296,7 +306,7 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc, onRunStatus }) => {
           },
           // Reading precedent means fetching other documents one at a time —
           // the slowest built-in step, and the one that used to look stalled.
-          onProgress: progress.report,
+          onProgress,
           shouldStop: () => stopRef.current,
         });
         if (!ok) return; // the domain layer toasted the failure
@@ -329,6 +339,7 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc, onRunStatus }) => {
             errorMessage: `${service.serviceName} reported an error.`,
             stoppedTitle: 'Auto-analyze',
             onRequestId: recordStep('analyze', TASKS.ANALYZE),
+            onProgress,
             timeout: ANALYZE_TIMEOUT_MS,
           },
         );
@@ -353,7 +364,7 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc, onRunStatus }) => {
             // The words step 2 analyzed keep the links that came with them,
             // and what it left unlinked is linked now (H5-5).
             leave: copiedWordIds,
-            onProgress: progress.report,
+            onProgress,
             shouldStop: () => stopRef.current,
           });
           if (!ok) return;
@@ -380,6 +391,7 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc, onRunStatus }) => {
               errorMessage: `${service.serviceName} reported an error.`,
               stoppedTitle: 'Auto-analyze',
               onRequestId: recordStep('link', TASKS.LINK_VOCAB),
+              onProgress,
             },
           );
           if (stopped(result)) return await reload();

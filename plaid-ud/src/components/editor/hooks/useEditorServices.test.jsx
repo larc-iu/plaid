@@ -123,8 +123,12 @@ const acquireWriteLock = vi.fn((label, { onCancel: cancel = null } = {}) => {
       lockHeld = false;
       seq.push('lock:release');
     },
-    setStatus: (status) => {
-      if (!released) statuses.push(status);
+    step: () => {},
+    report: ({ message } = {}) => {
+      if (!released && message) statuses.push(message);
+    },
+    onProgress: (event) => {
+      if (!released && event?.message) statuses.push(event.message);
     },
   };
 });

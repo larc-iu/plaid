@@ -17,7 +17,7 @@ const SERVICE = {
 
 const BUILTIN = { name: 'rule-based', label: 'Rule-based' };
 
-const lock = () => ({ setStatus: vi.fn(), release: vi.fn() });
+const lock = () => ({ step: vi.fn(), report: vi.fn(), onProgress: vi.fn(), release: vi.fn() });
 
 const mount = async (over = {}) => {
   const requestService = vi.fn(async () => ({}));
@@ -72,6 +72,30 @@ describe('a run of one integration spot', () => {
     );
     // The document is re-read once the service has written to it.
     expect(doc.reload).toHaveBeenCalled();
+    await view.unmount();
+  });
+
+  // The banner over the document is where the run shows, and it outlives the
+  // tab that started it, so the service's progress goes to the lock straight
+  // from the request, not through this hook's state.
+  it("hands the service's progress to the write lock as it lands", async () => {
+    const requestService = vi.fn(async (...args) => {
+      args[4].onProgress({ percent: 30, message: 'Sentence 3 of 10' });
+      return {};
+    });
+    const { view, run, acquireWriteLock } = await mount({
+      request: {
+        availableServices: [SERVICE],
+        requestService,
+        cancelRequest: vi.fn(),
+        progressPercent: null,
+        progressMessage: '',
+      },
+    });
+    await view.step(() => run().start());
+    const held = acquireWriteLock.mock.results[0].value;
+    expect(held.onProgress).toHaveBeenCalledWith({ percent: 30, message: 'Sentence 3 of 10' });
+    expect(held.report).toHaveBeenCalledWith({ percent: null, message: 'Loading results…' });
     await view.unmount();
   });
 

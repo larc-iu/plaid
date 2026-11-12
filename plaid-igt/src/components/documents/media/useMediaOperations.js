@@ -240,11 +240,6 @@ export const useMediaOperations = () => {
     message: progressMessage,
     active: transcribeRun.running,
   });
-  // The banner is the only surface once the user leaves this tab.
-  const lockRef = useRef(null);
-  useEffect(() => {
-    if (progressMessage) lockRef.current?.setStatus(progressMessage);
-  }, [progressMessage]);
   // A detect-speech SERVICE reports over the same channel; the built-in model
   // reports its own fraction, mirrored just below where `vad` is built.
   useMirroredProgress(detectRun, {
@@ -999,9 +994,12 @@ export const useMediaOperations = () => {
       const sentenceTokenLayer = doc.layerInfo.sentenceTokenLayer;
 
       // Held for the whole run: the service writes into the document.
-      const lock = acquireWriteLock('Transcribe', { onCancel: stopTranscribe });
+      // The banner over the document shows the run, a step per channel.
+      const lock = acquireWriteLock('Transcribe', {
+        onCancel: stopTranscribe,
+        steps: runs.length > 1 ? runs.map(nameOf) : null,
+      });
       if (!lock) return;
-      lockRef.current = lock;
       let stillOut = false; // the request survived our giving up on it
       let stopped = false;
       let asked = false; // the service was asked, so its answer ends the run
@@ -1012,7 +1010,7 @@ export const useMediaOperations = () => {
       transcribeStopRef.current = () => {
         stopped = true;
         transcribeRun.report({ percent: null, message: 'Stopping…' });
-        lock.setStatus('Stopping…');
+        lock.report({ percent: null, message: 'Stopping…' });
         onStop();
       };
       try {
@@ -1037,11 +1035,15 @@ export const useMediaOperations = () => {
           async () => {
             if (stopped) return;
             transcribeRun.report({ message: 'Starting the service…' });
+            lock.report({ message: 'Starting the service…' });
             asked = true;
 
             for (const [i, run] of runs.entries()) {
               if (stopped) return;
-              if (runs.length > 1) transcribeRun.step(i);
+              if (runs.length > 1) {
+                transcribeRun.step(i);
+                lock.step(i);
+              }
               // A channel's notice names its speaker, since each channel is a
               // run of its own and says its own counts.
               const notice = (result) => {
@@ -1078,6 +1080,7 @@ export const useMediaOperations = () => {
                   timeout: TRANSCRIBE_TIMEOUT_MS,
                   // The operation opened above, for this run.
                   inOperation: true,
+                  onProgress: lock.onProgress,
                 },
               );
               // A stopped channel ends the run: the channels after it are not asked.
@@ -1095,7 +1098,7 @@ export const useMediaOperations = () => {
         // with nothing else on screen to show for it, so it is named like any
         // other step rather than left as dead air.
         transcribeRun.report({ percent: null, message: 'Loading the transcript…' });
-        lock.setStatus('Loading the transcript…');
+        lock.report({ percent: null, message: 'Loading the transcript…' });
         await reloadAfterRun(() => doc.reload());
       } catch (error) {
         console.error('Transcription failed:', error);
@@ -1108,7 +1111,6 @@ export const useMediaOperations = () => {
         transcribeStopRef.current = null;
         transcribeRun.finish();
         lock.release();
-        lockRef.current = null;
       }
     },
     [

@@ -66,7 +66,7 @@ const mount = async () => {
     subscribe: () => () => {},
     getSnapshot: () => 0,
   };
-  const lock = { release: vi.fn(), setStatus: () => {} };
+  const lock = { release: vi.fn(), step: () => {}, report: () => {}, onProgress: () => {} };
   let ops;
   const Probe = () => {
     ops = useTokenOperations();

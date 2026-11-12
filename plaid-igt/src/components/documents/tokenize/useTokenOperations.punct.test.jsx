@@ -58,7 +58,7 @@ const build = (punct) => {
 };
 
 const mount = async (doc) => {
-  const lock = { release: vi.fn(), setStatus: () => {} };
+  const lock = { release: vi.fn(), step: () => {}, report: () => {}, onProgress: () => {} };
   let ops;
   const Probe = () => {
     ops = useTokenOperations();

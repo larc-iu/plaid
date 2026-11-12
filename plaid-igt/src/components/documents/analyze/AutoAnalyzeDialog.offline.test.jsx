@@ -62,7 +62,7 @@ const mount = async () => {
     },
     reload: vi.fn(async () => {}),
   };
-  const lock = { release: vi.fn(), setStatus: () => {} };
+  const lock = { release: vi.fn(), step: () => {}, report: () => {}, onProgress: () => {} };
   return renderComponent(
     <DocumentProvider value={{ doc, client: {}, acquireWriteLock: () => lock, writeLock: null }}>
       <AutoAnalyzeDialog open onOpenChange={() => {}} doc={doc} />

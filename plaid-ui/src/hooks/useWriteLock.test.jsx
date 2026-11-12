@@ -27,7 +27,14 @@ describe('useWriteLock', () => {
     await step(() => {
       handle = lock().acquire('Auto-analyze');
     });
-    expect(lock().held).toMatchObject({ label: 'Auto-analyze', status: '' });
+    // A run of one step: its own name, its fraction unknown, nothing said yet.
+    expect(lock().held).toMatchObject({
+      label: 'Auto-analyze',
+      steps: ['Auto-analyze'],
+      stepIndex: 0,
+      percent: null,
+      message: '',
+    });
     expect(lock().held.startedAt).toBeTypeOf('number');
 
     await step(() => handle.release());
@@ -43,19 +50,40 @@ describe('useWriteLock', () => {
     expect(lock().held.startedAt).toBe(startedAt);
   });
 
-  it('carries the status the holder pushes, and ignores one pushed after release', async () => {
+  it('carries the progress the holder pushes, and ignores any pushed after release', async () => {
     const { lock, step } = await mount();
     let handle;
     await step(() => {
       handle = lock().acquire('Transcribe');
     });
-    await step(() => handle.setStatus('Transcribing, 40%'));
-    expect(lock().held.status).toBe('Transcribing, 40%');
+    await step(() => handle.report({ percent: 40, message: 'Transcribing' }));
+    expect(lock().held).toMatchObject({ percent: 40, message: 'Transcribing' });
+    // A message alone keeps the percent, and an empty one keeps the message.
+    await step(() => handle.report({ message: 'Still transcribing' }));
+    expect(lock().held).toMatchObject({ percent: 40, message: 'Still transcribing' });
+    await step(() => handle.report({ percent: 55, message: '' }));
+    expect(lock().held).toMatchObject({ percent: 55, message: 'Still transcribing' });
+    // A service's event with no percent says the fraction is unknown, never 0%.
+    await step(() => handle.onProgress({ message: 'Loading the model' }));
+    expect(lock().held).toMatchObject({ percent: null, message: 'Loading the model' });
 
     await step(() => handle.release());
     // A progress event that lands after the run ended must not resurrect it.
-    await step(() => handle.setStatus('too late'));
+    await step(() => handle.report({ percent: 99, message: 'too late' }));
     expect(lock().held).toBe(null);
+  });
+
+  it('carries the steps of a run that has several, and which one it is on', async () => {
+    const { lock, step } = await mount();
+    let handle;
+    await step(() => {
+      handle = lock().acquire('Auto-analyze', { steps: ['Translate', 'Copy', 'Link'] });
+    });
+    expect(lock().held).toMatchObject({ steps: ['Translate', 'Copy', 'Link'], stepIndex: 0 });
+    await step(() => handle.report({ percent: 80, message: 'Sentence 8 of 10' }));
+    // A new step starts with its fraction unknown and nothing said yet.
+    await step(() => handle.step(1));
+    expect(lock().held).toMatchObject({ stepIndex: 1, percent: null, message: '' });
   });
 
   it('refuses a second holder while one has it', async () => {

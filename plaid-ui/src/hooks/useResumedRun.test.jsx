@@ -40,7 +40,7 @@ describe('useResumedRun', () => {
     clock.mockRestore();
     expect(readRunRecord('d1').startedAt).toBe(startedAt);
 
-    const lock = { setStatus: vi.fn(), release: vi.fn() };
+    const lock = { step: vi.fn(), report: vi.fn(), onProgress: vi.fn(), release: vi.fn() };
     const acquire = vi.fn(() => lock);
     const Probe = () => {
       useResumedRun({}, { id: 'd1', _reload: async () => {} }, acquire);
@@ -73,7 +73,7 @@ describe('useResumedRun', () => {
       ...(multiStep ? { multiStep } : {}),
     });
     attach = () => Promise.resolve(result);
-    const lock = { setStatus: vi.fn(), release: vi.fn() };
+    const lock = { step: vi.fn(), report: vi.fn(), onProgress: vi.fn(), release: vi.fn() };
     const Probe = () => {
       useResumedRun({}, { id: 'd1', _reload: async () => {} }, () => lock, notices);
       return null;

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback } from 'react';
 import { useServiceSpot } from './useServiceSpot.js';
 import { useRunProgress, useMirroredProgress } from './useRunProgress.js';
 import { writeRunRecord, clearRunRecord } from '../domain/runRecord.js';
@@ -61,13 +61,6 @@ export const useServiceRun = ({
     active: run.running,
   });
 
-  // The banner is the only surface once the dialog is shut and the user has
-  // moved to another tab.
-  const lockRef = useRef(null);
-  useEffect(() => {
-    if (progressMessage) lockRef.current?.setStatus(progressMessage);
-  }, [progressMessage]);
-
   const start = useCallback(
     async (extra = {}) => {
       const missing = Object.values(spot.params.errors);
@@ -78,7 +71,7 @@ export const useServiceRun = ({
       if (!spot.service) return;
       const lock = acquireWriteLock(label, { onCancel: cancelRequest });
       if (!lock) return;
-      lockRef.current = lock;
+      lock.report({ message: 'Starting the service…' });
       run.start([label]);
       let stillOut = false; // the request survived our giving up on it
       try {
@@ -92,6 +85,8 @@ export const useServiceRun = ({
           {
             timeout,
             ...copy,
+            // The banner shows the run, and it outlives the tab that started it.
+            onProgress: lock.onProgress,
             // Written down before the request is submitted, so a reload in that
             // window can still find the run.
             onRequestId: (requestId) =>
@@ -101,7 +96,7 @@ export const useServiceRun = ({
         // Re-reading a large document is seconds of work, so it is named rather
         // than left as dead air.
         run.report({ percent: null, message: 'Loading results…' });
-        lock.setStatus('Loading results…');
+        lock.report({ percent: null, message: 'Loading results…' });
         await reloadAfterRun(() => doc.reload());
       } catch (error) {
         // requestService has already said it out loud; log so a failed run does
@@ -119,7 +114,6 @@ export const useServiceRun = ({
       } finally {
         if (!stillOut) clearRunRecord(doc.id);
         run.finish();
-        lockRef.current = null;
         lock.release();
       }
     },

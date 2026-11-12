@@ -13,39 +13,62 @@ import { useCallback, useRef, useState } from 'react';
 // proposal becomes a segment by being typed into, so locking would break the
 // gesture the feature exists for.
 //
-// The lock also carries the run's status, because it is the one thing on
-// screen in the two cases where nothing else is: the user has switched to a
-// tab that does not mount the run's own button, or the page was reloaded and
-// the run was rejoined with no dialog open at all.
+// The lock also carries the run's progress, because the banner it puts over
+// the document (RunBanner) is the one place a run shows: its dialog closes
+// when the run starts, the run goes on when its tab is left, and a page that
+// was reloaded rejoins it with no dialog at all. The holder says which step it
+// is on (`step`) and what the worker reports (`report`), and the banner draws
+// the step list, the bar and the status line from that.
 //
 // The holder also supplies `onCancel`, so the run can be stopped from wherever
 // the lock is visible. That matters most for a run this page did not start: a
 // rejoined run lives in its own hook, so the tab's own dialog has no handle on
-// it and could otherwise only sit there saying it was busy.
+// it.
 //
 // `startedAt` is when the run began, for a run rejoined after a reload: its
 // banner clock goes on from there rather than starting again at 0:00.
+// `steps` names the steps of a run the browser orders (Auto-analyze, a
+// transcript per channel). A run of one step names none.
 //
-// `acquire` returns `{release, setStatus}`, or null when the lock is already
-// held — which is also what stops a second run from starting on top of the
-// first. (Each spot has its own useServiceRequest, so its `isProcessing` only
-// guards against itself.)
+// `acquire` returns `{release, step, report, onProgress}`, or null when the lock is
+// already held, which is also what stops a second run from starting on top of
+// the first. (Each spot has its own useServiceRequest, so its `isProcessing`
+// only guards against itself.)
 export function useWriteLock() {
-  const [held, setHeld] = useState(null); // { label, startedAt, status }
+  // { label, startedAt, steps, stepIndex, percent, message, cancel }
+  const [held, setHeld] = useState(null);
   // The state is one render behind a synchronous second acquire, so the ref is
   // what actually arbitrates.
   const heldRef = useRef(false);
 
-  const acquire = useCallback((label, { onCancel = null, startedAt = null } = {}) => {
+  const acquire = useCallback((label, { onCancel = null, startedAt = null, steps = null } = {}) => {
     if (heldRef.current) return null;
     heldRef.current = true;
     setHeld({
       label,
       startedAt: Number.isFinite(startedAt) ? startedAt : Date.now(),
-      status: '',
+      steps: steps?.length ? steps : [label],
+      stepIndex: 0,
+      // Unknown until the worker says otherwise, never 0%.
+      percent: null,
+      message: '',
       cancel: onCancel,
     });
     let released = false;
+    // Ignored once released, so a late progress event cannot resurrect a
+    // finished run, or write into the run that holds the lock after it.
+    const update = (patch) => {
+      if (released) return;
+      setHeld((cur) => (cur ? { ...cur, ...patch } : cur));
+    };
+    // What the worker reports. A percent left out stays as it was, and null
+    // means unknown. An empty message keeps the last real one.
+    const report = ({ percent, message } = {}) => {
+      const patch = {};
+      if (percent !== undefined) patch.percent = Number.isFinite(percent) ? percent : null;
+      if (message) patch.message = message;
+      if (Object.keys(patch).length) update(patch);
+    };
     return {
       release: () => {
         if (released) return; // a release called twice must not free a later run
@@ -53,12 +76,13 @@ export function useWriteLock() {
         heldRef.current = false;
         setHeld(null);
       },
-      // What the run last said. Ignored once released, so a late progress
-      // event cannot resurrect a finished run's status.
-      setStatus: (status) => {
-        if (released) return;
-        setHeld((cur) => (cur && cur.status !== status ? { ...cur, status } : cur));
-      },
+      // Move to step `index`. A step starts with its fraction unknown, and its
+      // name is the status line until the worker says something.
+      step: (index) => update({ stepIndex: index, percent: null, message: '' }),
+      report,
+      // A service's progress event, as a request's `onProgress`: one with no
+      // percent says the fraction is unknown.
+      onProgress: (event) => report({ percent: event?.percent ?? null, message: event?.message }),
     };
   }, []);
 

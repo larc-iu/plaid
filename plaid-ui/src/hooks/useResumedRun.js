@@ -21,14 +21,10 @@ import { useServiceRequest } from './useServiceRequest.js';
 // it words the result's counts, so a rejoined run says what the run would
 // have said on the page that started it (R18).
 export function useResumedRun(client, doc, acquireWriteLock, notices = {}) {
-  const { attachToRequest, cancelRequest, progressPercent, progressMessage } =
-    useServiceRequest(client);
+  const { attachToRequest, cancelRequest } = useServiceRequest(client);
   const documentId = doc?.id ?? null;
   // One attempt per document, even under StrictMode's double-invoke.
   const triedFor = useRef(null);
-  // Progress arrives through the hook's state, so the live lock handle is kept
-  // here for the effect below to push into.
-  const lockRef = useRef(null);
 
   useEffect(() => {
     if (!documentId || triedFor.current === documentId) return;
@@ -38,20 +34,22 @@ export function useResumedRun(client, doc, acquireWriteLock, notices = {}) {
     if (!record) return;
 
     // The record's start, so the banner's clock counts the whole run and not
-    // just the time since the reload.
+    // just the time since the reload. What it knows is one step, the one in
+    // flight, with its percent and message as the request reports them.
     const lock = acquireWriteLock(record.label || 'A service', {
       onCancel: cancelRequest,
       startedAt: record.startedAt,
     });
     if (!lock) return; // something already holds it; this page did not reload
-    lockRef.current = lock;
-    lock.setStatus('Rejoining…');
+    lock.report({ message: 'Rejoining…' });
 
     let stillOut = false; // the request survived our giving up on it
     (async () => {
       try {
-        const result = await attachToRequest(record.projectId, record.requestId);
-        lock.setStatus('Loading results…');
+        const result = await attachToRequest(record.projectId, record.requestId, {
+          onProgress: lock.onProgress,
+        });
+        lock.report({ percent: null, message: 'Loading results…' });
         await reloadAfterRun(() => doc._reload());
         if (result?.stopped === true) {
           // Someone stopped it — from this page's banner, or another of their
@@ -99,24 +97,8 @@ export function useResumedRun(client, doc, acquireWriteLock, notices = {}) {
       } finally {
         if (!stillOut) clearRunRecord(documentId);
         lock.release();
-        // Only if it is still ours: the reader may have opened another
-        // document while this was out, and that one's lock is what the banner
-        // is mirroring now.
-        if (lockRef.current === lock) lockRef.current = null;
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [documentId]);
-
-  // Mirror the rejoined request's progress onto the lock, which is what the
-  // banner renders.
-  useEffect(() => {
-    const lock = lockRef.current;
-    if (!lock || !progressMessage) return;
-    lock.setStatus(
-      Number.isFinite(progressPercent)
-        ? `${progressMessage} ${Math.round(progressPercent)}%`
-        : progressMessage,
-    );
-  }, [progressPercent, progressMessage]);
 }
