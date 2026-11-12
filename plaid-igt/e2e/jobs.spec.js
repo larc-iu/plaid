@@ -11,7 +11,8 @@ import { fakeJobWorker, stoppedReport } from './jobWorker.js';
 //
 // The worker is the spec's (jobWorker.js): the e2e admin's client claiming
 // the job and moving it step by step, no model. The jobs are started in the
-// app by the same admin. A throwaway project with two documents, deleted
+// app by the same admin. A throwaway project with two documents and a lexicon
+// (Link to lexicon is offered only where the project links one), deleted
 // afterwards with its jobs.
 
 test.describe.configure({ mode: 'serial' });
@@ -35,6 +36,8 @@ test.beforeAll(async () => {
     docName: 'Story A',
     body: 'kai pele tuna',
   }));
+  const lexicon = await client.vocabLayers.create(projectId, 'Jobs lexicon');
+  await client.projects.linkVocab(projectId, lexicon.id);
   const project = await client.projects.get(projectId);
   const textLayer = project.textLayers.find((l) => roleOf(l) === ROLES.BASELINE);
   docB = (await client.documents.create(projectId, 'Story B')).id;
