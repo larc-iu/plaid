@@ -3,6 +3,8 @@ import {
   canEditProject,
   canManageProject,
   canReadProject,
+  canStartJob,
+  canStopJob,
   canManageVocabulary,
   canEditVocabularyEntries,
   canLinkVocabulary,
@@ -287,5 +289,32 @@ describe('a deleted document', () => {
       expect(readOnlyReason(p, user)).toBe('This document was deleted.');
     }
     expect(canReadProject(p, as('r'))).toBe(true);
+  });
+});
+
+// An assistant job (the jobs round, 2026-11-12, SPEC 2): a writer starts one,
+// and the person who started it stops it while they still write the project,
+// as does any maintainer.
+describe('assistant jobs', () => {
+  const p = { maintainers: ['m'], writers: ['w', 'w2'], readers: ['r', 'r2'] };
+  const job = { startedBy: 'w' };
+
+  it('lets a writer, a maintainer or an admin start one, and not a reader or a stranger', () => {
+    expect(
+      [as('w'), as('m'), as('x', true), as('r'), as('x')].map((u) => canStartJob(p, u)),
+    ).toEqual([true, true, true, false, false]);
+    expect(canStartJob(asDeletedDocument(p), as('w'))).toBe(false);
+  });
+
+  it('lets its starter, a maintainer or an admin stop it, and not another writer or a reader', () => {
+    expect(
+      [as('w'), as('m'), as('x', true), as('w2'), as('r')].map((u) => canStopJob(job, p, u)),
+    ).toEqual([true, true, true, false, false]);
+  });
+
+  it('does not let a starter who no longer writes the project stop it', () => {
+    const demoted = { maintainers: ['m'], writers: ['w2'], readers: ['w'] };
+    expect(canStopJob({ startedBy: 'w' }, demoted, as('w'))).toBe(false);
+    expect(canStopJob({ startedBy: 'r2' }, p, as('r2'))).toBe(false);
   });
 });

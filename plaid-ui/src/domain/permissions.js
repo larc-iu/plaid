@@ -42,6 +42,15 @@ export const canEditProject = (project, user) =>
 export const canManageProject = (project, user) =>
   !deleted(project) && !!(user?.isAdmin || inList(project?.maintainers, user?.id));
 
+// An assistant job: a writer starts one, on the project's documents.
+export const canStartJob = canEditProject;
+
+// Stops `job` (cancels it): the person who started it while they still write
+// the project, or a maintainer (an admin is one).
+export const canStopJob = (job, project, user) =>
+  canManageProject(project, user) ||
+  (job?.startedBy != null && job.startedBy === user?.id && canEditProject(project, user));
+
 // Whether the project opens at all. An admin reads every project, so a screen
 // asking "is this person a member" wants `projectRole` instead.
 export const canReadProject = (project, user) =>
