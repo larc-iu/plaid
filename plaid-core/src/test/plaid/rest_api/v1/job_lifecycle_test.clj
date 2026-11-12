@@ -429,3 +429,33 @@
     (let [row (first (filter #(= d1 (:document-id %)) (:job/documents (get-job j))))]
       (is (some? row))
       (is (nil? (:name row))))))
+
+(deftest an-end-core-decides-clears-the-workers-line
+  (let [{:keys [p st]} (jh/world!)
+        line {:message "Sentences 1 to 5 of 40."}
+        demote! (fn [] (fix/assert-no-content (call admin-request :delete (str "/api/v1/projects/" p "/writers/starter@example.com"))))
+        restore! (fn [] (jh/grant! p "writers" "starter@example.com"))]
+    (testing "a lapsed lease cancelled by core"
+      (let [j (running-job! st p "running")]
+        (heartbeat! j jh/worker-a line)
+        (lapse! j)
+        (let [job (:body (call st :post (str "/api/v1/jobs/" j "/cancel")))]
+          (is (= "cancelled" (:job/state job)))
+          (is (nil? (:job/message job))))))
+    (testing "starter-access at the heartbeat"
+      (let [j (running-job! st p "running")]
+        (heartbeat! j jh/worker-a line)
+        (demote!)
+        (is (= "job-failed" (-> (heartbeat! j jh/worker-a) :body :code)))
+        (is (nil? (:job/message (get-job j))))
+        (restore!)
+        (fix/assert-ok (finish! j jh/worker-a "failed"))))
+    (testing "starter-access at the claim, for a job whose lease lapsed"
+      (let [j (running-job! st p "running")]
+        (heartbeat! j jh/worker-a line)
+        (lapse! j)
+        (demote!)
+        (is (= 204 (:status (claim! jh/worker-b))))
+        (let [job (get-job j)]
+          (is (= ["failed" "starter-access"] [(:job/state job) (:job/reason job)]))
+          (is (nil? (:job/message job))))))))

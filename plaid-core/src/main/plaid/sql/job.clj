@@ -401,12 +401,13 @@
 (defn- settle!
   "End job `job-id` as core decides it: `state` with `reason`, its unfinished
   rows `not-reached`, and the report core writes (`stopped` is the report's
-  `stopped`). `extra` is more columns to set."
+  `stopped`). `extra` is more columns to set. Every end core decides clears
+  `message`, the worker's last line, so the apps word the end by its reason."
   [tx job-id state reason stopped extra]
   (let [now (psc/now-iso)]
     (psc/execute! tx {:update :jobs
                       :set (merge {:state state :reason reason :finished_at now
-                                   :current_document nil :waiting_for nil}
+                                   :message nil :current_document nil :waiting_for nil}
                                   extra)
                       :where [:= :id (str job-id)]})
     (settle-rows! tx job-id now)
@@ -432,7 +433,7 @@
       (case (:state row)
         "waiting"
         (psc/execute! tx {:update :jobs
-                          :set (merge by {:state "cancelled" :reason "cancelled"
+                          :set (merge by {:state "cancelled" :reason "cancelled" :message nil
                                           :finished_at (psc/instant->iso now)})
                           :where [:= :id (str job-id)]})
 
@@ -521,7 +522,7 @@
 
         (not (starter-writes? tx (:project_id row) (:started_by row)))
         (do (psc/execute! tx {:update :jobs
-                              :set {:state "failed" :reason "starter-access"
+                              :set {:state "failed" :reason "starter-access" :message nil
                                     :finished_at (psc/now-iso)
                                     :current_document nil :waiting_for nil}
                               :where [:= :id (str job-id)]})
