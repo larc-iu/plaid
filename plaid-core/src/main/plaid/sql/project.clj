@@ -1222,8 +1222,12 @@
                        (when (nil? vocab)
                          (throw (ex-info (psc/err-msg-not-found "Vocab" vocab-id)
                                          {:code 400 :id vocab-id})))
+                       ;; A home being deleted answers as a hidden project
+                       ;; does: 404 to an admin, 403 to everyone else.
                        (when (hidden? tx (:project_id vocab))
-                         (throw (ex-info (psc/err-msg-not-found "Vocab" vocab-id) {:code 404 :id vocab-id})))
+                         (throw (if (or (nil? actor-user-id) (admin-id? tx actor-user-id))
+                                  (ex-info (psc/err-msg-not-found "Vocab" vocab-id) {:code 404 :id vocab-id})
+                                  (ex-info borrow-refusal {:code 403 :id vocab-id}))))
                        (when-not (or (nil? actor-user-id) (admin-id? tx actor-user-id))
                          (when-not (= :project/maintainers (role-of tx project-id actor-user-id))
                            (throw (ex-info (str "User " actor-user-id " lacks sufficient privileges to maintain the "

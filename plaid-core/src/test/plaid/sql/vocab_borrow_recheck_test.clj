@@ -41,11 +41,18 @@
 (defn- home [vid] (str (vocab/home-of fix/db vid)))
 
 (deftest a-borrow-checks-again-in-its-transaction
-  (testing "the home deleted after the gate: refused, nothing linked"
+  (testing "the home deleted after the gate: refused, nothing linked, 403 as a hidden home is to a non-admin"
     (let [{:keys [a b v]} (world)]
       (is (true? (:success (prj/delete fix/db a "admin@example.com"))))
       (let [r (prj/add-vocab fix/db b v u1)]
         (is (false? (:success r)))
+        (is (= 403 (:code r)))
+        (is (= "Linking a vocabulary needs access to the project it belongs to." (:error r))))
+      (is (not (linked? b v)))))
+  (testing "the home deleted after the gate: 404 to an admin"
+    (let [{:keys [a b v]} (world)]
+      (is (true? (:success (prj/delete fix/db a "admin@example.com"))))
+      (let [r (prj/add-vocab fix/db b v "admin@example.com")]
         (is (= 404 (:code r))))
       (is (not (linked? b v)))))
   (testing "the role on the home taken away after the gate: refused"
