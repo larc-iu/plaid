@@ -61,7 +61,9 @@ By default, each project is private, and one of three permissions levels is need
 
 Additionally, a global **admin** role exists, which allows the user to see and edit all data in the Plaid instance.
 
-Admins and the maintainers of any project or vocabulary may list and search every account on the server (`GET /api/v1/users`), so that they can add members.
+A project's roles also say what each person may do with the project's vocabularies (see <<Vocabs>>).
+
+Admins and the maintainers of any project may list and search every account on the server (`GET /api/v1/users`), so that they can add members.
 Anyone may create a project and so become a maintainer, which means every user can search the accounts.
 
 A request for a project, document or vocabulary that does not exist answers 404 to an admin.
@@ -364,9 +366,11 @@ With `dry-run=true` nothing is written, and the answer says what would change.
 
 === Vocabulary Time Travel
 
-A vocabulary is shared across projects, so its history is its own.
+A vocabulary may be linked by several projects, so its history is its own.
 `vocabLayers.get(id, includeItems, asOf)` reads a vocabulary as it was, `vocabLayers.getItemAt(id, itemId, asOf)` reads one entry, deleted or not, and `vocabLayers.audit` reads the vocabulary's log.
-A maintainer of the vocabulary can put one entry back as it was with `vocabLayers.restoreItem(id, itemId, asOf)`, though its links come back only by restoring the documents that held them.
+A maintainer of the vocabulary's project can put one entry back as it was with `vocabLayers.restoreItem(id, itemId, asOf)`, though its links come back only by restoring the documents that held them.
+Changes to a vocabulary also appear in its project's log, from the version that gave every vocabulary a project on.
+A vocabulary read as of a time before that version has no `project`.
 
 == Real-time Messaging
 Plaid offers a simple system for real-time communication on a per-project basis.
@@ -473,7 +477,7 @@ An `audit-log` event looks like this:
 
 Every write sends its own event, so `ops` always holds one operation, and a batch sends one event per write once it commits.
 `documents` lists every document the write changed in the project you listen on, and `projects` names that project.
-A write to a vocabulary shared by several projects sends each project's listeners an event of its own, with only that project's documents.
+A write to a vocabulary reaches the listeners of its project, and those of every other project that links it and whose documents it changed, each with an event of its own holding only that project's documents.
 The event is a lightweight notice: it spells operation types as `span_layer:create` where the audit endpoint has `span-layer/create`, and it carries bare ids.
 For the full entry, read the audit endpoint and match on `id`.
 
@@ -1087,15 +1091,15 @@ For example, if we wanted to extend the example above with a syntactic dependenc
 
 == Vocabs
 
-The four basic layer types (text, token, span, and relation) are all **project-specific** and cannot be used in more than one project.
-The fifth layer type, the **vocab layer**, can be used _across_ projects.
+The four basic layer types (text, token, span, and relation) belong to one project each.
+The fifth layer type, the **vocab layer** or vocabulary, also belongs to one project, its home, and other projects may use it too.
 As its name suggests, this layer is intended for recording occurrences of lexical entries.
 
-The vocab layer itself has a name:
+The vocab layer itself has a name, and `project`, the id of its project:
 
 [,js]
 ----
-{ id: "2b75b0f9", name: "English" }
+{ id: "2b75b0f9", name: "English", project: "7a1c09d2" }
 ----
 
 The vocab layer has **vocab item**s, which represent lexical entries, each with a canonical form:
@@ -1130,6 +1134,31 @@ Notice that multiple tokens may be specified, allowing for multi-word and non-co
 Deleting a vocab item deletes every link to it.
 To merge entries, `vocab_items.merge(survivor_id, loser_ids)` / `vocabItems.merge(survivorId, loserIds)` moves every link of the losers to the survivor, except a link on tokens the survivor is already linked to, which is deleted, and deletes the losers, in one operation.
 Metadata elsewhere that names a loser by its id is rewritten to name the survivor.
+
+=== A vocabulary's project
+
+A vocabulary is made inside a project, `vocabLayers.create(projectId, name)`, by a maintainer of that project.
+Its rights are that project's roles:
+
+* **Maintainers** rename, move and delete the vocabulary, change its configuration, and rename, merge, delete and restore its entries.
+* **Writers** add entries and change anything stored on an entry: its fields, type, senses and examples.
+* **Readers** read it.
+
+Another project may link the vocabulary with `projects.linkVocab(projectId, vocabId)`, which needs a maintainer of that project who also holds a role in the vocabulary's project.
+That project borrows it: its members read it and link their documents' tokens to its entries, and change no entry.
+Rights over the entries follow a person's role in the vocabulary's project, whatever project they work in.
+
+A vocabulary cannot be unlinked from its own project.
+A borrowing project's maintainers unlink it with `projects.unlinkVocab(projectId, vocabId)`, which removes its links in that project's documents.
+The maintainers of the vocabulary's project may also end any project's borrowing the same way, and `GET /api/v1/vocab-layers/{id}/borrowers` lists the projects that borrow it, by name where they may read them.
+A dry run (`?dry-run=true`) answers how many links the unlink would remove.
+
+`vocabLayers.move(id, projectId)` makes another project the vocabulary's project, for a person who maintains both.
+The old project keeps it linked, as a borrower.
+
+Deleting a vocabulary is refused while another project borrows it, for every user, admins included.
+Deleting a project deletes its vocabularies with it, and is refused while another project borrows one of them.
+The dry run of a project delete (`?dry-run=true`) names the vocabularies it would take.
 
 == Metadata and Config
 
@@ -2101,6 +2130,20 @@ $ python3 -c "import sqlite3; print(sqlite3.connect('file:plaid.db?mode=ro', uri
 
 Take a backup and copy it off the machine, replace `plaid.jar`, and restart the service.
 Database migrations run on startup, and the bundled apps are part of the jar, so they upgrade with it.
+
+The version that gives every vocabulary a project refuses to start while a vocabulary exists that no project links.
+Before upgrading to it, with the old version still running:
+
+. Run `vocab_home_orphans.py BASE_URL TOKEN_FILE` with an admin's API token. It lists every vocabulary no project links and writes nothing.
+. If it lists any, run it again with `--apply`. Each such vocabulary gets a project of its own, named after it, whose maintainers are the vocabulary's maintainers. Then run it once more without `--apply`: it must list none.
+. Take the backup and copy it off the machine.
+. Optionally, start the new version on a copy of the database, on a spare port, and read its log.
+. Replace the jar and restart.
+
+The upgrade gives each vocabulary its project and logs every choice.
+A vocabulary that several projects link goes to the one whose maintainers include the most of its maintainers, then the one with the most links into it, then the one with the smallest id.
+A maintainer of the vocabulary who does not maintain that project is made a maintainer of it.
+If the choice is wrong, move the vocabulary afterwards.
 A migration that rebuilds the audit log keeps the server from answering for a few minutes and cannot be undone, which is why the copy goes off the machine first.
 The database file does not shrink after such a rebuild: to return the space, stop the service, run `sqlite3 data/plaid.db VACUUM`, and start it again.
 
