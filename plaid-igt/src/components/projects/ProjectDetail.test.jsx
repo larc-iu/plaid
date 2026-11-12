@@ -462,7 +462,9 @@ describe('a project whose import did not finish', () => {
         get: async () => unfinished,
         listDocuments: async () => [{ id: 'U-doc', name: 'U doc' }],
         list: async () => [unfinished],
-        delete: async (id) => deleted.push(id),
+        // The confirm asks a dry run on open, which deletes nothing.
+        delete: async (id, _message, { dryRun } = {}) =>
+          dryRun ? { vocabularies: [] } : deleted.push(id),
       },
     };
     const view = await renderComponent(

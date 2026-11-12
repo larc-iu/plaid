@@ -1,11 +1,13 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { act } from 'react';
+import { PlaidClient } from '@larc-iu/plaid-client';
 import { renderComponent } from '@ui/test/renderComponent.jsx';
 
 // R57: a project import that stops is never picked up again. The project it
 // made keeps its import record, so it does not open, and the import page
-// offers to delete it, with the vocabularies the import made. Deleting it is
-// what lets the same page import again, into a project of its own.
+// offers to delete it. The vocabularies the import made belong to that
+// project, and core deletes them with it. Deleting it is what lets the same
+// page import again, into a project of its own.
 
 const made = vi.hoisted(() => ({ count: 0 }));
 // Setup as the hook sees it: the project, then each new vocabulary, each
@@ -17,7 +19,12 @@ vi.mock('@/components/projects/setup/executeSetup', () => ({
     client.made.add(projectId);
     await onProjectCreated(projectId);
     const vocabId = `v${made.count}`;
-    client.vocabs.set(vocabId, { id: vocabId, name: `Lexicon ${made.count}`, config: {} });
+    client.vocabs.set(vocabId, {
+      id: vocabId,
+      name: `Lexicon ${made.count}`,
+      project: projectId,
+      config: {},
+    });
     client.links.set(projectId, [vocabId]);
     await onVocabCreated(vocabId);
     return { projectId, failures: [], resources: {} };
@@ -34,10 +41,9 @@ const { useProjectImportRun } = await import('./useProjectImportRun.js');
 const { FinishPending, ImportRunPanel } = await import('@/components/projects/ImportPanels.jsx');
 const { ImportCancelled } = await import('@/import/stamps.js');
 const { UnfinishedImport } = await import('@/components/projects/UnfinishedImport.jsx');
-const { notifyWarning } = await import('@/utils/feedback');
 
-// A server holding each project's igt config, its vocabularies and which
-// project links which.
+// A server holding each project's igt config, its vocabularies (each with its
+// home project) and which project links which.
 const serverClient = () => {
   const config = new Map(); // projectId -> igt config
   const deleted = [];
@@ -46,6 +52,8 @@ const serverClient = () => {
     config,
     deleted,
     vocabsDeleted,
+    // Every project delete asked, as `[id, dryRun]`.
+    deletes: [],
     made: new Set(),
     vocabs: new Map(),
     links: new Map(), // projectId -> [vocabId]
@@ -76,9 +84,31 @@ const serverClient = () => {
             id,
             vocabs: (client.links.get(id) || []).map((v) => client.vocabs.get(v)),
           })),
-      delete: async (id) => {
+      // As core answers it: refused while another project links one of the
+      // project's own vocabularies, readable by the caller or not. The dry
+      // run names its own vocabularies and writes nothing. The delete takes
+      // them with the project.
+      delete: async (id, _message, { dryRun } = {}) => {
+        client.deletes.push([id, !!dryRun]);
+        const own = [...client.vocabs.values()].filter((v) => v.project === id);
+        const borrowers = [...client.links.entries()].filter(
+          ([pid, ids]) => pid !== id && own.some((v) => ids.includes(v.id)),
+        ).length;
+        if (borrowers) {
+          const said = `${borrowers} other project uses a vocabulary of this project.`;
+          throw Object.assign(new Error(said), {
+            status: 409,
+            responseData: { error: said, 'other-projects': borrowers },
+          });
+        }
+        if (dryRun) return { vocabularies: own.map(({ id: vid, name }) => ({ id: vid, name })) };
         deleted.push(id);
         config.delete(id);
+        client.links.delete(id);
+        for (const v of own) {
+          vocabsDeleted.push(v.id);
+          client.vocabs.delete(v.id);
+        }
       },
     },
     vocabLayers: {
@@ -96,20 +126,9 @@ const serverClient = () => {
         const { [key]: _, ...rest } = v.config[ns] || {};
         v.config = { ...v.config, [ns]: rest };
       },
-      // As core answers it: with onlyInProject, refused while any other
-      // project links the vocabulary, readable by the caller or not.
-      delete: async (id, _message, { onlyInProject } = {}) => {
-        if (client.failVocabDelete) throw client.failVocabDelete;
-        const elsewhere = [...client.links.entries()].some(
-          ([pid, ids]) => pid !== onlyInProject && ids.includes(id),
-        );
-        if (onlyInProject && elsewhere) {
-          throw Object.assign(new Error('1 other project uses this vocabulary.'), {
-            status: 409,
-          });
-        }
-        vocabsDeleted.push(id);
-        client.vocabs.delete(id);
+      // The project delete takes the vocabularies: none is deleted on its own.
+      delete: async (id) => {
+        throw new Error(`vocabLayers.delete(${id}) sent`);
       },
     },
   };
@@ -193,6 +212,16 @@ describe('a project import that stops', () => {
     );
     expect(client.deleted).toEqual([]);
 
+    await view.step(async () => buttons('Delete')[0].click());
+    const dialog = document.body.querySelector('[role="alertdialog"]').textContent;
+    expect(dialog).toContain('Half is deleted. This cannot be undone.');
+    expect(dialog).toContain('Its vocabulary “Lexicon');
+    expect(dialog).toContain('is deleted with it.');
+    expect(dialog).not.toContain('excepted');
+    // Opening the confirm asks only the dry run.
+    expect(client.deletes).toEqual([[id, true]]);
+    await view.step(async () => buttons('Cancel')[0].click());
+
     await confirmDelete(view, 'Half');
     expect(client.deleted).toEqual([id]);
     expect(client.vocabsDeleted).toEqual(record.vocabsMade);
@@ -201,9 +230,10 @@ describe('a project import that stops', () => {
     await view.unmount();
   });
 
-  // REV-FX-R57-2-2: core decides, from every project linking it, readable by
-  // the person deleting or not. One another project links stays, and is named.
-  it('keeps a vocabulary the import made that another project links, even one the deleter cannot read', async () => {
+  // Core refuses the delete while another project links a vocabulary the
+  // import made, readable by the person deleting or not, and the confirm
+  // says so with Cancel only.
+  it('is refused while another project uses a vocabulary the import made, even one the deleter cannot read', async () => {
     const client = serverClient();
     const { view, read } = await mount(client, stopping);
     await view.step(async () => buttons('Go')[0].click());
@@ -211,51 +241,49 @@ describe('a project import that stops', () => {
     const [vocab] = client.config.get(id).import.vocabsMade;
     // Someone else's project, which projects.list() does not show.
     client.links.set('someone-elses', [vocab]);
-    notifyWarning.mockClear();
-    await confirmDelete(view, 'Half');
-    expect(client.deleted).toEqual([id]);
-    expect(client.vocabsDeleted).toEqual([]);
-    expect(client.vocabs.has(vocab)).toBe(true);
-    expect(notifyWarning).toHaveBeenCalledWith(
-      `“${client.vocabs.get(vocab).name}” stays (used by another project).`,
-      'Vocabularies kept',
+    await view.step(async () => buttons('Delete')[0].click());
+    const dialog = document.body.querySelector('[role="alertdialog"]');
+    expect(dialog.textContent).toContain(
+      '1 other project uses a vocabulary of this project. It can be deleted once that project unlinks it.',
     );
-    // REV-FX-R57-3-1: kept, it is an ordinary vocabulary again.
-    expect(client.vocabs.get(vocab).config.igt.import).toBeUndefined();
+    expect(document.body.querySelector('#delete-project-confirm')).toBeNull();
+    expect(
+      [...dialog.querySelectorAll('button')].map((b) => b.textContent.trim()).filter(Boolean),
+    ).toEqual(['Cancel']);
+    expect(client.deletes).toEqual([[id, true]]);
+    expect(client.deleted).toEqual([]);
+    expect(client.vocabs.has(vocab)).toBe(true);
     await view.unmount();
   });
 
-  // REV-FX-R57-3-1: a vocabulary Delete could not remove is never left
-  // marked, and the notice says why it stayed.
-  it.each([
-    [403, 'stays (you do not maintain it).'],
-    [502, 'could not be deleted. Try again from the Vocabularies page.'],
-  ])(
-    'takes the mark off a vocabulary whose delete answers %s, and says so',
-    async (status, said) => {
-      const client = serverClient();
-      const { view, read } = await mount(client, stopping);
-      await view.step(async () => buttons('Go')[0].click());
-      const { id } = read().unfinished;
-      const [vocab] = client.config.get(id).import.vocabsMade;
-      client.failVocabDelete = Object.assign(new Error('refused'), { status });
-      notifyWarning.mockClear();
-      await confirmDelete(view, 'Half');
-      expect(client.deleted).toEqual([id]);
-      expect(client.vocabs.get(vocab).config.igt.import).toBeUndefined();
-      expect(notifyWarning).toHaveBeenCalledWith(
-        `“${client.vocabs.get(vocab).name}” ${said}`,
-        'Vocabularies kept',
-      );
-      await view.unmount();
-    },
-  );
+  // A project borrowed the vocabulary after the confirm opened: the delete's
+  // own refusal turns the confirm into it.
+  it('shows the refusal when the delete itself is refused', async () => {
+    const client = serverClient();
+    const { view, read } = await mount(client, stopping);
+    await view.step(async () => buttons('Go')[0].click());
+    const { id } = read().unfinished;
+    const [vocab] = client.config.get(id).import.vocabsMade;
+    await view.step(async () => buttons('Delete')[0].click());
+    await typeName(view, 'Half');
+    client.links.set('p-late', [vocab]);
+    const confirm = [...document.body.querySelectorAll('[role="alertdialog"] button')].find(
+      (b) => b.textContent.trim() === 'Delete project',
+    );
+    await view.step(async () => confirm.click());
+    expect(document.body.querySelector('[role="alertdialog"]').textContent).toContain(
+      '1 other project uses a vocabulary of this project.',
+    );
+    expect(client.deleted).toEqual([]);
+    expect(read().unfinished).toEqual({ id, name: 'Half' });
+    await view.unmount();
+  });
 
   // R59: entries the import added to a lexicon the person keeps stay there,
   // and the screen says how many.
   it('says how many entries it added to a lexicon the person keeps', async () => {
     const client = serverClient();
-    client.vocabs.set('kept', { id: 'kept', name: 'Our lexicon', config: {} });
+    client.vocabs.set('kept', { id: 'kept', name: 'Our lexicon', project: 'ours', config: {} });
     const run = async ({ onEntriesMade }) => {
       await onEntriesMade('kept', 2);
       await onEntriesMade('kept', 1);
@@ -408,6 +436,63 @@ describe('a record that cannot be written', () => {
     expect(read().stage).toBe('review');
     expect(read().runError).toBe('offline');
     expect(view.container.textContent).toContain('Failed to import');
+    await view.unmount();
+  });
+});
+
+// What the confirm SENDS, through the real plaid-client-js over a stubbed
+// fetch: a client that took no dry-run option would send a real DELETE when
+// the confirm opens (VH-UI's hazard).
+describe('the unfinished import delete, as sent', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('sends only the dry run when the confirm opens, then the delete of the project alone', async () => {
+    const sent = [];
+    vi.stubGlobal('fetch', async (url, init = {}) => {
+      const line = `${init.method ?? 'GET'} ${String(url).replace('http://plaid.test', '')}`;
+      sent.push(line);
+      const body = line.endsWith('?dry-run=true')
+        ? { vocabularies: [{ id: 'v1', name: 'Lexicon' }] }
+        : line.startsWith('GET /api/v1/vocab-layers/')
+          ? { id: 'v1', name: 'Lexicon', project: 'p1', config: {} }
+          : null;
+      return body
+        ? new Response(JSON.stringify(body), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          })
+        : new Response(null, { status: 204 });
+    });
+    const client = new PlaidClient('http://plaid.test', 'token');
+    const project = {
+      id: 'p1',
+      name: 'Half',
+      config: { igt: { import: { kind: 'CLDF', vocabsMade: ['v1'] } } },
+    };
+    const onDeleted = vi.fn();
+    const view = await renderComponent(
+      <UnfinishedImport client={client} project={project} canManage onDeleted={onDeleted} />,
+    );
+    await act(async () => {});
+    const before = sent.length;
+    await view.step(async () => buttons('Delete')[0].click());
+    for (let i = 0; i < 5; i++) await act(async () => new Promise((r) => setTimeout(r, 0)));
+    expect(sent.slice(before)).toEqual(['DELETE /api/v1/projects/p1?dry-run=true']);
+    expect(document.body.querySelector('[role="alertdialog"]').textContent).toContain(
+      'Its vocabulary “Lexicon” is deleted with it.',
+    );
+    await typeName(view, 'Half');
+    const confirm = [...document.body.querySelectorAll('[role="alertdialog"] button')].find(
+      (b) => b.textContent.trim() === 'Delete project',
+    );
+    await view.step(async () => confirm.click());
+    for (let i = 0; i < 5; i++) await act(async () => new Promise((r) => setTimeout(r, 0)));
+    expect(sent.slice(before)).toEqual([
+      'DELETE /api/v1/projects/p1?dry-run=true',
+      'DELETE /api/v1/projects/p1',
+    ]);
+    expect(sent.some((l) => l.includes('/vocab-layers') && !l.startsWith('GET'))).toBe(false);
+    expect(onDeleted).toHaveBeenCalled();
     await view.unmount();
   });
 });

@@ -5,17 +5,9 @@ import { FORM_PAGE_WIDTH } from '@ui/lib/pageWidth.js';
 import { Button } from '@ui/components/ui/button';
 import { DeleteProjectDialog } from '@ui/components/shared/DeleteProjectDialog.jsx';
 import { DELETE_BUTTON_CLASS } from '@ui/lib/destructive.js';
-import { statusOf } from '@ui/lib/errors.js';
 import { countOf } from '@ui/lib/plural.js';
-import { notifyError, notifySuccess, notifyWarning } from '@/utils/feedback';
-import {
-  importRanWhole,
-  markImportFinished,
-  readImportState,
-  unmarkVocab,
-} from '@/domain/igtConfig';
-
-const quoted = (vocabs) => vocabs.map((v) => `“${v.name}”`).join(', ');
+import { notifyError, notifySuccess } from '@/utils/feedback';
+import { importRanWhole, markImportFinished, readImportState } from '@/domain/igtConfig';
 
 // A vocabulary's name, or null when it cannot be read.
 const nameOf = async (client, id) => {
@@ -27,24 +19,19 @@ const nameOf = async (client, id) => {
 };
 
 /**
- * What the import record says the import left in vocabularies: the ones it
- * made (`made`, which Delete takes unless another project links one) and the
- * entries it added to a lexicon the person keeps (`added`, `[{name, n}]`,
- * which stay), and whether its run was whole and only the clear is left
- * (`whole`).
+ * What the import record says the import left in vocabularies of other
+ * projects: the entries it added to a lexicon the person keeps (`added`,
+ * `[{name, n}]`, which stay), and whether its run was whole and only the
+ * clear is left (`whole`). The vocabularies it made belong to its project.
  */
 async function whatItLeft(client, project) {
   const config = project.config ?? (await client.projects.get(project.id))?.config;
   const record = readImportState(config) ?? {};
-  const made = [];
-  for (const id of record.vocabsMade ?? []) {
-    made.push({ id, name: (await nameOf(client, id)) ?? 'an unnamed vocabulary' });
-  }
   const added = [];
   for (const [id, n] of Object.entries(record.entriesAdded ?? {})) {
     if (n > 0) added.push({ name: (await nameOf(client, id)) ?? 'a lexicon', n });
   }
-  return { made, added, whole: importRanWhole(record) };
+  return { added, whole: importRanWhole(record) };
 }
 
 /**
@@ -54,11 +41,11 @@ async function whatItLeft(client, project) {
  * stops. Such a project is only ever deleted, by a maintainer and only on
  * request: an import may still be running in another tab.
  *
- * Delete takes the vocabularies the import made (R58), each only when no
- * project but this one links it. Core decides that, from every project
- * linking it whether or not the person can read it, and a vocabulary it keeps
- * is named. Entries the import added to a lexicon the person keeps stay, and
- * the screen says how many (R59).
+ * Delete deletes the project, and core deletes the vocabularies the import
+ * made with it, since they belong to it. The shared confirm names them, and
+ * shows core's refusal while another project links one (whether or not the
+ * person can read that project). Entries the import added to a lexicon the
+ * person keeps stay, and the screen says how many (R59).
  *
  * A run that was whole but whose record could not be cleared (`finished` on
  * the record) is not offered for deletion: the screen says it finished and
@@ -70,7 +57,7 @@ async function whatItLeft(client, project) {
  */
 export const UnfinishedImport = ({ client, project, canManage, onDeleted, onFinished }) => {
   const [open, setOpen] = useState(false);
-  const [left, setLeft] = useState({ made: [], added: [], whole: false });
+  const [left, setLeft] = useState({ added: [], whole: false });
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -83,33 +70,11 @@ export const UnfinishedImport = ({ client, project, canManage, onDeleted, onFini
     };
   }, [client, project]);
 
+  // A refusal throws, and the confirm shows it (core's 409 while another
+  // project links one of its vocabularies) or reports it.
   const remove = async () => {
     await client.projects.delete(project.id);
-    // What core kept, by why: another project links it (409), the person does
-    // not maintain it (403), or the delete failed. Each is an ordinary
-    // vocabulary again, never one left marked for a project that is gone
-    // (REV-FX-R57-3-1).
-    const kept = { linked: [], notYours: [], failed: [] };
-    for (const v of left.made) {
-      try {
-        await client.vocabLayers.delete(v.id, undefined, { onlyInProject: project.id });
-      } catch (err) {
-        const status = statusOf(err);
-        if (status === 404) continue;
-        console.error('Could not delete the vocabulary:', err);
-        kept[status === 409 ? 'linked' : status === 403 ? 'notYours' : 'failed'].push(v);
-        await unmarkVocab(client, v.id);
-      }
-    }
     notifySuccess(`Deleted “${project.name ?? 'the project'}”`);
-    const stays = (vs, why) => `${quoted(vs)} ${vs.length === 1 ? 'stays' : 'stay'} (${why}).`;
-    const said = [
-      kept.linked.length && stays(kept.linked, 'used by another project'),
-      kept.notYours.length && stays(kept.notYours, 'you do not maintain it'),
-      kept.failed.length &&
-        `${quoted(kept.failed)} could not be deleted. Try again from the Vocabularies page.`,
-    ].filter(Boolean);
-    if (said.length) notifyWarning(said.join(' '), 'Vocabularies kept');
     setOpen(false);
     onDeleted?.();
   };
@@ -146,15 +111,13 @@ export const UnfinishedImport = ({ client, project, canManage, onDeleted, onFini
     );
   }
 
+  // The confirm adds the vocabularies the delete takes, from core.
   const consequence = (
     <>
       <strong className="font-text text-foreground" dir="auto">
         {project.name}
-      </strong>
-      {left.made.length
-        ? ` and the vocabularies its import made (${quoted(left.made)}) are deleted, a vocabulary another project uses excepted.`
-        : ' is deleted.'}{' '}
-      This cannot be undone.
+      </strong>{' '}
+      is deleted. This cannot be undone.
     </>
   );
 
@@ -184,6 +147,7 @@ export const UnfinishedImport = ({ client, project, canManage, onDeleted, onFini
         open={open}
         onOpenChange={setOpen}
         project={project}
+        client={client}
         consequence={consequence}
         onDelete={remove}
       />
