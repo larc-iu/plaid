@@ -483,6 +483,9 @@ ROW_FINAL = ('done', 'in-use', 'gone')
 
 #: The keys of a row's ``counts`` (CONTRACT 5.2), each a whole number.
 COUNT_KEYS = ('translations', 'refreshed', 'words', 'links', 'entries', 'left', 'changed', 'protected')
+#: A row's count of the sentences skipped past the cap of its ``skipped``
+#: list (core's JOB_SKIPPED_PER_DOCUMENT), which are counted and not listed.
+SKIPPED_MORE = 'skipped_more'
 
 
 def empty_counts() -> Dict[str, int]:
@@ -553,6 +556,20 @@ def _stopped_parts(job: Job, runner, harmonize, entries):
     return harmonize, entries
 
 
+def _give_up(job: Job, e: BaseException) -> None:
+    """End a job the worker could not take to its end, failed with the
+    error and the smallest report, so it is not claimed again to fail the
+    same way (REV-J-B S2-4). A refusal here too is logged and left to core."""
+    if job.lost:
+        return
+    job.set(message=error_line(e))
+    report = build_report(job, 'failed', WORKER_ERROR, [], {}, {})
+    try:
+        job.admin.jobs.finish(job.id, job.worker_id, 'failed', report, reason=WORKER_ERROR)
+    except Exception as again:  # noqa: BLE001 - nothing more a worker can do
+        logger.warning('Job %s: could not be ended as failed: %s', job.id, again)
+
+
 def _finish(job: Job, state: str, runner, harmonize, entries, reason: Optional[str] = None):
     if state != 'done':
         harmonize, entries = _stopped_parts(job, runner, harmonize, entries)
@@ -569,6 +586,9 @@ def _finish(job: Job, state: str, runner, harmonize, entries, reason: Optional[s
             job.beat()
             if job.state == 'stopping':
                 return _finish(job, 'cancelled', runner, harmonize, entries, reason='cancelled')
+        if e.status == 400:
+            # A report core will not take: the job still ends, with the error.
+            raise
         logger.warning('Job %s: the finish was refused: %s', job.id, e)
         return None
 
@@ -580,14 +600,15 @@ def build_report(job: Job, state: str, reason: Optional[str], documents: List[Di
     one entry per document in the job's order, from the app."""
     totals = {'documents_done': 0, 'documents_in_use': 0, 'documents_gone': 0, 'documents_not_reached': 0,
               'sentences': 0, 'translations': 0, 'refreshed': 0, 'words': 0, 'links': 0, 'entries': 0,
-              'skipped_too_long': 0, 'skipped_failed': 0, 'skipped_changed': 0, 'changed': 0, 'protected': 0}
+              'skipped_too_long': 0, 'skipped_failed': 0, 'skipped_changed': 0, 'skipped_more': 0, 'changed': 0,
+              'protected': 0}
     for d in documents:
         key = {'done': 'documents_done', 'in-use': 'documents_in_use', 'gone': 'documents_gone'}.get(
             d.get('state'), 'documents_not_reached')
         totals[key] += 1
         counts = d.get('counts') or {}
         totals['sentences'] += d.get('done') or 0
-        for k in ('translations', 'refreshed', 'words', 'links', 'changed', 'protected'):
+        for k in ('translations', 'refreshed', 'words', 'links', 'changed', 'protected', 'skipped_more'):
             totals[k] += counts.get(k) or 0
         for s in d.get('skipped') or []:
             k = f'skipped_{str(s.get("reason") or "").replace("-", "_")}'
@@ -650,13 +671,17 @@ class Worker:
                   sleep=self.sleep, model=self.model, heartbeat_s=self.heartbeat_s)
         logger.info('Claimed job %s on project %s', job.id, job.project_id)
         job.start()
+        runner = None
         try:
+            runner = self.runners[job.job['app']](job)
             if job.state == 'stopping':
                 # Cancelled while a worker that crashed held it: what was written stands.
-                runner = self.runners[job.job['app']](job)
                 _finish(job, 'cancelled', runner, {}, {}, reason='cancelled')
             else:
-                run_job(job, self.runners[job.job['app']](job))
+                run_job(job, runner)
+        except Exception as e:  # noqa: BLE001 - a job the worker cannot finish is failed, never taken again
+            logger.exception('Job %s: ended on an error of the worker\'s own', job.id)
+            _give_up(job, e)
         finally:
             job.stop()
         return claimed

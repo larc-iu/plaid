@@ -38,12 +38,12 @@ from ..core import job as core_job
 from ..core.agent import ModelConfig, Toolkit, TurnCancelled, run_turn
 from ..core.garble import seed
 from ..core.guidelines import manual_chars
-from ..core.job import (BUDGET, ROW_FINAL, JobStopped, Pace, StretchFailed, canonical, analysis_key,
+from ..core.job import (BUDGET, ROW_FINAL, SKIPPED_MORE, JobStopped, Pace, StretchFailed, canonical, analysis_key,
                         empty_counts, failure_kind, halve, harmonized, not_answering)
 from ..core.limits import (JOB_ANALYSIS_MAX_CHARS, JOB_CONTEXT_SENTENCES, JOB_CORE_TRIES, JOB_CORE_WAIT_S,
                            JOB_DECISIONS_PER_CALL, JOB_DEFER_ROUNDS, JOB_DEFER_WAIT_S, JOB_GUIDELINES_MAX_CHARS, JOB_LOCK_TRIES,
                            JOB_LOCK_WAIT_S, JOB_PERSON_QUIET_S, JOB_PRECEDENT_CHARS, JOB_PRECEDENT_PER_FORM,
-                           JOB_SENTENCE_MAX_CHARS, JOB_STRETCH_SENTENCES)
+                           JOB_SENTENCE_MAX_CHARS, JOB_SKIPPED_PER_DOCUMENT, JOB_STRETCH_SENTENCES)
 from ..core.plan import JOB_DETAIL_KEY, PlanError
 from ..core.tools import Refusal, ToolError
 from ..core.version import agent_version
@@ -472,6 +472,10 @@ class IgtRunner:
         self.harmonize_done: Optional[Dict[str, Any]] = None
         #: document id -> the sentences whose record is in core (their marks)
         self.recorded: Dict[str, Dict[str, Dict[str, int]]] = {}
+        #: document id -> sentences skipped past the cap of the row's list:
+        #: failed or changed, and too long for a stretch
+        self.unlisted: Dict[str, set] = {}
+        self.too_long: Dict[str, set] = {}
         #: document id -> counts of a stretch none of whose sentences was
         #: recorded yet (all taken again), added to the next record
         self.carry: Dict[str, Counter] = {}
@@ -531,12 +535,18 @@ class IgtRunner:
                 if not words and not translate:
                     continue
                 if len(render_sentence(s, project)) > JOB_SENTENCE_MAX_CHARS:
-                    skipped.append({'sentence': f's{s.index}', 'sentence_id': s.id, 'reason': 'too-long',
-                                    'kind': None})
+                    if len(skipped) < JOB_SKIPPED_PER_DOCUMENT:
+                        skipped.append({'sentence': f's{s.index}', 'sentence_id': s.id, 'reason': 'too-long',
+                                        'kind': None})
+                    else:
+                        self.too_long.setdefault(d, set()).add(s.id)
                     continue
                 targets += 1
+            counts = {**empty_counts(), **(row.get('counts') or {})}
+            if self.too_long.get(d):
+                counts[SKIPPED_MORE] = len(self.too_long[d])
             job.update_row(d, sentences=len(doc.sentences), targets=targets, done=row.get('done') or 0,
-                           skipped=skipped, counts=row.get('counts') or empty_counts())
+                           skipped=skipped, counts=counts)
             left += 1
         if not left:
             return 'no-documents', 'None of the job\'s documents are left.'
@@ -652,6 +662,7 @@ class IgtRunner:
         row = self.job.rows.get(document_id) or {}
         skipped = {s.get('sentence_id') for s in row.get('skipped') or []}
         recorded = self.recorded.get(document_id) or {}
+        skipped |= (self.unlisted.get(document_id) or set()) | (self.too_long.get(document_id) or set())
         ids = [s.id for s in doc.sentences]
         start = ids.index(row['last_sentence']) + 1 if row.get('last_sentence') in ids else 0
         out = []
@@ -664,11 +675,19 @@ class IgtRunner:
         return out
 
     def skip(self, document_id: str, doc, sentence_id: str, reason: str, kind: Optional[str]) -> None:
+        """List a sentence skipped, or once the row's list holds
+        :data:`JOB_SKIPPED_PER_DOCUMENT`, count it past the list (core keeps
+        no more), and move the cursor past it."""
         row = self.job.rows.get(document_id) or {}
         s = next((x for x in doc.sentences if x.id == sentence_id), None)
-        skipped = list(row.get('skipped') or []) + [{
-            'sentence': f's{s.index}' if s else '?', 'sentence_id': sentence_id, 'reason': reason, 'kind': kind}]
-        fields = {'skipped': skipped}
+        skipped = list(row.get('skipped') or [])
+        fields: Dict[str, Any] = {}
+        if len(skipped) < JOB_SKIPPED_PER_DOCUMENT:
+            skipped.append({'sentence': f's{s.index}' if s else '?', 'sentence_id': sentence_id, 'reason': reason,
+                            'kind': kind})
+            fields['skipped'] = skipped
+        else:
+            self.unlisted.setdefault(document_id, set()).add(sentence_id)
         if self._after_cursor(row, doc, sentence_id):
             fields['last_sentence'] = sentence_id
         self.job.update_row(document_id, **fields, **self.tally(document_id, skipped))
@@ -1117,8 +1136,16 @@ class IgtRunner:
         for c in marks.values():
             for k, n in c.items():
                 counts[k] = counts.get(k, 0) + n
-        done = len(set(marks) | {s.get('sentence_id') for s in skipped or []})
         row = self.job.rows.get(document_id) or {}
+        failed = len(self.unlisted.get(document_id) or ())
+        more = max((row.get('counts') or {}).get(SKIPPED_MORE) or 0,
+                   failed + len(self.too_long.get(document_id) or ()))
+        if more:
+            counts[SKIPPED_MORE] = more
+        # A sentence too long for a stretch was never a target (the checks
+        # leave it out of ``targets``), so it is not counted done.
+        done = len(set(marks) | {s.get('sentence_id') for s in skipped or [] if s.get('reason') != 'too-long'}) \
+            + failed
         out = {'counts': counts, 'done': done}
         if done > (row.get('targets') or 0):
             out['targets'] = done

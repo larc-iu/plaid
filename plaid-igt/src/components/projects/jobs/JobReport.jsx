@@ -41,6 +41,7 @@ const totalRows = (report) => {
   optional('Sentences skipped as too long', t.skippedTooLong);
   optional('Sentences skipped as failed', t.skippedFailed);
   optional('Sentences skipped as changed during the job', t.skippedChanged);
+  optional('Sentences skipped and not listed', t.skippedMore);
   optional('Changes not written, sentence changed meanwhile', t.changed);
   optional('Changes not written, a person’s work', t.protected);
   return rows.map(([label, n]) => [label, (n ?? 0).toLocaleString()]);
@@ -122,6 +123,11 @@ export const JobReport = ({ report, projectId, vocabs = [] }) => {
                   </li>
                 ))}
               </ul>
+              {d.counts?.skippedMore > 0 && (
+                <p className="ml-4 text-muted-foreground">
+                  And {d.counts.skippedMore.toLocaleString()} more
+                </p>
+              )}
             </div>
           ))}
         </>
