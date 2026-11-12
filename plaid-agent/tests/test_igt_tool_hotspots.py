@@ -112,8 +112,8 @@ def test_search_on_a_name_two_fields_share_searches_each():
     refused 13 times. A read answers for each, under its full name."""
     w = ws(project=shared_gloss_project())
     out = call_tool(w, 'search', {'pattern': 'Ali', 'where': 'Gloss'})
-    line = ('s1.w1 Ali-di | seg=Ali-di types=?,suffix | Gloss (Morpheme)=Ali-ERG | Gloss (Word)=Ali | '
-            'IPA=alidi | link=Ali | mlinks=m2:-di || Ali-di gam akuna.')
+    line = ('[s1] Ali-di gam akuna.\n  s1.w1 Ali-di | seg=Ali-di types=?,suffix | Gloss (Morpheme)=Ali-ERG | '
+            'Gloss (Word)=Ali | IPA=alidi | link=Ali | mlinks=m2:-di')
     assert out == f'Gloss (Word): 1 hits:\n{line}\n\nGloss (Morpheme): 1 word hit, holding 1 matching morpheme:\n{line}', out
     out = call_tool(w, 'search', {'pattern': 'ERG', 'where': 'Gloss'})
     assert out == f'Gloss (Word): No hits in the Gloss (Word) field.\n\nGloss (Morpheme): 1 word hit, holding 1 matching morpheme:\n{line}', out

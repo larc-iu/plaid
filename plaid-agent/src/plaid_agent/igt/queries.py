@@ -23,7 +23,7 @@ from plaid_client.workflows.igt.config import orthography_key
 from ..core.bidi import plain_quote, qv
 from ..core.corpus import rx, spread
 from ..core import rules
-from ..core.limits import ROW_LIMIT
+from ..core.limits import RENDER_BUDGET, ROW_LIMIT
 from ..core.plan import labelled
 from ..core.tools import ToolError
 from .corpus import Corpus, RENDER_DOC_BUDGET, Unanalyzed, review_stamps
@@ -35,19 +35,28 @@ MORE_DOCS_NOTE = '  … more hits in other documents (name a document, or narrow
 
 # --- search ---------------------------------------------------------------------
 
-def _hit_lines(c: Corpus, rows: List[list], token_col: int, limit: int, field=None, extra=None,
-               per_doc: Optional[int] = None) -> List[str]:
-    """Render token hits: one line per word (deduplicated),
-    ``"Doc" sN.wN <word> || <sentence>``, or the sentence line for a
-    sentence field. ``extra`` returns text appended per hit (concordance).
+def _hit_lines(c: Corpus, rows: List[list], token_col: int, limit: int, field=None,
+               per_doc: Optional[int] = None, budget: int = RENDER_BUDGET) -> Tuple[List[str], int]:
+    """Render token hits under their sentence: the sentence once,
+    ``"Doc" [sN] <sentence>``, then a line per word hit in it (deduplicated),
+    ``  sN.wN <word>``, or for a sentence field one line per sentence.
     ``per_doc`` caps the hits shown from any one document, with a line
-    saying how many more it holds."""
+    saying how many more it holds. Returns the lines and the number of hits
+    they show, which stops short of ``limit`` where the lines would pass
+    ``budget``, with a line saying so.
+
+    The sentence used to follow every hit, so a sentence holding five hits
+    was printed five times and a search or concordance of a common form
+    ended at the result cap (FABLE-REVIEW 2026-11-12)."""
     from .project import render_word, word_ref
     out: List[str] = []
     seen = set()
     loaded = set()
     shown_in: Dict[str, int] = {}
     skipped_in: Dict[str, int] = {}
+    used = shown = 0
+    under = None  # the (document, sentence) the last hit was printed under
+    stopped = False
     for row in rows:
         ent = row[token_col]
         if not isinstance(ent, dict):
@@ -67,18 +76,30 @@ def _hit_lines(c: Corpus, rows: List[list], token_col: int, limit: int, field=No
         if per_doc is not None and shown_in.get(doc.id, 0) >= per_doc:
             skipped_in[doc.id] = skipped_in.get(doc.id, 0) + 1
             continue
-        shown_in[doc.id] = shown_in.get(doc.id, 0) + 1
         tag = c.tag(doc.id)
         if w is None:
             sp = s.fields.get(field.name) if field else None
-            out.append(f'{tag}s{s.index} {field.name}={sp.value if sp else ""} | {s.text}')
+            lines = [f'{tag}s{s.index} {field.name}={sp.value if sp else ""} | {s.text}']
         else:
-            out.append(f'{tag}{word_ref(s, w)} {render_word(w, c.p, name=c.ws.link_name)[len(w.ref) + 1:]} || {s.text}')
-        if len(out) >= limit:
+            lines = [] if under == (doc.id, s.id) else [f'{tag}[s{s.index}] {s.text}']
+            lines.append(f'  {word_ref(s, w)} {render_word(w, c.p, name=c.ws.link_name)[len(w.ref) + 1:]}')
+        cost = sum(len(x) + 1 for x in lines)
+        if shown and used + cost > budget:
+            stopped = True
+            break
+        out += lines
+        used += cost
+        under = (doc.id, s.id)
+        shown += 1
+        shown_in[doc.id] = shown_in.get(doc.id, 0) + 1
+        if shown >= limit:
             break
     for doc_id, n in skipped_in.items():
         out.append(f'  … {n} more in {c.tag(doc_id).strip() or "this document"} (name the document to see them all)')
-    return out
+    if stopped:
+        out.append(f'  … stopped at {shown} hits, the most one answer holds: name a document or narrow the pattern '
+                   f'for the rest')
+    return out, shown
 
 
 def _spread_fetch(c: Corpus, where: List[Any], find: List[str], doc_var: str, limit: int,
@@ -120,41 +141,42 @@ def shown_word(c: Corpus, var: str, skip: List[str]) -> List[Any]:
     return [['not', c.word(var, value=skip)]] if skip else []
 
 
-def _spread_note(shown: List[str], docs: int) -> List[str]:
+def _spread_note(hits: Tuple[List[str], int], docs: int) -> Tuple[List[str], int]:
+    lines, shown = hits
     if docs > RENDER_DOC_BUDGET:
         return [f'  (hits in {docs} documents; a few from each of {RENDER_DOC_BUDGET} of them are shown. '
-                f'Name a document to search it whole.)'] + shown
-    return shown
+                f'Name a document to search it whole.)'] + lines, shown
+    return lines, shown
 
 
 def q_search(ws: Workspace, pattern: str, where_l: str, field, regex: bool, limit: int,
-             case_sensitive: bool = False) -> Tuple[List[str], int, Optional[int]]:
-    """Hits for search over the whole project: (lines, total, morphemes),
-    where a morpheme search counts the words that hold a match and, apart,
-    the morphemes that match (None for any other search)."""
+             case_sensitive: bool = False) -> Tuple[List[str], int, int, Optional[int]]:
+    """Hits for search over the whole project: (lines, shown, total,
+    morphemes), where a morpheme search counts the words that hold a match
+    and, apart, the morphemes that match (None for any other search)."""
     c = ws.corpus
     spec = rx(pattern, regex=regex, case_sensitive=case_sensitive)
     if where_l == 'baseline':
         where = [c.word('?t', value=spec)] + shown_word(c, '?t', ignored_values(c))
         total = c.word_count(where)
         rows, per_doc, docs = _spread_fetch(c, where, ['?t'], '?t', limit, 2)
-        return _spread_note(_hit_lines(c, rows, 0, limit, per_doc=per_doc), docs), total, None
+        return (*_spread_note(_hit_lines(c, rows, 0, limit, per_doc=per_doc), docs), total, None)
     if where_l == 'morpheme':
         where = c.morph_form_clauses('?m', spec) + c.in_word('?m', '?w')
         total = c.count(where, ['?w'])  # words
         rows, per_doc, docs = _spread_fetch(c, where, ['?m', '?w'], '?w', limit, 3)
-        return _spread_note(_hit_lines(c, rows, 1, limit, per_doc=per_doc), docs), total, c.count(where, ['?m'])
+        return (*_spread_note(_hit_lines(c, rows, 1, limit, per_doc=per_doc), docs), total, c.count(where, ['?m']))
     layer = c.scope_layer(field.scope)
     where = [c.span('?s', field.layer_id, value=spec), ['covers', '?s', '?t'], ['token', '?t', {'layer': layer}]]
     if field.scope == 'Morpheme':
         where += c.in_word('?t', '?w')
         total = c.count(where, ['?w'])
         rows, per_doc, docs = _spread_fetch(c, where, ['?s', '?w'], '?w', limit, 3)
-        return _spread_note(_hit_lines(c, rows, 1, limit, per_doc=per_doc), docs), total, c.count(where, ['?t'])
+        return (*_spread_note(_hit_lines(c, rows, 1, limit, per_doc=per_doc), docs), total, c.count(where, ['?t']))
     total = c.count(where, ['?t'])
     rows, per_doc, docs = _spread_fetch(c, where, ['?s', '?t'], '?t', limit, 2)
-    lines = _hit_lines(c, rows, 1, limit, field=field if field.scope == 'Sentence' else None, per_doc=per_doc)
-    return _spread_note(lines, docs), total, None
+    hits = _hit_lines(c, rows, 1, limit, field=field if field.scope == 'Sentence' else None, per_doc=per_doc)
+    return (*_spread_note(hits, docs), total, None)
 
 
 #: What a pattern typed for regex=true looks like: anchors, alternation, an

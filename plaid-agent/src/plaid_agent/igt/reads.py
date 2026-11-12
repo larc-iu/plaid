@@ -216,10 +216,10 @@ def t_search(ws: Workspace, pattern: str = '', where: str = 'baseline', document
         field = _field_or_where(ws, where_name, ('baseline', 'morpheme', 'lexicon'))
     from .queries import q_empty_hint, q_search, where_label
     with ws.corpus.within(document):
-        out, total, morphs = q_search(ws, pattern, where_l, field, bool(regex), limit, bool(case_sensitive))
+        out, shown, total, morphs = q_search(ws, pattern, where_l, field, bool(regex), limit, bool(case_sensitive))
         why = [] if total else q_empty_hint(ws, pattern, where_l, field, bool(regex), bool(case_sensitive), False)
     empty = ' '.join([f'No hits in {where_label(where_l, field)}.'] + why)
-    return _finish(ws, out, total, limit, 'hits', 'match', morphs, empty=empty)
+    return _finish(ws, out, total, limit, 'hits', 'match', morphs, empty=empty, shown=shown)
 
 
 def _merge_notes(ws, start):
@@ -234,18 +234,21 @@ def _merge_notes(ws, start):
                  of=sum(of) if all(o is not None for o in of) else None)
 
 
-def _finish(ws, out, total, limit, noun, unit, morphs=None, empty=None):
+def _finish(ws, out, total, limit, noun, unit, morphs=None, empty=None, shown=None):
     """The hits found, with the count of those shown out of all found noted
     for the step's label (`BaseWorkspace.note_read`). A morpheme search's
     hits are words, and ``morphs`` the morphemes in them that match: "14
-    hits" read as 14 morphemes where 23 matched, two in a word."""
-    ws.note_read(len(out), unit, of=total)
+    hits" read as 14 morphemes where 23 matched, two in a word. ``shown`` is
+    the hits ``out`` holds where its lines are not one a hit (sentences
+    printed once above their hits)."""
+    shown = len(out) if shown is None else shown
+    ws.note_read(shown, unit, of=total)
     if not out:
         return empty or f'No {noun}.'
     if morphs is not None:
         noun = (f'word{"s" if total != 1 else ""} hit, holding {morphs} matching '
                 f'morpheme{"s" if morphs != 1 else ""}')
-    head = f'{total} {noun}' + (f' (showing {limit})' if total > limit else '') + ':'
+    head = f'{total} {noun}' + (f' (showing {shown})' if total > shown else '') + ':'
     return truncate('\n'.join([head] + out))
 
 
@@ -322,8 +325,11 @@ def _bracket_line(w: Word, hit: Morpheme, field: Optional[str]) -> str:
     return out
 
 
-#: The occurrences concordance lists when the model names no number.
-CONCORDANCE_LIMIT = 60
+#: The occurrences concordance lists when the model names no number. It was
+#: 60, and with the sentence printed after every hit half the recorded
+#: concordances ended at the result cap (FABLE-REVIEW 2026-11-12). The value
+#: and pattern tallies cover every occurrence whatever this is.
+CONCORDANCE_LIMIT = 30
 
 
 def t_concordance(ws: Workspace, pattern: str, where: str = 'morpheme', document: Optional[str] = None,
@@ -332,10 +338,11 @@ def t_concordance(ws: Workspace, pattern: str, where: str = 'morpheme', document
     its aligned context: the containing word's segmentation and morpheme
     glosses (hit in brackets) and the neighbouring words, plus a tally of the
     distinct word patterns the hit occurs in. Built for morphotactic
-    questions (what precedes/follows X, does X vary by context)."""
+    questions (what precedes/follows X, does X vary by context). The
+    occurrences are listed under their sentence, which is printed once."""
     if not pattern:
         raise ToolError('Give a pattern.', kind='invalid-argument')
-    limit = clamp_limit(limit, 60, 300)
+    limit = clamp_limit(limit, CONCORDANCE_LIMIT, 300)
     where = _where(ws, where, 'morpheme', ('baseline', 'morpheme'))
     where_l = where.lower()
     field = None
@@ -355,13 +362,13 @@ def t_concordance(ws: Workspace, pattern: str, where: str = 'morpheme', document
         whole = None
         if total > len(hits):
             whole = q_concordance_tally(ws, hit_where, '?w', mvar)
-    ws.note_read(len(hits), 'match', of=total)
     if not total:
+        ws.note_read(0, 'match', of=total)
         return ' '.join([f'No occurrences of "{pattern}" in {where_label(where_l, field)}'
                          + ('' if regex else ', matching whole values') + '.'] + why)
     mfields = [f.name for f in ws.project.fields_by_scope('Morpheme')]
     patterns: Counter = Counter()
-    lines_out: List[str] = []
+    rendered = []  # (sentence key, sentence line, occurrence line), one per hit
     for doc, s, w, hit in hits:
         wi = w.index - 1
         prev = s.words[wi - 1].surface if wi > 0 else '#'
@@ -373,20 +380,11 @@ def t_concordance(ws: Workspace, pattern: str, where: str = 'morpheme', document
         patterns[pattern_key] += 1
         wf = ' | '.join(f'{f.name}={w.fields[f.name].value}' for f in ws.project.fields_by_scope('Word')
                         if f.name in w.fields and w.fields[f.name].value != '')
-        lines_out.append(f'{ws.corpus.tag(doc.id)}{word_ref(s, w)}{f".m{hit.index}" if hit is not None else ""} {prev} [{w.surface}] {nxt} | seg={seg}'
-                         + (f' | {glosses}' if glosses else '') + (f' | {wf}' if wf else '')
-                         + f' || {s.text}')
-    # The shown count is the hits rendered: the per-call document budget can
-    # stop well short of the limit, and "(showing 200)" over 67 lines was
-    # read as 200 (2026-10-12 survey).
-    docs_shown = len({doc.id for doc, _s, _w, _h in hits})
-    lines = [f'{total} occurrence{"s" if total != 1 else ""} of "{pattern}" in {where_l if not field else field.name}'
-             + (f' (showing {len(hits)})' if total > len(hits) else '') + '.'
-             + (f' The ones shown come from the first {docs_shown} document{"s" if docs_shown != 1 else ""} '
-                f'with hits. Name a document to see its own.' if cut else ''),
-             'Word patterns (hit in [brackets]), by frequency' + (f', among the {len(hits)} shown' if total > len(hits) else '') + ':']
-    # The hit's own values, tallied: asked which glosses a morpheme carries,
-    # models read the patterns below and missed the rare ones among them.
+        rendered.append(((doc.id, s.id), f'  {ws.corpus.tag(doc.id)}[s{s.index}] {s.text}',
+                         f'    {word_ref(s, w)}{f".m{hit.index}" if hit is not None else ""} {prev} [{w.surface}] '
+                         f'{nxt} | seg={seg}' + (f' | {glosses}' if glosses else '') + (f' | {wf}' if wf else '')))
+    # The tallies first, then as many occurrences as the answer holds, each
+    # sentence printed once above its occurrences.
     tallies = []
     if whole is not None:
         tallies = [f'Across all {total} occurrences:'] + ['  ' + t for t in whole]
@@ -397,13 +395,40 @@ def t_concordance(ws: Workspace, pattern: str, where: str = 'morpheme', document
             if own:
                 tallies.append(f'The hit\'s own {f}: ' + ', '.join(f'{v} {n}' for v, n in own.most_common(25))
                                + (f', and {len(own) - 25} more values' if len(own) > 25 else '') + '.')
-    lines[1:1] = tallies
-    for key, n in sorted(patterns.items(), key=lambda kv: (-kv[1], kv[0]))[:25]:
-        lines.append(f'  {n}\t{key}')
+    pattern_lines = [f'  {n}\t{key}' for key, n in sorted(patterns.items(), key=lambda kv: (-kv[1], kv[0]))[:25]]
     if len(patterns) > 25:
-        lines.append(f'  ... {len(patterns) - 25} more patterns')
-    lines.append('Occurrences (previous [word] next | segmentation | morpheme fields || sentence):')
-    lines.extend('  ' + h for h in lines_out)
+        pattern_lines.append(f'  ... {len(patterns) - 25} more patterns')
+    # Room for the three heading lines and the note that the list stopped.
+    used = sum(len(x) + 1 for x in tallies + pattern_lines) + 300 + len(pattern)
+    occurrences: List[str] = []
+    shown = 0
+    under = None
+    for key, sentence, line in rendered:
+        add = ([] if key == under else [sentence]) + [line]
+        cost = sum(len(x) + 1 for x in add)
+        if shown and used + cost > RENDER_BUDGET:
+            break
+        occurrences += add
+        used += cost
+        under = key
+        shown += 1
+    ws.note_read(shown, 'match', of=total)
+    # The shown count is the hits rendered: the per-call document budget can
+    # stop well short of the limit, and "(showing 200)" over 67 lines was
+    # read as 200 (2026-10-12 survey).
+    docs_shown = len({doc.id for doc, _s, _w, _h in hits[:shown]})
+    lines = [f'{total} occurrence{"s" if total != 1 else ""} of "{pattern}" in {where_l if not field else field.name}'
+             + (f' (showing {shown})' if total > shown else '') + '.'
+             + (f' The ones shown come from the first {docs_shown} document{"s" if docs_shown != 1 else ""} '
+                f'with hits. Name a document to see its own.' if cut else ''),
+             *tallies,
+             'Word patterns (hit in [brackets]), by frequency' + (f', among the {len(hits)} shown' if total > len(hits) else '') + ':',
+             *pattern_lines,
+             'Occurrences, under their sentence (previous [word] next | segmentation | morpheme fields):',
+             *occurrences]
+    if shown < len(rendered):
+        lines.append(f'  ... stopped at {shown} of the {len(rendered)} asked for, the most one answer holds: name a '
+                     f'document for the rest')
     return truncate('\n'.join(lines))
 
 

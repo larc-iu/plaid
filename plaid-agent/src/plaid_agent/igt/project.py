@@ -1012,17 +1012,17 @@ def render_sentence(s: Sentence, project: IgtProject, view: Optional[View] = Non
     return '\n'.join(lines)
 
 
+# Said once a turn (FORMAT_AS_BEFORE after). The addressing and how to cite
+# are the prompt's, and what a tool does with a link or a ~ value is the
+# tool's, so the legend says only how to read a line (FABLE-REVIEW 2026-11-12).
 FORMAT_LEGEND = ('Format: [sN] baseline sentence; then sentence fields; then one line per word: '
                  'wN surface | seg=morphemes joined by - (or = at a clitic), on every analyzed word, one of '
                  'a single morpheme too (a word without seg= is unanalyzed) | <morpheme field>=values '
                  'in the same order (_ = missing) | <word field>=value | <orthography>=value | '
                  'link=lexicon entry | mwe=entry (w2+w3): a multi-word expression, one lexicon link shared '
-                 'by those words (link_phrase / unlink_phrase; a word keeps its own link inside one) | '
-                 'mlinks=per-morpheme entries. A trailing ~ marks a value, link, or segmentation that is '
-                 'machine-made and not yet confirmed, a trailing ^ one entered by a contributor and not yet '
-                 'reviewed (confirm covers both; discard_analysis removes machine work only). '
-                 'Address items as sN, sN.wN, sN.wN.mN; cite one to the user as '
-                 '<cite doc="<document name>" ref="sN"/>.')
+                 'by those words | mlinks=per-morpheme entries. A trailing ~ marks a value, link, or '
+                 'segmentation that is machine-made and not yet confirmed, a trailing ^ one entered by a '
+                 'contributor and not yet reviewed.')
 
 #: What a later read in the turn says in place of the legend, which cost
 #: about a kilobyte of every read and left room for three sentences a call

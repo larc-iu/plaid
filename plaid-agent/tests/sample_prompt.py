@@ -90,7 +90,7 @@ def _render(app: str) -> str:
     parts += [render_tool(t, kit.WEB_TOOLS) for t in kit.TOOLS]
     parts += ['## What a read returns\n',
               'Two tool results on the same project, so the positional addressing in the prompt has something to '
-              'point at. `project_overview` is what the prompt tells the model to call first.\n',
+              'point at.\n',
               '```text', kit.call_tool(ws, 'project_overview', {}).rstrip(), '```\n',
               f'`read_document` on "{document}":\n',
               '```text', kit.call_tool(ws, 'read_document', {'document': document}).rstrip(), '```\n']

@@ -60,7 +60,7 @@ _QUERY = {**_SHARED['query'], 'function': {
 TOOLS = [
     _fn('project_overview',
         'The project: its language, its controlled vocabularies and whether each one is a rule or a '
-        'suggestion, and its documents. Call this first.', {}, []),
+        'suggestion, and its documents. Your instructions already give all but the documents.', {}, []),
     _SHARED['list_documents'],
     _fn('read_document',
         'Read a document as tab-separated CoNLL-U rows: one line per word with its form, lemma, UPOS, '

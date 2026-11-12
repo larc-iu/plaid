@@ -69,7 +69,7 @@ def test_igt_reads_print_the_name_escaped_and_without_an_id():
     assert run(w, 'read_document', {'document': '"French \\"3\\""'}).startswith('Document "French \\"3\\"":')
     assert run(w, 'read_document', {'document': 'Nada'}).endswith('Documents: "Text 1", "French \\"3\\"", "Text 2"')
     out = run(w, 'search', {'pattern': 'gam'})
-    assert '"French \\"3\\"" s1.w2' in out and '"Text 1" s1.w2' in out, out
+    assert '"French \\"3\\"" [s1]' in out and '"Text 1" [s1]' in out, out
     out = run(w, 'set_field', {'document': 'd2', 'refs': ['s9.w1'], 'field': 'Gloss', 'value': 'x'})
     assert 'document "French \\"3\\"" has 2 sentences' in out, out
 

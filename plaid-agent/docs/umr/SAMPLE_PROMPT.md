@@ -99,7 +99,7 @@ Running code:
 
 ### project_overview
 
-The project: its language, the gloss lines under each sentence, how much corpus there is, and its documents. Call this first.
+The project: its language, the gloss lines under each sentence, how much corpus there is, and its documents. Your instructions already give the language and the gloss lines.
 
 No parameters.
 
@@ -311,7 +311,7 @@ No parameters.
 
 ## What a read returns
 
-Two tool results on the same project, so the positional addressing in the prompt has something to point at. `project_overview` is what the prompt tells the model to call first.
+Two tool results on the same project, so the positional addressing in the prompt has something to point at.
 
 ```text
 Project "Sample" (Uniform Meaning Representation)

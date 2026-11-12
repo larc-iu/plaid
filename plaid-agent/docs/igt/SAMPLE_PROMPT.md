@@ -102,7 +102,7 @@ Running code:
 
 ### project_overview
 
-The project: its annotation fields by scope (Word / Morpheme / Sentence), orthographies, lexicons, and the list of documents, the first 50 by name (list_documents pages and filters the rest). Call this first.
+The project: its annotation fields by scope (Word / Morpheme / Sentence), orthographies, lexicons, and the list of documents, the first 50 by name (list_documents pages and filters the rest). Your instructions already give the fields, tagsets, orthographies and lexicons: this adds how full each field is and the documents.
 
 No parameters.
 
@@ -264,7 +264,7 @@ Every occurrence of a morpheme form (default), word form, or field value (whole-
 - `document` (string): Document id or exact name (see project_overview).
 - `regex` (boolean)
 - `case_sensitive` (boolean): Match case too (off by default: "ar" finds "Ar").
-- `limit` (integer): Max occurrences to list (default 60). The value, word and neighbour tallies cover every occurrence.
+- `limit` (integer): Max occurrences to list (default 30). The value, word and neighbour tallies cover every occurrence.
 - `documents` (array of string)
 
 ### analyses_of
@@ -684,7 +684,7 @@ No parameters.
 
 ## What a read returns
 
-Two tool results on the same project, so the positional addressing in the prompt has something to point at. `project_overview` is what the prompt tells the model to call first.
+Two tool results on the same project, so the positional addressing in the prompt has something to point at.
 
 ```text
 Project "Demo"
@@ -706,7 +706,7 @@ Documents (1):
 
 ```text
 Document "Text 1": 2 sentences, 4 words | Date=2020
-Format: [sN] baseline sentence; then sentence fields; then one line per word: wN surface | seg=morphemes joined by - (or = at a clitic), on every analyzed word, one of a single morpheme too (a word without seg= is unanalyzed) | <morpheme field>=values in the same order (_ = missing) | <word field>=value | <orthography>=value | link=lexicon entry | mwe=entry (w2+w3): a multi-word expression, one lexicon link shared by those words (link_phrase / unlink_phrase; a word keeps its own link inside one) | mlinks=per-morpheme entries. A trailing ~ marks a value, link, or segmentation that is machine-made and not yet confirmed, a trailing ^ one entered by a contributor and not yet reviewed (confirm covers both; discard_analysis removes machine work only). Address items as sN, sN.wN, sN.wN.mN; cite one to the user as <cite doc="<document name>" ref="sN"/>.
+Format: [sN] baseline sentence; then sentence fields; then one line per word: wN surface | seg=morphemes joined by - (or = at a clitic), on every analyzed word, one of a single morpheme too (a word without seg= is unanalyzed) | <morpheme field>=values in the same order (_ = missing) | <word field>=value | <orthography>=value | link=lexicon entry | mwe=entry (w2+w3): a multi-word expression, one lexicon link shared by those words | mlinks=per-morpheme entries. A trailing ~ marks a value, link, or segmentation that is machine-made and not yet confirmed, a trailing ^ one entered by a contributor and not yet reviewed.
 Showing s1-s2.
 [s1] Ali-di gam akuna.
   Translation: Ali saw a fish.

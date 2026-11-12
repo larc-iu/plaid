@@ -28,7 +28,7 @@ def test_search_baseline_morpheme_field_and_lexicon():
     w = ws()
     out = call_tool(w, 'search', {'pattern': 'gam'})
     assert out.startswith('2 hits:')
-    assert 's1.w2 gam || Ali-di gam akuna.' in out and 's2.w1 Gam-ar | seg=Gam=ar' in out
+    assert '[s1] Ali-di gam akuna.\n  s1.w2 gam\n' in out and '\n  s2.w1 Gam-ar | seg=Gam=ar' in out
     # Ali, gam, Gam, ar: four morphemes in three words
     assert '3 words hit, holding 4 matching morphemes' in call_tool(w, 'search', {'pattern': 'a', 'where': 'morpheme'})
     out = call_tool(w, 'search', {'pattern': 'ERG', 'where': 'Morph Gloss'})
@@ -675,9 +675,9 @@ def test_hits_from_one_document_are_capped_and_the_rest_counted():
     doc = w.doc('d1')
     words = [wd for s in doc.sentences for wd in s.words]
     rows = [[{'id': wd.id, 'document': 'd1', 'value': wd.surface}] for wd in words]
-    lines = _hit_lines(c, rows, 0, 40, per_doc=1)
-    assert len(lines) == 2 and lines[0].startswith('s1.w1 ')
-    assert lines[1] == f'  … {len(words) - 1} more in this document (name the document to see them all)'
+    lines, shown = _hit_lines(c, rows, 0, 40, per_doc=1)
+    assert shown == 1 and len(lines) == 3 and lines[0].startswith('[s1] ') and lines[1].startswith('  s1.w1 ')
+    assert lines[2] == f'  … {len(words) - 1} more in this document (name the document to see them all)'
 
 
 def _engine_for_replace(w, spans, metadata=None):

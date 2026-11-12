@@ -86,7 +86,8 @@ TOOLS = [
     _fn('project_overview',
         'The project: its annotation fields by scope (Word / Morpheme / Sentence), orthographies, lexicons, and the '
         f'list of documents, the first {OVERVIEW_DOCS} by name (list_documents pages and filters the rest). '
-        'Call this first.', {}, []),
+        'Your instructions already give the fields, tagsets, orthographies and lexicons: this adds how full each '
+        'field is and the documents.', {}, []),
     _fn('list_documents',
         'The documents by name, a page at a time, optionally filtered by a substring of the name or of any '
         'document metadata value (pattern), and/or by a whole metadata value (metadata_field + value; an empty '

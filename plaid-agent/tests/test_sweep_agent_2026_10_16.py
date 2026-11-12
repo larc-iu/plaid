@@ -52,10 +52,10 @@ def test_a_concordance_line_names_the_hit_morpheme():
     names the morpheme, as the value lists do."""
     w = igt_ws()
     out = call_tool(w, 'concordance', {'pattern': 'ar'})
-    assert '\n  s2.w1.m2 # [Gam-ar] # | seg=Gam=[ar] || Gam-ar.' in out, out
+    assert '\n  [s2] Gam-ar.\n    s2.w1.m2 # [Gam-ar] # | seg=Gam=[ar]' in out, out
     # A word hit names the word alone.
     out = call_tool(w, 'concordance', {'pattern': 'akuna', 'where': 'word'})
-    assert '\n  s1.w3 ' in out, out
+    assert '\n    s1.w3 ' in out, out
 
 
 def test_a_folded_form_is_shown_as_it_is_most_often_written():

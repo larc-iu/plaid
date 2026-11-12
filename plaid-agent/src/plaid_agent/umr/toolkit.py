@@ -43,7 +43,7 @@ _END = {'type': 'string',
 TOOLS = [
     _fn('project_overview',
         'The project: its language, the gloss lines under each sentence, how much corpus there '
-        'is, and its documents. Call this first.', {}, []),
+        'is, and its documents. Your instructions already give the language and the gloss lines.', {}, []),
     _SHARED['list_documents'],
     _fn('read_document',
         'Read a document sentence by sentence: the words with their numbers, the gloss lines the '

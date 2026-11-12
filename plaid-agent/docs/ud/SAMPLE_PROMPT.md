@@ -101,7 +101,7 @@ Running code:
 
 ### project_overview
 
-The project: its language, its controlled vocabularies and whether each one is a rule or a suggestion, and its documents. Call this first.
+The project: its language, its controlled vocabularies and whether each one is a rule or a suggestion, and its documents. Your instructions already give all but the documents.
 
 No parameters.
 
@@ -389,7 +389,7 @@ No parameters.
 
 ## What a read returns
 
-Two tool results on the same project, so the positional addressing in the prompt has something to point at. `project_overview` is what the prompt tells the model to call first.
+Two tool results on the same project, so the positional addressing in the prompt has something to point at.
 
 ```text
 Project "Spanish" (Universal Dependencies)
