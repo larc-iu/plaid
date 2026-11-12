@@ -584,6 +584,25 @@
                                    (u "x1"))))
             "its History: the stale home, then the one it got")))))
 
+(deftest the-summary-line-adds-up-on-a-resumed-run
+  (let [summary (fn [lines] (first (filter #(str/starts-with? % "Vocabulary homes:") lines)))]
+    (with-temp-db
+      (fn [ds]
+        (build! ds) (give-orphans-projects! ds)
+        (is (= (str "Vocabulary homes: planned 40 (35 the only project linking them, 3 by maintainers, 1 by links, "
+                    "1 by id), audited 40, people made maintainer 4")
+               (summary (logged #(migratus/migrate (cfg ds))))))))
+    (with-temp-db
+      (fn [ds]
+        (build! ds) (give-orphans-projects! ds)
+        (try
+          (binding [vh/*after-vocabulary* (fn [n] (when (= n 7) (throw (ex-info "cut" {}))))]
+            (migratus/migrate (cfg ds)))
+          (catch Exception _))
+        (is (= (str "Vocabulary homes: planned 0 (0 the only project linking them, 0 by maintainers, 0 by links, "
+                    "0 by id), audited 33, people made maintainer 2")
+               (summary (logged #(migratus/migrate (cfg ds))))))))))
+
 (deftest a-vocabulary-is-not-removed-with-a-home-the-old-version-deleted-after-the-plan
   (testing "the planned home is being deleted, its removal still to run"
     (with-temp-db

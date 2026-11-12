@@ -307,7 +307,7 @@
   such active account who does not maintain the vocabulary's home is made
   its maintainer, as step 2 does, in one audited operation by nobody. Then
   every vocabulary maintainer left out for a deactivated account is named,
-  once for the whole run."
+  once for the whole run. Returns how many people were made maintainer."
   [con]
   (let [rows (q con (str "SELECT v.id, v.name, v.project_id, p.name AS project_name, vm.user_id, "
                          "u.deactivated_at IS NOT NULL AS deactivated "
@@ -316,23 +316,26 @@
                          "WHERE NOT EXISTS (SELECT 1 FROM project_users pu WHERE pu.project_id = v.project_id "
                          "  AND pu.user_id = vm.user_id AND pu.role = 'maintainer') "
                          "ORDER BY v.id, vm.user_id"))]
-    (doseq [[[id name pid pname] rows] (group-by (juxt :id :name :project_id :project_name) rows)
-            :let [{active false deactivated true} (group-by #(= 1 (:deactivated %)) rows)]]
-      (when (seq deactivated)
-        (log/info (format "Vocabulary \"%s\" (%s): not made maintainer of \"%s\", deactivated: %s"
-                          name id pname (str/join ", " (map :user_id deactivated)))))
-      (log-promoted! name id pname
-                     (doall
-                      (for [{:keys [user_id]} active
-                            :let [was (role-word (prj/role-of con pid user_id))
-                                  r (prj/grant-role con pid user_id "maintainer" nil)]]
-                        (if (:success r)
-                          [user_id was]
-                          (throw (ex-info (str "Making " user_id " maintainer of " pid " failed: " (:error r))
-                                          {:result r})))))))))
+    (reduce + 0
+            (for [[[id name pid pname] rows] (group-by (juxt :id :name :project_id :project_name) rows)
+                  :let [{active false deactivated true} (group-by #(= 1 (:deactivated %)) rows)]]
+              (do
+                (when (seq deactivated)
+                  (log/info (format "Vocabulary \"%s\" (%s): not made maintainer of \"%s\", deactivated: %s"
+                                    name id pname (str/join ", " (map :user_id deactivated)))))
+                (let [promoted (doall
+                                (for [{:keys [user_id]} active
+                                      :let [was (role-word (prj/role-of con pid user_id))
+                                            r (prj/grant-role con pid user_id "maintainer" nil)]]
+                                  (if (:success r)
+                                    [user_id was]
+                                    (throw (ex-info (str "Making " user_id " maintainer of " pid " failed: " (:error r))
+                                                    {:result r})))))]
+                  (log-promoted! name id pname promoted)
+                  (count promoted)))))))
 
 (defn- rebuild!
-  "Step 3."
+  "Step 3. Returns how many people it made maintainer."
   [ds]
   (let [^java.sql.Connection con (.getConnection ^javax.sql.DataSource ds)]
     (try
@@ -350,8 +353,8 @@
                                  (str/join ", " (map (fn [{:keys [id name]}] (str "\"" name "\" (" id ")")) bad))
                                  ". Start the server again: the migration plans them again.")
                             {})))
-          (promote-left! con)
-          (let [before (counts con)]
+          (let [late (promote-left! con)
+                before (counts con)]
             (exec! con "DROP TABLE IF EXISTS vocab_layers_new")
             (exec! con (str "CREATE TABLE vocab_layers_new ("
                             "id TEXT PRIMARY KEY, "
@@ -373,7 +376,8 @@
               (when (not= before after)
                 (throw (ex-info (str "The rebuild changed row counts: " (pr-str before) " to " (pr-str after)) {}))))
             (when *before-rebuild-commit* (*before-rebuild-commit*))
-            (exec! con "COMMIT")))
+            (exec! con "COMMIT")
+            late))
         (catch Throwable t
           (try (exec! con "ROLLBACK") (catch Throwable _))
           (throw t)))
@@ -394,11 +398,13 @@
         (throw (ex-info (orphans-refusal found) {:orphans (mapv :id found)})))
       (let [steps (plan! ds)
             {:keys [vocabularies promoted]} (home-all! ds)]
-        (rebuild! ds)
-        (log/info (format (str "Vocabulary homes: %d vocabularies audited (%d the only project linking them, "
-                               "%d by maintainers, %d by links, %d by id), %d people made maintainer")
-                          vocabularies (get steps 0 0) (get steps 1 0) (get steps 2 0) (get steps 3 0)
-                          promoted))))))
+        ;; A resumed run plans and audits only what the stopped one had not,
+        ;; so each count is this run's.
+        (let [late (rebuild! ds)]
+          (log/info (format (str "Vocabulary homes: planned %d (%d the only project linking them, %d by maintainers, "
+                                 "%d by links, %d by id), audited %d, people made maintainer %d")
+                            (reduce + 0 (vals steps)) (get steps 0 0) (get steps 1 0) (get steps 2 0) (get steps 3 0)
+                            vocabularies (+ promoted late))))))))
 
 (defn down [_config]
   (throw (ex-info "This migration cannot be undone: restore the copy taken before upgrading." {})))
