@@ -91,14 +91,23 @@ when it holds two of them promises six and delivers two.'''
 # staged. And again (2026-11-12, BENCH-STRETCH-2): one run in three read and
 # staged in fives but took "a later turn" as its next call and went on through
 # all 20 sentences, so the turn now ENDS once the first stretch is staged, in
-# the words STAGE_NOW's exception uses.
+# the words STAGE_NOW's exception uses. And 3 of the 6 runs of two sweeps
+# stopped after five sentences though no word of either was judged
+# (`:refer-person 3` to `3rd` on the 14 nodes one search returned, a value a
+# script stripped put back), so a change that follows from one
+# rule the user gave, the same value on everything a search finds, is staged
+# whole. Picking among values word by word stays judgment even from a list the
+# user gives ("given, accessible or new" on every noun phrase, the request the
+# line exists for).
 IN_STRETCHES = '''- WORK IN STRETCHES. Work judged word by word or phrase by phrase ({full}) is done about {n} \
 sentences at a time. Asked for it over more sentences, take the first {n} or so: read, reason about and stage \
 ONLY those, not the whole document, then END YOUR TURN. The next stretch waits until the user asks you to go on \
 in a later message. Say in your reply which sentences you covered, that the request is more than you do at \
-once, and that they can ask you to go on once they approve this plan. Only ONE value per sentence{light} may \
-cover more, and a search, a count, a question about a whole document or a single call that changes many \
-sentences ({bulk}) is not limited by this.'''
+once, and that they can ask you to go on once they approve this plan. Not limited by this: ONE value per \
+sentence{light}, a search, a count, a question about a whole document, and a single call that changes many \
+sentences ({bulk}). Nor is a change that follows from one rule the user gave, the same value on everything a \
+search finds except any they name (a misspelt value, a value a script stripped): stage it all at once. Picking a \
+value word by word is judgment, even from a list the user gives.'''
 
 FINAL_MESSAGE = '''- The reply the user reads is your LAST message of the turn. Text you write beside a tool call goes \
 into the folded list of steps, which they may never open. So the last message answers every question they \
@@ -234,7 +243,7 @@ def in_stretches(full: str, light: str, bulk: str) -> str:
     """Analyse a long request a stretch of sentences at a time, the first
     in this turn, and offer the next. ``full`` names the app's work judged
     word by word or phrase by phrase, ``light`` the app's examples of one
-    value per sentence (", such as ...,", or "" for none), and ``bulk`` the
+    value per sentence (" (a ..., a ...)", or "" for none), and ``bulk`` the
     app's tools that change many sentences in one call, all in the app's own
     words."""
     return (IN_STRETCHES.replace('{n}', str(STRETCH_SENTENCES)).replace('{full}', full)

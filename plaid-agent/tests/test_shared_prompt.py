@@ -113,14 +113,20 @@ def test_every_prompt_says_how_much_to_analyse_at_once_and_what_that_leaves_alon
     staged (BENCH-STRETCH). And again (2026-11-12, after BENCH-STRETCH-2): the
     turn ends once the first stretch is staged, since one run in three read
     and staged in fives and went on through all 20 sentences in the same
-    turn."""
+    turn, and a change that follows from one rule the user gave, the same
+    value on everything a search finds, is staged all at once, since 3 of 6
+    umr runs stopped after five sentences of such a sweep (`:refer-person 3`
+    to `3rd` on 14 nodes one search returned). Picking a value word by word
+    stays judgment even from a list the user gives, so the request the line
+    exists for ("given, accessible or new" on every noun phrase) is still
+    done in stretches."""
     from plaid_agent.core.limits import STRETCH_SENTENCES
     full = {'igt': 'segmenting and glossing, marking every noun phrase, a field on every word',
             'ud': 'a parse, a lemma, a feature or a relation on every word',
             'umr': 'a sentence graph, an attribute on every event or entity'}
-    light = {'igt': 'Only ONE value per sentence, such as a free translation or a note, may cover more',
-             'ud': 'Only ONE value per sentence, such as a note on it, may cover more',
-             'umr': 'Only ONE value per sentence may cover more'}
+    light = {'igt': 'Not limited by this: ONE value per sentence (a free translation, a note), a search',
+             'ud': 'Not limited by this: ONE value per sentence (a note on it), a search',
+             'umr': 'Not limited by this: ONE value per sentence, a search'}
     bulk = {'igt': 'replace_in_field', 'ud': 'replace_in_field', 'umr': 'set_attribute_for_concept'}
     for app, text in _built().items():
         line = next(x for x in text.splitlines() if x.startswith('- WORK IN STRETCHES.'))
@@ -137,6 +143,11 @@ def test_every_prompt_says_how_much_to_analyse_at_once_and_what_that_leaves_alon
         for word in ('Lighter', 'one field', 'one column', 'one attribute'):
             assert word not in line, (app, word)
         assert bulk[app] in line and 'a question about a whole document' in line, app
+        # The exemption for one rule over a search, and what it never covers.
+        assert 'Nor is a change that follows from one rule the user gave, the same value on everything a ' \
+               'search finds except any they name' in line, app
+        assert 'stage it all at once.' in line, app
+        assert line.endswith('Picking a value word by word is judgment, even from a list the user gives.'), app
         # Next to the rule it must agree with.
         assert text.index('A plan lives for ONE turn') < text.index('- WORK IN STRETCHES.'), app
 

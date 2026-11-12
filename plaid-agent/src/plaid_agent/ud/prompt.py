@@ -96,7 +96,7 @@ SYSTEM = shared.filled(_SYSTEM, {
     'user_values': shared.user_values('a lemma, a UPOS, a feature, a head, a relation'),
     'one_turn': shared.one_turn(),
     'in_stretches': shared.in_stretches('a parse, a lemma, a feature or a relation on every word',
-                                        ', such as a note on it,',
+                                        ' (a note on it)',
                                         'run_parse, replace_in_field, confirm'),
     'final_message': shared.final_message('words'),
     'read_budget': shared.read_budget('search, grew_search, frequency_list, worklist or check_consistency'),

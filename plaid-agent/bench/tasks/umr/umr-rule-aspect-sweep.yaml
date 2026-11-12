@@ -1,0 +1,44 @@
+# One rule the user states, the same value on every node one search finds,
+# over 13 of the story's 19 sentences: the other side of WORK IN STRETCHES.
+# By the owner's ruling of 2026-11-12 such a change is not judged word by
+# word, so it is staged whole in the one turn, not a first stretch of about
+# 5 sentences with an offer to go on (3 of 6 umr runs of bench
+# glm53-stretch-2 stopped after a stretch on sweeps like this one). Setup
+# writes :aspect perform, which is no UMR value, in place of performance on
+# the 15 nodes that have it. Traps: no concept-wide write fits, since purara
+# is a state in sentence 14 (s14p), the other pe nodes and the aya in
+# sentence 9 have no aspect, and a node's :modal-strength stays as it is.
+#
+# Passes when all 15 read performance again in the one plan, and nothing else
+# changed. Stopping after sentences 1 to 5 (6 of the 15) fails.
+id: umr-rule-aspect-sweep
+app: umr
+project: umr-kukama
+as: B
+where: {document: Kukama text 2}
+turns:
+  - say: >-
+      A conversion script wrote the aspect value performance as "perform"
+      everywhere in this story, and perform isn't a UMR aspect. Change every
+      :aspect perform back to performance, and leave everything else as it
+      is.
+    approve: true
+check: umr_graph
+args:
+  document: Kukama text 2
+  expect:
+    "s1.s1x::aspect": performance
+    "s1.s1u::aspect": performance
+    "s2.s2x::aspect": performance
+    "s3.s3u::aspect": performance
+    "s4.s4p::aspect": performance
+    "s5.s5p::aspect": performance
+    "s6.s6r::aspect": performance
+    "s7.s7r::aspect": performance
+    "s8.s8a2::aspect": performance
+    "s10.s10t::aspect": performance
+    "s10.s10p2::aspect": performance
+    "s11.s11y::aspect": performance
+    "s11.s11a2::aspect": performance
+    "s13.s13p::aspect": performance
+    "s17.s17r::aspect": performance
