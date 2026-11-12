@@ -10,8 +10,9 @@
 import { createdIds } from '@larc-iu/plaid-client';
 import { statusOf } from '@ui/lib/errors.js';
 import { sameConfig } from '@ui/domain/configCells.js';
+import { canManageVocabulary } from '@ui/domain/permissions.js';
 import { CHUNK, withMintedIds } from '../domain/bulk.js';
-import { IGT_NAMESPACE, readVocabFields } from '../domain/igtConfig.js';
+import { IGT_NAMESPACE, readVocabFields, vocabImporting } from '../domain/igtConfig.js';
 
 /**
  * The key the archive import stamps on an entry it made, the archive item id.
@@ -78,28 +79,53 @@ export async function createEntriesOnce({
 }
 
 /**
- * Run `write`, the write of `value` to key `key` of namespace `ns` in
- * vocabulary `vocab`'s config (`vocab` as read, with `id`, `name` and
- * `config`; `value` undefined for a removal), only when the stored value
- * differs. Only a maintainer of the vocabulary may change its config, and an
- * import into a lexicon someone else keeps may not be one: it then writes
- * nothing that is already there, and a write still needed and refused says
- * who can make it. The caller makes the call itself, so the config keys each
- * importer writes stay readable at its call site. True when it wrote.
+ * The vocabularies an import may add entries to: those whose project (from
+ * `projects`, the user's `projects.list()` with role lists) the user
+ * maintains, since the import also writes the vocabulary's fields. One an
+ * unfinished import made takes no entries (R58).
  */
-export async function writeVocabConfig(vocab, ns, key, value, write) {
+export const maintainedLexicons = (vocabs, projects, user) => {
+  const homes = new Map((projects || []).map((p) => [p.id, p]));
+  return (vocabs || []).filter(
+    (v) => canManageVocabulary(v, homes.get(v.project) ?? null, user) && !vocabImporting(v.config),
+  );
+};
+
+/**
+ * Run `write`, the write of `value` to key `key` of namespace `ns` in
+ * vocabulary `vocab`'s config (`vocab` as read, with `id`, `name`, `project`
+ * and `config`; `value` undefined for a removal), only when the stored value
+ * differs. Only a maintainer of the vocabulary's project may change its
+ * config, and an import into a lexicon of another project may not be one: it
+ * then writes nothing that is already there, and a write still needed and
+ * refused says which project's maintainer can make it. The caller makes the
+ * call itself, so the config keys each importer writes stay readable at its
+ * call site. True when it wrote.
+ */
+export async function writeVocabConfig(client, vocab, ns, key, value, write) {
   const stored = vocab?.config?.[ns]?.[key];
   if (value === undefined ? stored === undefined : sameConfig(stored, value)) return false;
   try {
     await write();
   } catch (err) {
     if (statusOf(err) !== 403) throw err;
+    const home = await homeNameOf(client, vocab);
     throw new Error(
-      `Only a maintainer of the vocabulary “${vocab?.name ?? vocab?.id}” can import into it.`,
+      `Only a maintainer of the project ${home ? `“${home}”` : 'it belongs to'} can import into the vocabulary “${vocab?.name ?? vocab?.id}”.`,
       { cause: err },
     );
   }
   return true;
+}
+
+// The name of the project `vocab` belongs to, or null when it cannot be read.
+async function homeNameOf(client, vocab) {
+  if (!vocab?.project) return null;
+  try {
+    return (await client.projects.get(vocab.project))?.name ?? null;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -150,7 +176,7 @@ export async function mergeFieldSchema({ client, vocabId, existing, keys, declar
     }
     fieldsConfig[name] = declare(name);
   }
-  await writeVocabConfig(existing, IGT_NAMESPACE, 'fields', fieldsConfig, () =>
+  await writeVocabConfig(client, existing, IGT_NAMESPACE, 'fields', fieldsConfig, () =>
     client.vocabLayers.setConfig(vocabId, IGT_NAMESPACE, 'fields', fieldsConfig),
   );
 }

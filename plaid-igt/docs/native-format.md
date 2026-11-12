@@ -407,7 +407,9 @@ Implemented by `src/import/native/importEngine.js` (UI: Projects → New Project
 "Import a Plaid IGT archive"); mirrors the FLEx importer's operation inventory:
 
 1. Project setup from `schema` (orthographies, fields by scope, document
-   metadata; one vocabulary per `vocabularies/*.json`), then `ignoredTokens` on the
+   metadata; one vocabulary per `vocabularies/*.json`, each made as a vocabulary
+   of the new project, one the exported project linked from another project
+   included), then `ignoredTokens` on the
    word layer exactly as the archive stores it (none when it is null), then the stored
    project config the wizard does not cover, written verbatim: `autoAnalysis`,
    `tagsets`, `languages`, `speakers`, `serviceDefaults`, `compose`, `export`, and
@@ -471,10 +473,10 @@ startedAt, vocabsMade}`) from the moment it exists until the whole import has
 run. `vocabsMade` lists the vocabularies setup made, each as soon as it exists,
 and each of those carries `config.igt.import = {projectId}` until the record
 goes. An import that stops leaves both there. A project with the record does not
-open, nor does a vocabulary with the mark: the project is deleted, with each
-vocabulary the record names that core says no other project links
-(`DELETE /vocab-layers/:id?only-in-project=`), and imported again, never carried
-on.
+open, nor does a vocabulary with the mark: the project is deleted
+(`DELETE /projects/:id`), which deletes the vocabularies setup made with it,
+since they belong to it, and imported again, never carried on. Core refuses the
+delete while another project links one of them.
 
 ### References in metadata
 

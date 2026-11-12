@@ -235,13 +235,13 @@ export async function importVocabulary({
         },
       ]),
     );
-    await writeVocabConfig(vocab, IGT_NAMESPACE, 'fields', fields, () =>
+    await writeVocabConfig(client, vocab, IGT_NAMESPACE, 'fields', fields, () =>
       client.vocabLayers.setConfig(vocabId, IGT_NAMESPACE, 'fields', fields),
     );
   } else if (vocabData.fields === null) {
     // The archived vocabulary listed no fields, so the one setup made lists
     // none either.
-    await writeVocabConfig(vocab, IGT_NAMESPACE, 'fields', undefined, () =>
+    await writeVocabConfig(client, vocab, IGT_NAMESPACE, 'fields', undefined, () =>
       client.vocabLayers.deleteConfig(vocabId, IGT_NAMESPACE, 'fields'),
     );
   }
@@ -249,11 +249,11 @@ export async function importVocabulary({
   // the Status field it seeds, and an archive whose fields replaced that
   // field must not leave its list behind governing nothing.
   if (vocabData.tagsets && Object.keys(vocabData.tagsets).length) {
-    await writeVocabConfig(vocab, IGT_NAMESPACE, 'tagsets', vocabData.tagsets, () =>
+    await writeVocabConfig(client, vocab, IGT_NAMESPACE, 'tagsets', vocabData.tagsets, () =>
       client.vocabLayers.setConfig(vocabId, IGT_NAMESPACE, 'tagsets', vocabData.tagsets),
     );
   } else if (vocabData.fields?.length || vocabData.fields === null) {
-    await writeVocabConfig(vocab, IGT_NAMESPACE, 'tagsets', undefined, () =>
+    await writeVocabConfig(client, vocab, IGT_NAMESPACE, 'tagsets', undefined, () =>
       client.vocabLayers.deleteConfig(vocabId, IGT_NAMESPACE, 'tagsets'),
     );
   }
@@ -273,7 +273,7 @@ export async function importVocabulary({
     for (const [key, archived] of Object.entries(keys)) {
       if (takenSlug && ns === DICT_NAMESPACE && key === 'slug') continue;
       const value = remapIds(archived, layerIds);
-      await writeVocabConfig(vocab, ns, key, value, () =>
+      await writeVocabConfig(client, vocab, ns, key, value, () =>
         client.vocabLayers.setConfig(vocabId, ns, key, value),
       );
     }

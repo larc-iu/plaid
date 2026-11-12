@@ -391,6 +391,24 @@ const itemPatches = (client) =>
   callsOf(client, 'vocabItems.bulkUpdate').flatMap(([, body]) => body);
 
 describe('deriveSetupData', () => {
+  // Ruling 11.5: the archive of a project that linked a vocabulary of another
+  // project brings it back as a vocabulary of the new project, made by setup
+  // like every other one, never linked to what the exported id named.
+  it('makes every archived vocabulary in the new project, a borrowed one included', () => {
+    const manifest = {
+      schema: { fields: {} },
+      vocabularies: [
+        { id: 'v-own', name: 'Lexicon' },
+        { id: 'v-borrowed', name: 'Shared roots' },
+      ],
+    };
+    const rows = deriveSetupData(manifest, 'x').vocabulary.vocabularies;
+    expect(rows.map((r) => [r.id, r.name, r.enabled, r.isCustom])).toEqual([
+      ['new-v-own', 'Lexicon', true, true],
+      ['new-v-borrowed', 'Shared roots', true, true],
+    ]);
+  });
+
   it("proposes an old archive's language-suffixed glosses their Lexicon field from its lexicon (HUNT-recent 10)", () => {
     const manifest = {
       schema: {

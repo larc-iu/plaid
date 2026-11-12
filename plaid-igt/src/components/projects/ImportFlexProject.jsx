@@ -43,13 +43,13 @@ import { documentFraction, documentLabel } from '../../import/progress';
 import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
 import { humanizeFieldName } from '@/domain/vocabFields';
 import { scopeBadgeClass } from '@/domain/scopeColors';
-import { canManageVocabulary } from '@ui/domain/permissions.js';
 import { countOf } from '@ui/lib/plural.js';
 import { readTextFile } from '@ui/lib/textFile.js';
 import { sameName } from '@ui/lib/nameKey.js';
 import { FORM_PAGE_WIDTH } from '@ui/lib/pageWidth.js';
 import { readyRecordings } from '@/utils/readyRecordings';
-import { vocabImporting, withLiveMarks } from '@/domain/igtConfig';
+import { withLiveMarks } from '@/domain/igtConfig';
+import { maintainedLexicons } from '../../import/lexicon';
 
 // What differs between the two FieldWorks formats, on screen and in the
 // import record (`kind`).
@@ -209,17 +209,15 @@ export const ImportFlexProject = ({ format = 'fwbackup' }) => {
       setLexiconName(null);
       setExistingVocabId('');
       setStage('review');
-      // Adding entries needs vocab-maintainer rights, so only offer those.
+      // Adding to a lexicon writes its fields too, which takes a maintainer
+      // of the project it belongs to, so only offer those. The new project
+      // borrows it.
       if (!flextext) {
-        client.vocabLayers
-          .list()
-          .then((all) => withLiveMarks(client, all || []))
-          .then((all) =>
-            setExistingVocabs(
-              // One an unfinished import made takes no entries (R58).
-              (all || []).filter((v) => canManageVocabulary(v, user) && !vocabImporting(v.config)),
-            ),
-          )
+        Promise.all([
+          client.vocabLayers.list().then((all) => withLiveMarks(client, all || [])),
+          client.projects.list(),
+        ])
+          .then(([all, projects]) => setExistingVocabs(maintainedLexicons(all, projects, user)))
           .catch((err) => console.warn('Could not list vocabularies:', err));
       }
     } catch (e) {

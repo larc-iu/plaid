@@ -582,7 +582,7 @@ async function placeVariants({
     added = true;
   }
   if (added) {
-    await writeVocabConfig(layer, IGT_NAMESPACE, 'fields', fieldsConfig, () =>
+    await writeVocabConfig(client, layer, IGT_NAMESPACE, 'fields', fieldsConfig, () =>
       client.vocabLayers.setConfig(vocabId, IGT_NAMESPACE, 'fields', fieldsConfig),
     );
   }
