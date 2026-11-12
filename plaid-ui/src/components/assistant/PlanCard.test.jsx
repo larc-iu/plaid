@@ -501,3 +501,51 @@ describe('a plan that writes nothing', () => {
     await view.unmount();
   });
 });
+
+describe("a plan holding the assistant's own choices", () => {
+  // The owner's ruling (2026-11-12): a value the assistant chose is written
+  // unconfirmed, for review, and one the user gave is recorded as theirs.
+  // The card states both counts.
+  const proposed = (proposals) => ({ ...plan([{ label: 'a' }, { label: 'b' }]), proposals });
+  const line = (view) =>
+    view.container.querySelector('[data-testid="plan-proposals"]')?.textContent;
+
+  it('states how many changes are its choices and how many are values the user gave', async () => {
+    const view = await mount(proposed({ chosen: 9, given: 3 }));
+    expect(line(view)).toBe(
+      "9 changes are the assistant's choices, recorded unconfirmed for review. " +
+        '3 changes are values you gave, recorded as confirmed by you.',
+    );
+  });
+
+  it('says one of each in the singular, and a contributor reads "your contribution"', async () => {
+    const view = await mount(proposed({ chosen: 1, given: 1 }), { contributor: true });
+    expect(line(view)).toBe(
+      "1 change is the assistant's choice, recorded unconfirmed for review. " +
+        '1 change is a value you gave, recorded as your contribution.',
+    );
+  });
+
+  it('says nothing when the assistant chose nothing, or once recorded as human-made', async () => {
+    expect(line(await mount(proposed(undefined)))).toBeUndefined();
+    expect(
+      line(
+        await mount(proposed({ chosen: 2, given: 0 }), {
+          status: 'applied',
+          recordedAsHuman: true,
+        }),
+      ),
+    ).toBeUndefined();
+  });
+
+  it('goes while "Record as human-made" is ticked, which wins over both', async () => {
+    const view = await mount(proposed({ chosen: 2, given: 0 }));
+    expect(line(view)).toBe(
+      "2 changes are the assistant's choices, recorded unconfirmed for review.",
+    );
+    const box = view.container.querySelector('input[type="checkbox"]');
+    const { act } = await import('react');
+    await act(async () => box.click());
+    expect(line(view)).toBeUndefined();
+  });
+});

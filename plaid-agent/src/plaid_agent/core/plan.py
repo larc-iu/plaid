@@ -47,6 +47,17 @@ from plaid_client.provenance import (CONTRIBUTED_STATE, MACHINE, PROVENANCE_KEYS
 STAMP_MODES = ('verified', 'human', 'contributed', 'machine')
 #: The provDetail key naming the job a machine write belongs to.
 JOB_DETAIL_KEY = 'job'
+#: The op key marking a change whose values the assistant chose: approved,
+#: it is written as the assistant's machine proposal (unverified, the
+#: assistant its source), not as the approver's confirmed work. The owner's
+#: ruling (2026-11-12): "Machine proposals for judged work". Set at staging
+#: (``mark_proposal``) and read by ``Stamps.stamp``.
+PROPOSAL = 'proposal'
+#: The op keys that hold a value a change writes in every app, and so decide
+#: whether the user gave it. An app adds its own (``VALUE_KEYS`` on its
+#: workspace). Everything else an op holds (ids, a label, a type, a target)
+#: is not a value the user could have typed for it.
+VALUE_KEYS = ('value', 'values', 'form', 'metadata', 'fields', 'replacement')
 # Fragments, sent with metadata_ops, which turns a None into a delete.
 CLEAR_PROV = {k: None for k in PROVENANCE_KEYS}
 CONFIRM = {PROV_CONFIRMED_KEY: True}
@@ -716,17 +727,22 @@ class Stamps:
     def machine(self) -> bool:
         return self.mode == 'machine'
 
-    def stamp(self) -> Dict[str, Any]:
+    def stamp(self, op: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """What a write of ``op`` carries. A change the assistant chose the
+        values of (``op[PROPOSAL]``) is its machine proposal, unverified with
+        the assistant as its source, whoever approved it, unless the approver
+        records the plan as human-made, which wins (the owner's ruling,
+        2026-11-12)."""
         if self.human:
             return {}
-        if self.machine:
+        if self.machine or (op is not None and op.get(PROPOSAL)):
             return stamp_inferred(self.source, detail=self.detail)
         return self.policy.adopt_stamp(self.source, self.detail)
 
-    def restamp(self) -> Dict[str, Any]:
+    def restamp(self, op: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         # Every key goes: what an earlier producer recorded (its detail, its
         # probability) describes a value this write replaces.
-        return {**CLEAR_PROV, **self.stamp()}
+        return {**CLEAR_PROV, **self.stamp(op)}
 
     def confirm(self, contributed_work: bool) -> Optional[Dict[str, Any]]:
         """What a confirmation patches onto one piece awaiting review, or None
@@ -747,6 +763,48 @@ class Stamps:
         if not self.policy.reviewable_state(CONTRIBUTED_STATE if contributed_work else MACHINE):
             return None
         return self.policy.confirm_fragment()
+
+
+def _values(x, keys) -> List[str]:
+    """The strings a value key holds: a string, each of a list, and of a
+    map either its value keys (the parts of one item a change writes, never
+    its role or type) or, where it has none, every value (a field map, an
+    entry's metadata), provenance keys aside."""
+    if isinstance(x, str):
+        return [x]
+    if isinstance(x, list):
+        return [v for i in x for v in _values(i, keys)]
+    if isinstance(x, dict):
+        held = [k for k in keys if k in x]
+        if held:
+            return [v for k in held for v in _values(x[k], keys)]
+        return [v for k, i in x.items() if k not in PROVENANCE_KEYS for v in _values(i, keys)]
+    return []
+
+
+def written_values(op: Dict[str, Any], keys=VALUE_KEYS) -> List[str]:
+    """Every non-empty value ``op`` writes, held under ``keys``."""
+    return [v for k in keys if k in op for v in _values(op[k], keys) if v.strip()]
+
+
+def mark_proposal(op: Dict[str, Any], asked: Optional[str], keys=VALUE_KEYS) -> None:
+    """Mark ``op`` a proposal when a value it writes is not in ``asked``,
+    the message the user sent in this turn: a fixed rule, dumb on purpose.
+    A value whose exact text the user wrote was asked for by value, and is
+    written as confirmed when approved. Any other the assistant chose. A
+    change that writes no value (a delete, a split, a confirmation) is not
+    marked and is written as it always was. Nothing is marked where no
+    message is known (a script, a test)."""
+    if asked is None:
+        return
+    op.pop(PROPOSAL, None)
+    if any(v not in asked for v in written_values(op, keys)):
+        op[PROPOSAL] = True
+
+
+def proposal_count(ops: List[Dict[str, Any]]) -> int:
+    """How many of a plan's changes are the assistant's proposals."""
+    return sum(changes_of(op) for op in ops if op.get(PROPOSAL))
 
 
 def confirm_preview(machine: int, theirs: int) -> str:

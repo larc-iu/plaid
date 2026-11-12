@@ -10,6 +10,7 @@ import {
   groupRows,
   omittedLine,
   planRows,
+  proposalLine,
   ROWS_COLLAPSED,
   rowsOmitted,
   RULE_DOCUMENTS_SHOWN,
@@ -204,6 +205,13 @@ export const PlanCard = ({
           {rewrites === 1
             ? `1 change rewrites ${adapter.textName}.`
             : `${rewrites.toLocaleString('en-US')} changes rewrite ${adapter.textName}.`}
+        </p>
+      )}
+      {/* "Record as human-made" wins over both, so the line goes while it
+          is ticked, and with it once the plan was so recorded. */}
+      {proposalLine(plan.proposals, contributor) && !unwritable && !asHuman && !recordedAsHuman && (
+        <p className="mt-1.5 text-xs text-muted-foreground" data-testid="plan-proposals">
+          {proposalLine(plan.proposals, contributor)}
         </p>
       )}
       {replaced > 0 && !unwritable && (

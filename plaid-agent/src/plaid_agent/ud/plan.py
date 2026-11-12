@@ -181,10 +181,10 @@ def _apply_set_span(ctx: Context, op) -> int:
             # The lemma the word was just made with takes the value. Any
             # other layer gets a span of its own per write: a word holds one
             # FEATS span per feature.
-            ctx.b.update('spans', lemma, value=value, metadata=metadata_ops(ctx.restamp()))
+            ctx.b.update('spans', lemma, value=value, metadata=metadata_ops(ctx.restamp(op)))
         else:
             ctx.b.add(lambda batch, o=op, v=value, i=ctx.b.new_id(): batch.spans.create(
-                o['layer_id'], [token], v, ctx.stamp(), id=i))
+                o['layer_id'], [token], v, ctx.stamp(op), id=i))
         return 1
     if span_id and value == '' and op.get('field') == 'lemma':
         # Clearing a UPOS or XPOS cell deletes its span. Lemma is the
@@ -193,22 +193,22 @@ def _apply_set_span(ctx: Context, op) -> int:
         # including arcs a person drew and vouched for. A cleared lemma keeps
         # its null-valued span, exactly as the editor leaves it (ConlluDocument's
         # `updateAnnotation`) and as an unlemmatized import writes it.
-        ctx.b.update('spans', span_id, value=None, metadata=metadata_ops(ctx.restamp()))
+        ctx.b.update('spans', span_id, value=None, metadata=metadata_ops(ctx.restamp(op)))
     elif span_id and value == '':
         ctx.b.add(lambda batch, sid=span_id: batch.spans.delete(sid))
     elif span_id:
-        ctx.b.update('spans', span_id, value=value, metadata=metadata_ops(ctx.restamp()))
+        ctx.b.update('spans', span_id, value=value, metadata=metadata_ops(ctx.restamp(op)))
     elif value != '':
         made = ctx.creating[(op['layer_id'], op['token_id'])] = ctx.b.new_id()
         ctx.b.add(lambda batch, o=op, v=value, i=made: batch.spans.create(
-            o['layer_id'], [o['token_id']], v, ctx.stamp(), id=i))
+            o['layer_id'], [o['token_id']], v, ctx.stamp(op), id=i))
     else:
         return 0  # nothing to clear
     return 1
 
 
 def _apply_set_deprel(ctx: Context, op) -> int:
-    ctx.b.update('relations', op['relation_id'], value=op['deprel'], metadata=metadata_ops(ctx.restamp()))
+    ctx.b.update('relations', op['relation_id'], value=op['deprel'], metadata=metadata_ops(ctx.restamp(op)))
     return 1
 
 
@@ -336,7 +336,7 @@ def _apply_set_head(ctx: Context, op) -> int:
         # The same head with a new label is the relation's own value, as the
         # editor's `updateRelation` writes it, so History reads a relabel and
         # not a removal and a creation.
-        ctx.b.update('relations', op['relation_id'], value=op['deprel'], metadata=metadata_ops(ctx.restamp()))
+        ctx.b.update('relations', op['relation_id'], value=op['deprel'], metadata=metadata_ops(ctx.restamp(op)))
         return 1
     # A stand-in at either end is made first, with its lemma (``_word``).
     word_id = _word(ctx, op, op['word_id'])
@@ -348,7 +348,7 @@ def _apply_set_head(ctx: Context, op) -> int:
     # named by its id.
     ctx.b.add(lambda batch, o=op: batch.relations.create(
         o['relation_layer_id'], ctx.lemma_at[head_id], ctx.lemma_at[word_id], o['deprel'],
-        ctx.stamp(), id=ctx.b.new_id()))
+        ctx.stamp(op), id=ctx.b.new_id()))
     # The enhanced graph's relabel of the old relation goes to the new head
     # with it (``moved_ids``, staged by ``_stage_head``), its extras restamped
     # as the re-pointed relation is.
@@ -357,7 +357,7 @@ def _apply_set_head(ctx: Context, op) -> int:
             ctx.b.add(lambda batch, i=rid: batch.relations.set_source(i, ctx.lemma_at[head_id]))
     for rid in op.get('moved_extra_ids') or ():
         if not ctx.removed_by_others(op, rid):
-            ctx.b.update('relations', rid, metadata=metadata_ops(ctx.restamp()))
+            ctx.b.update('relations', rid, metadata=metadata_ops(ctx.restamp(op)))
     return 1
 
 

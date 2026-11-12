@@ -44,6 +44,9 @@ class Workspace(BaseWorkspace):
     """One turn's view of a UMR project: what it has loaded and the plan it is
     proposing."""
 
+    #: The values a change writes here beside the shared ones: a node's attributes and concept.
+    VALUE_KEYS = BaseWorkspace.VALUE_KEYS + ('attrs', 'concept')
+
     KIND = KIND
     PLAN_NOTE = PLAN_NOTE
     # No kind here sets one value on one token: a concept sits on a span over

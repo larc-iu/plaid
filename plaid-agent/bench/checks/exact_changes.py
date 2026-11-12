@@ -64,7 +64,7 @@ def check(ctx):
             else:
                 sp = spans(after).get(k)
             p = c.prov_of(sp)
-            ok.append(c.verified_machine(sp) if want_prov == 'verified' else not p)
+            ok.append(c.approved(sp) if want_prov == 'verified' else not p)
         prov_ok = all(ok)
 
     plans = plan_items(ctx.conversation)

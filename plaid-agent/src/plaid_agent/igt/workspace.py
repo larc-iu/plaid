@@ -174,6 +174,9 @@ class Workspace(BaseWorkspace):
     """One turn's view of an interlinear project: what it has loaded, the
     lexicon it is building on, and the plan it is proposing."""
 
+    #: The values a change writes here beside the shared ones: an entry linked by its form, a word's morphemes.
+    VALUE_KEYS = BaseWorkspace.VALUE_KEYS + ('entry_form', 'morphemes', 'analyses')
+
     KIND = KIND
     PLAN_NOTE = PLAN_NOTE
     SPAN_KIND = 'set_span'

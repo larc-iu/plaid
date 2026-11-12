@@ -178,6 +178,25 @@ export const planRows = (plan) => {
 };
 
 /** How many of these rows are changes: a row that writes nothing is not one. */
+// What approval records each change as, when the assistant chose some of the
+// values (the service's `proposals`, the owner's ruling of 2026-11-12): its
+// own choices are written unconfirmed, for review, and the values the user
+// gave as the approver's. Null when it chose none.
+export const proposalLine = (proposals, contributor = false) => {
+  const chosen = Number(proposals?.chosen) || 0;
+  if (!chosen) return null;
+  const given = Number(proposals?.given) || 0;
+  const count = (n) => (n === 1 ? '1 change' : `${n.toLocaleString('en-US')} changes`);
+  const theirs = contributor ? 'recorded as your contribution' : 'recorded as confirmed by you';
+  return (
+    `${count(chosen)} ${chosen === 1 ? 'is' : 'are'} the assistant's choice${chosen === 1 ? '' : 's'}, ` +
+    'recorded unconfirmed for review.' +
+    (given
+      ? ` ${count(given)} ${given === 1 ? 'is a value' : 'are values'} you gave, ${theirs}.`
+      : '')
+  );
+};
+
 export const changeCount = (rows) => (rows || []).filter((r) => !r.kept && !r.writesNothing).length;
 
 // Rows grouped by the place they change, groups in order of first appearance,

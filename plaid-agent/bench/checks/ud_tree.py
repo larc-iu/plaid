@@ -100,7 +100,10 @@ def _ok(now, want):
 
 
 def _stamped(p):
-    return 'prov=inferred' in p and 'provConfirmed=True' in p and 'provSource=service:' in p
+    # The verified stamp, or the assistant's unconfirmed proposal on a value
+    # it chose (common.approved).
+    return 'prov=inferred' in p and 'provSource=service:' in p and \
+        ('provConfirmed=True' in p or 'provConfirmed' not in p)
 
 
 def _verified(flat, before, addr):

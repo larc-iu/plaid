@@ -211,11 +211,11 @@ def check(ctx):
             else:
                 continue
             if sp is not None and ':form' not in addr:
-                ok.append(c.verified_machine(sp))
+                ok.append(c.approved(sp))
         for k in stretched:
             doc, addr = k.split('|', 1)
             if not addr.endswith('#prov') and after[doc].get(addr) is not None:
-                ok.append(c.verified_machine(c.igt_spans(raws[doc])[addr]))
+                ok.append(c.approved(c.igt_spans(raws[doc])[addr]))
         prov_ok = all(ok) if ok else None
 
     plans = plan_items(ctx.conversation)

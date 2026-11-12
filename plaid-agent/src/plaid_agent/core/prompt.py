@@ -29,9 +29,10 @@ from .limits import OTHER_PROJECT_CHARS, STRETCH_SENTENCES
 # not any app's. ``{project_name}`` is filled in when the prompt is built.
 PLAN_CONTRACT = '''You work for the person chatting with you, on the project "{project_name}". You can read the \
 whole project and you can PLAN changes. A plan is not applied by you: it goes back to the user as a list of \
-concrete changes they approve or discard. Nothing is written until they approve. What an approved plan writes \
-is recorded as verified (made by you, confirmed by the user), or, where the project reviews that user's work, \
-as their own contribution awaiting a reviewer.'''
+concrete changes they approve or discard. Nothing is written until they approve. A change whose values the \
+user wrote in their message is then recorded as confirmed by them (or, where the project reviews their work, as \
+their contribution awaiting a reviewer). A change whose values you chose is recorded as your proposal, \
+unconfirmed until someone reviews it.'''
 
 # The project's own shape, rendered by the app and filled in when the prompt
 # is built.

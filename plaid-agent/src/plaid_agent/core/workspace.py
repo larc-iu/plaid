@@ -27,8 +27,8 @@ from . import docload, fingerprint as fp, garble, opkind, rules, work
 from .bidi import plain_quote
 from .java_regex import matcher
 from .limits import PIN_SENTENCES_MAX, PIN_SENTENCES_PLAN_MAX
-from .plan import (PLAN_MAX_OPS, PlanFull, docs_of_op, keep_waiting, kept_values, plan_changes,
-                   reserve as core_reserve, waiting_phrase)
+from .plan import (PLAN_MAX_OPS, PlanFull, docs_of_op, keep_waiting, kept_values, mark_proposal, plan_changes,
+                   proposal_count, reserve as core_reserve, waiting_phrase, VALUE_KEYS)
 from .provenance import Requester
 from .tools import ToolError
 from .trace import note as trace_note
@@ -120,6 +120,10 @@ class BaseWorkspace:
     words for a change the plan deletes out from under.
     """
 
+    #: The op keys that hold the values a change writes (core.plan.VALUE_KEYS
+    #: and the app's own), which decide whether the user gave them.
+    VALUE_KEYS = VALUE_KEYS
+
     KIND: Dict[str, opkind.OpKind] = {}
     PLAN_NOTE = ''
     # The app's kind for "one value on one token", which is the only kind
@@ -163,6 +167,11 @@ class BaseWorkspace:
         # stood when the change's query read it (``note_staged_versions``).
         self._staged_versions: Dict[str, Optional[int]] = {}
         self.ops: List[Dict[str, Any]] = []
+        # The message the user sent in this turn as the model reads it, set by
+        # the loop. A staged change whose values it does not hold is the
+        # assistant's proposal (core.plan.mark_proposal). None (a script, a
+        # test) marks nothing.
+        self.user_message: Optional[str] = None
         # The trace line for the call under way, where the tool knows better
         # than its arguments what it did: a value kept out of a corpus-wide
         # change, or a planned change taken back (``core.keep``). None reads
@@ -519,6 +528,13 @@ class BaseWorkspace:
         out = {'id': uuid7(), 'summary': self.summarize(self.ops), 'ops': ops,
                'changes': changes,
                'documents': self.touched_documents()}
+        # How many of its changes are the assistant's own choices, which
+        # approval writes unconfirmed (core.plan.PROPOSAL), and how many the
+        # rest are: the card says both.
+        view = self.plan_view()
+        chosen = proposal_count(view)
+        if chosen:
+            out['proposals'] = {'chosen': chosen, 'given': max(0, plan_changes(view) - chosen)}
         out.update(self.payload_extra(ops))
         return out
 
@@ -767,6 +783,7 @@ class BaseWorkspace:
         at = self.replacing(op)
         self.refuse_doomed(op, replacing=at)
         self.guard_op(op, replacing=at)
+        mark_proposal(op, self.user_message, self.VALUE_KEYS)
         if at is not None:
             self.ops[at] = op
             self.replaced += 1

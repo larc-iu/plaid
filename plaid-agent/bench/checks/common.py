@@ -294,6 +294,18 @@ def verified_machine(span: Optional[dict]) -> bool:
         str(p.get('provSource') or '').startswith('service:')
 
 
+def approved(span: Optional[dict]) -> bool:
+    """What an approved plan stamps on what it writes (not 'as human'): the
+    verified stamp on a value the user gave, or, since the owner's ruling of
+    2026-11-12, the assistant's unconfirmed proposal on a value it chose
+    (prov inferred, the assistant its source, no provConfirmed). Which of the
+    two a value gets is plaid-agent's rule and its tests' (core.plan
+    PROPOSAL): a checker asks only that the approval stamped it."""
+    p = prov_of(span)
+    return verified_machine(span) or (p.get('prov') == 'inferred' and 'provConfirmed' not in p and
+                                      str(p.get('provSource') or '').startswith('service:'))
+
+
 def project_docs(client, project_id) -> List[dict]:
     return client.projects.list_documents(project_id) if hasattr(client.projects, 'list_documents') else \
         client.projects.get(project_id).get('documents') or []
