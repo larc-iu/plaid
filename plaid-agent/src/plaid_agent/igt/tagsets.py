@@ -609,19 +609,22 @@ def _edit(ws, name: str, lexicon: Optional[str], changes: Dict[str, Any]) -> str
     return _stage_tagset(ws, owner, was, target, stored, after, label, notes)
 
 
-# The Status value that marks an entry published, which the app reserves like
-# the built-in entry keys (plaid-igt vocabDictionary.js PUBLISHED_STATUS).
+# The Status values the app reserves like the built-in entry keys, in its
+# order (plaid-igt vocabDictionary.js RESERVED_STATUS_VALUES): published, and
+# since 25216b263 machine, a machine draft.
 PUBLISHED_STATUS = 'published'
+MACHINE_STATUS = 'machine'
+RESERVED_STATUS_VALUES = (PUBLISHED_STATUS, MACHINE_STATUS)
 
 
 def _reserved_values(vocab: Optional[dict], names) -> set:
     """The values a lexicon's tagset named one of ``names`` may not lose: the
-    published value, when the tagset is the one its Status field (by role) is
-    held to."""
+    reserved Status values, when the tagset is the one its Status field (by
+    role) is held to."""
     if vocab is None:
         return set()
     status = next(iter(fields_with_role(vocab.get('fields') or [], ROLE_STATUS)), None)
-    return {PUBLISHED_STATUS} if status and status.get('tagset') in names else set()
+    return set(RESERVED_STATUS_VALUES) if status and status.get('tagset') in names else set()
 
 
 def _few(values: List[str], n: int = 8) -> str:
@@ -659,15 +662,16 @@ def _assign(ws, field: str, tagset: str, lexicon: Optional[str]) -> str:
         name = found
     if f['tagset'] == name:
         return f'{f["name"]} already ' + (f'uses {qv(name)}.' if name else 'has no tagset.')
-    # The Status field keeps its reserved published value: it is never held
-    # to a list without it (plaid-igt dropsPublishedStatus). No list at all
+    # The Status field keeps its reserved values: it is never held to a list
+    # without one of them (plaid-igt dropsReservedStatus). No list at all
     # stays allowed.
     if name is not None and vocab is not None and f['kind'] == ENTRY_FIELD:
         status = next(iter(fields_with_role(vocab.get('fields') or [], ROLE_STATUS)), None)
         listed = {v['value'] if isinstance(v, dict) else v for v in (tagsets[name].get('values') or [])}
-        if status and status.get('name') == f['key'] and PUBLISHED_STATUS not in listed:
-            raise ToolError(f'{qv(name)} does not list {qv(PUBLISHED_STATUS)}, the reserved Status value, so the '
-                            f'Status field cannot use it. Add {qv(PUBLISHED_STATUS)} to it first. Nothing planned.',
+        missing = next((v for v in RESERVED_STATUS_VALUES if v not in listed), None)
+        if status and status.get('name') == f['key'] and missing:
+            raise ToolError(f'{qv(name)} does not list {qv(missing)}, a reserved Status value, so the '
+                            f'Status field cannot use it. Add {qv(missing)} to it first. Nothing planned.',
                             kind='not-allowed')
     stored = _stored_field_tagset(ws, owner, f)
     ws.add_op({'kind': 'assign_tagset', 'owner': owner, 'field_kind': f['kind'], 'key': f['key'],

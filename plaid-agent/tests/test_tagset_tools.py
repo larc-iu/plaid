@@ -89,7 +89,7 @@ def test_the_status_field_is_never_pointed_at_a_tagset_without_published():
                           'Other': {'name': 'Other', 'mode': 'closed', 'delimiters': '',
                                     'values': [{'value': 'draft'}]},
                           'Also': {'name': 'Also', 'mode': 'closed', 'delimiters': '',
-                                   'values': [{'value': 'published'}]}}
+                                   'values': [{'value': 'machine'}, {'value': 'published'}]}}
     out = call_tool(ws, 'tagsets', {'action': 'assign', 'field': 'state', 'tagset': 'Other',
                                     'lexicon': lex['name']})
     assert out.startswith('Error:') and 'published' in out and ws.ops == [], out
@@ -497,3 +497,38 @@ def test_a_tagset_value_is_trimmed_as_the_app_trims_it():
     stores as "NOM\\u0085" was planned as "NOM" (REV-FX-AGENT-IGT-4)."""
     from plaid_agent.igt.tagsets import _values
     assert [v['value'] for v in _values(['NOM\u0085', ' ﻿PL '], 'values')] == ['NOM\u0085', 'PL']
+
+
+def _status_ws(values):
+    ws = Workspace(FakeClient(), load_project(FakeClient(), 'p1'))
+    lex = ws.project.vocabs[0]
+    lex['fields'] = [*(lex.get('fields') or []),
+                     {'name': 'state', 'inline': False, 'tagset': 'Workflow', 'role': 'status'}]
+    lex['all_tagsets'] = {'Workflow': {'name': 'Workflow', 'mode': 'closed', 'delimiters': '',
+                                       'values': [{'value': v} for v in values]},
+                          'NoMachine': {'name': 'NoMachine', 'mode': 'closed', 'delimiters': '',
+                                        'values': [{'value': 'draft'}, {'value': 'published'}]}}
+    return ws, lex
+
+
+def test_the_machine_status_value_is_reserved_as_published_is():
+    """Since 25216b263 the app reserves machine ("Machine draft") beside
+    published (dropsReservedStatus), and refuses the write. The model now
+    hears it at staging, the value named."""
+    ws, lex = _status_ws(['machine', 'draft', 'published'])
+    out = call_tool(ws, 'tagsets', {'action': 'edit', 'tagset': 'Workflow', 'lexicon': lex['name'],
+                                    'changes': {'remove': ['machine']}})
+    assert out == 'Error: "machine" is a reserved Status value and cannot be removed. Nothing planned.', out
+    assert ws.ops == []
+    out = call_tool(ws, 'tagsets', {'action': 'assign', 'field': 'state', 'tagset': 'NoMachine',
+                                    'lexicon': lex['name']})
+    assert out.startswith('Error: "NoMachine" does not list "machine", a reserved Status value'), out
+    assert ws.ops == []
+
+
+def test_a_status_list_from_before_machine_is_edited_in_place():
+    # As the app: a list that never listed machine is not refused for lacking it while it is edited in place.
+    ws, lex = _status_ws(['draft', 'published'])
+    out = call_tool(ws, 'tagsets', {'action': 'edit', 'tagset': 'Workflow', 'lexicon': lex['name'],
+                                    'changes': {'remove': ['draft']}})
+    assert out.startswith('Planned'), out
