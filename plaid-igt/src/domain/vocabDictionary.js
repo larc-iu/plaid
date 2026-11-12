@@ -147,7 +147,11 @@ export const dropsReservedStatus = ({ fieldsBefore, fieldsAfter, tagsetsBefore, 
  * A field already holding the role is left as its owner arranged it, and the
  * tagset it is held to gains the machine value, first, when it lacks it (a
  * FLEx Status list keeps its own values). With no field holding the role, a
- * Status tagset already there keeps its own values and gains the four the
+ * field keyed status (in any case) becomes the Status field: it keeps all it
+ * stores and gains the role, and the tagset it is held to the values below
+ * (a tagset named there that is not there is left so). Otherwise the field
+ * `status` is added. A field with no tagset is held to the Status tagset, and
+ * a Status tagset already there keeps its own values and gains the four the
  * field is written with, machine first and the rest after its own.
  */
 export const statusFieldSeed = ({ fieldsConfig, tagsets }) => {
@@ -165,14 +169,23 @@ export const statusFieldSeed = ({ fieldsConfig, tagsets }) => {
       },
     };
   }
-  const existing = tagsets?.[STATUS_TAGSET];
+  const key =
+    Object.keys(fieldsConfig || {}).find((k) => k.toLowerCase() === STATUS_FIELD) ?? STATUS_FIELD;
+  const spec = fieldsConfig?.[key] ?? { inline: false };
+  const name = typeof spec.tagset === 'string' && spec.tagset ? spec.tagset : STATUS_TAGSET;
+  const existing = tagsets?.[name];
+  const field = { ...spec, tagset: name, role: ENTRY_ROLES.STATUS };
+  // A tagset the field names that is not there stays unnamed by any list.
+  if (!existing && name !== STATUS_TAGSET) {
+    return { fieldsConfig: { ...fieldsConfig, [key]: field }, tagsets: tagsets ?? {} };
+  }
   const own = existing?.values || [];
   const list = existing
     ? {
         ...existing,
         // A Status tagset seeded before `ordered` existed gains it here, so an
         // older project's picker reads as the workflow too.
-        ordered: true,
+        ordered: existing.ordered ?? true,
         values: [
           ...(lists(existing, MACHINE_STATUS) ? [] : [{ ...MACHINE_VALUE }]),
           ...own,
@@ -183,11 +196,8 @@ export const statusFieldSeed = ({ fieldsConfig, tagsets }) => {
       }
     : statusTagset();
   return {
-    fieldsConfig: {
-      ...(fieldsConfig || {}),
-      [STATUS_FIELD]: { inline: false, tagset: STATUS_TAGSET, role: ENTRY_ROLES.STATUS },
-    },
-    tagsets: { ...(tagsets || {}), [STATUS_TAGSET]: list },
+    fieldsConfig: { ...(fieldsConfig || {}), [key]: field },
+    tagsets: { ...(tagsets || {}), [name]: list },
   };
 };
 

@@ -282,6 +282,58 @@ describe('statusFieldSeed', () => {
     expect(seed.tagsets).toBe(tagsets);
   });
 
+  // A field of the vocabulary's own keyed status, made before the role
+  // existed, becomes the Status field: nothing it stores is written over
+  // (REV-J-C-2).
+  it('gives a field keyed status the role, keeping all it stores, and its list the values it lacks', () => {
+    const fieldsConfig = {
+      gloss: { inline: true },
+      status: { inline: true, lang: 'en', scope: 'entry', tagset: 'Status' },
+    };
+    const own = {
+      delimiters: '',
+      mode: 'suggest',
+      ordered: false,
+      values: [{ value: 'checked by Ana' }, { value: 'reviewed' }],
+    };
+    const seed = statusFieldSeed({ fieldsConfig, tagsets: { Status: own } });
+    expect(seed.fieldsConfig).toEqual({
+      gloss: { inline: true },
+      status: { inline: true, lang: 'en', scope: 'entry', tagset: 'Status', role: 'status' },
+    });
+    expect(seed.tagsets).toEqual({
+      Status: {
+        ...own,
+        values: [
+          { value: 'machine', description: 'Machine draft' },
+          { value: 'checked by Ana' },
+          { value: 'reviewed' },
+          { value: 'draft' },
+          { value: 'published' },
+        ],
+      },
+    });
+  });
+
+  it('gives a field keyed status in any case the role and the Status tagset when it has no list', () => {
+    const fieldsConfig = { Status: { inline: true, lang: 'en', scope: 'entry' } };
+    const seed = statusFieldSeed({ fieldsConfig, tagsets: { POS: { values: [] } } });
+    expect(seed.fieldsConfig).toEqual({
+      Status: { inline: true, lang: 'en', scope: 'entry', tagset: 'Status', role: 'status' },
+    });
+    expect(seed.tagsets).toEqual({ POS: { values: [] }, Status: statusTagset() });
+  });
+
+  it('gives a field keyed status held to a tagset that is not there the role and nothing else', () => {
+    const fieldsConfig = { status: { inline: false, tagset: 'Gone' } };
+    const tagsets = { Other: { values: [] } };
+    const seed = statusFieldSeed({ fieldsConfig, tagsets });
+    expect(seed.fieldsConfig).toEqual({
+      status: { inline: false, tagset: 'Gone', role: 'status' },
+    });
+    expect(seed.tagsets).toBe(tagsets);
+  });
+
   it('takes a missing config as an empty one', () => {
     const seed = statusFieldSeed({});
     expect(Object.keys(seed.fieldsConfig)).toEqual([STATUS_FIELD]);
@@ -318,17 +370,39 @@ describe("the Status field backfill's cases", () => {
       fields: { gloss, status: { inline: false, tagset: 'Status', role: 'status' } },
       tagsets: { Status: statusTagset() },
     },
+    {
+      name: 'a status field of its own with a list',
+      fields: { gloss, status: { inline: true, lang: 'en', scope: 'entry', tagset: 'Status' } },
+      tagsets: {
+        Status: { delimiters: '', mode: 'suggest', values: [{ value: 'checked by Ana' }] },
+      },
+    },
+    {
+      name: 'a status field of its own with no list',
+      fields: { gloss, Status: { inline: true, lang: 'en', scope: 'entry' } },
+      tagsets: {},
+    },
   ].map((c) => {
     const seed = statusFieldSeed({ fieldsConfig: c.fields, tagsets: c.tagsets });
     return { ...c, after: { fields: seed.fieldsConfig, tagsets: seed.tagsets } };
   });
 
-  it('change the first two and leave the third', () => {
+  it('change all but the third', () => {
     expect(cases.map((c) => c.after.fields === c.fields && c.after.tagsets === c.tagsets)).toEqual([
       false,
       false,
       true,
+      false,
+      false,
     ]);
+    // A field of its own keyed status keeps what it stores and gains the role.
+    expect(cases[3].after.fields.status).toEqual({ ...cases[3].fields.status, role: 'status' });
+    expect(cases[4].after.fields.Status).toEqual({
+      ...cases[4].fields.Status,
+      tagset: 'Status',
+      role: 'status',
+    });
+    expect(Object.keys(cases[4].after.fields)).toEqual(['gloss', 'Status']);
     expect(cases[0].after.tagsets).toEqual({ Status: statusTagset() });
     expect(cases[1].after.tagsets.Status.values[0]).toEqual({
       value: 'machine',
