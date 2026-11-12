@@ -245,8 +245,9 @@ SURFACE_EXEMPT = {
     'exampleKey': 'keys a rendering cache',
     'buildHomographNumbers': "the homograph number an export writes (LIFT order, CLDF's Homograph, flextext's hn); "
                              'the agent writes no export, and build_item_numbers numbers the entries it names',
-    'statusTagsetName': "the tagset editor's guard on the published value; the tagsets tool keeps its own",
-    'dropsPublishedStatus': 'the same guard',
+    'statusTagsetName': "the tagset editor's guard on the reserved values; the tagsets tool keeps its own",
+    'dropsReservedStatus': 'the same guard',
+    'reservedStatusMessage': "the same guard's words",
     # vocabFields.js is mostly the entry FORM: labels, controls, grouping and
     # the seeding of a new vocabulary, none of which the agent draws.
     'editableMetadata': 'the entry form',

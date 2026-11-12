@@ -17,9 +17,10 @@ import { fieldsForItem } from './vocabDictionary.js';
  * (entryTagsetFor): `morphTypeOf(id)` is the one each entry goes by, its own
  * when not given.
  *
- * `reserved` ({value, keep}) is a value the field may not lose under another
- * spelling: a row that turns it into anything but one of `keep`, or nothing,
- * is `invalid` too ('reserved'). The Status field's published value is one.
+ * `reserved` ({values, keep}) is the values the field may not lose under
+ * another spelling: a row that turns one into anything but one of `keep`, or
+ * nothing, is `invalid` too ('reserved'). The Status field's published and
+ * machine values are such.
  *
  * A new form is the one an entry stores (entryForm): without its affix or
  * clitic markers, and a row whose markers name a type other than the entry's
@@ -53,7 +54,7 @@ export function planVocabReplace(
     if (field === 'form' && next.trim() === '') invalid = 'empty';
     else if (
       reserved &&
-      old === reserved.value &&
+      (reserved.values || []).includes(old) &&
       next.trim() !== '' &&
       !(reserved.keep || []).includes(next)
     )

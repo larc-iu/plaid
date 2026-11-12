@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { normalizeVocabFields } from './vocabFields.js';
 import {
-  dropsPublishedStatus,
+  dropsReservedStatus,
+  reservedStatusMessage,
   statusTagsetName,
   buildSenseTree,
   buildItemNumbers,
@@ -29,8 +30,12 @@ import {
   withRefIds,
   statusFieldSeed,
   statusFieldKey,
+  statusTagset,
   STATUS_FIELD,
   STATUS_TAGSET,
+  STATUS_VALUES,
+  MACHINE_STATUS,
+  RESERVED_STATUS_VALUES,
 } from './vocabDictionary.js';
 
 const item = (id, form, metadata) => ({ id, form, ...(metadata ? { metadata } : {}) });
@@ -94,11 +99,40 @@ describe('statusFieldKey', () => {
   });
 });
 
-describe('the published Status value', () => {
-  const STATUS = { values: [{ value: 'draft' }, { value: 'published' }] };
-  const fields = { state: { tagset: 'Status', role: 'status' }, gloss: { tagset: 'Leipzig' } };
+describe('the Status values', () => {
+  it('are machine, draft, reviewed, published, in that order, machine labelled', () => {
+    expect(STATUS_VALUES).toEqual(['machine', 'draft', 'reviewed', 'published']);
+    expect(MACHINE_STATUS).toBe('machine');
+    expect(statusTagset()).toEqual({
+      delimiters: '',
+      mode: 'closed',
+      ordered: true,
+      values: [
+        { value: 'machine', description: 'Machine draft' },
+        { value: 'draft' },
+        { value: 'reviewed' },
+        { value: 'published' },
+      ],
+    });
+  });
 
-  it('is held by the tagset of the field with the Status role', () => {
+  it('reserve published and machine, each refused in its own words', () => {
+    expect(RESERVED_STATUS_VALUES).toEqual(['published', 'machine']);
+    expect(reservedStatusMessage('machine')).toBe(
+      '“machine” is a reserved Status value and cannot be renamed or removed',
+    );
+    expect(reservedStatusMessage('published')).toBe(
+      '“published” is a reserved Status value and cannot be renamed or removed',
+    );
+  });
+});
+
+describe('the reserved Status values', () => {
+  const STATUS = { values: [{ value: 'machine' }, { value: 'draft' }, { value: 'published' }] };
+  const fields = { state: { tagset: 'Status', role: 'status' }, gloss: { tagset: 'Leipzig' } };
+  const without = (gone) => ({ values: STATUS.values.filter((v) => v.value !== gone) });
+
+  it('are held by the tagset of the field with the Status role', () => {
     expect(statusTagsetName(fields)).toBe('Status');
     expect(statusTagsetName(normalizeVocabFields(fields))).toBe('Status');
     expect(statusTagsetName({ state: { role: 'status' } })).toBeNull();
@@ -107,60 +141,90 @@ describe('the published Status value', () => {
 
   it('may not be renamed or removed, and anything else may change', () => {
     const drops = (after, fieldsAfter = fields) =>
-      dropsPublishedStatus({
+      dropsReservedStatus({
         fieldsBefore: fields,
         fieldsAfter,
         tagsetsBefore: { Status: STATUS },
         tagsetsAfter: after,
       });
-    expect(drops({ Status: { values: [{ value: 'draft' }] } })).toBe(true);
-    expect(drops({ Status: { values: [{ value: 'draft' }, { value: 'publicado' }] } })).toBe(true);
-    // Renamed with its field repointed: the new name must still list it.
+    expect(drops({ Status: without('published') })).toBe('published');
+    expect(drops({ Status: without('machine') })).toBe('machine');
+    expect(
+      drops({
+        Status: { values: [{ value: 'machine' }, { value: 'draft' }, { value: 'publicado' }] },
+      }),
+    ).toBe('published');
+    expect(
+      drops({
+        Status: { values: [{ value: 'machina' }, { value: 'draft' }, { value: 'published' }] },
+      }),
+    ).toBe('machine');
+    // Renamed with its field repointed: the new name must still list both.
     const repointed = { ...fields, state: { ...fields.state, tagset: 'Workflow' } };
-    expect(drops({ Workflow: { values: [{ value: 'draft' }] } }, repointed)).toBe(true);
-    expect(drops({ Workflow: STATUS }, repointed)).toBe(false);
-    expect(drops({ Status: { values: [...STATUS.values, { value: 'reviewed' }] } })).toBe(false);
-    // Deleted whole: the field is held to no list, and published still reads.
-    expect(drops({})).toBe(false);
+    expect(drops({ Workflow: without('machine') }, repointed)).toBe('machine');
+    expect(drops({ Workflow: STATUS }, repointed)).toBeNull();
+    expect(drops({ Status: { values: [...STATUS.values, { value: 'reviewed' }] } })).toBeNull();
+    // Deleted whole: the field is held to no list, and both still read.
+    expect(drops({})).toBeNull();
   });
 
-  it('may not be pointed at another tagset without it (HUNT-recent 4)', () => {
+  it('may not be pointed at another tagset without them (HUNT-recent 4)', () => {
     const closed = { mode: 'closed', values: [{ value: 'draft' }] };
     const pointed = (from, to, tagsets) =>
-      dropsPublishedStatus({
+      dropsReservedStatus({
         fieldsBefore: { ...fields, state: { ...fields.state, tagset: from } },
         fieldsAfter: { ...fields, state: { ...fields.state, tagset: to } },
         tagsetsBefore: tagsets,
         tagsetsAfter: tagsets,
       });
-    expect(pointed('Status', 'Other', { Status: STATUS, Other: closed })).toBe(true);
+    expect(pointed('Status', 'Other', { Status: STATUS, Other: closed })).toBe('published');
+    expect(pointed('Status', 'Other', { Status: STATUS, Other: without('machine') })).toBe(
+      'machine',
+    );
     // From no list, which is how the two-step door would go.
-    expect(pointed(undefined, 'Other', { Status: STATUS, Other: closed })).toBe(true);
-    expect(pointed('Status', 'Other', { Status: STATUS, Other: STATUS })).toBe(false);
-    expect(pointed('Status', undefined, { Status: STATUS, Other: closed })).toBe(false);
+    expect(pointed(undefined, 'Other', { Status: STATUS, Other: closed })).toBe('published');
+    expect(pointed('Status', 'Other', { Status: STATUS, Other: STATUS })).toBeNull();
+    expect(pointed('Status', undefined, { Status: STATUS, Other: closed })).toBeNull();
     // A tagset the change makes is another tagset too (REV-R4-IGT D3).
     const made = (from, to, before, after) =>
-      dropsPublishedStatus({
+      dropsReservedStatus({
         fieldsBefore: { ...fields, state: { ...fields.state, tagset: from } },
         fieldsAfter: { ...fields, state: { ...fields.state, tagset: to } },
         tagsetsBefore: before,
         tagsetsAfter: after,
       });
-    expect(made(undefined, 'New', { Status: STATUS }, { Status: STATUS, New: closed })).toBe(true);
-    expect(made('Status', 'New', { Status: STATUS }, { Status: STATUS, New: closed })).toBe(true);
-    expect(made(undefined, 'New', { Status: STATUS }, { Status: STATUS, New: STATUS })).toBe(false);
+    expect(made(undefined, 'New', { Status: STATUS }, { Status: STATUS, New: closed })).toBe(
+      'published',
+    );
+    expect(made('Status', 'New', { Status: STATUS }, { Status: STATUS, New: closed })).toBe(
+      'published',
+    );
+    expect(made(undefined, 'New', { Status: STATUS }, { Status: STATUS, New: STATUS })).toBeNull();
+  });
+
+  it('leave a list that never listed machine as it is, until it is pointed elsewhere', () => {
+    // A Status list from before machine existed: editing it is no removal.
+    const old = { values: [{ value: 'draft' }, { value: 'published' }] };
+    expect(
+      dropsReservedStatus({
+        fieldsBefore: fields,
+        tagsetsBefore: { Status: old },
+        tagsetsAfter: { Status: { values: [...old.values, { value: 'reviewed' }] } },
+      }),
+    ).toBeNull();
   });
 });
 
 describe('statusFieldSeed', () => {
-  it('adds the three values to a Status tagset already there, keeping its own', () => {
+  it('adds the four values to a Status tagset already there, machine first, keeping its own', () => {
     const tagsets = { Status: { mode: 'closed', delimiters: '', values: [{ value: 'checked' }] } };
     const seed = statusFieldSeed({ fieldsConfig: {}, tagsets });
-    expect(seed.tagsets.Status.values.map((t) => t.value)).toEqual([
-      'checked',
-      'draft',
-      'reviewed',
-      'published',
+    expect(seed.tagsets.Status.values).toEqual([
+      { value: 'machine', description: 'Machine draft' },
+      { value: 'checked' },
+      { value: 'draft' },
+      { value: 'reviewed' },
+      { value: 'published' },
     ]);
     expect(seed.tagsets.Status.mode).toBe('closed');
   });
@@ -171,24 +235,50 @@ describe('statusFieldSeed', () => {
       gloss: { inline: true },
       [STATUS_FIELD]: { inline: false, tagset: STATUS_TAGSET, role: 'status' },
     });
-    expect(seed.tagsets[STATUS_TAGSET].mode).toBe('closed');
+    expect(seed.tagsets).toEqual({ [STATUS_TAGSET]: statusTagset() });
+  });
+
+  it('adds machine first to the tagset a FLEx Status field is held to, keeping its values', () => {
+    const fieldsConfig = { Status: { inline: false, tagset: 'Status', role: 'status' } };
+    const flex = {
+      delimiters: '',
+      mode: 'closed',
+      values: [{ value: 'Confirmed', description: 'FLEx' }, { value: 'Pending' }],
+    };
+    const seed = statusFieldSeed({ fieldsConfig, tagsets: { Status: flex, POS: { values: [] } } });
+    expect(seed.fieldsConfig).toBe(fieldsConfig);
+    expect(seed.tagsets).toEqual({
+      Status: {
+        ...flex,
+        values: [{ value: 'machine', description: 'Machine draft' }, ...flex.values],
+      },
+      POS: { values: [] },
+    });
   });
 
   it('returns both parts whole even when neither needs adding', () => {
     // The half that needs no change comes back as it was, never as null: a
     // caller writes both, and writing null over `fields` would empty it.
     const fieldsConfig = { Stage: { inline: true, tagset: 'Mine', role: 'status' } };
-    const tagsets = { [STATUS_TAGSET]: { mode: 'open', values: [] } };
+    const tagsets = { Mine: { mode: 'open', values: [{ value: 'machine' }] } };
     const seed = statusFieldSeed({ fieldsConfig, tagsets });
     expect(seed.fieldsConfig).toBe(fieldsConfig);
     expect(seed.tagsets).toBe(tagsets);
   });
 
-  it('leaves a field that holds the role as it is, whatever its name', () => {
+  it('leaves a field that holds the role and no tagset as it is, whatever its name', () => {
     const fieldsConfig = { Stage: { inline: true, role: 'status' }, status: {} };
     const seed = statusFieldSeed({ fieldsConfig, tagsets: {} });
     expect(seed.fieldsConfig).toBe(fieldsConfig);
     expect(seed.tagsets).toEqual({});
+  });
+
+  it('leaves a Status field held to a tagset that is not there as it is', () => {
+    const fieldsConfig = { Stage: { role: 'status', tagset: 'Gone' } };
+    const tagsets = { Other: { values: [] } };
+    const seed = statusFieldSeed({ fieldsConfig, tagsets });
+    expect(seed.fieldsConfig).toBe(fieldsConfig);
+    expect(seed.tagsets).toBe(tagsets);
   });
 
   it('takes a missing config as an empty one', () => {

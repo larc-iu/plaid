@@ -847,12 +847,13 @@ describe('analysisViolations', () => {
 
 describe('sortedValues', () => {
   it('sorts a hand-made inventory, and keeps an ordered one as written', () => {
-    // Status is draft, reviewed, published: a workflow. Alphabetical listed it
-    // draft, published, reviewed, which reads as one that goes backwards.
+    // Status is machine, draft, reviewed, published: a workflow. Alphabetical
+    // listed it draft, machine, published, reviewed, which reads as one that
+    // goes backwards.
     const made = { values: [{ value: 'PL' }, { value: 'ERG' }, { value: 'ABS' }] };
     expect(sortedValues(made).map((v) => v.value)).toEqual(['ABS', 'ERG', 'PL']);
     expect(sortedValues(statusTagset()).map((v) => v.value)).toEqual(STATUS_VALUES);
-    expect(STATUS_VALUES).toEqual(['draft', 'reviewed', 'published']);
+    expect(STATUS_VALUES).toEqual(['machine', 'draft', 'reviewed', 'published']);
   });
 });
 

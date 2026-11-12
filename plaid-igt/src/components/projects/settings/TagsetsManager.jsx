@@ -91,9 +91,10 @@ export const TagsetsManager = ({
   valuesNoun = 'annotations',
   enforceNote = 'Closed lists apply to what you type and to the assistant. Values brought in by imports or services are not checked. The Validation tab lists them.',
   // {tagset name: [value]}: values that may not be renamed or removed, and
-  // what a refusal says (a vocabulary's published Status value).
+  // what a refusal of one says, given the value (a vocabulary's reserved
+  // Status values).
   reservedValues = {},
-  reservedMessage = 'This value is reserved and cannot be renamed or removed',
+  reservedMessage = () => 'This value is reserved and cannot be renamed or removed',
 }) => {
   const [draft, setDraft] = useState(tagsets);
   // The tagsets as the page last read them. A read that brings something new
@@ -269,8 +270,8 @@ export const TagsetsManager = ({
   };
 
   const isReserved = (name, value) => (reservedValues[name] || []).includes(value);
-  const refuseReserved = () => {
-    notifyError(reservedMessage, 'Reserved value');
+  const refuseReserved = (value) => {
+    notifyError(reservedMessage(value), 'Reserved value');
     return false;
   };
 
@@ -281,7 +282,7 @@ export const TagsetsManager = ({
       changes.value !== draft[name].values[index]?.value &&
       isReserved(name, draft[name].values[index]?.value)
     ) {
-      return refuseReserved();
+      return refuseReserved(draft[name].values[index].value);
     }
     // A renamed value must stay unique: the duplicate would be dropped on the
     // next read (normalizeTagset keeps the first), taking its description
@@ -306,7 +307,7 @@ export const TagsetsManager = ({
 
   const removeValue = (name, index) =>
     isReserved(name, draft[name].values[index]?.value)
-      ? refuseReserved()
+      ? refuseReserved(draft[name].values[index].value)
       : patch(name, { values: draft[name].values.filter((_, i) => i !== index) });
 
   const names = Object.keys(draft);
@@ -779,7 +780,7 @@ const ValueRow = ({
             className="h-7 font-mono"
             defaultValue={rec.value}
             readOnly={reserved}
-            title={reserved ? reservedMessage : undefined}
+            title={reserved ? reservedMessage(rec.value) : undefined}
             aria-label={`Value ${rec.value}`}
             onBlur={(e) => {
               const v = e.currentTarget.value.trim();
@@ -805,7 +806,7 @@ const ValueRow = ({
             className="h-6 w-6 text-muted-foreground hover:text-destructive"
             onClick={onRemove}
             disabled={reserved}
-            title={reserved ? reservedMessage : 'Remove value'}
+            title={reserved ? reservedMessage(rec.value) : 'Remove value'}
           >
             <Trash2 className="h-3.5 w-3.5" />
           </Button>

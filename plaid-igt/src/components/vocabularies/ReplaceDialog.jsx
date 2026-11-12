@@ -29,7 +29,7 @@ import { notifySuccess, notifyError, notifyWarning, humanizeError } from '@/util
 import { humanizeFieldName, FIELD_TYPES } from '@/domain/vocabFields';
 import { buildReplacer, MATCH_EMPTY } from '@/domain/replacer';
 import { planVocabReplace, replaceWrites } from '@/domain/vocabReplace';
-import { PUBLISHED_STATUS, STATUS_VALUES, statusFieldKey } from '@/domain/vocabDictionary';
+import { RESERVED_STATUS_VALUES, STATUS_VALUES, statusFieldKey } from '@/domain/vocabDictionary';
 import { MATCH_TYPES } from '../projects/search/searchQueries.js';
 import { CHUNK, chunk } from '@/domain/bulk';
 import { isKeyReused } from '@ui/lib/errors.js';
@@ -118,12 +118,12 @@ export const ReplaceDialog = ({
   const asked = filling ? repl !== '' : find !== '';
   const target = targets.find((t) => t.name === field) ?? targets[0];
   const tagset = tagsetFor(target.name);
-  // The Status field's published value cannot be renamed here either: it may
-  // become another Status value, or nothing, but no new spelling of itself.
+  // The Status field's reserved values cannot be renamed here either: each
+  // may become another Status value, or nothing, but no new spelling of itself.
   const reserved = useMemo(() => {
     if (target.name !== statusFieldKey(fields)) return null;
     const listed = (tagset?.values || []).map((v) => v?.value).filter(Boolean);
-    return { value: PUBLISHED_STATUS, keep: listed.length ? listed : STATUS_VALUES };
+    return { values: RESERVED_STATUS_VALUES, keep: listed.length ? listed : STATUS_VALUES };
   }, [target.name, fields, tagset]);
   const { apply, error } = useMemo(
     () => buildReplacer(find, matchType, repl),
@@ -398,8 +398,8 @@ export const ReplaceDialog = ({
           )}
           {renamesReserved > 0 && (
             <p className="rounded-md border border-destructive/50 bg-destructive/5 px-3 py-2 text-sm text-destructive">
-              {countOf(renamesReserved, 'value')} would rename “{PUBLISHED_STATUS}”, a reserved
-              Status value, and cannot be written.
+              {countOf(renamesReserved, 'value')} would rename a reserved Status value and cannot be
+              written.
             </p>
           )}
           {emptied > 0 && (

@@ -28,7 +28,7 @@ import {
 import { getIgtLayerInfo } from './layerInfo.js';
 import { queueStated, tagsetsChangedError } from './tagsetsSave.js';
 import { CORE_VOCAB_FIELDS } from './vocabFields.js';
-import { RESERVED_STATUS_MESSAGE, dropsPublishedStatus } from './vocabDictionary.js';
+import { dropsReservedStatus, reservedStatusMessage } from './vocabDictionary.js';
 
 const SETTINGS_KINDS = Object.freeze(['set_tagset', 'assign_tagset']);
 const PROJECT = 'project';
@@ -318,8 +318,8 @@ export const writeTagsetPlan = async (
     );
   }
   if (states.every((s) => s === 'after')) return false;
-  // A lexicon's published Status value is reserved: a plan may not rename or
-  // remove it, or point the Status field at a tagset without it, as the
+  // A lexicon's reserved Status values: a plan may not rename or remove one,
+  // or point the Status field at a tagset without one, as the
   // tagset settings may not. Read over each lexicon's ops together, as the
   // settings will read once they are written.
   for (const owner of owners) {
@@ -347,9 +347,8 @@ export const writeTagsetPlan = async (
         fieldsAfter[op.key] = { ...(fieldsAfter[op.key] || {}), tagset: op.after ?? null };
       }
     }
-    if (dropsPublishedStatus({ fieldsBefore, fieldsAfter, tagsetsBefore, tagsetsAfter })) {
-      throw new Error(`${RESERVED_STATUS_MESSAGE}. Nothing was written.`);
-    }
+    const dropped = dropsReservedStatus({ fieldsBefore, fieldsAfter, tagsetsBefore, tagsetsAfter });
+    if (dropped) throw new Error(`${reservedStatusMessage(dropped)}. Nothing was written.`);
   }
   // `client` is one of the page's own (plaid-ui `authService.clientApart`),
   // so the operation neither joins one open on the shared client nor is

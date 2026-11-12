@@ -39,14 +39,24 @@ const EXAMPLES_KEY = 'examples';
 /** The editorial status field a new vocabulary is seeded with, and its list. */
 export const STATUS_FIELD = 'status';
 export const STATUS_TAGSET = 'Status';
-export const STATUS_VALUES = ['draft', 'reviewed', 'published'];
+
+/**
+ * The Status value of an entry a machine made and no person has looked at (a
+ * job's draft). Labelled by its description in the tagset, "Machine draft".
+ */
+export const MACHINE_STATUS = 'machine';
+const MACHINE_VALUE = { value: MACHINE_STATUS, description: 'Machine draft' };
+
+export const STATUS_VALUES = [MACHINE_STATUS, 'draft', 'reviewed', 'published'];
 export const statusTagset = () => ({
   delimiters: '',
   mode: 'closed',
   // The order is the workflow, so the picker keeps it rather than sorting it
-  // into draft, published, reviewed. See `sortedValues`.
+  // into draft, machine, published, reviewed. See `sortedValues`.
   ordered: true,
-  values: STATUS_VALUES.map((value) => ({ value })),
+  values: STATUS_VALUES.map((value) =>
+    value === MACHINE_STATUS ? { ...MACHINE_VALUE } : { value },
+  ),
 });
 
 /**
@@ -65,14 +75,21 @@ export const statusFieldKey = (fields) => {
 };
 
 /**
- * The Status value that marks an entry published. Reserved, like the built-in
- * entry keys: a tagset editor and a replace may not rename it or take it out
- * of the list the Status field is held to.
+ * The Status value that marks an entry published, which plaid-dict shows.
  */
 export const PUBLISHED_STATUS = 'published';
 
-/** What a refused rename or removal of the published value says. */
-export const RESERVED_STATUS_MESSAGE = `“${PUBLISHED_STATUS}” is a reserved Status value and cannot be renamed or removed`;
+/**
+ * The Status values that are reserved, like the built-in entry keys: a tagset
+ * editor and a replace may not rename one or take it out of the list the
+ * Status field is held to. Published is what plaid-dict shows, machine what a
+ * job writes and the Entries screen filters on.
+ */
+export const RESERVED_STATUS_VALUES = [PUBLISHED_STATUS, MACHINE_STATUS];
+
+/** What a refused rename or removal of a reserved value says. */
+export const reservedStatusMessage = (value) =>
+  `“${value}” is a reserved Status value and cannot be renamed or removed`;
 
 /**
  * The name of the tagset a vocabulary's Status field is held to, or null.
@@ -85,36 +102,36 @@ export const statusTagsetName = (fields) => {
   return typeof spec?.tagset === 'string' && spec.tagset ? spec.tagset : null;
 };
 
-const listsPublished = (tagset) =>
-  (tagset?.values || []).some((v) => (typeof v === 'string' ? v : v?.value) === PUBLISHED_STATUS);
+const lists = (tagset, value) =>
+  (tagset?.values || []).some((v) => (typeof v === 'string' ? v : v?.value) === value);
 
 /**
- * Whether a change of a vocabulary's fields or tagsets takes the reserved
- * published value from its Status field. The field is held after the change
- * (`fieldsAfter`, a renamed tagset's repointed fields, and `tagsetsAfter`) to
- * a list without it, and either that is another tagset than the one it was
- * held to (`fieldsBefore` and `tagsetsBefore`), pointed at in the Fields table
- * or by a plan, one the same change makes included, or its own list listed it
- * and lists it no longer, renamed or edited. A rename is a change of name
- * whose old tagset is gone after it. A tagset deleted whole is not a rename,
- * and a field pointed at none is held to no list: published still reads in
- * both.
+ * The reserved value a change of a vocabulary's fields or tagsets takes from
+ * its Status field, or null when it takes none. The field is held after the
+ * change (`fieldsAfter`, a renamed tagset's repointed fields, and
+ * `tagsetsAfter`) to a list without the value, and either that is another
+ * tagset than the one it was held to (`fieldsBefore` and `tagsetsBefore`),
+ * pointed at in the Fields table or by a plan, one the same change makes
+ * included, or its own list listed it and lists it no longer, renamed or
+ * edited. A rename is a change of name whose old tagset is gone after it. A
+ * tagset deleted whole is not a rename, and a field pointed at none is held to
+ * no list: every value still reads in both.
  */
-export const dropsPublishedStatus = ({
-  fieldsBefore,
-  fieldsAfter,
-  tagsetsBefore,
-  tagsetsAfter,
-}) => {
+export const dropsReservedStatus = ({ fieldsBefore, fieldsAfter, tagsetsBefore, tagsetsAfter }) => {
   const before = statusTagsetName(fieldsBefore);
   const after = statusTagsetName(fieldsAfter ?? fieldsBefore);
   const now = after ? tagsetsAfter?.[after] : null;
-  if (!now || listsPublished(now)) return false;
+  if (!now) return null;
   const renamed = !!before && !!tagsetsBefore?.[before] && !tagsetsAfter?.[before];
   // Pointed at a list that is not its own list renamed: one already there,
   // or one the change makes.
-  if (after !== before && !renamed) return true;
-  return !!before && listsPublished(tagsetsBefore?.[before]);
+  const elsewhere = after !== before && !renamed;
+  return (
+    RESERVED_STATUS_VALUES.find(
+      (value) =>
+        !lists(now, value) && (elsewhere || (!!before && lists(tagsetsBefore?.[before], value))),
+    ) ?? null
+  );
 };
 
 /**
@@ -123,17 +140,33 @@ export const dropsPublishedStatus = ({
  * missing. Both halves always come back, so a caller never asks which changed
  * (writing a null half once wiped a field inventory).
  *
- * Called only where a vocabulary is CREATED, by the New vocabulary screen
- * (VocabularyDetail) and the project setup wizard (executeSetup). A field
- * already holding the role is left as its owner arranged it, and a Status
- * tagset already there keeps its own values and gains the three the field is
- * written with.
+ * Called where a vocabulary is CREATED, by the New vocabulary screen
+ * (VocabularyDetail) and the project setup wizard (executeSetup). The backfill
+ * that gives existing vocabularies the field (docs/backfills/
+ * backfill_status_field.py, outside the repository) writes what this writes.
+ * A field already holding the role is left as its owner arranged it, and the
+ * tagset it is held to gains the machine value, first, when it lacks it (a
+ * FLEx Status list keeps its own values). With no field holding the role, a
+ * Status tagset already there keeps its own values and gains the four the
+ * field is written with, machine first and the rest after its own.
  */
 export const statusFieldSeed = ({ fieldsConfig, tagsets }) => {
   if (statusFieldKey(fieldsConfig)) {
-    return { fieldsConfig: fieldsConfig ?? {}, tagsets: tagsets ?? {} };
+    const name = statusTagsetName(fieldsConfig);
+    const held = name ? tagsets?.[name] : null;
+    if (!held || lists(held, MACHINE_STATUS)) {
+      return { fieldsConfig: fieldsConfig ?? {}, tagsets: tagsets ?? {} };
+    }
+    return {
+      fieldsConfig,
+      tagsets: {
+        ...tagsets,
+        [name]: { ...held, values: [{ ...MACHINE_VALUE }, ...(held.values || [])] },
+      },
+    };
   }
   const existing = tagsets?.[STATUS_TAGSET];
+  const own = existing?.values || [];
   const list = existing
     ? {
         ...existing,
@@ -141,8 +174,9 @@ export const statusFieldSeed = ({ fieldsConfig, tagsets }) => {
         // older project's picker reads as the workflow too.
         ordered: true,
         values: [
-          ...(existing.values || []),
-          ...STATUS_VALUES.filter((v) => !(existing.values || []).some((t) => t?.value === v)).map(
+          ...(lists(existing, MACHINE_STATUS) ? [] : [{ ...MACHINE_VALUE }]),
+          ...own,
+          ...STATUS_VALUES.filter((v) => v !== MACHINE_STATUS && !lists(existing, v)).map(
             (value) => ({ value }),
           ),
         ],

@@ -334,7 +334,7 @@ describe('a lexicon’s published Status value', () => {
   const STATUS = {
     delimiters: '',
     mode: 'closed',
-    values: [{ value: 'draft' }, { value: 'published' }],
+    values: [{ value: 'machine' }, { value: 'draft' }, { value: 'published' }],
   };
   const vocab = {
     id: 'v1',
@@ -356,11 +356,25 @@ describe('a lexicon’s published Status value', () => {
   });
 
   it('is never renamed or removed by a plan, which writes nothing', async () => {
-    for (const values of [[{ value: 'draft' }], [{ value: 'draft' }, { value: 'publicado' }]]) {
+    for (const values of [
+      [{ value: 'machine' }, { value: 'draft' }],
+      [{ value: 'machine' }, { value: 'draft' }, { value: 'publicado' }],
+    ]) {
       const c = fakeClient(projectWith(), vocab);
       await expect(
         writeTagsetPlan(c, 'proj-1', { ops: [op({ ...STATUS, values })] }),
       ).rejects.toThrow(/“published” is a reserved Status value.*Nothing was written/);
+      expect(c.batches).toBe(0);
+    }
+    // The machine value, which a job writes, is reserved the same way.
+    for (const values of [
+      [{ value: 'draft' }, { value: 'published' }],
+      [{ value: 'machina' }, { value: 'draft' }, { value: 'published' }],
+    ]) {
+      const c = fakeClient(projectWith(), vocab);
+      await expect(
+        writeTagsetPlan(c, 'proj-1', { ops: [op({ ...STATUS, values })] }),
+      ).rejects.toThrow(/“machine” is a reserved Status value.*Nothing was written/);
       expect(c.batches).toBe(0);
     }
     // Under a renamed tagset too.
@@ -443,7 +457,10 @@ describe('a lexicon’s published Status value', () => {
     c = fakeClient(projectWith(), unheld);
     expect(
       await writeTagsetPlan(c, 'proj-1', {
-        ops: [made([{ value: 'draft' }, { value: 'published' }]), assign(null)],
+        ops: [
+          made([{ value: 'machine' }, { value: 'draft' }, { value: 'published' }]),
+          assign(null),
+        ],
       }),
     ).toBe(true);
   });

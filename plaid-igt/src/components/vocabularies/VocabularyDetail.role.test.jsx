@@ -197,7 +197,7 @@ describe('the vocabulary tagsets, the published Status value', () => {
     const workflow = {
       delimiters: '',
       mode: 'closed',
-      values: [{ value: 'draft' }, { value: 'published' }],
+      values: [{ value: 'machine' }, { value: 'draft' }, { value: 'published' }],
     };
     server.config.igt.tagsets = { Workflow: workflow };
     const writes = [];
@@ -211,14 +211,28 @@ describe('the vocabulary tagsets, the published Status value', () => {
       return [];
     };
     const view = await mount(client);
-    expect(tagsetsManager.props.reservedValues).toEqual({ Workflow: ['published'] });
+    expect(tagsetsManager.props.reservedValues).toEqual({ Workflow: ['published', 'machine'] });
     await expect(
       view.step(() =>
         tagsetsManager.props.onSaveChanges({
-          Workflow: { ...workflow, values: [{ value: 'draft' }, { value: 'publicado' }] },
+          Workflow: {
+            ...workflow,
+            values: [{ value: 'machine' }, { value: 'draft' }, { value: 'publicado' }],
+          },
         }),
       ),
-    ).rejects.toThrow(/reserved Status value/);
+    ).rejects.toThrow(/“published” is a reserved Status value/);
+    // The machine value a job writes is held the same way, in its own words.
+    expect(tagsetsManager.props.reservedMessage('machine')).toBe(
+      '“machine” is a reserved Status value and cannot be renamed or removed',
+    );
+    await expect(
+      view.step(() =>
+        tagsetsManager.props.onSaveChanges({
+          Workflow: { ...workflow, values: [{ value: 'draft' }, { value: 'published' }] },
+        }),
+      ),
+    ).rejects.toThrow(/“machine” is a reserved Status value/);
     expect(writes).toEqual([]);
     await view.unmount();
   });

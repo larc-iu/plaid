@@ -185,8 +185,12 @@ describe('planVocabReplace, a reserved value', () => {
   const entries = [
     { id: 'p', form: 'a', metadata: { status: 'published' } },
     { id: 'q', form: 'b', metadata: { status: 'draft' } },
+    { id: 'm', form: 'c', metadata: { status: 'machine' } },
   ];
-  const reserved = { value: 'published', keep: ['draft', 'reviewed', 'published'] };
+  const reserved = {
+    values: ['published', 'machine'],
+    keep: ['machine', 'draft', 'reviewed', 'published'],
+  };
 
   it('is never written under a new spelling, and may become another kept value or nothing', () => {
     const rename = buildReplacer('published', 'exact', 'publicado').apply;
@@ -210,6 +214,17 @@ describe('planVocabReplace, a reserved value', () => {
         (r) => r.invalid,
       ),
     ).toEqual([null]);
+  });
+
+  it('holds machine the same way: reviewed is a kept value, a new spelling is not', () => {
+    const plan = (to) =>
+      planVocabReplace(entries, {
+        field: 'status',
+        apply: buildReplacer('machine', 'exact', to).apply,
+        reserved,
+      }).map((r) => [r.id, r.invalid]);
+    expect(plan('machine draft')).toEqual([['m', 'reserved']]);
+    expect(plan('reviewed')).toEqual([['m', null]]);
   });
 });
 

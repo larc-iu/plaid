@@ -54,9 +54,9 @@ import {
   statusTagset,
   statusFieldSeed,
   statusTagsetName,
-  dropsPublishedStatus,
-  PUBLISHED_STATUS,
-  RESERVED_STATUS_MESSAGE,
+  dropsReservedStatus,
+  reservedStatusMessage,
+  RESERVED_STATUS_VALUES,
   STATUS_TAGSET,
 } from '@/domain/vocabDictionary';
 import { keyedSend } from '@ui/domain/keyedSend.js';
@@ -777,17 +777,17 @@ export const VocabularyDetail = () => {
     await saveFields(next, { statesTagsets: true });
   };
 
-  // The published Status value is reserved: the Status field is never held
-  // to a tagset that does not list it, by a tagset chosen or a role moved.
+  // The reserved Status values: the Status field is never held to a tagset
+  // that does not list them, by a tagset chosen or a role moved.
   const refusesStatus = (next) => {
-    const refused = dropsPublishedStatus({
+    const refused = dropsReservedStatus({
       fieldsBefore: fields,
       fieldsAfter: next,
       tagsetsBefore: tagsets,
       tagsetsAfter: tagsets,
     });
-    if (refused) notifyError(RESERVED_STATUS_MESSAGE, 'Reserved value');
-    return refused;
+    if (refused) notifyError(reservedStatusMessage(refused), 'Reserved value');
+    return !!refused;
   };
 
   // What a field holds. A reference field has no tagset (its values are
@@ -955,17 +955,16 @@ export const VocabularyDetail = () => {
       renamed && fields.some((f) => f.tagset === renamed.from)
         ? fields.map((f) => (f.tagset === renamed.from ? { ...f, tagset: renamed.to } : f))
         : null;
-    // The published Status value is reserved: no save renames or removes it.
-    if (
-      dropsPublishedStatus({
-        fieldsBefore: fields,
-        fieldsAfter: repointed ?? fields,
-        tagsetsBefore: tagsets,
-        tagsetsAfter: next,
-      })
-    ) {
-      notifyError(RESERVED_STATUS_MESSAGE, 'Reserved value');
-      throw new Error(RESERVED_STATUS_MESSAGE);
+    // The reserved Status values: no save renames or removes one.
+    const dropped = dropsReservedStatus({
+      fieldsBefore: fields,
+      fieldsAfter: repointed ?? fields,
+      tagsetsBefore: tagsets,
+      tagsetsAfter: next,
+    });
+    if (dropped) {
+      notifyError(reservedStatusMessage(dropped), 'Reserved value');
+      throw new Error(reservedStatusMessage(dropped));
     }
     setDraftTagsets(next);
     if (repointed) setFields(repointed);
@@ -1551,10 +1550,10 @@ export const VocabularyDetail = () => {
                         usage={tagsetUsage}
                         reservedValues={
                           statusTagsetName(fields)
-                            ? { [statusTagsetName(fields)]: [PUBLISHED_STATUS] }
+                            ? { [statusTagsetName(fields)]: RESERVED_STATUS_VALUES }
                             : {}
                         }
-                        reservedMessage={RESERVED_STATUS_MESSAGE}
+                        reservedMessage={reservedStatusMessage}
                         onSaveChanges={handleSaveTagsets}
                         onLoadAttested={handleLoadAttested}
                         emptyHint="No tagsets yet. Add one, then assign it to a field above."

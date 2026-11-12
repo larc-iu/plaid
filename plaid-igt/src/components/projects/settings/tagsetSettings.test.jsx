@@ -626,7 +626,8 @@ describe('TagsetsManager: rename, seed and value rows', () => {
       tagsets: status,
       onSaveChanges,
       reservedValues: { Leipzig: ['published'] },
-      reservedMessage: 'Reserved, so no',
+      // Each reserved value is refused in its own words.
+      reservedMessage: (value) => `${value} is reserved, so no`,
     });
     await expandFirst(container, step);
     const published = rowInputs(container).find((i) => i.value === 'published');
@@ -634,12 +635,12 @@ describe('TagsetsManager: rename, seed and value rows', () => {
     const removes = all(container, 'tbody tr td:nth-child(4) button');
     expect(removes.map((b) => [b.disabled, b.title])).toEqual([
       [false, 'Remove value'],
-      [true, 'Reserved, so no'],
+      [true, 'published is reserved, so no'],
     ]);
     // A rename that reaches the row anyway is refused out loud, and nothing saved.
     await step(async () => blurWith(published, 'publicado'));
     expect(onSaveChanges).not.toHaveBeenCalled();
-    expect(notifyError).toHaveBeenCalledWith('Reserved, so no', 'Reserved value');
+    expect(notifyError).toHaveBeenCalledWith('published is reserved, so no', 'Reserved value');
     expect(published.value).toBe('published');
     // The other value is the user's to rename.
     await step(async () => blurWith(rowInputs(container)[0], 'borrador'));
