@@ -153,3 +153,38 @@ def test_a_done_refused_because_a_stop_came_last_ends_the_job_cancelled(monkeypa
         return out
     r.entries = entries
     _ended_cancelled(client, job, run_job(job, r))
+
+
+# --- the line a job ends with (REV-J-B S4) ----------------------------------------
+
+def test_a_job_that_ends_keeps_no_progress_line(monkeypatch):
+    client = _client(1)
+    job = start(client)
+    use(monkeypatch, Model(_analyse))
+    assert run_job(job, runner(job))['state'] == 'done'
+    assert client.jobs.rows[job.id]['message'] is None, 'not "Writing the report."'
+
+
+def test_a_stopped_job_keeps_no_progress_line(monkeypatch):
+    client = _client(2)
+    job = start(client)
+    use(monkeypatch, Model(_analyse))
+    r = runner(job)
+    real = r.document
+    r.document = lambda d: (real(d), _stop(client, job))[0]
+    assert run_job(job, r)['state'] == 'cancelled'
+    assert client.jobs.rows[job.id]['message'] is None
+
+
+def test_a_job_that_lost_its_starters_access_says_so_by_its_reason(monkeypatch):
+    from plaid_client import PlaidAPIError
+    client = _client(1)
+    job = start(client)
+    use(monkeypatch, Model(_analyse))
+
+    def locked(document_id, **kw):
+        raise PlaidAPIError('HTTP 403', status=403, response_data={'error': 'Write access required.'})
+    client.documents.locked = locked
+    finished = run_job(job, runner(job))
+    assert finished['reason'] == 'starter-access'
+    assert client.jobs.rows[job.id]['message'] is None, 'the app words it by the reason, not a progress line'

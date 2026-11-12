@@ -529,7 +529,7 @@ def run_job(job: Job, runner) -> Optional[Dict[str, Any]]:
             if failure is not None:
                 reason, message = failure
                 job.set(message=message)
-                return _finish(job, 'failed', runner, harmonize, entries, reason=reason)
+                return _finish(job, 'failed', runner, harmonize, entries, reason=reason, said=True)
         if job.status.get('phase') in (CHECKING, runner.WORK_PHASE):
             job.set(phase=runner.WORK_PHASE)
             runner.work(job)
@@ -551,7 +551,7 @@ def run_job(job: Job, runner) -> Optional[Dict[str, Any]]:
             # than being skipped past or taken again to fail the same way.
             logger.exception('Job %s: ended on an error', job.id)
             job.set(message=error_line(e))
-            return _finish(job, 'failed', runner, harmonize, entries, reason=WORKER_ERROR)
+            return _finish(job, 'failed', runner, harmonize, entries, reason=WORKER_ERROR, said=True)
         stop = e if isinstance(e, JobStopped) else job.ended()
         if stop.why == 'cancelled':
             return _finish(job, 'cancelled', runner, harmonize, entries, reason='cancelled')
@@ -605,7 +605,13 @@ def _give_up(job: Job, e: BaseException) -> None:
         logger.warning('Job %s: could not be ended as failed: %s', job.id, again)
 
 
-def _finish(job: Job, state: str, runner, harmonize, entries, reason: Optional[str] = None):
+def _finish(job: Job, state: str, runner, harmonize, entries, reason: Optional[str] = None, said: bool = False):
+    """Store the report and end the job. ``said``: the job's message is the
+    end's own sentence (a check that failed, the error met). Otherwise the
+    last progress line ("Writing the report.") is cleared, so the app words
+    the end by its state and reason."""
+    if not said:
+        job.set(message=None)
     if state != 'done':
         harmonize, entries = _stopped_parts(job, runner, harmonize, entries)
     # The app's part with nothing in it (``runner.NO_ENTRIES``), for a job
