@@ -43,6 +43,7 @@ export const HARMONIZE_LEFT_TEXT = {
   'people-differ': 'People analyzed it in more than one way',
   'no-clear-majority': 'No two-thirds majority',
   'in-use': 'Document in use',
+  touched: 'Changed since the job wrote it',
 };
 
 export const HARMONIZE_BY_TEXT = {

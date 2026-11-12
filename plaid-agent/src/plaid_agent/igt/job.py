@@ -141,22 +141,53 @@ def sentence_targets(s: Sentence, project: IgtProject, tasks, job_id: str) -> Tu
     return words, ('translate' in tasks and translation_target(s, project, job_id))
 
 
-def job_owned(w: Word, job_id: str) -> bool:
-    """A word whose analysis is this job's own and still unverified: every
-    piece ``word_state`` votes on names this job and none is confirmed. A
-    word anyone has touched since is not."""
-    if word_state(w) != 'machine':
-        return False
+def job_piece(metadata, job_id: str) -> bool:
+    """THE protected-content rule (SPEC 6.5), in one place: a piece of
+    content (a token's, a span's, a link's or an entry's metadata) is the
+    job's to change only when this job wrote it and nobody has confirmed it.
+    A person's piece (no provenance), a confirmed one, a contributed one and
+    another producer's machine proposal are not. The stretch path, harmonize
+    and the entries pass all ask this."""
+    return prov_state(metadata) == 'machine' and _job_of(metadata) == job_id
+
+
+def word_pieces(w: Word) -> List[Dict[str, Any]]:
+    """Every piece of content on a word that an analysis of it would replace
+    or sit beside: each stamped morpheme token, every span and link on a
+    morpheme, every word-scope span (a word Gloss, a word POS) and the word's
+    own link. A morpheme token with no stamp is the word's default
+    morpheme, not content."""
     pieces = []
     for m in w.morphemes:
         if m.virtual:
             continue
-        pieces.append(m.metadata)
+        if (m.metadata or {}).get('prov') is not None:
+            pieces.append(m.metadata)
         pieces += [sp.metadata for sp in m.fields.values()]
         if m.link is not None:
             pieces.append(m.link.metadata)
-    pieces = [p for p in pieces if p and 'prov' in p]
-    return bool(pieces) and all(_job_of(p) == job_id and not p.get(PROV_CONFIRMED_KEY) for p in pieces)
+    pieces += [sp.metadata for sp in w.fields.values()]
+    if w.link is not None:
+        pieces.append(w.link.metadata)
+    return pieces
+
+
+def job_owned(w: Word, job_id: str) -> bool:
+    """A word that is wholly this job's unverified work: it has an analysis,
+    and every piece of content on it, its word fields included, is
+    :func:`job_piece`. A word anyone else has written on since, a person or
+    another producer, is not, and harmonize leaves it whole."""
+    if word_state(w) != 'machine':
+        return False
+    pieces = word_pieces(w)
+    return bool(pieces) and all(job_piece(p, job_id) for p in pieces)
+
+
+def job_touched(w: Word, job_id: str) -> bool:
+    """A word holding some of this job's work and something of someone
+    else's: harmonize leaves it, and lists it."""
+    pieces = word_pieces(w)
+    return any(job_piece(p, job_id) for p in pieces) and not job_owned(w, job_id)
 
 
 # --- an analysis as the decisions and harmonize key it -----------------------------
@@ -177,8 +208,16 @@ def word_analysis(w: Word, made: frozenset = frozenset()) -> Dict[str, Any]:
 
 
 def unmade(analysis: Dict[str, Any]) -> Dict[str, Any]:
-    """The analysis without ``made``, which harmonize compares by."""
+    """The analysis without ``made``."""
     return {**analysis, 'morphemes': [{**m, 'made': False} for m in analysis['morphemes']]}
+
+
+def harmonized_part(analysis: Dict[str, Any]) -> Dict[str, Any]:
+    """What harmonize compares and rewrites of an analysis: the morphemes
+    (form, type, "=", their fields, their entries). Never the word fields,
+    never ``made``: harmonize writes only what a stretch of this job writes
+    on a word by its analysis."""
+    return {'morphemes': [{**m, 'made': False} for m in analysis['morphemes']], 'word': {}}
 
 
 def rendering(analysis: Dict[str, Any], gloss: Optional[str], entries: Optional[Dict[str, str]] = None) -> str:
@@ -941,8 +980,11 @@ class IgtRunner:
         self.people = None
         people = self.people_index(ws, project)
         gloss = getattr(project.gloss_field('Morpheme'), 'name', None)
-        # form -> key -> {analysis, words: [(document, word)]}
+        # form -> key -> {analysis, words: [(document, word)]}: the words
+        # wholly the job's own, which vote and may be rewritten, and those
+        # holding something of someone else's too, which are left whole.
         mine: Dict[str, Dict[str, Dict[str, Any]]] = {}
+        touched: Dict[str, Dict[str, Dict[str, Any]]] = {}
         docs = {}
         for d in job.order:
             if (job.rows.get(d) or {}).get('state') == 'gone':
@@ -954,10 +996,11 @@ class IgtRunner:
             docs[d] = doc
             for s in doc.sentences:
                 for w in s.words:
-                    if not job_owned(w, job.id):
+                    into = mine if job_owned(w, job.id) else touched if job_touched(w, job.id) else None
+                    if into is None:
                         continue
-                    a = unmade(word_analysis(w))
-                    slot = mine.setdefault(form_key(w.surface), {}).setdefault(
+                    a = harmonized_part(word_analysis(w))
+                    slot = into.setdefault(form_key(w.surface), {}).setdefault(
                         analysis_key(canonical(a)), {'analysis': a, 'words': []})
                     slot['words'].append((d, w.id))
         changed, left = [], []
@@ -965,7 +1008,11 @@ class IgtRunner:
         for form, keys in sorted(mine.items()):
             if len(keys) < 2:
                 continue
-            theirs = {analysis_key(canonical(unmade(x['analysis']))): x for x in people.get(form, {}).values()}
+            theirs: Dict[str, Dict[str, Any]] = {}
+            for x in people.get(form, {}).values():
+                a = harmonized_part(x['analysis'])
+                slot = theirs.setdefault(analysis_key(canonical(a)), {'analysis': a, 'count': 0})
+                slot['count'] += x['count']
             target, by = harmonized({k: len(v['words']) for k, v in keys.items()},
                                     {k: x['count'] for k, x in theirs.items()})
             if target is None:
@@ -983,6 +1030,13 @@ class IgtRunner:
                 for d, wid in v['words']:
                     rewrites.setdefault(d, []).append((wid, to))
             changed.append({'form': form, 'to': rendering(to, gloss), 'by': by, 'from': moved})
+            # The job's analyses of the form on words someone else has also
+            # written on: not the job's to change, so listed.
+            others = [v for k, v in (touched.get(form) or {}).items() if k != target]
+            if others:
+                left.append({'form': form, 'reason': 'touched',
+                             'analyses': [{'analysis': rendering(v['analysis'], gloss), 'count': len(v['words'])}
+                                          for v in others]})
         in_use_docs = []
         for d, words in rewrites.items():
             if not self.rewrite(project, d, words):
@@ -1042,8 +1096,9 @@ class IgtRunner:
 
     @staticmethod
     def stage(ws: Workspace, doc, s: Sentence, w: Word, to: Dict[str, Any]) -> None:
-        """Stage ``to`` on word ``w``: its analysis, its links, its word
-        fields, through the tools, so every guard of theirs applies."""
+        """Stage ``to`` on word ``w``: its analysis and its links, through
+        the tools, so every guard of theirs applies. Word fields are never
+        harmonize's (:func:`harmonized_part`)."""
         ref = f's{s.index}.w{w.index}'
         name = doc.name
         out = toolkit.call_tool(ws, 'set_analysis', {'document': name, 'ref': ref, 'morphemes': [
@@ -1055,8 +1110,6 @@ class IgtRunner:
             if m.get('entry'):
                 toolkit.call_tool(ws, 'link_entry', {'document': name, 'refs': [f'{ref}.m{i}'],
                                                      'entry_id': m['entry']})
-        for field, value in (to.get('word') or {}).items():
-            toolkit.call_tool(ws, 'set_field', {'document': name, 'refs': [ref], 'field': field, 'value': value})
 
     # --- the entries pass (SPEC 7.5) ------------------------------------------------------
 

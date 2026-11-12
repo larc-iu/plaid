@@ -40,6 +40,9 @@ def stamp(who, job_id=None):
         return {}
     if who == 'machine':
         return {'prov': 'inferred', 'provSource': 'service:igt:analyze'}
+    if who.startswith('confirmed:'):
+        # A job's proposal a person confirmed.
+        return {**stamp(who[len('confirmed:'):]), 'provConfirmed': True}
     return {'prov': 'inferred', 'provSource': JOB_SOURCE, 'provDetail': {'model': 'm', 'version': 'v', 'job': who}}
 
 
@@ -68,18 +71,21 @@ def document(doc_id, name, sentences, version=1):
             if word_gloss:
                 gloss_spans.append({'id': f'sp-{wid}', 'value': word_gloss[0], 'tokens': [wid],
                                     'metadata': stamp(word_gloss[1])})
+            # ``who`` is one provenance for every piece, or one per piece:
+            # {'token': ..., 'span': ..., 'link': ...}.
+            by = who if isinstance(who, dict) else {'token': who, 'span': who, 'link': who}
             for mi, m in enumerate(morphs or [], start=1):
                 n += 1
                 mform, mgloss = m[0], m[1]
                 mid = f'{wid}m{mi}'
                 morph_tokens.append({'id': mid, 'begin': b, 'end': e, 'precedence': mi,
-                                     'metadata': {'form': mform, **stamp(who)}})
+                                     'metadata': {'form': mform, **stamp(by.get('token'))}})
                 if mgloss:
                     mgloss_spans.append({'id': f'sp-{mid}', 'value': mgloss, 'tokens': [mid],
-                                         'metadata': stamp(who)})
+                                         'metadata': stamp(by.get('span'))})
                 if len(m) > 2 and m[2]:
                     mlinks.append({'id': f'l-{mid}', 'vocab_item': {'id': m[2], 'form': mform}, 'tokens': [mid],
-                                   'metadata': stamp(who)})
+                                   'metadata': stamp(by.get('link'))})
         body += '.'
         sid = f'{doc_id}-s{si}'
         sent_tokens.append({'id': sid, 'begin': start, 'end': len(body)})

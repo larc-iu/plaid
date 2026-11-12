@@ -94,6 +94,88 @@ def test_older_machine_drafts_and_touched_words_neither_vote_nor_change():
     assert out['left'][0]['analyses'] == [{'analysis': 'ka ‘go’', 'count': 1}, {'analysis': 'ka ‘come’', 'count': 1}]
 
 
+def _wg(gloss, word_gloss, who=J, word_who=J):
+    """A word "ka" of one morpheme ka with ``gloss``, and a word Gloss."""
+    return {'form': 'ka', 'morphs': [('ka', gloss)], 'who': who, 'gloss': (word_gloss, word_who)}
+
+
+def _staged(monkeypatch):
+    """Every op harmonize hands the executor, by document."""
+    from plaid_agent.igt import job as igt_job
+    seen = []
+    real = igt_job.execute_plan
+
+    def execute(client, ops, **kw):
+        seen.extend(ops)
+        return real(client, ops, **kw)
+    monkeypatch.setattr(igt_job, 'execute_plan', execute)
+    return seen
+
+
+def test_a_word_gloss_a_person_wrote_takes_the_word_out_of_harmonize(monkeypatch):
+    staged = _staged(monkeypatch)
+    client, job, out, tags = _run({
+        'd1': [{'words': [_wg('go', 'go'), _wg('go', 'go'), _wg('come', 'walk', word_who='human')]}],
+    })
+    assert staged == [] and tags == [], 'the third word holds a person\'s word gloss: harmonize leaves it'
+    assert out['changed'] == []
+    assert not [c for c in client.calls if c[0].startswith(('spans', 'tokens', 'vocab_links'))]
+
+
+def test_a_touched_word_is_listed_as_left_where_its_form_was_made_consistent(monkeypatch):
+    staged = _staged(monkeypatch)
+    client, job, out, tags = _run({
+        'd1': [{'words': [_wg('go', 'go'), _wg('go', 'go'), _wg('come', 'come'),
+                          _wg('come', 'walk', word_who='human')]}],
+    })
+    assert [o['word_id'] for o in staged if o.get('kind') == 'set_analysis'] == ['d1-s1w3']
+    assert {'form': 'ka', 'reason': 'touched', 'analyses': [{'analysis': 'ka ‘come’', 'count': 1}]} in out['left']
+
+
+def test_harmonize_rewrites_no_word_field(monkeypatch):
+    staged = _staged(monkeypatch)
+    client, job, out, tags = _run({'d1': [{'words': [_wg('go', 'go'), _wg('go', 'go'), _wg('come', 'come')]}]})
+    assert out['changed'][0]['from'][0]['analysis'] == 'ka ‘come’'
+    assert [o['kind'] for o in staged] == ['set_analysis'], 'the word Gloss is not harmonize\'s to change'
+
+
+PIECES = ('token', 'span', 'link')
+WHO = (J,) * 8 + ('human', 'machine', f'confirmed:{J}', 'J-other')
+
+
+def _random_word(rng, gloss):
+    who = {p: rng.choice(WHO) for p in PIECES}
+    word_gloss = rng.choice([None, None, ('x', J), ('y', 'human'), ('z', 'machine')])
+    w = {'form': 'ka', 'morphs': [('ka', gloss, 'e-ka')], 'who': who}
+    if word_gloss:
+        w['gloss'] = word_gloss
+    return w
+
+
+@pytest.mark.parametrize('seed', range(40))
+def test_harmonize_never_changes_a_word_holding_anything_not_the_jobs_own(monkeypatch, seed):
+    """For random mixes of a person's, another producer's and the job's
+    content on a word, harmonize stages nothing on a word unless every piece
+    of it is the job's own unverified work."""
+    import random
+    rng = random.Random(seed)
+    words = [_random_word(rng, rng.choice(['go', 'go', 'come'])) for _ in range(6)]
+    staged = _staged(monkeypatch)
+    client, job, out, tags = _run({'d1': [{'words': words}]})
+    own = set()
+    for i, w in enumerate(words, start=1):
+        # The one morpheme spells the word and has no type: a token with no
+        # stamp is its default morpheme, not anyone's content.
+        pieces = [w['who'][p] for p in PIECES if p != 'token' or w['who'][p] != 'human'] \
+            + ([w['gloss'][1]] if w.get('gloss') else [])
+        if all(p == J for p in pieces):
+            own.add(f'd1-s1w{i}')
+    touched = {o.get('word_id') or o.get('analysis_word_id') or str(o.get('token_id', '')).split('m')[0]
+               for o in staged}
+    assert touched <= own, (seed, words, staged)
+    assert all(o.get('kind') in ('set_analysis', 'link') for o in staged), 'only the analysis, and links'
+
+
 def test_a_document_in_use_keeps_its_minority_and_the_form_is_listed():
     from datetime import datetime, timezone
     client = JobClient({'d1': document('d1', 'A', [{'words': [w('ka', 'go'), w('ka', 'go')]}]),
