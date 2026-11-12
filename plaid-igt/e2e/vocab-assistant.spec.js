@@ -156,17 +156,15 @@ test('`@` offers the entries with the number that tells homographs apart', async
   await expect(composer).toHaveValue('compare gam#1 ');
 });
 
-test('a vocabulary two projects link is never filed under one of them', async ({ page }) => {
+test('a vocabulary another project borrows is filed under its own project', async ({ page }) => {
   // The ruling: a conversation belongs to one project, and filing it under one
   // the user did not choose puts it in an Assistant tab they were never on.
-  //
-  // What that looks like changed when the panel became app chrome. There is no
-  // longer a per-screen control to withhold, and withholding the app's own
-  // would be wrong: the panel may be holding a thread from somewhere else, and
-  // it offers a project picker when it is not. So the rule is now about the
-  // SUBJECT. This screen publishes none, so nothing here says the assistant is
-  // about this vocabulary, and the reader chooses a project explicitly or not
-  // at all.
+  // A vocabulary belongs to one project, its own (2026-11-12), so that is
+  // never a guess: another project borrowing it does not take the pane away
+  // from someone who can read its own project (REV-VH-C S5-6). Only when
+  // its own project cannot be read and several readable projects link it is
+  // none chosen (plaid-igt/src/domain/vocabProject.js, tested there and in
+  // VocabularyItems.assistantProject.test.jsx).
   const c = client();
   const second = await c.projects.create(`Vocab assistant ${Date.now()}`);
   extraProjects.push(second.id);
@@ -174,15 +172,15 @@ test('a vocabulary two projects link is never filed under one of them', async ({
 
   await withAssistant(page);
   await openEntries(page);
-  // The Ask gesture is what would attach an entry to a turn, and it needs the
-  // resolved project, so it is not offered.
+  // Ask attaches an entry to a turn, which needs the resolved project.
   await page.getByRole('link', { name: /^gam/ }).first().click();
-  await expect(page.getByRole('button', { name: 'Ask', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Ask', exact: true })).toBeVisible({
+    timeout: 8000,
+  });
 
-  // And the panel, opened here, is about a project the reader picks rather
-  // than this vocabulary.
+  // And the panel, opened here, is about this vocabulary, not a project to pick.
   await page.getByRole('button', { name: 'Assistant', exact: true }).click();
   const panel = page.locator('aside.border-l');
   await expect(panel).toBeVisible();
-  await expect(panel.getByText('Choose a project')).toBeVisible();
+  await expect(panel.getByText('Choose a project')).toHaveCount(0);
 });
