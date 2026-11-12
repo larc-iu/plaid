@@ -20,7 +20,7 @@ import {
 } from '@/domain/igtConfig';
 import { getIgtLayerInfo } from '@/domain/layerInfo';
 import { isReviewed } from '@larc-iu/plaid-client';
-import { canEditProject, canManageProject } from '@ui/domain/permissions.js';
+import { canEditProject, canManageProject, canStartJob } from '@ui/domain/permissions.js';
 import { useTabParam } from '@ui/hooks/useTabParam.js';
 import { contentTabsFor, isMaintainerTab, TAB_ALIASES } from '@/domain/projectTabs';
 import { notifyNotAMaintainer } from '@ui/hooks/useManagedProject.js';
@@ -28,6 +28,7 @@ import { useComposeProject } from '@/hooks/useCompose';
 import { useAssistantAvailable } from '@ui/components/assistant/useAssistantAvailable.js';
 import { IGT_ASSISTANT } from './assistant/adapter.js';
 import { UnfinishedImport } from './UnfinishedImport.jsx';
+import { StartJob } from './jobs/StartJobDialog.jsx';
 
 // The tabs a visit rarely opens ride in their own chunks: Bulk Edit,
 // Validation, Activity, the Assistant (and its markdown), and Export (and the
@@ -164,6 +165,10 @@ const ProjectBody = ({ project, projectId, client, documents, reload }) => {
   // (settings/access) does not. Gate document-create on this so a reader isn't
   // shown a button that 403s on submit.
   const canWrite = canEditProject(project, user);
+  // Start job, for whoever may start one: beside New document, and on Jobs.
+  const startJob = canStartJob(project, user) && (
+    <StartJob projectId={projectId} client={client} documents={documents} />
+  );
   // A code bound under Settings applies everywhere this project is open.
   useComposeProject(project);
   // A settings page reads the project again after each save and waits for that
@@ -248,13 +253,14 @@ const ProjectBody = ({ project, projectId, client, documents, reload }) => {
           readIgnoredTokens(getIgtLayerInfo(project).primaryTokenLayer?.config),
         )}
         href={(documentId) => `/projects/${projectId}/documents/${documentId}`}
+        actions={startJob}
       />
     );
   } else if (active === 'jobs') {
     body = jobId ? (
       <JobPage project={project} projectId={projectId} jobId={jobId} client={client} />
     ) : (
-      <ProjectJobs projectId={projectId} client={client} />
+      <ProjectJobs projectId={projectId} client={client} startJob={startJob} />
     );
   } else if (active === 'search') {
     body = (

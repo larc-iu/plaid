@@ -25,10 +25,11 @@ import { AnalyzeIsland } from './analyze/AnalyzeIsland.jsx';
 import { Suspended } from '@ui/components/shared/Suspended';
 import { lazyNamed } from '@ui/lib/lazyNamed';
 import { useDocumentPermissions } from './hooks/useDocumentPermissions.js';
-import { readOnlyReason } from '@ui/domain/permissions.js';
+import { canStartJob, readOnlyReason } from '@ui/domain/permissions.js';
 import { useSentenceFocus } from './hooks/useSentenceFocus.js';
 import { useComposeProject } from '@/hooks/useCompose';
 import { IGT_ASSISTANT } from '../projects/assistant/adapter.js';
+import { StartJob } from '../projects/jobs/StartJobDialog.jsx';
 
 // The Media tab (the timeline, waveform, speech detection, and recording
 // conversion) and the Comments tab ride in their own chunks.
@@ -113,6 +114,8 @@ const IGT_SHELL = {
     query: { fallback: 'baseline', landing },
   },
   renderTab: (tab, context) => <DocumentBody tab={tab} context={context} />,
+  // Start job beside History, with this document chosen.
+  headerActions: (context) => <DocumentStartJob context={context} />,
   // The check on open is about the document, whatever tab it opens on.
   validateOnOpen: true,
   // The Analyze grid says how its saves are going itself. Every other tab
@@ -135,6 +138,16 @@ const IGT_SHELL = {
 export const DocumentDetail = () => (
   <DocumentEditorShell app={IGT_SHELL} client={useStrictClient()} />
 );
+
+// Start job from a document's header, for whoever may start one, and not on a
+// past state. The job is the project's, so it goes through the session's
+// client, not this document's strict one.
+const DocumentStartJob = ({ context }) => {
+  const { user, client } = useAuth();
+  const { project, projectId, documentId, asOf, pastEntry } = context;
+  if (asOf || pastEntry || !canStartJob(project, user)) return null;
+  return <StartJob projectId={projectId} client={client} documentId={documentId} small />;
+};
 
 // What a project with nothing safe to open in it says in place of a tab.
 const Gate = ({ children }) => (

@@ -255,6 +255,33 @@ describe('the project page header', () => {
     await page.unmount();
   });
 
+  it('offers Start job on the Jobs tab to a writer only', async () => {
+    const d = deferred();
+    auth.client = d.client;
+    const writer = await renderComponent(at('/projects/A?tab=jobs'));
+    await writer.step(async () => d.settle('A'));
+    await writer.step(async () => {});
+    expect(writer.container.querySelector('[data-testid="jobs-tab"]').textContent).toBe(
+      'with start',
+    );
+    await writer.unmount();
+
+    auth.user = { id: 'r', isAdmin: false };
+    try {
+      const reader = await renderComponent(at('/projects/A?tab=jobs'));
+      await reader.step(async () =>
+        pendingReader(d, 'A', { maintainers: [], writers: [], readers: ['r'] }),
+      );
+      await reader.step(async () => {});
+      expect(reader.container.querySelector('[data-testid="jobs-tab"]').textContent).toBe(
+        'without start',
+      );
+      await reader.unmount();
+    } finally {
+      auth.user = { id: 'u', isAdmin: true };
+    }
+  });
+
   it('marks Settings active on a settings section', async () => {
     const d = deferred();
     auth.client = d.client;

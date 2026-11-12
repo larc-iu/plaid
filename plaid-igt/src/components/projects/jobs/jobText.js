@@ -3,6 +3,9 @@
 // codes (its state, phase, reason, a task, a document's state) are plaid-ui's
 // (domain/jobs.js), since every app says them.
 
+// The tasks an igt job can be given, in the order core keeps them (JOB_APPS).
+export const JOB_TASKS = ['translate', 'gloss', 'link'];
+
 // What a job was asked to write, as History names its entries ("Assistant
 // job: translations and analyses"), capitalized: "Translations and analyses".
 export const tasksText = (tasks = []) => {
