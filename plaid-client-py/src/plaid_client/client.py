@@ -3601,6 +3601,238 @@ class EventsResource(_Resource):
                              body=list(events), out_of_band=True)
 
 
+def _or_none(answer):
+    """A 204 answer (no body) as None, any other as it came."""
+    return None if answer == '' else answer
+
+
+class JobsResource(_Resource):
+    """Unattended assistant jobs (the core manual, "Jobs"). A writer starts a
+    job on a project, and one worker process, run by the operator under an
+    admin account, takes jobs one at a time and writes as the person who
+    started each. The resource has the people's calls (``create``, ``list``,
+    ``get``, ``active``, ``cancel``, ``worker``) and the worker's (``claim``,
+    ``heartbeat``, ``update_document``, ``finish``, the decisions,
+    ``model_busy``). The twin of plaid-client-js's ``apiJobs.js``.
+
+    Jobs are not audited, so no call here joins an open operation. The
+    worker's calls are signals (out of band): made on a batch they still go
+    over the wire, and none carries an Idempotency-Key, since core never
+    replays them."""
+
+    def create(self, project_id: str, app: str, tasks: list, documents: list | None = None,
+               note: str | None = None, *, id: str | None = None) -> Any:
+        """Start a job on a project.
+
+        Needs a writer of the project, and a person's own token: a delegated
+        token is refused (403). The job waits until a worker takes it.
+        Refused with 409 ``job-active`` (``response_data['job']`` names it)
+        while the project has a job waiting or running, and with 400 for an
+        unknown app, no task, ``link`` without ``gloss``, a document of another
+        project, more than 500 documents, or a note over 2,000 characters.
+
+        Args:
+            project_id: The project
+            app: The app whose tasks it runs: ``igt``
+            tasks: Some of ``translate``, ``gloss``, ``link`` (``link`` needs ``gloss``)
+            documents: The documents, in order. None: every document of the
+                project, by name
+            note: Instructions sent with every stretch of the job (at most
+                2,000 characters)
+            id: Optional. The id to create it under, a UUIDv7 this client
+                minted (``plaid_client.uuid7()``), 409 ``id-taken`` when used.
+        """
+        # A job is not audited, so it never joins an open operation, and never
+        # takes a number from an operation's Idempotency-Key seed.
+        return self._request('POST', f'/api/v1/projects/{project_id}/jobs',
+                             body=_body_of(id=_UNSET if id is None else id, app=app, tasks=tasks,
+                                           documents=_UNSET if documents is None else documents,
+                                           note=_UNSET if note is None else note),
+                             no_operation=True)
+
+    def list(self, project_id: str) -> Any:
+        """A project's jobs, newest first, each without its documents and
+        report. Transparently follows pagination cursors and returns the full
+        flat list. Any reader of the project."""
+        return list_all(self._client, f'/api/v1/projects/{project_id}/jobs')
+
+    def list_page(self, project_id: str, *, limit: int | None = None,
+                  cursor: str | None = None) -> Any:
+        """One page of a project's jobs, newest first.
+
+        Args:
+            project_id: The project
+            limit: Page size (1..1000)
+            cursor: Opaque cursor from a previous page's ``next_cursor``
+        """
+        return list_page(self._client, f'/api/v1/projects/{project_id}/jobs',
+                         limit=limit, cursor=cursor)
+
+    def iter_pages(self, project_id: str, *, page_size: int = 1000):
+        """Iterate a project's jobs page by page, newest first, yielding each
+        page's entries.
+
+        Args:
+            project_id: The project
+            page_size: Page size (1..1000)
+        """
+        return iter_pages(self._client, f'/api/v1/projects/{project_id}/jobs',
+                          page_size=page_size)
+
+    def get(self, job_id: str) -> Any:
+        """Read one job, with its documents (in the job's order) and, once it
+        has ended, its report. Any reader of its project."""
+        return self._request('GET', f'/api/v1/jobs/{job_id}')
+
+    def active(self, project_id: str) -> Any:
+        """The project's job that is waiting, running or stopping, with its
+        documents and no report, or None when it has none."""
+        return _or_none(self._request('GET', f'/api/v1/projects/{project_id}/jobs/active'))
+
+    def cancel(self, job_id: str) -> Any:
+        """Stop a job.
+
+        Allowed to the person who started it while they still write the
+        project, to a maintainer and to an admin, and never to a delegated
+        token. A waiting job ends at once. A running one is ``stopping`` until
+        its worker finishes the stretch in flight, or ends at once when no
+        worker holds it. Refused with 409 ``job-finished`` once it has ended.
+        """
+        return self._request('POST', f'/api/v1/jobs/{job_id}/cancel', no_operation=True)
+
+    def worker(self) -> Any:
+        """When a job worker last asked for work since core started, and the
+        model it runs: ``{seen_at, model, note_max_chars}``, ``seen_at`` and
+        ``model`` None when none has asked."""
+        return self._request('GET', '/api/v1/jobs/worker')
+
+    def claim(self, worker_id: str, model: str, apps: list) -> Any:
+        """The worker asks for a job. Admin only.
+
+        Answers ``{job, token, heartbeat_s}``: the job it now holds, the token
+        to write with (the starter's, scoped to the job's project) and how
+        often to send a heartbeat. None when no job is waiting or another job
+        holds the server's one slot.
+
+        Args:
+            worker_id: The worker's id, a UUID it minted when it started
+            model: The model the worker runs
+            apps: The apps whose jobs it takes
+        """
+        return _or_none(self._request('POST', '/api/v1/jobs/claim',
+                                      body={'worker_id': worker_id, 'model': model, 'apps': apps},
+                                      out_of_band=True))
+
+    def heartbeat(self, job_id: str, worker_id: str, *, phase: Any = _UNSET, message: Any = _UNSET,
+                  waiting_for: Any = _UNSET, current_document: Any = _UNSET) -> Any:
+        """The worker's heartbeat on a job it holds. Admin only.
+
+        Each keyword given sets its field, None clears it, and one left out
+        leaves it. Answers ``{state, token, lease_s}``, the job's state and a
+        fresh token. Refused with 409 ``job-taken`` when another worker holds
+        the job, 409 ``job-finished`` once it has ended, and 409
+        ``job-failed`` when its starter no longer writes the project.
+
+        Args:
+            job_id: The job
+            worker_id: The worker's id
+            phase: ``checking``, ``glossing``, ``harmonizing`` or ``reporting``
+            message: One line for the person (at most 300 characters)
+            waiting_for: ``people`` or ``model``
+            current_document: The document being worked
+        """
+        return self._request('POST', f'/api/v1/jobs/{job_id}/heartbeat',
+                             body=_body_of(worker_id=worker_id, phase=phase, message=message,
+                                           waiting_for=waiting_for, current_document=current_document),
+                             out_of_band=True)
+
+    def update_document(self, job_id: str, document_id: str, worker_id: str, *,
+                        state: Any = _UNSET, sentences: Any = _UNSET, targets: Any = _UNSET,
+                        done: Any = _UNSET, last_sentence: Any = _UNSET, defers: Any = _UNSET,
+                        counts: Any = _UNSET, skipped: Any = _UNSET, gloss_group: Any = _UNSET,
+                        harmonize_group: Any = _UNSET) -> Any:
+        """The worker sets a document's row of a job it holds. Admin only.
+
+        Each keyword given replaces its column, and one left out leaves it.
+        Answers the row. 404 for a document the job does not hold.
+
+        Args:
+            job_id: The job
+            document_id: The document
+            worker_id: The worker's id
+            state: ``waiting``, ``working``, ``deferred``, ``done``, ``in-use``,
+                ``gone`` or ``not-reached``
+            sentences: How many sentences the document has
+            targets: How many of them hold something the job would write
+            done: How many targets the job has finished
+            last_sentence: The cursor, the id of the last sentence finished
+            defers: How many times the document was deferred
+            counts: ``{translations, refreshed, words, links, entries, left,
+                changed, protected}``
+            skipped: ``[{sentence, sentence_id, reason, kind}]``, at most 500
+            gloss_group: The operation group of the job's glossing here
+            harmonize_group: The operation group of its harmonize here
+        """
+        return self._request('PUT', f'/api/v1/jobs/{job_id}/documents/{document_id}',
+                             body=_body_of(worker_id=worker_id, state=state, sentences=sentences,
+                                           targets=targets, done=done, last_sentence=last_sentence,
+                                           defers=defers, counts=counts, skipped=skipped,
+                                           gloss_group=gloss_group, harmonize_group=harmonize_group),
+                             out_of_band=True)
+
+    def finish(self, job_id: str, worker_id: str, state: str, report: dict,
+               reason: str | None = None) -> Any:
+        """The worker ends a job it holds and stores its report. Admin only.
+
+        ``done`` from running, ``cancelled`` from stopping, ``failed`` from
+        running, stopping or a failure core set. Refused with 409
+        ``job-state`` otherwise, and 400 for a report over 1,000,000 bytes.
+
+        Args:
+            job_id: The job
+            worker_id: The worker's id
+            state: ``done``, ``cancelled`` or ``failed``
+            report: The report (the core manual, "Jobs")
+            reason: Why, for a failed job (the manual's reason codes)
+        """
+        return self._request('POST', f'/api/v1/jobs/{job_id}/finish',
+                             body=_body_of(worker_id=worker_id, state=state,
+                                           reason=_UNSET if reason is None else reason, report=report),
+                             out_of_band=True)
+
+    def add_decisions(self, job_id: str, worker_id: str, decisions: list) -> None:
+        """The worker records how it analysed words: each decision's count is
+        added to its row (form and key). Admin only. At most 1,000 a call.
+
+        Args:
+            job_id: The job
+            worker_id: The worker's id
+            decisions: ``[{form, key, analysis, count, document_id, sentence_id}]``,
+                ``analysis`` the worker's canonical JSON text, kept verbatim
+        """
+        self._request('POST', f'/api/v1/jobs/{job_id}/decisions',
+                      body={'worker_id': worker_id, 'decisions': decisions}, out_of_band=True)
+
+    def lookup_decisions(self, job_id: str, forms: list) -> Any:
+        """Every decision of a job for these forms, by form, then count from
+        the most, then key. Admin only. 1 to 1,000 forms."""
+        # A read that travels as a POST, so a form may hold any character.
+        return self._request('POST', f'/api/v1/jobs/{job_id}/decisions/lookup',
+                             body={'forms': forms}, out_of_band=True)
+
+    def decisions(self, job_id: str) -> Any:
+        """Every decision of a job, by form and key. Admin only. Transparently
+        follows pagination cursors and returns the full flat list."""
+        return list_all(self._client, f'/api/v1/jobs/{job_id}/decisions')
+
+    def model_busy(self, pool: str) -> Any:
+        """How busy a model key is: ``{in_flight, last_finished_at}``, the
+        requests in flight to live services that declare this ``model-pool``
+        in their extras, and when the last of them finished (None when none
+        did in the last 15 minutes). Admin only."""
+        return self._request('GET', '/api/v1/jobs/model-busy', query_params={'pool': pool})
+
+
 class OperationGroupsResource(_Resource):
     """Logical-operation groups (audit-log grouping). There is no create: a
     group row is made lazily by the first write carrying ``?group-id=`` (see
@@ -3654,6 +3886,7 @@ def _install_resources(target):
     target.admin = AdminResource(target)
     target.audit = AuditResource(target)
     target.operation_groups = OperationGroupsResource(target)
+    target.jobs = JobsResource(target)
 
 
 class PlaidClient(_Operations):

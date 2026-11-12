@@ -37,6 +37,13 @@
  * @typedef {import("./types.js").CommentableType} CommentableType
  * @typedef {import("./types.js").Comment} Comment
  * @typedef {import("./types.js").Guideline} Guideline
+ * @typedef {import("./types.js").Job} Job
+ * @typedef {import("./types.js").JobDocument} JobDocument
+ * @typedef {import("./types.js").JobDocumentFields} JobDocumentFields
+ * @typedef {import("./types.js").JobSkipped} JobSkipped
+ * @typedef {import("./types.js").JobReport} JobReport
+ * @typedef {import("./types.js").JobDecision} JobDecision
+ * @typedef {import("./types.js").JobDecisionRow} JobDecisionRow
  * @typedef {import("./types.js").ClientEventType} ClientEventType
  * @typedef {import("./types.js").ClientEvent} ClientEvent
  * @typedef {import("./types.js").Invite} Invite

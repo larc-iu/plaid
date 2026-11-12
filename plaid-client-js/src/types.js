@@ -180,6 +180,136 @@
  */
 
 /**
+ * A document's row of a job, in the job's order. `name` is the document's
+ * name now, null once it is deleted. `counts` holds `translations`,
+ * `refreshed`, `words`, `links`, `entries`, `left`, `changed` and
+ * `protected`. `lastSentence` is the cursor, the id of the last sentence the
+ * job finished.
+ * @typedef {object} JobDocument
+ * @property {string} documentId
+ * @property {string | null} [name]
+ * @property {number} position
+ * @property {"waiting" | "working" | "deferred" | "done" | "in-use" | "gone" | "not-reached"} state
+ * @property {number | null} sentences
+ * @property {number | null} targets
+ * @property {number | null} done
+ * @property {string | null} lastSentence
+ * @property {number} defers
+ * @property {Record<string, number>} counts
+ * @property {JobSkipped[]} skipped
+ * @property {string | null} glossGroup
+ * @property {string | null} harmonizeGroup
+ * @property {string} updatedAt
+ */
+
+/**
+ * A sentence a job passed over: `sentence` as the job read it (`s12`), its
+ * id, why (`too-long`, `failed`, `changed`) and, for `failed`, how (`budget`,
+ * `context`, `output`, `repeating`).
+ * @typedef {object} JobSkipped
+ * @property {string} sentence
+ * @property {string} sentenceId
+ * @property {"too-long" | "failed" | "changed"} reason
+ * @property {"budget" | "context" | "output" | "repeating" | null} kind
+ */
+
+/**
+ * What a worker sets on a document's row (`jobs.updateDocument`). A field
+ * left out is left as it is.
+ * @typedef {object} JobDocumentFields
+ * @property {JobDocument["state"]} [state]
+ * @property {number | null} [sentences]
+ * @property {number | null} [targets]
+ * @property {number | null} [done]
+ * @property {string | null} [lastSentence]
+ * @property {number} [defers]
+ * @property {Record<string, number>} [counts]
+ * @property {JobSkipped[]} [skipped]
+ * @property {string | null} [glossGroup]
+ * @property {string | null} [harmonizeGroup]
+ */
+
+/**
+ * The report a job's worker stores when the job ends (the core manual,
+ * "Jobs"). Its lists are cut at 500 entries, and each `...More` count says
+ * how many were left out. `stopped` is `"without-worker"` on the report core
+ * writes itself, for a job stopped while no worker held it.
+ * @typedef {object} JobReport
+ * @property {string} state
+ * @property {string | null} reason
+ * @property {string[]} tasks
+ * @property {string | null} note
+ * @property {string} startedBy
+ * @property {string | null} model
+ * @property {string | null} startedAt
+ * @property {string | null} finishedAt
+ * @property {number | null} pausedForPeopleS
+ * @property {number | null} pausedForModelS
+ * @property {"without-worker" | null} stopped
+ * @property {Record<string, number>} totals
+ * @property {Array<{documentId: string, name: string | null, state: string, sentences: number | null, targets: number | null, done: number | null, counts: Record<string, number>, skipped: JobSkipped[], glossGroup: string | null, harmonizeGroup: string | null}>} documents
+ * @property {{changed: object[], left: object[], changedMore: number, leftMore: number}} harmonize
+ * @property {{created: object[], deleted: object[], unlinked: object[], createdMore: number, deletedMore: number, unlinkedMore: number}} entries
+ */
+
+/**
+ * An unattended assistant job. `state` is one of `waiting`, `running`,
+ * `stopping` (the active ones) and `done`, `cancelled`, `failed`. `ahead`
+ * is, for a waiting job, how many active jobs were started before it on the
+ * server. `documents` is left out of a list's entries, and `report` is null
+ * until the job ends (and on `jobs.active` and a list).
+ * @typedef {object} Job
+ * @property {string} id
+ * @property {string} project
+ * @property {string} app
+ * @property {string[]} tasks
+ * @property {string | null} note
+ * @property {string} startedBy
+ * @property {string | null} startedByName
+ * @property {"waiting" | "running" | "stopping" | "done" | "cancelled" | "failed"} state
+ * @property {"checking" | "glossing" | "harmonizing" | "reporting" | null} phase
+ * @property {string | null} reason
+ * @property {string | null} message
+ * @property {"people" | "model" | null} waitingFor
+ * @property {string | null} currentDocument
+ * @property {string | null} cancelledBy
+ * @property {string | null} model
+ * @property {string} createdAt
+ * @property {string | null} startedAt
+ * @property {string | null} heartbeatAt
+ * @property {string | null} finishedAt
+ * @property {number} leaseS
+ * @property {number | null} ahead
+ * @property {JobDocument[]} [documents]
+ * @property {JobReport | null} [report]
+ */
+
+/**
+ * How a job analysed words of one form, as its worker records it.
+ * `analysis` is the worker's canonical JSON text and `key` its digest, both
+ * kept verbatim. `count` is added to the row's.
+ * @typedef {object} JobDecision
+ * @property {string} form
+ * @property {string} key
+ * @property {string} analysis
+ * @property {number} count
+ * @property {string} documentId
+ * @property {string} sentenceId
+ */
+
+/**
+ * A job's decision as stored: its total count and where it was first
+ * written.
+ * @typedef {object} JobDecisionRow
+ * @property {string} form
+ * @property {string} key
+ * @property {string} analysis
+ * @property {number} count
+ * @property {string | null} firstDocument
+ * @property {string | null} firstSentence
+ */
+
+/**
  * A research-telemetry event type.
  * @typedef {"suggestion.shown" | "suggestion.adopted" | "suggestion.dismissed" | "plan.opened"} ClientEventType
  */

@@ -21,6 +21,7 @@ import { normalizeUserId } from "./ids.js";
 import { openBatch, postBatch } from "./batch.js";
 import { messagesApi } from "./apiMessages.js";
 import { commentsApi, eventsApi, guidelinesApi, operationGroupsApi, projectsApi } from "./apiProject.js";
+import { jobsApi } from "./apiJobs.js";
 import { adminApi, auditApi, serverApi } from "./apiServer.js";
 import { apiTokensApi, authApi, invitesApi, userDataApi, usersApi } from "./apiPeople.js";
 import { documentsApi, textsApi } from "./apiDocuments.js";
@@ -70,6 +71,13 @@ import { bodyOf } from "./families.js";
  * @typedef {import("./types.js").CommentableType} CommentableType
  * @typedef {import("./types.js").Comment} Comment
  * @typedef {import("./types.js").Guideline} Guideline
+ * @typedef {import("./types.js").Job} Job
+ * @typedef {import("./types.js").JobDocument} JobDocument
+ * @typedef {import("./types.js").JobDocumentFields} JobDocumentFields
+ * @typedef {import("./types.js").JobSkipped} JobSkipped
+ * @typedef {import("./types.js").JobReport} JobReport
+ * @typedef {import("./types.js").JobDecision} JobDecision
+ * @typedef {import("./types.js").JobDecisionRow} JobDecisionRow
  * @typedef {import("./types.js").ClientEventType} ClientEventType
  * @typedef {import("./types.js").ClientEvent} ClientEvent
  * @typedef {import("./types.js").Invite} Invite
@@ -349,6 +357,7 @@ class PlaidClient {
     this.comments = commentsApi(this);
     this.events = eventsApi(this);
     this.operationGroups = operationGroupsApi(this);
+    this.jobs = jobsApi(this);
 
     this.server = serverApi(this);
     this.admin = adminApi(this);

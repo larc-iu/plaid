@@ -20,8 +20,8 @@ SENT = 'COVPROBE'
 
 # Bundles whose writes core does not audit: comments, user data, admin and
 # auth, events and messages (the services' real-time routes), operation
-# groups, and the reads.
-UNAUDITED = {'admin', 'audit', 'auth', 'comments', 'events', 'messages', 'operation_groups',
+# groups, jobs, and the reads.
+UNAUDITED = {'admin', 'audit', 'auth', 'comments', 'events', 'jobs', 'messages', 'operation_groups',
              'server', 'user_data'}
 # Reads that travel as a POST take no audit message.
 READ_POSTS = {
