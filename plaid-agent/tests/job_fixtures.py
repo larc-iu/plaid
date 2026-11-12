@@ -144,8 +144,16 @@ def start(client, tasks=('gloss',), documents=None, note=None, now=None, id=None
     made = client.jobs.create(PID, 'igt', list(tasks), documents, note, id=id)
     claimed = client.jobs.claim('worker-1', 'fake/m', ['igt'])
     assert claimed['job']['id'] == made['id']
-    return Job(client, claimed, 'worker-1', client_for=lambda token: client, model='fake/m',
-               sleep=lambda s: None, now=now or __import__('time').time)
+    if now is None:
+        clock = {'t': __import__('time').time()}
+        now = lambda: clock['t']  # noqa: E731
+
+        def sleep(seconds):
+            clock['t'] += seconds
+    else:
+        def sleep(seconds):
+            return None
+    return Job(client, claimed, 'worker-1', client_for=lambda token: client, model='fake/m', sleep=sleep, now=now)
 
 
 def runner(job, **kw):
