@@ -1911,7 +1911,7 @@ class _FakeJobs:
     def _shape(self, job, *, documents=True, report=True):
         out = {k: copy.deepcopy(v) for k, v in job.items()
                if k not in ('documents', 'report', 'heartbeat_s_at', 'seq', 'core_failed',
-                            'claimed_stopping', 'worker_id', 'worker_user')}
+                            'worker_id', 'worker_user')}
         out['lease_s'] = _JOB_LEASE_S
         out['ahead'] = (sum(1 for j in self.rows.values()
                             if j['state'] in _JOB_ACTIVE and j['seq'] < job['seq'])
@@ -1979,6 +1979,9 @@ class _FakeJobs:
         ``stopped`` is given, the report core writes from the rows."""
         job.update(state=state, reason=reason, finished_at=self._iso(),
                    current_document=None, waiting_for=None)
+        for row in job['documents']:
+            if row['state'] in ('waiting', 'working', 'deferred'):
+                row['state'] = 'not-reached'
         if stopped is not _client._UNSET:
             job['report'] = self._report_from_rows(job, stopped)
 
@@ -1997,7 +2000,13 @@ class _FakeJobs:
         if 'link' in tasks and 'gloss' not in tasks:
             raise self._refuse(400, 'POST', path, 'tasks: link needs gloss.')
         if documents is not None:
+            if not documents:
+                raise self._refuse(400, 'POST', path,
+                                   'documents: give at least one document, or leave them out for all.')
+            documents = list(dict.fromkeys(documents))
             outside = sum(1 for d in documents if d not in live)
+            if outside == 1:
+                raise self._refuse(400, 'POST', path, 'documents: 1 is not a document of this project.')
             if outside:
                 raise self._refuse(400, 'POST', path, f'documents: {outside} are not documents of this project.')
             if len(documents) > _JOB_DOCUMENTS_MAX:
@@ -2031,7 +2040,7 @@ class _FakeJobs:
                            'updated_at': at} for i, d in enumerate(documents)],
             'report': None,
             'heartbeat_s_at': None, 'seq': next(self._seq), 'worker_id': None, 'worker_user': None,
-            'core_failed': False, 'claimed_stopping': False,
+            'core_failed': False,
         }
         return self._shape(self.rows[job_id])
 
@@ -2105,7 +2114,6 @@ class _FakeJobs:
                 self._end(job, 'failed', 'starter-access', stopped=None)
                 continue
             break
-        job['claimed_stopping'] = job['state'] == 'stopping'
         if job['state'] != 'stopping':
             job['state'] = 'running'
         job.update(worker_id=worker_id, worker_user=self.user, model=model,
@@ -2122,14 +2130,24 @@ class _FakeJobs:
                                     ('current_document', current_document)) if v is not _client._UNSET}
         self.calls.append(('heartbeat', {'job_id': job_id, 'worker_id': worker_id, **fields}))
         job = self._held(job_id, worker_id, 'POST', path)
+        self._seen['seen_at'] = self._iso()
+        lost = self._refuse(409, 'POST', path,
+                            'The person who started this job can no longer write in this project.',
+                            code='job-failed', reason='starter-access')
+        if job['core_failed'] and job['report'] is None:
+            raise lost
         if job['state'] in _JOB_FINAL:
             raise self._refuse(409, 'POST', path, 'This job has ended.', code='job-finished')
         if not self.can_write(job['started_by'], job['project']):
             self._end(job, 'failed', 'starter-access')
             job['core_failed'] = True
-            raise self._refuse(409, 'POST', path,
-                               'The person who started this job can no longer write in this project.',
-                               code='job-failed', reason='starter-access')
+            raise lost
+        if len(fields.get('message') or '') > 300:
+            raise self._refuse(400, 'POST', path, 'message: at most 300 characters.')
+        if fields.get('phase') not in (None, 'checking', 'glossing', 'harmonizing', 'reporting'):
+            raise self._refuse(400, 'POST', path, f"Unknown phase: {fields['phase']}.")
+        if fields.get('waiting_for') not in (None, 'people', 'model'):
+            raise self._refuse(400, 'POST', path, f"Unknown waiting-for: {fields['waiting_for']}.")
         job.update(fields)
         job.update(heartbeat_at=self._iso(), heartbeat_s_at=self.now())
         return {'state': job['state'], 'token': f'job-token-{next(self._tokens)}', 'lease_s': _JOB_LEASE_S}
@@ -2163,15 +2181,20 @@ class _FakeJobs:
         job = self._held(job_id, worker_id, 'POST', path)
         now = job['state']
         allowed = {'done': now == 'running',
-                   'cancelled': now == 'stopping' or (now == 'running' and job['claimed_stopping']),
+                   'cancelled': now in ('running', 'stopping'),
                    'failed': now in ('running', 'stopping')
                    or (now == 'failed' and job['core_failed'] and job['report'] is None)}
         if not allowed.get(state):
             raise self._refuse(409, 'POST', path, f'This job cannot end as {state} now.', code='job-state')
         wire = json.dumps(transform_request(report))
-        if len(wire.encode()) > _JOB_REPORT_MAX_BYTES:
-            raise self._refuse(400, 'POST', path, f'The report is over {_JOB_REPORT_MAX_BYTES:,} bytes.')
-        self._end(job, state, reason)
+        size = len(wire.encode())
+        if size > _JOB_REPORT_MAX_BYTES:
+            raise self._refuse(400, 'POST', path, f"The report is {size:,} bytes. "
+                                                  f"A job's report is at most {_JOB_REPORT_MAX_BYTES:,}.")
+        if reason is None:
+            reason = {'cancelled': 'cancelled', 'failed': job['reason'] if job['core_failed'] else None}.get(state)
+        job.update(state=state, reason=reason, finished_at=self._iso(), current_document=None,
+                   waiting_for=None)
         job['report'] = transform_response(json.loads(wire))
         return self._shape(job)
 
@@ -2181,8 +2204,10 @@ class _FakeJobs:
                                              'decisions': copy.deepcopy(list(decisions))}))
         self._held(job_id, worker_id, 'POST', path)
         if len(decisions) > _JOB_DECISIONS_PER_CALL:
-            raise self._refuse(400, 'POST', path, f'decisions: at most {_JOB_DECISIONS_PER_CALL:,} a call.')
+            raise self._refuse(400, 'POST', path, f'decisions: at most {_JOB_DECISIONS_PER_CALL:,} in one call.')
         for i, d in enumerate(decisions):
+            if len(d['key']) > 128:
+                raise self._refuse(400, 'POST', path, f'decisions: the key of {i} is over 128 characters.')
             if len(d['analysis']) > _JOB_ANALYSIS_MAX_CHARS:
                 raise self._refuse(400, 'POST', path, f'decisions: the analysis of {i} is over '
                                                       f'{_JOB_ANALYSIS_MAX_CHARS:,} characters.')
@@ -2200,7 +2225,7 @@ class _FakeJobs:
         if not forms:
             raise self._refuse(400, 'POST', path, 'forms: give at least one form.')
         if len(forms) > _JOB_DECISIONS_PER_CALL:
-            raise self._refuse(400, 'POST', path, f'forms: at most {_JOB_DECISIONS_PER_CALL:,} a call.')
+            raise self._refuse(400, 'POST', path, f'forms: at most {_JOB_DECISIONS_PER_CALL} in one call.')
         rows = [r for r in self.decision_rows.get(job_id, {}).values() if r['form'] in set(forms)]
         return [dict(r) for r in sorted(rows, key=lambda r: (r['form'], -r['count'], r['key']))]
 

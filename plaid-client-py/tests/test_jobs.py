@@ -215,8 +215,13 @@ def _fake():
                                          'documents': {'d3': {'id': 'd3', 'name': 'Third'}}}})
     clock = {'t': 1_000_000.0}
     client.jobs.now = lambda: clock['t']
+    client._clock = clock
     client.jobs.user = 'w@x.org'
     return client, clock
+
+
+def _fake_clock(client):
+    return client._clock
 
 
 def _refused(call, status, error=None, **fields):
@@ -245,11 +250,16 @@ def test_fake_create_waits_with_its_rows_in_order_and_refuses_as_core_does():
     _refused(lambda: jobs.create('p2', 'igt', []), 400, 'tasks: give at least one of translate, gloss, link.')
     _refused(lambda: jobs.create('p2', 'igt', ['link']), 400, 'tasks: link needs gloss.')
     _refused(lambda: jobs.create('p2', 'igt', ['gloss'], ['d1', 'd3']), 400,
-             'documents: 1 are not documents of this project.')
+             'documents: 1 is not a document of this project.')
+    _refused(lambda: jobs.create('p2', 'igt', ['gloss'], ['d1', 'd2', 'd3']), 400,
+             'documents: 2 are not documents of this project.')
+    _refused(lambda: jobs.create('p2', 'igt', ['gloss'], []), 400,
+             'documents: give at least one document, or leave them out for all.')
     _refused(lambda: jobs.create('p2', 'igt', ['gloss'], note='x' * 2412), 400,
              "The note is 2,412 characters. A job's note is at most 2,000.")
     _refused(lambda: jobs.create('p2', 'igt', ['gloss'], ['d3'], id=job['id']), 409, 'id-taken')
-    second = jobs.create('p2', 'igt', ['translate'], ['d3'])
+    second = jobs.create('p2', 'igt', ['translate'], ['d3', 'd3'])
+    assert [r['document_id'] for r in second['documents']] == ['d3'], 'a document named twice is taken once'
     assert second['ahead'] == 1, 'the job of p1 was started before it'
     assert [j['id'] for j in jobs.list('p2')] == [second['id']]
     assert 'documents' not in jobs.list('p1')[0] and 'report' not in jobs.list('p1')[0]
@@ -281,7 +291,12 @@ def test_fake_heartbeat_sets_what_is_given_clears_none_and_leaves_the_rest():
     jobs.claim('w1', 'm', ['igt'])
     one = jobs.heartbeat(job['id'], 'w1', phase='glossing', message='Sentences 1 to 5 of 40.',
                          waiting_for='people', current_document='d2')
+    clock_before = jobs.worker()['seen_at']
+    _fake_clock(client)['t'] += 5
     two = jobs.heartbeat(job['id'], 'w1', waiting_for=None)
+    assert jobs.worker()['seen_at'] > clock_before, 'a heartbeat counts as the worker seen'
+    _refused(lambda: jobs.heartbeat(job['id'], 'w1', message='x' * 301), 400)
+    _refused(lambda: jobs.heartbeat(job['id'], 'w1', phase='napping'), 400)
     assert one['state'] == 'running' and one['lease_s'] == 120 and one['token'] != two['token']
     now = jobs.get(job['id'])
     assert (now['phase'], now['message'], now['waiting_for'], now['current_document']) == \
@@ -308,7 +323,8 @@ def test_fake_cancel_follows_each_path():
     assert jobs.heartbeat(live['id'], 'w1')['state'] == 'stopping'
     _refused(lambda: jobs.finish(live['id'], 'w1', 'done', {}), 409, 'This job cannot end as done now.',
              code='job-state')
-    assert jobs.finish(live['id'], 'w1', 'cancelled', {'stopped': None})['state'] == 'cancelled'
+    ended = jobs.finish(live['id'], 'w1', 'cancelled', {'stopped': None})
+    assert (ended['state'], ended['reason']) == ('cancelled', 'cancelled')
 
     lapsed = jobs.create('p2', 'igt', ['gloss'])
     jobs.claim('w1', 'm', ['igt'])
@@ -321,8 +337,24 @@ def test_fake_cancel_follows_each_path():
     assert report['stopped'] == 'without-worker'
     assert report['totals']['documents_done'] == 1 and report['totals']['words'] == 4
     assert report['totals']['skipped_failed'] == 1 and report['totals']['sentences'] == 2
+    assert [r['state'] for r in gone['documents']] == ['done'], 'a done row stays done'
     assert report['harmonize'] == {'changed': [], 'left': [], 'changed_more': 0, 'left_more': 0}
     assert report['entries']['created'] == []
+
+
+def test_fake_a_running_job_may_end_cancelled_and_core_settles_unreached_rows():
+    client, clock = _fake()
+    jobs = client.jobs
+    job = jobs.create('p1', 'igt', ['gloss'])
+    jobs.claim('w1', 'm', ['igt'])
+    jobs.update_document(job['id'], 'd2', 'w1', state='working')
+    clock['t'] += 121
+    gone = jobs.cancel(job['id'])
+    assert [r['state'] for r in gone['documents']] == ['not-reached', 'not-reached']
+    assert gone['report']['totals']['documents_not_reached'] == 2
+    other = jobs.create('p1', 'igt', ['gloss'])
+    jobs.claim('w1', 'm', ['igt'])
+    assert jobs.finish(other['id'], 'w1', 'cancelled', {})['state'] == 'cancelled'
 
 
 def test_fake_a_stopping_job_claimed_after_a_crash_stays_stopping_and_ends_cancelled():
@@ -352,8 +384,11 @@ def test_fake_a_starter_who_no_longer_writes_fails_the_job():
     jobs.can_write = lambda user, project: False
     _refused(lambda: jobs.heartbeat(kept['id'], 'w1'), 409, code='job-failed', reason='starter-access')
     assert jobs.get(kept['id'])['state'] == 'failed'
-    ended = jobs.finish(kept['id'], 'w1', 'failed', {'state': 'failed'}, reason='starter-access')
-    assert ended['report'] == {'state': 'failed'}
+    assert [r['state'] for r in jobs.get(kept['id'])['documents']] == ['not-reached']
+    # Until its report is in, a worker that lost the first answer hears it again.
+    _refused(lambda: jobs.heartbeat(kept['id'], 'w1'), 409, code='job-failed')
+    ended = jobs.finish(kept['id'], 'w1', 'failed', {'state': 'failed'})
+    assert ended['report'] == {'state': 'failed'} and ended['reason'] == 'starter-access'
     _refused(lambda: jobs.finish(kept['id'], 'w1', 'failed', {}), 409, code='job-state')
     _refused(lambda: jobs.heartbeat(kept['id'], 'w1'), 409, code='job-finished')
 
