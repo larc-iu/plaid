@@ -21,6 +21,7 @@ export const OPERATION_KINDS = [
   "guess-adoption",
   "repair",
   "review",
+  "job",
 ];
 
 /**

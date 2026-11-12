@@ -494,6 +494,14 @@ test('beginOperation takes every kind the server takes', () => {
   }
 });
 
+// An unattended assistant job's writes are labelled `job` (CONTRACT 8 of the
+// jobs round), a kind core takes from that round on.
+test('beginOperation takes the kind job', () => {
+  const client = makeClient();
+  client.beginOperation('Assistant job: analyses', { kind: 'job', ref: 'job:j1/doc:d1/pass:gloss' });
+  assert.strictEqual(client.operationGroup.kind, 'job');
+});
+
 test('an unknown kind throws before anything is written', async () => {
   const client = makeClient();
   assert.throws(

@@ -17,7 +17,7 @@ from plaid_client.ids import uuid7
 # list (plaid.sql.operation-group/kinds). An operation of any other kind is
 # refused when it begins, before it writes anything.
 _OPERATION_KINDS = ('assistant-plan', 'service-run', 'import', 'bulk-edit',
-                    'guess-adoption', 'repair', 'review')
+                    'guess-adoption', 'repair', 'review', 'job')
 
 
 def _check_operation_kind(kind) -> None:
@@ -82,7 +82,7 @@ class _Operations:
 
         ``kind`` says what kind of operation this is, for a program reading
         the log: one of ``assistant-plan``, ``service-run``, ``import``,
-        ``bulk-edit``, ``guess-adoption``, ``repair`` or ``review`` (the server
+        ``bulk-edit``, ``guess-adoption``, ``repair``, ``review`` or ``job`` (the server
         refuses any other, and so does this method: any other kind raises
         ``ValueError`` here, before anything is written). ``ref`` is a short string naming what the operation came from,
         in the shape its kind documents (the core manual, "Kinds of
@@ -221,7 +221,7 @@ class _Operations:
             message: Human label for the operation (shown as the audit-log entry).
             kind: Optional. What kind of operation this is: one of
                 ``assistant-plan``, ``service-run``, ``import``, ``bulk-edit``,
-                ``guess-adoption``, ``repair`` or ``review``. Any other raises
+                ``guess-adoption``, ``repair``, ``review`` or ``job``. Any other raises
                 ``ValueError`` before the block runs.
             ref: Optional. What the operation refers to.
             group_id: Optional. Adopt an existing group id (see ``begin_operation``).

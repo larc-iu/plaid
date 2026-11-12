@@ -471,7 +471,7 @@ class PlaidClient {
    *
    * `kind` says what kind of operation this is, for a program reading the
    * log: one of `assistant-plan`, `service-run`, `import`, `bulk-edit`,
-   * `guess-adoption`, `repair` or `review` (the server refuses any other).
+   * `guess-adoption`, `repair`, `review` or `job` (the server refuses any other).
    * Any other kind throws here, before anything is written.
    * `ref` is a short string naming what the operation came from, in the
    * shape its kind documents (the core manual, "Kinds of operation"). Both
@@ -535,7 +535,7 @@ class PlaidClient {
    * @template T
    * @param {string} message - Human label for the operation.
    * @param {(setMessage: (msg: string) => void) => T | Promise<T>} fn - The work to run; receives `setMessage(msg)` to refine the label once the outcome is known.
-   * @param {{kind?: OperationKind, ref?: string, groupId?: string, keys?: KeySeed, minted?: Iterable<string>}} [opts] - Optional `{ kind, ref, groupId, keys, minted }`, as for beginOperation. `kind` is one of `assistant-plan`, `service-run`, `import`, `bulk-edit`, `guess-adoption`, `repair` or `review`, and any other throws before `fn` runs.
+   * @param {{kind?: OperationKind, ref?: string, groupId?: string, keys?: KeySeed, minted?: Iterable<string>}} [opts] - Optional `{ kind, ref, groupId, keys, minted }`, as for beginOperation. `kind` is one of `assistant-plan`, `service-run`, `import`, `bulk-edit`, `guess-adoption`, `repair`, `review` or `job`, and any other throws before `fn` runs.
    * @returns {Promise<T>} Whatever `fn` resolves to.
    */
   async withOperation(message, fn, { kind, ref, groupId, keys, minted } = {}) {

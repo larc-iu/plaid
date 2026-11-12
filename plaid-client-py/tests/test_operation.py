@@ -673,6 +673,14 @@ def test_a_kind_in_one_list_alone_is_named():
                      'the manual\'s Kinds of operation table', 'plaid-ui KIND_LABELS']
 
 
+def test_begin_operation_takes_the_kind_job():
+    # An unattended assistant job's writes are labelled `job` (CONTRACT 8 of
+    # the jobs round), a kind core takes from that round on.
+    client = _client()
+    client.begin_operation('Assistant job: analyses', kind='job', ref='job:j1/doc:d1/pass:gloss')
+    assert client._operation_group['kind'] == 'job'
+
+
 def test_an_unknown_kind_raises_before_anything_is_written():
     client = _client()
     with pytest.raises(ValueError, match=r'Unknown operation kind "imports"\. It is one of: assistant-plan, service-run'):

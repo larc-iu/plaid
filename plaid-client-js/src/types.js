@@ -48,7 +48,7 @@
 /**
  * What kind of operation a logical-operation group is (`?group-kind=`).
  * @typedef {"assistant-plan" | "service-run" | "import" | "bulk-edit"
- *   | "guess-adoption" | "repair" | "review"} OperationKind
+ *   | "guess-adoption" | "repair" | "review" | "job"} OperationKind
  */
 
 /**
