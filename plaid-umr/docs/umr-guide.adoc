@@ -382,10 +382,11 @@ The plan lists every change under its document, and each node links to its place
 A change to work a person made or accepted is marked **Accepted**.
 One attribute set on every node of a concept is one row with its count, and **Show where** lists a few of the nodes.
 
-**Approve as unverified** records every change as the assistant's proposal, unconfirmed, as a service's proposals are, to be confirmed later in the editor.
-Confirmations in a plan approved this way write nothing.
-**Approve as verified** records every change as the assistant's work accepted by you.
+**Approve as unverified** records every value the assistant writes as its proposal, unconfirmed, as a service's proposals are, to be confirmed later in the editor.
+**Approve as verified** records them as the assistant's work accepted by you.
+A confirmation in the plan is made under either button.
 Tick **Record as human-made** to record them as your own work instead, and the card then offers a single **Approve**.
+A plan of only confirmations, deletions and other changes that write no value offers a single **Approve** as well.
 Once a plan is applied, its card says how it was approved, such as **Approved as unverified**.
 Reading needs Reader access, and approving a plan needs Writer.
 

@@ -535,17 +535,17 @@ def kinds(OpKind):
                required=('title', 'body'), apply=_apply_add, replaces=None,
                # Two drafts of the same title in one turn: the second is what
                # the model meant, the way a second edit of one field is.
-               target=lambda op: ('guideline-new', (op.get('title') or '').casefold())),
+               target=lambda op: ('guideline-new', (op.get('title') or '').casefold()), stamped=False),
         # Both write the same thing; they differ in what the user is shown.
         # A targeted edit names what becomes what. A rewrite is marked on the
         # card, because approving one means agreeing to lose wording somebody
         # wrote and cannot see from the row.
         OpKind('revise_guideline', ('guideline', 'guidelines'),
                required=('guideline_id',), apply=_apply_revise, replaces=None,
-               target=lambda op: ('guideline', op.get('guideline_id'))),
+               target=lambda op: ('guideline', op.get('guideline_id')), stamped=False),
         OpKind('rewrite_guideline', ('guideline', 'guidelines'),
                required=('guideline_id',), apply=_apply_revise, shape=PROSE, replaces=None,
-               target=lambda op: ('guideline', op.get('guideline_id'))),
+               target=lambda op: ('guideline', op.get('guideline_id')), stamped=False),
     ]
 
 

@@ -1,9 +1,9 @@
 """Two approve buttons, always (the owner's ruling, 2026-11-12): "Approve as
-unverified" writes every change of the plan as the assistant's unverified
-machine proposal, as a service's proposal is written, and "Approve as
-verified" writes every change as assistant work the approver verified, as
-Approve always did. Nothing is inferred from a change's text, tool or size.
-"Record as human-made" wins over both. The page sends ``as_unverified`` beside
+unverified" writes every value the assistant sets as its unverified machine
+proposal, as a service's proposal is written, and "Approve as verified" as
+assistant work the approver verified, as Approve always did. A confirmation
+is made under either button. Nothing is inferred from a change's text, tool
+or size. "Record as human-made" wins over both. The page sends ``as_unverified`` beside
 ``as_human``, and the record keeps which was chosen, on every path a plan
 settles by."""
 
@@ -31,11 +31,15 @@ def _created(client):
     return made[0][3]
 
 
-def test_the_unverified_mode_writes_the_assistants_proposal_and_confirms_nothing():
+def test_the_unverified_mode_writes_the_assistants_proposal_and_confirms_as_the_approver():
     s = Stamps('unverified', SOURCE, detail=DETAIL)
     assert s.stamp() == {'prov': 'inferred', 'provSource': SOURCE, 'provDetail': DETAIL}
     assert s.restamp()['provConfirmed'] is None, 'a rewrite drops an earlier confirmation'
-    assert s.confirm(False) is None and s.confirm(True) is None
+    assert s.confirm(False) == {'provConfirmed': True} and s.confirm(True) == {'provConfirmed': True}
+    # A reviewed approver's confirmation is a contributor's, under either button.
+    c = Stamps('unverified', SOURCE, contributor='bob@x.com', detail=DETAIL)
+    assert c.reviewed and c.confirm(True) is None and c.confirm(False)['prov'] == 'contributed'
+    assert c.stamp()['provSource'] == SOURCE and 'provConfirmed' not in c.stamp()
     # The verified mode is as it was, and a job's mode still needs its job.
     assert Stamps('verified', SOURCE, detail=DETAIL).stamp()['provConfirmed'] is True
     with pytest.raises(ValueError, match='job'):
@@ -190,27 +194,87 @@ def test_another_tab_is_refused_while_the_hold_is_live(button):
     assert not client.payloads('spans.create')
 
 
-def test_a_confirmation_approved_as_unverified_confirms_nothing_in_either_app():
-    # A confirmation writes nothing but provenance: as unverified it leaves
-    # every piece as it is, its row is marked as having written nothing, and
-    # no note speaks of a reviewer.
+def _rows(ops):  # as an approval numbers them (``opkind.ROW``)
+    return [{**op, ROW: i} for i, op in enumerate(ops)]
+
+
+@pytest.mark.parametrize('mode', ['unverified', 'verified'])
+def test_a_confirmation_confirms_under_either_button_in_either_app(mode):
+    # The owner's ruling (2026-11-12): the person asked for those values to
+    # be confirmed, and "unverified" is the stamp on what the assistant
+    # writes, not a refusal of what the plan says.
+    from plaid_client.testing import as_fragment
     from test_contributor_confirm import _igt_confirm_plan, _ud_ws
     from plaid_agent.igt.plan import execute_plan as igt_execute
     from plaid_agent.ud.plan import execute_plan as ud_execute
     from plaid_agent.ud.toolkit import call_tool as ud_call
-    def rows(ops):  # as an approval numbers them (``opkind.ROW``)
-        return [{**op, ROW: i} for i, op in enumerate(ops)]
     w = _igt_confirm_plan()
-    counts = igt_execute(w.client, rows(w.plan_payload()['ops']), source=SOURCE, label='l', project=w.project,
-                         stamp_mode='unverified')
-    assert not w.client.patches('spans') and not w.client.payloads('vocab_links.patch_metadata')
-    assert counts['unwritten'] and 'notes' not in counts, counts
+    counts = igt_execute(w.client, _rows(w.plan_payload()['ops']), source=SOURCE, label='l', project=w.project,
+                         stamp_mode=mode)
+    assert sorted(sid for sid, _ in w.client.patches('spans')) == ['sp-g1', 'sp-m1b']
+    assert all(as_fragment(p) == {'provConfirmed': True} for _, p in w.client.patches('spans'))
+    assert len(w.client.payloads('vocab_links.patch_metadata')) == 1
+    assert counts['confirmations'] == 3 and 'unwritten' not in counts and 'notes' not in counts, counts
     ws = _ud_ws()
     ud_call(ws, 'confirm', {'document': 'Viaje', 'refs': ['s1.w4']})
-    counts = ud_execute(ws.client, rows(ws.plan_payload()['ops']), source=SOURCE, label='l', project=ws.project,
-                        stamp_mode='unverified')
-    assert not ws.client.patches('spans') and not ws.client.patches('relations')
-    assert counts['unwritten'] and 'notes' not in counts, counts
+    counts = ud_execute(ws.client, _rows(ws.plan_payload()['ops']), source=SOURCE, label='l', project=ws.project,
+                        stamp_mode=mode)
+    assert ws.client.patches('spans') and 'unwritten' not in counts, counts
+
+
+@pytest.mark.parametrize('mode', ['unverified', 'contributed'])
+def test_a_contributors_confirmation_records_what_a_contributors_confirm_records_under_either_button(mode):
+    from plaid_client.testing import as_fragment
+    from test_contributor_confirm import BOB, CONTRIBUTED_BY_BOB, _igt_confirm_plan
+    from plaid_agent.igt.plan import execute_plan as igt_execute
+    w = _igt_confirm_plan()
+    counts = igt_execute(w.client, _rows(w.plan_payload()['ops']), source=SOURCE, label='l', project=w.project,
+                         stamp_mode=mode, contributor=BOB)
+    [(sid, patch)] = w.client.patches('spans')
+    assert sid == 'sp-m1b' and as_fragment(patch) == CONTRIBUTED_BY_BOB
+    assert counts['notes'] == ["1 annotation accepted as your contribution, 2 contributor's annotations left "
+                               'for a reviewer']
+
+
+@pytest.mark.parametrize('mode', ['unverified', 'verified'])
+def test_a_mixed_plan_confirms_and_writes_its_values_as_the_button_says(mode):
+    from plaid_client.testing import as_fragment
+    from test_contributor_confirm import _igt_confirm_plan
+    from plaid_agent.igt.plan import execute_plan as igt_execute
+    from plaid_agent.igt.toolkit import call_tool as igt_call
+    w = _igt_confirm_plan()
+    out = igt_call(w, 'set_field', {'document': 'd1', 'refs': ['s1.w2'], 'field': 'Gloss', 'value': 'fish'})
+    assert out.startswith('Planned'), out
+    payload = w.plan_payload()
+    assert 'stamp_choice' not in payload, 'a value the assistant writes: the two buttons'
+    w.client.calls.clear()
+    igt_execute(w.client, _rows(payload['ops']), source=SOURCE, label='l', project=w.project, stamp_mode=mode)
+    confirmed = [p for _, p in w.client.patches('spans') if as_fragment(p) == {'provConfirmed': True}]
+    assert len(confirmed) == 2, 'the confirmations are made under either button'
+    made = [p['args'][3] for p in w.client.payloads('spans.create') if len(p.get('args') or []) > 3] + \
+        [as_fragment(p) for sid, p in w.client.patches('spans') if as_fragment(p).get('prov')]
+    assert made and all(m['prov'] == 'inferred' and m['provSource'] == SOURCE for m in made), made
+    assert all(bool(m.get('provConfirmed')) is (mode == 'verified') for m in made), made
+
+
+def test_a_plan_of_confirmations_only_offers_no_choice():
+    from test_contributor_confirm import _igt_confirm_plan, _ud_ws
+    from plaid_agent.ud.toolkit import call_tool as ud_call
+    assert _igt_confirm_plan().plan_payload()['stamp_choice'] is False
+    ws = _ud_ws()
+    ud_call(ws, 'confirm', {'document': 'Viaje'})  # a scope over the document
+    assert ws.plan_payload()['stamp_choice'] is False
+
+
+def test_which_kinds_carry_no_stamp_choice_is_declared_per_kind():
+    from plaid_agent.igt.plan import KIND as IGT
+    from plaid_agent.ud.plan import KIND as UD
+    from plaid_agent.umr.plan import KIND as UMR
+    assert not IGT['confirm'].stamped and not UD['confirm'].stamped and not UD['confirm_scope'].stamped
+    assert not UMR['delete_node'].stamped and not IGT['split_sentence'].stamped
+    assert IGT['set_span'].stamped and UD['set_head'].stamped and UMR['create_node'].stamped
+    # A kind that leaves the stamp to the approver says so by default.
+    assert IGT['bulk_scope'].stamped and UD['del_relation'].stamped
 
 
 def test_the_plan_contract_says_the_user_chooses_and_nothing_of_the_assistant_deciding():

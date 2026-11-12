@@ -220,11 +220,9 @@ def _apply_confirm(ctx: Context, op) -> int:
     frag = ctx.stamps.confirm(bool(op.get('contributed')))
     ctx.confirm_rows.add(op, 0 if frag is None else 1)
     if frag is None:
-        # Left for a reviewer, or (approved as unverified) left as it is.
-        if ctx.stamps.contributed:
-            ctx.confirm_left += 1
+        ctx.confirm_left += 1
         return 0
-    if ctx.stamps.contributed:
+    if ctx.stamps.reviewed:
         ctx.confirm_accepted += 1
     if op.get('span_id'):
         ctx.b.update('spans', op['span_id'], metadata=metadata_ops(frag))
@@ -648,7 +646,7 @@ KIND = ok.registry([
     OpKind('confirm', ('confirmation', 'confirmations'), replaces=None, apply=_apply_confirm,
            token_keys=('span_id', 'relation_id', 'token_id'),
            compact_each=('span_id', 'relation_id', 'token_id', 'ref', 'contributed'),
-           compact_label=_confirm_label),
+           compact_label=_confirm_label, stamped=False),
     OpKind('run_parse', ('parsed document', 'parsed documents'), replaces=None,
            stage=PARSE, apply=_apply_run_parse,
            required=('document_ids', 'service_id', 'project_id', 'language'),
@@ -694,7 +692,7 @@ KIND = ok.registry([
     OpKind('restore_document', ('restored document', 'restored documents'), replaces=None,
            apply=apply_restore_document,
            required=('document_id', 'as_of'), shape=ok.EXCLUSIVE,
-           target=lambda op: ('restore', op.get('document_id'))),
+           target=lambda op: ('restore', op.get('document_id')), stamped=False),
     # A scope names a document and fields, or a field and a pattern, and is
     # resolved to spans at approval, so the executor never sees one.
     # Resolved when approved, from the documents as they are then, and a
@@ -702,7 +700,7 @@ KIND = ok.registry([
     # now. A parse is a service run with its own overwrite rule.
     OpKind('confirm_scope', ('confirmation', 'confirmations'), replaces=None, stage=ok.RESOLVED, shape=ok.SCOPE,
            required=('document_id', 'fields'), resolve=_resolve_confirm_scope,
-           target=lambda op: ('scope', 'confirm_scope', op.get('document_id'))),
+           target=lambda op: ('scope', 'confirm_scope', op.get('document_id')), stamped=False),
     # `clears` says a scope throws values away without being able to name
     # which until it is resolved, so two scopes over one document cannot share
     # a plan when either of them does.
@@ -710,7 +708,7 @@ KIND = ok.registry([
            shape=ok.SCOPE, required=('document_id', 'fields'), summary=_discard_scope_summary,
            resolve=_resolve_discard_scope,
            target=lambda op: ('scope', 'discard_scope', op.get('document_id')),
-           extra={'clears': lambda op: True, 'takes': _discard_takes}),
+           extra={'clears': lambda op: True, 'takes': _discard_takes}, stamped=False),
     OpKind('replace_scope', _FIELD_VALUE, replaces=None, stage=ok.RESOLVED, shape=ok.SCOPE,
            required=('field', 'pattern'), summary=_replace_scope_summary,
            resolve=_resolve_replace_scope,
@@ -721,7 +719,7 @@ KIND = ok.registry([
            required=('relation_id', 'deprel'), apply=_apply_set_deprel,
            extra={'entity': _relation_entity}),
     OpKind('add_comment', ('comment', 'comments'), replaces=None, required=('entity_type', 'entity_id', 'body'),
-           apply=apply_add_comment, token_keys=('entity_id',)),
+           apply=apply_add_comment, token_keys=('entity_id',), stamped=False),
     # A value kept out of a discard or a replacement (core.keep): a span
     # by its span entity, a head by ('head', word) with its relation as the
     # entity a scope's change names.

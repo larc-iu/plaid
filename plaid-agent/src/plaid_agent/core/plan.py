@@ -39,8 +39,9 @@ from plaid_client.provenance import (CONTRIBUTED_STATE, MACHINE, PROVENANCE_KEYS
 # How an approval is recorded. The card's two buttons (the owner's ruling,
 # 2026-11-12): 'verified' is "Approve as verified", the assistant made it and
 # the approver confirmed it. 'unverified' is "Approve as unverified", every
-# change written as the assistant's machine proposal (unverified, the
-# assistant its source), as a service's proposal is, for review later.
+# value the assistant writes is its machine proposal (unverified, the
+# assistant its source), as a service's proposal is, for review later, and
+# the plan's confirmations are made as under the other button.
 # 'human' is the approver saying the work is their own ("Record as
 # human-made", which wins over both). 'contributed' is a contributor's
 # verified approval, which is their own unreviewed work rather than a
@@ -694,7 +695,9 @@ class Stamps:
     (``stamp_inferred``): unverified, with ``detail`` naming the job that
     wrote it, and it confirms nothing. 'unverified' writes the same stamp
     for an approval made with "Approve as unverified", with ``detail``
-    naming the turn that proposed it, and it confirms nothing either.
+    naming the turn that proposed it, on what the plan writes. Its
+    confirmations are the approver's, as under 'verified' (or 'contributed'
+    for a reviewed approver).
     """
 
     def __init__(self, mode: str, source: str, contributor: Optional[str] = None,
@@ -709,7 +712,10 @@ class Stamps:
         self.source = source
         self.contributor = contributor
         self.detail = dict(detail) if detail else None
-        self.policy = WriterPolicy(contributor if mode == 'contributed' else None)
+        # A confirmation is the approver's under either button: a reviewed
+        # approver's, approved as unverified, still confirms as a
+        # contributor's does.
+        self.policy = WriterPolicy(contributor if mode in ('contributed', 'unverified') else None)
 
     @property
     def human(self) -> bool:
@@ -726,6 +732,12 @@ class Stamps:
     @property
     def unverified(self) -> bool:
         return self.mode == 'unverified'
+
+    @property
+    def reviewed(self) -> bool:
+        """The approver's work is reviewed: their confirmation makes a
+        machine proposal their contribution and leaves contributors' work."""
+        return self.mode in ('contributed', 'unverified') and bool(self.contributor)
 
     def stamp(self) -> Dict[str, Any]:
         if self.human:
@@ -750,9 +762,11 @@ class Stamps:
         another contributor's. Any other approval confirms it. The policy
         says whether the piece is this writer's to review
         (``reviewable_state``) and what its confirm merges
-        (``confirm_fragment``). A machine writer reviews nothing, and an
-        approval as unverified verifies nothing."""
-        if self.machine or self.unverified:
+        (``confirm_fragment``). A machine writer reviews nothing. An approval
+        as unverified confirms as the approver confirms (the owner's ruling,
+        2026-11-12: the person asked for it, and "unverified" is the stamp
+        on what the assistant writes)."""
+        if self.machine:
             return None
         if self.human:
             return dict(CONFIRM)

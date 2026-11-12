@@ -548,7 +548,7 @@ KIND = ok.registry([
            deletes=lambda op: [op.get('span_id')] + list(op.get('relation_ids') or []),
            deletes_tokens=lambda op: list(op.get('token_ids') or []),
            compact_each=('span_id', 'token_ids', 'relation_ids', 'var', 'ref', 'label'),
-           compact_label=_delete_nodes_label),
+           compact_label=_delete_nodes_label, stamped=False),
     # `relation_id` is named as something the op NEEDS as well as something it
     # removes: a single relation delete of an id already gone is a 404 that
     # takes its whole batch with it, so a plan holding this and a node delete
@@ -561,13 +561,13 @@ KIND = ok.registry([
            token_keys=('relation_id',),
            deletes=lambda op: [op['relation_id']],
            compact_each=('relation_id', 'source', 'target', 'ref', 'label'),
-           compact_label=_kind_label('remove', ('relation', 'relations'), drop='remove ')),
+           compact_label=_kind_label('remove', ('relation', 'relations'), drop='remove '), stamped=False),
     OpKind('delete_triple', ('removed document-level relation',
                              'removed document-level relations'), replaces=_replaces_delete_triple,
            required=('relation_id',), apply=_apply_delete_relation,
            target=lambda op: ('triple-gone', op.get('relation_id')),
            token_keys=('relation_id',),
-           deletes=lambda op: [op['relation_id']]),
+           deletes=lambda op: [op['relation_id']], stamped=False),
     OpKind('set_concept', _CONCEPT, replaces=_replaces_set_concept,
            required=('span_id',), apply=_apply_set_concept,
            target=lambda op: ('concept', op.get('span_id')), token_keys=('span_id',),

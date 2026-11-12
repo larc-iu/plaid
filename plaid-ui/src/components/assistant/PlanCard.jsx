@@ -341,14 +341,17 @@ export const PlanCard = ({
           {/* Two buttons of equal weight, always, and the person chooses how
               every change is recorded (the owner's ruling, 2026-11-12). Neither
               is the default, and none is focused, so Enter approves nothing.
-              "Record as human-made" wins over both: ticked, one Approve. */}
-          {canWrite && asHuman ? (
+              "Record as human-made" wins over both: ticked, one Approve. A plan
+              of only changes that write no value of the assistant's
+              (confirmations, deletions: the service's `stampChoice: false`)
+              has no stamp to choose, so one Approve too. */}
+          {canWrite && (asHuman || plan.stampChoice === false) ? (
             <Button
               type="button"
               size="sm"
               variant="secondary"
-              title="Record every change as your own work."
-              onClick={() => onApprove({ asHuman: true, asUnverified: false })}
+              title={asHuman ? 'Record every change as your own work.' : undefined}
+              onClick={() => onApprove({ asHuman, asUnverified: false })}
               disabled={busy}
             >
               <Check className="h-4 w-4" /> Approve
@@ -359,7 +362,7 @@ export const PlanCard = ({
                 type="button"
                 size="sm"
                 variant="secondary"
-                title="Record every change as the assistant's proposal, unconfirmed."
+                title="Record the assistant's values as its proposals, unconfirmed."
                 onClick={() => onApprove({ asHuman: false, asUnverified: true })}
                 disabled={busy}
               >
@@ -371,8 +374,8 @@ export const PlanCard = ({
                 variant="secondary"
                 title={
                   contributor
-                    ? 'Record every change as your contribution, for a reviewer.'
-                    : "Record every change as the assistant's work, verified by you."
+                    ? "Record the assistant's values as your contribution, for a reviewer."
+                    : "Record the assistant's values as its work, verified by you."
                 }
                 onClick={() => onApprove({ asHuman: false, asUnverified: false })}
                 disabled={busy}

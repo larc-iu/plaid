@@ -519,6 +519,11 @@ class BaseWorkspace:
         out = {'id': uuid7(), 'summary': self.summarize(self.ops), 'ops': ops,
                'changes': changes,
                'documents': self.touched_documents()}
+        # A plan of only kinds that write no value of the assistant's (a
+        # confirmation, a deletion): the two approve buttons would write the
+        # same, so the card offers one Approve (OpKind.stamped).
+        if not any(self.KIND[op['kind']].stamped for op in ops if op.get('kind') in self.KIND):
+            out['stamp_choice'] = False
         out.update(self.payload_extra(ops))
         return out
 

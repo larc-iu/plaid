@@ -517,8 +517,8 @@ describe('the two approve buttons', () => {
     const unverified = button(view, 'Approve as unverified');
     const verified = button(view, 'Approve as verified');
     expect(unverified.className).toBe(verified.className);
-    expect(unverified.title).toBe("Record every change as the assistant's proposal, unconfirmed.");
-    expect(verified.title).toBe("Record every change as the assistant's work, verified by you.");
+    expect(unverified.title).toBe("Record the assistant's values as its proposals, unconfirmed.");
+    expect(verified.title).toBe("Record the assistant's values as its work, verified by you.");
     await view.unmount();
   });
 
@@ -556,9 +556,35 @@ describe('the two approve buttons', () => {
       'Discard',
     ]);
     expect(button(view, 'Approve as your contribution').title).toBe(
-      'Record every change as your contribution, for a reviewer.',
+      "Record the assistant's values as your contribution, for a reviewer.",
     );
     expect(view.container.querySelector('input[type="checkbox"]')).toBeNull();
+    await view.unmount();
+  });
+
+  // The owner's ruling (2026-11-12): a plan of only changes that write no
+  // value of the assistant's (confirmations, deletions) has no stamp to
+  // choose, so it offers one Approve, as the ticked box does.
+  const confirmOnly = () => ({ ...one(), stampChoice: false });
+
+  it('is one Approve on a plan with no stamp to choose', async () => {
+    const sent = [];
+    const view = await mount(confirmOnly(), { onApprove: (o) => sent.push(o) });
+    expect(names(view)).toEqual(['Approve', 'Discard']);
+    expect(button(view, 'Approve').title).toBe('');
+    await view.step(() => button(view, 'Approve').click());
+    expect(sent).toEqual([{ asHuman: false, asUnverified: false }]);
+    // The box keeps its meaning there.
+    await view.step(() => view.container.querySelector('input[type="checkbox"]').click());
+    expect(names(view)).toEqual(['Approve', 'Discard']);
+    await view.step(() => button(view, 'Approve').click());
+    expect(sent.at(-1)).toEqual({ asHuman: true, asUnverified: false });
+    await view.unmount();
+  });
+
+  it('is one Approve for a contributor too on a plan with no stamp to choose', async () => {
+    const view = await mount(confirmOnly(), { contributor: true });
+    expect(names(view)).toEqual(['Approve', 'Discard']);
     await view.unmount();
   });
 

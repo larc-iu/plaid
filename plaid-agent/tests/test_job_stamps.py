@@ -1,7 +1,7 @@
 """An unattended job's writes are machine proposals, never verified work.
 
-The plan contract's "recorded as verified" is the approval's: a person looked
-at the card and approved it. A job has no approval, so what it writes is
+An approval's verified stamp is a person's: they looked at the card and
+pressed Approve as verified. A job has no approval, so what it writes is
 machine-unverified with the job named in provDetail (SPEC 6.4), and a person
 reviews it later as any service's output. The mode is asked for by name, and
 a write without the job's id is refused before anything is stamped, so a job

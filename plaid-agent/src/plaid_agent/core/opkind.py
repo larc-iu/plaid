@@ -127,6 +127,12 @@ class OpKind:
                   than taking the registry's.
     ``summary``   ``(op, n) -> [(noun, count)]`` where one operation counts as
                   something other than ``n`` of its own noun.
+    ``stamped``   whether approving it writes a stamp the approver chooses
+                  with the card's two buttons (Approve as unverified, Approve
+                  as verified). False for a kind that writes no value of the
+                  assistant's (a confirmation, a deletion, a sentence split, a
+                  guideline): a plan of only such kinds offers one Approve.
+                  True by default, so a kind left unsaid offers the choice.
     ``replaces``  ``(ws, op) -> ids``: the existing things it rewrites or
                   removes, so the card can say when they are a person's work
                   (``core.work``), or ``None`` for a kind that replaces nothing
@@ -154,6 +160,7 @@ class OpKind:
     compact_label: Optional[Callable[[Dict[str, Any], List[Dict[str, Any]]], str]] = None
     summary: Optional[Callable[[Dict[str, Any], int], Sequence[Tuple[Tuple[str, str], int]]]] = None
     extra: Mapping[str, Any] = _field(default_factory=dict)
+    stamped: bool = True
     replaces: Optional[Callable[[Any, Dict[str, Any]], Iterable[str]]] = UNSAID
 
 

@@ -195,7 +195,7 @@ class Approving:
         self._mark_stamp(store, conv_id, request_id, stamp_mode)
         documents = plan.get('documents') or []
         ap.run_with(ops, documents, plan.get('summary') or self.summarize(ops), stamp_mode,
-                    contributor if stamp_mode == 'contributed' else None,
+                    contributor if stamp_mode in ('contributed', 'unverified') else None,
                     detail=proposed_by(item), proposer=item['service'])
         # The plan is written in several requests, and a document opened in
         # between is half written: its editor's repair on open can delete what

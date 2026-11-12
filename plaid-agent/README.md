@@ -111,8 +111,9 @@ user approves or discards, and an approved plan is applied under the user's
 own account, in one audit-log entry. The plan card has two approve buttons,
 and the approver chooses: **Approve as verified** records every change as made
 by the assistant and confirmed by the approver, **Approve as unverified**
-records every change as the assistant's proposal, unconfirmed, as a service's
-proposal is. Ticking **Record as human-made** records it as the approver's
+records every value the assistant writes as its proposal, unconfirmed, as a
+service's proposal is. A confirmation in the plan is made under either button,
+and a plan of only changes that write no value offers one Approve. Ticking **Record as human-made** records it as the approver's
 own work instead.
 
 Replies cite evidence with a tag, `<cite doc="Text 1" ref="s3"/>` (`ref` may

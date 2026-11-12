@@ -11,8 +11,9 @@ buttons. "Approve as verified" (``stamp_mode='verified'``) writes it
 machine-made (``prov: inferred`` with the assistant as ``provSource``, so the
 origin stays traceable) and confirmed (``provConfirmed: true``), exactly the
 state a person reaches by checking a service's output in the editor. "Approve
-as unverified" (``stamp_mode='unverified'``) writes it as the assistant's
-proposal, unconfirmed, as a service's output is written, and confirms nothing.
+as unverified" (``stamp_mode='unverified'``) writes what it sets as the
+assistant's proposal, unconfirmed, as a service's output is written, and makes
+its confirmations as the approver makes them.
 The user may instead approve a plan as HUMAN-made (``stamp_mode='human'``): nothing is
 stamped, and rewritten entities lose their machine keys. When the approver is
 a CONTRIBUTOR (a writer whose work the project reviews), their approval is a
@@ -761,12 +762,10 @@ def _apply_confirm(ctx: Context, op) -> int:
         nonlocal written
         frag = ctx.stamps.confirm(i in theirs)
         if frag is None:
-            # Left for a reviewer, or (approved as unverified) left as it is.
-            if ctx.stamps.contributed:
-                ctx.confirm_left += 1
+            ctx.confirm_left += 1
             return None
         written += 1
-        if ctx.stamps.contributed:
+        if ctx.stamps.reviewed:
             ctx.confirm_accepted += 1
         return frag
 
@@ -1101,7 +1100,7 @@ KIND = ok.registry([
            # never displaces a member word's own link.
            target=lambda op: (('mwe_link', op.get('link_id')) if op.get('token_ids')
                               else ('link', op.get('token_id_hint'))),
-           at=('token_id_hint', 'token_ids'), at_kind=TOKEN, deletes=lambda op: [op['link_id']]),
+           at=('token_id_hint', 'token_ids'), at_kind=TOKEN, deletes=lambda op: [op['link_id']], stamped=False),
     OpKind('link_phrase', ('multi-word expression', 'multi-word expressions'), replaces=_replaces_link_phrase,
            required=('token_ids',),
            apply=_apply_link_phrase, target=lambda op: ('mwe', tuple(op.get('token_ids') or [])),
@@ -1126,7 +1125,7 @@ KIND = ok.registry([
            target=lambda op: ('entry_meta', op.get('item_id'), tuple(sorted((op.get('patch') or {}).keys())))),
     OpKind('set_doc_metadata', ('document metadata value', 'document metadata values'), replaces=None,
            required=('document_id', 'field'), apply=_apply_set_doc_metadata,
-           target=lambda op: ('doc_meta', op.get('document_id'), op.get('field'))),
+           target=lambda op: ('doc_meta', op.get('document_id'), op.get('field')), stamped=False),
     OpKind('create_document', ('new document', 'new documents'), replaces=None, required=('name', 'text'),
            apply=_apply_create_document, target=lambda op: ('create_document', op.get('name'))),
     OpKind('merge_entries', ('merged entry', 'merged entries'), replaces=None,
@@ -1134,32 +1133,32 @@ KIND = ok.registry([
            apply=_apply_merge_entries, at=('keep_id',), at_kind=ENTRY,
            deletes=lambda op: [op['remove_id']] + [l['link_id'] for l in op.get('links') or []],
            extra={'removes_entry': ('remove_id',), 'names_entry': ('keep_id', 'remove_id'),
-                  'lexicon_right': LEXICON_MAINTAINER}),
+                  'lexicon_right': LEXICON_MAINTAINER}, stamped=False),
     OpKind('delete_entry', ('deleted entry', 'deleted entries'), replaces=_replaces_delete_entry,
            required=('item_id',),
            apply=_apply_delete_entry, at=('item_id',), at_kind=ENTRY,
            target=lambda op: ('delete_entry', op.get('item_id')),
            deletes=lambda op: [op['item_id']] + list(op.get('links') or []),
-           extra={'removes_entry': ('item_id',), 'names_entry': ('item_id',), 'lexicon_right': LEXICON_MAINTAINER}),
+           extra={'removes_entry': ('item_id',), 'names_entry': ('item_id',), 'lexicon_right': LEXICON_MAINTAINER}, stamped=False),
     OpKind('rename_entry', ('renamed entry', 'renamed entries'), replaces=None, required=('item_id', 'form'),
            apply=_apply_rename_entry, at=('item_id',), at_kind=ENTRY, token_keys=('item_id',),
            target=lambda op: ('rename_entry', op.get('item_id')),
            # Pinned too: it writes the headword, and the type the new one's
            # markers name, over what was read (REV-FX-R1-1).
            compact_each=('item_id', 'form', ENTRY_READ),
-           extra={'names_entry': ('item_id',), 'pins_entry': 'item_id', 'lexicon_right': LEXICON_MAINTAINER}),
+           extra={'names_entry': ('item_id',), 'pins_entry': 'item_id', 'lexicon_right': LEXICON_MAINTAINER}, stamped=False),
     # Settings: the app writes them on approval and the executor reads them
     # back (`_execute`), so no pass of the executor applies one.
     # Settings, not annotation: nobody's work is in a tagset's list.
     OpKind('set_tagset', ('tagset change', 'tagset changes'), replaces=None,
            required=('owner', 'was', 'name'), stage=APP, shape=SETTINGS,
-           target=lambda op: ('tagset', op.get('owner'), op.get('was'))),
+           target=lambda op: ('tagset', op.get('owner'), op.get('was')), stamped=False),
     OpKind('assign_tagset', ("field's tagset", "fields' tagsets"), replaces=None,
            required=('owner', 'field_kind', 'key'), stage=APP, shape=SETTINGS,
-           target=lambda op: ('tagset_field', op.get('owner'), op.get('field_kind'), op.get('key'))),
+           target=lambda op: ('tagset_field', op.get('owner'), op.get('field_kind'), op.get('key')), stamped=False),
     OpKind('rename_document', ('renamed document', 'renamed documents'), replaces=None,
            required=('document_id', 'name'),
-           apply=_apply_rename_document, target=lambda op: ('rename_document', op.get('document_id'))),
+           apply=_apply_rename_document, target=lambda op: ('rename_document', op.get('document_id')), stamped=False),
     # A confirmation the model NAMED (refs) is a write to what it names, and a
     # change deleting any of it is refused in both orders like every other
     # named write. One over a scope names nothing of its own, so it keeps no
@@ -1176,12 +1175,12 @@ KIND = ok.registry([
            # confirmations that cover DIFFERENT material have different id
            # lists and both stand.
            target=lambda op: ('confirm', op.get('doc'), tuple(op.get('span_ids') or []),
-                              tuple(op.get('token_ids') or []), tuple(op.get('link_ids') or []))),
+                              tuple(op.get('token_ids') or []), tuple(op.get('link_ids') or [])), stamped=False),
     OpKind('discard_analysis', ('discarded analysis', 'discarded analyses'), replaces=_replaces_discard_analysis,
            required=('word_id',),
            apply=_apply_discard_analysis, target=lambda op: ('analysis', op.get('word_id')),
            at=('word_id',), at_kind=TOKEN, token_keys=('word_id',), shape=ANALYSIS,
-           deletes=_discard_analysis_deletes, deletes_tokens=lambda op: list(op.get('morpheme_ids') or [])),
+           deletes=_discard_analysis_deletes, deletes_tokens=lambda op: list(op.get('morpheme_ids') or []), stamped=False),
     OpKind('set_morpheme_form', ('morpheme form', 'morpheme forms'), replaces=_replaces_set_morpheme_form,
            required=('morpheme_id', 'form'),
            apply=_apply_set_morpheme_form, target=lambda op: ('morph_form', op.get('morpheme_id')),
@@ -1213,7 +1212,7 @@ KIND = ok.registry([
            required=('sentence_id', 'position'),
            apply=_apply_split_sentence, target=lambda op: ('sentence_shape', op.get('sentence_id')),
            at=('sentence_id',), at_kind=TOKEN, token_keys=('sentence_id',), shape=SENTENCE_SHAPE,
-           extra={'reshapes': ('sentence_id',), 'anchors': _anchors}),
+           extra={'reshapes': ('sentence_id',), 'anchors': _anchors}, stamped=False),
     OpKind('merge_sentences', ('sentence merge', 'sentence merges'), replaces=_replaces_merge_sentences,
            required=('sentence_id', 'other_id'),
            apply=_apply_merge_sentences, target=lambda op: ('sentence_shape', op.get('sentence_id')),
@@ -1235,11 +1234,11 @@ KIND = ok.registry([
            # here (see `certain`).
            certain=False, extra={'reshapes': ('sentence_id',)}),
     OpKind('add_comment', ('comment', 'comments'), replaces=None, required=('entity_type', 'entity_id', 'body'),
-           apply=apply_add_comment, at=('entity_id',), at_kind=TOKEN, token_keys=('entity_id',)),
+           apply=apply_add_comment, at=('entity_id',), at_kind=TOKEN, token_keys=('entity_id',), stamped=False),
     OpKind('restore_document', ('document restore', 'document restores'), replaces=None,
            required=('document_id', 'as_of'),
            apply=apply_restore_document, shape=ok.EXCLUSIVE,
-           target=lambda op: ('restore', op.get('document_id'))),
+           target=lambda op: ('restore', op.get('document_id')), stamped=False),
     # Resolved to the ops it stands for at approval, so the executor never
     # sees one. The summary counts what it stands for.
     # Resolved when approved, from the documents as they are then, and a

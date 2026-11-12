@@ -337,10 +337,11 @@ A change to something a person made or accepted is marked **Accepted** and count
 A change over a whole document or the whole project, such as confirming everything waiting in a document or replacing a lemma everywhere, is one row with its counts, and **Show where** lists the documents and a few examples.
 
 Approved changes are written under your account.
-**Approve as unverified** records every change as the assistant's proposal, unconfirmed, as a service's proposals are, to be confirmed later in the editor.
-Confirmations in a plan approved this way write nothing.
-**Approve as verified** records every change as the assistant's work accepted by you.
+**Approve as unverified** records every value the assistant writes as its proposal, unconfirmed, as a service's proposals are, to be confirmed later in the editor.
+**Approve as verified** records them as the assistant's work accepted by you.
+A confirmation in the plan is made under either button.
 Tick **Record as human-made** to record them as your own work instead, and the card then offers a single **Approve**.
+A plan of only confirmations, deletions and other changes that write no value offers a single **Approve** as well.
 If your work is reviewed in this project, the second button reads **Approve as your contribution**, and what you approve with it waits for a reviewer, as anything you enter does.
 Once a plan is applied, its card says how it was approved, such as **Approved as unverified**.
 Reading needs Reader access, and applying a plan needs Writer.
