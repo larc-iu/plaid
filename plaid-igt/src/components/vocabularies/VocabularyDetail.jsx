@@ -147,20 +147,18 @@ const quoted = (name) => `“${isolate(name)}”`;
 // The line the Entries screen shows a person who reads the vocabulary and may
 // not change its entries. `role` is their role in its project
 // (`vocabularyRole`), `homeName` that project's name, or null when they cannot
-// read it. Null for a writer or maintainer, who edit.
+// read it. Null for a writer or maintainer, who edit. Only a role in the
+// project lets someone read its name, so anyone else is told it belongs to
+// another project.
 const entriesReadOnlyNote = (role, homeName) => {
   if (role === 'maintainer' || role === 'writer') return null;
-  const name = homeName ? (
-    <>
-      “<span dir="auto">{homeName}</span>”
-    </>
-  ) : null;
-  if (role === 'reader' && name) return <>Read only: you have reader access to {name}.</>;
-  return name ? (
-    <>Read only: this vocabulary belongs to {name}.</>
-  ) : (
-    'Read only: this vocabulary belongs to another project.'
-  );
+  if (role === 'reader' && homeName)
+    return (
+      <>
+        Read only: you have reader access to “<span dir="auto">{homeName}</span>”.
+      </>
+    );
+  return 'Read only: this vocabulary belongs to another project.';
 };
 
 export const VocabularyDetail = () => {
