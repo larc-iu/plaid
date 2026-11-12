@@ -258,7 +258,27 @@ def run_job_task(task, model, ctx, admin, user, project, core_url, api_base, sd:
     say(f'  {task["id"]}/{model} job: {state} in {turns[-1]["wall_s"]}s')
 
 
-def run_one(task, model, rep, stamp_dir: Path, gate: Gate, code: Path, man, keep_db=False, windows=None):
+#: The variable that makes an assistant send its reasoning back to the model
+#: on the later calls of one turn (plaid_agent.core.agent.KEEP_REASONING_ENV,
+#: named here too since the harness never imports the code under test).
+KEEP_REASONING_ENV = 'PLAID_AGENT_KEEP_REASONING'
+
+
+def service_env(code: Path, keep_reasoning: bool = False, base=None) -> dict:
+    """The assistant's environment: the code snapshot first on its path, the
+    gate's dummy key, and the reasoning switch on only for the arm that asks
+    for it (an exported one is never inherited by the other arm)."""
+    env = dict(os.environ if base is None else base)
+    env['PYTHONPATH'] = f'{code / "plaid-agent/src"}:{code / "plaid-client-py/src"}'
+    env['OPENAI_API_KEY'] = 'bench-gate-holds-the-key'
+    env.pop(KEEP_REASONING_ENV, None)
+    if keep_reasoning:
+        env[KEEP_REASONING_ENV] = '1'
+    return env
+
+
+def run_one(task, model, rep, stamp_dir: Path, gate: Gate, code: Path, man, keep_db=False, windows=None,
+            keep_reasoning=False):
     rd = stamp_dir / task['id'] / model / str(rep)
     rd.mkdir(parents=True, exist_ok=True)
     tag = re.sub(r'[^A-Za-z0-9._-]', '_', f'{stamp_dir.name}.{task["id"]}.{model}.{rep}')
@@ -283,9 +303,7 @@ def run_one(task, model, rep, stamp_dir: Path, gate: Gate, code: Path, man, keep
         sd = rd / 'svc'
         sd.mkdir(exist_ok=True)
         (sd / '.token').write_text(man['tokens']['A'])
-        env = dict(os.environ)
-        env['PYTHONPATH'] = f'{code / "plaid-agent/src"}:{code / "plaid-client-py/src"}'
-        env['OPENAI_API_KEY'] = 'bench-gate-holds-the-key'
+        env = service_env(code, keep_reasoning)
         if task.get('job'):
             run_job_task(task, model, ctx, admin, user, project, core.url, gate.base(tag), sd, env, rd, turns,
                          (windows or {}).get(model))
@@ -431,7 +449,8 @@ def rerun_infra(stamp, jobs, code_arg, keep_db):
     try:
         with ThreadPoolExecutor(max_workers=max(1, jobs)) as ex:
             windows = meta.get('context_windows')
-            list(ex.map(lambda j: run_one(*j, sd, gate, code, man, keep_db, windows), jobs_))
+            keep = bool(meta.get('keep_reasoning'))
+            list(ex.map(lambda j: run_one(*j, sd, gate, code, man, keep_db, windows, keep), jobs_))
     finally:
         gate.stop()
     say(f'done: {sd}')
@@ -450,6 +469,9 @@ def main():
     ap.add_argument('--context-window', action='append', metavar='MODEL=TOKENS',
                     help='the tokens MODEL can be sent, passed to its assistants (default: none passed, '
                          'litellm\'s figure). Once per model')
+    ap.add_argument('--keep-reasoning', action='store_true',
+                    help='send the model its own reasoning back on the later calls of a turn (the second arm of '
+                         'a reasoning experiment). Off: the assistants as they run in production')
     a = ap.parse_args()
     if a.rerun_infra:
         if a.tasks:
@@ -465,7 +487,8 @@ def main():
     sd.mkdir(parents=True, exist_ok=True)
     (sd / 'run.json').write_text(json.dumps({
         'code': code.name, 'snapshot_built': man['built_at'], 'importers_commit': man['importers_commit'],
-        'models': models, 'context_windows': windows, 'reps': a.reps, 'tasks': [t['id'] for t in tasks],
+        'models': models, 'context_windows': windows, 'keep_reasoning': a.keep_reasoning, 'reps': a.reps,
+        'tasks': [t['id'] for t in tasks],
         'argv': sys.argv[1:],
         'started': datetime.now().isoformat(timespec='seconds')}, indent=1))
     gate = Gate.from_env().start()
@@ -473,7 +496,7 @@ def main():
     jobs = [(t, m, r) for t in tasks for m in models for r in range(1, a.reps + 1)]
     try:
         with ThreadPoolExecutor(max_workers=max(1, a.jobs)) as ex:
-            list(ex.map(lambda j: run_one(*j, sd, gate, code, man, a.keep_db, windows), jobs))
+            list(ex.map(lambda j: run_one(*j, sd, gate, code, man, a.keep_db, windows, a.keep_reasoning), jobs))
     finally:
         gate.stop()
     say(f'done: {sd}')

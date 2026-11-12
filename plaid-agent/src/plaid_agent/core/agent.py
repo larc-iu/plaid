@@ -70,6 +70,12 @@ class Toolkit:
 DEFAULT_MAX_OUTPUT_TOKENS = 32768
 
 
+#: The environment variable that turns ``ModelConfig.keep_reasoning`` on in a
+#: service: the bench sets it for one arm of a run. Not a flag, so no operator
+#: is offered it.
+KEEP_REASONING_ENV = 'PLAID_AGENT_KEEP_REASONING'
+
+
 @dataclass
 class ModelConfig:
     model: str
@@ -90,6 +96,12 @@ class ModelConfig:
     # Stream the model's text as it is written (progress events carry the
     # text so far). Off for a provider that misbehaves under streaming.
     stream: bool = True
+    # Send the model's reasoning back to it on the later calls of the same
+    # turn (``reasoning_content`` on its own messages), for the bench's
+    # second arm (bench README, --keep-reasoning). Off by default and never
+    # set by a service flag: the transcript kept between turns has none either
+    # way (ruling D1). The service reads PLAID_AGENT_KEEP_REASONING=1.
+    keep_reasoning: bool = False
     # How many tokens the model can be sent, as the operator stated it
     # (--context-window). None asks the model library, which knows many
     # models by name and nothing about one behind a proxy.
@@ -1250,6 +1262,17 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
               shrink: Optional[Shrink] = None, pace: Optional[Any] = None) -> TurnResult:
     history = _clean_transcript(transcript)
     new: List[Dict[str, Any]] = []
+    # The reasoning of this turn's own calls, by the message it came with.
+    # Never part of ``new``, which is the transcript kept and sent on later
+    # turns (ruling D1): only with ``cfg.keep_reasoning`` is it sent back, and
+    # only to the calls of this turn (`sent`).
+    thoughts: Dict[int, str] = {}
+
+    def sent(msgs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        if not cfg.keep_reasoning:
+            return msgs
+        return [{**m, 'reasoning_content': thoughts[id(m)]} if id(m) in thoughts else m for m in msgs]
+
     rounds = 0
     asked = _asked(history)
     # The line the reader last saw from this loop, which a wait for a busy
@@ -1340,13 +1363,13 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
     def ask_for_the_reply(kwargs: Dict[str, Any], nudge: str):
         """One more call, without tools, when the model owes the user words.
         ``(text, reasoning)``."""
-        kwargs = {**kwargs, 'messages': [{'role': 'system', 'content': system}] + history + new
+        kwargs = {**kwargs, 'messages': [{'role': 'system', 'content': system}] + history + sent(new)
                   + [{'role': 'user', 'content': nudge}]}
         kwargs.pop('tools', None)
         kwargs.pop('tool_choice', None)
         live['n'] = rounds + 1
         try:
-            resp = ask(kwargs, lambda: [{'role': 'system', 'content': system}] + history + new
+            resp = ask(kwargs, lambda: [{'role': 'system', 'content': system}] + history + sent(new)
                        + [{'role': 'user', 'content': nudge}])
         except TurnCancelled:
             raise
@@ -1357,6 +1380,8 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
         thinking = _thinking_of(choice.message)
         d = _message_to_dict(choice.message)
         d.pop('tool_calls', None)
+        if thinking:
+            thoughts[id(d)] = thinking
         new.append(d)  # the nudge itself never enters the saved transcript
         text = (d.get('content') or '').strip()
         if not text:
@@ -1444,7 +1469,7 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
             raise TurnCancelled()
         on_progress(min(85, 8 + rounds * 5), 'Thinking…' if rounds == 0 else 'Thinking more…')
         kwargs: Dict[str, Any] = dict(**_provider_kwargs(cfg), tools=kit.tools_for(ws), tool_choice='auto',
-                                      messages=[{'role': 'system', 'content': system}] + history + new)
+                                      messages=[{'role': 'system', 'content': system}] + history + sent(new))
         if cfg.temperature is not None:
             kwargs['temperature'] = cfg.temperature
         if cfg.max_tokens:
@@ -1453,12 +1478,12 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
             note = pace.note(rounds, kwargs)
             if note:
                 new.append({'role': 'user', 'content': note})
-                kwargs['messages'] = [{'role': 'system', 'content': system}] + history + new
+                kwargs['messages'] = [{'role': 'system', 'content': system}] + history + sent(new)
                 kwargs['tools'] = kit.tools_for(ws)
             pace.sending(kwargs)
         live['n'] = rounds + 1
         try:
-            resp = ask(kwargs, lambda: [{'role': 'system', 'content': system}] + history + new)
+            resp = ask(kwargs, lambda: [{'role': 'system', 'content': system}] + history + sent(new))
         except TurnCancelled:
             raise
         except Exception as e:  # noqa: BLE001 - a provider failure, a timeout, a cut reply
@@ -1480,6 +1505,8 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
         choice = resp.choices[0]
         thinking = _thinking_of(choice.message)
         d = _message_to_dict(choice.message)
+        if thinking:
+            thoughts[id(d)] = thinking
         new.append(d)
         calls = d.get('tool_calls') or []
         rnd = new_round(rounds + 1, cfg.model, asked if rounds == 0 else None)

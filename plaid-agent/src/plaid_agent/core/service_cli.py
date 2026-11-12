@@ -10,8 +10,8 @@ from urllib.parse import urlsplit
 
 from plaid_client.workflows.llm import add_model_pool_argument, add_timeout_argument, is_busy, provider_secrets
 
-from .agent import (DEFAULT_MAX_OUTPUT_TOKENS, ModelConfig, ModelTooSlow, PING_TIMEOUT_S, context_window, output_cap,
-                    ping_model)
+from .agent import (DEFAULT_MAX_OUTPUT_TOKENS, KEEP_REASONING_ENV, ModelConfig, ModelTooSlow, PING_TIMEOUT_S,
+                    context_window, output_cap, ping_model)
 from .limits import MAX_PROJECTS
 from .ops import RECORD_PROTOCOL
 from .web import BACKENDS, WebConfig, ping as ping_search
@@ -71,7 +71,8 @@ class ServiceCli:
                                max_steps=args.max_steps, temperature=args.temperature,
                                max_tokens=output_cap(args.model, args.max_tokens),
                                stream=not getattr(args, 'no_stream', False), timeout=args.timeout,
-                               context_window=getattr(args, 'context_window', None))
+                               context_window=getattr(args, 'context_window', None),
+                               keep_reasoning=os.environ.get(KEEP_REASONING_ENV) == '1')
         self.kit = self.toolkit()
         # A provider quotes the key it refused back in its own error text.
         self.REQUEST_SECRETS = provider_secrets(args.api_key)

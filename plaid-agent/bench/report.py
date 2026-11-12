@@ -201,7 +201,8 @@ def one(stamp):
     if meta.exists():
         m = json.loads(meta.read_text())
         lines += [f'Code {m.get("code")}, snapshot built {m.get("snapshot_built")}, models '
-                  f'{", ".join(m.get("models") or [])}, {m.get("reps")} repeat(s).', '']
+                  f'{", ".join(m.get("models") or [])}, {m.get("reps")} repeat(s)'
+                  + (', reasoning sent back within a turn' if m.get('keep_reasoning') else '') + '.', '']
     infra = [s for s in ss if s.get('infra')]
     groups = defaultdict(list)
     for s in ss:
