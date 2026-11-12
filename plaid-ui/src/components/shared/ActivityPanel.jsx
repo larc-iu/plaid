@@ -122,7 +122,9 @@ export const ActivityPanel = ({ client, projectId, roster, projectHref, document
             <span className="whitespace-nowrap">{nameOf(row)}</span>
           </div>
         ) : (
-          <span className="text-muted-foreground">Before accounts were recorded</span>
+          // A change with no user is one the server made itself: an upgrade
+          // rewriting stored data, or the first account being set up.
+          <span className="text-muted-foreground">Plaid, during an upgrade or setup</span>
         ),
     },
     {
