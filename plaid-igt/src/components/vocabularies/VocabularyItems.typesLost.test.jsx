@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { MemoryRouter, Routes, Route, useLocation, useNavigate } from 'react-router-dom';
+import { MemoryRouter } from 'react-router-dom';
 import { renderComponent, all } from '@ui/test/renderComponent.jsx';
 
 // Deleting an entry with a type whose links lie in projects this person
