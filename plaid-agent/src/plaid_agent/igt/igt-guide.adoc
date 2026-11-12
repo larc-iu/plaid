@@ -454,6 +454,8 @@ That project's members have the same role in the vocabulary:
 Another project can link the vocabulary when a maintainer of that project is also a member of the vocabulary's project.
 There its members read the entries and link words and morphemes to them, and change an entry only by their role in the vocabulary's own project.
 The vocabulary's **Settings** tab lists them under **Used by other projects**, and **Unlink** ends one's link and removes its links to the entries, after saying how many there are.
+The unlink is listed in that project's Activity and in the vocabulary's History.
+Morphemes there that took their type from an entry keep it when you can write that project, and have none otherwise.
 A project you cannot open is listed without its name.
 
 A maintainer of two projects can move a vocabulary from one to the other on its page, and the old project keeps it linked.
