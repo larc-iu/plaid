@@ -112,6 +112,7 @@ test("the vocabulary's maintainer ends a borrowing, and opening the confirm only
 
   await dialog.getByRole('button', { name: 'Unlink' }).click();
   await expect(page.getByText('No other project uses this vocabulary.')).toBeVisible();
-  expect(await borrows()).toBe(false);
+  // The list empties at once, before the unlink's batch has landed.
+  await expect.poll(borrows).toBe(false);
   expect(seen).toEqual(['POST /api/v1/batch']);
 });
