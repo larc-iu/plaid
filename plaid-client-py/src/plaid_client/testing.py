@@ -1026,6 +1026,10 @@ class FakeClient:
 
     ``users.get`` answers any user's record, an administrator when ``admins``
     names them.
+
+    ``jobs`` keeps the server's assistant jobs in memory under core's state
+    rules, so a job worker runs with no core (see ``_FakeJobs`` for its clock
+    and the other knobs a test sets).
     """
 
     #: resources a caller may write through, each recording under its own name.
@@ -1100,6 +1104,8 @@ class FakeClient:
         #: the users ``users.get`` answers as administrators
         self.admins = {normalize_user_id(u) for u in admins}
         self.users = FakeClient._Users(self)
+        #: the server's jobs, in memory under core's state rules (see ``_FakeJobs``)
+        self.jobs = _FakeJobs(self)
         # A subclass that answers vocabulary reads its own way, as a property,
         # keeps it.
         if not isinstance(inspect.getattr_static(self, 'vocab_layers', None), property):
@@ -1817,6 +1823,400 @@ class FakeClient:
             page, rest = rows[:limit or 100], rows[limit or 100:]
             return {'entries': page,
                     'next_cursor': page[-1]['key'] if rest else None}
+
+
+# Core's job constants (plaid.sql.job), as the fake jobs keep them.
+_JOB_APPS = {'igt': ('translate', 'gloss', 'link')}
+_JOB_ACTIVE = ('waiting', 'running', 'stopping')
+_JOB_FINAL = ('done', 'cancelled', 'failed')
+_JOB_LEASE_S = 120
+_JOB_HEARTBEAT_S = 30
+_JOB_DOCUMENTS_MAX = 500
+_JOB_NOTE_MAX_CHARS = 2000
+_JOB_REPORT_MAX_BYTES = 1000000
+_JOB_ANALYSIS_MAX_CHARS = 4000
+_JOB_DECISIONS_PER_CALL = 1000
+_JOB_SKIPPED_PER_DOCUMENT = 500
+_JOB_COUNT_KEYS = ('translations', 'refreshed', 'words', 'links', 'entries', 'changed', 'protected')
+
+
+class _FakeJobs:
+    """``client.jobs`` of a ``FakeClient``: the jobs of the server, in memory,
+    under core's state rules (CONTRACT 3 of the jobs round), so a job worker
+    runs with no core. Every call answers as the real client hands the
+    answer back (snake_case, no ``job/``) and refuses as core does, with the
+    same status, ``error`` and ``code``.
+
+    The knobs a test sets:
+
+    - ``now``: the clock, a function answering seconds (``time.time``). A
+      lease lapses ``JOB_LEASE_S`` (120) seconds after the last heartbeat.
+    - ``user``: who the calls are made as, the starter of a job ``create``
+      makes and the account a ``claim`` records.
+    - ``can_write(user_id, project_id)``: whether the starter still writes
+      the project (always, unless set). ``claim`` and ``heartbeat`` ask it,
+      and settle the job ``failed``, ``starter-access``, when it says no.
+    - ``model_load``: ``{pool: {'in_flight', 'last_finished_at'}}``, what
+      ``model_busy`` answers (no load for a pool not named).
+    - ``hidden_projects``: projects being deleted. ``claim`` passes their jobs
+      over, and a worker call on one answers 404.
+
+    A project's documents are the fixture's (``documents``, or a project of
+    ``projects``), and a document row's ``name`` is read from them, None once
+    the document is gone. Roles are not modelled beyond ``can_write``: any
+    caller may create, cancel or call a worker route, and an unknown job is
+    the admin's 404. Every call is kept in ``calls`` as ``(method, payload)``,
+    apart from the client's own log, so a heartbeat thread does not mix into
+    the writes a test reads. A batch's ``jobs`` is the client's: the worker's
+    calls go over the wire from a batch, and a test of the worker does not
+    start a job on one."""
+
+    def __init__(self, client):
+        self._client = client
+        self.now = time.time
+        self.user = 'user@example.com'
+        self.can_write = lambda user_id, project_id: True
+        self.model_load = {}
+        self.hidden_projects = set()
+        #: (method, payload) for each call, in order
+        self.calls = []
+        #: job id -> the stored job, its rows under ``documents``
+        self.rows = {}
+        #: job id -> {(form, key): decision row}
+        self.decision_rows = {}
+        self._seen = {'seen_at': None, 'model': None}
+        self._seq = itertools.count()
+        self._tokens = itertools.count(1)
+
+    # -- helpers --
+    def _iso(self, seconds=None):
+        at = self.now() if seconds is None else seconds
+        return datetime.fromtimestamp(at, timezone.utc).isoformat(timespec='milliseconds').replace('+00:00', 'Z')
+
+    def _refuse(self, status, method, path, error, **extra):
+        url = f'{self._client.base_url}{path}'
+        return PlaidAPIError(f'HTTP {status} {error} at {url}', status=status, url=url, method=method,
+                             response_data={'error': error, **extra})
+
+    def _documents_of(self, project_id):
+        path = f'/api/v1/projects/{project_id}/documents'
+        docs = self._client._project(project_id, path)['documents']
+        docs = docs.values() if isinstance(docs, dict) else docs
+        return {d.get('id'): d for d in docs}
+
+    def _live_lease(self, job):
+        return (job['state'] in ('running', 'stopping') and job['heartbeat_s_at'] is not None
+                and self.now() - job['heartbeat_s_at'] < _JOB_LEASE_S)
+
+    def _shape(self, job, *, documents=True, report=True):
+        out = {k: copy.deepcopy(v) for k, v in job.items()
+               if k not in ('documents', 'report', 'heartbeat_s_at', 'seq', 'core_failed',
+                            'claimed_stopping', 'worker_id', 'worker_user')}
+        out['lease_s'] = _JOB_LEASE_S
+        out['ahead'] = (sum(1 for j in self.rows.values()
+                            if j['state'] in _JOB_ACTIVE and j['seq'] < job['seq'])
+                        if job['state'] == 'waiting' else None)
+        if documents:
+            try:
+                live = self._documents_of(job['project'])
+            except PlaidAPIError:
+                live = {}
+            out['documents'] = [{**copy.deepcopy(row), 'name': (live.get(row['document_id']) or {}).get('name')}
+                                for row in job['documents']]
+        if report:
+            out['report'] = copy.deepcopy(job['report'])
+        return out
+
+    def _job(self, job_id, method, path):
+        """The job a worker route names: 404 for one unknown or in a project
+        being deleted."""
+        job = self.rows.get(job_id)
+        if job is None or job['project'] in self.hidden_projects:
+            raise self._refuse(404, method, path, 'Job not found')
+        return job
+
+    def _held(self, job_id, worker_id, method, path):
+        job = self._job(job_id, method, path)
+        if job['worker_id'] != worker_id:
+            raise self._refuse(409, method, path, 'Another worker holds this job.', code='job-taken')
+        return job
+
+    def _report_from_rows(self, job, stopped):
+        """The report core writes itself, from the document rows."""
+        rows = job['documents']
+        sums = {k: sum((r['counts'] or {}).get(k, 0) for r in rows) for k in _JOB_COUNT_KEYS}
+        skipped = [s for r in rows for s in r['skipped']]
+
+        def skips(reason):
+            return sum(1 for s in skipped if s.get('reason') == reason)
+
+        return {
+            'state': job['state'], 'reason': job['reason'], 'tasks': list(job['tasks']),
+            'note': job['note'], 'started_by': job['started_by'], 'model': job['model'],
+            'started_at': job['started_at'], 'finished_at': job['finished_at'],
+            'paused_for_people_s': None, 'paused_for_model_s': None, 'stopped': stopped,
+            'totals': {
+                'documents_done': sum(1 for r in rows if r['state'] == 'done'),
+                'documents_in_use': sum(1 for r in rows if r['state'] == 'in-use'),
+                'documents_gone': sum(1 for r in rows if r['state'] == 'gone'),
+                'documents_not_reached': sum(1 for r in rows
+                                             if r['state'] not in ('done', 'in-use', 'gone')),
+                'sentences': sum(r['done'] or 0 for r in rows),
+                **{k: sums[k] for k in ('translations', 'refreshed', 'words', 'links', 'entries')},
+                'skipped_too_long': skips('too-long'), 'skipped_failed': skips('failed'),
+                'skipped_changed': skips('changed'),
+                'changed': sums['changed'], 'protected': sums['protected']},
+            'documents': [{k: copy.deepcopy(r[k]) for k in
+                           ('document_id', 'state', 'sentences', 'targets', 'done', 'counts',
+                            'skipped', 'gloss_group', 'harmonize_group')} for r in rows],
+            'harmonize': {'changed': [], 'left': [], 'changed_more': 0, 'left_more': 0},
+            'entries': {'created': [], 'deleted': [], 'unlinked': [],
+                        'created_more': 0, 'deleted_more': 0, 'unlinked_more': 0},
+        }
+
+    def _end(self, job, state, reason, *, stopped=_client._UNSET):
+        """Settle a job as core does: a final state, its time, and when
+        ``stopped`` is given, the report core writes from the rows."""
+        job.update(state=state, reason=reason, finished_at=self._iso(),
+                   current_document=None, waiting_for=None)
+        if stopped is not _client._UNSET:
+            job['report'] = self._report_from_rows(job, stopped)
+
+    # -- a person's calls --
+    def create(self, project_id, app, tasks, documents=None, note=None, *, id=None):
+        path = f'/api/v1/projects/{project_id}/jobs'
+        self.calls.append(('create', {'project_id': project_id, 'app': app, 'tasks': list(tasks),
+                                      'documents': None if documents is None else list(documents),
+                                      'note': note, 'id': id}))
+        live = self._documents_of(project_id)
+        if app not in _JOB_APPS:
+            raise self._refuse(400, 'POST', path, f'Unknown app: {app}.')
+        known = _JOB_APPS[app]
+        if not tasks or any(t not in known for t in tasks):
+            raise self._refuse(400, 'POST', path, f'tasks: give at least one of {", ".join(known)}.')
+        if 'link' in tasks and 'gloss' not in tasks:
+            raise self._refuse(400, 'POST', path, 'tasks: link needs gloss.')
+        if documents is not None:
+            outside = sum(1 for d in documents if d not in live)
+            if outside:
+                raise self._refuse(400, 'POST', path, f'documents: {outside} are not documents of this project.')
+            if len(documents) > _JOB_DOCUMENTS_MAX:
+                raise self._refuse(400, 'POST', path, f'A job takes at most {_JOB_DOCUMENTS_MAX} documents. '
+                                                      f'This one names {len(documents):,}.')
+        if note is not None and len(note) > _JOB_NOTE_MAX_CHARS:
+            raise self._refuse(400, 'POST', path, f'The note is {len(note):,} characters. '
+                                                  f"A job's note is at most {_JOB_NOTE_MAX_CHARS:,}.")
+        if documents is None:
+            if not live:
+                raise self._refuse(400, 'POST', path, 'This project has no documents.')
+            documents = [d for d, _ in sorted(live.items(), key=lambda kv: (kv[1].get('name') or '', kv[0]))]
+        for other in self.rows.values():
+            if other['project'] == project_id and other['state'] in _JOB_ACTIVE:
+                raise self._refuse(409, 'POST', path, 'This project already has a job.', code='job-active',
+                                   job=other['id'])
+        if id is not None and id in self.rows:
+            raise self._refuse(409, 'POST', path, 'id-taken', deleted=False)
+        job_id = id or str(uuid7())
+        at = self._iso()
+        self.rows[job_id] = {
+            'id': job_id, 'project': project_id, 'app': app,
+            'tasks': [t for t in known if t in tasks], 'note': note,
+            'started_by': self.user, 'started_by_name': self.user.split('@')[0],
+            'state': 'waiting', 'phase': None, 'reason': None, 'message': None, 'waiting_for': None,
+            'current_document': None, 'cancelled_by': None, 'model': None,
+            'created_at': at, 'started_at': None, 'heartbeat_at': None, 'finished_at': None,
+            'documents': [{'document_id': d, 'position': i, 'state': 'waiting', 'sentences': None,
+                           'targets': None, 'done': None, 'last_sentence': None, 'defers': 0,
+                           'counts': {}, 'skipped': [], 'gloss_group': None, 'harmonize_group': None,
+                           'updated_at': at} for i, d in enumerate(documents)],
+            'report': None,
+            'heartbeat_s_at': None, 'seq': next(self._seq), 'worker_id': None, 'worker_user': None,
+            'core_failed': False, 'claimed_stopping': False,
+        }
+        return self._shape(self.rows[job_id])
+
+    def list(self, project_id):
+        """A project's jobs, newest first, each without documents and report."""
+        self.calls.append(('list', {'project_id': project_id}))
+        self._client._project(project_id, f'/api/v1/projects/{project_id}/jobs')
+        jobs = sorted((j for j in self.rows.values() if j['project'] == project_id),
+                      key=lambda j: j['seq'], reverse=True)
+        return [self._shape(j, documents=False, report=False) for j in jobs]
+
+    def list_page(self, project_id, *, limit=None, cursor=None):
+        """One page, as the envelope the real client hands back. The cursor
+        is opaque to a caller, so here it is the index the next page starts at."""
+        rows = self.list(project_id)
+        start = int(cursor or 0)
+        end = start + (limit or 100)
+        return {'entries': rows[start:end], 'next_cursor': str(end) if end < len(rows) else None}
+
+    def iter_pages(self, project_id, *, page_size=1000):
+        rows = self.list(project_id)
+        for start in range(0, len(rows), page_size):
+            yield rows[start:start + page_size]
+
+    def get(self, job_id):
+        self.calls.append(('get', {'job_id': job_id}))
+        return self._shape(self._job(job_id, 'GET', f'/api/v1/jobs/{job_id}'))
+
+    def active(self, project_id):
+        self.calls.append(('active', {'project_id': project_id}))
+        for job in self.rows.values():
+            if job['project'] == project_id and job['state'] in _JOB_ACTIVE:
+                return self._shape(job, report=False) | {'report': None}
+        return None
+
+    def cancel(self, job_id):
+        path = f'/api/v1/jobs/{job_id}/cancel'
+        self.calls.append(('cancel', {'job_id': job_id}))
+        job = self._job(job_id, 'POST', path)
+        if job['state'] in _JOB_FINAL:
+            raise self._refuse(409, 'POST', path, 'This job has ended.', code='job-finished')
+        if job['cancelled_by'] is None:
+            job['cancelled_by'] = self.user
+        if job['state'] == 'waiting':
+            self._end(job, 'cancelled', 'cancelled')
+        elif not self._live_lease(job):
+            self._end(job, 'cancelled', 'cancelled', stopped='without-worker')
+        else:
+            job['state'] = 'stopping'
+        return self._shape(job)
+
+    def worker(self):
+        self.calls.append(('worker', {}))
+        return {**self._seen, 'note_max_chars': _JOB_NOTE_MAX_CHARS}
+
+    # -- the worker's calls --
+    def claim(self, worker_id, model, apps):
+        self.calls.append(('claim', {'worker_id': worker_id, 'model': model, 'apps': list(apps)}))
+        self._seen = {'seen_at': self._iso(), 'model': model}
+        if any(self._live_lease(j) for j in self.rows.values()):
+            return None
+        while True:
+            pool = sorted((j for j in self.rows.values()
+                           if j['app'] in apps and j['project'] not in self.hidden_projects),
+                          key=lambda j: j['seq'])
+            job = (next((j for j in pool if j['state'] in ('running', 'stopping')), None)
+                   or next((j for j in pool if j['state'] == 'waiting'), None))
+            if job is None:
+                return None
+            if not self.can_write(job['started_by'], job['project']):
+                self._end(job, 'failed', 'starter-access', stopped=None)
+                continue
+            break
+        job['claimed_stopping'] = job['state'] == 'stopping'
+        if job['state'] != 'stopping':
+            job['state'] = 'running'
+        job.update(worker_id=worker_id, worker_user=self.user, model=model,
+                   heartbeat_at=self._iso(), heartbeat_s_at=self.now())
+        if job['started_at'] is None:
+            job['started_at'] = job['heartbeat_at']
+        return {'job': self._shape(job), 'token': f'job-token-{next(self._tokens)}',
+                'heartbeat_s': _JOB_HEARTBEAT_S}
+
+    def heartbeat(self, job_id, worker_id, *, phase=_client._UNSET, message=_client._UNSET,
+                  waiting_for=_client._UNSET, current_document=_client._UNSET):
+        path = f'/api/v1/jobs/{job_id}/heartbeat'
+        fields = {k: v for k, v in (('phase', phase), ('message', message), ('waiting_for', waiting_for),
+                                    ('current_document', current_document)) if v is not _client._UNSET}
+        self.calls.append(('heartbeat', {'job_id': job_id, 'worker_id': worker_id, **fields}))
+        job = self._held(job_id, worker_id, 'POST', path)
+        if job['state'] in _JOB_FINAL:
+            raise self._refuse(409, 'POST', path, 'This job has ended.', code='job-finished')
+        if not self.can_write(job['started_by'], job['project']):
+            self._end(job, 'failed', 'starter-access')
+            job['core_failed'] = True
+            raise self._refuse(409, 'POST', path,
+                               'The person who started this job can no longer write in this project.',
+                               code='job-failed', reason='starter-access')
+        job.update(fields)
+        job.update(heartbeat_at=self._iso(), heartbeat_s_at=self.now())
+        return {'state': job['state'], 'token': f'job-token-{next(self._tokens)}', 'lease_s': _JOB_LEASE_S}
+
+    def update_document(self, job_id, document_id, worker_id, *, state=_client._UNSET,
+                        sentences=_client._UNSET, targets=_client._UNSET, done=_client._UNSET,
+                        last_sentence=_client._UNSET, defers=_client._UNSET, counts=_client._UNSET,
+                        skipped=_client._UNSET, gloss_group=_client._UNSET,
+                        harmonize_group=_client._UNSET):
+        path = f'/api/v1/jobs/{job_id}/documents/{document_id}'
+        fields = {k: copy.deepcopy(v) for k, v in (
+            ('state', state), ('sentences', sentences), ('targets', targets), ('done', done),
+            ('last_sentence', last_sentence), ('defers', defers), ('counts', counts),
+            ('skipped', skipped), ('gloss_group', gloss_group), ('harmonize_group', harmonize_group))
+            if v is not _client._UNSET}
+        self.calls.append(('update_document', {'job_id': job_id, 'document_id': document_id,
+                                               'worker_id': worker_id, **fields}))
+        job = self._held(job_id, worker_id, 'PUT', path)
+        row = next((r for r in job['documents'] if r['document_id'] == document_id), None)
+        if row is None:
+            raise self._refuse(404, 'PUT', path, 'Document not in job')
+        if len(fields.get('skipped') or []) > _JOB_SKIPPED_PER_DOCUMENT:
+            raise self._refuse(400, 'PUT', path, f'skipped: at most {_JOB_SKIPPED_PER_DOCUMENT} sentences.')
+        row.update(fields, updated_at=self._iso())
+        return self._shape(job)['documents'][row['position']]
+
+    def finish(self, job_id, worker_id, state, report, reason=None):
+        path = f'/api/v1/jobs/{job_id}/finish'
+        self.calls.append(('finish', {'job_id': job_id, 'worker_id': worker_id, 'state': state,
+                                      'reason': reason, 'report': copy.deepcopy(report)}))
+        job = self._held(job_id, worker_id, 'POST', path)
+        now = job['state']
+        allowed = {'done': now == 'running',
+                   'cancelled': now == 'stopping' or (now == 'running' and job['claimed_stopping']),
+                   'failed': now in ('running', 'stopping')
+                   or (now == 'failed' and job['core_failed'] and job['report'] is None)}
+        if not allowed.get(state):
+            raise self._refuse(409, 'POST', path, f'This job cannot end as {state} now.', code='job-state')
+        wire = json.dumps(transform_request(report))
+        if len(wire.encode()) > _JOB_REPORT_MAX_BYTES:
+            raise self._refuse(400, 'POST', path, f'The report is over {_JOB_REPORT_MAX_BYTES:,} bytes.')
+        self._end(job, state, reason)
+        job['report'] = transform_response(json.loads(wire))
+        return self._shape(job)
+
+    def add_decisions(self, job_id, worker_id, decisions):
+        path = f'/api/v1/jobs/{job_id}/decisions'
+        self.calls.append(('add_decisions', {'job_id': job_id, 'worker_id': worker_id,
+                                             'decisions': copy.deepcopy(list(decisions))}))
+        self._held(job_id, worker_id, 'POST', path)
+        if len(decisions) > _JOB_DECISIONS_PER_CALL:
+            raise self._refuse(400, 'POST', path, f'decisions: at most {_JOB_DECISIONS_PER_CALL:,} a call.')
+        for i, d in enumerate(decisions):
+            if len(d['analysis']) > _JOB_ANALYSIS_MAX_CHARS:
+                raise self._refuse(400, 'POST', path, f'decisions: the analysis of {i} is over '
+                                                      f'{_JOB_ANALYSIS_MAX_CHARS:,} characters.')
+        rows = self.decision_rows.setdefault(job_id, {})
+        for d in decisions:
+            row = rows.setdefault((d['form'], d['key']), {
+                'form': d['form'], 'key': d['key'], 'analysis': d['analysis'], 'count': 0,
+                'first_document': d.get('document_id'), 'first_sentence': d.get('sentence_id')})
+            row['count'] += d['count']
+
+    def lookup_decisions(self, job_id, forms):
+        path = f'/api/v1/jobs/{job_id}/decisions/lookup'
+        self.calls.append(('lookup_decisions', {'job_id': job_id, 'forms': list(forms)}))
+        self._job(job_id, 'POST', path)
+        if not forms:
+            raise self._refuse(400, 'POST', path, 'forms: give at least one form.')
+        if len(forms) > _JOB_DECISIONS_PER_CALL:
+            raise self._refuse(400, 'POST', path, f'forms: at most {_JOB_DECISIONS_PER_CALL:,} a call.')
+        rows = [r for r in self.decision_rows.get(job_id, {}).values() if r['form'] in set(forms)]
+        return [dict(r) for r in sorted(rows, key=lambda r: (r['form'], -r['count'], r['key']))]
+
+    def decisions(self, job_id):
+        self.calls.append(('decisions', {'job_id': job_id}))
+        self._job(job_id, 'GET', f'/api/v1/jobs/{job_id}/decisions')
+        rows = self.decision_rows.get(job_id, {}).values()
+        return [dict(r) for r in sorted(rows, key=lambda r: (r['form'], r['key']))]
+
+    def model_busy(self, pool):
+        path = '/api/v1/jobs/model-busy'
+        self.calls.append(('model_busy', {'pool': pool}))
+        if not pool:
+            raise self._refuse(400, 'GET', path, 'pool: name a model pool.')
+        load = self.model_load.get(pool) or {}
+        return {'in_flight': load.get('in_flight', 0), 'last_finished_at': load.get('last_finished_at')}
 
 
 class _BatchUserData:

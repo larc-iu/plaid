@@ -4,13 +4,18 @@ tests/fixtures/wire.json. Here: a 204 answers None, a keyword given as None
 is sent as null (clear) and one left out is not sent (leave), the worker's
 calls carry no Idempotency-Key and go over the wire from a batch, a person's
 calls never join an open operation, and the answers are recased.
-plaid-client-js's test/jobs.test.js is the twin."""
+plaid-client-js's test/jobs.test.js is the twin. After them, the fake's jobs
+(``FakeClient.jobs``) are held to core's state rules, a test for each rule."""
 
+import inspect
 import json
 from urllib.parse import parse_qsl, urlsplit
 
-from plaid_client.client import PlaidClient
-from plaid_client.testing import Response, recording_session
+import pytest
+
+from plaid_client.client import JobsResource, PlaidClient
+from plaid_client.http import PlaidAPIError
+from plaid_client.testing import FakeClient, Response, _FakeJobs, recording_session
 
 WIRE_JOB = {
     'job/id': 'j1',
@@ -198,3 +203,217 @@ def test_the_workers_calls_are_signals_unkeyed_outside_any_operation_sent_from_a
         assert s['key'] is None, f"{s['path']} carries no Idempotency-Key"
         assert 'group-id' not in s['query'], f"{s['path']} joins no operation"
         assert 'document-version' not in s['query'], f"{s['path']} claims no version"
+
+
+# --- FakeClient.jobs: core's state rules in memory (CONTRACT 3) -----------------------
+
+
+def _fake():
+    client = FakeClient({'d1': {'id': 'd1', 'name': 'Second'}, 'd2': {'id': 'd2', 'name': 'First'}},
+                        project={'id': 'p1'},
+                        projects={'p2': {'project': {'id': 'p2'},
+                                         'documents': {'d3': {'id': 'd3', 'name': 'Third'}}}})
+    clock = {'t': 1_000_000.0}
+    client.jobs.now = lambda: clock['t']
+    client.jobs.user = 'w@x.org'
+    return client, clock
+
+
+def _refused(call, status, error=None, **fields):
+    with pytest.raises(PlaidAPIError) as e:
+        call()
+    assert e.value.status == status
+    if error is not None:
+        assert e.value.response_data['error'] == error
+    for k, v in fields.items():
+        assert e.value.response_data[k] == v
+    return e.value
+
+
+def test_fake_create_waits_with_its_rows_in_order_and_refuses_as_core_does():
+    client, _ = _fake()
+    jobs = client.jobs
+    job = jobs.create('p1', 'igt', ['link', 'gloss'], note='n')
+    assert (job['state'], job['tasks'], job['started_by'], job['report']) == \
+        ('waiting', ['gloss', 'link'], 'w@x.org', None)
+    assert [(r['document_id'], r['name'], r['position'], r['state']) for r in job['documents']] == \
+        [('d2', 'First', 0, 'waiting'), ('d1', 'Second', 1, 'waiting')], 'every document, by name'
+    assert jobs.active('p1')['id'] == job['id'] and jobs.active('p2') is None
+    _refused(lambda: jobs.create('p1', 'igt', ['gloss']), 409, 'This project already has a job.',
+             code='job-active', job=job['id'])
+    _refused(lambda: jobs.create('p2', 'ud', ['gloss']), 400, 'Unknown app: ud.')
+    _refused(lambda: jobs.create('p2', 'igt', []), 400, 'tasks: give at least one of translate, gloss, link.')
+    _refused(lambda: jobs.create('p2', 'igt', ['link']), 400, 'tasks: link needs gloss.')
+    _refused(lambda: jobs.create('p2', 'igt', ['gloss'], ['d1', 'd3']), 400,
+             'documents: 1 are not documents of this project.')
+    _refused(lambda: jobs.create('p2', 'igt', ['gloss'], note='x' * 2412), 400,
+             "The note is 2,412 characters. A job's note is at most 2,000.")
+    _refused(lambda: jobs.create('p2', 'igt', ['gloss'], ['d3'], id=job['id']), 409, 'id-taken')
+    second = jobs.create('p2', 'igt', ['translate'], ['d3'])
+    assert second['ahead'] == 1, 'the job of p1 was started before it'
+    assert [j['id'] for j in jobs.list('p2')] == [second['id']]
+    assert 'documents' not in jobs.list('p1')[0] and 'report' not in jobs.list('p1')[0]
+
+
+def test_fake_claim_takes_the_oldest_and_holds_the_one_slot_until_the_lease_lapses():
+    client, clock = _fake()
+    jobs = client.jobs
+    assert jobs.claim('w1', 'm', ['igt']) is None
+    assert jobs.worker() == {'seen_at': '1970-01-12T13:46:40.000Z', 'model': 'm', 'note_max_chars': 2000}
+    first = jobs.create('p2', 'igt', ['gloss'])
+    second = jobs.create('p1', 'igt', ['gloss'])
+    claimed = jobs.claim('w1', 'm', ['igt'])
+    assert claimed['job']['id'] == first['id'] and claimed['heartbeat_s'] == 30
+    assert (claimed['job']['state'], claimed['job']['model']) == ('running', 'm')
+    assert jobs.claim('w2', 'm', ['igt']) is None, 'one job at a time on the server'
+    clock['t'] += 121
+    taken = jobs.claim('w2', 'm', ['igt'])
+    assert taken['job']['id'] == first['id'], 'a lapsed lease is taken over before a waiting job'
+    _refused(lambda: jobs.heartbeat(first['id'], 'w1'), 409, 'Another worker holds this job.', code='job-taken')
+    _refused(lambda: jobs.update_document(first['id'], 'd3', 'w1', done=1), 409, code='job-taken')
+    assert jobs.get(second['id'])['state'] == 'waiting'
+
+
+def test_fake_heartbeat_sets_what_is_given_clears_none_and_leaves_the_rest():
+    client, _ = _fake()
+    jobs = client.jobs
+    job = jobs.create('p1', 'igt', ['gloss'])
+    jobs.claim('w1', 'm', ['igt'])
+    one = jobs.heartbeat(job['id'], 'w1', phase='glossing', message='Sentences 1 to 5 of 40.',
+                         waiting_for='people', current_document='d2')
+    two = jobs.heartbeat(job['id'], 'w1', waiting_for=None)
+    assert one['state'] == 'running' and one['lease_s'] == 120 and one['token'] != two['token']
+    now = jobs.get(job['id'])
+    assert (now['phase'], now['message'], now['waiting_for'], now['current_document']) == \
+        ('glossing', 'Sentences 1 to 5 of 40.', None, 'd2')
+    _refused(lambda: jobs.heartbeat('nope', 'w1'), 404, 'Job not found')
+    jobs.hidden_projects.add('p1')
+    _refused(lambda: jobs.heartbeat(job['id'], 'w1'), 404, 'Job not found')
+
+
+def test_fake_cancel_follows_each_path():
+    client, clock = _fake()
+    jobs = client.jobs
+    waiting = jobs.create('p1', 'igt', ['gloss'])
+    done = jobs.cancel(waiting['id'])
+    assert (done['state'], done['reason'], done['cancelled_by'], done['report']) == \
+        ('cancelled', 'cancelled', 'w@x.org', None)
+    assert done['finished_at']
+    _refused(lambda: jobs.cancel(waiting['id']), 409, 'This job has ended.', code='job-finished')
+
+    live = jobs.create('p1', 'igt', ['gloss'])
+    jobs.claim('w1', 'm', ['igt'])
+    assert jobs.cancel(live['id'])['state'] == 'stopping'
+    assert jobs.cancel(live['id'])['state'] == 'stopping', 'stopping with a live lease: no change'
+    assert jobs.heartbeat(live['id'], 'w1')['state'] == 'stopping'
+    _refused(lambda: jobs.finish(live['id'], 'w1', 'done', {}), 409, 'This job cannot end as done now.',
+             code='job-state')
+    assert jobs.finish(live['id'], 'w1', 'cancelled', {'stopped': None})['state'] == 'cancelled'
+
+    lapsed = jobs.create('p2', 'igt', ['gloss'])
+    jobs.claim('w1', 'm', ['igt'])
+    jobs.update_document(lapsed['id'], 'd3', 'w1', state='done', done=2, counts={'words': 4},
+                         skipped=[{'sentence': 's2', 'sentence_id': 't2', 'reason': 'failed', 'kind': 'budget'}])
+    clock['t'] += 121
+    gone = jobs.cancel(lapsed['id'])
+    assert gone['state'] == 'cancelled'
+    report = gone['report']
+    assert report['stopped'] == 'without-worker'
+    assert report['totals']['documents_done'] == 1 and report['totals']['words'] == 4
+    assert report['totals']['skipped_failed'] == 1 and report['totals']['sentences'] == 2
+    assert report['harmonize'] == {'changed': [], 'left': [], 'changed_more': 0, 'left_more': 0}
+    assert report['entries']['created'] == []
+
+
+def test_fake_a_stopping_job_claimed_after_a_crash_stays_stopping_and_ends_cancelled():
+    client, clock = _fake()
+    jobs = client.jobs
+    job = jobs.create('p1', 'igt', ['gloss'])
+    jobs.claim('w1', 'm', ['igt'])
+    jobs.cancel(job['id'])
+    clock['t'] += 121
+    again = jobs.claim('w2', 'm', ['igt'])
+    assert again['job']['state'] == 'stopping'
+    assert jobs.finish(job['id'], 'w2', 'cancelled', {})['state'] == 'cancelled'
+
+
+def test_fake_a_starter_who_no_longer_writes_fails_the_job():
+    client, _ = _fake()
+    jobs = client.jobs
+    lost = jobs.create('p1', 'igt', ['gloss'])
+    kept = jobs.create('p2', 'igt', ['gloss'])
+    jobs.can_write = lambda user, project: project != 'p1'
+    claimed = jobs.claim('w1', 'm', ['igt'])
+    assert claimed['job']['id'] == kept['id'], 'the next job is taken'
+    failed = jobs.get(lost['id'])
+    assert (failed['state'], failed['reason']) == ('failed', 'starter-access')
+    assert failed['report']['state'] == 'failed' and failed['report']['stopped'] is None
+
+    jobs.can_write = lambda user, project: False
+    _refused(lambda: jobs.heartbeat(kept['id'], 'w1'), 409, code='job-failed', reason='starter-access')
+    assert jobs.get(kept['id'])['state'] == 'failed'
+    ended = jobs.finish(kept['id'], 'w1', 'failed', {'state': 'failed'}, reason='starter-access')
+    assert ended['report'] == {'state': 'failed'}
+    _refused(lambda: jobs.finish(kept['id'], 'w1', 'failed', {}), 409, code='job-state')
+    _refused(lambda: jobs.heartbeat(kept['id'], 'w1'), 409, code='job-finished')
+
+
+def test_fake_document_rows_and_finish():
+    client, _ = _fake()
+    jobs = client.jobs
+    job = jobs.create('p1', 'igt', ['gloss'])
+    jobs.claim('w1', 'm', ['igt'])
+    row = jobs.update_document(job['id'], 'd1', 'w1', state='working', last_sentence='s4', gloss_group='g1')
+    assert (row['state'], row['last_sentence'], row['gloss_group'], row['harmonize_group']) == \
+        ('working', 's4', 'g1', None)
+    assert jobs.update_document(job['id'], 'd1', 'w1', targets=8)['last_sentence'] == 's4', 'left as it was'
+    _refused(lambda: jobs.update_document(job['id'], 'd3', 'w1', done=1), 404, 'Document not in job')
+    _refused(lambda: jobs.update_document(job['id'], 'd1', 'w1', skipped=[{}] * 501), 400)
+    del client._documents['d1']
+    assert jobs.get(job['id'])['documents'][1]['name'] is None, 'a deleted document keeps its row'
+    ended = jobs.finish(job['id'], 'w1', 'done', {'paused_for_people_s': 3, 'totals': {'documents_done': 1}})
+    assert (ended['state'], ended['current_document'], ended['waiting_for']) == ('done', None, None)
+    assert ended['report'] == {'paused_for_people_s': 3, 'totals': {'documents_done': 1}}
+    _refused(lambda: jobs.finish(job['id'], 'w1', 'done', {}), 409, code='job-state')
+    _refused(lambda: jobs.finish('nope', 'w1', 'done', {}), 404)
+    assert jobs.active('p1') is None
+
+
+def test_fake_decisions_add_up_and_read_back_in_order():
+    client, _ = _fake()
+    jobs = client.jobs
+    job = jobs.create('p1', 'igt', ['gloss'])
+    jobs.claim('w1', 'm', ['igt'])
+    jobs.add_decisions(job['id'], 'w1', [
+        {'form': 'ka', 'key': 'k2', 'analysis': '{"a":2}', 'count': 1, 'document_id': 'd1', 'sentence_id': 't1'},
+        {'form': 'ka', 'key': 'k1', 'analysis': '{"a":1}', 'count': 1, 'document_id': 'd1', 'sentence_id': 't2'},
+        {'form': 'ba', 'key': 'k3', 'analysis': '{"b":1}', 'count': 1, 'document_id': 'd1', 'sentence_id': 't2'}])
+    jobs.add_decisions(job['id'], 'w1', [
+        {'form': 'ka', 'key': 'k2', 'analysis': '{"a":2}', 'count': 2, 'document_id': 'd2', 'sentence_id': 't9'}])
+    found = jobs.lookup_decisions(job['id'], ['ka'])
+    assert [(r['key'], r['count'], r['first_document'], r['first_sentence']) for r in found] == \
+        [('k2', 3, 'd1', 't1'), ('k1', 1, 'd1', 't2')]
+    assert [(r['form'], r['key']) for r in jobs.decisions(job['id'])] == [('ba', 'k3'), ('ka', 'k1'), ('ka', 'k2')]
+    _refused(lambda: jobs.lookup_decisions(job['id'], []), 400, 'forms: give at least one form.')
+    _refused(lambda: jobs.add_decisions(job['id'], 'w1', [
+        {'form': 'x', 'key': 'k', 'analysis': 'x' * 4001, 'count': 1, 'document_id': 'd1',
+         'sentence_id': 't1'}]), 400)
+    _refused(lambda: jobs.add_decisions(job['id'], 'w2', []), 409, code='job-taken')
+
+
+def test_fake_model_busy_answers_the_load_a_test_sets():
+    client, _ = _fake()
+    assert client.jobs.model_busy('glm') == {'in_flight': 0, 'last_finished_at': None}
+    client.jobs.model_load['glm'] = {'in_flight': 2, 'last_finished_at': '2026-11-12T10:00:00.000Z'}
+    assert client.jobs.model_busy('glm') == {'in_flight': 2, 'last_finished_at': '2026-11-12T10:00:00.000Z'}
+    _refused(lambda: client.jobs.model_busy(''), 400)
+
+
+def test_the_fake_jobs_take_what_the_real_ones_take():
+    """Each fake method has the real method's parameters, so a worker tested
+    on the fake calls the real client the same way."""
+    real = {n for n in dir(JobsResource) if not n.startswith('_')}
+    assert real <= {n for n in dir(_FakeJobs) if not n.startswith('_')}
+    for name in real:
+        want = list(inspect.signature(getattr(JobsResource, name)).parameters)
+        assert list(inspect.signature(getattr(_FakeJobs, name)).parameters) == want, name
