@@ -67,7 +67,7 @@ test.beforeAll(async () => {
 
   // An auto-made link nobody has confirmed, on the third morpheme: this is the
   // violet chip Enter confirms, and the gesture the whole question started on.
-  const vocab = (await client.vocabLayers.list()).find((v) => v.name === 'IGT Lexicon');
+  const vocab = full.vocabs.find((v) => v.name === 'IGT Lexicon' && v.project === projectId);
   const entry = await client.vocabItems.create(vocab.id, `dup${NONCE}`);
   ids.entry = entry.id;
   await client.vocabLinks.create(entry.id, [ids.m[2]], machine);
@@ -75,8 +75,8 @@ test.beforeAll(async () => {
 
 test.afterAll(async () => {
   if (documentId) await client.documents.delete(documentId).catch(() => {});
-  // The entry goes into the SHARED "IGT Lexicon", which is linked to the
-  // fixture project and read by every popover and gloss-guess spec, so a run
+  // The entry goes into the SHARED "IGT Lexicon", the fixture project's own
+  // vocabulary, read by every popover and gloss-guess spec, so a run
   // that leaves its `dup...` behind adds one to that lexicon for good.
   if (ids.entry) await client.vocabItems.delete(ids.entry).catch(() => {});
 });

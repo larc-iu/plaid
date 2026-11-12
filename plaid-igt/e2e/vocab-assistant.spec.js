@@ -41,9 +41,8 @@ const client = () => new PlaidClient(CORE, readToken().token);
 test.beforeAll(async () => {
   const c = client();
   ({ projectId } = await getFixture());
-  const vocab = await c.vocabLayers.create(`Panel lexicon ${Date.now()}`);
+  const vocab = await c.vocabLayers.create(projectId, `Panel lexicon ${Date.now()}`);
   vocabularyId = vocab.id;
-  await c.projects.linkVocab(projectId, vocabularyId);
   // Two entries spelled alike, so one of them carries a homograph number and
   // the reference "Ask" writes has to include it.
   await c.vocabItems.create(vocabularyId, 'gam');
@@ -53,22 +52,15 @@ test.beforeAll(async () => {
 
 test.afterAll(async () => {
   // A seeded project that outlives its spec breaks other specs that take "the
-  // first configured project", and a seeded vocabulary left linked breaks the
-  // very rule this spec is about. Both go, whatever happened above.
+  // first configured project", and a seeded vocabulary left in the fixture
+  // project adds to what every later run reads. Both go, whatever happened
+  // above. The borrowing projects go first: core refuses to delete a
+  // vocabulary another project still links.
   const c = client();
   for (const id of extraProjects) {
     await c.projects.delete(id).catch((e) => console.error('cleanup failed:', e.message));
   }
   if (vocabularyId) {
-    // The link goes first, by name. Deleting the vocabulary cascades it, but
-    // that delete only LOGS on failure, and a link left on the fixture project
-    // is the exact condition this spec's header says broke it before: the pane
-    // is about a vocabulary exactly one project links.
-    if (projectId) {
-      await c.projects
-        .unlinkVocab(projectId, vocabularyId)
-        .catch((e) => console.error('cleanup failed:', e.message));
-    }
     await c.vocabLayers
       .delete(vocabularyId)
       .catch((e) => console.error('cleanup failed:', e.message));

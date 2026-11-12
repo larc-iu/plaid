@@ -32,7 +32,7 @@ test.beforeAll(async () => {
   const MORPH = layer(ROLES.MORPHEME);
   gloss = MORPH.spanLayers.find((s) => s.name === 'Gloss');
 
-  lex = await client.vocabLayers.create(`PAIR ${NONCE}`);
+  lex = await client.vocabLayers.create(projectId, `PAIR ${NONCE}`);
   const head = await client.vocabItems.create(lex.id, FORM);
   sense.feline = (
     await client.vocabItems.create(lex.id, FORM, {
@@ -48,7 +48,6 @@ test.beforeAll(async () => {
       senseOrder: 2,
     })
   ).id;
-  await client.projects.linkVocab(projectId, lex.id);
 
   documentId = (await client.documents.create(projectId, `pair-spec ${NONCE}`)).id;
   await client.texts.create(textLayer.id, documentId, BODY);
@@ -86,10 +85,7 @@ test.beforeAll(async () => {
 
 test.afterAll(async () => {
   if (documentId) await client.documents.delete(documentId).catch(() => {});
-  if (lex) {
-    await client.projects.unlinkVocab(projectId, lex.id).catch(() => {});
-    await client.vocabLayers.delete(lex.id).catch(() => {});
-  }
+  if (lex) await client.vocabLayers.delete(lex.id).catch(() => {});
 });
 
 async function openAnalyze(page) {
@@ -248,14 +244,13 @@ test.describe('after review', () => {
     const MORPH = layer(ROLES.MORPHEME);
     gloss = MORPH.spanLayers.find((s) => s.name === 'Gloss');
 
-    lex = await client.vocabLayers.create(`REV55 ${NONCE}`);
+    lex = await client.vocabLayers.create(projectId, `REV55 ${NONCE}`);
     head = (await client.vocabItems.create(lex.id, FORM, { morphType: 'stem' })).id;
     const mk = async (g, i) =>
       (await client.vocabItems.create(lex.id, FORM, { gloss: g, parent: head, senseOrder: i })).id;
     sense.feline = await mk('feline', 1);
     sense.jazzman = await mk('jazzman', 2);
     sense.fe = await mk('fe', 3);
-    await client.projects.linkVocab(projectId, lex.id);
 
     documentId = (await client.documents.create(projectId, `rev55 ${NONCE}`)).id;
     await client.texts.create(textLayer.id, documentId, BODY);
@@ -296,10 +291,7 @@ test.describe('after review', () => {
   test.afterAll(async () => {
     await client.userData.delete(userId, 'igt:keymap').catch(() => {});
     if (documentId) await client.documents.delete(documentId).catch(() => {});
-    if (lex) {
-      await client.projects.unlinkVocab(projectId, lex.id).catch(() => {});
-      await client.vocabLayers.delete(lex.id).catch(() => {});
-    }
+    if (lex) await client.vocabLayers.delete(lex.id).catch(() => {});
   });
 
   let writes = [];

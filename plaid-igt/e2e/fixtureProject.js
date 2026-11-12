@@ -163,19 +163,15 @@ async function ensureLexiconField(client, project) {
   }
 }
 
-// Ensure a project-linked vocabulary with a few items exists, so the vocab-link
+// Ensure the project has its own vocabulary with a few items, so the vocab-link
 // popover has something to link against.
 async function ensureVocab(client, projectId) {
-  let vocab = (await client.vocabLayers.list()).find((v) => v.name === VOCAB_NAME);
-  if (!vocab) {
-    const created = await client.vocabLayers.create(VOCAB_NAME);
-    vocab = { id: created.id, name: VOCAB_NAME };
-    for (const form of VOCAB_ITEMS) await client.vocabItems.create(vocab.id, form);
-  }
   const project = await client.projects.get(projectId);
-  const linked = (project.vocabs || []).some((v) => v.id === vocab.id);
-  if (!linked) await client.projects.linkVocab(projectId, vocab.id);
-  return vocab.id;
+  const own = (project.vocabs || []).find((v) => v.name === VOCAB_NAME && v.project === projectId);
+  if (own) return own.id;
+  const { id } = await client.vocabLayers.create(projectId, VOCAB_NAME);
+  for (const form of VOCAB_ITEMS) await client.vocabItems.create(id, form);
+  return id;
 }
 
 // The ids of the baseline text layer and its sentence, word and morpheme layers.

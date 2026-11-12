@@ -52,8 +52,7 @@ test.beforeAll(async () => {
   const form = await c.spanLayers.create(synt.id, 'Form');
   const nodes = await c.tokenLayers.create(tl.id, 'Nodes', 'any');
 
-  const vocab = await c.vocabLayers.create(`E2E Respell Lexicon ${Date.now()}`);
-  await c.projects.linkVocab(projectId, vocab.id);
+  const vocab = await c.vocabLayers.create(projectId, `E2E Respell Lexicon ${Date.now()}`);
   const entry = await c.vocabItems.create(vocab.id, 'kat', { morphType: 'stem' });
   const phrase = await c.vocabItems.create(vocab.id, 'kat gamma', { morphType: 'phrase' });
 

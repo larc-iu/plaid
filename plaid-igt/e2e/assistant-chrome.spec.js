@@ -60,9 +60,8 @@ test.beforeAll(async () => {
     docs.find((d) => d.name === SECOND_DOCUMENT) ||
     (await c.documents.create(projectId, SECOND_DOCUMENT))
   ).id;
-  const vocab = await c.vocabLayers.create(`Chrome lexicon ${Date.now()}`);
+  const vocab = await c.vocabLayers.create(projectId, `Chrome lexicon ${Date.now()}`);
   vocabularyId = vocab.id;
-  await c.projects.linkVocab(projectId, vocabularyId);
   await c.vocabItems.create(vocabularyId, 'solo');
 });
 

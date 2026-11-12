@@ -1,4 +1,5 @@
 import { test, expect, seedAuth } from './fixtures.js';
+import { getFixture } from './fixtureProject.js';
 import { fixture, haveFixture } from '../src/test/fixturesDir.js';
 
 // The FLEx import review screen: upload the Lezgi backup, check the Lexicon
@@ -19,6 +20,10 @@ test.skip(
 );
 
 test('review screen: lexicon destination + opt-in lexicon fields', async ({ page }) => {
+  // The fixture project's own "IGT Lexicon": its home is a project this user
+  // maintains, so it is offered.
+  const { project } = await getFixture();
+  const lexicon = project.vocabs.find((v) => v.name === 'IGT Lexicon' && v.project === project.id);
   await page.goto('about:blank');
   await seedAuth(page);
   await page.goto('/#/projects/import');
@@ -42,15 +47,15 @@ test('review screen: lexicon destination + opt-in lexicon fields', async ({ page
   await expect(importBtn).toBeDisabled();
   await name.fill('Qusar dictionary');
 
-  // Existing lexicon: only ones this user maintains (admin sees all); the
-  // button waits for a choice.
+  // Existing lexicon: only ones whose project this user maintains (admin sees
+  // all), and the button waits for a choice.
   const existingRadio = page.getByRole('radio', { name: /Add to a lexicon you maintain/ });
   await expect(existingRadio).toBeEnabled();
   await existingRadio.check();
   await expect(name).toHaveCount(0);
   await expect(importBtn).toBeDisabled();
   const select = page.getByLabel('Existing lexicon');
-  await select.selectOption({ label: 'IGT Lexicon' });
+  await select.selectOption(lexicon.id);
   await expect(importBtn).toBeEnabled();
   await newRadio.check();
   await expect(name).toHaveValue('Qusar dictionary');

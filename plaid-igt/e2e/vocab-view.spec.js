@@ -19,12 +19,11 @@ test.beforeAll(async () => {
   client = new PlaidClient(CORE, readToken().token);
   ({ projectId } = await getFixture());
   const stamp = Date.now();
-  vocab = await client.vocabLayers.create(`vocab-view ${stamp}`);
+  vocab = await client.vocabLayers.create(projectId, `vocab-view ${stamp}`);
   items.ser1 = (await client.vocabItems.create(vocab.id, 'ser')).id;
   items.ser2 = (await client.vocabItems.create(vocab.id, 'ser')).id;
   items.dup = (await client.vocabItems.create(vocab.id, `dup${stamp}`)).id;
   items.dupForm = `dup${stamp}`;
-  await client.projects.linkVocab(projectId, vocab.id);
   const full = await client.projects.get(projectId);
   const textLayer = full.textLayers.find((l) => roleOf(l) === ROLES.BASELINE);
   const layer = (role) => textLayer.tokenLayers.find((l) => roleOf(l) === role);
@@ -57,10 +56,7 @@ test.beforeAll(async () => {
 
 test.afterAll(async () => {
   if (documentId) await client.documents.delete(documentId).catch(() => {});
-  if (vocab) {
-    await client.projects.unlinkVocab(projectId, vocab.id).catch(() => {});
-    await client.vocabLayers.delete(vocab.id).catch(() => {});
-  }
+  if (vocab) await client.vocabLayers.delete(vocab.id).catch(() => {});
 });
 
 async function openView(page) {

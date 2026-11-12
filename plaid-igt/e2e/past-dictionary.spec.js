@@ -22,8 +22,7 @@ test.beforeAll(async () => {
   const textLayer = full.textLayers.find((l) => roleOf(l) === ROLES.BASELINE);
   const layer = (role) => textLayer.tokenLayers.find((l) => roleOf(l) === role);
   const stamp = Date.now();
-  vocab = await client.vocabLayers.create(`Past dictionary ${stamp}`);
-  await client.projects.linkVocab(projectId, vocab.id);
+  vocab = await client.vocabLayers.create(projectId, `Past dictionary ${stamp}`);
   const entry = await client.vocabItems.create(vocab.id, 'fono', { gloss: 'sound' });
 
   documentId = (await client.documents.create(projectId, `past-dictionary ${stamp}`)).id;
@@ -43,10 +42,7 @@ test.beforeAll(async () => {
 
 test.afterAll(async () => {
   if (documentId) await client.documents.delete(documentId).catch(() => {});
-  if (vocab) {
-    await client.projects.unlinkVocab(projectId, vocab.id).catch(() => {});
-    await client.vocabLayers.delete(vocab.id).catch(() => {});
-  }
+  if (vocab) await client.vocabLayers.delete(vocab.id).catch(() => {});
 });
 
 test('a past state of a document shows the entry as it read then', async ({ page }) => {

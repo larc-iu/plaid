@@ -151,17 +151,16 @@ try {
     }
 
     // The target: a vocabulary of its own, declaring the same fields and
-    // nothing else, linked to a project so the snapshot can read it.
-    const target = await client.vocabLayers.create(`${name} again ${Date.now() % 1e6}`);
+    // nothing else, in a project of its own so the snapshot can read it.
+    const holder = await client.projects.create(`TSV target ${Date.now() % 1e6}`);
+    const holderId = holder.id ?? holder;
+    const target = await client.vocabLayers.create(holderId, `${name} again ${Date.now() % 1e6}`);
     const targetId = target.id ?? target;
     const fields =
       source.vocabularies.find((v) => v.key === from.key)?.config?.[IGT_NAMESPACE]?.fields || {};
     if (Object.keys(fields).length) {
       await client.vocabLayers.setConfig(targetId, IGT_NAMESPACE, 'fields', fields);
     }
-    const holder = await client.projects.create(`TSV target ${Date.now() % 1e6}`);
-    const holderId = holder.id ?? holder;
-    await client.projects.linkVocab(holderId, targetId);
 
     const { plan, rows } = await bulkAdd(client, targetId, text);
     const into = await snapshotProject(client, holderId);

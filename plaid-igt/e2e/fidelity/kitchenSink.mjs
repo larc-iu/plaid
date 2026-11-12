@@ -922,8 +922,7 @@ async function buildTwins(client, name) {
     },
   });
   if (setup.failures.length) throw new Error(`setup of ${name}: ${setup.failures.join('; ')}`);
-  const twin = await client.vocabLayers.create(`${name} Lexicon`);
-  await client.projects.linkVocab(setup.projectId, twin.id);
+  const twin = await client.vocabLayers.create(setup.projectId, `${name} Lexicon`);
   await client.vocabItems.create(twin.id, 'uno', { gloss: 'one' });
   const created = await client.documents.create(setup.projectId, 'Uno');
   const doc = await reload(client, setup.projectId, created.id);
@@ -1056,8 +1055,7 @@ export async function buildKitchenSink(client, { suffix = '' } = {}) {
   });
   // A vocabulary made outside the wizard, through the API, so it lists none of
   // the fields setup seeds. Its entries still hold values in the built-in ones.
-  const bare = await client.vocabLayers.create(`${mainName} Borrowings`);
-  await client.projects.linkVocab(projectId, bare.id);
+  const bare = await client.vocabLayers.create(projectId, `${mainName} Borrowings`);
   await client.vocabItems.create(bare.id, 'aba', { gloss: 'IPFV', morphType: 'suffix' });
   const entries = await makeEntries(client, lexiconId, affixId);
 

@@ -20,7 +20,7 @@ test.beforeAll(async () => {
   client = new PlaidClient(CORE, readToken().token);
   ({ projectId } = await getFixture());
   stamp = Date.now();
-  vocab = await client.vocabLayers.create(`dictionary ${stamp}`);
+  vocab = await client.vocabLayers.create(projectId, `dictionary ${stamp}`);
   await client.vocabLayers.setConfig(vocab.id, 'igt', 'fields', {
     morphType: { inline: false },
     gloss: { inline: true },
@@ -38,7 +38,6 @@ test.beforeAll(async () => {
   ids.run = (
     await client.vocabItems.create(vocab.id, `run${stamp}`, { gloss: 'run', variantOf: ids.kat })
   ).id;
-  await client.projects.linkVocab(projectId, vocab.id);
   const full = await client.projects.get(projectId);
   const textLayer = full.textLayers.find((l) => roleOf(l) === ROLES.BASELINE);
   const layer = (role) => textLayer.tokenLayers.find((l) => roleOf(l) === role);
@@ -70,10 +69,7 @@ test.beforeAll(async () => {
 
 test.afterAll(async () => {
   if (documentId) await client.documents.delete(documentId).catch(() => {});
-  if (vocab) {
-    await client.projects.unlinkVocab(projectId, vocab.id).catch(() => {});
-    await client.vocabLayers.delete(vocab.id).catch(() => {});
-  }
+  if (vocab) await client.vocabLayers.delete(vocab.id).catch(() => {});
 });
 
 const meta = async (id) => (await client.vocabItems.get(id)).metadata || {};
@@ -201,7 +197,7 @@ test('deleting an entry frees its senses and clears references to it', async ({ 
 test('a plain vocabulary shows the headword-or-sense controls, with no mode to turn on', async ({
   page,
 }) => {
-  const plain = await client.vocabLayers.create(`plain ${stamp}`);
+  const plain = await client.vocabLayers.create(projectId, `plain ${stamp}`);
   try {
     await seedAuth(page);
     await page.goto(`/#/vocabularies/${plain.id}?tab=settings`);

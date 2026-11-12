@@ -368,7 +368,7 @@ try {
   console.log(`\ntotal ${((Date.now() - t0) / 1000).toFixed(1)}s; ${failures.length} failure(s)`);
 } finally {
   if (!KEEP) {
-    await deleteProjectWithVocabs(projectId);
+    await deleteProject(projectId);
     console.log('project + its vocabs deleted (use --keep to keep it)');
   } else {
     console.log(`kept project ${projectId} (${projectName})`);
@@ -380,17 +380,7 @@ if (failures.length) {
   process.exit(1);
 }
 
-// Delete a project AND the vocabs linked to it (vocabs are project-independent,
-// so deleting the project alone leaves orphan lexicons behind).
-async function deleteProjectWithVocabs(id) {
-  const vocabIds = await client.projects
-    .get(id)
-    .then((p) => (p.vocabs || []).map((v) => v.id))
-    .catch(() => []);
+// Delete a project. Its own vocabularies go with it.
+async function deleteProject(id) {
   await client.projects.delete(id).catch((e) => console.log('cleanup failed:', e.message));
-  for (const vid of vocabIds) {
-    await client.vocabLayers
-      .delete(vid)
-      .catch((e) => console.log('vocab cleanup failed:', e.message));
-  }
 }

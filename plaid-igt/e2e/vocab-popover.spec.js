@@ -4,8 +4,8 @@ import { getFixture, roleOf } from './fixtureProject.js';
 
 // TEST_PLAN B2 (ranking + search), B3 (keyboard), B4 (link/unlink/relink),
 // B5 (create from the popover) and B6 (two vocabularies) auto rows. A throwaway
-// document and a throwaway second lexicon ("LEX-B") are created in the
-// "E2E IGT Fixture" project and removed afterwards; nothing is created in the
+// document and a throwaway second lexicon ("LEX-B"), a second vocabulary of the
+// "E2E IGT Fixture" project, are created and removed afterwards; nothing is created in the
 // shared "IGT Lexicon" (LEX-A: all, the, human, be.born, free, equal).
 
 const BODY = 'derechos. "hola," dog\'s ... 😀 ser hum the';
@@ -25,7 +25,7 @@ test.beforeAll(async () => {
   client = new PlaidClient(CORE, readToken().token);
   ({ projectId } = await getFixture());
   const full = await client.projects.get(projectId);
-  lexA = full.vocabs.find((v) => v.name === 'IGT Lexicon');
+  lexA = full.vocabs.find((v) => v.name === 'IGT Lexicon' && v.project === projectId);
   const textLayer = full.textLayers.find((l) => roleOf(l) === ROLES.BASELINE);
   const layer = (role) => textLayer.tokenLayers.find((l) => roleOf(l) === role);
   const WORD = layer(ROLES.WORD);
@@ -39,13 +39,12 @@ test.beforeAll(async () => {
   // Without it every `open(..., lexB.name)` picked no tab and the test ran in
   // whichever vocabulary sorted first, which on a fresh database is LEX-A.
   const lexBName = `LEX-B ${stamp}`;
-  lexB = { ...(await client.vocabLayers.create(lexBName)), name: lexBName };
+  lexB = { ...(await client.vocabLayers.create(projectId, lexBName)), name: lexBName };
   lexB.items = {};
   for (const form of ['ser', 'ser', 'human', 'humble', 'the']) {
     const it = await client.vocabItems.create(lexB.id, form);
     (lexB.items[form] ||= []).push(it.id);
   }
-  await client.projects.linkVocab(projectId, lexB.id);
 
   const created = await client.documents.create(projectId, `popover-spec ${stamp}`);
   documentId = created.id;
@@ -87,10 +86,7 @@ test.beforeAll(async () => {
 
 test.afterAll(async () => {
   if (documentId) await client.documents.delete(documentId).catch(() => {});
-  if (lexB) {
-    await client.projects.unlinkVocab(projectId, lexB.id).catch(() => {});
-    await client.vocabLayers.delete(lexB.id).catch(() => {});
-  }
+  if (lexB) await client.vocabLayers.delete(lexB.id).catch(() => {});
 });
 
 async function openAnalyze(page) {

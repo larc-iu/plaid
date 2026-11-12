@@ -39,7 +39,7 @@ test.beforeAll(async () => {
       end: m.index + m[0].length,
     })),
   );
-  vocabId = (await client.vocabLayers.list()).find((v) => v.name === 'IGT Lexicon').id;
+  vocabId = full.vocabs.find((v) => v.name === 'IGT Lexicon' && v.project === projectId).id;
 });
 
 test.afterAll(async () => {

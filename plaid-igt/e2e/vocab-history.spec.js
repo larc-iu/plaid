@@ -4,16 +4,19 @@ import { test, expect, seedAuth, readToken, CORE } from './fixtures.js';
 // A vocabulary's History (audit-vocab-history, ruled b): the rail lists every
 // change, a pick shows the entries as they were, read-only, and a maintainer
 // puts one entry back, a changed one or a deleted one, with Undo. A throwaway
-// vocabulary is made and removed; nothing touches the shared fixture.
+// project with its own vocabulary is made and deleted; nothing touches the
+// shared fixture.
 
 let client;
+let projectId;
 let vocabId;
 let ids;
 
 test.beforeEach(async () => {
   client = new PlaidClient(CORE, readToken().token);
   const stamp = Date.now();
-  const vocab = await client.vocabLayers.create(`History spec ${stamp}`);
+  projectId = (await client.projects.create(`History spec ${stamp}`)).id;
+  const vocab = await client.vocabLayers.create(projectId, `History spec ${stamp}`);
   vocabId = vocab.id;
   ids = {};
   await client.withOperation('Add entries', async () => {
@@ -33,7 +36,8 @@ test.beforeEach(async () => {
 });
 
 test.afterEach(async () => {
-  if (vocabId) await client.vocabLayers.delete(vocabId).catch(() => {});
+  // The project takes its vocabulary with it.
+  if (projectId) await client.projects.delete(projectId).catch(() => {});
 });
 
 const openPast = async (page, itemId) => {
