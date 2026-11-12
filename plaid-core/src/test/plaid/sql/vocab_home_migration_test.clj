@@ -248,10 +248,11 @@
           (doseq [k (range 5)]
             (is (str/includes? msg (str "\"Orphan " k "\" (" (u (str "o" k)) ", 1 entry)")) msg))
           (is (str/starts-with? msg "5 vocabularies are linked by no project: "))
-          (is (str/ends-with? msg (str "Run plaid-core/scripts/vocab_home_orphans.py, in the Plaid repository, "
-                                       "against the server on the version before this one: python "
-                                       "vocab_home_orphans.py BASE_URL TOKEN_FILE, with an admin's API token in the "
-                                       "file (see the manual's Upgrading section)."))
+          (is (str/ends-with? msg (str "Run PYTHONPATH=plaid-client-py/src python3 "
+                                       "plaid-core/scripts/vocab_home_orphans.py BASE_URL TOKEN_FILE from the top of a "
+                                       "checkout of the Plaid repository, against the server on the version before "
+                                       "this one, with an admin's named API token in the file (see the manual's "
+                                       "Upgrading section)."))
               msg))
         (is (= before (schema ds)) "nothing was written, the migration is not recorded")))))
 

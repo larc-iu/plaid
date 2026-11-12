@@ -89,8 +89,9 @@
 (def orphan-script
   "Where an operator finds the script that gives an unlinked vocabulary a
   project, and how it runs."
-  (str "plaid-core/scripts/vocab_home_orphans.py, in the Plaid repository, against the server on the version "
-       "before this one: python vocab_home_orphans.py BASE_URL TOKEN_FILE, with an admin's API token in the file"))
+  (str "PYTHONPATH=plaid-client-py/src python3 plaid-core/scripts/vocab_home_orphans.py BASE_URL TOKEN_FILE "
+       "from the top of a checkout of the Plaid repository, against the server on the version before this one, "
+       "with an admin's named API token in the file"))
 
 (defn- orphans
   "Every vocabulary no live project links and with no home yet, as maps of `:id`,

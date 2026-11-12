@@ -92,6 +92,7 @@ A link token opens nothing else, lasts at most `[media] avatar_link_ttl_seconds`
 Signing out of an app forgets the sign-in in that browser only.
 To end every sign-in of your account on every device, call `client.auth.logout_everywhere()` (`client.auth.logoutEverywhere()` in JavaScript).
 Named API tokens are not affected, and are revoked one at a time with `api_tokens.revoke` (`apiTokens.revoke`).
+Each user mints their own named API tokens on the profile page of any app, which shows a new token once, to be copied.
 
 A named API token acts as its owner, but since it never expires, it cannot do the few things that would outlive revoking it.
 It cannot change a password, mint or revoke API tokens, or mint an invite.
@@ -2153,11 +2154,17 @@ Restore the backup instead.
 
 The version that gives every vocabulary a project refuses to start while a vocabulary exists that no project links.
 The script that gives each one a project is `plaid-core/scripts/vocab_home_orphans.py` in the Plaid repository.
-It needs Python 3.11 and the Plaid Python client, `plaid-client-py` in the same repository.
+It runs from a checkout of the repository at the new version's tag, with Python 3.11 or later and its `requests` package.
+It acts as an admin through a named API token kept in a file: an admin mints one on the profile page of any app (see <<Tokens and sign-out>>) and pastes it into the file.
 Before upgrading, with the old version still running:
 
-. Run `python vocab_home_orphans.py BASE_URL TOKEN_FILE`, the file holding an admin's API token. It lists every vocabulary no project links and writes nothing.
-. If it lists any, run it again with `--apply`. Each such vocabulary gets a project of its own, named after it, whose maintainers are the vocabulary's maintainers. Then run it once more without `--apply`: it must list none.
+. From the top of the checkout, run the script with the server's address and the token's file. It lists every vocabulary no project links and writes nothing.
++
+[source,console]
+----
+$ PYTHONPATH=plaid-client-py/src python3 plaid-core/scripts/vocab_home_orphans.py https://plaid.example.edu token.txt
+----
+. If it lists any, run the same line with `--apply` at the end. Each such vocabulary gets a project of its own, named after it, whose maintainers are the vocabulary's maintainers. Then run it once more without `--apply`: it must list none.
 . Take the backup and copy it off the machine.
 . Optionally, start the new version on a copy of the database made from that backup, on a spare port, and read its log.
 . Replace the jar and restart.

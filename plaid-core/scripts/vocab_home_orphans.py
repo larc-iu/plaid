@@ -3,12 +3,13 @@ vocabulary a home project (2026-11-12).
 
 The new version refuses to start while such a vocabulary exists: its migration names each one and this script.
 Run this against the server BEFORE the upgrade, while it still runs the old version, with an admin's API token
-in a file. It needs Python 3.11 and the Plaid Python client (plaid-client-py in this repository, on PYTHONPATH,
-or the larc-plaid-client package), of any version:
+in a file. It needs Python 3.11 with requests, and the Plaid Python client (plaid-client-py in this repository, on
+PYTHONPATH, or the larc-plaid-client package), of any version. From the top of a checkout of the repository:
 
-    python plaid-core/scripts/vocab_home_orphans.py BASE_URL TOKEN_FILE            # dry run, writes nothing
-    python plaid-core/scripts/vocab_home_orphans.py BASE_URL TOKEN_FILE --apply    # give each its project
-    python plaid-core/scripts/vocab_home_orphans.py BASE_URL TOKEN_FILE --apply --only=<vocab id>,<vocab id>
+    PYTHONPATH=plaid-client-py/src python3 plaid-core/scripts/vocab_home_orphans.py BASE_URL TOKEN_FILE   # dry run
+    PYTHONPATH=plaid-client-py/src python3 plaid-core/scripts/vocab_home_orphans.py BASE_URL TOKEN_FILE --apply
+    PYTHONPATH=plaid-client-py/src python3 plaid-core/scripts/vocab_home_orphans.py BASE_URL TOKEN_FILE --apply \
+        --only=<vocab id>,<vocab id>
 
 The dry run lists every vocabulary no project links (name, id, entries, how many maintainers, and how many of
 them are deactivated) and every vocabulary several projects link (name, the linking projects' names: the upgrade
