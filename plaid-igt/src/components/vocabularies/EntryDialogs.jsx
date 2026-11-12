@@ -30,6 +30,9 @@ export const EntryDialogs = ({
   // { total, hidden }, `hidden` the links in projects this person cannot
   // open. Null until then, when the count is the one this screen reads.
   deleteHidden = null,
+  // Some of its links are in projects this person cannot write, where a
+  // morpheme that took its type from the entry is left with none.
+  deleteTypesLost = false,
   onConfirmDelete,
   // Where focus goes on close when what opened the dialog is gone (a delete
   // closes the entry under it). Returns whether it found a place.
@@ -105,6 +108,9 @@ export const EntryDialogs = ({
                         ? `, ${deleteHidden.hidden} of them in projects you cannot open`
                         : ''}
                       . Those links will be removed.{' '}
+                      {deleteTypesLost
+                        ? 'Morphemes in projects you cannot write that took their type from it will have none. '
+                        : ''}
                     </>
                   ) : null}
                   {deleteRefPatches.length > 0 && (

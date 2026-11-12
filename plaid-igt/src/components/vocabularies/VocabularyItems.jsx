@@ -715,6 +715,7 @@ export const VocabularyItems = ({
     deleteFreesSenses,
     deleteLinksChanged,
     deleteHidden,
+    deleteTypesLost,
     openDelete,
     confirmDelete,
   } = useEntryDelete({
@@ -1142,6 +1143,7 @@ export const VocabularyItems = ({
         deleteFreesSenses={deleteFreesSenses}
         deleteLinksChanged={deleteLinksChanged}
         deleteHidden={deleteHidden?.id === selectedItem?.id ? deleteHidden : null}
+        deleteTypesLost={deleteTypesLost}
         onConfirmDelete={confirmDelete}
         focusAfterClose={focusEntryList}
       />

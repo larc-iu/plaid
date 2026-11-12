@@ -2,7 +2,12 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import { notifyError } from '@/utils/feedback';
 import { statusOf } from '@ui/lib/errors.js';
 import { planDeleteRefs, morphTypeOf } from '@/domain/vocabDictionary';
-import { planKeptTypes, queueKeptTypes, busyLinkedDocument } from '@/domain/keptMorphType';
+import {
+  planKeptTypes,
+  queueKeptTypes,
+  busyLinkedDocument,
+  linkedWhereNotWritable,
+} from '@/domain/keptMorphType';
 import { dropPrecedent } from '@/domain/precedentCache';
 import { settledId } from '@ui/domain/pendingIds.js';
 import { countOf } from '@ui/lib/plural.js';
@@ -61,6 +66,16 @@ export function useEntryDelete({
   // see), unless another entry or dialog is open by then.
   const deleteCountRef = useRef(null);
   const refusedDeleteRef = useRef(new Map());
+  // A morpheme that went by the entry's type keeps it only where this person
+  // can write the project (planKeptTypes). Whether a link is in a project
+  // they read and cannot write, asked when the question opens for an entry
+  // with a type: { id, lost }. Links in projects they cannot open are known
+  // from the refusal (`deleteHidden`).
+  const [typesElsewhere, setTypesElsewhere] = useState(null);
+  const typesElsewhereRef = useRef(null);
+  typesElsewhereRef.current = typesElsewhere;
+  const LOST_TYPES =
+    'Morphemes in projects you cannot write that took their type from it will have none.';
   const [deleteLinksChanged, setDeleteLinksChanged] = useState(false);
   const [deleteHidden, setDeleteHidden] = useState(null); // { id, total, hidden } | null
   const dialogRef = useRef(dialog);
@@ -99,6 +114,12 @@ export function useEntryDelete({
     if (!id) return;
     const counting = countLinks(id).then((n) => ({ id, n }));
     deleteCountRef.current = counting;
+    if (typesElsewhere?.id !== id) setTypesElsewhere(null);
+    if (morphTypeOf(tree, id)) {
+      linkedWhereNotWritable(client, user, [settledId(id)])
+        .then((lost) => setTypesElsewhere({ id, lost }))
+        .catch((err) => console.error('Reading where the links are failed:', err));
+    }
   };
 
   const confirmDelete = async (e) => {
@@ -173,9 +194,13 @@ export function useEntryDelete({
           const visible = now ?? expectedLinkCount;
           refusedDeleteRef.current.set(deletedId, { seen: visible, server: serverCount });
           const hidden = Math.max(0, serverCount - visible);
+          const lost =
+            deletedType != null &&
+            (hidden > 0 ||
+              (typesElsewhereRef.current?.id === deletedId && typesElsewhereRef.current.lost));
           const linked = `It is linked to ${countOf(serverCount, 'word/morpheme', 'words/morphemes')}${
             hidden ? `, ${hidden} of them in projects you cannot open` : ''
-          }.`;
+          }.${lost ? ` ${LOST_TYPES}` : ''}`;
           // Someone moved on meanwhile (another entry or dialog open, or
           // this screen left): the count is said, not asked again. A refusal can come back before
           // the delete's own close and navigation have rendered.
@@ -202,11 +227,21 @@ export function useEntryDelete({
     );
   };
 
+  const openId = selectedItem?.id;
+  // Said in the question while it is about an entry with a type and some of
+  // its links are where its type would be lost.
+  const deleteTypesLost =
+    !!openId &&
+    !!morphTypeOf(tree, openId) &&
+    ((typesElsewhere?.id === openId && typesElsewhere.lost) ||
+      (deleteHidden?.id === openId && deleteHidden.hidden > 0));
+
   return {
     deleteRefPatches,
     deleteFreesSenses,
     deleteLinksChanged,
     deleteHidden,
+    deleteTypesLost,
     openDelete,
     confirmDelete,
   };

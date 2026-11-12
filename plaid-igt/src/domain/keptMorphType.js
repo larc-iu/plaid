@@ -120,6 +120,40 @@ export async function planKeptTypes(client, user, { itemIds, vocabId, projectId 
   return [...byProject].map(([pid, rows]) => ({ projectId: pid, rows }));
 }
 
+/**
+ * Whether a morpheme linked to an entry in `itemIds` is in a project this
+ * person can read and not write, where a delete of the entry leaves it with
+ * no type (`planKeptTypes` writes types only where they can write). Links in
+ * projects they cannot read are not seen here: the delete's refusal for its
+ * count says those. Asked as the Unlink confirm under "Used by other
+ * projects" asks, `canEditProject` on the project read, a failed read
+ * counting as not writable.
+ */
+export async function linkedWhereNotWritable(client, user, itemIds) {
+  const res = await client.query({
+    where: [
+      ['link', '?l', { item: itemIds }],
+      ['link-token', '?l', '?t'],
+      ['token', '?t', { layer: '?tl' }],
+      ['token-layer', '?tl', {}],
+    ],
+    return: { group: ['?tl', '?tl.config.plaid.role'], aggregates: [['count']] },
+    limit: QUERY_LIMIT,
+  });
+  const layers = (res?.results || []).filter(([, role]) => role === ROLES.MORPHEME);
+  const seen = new Map();
+  for (const [layerId] of layers) {
+    const layer = await client.tokenLayers.get(String(layerId)).catch(() => null);
+    const pid = layer?.project ?? null;
+    if (!pid) return true;
+    if (!seen.has(pid)) {
+      seen.set(pid, canEditProject(await client.projects.get(pid).catch(() => null), user));
+    }
+    if (!seen.get(pid)) return true;
+  }
+  return false;
+}
+
 /** Queue `planKeptTypes`'s rows on batch `b`, one bulk update per chunk. */
 export function queueKeptTypes(b, plan) {
   for (const { rows } of plan || []) {
