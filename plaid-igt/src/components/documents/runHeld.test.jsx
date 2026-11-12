@@ -46,6 +46,24 @@ describe('a run dialog while another run holds the document', () => {
     await view.unmount();
   });
 
+  // REV-RUN-5: speech detection by a service takes no lock, and Transcribe
+  // refused to start under it only after its dialog had closed.
+  it('Transcribe says speech detection is running, and Run is disabled', async () => {
+    const view = await renderComponent(
+      <DocumentProvider value={{ writeLock: null }}>
+        <TranscribeDialog
+          mediaOps={{ transcribeSpot: spot, handleTranscribe: vi.fn(), isProcessing: true }}
+        />
+      </DocumentProvider>,
+    );
+    await view.step(() => byText(document.body, 'button', 'Transcribe').click());
+    expect(document.body.textContent).toContain(
+      'Speech detection is running. One run at a time on a document.',
+    );
+    expect(runButton('Transcribe').disabled).toBe(true);
+    await view.unmount();
+  });
+
   it('says nothing with no run', () => {
     expect(runHeldNotice(null)).toBeNull();
   });
