@@ -178,7 +178,7 @@ describe('the job page', () => {
         ['Waiting', '2 jobs ahead'],
       ],
       [jobOf(), ['Running', 'Analyzing', 'Sentences 11 to 15 of 40.']],
-      [jobOf({ state: 'stopping' }), ['Stopping']],
+      [jobOf({ state: 'stopping' }), ['Stopping…']],
       [jobOf({ state: 'done', finishedAt: '2026-11-12T11:00:00Z' }), ['Done']],
       [jobOf({ state: 'cancelled', reason: 'cancelled' }), ['Stopped']],
       [
@@ -264,7 +264,9 @@ describe('the job page', () => {
     await v.step(() => confirmStop.click());
     await v.step(async () => {});
     expect(client.jobs.cancel).toHaveBeenCalledWith('j1');
-    expect(text(v.container.querySelector('[role="status"]'))).toContain('Stopping');
+    expect(text(v.container.querySelector('[role="status"]'))).toContain('Stopping…');
+    // Asked once: nothing offers it again while the job stops (REV-J-C-4).
+    expect(stopButton(v.container)).toBe(null);
     await v.unmount();
   });
 

@@ -19,7 +19,7 @@ import { useDocumentTitle } from '../../hooks/useDocumentTitle.js';
 import { useValidateOnOpen } from '../../hooks/useValidateOnOpen.js';
 import { RunBanner } from '../services/RunBanner.jsx';
 import { canEditProject, canManageProject, canStopJob } from '../../domain/permissions.js';
-import { bannerProps } from '../../domain/jobs.js';
+import { bannerProps, jobStoppable } from '../../domain/jobs.js';
 import { useActiveJob } from '../../hooks/useActiveJob.js';
 import { useConfirm } from './ConfirmProvider.jsx';
 import { dismissIntegrityFindings } from '../../lib/integrityToast.js';
@@ -573,7 +573,7 @@ const DocumentEditor = ({ app, documentClient }) => {
           {jobBanner && (
             <RunBanner
               {...jobBanner}
-              cancel={canStopJob(job, project, user) ? stopJob : undefined}
+              cancel={jobStoppable(job) && canStopJob(job, project, user) ? stopJob : undefined}
             />
           )}
         </div>

@@ -22,6 +22,7 @@ import {
   jobPhaseText,
   jobReasonText,
   jobStateText,
+  jobStoppable,
 } from '@ui/domain/jobs.js';
 import { JobReport } from './JobReport.jsx';
 import { durationText, jobsTabPath, tasksText } from './jobText.js';
@@ -110,8 +111,7 @@ export const JobPage = ({ project, projectId, jobId, client }) => {
   }
   if (!job) return <Loading />;
 
-  const stoppable =
-    (job.state === 'waiting' || job.state === 'running') && canStopJob(job, project, user);
+  const stoppable = jobStoppable(job) && canStopJob(job, project, user);
 
   return (
     <div>

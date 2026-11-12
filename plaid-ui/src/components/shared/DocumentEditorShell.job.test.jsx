@@ -171,6 +171,19 @@ describe('the job banner', () => {
     await view.unmount();
   });
 
+  it('says Stopping… once Stop is confirmed, and offers no Stop again (REV-J-C-4)', async () => {
+    await mount('d1');
+    client.jobs.active.mockResolvedValue(runningJob({ state: 'stopping' }));
+    await view.step(() => stopButton().click());
+    await settle();
+    expect(client.jobs.cancel).toHaveBeenCalledWith('j1');
+    expect(banners()).toHaveLength(1);
+    expect(banners()[0].textContent).toContain('Stopping…');
+    expect(banners()[0].textContent).not.toContain('Sentences 11 to 15 of 40.');
+    expect(stopButton()).toBeUndefined();
+    await view.unmount();
+  });
+
   it('says a Stop that was refused', async () => {
     const refused = Object.assign(new Error('This job has ended.'), { status: 409 });
     client.jobs.cancel.mockRejectedValueOnce(refused);

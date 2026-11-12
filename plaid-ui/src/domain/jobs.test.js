@@ -9,6 +9,7 @@ import {
   jobPhaseText,
   jobReasonText,
   jobStateText,
+  jobStoppable,
   jobTaskText,
   workerSeen,
 } from './jobs.js';
@@ -86,13 +87,31 @@ describe('bannerProps', () => {
   it('leaves the line to the banner when the worker said nothing', () => {
     expect(bannerProps(job({ message: null }), 'd1').message).toBe(null);
   });
+
+  // Once Stop is confirmed the banner says so, whatever the worker's last
+  // line was (REV-J-C-4).
+  it('says Stopping… while the job stops', () => {
+    expect(bannerProps(job({ state: 'stopping' }), 'd1').message).toBe('Stopping…');
+    expect(bannerProps(job({ state: 'stopping', message: null }), 'd1').message).toBe('Stopping…');
+  });
+});
+
+describe('jobStoppable', () => {
+  it('is true while the job waits or runs, and not once Stop was asked or it ended', () => {
+    expect(
+      ['waiting', 'running', 'stopping', 'done', 'cancelled', 'failed'].map((state) =>
+        jobStoppable({ state }),
+      ),
+    ).toEqual([true, true, false, false, false, false]);
+    expect(jobStoppable(null)).toBe(false);
+  });
 });
 
 describe('the words', () => {
   it('names each state of a job', () => {
     expect(
       ['waiting', 'running', 'stopping', 'done', 'cancelled', 'failed'].map(jobStateText),
-    ).toEqual(['Waiting', 'Running', 'Stopping', 'Done', 'Stopped', 'Failed']);
+    ).toEqual(['Waiting', 'Running', 'Stopping…', 'Done', 'Stopped', 'Failed']);
   });
 
   it('says which states are active', () => {

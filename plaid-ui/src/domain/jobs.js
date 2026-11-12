@@ -18,10 +18,16 @@ const WORKING = new Set(['running', 'stopping']);
 
 export const isJobActive = (job) => ACTIVE.has(job?.state);
 
+/**
+ * Whether Stop is offered (to whoever may stop it, `canStopJob`): while the job
+ * waits or runs. Once Stop was asked (`stopping`) nothing offers it again.
+ */
+export const jobStoppable = (job) => job?.state === 'waiting' || job?.state === 'running';
+
 const STATE_WORDS = {
   waiting: 'Waiting',
   running: 'Running',
-  stopping: 'Stopping',
+  stopping: 'Stopping…',
   done: 'Done',
   cancelled: 'Stopped',
   failed: 'Failed',
@@ -82,6 +88,7 @@ export const workerSeen = (worker, now = Date.now()) => {
  * percent is of the document's target sentences done, null (the bar pulses)
  * while they are not counted yet or there are none. The banner says nothing
  * about editing: a job holds no write lock, and the document stays editable.
+ * Once Stop was asked, its line is the state's word in place of the worker's.
  */
 export const bannerProps = (job, documentId) => {
   if (!WORKING.has(job?.state) || !documentId || job.currentDocument !== documentId) return null;
@@ -92,7 +99,7 @@ export const bannerProps = (job, documentId) => {
     label: 'Assistant job',
     startedAt: Number.isFinite(startedAt) ? startedAt : undefined,
     percent,
-    message: job.message ?? null,
+    message: job.state === 'stopping' ? jobStateText(job.state) : (job.message ?? null),
     paused: false,
   };
 };
