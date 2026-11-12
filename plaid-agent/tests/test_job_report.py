@@ -34,7 +34,7 @@ def test_the_report_has_the_contracts_shape_and_cuts_its_lists():
     client, job = _job()
     job.update_row('d1', state='done', sentences=4, targets=3, done=3,
                    counts={'translations': 0, 'refreshed': 0, 'words': 5, 'links': 4, 'entries': 1, 'left': 1,
-                           'changed': 1, 'protected': 0},
+                           'changed': 1, 'protected': 0, 'analyzed': 2},
                    skipped=[{'sentence': 's4', 'sentence_id': 'x', 'reason': 'too-long', 'kind': None}])
     job.update_row('d2', state='in-use')
     created = [{'id': f'e{i}', 'lexicon': 'v1' if i < JOB_REPORT_LIST_MAX else 'v2', 'form': f'f{i}', 'gloss': 'g'}
@@ -47,7 +47,8 @@ def test_the_report_has_the_contracts_shape_and_cuts_its_lists():
     assert report['stopped'] is None
     t = report['totals']
     assert (t['documents_done'], t['documents_in_use'], t['documents_not_reached']) == (1, 1, 0)
-    assert (t['sentences'], t['words'], t['links'], t['changed'], t['skipped_too_long']) == (3, 5, 4, 1, 1)
+    # "sentences" is the sentences analysed (``analyzed``), not those done.
+    assert (t['sentences'], t['words'], t['links'], t['changed'], t['skipped_too_long']) == (2, 5, 4, 1, 1)
     assert t['entries'] == JOB_REPORT_LIST_MAX + 3, 'counted whole, listed cut'
     assert len(report['entries']['created']) == JOB_REPORT_LIST_MAX and report['entries']['created_more'] == 3
     assert {e['lexicon'] for e in report['entries']['created']} == {'v1'}

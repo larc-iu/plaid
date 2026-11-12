@@ -1291,6 +1291,8 @@ class IgtRunner:
                 counts['left'] += 1
         if translation:
             counts[translation] += 1
+        if counts['words'] or translation in ('translations', 'refreshed'):
+            counts['analyzed'] = 1
         return {'sentence': s.id, 'counts': dict(counts), 'decisions': list(decisions.values())}
 
     def commit(self, document_id: str, records: List[Dict[str, Any]], fields: Dict[str, Any]) -> None:

@@ -501,7 +501,9 @@ CHECKING, HARMONIZING, REPORTING = 'checking', 'harmonizing', 'reporting'
 ROW_FINAL = ('done', 'in-use', 'gone')
 
 #: The keys of a row's ``counts`` (CONTRACT 5.2), each a whole number.
-COUNT_KEYS = ('translations', 'refreshed', 'words', 'links', 'entries', 'left', 'changed', 'protected')
+#: ``analyzed`` counts the sentences the job wrote in, an analysis or a
+#: translation (added by J-FIX-B2): the report's "sentences".
+COUNT_KEYS = ('translations', 'refreshed', 'words', 'links', 'entries', 'left', 'changed', 'protected', 'analyzed')
 #: A row's count of the sentences skipped past the cap of its ``skipped``
 #: list (core's JOB_SKIPPED_PER_DOCUMENT), which are counted and not listed.
 SKIPPED_MORE = 'skipped_more'
@@ -658,7 +660,9 @@ def build_report(job: Job, state: str, reason: Optional[str], documents: List[Di
             d.get('state'), 'documents_not_reached')
         totals[key] += 1
         counts = d.get('counts') or {}
-        totals['sentences'] += d.get('done') or 0
+        # The sentences the job wrote in, never one finished with nothing
+        # written, skipped or failed (REV-J-B2 S3-5): ``done`` counts those.
+        totals['sentences'] += counts.get('analyzed') or 0
         for k in ('translations', 'refreshed', 'words', 'links', 'changed', 'protected', 'skipped_more'):
             totals[k] += counts.get(k) or 0
         for s in d.get('skipped') or []:
