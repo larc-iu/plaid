@@ -1038,7 +1038,13 @@ export const vocabPopover = {
     const current = (editsEntry ? fromItem : morph?.metadata?.morphType) || '';
     const canEditEntry = editsEntry && !!vocab && this.canEditEntries(vocab);
     const disabled = this.readOnly || (editsEntry && !canEditEntry);
-    const title = editsEntry ? 'Type of the linked lexicon entry' : 'Type of this morpheme';
+    // Disabled on a document the user writes only because the entry is in a
+    // lexicon of a project they hold no role in, which the title says.
+    const title = !editsEntry
+      ? 'Type of this morpheme'
+      : canEditEntry || this.readOnly
+        ? 'Type of the linked lexicon entry'
+        : 'Type of the linked lexicon entry, from another project';
     return html`
       <label class="igt-vocab-pop__type" title=${title} @click=${(e) => e.stopPropagation()}>
         <span>${editsEntry ? 'Type (entry)' : 'Type'}</span>

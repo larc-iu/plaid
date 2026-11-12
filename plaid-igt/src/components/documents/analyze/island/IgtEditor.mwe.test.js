@@ -24,7 +24,7 @@ let host;
 let editor;
 
 // "the cat sat down", one sentence, and a lexicon with a phrase entry.
-function mount({ links = [], maintainer = false } = {}) {
+function mount({ links = [], maintainer = false, borrowed = false } = {}) {
   const raw = buildRawDoc({
     body: 'the cat sat down',
     words: [
@@ -54,7 +54,13 @@ function mount({ links = [], maintainer = false } = {}) {
     client,
   });
   client.documents.get = async () => doc.raw;
-  ({ host, editor } = mountIsland(doc, maintainer ? { canEditEntries: () => true } : {}));
+  // `borrowed`: the lexicon belongs to a project the user holds no role in.
+  const rights = borrowed
+    ? { canEditEntries: () => false }
+    : maintainer
+      ? { canEditEntries: () => true }
+      : {};
+  ({ host, editor } = mountIsland(doc, rights));
   return { doc, client };
 }
 
@@ -171,6 +177,14 @@ describe('a linked multi-word expression', () => {
     expect(row.textContent).not.toContain('(entry)');
     expect(row.querySelector('select').disabled).toBe(true);
     expect(row.querySelector('option[selected]').value).toBe('phrase');
+  });
+
+  it('shows a linked entry’s type, unchangeable, in a lexicon of another project', async () => {
+    mount({ links: [linkOver('lk-1', ['w-3', 'w-4'])], borrowed: true });
+    click(label('mwe:lk-1'));
+    const row = popover().querySelector('.igt-vocab-pop__type');
+    expect(row.querySelector('select').disabled).toBe(true);
+    expect(row.title).toBe('Type of the linked lexicon entry, from another project');
   });
 
   it('choosing another entry relinks the same words', async () => {

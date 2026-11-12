@@ -512,7 +512,9 @@ export const mwe = {
     const title = linked
       ? canEditEntry
         ? 'Type of the linked lexicon entry'
-        : 'Type comes from the linked lexicon entry'
+        : this.readOnly
+          ? 'Type comes from the linked lexicon entry'
+          : 'Type of the linked lexicon entry, from another project'
       : 'The type a new entry gets: multi-word expression';
     return html`
       <label class="igt-vocab-pop__type" title=${title} @click=${(e) => e.stopPropagation()}>

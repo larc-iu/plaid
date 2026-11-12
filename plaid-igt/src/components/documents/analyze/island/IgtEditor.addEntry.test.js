@@ -310,7 +310,7 @@ describe('a writer of a project that borrows the lexicon', () => {
     openOn('m-2');
     const row = popover().querySelector('.igt-vocab-pop__type');
     expect(row.querySelector('select').disabled).toBe(true);
-    expect(row.title).toBe('Type of the linked lexicon entry');
+    expect(row.title).toBe('Type of the linked lexicon entry, from another project');
     expect(popover().querySelector('.igt-vocab-pop__type-note')).toBeNull();
   });
 });
