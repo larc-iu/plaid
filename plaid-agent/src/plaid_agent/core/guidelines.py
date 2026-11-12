@@ -554,3 +554,26 @@ def kinds(OpKind):
                required=('guideline_id',), apply=_apply_revise, shape=PROSE, replaces=None,
                target=lambda op: ('guideline', op.get('guideline_id'))),
     ]
+
+
+def job_section(guidelines: Sequence[Guideline]) -> str:
+    """The guidelines paragraph of an unattended job's prompt: every
+    guideline whole, since a job has no read to spend on one (the job's
+    checks refuse a manual past what fits), and nothing about drafting or
+    revising one, which is a person's to decide."""
+    guidelines = in_reading_order(guidelines)
+    if not guidelines:
+        return '\nThe project\'s guidelines: none written.'
+    lines = ['', 'The project\'s guidelines, the conventions its people agreed on. Where one applies, it '
+             'outranks what you know in general.', '', FENCE_TOP]
+    for g in guidelines:
+        lines += ['', f'{TITLE_MARK} {g.title}']
+        if g.body:
+            lines += ['', _fenced(g.body)]
+    lines += ['', FENCE_END]
+    return '\n'.join(lines)
+
+
+def manual_chars(guidelines: Sequence[Guideline]) -> int:
+    """What a whole manual costs, in the characters a job's checks count."""
+    return sum(g.chars for g in guidelines)

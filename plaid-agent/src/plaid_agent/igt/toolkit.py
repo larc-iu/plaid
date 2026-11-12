@@ -534,3 +534,73 @@ TOOLS, WRITE_TOOLS, tools_for, call_tool = toolkit.build(
     TOOLS, _IMPL, manual='interlinear text: how this project glosses, segments and translates',
     web='this corpus and its lexicons', code='the texts and lexicons',
     code_functions=', lexicon(), recording()', rewrite=entry_form_named_form)
+
+
+# --- the unattended job's tools -------------------------------------------------
+# A job's own list (SPEC 3.5, FABLE-REVIEW 5): the reads a stretch needs and the
+# plan tools of the tasks asked, nothing else. Nothing that touches the text,
+# deletes, merges, edits a tagset, drafts a guideline or runs code is offered,
+# so "nothing a person wrote is touched" is a property of the list as well as
+# of the guards (igt/job.py). The reads are the chat's own schemas. The plan
+# tools say what is true for a job: nothing waits for an approval.
+
+#: The reads a job offers, by name, in this order.
+JOB_READS = ('read_sentences', 'analyses_of', 'concordance', 'search', 'lexicon_entry', 'read_lexicon')
+
+_SCHEMAS = {t['function']['name']: t for t in TOOLS}
+
+JOB_PLAN_TOOLS = {
+    'set_field': _fn(
+        'set_field',
+        'PLAN: set a field on target sentences or words: the translation of a target sentence (refs ["s7"]) or an '
+        'empty word field (refs ["s6.w1"]). Several fields at once: values={field: value}.',
+        _SCHEMAS['set_field']['function']['parameters']['properties'], ['document', 'refs']),
+    'set_analysis': _fn(
+        'set_analysis',
+        'PLAN: the analysis of target words: each word\'s morphemes in order, each with its form, a type (stem, '
+        'root, prefix, suffix, infix, enclitic, proclitic, ...) and fields mapping morpheme field names to values, '
+        'e.g. [{"form":"kitab","type":"stem","fields":{"Gloss":"book"}}, {"form":"lar","type":"suffix","fields":'
+        '{"Gloss":"PL"}}]. The forms spell the word. One call per sentence: analyses=[{"ref":"s3.w1","morphemes":'
+        '[...]}, ...]. Once staged, sN.wN.mN names a morpheme of the staged analysis in link_entry.',
+        _SCHEMAS['set_analysis']['function']['parameters']['properties'], ['document']),
+    'link_entry': _fn(
+        'link_entry',
+        'PLAN: link morphemes of the words you analyse (sN.wN.mN) to a lexicon entry, by its form ("ама", or '
+        '"ама#2" for the second spelled so) or by entry_id (also the id create_entry returns).',
+        _SCHEMAS['link_entry']['function']['parameters']['properties'], ['document', 'refs']),
+    'create_entry': _fn(
+        'create_entry',
+        'PLAN: add a lexicon entry where none has this form and gloss. fields maps entry field names (e.g. '
+        '"gloss", "pos") to values, type is the morph type, and a form written with markers (-s, ka-, =ri) is '
+        'stored without them. link_entry takes the entry_id it returns. An entry that exists with the form and '
+        'gloss is refused with its name: link that one.',
+        _SCHEMAS['create_entry']['function']['parameters']['properties'], ['form']),
+}
+
+#: The plan tools each task offers.
+JOB_TASK_TOOLS = {'translate': ('set_field',), 'gloss': ('set_analysis', 'set_field'),
+                  'link': ('link_entry', 'create_entry')}
+
+
+def job_plan_names(tasks) -> list:
+    """The plan tools a job of ``tasks`` offers, in one order."""
+    names = {n for t in tasks for n in JOB_TASK_TOOLS.get(t, ())}
+    return [n for n in JOB_PLAN_TOOLS if n in names]
+
+
+def job_tools(tasks, plan_only: bool = False) -> list:
+    """The schemas a stretch of a job of ``tasks`` offers: the reads and the
+    plan tools of the tasks, or the plan tools alone once the stretch has
+    been told to decide (``plan_only``)."""
+    reads = [] if plan_only else [_SCHEMAS[n] for n in JOB_READS]
+    return reads + [JOB_PLAN_TOOLS[n] for n in job_plan_names(tasks)]
+
+
+def job_call_tool(ws, name: str, args: Dict[str, Any], tasks) -> str:
+    """One call of a job's model: a tool its list offers, run as the chat runs
+    it (every guard of the tool and of the workspace applies), and a refusal
+    for any other."""
+    from ..core.tools import refused
+    if name not in JOB_READS and name not in job_plan_names(tasks):
+        return refused(f'there is no tool named {name} in this job.', 'invalid-argument')
+    return call_tool(ws, name, args)

@@ -97,6 +97,37 @@ def _render(app: str) -> str:
     return '\n'.join(parts)
 
 
+def job_out() -> str:
+    return os.path.join(HERE, '..', 'docs', 'igt', 'SAMPLE_JOB_PROMPT.md')
+
+
+def render_job() -> str:
+    """What an unattended job's model sees on every call of a stretch: the
+    job's system prompt and its tools, for a job of every task, over the igt
+    tests' project."""
+    from plaid_agent.igt import prompt, toolkit
+    ws = _workspace('igt')
+    tasks = ('translate', 'gloss', 'link')
+    tools = toolkit.job_tools(tasks)
+    intro = textwrap.fill(
+        'The system prompt and the tools an unattended job sends to the model on every call of a stretch, '
+        'rendered for the small project the tests use (`tests/fixtures.py`, project "Demo") for a job of every '
+        'task. This file is a snapshot for browsing and may lag behind the code: the prompt is built in '
+        '`src/plaid_agent/igt/prompt.py` (`build_job_prompt`) and the tools are chosen in '
+        '`src/plaid_agent/igt/toolkit.py` (`job_tools`). A job of fewer tasks is offered fewer plan tools. '
+        'Regenerate it with', width=80)
+    turn = ('Each stretch is a conversation of its own: this system prompt, one message the\n'
+            'worker builds (the target sentences, the context before them, how their forms\n'
+            'were analysed before, the starter\'s instructions), and the tools below. What\n'
+            'the model stages is written when it ends, as machine proposals (`igt/job.py`).')
+    parts = [f'# What a job\'s model sees\n\n{intro}\n\n    bb sample-prompts\n\n{turn}\n',
+             '\n## System prompt\n', '```text', prompt.build_job_prompt(ws.project).rstrip(), '```\n',
+             f'## Tools\n\n{len(tools)} tools, in the order the model receives them: '
+             f'{len(toolkit.job_plan_names(tasks))} plan a change (`PLAN:`), the rest read the project.\n']
+    parts += [render_tool(t) for t in tools]
+    return '\n'.join(parts)
+
+
 def copy_igt_guide() -> None:
     """The igt app's user guide into the package, for an install without the
     app's sources (plaid_agent/igt/guide.py reads the repository's own where
@@ -114,6 +145,9 @@ def main() -> None:
             fh.write(render(app))
         print(f'wrote {os.path.normpath(out(app))}')
     if not sys.argv[1:] or 'igt' in sys.argv[1:]:
+        with open(job_out(), 'w', encoding='utf-8') as fh:
+            fh.write(render_job())
+        print(f'wrote {os.path.normpath(job_out())}')
         copy_igt_guide()
 
 

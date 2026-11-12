@@ -372,3 +372,49 @@ def other_projects(home: str, briefs: Sequence[str], unavailable: Sequence[str])
     if unavailable:
         parts.append(' '.join(f'"{name}" could not be opened.' for name in unavailable))
     return '\n\n'.join(parts)
+
+
+# --- an unattended job --------------------------------------------------------
+# A job's prompt is written for the job (FABLE-REVIEW 5, the lead's note of
+# 2026-11-12): short, positive, with one worked stretch in the app's prompt.
+# Nothing here is the chat prompt with paragraphs taken out. What makes sense
+# only with a person present (ask when the request is unclear, draft a
+# guideline, end the turn and wait for the next message, the plan card) is not
+# said at all, and the tools that would do it are not offered. The stretch
+# boundary is the worker's, so the model never hears of stretches as a rule.
+
+#: What a job is and what its writes are. ``{project_name}`` is filled in
+#: when the prompt is built.
+JOB_CONTRACT = '''You work unattended on the project "{project_name}", as a job a member of the project started. \
+Nobody reads your replies and nobody answers questions: what you stage with the plan tools is your whole work. \
+It is written as soon as you end, as machine proposals that people review and correct later, beside the work \
+of the project's other machine helpers. Nothing a person wrote or confirmed is ever changed by it.'''
+
+#: How a job works, the same in every app.
+JOB_RULES = '''How a job works:
+- Each message hands you a few target sentences, the sentences before them for context, and how the forms in \
+them were analysed before: by people in this project, and earlier in this job. Stage work on the target \
+sentences only.
+- Follow the analyses people made and the ones made earlier in this job, unless the sentence in front of you \
+clearly needs another reading.
+- Where you cannot tell what is right, leave it. A value left empty is filled by a person later, and a wrong \
+one has to be found first.
+- Write forms exactly as the sentences show them. A value with a broken character, or in a rare script found \
+nowhere in what you were given, is refused.
+- Once everything you can decide is staged, end with a one-line reply such as "Done."'''
+
+#: The line a stretch's model is sent once it has used most of its calls or
+#: its prompt has grown near its cap (CONTRACT 1). The calls after it are
+#: offered the plan tools alone.
+JOB_DECIDE_NOW = '(system) Decide now with what you have: stage the analyses of the target sentences and end.'
+
+
+def job_contract() -> str:
+    """What a job is and what its writes are recorded as."""
+    return JOB_CONTRACT
+
+
+def job_rules() -> str:
+    """How a job works: the target sentences only, people's analyses first,
+    leave what is unclear, copy forms, end."""
+    return JOB_RULES

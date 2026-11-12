@@ -181,3 +181,59 @@ def build_system_prompt(project: IgtProject, web: bool = False) -> str:
     out = out.replace('{guidelines}', guidelines_section(project.guidelines))
     out = out + WEB if web else out
     return out + CODE if sandbox.available() is None else out
+
+
+# --- the unattended job's prompt ------------------------------------------------
+# Written for the job (core.prompt.JOB_CONTRACT), not the chat prompt with
+# paragraphs taken out. One worked stretch instead of rules about turns: a
+# demonstration outweighs a list, which the cite examples above learned. The
+# calls are narrated in prose, never written as call syntax, which small
+# models copy out as text.
+
+_JOB_SYSTEM = '''You are the assistant inside Plaid IGT, a tool linguists use to build interlinear glossed text: \
+sentences split into words, words into morphemes, with glosses and other fields at each level, a free \
+translation per sentence, and a lexicon of entries that morphemes link to.
+
+{job_contract}
+
+{project_shape}
+{guidelines}
+
+{job_rules}
+
+What to stage:
+- A target translation: set_field with the translation field on the sentence (sN).
+- Target words: one set_analysis call per sentence, with every target word of it in analyses. Give each \
+word's morphemes in order, each with its form, its type (stem, root, prefix, suffix, enclitic, proclitic, ...) \
+and the morpheme fields the project has, such as the gloss. The forms together spell the word. A word that is \
+one morpheme is one morpheme with the whole word as its form.
+- When linking is part of the job: link each morpheme of the words you analyse to its lexicon entry with \
+link_entry on sN.wN.mN. Where no entry has that form and gloss, create_entry makes one and link_entry links it \
+by the entry_id it returns. create_entry refuses an entry that exists and names it: link that one instead.
+- A word field (sN.wN) is set only where it is empty.
+- The reads are there for what the message does not settle: analyses_of for a form's analyses across the \
+project, concordance for a morpheme's contexts, lexicon_entry and read_lexicon for entries. Most messages \
+need few of them.
+
+One message worked through, for example. It shows s4 and s5 as context and s6 and s7 as targets. In s6 the \
+words w1 "nakuja" and w3 "leo" are targets, and the translation of s7 is a target. It says people analysed \
+"leo" as le-o 'today-DEF' twice, and that this job analysed "ja" as one stem 'come' and linked it to the \
+entry ja. Nothing settles "na". You read the concordance of "na" and see it before verbs glossed PRS in four \
+sentences. You then stage one set_analysis for s6 with w1 as na-ku-ja (prefix PRS, prefix INF, stem come) and \
+w3 as le-o as people have it, link s6.w1.m3 to the entry ja and s6.w3.m1 to le, find no entry for the prefix \
+"na-" glossed PRS and create it and link s6.w1.m1 to it, leave "ku-" unlinked because two entries could be \
+meant, set the translation of s7, and end with "Done."'''
+
+JOB_SYSTEM = shared.filled(_JOB_SYSTEM, {
+    'job_contract': shared.job_contract(),
+    'project_shape': shared.project_shape(),
+    'job_rules': shared.job_rules(),
+})
+
+
+def build_job_prompt(project: IgtProject) -> str:
+    """The system prompt of every stretch of a job on ``project``: the job's
+    contract and rules, the project's shape and its guidelines, whole."""
+    from ..core.guidelines import job_section
+    out = JOB_SYSTEM.replace('{project_name}', project.name).replace('{shape}', '\n'.join(shape_lines(project)))
+    return out.replace('{guidelines}', job_section(project.guidelines))

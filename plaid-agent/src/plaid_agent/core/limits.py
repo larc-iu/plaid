@@ -183,3 +183,61 @@ NGRAM_MAX = 3
 # cost glm-5.3-flash two thirds of its output cap (BENCH-STRETCH, the owner's
 # ruling the same day).
 STRETCH_SENTENCES = 5
+
+
+# --- unattended jobs ----------------------------------------------------------
+# A job works a project's documents with no person watching, a stretch of
+# sentences at a time, one fresh conversation per stretch (the jobs round of
+# 2026-11-12, its SPEC and CONTRACT). Every number the worker is held to is
+# here, the one home of the agent's job constants.
+
+#: Seconds between the worker's heartbeats while it holds a job.
+JOB_HEARTBEAT_S = 30
+#: Seconds between the worker's asks for a job while it has none.
+JOB_IDLE_POLL_S = 30
+#: Target sentences one stretch analyses: the interactive stretch, the one
+#: number with measurements behind it.
+JOB_STRETCH_SENTENCES = STRETCH_SENTENCES
+#: Sentences before a stretch's first target, handed in as context.
+JOB_CONTEXT_SENTENCES = 2
+#: The most characters one sentence may take as a stretch renders it. A
+#: longer one is skipped (reason ``too-long``).
+JOB_SENTENCE_MAX_CHARS = 4000
+#: The most characters of guidelines a job reads. A job inlines every one in
+#: every stretch, and refuses a manual past the size the assistant inlines
+#: whole rather than reading part of it.
+JOB_GUIDELINES_MAX_CHARS = GUIDELINES_INLINE_CHARS
+#: Analyses shown per form from each source (people, earlier in the job).
+JOB_PRECEDENT_PER_FORM = 3
+#: The most characters the precedent block of one stretch may take.
+JOB_PRECEDENT_CHARS = 8000
+#: Model calls one stretch may make. A 21st fails the stretch.
+JOB_STRETCH_MAX_ROUNDS = 20
+#: The model call that carries the decide-now line.
+JOB_STRETCH_DECIDE_AT_ROUNDS = 15
+#: The most one call's prompt may count (a third of glm-5.3-flash's input).
+JOB_CALL_MAX_PROMPT_TOKENS = 64000
+#: A call whose prompt reaches this carries the decide-now line.
+JOB_CALL_DECIDE_AT_TOKENS = 48000
+#: The most one stretch may send over all its calls.
+JOB_STRETCH_MAX_SENT_TOKENS = 600000
+#: Seconds the worker waits before it asks a model that did not answer again.
+JOB_MODEL_RETRY_S = 300
+#: Seconds between asks while people use the model.
+JOB_YIELD_POLL_S = 10
+#: Seconds the model must have been quiet before the worker calls it.
+JOB_YIELD_QUIET_S = 60
+#: Seconds after a write by anyone else that a document counts as in use.
+JOB_PERSON_QUIET_S = 600
+#: Tries for a document's lock, and the seconds between them.
+JOB_LOCK_TRIES = 3
+JOB_LOCK_WAIT_S = 10
+#: How many times a document is put off before it ends ``in-use``, and the
+#: seconds a pass that found every put-off document still in use waits.
+JOB_DEFER_ROUNDS = 3
+JOB_DEFER_WAIT_S = 600
+#: The share of a form's job-made words one analysis needs to be made the
+#: form's analysis, as (numerator, denominator), compared in whole numbers.
+HARMONIZE_MAJORITY = (2, 3)
+#: The most entries one list of a job's report holds. The rest are counted.
+JOB_REPORT_LIST_MAX = 500

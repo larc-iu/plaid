@@ -34,6 +34,13 @@ def test_the_igt_snapshot_is_current():
     _check('igt')
 
 
+def test_the_igt_job_snapshot_is_current():
+    path = sample_prompt.job_out()
+    assert os.path.exists(path)
+    with io.open(path, encoding='utf-8') as fh:
+        assert fh.read() == sample_prompt.render_job(), REGENERATE.format('IGT job')
+
+
 def test_the_umr_snapshot_is_current():
     _check('umr')
 
