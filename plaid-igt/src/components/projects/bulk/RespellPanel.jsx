@@ -7,7 +7,8 @@ import { buildReplacer, chainText, respellBarred } from './bulkPlan.js';
 import { planRespell, applyRespell } from './bulkRunner.js';
 import { notifyStopped, countOf, skippedNote, useRun, useWriter } from './bulkShared.js';
 import { scopeTextClass } from '@/domain/scopeColors';
-import { canManageVocabulary, isBorrowed } from '@ui/domain/permissions.js';
+import { canManageVocabulary } from '@ui/domain/permissions.js';
+import { useVocabularyHomes, vocabularyHome } from '../../../hooks/useVocabularyHomes.js';
 import { useAuth } from '@/contexts/AuthContext';
 import {
   ApplyBar,
@@ -59,17 +60,20 @@ export const RespellPanel = ({ project, projectId, client, layerInfo }) => {
   const [includeLexicon, setIncludeLexicon] = useState(false);
   const r = useRun();
   // Respelling an entry renames it, which only a maintainer of its
-  // vocabulary's project may do (core refuses anyone else). A vocabulary this
-  // project borrows is read only here. The others are listed, not ticked.
+  // vocabulary's project may do (core refuses anyone else), wherever they
+  // stand. For a vocabulary this project borrows, that project is read, and
+  // one the person cannot read is no role. The others are listed, not ticked.
   const { user } = useAuth();
-  const canRespellIn = (vocab) =>
-    canManageVocabulary(vocab, isBorrowed(vocab, project) ? null : project, user);
-  // Who could respell a kept entry, by its vocabulary.
-  const lockedTitle = (vocabId) => {
-    const vocab = (project.vocabs || []).find((v) => v.id === vocabId);
-    return vocab && !isBorrowed(vocab, project)
-      ? `Needs a maintainer of “${project.name}”.`
-      : 'This vocabulary belongs to another project.';
+  const homes = useVocabularyHomes(client, project);
+  const homeOf = (vocab) => vocabularyHome(vocab, project, homes);
+  const canRespellIn = (vocab) => canManageVocabulary(vocab, homeOf(vocab), user);
+  // Why a kept entry is kept, by its vocabulary: who could respell it, or
+  // that its project cannot be read.
+  const lockedMark = (vocabId) => {
+    const home = homeOf((project.vocabs || []).find((v) => v.id === vocabId));
+    return home
+      ? { label: 'maintainers only', title: `Needs a maintainer of “${home.name}”.` }
+      : { label: 'read only', title: 'This vocabulary belongs to another project.' };
   };
   const writer = useWriter(project);
 
@@ -264,7 +268,12 @@ export const RespellPanel = ({ project, projectId, client, layerInfo }) => {
                     <Change from={x.old} to={x.new} />
                     <span className="text-xs text-muted-foreground">
                       <span dir="auto">{x.vocabName}</span>
-                      {x.locked && <span title={lockedTitle(x.vocabId)}> · maintainers only</span>}
+                      {x.locked && (
+                        <span title={lockedMark(x.vocabId).title}>
+                          {' · '}
+                          {lockedMark(x.vocabId).label}
+                        </span>
+                      )}
                     </span>
                     {x.invalid === 'empty' && (
                       <span className="text-xs text-destructive">

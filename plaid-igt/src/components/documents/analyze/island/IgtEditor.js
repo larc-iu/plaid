@@ -127,9 +127,8 @@ export class IgtEditor {
     this._cmtEditDraft = '';
     // Whether the current user adds entries to a vocabulary and changes what
     // is stored on one ("+ Create", a linked entry's type): a writer of its
-    // project, asked of a vocabulary this project owns. A borrowed one is read
-    // only here. Linking needs only write access to the document. Default:
-    // assume yes (dev/tests).
+    // project, wherever they stand. Linking needs only write access to the
+    // document. Default: assume yes (dev/tests).
     this.canEditEntries = typeof canEditEntries === 'function' ? canEditEntries : () => true;
     this.container = container;
     // The alternatives popup renders into its OWN root, not into the grid
@@ -396,6 +395,12 @@ export class IgtEditor {
   setCommentPermissions({ canComment, canDeleteAnyComment }) {
     this.canComment = canComment;
     this.canDeleteAnyComment = canDeleteAnyComment;
+    this._render(true);
+  }
+
+  // What `canEditEntries` answers has changed (the home of a borrowed
+  // vocabulary was read), so the popover and its type are drawn again.
+  refreshEntryRights() {
     this._render(true);
   }
 

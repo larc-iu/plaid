@@ -10,15 +10,17 @@ import {
   makeIgtDoc,
   settle,
 } from '@/domain/test-helpers.js';
+import { refusal } from '../../../../../plaid-client-js/src/testing.js';
 import { DocumentProvider } from '../contexts/DocumentContext.jsx';
 import { AnalyzeIsland } from './AnalyzeIsland.jsx';
 
 // A vocabulary has a home project, and the Analyze popover asks the home's
-// roles (SPEC 5.4, ruling 11.4): a writer of the home adds entries ("+ Create"
-// on a word, a morpheme and a multi-word expression) and changes a linked
-// entry's type. A vocabulary the document's project borrows is read only in
-// it, admins included: its entries are linked to, and one line in the popover
-// says whose it is. A reader of the home changes nothing.
+// roles (SPEC 1.2, 5.4, ruling 11.4): a writer of the home adds entries ("+
+// Create" on a word, a morpheme and a multi-word expression) and changes a
+// linked entry's type, wherever they stand. In a project that borrows the
+// vocabulary the island reads the home, and someone with no role there, or
+// who cannot read it, links to its entries and changes none, with one line
+// in the popover saying whose it is. A reader of the home changes nothing.
 
 vi.mock('@/utils/feedback', () => ({
   notifyWarning: vi.fn(),
@@ -54,7 +56,36 @@ const B = {
     { id: 'la', name: 'LA', project: 'proj-a' },
   ],
 };
+// Project C owns nothing and borrows "LA": hm, hw and hr (maintainer, writer
+// and reader of A) write in it, and so does cw, who holds no role in A.
+const C = {
+  id: 'proj-c',
+  name: 'C',
+  maintainers: ['cm'],
+  writers: ['hm', 'hw', 'hr', 'cw'],
+  readers: [],
+  config: { plaid: {} },
+  vocabs: [{ id: 'la', name: 'LA', project: 'proj-a' }],
+};
 const ADMIN = { id: 'root', isAdmin: true };
+const PROJECTS = { [A.id]: A, [B.id]: B, [C.id]: C };
+
+// `projects.get` as core answers it: the project, with its role lists, to a
+// person who holds a role in it or an admin, else 403. `broken` names
+// projects whose read fails some other way. Each id asked is kept in `asked`.
+let asked = [];
+const projectsGet =
+  (user, broken = []) =>
+  async (id) => {
+    asked.push(id);
+    if (broken.includes(id)) throw refusal(500, { error: 'Internal error' });
+    const p = PROJECTS[id];
+    const member =
+      user?.isAdmin ||
+      [p?.maintainers, p?.writers, p?.readers].some((list) => list?.includes(user?.id));
+    if (!p || !member) throw refusal(403, { error: 'Forbidden' });
+    return p;
+  };
 
 // "the cat sat down": "cat"'s morpheme linked to LA's "cat", "sat"'s to LB's.
 const lexicons = (only) => {
@@ -80,7 +111,7 @@ const lexicons = (only) => {
 let view;
 let client;
 
-const open = async ({ project, user, only = ['la', 'lb'], readOnly = false }) => {
+const open = async ({ project, user, only = ['la', 'lb'], readOnly = false, broken = [] }) => {
   const raw = buildRawDoc({
     body: 'the cat sat down',
     words: [
@@ -93,6 +124,8 @@ const open = async ({ project, user, only = ['la', 'lb'], readOnly = false }) =>
   const vocabularies = lexicons(only);
   client = makeFakeClient({ project, vocabularies });
   client.query = async () => ({ results: [] });
+  asked = [];
+  client.projects.get = projectsGet(user, broken);
   const doc = makeIgtDoc({
     raw,
     project: { ...project, vocabs: project.vocabs.filter((v) => only.includes(v.id)) },
@@ -123,6 +156,8 @@ const open = async ({ project, user, only = ['la', 'lb'], readOnly = false }) =>
       </AuthContext.Provider>
     </MemoryRouter>,
   );
+  // The homes of borrowed vocabularies are read after the mount.
+  await settle(4);
   return doc;
 };
 
@@ -281,13 +316,13 @@ describe('an admin', () => {
     expect(typeOf('m-2')).toBe('enabled');
   });
 
-  it('reads a borrowed vocabulary only, in the project that borrows it', async () => {
+  it('adds entries to a borrowed vocabulary, in the project that borrows it', async () => {
     await open({ project: B, user: ADMIN, only: ['la'] });
     openOn('w-1');
-    expect(createRow()).toBeNull();
-    expect(note()).toBe('“LA” belongs to another project.');
+    expect(createRow()).not.toBeNull();
+    expect(note()).toBeNull();
     close();
-    expect(typeOf('m-2')).toBe('disabled');
+    expect(typeOf('m-2')).toBe('enabled');
   });
 });
 
@@ -303,5 +338,67 @@ describe('a reader of the home project', () => {
     }
     expect($('.igt-vocab-pop__create')).toBeNull();
     expect($('.igt-vocab-pop__type')).toBeNull();
+  });
+});
+
+// The FLEx import's "Add to a lexicon you maintain" makes exactly this: a
+// project that borrows a lexicon, where the person who maintains the
+// lexicon's project then works (REV-VH-B-2).
+describe('standing in a project that borrows the vocabulary, by the role in its home', () => {
+  const inC = (user, broken) => open({ project: C, user, only: ['la'], broken });
+  const madeIn = () => client.calls.filter((c) => c.kind === 'vocabItems.create');
+  const homeReads = () => asked.filter((id) => id !== 'proj-c');
+
+  for (const [who, role] of [
+    ['hm', 'maintainer'],
+    ['hw', 'writer'],
+  ]) {
+    it(`a ${role} of the home adds an entry to it from a word and a morpheme`, async () => {
+      await inC({ id: who });
+      openOn('w-1');
+      expect(note()).toBeNull();
+      click(createRow());
+      click(createRow());
+      await settle(4);
+      expect(madeIn().map((c) => c.args.slice(0, 2))).toEqual([['la', 'the']]);
+      openOn('m-1');
+      expect(createRow()).not.toBeNull();
+      expect(tabs()).toEqual(['LA↗']);
+      close();
+      gather();
+      expect(createRow()).not.toBeNull();
+    });
+
+    it(`a ${role} of the home changes a linked entry's type`, async () => {
+      await inC({ id: who });
+      expect(typeOf('m-2')).toBe('enabled');
+    });
+  }
+
+  for (const [label, user, broken] of [
+    ['a reader of the home', { id: 'hr' }, []],
+    ['someone with no role in the home', { id: 'cw' }, []],
+    ['a writer of the home whose read of it fails', { id: 'hw' }, ['proj-a']],
+  ]) {
+    it(`${label} adds no entry and changes no type`, async () => {
+      await inC(user, broken);
+      openOn('w-1');
+      expect(createRow()).toBeNull();
+      expect(note()).toBe('“LA” belongs to another project.');
+      const search = popover().querySelector('.igt-vocab-pop__search');
+      key(search, 'Enter', { ctrlKey: true });
+      await settle(4);
+      close();
+      gather();
+      expect(createRow()).toBeNull();
+      expect(madeIn()).toEqual([]);
+      expect(typeOf('m-2')).toBe('disabled');
+      expect(homeReads()).toEqual(['proj-a']);
+    });
+  }
+
+  it('reads no other project in a project that borrows nothing', async () => {
+    await open({ project: A, user: { id: 'hw' }, only: ['la'] });
+    expect(homeReads()).toEqual([]);
   });
 });

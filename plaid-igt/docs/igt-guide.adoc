@@ -416,7 +416,7 @@ Open the entry to read or add to its thread, and the vocabulary's own **Comments
 
 A **vocabulary** is a lexicon: a list of **entries** (words or morphemes) that carry their own fields, such as a gloss or a part of speech.
 Every vocabulary belongs to one project, and that project's roles decide who may change it (see <<_a_vocabularys_project>>).
-Other projects can link it too, and there it is read only.
+Other projects can link it too, and there it is read only to anyone who is not a member of its own project.
 While you analyze, you connect a word or morpheme to an entry, by hand with the link button on the word or morpheme, or in bulk with **Auto-analyze**.
 
 Linking keeps the same word analyzed the same way everywhere it appears.
@@ -428,7 +428,7 @@ In the link popover, the linked entry's form opens the entry in its vocabulary.
 When no entry fits, the **+** row under the list adds one with the word's or morpheme's form and links it.
 The new entry also takes the values the word or morpheme holds in fields that have a lexicon field, such as its gloss.
 On a word or multi-word expression that no entry is spelled like or starts with, the popover starts on the **+** row.
-Writers and maintainers of the vocabulary's project can add an entry this way, and the **+** row is not offered for a vocabulary of another project.
+Writers and maintainers of the vocabulary's project can add an entry this way, in any project that links it, and nobody else is offered the **+** row.
 
 An entry can carry a morpheme **type**: stem, prefix, suffix, enclitic, and so on, following the FieldWorks inventory.
 A linked morpheme takes its type from the entry, or goes by its own when the entry has none. The type decides how it attaches to its neighbours in the grid and in exports (`=` for clitics, `-` otherwise).
@@ -452,7 +452,7 @@ That project's members have the same role in the vocabulary:
 **New vocabulary** makes one in a project you maintain, and a new project or an import makes its vocabularies inside the new project.
 
 Another project can link the vocabulary when a maintainer of that project is also a member of the vocabulary's project.
-There its members read the entries and link words and morphemes to them, but change no entry.
+There its members read the entries and link words and morphemes to them, and change an entry only by their role in the vocabulary's own project.
 The vocabulary's **Settings** tab lists them under **Used by other projects**, and **Unlink** ends one's link and removes its links to the entries, after saying how many there are.
 A project you cannot open is listed without its name.
 
@@ -793,7 +793,7 @@ There are four operations:
 * **Merge lexicon entries**: fold duplicate entries into one, moving every link and reference to the survivor.
 
 Respelling a lexicon entry and merging entries need a maintainer of the project the entry's vocabulary belongs to.
-Entries of any other vocabulary are listed as *maintainers only* and left as they are.
+Entries of any other vocabulary are listed and left as they are, as *maintainers only*, or as *read only* when its project is one you cannot open.
 
 Respelling and replacing match the way Search does: a match **contains** the text, **is exactly** it, or **matches** a regular expression.
 Contains ignores case, and keeps each match's capitals when both boxes are typed in small letters: `ka` to `ga` makes `Kalamang` `Galamang`.

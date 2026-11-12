@@ -2,10 +2,11 @@ import { test, expect } from './fixtures.js';
 import { adminClient, buildWorld, dropWorld, signInAs } from './vocabHome.js';
 
 // What each role sees of a vocabulary that belongs to project A and that
-// project B borrows (SPEC 5.4, rulings 11.3 and 11.4): in Analyze, a writer of
-// B links B's words to its entries and adds or retypes none, a writer of A
-// does both. On the vocabulary's page, a writer of A edits entries, a reader
-// of A and every member of B read, and only a maintainer of A has Settings.
+// project B borrows (SPEC 1.2, 5.4, rulings 11.3 and 11.4): in Analyze, a
+// writer of B links B's words to its entries and adds or retypes none, a
+// writer of A does both, in A's documents and in B's. On the vocabulary's
+// page, a writer of A edits entries, a reader of A and every member of B
+// read, and only a maintainer of A has Settings.
 
 let world;
 
@@ -17,6 +18,8 @@ test.beforeAll(async () => {
       hr: { A: 'reader' },
       bw: { B: 'writer' },
       br: { B: 'reader' },
+      xw: { A: 'writer', B: 'writer' },
+      xr: { A: 'reader', B: 'writer' },
     },
   });
 });
@@ -83,6 +86,53 @@ test('in Analyze, a writer of the home project adds entries and changes their ty
 
   await openPopover(page, world.A.morphemes.kat);
   await expect(entryType(page)).toBeEnabled();
+});
+
+test("in Analyze of the borrowing project, a writer of the lexicon's project adds an entry to it", async ({
+  page,
+}) => {
+  // "zorro" linked to nothing, whichever test ran before.
+  const client = adminClient();
+  const raw = await client.documents.get(world.B.documentId, true);
+  for (const l of raw.textLayers
+    .flatMap((t) => t.tokenLayers)
+    .flatMap((t) => t.vocabs || [])
+    .flatMap((v) => v.vocabLinks || [])
+    .filter((x) => x.tokens.includes(world.B.morphemes.zorro)))
+    await client.vocabLinks.delete(l.id);
+
+  await openAnalyze(page, 'xw', world.B);
+  await openPopover(page, world.B.morphemes.zorro);
+  await expect(pop(page).locator('.igt-vocab-pop__borrowed')).toHaveCount(0);
+  await expect(createRow(page)).toHaveText(/Create\s*“zorro”/);
+  await createRow(page).click();
+  await expect(page.locator('.igt-vocab-pop__create-input')).toBeVisible();
+  await page.keyboard.press('Enter');
+
+  // Stored in the lexicon of A, and B's "zorro" is linked to it.
+  const made = async () =>
+    (await adminClient().vocabLayers.get(world.V.id, true)).items
+      .filter((it) => it.form === 'zorro')
+      .map((it) => it.id);
+  await expect.poll(made).toHaveLength(1);
+  const [zorro] = await made();
+  await expect.poll(() => linkedTo(world.B, world.B.morphemes.zorro)).toEqual([zorro]);
+
+  await page.keyboard.press('Escape');
+  await openPopover(page, world.B.morphemes.kat);
+  await expect(entryType(page)).toBeEnabled();
+});
+
+test("in Analyze of the borrowing project, a reader of the lexicon's project adds no entry", async ({
+  page,
+}) => {
+  await openAnalyze(page, 'xr', world.B);
+  await openPopover(page, world.B.morphemes.kat);
+  await expect(pop(page).locator('.igt-vocab-pop__borrowed')).toHaveText(
+    `“${world.V.name}” belongs to another project.`,
+  );
+  await expect(createRow(page)).toHaveCount(0);
+  await expect(entryType(page)).toBeDisabled();
 });
 
 test('a reader of the borrowing project reads the lexicon in Analyze and changes nothing', async ({

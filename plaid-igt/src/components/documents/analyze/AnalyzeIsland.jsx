@@ -6,6 +6,7 @@ import { AutoAnalyzeDialog } from './AutoAnalyzeDialog.jsx';
 import { useDocumentCtx } from '../contexts/DocumentContext.jsx';
 import { useAuth } from '../../../contexts/AuthContext.jsx';
 import { canEditVocabularyEntries } from '@ui/domain/permissions.js';
+import { useVocabularyHomes, vocabularyHome } from '../../../hooks/useVocabularyHomes.js';
 import { useAskAssistant } from '@ui/components/assistant/subject.js';
 import { onSentenceFocus } from '../hooks/focusHandoff.js';
 
@@ -24,7 +25,7 @@ const pageFromParam = (raw) => {
 };
 
 export const AnalyzeIsland = () => {
-  const { doc, readOnly, comments, canWrite, canManage, assistantOnline, goToTab } =
+  const { doc, client, readOnly, comments, canWrite, canManage, assistantOnline, goToTab } =
     useDocumentCtx();
   const hostRef = useRef(null);
   const editorRef = useRef(null);
@@ -66,16 +67,19 @@ export const AnalyzeIsland = () => {
   );
 
   // Adding an entry and changing a linked entry's type are for a writer of
-  // the vocabulary's project, from that project's own documents. A vocabulary
-  // this project borrows is read only here (its home is not passed), admins
-  // included. Linking a word to an entry needs only write access to the
-  // document.
+  // the vocabulary's project, wherever they stand: for a vocabulary this
+  // project borrows, its home is read, and someone who cannot read it holds
+  // no role there. Linking a word to an entry needs only write access to the
+  // document. The island asks through a ref and is told when the homes land.
   const { user } = useAuth();
-  const canEditEntries = (vocab) => {
-    const project = doc?.project;
-    const home = project && vocab?.project === project.id ? project : null;
-    return canEditVocabularyEntries(vocab, home, user);
-  };
+  const homes = useVocabularyHomes(client ?? doc?.client, doc?.project);
+  const homesRef = useRef(homes);
+  homesRef.current = homes;
+  const canEditEntries = (vocab) =>
+    canEditVocabularyEntries(vocab, vocabularyHome(vocab, doc?.project, homesRef.current), user);
+  useEffect(() => {
+    editorRef.current?.refreshEntryRights();
+  }, [homes]);
 
   // The island is built once, so the confirm it holds reads through a ref and
   // its identity never has to change. Same dialog the entry panel asks with:

@@ -30,7 +30,8 @@ import { countOf, useRun } from './bulkShared.js';
 import { ApplyBar, Checkbox, Progress } from './parts.jsx';
 import { usePreviewFocus } from './usePreviewFocus.js';
 import { textIncludes } from '@ui/domain/collation.js';
-import { canManageVocabulary, isBorrowed } from '@ui/domain/permissions.js';
+import { canManageVocabulary } from '@ui/domain/permissions.js';
+import { useVocabularyHomes, vocabularyHome } from '../../../hooks/useVocabularyHomes.js';
 import { Notice } from '@ui/components/shared/Notice.jsx';
 import { useAuth } from '@/contexts/AuthContext';
 import { readVocabulary } from '@/domain/vocabCache';
@@ -99,11 +100,14 @@ export const MergePanel = ({ project, client }) => {
   const [items, setItems] = useState(null);
   const [fields, setFields] = useState([]);
   // A merge deletes the merged entries, which only a maintainer of the
-  // vocabulary's project may do (core refuses anyone else). A vocabulary this
-  // project borrows is read only here.
+  // vocabulary's project may do (core refuses anyone else), wherever they
+  // stand. For a vocabulary this project borrows, that project is read, and
+  // one the person cannot read is no role.
   const { user } = useAuth();
-  const [canMerge, setCanMerge] = useState(false);
-  const [borrowed, setBorrowed] = useState(false);
+  const homes = useVocabularyHomes(client, project);
+  const [layer, setLayer] = useState(null);
+  const home = layer ? vocabularyHome(layer, project, homes) : null;
+  const canMerge = !!layer && canManageVocabulary(layer, home, user);
   const [filter, setFilter] = useState('');
   const [chosen, setChosen] = useState(() => new Set());
   const [survivor, setSurvivor] = useState(null);
@@ -115,16 +119,14 @@ export const MergePanel = ({ project, client }) => {
     setChosen(new Set());
     setSurvivor(null);
     r.setPlan(null);
-    setCanMerge(false);
+    setLayer(null);
     if (!vocabId) return undefined;
     readVocabulary(client, vocabId)
-      .then((layer) => {
+      .then((read) => {
         if (cancelled) return;
-        const own = !isBorrowed(layer, project);
-        setBorrowed(!own);
-        setCanMerge(canManageVocabulary(layer, own ? project : null, user));
-        setItems(layer.items || []);
-        setFields(normalizeVocabFields(readVocabFields(layer.config)));
+        setLayer(read);
+        setItems(read.items || []);
+        setFields(normalizeVocabFields(readVocabFields(read.config)));
       })
       .catch((err) => {
         console.error('Load vocabulary failed:', err);
@@ -191,14 +193,14 @@ export const MergePanel = ({ project, client }) => {
   // The entries read again after a merge refused because one of them changed
   // or went: the list, the ticks and the survivor follow what is there now.
   const reloadAfterRefusal = async () => {
-    let layer;
+    let read;
     try {
-      layer = await readVocabulary(client, vocabId);
+      read = await readVocabulary(client, vocabId);
     } catch (err) {
       console.error('Load vocabulary failed:', err);
       return;
     }
-    const fresh = layer.items || [];
+    const fresh = read.items || [];
     const ids = new Set(fresh.map((it) => it.id));
     setItems(fresh);
     setChosen((prev) => new Set([...prev].filter((id) => ids.has(id))));
@@ -325,12 +327,12 @@ export const MergePanel = ({ project, client }) => {
         </p>
         {items && !canMerge && (
           <Notice tone="warning">
-            {borrowed ? (
-              'This vocabulary belongs to another project.'
-            ) : (
+            {home ? (
               <>
-                Only a maintainer of “<span dir="auto">{project.name}</span>” can merge its entries.
+                Only a maintainer of “<span dir="auto">{home.name}</span>” can merge its entries.
               </>
+            ) : (
+              'This vocabulary belongs to another project.'
             )}
           </Notice>
         )}

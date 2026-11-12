@@ -227,9 +227,9 @@ export const vocabPopover = {
     // sense and a value, from every vocabulary. A word's and an expression's
     // list entries.
     const pairs = kind === 'morpheme' ? this._chipPairs(tokenId, search) : null;
-    // The vocabularies a new entry may go into: those of this project, for a
-    // writer of it (canEditEntries). One this project borrows is read only
-    // here, though its entries are linked to like any other's.
+    // The vocabularies a new entry may go into: those whose project the user
+    // writes in (canEditEntries), this one or the home of one it borrows. The
+    // others are read only here, though their entries are linked to like any.
     const canAddTo = (v) => !!v && !this.readOnly && this.canEditEntries(v);
     // The popover is scoped to ONE vocabulary at a time, chosen by the thin
     // selector at the bottom. Default to the linked item's vocab (so an existing
