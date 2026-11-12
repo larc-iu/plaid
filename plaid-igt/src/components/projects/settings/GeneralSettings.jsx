@@ -1,7 +1,6 @@
 import { ProjectGeneralPage } from '@ui/components/shared/ProjectGeneralPage.jsx';
 import { Card, CardContent } from '@ui/components/ui/card';
 import { LanguagesSettings } from './LanguagesSettings.jsx';
-import { VocabulariesStay } from './VocabulariesStay.jsx';
 
 // What the project IS: its name and the languages it documents, on the page
 // every app shares (name, the app's sections, delete). Document Metadata used
@@ -12,16 +11,9 @@ import { VocabulariesStay } from './VocabulariesStay.jsx';
 //
 // IGT keeps two languages (object and meta), so it passes its own section
 // instead of the shared single-tag Language card. The Delete project confirm
-// names the vocabularies that stay (VocabulariesStay).
+// is the shared one, which names the vocabularies the delete takes.
 export const GeneralSettings = ({ project, projectId, client, onProjectUpdate }) => (
-  <ProjectGeneralPage
-    project={project}
-    onSaved={onProjectUpdate}
-    research
-    deleteNote={
-      project?.vocabs?.length ? <VocabulariesStay project={project} client={client} /> : null
-    }
-  >
+  <ProjectGeneralPage project={project} onSaved={onProjectUpdate} research>
     <Card>
       <CardContent className="pt-6">
         <LanguagesSettings
