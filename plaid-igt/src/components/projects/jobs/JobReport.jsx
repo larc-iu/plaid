@@ -74,6 +74,11 @@ export const JobReport = ({ report, projectId, vocabs = [] }) => {
   // The project's lexicons the job created entries in, in the project's order.
   const madeIn = new Set(entries.lexicons || []);
   const draftLexicons = vocabs.filter((v) => madeIn.has(v.id));
+  const entryLists = [
+    ['Created', entries.created, entries.createdMore],
+    ['Deleted as unlinked', entries.deleted, entries.deletedMore],
+    ['Machine drafts with no links', entries.unlinked, entries.unlinkedMore],
+  ].filter(([, list = [], more = 0]) => list.length || more);
 
   return (
     <section aria-label="Report">
@@ -188,26 +193,20 @@ export const JobReport = ({ report, projectId, vocabs = [] }) => {
         </>
       )}
 
-      {linked && (
+      {linked && (entryLists.length > 0 || draftLexicons.length > 0) && (
         <>
           <Heading>Entries</Heading>
-          {[
-            ['Created', entries.created, entries.createdMore],
-            ['Deleted as unlinked', entries.deleted, entries.deletedMore],
-            ['Machine drafts with no links', entries.unlinked, entries.unlinkedMore],
-          ].map(([label, list = [], more = 0]) =>
-            list.length || more ? (
-              <div key={label} className="mb-3 text-sm">
-                <p className="font-medium">{label}</p>
-                <ul className="ml-4 list-disc">
-                  {list.map((e) => (
-                    <EntryLine key={e.id} entry={e} />
-                  ))}
-                </ul>
-                <More n={more} noun="entry" />
-              </div>
-            ) : null,
-          )}
+          {entryLists.map(([label, list = [], more = 0]) => (
+            <div key={label} className="mb-3 text-sm">
+              <p className="font-medium">{label}</p>
+              <ul className="ml-4 list-disc">
+                {list.map((e) => (
+                  <EntryLine key={e.id} entry={e} />
+                ))}
+              </ul>
+              <More n={more} noun="entry" />
+            </div>
+          ))}
           {draftLexicons.length > 0 && (
             <ul className="flex flex-col gap-1 text-sm">
               {draftLexicons.map((v) => (

@@ -351,6 +351,26 @@ describe('the job page', () => {
     await v.unmount();
   });
 
+  it('draws no Entries section for a linking job that made, deleted and left no entry', async () => {
+    const report = {
+      ...REPORT,
+      entries: {
+        created: [],
+        deleted: [],
+        unlinked: [],
+        createdMore: 0,
+        deletedMore: 0,
+        unlinkedMore: 0,
+        lexicons: [],
+      },
+    };
+    const job = jobOf({ state: 'cancelled', report });
+    const v = await mount(clientOf(job));
+    const section = v.container.querySelector('section[aria-label="Report"]');
+    expect(all(section, 'h3').map((h) => h.textContent)).not.toContain('Entries');
+    await v.unmount();
+  });
+
   it('leaves out what a job without linking did not do, and says when core stopped it', async () => {
     const report = {
       ...REPORT,
