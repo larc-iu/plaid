@@ -287,6 +287,16 @@ def harmonized_part(analysis: Dict[str, Any], tasks) -> Dict[str, Any]:
                           for m in analysis['morphemes']], 'word': {}}
 
 
+def chosen_word_fields(people: Counter, job: Counter) -> Dict[str, Any]:
+    """The word fields that go with the analysis harmonize sets a form to
+    (CONTRACT, added by J-FIX-B2), from counts of the canonical word fields
+    of the words holding it: people's words' when people hold the analysis,
+    else the job's words', the value most of them hold, the first in order
+    on a tie."""
+    counts = people or job
+    return json.loads(sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))[0][0]) if counts else {}
+
+
 def rendering(analysis: Dict[str, Any], gloss: Optional[str], entries: Optional[Dict[str, str]] = None) -> str:
     """An analysis in one short readable line, ``ka-n=da ‘go-PST=3SG’``, with
     the entries it links where ``entries`` names them."""
@@ -1460,10 +1470,10 @@ class IgtRunner:
                                                'count': len(v['words'])} for v in others]})
             if by is None or target is None:
                 continue
-            chosen = keys.get(target) or theirs.get(target)
-            # The word fields go with the analysis: the values most of the
-            # words of the chosen analysis have (the first in order on a tie).
-            word = json.loads(sorted(chosen['word'].items(), key=lambda kv: (-kv[1], kv[0]))[0][0])
+            chosen = keys.get(target) or theirs[target]
+            # The word fields go with the analysis (REV-J-B2 S3-3).
+            word = chosen_word_fields((theirs.get(target) or {}).get('word') or Counter(),
+                                      (keys.get(target) or {}).get('word') or Counter())
             to = {**chosen['analysis'], 'word': word}
             moving = {k: v for k, v in keys.items() if k != target}
             moves.append({'form': form, 'to': to, 'by': by, 'from': moving})

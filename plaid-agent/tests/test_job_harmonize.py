@@ -273,12 +273,19 @@ def test_harmonize_never_changes_a_word_holding_anything_not_the_jobs_own(monkey
     assert all(o.get('kind') in ('set_analysis', 'link', 'set_span') for o in staged), 'the analysis, links, fields'
     # Every word harmonize rewrote ends with all the job wrote on it agreeing
     # with the chosen analysis: its morpheme gloss, and its word Gloss where
-    # it held one (that of most words of the chosen gloss, the first on a tie).
+    # it held one (that of most of people's words of the chosen gloss when
+    # people hold it, else of the job's own, the first on a tie).
     rewritten = {o['word_id']: o for o in staged if o.get('kind') == 'set_analysis'}
     if rewritten:
         chosen = out['changed'][0]['to'].split('‘')[1].rstrip('’')
-        of = [w.get('gloss', (None,))[0] or '' for i, w in enumerate(words, start=1)
-              if f'd1-s1w{i}' in own and w['morphs'][0][1] == chosen]
+
+        def persons(x):
+            # word_state's votes: the gloss span (when there is one) and the link
+            votes = [x['who']['link']] + ([x['who']['span']] if x['morphs'][0][1] else [])
+            return any(v in ('human', f'confirmed:{J}') for v in votes)
+        theirs = [x.get('gloss', (None,))[0] or '' for x in after if persons(x) and x['morphs'][0][1] == chosen]
+        of = theirs or [w.get('gloss', (None,))[0] or '' for i, w in enumerate(words, start=1)
+                        if f'd1-s1w{i}' in own and w['morphs'][0][1] == chosen]
         counts = {}
         for v in of:
             counts[v] = counts.get(v, 0) + 1
@@ -436,3 +443,30 @@ def test_a_document_gone_before_harmonize_writes_is_reported_gone():
     out = runner(job).harmonize(job)
     assert out['changed'] == []
     assert job.rows['d2']['state'] == 'gone' and client.jobs.rows[J]['documents'][1]['state'] == 'gone'
+
+
+# --- the word fields that go with a person's analysis (REV-J-B2 S3-3) ---------------------
+
+@pytest.mark.parametrize('own_come', [None, 'arrived'])
+def test_a_persons_analysis_brings_their_word_fields(monkeypatch, own_come):
+    """A person's ka 'come' with word Gloss 'came' wins over the job's two
+    'go' ('went'): the job's words set to come take the person's 'came',
+    never the job's own come word's value, whatever it holds."""
+    staged = _staged(monkeypatch)
+    come = _wg('come', own_come) if own_come else w('ka', 'come')
+    client, job, out, tags = _run({'d1': [{'words': [_wg('come', 'came', who='human', word_who='human'),
+                                                     _wg('go', 'went'), _wg('go', 'went'), come]}]})
+    assert out['changed'][0]['to'] == 'ka ‘come’' and out['changed'][0]['by'] == 'person'
+    assert _word_ops(staged) == {'d1-s1w2': 'came', 'd1-s1w3': 'came'}, _word_ops(staged)
+
+
+def test_with_no_person_the_word_fields_are_the_jobs_majority_then_the_first():
+    from plaid_agent.core.job import canonical
+    from plaid_agent.igt.job import chosen_word_fields
+    from collections import Counter
+    people, job = Counter(), Counter({canonical({'Gloss': 'b'}): 1, canonical({'Gloss': 'a'}): 1,
+                                      canonical({}): 2})
+    assert chosen_word_fields(people, job) == {}
+    job[canonical({'Gloss': 'a'})] += 1
+    assert chosen_word_fields(people, job) == {'Gloss': 'a'}, 'a tie goes to the first in order'
+    assert chosen_word_fields(Counter({canonical({'Gloss': 'p'}): 1}), job) == {'Gloss': 'p'}, 'people\'s first'
