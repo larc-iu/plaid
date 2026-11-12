@@ -434,13 +434,27 @@ def _status(e: BaseException) -> int:
     return 0
 
 
+def private_folders(folder: str) -> None:
+    """Make ``folder`` and every missing folder above it, each readable by
+    its owner alone (0700) whatever the umask. A folder that exists (the
+    trace folder the operator named) is left as it is."""
+    made = []
+    path = os.path.abspath(folder)
+    while path and not os.path.isdir(path):
+        made.append(path)
+        path = os.path.dirname(path)
+    for path in reversed(made):
+        os.makedirs(path, mode=0o700, exist_ok=True)
+        os.chmod(path, 0o700)
+
+
 class DiskRounds:
     """``--trace-dir``: each model call of a stretch written to a file of its
     own, as the assistant's ``RoundKeeper`` shapes a round, the system prompt
     and tools with the first. To disk only (the owner, SPEC question 2)."""
 
     def __init__(self, folder: str, system: str, tools: List[Dict[str, Any]]):
-        os.makedirs(folder, exist_ok=True)
+        private_folders(folder)
         self.folder = folder
         self.system, self.tools = system, tools
         self.text = self.thinking = ''
@@ -457,8 +471,12 @@ class DiskRounds:
         if rnd.get('n') == 1:
             value.update(system=self.system, tools=self.tools)
         try:
-            with open(os.path.join(self.folder, f'round-{rnd.get("n", 0):02d}-{rnd["id"]}.json'), 'w',
-                      encoding='utf-8') as fh:
+            path = os.path.join(self.folder, f'round-{rnd.get("n", 0):02d}-{rnd["id"]}.json')
+            # The operator's alone, whatever the umask: a round holds the
+            # project's sentences and people's analyses (REV-J-B S3-6).
+            fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+            os.fchmod(fd, 0o600)
+            with os.fdopen(fd, 'w', encoding='utf-8') as fh:
                 json.dump(value, fh, ensure_ascii=False, indent=1)
         except OSError:
             logger.exception('A round could not be written to the trace folder')
@@ -493,6 +511,8 @@ class IgtRunner:
         #: sentence id -> how many times its ops were dropped as changed
         self.changed: Counter = Counter()
         self.stretches = 0
+        #: this run of the job on this worker, the trace folder's own
+        self.run_id = f'run-{uuid7()}'
         self.people: Optional[Dict[str, Any]] = None
         self.link_counts: Counter = Counter()
         #: what harmonize has written so far, for the report of a job stopped in it
@@ -822,7 +842,9 @@ class IgtRunner:
                       tracer=TRACER)
         self.stretches += 1
         if self.trace_dir:
-            ws.rounds = DiskRounds(os.path.join(self.trace_dir, job.id, document_id,
+            # A folder per run of the worker, so a resumed job's stretches,
+            # numbered from 1 again, never mix with the first run's.
+            ws.rounds = DiskRounds(os.path.join(self.trace_dir, job.id, self.run_id, document_id,
                                                 f'stretch-{self.stretches:04d}'), system, kit.tools_for(ws))
 
         def before_call():

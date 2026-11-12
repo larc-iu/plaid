@@ -578,7 +578,9 @@ plaid-job-worker --url http://localhost:8080 --model openai/<name> --api-base <b
 `--model-pool` names the model key it shares with the assistants and the model
 services (give them the same `--model-pool`), so a job waits while people use
 the model. Without it a job waits for nobody. `--trace-dir` keeps every model
-call of every stretch on the worker's disk. `--scripted-model PATH` answers
+call of every stretch on the worker's disk, readable by the worker's account
+alone, as `<job>/run-<id>/<document>/stretch-NNNN/round-NN-<id>.json`, a
+`run-` folder for each time a worker takes the job. `--scripted-model PATH` answers
 from a file, for tests and rehearsals. The job's prompt and tools are its own
 (`docs/igt/SAMPLE_JOB_PROMPT.md`): `jobworker.py` (the command line),
 `core/job.py` (the loop, the heartbeat, the budgets and halving, yielding, the

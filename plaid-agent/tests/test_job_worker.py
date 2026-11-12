@@ -250,3 +250,28 @@ def test_the_trace_folder_keeps_every_model_call_of_a_stretch_on_disk(monkeypatc
     first = json.loads(files[0].read_text())
     assert 'unattended' in first['system'] and first['tools'] and first['calls'][0]['name'] == 'set_analysis'
     assert not [k for k, _ in client.calls if k.startswith('user_data')], 'to disk only'
+
+
+def test_the_trace_folder_is_the_operators_alone_and_a_resumed_run_gets_its_own(monkeypatch, tmp_path):
+    import os
+    import stat
+    client = _client(1)
+    job = start(client)
+    use(monkeypatch, Model(_analyse))
+    old = os.umask(0o022)
+    try:
+        runner(job, trace_dir=str(tmp_path)).document('d1')
+        # A second worker process takes the job again: it numbers its
+        # stretches from 1 as well.
+        job.update_row('d1', state='working')
+        r = runner(job, trace_dir=str(tmp_path))
+        r.recorded['d1'] = {}
+        r.model_work(r.project(), 'd1', ['d1-s1'])
+    finally:
+        os.umask(old)
+    files = sorted(tmp_path.rglob('round-*.json'))
+    assert len(files) == 2
+    for path in [*files, *[p for p in tmp_path.rglob('*') if p.is_dir()]]:
+        mode = stat.S_IMODE(path.stat().st_mode)
+        assert mode & 0o077 == 0, (path, oct(mode))
+    assert files[0].parent != files[1].parent, 'each run\'s stretch in a folder of its own'
