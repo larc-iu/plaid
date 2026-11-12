@@ -279,7 +279,9 @@ def test_the_trace_folder_is_the_operators_alone_and_a_resumed_run_gets_its_own(
 
 def test_a_scripted_worker_starts_without_the_providers_banner(tmp_path, capsys, monkeypatch):
     import litellm as _litellm
+    # main() puts the scripted model in litellm's place: put the real one back.
     monkeypatch.setattr(_litellm, 'suppress_debug_info', _litellm.suppress_debug_info)
+    monkeypatch.setattr(_litellm, 'completion', _litellm.completion)
     path = tmp_path / 'model.json'
     path.write_text('[{"content": "Done."}]')
 

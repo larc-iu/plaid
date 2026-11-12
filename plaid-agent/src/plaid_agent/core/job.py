@@ -283,8 +283,9 @@ WORKER_ERROR = 'worker-error'
 
 def error_line(e: BaseException) -> str:
     """The job's message for an error the worker has no rule for, at most
-    the 300 characters core keeps."""
-    return f'The job worker met an error: {type(e).__name__}: {e}'[:300]
+    the 300 characters core keeps. The error's own words, never Python's
+    class name (test_error_text): the worker's log has the traceback."""
+    return f'The job worker met an error and stopped the job: {e}'[:300]
 
 
 class Job:

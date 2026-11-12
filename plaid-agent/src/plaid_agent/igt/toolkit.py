@@ -607,7 +607,8 @@ JOB_READ_TOOLS = {
     'read_sentences': _job_read(
         'read_sentences',
         'Read chosen sentences of one or more documents in one call, e.g. the hits of a search or concordance, '
-        'each document under its own header, as the message shows sentences. Up to 40 sentences per call, fewer '
+        f'each document under its own header, as the message shows sentences. Up to {MAX_SENTENCES_PER_READ} '
+        'sentences per call, fewer '
         'when they are long: what did not fit is listed at the end.',
         items='e.g. [{"document":"Text 1","sentences":["s3","s8"]}, {"document":"Text 2","sentences":["s1"]}].'),
     'analyses_of': _job_read(
@@ -615,8 +616,8 @@ JOB_READ_TOOLS = {
         'How a form has been analysed across the project, as a word (segmentation, glosses, links) and as a '
         'morpheme (type, glosses, link, position in the word): each distinct analysis with its count and example '
         'references. The message already gives the analyses of its target words: this is for a form it does not '
-        'settle, or for more of its examples. Pass forms (a list, up to 40) to look up several in one call. '
-        'value: also list the references of the occurrences holding that field value.'),
+        f'settle, or for more of its examples. Pass forms (a list, up to {MAX_FORMS_PER_CALL}) to look up several '
+        'in one call. value: also list the references of the occurrences holding that field value.'),
     'concordance': _job_read(
         'concordance',
         'Every occurrence of a morpheme form (default), word form, or field value (whole-form match, '

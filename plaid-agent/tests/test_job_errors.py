@@ -112,7 +112,7 @@ def test_a_fault_with_no_rule_fails_the_job_with_what_happened(monkeypatch):
     monkeypatch.setattr(igt_job, 'execute_plan', execute)
     finished = run_job(job, runner(job))
     assert finished['state'] == 'failed' and finished['reason'] == 'worker-error'
-    assert "KeyError: 'morphemes'" in client.jobs.rows[J]['message']
+    assert "'morphemes'" in client.jobs.rows[J]['message']
     assert not job.rows['d1'].get('skipped'), 'no sentence was skipped for it'
 
 

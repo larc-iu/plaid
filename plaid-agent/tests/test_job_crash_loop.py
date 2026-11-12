@@ -33,7 +33,7 @@ def test_a_job_whose_runner_breaks_is_failed_and_not_claimed_again(monkeypatch):
     claimed = worker.once()
     row = client.jobs.rows[claimed['job']['id']]
     assert row['state'] == 'failed' and row['reason'] == 'worker-error'
-    assert 'RuntimeError: the runner broke' in row['message']
+    assert 'the runner broke' in row['message']
     assert worker.once() is None, 'nothing is taken again'
 
 
