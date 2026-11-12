@@ -24,7 +24,7 @@ afterEach(async () => {
 const json = (status, body) =>
   new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
 
-// `answer` gives core's answer to the dry run.
+// `answer` gives core's answer to its read of the delete.
 const open = async (answer) => {
   const sent = [];
   vi.stubGlobal('fetch', async (url, init = {}) => {
@@ -61,7 +61,7 @@ const open = async (answer) => {
 };
 
 describe('the Delete project confirm', () => {
-  it('sends only the dry run, and names the vocabularies deleted with the project', async () => {
+  it('sends only the read of the delete, a GET, and names the vocabularies deleted with the project', async () => {
     const { text, sent } = await open(() =>
       json(200, {
         vocabularies: [
@@ -70,7 +70,7 @@ describe('the Delete project confirm', () => {
         ],
       }),
     );
-    expect(sent).toEqual(['DELETE /api/v1/projects/p1?dry-run=true']);
+    expect(sent).toEqual(['GET /api/v1/projects/p1/deletion']);
     expect(text).toContain('Its vocabularies “Kukama” and “Loans” are deleted with it.');
     expect(text).not.toContain('not deleted');
   });
@@ -82,7 +82,7 @@ describe('the Delete project confirm', () => {
         'other-projects': 1,
       }),
     );
-    expect(sent).toEqual(['DELETE /api/v1/projects/p1?dry-run=true']);
+    expect(sent).toEqual(['GET /api/v1/projects/p1/deletion']);
     expect(text).toContain(
       '1 other project uses a vocabulary of this project. It can be deleted once that project unlinks it.',
     );

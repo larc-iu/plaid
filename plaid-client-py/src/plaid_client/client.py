@@ -520,22 +520,33 @@ class VocabLayersResource(_ConfigMethods, _Resource):
         return self._request('PATCH', f'/api/v1/vocab-layers/{id}',
                              body=_body_of(name=name), audit_message=audit_message)
 
-    def delete(self, id: str, audit_message=None, *, dry_run: bool = False) -> Any:
+    def delete(self, id: str, audit_message=None) -> Any:
         """Delete a vocabulary, with its entries and every link to them.
 
         A maintainer of its home project only. Refused (409) while any other
         project links (borrows) it, for everyone, admins included: the
         error's ``response_data`` counts those projects as
-        ``'other-projects'`` and names none. With ``dry_run`` nothing is
-        written: the same refusal, or ``{'links'}``, the links in the home's
-        documents the delete would remove.
+        ``'other-projects'`` and names none. What it would remove is
+        ``deletion(id)``.
 
         Args:
             id: The resource ID
-            dry_run: Write nothing, answer what would go
         """
-        return self._request('DELETE', f'/api/v1/vocab-layers/{id}', audit_message=audit_message,
-                             query_params={'dry-run': 'true' if dry_run else None})
+        return self._request('DELETE', f'/api/v1/vocab-layers/{id}', audit_message=audit_message)
+
+    def deletion(self, id: str) -> Any:
+        """What deleting a vocabulary would remove, without writing:
+        ``{'links'}``, the links in its home's documents.
+
+        A read on its own route, never the delete. Answers the delete's
+        refusals: 409 while another project borrows it (``'other-projects'``
+        on the error's ``response_data``), 403 for someone who does not
+        maintain its home, 404 for a vocabulary that is gone.
+
+        Args:
+            id: The vocabulary ID
+        """
+        return self._request('GET', f'/api/v1/vocab-layers/{id}/deletion')
 
     def move(self, id: str, project_id: str, audit_message=None) -> Any:
         """Move a vocabulary to another project, which becomes its home.
@@ -2638,8 +2649,7 @@ class ProjectsResource(_ConfigMethods, _Resource):
         return self._request('PATCH', f'/api/v1/projects/{id}',
                              body=_body_of(name=name), audit_message=audit_message)
 
-    def delete(self, id: str, audit_message=None, timeout=_UNSET, *,
-               dry_run: bool = False) -> Any:
+    def delete(self, id: str, audit_message=None, timeout=_UNSET) -> Any:
         """Delete a project and everything in it, its own vocabularies
         included. This is irrecoverable. The project is gone when this
         returns, and what it holds is removed on the server afterwards.
@@ -2647,21 +2657,32 @@ class ProjectsResource(_ConfigMethods, _Resource):
         Refused (409) while another project links (borrows) one of its
         vocabularies, for everyone, admins included: the error's
         ``response_data`` counts those projects as ``'other-projects'`` and
-        names none. With ``dry_run`` nothing is written: the same refusal, or
-        ``{'vocabularies'}``, the vocabularies the delete would take, as
-        ``{'id', 'name'}`` by name.
+        names none. What it would take is ``deletion(id)``.
 
         Args:
             id: The resource ID
             audit_message: Custom audit-log message.
             timeout: Per-request timeout in seconds, the client's own by
                 default. ``None`` or 0 disables it.
-            dry_run: Write nothing, answer what would go
         """
         return self._request('DELETE', f'/api/v1/projects/{id}',
                               audit_message=audit_message,
-                              query_params={'dry-run': 'true' if dry_run else None},
                               **_body_of(timeout=timeout))
+
+    def deletion(self, id: str) -> Any:
+        """What deleting a project would take beside its documents, without
+        writing: ``{'vocabularies'}``, its own vocabularies as
+        ``{'id', 'name'}`` by name.
+
+        A read on its own route, never the delete. Answers the delete's
+        refusals: 409 while another project borrows one of its vocabularies
+        (``'other-projects'`` on the error's ``response_data``), 403 for
+        someone who does not maintain it, 404 for a project being deleted.
+
+        Args:
+            id: The project ID
+        """
+        return self._request('GET', f'/api/v1/projects/{id}/deletion')
 
     def add_writer(self, id: str, user_id: str, audit_message=None) -> Any:
         """Set a user's access level to read and write for this project.
@@ -2798,24 +2819,35 @@ class ProjectsResource(_ConfigMethods, _Resource):
         """
         return self._request('POST', f'/api/v1/projects/{id}/vocabs/{vocab_id}', audit_message=audit_message)
 
-    def unlink_vocab(self, id: str, vocab_id: str, audit_message=None, *,
-                     dry_run: bool = False) -> Any:
+    def unlink_vocab(self, id: str, vocab_id: str, audit_message=None) -> Any:
         """End a project's borrowing of a vocabulary, removing that project's
         links to its entries.
 
         Allowed to a maintainer of this project, and to a maintainer of the
         vocabulary's home project, who need not be able to read this one.
-        Refused (409) for the vocabulary's own home. With ``dry_run`` nothing
-        is written: the same refusal, or ``{'links'}``, the links in this
-        project's documents the unlink would remove.
+        Refused (409) for the vocabulary's own home. What it would remove is
+        ``vocab_unlinking(id, vocab_id)``.
 
         Args:
             id: The resource ID
             vocab_id: The vocab layer ID
-            dry_run: Write nothing, answer what would go
         """
-        return self._request('DELETE', f'/api/v1/projects/{id}/vocabs/{vocab_id}', audit_message=audit_message,
-                             query_params={'dry-run': 'true' if dry_run else None})
+        return self._request('DELETE', f'/api/v1/projects/{id}/vocabs/{vocab_id}', audit_message=audit_message)
+
+    def vocab_unlinking(self, id: str, vocab_id: str) -> Any:
+        """What unlinking a vocabulary from a project would remove, without
+        writing: ``{'links'}``, the links in this project's documents to its
+        entries, and nothing else about them.
+
+        A read on its own route, never the unlink. The same people may ask as
+        may unlink, and it answers the unlink's refusals (409 for the
+        vocabulary's own home).
+
+        Args:
+            id: The project ID
+            vocab_id: The vocab layer ID
+        """
+        return self._request('GET', f'/api/v1/projects/{id}/vocabs/{vocab_id}/unlinking')
 
 
 class TextLayersResource(_ConfigMethods, _LayerMethods, _Resource):

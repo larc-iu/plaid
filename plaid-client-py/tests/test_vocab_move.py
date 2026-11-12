@@ -1,7 +1,7 @@
 """A vocabulary has a home project: create names it, move changes it, the
 home's maintainer lists the borrowers and may end a borrowing, and a project
-delete has a dry run and a refusal while a borrower links one of its
-vocabularies. The maintainer methods are gone. The same as plaid-client-js's
+delete is refused while a borrower links one of its vocabularies (what a
+delete or an unlink would take: test_destructive_reads.py). The maintainer methods are gone. The same as plaid-client-js's
 test/vocabMove.test.js."""
 
 import json
@@ -86,35 +86,12 @@ def test_borrowers_lists_the_projects_a_name_none_where_unreadable():
     assert result == answer
 
 
-def test_unlink_has_a_dry_run_that_answers_the_links():
-    result, sent = _call(200, {'links': 3},
-                         lambda c: c.projects.unlink_vocab('p2', 'v1', dry_run=True))
-    assert sent[0]['method'] == 'DELETE'
-    assert _url(sent[0]).path == '/api/v1/projects/p2/vocabs/v1'
-    assert _query(sent[0])['dry-run'] == 'true'
-    assert result == {'links': 3}
-
-
 def test_unlinking_the_home_is_refused_with_cores_sentence():
     body = {'error': 'A vocabulary cannot be unlinked from its own project.'}
     with pytest.raises(PlaidAPIError) as e:
         _call(409, body, lambda c: c.projects.unlink_vocab('p1', 'v1'))
     assert e.value.status == 409
     assert 'cannot be unlinked from its own project.' in str(e.value)
-
-
-def test_a_project_delete_has_a_dry_run_naming_the_vocabularies_it_takes():
-    answer = {'vocabularies': [{'id': 'v1', 'name': 'Lex'}]}
-    result, sent = _call(200, answer, lambda c: c.projects.delete('p1', dry_run=True))
-    assert sent[0]['method'] == 'DELETE'
-    assert _url(sent[0]).path == '/api/v1/projects/p1'
-    assert _query(sent[0])['dry-run'] == 'true'
-    assert result == answer
-
-
-def test_a_project_delete_without_a_dry_run_sends_none():
-    _, sent = _call(204, None, lambda c: c.projects.delete('p1'))
-    assert 'dry-run' not in _query(sent[0])
 
 
 def test_a_project_delete_refused_keeps_the_count_of_borrowers():

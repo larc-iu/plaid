@@ -366,9 +366,9 @@ describe('the delete question, as the client sends it', () => {
       .filter((t) => t && t !== 'Close');
   const sentSince = (client, n) => client.requests.slice(n).map((r) => [r.method, r.path, r.query]);
 
-  it('sends only the dry run when it opens', async () => {
+  it('sends only the read of the delete when it opens, a GET, never the DELETE', async () => {
     const client = server((req) =>
-      req.kind === 'vocabLayers.delete' && req.query['dry-run'] ? { links: 3 } : undefined,
+      req.kind === 'vocabLayers.deletion' ? { links: 3 } : undefined,
     );
     const view = await mount(client, '/vocabularies/V?tab=settings');
     const before = client.requests.length;
@@ -376,9 +376,7 @@ describe('the delete question, as the client sends it', () => {
       button('Delete vocabulary').click();
       await settle(5);
     });
-    expect(sentSince(client, before)).toEqual([
-      ['DELETE', '/api/v1/vocab-layers/V', { 'dry-run': 'true' }],
-    ]);
+    expect(sentSince(client, before)).toEqual([['GET', '/api/v1/vocab-layers/V/deletion', {}]]);
     expect(dialogText()).toContain(
       'Its entries are linked to 3 words/morphemes. Those links will be removed.',
     );
@@ -387,7 +385,7 @@ describe('the delete question, as the client sends it', () => {
 
   it('is refused, Cancel only, while other projects use it', async () => {
     const client = server((req) => {
-      if (req.kind === 'vocabLayers.delete')
+      if (req.kind === 'vocabLayers.deletion')
         throw refusal(409, { error: '1 other project uses this vocabulary.', 'other-projects': 1 });
       return undefined;
     });
@@ -397,9 +395,7 @@ describe('the delete question, as the client sends it', () => {
       button('Delete vocabulary').click();
       await settle(5);
     });
-    expect(sentSince(client, before)).toEqual([
-      ['DELETE', '/api/v1/vocab-layers/V', { 'dry-run': 'true' }],
-    ]);
+    expect(sentSince(client, before)).toEqual([['GET', '/api/v1/vocab-layers/V/deletion', {}]]);
     expect(dialogText()).toContain(
       '1 other project uses this vocabulary. It can be deleted once that project unlinks it.',
     );

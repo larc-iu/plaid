@@ -1,12 +1,13 @@
 import { test, expect } from './fixtures.js';
-import { adminClient, buildWorld, dropWorld, signInAs, writesOf } from './vocabHome.js';
+import { adminClient, asksOf, buildWorld, dropWorld, signInAs, writesOf } from './vocabHome.js';
 
 // Linking a vocabulary of another project, and ending that borrowing from
 // either side (SPEC 5.4, ruling 11.3). The borrowing project's maintainer
 // links it from Settings > Text and vocab when they can read its project, and
 // unlinks it there. The home's maintainer ends it from the vocabulary's
 // Settings, "Used by other projects". Opening either confirm writes nothing:
-// the home's asks core what the unlink takes as a dry run, and nothing else.
+// the home's asks core what the unlink takes with a GET of its own, never the
+// DELETE.
 
 let world;
 
@@ -87,6 +88,7 @@ test("the vocabulary's maintainer ends a borrowing, and opening the confirm only
   await openUsedBy(page, 'hm');
   await expect(page.getByRole('link', { name: world.B.name })).toHaveCount(0);
   const seen = writesOf(page);
+  const asked = asksOf(page);
   await page.getByRole('button', { name: 'Unlink from another project' }).click();
   const dialog = page.getByRole('alertdialog');
   // The name is isolated (U+2068, U+2069) inside the title, as names are.
@@ -100,11 +102,12 @@ test("the vocabulary's maintainer ends a borrowing, and opening the confirm only
       '1 word/morpheme in that project is linked to its entries. Those links will be removed.',
     ),
   ).toBeVisible();
-  expect(seen).toEqual([`DELETE /api/v1/projects/${world.B.id}/vocabs/${world.V.id}?dry-run=true`]);
+  expect(asked).toEqual([`GET /api/v1/projects/${world.B.id}/vocabs/${world.V.id}/unlinking`]);
+  expect(seen).toEqual([]);
   expect(await borrows()).toBe(true);
 
   await dialog.getByRole('button', { name: 'Unlink' }).click();
   await expect(page.getByText('No other project uses this vocabulary.')).toBeVisible();
   expect(await borrows()).toBe(false);
-  expect(seen.slice(1)).toEqual(['POST /api/v1/batch']);
+  expect(seen).toEqual(['POST /api/v1/batch']);
 });

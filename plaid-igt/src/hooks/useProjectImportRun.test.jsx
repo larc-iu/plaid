@@ -48,11 +48,28 @@ const serverClient = () => {
   const config = new Map(); // projectId -> igt config
   const deleted = [];
   const vocabsDeleted = [];
+  // The project's own vocabularies, or core's 409 while another project links
+  // one of them.
+  const refuseIfBorrowed = (id) => {
+    const own = [...client.vocabs.values()].filter((v) => v.project === id);
+    const borrowers = [...client.links.entries()].filter(
+      ([pid, ids]) => pid !== id && own.some((v) => ids.includes(v.id)),
+    ).length;
+    if (borrowers) {
+      const said = `${borrowers} other project uses a vocabulary of this project.`;
+      throw Object.assign(new Error(said), {
+        status: 409,
+        responseData: { error: said, 'other-projects': borrowers },
+      });
+    }
+    return own;
+  };
   const client = {
     config,
     deleted,
     vocabsDeleted,
-    // Every project delete asked, as `[id, dryRun]`.
+    // Every project delete asked, as `[id, read]`: true for the read of what
+    // it takes, false for the delete.
     deletes: [],
     made: new Set(),
     vocabs: new Map(),
@@ -85,23 +102,17 @@ const serverClient = () => {
             vocabs: (client.links.get(id) || []).map((v) => client.vocabs.get(v)),
           })),
       // As core answers it: refused while another project links one of the
-      // project's own vocabularies, readable by the caller or not. The dry
-      // run names its own vocabularies and writes nothing. The delete takes
-      // them with the project.
-      delete: async (id, _message, { dryRun } = {}) => {
-        client.deletes.push([id, !!dryRun]);
-        const own = [...client.vocabs.values()].filter((v) => v.project === id);
-        const borrowers = [...client.links.entries()].filter(
-          ([pid, ids]) => pid !== id && own.some((v) => ids.includes(v.id)),
-        ).length;
-        if (borrowers) {
-          const said = `${borrowers} other project uses a vocabulary of this project.`;
-          throw Object.assign(new Error(said), {
-            status: 409,
-            responseData: { error: said, 'other-projects': borrowers },
-          });
-        }
-        if (dryRun) return { vocabularies: own.map(({ id: vid, name }) => ({ id: vid, name })) };
+      // project's own vocabularies, readable by the caller or not. The read
+      // of the delete names its own vocabularies and writes nothing. The
+      // delete takes them with the project.
+      deletion: async (id) => {
+        client.deletes.push([id, true]);
+        const own = refuseIfBorrowed(id);
+        return { vocabularies: own.map(({ id: vid, name }) => ({ id: vid, name })) };
+      },
+      delete: async (id) => {
+        client.deletes.push([id, false]);
+        const own = refuseIfBorrowed(id);
         deleted.push(id);
         config.delete(id);
         client.links.delete(id);
@@ -218,7 +229,7 @@ describe('a project import that stops', () => {
     expect(dialog).toContain('Its vocabulary “Lexicon');
     expect(dialog).toContain('is deleted with it.');
     expect(dialog).not.toContain('excepted');
-    // Opening the confirm asks only the dry run.
+    // Opening the confirm asks only what the delete takes.
     expect(client.deletes).toEqual([[id, true]]);
     await view.step(async () => buttons('Cancel')[0].click());
 
@@ -441,21 +452,23 @@ describe('a record that cannot be written', () => {
 });
 
 // What the confirm SENDS, through the real plaid-client-js over a stubbed
-// fetch: a client that took no dry-run option would send a real DELETE when
-// the confirm opens (VH-UI's hazard).
+// fetch: what the delete takes is a GET of its own, never the DELETE with a
+// flag that a core or client without it would obey as the delete (VH-UI's
+// hazard).
 describe('the unfinished import delete, as sent', () => {
   afterEach(() => vi.unstubAllGlobals());
 
-  it('sends only the dry run when the confirm opens, then the delete of the project alone', async () => {
+  it('sends only the read of the delete when the confirm opens, then the delete of the project alone', async () => {
     const sent = [];
     vi.stubGlobal('fetch', async (url, init = {}) => {
       const line = `${init.method ?? 'GET'} ${String(url).replace('http://plaid.test', '')}`;
       sent.push(line);
-      const body = line.endsWith('?dry-run=true')
-        ? { vocabularies: [{ id: 'v1', name: 'Lexicon' }] }
-        : line.startsWith('GET /api/v1/vocab-layers/')
-          ? { id: 'v1', name: 'Lexicon', project: 'p1', config: {} }
-          : null;
+      const body =
+        line === 'GET /api/v1/projects/p1/deletion'
+          ? { vocabularies: [{ id: 'v1', name: 'Lexicon' }] }
+          : line.startsWith('GET /api/v1/vocab-layers/')
+            ? { id: 'v1', name: 'Lexicon', project: 'p1', config: {} }
+            : null;
       return body
         ? new Response(JSON.stringify(body), {
             status: 200,
@@ -477,7 +490,7 @@ describe('the unfinished import delete, as sent', () => {
     const before = sent.length;
     await view.step(async () => buttons('Delete')[0].click());
     for (let i = 0; i < 5; i++) await act(async () => new Promise((r) => setTimeout(r, 0)));
-    expect(sent.slice(before)).toEqual(['DELETE /api/v1/projects/p1?dry-run=true']);
+    expect(sent.slice(before)).toEqual(['GET /api/v1/projects/p1/deletion']);
     expect(document.body.querySelector('[role="alertdialog"]').textContent).toContain(
       'Its vocabulary “Lexicon” is deleted with it.',
     );
@@ -488,7 +501,7 @@ describe('the unfinished import delete, as sent', () => {
     await view.step(async () => confirm.click());
     for (let i = 0; i < 5; i++) await act(async () => new Promise((r) => setTimeout(r, 0)));
     expect(sent.slice(before)).toEqual([
-      'DELETE /api/v1/projects/p1?dry-run=true',
+      'GET /api/v1/projects/p1/deletion',
       'DELETE /api/v1/projects/p1',
     ]);
     expect(sent.some((l) => l.includes('/vocab-layers') && !l.startsWith('GET'))).toBe(false);

@@ -26,6 +26,7 @@
             [clojure.string :as str]
             [muuntaja.core :as m]
             [plaid.rest-api.v1.batch :as batch]
+            [plaid.rest-api.v1.middleware :as prm]
             [plaid.server.log-buffer :as log-buffer]
             [plaid.sql.idempotency :as idem])
   (:import (java.io InputStream)
@@ -42,7 +43,7 @@
   "Query parameters that label a write rather than say what it does. A
   resend may carry other labels (a renamed operation), and that is still
   the same request."
-  #{"group-id" "group-message" "group-kind" "group-ref" "audit-message"})
+  prm/label-query-params)
 
 (def ^:private stored-headers
   ["X-Document-Versions" "X-Document-Versions-Omitted"])

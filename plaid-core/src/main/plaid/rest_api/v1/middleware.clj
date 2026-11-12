@@ -747,6 +747,40 @@
                      (catch IllegalArgumentException _ v)))))))
           (str/split qs #"&"))))
 
+(defn refusal-response
+  "A thrown 4xx refusal (an ex-info with `:code`) as a response, with the
+  fields its `:plaid/body` adds. Anything else is thrown on."
+  [e]
+  (let [{:keys [code] :plaid/keys [body]} (ex-data e)]
+    (if (and code (< code 500))
+      {:status code :body (merge {:error (ex-message e)} body)}
+      (throw e))))
+
+(def label-query-params
+  "The query parameters that label a write in the audit log rather than say
+  what it does, which every write takes beside its own."
+  #{"group-id" "group-message" "group-kind" "group-ref" "audit-message"})
+
+(defn wrap-only-query-params
+  "Refuse (400, nothing done) a request whose query string names a parameter
+  other than `allowed` and `label-query-params`. For the destructive routes
+  whose dry run moved to a read of its own: they once took `?dry-run=true`
+  and did nothing, so a page or a client from before that sends it must be
+  refused, not obeyed as a delete. Coercion cannot do this, since it strips
+  the keys a route does not declare."
+  [handler allowed]
+  (let [ok (into label-query-params allowed)]
+    (fn [request]
+      (if-let [unknown (some (fn [^String p]
+                               (let [eq (.indexOf p "=")
+                                     k (str/lower-case (let [raw (if (neg? eq) p (subs p 0 eq))]
+                                                         (try (java.net.URLDecoder/decode raw "UTF-8")
+                                                              (catch IllegalArgumentException _ raw))))]
+                                 (when-not (ok k) k)))
+                             (remove str/blank? (str/split (or (:query-string request) "") #"&")))]
+        {:status 400 :body {:error (str "This request takes no query parameter " unknown ".")}}
+        (handler request)))))
+
 (defn- normalize-template-key
   "Fold a param key to a canonical form so `{spanId}`, `{span-id}`, and
   `{span_id}` all resolve to the same wire param. Lowercase, drop `-`/`_`."

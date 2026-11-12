@@ -213,6 +213,8 @@ JS_ONLY_PARAMS = {
     **dict.fromkeys([('constructor', 'onAuthError'), ('login', 'onAuthError'),
                      ('redeemInvite', 'onAuthError')],
                     'a browser app sends the person back to login on a 401, Python raises PlaidAPIError'),
+    **dict.fromkeys([('vocabLayers.delete', 'options'), ('projects.unlinkVocab', 'options')],
+                    'takes none, and throws on any given (a dryRun from before), which Python\'s signature does'),
 }
 PY_ONLY_PARAMS = {
     ('documents.get_media', 'to_path'): 'writes the file to disk, which a browser does not',

@@ -3,7 +3,7 @@
  * of the client (client.js installs them).
  */
 
-import { auditQuery, bodyOf, configMethods, metadataMethods } from "./families.js";
+import { auditQuery, bodyOf, configMethods, metadataMethods, refuseUnknownOptions } from "./families.js";
 import { iterPages, listAll, listPage } from "./pagination.js";
 
 /**
@@ -190,19 +190,29 @@ export function vocabLayersApi(client) {
      * maintainer of its home project only. Refused (409) while any other
      * project links (borrows) it, for everyone, admins included: the
      * error's `responseData` counts those projects as `"other-projects"` and
-     * names none. With `dryRun` nothing is written: the same refusal, or
-     * `{links}`, the links in the home's documents the delete would remove.
+     * names none. It takes no options: one given (a `dryRun` left from
+     * before) throws before anything is sent. What it would remove is
+     * `deletion(id)`.
      * @param {string} id - The resource ID
      * @param {string} [auditMessage] - Audit message for this write
-     * @param {object} [opts]
-     * @param {boolean} [opts.dryRun] - Write nothing, answer what would go
-     * @returns {Promise<void | {links: number}>}
+     * @param {{}} [options] - None: any option given throws
+     * @returns {Promise<void>}
      */
-    delete: (id, auditMessage, { dryRun } = {}) =>
-      client._request("DELETE", `/api/v1/vocab-layers/${id}`, {
-        auditMessage,
-        ...(dryRun ? { queryParams: { "dry-run": "true" } } : {}),
-      }),
+    delete: (id, auditMessage, options = {}) => {
+      refuseUnknownOptions("vocabLayers.delete", options);
+      return client._request("DELETE", `/api/v1/vocab-layers/${id}`, { auditMessage });
+    },
+    /**
+     * What deleting a vocabulary would remove, without writing: `{links}`,
+     * the links in its home's documents. A read on its own route, never the
+     * delete. Answers the delete's refusals: 409 while another project
+     * borrows it (`"other-projects"` on the error's `responseData`), 403 for
+     * someone who does not maintain its home, 404 for a vocabulary that is
+     * gone.
+     * @param {string} id - The vocabulary ID
+     * @returns {Promise<{links: number}>}
+     */
+    deletion: (id) => client._request("GET", `/api/v1/vocab-layers/${id}/deletion`),
     /**
      * Move a vocabulary to another project, which becomes its home. Needs
      * maintainer rights on both projects (403 otherwise). The old home keeps

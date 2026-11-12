@@ -159,34 +159,37 @@
      :delete {:summary (str "Delete a vocab layer, with its entries and every link to them. Requires maintainer rights "
                             "on its home project. Refused (409) while another project links it, for everyone, admins "
                             "included, the body counting those projects as <body>other-projects</body> without naming "
-                            "them. A project being deleted stands in no one's way. With "
-                            "<query>dry-run</query> true nothing is written: the same refusals, or "
-                            "{links}, the links in the home's documents that the delete would remove.")
-              :middleware [[pra/wrap-vocab-maintainer-required get-vocab-id]]
+                            "them. A project being deleted stands in no one's way. Takes no query parameter but the "
+                            "audit labels (400 otherwise, nothing deleted). What it would remove is "
+                            "GET /vocab-layers/{id}/deletion.")
+              :middleware [[pra/wrap-vocab-maintainer-required get-vocab-id]
+                           [prm/wrap-only-query-params #{}]]
               :plaid/vocabulary-admin true
-              :parameters {:query [:map
-                                   [:dry-run {:optional true} :boolean]]}
-              :handler (fn [{{{:keys [id]} :path
-                              {:keys [dry-run]} :query} :parameters
+              :handler (fn [{{{:keys [id]} :path} :parameters
                              db :db
                              user-id :user/id :as req}]
-                         (if dry-run
-                           (try
-                             {:status 200 :body (vocab/delete-preview db id)}
-                             (catch clojure.lang.ExceptionInfo e
-                               (let [{:keys [code] :plaid/keys [body]} (ex-data e)]
-                                 (if (and code (< code 500))
-                                   {:status code :body (merge {:error (ex-message e)} body)}
-                                   (throw e)))))
-                           (let [{:keys [success documents] :as result} (vocab/delete db id user-id)]
-                             (if success
-                                 ;; Deleting a vocabulary unlinks it from the
-                                 ;; documents that used it, which bumps their
-                                 ;; versions: a client told nothing here is
-                                 ;; refused on its own next write.
-                               (prm/assoc-document-versions-in-header
-                                {:status 204} db (pra/readable-document-ids req documents))
-                               (prm/op-error result {:extras? true})))))}}]
+                         (let [{:keys [success documents] :as result} (vocab/delete db id user-id)]
+                           (if success
+                             ;; Deleting a vocabulary unlinks it from the
+                             ;; documents that used it, which bumps their
+                             ;; versions: a client told nothing here is
+                             ;; refused on its own next write.
+                             (prm/assoc-document-versions-in-header
+                              {:status 204} db (pra/readable-document-ids req documents))
+                             (prm/op-error result {:extras? true}))))}}]
+
+   ["/:id/deletion"
+    {:parameters {:path [:map [:id :uuid]]}
+     :plaid/vocabulary-admin true
+     :get {:summary (str "What deleting a vocab layer would remove, without writing: {links}, the links in its home's "
+                         "documents. A read, never the delete. The same people may ask as may delete it, and it "
+                         "answers the delete's refusals: 409 with <body>other-projects</body> while another project "
+                         "links it, 404 for a vocabulary that is gone.")
+           :middleware [[pra/wrap-vocab-maintainer-required get-vocab-id]]
+           :handler (fn [{{{:keys [id]} :path} :parameters db :db}]
+                      (try
+                        {:status 200 :body (vocab/delete-preview db id)}
+                        (catch clojure.lang.ExceptionInfo e (prm/refusal-response e))))}}]
 
    ["/:id/move"
     {:parameters {:path [:map [:id :uuid]]}

@@ -117,6 +117,19 @@ export async function dropWorld(world, ...more) {
 
 // Every request the page sends that is not a GET, as "METHOD /path?query",
 // from now on.
+// The reads a confirm sends to learn what a delete or an unlink would take
+// (`GET .../deletion`, `GET .../unlinking`), as `GET <path>`.
+export function asksOf(page) {
+  const seen = [];
+  page.on('request', (r) => {
+    const u = new URL(r.url());
+    if (r.method() === 'GET' && /\/api\/v1\/.*\/(deletion|unlinking)$/.test(u.pathname)) {
+      seen.push(`GET ${u.pathname}${u.search}`);
+    }
+  });
+  return seen;
+}
+
 export function writesOf(page) {
   const seen = [];
   page.on('request', (r) => {

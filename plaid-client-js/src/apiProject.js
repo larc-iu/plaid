@@ -5,7 +5,7 @@
  */
 
 import { recorderFor } from "./events.js";
-import { auditMethods, bodyOf, configMethods } from "./families.js";
+import { auditMethods, bodyOf, configMethods, refuseUnknownOptions } from "./families.js";
 import { iterPages, listAll, listPage } from "./pagination.js";
 
 /** The query of an events read: `types` as the wire's comma-separated list. */
@@ -212,22 +212,33 @@ export function projectsApi(client) {
      * it holds is removed on the server afterwards. Refused (409) while
      * another project links (borrows) one of its vocabularies, for everyone,
      * admins included: the error's `responseData` counts those projects as
-     * `"other-projects"` and names none. With `dryRun` nothing is written:
-     * the same refusal, or `{vocabularies}`, the vocabularies the delete
-     * would take, as `{id, name}` by name.
+     * `"other-projects"` and names none. Any option but `timeout` (a
+     * `dryRun` left from before) throws before anything is sent. What it
+     * would take is `deletion(id)`.
      * @param {string} id - The resource ID
      * @param {string} [auditMessage] - Custom audit-log message
      * @param {object} [options]
      * @param {number} [options.timeout] - Per-request timeout in ms, the client's own by default (0/null disables)
-     * @param {boolean} [options.dryRun] - Write nothing, answer what would go
-     * @returns {Promise<void | {vocabularies: Array<{id: string, name: string}>}>}
+     * @returns {Promise<void>}
      */
-    delete: (id, auditMessage, { timeout, dryRun } = {}) =>
-      client._request("DELETE", `/api/v1/projects/${id}`, {
+    delete: (id, auditMessage, options = {}) => {
+      refuseUnknownOptions("projects.delete", options, ["timeout"]);
+      return client._request("DELETE", `/api/v1/projects/${id}`, {
         auditMessage,
-        timeout,
-        ...(dryRun ? { queryParams: { "dry-run": "true" } } : {}),
-      }),
+        timeout: options.timeout,
+      });
+    },
+    /**
+     * What deleting a project would take beside its documents, without
+     * writing: `{vocabularies}`, its own vocabularies as `{id, name}` by
+     * name. A read on its own route, never the delete. Answers the delete's
+     * refusals: 409 while another project borrows one of its vocabularies
+     * (`"other-projects"` on the error's `responseData`), 403 for someone who
+     * does not maintain it, 404 for a project being deleted.
+     * @param {string} id - The project ID
+     * @returns {Promise<{vocabularies: Array<{id: string, name: string}>}>}
+     */
+    deletion: (id) => client._request("GET", `/api/v1/projects/${id}/deletion`),
     /**
      * Set a user's access level to read and write for this project.
      * @param {string} id - The resource ID
@@ -329,21 +340,31 @@ export function projectsApi(client) {
      * End a project's borrowing of a vocabulary, removing that project's
      * links to its entries. Allowed to a maintainer of this project, and to
      * a maintainer of the vocabulary's home project, who need not be able to
-     * read this one. Refused (409) for the vocabulary's own home. With
-     * `dryRun` nothing is written: the same refusal, or `{links}`, the links
-     * in this project's documents the unlink would remove.
+     * read this one. Refused (409) for the vocabulary's own home. It takes
+     * no options: one given (a `dryRun` left from before) throws before
+     * anything is sent. What it would remove is `vocabUnlinking(id, vocabId)`.
      * @param {string} id - The resource ID
      * @param {string} vocabId - The vocab layer ID
      * @param {string} [auditMessage] - Audit message for this write
-     * @param {object} [opts]
-     * @param {boolean} [opts.dryRun] - Write nothing, answer what would go
-     * @returns {Promise<void | {links: number}>}
+     * @param {{}} [options] - None: any option given throws
+     * @returns {Promise<void>}
      */
-    unlinkVocab: (id, vocabId, auditMessage, { dryRun } = {}) =>
-      client._request("DELETE", `/api/v1/projects/${id}/vocabs/${vocabId}`, {
-        auditMessage,
-        ...(dryRun ? { queryParams: { "dry-run": "true" } } : {}),
-      }),
+    unlinkVocab: (id, vocabId, auditMessage, options = {}) => {
+      refuseUnknownOptions("projects.unlinkVocab", options);
+      return client._request("DELETE", `/api/v1/projects/${id}/vocabs/${vocabId}`, { auditMessage });
+    },
+    /**
+     * What unlinking a vocabulary from a project would remove, without
+     * writing: `{links}`, the links in this project's documents to its
+     * entries, and nothing else about them. A read on its own route, never
+     * the unlink. The same people may ask as may unlink, and it answers the
+     * unlink's refusals (409 for the vocabulary's own home).
+     * @param {string} id - The project ID
+     * @param {string} vocabId - The vocab layer ID
+     * @returns {Promise<{links: number}>}
+     */
+    vocabUnlinking: (id, vocabId) =>
+      client._request("GET", `/api/v1/projects/${id}/vocabs/${vocabId}/unlinking`),
     ...configMethods(client, "projects"),
     ...auditMethods(client, "projects"),
   };

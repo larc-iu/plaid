@@ -599,7 +599,7 @@ describe('deleting the vocabulary', () => {
     // Its own project, and the one its morphemes are in.
     client.projects.get = async (id) =>
       id === 'P' ? { id, name: 'Pear', maintainers: ['u'] } : { id: 'p1', writers: ['u'] };
-    client.vocabLayers.delete = async () => ({ links: 2 });
+    client.vocabLayers.deletion = async () => ({ links: 2 });
     client.batched = async (fn) => {
       const ops = [];
       await fn({
@@ -634,7 +634,7 @@ describe('deleting the vocabulary', () => {
 });
 
 // Core refuses to delete a vocabulary while another project uses it, for
-// everyone (ruling 11.2). The dialog asks core first (a dry run) and says what
+// everyone (ruling 11.2). The dialog asks core first (its read of the delete) and says what
 // the delete removes, or that it is refused.
 describe('the delete question', () => {
   const refusal = (n) =>
@@ -649,7 +649,7 @@ describe('the delete question', () => {
   it('counts the links that go, before the typed name', async () => {
     const { client } = stub();
     const asked = [];
-    client.vocabLayers.delete = async (...a) => {
+    client.vocabLayers.deletion = async (...a) => {
       asked.push(a);
       return { links: 14 };
     };
@@ -658,7 +658,7 @@ describe('the delete question', () => {
       button('Delete vocabulary').click();
       await settle(5);
     });
-    expect(asked).toEqual([['A', undefined, { dryRun: true }]]);
+    expect(asked).toEqual([['A']]);
     expect(dialogText()).toContain(
       'Deletes “Ayvale lexicon” with all its entries and their links. This cannot be undone.Its entries are linked to 14 words/morphemes. Those links will be removed.',
     );
@@ -669,7 +669,7 @@ describe('the delete question', () => {
 
   it('leaves the links out when there are none', async () => {
     const { client } = stub();
-    client.vocabLayers.delete = async () => ({ links: 0 });
+    client.vocabLayers.deletion = async () => ({ links: 0 });
     const view = await mount(client, '/vocabularies/A?tab=settings');
     await view.step(async () => {
       button('Delete vocabulary').click();
@@ -683,7 +683,7 @@ describe('the delete question', () => {
 
   it('says the delete is refused up front while other projects use it', async () => {
     const { client } = stub();
-    client.vocabLayers.delete = async () => {
+    client.vocabLayers.deletion = async () => {
       throw refusal(3);
     };
     const view = await mount(client, '/vocabularies/A?tab=settings');
@@ -701,7 +701,7 @@ describe('the delete question', () => {
 
   it('turns to the refusal when core refuses the delete itself', async () => {
     const { client } = stub();
-    client.vocabLayers.delete = async () => ({ links: 0 });
+    client.vocabLayers.deletion = async () => ({ links: 0 });
     client.vocabLayers.get = async (id, withItems) => ({
       id: 'A',
       name: 'Ayvale lexicon',

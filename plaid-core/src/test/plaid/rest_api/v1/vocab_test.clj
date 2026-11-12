@@ -1485,9 +1485,9 @@
                         (assert-created (create-vocab-link admin-request item [t2]))
                         doc))
         delete! (fn [req & {:keys [dry-run]}]
-                  (api-call req {:method :delete
-                                 :path (str "/api/v1/vocab-layers/" vocab-id
-                                            (when dry-run "?dry-run=true"))}))]
+                  (api-call req (if dry-run
+                                  {:method :get :path (str "/api/v1/vocab-layers/" vocab-id "/deletion")}
+                                  {:method :delete :path (str "/api/v1/vocab-layers/" vocab-id)})))]
     (linked-doc! proj-a)
     (doseq [p [proj-b proj-c]]
       (assert-no-content (link-vocab-to-project admin-request p vocab-id))

@@ -41,12 +41,11 @@ export const VocabularyBorrowers = ({ client, user, vocabulary, home }) => {
 
   const unlink = async (borrower) => {
     const where = borrower.name ? quoted(borrower.name) : 'another project';
-    // What the unlink takes: the links in that project's documents.
+    // What the unlink takes: the links in that project's documents, asked of
+    // core's read of it, never the unlink itself.
     let links;
     try {
-      ({ links } = await client.projects.unlinkVocab(borrower.id, vocabId, undefined, {
-        dryRun: true,
-      }));
+      ({ links } = await client.projects.vocabUnlinking(borrower.id, vocabId));
     } catch (err) {
       notifyError(err, 'Failed to unlink the vocabulary');
       return;

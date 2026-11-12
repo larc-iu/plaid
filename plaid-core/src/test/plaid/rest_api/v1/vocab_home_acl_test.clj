@@ -131,8 +131,8 @@
       (fn [w who & _] (call who :get (str (vl w) "?include-items=true&as-of=" (enc (:ts w)))))]
      ["rename V" {:hm 200 :admin 200} true (fn [w who & _] (call who :patch (vl w) {:name "Renamed"}))]
      ["delete V while B borrows it" {:hm 409 :admin 409} false (fn [w who & _] (call who :delete (vl w)))]
-     ["dry run of delete V while B borrows it" {:hm 409 :admin 409} false
-      (fn [w who & _] (call who :delete (str (vl w) "?dry-run=true")))]
+     ["read what deleting V would remove, while B borrows it" {:hm 409 :admin 409} false
+      (fn [w who & _] (call who :get (str (vl w) "/deletion")))]
      ["read V's history" readers false (fn [w who & _] (call who :get (str (vl w) "/audit")))]
      ["read V's comments" readers false (fn [w who & _] (call who :get (str (vl w) "/comments")))]
      ["count V's comments" readers false (fn [w who & _] (call who :get (str (vl w) "/comments/counts")))]
@@ -191,14 +191,14 @@
       (fn [w who & _] (call who :post (str "/api/v1/projects/" (:a w) "/vocabs/" (:v w))))]
      ["unlink V from B" {:hm 204 :bm 204 :admin 204} true
       (fn [w who & _] (call who :delete (str "/api/v1/projects/" (:b w) "/vocabs/" (:v w))))]
-     ["dry run of unlinking V from B" {:hm 200 :bm 200 :admin 200} false
-      (fn [w who & _] (call who :delete (str "/api/v1/projects/" (:b w) "/vocabs/" (:v w) "?dry-run=true")))]
+     ["read what unlinking V from B would remove" {:hm 200 :bm 200 :admin 200} false
+      (fn [w who & _] (call who :get (str "/api/v1/projects/" (:b w) "/vocabs/" (:v w) "/unlinking")))]
      ["unlink V from A, its home" {:hm 409 :admin 409} false
       (fn [w who & _] (call who :delete (str "/api/v1/projects/" (:a w) "/vocabs/" (:v w))))]
      ["delete A while B borrows V" {:hm 409 :admin 409} false
       (fn [w who & _] (call who :delete (str "/api/v1/projects/" (:a w))))]
-     ["dry run of deleting A while B borrows V" {:hm 409 :admin 409} false
-      (fn [w who & _] (call who :delete (str "/api/v1/projects/" (:a w) "?dry-run=true")))]
+     ["read what deleting A would take, while B borrows V" {:hm 409 :admin 409} false
+      (fn [w who & _] (call who :get (str "/api/v1/projects/" (:a w) "/deletion")))]
      ["comment on an entry" {:hm 201 :hw 201 :bm 201 :bw 201 :admin 201} true
       (fn [w who & _] (call who :post "/api/v1/comments" {:entity-type "vocab-item" :entity-id (:kai w) :body "hi"}))]
      ["delete bw's comment on an entry" {:hm 204 :bw 204 :admin 204} true
@@ -279,13 +279,13 @@
            (-> (call (:hw users) :get "/api/v1/users") :body :error)))))
 
 (deftest with-no-borrower-the-home-maintainer-deletes
-  (testing "the vocabulary, after a dry run"
+  (testing "the vocabulary, after reading what it would remove"
     (let [{:keys [v users]} (world! {:borrowed? false})]
-      (is (= {:links 1} (:body (call (:hm users) :delete (str "/api/v1/vocab-layers/" v "?dry-run=true")))))
+      (is (= {:links 1} (:body (call (:hm users) :get (str "/api/v1/vocab-layers/" v "/deletion")))))
       (is (= 204 (:status (call (:hm users) :delete (str "/api/v1/vocab-layers/" v)))))))
-  (testing "the project, after a dry run naming the vocabularies it takes"
+  (testing "the project, after reading the vocabularies it takes"
     (let [{:keys [a v v2 users]} (world! {:borrowed? false})
-          preview (call (:hm users) :delete (str "/api/v1/projects/" a "?dry-run=true"))]
+          preview (call (:hm users) :get (str "/api/v1/projects/" a "/deletion"))]
       (is (= 200 (:status preview)))
       (is (= #{[(str v) "Lexicon"] [(str v2) "Second"]}
              (set (map (juxt (comp str :id) :name) (-> preview :body :vocabularies)))))
@@ -301,8 +301,8 @@
 (deftest the-home-maintainer-ends-a-borrowing
   (let [{:keys [b v users]} (world!)
         path (str "/api/v1/projects/" b "/vocabs/" v)]
-    (testing "the dry run answers the links and nothing else"
-      (is (= {:links 1} (:body (call (:hm users) :delete (str path "?dry-run=true"))))))
+    (testing "the read of what it would remove answers the links and nothing else"
+      (is (= {:links 1} (:body (call (:hm users) :get (str path "/unlinking"))))))
     (testing "the borrowers are listed, by name only to who may read them"
       (is (= [{:id b :name nil}] (mapv #(update % :id parse-uuid*) (:body (call (:hm users) :get (str "/api/v1/vocab-layers/" v "/borrowers"))))))
       (is (= [{:id b :name "Borrower B"}] (mapv #(update % :id parse-uuid*) (:body (call admin-request :get (str "/api/v1/vocab-layers/" v "/borrowers")))))))

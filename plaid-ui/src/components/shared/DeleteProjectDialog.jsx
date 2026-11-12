@@ -33,8 +33,8 @@ const nameList = (vocabularies) =>
 
 /**
  * The confirm every project delete goes through. On open it asks core what
- * the delete would take (`projects.delete(id, undefined, { dryRun: true })`)
- * and Delete waits for the answer: the project's own vocabularies, named
+ * the delete would take (`projects.deletion(id)`, a read of its own, never the
+ * delete) and Delete waits for the answer: the project's own vocabularies, named
  * after the consequence, since they are deleted with it, or core's refusal
  * while another project links one of them, which replaces the confirm (no
  * name to type, Cancel only). It asks for the project's name typed out,
@@ -43,7 +43,7 @@ const nameList = (vocabularies) =>
  * is reported and closes it, except the same refusal, which it then shows.
  *
  * Props: `open`, `onOpenChange`, `project` (with `id` and `name`), `client`
- * (asks the dry run; without it the confirm names no vocabulary and waits for
+ * (asks what the delete takes; without it the confirm names no vocabulary and waits for
  * nothing), `consequence` (what the delete takes, as a node) and `onDelete`
  * (async, does the delete).
  */
@@ -57,7 +57,7 @@ export const DeleteProjectDialog = ({
 }) => {
   const [typed, setTyped] = useState('');
   const [deleting, setDeleting] = useState(false);
-  // What the dry run said: null while it is out, then `{ vocabularies }` or
+  // What core said the delete takes: null while it is asked, then `{ vocabularies }` or
   // `{ borrowers }`. `{}` when there is none to ask or it failed, which lets
   // the delete go ahead and core judge it.
   const [preview, setPreview] = useState(null);
@@ -79,7 +79,7 @@ export const DeleteProjectDialog = ({
     let alive = true;
     setPreview(null);
     client.projects
-      .delete(projectId, undefined, { dryRun: true })
+      .deletion(projectId)
       .then((answer) => alive && setPreview({ vocabularies: answer?.vocabularies || [] }))
       .catch((err) => {
         if (!alive) return;

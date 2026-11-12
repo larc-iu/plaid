@@ -37,6 +37,30 @@ export function csvParam(values) {
 }
 
 // Helper: build body object, filtering out undefined values
+/**
+ * Throw before anything is sent when a destructive method is given an
+ * option it does not take. A delete or an unlink once took `dryRun`, which
+ * made it write nothing: a caller still passing it would now delete, so the
+ * method refuses the call instead. What a delete or an unlink would take is
+ * a read of its own (`vocabLayers.deletion`, `projects.deletion`,
+ * `projects.vocabUnlinking`).
+ * @param {string} method - The method's name, for the message
+ * @param {object | undefined} options - The options it was given
+ * @param {string[]} [allowed] - The options it takes
+ */
+export function refuseUnknownOptions(method, options, allowed = []) {
+  if (options === undefined || options === null) return;
+  const unknown = typeof options === "object"
+    ? Object.keys(options).filter((k) => !allowed.includes(k))
+    : [String(options)];
+  if (unknown.length > 0) {
+    throw new TypeError(
+      `${method} takes no option ${unknown.join(", ")}. It writes at once: ask the method's own read ` +
+        `(vocabLayers.deletion, projects.deletion, projects.vocabUnlinking) for what it would take.`,
+    );
+  }
+}
+
 export function bodyOf(obj) {
   const result = {};
   for (const [key, value] of Object.entries(obj)) {

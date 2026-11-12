@@ -1,7 +1,7 @@
 // A vocabulary has a home project: create names it, move changes it, the
 // home's maintainer lists the borrowers and may end a borrowing, and a
-// project delete has a dry run and a refusal while a borrower links one of
-// its vocabularies. The maintainer methods are gone. The same as
+// project delete is refused while a borrower links one of its vocabularies
+// (what a delete or an unlink would take: destructiveReads.test.js). The maintainer methods are gone. The same as
 // plaid-client-py's tests/test_vocab_move.py.
 
 import { test } from "node:test";
@@ -98,38 +98,12 @@ test("borrowers lists the projects, a name null where unreadable", async () => {
   assert.deepEqual(result, answer);
 });
 
-test("unlink has a dry run that answers the links", async () => {
-  const { result, seen } = await call(200, { links: 3 }, (c) =>
-    c.projects.unlinkVocab("p2", "v1", undefined, { dryRun: true }),
-  );
-  assert.equal(seen[0].method, "DELETE");
-  assert.equal(seen[0].url.pathname, "/api/v1/projects/p2/vocabs/v1");
-  assert.equal(seen[0].url.searchParams.get("dry-run"), "true");
-  assert.deepEqual(result, { links: 3 });
-});
-
 test("unlinking the home is refused with core's sentence", async () => {
   const body = { error: "A vocabulary cannot be unlinked from its own project." };
   await assert.rejects(
     call(409, body, (c) => c.projects.unlinkVocab("p1", "v1")),
     (err) => err.status === 409 && /cannot be unlinked from its own project\./.test(err.message),
   );
-});
-
-test("a project delete has a dry run naming the vocabularies it takes", async () => {
-  const answer = { vocabularies: [{ id: "v1", name: "Lex" }] };
-  const { result, seen } = await call(200, answer, (c) =>
-    c.projects.delete("p1", undefined, { dryRun: true }),
-  );
-  assert.equal(seen[0].method, "DELETE");
-  assert.equal(seen[0].url.pathname, "/api/v1/projects/p1");
-  assert.equal(seen[0].url.searchParams.get("dry-run"), "true");
-  assert.deepEqual(result, answer);
-});
-
-test("a project delete without a dry run sends none", async () => {
-  const { seen } = await call(204, null, (c) => c.projects.delete("p1"));
-  assert.equal(seen[0].url.searchParams.get("dry-run"), null);
 });
 
 test("a project delete refused keeps the count of borrowers", async () => {

@@ -29,10 +29,11 @@ const enter = (el) =>
   el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
 
 let remove;
+let ask;
 let preview;
 let view;
-// The real delete, as opposed to the dry run the confirm asks on open.
-const deletes = () => remove.mock.calls.filter(([, , opts]) => !opts?.dryRun);
+// The real delete. What it takes is `ask`, the read the confirm sends on open.
+const deletes = () => remove.mock.calls;
 const mount = async () => {
   view = await renderComponent(
     <MemoryRouter initialEntries={['/projects/p1/general']}>
@@ -54,8 +55,11 @@ const openConfirm = async () => {
 
 beforeEach(() => {
   preview = async () => ({ vocabularies: [] });
-  remove = vi.fn(async (_id, _message, opts) => (opts?.dryRun ? preview() : undefined));
-  const client = { projects: { delete: (...args) => remove(...args) } };
+  remove = vi.fn(async () => undefined);
+  ask = vi.fn(async () => preview());
+  const client = {
+    projects: { delete: (...args) => remove(...args), deletion: (...args) => ask(...args) },
+  };
   auth.client = client;
   auth.getClient = () => client;
   notify.notifySuccess.mockClear();
@@ -72,11 +76,14 @@ afterEach(async () => {
 describe('DeleteProjectCard', () => {
   // b861e39ff passed the client to the confirm before the client took
   // `dryRun`, which it sent as a real DELETE: opening the confirm deleted the
-  // project. Opening it asks the dry run and nothing else.
-  it('asks only a dry run when the confirm opens', async () => {
+  // project. What the delete takes is now a read of its own, and opening the
+  // confirm asks that and nothing else (what goes on the wire: the test
+  // below, through the real client).
+  it('asks only what the delete takes when the confirm opens, never the delete', async () => {
     await mount();
     await openConfirm();
-    expect(remove.mock.calls).toEqual([['p1', undefined, { dryRun: true }]]);
+    expect(ask.mock.calls).toEqual([['p1']]);
+    expect(remove).not.toHaveBeenCalled();
   });
 
   it('rests as an outline red button, never a solid one', async () => {
@@ -117,8 +124,7 @@ describe('DeleteProjectCard', () => {
   });
 
   it('stays on the page and says so when the delete is refused', async () => {
-    remove.mockImplementation(async (_id, _message, opts) => {
-      if (opts?.dryRun) return preview();
+    remove.mockImplementation(async () => {
       throw Object.assign(new Error('HTTP 403'), { status: 403 });
     });
     await mount();
@@ -191,12 +197,12 @@ const mountDialog = async () => {
 };
 
 describe('what the delete takes', () => {
-  it('asks a dry run on open, and Delete waits for it with the name typed', async () => {
+  it('asks what the delete takes on open, and Delete waits for it with the name typed', async () => {
     let answer;
     preview = () => new Promise((resolve) => (answer = resolve));
     await mountDialog();
     const box = dialogBox();
-    expect(remove).toHaveBeenCalledWith('p1', undefined, { dryRun: true });
+    expect(ask).toHaveBeenCalledWith('p1');
     await view.step(() => typeInto(box.querySelector('#delete-project-confirm'), 'Lezgian Texts'));
     expect(button(box, 'Delete project').disabled).toBe(true);
     await view.step(() => answer({ vocabularies: [] }));
@@ -255,9 +261,9 @@ describe('what the delete takes', () => {
     );
   });
 
-  it('shows the same refusal when another project borrowed one after the dry run', async () => {
-    remove.mockImplementation(async (_id, _message, opts) => {
-      if (opts?.dryRun) return { vocabularies: [{ id: 'v1', name: 'Lexicon' }] };
+  it('shows the same refusal when another project borrowed one after the read', async () => {
+    preview = async () => ({ vocabularies: [{ id: 'v1', name: 'Lexicon' }] });
+    remove.mockImplementation(async () => {
       throw refusedWith(2);
     });
     await mountDialog();
@@ -273,7 +279,7 @@ describe('what the delete takes', () => {
     expect(view.container.textContent).not.toContain('the project list');
   });
 
-  it('lets the delete go ahead when the dry run fails otherwise', async () => {
+  it('lets the delete go ahead when the read fails otherwise (a core without it answers 404)', async () => {
     preview = async () => {
       throw Object.assign(new Error('HTTP 500'), { status: 500 });
     };
@@ -283,5 +289,35 @@ describe('what the delete takes', () => {
     await view.step(() => typeInto(box.querySelector('#delete-project-confirm'), 'Lezgian Texts'));
     expect(button(box, 'Delete project').disabled).toBe(false);
     quiet.mockRestore();
+  });
+});
+
+// What the confirm SENDS, through the real plaid-client-js over a stubbed
+// fetch, the only way to see the wire (REV-VH-B S5-12: the fakes above could
+// not have caught VH-UI's incident).
+describe('the confirm, as the real client sends it', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('sends one GET of what the delete takes when it opens, and no DELETE until Delete', async () => {
+    const { PlaidClient } = await import('@larc-iu/plaid-client');
+    const sent = [];
+    vi.stubGlobal('fetch', async (url, init = {}) => {
+      sent.push(`${init.method ?? 'GET'} ${String(url).replace('http://plaid.test', '')}`);
+      return init.method === 'DELETE'
+        ? new Response(null, { status: 204 })
+        : new Response(JSON.stringify({ vocabularies: [] }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          });
+    });
+    auth.client = new PlaidClient('http://plaid.test', 'token');
+    await mountDialog();
+    for (let i = 0; i < 5; i++) await view.step(() => new Promise((r) => setTimeout(r, 0)));
+    expect(sent).toEqual(['GET /api/v1/projects/p1/deletion']);
+    const box = dialogBox();
+    await view.step(() => typeInto(box.querySelector('#delete-project-confirm'), 'Lezgian Texts'));
+    await view.step(() => button(box, 'Delete project').click());
+    for (let i = 0; i < 5; i++) await view.step(() => new Promise((r) => setTimeout(r, 0)));
+    expect(sent).toEqual(['GET /api/v1/projects/p1/deletion', 'DELETE /api/v1/projects/p1']);
   });
 });

@@ -6,9 +6,9 @@ import { settle } from '@/domain/test-helpers.js';
 
 // Ruling 11.3: a maintainer of a vocabulary's project sees the projects that
 // link it and can end each borrowing, a project they cannot read included,
-// unnamed. The confirm says how many links go, from the unlink's dry run, and
-// opening it sends that dry run and nothing else. Read as the real client
-// sends it.
+// unnamed. The confirm says how many links go, from core's read of the unlink
+// (a GET of its own, never the DELETE), and opening it sends that read and
+// nothing else. Read as the real client sends it.
 
 vi.mock('@/utils/feedback', () => ({
   notifySuccess: vi.fn(),
@@ -28,9 +28,9 @@ const server = ({ borrowers, links = {}, unlink } = {}) => {
   return fakeClient({
     answer: (req) => {
       if (req.kind === 'vocabLayers.borrowers') return structuredClone(list);
+      if (req.kind === 'projects.vocabUnlinking') return { links: links[req.args[0]] ?? 0 };
       if (req.kind === 'projects.unlinkVocab') {
         const [pid] = req.args;
-        if (req.query['dry-run']) return { links: links[pid] ?? 0 };
         unlink?.(pid);
         list = list.filter((b) => b.id !== pid);
         return {};
@@ -64,10 +64,7 @@ const sentSince = (client, n) =>
           r.method,
           r.path,
           // An op's path carries its operation's group, and nothing else.
-          r.operations.map((o) => {
-            const [path, query = ''] = o.path.split('?');
-            return [o.method, path, query.includes('dry-run')];
-          }),
+          r.operations.map((o) => [o.method, o.path.split('?')[0]]),
         ]
       : [r.method, r.path, r.query],
   );
@@ -100,7 +97,7 @@ describe('the projects that use a vocabulary', () => {
     await view.unmount();
   });
 
-  it('sends only the dry run when the confirm opens, and says how many links go', async () => {
+  it('sends only the read of the unlink when the confirm opens, and says how many links go', async () => {
     const client = server({ borrowers: [{ id: 'B', name: 'Beeworth' }], links: { B: 14 } });
     const view = await mount(client);
     const before = client.requests.length;
@@ -109,7 +106,7 @@ describe('the projects that use a vocabulary', () => {
       await settle(5);
     });
     expect(sentSince(client, before)).toEqual([
-      ['DELETE', '/api/v1/projects/B/vocabs/V', { 'dry-run': 'true' }],
+      ['GET', '/api/v1/projects/B/vocabs/V/unlinking', {}],
     ]);
     expect(confirm).toHaveBeenCalledWith({
       title: 'Unlink “⁨Lexicon⁩” from “⁨Beeworth⁩”?',
@@ -147,8 +144,8 @@ describe('the projects that use a vocabulary', () => {
       destructive: true,
     });
     expect(sentSince(client, before)).toEqual([
-      ['DELETE', '/api/v1/projects/X/vocabs/V', { 'dry-run': 'true' }],
-      ['POST', '/api/v1/batch', [['DELETE', '/api/v1/projects/X/vocabs/V', false]]],
+      ['GET', '/api/v1/projects/X/vocabs/V/unlinking', {}],
+      ['POST', '/api/v1/batch', [['DELETE', '/api/v1/projects/X/vocabs/V']]],
       ['GET', '/api/v1/vocab-layers/V/borrowers', {}],
     ]);
     expect(ended).toEqual(['X']);
@@ -174,9 +171,8 @@ describe('the projects that use a vocabulary', () => {
     const client = fakeClient({
       answer: (req) => {
         if (req.kind === 'vocabLayers.borrowers') return [{ id: 'X', name: null }];
-        if (req.kind === 'projects.unlinkVocab' && !req.query['dry-run'])
-          throw refusal(403, { error: 'Forbidden' });
-        if (req.kind === 'projects.unlinkVocab') return { links: 0 };
+        if (req.kind === 'projects.unlinkVocab') throw refusal(403, { error: 'Forbidden' });
+        if (req.kind === 'projects.vocabUnlinking') return { links: 0 };
         return undefined;
       },
     });

@@ -31,8 +31,8 @@
         w (vocab! a "Other")]
     (fix/assert-no-content (h/link-vocab-to-project admin-request b v))
     (fix/assert-no-content (h/link-vocab-to-project admin-request c w))
-    (doseq [path [(str "/api/v1/projects/" a) (str "/api/v1/projects/" a "?dry-run=true")]]
-      (let [resp (call admin-request :delete path)]
+    (doseq [[method path] [[:delete (str "/api/v1/projects/" a)] [:get (str "/api/v1/projects/" a "/deletion")]]]
+      (let [resp (call admin-request method path)]
         (is (= 409 (:status resp)) path)
         (is (= {:error "2 other projects use a vocabulary of this project." :other-projects 2} (:body resp)) path)))
     (is (= 2 (n :vocab_layers [:= :project_id a])) "nothing was taken")
@@ -50,7 +50,7 @@
     (fix/assert-no-content (h/link-vocab-to-project admin-request a other))
     (is (= 201 (:status (call admin-request :post "/api/v1/comments" {:entity-type "vocab-item" :entity-id kai :body "hi"}))))
     (is (= {:vocabularies [{:id v :name "Lex"}]}
-           (update (:body (call admin-request :delete (str "/api/v1/projects/" a "?dry-run=true")))
+           (update (:body (call admin-request :get (str "/api/v1/projects/" a "/deletion")))
                    :vocabularies (partial mapv #(update % :id (comp parse-uuid str))))))
     (fix/assert-no-content (call admin-request :delete (str "/api/v1/projects/" a)))
     (is (zero? (n :vocab_layers [:= :id v])))

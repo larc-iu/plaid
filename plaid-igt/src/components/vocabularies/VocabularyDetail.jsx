@@ -288,8 +288,8 @@ export const VocabularyDetail = () => {
     [fields, vocabulary],
   );
   const [deleteModalOpened, setDeleteModalOpened] = useState(false);
-  // What the delete would do, asked of core (a dry run) when the question
-  // opens: `{ links }`, the links in its project's documents that go with it,
+  // What the delete would do, asked of core when the question opens (its read
+  // of a delete, never the delete): `{ links }`, the links in its project's documents that go with it,
   // or `{ otherProjects }` while other projects use it, which core refuses the
   // delete for. Undefined while asked, null when it could not be read.
   const [deleteCheck, setDeleteCheck] = useState(undefined);
@@ -297,7 +297,7 @@ export const VocabularyDetail = () => {
     setDeleteCheck(undefined);
     setDeleteModalOpened(true);
     Promise.resolve()
-      .then(() => client.vocabLayers.delete(vocabularyId, undefined, { dryRun: true }))
+      .then(() => client.vocabLayers.deletion(vocabularyId))
       .then((r) => setDeleteCheck({ links: r?.links ?? 0 }))
       .catch((err) => {
         const n = otherProjectsOf(err);

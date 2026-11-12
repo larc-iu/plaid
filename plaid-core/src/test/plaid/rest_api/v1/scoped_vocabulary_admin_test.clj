@@ -148,6 +148,8 @@
     [:delete "/api/v1/vocab-layers/:id"]
     [:post "/api/v1/vocab-layers/:id/move"]
     [:get "/api/v1/vocab-layers/:id/borrowers"]
+    [:get "/api/v1/vocab-layers/:id/deletion"]
+    [:get "/api/v1/projects/:id/vocabs/:vocab-id/unlinking"]
     [:put "/api/v1/vocab-layers/:id/config/:namespace/:config-key"]
     [:delete "/api/v1/vocab-layers/:id/config/:namespace/:config-key"]
     [:post "/api/v1/vocab-layers/:id/items/:item-id/restore"]

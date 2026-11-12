@@ -13,15 +13,6 @@
 (defn get-project-id [{params :parameters}]
   (-> params :path :id))
 
-(defn- refusal-response
-  "A thrown 4xx refusal (an ex-info with `:code`) as a response, with the
-  fields its `:plaid/body` adds. Anything else is thrown on."
-  [e]
-  (let [{:keys [code] :plaid/keys [body]} (ex-data e)]
-    (if (and code (< code 500))
-      {:status code :body (merge {:error (ex-message e)} body)}
-      (throw e))))
-
 (def project-routes
   ["/projects"
 
@@ -74,25 +65,34 @@
      :delete {:summary (str "Delete a project, with its own vocabularies. It is gone at once, and what it holds is "
                             "removed in the background. Refused (409) while another project links one of its "
                             "vocabularies, for everyone, admins included, the body counting those projects as "
-                            "<body>other-projects</body> without naming them. With <query>dry-run</query> true nothing "
-                            "is written: the same refusals, or {vocabularies: [{id, name}]}, the vocabularies the "
-                            "delete would take.")
-              :middleware [[pra/wrap-maintainer-required get-project-id]]
-              :parameters {:query [:map [:dry-run {:optional true} :boolean]]}
-              :handler (fn [{{{:keys [id]} :path {:keys [dry-run]} :query} :parameters
+                            "<body>other-projects</body> without naming them. Takes no query parameter but the audit "
+                            "labels (400 otherwise, nothing deleted). What it would take is "
+                            "GET /projects/{id}/deletion.")
+              :middleware [[pra/wrap-maintainer-required get-project-id]
+                           [prm/wrap-only-query-params #{}]]
+              :handler (fn [{{{:keys [id]} :path} :parameters
                              datasource :plaid/datasource user-id :user/id db :db}]
-                         (if dry-run
-                           (try
-                             {:status 200 :body (prj/delete-preview db id)}
-                             (catch clojure.lang.ExceptionInfo e (refusal-response e)))
-                           (let [{:keys [success] :as result} (prj/delete db id user-id)]
-                             (if success
-                               (do
-                                 ;; After the commit: inside an atomic batch the
-                                 ;; delete may still roll back.
-                                 (op/after-commit! #(removal/schedule! datasource id))
-                                 {:status 204})
-                               (prm/op-error result {:extras? true})))))}}]
+                         (let [{:keys [success] :as result} (prj/delete db id user-id)]
+                           (if success
+                             (do
+                               ;; After the commit: inside an atomic batch the
+                               ;; delete may still roll back.
+                               (op/after-commit! #(removal/schedule! datasource id))
+                               {:status 204})
+                             (prm/op-error result {:extras? true}))))}}]
+
+   ["/:id/deletion"
+    {:parameters {:path [:map [:id :uuid]]}
+     :get {:summary (str "What deleting a project would take beside its documents, without writing: "
+                         "{vocabularies: [{id, name}]}, its own vocabularies by name. A read, never the delete. The "
+                         "same people may ask as may delete it, and it answers the delete's refusals: 409 with "
+                         "<body>other-projects</body> while another project links one of its vocabularies, 404 for a "
+                         "project being deleted.")
+           :middleware [[pra/wrap-maintainer-required get-project-id]]
+           :handler (fn [{{{:keys [id]} :path} :parameters db :db}]
+                      (try
+                        {:status 200 :body (prj/delete-preview db id)}
+                        (catch clojure.lang.ExceptionInfo e (prm/refusal-response e))))}}]
 
    ;; Documents (keyset-paginated)
    ["/:id/documents"
@@ -159,26 +159,35 @@
      :delete {:summary (str "Unlink a vocabulary from a project that borrows it, removing its links in that "
                             "project's documents. Requires maintainer rights on that project, or on the "
                             "vocabulary's home project, whose maintainers may end any project's borrowing. Refused "
-                            "(409) for the vocabulary's home, which cannot unlink its own vocabulary. With "
-                            "<query>dry-run</query> true nothing is written: the same refusals, or {links}, the "
-                            "number of links the unlink would remove.")
-              :middleware [[pra/wrap-vocab-unlink-required get-project-id (fn [{p :parameters}] (-> p :path :vocab-id))]]
-              :parameters {:query [:map [:dry-run {:optional true} :boolean]]}
-              :handler (fn [{{{:keys [id vocab-id]} :path {:keys [dry-run]} :query} :parameters
+                            "(409) for the vocabulary's home, which cannot unlink its own vocabulary. Takes no query "
+                            "parameter but the audit labels (400 otherwise, nothing unlinked). What it would remove "
+                            "is GET /projects/{id}/vocabs/{vocab-id}/unlinking.")
+              :middleware [[pra/wrap-vocab-unlink-required get-project-id (fn [{p :parameters}] (-> p :path :vocab-id))]
+                           [prm/wrap-only-query-params #{}]]
+              :handler (fn [{{{:keys [id vocab-id]} :path} :parameters
                              db :db user-id :user/id :as req}]
-                         (if dry-run
-                           (try
-                             {:status 200 :body (prj/remove-vocab-preview db id vocab-id)}
-                             (catch clojure.lang.ExceptionInfo e (refusal-response e)))
-                           (let [{:keys [success documents] :as result}
-                                 (prj/remove-vocab db id vocab-id user-id)]
-                             (if success
-                               ;; Unlinking drops the vocabulary's links in this
-                               ;; project's documents and bumps their versions,
-                               ;; named only where the caller may read them.
-                               (prm/assoc-document-versions-in-header
-                                {:status 204} db (pra/readable-document-ids req documents))
-                               (prm/op-error result {:message nil})))))}}]
+                         (let [{:keys [success documents] :as result}
+                               (prj/remove-vocab db id vocab-id user-id)]
+                           (if success
+                             ;; Unlinking drops the vocabulary's links in this
+                             ;; project's documents and bumps their versions,
+                             ;; named only where the caller may read them.
+                             (prm/assoc-document-versions-in-header
+                              {:status 204} db (pra/readable-document-ids req documents))
+                             (prm/op-error result {:message nil}))))}}]
+
+   ["/:id/vocabs/:vocab-id/unlinking"
+    {:plaid/vocabulary-admin true
+     :parameters {:path [:map [:id :uuid] [:vocab-id :uuid]]}
+     :get {:summary (str "What unlinking a vocabulary from a project would remove, without writing: {links}, the "
+                         "links in that project's documents to its entries, and nothing else about them. A read, "
+                         "never the unlink. The same people may ask as may unlink, and it answers the unlink's "
+                         "refusals: 409 for the vocabulary's home.")
+           :middleware [[pra/wrap-vocab-unlink-required get-project-id (fn [{p :parameters}] (-> p :path :vocab-id))]]
+           :handler (fn [{{{:keys [id vocab-id]} :path} :parameters db :db}]
+                      (try
+                        {:status 200 :body (prj/remove-vocab-preview db id vocab-id)}
+                        (catch clojure.lang.ExceptionInfo e (prm/refusal-response e))))}}]
 
    ;; Config endpoints
    ["/:id"
