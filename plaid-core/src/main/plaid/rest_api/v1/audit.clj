@@ -178,10 +178,12 @@
      :get {:summary    (str "Get audit log for a project. " op-types-doc kinds-doc order-doc ops-limit-doc)
            :middleware [[pra/wrap-reader-required get-project-id-from-audit-path]]
            :parameters {:query pagination-query}
-           :handler    (fn [{{{:keys [project-id]} :path query :query} :parameters db :db}]
+           :handler    (fn [{{{:keys [project-id]} :path query :query} :parameters db :db :as req}]
                          (audit-response
                           query
-                          (fn [opts start end] (audit/get-project-audit-log db project-id start end opts))))}}]
+                          (fn [opts start end]
+                            (audit/get-project-audit-log db project-id start end
+                                                         (assoc opts :readable? (pra/project-readable-fn req))))))}}]
 
    ["/projects/:project-id/audit/last-edits"
     {:parameters {:path [:map [:project-id :uuid]]}
@@ -201,10 +203,12 @@
                         [pra/wrap-entity-required {:table :documents :label "Document" :history? true
                                                    :get-id #(-> % :parameters :path :document-id)}]]
            :parameters {:query pagination-query}
-           :handler    (fn [{{{:keys [document-id]} :path query :query} :parameters db :db}]
+           :handler    (fn [{{{:keys [document-id]} :path query :query} :parameters db :db :as req}]
                          (audit-response
                           query
-                          (fn [opts start end] (audit/get-document-audit-log db document-id start end opts))))}}]
+                          (fn [opts start end]
+                            (audit/get-document-audit-log db document-id start end
+                                                          (assoc opts :readable? (pra/project-readable-fn req))))))}}]
 
    ["/users/:user-id/audit"
     {:parameters {:path [:map [:user-id schema/user-id]]}

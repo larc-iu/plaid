@@ -569,18 +569,34 @@
                            "unknown"))
         (dissoc event :event/type :event/projects :event/documents-by-project)))
 
+(defn- op-for-project
+  "One operation of an audit event as `project-id`'s subscribers get it: no
+  other project's id, and the anonymous sentence when its description names
+  a project other than theirs (a move into another project, a borrow ended
+  by the vocabulary's project), since a subscriber need not read that one."
+  [op project-id]
+  (let [mine? (fn [pid] (= (str pid) (str project-id)))
+        named (:op/named-project op)]
+    (cond-> (dissoc op :op/named-project :op/anonymous-description)
+      (and (:op/project op) (not (mine? (:op/project op)))) (assoc :op/project nil)
+      (and named (not (mine? named)) (:op/anonymous-description op))
+      (assoc :op/description (:op/anonymous-description op)))))
+
 (defn for-project
   "The event as `project-id`'s subscribers get it. An audit event that
   names its documents by project (`:event/documents-by-project`) is cut
   down to that project and its own documents, so one project's listeners
   never learn the ids of another project's documents, as a vocabulary
-  write that bumps documents in several projects would otherwise tell them."
+  write that bumps documents in several projects would otherwise tell them.
+  Each operation names no other project (`op-for-project`)."
   [event project-id]
-  (if-let [by-project (:event/documents-by-project event)]
-    (assoc event
-           :audit/projects #{project-id}
-           :audit/documents (get by-project project-id #{}))
-    event))
+  (cond-> event
+    (:event/documents-by-project event)
+    (assoc :audit/projects #{project-id}
+           :audit/documents (get (:event/documents-by-project event) project-id #{}))
+
+    (:audit/ops event)
+    (update :audit/ops (partial mapv #(op-for-project % project-id)))))
 
 ;; =============================================================================
 ;; Event Publishing and Distribution
@@ -716,7 +732,8 @@
       :audit/user      user-id
       :audit/time      (java.util.Date.)
       :audit/ops       (mapv #(-> (select-keys % [:op/id :op/type :op/project
-                                                  :op/document :op/description])
+                                                  :op/document :op/description
+                                                  :op/named-project :op/anonymous-description])
                                   (update :op/type op-type-to-string))
                              operations)})))
 

@@ -338,12 +338,14 @@
   (let [home (home-of db eid)]
     (if (and home (= (str home) (str target)))
       {:success true :extra eid}
-      (submit-operation! [tx db {:type :vocab/move
-                                 :project home
-                                 :document nil
-                                 :description (str "Move vocabulary “" (vocab-name db eid) "” to project “"
-                                                   (project-name db target) "”")
-                                 :user user-id}]
+      (submit-operation! [tx db (clojure.core/merge
+                                 {:type :vocab/move
+                                  :project home
+                                  :document nil
+                                  :user user-id}
+                                 ;; The target is named only to who may read it.
+                                 (op/named-description target (project-name db target)
+                                                       #(str "Move vocabulary “" (vocab-name db eid) "” to " %)))]
                          (let [row (psc/fetch-by-id tx :vocab_layers eid)]
                            (when (nil? row)
                              (throw (ex-info (psc/err-msg-not-found "Vocab" eid) {:code 404 :id eid})))

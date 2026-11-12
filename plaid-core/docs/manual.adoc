@@ -371,6 +371,7 @@ A vocabulary may be linked by several projects, so its history is its own.
 A maintainer of the vocabulary's project can put one entry back as it was with `vocabLayers.restoreItem(id, itemId, asOf)`, though its links come back only by restoring the documents that held them.
 Changes to a vocabulary also appear in its project's log, from the version that gave every vocabulary a project on.
 A vocabulary read as of a time before that version has no `project`.
+A log names a project only to someone who can read it, and says "another project" to anyone else.
 
 == Real-time Messaging
 Plaid offers a simple system for real-time communication on a per-project basis.
@@ -1152,6 +1153,7 @@ A vocabulary cannot be unlinked from its own project.
 A borrowing project's maintainers unlink it with `projects.unlinkVocab(projectId, vocabId)`, which removes its links in that project's documents.
 The maintainers of the vocabulary's project may also end any project's borrowing the same way, and `GET /api/v1/vocab-layers/{id}/borrowers` lists the projects that borrow it, by name where they may read them.
 `projects.vocabUnlinking(projectId, vocabId)` (`GET /api/v1/projects/{id}/vocabs/{vocabId}/unlinking`) answers how many links the unlink would remove, and writes nothing.
+An unlink is listed in the borrowing project's Activity, and in the vocabulary's History and its project's Activity.
 
 `vocabLayers.move(id, projectId)` makes another project the vocabulary's project, for a person who maintains both.
 The old project keeps it linked, as a borrower.

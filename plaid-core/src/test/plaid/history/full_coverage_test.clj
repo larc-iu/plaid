@@ -192,7 +192,7 @@
     "token-layer/update"
     "user/create" "user/deactivate" "user/reactivate" "user/update"
     "api-token/create" "api-token/revoke"
-    "vocab/create" "vocab/delete" "vocab/home" "vocab/move" "vocab/update"
+    "vocab/create" "vocab/delete" "vocab/home" "vocab/move" "vocab/unlink" "vocab/update"
     "vocab-item/create" "vocab-item/delete" "vocab-item/delete-metadata"
     "vocab-item/merge" "vocab-item/patch-metadata" "vocab-item/set-metadata"
     "vocab-link/create" "vocab-link/delete" "vocab-link/delete-metadata"

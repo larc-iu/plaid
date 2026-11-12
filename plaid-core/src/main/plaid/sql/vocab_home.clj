@@ -44,7 +44,7 @@
             [next.jdbc.result-set :as rs]
             [plaid.sql.audit-write :as psaw]
             [plaid.sql.datasource :as psd]
-            [plaid.sql.operation :refer [submit-operation!]]
+            [plaid.sql.operation :as op :refer [submit-operation!]]
             [plaid.sql.project :as prj]
             [taoensso.timbre :as log]))
 
@@ -210,13 +210,15 @@
   [ds {:keys [id name project_id] :as v}]
   (let [pname (:name (first (q ds "SELECT name FROM projects WHERE id = ?" project_id)))
         promoted (atom [])
-        r (submit-operation! [tx ds {:type :vocab/home
-                                     :project project_id
-                                     :document nil
-                                     :description (str "Vocabulary “" name "” belongs to project “" pname "”")
-                                     :user nil
-                                     :skip-lock-check? true
-                                     :skip-doc-version-bump? true}]
+        r (submit-operation! [tx ds (merge {:type :vocab/home
+                                            :project project_id
+                                            :document nil
+                                            :user nil
+                                            :skip-lock-check? true
+                                            :skip-doc-version-bump? true}
+                                           ;; Its History is read by borrowers too.
+                                           (op/named-description project_id pname
+                                                                 #(str "Vocabulary “" name "” belongs to " %)))]
                              (doseq [{:keys [user_id]} (q tx (str "SELECT vm.user_id FROM vocab_maintainers vm "
                                                                   "JOIN users u ON u.id = vm.user_id "
                                                                   "WHERE vm.vocab_layer_id = ? AND u.deactivated_at IS NULL "

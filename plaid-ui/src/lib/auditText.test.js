@@ -176,7 +176,24 @@ const CORE_SHAPES = [
   [`Set editor config ud/dependency on layer ${ID}`, 'Set editor config ud/dependency'],
   [`Unset editor config igt/import on layer ${ID}`, 'Unset editor config igt/import'],
   // A project borrows a vocabulary, and a borrowing ends (by that project's
-  // maintainer or the home's), in the borrowing project's Activity.
+  // maintainer or the home's), in the borrowing project's Activity and, for
+  // the end, the vocabulary's History and its home's Activity too. A reader
+  // who cannot read the project named is given "another project" (core,
+  // 2026-11-12).
+  [
+    'Link vocabulary “Lexicon” to project “Kukama”',
+    'Link vocabulary “Lexicon” to project “Kukama”',
+  ],
+  ['Link vocabulary “Lexicon” to another project', 'Link vocabulary “Lexicon” to another project'],
+  [
+    'Unlink vocabulary “Lexicon” from project “Kukama”',
+    'Unlink vocabulary “Lexicon” from project “Kukama”',
+  ],
+  [
+    'Unlink vocabulary “Lexicon” from another project',
+    'Unlink vocabulary “Lexicon” from another project',
+  ],
+  // Before that, ids only.
   [`Add vocab ${ID} to project ${ID2}`, 'Add vocab'],
   [`Remove vocab ${ID} from project ${ID2}`, 'Remove vocab'],
   // guideline.clj
@@ -197,6 +214,11 @@ const CORE_SHAPES = [
   [
     'Vocabulary “Lexicon” belongs to project “Kukama”',
     'Vocabulary “Lexicon” belongs to project “Kukama”',
+  ],
+  ['Move vocabulary “Lexicon” to another project', 'Move vocabulary “Lexicon” to another project'],
+  [
+    'Vocabulary “Lexicon” belongs to another project',
+    'Vocabulary “Lexicon” belongs to another project',
   ],
   // Before the vocabulary home, still in a vocabulary's History.
   ["Create vocab 'Lexicon'", "Create vocab 'Lexicon'"],
@@ -338,6 +360,14 @@ const NAMED_SHAPES = [
   [
     (n) => `Vocabulary \u201c${n}\u201d belongs to project \u201c${n} 2\u201d`,
     (n) => `Vocabulary \u201c${n}\u201d belongs to project \u201c${n} 2\u201d`,
+  ],
+  [
+    (n) => `Unlink vocabulary \u201c${n}\u201d from project \u201c${n} 2\u201d`,
+    (n) => `Unlink vocabulary \u201c${n}\u201d from project \u201c${n} 2\u201d`,
+  ],
+  [
+    (n) => `Unlink vocabulary \u201c${n}\u201d from another project`,
+    (n) => `Unlink vocabulary \u201c${n}\u201d from another project`,
   ],
   [(n) => `Create vocab item '${n}'`, (n) => `Create vocab item '${n}'`],
   [

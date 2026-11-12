@@ -140,9 +140,18 @@
   `ops-limit`, when given, keeps only a unit's OLDEST `ops-limit` members in
   `:audit/ops`, its head op first. Everything else on the entry is still
   worked out from every member. A unit of forty thousand writes is one row
-  in a History list, not forty thousand op summaries to send."
-  [db units member-rows ops-limit]
-  (let [by-unit   (group-by row-unit member-rows)
+  in a History list, not forty thousand op summaries to send.
+
+  `readable?`, a predicate on a project id, says which projects the reader
+  may read. Another project is named to no one who cannot read it: it is
+  left out of `:op/project` and `:audit/projects`, and an operation whose
+  description names it (`named_project_id`) is described by its
+  `anonymous_description` instead. A vocabulary's History is read by every
+  project that borrows it, and its operations belong to its home. Nil reads
+  every project (the server's own callers)."
+  [db units member-rows ops-limit readable?]
+  (let [readable? (or readable? (constantly true))
+        by-unit   (group-by row-unit member-rows)
         users     (batch-fetch-by-ids db :users (mapv :user_id member-rows))
         projects  (batch-fetch-by-ids db :projects (mapv :project_id member-rows) live-project)
         documents (batch-fetch-by-ids db :documents (mapv :document_id member-rows) in-live-project)
@@ -153,11 +162,15 @@
         ;; the time to read at to see this op done: its own, or its batch's end
         end-time  (fn [row] (or (some-> (:batch_id row) batch-end) (:ts row)))
         op-summary (fn [row]
-                     (let [proj (some-> (:project_id row) projects select-proj)
-                           doc  (some-> (:document_id row) documents select-doc)]
+                     (let [proj (when (some-> (:project_id row) readable?)
+                                  (some-> (:project_id row) projects select-proj))
+                           doc  (some-> (:document_id row) documents select-doc)
+                           named (:named_project_id row)]
                        (cond-> {:op/id (:id row)
                                 :op/type (some-> (:op_type row) keyword)
-                                :op/description (:description row)
+                                :op/description (if (and named (:anonymous_description row) (not (readable? named)))
+                                                  (:anonymous_description row)
+                                                  (:description row))
                                 :op/time (:ts row)
                                 :op/end-time (end-time row)
                                 :op/user (some-> (:user_id row) users select-user)}
@@ -182,7 +195,7 @@
                        ;; has to defend against, so a vanished entity is simply
                        ;; absent. The per-op :op/project and :op/document are
                        ;; already omitted the same way.
-                       :audit/projects (->> ops (keep :project_id) distinct
+                       :audit/projects (->> ops (keep :project_id) distinct (filter readable?)
                                             (keep #(select-proj (get projects %)))
                                             vec)
                        :audit/documents (->> ops (keep :document_id) distinct
@@ -352,18 +365,18 @@
   the members the scope, window and filters keep (none, no entry), which is
   how a reader fetches the rest of an entry an `:ops-limit` cut: the same
   entry again, from the time of the last member it holds."
-  [db scope time-range {:keys [limit cursor-vals op-types kinds order ops-limit entry-id]}]
+  [db scope time-range {:keys [limit cursor-vals op-types kinds order ops-limit entry-id readable?]}]
   (if entry-id
     (let [members (unit-members db scope time-range op-types kinds [entry-id])]
       {:entries (if (seq members)
                   (enrich-units db [{:unit entry-id :head_ts (:ts (first members))}]
-                                members ops-limit)
+                                members ops-limit readable?)
                   [])
        :next-cursor nil})
-    (units-page db scope time-range limit cursor-vals op-types kinds order ops-limit)))
+    (units-page db scope time-range limit cursor-vals op-types kinds order ops-limit readable?)))
 
 (defn- units-page
-  [db scope time-range limit cursor-vals op-types kinds order ops-limit]
+  [db scope time-range limit cursor-vals op-types kinds order ops-limit readable?]
   (let [eff (pagination/clamp-limit limit)
         desc? (= order :desc)
         filters (cond-> (conj (ts-where (first time-range) (second time-range)) outside-removed-projects)
@@ -411,7 +424,8 @@
                                              :head_ts (:ts (first (members-of unit)))})
                                           units)
                                     (mapcat (comp members-of :unit) units)
-                                    ops-limit)
+                                    ops-limit
+                                    readable?)
              :next-cursor (when (= (count units) eff)
                             (let [u (peek units)] [(:position u) (str (:unit u))]))}))))))
 

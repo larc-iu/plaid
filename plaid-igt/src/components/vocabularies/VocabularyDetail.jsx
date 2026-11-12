@@ -629,7 +629,10 @@ export const VocabularyDetail = () => {
     const landed = keyedSend(
       writes.schema,
       client,
-      `Move vocabulary “${vocabulary.name}” to project “${target.name}”`,
+      // The label is shown on the vocabulary's History to every project that
+      // borrows it, so it names no project: core's own description names the
+      // target to who may read it.
+      `Move vocabulary “${vocabulary.name}”`,
       () => client.vocabLayers.move(vocabularyId, target.id),
       {
         // Core's sentence says what was missing, and the projects are read

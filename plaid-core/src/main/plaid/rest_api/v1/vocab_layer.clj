@@ -242,11 +242,16 @@
                          audit-routes/ops-limit-doc)
            :middleware [[pra/wrap-vocab-reader-required get-vocab-id]]
            :parameters {:query (conj audit-routes/pagination-query [:item-id {:optional true} :uuid])}
-           :handler (fn [{{{:keys [id]} :path {:keys [item-id] :as query} :query} :parameters db :db}]
+           :handler (fn [{{{:keys [id]} :path {:keys [item-id] :as query} :query} :parameters db :db :as req}]
                       (audit-routes/audit-response
                        query
                        (fn [opts start end]
-                         (audit/get-vocab-audit-log db id start end (assoc opts :item-id item-id)))))}}]
+                         (audit/get-vocab-audit-log db id start end
+                                                    (assoc opts
+                                                           :item-id item-id
+                                                           ;; Its operations belong to its home, which a
+                                                           ;; borrower's reader may not read.
+                                                           :readable? (pra/project-readable-fn req))))))}}]
 
    ["/:id/items/:item-id"
     {:parameters {:path [:map [:id :uuid] [:item-id :uuid]]}

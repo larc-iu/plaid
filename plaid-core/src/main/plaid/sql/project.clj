@@ -1206,11 +1206,15 @@
   leave the project borrowing a vocabulary its maintainer cannot reach, or
   one whose home's removal is about to delete it with the borrower's links."
   [db project-id vocab-id actor-user-id]
-  (submit-operation! [tx db {:type :project/add-vocab
-                             :project project-id
-                             :document nil
-                             :description (str "Add vocab " vocab-id " to project " project-id)
-                             :user actor-user-id}]
+  (submit-operation! [tx db (clojure.core/merge
+                             {:type :project/add-vocab
+                              :project project-id
+                              :document nil
+                              :user actor-user-id}
+                             (op/named-description
+                              project-id (:name (psc/fetch-by-id db :projects project-id))
+                              #(str "Link vocabulary “" (or (:name (psc/fetch-by-id db :vocab_layers vocab-id)) vocab-id)
+                                    "” to " %)))]
                      (when (nil? (psc/fetch-by-id tx :projects project-id))
                        (throw (ex-info (psc/err-msg-not-found "Project" project-id)
                                        {:code 404 :id project-id})))
@@ -1259,16 +1263,63 @@
                                  [:documents :d] [:= :d.id :l.document_id]]
                           :where [:and [:= :i.vocab_layer_id vocab-id] [:= :d.project_id project-id]]}))})
 
+(declare remove-vocab*)
+
+(defn- record-unlink-in-home!
+  "Inside the unlink of vocab layer `vocab` (its row) from `project-id`: a
+  second operation, under the vocabulary's home, that names the unlink in
+  the vocabulary's History and the home's Activity (REV-VH-A-3). The unlink
+  itself is filed under the borrower, whose documents lose the links, so
+  without this the home's other maintainers never learnt who ended a
+  borrowing, or when. It writes nothing but the vocabulary's row as it is,
+  which is what puts it in the vocabulary's History. The two are one batch
+  (they commit together), so a log that holds both lists them as one entry."
+  [tx project-id pname vocab user-id]
+  (let [outer (:id psaw/*op*)
+        r (binding [op/*current-batch-id* (or op/*current-batch-id* outer)
+                    op/*custom-description* nil]
+            (submit-operation! [inner tx (clojure.core/merge
+                                          {:type :vocab/unlink
+                                           :project (:project_id vocab)
+                                           :document nil
+                                           :user user-id
+                                           :skip-lock-check? true}
+                                          (op/named-description
+                                           project-id pname #(str "Unlink vocabulary “" (:name vocab) "” from " %)))]
+                               (psaw/record-audit-write! inner :vocab_layers (:id vocab) :update vocab vocab)))]
+    (when-not (:success r)
+      (throw (ex-info (:error r) {:code (:code r)})))
+    (when-not op/*current-batch-id*
+      (op/set-batch! tx outer))))
+
 (defn remove-vocab
   "Remove a vocab from a project that borrows it. Also deletes vocab_links
   for that vocab's items that belong to documents in this project. Refused
-  (409) for the vocabulary's home, which cannot unlink its own vocabulary."
+  (409) for the vocabulary's home, which cannot unlink its own vocabulary.
+  Audited under the borrowing project, and named under the vocabulary's home
+  too (`record-unlink-in-home!`). The audit events of both wait for the
+  commit."
   [db project-id vocab-id actor-user-id]
-  (submit-operation! [tx db {:type :project/remove-vocab
-                             :project project-id
-                             :document nil
-                             :description (str "Remove vocab " vocab-id " from project " project-id)
-                             :user actor-user-id}]
+  (if op/*deferred-events*
+    (remove-vocab* db project-id vocab-id actor-user-id)
+    (let [events (atom [])
+          r (binding [op/*deferred-events* events]
+              (remove-vocab* db project-id vocab-id actor-user-id))]
+      (when (:success r)
+        (op/flush-deferred-events! @events))
+      r)))
+
+(defn- remove-vocab*
+  [db project-id vocab-id actor-user-id]
+  (submit-operation! [tx db (clojure.core/merge
+                             {:type :project/remove-vocab
+                              :project project-id
+                              :document nil
+                              :user actor-user-id}
+                             (op/named-description
+                              project-id (:name (psc/fetch-by-id db :projects project-id))
+                              #(str "Unlink vocabulary “" (or (:name (psc/fetch-by-id db :vocab_layers vocab-id)) vocab-id)
+                                    "” from " %)))]
                      (when (nil? (psc/fetch-by-id tx :projects project-id))
                        (throw (ex-info (psc/err-msg-not-found "Project" project-id)
                                        {:code 404 :id project-id})))
@@ -1311,4 +1362,6 @@
                        (crud/remove-join! tx :project_vocabs
                                           {:project_id project-id
                                            :vocab_layer_id vocab-id})
-                       (audit-project-vocabs-change! tx project-id pre-vocabs))))
+                       (audit-project-vocabs-change! tx project-id pre-vocabs))
+                     (record-unlink-in-home! tx project-id (:name (psc/fetch-by-id tx :projects project-id))
+                                             (psc/fetch-by-id tx :vocab_layers vocab-id) actor-user-id)))

@@ -91,21 +91,27 @@
   nil)
 
 (defn- insert-operation-row!
-  [tx {:keys [id type project document description user token-id credential batch-id group-id ts]}]
+  "The `operations` row. `:named-project` and `:anonymous-description` go in
+  only when the operation has them, so the code migrations that write
+  operations before the columns exist (2026-10-16's among them) still can."
+  [tx {:keys [id type project document description user token-id credential batch-id group-id ts
+              named-project anonymous-description]}]
   (psc/execute!
    tx
    {:insert-into :operations
-    :values [{:id id
-              :op_type (if (keyword? type) (subs (str type) 1) (str type))
-              :project_id project
-              :document_id document
-              :description description
-              :batch_id batch-id
-              :group_id group-id
-              :user_id user
-              :token_id token-id
-              :credential credential
-              :ts ts}]}))
+    :values [(cond-> {:id id
+                      :op_type (if (keyword? type) (subs (str type) 1) (str type))
+                      :project_id project
+                      :document_id document
+                      :description description
+                      :batch_id batch-id
+                      :group_id group-id
+                      :user_id user
+                      :token_id token-id
+                      :credential credential
+                      :ts ts}
+               named-project (assoc :named_project_id named-project
+                                    :anonymous_description anonymous-description))]}))
 
 (defn- ensure-group-row!
   "Lazily create the `operation_groups` row for the op's group on first
@@ -245,7 +251,12 @@
      :op/type (:type op-record)
      :op/project pid
      :op/document did
-     :op/description (:description op-record)}))
+     :op/description (:description op-record)
+     ;; Routing, not wire: `plaid.server.events/for-project` gives a project
+     ;; whose description names another the anonymous sentence, and drops
+     ;; these two keys.
+     :op/named-project (:named-project op-record)
+     :op/anonymous-description (:anonymous-description op-record)}))
 
 (def ^:dynamic *written-versions*
   "Bound by the REST layer (`wrap-request-extras`) to an atom holding
@@ -397,6 +408,16 @@
           (swap! a conj doc-id))
         (when-let [a (:affected-projects psaw/*op*)]
           (swap! a update (:project_id pre) (fnil conj #{}) doc-id))))))
+
+(defn named-description
+  "The op-attrs of an operation whose description names project `pid`: the
+  description, the project it names, and the same sentence without the name,
+  which a reader who cannot read `pid` is given. `sentence` takes the
+  project's words: `\"project “Name”\"`, or `\"another project\"`."
+  [pid pname sentence]
+  {:description (sentence (str "project “" pname "”"))
+   :named-project pid
+   :anonymous-description (sentence "another project")})
 
 (defn describe!
   "Rewrite the current operation's `description`, for a body that knows
@@ -566,7 +587,15 @@
                                          ;; Client-supplied (templated) audit message
                                          ;; overrides the auto-generated description.
                                          ;; See *custom-description* / wrap-audit-message.
-                                         :description (or *custom-description* (:description op-attrs)))]
+                                         :description (or *custom-description* (:description op-attrs))
+                                         ;; The project the description names, and the
+                                         ;; sentence a reader who cannot read it gets
+                                         ;; (`named-description`). Not for a client's own
+                                         ;; description, which names what it likes.
+                                         :named-project (when-not *custom-description*
+                                                          (:named-project op-attrs))
+                                         :anonymous-description (when-not *custom-description*
+                                                                  (:anonymous-description op-attrs)))]
                     (vreset! op-record* op-record)
                     ;; A project being deleted takes no more writes. The route
                     ;; gate refuses it too, but checks before this transaction,

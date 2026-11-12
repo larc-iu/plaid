@@ -1118,6 +1118,14 @@
     (throw (ex-info "Bad key" {:key key})))
   (holds-privilege? request key (resolve-project-id request get-project-id)))
 
+(defn project-readable-fn
+  "A predicate on a project id: may the request's user read that project?
+  Asked once per project (the answers are kept), for an audit read that
+  names no project to a reader who cannot read it
+  (`plaid.sql.audit/enrich-units`)."
+  [request]
+  (memoize (fn [pid] (boolean (privileged? request :project/readers (constantly pid))))))
+
 (defn- named-in-path?
   "Is `id` the value of one of the request's path parameters? An id the path
   names is the resource the request is about, and one that names nothing is
