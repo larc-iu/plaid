@@ -665,7 +665,7 @@ def test_every_list_of_operation_kinds_is_cores():
 def test_a_kind_in_one_list_alone_is_named():
     texts = _kind_texts()
     texts['js'] = texts['js'].replace('const OPERATION_KINDS = [', 'const OPERATION_KINDS = [\n  "export",', 1)
-    texts['python'] = texts['python'].replace("'review')", "'reviews')", 1)
+    texts['python'] = texts['python'].replace("'review',", "'reviews',", 1)
     texts['manual'] = texts['manual'].replace('|`guess-adoption`', '|`guess`', 1)
     texts['ui'] = texts['ui'].replace("  repair: 'Repair',\n", '', 1)
     named = [p.split(' has ')[0] for p in _kind_disagreements(_kind_lists(texts))]
