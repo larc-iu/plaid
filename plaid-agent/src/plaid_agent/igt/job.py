@@ -514,7 +514,6 @@ class IgtRunner:
         #: this run of the job on this worker, the trace folder's own
         self.run_id = f'run-{uuid7()}'
         self.people: Optional[Dict[str, Any]] = None
-        self.link_counts: Counter = Counter()
         #: what harmonize has written so far, for the report of a job stopped in it
         self.harmonize_done: Optional[Dict[str, Any]] = None
         #: document id -> the sentences whose record is in core (their marks)
@@ -721,7 +720,6 @@ class IgtRunner:
     def walk(self, document_id: str) -> str:
         job = self.job
         project = self.project()
-        self.people = None
         if (job.rows.get(document_id) or {}).get('state') != 'working':
             job.update_row(document_id, state='working')
         while True:
@@ -895,26 +893,24 @@ class IgtRunner:
 
     def people_index(self, ws: Workspace, project: IgtProject) -> Dict[str, Dict[str, Any]]:
         """form -> {key: {analysis, count}} over every word people analysed
-        in the project (``protected``), and the links to each entry seen, read
-        once per document of the job (a walk of the project's documents)."""
+        in the project (``protected``), read once per job (a walk of the
+        project's documents, REV-J-B S3-10) and kept: the job writes no
+        person's analysis, so its own writes never change it. A person's
+        analysis made during the job is not seen until the next job."""
         if self.people is not None:
             return self.people
         index: Dict[str, Dict[str, Any]] = {}
-        self.link_counts: Counter = Counter()
         docs = ws.documents()
         ws.read_ahead(docs)
         for d in docs:
             try:
                 doc = ws.doc(d['id'])
-            except Exception:  # noqa: BLE001 - a document that cannot be read gives no precedent
+            except Exception as e:  # noqa: BLE001 - a document that cannot be read gives no precedent
+                if core_job.core_fault(e) in ('mine', 'access', 'passing'):
+                    raise
                 continue
             for s in doc.sentences:
                 for w in s.words:
-                    for m in w.morphemes:
-                        if m.link is not None:
-                            self.link_counts[m.link.item_id] += 1
-                    if w.link is not None:
-                        self.link_counts[w.link.item_id] += 1
                     if word_state(w) != 'protected':
                         continue
                     a = word_analysis(w)
@@ -1008,7 +1004,6 @@ class IgtRunner:
             try:
                 fresh = self.read(project, document_id, client)
                 kept, counts, changed = self.recheck(ws, project, fresh, st, prints, ops)
-                before = self.job_entries(ws, project)
                 if kept:
                     self.machine_status(project, kept)
                     with client.operation(gloss_label(job.tasks), kind='job', ref=ref, group_id=group,
@@ -1026,7 +1021,7 @@ class IgtRunner:
                 lock.__exit__(None, None, None)
             break
         after = self.read(project, document_id, client)
-        made = frozenset(self.job_entries(Workspace(client, project), project) - before)
+        made = self.made_entries(ws, after, st, written_ops)
         self.record(project, document_id, after, part, st, counts, written_ops, made, changed)
 
     def recheck(self, ws: JobWorkspace, project: IgtProject, fresh, st: Stretch, prints: Dict[str, str],
@@ -1079,17 +1074,18 @@ class IgtRunner:
             if key:
                 op['metadata'] = {**(op.get('metadata') or {}), key: MACHINE_STATUS}
 
-    def job_entries(self, ws: Workspace, project: IgtProject) -> set:
-        """The entries of the project's own lexicons this job made."""
-        out = set()
-        for v in project.vocabs:
-            if v.get('borrowed'):
-                continue
-            ws._lexicons.pop(v['id'], None)
-            for it in ws.lexicon(v):
-                if _job_of(it.get('metadata')) == self.job.id:
-                    out.add(it['id'])
-        return out
+    @staticmethod
+    def made_entries(ws: JobWorkspace, doc, st: Stretch, ops: List[Dict[str, Any]]) -> frozenset:
+        """The entries this stretch created: those its target words now link
+        to that were not in the lexicon as the stretch read it (a create is
+        staged only after its lexicon was read, ``fit_guard``). No read of
+        the lexicon is made for it (REV-J-B S3-10)."""
+        if not any(o.get('kind') == 'create_entry' for o in ops):
+            return frozenset()
+        known = {it['id'] for items in ws._lexicons.values() for it in items}
+        linked = {m.link.item_id for s in doc.sentences for w in s.words if w.id in st.words
+                  for m in w.morphemes if m.link is not None}
+        return frozenset(linked - known)
 
     # --- the record of a stretch (SPEC 3.8, 7.3) ---------------------------------------
 
@@ -1286,7 +1282,6 @@ class IgtRunner:
         project = self.project()
         client = job.client()
         ws = Workspace(client, project)
-        self.people = None
         people = self.people_index(ws, project)
         gloss = getattr(project.gloss_field('Morpheme'), 'name', None)
         # form -> key -> {analysis, words: [(document, word)]}: the words
@@ -1466,9 +1461,6 @@ class IgtRunner:
         project = self.project()
         client = job.client()
         ws = Workspace(client, project)
-        self.people = None
-        self.people_index(ws, project)
-        links = self.link_counts
         maintains = job.starter in (project.roles.get('maintainers') or [])
         created, deleted, unlinked = [], [], []
         doomed = []
@@ -1485,7 +1477,7 @@ class IgtRunner:
                     continue
                 entry = {'id': it['id'], 'lexicon': v['id'], 'form': it.get('form'),
                          'gloss': md.get(gloss) if gloss else None}
-                if links.get(it['id']) or not status or md.get(status) != MACHINE_STATUS:
+                if not status or md.get(status) != MACHINE_STATUS or self.linked(ws, it['id']):
                     created.append(entry)
                     continue
                 if comments is None:
@@ -1505,6 +1497,14 @@ class IgtRunner:
                 else:
                     deleted.append({k: e[k] for k in ('id', 'form', 'gloss')})
         return entries_part(created, deleted, unlinked)
+
+    @staticmethod
+    def linked(ws: Workspace, item_id: str) -> bool:
+        """Whether anything links to entry ``item_id``: one query, asked of
+        the job's drafts alone, in place of a walk of every document of the
+        project (REV-J-B S3-10)."""
+        return bool(ws.corpus.entities([['vocab', '?v', {}], ['=', '?v.id', item_id], ['vocab-link', '?t', '?v']],
+                                       ['?t'], 1))
 
     def nothing_hangs_on(self, client, v: Dict[str, Any], items: List[Dict[str, Any]], it: Dict[str, Any],
                          commented: set) -> bool:
