@@ -73,28 +73,28 @@ One message worked through, for example. It shows s4 and s5 as context and s6 an
 
 ### read_sentences
 
-Read chosen sentences of SEVERAL documents in one call, e.g. the hits of a search, each document under its own header as read_document prints it. Up to 40 sentences per call, fewer when they are long: what did not fit is listed at the end.
+Read chosen sentences of one or more documents in one call, e.g. the hits of a search or concordance, each document under its own header, as the message shows sentences. Up to 40 sentences per call, fewer when they are long: what did not fit is listed at the end.
 
 - `items` (array of object {document: string (required), sentences: array of string (required)}, required): e.g. [{"document":"Text 1","sentences":["s3","s8"]}, {"document":"Text 2","sentences":["s1"]}].
 - `fields` (array of string): Show only these, e.g. ["Gloss", "Translation"]: field names, orthography names, "segmentation" (seg= and types=), "links" (link=, mwe=, mlinks=). The baseline and the references are always shown, and naming only sentence fields leaves out the word lines. Leave it out to show everything.
 
 ### analyses_of
 
-How a form has been analyzed so far, as a word (segmentation, glosses, links) and as a morpheme (type, glosses, link, position in the word): each distinct analysis with its count and example references. Check this before proposing an analysis, and follow the majority unless there is reason not to. Pass forms (a list, up to 40) to check every word of a sentence in one call. value: also list the references of the occurrences holding that field value (e.g. a minority gloss).
+How a form has been analysed across the project, as a word (segmentation, glosses, links) and as a morpheme (type, glosses, link, position in the word): each distinct analysis with its count and example references. The message already gives the analyses of its target words: this is for a form it does not settle, or for more of its examples. Pass forms (a list, up to 40) to look up several in one call. value: also list the references of the occurrences holding that field value.
 
 - `form` (string)
 - `forms` (array of string)
-- `document` (string): Document id or exact name (see project_overview).
+- `document` (string): The document's exact name, as the message gives it, or its id.
 - `documents` (array of string)
 - `value` (string)
 
 ### concordance
 
-Every occurrence of a morpheme form (default), word form, or field value (whole-form match, case-insensitive; regex=true for partial matches), with aligned context: the word's segmentation and morpheme glosses with the hit in [brackets], the neighbouring words, and a tally of the distinct word patterns the hit appears in. Use this for morphotactic and distributional questions (what precedes/follows X, does X vary by context) instead of reading whole documents.
+Every occurrence of a morpheme form (default), word form, or field value (whole-form match, case-insensitive; regex=true for partial matches), with aligned context: the word's segmentation and morpheme glosses with the hit in [brackets], the neighbouring words, and a tally of the distinct word patterns the hit appears in. For what precedes or follows a morpheme and whether it varies by context.
 
 - `pattern` (string, required)
 - `where` (string): "morpheme" (default), "baseline" (word forms), or a Word/Morpheme field name.
-- `document` (string): Document id or exact name (see project_overview).
+- `document` (string): The document's exact name, as the message gives it, or its id.
 - `regex` (boolean)
 - `case_sensitive` (boolean): Match case too (off by default: "ar" finds "Ar").
 - `limit` (integer): Max occurrences to list (default 30). The value, word and neighbour tallies cover every occurrence.
@@ -102,11 +102,11 @@ Every occurrence of a morpheme form (default), word form, or field value (whole-
 
 ### search
 
-Find words, morphemes, field values, or lexicon entries matching a pattern (case-insensitive substring, or a regex). Returns positional references with each hit's word line and sentence. Scans every document unless one is named. (For items LACKING a value use worklist; for aligned context use concordance.) Every value a field holds, with counts, is frequency_list's job, not one search per value.
+Find words, morphemes, field values, or lexicon entries matching a pattern (case-insensitive substring, or a regex). Returns positional references with each hit's word line and sentence. Scans every document unless one is named. For aligned context use concordance.
 
 - `pattern` (string, required)
 - `where` (string): "baseline" (word forms, default), "morpheme" (morpheme forms), "lexicon" (entries), or a field name (e.g. "Gloss", "Translation").
-- `document` (string): Document id or exact name (see project_overview).
+- `document` (string): The document's exact name, as the message gives it, or its id.
 - `regex` (boolean): Treat pattern as a regular expression.
 - `case_sensitive` (boolean): Match case too (off by default: "ar" finds "Ar").
 - `limit` (integer): Max hits to return (default 30, max 200).
@@ -114,7 +114,7 @@ Find words, morphemes, field values, or lexicon entries matching a pattern (case
 
 ### lexicon_entry
 
-One lexicon entry in full: all its fields, how many words and morphemes link to it (an entry with senses counts their links too, and each sense's own), and example occurrences. It also says where the entry sits, the senses under it, what refers to it, and its promoted usage examples with their numbers.
+One lexicon entry in full: all its fields, how many words and morphemes link to it, and example occurrences, with the senses under it and what refers to it.
 
 - `entry_form` (string): A headword, with an optional "#" and the number shown beside it. One segment is a headword ("gam#2", the second spelled that way), two or more a sense ("kwatha#1.2", "gam#2.1.3"). A bare "kwatha" is the headword. read_lexicon shows every number. A number names only an entry that exists: name one this plan adds by the entry_id it was given.
 - `lexicon` (string)
@@ -124,7 +124,7 @@ One lexicon entry in full: all its fields, how many words and morphemes link to 
 
 ### read_lexicon
 
-List lexicon entries (form, morph type, and their fields such as gloss), optionally filtered by a substring pattern over the whole entry line. Senses are drawn under their entry with the number they are shown with.
+List lexicon entries (form, morph type, and their fields such as gloss), optionally filtered by a substring pattern over the whole entry line. Senses are drawn under their entry with their number.
 
 - `lexicon` (string): Lexicon name (needed only when the project has several).
 - `pattern` (string)
@@ -132,9 +132,9 @@ List lexicon entries (form, morph type, and their fields such as gloss), optiona
 
 ### set_field
 
-PLAN: set a field on target sentences or words: the translation of a target sentence (refs ["s7"]) or an empty word field (refs ["s6.w1"]). Several fields at once: values={field: value}.
+PLAN: set the translation of a target sentence (refs ["s7"]) or an empty word field of a target word (refs ["s6.w1"]). Several fields at once: values={field: value}.
 
-- `document` (string, required): Document id or exact name (see project_overview).
+- `document` (string, required): The document's exact name, as the message gives it, or its id.
 - `refs` (array of string, required): Positional references, e.g. ["s3.w2", "s3.w4"]. Words are sN.wN, morphemes sN.wN.mN, sentences sN.
 - `field` (string)
 - `value` (string)
@@ -144,7 +144,7 @@ PLAN: set a field on target sentences or words: the translation of a target sent
 
 PLAN: the analysis of target words: each word's morphemes in order, each with its form, a type (stem, root, prefix, suffix, infix, enclitic, proclitic, ...) and fields mapping morpheme field names to values, e.g. [{"form":"kitab","type":"stem","fields":{"Gloss":"book"}}, {"form":"lar","type":"suffix","fields":{"Gloss":"PL"}}]. The forms spell the word. One call per sentence: analyses=[{"ref":"s3.w1","morphemes":[...]}, ...]. Once staged, sN.wN.mN names a morpheme of the staged analysis in link_entry.
 
-- `document` (string, required): Document id or exact name (see project_overview).
+- `document` (string, required): The document's exact name, as the message gives it, or its id.
 - `ref` (string): The word, sN.wN.
 - `morphemes` (array of object {form: string (required), type: string, equals: boolean, fields: object of string})
 - `analyses` (array of object {ref: string (required), morphemes: array of object {form: string (required), type: string, equals: boolean, fields: object of string} (required)}): Several words at once: [{ref, morphemes}, ...].
@@ -153,7 +153,7 @@ PLAN: the analysis of target words: each word's morphemes in order, each with it
 
 PLAN: link morphemes of the words you analyse (sN.wN.mN) to a lexicon entry, by its form ("ама", or "ама#2" for the second spelled so) or by entry_id (also the id create_entry returns).
 
-- `document` (string, required): Document id or exact name (see project_overview).
+- `document` (string, required): The document's exact name, as the message gives it, or its id.
 - `refs` (array of string, required): Positional references, e.g. ["s3.w2", "s3.w4"]. Words are sN.wN, morphemes sN.wN.mN, sentences sN.
 - `entry_form` (string)
 - `lexicon` (string)
@@ -162,7 +162,7 @@ PLAN: link morphemes of the words you analyse (sN.wN.mN) to a lexicon entry, by 
 
 ### create_entry
 
-PLAN: add a lexicon entry where none has this form and gloss. fields maps entry field names (e.g. "gloss", "pos") to values, type is the morph type, and a form written with markers (-s, ka-, =ri) is stored without them. link_entry takes the entry_id it returns. An entry that exists with the form and gloss is refused with its name: link that one.
+PLAN: add a lexicon entry where none has this form and gloss. fields maps entry field names (e.g. "gloss", "pos") to values, type is the morph type, and a form written with markers (-s, ka-, =ri) is stored without them: "ka-" and "ka" are one form. link_entry takes the entry_id it returns. An entry that exists with the form and gloss is refused with its name: link that one.
 
 - `form` (string, required)
 - `lexicon` (string)

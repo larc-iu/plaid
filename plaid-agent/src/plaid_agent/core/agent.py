@@ -1687,8 +1687,11 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
                 # not the call's.
                 keeper.text = ''
                 keeper.thinking = ''
-            # Every result ends with what the plan holds (core.plan.plan_line).
-            result = f'{result}\n{plan_line(ws)}'
+            # Every result ends with what the plan holds (core.plan.plan_line),
+            # or the line a workspace words for itself (an unattended job's,
+            # which has no turn to report and no card).
+            own_line = getattr(ws, 'result_line', None)
+            result = f'{result}\n{own_line() if own_line is not None else plan_line(ws)}'
             new.append({'role': 'tool', 'tool_call_id': c['id'], 'content': result})
             rnd['calls'].append(call_record(c['id'], name, raw, result, cut=cut))
             if (failed or repeated) and failing['call'] == key and failing['repeated'] == repeated:

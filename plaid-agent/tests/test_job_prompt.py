@@ -68,7 +68,7 @@ def test_a_job_is_offered_the_reads_and_the_plan_tools_of_its_tasks():
 def test_a_tool_outside_the_list_is_refused_and_not_run():
     ws = fake_ws(FakeClient())
     out = toolkit.job_call_tool(ws, 'discard_analysis', {'document': 'Text 1', 'refs': ['s1.w1']}, ['gloss'])
-    assert 'no tool named discard_analysis' in out and not ws.ops
+    assert 'not one of this job' in out and not ws.ops
     out = toolkit.job_call_tool(ws, 'link_entry', {'document': 'Text 1', 'refs': ['s1.w2'], 'entry_form': 'gam'},
                                 ['gloss'])
-    assert 'no tool named link_entry' in out and not ws.ops
+    assert 'not one of this job' in out and not ws.ops

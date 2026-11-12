@@ -201,9 +201,15 @@ def run_tool(ws, name: str, fn_: Callable, args: Optional[Dict[str, Any]],
         if wrong:
             return refused(f'{name}: {wrong}', 'invalid-argument')
         traceback.print_exc()
-        return refused(f'{name} failed, which is a fault in the tool rather than in the request. '
-                       'Tell the user, and try another way of asking rather than the same call again.',
+        # What to do next is the workspace's to say where it differs (a job
+        # has nobody to tell): the chat's words are TOOL_FAULT_NEXT.
+        then = getattr(ws, 'tool_fault_next', TOOL_FAULT_NEXT)
+        return refused(f'{name} failed, which is a fault in the tool rather than in the request. {then}',
                        'tool-fault')
+
+
+#: What a model does after a tool's own fault, in a chat.
+TOOL_FAULT_NEXT = 'Tell the user, and try another way of asking rather than the same call again.'
 
 
 def fn(name: str, description: str, properties: Dict[str, Any], required: List[str]) -> Dict[str, Any]:

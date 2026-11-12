@@ -102,7 +102,7 @@ def test_the_decide_now_line_comes_at_the_fifteenth_call_with_the_plan_tools_alo
 
     def answer(asked, n, kwargs):
         if any(m.get('content') == JOB_DECIDE_NOW for m in kwargs['messages']):
-            return reply(calls=analyse(asked)) if not any(m['role'] == 'tool' and 'planned' in str(m['content'])
+            return reply(calls=analyse(asked)) if not any(m['role'] == 'tool' and 'Staged' in str(m['content'])
                                                           for m in kwargs['messages'][-2:]) else reply('Done.')
         return reply(calls=[call(100 + n, 'analyses_of', {'form': f'x{n}'})])
     model = use(monkeypatch, Model(answer))

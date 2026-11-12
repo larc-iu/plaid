@@ -9,6 +9,7 @@ This is the last module in the app to be imported: it reads every tool module,
 so nothing here may be imported back by one of them.
 """
 
+import copy
 import inspect
 from typing import Any, Dict
 
@@ -573,33 +574,110 @@ JOB_READS = ('read_sentences', 'analyses_of', 'concordance', 'search', 'lexicon_
 
 _SCHEMAS = {t['function']['name']: t for t in TOOLS}
 
-JOB_PLAN_TOOLS = {
-    'set_field': _fn(
-        'set_field',
-        'PLAN: set a field on target sentences or words: the translation of a target sentence (refs ["s7"]) or an '
-        'empty word field (refs ["s6.w1"]). Several fields at once: values={field: value}.',
-        _SCHEMAS['set_field']['function']['parameters']['properties'], ['document', 'refs']),
-    'set_analysis': _fn(
-        'set_analysis',
-        'PLAN: the analysis of target words: each word\'s morphemes in order, each with its form, a type (stem, '
-        'root, prefix, suffix, infix, enclitic, proclitic, ...) and fields mapping morpheme field names to values, '
-        'e.g. [{"form":"kitab","type":"stem","fields":{"Gloss":"book"}}, {"form":"lar","type":"suffix","fields":'
-        '{"Gloss":"PL"}}]. The forms spell the word. One call per sentence: analyses=[{"ref":"s3.w1","morphemes":'
-        '[...]}, ...]. Once staged, sN.wN.mN names a morpheme of the staged analysis in link_entry.',
-        _SCHEMAS['set_analysis']['function']['parameters']['properties'], ['document']),
-    'link_entry': _fn(
-        'link_entry',
-        'PLAN: link morphemes of the words you analyse (sN.wN.mN) to a lexicon entry, by its form ("ама", or '
-        '"ама#2" for the second spelled so) or by entry_id (also the id create_entry returns).',
-        _SCHEMAS['link_entry']['function']['parameters']['properties'], ['document', 'refs']),
-    'create_entry': _fn(
+#: How a job's tools name a document: the job knows no project overview.
+_JOB_DOCUMENT = 'The document\'s exact name, as the message gives it, or its id.'
+
+
+def _job_params(name: str, **described) -> Dict[str, Any]:
+    """The chat tool ``name``'s parameters as a job is offered them: the
+    same arguments, ``document`` and each of ``described`` with the job's
+    own description (REV-J-B S3-3: a job's tools never point at a tool the
+    job is not offered)."""
+    props = copy.deepcopy(_SCHEMAS[name]['function']['parameters']['properties'])
+
+    def documents(schema):
+        for key, value in (schema or {}).items():
+            if key == 'document' and isinstance(value, dict):
+                value['description'] = _JOB_DOCUMENT
+            elif isinstance(value, dict):
+                documents(value.get('properties') or value.get('items', {}).get('properties'))
+    documents(props)
+    for prop, text in described.items():
+        props[prop]['description'] = text
+    return props
+
+
+def _job_read(name: str, description: str, **described) -> Dict[str, Any]:
+    return _fn(name, description, _job_params(name, **described),
+               list(_SCHEMAS[name]['function']['parameters'].get('required') or []))
+
+
+#: The reads as a job is offered them: the chat's tools, described for a job.
+JOB_READ_TOOLS = {
+    'read_sentences': _job_read(
+        'read_sentences',
+        'Read chosen sentences of one or more documents in one call, e.g. the hits of a search or concordance, '
+        'each document under its own header, as the message shows sentences. Up to 40 sentences per call, fewer '
+        'when they are long: what did not fit is listed at the end.',
+        items='e.g. [{"document":"Text 1","sentences":["s3","s8"]}, {"document":"Text 2","sentences":["s1"]}].'),
+    'analyses_of': _job_read(
+        'analyses_of',
+        'How a form has been analysed across the project, as a word (segmentation, glosses, links) and as a '
+        'morpheme (type, glosses, link, position in the word): each distinct analysis with its count and example '
+        'references. The message already gives the analyses of its target words: this is for a form it does not '
+        'settle, or for more of its examples. Pass forms (a list, up to 40) to look up several in one call. '
+        'value: also list the references of the occurrences holding that field value.'),
+    'concordance': _job_read(
+        'concordance',
+        'Every occurrence of a morpheme form (default), word form, or field value (whole-form match, '
+        'case-insensitive; regex=true for partial matches), with aligned context: the word\'s segmentation and '
+        'morpheme glosses with the hit in [brackets], the neighbouring words, and a tally of the distinct word '
+        'patterns the hit appears in. For what precedes or follows a morpheme and whether it varies by context.'),
+    'search': _job_read(
+        'search',
+        'Find words, morphemes, field values, or lexicon entries matching a pattern (case-insensitive substring, '
+        'or a regex). Returns positional references with each hit\'s word line and sentence. Scans every document '
+        'unless one is named. For aligned context use concordance.'),
+    'lexicon_entry': _job_read(
+        'lexicon_entry',
+        'One lexicon entry in full: all its fields, how many words and morphemes link to it, and example '
+        'occurrences, with the senses under it and what refers to it.'),
+    'read_lexicon': _job_read(
+        'read_lexicon',
+        'List lexicon entries (form, morph type, and their fields such as gloss), optionally filtered by a '
+        'substring pattern over the whole entry line. Senses are drawn under their entry with their number.'),
+}
+
+def job_plan_tool(name: str, tasks) -> Dict[str, Any]:
+    """A plan tool as a job of ``tasks`` is offered it: what it does in this
+    job, and nothing about a task the job was not asked (REV-J-B S3-3, S3-4)."""
+    tasks = set(tasks)
+    if name == 'set_field':
+        what = []
+        if 'translate' in tasks:
+            what.append('the translation of a target sentence (refs ["s7"])')
+        if 'gloss' in tasks:
+            what.append('an empty word field of a target word (refs ["s6.w1"])')
+        return _fn('set_field', 'PLAN: set ' + ' or '.join(what) + '. Several fields at once: values={field: value}.',
+                   _job_params('set_field'), ['document', 'refs'])
+    if name == 'set_analysis':
+        then = (' Once staged, sN.wN.mN names a morpheme of the staged analysis in link_entry.'
+                if 'link' in tasks else '')
+        return _fn(
+            'set_analysis',
+            'PLAN: the analysis of target words: each word\'s morphemes in order, each with its form, a type (stem, '
+            'root, prefix, suffix, infix, enclitic, proclitic, ...) and fields mapping morpheme field names to '
+            'values, e.g. [{"form":"kitab","type":"stem","fields":{"Gloss":"book"}}, {"form":"lar","type":"suffix",'
+            '"fields":{"Gloss":"PL"}}]. The forms spell the word. One call per sentence: analyses=[{"ref":"s3.w1",'
+            '"morphemes":[...]}, ...].' + then,
+            _job_params('set_analysis'), ['document'])
+    if name == 'link_entry':
+        return _fn(
+            'link_entry',
+            'PLAN: link morphemes of the words you analyse (sN.wN.mN) to a lexicon entry, by its form ("ама", or '
+            '"ама#2" for the second spelled so) or by entry_id (also the id create_entry returns).',
+            _job_params('link_entry'), ['document', 'refs'])
+    return _fn(
         'create_entry',
         'PLAN: add a lexicon entry where none has this form and gloss. fields maps entry field names (e.g. '
         '"gloss", "pos") to values, type is the morph type, and a form written with markers (-s, ka-, =ri) is '
-        'stored without them. link_entry takes the entry_id it returns. An entry that exists with the form and '
-        'gloss is refused with its name: link that one.',
-        _SCHEMAS['create_entry']['function']['parameters']['properties'], ['form']),
-}
+        'stored without them: "ka-" and "ka" are one form. link_entry takes the entry_id it returns. An entry that '
+        'exists with the form and gloss is refused with its name: link that one.',
+        _job_params('create_entry'), ['form'])
+
+
+#: The plan tools a job may offer, in one order.
+JOB_PLAN_NAMES = ('set_field', 'set_analysis', 'link_entry', 'create_entry')
 
 #: The plan tools each task offers.
 JOB_TASK_TOOLS = {'translate': ('set_field',), 'gloss': ('set_analysis', 'set_field'),
@@ -609,15 +687,15 @@ JOB_TASK_TOOLS = {'translate': ('set_field',), 'gloss': ('set_analysis', 'set_fi
 def job_plan_names(tasks) -> list:
     """The plan tools a job of ``tasks`` offers, in one order."""
     names = {n for t in tasks for n in JOB_TASK_TOOLS.get(t, ())}
-    return [n for n in JOB_PLAN_TOOLS if n in names]
+    return [n for n in JOB_PLAN_NAMES if n in names]
 
 
 def job_tools(tasks, plan_only: bool = False) -> list:
     """The schemas a stretch of a job of ``tasks`` offers: the reads and the
     plan tools of the tasks, or the plan tools alone once the stretch has
     been told to decide (``plan_only``)."""
-    reads = [] if plan_only else [_SCHEMAS[n] for n in JOB_READS]
-    return reads + [JOB_PLAN_TOOLS[n] for n in job_plan_names(tasks)]
+    reads = [] if plan_only else [JOB_READ_TOOLS[n] for n in JOB_READS]
+    return reads + [job_plan_tool(n, tasks) for n in job_plan_names(tasks)]
 
 
 def job_call_tool(ws, name: str, args: Dict[str, Any], tasks) -> str:
@@ -626,5 +704,5 @@ def job_call_tool(ws, name: str, args: Dict[str, Any], tasks) -> str:
     for any other."""
     from ..core.tools import refused
     if name not in JOB_READS and name not in job_plan_names(tasks):
-        return refused(f'there is no tool named {name} in this job.', 'invalid-argument')
+        return refused('that tool is not one of this job\'s: call one of those listed.', 'invalid-argument')
     return call_tool(ws, name, args)

@@ -54,11 +54,11 @@ def test_a_change_to_anything_but_a_target_is_refused_at_staging(name, args, sai
 
 def test_the_targets_themselves_are_staged():
     ws = _ws()
-    assert 'planned' in _run(ws, 'set_analysis', {'analyses': [
+    assert 'staged' in _run(ws, 'set_analysis', {'analyses': [
         {'ref': 's2.w1', 'morphemes': [{'form': 'bla', 'type': 'stem'}, {'form': 'nk', 'type': 'suffix'}]},
         {'ref': 's3.w2', 'morphemes': [{'form': 'free'}]}]}).lower()
-    assert 'planned' in _run(ws, 'set_field', {'refs': ['s3'], 'field': 'Translation', 'value': 'Free.'}).lower()
-    assert 'planned' in _run(ws, 'link_entry', {'refs': ['s2.w1.m1'], 'entry_form': 'gam#1'}).lower()
+    assert 'staged' in _run(ws, 'set_field', {'refs': ['s3'], 'field': 'Translation', 'value': 'Free.'}).lower()
+    assert 'staged' in _run(ws, 'link_entry', {'refs': ['s2.w1.m1'], 'entry_form': 'gam#1'}).lower()
     assert {o['kind'] for o in ws.ops} == {'set_analysis', 'set_span', 'link'}
 
 
@@ -117,4 +117,4 @@ def test_an_off_list_value_is_staged_as_a_machine_value():
     (SPEC 6.4): the job stores it and it shows as off-tagset."""
     ws = _ws()
     out = _run(ws, 'set_analysis', {'ref': 's2.w1', 'morphemes': [{'form': 'blank', 'fields': {'Morph Gloss': 'NOTLISTED'}}]})
-    assert 'planned' in out.lower() and ws.ops, out
+    assert 'staged' in out.lower() and ws.ops, out

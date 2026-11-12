@@ -44,7 +44,7 @@ from ..core.limits import (JOB_ANALYSIS_MAX_CHARS, JOB_CONTEXT_SENTENCES, JOB_CO
                            JOB_DECISIONS_PER_CALL, JOB_DEFER_ROUNDS, JOB_DEFER_WAIT_S, JOB_GUIDELINES_MAX_CHARS, JOB_LOCK_TRIES,
                            JOB_LOCK_WAIT_S, JOB_PERSON_QUIET_S, JOB_PRECEDENT_CHARS, JOB_PRECEDENT_PER_FORM,
                            JOB_SENTENCE_MAX_CHARS, JOB_SKIPPED_PER_DOCUMENT, JOB_STRETCH_SENTENCES)
-from ..core.plan import JOB_DETAIL_KEY, PlanError
+from ..core.plan import JOB_DETAIL_KEY, PlanError, held_changes
 from ..core.tools import Refusal, ToolError
 from ..core.version import agent_version
 from . import toolkit
@@ -72,6 +72,10 @@ ENTRIES_LABEL = 'Assistant job: delete unlinked machine drafts'
 #: The form of a sentence's record among the job's decisions: a space, then
 #: words no word form has (a word never holds a space), then the sentence id.
 RECORD_FORM = ' sentence '
+
+
+def _n(n: int, word: str) -> str:
+    return f'{n} {word}{"" if n == 1 else "s"}'
 
 
 def mark_form(sentence_id: str) -> str:
@@ -306,6 +310,25 @@ class JobWorkspace(Workspace):
         if self.stretch is not None:
             self.job_guard(op)
         super().guard_op(op, replacing=replacing)
+
+    # What a staging tool says back, and the line every result ends with,
+    # worded for a job: nothing waits for anyone, what is staged is written
+    # when the stretch ends (REV-J-B S3-3). The chat's own say a person
+    # approves a plan card and is told of it in a reply.
+
+    tool_fault_next = 'Try another way of asking rather than the same call again.'
+
+    def staged_count(self) -> int:
+        return held_changes(self)
+
+    def planned_note(self, n: int, what: Optional[str] = None) -> str:
+        held = self.staged_count()
+        return (f'Staged {what or _n(n, "change")}. {_n(held, "change")} staged in all, written when you end.'
+                + self.superseded_note())
+
+    def result_line(self) -> str:
+        held = self.staged_count()
+        return f'[Staged: {_n(held, "change")}.]' if held else '[Staged: nothing yet.]'
 
     @staticmethod
     def passes_up(e: BaseException) -> bool:
