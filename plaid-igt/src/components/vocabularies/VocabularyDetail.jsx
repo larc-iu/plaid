@@ -1,9 +1,8 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { Link, useParams, useNavigate } from 'react-router-dom';
+import { Link, useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import {
   BookText,
-  Users,
   Settings,
   Trash2,
   Plus,
@@ -80,11 +79,19 @@ import {
 } from '@/domain/tagsetsSave';
 import { useConfigCell } from '@ui/hooks/useConfigCell.js';
 import { VocabularyItems } from './VocabularyItems';
-import { VocabularyMaintainers } from './VocabularyMaintainers';
+import { VocabularyBorrowers } from './VocabularyBorrowers';
 import { VocabularyCommentsTab } from './VocabularyCommentsTab';
 import { CommentStore } from '@ui/domain/CommentStore';
 import { useCommentStore } from '@ui/domain/useCommentStore';
-import { canEditProject, canManageVocabulary } from '@ui/domain/permissions.js';
+import {
+  canEditProject,
+  canManageProject,
+  canManageVocabulary,
+  canEditVocabularyEntries,
+  canMoveVocabulary,
+  vocabularyRole,
+} from '@ui/domain/permissions.js';
+import { isolate } from '@ui/lib/bidi.js';
 import { useConfirm } from '@ui/components/shared/ConfirmProvider';
 import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
 import { useSavingGuard } from '@ui/hooks/useSavingGuard.js';
@@ -126,16 +133,39 @@ const TYPE_CHOICES = [
 const typeChoiceOf = (field) =>
   field.type === FIELD_TYPES.ITEM ? (field.many ? 'items' : 'item') : 'text';
 
-// Core refuses to delete a vocabulary while projects the person does not
-// maintain use it (409), and counts them as `other-projects`, naming none.
-// The count, or null for any other failure.
+// Core refuses to delete a vocabulary while another project uses it (409),
+// for everyone, and counts them as `other-projects`, naming none. The count,
+// or null for any other failure.
 const otherProjectsOf = (err) =>
   statusOf(err) === 409 ? Number(err?.responseData?.['other-projects']) || null : null;
 const otherProjectsSaid = (n) =>
   `${countOf(n, 'other project')} ${n === 1 ? 'uses' : 'use'} this vocabulary.`;
 
+// A name inside a line built as a string (a confirm's title or body).
+const quoted = (name) => `“${isolate(name)}”`;
+
+// The line the Entries screen shows a person who reads the vocabulary and may
+// not change its entries. `role` is their role in its project
+// (`vocabularyRole`), `homeName` that project's name, or null when they cannot
+// read it. Null for a writer or maintainer, who edit.
+const entriesReadOnlyNote = (role, homeName) => {
+  if (role === 'maintainer' || role === 'writer') return null;
+  const name = homeName ? (
+    <>
+      “<span dir="auto">{homeName}</span>”
+    </>
+  ) : null;
+  if (role === 'reader' && name) return <>Read only: you have reader access to {name}.</>;
+  return name ? (
+    <>Read only: this vocabulary belongs to {name}.</>
+  ) : (
+    'Read only: this vocabulary belongs to another project.'
+  );
+};
+
 export const VocabularyDetail = () => {
   const { vocabularyId } = useParams();
+  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   // The layer a failed creation already made, so pressing Create again
   // finishes it instead of leaving an unreachable second one behind.
@@ -154,11 +184,60 @@ export const VocabularyDetail = () => {
   const [error, setError] = useState('');
   const [isEditing, setIsEditing] = useState(false);
   const [editedName, setEditedName] = useState('');
+  // The project a new vocabulary is made in, its home. Preselected from
+  // `?project=` (a project's Settings link here).
+  const [newProjectId, setNewProjectId] = useState(() => searchParams.get('project') || '');
   // The id a new vocabulary's create names is kept across presses of Create
-  // for one name only (createOnce.js).
+  // for one name in one project only (createOnce.js). A vocabulary a failed
+  // attempt made in another project is not finished in this one.
   useEffect(() => {
     mintRef.current = null;
-  }, [editedName]);
+  }, [editedName, newProjectId]);
+  useEffect(() => {
+    createdRef.current = null;
+  }, [newProjectId]);
+
+  // The vocabulary's home project as this person reads it, with its role
+  // lists, or null when they cannot read it (403): rights are its roles.
+  // Kept with the id it was read for, so a vocabulary whose project moved
+  // has no home until that one is read.
+  const [homeState, setHomeState] = useState(null);
+  const home =
+    vocabulary?.project && homeState?.id === vocabulary.project ? homeState.project : null;
+  const homeIdRef = useRef(null);
+  homeIdRef.current = homeState?.id ?? null;
+  const readHome = async (projectId) => {
+    if (!projectId) return null;
+    try {
+      return await client.projects.get(projectId);
+    } catch (err) {
+      if (statusOf(err) === 401) throw err;
+      if (statusOf(err) !== 403) console.error('Error reading the vocabulary’s project:', err);
+      return null;
+    }
+  };
+  // The projects this person can read, with their role lists: the comment
+  // gate, the New vocabulary project list and the Move list. Null until read.
+  const [projects, setProjects] = useState(null);
+  useEffect(() => {
+    if (!client || !user) return undefined;
+    let alive = true;
+    client.projects
+      .list()
+      .then((list) => {
+        if (alive) setProjects(list || []);
+      })
+      .catch((err) => {
+        console.error('Error reading the projects:', err);
+        if (alive) setProjects([]);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [client, user]);
+  const role = vocabularyRole(vocabulary, home, user);
+  const canManage = canManageVocabulary(vocabulary, home, user);
+  const canEditEntries = canEditVocabularyEntries(vocabulary, home, user);
   // A mark naming a project that is gone (a Delete that could not take it
   // off) reads as no mark (`withLiveMarks`), so the vocabulary opens as an
   // ordinary one. A read only: opening writes nothing (REV-FX-R57-3-1, R3).
@@ -209,17 +288,16 @@ export const VocabularyDetail = () => {
   );
   const [deleteModalOpened, setDeleteModalOpened] = useState(false);
   // What the delete would do, asked of core (a dry run) when the question
-  // opens: `{ projects, links }`, the projects that use the vocabulary and the
-  // links in their documents, or `{ otherProjects }` while projects this
-  // person does not maintain use it, which core refuses the delete for
-  // (SEAM-2). Undefined while asked, null when it could not be read.
+  // opens: `{ links }`, the links in its project's documents that go with it,
+  // or `{ otherProjects }` while other projects use it, which core refuses the
+  // delete for. Undefined while asked, null when it could not be read.
   const [deleteCheck, setDeleteCheck] = useState(undefined);
   const openDeleteModal = () => {
     setDeleteCheck(undefined);
     setDeleteModalOpened(true);
     Promise.resolve()
       .then(() => client.vocabLayers.delete(vocabularyId, undefined, { dryRun: true }))
-      .then((r) => setDeleteCheck({ projects: r?.projects ?? 0, links: r?.links ?? 0 }))
+      .then((r) => setDeleteCheck({ links: r?.links ?? 0 }))
       .catch((err) => {
         const n = otherProjectsOf(err);
         setDeleteCheck(n ? { otherProjects: n } : null);
@@ -269,11 +347,7 @@ export const VocabularyDetail = () => {
 
   const fetchVocabulary = async (token) => {
     if (isNewVocabulary) {
-      setVocabulary({
-        name: '',
-        config: {},
-        maintainers: [user?.id].filter(Boolean),
-      });
+      setVocabulary({ name: '', config: {} });
       setEditedName('');
       // Seed a new vocab with the full core inventory, the same seed the
       // setup wizard writes. Status is a row like any other, so the table
@@ -301,6 +375,11 @@ export const VocabularyDetail = () => {
 
       const vocabularyData = await client.vocabLayers.get(vocabularyId);
       if (token.cancelled) return;
+      // The rights are read with the vocabulary, so no tab or control shows
+      // before the person's role in its project is known.
+      const homeProject = await readHome(vocabularyData.project);
+      if (token.cancelled) return;
+      setHomeState({ id: vocabularyData.project, project: homeProject });
       setVocabulary(vocabularyData);
       setEditedName(vocabularyData.name);
 
@@ -340,32 +419,23 @@ export const VocabularyDetail = () => {
     comments.load();
   }, [comments]);
 
-  // Who may comment on an entry is who may edit one: a maintainer or admin,
-  // or a writer of a project that links this vocabulary. The server decides;
+  // Who may comment on an entry: a writer or maintainer of its project, or a
+  // writer of any project that links this vocabulary. The server decides;
   // this only keeps the composer from being offered to someone it would
   // refuse.
-  const [writerThroughProject, setWriterThroughProject] = useState(false);
-  useEffect(() => {
-    if (!client || !user || !vocabularyId || isNewVocabulary) return undefined;
-    let alive = true;
-    client.projects
-      .list()
-      .then((projects) => {
-        if (!alive) return;
-        setWriterThroughProject(
-          projects.some(
-            (p) =>
-              (p.vocabs || []).some((v) => (v?.id ?? v) === vocabularyId) &&
-              canEditProject(p, user),
-          ),
-        );
-      })
-      .catch(() => {});
-    return () => {
-      alive = false;
-    };
-  }, [client, user, vocabularyId, isNewVocabulary]);
-  const canComment = canManageVocabulary(vocabulary, user) || writerThroughProject;
+  const writerThroughProject =
+    !isNewVocabulary &&
+    (projects || []).some(
+      (p) => (p.vocabs || []).some((v) => v?.id === vocabularyId) && canEditProject(p, user),
+    );
+  const canComment = canEditEntries || writerThroughProject;
+  // The projects a new vocabulary can be made in, and those this one can
+  // move to.
+  const maintainedProjects = (projects || []).filter((p) => canManageProject(p, user));
+  const newProject = maintainedProjects.find((p) => p.id === newProjectId) ?? null;
+  const moveTargets = (projects || []).filter(
+    (p) => p.id !== vocabulary?.project && canMoveVocabulary(vocabulary, home, p, user),
+  );
 
   // The history rail: every change to the vocabulary and its entries, and the
   // vocabulary as it was after any of them, read-only on the Entries tab. A
@@ -389,13 +459,12 @@ export const VocabularyDetail = () => {
   // Base path for the tab links (the item list is the bare vocabulary URL).
   const vocabPath = `/vocabularies/${vocabularyId}`;
   const [activeTab, setActiveTab, tabHref] = useTabParam(
-    canManageVocabulary(vocabulary, user)
-      ? ['items', 'comments', 'maintainers', 'settings']
-      : ['items', 'comments'],
+    canManage ? ['items', 'comments', 'settings'] : ['items', 'comments'],
     isNewVocabulary ? 'settings' : 'items',
-    // Not ready while the vocabulary is still loading: `canManageVocabulary`
-    // answers false until it knows, so the list starts at two tabs and a
-    // bookmarked `?tab=settings` would be corrected away before it was legal.
+    // Not ready while the vocabulary and its project are still loading:
+    // `canManage` answers false until it knows, so the list starts at two tabs
+    // and a bookmarked `?tab=settings` would be corrected away before it was
+    // legal.
     { ready: !loading },
   );
 
@@ -419,6 +488,13 @@ export const VocabularyDetail = () => {
       const read = () => client.vocabLayers.get(vocabularyId);
       const vocabularyData = await (inTurn ? read() : writes.schema.readWhenIdle(read));
       if (token?.cancelled) return;
+      // Moved since it was read (a refused move puts it back): the rights
+      // are the new project's.
+      if (vocabularyData.project !== homeIdRef.current) {
+        const homeProject = await readHome(vocabularyData.project);
+        if (token?.cancelled) return;
+        setHomeState({ id: vocabularyData.project, project: homeProject });
+      }
       setVocabulary(vocabularyData);
       setFields(normalizeVocabFields(readVocabFields(vocabularyData.config)));
     } catch (err) {
@@ -449,6 +525,7 @@ export const VocabularyDetail = () => {
       notifyError('Vocabulary name cannot be empty', 'Invalid name');
       return;
     }
+    if (isNewVocabulary && !newProject) return;
     // A second click while a create is on its way would read createdRef before
     // the first resolved and make a second vocabulary under the one name.
     if (saving) return;
@@ -481,7 +558,7 @@ export const VocabularyDetail = () => {
             // Create names the id it makes and keeps it across presses, so
             // one after an answer that never came cannot make a second.
             savedVocabulary = await createOnce(mintRef, (id) =>
-              client.vocabLayers.create(name, undefined, { id }),
+              client.vocabLayers.create(newProject.id, name, undefined, { id }),
             );
             createdRef.current = { ...savedVocabulary, name };
           }
@@ -531,6 +608,35 @@ export const VocabularyDetail = () => {
     } finally {
       setSaving(false);
     }
+  };
+
+  // Make another project the vocabulary's home. Shown at once, with the
+  // rights the person holds there, and put back if refused. The old project
+  // keeps it linked, as a project that uses it.
+  const handleMove = async (targetId) => {
+    const target = moveTargets.find((p) => p.id === targetId);
+    if (!target || !vocabulary) return;
+    const ok = await confirm({
+      title: `Move ${quoted(vocabulary.name)} to ${quoted(target.name)}?`,
+      description: `${quoted(target.name)} becomes its project. ${quoted(home?.name)} keeps it linked.`,
+      confirmLabel: 'Move',
+    });
+    if (!ok) return;
+    setHomeState({ id: target.id, project: target });
+    setVocabulary((v) => ({ ...v, project: target.id }));
+    keyedSend(
+      writes.schema,
+      client,
+      `Move vocabulary “${vocabulary.name}” to project “${target.name}”`,
+      () => client.vocabLayers.move(vocabularyId, target.id),
+      {
+        refused: (err) => {
+          console.error('Error moving vocabulary:', err);
+          notifyError(err, 'Failed to move the vocabulary');
+        },
+        resync: resyncSchema,
+      },
+    );
   };
 
   const handleAddField = async () => {
@@ -1209,7 +1315,7 @@ export const VocabularyDetail = () => {
           </Link>
         )}
         {unreadable && <p>Its project cannot be opened.</p>}
-        {unreadable && canManageVocabulary(vocabulary, user) && (
+        {unreadable && canManage && (
           <Button size="sm" className="mt-2" onClick={detachFromImport}>
             Detach from import
           </Button>
@@ -1266,6 +1372,16 @@ export const VocabularyDetail = () => {
                 </Button>
               </div>
             </div>
+            <p className="-mt-2 text-sm text-muted-foreground">
+              Project:{' '}
+              {home ? (
+                <Link to={`/projects/${home.id}`} dir="auto" className="font-text hover:underline">
+                  {home.name}
+                </Link>
+              ) : (
+                'another project'
+              )}
+            </p>
             {viewingPast && (
               <Notice tone="warning" icon={Info}>
                 {history.loadingPast
@@ -1295,17 +1411,7 @@ export const VocabularyDetail = () => {
                   </span>
                 )}
               </TabsTrigger>
-              {canManageVocabulary(vocabulary, user) && (
-                <TabsTrigger
-                  value="maintainers"
-                  to={tabHref(vocabPath, 'maintainers')}
-                  disabled={viewingPast}
-                  className={PAST_DISABLED}
-                >
-                  <Users className="h-4 w-4" /> Maintainers
-                </TabsTrigger>
-              )}
-              {canManageVocabulary(vocabulary, user) && (
+              {canManage && (
                 <TabsTrigger
                   value="settings"
                   to={tabHref(vocabPath, 'settings')}
@@ -1324,12 +1430,14 @@ export const VocabularyDetail = () => {
                 client={client}
                 fields={pastFields ?? fields}
                 writes={writes.entries}
-                canManage={canManageVocabulary(vocabulary, user)}
+                canEditEntries={canEditEntries}
+                canManage={canManage}
+                readOnlyNote={entriesReadOnlyNote(role, home?.name)}
                 comments={comments}
                 canComment={canComment}
                 past={history.past}
                 historyPending={viewingPast && !history.past}
-                canRestore={canManageVocabulary(vocabulary, user)}
+                canRestore={canManage}
                 onRestored={history.backToNow}
                 onOpenHistory={history.openHistory}
                 historyItemId={history.itemId}
@@ -1343,23 +1451,11 @@ export const VocabularyDetail = () => {
                 store={comments}
                 fields={fields}
                 canWrite={canComment}
-                canDeleteAny={canManageVocabulary(vocabulary, user)}
+                canDeleteAny={canManage}
               />
             </TabsContent>
 
-            {canManageVocabulary(vocabulary, user) && (
-              <TabsContent value="maintainers">
-                <VocabularyMaintainers
-                  vocabulary={vocabulary}
-                  user={user}
-                  vocabularyId={vocabularyId}
-                  client={client}
-                  onDataUpdate={updateVocabulary}
-                />
-              </TabsContent>
-            )}
-
-            {canManageVocabulary(vocabulary, user) && (
+            {canManage && (
               <TabsContent value="settings">
                 <div className="flex flex-col gap-6">
                   {/* The alphabet is set in the dictionary reader, not here, and
@@ -1394,6 +1490,24 @@ export const VocabularyDetail = () => {
                           Save
                         </Button>
                       </div>
+                      {moveTargets.length > 0 && (
+                        <div className="flex flex-col gap-1.5">
+                          <Label htmlFor="vocabulary-move">Move to project</Label>
+                          {/* Holds no choice: picking a project asks, then moves. */}
+                          <Select value="" onValueChange={handleMove}>
+                            <SelectTrigger id="vocabulary-move" className="max-w-md">
+                              <SelectValue placeholder="Choose a project" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {moveTargets.map((p) => (
+                                <SelectItem key={p.id} value={p.id}>
+                                  <span dir="auto">{p.name}</span>
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      )}
                     </div>
                   </div>
 
@@ -1439,6 +1553,14 @@ export const VocabularyDetail = () => {
                       />
                     </div>
                   </div>
+
+                  <VocabularyBorrowers
+                    // A move makes the old project one of them.
+                    key={vocabulary.project}
+                    client={client}
+                    user={user}
+                    vocabulary={vocabulary}
+                  />
 
                   <div className="border-t" />
 
@@ -1488,6 +1610,33 @@ export const VocabularyDetail = () => {
                   <p className="text-xs text-destructive">Name cannot be empty</p>
                 )}
               </div>
+              <div className="mt-4 flex flex-col gap-1.5">
+                <Label htmlFor="vocabulary-new-project">
+                  Project <span className="text-destructive">*</span>
+                </Label>
+                <Select value={newProject ? newProject.id : ''} onValueChange={setNewProjectId}>
+                  <SelectTrigger
+                    id="vocabulary-new-project"
+                    className="max-w-md"
+                    disabled={!maintainedProjects.length}
+                  >
+                    <SelectValue
+                      placeholder={
+                        projects && !maintainedProjects.length
+                          ? 'No project you maintain.'
+                          : 'Choose a project'
+                      }
+                    />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {maintainedProjects.map((p) => (
+                      <SelectItem key={p.id} value={p.id}>
+                        <span dir="auto">{p.name}</span>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
 
             <div className="rounded-lg border bg-card p-4">
@@ -1508,7 +1657,7 @@ export const VocabularyDetail = () => {
               <Button variant="secondary" onClick={() => navigate('/vocabularies')}>
                 Cancel
               </Button>
-              <Button onClick={handleSave} disabled={!editedName.trim() || saving}>
+              <Button onClick={handleSave} disabled={!editedName.trim() || !newProject || saving}>
                 Create vocabulary
               </Button>
             </div>
@@ -1544,21 +1693,14 @@ export const VocabularyDetail = () => {
                         Deletes <strong>“{vocabulary?.name}”</strong> with all its entries and their
                         links. This cannot be undone.
                       </p>
-                      {deleteCheck?.projects > 0 && (
+                      {deleteCheck?.links > 0 && (
                         <p className="mt-1 text-muted-foreground">
-                          <strong>{countOf(deleteCheck.projects, 'project')}</strong>{' '}
-                          {deleteCheck.projects === 1 ? 'uses' : 'use'} this vocabulary.
-                          {deleteCheck.links > 0 && (
-                            <>
-                              {' '}
-                              Its entries are linked to{' '}
-                              <strong>
-                                {countOf(deleteCheck.links, 'word')}/
-                                {plural(deleteCheck.links, 'morpheme')}
-                              </strong>
-                              . Those links will be removed.
-                            </>
-                          )}
+                          Its entries are linked to{' '}
+                          <strong>
+                            {countOf(deleteCheck.links, 'word')}/
+                            {plural(deleteCheck.links, 'morpheme')}
+                          </strong>
+                          . Those links will be removed.
                         </p>
                       )}
                     </div>

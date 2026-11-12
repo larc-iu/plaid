@@ -44,7 +44,9 @@ export const EntryList = ({
   numbers,
   comments,
   usageCounts,
-  canManage,
+  canEdit,
+  // Whether Replace has a field to work on (a writer cannot replace forms).
+  canReplace = true,
   itemTo,
   maxHeight,
   onBulkAdd,
@@ -64,7 +66,7 @@ export const EntryList = ({
       <div className="flex flex-col gap-2 border-b p-3">
         <div className="flex items-center justify-between">
           <span className="text-sm font-medium">Entries</span>
-          {canManage && (
+          {canEdit && (
             <Button size="sm" className="h-7" asChild>
               <Link to={itemTo(NEW_ID)}>
                 <Plus className="h-3.5 w-3.5" /> New
@@ -247,18 +249,18 @@ export const EntryList = ({
       <ListPager {...paged} onPage={setPage} />
 
       <div className="flex items-center gap-2 border-t p-2">
-        {canManage && (
+        {canEdit && (
           <Button variant="ghost" size="sm" className="h-7 flex-1" onClick={onBulkAdd}>
             <Upload className="h-3.5 w-3.5" /> Bulk Add
           </Button>
         )}
-        {canManage && (
+        {canEdit && (
           <Button
             variant="ghost"
             size="sm"
             className="h-7 flex-1"
             onClick={onReplace}
-            disabled={!items.length}
+            disabled={!items.length || !canReplace}
           >
             <Replace className="h-3.5 w-3.5" /> Replace
           </Button>

@@ -537,6 +537,40 @@ describe('Bulk Add and Replace', () => {
     return { ...stubbed, held, view };
   };
 
+  // A writer of the vocabulary's project changes fields, never forms (ruling
+  // 11.4): Replace offers the fields only, and writes no form.
+  it('replaces in the fields only for a writer', async () => {
+    const stubbed = stub([{ id: 'a', form: 'uno-EDIT', metadata: { gloss: 'EDIT' } }]);
+    auth.client = stubbed.client;
+    const view = await renderComponent(
+      <MemoryRouter initialEntries={['/vocabularies/v1']}>
+        <VocabularyItems
+          vocabularyId="v1"
+          vocabulary={{ id: 'v1' }}
+          client={stubbed.client}
+          fields={FIELDS}
+          writes={new WriteQueue()}
+          canManage={false}
+          canEditEntries
+        />
+      </MemoryRouter>,
+    );
+    mounted = view;
+    for (let i = 0; i < 3; i++) await view.step(async () => {});
+    await view.step(() => button('Replace').click());
+    expect(document.querySelector('[aria-label="Field"]').textContent).toBe('Gloss');
+    await view.step(() => setValue(document.getElementById('vocab-replace-find'), 'EDIT'));
+    await view.step(() => setValue(document.getElementById('vocab-replace-with'), 'X'));
+    await view.step(async () => {
+      button('Replace 1 value').click();
+      await settle(5);
+    });
+    const updates = stubbed.calls.filter(([kind]) => kind === 'bulkUpdate').map(([, u]) => u);
+    expect(updates).toEqual([
+      [{ id: 'a', metadata: [{ op: 'set', path: ['gloss'], value: 'X' }] }],
+    ]);
+  });
+
   // A study reads the audit log: a Bulk Add is an import of a table, and a
   // Replace a bulk edit.
   it('records a Bulk Add as an import and a Replace as a bulk edit', async () => {
@@ -1025,7 +1059,7 @@ describe('a new sense opened by URL', () => {
 });
 
 describe('the empty pane', () => {
-  it('offers New only to a maintainer', async () => {
+  it('offers New only to someone who adds entries', async () => {
     const { client } = stub([{ id: 'a', form: 'uno' }]);
     auth.client = client;
     const pane = () =>
@@ -1052,10 +1086,10 @@ describe('the empty pane', () => {
   });
 });
 
-describe('an entry opened by someone who does not maintain the vocabulary', () => {
+describe('an entry opened by someone who does not edit the vocabulary', () => {
   // H5-2: every field was disabled and nothing said why, and the Type select
   // looked live beside them.
-  it('says who can edit it, and its Type looks as disabled as the rest', async () => {
+  it('says why it is read only, and its Type looks as disabled as the rest', async () => {
     const { client } = stub([{ id: 'a', form: 'uno', metadata: { morphType: 'stem' } }]);
     auth.client = client;
     const view = await renderComponent(
@@ -1067,13 +1101,14 @@ describe('an entry opened by someone who does not maintain the vocabulary', () =
           fields={[{ name: 'morphType', type: 'text' }, ...FIELDS]}
           writes={new WriteQueue()}
           canManage={false}
+          readOnlyNote="Read only: this vocabulary belongs to another project."
         />
       </MemoryRouter>,
     );
     for (let i = 0; i < 3; i++) await view.step(async () => {});
     expect(formInput().disabled).toBe(true);
     expect(document.body.textContent).toContain(
-      'Only this vocabulary’s maintainers can edit entries.',
+      'Read only: this vocabulary belongs to another project.',
     );
     const type = document.querySelector('select');
     expect(type.disabled).toBe(true);

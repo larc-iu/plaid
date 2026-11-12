@@ -13,7 +13,7 @@ vi.mock('./VocabularyItems', () => ({
     return null;
   },
 }));
-vi.mock('./VocabularyMaintainers', () => ({ VocabularyMaintainers: () => null }));
+vi.mock('./VocabularyBorrowers', () => ({ VocabularyBorrowers: () => null }));
 vi.mock('./VocabularyCommentsTab', () => ({ VocabularyCommentsTab: () => null }));
 vi.mock('@/components/projects/settings/TagsetsManager.jsx', () => ({
   TagsetsManager: () => null,
@@ -44,14 +44,14 @@ const { VocabularyDetail } = await import('./VocabularyDetail.jsx');
 const THEN = '2026-09-20T10:00:00Z';
 const reads = [];
 const client = {
-  projects: { list: async () => [] },
+  projects: { list: async () => [], get: async (id) => ({ id, name: 'Pear', maintainers: ['u'] }) },
   vocabLayers: {
     get: async (id, withItems, asOf) => {
       reads.push([id, !!withItems, asOf ?? null]);
       return {
         id,
         name: 'Lexicon',
-        maintainers: ['u'],
+        project: 'P',
         config: { igt: { fields: { gloss: { inline: true } } } },
         ...(asOf ? { items: [{ id: 'a', form: 'kai' }] } : {}),
       };
@@ -143,6 +143,42 @@ describe('the vocabulary History', () => {
     expect(shown.props.vocabularyId).toBe('B');
     expect(shown.props.past).toBeNull();
     expect(document.body.textContent).not.toContain('Read-only. This is the vocabulary as of');
+    await view.unmount();
+  });
+
+  // A state from before the vocabulary had a project reads `project: null`.
+  // The rights are the person's now, in its project now: a maintainer still
+  // restores from it, and the page still names its project.
+  it('keeps the rights of now at a past state read with no project', async () => {
+    const before = {
+      ...client,
+      vocabLayers: {
+        ...client.vocabLayers,
+        get: async (id, withItems, asOf) =>
+          asOf
+            ? { id, name: 'Lexicon', project: null, config: {}, items: [{ id: 'a', form: 'kai' }] }
+            : client.vocabLayers.get(id, withItems, asOf),
+      },
+    };
+    auth.client = before;
+    const view = await renderComponent(
+      <MemoryRouter initialEntries={['/vocabularies/A']}>
+        <Routes>
+          <Route path="/vocabularies/:vocabularyId" element={<VocabularyDetail />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    await settle(view);
+    await view.step(() => button('History').click());
+    await settle(view);
+    const row = all(document.body, 'span').find((s) => s.textContent === 'Edit entry "kai"');
+    await view.step(() => row.click());
+    await settle(view);
+    expect(shown.props.past.vocabulary.project).toBeNull();
+    expect(shown.props.canRestore).toBe(true);
+    expect(shown.props.canManage).toBe(true);
+    expect(shown.props.canEditEntries).toBe(true);
+    expect(document.body.textContent).toContain('Project: Pear');
     await view.unmount();
   });
 

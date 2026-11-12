@@ -98,7 +98,13 @@ export const VocabularyItems = ({
   client,
   fields,
   writes,
+  // A maintainer of the vocabulary's project: renames, deletes and restores
+  // entries. A writer there (`canEditEntries`) adds entries and changes
+  // anything stored on one. A maintainer is a writer.
   canManage: canManageNow = true,
+  canEditEntries: canEditNow = canManageNow,
+  // What a reader is told instead of the controls (a node, or null).
+  readOnlyNote = null,
   comments = null,
   canComment = false,
   past = null,
@@ -114,6 +120,7 @@ export const VocabularyItems = ({
   const { user } = useAuth();
   // Read-only from the click on a history entry, before its read lands.
   const canManage = canManageNow && !past && !historyPending;
+  const canEdit = canEditNow && !past && !historyPending;
   const [restoring, setRestoring] = useState(false);
 
   const [state, dispatch] = useReducer(reducer, initialState);
@@ -781,6 +788,12 @@ export const VocabularyItems = ({
     if (!typedRef.current) dispatch({ type: 'draft/unseed' });
   };
 
+  // Replace works on the form (a maintainer's) and on each text field.
+  const replaceable =
+    canManage ||
+    // name-ok: A15 built-in entry key
+    fields.some((f) => f.name !== 'morphType' && f.type !== FIELD_TYPES.ITEM);
+
   // ---- TSV export (Form + every field + Uses) ----
   const handleExportTsv = () => {
     const tsv = serializeVocabTsv({
@@ -829,8 +842,9 @@ export const VocabularyItems = ({
       dirty={dirty}
       saveAllowed={saveAllowed}
       onRolesetProblem={setArgProblem}
+      canEdit={canEdit}
       canManage={canManage}
-      notMaintainer={!canManageNow && !past && !historyPending}
+      readOnlyNote={!canEditNow && !past && !historyPending ? readOnlyNote : null}
       tagsetFor={draftTagsetFor}
       statusKey={statusKey}
       formGroups={formGroups}
@@ -885,7 +899,8 @@ export const VocabularyItems = ({
         numbers={numbers}
         comments={comments}
         usageCounts={usageCounts}
-        canManage={canManage}
+        canEdit={canEdit}
+        canReplace={replaceable}
         itemTo={itemTo}
         maxHeight={paneMaxH}
         onBulkAdd={() => dispatch({ type: 'dialog/open', kind: 'bulk' })}
@@ -898,7 +913,7 @@ export const VocabularyItems = ({
         {!selectedId ? (
           <div className="flex min-h-[24rem] items-center justify-center rounded-lg border border-dashed bg-card/50">
             <p className="text-sm text-muted-foreground">
-              {canManage ? 'Select an entry, or click “New” to add one.' : 'Select an entry.'}
+              {canEdit ? 'Select an entry, or click “New” to add one.' : 'Select an entry.'}
             </p>
           </div>
         ) : isNew ? (
@@ -999,7 +1014,7 @@ export const VocabularyItems = ({
                       linkedTokenIds={
                         conc.concPlan && !conc.concPlan.hitIdsCapped ? conc.concPlan.hitIds : null
                       }
-                      canManage={canManage}
+                      canEdit={canEdit}
                       onRemove={handleRemoveExample}
                     />
                     <ReferencedByPanel
@@ -1018,7 +1033,7 @@ export const VocabularyItems = ({
               <ConcordancePanel
                 conc={conc}
                 selectedItem={selectedItem}
-                canManage={canManage}
+                canEdit={canEdit}
                 onAddExample={handleAddExample}
               />
             </TabsContent>
@@ -1081,22 +1096,25 @@ export const VocabularyItems = ({
         onImported={handleImported}
       />
 
-      <ReplaceDialog
-        open={dialog?.kind === 'replace'}
-        onOpenChange={(o) => {
-          if (!o) dispatch({ type: 'dialog/close' });
-        }}
-        vocabularyId={vocabularyId}
-        vocabularyName={vocabulary?.name}
-        fields={fields}
-        tagsetFor={tagsetFor}
-        morphTypeOf={typeOf}
-        items={items}
-        numbers={numbers}
-        client={client}
-        send={sendPlanned}
-        onApplied={handleImported}
-      />
+      {replaceable && (
+        <ReplaceDialog
+          open={dialog?.kind === 'replace'}
+          onOpenChange={(o) => {
+            if (!o) dispatch({ type: 'dialog/close' });
+          }}
+          vocabularyId={vocabularyId}
+          vocabularyName={vocabulary?.name}
+          fields={fields}
+          tagsetFor={tagsetFor}
+          morphTypeOf={typeOf}
+          items={items}
+          numbers={numbers}
+          canRename={canManage}
+          client={client}
+          send={sendPlanned}
+          onApplied={handleImported}
+        />
+      )}
 
       {past && selectedItem && (
         <EntryRestoreDialog

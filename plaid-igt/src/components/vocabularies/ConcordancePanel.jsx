@@ -9,7 +9,7 @@ import { countOf } from '@ui/lib/plural.js';
 // The Concordance tab: the open entry's uses, grouped by document, each row
 // a link into the sentence, with "Use as example" for a maintainer. `conc` is
 // a useItemConcordance.
-export const ConcordancePanel = ({ conc, selectedItem, canManage, onAddExample }) => {
+export const ConcordancePanel = ({ conc, selectedItem, canEdit, onAddExample }) => {
   const {
     concPlan,
     concGroups,
@@ -63,7 +63,7 @@ export const ConcordancePanel = ({ conc, selectedItem, canManage, onAddExample }
                   return (
                     <div key={row.sentenceId} className="group flex items-start">
                       <ContextRow row={row} to={sentenceTo(g.projectId, g.docId, row.sentenceId)} />
-                      {canManage && tokenId && (
+                      {canEdit && tokenId && (
                         <button
                           type="button"
                           disabled={chosen}

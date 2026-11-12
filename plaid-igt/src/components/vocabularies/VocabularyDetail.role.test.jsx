@@ -17,7 +17,7 @@ vi.mock('./VocabularyItems', async () => {
     },
   };
 });
-vi.mock('./VocabularyMaintainers', () => ({ VocabularyMaintainers: () => null }));
+vi.mock('./VocabularyBorrowers', () => ({ VocabularyBorrowers: () => null }));
 vi.mock('./VocabularyCommentsTab', () => ({ VocabularyCommentsTab: () => null }));
 // The tagsets editor stands in as its last props, so a test can save through
 // it and read what it is shown.
@@ -71,7 +71,7 @@ const { VocabularyDetail } = await import('./VocabularyDetail.jsx');
 const { notifyError } = await import('@/utils/feedback');
 
 const serverOf = (fields) => {
-  const server = { id: 'A', name: 'Lexicon', maintainers: ['u'], config: { igt: { fields } } };
+  const server = { id: 'A', name: 'Lexicon', project: 'P', config: { igt: { fields } } };
   const client = {
     withOperation: (_label, fn) => fn(),
     vocabLayers: {
@@ -81,7 +81,10 @@ const serverOf = (fields) => {
       },
       update: async () => {},
     },
-    projects: { list: async () => [] },
+    projects: {
+      list: async () => [],
+      get: async (id) => ({ id, name: 'Pear', maintainers: ['u'] }),
+    },
   };
   return { server, client };
 };

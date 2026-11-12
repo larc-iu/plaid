@@ -71,7 +71,7 @@ describe('ExamplesPanel, an example the viewer cannot open', () => {
   it('says the document cannot be opened and offers no Remove', async () => {
     // The concordance reads only projects the viewer can open, so the
     // refused example's token is not among the linked ones either.
-    const view = await mount({ canManage: true, linkedTokenIds: new Set(['t-ok']) });
+    const view = await mount({ canEdit: true, linkedTokenIds: new Set(['t-ok']) });
     await view.step(() => new Promise((r) => setTimeout(r, 0)));
     const [ok, theirs, deleted, adminGone] = rows(view.container);
     expect(ok.textContent).toContain('Story');

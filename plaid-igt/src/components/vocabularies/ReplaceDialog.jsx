@@ -81,6 +81,9 @@ export const ReplaceDialog = ({
   morphTypeOf,
   items,
   numbers,
+  // A maintainer: the Form is among what can be replaced. A writer changes
+  // the fields only.
+  canRename = true,
   client,
   // `send(label, write, { plan, recheck, kind, ref })` runs the writes in their
   // turn behind the entry saves, planned once (see useVocabEntries'
@@ -93,15 +96,15 @@ export const ReplaceDialog = ({
   // text, and is edited there too.
   const targets = useMemo(
     () => [
-      { name: 'form', label: 'Form' },
+      ...(canRename ? [{ name: 'form', label: 'Form' }] : []),
       ...fields
         // name-ok: A15 built-in entry key
         .filter((f) => f.name !== 'morphType' && f.type !== FIELD_TYPES.ITEM)
         .map((f) => ({ name: f.name, label: humanizeFieldName(f.name) })),
     ],
-    [fields],
+    [fields, canRename],
   );
-  const [field, setField] = useState('form');
+  const [field, setField] = useState(() => targets[0]?.name);
   const [find, setFind] = useState('');
   const [matchType, setMatchType] = useState('contains');
   const [repl, setRepl] = useState('');

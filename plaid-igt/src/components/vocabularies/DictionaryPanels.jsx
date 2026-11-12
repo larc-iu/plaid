@@ -113,7 +113,7 @@ export const EntryPlace = ({
   items,
   numbers,
   itemTo,
-  canManage,
+  canEdit,
   onMoveUnder,
   onRaiseHeadword,
   onDrop,
@@ -155,7 +155,7 @@ export const EntryPlace = ({
           </button>
         )}
         <Popover open={!!pickFor} onOpenChange={(o) => !o && setPickFor(null)}>
-          {canManage && (
+          {canEdit && (
             <PopoverTrigger asChild>
               <button
                 type="button"
@@ -186,7 +186,7 @@ export const EntryPlace = ({
             found Set parent and Add sense, and concluded the app could not do
             it. Only the open entry can be raised: a row dropped on Move to
             other entry is choosing among the entries that already exist. */}
-        {canManage && (
+        {canEdit && (
           <button
             type="button"
             title="A new entry over this one, with the same form. This one becomes its first sense."
@@ -196,7 +196,7 @@ export const EntryPlace = ({
             <Plus className="h-3 w-3" /> Add headword
           </button>
         )}
-        {canManage && (
+        {canEdit && (
           <Link
             to={newSenseTo(item.id)}
             className="inline-flex items-center gap-1 text-primary no-underline hover:underline"
@@ -212,7 +212,7 @@ export const EntryPlace = ({
           tree={tree}
           numbers={numbers}
           itemTo={itemTo}
-          canManage={canManage}
+          canEdit={canEdit}
           onDrop={onDrop}
           onPickEntry={(id) => setPickFor(id)}
           onReorderHomographs={onReorderHomographs}
@@ -242,7 +242,7 @@ const SenseTree = ({
   tree,
   numbers,
   itemTo,
-  canManage,
+  canEdit,
   onDrop,
   onPickEntry,
   onReorderHomographs,
@@ -295,13 +295,13 @@ const SenseTree = ({
   );
   return (
     <ul className="max-h-72 overflow-y-auto rounded-md border bg-muted/20 py-1 text-sm">
-      {canManage && (
+      {canEdit && (
         <li className="px-3 pb-0.5 pt-1 text-[10px] uppercase tracking-wide text-muted-foreground/70">
           Drag a sense to
         </li>
       )}
-      {canManage && dropZone('root', 'Make separate entry', () => onDrop(dragId, { kind: 'root' }))}
-      {canManage && dropZone('pick', 'Move to other entry', () => onPickEntry(dragId))}
+      {canEdit && dropZone('root', 'Make separate entry', () => onDrop(dragId, { kind: 'root' }))}
+      {canEdit && dropZone('pick', 'Move to other entry', () => onPickEntry(dragId))}
       {rows.map(({ item, depth }) => {
         const isCurrent = item.id === current;
         const isOver = over && over.id === item.id;
@@ -312,7 +312,7 @@ const SenseTree = ({
             key={item.id}
             data-sense={item.id}
             aria-current={isCurrent ? 'true' : undefined}
-            draggable={canManage}
+            draggable={canEdit}
             onDragStart={(e) => {
               e.dataTransfer.effectAllowed = 'move';
               e.dataTransfer.setData('text/plain', item.id);
@@ -335,7 +335,7 @@ const SenseTree = ({
             }}
             className={cn(
               'relative flex items-baseline gap-2 py-0.5 pr-3',
-              canManage &&
+              canEdit &&
                 'cursor-grab [&_a]:underline [&_a]:decoration-dotted [&_a]:underline-offset-2 [&_.igt-sense-self]:underline [&_.igt-sense-self]:decoration-dotted [&_.igt-sense-self]:underline-offset-2',
               isCurrent && 'bg-accent/60',
               dragId === item.id && 'opacity-40',
@@ -567,7 +567,7 @@ export const ContextRow = ({ row, to }) => {
  * `linkedTokenIds` is the concordance plan's set of tokens linked to this
  * entry (null while loading, or when the plan was capped and cannot say).
  */
-export const ExamplesPanel = ({ item, client, linkedTokenIds, canManage, onRemove }) => {
+export const ExamplesPanel = ({ item, client, linkedTokenIds, canEdit, onRemove }) => {
   const examples = useMemo(() => allExamples(item), [item]);
   const refKey = examples
     .filter((e) => e.document)
@@ -641,7 +641,7 @@ export const ExamplesPanel = ({ item, client, linkedTokenIds, canManage, onRemov
                     </span>
                   )}
                 </div>
-                {canManage && (
+                {canEdit && (
                   <button
                     type="button"
                     aria-label="Remove example"
@@ -687,7 +687,7 @@ export const ExamplesPanel = ({ item, client, linkedTokenIds, canManage, onRemov
                   </p>
                 </div>
               )}
-              {canManage && !refused && (
+              {canEdit && !refused && (
                 <button
                   type="button"
                   aria-label="Remove example"

@@ -42,8 +42,11 @@ export const EntryEditor = ({
   dirty,
   saveAllowed,
   onRolesetProblem,
+  // A writer edits the fields and the entry's place, and makes entries. A
+  // maintainer (`canManage`) also changes an entry's form and deletes it.
+  canEdit,
   canManage,
-  notMaintainer,
+  readOnlyNote,
   tagsetFor,
   statusKey,
   formGroups,
@@ -161,7 +164,7 @@ export const EntryEditor = ({
     const oneLine = t.tagName === 'INPUT' && ['text', 'search', ''].includes(t.type ?? '');
     if (!mod && !oneLine) return;
     e.preventDefault();
-    if (canManage && dirty) save();
+    if (canEdit && dirty) save();
   };
 
   return (
@@ -210,7 +213,7 @@ export const EntryEditor = ({
             items={items}
             numbers={numbers}
             itemTo={itemTo}
-            canManage={canManage}
+            canEdit={canEdit}
             onMoveUnder={onMoveUnder}
             onRaiseHeadword={onRaiseHeadword}
             onDrop={onSenseDrop}
@@ -227,11 +230,7 @@ export const EntryEditor = ({
 
       {/* The role's line, on the present only: a past state is read-only for
           everyone, and the banner over the tab says so. */}
-      {notMaintainer && (
-        <p className="mb-3 text-xs text-muted-foreground">
-          Only this vocabulary’s maintainers can edit entries.
-        </p>
-      )}
+      {readOnlyNote && <p className="mb-3 text-xs text-muted-foreground">{readOnlyNote}</p>}
       <div className="flex flex-col gap-4 [&>*+*]:border-t [&>*+*]:pt-3" onKeyDown={onFormKeyDown}>
         <FormGroup>
           <div className="flex min-w-0 flex-col gap-1">
@@ -246,7 +245,7 @@ export const EntryEditor = ({
               autoFocus={isNew}
               placeholder="Form"
               spellCheck={false}
-              disabled={!canManage}
+              disabled={!(canEdit && (isNew || canManage))}
               ref={formRef}
               onChange={(e) => dispatch({ type: 'draft/form', form: e.target.value })}
             />
@@ -270,21 +269,21 @@ export const EntryEditor = ({
                 value={draft.fields[statusKey] || ''}
                 tagset={tagsetFor(statusKey)}
                 className="h-8"
-                disabled={!canManage}
+                disabled={!canEdit}
                 onChange={(v) => setFields({ ...draft.fields, [statusKey]: v })}
               />
             </div>
           )}
-          {formGroups.builtIn.map((f) => renderField(f, draft.fields, setFields, !canManage))}
+          {formGroups.builtIn.map((f) => renderField(f, draft.fields, setFields, !canEdit))}
         </FormGroup>
         {formGroups.custom.length > 0 && (
           <FormGroup title="Fields">
-            {formGroups.custom.map((f) => renderField(f, draft.fields, setFields, !canManage))}
+            {formGroups.custom.map((f) => renderField(f, draft.fields, setFields, !canEdit))}
           </FormGroup>
         )}
         {formGroups.refs.length > 0 && (
           <FormGroup title="References">
-            {formGroups.refs.map((f) => renderField(f, draft.fields, setFields, !canManage))}
+            {formGroups.refs.map((f) => renderField(f, draft.fields, setFields, !canEdit))}
           </FormGroup>
         )}
         {umrLinked && (
@@ -293,15 +292,15 @@ export const EntryEditor = ({
             fields={draft.fields}
             seed={draft.seeds}
             setFields={setFields}
-            disabled={!canManage}
+            disabled={!canEdit}
             onProblem={onRolesetProblem}
           />
         )}
       </div>
-      {canManage && (
+      {canEdit && (
         <div className="mt-4 flex items-center justify-between">
           <div>
-            {!isNew && (
+            {!isNew && canManage && (
               <Button
                 variant="ghost"
                 size="sm"

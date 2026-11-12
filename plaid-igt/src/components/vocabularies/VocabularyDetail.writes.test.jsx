@@ -17,7 +17,7 @@ vi.mock('./VocabularyItems', async () => {
     },
   };
 });
-vi.mock('./VocabularyMaintainers', () => ({ VocabularyMaintainers: () => null }));
+vi.mock('./VocabularyBorrowers', () => ({ VocabularyBorrowers: () => null }));
 vi.mock('./VocabularyCommentsTab', () => ({ VocabularyCommentsTab: () => null }));
 // The tagsets editor stands in as its last props, so a test can save through
 // it and read what it is shown.
@@ -80,11 +80,14 @@ const stub = () => {
     client: {
       withOperation: (_label, fn) => fn(),
       vocabLayers: {
-        get: async () => ({ id: 'A', name: 'Ayvale lexicon', config: {}, maintainers: ['u'] }),
+        get: async () => ({ id: 'A', name: 'Ayvale lexicon', config: {}, project: 'P' }),
         setConfig: write('setConfig'),
         update: write('update'),
       },
-      projects: { list: async () => [] },
+      projects: {
+        list: async () => [],
+        get: async (id) => ({ id, name: 'Pear', maintainers: ['u'] }),
+      },
     },
   };
 };
@@ -277,7 +280,7 @@ describe('the values a vocabulary tagset seed reads', () => {
     const server = {
       id: 'A',
       name: 'Ayvale lexicon',
-      maintainers: ['u'],
+      project: 'P',
       config: {
         igt: {
           fields: { gloss: { tagset: 'Gloss' } },
@@ -300,7 +303,10 @@ describe('the values a vocabulary tagset seed reads', () => {
         setConfig: async () => {},
         update: async () => {},
       },
-      projects: { list: async () => [] },
+      projects: {
+        list: async () => [],
+        get: async (id) => ({ id, name: 'Pear', maintainers: ['u'] }),
+      },
     };
     const view = await mount(client, '/vocabularies/A?tab=settings');
     let rows;
@@ -324,7 +330,7 @@ describe('the vocabulary schema written from a stale page', () => {
     const server = {
       id: 'A',
       name: 'Ayvale lexicon',
-      maintainers: ['u'],
+      project: 'P',
       config: {
         igt: {
           fields: { gloss: { inline: true }, pos: { inline: true } },
@@ -358,7 +364,10 @@ describe('the vocabulary schema written from a stale page', () => {
         },
         update: async () => {},
       },
-      projects: { list: async () => [] },
+      projects: {
+        list: async () => [],
+        get: async (id) => ({ id, name: 'Pear', maintainers: ['u'] }),
+      },
     };
     // A batch is all or nothing, as core's.
     let batches = 0;
@@ -587,8 +596,10 @@ describe('deleting the vocabulary', () => {
             }
           : { results: [] };
     client.tokenLayers = { get: async () => ({ project: 'p1' }) };
-    client.projects.get = async () => ({ id: 'p1', writers: ['u'] });
-    client.vocabLayers.delete = async () => ({ projects: 1, links: 2 });
+    // Its own project, and the one its morphemes are in.
+    client.projects.get = async (id) =>
+      id === 'P' ? { id, name: 'Pear', maintainers: ['u'] } : { id: 'p1', writers: ['u'] };
+    client.vocabLayers.delete = async () => ({ links: 2 });
     client.batched = async (fn) => {
       const ops = [];
       await fn({
@@ -622,9 +633,9 @@ describe('deleting the vocabulary', () => {
   });
 });
 
-// SEAM-2 (Luke 2026-11-11): core refuses to delete a vocabulary while a
-// project the person does not maintain uses it. The dialog asks core first
-// (a dry run) and says what the delete removes, or that it is refused.
+// Core refuses to delete a vocabulary while another project uses it, for
+// everyone (ruling 11.2). The dialog asks core first (a dry run) and says what
+// the delete removes, or that it is refused.
 describe('the delete question', () => {
   const refusal = (n) =>
     Object.assign(new Error(`HTTP 409 ${n} other projects use this vocabulary.`), {
@@ -635,12 +646,12 @@ describe('the delete question', () => {
   const dialogButton = (name) =>
     all(document.body, '[role="dialog"] button').find((b) => b.textContent.trim() === name);
 
-  it('counts the projects using it and the links that go, before the typed name', async () => {
+  it('counts the links that go, before the typed name', async () => {
     const { client } = stub();
     const asked = [];
     client.vocabLayers.delete = async (...a) => {
       asked.push(a);
-      return { projects: 2, links: 14 };
+      return { links: 14 };
     };
     const view = await mount(client, '/vocabularies/A?tab=settings');
     await view.step(async () => {
@@ -648,11 +659,25 @@ describe('the delete question', () => {
       await settle(5);
     });
     expect(asked).toEqual([['A', undefined, { dryRun: true }]]);
-    expect(dialogText()).toContain('2 projects use this vocabulary.');
     expect(dialogText()).toContain(
-      'Its entries are linked to 14 words/morphemes. Those links will be removed.',
+      'Deletes “Ayvale lexicon” with all its entries and their links. This cannot be undone.Its entries are linked to 14 words/morphemes. Those links will be removed.',
     );
+    expect(dialogText()).not.toContain('use this vocabulary');
     expect(document.getElementById('vocabulary-delete-confirm')).not.toBeNull();
+    await view.unmount();
+  });
+
+  it('leaves the links out when there are none', async () => {
+    const { client } = stub();
+    client.vocabLayers.delete = async () => ({ links: 0 });
+    const view = await mount(client, '/vocabularies/A?tab=settings');
+    await view.step(async () => {
+      button('Delete vocabulary').click();
+      await settle(5);
+    });
+    expect(dialogText()).toContain('This cannot be undone.');
+    expect(dialogText()).not.toContain('linked to');
+    expect(dialogButton('Delete vocabulary')).toBeDefined();
     await view.unmount();
   });
 
@@ -676,14 +701,15 @@ describe('the delete question', () => {
 
   it('turns to the refusal when core refuses the delete itself', async () => {
     const { client } = stub();
-    client.vocabLayers.delete = async () => ({ projects: 1, links: 0 });
+    client.vocabLayers.delete = async () => ({ links: 0 });
     client.vocabLayers.get = async (id, withItems) => ({
       id: 'A',
       name: 'Ayvale lexicon',
       config: {},
-      maintainers: ['u'],
+      project: 'P',
       ...(withItems ? { items: [] } : {}),
     });
+    client.projects.get = async (id) => ({ id, name: 'Pear', maintainers: ['u'] });
     client.query = async () => ({ results: [] });
     client.batched = async () => {
       throw refusal(1);
@@ -694,7 +720,7 @@ describe('the delete question', () => {
       button('Delete vocabulary').click();
       await settle(5);
     });
-    expect(dialogText()).toContain('1 project uses this vocabulary.');
+    expect(dialogText()).toContain('This cannot be undone.');
     await view.step(() =>
       setValue(document.getElementById('vocabulary-delete-confirm'), 'Ayvale lexicon'),
     );

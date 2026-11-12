@@ -10,7 +10,7 @@ import { refusal } from '../../../../plaid-client-js/src/testing.js';
 // under B's name, one Save away from writing them onto B.
 
 vi.mock('./VocabularyItems', () => ({ VocabularyItems: () => null }));
-vi.mock('./VocabularyMaintainers', () => ({ VocabularyMaintainers: () => null }));
+vi.mock('./VocabularyBorrowers', () => ({ VocabularyBorrowers: () => null }));
 vi.mock('./VocabularyCommentsTab', () => ({ VocabularyCommentsTab: () => null }));
 vi.mock('@/components/projects/settings/TagsetsManager.jsx', () => ({
   TagsetsManager: () => null,
@@ -40,8 +40,8 @@ vi.mock('../../contexts/AuthContext', () => ({ useAuth: () => auth }));
 const { VocabularyDetail } = await import('./VocabularyDetail.jsx');
 
 const VOCABS = {
-  A: { id: 'A', name: 'Ayvale lexicon', config: {}, maintainers: ['u'] },
-  B: { id: 'B', name: 'Beeworth lexicon', config: {}, maintainers: ['u'] },
+  A: { id: 'A', name: 'Ayvale lexicon', config: {}, project: 'P' },
+  B: { id: 'B', name: 'Beeworth lexicon', config: {}, project: 'P' },
 };
 
 // One deferred `vocabLayers.get` per id.
@@ -51,7 +51,10 @@ const deferred = () => {
     settle: (id) => pending.get(id)(VOCABS[id]),
     client: {
       vocabLayers: { get: (id) => new Promise((resolve) => pending.set(id, resolve)) },
-      projects: { list: async () => [] },
+      projects: {
+        list: async () => [],
+        get: async (id) => ({ id, name: 'Pear', maintainers: ['u'] }),
+      },
     },
   };
 };
@@ -122,7 +125,7 @@ describe('a vocabulary an unfinished import made', () => {
           id: 'A',
           name: 'Half lexicon',
           config: { igt: { import: { projectId: 'P1' } } },
-          maintainers: ['u'],
+          project: 'P',
         }),
       },
       // Its project is still there, with its import unfinished.
@@ -154,13 +157,15 @@ describe('a vocabulary marked for a project that is gone', () => {
           id: 'A',
           name: 'Left lexicon',
           config: { igt: { import: { projectId: 'GONE' } } },
-          maintainers: ['u'],
+          project: 'P',
         }),
         deleteConfig: async (...a) => unmarked.push(a),
       },
       projects: {
         list: async () => [],
-        get: async () => {
+        // Its own project reads, the one the mark names is gone.
+        get: async (id) => {
+          if (id === 'P') return { id, name: 'Pear', maintainers: ['u'] };
           throw refusal(404, { error: 'Project not found' });
         },
       },
@@ -176,9 +181,9 @@ describe('a vocabulary marked for a project that is gone', () => {
 });
 
 // CR-IGT-1: core tells a non-admin a deleted project is a project they
-// cannot read (403), never that it is gone. The page stays shut, and the
-// vocabulary's maintainer may take the mark off: a write on the press only,
-// shown at once, put back if refused (ruling Q4).
+// cannot read (403), never that it is gone. The page stays shut, and a
+// maintainer of the vocabulary's project may take the mark off: a write on the
+// press only, shown at once, put back if refused (ruling Q4).
 describe('a vocabulary marked for a project its maintainer cannot read', () => {
   const setup = ({ maintainers = ['u'], unmark = async () => {} } = {}) => {
     const unmarked = [];
@@ -189,7 +194,7 @@ describe('a vocabulary marked for a project its maintainer cannot read', () => {
           id: 'A',
           name: 'Left lexicon',
           config: { igt: { import: { projectId: 'GONE' } } },
-          maintainers,
+          project: 'P',
         }),
         deleteConfig: async (...a) => {
           unmarked.push(a);
@@ -198,7 +203,8 @@ describe('a vocabulary marked for a project its maintainer cannot read', () => {
       },
       projects: {
         list: async () => [],
-        get: async () => {
+        get: async (id) => {
+          if (id === 'P') return { id, name: 'Pear', maintainers, readers: ['u'] };
           throw refusal(403, { error: 'User u lacks sufficient privileges to read project GONE' });
         },
       },
@@ -243,7 +249,7 @@ describe('a vocabulary marked for a project its maintainer cannot read', () => {
     auth.user = { id: 'u', isAdmin: true };
   });
 
-  it('offers nothing to someone who does not maintain the vocabulary', async () => {
+  it('offers nothing to someone who does not maintain its project', async () => {
     setup({ maintainers: ['someone-else'] });
     const view = await renderComponent(app);
     await settle(view);
