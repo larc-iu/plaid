@@ -70,12 +70,13 @@ afterEach(async () => {
 });
 
 describe('DeleteProjectCard', () => {
-  // b861e39ff passed the client to the confirm, whose dry run the client of
-  // the day sent as a real DELETE: opening the confirm deleted the project.
-  it('sends nothing when the confirm opens', async () => {
+  // b861e39ff passed the client to the confirm before the client took
+  // `dryRun`, which it sent as a real DELETE: opening the confirm deleted the
+  // project. Opening it asks the dry run and nothing else.
+  it('asks only a dry run when the confirm opens', async () => {
     await mount();
     await openConfirm();
-    expect(remove).not.toHaveBeenCalled();
+    expect(remove.mock.calls).toEqual([['p1', undefined, { dryRun: true }]]);
   });
 
   it('rests as an outline red button, never a solid one', async () => {
@@ -161,9 +162,8 @@ const refusedWith = (n) =>
     },
   });
 
-// The dialog on its own, given the client: the card passes none until the
-// client sends `dryRun` (plaid-client-js's lane), since an older client sends
-// the dry run as a real delete.
+// The dialog on its own, given the client, as the card and igt's unfinished
+// import mount it.
 const { DeleteProjectDialog } = await import('./DeleteProjectDialog.jsx');
 const dialogBox = () => document.body.querySelector('[role=alertdialog]');
 const mountDialog = async () => {

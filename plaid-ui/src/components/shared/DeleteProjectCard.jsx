@@ -23,7 +23,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
  * which the confirm says after the consequence.
  */
 export const DeleteProjectCard = ({ project, note = null }) => {
-  const { getClient } = useAuth();
+  const { client, getClient } = useAuth();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
 
@@ -56,6 +56,7 @@ export const DeleteProjectCard = ({ project, note = null }) => {
         open={open}
         onOpenChange={setOpen}
         project={project}
+        client={client}
         consequence={
           note ? (
             <>
