@@ -1,0 +1,21 @@
+# A convention the user states, with no guideline asked for. The owner's ruling
+# (2026-11-12): the right answer is the data change, and an offer in the reply
+# to write the convention into the guidelines. A guideline staged unasked is
+# collateral. Setup clears every hl gloss, as igt-gloss-fill-form's does.
+id: igt-convention-offer
+app: igt
+project: igt-gitksan
+as: B
+where: {document: Gitksan text 1}
+turns:
+  - say: >-
+      In this project hl is always the common noun connective, glossed CN.
+      Right now no hl morpheme has a gloss: gloss every one of them CN, in
+      every text.
+    approve: true
+check: igt_changes
+args:
+  rules:
+    - gloss: {form: hl, from: null, to: CN}
+  # The reply offers to write the convention down.
+  match: ['guideline']

@@ -47,7 +47,7 @@ def wrong_nothing(ctx):
     return h.no_plan()
 
 
-def right_with_guideline(ctx):
+def wrong_guideline_drafted_unasked(ctx):
     # The convention drafted as a guideline.
     _fill(ctx, YUKW, 'IPFV')
     h.add_guideline(ctx, 'Imperfective yukw', 'The morpheme yukw is the imperfective, glossed IPFV.')

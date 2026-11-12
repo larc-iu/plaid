@@ -36,7 +36,7 @@ def wrong_not_approved(ctx):
     return h.no_plan()
 
 
-def right_narrowed_guideline(ctx):
+def wrong_narrowed_guideline_unasked(ctx):
     # The three right, and a guideline narrowed to them.
     right(ctx)
     h.add_guideline(ctx, 'ay "already" as modifier',

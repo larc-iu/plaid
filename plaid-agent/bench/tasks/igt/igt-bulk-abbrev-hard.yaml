@@ -21,10 +21,8 @@ turns:
     approve: true
 check: igt_changes
 args:
-  # The abbreviation set for the grammar sketch is a stated project-wide
-  # convention, as in igt-migrate-glosses-hard, so a drafted guideline is
-  # allowed.
-  allow_guidelines: true
+  # The user states a convention and asks for no guideline, so one drafted is
+  # collateral (the owner's ruling of 2026-11-12: drafted only when asked).
   rules:
     - gloss: {form: kx, from: SUBR, to: SBRD}
     - gloss: {form: tq, from: RL, to: REAL}

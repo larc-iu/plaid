@@ -35,9 +35,9 @@ def wrong_lexicon_only(ctx):
     L.patch_entry(ctx, 'mz|PREP', {'gloss': 'LOC'})
 
 
-def right_with_guideline(ctx):
-    """Not run by validate (only right and wrong_*): the right result plus
-    the guideline the task allows."""
+def wrong_guideline_drafted_unasked(ctx):
+    """The right result plus a guideline the user did not ask for, which is
+    collateral since the owner's ruling of 2026-11-12."""
     conv = right(ctx)
     import handwrite
     handwrite.add_guideline(ctx, 'Gloss of mz', 'mz is glossed LOC, not PREP.')

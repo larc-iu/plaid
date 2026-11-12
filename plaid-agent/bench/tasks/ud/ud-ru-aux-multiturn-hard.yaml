@@ -24,9 +24,8 @@ turns:
     approve: open
 check: ud_tree
 args:
-  # "In this treebank быть is always AUX" is a convention the user states: a guideline drafted
-  # for it goes on the card like the rest.
-  allow_guidelines: true
+  # The user states a convention and asks for no guideline, so one drafted is
+  # collateral (the owner's ruling of 2026-11-12: drafted only when asked).
   document: Russian 2
   expect:
     "s4.w2:upos": AUX

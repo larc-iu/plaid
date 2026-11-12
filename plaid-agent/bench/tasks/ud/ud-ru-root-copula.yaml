@@ -15,9 +15,8 @@ turns:
     approve: true
 check: ud_tree
 args:
-  # "In this treebank the predicate adjective is the root" is a convention the user states: a guideline drafted
-  # for it goes on the card like the rest.
-  allow_guidelines: true
+  # The user states a convention and asks for no guideline, so one drafted is
+  # collateral (the owner's ruling of 2026-11-12: drafted only when asked).
   document: Russian 2
   base: snapshot
   expect:

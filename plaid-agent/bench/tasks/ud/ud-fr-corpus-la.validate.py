@@ -13,7 +13,7 @@ def right(ctx):
                        for d, refs in LA.items()])
 
 
-def right_with_guideline(ctx):
+def wrong_guideline_drafted_unasked(ctx):
     # The convention the user states, drafted as a guideline beside the fix
     # (glm53-1's draft, BL-BENCH2 2).
     right(ctx)

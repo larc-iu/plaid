@@ -12,9 +12,7 @@ turns:
     approve: true
 check: igt_changes
 args:
-  # "It is the common noun connective: gloss every hl CN" states a
-  # project-wide convention, as igt-gloss-rename does, so a drafted guideline
-  # is allowed.
-  allow_guidelines: true
+  # The user states a convention and asks for no guideline, so one drafted is
+  # collateral (the owner's ruling of 2026-11-12: drafted only when asked).
   rules:
     - gloss: {form: hl, from: null, to: CN}

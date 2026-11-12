@@ -22,10 +22,8 @@ turns:
 check: umr_graph
 args:
   document: Kukama text 2
-  # A guideline narrowed as the request was (ay as :mod
-  # where he is scared) may go on the card. A guideline that does not name
-  # the scared reading stays collateral.
-  allow_guidelines: {match: 'scar'}
+  # The user states a convention and asks for no guideline, so one drafted is
+  # collateral (the owner's ruling of 2026-11-12: drafted only when asked).
   expect:
     "s14.s14h::temporal": null
     "s14.s14h::mod": s14a2

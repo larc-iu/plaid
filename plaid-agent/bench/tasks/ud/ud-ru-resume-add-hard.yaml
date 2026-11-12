@@ -27,9 +27,8 @@ turns:
 check: ud_tree
 args:
   document: Russian 1
-  # A project guideline stating the convention is what the assistant is
-  # meant to draft when the user states one.
-  allow_guidelines: true
+  # The user states a convention and asks for no guideline, so one drafted is
+  # collateral (the owner's ruling of 2026-11-12: drafted only when asked).
   base: snapshot
   expect:
     "Russian 1|s1.w17:feats": Aspect=Imp|Mood=Ind|Number=Sing|Person=3|Tense=Pres|VerbForm=Fin|Voice=Act

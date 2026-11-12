@@ -47,6 +47,5 @@ args:
     - relabel:
         map: {SUBR: SBRD, RL: REAL, COS: CS, NMLZ1: NMLZ, PREP: ADP, PFV: PRF, 3AUG: 3NSG,
               IRR: IRLS, INTS: INT, MID: MDL, APPL: APL, 1MINI: 1MIN}
-  # A convention the user states for the project: a guideline drafted for it
-  # goes on the card for approval like the rest (as igt-gloss-rename).
-  allow_guidelines: true
+  # The user states a convention and asks for no guideline, so one drafted is
+  # collateral (the owner's ruling of 2026-11-12: drafted only when asked).

@@ -20,9 +20,8 @@ turns:
     approve: true
 check: ud_tree
 args:
-  # "it should be le" may be drafted as a guideline, one that names the
-  # lemma le. Any other guideline stays collateral.
-  allow_guidelines: {match: '\ble\b'}
+  # The user states a convention and asks for no guideline, so one drafted is
+  # collateral (the owner's ruling of 2026-11-12: drafted only when asked).
   document: French 1
   base: snapshot
   expect:

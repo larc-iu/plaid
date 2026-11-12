@@ -27,4 +27,5 @@ check: igt_changes
 args:
   rules:
     - relabel: {map: {CCNJ: CONJ}}
-  allow_guidelines: true
+  # The user states a convention and asks for no guideline, so one drafted is
+  # collateral (the owner's ruling of 2026-11-12: drafted only when asked).

@@ -28,7 +28,7 @@ def wrong_nothing(ctx):
     return h.no_plan()
 
 
-def right_with_guideline(ctx):
+def wrong_guideline_drafted_unasked(ctx):
     # The convention drafted as a guideline (glm53-stretch-2 rep 3's draft).
     right(ctx)
     h.add_guideline(ctx, 'Imperfective aspect is Aspect=Imp',

@@ -19,8 +19,5 @@ args:
   # did it in the first run, and a linguist changing a convention may well want it).
   optional:
     "LEX|mz|PREP:gloss": LOC
-  # The user says the convention is changing project-wide, and drafting a
-  # guideline for a project-wide convention the user states is what the
-  # assistant is meant to do. glm-5.2 added one in 3 of 3
-  # baseline runs. It still goes on the plan card for approval.
-  allow_guidelines: true
+  # The user states a convention and asks for no guideline, so one drafted is
+  # collateral (the owner's ruling of 2026-11-12: drafted only when asked).

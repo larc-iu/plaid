@@ -22,11 +22,8 @@ turns:
     approve: true
 check: ud_tree
 args:
-  # The user states the treebank's convention ("aux" is a multiword token
-  # holding à and les), so a guideline that names aux with its words or as a
-  # multiword token may be drafted (the owner's ruling of 2026-11-12, as
-  # ud-ar-mwt). Any other guideline stays collateral, AUX the UPOS among them.
-  allow_guidelines: {match: '\baux\b.*(?:\bles\b|multi-?word|\bMWT\b)|(?:\bles\b|multi-?word|\bMWT\b).*\baux\b'}
+  # The user states a convention and asks for no guideline, so one drafted is
+  # collateral (the owner's ruling of 2026-11-12: drafted only when asked).
   document: French 1
   base: snapshot
   restore: [s7.w5, s7.w6]

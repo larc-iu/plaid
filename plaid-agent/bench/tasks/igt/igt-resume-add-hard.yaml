@@ -24,6 +24,5 @@ check: igt_changes
 args:
   rules:
     - relabel: {map: {INESS: INE, SPSS: SRESS}}
-  # A project guideline stating the new abbreviations is what the assistant
-  # is meant to draft for a convention the user states.
-  allow_guidelines: true
+  # The user states a convention and asks for no guideline, so one drafted is
+  # collateral (the owner's ruling of 2026-11-12: drafted only when asked).

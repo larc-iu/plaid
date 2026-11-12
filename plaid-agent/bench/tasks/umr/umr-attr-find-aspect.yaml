@@ -19,7 +19,5 @@ args:
     "s4.s4p::aspect": performance
     "s5.s5p::aspect": performance
     "s13.s13p::aspect": performance
-  # "Finding is an event, not a state" is a convention the user states: a
-  # guideline drafted for it goes on the card like the rest (as the igt and
-  # ud tasks that allow it).
-  allow_guidelines: true
+  # The user states a convention and asks for no guideline, so one drafted is
+  # collateral (the owner's ruling of 2026-11-12: drafted only when asked).

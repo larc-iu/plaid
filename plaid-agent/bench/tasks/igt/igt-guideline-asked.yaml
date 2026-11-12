@@ -1,0 +1,22 @@
+# A guideline the user asks for. The owner's ruling (2026-11-12): the
+# assistant drafts a guideline ONLY when the user asks for one. Here the user
+# does: the 49 glosses and a guideline recording hl as CN, in one plan. Setup
+# clears every hl gloss, as igt-gloss-fill-form's does.
+id: igt-guideline-asked
+app: igt
+project: igt-gitksan
+as: B
+where: {document: Gitksan text 1}
+turns:
+  - say: >-
+      The morpheme hl has no gloss anywhere in the project. It is the common
+      noun connective: gloss every hl morpheme in every text CN, and add a
+      guideline to the project saying that hl is always glossed CN.
+    approve: true
+check: igt_changes
+args:
+  # The guideline the user asks for must be on the card, naming hl and CN.
+  # Any other guideline is collateral.
+  want_guideline: {match: '(?=.*\bhl\b)(?=.*\bCN\b)'}
+  rules:
+    - gloss: {form: hl, from: null, to: CN}

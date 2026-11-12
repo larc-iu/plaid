@@ -409,8 +409,25 @@ def guideline_changes(ctx) -> Dict[str, Tuple[object, object]]:
     true` in its args, or a nested `tree` args for ud_mixed), or all but
     those matching `allow_guidelines: {match: REGEX}`. The snapshot
     holds no guidelines and no setup writes one, so a context from before
-    guideline_snap existed starts from none."""
+    guideline_snap existed starts from none.
+
+    The owner's ruling (2026-11-12): the assistant drafts a guideline only
+    when the user asks for one, so a task allows one only where its user
+    does. `want_guideline: {match: REGEX}` is that task: a guideline matching
+    must have been added or changed (else the key `guideline:wanted` is
+    collateral), and any other is collateral."""
     a = ctx.args or {}
+    want = a.get('want_guideline')
+    if want:
+        out = guideline_changes(type('Ctx', (), {'args': {'allow_guidelines': want},
+                                                  'client': ctx.client, 'project': ctx.project,
+                                                  'guidelines_baseline': getattr(ctx, 'guidelines_baseline',
+                                                                                 None)})())
+        changed = diff(getattr(ctx, 'guidelines_baseline', None) or {},
+                       guideline_values(ctx.client, ctx.project['id']))
+        if not {k.rsplit(':', 1)[0] for k in changed} - {k.rsplit(':', 1)[0] for k in out}:
+            out['guideline:wanted'] = (None, f'none matching {want["match"]}')
+        return out
     allow = a.get('allow_guidelines') or (a.get('tree') or {}).get('allow_guidelines')
     if allow and not isinstance(allow, dict):
         return {}

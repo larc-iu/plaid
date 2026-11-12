@@ -41,7 +41,7 @@ def wrong_nothing(ctx):
     return h.no_plan()
 
 
-def right_with_guideline(ctx):
+def wrong_guideline_drafted_unasked(ctx):
     # The convention drafted as a guideline.
     right(ctx)
     h.add_guideline(ctx, 'Contractions', 'In this treebank "aux" is a multiword token holding the two words "à" '

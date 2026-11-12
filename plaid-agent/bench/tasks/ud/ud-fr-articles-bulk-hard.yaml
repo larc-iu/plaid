@@ -23,11 +23,8 @@ turns:
     approve: true
 check: ud_tree
 args:
-  # The user states the treebank's convention (articles PronType=Art,
-  # demonstratives Dem), so a guideline that names PronType=Art may be
-  # drafted (the owner's ruling of 2026-11-12, after glm53-stretch-2 failed
-  # all three runs on that draft alone). Any other guideline stays collateral.
-  allow_guidelines: {match: 'PronType\s*=\s*Art\b'}
+  # The user states a convention and asks for no guideline, so one drafted is
+  # collateral (the owner's ruling of 2026-11-12: drafted only when asked).
   document: French 1
   base: snapshot
   expect:
