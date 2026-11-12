@@ -469,6 +469,13 @@ export const VocabularyItems = ({
   };
   // Every draft the list shows, on every page, the search on top included.
   const shownDrafts = () => list.filteredItems.filter((it) => machineIds.has(it.id));
+  // The change is shown at once over the list as drawn, and the write plans
+  // from a fresh read, so an entry someone changed in between is written only
+  // if it is still a draft. Once it lands the entries are read again, which
+  // shows such an entry as it is (a refusal reads them again in keyedSend).
+  const readAfter = async ({ landed }) => {
+    if (landed && (await fetchItems({ quiet: true }))) unseedUnlessTyped();
+  };
   const handleMarkReviewed = async () => {
     const shown = shownDrafts();
     if (!shown.length) return;
@@ -482,14 +489,15 @@ export const VocabularyItems = ({
     );
     // An open draft shows what was stored: filled again, unless typed in.
     unseedUnlessTyped();
-    const { error } = await sendMarkReviewed({
+    const sent = await sendMarkReviewed({
       sendPlanned,
       client,
       vocabularyId,
       statusKey,
       ids: shown.map((it) => settledId(it.id)),
     });
-    if (error) notifyError(error, 'Not marked reviewed');
+    if (sent.error) notifyError(sent.error, 'Not marked reviewed');
+    await readAfter(sent);
   };
   const handleDeleteDrafts = async () => {
     const shown = shownDrafts();
@@ -510,7 +518,7 @@ export const VocabularyItems = ({
     if (selectedId && gone.has(selectedId)) goItem(null, { replace: true });
     if (patches.length) foldPatches(patches);
     setItems((prev) => prev.filter((it) => !gone.has(it.id)));
-    const { error } = await sendDeleteDrafts({
+    const sent = await sendDeleteDrafts({
       sendPlanned,
       client,
       user,
@@ -519,7 +527,8 @@ export const VocabularyItems = ({
       statusKey,
       ids,
     });
-    if (error) notifyError(error, 'Entries not deleted');
+    if (sent.error) notifyError(sent.error, 'Entries not deleted');
+    await readAfter(sent);
   };
 
   // The pending id a create has sent the URL to, until a render shows it

@@ -56,10 +56,27 @@ const PEOPLE = [
   { id: 'refers', form: 'ta', metadata: { seeAlso: ['d1', 'kept'] } },
 ];
 
+// The server applies what is written to it, so a read after a write sees the
+// write, and a test can change an entry there as another person would.
 const stub = ({ links = 40 } = {}) => {
   const items = structuredClone([...DRAFTS, ...PEOPLE]);
   const calls = [];
   const operations = [];
+  const apply = (updates) => {
+    for (const u of updates) {
+      const it = items.find((x) => x.id === u.id);
+      for (const op of (it && u.metadata) || []) {
+        const { [op.path[0]]: _was, ...rest } = it.metadata || {};
+        it.metadata = op.op === 'set' ? { ...rest, [op.path[0]]: op.value } : rest;
+      }
+    }
+  };
+  const remove = (ids) => {
+    for (const id of ids) {
+      const i = items.findIndex((x) => x.id === id);
+      if (i >= 0) items.splice(i, 1);
+    }
+  };
   const client = {
     withOperation: (label, fn, opts) => {
       operations.push([label, opts]);
@@ -76,6 +93,10 @@ const stub = ({ links = 40 } = {}) => {
         tokens: { bulkUpdate: (u) => ops.push(['tokens.bulkUpdate', u]) },
       });
       calls.push(['batch', ops]);
+      for (const [k, arg] of ops) {
+        if (k === 'bulkUpdate') apply(arg);
+        if (k === 'bulkDelete') remove(arg);
+      }
       return [];
     },
     query: async () => ({ results: [[links]] }),
@@ -87,6 +108,7 @@ const stub = ({ links = 40 } = {}) => {
     vocabItems: {
       bulkUpdate: async (updates) => {
         calls.push(['bulkUpdate', updates]);
+        apply(updates);
         return { count: updates.length };
       },
     },
@@ -279,6 +301,39 @@ describe('the machine drafts on the Entries screen', () => {
     expect(ops.at(-1)[0]).toBe('bulkDelete');
     expect(precedent.dropPrecedent).toHaveBeenCalled();
     expect(anchor('120 machine drafts')).toBeNull();
+    await view.unmount();
+  });
+
+  // The confirm counts the list as drawn and the write plans from a fresh
+  // read, so an entry another person changed in between is left as they made
+  // it. Once the write lands the list is read again and shows that (REV-J-C-6).
+  it('reads the entries again once the delete lands, so one another person kept shows as kept', async () => {
+    const { client, items: server } = stub();
+    const view = await mount(client, '/vocabularies/v1?status=machine');
+    // Another person reviews d5 after the list was drawn.
+    server.find((it) => it.id === 'd5').metadata.state = 'reviewed';
+    await view.step(async () => {
+      button('Delete').click();
+      await settle(10);
+    });
+    await view.step(async () => settle(10));
+    expect(server.map((it) => it.id).sort()).toEqual(['bare', 'd5', 'kept', 'refers', 'sense']);
+    expect(shownCount()).toBe('5 entries');
+    await view.unmount();
+  });
+
+  it('reads the entries again once Mark reviewed lands, so a draft made meanwhile shows', async () => {
+    const { client, items: server } = stub();
+    const view = await mount(client, '/vocabularies/v1?status=machine');
+    // A job makes another draft after the list was drawn.
+    server.push({ id: 'late', form: 'mo', metadata: { gloss: 'x', state: 'machine' } });
+    await view.step(async () => {
+      button('Mark reviewed').click();
+      await settle(10);
+    });
+    await view.step(async () => settle(10));
+    expect(server.find((it) => it.id === 'late').metadata.state).toBe('machine');
+    expect(anchor('1 machine draft')).not.toBeNull();
     await view.unmount();
   });
 
