@@ -124,7 +124,7 @@
       (let [[first-pending] (pending-migrations cfg)]
         (cond
           (nil? first-pending)
-          (do (log/warn "The last start was stopped after its migrations ran; removing the mark it left.")
+          (do (log/warn "The last start was stopped after its migrations ran. Removing the mark it left.")
               (remove-reservation! datasource))
 
           (and lock-held? (resumable? first-pending))

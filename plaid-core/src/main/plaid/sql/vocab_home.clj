@@ -174,7 +174,7 @@
     (psd/with-tx [tx ds]
       (let [broken (q tx broken-plans-sql)]
         (doseq [{:keys [id name project_id project_name why]} broken]
-          (log/warn (format "Vocabulary \"%s\" (%s): its planned home %s(%s) %s since the plan was made; planning it again"
+          (log/warn (format "Vocabulary \"%s\" (%s): its planned home %s(%s) %s since the plan was made. Planning it again"
                             name id (if project_name (str "\"" project_name "\" ") "") project_id why))
           (q tx "UPDATE vocab_layers SET project_id = NULL WHERE id = ?" id)
           (q tx "DELETE FROM data_migrations WHERE id = ?" (str "vocab-home:" id)))
