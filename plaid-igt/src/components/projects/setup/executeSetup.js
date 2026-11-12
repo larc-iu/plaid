@@ -471,7 +471,9 @@ async function executeProjectSetupImpl({
     );
   }
 
-  // Step 8: Vocabularies. Resume-safe: already-linked vocabs are reused, and
+  // Step 8: Vocabularies. A new one is made in this project, its home, which
+  // core links to it as it makes it. A ticked vocabulary of another project
+  // is borrowed (linked). Resume-safe: already-linked vocabs are reused, and
   // a press after an answer that never came opens what the first made
   // (createOnce).
   if (setupData.vocabulary?.vocabularies?.length > 0) {
@@ -490,7 +492,7 @@ async function executeProjectSetupImpl({
           }
           updateProgress(70, `Creating vocabulary: ${vocab.name}…`);
           const newVocab = await createOnce(mintOf(`vocab:${nameKey(vocab.name)}`), (id) =>
-            client.vocabLayers.create(vocab.name, undefined, { id }),
+            client.vocabLayers.create(currentProjectId, vocab.name, undefined, { id }),
           );
           await onVocabCreated?.(newVocab.id);
           // A new vocabulary starts with the core fields plus Status and its
@@ -510,7 +512,6 @@ async function executeProjectSetupImpl({
               add.fieldsConfig,
             );
           }
-          await client.projects.linkVocab(currentProjectId, newVocab.id);
           vocabulariesProcessed.push(newVocab);
         } else {
           if (linkedVocabs.some((v) => v.id === vocab.id)) {

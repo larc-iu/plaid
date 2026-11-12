@@ -3,12 +3,10 @@ import { PLAID_NAMESPACE, ROLE_KEY, ROLES } from '@larc-iu/plaid-client';
 import { executeProjectSetup } from './executeSetup.js';
 import { IGT_NAMESPACE } from '../../../domain/igtConfig.js';
 
-// Setup makes a vocabulary in two requests: a create, and the link that says
-// it is this project's. A lost response between them leaves something no later
-// look for the finished shape can see, so the resume looks for it twice, or an
-// unlinked vocabulary would be made a second time, the first left behind as an
-// orphan. A text or token layer is made in one batch with its role and is
-// looked for once, by its role.
+// Setup makes a vocabulary inside the project, in one request: core links it
+// to its home as it makes it, so a resume finds it among the project's
+// vocabularies and never makes it twice. A text or token layer is made in one
+// batch with its role and is looked for once, by its role.
 
 // Every answer here has the shape core gives it, and no more: a create
 // answers with the new id alone, a project read names a token layer's id,
@@ -76,8 +74,14 @@ const stub = (project, tokenLayerShapes = {}) => {
       shift: async (layerId, direction) => calls.shifted.push({ id: layerId, direction }),
     },
     vocabLayers: {
-      create: async (name) => {
-        calls.created.push({ kind: 'vocab', name });
+      // `create(projectId, name, auditMessage, { id })`: the project first and
+      // the minted id in the options. A call in the old order (`create(name,
+      // undefined, { id })`) is refused here as core refuses it.
+      create: async (projectId, name, _audit, opts) => {
+        if (typeof name !== 'string' || !opts?.id) {
+          throw new Error(`vocabLayers.create(${projectId}, ${name}): project id, name, { id }`);
+        }
+        calls.created.push({ kind: 'vocab', name, under: projectId });
         return { id: id('vocab') };
       },
       setConfig: setConfig('vocab'),
@@ -205,19 +209,56 @@ describe('executeProjectSetup finishes what an interrupted run started', () => {
     ];
     const result = await run(client, 'p1');
     expect(result.failures).toEqual([]);
-    expect(madeOf(calls, 'vocab')).toEqual([{ kind: 'vocab', name: 'Lezgi Lexicon' }]);
-    expect(calls.linked).toHaveLength(1);
-    expect(calls.linked[0]).not.toBe('v-other-project');
-    expect(calls.linked[0]).toMatch(/^vocab-/);
+    expect(madeOf(calls, 'vocab')).toEqual([{ kind: 'vocab', name: 'Lezgi Lexicon', under: 'p1' }]);
+    // Made in the project, which is linked to it by core: nothing is linked.
+    expect(calls.linked).toEqual([]);
   });
 
-  it('makes both from scratch when there is nothing to finish', async () => {
+  it('makes both from scratch when there is nothing to finish, the vocabulary in the project', async () => {
     const { client, calls } = stub(null);
     const result = await run(client, null);
     expect(result.failures).toEqual([]);
     expect(madeOf(calls, 'text')).toHaveLength(1);
-    expect(madeOf(calls, 'vocab')).toHaveLength(1);
-    expect(calls.linked).toHaveLength(1);
+    const [project] = madeOf(calls, 'project');
+    expect(project).toBeTruthy();
+    expect(madeOf(calls, 'vocab')).toEqual([
+      { kind: 'vocab', name: 'Lezgi Lexicon', under: result.projectId },
+    ]);
+    expect(calls.linked).toEqual([]);
+  });
+
+  it('finds the vocabulary an earlier press made among the project\u2019s own, and makes no second', async () => {
+    const project = {
+      id: 'p1',
+      config: {},
+      textLayers: [],
+      vocabs: [{ id: 'v-made', name: 'Lezgi Lexicon', project: 'p1' }],
+    };
+    const { client, calls } = stub(project);
+    const result = await run(client, 'p1');
+    expect(result.failures).toEqual([]);
+    expect(madeOf(calls, 'vocab')).toEqual([]);
+    expect(calls.linked).toEqual([]);
+    expect(result.resources.vocabularies.map((v) => v.id)).toEqual(['v-made']);
+  });
+
+  it('borrows a vocabulary of another project that was ticked, by linking it', async () => {
+    const { client, calls } = stub(null);
+    const result = await executeProjectSetup({
+      client,
+      isNewProject: true,
+      resumeProjectId: null,
+      setupData: {
+        ...SETUP_DATA,
+        vocabulary: {
+          vocabularies: [{ id: 'v-theirs', name: 'Their Lexicon', enabled: true, isCustom: false }],
+        },
+      },
+      onProgress: () => {},
+    });
+    expect(result.failures).toEqual([]);
+    expect(madeOf(calls, 'vocab')).toEqual([]);
+    expect(calls.linked).toEqual(['v-theirs']);
   });
 });
 
@@ -601,7 +642,7 @@ describe('setup makes the project and its vocabularies under minted ids', () => 
   const idTaken = () =>
     Object.assign(new Error('HTTP 409'), { status: 409, responseData: { error: 'id-taken' } });
 
-  it('names a UUIDv7 on both creates', async () => {
+  it('names a UUIDv7 on both creates, and makes the vocabulary in the project', async () => {
     const { client } = stub(null);
     const sent = [];
     const projectCreate = client.projects.create;
@@ -610,14 +651,17 @@ describe('setup makes the project and its vocabularies under minted ids', () => 
       return projectCreate(name, audit, opts);
     };
     const vocabCreate = client.vocabLayers.create;
-    client.vocabLayers.create = async (name, audit, opts) => {
+    const homes = [];
+    client.vocabLayers.create = async (projectId, name, audit, opts) => {
       sent.push(['vocab', opts?.id]);
-      return vocabCreate(name, audit, opts);
+      homes.push(projectId);
+      return vocabCreate(projectId, name, audit, opts);
     };
     const result = await run(client, null);
     expect(result.failures).toEqual([]);
     expect(sent.map(([k]) => k)).toEqual(['project', 'vocab']);
     for (const [, id] of sent) expect(id).toMatch(UUIDV7);
+    expect(homes).toEqual([result.projectId]);
   });
 
   it('sends the same ids on the next press, and takes id-taken as made', async () => {
@@ -646,8 +690,10 @@ describe('setup makes the project and its vocabularies under minted ids', () => 
       throw idTaken();
     };
     let vocabTries = 0;
-    second.client.vocabLayers.create = async (name, audit, opts) => {
+    const homes = [];
+    second.client.vocabLayers.create = async (projectId, name, audit, opts) => {
       sent.vocab.push(opts?.id);
+      homes.push(projectId);
       vocabTries += 1;
       if (vocabTries === 1) throw Object.assign(new Error('Failed to fetch'), { status: 0 });
       throw idTaken();
@@ -672,7 +718,8 @@ describe('setup makes the project and its vocabularies under minted ids', () => 
     expect(sent.project[1]).toBe(sent.project[0]);
     expect(sent.vocab).toHaveLength(2);
     expect(sent.vocab[1]).toBe(sent.vocab[0]);
-    expect(second.calls.linked.at(-1)).toBe(sent.vocab[0]);
+    expect(homes).toEqual([sent.project[0], sent.project[0]]);
+    expect(second.calls.linked).toEqual([]);
   });
 
   it('mints a fresh project id when the name changed since the press that lost its answer', async () => {
