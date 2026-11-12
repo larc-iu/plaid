@@ -1,3 +1,4 @@
+import { writeFileSync } from 'node:fs';
 import { describe, it, expect } from 'vitest';
 import { normalizeVocabFields } from './vocabFields.js';
 import {
@@ -285,6 +286,57 @@ describe('statusFieldSeed', () => {
     const seed = statusFieldSeed({});
     expect(Object.keys(seed.fieldsConfig)).toEqual([STATUS_FIELD]);
     expect(Object.keys(seed.tagsets)).toEqual([STATUS_TAGSET]);
+  });
+});
+
+// The vocabularies the Status field backfill is tried on (outside the
+// repository, docs/backfills/backfill_status_field.py and its test), each
+// with the config statusFieldSeed makes of it, which is what the backfill
+// must write. With STATUS_SEED_FIXTURE set to a path, this writes them there
+// for the backfill's test to read.
+describe("the Status field backfill's cases", () => {
+  const gloss = { inline: true, role: 'gloss' };
+  const cases = [
+    {
+      name: 'no Status field',
+      fields: { gloss, pos: { inline: false, role: 'pos' } },
+      tagsets: {},
+    },
+    {
+      name: 'a FLEx Status without machine',
+      fields: { gloss, Status: { inline: false, tagset: 'Status', role: 'status' } },
+      tagsets: {
+        Status: {
+          delimiters: '',
+          mode: 'closed',
+          values: [{ value: 'Confirmed' }, { value: 'Pending' }],
+        },
+      },
+    },
+    {
+      name: 'already right',
+      fields: { gloss, status: { inline: false, tagset: 'Status', role: 'status' } },
+      tagsets: { Status: statusTagset() },
+    },
+  ].map((c) => {
+    const seed = statusFieldSeed({ fieldsConfig: c.fields, tagsets: c.tagsets });
+    return { ...c, after: { fields: seed.fieldsConfig, tagsets: seed.tagsets } };
+  });
+
+  it('change the first two and leave the third', () => {
+    expect(cases.map((c) => c.after.fields === c.fields && c.after.tagsets === c.tagsets)).toEqual([
+      false,
+      false,
+      true,
+    ]);
+    expect(cases[0].after.tagsets).toEqual({ Status: statusTagset() });
+    expect(cases[1].after.tagsets.Status.values[0]).toEqual({
+      value: 'machine',
+      description: 'Machine draft',
+    });
+    if (process.env.STATUS_SEED_FIXTURE) {
+      writeFileSync(process.env.STATUS_SEED_FIXTURE, JSON.stringify(cases, null, 2));
+    }
   });
 });
 
