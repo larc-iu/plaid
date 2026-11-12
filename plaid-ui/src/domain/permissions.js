@@ -19,7 +19,8 @@
 // no access is no access, and a maintainer's powers are the server's, so the
 // line must not drift between the four screens that show it.
 export const NO_ACCESS_HINT = 'Cannot open the project.';
-export const MAINTAINER_HINT = 'Also changes settings and members, and deletes the project.';
+export const MAINTAINER_HINT =
+  'Also changes settings and members, and deletes the project and its vocabularies.';
 
 const inList = (list, id) => Array.isArray(list) && id != null && list.includes(id);
 
@@ -59,11 +60,59 @@ export const readOnlyReason = (project, user) => {
 // Explicit membership, for a member table or an "add me to this project" offer,
 // is `projectRole` in `@larc-iu/plaid-client`. It is not repeated here.
 
-// A vocabulary carries its own maintainer list, and nothing else. Its
-// maintainers (or an admin) change its settings and maintainers, link it to a
-// project (core refuses anyone else), and rename or delete its entries. Adding
-// an entry and linking a word to one need only write access to the word's
-// project (acl-shared-vocab-writers b). igt's Entries screen and Bulk Add stay
-// with the maintainers all the same.
-export const canManageVocabulary = (vocabulary, user) =>
-  !!(user?.isAdmin || inList(vocabulary?.maintainers, user?.id));
+// A vocabulary belongs to one project, its home (`vocabulary.project`), and
+// its rights are the home's roles and nothing else. Another project may link
+// it as a borrower: its people read it and link words to its entries, and
+// change no entry. Each question takes the home project as the caller has it
+// (with its role lists), or null when the caller has none: a screen inside a
+// project passes that project for its own vocabulary and null for a borrowed
+// one, which is then read only there even for someone who is also in the
+// home. A vocabulary-centred screen reads the home itself and passes null when
+// the read is refused.
+
+/**
+ * The caller's role over `vocabulary`: 'maintainer', 'writer', 'reader' or
+ * null. Null when `home` is not the vocabulary's home (missing, or another
+ * project). An admin is a maintainer.
+ */
+export const vocabularyRole = (vocabulary, home, user) => {
+  if (!vocabulary?.project || !home || home.id !== vocabulary.project) return null;
+  if (canManageProject(home, user)) return 'maintainer';
+  if (canEditProject(home, user)) return 'writer';
+  if (canReadProject(home, user)) return 'reader';
+  return null;
+};
+
+// Renames, moves and deletes the vocabulary, changes its settings, renames,
+// merges, deletes and restores its entries, lists the projects that borrow it
+// and ends a borrowing. A delete is refused (409) while a borrower links it.
+export const canManageVocabulary = (vocabulary, home, user) =>
+  vocabularyRole(vocabulary, home, user) === 'maintainer';
+
+// Adds entries and changes anything stored on one: fields, type, senses and
+// their order, homograph order, examples.
+export const canEditVocabularyEntries = (vocabulary, home, user) => {
+  const role = vocabularyRole(vocabulary, home, user);
+  return role === 'maintainer' || role === 'writer';
+};
+
+/** Whether `vocabulary` belongs to a project other than `project`. */
+export const isBorrowed = (vocabulary, project) =>
+  !!vocabulary && vocabulary.project !== project?.id;
+
+// Links `vocabulary` into `project` as a borrower: a maintainer of `project`
+// who holds any role in the home.
+export const canLinkVocabulary = (vocabulary, home, project, user) =>
+  canManageProject(project, user) && vocabularyRole(vocabulary, home, user) !== null;
+
+// Unlinks `vocabulary` from `project`: a maintainer of that project, or a
+// maintainer of the home ending the borrowing (`project` then needs only its
+// id). Never from the home itself.
+export const canUnlinkVocabulary = (vocabulary, project, home, user) =>
+  !!project &&
+  isBorrowed(vocabulary, project) &&
+  (canManageProject(project, user) || canManageVocabulary(vocabulary, home, user));
+
+// Makes `target` the vocabulary's home: a maintainer of both projects.
+export const canMoveVocabulary = (vocabulary, home, target, user) =>
+  canManageVocabulary(vocabulary, home, user) && canManageProject(target, user);

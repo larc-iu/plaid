@@ -2,9 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 
 export const USER_SEARCH_LIMIT = 25;
 
-// Search-to-add over the user directory (server-side ?q=), for the Access tab
-// and a vocabulary's maintainers. The full roster is never fetched: it does
-// not scale, and GET /users is admin-or-maintainer-gated. The search runs once
+// Search-to-add over the user directory (server-side ?q=), for the Access tab.
+// The full roster is never fetched: it does not scale, and GET /users is admin-or-maintainer-gated. The search runs once
 // the box is touched, an empty box browses the first page, and the ids in
 // `excludeIds` (the people already on the list) are dropped. A caller who may
 // not browse the directory (403) gets `denied` rather than an error.
