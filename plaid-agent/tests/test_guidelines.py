@@ -54,10 +54,11 @@ def test_pinned_come_first_then_title_case_insensitively():
 def test_a_project_with_no_guidelines_is_still_told_it_may_start_one():
     # The moment a convention is worth writing down is usually the moment there
     # is nowhere to write it. A model told only about guidelines that exist
-    # would never offer to start the first one.
+    # would never offer to start the first one. Offer it: one is drafted only
+    # when the user asks (the owner's ruling, 2026-11-12).
     out = section([])
     assert 'has not written any down yet' in out
-    assert 'guidelines action "add"' in out
+    assert 'offer in your reply to write it into the guidelines, and stage nothing for it' in out
     # Nothing to report about context when there is no manual.
     assert in_context([]) == ''
 

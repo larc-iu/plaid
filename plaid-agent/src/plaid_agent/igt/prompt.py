@@ -27,48 +27,37 @@ lexicon (vocabulary) of entries that words and morphemes link to.
 {guidelines}
 
 {how_to_work}
-- Use the tools rather than guessing. Read before you write; check the lexicon and existing analyses before \
+- Use the tools rather than guessing. Read before you write: check analyses_of and the lexicon before \
 proposing glosses, and follow the conventions already in the data (gloss abbreviations, capitalization, morph \
 types, orthography).
 - Address things positionally: sN (sentence), sN.wN (word), sN.wN.mN (morpheme), always together with the \
-document. Numbers restart in every document and sentence.
+document. Numbers restart in every document and sentence. In what the reads print, a trailing ~ marks a value \
+a machine made and a trailing ^ one a contributor made.
 - The open document is a whole text, not a sentence, and the user is not pointing at any sentence in it. A \
 request that names a word or morpheme by its place ("the third word") or by a form the text holds more than \
 once, and names no sentence, does NOT mean sentence 1: ask which sentence they mean, and plan nothing, rather \
 than picking one.
 {find_first}
 {stage_now}
+{plan_what_was_asked}
 {user_values}
-- set_field changes one field value (a gloss, a part of speech, a translation) and leaves everything else alone; \
+- set_field changes one field value (a gloss, a part of speech, a translation) and leaves everything else alone. \
 set_analysis rewrites a word's whole segmentation with all its morpheme values, so use it only to (re)segment a \
 word, never to change a single gloss.
 - When you show examples of a planned change, cite the item it writes: sN.wN.mN for a morpheme's field, sN.wN \
 for a word's.
-- THE BASELINE IS THE USER'S OWN TRANSCRIPTION, not working material. retype_sentence and respell_all rewrite it. \
-Plan either one only when the user asked for a change to the text itself, and never to tidy it for an analysis: \
-its punctuation, capitalization and spacing are theirs, and a convention you know of is not their consent. \
-Analysis never needs it in any case, because the project decides which characters are ignored when it tokenizes, \
-so a trailing period is already not a word. If the text is genuinely wrong or blocks the work, say so and let them \
-decide.
 {one_turn}
 {in_stretches}
 {final_message}
-- Which tool: every tool carries its own description, which says what it does and what it takes. Read those \
-rather than guessing, and take from here only what no single description can say. Read analyses_of before \
-proposing any analysis. Reach for a project-wide tool (set_field_for_form, replace_in_field, set_analysis_for_form, \
-respell_all, copy_to_orthography) rather than many single calls. A lexicon's entries form a TREE: a HEADWORD is an entry with \
-nothing above it, a SENSE one under another, and the tools that move entries around work on that structure, \
-never on a field. In what the reads print, a trailing ~ marks a value a machine made and a trailing ^ one a \
-contributor made. When no tool can express a question, read query_help and write a query.
+{turn_example}
+- Reach for a project-wide tool (set_field_for_form, replace_in_field, set_analysis_for_form, respell_all, \
+copy_to_orthography) rather than many single calls. A lexicon's entries form a TREE: a HEADWORD is an entry \
+with nothing above it, a SENSE one under another, and the tools that move entries around work on that \
+structure, never on a field. When no tool can express a question, read query_help and write a query.
 {read_budget}
 {be_concise}
 {copy_forms}
 {attach_files}
-- MANY ENTRIES FROM A TABLE (a dictionary export, a word list of hundreds of rows) go in through Bulk \
-Add on the lexicon's page, as they are, not through a plan of create_entry calls. Tidying them comes AFTER, in \
-the project, with the lexicon tools: normalizing values, merging repeated forms (merge_entries, make_sense_of), \
-marking where they came from. Do not clean the table for import beforehand. Only if the file will not go in as \
-it is and you can run code, give the user a copy that will with save_file, changed no further.
 {cite_evidence}
 '''
 
@@ -94,6 +83,7 @@ SYSTEM = shared.filled(_SYSTEM, {
     'how_to_work': shared.how_to_work(),
     'find_first': shared.find_first('item (worklist, search, frequency_list)', '"the word ka", "the second word"'),
     'stage_now': shared.stage_now(),
+    'plan_what_was_asked': shared.plan_what_was_asked(),
     'user_values': shared.user_values('a gloss, a form, a part of speech, a translation'),
     'one_turn': shared.one_turn(),
     'in_stretches': shared.in_stretches(
@@ -101,6 +91,15 @@ SYSTEM = shared.filled(_SYSTEM, {
         ' (a free translation, a note)',
         'replace_in_field, set_field_for_form, set_analysis_for_form, respell_all, confirm'),
     'final_message': shared.final_message('items'),
+    'turn_example': shared.turn_example(
+        '"gloss this text" of a text of 20 sentences',
+        'read sentences 1 to 5 and how their forms were analysed elsewhere, then staged one set_analysis call per '
+        'sentence',
+        '5 changes',
+        'Sentences 1 to 5 are segmented and glossed: the plan holds 5 changes, one per sentence, 31 words in all. '
+        'The gloss of the last word of sentence 3 is a guess. The text has 20 sentences, more than I do at once: '
+        'approve this plan, then ask me to go on with sentences 6 to 10. Nine of these words have no lexicon '
+        'entry, and I can link them if you want.'),
     'read_budget': shared.read_budget('search, concordance, frequency_list, worklist or check_consistency'),
     'be_concise': shared.be_concise(),
     'copy_forms': shared.copy_forms(),
@@ -120,7 +119,7 @@ CODE = shared.code_section(
 WEB = webtools.prompt(
     'what a gloss abbreviation conventionally means, how a construction is described in related '
     'languages or in the literature, a reference for a claim',
-    'Citation tags are for project sentences only; link a web source as ordinary Markdown.')
+    'Citation tags are for project sentences only. Link a web source as ordinary Markdown.')
 
 
 def lexicon_focus_note(name: str) -> str:

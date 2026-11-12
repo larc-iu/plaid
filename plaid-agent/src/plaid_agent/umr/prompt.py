@@ -63,15 +63,15 @@ a sentence with a second fragment keeps it.
 end up with, not only the one you are adding.
 {find_first}
 {stage_now}
+{plan_what_was_asked}
 {user_values}
 {one_turn}
 {in_stretches}
 {final_message}
-- Which tool: every tool carries its own description, which says what it does and what it takes. Read \
-those rather than guessing, and take from here only what no single description can say. read_document \
-takes a sentence range or a list of sentences, and a corpus can be far too big to read through, so \
-read the part you need. search, find_nodes and frequency_list ask the whole project at once, \
-and worklist says which sentences are unfinished.
+{turn_example}
+- read_document takes a sentence range or a list of sentences, and a corpus can be far too big to read \
+through, so read the part you need. search, find_nodes and frequency_list ask the whole project at once, and \
+worklist says which sentences are unfinished.
 {read_budget}
 {be_concise}
 {copy_forms}
@@ -94,18 +94,25 @@ SYSTEM = shared.filled(_SYSTEM, {
     'how_to_work': shared.how_to_work(),
     'find_first': shared.find_first('node', '"the say-01 node", "the second person node"'),
     'stage_now': shared.stage_now(),
+    'plan_what_was_asked': shared.plan_what_was_asked(),
     'user_values': shared.user_values('a concept, an aspect, a role, a modal strength'),
     'one_turn': shared.one_turn(),
     'in_stretches': shared.in_stretches('a sentence graph, an attribute on every event or entity', '',
                                         'set_attribute_for_concept'),
     'final_message': shared.final_message('nodes'),
+    'turn_example': shared.turn_example(
+        '"a script wrote :refer-person 3 everywhere, it should be 3rd"',
+        'found every node with it in one search, then staged one attribute change for each',
+        '14 changes',
+        'The plan holds 14 changes: :refer-person 3 becomes 3rd on every node that had it, in 9 sentences. '
+        'Nothing else changes.'),
     'read_budget': shared.read_budget('find_nodes or frequency_list'),
     'be_concise': shared.be_concise(),
     'copy_forms': shared.copy_forms(),
     'attach_files': shared.attach_files('.umr'),
     'cite_evidence': shared.cite_evidence(
         refs=_CITE_REFS, shown_as='sentence with its graph', never_paste='a PENMAN graph',
-        example=_CITE_EXAMPLE, bare='s3.s3e'),
+        example=_CITE_EXAMPLE),
     'groups': ', '.join(GROUPS),
     'constants': ', '.join(DOC_CONSTANTS),
 })
@@ -117,7 +124,7 @@ CODE = shared.code_section(
 WEB = webtools.prompt(
     'what a UMR role or attribute conventionally covers, how a construction is analyzed in the '
     'published UMR guidelines or in released corpora, a reference for a claim',
-    'Citation tags are for project sentences only; link a web source as ordinary Markdown.')
+    'Citation tags are for project sentences only. Link a web source as ordinary Markdown.')
 
 
 def shape_lines(project: UmrProject) -> list:

@@ -15,7 +15,8 @@ from test_service_flow import Helper, _request, _seed, _service
 def test_a_convention_question_is_asked_before_planning():
     said = find_first('item', '"the word ka"')
     assert 'differ only by convention (dots, spaces, underscores, case), ask which form is the convention' in said
-    assert 'plan only the fields and levels the user named' in said
+    from plaid_agent.core.prompt import PLAN_WHAT_WAS_ASKED
+    assert 'in the fields and levels they named' in PLAN_WHAT_WAS_ASKED
 
 
 def test_examples_of_a_planned_change_cite_what_it_writes():

@@ -50,31 +50,24 @@ head. A sentence without the column has an enhanced graph equal to its tree. You
 enhanced graph; no tool changes it, and it is edited on the canvas.
 {find_first}
 {stage_now}
+{plan_what_was_asked}
 {user_values}
 {one_turn}
 {in_stretches}
 {final_message}
-- Which tool: every tool carries its own description, which says what it does and what it takes. Read those \
-rather than guessing, and take from here only what no single description can say. read_document takes a sentence \
-range, and a treebank can be far too big to read through, so read the part you need. check_consistency asks \
-questions rather than passing verdicts, so read the sentences before proposing anything about its hits. \
-worklist counts what is unfinished per document, which is where to start a session.
+{turn_example}
+- read_document takes a sentence range, and a treebank can be far too big to read through, so read the part \
+you need. check_consistency asks questions rather than passing verdicts, so read the sentences before \
+proposing anything about its hits. worklist counts what is unfinished per document.
 {read_budget}
 {be_concise}
 {copy_forms}
 {attach_files}
 {cite_evidence}
-- SAY HOW AN EXAMPLE SHOULD BE DRAWN, with view= on the tag. An example is drawn either as a dependency \
-tree or as its CoNLL-U rows, and eight columns is a lot to read in a narrow panel when the point is about the \
-tree. view="tree" draws the arcs over the words, the way the UD documentation does: use it whenever the point \
-is about heads, relations, or the shape of the tree. The words ref names also choose the ARCS: the whole sentence is written out, with an arc over the \
-relation of each word named and nothing else, so name the DEPENDENT of every relation the point is about. In \
-"I won a $ 3.2 billion grant", ref="s6.w4,w5,w6" draws the compound and nummod arcs over "$ 3.2 billion" and \
-leaves the rest of the sentence bare, which is how the UD documentation draws one construction. A ref naming \
-only the sentence draws every relation in it, which is right only when the point is the whole tree. \
-Leave view off for a point that rests on the annotation rather than the \
-tree, and the example is drawn as its CoNLL-U rows. The reader can switch an example either way, so this is a \
-starting view and not a decision made for them.
+- SAY HOW AN EXAMPLE SHOULD BE DRAWN: view="tree" on the tag draws the arcs over the words, for a point about \
+heads or relations, and the arcs drawn are those of the words ref names, so name the dependent of each \
+relation the point is about (ref="s6.w4,w5,w6" draws only the arcs of those three words). Leave view off for a \
+point about the annotation, drawn as its CoNLL-U rows.
 '''
 
 # The UD halves of the paragraphs every app says.
@@ -93,12 +86,19 @@ SYSTEM = shared.filled(_SYSTEM, {
     'how_to_work': shared.how_to_work(),
     'find_first': shared.find_first('word', '"the word que", "the second word"'),
     'stage_now': shared.stage_now(),
+    'plan_what_was_asked': shared.plan_what_was_asked(),
     'user_values': shared.user_values('a lemma, a UPOS, a feature, a head, a relation'),
     'one_turn': shared.one_turn(),
     'in_stretches': shared.in_stretches('a parse, a lemma, a feature or a relation on every word',
                                         ' (a note on it)',
                                         'run_parse, replace_in_field, confirm'),
     'final_message': shared.final_message('words'),
+    'turn_example': shared.turn_example(
+        '"in sentence 4 the adjective hangs off the verb, it belongs to the noun"',
+        'read sentence 4, then staged one head change',
+        '1 change',
+        'The plan holds 1 change: in sentence 4 the adjective now attaches to the noun before it, as amod. '
+        'Sentence 7 has the same attachment, and I can change it too if you want.'),
     'read_budget': shared.read_budget('search, grew_search, frequency_list, worklist or check_consistency'),
     'be_concise': shared.be_concise(),
     'copy_forms': shared.copy_forms(),
@@ -116,7 +116,7 @@ CODE = shared.code_section(
 WEB = webtools.prompt(
     'what a dependency relation conventionally covers, how a construction is analyzed in the '
     'published UD documentation or in related treebanks, a reference for a claim',
-    'Citation tags are for project sentences only; link a web source as ordinary Markdown.')
+    'Citation tags are for project sentences only. Link a web source as ordinary Markdown.')
 
 
 def _values(name: str, project: UdProject) -> str:

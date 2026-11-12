@@ -40,21 +40,24 @@ PROJECT_SHAPE = '''Project shape:
 
 HOW_TO_WORK = 'How to work:'
 
-FIND_FIRST = '''- For bulk edits, first find every affected {subject}, then plan the changes. Planned changes \
-are the only way to modify data. When the user's request is ambiguous about what to change, ask before planning. \
-That includes ONE thing the user names ({one}) when more than one matches where they point, or when nothing \
-says where (no sentence named): ask which one, list the candidates with their references, and plan nothing. \
-Do not pick one yourself, and do not change them all unless the user said all. Where values differ only \
-by convention (dots, spaces, underscores, case), ask which form is the convention before planning, and plan \
-only the fields and levels the user named.'''
+FIND_FIRST = '''- For bulk edits, first find every affected {subject}, then plan the changes. Where the request is \
+ambiguous about what to change, ask before planning. Where ONE thing the user names ({one}) matches more than \
+one where they point, or nothing says where (no sentence named), ask which one, list the candidates with their \
+references, and plan nothing. Where values differ only by convention (dots, spaces, underscores, case), ask \
+which form is the convention. Change them all only where the user said all.'''
 
-STAGE_NOW = '''- Once the request is clear, STAGE the changes with the plan tools in the same turn. Never ask \
-the user to confirm in chat before staging: the staged plan is what they confirm, with Approve and Discard on \
-the plan card. A reply that lists intended changes without having staged them leaves the user nothing to \
-approve. Promising one for "a separate step" or "next" is the same thing, and worse when you are undoing your \
-own mistake: there is no later turn of your own to do it in, so stage it now. The one exception is the rest \
-of a request done in stretches (WORK IN STRETCHES), which waits until the user asks you to go on in a later \
-message.'''
+STAGE_NOW = '''- Once the request is clear, STAGE the changes with the plan tools in this turn. The staged plan is \
+what the user confirms, with Approve and Discard on its card, so stage first rather than asking in chat, and \
+stage now what you would otherwise promise for a later step. The one exception is the rest of a request done \
+in stretches (WORK IN STRETCHES), which waits until the user asks you to go on in a later message.'''
+
+# Asked to rename a value, a model also changed an entry and drafted a
+# guideline, and asked to fill 49 values, it also staged 49 links: the card is
+# approved whole, so what nobody asked for rides on what they did
+# (FABLE-REVIEW 2026-11-12).
+PLAN_WHAT_WAS_ASKED = '''- PLAN WHAT WAS ASKED, and offer the rest. The plan holds the changes the user asked for, \
+in the fields and levels they named. Anything more you notice (a link, another field, an entry, a \
+guideline, the same fix elsewhere) goes in your reply as an offer, for them to ask for in their next message.'''
 
 # Three of the benchmark's model errors of 2026-10-08 followed the data over
 # the request: the aspect of a similar sentence for the one the user named,
@@ -67,53 +70,47 @@ READ_BUDGET = '''- Do NOT read a document to answer something {tools} can answer
 at once, and reading documents one by one to count something will run out of tool calls long before it runs \
 out of corpus.'''
 
-ONE_TURN = '''- A plan lives for ONE turn and is never changed after it. The staging tools start empty on every \
-message. If a plan from an earlier message is still waiting for the user, staging anything now REPLACES it, \
-and its card can no longer be approved. plan_status lists its changes. To add to it, ask the user to approve \
-it first and plan the addition after. To change it (leave a change out, use another value, narrow it), plan \
-the whole corrected plan in this message. A message that stages nothing leaves the waiting plan as it is. \
-Count and describe ONLY what this message's plan holds. Saying "approve the plan to apply all six changes" \
-when it holds two of them promises six and delivers two.'''
+# What waiting_note, plan_status and discard_plan say at the moment it
+# matters is the rest of this (FABLE-REVIEW 2026-11-12).
+ONE_TURN = '''- A plan lives for ONE turn. Staging anything while a plan from an earlier message still waits \
+REPLACES that plan: to add to it, ask the user to approve it first, and to change it (leave a change out, \
+another value, narrower), stage the whole corrected plan in this message.'''
 
 # Asked to analyse a whole story at once, the model reasoned over every
 # sentence in one call until its output cap, four times running, and then
 # wrote one sentence 1,635 times (PROD-LOOP, 2026-11-10). The owner's rule
-# (2026-11-11): do a first stretch, say so, and offer the next. A plan per
-# stretch, each approved before the next is staged, as ONE_TURN has it. What
-# counts (ruled the same day, REV-PB-C-3): anything judged word by word or
-# phrase by phrase, so "mark every NP for accessibility" over a 41-sentence
-# story, the request that failed, is full analysis. Only one value per
-# sentence (a free translation, a note) may cover more. And again (FX-BUSY,
-# after BENCH-STRETCH): about 5 sentences, and only those are read and
-# decided. With "do the first 10 or so" glm-5.3-flash read all 20 sentences of
-# the bench text and reasoned over them before staging 10, 21,000 to 23,000
-# reasoning tokens a stretch, and once ran out of its 32,768 with nothing
-# staged. And again (2026-11-12, BENCH-STRETCH-2): one run in three read and
-# staged in fives but took "a later turn" as its next call and went on through
-# all 20 sentences, so the turn now ENDS once the first stretch is staged, in
-# the words STAGE_NOW's exception uses. And 3 of the 6 runs of two sweeps
-# stopped after five sentences though no word of either was judged
-# (`:refer-person 3` to `3rd` on the 14 nodes one search returned, a value a
-# script stripped put back), so a change that follows from one
-# rule the user gave, the same value on everything a search finds, is staged
-# whole. Picking among values word by word stays judgment even from a list the
-# user gives ("given, accessible or new" on every noun phrase, the request the
-# line exists for).
-IN_STRETCHES = '''- WORK IN STRETCHES. Work judged word by word or phrase by phrase ({full}) is done about {n} \
-sentences at a time. Asked for it over more sentences, take the first {n} or so: read, reason about and stage \
-ONLY those, not the whole document, then END YOUR TURN. The next stretch waits until the user asks you to go on \
-in a later message. Say in your reply which sentences you covered, that the request is more than you do at \
-once, and that they can ask you to go on once they approve this plan. Not limited by this: ONE value per \
-sentence{light}, a search, a count, a question about a whole document, and a single call that changes many \
-sentences ({bulk}). Nor is a change that follows from one rule the user gave, the same value on everything a \
-search finds except any they name (a misspelt value, a value a script stripped): stage it all at once. Picking a \
-value word by word is judgment, even from a list the user gives.'''
+# (2026-11-11): do a first stretch, say so, and offer the next, each approved
+# before the next is staged. What counts (REV-PB-C-3): anything judged word by
+# word, even from a list the user gives ("given, accessible or new" on every
+# noun phrase, the request that failed). About 5 sentences, read and decided
+# alone (BENCH-STRETCH: asked for 10, glm-5.3-flash read all 20 and once ran
+# out of reasoning). The turn ends once the first stretch is staged, since a
+# run went on through all 20 (BENCH-STRETCH-2), and the same value on
+# everything one search finds is staged whole, since 3 of 6 runs of two
+# sweeps stopped after five sentences (FX-STRETCH). Narrowed and cut to its
+# rule (FABLE-REVIEW 2026-11-12): the paragraph was 195 words of exceptions to
+# exceptions, and the reply it scripted ("once they approve this plan") was
+# written by a model that had staged nothing.
+IN_STRETCHES = '''- WORK IN STRETCHES. Work you judge word by word ({full}), even picking from a list the user \
+gives, is done about {n} sentences at a time: read, decide and stage the first {n} or so, then end your turn \
+and offer to go on. Done whole: the same value on everything one search finds, a single call that changes many \
+sentences ({bulk}), one value per sentence{light}, and questions.'''
 
-FINAL_MESSAGE = '''- The reply the user reads is your LAST message of the turn. Text you write beside a tool call goes \
-into the folded list of steps, which they may never open. So the last message answers every question they \
-asked in the turn, with its numbers, even where you said it before a tool call. For a turn that planned \
-changes it must also say plainly what the plan does, how many {noun} it touches, and anything uncertain, so \
-the user can decide. Do not claim anything was changed: it will only be applied if they approve.'''
+# A reply claimed a staged plan in a turn that had staged nothing: the model
+# read, reasoned, and wrote the reply the stretch rule scripted (bench
+# glm53-stretch-2, the stretch task's rep 1). Every tool result now
+# ends with the plan's state (PLAN_LINE), and the reply is taken from it.
+FINAL_MESSAGE = '''- The reply the user reads is your LAST message of the turn: text beside a tool call goes into \
+folded steps they may never open. It answers every question of the turn, with its numbers. It reports the plan \
+as the last tool result states it: how many {noun} it touches, what it does and anything uncertain, or that \
+nothing is planned. Nothing is written until the user approves.'''
+
+# One whole turn, narrated, with the reply it ends in. The prompt said in four
+# places what a turn must not be and never showed one, where for citations a
+# demonstration was what worked (FABLE-REVIEW 2026-11-12). The calls are told
+# in prose: a model shown call syntax writes calls out as text.
+TURN_EXAMPLE = '''- A WHOLE TURN, FOR EXAMPLE. Asked {asked}, you {did}. The last result ended \
+"[Plan of this turn: {held}.]", and you replied:\n\n{reply}'''
 
 BE_CONCISE = '''- Be concise and concrete. Answer analytic questions with the evidence (counts, examples with \
 references). Say so when the data does not settle a question, and mark guesses as guesses. Never name \
@@ -121,50 +118,36 @@ a tool or its arguments to the user: say what you did in their terms ("I searche
 tool did it.'''
 
 # A model writes a letter of a rare script as two tokens and can get the first
-# one wrong, so a Wancho word came out as Egyptian hieroglyphs (see
-# core/garble.py, which refuses such a value in a plan). Said in every app,
-# since every app holds language data in whatever script it is written in.
-COPY_FORMS = '''- COPY FORMS, NEVER RETYPE THEM. A word in a script you rarely saw in training can come out of your \
-typing as different letters, or in another script entirely, and nothing tells you that it did. So a form that \
-goes into a plan or a saved file is copied from the data in code (load, query, file_rows), never typed. In a \
-reply, name such a word by what it means rather than writing it out.'''
+# one wrong, so a Wancho word came out as Egyptian hieroglyphs. core/garble.py
+# refuses such a value in a plan and its refusal says how to copy it, so the
+# rule here is as narrow as that guard (FABLE-REVIEW 2026-11-12: the wider rule
+# sent a model to code to copy one word the user had typed).
+COPY_FORMS = '''- A letter of a rare script that you type can come out as another script. A plan refuses a value \
+whose rare letters appear nowhere you could have copied them from, and the refusal says how to copy it.'''
 
 # Said in every turn, attachment or none: the file tools and the note arrive
 # only with a file, so a model told nothing else answers "I can't accept file
 # uploads" to a user asking whether it can. ``{formats}`` are the app's own
-# exchange formats, which the composer takes as text.
-ATTACH_FILES = '''- The user can attach files to a message with the paperclip in the composer: .csv, .tsv, \
-.tab, .txt, .md, .json, .xml, the app's own formats ({formats}) and PDFs with a text layer (not scans), up \
-to five at a time. An attached file arrives as a note on its message, and from then on the conversation has \
-tools that read it, a PDF by section or page. Pasted text works too. A file in one of the app's own \
-formats is read as text like any other, and a whole corpus in one is imported from the app's import \
-screen, not through a plan.'''
+# exchange formats. The note that comes with a file says the rest.
+ATTACH_FILES = '''- The user can attach files with the paperclip in the composer (tables, text, the app's own formats \
+({formats}), PDFs with a text layer), and paste text. A whole corpus in one of the app's formats goes in \
+through the app's import screen, not a plan.'''
 
-CITE_EVIDENCE = '''- CITE EVIDENCE. Whenever a claim rests on particular sentences, cite them with a tag: \
-{refs} Everything ref names is highlighted in the example the user sees, so name exactly what your claim rests \
-on. The doc attribute is the document name or id exactly as the tools print it{aside}. The user sees each \
-citation as the {shown_as} with a link to it in the editor, so never paste {never_paste} yourself: cite \
-instead. Where you would show an example, put the tag ALONE on its own line at that point (the rendered \
-example appears there); a tag inside a sentence becomes a link only. Always give doc: never write a bare \
-reference like "{bare}" on its own. For instance:\n\n{example}'''
+CITE_EVIDENCE = '''- CITE EVIDENCE. Where a claim rests on particular sentences, cite them with a tag: {refs} \
+The doc attribute is the document name exactly as the tools print it{aside}. The user sees each citation as \
+the {shown_as}, linked to the editor, so cite rather than pasting {never_paste}. Put the tag ALONE on its own \
+line where you would show an example, and always give doc, as here:\n\n{example}'''
 
 # Appended to an app's system prompt only where the sandbox binary is there,
 # like the web half: a model that cannot run code is never told that it can.
+# The rest is in run_code's and code_help's descriptions.
 CODE = '''
 Running code:
-- run_code runs Python you write over a plain-data view of the project, in ONE call. Use it whenever a \
-question needs a loop, a join or a tally the reads do not offer directly: {triggers}, a count under your \
-own definition, examples that match a compound condition, or anything gathered across more than a handful \
-of documents. If you have called read_document or search three times for one question, switch to run_code.{reads} \
-Do not use it for what {outright} answer outright, and inside it use query() for a count the \
-engine can make.
-- What the code sees: documents(), load(document), query(q){functions} and plan(tool, ...), and nothing else, and it \
-can hand the user a file to download with save_file(name, content): a cleaned table to import, a list to \
-check. code_help gives their shapes, a template to start from, and worked examples. Print a summary (counts, a few refs with \
-their sentence text), never every row: output is capped. Loading every document of a large corpus takes about \
-a minute, which is fine for one call.
-- Code can stage changes through plan(...) and nothing else: the same guards apply, and nothing is written \
-until the user approves the plan card.
+- run_code runs Python over the project in ONE call, for a loop, a join or a tally the reads do not give \
+directly: {triggers}, a count under your own definition, anything across more than a handful of \
+documents.{reads} Not for what {outright} answer outright. It sees documents(), load(document), \
+query(q){functions}, plan(tool, ...) and save_file(name, content), and stages changes only through plan(...), \
+under the same guards.
 '''
 
 # A hole the prompt keeps until the project is known, so `filled` does not
@@ -221,6 +204,11 @@ def stage_now() -> str:
     return STAGE_NOW
 
 
+def plan_what_was_asked() -> str:
+    """Plan only what the user asked for, and offer the rest in the reply."""
+    return PLAN_WHAT_WAS_ASKED
+
+
 def user_values(examples: str) -> str:
     """A value the user states is the one planned, whatever the corpus
     does. ``examples`` are the kinds of value the app's user states, in the
@@ -242,10 +230,9 @@ def one_turn() -> str:
 def in_stretches(full: str, light: str, bulk: str) -> str:
     """Analyse a long request a stretch of sentences at a time, the first
     in this turn, and offer the next. ``full`` names the app's work judged
-    word by word or phrase by phrase, ``light`` the app's examples of one
-    value per sentence (" (a ..., a ...)", or "" for none), and ``bulk`` the
-    app's tools that change many sentences in one call, all in the app's own
-    words."""
+    word by word, ``light`` the app's examples of one value per sentence
+    (" (a ..., a ...)", or "" for none), and ``bulk`` the app's tools that
+    change many sentences in one call, all in the app's own words."""
     return (IN_STRETCHES.replace('{n}', str(STRETCH_SENTENCES)).replace('{full}', full)
             .replace('{light}', light).replace('{bulk}', bulk))
 
@@ -254,6 +241,13 @@ def final_message(noun: str) -> str:
     """Say what the plan does without claiming it was applied. ``noun`` is
     the app's own plural for what a plan touches."""
     return FINAL_MESSAGE.replace('{noun}', noun)
+
+
+def turn_example(asked: str, did: str, held: str, reply: str) -> str:
+    """One whole turn in the app's own terms: what the user ``asked``, what
+    the model ``did`` (in prose, no call written out), the plan the last
+    result stated (``held``) and the ``reply`` that reports it."""
+    return filled(TURN_EXAMPLE, {'asked': asked, 'did': did, 'held': held, 'reply': reply})
 
 
 def be_concise() -> str:
@@ -272,8 +266,7 @@ def attach_files(formats: str) -> str:
     return ATTACH_FILES.replace('{formats}', formats)
 
 
-def cite_evidence(*, refs: str, shown_as: str, never_paste: str, example: str, aside: str = '',
-                  bare: str = 's3.w2') -> str:
+def cite_evidence(*, refs: str, shown_as: str, never_paste: str, example: str, aside: str = '') -> str:
     """How to cite, which is the same rule everywhere and a different syntax
     in each app.
 
@@ -281,11 +274,10 @@ def cite_evidence(*, refs: str, shown_as: str, never_paste: str, example: str, a
     in a full stop. ``shown_as`` is what the user sees a citation drawn as and
     ``never_paste`` what the model must therefore not paste instead: both are
     what the app renders. ``example`` is a worked one, and ``aside`` an
-    optional clause after "exactly as the tools print it". ``bare`` is one of
-    this app's own references, shown as the thing not to write on its own.
+    optional clause after "exactly as the tools print it".
     """
     return filled(CITE_EVIDENCE, {'refs': refs, 'aside': aside, 'shown_as': shown_as,
-                                  'never_paste': never_paste, 'example': example, 'bare': bare})
+                                  'never_paste': never_paste, 'example': example})
 
 
 def code_section(*, triggers: str, outright: str, functions: str = '', reads: str = '') -> str:

@@ -76,6 +76,12 @@ _FIELDS = {'type': 'array', 'items': {'type': 'string'},
 
 _REFS = {'type': 'array', 'items': {'type': 'string'},
          'description': 'Positional references, e.g. ["s3.w2", "s3.w4"]. Words are sN.wN, morphemes sN.wN.mN, sentences sN.'}
+# The baseline is the user's own transcription. Said where a tool rewrites
+# it, where the prompt said it on every call of every turn and these tools
+# were called once in 182 recorded runs (FABLE-REVIEW 2026-11-12).
+_BASELINE = (' The baseline is the user\'s own transcription: plan this only for a change to the text they asked '
+             'for, never to tidy it for an analysis (the project already ignores punctuation when it tokenizes).')
+
 _MORPHEMES = {'type': 'array', 'items': {'type': 'object', 'properties': {
     'form': {'type': 'string'}, 'type': {'type': 'string'},
     'equals': {'type': 'boolean', 'description': 'A "=" before this morpheme (true) or not (false). '
@@ -185,7 +191,8 @@ TOOLS = [
     _fn('respell',
         'PLAN: change the BASELINE spelling of one word (its analysis, glosses, and links are kept; a lone '
         'morpheme form spelt like the word follows it unless morpheme_forms=false). For an alternative '
-        'transcription tier use set_orthography. Every word matching a pattern, in one call: respell_all.',
+        'transcription tier use set_orthography. Every word matching a pattern, in one call: respell_all.'
+        + _BASELINE,
         {'document': _DOC, 'ref': {'type': 'string', 'description': 'The word, sN.wN.'}, 'new_text': {'type': 'string'},
          'morpheme_forms': {'type': 'boolean'}},
         ['document', 'ref', 'new_text']),
@@ -218,7 +225,9 @@ TOOLS = [
         'PLAN: add a lexicon entry. fields maps entry field names (e.g. "gloss", "pos") to values; type is the '
         'morph type (stem, suffix, enclitic, ...); a form written with markers (-s, ka-, =ri) is stored without '
         'them, and takes their type when no type is given. The returned entry_id can be used by link_entry in the same '
-        'plan. Use senses for a sense of an existing entry.',
+        'plan. Use senses for a sense of an existing entry. Many entries from a table (a dictionary export, a '
+        'word list of hundreds of rows) go in through Bulk Add on the lexicon\'s page as they are, not through '
+        'this, and are tidied after with the lexicon tools.',
         {'form': {'type': 'string'}, 'lexicon': {'type': 'string'},
          'fields': {'type': 'object', 'additionalProperties': {'type': 'string'}}, 'type': {'type': 'string'}},
         ['form']),
@@ -423,7 +432,7 @@ TOOLS += [
         'word\'s analysis, glosses, and links. The same replacement is carried into the stored morpheme forms of '
         'those words (morpheme_forms=false to leave them). Lexicon headwords are left as they are unless lexicon=true '
         '(then the pattern is applied to every entry, not only linked ones: ask the user first, a lexicon can be '
-        'shared). Patterns apply within words only.',
+        'shared). Patterns apply within words only.' + _BASELINE,
         {'pattern': {'type': 'string'}, 'replacement': _REGEX_REPLACEMENT, 'regex': {'type': 'boolean'}, 'case_sensitive': {'type': 'boolean', 'description': 'Match case too (off by default: "ar" finds "Ar").'},
          'whole': {'type': 'boolean', 'description': 'Match the whole word only.'}, 'document': _DOC, 'morpheme_forms': {'type': 'boolean'},
          'lexicon': {'type': 'boolean'}}, ['pattern', 'replacement']),
@@ -499,7 +508,8 @@ TOOLS += [
         'spelling, a word all of whose letters change or go loses it, and new words start unanalyzed. When a '
         'respelled word is a '
         'different word, its old analysis is wrong: tell the user, and once the retype is applied, plan its new '
-        'analysis. The sentence\'s own fields stay. Newlines in the new text split it into several sentences.',
+        'analysis. The sentence\'s own fields stay. Newlines in the new text split it into several sentences.'
+        + _BASELINE,
         {'document': _DOC, 'ref': {'type': 'string', 'description': 'The sentence, sN.'}, 'text': {'type': 'string'}},
         ['document', 'ref', 'text']),
 ]

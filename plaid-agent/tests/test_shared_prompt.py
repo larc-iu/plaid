@@ -23,8 +23,9 @@ from plaid_agent.umr import prompt as umr_prompt  # noqa: E402
 # Every paragraph `core.prompt` owns, as the template it keeps, so a hole an
 # app fills is not compared and everything around it is.
 SHARED = [shared.PLAN_CONTRACT, shared.PROJECT_SHAPE, shared.HOW_TO_WORK, shared.FIND_FIRST,
-          shared.STAGE_NOW, shared.ONE_TURN, shared.IN_STRETCHES, shared.FINAL_MESSAGE, shared.READ_BUDGET,
-          shared.BE_CONCISE, shared.ATTACH_FILES, shared.CITE_EVIDENCE]
+          shared.STAGE_NOW, shared.PLAN_WHAT_WAS_ASKED, shared.ONE_TURN, shared.IN_STRETCHES,
+          shared.FINAL_MESSAGE, shared.TURN_EXAMPLE, shared.READ_BUDGET, shared.BE_CONCISE, shared.COPY_FORMS,
+          shared.ATTACH_FILES, shared.CITE_EVIDENCE]
 
 
 def _fragments(template: str):
@@ -93,72 +94,95 @@ def test_every_prompt_says_to_ask_which_one_and_that_only_the_last_message_is_re
     2026-10-10). Each app names one thing in its own terms."""
     for app, text in _built().items():
         assert 'ask which one, list the candidates with their references, and plan nothing' in text, app
-        assert 'The reply the user reads is your LAST message of the turn.' in text, app
+        assert 'The reply the user reads is your LAST message of the turn:' in text, app
         assert re.search(r'ONE thing the user names \("[^"]+", "[^"]+"\)', text), app
 
 
 def test_every_prompt_says_how_much_to_analyse_at_once_and_what_that_leaves_alone():
     """PROD-LOOP: asked to analyse a whole story at once, the model ran to its
-    output cap four times running. The owner's rule (2026-11-11): about ten
-    sentences of full analysis a turn, the first stretch staged and the next
-    offered, which leaves reads and the tools that change many sentences in
-    one call alone. Ruled again the same day (REV-PB-C-3): anything judged
-    word by word or phrase by phrase is full analysis, the request that
-    failed on prod ("mark every NP for accessibility") among it, and only one
-    value per sentence, such as a free translation or a note, may cover
-    more. And again (FX-BUSY 2): about 5 sentences, and the model reads and
-    decides only those. Run on glm-5.3-flash it read all 20 sentences of the
-    bench text and reasoned over them before staging 10, 21,000 to 23,000
-    reasoning tokens a stretch, and once ran out of its 32,768 with nothing
-    staged (BENCH-STRETCH). And again (2026-11-12, after BENCH-STRETCH-2): the
-    turn ends once the first stretch is staged, since one run in three read
-    and staged in fives and went on through all 20 sentences in the same
-    turn, and a change that follows from one rule the user gave, the same
-    value on everything a search finds, is staged all at once, since 3 of 6
-    umr runs stopped after five sentences of such a sweep (`:refer-person 3`
-    to `3rd` on 14 nodes one search returned). Picking a value word by word
-    stays judgment even from a list the user gives, so the request the line
-    exists for ("given, accessible or new" on every noun phrase) is still
-    done in stretches."""
+    output cap four times running. The owner's rule (2026-11-11): a first
+    stretch staged and the next offered, anything judged word by word counted
+    (REV-PB-C-3), about 5 sentences read and decided alone (FX-BUSY 2), the
+    turn ended once the first stretch is staged (BENCH-STRETCH-2), and the
+    same value on everything one search finds staged whole (FX-STRETCH 1).
+    Picking from a list the user gives stays judgment. Narrowed to its rule
+    (FABLE-REVIEW 2026-11-12): 195 words of exceptions to exceptions became
+    one rule and one list of what is done whole, and the reply it scripted
+    ("once they approve this plan") went, as a model that had staged nothing
+    wrote it."""
     from plaid_agent.core.limits import STRETCH_SENTENCES
     full = {'igt': 'segmenting and glossing, marking every noun phrase, a field on every word',
             'ud': 'a parse, a lemma, a feature or a relation on every word',
             'umr': 'a sentence graph, an attribute on every event or entity'}
-    light = {'igt': 'Not limited by this: ONE value per sentence (a free translation, a note), a search',
-             'ud': 'Not limited by this: ONE value per sentence (a note on it), a search',
-             'umr': 'Not limited by this: ONE value per sentence, a search'}
+    light = {'igt': 'one value per sentence (a free translation, a note)',
+             'ud': 'one value per sentence (a note on it)',
+             'umr': 'one value per sentence, and questions'}
     bulk = {'igt': 'replace_in_field', 'ud': 'replace_in_field', 'umr': 'set_attribute_for_concept'}
+    assert STRETCH_SENTENCES == 5, 'the owner\'s figure (2026-11-11, after BENCH-STRETCH)'
     for app, text in _built().items():
         line = next(x for x in text.splitlines() if x.startswith('- WORK IN STRETCHES.'))
-        assert f'Work judged word by word or phrase by phrase ({full[app]}) is done about ' \
-               f'{STRETCH_SENTENCES} sentences at a time' in line, app
-        assert STRETCH_SENTENCES == 5, 'the owner\'s figure (2026-11-11, after BENCH-STRETCH)'
-        assert f'take the first {STRETCH_SENTENCES} or so: read, reason about and stage ONLY those, not the ' \
-               'whole document, then END YOUR TURN.' in line, app
-        assert 'The next stretch waits until the user asks you to go on in a later message.' in line, app
+        assert f'Work you judge word by word ({full[app]}), even picking from a list the user gives, is done ' \
+               f'about {STRETCH_SENTENCES} sentences at a time' in line, app
+        assert f'read, decide and stage the first {STRETCH_SENTENCES} or so, then end your turn and offer to ' \
+               'go on.' in line, app
+        assert 'Done whole: the same value on everything one search finds' in line, app
+        assert light[app] in line and bulk[app] in line, app
         assert not re.search(r'\b(?:10|ten)\b', line), app
-        assert 'once they approve this plan' in line, 'a plan per stretch, as ONE_TURN has it'
-        assert light[app] in line, app
-        # Nothing judged per word reads as light work any more.
-        for word in ('Lighter', 'one field', 'one column', 'one attribute'):
-            assert word not in line, (app, word)
-        assert bulk[app] in line and 'a question about a whole document' in line, app
-        # The exemption for one rule over a search, and what it never covers.
-        assert 'Nor is a change that follows from one rule the user gave, the same value on everything a ' \
-               'search finds except any they name' in line, app
-        assert 'stage it all at once.' in line, app
-        assert line.endswith('Picking a value word by word is judgment, even from a list the user gives.'), app
-        # Next to the rule it must agree with.
+        # No reply is scripted: what the reply says of the plan is FINAL_MESSAGE's, from the last result.
+        assert 'approve this plan' not in line and 'in your reply' not in line, app
+        assert len(line.split()) < 90, (app, len(line.split()))
         assert text.index('A plan lives for ONE turn') < text.index('- WORK IN STRETCHES.'), app
 
 
 def test_staging_now_and_working_in_stretches_agree():
-    """STAGE_NOW says there is no later turn to do a promised change in, and
-    WORK IN STRETCHES leaves the rest of a long request for the user to ask
-    for: the one says the other is its exception (REV-PB-C, S5)."""
+    """STAGE_NOW says to stage now rather than promise, and WORK IN STRETCHES
+    leaves the rest of a long request for the user to ask for: the one says
+    the other is its exception (REV-PB-C, S5)."""
     for app, text in _built().items():
         stage = next(x for x in text.splitlines() if x.startswith('- Once the request is clear, STAGE'))
-        assert stage.endswith('so stage it now. The one exception is the rest of a request done in '
-                              'stretches (WORK IN STRETCHES), which waits until the user asks you to go on in a '
-                              'later message.'), app
+        assert stage.endswith('The one exception is the rest of a request done in stretches (WORK IN '
+                              'STRETCHES), which waits until the user asks you to go on in a later message.'), app
         assert text.index(stage) < text.index('- WORK IN STRETCHES.'), app
+
+
+def test_every_prompt_says_to_plan_what_was_asked_and_offer_the_rest():
+    """Asked to gloss 49 morphemes, a model also linked 49 to the lexicon, and
+    asked to rename a gloss, it also changed a lexicon sense and drafted a
+    guideline: the card is approved whole (FABLE-REVIEW 2026-11-12)."""
+    for app, text in _built().items():
+        assert '- PLAN WHAT WAS ASKED, and offer the rest.' in text, app
+        assert 'goes in your reply as an offer' in text, app
+        assert text.index('- PLAN WHAT WAS ASKED') < text.index('- WORK IN STRETCHES.'), app
+
+
+def test_every_prompt_drafts_a_guideline_only_when_asked():
+    """The owner's ruling (2026-11-12): the assistant drafts a guideline only
+    when the user asks for one, and offers in its reply when the user states a
+    project-wide convention. It never stages one unasked."""
+    from plaid_agent.core.guidelines import EMPTY_SECTION, HELP, section, Guideline
+    for app, text in _built().items():
+        assert 'even though they did not ask' not in text, app
+        assert 'Write or change a guideline only when the user asks you to.' in text, app
+        assert 'offer in your reply to write it into the guidelines, and stage nothing for it' in text, app
+    for words in (EMPTY_SECTION, section([Guideline(id='g', title='T', body='b')]), HELP):
+        assert 'even if they did not ask' not in words and 'even though they did not ask' not in words
+    assert 'when the user asks for one' in HELP
+
+
+def test_every_prompt_shows_one_whole_turn_whose_reply_reports_the_plan_line():
+    """The prompt said in four places what a turn must not be and never showed
+    one. The example's reply reports the plan as the plan line states it
+    (core.plan.plan_line), and names no tool."""
+    import re as _re
+    from plaid_agent.igt.toolkit import TOOLS as IGT
+    from plaid_agent.ud.toolkit import TOOLS as UD
+    from plaid_agent.umr.toolkit import TOOLS as UMR
+    names = {'igt': IGT, 'ud': UD, 'umr': UMR}
+    for app, text in _built().items():
+        start = text.index('- A WHOLE TURN, FOR EXAMPLE.')
+        block = text[start:text.index('\n- ', start + 1)]
+        held = _re.search(r'"\[Plan of this turn: (\d+) changes?\.\]"', block).group(1)
+        reply = block.split('and you replied:\n\n', 1)[1]
+        assert f'the plan holds {held} change' in reply.lower(), app
+        for t in names[app]:
+            assert t['function']['name'] not in reply, (app, t['function']['name'])
