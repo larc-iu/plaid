@@ -75,9 +75,15 @@ describe('runRecord', () => {
     expect(readRunRecord('doc-1')).not.toBe(null);
   });
 
-  it('writes nothing without an id to point at', () => {
-    writeRunRecord('doc-1', { projectId: 'p', label: 'Tokenize' });
-    expect(readRunRecord('doc-1')).toBe(null);
+  // REV-RUN-3: Auto-analyze left during a built-in step has no request to
+  // rejoin, and the page that comes back still says what did not run.
+  it('keeps a record with nothing to rejoin, which names the steps that did not run', () => {
+    writeRunRecord('doc-1', { projectId: 'p', label: 'Auto-analyze', stepsAfter: ['Link'] });
+    expect(readRunRecord('doc-1')).toMatchObject({
+      requestId: null,
+      label: 'Auto-analyze',
+      stepsAfter: ['Link'],
+    });
   });
 
   it('treats a malformed or half-written record as no record', () => {

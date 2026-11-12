@@ -39,6 +39,13 @@ export function useResumedRun(client, doc, acquireWriteLock, notices = {}) {
     // they did not run.
     const notRun = Array.isArray(record.stepsAfter) ? record.stepsAfter : [];
     const after = notRun.length ? `${andList(notRun)} did not run.` : '';
+    // Nothing to rejoin: the run stopped in this browser, and only what did
+    // not run is left to say.
+    if (!record.requestId) {
+      if (after) notifyWarning(after, record.label);
+      clearRunRecord(documentId);
+      return;
+    }
 
     // The record's start, so the banner's clock counts the whole run and not
     // just the time since the reload. What it knows is one step, the one in

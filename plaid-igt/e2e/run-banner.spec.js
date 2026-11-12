@@ -111,15 +111,13 @@ const toastsOver = async (page, ms) => {
   return [...seen];
 };
 
-const open = async (page) => {
+// Translate, then link, by default. No analysis service is online here.
+const open = async (page, steps = { translate: true, copy: false, analyze: true, link: true }) => {
   if (page.url() !== 'about:blank') await page.goto('about:blank');
   await seedAuth(page);
-  // Translate, then link. No analysis service is online here.
-  await page.addInitScript(() =>
-    localStorage.setItem(
-      'plaid_igt_auto_analyze_steps',
-      JSON.stringify({ translate: true, copy: false, analyze: true, link: true }),
-    ),
+  await page.addInitScript(
+    (chosen) => localStorage.setItem('plaid_igt_auto_analyze_steps', JSON.stringify(chosen)),
+    steps,
   );
   await page.goto(`/#/projects/${projectId}/documents/${documentId}?tab=analyze`);
   await page.locator('.igt-island .igt-token-col').first().waitFor({ state: 'visible' });
@@ -233,6 +231,39 @@ test('a step that fails while the document is away is said once, as a failure, o
     { timeout: 15000 },
   );
   await expect(banner(page)).toHaveCount(0, { timeout: 15000 });
+});
+
+// REV-RUN-3: leaving during a built-in step said "Stopped partway" on the
+// page the person went to, and nothing on the document. The copy step's read
+// of the project's analyses is held here, so the step is in flight.
+test('a built-in step left in flight says nothing away, and coming back names the steps that did not run', async ({
+  page,
+}) => {
+  await open(page, { translate: false, copy: true, analyze: false, link: true });
+  let release;
+  const released = new Promise((r) => (release = r));
+  let reads = 0;
+  await page.route('**/api/v1/query**', async (route) => {
+    reads += 1;
+    await released;
+    await route.continue();
+  });
+  await opener(page).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Run', exact: true }).click();
+  await expect(banner(page)).toContainText('Copy previous analyses');
+  await waitFor(() => reads > 0, "the copy step's read");
+
+  await page.goto(`/#/projects/${projectId}`);
+  await expect(banner(page)).toHaveCount(0);
+  release();
+  expect(await toastsOver(page, 3000)).toEqual([]);
+
+  await page.goto(`/#/projects/${projectId}/documents/${documentId}?tab=analyze`);
+  await expect(toasts(page)).toHaveText([/^Auto-analyze\s*Link to the lexicon did not run\.$/], {
+    timeout: 15000,
+  });
+  await expect(banner(page)).toHaveCount(0);
+  await page.unroute('**/api/v1/query**');
 });
 
 test('reloading mid-run asks first, and the reloaded page rejoins the run', async ({ page }) => {

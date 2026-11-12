@@ -219,6 +219,29 @@ describe('useResumedRun', () => {
     expect(notify.notifyError).not.toHaveBeenCalled();
   });
 
+  // REV-RUN-3: Auto-analyze left during a built-in step, or between steps,
+  // has nothing to rejoin. Its record says only what did not run.
+  it('names the steps that did not run from a record with nothing to rejoin', async () => {
+    writeRunRecord('d1', {
+      projectId: 'p1',
+      label: 'Auto-analyze',
+      stepsAfter: ['Propose segmentation and glosses', 'Link to the lexicon'],
+    });
+    const acquire = vi.fn();
+    const Probe = () => {
+      useResumedRun({}, { id: 'd1', _reload: async () => {} }, acquire);
+      return null;
+    };
+    const view = await renderComponent(<Probe />);
+    await view.unmount();
+    expect(acquire).not.toHaveBeenCalled();
+    expect(notify.notifyWarning).toHaveBeenCalledWith(
+      'Propose segmentation and glosses and Link to the lexicon did not run.',
+      'Auto-analyze',
+    );
+    expect(readRunRecord('d1')).toBe(null);
+  });
+
   it('says a stopped run stopped, whatever its counts', async () => {
     await rejoin({ stopped: true, drafted: 0 });
     expect(notify.notifyInfo).toHaveBeenCalled();

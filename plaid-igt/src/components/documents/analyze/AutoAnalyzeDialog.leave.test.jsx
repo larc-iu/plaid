@@ -119,11 +119,71 @@ describe('Auto-analyze when its document is left', () => {
     await tick();
     await tick();
     expect(requestService).not.toHaveBeenCalled();
-    const { notifyInfo } = await import('@/utils/feedback');
-    expect(notifyInfo).toHaveBeenCalledWith(
-      'Stopped partway. What ran before the stop is in the document.',
-      'Auto-analyze',
-    );
+    // REV-RUN-3: nothing said on the page the person went to. The page that
+    // comes back to the document says which steps did not run, from a record
+    // with nothing to rejoin.
+    const feedback = await import('@/utils/feedback');
+    for (const say of ['notifySuccess', 'notifyError', 'notifyInfo', 'notifyWarning']) {
+      expect(feedback[say]).not.toHaveBeenCalled();
+    }
+    const record = readRunRecord('d1');
+    expect(record).toMatchObject({
+      label: 'Auto-analyze',
+      stepsAfter: ['Propose segmentation and glosses'],
+    });
+    expect(record.requestId ?? null).toBe(null);
+  });
+
+  it('keeps a record of the steps after a built-in step while it runs, for a reload', async () => {
+    steps({ copy: true, analyze: true });
+    const gate = deferred();
+    runBuiltinAnalysis.mockImplementation(async () => {
+      await gate.promise;
+      return { ok: true, copied: 0 };
+    });
+    requestService.mockResolvedValue({});
+    const view = await renderComponent(<Page />);
+    await view.step(() => view.container.querySelector('[data-run]').click());
+    expect(readRunRecord('d1')).toMatchObject({
+      stepsAfter: ['Propose segmentation and glosses'],
+    });
+    gate.resolve();
+    await view.step(tick);
+    expect(readRunRecord('d1')).toBe(null);
+    await view.unmount();
+  });
+
+  it('names the steps after a service step when it is left while the results load', async () => {
+    steps({ translate: true, copy: true, analyze: true });
+    const loaded = deferred();
+    doc.reload.mockImplementationOnce(() => loaded.promise);
+    requestService.mockImplementation(async (_p, _d, _s, _args, { onRequestId }) => {
+      onRequestId('req-1');
+      return { sentencesWritten: 1 };
+    });
+    runBuiltinAnalysis.mockResolvedValue({ ok: true, copied: 0 });
+    const view = await renderComponent(<Page />);
+    await view.step(() => view.container.querySelector('[data-run]').click());
+    await view.step(tick);
+    expect(doc.reload).toHaveBeenCalledTimes(1);
+
+    await view.unmount();
+    await tick();
+    loaded.resolve();
+    await tick();
+    await tick();
+    expect(runBuiltinAnalysis).not.toHaveBeenCalled();
+    // The step's own end was said while the person was there. What is left
+    // to say is what did not run.
+    const record = readRunRecord('d1');
+    expect(record).toMatchObject({
+      stepsAfter: ['Copy previous analyses', 'Propose segmentation and glosses'],
+    });
+    expect(record.requestId ?? null).toBe(null);
+    const feedback = await import('@/utils/feedback');
+    for (const say of ['notifySuccess', 'notifyError', 'notifyInfo', 'notifyWarning']) {
+      expect(feedback[say]).not.toHaveBeenCalled();
+    }
   });
 
   it('leaves a service step to finish, keeps its record and starts no later step', async () => {

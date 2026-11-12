@@ -55,18 +55,20 @@ export function __resetUnloadingForTests() {
 // ordering (Auto-analyze): rejoining reaches the step that was in flight and
 // NOT the steps after it, which the resume names as not run.
 // `step` names that step, for the resume to say it failed by its name.
+// A record with no `requestId` has nothing to rejoin: Auto-analyze left during
+// a built-in step or between steps, whose `stepsAfter` did not run.
 // `task` is the run's task (TASKS), by which a rejoined run finds the app's
 // words for its result's counts (useResumedRun).
 export function writeRunRecord(
   documentId,
   { requestId, projectId, label, task = null, step = null, stepsAfter = [] },
 ) {
-  if (!documentId || !requestId) return;
+  if (!documentId) return;
   try {
     localStorage.setItem(
       key(documentId),
       JSON.stringify({
-        requestId,
+        requestId: requestId ?? null,
         projectId,
         label,
         task,
@@ -86,7 +88,7 @@ export function readRunRecord(documentId) {
     const raw = localStorage.getItem(key(documentId));
     if (!raw) return null;
     const rec = JSON.parse(raw);
-    if (!rec?.requestId || !rec?.projectId) return null;
+    if (!rec?.projectId) return null;
     return rec;
   } catch {
     return null;

@@ -167,9 +167,21 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc }) => {
     // run then stops after the step in flight (Luke, 2026-11-12): a built-in
     // step at its next checkpoint, a service step left to finish on the
     // server, its record kept for the page that comes back to rejoin. No
-    // later step starts.
+    // later step starts. Nothing is said on the page the person went to.
     let left = false;
     const halted = () => stopRef.current || left;
+    // The plan index of the step in flight, and whether it is a service step
+    // whose request is out.
+    let current = 0;
+    let serviceOut = false;
+    // What the page that comes back says when there is nothing to rejoin (a
+    // built-in step, or between steps): the steps from plan index `from` on
+    // did not run (REV-RUN-3). None left, no record.
+    const notRunFrom = (from) => {
+      const stepsAfter = plan.slice(from).map((p) => p.label);
+      if (!stepsAfter.length) return clearRunRecord(doc.id);
+      writeRunRecord(doc.id, { projectId: project.id, label: 'Auto-analyze', stepsAfter });
+    };
     // Held for the whole run: four steps of writes with a reload after each.
     // The banner over the document shows the run: its steps, the one it is
     // on and what the worker says.
@@ -177,13 +189,25 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc }) => {
       onCancel: stopRun,
       onLeave: () => {
         left = true;
+        // A service step's own record is for the page that comes back to
+        // rejoin. Anywhere else, the step in flight is the last that ran.
+        if (!serviceOut) notRunFrom(current + 1);
       },
       steps: plan.map((p) => p.label),
     });
     if (!lock) return;
     // Started: the banner shows it from here, and has its Stop.
     onOpenChange(false);
-    const at = (key) => lock.step(plan.findIndex((p) => p.key === key));
+    const at = (key) => {
+      current = plan.findIndex((p) => p.key === key);
+      lock.step(current);
+    };
+    // A built-in step dies with its page, so a reload while it runs finds
+    // this record and says which steps did not run. Cleared once it is done.
+    const builtinStep = (key) => {
+      at(key);
+      notRunFrom(current + 1);
+    };
     // What a step reports, built-in or service.
     const onProgress = lock.onProgress;
     // Only the step in flight can be rejoined: the ordering happens here, in
@@ -201,6 +225,14 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc }) => {
     // A service step's request says nothing once the document has been left:
     // the page that comes back rejoins it and says how it went (REV-RUN-1).
     const quiet = () => left;
+    const ask = async (...args) => {
+      serviceOut = true;
+      try {
+        return await requestService(...args);
+      } finally {
+        serviceOut = false;
+      }
+    };
     const info = doc.layerInfo;
     let stillOut = false; // the request survived our giving up on it
     // Whether anything actually landed. A run where every sentence failed still
@@ -226,24 +258,27 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc }) => {
     // hook has already said so, hence no toast of our own.
     const stopped = (result) => result?.stopped === true;
     // A stop noticed anywhere else has nobody else to report it: a built-in
-    // step's checkpoint, or between steps while a reload was in flight. The
-    // same when the document was left there, since no page will rejoin it.
-    const halt = () =>
+    // step's checkpoint, or between steps while a reload was in flight. A
+    // run stopped by leaving is said by the page that comes back.
+    const halt = () => {
+      if (left) return;
       notifyInfo('Stopped partway. What ran before the stop is in the document.', 'Auto-analyze');
+    };
     // A reload after each service step costs seconds on a large document and
     // shows nothing while it runs, so it gets its own line rather than a pause.
     const reload = async () => {
       onProgress({ percent: null, message: 'Loading results…' });
       await reloadAfterRun(() => doc.reload());
       // The step is done and collected; nothing left for a reload to rejoin.
-      clearRunRecord(doc.id);
+      // Left meanwhile, the record says what did not run (onLeave).
+      if (!left) clearRunRecord(doc.id);
     };
     try {
       // 1. translate (service)
       if (translateOn) {
         at('translate');
         const service = translateSpot.service;
-        const result = await requestService(
+        const result = await ask(
           project.id,
           doc.id,
           service.serviceId,
@@ -275,7 +310,7 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc }) => {
       // precedent cannot answer.
       let copiedWordIds = [];
       if (steps.copy) {
-        at('copy');
+        builtinStep('copy');
         const {
           copied,
           copiedWordIds: ids,
@@ -296,6 +331,7 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc }) => {
         });
         if (!ok) return; // the domain layer toasted the failure
         if (wasStopped) return halt();
+        if (!left) clearRunRecord(doc.id);
         copiedWordIds = ids || [];
         if (copied) {
           parts.push(`copied previous analyses onto ${countOf(copied, 'word')}`);
@@ -307,7 +343,7 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc }) => {
       if (analyzeOn) {
         at('analyze');
         const service = analyzeSpot.service;
-        const result = await requestService(
+        const result = await ask(
           project.id,
           doc.id,
           service.serviceId,
@@ -339,8 +375,8 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc }) => {
       if (halted()) return halt();
       // 4. link to the lexicon
       if (linkOn) {
-        at('link');
         if (linkSpot.isBuiltin) {
+          builtinStep('link');
           const {
             linked,
             ok,
@@ -361,8 +397,9 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc }) => {
             wrote = true;
           }
         } else {
+          at('link');
           const service = linkSpot.service;
-          const result = await requestService(
+          const result = await ask(
             project.id,
             doc.id,
             service.serviceId,
@@ -389,6 +426,7 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc }) => {
           wrote = true;
         }
       }
+      if (left) return;
       const { level, title, message } = partsNotice({ parts, wrote });
       (level === 'success' ? notifySuccess : notifyWarning)(message, title);
     } catch (err) {
