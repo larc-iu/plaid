@@ -1201,10 +1201,12 @@ export const VocabularyDetail = () => {
                       )}
                     </td>
                     <td className="px-3 py-1.5">
-                      {/* name-ok: A15 built-in entry key */}
+                      {/* The field holding the Status role keeps it. Morph type
+                          and a reference field take no role, as they take no
+                          tagset (`takesTagset`). */}
                       {field.name === statusKey ? (
                         <span className="text-xs text-muted-foreground">Status</span>
-                      ) : field.name !== 'morphType' && !isRef ? (
+                      ) : takesTagset ? (
                         <Select
                           value={field.role ?? NO_ROLE}
                           onValueChange={(v) => handleSetRole(field.name, v)}
