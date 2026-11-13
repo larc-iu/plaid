@@ -55,7 +55,7 @@ from .plan import PlanOutOfDate, check_entries, execute_plan
 from .project import IgtProject, Sentence, Word, is_virtual, load_project, render_sentence
 from .prompt import JOB_SYSTEM, build_job_prompt
 from .trace import TRACER
-from .vocab import ROLE_GLOSS, ROLE_STATUS
+from .vocab import ROLE_GLOSS, ROLE_STATUS, parent_of
 from .workspace import Workspace
 
 logger = logging.getLogger(__name__)
@@ -108,6 +108,9 @@ MADE_FORM = ' made '
 #: Why a create is a proposed change and not applied, as its change says:
 #: the job made this entry before, and it is gone or no longer reads so.
 ENTRY_GONE = 'This job made this entry before, and it was deleted or changed since.'
+#: Why a selection's create is a proposed change: an entry of someone else's
+#: that fits it was made after the piece staged it, and nobody chose it.
+ENTRY_EXISTS = 'An entry of this form and gloss was made during the job.'
 #: How the plan cuts the work (``plan_work``'s ``pieces``).
 SENTENCES, DOCUMENT, SELECTION = 'sentences', 'document', 'selection'
 #: Why a document of a selection is worked as a piece of its own: the
@@ -713,13 +716,31 @@ def _entry_gloss(item: Dict[str, Any], gloss: Optional[str]) -> str:
     return _nfc((item.get('metadata') or {}).get(gloss)) if gloss else ''
 
 
+def _morph_type(item: Dict[str, Any], by_id: Dict[str, Dict[str, Any]]) -> Optional[str]:
+    """The morph type an entry goes by: its own (the reserved key
+    ``morphType``), else its headword's, else None. ``morph_type_of``'s rule,
+    for items that may be staged creates with no id."""
+    seen, cur = set(), item
+    while cur is not None and id(cur) not in seen:
+        seen.add(id(cur))
+        t = (cur.get('metadata') or {}).get('morphType')
+        if isinstance(t, str) and t:
+            return t
+        cur = by_id.get(parent_of({'metadata': cur.get('metadata') or {}}) or '')
+    return None
+
+
 def fitting_entry(v: Dict[str, Any], items: List[Dict[str, Any]], op: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     """The first of ``items`` (entries of lexicon ``v``) that fits the
-    create ``op``: the same form and gloss, after NFC (SPEC 7.2). No entry is
-    created where one fits, made by anyone, of any status."""
+    create ``op``: the same form, gloss and morph type, after NFC (SPEC 7.2,
+    the type since REV-JG3-8: a suffix -ka 'go' is not the stem ka 'go'). No
+    entry is created where one fits, made by anyone, of any status."""
     gloss = IgtProject.lexicon_field(v, ROLE_GLOSS)
     form, value = _nfc(op.get('form')), _entry_gloss(op, gloss)
-    return next((it for it in items if _nfc(it.get('form')) == form and _entry_gloss(it, gloss) == value), None)
+    by_id = {it['id']: it for it in items if it.get('id')}
+    kind = _morph_type(op, by_id)
+    return next((it for it in items if _nfc(it.get('form')) == form and _entry_gloss(it, gloss) == value
+                 and _morph_type(it, by_id) == kind), None)
 
 
 def entry_key(v: Dict[str, Any], op: Dict[str, Any]) -> str:
@@ -728,7 +749,7 @@ def entry_key(v: Dict[str, Any], op: Dict[str, Any]) -> str:
     compares, its lexicon, form and gloss after NFC."""
     gloss = IgtProject.lexicon_field(v, ROLE_GLOSS)
     return analysis_key(canonical({'lexicon': v['id'], 'form': _nfc(op.get('form')),
-                                   'gloss': _entry_gloss(op, gloss)}))
+                                   'gloss': _entry_gloss(op, gloss), 'type': _morph_type(op, {})}))
 
 
 # --- the runner --------------------------------------------------------------------
@@ -1219,6 +1240,10 @@ class IgtRunner:
                 staged = core_job.through_core(job, lambda: self.selection_work(project, live),
                                                gave_up=lambda: None)
                 if staged is None:
+                    # Core's trouble outlasted the piece's tries: the walk
+                    # works the documents, and the report's plan says so
+                    # when core takes the row (REV-JG3-9).
+                    core_job.through_core(job, lambda: self.fall_back(SELECTION, 'failed'), gave_up=lambda: None)
                     return False
                 break
             except (JobStopped, Deferred, Gone):
@@ -1240,6 +1265,10 @@ class IgtRunner:
                 self.fall_back(SELECTION, 'failed')
                 return False
         ws, note = staged
+        # The piece's note and tables, tried again on their own: a passing
+        # error on their row never runs the model context again (REV-JG3-9).
+        core_job.through_core(job, lambda: self.record_piece(
+            project, {'document': None, 'first': None, 'whole': True}, note, ws.tables))
         by_doc = self.ops_by_document(ws, live)
         # Changes no document holds (a guideline, a setting) go with the
         # first document's write, and are proposed there.
@@ -1310,8 +1339,11 @@ class IgtRunner:
         before any piece's write (a stretch, a document, a selection):
 
         * no entry is created where one fits now (``fitting_entry``, the rule
-          ``fit_guard`` holds at staging): such a create is left out and every
-          link naming it names the entry there. So the entry a selection
+          ``fit_guard`` holds at staging). When the entry there is the job's
+          own, the create is left out and every link naming it names that
+          entry. When it is someone else's, made after the piece staged the
+          create, the create is marked (:data:`ENTRY_EXISTS`) and proposed
+          with its links: nobody chose that entry. So the entry a selection
           links in several documents is created with the first document
           written, and the others link it, even when that write landed and
           the job was then taken up again (REV-JG2-2);
@@ -1337,24 +1369,29 @@ class IgtRunner:
             return ops
         ws = Workspace(self.job.client(), project)
         found: Dict[str, str] = {}
-        gone: set = set()
+        why: Dict[str, str] = {}
         for o in creates:
             v = vocab.get(o.get('vocab_id'))
             if v is None:
                 continue
             item = fitting_entry(v, ws.lexicon(v), o)
-            if item is not None:
+            if item is not None and _job_of(item.get('metadata')) == self.job.id:
                 found[o.get('key')] = item['id']
+            elif item is not None:
+                # Someone else's entry, made after the piece staged the
+                # create: nobody chose it, so the create and its links are
+                # proposed, never linked to it unasked (REV-JG3-8).
+                why[o.get('key')] = ENTRY_EXISTS
             elif entry_key(v, o) in self.made_keys():
-                gone.add(o.get('key'))
-        if not found and not gone:
+                why[o.get('key')] = ENTRY_GONE
+        if not found and not why:
             return ops
         out = []
         for o in ops:
             if o.get('kind') == 'create_entry' and o.get('key') in found:
                 continue
-            if o.get('kind') == 'create_entry' and o.get('key') in gone:
-                o = {**o, 'job_why': ENTRY_GONE}
+            if o.get('kind') == 'create_entry' and o.get('key') in why:
+                o = {**o, 'job_why': why[o['key']]}
             if o.get('kind') in ('link', 'link_phrase') and o.get('new_entry_key') in found:
                 o = {**o, 'item_id': found[o['new_entry_key']], 'new_entry_key': None}
             out.append(o)
@@ -1381,7 +1418,6 @@ class IgtRunner:
         lines += self.instructions_lines()
         lines += ['', 'Your piece: the whole selection above.']
         note = self.run_piece(ws, project, '\n'.join(lines), 'selection')
-        self.record_piece(project, {'document': None, 'first': None, 'whole': True}, note, ws.tables)
         return ws, note
 
     @staticmethod
@@ -2497,8 +2533,10 @@ class IgtRunner:
                 keep.append((i, t))
         dropped = len(list(tables)[:JOB_TABLES_PER_PIECE]) - len(keep)
         if dropped:
+            # Keyed by the piece, as its note and tables are: a piece taken
+            # again keeps its first run's count (REV-JG3-7).
             text = canonical({'dropped': dropped})
-            rows.append({'form': f'{TABLES_DROPPED_FORM} {key}', 'key': analysis_key(text), 'analysis': text,
+            rows.append({'form': f'{TABLES_DROPPED_FORM} {key}', 'key': key, 'analysis': text,
                          'count': 1, 'document_id': None, 'sentence_id': None})
         for i, t in keep:
             for part_no, text in enumerate(table_rows_text(t)):

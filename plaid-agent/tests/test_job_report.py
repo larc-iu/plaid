@@ -300,3 +300,20 @@ def test_a_piece_taken_again_counts_the_tables_it_dropped_once():
         if p == pieces - 1:
             r.record_piece(project, {'document': 'd1', 'first': f's{p}', 'whole': False}, 'note', tables)
     assert runner(job).report_parts(job)['tables_more'] == pieces * JOB_TABLES_PER_PIECE - JOB_TABLES_MAX
+
+
+def test_a_piece_taken_again_that_drops_another_number_of_tables_is_counted_once(monkeypatch):
+    """REV-JG3-7: the piece's row of tables dropped is keyed by the piece,
+    not by its count. Taken again, a piece that drops 2 tables where its
+    first run dropped 1 is counted once, as its first run, whose note and
+    tables the report keeps."""
+    from plaid_agent.igt import job as igt_job
+    client, job = _job()
+    r = runner(job)
+    monkeypatch.setattr(igt_job, 'JOB_TABLES_MAX', 0)
+    project = r.project()
+    piece = {'document': 'd1', 'first': None, 'whole': True}
+    t = {'title': 'T', 'columns': ['a'], 'rows': [['1']], 'more': 0}
+    r.record_piece(project, piece, 'first run', [t])
+    r.record_piece(project, piece, 'second run', [t, t])
+    assert runner(job).report_parts(job)['tables_more'] == 1

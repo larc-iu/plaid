@@ -174,3 +174,74 @@ def test_a_write_that_sent_nothing_does_not_count_its_entry_as_made(monkeypatch)
     finished = run_job(job, runner(job))
     assert once and finished['state'] == 'done', (finished.get('reason'), job.status.get('message'))
     assert len(_creates(client)) == 1 and not _proposed_create(finished['report'])
+
+
+def test_an_entry_fits_a_create_only_of_the_same_morph_type():
+    """REV-JG3-8: a suffix -ka 'go' the model creates is not the stem ka 'go'
+    a person made: the type an entry goes by (its own, else its headword's,
+    the reserved key morphType) is compared with form and gloss."""
+    v = {'id': 'v1', 'fields': [{'name': 'gloss', 'role': 'gloss', 'declared': True}]}
+    stem = {'id': 'e1', 'form': 'ka', 'metadata': {'gloss': 'go'}}
+    suffix = {'id': 'e2', 'form': 'ka', 'metadata': {'gloss': 'go', 'morphType': 'suffix'}}
+    sense = {'id': 'e3', 'form': 'ka', 'metadata': {'gloss': 'go', 'parent': 'e4'}}
+    head = {'id': 'e4', 'form': 'ka', 'metadata': {'morphType': 'prefix'}}
+    create = {'kind': 'create_entry', 'form': 'ka', 'metadata': {'gloss': 'go', 'morphType': 'suffix'}}
+    assert igt_job.fitting_entry(v, [stem], create) is None
+    assert igt_job.fitting_entry(v, [stem, suffix], create) is suffix
+    assert igt_job.fitting_entry(v, [sense, head], {**create, 'metadata': {'gloss': 'go', 'morphType': 'prefix'}}) \
+        is sense
+    assert igt_job.fitting_entry(v, [stem], {**create, 'metadata': {'gloss': 'go'}}) is stem
+
+
+def test_a_selections_create_that_someone_elses_new_entry_fits_is_proposed(monkeypatch):
+    """REV-JG3-8: a person makes an entry that fits the selection's create
+    after the piece staged it. Nobody chose that entry: the create and its
+    link are proposed, saying so, and nothing is linked to the person's
+    entry unasked."""
+    client = JobClient(_docs(2))
+    _lexicon_takes_creates(monkeypatch, client)
+    job = start(client, 'Gloss and link every word nobody analysed.', id=J, plan='selection')
+    real = igt_job.IgtRunner.write_piece
+
+    def write_piece(self, project, d, *a, **kw):
+        if d == 'd1' and not [it for it in client._lexicon['items'] if it['id'] == 'e-person']:
+            client._lexicon['items'].append({'id': 'e-person', 'form': 'ka', 'metadata': {'gloss': 'go'}})
+        return real(self, project, d, *a, **kw)
+    monkeypatch.setattr(igt_job.IgtRunner, 'write_piece', write_piece)
+    use(monkeypatch, _model(piece=_selection_both))
+    finished = run_job(job, runner(job))
+    assert finished['state'] == 'done', (finished.get('reason'), job.status.get('message'))
+    assert not _creates(client) and not [p for k, p in client.calls if k == 'vocab_links.create']
+    made = _proposed_create(finished['report'])
+    assert made and igt_job.ENTRY_EXISTS in made[0]['label'], made
+    assert len([c for c in finished['report']['proposed'] if c['kind'] == 'link']) == 2
+
+
+def test_a_selections_note_meets_a_502_and_its_model_runs_once(monkeypatch):
+    """REV-JG3-9: one 502 on the selection's note row is tried again on its
+    own: the model context, maybe hours of work, is not run again."""
+    from test_job_marks import _fail_once, _has_form
+    client = JobClient(_docs(2))
+    job = start(client, 'Gloss and link every word nobody analysed.', id=J, plan='selection')
+    model = use(monkeypatch, _model(piece=_selection_both))
+    failed = _fail_once(client, 'add_decisions', _has_form(' note '))
+    finished = run_job(job, runner(job))
+    assert failed and finished['state'] == 'done'
+    assert len([c for c in model.calls if c['n'] == 1 and 'whole selection' in c['asked']]) == 1
+    assert [n['note'] for n in finished['report']['notes']] == ['Glossed ka in both texts and linked it.']
+
+
+def test_a_selection_core_failed_through_its_tries_says_so_in_the_plan(monkeypatch):
+    """REV-JG3-9: a selection left to the walk after core's trouble outlasted
+    its tries has its fallback row, so the report's plan says it."""
+    from plaid_client import PlaidAPIError
+    client = JobClient(_docs(1))
+    job = start(client, 'Gloss every word nobody analysed.', id=J, plan='selection')
+
+    def selection_work(self, project, live):
+        raise PlaidAPIError('HTTP 502', status=502, method='GET')
+    monkeypatch.setattr(igt_job.IgtRunner, 'selection_work', selection_work)
+    use(monkeypatch, _model(piece=lambda asked, n: reply('Nothing.')))
+    finished = run_job(job, runner(job))
+    assert finished['state'] == 'done'
+    assert {'document_id': None, 'reason': 'failed'} in finished['report']['plan']['fallback']

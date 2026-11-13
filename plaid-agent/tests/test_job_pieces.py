@@ -391,9 +391,10 @@ def test_a_selection_that_links_one_new_entry_in_two_documents_creates_it_once(m
 
 def test_a_selections_second_document_links_an_entry_that_fits_and_creates_none(monkeypatch):
     """The entry the selection staged exists already when its second
-    document is written (made by the first document's write before a passing
-    error, or by anyone): no entry is created where one fits, at the write
-    as at staging, and the link names the one there."""
+    document is written, the job's own (made by the first document's write
+    before a passing error): no entry is created where one fits, at the
+    write as at staging, and the link names the one there. Someone else's
+    entry made meanwhile is never linked unasked (test_job_entry_gone)."""
     client = JobClient(_docs(2))
     _lexicon_takes_creates(monkeypatch, client)
     job = start(client, 'Gloss and link every word nobody analysed.', id=J, plan='selection')
@@ -401,7 +402,8 @@ def test_a_selections_second_document_links_an_entry_that_fits_and_creates_none(
 
     def write_piece(self, project, d, *a, **kw):
         if d == 'd2':
-            client._lexicon['items'].append({'id': 'e-made', 'form': 'ka', 'metadata': {'gloss': 'go'}})
+            from job_fixtures import stamp
+            client._lexicon['items'].append({'id': 'e-made', 'form': 'ka', 'metadata': {'gloss': 'go', **stamp(J)}})
         return real(self, project, d, *a, **kw)
     monkeypatch.setattr(igt_job.IgtRunner, 'write_piece', write_piece)
 
