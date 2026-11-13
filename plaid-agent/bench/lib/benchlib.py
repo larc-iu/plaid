@@ -182,6 +182,8 @@ class Core:
                 self._relaunch(f'port {self.port} answers from another process, see {self.log}')
                 continue
             time.sleep(0.3)
+        # The core this process launched is stopped, never left running.
+        self.stop()
         raise RuntimeError(f'core not up after {timeout}s, see {self.log}\n{self.tail()}')
 
     def stop(self, timeout=30):

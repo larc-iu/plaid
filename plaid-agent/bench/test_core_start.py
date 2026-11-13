@@ -97,3 +97,18 @@ def test_a_core_that_binds_is_started(tmp_path):
             pass
     finally:
         core.stop()
+
+
+def test_a_core_not_up_in_time_is_stopped(tmp_path):
+    """REV-FIX3-7: the start fails, and the core it launched is not left
+    running."""
+    class Slow(StandIn):
+        delay = 30.0
+
+    core = Slow(None, tmp_path, tmp_path / 'core.log')
+    try:
+        with pytest.raises(RuntimeError, match='not up after 1s'):
+            core.start(timeout=1)
+        assert core.proc.poll() is not None, 'its process was left running'
+    finally:
+        core.stop()
