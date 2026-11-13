@@ -79,11 +79,16 @@ const confirmStop = async (page) => {
 
 test('Start job on the Documents tab makes a waiting job and opens its page', async ({ page }) => {
   await seedAuth(page);
+  // Core's own answer, as though no worker had asked for work on it: a spec
+  // run before this one may have run a worker on the same core.
+  await page.route('**/api/v1/jobs/worker', async (route) => {
+    const response = await route.fetch();
+    route.fulfill({ response, json: { ...(await response.json()), 'seen-at': null } });
+  });
   await page.goto(`/#/projects/${projectId}`);
   await page.getByRole('button', { name: 'Start job' }).click();
   const dialog = page.getByRole('dialog');
   await expect(dialog).toContainText('All documents (2)');
-  // No worker has asked for work on this core yet.
   await expect(dialog).toContainText('No job worker is running. The job waits until one starts.');
   await dialog.getByRole('checkbox', { name: 'Translate' }).uncheck();
   await dialog.getByRole('button', { name: 'Start', exact: true }).click();

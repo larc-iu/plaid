@@ -48,13 +48,41 @@
         (get (json/parse-string (:body r)) "token")))
     (catch Exception _ nil)))
 
-(defn- wait-for-core! [core proc]
+(defn- listens?
+  "Whether process `pid` holds the socket listening on `port`, read from
+  Linux's /proc (the LISTEN row's inode among the process's open files).
+  Where there is no /proc this cannot be told, and a login that answers is
+  taken as the core's."
+  [pid port]
+  (if-not (fs/exists? "/proc/net/tcp")
+    true
+    (let [inodes (set (for [table ["/proc/net/tcp" "/proc/net/tcp6"]
+                            :when (fs/exists? table)
+                            ;; Read line by line: slurp fails on a /proc file.
+                            row (rest (with-open [r (java.io.BufferedReader. (java.io.FileReader. table))]
+                                        (doall (line-seq r))))
+                            :let [f (str/split (str/trim row) #"\s+")]
+                            :when (and (= "0A" (nth f 3))
+                                       (= port (Integer/parseInt (last (str/split (nth f 1) #":")) 16)))]
+                        (str "socket:[" (nth f 9) "]")))
+          fds    (try (fs/list-dir (str "/proc/" pid "/fd")) (catch Exception _ []))]
+      (boolean (some #(contains? inodes (try (str (fs/read-link %)) (catch Exception _ nil))) fds)))))
+
+;; Up once a login answers AND the core launched here holds the port: the
+;; port was free when picked, and another process (another run's core, with
+;; the same admin) may have bound it first (REV-JB-5, as the bench's
+;; Core.start). The Clojure CLI execs the JVM, so the child's pid is the core's.
+(defn- wait-for-core! [core port proc]
   (let [deadline (+ (System/currentTimeMillis) (* 1000 core-boot-seconds))]
     (loop []
       (cond
         (not (p/alive? proc)) (throw (ex-info "plaid-core exited before it answered a login" {}))
         (> (System/currentTimeMillis) deadline) (throw (ex-info (str "plaid-core did not answer a login in " core-boot-seconds " s") {}))
-        :else (or (login core) (do (Thread/sleep 2000) (recur)))))))
+        :else (if-let [session (login core)]
+                (if (listens? (.pid ^Process (:proc proc)) port)
+                  session
+                  (throw (ex-info (str "port " port " answers from another process, not this run's plaid-core") {})))
+                (do (Thread/sleep 2000) (recur)))))))
 
 ;; The named API token the specs use, as `.token` holds one on the dev core.
 (defn- mint-token! [core session]
@@ -125,7 +153,7 @@
                                  :extra-env {"PLAID_ADMIN_EMAIL" (:email admin)
                                              "PLAID_ADMIN_PASSWORD" (:password admin)}
                                  :out (log "core.log") :err :out}))
-      (let [session (wait-for-core! core @core-p)
+      (let [session (wait-for-core! core cport @core-p)
             token   (mint-token! core session)
             env     (merge {"PLAID_CORE_URL" core
                             "PLAID_E2E_PRIVATE_CORE" core

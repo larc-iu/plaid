@@ -22,7 +22,8 @@
 // both and keeps it running until Ctrl-C.
 
 import { spawn } from 'node:child_process';
-import { mkdtemp, writeFile, rm } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
+import { mkdtemp, writeFile, rm, readFile, readdir, readlink } from 'node:fs/promises';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -57,19 +58,52 @@ path = "${join(dir, 'plaid.db')}"
 enabled = false
 `;
 
-async function waitForLogin(url, child, timeoutMs) {
+// Whether process `pid` holds the socket listening on `port`, read from
+// Linux's /proc (the LISTEN row's inode among the process's open files).
+// Where there is no /proc this cannot be told, and a login that answers is
+// taken as the core's.
+export async function listens(pid, port) {
+  if (!existsSync('/proc/net/tcp')) return true;
+  const inodes = new Set();
+  for (const table of ['/proc/net/tcp', '/proc/net/tcp6']) {
+    const rows = await readFile(table, 'utf8').then(
+      (t) => t.split('\n').slice(1),
+      () => [],
+    );
+    for (const row of rows) {
+      const f = row.trim().split(/\s+/);
+      if (f[3] === '0A' && parseInt(f[1].split(':').pop(), 16) === port)
+        inodes.add(`socket:[${f[9]}]`);
+    }
+  }
+  const fds = await readdir(`/proc/${pid}/fd`).catch(() => []);
+  for (const fd of fds) {
+    if (inodes.has(await readlink(`/proc/${pid}/fd/${fd}`).catch(() => null))) return true;
+  }
+  return false;
+}
+
+// Up once a login answers AND the core launched here holds the port: the port
+// was free when picked, and another process (another run's core, with the same
+// admin) may have bound it first (REV-JB-5, as the bench's Core.start). The
+// Clojure CLI execs the JVM, so the child's pid is the core's.
+async function waitForLogin(url, child, timeoutMs, port) {
   const deadline = Date.now() + timeoutMs;
   let lastError = null;
   while (Date.now() < deadline) {
     if (child.exitCode !== null) {
       throw new Error(`plaid-core exited with code ${child.exitCode} before it was ready`);
     }
+    let client = null;
     try {
-      return await PlaidClient.login(url, ADMIN.email, ADMIN.password);
+      client = await PlaidClient.login(url, ADMIN.email, ADMIN.password);
     } catch (err) {
       lastError = err;
       await new Promise((r) => setTimeout(r, 1000));
+      continue;
     }
+    if (await listens(child.pid, port)) return client;
+    throw new Error(`port ${port} answers from another process, not this run's plaid-core`);
   }
   throw new Error(`plaid-core was not ready after ${timeoutMs / 1000}s: ${lastError?.message}`);
 }
@@ -131,7 +165,7 @@ async function startCore({ timeoutMs = 300_000, keep = false, log = false } = {}
   };
 
   try {
-    const client = await waitForLogin(url, child, timeoutMs);
+    const client = await waitForLogin(url, child, timeoutMs, port);
     return { url, client, stop, dir };
   } catch (err) {
     await stop();
