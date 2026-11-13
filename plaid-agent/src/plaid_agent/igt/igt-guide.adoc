@@ -945,8 +945,8 @@ A document someone is editing is left for later and taken up again after the oth
 == Following and stopping a job
 
 The project's **Jobs** tab lists its jobs, and each opens to its own page.
-The page shows what the job is doing, how it cut the work, each document's progress, and once the job has ended its report.
-The report opens with a summary the job wrote, then lists what it wrote, the changes it proposed, a note from each piece of its work, any tables it counted, the sentences it skipped and why, what it left blank, the analyses it made consistent, and the entries it created.
+The page shows what the job is doing, how it cut the work and what the assistant told each piece of it, each document's progress, and once the job has ended its report.
+The report opens with a summary the job wrote, then lists the documents its plan left out, what it wrote, the changes it proposed, a note from each piece of its work, any tables it counted, the sentences it skipped and why, what it left blank, the analyses it made consistent, and the entries it created.
 A document the job is working in shows a banner with its progress.
 
 **Stop**, on the job's page or on the banner, is for the person who started the job and for maintainers.

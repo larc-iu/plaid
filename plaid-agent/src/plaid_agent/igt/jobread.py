@@ -230,6 +230,11 @@ def summary(job: Dict[str, Any], note_chars: Optional[int] = JOB_SUMMARY_NOTE_CH
     planned = plan_line(report)
     if planned:
         lines.append(planned)
+    told = (report.get('plan') or {}).get('piece_instructions') if isinstance(report.get('plan'), dict) else None
+    if told:
+        # The assistant's own words when it planned the job, never the
+        # starter's instructions (the lead's ruling on REV-JG-14).
+        lines.append(_quoted('What the assistant told every piece, as it planned the job', told, note_chars))
     if report.get('summary'):
         lines.append(_quoted('The job\'s own summary', report['summary'], note_chars))
     elif report.get('summary_failed'):

@@ -111,6 +111,33 @@ const ProposedChanges = ({ report, projectId }) => {
   );
 };
 
+// The documents of the job its plan did not work.
+const LeftOut = ({ report, projectId }) => {
+  const list = report.plan?.leftOut || [];
+  if (!list.length) return null;
+  return (
+    <>
+      <Heading section="plan.left_out" />
+      <ul className="ml-4 list-disc text-sm">
+        {list.map((d) => (
+          <li key={d.documentId}>
+            {d.name === null || d.name === undefined ? (
+              <span className="text-muted-foreground">Deleted document</span>
+            ) : (
+              <Link
+                className="hover:underline"
+                to={`/projects/${projectId}/documents/${d.documentId}`}
+              >
+                {d.name}
+              </Link>
+            )}
+          </li>
+        ))}
+      </ul>
+    </>
+  );
+};
+
 // Each piece's note, as the model ended it.
 const PieceNotes = ({ report }) => {
   const notes = report.notes || [];
@@ -224,6 +251,7 @@ export const JobReport = ({ report, projectId, vocabs = [] }) => {
         )}
       </dl>
 
+      <LeftOut report={report} projectId={projectId} />
       <ProposedChanges report={report} projectId={projectId} />
       <PieceNotes report={report} />
       <Tables tables={report.tables || []} more={report.tablesMore || 0} />

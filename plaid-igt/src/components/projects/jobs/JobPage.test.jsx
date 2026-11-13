@@ -257,6 +257,58 @@ describe('the job page', () => {
     await v.unmount();
   });
 
+  it('shows what the assistant told every piece apart from the instructions, folded when long', async () => {
+    const plan = (pieceInstructions) => ({
+      pieces: 'document',
+      pieceInstructions,
+      by: 'model',
+      fallback: [],
+      leftOut: [],
+    });
+    const short = jobOf({ state: 'done', report: { ...REPORT, plan: plan('Gloss -da as LOC.') } });
+    let v = await mount(clientOf(short));
+    let facts = totals(v.container);
+    expect(facts.Instructions).toBe('Gloss ka as GO.');
+    expect(facts['Assistant’s instructions']).toBe('Gloss -da as LOC.');
+    await v.unmount();
+    const told = 'Gloss -da as LOC after a noun. '.repeat(12).trim();
+    v = await mount(clientOf(jobOf({ state: 'done', report: { ...REPORT, plan: plan(told) } })));
+    const folded = v.container.querySelector('details');
+    expect(folded).not.toBeNull();
+    expect(folded.open).toBe(false);
+    expect(folded.querySelector('summary').textContent).toBe('Show');
+    expect(folded.textContent).toContain(told);
+    expect(totals(v.container).Instructions).toBe('Gloss ka as GO.');
+    await v.unmount();
+  });
+
+  it('lists each document the plan left out, in the report and in the documents table', async () => {
+    const report = {
+      ...REPORT,
+      plan: {
+        pieces: 'sentences',
+        pieceInstructions: '',
+        by: 'model',
+        fallback: [],
+        leftOut: [{ documentId: 'd2', name: null }],
+      },
+    };
+    const job = jobOf({
+      state: 'done',
+      report,
+      documents: [
+        { ...jobOf().documents[0], state: 'done' },
+        { ...jobOf().documents[1], state: 'not-reached' },
+      ],
+    });
+    const v = await mount(clientOf(job));
+    const section = v.container.querySelector('section[aria-label="Report"]');
+    expect(all(section, 'h3').map((h) => h.textContent)).toContain('Left out by the plan');
+    const rows = all(v.container, '#job-documents tbody tr, tbody tr').map((r) => text(r));
+    expect(rows[1]).toContain('Left out by the plan');
+    await v.unmount();
+  });
+
   it('offers Stop to the starter, a maintainer and an admin, never to another writer or a reader', async () => {
     const who = [
       [{ id: 'w', isAdmin: false }, true],

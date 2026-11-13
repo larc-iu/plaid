@@ -3036,7 +3036,14 @@ class IgtRunner:
             t = tables[key]
             rows = [row for _, part in sorted(t['parts'].items()) for row in part]
             made.append({'title': t['title'], 'columns': t['columns'], 'rows': rows, 'more': t['more']})
-        return {'plan': {**(plan or {}), 'fallback': fallback} if plan else None,
+        if plan is not None:
+            # Each document the job holds that the plan left out, listed as
+            # such on the job page and in read_job (the lead's ruling).
+            named = set(plan.get('documents') or job.order)
+            plan = {**plan, 'fallback': fallback,
+                    'left_out': [{'document_id': d, 'name': self.names.get(d) or (job.rows.get(d) or {}).get('name')}
+                                 for d in job.order if d not in named]}
+        return {'plan': plan,
                 'proposed': listed, 'proposed_more': more + dropped, 'proposed_dropped': dropped,
                 'notes': shown_notes, 'notes_more': notes_more, 'tables': made[:JOB_TABLES_MAX],
                 'tables_more': max(0, len(made) - JOB_TABLES_MAX)}

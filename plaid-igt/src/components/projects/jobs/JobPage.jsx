@@ -214,6 +214,24 @@ const Fact = ({ label, children }) => (
 
 const When = ({ at }) => <span title={fullTimestamp(at)}>{timeAgo(at)}</span>;
 
+// What the assistant told every piece when it planned the job, folded when
+// long.
+const PLANNED_SHOWN_CHARS = 200;
+const PlannedInstructions = ({ text }) => {
+  const body = (
+    <span className="whitespace-pre-wrap" dir="auto">
+      {text}
+    </span>
+  );
+  if (text.length <= PLANNED_SHOWN_CHARS) return body;
+  return (
+    <details>
+      <summary className="cursor-pointer text-muted-foreground">Show</summary>
+      {body}
+    </details>
+  );
+};
+
 const JobFacts = ({ job, readAt }) => {
   const end = job.finishedAt ? new Date(job.finishedAt).getTime() : readAt;
   return (
@@ -222,6 +240,11 @@ const JobFacts = ({ job, readAt }) => {
         <span className="whitespace-pre-wrap">{job.instructions}</span>
       </Fact>
       {job.report?.plan && <Fact label="Plan">{planText(job.report.plan)}</Fact>}
+      {job.report?.plan?.pieceInstructions && (
+        <Fact label="Assistant’s instructions">
+          <PlannedInstructions text={job.report.plan.pieceInstructions} />
+        </Fact>
+      )}
       <Fact label="Documents">{(job.documents || []).length.toLocaleString()}</Fact>
       <Fact label="Started by">{job.startedByName}</Fact>
       <Fact label="Started">
@@ -244,6 +267,7 @@ const count = (row, key) => (row.counts?.[key] ?? 0).toLocaleString();
 
 // A row per document of the job, in the job's order.
 const JobDocuments = ({ job, projectId }) => {
+  const leftOut = new Set((job.report?.plan?.leftOut || []).map((d) => d.documentId));
   const columns = [
     {
       key: 'name',
@@ -260,7 +284,10 @@ const JobDocuments = ({ job, projectId }) => {
     {
       key: 'state',
       label: 'State',
-      render: (d) => jobDocumentStateText(d.state) ?? d.state,
+      render: (d) =>
+        leftOut.has(d.documentId)
+          ? 'Left out by the plan'
+          : (jobDocumentStateText(d.state) ?? d.state),
     },
     {
       key: 'done',

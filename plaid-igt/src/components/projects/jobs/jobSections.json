@@ -5,6 +5,7 @@
   "proposed": "Proposed changes",
   "notes": "Notes",
   "tables": "Tables",
+  "plan.left_out": "Left out by the plan",
   "harmonize.changed": "Analyses made consistent",
   "harmonize.left": "Forms left inconsistent",
   "entries.created": "Entries created",

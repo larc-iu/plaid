@@ -202,6 +202,26 @@ def test_a_job_alone_gives_its_summary_with_the_instructions_whole():
     assert out.endswith('read_job with a section reads its rows.')
 
 
+def test_the_plans_instructions_and_what_it_left_out_are_read_as_the_assistants():
+    """The lead's ruling on REV-JG-14: what the planning context told every
+    piece is read with the job, as the assistant's own words, apart from the
+    instructions the person sent. The documents the plan left out are a
+    section, "Left out by the plan"."""
+    ws = _ws()
+    told = ('Gloss -da as LOC after a noun. ' * 20).strip()
+    report = _report(plan={'pieces': 'document', 'piece_instructions': told, 'documents': ['d1'], 'by': 'model',
+                           'why': None, 'fallback': [], 'left_out': [{'document_id': 'd2', 'name': 'Text 2'}]})
+    job = _ended(ws.client, report, note='Gloss the texts.')
+    out = call_tool(ws, 'read_job', {'job': job})
+    assert 'Instructions as sent: "Gloss the texts."' in out
+    assert f'What the assistant told every piece, as it planned the job: "{told}"' in out
+    assert 'Left out by the plan (plan.left_out) 1' in out
+    rows = call_tool(ws, 'read_job', {'job': job, 'section': 'Left out by the plan'})
+    assert '"Text 2", id d2' in rows or 'name: Text 2' in rows, rows
+    _, _, said = jobread.job_place(ws, {'kind': 'job', 'id': job})
+    assert f'the first {jobread.JOB_SUMMARY_NOTE_CHARS} of {len(told):,} characters' in said
+
+
 def test_a_section_gives_its_rows_with_the_places_to_read_and_plan():
     ws = _ws()
     job = _ended(ws.client)
