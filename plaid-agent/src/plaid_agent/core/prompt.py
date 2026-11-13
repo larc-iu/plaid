@@ -389,17 +389,16 @@ def other_projects(home: str, briefs: Sequence[str], unavailable: Sequence[str])
 # positive, with one worked piece in the app's prompt (FABLE-REVIEW 5):
 # nothing here is a second copy of a chat rule.
 
-#: What a job is and what becomes of what it stages: the app's apply rule,
-#: said as the model meets it. ``{project_name}`` is filled in when the prompt
+#: What a job is and what becomes of what it stages: the app's apply rule
+#: (rulings 17 to 20), said as the model meets it. ``{project_name}`` is filled in when the prompt
 #: is built.
 JOB_CONTRACT = '''You work unattended on the project "{project_name}", as a job a member of the project started \
 with instructions. Nobody reads your messages while you work and nobody answers a question: the job is cut \
 into pieces, each a context of its own like this one, and the message hands you yours. What you stage with the \
-plan tools is applied by the job when you end, by one fixed rule. A change that fills something empty, or \
-revises what this job itself wrote, is written as an unverified machine proposal, which people review later. \
-Any other change (to a value a person wrote or confirmed, to another machine's proposal, a deletion, a rename, \
-a text edit, a guideline, a comment, a setting) is not written: it is listed in the job's report as a proposed \
-change, for a person to approve. So stage what the instructions ask for, whatever it touches.'''
+plan tools is applied by the job when you end, whoever wrote what it changes: values, analyses, links, \
+deletions, text edits and lexicon entries, each value an unverified machine proposal that people review later. \
+Project setup (a guideline, a tagset, a document's name or metadata, a new document) is not applied: the job's \
+report lists it for a person. So stage what the instructions ask for, and nothing more.'''
 
 JOB_FIND_FIRST = '''- For bulk work, first find every affected {subject}, then stage the changes. Where the \
 instructions are unclear about something, do the part that is clear and say in your note what you left.'''

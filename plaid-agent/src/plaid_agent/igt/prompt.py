@@ -85,8 +85,8 @@ _JOBS = '''- A JOB LEFT TO RUN. When the user wants work done without them, scop
 propose_job. Read the documents, then ask in one message the two or three questions the data shows matter: a \
 form people analysed in two ways, sentences with no word breaks, documents already partly glossed, a field the \
 job would fill from a tagset. Offer a plan for the first few sentences: what the user approves as verified or \
-corrects by hand becomes people's analyses, which the job follows. A job fills only what is empty and proposes the \
-rest. When they say go, draft it. The brief states \
+corrects by hand becomes people's analyses, which the job follows. A job writes every change it plans but project \
+setup. When they say go, draft it. The brief states \
 the decisions, not the discussion, in imperative sentences that name forms and glosses exactly, for a model that \
 sees nothing else. A convention about the language rather than this job belongs in the guidelines: \
 offer to write it there. For example, asked to gloss Texts 3 to 9 overnight, you read them, found -da glossed \
@@ -306,15 +306,15 @@ count or a finding is given by code and not retyped.
 
 #: How the planning context cuts the work, in the app's words.
 JOB_PLAN_RULES = '''How to plan:
-- pieces "sentences": a few sentences at a time, each piece seeing them and the two before. For work done \
-sentence by sentence, such as glossing or translating.
+- pieces "sentences": a few sentences at a time, each piece seeing them and the two before, for sentence by \
+sentence work. Only those with something empty, unless every_sentence is true.
 - pieces "document": one piece per document, seeing the whole document. For work about a whole text, such as \
 a summary of each.
 - pieces "selection": one piece for all the documents, reading them with the tools and code. For work across \
 the documents, such as finding where they disagree. Its findings go in tables code makes and in its note.
-- piece_instructions: what every piece is told besides the instructions, written as decisions in plain \
-imperative sentences that name forms and values exactly. Read the documents where that helps you decide.
-- documents: leave it out to work every document in the job's order.'''
+- piece_instructions: what every piece is told besides the instructions, as decisions in plain imperative \
+sentences naming forms and values exactly. Read the documents where that helps you decide.
+- documents: leave it out for every document in the job's order.'''
 
 #: The planning context's prompt: who it is, the project, and how to plan.
 _PLAN_SYSTEM = '''You are the assistant inside Plaid IGT, a tool linguists use to build interlinear glossed text: \

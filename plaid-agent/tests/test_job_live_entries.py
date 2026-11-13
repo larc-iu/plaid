@@ -1,7 +1,9 @@
-"""The entries a job makes, under a real core: a job deletes none of them
-(the lead's ruling on REV-JG2-1), whatever a person did to its draft while
-it ran, and one entry a selection links in two documents is created once
-(REV-JG2-2).
+"""The entries a job makes, under a real core: a job runs no cleanup of its
+own entries, whatever a person did to its draft while it ran, one entry a
+selection links in two documents is created once (REV-JG2-2), and an entry
+of the job's a person took away is made again when a later piece links one
+of its form and gloss (rulings 17 and 20, withdrawing the lead's ruling on
+REV-JG3-5).
 
 Runs on the session's core (``live.py``), or the one PLAID_TEST_URL names."""
 
@@ -16,7 +18,7 @@ from live import _skip_or_fail, core_url, login, seed
 
 from plaid_agent.core.agent import ModelConfig
 from plaid_agent.core.job import Job, run_job
-from plaid_agent.igt.job import ENTRY_GONE, IgtRunner
+from plaid_agent.igt.job import IgtRunner
 from plaid_agent.jobworker import count_chars
 
 WORKER = '0193a5c0-0000-7000-8000-0000000000f2'
@@ -201,15 +203,14 @@ def _tok_alone(doc):
 
 
 @pytest.mark.parametrize('edit', ['crash-then-delete', 'merge'])
-def test_a_draft_a_person_took_away_is_never_made_again(world, monkeypatch, edit):
-    """The lead's ruling on REV-JG3-5. The job makes tok 'stone' with Alpha
-    and links it. Then a person takes the draft away: deletes it while the
-    worker is down (a crash, a new worker takes the job up), or merges it
-    into an entry of their own, toka 'rock'. Beta's piece makes tok 'stone'
-    afresh (nothing fits it now): the create and its link are proposed,
-    nothing is made again. After the merge, the job's link in Alpha names
-    the person's entry, as core's merge moves every link of the entry merged
-    away to the one it is merged into."""
+def test_a_draft_a_person_took_away_is_made_again_by_a_later_piece(world, monkeypatch, edit):
+    """The job makes tok 'stone' with Alpha and links it. Then a person
+    takes the draft away: deletes it while the worker is down (a crash, a
+    new worker takes the job up), or merges it into an entry of their own,
+    toka 'rock'. Beta's piece makes tok 'stone' afresh, as nothing fits it
+    now: it is made and linked, a machine draft, and nothing is proposed.
+    After the merge, the job's link in Alpha names the person's entry, as
+    core's merge moves every link of the entry merged away."""
     admin, writer, make = world
     s = make({'dA': document('dA', 'Alpha', [{'words': ['tok']}]), 'dB': document('dB', 'Beta', [{'words': ['tok']}])})
     job = _job(admin, writer, s, 'document')
@@ -237,12 +238,13 @@ def test_a_draft_a_person_took_away_is_never_made_again(world, monkeypatch, edit
     use(monkeypatch, Model(_tok_alone('Beta')))
     finished = run_job(job, _runner(job))
     assert finished['state'] == 'done', (finished.get('reason'), job.status.get('message'))
-    left = [x for x in _items(admin, s) if x.get('form') in ('tok', 'toka')]
-    assert [x['id'] for x in left] == ([survivor] if survivor else []), f'the job made tok again ({edit})'
-    assert not _links(admin, s, 'dB'), 'Beta links nothing'
-    proposed = finished['report']['proposed']
-    assert [c for c in proposed if c['kind'] == 'create_entry' and ENTRY_GONE in c['label']], proposed
-    assert [c for c in proposed if c['kind'] == 'link' and c['document'] == 'Beta'], proposed
+    again = [x for x in _items(admin, s) if x.get('form') == 'tok']
+    assert len(again) == 1 and again[0]['id'] != draft[0]['id'], f'tok made again ({edit})'
+    assert (again[0].get('metadata') or {}).get('status') == 'machine'
+    beta = [link['vocab_item'] if not isinstance(link['vocab_item'], dict) else link['vocab_item']['id']
+            for link in _links(admin, s, 'dB')]
+    assert beta == [again[0]['id']], beta
+    assert finished['report']['proposed'] == []
     alpha = [link['vocab_item'] if not isinstance(link['vocab_item'], dict) else link['vocab_item']['id']
              for link in _links(admin, s, 'dA')]
     assert alpha == ([survivor] if survivor else []), alpha

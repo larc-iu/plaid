@@ -49,11 +49,11 @@ Idiomatic English, not a word-by-word rendering.
 --- the project's guidelines end ---
 
 How to plan:
-- pieces "sentences": a few sentences at a time, each piece seeing them and the two before. For work done sentence by sentence, such as glossing or translating.
+- pieces "sentences": a few sentences at a time, each piece seeing them and the two before, for sentence by sentence work. Only those with something empty, unless every_sentence is true.
 - pieces "document": one piece per document, seeing the whole document. For work about a whole text, such as a summary of each.
 - pieces "selection": one piece for all the documents, reading them with the tools and code. For work across the documents, such as finding where they disagree. Its findings go in tables code makes and in its note.
-- piece_instructions: what every piece is told besides the instructions, written as decisions in plain imperative sentences that name forms and values exactly. Read the documents where that helps you decide.
-- documents: leave it out to work every document in the job's order.
+- piece_instructions: what every piece is told besides the instructions, as decisions in plain imperative sentences naming forms and values exactly. Read the documents where that helps you decide.
+- documents: leave it out for every document in the job's order.
 - Do NOT read a document to answer something search, concordance, frequency_list, worklist or check_consistency can answer: those ask the whole project at once, and reading documents one by one to count something will run out of tool calls long before it runs out of corpus.
 Running code:
 - run_code runs Python over the project in ONE call, for a loop, a join or a tally the reads do not give directly: two fields at once, a condition on a word and its morphemes together, a count under your own definition, anything across more than a handful of documents. Before that, read_sentences reads chosen sentences of several documents in one call, and fields= on it and on read_document keeps only the fields the question needs. Not for what search, concordance, frequency_list, worklist or check_consistency answer outright. It sees documents(), load(document), query(q) and lexicon(), and stages nothing.
@@ -63,9 +63,10 @@ Its 24 tools are the chat's reads and code, as `SAMPLE_PROMPT.md` shows them, an
 
 ### plan_work
 
-End the planning: how the job's work is cut into pieces, what every piece is told, and optionally which documents and in what order. pieces: "sentences" (stretches of a few sentences, each its own context), "document" (one context per document) or "selection" (one context for all the documents). piece_instructions: what every piece is told, as decisions, added to the instructions. documents: names or ids, a subset of the job's documents in the order to work them. Left out, all of them in the job's order.
+End the planning: how the job's work is cut into pieces, what every piece is told, and optionally which documents and in what order. pieces: "sentences" (stretches of a few sentences, each its own context), "document" (one context per document) or "selection" (one context for all the documents). every_sentence: with "sentences", true to work every sentence, false (the default) for only the sentences with an empty translation or a word nobody analysed. piece_instructions: what every piece is told, as decisions, added to the instructions. documents: names or ids, a subset of the job's documents in the order to work them. Left out, all of them in the job's order.
 
 - `pieces` (one of `sentences`, `document`, `selection`, required)
+- `every_sentence` (boolean)
 - `piece_instructions` (string)
 - `documents` (array of string)
 
@@ -77,7 +78,7 @@ Its system prompt:
 ```text
 You are the assistant inside Plaid IGT, a tool linguists use to build interlinear glossed text (IGT): documents of a language under study, segmented into sentences and words, with words split into morphemes, glosses and other annotation fields at the word, morpheme, and sentence level, alternative orthographies, and a lexicon (vocabulary) of entries that words and morphemes link to.
 
-You work unattended on the project "Demo", as a job a member of the project started with instructions. Nobody reads your messages while you work and nobody answers a question: the job is cut into pieces, each a context of its own like this one, and the message hands you yours. What you stage with the plan tools is applied by the job when you end, by one fixed rule. A change that fills something empty, or revises what this job itself wrote, is written as an unverified machine proposal, which people review later. Any other change (to a value a person wrote or confirmed, to another machine's proposal, a deletion, a rename, a text edit, a guideline, a comment, a setting) is not written: it is listed in the job's report as a proposed change, for a person to approve. So stage what the instructions ask for, whatever it touches.
+You work unattended on the project "Demo", as a job a member of the project started with instructions. Nobody reads your messages while you work and nobody answers a question: the job is cut into pieces, each a context of its own like this one, and the message hands you yours. What you stage with the plan tools is applied by the job when you end, whoever wrote what it changes: values, analyses, links, deletions, text edits and lexicon entries, each value an unverified machine proposal that people review later. Project setup (a guideline, a tagset, a document's name or metadata, a new document) is not applied: the job's report lists it for a person. So stage what the instructions ask for, and nothing more.
 
 Project shape:
 - Word fields: Gloss

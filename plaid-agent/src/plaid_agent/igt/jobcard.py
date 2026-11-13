@@ -37,16 +37,18 @@ def _help(facts: Dict[str, Any]) -> str:
     most = f', at most {docs_max:,}' if docs_max else ''
     return '\n'.join([
         'propose_job drafts an unattended job: the assistant works the documents in the background, with its '
-        'tools, by the brief alone. What fills something empty, or revises the job\'s own work, is written as '
-        'unverified machine proposals that people check in the grid. Every other change is listed in the job\'s '
-        'report as a proposed change, for a person to approve. The draft writes nothing and starts nothing. The '
-        'user reads the card, may edit the brief, and starts the job or discards it.',
+        'tools, by the brief alone. Every change it plans in the documents and the lexicons is written, deletions '
+        'included, each value an unverified machine proposal that people check in the grid. Project setup '
+        '(guidelines, tagsets, a document\'s name or metadata, new documents) is listed in the job\'s report for a '
+        'person to approve. The draft writes nothing and starts nothing. The user reads the card, may edit the '
+        'brief, and starts the job or discards it.',
         f'- documents: names or ids{most}, or ["all"] for every document of the project.',
         '- brief: the job\'s instructions, which its model reads with every piece of its work, with nothing of '
         'this conversation. Write the decisions, not the discussion: what to do, what to leave, the conventions '
         'settled, in plain imperative sentences that name forms and glosses exactly, such as "Gloss -da as '
         f'LOC after a noun and as 3SG after a verb." or "Leave the Russian loanwords unanalysed."{within}',
-        '- The job never changes what people wrote or confirmed, and follows how people analysed a form.',
+        '- The job changes and deletes what people wrote where the brief asks it to, and follows how people '
+        'analysed a form.',
         '- A turn holds a job card or a plan of changes, not both. Drafting again in the same turn replaces the '
         'card.',
     ])

@@ -510,12 +510,14 @@ CHECKING, PLANNING, HARMONIZING, REPORTING = 'checking', 'planning', 'harmonizin
 ROW_FINAL = ('done', 'in-use', 'gone')
 
 #: The keys of a row's ``counts`` (CONTRACT 5.2), each a whole number.
-#: ``analyzed`` counts the sentences the job wrote in, an analysis or a
-#: translation (added by J-FIX-B2): the report's "sentences".
+#: ``analyzed`` counts the sentences the job wrote in, whatever it wrote
+#: (added by J-FIX-B2, any write since JH): the report's "sentences".
 #: ``proposed`` counts the staged changes the apply rule did not apply, and
 #: ``left_translations`` the empty translations left of ``left`` (added by JG).
+#: ``changes`` counts the changes a write applied and ``deletions`` those of
+#: them that took something away (added by JH).
 COUNT_KEYS = ('translations', 'refreshed', 'words', 'links', 'entries', 'left', 'left_translations', 'changed',
-              'proposed', 'analyzed')
+              'proposed', 'analyzed', 'changes', 'deletions')
 #: A row's count of the sentences skipped past the cap of its ``skipped``
 #: list (core's JOB_SKIPPED_PER_DOCUMENT), which are counted and not listed.
 SKIPPED_MORE = 'skipped_more'
@@ -764,7 +766,7 @@ def build_report(job: Job, state: str, reason: Optional[str], documents: List[Di
     totals = {'documents_done': 0, 'documents_in_use': 0, 'documents_gone': 0, 'documents_not_reached': 0,
               'sentences': 0, 'translations': 0, 'refreshed': 0, 'words': 0, 'links': 0, 'entries': 0,
               'skipped_too_long': 0, 'skipped_failed': 0, 'skipped_changed': 0, 'skipped_interrupted': 0,
-              'skipped_more': 0, 'changed': 0, 'proposed': 0}
+              'skipped_more': 0, 'changed': 0, 'proposed': 0, 'changes': 0, 'deletions': 0}
     for d in documents:
         key = {'done': 'documents_done', 'in-use': 'documents_in_use', 'gone': 'documents_gone'}.get(
             d.get('state'), 'documents_not_reached')
@@ -773,7 +775,8 @@ def build_report(job: Job, state: str, reason: Optional[str], documents: List[Di
         # The sentences the job wrote in, never one finished with nothing
         # written, skipped or failed (REV-J-B2 S3-5): ``done`` counts those.
         totals['sentences'] += counts.get('analyzed') or 0
-        for k in ('translations', 'refreshed', 'words', 'links', 'changed', 'proposed', 'skipped_more'):
+        for k in ('translations', 'refreshed', 'words', 'links', 'changed', 'proposed', 'skipped_more', 'changes',
+                  'deletions'):
             totals[k] += counts.get(k) or 0
         for s in d.get('skipped') or []:
             k = f'skipped_{str(s.get("reason") or "").replace("-", "_")}'

@@ -354,8 +354,10 @@ def test_a_split_off_half_of_a_sentence_the_job_translated_is_not_translated(mon
     seen = _written(monkeypatch)
     assert runner(job).document('d1') == 'done'
     assert seen == [['d1-s1'], ['d1-s2']], seen
-    assert _rows(client)['d1-s1'] == {'document': 'd1', 'others': ['d1-s1w1', 'd1-s1w2', 'd1-s1w3'],
-                                      'translation': 'translations', 'words': []}
+    row = _rows(client)['d1-s1']
+    assert len(row.pop('before')) == 1
+    assert row == {'document': 'd1', 'others': ['d1-s1w1', 'd1-s1w2', 'd1-s1w3'], 'translation': 'translations',
+                   'words': []}
 
 
 def test_a_merged_sentence_whose_joined_translation_a_person_cleared_is_not_translated(monkeypatch):

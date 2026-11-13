@@ -604,17 +604,22 @@ PLAN_WORK = _fn(
     'End the planning: how the job\'s work is cut into pieces, what every piece is told, and optionally which '
     'documents and in what order. pieces: "sentences" (stretches of a few sentences, each its own context), '
     '"document" (one context per document) or "selection" (one context for all the documents). '
+    'every_sentence: with "sentences", true to work every sentence, false (the default) for only the sentences '
+    'with an empty translation or a word nobody analysed. '
     'piece_instructions: what every piece is told, as decisions, added to the instructions. documents: names or '
     'ids, a subset of the job\'s documents in the order to work them. Left out, all of them in the job\'s order.',
     {'pieces': {'type': 'string', 'enum': ['sentences', 'document', 'selection']},
+     'every_sentence': {'type': 'boolean'},
      'piece_instructions': {'type': 'string'},
      'documents': {'type': 'array', 'items': {'type': 'string'}}}, ['pieces'])
 
 
-def t_plan_work(ws, pieces: str = None, piece_instructions: str = '', documents=None) -> str:
+def t_plan_work(ws, pieces: str = None, piece_instructions: str = '', documents=None,
+                every_sentence: bool = False) -> str:
     """Check the planning context's plan and keep it on the workspace
-    (``ws.plan_work``): a piece size of the menu, instructions within their
-    cap, a subset of the job's documents named once each."""
+    (``ws.plan_work``): a piece size of the menu, whether stretches walk
+    every sentence (``every_sentence``), instructions within their cap, a
+    subset of the job's documents named once each."""
     from ..core.limits import JOB_PIECE_INSTRUCTIONS_MAX_CHARS
     if pieces not in ('sentences', 'document', 'selection'):
         raise ToolError('pieces: give "sentences", "document" or "selection".', kind='invalid-argument')
@@ -643,7 +648,9 @@ def t_plan_work(ws, pieces: str = None, piece_instructions: str = '', documents=
         if unknown:
             raise ToolError('documents: not documents of this job: ' + ', '.join(f'"{u}"' for u in unknown[:5])
                             + '. Name them as the message lists them.', kind='invalid-argument')
-    ws.plan_work = {'pieces': pieces, 'piece_instructions': text, 'documents': order}
+    # Kept only when true: the plan's row holds the largest plan at its cap.
+    ws.plan_work = {'pieces': pieces, 'piece_instructions': text, 'documents': order,
+                    **({'every_sentence': True} if every_sentence is True and pieces == 'sentences' else {})}
     return 'The plan is kept. End now with a one-line reply.'
 
 

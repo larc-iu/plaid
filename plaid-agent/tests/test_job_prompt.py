@@ -200,3 +200,20 @@ def test_the_planning_prompt_says_its_code_stages_nothing(monkeypatch):
     monkeypatch.setattr(sandbox, 'available', lambda: None)
     text = prompt.build_plan_prompt(_project())
     assert 'plan(' not in text and 'stages nothing' in text
+
+
+def test_the_contract_says_a_job_applies_what_it_plans_but_project_setup():
+    """BRIEF-JH item 7: what is staged is applied when the piece ends,
+    whoever wrote what it changes, deletions included, and project setup is
+    listed for a person. The lines that keep a piece to what the
+    instructions ask stay, and the whole is shorter than ruling 13's."""
+    text = _job_prompt()
+    contract = shared.JOB_CONTRACT
+    assert 'is applied by the job when you end, whoever wrote what it changes' in contract
+    assert 'deletions' in contract and 'unverified machine proposal' in contract
+    assert 'Project setup' in contract and 'report lists it for a person' in contract
+    assert 'stage what the instructions ask for, and nothing more' in contract
+    assert 'fills something empty' not in text and 'not written' not in contract
+    assert 'DO WHAT THE INSTRUCTIONS ASK' in text and 'WHAT THE INSTRUCTIONS STATE WINS' in text
+    assert len(contract.split()) <= 151, len(contract.split())
+    assert ';' not in contract and '—' not in contract

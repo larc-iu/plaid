@@ -310,6 +310,23 @@ def test_a_sentences_plan_walks_only_sentences_with_something_empty(monkeypatch)
     assert finished['report']['documents'][0]['state'] == 'done'
 
 
+@pytest.mark.parametrize('every', [True, False])
+def test_a_sentences_plan_that_asks_for_every_sentence_walks_glossed_ones_too(monkeypatch, every):
+    """BRIEF-JH item 6: plan_work's every_sentence, for a job that corrects
+    or checks work already there in stretches. Its plan row keeps the flag
+    only when true, and a fully glossed document is then worked."""
+    client = JobClient({'d1': document('d1', 'Story 1', GLOSSED)})
+    job = start(client, 'Check every gloss and correct the wrong ones.', id=J, plan=None)
+    model = use(monkeypatch, _model(plan={'pieces': 'sentences', 'every_sentence': every},
+                                    piece=lambda asked, n: reply('Checked.')))
+    finished = run_job(job, runner(job))
+    rows = _plan_rows(client)
+    assert rows[0].get('every_sentence') is (True if every else None)
+    pieces = [c for c in model.calls if _kind(c['asked']) == 'piece' and c['n'] == 1]
+    assert bool(pieces) is every
+    assert finished['report']['documents'][0]['state'] == 'done'
+
+
 def test_a_selection_is_one_piece_whose_writes_land_document_by_document(monkeypatch):
     client = JobClient(_docs(2))
     job = start(client, 'Gloss ka in every text.', id=J, plan='selection')

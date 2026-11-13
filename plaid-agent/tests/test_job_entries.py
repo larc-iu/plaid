@@ -137,9 +137,10 @@ def _proposed_creates(report):
     return [(c['kind'], c['to']) for c in report['proposed'] if c['kind'] == 'create_entry']
 
 
-def test_an_entry_the_model_staged_and_nothing_linked_is_a_proposed_change_and_not_created(monkeypatch):
-    """J-INT 4 under the apply rule: a create_entry no applied link names is
-    not written, and the report lists it among the proposed changes."""
+def test_an_entry_the_model_staged_and_nothing_linked_is_created_as_a_machine_draft(monkeypatch):
+    """Ruling 17: a create_entry is applied whether or not a link names it
+    (a job told to add entries makes them). It is a machine draft, never a
+    proposed change."""
     from plaid_agent.core.job import run_job
     client = JobClient({'d1': document('d1', 'Story', [{'words': ['tok']}])})
     job = start(client)
@@ -155,32 +156,9 @@ def test_an_entry_the_model_staged_and_nothing_linked_is_a_proposed_change_and_n
         return reply('Done.')
     use(monkeypatch, Model(answer))
     finished = run_job(job, runner(job))
-    assert not [p for k, p in client.calls if k == 'vocab_items.create']
-    assert _proposed_creates(finished['report']) == [('create_entry', 'tok')]
-    assert 'proposed' not in finished['report']['entries'], 'one list of what was not applied'
-
-
-def test_a_proposed_entry_survives_a_new_worker_taking_the_job(monkeypatch):
-    """The proposed changes are kept among the job's decisions, not only in
-    the worker."""
-    from plaid_agent.core.job import run_job
-    client = JobClient({'d1': document('d1', 'Story', [{'words': ['tok']}])})
-    job = start(client)
-
-    def answer(asked, n, kwargs):
-        if n == 1:
-            return reply(calls=[
-                call(1, 'set_analysis', {'document': 'Story', 'ref': 's1.w1',
-                                         'morphemes': [{'form': 'tok', 'type': 'stem',
-                                                        'fields': {'Morph Gloss': 'stone'}}]}),
-                call(2, 'create_entry', {'form': 'tok', 'fields': {'gloss': 'stone'}}),
-            ])
-        return reply('Done.')
-    use(monkeypatch, Model(answer))
-    runner(job).document('d1')
-    job.status['phase'] = 'harmonizing'
-    finished = run_job(job, runner(job))  # a new runner, as a resumed worker builds
-    assert _proposed_creates(finished['report']) == [('create_entry', 'tok')]
+    made = [p for k, p in client.calls if k == 'vocab_items.create']
+    assert len(made) == 1 and 'machine' in str(made[0])
+    assert _proposed_creates(finished['report']) == [] and finished['report']['totals']['proposed'] == 0
 
 
 def _tok(link):

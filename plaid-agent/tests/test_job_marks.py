@@ -38,9 +38,10 @@ def _has_form(prefix):
 
 @pytest.mark.parametrize('pieces', ['document', 'selection'])
 def test_a_proposed_change_survives_one_502_on_its_row(monkeypatch, pieces):
-    """REV-JG3-2: a piece glosses a blank word (applied) and replaces a
-    person's translation (proposed). Core answers 502 once as the change's
-    row is sent: the step is taken again, and the change is in the report."""
+    """REV-JG3-2: a piece glosses a blank word (applied) and renames the
+    document (project setup, proposed). Core answers 502 once as the
+    change's row is sent: the step is taken again, and the change is in the
+    report."""
     client = JobClient(_docs(1))
     job = start(client, 'Gloss every word nobody analysed.', id=J, plan=pieces)
 
@@ -51,14 +52,13 @@ def test_a_proposed_change_survives_one_502_on_its_row(monkeypatch, pieces):
             return reply(calls=[
                 call(2, 'set_analysis', {'document': 'Story 1', 'ref': 's2.w1', 'morphemes': [
                     {'form': 'sa', 'fields': {'Morph Gloss': 'G'}}]}),
-                call(3, 'set_field', {'document': 'Story 1', 'refs': ['s1'], 'field': 'Translation',
-                                      'value': 'A better translation.'})])
-        return reply('Glossed sa, and proposed a translation for s1.')
+                call(3, 'rename_document', {'document': 'Story 1', 'new_name': 'Story one'})])
+        return reply('Glossed sa, and proposed a name for the text.')
     use(monkeypatch, _model(piece=piece))
     failed = _fail_once(client, 'add_decisions', _has_form(' change '))
     finished = run_job(job, runner(job))
     assert failed and finished['state'] == 'done'
-    assert [c['ref'] for c in finished['report']['proposed']] == ['s1'], finished['report']['proposed']
+    assert [c['kind'] for c in finished['report']['proposed']] == ['rename_document'], finished['report']['proposed']
     assert finished['report']['totals']['proposed'] == 1
 
 

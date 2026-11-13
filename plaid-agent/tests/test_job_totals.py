@@ -59,7 +59,8 @@ def test_a_job_where_half_the_sentences_fail_counts_the_other_half(monkeypatch):
     use(monkeypatch, Model(_analysing(bad=(2,))))
     finished = run_job(job, runner(job))
     assert finished['state'] == 'done'
-    assert _nonzero(_totals(client)) == {'documents_done': 2, 'sentences': 2, 'words': 2, 'skipped_failed': 2}
+    assert _nonzero(_totals(client)) == {'documents_done': 2, 'sentences': 2, 'words': 2, 'changes': 2,
+                                         'skipped_failed': 2}
 
 
 def test_a_job_that_left_a_sentence_blank_did_not_analyse_it(monkeypatch):
@@ -88,4 +89,51 @@ def test_a_job_stopped_midway_counts_what_it_wrote_before(monkeypatch):
     finished = run_job(job, runner(job))
     assert finished['state'] == 'cancelled'
     assert _nonzero(_totals(client)) == {'documents_done': 1, 'documents_not_reached': 1, 'sentences': 1,
-                                         'words': 1}
+                                         'words': 1, 'changes': 1}
+
+
+def test_the_totals_add_up_to_what_the_job_wrote_and_deleted(monkeypatch):
+    """A job that corrects what is there (ruling 17): in the first of two
+    documents it replaces a person's translation, clears a person's word
+    gloss, deletes a word and analyses a blank one, and in the second it
+    changes nothing. The totals are the sums
+    of the documents' counts, the documents' states add up to the job's
+    documents, "changes" is every op the job wrote, "deletions" those that
+    took something away, and "sentences" the sentences it wrote in."""
+    story = [{'words': [{'form': 'ka', 'gloss': ('go', 'human')}, 'ta'], 'translation': ('Old.', 'human')},
+             {'words': ['sa', 'sa']}]
+    client = JobClient({'d1': document('d1', 'One', story), 'd2': document('d2', 'Two', story)})
+    after = [{'words': ['ka', ('ta', [('ta', 'X')], J)], 'translation': ('New.', J)}, {'words': ['sa']}]
+    client.after_write = {'d1': document('d1', 'One', after, version=2)}
+    job = start(client, 'Correct the translations, clear wrong glosses, drop doubled words.', id=J,
+                plan='document')
+
+    def answer(asked, n, kwargs):
+        doc = asked.split('"')[1]
+        if n > 1 or doc == 'Two':
+            return reply('Corrected.' if doc == 'One' else 'Nothing to correct.')
+        return reply(calls=[
+            call(1, 'set_field', {'document': doc, 'refs': ['s1'], 'field': 'Translation', 'value': 'New.'}),
+            call(2, 'set_field', {'document': doc, 'refs': ['s1.w1'], 'field': 'Gloss', 'value': ''}),
+            call(3, 'delete_word', {'document': doc, 'refs': ['s2.w2']}),
+            call(4, 'set_analysis', {'document': doc, 'ref': 's1.w2', 'morphemes': [{'form': 'ta'}]})])
+    use(monkeypatch, Model(answer))
+    written = []
+    real = igt_job.execute_plan
+
+    def execute(c, ops, **kw):
+        written.extend(ops)
+        return real(c, ops, **kw)
+    monkeypatch.setattr(igt_job, 'execute_plan', execute)
+    report = run_job(job, runner(job))['report']
+    totals = report['totals']
+    from plaid_agent.igt.jobapply import deletes
+    assert totals['changes'] == len(written) == 4
+    assert totals['deletions'] == sum(1 for o in written if deletes(o)) == 2
+    assert totals['sentences'] == 2 and totals['proposed'] == 0
+    docs = report['documents']
+    assert sum(totals[k] for k in ('documents_done', 'documents_in_use', 'documents_gone',
+                                   'documents_not_reached')) == len(docs) == 2
+    for k in ('changes', 'deletions', 'translations', 'refreshed', 'words', 'changed'):
+        assert totals[k] == sum((d['counts'] or {}).get(k, 0) for d in docs), k
+    assert totals['refreshed'] == 1, 'a person\'s translation replaced is counted'

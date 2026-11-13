@@ -256,26 +256,24 @@ def test_a_translation_the_starter_confirmed_after_a_crash_is_recorded_and_count
     assert job.rows['d1']['counts']['translations'] == 1
 
 
-def test_another_machines_translation_is_proposed_and_never_replaced(monkeypatch):
-    """The owner's ruling 13: a translation another machine wrote is not the
-    job's to replace. The job stages it, the apply rule records it as a
-    proposed change from the old value to the new, and nothing is written."""
+def test_another_machines_translation_is_replaced_and_counted(monkeypatch):
+    """Ruling 17: a translation another machine wrote is the job's to
+    replace when its instructions say so. It is written as the job's
+    proposal, counted as a translation replaced, and nothing is proposed."""
     def translate(asked, n, kwargs):
         if n > 1:
             return reply('Done.')
         return reply(calls=[call(1, 'set_field', {'document': 'Story', 'refs': ['s1'], 'field': 'Translation',
                                                   'value': 'New.'})])
     before = [{'words': ['ka'], 'translation': ('Old.', 'machine')}]
-    client, job, clock, model = _job(monkeypatch, 'Translate every sentence again.', before, before, translate)
+    after = [{'words': ['ka'], 'translation': ('New.', J)}]
+    client, job, clock, model = _job(monkeypatch, 'Translate every sentence again.', before, after, translate)
     staged = _staged(monkeypatch)
     assert runner(job).document('d1') == 'done'
-    assert not staged, 'nothing written'
+    assert [o['kind'] for o in staged] == ['set_span'], staged
     counts = job.rows['d1']['counts']
-    assert counts['proposed'] == 1 and not counts.get('translations') and not counts.get('refreshed')
-    changes = [json.loads(r['analysis']) for (f, _k), r in client.jobs.decision_rows[J].items()
-               if f.startswith(' change ')]
-    assert [(c['kind'], c['ref'], c['field'], c['from'], c['to']) for c in changes] == \
-        [('set_span', 's1', 'Translation', 'Old.', 'New.')]
+    assert not counts.get('proposed') and counts.get('refreshed') == 1 and counts.get('changes') == 1
+    assert not [f for (f, _k) in client.jobs.decision_rows[J] if f.startswith(' change ')]
 
 
 def test_a_crash_between_the_writing_row_and_the_write_with_nobody_writing_takes_the_sentences_again(monkeypatch):
@@ -598,3 +596,54 @@ def test_a_sentence_value_the_job_writes_counts_as_a_translation_only_in_the_tra
     report = finished['report']
     assert report['totals']['translations'] == 1
     assert [x['ref'] for x in report['documents'][0]['left']] == ['s1'], report['documents'][0]['left']
+
+
+# --- a write that leaves no stamp of the job (ruling 17) ----------------------------------
+
+_DOUBLED = [{'words': [('ka', [('ka', 'go')], 'human')], 'translation': ('One.', 'human')},
+            {'words': ['sa', 'sa'], 'translation': ('Two.', 'human')}]
+_UNDOUBLED = [_DOUBLED[0], {'words': ['sa'], 'translation': ('Two.', 'human')}]
+
+
+def _undouble(asked, n, kwargs):
+    """Deletes the second word of s2 whenever s2 is its piece: run twice on
+    s2, it deletes a second, different word."""
+    if n > 1 or 2 not in targets_named(asked):
+        return reply('Done.')
+    return reply(calls=[call(1, 'delete_word', {'document': 'Story', 'refs': ['s2.w2']})])
+
+
+def test_a_deletion_that_landed_before_a_crash_is_never_made_again(monkeypatch):
+    """BRIEF-JH item 10: a stretch's write that only deletes a word leaves
+    nothing of the job in its sentence. It lands, the worker dies before the
+    record, nobody writes since. The sentence no longer reads as it did
+    before the write (its writing row's digest), so the write landed: it is
+    recorded, never a target again, and no second word is deleted."""
+    client, job, clock, model = _job(monkeypatch, 'Delete the doubled words.', _DOUBLED, _UNDOUBLED, _undouble)
+    staged = _staged(monkeypatch)
+    _crash_at_record(monkeypatch, job)
+    assert [o['kind'] for o in staged] == ['delete_word']
+    assert _resume(client, job).document('d1') == 'done'
+    assert [o['kind'] for o in staged] == ['delete_word'], 'one deletion, never a second'
+    assert len([c for c in model.calls if c['n'] == 1]) == 1, 'the model is not asked again'
+    assert _mark(client, 'd1-s2')['counts'].get('analyzed') == 1
+    assert not _skipped(job)
+
+
+def test_a_deletion_that_never_landed_before_a_crash_is_made_on_the_resume(monkeypatch):
+    """The guard: the writing row was sent, the write was not. The sentence
+    reads as before, nobody wrote since: it is a target again, and its one
+    deletion is made then."""
+    client, job, clock, model = _job(monkeypatch, 'Delete the doubled words.', _DOUBLED, _UNDOUBLED, _undouble)
+    _crash_before_write(monkeypatch, job)
+    assert _writing(client) == ['d1-s2'] and not client.batches
+    client.after_write.pop('d1')
+    real = igt_job.execute_plan
+
+    def execute(c, ops, **kw):
+        client.after_write['d1'] = document('d1', 'Story', _UNDOUBLED, version=3)
+        return real(c, ops, **kw)
+    monkeypatch.setattr(igt_job, 'execute_plan', execute)
+    assert _resume(client, job).document('d1') == 'done'
+    assert len([c for c in model.calls if c['n'] == 1]) == 2, 'asked again, as nothing landed'
+    assert not _skipped(job)

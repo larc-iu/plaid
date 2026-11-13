@@ -62,7 +62,10 @@ def test_an_op_whose_sentence_changed_before_the_lock_is_dropped_and_its_sentenc
     assert not row.get('skipped')
 
 
-def test_a_word_a_person_analysed_since_is_a_proposed_change_under_the_lock():
+def test_a_word_a_person_analysed_is_analysed_again_under_the_lock():
+    """Ruling 17: a job changes what people wrote. The sentence as the
+    piece read it is the sentence under the lock, so the person's analysis
+    is replaced by the job's, an unverified machine proposal."""
     client = JobClient({'d1': _job_doc([{'words': ['blank']}])})
     job = start(client)
     r = runner(job)
@@ -77,7 +80,7 @@ def test_a_word_a_person_analysed_since_is_a_proposed_change_under_the_lock():
     # the rule alone decides.
     prints = {s.id: ws.sentence_print(fresh, s) for s in fresh.sentences}
     kept, counts, changed, proposed = r.recheck(ws, project, fresh, st, prints, list(ws.ops))
-    assert kept == [] and counts['proposed'] == 1 and [c['from'] for c in proposed] == ['blank ‘B’']
+    assert [o['kind'] for o in kept] == ['set_analysis'] and not counts['proposed'] and proposed == []
 
 
 def test_an_off_list_value_is_staged_as_a_machine_value():
