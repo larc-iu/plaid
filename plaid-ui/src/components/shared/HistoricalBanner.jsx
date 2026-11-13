@@ -28,7 +28,7 @@ export const HistoricalBanner = ({ entry, loading, view, onView, className = '' 
     <Notice tone="warning" icon={Info} className={className}>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <span>{text}</span>
-        {onView && <SegmentedControl label="Show" value={view} onChange={onView} options={VIEWS} />}
+        {onView && <SegmentedControl label="View" value={view} onChange={onView} options={VIEWS} />}
       </div>
     </Notice>
   );

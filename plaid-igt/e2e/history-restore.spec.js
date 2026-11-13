@@ -45,6 +45,12 @@ const setGloss = async (message, value) => {
   });
 };
 
+// A whole entry opens on what it changed. The document as of it is the
+// other side of the switch over it.
+const showDocument = async (page) => {
+  await page.getByRole('group', { name: 'View' }).getByRole('button', { name: 'Document' }).click();
+};
+
 const openDocument = async (page) => {
   await page.goto(documentPath());
   await expect(page.getByRole('tab', { name: 'Analyze' })).toBeVisible({ timeout: 20_000 });
@@ -113,6 +119,8 @@ test('a snapshot can be viewed, left, and restored to', async ({ page }) => {
 
   await openHistory(page);
   await entryRow(page, 'Seed the original gloss').click();
+  await expect(page.getByText(/Changes made in this entry/)).toBeVisible();
+  await showDocument(page);
 
   // The document on screen is the earlier one, and it says so.
   await expect(page.getByText('Historical state')).toBeVisible();
@@ -125,6 +133,7 @@ test('a snapshot can be viewed, left, and restored to', async ({ page }) => {
 
   // Back to the entry, and this time restore to it.
   await entryRow(page, 'Seed the original gloss').click();
+  await showDocument(page);
   await expect(glossCell(page)).toHaveValue('ORIGINAL', { timeout: 15_000 });
   await page.getByRole('button', { name: 'Restore', exact: true }).click();
 
@@ -200,7 +209,9 @@ test('the snapshot the reader clicked past is never shown', async ({ page }) => 
   await openHistory(page);
 
   await entryRow(page, 'Seed the original gloss').click();
+  await showDocument(page);
   await entryRow(page, 'Change the gloss to MIDDLE').click();
+  await showDocument(page);
 
   await expect(glossCell(page)).toHaveValue('MIDDLE', { timeout: 15_000 });
   await expect(page.getByText('Change the gloss to MIDDLE').last()).toBeVisible();
@@ -227,6 +238,7 @@ test('the Details tab opens History and shows the past read-only', async ({ page
 
   await openHistory(page);
   await entryRow(page, 'Seed the original gloss').click();
+  await showDocument(page);
   await expect(page.getByText(/This is the document as of/)).toBeVisible();
   await expect(name).toHaveValue(before, { timeout: 15_000 });
   await expect(name).toBeDisabled();

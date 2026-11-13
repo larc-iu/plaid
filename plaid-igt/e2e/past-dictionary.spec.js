@@ -56,6 +56,8 @@ test('a past state of a document shows the entry as it read then', async ({ page
   // document reads. The entry before it is the link, made while the entry was
   // still spelled "fono".
   await page.getByText('Create vocab mapping').click();
+  // An entry opens on what it changed. The document as of it is beside that.
+  await page.getByRole('group', { name: 'View' }).getByRole('button', { name: 'Document' }).click();
   await expect(page.getByText(/This is the document as of/)).toBeVisible();
   await expect(chip).toHaveText(/fono/);
 

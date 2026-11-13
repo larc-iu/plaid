@@ -67,3 +67,7 @@ export function useHistoryParam({ selectedId, ready, open }) {
   );
   return { wanted, view, select, clear, setView };
 }
+
+/** The address of the page at `path` with History entry `entryId` open. */
+export const historyHref = (path, entryId) =>
+  `${path}?${new URLSearchParams({ [HISTORY_PARAM]: entryId })}`;

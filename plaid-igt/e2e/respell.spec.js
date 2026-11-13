@@ -203,6 +203,8 @@ test('a past state of the document offers no respell', async ({ page }) => {
     .first()
     .click();
   await expect(page.getByText('Historical state')).toBeVisible({ timeout: 15_000 });
+  // An entry opens on what it changed. The document as of it is beside that.
+  await page.getByRole('group', { name: 'View' }).getByRole('button', { name: 'Document' }).click();
   // The past state has the old spelling: find kat's column by its id.
   const cell = cellOf(page, seeded.kat);
   await expect(cell).toBeVisible({ timeout: 15_000 });

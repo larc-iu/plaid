@@ -30,6 +30,7 @@ import { useSentenceFocus } from './hooks/useSentenceFocus.js';
 import { useComposeProject } from '@/hooks/useCompose';
 import { IGT_ASSISTANT } from '../projects/assistant/adapter.js';
 import { StartJob } from '../projects/jobs/StartJobDialog.jsx';
+import { DocumentHistoryChanges } from './history/DocumentHistoryChanges.jsx';
 
 // The Media tab (the timeline, waveform, speech detection, and recording
 // conversion) and the Comments tab ride in their own chunks.
@@ -122,6 +123,8 @@ const IGT_SHELL = {
   // shows the shell's status.
   ownSaveStatus: ['analyze'],
   roleWords: TOKEN_ROLE_WORDS,
+  // A History entry opens on what it changed.
+  historyChanges: (context) => <DocumentHistoryChanges context={context} />,
   // Landing on a sentence: the ?focusSentence= handoff, and a citation asking
   // for one of this document's sentences while the reader is on the grid.
   useFocusHere: useSentenceFocus,
