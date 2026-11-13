@@ -1556,7 +1556,10 @@ class IgtRunner:
             whole = self.whole_document(project, doc)
             pending = self.pending(doc, project, document_id, every=self.every_sentence())
             if not pending:
-                job.update_row(document_id, state='done')
+                # The row's counts whole: a record whose row update core
+                # failed is in core, and its counts reach the row here.
+                job.update_row(document_id, state='done',
+                               **self.tally(document_id, (job.rows.get(document_id) or {}).get('skipped')))
                 return 'done'
             row = job.rows.get(document_id) or {}
             total, done = row.get('targets') or 0, row.get('done') or 0
@@ -1638,11 +1641,18 @@ class IgtRunner:
             skipped.append({'sentence': f's{s.index}' if s else '?', 'sentence_id': sentence_id, 'reason': reason,
                             'kind': kind})
             fields['skipped'] = skipped
-        else:
-            self.unlisted.setdefault(document_id, set()).add(sentence_id)
+        unlisted = self.unlisted.setdefault(document_id, set())
+        new = 'skipped' not in fields and sentence_id not in unlisted
+        if new:
+            unlisted.add(sentence_id)  # counted in the row's tally below
         if cursor and self._after_cursor(row, doc, sentence_id):
             fields['last_sentence'] = sentence_id
-        self.job.update_row(document_id, **fields, **self.tally(document_id, skipped))
+        try:
+            self.job.update_row(document_id, **fields, **self.tally(document_id, skipped))
+        except Exception:
+            if new:
+                unlisted.discard(sentence_id)  # skipped again when taken again
+            raise
 
     @staticmethod
     def _after_cursor(row, doc, sentence_id) -> bool:
@@ -2420,16 +2430,16 @@ class IgtRunner:
         if self.changes is None:
             self.changes = {r.get('key') for r in self.job.decisions()
                             if str(r.get('form') or '').startswith(CHANGE_FORM)}
-        rows, dropped = [], 0
+        rows, dropped, keys = [], 0, []
         for c in changes:
             text = self.change_text(c, note)
             key = analysis_key(canonical(c))
-            if key in self.changes:
+            if key in self.changes or key in keys:
                 continue
-            if len(self.changes) >= JOB_CHANGES_MAX:
+            if len(self.changes) + len(keys) >= JOB_CHANGES_MAX:
                 dropped += 1
                 continue
-            self.changes.add(key)
+            keys.append(key)
             rows.append({'form': CHANGE_FORM + key, 'key': key, 'analysis': text, 'count': 1,
                          'document_id': c.get('document_id'), 'sentence_id': None})
         if dropped:
@@ -2437,6 +2447,9 @@ class IgtRunner:
                          'document_id': None, 'sentence_id': None})
         if rows:
             self.job.add_decisions(rows)
+        # Kept as held only once core took them: a call core failed is made
+        # again, never found "kept" by the step taken again (REV-JG3-2).
+        self.changes.update(keys)
 
     @staticmethod
     def change_text(change: Dict[str, Any], note: str) -> str:
@@ -2488,13 +2501,13 @@ class IgtRunner:
             rows.append({'form': f'{TABLES_DROPPED_FORM} {key}', 'key': analysis_key(text), 'analysis': text,
                          'count': 1, 'document_id': None, 'sentence_id': None})
         for i, t in keep:
-            kept.add(f'{key} {i:02d}')
             for part_no, text in enumerate(table_rows_text(t)):
                 tkey = analysis_key(f'{key}/{i}/{part_no}')
                 rows.append({'form': f'{TABLE_FORM}{key} {i:02d} {part_no:03d}', 'key': tkey, 'analysis': text,
                              'count': 1, 'document_id': piece.get('document'), 'sentence_id': None})
         if rows:
             self.job.add_decisions(rows)
+        kept.update(f'{key} {i:02d}' for i, _ in keep)
 
     def fallen_back(self) -> Dict[str, str]:
         """Document id (or ``selection``) -> why it was worked in smaller
@@ -2565,7 +2578,8 @@ class IgtRunner:
         wrote = {st.word_of.get(t, t) for o in ops if o.get('kind') != 'create_entry'
                  for t in [o.get('analysis_word_id') or o.get('word_id') or o.get('token_id')]
                  if not (o.get('kind') == 'set_span' and t in st.translations)}
-        extra = self.carry.pop(document_id, Counter())
+        # Taken off only once the record holding it is in core (below).
+        extra = Counter(self.carry.get(document_id) or {})
         extra['changed'] += dropped.get('changed', 0)
         extra['proposed'] += dropped.get('proposed', 0)
         extra['entries'] += len(made)
@@ -2599,8 +2613,6 @@ class IgtRunner:
         if records:
             for k, n in extra.items():
                 records[0]['counts'][k] = records[0]['counts'].get(k, 0) + n
-        elif any(extra.values()):
-            self.carry[document_id] = extra
         fields: Dict[str, Any] = {}
         if retry:
             first = retry[0]
@@ -2614,6 +2626,10 @@ class IgtRunner:
         if len(skipped) != len(row.get('skipped') or []):
             fields['skipped'] = skipped
         self.commit(document_id, records, fields)
+        if records:
+            self.carry.pop(document_id, None)
+        elif any(extra.values()):
+            self.carry[document_id] = extra
 
     def sentence_record(self, document_id: str, s: Sentence, words: List[Word], translation: Optional[str],
                         made: frozenset = frozenset(), vouched=frozenset()) -> Dict[str, Any]:
@@ -2767,7 +2783,12 @@ class IgtRunner:
             self.recorded[document_id] = marks
             row = job.rows.get(document_id) or {}
             if self.recorded[document_id]:
-                job.update_row(document_id, **self.tally(document_id, row.get('skipped')))
+                try:
+                    job.update_row(document_id, **self.tally(document_id, row.get('skipped')))
+                except Exception:
+                    # Read again, and the row written, when taken again.
+                    self.recorded.pop(document_id, None)
+                    raise
         marks = self.recorded[document_id]
         writing = self.writing[document_id]
         unsent = self.unsent.setdefault(document_id, set())

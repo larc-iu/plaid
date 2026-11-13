@@ -481,9 +481,11 @@ class Job:
     # --- rows and decisions ---------------------------------------------------
 
     def update_row(self, document_id: str, **fields) -> None:
-        """Write a document row's columns, and keep them here."""
-        self.rows.setdefault(document_id, {'document_id': document_id}).update(fields)
+        """Write a document row's columns, and keep them here once core took
+        them: a call core failed leaves the row as core holds it, so the step
+        taken again writes it again (REV-JG3-2)."""
         self.admin.jobs.update_document(self.id, document_id, self.worker_id, **fields)
+        self.rows.setdefault(document_id, {'document_id': document_id}).update(fields)
 
     def add_decisions(self, decisions: List[Dict[str, Any]]) -> None:
         for i in range(0, len(decisions), JOB_DECISIONS_PER_CALL):
