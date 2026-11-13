@@ -343,3 +343,49 @@ def test_a_stretch_halved_stores_a_writing_row_only_for_what_it_writes(monkeypat
     assert runner(job).document('d1') == 'done'
     assert _writing(client) == ['d1-s1']
     assert _skipped(job) == [('d1-s2', 'failed')]
+
+
+def test_a_word_a_try_that_sent_nothing_was_for_is_left_blank_when_the_next_try_leaves_it(monkeypatch):
+    """REV-B4-7: the first try was for ka, ta and sa and sent nothing (the
+    version moved on both tries). Taken again, the model now leaves ta. The
+    record of s1 is then lost to a passing error and s1 is recorded from the
+    document (``settle``): ta is "Left blank", since no write that was sent
+    was for it."""
+    asked = {'n': 0}
+
+    def model(text, n, kwargs):
+        if n == 1:
+            asked['n'] += 1
+        if n > 1:
+            return reply('Done.')
+        words = {1: ['ka', 'ta'], 2: ['sa']} if asked['n'] == 1 else {1: ['ka'], 2: ['sa']}
+        return reply(calls=[call(10 * s + i, 'set_analysis', {'document': 'Story', 'ref': f's{s}.w{i}', 'morphemes': [
+            {'form': f, 'fields': {'Morph Gloss': 'go'}}]}) for s in targets_named(text)
+            for i, f in enumerate(words[s], start=1)])
+    client, job, clock, _ = _job(monkeypatch, after=[{'words': [MINE['ka'], 'ta']}, {'words': [MINE['sa']]}],
+                                 model=model)
+    real = igt_job.execute_plan
+    left = {'n': 2}
+
+    def execute(c, ops, **kw):
+        if left['n']:
+            left['n'] -= 1
+            _moved(c, ops)
+        return real(c, ops, **kw)
+    monkeypatch.setattr(igt_job, 'execute_plan', execute)
+    real_add = client.jobs.add_decisions
+    lost = {'n': 1}
+
+    def add(job_id, worker_id, decisions):
+        if lost['n'] and any(d['form'].startswith(RECORD_FORM) for d in decisions):
+            lost['n'] -= 1
+            raise PlaidAPIError('HTTP 502', status=502)
+        return real_add(job_id, worker_id, decisions)
+    client.jobs.add_decisions = add
+    r = runner(job)
+    assert r.document('d1') == 'deferred'
+    assert r.document('d1') == 'done'
+    assert asked['n'] == 2
+    mark = _mark(client, 'd1-s1')
+    assert [x['ref'] for x in mark['left']] == ['s1.w2'], mark
+    assert mark['counts']['left'] == 1 and mark['counts']['words'] == 1

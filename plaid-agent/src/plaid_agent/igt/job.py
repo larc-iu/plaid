@@ -1382,9 +1382,12 @@ class IgtRunner:
         if rows:
             self.job.add_decisions(rows)
         writing = self.writing.setdefault(document_id, {})
+        unsent = self.unsent.setdefault(document_id, set())
         for sid, plan in plans.items():
-            writing[sid] = self.merged(writing.get(sid), plan)
-        self.unsent.setdefault(document_id, set()).difference_update(plans)
+            # A try after one known to have sent nothing replaces it: what
+            # that try was for was never written (REV-B4-7).
+            writing[sid] = self.merged(None if sid in unsent else writing.get(sid), plan)
+        unsent.difference_update(plans)
         return list(plans)
 
     @staticmethod
