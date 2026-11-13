@@ -326,6 +326,7 @@ describe('the vocabulary History', () => {
       await settle(view);
       expect(document.body.querySelector('[data-testid="history-changes"]')).not.toBeNull();
       expect(asked).toContain('a2');
+      expect(document.body.textContent).toContain('Changes made in this action');
       await view.unmount();
     } finally {
       log.pop();

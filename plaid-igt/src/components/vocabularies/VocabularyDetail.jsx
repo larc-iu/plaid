@@ -484,6 +484,7 @@ export const VocabularyDetail = () => {
           id: entry.id,
           time: entry.endTime || entry.time,
           label: entry.message || entry.ops?.[0]?.description || '',
+          action: !!entry.partOf,
         });
       } catch (err) {
         if (statusOf(err) === 401) {
@@ -1462,7 +1463,7 @@ export const VocabularyDetail = () => {
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <span>
                     {showChanges
-                      ? `Changes made in this entry, ${fullTimestamp(history.selected.time)}.`
+                      ? `Changes made in this ${history.selected.action ? 'action' : 'entry'}, ${fullTimestamp(history.selected.time)}.`
                       : history.loadingPast
                         ? `Loading the vocabulary as of ${fullTimestamp(history.selected.time)}…`
                         : `Read-only. This is the vocabulary as of ${fullTimestamp(history.past?.time ?? history.selected.time)}.`}

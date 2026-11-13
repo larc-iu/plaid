@@ -49,7 +49,7 @@ describe('HistoryDrawer', () => {
       byText(view.container, '[data-history-item^="o:"]', 'Set a span').click(),
     );
     expect(onSelectEntry).toHaveBeenLastCalledWith(
-      expect.objectContaining({ id: 'op-1', time: '2026-09-01T00:00:00.000000004Z' }),
+      expect.objectContaining({ id: 'op-1', time: '2026-09-01T00:00:00.000000004Z', action: true }),
     );
     await view.unmount();
   });

@@ -96,11 +96,13 @@ export const HistoryDrawer = ({
   // the op. The server sends that time as the op's `endTime`.
   const selectUnit = (entry) =>
     onSelectEntry({ id: entry.id, time: entry.endTime || entry.time, label: unitLabel(entry) });
+  // `action` marks one change picked inside an entry.
   const selectOp = (op) =>
     onSelectEntry({
       id: op.id,
       time: op.endTime || op.time,
       label: readableDescription(op.description),
+      action: true,
     });
 
   // The list is one tab stop (roving tabindex): the entry last focused, else

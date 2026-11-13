@@ -14,13 +14,13 @@ const VIEWS = [
 //
 // Where the app shows what an entry changed (`onView`), the line carries the
 // switch between that and the document as of the entry, `view` being the one
-// shown.
+// shown. An entry marked `action` is one change picked inside an entry.
 export const HistoricalBanner = ({ entry, loading, view, onView, className = '' }) => {
   if (!entry) return null;
   const when = fullTimestamp(entry.time);
   const changes = onView && view === 'changes';
   const text = changes
-    ? `Changes made in this entry, ${when}.`
+    ? `Changes made in this ${entry.action ? 'action' : 'entry'}, ${when}.`
     : loading
       ? `Loading the document as of ${when}…`
       : `Read-only. This is the document as of ${when}.`;

@@ -216,10 +216,11 @@ describe('a History entry in the address', () => {
   it('opens an action inside an entry on what it changed, and its address again on reload', async () => {
     await mount('/p/p1/d/d1?tab=analyze');
     await view.step(() =>
-      seen.panel.history.selectEntry({ id: 'op-1', time: '2026-11-02T00:00:00Z' }),
+      seen.panel.history.selectEntry({ id: 'op-1', time: '2026-11-02T00:00:00Z', action: true }),
     );
     expect(q().get('history')).toBe('op-1');
     expect(changes().dataset.entry).toBe('op-1');
+    expect(view.container.textContent).toContain('Changes made in this action');
     expect(switchTo('Document')).not.toBeUndefined();
     await view.unmount();
     // The address alone, as a reload or Back gives it: core reads an
@@ -227,7 +228,15 @@ describe('a History entry in the address', () => {
     auditPage.mockImplementation(async (documentId, { entryId }) => ({
       entries:
         entryId === 'op-1'
-          ? [{ id: 'op-1', time: '2026-11-02T00:00:00Z', endTime: '2026-11-02T00:00:01Z', ops: [] }]
+          ? [
+              {
+                id: 'op-1',
+                time: '2026-11-02T00:00:00Z',
+                endTime: '2026-11-02T00:00:01Z',
+                partOf: 'g1',
+                ops: [],
+              },
+            ]
           : [],
       nextCursor: null,
     }));
@@ -236,6 +245,7 @@ describe('a History entry in the address', () => {
     expect(notify.notifyError).not.toHaveBeenCalled();
     expect(q().get('history')).toBe('op-1');
     expect(changes().dataset.entry).toBe('op-1');
+    expect(view.container.textContent).toContain('Changes made in this action');
     await view.unmount();
   });
 
