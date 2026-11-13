@@ -49,7 +49,7 @@ from ..core.plan import JOB_DETAIL_KEY, PlanError, held_changes
 from ..core.tools import Refusal, ToolError
 from ..core.version import agent_version
 from . import toolkit
-from .plan import execute_plan
+from .plan import PlanOutOfDate, check_entries, execute_plan
 from .project import IgtProject, Sentence, Word, is_virtual, load_project, render_sentence
 from .prompt import JOB_SYSTEM, build_job_prompt
 from .trace import TRACER
@@ -529,6 +529,33 @@ def _status(e: BaseException) -> int:
             return e.status or 0
         e = e.__cause__ or e.__context__
     return 0
+
+
+def _unresolved(e: BaseException) -> bool:
+    """Core's 403 for something it no longer finds, to a reader who is not
+    an administrator."""
+    err = core_job.plaid_error(e)
+    return bool(err is not None and isinstance(err.response_data, dict) and err.response_data.get('unresolved'))
+
+
+def _gone_now(e: BaseException) -> bool:
+    """A write refused for something it names being gone: a 404, or core's
+    403 that names nothing."""
+    return _status(e) == 404 or (_status(e) == 403 and _unresolved(e))
+
+
+def out_of_date(client, project: IgtProject, op: Dict[str, Any]) -> bool:
+    """Whether a link or an entry the job stages is out of date now: its
+    entry gone, its lexicon no longer the project's. The plan's own check
+    (``check_entries``), asked of this op alone. Core out of reach while
+    checking is no answer: it goes up, for the walk to try again."""
+    try:
+        check_entries(client, [op], project)
+    except PlanOutOfDate as e:
+        if core_job.plaid_error(e) is not None:
+            raise
+        return True
+    return False
 
 
 def private_folders(folder: str) -> None:
@@ -1144,7 +1171,10 @@ class IgtRunner:
                 # the person's edit (REV-J-B3 B3-2).
                 if _status(e) == 409 and tries == 0 and not (e.applied or e.unknown):
                     continue
-                if _status(e) in (409, 423):
+                # A conflict, or something the write names gone in the moment
+                # since the check (the document, an entry): put off, and the
+                # next walk reads what is there (REV-J-B3 B3-3).
+                if _status(e) in (409, 423) or _gone_now(e):
                     raise Deferred(document_id) from e
                 raise
             finally:
@@ -1198,7 +1228,7 @@ class IgtRunner:
                  for w in s.words if w.id in st.words and word_target(w)}
         if kept:
             self.machine_status(project, kept)
-            self.apply(client, project, document_id, group, kept, seed_id)
+            kept = self.apply(client, project, document_id, group, kept, seed_id, counts)
         known = client.document_versions.get(document_id)
         after = self.read(project, document_id, client)
         exact = known is not None and str(after.version) == str(known)
@@ -1208,13 +1238,43 @@ class IgtRunner:
         return kept, counts, changed, after, frozenset(blank) if exact else frozenset()
 
     def apply(self, client, project: IgtProject, document_id: str, group: str, kept: List[Dict[str, Any]],
-              seed_id: str) -> None:
-        """Write ``kept`` as one more part of the document's glossing entry."""
+              seed_id: str, counts: Counter) -> List[Dict[str, Any]]:
+        """Write ``kept`` as one more part of the document's glossing entry.
+        A link to an entry gone since the model read it (deleted, merged
+        away, its lexicon taken out of the project) is dropped as
+        ``changed`` and the rest is written (SPEC 12, REV-J-B3 B3-3): the
+        plan's own check, asked again of each link and entry alone, says
+        which. An entry that nothing kept links is not created. A plan still
+        out of date after that, or one whose ops are none of them out of date
+        alone, puts the document off. The ops written."""
         label = gloss_label(self.job.tasks)
-        with client.operation(label, kind='job', ref=self.gloss_ref(document_id), group_id=group,
-                              keys={'seed': seed_id, 'stamps': {}}):
-            execute_plan(client, kept, source=self.source, label=label, project=project,
-                         stamp_mode='machine', detail=self.detail, seed=seed_id)
+        for n in range(2):
+            try:
+                with client.operation(label, kind='job', ref=self.gloss_ref(document_id), group_id=group,
+                                      keys={'seed': seed_id, 'stamps': {}}):
+                    execute_plan(client, kept, source=self.source, label=label, project=project,
+                                 stamp_mode='machine', detail=self.detail, seed=seed_id)
+                return kept
+            except PlanOutOfDate as e:
+                # Raised before anything is written. Core out of reach while
+                # checking is core's trouble: it goes up, the walk is tried again.
+                if core_job.plaid_error(e) is not None:
+                    raise
+                gone = {id(o) for o in kept if o.get('kind') in ('link', 'create_entry')
+                        and out_of_date(client, project, o)} if n == 0 else set()
+                if not gone:
+                    raise Deferred(document_id) from e
+                logger.info('Job %s: links or entries out of date in %s are dropped: %s', self.job.id, document_id, e)
+                unmade = {o.get('key') for o in kept if id(o) in gone and o.get('kind') == 'create_entry'}
+                rest = [o for o in kept if id(o) not in gone
+                        and not (o.get('kind') == 'link' and o.get('new_entry_key') in unmade)]
+                left = {id(o) for o in rest}
+                counts['changed'] += sum(1 for o in kept if o.get('kind') == 'link' and id(o) not in left)
+                linked = {o.get('new_entry_key') for o in rest if o.get('kind') == 'link'}
+                kept = [o for o in rest if o.get('kind') != 'create_entry' or o.get('key') in linked]
+                if not kept:
+                    return kept
+        return kept
 
     def recheck(self, ws: JobWorkspace, project: IgtProject, fresh, st: Stretch, prints: Dict[str, str],
                 ops: List[Dict[str, Any]]):
@@ -1731,7 +1791,17 @@ class IgtRunner:
                         job.update_row(document_id, state='gone')
                         return {'written': set(), 'left': {}}
                     raise why from e
+            except PlanOutOfDate as e:
+                # An entry a rewrite links went between staging and the write
+                # (REV-J-B3 B3-3): nothing was written, the words are left.
+                if core_job.plaid_error(e) is not None:
+                    raise
+                logger.warning('Job %s: harmonize\'s rewrites in %s are out of date: %s', job.id, document_id, e)
+                return {'written': set(), 'left': {wid: REFUSED for wid, _ in words}}
             except PlanError as e:
+                if _gone_now(e) and not (e.applied or e.unknown):
+                    logger.warning('Job %s: harmonize\'s rewrites in %s were refused: %s', job.id, document_id, e)
+                    return {'written': set(), 'left': {wid: REFUSED for wid, _ in words}}
                 if _status(e) not in (409, 423):
                     raise
         return None
@@ -1875,7 +1945,9 @@ class IgtRunner:
                                   keys={'seed': seed_id, 'stamps': {}}):
                 execute_plan(client, list(ws.ops), source=self.source, label=ENTRIES_LABEL, project=project,
                              stamp_mode='machine', detail=self.detail, seed=seed_id)
-        except PlanError as err:
+        except (PlanError, PlanOutOfDate) as err:
+            # Refused, or out of date before anything was written (a draft
+            # deleted or linked since it was staged, REV-J-B3 B3-3).
             logger.warning('Job %s: its unlinked drafts were kept: %s', self.job.id, err)
             return {e['id'] for e in doomed}
         return kept
