@@ -13,7 +13,9 @@ const STATE_WORDS = { added: 'Added', deleted: 'Deleted' };
  * One sentence an entry changed (`s`, from sentenceChanges), as an
  * interlinear block: a column per word, a row per tier the sentence has a
  * value in on either side, each cell the value after the entry over the one
- * it replaced. A word the entry made or deleted is a column of its own. The
+ * it replaced. A morpheme row holds each morpheme's value apart, so a gloss
+ * written beside another keeps its own marks. A word the entry made or
+ * deleted is a column of its own. The
  * columns lay out in the document's direction (`dir`), each value in its own.
  * Under the block, the sentence's text where the entry changed it, its
  * sentence fields and the expressions the entry linked or unlinked.
@@ -72,7 +74,11 @@ export const SentenceChange = ({ s, dir, projectId, documentId }) => (
                     line.kind === 'surface' ? 'font-medium' : 'text-xs',
                   )}
                 >
-                  <ChangeValue c={c} gloss={GLOSS_KINDS.has(line.kind)} />
+                  {c.pieces ? (
+                    <Pieces pieces={c.pieces} gloss={GLOSS_KINDS.has(line.kind)} />
+                  ) : (
+                    <ChangeValue c={c} gloss={GLOSS_KINDS.has(line.kind)} />
+                  )}
                 </td>
               ))}
             </tr>
@@ -96,6 +102,19 @@ export const SentenceChange = ({ s, dir, projectId, documentId }) => (
       </Field>
     ))}
   </section>
+);
+
+// A word's morpheme values side by side, each before and after on its own,
+// with the joiners the grid writes between them.
+const Pieces = ({ pieces, gloss }) => (
+  <span className="inline-flex items-start">
+    {pieces.map((p) => (
+      <span key={p.id} className="inline-flex items-start" data-piece={p.id}>
+        {p.joiner && <span className="text-muted-foreground">{p.joiner}</span>}
+        <ChangeValue c={p} gloss={gloss} />
+      </span>
+    ))}
+  </span>
 );
 
 const Field = ({ label, children }) => (

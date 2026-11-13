@@ -140,6 +140,35 @@ describe('DocumentHistoryChanges', () => {
     );
   });
 
+  it('draws a machine gloss beside a person’s in the same word as machine-made, replacing nothing', async () => {
+    const morphemes = [
+      { id: 'm-1', text: 'text-1', begin: 0, end: 3, precedence: 1, metadata: { form: 'th' } },
+      { id: 'm-9', text: 'text-1', begin: 0, end: 3, precedence: 2, metadata: { form: 'e' } },
+      { id: 'm-2', text: 'text-1', begin: 4, end: 7, precedence: 1, metadata: {} },
+    ];
+    const made = { id: 'g9', value: 'DEF', tokens: ['m-9'], metadata: MACHINE };
+    const doc = after({
+      morphemes,
+      spans: { 'msl-0': [{ id: 'g1', value: 'DEM', tokens: ['m-1'], metadata: {} }, made] },
+    });
+    await mount(
+      doc,
+      clientOf({ document: [[{ kind: 'span', id: 'g9', layer: 'msl-0', after: made }]] }),
+    );
+    expect(count()).toBe('1 change, 0 replaced a person’s value');
+    const cell = view.container.querySelector('tr[data-row="morph:Gloss"] td');
+    const pieces = all(cell, '[data-piece]');
+    expect(pieces.map((p) => p.dataset.piece)).toEqual(['m-1', 'm-9']);
+    // The person's gloss as it was, plain, and the new one alone marked.
+    expect(pieces[0].querySelector('[data-change]')).toBeNull();
+    expect(pieces[0].textContent).toBe('DEM');
+    expect(pieces[1].querySelector('[data-change]').dataset.change).toBe('added');
+    expect(pieces[1].querySelector('.plaid-prov--machine').textContent).toBe('DEF');
+    expect(pieces[1].textContent).toBe('-DEF');
+    expect(cell.querySelector('del')).toBeNull();
+    expect(view.container.querySelector('[data-replaced]')).toBeNull();
+  });
+
   it('shows only the sentences where a person’s value went, on asking', async () => {
     const doc = after({
       body: 'ab cd',
@@ -236,9 +265,11 @@ describe('DocumentHistoryChanges', () => {
     const surface = cellsOf('surface');
     expect(surface.slice(0, 3)).toEqual([
       expect.objectContaining({ change: null, now: 'the' }),
-      expect.objectContaining({ change: 'replaced', now: 'dog', was: 'cat' }),
-      expect.objectContaining({ change: 'replaced', column: 'deleted', was: 'sat' }),
+      // A text edit is a change, never a person's value replaced.
+      expect.objectContaining({ change: 'changed', now: 'dog', was: 'cat' }),
+      expect.objectContaining({ change: 'deleted', column: 'deleted', was: 'sat' }),
     ]);
+    expect(count()).toBe('3 changes, 0 replaced a person’s value');
     expect(first.textContent).toContain('Text');
     // The deleted sentence links nowhere: it is not in the document.
     expect(second.querySelector('a')).toBeNull();

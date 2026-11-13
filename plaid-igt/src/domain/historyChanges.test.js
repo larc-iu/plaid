@@ -28,6 +28,8 @@ const docAfter = ({ spans = {}, ...opts } = {}) => {
 
 const read = (raw, rows, vocabularies = {}) => sentenceChanges({ raw, vocabularies }, rows);
 const line = (sentence, key) => sentence.lines.find((l) => l.key === key);
+// The value of morpheme `k` of word `col` in a row of morpheme values.
+const piece = (sentence, key, col, k = 0) => line(sentence, key).cells[col].pieces[k];
 
 describe('sentenceChanges', () => {
   it('shows a machine gloss written over a blank as added, replacing nothing', () => {
@@ -39,15 +41,14 @@ describe('sentenceChanges', () => {
     expect(s.number).toBe(1);
     expect(s.changes).toBe(1);
     expect(s.replaced).toBe(0);
-    const gloss = line(s, 'morph:Gloss');
-    expect(gloss.cells[0]).toMatchObject({
+    expect(piece(s, 'morph:Gloss', 0)).toMatchObject({
       before: '',
       after: 'DEF',
       afterProv: 'machine',
       changed: true,
       replaced: false,
     });
-    expect(gloss.cells[1].changed).toBe(false);
+    expect(piece(s, 'morph:Gloss', 1).changed).toBe(false);
     // The rows with nothing on either side are left out.
     expect(line(s, 'word:POS')).toBeUndefined();
   });
@@ -59,8 +60,7 @@ describe('sentenceChanges', () => {
     const { sentences } = read(raw, [
       { kind: 'span', id: 'sp1', layer: 'msl-0', before: was, after: now },
     ]);
-    const cell = line(sentences[0], 'morph:Gloss').cells[0];
-    expect(cell).toMatchObject({
+    expect(piece(sentences[0], 'morph:Gloss', 0)).toMatchObject({
       before: 'the',
       after: 'DEF',
       beforeProv: 'human',
@@ -82,7 +82,7 @@ describe('sentenceChanges', () => {
       const { sentences } = read(raw, [
         { kind: 'span', id: 'sp1', layer: 'msl-0', before: was, after: now },
       ]);
-      expect(line(sentences[0], 'morph:Gloss').cells[0]).toMatchObject({
+      expect(piece(sentences[0], 'morph:Gloss', 0)).toMatchObject({
         beforeProv: state,
         replaced,
       });
@@ -96,7 +96,7 @@ describe('sentenceChanges', () => {
     const { sentences } = read(raw, [
       { kind: 'span', id: 'sp1', layer: 'msl-0', before: was, after: now },
     ]);
-    expect(line(sentences[0], 'morph:Gloss').cells[0]).toMatchObject({
+    expect(piece(sentences[0], 'morph:Gloss', 0)).toMatchObject({
       before: 'DEF',
       after: 'DEF',
       beforeProv: 'machine',
@@ -135,7 +135,7 @@ describe('sentenceChanges', () => {
       ['w-2', 'deleted'],
     ]);
     expect(line(s, 'surface').cells[1]).toMatchObject({ before: 'cat', after: '' });
-    expect(line(s, 'morph:Gloss').cells[1]).toMatchObject({ before: 'cat', replaced: true });
+    expect(piece(s, 'morph:Gloss', 1)).toMatchObject({ before: 'cat', replaced: true });
   });
 
   it('shows a text edit as the old and the new word', () => {
@@ -158,8 +158,13 @@ describe('sentenceChanges', () => {
     });
     // The word and its morpheme, which reads the text: the text line says
     // no more than they do and is not counted again.
-    expect(line(s, 'morphemes').cells[1]).toMatchObject({ before: 'cat', after: 'dog' });
+    expect(piece(s, 'morphemes', 1)).toMatchObject({ before: 'cat', after: 'dog' });
     expect(s.changes).toBe(2);
+    // A text edit replaces no one's value: the word and a morpheme with no
+    // form of its own read the text.
+    expect(s.replaced).toBe(0);
+    expect(line(s, 'surface').cells[1].replaced).toBe(false);
+    expect(piece(s, 'morphemes', 1).replaced).toBe(false);
   });
 
   it('leaves out a sentence a text edit only moved', () => {
@@ -251,7 +256,10 @@ describe('sentenceChanges', () => {
       },
     ]);
     const cell = line(sentences[0], 'morphemes').cells[0];
-    expect(cell).toMatchObject({ before: '', after: 'th-e', replaced: false });
+    expect(cell.pieces.map((x) => [x.joiner, x.before, x.after, x.replaced])).toEqual([
+      ['', '', 'th', false],
+      ['-', '', 'e', false],
+    ]);
   });
 
   it('names an entry a link was made to, and a link the entry moved', () => {
@@ -277,7 +285,7 @@ describe('sentenceChanges', () => {
       [{ kind: 'vocab-link', id: 'l1', document: 'doc-1', after: link('i1', MACHINE) }],
       vocab([link('i1', MACHINE)]),
     );
-    expect(line(made.sentences[0], 'entry').cells[0]).toMatchObject({
+    expect(piece(made.sentences[0], 'entry', 0)).toMatchObject({
       before: '',
       after: 'kai',
       afterProv: 'machine',
@@ -287,7 +295,7 @@ describe('sentenceChanges', () => {
       [{ kind: 'vocab-link', id: 'l1', document: 'doc-1', before: link('i2'), after: link('i1') }],
       vocab([link('i1')]),
     );
-    expect(line(moved.sentences[0], 'entry').cells[0]).toMatchObject({
+    expect(piece(moved.sentences[0], 'entry', 0)).toMatchObject({
       before: 'ka',
       after: 'kai',
       replaced: true,
@@ -317,6 +325,242 @@ describe('sentenceChanges', () => {
     expect(sentences[0].mwes).toEqual([
       expect.objectContaining({ before: 'the cat', after: '', words: 'the cat', replaced: true }),
     ]);
+  });
+
+  // REV-HD-1: the unit of change is one morpheme's value.
+  describe('a word of several morphemes', () => {
+    const morphemes = [
+      { id: 'm-1', text: 'text-1', begin: 0, end: 3, precedence: 1, metadata: { form: 'th' } },
+      { id: 'm-9', text: 'text-1', begin: 0, end: 3, precedence: 2, metadata: { form: 'e' } },
+      { id: 'm-2', text: 'text-1', begin: 4, end: 7, precedence: 1, metadata: {} },
+    ];
+
+    it('shows a machine gloss written beside a person’s as machine-made, replacing nothing', () => {
+      const person = span('sp1', 'msl-0', ['m-1'], 'DEM', {});
+      const made = span('sp9', 'msl-0', ['m-9'], 'DEF', MACHINE);
+      const raw = docAfter({ morphemes, spans: { 'msl-0': [person, made] } });
+      const { sentences } = read(raw, [{ kind: 'span', id: 'sp9', layer: 'msl-0', after: made }]);
+      const [s] = sentences;
+      expect(line(s, 'morph:Gloss').cells[0].pieces).toEqual([
+        expect.objectContaining({
+          id: 'm-1',
+          joiner: '',
+          before: 'DEM',
+          after: 'DEM',
+          afterProv: 'human',
+          changed: false,
+          replaced: false,
+        }),
+        expect.objectContaining({
+          id: 'm-9',
+          joiner: '-',
+          before: '',
+          after: 'DEF',
+          afterProv: 'machine',
+          changed: true,
+          replaced: false,
+        }),
+      ]);
+      expect([s.changes, s.replaced]).toEqual([1, 0]);
+    });
+
+    it('counts a person’s gloss the entry replaced beside one it left, once', () => {
+      const kept = span('sp1', 'msl-0', ['m-1'], 'DEM', {});
+      const was = span('sp9', 'msl-0', ['m-9'], 'PL', {});
+      const now = span('sp9', 'msl-0', ['m-9'], 'DEF', MACHINE);
+      const raw = docAfter({ morphemes, spans: { 'msl-0': [kept, now] } });
+      const { sentences } = read(raw, [
+        { kind: 'span', id: 'sp9', layer: 'msl-0', before: was, after: now },
+      ]);
+      const [s] = sentences;
+      expect(piece(s, 'morph:Gloss', 0, 0)).toMatchObject({ changed: false, replaced: false });
+      expect(piece(s, 'morph:Gloss', 0, 1)).toMatchObject({
+        before: 'PL',
+        after: 'DEF',
+        replaced: true,
+      });
+      expect([s.changes, s.replaced]).toEqual([1, 1]);
+    });
+
+    it('gives each morpheme’s entry its own mark', () => {
+      const vocab = (links) => ({
+        v1: {
+          id: 'v1',
+          name: 'Lexicon',
+          items: [
+            { id: 'i1', form: 'th', metadata: {} },
+            { id: 'i2', form: 'e', metadata: {} },
+          ],
+          vocabLinks: links,
+        },
+      });
+      const link = (id, item, tok, metadata = {}) => ({
+        id,
+        vocabItem: { id: item, layer: 'v1', form: item === 'i1' ? 'th' : 'e' },
+        tokens: [tok],
+        metadata,
+      });
+      const person = link('l1', 'i1', 'm-1');
+      const made = link('l9', 'i2', 'm-9', MACHINE);
+      const { sentences } = read(
+        docAfter({ morphemes }),
+        [{ kind: 'vocab-link', id: 'l9', document: 'doc-1', after: made }],
+        vocab([person, made]),
+      );
+      const [s] = sentences;
+      expect(
+        line(s, 'entry').cells[0].pieces.map((x) => [x.after, x.afterProv, x.changed, x.replaced]),
+      ).toEqual([
+        ['th', 'human', false, false],
+        ['e', 'machine', true, false],
+      ]);
+      expect(s.replaced).toBe(0);
+    });
+
+    it('counts a person’s morpheme a machine segmentation took away', () => {
+      // After: the word unsegmented again, nothing of the person's left.
+      const raw = docAfter({
+        morphemes: [{ id: 'm-2', text: 'text-1', begin: 4, end: 7, precedence: 1, metadata: {} }],
+      });
+      const { sentences } = read(raw, [
+        {
+          kind: 'token',
+          id: 'm-1',
+          layer: 'morphL',
+          text: 'text-1',
+          before: { id: 'm-1', begin: 0, end: 3, precedence: 1, metadata: {} },
+        },
+      ]);
+      expect(piece(sentences[0], 'morphemes', 0)).toMatchObject({
+        before: 'the',
+        after: '',
+        replaced: true,
+      });
+    });
+
+    // REV-HD-10: blank morphemes have no joiner to strike.
+    it('shows a first gloss on a word of blank morphemes without a struck joiner', () => {
+      const made = span('sp1', 'msl-0', ['m-1'], 'DEF', MACHINE);
+      const raw = docAfter({ morphemes, spans: { 'msl-0': [made] } });
+      const { sentences } = read(raw, [{ kind: 'span', id: 'sp1', layer: 'msl-0', after: made }]);
+      expect(
+        line(sentences[0], 'morph:Gloss').cells[0].pieces.map((x) => [
+          x.joiner,
+          x.before,
+          x.after,
+          x.changed,
+        ]),
+      ).toEqual([
+        ['', '', 'DEF', true],
+        ['-', '', '', false],
+      ]);
+      expect(sentences[0].changes).toBe(1);
+    });
+  });
+
+  // REV-HD-4 and REV-HD-7: one rule for "replaced a person's value".
+  describe('a person’s value replaced', () => {
+    it('counts a person’s value a machine wrote again with the same text', () => {
+      const was = span('sp1', 'msl-0', ['m-1'], 'DEF', {});
+      const now = span('sp1', 'msl-0', ['m-1'], 'DEF', MACHINE);
+      const raw = docAfter({ spans: { 'msl-0': [now] } });
+      const { sentences } = read(raw, [
+        { kind: 'span', id: 'sp1', layer: 'msl-0', before: was, after: now },
+      ]);
+      expect(piece(sentences[0], 'morph:Gloss', 0)).toMatchObject({
+        before: 'DEF',
+        after: 'DEF',
+        beforeProv: 'human',
+        afterProv: 'machine',
+        changed: true,
+        replaced: true,
+      });
+      expect([sentences[0].changes, sentences[0].replaced]).toEqual([1, 1]);
+    });
+
+    it('counts a person’s value cleared, and not one a person confirmed or a contributor kept', () => {
+      const cases = [
+        [{}, null, true],
+        [
+          { prov: 'contributed', provSource: 'user:x' },
+          { provConfirmed: true, prov: 'contributed', provSource: 'user:x' },
+          false,
+        ],
+        [{}, { prov: 'contributed', provSource: 'user:x' }, false],
+      ];
+      for (const [wasMd, nowMd, replaced] of cases) {
+        const was = span('sp1', 'msl-0', ['m-1'], 'DEF', wasMd);
+        const now = nowMd && span('sp1', 'msl-0', ['m-1'], 'DEF', nowMd);
+        const raw = docAfter({ spans: { 'msl-0': now ? [now] : [] } });
+        const { sentences } = read(raw, [
+          { kind: 'span', id: 'sp1', layer: 'msl-0', before: was, ...(now ? { after: now } : {}) },
+        ]);
+        expect(piece(sentences[0], 'morph:Gloss', 0).replaced).toBe(replaced);
+        expect(sentences[0].replaced).toBe(replaced ? 1 : 0);
+      }
+    });
+
+    it('counts a text edit as a change, never a value replaced', () => {
+      const raw = docAfter({
+        body: 'xab cd',
+        words: [
+          { id: 'w-1', begin: 1, end: 3 },
+          { id: 'w-2', begin: 4, end: 6 },
+        ],
+        sentences: [{ id: 's-1', begin: 0, end: 6 }],
+        morphemes: [],
+      });
+      const tok = (id, layer, b, a) => ({
+        kind: 'token',
+        id,
+        layer,
+        text: 'text-1',
+        before: { id, begin: b[0], end: b[1] },
+        after: { id, begin: a[0], end: a[1] },
+      });
+      const { sentences } = read(raw, [
+        tok('s-1', 'sentL', [0, 5], [0, 6]),
+        tok('w-1', 'wordL', [0, 2], [1, 3]),
+        tok('w-2', 'wordL', [3, 5], [4, 6]),
+        {
+          kind: 'text',
+          id: 'text-1',
+          layer: 'tl-1',
+          before: { id: 'text-1', body: 'ab cd' },
+          after: { id: 'text-1', body: 'xab cd' },
+        },
+      ]);
+      const [s] = sentences;
+      expect(s.text).toMatchObject({ before: 'ab cd', after: 'xab cd', changed: true });
+      expect([s.changes, s.replaced]).toEqual([1, 0]);
+      expect(line(s, 'surface').cells.map((c) => c.changed)).toEqual([false, false]);
+    });
+
+    it('counts a person’s expression a machine took over', () => {
+      const vocab = {
+        v1: {
+          id: 'v1',
+          name: 'Lexicon',
+          items: [{ id: 'i9', form: 'the cat', metadata: {} }],
+          vocabLinks: [],
+        },
+      };
+      const mwe = (metadata) => ({
+        id: 'l9',
+        vocabItem: { id: 'i9', layer: 'v1', form: 'the cat' },
+        tokens: ['w-1', 'w-2'],
+        metadata,
+      });
+      vocab.v1.vocabLinks = [mwe(MACHINE)];
+      const { sentences } = read(
+        docAfter(),
+        [{ kind: 'vocab-link', id: 'l9', document: 'doc-1', before: mwe({}), after: mwe(MACHINE) }],
+        vocab,
+      );
+      expect(sentences[0].mwes).toEqual([
+        expect.objectContaining({ before: 'the cat', after: 'the cat', replaced: true }),
+      ]);
+    });
   });
 
   it('lists a row no sentence holds apart', () => {

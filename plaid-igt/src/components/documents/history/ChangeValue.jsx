@@ -24,8 +24,9 @@ const Shown = ({ value, prov, gloss }) => (
 /**
  * One value before and after an entry (`c`, a cellDiff): the value alone
  * when the entry left it, else the new value over the old one struck through,
- * each in its own marks, the old one in red when it was a person's. A value
- * the entry only confirmed says what it was. `gloss` sets tags in small
+ * each in its own marks, the old one in red when it was a person's the entry
+ * replaced. A value the entry only restamped says whose it was, in red when
+ * it was a person's and is now machine-made. `gloss` sets tags in small
  * caps.
  */
 export const ChangeValue = ({ c, gloss = false }) => {
@@ -58,7 +59,12 @@ export const ChangeValue = ({ c, gloss = false }) => {
         </del>
       )}
       {c.before !== '' && c.before === c.after && (
-        <span className="block font-sans text-[11px] not-italic text-muted-foreground">
+        <span
+          className={cn(
+            'block font-sans text-[11px] not-italic text-muted-foreground',
+            c.replaced && 'text-destructive-strong',
+          )}
+        >
           was {PROV_WORDS[c.beforeProv] ?? 'a person’s'}
         </span>
       )}
