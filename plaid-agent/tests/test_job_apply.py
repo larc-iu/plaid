@@ -139,6 +139,7 @@ def test_each_applied_kind_is_applied_in_the_document_under_the_lock(kind):
     ('discard_analysis', {'refs': ['s1.w3']}, 'discard_analysis'),
     ('split_sentence', {'ref': 's1', 'before_word': 2}, 'split_sentence'),
     ('merge_sentences', {'ref': 's2'}, 'merge_sentences'),
+    ('delete_sentence', {'refs': ['s2']}, 'delete_sentence'),
     ('respell', {'ref': 's1.w1', 'new_text': 'blanc'}, 'respell'),
     ('retype_sentence', {'ref': 's3', 'text': 'empty again'}, 'edit_text'),
     ('add_comment', {'ref': 's1.w2', 'body': 'Check this.'}, 'add_comment'),
@@ -333,7 +334,7 @@ def test_proposed_changes_are_capped_and_the_report_counts_the_rest(monkeypatch)
 _WHO = ['human', 'machine', J, f'confirmed:{J}', 'blank']
 _TOOLS = ['set_field_t', 'set_field_w', 'set_field_m', 'set_analysis', 'link', 'delete_word', 'merge_words',
           'split_word', 'discard', 'confirm', 'comment', 'morph_type', 'guideline', 'rename_document',
-          'metadata', 'create_document', 'delete_entry', 'create_entry']
+          'metadata', 'create_document', 'delete_entry', 'create_entry', 'delete_sentence']
 
 
 def _random_story(rng):
@@ -394,6 +395,8 @@ def _random_calls(rng, doc):
             calls.append(('create_document', {'name': f'New {len(calls)}', 'text': 'a b'}))
         elif tool == 'delete_entry':
             calls.append(('delete_entry', {'entry_id': 'vi-gam2'}))
+        elif tool == 'delete_sentence':
+            calls.append(('delete_sentence', {'refs': [f's{s.index}']}))
         elif tool == 'create_entry':
             calls.append(('create_entry', {'form': f'new{len(calls)}', 'fields': {'gloss': 'N'}}))
         else:

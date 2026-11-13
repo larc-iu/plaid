@@ -821,6 +821,7 @@ When you ask it to change something, it does not touch the data.
 It proposes a **plan**, which you approve with **Approve as unverified** or **Approve as verified**, or **Discard**.
 The plan lists every change under the document or lexicon it lands in, and each word links to its place in the editor, so a change can be checked before it is approved.
 A change that rewrites your baseline text is marked **Rewrite**, and one that changes something a person made or accepted is marked **Accepted**.
+Deleting a sentence is a rewrite: its text goes, with its words, their analyses and links, and its translation.
 A change over the whole project, such as replacing a gloss everywhere, is one row with its counts, and **Show where** lists the documents.
 
 **Approve as unverified** records every value the assistant writes as its proposal, unconfirmed, as a service's proposals are, to be confirmed later in the editor.
@@ -935,7 +936,7 @@ A job first plans how to cut the work: a few sentences at a time, one document a
 Worked a few sentences at a time, it takes the sentences with an empty translation or a word nobody analyzed, unless its plan takes every sentence, as for a job that checks or corrects work already there.
 Each piece is worked by the assistant with its usual tools, the project's guidelines, the instructions, and how people in the project analyzed the same words.
 
-A job writes every change it plans in its documents and in the project's lexicons, in the name of the person who started the job: values, analyses, links, comments, text edits, splits and merges, changes to entries, and deletions.
+A job writes every change it plans in its documents and in the project's lexicons, in the name of the person who started the job: values, analyses, links, comments, text edits, splits and merges, changes to entries, and deletions, whole sentences included.
 It can change and delete what people wrote or confirmed.
 Each value it writes is a machine proposal (see <<_provenance>>), also where it replaces a value a person wrote or confirmed.
 A job never deletes a document, and never changes the project's setup: a guideline, a tagset, a document's name or metadata, or a new document is listed in its report as a proposed change, for a person to make.

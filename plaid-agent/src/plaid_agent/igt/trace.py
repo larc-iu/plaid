@@ -230,6 +230,8 @@ def _own(name: str, a: Dict[str, Any]) -> Optional[str]:
         return f'Planned splitting {a.get("ref")} before word {a.get("before_word")}{in_doc(a)}'
     if name == 'merge_sentences':
         return f'Planned merging {a.get("ref")} into the sentence before it{in_doc(a)}'
+    if name == 'delete_sentence':
+        return f'Planned deleting {plural(count(a), "sentence")}{in_doc(a)}'
     if name == 'append_text':
         return f'Planned adding text to the end of {q(a.get("document"))}'
     if name == 'retype_sentence':

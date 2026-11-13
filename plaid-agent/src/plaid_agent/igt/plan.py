@@ -65,6 +65,11 @@ wire's key recasing):
   delete_word     {word_id, morpheme_ids}
   split_sentence  {sentence_id, position}
   merge_sentences {sentence_id, other_id, spans: [...]}
+  delete_sentence {document_id, sentence_id, old, word_ids, morpheme_ids, span_ids, link_ids, mwe_ids}
+                  (its text deleted as plaid-igt deletes text, the whitespace around it with it but one
+                   separator, and core's cascade takes the sentence and everything on it. Written last, from the
+                   text as it reads then, the sentence found by id and checked to read ``old``. mwe_ids: the
+                   multi-word expressions it would leave with one member, deleted first)
   edit_text       {document_id, text_id|null, sentence_id|null, begin, end, old, new, word_ids, morpheme_ids}
                   (append or retype: the region is re-verified against the live body, the edit goes through the
                    server's text edit as the stretches that changed, so unchanged words keep their tokens, then sentence boundaries at
@@ -216,6 +221,7 @@ class Context:
         # is written).
         self.analysis_typed: Dict[str, tuple] = {}
         self.text_edits: List[Dict[str, Any]] = []
+        self.sentence_deletes: List[Dict[str, Any]] = []
         # The tokens a value or a link of the plan is queued on. A merge of
         # one of them is written in a batch after it (`_merge`).
         self.valued: set = set()
@@ -744,6 +750,16 @@ def _apply_split_sentence(ctx: Context, op) -> int:
     return 1
 
 
+def _apply_delete_sentence(ctx: Context, op) -> int:
+    # A multi-word expression the deletion would leave with one member goes
+    # first, as with a deleted word.
+    for lid in op.get('mwe_ids') or []:
+        ctx.drop('vocab_links', lid)
+    ctx.sentence_deletes.append(op)  # after every other write: see `_write_sentence_delete`
+    ctx.defer(op, 'direct')
+    return 1
+
+
 def _apply_edit_text(ctx: Context, op) -> int:
     ctx.text_edits.append(op)  # after the batches: several dependent calls
     ctx.defer(op, 'direct')
@@ -1037,6 +1053,15 @@ def _replaces_merge_words(ws: 'Workspace', op: Dict[str, Any]) -> List[str]:
             + list(op.get('mwe_ids') or []))
 
 
+def _replaces_delete_sentence(ws: 'Workspace', op: Dict[str, Any]) -> List[str]:
+    """A sentence that goes, with its values and its words' values, links and
+    analyses."""
+    hit = _found(ws, op.get('sentence_id'))
+    words = hit[0].words if hit is not None else []
+    return (list(op.get('span_ids') or []) + list(op.get('link_ids') or [])
+            + [m.id for w in words if len(w.morphemes) > 1 for m in w.morphemes])
+
+
 def _replaces_merge_sentences(ws: 'Workspace', op: Dict[str, Any]) -> List[str]:
     return ([sid for sp in op.get('spans') or []
             for sid in sp.get('delete_ids') or []])
@@ -1219,6 +1244,16 @@ KIND = ok.registry([
            at=('sentence_id',), at_kind=TOKEN, shape=SENTENCE_SHAPE, deletes=_merge_deletes,
            deletes_tokens=lambda op: [op['other_id']],
            extra={'reshapes': ('sentence_id', 'other_id'), 'merge': True}),
+    # The text itself goes, so the card marks it as a text rewrite, and the
+    # plan is pinned to the whole document as a text edit's is.
+    OpKind('delete_sentence', ('deleted sentence', 'deleted sentences'), replaces=_replaces_delete_sentence,
+           required=('document_id', 'sentence_id', 'old'),
+           apply=_apply_delete_sentence, target=lambda op: ('sentence_shape', op.get('sentence_id')),
+           at=('sentence_id',), at_kind=TOKEN, shape=TEXT_SHAPE,
+           deletes=lambda op: list(op.get('span_ids') or []) + list(op.get('link_ids') or []),
+           deletes_tokens=lambda op: [op['sentence_id']] + list(op.get('word_ids') or [])
+           + list(op.get('morpheme_ids') or []),
+           extra={'reshapes': ('sentence_id',)}, stamped=False),
     # The only kind whose deletions are a GUESS: the server diffs the text, so
     # a word the edit names may survive with its analysis intact. Every guard
     # treats the ids as gone, but a change naming one is dropped when the plan
@@ -2037,6 +2072,14 @@ def _execute(client, ops, *, label, project, counts, notes, stamps: Stamps, trac
                                               for bg, en, v in edits])
             for op in ctx.later.get(f'respell:{text_id}', ()):
                 b.finish(op)
+        # Sentence deletions last: each finds its sentence by id in the text
+        # as the writes above left it.
+        for op in ctx.sentence_deletes:
+            if project is None:
+                raise ValueError('delete_sentence needs the project')
+            with b.on_client(op['document_id']):
+                _write_sentence_delete(client, project, op)
+            b.finish(op)
 
         for op in ctx.new_docs:
             if project is None:
@@ -2344,6 +2387,31 @@ def _write_text_edit(client, project, op: Dict[str, Any], new_id) -> None:
         sents.remove(hit)
         sents.extend([(sb, p, sid), (p, se, made)])
         sents.sort()
+
+
+def _write_sentence_delete(client, project, op: Dict[str, Any]) -> None:
+    """Delete a sentence's text as plaid-igt deletes text, through the text
+    edit with the digest of the text read (``texts.edit``, as the Baseline
+    saves): the stretch :func:`shape.deleted_stretch` gives, the sentence and
+    the whitespace around it with one separator kept. Core's rules take every
+    token left with no letter (the sentence, its words, their morphemes) and
+    everything on them. The sentence is found by its id in the text as it is
+    now and must still read ``old``, so a deletion sent again after its answer
+    was lost, or one whose sentence was edited meanwhile, deletes nothing."""
+    from plaid_client import gaps_to_ops
+    from .project import find_layer
+    from .shape import deleted_stretch
+    raw = client.documents.get(op['document_id'], include_body=True)
+    tl, layer = find_layer(raw.get('text_layers'), project.sentence_layer_id)
+    text = (tl or {}).get('text') or {}
+    body = text.get('body') or ''
+    s = next((t for t in (layer or {}).get('tokens') or [] if t['id'] == op['sentence_id']), None)
+    if s is None or body[s['begin']:s['end']].strip() != op['old']:
+        raise ValueRefusal(f'the sentence "{op["old"][:40]}" is no longer there as it was; the document changed '
+                           'since the plan was made', kind='conflict')
+    b, e = deleted_stretch(body, s['begin'], s['end'])
+    client.texts.edit(text['id'], gaps_to_ops([{'start': b, 'end': e, 'value': ''}]), None,
+                      base=text.get('digest'), versioned=True)
 
 
 # Forms written per request, as the app's Baseline save sends them.

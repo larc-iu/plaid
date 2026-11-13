@@ -54,12 +54,12 @@ APPLIED_KINDS = frozenset({
     'set_span', 'set_analysis', 'set_orthography', 'respell', 'link', 'unlink', 'link_phrase', 'create_entry',
     'set_entry_field', 'set_entry_metadata', 'merge_entries', 'delete_entry', 'rename_entry', 'discard_analysis',
     'set_morpheme_form', 'set_morph_type', 'split_word', 'merge_words', 'delete_word', 'split_sentence',
-    'merge_sentences', 'edit_text', 'add_comment'})
+    'merge_sentences', 'delete_sentence', 'edit_text', 'add_comment'})
 #: Applied ops that take something away, as the report counts them
 #: (``deletions``): a value cleared, an analysis discarded, a word deleted, a
-#: link removed, an entry deleted. A merge keeps what it merges into, and a
-#: rewrite replaces: neither is counted here.
-DELETING_KINDS = frozenset({'discard_analysis', 'delete_word', 'unlink', 'delete_entry'})
+#: link removed, an entry deleted, a sentence deleted. A merge keeps what it
+#: merges into, and a rewrite replaces: neither is counted here.
+DELETING_KINDS = frozenset({'discard_analysis', 'delete_word', 'delete_sentence', 'unlink', 'delete_entry'})
 
 APPLY, PROPOSE, IGNORE = 'apply', 'propose', 'ignore'
 

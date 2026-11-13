@@ -36,7 +36,7 @@ from .guide import t_app_guide
 from .tagsets import t_tagsets
 from .jobcard import t_propose_job
 from .jobread import t_read_job
-from .shape import (t_append_text, t_delete_word, t_merge_sentences, t_merge_words,
+from .shape import (t_append_text, t_delete_sentence, t_delete_word, t_merge_sentences, t_merge_words,
                     t_retype_sentence, t_split_sentence, t_split_word)
 from .stats import (t_check_integrity, t_check_lexicon, t_corpus_stats, t_frequency_list,
                     t_sequence_search, t_worklist)
@@ -501,6 +501,9 @@ TOOLS += [
         'PLAN: merge a sentence into the one before it. Sentence values are combined losslessly.',
         {'document': _DOC, 'ref': {'type': 'string', 'description': 'The later sentence, sN (N ≥ 2).'}},
         ['document', 'ref']),
+    _fn('delete_sentence',
+        'PLAN: delete whole sentences: their text, words, analyses, links and translation.' + _BASELINE,
+        {'document': _DOC, 'refs': _REFS}, ['document', 'refs']),
     _fn('append_text',
         'PLAN: add text at the end of a document, one sentence per line, tokenized into words like the editor.',
         {'document': _DOC, 'text': {'type': 'string'}}, ['document', 'text']),
@@ -517,6 +520,7 @@ TOOLS += [
 ]
 _IMPL.update({'split_word': t_split_word, 'merge_words': t_merge_words, 'delete_word': t_delete_word,
               'split_sentence': t_split_sentence, 'merge_sentences': t_merge_sentences,
+              'delete_sentence': t_delete_sentence,
               'append_text': t_append_text, 'retype_sentence': t_retype_sentence})
 
 

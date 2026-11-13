@@ -97,7 +97,7 @@ Running code:
 
 ## Tools
 
-67 tools, in the order the model receives them: 37 plan a change (`PLAN:`), 2 reach the web, the rest read the project or manage the plan.
+68 tools, in the order the model receives them: 38 plan a change (`PLAN:`), 2 reach the web, the rest read the project or manage the plan.
 
 ### project_overview
 
@@ -587,6 +587,13 @@ PLAN: merge a sentence into the one before it. Sentence values are combined loss
 
 - `document` (string, required): Document id or exact name (see project_overview).
 - `ref` (string, required): The later sentence, sN (N ≥ 2).
+
+### delete_sentence
+
+PLAN: delete whole sentences: their text, words, analyses, links and translation. The baseline is the user's own transcription: plan this only for a change to the text they asked for, never to tidy it for an analysis (the project already ignores punctuation when it tokenizes).
+
+- `document` (string, required): Document id or exact name (see project_overview).
+- `refs` (array of string, required): Positional references, e.g. ["s3.w2", "s3.w4"]. Words are sN.wN, morphemes sN.wN.mN, sentences sN.
 
 ### append_text
 

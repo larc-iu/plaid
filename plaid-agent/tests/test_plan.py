@@ -261,7 +261,7 @@ def test_the_igt_registry_declares_what_every_table_is_read_off():
     # corpus-wide may share a plan with one of these.
     assert set(RESHAPES) == {'set_analysis', 'respell', 'discard_analysis', 'split_word',
                              'merge_words', 'delete_word', 'split_sentence', 'merge_sentences',
-                             'edit_text'}
+                             'delete_sentence', 'edit_text'}
     # Every noun is a (singular, plural) pair, so the applied count and the
     # approval line cannot disagree about what a kind is called.
     assert all(isinstance(s.noun, tuple) and len(s.noun) == 2 and all(s.noun)

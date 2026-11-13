@@ -510,6 +510,7 @@ def check_respell_overlap(ws: Workspace, text_id: str, begin: int, end: int, whe
             raise ToolError(f'{where}: a sentence before or at this point is retyped or appended in this plan; '
                             'respell it in a separate plan', kind='conflict')
     doc = next((d for d in ws._docs.values() if d.text_id == text_id), None)
+    refuse_text_in_deleted_sentence(ws, doc, begin, end, where)
     # A word this plan splits, merges or deletes is cut again before the
     # respelling lands, and the respelling replaces the range as read: a
     # respelling of one of two merged words wrote "silinasxwt.asxwt." (bench
@@ -523,6 +524,27 @@ def check_respell_overlap(ws: Workspace, text_id: str, begin: int, end: int, whe
                     raise ToolError(f'{where}: this plan already splits, merges or deletes this word. Plan the '
                                     'respelling on its own once that is applied.', kind='conflict')
     no_scope_reaches(ws, doc.id if doc is not None else None, where, placed=True)
+
+
+def deleted_sentences(ws: Workspace, doc) -> List[Sentence]:
+    """The sentences of ``doc`` the plan deletes (``delete_sentence``), as
+    read."""
+    if doc is None:
+        return []
+    ids = {op.get('sentence_id') for op in ws.ops if op.get('kind') == 'delete_sentence'}
+    return [s for s in doc.sentences if s.id in ids]
+
+
+def refuse_text_in_deleted_sentence(ws: Workspace, doc, begin: int, end: int, where: str) -> None:
+    """A text edit or a respelling inside a sentence the plan deletes. The
+    deletion is written last, from the text as it reads then, and checks that
+    the sentence still reads as it was read: an edit inside it would have it
+    refused after the rest of the plan was written. The other order is
+    refused by ``delete_sentence`` itself."""
+    for s in deleted_sentences(ws, doc):
+        if begin < max(s.end, s.begin + 1) and s.begin < max(end, begin + 1):
+            raise ToolError(f'{where}: this plan deletes s{s.index}, which this would change. Plan one of them, '
+                            'or discard_plan to start over', kind='conflict')
 
 
 def refuse_shape_and_respell(ws: Workspace, words, where: str) -> None:

@@ -1,5 +1,5 @@
 """Plan tools that change the segmentation of the text itself: splitting,
-merging, and deleting words, and splitting and merging sentences. They mirror
+merging, and deleting words, and splitting, merging and deleting sentences. They mirror
 the editor's mutations (``mutations/tokens.js``, ``mutations/sentences.js``)
 including their side effects, which the plan labels spell out: a word split
 or merge deletes the affected words' morpheme analyses (a boundary change
@@ -26,7 +26,7 @@ from ..core.tools import ToolError
 from .plan import reshaped_subjects, written_before_merge
 from .project import Link, Sentence, Span, Word, plain_ref, planned_word_count, resolve, split_sentences, word_ref
 from .tools import (reshape_guards, refuse_comment_and_text_edit, refuse_shape_and_analysis,
-                    refuse_shape_and_respell)
+                    refuse_shape_and_respell, refuse_text_in_deleted_sentence)
 from .workspace import Workspace, _need, _refs
 
 
@@ -455,6 +455,75 @@ def t_merge_sentences(ws: Workspace, document: str, ref: str) -> str:
     return ws.planned_note(1)
 
 
+def deleted_stretch(body: str, begin: int, end: int) -> tuple:
+    """The stretch of ``body`` deleting the text at ``begin``-``end`` takes,
+    as plaid-igt deletes a segment with its text (``planDeleteText``): the
+    text and the whitespace around it, keeping one separator when text is
+    left on both sides. ``(begin, end)``, code points."""
+    before, after = body[:begin].rstrip(), body[end:].lstrip()
+    b = len(before) + (1 if before and after else 0)
+    return b, max(b, len(body) - len(after))
+
+
+def _tokens_within(raw, begin: int, end: int) -> List[str]:
+    """The tokens of every layer of the document ``raw`` that a deletion of
+    ``begin``-``end`` leaves no letter of: those inside it, and a zero-width
+    one strictly inside it."""
+    return [t['id'] for tl in (raw or {}).get('text_layers') or [] for layer in tl.get('token_layers') or []
+            for t in layer.get('tokens') or []
+            if begin <= t['begin'] and t['end'] <= end and (t['begin'] < t['end'] or begin < t['begin'] < end)]
+
+
+def t_delete_sentence(ws: Workspace, document: str, refs) -> str:
+    """PLAN: delete whole sentences, their text and everything on them."""
+    doc = ws.doc(document)
+    reshape_guards(ws, doc)
+    refs = _refs(refs)
+    if not refs:
+        raise ToolError('Give the sentences to delete, e.g. ["s3"]', kind='invalid-argument')
+    found = []
+    for ref in refs:
+        s = _need(resolve(doc, ref), Sentence, ref)
+        if all(s.id != x.id for _, x in found):
+            found.append((ref, s))
+    full = _other_layers(ws, doc)
+    staged: List[Dict[str, Any]] = []
+    for ref, s in found:
+        where = f'{ws.doc_label(doc.id)} {plain_ref(doc, ref)}'
+        word_ids = [w.id for w in s.words]
+        morpheme_ids = [m.id for w in s.words for m in w.morphemes]
+        _guard(ws, s, ref, word_ids=word_ids)
+        # The other order of `refuse_text_in_deleted_sentence`.
+        for op in ws.ops:
+            if op.get('kind') == 'edit_text' and op.get('document_id') == doc.id \
+                    and op['begin'] < max(s.end, s.begin + 1) and s.begin < max(op['end'], op['begin'] + 1):
+                raise ToolError(f'{where}: this plan already retypes this sentence. Plan one of them, or '
+                                'discard_plan to start over', kind='conflict')
+        if any(b < s.end and s.begin < e for b, e in ws.planned_respells(doc.text_id)):
+            raise ToolError(f'{where}: this plan already respells a word of this sentence. Plan one of them, or '
+                            'discard_plan to start over', kind='conflict')
+        spans = [sp.id for sp in s.fields.values()] + [sp.id for w in s.words for sp in w.fields.values()] \
+            + [sp.id for w in s.words for m in w.morphemes for sp in m.fields.values()]
+        links = [l.id for w in s.words for l in [w.link] + [m.link for m in w.morphemes] if l is not None]
+        # A multi-word expression left with one member in another sentence
+        # is no expression: it goes first, as with a deleted word. One whose
+        # members all go is taken with them.
+        mwes = [l.id for l in {l.id: l for w in s.words for l in w.mwes}.values()
+                if 0 < _members_left(ws, l, word_ids) < 2]
+        # What the deletion takes of the layers this assistant does not read:
+        # every token with no letter left.
+        others = count_delete_loss(full, _tokens_within(full, *deleted_stretch(doc.body, s.begin, s.end)),
+                                   skip=_own_layers(ws))
+        cut = s.text[:40] + ('…' if len(s.text) > 40 else '')
+        staged.append({'kind': 'delete_sentence', 'document_id': doc.id, 'sentence_id': s.id, 'old': s.text,
+                       'word_ids': word_ids, 'morpheme_ids': morpheme_ids, 'span_ids': spans,
+                       'link_ids': links + mwes, 'mwe_ids': mwes,
+                       **labelled(where, f'delete the sentence {qv(cut)} and everything on it'
+                                  + loss_note(others['annotations'], others['links']))})
+    ws.add_ops(staged)
+    return ws.planned_note(len(staged))
+
+
 # --- text edits ----------------------------------------------------------------
 
 def _guard_text_edit(ws: Workspace, text_id: Optional[str], begin: int, end: int, where: str,
@@ -475,6 +544,8 @@ def _guard_text_edit(ws: Workspace, text_id: Optional[str], begin: int, end: int
                 and op['begin'] < max(end, begin + 1) and begin < max(op['end'], op['begin'] + 1):
             raise ToolError(f'{where}: overlaps a text edit already planned at {op["begin"]}-{op["end"]}',
                             kind='conflict')
+    refuse_text_in_deleted_sentence(ws, next((d for d in ws._docs.values() if d.text_id == text_id), None),
+                                    begin, end, where)
     refuse_comment_and_text_edit(ws, token_ids, where, commenting=False)
 
 
@@ -507,6 +578,8 @@ def t_retype_sentence(ws: Workspace, document: str, ref: str, text: str) -> str:
     doc = ws.doc(document)
     reshape_guards(ws, doc)
     s = _need(resolve(doc, ref), Sentence, ref)
+    if not (text or '').strip():
+        raise ToolError('text must not be empty (delete_sentence deletes a sentence)', kind='invalid-argument')
     text = _clean_text(text)
     b, e = s.begin, s.end
     while b < e and doc.body[b].isspace():
