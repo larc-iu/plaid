@@ -51,6 +51,8 @@ describe('HistoryDrawer', () => {
     expect(onSelectEntry).toHaveBeenLastCalledWith(
       expect.objectContaining({ id: 'op-1', time: '2026-09-01T00:00:00.000000004Z' }),
     );
+    // An action inside an entry is not an entry of its own.
+    expect(onSelectEntry.mock.lastCall[0].unit).toBeUndefined();
     await view.unmount();
   });
 
@@ -59,7 +61,11 @@ describe('HistoryDrawer', () => {
     const view = await renderComponent(drawer(onSelectEntry));
     await view.step(() => byText(view.container, 'button', '2 actions').click());
     expect(onSelectEntry).toHaveBeenLastCalledWith(
-      expect.objectContaining({ id: 'batch-1', time: '2026-09-01T00:00:00.000000004Z' }),
+      expect.objectContaining({
+        id: 'batch-1',
+        time: '2026-09-01T00:00:00.000000004Z',
+        unit: true,
+      }),
     );
     await view.unmount();
   });

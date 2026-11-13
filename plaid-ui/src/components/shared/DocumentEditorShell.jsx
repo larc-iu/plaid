@@ -26,6 +26,7 @@ import { dismissIntegrityFindings } from '../../lib/integrityToast.js';
 import { humanizeError, isGone, statusOf } from '../../lib/errors.js';
 import { notifyError } from '../../lib/notify.js';
 import { useHistoryView } from '../../hooks/useHistoryView.js';
+import { useHistoryParam } from '../../hooks/useHistoryParam.js';
 import { useUnsavedGuard } from '../../hooks/useUnsavedDraft.js';
 import { HISTORY_DRAWER_WIDTH } from './HistoryDrawer';
 import { DocumentHistoryPanel } from './DocumentHistoryPanel.jsx';
@@ -88,6 +89,12 @@ import { cn } from '../../lib/utils.js';
 // - `ownSaveStatus`, optional: the tabs whose body shows a save pill of its
 //   own (igt's Analyze grid). Every other tab shows SaveStatus in the tab row.
 // - `roleWords`, `layerWords`: History's words for the app's rows.
+// - `historyChanges(context)`, optional: the app's view of what a History
+//   entry changed. Given, picking an entry shows it in place of the tab, and
+//   the line over it switches to the document as of the entry and back
+//   (`?historyView=document`). Not given, an entry shows the document as of
+//   it, as before. The context carries `historySnapshot`, the document after
+//   the entry once it has been read (null until then).
 // - `focusParams(focus)`: the URL params a citation's focus opens, or null
 //   when it names nothing on this page. Or `useFocusHere({ documentId,
 //   onEditor })`, a hook answering the citation itself (`onFocusHere`).
@@ -346,14 +353,54 @@ const DocumentEditor = ({ app, documentClient }) => {
   const pastEntry = history.selectedEntry;
   const shown = history.snapshot ?? doc;
   const onPastTab = app.tabs.past.includes(tab);
+  // The entry open is in the address (`?history=`), so a link opens one and
+  // Back leaves it. A link names a whole entry: it is read to learn its time.
+  const historyParam = useHistoryParam({
+    selectedId: pastEntry?.id,
+    ready: !!doc && !!client,
+    open: async (id) => {
+      if (!id) {
+        history.selectEntry(null);
+        return;
+      }
+      if (!history.drawerOpen) history.openHistory();
+      try {
+        const page = await client.documents.auditPage(documentId, { entryId: id, opsLimit: 1 });
+        const entry = page?.entries?.[0];
+        if (!entry) throw new Error('This document has no such history entry.');
+        await history.selectEntry({
+          id: entry.id,
+          time: entry.endTime || entry.time,
+          label: entry.message || entry.ops?.[0]?.description || '',
+          unit: true,
+        });
+      } catch (err) {
+        if (statusOf(err) === 401) {
+          logout('expired');
+          return;
+        }
+        notifyError(err, 'Failed to open that history entry');
+        historyParam.clear();
+      }
+    },
+  });
   // Opening an entry puts the past on screen in place of what was typed here
   // and not saved (or takes a tab that cannot show the past off screen), so it
   // asks first, as leaving would.
   const guardLeaving = useUnsavedGuard();
   const selectEntry = async (entry) => {
     if (entry && !pastEntry && !(await guardLeaving())) return;
+    historyParam.select(entry?.id ?? null);
     await history.selectEntry(entry);
   };
+  // What an entry changed, where the app shows it: for a whole entry, unless
+  // the reader asked for the document as of it.
+  const changesShown = !!app.historyChanges && !!pastEntry?.unit;
+  const showChanges = changesShown && historyParam.view === 'changes';
+  // The snapshot that belongs to the entry open, not one a later pick is
+  // still replacing.
+  const historySnapshot =
+    pastEntry && history.snapshot?.asOf === pastEntry.time ? history.snapshot : null;
 
   // A document opened with no tab named lands on the one the app says it
   // should, once, on the first live load: not on a past state, and not after
@@ -496,6 +543,7 @@ const DocumentEditor = ({ app, documentClient }) => {
     focusNonce,
     // How a tab sends the reader to another tab.
     goToTab: setQueryTab,
+    historySnapshot,
   };
 
   return (
@@ -568,7 +616,13 @@ const DocumentEditor = ({ app, documentClient }) => {
 
       {(pastEntry || writeLock.held || jobBanner) && (
         <div className={wide ? DOC_GUTTER : cn('max-w-[1320px]', DOC_GUTTER)}>
-          <HistoricalBanner entry={pastEntry} loading={history.loadingSnapshot} className="mb-4" />
+          <HistoricalBanner
+            entry={pastEntry}
+            loading={history.loadingSnapshot}
+            view={historyParam.view}
+            onView={changesShown ? historyParam.setView : undefined}
+            className="mb-4"
+          />
           {writeLock.held && <RunBanner {...writeLock.held} />}
           {jobBanner && (
             <RunBanner
@@ -602,7 +656,11 @@ const DocumentEditor = ({ app, documentClient }) => {
         // Always this div, its class alone changing with the tab: a
         // wrapper that came and went would remount the tab under it.
         <div className={wide ? undefined : cn('max-w-[1320px] pb-8', DOC_GUTTER)}>
-          {pastEntry && !onPastTab ? (
+          {showChanges ? (
+            <div className={wide ? cn('pb-8', DOC_GUTTER) : undefined}>
+              {app.historyChanges(context)}
+            </div>
+          ) : pastEntry && !onPastTab ? (
             <p className="pt-2 text-sm text-muted-foreground">Not shown at a past state.</p>
           ) : query ? (
             app.renderTab(tab, context)
