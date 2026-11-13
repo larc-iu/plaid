@@ -451,3 +451,19 @@ def test_core_back_after_a_put_off_write_writes_the_document(monkeypatch, pieces
     assert finished['state'] == 'done', (finished['state'], finished.get('reason'), job.status.get('message'))
     assert finished['report']['documents'][0]['state'] == 'done'
     assert finished['report']['totals']['words'] == 3
+
+
+def test_what_a_piece_stages_in_a_sentence_skipped_as_too_long_meets_the_rule_whatever_the_piece(monkeypatch):
+    """A sentence too long for a stretch is skipped at the checks. What a
+    document piece or a selection stages there goes to the apply rule all
+    the same, never dropped by one and not the other."""
+    written = {}
+    for pieces in ('document', 'selection'):
+        monkeypatch.setattr(igt_job, 'JOB_SENTENCE_MAX_WORDS', 1)
+        client, job, clock, _ = _job(monkeypatch, pieces)
+        staged = _staged(monkeypatch)
+        from plaid_agent.core.job import run_job
+        finished = run_job(job, runner(job))
+        assert ('d1-s1', 'too-long') in _skipped(job), pieces
+        written[pieces] = (_analysed(staged), finished['report']['totals']['proposed'])
+    assert written['document'] == written['selection'], written
