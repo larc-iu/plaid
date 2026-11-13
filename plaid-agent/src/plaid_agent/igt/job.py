@@ -86,17 +86,24 @@ def mark_form(sentence_id: str) -> str:
     return RECORD_FORM + sentence_id
 
 
-def mark_text(counts: Dict[str, int], document_id: str, left: List[Dict[str, Any]]) -> str:
-    """A sentence record's analysis: its counts, its document, and the
-    targets the job left blank in it (``left``), as many as a decision's
-    analysis holds (``JOB_ANALYSIS_MAX_CHARS``). The rest are counted and not
-    listed: the counts say how many there were."""
+def mark_text(counts: Dict[str, int], document_id: str, left: List[Dict[str, Any]],
+              words: Optional[Dict[str, str]] = None) -> str:
+    """A sentence record's analysis: its counts, its document, the targets
+    the job left blank in it (``left``) and what it wrote on each of its
+    words it can vouch for (``words``, :func:`word_tag` to :func:`word_key`),
+    as many as a decision's analysis holds (``JOB_ANALYSIS_MAX_CHARS``). The
+    blanks are cut first (the counts say how many there were), then the
+    words, and a word not listed is one harmonize leaves."""
     left = list(left)
+    pairs = list((words or {}).items())
     while True:
-        text = canonical({'counts': counts, 'document': document_id, 'left': left})
-        if len(text) <= JOB_ANALYSIS_MAX_CHARS or not left:
+        text = canonical({'counts': counts, 'document': document_id, 'left': left, 'words': dict(pairs)})
+        if len(text) <= JOB_ANALYSIS_MAX_CHARS or not (left or pairs):
             return text
-        left.pop()
+        if left:
+            left.pop()
+        else:
+            pairs.pop()
 
 
 def gloss_label(tasks) -> str:
@@ -233,24 +240,39 @@ def word_ids(w: Word) -> set:
     return ids
 
 
-def recorded_key(analysis: Dict[str, Any]) -> str:
-    """What an analysis is compared by against those the job recorded (its
-    decisions): its canonical text, ``made`` left out."""
-    return analysis_key(canonical(unmade(analysis)))
+#: How many characters of a word's id and of its analysis key a sentence's
+#: record keeps for each word the job vouches for (CONTRACT, added by J-FIX-B3).
+WORD_KEY_CHARS = 12
 
 
-def harmonize_bar(w: Word, job_id: str, recorded: set, commented: set) -> Optional[str]:
+def word_tag(word_id: str) -> str:
+    """A word as its sentence's record names it: the end of its id, the
+    random part of a UUIDv7, which tells the words of one sentence apart.
+    A word keeps its id through edits around it, so the record follows the
+    word itself and never the place it stands in."""
+    return str(word_id)[-WORD_KEY_CHARS:]
+
+
+def word_key(w: Word) -> str:
+    """What harmonize compares a word with: the start of the key of its
+    form and its analysis as CONTRACT 5.1 shapes it (nothing ``made``)."""
+    return analysis_key(canonical([form_key(w.surface), word_analysis(w)]))[:WORD_KEY_CHARS]
+
+
+def harmonize_bar(w: Word, job_id: str, recorded: Dict[str, str], commented: set) -> Optional[str]:
     """THE rule for what harmonize may rewrite (SPEC 6.5 and 8.1, the owner's
-    rulings on REV-J-B2 S3-1), in one place, asked when harmonize collects
-    the job's words and again under the document's lock. None when the word
-    is this job's to rewrite, else why it is left:
+    rulings on REV-J-B2 S3-1 and REV-J-B3), in one place, asked when
+    harmonize collects the job's words and again under the document's lock.
+    None when the word is this job's to rewrite, else why it is left:
 
     * ``NOT_THE_JOBS``: nothing on it is this job's, so it is no business of
       harmonize's and is not listed,
     * ``touched``: something on it is not this job's own unverified work
-      (:func:`job_owned`), or its analysis is not one the job recorded for
-      its form (``recorded``, pairs of form and :func:`recorded_key`), so a
-      piece a person deleted or changed is never put back,
+      (:func:`job_owned`), or it is not what the job recorded it wrote ON
+      THIS WORD (``recorded``, a word id to the :func:`word_key` its
+      sentence's record holds for it). A word the job could not vouch for
+      has no key there. So a piece a person deleted or changed is never put
+      back, even when the job wrote what is left of the word elsewhere,
     * ``commented``: a comment hangs on the word or a piece of it
       (``commented``, the ids the document's comments are anchored to),
     * ``in-mwe``: the word is a member of a multi-word expression, which a
@@ -258,7 +280,7 @@ def harmonize_bar(w: Word, job_id: str, recorded: set, commented: set) -> Option
     pieces = word_pieces(w)
     if not any(job_piece(p, job_id) for p in pieces):
         return NOT_THE_JOBS
-    if not job_owned(w, job_id) or (form_key(w.surface), recorded_key(word_analysis(w))) not in recorded:
+    if not job_owned(w, job_id) or recorded.get(w.id) != word_key(w):
         return TOUCHED
     if word_ids(w) & commented:
         return COMMENTED
@@ -282,11 +304,6 @@ def word_analysis(w: Word, made: frozenset = frozenset()) -> Dict[str, Any]:
                           'entry': entry, 'made': bool(entry and entry in made)})
     return {'morphemes': morphemes,
             'word': {n: _nfc(sp.value) for n, sp in sorted(w.fields.items()) if sp.value not in (None, '')}}
-
-
-def unmade(analysis: Dict[str, Any]) -> Dict[str, Any]:
-    """The analysis without ``made``."""
-    return {**analysis, 'morphemes': [{**m, 'made': False} for m in analysis['morphemes']]}
 
 
 def harmonized_part(analysis: Dict[str, Any], tasks) -> Dict[str, Any]:
@@ -753,17 +770,22 @@ class IgtRunner:
                             state='in-use' if defers >= JOB_DEFER_ROUNDS else 'deferred')
         return 'deferred'
 
-    def in_use(self, client, document_id: str, job_ref: str) -> bool:
-        """Someone else wrote in the document within the quiet window, since
-        the job was made: a person, a service run, another job (SPEC 5.2)."""
+    def newest_change(self, client, document_id: str) -> Optional[Dict[str, Any]]:
+        """The newest unit of the document's History, or None. Core places a
+        unit by its newest operation, so this is whoever wrote last."""
         try:
             page = client.documents.audit_page(document_id, order='desc', limit=1) or {}
         except PlaidAPIError as e:
             raise self.refused(e, document_id) from e
         entries = page.get('entries') if isinstance(page, dict) else page
-        if not entries:
+        return entries[0] if entries else None
+
+    def in_use(self, last: Optional[Dict[str, Any]], job_ref: str) -> bool:
+        """Someone else wrote in the document within the quiet window, since
+        the job was made: a person, a service run, another job (SPEC 5.2).
+        ``last`` is the document's :meth:`newest_change`."""
+        if not last:
             return False
-        last = entries[0]
         if str(last.get('ref') or '').startswith(job_ref):
             return False
         when = core_job._iso_seconds(last.get('time') or last.get('timestamp') or last.get('created_at'))
@@ -818,10 +840,16 @@ class IgtRunner:
         while True:
             job.check()
             client = job.client()
-            if self.in_use(client, document_id, f'job:{job.id}/'):
-                return self.defer(document_id)
+            # The document first, then its History: when the newest change
+            # is still the job's own glossing, nothing was written between
+            # that change and this read, so what the job wrote and did not
+            # record is exactly as it wrote it (``settle``).
             doc = self.read(project, document_id, client)
-            self.settle(project, document_id, doc)
+            last = self.newest_change(client, document_id)
+            if self.in_use(last, f'job:{job.id}/'):
+                return self.defer(document_id)
+            self.settle(project, document_id, doc,
+                        own=str((last or {}).get('ref') or '') == self.gloss_ref(document_id))
             pending = self.pending(doc, project, document_id)
             if not pending:
                 job.update_row(document_id, state='done')
@@ -1100,38 +1128,21 @@ class IgtRunner:
         if not group:
             group = uuid7()
             job.update_row(document_id, gloss_group=group)
-        ref = f'job:{job.id}/doc:{document_id}/pass:gloss'
         seed_id = uuid7()
-        counts = Counter()
-        written_ops: List[Dict[str, Any]] = []
         for tries in range(2):
             client = job.client()
-            lock = None
-            for i in range(JOB_LOCK_TRIES):
-                try:
-                    lock = locked_for_writes(client, document_id)
-                    lock.__enter__()
-                    break
-                except PlaidAPIError as e:
-                    lock = None
-                    if e.status != 423:
-                        raise self.refused(e, document_id) from e
-                    if i + 1 < JOB_LOCK_TRIES:
-                        job.sleep(JOB_LOCK_WAIT_S)
-            if lock is None:
-                raise Deferred(document_id)
+            lock = self.hold(client, document_id)
             try:
-                fresh = self.read(project, document_id, client)
-                kept, counts, changed = self.recheck(ws, project, fresh, st, prints, ops)
-                if kept:
-                    self.machine_status(project, kept)
-                    with client.operation(gloss_label(job.tasks), kind='job', ref=ref, group_id=group,
-                                          keys={'seed': seed_id, 'stamps': {}}):
-                        execute_plan(client, kept, source=self.source, label=gloss_label(job.tasks),
-                                     project=project, stamp_mode='machine', detail=self.detail, seed=seed_id)
-                written_ops = kept
+                written_ops, counts, changed, after, vouched = self.write_held(
+                    project, document_id, client, ws, st, prints, ops, group, seed_id)
             except PlanError as e:
-                if _status(e) == 409 and tries == 0:
+                # The starter's own browser wrote between the read under the
+                # lock and the write (strict mode): taken again at once when
+                # nothing of it landed. When a batch of it had landed, the
+                # document is put off: it is recorded when it comes back, as
+                # an interrupted write is (``settle``), never vouched for past
+                # the person's edit (REV-J-B3 B3-2).
+                if _status(e) == 409 and tries == 0 and not (e.applied or e.unknown):
                     continue
                 if _status(e) in (409, 423):
                     raise Deferred(document_id) from e
@@ -1144,9 +1155,66 @@ class IgtRunner:
         for o in ops:
             if o.get('kind') == 'create_entry' and not any(o is w for w in written_ops):
                 self.propose(project, o)
-        after = self.read(project, document_id, client)
         made = self.made_entries(ws, after, st, written_ops)
-        self.record(project, document_id, after, part, st, counts, written_ops, made, changed)
+        self.record(project, document_id, after, part, st, counts, written_ops, made, changed, vouched)
+
+    def gloss_ref(self, document_id: str) -> str:
+        return f'job:{self.job.id}/doc:{document_id}/pass:gloss'
+
+    def hold(self, client, document_id: str):
+        """The document's lock with strict mode (``locked_for_writes``),
+        entered, after up to JOB_LOCK_TRIES tries, else :class:`Deferred`."""
+        for i in range(JOB_LOCK_TRIES):
+            try:
+                lock = locked_for_writes(client, document_id)
+                lock.__enter__()
+                return lock
+            except PlaidAPIError as e:
+                if e.status != 423:
+                    raise self.refused(e, document_id) from e
+                if i + 1 < JOB_LOCK_TRIES:
+                    self.job.sleep(JOB_LOCK_WAIT_S)
+        raise Deferred(document_id)
+
+    def write_held(self, project: IgtProject, document_id: str, client, ws: JobWorkspace, st: Stretch,
+                   prints: Dict[str, str], ops: List[Dict[str, Any]], group: str, seed_id: str):
+        """The write, the lock held: the stretch's ops checked again against
+        the document as it is (:meth:`recheck`), written, and the document
+        read again BEFORE the lock goes. ``(written ops, dropped counts,
+        changed sentences, the document after, the words vouched for)``.
+
+        The words vouched for are those the job knows it wrote exactly as
+        they now read (REV-J-B3 B3-1, B3-2): targets still blank as the lock
+        was taken, in a document whose version is still the one the job's
+        own last batch left (strict mode moves the client's version with
+        each of the job's writes, and under the lock only the starter's own
+        browser could write besides). Any other write since, and none is
+        vouched for: their sentence is recorded without their keys, and
+        harmonize leaves them."""
+        job = self.job
+        fresh = self.read(project, document_id, client)
+        kept, counts, changed = self.recheck(ws, project, fresh, st, prints, ops)
+        blank = {w.id for s in fresh.sentences if s.id in st.sentence_ids and s.id not in changed
+                 for w in s.words if w.id in st.words and word_target(w)}
+        if kept:
+            self.machine_status(project, kept)
+            self.apply(client, project, document_id, group, kept, seed_id)
+        known = client.document_versions.get(document_id)
+        after = self.read(project, document_id, client)
+        exact = known is not None and str(after.version) == str(known)
+        if not exact:
+            logger.info('Job %s: %s moved during the write (version %s, read %s): its words are not vouched for',
+                        job.id, document_id, known, after.version)
+        return kept, counts, changed, after, frozenset(blank) if exact else frozenset()
+
+    def apply(self, client, project: IgtProject, document_id: str, group: str, kept: List[Dict[str, Any]],
+              seed_id: str) -> None:
+        """Write ``kept`` as one more part of the document's glossing entry."""
+        label = gloss_label(self.job.tasks)
+        with client.operation(label, kind='job', ref=self.gloss_ref(document_id), group_id=group,
+                              keys={'seed': seed_id, 'stamps': {}}):
+            execute_plan(client, kept, source=self.source, label=label, project=project,
+                         stamp_mode='machine', detail=self.detail, seed=seed_id)
 
     def recheck(self, ws: JobWorkspace, project: IgtProject, fresh, st: Stretch, prints: Dict[str, str],
                 ops: List[Dict[str, Any]]):
@@ -1234,9 +1302,11 @@ class IgtRunner:
 
     def record(self, project: IgtProject, document_id: str, doc, part: List[Sentence], st: Stretch,
                dropped: Counter, ops: List[Dict[str, Any]], made: frozenset = frozenset(),
-               changed=frozenset()) -> None:
+               changed=frozenset(), vouched=frozenset()) -> None:
         """After a stretch's write: each finished sentence's counts and
-        decisions, stored once (:meth:`commit`), and the row's cursor."""
+        decisions, stored once (:meth:`commit`), and the row's cursor.
+        ``vouched``: the words the job knows it wrote as ``doc`` reads them
+        (:meth:`write_held`)."""
         job = self.job
         row = job.rows.get(document_id) or {}
         now = {s.id: s for s in doc.sentences}
@@ -1270,7 +1340,7 @@ class IgtRunner:
                     translation = 'refreshed' if translated[s.id].get('span_id') is not None else 'translations'
                 else:
                     translation = 'left' if state in ('empty', 'machine') else None
-            records.append(self.sentence_record(document_id, cur, words, translation, made))
+            records.append(self.sentence_record(document_id, cur, words, translation, made, vouched))
         if records:
             for k, n in extra.items():
                 records[0]['counts'][k] = records[0]['counts'].get(k, 0) + n
@@ -1291,19 +1361,27 @@ class IgtRunner:
         self.commit(document_id, records, fields)
 
     def sentence_record(self, document_id: str, s: Sentence, words: List[Word], translation: Optional[str],
-                        made: frozenset = frozenset()) -> Dict[str, Any]:
+                        made: frozenset = frozenset(), vouched=frozenset()) -> Dict[str, Any]:
         """One sentence's part of a stretch's record: what the job wrote on
         ``words`` (those of them now the job's own), what it left blank of
         them, the translation's outcome (``translations``, ``refreshed``,
-        ``left`` or None), and the decisions of the words written."""
+        ``left`` or None), and, for the words written that the job vouches
+        for (``vouched``, ids), each one's key (``words``, which harmonize
+        compares the word with) and their decisions (the precedent of later
+        stretches). A word written and not vouched for is counted and
+        nothing more: harmonize leaves it, and no stretch learns from it."""
         counts = Counter()
         decisions: Dict[Tuple[str, str], Dict[str, Any]] = {}
         left: List[Dict[str, Any]] = []
+        keys: Dict[str, str] = {}
         for w in words:
             if job_owned(w, self.job.id):
                 counts['words'] += 1
                 a = word_analysis(w, made)
                 counts['links'] += sum(1 for m in a['morphemes'] if m['entry'])
+                if w.id not in vouched:
+                    continue
+                keys[word_tag(w.id)] = word_key(w)
                 text = canonical(a)
                 if len(text) > JOB_ANALYSIS_MAX_CHARS:
                     # Core keeps no analysis this long: the word is counted,
@@ -1322,7 +1400,8 @@ class IgtRunner:
                 left.append({'ref': f's{s.index}', 'begin': None, 'form': None})
         if counts['words'] or translation in ('translations', 'refreshed'):
             counts['analyzed'] = 1
-        return {'sentence': s.id, 'counts': dict(counts), 'decisions': list(decisions.values()), 'left': left}
+        return {'sentence': s.id, 'counts': dict(counts), 'decisions': list(decisions.values()), 'left': left,
+                'words': keys}
 
     def commit(self, document_id: str, records: List[Dict[str, Any]], fields: Dict[str, Any]) -> None:
         """Store each sentence's record once, then the row.
@@ -1344,7 +1423,7 @@ class IgtRunner:
             for r in fresh:
                 if r['sentence'] in there:
                     continue
-                text = mark_text(r['counts'], document_id, r.get('left') or [])
+                text = mark_text(r['counts'], document_id, r.get('left') or [], r.get('words') or {})
                 group = r['decisions'] + [{'form': mark_form(r['sentence']), 'key': analysis_key(text),
                                            'analysis': text, 'count': 1, 'document_id': document_id,
                                            'sentence_id': r['sentence']}]
@@ -1388,22 +1467,32 @@ class IgtRunner:
     def marks_in_core(self, sentence_ids: List[str]) -> Dict[str, Dict[str, int]]:
         """The sentences of ``sentence_ids`` core holds a record of, with the
         counts each was recorded with."""
-        out = {}
+        return {sid: dict(mark.get('counts') or {}) for sid, mark in self.marks(sentence_ids).items()}
+
+    def marks(self, sentence_ids: List[str]) -> Dict[str, Dict[str, Any]]:
+        """The record core holds of each sentence of ``sentence_ids`` that
+        has one, as :func:`mark_text` wrote it (an unreadable one is empty)."""
+        out: Dict[str, Dict[str, Any]] = {}
         for r in self.job.lookup_decisions([mark_form(sid) for sid in sentence_ids]):
             form = r.get('form') or ''
             if form.startswith(RECORD_FORM):
                 try:
-                    out[form[len(RECORD_FORM):]] = dict(json.loads(r['analysis']).get('counts') or {})
-                except (ValueError, TypeError, AttributeError):
-                    out[form[len(RECORD_FORM):]] = {}
+                    mark = json.loads(r['analysis'])
+                except (ValueError, TypeError):
+                    mark = None
+                out[form[len(RECORD_FORM):]] = mark if isinstance(mark, dict) else {}
         return out
 
-    def settle(self, project: IgtProject, document_id: str, doc) -> None:
+    def settle(self, project: IgtProject, document_id: str, doc, own: bool = False) -> None:
         """Before a document's stretches: what core holds of its record (once
         per document a runner visits), and a record for every sentence the
-        job wrote in without recording it, which a crash or an error between
-        a write and its record leaves (SPEC 3.8). Those are recorded from the
-        document as it is: the job's own words and translation."""
+        job wrote in without recording it, which a crash, an error or a write
+        put off between a write and its record leaves (SPEC 3.8). Such a
+        sentence is recorded from the document as it is: the job's own words
+        and translation. Its words are vouched for only
+        when ``own``, the newest change of the document being the job's own
+        glossing (``walk``), so that nobody wrote since: otherwise a person's
+        deletion would read as the job's work (REV-J-B3 B3-2)."""
         job = self.job
         if document_id not in self.recorded:
             self.recorded[document_id] = self.marks_in_core([s.id for s in doc.sentences])
@@ -1417,9 +1506,10 @@ class IgtRunner:
             if s.id in marks or s.id in skipped:
                 continue
             words = [w for w in s.words if job_owned(w, job.id)]
-            own = 'translate' in job.tasks and translation_state(s, project, job.id) == 'own'
-            if words or own:
-                orphans.append(self.sentence_record(document_id, s, words, 'translations' if own else None))
+            mine = 'translate' in job.tasks and translation_state(s, project, job.id) == 'own'
+            if words or mine:
+                orphans.append(self.sentence_record(document_id, s, words, 'translations' if mine else None,
+                                                    vouched={w.id for w in words} if own else frozenset()))
         if orphans:
             self.commit(document_id, orphans, {})
 
@@ -1442,8 +1532,7 @@ class IgtRunner:
             except Gone:
                 job.update_row(d, state='gone')
                 continue
-        recorded = self.recorded_analyses({form_key(w.surface) for doc in docs.values() for s in doc.sentences
-                                           for w in s.words if any(job_piece(p, job.id) for p in word_pieces(w))})
+        recorded = self.recorded_words(docs)
         # form -> key -> {analysis, words: [(document, word)]}: the words the
         # job may rewrite, which vote, and per reason those it leaves whole
         # (``harmonize_bar``), which neither vote nor change.
@@ -1558,15 +1647,21 @@ class IgtRunner:
                 held.append({'form': m['form'], 'reason': reason, 'analyses': analyses})
         return {'changed': changed, 'left': list(left) + held}
 
-    def recorded_analyses(self, forms) -> set:
-        """(form, :func:`recorded_key`) of every analysis the job recorded of
-        ``forms`` among its decisions."""
-        out = set()
-        for r in self.job.lookup_decisions(sorted(forms)):
-            try:
-                out.add((r.get('form'), recorded_key(json.loads(r['analysis']))))
-            except (ValueError, TypeError, KeyError, AttributeError):
-                continue
+    def recorded_words(self, docs: Dict[str, Any]) -> Dict[str, str]:
+        """Word id to the key the job's record holds for that word
+        (:func:`word_key`), over the sentences of ``docs``: what the job
+        wrote on each word it vouched for (CONTRACT, added by J-FIX-B3)."""
+        out: Dict[str, str] = {}
+        for doc in docs.values():
+            marks = self.marks([s.id for s in doc.sentences])
+            for s in doc.sentences:
+                keys = (marks.get(s.id) or {}).get('words')
+                if not isinstance(keys, dict):
+                    continue
+                for w in s.words:
+                    key = keys.get(word_tag(w.id))
+                    if key:
+                        out[w.id] = key
         return out
 
     @staticmethod
@@ -1575,7 +1670,7 @@ class IgtRunner:
         return {c.get('entity_id') for c in client.comments.list(project.id, document_id=document_id) or []}
 
     def rewrite(self, project: IgtProject, document_id: str, words: List[Tuple[str, Dict[str, Any]]],
-                recorded: set) -> Optional[Dict[str, Any]]:
+                recorded: Dict[str, str]) -> Optional[Dict[str, Any]]:
         """Set each of ``words`` to its target analysis, under the lock, as
         one History entry of its own, through the job's workspace and its
         guards, as a stretch stages (REV-J-B2 S3-2). ``{written: ids, left:
@@ -1589,7 +1684,7 @@ class IgtRunner:
             if attempt:
                 self.wait_for_people([document_id])
             client = job.client()
-            if self.in_use(client, document_id, f'job:{job.id}/'):
+            if self.in_use(self.newest_change(client, document_id), f'job:{job.id}/'):
                 continue
             row = job.rows.get(document_id) or {}
             group = row.get('harmonize_group')

@@ -15,6 +15,8 @@ that needs the document as a write left it hands that version in
 import contextlib
 import copy
 import json
+import time
+from datetime import datetime, timezone
 from types import SimpleNamespace
 
 from fixtures import FakeClient, GLOSS, MGLOSS, MORPH_LAYER, PID, SENT_LAYER, TEXT_ID, TEXT_LAYER, TRANS, VOCAB, \
@@ -146,6 +148,37 @@ class JobClient(FakeClient):
             return reads(document_id, **kwargs)
         self.documents.get = get
 
+    def note_stamp(self, kind):
+        """A write in strict mode moves the client's version of its document
+        to the one it leaves, as core's answer does: here the version of the
+        document a test hands in as the write's result (``after_write``).
+        And it is the newest change in the document's History, under the
+        open operation's ref, as core places a unit by its newest write."""
+        super().note_stamp(kind)
+        doc = self.strict_mode_document_id
+        if doc is None or kind in ('lock', 'unlock', 'read', 'operation'):
+            return
+        if doc in self.after_write:
+            self.document_versions[doc] = self.after_write[doc].get('version')
+        if self._operation_depth:
+            history = self._holder(doc)['audit']
+            newest = max((e.get('time') or '' for e in history), default='')
+            # An operation opened inside another joins it (the outer one's ref).
+            ref = next((t['ref'] for t in reversed(self.operation_tags) if t.get('ref')), None)
+            history.append({'id': f'unit-{len(history) + 1}', 'ref': ref,
+                            'time': max(newest_after(newest), _iso(time.time())), 'documents': [{'id': doc}]})
+
+
+def _iso(seconds):
+    return datetime.fromtimestamp(seconds, timezone.utc).strftime('%Y-%m-%dT%H:%M:%S.%f')[:-3] + 'Z'
+
+
+def newest_after(when):
+    """A History time a millisecond after ``when`` (an ISO time), or ''."""
+    if not when:
+        return ''
+    return _iso(datetime.fromisoformat(when.replace('Z', '+00:00')).timestamp() + 0.001)
+
 
 def start(client, tasks=('gloss',), documents=None, note=None, now=None, id=None):
     """A job started and claimed on ``client``, held as the worker holds it
@@ -173,12 +206,13 @@ def runner(job, **kw):
 
 def recorded(job):
     """The job's record of every word it holds in its documents as they read
-    now, as its stretches would have left it among its decisions: harmonize
-    rewrites only an analysis the job recorded (REV-J-B2 S3-1)."""
+    now, as its stretches would have left it among its decisions, each word
+    vouched for: harmonize rewrites only what the job recorded it wrote on
+    that word (REV-J-B2 S3-1, REV-J-B3)."""
     r = runner(job)
     project = r.project()
     for d in job.order:
-        r.settle(project, d, r.read(project, d))
+        r.settle(project, d, r.read(project, d), own=True)
     return job
 
 

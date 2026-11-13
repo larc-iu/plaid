@@ -239,7 +239,7 @@ def _random_word(rng, gloss):
     return w
 
 
-@pytest.mark.parametrize('seed', range(60))
+@pytest.mark.parametrize('seed', range(300))
 def test_harmonize_never_changes_a_word_holding_anything_not_the_jobs_own(monkeypatch, seed):
     """For random mixes of a person's, another producer's and the job's
     content on a word, and what a person did since (a piece deleted, a
@@ -248,8 +248,12 @@ def test_harmonize_never_changes_a_word_holding_anything_not_the_jobs_own(monkey
     recorded it and nothing of a person's hangs on it."""
     import random
     rng = random.Random(seed)
-    words = [_random_word(rng, rng.choice(['go', 'go', 'come'])) for _ in range(6)]
+    # The job leaves a gloss blank now and then, so the shape a person's
+    # deletion leaves is often one the job recorded on another word (REV-J-B3 B3-1).
+    words = [_random_word(rng, rng.choice(['go', 'go', 'come', None])) for _ in range(6)]
+    # A gloss the job left blank cannot be deleted.
     since = [rng.choice(SINCE) for _ in words]
+    since = [None if why == 'deleted' and not w['morphs'][0][1] else why for w, why in zip(words, since)]
     after = [dict(x, morphs=[('ka', None, 'e-ka')]) if since[i] == 'deleted' else x for i, x in enumerate(words)]
     comments = [('d1', rng.choice([f'd1-s1w{i}', f'd1-s1w{i}m1', f'l-d1-s1w{i}m1']))
                 for i, why in enumerate(since, start=1) if why == 'commented']
@@ -262,7 +266,9 @@ def test_harmonize_never_changes_a_word_holding_anything_not_the_jobs_own(monkey
     for i, w in enumerate(words, start=1):
         # The one morpheme spells the word and has no type: a token with no
         # stamp is its default morpheme, not anyone's content.
-        pieces = [w['who'][p] for p in PIECES if p != 'token' or w['who'][p] != 'human'] \
+        # A gloss left blank is no span, so it is nobody's piece.
+        pieces = [w['who'][p] for p in PIECES if (p != 'token' or w['who'][p] != 'human')
+                  and (p != 'span' or w['morphs'][0][1])] \
             + ([w['gloss'][1]] if w.get('gloss') else [])
         wid = f'd1-s1w{i}'
         if all(p == J for p in pieces) and since[i - 1] in (None, 'mwe') and wid not in in_mwe:
@@ -277,7 +283,8 @@ def test_harmonize_never_changes_a_word_holding_anything_not_the_jobs_own(monkey
     # people hold it, else of the job's own, the first on a tie).
     rewritten = {o['word_id']: o for o in staged if o.get('kind') == 'set_analysis'}
     if rewritten:
-        chosen = out['changed'][0]['to'].split('‘')[1].rstrip('’')
+        to = out['changed'][0]['to']
+        chosen = to.split('‘')[1].rstrip('’') if '‘' in to else None
 
         def persons(x):
             # word_state's votes: the gloss span (when there is one) and the link
@@ -295,7 +302,7 @@ def test_harmonize_never_changes_a_word_holding_anything_not_the_jobs_own(monkey
             wid = f'd1-s1w{i}'
             if wid not in rewritten:
                 continue
-            assert [f['value'] for f in rewritten[wid]['morphemes'][0]['fields']] == [chosen]
+            assert [f['value'] for f in rewritten[wid]['morphemes'][0]['fields']] == ([chosen] if chosen else [])
             had = (w.get('gloss') or (None,))[0]
             if had is None:
                 assert wid not in fields, 'no field added'
