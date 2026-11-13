@@ -172,9 +172,11 @@ def _to_inline(guidelines: Sequence[Guideline], budget: int) -> List[Guideline]:
 # The owner's ruling (2026-11-12): a guideline is drafted only when the user
 # asks for one. One drafted unasked was the most frequent cause of a failed
 # bench run (FABLE-REVIEW 2026-11-12), riding on a card of data changes.
-OFFER = ('Write or change a guideline only when the user asks you to. When they state a convention that holds '
-         'across the project and is not written down here, offer in your reply to write it into the guidelines, '
-         'and stage nothing for it.')
+# Told only to "offer in your reply", 2 of 3 runs offered nothing (bench
+# glm53-stretch-3, igt-convention-offer): the reply's own words do more.
+OFFER = ('Write or change a guideline only when the user asks you to. When they state a convention for the whole '
+         'project that is not written down here, stage nothing for it and end your reply with "Shall I add this '
+         'convention to the guidelines?"')
 
 EMPTY_SECTION = (
     "\n"

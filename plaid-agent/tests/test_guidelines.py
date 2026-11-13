@@ -58,7 +58,7 @@ def test_a_project_with_no_guidelines_is_still_told_it_may_start_one():
     # when the user asks (the owner's ruling, 2026-11-12).
     out = section([])
     assert 'has not written any down yet' in out
-    assert 'offer in your reply to write it into the guidelines, and stage nothing for it' in out
+    assert 'end your reply with "Shall I add this convention to the guidelines?"' in out
     # Nothing to report about context when there is no manual.
     assert in_context([]) == ''
 

@@ -165,7 +165,9 @@ def test_every_prompt_drafts_a_guideline_only_when_asked():
     for app, text in _built().items():
         assert 'even though they did not ask' not in text, app
         assert 'Write or change a guideline only when the user asks you to.' in text, app
-        assert 'offer in your reply to write it into the guidelines, and stage nothing for it' in text, app
+        # 2 of 3 runs of bench igt-convention-offer (glm53-stretch-3) offered no guideline under the bare rule.
+        assert 'stage nothing for it and end your reply with "Shall I add this convention to the guidelines?"' \
+            in text, app
     for words in (EMPTY_SECTION, section([Guideline(id='g', title='T', body='b')]), HELP):
         assert 'even if they did not ask' not in words and 'even though they did not ask' not in words
     assert 'when the user asks for one' in HELP
