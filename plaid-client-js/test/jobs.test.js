@@ -294,6 +294,20 @@ test("updateDocument, finish and the decisions send the contract's bodies", asyn
   }
 });
 
+test("landed asks by seed and answers the keys", async () => {
+  const net = capture([{ status: 200, body: { keys: ["s1.0", "s1.1"] } }]);
+  try {
+    const client = new PlaidClient("http://x", "tok");
+    assert.deepEqual(await client.jobs.landed("j1", ["s1", "s2"]), ["s1.0", "s1.1"]);
+    const [sent] = net.sent;
+    assert.equal(`${sent.method} ${sent.path}`, "POST /api/v1/jobs/j1/landed");
+    assert.deepEqual(sent.body, { refs: ["s1", "s2"] });
+    assert.equal(sent.key, undefined, "a signal, never keyed");
+  } finally {
+    net.restore();
+  }
+});
+
 test("the worker's calls are signals: unkeyed, outside any operation, sent from a batch", async () => {
   const net = capture([{ status: 200, body: { state: "running", token: "t", "lease-s": 120 } }]);
   try {

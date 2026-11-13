@@ -47,6 +47,15 @@
   no application-level coordination implied."
   nil)
 
+(def ^:dynamic *request-key*
+  "The Idempotency-Key the current write or batch was sent with, or nil.
+  Bound by `plaid.rest-api.v1.idempotency` around a keyed write and stored
+  on each of its operations as `request_key`, so whether a keyed request
+  landed is known for as long as the audit log is kept (a job worker asks
+  it, `plaid.sql.job/landed-keys`), long after the idempotency store forgot
+  the key."
+  nil)
+
 (def ^:dynamic *custom-description*
   "Optional client-supplied audit-log message for the current request,
   bound by `wrap-audit-message` from the (templated) `?audit-message=`
@@ -95,7 +104,7 @@
   only when the operation has them, so the code migrations that write
   operations before the columns exist (2026-10-16's among them) still can."
   [tx {:keys [id type project document description user token-id credential batch-id group-id ts
-              named-project anonymous-description]}]
+              named-project anonymous-description request-key]}]
   (psc/execute!
    tx
    {:insert-into :operations
@@ -111,7 +120,8 @@
                       :credential credential
                       :ts ts}
                named-project (assoc :named_project_id named-project
-                                    :anonymous_description anonymous-description))]}))
+                                    :anonymous_description anonymous-description)
+               request-key (assoc :request_key request-key))]}))
 
 (defn- ensure-group-row!
   "Lazily create the `operation_groups` row for the op's group on first
@@ -582,6 +592,8 @@
                                          ;; Server-authoritative: bound from the
                                          ;; validated JWT claim by wrap-api-token-id.
                                          :token-id *token-id*
+                                         ;; The key the request was sent with.
+                                         :request-key *request-key*
                                          ;; Likewise: the kind of credential that signed it.
                                          :credential *credential*
                                          ;; Client-supplied (templated) audit message

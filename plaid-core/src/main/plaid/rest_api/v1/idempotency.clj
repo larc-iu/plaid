@@ -28,7 +28,8 @@
             [plaid.rest-api.v1.batch :as batch]
             [plaid.rest-api.v1.middleware :as prm]
             [plaid.server.log-buffer :as log-buffer]
-            [plaid.sql.idempotency :as idem])
+            [plaid.sql.idempotency :as idem]
+            [plaid.sql.operation :as op])
   (:import (java.io InputStream)
            (java.nio.charset StandardCharsets)
            (java.security MessageDigest)))
@@ -171,19 +172,21 @@
 (defn- keyed-write
   "Run the handler for a keyed write in one transaction with its key row.
   The key is looked up again under the write lock, so of two sends of one
-  key at once only one writes and the other is answered from its row."
+  key at once only one writes and the other is answered from its row. Each
+  operation the write makes keeps the key (`op/*request-key*`)."
   [handler request muuntaja user key fp batch-route?]
-  (if batch-route?
-    (binding [batch/*pending-key*
-              {:check (fn [tx] (when-let [row (idem/lookup tx user key)] (answer-from muuntaja row fp)))
-               :store! (fn [tx response] (store-if-success! tx muuntaja request user key fp response))}]
-      (handler request))
-    (batch/with-atomic-tx
-      (:db request)
-      (fn [tx]
-        (or (when-let [row (idem/lookup tx user key)] (answer-from muuntaja row fp))
-            (store-if-success! tx muuntaja request user key fp
-                               (handler (assoc request :db tx))))))))
+  (binding [op/*request-key* key]
+    (if batch-route?
+      (binding [batch/*pending-key*
+                {:check (fn [tx] (when-let [row (idem/lookup tx user key)] (answer-from muuntaja row fp)))
+                 :store! (fn [tx response] (store-if-success! tx muuntaja request user key fp response))}]
+        (handler request))
+      (batch/with-atomic-tx
+        (:db request)
+        (fn [tx]
+          (or (when-let [row (idem/lookup tx user key)] (answer-from muuntaja row fp))
+              (store-if-success! tx muuntaja request user key fp
+                                 (handler (assoc request :db tx)))))))))
 
 (defn- refuses-key [route-data]
   (false? (:plaid/idempotency route-data)))

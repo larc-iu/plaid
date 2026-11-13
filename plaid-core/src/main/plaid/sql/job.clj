@@ -704,6 +704,30 @@
                    :where [:and [:= :job_id (str job-id)] [:in :form (vec (distinct forms))]]
                    :order-by [:form [:count :desc] :key]})))
 
+(defn landed-keys
+  "Of the writes job `job-id`'s worker sent under each seed of `refs` (keys
+  `<seed>.<n>`, the client's numbering of an operation's writes), the keys
+  of those that landed: the distinct `request_key` of the operations its
+  starter made in its project under each seed, in key order. Read from the
+  audit log, which keeps them for good, never from the idempotency store,
+  which forgets them after a day. Nothing of any other user or project is
+  read, so the answer says nothing about them. Nil for an unknown job."
+  [db job-id refs]
+  (when-let [row (job-row db job-id)]
+    (->> (distinct refs)
+         (mapcat (fn [ref]
+                   (psc/q db {:select-distinct [:request_key]
+                              :from [:operations]
+                              :where [:and
+                                      [:>= :request_key (str ref ".")]
+                                      [:< :request_key (str ref "/")]
+                                      [:= :user_id (str (:started_by row))]
+                                      [:= :project_id (str (:project_id row))]]})))
+         (map :request_key)
+         distinct
+         sort
+         vec)))
+
 (defn decisions-page
   "One page of job `job-id`'s decisions by `(form, key)`."
   [db job-id {:keys [limit cursor-vals]}]

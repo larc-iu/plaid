@@ -91,6 +91,7 @@
                  {:worker-id jh/worker-a :decisions [{:form "ka" :key "k1" :analysis "{}" :count 1}]}]
                 [:get (str "/api/v1/jobs/" j "/decisions")]
                 [:post (str "/api/v1/jobs/" j "/decisions/lookup") {:forms ["ka"]}]
+                [:post (str "/api/v1/jobs/" j "/landed") {:refs ["0197d1a0-0000-7000-8000-000000000001"]}]
                 [:post (str "/api/v1/jobs/" j "/finish") {:worker-id jh/worker-a :state "done" :report {}}]
                 [:get "/api/v1/jobs/model-busy?pool=key"]]]
     (doseq [c (remove #{:a} columns)

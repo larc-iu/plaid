@@ -801,6 +801,9 @@ Jobs themselves are not recorded in the audit log.
 
 |`POST /api/v1/jobs/claim`, `GET /api/v1/jobs/model-busy`, and a job's `heartbeat`, `documents/{id}`, `decisions` and `finish`
 |an admin
+
+|a job's `landed`
+|an admin, or the job's own token
 |===
 
 A delegated token can neither start nor stop a job.
@@ -818,6 +821,10 @@ That token reaches only the job's project and does only what that person may the
 It works only while the job is running or stopping on the worker it was issued to.
 Once the job ends, or another worker takes it, the token is refused with 401 and `job-ended`.
 Once they can no longer write in the project, the job fails, and no further token is issued.
+
+The worker sends each write of a job under Idempotency-Keys of a seed of its own (`<seed>.<n>`).
+When an answer is lost, or the worker stopped while a write was on its way, `POST /api/v1/jobs/{id}/landed` with `refs`, the seeds, answers `keys`, the keys of every write the job's starter made in its project under them.
+The server keeps each operation's key in the audit log, so the answer holds at any time, unlike the 24 hours of the Idempotency-Key replay.
 
 === Model pools
 

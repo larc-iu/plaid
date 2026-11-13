@@ -180,6 +180,36 @@ def test_update_document_finish_and_the_decisions_send_the_contracts_bodies():
     assert busy['query'] == {'pool': 'glm'}
 
 
+def test_landed_asks_by_seed_and_answers_the_keys():
+    client = _client([{'keys': ['s1.0', 's1.1']}])
+    assert client.jobs.landed('j1', ['s1', 's2']) == ['s1.0', 's1.1']
+    (sent,) = _sent(client)
+    assert f"{sent['method']} {sent['path']}" == 'POST /api/v1/jobs/j1/landed'
+    assert sent['body'] == {'refs': ['s1', 's2']}
+    assert sent['key'] is None, 'a signal, never keyed'
+
+
+def test_fake_landed_answers_the_keys_of_writes_that_landed():
+    client, _ = _fake()
+    job = client.jobs.create('p1', 'igt', 'Gloss.')
+    client.jobs.claim('w1', 'm', ['igt'])
+    seed, other = client.key_seed(), client.key_seed()
+    with client.operation('Job', keys=seed):
+        client.tokens.create('l1', 't1', 0, 1)
+        with client.batched() as b:
+            b.tokens.create('l1', 't1', 1, 2)
+            b.tokens.create('l1', 't1', 2, 3)
+        with client.batched():
+            pass
+    with client.operation('Unkeyed'):
+        client.tokens.create('l1', 't1', 3, 4)
+    s = seed['seed']
+    assert client.jobs.landed(job['id'], [s, other['seed']]) == [f'{s}.0', f'{s}.1'], \
+        'one key a write, a batch one write, an empty batch none'
+    _refused(lambda: client.jobs.landed(job['id'], []), 400, 'refs: give at least one.')
+    _refused(lambda: client.jobs.landed('nope', [s]), 404)
+
+
 def test_finish_sends_a_reason_only_when_given():
     client = _client([WIRE_JOB])
     client.jobs.finish('j1', 'w1', 'failed', {}, reason='no-lexicon')

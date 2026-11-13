@@ -264,6 +264,23 @@ export function jobsApi(client) {
         body: { forms },
       }),
     /**
+     * Which writes a job's worker sent landed: the Idempotency-Keys
+     * (`<seed>.<n>`) of every write the job's starter made in its project
+     * under each seed of `refs`, read from the audit log, which keeps them
+     * for good. An admin or the job's own token. 1 to 1,000 seeds.
+     * @param {string} jobId - The job
+     * @param {string[]} refs - The seeds its tries were sent under
+     * @returns {Promise<string[]>}
+     */
+    landed: async (jobId, refs) => {
+      // A read that travels as a POST, so the seeds go in its body.
+      const answer = await client._request("POST", `/api/v1/jobs/${jobId}/landed`, {
+        outOfBand: true,
+        body: { refs },
+      });
+      return answer?.keys ?? [];
+    },
+    /**
      * Every decision of a job, by form and key. Admin only. Transparently
      * follows pagination cursors and returns the full flat array.
      * @param {string} jobId - The job

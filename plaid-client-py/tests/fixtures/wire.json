@@ -87,6 +87,7 @@
   "jobs.get": {"args":["a0"],"kwargs":{},"outcome":"ok","sends":[{"method":"GET","path":"/api/v1/jobs/a0"}],"batch":"wire"},
   "jobs.heartbeat": {"args":["a0","a1"],"kwargs":{"phase":"kw.phase","message":"kw.message","waiting_for":"kw.waiting_for","current_document":"kw.current_document"},"outcome":"ok","sends":[{"body":{"current-document":"kw.current_document","message":"kw.message","phase":"kw.phase","waiting-for":"kw.waiting_for","worker-id":"a1"},"method":"POST","path":"/api/v1/jobs/a0/heartbeat"}],"batch":"wire"},
   "jobs.iter_pages": {"args":["a0"],"kwargs":{"page_size":"kw.page_size"},"outcome":"ok","sends":[{"method":"GET","path":"/api/v1/projects/a0/jobs","query":{"limit":"kw.page_size"}}],"batch":"wire"},
+  "jobs.landed": {"args":["a0","a1"],"kwargs":{},"outcome":"ok","sends":[{"body":{"refs":"a1"},"method":"POST","path":"/api/v1/jobs/a0/landed"}],"batch":"wire"},
   "jobs.list": {"args":["a0"],"kwargs":{},"outcome":"ok","sends":[{"method":"GET","path":"/api/v1/projects/a0/jobs","query":{"limit":"1000"}}],"batch":"wire"},
   "jobs.list_page": {"args":["a0"],"kwargs":{"limit":"kw.limit","cursor":"kw.cursor"},"outcome":"ok","sends":[{"method":"GET","path":"/api/v1/projects/a0/jobs","query":{"cursor":"kw.cursor","limit":"kw.limit"}}],"batch":"wire"},
   "jobs.lookup_decisions": {"args":["a0","a1"],"kwargs":{},"outcome":"ok","sends":[{"body":{"forms":"a1"},"method":"POST","path":"/api/v1/jobs/a0/decisions/lookup"}],"batch":"wire"},

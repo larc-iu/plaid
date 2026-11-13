@@ -30,7 +30,8 @@
             [plaid.rest-api.v1.pagination :as pagination]
             [plaid.server.events :as events]
             [plaid.sql.common :as psc]
-            [plaid.sql.job :as job])
+            [plaid.sql.job :as job]
+            [plaid.sql.user :as user])
   (:import (java.time Instant)))
 
 ;; ============================================================
@@ -79,6 +80,23 @@
                         (-> request :jwt-data :exp)
                         (:user/id request)
                         (or (:api-token/id request) (-> request :jwt-data :delegated/api-token))))
+
+(defn- own-job-token?
+  "Does `request` come with a token of the job the path names: a job
+  token, whose `jti` is `job:<id>` (`pra/issue-job-token!`)."
+  [request]
+  (= (some-> request :auth/token-scope :token-key)
+     (str "job:" (-> request :parameters :path :job-id))))
+
+(defn- worker-or-own-token
+  "The worker's gate for a route a job's own token may also take: an admin,
+  or a token of the job the path names. A job token of another job, a
+  delegated token and anyone else are refused as the admin gate refuses."
+  [handler]
+  (fn [request]
+    (if (or (user/admin? (:user/record request)) (own-job-token? request))
+      (handler request)
+      {:status 403 :body {:error "Admin privileges required for this operation."}})))
 
 (defn- iso [ms]
   (when ms (psc/instant->iso (Instant/ofEpochMilli ms))))
@@ -285,6 +303,29 @@
                                (if (job/project-id db job-id)
                                  (pagination/list-response query #(job/decisions-page db job-id %))
                                  (not-found)))})}]
+
+     ["/landed"
+      {:post {:summary (str "Worker: which writes the job sent landed. <body>refs</body> names the seeds its "
+                            "tries were sent under, at most 1,000. Answers <body>keys</body>, the "
+                            "Idempotency-Keys (<code>&lt;seed&gt;.&lt;n&gt;</code>) of every write its starter made "
+                            "in its project under them, from the audit log. Admin, or the job's own token.")
+              :plaid/idempotency false
+              :plaid/token-scope (fn [request _] (when-not (own-job-token? request)
+                                                   {:status 403 :body {:error "This token reaches only the projects it was issued for."}}))
+              :middleware [worker-or-own-token]
+              :parameters {:body [:map [:refs [:vector [:string {:min 1 :max 128}]]]]}
+              :handler (fn [{{{:keys [job-id]} :path {:keys [refs]} :body} :parameters db :db}]
+                         (cond
+                           (empty? refs)
+                           {:status 400 :body {:error "refs: give at least one."}}
+
+                           (> (count refs) job/decisions-per-call)
+                           {:status 400 :body {:error (str "refs: at most " job/decisions-per-call " in one call.")}}
+
+                           :else
+                           (if-let [ks (job/landed-keys db job-id refs)]
+                             {:status 200 :body {:keys ks}}
+                             (not-found))))}}]
 
      ["/decisions/lookup"
       {:post (merge worker-only

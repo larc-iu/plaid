@@ -90,6 +90,7 @@
   "jobs.get": {"args":["a0"],"outcome":"ok","sends":[{"method":"GET","path":"/api/v1/jobs/a0"}],"batch":"wire"},
   "jobs.heartbeat": {"args":["a0","a1",{"phase":"a2.phase","message":"a2.message","waitingFor":"a2.waitingFor","currentDocument":"a2.currentDocument"}],"outcome":"ok","sends":[{"body":{"current-document":"a2.currentDocument","message":"a2.message","phase":"a2.phase","waiting-for":"a2.waitingFor","worker-id":"a1"},"method":"POST","path":"/api/v1/jobs/a0/heartbeat"}],"batch":"wire"},
   "jobs.iterPages": {"args":["a0",{"pageSize":"a1.pageSize"}],"outcome":"ok","sends":[{"method":"GET","path":"/api/v1/projects/a0/jobs","query":{"limit":"a1.pageSize"}}],"batch":"wire"},
+  "jobs.landed": {"args":["a0","a1"],"outcome":"ok","sends":[{"body":{"refs":"a1"},"method":"POST","path":"/api/v1/jobs/a0/landed"}],"batch":"wire"},
   "jobs.list": {"args":["a0"],"outcome":"ok","sends":[{"method":"GET","path":"/api/v1/projects/a0/jobs","query":{"limit":"1000"}}],"batch":"wire"},
   "jobs.listPage": {"args":["a0",{"limit":"a1.limit","cursor":"a1.cursor"}],"outcome":"ok","sends":[{"method":"GET","path":"/api/v1/projects/a0/jobs","query":{"cursor":"a1.cursor","limit":"a1.limit"}}],"batch":"wire"},
   "jobs.lookupDecisions": {"args":["a0","a1"],"outcome":"ok","sends":[{"body":{"forms":"a1"},"method":"POST","path":"/api/v1/jobs/a0/decisions/lookup"}],"batch":"wire"},

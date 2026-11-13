@@ -489,6 +489,7 @@ class _Batch:
             raise
         self.client.batches.append(list(queued))
         self.client.calls.extend(queued)
+        self.client._landed_write()
         self.client.cascaded.extend(cascade)
         self.results = results
         return self.results
@@ -1136,6 +1137,12 @@ class FakeClient:
         self.stamps = []
         self._ids = itertools.count(1)
         self._operation_depth = 0
+        #: the Idempotency-Key of each write that landed inside an operation
+        #: opened with ``keys``, ``<seed>.<n>`` as the real client numbers
+        #: them (a batch is one write), which ``jobs.landed`` answers from,
+        #: as core answers from its audit log
+        self.landed_keys = []
+        self._key_frames = []
         self.documents = FakeClient._Documents(self)
         self.projects = FakeClient._Projects(self)
         self.comments = FakeClient._Comments(self)
@@ -1181,6 +1188,16 @@ class FakeClient:
     def record(self, kind, payload=None, result=None):
         self.note_stamp(kind)
         self.calls.append((kind, payload))
+        if kind not in _NOT_WRITES:
+            self._landed_write()
+
+    def _landed_write(self):
+        """A write made inside an operation opened with ``keys`` landed:
+        its key, the next of the innermost keyed operation's, is kept."""
+        if self._key_frames:
+            frame = self._key_frames[-1]
+            self.landed_keys.append(f'{frame[0]}.{frame[1]}')
+            frame[1] += 1
 
     def note_cascade(self, kind, taken):
         """What a delete made on the client takes with it."""
@@ -1378,10 +1395,15 @@ class FakeClient:
                         len(self.operations) - 1, self._operation_depth == 0)
         start = len(self.calls)
         self._operation_depth += 1
+        frame = [keys['seed'], 0] if keys else None
+        if frame is not None:
+            self._key_frames.append(frame)
         try:
             yield op
         finally:
             self._operation_depth -= 1
+            if frame is not None:
+                self._key_frames.remove(frame)
             # The real client relabels a group only once a write joined it,
             # since a group nothing wrote to does not exist on the server.
             if self._operation_depth == 0 and not any(
@@ -2298,6 +2320,19 @@ class _FakeJobs:
             raise self._refuse(400, 'POST', path, f'forms: at most {_JOB_DECISIONS_PER_CALL} in one call.')
         rows = [r for r in self.decision_rows.get(job_id, {}).values() if r['form'] in set(forms)]
         return [dict(r) for r in sorted(rows, key=lambda r: (r['form'], -r['count'], r['key']))]
+
+    def landed(self, job_id, refs):
+        """The keys of the writes made under each seed of ``refs`` that
+        landed (the client's ``landed_keys``), as core reads them from its
+        audit log."""
+        path = f'/api/v1/jobs/{job_id}/landed'
+        self.calls.append(('landed', {'job_id': job_id, 'refs': list(refs)}))
+        self._job(job_id, 'POST', path)
+        if not refs:
+            raise self._refuse(400, 'POST', path, 'refs: give at least one.')
+        if len(refs) > _JOB_DECISIONS_PER_CALL:
+            raise self._refuse(400, 'POST', path, f'refs: at most {_JOB_DECISIONS_PER_CALL} in one call.')
+        return sorted({k for k in self._client.landed_keys if k.rsplit('.', 1)[0] in set(refs)})
 
     def decisions(self, job_id):
         self.calls.append(('decisions', {'job_id': job_id}))

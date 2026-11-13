@@ -3882,6 +3882,15 @@ class JobsResource(_Resource):
         return self._request('POST', f'/api/v1/jobs/{job_id}/decisions/lookup',
                              body={'forms': forms}, out_of_band=True)
 
+    def landed(self, job_id: str, refs: list) -> list:
+        """Which writes a job's worker sent landed: the Idempotency-Keys
+        (``<seed>.<n>``) of every write the job's starter made in its project
+        under each seed of ``refs``, read from the audit log, which keeps
+        them for good. An admin or the job's own token. 1 to 1,000 seeds."""
+        # A read that travels as a POST, so the seeds go in its body.
+        return (self._request('POST', f'/api/v1/jobs/{job_id}/landed', body={'refs': refs},
+                              out_of_band=True) or {}).get('keys') or []
+
     def decisions(self, job_id: str) -> Any:
         """Every decision of a job, by form and key. Admin only. Transparently
         follows pagination cursors and returns the full flat list."""
