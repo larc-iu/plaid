@@ -283,4 +283,48 @@ describe('the vocabulary History', () => {
     expect(all(body, '[role="tab"]')).toHaveLength(0);
     await view.unmount();
   });
+
+  it('opens an action picked inside an entry on what it changed', async () => {
+    auth.client = client;
+    const asked = [];
+    const twoActions = {
+      id: 'g1',
+      time: THEN,
+      endTime: THEN,
+      message: 'Edit two entries',
+      ops: [
+        { id: 'a1', time: THEN, endTime: THEN, description: 'Update vocab item kai' },
+        { id: 'a2', time: THEN, endTime: THEN, description: 'Update vocab item kay' },
+      ],
+    };
+    log.push(twoActions);
+    client.audit.changesPage = async (entryId) => {
+      asked.push(entryId);
+      return { entries: changes, nextCursor: null };
+    };
+    try {
+      const view = await renderComponent(
+        <MemoryRouter initialEntries={['/vocabularies/A']}>
+          <Routes>
+            <Route path="/vocabularies/:vocabularyId" element={<VocabularyDetail />} />
+          </Routes>
+        </MemoryRouter>,
+      );
+      await settle(view);
+      await view.step(() => button('History').click());
+      await settle(view);
+      const expand = all(document.body, 'button[aria-label="Expand"]').at(-1);
+      await view.step(() => expand.click());
+      const action = all(document.body, '[data-history-item^="o:"]').find((b) =>
+        b.textContent.includes('kay'),
+      );
+      await view.step(() => action.click());
+      await settle(view);
+      expect(document.body.querySelector('[data-testid="history-changes"]')).not.toBeNull();
+      expect(asked).toContain('a2');
+      await view.unmount();
+    } finally {
+      log.pop();
+    }
+  });
 });

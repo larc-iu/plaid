@@ -194,7 +194,7 @@ describe('a History entry in the address', () => {
   it('names a pick in the rail, and Back leaves it', async () => {
     await mount('/p/p1/d/d1?tab=analyze');
     await view.step(() =>
-      seen.panel.history.selectEntry({ id: 'u2', time: '2026-11-02T00:00:00Z', unit: true }),
+      seen.panel.history.selectEntry({ id: 'u2', time: '2026-11-02T00:00:00Z' }),
     );
     expect(q().get('history')).toBe('u2');
     expect(changes().dataset.entry).toBe('u2');
@@ -208,14 +208,29 @@ describe('a History entry in the address', () => {
     await view.unmount();
   });
 
-  it('shows the document as of an action inside an entry, which is no entry of its own', async () => {
+  it('opens an action inside an entry on what it changed, and its address again on reload', async () => {
     await mount('/p/p1/d/d1?tab=analyze');
     await view.step(() =>
       seen.panel.history.selectEntry({ id: 'op-1', time: '2026-11-02T00:00:00Z' }),
     );
-    expect(changes()).toBeNull();
-    expect(switchTo('Document')).toBeUndefined();
-    expect(body().dataset.name).toBe('Doc then');
+    expect(q().get('history')).toBe('op-1');
+    expect(changes().dataset.entry).toBe('op-1');
+    expect(switchTo('Document')).not.toBeUndefined();
+    await view.unmount();
+    // The address alone, as a reload or Back gives it: core reads an
+    // action's id as an entry of that one action.
+    auditPage.mockImplementation(async (documentId, { entryId }) => ({
+      entries:
+        entryId === 'op-1'
+          ? [{ id: 'op-1', time: '2026-11-02T00:00:00Z', endTime: '2026-11-02T00:00:01Z', ops: [] }]
+          : [],
+      nextCursor: null,
+    }));
+    await mount('/p/p1/d/d1?tab=analyze&history=op-1');
+    expect(auditPage).toHaveBeenCalledWith('d1', { entryId: 'op-1', opsLimit: 1 });
+    expect(notify.notifyError).not.toHaveBeenCalled();
+    expect(q().get('history')).toBe('op-1');
+    expect(changes().dataset.entry).toBe('op-1');
     await view.unmount();
   });
 

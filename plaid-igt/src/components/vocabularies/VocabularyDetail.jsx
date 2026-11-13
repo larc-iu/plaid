@@ -484,7 +484,6 @@ export const VocabularyDetail = () => {
           id: entry.id,
           time: entry.endTime || entry.time,
           label: entry.message || entry.ops?.[0]?.description || '',
-          unit: true,
         });
       } catch (err) {
         if (statusOf(err) === 401) {
@@ -1403,9 +1402,9 @@ export const VocabularyDetail = () => {
     history.select(entry);
   };
   const viewingPast = !!history.selected;
-  // A whole entry opens on what it changed, the vocabulary as of it one
-  // click away.
-  const changesShown = !!history.selected?.unit;
+  // An entry, or an action inside one, opens on what it changed, the
+  // vocabulary as of it one click away.
+  const changesShown = !!history.selected;
   const showChanges = changesShown && historyParam.view === 'changes';
 
   return (

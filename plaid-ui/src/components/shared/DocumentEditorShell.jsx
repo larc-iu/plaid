@@ -354,7 +354,8 @@ const DocumentEditor = ({ app, documentClient }) => {
   const shown = history.snapshot ?? doc;
   const onPastTab = app.tabs.past.includes(tab);
   // The entry open is in the address (`?history=`), so a link opens one and
-  // Back leaves it. A link names a whole entry: it is read to learn its time.
+  // Back leaves it. A link names an entry, or an action inside one (core reads
+  // an action's id as an entry of that one action): it is read to learn its time.
   const historyParam = useHistoryParam({
     selectedId: pastEntry?.id,
     ready: !!doc && !!client,
@@ -372,7 +373,6 @@ const DocumentEditor = ({ app, documentClient }) => {
           id: entry.id,
           time: entry.endTime || entry.time,
           label: entry.message || entry.ops?.[0]?.description || '',
-          unit: true,
         });
       } catch (err) {
         if (statusOf(err) === 401) {
@@ -393,9 +393,9 @@ const DocumentEditor = ({ app, documentClient }) => {
     historyParam.select(entry?.id ?? null);
     await history.selectEntry(entry);
   };
-  // What an entry changed, where the app shows it: for a whole entry, unless
+  // What an entry changed, where the app shows it: for an entry or an action, unless
   // the reader asked for the document as of it.
-  const changesShown = !!app.historyChanges && !!pastEntry?.unit;
+  const changesShown = !!app.historyChanges && !!pastEntry;
   const showChanges = changesShown && historyParam.view === 'changes';
   // The snapshot that belongs to the entry open, not one a later pick is
   // still replacing.
