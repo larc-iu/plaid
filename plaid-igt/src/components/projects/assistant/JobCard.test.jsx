@@ -128,6 +128,60 @@ describe('the job card', () => {
     expect(onSettle).toHaveBeenCalledWith({ outcome: 'started', brief: 'Gloss ka as go.' });
   });
 
+  // REV-JB-1: core as it answers a create, job-active checked before the id
+  // (plaid-core sql/job.clj create!), over the project's `jobs`.
+  const core = (jobs) => async (_p, body) => {
+    const active = jobs.find((j) => j.state === 'waiting' || j.state === 'running');
+    if (active) {
+      throw refusal(409, {
+        error: 'This project already has a job.',
+        code: 'job-active',
+        job: active.id,
+      });
+    }
+    if (jobs.some((j) => j.id === body.id))
+      throw refusal(409, { error: 'id-taken', deleted: false });
+    jobs.push({ id: body.id, state: 'waiting' });
+    return { id: body.id, state: 'waiting' };
+  };
+
+  it("takes a press after a reload, refused for the card's own running job, as started", async () => {
+    const jobs = [{ id: CARD_ID, state: 'running' }];
+    const client = fakeClient({ create: core(jobs) });
+    const { v, onSettle } = await draw({ card: card(), client });
+    await v.step(() => button(v, 'Start job').click());
+    await v.step(async () => {});
+    expect(onSettle).toHaveBeenCalledWith({ outcome: 'started', brief: 'Gloss ka as go.' });
+    expect(jobs).toHaveLength(1);
+  });
+
+  it("sends the card's id on every press, so a start the record missed is started again", async () => {
+    const jobs = [];
+    const client = fakeClient({ create: core(jobs) });
+    // The service did not record the first start: the card still waits.
+    const { v, onSettle } = await draw({ card: card(), client });
+    await v.step(() => button(v, 'Start job').click());
+    await v.step(async () => {});
+    await v.step(() => button(v, 'Start job').click());
+    await v.step(async () => {});
+    expect(client.jobs.create.mock.calls.map((c) => c[1].id)).toEqual([CARD_ID, CARD_ID]);
+    expect(onSettle.mock.calls).toEqual([
+      [{ outcome: 'started', brief: 'Gloss ka as go.' }],
+      [{ outcome: 'started', brief: 'Gloss ka as go.' }],
+    ]);
+    expect(jobs).toHaveLength(1);
+  });
+
+  it("takes a press after the card's job ended as started, and makes no second job", async () => {
+    const jobs = [{ id: CARD_ID, state: 'done' }];
+    const client = fakeClient({ create: core(jobs) });
+    const { v, onSettle } = await draw({ card: card(), client });
+    await v.step(() => button(v, 'Start job').click());
+    await v.step(async () => {});
+    expect(onSettle).toHaveBeenCalledWith({ outcome: 'started', brief: 'Gloss ka as go.' });
+    expect(jobs).toEqual([{ id: CARD_ID, state: 'done' }]);
+  });
+
   it('ends as not started when the project already has a job, naming it', async () => {
     const client = fakeClient({
       create: async () => {

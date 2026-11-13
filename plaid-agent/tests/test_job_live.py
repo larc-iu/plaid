@@ -115,3 +115,29 @@ def test_a_jobs_token_is_refused_on_a_maintainers_route(world):
         assert e.value.status == 403
     finally:
         admin.jobs.finish(made['id'], WORKER, 'done', {'state': 'done'})
+
+
+def test_core_answers_a_cards_second_press_as_the_job_card_reads_it(world):
+    """REV-JB-1, core's real answers to the page's job card: a second create
+    under the same id while the first job runs is refused job-active naming
+    that same id (what the card takes as started), and an id naming no job
+    reads, to the writer, as the refusal the service takes for no job."""
+    admin, writer, email, s = world
+    from plaid_client import PlaidAPIError, uuid7
+    from plaid_agent.core.record_ops import _names_nothing
+    card_id = str(uuid7())
+    with pytest.raises(PlaidAPIError) as e:
+        writer.jobs.get(card_id)
+    assert _names_nothing(e.value), (e.value.status, e.value.response_data)
+    writer.jobs.create(s.project_id, 'igt', ['gloss'], id=card_id)
+    try:
+        with pytest.raises(PlaidAPIError) as e:
+            writer.jobs.create(s.project_id, 'igt', ['gloss'], id=card_id)
+        assert e.value.status == 409
+        assert e.value.response_data['code'] == 'job-active' and e.value.response_data['job'] == card_id
+        assert writer.jobs.get(card_id)['project'] == s.project_id
+    finally:
+        writer.jobs.cancel(card_id)
+    with pytest.raises(PlaidAPIError) as e:
+        writer.jobs.create(s.project_id, 'igt', ['gloss'], id=card_id)
+    assert e.value.status == 409 and e.value.response_data['error'] == 'id-taken'

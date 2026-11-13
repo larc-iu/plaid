@@ -236,27 +236,34 @@ class RecordOps:
         """How a job card ended, as the page saw it: ``started`` (the page
         made the job, under the card's id), ``discarded``, or ``failed`` with
         the ``reason`` core gave (and ``active_job``, the project's job that
-        stood in its way). A start is read back from core before it is
-        recorded: the card says what core holds, the brief as sent included.
-        A card already ended the same way answers done. The record is written
-        whatever the conversation is doing (``work`` False): the job exists
-        whether or not a turn runs."""
+        stood in its way). Whatever the page says, the job is read from core
+        first: a card whose job core holds under its id STARTED, so a press
+        after a reload, refused because that very job is active, or a page
+        that never heard the first start's answer, still records the truth.
+        A start core does not hold is refused, and a card whose job cannot be
+        read waits. The card says what core holds, the brief as sent
+        included. A card already ended the same way answers done. The record
+        is written whatever the conversation is doing (``work`` False): the
+        job exists whether or not a turn runs."""
         data = ctx.data
         card_id, status = data.get('card_id'), data.get('outcome')
         if status not in JOB_CARD_ENDS:
             ctx.helper.error(f'Unknown outcome: {status}')
             return
-        fields: Dict[str, Any] = {}
-        if status == 'started':
-            try:
-                job = ctx.client.jobs.get(card_id)
-            except Exception as e:  # noqa: BLE001 - the page is told, and the card waits
+        try:
+            job = ctx.client.jobs.get(card_id)
+        except Exception as e:  # noqa: BLE001 - the page is told, and the card waits
+            if not _names_nothing(e):
                 ctx.helper.error(f'The job could not be read: {e}')
                 return
-            if not isinstance(job, dict) or job.get('project') != ctx.store.project_id:
-                ctx.helper.error('No such job in this project')
-                return
+            job = None
+        fields: Dict[str, Any] = {}
+        if isinstance(job, dict) and job.get('project') == ctx.store.project_id:
+            status = 'started'
             fields = {'job_id': job.get('id'), 'sent_brief': job.get('note') or ''}
+        elif status == 'started':
+            ctx.helper.error('No such job in this project')
+            return
         elif status == 'failed':
             fields = {'reason': str(data.get('reason') or '')[:JOB_CARD_REASON_MAX]}
             if data.get('active_job'):
@@ -559,3 +566,11 @@ def _own_question(conv, meta, request_id) -> Optional[Dict[str, Any]]:
 JOB_CARD_DECIDED = 'This job card was already decided.'
 #: The most characters of a refusal's reason a failed card keeps.
 JOB_CARD_REASON_MAX = 500
+
+
+def _names_nothing(e: Exception) -> bool:
+    """Whether core's refusal says the id names no job: 404 to an admin, 403
+    ``unresolved`` to anyone else, as for every unknown id."""
+    status = getattr(e, 'status', None)
+    data = getattr(e, 'response_data', None)
+    return status == 404 or (status == 403 and isinstance(data, dict) and bool(data.get('unresolved')))

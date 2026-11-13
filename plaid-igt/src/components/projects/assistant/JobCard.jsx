@@ -1,4 +1,4 @@
-import { useContext, useEffect, useRef, useState } from 'react';
+import { useContext, useEffect, useState } from 'react';
 import { Play, X } from 'lucide-react';
 import { Badge } from '@ui/components/ui/badge';
 import { Button } from '@ui/components/ui/button';
@@ -62,9 +62,6 @@ export const JobCard = ({ card, projectId, client, readOnly = false, onSettle })
   const [worker, setWorker] = useState(null);
   const [brief, setBrief] = useState(card.brief || '');
   const [starting, setStarting] = useState(false);
-  // The job is made under the card's own id, so a press again after an answer
-  // that never came (or after a reload) finds the job the first one made.
-  const mint = useRef(card.id);
 
   useEffect(() => {
     if (!undecided || readOnly) return undefined;
@@ -87,18 +84,29 @@ export const JobCard = ({ card, projectId, client, readOnly = false, onSettle })
   const mayStart = canStartJob(project, user);
   const badge = BADGES[card.status];
 
+  // Every press makes the job under the card's own id. A press after a reload,
+  // or after a start whose answer or record was lost, is refused for that very
+  // job (`id-taken`, or `job-active` naming it while it runs): it started.
   const start = async () => {
     setStarting(true);
+    const started = () => onSettle({ outcome: 'started', brief: brief.trim() });
     try {
-      await startJob(client, projectId, mint, {
-        tasks: card.tasks || [],
-        documents: card.all ? null : (card.documents || []).map((d) => d.id),
-        note: brief,
-      });
-      await onSettle({ outcome: 'started', brief: brief.trim() });
+      await startJob(
+        client,
+        projectId,
+        { current: card.id },
+        {
+          tasks: card.tasks || [],
+          documents: card.all ? null : (card.documents || []).map((d) => d.id),
+          note: brief,
+        },
+      );
+      await started();
     } catch (err) {
       const active = activeJobOf(err);
-      if (active || REFUSED.has(statusOf(err))) {
+      if (active === card.id) {
+        await started();
+      } else if (active || REFUSED.has(statusOf(err))) {
         await onSettle({
           outcome: 'failed',
           reason: active

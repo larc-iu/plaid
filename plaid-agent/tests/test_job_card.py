@@ -278,6 +278,49 @@ def test_a_discard_and_a_failure_are_recorded_with_their_notes():
     assert conv['messages'][-1]['content'] == '(note) The job did not start: This project already has a job.'
 
 
+def test_a_card_whose_job_core_holds_is_recorded_started_whatever_the_page_says():
+    """REV-JB-1: a press after a reload (or after the first start went
+    unrecorded) is refused job-active naming the card's own job, or the page
+    says discarded. Core holds the job under the card's id, so it started."""
+    for fields in ({'outcome': 'failed', 'reason': 'This project already has a job.',
+                    'active_job': '0190f000-0000-7000-8000-000000000001'},
+                   {'outcome': 'failed', 'reason': 'This project has no documents.'},
+                   {'outcome': 'discarded'}):
+        client = FakeClient()
+        card_id = _seed_card(client)
+        client.jobs.create('p1', 'igt', ['gloss'], ['d1'], 'Gloss ka as "go".', id=card_id)
+        helper, conv, _meta = _settle(client, card_id, **fields)
+        card = conv['display'][-1]['job']
+        assert not helper.errors and card['status'] == 'started', fields
+        assert card['job_id'] == card_id and 'reason' not in card and 'active_job' not in card
+        assert conv['messages'][-1]['content'] == '(note) The user started the job with the brief as drafted.'
+
+
+def test_a_card_whose_job_already_ended_is_recorded_started():
+    """The first press made the job and it ended before the second press,
+    whose create core answers id-taken: the card started (and its job ended),
+    and no second job is made."""
+    client = FakeClient()
+    card_id = _seed_card(client)
+    client.jobs.create('p1', 'igt', ['gloss'], ['d1'], 'Gloss ka as "go".', id=card_id)
+    client.jobs.cancel(card_id)
+    assert client.jobs.get(card_id)['state'] == 'cancelled'
+    _helper, conv, _meta = _settle(client, card_id, outcome='started')
+    assert conv['display'][-1]['job']['status'] == 'started'
+    assert [j['id'] for j in client.jobs.list('p1')] == [card_id]
+
+
+def test_a_card_whose_job_cannot_be_read_waits():
+    client = FakeClient()
+    card_id = _seed_card(client)
+
+    def down(job_id):
+        raise ConnectionError('no answer')
+    client.jobs.get = down
+    helper, conv, _meta = _settle(client, card_id, outcome='failed', reason='x')
+    assert helper.errors and conv['display'][-1]['job']['status'] is None
+
+
 def test_an_ended_card_answers_done_again_and_refuses_another_end():
     client = FakeClient()
     card_id = _seed_card(client)
