@@ -40,15 +40,21 @@ def _story():
 class _Setup:
     """A piece's workspace over the story, and the runner that applies."""
 
-    def __init__(self, sentences=None, known=(), mwe=None):
+    def __init__(self, sentences=None, known=(), mwe=None, word_link=None):
         self.client = JobClient({'d1': document('d1', 'Story', sentences or _story())})
+        from fixtures import WORD_LAYER
+        layer = next(tl for tl in self.client._holder('d1')['documents']['d1']['text_layers'][0]['token_layers']
+                     if tl['id'] == WORD_LAYER)
         if mwe:
             # A person's multi-word expression over the two word ids ``mwe``.
-            from fixtures import WORD_LAYER
-            layer = next(tl for tl in self.client._holder('d1')['documents']['d1']['text_layers'][0]['token_layers']
-                         if tl['id'] == WORD_LAYER)
             layer['vocabs'][0]['vocab_links'].append({'id': 'mwe1', 'vocab_item': {'id': 'e-mwe', 'form': 'x y'},
                                                       'tokens': list(mwe), 'metadata': {}})
+        if word_link:
+            # A link of the whole word s1.w1 to an entry, by ``word_link``
+            # (a provenance of ``stamp``), with no analysis under it.
+            from job_fixtures import stamp
+            layer['vocabs'][0]['vocab_links'].append({'id': 'wl1', 'vocab_item': {'id': 'e-word', 'form': 'blank'},
+                                                      'tokens': ['d1-s1w1'], 'metadata': stamp(word_link)})
         self.job = start(self.client, id=J)
         self.runner = runner(self.job)
         self.project = load_project(self.client, 'p1')
@@ -142,17 +148,37 @@ def test_each_change_by_what_it_changes(name, args, applied):
     ('set_field', {'refs': ['s1.w1'], 'field': 'Gloss', 'value': 'g'}),
     ('link_entry', {'refs': ['s1.w1.m1'], 'entry_id': 'vi-gam'}),
 ])
-@pytest.mark.parametrize('why', ['comment', 'mwe'])
-def test_a_blank_word_with_a_comment_or_in_a_persons_expression_is_not_blank(name, args, why):
-    """The lead's ruling on REV-JG's "blank": a blank word that carries a
-    comment, or sits in a person's multi-word expression, is people's
-    ground, as harmonize already holds it: what fills it is proposed."""
-    s = _Setup(mwe=('d1-s1w1', 'd1-s3w1') if why == 'mwe' else None)
+@pytest.mark.parametrize('why', ['comment', 'mwe', 'person-link', 'machine-link', 'empty-value'])
+def test_a_blank_word_something_hangs_on_is_not_blank(name, args, why):
+    """THE blank word (the lead's rulings on REV-JG and REV-JG2-4): a word
+    with no analysis and no value is the job's to fill only when nothing
+    anyone but the job made hangs on it: a comment on it, a person's
+    multi-word expression over it, a link of the whole word (a person's or
+    another producer's), an empty value someone left on it. Each is
+    people's ground, as harmonize holds it: what fills it is proposed."""
+    sentences = None
+    if why == 'empty-value':
+        sentences = _story()
+        sentences[0]['words'][0] = {'form': 'blank', 'gloss': ('', 'human')}
+    s = _Setup(sentences, mwe=('d1-s1w1', 'd1-s3w1') if why == 'mwe' else None,
+               word_link={'person-link': 'human', 'machine-link': 'machine'}.get(why))
     if why == 'comment':
         s.runner.commented = lambda client, project, document_id: {'d1-s1w1'}
+    w = s.doc.sentences[0].words[0]
+    from plaid_agent.igt.job import word_target
+    assert word_target(w), 'no analysis and no value: only what hangs on it keeps the job off'
     s.stage(name, args)
     kept, proposed = s.decide()
     assert not kept and proposed, (kept, proposed)
+
+
+def test_a_blank_word_with_the_jobs_own_link_is_still_blank():
+    """A link of the job's own on the whole word is no person's: the word is
+    still the job's to fill."""
+    s = _Setup(word_link=J)
+    s.stage('set_analysis', {'ref': 's1.w1', 'morphemes': [{'form': 'blank'}]})
+    kept, proposed = s.decide()
+    assert kept and not proposed
 
 
 def test_a_blank_word_with_neither_is_filled():

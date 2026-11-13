@@ -79,7 +79,7 @@ class Rule:
     tags of every word of a sentence the job wrote in before
     (``IgtRunner.known_words``), ``own(word)`` says whether a word is the
     job's own vouched work (``harmonize_bar`` is None), ``target(word)``
-    whether a word is blank (``word_target``), ``tag(word_id)`` a word's tag
+    whether a word is blank (``blank_word``), ``tag(word_id)`` a word's tag
     and ``job_piece(metadata)`` whether a piece is the job's own unverified
     work."""
 

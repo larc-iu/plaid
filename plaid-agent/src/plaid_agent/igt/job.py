@@ -372,6 +372,26 @@ def word_ids(w: Word) -> set:
     return ids
 
 
+def blank_word(w: Word, job_id: str, commented=frozenset()) -> bool:
+    """THE blank word of the apply rule, the job's to fill (the lead's
+    rulings on REV-JG and REV-JG2-4), in one place: no analysis and no value
+    (:func:`word_target`), and nothing anyone but this job made hangs on it
+    or on its morphemes: no span (an empty one included), link (the whole
+    word's own included) or stamped morpheme that is not this job's own
+    unverified work (:func:`job_piece`), no comment on it or a piece of it
+    (``commented``, the ids the document's comments are anchored to), and no
+    multi-word expression over it but the job's. Anything else there is
+    people's ground: what fills it is a proposed change. A comment on the
+    word's sentence or its translation is not on the word."""
+    if not word_target(w):
+        return False
+    if any(not job_piece(p, job_id) for p in word_pieces(w)):
+        return False
+    if any(not job_piece(link.metadata, job_id) for link in w.mwes):
+        return False
+    return not (word_ids(w) & set(commented))
+
+
 #: How many characters of a word's id and of its analysis key a sentence's
 #: record keeps for each word the job vouches for (CONTRACT, added by J-FIX-B3).
 WORD_KEY_CHARS = 12
@@ -2111,11 +2131,8 @@ class IgtRunner:
             return harmonize_bar(w, self.job.id, vouch['recorded'], commented()) is None
 
         def blank(w) -> bool:
-            # A blank word is the job's to fill, but one a person commented
-            # on, or that sits in a person's multi-word expression: people's
-            # ground, as harmonize holds it (the lead's ruling on REV-JG).
-            return word_target(w) and not any(not job_piece(link.metadata, self.job.id) for link in w.mwes) \
-                and not (word_ids(w) & commented())
+            # The comments are read only for a word blank by its pieces.
+            return blank_word(w, self.job.id) and blank_word(w, self.job.id, commented())
         rule = jobapply.Rule(fresh, project, known, own=own, target=blank, tag=word_tag,
                              job_piece=lambda md: job_piece(md, self.job.id))
 

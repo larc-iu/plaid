@@ -935,7 +935,7 @@ A job first plans how to cut the work: a few sentences at a time, one document a
 Each piece is worked by the assistant with its usual tools, the project's guidelines, the instructions, and how people in the project analyzed the same words.
 What fills an empty value, or revises what the job itself wrote, is written as a machine proposal (see <<_provenance>>), in the name of the person who started the job.
 Every other change, such as a different analysis of a word someone analyzed, a deletion or a text edit, is not written: the job's report lists it as a proposed change.
-A word nobody analyzed that carries a comment, or is part of a multi-word expression, counts as analyzed: what the job would write there is a proposed change too.
+A word nobody analyzed counts as analyzed when anything of someone else's is on it, such as a comment, a link to an entry, an emptied value or a multi-word expression it is part of: what the job would write there is a proposed change too.
 When it finishes, it makes its own analyses consistent: a word it analyzed in more than one way takes the analysis people gave that word, or else the one it gave at least two times in three.
 
 The job keeps out of the way of people.
