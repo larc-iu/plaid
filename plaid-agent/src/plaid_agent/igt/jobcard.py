@@ -38,9 +38,9 @@ def _help(facts: Dict[str, Any]) -> str:
     return '\n'.join([
         'propose_job drafts an unattended job: the assistant works the documents in the background, with its '
         'tools, by the brief alone. Every change it plans in the documents and the lexicons is written, deletions '
-        'included, each value an unverified machine proposal that people check in the grid. Project setup '
-        '(guidelines, tagsets, a document\'s name or metadata, new documents) is listed in the job\'s report for a '
-        'person to approve. The draft writes nothing and starts nothing. The user reads the card, may edit the '
+        'included, each value an unverified machine proposal that people check in the grid. Project setup and a '
+        'few other kinds of change are listed in the job\'s report for a person to approve. The draft writes '
+        'nothing and starts nothing. The user reads the card, may edit the '
         'brief, and starts the job or discards it.',
         f'- documents: names or ids{most}, or ["all"] for every document of the project.',
         '- brief: the job\'s instructions, which its model reads with every piece of its work, with nothing of '

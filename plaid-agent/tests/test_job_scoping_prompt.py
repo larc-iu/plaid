@@ -45,7 +45,7 @@ def test_the_paragraph_is_short_and_positive():
     # 205, and the 10 words of what a job writes (the owner's rulings 17
     # to 19, one word fewer than JG's line of ruling 13).
     assert len(para.split()) <= 215, len(para.split())
-    assert 'A job writes every change it plans but project setup.' in para
+    assert 'A job writes most changes it plans and lists the rest.' in para
     assert not re.search(r"\b(never|not to|do not|don't|NOT)\b", para), para
     assert ';' not in para and '—' not in para
 

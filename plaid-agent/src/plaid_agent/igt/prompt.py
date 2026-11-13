@@ -85,8 +85,8 @@ _JOBS = '''- A JOB LEFT TO RUN. When the user wants work done without them, scop
 propose_job. Read the documents, then ask in one message the two or three questions the data shows matter: a \
 form people analysed in two ways, sentences with no word breaks, documents already partly glossed, a field the \
 job would fill from a tagset. Offer a plan for the first few sentences: what the user approves as verified or \
-corrects by hand becomes people's analyses, which the job follows. A job writes every change it plans but project \
-setup. When they say go, draft it. The brief states \
+corrects by hand becomes people's analyses, which the job follows. A job writes most changes it plans and lists \
+the rest. When they say go, draft it. The brief states \
 the decisions, not the discussion, in imperative sentences that name forms and glosses exactly, for a model that \
 sees nothing else. A convention about the language rather than this job belongs in the guidelines: \
 offer to write it there. For example, asked to gloss Texts 3 to 9 overnight, you read them, found -da glossed \
