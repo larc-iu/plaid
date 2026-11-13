@@ -554,3 +554,47 @@ def test_a_translation_the_starter_clears_under_the_lock_is_not_listed_left_blan
     assert runner(job).document('d1') == 'done'
     mark = _mark(client, 'd1-s1')
     assert [x for x in mark['left'] if not x['form']] == [] and mark['counts'].get('left_translations', 0) == 0, mark
+
+
+# --- a sentence's other values are not its translation (REV-JG-11) -------------------------
+
+def _notes_project():
+    """The job project with a second sentence field, Notes, after the
+    translation."""
+    from job_fixtures import job_project
+    from fixtures import SENT_LAYER
+    p = job_project()
+    for tl in p['text_layers']:
+        for tk in tl['token_layers']:
+            if tk['id'] == SENT_LAYER:
+                tk['span_layers'].append({'id': 'sl-notes', 'name': 'Notes', 'config': {'igt': {'scope': 'Sentence'}}})
+    return p
+
+
+def test_a_sentence_value_the_job_writes_counts_as_a_translation_only_in_the_translation_field(monkeypatch):
+    """The job writes Notes on s1 and the translation of s2. Only s2's is
+    counted as a translation, s1's empty translation is listed as left
+    blank, and s1's writing row says nothing of a translation and names no
+    sentence among its words."""
+    before = [{'words': ['ka']}, {'words': ['sa']}]
+    after = [{'words': ['ka']}, {'words': ['sa'], 'translation': ('T2.', J)}]
+    client = JobClient({'d1': document('d1', 'Story', before)}, project=_notes_project())
+    client.after_write['d1'] = document('d1', 'Story', after, version=2)
+    job = start(client, 'Translate the sentences.', id=J)
+
+    def model(asked, n, kwargs):
+        if n > 1:
+            return reply('Done.')
+        return reply(calls=[call(1, 'set_field', {'document': 'Story', 'refs': ['s1'], 'field': 'Notes',
+                                                  'value': 'N1.'}),
+                            call(2, 'set_field', {'document': 'Story', 'refs': ['s2'], 'field': 'Translation',
+                                                  'value': 'T2.'})])
+    use(monkeypatch, Model(model))
+    finished = run_job(job, runner(job))
+    assert finished['state'] == 'done', client.jobs.rows[J]['message']
+    row = json.loads(next(r['analysis'] for (f, _), r in client.jobs.decision_rows[J].items()
+                          if f == WRITING_FORM + 'd1-s1'))
+    assert row['translation'] is None and row['words'] == [], row
+    report = finished['report']
+    assert report['totals']['translations'] == 1
+    assert [x['ref'] for x in report['documents'][0]['left']] == ['s1'], report['documents'][0]['left']

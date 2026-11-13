@@ -233,6 +233,13 @@ def translation_field(project: IgtProject):
     return project.gloss_field('Sentence')
 
 
+def translation_layer(project: IgtProject) -> Optional[str]:
+    """The layer of the translation field, by which a write is known to be
+    one of a translation (never by a field's name)."""
+    f = translation_field(project)
+    return f.layer_id if f is not None else None
+
+
 def _job_of(metadata) -> Optional[str]:
     return ((metadata or {}).get(PROV_DETAIL_KEY) or {}).get(JOB_DETAIL_KEY) \
         if isinstance((metadata or {}).get(PROV_DETAIL_KEY), dict) else None
@@ -524,6 +531,7 @@ class Stretch:
 
     def __init__(self, doc, project: IgtProject, sentences: List[Sentence], job_id: str, known=frozenset()):
         self.doc = doc
+        self.project = project
         self.sentence_ids = {s.id for s in sentences}
         self.words: Dict[str, Word] = {}
         self.translations: set = set()
@@ -1908,6 +1916,7 @@ class IgtRunner:
         moved into, whatever happens to what the write leaves in them
         (``settle``, :meth:`known_words`)."""
         plans: Dict[str, Dict[str, Any]] = {}
+        translation = translation_layer(st.project)
         for o in kept:
             if o.get('kind') == 'create_entry':
                 continue
@@ -1916,8 +1925,12 @@ class IgtRunner:
             if s is None:
                 continue
             plan = plans.setdefault(s.id, {'translation': None, 'words': []})
-            if o.get('kind') == 'set_span' and token in st.translations:
-                plan['translation'] = 'refreshed' if o.get('span_id') is not None else 'translations'
+            if token == s.id:
+                # A value of the sentence's own: its translation only when
+                # it is the translation field the job writes, by the field's
+                # layer, never another sentence field (REV-JG-11).
+                if o.get('kind') == 'set_span' and token in st.translations and o.get('layer_id') == translation:
+                    plan['translation'] = 'refreshed' if o.get('span_id') is not None else 'translations'
             else:
                 tag = word_tag(st.word_of.get(token, token))
                 if tag not in plan['words']:
@@ -2278,7 +2291,8 @@ class IgtRunner:
         job = self.job
         row = job.rows.get(document_id) or {}
         now = {s.id: s for s in doc.sentences}
-        translated = {o.get('token_id'): o for o in ops if o.get('kind') == 'set_span'}
+        layer = translation_layer(project)
+        translated = {o.get('token_id'): o for o in ops if o.get('kind') == 'set_span' and o.get('layer_id') == layer}
         # What the write was for: a target it wrote that reads blank now was
         # cleared by a person under the lock, never left by the model
         # (REV-B4-2, as ``settle`` lists it, REV-FIX3-3).
