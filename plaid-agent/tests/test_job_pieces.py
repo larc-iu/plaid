@@ -506,6 +506,28 @@ def test_a_summary_that_cannot_be_written_leaves_the_report_without_prose(monkey
     assert finished['report']['summary'] is None and finished['report']['summary_failed'] is True
 
 
+def test_core_failing_a_call_of_the_final_context_once_still_writes_its_prose(monkeypatch):
+    """REV-JG2-3's sweep: the final context's reads go through the same
+    helper as every other call, so one 502 there does not cost the report
+    its prose."""
+    from plaid_client import PlaidAPIError
+    client = JobClient(_docs(1))
+    job = start(client, id=J)
+    use(monkeypatch, _model(piece=_gloss_all))
+    r = runner(job, write_summary=True)
+    real, failed = r.summarize, []
+
+    def summarize(job_, report):
+        if not failed:
+            failed.append(1)
+            raise PlaidAPIError('HTTP 502', status=502)
+        return real(job_, report)
+    r.summarize = summarize
+    finished = run_job(job, r)
+    assert finished['report']['summary'] == 'The job glossed the words it was asked to.'
+    assert finished['report']['summary_failed'] is False
+
+
 def test_a_crash_before_the_final_context_writes_it_when_the_job_resumes(monkeypatch):
     client = JobClient(_docs(1))
     job = start(client, id=J)

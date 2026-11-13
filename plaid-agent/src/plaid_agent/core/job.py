@@ -741,7 +741,7 @@ def _summary(job: Job, runner, report: Dict[str, Any]) -> Dict[str, Any]:
     cannot be written the report has none and says so (``summary_failed``).
     A stop during it leaves it out."""
     try:
-        return {'summary': runner.summarize(job, report), 'summary_failed': False}
+        return {'summary': through_core(job, lambda: runner.summarize(job, report)), 'summary_failed': False}
     except JobStopped:
         return {'summary': None, 'summary_failed': False}
     except Exception as e:  # noqa: BLE001 - a report without its prose rather than none

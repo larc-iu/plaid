@@ -35,12 +35,14 @@ def _docs():
 
 
 def _analyse(asked, n, kwargs):
+    """The blank word of every document the piece names (one for a stretch,
+    both for a selection)."""
     if n > 1:
         return reply('Done.')
-    doc = asked.split('"')[1]
-    form = 'mo' if doc == 'Story 1' else 'zu'
-    return reply(calls=[call(1, 'set_analysis', {'document': doc, 'ref': 's2.w1', 'morphemes': [
-        {'form': form, 'type': 'stem', 'fields': {'Morph Gloss': 'G'}}]})])
+    calls = [call(i, 'set_analysis', {'document': doc, 'ref': 's2.w1', 'morphemes': [
+        {'form': form, 'type': 'stem', 'fields': {'Morph Gloss': 'G'}}]})
+        for i, (doc, form) in enumerate((('Story 1', 'mo'), ('Story 2', 'zu')), start=1) if f'"{doc}"' in asked]
+    return reply(calls=calls)
 
 
 class Blips:
@@ -112,9 +114,9 @@ def _trouble(client, how):
         client.documents.get = going
 
 
-def _run(monkeypatch, at, how=None):
+def _run(monkeypatch, at, how=None, pieces='sentences'):
     client = JobClient(_docs())
-    job = start(client, id=J)
+    job = start(client, id=J, plan=pieces)
     _trouble(client, how)
     blips = Blips(at)
     _install(monkeypatch, client, blips)
@@ -123,9 +125,9 @@ def _run(monkeypatch, at, how=None):
     return finished, blips, client
 
 
-def _count(monkeypatch, how=None):
+def _count(monkeypatch, how=None, pieces='sentences'):
     with monkeypatch.context() as m:
-        finished, blips, client = _run(m, None, how)
+        finished, blips, client = _run(m, None, how, pieces)
     assert finished['state'] == 'done', finished
     if how == 'lock':
         assert any(c[0] == 'update_document' and c[1].get('state') == 'deferred' for c in client.jobs.calls), \
@@ -145,15 +147,60 @@ def test_the_whole_job_is_counted(monkeypatch):
     assert n > 30
 
 
+@pytest.mark.parametrize('pieces', [None, 'sentences', 'document', 'selection'])
 @pytest.mark.parametrize('how', [None, 'lock', 'gone'])
-def test_one_502_at_any_call_never_fails_the_job(monkeypatch, how):
-    n, names = _count(monkeypatch, how)
+def test_one_502_at_any_call_never_fails_the_job(monkeypatch, how, pieces):
+    """Whatever the plan cut, and with the planning context's own calls
+    (``pieces`` None: no plan kept yet). A selection's too (REV-JG2-3): its
+    start, its piece, its document put off (the fallback row and the row) or
+    found gone go through the same helper."""
+    n, names = _count(monkeypatch, how, pieces)
     bad = []
     for at in range(1, n + 1):
         with monkeypatch.context() as m:
-            finished, blips, client = _run(m, at, how)
+            finished, blips, client = _run(m, at, how, pieces)
         assert blips.n >= at, 'the 502 was sent'
         if finished['state'] != 'done' or finished.get('reason') is not None:
             bad.append((at, names[at - 1], finished['state'], finished.get('reason'),
                         client.jobs.rows[J].get('message')))
     assert not bad, bad
+
+
+@pytest.mark.parametrize('pieces', ['document', 'selection'])
+def test_core_down_through_the_writes_tries_and_one_call_more_puts_the_document_off(monkeypatch, pieces):
+    """REV-JG2-3: core out of reach for every try of a write and for the
+    first call after it. The document is put off and the job ends done,
+    whatever the plan cut: the put-off's own calls are tried again too."""
+    from plaid_agent.igt import job as igt_job
+    client = JobClient({'d1': document('d1', 'Story 1', [{'words': ['mo']}])})
+    job = start(client, id=J, plan=pieces)
+    use(monkeypatch, Model(_analyse_story_1))
+    down = {'writes': 3, 'after': 1}
+    real_execute = igt_job.execute_plan
+
+    def execute(c, ops, **kw):
+        if down['writes']:
+            down['writes'] -= 1
+            raise PlaidAPIError('HTTP 502', status=502, method='POST')
+        return real_execute(c, ops, **kw)
+    monkeypatch.setattr(igt_job, 'execute_plan', execute)
+
+    def flaky(real):
+        def call_(*a, **kw):
+            if not down['writes'] and down['after']:
+                down['after'] -= 1
+                raise PlaidAPIError('HTTP 502', status=502, method='POST')
+            return real(*a, **kw)
+        return call_
+    client.jobs.add_decisions = flaky(client.jobs.add_decisions)
+    client.jobs.update_document = flaky(client.jobs.update_document)
+    finished = run_job(job, runner(job))
+    assert finished['state'] == 'done', (finished.get('reason'), job.status.get('message'))
+    assert not down['after'], 'core refused a call after the tries'
+
+
+def _analyse_story_1(asked, n, kwargs):
+    if n > 1:
+        return reply('Done.')
+    return reply(calls=[call(1, 'set_analysis', {'document': 'Story 1', 'ref': 's1.w1', 'morphemes': [
+        {'form': 'mo', 'type': 'stem', 'fields': {'Morph Gloss': 'G'}}]})])

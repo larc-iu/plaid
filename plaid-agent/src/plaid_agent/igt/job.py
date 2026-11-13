@@ -970,10 +970,13 @@ class IgtRunner:
         reached."""
         plan = self.plan_made or self.plan(job)
         order = self.planned_order(job, plan)
-        for d in job.order:
-            if d not in order and (job.rows.get(d) or {}).get('state') not in ROW_FINAL + ('not-reached',):
-                job.update_row(d, state='not-reached')
-        if plan['pieces'] == SELECTION and SELECTION not in self.fallen_back():
+
+        def left_out():
+            for d in job.order:
+                if d not in order and (job.rows.get(d) or {}).get('state') not in ROW_FINAL + ('not-reached',):
+                    job.update_row(d, state='not-reached')
+        core_job.through_core(job, left_out)
+        if plan['pieces'] == SELECTION and SELECTION not in core_job.through_core(job, self.fallen_back):
             self.selection(job, order)
         # Every document still to finish is walked, a selection's too: the
         # walk settles it, ends it done when nothing is left, and works what
@@ -1145,17 +1148,31 @@ class IgtRunner:
         document, each through THE write (:meth:`write`: the gate, the lock,
         the apply rule, the record). The walk then finishes every document
         (:meth:`work`). True when the piece ran, False when it failed (the
-        documents are then worked one piece each, and the report says so)."""
-        project = self.project()
-        live = [d for d in order if (job.rows.get(d) or {}).get('state') not in ROW_FINAL]
+        documents are then worked one piece each, and the report says so).
+
+        Every call to core in it goes through ``core_job.through_core``, as
+        the walk's do (REV-JG2-3): its start, the piece (taken again from
+        its start, as a stretch is, when core fails one of its reads or its
+        note), and each document's write and what follows it. When core's
+        trouble outlasts the piece's tries, the selection is left to the
+        walk, which puts off what core does not take."""
+        def begin():
+            project_ = self.project()
+            live_ = [d for d in order if (job.rows.get(d) or {}).get('state') not in ROW_FINAL]
+            for d in live_:
+                if (job.rows.get(d) or {}).get('state') != 'working':
+                    job.update_row(d, state='working')
+            return project_, live_
+        project, live = core_job.through_core(job, begin)
         if not live:
             return True
-        for d in live:
-            job.update_row(d, state='working')
         job.set(current_document=None, message=f'Working on {_n(len(live), "document")} as one piece.')
         while True:
             try:
-                staged = self.selection_work(project, live)
+                staged = core_job.through_core(job, lambda: self.selection_work(project, live),
+                                               gave_up=lambda: None)
+                if staged is None:
+                    return False
                 break
             except (JobStopped, Deferred, Gone):
                 raise
@@ -1193,14 +1210,13 @@ class IgtRunner:
             job.check()
             job.set(current_document=d)
             try:
-                doc = ws._docs.get(d) or self.read(project, d)
+                doc = ws._docs.get(d) or core_job.through_core(job, lambda: self.read(project, d))
                 self.write_piece(project, d, ws, doc, by_doc.get(d, []), note)
             except Deferred:
                 # Its writes were dropped: it is worked again as a piece of its own.
-                self.fall_back(d, 'in-use')
-                self.defer(d)
+                core_job.through_core(job, lambda: (self.fall_back(d, 'in-use'), self.defer(d)))
             except Gone:
-                job.update_row(d, state='gone')
+                core_job.through_core(job, lambda: job.update_row(d, state='gone'))
         return True
 
     def write_piece(self, project: IgtProject, document_id: str, ws: JobWorkspace, doc,
