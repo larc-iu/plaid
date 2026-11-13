@@ -212,19 +212,23 @@ def recorded(job):
     from plaid_agent.igt import job as igt_job
     r = runner(job)
     project = r.project()
-    for d in job.order:
-        doc = r.read(project, d)
-        # The writing row each stretch sends before its write (REV-FIX3-1).
+    docs = {d: r.read(project, d) for d in job.order}
+    for d, doc in docs.items():
+        # The writing row each stretch sends before its write (REV-FIX3-1),
+        # every word of its sentence named (REV-B4-1). All of them before
+        # the runner reads any, as a worker that resumes finds them.
         rows = []
         for s in doc.sentences:
             words = [igt_job.word_tag(w.id) for w in s.words if igt_job.job_owned(w, job.id)]
+            others = [igt_job.word_tag(w.id) for w in s.words if igt_job.word_tag(w.id) not in words]
             own = igt_job.translation_state(s, project, job.id) == 'own'
             if words or own:
-                text = igt_job.writing_text(d, 'translations' if own else None, words)
+                text = igt_job.writing_text(d, 'translations' if own else None, words, others)
                 rows.append({'form': igt_job.writing_form(s.id), 'key': igt_job.analysis_key(text),
                              'analysis': text, 'count': 1, 'document_id': d, 'sentence_id': s.id})
         if rows:
             job.add_decisions(rows)
+    for d, doc in docs.items():
         r.settle(project, d, doc, own=True)
     return job
 

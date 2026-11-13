@@ -203,6 +203,11 @@ JOB_CONTEXT_SENTENCES = 2
 #: The most characters one sentence may take as a stretch renders it. A
 #: longer one is skipped (reason ``too-long``).
 JOB_SENTENCE_MAX_CHARS = 4000
+#: The most words a sentence a job takes may hold: every word of it is named
+#: in the sentence's writing row, whose analysis core caps at
+#: JOB_ANALYSIS_MAX_CHARS (about 15 characters a word). A sentence of more is
+#: skipped (reason ``too-long``) (REV-B4-1).
+JOB_SENTENCE_MAX_WORDS = 250
 #: The most characters of guidelines a job reads. A job inlines every one in
 #: every stretch, and refuses a manual past the size the assistant inlines
 #: whole rather than reading part of it.

@@ -43,8 +43,8 @@ from ..core.job import (BUDGET, ROW_FINAL, SKIPPED_MORE, JobStopped, Pace, Stret
 from ..core.limits import (JOB_ANALYSIS_MAX_CHARS, JOB_CONTEXT_SENTENCES,
                            JOB_DECISIONS_PER_CALL, JOB_DEFER_ROUNDS, JOB_DEFER_WAIT_S, JOB_GUIDELINES_MAX_CHARS,
                            JOB_LOCK_TRIES, JOB_LOCK_WAIT_S, JOB_PERSON_QUIET_S, JOB_PRECEDENT_CHARS,
-                           JOB_PRECEDENT_PER_FORM, JOB_SENTENCE_MAX_CHARS, JOB_SKIPPED_PER_DOCUMENT,
-                           JOB_STRETCH_SENTENCES)
+                           JOB_PRECEDENT_PER_FORM, JOB_SENTENCE_MAX_CHARS, JOB_SENTENCE_MAX_WORDS,
+                           JOB_SKIPPED_PER_DOCUMENT, JOB_STRETCH_SENTENCES)
 from ..core.plan import JOB_DETAIL_KEY, PlanError, held_changes
 from ..core.tools import Refusal, ToolError
 from ..core.version import agent_version
@@ -100,17 +100,25 @@ def writing_form(sentence_id: str) -> str:
     return WRITING_FORM + sentence_id
 
 
-def writing_text(document_id: str, translation: Optional[str], words: List[str]) -> str:
+def writing_text(document_id: str, translation: Optional[str], words: List[str], others=()) -> str:
     """A writing row's analysis: the document, what the write does to the
     sentence's translation (``translations`` fills a blank, ``refreshed``
-    replaces a machine draft, None leaves it) and the tags of the words it
-    analyses (:func:`word_tag`), as many as a decision's analysis holds."""
-    words = list(words)
+    replaces a machine draft, None leaves it), the tags of the words it
+    analyses (:func:`word_tag`) and the tags of the sentence's other words
+    (``others``), so that every word of a sentence the job wrote in is known
+    to it wherever a person moves it (REV-B4-1). Every tag of a sentence of
+    JOB_SENTENCE_MAX_WORDS words fits a decision's analysis. Past that (a
+    sentence a person made longer since the checks) the others are cut
+    first, then the words."""
+    words, others = list(words), list(others)
     while True:
-        text = canonical({'document': document_id, 'translation': translation, 'words': words})
-        if len(text) <= JOB_ANALYSIS_MAX_CHARS or not words:
+        text = canonical({'document': document_id, 'others': others, 'translation': translation, 'words': words})
+        if len(text) <= JOB_ANALYSIS_MAX_CHARS or not (words or others):
             return text
-        words.pop()
+        if others:
+            others.pop()
+        else:
+            words.pop()
 
 
 def mark_text(counts: Dict[str, int], document_id: str, left: List[Dict[str, Any]],
@@ -200,10 +208,25 @@ def translation_target(s: Sentence, project: IgtProject, job_id: str) -> bool:
     return translation_state(s, project, job_id) in ('empty', 'machine')
 
 
-def sentence_targets(s: Sentence, project: IgtProject, tasks, job_id: str) -> Tuple[List[Word], bool]:
-    """The target words of ``s`` and whether its translation is a target."""
+def sentence_targets(s: Sentence, project: IgtProject, tasks, job_id: str,
+                     known=frozenset()) -> Tuple[List[Word], bool]:
+    """The target words of ``s`` and whether its translation is a target.
+    None of either in a sentence that holds a word of a sentence the job
+    began to write in (``known``, :meth:`IgtRunner.known_words`)."""
+    if wrote_in(s, known):
+        return [], False
     words = [w for w in s.words if word_target(w)] if 'gloss' in tasks else []
     return words, ('translate' in tasks and translation_target(s, project, job_id))
+
+
+def wrote_in(s: Sentence, known) -> bool:
+    """Whether ``s`` holds a word of a sentence the job began to write in:
+    ``known`` holds the tags (:func:`word_tag`) of every word of such
+    sentences, as their writing rows name them. A sentence split or merged
+    keeps its words' ids and may get a new id of its own, so the job knows
+    where it wrote by word as well as by sentence: such a sentence is never
+    a target again, whatever its id now (REV-B4-1)."""
+    return bool(known) and any(word_tag(w.id) in known for w in s.words)
 
 
 def job_piece(metadata, job_id: str) -> bool:
@@ -389,7 +412,8 @@ class Stretch:
     """The targets of one stretch: which words and translations may be
     written, and where every token of the document sits."""
 
-    def __init__(self, doc, project: IgtProject, sentences: List[Sentence], tasks, job_id: str):
+    def __init__(self, doc, project: IgtProject, sentences: List[Sentence], tasks, job_id: str,
+                 known=frozenset()):
         self.sentence_ids = {s.id for s in sentences}
         self.words: Dict[str, Word] = {}
         self.translations: set = set()
@@ -402,7 +426,7 @@ class Stretch:
                     self.where[m.id] = s
         self.word_of: Dict[str, str] = {}
         for s in sentences:
-            words, translate = sentence_targets(s, project, tasks, job_id)
+            words, translate = sentence_targets(s, project, tasks, job_id, known)
             for w in words:
                 self.words[w.id] = w
                 for m in w.morphemes:
@@ -712,6 +736,9 @@ class IgtRunner:
         #: document id -> sentences with a writing row whose write this
         #: worker knows did not land: they are targets again
         self.unsent: Dict[str, set] = {}
+        #: document id -> sentence id -> its writing rows as core held them
+        #: when this worker first read them (:meth:`intents`), None before
+        self.rows_read: Optional[Dict[str, Dict[str, Dict[str, Any]]]] = None
         #: document id -> how many writes core refused for something gone
         self.gone_refused: Counter = Counter()
         #: (lexicon, form, gloss) -> an entry the model staged and nothing linked
@@ -798,7 +825,10 @@ class IgtRunner:
                 words, translate = sentence_targets(s, project, tasks, job.id)
                 if not words and not translate:
                     continue
-                if len(render_sentence(s, project)) > JOB_SENTENCE_MAX_CHARS:
+                # Every word of a sentence the job writes in is named in its
+                # writing row (REV-B4-1), which holds JOB_SENTENCE_MAX_WORDS.
+                if len(render_sentence(s, project)) > JOB_SENTENCE_MAX_CHARS \
+                        or len(s.words) > JOB_SENTENCE_MAX_WORDS:
                     if s.id in listed:
                         continue
                     if len(skipped) < JOB_SKIPPED_PER_DOCUMENT:
@@ -974,21 +1004,23 @@ class IgtRunner:
     def pending(self, doc, project: IgtProject, document_id: str) -> List[Sentence]:
         """The target sentences after the cursor, in document order, less
         those skipped, those recorded already and those the job has begun to
-        write in (a writing row) unless their write is known not to have
-        landed. A cursor whose sentence is gone starts from the top (SPEC
-        3.8)."""
+        write in (a writing row, or a word of such a sentence, which a split
+        or a merge may have moved into a sentence of another id) unless
+        their write is known not to have landed. A cursor whose sentence is
+        gone starts from the top (SPEC 3.8)."""
         row = self.job.rows.get(document_id) or {}
         skipped = {s.get('sentence_id') for s in row.get('skipped') or []}
         recorded = self.recorded.get(document_id) or {}
         skipped |= (self.unlisted.get(document_id) or set()) | (self.too_long.get(document_id) or set())
         skipped |= set(self.writing.get(document_id) or ()) - (self.unsent.get(document_id) or set())
+        known = self.known_words(document_id)
         ids = [s.id for s in doc.sentences]
         start = ids.index(row['last_sentence']) + 1 if row.get('last_sentence') in ids else 0
         out = []
         for s in doc.sentences[start:]:
             if s.id in skipped or s.id in recorded:
                 continue
-            words, translate = sentence_targets(s, project, self.job.tasks, self.job.id)
+            words, translate = sentence_targets(s, project, self.job.tasks, self.job.id, known)
             if words or translate:
                 out.append(s)
         return out
@@ -1060,7 +1092,7 @@ class IgtRunner:
         ws._docs[document_id] = doc
         doc = ws.doc(document_id)
         part = [s for s in doc.sentences if s.id in sentence_ids]
-        st = Stretch(doc, project, part, job.tasks, job.id)
+        st = Stretch(doc, project, part, job.tasks, job.id, self.known_words(document_id))
         if st.empty():
             self.record(project, document_id, doc, part, st, Counter(), [])
             return None
@@ -1336,7 +1368,7 @@ class IgtRunner:
                  for w in s.words if w.id in st.words and word_target(w)}
         if kept:
             self.machine_status(project, kept)
-            sentences = self.intend(document_id, st, kept)
+            sentences = self.intend(document_id, st, kept, fresh)
             try:
                 kept = self.apply(client, project, document_id, group, kept, seed_id, counts)
             except (PlanOutOfDate, Deferred, PlanError) as e:
@@ -1354,11 +1386,14 @@ class IgtRunner:
                         job.id, document_id, known, after.version)
         return kept, counts, changed, after, frozenset(blank) if exact else frozenset()
 
-    def intend(self, document_id: str, st: Stretch, kept: List[Dict[str, Any]]) -> List[str]:
+    def intend(self, document_id: str, st: Stretch, kept: List[Dict[str, Any]], fresh) -> List[str]:
         """Before a write is sent: a writing row in core for each sentence
-        ``kept`` writes in, saying what it writes there, in one call. The
-        sentences, which are no longer targets once the call has landed,
-        whatever happens to what the write leaves in them (``settle``)."""
+        ``kept`` writes in, saying what it writes there and naming every
+        word of the sentence as ``fresh`` (the document under the lock)
+        holds it, in one call. The sentences, which are no longer targets
+        once the call has landed, nor is any sentence a word of theirs is
+        moved into, whatever happens to what the write leaves in them
+        (``settle``, :meth:`known_words`)."""
         plans: Dict[str, Dict[str, Any]] = {}
         for o in kept:
             if o.get('kind') == 'create_entry':
@@ -1374,9 +1409,14 @@ class IgtRunner:
                 tag = word_tag(st.word_of.get(token, token))
                 if tag not in plan['words']:
                     plan['words'].append(tag)
+        now = {s.id: s for s in fresh.sentences}
+        for sid, plan in plans.items():
+            s = now.get(sid) or st.where.get(sid)
+            plan['others'] = [word_tag(w.id) for w in (s.words if s is not None else [])
+                              if word_tag(w.id) not in plan['words']]
         rows = []
         for sid, plan in plans.items():
-            text = writing_text(document_id, plan['translation'], plan['words'])
+            text = writing_text(document_id, plan['translation'], plan['words'], plan['others'])
             rows.append({'form': writing_form(sid), 'key': analysis_key(text), 'analysis': text, 'count': 1,
                          'document_id': document_id, 'sentence_id': sid})
         if rows:
@@ -1393,30 +1433,56 @@ class IgtRunner:
     @staticmethod
     def merged(had: Optional[Dict[str, Any]], plan: Dict[str, Any]) -> Dict[str, Any]:
         """Two writing rows of one sentence as one (a try after one that
-        landed nothing): every word either analyses, and the translation
-        counted as replacing a machine draft when either says so."""
+        landed nothing): every word either analyses, every word either names,
+        and the translation counted as replacing a machine draft when either
+        says so."""
         if not had:
-            return {'translation': plan.get('translation'), 'words': set(plan.get('words') or ())}
+            return {'translation': plan.get('translation'), 'words': set(plan.get('words') or ()),
+                    'others': set(plan.get('others') or ())}
         translation = had.get('translation') or plan.get('translation')
         if 'refreshed' in (had.get('translation'), plan.get('translation')):
             translation = 'refreshed'
-        return {'translation': translation, 'words': set(had['words']) | set(plan.get('words') or ())}
+        return {'translation': translation, 'words': set(had['words']) | set(plan.get('words') or ()),
+                'others': set(had.get('others') or ()) | set(plan.get('others') or ())}
 
-    def intents(self, document_id: str, sentence_ids: List[str]) -> Dict[str, Dict[str, Any]]:
-        """The writing rows core holds for ``sentence_ids`` of a document,
-        one per sentence (:meth:`merged`)."""
-        out: Dict[str, Dict[str, Any]] = {}
-        for r in self.job.lookup_decisions([writing_form(sid) for sid in sentence_ids]):
-            form = r.get('form') or ''
-            if not form.startswith(WRITING_FORM):
-                continue
-            try:
-                plan = json.loads(r['analysis'])
-            except (ValueError, TypeError, KeyError):
-                plan = None
-            sid = form[len(WRITING_FORM):]
-            out[sid] = self.merged(out.get(sid), plan if isinstance(plan, dict) else {})
-        return out
+    def intents(self, document_id: str) -> Dict[str, Dict[str, Any]]:
+        """The writing rows core holds for a document, one per sentence
+        (:meth:`merged`), those of sentences it no longer holds included (a
+        sentence merged away, whose words are still the ones the job wrote
+        in, REV-B4-1). Every row of the job is read once per worker (``GET
+        /jobs/{id}/decisions``): no other worker writes rows while this one
+        holds the job, and this one's own are kept as it writes them
+        (:meth:`intend`)."""
+        if self.rows_read is None:
+            rows: Dict[str, Dict[str, Dict[str, Any]]] = {}
+            for r in self.job.decisions():
+                form = r.get('form') or ''
+                if not form.startswith(WRITING_FORM):
+                    continue
+                try:
+                    plan = json.loads(r['analysis'])
+                except (ValueError, TypeError, KeyError):
+                    continue
+                if not isinstance(plan, dict):
+                    continue
+                by_sentence = rows.setdefault(plan.get('document'), {})
+                sid = form[len(WRITING_FORM):]
+                by_sentence[sid] = self.merged(by_sentence.get(sid), plan)
+            self.rows_read = rows
+        return dict(self.rows_read.get(document_id) or {})
+
+    def known_words(self, document_id: str) -> frozenset:
+        """The tags of every word of every sentence of the document the job
+        began to write in (its writing rows), wherever a person has since
+        moved them, but those of a sentence whose write this worker knows
+        sent nothing. A sentence holding any of them is not a target
+        (:func:`wrote_in`, REV-B4-1)."""
+        unsent = self.unsent.get(document_id) or set()
+        out: set = set()
+        for sid, plan in (self.writing.get(document_id) or {}).items():
+            if sid not in unsent:
+                out |= set(plan.get('words') or ()) | set(plan.get('others') or ())
+        return frozenset(out)
 
     def apply(self, client, project: IgtProject, document_id: str, group: str, kept: List[Dict[str, Any]],
               seed_id: str, counts: Counter) -> List[Dict[str, Any]]:
@@ -1466,7 +1532,7 @@ class IgtRunner:
         counts = Counter()
         now = {s.id: s for s in fresh.sentences}
         fresh_st = Stretch(fresh, project, [s for s in fresh.sentences if s.id in st.sentence_ids], self.job.tasks,
-                           self.job.id)
+                           self.job.id, self.known_words(fresh.id))
         changed = set()
         for sid, p in prints.items():
             s = now.get(sid)
@@ -1744,7 +1810,7 @@ class IgtRunner:
         if document_id not in self.recorded:
             ids = [s.id for s in doc.sentences]
             marks = self.marks_in_core(ids)
-            self.writing[document_id] = self.intents(document_id, ids)
+            self.writing[document_id] = self.intents(document_id)
             self.recorded[document_id] = marks
             row = job.rows.get(document_id) or {}
             if self.recorded[document_id]:
