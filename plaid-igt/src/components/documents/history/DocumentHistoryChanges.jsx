@@ -1,17 +1,23 @@
 import { useMemo, useState } from 'react';
+import { Link, useLocation } from 'react-router-dom';
 import { Button } from '@ui/components/ui/button';
 import { Loading } from '@ui/components/shared/Loading.jsx';
 import { Notice } from '@ui/components/shared/Notice.jsx';
 import { SegmentedControl } from '@ui/components/shared/SegmentedControl.jsx';
 import { countOf } from '@ui/lib/plural.js';
 import { TYPE } from '@ui/lib/typeScale.js';
+import { documentViewSearch } from '@ui/hooks/useHistoryParam.js';
 import { documentRowChanges, entryChanges, sentenceChanges } from '@/domain/historyChanges.js';
 import { getIgtLayerInfo } from '@/domain/layerInfo.js';
 import { SentenceChange } from './SentenceChange.jsx';
 import { EntryChangeList } from './EntryChangeList.jsx';
 import { ChangeValue } from './ChangeValue.jsx';
 import { countLine } from './changeMarks.js';
-import { useChangeRows } from './useChangeRows.js';
+import { CHANGE_ROWS_CEILING, useChangeRows } from './useChangeRows.js';
+
+// How many sentences are drawn at once. Every row is read before any is
+// drawn, and drawing is what a long entry pages.
+export const SENTENCES_SHOWN = 50;
 
 /**
  * What a History entry changed in this document, the default view of a whole
@@ -21,10 +27,13 @@ import { useChangeRows } from './useChangeRows.js';
  * outside the sentences. A count over it says how many changes, and how many
  * replaced a person's value, which a switch shows alone.
  *
- * Read from core a page at a time (useChangeRows): this document's rows, and
- * each of its vocabularies' entry rows. The sentences are placed in the
- * document as of the entry's end (`historySnapshot`), which the shell reads
- * for the entry anyway.
+ * Read whole from core before anything is drawn (useChangeRows): this
+ * document's rows, and each of its vocabularies' entry rows, since a page of
+ * them can hold a text edit's shifted tokens without its text. The sentences
+ * are placed in the document as of the entry's end (`historySnapshot`), which
+ * the shell reads for the entry anyway, and drawn SENTENCES_SHOWN at a time.
+ * An entry past CHANGE_ROWS_CEILING rows is not drawn: it says so, with a link
+ * to the document as of it.
  */
 export const DocumentHistoryChanges = ({ context }) => {
   const { client, projectId, documentId, pastEntry, historySnapshot: after } = context;
@@ -42,15 +51,15 @@ export const DocumentHistoryChanges = ({ context }) => {
   );
   const data = useChangeRows(client, after ? pastEntry.id : null, streams);
   const [only, setOnly] = useState('all');
+  const [shown, setShown] = useState(SENTENCES_SHOWN);
+  const { search } = useLocation();
+  const errors = Object.values(data.errors);
+  const whole = !data.reading && !errors.length && !Object.keys(data.over).length;
 
-  // A first page that failed is said above, and shows nothing.
-  const docRows = useMemo(
-    () => data.rows.document ?? (data.loading ? undefined : []),
-    [data.rows.document, data.loading],
-  );
+  const docRows = whole ? data.rows.document : null;
   const entryRows = useMemo(
-    () => streams.slice(1).flatMap((s) => data.rows[s.key] || []),
-    [streams, data.rows],
+    () => (whole ? streams.slice(1).flatMap((s) => data.rows[s.key] || []) : null),
+    [whole, streams, data.rows],
   );
   const view = useMemo(() => {
     if (!after || !docRows) return null;
@@ -75,30 +84,56 @@ export const DocumentHistoryChanges = ({ context }) => {
     return { sentences, entries, documentFields, transcript, other, changes, replaced };
   }, [after, docRows, entryRows]);
 
-  if (!view) return <Loading label="Loading changes…" />;
-  const errors = Object.values(data.errors);
+  if (!after) return <Loading label="Loading changes…" />;
+  if (data.reading) {
+    return (
+      <Loading label={`Reading changes, ${data.read.toLocaleString()} so far`} className="pt-2" />
+    );
+  }
+  if (errors.length) {
+    return (
+      <div className="flex flex-col gap-2 pt-2" data-testid="history-changes">
+        {errors.map((e) => (
+          <Notice key={e} tone="error">
+            {e}
+          </Notice>
+        ))}
+      </div>
+    );
+  }
+  if (!view) {
+    return (
+      <div className="flex flex-col items-start gap-2 pt-2" data-testid="history-changes">
+        <p className="text-sm" data-testid="change-count">
+          More than {CHANGE_ROWS_CEILING.toLocaleString()} changes.
+        </p>
+        <Button asChild variant="outline" size="sm">
+          <Link to={{ search: documentViewSearch(search) }}>Show document</Link>
+        </Button>
+      </div>
+    );
+  }
   const persons = only === 'persons';
-  const sentences = persons ? view.sentences.filter((s) => s.replaced > 0) : view.sentences;
+  const picked = persons ? view.sentences.filter((s) => s.replaced > 0) : view.sentences;
+  const sentences = picked.slice(0, shown);
   const dir = after.textDirection;
 
   return (
     <div className="flex flex-col gap-4 pt-2" data-testid="history-changes">
-      {errors.map((e) => (
-        <Notice key={e} tone="error">
-          {e}
-        </Notice>
-      ))}
-      {view.changes === 0 && !data.more ? (
+      {view.changes === 0 ? (
         <p className="text-sm text-muted-foreground">No changes to show.</p>
       ) : (
         <div className="flex flex-wrap items-center justify-between gap-2">
           <p className="text-sm" data-testid="change-count">
-            {countLine(view.changes, view.replaced, data.more)}
+            {countLine(view.changes, view.replaced)}
           </p>
           <SegmentedControl
             label="Filter"
             value={only}
-            onChange={setOnly}
+            onChange={(next) => {
+              setOnly(next);
+              setShown(SENTENCES_SHOWN);
+            }}
             options={[
               { value: 'all', label: 'All changes' },
               { value: 'persons', label: 'A person’s value replaced', count: view.replaced },
@@ -111,6 +146,13 @@ export const DocumentHistoryChanges = ({ context }) => {
       {sentences.map((s) => (
         <SentenceChange key={s.id} s={s} dir={dir} projectId={projectId} documentId={documentId} />
       ))}
+      {picked.length > shown && (
+        <div>
+          <Button variant="outline" size="sm" onClick={() => setShown((n) => n + SENTENCES_SHOWN)}>
+            Show more sentences
+          </Button>
+        </div>
+      )}
 
       {!persons && view.documentFields.length > 0 && (
         <section>
@@ -142,14 +184,6 @@ export const DocumentHistoryChanges = ({ context }) => {
           )}
           {view.other > 0 && <li>{countOf(view.other, 'change')} to other annotations</li>}
         </ul>
-      )}
-
-      {data.more && (
-        <div>
-          <Button variant="outline" size="sm" onClick={data.loadMore} disabled={data.loading}>
-            {data.loading ? 'Loading…' : 'Show more changes'}
-          </Button>
-        </div>
       )}
     </div>
   );

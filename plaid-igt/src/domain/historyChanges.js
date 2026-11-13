@@ -16,8 +16,10 @@
 // whose cells all match on both sides is left out, which is what keeps a text
 // edit's shifted offsets from listing every later sentence.
 //
-// The rows come a page at a time, and every function here takes the rows read
-// so far: a row not read yet is the same before and after.
+// Every function here takes ALL the rows of the entry (narrowed to a document
+// or a vocabulary): rows depend on each other (a text and the tokens it
+// shifted, a token and the spans on it), so a part of them puts back a
+// before beside an after it does not belong with.
 
 import { PROV_STATES, provState } from '@larc-iu/plaid-client';
 import { deriveSentences } from './derive.js';

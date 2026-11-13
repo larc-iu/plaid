@@ -3,12 +3,13 @@ import { MemoryRouter } from 'react-router-dom';
 import { renderComponent, all } from '@ui/test/renderComponent.jsx';
 import { buildRawDoc, makeIgtDoc } from '@/domain/test-helpers.js';
 import { DocumentHistoryChanges } from './DocumentHistoryChanges.jsx';
-import { CHANGE_ROWS_PAGE } from './useChangeRows.js';
+import { CHANGE_ROWS_CEILING, CHANGE_ROWS_PAGE } from './useChangeRows.js';
 
 // A document's History entry, read as what it changed. Core gives the rows a
 // page at a time (audit.changesPage, narrowed to the document and to each of
-// its vocabularies); the view places them in the document as of the entry's
-// end and draws each sentence it changed, the lexicon entries, and the rest.
+// its vocabularies), all of which are read before anything is drawn; the view
+// places them in the document as of the entry's end and draws each sentence
+// it changed, the lexicon entries, and the rest.
 
 const MACHINE = { prov: 'inferred', provSource: 'job:1' };
 
@@ -383,16 +384,18 @@ describe('DocumentHistoryChanges', () => {
     expect(view.container.querySelector('[data-sentence] td').getAttribute('dir')).toBe('auto');
   });
 
-  it('shows the first page of a huge entry and reads the next on asking', async () => {
-    const n = 600;
+  // A document of `n` one-morpheme words, `per` words to a sentence, each
+  // morpheme glossed by a machine.
+  const longDoc = (n, per = 1, prefix = '') => {
+    const at = prefix.length;
     const words = Array.from({ length: n }, (_, i) => ({
       id: `w-${i}`,
-      begin: i * 3,
-      end: i * 3 + 2,
+      begin: at + i * 3,
+      end: at + i * 3 + 2,
     }));
-    const body = Array.from({ length: n }, () => 'ab').join(' ');
-    const doc = after({
-      body,
+    const sentenceCount = Math.ceil(n / per);
+    return after({
+      body: prefix + Array.from({ length: n }, () => 'ab').join(' '),
       words,
       morphemes: words.map((w, i) => ({
         id: `m-${i}`,
@@ -402,7 +405,11 @@ describe('DocumentHistoryChanges', () => {
         precedence: 1,
         metadata: {},
       })),
-      sentences: words.map((w, i) => ({ id: `s-${i}`, begin: w.begin, end: w.end })),
+      sentences: Array.from({ length: sentenceCount }, (_, k) => ({
+        id: `s-${k}`,
+        begin: k === 0 ? 0 : words[k * per].begin,
+        end: words[Math.min(n, (k + 1) * per) - 1].end,
+      })),
       spans: {
         'msl-0': words.map((w, i) => ({
           id: `g-${i}`,
@@ -412,34 +419,180 @@ describe('DocumentHistoryChanges', () => {
         })),
       },
     });
-    const row = (i) => ({
-      kind: 'span',
-      id: `g-${i}`,
-      layer: 'msl-0',
-      after: { id: `g-${i}`, value: 'X', tokens: [`m-${i}`], metadata: MACHINE },
+  };
+  const glossRow = (i) => ({
+    kind: 'span',
+    id: `g-${i}`,
+    layer: 'msl-0',
+    after: { id: `g-${i}`, value: 'X', tokens: [`m-${i}`], metadata: MACHINE },
+  });
+  const chunks = (rows, size) =>
+    Array.from({ length: Math.ceil(rows.length / size) }, (_, k) =>
+      rows.slice(k * size, (k + 1) * size),
+    );
+
+  it('reads every page before it draws, then draws the sentences 50 at a time', async () => {
+    const client = clientOf({
+      document: chunks(
+        Array.from({ length: 120 }, (_, i) => glossRow(i)),
+        100,
+      ),
     });
-    const pages = [
-      Array.from({ length: 500 }, (_, i) => row(i)),
-      Array.from({ length: 100 }, (_, i) => row(500 + i)),
-    ];
-    const client = clientOf({ document: pages });
-    await mount(doc, client);
-    // One read before the first paint, not every page.
-    expect(client.audit.changesPage).toHaveBeenCalledTimes(1);
-    expect(sentences()).toHaveLength(500);
-    expect(count()).toBe('500 changes so far, 0 replaced a person’s value');
-    await click(button('Show more changes'));
-    await view.step(async () => {
-      for (let i = 0; i < 5; i++) await Promise.resolve();
-    });
+    await mount(longDoc(120), client);
+    expect(client.audit.changesPage).toHaveBeenCalledTimes(2);
     expect(client.audit.changesPage).toHaveBeenLastCalledWith('g1', {
       documentId: 'doc-1',
       limit: CHANGE_ROWS_PAGE,
       cursor: '1',
     });
-    expect(sentences()).toHaveLength(600);
-    expect(count()).toBe('600 changes, 0 replaced a person’s value');
+    // The count is final, every row read.
+    expect(count()).toBe('120 changes, 0 replaced a person’s value');
+    expect(sentences()).toHaveLength(50);
+    await click(button('Show more sentences'));
+    expect(sentences()).toHaveLength(100);
+    await click(button('Show more sentences'));
+    expect(sentences()).toHaveLength(120);
+    expect(button('Show more sentences')).toBeUndefined();
     expect(button('Show more changes')).toBeUndefined();
+  });
+
+  it('draws nothing while it reads, and says how many rows it has read', async () => {
+    let release;
+    const rest = new Promise((resolve) => {
+      release = resolve;
+    });
+    const first = Array.from({ length: 100 }, (_, i) => glossRow(i));
+    const changesPage = vi.fn(async (entryId, { cursor }) =>
+      cursor ? rest : { entries: first, nextCursor: '1' },
+    );
+    await mount(longDoc(120), { audit: { changesPage } });
+    expect(text()).toContain('Reading changes, 100 so far');
+    expect(sentences()).toHaveLength(0);
+    expect(count()).toBeUndefined();
+    await view.step(async () => {
+      release({
+        entries: Array.from({ length: 20 }, (_, i) => glossRow(100 + i)),
+        nextCursor: null,
+      });
+      for (let i = 0; i < 5; i++) await Promise.resolve();
+    });
+    expect(count()).toBe('120 changes, 0 replaced a person’s value');
+  });
+
+  // REV-HD-2: a text edit near the start writes the shifted tokens before
+  // the text, so the first page holds no text row.
+  it('shows a text edit near the start of a document of 2,000 tokens as the one change it is', async () => {
+    const n = 2000;
+    const doc = longDoc(n, 10, 'x');
+    const shift = (id, layer, begin, end) => ({
+      kind: 'token',
+      id,
+      layer,
+      text: 'text-1',
+      before: { id, begin: begin - 1, end: end - 1 },
+      after: { id, begin, end },
+    });
+    const raw = doc.raw.textLayers[0].tokenLayers;
+    const tokens = (id) => raw.find((l) => l.id === id).tokens;
+    const rows = [
+      // the first sentence grows by the x, the rest move
+      {
+        kind: 'token',
+        id: 's-0',
+        layer: 'sentL',
+        text: 'text-1',
+        before: { id: 's-0', begin: 0, end: tokens('sentL')[0].end - 1 },
+        after: { id: 's-0', begin: 0, end: tokens('sentL')[0].end },
+      },
+      ...tokens('sentL')
+        .slice(1)
+        .map((t) => shift(t.id, 'sentL', t.begin, t.end)),
+      ...tokens('wordL').map((t) => shift(t.id, 'wordL', t.begin, t.end)),
+      ...tokens('morphL').map((t) => shift(t.id, 'morphL', t.begin, t.end)),
+      {
+        kind: 'text',
+        id: 'text-1',
+        layer: 'tl-1',
+        before: { id: 'text-1', body: doc.raw.textLayers[0].text.body.slice(1) },
+        after: { id: 'text-1', body: doc.raw.textLayers[0].text.body },
+      },
+    ];
+    const client = clientOf({ document: chunks(rows, 1000) });
+    await mount(doc, client);
+    expect(client.audit.changesPage).toHaveBeenCalledTimes(Math.ceil(rows.length / 1000));
+    expect(count()).toBe('1 change, 0 replaced a person’s value');
+    expect(sentences()).toHaveLength(1);
+    expect(sentences()[0].textContent).toContain('Sentence 1');
+    expect(view.container.querySelector('[data-change]')).not.toBeNull();
+    expect(view.container.querySelector('[data-replaced]')).toBeNull();
+  });
+
+  it('shows an import, read over two pages, as sentences added', async () => {
+    const doc = after({
+      spans: {
+        'msl-0': [
+          { id: 'g1', value: 'DEF', tokens: ['m-1'], metadata: {} },
+          { id: 'g2', value: 'cat', tokens: ['m-2'], metadata: {} },
+        ],
+      },
+    });
+    const made = (kind, id, layer, img) => ({ kind, id, layer, text: 'text-1', after: img });
+    const raw = doc.raw.textLayers[0];
+    const tokenRows = raw.tokenLayers.flatMap((l) =>
+      l.tokens.map((t) => made('token', t.id, l.id, t)),
+    );
+    // In core's order for an import: the text, then the tokens, then the
+    // spans, the first page ending after the first word.
+    const word = tokenRows.find((r) => r.id === 'w-1');
+    const client = clientOf({
+      document: [
+        [{ kind: 'text', id: 'text-1', layer: 'tl-1', after: raw.text }, word],
+        [
+          ...tokenRows.filter((r) => r !== word),
+          made('span', 'g1', 'msl-0', { id: 'g1', value: 'DEF', tokens: ['m-1'], metadata: {} }),
+          made('span', 'g2', 'msl-0', { id: 'g2', value: 'cat', tokens: ['m-2'], metadata: {} }),
+        ],
+      ],
+    });
+    await mount(doc, client);
+    const [s] = sentences();
+    expect(sentences()).toHaveLength(1);
+    expect(s.textContent).toContain('Added');
+    const gloss = cellsOf('morph:Gloss');
+    expect(gloss.map((c) => [c.change, c.now])).toEqual([
+      ['added', 'DEF'],
+      ['added', 'cat'],
+    ]);
+    expect(count()).toMatch(/, 0 replaced a person’s value$/);
+  });
+
+  it('says how many rows an entry past the ceiling has, and links the document as of it', async () => {
+    const page = Array.from({ length: CHANGE_ROWS_PAGE }, (_, i) => glossRow(i));
+    const pages = Array.from({ length: CHANGE_ROWS_CEILING / CHANGE_ROWS_PAGE + 1 }, () => page);
+    const client = clientOf({ document: pages });
+    view = await renderComponent(
+      <MemoryRouter initialEntries={['/projects/proj-1/documents/doc-1?tab=analyze&history=g1']}>
+        <DocumentHistoryChanges
+          context={{
+            client,
+            projectId: 'proj-1',
+            documentId: 'doc-1',
+            pastEntry: { id: 'g1' },
+            historySnapshot: after(),
+          }}
+        />
+      </MemoryRouter>,
+    );
+    await view.step(async () => {
+      for (let i = 0; i < 60; i++) await Promise.resolve();
+    });
+    expect(client.audit.changesPage).toHaveBeenCalledTimes(CHANGE_ROWS_CEILING / CHANGE_ROWS_PAGE);
+    expect(count()).toBe('More than 20,000 changes.');
+    expect(sentences()).toHaveLength(0);
+    const link = all(view.container, 'a').find((a) => a.textContent === 'Show document');
+    expect(link.getAttribute('href')).toBe(
+      '/projects/proj-1/documents/doc-1?tab=analyze&history=g1&historyView=document',
+    );
   });
 
   it('shows what a reader may read when a vocabulary’s rows are refused', async () => {
@@ -474,12 +627,16 @@ describe('DocumentHistoryChanges', () => {
     expect(count()).toBeUndefined();
   });
 
-  it('says a read that failed, and shows the rest', async () => {
+  it('says a read that failed, and draws nothing from the rest', async () => {
+    const made = { id: 'g1', value: 'DEF', tokens: ['m-1'], metadata: MACHINE };
     const client = clientOf({
-      document: () => Promise.reject(Object.assign(new Error('boom'), { status: 500 })),
+      document: [[{ kind: 'span', id: 'g1', layer: 'msl-0', after: made }]],
+      v1: () => Promise.reject(Object.assign(new Error('boom'), { status: 500 })),
     });
-    await mount(after(), client);
+    await mount(after({ vocabularies: VOCAB, spans: { 'msl-0': [made] } }), client);
     expect(view.container.querySelector('[data-tone="error"]')).not.toBeNull();
+    expect(sentences()).toHaveLength(0);
+    expect(count()).toBeUndefined();
   });
 
   it('waits for the document as of the entry before reading', async () => {

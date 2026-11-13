@@ -123,8 +123,11 @@ const IGT_SHELL = {
   // shows the shell's status.
   ownSaveStatus: ['analyze'],
   roleWords: TOKEN_ROLE_WORDS,
-  // A History entry opens on what it changed.
-  historyChanges: (context) => <DocumentHistoryChanges context={context} />,
+  // A History entry opens on what it changed, keyed by the entry so the
+  // filter and the sentences shown start over on the next.
+  historyChanges: (context) => (
+    <DocumentHistoryChanges key={context.pastEntry.id} context={context} />
+  ),
   // Landing on a sentence: the ?focusSentence= handoff, and a citation asking
   // for one of this document's sentences while the reader is on the grid.
   useFocusHere: useSentenceFocus,

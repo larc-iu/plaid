@@ -71,3 +71,14 @@ export function useHistoryParam({ selectedId, ready, open }) {
 /** The address of the page at `path` with History entry `entryId` open. */
 export const historyHref = (path, entryId) =>
   `${path}?${new URLSearchParams({ [HISTORY_PARAM]: entryId })}`;
+
+/**
+ * The query string `search` (a location's) with the History entry open shown
+ * as the document as of it, not what it changed: where a link to that view
+ * goes.
+ */
+export const documentViewSearch = (search) => {
+  const next = new URLSearchParams(search);
+  next.set(HISTORY_VIEW_PARAM, 'document');
+  return `?${next}`;
+};

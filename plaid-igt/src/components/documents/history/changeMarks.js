@@ -17,6 +17,6 @@ export const provClass = (prov) => PROV_CLASS[prov] ?? '';
 /** What a value's tooltip says of whose it was or is. */
 export const provTitle = (prov) => (prov ? PROV_WORDS[prov] : undefined);
 
-/** "12 changes, 3 replaced a person’s value", and "so far" while there are more to read. */
-export const countLine = (changes, replaced, more) =>
-  `${countOf(changes, 'change')}${more ? ' so far' : ''}, ${replaced.toLocaleString()} replaced a person’s value`;
+/** "12 changes, 3 replaced a person’s value". */
+export const countLine = (changes, replaced) =>
+  `${countOf(changes, 'change')}, ${replaced.toLocaleString()} replaced a person’s value`;
