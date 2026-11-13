@@ -531,3 +531,25 @@
       (is (= 1 (-> dry :body :vocab-links :deleted))))
     (assert-ok (restore! admin-request doc-id t))
     (assert-status 404 (get-vocab-link admin-request mwe))))
+
+;; The final check of a document's layers reads each token's parent among the
+;; parent layer's tokens. Scanning them all for each token was quadratic: an
+;; undo of an assistant plan on a document of the 2026-11-13 prod copy spent
+;; 13 s in it under the write lock.
+(deftest the-final-check-of-a-large-document-is-not-quadratic
+  (let [proj (create-test-project admin-request "Large")
+        d (create-test-document admin-request proj "D")
+        tl (id (create-text-layer admin-request proj "Text"))
+        words (id (create-token-layer-opts admin-request tl "Words" {:overlap-mode "non-overlapping"}))
+        morphs (id (create-token-layer-opts admin-request tl "Morphemes" {:parent-token-layer-id words}))
+        n 12000
+        text (id (create-text admin-request tl d (clojure.string/join " " (repeat n "ab"))))
+        span (fn [layer f] (doseq [chunk (partition-all 4000 (range n))]
+                             (assert-created (bulk-create-tokens admin-request (mapv (fn [i] (merge {:token-layer-id layer :text text} (f i))) chunk)))))
+        _ (span words (fn [i] {:begin (* 3 i) :end (+ 2 (* 3 i))}))
+        _ (span morphs (fn [i] {:begin (* 3 i) :end (+ 1 (* 3 i))}))
+        t0 (System/nanoTime)
+        v (restore/final-state-violation db d)
+        ms (/ (- (System/nanoTime) t0) 1e6)]
+    (is (nil? v))
+    (is (< ms 1500) (str "took " ms " ms"))))

@@ -377,6 +377,24 @@
   (ex-info (str "The state at that time no longer fits " (pr-str (:name layer)) " as it is now.")
            {:code 409 :layer (:id layer) :detail detail}))
 
+(defn- containment
+  "A predicate on a token: does one of `parents` contain it? Parents sorted
+  by begin with the greatest end so far, so each question is one binary
+  search, not a scan of every parent."
+  [parents]
+  (let [sorted (vec (sort-by :begin parents))
+        begins (long-array (map :begin sorted))
+        max-ends (long-array (reductions max Long/MIN_VALUE (map :end_ sorted)))
+        n (count sorted)]
+    (fn [t]
+      ;; the number of parents beginning at or before t
+      (let [k (loop [lo 0 hi n]
+                (if (< lo hi)
+                  (let [mid (quot (+ lo hi) 2)]
+                    (if (<= (aget begins mid) (long (:begin t))) (recur (inc mid) hi) (recur lo mid)))
+                  lo))]
+        (and (pos? k) (<= (long (:end_ t)) (aget max-ends k)))))))
+
 (defn final-state-violation
   "The first misfit of document `doc-id`'s token layers as they stand in
   `tx`, as the ex-info of a 409, or nil when every layer fits: each token
@@ -419,9 +437,9 @@
                      (partition 2 1 sorted))
                nil)
              (when-let [pid (:parent_token_layer_id layer)]
-               (let [parents (get by-layer-text [pid tid])]
+               (let [contained? (containment (get by-layer-text [pid tid]))]
                  (some (fn [t]
-                         (when-not (some #(and (<= (:begin %) (:begin t)) (<= (:end_ t) (:end_ %))) parents)
+                         (when-not (contained? t)
                            (violation layer (str "token " (:begin t) "-" (:end_ t)
                                                  " has no containing token in its parent layer"))))
                        toks))))))
