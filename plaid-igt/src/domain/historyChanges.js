@@ -199,12 +199,14 @@ const rowsOf = (fields) => [
 const filled = (v) => (v ?? '') !== '';
 const spanProv = (span) => (span && filled(span.value) ? provState(span.metadata) : null);
 
-// One value: what it shows and whose it is. `stored` is false for a value
-// read off the text (a word as written, a morpheme with no form of its own),
-// which a text edit changes and which no one's value is replaced by.
-const cellValue = (v, prov, stored = true) => {
+// One value: what it shows, whose it is, and `src`, the id of the row it is
+// stored in (a span, a link, a token's metadata), or null for a value read
+// off the text (a word as written, a morpheme with no form of its own), which
+// a text edit changes and which no one's value is replaced by.
+const cellValue = (v, prov, src) => {
   const shown = v ?? '';
-  return { value: shown, prov: shown === '' ? null : prov, stored };
+  const from = src ?? null;
+  return { value: shown, prov: shown === '' ? null : prov, src: from, stored: from !== null };
 };
 
 const linkLabel = (vocabularies, item) =>
@@ -217,11 +219,16 @@ const linkLabel = (vocabularies, item) =>
 const morphemeValues = (m, fields, vocabularies) => {
   const own = Object.prototype.hasOwnProperty.call(m.metadata || {}, 'form');
   const out = {
-    morphemes: cellValue(morphFormOf(m), provState(m.metadata), own),
-    entry: cellValue(linkLabel(vocabularies, m.vocabItem), m.vocabItem?.prov ?? null),
+    morphemes: cellValue(morphFormOf(m), provState(m.metadata), own ? m.id : null),
+    entry: cellValue(
+      linkLabel(vocabularies, m.vocabItem),
+      m.vocabItem?.prov ?? null,
+      m.vocabItem?.linkId,
+    ),
   };
   for (const n of fields.morphFields) {
-    out[`morph:${n}`] = cellValue(m.annotations?.[n]?.value, spanProv(m.annotations?.[n]));
+    const sp = m.annotations?.[n];
+    out[`morph:${n}`] = cellValue(sp?.value, spanProv(sp), sp?.id);
   }
   return out;
 };
@@ -229,14 +236,22 @@ const morphemeValues = (m, fields, vocabularies) => {
 const wordModel = (t, fields, vocabularies) => {
   const c = wordCells(t, fields);
   const values = {
-    surface: cellValue(c.surface, provState(t.metadata), false),
-    wordEntry: cellValue(linkLabel(vocabularies, t.vocabItem), t.vocabItem?.prov ?? null),
+    surface: cellValue(c.surface, provState(t.metadata)),
+    wordEntry: cellValue(
+      linkLabel(vocabularies, t.vocabItem),
+      t.vocabItem?.prov ?? null,
+      t.vocabItem?.linkId,
+    ),
   };
   fields.orthographies.forEach((n, i) => {
-    values[`orth:${n}`] = cellValue(c.orthLines[i], provState(t.metadata));
+    values[`orth:${n}`] = cellValue(c.orthLines[i], provState(t.metadata), t.id);
   });
   fields.wordFields.forEach((n, i) => {
-    values[`word:${n}`] = cellValue(c.wordLines[i], spanProv(t.annotations?.[n]));
+    values[`word:${n}`] = cellValue(
+      c.wordLines[i],
+      spanProv(t.annotations?.[n]),
+      t.annotations?.[n]?.id,
+    );
   });
   const morphemes = (t.morphemes || [])
     .filter((m) => !m.virtual)
@@ -256,7 +271,7 @@ const sentenceModel = (s, fields, vocabularies) => ({
   fields: Object.fromEntries(
     fields.sentFields.map((n) => [
       n,
-      cellValue(s.annotations?.[n]?.value, spanProv(s.annotations?.[n])),
+      cellValue(s.annotations?.[n]?.value, spanProv(s.annotations?.[n]), s.annotations?.[n]?.id),
     ]),
   ),
   mwes: (s.mwes || []).map((e) => ({
@@ -265,6 +280,7 @@ const sentenceModel = (s, fields, vocabularies) => ({
     value: cellValue(
       linkLabel(vocabularies, e.item ? { ...e.item, vocabId: e.vocabId } : null),
       e.prov ?? null,
+      e.linkId,
     ),
   })),
 });
@@ -315,29 +331,49 @@ const replacedPersons = (b, a) =>
 
 /**
  * One value before and after: `changed` when what it shows or whose it is
- * moved, `replaced` when a person's value went (`replacedPersons`).
+ * moved, `replaced` when a person's value went (`replacedPersons`). A stored
+ * value whose row is not among the entry's own (`own`, a set of row ids) is
+ * none of the entry's change, whatever the two sides read: a gloss a later
+ * action put on a morpheme this one made. It reads as it is after, unchanged.
  */
-const valueDiff = (b = BLANK, a = BLANK) => ({
-  before: b.value,
-  after: a.value,
-  beforeProv: b.prov,
-  afterProv: a.prov,
-  changed: b.value !== a.value || b.prov !== a.prov,
-  replaced: replacedPersons(b, a),
-});
+const valueDiff = (b = BLANK, a = BLANK, own = null) => {
+  const stored = b.src ?? a.src;
+  if (own && stored && !own.has(b.src) && !own.has(a.src)) {
+    return {
+      before: a.value,
+      after: a.value,
+      beforeProv: a.prov,
+      afterProv: a.prov,
+      changed: false,
+      replaced: false,
+    };
+  }
+  return {
+    before: b.value,
+    after: a.value,
+    beforeProv: b.prov,
+    afterProv: a.prov,
+    changed: b.value !== a.value || b.prov !== a.prov,
+    replaced: replacedPersons(b, a),
+  };
+};
 
 // The morphemes of a word before and after, each value diffed on its own,
 // with the joiner the grid writes in front of it (from what it shows now, or
 // showed, when it is gone). A morpheme the entry deleted took its form with
 // it, a person's segmentation however it was spelled: only a morpheme kept
 // has a form a text edit moved.
-const piecesDiff = (key, bMorphs, aMorphs) => {
+const piecesDiff = (key, bMorphs, aMorphs, own) => {
   const pairs = mergeById(bMorphs || [], aMorphs || []);
   let prev = null;
   const pieces = pairs.map((p) => {
     const m = p.after ?? p.before;
     const was = p.before?.values[key];
-    const d = valueDiff(p.after || !was ? was : { ...was, stored: true }, p.after?.values[key]);
+    const d = valueDiff(
+      p.after || !was ? was : { ...was, stored: true, src: was.src ?? p.id },
+      p.after?.values[key],
+      own,
+    );
     const piece = {
       text: d.after !== '' ? d.after : d.before,
       morphType: m.morphType,
@@ -358,9 +394,9 @@ const PIECE_KINDS = new Set(['morphemes', 'morph', 'entry']);
 
 // One cell of a word column: a value diff, or for a row of morpheme values
 // `{pieces}`, each piece a value diff of its own.
-const cellDiff = (row, b, a) => {
-  if (!PIECE_KINDS.has(row.kind)) return valueDiff(b?.values[row.key], a?.values[row.key]);
-  const pieces = piecesDiff(row.key, b?.morphemes, a?.morphemes);
+const cellDiff = (row, b, a, own) => {
+  if (!PIECE_KINDS.has(row.kind)) return valueDiff(b?.values[row.key], a?.values[row.key], own);
+  const pieces = piecesDiff(row.key, b?.morphemes, a?.morphemes, own);
   return { pieces, changed: pieces.some((x) => x.changed) };
 };
 
@@ -369,25 +405,25 @@ const hasValue = (c) =>
 // Every value a cell holds that the entry could have changed.
 const valuesOf = (c) => c.pieces ?? [c];
 
-const diffSentence = (b, a, rows, fields) => {
+const diffSentence = (b, a, rows, fields, own) => {
   const pairs = mergeById(b?.words || [], a?.words || []);
   const columns = pairs.map((p) => ({
     id: p.id,
     state: !p.before ? 'added' : !p.after ? 'deleted' : 'kept',
   }));
   const lines = rows
-    .map((row) => ({ ...row, cells: pairs.map((p) => cellDiff(row, p.before, p.after)) }))
+    .map((row) => ({ ...row, cells: pairs.map((p) => cellDiff(row, p.before, p.after, own)) }))
     .filter((row) => row.kind === 'surface' || row.cells.some(hasValue));
   const sentFields = fields.sentFields
-    .map((n) => ({ label: n, ...valueDiff(b?.fields[n], a?.fields[n]) }))
+    .map((n) => ({ label: n, ...valueDiff(b?.fields[n], a?.fields[n], own) }))
     .filter((f) => f.before || f.after);
   const mwes = mergeById(b?.mwes || [], a?.mwes || [])
     .map((p) => ({
       id: p.id,
       words: (p.after ?? p.before).words,
-      ...valueDiff(p.before?.value, p.after?.value),
+      ...valueDiff(p.before?.value, p.after?.value, own),
       // An expression made or taken away is a change even with no entry named.
-      ...(!p.before || !p.after ? { changed: true } : {}),
+      ...((!p.before || !p.after) && own.has(p.id) ? { changed: true } : {}),
     }))
     .filter((m) => m.changed);
   const textChanged = (b?.text ?? '') !== (a?.text ?? '');
@@ -552,6 +588,8 @@ export function sentenceChanges({ raw, vocabularies }, rows) {
   const fields = fieldsOf(after.info);
   const rowsShown = rowsOf(fields);
   const sides = [before, after];
+  // The rows that are this entry's: a value stored in any other is not its change.
+  const own = new Set(rows.map((r) => r.id));
   const { ids, placed, elsewhere } = placeRows(rows, sides, after.info);
   // The sentences a row of which someone changed after the entry. A text
   // edit since is no row of a sentence.
@@ -567,7 +605,7 @@ export function sentenceChanges({ raw, vocabularies }, rows) {
   for (const p of pairs) {
     const b = p.before && sentenceModel(p.before, fields, before.vocabularies);
     const a = p.after && sentenceModel(p.after, fields, after.vocabularies);
-    const d = diffSentence(b, a, rowsShown, fields);
+    const d = diffSentence(b, a, rowsShown, fields, own);
     if (d.changes === 0) continue;
     d.number = p.after ? number(after, p.id) : number(before, p.id);
     d.changedSince = since.has(p.id);

@@ -377,6 +377,49 @@ describe('sentenceChanges', () => {
     expect(s.changedSince).toBe(true);
   });
 
+  // REV-HD2-1: an action made a morpheme, a later action of its batch
+  // glossed it. The read at the batch's end holds the gloss.
+  it('draws and counts only values whose row is the entry’s own', () => {
+    const morphemes = [
+      { id: 'm-1', text: 'text-1', begin: 0, end: 3, precedence: 1, metadata: { form: 'th' } },
+      { id: 'm-9', text: 'text-1', begin: 0, end: 3, precedence: 2, metadata: { form: 'e' } },
+      { id: 'm-2', text: 'text-1', begin: 4, end: 7, precedence: 1, metadata: {} },
+    ];
+    const later = span('sp9', 'msl-0', ['m-9'], 'DEF', {});
+    const raw = docAfter({ morphemes, spans: { 'msl-0': [later] } });
+    const tok = (id, before, after) => ({
+      kind: 'token',
+      id,
+      layer: 'morphL',
+      text: 'text-1',
+      ...(before ? { before } : {}),
+      after,
+    });
+    const { sentences } = read(raw, [
+      tok('m-9', null, { id: 'm-9', begin: 0, end: 3, precedence: 2, metadata: { form: 'e' } }),
+      tok(
+        'm-1',
+        { id: 'm-1', begin: 0, end: 3, precedence: 1, metadata: {} },
+        { id: 'm-1', begin: 0, end: 3, precedence: 1, metadata: { form: 'th' } },
+      ),
+    ]);
+    const [s] = sentences;
+    // The forms are this action's, the gloss on e is not.
+    expect(line(s, 'morphemes').cells[0].pieces.map((x) => [x.before, x.after, x.changed])).toEqual(
+      [
+        ['the', 'th', true],
+        ['', 'e', true],
+      ],
+    );
+    expect(piece(s, 'morph:Gloss', 0, 1)).toMatchObject({
+      before: 'DEF',
+      after: 'DEF',
+      changed: false,
+      replaced: false,
+    });
+    expect([s.changes, s.replaced]).toEqual([2, 0]);
+  });
+
   // REV-HD-1: the unit of change is one morpheme's value.
   describe('a word of several morphemes', () => {
     const morphemes = [
