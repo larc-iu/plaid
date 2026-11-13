@@ -94,3 +94,32 @@ describe('the project picker', () => {
     expect(aside.textContent).not.toContain(LINE);
   });
 });
+
+describe('a new conversation a screen asks for', () => {
+  it('opens the shut panel', async () => {
+    // "Discuss with the assistant" on a job's page (subject.js
+    // `useStartConversation`): the dock opens, and the chat inside it takes
+    // the request (AssistantChat.fresh.test.jsx).
+    const { AssistantSubjectProvider } = await import('./AssistantSubject.jsx');
+    const { useStartConversation } = await import('./subject.js');
+    const { readDockOpen } = await import('./panelWidth.js');
+    saveDockOpen(false);
+    const Discuss = () => (
+      <button type="button" data-testid="discuss" onClick={useStartConversation()}>
+        Discuss
+      </button>
+    );
+    view = await renderComponent(
+      <AssistantSubjectProvider>
+        {chrome(client())}
+        <Discuss />
+      </AssistantSubjectProvider>,
+    );
+    await settle();
+    expect(readDockOpen()).toBe(false);
+    await view.step(() => document.body.querySelector('[data-testid="discuss"]').click());
+    await settle();
+    expect(readDockOpen()).toBe(true);
+    expect(document.body.querySelector('aside')).not.toBeNull();
+  });
+});

@@ -12,6 +12,11 @@ export const AssistantSubjectProvider = ({ children }) => {
   const [focus, setFocus] = useState(null);
   const ask = useCallback((detail) => setFocus(detail || null), []);
   const clearFocus = useCallback(() => setFocus(null), []);
+  // A new conversation a screen asked for, as a number new for each press, so
+  // pressing again after the panel took the first is a request of its own.
+  const [fresh, setFresh] = useState(null);
+  const startConversation = useCallback(() => setFresh((n) => (n || 0) + 1), []);
+  const clearFresh = useCallback(() => setFresh(null), []);
 
   // A reference into a document the reader has since left means nothing, so it
   // does not travel with them.
@@ -21,8 +26,8 @@ export const AssistantSubjectProvider = ({ children }) => {
   }, [subjectId]);
 
   const value = useMemo(
-    () => ({ subject, setSubject, focus, ask, clearFocus }),
-    [subject, focus, ask, clearFocus],
+    () => ({ subject, setSubject, focus, ask, clearFocus, fresh, startConversation, clearFresh }),
+    [subject, focus, ask, clearFocus, fresh, startConversation, clearFresh],
   );
   return <SubjectContext.Provider value={value}>{children}</SubjectContext.Provider>;
 };

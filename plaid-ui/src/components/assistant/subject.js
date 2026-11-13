@@ -61,6 +61,20 @@ export const useAssistantFocus = () => {
   return { focus: ctx?.focus ?? null, clearFocus: ctx?.clearFocus ?? noAsk };
 };
 
+// A screen's side of starting a conversation about itself ("Discuss with the
+// assistant", on a job's page): the panel opens on a NEW conversation, whose
+// first message is then asked from what the screen published. Outside a
+// provider it is a no-op.
+export const useStartConversation = () => useContext(SubjectContext)?.startConversation ?? noAsk;
+
+// The panel's side of the same: a request (a number, new for each press) or
+// null, and how to let go of it once it is taken. The shell opens the dock
+// when this turns non-null.
+export const useAssistantFresh = () => {
+  const ctx = useContext(SubjectContext);
+  return { fresh: ctx?.fresh ?? null, clearFresh: ctx?.clearFresh ?? noAsk };
+};
+
 // A screen's side. Publishes while mounted, clears on unmount.
 export const useAssistantSubject = ({
   projectId,

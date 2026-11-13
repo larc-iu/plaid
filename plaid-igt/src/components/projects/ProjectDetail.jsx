@@ -127,6 +127,8 @@ const useProjectTab = (projectId, project) => {
 const ProjectTabs = ({ projectId, project }) => {
   const { client } = useAuth();
   const { active, tabHref, canManage } = useProjectTab(projectId, project);
+  // A job's page tells the assistant panel about the job itself (JobPage).
+  const { onJob } = usePlace(projectId);
   const assistantAvailable = useAssistantAvailable(client, projectId, IGT_ASSISTANT.app);
   const at = `/projects/${projectId}`;
   const tabs = [
@@ -152,7 +154,15 @@ const ProjectTabs = ({ projectId, project }) => {
     // Entered at its first section. The path drives the panel.
     { value: 'settings', label: 'Settings', to: `${at}/general`, show: canManage },
   ];
-  return <ProjectTabStrip projectId={projectId} project={project} tabs={tabs} active={active} />;
+  return (
+    <ProjectTabStrip
+      projectId={projectId}
+      project={project}
+      tabs={tabs}
+      active={active}
+      screenSubject={onJob}
+    />
+  );
 };
 
 const ProjectBody = ({ project, projectId, client, documents, reload }) => {

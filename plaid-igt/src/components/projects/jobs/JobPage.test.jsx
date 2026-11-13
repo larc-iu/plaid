@@ -158,6 +158,8 @@ const clientOf = (...answers) => {
       get: vi.fn(async () => answers[Math.min(i++, answers.length - 1)]),
       cancel: vi.fn(async () => jobOf({ state: 'stopping', message: null })),
     },
+    // No assistant online (JobPage.discuss.test.jsx has one).
+    messages: { discoverServices: vi.fn(async () => []) },
   };
 };
 

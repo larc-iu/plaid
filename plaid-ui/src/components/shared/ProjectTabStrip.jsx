@@ -42,6 +42,9 @@ export const ProjectTabStrip = ({
   tabs,
   active: activeValue,
   defaultValue = tabs[0]?.value,
+  // The screen under the tabs publishes a subject of its own (plaid-igt's job
+  // page, which is a place the assistant reads), so the strip publishes none.
+  screenSubject = false,
 }) => {
   const location = useLocation();
   const navigate = useNavigate();
@@ -56,7 +59,7 @@ export const ProjectTabStrip = ({
   // the assistant has no tool for (the importer, the access list) would invite
   // it to claim it can act there.
   useAssistantSubject({
-    projectId,
+    projectId: screenSubject ? null : projectId,
     projectName: project?.name,
     canWrite: canEditProject(project, user),
     contributor: !!project && !!user && isReviewed(project, user.id, { isAdmin: !!user.isAdmin }),

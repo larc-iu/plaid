@@ -17,6 +17,7 @@ const mount = async ({
   startAt = null,
   open = null,
   projectId = 'here',
+  keepNew,
 } = {}) => {
   const picked = [];
   const nothing = vi.fn();
@@ -34,6 +35,7 @@ const mount = async ({
       resumeNewest,
       onNothingOpen: nothing,
       openConversationId: () => open,
+      keepNew,
     });
     return <span />;
   };
@@ -65,6 +67,19 @@ describe('useResumeConversation', () => {
     const { picked, nothing, unmount } = await mount({ rows: [row('3'), row('1')] });
     expect(picked).toEqual([]);
     expect(nothing).toHaveBeenCalled();
+    await unmount();
+  });
+
+  it('resumes nothing over a new conversation a screen asked for', async () => {
+    // "Discuss with the assistant" on a job's page opens the panel on a new
+    // conversation, and the panel's first read of the list answers after it.
+    const { picked, nothing, unmount } = await mount({
+      rows: [row('3'), row('1')],
+      resumeNewest: true,
+      keepNew: () => true,
+    });
+    expect(picked).toEqual([]);
+    expect(nothing).not.toHaveBeenCalled();
     await unmount();
   });
 

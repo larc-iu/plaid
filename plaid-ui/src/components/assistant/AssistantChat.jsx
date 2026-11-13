@@ -136,6 +136,10 @@ export const AssistantChat = ({
   // next message and then clears: nothing is attached that was not chosen.
   focus = null,
   onClearFocus,
+  // A new conversation a screen asked for (subject.js `useStartConversation`),
+  // as a number new for each press, and how to let go of it once taken.
+  fresh = null,
+  onFreshTaken,
   // Put the chat away. Rendered as the last thing in the header, where the
   // surface that can be put away asks for it.
   onHide = null,
@@ -434,7 +438,11 @@ export const AssistantChat = ({
     }
   }, [convId]);
 
+  // The project a screen asked for a new conversation in: the newest thread is
+  // not resumed over it (see the effect below `startNew`).
+  const freshFor = useRef(null);
   useResumeConversation({
+    keepNew: () => freshFor.current === projectIdRef.current,
     projectId,
     conversationId: convId,
     onConversationId: setConvId,
@@ -520,6 +528,18 @@ export const AssistantChat = ({
     if (convIdRef.current) setConvId(null);
     inputRef.current?.focus();
   };
+
+  // A screen asked for a new conversation about itself (a job's page): one is
+  // started, as the New conversation button starts one, and the request let
+  // go. The panel may have just opened for it, and its first read of the list
+  // would then resume the newest thread over this one, which `keepNew` stops.
+  useEffect(() => {
+    if (!fresh) return;
+    freshFor.current = projectIdRef.current;
+    startNew();
+    onFreshTaken?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fresh]);
 
   // --- turns -----------------------------------------------------------------
   // The thread keeps to its newest text only while the reader is at the end

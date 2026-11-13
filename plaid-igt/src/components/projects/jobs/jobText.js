@@ -70,6 +70,12 @@ export const durationText = (ms) => {
   return rest ? `${hours} h ${rest} min` : `${hours} h`;
 };
 
+// What the assistant panel calls a job, on the messages asked from its page
+// and in the conversation list: when it was started, by the reader's clock.
+// "Job of Nov 13, 2026, 3:10 AM".
+export const jobName = (job) =>
+  `Job of ${new Date(job.createdAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}`;
+
 // Where a job's page is.
 export const jobPath = (projectId, jobId) => `/projects/${projectId}/jobs/${jobId}`;
 export const jobsTabPath = (projectId) => `/projects/${projectId}?tab=jobs`;

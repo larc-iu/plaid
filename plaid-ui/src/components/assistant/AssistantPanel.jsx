@@ -25,6 +25,9 @@ export const AssistantPanel = ({
   subject = null,
   focus = null,
   onClearFocus,
+  // A new conversation a screen asked for (subject.js `useStartConversation`).
+  fresh = null,
+  onFreshTaken,
   onHide,
 }) => {
   const [convId, setConvId] = useState(null);
@@ -43,6 +46,8 @@ export const AssistantPanel = ({
         subject={subject}
         focus={focus}
         onClearFocus={onClearFocus}
+        fresh={fresh}
+        onFreshTaken={onFreshTaken}
         onHide={onHide}
         conversationId={convId}
         onConversationId={(id) => setConvId(id)}

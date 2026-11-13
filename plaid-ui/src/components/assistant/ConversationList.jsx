@@ -47,9 +47,10 @@ import { useConfirm } from '../shared/ConfirmProvider.jsx';
 // one on screen, for a list widened past this project.
 const ConversationRow = ({ m, opening, elsewhere = null }) => {
   // Where the conversation began. The field name is the kind, so a vocabulary
-  // thread reads its own: only the document was named here, and every thread
-  // started beside a vocabulary showed no subject at all.
-  const began = m.about?.documentName || m.about?.lexiconName;
+  // thread reads its own, and a job's page its own: only the document was
+  // named here, and every thread started beside a vocabulary showed no
+  // subject at all.
+  const began = m.about?.documentName || m.about?.lexiconName || m.about?.jobName;
   return (
     <>
       <div className="flex items-center gap-1.5">

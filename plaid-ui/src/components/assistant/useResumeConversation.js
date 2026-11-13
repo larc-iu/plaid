@@ -34,6 +34,9 @@ export const useResumeConversation = ({
   // The id to come back to within this page session, asked for as the surface
   // is left. Null while nothing has been sent.
   openConversationId,
+  // Whether the reader asked for a new conversation on this project (a
+  // screen's "Discuss with the assistant"): then nothing is resumed over it.
+  keepNew,
 }) => {
   const resumed = useRef(null);
   const idRef = useRef(conversationId);
@@ -44,6 +47,8 @@ export const useResumeConversation = ({
   nothingRef.current = onNothingOpen;
   const openIdRef = useRef(openConversationId);
   openIdRef.current = openConversationId;
+  const keepNewRef = useRef(keepNew);
+  keepNewRef.current = keepNew;
 
   useEffect(() => {
     const remembered = lastOpen.get(projectId);
@@ -53,6 +58,7 @@ export const useResumeConversation = ({
     reload().then((metas) => {
       if (cancelled || resumed.current === projectId) return;
       resumed.current = projectId;
+      if (keepNewRef.current?.()) return;
       // Only a conversation of THIS project, whose keys are the only ones this
       // screen reads, and only one that still exists (it may have been deleted
       // meanwhile).

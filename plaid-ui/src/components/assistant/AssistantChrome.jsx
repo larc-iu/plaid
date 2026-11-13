@@ -6,7 +6,7 @@ import { AssistantRail } from './AssistantRail.jsx';
 import { AssistantMark } from './PlaidMarks.jsx';
 import { ProjectPicker } from './ProjectPicker.jsx';
 import { readDockOpen, saveDockOpen } from './panelWidth.js';
-import { useAssistantFocus } from './subject.js';
+import { useAssistantFocus, useAssistantFresh } from './subject.js';
 import { useAssistantAvailable } from './useAssistantAvailable.js';
 import { useDockWidth } from './useDock.js';
 import { useSlide, SLIDE_CLASSES } from '../../hooks/useSlide.js';
@@ -120,6 +120,11 @@ export const AssistantChrome = ({
   useEffect(() => {
     if (focus) setDockOpen(true);
   }, [focus, setDockOpen]);
+  // A screen asked for a new conversation about itself: the panel opens on it.
+  const { fresh, clearFresh } = useAssistantFresh();
+  useEffect(() => {
+    if (fresh) setDockOpen(true);
+  }, [fresh, setDockOpen]);
 
   // Published for anything painted outside this tree that must not sit under
   // the dock. The toaster is mounted at the root, above the router, so it
@@ -179,6 +184,8 @@ export const AssistantChrome = ({
           subject={subject}
           focus={focus}
           onClearFocus={clearFocus}
+          fresh={fresh}
+          onFreshTaken={clearFresh}
           picker={
             pickerShown ? (
               <ProjectPicker

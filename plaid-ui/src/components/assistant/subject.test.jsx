@@ -4,8 +4,10 @@ import { AssistantSubjectProvider } from './AssistantSubject.jsx';
 import {
   useAskAssistant,
   useAssistantFocus,
+  useAssistantFresh,
   useAssistantScope,
   useAssistantSubject,
+  useStartConversation,
 } from './subject.js';
 
 // The screen publishes what it is showing and the shell's panel reads it. The
@@ -230,6 +232,55 @@ describe('useAskAssistant', () => {
   it('is a no-op outside a provider, so a screen need not know it has a panel', async () => {
     const { container, step, unmount } = await renderComponent(<Pointer detail={{ ref: 's1' }} />);
     await expect(step(() => press(container, 'Ask'))).resolves.not.toThrow();
+    await unmount();
+  });
+});
+
+describe('useStartConversation', () => {
+  // "Discuss with the assistant" on a screen: the panel's side sees a request,
+  // new for each press, until it lets go of it.
+  const Panel = ({ seen }) => {
+    const { fresh, clearFresh } = useAssistantFresh();
+    seen.push(fresh);
+    return (
+      <button type="button" data-testid="take" onClick={clearFresh}>
+        {fresh === null ? 'none' : String(fresh)}
+      </button>
+    );
+  };
+  const Discuss = () => {
+    const start = useStartConversation();
+    return (
+      <button type="button" data-testid="discuss" onClick={start}>
+        Discuss
+      </button>
+    );
+  };
+
+  it('hands the panel a request it lets go of, and a second press is a new one', async () => {
+    const seen = [];
+    const { container, step, unmount } = await renderComponent(
+      <AssistantSubjectProvider>
+        <Panel seen={seen} />
+        <Discuss />
+      </AssistantSubjectProvider>,
+    );
+    const take = () => container.querySelector('[data-testid="take"]');
+    const press = () => container.querySelector('[data-testid="discuss"]').click();
+    expect(take().textContent).toBe('none');
+    await step(press);
+    const first = take().textContent;
+    expect(first).not.toBe('none');
+    await step(() => take().click());
+    expect(take().textContent).toBe('none');
+    await step(press);
+    expect(take().textContent).not.toBe('none');
+    await unmount();
+  });
+
+  it('does nothing outside a provider', async () => {
+    const { container, step, unmount } = await renderComponent(<Discuss />);
+    await step(() => container.querySelector('[data-testid="discuss"]').click());
     await unmount();
   });
 });

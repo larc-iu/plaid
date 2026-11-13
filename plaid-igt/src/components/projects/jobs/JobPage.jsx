@@ -14,7 +14,13 @@ import { TYPE } from '@ui/lib/typeScale.js';
 import { countOf } from '@ui/lib/plural.js';
 import { fullTimestamp, timeAgo } from '@ui/lib/formatTime.js';
 import { projectNotFound } from '@ui/lib/errors.js';
-import { canStopJob } from '@ui/domain/permissions.js';
+import { canEditProject, canStopJob } from '@ui/domain/permissions.js';
+import { isReviewed } from '@larc-iu/plaid-client';
+import { AssistantMark } from '@ui/components/assistant/PlaidMarks.jsx';
+import { useAssistantSubject, useStartConversation } from '@ui/components/assistant/subject.js';
+import { useAssistantAvailable } from '@ui/components/assistant/useAssistantAvailable.js';
+import { useWideEnoughToDock } from '@ui/components/assistant/useDock.js';
+import { IGT_ASSISTANT } from '../assistant/adapter.js';
 import {
   JOB_POLL_MS,
   isJobActive,
@@ -26,12 +32,16 @@ import {
   jobStoppable,
 } from '@ui/domain/jobs.js';
 import { JobReport } from './JobReport.jsx';
-import { durationText, jobsTabPath, tasksText } from './jobText.js';
+import { durationText, jobName, jobsTabPath, tasksText } from './jobText.js';
 
 /**
  * A job's own page, `/projects/:projectId/jobs/:jobId`: its state, each of its
  * documents, Stop for whoever may, and once it has ended its report. Read
  * again every JOB_POLL_MS while the job is active, and once otherwise.
+ *
+ * It is a place the assistant reads, as a document is: the panel's turns are
+ * asked from the job, and the service gives the model the job's summary. An
+ * ended job with a report offers a new conversation about it.
  */
 export const JobPage = ({ project, projectId, jobId, client }) => {
   const { user } = useAuth();
@@ -89,6 +99,18 @@ export const JobPage = ({ project, projectId, jobId, client }) => {
     }
   }, [client, confirm, jobId]);
 
+  // The assistant panel is about this job while its page is open, and a new
+  // conversation about it opens from here once it has ended.
+  useAssistantSubject({
+    projectId,
+    projectName: project?.name,
+    kind: 'job',
+    id: jobId,
+    name: job ? jobName(job) : null,
+    canWrite: canEditProject(project, user),
+    contributor: !!user && isReviewed(project, user.id, { isAdmin: !!user.isAdmin }),
+  });
+
   const back = (
     <Link
       to={jobsTabPath(projectId)}
@@ -113,6 +135,7 @@ export const JobPage = ({ project, projectId, jobId, client }) => {
   if (!job) return <Loading />;
 
   const stoppable = jobStoppable(job) && canStopJob(job, project, user);
+  const discussable = !isJobActive(job) && !!job.report;
 
   return (
     <div>
@@ -120,10 +143,15 @@ export const JobPage = ({ project, projectId, jobId, client }) => {
       <SectionHeader
         title="Job"
         actions={
-          stoppable && (
-            <Button variant="outline" onClick={stop} disabled={stopping}>
-              Stop
-            </Button>
+          (stoppable || discussable) && (
+            <div className="flex gap-2">
+              {discussable && <Discuss client={client} projectId={projectId} />}
+              {stoppable && (
+                <Button variant="outline" onClick={stop} disabled={stopping}>
+                  Stop
+                </Button>
+              )}
+            </div>
           )
         }
       />
@@ -135,6 +163,21 @@ export const JobPage = ({ project, projectId, jobId, client }) => {
         <JobReport report={job.report} projectId={projectId} vocabs={project.vocabs || []} />
       )}
     </div>
+  );
+};
+
+// A new conversation about the job, in the assistant panel, where an assistant
+// is online and the window has room for the panel (it opens beside the page).
+const Discuss = ({ client, projectId }) => {
+  const available = useAssistantAvailable(client, projectId, IGT_ASSISTANT.app);
+  const wide = useWideEnoughToDock();
+  const discuss = useStartConversation();
+  if (available !== true || !wide) return null;
+  return (
+    <Button variant="outline" className="gap-1.5" onClick={discuss}>
+      <AssistantMark className="h-4 w-4" />
+      Discuss with the assistant
+    </Button>
   );
 };
 
