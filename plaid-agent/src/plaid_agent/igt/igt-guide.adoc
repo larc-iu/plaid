@@ -955,7 +955,7 @@ The job stops after the sentences in hand, and what it wrote stays.
 
 **Discuss with the assistant**, on the page of a job that has ended, opens the assistant panel on a new conversation about that job.
 The assistant reads the job's report and tells you what the job did.
-A job records what it did and not why, and the assistant says so when asked why.
+A job's record holds what it did and the notes it left, in the model's own words, and nothing more of why.
 The report is as the job ended, so the assistant reads the documents as they are now before it plans a change, and you approve the change as any other plan.
 This is how a job's proposed changes are made: ask the assistant for the ones you want.
 From any page, the assistant can also list the project's jobs and read their reports.

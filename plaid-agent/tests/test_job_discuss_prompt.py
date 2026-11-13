@@ -27,9 +27,28 @@ def test_the_igt_prompt_says_how_to_speak_of_a_job_once():
     assert system.count(LEAD) == 1
     para = _paragraph(system)
     for said in ('read_job', 'tell the user what it did from the record',
-                 'say plainly that jobs keep no record of why', 'as the job ended',
-                 'read the documents as they are now before you plan a change from it'):
+                 "holds what it did and its notes, in the model's own words, and nothing more of why",
+                 'as the job ended', 'read the documents as they are now before you plan a change from it'):
         assert said in para, said
+
+
+def test_the_record_of_a_job_is_said_the_same_way_everywhere():
+    """REV-JG-10 and the owner's "No reasons": a job records no reason per
+    decision, and its pieces leave notes in the model's own words. The chat
+    prompt, read_job's help and the guide say so, and none says that a job
+    keeps no record of why (its notes may say why)."""
+    from pathlib import Path
+    from plaid_agent.igt import jobread
+    guide = (Path(__file__).resolve().parents[2] / 'plaid-igt' / 'docs' / 'igt-guide.adoc').read_text()
+    for name, text in (('the chat prompt', igt_prompt.SYSTEM), ('read_job', jobread._help()), ('the guide', guide)):
+        flat = ' '.join(text.split())
+        assert "in the model's own words, and nothing more of why" in flat, name
+        assert 'no record of why' not in flat and 'never why' not in flat and 'and not why' not in flat, name
+
+
+def test_the_chat_prompt_did_not_grow():
+    """The paragraph was 53 words before REV-JG-10."""
+    assert len(_paragraph(igt_prompt.SYSTEM)[len(LEAD):].split()) <= 53
 
 
 def test_it_is_two_short_positive_sentences():
