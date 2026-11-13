@@ -14,7 +14,12 @@ def _change(ctx, skip_doc=None, also_eye=False):
 
 
 def right(ctx):
-    # The lexicon's PREP sense renamed to match, which the task allows.
+    _change(ctx)
+
+
+def wrong_lexicon_too(ctx):
+    # The texts right, and the lexicon's PREP sense renamed beside them, which
+    # the user did not ask for (glm53-stretch-3 reps 2 and 3).
     _change(ctx)
     L.patch_entry(ctx, 'mz|PREP', {'gloss': 'LOC'})
 

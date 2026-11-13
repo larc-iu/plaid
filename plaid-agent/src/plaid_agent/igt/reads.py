@@ -189,6 +189,7 @@ def t_search(ws: Workspace, pattern: str = '', where: str = 'baseline', document
 
     if where_l == 'lexicon':
         for v in ws.project.vocabs:
+            view = ws.view(v)
             for it in ws.lexicon(v):
                 line = entry_line(it)
                 # The line, or its headword or one field's value on its own, so
@@ -199,7 +200,11 @@ def t_search(ws: Workspace, pattern: str = '', where: str = 'baseline', document
                 if match(line) or any(match(part) for part in parts):
                     total += 1
                     if len(out) < limit:
-                        out.append(f'{line} ({v["name"]})')
+                        # Printed with the view, so a sense says so ("sense 1.1
+                        # of "tq""): a bare "tq | gloss=RL" was taken for the
+                        # headword (bench glm53-stretch-3,
+                        # igt-migrate-glosses-hard). Matched as before.
+                        out.append(f'{entry_line(it, view)} ({v["name"]})')
         return _finish(ws, out, total, limit, 'lexicon entries', 'entry')
 
     field = None

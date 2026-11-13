@@ -22,13 +22,24 @@ def _change(ctx, new_of, skip_doc=None):
 
 
 def right(ctx):
-    # With the lexicon glosses renamed the same way, which the task allows
-    # (without them it passes too).
+    _change(ctx, lambda x: relabel(x, MAP))
+
+
+def wrong_lexicon_too(ctx):
+    # The texts right, and every lexicon gloss renamed the same way, which the
+    # user did not ask for: "the glosses of all five texts".
     _change(ctx, lambda x: relabel(x, MAP))
     for it in L.vocab_items(ctx.client, ctx.project['vocabs'][0]['id']):
         g = (it.get('metadata') or {}).get('gloss')
         if isinstance(g, str) and relabel(g, MAP) != g:
             L.patch_entry(ctx, L.label(it), {'gloss': relabel(g, MAP)})
+
+
+def wrong_headword_glossed(ctx):
+    # The texts right, and a gloss set on the headword tq, which had none, as
+    # glm53-stretch-3 reps 1 and 2 did meaning its RL sense.
+    _change(ctx, lambda x: relabel(x, MAP))
+    L.patch_entry(ctx, 'tq|', {'gloss': 'REAL'})
 
 
 def wrong_substring_3aug(ctx):

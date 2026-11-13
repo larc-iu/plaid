@@ -24,7 +24,12 @@ def _change(ctx, rules=RULES, skip_doc=None, extra=None):
 
 
 def right(ctx):
-    # With the lexicon senses renamed too, which the task allows.
+    _change(ctx)
+
+
+def wrong_lexicon_too(ctx):
+    # The texts right, and the four lexicon senses renamed beside them, which
+    # the user did not ask for (glm53-stretch-3 reps 1 and 3).
     _change(ctx)
     for (f, g), new in RULES.items():
         L.patch_entry(ctx, f'{f}|{g}', {'gloss': new})

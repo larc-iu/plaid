@@ -154,7 +154,7 @@ List lexicon entries (form, morph type, and their fields such as gloss), optiona
 
 ### set_field
 
-PLAN: set a field's value on words, morphemes, or sentences (the references must match the field's scope). Empty value clears it. Several fields at once: values={field: value}, each on the refs of its scope (refs ["s3.w1", "s3.w1.m1"] for a word and its morpheme). Nothing is written until the user approves. One value on every occurrence of a form, in one call: set_field_for_form. A substitution inside every value of a field: replace_in_field.
+PLAN: set a field's value on words, morphemes, or sentences (the references must match the field's scope). Empty value clears it. Several fields at once: values={field: value}, each on the refs of its scope (refs ["s3.w1", "s3.w1.m1"] for a word and its morpheme). One value on every occurrence of a form, in one call: set_field_for_form. A substitution inside every value of a field: replace_in_field.
 
 - `document` (string, required): Document id or exact name (see project_overview).
 - `refs` (array of string, required): Positional references, e.g. ["s3.w2", "s3.w4"]. Words are sN.wN, morphemes sN.wN.mN, sentences sN.
@@ -175,7 +175,7 @@ PLAN: set a field value on every occurrence of a form: a morpheme form for a mor
 
 ### replace_in_field
 
-PLAN: substitute inside every value of a field, project-wide or in one document: substring by default, whole=true for exact values, regex=true for a pattern with groups. Case counts unless case_sensitive=false. field="morpheme form" rewrites stored morpheme forms instead of a field. One call plans every change; the result lists every distinct change it makes (old value → new value), check them before you describe the plan.
+PLAN: substitute inside every value of a field, project-wide or in one document: substring by default, whole=true for exact values, regex=true for a pattern with groups. Case counts unless case_sensitive=false. field="morpheme form" rewrites stored morpheme forms instead of a field. The result lists every distinct change (old value → new value): check them before you describe the plan. Texts only: offer a lexicon entry with the old value in your reply.
 
 - `field` (string, required)
 - `pattern` (string, required)

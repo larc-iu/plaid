@@ -157,7 +157,7 @@ TOOLS = [
     _fn('set_field',
         'PLAN: set a field\'s value on words, morphemes, or sentences (the references must match the field\'s '
         'scope). Empty value clears it. Several fields at once: values={field: value}, each on the refs of its scope '
-        '(refs ["s3.w1", "s3.w1.m1"] for a word and its morpheme). Nothing is written until the user approves. '
+        '(refs ["s3.w1", "s3.w1.m1"] for a word and its morpheme). '
         'One value on every occurrence of a form, in one call: set_field_for_form. A substitution inside every '
         'value of a field: replace_in_field.',
         {'document': _DOC, 'refs': _REFS, 'field': {'type': 'string'}, 'value': {'type': 'string'},
@@ -423,9 +423,9 @@ TOOLS += [
     _fn('replace_in_field',
         'PLAN: substitute inside every value of a field, project-wide or in one document: substring by default, '
         'whole=true for exact values, regex=true for a pattern with groups. Case counts unless '
-        'case_sensitive=false. field="morpheme form" rewrites stored morpheme forms instead of a field. One call '
-        'plans every change; the result lists every distinct change it makes (old value → new value), check them '
-        'before you describe the plan.',
+        'case_sensitive=false. field="morpheme form" rewrites stored morpheme forms instead of a field. The result '
+        'lists every distinct change (old value → new value): check them before you describe the plan. Texts '
+        'only: offer a lexicon entry with the old value in your reply.',
         {'field': {'type': 'string'}, 'pattern': {'type': 'string'}, 'replacement': _REGEX_REPLACEMENT,
          'regex': {'type': 'boolean'}, 'case_sensitive': {'type': 'boolean', 'description': 'On by default: "PROS" does not find "pros". false to ignore case.'}, 'whole': {'type': 'boolean', 'description': 'Match the whole value only.'}, 'document': _DOC,
          'where': _WHERE},

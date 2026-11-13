@@ -15,9 +15,8 @@ check: igt_changes
 args:
   rules:
     - gloss: {form: mz, from: PREP, to: LOC}
-  # Renaming the PREP sense of mz in the lexicon to match is no fault (glm-5.2
-  # did it in the first run, and a linguist changing a convention may well want it).
-  optional:
-    "LEX|mz|PREP:gloss": LOC
+  # The user names the texts ("Change all of them, in every text"), so the
+  # lexicon's PREP sense of mz renamed beside them is collateral: PLAN WHAT WAS
+  # ASKED offers it (BENCH-FIX, 2026-11-13, after glm53-stretch-3 reps 2 and 3).
   # The user states a convention and asks for no guideline, so one drafted is
   # collateral (the owner's ruling of 2026-11-12: drafted only when asked).

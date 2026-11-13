@@ -28,9 +28,6 @@ args:
     - gloss: {form: tq, from: RL, to: REAL}
     - gloss: {form: pe, from: COS, to: CS}
     - gloss: {form: nz, from: NMLZ1, to: NMLZ}
-  # Renaming the matching lexicon senses too is no fault (as in igt-gloss-rename).
-  optional:
-    "LEX|kx|SUBR:gloss": SBRD
-    "LEX|tq|RL:gloss": REAL
-    "LEX|pe|COS:gloss": CS
-    "LEX|nz|NMLZ1:gloss": NMLZ
+  # The user names the texts ("Across all five texts", "Only those uses"), so
+  # the matching lexicon senses renamed beside them are collateral (BENCH-FIX,
+  # 2026-11-13, after glm53-stretch-3 reps 1 and 3).

@@ -949,3 +949,34 @@ def test_a_headword_counts_the_links_on_its_senses():
     # A sense and an entry with no senses read as before.
     assert 'Linked from 0 words and 1 morpheme.' in call_tool(w, 'lexicon_entry', {'entry_form': '-di#1.1'})
     assert 'Linked from 1 word and 0 morphemes.' in call_tool(w, 'lexicon_entry', {'entry_form': 'Ali'})
+
+
+# ---- what a lexicon edit says back (bench glm53-stretch-3) --------------------
+
+def test_set_entry_field_says_which_entry_it_changes_and_from_what():
+    """igt-migrate-glosses-hard reps 1 and 2: set_entry_field on "tq" set the
+    gloss of the headword, which had none, where the model meant the sense
+    glossed RL, and was told only "Planned 1 change"."""
+    w = dict_ws()
+    out = call_tool(w, 'set_entry_field', {'entry_form': 'kwatha#1.1', 'field': 'gloss', 'value': 'stew'})
+    assert out.startswith('Planned 1 change, entry "kwatha#1.1": gloss "boil" → "stew" ('), out
+    out = call_tool(w, 'set_entry_field', {'entry_form': 'phika', 'field': 'pos', 'value': 'v'})
+    assert out.startswith('Planned 1 change, entry "phika": pos = "v" ('), out
+
+
+def test_a_lexicon_search_names_a_sense_as_one():
+    """The same runs: search where=lexicon printed the sense glossed RL as
+    "tq | gloss=RL", the way it prints a headword."""
+    out = call_tool(dict_ws(), 'search', {'pattern': 'boil', 'where': 'lexicon'})
+    assert 'kwatha | sense 1.1 of "kwatha" | gloss=boil' in out, out
+
+
+def test_replace_in_field_offers_a_lexicon_entry_rather_than_changing_it():
+    """bench glm53-stretch-3: in 6 runs (igt-bulk-abbrev-hard, igt-gloss-rename,
+    igt-migrate-glosses-hard) asked to rename glosses in the texts, the model
+    staged replace_in_field and, beside it, set_entry_field on every lexicon
+    entry holding the old value, "so the lexicon matches the corpus"."""
+    from plaid_agent.igt.toolkit import TOOLS
+    desc = next(t['function']['description'] for t in TOOLS if t['function']['name'] == 'replace_in_field')
+    assert 'Texts only: offer a lexicon entry with the old value in your reply.' in desc
+    assert ';' not in desc

@@ -19,8 +19,9 @@ args:
                 and morphemes, whose labels (runs of letters and digits, so
                 RL.3AUG is RL and 3AUG) include an OLD gets each OLD label
                 replaced by its NEW, all at once (relabel()). A label that
-                only contains an OLD (3AUGIS for 3AUG) is not one. Renaming a
-                lexicon gloss the same way is no fault.
+                only contains an OLD (3AUGIS for 3AUG) is not one. A lexicon
+                gloss renamed the same way is collateral unless the rule
+                says lexicon: true (the user asked for the lexicon too).
             {link_by_gloss: {form, docs?, sentences?, only_linked?}} every
                 morpheme of that form links to the entry "form|<its gloss>"
                 (form lowercased); only_linked: only those linked at the start
@@ -74,7 +75,7 @@ def relabel(value, mapping):
 def _lex_relabels(args, lex_before):
     out = {}
     for r in args.get('rules') or []:
-        if 'relabel' not in r:
+        if 'relabel' not in r or not r['relabel'].get('lexicon'):
             continue
         for k, v in lex_before.items():
             if k.endswith(':gloss') and relabel(v, r['relabel']['map']) != v:

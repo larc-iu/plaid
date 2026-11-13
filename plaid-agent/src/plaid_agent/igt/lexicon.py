@@ -229,7 +229,10 @@ def t_set_entry_field(ws: Workspace, field: str, value: str, entry_form: Optiona
         ws.add_op({'kind': 'set_entry_field', 'item_id': target['id'], 'field': f['name'],
                    'value': new_value if new_value is not None else '',
                    **labelled(f'entry {where}', f'{f["name"]} {shown}')})
-    return ws.planned_note(1)
+    # Which entry and from what: told only "Planned 1 change", a model that
+    # meant the sense of "tq" glossed RL set a gloss on its headword, which
+    # had none (bench glm53-stretch-3, igt-migrate-glosses-hard).
+    return ws.planned_note(1, f'1 change, entry {where}: {f["name"]} {shown}')
 
 
 def _meta_patch(before: dict, after: dict) -> dict:
