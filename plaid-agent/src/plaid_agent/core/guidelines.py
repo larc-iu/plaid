@@ -173,7 +173,7 @@ def _to_inline(guidelines: Sequence[Guideline], budget: int) -> List[Guideline]:
 # asks for one. One drafted unasked was the most frequent cause of a failed
 # bench run (FABLE-REVIEW 2026-11-12), riding on a card of data changes.
 # Told only to "offer in your reply", 2 of 3 runs offered nothing (bench
-# glm53-stretch-3, igt-convention-offer): the reply's own words do more.
+# glm53-stretch-3, the convention-offer task): the reply's own words do more.
 OFFER = ('Write or change a guideline only when the user asks you to. When they state a convention for the whole '
          'project that is not written down here, stage nothing for it and end your reply with "Shall I add this '
          'convention to the guidelines?"')
