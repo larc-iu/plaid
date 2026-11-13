@@ -298,7 +298,7 @@ const valueDiff = (b = BLANK, a = BLANK) => ({
 const piecesDiff = (key, bMorphs, aMorphs) => {
   const pairs = mergeById(bMorphs || [], aMorphs || []);
   let prev = null;
-  return pairs.map((p) => {
+  const pieces = pairs.map((p) => {
     const m = p.after ?? p.before;
     const was = p.before?.values[key];
     const d = valueDiff(p.after || !was ? was : { ...was, stored: true }, p.after?.values[key]);
@@ -311,6 +311,11 @@ const piecesDiff = (key, bMorphs, aMorphs) => {
     prev = piece;
     return { id: p.id, joiner, ...d };
   });
+  // A word whose morphemes are all blank shows nothing, as the grid's joined
+  // line does, not a run of joiners.
+  return pieces.some((x) => x.before || x.after)
+    ? pieces
+    : pieces.map((x) => ({ ...x, joiner: '' }));
 };
 
 const PIECE_KINDS = new Set(['morphemes', 'morph', 'entry']);

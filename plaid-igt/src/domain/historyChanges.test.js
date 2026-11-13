@@ -417,6 +417,18 @@ describe('sentenceChanges', () => {
         ['e', 'machine', true, false],
       ]);
       expect(s.replaced).toBe(0);
+      // A word whose morphemes have no entry on either side shows no joiner.
+      expect(line(s, 'entry').cells[1].pieces.map((x) => x.joiner)).toEqual(['']);
+    });
+
+    it('shows no joiner in a word whose morphemes are all blank', () => {
+      const made = span('sp2', 'msl-0', ['m-2'], 'cat', MACHINE);
+      const raw = docAfter({ morphemes, spans: { 'msl-0': [made] } });
+      const { sentences } = read(raw, [{ kind: 'span', id: 'sp2', layer: 'msl-0', after: made }]);
+      expect(line(sentences[0], 'morph:Gloss').cells[0].pieces.map((x) => x.joiner)).toEqual([
+        '',
+        '',
+      ]);
     });
 
     it('counts a person’s morpheme a machine segmentation took away', () => {
