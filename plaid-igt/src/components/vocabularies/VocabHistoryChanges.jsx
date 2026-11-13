@@ -9,7 +9,7 @@ import { documentViewSearch, historyHref } from '@ui/hooks/useHistoryParam.js';
 import { entryChanges, linkCounts } from '@/domain/historyChanges.js';
 import { APP_ROUTES } from '@/appRoutes.js';
 import { EntryChangeList } from '../documents/history/EntryChangeList.jsx';
-import { CHANGE_ROWS_CEILING, useChangeRows } from '../documents/history/useChangeRows.js';
+import { useChangeRows } from '../documents/history/useChangeRows.js';
 
 // How many documents the links list names, of an entry that moved links in
 // more (a merge of a common entry reaches every document of a corpus).
@@ -94,7 +94,7 @@ export const VocabHistoryChanges = ({ client, vocabularyId, entry, past }) => {
     return (
       <div className="flex flex-col items-start gap-2" data-testid="history-changes">
         <p className="text-sm" data-testid="change-count">
-          More than {CHANGE_ROWS_CEILING.toLocaleString()} changes.
+          Too many changes to show here.
         </p>
         <Button asChild variant="outline" size="sm">
           <Link to={{ search: documentViewSearch(search) }}>Show vocabulary</Link>
@@ -138,7 +138,7 @@ export const VocabHistoryChanges = ({ client, vocabularyId, entry, past }) => {
         <section>
           <h3 className={`${TYPE.card} mb-2`}>Links</h3>
           <p className="text-sm text-muted-foreground" data-testid="link-counts">
-            Not counted: more than {CHANGE_ROWS_CEILING.toLocaleString()} changes in documents.
+            Too many changes in documents to count.
           </p>
         </section>
       )}

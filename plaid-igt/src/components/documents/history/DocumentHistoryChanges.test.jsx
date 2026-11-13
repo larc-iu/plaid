@@ -596,10 +596,7 @@ describe('DocumentHistoryChanges', () => {
     expect(count()).toMatch(/, 0 replaced a person’s value$/);
   });
 
-  it('says how many rows an entry past the ceiling has, and links the document as of it', async () => {
-    const page = Array.from({ length: CHANGE_ROWS_PAGE }, (_, i) => glossRow(i));
-    const pages = Array.from({ length: CHANGE_ROWS_CEILING / CHANGE_ROWS_PAGE + 1 }, () => page);
-    const client = clientOf({ document: pages });
+  const mountAt = async (client) => {
     view = await renderComponent(
       <MemoryRouter initialEntries={['/projects/proj-1/documents/doc-1?tab=analyze&history=g1']}>
         <DocumentHistoryChanges
@@ -614,15 +611,46 @@ describe('DocumentHistoryChanges', () => {
       </MemoryRouter>,
     );
     await view.step(async () => {
-      for (let i = 0; i < 60; i++) await Promise.resolve();
+      for (let i = 0; i < 70; i++) await Promise.resolve();
     });
-    expect(client.audit.changesPage).toHaveBeenCalledTimes(CHANGE_ROWS_CEILING / CHANGE_ROWS_PAGE);
-    expect(count()).toBe('More than 20,000 changes.');
+  };
+  const fullPage = Array.from({ length: CHANGE_ROWS_PAGE }, (_, i) => glossRow(i));
+  const fullPages = CHANGE_ROWS_CEILING / CHANGE_ROWS_PAGE;
+
+  // REV-HD2-2 and -3: the ceiling is on rows read, and only a row beyond it
+  // reaches it.
+  it('says there are too many changes to show when a row lies beyond the ceiling', async () => {
+    const client = clientOf({ document: Array.from({ length: fullPages + 1 }, () => fullPage) });
+    await mountAt(client);
+    expect(client.audit.changesPage).toHaveBeenCalledTimes(fullPages + 1);
+    expect(count()).toBe('Too many changes to show here.');
     expect(sentences()).toHaveLength(0);
     const link = all(view.container, 'a').find((a) => a.textContent === 'Show document');
     expect(link.getAttribute('href')).toBe(
       '/projects/proj-1/documents/doc-1?tab=analyze&history=g1&historyView=document',
     );
+  });
+
+  it('draws an entry of exactly the ceiling, its last full page followed by none', async () => {
+    const pages = [...Array.from({ length: fullPages }, () => fullPage), []];
+    const client = clientOf({ document: pages });
+    await mountAt(client);
+    expect(client.audit.changesPage).toHaveBeenCalledTimes(fullPages + 1);
+    expect(text()).not.toContain('Too many changes');
+    expect(count()).toMatch(/ replaced a person’s value$/);
+  });
+
+  // REV-HD2-4
+  it('says a refusal after rows were read, never "No changes to show."', async () => {
+    const first = Array.from({ length: 3 }, (_, i) => glossRow(i));
+    const changesPage = vi.fn(async (entryId, { cursor }) => {
+      if (cursor) throw Object.assign(new Error('Forbidden'), { status: 403 });
+      return { entries: first, nextCursor: '1' };
+    });
+    await mount(after(), { audit: { changesPage } });
+    expect(view.container.querySelector('[data-tone="error"]')).not.toBeNull();
+    expect(text()).not.toContain('No changes to show.');
+    expect(count()).toBeUndefined();
   });
 
   it('shows what a reader may read when a vocabulary’s rows are refused', async () => {

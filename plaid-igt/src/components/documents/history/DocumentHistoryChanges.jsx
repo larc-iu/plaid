@@ -12,7 +12,7 @@ import { SentenceChange } from './SentenceChange.jsx';
 import { EntryChangeList } from './EntryChangeList.jsx';
 import { ChangeValue } from './ChangeValue.jsx';
 import { countLine } from './changeMarks.js';
-import { CHANGE_ROWS_CEILING, useChangeRows } from './useChangeRows.js';
+import { useChangeRows } from './useChangeRows.js';
 
 // How many sentences are drawn at once. Every row is read before any is
 // drawn, and drawing is what a long entry pages.
@@ -31,7 +31,7 @@ const SENTENCES_SHOWN = 50;
  * them can hold a text edit's shifted tokens without its text. The sentences
  * are placed in the document as of the entry's end (`historySnapshot`), which
  * the shell reads for the entry anyway, and drawn SENTENCES_SHOWN at a time.
- * An entry past CHANGE_ROWS_CEILING rows is not drawn: it says so, with a link
+ * An entry with a row beyond CHANGE_ROWS_CEILING is not drawn: it says so, with a link
  * to the document as of it.
  */
 export const DocumentHistoryChanges = ({ context }) => {
@@ -103,7 +103,7 @@ export const DocumentHistoryChanges = ({ context }) => {
     return (
       <div className="flex flex-col items-start gap-2 pt-2" data-testid="history-changes">
         <p className="text-sm" data-testid="change-count">
-          More than {CHANGE_ROWS_CEILING.toLocaleString()} changes.
+          Too many changes to show here.
         </p>
         <Button asChild variant="outline" size="sm">
           <Link to={{ search: documentViewSearch(search) }}>Show document</Link>

@@ -391,7 +391,7 @@ describe('the vocabulary History', () => {
     );
     expect(all(document.body, '[data-entry]').map((e) => e.dataset.entry)).toEqual(['a', 'b']);
     expect(document.body.querySelector('[data-testid="link-counts"]').textContent).toBe(
-      'Not counted: more than 20,000 changes in documents.',
+      'Too many changes in documents to count.',
     );
     await view.unmount();
   });
@@ -415,7 +415,7 @@ describe('the vocabulary History', () => {
     const view = await opened(changesPage);
     for (let i = 0; i < 10; i++) await settle(view);
     expect(document.body.querySelector('[data-testid="change-count"]').textContent).toBe(
-      'More than 20,000 changes.',
+      'Too many changes to show here.',
     );
     expect(all(document.body, '[data-entry]')).toHaveLength(0);
     const link = all(document.body, 'a').find((a) => a.textContent === 'Show vocabulary');

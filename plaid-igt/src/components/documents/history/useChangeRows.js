@@ -22,11 +22,12 @@ const start = () => ({ rows: {}, over: {}, errors: {}, reading: true, read: 0 })
  * or a vocabulary), read page after page to the end before anything is
  * handed over. `read` counts the rows read so far, for the wait.
  *
- * A stream past CHANGE_ROWS_CEILING rows is not read further: `over[key]`,
- * and no rows for it. A stream the reader may not read (403) holds no rows:
- * core leaves out what a reader cannot read, row by row, and a stream wholly
- * so is the same thing. Any other failure is the stream's `errors[key]`, and
- * no rows for it.
+ * A stream with a row beyond CHANGE_ROWS_CEILING is not read further:
+ * `over[key]`, and no rows for it. A stream the reader may not read (403 on
+ * its first page) holds no rows: core leaves out what a reader cannot read,
+ * row by row, and a stream wholly so is the same thing. Any other failure, a
+ * 403 after the first page too, is the stream's `errors[key]`, and no rows
+ * for it.
  *
  * Returns `{rows: {[key]: rows}, over, errors, reading, read}`. A new entry,
  * or new streams, start from nothing, and a read for an entry left meanwhile
@@ -58,7 +59,10 @@ export function useChangeRows(client, entryId, streams) {
             });
           } catch (err) {
             if (!live) return;
-            if (statusOf(err) !== 403) {
+            // A stream refused from its first page holds nothing this reader
+            // may read. Refused or failed after rows were read, it is a
+            // failure: what was read is part of the rows.
+            if (statusOf(err) !== 403 || cursor) {
               errors[s.key] = humanizeError(err, 'Failed to read the changes.');
             }
             mine = [];
@@ -69,7 +73,9 @@ export function useChangeRows(client, entryId, streams) {
           for (const r of entries) mine.push(r);
           count += entries.length;
           cursor = page?.nextCursor ?? null;
-          if (cursor && mine.length >= CHANGE_ROWS_CEILING) {
+          // Past the ceiling only on a row beyond it: core gives a cursor
+          // after any full page, a last one too.
+          if (mine.length > CHANGE_ROWS_CEILING) {
             over[s.key] = true;
             mine = [];
             break;
