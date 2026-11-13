@@ -15,7 +15,7 @@ import re
 
 import pytest
 
-from job_fixtures import JobClient, Model, call, document, reply, runner, start, use
+from job_fixtures import JobClient, Model, call, document, recorded, reply, runner, start, use
 
 from plaid_client import PlaidAPIError
 from plaid_agent.core.limits import JOB_ANALYSIS_MAX_CHARS, JOB_SENTENCE_MAX_WORDS
@@ -448,3 +448,25 @@ def test_a_split_after_a_write_that_sent_nothing_leaves_both_halves_targets(monk
     seen = _written(monkeypatch)
     assert r.document('d1') == 'done'
     assert seen == [['d1-s1w1', 'd1-s1w2'], ['d1-s1w3']], seen
+
+
+# --- harmonize after a split -----------------------------------------------------------------
+
+def test_harmonize_leaves_the_jobs_word_in_a_split_off_half_unchecked(monkeypatch):
+    """The job's record of a sentence keeps each word's key under the
+    sentence's id. After a split, a word of the job's in the right half has
+    no record under its new sentence's id: harmonize cannot vouch for it,
+    so it leaves it and lists it "Not checked", never rewrites it."""
+    def w(gloss):
+        return ('ka', [('ka', gloss)], J)
+    client = JobClient({'d1': document('d1', 'Story', [{'words': [w('go'), w('go'), w('come')]}])})
+    job = start(client, ['gloss'], id=J)
+    job.update_row('d1', state='done')
+    recorded(job)
+    client._holder('d1')['documents']['d1'] = reshaped(
+        document('d1', 'Story', [{'words': [w('go'), w('go')]}, {'words': [w('come')]}], version=3),
+        {'d1-s2w1': 'd1-s1w3', 'd1-s2': 'd1-sNEW'})
+    seen = _written(monkeypatch)
+    out = runner(job).harmonize(job)
+    assert not seen and out['changed'] == []
+    assert out['left'] == [{'form': 'ka', 'reason': 'unvouched', 'analyses': [{'analysis': 'ka ‘come’', 'count': 1}]}]
