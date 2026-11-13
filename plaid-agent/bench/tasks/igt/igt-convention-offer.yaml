@@ -17,5 +17,7 @@ check: igt_changes
 args:
   rules:
     - gloss: {form: hl, from: null, to: CN}
-  # The reply offers to write the convention down.
-  match: ['guideline']
+  # The reply offers to write the convention down: a sentence naming the
+  # guidelines that asks, or says "if you". A bare mention ("nothing staged for
+  # the guidelines") is no offer (BENCH-FIX, 2026-11-13).
+  match: ['guidelines?\b[^.!?\n]*(?:\?|\bif you\b)|\bif you\b[^.!?\n]*guideline']

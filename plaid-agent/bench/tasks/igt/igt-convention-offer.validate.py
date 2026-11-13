@@ -35,5 +35,18 @@ def wrong_no_offer(ctx):
     return _said('All 49 hl morphemes are glossed CN: the plan holds 49 changes.')
 
 
+def right_asks(ctx):
+    # rep 2 of glm53-stretch-3, and the prompt's own words since BENCH-FIX.
+    _fill(ctx)
+    return _said('The plan holds 49 changes. Want me to add it to the project guidelines? I haven\'t staged '
+                 'anything for that.')
+
+
+def wrong_mentions_without_offering(ctx):
+    _fill(ctx)
+    return _said('All 49 hl morphemes are glossed CN: the plan holds 49 changes. Nothing is staged for the '
+                 'guidelines.')
+
+
 def wrong_nothing(ctx):
     return h.no_plan()
