@@ -24,7 +24,7 @@ const draft = (brief) => [
     calls: [
       {
         name: 'propose_job',
-        arguments: { action: 'draft', documents: [DOC], tasks: ['gloss'], brief },
+        arguments: { action: 'draft', documents: [DOC], brief },
       },
     ],
   },
@@ -115,11 +115,13 @@ test('a job scoped in the chat is started from its card, and a second card is di
     convId = new URL(page.url().replace('/#/', '/')).searchParams.get('conversation');
     await expect(card).toContainText('Proposed job');
     await expect(card.getByRole('link', { name: DOC })).toBeVisible();
-    await expect(card).toContainText('Segment and gloss');
+    await expect(card).not.toContainText('Tasks');
     const brief = card.getByRole('textbox', { name: 'Instructions' });
     await expect(brief).toHaveValue(BRIEF);
     await brief.fill(EDITED);
-    await expect(card.getByTestId('job-note-count')).toContainText(`${EDITED.length} / 2,000`);
+    await expect(card.getByTestId('job-instructions-count')).toContainText(
+      `${EDITED.length} / 2,000`,
+    );
     await card.getByRole('button', { name: 'Start job' }).click();
     await expect(card).toContainText('Started');
     await expect(card.getByTestId('job-card-brief')).toHaveText(EDITED);
@@ -133,8 +135,7 @@ test('a job scoped in the chat is started from its card, and a second card is di
     const job = await client.jobs.get(jobId);
     expect(job).toMatchObject({
       state: 'waiting',
-      tasks: ['gloss'],
-      note: EDITED,
+      instructions: EDITED,
       startedBy: userId,
     });
     expect(job.documents.map((d) => d.documentId)).toEqual([documentId]);
@@ -165,8 +166,7 @@ test('a job scoped in the chat is started from its card, and a second card is di
       report: {
         state: 'done',
         reason: null,
-        tasks: ['gloss'],
-        note: EDITED,
+        instructions: EDITED,
         startedBy: userId,
         model: 'e2e-scripted',
         startedAt: claimed.startedAt,

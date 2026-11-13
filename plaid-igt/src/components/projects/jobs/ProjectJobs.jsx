@@ -5,7 +5,7 @@ import { LoadError } from '@ui/components/shared/LoadError.jsx';
 import { SectionHeader } from '@ui/components/shared/SectionHeader.jsx';
 import { fullTimestamp, timeAgo } from '@ui/lib/formatTime.js';
 import { JOB_POLL_MS, isJobActive, jobStateText } from '@ui/domain/jobs.js';
-import { jobPath, tasksText } from './jobText.js';
+import { jobPath } from './jobText.js';
 
 /**
  * The project's Jobs tab: every job of the project, newest first, each row a
@@ -60,10 +60,10 @@ export const ProjectJobs = ({ projectId, client, startJob = null }) => {
       sort: (j) => jobStateText(j.state) ?? j.state,
     },
     {
-      key: 'tasks',
-      label: 'Tasks',
-      render: (j) => cell(j, tasksText(j.tasks)),
-      sort: (j) => tasksText(j.tasks),
+      key: 'instructions',
+      label: 'Instructions',
+      render: (j) => cell(j, <span className="line-clamp-1">{j.instructions}</span>),
+      sort: (j) => j.instructions || '',
     },
     {
       key: 'documents',

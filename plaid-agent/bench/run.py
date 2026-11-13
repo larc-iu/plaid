@@ -250,11 +250,11 @@ def worker_command(model, api_base, core_url, window=None, trace_dir=None):
 def run_job_task(task, model, ctx, admin, user, project, core_url, api_base, sd: Path, env, rd: Path, turns,
                  window=None):
     """A task that runs an unattended job in place of panel turns: the task's
-    user starts it (``job: {tasks, documents, note}``, documents by name, all
+    user starts it (``job: {instructions, documents}``, documents by name, all
     of the project's when left out), the worker takes it and runs it to its
     end, and the checker reads the job as ``ctx.job``. The job's record is
     kept as job.json, what the model saw and did in transcript/ (the worker's
-    --trace-dir: a folder per stretch, a file per model call), and its one
+    --trace-dir: a folder per piece, a file per model call), and its one
     "turn" is the worker's run."""
     spec = task['job']
     names = spec.get('documents')
@@ -262,7 +262,7 @@ def run_job_task(task, model, ctx, admin, user, project, core_url, api_base, sd:
     if names:
         by_name = {d['name']: d['id'] for d in project['documents']}
         docs = [by_name[n] for n in names]
-    made = user.jobs.create(project['id'], task['app'], list(spec['tasks']), docs, spec.get('note'))
+    made = user.jobs.create(project['id'], task['app'], spec['instructions'], docs)
     started = time.time()
     with open(rd / 'worker.log', 'ab') as log:
         proc = subprocess.Popen(worker_command(model, api_base, core_url, window, trace_dir=rd / 'transcript'),

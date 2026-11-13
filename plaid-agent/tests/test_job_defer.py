@@ -36,7 +36,7 @@ def _job(n_docs=1):
     docs = {f'd{i}': document(f'd{i}', f'Story {i}', [{'words': ['blank']}]) for i in range(1, n_docs + 1)}
     client = JobClient(docs)
     clock = Clock()
-    job = start(client, ['gloss'], now=clock.now)
+    job = start(client, now=clock.now)
     job._sleep = clock.sleep
     # Made an hour ago: the edits these tests leave are the job's to see.
     job.job['created_at'] = _iso(NOW - 3600)

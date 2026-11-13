@@ -2,10 +2,12 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { renderComponent, byText, all } from '@ui/test/renderComponent.jsx';
 
-// Start job: what the dialog offers, and what it sends. Link to lexicon goes
-// with Segment and gloss, the note is counted against core's limit, a project
-// with no worker seen lately says so, and a project that already has a job is
-// answered with a link to it.
+// Start job: what the dialog offers, and what it sends. A job is its documents
+// and its instructions (the owner's ruling 11): three starter texts fill the
+// box and can be edited, nothing knows them afterwards, the instructions are
+// required and counted against core's limit, a project with no worker seen
+// lately says so, and a project that already has a job is answered with a
+// link to it.
 const feedback = vi.hoisted(() => ({ notifyError: vi.fn() }));
 vi.mock('@/utils/feedback', () => feedback);
 const { StartJob } = await import('./StartJobDialog.jsx');
@@ -18,7 +20,7 @@ const DOCS = [
 
 const fakeClient = ({ seenAt = new Date().toISOString(), create, documentsMax = 10 } = {}) => ({
   jobs: {
-    worker: vi.fn(async () => ({ seenAt, model: 'm', noteMaxChars: 20, documentsMax })),
+    worker: vi.fn(async () => ({ seenAt, model: 'm', instructionsMaxChars: 400, documentsMax })),
     create: vi.fn(create ?? (async (_p, body) => ({ id: body.id, state: 'waiting' }))),
   },
   projects: { listDocuments: vi.fn(async () => DOCS) },
@@ -29,8 +31,8 @@ const Where = ({ onAt }) => {
   return null;
 };
 
-const typeNote = (value) => {
-  const area = document.body.querySelector('#job-note');
+const typeInstructions = (value) => {
+  const area = document.body.querySelector('#job-instructions');
   Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(area, value);
   area.dispatchEvent(new Event('input', { bubbles: true }));
 };
@@ -51,9 +53,6 @@ const LIMIT = 'A job takes at most 2 documents.';
 const startButton = () =>
   all(document.body, 'button').find((b) => b.textContent.trim() === 'Start');
 
-// A project that links a lexicon, as the callers pass it.
-const PROJECT = { id: 'p1', vocabs: [{ id: 'v1', name: 'Lexicon' }] };
-
 const open = async (client, props = {}) => {
   let at = null;
   const v = await renderComponent(
@@ -63,7 +62,7 @@ const open = async (client, props = {}) => {
           path="*"
           element={
             <>
-              <StartJob projectId="p1" project={PROJECT} client={client} {...props} />
+              <StartJob projectId="p1" client={client} {...props} />
               <Where onAt={(p) => (at = p)} />
             </>
           }
@@ -73,63 +72,63 @@ const open = async (client, props = {}) => {
   );
   await v.step(() => byText(v.container, 'button', 'Start job').click());
   await v.step(async () => {});
+  if (props.instructions !== null) {
+    await v.step(() => typeInstructions(props.instructions ?? 'Gloss the words.'));
+  }
   return { v, at: () => at };
 };
 
 beforeEach(() => feedback.notifyError.mockClear());
 
 describe('Start job', () => {
-  it('offers Link to lexicon only with Segment and gloss', async () => {
-    const { v } = await open(fakeClient(), { documents: DOCS });
-    expect(box('Translate').checked).toBe(true);
-    expect(box('Segment and gloss').checked).toBe(true);
-    expect(box('Link to lexicon').disabled).toBe(false);
-    await v.step(() => box('Segment and gloss').click());
-    expect(box('Link to lexicon').checked).toBe(false);
-    expect(box('Link to lexicon').disabled).toBe(true);
-    await v.step(() => box('Segment and gloss').click());
-    expect(box('Link to lexicon').disabled).toBe(false);
-    expect(box('Link to lexicon').checked).toBe(false);
-    await v.unmount();
-  });
-
-  // A link job on a project with no lexicon can only fail its checks
-  // (no-lexicon), possibly hours later (REV-J-C-7).
-  it('offers no Link to lexicon on a project that links no lexicon, and says why', async () => {
+  it('offers three starter texts that fill the instructions, which stay editable', async () => {
     const client = fakeClient();
-    const { v } = await open(client, { documents: DOCS, project: { id: 'p1', vocabs: [] } });
-    expect(box('Link to lexicon').checked).toBe(false);
-    expect(box('Link to lexicon').disabled).toBe(true);
-    expect(byText(document.body, 'label', 'Link to lexicon').textContent).toContain(
-      'The project has no lexicon.',
+    const { v } = await open(client, { documents: DOCS, instructions: null });
+    const area = () => document.body.querySelector('#job-instructions');
+    expect(area().value).toBe('');
+    expect(startButton().disabled).toBe(true);
+    expect(
+      all(document.body, '[role="group"][aria-label="Start from"] button').map(
+        (b) => b.textContent,
+      ),
+    ).toEqual(['Translate', 'Segment and gloss', 'Segment, gloss and link']);
+    await v.step(() => button('Segment, gloss and link').click());
+    expect(area().value).toBe(
+      'Segment and gloss every word nobody has analyzed, and link each morpheme to its lexicon entry, making an entry where none fits. Follow how people in the project analyzed the same forms.',
     );
-    // Segment and gloss off and on again leaves it as it is.
-    await v.step(() => box('Segment and gloss').click());
-    await v.step(() => box('Segment and gloss').click());
-    expect(box('Link to lexicon').disabled).toBe(true);
-    expect(box('Link to lexicon').checked).toBe(false);
+    await v.step(() => button('Translate').click());
+    expect(area().value).toBe(
+      'Write a free translation of every sentence whose translation is empty.',
+    );
+    await v.step(() => typeInstructions(`${area().value} Into English.`));
     await v.step(() => startButton().click());
     await v.step(async () => {});
-    expect(client.jobs.create.mock.calls[0][1].tasks).toEqual(['translate', 'gloss']);
+    expect(client.jobs.create.mock.calls[0][1].instructions).toBe(
+      'Write a free translation of every sentence whose translation is empty. Into English.',
+    );
+    expect(document.body.textContent).not.toContain('Tasks');
     await v.unmount();
   });
 
-  it('says nothing of a lexicon on a project that links one', async () => {
-    const { v } = await open(fakeClient(), { documents: DOCS });
-    expect(document.body.textContent).not.toContain('The project has no lexicon.');
-    await v.unmount();
-  });
-
-  it('counts the note against the limit core gives, and refuses one over it', async () => {
-    const { v } = await open(fakeClient(), { documents: DOCS });
-    const count = () => document.body.querySelector('[data-testid="job-note-count"]').textContent;
-    expect(count()).toBe('0 / 20');
-    // Characters, not UTF-16 units: an astral letter is one.
-    await v.step(() => typeNote('ka 𐐀'));
-    expect(count()).toBe('4 / 20');
+  it('refuses to start with no instructions', async () => {
+    const { v } = await open(fakeClient(), { documents: DOCS, instructions: '   ' });
+    expect(startButton().disabled).toBe(true);
+    await v.step(() => typeInstructions('Gloss ka.'));
     expect(startButton().disabled).toBe(false);
-    await v.step(() => typeNote('x'.repeat(21)));
-    expect(count()).toBe('21 / 20');
+    await v.unmount();
+  });
+
+  it('counts the instructions against the limit core gives, and refuses them over it', async () => {
+    const { v } = await open(fakeClient(), { documents: DOCS, instructions: null });
+    const count = () =>
+      document.body.querySelector('[data-testid="job-instructions-count"]').textContent;
+    expect(count()).toBe('0 / 400');
+    // Characters, not UTF-16 units: an astral letter is one.
+    await v.step(() => typeInstructions('ka 𐐀'));
+    expect(count()).toBe('4 / 400');
+    expect(startButton().disabled).toBe(false);
+    await v.step(() => typeInstructions('x'.repeat(401)));
+    expect(count()).toBe('401 / 400');
     expect(startButton().disabled).toBe(true);
     await v.unmount();
   });
@@ -156,8 +155,7 @@ describe('Start job', () => {
     expect(byText(document.body, 'label', 'All documents').textContent).toContain(
       'All documents (3)',
     );
-    await v.step(() => box('Translate').click());
-    await v.step(() => typeNote('  Gloss ka as GO.  '));
+    await v.step(() => typeInstructions('  Gloss ka as GO.  '));
     await v.step(() => startButton().click());
     await v.step(async () => {});
     expect(client.jobs.create).toHaveBeenCalledTimes(1);
@@ -165,16 +163,15 @@ describe('Start job', () => {
     expect(projectId).toBe('p1');
     expect(body).toEqual({
       app: 'igt',
-      tasks: ['gloss', 'link'],
-      note: 'Gloss ka as GO.',
+      instructions: 'Gloss ka as GO.',
       id: expect.stringMatching(/^[0-9a-f-]{36}$/),
     });
     expect(at()).toBe(`/projects/p1/jobs/${body.id}`);
-    expect(document.body.querySelector('#job-note')).toBe(null);
+    expect(document.body.querySelector('#job-instructions')).toBe(null);
     await v.unmount();
   });
 
-  it('sends the documents checked, in name order, and no note when blank', async () => {
+  it('sends the documents checked, in name order', async () => {
     const client = fakeClient();
     const { v } = await open(client, { documents: DOCS });
     await v.step(() => box('Selected documents').click());
@@ -185,7 +182,7 @@ describe('Start job', () => {
     await v.step(async () => {});
     expect(client.jobs.create.mock.calls[0][1]).toEqual({
       app: 'igt',
-      tasks: ['translate', 'gloss', 'link'],
+      instructions: 'Gloss the words.',
       documents: ['d1', 'd3'],
       id: expect.any(String),
     });

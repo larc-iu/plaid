@@ -3620,34 +3620,33 @@ class JobsResource(_Resource):
     over the wire, and none carries an Idempotency-Key, since core never
     replays them."""
 
-    def create(self, project_id: str, app: str, tasks: list, documents: list | None = None,
-               note: str | None = None, *, id: str | None = None) -> Any:
+    def create(self, project_id: str, app: str, instructions: str, documents: list | None = None, *,
+               id: str | None = None) -> Any:
         """Start a job on a project.
 
         Needs a writer of the project, and a person's own token: a delegated
         token is refused (403). The job waits until a worker takes it.
         Refused with 409 ``job-active`` (``response_data['job']`` names it)
         while the project has a job waiting or running, and with 400 for an
-        unknown app, no task, ``link`` without ``gloss``, a document of another
-        project, more than 500 documents, or a note over 2,000 characters.
+        unknown app, no instructions or instructions over 2,000 characters, a
+        document of another project, or more than 500 documents.
 
         Args:
             project_id: The project
-            app: The app whose tasks it runs: ``igt``
-            tasks: Some of ``translate``, ``gloss``, ``link`` (``link`` needs ``gloss``)
+            app: The app it works in: ``igt``
+            instructions: What the job is to do, sent with every piece of its
+                work (at most 2,000 characters)
             documents: The documents, in order. None: every document of the
                 project, by name
-            note: Instructions sent with every stretch of the job (at most
-                2,000 characters)
             id: Optional. The id to create it under, a UUIDv7 this client
                 minted (``plaid_client.uuid7()``), 409 ``id-taken`` when used.
         """
         # A job is not audited, so it never joins an open operation, and never
         # takes a number from an operation's Idempotency-Key seed.
         return self._request('POST', f'/api/v1/projects/{project_id}/jobs',
-                             body=_body_of(id=_UNSET if id is None else id, app=app, tasks=tasks,
+                             body=_body_of(id=_UNSET if id is None else id, app=app,
                                            documents=_UNSET if documents is None else documents,
-                                           note=_UNSET if note is None else note),
+                                           instructions=instructions),
                              no_operation=True)
 
     def list(self, project_id: str) -> Any:
@@ -3707,9 +3706,10 @@ class JobsResource(_Resource):
 
     def worker(self) -> Any:
         """When a job worker last asked for work since core started, and the
-        model it runs: ``{seen_at, model, note_max_chars, documents_max}``,
-        ``seen_at`` and ``model`` None when none has asked. ``note_max_chars``
-        is the longest note a job takes, ``documents_max`` the most
+        model it runs: ``{seen_at, model, instructions_max_chars,
+        documents_max}``, ``seen_at`` and ``model`` None when none has asked.
+        ``instructions_max_chars`` is the longest instructions a job takes,
+        ``documents_max`` the most
         documents."""
         return self._request('GET', '/api/v1/jobs/worker')
 

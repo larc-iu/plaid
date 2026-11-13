@@ -47,7 +47,7 @@ def _report(**over):
 
 def _ended(client, report=None, note='Gloss ka as "go".', project='p1'):
     """A job of ``project`` over Text 1, claimed and finished with ``report``."""
-    made = client.jobs.create(project, 'igt', ['gloss', 'link'], ['d1'], note)
+    made = client.jobs.create(project, 'igt', note, ['d1'])
     client.jobs.claim(WORKER, 'm', ['igt'])
     client.jobs.finish(made['id'], WORKER, 'done', report or _report())
     return made['id']
@@ -67,23 +67,39 @@ def test_a_turn_from_a_job_page_is_given_its_summary():
     noun, name, note = AssistantService.place(AssistantService.__new__(AssistantService), ws,
                                               {'kind': 'job', 'id': job, 'name': 'Job of 13 Nov'})
     assert (noun, name) == ('job', job)
-    assert f'job {job}' in note
+    # JD's point 1: the job by its page's name, beside its id, which is for
+    # read_job only.
+    assert f'"Job of 13 Nov" (job {job})' in note
+    assert 'Call it "Job of 13 Nov" to the user: its id is for read_job only.' in note
     assert 'State: done.' in note
     assert 'Started by user, 2026-' in note and 'Ended 2026-' in note
-    assert 'Tasks: gloss, link. Documents: 1.' in note
+    assert 'Documents: 1.' in note and 'Tasks' not in note
     assert 'Instructions as sent: "Gloss ka as "go"."' in note
     assert 'Totals: documents done 1, sentences 4, words 9, links 7, entries 1, skipped too long 1.' in note
-    assert 'Report sections and their rows: documents 1, skipped 1, left 1, harmonize.left 1, entries.created 1.' \
-        in note
+    # JD's point 3: a section by the page's heading with its key.
+    assert ('Report sections and their rows: Documents (documents) 1, Skipped sentences (skipped) 1, Left blank '
+            '(left) 1, Forms left inconsistent (harmonize.left) 1, Entries created (entries.created) 1.') in note
     # The summary, never the report: no row of it.
     assert 'pele' not in note and 's2.w3' not in note and 'tuna' not in note
 
 
 def test_the_summary_is_read_fresh_each_turn():
     ws = _ws()
-    made = ws.client.jobs.create('p1', 'igt', ['gloss'], ['d1'], None)
-    place = AssistantService.place(AssistantService.__new__(AssistantService), ws, {'kind': 'job', 'id': made['id']})
-    assert 'State: waiting.' in place[2] and 'No report yet.' in place[2]
+    made = ws.client.jobs.create('p1', 'igt', 'Gloss the words.', ['d1'])
+    place = AssistantService.place(AssistantService.__new__(AssistantService), ws,
+                                   {'kind': 'job', 'id': made['id'], 'name': 'Job of 13 Nov'})
+    # JD's point 2: a job not ended gets one fixed line, never its summary.
+    assert place[2] == (f'The user has open the page of an assistant job of this project, "Job of 13 Nov" (job '
+                        f'{made["id"]}), which is waiting. Call it "Job of 13 Nov" to the user: its id is for '
+                        'read_job only. read_job reads it.')
+    ws.client.jobs.claim(WORKER, 'm', ['igt'])
+    running = AssistantService.place(AssistantService.__new__(AssistantService), ws,
+                                     {'kind': 'job', 'id': made['id'], 'name': 'Job of 13 Nov'})
+    assert running[2] == place[2].replace('which is waiting', 'which is running')
+    ws.client.jobs.heartbeat(made['id'], WORKER, message='Sentences 1 to 5 of 40.')
+    assert AssistantService.place(AssistantService.__new__(AssistantService), ws,
+                                  {'kind': 'job', 'id': made['id'], 'name': 'Job of 13 Nov'})[2] == running[2], \
+        'the same line every turn while it runs'
     ws.client.jobs.claim(WORKER, 'm', ['igt'])
     ws.client.jobs.finish(made['id'], WORKER, 'done', _report())
     place = AssistantService.place(AssistantService.__new__(AssistantService), ws, {'kind': 'job', 'id': made['id']})
@@ -103,8 +119,8 @@ def test_the_summary_keeps_to_its_budget_and_says_what_it_cut():
     _, _, said = jobread.job_place(ws, {'kind': 'job', 'id': job})
     assert len(note) > 1900
     assert f'the first {jobread.JOB_SUMMARY_NOTE_CHARS} of {len(note):,} characters (read_job with the job gives ' \
-           'them whole)' in said
-    assert 'left 4,500' in said and 'harmonize.changed 1,400' in said
+           'it whole)' in said
+    assert 'Left blank (left) 4,500' in said and 'Analyses made consistent (harmonize.changed) 1,400' in said
     assert len(said) < 1600, len(said)
 
 
@@ -112,7 +128,8 @@ def test_a_job_that_is_gone_is_said_to_be_gone():
     ws = _ws()
     _, name, note = jobread.job_place(ws, {'kind': 'job', 'id': 'gone-1', 'name': 'Job of 13 Nov'})
     assert name == 'gone-1'
-    assert note == 'The user has open the page of job gone-1, which no longer exists in this project.'
+    assert note == ('The user has open the page of "Job of 13 Nov" (job gone-1), which no longer exists in this '
+                    'project.')
 
 
 def test_a_job_of_another_project_is_not_this_project_s():
@@ -157,7 +174,7 @@ def test_with_no_job_it_lists_the_project_s_jobs():
     first = _ended(ws.client)
     out = call_tool(ws, 'read_job', {})
     assert out.startswith('Jobs of this project, newest first: 1 to 1 of 1.')
-    assert f'{first} | done | gloss, link | started by user, 2026-' in out and '| 1 document' in out
+    assert f'{first} | done | "Gloss ka as "go"." | started by user, 2026-' in out and '| 1 document' in out
     assert ws.reads[-1] == {'n': 1, 'unit': 'row', 'of': 1}
 
 
@@ -179,7 +196,8 @@ def test_a_job_alone_gives_its_summary_with_the_instructions_whole():
     out = call_tool(ws, 'read_job', {'job': job})
     assert out.startswith(f'Job {job}.\nState: done.')
     assert f'Instructions as sent: "{note}"' in out
-    assert 'Report sections and their rows: documents 1, skipped 1, left 1, harmonize.left 1, entries.created 1.' \
+    assert ('Report sections and their rows: Documents (documents) 1, Skipped sentences (skipped) 1, Left blank '
+            '(left) 1, Forms left inconsistent (harmonize.left) 1, Entries created (entries.created) 1.') \
         in out
     assert out.endswith('read_job with a section reads its rows.')
 
@@ -189,7 +207,7 @@ def test_a_section_gives_its_rows_with_the_places_to_read_and_plan():
     job = _ended(ws.client)
     out = call_tool(ws, 'read_job', {'job': job, 'section': 'left'})
     assert out.splitlines() == [
-        f'Job {job}, report section left: rows 1 to 1 of 1. As the job ended, 2026-11-13 03:10 UTC.',
+        f'Job {job}, report section Left blank (left): rows 1 to 1 of 1. As the job ended, 2026-11-13 03:10 UTC.',
         '"Text 1" | ref: s2.w3 | form: pele']
     assert ws.reads[-1] == {'n': 1, 'unit': 'row', 'of': 1}
     out = call_tool(ws, 'read_job', {'job': job, 'section': 'harmonize.left'})
@@ -224,7 +242,8 @@ def test_a_section_pages_and_says_what_it_left_out():
     job = _ended(ws.client, report)
     out = call_tool(ws, 'read_job', {'job': job, 'section': 'left'})
     lines = out.splitlines()
-    assert lines[0].startswith(f'Job {job}, report section left: rows 1 to 40 of 45, and 7 more the report '
+    assert lines[0].startswith(f'Job {job}, report section Left blank (left): rows 1 to 40 of 45, and 7 more the '
+                               'report '
                                'counted and did not list.')
     assert len(lines) == 42 and lines[-1] == 'Rows 41 to 45: page 2.'
     out = call_tool(ws, 'read_job', {'job': job, 'section': 'left', 'page': 2})
@@ -244,14 +263,14 @@ def test_document_narrows_a_section():
         'left': [{'ref': 's1.w1', 'sentence_id': 'X', 'begin': 0, 'form': 'kai'}], 'left_more': 3}]
     job = _ended(client, two)
     out = call_tool(ws, 'read_job', {'job': job, 'section': 'left', 'document': 'Text 1'})
-    assert 'section left in "Text 1": rows 1 to 1 of 1.' in out and 'kai' not in out
+    assert 'section Left blank (left) in "Text 1": rows 1 to 1 of 1.' in out and 'kai' not in out
     out = call_tool(ws, 'read_job', {'job': job, 'section': 'left', 'document': 'gone-doc'})
     assert 'in a deleted document (gone-doc): rows 1 to 1 of 1, and 3 more the report counted' in out
     assert 'a deleted document (gone-doc) | ref: s1.w1 | form: kai' in out
     out = call_tool(ws, 'read_job', {'job': job, 'section': 'left', 'document': 'Text 9'})
     assert out == 'Error: The job holds no document "Text 9". Its documents: "Text 1".'
     out = call_tool(ws, 'read_job', {'job': job, 'section': 'harmonize.left', 'document': 'Text 1'})
-    assert out.startswith('Error: The rows of harmonize.left name no document')
+    assert out.startswith('Error: The rows of Forms left inconsistent (harmonize.left) name no document')
 
 
 def test_harmonize_rows_name_their_documents_and_narrow_by_them():
@@ -266,8 +285,9 @@ def test_harmonize_rows_name_their_documents_and_narrow_by_them():
 
 @pytest.mark.parametrize('args, said', [
     ({'section': 'left'}, 'Name the job: read_job with no job lists them'),
-    ({'job': 'J', 'section': 'harmonize'}, 'has no section "harmonize". Its sections: documents, skipped, left, '
-                                           'harmonize.left, entries.created.'),
+    ({'job': 'J', 'section': 'harmonize'}, 'has no section "harmonize". Its sections: Documents (documents), '
+                                           'Skipped sentences (skipped), Left blank (left), Forms left inconsistent '
+                                           '(harmonize.left), Entries created (entries.created).'),
     ({'job': 'J', 'document': 'Text 1'}, 'document narrows a section: name the section too.'),
     ({'job': 'J', 'page': 'two'}, '"page" has to be a number'),
 ])
@@ -281,7 +301,7 @@ def test_each_refusal_says_what_to_change(args, said):
 
 def test_a_running_job_has_no_report_to_read():
     ws = _ws()
-    made = ws.client.jobs.create('p1', 'igt', ['gloss'], ['d1'], None)
+    made = ws.client.jobs.create('p1', 'igt', 'Gloss the words.', ['d1'])
     ws.client.jobs.claim(WORKER, 'm', ['igt'])
     out = call_tool(ws, 'read_job', {'job': made['id'], 'section': 'left'})
     assert out == f'Error: Job {made["id"]} is running and has no report yet.'
@@ -333,7 +353,8 @@ def test_a_turn_from_a_job_page_stamps_the_job_shows_its_summary_and_records_onl
     assert not helper.errors, helper.errors
     system, asked, kept = seen[0]
     assert system == kept, 'the round keeps the instructions the model was given'
-    assert f'job {job}. Its record as read now:' in system and 'Report sections and their rows:' in system
+    assert f'(job {job}). Call it' in system and 'Its record as read now:' in system
+    assert 'Report sections and their rows:' in system
     assert asked == f'[Asked from the job "{job}"]\n\nWhat did it leave blank?'
     conv, meta = _store(client).load('c1')
     assert conv['display'][0]['where'] == where
@@ -378,6 +399,8 @@ def test_each_step_says_what_it_read_as_the_panel_says_it():
         said.append((TRACER.describe('read_job', args), say_saw(ws.reads)))
     assert said[0] == ('Listed the jobs', '1 row')
     assert said[1][0] == 'Read a job\'s summary' and said[1][1].startswith('printed ')
-    assert said[2] == ('Read \u201cleft\u201d of a job\'s report', '1 row')
+    # JD's point 3: the step names the section by the page's heading, with its key.
+    assert said[2] == ('Read \u201cLeft blank (left)\u201d of a job\'s report', '1 row')
+    assert TRACER.describe('read_job', {'job': job, 'section': 'Left blank'}) == said[2][0], 'by its heading too'
     assert said[3][0] == 'Read how to read a job'
     assert TRACER.kind('read_job') is not None

@@ -262,7 +262,9 @@ def _own(name: str, a: Dict[str, Any]) -> Optional[str]:
             return 'Listed the jobs'
         if not section:
             return 'Read a job\'s summary'
-        return f'Read {q(section)} of a job\'s report' + (f' in {q(a.get("document"))}' if a.get('document') else '')
+        from .jobread import section_key, section_name
+        return (f'Read {q(section_name(section_key(section)))} of a job\'s report'
+                + (f' in {q(a.get("document"))}' if a.get('document') else ''))
 
     return None
 

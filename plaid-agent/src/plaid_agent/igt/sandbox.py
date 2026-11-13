@@ -222,14 +222,51 @@ def lexicon_api(ws: Workspace) -> Callable:
     return lexicon
 
 
+def table_api(ws) -> Callable:
+    """``table(title, columns, rows)``, lent to the code of an unattended
+    job's piece only (a workspace with ``tables``): a table the code made,
+    kept as data in the job's report, so its numbers come from code and not
+    from prose. Bounded: JOB_TABLE_COLUMNS columns, JOB_TABLE_ROWS rows (the
+    rest counted), each cell cut at JOB_TABLE_CELL_CHARS, JOB_TABLES_PER_PIECE
+    tables a piece."""
+    from ..core.limits import JOB_TABLE_CELL_CHARS, JOB_TABLE_COLUMNS, JOB_TABLE_ROWS, JOB_TABLES_PER_PIECE
+
+    def cell(v):
+        if v is None or isinstance(v, (int, float, bool)):
+            return v
+        text = str(v)
+        return text if len(text) <= JOB_TABLE_CELL_CHARS else text[:JOB_TABLE_CELL_CHARS - 1] + '…'
+
+    def table(title, columns, rows) -> str:
+        if len(ws.tables) >= JOB_TABLES_PER_PIECE:
+            raise ValueError(f'a piece keeps at most {JOB_TABLES_PER_PIECE} tables')
+        if not isinstance(columns, (list, tuple)) or not columns or len(columns) > JOB_TABLE_COLUMNS:
+            raise ValueError(f'columns: a list of 1 to {JOB_TABLE_COLUMNS} names')
+        rows = list(rows or [])
+        out = []
+        for r in rows[:JOB_TABLE_ROWS]:
+            r = [r.get(c) for c in columns] if isinstance(r, dict) else list(r)
+            if len(r) != len(columns):
+                raise ValueError(f'each row has {len(columns)} values, one per column')
+            out.append([cell(v) for v in r])
+        ws.tables.append({'title': cell(title), 'columns': [cell(c) for c in columns], 'rows': out,
+                          'more': max(0, len(rows) - JOB_TABLE_ROWS)})
+        return f'Kept the table "{cell(title)}" for the report: {len(out)} rows' + (
+            f', and {len(rows) - JOB_TABLE_ROWS} more counted' if len(rows) > JOB_TABLE_ROWS else '') + '.'
+    return table
+
+
 def api(ws: Workspace) -> Dict[str, Callable]:
     # The toolkit is the last module imported (it reads every tool module, this
     # one included), so it is asked for here rather than at the top.
     from ..core.query import display as _display
     from .query import _layer_index
     from .toolkit import WRITE_TOOLS, call_tool
-    return {**sandbox.api(ws, view, call_tool, WRITE_TOOLS, _layer_index, _display),
-            'lexicon': lexicon_api(ws), 'recording': recording_api(ws)}
+    out = {**sandbox.api(ws, view, call_tool, WRITE_TOOLS, _layer_index, _display),
+           'lexicon': lexicon_api(ws), 'recording': recording_api(ws)}
+    if getattr(ws, 'tables', None) is not None and getattr(ws, 'mode', None) == 'piece':
+        out['table'] = table_api(ws)
+    return out
 
 
 def t_run_code(ws: Workspace, code: str = None) -> str:

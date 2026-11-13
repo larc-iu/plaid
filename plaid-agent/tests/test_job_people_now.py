@@ -38,7 +38,7 @@ def _job_over_a_then_b(monkeypatch, edit):
     # What A reads as once the job wrote it.
     client.after_write['A'] = document('A', 'Doc A', [{'words': [
         _job_ka('go'), _job_ka('go'), _job_ka('come'), _job_ka('go')]}])
-    job = start(client, ['gloss'], id=J, documents=['A', 'B'])
+    job = start(client, id=J, documents=['A', 'B'])
     edited = {}
 
     def answer(asked, n, kwargs):
@@ -90,7 +90,7 @@ def test_a_later_document_is_told_of_a_correction_a_person_made_during_the_job(m
                         'P': document('P', 'Other', [{'words': ['ka']}])})
     client.after_write['A'] = document('A', 'Doc A', [{'words': [('mo', [('mo', 'x')], J)]}])
     client.after_write['B'] = copy.deepcopy(client._holder('B')['documents']['B'])
-    job = start(client, ['gloss'], id=J, documents=['A', 'B'])
+    job = start(client, id=J, documents=['A', 'B'])
 
     def answer(asked, n, kwargs):
         if n > 1:
@@ -120,7 +120,7 @@ def test_the_people_are_read_again_only_where_a_document_changed(monkeypatch):
         reads[document_id] = reads.get(document_id, 0) + 1
         return get(document_id, **kw)
     client.documents.get = counted
-    job = start(client, ['gloss'], documents=['d1', 'd2', 'd3'])
+    job = start(client, documents=['d1', 'd2', 'd3'])
 
     def answer(asked, n, kwargs):
         if n == 1 and 'Document "Story 2"' in asked:

@@ -627,7 +627,7 @@ def api(ws, view: Callable[[Any], Any], call_tool, write_tools,
 
 # The host functions whose answers stage or store something rather than read
 # the project, so are not text a value could be copied from.
-_WRITERS = ('plan', 'save_file')
+_WRITERS = ('plan', 'save_file', 'table')
 
 
 def noted(ws, api: Dict[str, Callable]) -> Dict[str, Callable]:

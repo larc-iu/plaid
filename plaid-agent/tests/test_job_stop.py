@@ -76,7 +76,7 @@ def _harmonize_job(monkeypatch, tasks=('gloss',)):
     w = lambda g: ('ka', [('ka', g)], J)  # noqa: E731
     client = JobClient({'d1': document('d1', 'A', [{'words': [w('go'), w('go'), w('go'), w('go'), w('come')]}]),
                         'd2': document('d2', 'B', [{'words': [w('come')]}])})
-    job = start(client, list(tasks), id=J)
+    job = start(client, id=J)
     for d in ('d1', 'd2'):
         job.update_row(d, state='done')
     recorded(job)
@@ -86,7 +86,7 @@ def _harmonize_job(monkeypatch, tasks=('gloss',)):
 
 def test_a_stop_seen_when_the_glossing_ends_runs_no_harmonize(monkeypatch):
     client, job = _harmonize_job(monkeypatch)
-    job.status['phase'] = 'glossing'
+    job.status['phase'] = 'working'
     r = runner(job)
     # Pressed after the walk's last check: the beat that says the phase
     # changed is the first to hear of it.

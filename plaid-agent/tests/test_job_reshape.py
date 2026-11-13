@@ -15,7 +15,8 @@ import re
 
 import pytest
 
-from job_fixtures import JobClient, Model, call, document, recorded, reply, runner, start, use
+from job_fixtures import (INSTRUCTIONS, JobClient, Model, call, document, empty_translations, instructed, recorded,
+                          reply, runner, start, use)
 
 from plaid_client import PlaidAPIError
 from plaid_agent.core.limits import JOB_ANALYSIS_MAX_CHARS, JOB_SENTENCE_MAX_WORDS
@@ -44,7 +45,7 @@ def _targets(asked):
     """(sentence index, word index) of every target word a stretch names."""
     out = []
     for line in asked.splitlines():
-        m = re.match(r'Targets in s(\d+): words (.*?)(?: and the translation)?\.$', line)
+        m = re.match(r'Empty in s(\d+): words (.*?)(?: and the translation)?\.$', line)
         if m:
             out += [(int(m.group(1)), int(w)) for w in re.findall(r'w(\d+) "', m.group(2))]
     return out
@@ -62,14 +63,16 @@ def gloss(asked, n, kwargs, leave=()):
     name = _named(asked)
     forms = {}
     for line in asked.splitlines():
-        m = re.match(r'Targets in s(\d+): words (.*?)(?: and the translation)?\.$', line)
+        m = re.match(r'Empty in s(\d+): words (.*?)(?: and the translation)?\.$', line)
         if m:
             forms.update({(int(m.group(1)), int(w)): f for w, f in re.findall(r'w(\d+) "([^"]*)"', m.group(2))})
     calls = [call(i, 'set_analysis', {'document': name, 'ref': f's{s}.w{w}',
                                       'morphemes': [{'form': 'x', 'fields': {'Morph Gloss': 'go'}}]})
-             for i, (s, w) in enumerate(_targets(asked), start=1) if forms.get((s, w)) not in leave]
+             for i, (s, w) in enumerate(_targets(asked), start=1) if forms.get((s, w)) not in leave
+             and instructed(asked, 'gloss')]
     calls += [call(100 + s, 'set_field', {'document': name, 'refs': [f's{s}'], 'field': 'Translation',
-                                          'value': f'T{s}.'}) for s in _refs(asked, 'Translate')]
+                                          'value': f'T{s}.'}) for s in empty_translations(asked)
+              if instructed(asked, 'translat')]
     return reply(calls=calls)
 
 
@@ -95,11 +98,11 @@ def reshaped(raw, ids):
     return json.loads(text)
 
 
-def _job(monkeypatch, before, tasks=('gloss',), model=gloss, documents=None):
+def _job(monkeypatch, before, instructions=INSTRUCTIONS, model=gloss, documents=None):
     docs = documents or {'d1': document('d1', 'Story', before)}
     client = JobClient(docs)
     clock = {'t': 1_800_000_000.0}
-    job = start(client, list(tasks), id=J, now=lambda: clock['t'])
+    job = start(client, instructions, id=J, now=lambda: clock['t'])
     job._sleep = lambda s: clock.__setitem__('t', clock['t'] + s)
     job.job['created_at'] = _iso(clock['t'] - 3600)
     use(monkeypatch, Model(model))
@@ -340,7 +343,8 @@ def test_a_split_off_half_of_a_sentence_the_job_translated_is_not_translated(mon
     the job wrote there. The translation stays on the left half (its id):
     the right half has none, and holds words of a sentence the job wrote
     in. It is left to people."""
-    client, job, clock = _job(monkeypatch, [{'words': ['ka', 'ta', 'pa']}, {'words': ['sa']}], tasks=('translate',))
+    client, job, clock = _job(monkeypatch, [{'words': ['ka', 'ta', 'pa']}, {'words': ['sa']}],
+                              instructions='Translate the empty translations.')
     client.after_write['d1'] = document('d1', 'Story', [{'words': ['ka', 'ta', 'pa'], 'translation': ('T1.', J)},
                                                          {'words': ['sa']}], version=2)
     split = reshaped(document('d1', 'Story', [{'words': ['ka', 'ta'], 'translation': ('T1.', J)}, {'words': ['pa']},
@@ -359,7 +363,8 @@ def test_a_merged_sentence_whose_joined_translation_a_person_cleared_is_not_tran
     The starter merges s1 into s0 (the joined value is the person's) and
     clears it. s0 holds words of a sentence the job translated: left."""
     client, job, clock = _job(monkeypatch, [{'words': ['na'], 'translation': ('We.', 'human')},
-                                            {'words': ['ka']}, {'words': ['sa']}], tasks=('translate',))
+                                            {'words': ['ka']}, {'words': ['sa']}],
+                              instructions='Translate the empty translations.')
     client.after_write['d1'] = document('d1', 'Story', [{'words': ['na'], 'translation': ('We.', 'human')},
                                                          {'words': ['ka'], 'translation': ('T2.', J)},
                                                          {'words': ['sa']}], version=2)
@@ -460,7 +465,7 @@ def test_harmonize_leaves_the_jobs_word_in_a_split_off_half_unchecked(monkeypatc
     def w(gloss):
         return ('ka', [('ka', gloss)], J)
     client = JobClient({'d1': document('d1', 'Story', [{'words': [w('go'), w('go'), w('come')]}])})
-    job = start(client, ['gloss'], id=J)
+    job = start(client, id=J)
     job.update_row('d1', state='done')
     recorded(job)
     client._holder('d1')['documents']['d1'] = reshaped(

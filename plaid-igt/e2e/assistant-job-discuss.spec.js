@@ -43,8 +43,7 @@ let jobId;
 const report = (startedAt, sentenceId) => ({
   state: 'done',
   reason: null,
-  tasks: ['gloss'],
-  note: null,
+  instructions: 'Gloss the words.',
   startedBy: userId,
   model: 'e2e-scripted',
   startedAt,
@@ -94,7 +93,11 @@ test.beforeAll(async () => {
     .find((l) => roleOf(l) === ROLES.BASELINE)
     .tokenLayers.find((l) => roleOf(l) === ROLES.SENTENCE).tokens[0].id;
   jobId = (
-    await client.jobs.create(projectId, { app: 'igt', tasks: ['gloss'], documents: [documentId] })
+    await client.jobs.create(projectId, {
+      app: 'igt',
+      instructions: 'Gloss the words.',
+      documents: [documentId],
+    })
   ).id;
   const worker = fakeJobWorker(client);
   const claimed = await worker.claim();
@@ -185,7 +188,7 @@ test('a job is discussed from its page, and a gloss for the word it left blank i
     );
     expect(JSON.stringify(conv)).not.toContain('Report sections and their rows');
     const read = conv.messages.find(
-      (m) => m.role === 'tool' && m.content.includes('report section left'),
+      (m) => m.role === 'tool' && m.content.includes('report section Left blank (left)'),
     );
     expect(read.content).toContain('"Story A" | ref: s1.w2 | form: pele');
 
@@ -194,9 +197,7 @@ test('a job is discussed from its page, and a gloss for the word it left blank i
       prefix: `igt:assistant:${projectId}:prompt:${convId}:`,
       includeValues: true,
     });
-    expect(
-      prompts.some((p) => p.value.system.includes(`job ${jobId}. Its record as read now:`)),
-    ).toBe(true);
+    expect(prompts.some((p) => p.value.system.includes(`(job ${jobId}). Call it`))).toBe(true);
 
     // A reload comes back to the conversation, the message still placed on the job.
     await page.reload();

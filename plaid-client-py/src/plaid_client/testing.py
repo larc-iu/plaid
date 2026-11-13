@@ -1826,18 +1826,18 @@ class FakeClient:
 
 
 # Core's job constants (plaid.sql.job), as the fake jobs keep them.
-_JOB_APPS = {'igt': ('translate', 'gloss', 'link')}
+_JOB_APPS = ('igt',)
 _JOB_ACTIVE = ('waiting', 'running', 'stopping')
 _JOB_FINAL = ('done', 'cancelled', 'failed')
 _JOB_LEASE_S = 120
 _JOB_HEARTBEAT_S = 30
 _JOB_DOCUMENTS_MAX = 500
-_JOB_NOTE_MAX_CHARS = 2000
+_JOB_INSTRUCTIONS_MAX_CHARS = 2000
 _JOB_REPORT_MAX_BYTES = 1000000
 _JOB_ANALYSIS_MAX_CHARS = 4000
 _JOB_DECISIONS_PER_CALL = 1000
 _JOB_SKIPPED_PER_DOCUMENT = 500
-_JOB_COUNT_KEYS = ('translations', 'refreshed', 'words', 'links', 'entries', 'changed', 'protected')
+_JOB_COUNT_KEYS = ('translations', 'refreshed', 'words', 'links', 'entries', 'changed', 'proposed')
 
 
 class _FakeJobs:
@@ -1961,8 +1961,8 @@ class _FakeJobs:
             return sum(1 for s in skipped if s.get('reason') == reason)
 
         return {
-            'state': job['state'], 'reason': job['reason'], 'tasks': list(job['tasks']),
-            'note': job['note'], 'started_by': job['started_by'], 'model': job['model'],
+            'state': job['state'], 'reason': job['reason'], 'instructions': job['instructions'],
+            'started_by': job['started_by'], 'model': job['model'],
             'started_at': job['started_at'], 'finished_at': job['finished_at'],
             'paused_for_people_s': None, 'paused_for_model_s': None, 'stopped': stopped,
             'totals': {
@@ -1975,7 +1975,7 @@ class _FakeJobs:
                 **{k: sums[k] for k in ('translations', 'refreshed', 'words', 'links', 'entries')},
                 'skipped_too_long': skips('too-long'), 'skipped_failed': skips('failed'),
                 'skipped_changed': skips('changed'),
-                'changed': sums['changed'], 'protected': sums['protected']},
+                'changed': sums['changed'], 'proposed': sums['proposed']},
             'documents': [{k: copy.deepcopy(r[k]) for k in
                            ('document_id', 'state', 'sentences', 'targets', 'done', 'counts',
                             'skipped', 'gloss_group', 'harmonize_group')} for r in rows],
@@ -2002,19 +2002,18 @@ class _FakeJobs:
             job['report'] = self._report_from_rows(job, stopped)
 
     # -- a person's calls --
-    def create(self, project_id, app, tasks, documents=None, note=None, *, id=None):
+    def create(self, project_id, app, instructions, documents=None, *, id=None):
         path = f'/api/v1/projects/{project_id}/jobs'
-        self.calls.append(('create', {'project_id': project_id, 'app': app, 'tasks': list(tasks),
-                                      'documents': None if documents is None else list(documents),
-                                      'note': note, 'id': id}))
+        self.calls.append(('create', {'project_id': project_id, 'app': app, 'instructions': instructions,
+                                      'documents': None if documents is None else list(documents), 'id': id}))
         live = self._documents_of(project_id)
         if app not in _JOB_APPS:
             raise self._refuse(400, 'POST', path, f'Unknown app: {app}.')
-        known = _JOB_APPS[app]
-        if not tasks or any(t not in known for t in tasks):
-            raise self._refuse(400, 'POST', path, f'tasks: give at least one of {", ".join(known)}.')
-        if 'link' in tasks and 'gloss' not in tasks:
-            raise self._refuse(400, 'POST', path, 'tasks: link needs gloss.')
+        if not (instructions or '').strip():
+            raise self._refuse(400, 'POST', path, 'instructions: say what the job is to do.')
+        if len(instructions) > _JOB_INSTRUCTIONS_MAX_CHARS:
+            raise self._refuse(400, 'POST', path, f'The instructions are {len(instructions):,} characters. '
+                                                  f"A job's instructions are at most {_JOB_INSTRUCTIONS_MAX_CHARS:,}.")
         if documents is not None:
             if not documents:
                 raise self._refuse(400, 'POST', path,
@@ -2028,9 +2027,6 @@ class _FakeJobs:
             if len(documents) > _JOB_DOCUMENTS_MAX:
                 raise self._refuse(400, 'POST', path, f'A job takes at most {_JOB_DOCUMENTS_MAX} documents. '
                                                       f'This one names {len(documents):,}.')
-        if note is not None and len(note) > _JOB_NOTE_MAX_CHARS:
-            raise self._refuse(400, 'POST', path, f'The note is {len(note):,} characters. '
-                                                  f"A job's note is at most {_JOB_NOTE_MAX_CHARS:,}.")
         if documents is None:
             if not live:
                 raise self._refuse(400, 'POST', path, 'This project has no documents.')
@@ -2045,7 +2041,7 @@ class _FakeJobs:
         at = self._iso()
         self.rows[job_id] = {
             'id': job_id, 'project': project_id, 'app': app,
-            'tasks': [t for t in known if t in tasks], 'note': note,
+            'instructions': instructions,
             'started_by': self.user, 'started_by_name': self.user.split('@')[0],
             'state': 'waiting', 'phase': None, 'reason': None, 'message': None, 'waiting_for': None,
             'current_document': None, 'cancelled_by': None, 'model': None,
@@ -2112,7 +2108,7 @@ class _FakeJobs:
 
     def worker(self):
         self.calls.append(('worker', {}))
-        return {**self._seen, 'note_max_chars': _JOB_NOTE_MAX_CHARS, 'documents_max': _JOB_DOCUMENTS_MAX}
+        return {**self._seen, 'instructions_max_chars': _JOB_INSTRUCTIONS_MAX_CHARS, 'documents_max': _JOB_DOCUMENTS_MAX}
 
     # -- the worker's calls --
     def claim(self, worker_id, model, apps):
@@ -2162,7 +2158,7 @@ class _FakeJobs:
             raise lost
         if len(fields.get('message') or '') > 300:
             raise self._refuse(400, 'POST', path, 'message: at most 300 characters.')
-        if fields.get('phase') not in (None, 'checking', 'glossing', 'harmonizing', 'reporting'):
+        if fields.get('phase') not in (None, 'checking', 'planning', 'working', 'harmonizing', 'reporting'):
             raise self._refuse(400, 'POST', path, f"Unknown phase: {fields['phase']}.")
         if fields.get('waiting_for') not in (None, 'people', 'model'):
             raise self._refuse(400, 'POST', path, f"Unknown waiting-for: {fields['waiting_for']}.")

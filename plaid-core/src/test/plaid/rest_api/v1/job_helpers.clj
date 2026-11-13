@@ -59,7 +59,7 @@
   ([who project] (start! who project {}))
   ([who project body]
    (call who :post (str "/api/v1/projects/" project "/jobs")
-         (merge {:app "igt" :tasks ["gloss"]} body))))
+         (merge {:app "igt" :instructions "Gloss the words."} body))))
 
 (defn job-id [resp] (-> resp :body :job/id))
 

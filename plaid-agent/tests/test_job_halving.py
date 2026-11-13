@@ -14,7 +14,7 @@ from plaid_agent.core.prompt import JOB_DECIDE_NOW
 
 def _job(n=5, tasks=('gloss',)):
     client = JobClient({'d1': document('d1', 'Story', blank(n))})
-    return client, start(client, tasks)
+    return client, start(client)
 
 
 def analyse(asked, i=1):
@@ -110,7 +110,9 @@ def test_the_decide_now_line_comes_at_the_fifteenth_call_with_the_plan_tools_alo
     told = [c for c in model.calls if any(m.get('content') == JOB_DECIDE_NOW for m in c['kwargs']['messages'])]
     assert told[0]['n'] == 15
     assert [m.get('content') for m in told[0]['kwargs']['messages']].count(JOB_DECIDE_NOW) == 1
-    assert {t['function']['name'] for t in told[0]['kwargs']['tools']} == {'set_field', 'set_analysis'}
+    from plaid_agent.igt.toolkit import WRITE_TOOLS
+    offered = {t['function']['name'] for t in told[0]['kwargs']['tools']}
+    assert offered <= set(WRITE_TOOLS) and {'set_field', 'set_analysis'} <= offered, 'the plan tools alone'
     assert {t['function']['name'] for t in model.calls[0]['kwargs']['tools']} >= {'analyses_of', 'set_analysis'}
     assert not job.rows['d1'].get('skipped'), 'it decided in time'
 

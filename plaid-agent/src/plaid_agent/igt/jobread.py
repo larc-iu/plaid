@@ -1,12 +1,19 @@
 """Talking about an unattended job: its summary for a turn asked from its page,
 and the ``read_job`` tool (BRIEF-JD, 2026-11-13).
 
-A job page is a place the way a document is (``where: {kind: 'job', id}``).
-A turn asked from one gives the model a short fixed summary of the job, read
-from core as the turn starts: its state, who started it and when, the tasks,
-the instructions as sent (cut), the totals, and each report section with how
-many rows it holds. Never the report itself: ``read_job`` reads a section of it
-by page.
+A job page is a place the way a document is (``where: {kind: 'job', id,
+name}``). A turn asked from the page of an ENDED job gives the model a short
+summary of the job, read from core as the turn starts: its name and id, its
+state, who started it and when, the instructions as sent (cut), how its work
+was cut, the start of its summary, the totals, and each report section with
+how many rows it holds. A running or waiting job's page gives one fixed line
+(its name, its state, and that read_job reads it), so the stored prompt does
+not change every turn. Never the report itself: ``read_job`` reads a section
+of it by page.
+
+A section is named as the job page heads it, with its key: "Left blank
+(left)". The headings are the page's own (``jobSections.json`` in plaid-igt,
+one mapping for both).
 
 Jobs record outcomes, never reasons (owner's ruling, 2026-11-13): nothing here
 says why a job did anything, and the model is told so in the prompt.
@@ -24,6 +31,8 @@ Everything is read with the turn's own client, so a job the user cannot read
 is refused as core refuses it.
 """
 
+import json
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from ..core.args import read_int
@@ -31,9 +40,42 @@ from ..core.history import doc_label
 from ..core.record_ops import _names_nothing
 from ..core.tools import ToolError, truncate
 
-#: How much of a job's instructions the summary quotes. read_job with the
-#: job gives them whole.
+#: How much of a job's instructions, and of its summary, a turn's summary
+#: quotes. read_job with the job gives them whole.
 JOB_SUMMARY_NOTE_CHARS = 400
+
+#: The job page's headings of the report's sections, in plaid-igt, and the
+#: copy that travels in the package (``bb sample-prompts`` refreshes it).
+REPO_SECTIONS = Path(__file__).resolve().parents[4] / 'plaid-igt' / 'src' / 'components' / 'projects' / 'jobs' \
+    / 'jobSections.json'
+PACKAGED_SECTIONS = Path(__file__).with_name('job-sections.json')
+
+
+def _headings() -> Dict[str, str]:
+    for path in (REPO_SECTIONS, PACKAGED_SECTIONS):
+        if path.is_file():
+            return json.loads(path.read_text(encoding='utf-8'))
+    return {}
+
+
+HEADINGS = _headings()
+
+
+def section_name(key: str) -> str:
+    """A section as the job page heads it, with its key: "Left blank
+    (left)". A section the page has no heading for is its key alone."""
+    heading = HEADINGS.get(key)
+    return f'{heading} ({key})' if heading else key
+
+
+def section_key(name: str) -> str:
+    """The key of a section named by its key, its heading, or both as
+    :func:`section_name` says them."""
+    text = str(name or '').strip()
+    if text.endswith(')') and '(' in text:
+        text = text[text.rindex('(') + 1:-1].strip()
+    by_heading = {h.casefold(): k for k, h in HEADINGS.items()}
+    return by_heading.get(text.casefold(), text)
 #: Rows of a report section one read_job call shows.
 JOB_ROWS_PER_PAGE = 40
 #: Jobs one read_job call with no job lists.
@@ -122,7 +164,7 @@ def _sections_line(report: Optional[Dict[str, Any]]) -> str:
     found = sections(report)
     if not found:
         return 'The report lists nothing.'
-    said = ', '.join(f'{name} {len(rows) + more:,}' for name, rows, more in found)
+    said = ', '.join(f'{section_name(name)} {len(rows) + more:,}' for name, rows, more in found)
     return f'Report sections and their rows: {said}.'
 
 
@@ -137,10 +179,37 @@ def _state_line(job: Dict[str, Any]) -> str:
     return line + '.'
 
 
+def _quoted(what: str, text: str, chars: Optional[int]) -> str:
+    if chars is not None and len(text) > chars:
+        return (f'{what}, the first {chars:,} of {len(text):,} characters (read_job with the job gives it '
+                f'whole): "{text[:chars]}…"')
+    return f'{what}: "{text}"'
+
+
+#: How the job page words a plan's pieces.
+_PIECES = {'sentences': 'stretches of sentences', 'document': 'one piece per document',
+           'selection': 'one piece for all the documents'}
+
+
+def plan_line(report: Dict[str, Any]) -> Optional[str]:
+    """How the job's work was cut, in one line, as the job page says it."""
+    plan = report.get('plan')
+    if not isinstance(plan, dict):
+        return None
+    line = f'Worked in {_PIECES.get(plan.get("pieces"), plan.get("pieces"))}'
+    if plan.get('by') == 'default':
+        line += ', as the planning ended with no plan'
+    smaller = len(plan.get('fallback') or [])
+    if smaller:
+        line += f', {smaller:,} of them in smaller pieces'
+    return line + '.'
+
+
 def summary(job: Dict[str, Any], note_chars: Optional[int] = JOB_SUMMARY_NOTE_CHARS) -> List[str]:
-    """The job in a few lines: state, who and when, tasks, the instructions
-    (cut at ``note_chars``, with a note of what was cut), the totals, and the
-    report's sections with their rows. Never a row of the report."""
+    """The job in a few lines: state, who and when, the instructions (cut at
+    ``note_chars``, with a note of what was cut), how its work was cut, its
+    summary (cut the same way), the totals, and the report's sections with
+    their rows. Never a row of the report."""
     report = job.get('report')
     lines = [_state_line(job)]
     started = f'Started by {job.get("started_by_name") or job.get("started_by") or "unknown"}'
@@ -152,21 +221,21 @@ def summary(job: Dict[str, Any], note_chars: Optional[int] = JOB_SUMMARY_NOTE_CH
     count = job.get('document_count')
     if count is None:
         count = len(job.get('documents') or [])
-    lines.append(f'Tasks: {", ".join(job.get("tasks") or [])}. Documents: {count:,}.')
-    note = job.get('note') or ''
-    if not note:
-        lines.append('Instructions as sent: none.')
-    elif note_chars is not None and len(note) > note_chars:
-        lines.append(f'Instructions as sent, the first {note_chars:,} of {len(note):,} characters (read_job with '
-                     f'the job gives them whole): "{note[:note_chars]}…"')
-    else:
-        lines.append(f'Instructions as sent: "{note}"')
+    lines.append(f'Documents: {count:,}.')
+    lines.append(_quoted('Instructions as sent', job.get('instructions') or '', note_chars))
     if report is None:
         lines.append('No report yet.' if job.get('state') in ('waiting', 'running', 'stopping')
                      else 'It has no report.')
-    else:
-        lines.append(f'Totals: {_totals(report)}.')
-        lines.append(_sections_line(report))
+        return lines
+    planned = plan_line(report)
+    if planned:
+        lines.append(planned)
+    if report.get('summary'):
+        lines.append(_quoted('The job\'s own summary', report['summary'], note_chars))
+    elif report.get('summary_failed'):
+        lines.append('The job\'s own summary could not be written.')
+    lines.append(f'Totals: {_totals(report)}.')
+    lines.append(_sections_line(report))
     return lines
 
 
@@ -188,21 +257,31 @@ def _job(ws, job_id: str) -> Dict[str, Any]:
 
 # --- the place -------------------------------------------------------------------
 
+#: A job's states that are its end.
+ENDED = ('done', 'cancelled', 'failed')
+
+
 def job_place(ws, where: Dict[str, Any]) -> Optional[tuple]:
     """``(noun, name, note)`` for a turn asked from a job's page: the job's id
-    as its name (what read_job takes back), and its summary as read now. A
-    job that is gone says so."""
+    (what read_job takes back), and what the model is told: the job by its
+    page's name beside its id, and for an ended job its summary as read now,
+    for one not ended one fixed line. A job that is gone says so."""
     job_id = str(where.get('id') or '')
     if not job_id:
         return None
+    name = str(where.get('name') or '').strip()
+    called = f'"{name}" (job {job_id})' if name else f'job {job_id}'
     try:
         job = _job(ws, job_id)
     except ToolError:
-        return ('job', job_id, f'The user has open the page of job {job_id}, which no longer exists in this '
-                               'project.')
+        return ('job', job_id, f'The user has open the page of {called}, which no longer exists in this project.')
     except Exception as e:  # noqa: BLE001 - the turn goes on without it
-        return ('job', job_id, f'The user has open the page of job {job_id}, which could not be read now: {e}')
-    head = f'The user has open the page of an assistant job of this project, job {job_id}. Its record as read now:'
+        return ('job', job_id, f'The user has open the page of {called}, which could not be read now: {e}')
+    by_name = (f' Call it "{name}" to the user: its id is for read_job only.' if name else '')
+    if job.get('state') not in ENDED:
+        return ('job', job_id, f'The user has open the page of an assistant job of this project, {called}, which '
+                               f'is {job.get("state")}.{by_name} read_job reads it.')
+    head = f'The user has open the page of an assistant job of this project, {called}.{by_name} Its record as read now:'
     return ('job', job_id, '\n'.join([head, *summary(job), 'read_job reads a section of the report.']))
 
 
@@ -303,7 +382,9 @@ def _list_jobs(ws, page: int) -> str:
     lines = [f'Jobs of this project, newest first: {start + 1} to {start + len(shown)} of {len(jobs):,}.']
     for j in shown:
         ended = f', ended {_when(j.get("finished_at"))}' if j.get('finished_at') else ''
-        lines.append(f'{j.get("id")} | {j.get("state")} | {", ".join(j.get("tasks") or [])} | started by '
+        instructions = ' '.join(str(j.get('instructions') or '').split())
+        brief = instructions if len(instructions) <= 60 else instructions[:59] + '…'
+        lines.append(f'{j.get("id")} | {j.get("state")} | "{brief}" | started by '
                      f'{j.get("started_by_name") or j.get("started_by")}, {_when(j.get("created_at"))}{ended} | '
                      f'{_documents(j.get("document_count") or 0)}')
     if start + len(shown) < len(jobs):
@@ -317,8 +398,9 @@ def _section_rows(ws, job: Dict[str, Any], section: str, document: Optional[str]
     if report is None:
         raise ToolError(f'Job {job["id"]} is {job.get("state")} and has no report yet.', kind='not-found')
     found = {name: (rows, more) for name, rows, more in sections(report)}
+    section = section_key(section)
     if section not in found:
-        named = ', '.join(found) or 'none, the report lists nothing'
+        named = ', '.join(section_name(n) for n in found) or 'none, the report lists nothing'
         raise ToolError(f'The report of job {job["id"]} has no section "{section}". Its sections: {named}.',
                         kind='not-found')
     rows, more = found[section]
@@ -328,7 +410,8 @@ def _section_rows(ws, job: Dict[str, Any], section: str, document: Optional[str]
     if document:
         doc_id = _resolve_document(report, document)
         if not any(_row_documents(e, r) for e, r in rows):
-            raise ToolError(f'The rows of {section} name no document, so document cannot narrow them. Leave it '
+            raise ToolError(f'The rows of {section_name(section)} name no document, so document cannot narrow them. '
+                            'Leave it '
                             'out.', kind='invalid-argument')
         per_document = all(e is not None for e, _ in rows)
         rows = [(e, r) for e, r in rows if doc_id in _row_documents(e, r)]
@@ -343,7 +426,7 @@ def _section_rows(ws, job: Dict[str, Any], section: str, document: Optional[str]
     if rows and not shown:
         raise ToolError(f'Page {page} is past the end: {len(rows):,} rows, {JOB_ROWS_PER_PAGE} a page.',
                         kind='not-found')
-    head = f'Job {job["id"]}, report section {section}{scope}'
+    head = f'Job {job["id"]}, report section {section_name(section)}{scope}'
     if not rows:
         head += ': no rows'
     else:
@@ -351,10 +434,20 @@ def _section_rows(ws, job: Dict[str, Any], section: str, document: Optional[str]
     if more:
         head += f', and {more:,} more{whole} the report counted and did not list'
     lines = [head + f'. As the job ended, {_when(report.get("finished_at") or job.get("finished_at"))}.']
-    lines.extend(_row_line(ws, e, r, names) for e, r in shown)
+    lines.extend((_table_lines(r) if section == 'tables' else _row_line(ws, e, r, names)) for e, r in shown)
     if start + len(shown) < len(rows):
         lines.append(f'Rows {start + len(shown) + 1} to {len(rows):,}: page {page + 1}.')
     return truncate('\n'.join(lines))
+
+
+def _table_lines(table: Dict[str, Any]) -> str:
+    """A table a job's code made, whole: its title, its columns and each row,
+    as data, and how many rows it counted and did not keep."""
+    out = [f'Table "{table.get("title")}": ' + ' | '.join(str(c) for c in table.get('columns') or [])]
+    out += [' | '.join('' if v is None else str(v) for v in row) for row in table.get('rows') or []]
+    if table.get('more'):
+        out.append(f'and {table["more"]:,} more rows the code counted and the report did not keep')
+    return '\n'.join(out)
 
 
 def _help() -> str:
@@ -362,15 +455,15 @@ def _help() -> str:
         'read_job reads an assistant job of this project: what it did, as its record says. A job records what it '
         'did, never why.',
         '- No job: the project\'s jobs, newest first, each with its id.',
-        '- job: its summary (state, who started it and when, tasks, the instructions whole, totals) and the '
-        'report\'s sections with how many rows each holds.',
+        '- job: its summary (state, who started it and when, the instructions whole, how its work was cut, the '
+        'summary the job wrote, totals) and the report\'s sections with how many rows each holds.',
         f'- job and section: the section\'s rows, {JOB_ROWS_PER_PAGE} a page (page 2 for the next). document '
         'narrows them to one document, by name or id.',
-        '- The sections are the report\'s own lists, among them: documents (each document\'s state and counts), '
-        'skipped (sentences the job skipped), left (words and translations it left blank, the job page\'s '
-        '"Left blank", a sentence alone being its translation), harmonize.changed (forms it made consistent), '
-        'harmonize.left (forms left inconsistent), '
-        'entries.created, entries.deleted, entries.unlinked, entries.proposed (lexicon entries).',
+        '- The sections are the report\'s own lists, named as the job page heads them with their key, among '
+        'them: ' + ', '.join(section_name(k) for k in HEADINGS) + '. A section takes its key or its heading. '
+        'proposed holds the changes the job staged and did not apply (what, where, from which value to which), '
+        'which a plan can make once the user asks. left holds words and translations it left blank, a sentence '
+        'alone being its translation. tables holds what the job\'s code counted, as data.',
         '- A row gives its document and the place in it (s3.w2, s12), which read_document and the plan tools '
         'take. The report is as the job ended: the document may have changed since.',
     ])

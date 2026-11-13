@@ -41,7 +41,7 @@ def test_a_three_document_job_reads_each_other_document_once_and_a_lexicon_once_
         def __getattr__(self, name):
             return getattr(self.inner, name)
     monkeypatch.setattr(type(client), 'vocab_layers', property(lambda self: Layers(real(self))))
-    job = start(client, ['gloss', 'link'], documents=['d1', 'd2', 'd3'])
+    job = start(client, documents=['d1', 'd2', 'd3'])
     model = use(monkeypatch, Model(_model))
     run_job(job, runner(job))
     stretches = sum(1 for c in model.calls if c['n'] == 1)

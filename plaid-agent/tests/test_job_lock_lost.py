@@ -20,7 +20,7 @@ def _lost(cause=None):
 def _job(monkeypatch):
     client = JobClient({'d1': document('d1', 'Story', [{'words': ['gam']}])})
     client.after_write['d1'] = document('d1', 'Story', [{'words': [('gam', [('gam', 'fish')], J)]}], version=2)
-    job = start(client, ['gloss'], id=J)
+    job = start(client, id=J)
     use(monkeypatch, Model(lambda asked, n, kw: reply(calls=[call(1, 'set_analysis', {
         'document': 'Story', 'ref': 's1.w1', 'morphemes': [{'form': 'gam', 'fields': {'Morph Gloss': 'fish'}}]})])
         if n == 1 else reply('Done.')))
@@ -74,7 +74,7 @@ def test_a_lock_lost_in_harmonizes_write_takes_the_document_again(monkeypatch):
     from job_fixtures import recorded
     client = JobClient({'d1': document('d1', 'Story', [{'words': [
         ('ka', [('ka', 'go')], J), ('ka', [('ka', 'go')], J), ('ka', [('ka', 'come')], J)]}])})
-    job = start(client, ['gloss'], id=J)
+    job = start(client, id=J)
     job.update_row('d1', state='done')
     recorded(job)
     real, n = testing._Batch.submit, {'n': 0}

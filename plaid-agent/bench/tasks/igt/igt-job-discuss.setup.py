@@ -24,13 +24,13 @@ def setup(ctx):
     doc_id = L.doc_of(ctx, DOC)['id']
     made = ctx.user.jobs.get(job)
     report = {
-        'state': 'done', 'reason': None, 'tasks': ['gloss'], 'note': None, 'started_by': made['started_by'],
+        'state': 'done', 'reason': None, 'instructions': made['instructions'], 'started_by': made['started_by'],
         'model': 'openai/m', 'started_at': made['started_at'], 'finished_at': None,
         'paused_for_people_s': 0, 'paused_for_model_s': 0, 'stopped': None,
         'totals': {'documents_done': 1, 'documents_in_use': 0, 'documents_gone': 0, 'documents_not_reached': 0,
                    'sentences': 0, 'translations': 0, 'refreshed': 0, 'words': 0, 'links': 0, 'entries': 0,
                    'skipped_too_long': 0, 'skipped_failed': 0, 'skipped_changed': 0, 'skipped_more': 0,
-                   'changed': 0, 'protected': 0},
+                   'changed': 0, 'proposed': 0},
         'documents': [{'document_id': doc_id, 'name': DOC, 'state': 'done', 'sentences': 20, 'targets': 1,
                        'done': 1, 'counts': {'left': 1}, 'skipped': [], 'gloss_group': None,
                        'harmonize_group': None,
@@ -41,7 +41,9 @@ def setup(ctx):
                                 'analyses': [{'analysis': 'wila ‘MANR’', 'count': 3},
                                              {'analysis': 'wila ‘like’', 'count': 2}]}]},
         'entries': {'created': [], 'deleted': [], 'unlinked': [], 'created_more': 0, 'deleted_more': 0,
-                    'unlinked_more': 0, 'lexicons': [], 'proposed': [], 'proposed_more': 0},
+                    'unlinked_more': 0, 'lexicons': []},
+        'summary': None, 'summary_failed': False, 'plan': None, 'proposed': [], 'proposed_more': 0,
+        'proposed_dropped': 0, 'notes': [], 'notes_more': 0, 'tables': [],
     }
     ctx.client.jobs.finish(job, H.WORKER, 'done', report)
     held = ctx.user.jobs.get(job)

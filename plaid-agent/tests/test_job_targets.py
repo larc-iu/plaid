@@ -1,5 +1,7 @@
-"""What a job writes: blank words, and translations that are empty or a
-machine's draft it did not write itself (SPEC 6.1 to 6.3)."""
+"""What is empty to a job: blank words, and empty translations. A job has no
+task types (the owner's ruling 11): a sentence holding either is one its
+stretches work. Another machine's translation is not empty: replacing it is a
+proposed change (the apply rule)."""
 
 from job_fixtures import JobClient, document
 
@@ -27,12 +29,12 @@ def test_only_an_unanalysed_word_with_no_word_value_is_a_target():
     states = [word_state(w) for w in s.words]
     assert states == ['unanalyzed', 'machine', 'protected', 'machine', 'unanalyzed', 'unanalyzed']
     assert [word_target(w) for w in s.words] == [True, False, False, False, False, False]
-    words, translate = sentence_targets(s, project, ['gloss'], JOB)
+    words, translate = sentence_targets(s, project, JOB)
     assert [w.surface for w in words] == ['blank']
-    assert translate is False, 'translate was not asked'
+    assert translate is True, 'the translation is empty'
 
 
-def test_a_translation_is_a_target_when_empty_or_a_machine_draft_and_not_once_the_job_wrote_it():
+def test_a_translation_is_empty_only_when_nobody_wrote_one():
     project, sentences = _sentences([
         {'words': ['a']},
         {'words': ['b'], 'translation': ('B.', 'machine')},
@@ -42,6 +44,5 @@ def test_a_translation_is_a_target_when_empty_or_a_machine_draft_and_not_once_th
     ])
     assert [translation_state(s, project, JOB) for s in sentences] == ['empty', 'machine', 'protected', 'own',
                                                                         'machine']
-    assert [sentence_targets(s, project, ['translate'], JOB)[1] for s in sentences] == [True, True, False, False,
-                                                                                         True]
-    assert sentence_targets(sentences[0], project, ['translate'], JOB)[0] == [], 'gloss was not asked'
+    assert [sentence_targets(s, project, JOB)[1] for s in sentences] == [True, False, False, False, False]
+    assert [w.surface for w in sentence_targets(sentences[0], project, JOB)[0]] == ['a'], 'its blank word too'

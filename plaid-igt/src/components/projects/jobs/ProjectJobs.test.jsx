@@ -10,7 +10,7 @@ const { JOB_POLL_MS } = await import('@ui/domain/jobs.js');
 
 const job = (id, over = {}) => ({
   id,
-  tasks: ['gloss'],
+  instructions: 'Gloss the words.',
   state: 'done',
   documentCount: 1,
   startedByName: 'Wren',
@@ -41,7 +41,7 @@ describe('the Jobs tab', () => {
           job('new', {
             createdAt: '2026-11-11T10:00:00Z',
             state: 'cancelled',
-            tasks: ['translate', 'gloss', 'link'],
+            instructions: 'Segment, gloss and link.',
             documentCount: 1204,
           }),
         ]),
@@ -51,14 +51,14 @@ describe('the Jobs tab', () => {
     expect(client.jobs.list).toHaveBeenCalledWith('p1');
     const [first, second] = rows(v.container);
     expect(first[0]).toBe('Stopped');
-    expect(first[1]).toBe('Translations, analyses and lexicon links');
+    expect(first[1]).toBe('Segment, gloss and link.');
     expect(first[2]).toBe('1,204');
     expect(first[3]).toBe('Wren');
     expect(second[0]).toBe('Failed');
     expect(second[2]).toBe('1');
     expect(all(v.container, 'thead th').map((th) => th.textContent.trim())).toEqual([
       'State',
-      'Tasks',
+      'Instructions',
       'Documents',
       'Started by',
       'Started',

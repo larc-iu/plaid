@@ -1,7 +1,7 @@
 (ns plaid.sql.job
   "Assistant jobs: unattended glossing a writer starts and a worker process
-  carries out. A job names a project, an app, its tasks, its documents in
-  order and an optional note. One worker, run by an admin, takes jobs one at
+  carries out. A job names a project, an app, its documents in order and
+  the instructions the person wrote for it. One worker, run by an admin, takes jobs one at
   a time across the server, in the order they were made, and reports on each
   document as it goes. See the migration `20261113120000-jobs.up.sql` for the
   tables and `plaid.rest-api.v1.job` for who may do what.
@@ -34,9 +34,9 @@
 ;; ============================================================
 
 (def apps
-  "The apps a job may be made for, each with its tasks in the order a job
-  lists them. Closed: an app adds a row when it has a worker."
-  {"igt" ["translate" "gloss" "link"]})
+  "The apps a job may be made for. Closed: an app joins when it has a
+  worker. A job has no task types: what it does is its instructions."
+  #{"igt"})
 
 (def slots
   "How many jobs hold a lease at once, server-wide."
@@ -50,9 +50,10 @@
   "The most documents one job takes."
   500)
 
-(def note-max-chars
-  "The longest note, in characters. The note goes with every stretch the
-  worker sends the model, so it is bounded like any part of the prompt."
+(def instructions-max-chars
+  "The longest instructions, in characters. They go with every piece of work
+  the worker sends the model, so they are bounded like any part of the
+  prompt."
   2000)
 
 (def report-max-bytes
@@ -81,7 +82,7 @@
 
 (def active-states #{"waiting" "running" "stopping"})
 (def final-states #{"done" "cancelled" "failed"})
-(def phases #{"checking" "glossing" "harmonizing" "reporting"})
+(def phases #{"checking" "planning" "working" "harmonizing" "reporting"})
 (def waiting-fors #{"people" "model"})
 (def document-states #{"waiting" "working" "deferred" "done" "in-use" "gone" "not-reached"})
 
@@ -219,8 +220,7 @@
     (cond-> {:job/id (str (:id row))
              :job/project (str (:project_id row))
              :job/app (:app row)
-             :job/tasks (vec (psc/read-json (:tasks row)))
-             :job/note (:note row)
+             :job/instructions (:instructions row)
              :job/started-by (:started_by row)
              :job/started-by-name (display-name db (:started_by row))
              :job/state (:state row)
@@ -295,48 +295,44 @@
                    :order-by [:name :id]})))
 
 (defn- check-start!
-  "The start body's tasks in `apps` order and its document ids, or a 400 for
-  the first rule it breaks (CONTRACT 3.1)."
-  [db project-id {:keys [app tasks documents note]}]
-  (let [known (clojure.core/get apps app)]
-    (when-not known
-      (refuse 400 {:error (str "Unknown app: " app ".")}))
-    (when (or (empty? tasks) (not-every? (set known) tasks))
-      (refuse 400 {:error (str "tasks: give at least one of " (str/join ", " known) ".")}))
-    (when (and (some #{"link"} tasks) (not (some #{"gloss"} tasks)))
-      (refuse 400 {:error "tasks: link needs gloss."}))
-    (let [ordered-tasks (filterv (set tasks) known)
-          docs (if (some? documents)
-                 (let [_ (when (empty? documents)
-                           (refuse 400 {:error "documents: give at least one document, or leave them out for all."}))
-                       ids (vec (distinct (map (comp str/lower-case str) documents)))
-                       in-project (set (live-documents db project-id))
-                       outside (count (remove in-project ids))]
-                   (when (pos? outside)
-                     (refuse 400 {:error (str "documents: " outside
-                                              (if (= 1 outside) " is not a document" " are not documents")
-                                              " of this project.")}))
-                   ids)
-                 (live-documents db project-id))]
-      (when (> (count docs) documents-max)
-        (refuse 400 {:error (str "A job takes at most " documents-max " documents. This one names "
-                                 (grouped (count docs)) ".")}))
-      (when (and note (> (cp/cp-count note) note-max-chars))
-        (refuse 400 {:error (str "The note is " (grouped (cp/cp-count note)) " characters. A job's note is at most "
-                                 (grouped note-max-chars) ".")}))
-      (when (empty? docs)
-        (refuse 400 {:error "This project has no documents."}))
-      [ordered-tasks docs])))
+  "The start body's document ids, or a 400 for the first rule it breaks
+  (CONTRACT 3.1)."
+  [db project-id {:keys [app documents instructions]}]
+  (when-not (contains? apps app)
+    (refuse 400 {:error (str "Unknown app: " app ".")}))
+  (when (str/blank? instructions)
+    (refuse 400 {:error "instructions: say what the job is to do."}))
+  (when (> (cp/cp-count instructions) instructions-max-chars)
+    (refuse 400 {:error (str "The instructions are " (grouped (cp/cp-count instructions))
+                             " characters. A job's instructions are at most " (grouped instructions-max-chars) ".")}))
+  (let [docs (if (some? documents)
+               (let [_ (when (empty? documents)
+                         (refuse 400 {:error "documents: give at least one document, or leave them out for all."}))
+                     ids (vec (distinct (map (comp str/lower-case str) documents)))
+                     in-project (set (live-documents db project-id))
+                     outside (count (remove in-project ids))]
+                 (when (pos? outside)
+                   (refuse 400 {:error (str "documents: " outside
+                                            (if (= 1 outside) " is not a document" " are not documents")
+                                            " of this project.")}))
+                 ids)
+               (live-documents db project-id))]
+    (when (> (count docs) documents-max)
+      (refuse 400 {:error (str "A job takes at most " documents-max " documents. This one names "
+                               (grouped (count docs)) ".")}))
+    (when (empty? docs)
+      (refuse 400 {:error "This project has no documents."}))
+    docs))
 
 (defn create!
   "Start a job on project `project-id` for `user-id`. `body` is `{:id :app
-  :tasks :documents :note}`. Left out, `documents` is every document of the
+  :documents :instructions}`. Left out, `documents` is every document of the
   project, by name then id. Returns the job. Refuses with 400 for a body
   that breaks a rule, 409 `job-active` while the project has an active job,
   and 409 `id-taken` for an id used before."
-  [db project-id {:keys [id note] :as body} user-id]
+  [db project-id {:keys [id instructions] :as body} user-id]
   (psd/with-tx [tx db]
-    (let [[tasks docs] (check-start! tx project-id body)]
+    (let [docs (check-start! tx project-id body)]
       (when-let [other (psc/q1 tx {:select [:id] :from [:jobs]
                                    :where [:and [:= :project_id (str project-id)]
                                            [:in :state (vec active-states)]]})]
@@ -348,8 +344,7 @@
                           :values [{:id job-id
                                     :project_id (str project-id)
                                     :app (:app body)
-                                    :tasks (psc/write-json tasks)
-                                    :note (when-not (str/blank? note) note)
+                                    :instructions instructions
                                     :started_by user-id
                                     :state "waiting"
                                     :created_at now}]})
@@ -393,8 +388,7 @@
         in-state (fn [s] (count (filter #(= s (:state %)) docs)))]
     {:state (:state row)
      :reason (:reason row)
-     :tasks (vec (psc/read-json (:tasks row)))
-     :note (:note row)
+     :instructions (:instructions row)
      :started-by (:started_by row)
      :model (:model row)
      :started-at (:started_at row)
@@ -416,7 +410,7 @@
               :skipped-failed (skipped-of "failed")
               :skipped-changed (skipped-of "changed")
               :changed (count-of :changed)
-              :protected (count-of :protected)}
+              :proposed (count-of :proposed)}
      :documents (mapv #(select-keys % [:document-id :name :state :sentences :targets :done
                                        :counts :skipped :gloss-group :harmonize-group])
                       docs)

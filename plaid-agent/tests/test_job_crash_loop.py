@@ -23,7 +23,7 @@ def _worker(client, factory):
 
 def test_a_job_whose_runner_breaks_is_failed_and_not_claimed_again(monkeypatch):
     client = _client()
-    client.jobs.create('p1', 'igt', ['gloss'])
+    client.jobs.create('p1', 'igt', 'Gloss the words.')
     cfg = ModelConfig(model='fake/m', stream=False, max_steps=1000)
 
     class Broken(IgtRunner):
@@ -39,7 +39,7 @@ def test_a_job_whose_runner_breaks_is_failed_and_not_claimed_again(monkeypatch):
 
 def test_a_finish_core_refuses_still_ends_the_job_failed(monkeypatch):
     client = _client()
-    client.jobs.create('p1', 'igt', ['gloss'])
+    client.jobs.create('p1', 'igt', 'Gloss the words.')
     use(monkeypatch, Model(lambda asked, n, kw: reply('Done.')))
     real = client.jobs.finish
     refused = {'n': 0}

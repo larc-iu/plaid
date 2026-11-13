@@ -4,7 +4,7 @@
 # other "was" as imported). The setup reads this back and fails if it does not
 # hold. The assistant must raise я, in a reply that names both of people's
 # glosses, before it drafts the job (or in the reply that drafts it), leave a
-# job card over exactly that text with the gloss task, and the card's brief
+# job card over exactly that text, and the card's brief
 # must carry the user's answer (COP). Nothing is written.
 id: igt-job-scope
 app: igt
@@ -20,5 +20,4 @@ args:
   form: я
   ways: ['\bCOP\b|\bcopula\b', '\bwas\b|\bpast\b|\bPST\b']
   documents: [Lezgi text 1]
-  tasks: [gloss]
   brief: ['\bCOP\b', '(?<![^\W_])я(?![^\W_])']

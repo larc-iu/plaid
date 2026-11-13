@@ -40,7 +40,9 @@ from ..core.garble import seed
 from ..core.guidelines import manual_chars
 from ..core.job import (BUDGET, ROW_FINAL, SKIPPED_MORE, JobStopped, Pace, StretchFailed, canonical, analysis_key,
                         empty_counts, failure_kind, halve, harmonized, not_answering)
-from ..core.limits import (JOB_ANALYSIS_MAX_CHARS, JOB_CONTEXT_SENTENCES,
+from ..core.limits import (JOB_ANALYSIS_MAX_CHARS, JOB_CHANGE_VALUE_CHARS, JOB_CHANGES_MAX, JOB_CONTEXT_SENTENCES,
+                           JOB_DOCUMENT_PIECE_MAX_CHARS, JOB_NOTE_MAX_CHARS, JOB_SUMMARY_MAX_CHARS,
+                           JOB_SUMMARY_NOTES_CHARS, JOB_SUMMARY_TABLE_CHARS, JOB_TABLES_MAX, JOB_TABLES_PER_PIECE,
                            JOB_DECISIONS_PER_CALL, JOB_DEFER_ROUNDS, JOB_DEFER_WAIT_S, JOB_GUIDELINES_MAX_CHARS,
                            JOB_LOCK_TRIES, JOB_LOCK_WAIT_S, JOB_PERSON_QUIET_S, JOB_PRECEDENT_CHARS,
                            JOB_PRECEDENT_PER_FORM, JOB_SENTENCE_MAX_CHARS, JOB_SENTENCE_MAX_WORDS,
@@ -58,14 +60,12 @@ from .workspace import Workspace
 
 logger = logging.getLogger(__name__)
 
-#: The phase of the work on each document (CONTRACT 2.1).
-WORK_PHASE = 'glossing'
+#: The phase of the work on the documents (CONTRACT 2.1).
+WORK_PHASE = 'working'
 #: The Status value of an entry a job creates (CONTRACT 10).
 MACHINE_STATUS = 'machine'
-#: Tasks as History names them (CONTRACT 8).
-LABELS = {('translate',): 'translations', ('gloss',): 'analyses', ('gloss', 'link'): 'analyses and lexicon links',
-          ('translate', 'gloss'): 'translations and analyses',
-          ('translate', 'gloss', 'link'): 'translations, analyses and lexicon links'}
+#: How many words of its instructions name a job in History (CONTRACT, added by JG).
+LABEL_WORDS = 6
 HARMONIZE_LABEL = 'Assistant job: analyses made consistent'
 ENTRIES_LABEL = 'Assistant job: delete unlinked machine drafts'
 
@@ -86,6 +86,48 @@ WRITING_FORM = ' writing '
 #: person removed it, or it never landed, cannot be told, and the job writes
 #: nothing more there (REV-FIX3-1).
 INTERRUPTED = 'interrupted'
+#: The job's plan, made once (``plan_work`` or the default), and where the
+#: plan's pieces were cut smaller (a document too large for one piece, a
+#: selection that failed): rows of the job's decisions, so a resumed job
+#: never plans again (CONTRACT, added by JG).
+PLAN_FORM = ' plan'
+FALLBACK_FORM = ' fallback '
+#: A change a piece staged that the apply rule did not apply, a piece's
+#: note, a table a piece's code made, and how many changes the cap dropped.
+CHANGE_FORM = ' change '
+NOTE_FORM = ' note '
+TABLE_FORM = ' table '
+DROPPED_FORM = ' dropped'
+#: How the plan cuts the work (``plan_work``'s ``pieces``).
+SENTENCES, DOCUMENT, SELECTION = 'sentences', 'document', 'selection'
+PIECES = (SENTENCES, DOCUMENT, SELECTION)
+
+
+def _cut(text, limit: int):
+    """``text`` at most ``limit`` characters, "…" where it was cut, None as
+    None."""
+    if text is None:
+        return None
+    text = str(text)
+    return text if len(text) <= limit else text[:limit - 1] + '…'
+
+
+def _first_line(text) -> str:
+    return next((line.strip() for line in str(text or '').splitlines() if line.strip()), '')
+
+
+def table_rows_text(table: Dict[str, Any]) -> List[str]:
+    """A table a piece's code made, as the decision rows that keep it: its
+    title, columns and rows split over as many rows as JOB_ANALYSIS_MAX_CHARS
+    needs, each saying which part of how many it is."""
+    head = {'title': table.get('title'), 'columns': table.get('columns'), 'more': table.get('more') or 0}
+    chunks: List[List[Any]] = [[]]
+    for row in table.get('rows') or []:
+        trial = canonical({**head, 'rows': chunks[-1] + [row], 'part': 999, 'of': 999})
+        if chunks[-1] and len(trial) > JOB_ANALYSIS_MAX_CHARS:
+            chunks.append([])
+        chunks[-1].append(row)
+    return [canonical({**head, 'rows': rows, 'part': i, 'of': len(chunks)}) for i, rows in enumerate(chunks)]
 
 
 def _n(n: int, word: str) -> str:
@@ -141,9 +183,14 @@ def mark_text(counts: Dict[str, int], document_id: str, left: List[Dict[str, Any
             pairs.pop()
 
 
-def gloss_label(tasks) -> str:
-    order = ('translate', 'gloss', 'link')
-    return 'Assistant job: ' + LABELS[tuple(t for t in order if t in tasks)]
+def job_label(instructions: Optional[str]) -> str:
+    """The History name of a job's work in a document: "Assistant job: "
+    and the first LABEL_WORDS words of its instructions, with "…" when there
+    are more. One dumb rule: a job has no name of its own, and its
+    instructions say what it did."""
+    words = str(instructions or '').split()
+    head = ' '.join(words[:LABEL_WORDS])
+    return 'Assistant job: ' + (head + ('…' if len(words) > LABEL_WORDS else '') if head else 'work')
 
 
 def job_source(model: str) -> str:
@@ -214,18 +261,21 @@ def translated_by(s: Sentence, project: IgtProject, job_id: str) -> bool:
 
 
 def translation_target(s: Sentence, project: IgtProject, job_id: str) -> bool:
-    return translation_state(s, project, job_id) in ('empty', 'machine')
+    """An empty translation. Another producer's machine translation is not
+    one: replacing it is a proposed change (the apply rule)."""
+    return translation_field(project) is not None and translation_state(s, project, job_id) == 'empty'
 
 
-def sentence_targets(s: Sentence, project: IgtProject, tasks, job_id: str,
+def sentence_targets(s: Sentence, project: IgtProject, job_id: str,
                      known=frozenset()) -> Tuple[List[Word], bool]:
-    """The target words of ``s`` and whether its translation is a target.
-    None of either in a sentence that holds a word of a sentence the job
-    began to write in (``known``, :meth:`IgtRunner.known_words`)."""
+    """What is empty in ``s``: its blank words and whether its translation
+    is empty. A job walks a document's sentences that hold something empty
+    (a job has no task types: what it fills is its instructions' business).
+    Nothing in a sentence that holds a word of a sentence the job began to
+    write in (``known``, :meth:`IgtRunner.known_words`)."""
     if wrote_in(s, known):
         return [], False
-    words = [w for w in s.words if word_target(w)] if 'gloss' in tasks else []
-    return words, ('translate' in tasks and translation_target(s, project, job_id))
+    return [w for w in s.words if word_target(w)], translation_target(s, project, job_id)
 
 
 def wrote_in(s: Sentence, known) -> bool:
@@ -387,15 +437,11 @@ def word_analysis(w: Word, made: frozenset = frozenset()) -> Dict[str, Any]:
             'word': {n: _nfc(sp.value) for n, sp in sorted(w.fields.items()) if sp.value not in (None, '')}}
 
 
-def harmonized_part(analysis: Dict[str, Any], tasks) -> Dict[str, Any]:
+def harmonized_part(analysis: Dict[str, Any]) -> Dict[str, Any]:
     """What harmonize compares an analysis by: the morphemes (form, type,
-    "=", their fields) and, only for a job asked to link, their entries.
-    Never ``made``, so a person's links never come along into a job that
-    makes none. The word fields do not decide a form's analysis: they go
-    with it (:meth:`IgtRunner.stage`)."""
-    links = 'link' in tasks
-    return {'morphemes': [{**m, 'made': False, 'entry': m.get('entry') if links else None}
-                          for m in analysis['morphemes']], 'word': {}}
+    "=", their fields, their entries), never ``made``. The word fields do not
+    decide a form's analysis: they go with it (:meth:`IgtRunner.stage`)."""
+    return {'morphemes': [{**m, 'made': False} for m in analysis['morphemes']], 'word': {}}
 
 
 def chosen_word_fields(people: Counter, job: Counter) -> Dict[str, Any]:
@@ -427,14 +473,57 @@ def rendering(analysis: Dict[str, Any], gloss: Optional[str], entries: Optional[
     return line
 
 
+def summary_message(report: Dict[str, Any]) -> str:
+    """What the final context is handed: the report's sections as text, each
+    bounded (JOB_SUMMARY_NOTES_CHARS for the notes, JOB_SUMMARY_TABLE_CHARS
+    for the tables), saying what it left out."""
+    totals = report.get('totals') or {}
+    lines = ['The job\'s instructions:', report.get('instructions') or '', '',
+             'The report\'s totals (the worker counted these):',
+             ', '.join(f'{k.replace("_", " ")} {v:,}' for k, v in sorted(totals.items()) if v), '']
+    plan = report.get('plan') or {}
+    if plan:
+        lines += [f'How the work was cut: {plan.get("pieces")}.', '']
+    lines.append('Documents:')
+    for d in report.get('documents') or []:
+        c = d.get('counts') or {}
+        lines.append(f'- "{d.get("name")}": {d.get("state")}, '
+                     + ', '.join(f'{k} {v:,}' for k, v in sorted(c.items()) if v and isinstance(v, int)))
+    proposed = len(report.get('proposed') or []) + (report.get('proposed_more') or 0)
+    lines += ['', f'Changes proposed for a person to approve: {proposed:,}.', '', 'Each piece\'s note:']
+    size, left = 0, 0
+    for n in report.get('notes') or []:
+        line = f'- {n.get("name") or ""} {n.get("sentences") or ""}: {n.get("note")}'.replace('  ', ' ')
+        if size + len(line) > JOB_SUMMARY_NOTES_CHARS:
+            left += 1
+            continue
+        lines.append(line)
+        size += len(line) + 1
+    if left or report.get('notes_more'):
+        lines.append(f'and {left + (report.get("notes_more") or 0):,} more notes not shown')
+    tables = report.get('tables') or []
+    if tables:
+        lines += ['', 'Tables the job\'s code made (in the report as they are):']
+        size = 0
+        for t in tables:
+            text = canonical({'title': t.get('title'), 'columns': t.get('columns'), 'rows': t.get('rows')})
+            if size + len(text) > JOB_SUMMARY_TABLE_CHARS:
+                lines.append(f'- "{t.get("title")}": {len(t.get("rows") or [])} rows, not shown')
+                continue
+            lines.append(text)
+            size += len(text)
+    lines += ['', 'Write the summary now.']
+    return '\n'.join(lines)
+
+
 # --- the job's workspace ---------------------------------------------------------
 
 class Stretch:
     """The targets of one stretch: which words and translations may be
     written, and where every token of the document sits."""
 
-    def __init__(self, doc, project: IgtProject, sentences: List[Sentence], tasks, job_id: str,
-                 known=frozenset()):
+    def __init__(self, doc, project: IgtProject, sentences: List[Sentence], job_id: str, known=frozenset()):
+        self.doc = doc
         self.sentence_ids = {s.id for s in sentences}
         self.words: Dict[str, Word] = {}
         self.translations: set = set()
@@ -447,7 +536,7 @@ class Stretch:
                     self.where[m.id] = s
         self.word_of: Dict[str, str] = {}
         for s in sentences:
-            words, translate = sentence_targets(s, project, tasks, job_id, known)
+            words, translate = sentence_targets(s, project, job_id, known)
             for w in words:
                 self.words[w.id] = w
                 for m in w.morphemes:
@@ -465,28 +554,41 @@ class Stretch:
 
 
 class JobWorkspace(Workspace):
-    """The igt workspace with a job's guards on everything staged (SPEC 3.5,
-    6.5): a change outside the stretch's target sentences, on a word or a
-    translation that is not a target, a link of something other than a
-    morpheme of a target word, an entry that exists already or one in a
-    borrowed lexicon is refused at staging, every other guard of the
-    workspace applying as well. ``stretch`` None (harmonize) asks nothing."""
+    """The igt workspace of a job's model. A piece of the job (``mode``
+    ``piece``) stages as the assistant stages, with every guard of the
+    workspace, and nothing it stages is refused for what it would change:
+    the worker decides that when it applies the plan, by the apply rule
+    (:mod:`plaid_agent.igt.jobapply`). One guard is the job's own: no entry
+    is created where one of the same form and gloss exists, so the model
+    links that one. The job's planning context (``plan``) stages nothing.
+    Harmonize stages through it too, with no stretch.
 
-    def __init__(self, client, project: IgtProject, tasks, stretch: Optional[Stretch] = None):
+    ``tables`` collects what code hands ``table()`` in a piece, kept as data
+    in the job's report (:func:`plaid_agent.igt.sandbox.api`)."""
+
+    PIECE, PLAN = 'piece', 'plan'
+
+    def __init__(self, client, project: IgtProject, stretch: Optional[Stretch] = None, mode: str = PIECE):
         super().__init__(client, project)
-        self.tasks = list(tasks)
         self.stretch = stretch
+        self.mode = mode
         self.decide_now = False
+        self.tables: List[Dict[str, Any]] = []
+        #: the planning context's plan_work, once valid
+        self.plan_work: Optional[Dict[str, Any]] = None
 
     def guard_op(self, op: Dict[str, Any], replacing: Optional[int] = None) -> None:
-        if self.stretch is not None:
-            self.job_guard(op)
+        if self.mode == self.PLAN:
+            raise ToolError('This context plans the job and stages no change: end with plan_work.',
+                            kind='not-allowed')
+        if op.get('kind') == 'create_entry':
+            self.fit_guard(op)
         super().guard_op(op, replacing=replacing)
 
     # What a staging tool says back, and the line every result ends with,
-    # worded for a job: nothing waits for anyone, what is staged is written
-    # when the stretch ends (REV-J-B S3-3). The chat's own say a person
-    # approves a plan card and is told of it in a reply.
+    # worded for a job: nothing waits for anyone, what is staged is applied
+    # by the job's rule when the piece ends (REV-J-B S3-3). The chat's own
+    # say a person approves a plan card and is told of it in a reply.
 
     tool_fault_next = 'Try another way of asking rather than the same call again.'
 
@@ -495,19 +597,15 @@ class JobWorkspace(Workspace):
 
     def planned_note(self, n: int, what: Optional[str] = None) -> str:
         held = self.staged_count()
-        return (f'Staged {what or _n(n, "change")}. {_n(held, "change")} staged in all, written when you end.'
+        return (f'Staged {what or _n(n, "change")}. {_n(held, "change")} staged in all, applied when you end.'
                 + self.superseded_note())
 
     def result_line(self) -> str:
         held = self.staged_count()
         return f'[Staged: {_n(held, "change")}.]' if held else '[Staged: nothing yet.]'
 
-    def entry_id_note(self) -> str:
-        made = 'create_entry, or a list of candidates' if 'link' in self.tasks else 'a list of candidates'
-        return f'entry_id takes only an id a tool gave ({made}).'
-
     def unknown_new_entry(self, entry_id: str) -> str:
-        return (f'No entry staged in this stretch has id {entry_id}. Name an entry made before it by its form, '
+        return (f'No entry staged in this piece has id {entry_id}. Name an entry made before it by its form, '
                 'with its number if several share it ("gam#2"), as read_lexicon shows it.')
 
     @staticmethod
@@ -529,59 +627,13 @@ class JobWorkspace(Workspace):
         off-list one is stored and shows as off-tagset, as every machine
         writer's does, and is never coerced to a listed one."""
 
-    def _not_target(self, token_id: Optional[str], what: str) -> None:
-        s = self.stretch.sentence_of(token_id)
-        if s is None or s.id not in self.stretch.sentence_ids:
-            where = f's{s.index}' if s is not None else 'That'
-            raise ToolError(f'{where} is not one of the target sentences.', kind='not-allowed')
-        raise ToolError(f'{what} in s{s.index} is not a target: leave it as it is.', kind='not-allowed')
-
-    def job_guard(self, op: Dict[str, Any]) -> None:
-        st = self.stretch
-        kind = op.get('kind')
-        if kind == 'set_span':
-            f = self.project.field_by_layer(op.get('layer_id'))
-            token = op.get('token_id')
-            if f is not None and f.scope == 'Sentence':
-                tf = translation_field(self.project)
-                if 'translate' not in self.tasks or tf is None or f.layer_id != tf.layer_id \
-                        or token not in st.translations:
-                    self._not_target(token, f'The {f.name}')
-                return
-            word = st.word_of.get(token) if f is not None and f.scope == 'Morpheme' else token
-            if word not in st.words:
-                self._not_target(token, 'That word')
-            return
-        if kind == 'set_analysis':
-            if op.get('word_id') not in st.words:
-                self._not_target(op.get('word_id'), 'That word')
-            return
-        if kind == 'link':
-            if 'link' not in self.tasks:
-                raise ToolError('This job makes no lexicon links.', kind='not-allowed')
-            word = op.get('analysis_word_id') or st.word_of.get(op.get('token_id'))
-            if word not in st.words:
-                if op.get('token_id') in st.words or st.sentence_of(op.get('token_id')) is None:
-                    raise ToolError('Link the morphemes of the words you analyse (sN.wN.mN).', kind='not-allowed')
-                self._not_target(op.get('token_id'), 'That morpheme')
-            return
-        if kind == 'create_entry':
-            self.fit_guard(op)
-            return
-        raise ToolError('A job stages translations, analyses and lexicon links only.', kind='not-allowed')
-
     def fit_guard(self, op: Dict[str, Any]) -> None:
         """No entry is created where one fits: same form and gloss, after NFC,
-        made by anyone, of any status, or staged earlier in this stretch
-        (SPEC 7.2). Nor in a lexicon another project owns."""
-        if 'link' not in self.tasks:
-            raise ToolError('This job makes no lexicon entries.', kind='not-allowed')
+        made by anyone, of any status, or staged earlier in this piece
+        (SPEC 7.2)."""
         v = next((x for x in self.project.vocabs if x['id'] == op.get('vocab_id')), None)
-        if v is None:
+        if v is None or v.get('borrowed'):
             return
-        if v.get('borrowed'):
-            raise ToolError(f'The lexicon "{v["name"]}" belongs to another project: link its entries and '
-                            'create none in it.', kind='not-allowed')
         gloss = IgtProject.lexicon_field(v, ROLE_GLOSS)
         form = _nfc(op.get('form'))
         value = _nfc((op.get('metadata') or {}).get(gloss)) if gloss else ''
@@ -710,16 +762,14 @@ def with_earlier(earlier: List[Dict[str, Any]], report: Dict[str, Any]) -> Dict[
     return {**report, 'changed': [by_form[f] for f in sorted(by_form)]}
 
 
-def entries_part(created, deleted, unlinked, proposed=()) -> Dict[str, Any]:
+def entries_part(created, deleted, unlinked) -> Dict[str, Any]:
     """The report's entries part (CONTRACT 5.3), its three lists uncut, with
     ``lexicons``: every lexicon the job created an entry in, in the order
-    first met, so the job page links each one's machine drafts (J-INT), and
-    ``proposed``: the entries the model staged that no link it kept named,
-    which were not created (cut here, with ``proposed_more``)."""
-    shown, more = core_job.cut(list(proposed))
+    first met, so the job page links each one's machine drafts (J-INT). An
+    entry the model staged and the job did not create is one of the job's
+    proposed changes (the apply rule)."""
     return {'created': created, 'deleted': deleted, 'unlinked': unlinked,
-            'lexicons': list(dict.fromkeys(e['lexicon'] for e in created)),
-            'proposed': shown, 'proposed_more': more}
+            'lexicons': list(dict.fromkeys(e['lexicon'] for e in created))}
 
 
 class IgtRunner:
@@ -729,12 +779,15 @@ class IgtRunner:
     #: The entries part of a job that never reached its entries.
     NO_ENTRIES = entries_part([], [], [])
 
-    def __init__(self, job, cfg: ModelConfig, trace_dir: Optional[str] = None, count=None):
+    def __init__(self, job, cfg: ModelConfig, trace_dir: Optional[str] = None, count=None,
+                 write_summary: bool = True):
         self.job = job
+        #: whether the report's prose is written (the worker always does)
+        self.write_summary = write_summary
         self.cfg = cfg
         self.trace_dir = trace_dir
         self.count = count
-        self.version = agent_version([JOB_SYSTEM], toolkit.job_tools(['translate', 'gloss', 'link']))
+        self.version = agent_version([JOB_SYSTEM], toolkit.TOOLS)
         self.detail = {'model': cfg.model, 'version': self.version, JOB_DETAIL_KEY: job.id}
         self.source = job_source(cfg.model)
         self.names: Dict[str, str] = {}
@@ -763,8 +816,12 @@ class IgtRunner:
         #: (document id, a stretch's first sentence id) -> how many of that
         #: stretch's writes core refused for something gone
         self.gone_refused: Counter = Counter()
-        #: (lexicon, form, gloss) -> an entry the model staged and nothing linked
-        self.proposed: Dict[Tuple[Any, Any, Any], Dict[str, Any]] = {}
+        #: the job's plan (``plan_work`` or the default), once read or made
+        self.plan_made: Optional[Dict[str, Any]] = None
+        #: keys of the proposed changes core holds for the job, and how many
+        #: the cap dropped (CONTRACT, added by JG), read once per worker
+        self.changes: Optional[set] = None
+        self.changes_dropped = 0
         #: documents the job has waited for once at least: their defers count
         self.waited: set = set()
         #: document id -> sentences skipped past the cap of the row's list:
@@ -813,17 +870,6 @@ class IgtRunner:
         if not job.token:
             return 'starter-access', 'The person who started this job can no longer write in this project.'
         project = self.project()
-        tasks = job.tasks
-        if 'translate' in tasks and translation_field(project) is None:
-            return 'missing-field', 'The project has no translation field.'
-        if 'gloss' in tasks and (not project.morpheme_layer_id or project.gloss_field('Morpheme') is None):
-            return 'missing-field', 'The project has no morpheme gloss field.'
-        if 'link' in tasks:
-            if not project.vocabs:
-                return 'no-lexicon', 'The project has no lexicon.'
-            for v in project.vocabs:
-                if not v.get('borrowed') and not IgtProject.lexicon_field(v, ROLE_STATUS):
-                    return 'no-status-field', f'The lexicon "{v["name"]}" has no Status field.'
         size = manual_chars(project.guidelines)
         if size > JOB_GUIDELINES_MAX_CHARS:
             return 'guidelines-too-long', (f'The project\'s guidelines are {size:,} characters. A job reads at '
@@ -844,7 +890,7 @@ class IgtRunner:
             listed = {x.get('sentence_id') for x in skipped}
             targets = 0
             for s in doc.sentences:
-                words, translate = sentence_targets(s, project, tasks, job.id)
+                words, translate = sentence_targets(s, project, job.id)
                 if not words and not translate:
                     continue
                 # Every word of a sentence the job writes in is named in its
@@ -873,8 +919,20 @@ class IgtRunner:
     # --- the walk (SPEC 5.3) --------------------------------------------------------
 
     def work(self, job) -> None:
-        deferred = []
+        """The work the job's plan cuts: a document at a time (stretches of
+        sentences, or the whole document as one piece), or the whole
+        selection as one piece. Documents the plan leaves out are not
+        reached."""
+        plan = self.plan_made or self.plan(job)
+        order = self.planned_order(job, plan)
         for d in job.order:
+            if d not in order and (job.rows.get(d) or {}).get('state') not in ROW_FINAL + ('not-reached',):
+                job.update_row(d, state='not-reached')
+        if plan['pieces'] == SELECTION and SELECTION not in self.fallen_back():
+            if self.selection(job, order):
+                return
+        deferred = []
+        for d in order:
             if (job.rows.get(d) or {}).get('state') in ROW_FINAL:
                 continue
             if self.document(d) == 'deferred':
@@ -890,6 +948,247 @@ class IgtRunner:
                     if (job.rows.get(d) or {}).get('state') != 'in-use':
                         still.append(d)
             deferred = still
+
+    # --- the plan (the owner's ruling 14) -----------------------------------------
+
+    def plan(self, job) -> Dict[str, Any]:
+        """The job's plan: read back when the job has one (a resumed job
+        never plans again), else made by the planning context and kept. The
+        planning context is given the instructions and the documents (names,
+        sentences, words, how much is blank) with the assistant's reads and
+        code, writes nothing, and ends with ``plan_work``. When it ends
+        without a valid one after its budget and one decide-now round, the
+        job works in stretches of sentences, and its plan says why."""
+        if self.plan_made is not None:
+            return self.plan_made
+        stored = self.rows_of(PLAN_FORM)
+        if stored and isinstance(stored[0]['value'], dict):
+            self.plan_made = stored[0]['value']
+            return self.plan_made
+        project = self.project()
+        facts = self.document_facts(project, job)
+        plan, why = None, None
+        try:
+            plan = self.planning(project, facts)
+            why = None if plan else 'no-plan'
+        except StretchFailed as e:
+            why = e.kind
+        made = plan or {'pieces': SENTENCES, 'piece_instructions': '', 'documents': None}
+        self.plan_made = {**made, 'by': 'model' if plan else 'default', 'why': why}
+        text = canonical(self.plan_made)
+        job.add_decisions([{'form': PLAN_FORM, 'key': analysis_key(text), 'analysis': text, 'count': 1,
+                            'document_id': None, 'sentence_id': None}])
+        return self.plan_made
+
+    def document_facts(self, project: IgtProject, job) -> List[Dict[str, Any]]:
+        """What the planning context is told of each document still to work:
+        its name, its sentences and words, and how much is blank."""
+        out = []
+        for d in job.order:
+            if (job.rows.get(d) or {}).get('state') in ROW_FINAL:
+                continue
+            try:
+                doc = self.read(project, d)
+            except Gone:
+                job.update_row(d, state='gone')
+                continue
+            words = [w for s in doc.sentences for w in s.words]
+            out.append({'id': d, 'name': doc.name, 'sentences': len(doc.sentences), 'words': len(words),
+                        'blank_words': sum(1 for w in words if word_target(w)),
+                        'empty_translations': sum(1 for s in doc.sentences
+                                                  if translation_target(s, project, job.id)),
+                        'characters': sum(len(render_sentence(s, project)) + 1 for s in doc.sentences)})
+        return out
+
+    def planning(self, project: IgtProject, facts: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+        """The planning context: its plan_work, or None. A model that does
+        not answer is asked again later, as a piece's is (SPEC 3.7)."""
+        from .prompt import JOB_PLAN_NOW, build_plan_prompt
+        job = self.job
+        while True:
+            job.check()
+            ws = JobWorkspace(job.client(), project, mode=JobWorkspace.PLAN)
+            ws.job_documents = [{'id': f['id'], 'name': f['name']} for f in facts]
+            system = build_plan_prompt(project)
+            transcript = [{'role': 'user', 'content': self.plan_message(facts)}]
+            seed(ws.seen, system, transcript, lambda tool, args: True)
+            kit = Toolkit(tools_for=lambda w: toolkit.job_plan_tools(w, plan_only=w.decide_now),
+                          call_tool=toolkit.job_plan_call, tracer=TRACER)
+            self.trace(ws, system, kit, 'plan')
+
+            def decided():
+                ws.decide_now = True
+            try:
+                result = self.turn(ws, kit, system, transcript, decided)
+                if ws.plan_work is None and not ws.decide_now:
+                    # One decide-now round, plan_work alone offered.
+                    ws.decide_now = True
+                    more = transcript + list(result.messages or []) + [{'role': 'user', 'content': JOB_PLAN_NOW}]
+                    self.turn(ws, kit, system, more)
+                return ws.plan_work
+            except (StretchFailed, JobStopped):
+                raise
+            except TurnCancelled:
+                job.check()
+                raise JobStopped('cancelled')
+            except Exception as e:  # noqa: BLE001 - sorted as a piece's are
+                if core_job.core_fault(e) is not None:
+                    raise
+                if not_answering(e):
+                    job.wait_for_model()
+                    continue
+                kind = failure_kind(e)
+                if kind is None:
+                    raise
+                raise StretchFailed(kind, str(e)) from e
+
+    def plan_message(self, facts: List[Dict[str, Any]]) -> str:
+        """What the planning context is handed: the instructions and the
+        documents, one line each, at most JOB_PLAN_DOCUMENT_LINES."""
+        from ..core.limits import JOB_PLAN_DOCUMENT_LINES
+        lines = [f'Instructions from {self.job.starter_name}:', self.job.instructions or '', '',
+                 f'The job\'s documents, in its order ({len(facts)}):']
+        for f in facts[:JOB_PLAN_DOCUMENT_LINES]:
+            lines.append(f'- "{f["name"]}": {_n(f["sentences"], "sentence")}, {_n(f["words"], "word")}, '
+                         f'{f["blank_words"]:,} words nobody analysed, {f["empty_translations"]:,} empty '
+                         f'translations, {f["characters"]:,} characters.')
+        if len(facts) > JOB_PLAN_DOCUMENT_LINES:
+            lines.append(f'and {len(facts) - JOB_PLAN_DOCUMENT_LINES} more documents not shown')
+        lines += ['', 'Plan the job and end with plan_work.']
+        return '\n'.join(lines)
+
+    def planned_order(self, job, plan: Dict[str, Any]) -> List[str]:
+        """The documents the job works, in the plan's order: the plan's
+        subset when it names one, else the job's own order."""
+        named = plan.get('documents')
+        if not named:
+            return list(job.order)
+        return [d for d in named if d in job.rows]
+
+    # --- a selection: one piece for the whole job --------------------------------------
+
+    def selection(self, job, order: List[str]) -> bool:
+        """The whole selection as one piece: one model context reads the
+        documents with its tools, and what it staged is written document by
+        document, each under its lock by the apply rule. True when done;
+        False when the piece failed (the documents are then worked one
+        piece each, and the report says so)."""
+        project = self.project()
+        live = [d for d in order if (job.rows.get(d) or {}).get('state') not in ROW_FINAL]
+        if not live:
+            return True
+        for d in live:
+            job.update_row(d, state='working')
+        job.set(current_document=None, message=f'Working on {_n(len(live), "document")} as one piece.')
+        while True:
+            try:
+                staged = self.selection_work(project, live)
+                break
+            except (JobStopped, Deferred, Gone):
+                raise
+            except TurnCancelled:
+                job.check()
+                raise JobStopped('cancelled')
+            except StretchFailed:
+                self.fall_back(SELECTION, 'failed')
+                return False
+            except Exception as e:  # noqa: BLE001 - sorted as a piece's are
+                if core_job.core_fault(e) is not None:
+                    raise
+                if not_answering(e):
+                    job.wait_for_model()
+                    continue
+                if failure_kind(e) is None:
+                    raise
+                self.fall_back(SELECTION, 'failed')
+                return False
+        ws, note = staged
+        by_doc = self.ops_by_document(ws, live)
+        # Changes no document holds (a guideline, a setting) go with the
+        # first document's write, and are proposed there.
+        loose = by_doc.pop(None, [])
+        if loose and live:
+            by_doc.setdefault(live[0], []).extend(loose)
+        deferred = []
+        for d in live:
+            job.check()
+            job.set(current_document=d)
+            try:
+                doc = ws._docs.get(d) or self.read(project, d)
+                part = self.pending(doc, project, d, every=True)
+                st = Stretch(doc, project, part, job.id, self.known_words(d))
+                prints = {s.id: ws.sentence_print(doc, s) for s in doc.sentences}
+                core_job.through_core(job, lambda: self.write(project, d, ws, doc, part, st, prints,
+                                                              by_doc.get(d, []), note))
+                job.update_row(d, state='done')
+            except Deferred:
+                deferred.append(d)
+            except Gone:
+                job.update_row(d, state='gone')
+        for d in deferred:
+            # Its writes were dropped: it is worked again as a piece of its own.
+            self.fall_back(d, 'in-use')
+            self.defer(d)
+        return not deferred
+
+    def selection_work(self, project: IgtProject, documents: List[str]):
+        job = self.job
+        job.check()
+        ws = JobWorkspace(job.client(), project)
+        names = []
+        for d in documents:
+            row = job.rows.get(d) or {}
+            names.append(f'- "{self.names.get(d) or row.get("name") or d}": '
+                         f'{_n(row.get("sentences") or 0, "sentence")}')
+        lines = ['The job\'s documents, all of them your piece. Read them with the tools.', *names]
+        lines += self.instructions_lines()
+        lines += ['', 'Your piece: the whole selection above.']
+        note = self.run_piece(ws, project, '\n'.join(lines), 'selection')
+        self.record_piece(project, {'document': None, 'first': None, 'whole': True}, note, ws.tables)
+        return ws, note
+
+    @staticmethod
+    def ops_by_document(ws: JobWorkspace, documents: List[str]) -> Dict[Optional[str], List[Dict[str, Any]]]:
+        """A piece's ops by the document each writes in (by the token it
+        names, among the documents the piece read), None for an op of no
+        document: an entry of its own, a guideline, a setting. A create is
+        put with the first link that names it."""
+        from .jobapply import token_of
+        where: Dict[str, str] = {}
+        for d, doc in ws._docs.items():
+            for s in doc.sentences:
+                where[s.id] = d
+                for w in s.words:
+                    where[w.id] = d
+                    for m in w.morphemes:
+                        where[m.id] = d
+        out: Dict[Optional[str], List[Dict[str, Any]]] = {}
+        creates = {op.get('key'): op for op in ws.ops if op.get('kind') == 'create_entry'}
+        placed = set()
+        for op in ws.ops:
+            if op.get('kind') == 'create_entry':
+                continue
+            token = token_of(op)
+            if token and is_virtual(token):
+                token = token.split(':', 1)[1]
+            d = op.get('document_id') or where.get(token)
+            out.setdefault(d, []).append(op)
+            key = op.get('new_entry_key')
+            if key in creates and key not in placed:
+                out[d].insert(0, creates[key])
+                placed.add(key)
+        for key, op in creates.items():
+            if key not in placed:
+                out.setdefault(None, []).append(op)
+        return out
+
+    @staticmethod
+    def describe_loose(op: Dict[str, Any]) -> Dict[str, Any]:
+        """A proposed change of no document."""
+        after = op.get('form') if op.get('kind') == 'create_entry' else None
+        return {'kind': op.get('kind'), 'document_id': None, 'document': None, 'ref': None, 'field': None,
+                'from': None, 'to': _cut(after, JOB_CHANGE_VALUE_CHARS),
+                'label': _cut(op.get('label') or op.get('kind'), JOB_CHANGE_VALUE_CHARS)}
 
     def wait_for_people(self, documents: List[str]) -> None:
         """Wait :data:`JOB_DEFER_WAIT_S` before taking ``documents`` again,
@@ -1003,34 +1302,55 @@ class IgtRunner:
             job.check()
             client = job.client()
             # The document first, then its History: when the newest change
-            # is still the job's own glossing (or older than the job),
-            # nothing was written between that change and this read, so what
-            # the job wrote and did not record is exactly as it wrote it
-            # (``settle``, :meth:`quiet`).
+            # is still the job's own work (or older than the job), nothing
+            # was written between that change and this read, so what the job
+            # wrote and did not record is exactly as it wrote it (``settle``,
+            # :meth:`quiet`).
             doc = self.read(project, document_id, client)
             last = self.newest_change(client, document_id)
             if self.in_use(last, f'job:{job.id}/'):
                 return self.defer(document_id)
             self.settle(project, document_id, doc, own=self.quiet(last, document_id))
-            pending = self.pending(doc, project, document_id)
+            whole = self.whole_document(project, doc)
+            pending = self.pending(doc, project, document_id, every=whole)
             if not pending:
                 job.update_row(document_id, state='done')
                 return 'done'
             row = job.rows.get(document_id) or {}
             total, done = row.get('targets') or 0, row.get('done') or 0
-            part = pending[:JOB_STRETCH_SENTENCES]
+            part = pending if whole else pending[:JOB_STRETCH_SENTENCES]
             last = done + len(part)
             job.set(message=f'Sentences {done + 1} to {last} of {max(total, last)}.')
             halve([s.id for s in part], lambda ids: self.attempt(project, document_id, ids),
                   lambda sid, kind: self.skip(document_id, doc, sid, 'failed', kind))
 
-    def pending(self, doc, project: IgtProject, document_id: str) -> List[Sentence]:
-        """The target sentences after the cursor, in document order, less
-        those skipped, those recorded already and those the job has begun to
-        write in (a writing row, or a word of such a sentence, which a split
-        or a merge may have moved into a sentence of another id) unless
-        their write is known not to have landed. A cursor whose sentence is
-        gone starts from the top (SPEC 3.8)."""
+    def whole_document(self, project: IgtProject, doc) -> bool:
+        """Whether this document is worked as one piece: the plan says
+        ``document``, and the document as the piece's message renders it
+        fits JOB_DOCUMENT_PIECE_MAX_CHARS. A document larger than that is
+        worked in stretches of sentences, which the report says (a fallback
+        row among the job's decisions)."""
+        plan = self.plan_made or {}
+        if plan.get('pieces') not in (DOCUMENT, SELECTION):
+            return False
+        if doc.id in self.fallen_back():
+            return False
+        size = sum(len(render_sentence(s, project)) + 1 for s in doc.sentences)
+        if size <= JOB_DOCUMENT_PIECE_MAX_CHARS:
+            return True
+        self.fall_back(doc.id, 'too-long')
+        return False
+
+    def pending(self, doc, project: IgtProject, document_id: str, every: bool = False) -> List[Sentence]:
+        """The sentences after the cursor the job works, in document order,
+        less those skipped, those recorded already and those the job has
+        begun to write in (a writing row, or a word of such a sentence,
+        which a split or a merge may have moved into a sentence of another
+        id) unless their write is known not to have landed. In stretches,
+        only sentences that hold something empty (:func:`sentence_targets`).
+        With ``every`` (a whole document is one piece) every such sentence,
+        empty or not: what the piece does is its instructions'. A cursor
+        whose sentence is gone starts from the top (SPEC 3.8)."""
         row = self.job.rows.get(document_id) or {}
         skipped = {s.get('sentence_id') for s in row.get('skipped') or []}
         recorded = self.recorded.get(document_id) or {}
@@ -1043,7 +1363,11 @@ class IgtRunner:
         for s in doc.sentences[start:]:
             if s.id in skipped or s.id in recorded:
                 continue
-            words, translate = sentence_targets(s, project, self.job.tasks, self.job.id, known)
+            if every:
+                if not wrote_in(s, known):
+                    out.append(s)
+                continue
+            words, translate = sentence_targets(s, project, self.job.id, known)
             if words or translate:
                 out.append(s)
         return out
@@ -1105,58 +1429,92 @@ class IgtRunner:
             self.write(project, document_id, *staged)
 
     def model_work(self, project: IgtProject, document_id: str, sentence_ids: List[str]):
-        """The model's part of a stretch: what it staged, with what the write
-        needs, or None when the stretch had nothing left to do."""
+        """The model's part of a piece of one document (a stretch, or the
+        whole document): what it staged, with what the write needs, or None
+        when a stretch had nothing left to do."""
         job = self.job
         job.check()
         client = job.client()
-        ws = JobWorkspace(client, project, job.tasks)
+        ws = JobWorkspace(client, project)
         doc = self.read(project, document_id, client)
         ws._docs[document_id] = doc
         doc = ws.doc(document_id)
         part = [s for s in doc.sentences if s.id in sentence_ids]
-        st = Stretch(doc, project, part, job.tasks, job.id, self.known_words(document_id))
-        if st.empty():
+        st = Stretch(doc, project, part, job.id, self.known_words(document_id))
+        whole = self.whole_document(project, doc)
+        if st.empty() and not whole:
             self.record(project, document_id, doc, part, st, Counter(), [])
             return None
         ws.stretch = st
-        prints = {s.id: ws.sentence_print(doc, s) for s in part}
-        system = build_job_prompt(project, job.tasks)
-        message = self.message(ws, project, doc, part, st)
+        # Every sentence's print, not only the piece's: an op the model
+        # stages anywhere in the document is checked against the sentence
+        # as the model read it.
+        prints = {s.id: ws.sentence_print(doc, s) for s in doc.sentences}
+        message = self.message(ws, project, doc, part, st, whole)
+        note = self.run_piece(ws, project, message, document_id)
+        piece = {'document': document_id, 'first': part[0].id if part else None, 'whole': whole}
+        self.record_piece(project, piece, note, ws.tables, doc, part)
+        # What the piece staged outside its document goes with its write and
+        # is proposed there, never written: the rule finds no such token in
+        # the document under the lock.
+        return ws, doc, part, st, prints, list(ws.ops), note
+
+    def run_piece(self, ws: JobWorkspace, project: IgtProject, message: str, folder: str) -> str:
+        """One piece's model context: the job's prompt, the interactive
+        assistant's tools (:func:`toolkit.job_piece_tools`), the piece's
+        message, the stretch budgets (:class:`Pace`), its rounds to the trace
+        folder. Its reply is the piece's note. Raises the model's failures
+        for the caller to sort."""
+        job = self.job
+        system = build_job_prompt(project)
         transcript = [{'role': 'user', 'content': message}]
         seed(ws.seen, system, transcript, lambda tool, args: True)
-        kit = Toolkit(tools_for=lambda w: toolkit.job_tools(job.tasks, plan_only=w.decide_now),
-                      call_tool=lambda w, name, args: toolkit.job_call_tool(w, name, args, job.tasks),
-                      tracer=TRACER)
-        self.stretches += 1
-        if self.trace_dir:
-            # A folder per run of the worker, so a resumed job's stretches,
-            # numbered from 1 again, never mix with the first run's.
-            ws.rounds = DiskRounds(os.path.join(self.trace_dir, job.id, self.run_id, document_id,
-                                                f'stretch-{self.stretches:04d}'), system, kit.tools_for(ws))
+        kit = Toolkit(tools_for=lambda w: toolkit.job_piece_tools(w, plan_only=w.decide_now),
+                      call_tool=toolkit.job_piece_call, tracer=TRACER)
+        self.trace(ws, system, kit, folder)
+
+        def decided():
+            ws.decide_now = True
+        result = self.turn(ws, kit, system, transcript, decided)
+        job.check()
+        return _cut((result.text or '').strip(), JOB_NOTE_MAX_CHARS)
+
+    def turn(self, ws, kit, system: str, transcript, decided=lambda: None):
+        """One model context of the job, under the stretch's budgets, asked
+        only while nobody waits for the model (``yield_to_people``)."""
+        job = self.job
 
         def before_call():
             job.check()
             job.yield_to_people()
-
-        def decided():
-            ws.decide_now = True
         pace = Pace(self.cfg.model, before_call=before_call, count=self.count, decided=decided)
         result = run_turn(self.cfg, kit, ws, system, transcript, cancelled=job.cancelled, pace=pace)
         if result.failure is not None:
             raise result.failure
-        job.check()
-        return ws, doc, part, st, prints, list(ws.ops)
+        return result
 
-    def message(self, ws: JobWorkspace, project: IgtProject, doc, part: List[Sentence], st: Stretch) -> str:
-        """What a stretch is handed (SPEC 3.4): the context and target
-        sentences as read_sentences renders them, which words and
-        translations are targets, how the forms were analysed before, the
-        starter's note."""
-        first = part[0].index
-        context = [s for s in doc.sentences if first - JOB_CONTEXT_SENTENCES <= s.index < first]
-        indexes = [s.index for s in context + part]
-        rendered = ws.render(doc, indexes=indexes)
+    def trace(self, ws, system: str, kit, folder: str) -> None:
+        if not self.trace_dir:
+            return
+        # A folder per run of the worker, so a resumed job's pieces,
+        # numbered from 1 again, never mix with the first run's.
+        self.stretches += 1
+        ws.rounds = DiskRounds(os.path.join(self.trace_dir, self.job.id, self.run_id, folder,
+                                            f'piece-{self.stretches:04d}'), system, kit.tools_for(ws))
+
+    def message(self, ws: JobWorkspace, project: IgtProject, doc, part: List[Sentence], st: Stretch,
+                whole: bool = False) -> str:
+        """What a piece of one document is handed (SPEC 3.4): the sentences
+        as read_sentences renders them (two before a stretch for context, or
+        the whole document), what is empty in them, how their blank forms
+        were analysed before, the job's instructions and the plan's."""
+        first = part[0].index if part else 1
+        if whole:
+            context, shown = [], [s.index for s in doc.sentences]
+        else:
+            context = [s for s in doc.sentences if first - JOB_CONTEXT_SENTENCES <= s.index < first]
+            shown = [s.index for s in context + part]
+        rendered = ws.render(doc, indexes=shown)
         lines = [f'Document "{doc.name}".', '', rendered, '']
         for s in part:
             words = [w for w in s.words if w.id in st.words]
@@ -1166,18 +1524,28 @@ class IgtRunner:
             if s.id in st.translations:
                 bits.append('the translation')
             if bits:
-                lines.append(f'Targets in s{s.index}: ' + ' and '.join(bits) + '.')
+                lines.append(f'Empty in s{s.index}: ' + ' and '.join(bits) + '.')
         precedent = self.precedent(ws, project, list(st.words.values()))
         if precedent:
             lines += ['', precedent]
-        if self.job.note:
-            lines += ['', f'Instructions from {self.job.starter_name}:', self.job.note]
-        refs = ', '.join(f's{s.index}' for s in part)
-        context_refs = ', '.join(f's{s.index}' for s in context)
-        verb = 'Analyse' if 'gloss' in self.job.tasks else 'Translate'
-        lines += ['', f'{verb} {refs}.' + (f' {context_refs} {"is" if len(context) == 1 else "are"} context.'
-                                           if context else '')]
+        lines += self.instructions_lines()
+        if whole:
+            lines += ['', f'Your piece: the whole document "{doc.name}", {_n(len(doc.sentences), "sentence")}.']
+        else:
+            refs = ', '.join(f's{s.index}' for s in part)
+            context_refs = ', '.join(f's{s.index}' for s in context)
+            lines += ['', f'Your piece: {refs}.' + (f' {context_refs} {"is" if len(context) == 1 else "are"} '
+                                                     'context.' if context else '')]
         return '\n'.join(lines)
+
+    def instructions_lines(self) -> List[str]:
+        """The starter's instructions, verbatim, and the plan's instructions
+        for every piece, which add to them and never replace them."""
+        lines = ['', f'Instructions from {self.job.starter_name}:', self.job.instructions or '']
+        extra = ((self.plan_made or {}).get('piece_instructions') or '').strip()
+        if extra:
+            lines += ['', 'How to do every piece, as the job was planned:', extra]
+        return lines
 
     # --- precedent ------------------------------------------------------------------
 
@@ -1256,7 +1624,7 @@ class IgtRunner:
         for row in self.job.lookup_decisions(forms):
             mine.setdefault(row.get('form'), []).append(row)
         gloss = getattr(project.gloss_field('Morpheme'), 'name', None)
-        entries = self.entry_forms(ws, project) if 'link' in self.job.tasks else None
+        entries = self.entry_forms(ws, project)
         blocks, left = [], 0
         size = 0
         for form in forms:
@@ -1286,9 +1654,10 @@ class IgtRunner:
     # --- the write (SPEC 5.4) --------------------------------------------------------
 
     def write(self, project: IgtProject, document_id: str, ws: JobWorkspace, doc, part: List[Sentence],
-              st: Stretch, prints: Dict[str, str], ops: List[Dict[str, Any]]) -> None:
-        """The stretch's write under the document's lock (SPEC 5.4), then its
-        record (:meth:`record`). Safe to do again after a failure anywhere in
+              st: Stretch, prints: Dict[str, str], ops: List[Dict[str, Any]], note: str = '') -> None:
+        """A piece's write in one document under its lock (SPEC 5.4), by the
+        apply rule, then its record (:meth:`record`) and the changes it
+        proposes (:meth:`record_changes`). Safe to do again after a failure anywhere in
         it: a word written is no longer a target, a translation written is
         the job's own, and a sentence recorded is not recorded again."""
         job = self.job
@@ -1305,7 +1674,7 @@ class IgtRunner:
             lock = self.hold(client, document_id)
             try:
                 try:
-                    written_ops, counts, changed, after, vouched = self.write_held(
+                    written_ops, counts, changed, after, vouched, proposed = self.write_held(
                         project, document_id, client, ws, st, prints, ops, group, seed_id)
                 finally:
                     lock.__exit__(None, None, None)
@@ -1345,11 +1714,9 @@ class IgtRunner:
                     raise Deferred(document_id) from e
                 raise
             break
-        # The write landed: the entries the model staged that it did not
-        # create are reported as proposed, never before (REV-J-B2 S4).
-        for o in ops:
-            if o.get('kind') == 'create_entry' and not any(o is w for w in written_ops):
-                self.propose(project, o)
+        # The write landed: what the rule did not apply is recorded as the
+        # piece's proposed changes, never before (REV-J-B2 S4).
+        self.record_changes(proposed, note)
         made = self.made_entries(ws, after, st, written_ops)
         self.record(project, document_id, after, part, st, counts, written_ops, made, changed, vouched)
 
@@ -1388,7 +1755,7 @@ class IgtRunner:
         harmonize leaves them."""
         job = self.job
         fresh = self.read(project, document_id, client)
-        kept, counts, changed = self.recheck(ws, project, fresh, st, prints, ops)
+        kept, counts, changed, proposed = self.recheck(ws, project, fresh, st, prints, ops)
         blank = {w.id for s in fresh.sentences if s.id in st.sentence_ids and s.id not in changed
                  for w in s.words if w.id in st.words and word_target(w)}
         if kept:
@@ -1409,7 +1776,7 @@ class IgtRunner:
         if not exact:
             logger.info('Job %s: %s moved during the write (version %s, read %s): its words are not vouched for',
                         job.id, document_id, known, after.version)
-        return kept, counts, changed, after, frozenset(blank) if exact else frozenset()
+        return kept, counts, changed, after, frozenset(blank) if exact else frozenset(), proposed
 
     def intend(self, document_id: str, st: Stretch, kept: List[Dict[str, Any]], fresh) -> List[str]:
         """Before a write is sent: a writing row in core for each sentence
@@ -1519,7 +1886,7 @@ class IgtRunner:
         which. An entry that nothing kept links is not created. A plan still
         out of date after that, or one whose ops are none of them out of date
         alone, puts the document off. The ops written."""
-        label = gloss_label(self.job.tasks)
+        label = job_label(self.job.instructions)
         for n in range(2):
             try:
                 with client.operation(label, kind='job', ref=self.gloss_ref(document_id), group_id=group,
@@ -1561,61 +1928,198 @@ class IgtRunner:
 
     def recheck(self, ws: JobWorkspace, project: IgtProject, fresh, st: Stretch, prints: Dict[str, str],
                 ops: List[Dict[str, Any]]):
-        """The ops that may still be written to ``fresh``: an op whose
-        sentence changed since the stretch read it is dropped as
-        ``changed``, one whose target is no longer a target as
-        ``protected``, and an entry no kept link names is dropped with them."""
+        """The ops to write to ``fresh`` (the document under the lock), and
+        those recorded as proposed changes: an op whose sentence changed
+        since the piece read it is dropped as ``changed`` (the piece is taken
+        again), and the rest go to THE apply rule
+        (:func:`plaid_agent.igt.jobapply.decide`), which applies what fills
+        something empty or revises the job's own work and proposes the rest.
+        ``(kept, counts, changed sentences, proposed changes)``."""
+        from . import jobapply
         counts = Counter()
         now = {s.id: s for s in fresh.sentences}
-        fresh_st = Stretch(fresh, project, [s for s in fresh.sentences if s.id in st.sentence_ids], self.job.tasks,
-                           self.job.id, self.known_words(fresh.id))
         changed = set()
         for sid, p in prints.items():
             s = now.get(sid)
             if s is None or ws.sentence_print(fresh, s) != p:
                 changed.add(sid)
-        kept = []
+        live = []
         for op in ops:
-            kind = op.get('kind')
-            if kind == 'create_entry':
-                kept.append(op)
-                continue
-            token = op.get('analysis_word_id') or op.get('word_id') or op.get('token_id')
-            s = st.sentence_of(token)
-            if s is None or s.id in changed:
+            s = st.sentence_of(jobapply.token_of(op))
+            if s is not None and s.id in changed:
                 counts['changed'] += 1
                 continue
-            if kind == 'set_span' and token in st.translations:
-                ok = token in fresh_st.translations
-            else:
-                word = st.word_of.get(token, token)
-                ok = word in fresh_st.words
-            if not ok:
-                counts['protected'] += 1
-                continue
-            kept.append(op)
-        # An entry no kept link names is not created: it is reported as
-        # proposed once the stretch's write has landed (``write``).
-        keys = {o.get('new_entry_key') for o in kept if o.get('kind') == 'link'}
-        kept = [o for o in kept if o.get('kind') != 'create_entry' or o.get('key') in keys]
-        return kept, counts, changed
+            live.append(op)
+        known = self.known_words(fresh.id)
+        vouch: Dict[str, Any] = {}
 
-    def propose(self, project: IgtProject, op: Dict[str, Any]) -> None:
-        """An entry the model staged that nothing it kept links: not
-        created (a job writes no entry nobody uses), and listed in the
-        report so a person sees what the model wanted (J-INT 4)."""
-        v = next((x for x in project.vocabs if x['id'] == op.get('vocab_id')), None)
-        gloss = IgtProject.lexicon_field(v, ROLE_GLOSS) if v else None
-        entry = {'lexicon': op.get('vocab_id'), 'form': op.get('form'),
-                 'gloss': (op.get('metadata') or {}).get(gloss) if gloss else None}
-        k = (entry['lexicon'], entry['form'], entry['gloss'])
-        if k in self.proposed:
+        def own(w) -> bool:
+            # The words the job vouches for, and the comments, read once,
+            # only when an op asks about a word the job wrote on.
+            if not any(job_piece(p, self.job.id) for p in word_pieces(w)):
+                return False
+            if not vouch:
+                vouch['recorded'] = self.recorded_words({fresh.id: fresh})
+                vouch['commented'] = self.commented(ws.client, project, fresh.id)
+            return harmonize_bar(w, self.job.id, vouch['recorded'], vouch['commented']) is None
+        rule = jobapply.Rule(fresh, project, known, own=own, target=word_target, tag=word_tag,
+                             job_piece=lambda md: job_piece(md, self.job.id))
+
+        def sentence_of(token):
+            s = st.sentence_of(token)
+            return s.id if s is not None else None
+
+        def reshaped(op):
+            got = ws.op_sentences(op, st.doc) if st.doc is not None else None
+            return set(got) if got is not None else None
+        fates = jobapply.decide(live, rule, sentence_of, reshaped)
+        kept = [op for op, fate in zip(live, fates) if fate == jobapply.APPLY]
+        proposed = [self.describe(op, self.doc_of(ws, op, fresh), project) if self.doc_of(ws, op, fresh) is not None
+                    else self.describe_loose(op) for op, fate in zip(live, fates) if fate == jobapply.PROPOSE]
+        counts['proposed'] += len(proposed)
+        return kept, counts, changed, proposed
+
+    @staticmethod
+    def doc_of(ws: JobWorkspace, op: Dict[str, Any], fresh):
+        """The document an op writes in: ``fresh`` (the document under the
+        lock) when it holds the op's token, else another the piece read, else
+        None (an op of no document)."""
+        from .jobapply import _found, token_of
+        token = token_of(op)
+        if op.get('document_id') == fresh.id or (token and _found(fresh, token) is not None):
+            return fresh
+        for doc in ws._docs.values():
+            if doc.id == op.get('document_id') or (token and _found(doc, token) is not None):
+                return doc
+        return None
+
+    def describe(self, op: Dict[str, Any], doc, project: IgtProject) -> Dict[str, Any]:
+        """A proposed change in the bounded form the report keeps and a
+        follow-up conversation reads (CONTRACT, added by JG): its kind, where
+        (the document and the reference), the field, the value it would
+        replace and the value it would write, and the plan's own words for
+        it. Each value is cut at JOB_CHANGE_VALUE_CHARS."""
+        from .jobapply import _found, token_of
+        kind = op.get('kind')
+        hit = _found(doc, token_of(op))
+        ref = field = before = after = None
+        if hit is not None:
+            s, w, m = hit
+            ref = f's{s.index}' + (f'.w{w.index}' if w is not None else '') + (
+                f'.m{m.index}' if m is not None and not m.virtual else '')
+        gloss = getattr(project.gloss_field('Morpheme'), 'name', None)
+        if kind == 'set_span':
+            f = project.field_by_layer(op.get('layer_id'))
+            field = f.name if f else None
+            if hit is not None and f is not None:
+                holder = hit[2] if f.scope == 'Morpheme' else hit[1] if f.scope == 'Word' else hit[0]
+                sp = holder.fields.get(f.name) if holder is not None else None
+                before = sp.value if sp is not None else None
+            after = op.get('value')
+        elif kind == 'set_analysis':
+            if hit is not None and hit[1] is not None and word_state(hit[1]) != 'unanalyzed':
+                before = rendering(word_analysis(hit[1]), gloss)
+            layer = getattr(project.gloss_field('Morpheme'), 'layer_id', None)
+            after = rendering({'morphemes': [{'form': m.get('form'), 'equals': m.get('equals_before'),
+                                              'fields': {gloss: f.get('value') for f in m.get('fields') or []
+                                                         if f.get('layer_id') == layer}}
+                                             for m in op.get('morphemes') or []]}, gloss)
+        elif kind == 'link':
+            if hit is not None and hit[2] is not None and hit[2].link is not None:
+                before = hit[2].link.form
+            after = op.get('entry_form') or op.get('morpheme_form')
+        elif kind == 'create_entry':
+            after = op.get('form')
+        what = (op.get('label') or kind or '')
+        return {'kind': kind, 'document_id': doc.id, 'document': doc.name, 'ref': ref, 'field': field,
+                'from': _cut(before, JOB_CHANGE_VALUE_CHARS), 'to': _cut(after, JOB_CHANGE_VALUE_CHARS),
+                'label': _cut(what, JOB_CHANGE_VALUE_CHARS)}
+
+    # --- what a job keeps besides its writes (CONTRACT, added by JG) -------------------
+
+    def rows_of(self, prefix: str) -> List[Dict[str, Any]]:
+        """The job's decision rows whose form starts ``prefix``, each with its
+        analysis read (an unreadable one left out)."""
+        out = []
+        for r in self.job.decisions():
+            if str(r.get('form') or '').startswith(prefix):
+                try:
+                    value = json.loads(r['analysis'])
+                except (ValueError, TypeError, KeyError):
+                    continue
+                out.append({**r, 'value': value})
+        return out
+
+    def record_changes(self, changes: List[Dict[str, Any]], note: str = '') -> None:
+        """Keep the changes a piece proposed among the job's decisions, each
+        once (keyed by what it is), at most JOB_CHANGES_MAX for the job: past
+        the cap a change is only counted (a row whose count grows), and the
+        report says how many."""
+        if not changes:
             return
-        self.proposed[k] = entry
-        text = canonical(entry)
-        key = analysis_key(text)
-        self.job.add_decisions([{'form': PROPOSED_FORM + key, 'key': key, 'analysis': text, 'count': 1,
-                                 'document_id': None, 'sentence_id': None}])
+        if self.changes is None:
+            self.changes = {r.get('key') for r in self.job.decisions()
+                            if str(r.get('form') or '').startswith(CHANGE_FORM)}
+        rows, dropped = [], 0
+        for c in changes:
+            text = canonical({**c, 'note': _cut(_first_line(note), JOB_CHANGE_VALUE_CHARS)})
+            key = analysis_key(canonical(c))
+            if key in self.changes:
+                continue
+            if len(self.changes) >= JOB_CHANGES_MAX:
+                dropped += 1
+                continue
+            self.changes.add(key)
+            rows.append({'form': CHANGE_FORM + key, 'key': key, 'analysis': text, 'count': 1,
+                         'document_id': c.get('document_id'), 'sentence_id': None})
+        if dropped:
+            rows.append({'form': DROPPED_FORM, 'key': 'dropped', 'analysis': '{}', 'count': dropped,
+                         'document_id': None, 'sentence_id': None})
+        if rows:
+            self.job.add_decisions(rows)
+
+    def record_piece(self, project: IgtProject, piece: Dict[str, Any], note: str, tables, doc=None,
+                     part=()) -> None:
+        """Keep a piece's note and the tables its code made among the job's
+        decisions, keyed by the piece (its document and first sentence), so a
+        piece done again after a put-off write keeps its first note."""
+        key = analysis_key(canonical(piece))
+        where = None
+        if doc is not None and part:
+            where = f's{part[0].index}' + (f' to s{part[-1].index}' if len(part) > 1 else '')
+        rows = []
+        if note:
+            text = canonical({'document': piece.get('document'), 'name': doc.name if doc is not None else None,
+                              'sentences': None if piece.get('whole') else where, 'note': note})
+            rows.append({'form': NOTE_FORM + key, 'key': key, 'analysis': text, 'count': 1,
+                         'document_id': piece.get('document'), 'sentence_id': None})
+        for i, t in enumerate(list(tables)[:JOB_TABLES_PER_PIECE]):
+            for part_no, text in enumerate(table_rows_text(t)):
+                tkey = analysis_key(f'{key}/{i}/{part_no}')
+                rows.append({'form': f'{TABLE_FORM}{key} {i:02d} {part_no:03d}', 'key': tkey, 'analysis': text,
+                             'count': 1, 'document_id': piece.get('document'), 'sentence_id': None})
+        if rows:
+            self.job.add_decisions(rows)
+
+    def fallen_back(self) -> Dict[str, str]:
+        """Document id (or ``selection``) -> why it was worked in smaller
+        pieces than the plan's, as the job's decisions hold it."""
+        if getattr(self, '_fallbacks', None) is None:
+            self._fallbacks = {}
+            for r in self.rows_of(FALLBACK_FORM):
+                v = r['value']
+                if isinstance(v, dict):
+                    self._fallbacks[str(v.get('document'))] = v.get('reason')
+        return self._fallbacks
+
+    def fall_back(self, what: str, reason: str) -> None:
+        if what in self.fallen_back():
+            return
+        self._fallbacks[what] = reason
+        text = canonical({'document': what, 'reason': reason})
+        self.job.add_decisions([{'form': FALLBACK_FORM + what, 'key': analysis_key(text), 'analysis': text,
+                                 'count': 1, 'document_id': None if what == SELECTION else what,
+                                 'sentence_id': None}])
 
     def machine_status(self, project: IgtProject, ops: List[Dict[str, Any]]) -> None:
         """Every entry the job creates carries Status ``machine``, whatever
@@ -1662,7 +2166,7 @@ class IgtRunner:
                  if not (o.get('kind') == 'set_span' and t in st.translations)}
         extra = self.carry.pop(document_id, Counter())
         extra['changed'] += dropped.get('changed', 0)
-        extra['protected'] += dropped.get('protected', 0)
+        extra['proposed'] += dropped.get('proposed', 0)
         extra['entries'] += len(made)
         records = []
         last = None
@@ -1688,7 +2192,7 @@ class IgtRunner:
                 if translated_by(cur, project, job.id) and s.id in translated:
                     translation = 'refreshed' if translated[s.id].get('span_id') is not None else 'translations'
                 else:
-                    translation = 'left' if state in ('empty', 'machine') and s.id not in translated else None
+                    translation = 'left' if state == 'empty' and s.id not in translated else None
             records.append(self.sentence_record(document_id, cur, [w for w in words if not (
                 w.id in wrote and word_target(w))], translation, made, vouched))
         if records:
@@ -1750,7 +2254,7 @@ class IgtRunner:
                 counts['left'] += 1
                 left.append({'ref': f's{s.index}.w{w.index}', 'begin': w.begin, 'form': w.surface})
         if translation:
-            counts[translation] += 1
+            counts['left_translations' if translation == 'left' else translation] += 1
             if translation == 'left':
                 left.append({'ref': f's{s.index}', 'begin': None, 'form': None})
         if counts['words'] or translation in ('translations', 'refreshed'):
@@ -1874,8 +2378,8 @@ class IgtRunner:
             if s.id not in writing or s.id in marks or s.id in skipped or s.id in unsent:
                 continue
             mine = [w for w in s.words if job_owned(w, job.id)]
-            state = translation_state(s, project, job.id) if 'translate' in job.tasks else None
-            ours = 'translate' in job.tasks and translated_by(s, project, job.id)
+            state = translation_state(s, project, job.id)
+            ours = translated_by(s, project, job.id)
             # Did the job's write land here: a piece naming the job, a person
             # having confirmed it since or not (REV-B4-5).
             if not ours and not any(_job_of(p) == job.id for w in s.words for p in word_pieces(w)):
@@ -1897,11 +2401,11 @@ class IgtRunner:
             plan = writing[s.id]
             ids = {w.id for w in mine}
             words = [w for w in s.words if w.id in ids or job_wrote(w, job.id)
-                     or ('gloss' in job.tasks and word_target(w) and word_tag(w.id) not in plan['words'])]
+                     or (word_target(w) and word_tag(w.id) not in plan['words'])]
             if ours:
                 translation = 'refreshed' if plan.get('translation') == 'refreshed' else 'translations'
             else:
-                translation = 'left' if state in ('empty', 'machine') and not plan.get('translation') else None
+                translation = 'left' if state == 'empty' and not plan.get('translation') else None
             orphans.append(self.sentence_record(document_id, s, words, translation,
                                                 vouched=ids if own else frozenset()))
         if orphans:
@@ -1910,8 +2414,6 @@ class IgtRunner:
     # --- harmonize (SPEC 8) -------------------------------------------------------------
 
     def harmonize(self, job) -> Dict[str, Any]:
-        if 'gloss' not in job.tasks:
-            return {'changed': [], 'left': []}
         # Taken again from its start (``through_core``, after core trouble):
         # what an earlier run of it wrote stays in the report (REV-J-B3 B3-6).
         earlier = (self.harmonize_done or {}).get('changed') or []
@@ -1944,7 +2446,7 @@ class IgtRunner:
                         continue
                     into = mine if why is None else held.setdefault(why, {})
                     full = word_analysis(w)
-                    a = harmonized_part(full, job.tasks)
+                    a = harmonized_part(full)
                     slot = into.setdefault(form_key(w.surface), {}).setdefault(
                         analysis_key(canonical(a)), {'analysis': a, 'words': [], 'word': Counter()})
                     slot['words'].append((d, w.id))
@@ -1960,7 +2462,7 @@ class IgtRunner:
                 continue
             theirs: Dict[str, Dict[str, Any]] = {}
             for x in people.get(form, {}).values():
-                a = harmonized_part(x['analysis'], job.tasks)
+                a = harmonized_part(x['analysis'])
                 slot = theirs.setdefault(analysis_key(canonical(a)), {'analysis': a, 'count': 0, 'word': Counter()})
                 slot['count'] += x['count']
                 slot['word'][canonical(x['analysis'].get('word') or {})] += x['count']
@@ -2092,7 +2594,7 @@ class IgtRunner:
             try:
                 staged, held = set(), {}
                 with locked_for_writes(client, document_id):
-                    ws = JobWorkspace(client, project, job.tasks)
+                    ws = JobWorkspace(client, project)
                     doc = self.read(project, document_id, client)
                     ws._docs[document_id] = doc
                     doc = ws.doc(document_id)
@@ -2181,8 +2683,6 @@ class IgtRunner:
         created, its unlinked drafts deleted (SPEC 7.5) and those left. With
         ``delete`` False (a job that stopped) nothing is deleted: the entries
         are only read for the report."""
-        if 'link' not in job.tasks:
-            return entries_part([], [], [])
         project = self.project()
         client = job.client()
         ws = Workspace(client, project)
@@ -2221,25 +2721,7 @@ class IgtRunner:
                     unlinked.append(e)
                 else:
                     deleted.append({k: e[k] for k in ('id', 'form', 'gloss')})
-        # A proposal the job created later (another stretch staged it again
-        # and linked it) is reported created, never proposed as well.
-        made = {(e['lexicon'], _nfc(e['form']), _nfc(e['gloss'])) for e in created + doomed}
-        proposed = [p for p in self.proposed_entries()
-                    if (p.get('lexicon'), _nfc(p.get('form')), _nfc(p.get('gloss'))) not in made]
-        return entries_part(created, deleted, unlinked, proposed)
-
-    def proposed_entries(self) -> List[Dict[str, Any]]:
-        """Every entry the model staged and nothing linked, in this run and
-        in any run of the job before it (kept among its decisions)."""
-        out = dict(self.proposed)
-        for r in self.job.decisions():
-            if str(r.get('form') or '').startswith(PROPOSED_FORM):
-                try:
-                    e = json.loads(r['analysis'])
-                except (ValueError, TypeError):
-                    continue
-                out.setdefault((e.get('lexicon'), e.get('form'), e.get('gloss')), e)
-        return list(out.values())
+        return entries_part(created, deleted, unlinked)
 
     @staticmethod
     def linked(ws: Workspace, item_id: str) -> bool:
@@ -2295,23 +2777,117 @@ class IgtRunner:
     def document_reports(self, job) -> List[Dict[str, Any]]:
         out = []
         blank = self.left_blank(job)
-        for d in job.order:
-            row = job.rows.get(d) or {}
+        rows = [job.rows.get(d) or {} for d in job.order]
+        # "Left blank" lists only what the job filled somewhere: a job that
+        # wrote no translation does not list every translation it passed,
+        # nor one that analysed no word every blank word (a dumb rule: the
+        # job has no task types, its writes say what it did).
+        filled_words = any((r.get('counts') or {}).get('words') for r in rows)
+        filled_translations = any((r.get('counts') or {}).get('translations')
+                                  or (r.get('counts') or {}).get('refreshed') for r in rows)
+        for d, row in zip(job.order, rows):
             state = row.get('state')
             counts = row.get('counts') or empty_counts()
             # What the job could not decide, for people to (CONTRACT, added by
             # JB): every target of the document's recorded sentences it left
             # blank, cut as every report list is. A sentence whose record
             # could not hold its whole list counts the rest as more.
-            listed = blank.get(d) or []
+            listed = [e for e in blank.get(d) or [] if (filled_words if e.get('form') is not None
+                                                        else filled_translations)]
+            counted = ((counts.get('left') or 0) if filled_words else 0) + (
+                (counts.get('left_translations') or 0) if filled_translations else 0)
             left, _ = core_job.cut(listed)
             out.append({'document_id': d, 'name': self.names.get(d) or row.get('name'),
                         'state': state if state in ('done', 'in-use', 'gone') else 'not-reached',
                         'sentences': row.get('sentences'), 'targets': row.get('targets'), 'done': row.get('done'),
                         'counts': counts, 'skipped': row.get('skipped') or [],
                         'gloss_group': row.get('gloss_group'), 'harmonize_group': row.get('harmonize_group'),
-                        'left': left, 'left_more': max(len(listed), counts.get('left') or 0) - len(left)})
+                        'left': left, 'left_more': max(len(listed), counted) - len(left)})
         return out
+
+    def summarize(self, job, report: Dict[str, Any]) -> Optional[str]:
+        """The report's prose, by the job's final model context: given the
+        report's totals, each document's state and counts, each piece's note
+        and the tables pieces' code made (bounded), and how many changes the
+        job proposed, it writes a short summary for a person, with no tools.
+        The report's own sections stay authoritative: the prose is told to
+        state no count they do not hold."""
+        from .prompt import build_summary_prompt
+        project = self.project()
+        job.set(message='Writing the report.')
+        message = summary_message(report)
+        while True:
+            job.check()
+            ws = JobWorkspace(job.client(), project, mode=JobWorkspace.PLAN)
+            system = build_summary_prompt(project)
+            kit = Toolkit(tools_for=lambda w: [], call_tool=lambda w, name, args: '', tracer=TRACER)
+            self.trace(ws, system, kit, 'summary')
+            try:
+                result = self.turn(ws, kit, system, [{'role': 'user', 'content': message}])
+                return _cut((result.text or '').strip(), JOB_SUMMARY_MAX_CHARS) or None
+            except TurnCancelled:
+                job.check()
+                raise JobStopped('cancelled')
+            except (StretchFailed, JobStopped):
+                raise
+            except Exception as e:  # noqa: BLE001 - a model that does not answer is waited for
+                if core_job.core_fault(e) is None and not_answering(e):
+                    job.wait_for_model()
+                    continue
+                raise
+
+    def report_parts(self, job) -> Dict[str, Any]:
+        """The report's parts the job keeps besides its writes (CONTRACT,
+        added by JG): the plan, the changes it proposed with how many the cap
+        dropped, each piece's note, and the tables pieces' code made, each
+        list cut at JOB_REPORT_LIST_MAX. Read from the job's decisions, so a
+        resumed job reports its earlier runs too. Empty parts when they
+        cannot be read: the report is still written."""
+        try:
+            rows = core_job.through_core(job, job.decisions)
+        except Exception as e:  # noqa: BLE001 - a report without these parts rather than none
+            logger.warning('Job %s: its plan and proposed changes could not be read for the report: %s', job.id, e)
+            rows = []
+        plan, changes, notes, dropped, fallback = None, [], [], 0, []
+        tables: Dict[str, Dict[str, Any]] = {}
+        for r in rows:
+            form = str(r.get('form') or '')
+            if form == DROPPED_FORM:
+                dropped += r.get('count') or 0
+                continue
+            if not form.startswith(' '):
+                continue
+            try:
+                value = json.loads(r['analysis'])
+            except (ValueError, TypeError, KeyError):
+                continue
+            if form == PLAN_FORM:
+                plan = value
+            elif form.startswith(FALLBACK_FORM):
+                fallback.append({'document_id': None if value.get('document') == SELECTION
+                                 else value.get('document'), 'reason': value.get('reason')})
+            elif form.startswith(CHANGE_FORM):
+                changes.append(value)
+            elif form.startswith(NOTE_FORM):
+                notes.append(value)
+            elif form.startswith(TABLE_FORM):
+                key = form[len(TABLE_FORM):].rsplit(' ', 1)[0]
+                slot = tables.setdefault(key, {'title': value.get('title'), 'columns': value.get('columns'),
+                                               'rows': [], 'more': value.get('more') or 0, 'parts': {}})
+                slot['parts'][value.get('part') or 0] = value.get('rows') or []
+        order = {d: i for i, d in enumerate(job.order)}
+        changes.sort(key=lambda c: (order.get(c.get('document_id'), len(order)),
+                                    [int(n) for n in re.findall(r'\d+', c.get('ref') or '')]))
+        listed, more = core_job.cut(changes)
+        shown_notes, notes_more = core_job.cut(notes)
+        made = []
+        for key in sorted(tables):
+            t = tables[key]
+            rows = [row for _, part in sorted(t['parts'].items()) for row in part]
+            made.append({'title': t['title'], 'columns': t['columns'], 'rows': rows, 'more': t['more']})
+        return {'plan': {**(plan or {}), 'fallback': fallback} if plan else None,
+                'proposed': listed, 'proposed_more': more + dropped, 'proposed_dropped': dropped,
+                'notes': shown_notes, 'notes_more': notes_more, 'tables': made[:JOB_TABLES_MAX]}
 
     def left_blank(self, job) -> Dict[str, List[Dict[str, Any]]]:
         """Per document, the targets the job left blank, read from every

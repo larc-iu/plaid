@@ -12,7 +12,7 @@ import { fakeJobWorker, stoppedReport } from './jobWorker.js';
 // The worker is the spec's (jobWorker.js): the e2e admin's client claiming
 // the job and moving it step by step, no model. The jobs are started in the
 // app by the same admin. A throwaway project with two documents and a lexicon
-// (Link to lexicon is offered only where the project links one), deleted
+// (the instructions are required, a starter text fills them), deleted
 // afterwards with its jobs.
 
 test.describe.configure({ mode: 'serial' });
@@ -90,15 +90,16 @@ test('Start job on the Documents tab makes a waiting job and opens its page', as
   const dialog = page.getByRole('dialog');
   await expect(dialog).toContainText('All documents (2)');
   await expect(dialog).toContainText('No job worker is running. The job waits until one starts.');
-  await dialog.getByRole('checkbox', { name: 'Translate' }).uncheck();
+  await expect(dialog.getByRole('button', { name: 'Start', exact: true })).toBeDisabled();
+  await dialog.getByRole('button', { name: 'Segment, gloss and link' }).click();
   await dialog.getByRole('button', { name: 'Start', exact: true }).click();
   await expect(page).toHaveURL(jobUrl());
   jobId = page.url().split('/jobs/')[1];
   await expect(jobState(page)).toContainText('Waiting');
-  await expect(page.getByText('Analyses and lexicon links')).toBeVisible();
+  await expect(page.getByText('link each morpheme to its lexicon entry')).toBeVisible();
   const job = await client.jobs.get(jobId);
   expect(job.state).toBe('waiting');
-  expect(job.tasks).toEqual(['gloss', 'link']);
+  expect(job.instructions).toMatch(/^Segment and gloss every word nobody has analyzed, and link/);
   expect(job.documents.map((d) => d.documentId).sort()).toEqual([docA, docB].sort());
 });
 
@@ -107,6 +108,7 @@ test('a second job is refused with a link to the first', async ({ page }) => {
   await page.goto(`/#/projects/${projectId}?tab=jobs`);
   await page.getByRole('button', { name: 'Start job' }).click();
   const dialog = page.getByRole('dialog');
+  await dialog.getByRole('button', { name: 'Translate', exact: true }).click();
   await dialog.getByRole('button', { name: 'Start', exact: true }).click();
   const alert = dialog.getByRole('alert');
   await expect(alert).toContainText('This project already has a job.');
@@ -124,7 +126,7 @@ test('the page, the tab and the banner follow the worker, on its document only',
   const claimed = await worker.claim();
   expect(claimed.id).toBe(jobId);
   await worker.heartbeat(jobId, {
-    phase: 'glossing',
+    phase: 'working',
     message: 'Sentences 1 to 5 of 10.',
     currentDocument: docA,
   });
@@ -133,7 +135,7 @@ test('the page, the tab and the banner follow the worker, on its document only',
   // The page reads its job again while the job is active.
   const status = jobState(page);
   await expect(status).toContainText('Running', { timeout: 15000 });
-  await expect(status).toContainText('Analyzing');
+  await expect(status).toContainText('Working');
   await expect(status).toContainText('Sentences 1 to 5 of 10.');
   await expect(page.getByRole('row', { name: /Story A/ })).toContainText('5 of 10');
 
@@ -164,7 +166,7 @@ test('Stop on the banner stops the job, and the page shows the report', async ({
     state: 'cancelled',
     reason: 'cancelled',
     report: stoppedReport({
-      tasks: job.tasks,
+      instructions: job.instructions,
       document: { id: docA, name: 'Story A', sentenceId: sentenceA },
       startedAt: job.startedAt,
     }),
@@ -194,6 +196,9 @@ test('Start job on a document chooses it, and Stop on the page ends a waiting jo
   await expect(dialog.getByRole('radio', { name: 'Selected documents' })).toBeChecked();
   await expect(dialog.getByRole('checkbox', { name: 'Story B' })).toBeChecked();
   await expect(dialog.getByRole('checkbox', { name: 'Story A' })).not.toBeChecked();
+  await dialog
+    .getByRole('textbox', { name: 'Instructions' })
+    .fill('Translate the empty translations.');
   await dialog.getByRole('button', { name: 'Start', exact: true }).click();
   await expect(page).toHaveURL(jobUrl());
   jobId = page.url().split('/jobs/')[1];
@@ -208,7 +213,10 @@ test('Start job on a document chooses it, and Stop on the page ends a waiting jo
 
 test('a reader sees the Jobs tab and a job, with no Start job and no Stop', async ({ page }) => {
   // A job waiting, so there is something a writer could stop.
-  const waiting = await client.jobs.create(projectId, { app: 'igt', tasks: ['translate'] });
+  const waiting = await client.jobs.create(projectId, {
+    app: 'igt',
+    instructions: 'Translate the empty translations.',
+  });
   try {
     const { token } = await PlaidClient.login(CORE, READER.email, READER.password);
     await seedAuth(page, { token, userId: READER.email, isAdmin: false });

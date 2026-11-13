@@ -146,15 +146,7 @@ const DocumentStartJob = ({ context }) => {
   const { user, client } = useAuth();
   const { project, projectId, documentId, asOf, pastEntry } = context;
   if (asOf || pastEntry || !canStartJob(project, user)) return null;
-  return (
-    <StartJob
-      projectId={projectId}
-      project={project}
-      client={client}
-      documentId={documentId}
-      small
-    />
-  );
+  return <StartJob projectId={projectId} client={client} documentId={documentId} small />;
 };
 
 // What a project with nothing safe to open in it says in place of a tab.

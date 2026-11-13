@@ -260,7 +260,7 @@ class RecordOps:
         fields: Dict[str, Any] = {}
         if isinstance(job, dict) and job.get('project') == ctx.store.project_id:
             status = 'started'
-            fields = {'job_id': job.get('id'), 'sent_brief': job.get('note') or ''}
+            fields = {'job_id': job.get('id'), 'sent_brief': job.get('instructions') or ''}
         elif status == 'started':
             ctx.helper.error('No such job in this project')
             return

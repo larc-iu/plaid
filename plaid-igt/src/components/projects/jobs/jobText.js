@@ -1,30 +1,44 @@
-// The igt job screens' words for what a job reports: its tasks taken
-// together, a skipped sentence, a harmonize decision. The words for a job's
-// codes (its state, phase, reason, a task, a document's state) are plaid-ui's
+// The igt job screens' words for what a job reports: how its work was cut, a
+// skipped sentence, a harmonize decision, a proposed change. The words for a
+// job's codes (its state, phase, reason, a document's state) are plaid-ui's
 // (domain/jobs.js), since every app says them. Also how a job is started,
 // shared by the Start job dialog and the assistant's job card.
 import { createOnce } from '@ui/lib/createOnce.js';
 import { statusOf } from '@ui/lib/errors.js';
 
-// The tasks an igt job can be given, in the order core keeps them (JOB_APPS).
-export const JOB_TASKS = ['translate', 'gloss', 'link'];
+// Instructions a job can start from, which fill the Start job dialog's box
+// and can be edited there. Plain text: nothing knows them once the job is
+// started.
+export const STARTER_TEXTS = [
+  {
+    label: 'Translate',
+    text: 'Write a free translation of every sentence whose translation is empty.',
+  },
+  {
+    label: 'Segment and gloss',
+    text: 'Segment and gloss every word nobody has analyzed. Follow how people in the project analyzed the same forms.',
+  },
+  {
+    label: 'Segment, gloss and link',
+    text: 'Segment and gloss every word nobody has analyzed, and link each morpheme to its lexicon entry, making an entry where none fits. Follow how people in the project analyzed the same forms.',
+  },
+];
 
-// What a job was asked to write, as History names its entries ("Assistant
-// job: translations and analyses"), capitalized: "Translations and analyses".
-export const tasksText = (tasks = []) => {
-  const nouns = [];
-  if (tasks.includes('translate')) nouns.push('translations');
-  if (tasks.includes('gloss')) {
-    nouns.push(tasks.includes('link') ? 'analyses and lexicon links' : 'analyses');
-  }
-  if (!nouns.length) return '';
-  const text =
-    nouns.length === 1
-      ? nouns[0]
-      : nouns[1] === 'analyses'
-        ? 'translations and analyses'
-        : 'translations, analyses and lexicon links';
-  return text[0].toUpperCase() + text.slice(1);
+// How a job's work was cut, in one line, from its plan (CONTRACT, added by
+// JG): "Worked in stretches of sentences, 2 documents in smaller pieces."
+const PIECES_TEXT = {
+  sentences: 'Worked in stretches of sentences',
+  document: 'Worked one document at a time',
+  selection: 'Worked on all the documents at once',
+};
+
+export const planText = (plan) => {
+  if (!plan) return null;
+  let text = PIECES_TEXT[plan.pieces] ?? plan.pieces;
+  if (plan.by === 'default') text += ', as planning gave no plan';
+  const smaller = (plan.fallback || []).length;
+  if (smaller) text += `, ${smaller.toLocaleString()} in smaller pieces`;
+  return `${text}.`;
 };
 
 const FAILURE_TEXT = {
@@ -80,16 +94,15 @@ export const jobName = (job) =>
 export const jobPath = (projectId, jobId) => `/projects/${projectId}/jobs/${jobId}`;
 export const jobsTabPath = (projectId) => `/projects/${projectId}?tab=jobs`;
 
-// A note's length as core counts it: in characters, never UTF-16 units.
-export const noteLength = (note) => [...note].length;
+// Instructions' length as core counts it: in characters, never UTF-16 units.
+export const instructionsLength = (text) => [...text].length;
 
 // Start a job as the signed-in user: the one client call, under the id `mint`
 // holds (createOnce.js: a press again after a lost answer makes no second
 // job). `documents` null is every document of the project. Resolves to the job.
-export const startJob = (client, projectId, mint, { tasks, documents = null, note = '' }) => {
-  const body = { app: 'igt', tasks: JOB_TASKS.filter((t) => tasks.includes(t)) };
+export const startJob = (client, projectId, mint, { documents = null, instructions = '' }) => {
+  const body = { app: 'igt', instructions: instructions.trim() };
   if (documents) body.documents = documents;
-  if (note.trim()) body.note = note.trim();
   return createOnce(mint, (id) => client.jobs.create(projectId, { ...body, id }));
 };
 

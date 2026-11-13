@@ -76,7 +76,7 @@ def _job(monkeypatch):
 
     def sleep(s):
         clock['t'] += s
-    job = start(client, ['gloss'], id=J, now=lambda: clock['t'])
+    job = start(client, id=J, now=lambda: clock['t'])
     job._sleep = sleep
     job.job['created_at'] = _iso(clock['t'] - 3600)
     use(monkeypatch, Model(_gloss))
@@ -104,7 +104,7 @@ def test_a_gloss_a_person_deleted_is_not_put_back_when_the_job_wrote_that_shape_
     before = [{'words': [sani('now')] * 6 + [sani(None)]}]
     after = [{'words': [sani('now')] * 5 + [sani(None), sani(None)]}]
     client = JobClient({'d1': document('d1', 'Story', before)})
-    job = start(client, ['gloss'], id=J)
+    job = start(client, id=J)
     job.update_row('d1', state='done')
     recorded(job)
     client._holder('d1')['documents']['d1'] = document('d1', 'Story', after)
@@ -123,7 +123,7 @@ def test_a_link_a_person_removed_is_not_put_back_when_the_job_left_that_form_unl
     before = [{'words': [gam('vi-gam')] * 5 + [gam(None)]}]
     after = [{'words': [gam('vi-gam')] * 4 + [gam(None), gam(None)]}]   # a person unlinked w5
     client = JobClient({'d1': document('d1', 'Story', before)}, lexicon=lexicon_raw())
-    job = start(client, ['gloss', 'link'], id=J)
+    job = start(client, id=J)
     job.update_row('d1', state='done')
     recorded(job)
     client._holder('d1')['documents']['d1'] = document('d1', 'Story', after)
@@ -140,7 +140,7 @@ def test_a_word_is_known_by_its_id_so_a_word_put_in_before_it_changes_nothing(mo
     staged = _staged(monkeypatch)
     before = [{'words': [sani('now')] * 4 + [sani('then')]}]
     client = JobClient({'d1': document('d1', 'Story', before)})
-    job = start(client, ['gloss'], id=J)
+    job = start(client, id=J)
     job.update_row('d1', state='done')
     recorded(job)
     shifted = document('d1', 'Story', [{'words': ['oh'] + [sani('now')] * 4 + [sani('then')]}])
@@ -174,7 +174,7 @@ def test_a_word_is_known_by_its_id_so_a_word_put_in_before_it_changes_nothing(mo
 def test_a_word_whose_spelling_changed_under_the_jobs_analysis_is_left(monkeypatch):
     staged = _staged(monkeypatch)
     client = JobClient({'d1': document('d1', 'Story', [{'words': [sani('now')] * 4 + [sani('then')]}])})
-    job = start(client, ['gloss'], id=J)
+    job = start(client, id=J)
     job.update_row('d1', state='done')
     recorded(job)
     respelt = {**sani('then'), 'form': 'sanni'}
@@ -189,7 +189,7 @@ def test_harmonize_asks_the_word_again_under_the_lock(monkeypatch):
     staged = _staged(monkeypatch)
     before = [{'words': [sani('now')] * 6 + [sani('then'), sani(None)]}]
     client = JobClient({'d1': document('d1', 'Story', before)})
-    job = start(client, ['gloss'], id=J)
+    job = start(client, id=J)
     job.update_row('d1', state='done')
     recorded(job)
     client.on_lock['d1'] = document('d1', 'Story', [{'words': [sani('now')] * 6 + [sani(None), sani(None)]}])
@@ -246,7 +246,7 @@ def test_a_word_the_job_vouched_for_and_a_person_changed_is_touched_beside_one_i
     staged = _staged(monkeypatch)
     before = [{'words': [sani('now')] * 3 + [sani('then')]}, {'words': [sani('now'), sani('then')]}]
     client = JobClient({'d1': document('d1', 'Story', before)})
-    job = start(client, ['gloss'], id=J)
+    job = start(client, id=J)
     job.update_row('d1', state='done')
     recorded(job)
     import json
@@ -355,7 +355,7 @@ def test_a_write_refused_on_its_second_batch_is_put_off_and_never_vouched_for(mo
     typed = {'form': 'ka', 'morphs': [('ka', 'went')], 'who': 'human'}
     client = JobClient({'d1': document('d1', 'Story', blank)})
     clock = {'t': 1_800_000_000.0}
-    job = start(client, ['gloss'], id=J, now=lambda: clock['t'])
+    job = start(client, id=J, now=lambda: clock['t'])
     job._sleep = lambda s: clock.__setitem__('t', clock['t'] + s)
     job.job['created_at'] = _iso(clock['t'] - 3600)
 

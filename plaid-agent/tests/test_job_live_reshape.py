@@ -11,7 +11,7 @@ import uuid
 import pytest
 
 from fixtures import MORPH_LAYER, SENT_LAYER
-from job_fixtures import Model, call, document, job_project, reply, targets_named, use
+from job_fixtures import plan_row, Model, call, document, job_project, reply, targets_named, use
 from live import _skip_or_fail, core_url, login, seed
 
 from plaid_agent.core.agent import ModelConfig
@@ -60,8 +60,10 @@ def _layer_tokens(raw, layer_id):
 
 def _job(admin, writer, s):
     from plaid_client import PlaidClient
-    made = writer.jobs.create(s.project_id, 'igt', ['gloss'])
+    made = writer.jobs.create(s.project_id, 'igt', 'Gloss the words.')
     claimed = admin.jobs.claim(WORKER, 'fake/m', ['igt'])
+    if claimed:
+        admin.jobs.add_decisions(claimed['job']['id'], WORKER, [plan_row()])
     assert claimed and claimed['job']['id'] == made['id']
     offset = {'s': 0.0}
     return Job(admin, claimed, WORKER, client_for=lambda token: PlaidClient(core_url(), token), model='fake/m',
@@ -88,7 +90,8 @@ def test_a_split_after_the_cursor_and_a_cleared_proposal_is_not_glossed_again(wo
             writer.tokens.delete(pa['id'])
         return out
     monkeypatch.setattr(job, 'add_decisions', add)
-    runner = IgtRunner(job, ModelConfig(model='fake/m', stream=False, max_steps=1000), count=count_chars)
+    runner = IgtRunner(job, ModelConfig(model='fake/m', stream=False, max_steps=1000), count=count_chars,
+                       write_summary=False)
     finished = run_job(job, runner)
     assert finished['state'] == 'done'
     assert done.get('new'), 'the starter split and cleared'

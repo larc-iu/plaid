@@ -15,7 +15,7 @@ from plaid_agent.core.conversation import (assistant_item, build_meta, find_job_
 from plaid_agent.core.plan import plan_line
 from plaid_agent.igt.toolkit import call_tool
 
-GLOSS = {'action': 'draft', 'documents': ['Text 1'], 'tasks': ['gloss'], 'brief': 'Gloss ka as "go".'}
+GLOSS = {'action': 'draft', 'documents': ['Text 1'], 'brief': 'Gloss ka as "go".'}
 
 
 def _draft(ws, **args):
@@ -26,23 +26,23 @@ def _draft(ws, **args):
 
 def test_a_draft_stages_one_card_and_the_plan_line_says_so():
     ws = fake_ws(FakeClient())
-    out = _draft(ws, tasks=['link', 'gloss'], brief='  Gloss ka as "go".  ')
+    out = _draft(ws, brief='  Gloss ka as "go".  ')
     assert out.startswith('Drafted the job card.'), out
     card = ws.job_card
     assert card['documents'] == [{'id': 'd1', 'name': 'Text 1'}] and card['count'] == 1 and not card['all']
-    assert card['tasks'] == ['gloss', 'link'] and card['brief'] == 'Gloss ka as "go".'
+    assert 'tasks' not in card and card['brief'] == 'Gloss ka as "go".'
     assert len(card['id']) == 36 and card['id'][14] == '7'
-    assert plan_line(ws) == '[Plan of this turn: a job card, 1 document, gloss and link.]'
+    assert plan_line(ws) == '[Plan of this turn: a job card, 1 document.]'
     assert not ws.ops
-    assert call_tool(ws, 'plan_status', {}).startswith('This turn drafted a job card (1 document, gloss and link) '
+    assert call_tool(ws, 'plan_status', {}).startswith('This turn drafted a job card (1 document) '
                                                        'and plans no changes beside it.')
 
 
 def test_all_documents_are_counted_and_not_listed():
     ws = fake_ws(FakeClient())
-    _draft(ws, documents=['all'], tasks=['translate', 'gloss'])
+    _draft(ws, documents=['all'])
     assert ws.job_card['all'] is True and ws.job_card['count'] == 1 and 'documents' not in ws.job_card
-    assert plan_line(ws) == '[Plan of this turn: a job card, all 1 document, translate and gloss.]'
+    assert plan_line(ws) == '[Plan of this turn: a job card, all 1 document.]'
 
 
 def test_a_second_draft_in_the_turn_replaces_the_first():
@@ -69,16 +69,13 @@ def test_what_the_tool_tells_the_model_has_no_semicolon_or_em_dash():
 def test_help_reads_the_limits_core_publishes():
     client = FakeClient()
     ws = fake_ws(client)
-    ws.job_facts = lambda: {'note_max_chars': 1234, 'documents_max': 7}
+    ws.job_facts = lambda: {'instructions_max_chars': 1234, 'documents_max': 7}
     text = call_tool(ws, 'propose_job', {'action': 'help'})
     assert 'At most 1,234 characters.' in text and 'at most 7' in text
     assert ws.job_card is None
 
 
 @pytest.mark.parametrize('args, said', [
-    ({'tasks': []}, 'tasks: give one or more of translate, gloss, link.'),
-    ({'tasks': ['parse']}, 'tasks: give one or more of translate, gloss, link.'),
-    ({'tasks': ['link']}, 'tasks: link needs gloss'),
     ({'documents': None}, 'Name the documents, or ["all"]'),
     ({'documents': ['Text 9']}, 'Text 9'),
     ({'brief': '   '}, 'Write the brief'),
@@ -93,10 +90,10 @@ def test_each_refusal_says_what_to_change(args, said):
 
 def test_the_limits_are_core_s_as_published():
     ws = fake_ws(FakeClient())
-    ws.job_facts = lambda: {'note_max_chars': 10, 'documents_max': 0}
+    ws.job_facts = lambda: {'instructions_max_chars': 10, 'documents_max': 0}
     out = _draft(ws, brief='x' * 11)
     assert 'The brief is 11 characters, and a job\'s brief is at most 10.' in out
-    ws.job_facts = lambda: {'note_max_chars': 2000, 'documents_max': 1}
+    ws.job_facts = lambda: {'instructions_max_chars': 2000, 'documents_max': 1}
     assert _draft(ws).startswith('Drafted')
     ws.job_card = None
     ws.documents = lambda: [{'id': 'd1', 'name': 'Text 1'}, {'id': 'd2', 'name': 'Text 2'}]
@@ -113,17 +110,20 @@ def test_unreadable_limits_leave_them_to_core():
     assert _draft(ws, brief='x' * 5000).startswith('Drafted')
 
 
-def test_link_needs_a_lexicon():
+def test_a_card_has_no_task_types():
+    """The owner's ruling 11: a job is its documents and its brief. A tasks
+    argument is not one propose_job takes."""
     ws = fake_ws(FakeClient())
-    ws.project.vocabs = []
-    out = _draft(ws, tasks=['gloss', 'link'])
-    assert 'The project has no lexicon, so the job cannot link. Leave out link.' in out
-    assert _draft(ws).startswith('Drafted')
+    out = _draft(ws, tasks=['gloss'])
+    assert out.startswith('Error') and 'It takes: action, documents, brief.' in out, out
+    from plaid_agent.igt.toolkit import TOOLS
+    schema = next(t for t in TOOLS if t['function']['name'] == 'propose_job')
+    assert 'tasks' not in schema['function']['parameters']['properties']
 
 
 def test_an_active_job_is_named_with_a_link_to_its_page():
     client = FakeClient()
-    job = client.jobs.create('p1', 'igt', ['gloss'])
+    job = client.jobs.create('p1', 'igt', 'Gloss the words.')
     ws = fake_ws(client)
     out = _draft(ws)
     assert 'This project already has a job, waiting to start' in out
@@ -242,7 +242,7 @@ def test_the_reply_carries_the_card_waiting(monkeypatch):
     _svc, conv = _card_turn(monkeypatch, client)
     reply = conv['display'][-1]
     assert reply['plan'] is None and reply['job']['status'] is None
-    assert reply['job']['tasks'] == ['gloss'] and reply['job']['documents'] == [{'id': 'd1', 'name': 'Text 1'}]
+    assert 'tasks' not in reply['job'] and reply['job']['documents'] == [{'id': 'd1', 'name': 'Text 1'}]
 
 
 def test_the_service_reads_cores_limits_with_its_own_client(monkeypatch):
@@ -268,8 +268,8 @@ def test_a_newer_card_replaces_one_still_waiting(monkeypatch):
 def _seed_card(client, brief='Gloss ka as "go".'):
     store = _store(client)
     card = {'id': '0190f000-0000-7000-8000-000000000001', 'all': False, 'count': 1,
-            'documents': [{'id': 'd1', 'name': 'Text 1'}], 'tasks': ['gloss'], 'brief': brief,
-            'summary': '1 document, gloss', 'status': None}
+            'documents': [{'id': 'd1', 'name': 'Text 1'}], 'brief': brief,
+            'summary': '1 document', 'status': None}
     item = assistant_item('Here is the job.', None, [], [], '', 'fake/model', service='igt:assist:fake')
     item['job'] = card
     conv = {'messages': [{'role': 'user', 'content': 'job'}, {'role': 'assistant', 'content': 'Here is the job.'}],
@@ -288,7 +288,7 @@ def _settle(client, card_id, rid='r5', tab=TAB, **fields):
 def test_a_start_is_read_back_from_core_with_the_brief_as_sent():
     client = FakeClient()
     card_id = _seed_card(client)
-    client.jobs.create('p1', 'igt', ['gloss'], ['d1'], 'Gloss ka as "go".', id=card_id)
+    client.jobs.create('p1', 'igt', 'Gloss ka as "go".', ['d1'], id=card_id)
     helper, conv, meta = _settle(client, card_id, outcome='started')
     assert helper.done[0]['kind'] == 'done' and not helper.errors
     card = conv['display'][-1]['job']
@@ -301,7 +301,7 @@ def test_a_start_is_read_back_from_core_with_the_brief_as_sent():
 def test_an_edited_brief_is_what_the_model_hears():
     client = FakeClient()
     card_id = _seed_card(client)
-    client.jobs.create('p1', 'igt', ['gloss'], ['d1'], 'Gloss ka as "come".', id=card_id)
+    client.jobs.create('p1', 'igt', 'Gloss ka as "come".', ['d1'], id=card_id)
     _helper, conv, _meta = _settle(client, card_id, outcome='started')
     assert conv['display'][-1]['job']['sent_brief'] == 'Gloss ka as "come".'
     assert conv['messages'][-1]['content'] == ('(note) The user changed the brief and started the job. The brief '
@@ -318,16 +318,6 @@ def test_a_settled_card_keeps_five_names_and_its_count():
     for card in (job_card_settling('c', 'discarded')(stored)['display'][0]['job'],
                  replace_undecided_cards([item])[0]['job']):
         assert card['documents'] == docs[:5] and card['count'] == 12, card
-
-
-def test_a_cleared_brief_is_said_as_no_brief():
-    """REV-JB-11: a start with the brief cleared, which core holds as no note."""
-    client = FakeClient()
-    card_id = _seed_card(client)
-    client.jobs.create('p1', 'igt', ['gloss'], ['d1'], None, id=card_id)
-    _helper, conv, _meta = _settle(client, card_id, outcome='started')
-    assert conv['display'][-1]['job']['sent_brief'] == ''
-    assert conv['messages'][-1]['content'] == '(note) The user cleared the brief and started the job with no brief.'
 
 
 def test_a_start_core_does_not_hold_is_not_recorded():
@@ -365,7 +355,7 @@ def test_a_card_whose_job_core_holds_is_recorded_started_whatever_the_page_says(
                    {'outcome': 'discarded'}):
         client = FakeClient()
         card_id = _seed_card(client)
-        client.jobs.create('p1', 'igt', ['gloss'], ['d1'], 'Gloss ka as "go".', id=card_id)
+        client.jobs.create('p1', 'igt', 'Gloss ka as "go".', ['d1'], id=card_id)
         helper, conv, _meta = _settle(client, card_id, **fields)
         card = conv['display'][-1]['job']
         assert not helper.errors and card['status'] == 'started', fields
@@ -379,7 +369,7 @@ def test_a_card_whose_job_already_ended_is_recorded_started():
     and no second job is made."""
     client = FakeClient()
     card_id = _seed_card(client)
-    client.jobs.create('p1', 'igt', ['gloss'], ['d1'], 'Gloss ka as "go".', id=card_id)
+    client.jobs.create('p1', 'igt', 'Gloss ka as "go".', ['d1'], id=card_id)
     client.jobs.cancel(card_id)
     assert client.jobs.get(card_id)['state'] == 'cancelled'
     _helper, conv, _meta = _settle(client, card_id, outcome='started')
@@ -440,4 +430,4 @@ def test_the_step_says_a_job_was_drafted_and_the_result_ends_with_the_card_line(
     (step,) = out.steps
     assert step['label'] == 'Drafted a job', step
     (result,) = [m['content'] for m in out.messages if m.get('role') == 'tool']
-    assert result.endswith('\n[Plan of this turn: a job card, 1 document, gloss.]'), result
+    assert result.endswith('\n[Plan of this turn: a job card, 1 document.]'), result

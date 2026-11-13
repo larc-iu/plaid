@@ -14,7 +14,7 @@ import uuid
 
 import pytest
 
-from job_fixtures import Model, call, document, job_project, reply, use
+from job_fixtures import plan_row, Model, call, document, job_project, reply, use
 from live import _skip_or_fail, core_url, login, seed
 
 from plaid_agent.core.agent import ModelConfig
@@ -53,7 +53,7 @@ def _model(asked, n, kwargs):
     calls = []
     gloss = 'go' if doc == 'One' else 'come'
     for line in asked.splitlines():
-        if not line.startswith('Targets in s'):
+        if not line.startswith('Empty in s'):
             continue
         s = line.split()[2].rstrip(':')
         for w in line.split('words ')[1].split(' and ')[0].split(', '):
@@ -66,7 +66,7 @@ def _model(asked, n, kwargs):
 def test_a_two_document_job_end_to_end(world, monkeypatch):
     admin, writer, email, s = world
     use(monkeypatch, Model(_model))
-    made = writer.jobs.create(s.project_id, 'igt', ['gloss'])
+    made = writer.jobs.create(s.project_id, 'igt', 'Gloss the words.')
     assert made['state'] == 'waiting'
     from plaid_client import PlaidClient
     waited = []
@@ -104,8 +104,10 @@ def test_a_two_document_job_end_to_end(world, monkeypatch):
 def test_a_jobs_token_is_refused_on_a_maintainers_route(world):
     admin, writer, email, s = world
     from plaid_client import PlaidAPIError, PlaidClient
-    made = writer.jobs.create(s.project_id, 'igt', ['gloss'])
+    made = writer.jobs.create(s.project_id, 'igt', 'Gloss the words.')
     claimed = admin.jobs.claim(WORKER, 'fake/m', ['igt'])
+    if claimed:
+        admin.jobs.add_decisions(claimed['job']['id'], WORKER, [plan_row()])
     assert claimed and claimed['job']['id'] == made['id'] and claimed['token']
     token = PlaidClient(core_url(), claimed['token'])
     try:
@@ -129,15 +131,15 @@ def test_core_answers_a_cards_second_press_as_the_job_card_reads_it(world):
     with pytest.raises(PlaidAPIError) as e:
         writer.jobs.get(card_id)
     assert _names_nothing(e.value), (e.value.status, e.value.response_data)
-    writer.jobs.create(s.project_id, 'igt', ['gloss'], id=card_id)
+    writer.jobs.create(s.project_id, 'igt', 'Gloss the words.', id=card_id)
     try:
         with pytest.raises(PlaidAPIError) as e:
-            writer.jobs.create(s.project_id, 'igt', ['gloss'], id=card_id)
+            writer.jobs.create(s.project_id, 'igt', 'Gloss the words.', id=card_id)
         assert e.value.status == 409
         assert e.value.response_data['code'] == 'job-active' and e.value.response_data['job'] == card_id
         assert writer.jobs.get(card_id)['project'] == s.project_id
     finally:
         writer.jobs.cancel(card_id)
     with pytest.raises(PlaidAPIError) as e:
-        writer.jobs.create(s.project_id, 'igt', ['gloss'], id=card_id)
+        writer.jobs.create(s.project_id, 'igt', 'Gloss the words.', id=card_id)
     assert e.value.status == 409 and e.value.response_data['error'] == 'id-taken'

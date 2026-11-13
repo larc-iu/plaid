@@ -36,7 +36,7 @@ def _written(client):
 
 def test_the_worker_claims_a_job_runs_it_and_finishes_and_says_nothing_waits(monkeypatch):
     client = _client()
-    client.jobs.create('p1', 'igt', ['gloss'])
+    client.jobs.create('p1', 'igt', 'Gloss the words.')
     use(monkeypatch, Model(_analyse))
     from job_fixtures import ModelConfig
     worker = Worker(client, {'igt': runner_factory(ModelConfig(model='fake/m', stream=False, max_steps=1000),

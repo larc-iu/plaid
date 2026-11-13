@@ -222,7 +222,7 @@
     (testing "an id a job holds"
       (let [job (psc/new-uuid)]
         (is (= 201 (:status (post (str "/api/v1/projects/" (:proj s) "/jobs")
-                                  {:id job :app "igt" :tasks ["gloss"]}))))
+                                  {:id job :app "igt" :instructions "Gloss the words."}))))
         (let [r (post "/api/v1/comments" {:id job :entity-type "document" :entity-id (:doc s) :body "c"})]
           (is (= 409 (:status r)))
           (is (re-find #"^A job with id" (str (get-in r [:body :message])))))))

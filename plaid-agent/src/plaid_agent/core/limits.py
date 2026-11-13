@@ -259,3 +259,35 @@ JOB_SKIPPED_PER_DOCUMENT = 500
 #: The most decisions one call adds, and the most forms one lookup names
 #: (core's JOB_DECISIONS_PER_CALL).
 JOB_DECISIONS_PER_CALL = 1000
+
+# A job is the assistant, unattended (the owner's rulings 11 to 14 of
+# 2026-11-13, fixer JG). Every part a model context is given has a budget.
+#: The largest document worked as one piece, as its message renders it: about
+#: a quarter of JOB_CALL_MAX_PROMPT_TOKENS in Latin script, which leaves room
+#: for the prompt, the tool list and the reads. A larger one is worked in
+#: stretches of sentences, and the report says so.
+JOB_DOCUMENT_PIECE_MAX_CHARS = 40000
+#: The documents the planning context is told of, one line each.
+JOB_PLAN_DOCUMENT_LINES = 200
+#: The longest instructions the plan adds for every piece (the instructions'
+#: own cap, core's JOB_INSTRUCTIONS_MAX_CHARS).
+JOB_PIECE_INSTRUCTIONS_MAX_CHARS = 2000
+#: A piece's note for the report (its last reply), cut at this length.
+JOB_NOTE_MAX_CHARS = 400
+#: The most changes the job keeps as proposed (the report's list cap). Past
+#: it a change is only counted, and the report says how many.
+JOB_CHANGES_MAX = JOB_REPORT_LIST_MAX
+#: A proposed change's values (what it replaces, what it writes, its words).
+JOB_CHANGE_VALUE_CHARS = 300
+#: Tables a piece's code may hand the report, and their size: rows, columns
+#: and characters a cell keeps. The report holds at most JOB_TABLES_MAX.
+JOB_TABLES_PER_PIECE = 5
+JOB_TABLES_MAX = 20
+JOB_TABLE_ROWS = 200
+JOB_TABLE_COLUMNS = 8
+JOB_TABLE_CELL_CHARS = 120
+#: What the final context is given of the pieces' notes and tables, and the
+#: longest prose it writes.
+JOB_SUMMARY_NOTES_CHARS = 12000
+JOB_SUMMARY_TABLE_CHARS = 16000
+JOB_SUMMARY_MAX_CHARS = 3000

@@ -24,11 +24,12 @@
 
 (deftest a-started-job-waits-with-its-documents-in-order
   (let [{:keys [p d1 d2 st]} (jh/world!)
-        resp (start! st p {:tasks ["link" "gloss" "translate"] :note "Gloss kin terms as in the guide."})
+        resp (start! st p {:instructions "Gloss kin terms as in the guide."})
         j (:body resp)]
     (is (= 201 (:status resp)))
     (is (= "waiting" (:job/state j)))
-    (is (= ["translate" "gloss" "link"] (:job/tasks j)) "in the order of the app's tasks")
+    (is (= "Gloss kin terms as in the guide." (:job/instructions j)))
+    (is (not (contains? j :job/tasks)) "a job has no task types")
     (is (= "starter@example.com" (:job/started-by j)))
     (is (= "starter" (:job/started-by-name j)))
     (is (= 120 (:job/lease-s j)))
@@ -53,17 +54,16 @@
                     (is (= 400 (:status r)))
                     (-> r :body :error)))]
     (is (= "Unknown app: ud." (refused p {:app "ud"})))
-    (is (= "tasks: give at least one of translate, gloss, link." (refused p {:tasks []})))
-    (is (= "tasks: give at least one of translate, gloss, link." (refused p {:tasks ["parse"]})))
-    (is (= "tasks: link needs gloss." (refused p {:tasks ["translate" "link"]})))
+    (is (= "instructions: say what the job is to do." (refused p {:instructions nil})))
+    (is (= "instructions: say what the job is to do." (refused p {:instructions "  \n "})))
     (is (= "documents: 2 are not documents of this project."
            (refused p {:documents ["0197d1a0-0000-7000-8000-0000000000f1" "0197d1a0-0000-7000-8000-0000000000f2"]})))
-    (is (= "The note is 2,412 characters. A job's note is at most 2,000."
-           (refused p {:note (apply str (repeat 2412 "é"))})))
+    (is (= "The instructions are 2,412 characters. A job's instructions are at most 2,000."
+           (refused p {:instructions (apply str (repeat 2412 "é"))})))
     (is (= "documents: give at least one document, or leave them out for all." (refused p {:documents []})))
     (is (= "This project has no documents." (refused empty-project {})))
-    (testing "a 2,000 character note is taken"
-      (is (= 201 (:status (start! st p {:note (apply str (repeat 2000 "x"))})))))))
+    (testing "2,000 characters of instructions are taken"
+      (is (= 201 (:status (start! st p {:instructions (apply str (repeat 2000 "x"))})))))))
 
 (deftest at-most-five-hundred-documents
   (let [p (str (h/create-test-project admin-request "Big"))]
@@ -233,20 +233,20 @@
   (let [{:keys [p st d1]} (jh/world!)
         j (job-id (start! st p))]
     (claim! jh/worker-a)
-    (let [r (heartbeat! j jh/worker-a {:phase "glossing" :message "Sentences 1 to 5 of 40."
+    (let [r (heartbeat! j jh/worker-a {:phase "working" :message "Sentences 1 to 5 of 40."
                                        :waiting-for "people" :current-document d1})]
       (is (= 200 (:status r)))
       (is (= "running" (-> r :body :state)))
       (is (= 120 (-> r :body :lease-s)))
       (is (string? (-> r :body :token))))
     (let [job (get-job j)]
-      (is (= ["glossing" "Sentences 1 to 5 of 40." "people" d1]
+      (is (= ["working" "Sentences 1 to 5 of 40." "people" d1]
              ((juxt :job/phase :job/message :job/waiting-for :job/current-document) job))))
     (testing "a key left out is left, a null clears"
       (heartbeat! j jh/worker-a {:waiting-for nil})
       (let [job (get-job j)]
         (is (nil? (:job/waiting-for job)))
-        (is (= "glossing" (:job/phase job)))))
+        (is (= "working" (:job/phase job)))))
     (testing "a stopped job's heartbeat says so"
       (fix/assert-ok (call st :post (str "/api/v1/jobs/" j "/cancel")))
       (is (= "stopping" (-> (heartbeat! j jh/worker-a) :body :state))))
@@ -358,7 +358,7 @@
         (fix/assert-ok (call st :post (str "/api/v1/jobs/" j "/cancel")))))
     (testing "a report over the cap"
       (let [j (running-job! st p "running")
-            r (finish! j jh/worker-a "done" {:report {:note (apply str (repeat 1000001 "x"))}})]
+            r (finish! j jh/worker-a "done" {:report {:instructions (apply str (repeat 1000001 "x"))}})]
         (is (= 400 (:status r)))
         (is (str/starts-with? (-> r :body :error) "The report is 1,000,0"))
         (fix/assert-ok (finish! j jh/worker-a "done"))))))

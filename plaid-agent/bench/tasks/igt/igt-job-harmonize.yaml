@@ -7,7 +7,7 @@ app: igt
 project: igt-lezgi
 as: B
 job:
-  tasks: [gloss]
+  instructions: Segment and gloss every word nobody has analyzed. Follow how people in the project analyzed the same forms.
   documents: [Lezgi text 1, Lezgi text 2]
 check: igt_job
 args:

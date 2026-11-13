@@ -1,0 +1,3 @@
+ALTER TABLE jobs RENAME COLUMN instructions TO note;
+--;;
+ALTER TABLE jobs ADD COLUMN tasks TEXT NOT NULL DEFAULT '[]';

@@ -3,14 +3,19 @@ import { TYPE } from '@ui/lib/typeScale.js';
 import { plural } from '@ui/lib/plural.js';
 import { APP_ROUTES } from '@/appRoutes.js';
 import { HARMONIZE_BY_TEXT, HARMONIZE_LEFT_TEXT, durationText, skippedText } from './jobText.js';
+import SECTIONS from './jobSections.json';
 
 // A finished job's report (CONTRACT 5.3, as the client hands it over, keys in
-// camelCase): the totals, each document's skipped sentences and the targets
-// it left blank, what harmonize changed and left, and the entries the job
-// made, deleted or left unlinked.
-// Every list the worker cut says how many it left out.
+// camelCase): the summary the job wrote, the totals, the changes it proposed,
+// each piece's note, the tables its code made, each document's skipped
+// sentences and the targets it left blank, what harmonize changed and left,
+// and the entries the job made, deleted or left unlinked.
+// Every list the worker cut says how many it left out. A section's heading is
+// jobSections.json's, which the assistant names sections by (read_job).
 
-const Heading = ({ children }) => <h3 className={`${TYPE.card} mb-2 mt-6`}>{children}</h3>;
+const Heading = ({ section, children }) => (
+  <h3 className={`${TYPE.card} mb-2 mt-6`}>{section ? SECTIONS[section] : children}</h3>
+);
 
 const More = ({ n, noun }) =>
   n > 0 ? (
@@ -23,29 +28,24 @@ const More = ({ n, noun }) =>
 // with nothing in it.
 const totalRows = (report) => {
   const t = report.totals || {};
-  const tasks = report.tasks || [];
   const rows = [['Documents done', t.documentsDone]];
   const optional = (label, n) => n > 0 && rows.push([label, n]);
   optional('Documents in use', t.documentsInUse);
   optional('Documents deleted', t.documentsGone);
   optional('Documents not reached', t.documentsNotReached);
-  rows.push(['Sentences analyzed', t.sentences]);
-  if (tasks.includes('translate')) {
-    rows.push(['Translations filled', t.translations]);
-    rows.push(['Machine translations replaced', t.refreshed]);
-  }
-  if (tasks.includes('gloss')) rows.push(['Words analyzed', t.words]);
-  if (tasks.includes('link')) {
-    rows.push(['Lexicon links made', t.links]);
-    rows.push(['Entries created', t.entries]);
-  }
+  rows.push(['Sentences written in', t.sentences]);
+  optional('Translations filled', t.translations);
+  optional('Translations of the job revised', t.refreshed);
+  optional('Words analyzed', t.words);
+  optional('Lexicon links made', t.links);
+  optional('Entries created', t.entries);
+  optional('Changes proposed', t.proposed);
   optional('Sentences skipped as too long', t.skippedTooLong);
   optional('Sentences skipped as failed', t.skippedFailed);
   optional('Sentences skipped as changed during the job', t.skippedChanged);
   optional('Sentences skipped after an interrupted write', t.skippedInterrupted);
   optional('Sentences skipped and not listed', t.skippedMore);
   optional('Changes not written, sentence changed meanwhile', t.changed);
-  optional('Changes not written, a person’s work', t.protected);
   return rows.map(([label, n]) => [label, (n ?? 0).toLocaleString()]);
 };
 
@@ -63,6 +63,114 @@ const EntryLine = ({ entry }) => (
   </li>
 );
 
+// The changes the job staged and did not apply (the apply rule), each where
+// it is, from what to what, and the note of the piece that staged it: what a
+// person approves in a conversation with the assistant about the job.
+const ProposedChanges = ({ report, projectId }) => {
+  const list = report.proposed || [];
+  const more = report.proposedMore || 0;
+  if (!list.length && !more) return null;
+  return (
+    <>
+      <Heading section="proposed" />
+      <table className="w-full text-sm">
+        <thead className="text-left text-muted-foreground">
+          <tr>
+            <th className="py-1 pr-4 font-medium">Where</th>
+            <th className="py-1 pr-4 font-medium">Change</th>
+            <th className="py-1 pr-4 font-medium">From</th>
+            <th className="py-1 font-medium">To</th>
+          </tr>
+        </thead>
+        <tbody>
+          {list.map((c, i) => (
+            <tr key={i} className="border-t align-top">
+              <td className="py-1 pr-4">
+                {c.documentId ? (
+                  <Link
+                    className="underline"
+                    to={`/projects/${projectId}/documents/${c.documentId}`}
+                  >{`${c.document ?? 'Document'}${c.ref ? ` ${c.ref}` : ''}`}</Link>
+                ) : (
+                  <span className="text-muted-foreground">Project</span>
+                )}
+              </td>
+              <td className="py-1 pr-4">{c.field ?? c.label}</td>
+              <td className="py-1 pr-4 text-muted-foreground" dir="auto">
+                {c.from ?? ''}
+              </td>
+              <td className="py-1" dir="auto">
+                {c.to ?? ''}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <More n={more} noun="change" />
+    </>
+  );
+};
+
+// Each piece's note, as the model ended it.
+const PieceNotes = ({ report }) => {
+  const notes = report.notes || [];
+  if (!notes.length) return null;
+  return (
+    <>
+      <Heading section="notes" />
+      <ul className="ml-4 list-disc text-sm">
+        {notes.map((n, i) => (
+          <li key={i} dir="auto">
+            {(n.name || n.sentences) && (
+              <span className="text-muted-foreground">
+                {[n.name, n.sentences].filter(Boolean).join(' ')}:{' '}
+              </span>
+            )}
+            {n.note}
+          </li>
+        ))}
+      </ul>
+      <More n={report.notesMore || 0} noun="note" />
+    </>
+  );
+};
+
+// What the job's code counted, as data.
+const Tables = ({ tables }) =>
+  tables.length ? (
+    <>
+      <Heading section="tables" />
+      {tables.map((t, i) => (
+        <div key={i} className="mb-4 text-sm">
+          <p className="font-medium">{t.title}</p>
+          <table className="w-full">
+            <thead className="text-left text-muted-foreground">
+              <tr>
+                {(t.columns || []).map((c, j) => (
+                  <th key={j} className="py-1 pr-4 font-medium">
+                    {c}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {(t.rows || []).map((r, j) => (
+                <tr key={j} className="border-t">
+                  {r.map((v, k) => (
+                    <td key={k} className="py-1 pr-4" dir="auto">
+                      {v === null ? '' : String(v)}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <More n={t.more || 0} noun="row" />
+        </div>
+      ))}
+    </>
+  ) : null;
+
 export const JobReport = ({ report, projectId, vocabs = [] }) => {
   const paused = [
     ['Paused for people', report.pausedForPeopleS],
@@ -74,7 +182,6 @@ export const JobReport = ({ report, projectId, vocabs = [] }) => {
   const entries = report.entries || {};
   const changed = harmonize.changed || [];
   const left = harmonize.left || [];
-  const linked = (report.tasks || []).includes('link');
   // The project's lexicons the job created entries in, in the project's order.
   const madeIn = new Set(entries.lexicons || []);
   const draftLexicons = vocabs.filter((v) => madeIn.has(v.id));
@@ -82,7 +189,6 @@ export const JobReport = ({ report, projectId, vocabs = [] }) => {
     ['Created', entries.created, entries.createdMore],
     ['Deleted as unlinked', entries.deleted, entries.deletedMore],
     ['Machine drafts with no links', entries.unlinked, entries.unlinkedMore],
-    ['Proposed and not created, as nothing linked them', entries.proposed, entries.proposedMore],
   ].filter(([, list = [], more = 0]) => list.length || more);
 
   return (
@@ -90,6 +196,18 @@ export const JobReport = ({ report, projectId, vocabs = [] }) => {
       <h2 className={`${TYPE.section} mt-8`}>Report</h2>
       {report.stopped === 'without-worker' && (
         <p className="mt-2 text-sm text-muted-foreground">Stopped with no worker running.</p>
+      )}
+      {report.summary && (
+        <div
+          className="mt-3 max-w-2xl whitespace-pre-wrap text-sm"
+          dir="auto"
+          data-testid="job-summary"
+        >
+          {report.summary}
+        </div>
+      )}
+      {report.summaryFailed && (
+        <p className="mt-2 text-sm text-muted-foreground">The summary could not be written.</p>
       )}
 
       <Heading>Totals</Heading>
@@ -104,9 +222,13 @@ export const JobReport = ({ report, projectId, vocabs = [] }) => {
         )}
       </dl>
 
+      <ProposedChanges report={report} projectId={projectId} />
+      <PieceNotes report={report} />
+      <Tables tables={report.tables || []} />
+
       {skipped.length > 0 && (
         <>
-          <Heading>Skipped sentences</Heading>
+          <Heading section="skipped" />
           {skipped.map((d) => (
             <div key={d.documentId} className="mb-3 text-sm">
               <p className="font-medium">{d.name ?? 'Deleted document'}</p>
@@ -139,7 +261,7 @@ export const JobReport = ({ report, projectId, vocabs = [] }) => {
 
       {blank.length > 0 && (
         <>
-          <Heading>Left blank</Heading>
+          <Heading section="left" />
           {blank.map((d) => (
             <div key={d.documentId} className="mb-3 text-sm">
               <p className="font-medium">{d.name ?? 'Deleted document'}</p>
@@ -172,7 +294,7 @@ export const JobReport = ({ report, projectId, vocabs = [] }) => {
 
       {(changed.length > 0 || harmonize.changedMore > 0) && (
         <>
-          <Heading>Analyses made consistent</Heading>
+          <Heading section="harmonize.changed" />
           <table className="w-full text-sm">
             <thead className="text-left text-muted-foreground">
               <tr>
@@ -207,7 +329,7 @@ export const JobReport = ({ report, projectId, vocabs = [] }) => {
 
       {(left.length > 0 || harmonize.leftMore > 0) && (
         <>
-          <Heading>Forms left inconsistent</Heading>
+          <Heading section="harmonize.left" />
           <table className="w-full text-sm">
             <thead className="text-left text-muted-foreground">
               <tr>
@@ -236,7 +358,7 @@ export const JobReport = ({ report, projectId, vocabs = [] }) => {
         </>
       )}
 
-      {linked && (entryLists.length > 0 || draftLexicons.length > 0) && (
+      {(entryLists.length > 0 || draftLexicons.length > 0) && (
         <>
           <Heading>Entries</Heading>
           {entryLists.map(([label, list = [], more = 0]) => (

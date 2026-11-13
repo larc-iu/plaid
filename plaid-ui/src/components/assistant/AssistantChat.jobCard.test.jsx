@@ -24,7 +24,6 @@ const CARD = {
   all: false,
   count: 1,
   documents: [{ id: 'd1', name: 'Text 1' }],
-  tasks: ['gloss'],
   brief: 'Gloss ka as go.',
   summary: '1 document, gloss',
   status: null,
@@ -142,17 +141,17 @@ describe('a job card in the Markdown export', () => {
         { title: 'A thread' },
         { adapter: ADAPTER, projectId: 'p1', projectName: 'Lamkang A' },
       );
-    expect(md(CARD)).toContain('**Proposed job:** Text 1. Segment and gloss. (Not yet started.)');
+    expect(md(CARD)).toContain('**Proposed job:** Text 1. (Not yet started.)');
     expect(md(CARD)).toContain('Gloss ka as go.');
     const started = md({ ...CARD, status: 'started', sentBrief: 'Gloss ka as come.' });
     expect(started).toContain('(Started.)');
     expect(started).toContain('Gloss ka as come.');
     const names = Array.from({ length: 5 }, (_, i) => ({ id: `d${i}`, name: `Text ${i + 1}` }));
     expect(md({ ...CARD, documents: names, count: 12, status: 'discarded' })).toContain(
-      '**Proposed job:** Text 1, Text 2, Text 3, Text 4, Text 5 and 7 more. Segment and gloss. (Discarded.)',
+      '**Proposed job:** Text 1, Text 2, Text 3, Text 4, Text 5 and 7 more. (Discarded.)',
     );
     expect(md({ ...CARD, all: true, count: 9, status: 'discarded' })).toContain(
-      '**Proposed job:** All documents (9). Segment and gloss. (Discarded.)',
+      '**Proposed job:** All documents (9). (Discarded.)',
     );
   });
 });

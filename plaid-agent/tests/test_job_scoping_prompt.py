@@ -42,7 +42,10 @@ def test_the_igt_prompt_says_how_to_scope_a_job_once():
 
 def test_the_paragraph_is_short_and_positive():
     para = _paragraph(igt_prompt.SYSTEM)
-    assert len(para.split()) <= 205, len(para.split())
+    # 205, and the 11 words JG added: a job fills only what is empty and
+    # proposes the rest (the owner's ruling 13).
+    assert len(para.split()) <= 216, len(para.split())
+    assert 'A job fills only what is empty and proposes the rest.' in para
     assert not re.search(r"\b(never|not to|do not|don't|NOT)\b", para), para
     assert ';' not in para and '—' not in para
 

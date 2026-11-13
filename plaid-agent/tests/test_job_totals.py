@@ -37,7 +37,7 @@ def _nonzero(totals):
 
 def test_a_job_whose_every_call_fails_analysed_no_sentence(monkeypatch):
     client = JobClient({'d1': document('d1', 'Story', [{'words': ['ka']}, {'words': ['ka']}])})
-    job = start(client, ['gloss'], id=J)
+    job = start(client, id=J)
     use(monkeypatch, Model(_analysing(bad=(1, 2))))
     finished = run_job(job, runner(job))
     assert finished['state'] == 'done'
@@ -55,7 +55,7 @@ def test_a_job_where_half_the_sentences_fail_counts_the_other_half(monkeypatch):
         client.after_write[d] = document(d, d, [{'words': [mine]}, {'words': ['ka']}], version=2)
         return real(c, ops, **kw)
     monkeypatch.setattr(igt_job, 'execute_plan', execute)
-    job = start(client, ['gloss'], id=J)
+    job = start(client, id=J)
     use(monkeypatch, Model(_analysing(bad=(2,))))
     finished = run_job(job, runner(job))
     assert finished['state'] == 'done'
@@ -64,7 +64,7 @@ def test_a_job_where_half_the_sentences_fail_counts_the_other_half(monkeypatch):
 
 def test_a_job_that_left_a_sentence_blank_did_not_analyse_it(monkeypatch):
     client = JobClient({'d1': document('d1', 'Story', [{'words': ['ka']}])})
-    job = start(client, ['gloss'], id=J)
+    job = start(client, id=J)
     use(monkeypatch, Model(lambda asked, n, kwargs: reply('Done.')))
     finished = run_job(job, runner(job))
     assert finished['state'] == 'done'
@@ -76,7 +76,7 @@ def test_a_job_stopped_midway_counts_what_it_wrote_before(monkeypatch):
     client = JobClient({'d1': document('d1', 'Story 1', [{'words': ['ka']}]),
                         'd2': document('d2', 'Story 2', [{'words': ['ka']}])})
     client.after_write['d1'] = document('d1', 'Story 1', [{'words': [('ka', [('ka', 'go')], J)]}], version=2)
-    job = start(client, ['gloss'], id=J)
+    job = start(client, id=J)
     answer = _analysing()
 
     def stopping(asked, n, kwargs):

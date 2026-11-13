@@ -67,7 +67,7 @@
     (testing "an admin's route is refused"
       (is (= 403 (:status (call job-token :get "/api/v1/users")))))
     (testing "a job's own routes are no exception"
-      (is (= 403 (:status (call job-token :post (str "/api/v1/projects/" p "/jobs") {:app "igt" :tasks ["gloss"]}))))
+      (is (= 403 (:status (call job-token :post (str "/api/v1/projects/" p "/jobs") {:app "igt" :instructions "Gloss the words."}))))
       (is (= 403 (:status (call job-token :post "/api/v1/jobs/claim"
                                 {:worker-id jh/worker-b :model "m" :apps ["igt"]})))))))
 

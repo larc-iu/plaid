@@ -14,24 +14,20 @@ import {
   DialogFooter,
 } from '@ui/components/ui/dialog';
 import { SearchInput } from '@ui/components/shared/list-search';
-import { jobTaskText } from '@ui/domain/jobs.js';
-import { JOB_TASKS, activeJobOf, jobPath, noteLength, startJob } from './jobText.js';
-import { JobActiveLine, NoWorkerLine, NoteCount } from './jobLines.jsx';
+import { STARTER_TEXTS, activeJobOf, instructionsLength, jobPath, startJob } from './jobText.js';
+import { InstructionsCount, JobActiveLine, NoWorkerLine } from './jobLines.jsx';
 
 const byName = (a, b) => (a.name || '').localeCompare(b.name || '') || a.id.localeCompare(b.id);
 
 /**
  * Start job: the button and its dialog, from the project's Documents tab and
- * from a document's header. `project` is the project as read, whose linked
- * lexicons say whether Link to lexicon can be done. `documents` is the
- * project's listing when the caller already has it (the Documents tab), else
- * it is read on open.
+ * from a document's header. `documents` is the project's listing when the
+ * caller already has it (the Documents tab), else it is read on open.
  * `documentId` opens the dialog with that one document chosen. `small` draws
  * the button at the size of a document header's buttons.
  */
 export const StartJob = ({
   projectId,
-  project,
   client,
   documents: given = null,
   documentId = null,
@@ -51,7 +47,6 @@ export const StartJob = ({
       {open && (
         <StartJobDialog
           projectId={projectId}
-          linksLexicon={(project?.vocabs || []).length > 0}
           client={client}
           documents={given}
           documentId={documentId}
@@ -64,26 +59,14 @@ export const StartJob = ({
 
 // The dialog itself, mounted per opening: everything chosen in it, and the id
 // its job is made under, start fresh each time it opens.
-const StartJobDialog = ({
-  projectId,
-  linksLexicon,
-  client,
-  documents: given,
-  documentId,
-  onClose,
-}) => {
+const StartJobDialog = ({ projectId, client, documents: given, documentId, onClose }) => {
   const navigate = useNavigate();
   const [listed, setListed] = useState(given);
   const [worker, setWorker] = useState(null);
   const [all, setAll] = useState(!documentId);
   const [chosen, setChosen] = useState(() => new Set(documentId ? [documentId] : []));
   const [query, setQuery] = useState('');
-  // Linking needs a lexicon the project links: without one a job could only
-  // fail its checks (no-lexicon), so it is not offered.
-  const [tasks, setTasks] = useState(
-    () => new Set(JOB_TASKS.filter((t) => t !== 'link' || linksLexicon)),
-  );
-  const [note, setNote] = useState('');
+  const [instructions, setInstructions] = useState('');
   const [starting, setStarting] = useState(false);
   // The project's job already under way, when Start was refused for it.
   const [activeJob, setActiveJob] = useState(null);
@@ -108,8 +91,9 @@ const StartJobDialog = ({
   }, [client, projectId, given]);
 
   const documents = useMemo(() => [...(listed || [])].sort(byName), [listed]);
-  const noteMax = worker?.noteMaxChars ?? null;
-  const noteOver = noteMax !== null && noteLength(note) > noteMax;
+  const instructionsMax = worker?.instructionsMaxChars ?? null;
+  const instructionsOver =
+    instructionsMax !== null && instructionsLength(instructions) > instructionsMax;
   // The most documents a job takes, core's (jobs.worker()). A project of more
   // cannot name them all, so All documents is not offered there.
   const documentsMax = worker?.documentsMax ?? null;
@@ -119,16 +103,6 @@ const StartJobDialog = ({
   const pickedOver = documentsMax !== null && picked > documentsMax;
   const q = query.trim().toLowerCase();
   const shown = q ? documents.filter((d) => (d.name || '').toLowerCase().includes(q)) : documents;
-
-  const toggleTask = (value, on) =>
-    setTasks((prev) => {
-      const next = new Set(prev);
-      if (on) next.add(value);
-      else next.delete(value);
-      // Linking writes the analysis it links, so it goes with Segment and gloss.
-      if (value === 'gloss' && !on) next.delete('link');
-      return next;
-    });
 
   const toggleDocument = (id, on) =>
     setChosen((prev) => {
@@ -141,16 +115,20 @@ const StartJobDialog = ({
   const selectShown = () => setChosen((prev) => new Set([...prev, ...shown.map((d) => d.id)]));
 
   const canStart =
-    !starting && tasks.size > 0 && picked > 0 && !pickedOver && !noteOver && listed !== null;
+    !starting &&
+    instructions.trim() !== '' &&
+    picked > 0 &&
+    !pickedOver &&
+    !instructionsOver &&
+    listed !== null;
 
   const start = async () => {
     setStarting(true);
     setActiveJob(null);
     try {
       const job = await startJob(client, projectId, mint, {
-        tasks: [...tasks],
         documents: allChosen ? null : documents.filter((d) => chosen.has(d.id)).map((d) => d.id),
-        note,
+        instructions,
       });
       onClose();
       navigate(jobPath(projectId, job.id));
@@ -169,7 +147,8 @@ const StartJobDialog = ({
         <DialogHeader>
           <DialogTitle>Start job</DialogTitle>
           <DialogDescription>
-            An AI model fills blank analyses and translations in the chosen documents.
+            The assistant works through the chosen documents by the instructions. It writes into
+            what is empty and lists every other change in its report for approval.
           </DialogDescription>
         </DialogHeader>
 
@@ -261,36 +240,30 @@ const StartJobDialog = ({
             )}
           </fieldset>
 
-          <fieldset className="flex flex-col gap-2">
-            <legend className="mb-2 text-sm font-medium">Tasks</legend>
-            {JOB_TASKS.map((t) => (
-              <label key={t} className="flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  className="h-4 w-4 accent-primary"
-                  checked={tasks.has(t)}
-                  disabled={t === 'link' && (!tasks.has('gloss') || !linksLexicon)}
-                  onChange={(e) => toggleTask(t, e.target.checked)}
-                />
-                <span>{jobTaskText(t)}</span>
-                {t === 'link' && !linksLexicon && (
-                  <span className="text-xs text-muted-foreground">The project has no lexicon.</span>
-                )}
-              </label>
-            ))}
-          </fieldset>
-
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="job-note">Instructions</Label>
+            <Label htmlFor="job-instructions">Instructions</Label>
+            <div className="flex flex-wrap gap-2" role="group" aria-label="Start from">
+              {STARTER_TEXTS.map((s) => (
+                <Button
+                  key={s.label}
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setInstructions(s.text)}
+                >
+                  {s.label}
+                </Button>
+              ))}
+            </div>
             <Textarea
-              id="job-note"
+              id="job-instructions"
               compose
-              rows={4}
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-              aria-invalid={noteOver ? true : undefined}
+              rows={5}
+              value={instructions}
+              onChange={(e) => setInstructions(e.target.value)}
+              aria-invalid={instructionsOver ? true : undefined}
             />
-            <NoteCount note={note} max={noteMax} />
+            <InstructionsCount text={instructions} max={instructionsMax} />
           </div>
 
           <NoWorkerLine worker={worker} />

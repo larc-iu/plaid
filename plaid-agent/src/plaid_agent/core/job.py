@@ -312,8 +312,8 @@ class Job:
         self.job = claimed['job']
         self.id = self.job['id']
         self.project_id = self.job['project']
-        self.tasks = list(self.job.get('tasks') or [])
-        self.note = self.job.get('note')
+        self.instructions = self.job.get('instructions') or ''
+        #: kept in the report as the instructions were when the job started
         self.starter = self.job.get('started_by')
         self.starter_name = self.job.get('started_by_name') or self.starter
         self.worker_id = worker_id
@@ -501,7 +501,7 @@ class Job:
 
 # --- the frame of a job ------------------------------------------------------------
 
-CHECKING, HARMONIZING, REPORTING = 'checking', 'harmonizing', 'reporting'
+CHECKING, PLANNING, HARMONIZING, REPORTING = 'checking', 'planning', 'harmonizing', 'reporting'
 
 #: A document row's states that are final for the walk.
 ROW_FINAL = ('done', 'in-use', 'gone')
@@ -509,7 +509,10 @@ ROW_FINAL = ('done', 'in-use', 'gone')
 #: The keys of a row's ``counts`` (CONTRACT 5.2), each a whole number.
 #: ``analyzed`` counts the sentences the job wrote in, an analysis or a
 #: translation (added by J-FIX-B2): the report's "sentences".
-COUNT_KEYS = ('translations', 'refreshed', 'words', 'links', 'entries', 'left', 'changed', 'protected', 'analyzed')
+#: ``proposed`` counts the staged changes the apply rule did not apply, and
+#: ``left_translations`` the empty translations left of ``left`` (added by JG).
+COUNT_KEYS = ('translations', 'refreshed', 'words', 'links', 'entries', 'left', 'left_translations', 'changed',
+              'proposed', 'analyzed')
 #: A row's count of the sentences skipped past the cap of its ``skipped``
 #: list (core's JOB_SKIPPED_PER_DOCUMENT), which are counted and not listed.
 SKIPPED_MORE = 'skipped_more'
@@ -539,8 +542,13 @@ def run_job(job: Job, runner) -> Optional[Dict[str, Any]]:
                 reason, message = failure
                 job.set(message=message)
                 return _finish(job, 'failed', runner, harmonize, entries, reason=reason, said=True)
-        if job.status.get('phase') in (CHECKING, runner.WORK_PHASE):
+        if job.status.get('phase') in (CHECKING, PLANNING):
+            # The job's plan, made once and kept: a resumed job reads it back.
+            job.set(phase=PLANNING, message='Planning the work.')
+            through_core(job, lambda: runner.plan(job))
+        if job.status.get('phase') in (PLANNING, runner.WORK_PHASE):
             job.set(phase=runner.WORK_PHASE)
+            runner.plan(job)
             runner.work(job)
         job.check()
         # Each change of phase is a heartbeat, which may be the first to hear
@@ -636,6 +644,15 @@ def _finish(job: Job, state: str, runner, harmonize, entries, reason: Optional[s
     # that never reached its entries.
     entries = entries or dict(getattr(runner, 'NO_ENTRIES', {}))
     report = build_report(job, state, reason, runner.document_reports(job), harmonize, entries)
+    parts = getattr(runner, 'report_parts', None)
+    if parts is not None:
+        report.update(parts(job))
+        # One count of the proposed changes: the ones the report holds and
+        # those it could not (a change proposed again on a piece taken again
+        # is one change).
+        report['totals']['proposed'] = len(report.get('proposed') or []) + (report.get('proposed_more') or 0)
+    if state == 'done' and getattr(runner, 'write_summary', False):
+        report.update(_summary(job, runner, report))
     try:
         return job.admin.jobs.finish(job.id, job.worker_id, state, report, reason=reason)
     except PlaidAPIError as e:
@@ -652,6 +669,22 @@ def _finish(job: Job, state: str, runner, harmonize, entries, reason: Optional[s
         return None
 
 
+def _summary(job: Job, runner, report: Dict[str, Any]) -> Dict[str, Any]:
+    """The report's prose, written by the job's final model context from the
+    report's own sections (``runner.summarize``), shown above them. When it
+    cannot be written the report has none and says so (``summary_failed``).
+    A stop during it leaves it out."""
+    try:
+        return {'summary': runner.summarize(job, report), 'summary_failed': False}
+    except JobStopped:
+        return {'summary': None, 'summary_failed': False}
+    except Exception as e:  # noqa: BLE001 - a report without its prose rather than none
+        if no_longer_mine(e):
+            raise
+        logger.warning('Job %s: its summary could not be written: %s', job.id, e)
+        return {'summary': None, 'summary_failed': True}
+
+
 def build_report(job: Job, state: str, reason: Optional[str], documents: List[Dict[str, Any]],
                  harmonize: Dict[str, Any], entries: Dict[str, Any]) -> Dict[str, Any]:
     """The report of CONTRACT 5.3: lists, never maps keyed by an id, each cut
@@ -660,7 +693,7 @@ def build_report(job: Job, state: str, reason: Optional[str], documents: List[Di
     totals = {'documents_done': 0, 'documents_in_use': 0, 'documents_gone': 0, 'documents_not_reached': 0,
               'sentences': 0, 'translations': 0, 'refreshed': 0, 'words': 0, 'links': 0, 'entries': 0,
               'skipped_too_long': 0, 'skipped_failed': 0, 'skipped_changed': 0, 'skipped_interrupted': 0,
-              'skipped_more': 0, 'changed': 0, 'protected': 0}
+              'skipped_more': 0, 'changed': 0, 'proposed': 0}
     for d in documents:
         key = {'done': 'documents_done', 'in-use': 'documents_in_use', 'gone': 'documents_gone'}.get(
             d.get('state'), 'documents_not_reached')
@@ -669,7 +702,7 @@ def build_report(job: Job, state: str, reason: Optional[str], documents: List[Di
         # The sentences the job wrote in, never one finished with nothing
         # written, skipped or failed (REV-J-B2 S3-5): ``done`` counts those.
         totals['sentences'] += counts.get('analyzed') or 0
-        for k in ('translations', 'refreshed', 'words', 'links', 'changed', 'protected', 'skipped_more'):
+        for k in ('translations', 'refreshed', 'words', 'links', 'changed', 'proposed', 'skipped_more'):
             totals[k] += counts.get(k) or 0
         for s in d.get('skipped') or []:
             k = f'skipped_{str(s.get("reason") or "").replace("-", "_")}'
@@ -686,12 +719,12 @@ def build_report(job: Job, state: str, reason: Optional[str], documents: List[Di
     # app gave them, taken before the cut.
     lists.update({k: v for k, v in entries.items() if k not in ('created', 'deleted', 'unlinked')})
     return {
-        'state': state, 'reason': reason, 'tasks': job.tasks, 'note': job.note, 'started_by': job.starter,
+        'state': state, 'reason': reason, 'instructions': job.instructions, 'started_by': job.starter,
         'model': job.model, 'started_at': job.started_at,
         'finished_at': datetime.fromtimestamp(job.now(), timezone.utc).isoformat(timespec='seconds')
         .replace('+00:00', 'Z'),
         'paused_for_people_s': int(job.paused['people']), 'paused_for_model_s': int(job.paused['model']),
-        'stopped': None, 'totals': totals, 'documents': documents,
+        'stopped': None, 'totals': totals, 'documents': documents, 'summary': None, 'summary_failed': False,
         'harmonize': {'changed': changed, 'left': left, 'changed_more': changed_more, 'left_more': left_more},
         'entries': lists,
     }

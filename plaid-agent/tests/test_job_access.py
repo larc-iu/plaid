@@ -62,7 +62,7 @@ def test_a_document_core_no_longer_finds_is_gone(monkeypatch):
 def test_harmonize_refused_access_ends_the_job_failed_and_not_done(monkeypatch):
     w = lambda g: ('ka', [('ka', g)], 'JA')  # noqa: E731
     client = JobClient({'d1': document('d1', 'A', [{'words': [w('go'), w('go'), w('come')]}])})
-    job = start(client, ['gloss'], id='JA')
+    job = start(client, id='JA')
     job.update_row('d1', state='done')
     recorded(job)
     job.status['phase'] = 'harmonizing'

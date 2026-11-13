@@ -1483,6 +1483,10 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
                 new.append({'role': 'user', 'content': note})
                 kwargs['messages'] = [{'role': 'system', 'content': system}] + history + sent(new)
                 kwargs['tools'] = kit.tools_for(ws)
+            if not kwargs['tools']:
+                # A job's context with no tools (the report's prose) asks for
+                # text alone: no empty tool list goes to the provider.
+                del kwargs['tools'], kwargs['tool_choice']
             pace.sending(kwargs)
         live['n'] = rounds + 1
         try:

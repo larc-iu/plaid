@@ -12,7 +12,8 @@ import json
 
 import pytest
 
-from job_fixtures import JobClient, Model, call, document, reply, runner, start, targets_named, use
+from job_fixtures import (INSTRUCTIONS, JobClient, Model, call, document, empty_translations, reply, runner, start,
+                          targets_named, use)
 
 from plaid_client import PlaidAPIError
 from plaid_agent.core.job import run_job
@@ -23,8 +24,11 @@ from test_job_vouched import _iso, _person_edits
 
 J = 'JW'
 MINE = {'ka': ('ka', [('ka', 'go')], J), 'ta': ('ta', [('ta', 'go')], J), 'sa': ('sa', [('sa', 'go')], J)}
-BLANK = [{'words': ['ka', 'ta']}, {'words': ['sa']}]
-WRITTEN = [{'words': [MINE['ka'], MINE['ta']]}, {'words': [MINE['sa']]}]
+# People translated both sentences: a job asked to gloss has nothing else
+# empty here.
+BLANK = [{'words': ['ka', 'ta'], 'translation': ('One.', 'human')}, {'words': ['sa'], 'translation': ('Two.', 'human')}]
+WRITTEN = [{'words': [MINE['ka'], MINE['ta']], 'translation': ('One.', 'human')},
+           {'words': [MINE['sa']], 'translation': ('Two.', 'human')}]
 
 
 class Crash(BaseException):
@@ -43,15 +47,14 @@ def _gloss(asked, n, kwargs):
 
 
 def _translations_named(asked):
-    line = next(line for line in asked.splitlines() if line.startswith('Translate '))
-    return [int(r[1:]) for r in line[len('Translate '):].split('.')[0].split(', ')]
+    return empty_translations(asked)
 
 
-def _job(monkeypatch, tasks=('gloss',), before=BLANK, after=WRITTEN, model=_gloss):
+def _job(monkeypatch, instructions=INSTRUCTIONS, before=BLANK, after=WRITTEN, model=_gloss):
     client = JobClient({'d1': document('d1', 'Story', before)})
     client.after_write['d1'] = document('d1', 'Story', after, version=2)
     clock = {'t': 1_800_000_000.0}
-    job = start(client, list(tasks), id=J, now=lambda: clock['t'])
+    job = start(client, instructions, id=J, now=lambda: clock['t'])
     job._sleep = lambda s: clock.__setitem__('t', clock['t'] + s)
     job.job['created_at'] = _iso(clock['t'] - 3600)
     model = use(monkeypatch, Model(model))
@@ -154,7 +157,7 @@ def test_one_passing_error_after_the_write_and_a_person_deleting_the_translation
                                                   'value': f'T{i}.'}) for i in _translations_named(asked)])
     before = [{'words': ['ka']}, {'words': ['sa']}]
     after = [{'words': ['ka'], 'translation': ('T1.', J)}, {'words': ['sa'], 'translation': ('T2.', J)}]
-    client, job, clock, model = _job(monkeypatch, ('translate',), before, after, translate)
+    client, job, clock, model = _job(monkeypatch, 'Translate the empty translations.', before, after, translate)
     real = client.jobs.add_decisions
     lost = {'n': 0}
 
@@ -211,7 +214,9 @@ def test_a_person_clearing_one_of_the_jobs_words_is_not_listed_as_left_blank(mon
     clock['t'] += 3600
     assert _resume(client, job).document('d1') == 'done'
     mark = _mark(client, 'd1-s1')
-    assert [x['ref'] for x in mark['left']] == ['s1.w3'], 'only the word the model left'
+    # The record holds every blank it passed, the empty translation too: the
+    # report lists only what the job filled somewhere (``document_reports``).
+    assert [x['ref'] for x in mark['left'] if x['form']] == ['s1.w3'], 'only the word the model left'
     assert mark['counts']['words'] == 1 and mark['counts']['left'] == 1
 
 
@@ -239,7 +244,7 @@ def test_a_translation_the_starter_confirmed_after_a_crash_is_recorded_and_count
             return reply('Done.')
         return reply(calls=[call(1, 'set_field', {'document': 'Story', 'refs': ['s1'], 'field': 'Translation',
                                                   'value': 'T1.'})])
-    client, job, clock, model = _job(monkeypatch, ('translate',), [{'words': ['ka']}],
+    client, job, clock, model = _job(monkeypatch, 'Translate the empty translations.', [{'words': ['ka']}],
                                      [{'words': ['ka'], 'translation': ('T1.', J)}], translate)
     _crash_at_record(monkeypatch, job)
     clock['t'] += 3600
@@ -251,24 +256,27 @@ def test_a_translation_the_starter_confirmed_after_a_crash_is_recorded_and_count
     assert job.rows['d1']['counts']['translations'] == 1
 
 
-def test_a_refreshed_translation_recorded_after_a_crash_counts_as_refreshed(monkeypatch):
-    """B3-7's leftover: the writing row says the write replaced a machine
-    draft, which the document no longer says."""
+def test_another_machines_translation_is_proposed_and_never_replaced(monkeypatch):
+    """The owner's ruling 13: a translation another machine wrote is not the
+    job's to replace. The job stages it, the apply rule records it as a
+    proposed change from the old value to the new, and nothing is written."""
     def translate(asked, n, kwargs):
         if n > 1:
             return reply('Done.')
         return reply(calls=[call(1, 'set_field', {'document': 'Story', 'refs': ['s1'], 'field': 'Translation',
                                                   'value': 'New.'})])
     before = [{'words': ['ka'], 'translation': ('Old.', 'machine')}]
-    after = [{'words': ['ka'], 'translation': ('New.', J)}]
-    client, job, clock, model = _job(monkeypatch, ('translate',), before, after, translate)
-    _crash_at_record(monkeypatch, job)
-    assert _resume(client, job).document('d1') == 'done'
+    client, job, clock, model = _job(monkeypatch, 'Translate every sentence again.', before, before, translate)
+    staged = _staged(monkeypatch)
+    assert runner(job).document('d1') == 'done'
+    assert not staged, 'nothing written'
     counts = job.rows['d1']['counts']
-    assert counts['refreshed'] == 1 and counts['translations'] == 0
+    assert counts['proposed'] == 1 and not counts.get('translations') and not counts.get('refreshed')
+    changes = [json.loads(r['analysis']) for (f, _k), r in client.jobs.decision_rows[J].items()
+               if f.startswith(' change ')]
+    assert [(c['kind'], c['ref'], c['field'], c['from'], c['to']) for c in changes] == \
+        [('set_span', 's1', 'Translation', 'Old.', 'New.')]
 
-
-# --- a write that never left: its writing row and nothing else ------------------------
 
 def test_a_crash_between_the_writing_row_and_the_write_with_nobody_writing_takes_the_sentences_again(monkeypatch):
     """The document's newest change is older than the job: nothing of the
@@ -441,7 +449,7 @@ def test_a_word_a_try_that_sent_nothing_was_for_is_left_blank_when_the_next_try_
     assert r.document('d1') == 'done'
     assert asked['n'] == 2
     mark = _mark(client, 'd1-s1')
-    assert [x['ref'] for x in mark['left']] == ['s1.w2'], mark
+    assert [x['ref'] for x in mark['left'] if x['form']] == ['s1.w2'], mark
     assert mark['counts']['left'] == 1 and mark['counts']['words'] == 1
 
 
@@ -524,7 +532,7 @@ def test_a_word_the_starter_clears_under_the_lock_is_not_listed_left_blank(monke
     monkeypatch.setattr(igt_job, 'execute_plan', execute)
     assert runner(job).document('d1') == 'done'
     mark = _mark(client, 'd1-s1')
-    assert mark['left'] == [] and mark['counts'].get('left', 0) == 0, mark
+    assert [x for x in mark['left'] if x['form']] == [] and mark['counts'].get('left', 0) == 0, mark
     assert mark['counts']['words'] == 1
 
 
@@ -534,7 +542,7 @@ def test_a_translation_the_starter_clears_under_the_lock_is_not_listed_left_blan
             return reply('Done.')
         return reply(calls=[call(1, 'set_field', {'document': 'Story', 'refs': ['s1'], 'field': 'Translation',
                                                   'value': 'T1.'})])
-    client, job, clock, model = _job(monkeypatch, ('translate',), [{'words': ['ka']}],
+    client, job, clock, model = _job(monkeypatch, 'Translate the empty translations.', [{'words': ['ka']}],
                                      [{'words': ['ka'], 'translation': ('T1.', J)}], translate)
     real = igt_job.execute_plan
 
@@ -545,4 +553,4 @@ def test_a_translation_the_starter_clears_under_the_lock_is_not_listed_left_blan
     monkeypatch.setattr(igt_job, 'execute_plan', execute)
     assert runner(job).document('d1') == 'done'
     mark = _mark(client, 'd1-s1')
-    assert mark['left'] == [] and mark['counts'].get('left', 0) == 0, mark
+    assert [x for x in mark['left'] if not x['form']] == [] and mark['counts'].get('left_translations', 0) == 0, mark

@@ -26,7 +26,7 @@ const PROJECT = {
 
 const REPORT = {
   state: 'done',
-  tasks: ['gloss'],
+  instructions: 'Gloss the words.',
   totals: { documentsDone: 1, sentences: 1, words: 1 },
   documents: [],
   harmonize: { changed: [], left: [] },
@@ -37,8 +37,7 @@ const jobOf = (over = {}) => ({
   id: 'j1',
   project: 'p1',
   app: 'igt',
-  tasks: ['gloss'],
-  note: null,
+  instructions: 'Gloss the words.',
   startedBy: 'w',
   startedByName: 'Wren',
   state: 'done',

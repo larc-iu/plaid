@@ -21,7 +21,7 @@ def _gam_job(monkeypatch, delete_at=2):
     deletes that entry while the model is still at work."""
     client = JobClient({'d1': document('d1', 'Story', [{'words': ['gam']}]),
                         'd2': document('d2', 'Other', [{'words': ['zu']}])}, lexicon=lexicon_raw())
-    job = start(client, ['gloss', 'link'], id=J)
+    job = start(client, id=J)
 
     def answer(asked, n, kwargs):
         if n == 1 and 'Story' in asked.split('\n')[0]:
@@ -118,12 +118,12 @@ def test_refusals_for_something_gone_of_different_stretches_do_not_add_up(monkey
     back for the same stretch skips it."""
     monkeypatch.setattr(igt_job, 'JOB_STRETCH_SENTENCES', 1)
     client = JobClient({'d1': document('d1', 'Story', [{'words': ['ka']}, {'words': ['ta']}, {'words': ['pa']}])})
-    job = start(client, ['gloss'], id=J)
+    job = start(client, id=J)
 
     def model(asked, n, kwargs):
         if n > 1:
             return reply('Done.')
-        s = int(next(x for x in asked.splitlines() if x.startswith('Analyse '))[len('Analyse s'):].split('.')[0])
+        s = int(next(x for x in asked.splitlines() if x.startswith('Your piece: s'))[len('Your piece: s'):].split('.')[0])
         return reply(calls=[call(1, 'set_analysis', {'document': 'Story', 'ref': f's{s}.w1', 'morphemes': [
             {'form': 'x', 'fields': {'Morph Gloss': 'go'}}]})])
     use(monkeypatch, Model(model))
@@ -153,7 +153,7 @@ def test_refusals_for_something_gone_of_different_stretches_do_not_add_up(monkey
 def _harmonize_job(monkeypatch, refusing):
     client = JobClient({'d1': document('d1', 'Story', [{'words': [
         ('ka', [('ka', 'go')], J), ('ka', [('ka', 'go')], J), ('ka', [('ka', 'come')], J)]}])})
-    job = start(client, ['gloss'], id=J)
+    job = start(client, id=J)
     job.update_row('d1', state='done')
     recorded(job)
     real = igt_job.execute_plan
@@ -211,7 +211,7 @@ def test_harmonize_taken_again_after_core_trouble_reports_what_it_wrote_the_firs
     ka = {'go': ('ka', [('ka', 'go')], J), 'come': ('ka', [('ka', 'come')], J)}
     docs = {'d1': [{'words': [ka['go'], ka['go'], ka['come']]}], 'd2': [{'words': [ka['go'], ka['go'], ka['come']]}]}
     client = JobClient({d: document(d, f'Story {d}', s) for d, s in docs.items()})
-    job = start(client, ['gloss'], id=J)
+    job = start(client, id=J)
     for d in docs:
         job.update_row(d, state='done')
     recorded(job)

@@ -39,7 +39,7 @@ def _run(docs, after=None, comments=(), mwes=()):
     client = JobClient({d: document(d, f'Story {d}', s) for d, s in docs.items()},
                        comments=[{'id': f'c{i}', 'document_id': d, 'entity_type': 'token', 'entity_id': e,
                                   'body': 'Is this right?'} for i, (d, e) in enumerate(comments)])
-    job = start(client, ['gloss'], id=J)
+    job = start(client, id=J)
     for d in docs:
         job.update_row(d, state='done')
     recorded(job)
@@ -318,7 +318,7 @@ def test_a_document_in_use_keeps_its_minority_and_the_form_is_listed():
         .isoformat().replace('+00:00', 'Z')
     client._holder('d2')['audit'].append({'id': 'a1', 'time': now, 'ref': None, 'kind': None,
                                           'documents': [{'id': 'd2'}], 'ops': []})
-    job = start(client, ['gloss'], id=J)
+    job = start(client, id=J)
     for d in ('d1', 'd2'):
         job.update_row(d, state='done')
     recorded(job)
@@ -335,7 +335,7 @@ def test_a_form_whose_only_rewrite_stayed_in_use_is_listed_left_and_not_changed(
         .isoformat().replace('+00:00', 'Z')
     client._holder('d2')['audit'].append({'id': 'a1', 'time': now, 'ref': None, 'kind': None,
                                           'documents': [{'id': 'd2'}], 'ops': []})
-    job = start(client, ['gloss'], id=J)
+    job = start(client, id=J)
     for d in ('d1', 'd2'):
         job.update_row(d, state='done')
     recorded(job)
@@ -348,7 +348,7 @@ def test_a_rewrite_in_a_document_gone_meanwhile_is_not_reported_as_done():
     from plaid_client import PlaidAPIError
     client = JobClient({'d1': document('d1', 'A', [{'words': [w('ka', 'go'), w('ka', 'go')]}]),
                         'd2': document('d2', 'B', [{'words': [w('ka', 'come')]}])})
-    job = start(client, ['gloss'], id=J)
+    job = start(client, id=J)
     for d in ('d1', 'd2'):
         job.update_row(d, state='done')
     recorded(job)
@@ -371,7 +371,7 @@ def test_harmonize_waits_three_times_for_a_document_in_use_before_leaving_it():
         .isoformat().replace('+00:00', 'Z')
     client._holder('d2')['audit'].append({'id': 'a1', 'time': future, 'ref': None, 'kind': None,
                                           'documents': [{'id': 'd2'}], 'ops': []})
-    job = start(client, ['gloss'], id=J)
+    job = start(client, id=J)
     slept = []
     real = job._sleep
     job._sleep = lambda s: (slept.append(s), real(s))
@@ -402,7 +402,7 @@ def _linked(entry):
 
 def _run_linking(docs, monkeypatch):
     client = JobClient({d: document(d, f'Story {d}', s) for d, s in docs.items()})
-    job = start(client, ['gloss', 'link'], id=J)
+    job = start(client, id=J)
     for d in docs:
         job.update_row(d, state='done')
     recorded(job)
@@ -426,7 +426,7 @@ def test_a_word_changed_before_the_lock_is_listed_with_why(monkeypatch):
     (or changed it): it is not rewritten, and it is listed."""
     staged = _staged(monkeypatch)
     client = JobClient({'d1': document('d1', 'A', [{'words': [w('ka', 'go'), w('ka', 'go'), w('ka', 'come')]}])})
-    job = start(client, ['gloss'], id=J)
+    job = start(client, id=J)
     job.update_row('d1', state='done')
     recorded(job)
     client.on_lock['d1'] = document('d1', 'A', [{'words': [w('ka', 'go'), w('ka', 'go'), w('ka', 'walk')]}])
@@ -439,7 +439,7 @@ def test_a_document_gone_before_harmonize_writes_is_reported_gone():
     from plaid_client import PlaidAPIError
     client = JobClient({'d1': document('d1', 'A', [{'words': [w('ka', 'go'), w('ka', 'go')]}]),
                         'd2': document('d2', 'B', [{'words': [w('ka', 'come')]}])})
-    job = start(client, ['gloss'], id=J)
+    job = start(client, id=J)
     for d in ('d1', 'd2'):
         job.update_row(d, state='done')
     recorded(job)

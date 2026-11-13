@@ -35,7 +35,7 @@ def _analyse(asked, n, kwargs):
         return reply('Done.')
     calls = []
     for line in asked.splitlines():
-        if line.startswith('Targets in s'):
+        if line.startswith('Empty in s'):
             s = line.split()[2].rstrip(':')
             for w in line.split('words ')[1].split(' and ')[0].split(', ') if 'words ' in line else []:
                 ref, form = w.split(' ')[0], w.split('"')[1]
@@ -57,7 +57,7 @@ def _job(after=AFTER):
     def sleep(s):
         clock['slept'].append(s)
         clock['t'] += s
-    job = start(client, ['gloss'], id=J, now=lambda: clock['t'])
+    job = start(client, id=J, now=lambda: clock['t'])
     job._sleep = sleep
     job.update_row('d1', targets=2)
     return client, job, clock
@@ -69,7 +69,7 @@ def _real_rows(client):
 
 def _decided(client):
     return {form: r['count'] for (form, key), r in _real_rows(client).items()
-            if not form.startswith((RECORD_FORM, WRITING_FORM))}
+            if not form.startswith(' ')}
 
 
 def _targets_asked(model):
@@ -90,7 +90,7 @@ def test_a_core_error_on_the_write_is_tried_again_and_never_halved(monkeypatch):
         return real(c, ops, **kw)
     monkeypatch.setattr(igt_job, 'execute_plan', execute)
     assert runner(job).document('d1') == 'done'
-    assert _targets_asked(model) == ['Analyse s1, s2.', 'Analyse s1, s2.'], 'asked again whole, never halved'
+    assert _targets_asked(model) == ['Your piece: s1, s2.', 'Your piece: s1, s2.'], 'asked again whole, never halved'
     assert not job.rows['d1'].get('skipped')
     assert sum(clock['slept']) == JOB_CORE_WAIT_S
 

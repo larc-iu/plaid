@@ -29,12 +29,11 @@ const jobOf = (over = {}) => ({
   id: 'j1',
   project: 'p1',
   app: 'igt',
-  tasks: ['translate', 'gloss', 'link'],
-  note: 'Gloss ka as GO.',
+  instructions: 'Gloss ka as GO.',
   startedBy: 'w',
   startedByName: 'Wren',
   state: 'running',
-  phase: 'glossing',
+  phase: 'working',
   reason: null,
   message: 'Sentences 11 to 15 of 40.',
   waitingFor: null,
@@ -74,7 +73,10 @@ const jobOf = (over = {}) => ({
 
 const REPORT = {
   state: 'done',
-  tasks: ['translate', 'gloss', 'link'],
+  instructions: 'Gloss ka as GO.',
+  summary: 'The job glossed Story A and proposed one change.',
+  summaryFailed: false,
+  plan: { pieces: 'sentences', by: 'model', fallback: [{ documentId: 'd2', reason: 'too-long' }] },
   pausedForPeopleS: 720,
   pausedForModelS: 0,
   stopped: null,
@@ -94,8 +96,35 @@ const REPORT = {
     skippedChanged: 0,
     skippedInterrupted: 1,
     changed: 2,
-    protected: 0,
+    proposed: 1,
   },
+  proposed: [
+    {
+      kind: 'set_span',
+      documentId: 'd1',
+      document: 'Story A',
+      ref: 's4',
+      field: 'Translation',
+      from: 'A person wrote this.',
+      to: 'Better.',
+      label: 'Translation of s4',
+      note: 'Translated s4.',
+    },
+  ],
+  proposedMore: 2,
+  notes: [{ document: 'd1', name: 'Story A', sentences: 's1 to s5', note: 'Glossed s1 to s5.' }],
+  notesMore: 0,
+  tables: [
+    {
+      title: 'Glosses of ka',
+      columns: ['gloss', 'count'],
+      rows: [
+        ['go', 3],
+        ['come', 1],
+      ],
+      more: 0,
+    },
+  ],
   documents: [
     {
       documentId: 'd1',
@@ -137,8 +166,6 @@ const REPORT = {
     deletedMore: 0,
     unlinkedMore: 0,
     lexicons: ['v1', 'v3'],
-    proposed: [{ lexicon: 'v1', form: 'tok', gloss: 'stone' }],
-    proposedMore: 0,
   },
 };
 
@@ -183,13 +210,13 @@ describe('the job page', () => {
         jobOf({ state: 'waiting', phase: null, message: null, ahead: 2 }),
         ['Waiting', '2 jobs ahead'],
       ],
-      [jobOf(), ['Running', 'Analyzing', 'Sentences 11 to 15 of 40.']],
+      [jobOf(), ['Running', 'Working', 'Sentences 11 to 15 of 40.']],
       [jobOf({ state: 'stopping' }), ['Stopping…']],
       [jobOf({ state: 'done', finishedAt: '2026-11-12T11:00:00Z' }), ['Done']],
       [jobOf({ state: 'cancelled', reason: 'cancelled' }), ['Stopped']],
       [
-        jobOf({ state: 'failed', reason: 'no-status-field', message: null }),
-        ['Failed', 'A lexicon has no Status field.'],
+        jobOf({ state: 'failed', reason: 'guidelines-too-long', message: null }),
+        ['Failed', 'The guidelines are too long for a job.'],
       ],
       [
         jobOf({
@@ -204,7 +231,7 @@ describe('the job page', () => {
       const v = await mount(clientOf(job));
       const status = v.container.querySelector('[role="status"]');
       for (const w of words) expect(text(status)).toContain(w);
-      if (job.state !== 'running') expect(text(status)).not.toContain('Analyzing');
+      if (job.state !== 'running') expect(text(status)).not.toContain('Working');
       await v.unmount();
     }
     const first = await mount(clientOf(jobOf({ state: 'waiting', ahead: 0 })));
@@ -215,7 +242,7 @@ describe('the job page', () => {
   it('lists the job’s facts and a row per document, a deleted one by that word', async () => {
     const v = await mount(clientOf(jobOf()));
     const t = text(v.container);
-    expect(t).toContain('Translations, analyses and lexicon links');
+    expect(t).not.toContain('Tasks');
     expect(t).toContain('Wren');
     expect(t).toContain('glm-5.3-flash');
     expect(t).toContain('Gloss ka as GO.');
@@ -357,6 +384,9 @@ describe('the job page', () => {
       'Skipped sentences',
       'Analyses made consistent',
       'Forms left inconsistent',
+      'Proposed changes',
+      'Notes',
+      'Tables',
       'Entries',
     ]) {
       expect(all(report, 'h3').map((h) => h.textContent)).toContain(heading);
@@ -390,9 +420,24 @@ describe('the job page', () => {
     expect(t).toContain('Machine drafts with no links');
     expect(t).toContain('ra ‘eat’');
     expect(t).not.toContain('Deleted as unlinked');
-    // What the model wanted and nothing linked: listed, never created.
-    expect(t).toContain('Proposed and not created, as nothing linked them');
-    expect(t).toContain('tok ‘stone’');
+    // The prose the job wrote, above the sections.
+    expect(text(report.querySelector('[data-testid="job-summary"]'))).toBe(
+      'The job glossed Story A and proposed one change.',
+    );
+    // What the job proposed and did not apply, where, from what to what.
+    const proposed = text(byText(report, 'table', 'From').closest('table'));
+    expect(proposed).toContain('Story A s4');
+    expect(proposed).toContain('A person wrote this.');
+    expect(proposed).toContain('Better.');
+    expect(byText(report, 'a', 'Story A s4').getAttribute('href')).toBe(
+      '/projects/p1/documents/d1',
+    );
+    expect(t).toContain('And 2 more changes.');
+    expect(sums['Changes proposed']).toBe('1');
+    // Each piece's note, and a table the job's code made, as data.
+    expect(t).toContain('Story A s1 to s5: Glossed s1 to s5.');
+    expect(t).toContain('Glosses of ka');
+    expect(t).toContain('come1');
     expect(byText(report, 'a', 'Machine drafts in Kukama lexicon').getAttribute('href')).toBe(
       '/vocabularies/v1?status=machine',
     );
@@ -509,16 +554,19 @@ describe('the job page', () => {
   it('leaves out what a job without linking did not do, and says when core stopped it', async () => {
     const report = {
       ...REPORT,
-      tasks: ['translate'],
       stopped: 'without-worker',
+      summary: null,
+      summaryFailed: true,
+      totals: { ...REPORT.totals, words: 0, links: 0, entries: 0 },
       harmonize: { changed: [], left: [], changedMore: 0, leftMore: 0 },
       entries: { created: [], deleted: [], unlinked: [], lexicons: [] },
     };
-    const job = jobOf({ state: 'cancelled', tasks: ['translate'], report });
+    const job = jobOf({ state: 'cancelled', report });
     const v = await mount(clientOf(job));
     const section = v.container.querySelector('section[aria-label="Report"]');
     const t = text(section);
     expect(t).toContain('Stopped with no worker running.');
+    expect(t).toContain('The summary could not be written.');
     expect(totals(section)['Translations filled']).toBe('3');
     expect(totals(section)).not.toHaveProperty('Words analyzed');
     expect(t).not.toContain('Machine drafts');

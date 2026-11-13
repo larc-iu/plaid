@@ -180,14 +180,22 @@ def newest_after(when):
     return _iso(datetime.fromisoformat(when.replace('Z', '+00:00')).timestamp() + 0.001)
 
 
-def start(client, tasks=('gloss',), documents=None, note=None, now=None, id=None):
+#: The instructions a test's job is started with, unless it says others.
+INSTRUCTIONS = 'Segment and gloss the words nobody has analysed.'
+
+
+def start(client, instructions=INSTRUCTIONS, documents=None, now=None, id=None, plan='sentences'):
     """A job started and claimed on ``client``, held as the worker holds it
-    (no heartbeat thread: a test beats by hand)."""
+    (no heartbeat thread: a test beats by hand). Its plan is kept as the
+    planning context would have kept it (``plan`` the pieces, None for no
+    plan: the job's first model context then plans it)."""
     if now is not None:
         client.jobs.now = now
-    made = client.jobs.create(PID, 'igt', list(tasks), documents, note, id=id)
+    made = client.jobs.create(PID, 'igt', instructions, documents, id=id)
     claimed = client.jobs.claim('worker-1', 'fake/m', ['igt'])
     assert claimed['job']['id'] == made['id']
+    if plan is not None:
+        keep_plan(client, made['id'], plan)
     if now is None:
         clock = {'t': __import__('time').time()}
         now = lambda: clock['t']  # noqa: E731
@@ -200,8 +208,26 @@ def start(client, tasks=('gloss',), documents=None, note=None, now=None, id=None
     return Job(client, claimed, 'worker-1', client_for=lambda token: client, model='fake/m', sleep=sleep, now=now)
 
 
-def runner(job, **kw):
-    return IgtRunner(job, ModelConfig(model='fake/m', stream=False, max_steps=1000), count=_count, **kw)
+def plan_row(pieces='sentences', piece_instructions='', documents=None):
+    """The decision row of a job's plan, as the planning context keeps it."""
+    from plaid_agent.core.job import analysis_key, canonical
+    from plaid_agent.igt.job import PLAN_FORM
+    text = canonical({'pieces': pieces, 'piece_instructions': piece_instructions, 'documents': documents,
+                      'by': 'model', 'why': None})
+    return {'form': PLAN_FORM, 'key': analysis_key(text), 'analysis': text, 'count': 1, 'document_id': None,
+            'sentence_id': None}
+
+
+def keep_plan(client, job_id, pieces='sentences', piece_instructions='', documents=None, worker='worker-1'):
+    """The job's plan among its decisions, as the planning context keeps it."""
+    client.jobs.add_decisions(job_id, worker, [plan_row(pieces, piece_instructions, documents)])
+
+
+def runner(job, write_summary=False, **kw):
+    """The job's runner, with no final context unless asked: a test's model
+    answers the pieces it is about."""
+    return IgtRunner(job, ModelConfig(model='fake/m', stream=False, max_steps=1000), count=_count,
+                     write_summary=write_summary, **kw)
 
 
 def recorded(job):
@@ -275,5 +301,21 @@ def use(monkeypatch, model):
 
 def targets_named(asked):
     """The target sentences a stretch's message names, as numbers."""
-    line = next(line for line in asked.splitlines() if line.startswith('Analyse '))
-    return [int(r[1:]) for r in line[len('Analyse '):].split('.')[0].split(', ')]
+    line = next(line for line in asked.splitlines() if line.startswith('Your piece: s'))
+    return [int(r[1:]) for r in line[len('Your piece: '):].split('.')[0].split(', ')]
+
+
+def instructed(asked, word):
+    """Whether the instructions a piece's message carries name ``word``
+    (case aside): how a test's model knows what its job is for."""
+    lines = asked.splitlines()
+    if 'Instructions from' not in asked:
+        return False
+    i = next(i for i, x in enumerate(lines) if x.startswith('Instructions from'))
+    return word.lower() in (lines[i + 1] if i + 1 < len(lines) else '').lower()
+
+
+def empty_translations(asked):
+    """The sentences whose translation a piece's message says is empty."""
+    import re
+    return [int(m.group(1)) for m in re.finditer(r'^Empty in s(\d+): .*the translation\.$', asked, re.M)]

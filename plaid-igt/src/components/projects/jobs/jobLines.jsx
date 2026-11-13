@@ -1,6 +1,6 @@
 import { Link, useInRouterContext } from 'react-router-dom';
 import { workerSeen } from '@ui/domain/jobs.js';
-import { jobPath, noteLength } from './jobText.js';
+import { instructionsLength, jobPath } from './jobText.js';
 
 // The lines Start job says wherever a job is started: the Start job dialog and
 // the assistant's job card.
@@ -30,12 +30,12 @@ export const JobActiveLine = ({ projectId, jobId, onOpen }) => (
 );
 
 // The instructions' count against core's cap, once the cap is read.
-export const NoteCount = ({ note, max }) =>
+export const InstructionsCount = ({ text, max }) =>
   max === null || max === undefined ? null : (
     <p
-      data-testid="job-note-count"
-      className={`text-right text-xs ${noteLength(note) > max ? 'text-destructive' : 'text-muted-foreground'}`}
+      data-testid="job-instructions-count"
+      className={`text-right text-xs ${instructionsLength(text) > max ? 'text-destructive' : 'text-muted-foreground'}`}
     >
-      {noteLength(note).toLocaleString()} / {max.toLocaleString()}
+      {instructionsLength(text).toLocaleString()} / {max.toLocaleString()}
     </p>
   );

@@ -177,7 +177,7 @@ const ProjectBody = ({ project, projectId, client, documents, reload }) => {
   const canWrite = canEditProject(project, user);
   // Start job, for whoever may start one: beside New document, and on Jobs.
   const startJob = canStartJob(project, user) && (
-    <StartJob projectId={projectId} project={project} client={client} documents={documents} />
+    <StartJob projectId={projectId} client={client} documents={documents} />
   );
   // A code bound under Settings applies everywhere this project is open.
   useComposeProject(project);

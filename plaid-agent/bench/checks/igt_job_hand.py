@@ -14,9 +14,9 @@ def job_stamp(job_id):
     return {'prov': 'inferred', 'provSource': SOURCE, 'provDetail': {'model': 'm', 'version': 'v', 'job': job_id}}
 
 
-def start(ctx, documents, tasks=('gloss',)):
+def start(ctx, documents, instructions='Segment and gloss every word nobody has analyzed.'):
     ids = [L.doc_of(ctx, n)['id'] for n in documents]
-    made = ctx.user.jobs.create(ctx.project['id'], 'igt', list(tasks), ids)
+    made = ctx.user.jobs.create(ctx.project['id'], 'igt', instructions, ids)
     claimed = ctx.client.jobs.claim(WORKER, 'openai/m', ['igt'])
     assert claimed['job']['id'] == made['id']
     return made['id']

@@ -17,7 +17,6 @@ import {
   staleLine,
 } from './planChanges.js';
 import { formatElapsed } from '../../hooks/useRunProgress.js';
-import { jobTaskText } from '../../domain/jobs.js';
 import {
   couldNotOpen,
   namedCitations,
@@ -84,14 +83,11 @@ const jobCardToMarkdown = (card) => {
   const docs = card.all
     ? `All documents (${card.count})`
     : markdownText(names.join(', ')) + (more > 0 ? ` and ${more.toLocaleString()} more` : '');
-  const tasks = (card.tasks || []).map(jobTaskText).join(', ');
   const said = JOB_CARD_ENDS[card.status] ?? 'Not yet started.';
   const brief = card.status === 'started' ? card.sentBrief : card.brief;
-  return [
-    `**Proposed job:** ${docs}. ${tasks}. (${said})`,
-    '',
-    ...(brief ? [markdownText(brief)] : []),
-  ].join('\n');
+  return [`**Proposed job:** ${docs}. (${said})`, '', ...(brief ? [markdownText(brief)] : [])].join(
+    '\n',
+  );
 };
 
 // A plan that stopped partway says how much was written in the service's own

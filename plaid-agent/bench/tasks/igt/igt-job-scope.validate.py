@@ -6,8 +6,8 @@ ASK = ('Lezgi text 1 has я unanalysed seven times, and Lezgi text 4 glosses it 
        'should the job write? I can also analyse the first sentences here first.')
 
 
-def _card(ctx, docs=TEXTS, tasks=('gloss',), brief='Gloss я as COP everywhere.', every=False, status=None):
-    card = {'id': '0190f000-0000-7000-8000-00000000000a', 'all': every, 'tasks': list(tasks), 'brief': brief,
+def _card(ctx, docs=TEXTS, brief='Gloss я as COP everywhere.', every=False, status=None):
+    card = {'id': '0190f000-0000-7000-8000-00000000000a', 'all': every, 'brief': brief,
             'summary': '', 'status': status}
     if every:
         card['count'] = len(ctx.project['documents'])
@@ -86,10 +86,6 @@ def wrong_documents(ctx):
 
 def wrong_every_document(ctx):
     return _conv((ASKED, ASK, None), (ANSWER, 'Here is the job.', _card(ctx, every=True)))
-
-
-def wrong_tasks(ctx):
-    return _conv((ASKED, ASK, None), (ANSWER, 'Here is the job.', _card(ctx, tasks=('gloss', 'link'))))
 
 
 def wrong_brief_without_the_answer(ctx):

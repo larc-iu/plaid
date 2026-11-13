@@ -114,7 +114,7 @@ def _trouble(client, how):
 
 def _run(monkeypatch, at, how=None):
     client = JobClient(_docs())
-    job = start(client, ['gloss', 'link'], id=J)
+    job = start(client, id=J)
     _trouble(client, how)
     blips = Blips(at)
     _install(monkeypatch, client, blips)

@@ -23,11 +23,10 @@ export function fakeJobWorker(client, { model = 'e2e-scripted' } = {}) {
 
 // A report in the shape the worker writes (CONTRACT 5.3), for a job that
 // worked in one document and was stopped.
-export const stoppedReport = ({ tasks, document, startedAt }) => ({
+export const stoppedReport = ({ instructions, document, startedAt }) => ({
   state: 'cancelled',
   reason: 'cancelled',
-  tasks,
-  note: null,
+  instructions,
   startedBy: null,
   model: 'e2e-scripted',
   startedAt,
@@ -50,7 +49,7 @@ export const stoppedReport = ({ tasks, document, startedAt }) => ({
     skippedFailed: 0,
     skippedChanged: 0,
     changed: 0,
-    protected: 0,
+    proposed: 0,
   },
   documents: [
     {

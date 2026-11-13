@@ -32,7 +32,7 @@ import {
   jobStoppable,
 } from '@ui/domain/jobs.js';
 import { JobReport } from './JobReport.jsx';
-import { durationText, jobName, jobsTabPath, tasksText } from './jobText.js';
+import { durationText, jobName, jobsTabPath, planText } from './jobText.js';
 
 /**
  * A job's own page, `/projects/:projectId/jobs/:jobId`: its state, each of its
@@ -218,7 +218,10 @@ const JobFacts = ({ job, readAt }) => {
   const end = job.finishedAt ? new Date(job.finishedAt).getTime() : readAt;
   return (
     <dl className="grid max-w-2xl grid-cols-[auto_1fr] gap-x-6 gap-y-1 text-sm">
-      <Fact label="Tasks">{tasksText(job.tasks)}</Fact>
+      <Fact label="Instructions">
+        <span className="whitespace-pre-wrap">{job.instructions}</span>
+      </Fact>
+      {job.report?.plan && <Fact label="Plan">{planText(job.report.plan)}</Fact>}
       <Fact label="Documents">{(job.documents || []).length.toLocaleString()}</Fact>
       <Fact label="Started by">{job.startedByName}</Fact>
       <Fact label="Started">
@@ -233,11 +236,6 @@ const JobFacts = ({ job, readAt }) => {
         <Fact label="Elapsed">{durationText(end - new Date(job.startedAt).getTime())}</Fact>
       )}
       {job.model && <Fact label="Model">{job.model}</Fact>}
-      {job.note && (
-        <Fact label="Instructions">
-          <span className="whitespace-pre-wrap">{job.note}</span>
-        </Fact>
-      )}
     </dl>
   );
 };
@@ -246,7 +244,6 @@ const count = (row, key) => (row.counts?.[key] ?? 0).toLocaleString();
 
 // A row per document of the job, in the job's order.
 const JobDocuments = ({ job, projectId }) => {
-  const tasks = job.tasks || [];
   const columns = [
     {
       key: 'name',
@@ -273,7 +270,11 @@ const JobDocuments = ({ job, projectId }) => {
         d.targets === null || d.targets === undefined ? '' : `${d.done ?? 0} of ${d.targets}`,
     },
   ];
-  if (tasks.includes('translate')) {
+  // A job has no task types: a column shows only once a document holds a
+  // count of its kind.
+  const rows = job.documents || [];
+  const some = (...keys) => rows.some((d) => keys.some((k) => (d.counts?.[k] ?? 0) > 0));
+  if (some('translations', 'refreshed')) {
     columns.push({
       key: 'translations',
       label: 'Translations',
@@ -281,27 +282,13 @@ const JobDocuments = ({ job, projectId }) => {
       render: (d) => ((d.counts?.translations ?? 0) + (d.counts?.refreshed ?? 0)).toLocaleString(),
     });
   }
-  if (tasks.includes('gloss')) {
-    columns.push({
-      key: 'words',
-      label: 'Words',
-      align: 'right',
-      render: (d) => count(d, 'words'),
-    });
-  }
-  if (tasks.includes('link')) {
-    columns.push({
-      key: 'links',
-      label: 'Links',
-      align: 'right',
-      render: (d) => count(d, 'links'),
-    });
-    columns.push({
-      key: 'entries',
-      label: 'Entries',
-      align: 'right',
-      render: (d) => count(d, 'entries'),
-    });
+  for (const [key, label] of [
+    ['words', 'Words'],
+    ['links', 'Links'],
+    ['entries', 'Entries'],
+    ['proposed', 'Proposed'],
+  ]) {
+    if (some(key)) columns.push({ key, label, align: 'right', render: (d) => count(d, key) });
   }
   return (
     <DataTable

@@ -57,7 +57,8 @@ const STATE_WORDS = {
 
 const PHASE_WORDS = {
   checking: 'Checking',
-  glossing: 'Analyzing',
+  planning: 'Planning',
+  working: 'Working',
   harmonizing: 'Making analyses consistent',
   reporting: 'Writing the report',
 };
@@ -72,19 +73,9 @@ const DOCUMENT_STATE_WORDS = {
   'not-reached': 'Not reached',
 };
 
-// As the start dialog's checkboxes name them.
-const TASK_WORDS = {
-  translate: 'Translate',
-  gloss: 'Segment and gloss',
-  link: 'Link to lexicon',
-};
-
 // A stopped job says so by its state, so `cancelled` has no words here.
 const REASON_WORDS = {
   'starter-access': 'The person who started it can no longer write in this project.',
-  'missing-field': 'The project has no field for this task.',
-  'no-lexicon': 'The project has no lexicon.',
-  'no-status-field': 'A lexicon has no Status field.',
   'guidelines-too-long': 'The guidelines are too long for a job.',
   'no-documents': 'None of its documents are left.',
 };
@@ -94,7 +85,6 @@ const wordFor = (words) => (code) => words[code] ?? null;
 export const jobStateText = wordFor(STATE_WORDS);
 export const jobPhaseText = wordFor(PHASE_WORDS);
 export const jobDocumentStateText = wordFor(DOCUMENT_STATE_WORDS);
-export const jobTaskText = wordFor(TASK_WORDS);
 
 /** Why a job ended: the worker's own sentence, else the words for its reason. */
 export const jobReasonText = (job) => job?.message || REASON_WORDS[job?.reason] || null;

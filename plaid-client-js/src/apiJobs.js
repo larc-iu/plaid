@@ -41,24 +41,23 @@ export function jobsApi(client) {
      * own token: a delegated token is refused (403). The job waits until a
      * worker takes it. Refused with 409 `job-active` (the error's
      * `responseData.job` names it) while the project has a job waiting or
-     * running, and with 400 for an unknown app, no task, `link` without
-     * `gloss`, a document of another project, more than 500 documents, or a
-     * note over 2,000 characters.
+     * running, and with 400 for an unknown app, no instructions or
+     * instructions over 2,000 characters, a document of another project, or
+     * more than 500 documents.
      * @param {string} projectId - The project
      * @param {object} job
-     * @param {string} job.app - The app whose tasks it runs: `igt`
-     * @param {string[]} job.tasks - Some of `translate`, `gloss`, `link` (`link` needs `gloss`)
+     * @param {string} job.app - The app it works in: `igt`
+     * @param {string} job.instructions - What the job is to do, sent with every piece of its work (at most 2,000 characters)
      * @param {string[]} [job.documents] - The documents, in order. Left out: every document of the project, by name
-     * @param {string} [job.note] - Instructions sent with every stretch of the job (at most 2,000 characters)
      * @param {string} [job.id] - The new job's id, minted by the caller (see uuidv7)
      * @returns {Promise<Job>}
      */
-    create: (projectId, { app, tasks, documents, note, id } = {}) =>
+    create: (projectId, { app, instructions, documents, id } = {}) =>
       client._request("POST", `/api/v1/projects/${projectId}/jobs`, {
         // A job is not audited, so it never joins an open operation, and
         // never takes a number from an edit's Idempotency-Key seed.
         noOperation: true,
-        body: bodyOf({ id, app, tasks, documents, note }),
+        body: bodyOf({ id, app, documents, instructions }),
       }),
     /**
      * A project's jobs, newest first, each without its documents and report
@@ -121,10 +120,11 @@ export function jobsApi(client) {
       client._request("POST", `/api/v1/jobs/${jobId}/cancel`, { noOperation: true }),
     /**
      * When a job worker last asked for work since core started, and the
-     * model it runs: `{seenAt, model, noteMaxChars, documentsMax}`, `seenAt`
-     * and `model` null when none has asked. `noteMaxChars` is the longest
-     * note a job takes, `documentsMax` the most documents.
-     * @returns {Promise<{seenAt: string | null, model: string | null, noteMaxChars: number, documentsMax: number}>}
+     * model it runs: `{seenAt, model, instructionsMaxChars, documentsMax}`,
+     * `seenAt` and `model` null when none has asked. `instructionsMaxChars`
+     * is the longest instructions a job takes, `documentsMax` the most
+     * documents.
+     * @returns {Promise<{seenAt: string | null, model: string | null, instructionsMaxChars: number, documentsMax: number}>}
      */
     worker: () => client._request("GET", "/api/v1/jobs/worker"),
     /**

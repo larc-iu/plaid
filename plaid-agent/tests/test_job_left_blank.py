@@ -43,7 +43,7 @@ def _two_sentences(client_docs=None):
 
 def test_the_report_lists_each_word_left_blank_with_where_it_is(monkeypatch):
     client = _two_sentences()
-    job = start(client, ['gloss'], id=J)
+    job = start(client, id=J)
     use(monkeypatch, Model(_first_word_only))
     assert run_job(job, runner(job))['state'] == 'done'
     (doc,) = _report(client)['documents']
@@ -56,18 +56,40 @@ def test_the_report_lists_each_word_left_blank_with_where_it_is(monkeypatch):
     assert doc['left_more'] == 0
 
 
+def _translate_first(asked, n, kwargs):
+    if n > 1:
+        return reply('Done.')
+    return reply(calls=[call(1, 'set_field', {'document': 'Story', 'refs': ['s1'], 'field': 'Translation',
+                                              'value': 'One.'})])
+
+
 def test_a_translation_left_blank_is_listed_by_its_sentence(monkeypatch):
+    """The job translated s1 and left s2: s2's translation is listed. It
+    analysed no word, so the blank words are not: a job has no task types,
+    and the report lists left blank only what the job filled somewhere."""
+    client = JobClient({'d1': document('d1', 'Story', [{'words': ['ka']}, {'words': ['ta']}])})
+    client.after_write['d1'] = document('d1', 'Story', [{'words': ['ka'], 'translation': ('One.', J)},
+                                                        {'words': ['ta']}], version=2)
+    job = start(client, 'Translate the empty translations.', id=J)
+    use(monkeypatch, Model(_translate_first))
+    assert run_job(job, runner(job))['state'] == 'done'
+    (doc,) = _report(client)['documents']
+    assert doc['left'] == [{'ref': 's2', 'begin': None, 'form': None, 'sentence_id': 'd1-s2'}]
+    assert doc['left_more'] == 0
+
+
+def test_a_job_that_filled_nothing_lists_nothing_left_blank(monkeypatch):
     client = JobClient({'d1': document('d1', 'Story', [{'words': ['ka']}])})
-    job = start(client, ['translate'], id=J)
+    job = start(client, id=J)
     use(monkeypatch, Model(lambda asked, n, kwargs: reply('Done.')))
     assert run_job(job, runner(job))['state'] == 'done'
     (doc,) = _report(client)['documents']
-    assert doc['left'] == [{'ref': 's1', 'begin': None, 'form': None, 'sentence_id': 'd1-s1'}]
+    assert doc['left'] == [] and doc['left_more'] == 0
 
 
 def test_the_list_is_cut_as_every_report_list_is_with_how_many_more(monkeypatch):
     client = _two_sentences()
-    job = start(client, ['gloss'], id=J)
+    job = start(client, id=J)
     use(monkeypatch, Model(_first_word_only))
     real = core_job.cut
     monkeypatch.setattr(core_job, 'cut', lambda items, limit=None: real(items, 2))
@@ -78,7 +100,7 @@ def test_the_list_is_cut_as_every_report_list_is_with_how_many_more(monkeypatch)
 
 def test_a_resumed_job_reports_what_an_earlier_run_left(monkeypatch):
     client = _two_sentences()
-    job = start(client, ['gloss'], id=J)
+    job = start(client, id=J)
     use(monkeypatch, Model(_first_word_only))
     first = runner(job)
     first.work(job)
@@ -98,9 +120,17 @@ def test_a_record_holds_what_fits_and_the_rest_is_counted():
 
 def test_a_cut_record_counts_the_rest_as_more(monkeypatch):
     words = [f'w{i:03}' + 'x' * 8 for i in range(100)]
-    client = JobClient({'d1': document('d1', 'Story', [{'words': words}])})
-    job = start(client, ['gloss'], id=J)
-    use(monkeypatch, Model(lambda asked, n, kwargs: reply('Done.')))
+    client = JobClient({'d1': document('d1', 'Story', [{'words': words}, {'words': ['zz']}])})
+    client.after_write['d1'] = document('d1', 'Story', [{'words': words}, {'words': [('zz', [('zz', 'G')], J)]}],
+                                        version=2)
+    job = start(client, id=J)
+
+    def last_word(asked, n, kwargs):
+        if n > 1:
+            return reply('Done.')
+        return reply(calls=[call(1, 'set_analysis', {'document': 'Story', 'ref': 's2.w1',
+                                                     'morphemes': [{'form': 'zz', 'fields': {'Morph Gloss': 'G'}}]})])
+    use(monkeypatch, Model(last_word))
     assert run_job(job, runner(job))['state'] == 'done'
     (doc,) = _report(client)['documents']
     assert doc['counts']['left'] == 100
@@ -119,7 +149,7 @@ def test_a_sentence_recorded_after_a_crash_counts_and_lists_what_was_left_blank(
     blank there are counted and listed as the stretch would have (REV-J-B3
     B3-7), its translation left blank too."""
     client = _two_sentences()
-    job = start(client, ['translate', 'gloss'], id=J)
+    job = start(client, id=J)
     use(monkeypatch, Model(_first_word_only))
     real = job.add_decisions
 
@@ -139,5 +169,6 @@ def test_a_sentence_recorded_after_a_crash_counts_and_lists_what_was_left_blank(
     assert run_job(job, runner(job))['state'] == 'done'
     assert not model.calls, 'nothing is asked again'
     (doc,) = _report(client)['documents']
-    assert doc['counts']['left'] == 5 and doc['counts']['words'] == 2
-    assert [x['ref'] for x in doc['left']] == ['s1', 's1.w2', 's2', 's2.w2', 's2.w3']
+    assert doc['counts']['left'] == 3 and doc['counts']['left_translations'] == 2 and doc['counts']['words'] == 2
+    # It wrote no translation, so the two empty ones are counted, not listed.
+    assert [x['ref'] for x in doc['left']] == ['s1.w2', 's2.w2', 's2.w3']

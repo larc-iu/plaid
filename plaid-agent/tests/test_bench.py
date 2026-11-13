@@ -60,7 +60,8 @@ def test_every_task_loads_with_its_checker_setup_and_validation(bench_path):
             f'{t["id"]}: a task names a project and its turns, or the job it runs'
         assert all(isinstance(turn.get('say'), str) and turn['say'].strip() for turn in t.get('turns') or []), t['id']
         if t.get('job'):
-            assert t['job'].get('tasks') and set(t['job']['tasks']) <= {'translate', 'gloss', 'link'}, t['id']
+            # A job is its documents and its instructions: it has no task types.
+            assert str(t['job'].get('instructions') or '').strip() and 'tasks' not in t['job'], t['id']
         assert t.get('as', 'B') in ('A', 'B', 'C'), t['id']
         assert callable(load_checker(t['check'])), t['id']
         setup = path.with_suffix('.setup.py')

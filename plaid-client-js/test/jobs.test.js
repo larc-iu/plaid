@@ -45,7 +45,7 @@ const WIRE_JOB = {
   "job/id": "j1",
   "job/project": "p1",
   "job/app": "igt",
-  "job/tasks": ["gloss", "link"],
+  "job/instructions": "Gloss -ka as PST.",
   "job/started-by": "a@b.com",
   "job/started-by-name": "A",
   "job/state": "running",
@@ -80,18 +80,18 @@ test("a person's calls: create, list, get, active, cancel, worker", async () => 
     { status: 200, body: WIRE_JOB },
     {
       status: 200,
-      body: { "seen-at": null, model: null, "note-max-chars": 2000, "documents-max": 500 },
+      body: { "seen-at": null, model: null, "instructions-max-chars": 2000, "documents-max": 500 },
     },
   ]);
   try {
     const client = new PlaidClient("http://x", "tok");
     const made = await client.jobs.create("p1", {
       app: "igt",
-      tasks: ["gloss", "link"],
-      note: "Gloss -ka as PST.",
+      instructions: "Gloss -ka as PST.",
       id: "j1",
     });
     assert.equal(made.startedBy, "a@b.com");
+    assert.equal(made.instructions, "Gloss -ka as PST.");
     assert.equal(made.documents[0].documentId, "d1");
     assert.equal(made.documents[0].lastSentence, "s1");
     assert.deepEqual(made.documents[0].skipped[0], {
@@ -112,7 +112,7 @@ test("a person's calls: create, list, get, active, cancel, worker", async () => 
     assert.deepEqual(await client.jobs.worker(), {
       seenAt: null,
       model: null,
-      noteMaxChars: 2000,
+      instructionsMaxChars: 2000,
       documentsMax: 500,
     });
     assert.deepEqual(
@@ -130,8 +130,7 @@ test("a person's calls: create, list, get, active, cancel, worker", async () => 
     assert.deepEqual(net.sent[0].body, {
       id: "j1",
       app: "igt",
-      tasks: ["gloss", "link"],
-      note: "Gloss -ka as PST.",
+      instructions: "Gloss -ka as PST.",
     });
     assert.ok(net.sent[0].key, "a create is keyed, so a lost answer is sent again safely");
   } finally {
@@ -146,10 +145,18 @@ test("a create with its documents sends them in order, and the list pages", asyn
   ]);
   try {
     const client = new PlaidClient("http://x", "tok");
-    await client.jobs.create("p1", { app: "igt", tasks: ["translate"], documents: ["d2", "d1"] });
+    await client.jobs.create("p1", {
+      app: "igt",
+      instructions: "Translate.",
+      documents: ["d2", "d1"],
+    });
     const page = await client.jobs.listPage("p1", { limit: 1, cursor: "c1" });
     assert.equal(page.nextCursor, "c2");
-    assert.deepEqual(net.sent[0].body, { app: "igt", tasks: ["translate"], documents: ["d2", "d1"] });
+    assert.deepEqual(net.sent[0].body, {
+      app: "igt",
+      documents: ["d2", "d1"],
+      instructions: "Translate.",
+    });
     assert.deepEqual(net.sent[1].query, { limit: "1", cursor: "c1" });
   } finally {
     net.restore();
@@ -161,7 +168,7 @@ test("a job's create and cancel never join an open operation", async () => {
   try {
     const client = new PlaidClient("http://x", "tok");
     await client.withOperation("Edit", async () => {
-      await client.jobs.create("p1", { app: "igt", tasks: ["gloss"] });
+      await client.jobs.create("p1", { app: "igt", instructions: "Gloss." });
       await client.jobs.cancel("j1");
     });
     for (const s of net.sent) assert.equal(s.query["group-id"], undefined, s.path);
@@ -193,7 +200,7 @@ test("heartbeat sends null to clear a field and leaves out a field it leaves", a
   try {
     const client = new PlaidClient("http://x", "tok");
     const beat = await client.jobs.heartbeat("j1", "w1", {
-      phase: "glossing",
+      phase: "working",
       waitingFor: null,
       currentDocument: "d1",
     });
@@ -201,7 +208,7 @@ test("heartbeat sends null to clear a field and leaves out a field it leaves", a
     await client.jobs.heartbeat("j1", "w1");
     assert.deepEqual(net.sent[0].body, {
       "worker-id": "w1",
-      phase: "glossing",
+      phase: "working",
       "waiting-for": null,
       "current-document": "d1",
     });

@@ -367,46 +367,99 @@ def other_projects(home: str, briefs: Sequence[str], unavailable: Sequence[str])
 
 
 # --- an unattended job --------------------------------------------------------
-# A job's prompt is written for the job (FABLE-REVIEW 5, the lead's note of
-# 2026-11-12): short, positive, with one worked stretch in the app's prompt.
-# Nothing here is the chat prompt with paragraphs taken out. What makes sense
-# only with a person present (ask when the request is unclear, draft a
-# guideline, end the turn and wait for the next message, the plan card) is not
-# said at all, and the tools that would do it are not offered. The stretch
-# boundary is the worker's, so the model never hears of stretches as a rule.
+# A job is the assistant, unattended (the owner's rulings 11 to 14 of
+# 2026-11-13). A piece of a job is given the chat's own prompt, its shared
+# rules word for word, with the paragraphs that assume a person present
+# (asking, waiting for the next message, the plan card, the reply the user
+# reads, stretches across turns) replaced by the ones below. Short and
+# positive, with one worked piece in the app's prompt (FABLE-REVIEW 5):
+# nothing here is a second copy of a chat rule.
 
-#: What a job is and what its writes are. ``{project_name}`` is filled in
-#: when the prompt is built.
-JOB_CONTRACT = '''You work unattended on the project "{project_name}", as a job a member of the project started. \
-Nobody reads your replies and nobody answers questions: what you stage with the plan tools is your whole work. \
-It is written as soon as you end, as machine proposals that people review and correct later, beside the work \
-of the project's other machine helpers. Nothing a person wrote or confirmed is ever changed by it.'''
+#: What a job is and what becomes of what it stages: the app's apply rule,
+#: said as the model meets it. ``{project_name}`` is filled in when the prompt
+#: is built.
+JOB_CONTRACT = '''You work unattended on the project "{project_name}", as a job a member of the project started \
+with instructions. Nobody reads your messages while you work and nobody answers a question: the job is cut \
+into pieces, each a context of its own like this one, and the message hands you yours. What you stage with the \
+plan tools is applied by the job when you end, by one fixed rule. A change that fills something empty, or \
+revises what this job itself wrote, is written as an unverified machine proposal, which people review later. \
+Any other change (to a value a person wrote or confirmed, to another machine's proposal, a deletion, a rename, \
+a text edit, a guideline, a comment, a setting) is not written: it is listed in the job's report as a proposed \
+change, for a person to approve. So stage what the instructions ask for, whatever it touches.'''
 
-#: How a job works, the same in every app.
-JOB_RULES = '''How a job works:
-- Each message hands you a few target sentences, the sentences before them for context, and the targets in \
-them: the target words and translations, the only things you stage work on. Where it helps it also shows how \
-the same forms were done before: by people in this project, and earlier in this job.
-- Follow what people did and what this job did earlier, unless the sentence in front of you clearly needs \
-another reading.
-- Where you cannot tell what is right, leave it. A value left empty is filled by a person later, and a wrong \
-one has to be found first.
-- Write forms exactly as the sentences show them. A value with a broken character, or in a rare script found \
-nowhere in what you were given, is refused.
-- Once everything you can decide is staged, end with a one-line reply such as "Done."'''
+JOB_FIND_FIRST = '''- For bulk work, first find every affected {subject}, then stage the changes. Where the \
+instructions are unclear about something, do the part that is clear and say in your note what you left.'''
 
-#: The line a stretch's model is sent once it has used most of its calls or
+JOB_STAGE_NOW = '''- STAGE everything you decide in this piece before you end: there is no later message to do it \
+in. The message shows how the forms in it were analysed by people and earlier in this job: follow that unless \
+the sentence in front of you clearly needs another reading. Where you cannot tell what is right, leave it: a \
+value left empty is filled by a person later, and a wrong one has to be found first.'''
+
+JOB_PLAN_WHAT_WAS_ASKED = '''- DO WHAT THE INSTRUCTIONS ASK, in the fields and levels they name. Anything more you \
+notice goes in your note, not in the plan.'''
+
+JOB_VALUES = '''- WHAT THE INSTRUCTIONS STATE WINS. A value they give ({examples}) is the value to stage, even \
+where the corpus does it differently: say the difference in your note.'''
+
+JOB_NOTE = '''- END THE PIECE with a short note for the job's report, one to three plain sentences: what you did, \
+what you left and why. It is your last message, with no tool call. Nobody answers it.'''
+
+JOB_EXAMPLE = '''- A WHOLE PIECE, FOR EXAMPLE. {did} Then you ended with the note:\n\n{note}'''
+
+#: The line a piece's model is sent once it has used most of its calls or
 #: its prompt has grown near its cap (CONTRACT 1). The calls after it are
 #: offered the plan tools alone.
-JOB_DECIDE_NOW = '(system) Decide now with what you have: stage your work on the targets and end.'
+JOB_DECIDE_NOW = '(system) Decide now with what you have: stage your work on the piece and end with your note.'
+
+#: The planning context's contract: the first context of every job.
+JOB_PLAN_CONTRACT = '''You plan an unattended job on the project "{project_name}". A member of the project \
+started it with instructions and documents. Nobody reads your messages and nobody answers a question. The job's \
+work is done in pieces, each its own context with the assistant's tools and the instructions, and you decide \
+how it is cut. You stage no change. End by calling plan_work once.'''
+
+#: Sent once to a planning context that ended without plan_work.
+JOB_PLAN_NOW = '(system) End the planning now: call plan_work.'
+
+#: The final context's contract: the prose at the top of the job's report.
+JOB_SUMMARY_CONTRACT = '''You write the summary at the top of the report of an unattended job on the project \
+"{project_name}", for the person who started it. The report's own sections follow your summary and are the \
+record: the message gives you their totals, each piece's note and the tables the job's code made. Write a few \
+short paragraphs of plain prose: what the job did, what it found, what it left for people, and what to check \
+first. State no count and no number the message does not hold, and give a table's numbers as the table has \
+them. No headings, no lists of every change: the sections list them.'''
 
 
 def job_contract() -> str:
-    """What a job is and what its writes are recorded as."""
+    """What a job is and what the apply rule does with what it stages."""
     return JOB_CONTRACT
 
 
-def job_rules() -> str:
-    """How a job works: the targets only, what people did first,
-    leave what is unclear, copy forms, end."""
-    return JOB_RULES
+def job_find_first(subject: str) -> str:
+    """The job's half of :func:`find_first`: find first, and do the clear
+    part where the instructions are not clear."""
+    return JOB_FIND_FIRST.replace('{subject}', subject)
+
+
+def job_stage_now() -> str:
+    """Stage everything in this piece, following what was done before."""
+    return JOB_STAGE_NOW
+
+
+def job_plan_what_was_asked() -> str:
+    """Do what the instructions ask, and put the rest in the note."""
+    return JOB_PLAN_WHAT_WAS_ASKED
+
+
+def job_values(examples: str) -> str:
+    """The job's half of :func:`user_values`: the instructions' values win."""
+    return JOB_VALUES.replace('{examples}', examples)
+
+
+def job_note() -> str:
+    """End the piece with a note for the report."""
+    return JOB_NOTE
+
+
+def job_example(did: str, note: str) -> str:
+    """One whole piece in the app's own terms, its calls told in prose."""
+    return filled(JOB_EXAMPLE, {'did': did, 'note': note})

@@ -14,7 +14,7 @@ def _analyse_all(asked, n, kwargs):
         return reply('Done.')
     calls = []
     for line in asked.splitlines():
-        if line.startswith('Targets in s'):
+        if line.startswith('Empty in s'):
             s = line.split()[2].rstrip(':')
             for w in line.split('words ')[1].split(' and ')[0].split(', ') if 'words ' in line else []:
                 ref, form = w.split(' ')[0], w.split('"')[1]
@@ -33,15 +33,19 @@ def test_a_stretch_counts_what_it_wrote_and_records_its_decisions(monkeypatch):
              {'words': [('ka', [('ka', 'G')], 'J5')], 'translation': ('T.', 'J5')}]
     client = JobClient({'d1': document('d1', 'Story', before)})
     client.after_write['d1'] = document('d1', 'Story', after, version=2)
-    job = start(client, ['translate', 'gloss'], id='J5')
+    job = start(client, id='J5')
     use(monkeypatch, Model(_analyse_all))
     assert runner(job).document('d1') == 'done'
     row = job.rows['d1']
-    assert row['counts']['words'] == 3 and row['counts']['translations'] == 1 and row['counts']['refreshed'] == 1
+    # Another machine's translation of s2 is not empty: the job is not shown
+    # it as such, and refreshes nothing.
+    assert row['counts']['words'] == 3 and row['counts']['translations'] == 1 and not row['counts'].get('refreshed')
     assert row['counts']['left'] == 0 and row['done'] == 2 and row['last_sentence'] == 'd1-s2'
     decided = client.jobs.decision_rows['J5']
     by_form = {}
     for (form, key), r in decided.items():
+        if form.startswith((' note ', ' plan')):
+            continue
         assert key == analysis_key(r['analysis'])
         if form.startswith((RECORD_FORM, WRITING_FORM)):
             continue
@@ -56,7 +60,7 @@ def test_a_stretch_counts_what_it_wrote_and_records_its_decisions(monkeypatch):
 
 def test_a_resumed_document_goes_on_after_its_cursor(monkeypatch):
     client = JobClient({'d1': document('d1', 'Story', [{'words': ['a']}, {'words': ['b']}, {'words': ['c']}])})
-    job = start(client, ['gloss'])
+    job = start(client)
     job.update_row('d1', last_sentence='d1-s2', gloss_group='G-1', state='working')
     model = use(monkeypatch, Model(_analyse_all))
     groups = []
@@ -67,25 +71,26 @@ def test_a_resumed_document_goes_on_after_its_cursor(monkeypatch):
         return real(message, **kw)
     client.operation = operation
     runner(job).document('d1')
-    assert [c['asked'].splitlines()[-1] for c in model.calls if c['n'] == 1] == ['Analyse s3. s1, s2 are context.']
+    assert [c['asked'].splitlines()[-1] for c in model.calls if c['n'] == 1] == ['Your piece: s3. s1, s2 are context.']
     assert [g for g in groups if g] == ['G-1'], 'the History entry of the document the job began'
 
 
 def test_a_cursor_whose_sentence_is_gone_starts_from_the_top_and_writes_nothing_twice(monkeypatch):
-    analysed = [{'words': [('a', [('a', 'G')], 'J7')]}, {'words': ['b']}]
+    analysed = [{'words': [('a', [('a', 'G')], 'J7')], 'translation': ('A.', 'human')},
+                {'words': ['b'], 'translation': ('B.', 'human')}]
     client = JobClient({'d1': document('d1', 'Story', analysed)})
-    job = start(client, ['gloss'], id='J7')
+    job = start(client, id='J7')
     job.update_row('d1', last_sentence='a-sentence-merged-away', state='working')
     model = use(monkeypatch, Model(_analyse_all))
     runner(job).document('d1')
     asked = [c['asked'] for c in model.calls if c['n'] == 1]
-    assert len(asked) == 1 and asked[0].splitlines()[-1].startswith('Analyse s2.')
+    assert len(asked) == 1 and asked[0].splitlines()[-1].startswith('Your piece: s2.')
 
 
 def test_a_job_that_crashed_in_harmonize_runs_it_again_and_skips_the_checks_and_the_documents():
     from plaid_agent.core.job import run_job
     client = JobClient({'d1': document('d1', 'Story', [{'words': ['a']}])})
-    job = start(client, ['gloss'])
+    job = start(client)
     job.status['phase'] = 'harmonizing'
     calls = []
 
@@ -114,7 +119,7 @@ def test_the_checks_run_again_after_a_crash_in_them_list_a_too_long_sentence_onc
     from plaid_agent.core.limits import JOB_SENTENCE_MAX_CHARS
     long = ['w' + str(i) for i in range(JOB_SENTENCE_MAX_CHARS // 3)]
     client = JobClient({'d1': document('d1', 'Story', [{'words': long}, {'words': ['ka']}])})
-    job = start(client, ['gloss'], id='JR5')
+    job = start(client, id='JR5')
     runner(job).check(job)
     runner(job).check(job)
     assert [s['sentence_id'] for s in job.rows['d1']['skipped']] == ['d1-s1']

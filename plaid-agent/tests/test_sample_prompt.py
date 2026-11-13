@@ -56,3 +56,14 @@ def test_the_packaged_igt_guide_is_the_apps():
     assert PACKAGED_GUIDE.read_bytes() == REPO_GUIDE.read_bytes(), (
         'The packaged igt guide differs from plaid-igt/docs/igt-guide.adoc. Run `bb sample-prompts` '
         '(from the repo root) in the same change as the guide edit.')
+
+
+def test_the_packaged_job_section_headings_are_the_apps():
+    """The job page's headings of a report's sections, which read_job names
+    sections by (JD's point 3): one mapping, copied into the package."""
+    import pytest
+    from plaid_agent.igt.jobread import PACKAGED_SECTIONS, REPO_SECTIONS
+    if not REPO_SECTIONS.is_file():
+        pytest.skip('no plaid-igt checkout beside the package')
+    assert PACKAGED_SECTIONS.read_bytes() == REPO_SECTIONS.read_bytes(), (
+        'The packaged job section headings differ from plaid-igt\'s jobSections.json. Run `bb sample-prompts`.')

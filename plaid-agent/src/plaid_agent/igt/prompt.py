@@ -5,6 +5,8 @@ below where they go: the plan contract, the staging rules, how to cite, and
 what run_code is for. Everything here is IGT's own.
 """
 
+import re
+
 from ..core import prompt as shared, sandbox, webtools
 from ..core.guidelines import section as guidelines_section
 from ..core.limits import OVERVIEW_DOCS
@@ -33,10 +35,7 @@ types, orthography).
 - Address things positionally: sN (sentence), sN.wN (word), sN.wN.mN (morpheme), always together with the \
 document. Numbers restart in every document and sentence. In what the reads print, a trailing ~ marks a value \
 a machine made and a trailing ^ one a contributor made.
-- The open document is a whole text, not a sentence, and the user is not pointing at any sentence in it. A \
-request that names a word or morpheme by its place ("the third word") or by a form the text holds more than \
-once, and names no sentence, does NOT mean sentence 1: ask which sentence they mean, and plan nothing, rather \
-than picking one.
+{open_document}
 {find_first}
 {stage_now}
 {plan_what_was_asked}
@@ -44,30 +43,13 @@ than picking one.
 - set_field changes one field value (a gloss, a part of speech, a translation) and leaves everything else alone. \
 set_analysis rewrites a word's whole segmentation with all its morpheme values, so use it only to (re)segment a \
 word, never to change a single gloss.
-- When you show examples of a planned change, cite the item it writes: sN.wN.mN for a morpheme's field, sN.wN \
-for a word's.
+{cite_items}
 {one_turn}
 {in_stretches}
 {final_message}
 {turn_example}
-- A JOB LEFT TO RUN. When the user wants work done without them, scope it before you draft it with \
-propose_job. Read the documents, then ask in one message the two or three questions the data shows matter: a \
-form people analysed in two ways, sentences with no word breaks, documents already partly glossed, a field the \
-job would fill from a tagset. Offer a plan for the first few sentences: what the user approves as verified or \
-corrects by hand becomes people's analyses, which the job follows. When they say go, draft it. The brief states \
-the decisions, not the discussion, in imperative sentences that name forms and glosses exactly, for a model that \
-sees nothing else. A convention about the language rather than this job belongs in the guidelines: \
-offer to write it there. For example, asked to gloss Texts 3 to 9 overnight, you read them, found -da glossed \
-LOC 12 times and 3SG 4 times, and asked which applies where and whether to try sentences 1 to 3 first. Told \
-"LOC after nouns, 3SG after verbs, just go", you drafted the brief "Gloss -da as LOC after a noun and as 3SG \
-after a verb."
-- WHAT A JOB DID. A job's record (read_job) holds what it did and nothing of why: tell the user what it did from \
-the record, and say plainly that jobs keep no record of why. Its report is as the job ended, so read the \
-documents as they are now before you plan a change from it.
-- Reach for a project-wide tool (set_field_for_form, replace_in_field, set_analysis_for_form, respell_all, \
-copy_to_orthography) rather than many single calls. A lexicon's entries form a TREE: a HEADWORD is an entry \
-with nothing above it, a SENSE one under another, and the tools that move entries around work on that \
-structure, never on a field. When no tool can express a question, read query_help and write a query.
+{jobs}
+{project_wide} {lexicon_tree}
 {read_budget}
 {be_concise}
 {copy_forms}
@@ -91,14 +73,57 @@ _CITE_EXAMPLE = '''The dative suffix is what marks the relative noun:\n\n\
 carries it. Name the sentence alone, <cite doc="Text 1" ref="s41"/>, only where the claim is about the \
 whole sentence.'''
 
-SYSTEM = shared.filled(_SYSTEM, {
+#: The bullets of the chat's prompt that assume a person is there, which an
+#: unattended job's prompt leaves out or says its own way (``job_parts``).
+_OPEN_DOCUMENT = '''- The open document is a whole text, not a sentence, and the user is not pointing at any sentence \
+in it. A request that names a word or morpheme by its place ("the third word") or by a form the text holds more \
+than once, and names no sentence, does NOT mean sentence 1: ask which sentence they mean, and plan nothing, rather \
+than picking one.'''
+_CITE_ITEMS = '''- When you show examples of a planned change, cite the item it writes: sN.wN.mN for a morpheme's \
+field, sN.wN for a word's.'''
+_JOBS = '''- A JOB LEFT TO RUN. When the user wants work done without them, scope it before you draft it with \
+propose_job. Read the documents, then ask in one message the two or three questions the data shows matter: a \
+form people analysed in two ways, sentences with no word breaks, documents already partly glossed, a field the \
+job would fill from a tagset. Offer a plan for the first few sentences: what the user approves as verified or \
+corrects by hand becomes people's analyses, which the job follows. A job fills only what is empty and proposes the \
+rest. When they say go, draft it. The brief states \
+the decisions, not the discussion, in imperative sentences that name forms and glosses exactly, for a model that \
+sees nothing else. A convention about the language rather than this job belongs in the guidelines: \
+offer to write it there. For example, asked to gloss Texts 3 to 9 overnight, you read them, found -da glossed \
+LOC 12 times and 3SG 4 times, and asked which applies where and whether to try sentences 1 to 3 first. Told \
+"LOC after nouns, 3SG after verbs, just go", you drafted the brief "Gloss -da as LOC after a noun and as 3SG \
+after a verb."
+- WHAT A JOB DID. A job's record (read_job) holds what it did and nothing of why: tell the user what it did from \
+the record, and say plainly that jobs keep no record of why. Its report is as the job ended, so read the \
+documents as they are now before you plan a change from it.'''
+
+_PROJECT_WIDE = '''- Reach for a project-wide tool (set_field_for_form, replace_in_field, set_analysis_for_form, \
+respell_all, copy_to_orthography) rather than many single calls.'''
+_LEXICON_TREE = '''A lexicon's entries form a TREE: a HEADWORD is an entry with nothing above it, a SENSE one \
+under another, and the tools that move entries around work on that structure, never on a field. When no tool \
+can express a question, read query_help and write a query.'''
+#: A project-wide rule is checked under no one document's lock, so a job
+#: lists it as a proposed change (igt/jobapply.py).
+_JOB_PROJECT_WIDE = '''- A project-wide tool (set_field_for_form, replace_in_field, set_analysis_for_form, \
+respell_all, copy_to_orthography) stages a rule, which a job lists as a proposed change and never applies: \
+stage changes item by item where they are to be applied.'''
+
+_FIND_SUBJECT = 'item (worklist, search, frequency_list)'
+_USER_VALUE_KINDS = 'a gloss, a form, a part of speech, a translation'
+
+_CHAT = {
     'plan_contract': shared.plan_contract(),
     'project_shape': shared.project_shape(),
     'how_to_work': shared.how_to_work(),
-    'find_first': shared.find_first('item (worklist, search, frequency_list)', '"the word ka", "the second word"'),
+    'open_document': _OPEN_DOCUMENT,
+    'cite_items': _CITE_ITEMS,
+    'jobs': _JOBS,
+    'project_wide': _PROJECT_WIDE,
+    'lexicon_tree': _LEXICON_TREE,
+    'find_first': shared.find_first(_FIND_SUBJECT, '"the word ka", "the second word"'),
     'stage_now': shared.stage_now(),
     'plan_what_was_asked': shared.plan_what_was_asked(),
-    'user_values': shared.user_values('a gloss, a form, a part of speech, a translation'),
+    'user_values': shared.user_values(_USER_VALUE_KINDS),
     'one_turn': shared.one_turn(),
     'in_stretches': shared.in_stretches(
         'segmenting and glossing, marking every noun phrase, a field on every word',
@@ -121,7 +146,8 @@ SYSTEM = shared.filled(_SYSTEM, {
     'cite_evidence': shared.cite_evidence(
         refs=_CITE_REFS, aside=_CITE_ASIDE, shown_as='full interlinear example',
         never_paste='interlinear lines or tables of glosses', example=_CITE_EXAMPLE),
-})
+}
+SYSTEM = shared.filled(_SYSTEM, _CHAT)
 
 CODE = shared.code_section(
     triggers='two fields at once, a condition on a word and its morphemes together',
@@ -198,85 +224,46 @@ def build_system_prompt(project: IgtProject, web: bool = False) -> str:
     return out + CODE if sandbox.available() is None else out
 
 
-# --- the unattended job's prompt ------------------------------------------------
-# Written for the job (core.prompt.JOB_CONTRACT), not the chat prompt with
-# paragraphs taken out. One worked stretch instead of rules about turns: a
-# demonstration outweighs a list, which the cite examples above learned. The
-# calls are narrated in prose, never written as call syntax, which small
-# models copy out as text.
+# --- the unattended job's prompts -----------------------------------------------
+# A job is the assistant, unattended (the owner's ruling 12 of 2026-11-13). A
+# piece of a job is given THIS prompt, the chat's, its shared rules word for
+# word, with the paragraphs that assume a person present put the job's way
+# (core.prompt's JOB_* paragraphs): one source for the rules, no second copy.
+# One worked piece in place of rules about turns, its calls told in prose,
+# never as call syntax, which small models copy out as text.
 
-_JOB_SYSTEM = '''You are the assistant inside Plaid IGT, a tool linguists use to build interlinear glossed text: \
-sentences split into words, words into morphemes, with glosses and other fields at each level, a free \
-translation per sentence, and a lexicon of entries that morphemes link to.
+_JOB_EXAMPLE_DID = (
+    'The message showed s4 and s5 as context and s6 and s7 as your piece, and the instructions said to segment '
+    'and gloss the words nobody analysed and to translate empty translations. It showed that people analysed '
+    '"leo" as le-o \'today-DEF\' twice. Nothing settled "na", so you read the concordance of "na" and saw it '
+    'before verbs glossed PRS in four sentences. You staged one set_analysis for s6 with w1 as na-ku-ja (prefix '
+    'PRS, prefix INF, stem come) and w3 as le-o as people have it, and set the translation of s7. You left w2 '
+    'of s7, a name you could not place.')
+_JOB_EXAMPLE_NOTE = 'Glossed s6 and translated s7. Left s7.w2, a name nobody has glossed.'
 
-{job_contract}
+_JOB = {
+    **_CHAT,
+    'plan_contract': shared.job_contract(),
+    'open_document': '',
+    'cite_items': '',
+    'jobs': '',
+    'project_wide': _JOB_PROJECT_WIDE,
+    'find_first': shared.job_find_first(_FIND_SUBJECT),
+    'stage_now': shared.job_stage_now(),
+    'plan_what_was_asked': shared.job_plan_what_was_asked(),
+    'user_values': shared.job_values(_USER_VALUE_KINDS),
+    'one_turn': '',
+    'in_stretches': '',
+    'final_message': shared.job_note(),
+    'turn_example': shared.job_example(_JOB_EXAMPLE_DID, _JOB_EXAMPLE_NOTE),
+    'attach_files': '',
+    'cite_evidence': '',
+}
 
-{project_shape}
-{guidelines}
-
-{job_rules}
-
-What to stage:
-{what_to_stage}
-
-One message worked through, for example. {example}'''
-
-# What to stage, a line per task (and the reads, for every job). A job is
-# told only of the tasks it was asked and the tools it has (REV-J-B S3-4).
-_STAGE_TRANSLATE = '- A target translation: set_field with the translation field on the sentence (sN).'
-_STAGE_GLOSS = (
-    '- Target words: one set_analysis call per sentence, with every target word of it in analyses. Give each '
-    'word\'s morphemes in order, each with its form, its type (stem, root, prefix, suffix, enclitic, proclitic, ...) '
-    'and the morpheme fields the project has, such as the gloss. The forms together spell the word. A word that is '
-    'one morpheme is one morpheme with the whole word as its form.\n'
-    '- A word field (sN.wN) of a target word is set only where it is empty.')
-_STAGE_LINK = (
-    '- Link each morpheme of the words you analyse to its lexicon entry with link_entry on sN.wN.mN. Where no '
-    'entry has that form and gloss, create_entry makes one and link_entry links it by the entry_id it returns. '
-    'create_entry refuses an entry that exists and names it: link that one instead. A form with its markers '
-    '("na-") and without them ("na") is one form.')
-_STAGE_READS = (
-    '- The reads are there for what the message does not settle: analyses_of for a form\'s analyses across the '
-    'project, concordance for a form\'s contexts, search, read_sentences for other sentences, lexicon_entry and '
-    'read_lexicon for entries. Most messages need few of them.')
-
-
-def _example(tasks) -> str:
-    """One worked message for a job of ``tasks``, its calls told in prose."""
-    gloss, link, translate = 'gloss' in tasks, 'link' in tasks, 'translate' in tasks
-    if not gloss:
-        return ('It shows s4 and s5 as context and s6 and s7 as targets, and the translations of both are '
-                'targets. You read the sentences, see that s7 goes on from s6, set the translation of s6 and of s7 '
-                'with set_field, and end with "Done."')
-    targets = 'In s6 the words w1 "nakuja" and w3 "leo" are targets'
-    targets += ', and the translation of s7 is a target.' if translate else '.'
-    said = ('It says people analysed "leo" as le-o \'today-DEF\' twice, and that this job analysed "ja" as one '
-            'stem \'come\'')
-    said += ' and linked it to the entry ja.' if link else '.'
-    staged = ('You then stage one set_analysis for s6 with w1 as na-ku-ja (prefix PRS, prefix INF, stem come) and '
-              'w3 as le-o as people have it')
-    if link:
-        staged += (', link s6.w1.m3 to the entry ja and s6.w3.m1 to le, find no entry for the prefix "na-" glossed '
-                   'PRS and create it and link s6.w1.m1 to it, leave "ku-" unlinked because two entries could be '
-                   'meant')
-    staged += ', set the translation of s7' if translate else ''
-    return (f'It shows s4 and s5 as context and s6 and s7 as targets. {targets} {said} Nothing settles "na". You '
-            f'read the concordance of "na" and see it before verbs glossed PRS in four sentences. {staged}, and end '
-            'with "Done."')
-
-
-def job_system(tasks) -> str:
-    """The job's system prompt for a job of ``tasks``, before the project is
-    filled in."""
-    lines = ([_STAGE_TRANSLATE] if 'translate' in tasks else []) + ([_STAGE_GLOSS] if 'gloss' in tasks else []) \
-        + ([_STAGE_LINK] if 'link' in tasks else []) + [_STAGE_READS]
-    return shared.filled(_JOB_SYSTEM, {
-        'job_contract': shared.job_contract(),
-        'project_shape': shared.project_shape(),
-        'job_rules': shared.job_rules(),
-        'what_to_stage': '\n'.join(lines),
-        'example': _example(tasks),
-    })
+#: The prompt of a piece of a job, before the project is filled in: the
+#: chat's template, the person's paragraphs put the job's way. Empty holes
+#: leave no blank line.
+JOB_SYSTEM = re.sub(r'\n{2,}(?=- |\Z)', '\n', shared.filled(_SYSTEM, _JOB)).rstrip('\n') + '\n'
 
 
 #: The tagsets' first line in a job's prompt: nobody sees the value as the
@@ -285,16 +272,72 @@ JOB_TAGSET_LEAD = ('Tagsets: use the listed spellings, and write an unlisted val
                    'the same thing.')
 
 
-#: Every task's prompt, the one the job's version is taken over.
-JOB_TASKS = ('translate', 'gloss', 'link')
-JOB_SYSTEM = job_system(JOB_TASKS)
-
-
-def build_job_prompt(project: IgtProject, tasks=JOB_TASKS) -> str:
-    """The system prompt of every stretch of a job of ``tasks`` on
-    ``project``: the job's contract and rules, what to stage for those tasks
-    alone, the project's shape and its guidelines, whole."""
+def _filled(template: str, project: IgtProject) -> str:
     from ..core.guidelines import job_section
-    out = job_system(tasks).replace('{project_name}', project.name)
+    out = template.replace('{project_name}', project.name).replace('{overview_docs}', str(OVERVIEW_DOCS))
     out = out.replace('{shape}', '\n'.join(shape_lines(project, tagset_lead=JOB_TAGSET_LEAD, tagset_more='')))
     return out.replace('{guidelines}', job_section(project.guidelines))
+
+
+def build_job_prompt(project: IgtProject) -> str:
+    """The system prompt of every piece of a job on ``project``: the chat's
+    prompt with the job's paragraphs, the project's shape and its guidelines
+    whole, and the code section where the sandbox is."""
+    out = _filled(JOB_SYSTEM, project)
+    return out + CODE + JOB_TABLES if sandbox.available() is None else out
+
+
+#: What a piece's code is told of ``table()``, only where code runs.
+JOB_TABLES = ('''- In a job, code also sees table(title, columns, rows): a table it makes is kept as data in the \
+job's report, so a count or a finding is given by code and not retyped.
+''')
+
+#: How the planning context cuts the work, in the app's words.
+JOB_PLAN_RULES = '''How to plan:
+- pieces "sentences": a few sentences at a time, each piece seeing them and the two before. For work done \
+sentence by sentence, such as glossing or translating.
+- pieces "document": one piece per document, seeing the whole document. For work about a whole text, such as \
+a summary of each.
+- pieces "selection": one piece for all the documents, reading them with the tools and code. For work across \
+the documents, such as finding where they disagree. Its findings go in tables code makes and in its note.
+- piece_instructions: what every piece is told besides the instructions, written as decisions in plain \
+imperative sentences that name forms and values exactly. Read the documents where that helps you decide.
+- documents: leave it out to work every document in the job's order.'''
+
+#: The planning context's prompt: who it is, the project, and how to plan.
+_PLAN_SYSTEM = '''You are the assistant inside Plaid IGT, a tool linguists use to build interlinear glossed text: \
+sentences split into words, words into morphemes, with glosses and other fields at each level, a free \
+translation per sentence, and a lexicon of entries that morphemes link to.
+
+{plan_contract}
+
+{project_shape}
+{guidelines}
+
+{plan_rules}
+{read_budget}'''
+
+PLAN_SYSTEM = shared.filled(_PLAN_SYSTEM, {
+    'plan_contract': shared.JOB_PLAN_CONTRACT, 'project_shape': shared.project_shape(),
+    'plan_rules': JOB_PLAN_RULES,
+    'read_budget': shared.read_budget('search, concordance, frequency_list, worklist or check_consistency')})
+JOB_PLAN_NOW = shared.JOB_PLAN_NOW
+
+
+def build_plan_prompt(project: IgtProject) -> str:
+    """The planning context's system prompt on ``project``."""
+    out = _filled(PLAN_SYSTEM, project)
+    return out + CODE if sandbox.available() is None else out
+
+
+_SUMMARY_SYSTEM = '''{summary_contract}
+
+{project_shape}'''
+
+SUMMARY_SYSTEM = shared.filled(_SUMMARY_SYSTEM, {'summary_contract': shared.JOB_SUMMARY_CONTRACT,
+                                                 'project_shape': shared.project_shape()})
+
+
+def build_summary_prompt(project: IgtProject) -> str:
+    """The final context's system prompt on ``project``."""
+    return _filled(SUMMARY_SYSTEM, project)

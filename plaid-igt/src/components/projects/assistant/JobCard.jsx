@@ -5,14 +5,13 @@ import { Button } from '@ui/components/ui/button';
 import { Label } from '@ui/components/ui/label';
 import { Textarea } from '@ui/components/ui/textarea';
 import { AuthContext } from '@ui/contexts/useAuth.js';
-import { jobTaskText } from '@ui/domain/jobs.js';
 import { canStartJob } from '@ui/domain/permissions.js';
 import { humanizeError, statusOf } from '@ui/lib/errors.js';
 import { notifyError } from '@/utils/feedback';
 import { cn } from '@ui/lib/utils';
 import { APP_ROUTES } from '../../../appRoutes.js';
-import { activeJobOf, jobPath, noteLength, startJob } from '../jobs/jobText.js';
-import { AppLink, JobActiveLine, NoWorkerLine, NoteCount } from '../jobs/jobLines.jsx';
+import { activeJobOf, instructionsLength, jobPath, startJob } from '../jobs/jobText.js';
+import { AppLink, InstructionsCount, JobActiveLine, NoWorkerLine } from '../jobs/jobLines.jsx';
 
 // The job card: an unattended job the assistant drafted with the user
 // (plaid-agent's propose_job), on the reply that drafted it. The page starts
@@ -81,8 +80,8 @@ export const JobCard = ({ card, projectId, client, readOnly = false, busy = fals
     };
   }, [client, projectId, undecided, readOnly]);
 
-  const noteMax = worker?.noteMaxChars ?? null;
-  const noteOver = noteMax !== null && noteLength(brief) > noteMax;
+  const briefMax = worker?.instructionsMaxChars ?? null;
+  const briefOver = briefMax !== null && instructionsLength(brief) > briefMax;
   const mayStart = canStartJob(project, user);
   const badge = BADGES[card.status];
 
@@ -98,9 +97,8 @@ export const JobCard = ({ card, projectId, client, readOnly = false, busy = fals
         projectId,
         { current: card.id },
         {
-          tasks: card.tasks || [],
           documents: card.all ? null : (card.documents || []).map((d) => d.id),
-          note: brief,
+          instructions: brief,
         },
       );
       await started();
@@ -152,8 +150,6 @@ export const JobCard = ({ card, projectId, client, readOnly = false, busy = fals
         <dd className="min-w-0">
           <Documents card={card} projectId={projectId} />
         </dd>
-        <dt className="text-muted-foreground">Tasks</dt>
-        <dd>{(card.tasks || []).map(jobTaskText).join(', ')}</dd>
       </dl>
       {undecided && !readOnly && mayStart ? (
         <div className="flex flex-col gap-1">
@@ -164,9 +160,9 @@ export const JobCard = ({ card, projectId, client, readOnly = false, busy = fals
             rows={4}
             value={brief}
             onChange={(e) => setBrief(e.target.value)}
-            aria-invalid={noteOver ? true : undefined}
+            aria-invalid={briefOver ? true : undefined}
           />
-          <NoteCount note={brief} max={noteMax} />
+          <InstructionsCount text={brief} max={briefMax} />
         </div>
       ) : (
         <div className="flex flex-col gap-1">
@@ -199,7 +195,7 @@ export const JobCard = ({ card, projectId, client, readOnly = false, busy = fals
                 size="sm"
                 variant="secondary"
                 onClick={start}
-                disabled={busy || starting || noteOver}
+                disabled={busy || starting || briefOver || !brief.trim()}
               >
                 <Play className="h-4 w-4" /> {starting ? 'Starting…' : 'Start job'}
               </Button>

@@ -15,7 +15,7 @@ import uuid
 import pytest
 
 from fixtures import GLOSS
-from job_fixtures import Model, call, document, job_project, reply, use
+from job_fixtures import plan_row, empty_translations, Model, call, document, job_project, reply, use
 from live import _skip_or_fail, core_url, login, seed
 
 from plaid_agent.core import plan
@@ -60,8 +60,10 @@ def test_a_write_refused_on_a_later_batch_sends_nothing_again_under_its_keys(wor
     from plaid_client import PlaidClient
     from plaid_client.batch import PlaidBatch
     use(monkeypatch, Model(_model))
-    made = writer.jobs.create(s.project_id, 'igt', ['gloss'])
+    made = writer.jobs.create(s.project_id, 'igt', 'Gloss the words.')
     claimed = admin.jobs.claim(WORKER, 'fake/m', ['igt'])
+    if claimed:
+        admin.jobs.add_decisions(claimed['job']['id'], WORKER, [plan_row()])
     assert claimed and claimed['job']['id'] == made['id']
     offset = {'s': 0.0}
 
@@ -86,7 +88,8 @@ def test_a_write_refused_on_a_later_batch_sends_nothing_again_under_its_keys(wor
             refused.append((getattr(e, 'status', None), (getattr(e, 'response_data', None) or {}).get('code')))
             raise
     monkeypatch.setattr(PlaidBatch, 'submit', submit)
-    runner = IgtRunner(job, ModelConfig(model='fake/m', stream=False, max_steps=1000), count=count_chars)
+    runner = IgtRunner(job, ModelConfig(model='fake/m', stream=False, max_steps=1000), count=count_chars,
+                       write_summary=False)
     finished = run_job(job, runner)
     assert refused and refused[0][0] == 409, f'the starter\'s edit moved the version: {refused}'
     assert not any(status == 422 for status, _ in refused), f'a key used again for another request: {refused}'
@@ -124,8 +127,7 @@ def story():
 def _translate(asked, n, kwargs):
     if n > 1:
         return reply('Done.')
-    line = next(x for x in asked.splitlines() if x.startswith('Translate '))
-    named = [r.strip() for r in line[len('Translate '):].split('.')[0].split(',')]
+    named = [f's{n}' for n in empty_translations(asked)]
     return reply(calls=[call(i, 'set_field', {'document': 'Story', 'refs': [sid], 'field': 'Translation',
                                               'value': f'{sid} by the job.'}) for i, sid in enumerate(named, 1)])
 
@@ -145,8 +147,10 @@ def test_a_translation_the_starter_deleted_after_a_lost_answer_is_not_written_ag
     from plaid_client import PlaidAPIError, PlaidClient
     from plaid_client.batch import PlaidBatch
     model = use(monkeypatch, Model(_translate))
-    made = writer.jobs.create(s.project_id, 'igt', ['translate'])
+    made = writer.jobs.create(s.project_id, 'igt', 'Gloss the words.')
     claimed = admin.jobs.claim(WORKER, 'fake/m', ['igt'])
+    if claimed:
+        admin.jobs.add_decisions(claimed['job']['id'], WORKER, [plan_row()])
     assert claimed and claimed['job']['id'] == made['id']
     offset, deleted = {'s': 0.0}, []
 
@@ -167,7 +171,8 @@ def test_a_translation_the_starter_deleted_after_a_lost_answer_is_not_written_ag
             raise PlaidAPIError('HTTP 502 lost after landing', status=502, method='POST', url='/batch')
         return out
     monkeypatch.setattr(PlaidBatch, 'submit', submit)
-    runner = IgtRunner(job, ModelConfig(model='fake/m', stream=False, max_steps=1000), count=count_chars)
+    runner = IgtRunner(job, ModelConfig(model='fake/m', stream=False, max_steps=1000), count=count_chars,
+                       write_summary=False)
     finished = run_job(job, runner)
     assert deleted, 'the starter deleted the job\'s translation in the wait'
     assert finished['state'] == 'done', (finished.get('reason'), writer.jobs.get(made['id']).get('message'))

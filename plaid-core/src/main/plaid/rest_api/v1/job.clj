@@ -115,18 +115,16 @@
 
     [""
      {:post {:summary (str "Start a job on the project, for the signed-in writer. <body>app</body> names "
-                           "the app (`igt`), <body>tasks</body> its tasks (`translate`, `gloss`, `link`, and "
-                           "`link` needs `gloss`), <body>documents</body> the documents in order (left out: "
-                           "every document of the project, by name), <body>note</body> the instructions for "
-                           "the model. 409 with <code>job-active</code> while the project has a job that has "
+                           "the app (`igt`), <body>documents</body> the documents in order (left out: "
+                           "every document of the project, by name), <body>instructions</body> what the job "
+                           "is to do, required. 409 with <code>job-active</code> while the project has a job that has "
                            "not ended. Refused to a delegated token.")
              :middleware [wrap-no-delegated [pra/wrap-writer-required (fn [r] (-> r :parameters :path :id))]]
              :parameters {:body [:map
                                  [:id {:optional true} :uuid]
                                  [:app :string]
-                                 [:tasks [:vector :string]]
                                  [:documents {:optional true} [:vector :uuid]]
-                                 [:note {:optional true} [:maybe :string]]]}
+                                 [:instructions {:optional true} [:maybe :string]]]}
              :handler (fn [{{{:keys [id]} :path body :body} :parameters db :db user-id :user/id}]
                         (answer #(hash-map :status 201
                                            :body (job/create! db id body user-id))))}
@@ -170,12 +168,12 @@
     ["/worker"
      {:conflicting true
       :get {:summary (str "When a job worker last asked for work or reported, since the server started, "
-                          "and the model it runs, with the longest note and the most documents a job takes.")
+                          "and the model it runs, with the longest instructions and the most documents a job takes.")
             :handler (fn [_]
                        (let [{:keys [seen-at model]} (events/job-worker-seen)]
                          {:status 200 :body {:seen-at (iso seen-at)
                                              :model model
-                                             :note-max-chars job/note-max-chars
+                                             :instructions-max-chars job/instructions-max-chars
                                              :documents-max job/documents-max}}))}}]
 
     ["/model-busy"

@@ -28,7 +28,8 @@ def test_a_group_begun_before_the_job_and_written_in_after_it_is_a_person_in_the
     time.sleep(1.5)
     with writer.operation('later', group_id=group):
         writer.documents.set_metadata(d1, {'a': 2})
-    runner = IgtRunner(job, ModelConfig(model='fake/m', stream=False, max_steps=1000), count=count_chars)
+    runner = IgtRunner(job, ModelConfig(model='fake/m', stream=False, max_steps=1000), count=count_chars,
+                       write_summary=False)
     newest = runner.newest_change(admin, d1)
     assert newest['time'] < job.job['created_at'] < newest['end_time'], (newest, job.job['created_at'])
     assert runner.in_use(newest, f'job:{job.id}/')

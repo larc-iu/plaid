@@ -15,14 +15,14 @@ TASKS = ['gloss', 'link']
 def _ws(project=None):
     client = JobClient({'d1': document('d1', 'Story', [{'words': ['gam', 'new']}])}, project=project)
     p = load_project(client, 'p1')
-    ws = JobWorkspace(client, p, TASKS)
+    ws = JobWorkspace(client, p)
     doc = ws.doc('d1')
-    ws.stretch = Stretch(doc, p, doc.sentences, TASKS, 'J1')
+    ws.stretch = Stretch(doc, p, doc.sentences, 'J1')
     return ws
 
 
 def _create(ws, form, gloss, **extra):
-    return toolkit.job_call_tool(ws, 'create_entry', {'form': form, 'fields': {'gloss': gloss, **extra}}, TASKS)
+    return toolkit.job_piece_call(ws, 'create_entry', {'form': form, 'fields': {'gloss': gloss, **extra}})
 
 
 def test_an_entry_that_fits_is_named_and_not_created():
@@ -49,7 +49,7 @@ def test_no_entry_is_created_in_a_borrowed_lexicon():
 
 def test_an_entry_a_job_creates_is_a_machine_draft_whatever_the_model_staged(monkeypatch):
     client = JobClient({'d1': document('d1', 'Story', [{'words': ['tok']}])})
-    job = start(client, TASKS)
+    job = start(client)
 
     def answer(asked, n, kwargs):
         if n == 1:
@@ -91,7 +91,7 @@ def _entries_job(maintainer, lexicon=None, ref_field=False):
     p['writers'] = [] if maintainer else ['user@example.com']
     doc = document('d1', 'Story', [{'words': [('bb', [('bb', 'BB', 'e-linked')], 'J9')]}])
     client = JobClient({'d1': doc}, lexicon=lexicon or _lexicon('J9'), project=p)
-    job = start(client, TASKS, id='J9')
+    job = start(client, id='J9')
     return client, job
 
 
@@ -179,12 +179,16 @@ def test_a_draft_with_nothing_on_it_is_deleted_through_the_apps_delete_rules():
     assert [e['id'] for e in out['deleted']] == ['e-unlinked']
 
 
-def test_an_entry_the_model_staged_and_nothing_linked_is_listed_and_not_created(monkeypatch):
-    """J-INT 4: a create_entry no link names is not written, and the report
-    says what the model wanted."""
+def _proposed_creates(report):
+    return [(c['kind'], c['to']) for c in report['proposed'] if c['kind'] == 'create_entry']
+
+
+def test_an_entry_the_model_staged_and_nothing_linked_is_a_proposed_change_and_not_created(monkeypatch):
+    """J-INT 4 under the apply rule: a create_entry no applied link names is
+    not written, and the report lists it among the proposed changes."""
     from plaid_agent.core.job import run_job
     client = JobClient({'d1': document('d1', 'Story', [{'words': ['tok']}])})
-    job = start(client, TASKS)
+    job = start(client)
 
     def answer(asked, n, kwargs):
         if n == 1:
@@ -198,14 +202,16 @@ def test_an_entry_the_model_staged_and_nothing_linked_is_listed_and_not_created(
     use(monkeypatch, Model(answer))
     finished = run_job(job, runner(job))
     assert not [p for k, p in client.calls if k == 'vocab_items.create']
-    assert finished['report']['entries']['proposed'] == [{'lexicon': 'v1', 'form': 'tok', 'gloss': 'stone'}]
+    assert _proposed_creates(finished['report']) == [('create_entry', 'tok')]
+    assert 'proposed' not in finished['report']['entries'], 'one list of what was not applied'
 
 
 def test_a_proposed_entry_survives_a_new_worker_taking_the_job(monkeypatch):
-    """The list is kept among the job's decisions, not only in the worker."""
+    """The proposed changes are kept among the job's decisions, not only in
+    the worker."""
     from plaid_agent.core.job import run_job
     client = JobClient({'d1': document('d1', 'Story', [{'words': ['tok']}])})
-    job = start(client, TASKS)
+    job = start(client)
 
     def answer(asked, n, kwargs):
         if n == 1:
@@ -220,7 +226,7 @@ def test_a_proposed_entry_survives_a_new_worker_taking_the_job(monkeypatch):
     runner(job).document('d1')
     job.status['phase'] = 'harmonizing'
     finished = run_job(job, runner(job))  # a new runner, as a resumed worker builds
-    assert finished['report']['entries']['proposed'] == [{'lexicon': 'v1', 'form': 'tok', 'gloss': 'stone'}]
+    assert _proposed_creates(finished['report']) == [('create_entry', 'tok')]
 
 
 def _tok(link):
@@ -235,20 +241,20 @@ def _tok(link):
 
 
 def _proposed_rows(client, job):
-    return [f for (f, _k) in client.jobs.decision_rows.get(job.id, {}) if f.startswith(' proposed ')]
+    return [f for (f, _k) in client.jobs.decision_rows.get(job.id, {}) if f.startswith(' change ')]
 
 
-def test_an_entry_is_recorded_as_proposed_only_once_the_stretch_was_written(monkeypatch):
+def test_a_change_is_recorded_as_proposed_only_once_the_stretch_was_written(monkeypatch):
     """REV-J-B2 S4: a stretch whose write never landed (refused twice as the
     document moved under it, so put off) records no proposal. Taken again,
-    the model links the entry and it is created: the report never calls it
-    proposed."""
+    the model links the entry and it is created: the report proposes
+    nothing."""
     from plaid_client import PlaidAPIError
     from plaid_agent.core.job import run_job
     from plaid_agent.core.plan import PlanError
     from plaid_agent.igt import job as igt_job
     client = JobClient({'d1': document('d1', 'Story', [{'words': ['tok']}])})
-    job = start(client, TASKS)
+    job = start(client)
     real, refusals = igt_job.execute_plan, {'n': 2}
 
     def execute(c, ops, **kw):
@@ -274,29 +280,4 @@ def test_an_entry_is_recorded_as_proposed_only_once_the_stretch_was_written(monk
     assert len(stretches) == 2, 'the stretch was asked again once the document was put off'
     assert [p for k, p in client.calls if k == 'vocab_items.create'], 'linked the second time, so created'
     assert not _proposed_rows(client, job), 'the write that would have proposed it never landed'
-    assert finished['report']['entries']['proposed'] == []
-
-
-def test_a_proposal_the_job_created_later_is_not_reported_as_proposed(monkeypatch):
-    """A proposal recorded by one stretch, the same entry created by a later
-    one: the report lists it created, never proposed as well."""
-    from plaid_agent.core.job import run_job
-    lexicon = _lexicon('J9')
-    lexicon['items'].append({'id': 'e-tok', 'form': 'tok', 'metadata': {'gloss': 'stone', 'status': 'machine',
-                                                                       **stamp('J9')}})
-    client = JobClient({'d1': document('d1', 'Story', [{'words': [('tok', [('tok', 'stone', 'e-tok')], 'J9')]}])},
-                       lexicon=lexicon)
-    job = start(client, TASKS, id='J9')
-    job.update_row('d1', state='done')
-    runner(job).propose(job_project_obj(client), {'kind': 'create_entry', 'vocab_id': 'v1', 'form': 'tok',
-                                                  'metadata': {'gloss': 'stone'}})
-    assert _proposed_rows(client, job)
-    job.status['phase'] = 'harmonizing'
-    use(monkeypatch, Model(lambda asked, n, kwargs: reply('Done.')))
-    finished = run_job(job, runner(job))
-    assert {e['form'] for e in finished['report']['entries']['created']} >= {'tok'}
-    assert finished['report']['entries']['proposed'] == []
-
-
-def job_project_obj(client):
-    return load_project(client, 'p1')
+    assert finished['report']['proposed'] == []

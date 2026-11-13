@@ -102,38 +102,36 @@ def job_out() -> str:
 
 
 def render_job() -> str:
-    """What an unattended job's model sees on every call of a stretch: the
-    job's system prompt and its tools, for a job of every task, over the igt
-    tests' project."""
+    """What an unattended job's model contexts see: the planning context's
+    prompt and tools, a piece's prompt and tools (the chat's own, less those
+    no job is offered), and the final context's prompt, over the igt tests'
+    project."""
     from plaid_agent.igt import prompt, toolkit
+    from plaid_agent.igt.job import JobWorkspace
     ws = _workspace('igt')
-    tasks = ('translate', 'gloss', 'link')
-    tools = toolkit.job_tools(tasks)
+    piece = JobWorkspace(ws.client, ws.project)
+    planning = JobWorkspace(ws.client, ws.project, mode=JobWorkspace.PLAN)
+    tools = toolkit.job_piece_tools(piece)
+    plan_tools = toolkit.job_plan_tools(planning)
     intro = textwrap.fill(
-        'The system prompt and the tools an unattended job sends to the model on every call of a stretch, '
-        'rendered for the small project the tests use (`tests/fixtures.py`, project "Demo") for a job of every '
-        'task. This file is a snapshot for browsing and may lag behind the code: the prompt is built in '
-        '`src/plaid_agent/igt/prompt.py` (`build_job_prompt`) and the tools are chosen in '
-        '`src/plaid_agent/igt/toolkit.py` (`job_tools`). A job of fewer tasks is told only of those tasks and '
-        'offered only their plan tools, shown at the end. '
-        'Regenerate it with', width=80)
-    turn = ('Each stretch is a conversation of its own: this system prompt, one message the\n'
-            'worker builds (the target sentences, the context before them, how their forms\n'
-            'were analysed before, the starter\'s instructions), and the tools below. What\n'
-            'the model stages is written when it ends, as machine proposals (`igt/job.py`).')
-    parts = [f'# What a job\'s model sees\n\n{intro}\n\n    bb sample-prompts\n\n{turn}\n',
-             '\n## System prompt\n', '```text', prompt.build_job_prompt(ws.project).rstrip(), '```\n',
-             f'## Tools\n\n{len(tools)} tools, in the order the model receives them: '
-             f'{len(toolkit.job_plan_names(tasks))} plan a change (`PLAN:`), the rest read the project.\n']
-    parts += [render_tool(t) for t in tools]
-    # What a job of fewer tasks is told instead: the prompt from "What to
-    # stage" on, the rest being the same, and the plan tools it is offered.
-    for fewer in (('translate',), ('gloss',), ('gloss', 'link'), ('translate', 'gloss')):
-        text = prompt.build_job_prompt(ws.project, fewer)
-        names = ', '.join(toolkit.job_plan_names(fewer))
-        parts += [f'\n## A job of {" and ".join(fewer)}\n',
-                  f'The same prompt down to "What to stage", then:\n', '```text',
-                  text[text.index('What to stage:'):].rstrip(), '```\n', f'Plan tools: {names}.\n']
+        'The system prompts and the tools an unattended job sends to the model, rendered for the small project '
+        'the tests use (`tests/fixtures.py`, project "Demo"). A job is the assistant, unattended: its planning '
+        'context cuts the work into pieces, each piece is a context of its own with the chat\'s tools, and a '
+        'final context writes the report\'s summary. This file is a snapshot for browsing and may lag behind the '
+        'code: the prompts are built in `src/plaid_agent/igt/prompt.py` (`build_plan_prompt`, `build_job_prompt`, '
+        '`build_summary_prompt`) and the tools are chosen in `src/plaid_agent/igt/toolkit.py`. Regenerate it with',
+        width=80)
+    names = [t['function']['name'] for t in tools]
+    parts = [f'# What a job\'s model sees\n\n{intro}\n\n    bb sample-prompts\n',
+             '\n## The planning context\n', 'Its system prompt:\n', '```text',
+             prompt.build_plan_prompt(ws.project).rstrip(), '```\n',
+             f'Its {len(plan_tools)} tools are the chat\'s reads and code, as `SAMPLE_PROMPT.md` shows them, and '
+             '`plan_work`:\n', render_tool(toolkit.PLAN_WORK),
+             '\n## A piece\n', 'Its system prompt:\n', '```text', prompt.build_job_prompt(ws.project).rstrip(), '```\n',
+             f'Its {len(tools)} tools are the chat\'s, as `SAMPLE_PROMPT.md` shows them, less '
+             + ', '.join(f'`{n}`' for n in toolkit.JOB_LEFT_OUT) + ': ' + ', '.join(names) + '.\n',
+             '\n## The final context\n', 'Its system prompt, with no tools:\n', '```text',
+             prompt.build_summary_prompt(ws.project).rstrip(), '```\n']
     return '\n'.join(parts)
 
 
@@ -142,9 +140,11 @@ def copy_igt_guide() -> None:
     app's sources (plaid_agent/igt/guide.py reads the repository's own where
     it can)."""
     from plaid_agent.igt.guide import PACKAGED_GUIDE, REPO_GUIDE
-    if REPO_GUIDE.is_file():
-        PACKAGED_GUIDE.write_text(REPO_GUIDE.read_text(encoding='utf-8'), encoding='utf-8')
-        print(f'wrote {os.path.normpath(str(PACKAGED_GUIDE))}')
+    from plaid_agent.igt.jobread import PACKAGED_SECTIONS, REPO_SECTIONS
+    for repo, packaged in ((REPO_GUIDE, PACKAGED_GUIDE), (REPO_SECTIONS, PACKAGED_SECTIONS)):
+        if repo.is_file():
+            packaged.write_text(repo.read_text(encoding='utf-8'), encoding='utf-8')
+            print(f'wrote {os.path.normpath(str(packaged))}')
 
 
 def main() -> None:

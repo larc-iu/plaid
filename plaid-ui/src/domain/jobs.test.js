@@ -11,7 +11,6 @@ import {
   jobStateText,
   jobSilentText,
   jobStoppable,
-  jobTaskText,
   workerSeen,
 } from './jobs.js';
 
@@ -161,9 +160,12 @@ describe('the words', () => {
   });
 
   it('names each phase', () => {
-    expect(['checking', 'glossing', 'harmonizing', 'reporting'].map(jobPhaseText)).toEqual([
+    expect(
+      ['checking', 'planning', 'working', 'harmonizing', 'reporting'].map(jobPhaseText),
+    ).toEqual([
       'Checking',
-      'Analyzing',
+      'Planning',
+      'Working',
       'Making analyses consistent',
       'Writing the report',
     ]);
@@ -178,14 +180,6 @@ describe('the words', () => {
     ).toEqual(['Waiting', 'Working', 'Deferred', 'Done', 'In use', 'Deleted', 'Not reached']);
   });
 
-  it('names each task as the start dialog offers it', () => {
-    expect(['translate', 'gloss', 'link'].map(jobTaskText)).toEqual([
-      'Translate',
-      'Segment and gloss',
-      'Link to lexicon',
-    ]);
-  });
-
   it('says why a job ended by its message, else in words for its reason', () => {
     expect(
       jobReasonText({
@@ -194,19 +188,11 @@ describe('the words', () => {
       }),
     ).toBe('The project’s guidelines are 31,204 characters. A job reads at most 24,000.');
     expect(
-      [
-        'starter-access',
-        'missing-field',
-        'no-lexicon',
-        'no-status-field',
-        'guidelines-too-long',
-        'no-documents',
-      ].map((reason) => jobReasonText({ reason, message: null })),
+      ['starter-access', 'guidelines-too-long', 'no-documents'].map((reason) =>
+        jobReasonText({ reason, message: null }),
+      ),
     ).toEqual([
       'The person who started it can no longer write in this project.',
-      'The project has no field for this task.',
-      'The project has no lexicon.',
-      'A lexicon has no Status field.',
       'The guidelines are too long for a job.',
       'None of its documents are left.',
     ]);

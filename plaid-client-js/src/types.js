@@ -183,7 +183,7 @@
  * A document's row of a job, in the job's order. `name` is the document's
  * name now, null once it is deleted. `counts` holds `translations`,
  * `refreshed`, `words`, `links`, `entries`, `left`, `changed` and
- * `protected`. `lastSentence` is the cursor, the id of the last sentence the
+ * `proposed`. `lastSentence` is the cursor, the id of the last sentence the
  * job finished.
  * @typedef {object} JobDocument
  * @property {string} documentId
@@ -250,8 +250,7 @@
  * @typedef {object} JobReport
  * @property {string} state
  * @property {string | null} reason
- * @property {string[]} tasks
- * @property {string | null} note
+ * @property {string | null} instructions
  * @property {string} startedBy
  * @property {string | null} model
  * @property {string | null} startedAt
@@ -278,12 +277,11 @@
  * @property {string} id
  * @property {string} project
  * @property {string} app
- * @property {string[]} tasks
- * @property {string | null} note
+ * @property {string | null} instructions
  * @property {string} startedBy
  * @property {string | null} startedByName
  * @property {"waiting" | "running" | "stopping" | "done" | "cancelled" | "failed"} state
- * @property {"checking" | "glossing" | "harmonizing" | "reporting" | null} phase
+ * @property {"checking" | "planning" | "working" | "harmonizing" | "reporting" | null} phase
  * @property {string | null} reason
  * @property {string | null} message
  * @property {"people" | "model" | null} waitingFor

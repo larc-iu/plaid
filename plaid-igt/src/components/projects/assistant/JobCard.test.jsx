@@ -19,9 +19,8 @@ const card = (fields = {}) => ({
   all: false,
   count: 2,
   documents: docs(2),
-  tasks: ['gloss', 'link'],
   brief: 'Gloss ka as go.',
-  summary: '2 documents, gloss and link',
+  summary: '2 documents',
   status: null,
   ...fields,
 });
@@ -32,7 +31,12 @@ const PROJECT = { id: 'p1', writers: ['w@x'], readers: ['r@x'], maintainers: [] 
 
 const fakeClient = ({ create, seenAt = new Date().toISOString() } = {}) => ({
   jobs: {
-    worker: vi.fn(async () => ({ seenAt, model: 'm', noteMaxChars: 20, documentsMax: 500 })),
+    worker: vi.fn(async () => ({
+      seenAt,
+      model: 'm',
+      instructionsMaxChars: 20,
+      documentsMax: 500,
+    })),
     create: vi.fn(create ?? (async (_p, body) => ({ id: body.id, state: 'waiting' }))),
   },
   projects: { get: vi.fn(async () => PROJECT) },
@@ -69,9 +73,9 @@ describe('the job card', () => {
     const { v } = await draw({ card: card({ documents: docs(7), count: 7 }) });
     expect(text(v)).toContain('Proposed job');
     expect(text(v)).toContain('Story 1, Story 2, Story 3, Story 4, Story 5 and 2 more');
-    expect(text(v)).toContain('Segment and gloss, Link to lexicon');
+    expect(text(v)).not.toContain('Tasks');
     expect(v.container.querySelector('textarea').value).toBe('Gloss ka as go.');
-    expect(byText(v.container, '[data-testid="job-note-count"]', '15 / 20')).toBeTruthy();
+    expect(byText(v.container, '[data-testid="job-instructions-count"]', '15 / 20')).toBeTruthy();
     expect(button(v, 'Start job').disabled).toBe(false);
     expect(button(v, 'Discard')).toBeTruthy();
     expect(text(v)).not.toContain('No job worker is running.');
@@ -107,9 +111,8 @@ describe('the job card', () => {
     await v.step(async () => {});
     expect(client.jobs.create).toHaveBeenCalledWith('p1', {
       app: 'igt',
-      tasks: ['gloss', 'link'],
       documents: ['d1', 'd2'],
-      note: 'Gloss ka as come.',
+      instructions: 'Gloss ka as come.',
       id: CARD_ID,
     });
     expect(onSettle).toHaveBeenCalledWith({ outcome: 'started', brief: 'Gloss ka as come.' });
@@ -243,7 +246,7 @@ describe('the job card', () => {
     const { v } = await draw({ card: card() });
     await v.step(() => typeBrief(v, 'x'.repeat(21)));
     expect(button(v, 'Start job').disabled).toBe(true);
-    expect(byText(v.container, '[data-testid="job-note-count"]', '21 / 20')).toBeTruthy();
+    expect(byText(v.container, '[data-testid="job-instructions-count"]', '21 / 20')).toBeTruthy();
   });
 
   it('waits to start or discard while a turn runs, as a plan card does', async () => {
@@ -308,10 +311,10 @@ describe('the job card', () => {
 
     it('not started: the reason, or the job that stood in its way with a link', async () => {
       let { v } = await draw({
-        card: card({ status: 'failed', reason: 'tasks: link needs gloss.' }),
+        card: card({ status: 'failed', reason: 'instructions: say what the job is to do.' }),
       });
       expect(text(v)).toContain('Not started');
-      expect(text(v)).toContain('tasks: link needs gloss.');
+      expect(text(v)).toContain('instructions: say what the job is to do.');
       ({ v } = await draw({ card: card({ status: 'failed', reason: 'x', activeJob: 'j9' }) }));
       expect(text(v)).toContain('This project already has a job.');
       expect(byText(v.container, 'a', 'Open it').getAttribute('href')).toBe('/projects/p1/jobs/j9');
