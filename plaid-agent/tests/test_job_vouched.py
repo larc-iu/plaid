@@ -396,3 +396,23 @@ def test_a_record_cuts_the_blanks_first_and_then_the_words():
     assert len(text) <= 4000 and mark['left'] == [] and 0 < len(mark['words']) < 200
     small = json.loads(igt_job.mark_text({'left': 1}, 'd1', left[:1], dict(list(words.items())[:3])))
     assert len(small['left']) == 1 and len(small['words']) == 3
+
+
+def test_a_write_sent_once_more_draws_its_keys_from_a_seed_of_its_own(monkeypatch):
+    """Whatever a refused try stored under its keys, the next try's requests
+    never meet it (REV-J-B3 B3-8)."""
+    client, job, clock = _job(monkeypatch)
+    real = igt_job.execute_plan
+    seeds = []
+
+    def execute(c, ops, **kw):
+        seeds.append(kw.get('seed'))
+        if len(seeds) == 1:
+            try:
+                raise PlaidAPIError('HTTP 409 version', status=409)
+            except PlaidAPIError as e:
+                raise PlanError('moved', 0, len(ops)) from e
+        return real(c, ops, **kw)
+    monkeypatch.setattr(igt_job, 'execute_plan', execute)
+    assert runner(job).document('d1') == 'done'
+    assert len(seeds) == 2 and seeds[0] != seeds[1]

@@ -1180,8 +1180,10 @@ class IgtRunner:
         if not group:
             group = uuid7()
             job.update_row(document_id, gloss_group=group)
-        seed_id = uuid7()
         for tries in range(2):
+            # Keys of its own for each try (REV-J-B3 B3-8): a try never
+            # sends a request under a key an earlier try's request used.
+            seed_id = uuid7()
             client = job.client()
             lock = self.hold(client, document_id)
             try:
@@ -1197,7 +1199,9 @@ class IgtRunner:
             except PlanError as e:
                 # The starter's own browser wrote between the read under the
                 # lock and the write (strict mode): taken again at once when
-                # nothing of it landed. When a batch of it had landed, the
+                # nothing of it landed. Sent again after a batch had landed, it
+                # would send other requests under that batch's keys, which core
+                # refuses (422 idempotency-key-reused, REV-J-B3 B3-8). When a batch of it had landed, the
                 # document is put off: it is recorded when it comes back, as
                 # an interrupted write is (``settle``), never vouched for past
                 # the person's edit (REV-J-B3 B3-2).
