@@ -110,3 +110,66 @@ def test_what_keeps_a_job_off_a_blank_word(world, monkeypatch):
         filled[mark] = b in glossed
         assert (f's{i}.w1' in proposed) != filled[mark], (mark, proposed)
     assert filled == MARKS, filled
+
+
+#: How a person marked each sentence of a text with no translation, and
+#: whether a translating job fills its translation (True) or proposes it.
+SENTENCE_MARKS = {'sentence-comment': False, 'empty-translation': False, 'word-comment': True, 'nothing': True}
+
+
+def test_what_keeps_a_job_off_an_empty_translation(monkeypatch):
+    """The lead's ruling on REV-JG3-4: a sentence's value as a word's. A
+    comment on the sentence, or a person's empty translation span, keeps a
+    translating job off the translation, which is proposed. A comment on a
+    word of the sentence does not."""
+    try:
+        admin = login()
+    except Exception as e:  # noqa: BLE001
+        _skip_or_fail(f'no core: {e}')
+    from plaid_client import PlaidClient
+    from fixtures import TRANS
+    email = f'job-blank-{uuid.uuid4().hex[:8]}@example.org'
+    admin.users.create(email, 'job-blank-pass-1', False)
+    writer = PlaidClient.login(core_url(), email, 'job-blank-pass-1')
+    sentences = [{'words': [f'bw{i}']} for i in range(len(SENTENCE_MARKS))]
+    s = seed(admin, job_project(), {'dA': document('dA', 'Alpha', sentences)},
+             {'v1': {'id': 'v1', 'name': 'Lexicon', 'project': 'p1', 'items': []}},
+             name=f'job blank {uuid.uuid4().hex[:6]}')
+    try:
+        admin.projects.add_writer(s.project_id, email)
+        for i, mark in enumerate(SENTENCE_MARKS, start=1):
+            sid = s.ids[f'dA-s{i}']
+            if mark == 'sentence-comment':
+                writer.comments.create('token', sid, 'Ask the speaker before translating.')
+            elif mark == 'empty-translation':
+                writer.spans.create(s.ids[TRANS], [sid], '')
+            elif mark == 'word-comment':
+                writer.comments.create('token', s.ids[f'dA-s{i}w1'], 'Not sure about this word.')
+
+        def answer(asked, n, kwargs):
+            if n > 1:
+                return reply('Translated.')
+            return reply(calls=[call(i, 'set_field', {'document': 'Alpha', 'refs': [f's{i}'], 'field': 'Translation',
+                                                      'value': 'MACHINE'})
+                                for i in range(1, len(SENTENCE_MARKS) + 1)])
+        use(monkeypatch, Model(answer))
+        made = writer.jobs.create(s.project_id, 'igt', 'Translate every sentence.')
+        claimed = admin.jobs.claim(WORKER, 'fake/m', ['igt'])
+        assert claimed and claimed['job']['id'] == made['id']
+        admin.jobs.add_decisions(made['id'], WORKER, [plan_row('document')])
+        job = Job(admin, claimed, WORKER, client_for=lambda token: PlaidClient(core_url(), token), model='fake/m',
+                  sleep=lambda sec: None, now=lambda: time.time() + 3600)
+        finished = run_job(job, IgtRunner(job, ModelConfig(model='fake/m', stream=False, max_steps=1000),
+                                          count=count_chars, write_summary=False))
+        assert finished['state'] == 'done', (finished.get('reason'), job.status.get('message'))
+        raw = admin.documents.get(s.ids['dA'], include_body=True)
+        machine = {sp['tokens'][0] for sp in _spans(raw) if sp.get('value') == 'MACHINE'}
+        proposed = {c.get('ref') for c in finished['report']['proposed']}
+        filled = {mark: s.ids[f'dA-s{i}'] in machine for i, mark in enumerate(SENTENCE_MARKS, start=1)}
+        for i, mark in enumerate(SENTENCE_MARKS, start=1):
+            assert (f's{i}' in proposed) != filled[mark], (mark, proposed)
+        assert filled == SENTENCE_MARKS, filled
+        empty = [sp for sp in _spans(raw) if sp['tokens'] == [s.ids['dA-s2']]]
+        assert [sp.get('value') for sp in empty] == [''], 'the person\'s empty span is as they left it'
+    finally:
+        s.delete()

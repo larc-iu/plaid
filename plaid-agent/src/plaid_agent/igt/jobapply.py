@@ -84,7 +84,9 @@ class Rule:
     work."""
 
     def __init__(self, doc, project: IgtProject, known, *, own: Callable[[Any], bool],
-                 target: Callable[[Any], bool], tag: Callable[[str], str], job_piece: Callable[[Any], bool]):
+                 target: Callable[[Any], bool], tag: Callable[[str], str], job_piece: Callable[[Any], bool],
+                 value_blank: Optional[Callable[[Any, str], bool]] = None,
+                 value_own: Optional[Callable[[Any, str], bool]] = None):
         self.doc = doc
         self.project = project
         self.known = known
@@ -92,6 +94,12 @@ class Rule:
         self.target = target
         self.tag = tag
         self.job_piece = job_piece
+        # A sentence's value: empty for the job (``blank_value``) and its own
+        # to revise (``own_value``), read with the document's comments. With
+        # no comments read: no span at all, and the job's own span.
+        self.value_blank = value_blank or (lambda s, name: s.fields.get(name) is None)
+        self.value_own = value_own or (lambda s, name: s.fields.get(name) is not None
+                                       and self.job_piece(s.fields[name].metadata))
 
     def wrote_in(self, s) -> bool:
         return bool(self.known) and any(self.tag(w.id) in self.known for w in s.words)
@@ -107,12 +115,14 @@ class Rule:
         holder = m if f.scope == 'Morpheme' else w if f.scope == 'Word' else s
         if holder is None:
             return False
+        if f.scope == 'Sentence':
+            # The same rule as a word's (REV-JG3-4): nothing of anyone else's
+            # there, an empty span included, and no comment on it.
+            if self.value_blank(s, f.name):
+                return not self.wrote_in(s)
+            return self.value_own(s, f.name)
         sp = holder.fields.get(f.name)
         empty = sp is None or (sp.value or '') == ''
-        if f.scope == 'Sentence':
-            if empty:
-                return not self.wrote_in(s)
-            return self.job_piece(sp.metadata)
         # A word's or a morpheme's value: filled where the word is blank and
         # its sentence new to the job, or the word's whole analysis is the
         # job's own vouched work (where an empty value of it is the job's to

@@ -189,6 +189,57 @@ def test_a_blank_word_with_neither_is_filled():
     assert kept and not proposed
 
 
+@pytest.mark.parametrize('why', ['empty-span', 'sentence-comment', 'span-comment'])
+def test_a_sentence_value_something_hangs_on_is_not_empty(why):
+    """THE same rule for a sentence's values as for a word (the lead's ruling
+    on REV-JG3-4): a sentence value is the job's to fill only when no span
+    of anyone's but the job's is there, an empty one included, and no
+    comment hangs on the sentence or on that field. A comment on the
+    sentence keeps a translating job off its translation, and on the job's
+    own translation it keeps the job from revising it: each is proposed."""
+    sentences = _story()
+    if why == 'empty-span':
+        sentences[2]['translation'] = ('', 'human')
+    s = _Setup(sentences)
+    ref = 's4' if why == 'span-comment' else 's3'
+    if why != 'empty-span':
+        on = {'sentence-comment': 'd1-s3', 'span-comment': 'sp-t-d1-s4'}[why]
+        s.runner.commented = lambda client, project, document_id: {on}
+    s.stage('set_field', {'refs': [ref], 'field': 'Translation', 'value': 'Machine words.'})
+    kept, proposed = s.decide()
+    assert not kept and [c['ref'] for c in proposed] == [ref], (kept, proposed)
+
+
+def test_a_comment_on_a_word_does_not_keep_a_job_off_its_sentences_translation():
+    """The guard: a comment on a word is on the word, not on its sentence's
+    translation, which is filled when nothing else is on it."""
+    s = _Setup()
+    s.runner.commented = lambda client, project, document_id: {'d1-s3w1'}
+    s.stage('set_field', {'refs': ['s3'], 'field': 'Translation', 'value': 'Machine words.'})
+    kept, proposed = s.decide()
+    assert [o['kind'] for o in kept] == ['set_span'] and not proposed
+
+
+def test_a_persons_empty_translation_is_never_restamped_as_the_jobs(monkeypatch):
+    """REV-JG3-4: a sentence whose translation span a person left empty (an
+    import, the API). The job's translation of it is proposed, and the
+    person's span is never written."""
+    client = JobClient({'d1': document('d1', 'Story 1', [{'words': ['ka'], 'translation': ('', 'human')}])})
+    job = start(client, 'Translate every sentence.', id=J, plan='document')
+
+    def answer(asked, n, kwargs):
+        if n == 1:
+            return reply(calls=[call(1, 'set_field', {'document': 'Story 1', 'refs': ['s1'], 'field': 'Translation',
+                                                      'value': 'Machine words.'})])
+        return reply('Translated s1.')
+    use(monkeypatch, Model(answer))
+    from plaid_agent.core.job import run_job
+    finished = run_job(job, runner(job))
+    assert finished['state'] == 'done'
+    assert not [k for k, _ in client.calls if k.startswith('spans.')], 'the person\'s empty span was written'
+    assert [c['ref'] for c in finished['report']['proposed']] == ['s1']
+
+
 def test_an_empty_value_is_a_deletion_and_is_proposed():
     s = _Setup()
     s.stage('set_field', {'refs': ['s4'], 'field': 'Translation', 'value': ''})

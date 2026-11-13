@@ -404,6 +404,29 @@ def blank_word(w: Word, job_id: str, commented=frozenset()) -> bool:
     return not (word_ids(w) & set(commented))
 
 
+def blank_value(s: Sentence, name: str, job_id: str, commented=frozenset()) -> bool:
+    """THE empty sentence value of the apply rule, beside :func:`blank_word`
+    and of its shape (the lead's ruling on REV-JG3-4): a sentence's value of
+    field ``name`` (its translation, any sentence field) is the job's to
+    fill only when no span is there but the job's own unverified one, and
+    that empty (a person's empty span keeps the job off), and no comment
+    hangs on the sentence or on that field's span (``commented``, the ids
+    the document's comments are anchored to). A comment on a word of the
+    sentence is not on the sentence."""
+    sp = s.fields.get(name)
+    if sp is not None and ((sp.value or '') != '' or not job_piece(sp.metadata, job_id)):
+        return False
+    return not (({s.id} | ({sp.id} if sp is not None else set())) & set(commented))
+
+
+def own_value(s: Sentence, name: str, job_id: str, commented=frozenset()) -> bool:
+    """A sentence's value of field ``name`` that the job may revise: its own
+    unverified work (:func:`job_piece`), with no comment on the sentence or
+    on that field's span, as harmonize leaves a word with a comment."""
+    sp = s.fields.get(name)
+    return sp is not None and job_piece(sp.metadata, job_id) and not ({s.id, sp.id} & set(commented))
+
+
 #: How many characters of a word's id and of its analysis key a sentence's
 #: record keeps for each word the job vouches for (CONTRACT, added by J-FIX-B3).
 WORD_KEY_CHARS = 12
@@ -2277,8 +2300,15 @@ class IgtRunner:
         def blank(w) -> bool:
             # The comments are read only for a word blank by its pieces.
             return blank_word(w, self.job.id) and blank_word(w, self.job.id, commented())
+
+        def value_blank(s, name) -> bool:
+            return blank_value(s, name, self.job.id) and blank_value(s, name, self.job.id, commented())
+
+        def value_own(s, name) -> bool:
+            return own_value(s, name, self.job.id) and own_value(s, name, self.job.id, commented())
         rule = jobapply.Rule(fresh, project, known, own=own, target=blank, tag=word_tag,
-                             job_piece=lambda md: job_piece(md, self.job.id))
+                             job_piece=lambda md: job_piece(md, self.job.id), value_blank=value_blank,
+                             value_own=value_own)
 
         def sentence_of(token):
             s = st.sentence_of(token)
