@@ -682,6 +682,21 @@ def test_a_sentence_deletion_that_landed_before_a_crash_is_never_made_again(monk
     assert all(_mark(client, f'd1-s{i}') for i in (1, 2, 3)) and not _skipped(job)
 
 
+def test_a_sentence_the_jobs_write_deleted_is_not_left_blank(monkeypatch):
+    """REV-JSF-4: the write deletes s4, whose word and translation are
+    blank. Its record holds nothing left blank, as the record a crash leaves
+    (above): the report's Left blank and the final context's "left" count
+    only what is still there."""
+    client, job, clock, model = _job(monkeypatch, 'Delete a sentence that repeats the one before it.', _REPEATED,
+                                     _REPEATED[:3], _unrepeat)
+    assert runner(job).document('d1') == 'done'
+    assert _mark(client, 'd1-s4')['counts'] == {'analyzed': 1}
+    assert not _mark(client, 'd1-s4')['left']
+    assert not any(e['sentence_id'] == 'd1-s4' for e in runner(job).left_blank(job).get('d1', [])), 'not listed'
+    counts = job.rows['d1']['counts']
+    assert (counts['left'], counts['left_translations']) == (3, 3), 's1 to s3, not s4'
+
+
 def test_a_sentence_deletion_that_never_landed_before_a_crash_is_made_on_the_resume(monkeypatch):
     """The guard: the rows were sent, the write was not. Every sentence
     reads as before and none is gone: the piece is taken again, and its one

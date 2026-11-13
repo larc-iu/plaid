@@ -2646,7 +2646,12 @@ class IgtRunner:
                 continue
             if not retry:
                 last = s.id
-            cur = now.get(s.id, s)
+            if s.id not in now:
+                # Deleted by the write: nothing in it is left blank, as
+                # ``settle`` records it (REV-JSF-4).
+                records.append(self.sentence_record(document_id, s, [], None, written=s.id in written_in))
+                continue
+            cur = now[s.id]
             words = [w for w in cur.words if w.id in st.words or w.id in wrote]
             translation = None
             if translated_by(cur, project, job.id) and s.id in translated:
