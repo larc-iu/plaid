@@ -261,9 +261,15 @@
  * @property {Record<string, number>} totals
  * @property {Array<{documentId: string, name: string | null, state: string, sentences: number | null, targets: number | null, done: number | null, counts: Record<string, number>, skipped: JobSkipped[], glossGroup: string | null, harmonizeGroup: string | null, left?: JobLeft[], leftMore?: number}>} documents
  * @property {{changed: object[], left: object[], changedMore: number, leftMore: number}} harmonize
- * @property {{created: object[], deleted: object[], unlinked: object[], createdMore: number, deletedMore: number, unlinkedMore: number, lexicons: string[], proposed?: Array<{lexicon: string, form: string, gloss: string | null}>, proposedMore?: number}} entries
- *   `proposed`: entries the model staged that nothing linked, never created (absent from a report core writes).
+ * @property {{created: object[], deleted: object[], unlinked: object[], createdMore: number, deletedMore: number, unlinkedMore: number, lexicons: string[]}} entries
+ * @property {string | null} [summary] the final context's prose
+ * @property {object | null} [plan] the job's plan
+ * @property {object[]} [proposed] changes the job proposed, with `proposedMore`
+ * @property {object[]} [notes] each piece's note, with `notesMore`
+ * @property {object[]} [tables] tables the job's code made, with `tablesMore`
  *   A document's `left` and `leftMore`: the targets the job left blank (absent from a report core writes).
+ *   A report the worker writes is kept under core's size cap: rows that do not fit are cut from the end of its
+ *   lists, tables first, and counted in the list's `...More`.
  */
 
 /**

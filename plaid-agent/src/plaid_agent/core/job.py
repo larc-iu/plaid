@@ -33,7 +33,8 @@ from plaid_client.workflows.llm import did_not_answer, is_busy, is_timeout, tran
 from .agent import REPEATING_LINE, TurnCancelled, TurnFailed, token_counter, too_long
 from .limits import (HARMONIZE_MAJORITY, JOB_CALL_DECIDE_AT_TOKENS, JOB_CORE_TRIES, JOB_CORE_WAIT_S,
                      JOB_DECISIONS_PER_CALL, JOB_CALL_MAX_PROMPT_TOKENS,
-                     JOB_HEARTBEAT_S, JOB_MODEL_RETRY_S, JOB_REPORT_LIST_MAX, JOB_STRETCH_DECIDE_AT_ROUNDS,
+                     JOB_HEARTBEAT_S, JOB_MODEL_RETRY_S, JOB_REPORT_BUDGET_BYTES, JOB_REPORT_LIST_MAX,
+                     JOB_STRETCH_DECIDE_AT_ROUNDS,
                      JOB_STRETCH_MAX_ROUNDS, JOB_STRETCH_MAX_SENT_TOKENS, JOB_YIELD_POLL_S, JOB_YIELD_QUIET_S)
 from .prompt import JOB_DECIDE_NOW
 
@@ -651,8 +652,10 @@ def _finish(job: Job, state: str, runner, harmonize, entries, reason: Optional[s
         # those it could not (a change proposed again on a piece taken again
         # is one change).
         report['totals']['proposed'] = len(report.get('proposed') or []) + (report.get('proposed_more') or 0)
+    fit_report(report)
     if state == 'done' and getattr(runner, 'write_summary', False):
         report.update(_summary(job, runner, report))
+        fit_report(report)
     try:
         return job.admin.jobs.finish(job.id, job.worker_id, state, report, reason=reason)
     except PlaidAPIError as e:
@@ -667,6 +670,69 @@ def _finish(job: Job, state: str, runner, harmonize, entries, reason: Optional[s
             raise
         logger.warning('Job %s: the finish was refused: %s', job.id, e)
         return None
+
+
+def report_bytes(value: Any) -> int:
+    """The size of ``value`` as core measures a report: its JSON, every
+    character written as itself (no escape for a letter outside ASCII), in
+    UTF-8."""
+    return len(json.dumps(value, ensure_ascii=False, separators=(',', ':')).encode('utf-8'))
+
+
+def _report_cuts(report: Dict[str, Any]):
+    """The report's lists in the order they are cut when it does not fit:
+    the tables, the notes and the proposed changes, then each document's
+    blanks and skipped sentences from the last document up, then
+    harmonize's lists and the entries', the documents last. Each as (the
+    list's holder, its key, what to count a cut row as)."""
+    yield report, 'tables', ('tables_more',)
+    yield report, 'notes', ('notes_more',)
+    yield report, 'proposed', ('proposed_more',)
+    for d in reversed(report.get('documents') or []):
+        yield d, 'left', ('left_more',)
+        yield d, 'skipped', ('skipped',)
+    for part, keys in (('harmonize', ('changed', 'left')), ('entries', ('created', 'deleted', 'unlinked'))):
+        for key in keys:
+            yield report.get(part) or {}, key, (f'{key}_more',)
+    yield report, 'documents', ('documents_more',)
+
+
+def fit_report(report: Dict[str, Any], budget: int = JOB_REPORT_BUDGET_BYTES) -> Dict[str, Any]:
+    """Keep ``report`` within ``budget`` bytes as core measures it, so the
+    finish is never refused for its size (REV-JG-2): rows are cut from the
+    end of its lists in the order of :func:`_report_cuts` until it fits, and
+    every row cut is counted where the report counts what it does not list
+    (``tables_more``, ``notes_more``, ``proposed_more``, a document's
+    ``left_more``, harmonize's and the entries' ``*_more``). A skipped
+    sentence cut moves from its reason's total to ``skipped_more``, as one
+    past the row's own cap is. The prose and the totals are never cut.
+    ``tables_more`` is always set."""
+    report['tables_more'] = report.get('tables_more') or 0
+    for _ in range(8):
+        over = report_bytes(report) - budget
+        if over <= 0:
+            return report
+        for holder, key, (more,) in _report_cuts(report):
+            rows = holder.get(key) or []
+            cut = 0
+            while rows and over > 0:
+                row = rows.pop()
+                over -= report_bytes(row) + 1
+                cut += 1
+                if more == 'skipped':
+                    reason = f'skipped_{str(row.get("reason") or "").replace("-", "_")}'
+                    totals = report['totals']
+                    if totals.get(reason):
+                        totals[reason] -= 1
+                    totals['skipped_more'] = (totals.get('skipped_more') or 0) + 1
+            if cut and more == 'skipped':
+                holder['counts'] = {**(holder.get('counts') or {}),
+                                    'skipped_more': ((holder.get('counts') or {}).get('skipped_more') or 0) + cut}
+            elif cut:
+                holder[more] = (holder.get(more) or 0) + cut
+            if over <= 0:
+                break
+    return report
 
 
 def _summary(job: Job, runner, report: Dict[str, Any]) -> Dict[str, Any]:

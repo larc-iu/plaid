@@ -246,6 +246,11 @@ JOB_DEFER_WAIT_S = 600
 HARMONIZE_MAJORITY = (2, 3)
 #: The most entries one list of a job's report holds. The rest are counted.
 JOB_REPORT_LIST_MAX = 500
+#: Core's cap on a job's report (its JSON in UTF-8, every character written
+#: as itself), and what the worker keeps a report under before its prose is
+#: added: what does not fit is cut, and counted (REV-JG-2).
+JOB_REPORT_MAX_BYTES = 1000000
+JOB_REPORT_BUDGET_BYTES = 900000
 #: A call to core that failed for a while (a 5xx, a network error, 423 or
 #: 429) is tried this many times in a document, waiting JOB_CORE_WAIT_S times
 #: the try's number before each next one, and the document is then put off.

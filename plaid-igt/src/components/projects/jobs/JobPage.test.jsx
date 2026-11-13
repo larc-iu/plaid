@@ -495,6 +495,20 @@ describe('the job page', () => {
     await v.unmount();
   });
 
+  it('counts the tables and notes a report too large for core could not hold', async () => {
+    const report = { ...REPORT, tables: [], tablesMore: 3, notes: [], notesMore: 2 };
+    const job = jobOf({ state: 'done', finishedAt: '2026-11-12T11:00:00Z', report });
+    const v = await mount(clientOf(job));
+    const section = v.container.querySelector('section[aria-label="Report"]');
+    const headings = all(section, 'h3').map((h) => h.textContent);
+    expect(headings).toContain('Tables');
+    expect(headings).toContain('Notes');
+    const t = text(section);
+    expect(t).toContain('And 3 more tables.');
+    expect(t).toContain('And 2 more notes.');
+    await v.unmount();
+  });
+
   it('draws no Left blank section for a job that left nothing', async () => {
     const job = jobOf({ state: 'done', finishedAt: '2026-11-12T11:00:00Z', report: REPORT });
     const v = await mount(clientOf(job));

@@ -3013,7 +3013,8 @@ class IgtRunner:
             made.append({'title': t['title'], 'columns': t['columns'], 'rows': rows, 'more': t['more']})
         return {'plan': {**(plan or {}), 'fallback': fallback} if plan else None,
                 'proposed': listed, 'proposed_more': more + dropped, 'proposed_dropped': dropped,
-                'notes': shown_notes, 'notes_more': notes_more, 'tables': made[:JOB_TABLES_MAX]}
+                'notes': shown_notes, 'notes_more': notes_more, 'tables': made[:JOB_TABLES_MAX],
+                'tables_more': max(0, len(made) - JOB_TABLES_MAX)}
 
     def left_blank(self, job) -> Dict[str, List[Dict[str, Any]]]:
         """Per document, the targets the job left blank, read from every

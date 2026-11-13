@@ -2200,8 +2200,10 @@ class _FakeJobs:
                    or (now == 'failed' and job['core_failed'] and job['report'] is None)}
         if not allowed.get(state):
             raise self._refuse(409, 'POST', path, f'This job cannot end as {state} now.', code='job-state')
-        wire = json.dumps(transform_request(report))
-        size = len(wire.encode())
+        # Measured as core measures it: the JSON with every character
+        # written as itself (``plaid.sql.common/json-text``), in UTF-8.
+        wire = json.dumps(transform_request(report), ensure_ascii=False, separators=(',', ':'))
+        size = len(wire.encode('utf-8'))
         if size > _JOB_REPORT_MAX_BYTES:
             raise self._refuse(400, 'POST', path, f"The report is {size:,} bytes. "
                                                   f"A job's report is at most {_JOB_REPORT_MAX_BYTES:,}.")

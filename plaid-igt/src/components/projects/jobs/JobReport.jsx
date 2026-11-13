@@ -114,7 +114,7 @@ const ProposedChanges = ({ report, projectId }) => {
 // Each piece's note, as the model ended it.
 const PieceNotes = ({ report }) => {
   const notes = report.notes || [];
-  if (!notes.length) return null;
+  if (!notes.length && !(report.notesMore > 0)) return null;
   return (
     <>
       <Heading section="notes" />
@@ -135,9 +135,10 @@ const PieceNotes = ({ report }) => {
   );
 };
 
-// What the job's code counted, as data.
-const Tables = ({ tables }) =>
-  tables.length ? (
+// What the job's code counted, as data, and how many tables the report could
+// not hold.
+const Tables = ({ tables, more = 0 }) =>
+  tables.length || more > 0 ? (
     <>
       <Heading section="tables" />
       {tables.map((t, i) => (
@@ -168,6 +169,7 @@ const Tables = ({ tables }) =>
           <More n={t.more || 0} noun="row" />
         </div>
       ))}
+      <More n={more} noun="table" />
     </>
   ) : null;
 
@@ -224,7 +226,7 @@ export const JobReport = ({ report, projectId, vocabs = [] }) => {
 
       <ProposedChanges report={report} projectId={projectId} />
       <PieceNotes report={report} />
-      <Tables tables={report.tables || []} />
+      <Tables tables={report.tables || []} more={report.tablesMore || 0} />
 
       {skipped.length > 0 && (
         <>

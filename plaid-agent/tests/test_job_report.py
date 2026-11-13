@@ -84,3 +84,109 @@ def test_a_failed_check_ends_the_job_failed_with_its_reason_and_message(monkeypa
     assert finished['state'] == 'failed' and finished['reason'] == 'guidelines-too-long'
     assert client.jobs.rows[job.id]['message'] == ("The project's guidelines are 25,000 characters. A job reads at "
                                                    'most 24,000.')
+
+
+# --- the report always fits core's cap (REV-JG-2) ----------------------------------------------
+
+def _bytes(report):
+    """The report's size as core measures it: its JSON, every character
+    written as itself, in UTF-8."""
+    import json
+    return len(json.dumps(report, ensure_ascii=False, separators=(',', ':')).encode('utf-8'))
+
+
+def test_a_job_whose_code_kept_tables_at_every_cap_ends_done_with_a_report_that_fits(monkeypatch):
+    """REV-JG-2, the review's case: four document pieces, each piece's code
+    keeping five tables within every cap table() has. The report would be
+    about 2 MB: the tables that do not fit are dropped, the report counts
+    them, and the job ends done."""
+    import pytest
+    from job_fixtures import call
+    from plaid_agent.core import sandbox
+    if sandbox.available() is not None:
+        pytest.skip('the code sandbox is not installed')
+    docs = {f'd{i}': document(f'd{i}', f'Story {i}', [{'words': ['ka']}]) for i in range(1, 5)}
+    client = JobClient(docs)
+    job = start(client, 'Report every form and its glosses.', plan='document')
+    code = ('for t in range(5):\n'
+            '    table("Forms " + str(t), ["a","b","c","d","e","f","g","h"], [["x" * 120] * 8 for _ in range(200)])\n'
+            'print("ok")')
+
+    def piece(asked, n, kwargs):
+        if n == 1:
+            return reply(calls=[call(1, 'run_code', {'code': code})])
+        return reply('Counted.')
+    use(monkeypatch, Model(piece))
+    finished = run_job(job, runner(job))
+    assert finished['state'] == 'done', (finished['state'], finished.get('reason'), finished.get('message'))
+    report = finished['report']
+    from plaid_agent.core.limits import JOB_REPORT_MAX_BYTES
+    assert _bytes(report) <= JOB_REPORT_MAX_BYTES
+    assert report['tables'] and report['tables_more'] > 0
+    from plaid_agent.igt.job import TABLE_FORM
+    made = {f[len(TABLE_FORM):].rsplit(' ', 1)[0] for (f, _), _r in client.jobs.decision_rows[job.id].items()
+            if f.startswith(TABLE_FORM)}
+    assert len(report['tables']) + report['tables_more'] == len(made), 'every table kept is listed or counted'
+
+
+def _huge_report():
+    """A report holding every list at its cap, each row long, in Cyrillic."""
+    from plaid_agent.core.job import build_report
+    client, job = _job()
+    long = 'я' * 290
+    row = {'kind': 'set_span', 'document_id': 'd1', 'document': long, 'ref': 's1.w1', 'field': 'Gloss',
+           'from': long, 'to': long, 'label': long, 'note': long}
+    docs = []
+    for i in range(500):
+        docs.append({'document_id': f'doc-{i}', 'name': long, 'state': 'done', 'sentences': 9, 'targets': 9,
+                     'done': 9, 'counts': {'words': 1, 'left': 500}, 'gloss_group': None, 'harmonize_group': None,
+                     'skipped': [{'sentence': f's{k}', 'sentence_id': f'{i}-{k}', 'reason': 'failed',
+                                  'kind': 'budget'} for k in range(500)],
+                     'left': [{'ref': f's{k}.w1', 'sentence_id': f'{i}-{k}', 'begin': k, 'form': long[:40]}
+                              for k in range(500)], 'left_more': 0})
+    harmonize = {'changed': [{'form': long, 'to': long, 'by': 'majority',
+                              'from': [{'analysis': long, 'count': 2, 'documents': ['d1']}]}] * 500,
+                 'left': [{'form': long, 'reason': 'touched', 'analyses': [{'analysis': long, 'count': 1}]}] * 500}
+    entries = {'created': [{'id': 'e', 'lexicon': 'v1', 'form': long, 'gloss': long}] * 500,
+               'deleted': [], 'unlinked': [], 'lexicons': ['v1']}
+    report = build_report(job, 'done', None, docs, harmonize, entries)
+    report.update({'proposed': [dict(row) for _ in range(500)], 'proposed_more': 0,
+                   'notes': [{'document': 'd1', 'name': long, 'sentences': 's1', 'note': 'я' * 400}] * 500,
+                   'notes_more': 0, 'tables': [{'title': long, 'columns': ['a'] * 8,
+                                                 'rows': [[long[:120]] * 8] * 200, 'more': 0}] * 20,
+                   'summary': 'я' * 3000})
+    return report
+
+
+def test_a_report_of_every_list_at_its_cap_is_cut_to_fit_and_counts_what_it_cut():
+    """Every list of a report at its cap at once, in Cyrillic: tables go
+    first, then notes, then proposed changes, then each document's lists,
+    and each count of what is not listed grows by what was cut."""
+    from plaid_agent.core.job import fit_report
+    from plaid_agent.core.limits import JOB_REPORT_BUDGET_BYTES
+    report = _huge_report()
+    before = {'tables': len(report['tables']), 'notes': len(report['notes']), 'proposed': len(report['proposed']),
+              'skipped': report['totals']['skipped_failed'], 'left': sum(len(d['left']) for d in report['documents'])}
+    fit_report(report)
+    assert _bytes(report) <= JOB_REPORT_BUDGET_BYTES
+    assert report['tables'] == [] and report['tables_more'] == before['tables']
+    assert report['notes'] == [] and report['notes_more'] == before['notes']
+    assert len(report['proposed']) + report['proposed_more'] == before['proposed']
+    t = report['totals']
+    assert t['skipped_failed'] + t['skipped_more'] == before['skipped'], 'a skipped sentence cut is counted as more'
+    assert t['skipped_failed'] == sum(len(d['skipped']) for d in report['documents'])
+    assert sum(len(d['left']) + d['left_more'] for d in report['documents']) == before['left']
+    assert report['summary'] == 'я' * 3000, 'the prose is never cut'
+    assert len(report['documents']) == 500
+
+
+def test_a_report_that_fits_is_left_whole():
+    from plaid_agent.core.job import fit_report
+    client, job = _job()
+    report = build_report(job, 'done', None, runner(job).document_reports(job), {'changed': [], 'left': []},
+                          entries_part([], [], []))
+    report.update({'tables': [{'title': 't', 'columns': ['a'], 'rows': [['1']], 'more': 0}], 'notes': [],
+                   'proposed': []})
+    whole = __import__('copy').deepcopy(report)
+    fit_report(report)
+    assert report == {**whole, 'tables_more': 0}
