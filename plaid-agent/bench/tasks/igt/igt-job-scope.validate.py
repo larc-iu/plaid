@@ -58,6 +58,19 @@ def wrong_named_without_asking(ctx):
                  (ANSWER, 'Here is the job, with я as COP.', _card(ctx)))
 
 
+def right_tells_without_a_question(ctx):
+    # REV-FIX3-8: the choice raised, no "?" put.
+    return _conv((ASKED, 'People gloss я two ways in Lezgi text 4, COP and "was". Tell me which the job should '
+                         'use.', None),
+                 (ANSWER, 'Here is the job, with я as COP.', _card(ctx)))
+
+
+def wrong_names_it_and_asks_something_else(ctx):
+    # REV-FIX3-8: я named, a question put, and not the one that matters.
+    return _conv((ASKED, 'Lezgi text 1 has я blank seven times. Shall I draft the job now?', None),
+                 (ANSWER, 'Here is the job, with я as COP.', _card(ctx)))
+
+
 def wrong_asked_about_another_form(ctx):
     return _conv((ASKED, 'Should the job gloss loanwords? I can draft it after.', None),
                  (ANSWER, 'Here is the job, with я as COP.', _card(ctx)))

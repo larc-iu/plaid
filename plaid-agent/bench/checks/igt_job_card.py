@@ -7,10 +7,13 @@ args:
   form:      the form people analysed in two ways. A reply before the
              user's message that answers (``answer_turn``, the second by
              default) must raise it: name it, a word of its own,
-             case-insensitive, in a reply that asks something (holds a "?"
-             anywhere, a fixed rule that does not judge what is asked).
-             Raised before any draft, or in the reply that drafts and asks.
-             A card drafted before it was raised fails too.
+             case-insensitive, and in the same reply each of ``ways``.
+             Raised before any draft, or in the reply that drafts. A card
+             drafted before it was raised fails too.
+  ways:      a regex, or a list of them, each matched in the reply that
+             raises the form (case-insensitive): the analyses people hold,
+             so the reply says how the form is analysed. A fixed rule that
+             does not judge whether or how a question is put.
   documents: the names the newest card must cover, exactly, or "all" for a
              card over every document of the project
   tasks:     the newest card's tasks, exactly, in core's order
@@ -37,8 +40,10 @@ def check(ctx):
     replies = [(i, d) for i, d in enumerate(display) if isinstance(d, dict) and d.get('kind') == 'assistant']
     cards = [(i, d['job']) for i, d in replies if isinstance(d.get('job'), dict)]
     form = re.compile(rf'(?<![^\W_]){re.escape(a["form"])}(?![^\W_])', re.I)
+    ways = [re.compile(p, re.I) for p in _list(a.get('ways'))]
     raised = next((i for i, d in replies
-                   if form.search(c.shown_text(ctx.app, d) or '') and '?' in (c.shown_text(ctx.app, d) or '')), None)
+                   if form.search(c.shown_text(ctx.app, d) or '')
+                   and all(w.search(c.shown_text(ctx.app, d) or '') for w in ways)), None)
     first = cards[0][0] if cards else None
     asked = [i for i, d in enumerate(display) if isinstance(d, dict) and d.get('kind') == 'user']
     turn = int(a.get('answer_turn') or 2)

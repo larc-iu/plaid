@@ -153,9 +153,9 @@ that added them.
 `igt-job-scope` is the chat's side of a job: the user asks for an overnight glossing job on Lezgi text 1, whose
 seven я the setup leaves blank while people analysed я in two ways in Lezgi text 4 (the setup reads both back
 and fails if they do not hold), and answers in the second turn. `checks/igt_job_card.py` passes when a reply
-before that answer names я and asks something (before any card, or in the reply that drafts one and asks), the
-newest job card covers exactly that text with the gloss task, its brief carries the answer, and nothing was
-written. Validated only.
+before that answer names я and both of people's glosses of it (before any card, or in the reply that drafts
+one), the newest job card covers exactly that text with the gloss task, its brief carries the answer, and
+nothing was written. Validated only.
 
 ## The model gate
 
