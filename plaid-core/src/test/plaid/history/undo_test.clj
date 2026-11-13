@@ -850,3 +850,21 @@
     (is (nil? (psc/fetch-by-id db :texts dt)) "the made document's own text went, the document stays")
     (is (some? (psc/fetch-by-id db :documents d)))
     (is (some? pos))))
+
+(deftest a-layer-or-a-vocabulary-deleted-is-not-undone
+  (testing "a span layer's deletion: its spans need the layer, which does not come back"
+    (let [{:keys [pos]} (setup!)
+          _ (assert-done (api-call admin-request {:method :delete :path (str "/api/v1/span-layers/" pos)}))
+          summary (undone! admin-request (last-op-id "span-layer/delete"))]
+      (is (zero? (:total summary)))
+      (is (= [{:op-type "span-layer/delete" :count 1}] (:not-undone summary)))
+      (is (every? #{"needs"} (map :reason (:skipped summary))))
+      (is (= #{{:kind "span-layer" :id pos}} (set (keep #(when (= "span" (:kind %)) (:needs %)) (:skipped summary)))))))
+  (testing "a vocabulary's deletion: its row is not undone, its entries need it, its links need them"
+    (let [{:keys [vocab fox]} (setup!)
+          _ (assert-done (delete-vocab-layer admin-request vocab))
+          summary (undone! admin-request (last-op-id "vocab/delete"))
+          why (reasons summary)]
+      (is (zero? (:total summary)))
+      (is (= "not-undone" (why vocab)))
+      (is (= "needs" (why fox))))))

@@ -162,7 +162,11 @@
      :changed-since changed-since
      :changed-between changed-between}))
 
-(defn- row-ref [[table id]] {:kind (kind-of table table) :id id})
+(def ^:private parent-kind
+  {"text_layers" "text-layer" "token_layers" "token-layer" "span_layers" "span-layer"
+   "relation_layers" "relation-layer" "projects" "project"})
+
+(defn- row-ref [[table id]] {:kind (or (kind-of table) (parent-kind table) table) :id id})
 
 ;; ============================================================
 ;; Reading what the plan is checked against
