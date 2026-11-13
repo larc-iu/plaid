@@ -204,6 +204,15 @@ def translation_state(s: Sentence, project: IgtProject, job_id: str) -> str:
     return 'own' if _job_of(sp.metadata) == job_id else 'machine'
 
 
+def translated_by(s: Sentence, project: IgtProject, job_id: str) -> bool:
+    """Whether ``s``'s translation is one this job wrote, confirmed by a
+    person since or not: approving keeps a piece's ``provDetail``, which
+    names the job (REV-B4-5)."""
+    f = translation_field(project)
+    sp = s.fields.get(f.name) if f else None
+    return sp is not None and (sp.value or '') != '' and _job_of(sp.metadata) == job_id
+
+
 def translation_target(s: Sentence, project: IgtProject, job_id: str) -> bool:
     return translation_state(s, project, job_id) in ('empty', 'machine')
 
@@ -269,6 +278,18 @@ def job_owned(w: Word, job_id: str) -> bool:
         return False
     pieces = word_pieces(w)
     return bool(pieces) and all(job_piece(p, job_id) for p in pieces)
+
+
+def job_wrote(w: Word, job_id: str) -> bool:
+    """A word whose analysis is wholly this job's work, whether or not a
+    person has confirmed it since: every piece on it names this job
+    (approving keeps a piece's ``provDetail``). Counted as a word the job
+    analysed. Only :func:`job_owned` words are the job's to harmonize
+    (REV-B4-5)."""
+    if word_state(w) == 'unanalyzed':
+        return False
+    pieces = word_pieces(w)
+    return bool(pieces) and all(_job_of(p) == job_id for p in pieces)
 
 
 #: Why harmonize leaves a word the job wrote on, as its report lists it
@@ -1664,7 +1685,7 @@ class IgtRunner:
             translation = None
             if s.id in st.translations:
                 state = translation_state(cur, project, job.id)
-                if state == 'own' and s.id in translated:
+                if translated_by(cur, project, job.id) and s.id in translated:
                     translation = 'refreshed' if translated[s.id].get('span_id') is not None else 'translations'
                 else:
                     translation = 'left' if state in ('empty', 'machine') and s.id not in translated else None
@@ -1720,6 +1741,11 @@ class IgtRunner:
                 slot = decisions.setdefault(key, {'form': key[0], 'key': key[1], 'analysis': text, 'count': 0,
                                                   'document_id': document_id, 'sentence_id': s.id})
                 slot['count'] += 1
+            elif job_wrote(w, self.job.id):
+                # Confirmed by a person since it was written: counted, never
+                # the job's to harmonize, nor a decision of its (REV-B4-5).
+                counts['words'] += 1
+                counts['links'] += sum(1 for m in word_analysis(w, made)['morphemes'] if m['entry'])
             elif word_target(w):
                 counts['left'] += 1
                 left.append({'ref': f's{s.index}.w{w.index}', 'begin': w.begin, 'form': w.surface})
@@ -1849,7 +1875,10 @@ class IgtRunner:
                 continue
             mine = [w for w in s.words if job_owned(w, job.id)]
             state = translation_state(s, project, job.id) if 'translate' in job.tasks else None
-            if state != 'own' and not any(job_piece(p, job.id) for w in s.words for p in word_pieces(w)):
+            ours = 'translate' in job.tasks and translated_by(s, project, job.id)
+            # Did the job's write land here: a piece naming the job, a person
+            # having confirmed it since or not (REV-B4-5).
+            if not ours and not any(_job_of(p) == job.id for w in s.words for p in word_pieces(w)):
                 # Nothing of the job is in it. When nobody wrote since the
                 # job's last write, its write here never landed: a target
                 # again. Otherwise a person may have removed what landed,
@@ -1867,9 +1896,9 @@ class IgtRunner:
             # replaced) or left blank.
             plan = writing[s.id]
             ids = {w.id for w in mine}
-            words = [w for w in s.words if w.id in ids or ('gloss' in job.tasks and word_target(w)
-                                                           and word_tag(w.id) not in plan['words'])]
-            if state == 'own':
+            words = [w for w in s.words if w.id in ids or job_wrote(w, job.id)
+                     or ('gloss' in job.tasks and word_target(w) and word_tag(w.id) not in plan['words'])]
+            if ours:
                 translation = 'refreshed' if plan.get('translation') == 'refreshed' else 'translations'
             else:
                 translation = 'left' if state in ('empty', 'machine') and not plan.get('translation') else None

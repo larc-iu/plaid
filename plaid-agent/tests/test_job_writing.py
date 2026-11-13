@@ -215,6 +215,42 @@ def test_a_person_clearing_one_of_the_jobs_words_is_not_listed_as_left_blank(mon
     assert mark['counts']['words'] == 1 and mark['counts']['left'] == 1
 
 
+def test_a_write_the_starter_confirmed_after_a_crash_is_recorded_and_counted(monkeypatch):
+    """REV-B4-5: the write landed, the record was lost to a crash, and the
+    starter then approved the job's proposals in s1. Something of the job's
+    is there, confirmed: the write landed, so s1 is recorded with its words
+    counted, never listed "Write interrupted"."""
+    client, job, clock, model = _job(monkeypatch)
+    _crash_at_record(monkeypatch, job)
+    clock['t'] += 3600
+    ok = {f: (f, [(f, 'go')], 'confirmed:' + J) for f in ('ka', 'ta')}
+    _person_edits(client, 'd1', [{'words': [ok['ka'], ok['ta']]}, {'words': [MINE['sa']]}], 3, clock)
+    clock['t'] += 3600
+    staged = _staged(monkeypatch)
+    assert _resume(client, job).document('d1') == 'done'
+    assert not staged and not _skipped(job)
+    assert job.rows['d1']['counts']['words'] == 3 and job.rows['d1']['counts']['analyzed'] == 2
+    assert _mark(client, 'd1-s1')['words'] == {}, 'a confirmed word is no longer the job\'s to harmonize'
+
+
+def test_a_translation_the_starter_confirmed_after_a_crash_is_recorded_and_counted(monkeypatch):
+    def translate(asked, n, kwargs):
+        if n > 1:
+            return reply('Done.')
+        return reply(calls=[call(1, 'set_field', {'document': 'Story', 'refs': ['s1'], 'field': 'Translation',
+                                                  'value': 'T1.'})])
+    client, job, clock, model = _job(monkeypatch, ('translate',), [{'words': ['ka']}],
+                                     [{'words': ['ka'], 'translation': ('T1.', J)}], translate)
+    _crash_at_record(monkeypatch, job)
+    clock['t'] += 3600
+    _person_edits(client, 'd1', [{'words': ['ka'], 'translation': ('T1.', 'confirmed:' + J)}], 3, clock)
+    clock['t'] += 3600
+    staged = _staged(monkeypatch)
+    assert _resume(client, job).document('d1') == 'done'
+    assert not staged and not _skipped(job)
+    assert job.rows['d1']['counts']['translations'] == 1
+
+
 def test_a_refreshed_translation_recorded_after_a_crash_counts_as_refreshed(monkeypatch):
     """B3-7's leftover: the writing row says the write replaced a machine
     draft, which the document no longer says."""
