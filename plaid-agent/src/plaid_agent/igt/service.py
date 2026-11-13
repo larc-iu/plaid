@@ -16,6 +16,7 @@ from ..core.service import BaseAssistantService
 from ..core.plan import PlanError, PlanOutOfDate
 from . import plan, prompt, toolkit
 from .citations import resolve_citations
+from .jobread import job_place
 from .project import load_project
 from .plan import SETTINGS_KINDS
 from .tagsets import verify_settings
@@ -145,6 +146,9 @@ class AssistantService(BaseAssistantService):
         if where.get('kind') == 'lexicon':
             name = next((v['name'] for v in ws.project.vocabs if v['id'] == where.get('id')), None)
             return ('vocabulary', name, lexicon_focus_note(name)) if name else None
+        if where.get('kind') == 'job':
+            # A job's page: the job's summary as read now (jobread.py).
+            return job_place(ws, where)
         if where.get('kind') == 'document':
             # The name a printed reference uses here is the corpus tag's, not
             # the document's own, so this app answers for a document too.

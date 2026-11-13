@@ -35,6 +35,7 @@ from ..core.scope import among_documents
 from .guide import t_app_guide
 from .tagsets import t_tagsets
 from .jobcard import t_propose_job
+from .jobread import t_read_job
 from .prompt import JOB_TASKS
 from .shape import (t_append_text, t_delete_word, t_merge_sentences, t_merge_words,
                     t_retype_sentence, t_split_sentence, t_split_word)
@@ -553,6 +554,17 @@ TOOLS += [_fn('propose_job',
                'tasks': {'type': 'array', 'items': {'type': 'string', 'enum': list(JOB_TASKS)}},
                'brief': {'type': 'string'}}, ['action'])]
 _IMPL['propose_job'] = t_propose_job
+
+# What an assistant job did, from its record, behind one short schema: few
+# conversations are about a job (jobread.py).
+TOOLS += [_fn('read_job',
+              'Read an assistant job of this project: no job lists the jobs, a job gives its summary and its '
+              'report\'s sections, a section gives that section\'s rows. section "help" says what each holds.',
+              {'job': {'type': 'string', 'description': 'The job\'s id.'},
+               'section': {'type': 'string'},
+               'document': {'type': 'string', 'description': 'Narrows a section to one document, by name or id.'},
+               'page': {'type': 'integer'}}, [])]
+_IMPL['read_job'] = t_read_job
 
 _IMPL.update({'run_code': t_run_code, 'code_help': t_code_help})
 

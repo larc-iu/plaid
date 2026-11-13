@@ -253,6 +253,17 @@ def _own(name: str, a: Dict[str, Any]) -> Optional[str]:
     if name == 'propose_job':
         return 'Read how to draft a job' if _action(a) == 'help' else 'Drafted a job'
 
+    # --- what a job did -------------------------------------------------------------
+    if name == 'read_job':
+        section = str(a.get('section') or '').strip()
+        if section.lower() == 'help':
+            return 'Read how to read a job'
+        if not a.get('job'):
+            return 'Listed the jobs'
+        if not section:
+            return 'Read a job\'s summary'
+        return f'Read {q(section)} of a job\'s report' + (f' in {q(a.get("document"))}' if a.get('document') else '')
+
     return None
 
 
@@ -283,6 +294,7 @@ _PROGRESS = {
     'sequence_search': lambda a: 'Searching for the sequence…',
     'app_guide': lambda a: 'Reading the app guide…',
     'propose_job': lambda a: 'Reading how to draft a job…' if _action(a) == 'help' else 'Drafting a job…',
+    'read_job': lambda a: 'Reading a job…' if a.get('job') else 'Listing the jobs…',
 }
 
 

@@ -96,7 +96,7 @@ Running code:
 
 ## Tools
 
-66 tools, in the order the model receives them: 37 plan a change (`PLAN:`), 2 reach the web, the rest read the project or manage the plan.
+67 tools, in the order the model receives them: 37 plan a change (`PLAN:`), 2 reach the web, the rest read the project or manage the plan.
 
 ### project_overview
 
@@ -639,6 +639,15 @@ Draft an unattended job for the user to start: the documents, the tasks and the 
 - `documents` (array of string): Names or ids, or ["all"].
 - `tasks` (array of one of `translate`, `gloss`, `link`)
 - `brief` (string)
+
+### read_job
+
+Read an assistant job of this project: no job lists the jobs, a job gives its summary and its report's sections, a section gives that section's rows. section "help" says what each holds.
+
+- `job` (string): The job's id.
+- `section` (string)
+- `document` (string): Narrows a section to one document, by name or id.
+- `page` (integer)
 
 ### guidelines
 

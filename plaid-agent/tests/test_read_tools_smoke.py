@@ -55,7 +55,10 @@ SKIP = ('web_search', 'read_url')   # the network is not the tools' contract
 # test_every_read_tool_answered_at_least_once).
 EXTRA = {'igt': {'analyses_of': {'forms': ['gam']}, 'lexicon_entry': {'entry_form': 'gam#1'},
                  'propose_job': {'action': 'help', 'documents': ['all'], 'tasks': ['gloss'],
-                                 'brief': 'Gloss every word.'}},
+                                 'brief': 'Gloss every word.'},
+                 # No job: the project's jobs (a section narrowed by a
+                 # document needs a job, which the fixture has none of).
+                 'read_job': {'document': None}},
          'ud': {'grew_search': {'pattern': 'pattern { V [upos=VERB] }'}},
          'umr': {'find_nodes': {'concept': 'dog'}}}
 
