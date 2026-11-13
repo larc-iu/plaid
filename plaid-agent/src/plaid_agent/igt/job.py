@@ -2105,6 +2105,12 @@ class IgtRunner:
                 tag = word_tag(st.word_of.get(token, token))
                 if tag not in plan['words']:
                     plan['words'].append(tag)
+        # A write that deletes a sentence has a row for every sentence of
+        # the piece: once it has landed, none of them is worked again
+        # (``settle``), so the piece never decides a second deletion.
+        if any(o.get('kind') == 'delete_sentence' for o in kept):
+            for sid in sorted(st.sentence_ids):
+                plans.setdefault(sid, {'translation': None, 'words': []})
         now = {s.id: s for s in fresh.sentences}
         for sid, plan in plans.items():
             s = now.get(sid) or st.where.get(sid)
@@ -2739,6 +2745,17 @@ class IgtRunner:
         unsent = self.unsent.setdefault(document_id, set())
         skipped = {s.get('sentence_id') for s in (job.rows.get(document_id) or {}).get('skipped') or []}
         orphans = []
+        # A sentence the job began to write in that is no longer there, nor
+        # any word of it, was deleted: recorded, with nothing left to work.
+        # In a quiet document the job's write deleted it, so that write
+        # landed, and every other sentence it has a row for is recorded too.
+        here = {s.id for s in doc.sentences}
+        held = {word_tag(w.id) for s in doc.sentences for w in s.words}
+        gone = [sid for sid, plan in writing.items() if sid not in here and sid not in marks and sid not in skipped
+                and sid not in unsent and not (set(plan.get('words') or ()) | set(plan.get('others') or ())) & held]
+        for sid in gone:
+            orphans.append({'sentence': sid, 'counts': {'analyzed': 1} if own else {}, 'decisions': [], 'left': [],
+                            'words': {}})
         for s in doc.sentences:
             # Only a sentence the job began to write in (a writing row,
             # REV-FIX3-1), and not recorded or skipped since.
@@ -2759,7 +2776,8 @@ class IgtRunner:
                 if not own:
                     self.skip(document_id, doc, s.id, INTERRUPTED, None, cursor=False)
                     continue
-                if sentence_digest(s) in (writing[s.id].get('before') or ()) or not writing[s.id].get('before'):
+                if (sentence_digest(s) in (writing[s.id].get('before') or ()) or not writing[s.id].get('before')) \
+                        and not gone:
                     unsent.add(s.id)
                     continue
             # As its stretch would have recorded it (REV-J-B3 B3-7): the

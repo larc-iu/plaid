@@ -647,3 +647,56 @@ def test_a_deletion_that_never_landed_before_a_crash_is_made_on_the_resume(monke
     assert _resume(client, job).document('d1') == 'done'
     assert len([c for c in model.calls if c['n'] == 1]) == 2, 'asked again, as nothing landed'
     assert not _skipped(job)
+
+
+_REPEATED = [{'words': ['ka']}, {'words': ['sa']}, {'words': ['sa']}, {'words': ['sa']}]
+
+
+def _unrepeat(asked, n, kwargs):
+    """Deletes the last sentence of its piece when it reads as the one
+    before it: run twice over what is left, it deletes a second, different
+    sentence."""
+    if n > 1:
+        return reply('Done.')
+    piece = targets_named(asked)
+    if len(piece) < 2:
+        return reply('Done.')
+    return reply(calls=[call(1, 'delete_sentence', {'document': 'Story', 'refs': [f's{piece[-1]}']})])
+
+
+def test_a_sentence_deletion_that_landed_before_a_crash_is_never_made_again(monkeypatch):
+    """BRIEF-JS: a stretch's write that deletes a sentence leaves no sentence
+    to record. It lands, the worker dies before the record, nobody writes
+    since. No second sentence is deleted."""
+    client, job, clock, model = _job(monkeypatch, 'Delete a sentence that repeats the one before it.', _REPEATED,
+                                     _REPEATED[:3], _unrepeat)
+    staged = _staged(monkeypatch)
+    _crash_at_record(monkeypatch, job)
+    assert [(o['kind'], o['sentence_id']) for o in staged] == [('delete_sentence', 'd1-s4')]
+    assert _writing(client) == ['d1-s1', 'd1-s2', 'd1-s3', 'd1-s4'], 'a row for every sentence of the piece'
+    assert _resume(client, job).document('d1') == 'done'
+    assert [o['kind'] for o in staged] == ['delete_sentence'], 'one deletion, never a second'
+    assert len([c for c in model.calls if c['n'] == 1]) == 1, 'the model is not asked again'
+    assert _mark(client, 'd1-s4')['counts'] == {'analyzed': 1}
+    assert all(_mark(client, f'd1-s{i}') for i in (1, 2, 3)) and not _skipped(job)
+
+
+def test_a_sentence_deletion_that_never_landed_before_a_crash_is_made_on_the_resume(monkeypatch):
+    """The guard: the rows were sent, the write was not. Every sentence
+    reads as before and none is gone: the piece is taken again, and its one
+    deletion is made then."""
+    client, job, clock, model = _job(monkeypatch, 'Delete a sentence that repeats the one before it.', _REPEATED,
+                                     _REPEATED[:3], _unrepeat)
+    _crash_before_write(monkeypatch, job)
+    client.after_write.pop('d1')
+    staged = _staged(monkeypatch)
+    real = igt_job.execute_plan
+
+    def execute(c, ops, **kw):
+        client.after_write['d1'] = document('d1', 'Story', _REPEATED[:3], version=3)
+        return real(c, ops, **kw)
+    monkeypatch.setattr(igt_job, 'execute_plan', execute)
+    assert _resume(client, job).document('d1') == 'done'
+    assert len([c for c in model.calls if c['n'] == 1]) == 2, 'asked again, as nothing landed'
+    assert [(o['kind'], o['sentence_id']) for o in staged] == [('delete_sentence', 'd1-s4')]
+    assert not _skipped(job)
