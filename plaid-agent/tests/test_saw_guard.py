@@ -29,6 +29,10 @@ from plaid_agent.umr.trace import TRACER as UMR_TRACER  # noqa: E402
 # reference page is bookkeeping, as query_help (META) is: it is the same text
 # whatever the project holds.
 EXEMPT = {'code_help'}
+# Not a read at all: drafting a job (igt's propose_job) is a plan step or, for
+# its help, bookkeeping, by its action (the tracer's ``kind_of``), and shows the
+# model no project data.
+EXEMPT |= {'propose_job'}
 
 # Reads run only against the engine that answers nothing, since ud's and umr's
 # fake clients refuse their queries.
