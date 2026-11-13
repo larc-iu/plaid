@@ -158,3 +158,43 @@ def test_a_pieces_first_call_fits_its_budget_with_the_chats_tools():
     message = ('w ' * 300 + '\n') * (limits.JOB_STRETCH_SENTENCES + limits.JOB_CONTEXT_SENTENCES)
     first = count([{'role': 'system', 'content': system}, {'role': 'user', 'content': message}]) + count(tools)
     assert first < limits.JOB_CALL_DECIDE_AT_TOKENS - 10000, first
+
+
+# --- what a job's prompt names is what its context has (REV-JG-9) ----------------------------
+
+def _names_in(text):
+    """Every tool-like name a prompt mentions: a word with an underscore,
+    and a name written as a call (``name(``)."""
+    import re
+    return (set(re.findall(r'\b([a-z][a-z0-9]*(?:_[a-z0-9]+)+)\b', text))
+            | set(re.findall(r'\b([a-z_][a-z0-9_]*)\(', text)))
+
+
+@pytest.mark.parametrize('mode', [JobWorkspace.PIECE, JobWorkspace.PLAN])
+def test_every_tool_and_function_a_job_prompt_names_is_one_its_context_has(monkeypatch, mode):
+    """Every tool a job's prompt names is in that context's tool list (or is
+    an argument of one), and every function it shows code calling is one
+    the context's code is lent, the code section included as where the
+    sandbox runs. A small model reaches for what its prompt names."""
+    from plaid_agent.core import sandbox
+    from plaid_agent.igt import sandbox as igt_sandbox
+    monkeypatch.setattr(sandbox, 'available', lambda: None)
+    project = _project()
+    ws = JobWorkspace(FakeClient(), project, mode=mode)
+    if mode == JobWorkspace.PIECE:
+        text, tools = prompt.build_job_prompt(project), toolkit.job_piece_tools(ws)
+    else:
+        text, tools = prompt.build_plan_prompt(project), toolkit.job_plan_tools(ws)
+    assert 'Running code:' in text
+    offered = {t['function']['name'] for t in tools}
+    arguments = {a for t in tools for a in (t['function'].get('parameters') or {}).get('properties') or {}}
+    lent = set(igt_sandbox.api(ws))
+    stray = sorted(n for n in _names_in(text) if n not in offered | arguments | lent)
+    assert not stray, f'the {mode} prompt names what its context does not have: {stray}'
+
+
+def test_the_planning_prompt_says_its_code_stages_nothing(monkeypatch):
+    from plaid_agent.core import sandbox
+    monkeypatch.setattr(sandbox, 'available', lambda: None)
+    text = prompt.build_plan_prompt(_project())
+    assert 'plan(' not in text and 'stages nothing' in text

@@ -145,10 +145,12 @@ CODE = '''
 Running code:
 - run_code runs Python over the project in ONE call, for a loop, a join or a tally the reads do not give \
 directly: {triggers}, a count under your own definition, anything across more than a handful of \
-documents.{reads} Not for what {outright} answer outright. It sees documents(), load(document), \
-query(q){functions}, plan(tool, ...) and save_file(name, content), and stages changes only through plan(...), \
-under the same guards.
+documents.{reads} Not for what {outright} answer outright. It sees {sees}
 '''
+
+#: What the chat's code sees: its host functions, and how it stages.
+CODE_SEES = '''documents(), load(document), query(q){functions}, plan(tool, ...) and save_file(name, content), \
+and stages changes only through plan(...), under the same guards.'''
 
 # A hole the prompt keeps until the project is known, so `filled` does not
 # call it a paragraph nobody wrote. `guidelines` is one of them because a
@@ -280,7 +282,8 @@ def cite_evidence(*, refs: str, shown_as: str, never_paste: str, example: str, a
                                   'never_paste': never_paste, 'example': example})
 
 
-def code_section(*, triggers: str, outright: str, functions: str = '', reads: str = '') -> str:
+def code_section(*, triggers: str, outright: str, functions: str = '', reads: str = '',
+                 sees: str = CODE_SEES) -> str:
     """The run_code half of a system prompt, in the app's own terms.
 
     ``triggers`` are the questions of this app's own that call for code and
@@ -295,8 +298,13 @@ def code_section(*, triggers: str, outright: str, functions: str = '', reads: st
     history of conversations was never once called. ``code_help`` returns both
     already, to the model that asks: the prompt names the four functions so it
     knows what is there, and nothing more.
+
+    ``sees`` is the sentence's end that names the host functions and how code
+    stages: a context that lends other functions (a job's, which keeps no
+    files) says its own, so no prompt names a function its code lacks.
     """
-    return filled(CODE, {'triggers': triggers, 'outright': outright, 'functions': functions, 'reads': reads})
+    return filled(CODE, {'triggers': triggers, 'outright': outright, 'reads': reads,
+                         'sees': sees.replace('{functions}', functions)})
 
 
 # The paragraph a turn that may read other projects adds after the app's own

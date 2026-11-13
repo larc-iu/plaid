@@ -149,12 +149,12 @@ _CHAT = {
 }
 SYSTEM = shared.filled(_SYSTEM, _CHAT)
 
-CODE = shared.code_section(
-    triggers='two fields at once, a condition on a word and its morphemes together',
-    outright='search, concordance, frequency_list, worklist or check_consistency',
-    functions=', lexicon()',
-    reads=' Before that, read_sentences reads chosen sentences of several documents in one call, and fields= '
-          'on it and on read_document keeps only the fields the question needs.')
+_CODE_TRIGGERS = 'two fields at once, a condition on a word and its morphemes together'
+_CODE_OUTRIGHT = 'search, concordance, frequency_list, worklist or check_consistency'
+_CODE_READS = (' Before that, read_sentences reads chosen sentences of several documents in one call, and fields= '
+               'on it and on read_document keeps only the fields the question needs.')
+CODE = shared.code_section(triggers=_CODE_TRIGGERS, outright=_CODE_OUTRIGHT, functions=', lexicon()',
+                           reads=_CODE_READS)
 
 WEB = webtools.prompt(
     'what a gloss abbreviation conventionally means, how a construction is described in related '
@@ -279,17 +279,29 @@ def _filled(template: str, project: IgtProject) -> str:
     return out.replace('{guidelines}', job_section(project.guidelines))
 
 
+#: The code section of a job's contexts: the chat's, with the host functions
+#: a job's code is lent (a job keeps no files, so no save_file), and for the
+#: planning context, which stages nothing, no plan() (REV-JG-9).
+JOB_CODE = shared.code_section(
+    triggers=_CODE_TRIGGERS, outright=_CODE_OUTRIGHT, functions=', lexicon()', reads=_CODE_READS,
+    sees='documents(), load(document), query(q), lexicon(), table(title, columns, rows) and plan(tool, ...), '
+         'and stages changes only through plan(...), under the same guards.')
+PLAN_CODE = shared.code_section(
+    triggers=_CODE_TRIGGERS, outright=_CODE_OUTRIGHT, functions=', lexicon()', reads=_CODE_READS,
+    sees='documents(), load(document), query(q) and lexicon(), and stages nothing.')
+
+
 def build_job_prompt(project: IgtProject) -> str:
     """The system prompt of every piece of a job on ``project``: the chat's
     prompt with the job's paragraphs, the project's shape and its guidelines
     whole, and the code section where the sandbox is."""
     out = _filled(JOB_SYSTEM, project)
-    return out + CODE + JOB_TABLES if sandbox.available() is None else out
+    return out + JOB_CODE + JOB_TABLES if sandbox.available() is None else out
 
 
 #: What a piece's code is told of ``table()``, only where code runs.
-JOB_TABLES = ('''- In a job, code also sees table(title, columns, rows): a table it makes is kept as data in the \
-job's report, so a count or a finding is given by code and not retyped.
+JOB_TABLES = ('''- A table code makes with table(title, columns, rows) is kept as data in the job's report, so a \
+count or a finding is given by code and not retyped.
 ''')
 
 #: How the planning context cuts the work, in the app's words.
@@ -327,7 +339,7 @@ JOB_PLAN_NOW = shared.JOB_PLAN_NOW
 def build_plan_prompt(project: IgtProject) -> str:
     """The planning context's system prompt on ``project``."""
     out = _filled(PLAN_SYSTEM, project)
-    return out + CODE if sandbox.available() is None else out
+    return out + PLAN_CODE if sandbox.available() is None else out
 
 
 _SUMMARY_SYSTEM = '''{summary_contract}
