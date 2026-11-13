@@ -27,7 +27,10 @@ def test_the_igt_prompt_says_how_to_scope_a_job_once():
     # What it should bring about, each said once.
     for said in ('propose_job', 'ask in one message', 'a form people analysed in two ways',
                  'sentences with no word breaks', 'documents already partly glossed', 'from a tagset',
-                 'as an ordinary plan', "becomes people's analyses", 'When they say go, draft it.',
+                 'Offer a plan for the first few sentences', 'When they say go, draft it.',
+                 # REV-JB-2: approved as unverified, a value stays machine, and
+                 # the job follows only people's analyses.
+                 "what the user approves as verified or corrects by hand becomes people's analyses",
                  'states the decisions, not the discussion', 'name forms and glosses exactly',
                  'belongs in the guidelines: offer to write it there'):
         assert said in para, said
