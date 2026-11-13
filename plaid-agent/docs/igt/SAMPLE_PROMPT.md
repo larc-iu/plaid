@@ -154,13 +154,13 @@ List lexicon entries (form, morph type, and their fields such as gloss), optiona
 
 ### set_field
 
-PLAN: set a field's value on words, morphemes, or sentences (the references must match the field's scope). Empty value clears it. Several fields at once: values={field: value}, each on the refs of its scope (refs ["s3.w1", "s3.w1.m1"] for a word and its morpheme). One value on every occurrence of a form, in one call: set_field_for_form. A substitution inside every value of a field: replace_in_field.
+PLAN: set a field's value on words, morphemes, or sentences (the references must match the field's scope). Empty value clears it. One value on every occurrence of a form, in one call: set_field_for_form. A substitution inside every value of a field: replace_in_field.
 
 - `document` (string, required): Document id or exact name (see project_overview).
 - `refs` (array of string, required): Positional references, e.g. ["s3.w2", "s3.w4"]. Words are sN.wN, morphemes sN.wN.mN, sentences sN.
 - `field` (string)
 - `value` (string)
-- `values` (object of string)
+- `values` (object of string): Field name to value, in place of field and value, each set on the refs of its scope. A value of its own on each ref takes one call per ref.
 
 ### set_field_for_form
 
@@ -291,7 +291,7 @@ PLAN: remove a multi-word expression (the link its member words share); their ow
 
 ### create_entry
 
-PLAN: add a lexicon entry. fields maps entry field names (e.g. "gloss", "pos") to values; type is the morph type (stem, suffix, enclitic, ...); a form written with markers (-s, ka-, =ri) is stored without them, and takes their type when no type is given. The returned entry_id can be used by link_entry in the same plan. Use senses for a sense of an existing entry. Many entries from a table (a dictionary export, a word list of hundreds of rows) go in through Bulk Add on the lexicon's page as they are, not through this, and are tidied after with the lexicon tools.
+PLAN: add a lexicon entry. fields maps entry field names (e.g. "gloss", "pos") to values; type is the morph type (stem, suffix, enclitic, ...); a form written with markers (-s, ka-, =ri) is stored without them, and takes their type when no type is given. The returned entry_id can be used by link_entry in the same plan. Use senses for a sense of an existing entry. Many entries from a table go in through Bulk Add on the lexicon's page as they are, not through this, and are tidied after with the lexicon tools.
 
 - `form` (string, required)
 - `lexicon` (string)

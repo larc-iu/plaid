@@ -51,9 +51,12 @@ def t_set_field(ws: Workspace, document: str, refs, field: Optional[str] = None,
             raise ToolError('values maps field names to values, e.g. {"Gloss": "conj", "POS": "conj"}.',
                             kind='invalid-argument')
         if field is not None or value is not None:
-            raise ToolError('Give field and value, or values, not both.', kind='invalid-argument')
+            raise ToolError(ONE_SHAPE, kind='invalid-argument')
         pairs, named = [], {}
         for name, val in values.items():
+            if read_ref(name, 'wm') is not None and not _is_field(ws, name):
+                raise ToolError(f'values: "{name}" is a reference, not a field. {ONE_SHAPE}',
+                                kind='invalid-argument')
             f = _field_named(ws, name)
             if val is None:
                 raise ToolError(f'values: "{name}" has no value. Give it one ("" clears the field).',
@@ -162,6 +165,22 @@ def t_set_field(ws: Workspace, document: str, refs, field: Optional[str] = None,
         held = held_changes(ws)
         said.append(f'The plan now holds {held} change{"s" if held != 1 else ""}.')
     return ' '.join(said)
+
+
+# A value of its own on each ref was written as values keyed by ref, beside
+# field, in 4 of 6 runs of bench igt-gloss-word (glm53-stretch-3). Told
+# "Give field and value, or values, not both", the model dropped field, was
+# told "No field named "s7.w13.m1"", and only then made one call per morpheme.
+ONE_SHAPE = ('values maps field names to the one value each takes on every ref, in place of field and value. A '
+             'value of its own on each ref takes one call per ref, with field, refs and value.')
+
+
+def _is_field(ws: Workspace, name: str) -> bool:
+    try:
+        ws.project.field(name)
+        return True
+    except ValueError:
+        return False
 
 
 def _field_named(ws: Workspace, name: str):

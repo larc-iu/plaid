@@ -156,12 +156,12 @@ TOOLS = [
         []),
     _fn('set_field',
         'PLAN: set a field\'s value on words, morphemes, or sentences (the references must match the field\'s '
-        'scope). Empty value clears it. Several fields at once: values={field: value}, each on the refs of its scope '
-        '(refs ["s3.w1", "s3.w1.m1"] for a word and its morpheme). '
-        'One value on every occurrence of a form, in one call: set_field_for_form. A substitution inside every '
+        'scope). Empty value clears it. One value on every occurrence of a form, in one call: set_field_for_form. A substitution inside every '
         'value of a field: replace_in_field.',
         {'document': _DOC, 'refs': _REFS, 'field': {'type': 'string'}, 'value': {'type': 'string'},
-         'values': {'type': 'object', 'additionalProperties': {'type': 'string'}}},
+         'values': {'type': 'object', 'additionalProperties': {'type': 'string'},
+                    'description': 'Field name to value, in place of field and value, each set on the refs of its '
+                                   'scope. A value of its own on each ref takes one call per ref.'}},
         ['document', 'refs']),
     _fn('set_analysis',
         'PLAN: replace a word\'s morpheme segmentation and morpheme-level fields. Morphemes are given in order; '
@@ -228,8 +228,7 @@ TOOLS = [
         'PLAN: add a lexicon entry. fields maps entry field names (e.g. "gloss", "pos") to values; type is the '
         'morph type (stem, suffix, enclitic, ...); a form written with markers (-s, ka-, =ri) is stored without '
         'them, and takes their type when no type is given. The returned entry_id can be used by link_entry in the same '
-        'plan. Use senses for a sense of an existing entry. Many entries from a table (a dictionary export, a '
-        'word list of hundreds of rows) go in through Bulk Add on the lexicon\'s page as they are, not through '
+        'plan. Use senses for a sense of an existing entry. Many entries from a table go in through Bulk Add on the lexicon\'s page as they are, not through '
         'this, and are tidied after with the lexicon tools.',
         {'form': {'type': 'string'}, 'lexicon': {'type': 'string'},
          'fields': {'type': 'object', 'additionalProperties': {'type': 'string'}}, 'type': {'type': 'string'}},

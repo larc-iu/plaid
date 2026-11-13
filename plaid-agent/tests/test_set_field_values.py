@@ -49,7 +49,7 @@ def test_field_and_values_together_or_neither_is_refused():
     w = ws()
     out = call_tool(w, 'set_field', {'document': 'd1', 'refs': ['s1.w2'], 'field': 'Gloss',
                                      'values': {'Gloss': 'fish'}})
-    assert 'not both' in out
+    assert 'in place of field and value' in out
     assert 'Give field and value, or values' in call_tool(w, 'set_field', {'document': 'd1', 'refs': ['s1.w2']})
     assert 'Give value' in call_tool(w, 'set_field', {'document': 'd1', 'refs': ['s1.w2'], 'field': 'Gloss'})
     assert w.ops == []
