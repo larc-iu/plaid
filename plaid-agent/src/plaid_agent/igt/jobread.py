@@ -332,12 +332,18 @@ def _value(ws, key: str, value: Any, names: Dict[str, Optional[str]]) -> Optiona
 
 
 def _row_line(ws, entry: Optional[Dict[str, Any]], row: Dict[str, Any], names: Dict[str, Optional[str]]) -> str:
-    """One row: its document first when it has one, then its keys."""
+    """One row: its document first when it has one, then its form when it
+    has one, then its other keys. Core keeps a row's keys in an order of its
+    own, and a form read last ("analyses: ... | reason: no-clear-majority |
+    form: wila") was the one form of the section a model left out of its
+    answer (bench glm53-stretch-3, igt-job-discuss rep 1)."""
     parts = []
     if entry is not None:
         parts.append(_document_name(ws, entry, entry.get('document_id')))
     elif 'document_id' in row:
         parts.append(f'{_document_name(ws, row, row.get("document_id"))}, id {row.get("document_id")}')
+    if 'form' in row:
+        row = {'form': row['form'], **row}
     for k, v in row.items():
         if k in _HIDDEN or k in ('document_id', 'name') and 'document_id' in row or k.endswith('_more'):
             continue

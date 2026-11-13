@@ -190,7 +190,7 @@ test('a job is discussed from its page, and a gloss for the word it left blank i
     const read = conv.messages.find(
       (m) => m.role === 'tool' && m.content.includes('report section Left blank (left)'),
     );
-    expect(read.content).toContain('"Story A" | ref: s1.w2 | form: pele');
+    expect(read.content).toContain('"Story A" | form: pele | ref: s1.w2');
 
     // The turn's Instructions show the job's summary the model was given.
     const prompts = await client.userData.list(userId, {

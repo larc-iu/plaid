@@ -4,7 +4,7 @@ DOC = 'Gitksan text 1'
 ASKED = 'What did the last assistant job leave undone?'
 FIX = 'Gloss the word it left blank as shoot, as a single morpheme.'
 BOTH = ('The job left guxw blank in sentence 20 of Gitksan text 1, and it left wila inconsistent: glossed '
-        'MANR three times and like twice. It keeps no record of why.')
+        'MANR three times and like twice. Its record lists what it did and the notes it left.')
 
 
 def _conv(first, second='Gloss planned for guxw.', applied=True):

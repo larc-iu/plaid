@@ -228,12 +228,12 @@ def test_a_section_gives_its_rows_with_the_places_to_read_and_plan():
     out = call_tool(ws, 'read_job', {'job': job, 'section': 'left'})
     assert out.splitlines() == [
         f'Job {job}, report section Left blank (left): rows 1 to 1 of 1. As the job ended, 2026-11-13 03:10 UTC.',
-        '"Text 1" | ref: s2.w3 | form: pele']
+        '"Text 1" | form: pele | ref: s2.w3']
     assert ws.reads[-1] == {'n': 1, 'unit': 'row', 'of': 1}
     out = call_tool(ws, 'read_job', {'job': job, 'section': 'harmonize.left'})
     assert 'form: ka | reason: no-clear-majority | analyses: ka ‘go’ ×2, ka ‘come’ ×2' in out
     out = call_tool(ws, 'read_job', {'job': job, 'section': 'entries.created'})
-    assert 'id: e9 | lexicon: "' in out and 'form: tuna | gloss: fish' in out
+    assert 'form: tuna | id: e9 | lexicon: "Lexicon" | gloss: fish' in out
     out = call_tool(ws, 'read_job', {'job': job, 'section': 'documents'})
     assert '"Text 1", id d1 | state: done | sentences: 5 | targets: 5 | done: 5 | counts: words 9, links 7, ' \
            'left 1 | skipped: 1 | left: 1' in out
@@ -267,7 +267,7 @@ def test_a_section_pages_and_says_what_it_left_out():
                                'counted and did not list.')
     assert len(lines) == 42 and lines[-1] == 'Rows 41 to 45: page 2.'
     out = call_tool(ws, 'read_job', {'job': job, 'section': 'left', 'page': 2})
-    assert 'rows 41 to 45 of 45' in out and out.splitlines()[-1] == '"Text 1" | ref: s45.w1 | form: w45'
+    assert 'rows 41 to 45 of 45' in out and out.splitlines()[-1] == '"Text 1" | form: w45 | ref: s45.w1'
     assert ws.reads[-1] == {'n': 5, 'unit': 'row', 'of': 45}
     assert call_tool(ws, 'read_job', {'job': job, 'section': 'left', 'page': 3}).startswith(
         'Error: Page 3 is past the end: 45 rows, 40 a page.')
@@ -286,11 +286,25 @@ def test_document_narrows_a_section():
     assert 'section Left blank (left) in "Text 1": rows 1 to 1 of 1.' in out and 'kai' not in out
     out = call_tool(ws, 'read_job', {'job': job, 'section': 'left', 'document': 'gone-doc'})
     assert 'in a deleted document (gone-doc): rows 1 to 1 of 1, and 3 more the report counted' in out
-    assert 'a deleted document (gone-doc) | ref: s1.w1 | form: kai' in out
+    assert 'a deleted document (gone-doc) | form: kai | ref: s1.w1' in out
     out = call_tool(ws, 'read_job', {'job': job, 'section': 'left', 'document': 'Text 9'})
     assert out == 'Error: The job holds no document "Text 9". Its documents: "Text 1".'
     out = call_tool(ws, 'read_job', {'job': job, 'section': 'harmonize.left', 'document': 'Text 1'})
     assert out.startswith('Error: The rows of Forms left inconsistent (harmonize.left) name no document')
+
+
+def test_a_row_names_its_form_first_whatever_order_core_keeps_its_keys_in():
+    """bench glm53-stretch-3 igt-job-discuss rep 1: asked what the job left
+    undone, the model read Forms left inconsistent and named only the blank
+    word. Its row came back from core as "analyses: wila ‘MANR’ ×3, wila
+    ‘like’ ×2 | reason: no-clear-majority | form: wila", the form last."""
+    ws = _ws()
+    report = _report(harmonize={'changed': [], 'changed_more': 0, 'left_more': 0, 'left': [
+        {'analyses': [{'analysis': 'ka ‘go’', 'count': 2}, {'analysis': 'ka ‘come’', 'count': 2}],
+         'reason': 'no-clear-majority', 'form': 'ka'}]})
+    job = _ended(ws.client, report)
+    out = call_tool(ws, 'read_job', {'job': job, 'section': 'harmonize.left'})
+    assert out.splitlines()[1] == 'form: ka | analyses: ka ‘go’ ×2, ka ‘come’ ×2 | reason: no-clear-majority', out
 
 
 def test_harmonize_rows_name_their_documents_and_narrow_by_them():
