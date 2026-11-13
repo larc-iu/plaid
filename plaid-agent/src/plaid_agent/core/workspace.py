@@ -779,8 +779,7 @@ class BaseWorkspace:
         """
         self.refuse_read_only()
         self.refuse_job_card()
-        if (self.web is not None and getattr(self.web, 'read', False)) or self.read_untrusted:
-            raise ToolError(WEB_READ_REFUSAL, kind='not-allowed')
+        self.refuse_web_read()
         at = self.replacing(op)
         self.refuse_doomed(op, replacing=at)
         self.guard_op(op, replacing=at)
@@ -854,6 +853,12 @@ class BaseWorkspace:
         if not self.writable:
             home = self.reach.home_project.name if self.reach is not None else ''
             raise ToolError(READ_ONLY_REFUSAL.format(home=home, here=self.project.name), kind='not-allowed')
+
+    def refuse_web_read(self) -> None:
+        """Nothing is staged in a turn that read text from the web
+        wherever it is stored: neither a change nor a job card."""
+        if (self.web is not None and getattr(self.web, 'read', False)) or self.read_untrusted:
+            raise ToolError(WEB_READ_REFUSAL, kind='not-allowed')
 
     def refuse_job_card(self) -> None:
         """Nothing is staged in a turn that drafted a job card."""

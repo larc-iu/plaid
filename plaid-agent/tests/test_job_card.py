@@ -127,6 +127,22 @@ def test_another_projects_workspace_drafts_nothing():
 
 # --- a plan or a card, never both: the first staged stands ----------------------------------
 
+def test_a_turn_that_read_the_web_drafts_no_card_as_it_plans_no_change():
+    """REV-JB-3: the web-read refusal add_op owes a plan, asked of a draft by
+    the same function."""
+    from types import SimpleNamespace
+
+    from plaid_agent.core.workspace import WEB_READ_REFUSAL
+    for read in ({'read_untrusted': True}, {'web': SimpleNamespace(read=True)}):
+        ws = fake_ws(FakeClient())
+        for k, v in read.items():
+            setattr(ws, k, v)
+        assert WEB_READ_REFUSAL in _draft(ws), read
+        assert ws.job_card is None
+        planned = call_tool(ws, 'set_field', {'document': 'Text 1', 'refs': ['s1.w1'], 'field': 'gloss', 'value': 'go'})
+        assert WEB_READ_REFUSAL in planned
+
+
 def test_a_card_is_refused_in_a_turn_that_planned_changes():
     ws = fake_ws(FakeClient())
     call_tool(ws, 'set_field', {'document': 'Text 1', 'refs': ['s1.w1'], 'field': 'Gloss', 'value': 'X'})

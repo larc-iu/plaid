@@ -142,6 +142,7 @@ def t_propose_job(ws, action: str, documents: Optional[Any] = None, tasks: Optio
     if act != 'draft':
         raise ToolError('action is help or draft. Call with action "help" first.', kind='invalid-argument')
     ws.refuse_read_only()
+    ws.refuse_web_read()
     if ws.ops:
         held = held_changes(ws)
         raise ToolError(f'This turn planned {held} change{"s" if held != 1 else ""}, and a turn holds a plan or '
