@@ -861,6 +861,8 @@ def job_card_note(card: Dict[str, Any], status: str, sent_brief: Optional[str] =
     if status == 'started':
         if (sent_brief or '') == (card.get('brief') or ''):
             return '(note) The user started the job with the brief as drafted.'
+        if not sent_brief:
+            return '(note) The user cleared the brief and started the job with no brief.'
         return f'(note) The user changed the brief and started the job. The brief as sent:\n{sent_brief or ""}'
     if status == 'discarded':
         return '(note) The user discarded the job card. No job was started.'

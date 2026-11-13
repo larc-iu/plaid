@@ -308,6 +308,16 @@ def test_an_edited_brief_is_what_the_model_hears():
                                                'as sent:\nGloss ka as "come".')
 
 
+def test_a_cleared_brief_is_said_as_no_brief():
+    """REV-JB-11: a start with the brief cleared, which core holds as no note."""
+    client = FakeClient()
+    card_id = _seed_card(client)
+    client.jobs.create('p1', 'igt', ['gloss'], ['d1'], None, id=card_id)
+    _helper, conv, _meta = _settle(client, card_id, outcome='started')
+    assert conv['display'][-1]['job']['sent_brief'] == ''
+    assert conv['messages'][-1]['content'] == '(note) The user cleared the brief and started the job with no brief.'
+
+
 def test_a_start_core_does_not_hold_is_not_recorded():
     client = FakeClient()
     card_id = _seed_card(client)
