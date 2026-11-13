@@ -214,6 +214,23 @@ def test_a_person_clearing_one_of_the_jobs_words_is_not_listed_as_left_blank(mon
     assert mark['counts']['words'] == 1 and mark['counts']['left'] == 1
 
 
+def test_a_refreshed_translation_recorded_after_a_crash_counts_as_refreshed(monkeypatch):
+    """B3-7's leftover: the writing row says the write replaced a machine
+    draft, which the document no longer says."""
+    def translate(asked, n, kwargs):
+        if n > 1:
+            return reply('Done.')
+        return reply(calls=[call(1, 'set_field', {'document': 'Story', 'refs': ['s1'], 'field': 'Translation',
+                                                  'value': 'New.'})])
+    before = [{'words': ['ka'], 'translation': ('Old.', 'machine')}]
+    after = [{'words': ['ka'], 'translation': ('New.', J)}]
+    client, job, clock, model = _job(monkeypatch, ('translate',), before, after, translate)
+    _crash_at_record(monkeypatch, job)
+    assert _resume(client, job).document('d1') == 'done'
+    counts = job.rows['d1']['counts']
+    assert counts['refreshed'] == 1 and counts['translations'] == 0
+
+
 # --- a write that never left: its writing row and nothing else ------------------------
 
 def test_a_crash_between_the_writing_row_and_the_write_with_nobody_writing_takes_the_sentences_again(monkeypatch):
