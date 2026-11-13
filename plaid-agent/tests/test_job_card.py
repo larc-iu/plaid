@@ -54,6 +54,18 @@ def test_a_second_draft_in_the_turn_replaces_the_first():
     assert ws.job_card['brief'] == 'Leave loanwords.' and ws.job_card['id'] != first
 
 
+def test_what_the_tool_tells_the_model_has_no_semicolon_or_em_dash():
+    """REV-JB-6: the help, the refusals and the result, as the no-semicolons
+    rule asks of model-facing text."""
+    from plaid_agent.igt import jobcard
+    from plaid_agent.igt.toolkit import TOOLS
+    schema = str(next(t for t in TOOLS if t['function']['name'] == 'propose_job'))
+    texts = [call_tool(fake_ws(FakeClient()), 'propose_job', {'action': 'help'}), schema,
+             jobcard.READER_REFUSAL, _draft(fake_ws(FakeClient()))]
+    for text in texts:
+        assert ';' not in text and '\u2014' not in text, text
+
+
 def test_help_reads_the_limits_core_publishes():
     client = FakeClient()
     ws = fake_ws(client)

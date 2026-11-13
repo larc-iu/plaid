@@ -45,7 +45,7 @@ def _help(facts: Dict[str, Any]) -> str:
         f'- documents: names or ids{most}, or ["all"] for every document of the project.',
         '- tasks: translate (fill empty translations, replace machine ones), gloss (segment and gloss every word '
         'with no analysis), link (link the morphemes it analyses to the lexicon, making machine draft entries '
-        'where none fits; needs gloss).',
+        'where none fits). link needs gloss.',
         '- brief: the instructions the job\'s model reads with every few sentences, with nothing of this '
         'conversation. Write the decisions, not the discussion: what to do, what to leave, the conventions '
         'settled, in plain imperative sentences that name forms and glosses exactly, such as "Gloss -da as '
