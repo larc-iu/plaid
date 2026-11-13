@@ -1258,12 +1258,11 @@ class IgtRunner:
             project, {'document': None, 'first': None, 'whole': True}, note, ws.tables))
         by_doc = self.ops_by_document(ws, live)
         # Changes no document holds (a lexicon change, a guideline) go with
-        # the first document's write: the rule applies the lexicon's and
-        # proposes project setup.
+        # the first document's write that lands: the rule applies the
+        # lexicon's and proposes project setup. A document put off or gone
+        # hands them to the next (REV-JH-2).
         loose = by_doc.pop(None, [])
         read = [d for d in live if d in ws._docs]
-        if loose and read:
-            by_doc.setdefault(read[0], []).extend(loose)
         # What the piece staged in a document the job does not write in (one
         # outside the job, or one of its own it has finished) is a proposed
         # change, listed in the report: the job may not write there (REV-JG-6).
@@ -1277,7 +1276,8 @@ class IgtRunner:
         for d in live:
             job.check()
             shown = ws.shown.get(d) or set()
-            if d not in ws._docs or not (shown or by_doc.get(d)):
+            carried = loose if d in ws._docs else []
+            if d not in ws._docs or not (shown or by_doc.get(d) or carried):
                 # The piece never read it (its budget ran out, say): it is not
                 # recorded as worked. The walk works it as a piece of its own,
                 # and the report's plan says so (REV-JG2-5).
@@ -1285,7 +1285,8 @@ class IgtRunner:
                 continue
             job.set(current_document=d)
             try:
-                self.write_piece(project, d, ws, ws._docs[d], by_doc.get(d, []), note, shown)
+                if self.write_piece(project, d, ws, ws._docs[d], by_doc.get(d, []) + carried, note, shown):
+                    loose = []
             except Deferred:
                 # Its writes were dropped: it is worked again as a piece of its own.
                 core_job.through_core(job, lambda: (self.fall_back(d, 'in-use'), self.defer(d)))
@@ -1299,10 +1300,15 @@ class IgtRunner:
             out = self.excluded(d)
             if any(s.id not in shown and s.id not in out for s in ws._docs[d].sentences):
                 core_job.through_core(job, lambda: self.fall_back(d, NOT_READ))
+        if loose and read:
+            # No write landed to carry them: listed for a person.
+            from .jobapply import IGNORED_KINDS
+            left = [self.describe_loose(op) for op in loose if op.get('kind') not in IGNORED_KINDS]
+            core_job.through_core(job, lambda: self.record_changes(left, note))
         return True
 
     def write_piece(self, project: IgtProject, document_id: str, ws: JobWorkspace, doc,
-                    ops: List[Dict[str, Any]], note: str, shown=frozenset()) -> None:
+                    ops: List[Dict[str, Any]], note: str, shown=frozenset()) -> bool:
         """A selection's write in one of the documents its piece read: THE
         write (:meth:`write`), its piece the sentences of the document a read
         printed to the model (``shown``, sentence ids, REV-JG3-1: the gate
@@ -1311,15 +1317,16 @@ class IgtRunner:
         What it staged in a sentence it was not shown goes to the apply rule
         as any op of the document. Tried again from the gate after core's
         passing trouble, and put off (:class:`Deferred`) when the trouble
-        outlasts the tries, as a stretch's document is (REV-JG-4)."""
+        outlasts the tries, as a stretch's document is (REV-JG-4). Whether
+        the write landed (:meth:`write`)."""
         def step():
             part = [s for s in doc.sentences if s.id in shown]
             prints = {s.id: ws.sentence_print(doc, s) for s in doc.sentences}
-            self.write(project, document_id, ws, doc, part, prints, ops, note, SELECTION_TAG, selection=True)
+            return self.write(project, document_id, ws, doc, part, prints, ops, note, SELECTION_TAG, selection=True)
 
         def put_off():
             raise Deferred(document_id)
-        core_job.through_core(self.job, step, gave_up=put_off)
+        return core_job.through_core(self.job, step, gave_up=put_off)
 
     def entries_that_fit(self, project: IgtProject, ops: List[Dict[str, Any]],
                          selection: bool = False) -> List[Dict[str, Any]]:
@@ -1954,7 +1961,7 @@ class IgtRunner:
 
     def write(self, project: IgtProject, document_id: str, ws: JobWorkspace, doc, part: List[Sentence],
               prints: Dict[str, str], ops: List[Dict[str, Any]], note: str = '', piece: str = '',
-              selection: bool = False) -> None:
+              selection: bool = False) -> bool:
         """THE write of every piece of the job in one document, whatever the
         plan cut (a stretch, a whole document, the whole selection): through
         :meth:`gate` first, then under the document's lock by the apply rule
@@ -1970,7 +1977,9 @@ class IgtRunner:
         interrupted) leaves the piece and the ops the piece staged there are
         dropped, never applied again nor applied where a person removed what
         landed. A word written is no longer a target, a translation written
-        is the job's own, and a sentence recorded is not recorded again."""
+        is the job's own, and a sentence recorded is not recorded again.
+        True when the write landed, False when it was refused and its
+        sentences skipped."""
         job = self.job
         self.gate(project, document_id)
         ops = self.entries_that_fit(project, ops, selection)
@@ -2043,7 +2052,7 @@ class IgtRunner:
                     if self.gone_refused[refused] >= JOB_DEFER_ROUNDS:
                         for s in part:
                             self.skip(document_id, doc, s.id, 'changed', None)
-                        return
+                        return False
                 if _status(e) in (409, 423) or _gone_now(e):
                     raise Deferred(document_id) from e
                 raise
@@ -2054,6 +2063,7 @@ class IgtRunner:
         counts['repeated'] += repeated
         made = self.made_entries(ws, after, st, written_ops)
         self.record(project, document_id, after, part, st, counts, written_ops, made, changed, vouched)
+        return True
 
     def gloss_ref(self, document_id: str) -> str:
         return f'job:{self.job.id}/doc:{document_id}/pass:gloss'

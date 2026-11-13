@@ -761,3 +761,63 @@ def test_a_stopped_job_writes_no_prose(monkeypatch):
     finished = run_job(job, r)
     assert finished['state'] == 'cancelled' and finished['report']['summary'] is None
     assert not [c for c in model.calls if _kind(c['asked']) == 'summary']
+
+
+# --- a selection's lexicon changes and its put-off documents (REV-JH-2) -------------------
+
+def _lexicon_selection(monkeypatch, put_off):
+    """A selection that glosses ka in both texts and changes the gloss of
+    the entry gam, the documents in ``put_off`` in use at its write. The
+    kinds each write sent, and the finished job."""
+    client = JobClient(_docs(2))
+    job = start(client, 'Gloss ka in every text and gloss the entry gam as fish-net.', id=J, plan='selection')
+    sent = []
+    real = igt_job.execute_plan
+
+    def execute(c, ops, **kw):
+        sent.append(sorted(o['kind'] for o in ops))
+        return real(c, ops, **kw)
+    monkeypatch.setattr(igt_job, 'execute_plan', execute)
+    r = runner(job)
+    real_hold, held = r.hold, set()
+
+    def hold(c, document_id):
+        if document_id in put_off and document_id not in held:
+            held.add(document_id)
+            raise igt_job.Deferred(document_id)  # someone edits it right now
+        return real_hold(c, document_id)
+    r.hold = hold
+
+    def piece(asked, n):
+        if 'Your piece: the whole selection above.' not in asked:
+            return reply('Nothing left to do here.')
+        if n == 1:
+            return reply(calls=[call(9, 'read_sentences', {'items': [{'document': f'Story {i}', 'sentences': [1, 2]}
+                                                                     for i in (1, 2)]})])
+        if n == 2:
+            return reply(calls=[call(i, 'set_analysis', {'document': f'Story {i}', 'ref': 's1.w1', 'morphemes': [
+                {'form': 'ka', 'fields': {'Morph Gloss': 'go'}}]}) for i in (1, 2)] + [
+                call(3, 'set_entry_field', {'entry_id': 'vi-gam', 'field': 'gloss', 'value': 'fish-net'})])
+        return reply('Glossed ka in both texts and changed the gloss of gam.')
+    use(monkeypatch, _model(piece=piece))
+    return sent, run_job(job, r)
+
+
+def test_a_selections_lexicon_change_goes_with_the_next_write_when_its_first_document_is_put_off(monkeypatch):
+    """REV-JH-2: Story 1, whose write would carry the lexicon change, is in
+    use. The change goes with Story 2's write, and nothing is proposed."""
+    sent, finished = _lexicon_selection(monkeypatch, {'d1'})
+    assert finished['state'] == 'done'
+    assert sent[0] == ['set_analysis', 'set_entry_field'], sent
+    assert sum('set_entry_field' in b for b in sent) == 1, sent
+    assert not finished['report'].get('proposed')
+
+
+def test_a_selections_lexicon_change_no_write_carries_is_proposed(monkeypatch):
+    """Every document of the selection is in use at its write: no write
+    carries the lexicon change, which is listed as a proposed change."""
+    sent, finished = _lexicon_selection(monkeypatch, {'d1', 'd2'})
+    assert finished['state'] == 'done'
+    assert not any('set_entry_field' in b for b in sent), sent
+    proposed = finished['report'].get('proposed') or []
+    assert [p['kind'] for p in proposed] == ['set_entry_field'], proposed
