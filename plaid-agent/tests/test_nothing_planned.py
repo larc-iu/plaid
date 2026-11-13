@@ -341,3 +341,24 @@ def test_a_plan_discarded_this_turn_is_nothing_planned(monkeypatch, app):
     assert len(sent) == 4
     assert sent[3]['messages'][-1] == {'role': 'user', 'content': NOTHING_PLANNED}
     assert out.text == 'Nothing is planned.'
+
+
+# bench glm53-stretch-3, igt-job-scope reps 1 and 2: a turn that drafted a job
+# card and said so was sent back as one that staged nothing, and in rep 2 the
+# note pushed the model to try writing the glosses itself (five refused
+# set_analysis calls). A staged job card is something staged.
+JOB_CARD_REPLIES = [
+    "I've drafted the overnight job, the card is ready for you to start or edit.",
+    'The job card is drafted and waiting for you to start it.',
+]
+
+
+@pytest.mark.parametrize('text', JOB_CARD_REPLIES)
+def test_a_turn_that_drafted_a_job_card_is_left_alone(monkeypatch, text):
+    assert claims_a_plan(text)
+    ws, kit, _plan, _read = _igt()
+    draft = ('propose_job', {'action': 'draft', 'documents': ['Text 1'], 'brief': 'Gloss ka as "go".'})
+    out, sent = _run(monkeypatch, ws, kit, [_reply(draft), _reply(text=text)])
+    assert ws.job_card is not None
+    assert len(sent) == 2 and out.text == text
+    assert not any(s['name'] == agent.NOTHING_PLANNED_STEP for s in out.steps)

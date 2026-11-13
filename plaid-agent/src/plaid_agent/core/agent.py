@@ -1315,9 +1315,11 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
 
     def claimed_nothing(text: str) -> bool:
         """The reply says it planned, and the plan holds nothing now (none
-        went through, or discard_plan emptied it) and no card from an
-        earlier message still waits (the reply may be about that one)."""
-        return not held_changes(ws) and not getattr(ws, 'waiting', None) and claims_a_plan(text)
+        went through, or discard_plan emptied it), the turn drafted no job
+        card, and no card from an earlier message still waits (the reply
+        may be about that one)."""
+        return (not held_changes(ws) and getattr(ws, 'job_card', None) is None
+                and not getattr(ws, 'waiting', None) and claims_a_plan(text))
 
     # A model call that failed after a plan was staged (`keep_the_plan`): the
     # failure and the text that call had written.
