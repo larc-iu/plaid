@@ -3555,7 +3555,10 @@ class AuditResource(_Resource):
         Undoing an entry again finds nothing left and writes nothing. The undo
         is itself an entry (``operation``), so it can be undone in turn.
         Maintainers only, row by row: a row of a document needs its project's
-        maintainer, an entry its vocabulary's home's.
+        maintainer, an entry its vocabulary's home's. It goes out with no
+        Idempotency-Key and no batch carries it: its dry run, and each attempt
+        a misfit ends, roll back inside its own transaction, which a keyed
+        write's outer transaction would commit.
 
         Args:
             entry_id: An entry's ``id``: a group, a batch or one operation
@@ -3567,7 +3570,8 @@ class AuditResource(_Resource):
         return self._request('POST', f'/api/v1/audit/entries/{entry_id}/undo',
                              query_params={'dry-run': 'true' if dry_run else None,
                                            'document-id': document_id,
-                                           'vocab-layer-id': vocab_layer_id})
+                                           'vocab-layer-id': vocab_layer_id},
+                             no_batch=True)
 
     def tally(self, *, project_id: str | None = None, start_time: str | None = None,
               end_time: str | None = None, daily: bool | None = None) -> Any:

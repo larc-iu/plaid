@@ -446,7 +446,10 @@ export function auditApi(client) {
      * entry again finds nothing left and writes nothing. The undo is itself an
      * entry (`operation`), so it can be undone in turn. Maintainers only, row
      * by row: a row of a document needs its project's maintainer, an entry
-     * its vocabulary's home's.
+     * its vocabulary's home's. It goes out with no Idempotency-Key and no
+     * batch carries it: its dry run, and each attempt a misfit ends, roll
+     * back inside its own transaction, which a keyed write's outer
+     * transaction would commit.
      * @param {string} entryId - An entry's `id`: a group, a batch or one operation
      * @param {object} [opts]
      * @param {boolean} [opts.dryRun] - Write nothing and say what would be done
@@ -462,6 +465,7 @@ export function auditApi(client) {
           "document-id": documentId,
           "vocab-layer-id": vocabLayerId,
         },
+        noBatch: true,
       }),
     /**
      * Per-user activity counts. `changes` is the number of logical actions,

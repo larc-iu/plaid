@@ -64,3 +64,17 @@ def test_the_fake_records_an_undo_and_answers_its_summary():
         ('audit.undo', {'args': ('e1',), 'kwargs': {'dry_run': False, 'document_id': None,
                                                      'vocab_layer_id': None}}),
     ]
+
+
+def test_an_undo_goes_out_with_no_idempotency_key_dry_or_not():
+    # The undo's dry run, and each attempt a misfit ends, roll back inside the
+    # undo's own transaction. A keyed write runs inside an outer one that
+    # commits with its stored answer, which would keep what they rolled back:
+    # a dry run sent with a key wrote the undo.
+    client = PlaidClient('http://x', 'tok')
+    client.session = recording_session([{'entry': 'e1', 'total': 0, 'skipped': []}])
+    client.audit.undo('e1', dry_run=True, document_id='d1')
+    client.audit.undo('e1')
+    assert len(client.session.sent) == 2
+    for sent in client.session.sent:
+        assert 'Idempotency-Key' not in (sent['headers'] or {})
