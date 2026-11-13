@@ -1559,8 +1559,9 @@ class IgtRunner:
         per document a runner visits), and a record for every sentence the
         job wrote in without recording it, which a crash, an error or a write
         put off between a write and its record leaves (SPEC 3.8). Such a
-        sentence is recorded from the document as it is: the job's own words
-        and translation. Its words are vouched for only
+        sentence is recorded from the document as it is, as its stretch would
+        have recorded it: the job's own words and translation, and the
+        targets left blank. Its words are vouched for only
         when ``own``, the newest change of the document being the job's own
         glossing (``walk``), so that nobody wrote since: otherwise a person's
         deletion would read as the job's work (REV-J-B3 B3-2)."""
@@ -1576,11 +1577,18 @@ class IgtRunner:
         for s in doc.sentences:
             if s.id in marks or s.id in skipped:
                 continue
-            words = [w for w in s.words if job_owned(w, job.id)]
-            mine = 'translate' in job.tasks and translation_state(s, project, job.id) == 'own'
-            if words or mine:
-                orphans.append(self.sentence_record(document_id, s, words, 'translations' if mine else None,
-                                                    vouched={w.id for w in words} if own else frozenset()))
+            mine = [w for w in s.words if job_owned(w, job.id)]
+            state = translation_state(s, project, job.id) if 'translate' in job.tasks else None
+            if not mine and state != 'own':
+                continue
+            # As its stretch would have recorded it (REV-J-B3 B3-7): the
+            # job's words, the targets still blank (left), and the
+            # translation, written or left blank.
+            ids = {w.id for w in mine}
+            words = [w for w in s.words if w.id in ids or ('gloss' in job.tasks and word_target(w))]
+            translation = 'translations' if state == 'own' else 'left' if state in ('empty', 'machine') else None
+            orphans.append(self.sentence_record(document_id, s, words, translation,
+                                                vouched=ids if own else frozenset()))
         if orphans:
             self.commit(document_id, orphans, {})
 

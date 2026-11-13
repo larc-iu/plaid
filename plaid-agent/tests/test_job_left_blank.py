@@ -107,3 +107,34 @@ def test_a_cut_record_counts_the_rest_as_more(monkeypatch):
     assert 0 < len(doc['left']) < 100 and len(doc['left']) + doc['left_more'] == 100
     marks = [r for r in client.jobs.decisions(J) if r['form'].startswith(RECORD_FORM)]
     assert all(len(r['analysis']) <= JOB_ANALYSIS_MAX_CHARS for r in marks)
+
+
+class _Crash(BaseException):
+    """The worker's process dies here."""
+
+
+def test_a_sentence_recorded_after_a_crash_counts_and_lists_what_was_left_blank(monkeypatch):
+    """The worker died between the write and its record: the sentence is
+    recorded when the walk comes back to it, and the targets the model left
+    blank there are counted and listed as the stretch would have (REV-J-B3
+    B3-7), its translation left blank too."""
+    client = _two_sentences()
+    job = start(client, ['translate', 'gloss'], id=J)
+    use(monkeypatch, Model(_first_word_only))
+    real = job.add_decisions
+
+    def crash(decisions):
+        raise _Crash()
+    monkeypatch.setattr(job, 'add_decisions', crash)
+    try:
+        runner(job).document('d1')
+    except _Crash:
+        pass
+    monkeypatch.setattr(job, 'add_decisions', real)
+    job.rows = {r['document_id']: dict(r) for r in client.jobs.get(J)['documents']}
+    model = use(monkeypatch, Model(_first_word_only))
+    assert run_job(job, runner(job))['state'] == 'done'
+    assert not model.calls, 'nothing is asked again'
+    (doc,) = _report(client)['documents']
+    assert doc['counts']['left'] == 5 and doc['counts']['words'] == 2
+    assert [x['ref'] for x in doc['left']] == ['s1', 's1.w2', 's2', 's2.w2', 's2.w3']
