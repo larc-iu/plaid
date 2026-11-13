@@ -784,6 +784,42 @@
  */
 
 /**
+ * How many rows of one kind an undo put back (`audit.undo`).
+ * @typedef {object} UndoCounts
+ * @property {number} inserted Rows the entry deleted, inserted again under their old ids
+ * @property {number} updated Rows the entry changed, set back
+ * @property {number} deleted Rows the entry made, deleted
+ */
+
+/**
+ * A row an undo left as it is, and why (`audit.undo`). `by` names the row
+ * that stays and names it (`built-on`), `needs` the row it needs that will
+ * not be there (`needs`).
+ * @typedef {object} UndoSkippedRow
+ * @property {"document"|"text"|"token"|"span"|"relation"|"vocab-link"|"vocab-item"|"vocab-layer"} kind
+ * @property {string} id
+ * @property {string} [document]
+ * @property {string} [vocabLayer]
+ * @property {"changed-since"|"changed-between"|"not-permitted"|"locked"|"not-undone"|"built-on"|"needs"|"text-changed-since"|"name-taken"|"does-not-fit"|"value-not-allowed"} reason
+ * @property {{kind: string, id: string}} [by]
+ * @property {{kind: string, id: string}} [needs]
+ */
+
+/**
+ * What `audit.undo` did, or with `dryRun` would do.
+ * @typedef {object} AuditUndoSummary
+ * @property {string} entry The entry undone
+ * @property {boolean} dryRun
+ * @property {{documents: UndoCounts, texts: UndoCounts, tokens: UndoCounts, spans: UndoCounts, relations: UndoCounts, vocabLinks: UndoCounts, vocabItems: UndoCounts}} undone
+ * @property {number} total Rows put back
+ * @property {number} rows The entry's rows (in the narrowing asked for)
+ * @property {UndoSkippedRow[]} skipped The first 1,000 rows left
+ * @property {number} skippedCount Every row left
+ * @property {{opType: string, count: number}[]} notUndone The entry's operations that changed what undo does not take back
+ * @property {string} [operation] The undo's own entry, when the call wrote
+ */
+
+/**
  * A document lock as its holder sees it. `expiresAt` is in epoch
  * milliseconds.
  * @typedef {{lockId: string, userId: string, expiresAt: number}} LockGrant

@@ -1008,6 +1008,18 @@ class _AuditLog(list):
         end = start + (limit or 100)
         return {'entries': rows[start:end], 'next_cursor': str(end) if end < len(rows) else None}
 
+    def undo(self, entry_id, *, dry_run=False, document_id=None, vocab_layer_id=None):
+        """The server's undo of an entry, recorded dry or not. Either way it
+        answers with the fake's ``undo_summary``: what WOULD be undone, or what
+        was. The fake applies nothing to its documents."""
+        self._root.fail_if_asked('audit.undo')
+        self._root.record('audit.undo',
+                          {'args': (entry_id,),
+                           'kwargs': {'dry_run': dry_run, 'document_id': document_id,
+                                      'vocab_layer_id': vocab_layer_id}},
+                          {'body': self._root.undo_summary})
+        return self._root.undo_summary
+
 
 class FakeClient:
     """Enough of PlaidClient to drive a handler or an assistant: documents to
@@ -1064,6 +1076,9 @@ class FakeClient:
     to work them out from, so a test records them. ``audit`` stays the list of
     the home project's entries, and answers those two reads as well.
 
+    ``audit.undo`` is recorded (``audit.undo`` among the calls, dry or not) and
+    answers with ``undo_summary``, a summary as the real client gives it.
+
     ``users.get`` answers any user's record, an administrator when ``admins``
     names them.
 
@@ -1079,7 +1094,7 @@ class FakeClient:
     def __init__(self, documents, fails=None, *, project=None, audit=None, guidelines=None,
                  comments=None, restore_summary=None, projects=None, services=None,
                  vocabularies=None, vocab_audit=None, vocab_restore_summary=None,
-                 limits=None, admins=(), unit_changes=None):
+                 limits=None, admins=(), unit_changes=None, undo_summary=None):
         self._documents = documents if isinstance(documents, dict) else list(documents)
         self.base_url = 'http://plaid.internal:8085'
         self.token = 'tok'
@@ -1107,6 +1122,8 @@ class FakeClient:
         self.project = project
         #: {entry_id: [rows]} for ``audit.changes``
         self.unit_changes = dict(unit_changes or {})
+        #: what ``audit.undo`` answers
+        self.undo_summary = undo_summary
         self.audit = list(audit or [])
         self.guideline_rows = list(guidelines or [])
         self.comment_rows = list(comments or [])

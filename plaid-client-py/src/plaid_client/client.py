@@ -3538,6 +3538,37 @@ class AuditResource(_Resource):
                          limit=limit, cursor=cursor,
                          query={'document-id': document_id, 'vocab-layer-id': vocab_layer_id})
 
+    def undo(self, entry_id: str, *, dry_run: bool = False, document_id: str | None = None,
+             vocab_layer_id: str | None = None) -> Any:
+        """Undo one audit entry, as one operation.
+
+        Every row the entry wrote is put back as it was just before it, in its
+        documents and its vocabularies together. A row it made is deleted, one
+        it deleted comes back under its old id, one it changed is set back. A
+        row someone wrote since, built on, or that cannot come back is left as
+        it is and listed under ``skipped`` with its reason (``changed-since``,
+        ``changed-between``, ``not-permitted``, ``locked``, ``not-undone``,
+        ``built-on``, ``needs``, ``text-changed-since``, ``name-taken``,
+        ``does-not-fit``, ``value-not-allowed``). Changes to a project, its
+        layers, a vocabulary's name or settings, users and memberships are not
+        undone: ``not_undone`` lists the entry's operations that made them.
+        Undoing an entry again finds nothing left and writes nothing. The undo
+        is itself an entry (``operation``), so it can be undone in turn.
+        Maintainers only, row by row: a row of a document needs its project's
+        maintainer, an entry its vocabulary's home's.
+
+        Args:
+            entry_id: An entry's ``id``: a group, a batch or one operation
+            dry_run: Write nothing and say what would be done
+            document_id: Only the rows of this document
+            vocab_layer_id: Only this vocabulary's entries and the links that
+                name one of them
+        """
+        return self._request('POST', f'/api/v1/audit/entries/{entry_id}/undo',
+                             query_params={'dry-run': 'true' if dry_run else None,
+                                           'document-id': document_id,
+                                           'vocab-layer-id': vocab_layer_id})
+
     def tally(self, *, project_id: str | None = None, start_time: str | None = None,
               end_time: str | None = None, daily: bool | None = None) -> Any:
         """Per-user activity counts.

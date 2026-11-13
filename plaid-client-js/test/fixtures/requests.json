@@ -455,5 +455,25 @@
     "py": ["audit.changes_page", "e1"],
     "py_kw": {"vocab_layer_id": "v1", "limit": 50, "cursor": "c1"},
     "sends": [{"method": "GET", "path": "/api/v1/audit/entries/e1/changes", "query": {"vocab-layer-id": "v1", "limit": "50", "cursor": "c1"}}]
+  },
+  {
+    "name": "an entry's undo posts to the entry, with nothing asked of it",
+    "js": ["audit.undo", "e1"],
+    "py": ["audit.undo", "e1"],
+    "sends": [{"method": "POST", "path": "/api/v1/audit/entries/e1/undo"}]
+  },
+  {
+    "name": "a dry-run undo of one document's part of an entry says so",
+    "js": ["audit.undo", "e1", {"dryRun": true, "documentId": "d1"}],
+    "py": ["audit.undo", "e1"],
+    "py_kw": {"dry_run": true, "document_id": "d1"},
+    "sends": [{"method": "POST", "path": "/api/v1/audit/entries/e1/undo", "query": {"dry-run": "true", "document-id": "d1"}}]
+  },
+  {
+    "name": "an undo of a vocabulary's part of an entry",
+    "js": ["audit.undo", "e1", {"vocabLayerId": "v1"}],
+    "py": ["audit.undo", "e1"],
+    "py_kw": {"vocab_layer_id": "v1"},
+    "sends": [{"method": "POST", "path": "/api/v1/audit/entries/e1/undo", "query": {"vocab-layer-id": "v1"}}]
   }
 ]

@@ -92,6 +92,7 @@ export const BACKUP_TIMEOUT_MS = 30 * 60 * 1000;
  * @typedef {import("./types.js").AuditOp} AuditOp
  * @typedef {import("./types.js").AuditEntry} AuditEntry
  * @typedef {import("./types.js").AuditRowChange} AuditRowChange
+ * @typedef {import("./types.js").AuditUndoSummary} AuditUndoSummary
  * @typedef {import("./types.js").LockGrant} LockGrant
  * @typedef {import("./types.js").DocumentRestoreSummary} DocumentRestoreSummary
  * @typedef {import("./types.js").RestoreCounts} RestoreCounts
@@ -429,6 +430,38 @@ export function auditApi(client) {
         limit,
         cursor,
         query: { "document-id": documentId, "vocab-layer-id": vocabLayerId },
+      }),
+    /**
+     * Undo one audit entry, as one operation: every row it wrote is put back
+     * as it was just before it, in its documents and its vocabularies
+     * together. A row it made is deleted, one it deleted comes back under its
+     * old id, one it changed is set back. A row someone wrote since, built
+     * on, or that cannot come back is left as it is and listed under
+     * `skipped` with its reason (`changed-since`, `changed-between`,
+     * `not-permitted`, `locked`, `not-undone`, `built-on`, `needs`,
+     * `text-changed-since`, `name-taken`, `does-not-fit`,
+     * `value-not-allowed`). Changes to a project, its layers, a
+     * vocabulary's name or settings, users and memberships are not undone:
+     * `notUndone` lists the entry's operations that made them. Undoing an
+     * entry again finds nothing left and writes nothing. The undo is itself an
+     * entry (`operation`), so it can be undone in turn. Maintainers only, row
+     * by row: a row of a document needs its project's maintainer, an entry
+     * its vocabulary's home's.
+     * @param {string} entryId - An entry's `id`: a group, a batch or one operation
+     * @param {object} [opts]
+     * @param {boolean} [opts.dryRun] - Write nothing and say what would be done
+     * @param {string} [opts.documentId] - Only the rows of this document
+     * @param {string} [opts.vocabLayerId] - Only this vocabulary's entries and
+     *   the links that name one of them
+     * @returns {Promise<AuditUndoSummary>}
+     */
+    undo: (entryId, { dryRun, documentId, vocabLayerId } = {}) =>
+      client._request("POST", `/api/v1/audit/entries/${entryId}/undo`, {
+        queryParams: {
+          "dry-run": dryRun ? "true" : undefined,
+          "document-id": documentId,
+          "vocab-layer-id": vocabLayerId,
+        },
       }),
     /**
      * Per-user activity counts. `changes` is the number of logical actions,
