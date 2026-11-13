@@ -350,6 +350,35 @@ for row in c.audit.changes(entry_id, document_id=document_id):
     print(row["kind"], row.get("before"), row.get("after"))
 ----
 
+=== Undo of one entry
+
+`audit.undo` puts back every row one entry wrote as it was just before the entry, in its documents and its vocabularies together, as one new entry of its own.
+A row the entry made is deleted, one it deleted comes back under its old id, and one it changed is set back.
+A merge comes undone whole: the merged entries come back, their links point to them again, and every reference the merge rewrote names them again.
+
+What people did since is left alone.
+A row is left as it is, and listed under `skipped` with its reason, when someone wrote it since (`changed-since`), or between the entry's own writes (`changed-between`), when the entry made it and something that stays is built on it, such as an annotation on a token or a link to an entry (`built-on`), or when it needs something that will not be there (`needs`).
+A text goes back only when nothing in its document wrote a text or a token since the entry began (`text-changed-since`).
+When a document's layers would no longer hold with the entry's rows put back, that document's rows are all left (`does-not-fit`), and a value a closed list no longer allows is left too (`value-not-allowed`).
+Changes to a project, its layers, a vocabulary's name or settings, users and memberships are not undone, and `not_undone` / `notUndone` names the operations that made them.
+A project's deletion cannot be undone.
+After a vocabulary is deleted, only an administrator can read its entries' history, so only an administrator can undo what an entry did to them.
+
+[,python]
+----
+plan = c.audit.undo(entry_id, dry_run=True)
+print(plan["total"], plan["skipped_count"])
+done = c.audit.undo(entry_id)
+c.audit.undo(done["operation"])  # and back again
+----
+
+`document_id` / `documentId` takes one document's rows only, its links included, and `vocab_layer_id` / `vocabLayerId` takes one vocabulary's entries and the links that name one of them.
+An undo needs a maintainer: of a document's project for its rows, of a vocabulary's home project for its entries.
+Rows the caller may not maintain are listed as `not-permitted` and the rest undone.
+A delegated token undoes only the rows of documents in the projects it reaches.
+Undoing the same entry again finds nothing left and writes nothing.
+An entry of more than 20,000 rows is refused.
+
 === Last edit per document
 
 `my_last_edits` / `myLastEdits` answers, in one request, when the calling user last wrote to each document in a project:
