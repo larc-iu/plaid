@@ -105,17 +105,30 @@ export const SentenceChange = ({ s, dir, projectId, documentId }) => (
 );
 
 // A word's morpheme values side by side, each before and after on its own,
-// with the joiners the grid writes between them.
-const Pieces = ({ pieces, gloss }) => (
-  <span className="inline-flex items-start">
-    {pieces.map((p) => (
+// with the joiners the grid writes between them. The values of morphemes
+// the entry took away (a word segmented anew) are a line of their own under
+// them, struck, so none reads as a morpheme of the word as it is now.
+const Pieces = ({ pieces, gloss }) => {
+  const line = (list, gone) =>
+    list.map((p, i) => (
       <span key={p.id} className="inline-flex items-start" data-piece={p.id}>
-        {p.joiner && <span className="text-muted-foreground">{p.joiner}</span>}
+        {i > 0 && p.joiner && <span className="text-muted-foreground">{p.joiner}</span>}
         <ChangeValue c={p} gloss={gloss} />
       </span>
-    ))}
-  </span>
-);
+    ));
+  const now = pieces.filter((p) => !p.gone);
+  const gone = pieces.filter((p) => p.gone && p.before !== '');
+  return (
+    <span className="inline-flex flex-col items-start">
+      <span className="inline-flex items-start">{line(now)}</span>
+      {gone.length > 0 && (
+        <span className="inline-flex items-start" data-gone>
+          {line(gone)}
+        </span>
+      )}
+    </span>
+  );
+};
 
 const Field = ({ label, children }) => (
   <div className="mt-2 flex items-baseline gap-2">

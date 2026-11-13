@@ -381,7 +381,8 @@ const piecesDiff = (key, bMorphs, aMorphs, own) => {
     };
     const joiner = prev ? joinerBetween(prev, piece) : '';
     prev = piece;
-    return { id: p.id, joiner, ...d };
+    // `gone`: the morpheme itself is gone (a word segmented anew).
+    return { id: p.id, joiner, gone: !!p.before && !p.after, ...d };
   });
   // A word whose morphemes are all blank shows nothing, as the grid's joined
   // line does, not a run of joiners.

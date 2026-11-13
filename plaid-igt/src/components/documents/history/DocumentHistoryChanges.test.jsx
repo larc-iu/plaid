@@ -170,6 +170,67 @@ describe('DocumentHistoryChanges', () => {
     expect(view.container.querySelector('[data-replaced]')).toBeNull();
   });
 
+  // REV-HD2-6
+  it('shows a word segmented anew with its old morphemes struck on a line under the new', async () => {
+    const morphemes = [
+      {
+        id: 'm-8',
+        text: 'text-1',
+        begin: 0,
+        end: 3,
+        precedence: 1,
+        metadata: { form: 'th', ...MACHINE },
+      },
+      {
+        id: 'm-9',
+        text: 'text-1',
+        begin: 0,
+        end: 3,
+        precedence: 2,
+        metadata: { form: 'e', ...MACHINE },
+      },
+      { id: 'm-2', text: 'text-1', begin: 4, end: 7, precedence: 1, metadata: {} },
+    ];
+    const tok = (id, before, img) => ({
+      kind: 'token',
+      id,
+      layer: 'morphL',
+      text: 'text-1',
+      ...(before ? { before: img } : { after: img }),
+    });
+    const client = clientOf({
+      document: [
+        [
+          tok('m-1', true, {
+            id: 'm-1',
+            begin: 0,
+            end: 3,
+            precedence: 1,
+            metadata: { form: 'the' },
+          }),
+          tok('m-8', false, morphemes[0]),
+          tok('m-9', false, morphemes[1]),
+          {
+            kind: 'span',
+            id: 'g1',
+            layer: 'msl-0',
+            before: { id: 'g1', value: 'the.DEF', tokens: ['m-1'], metadata: {} },
+          },
+        ],
+      ],
+    });
+    await mount(after({ morphemes }), client);
+    const cell = view.container.querySelector('tr[data-row="morphemes"] td');
+    const [now, gone] = [...cell.firstElementChild.children];
+    expect(now.textContent).toBe('th-e');
+    expect(now.querySelector('del')).toBeNull();
+    expect(gone.hasAttribute('data-gone')).toBe(true);
+    expect(gone.querySelector('del').textContent).toBe('the');
+    expect(gone.querySelector('[data-change]').dataset.change).toBe('replaced');
+    const gloss = view.container.querySelector('tr[data-row="morph:Gloss"] td [data-gone] del');
+    expect(gloss.textContent).toBe('the.DEF');
+  });
+
   it('shows only the sentences where a person’s value went, on asking', async () => {
     const doc = after({
       body: 'ab cd',
