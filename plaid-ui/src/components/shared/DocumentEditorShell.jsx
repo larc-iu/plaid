@@ -26,7 +26,7 @@ import { dismissIntegrityFindings } from '../../lib/integrityToast.js';
 import { humanizeError, isGone, statusOf } from '../../lib/errors.js';
 import { notifyError } from '../../lib/notify.js';
 import { useHistoryView } from '../../hooks/useHistoryView.js';
-import { useHistoryParam } from '../../hooks/useHistoryParam.js';
+import { documentViewSearch, useHistoryParam } from '../../hooks/useHistoryParam.js';
 import { useUnsavedGuard } from '../../hooks/useUnsavedDraft.js';
 import { HISTORY_DRAWER_WIDTH } from './HistoryDrawer';
 import { DocumentHistoryPanel } from './DocumentHistoryPanel.jsx';
@@ -133,6 +133,12 @@ const loadErrorText = (err) => {
 export const DocumentEditorShell = ({ app, client }) => {
   const { documentId } = useParams();
   return <DocumentEditor key={documentId} app={app} documentClient={client} />;
+};
+
+// `href` with the History entry open shown as the document as of it.
+const withDocumentView = (href) => {
+  const [path, search = ''] = href.split('?');
+  return `${path}${documentViewSearch(search)}`;
 };
 
 const DocumentEditor = ({ app, documentClient }) => {
@@ -587,7 +593,9 @@ const DocumentEditor = ({ app, documentClient }) => {
         failed={!loading && !doc}
         tabs={app.tabs.list.map((t) => ({
           ...t,
-          to: tabHref(t.value),
+          // What an entry changed is no tab's: a tab leaves it for the
+          // document as of the entry, on that tab.
+          to: showChanges ? withDocumentView(tabHref(t.value)) : tabHref(t.value),
           count: t.value === 'comments' ? (comments?.count ?? 0) : 0,
         }))}
         active={tab}

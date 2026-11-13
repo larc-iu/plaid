@@ -16,7 +16,12 @@ vi.mock('../../lib/integrityToast.js', () => ({
 const auth = vi.hoisted(() => ({ getClient: vi.fn(), logout: vi.fn(), user: { id: 'u1' } }));
 vi.mock('../../contexts/useAuth.js', () => ({ useAuth: () => auth }));
 vi.mock('../../domain/useDocumentModel.js', () => ({ useDocumentModel: () => 0 }));
-vi.mock('./DocumentTabStrip.jsx', () => ({ DocumentTabStrip: () => null }));
+vi.mock('./DocumentTabStrip.jsx', () => ({
+  DocumentTabStrip: (props) => {
+    seen.strip = props;
+    return null;
+  },
+}));
 vi.mock('../../domain/CommentStore', () => ({
   CommentStore: class {
     load() {
@@ -231,6 +236,24 @@ describe('a History entry in the address', () => {
     expect(notify.notifyError).not.toHaveBeenCalled();
     expect(q().get('history')).toBe('op-1');
     expect(changes().dataset.entry).toBe('op-1');
+    await view.unmount();
+  });
+
+  it('leaves what an entry changed for the document as of it when a tab is picked', async () => {
+    await mount('/p/p1/d/d1?tab=analyze&history=g1');
+    expect(changes()).not.toBeNull();
+    const baseline = seen.strip.tabs.find((t) => t.value === 'baseline');
+    expect(new URLSearchParams(baseline.to.split('?')[1]).get('historyView')).toBe('document');
+    await view.step(() => seen.navigate(baseline.to));
+    await settle();
+    expect(changes()).toBeNull();
+    expect(body().textContent).toBe('baseline');
+    expect(body().dataset.name).toBe('Doc then');
+    expect(q().get('history')).toBe('g1');
+    // On the document, a tab is a tab again.
+    expect(seen.strip.tabs.find((t) => t.value === 'analyze').to).toBe(
+      '/p/p1/d/d1?tab=analyze&history=g1&historyView=document',
+    );
     await view.unmount();
   });
 
