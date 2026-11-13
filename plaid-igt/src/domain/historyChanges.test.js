@@ -329,6 +329,54 @@ describe('sentenceChanges', () => {
     ]);
   });
 
+  it('shows a value as the entry left it, though someone changed it before the entry ended', () => {
+    // A job wrote cat.N over a person's cat, and the person wrote cat.SG
+    // while the job ran on: the read at the job's end holds the person's.
+    const was = span('sp2', 'msl-0', ['m-2'], 'cat', {});
+    const job = span('sp2', 'msl-0', ['m-2'], 'cat.N', MACHINE);
+    const raw = docAfter({ spans: { 'msl-0': [span('sp2', 'msl-0', ['m-2'], 'cat.SG', {})] } });
+    const link = (item, metadata) => ({
+      id: 'l1',
+      vocabItem: { id: item, layer: 'v1', form: item === 'i1' ? 'kai' : 'ka' },
+      tokens: ['m-1'],
+      metadata,
+    });
+    const vocab = {
+      v1: {
+        id: 'v1',
+        name: 'Lexicon',
+        items: [
+          { id: 'i1', form: 'kai', metadata: {} },
+          { id: 'i2', form: 'ka', metadata: {} },
+        ],
+        vocabLinks: [link('i2', {})],
+      },
+    };
+    const { sentences } = read(
+      raw,
+      [
+        { kind: 'span', id: 'sp2', layer: 'msl-0', before: was, after: job, changedSince: true },
+        {
+          kind: 'vocab-link',
+          id: 'l1',
+          document: 'doc-1',
+          after: link('i1', MACHINE),
+          changedSince: true,
+        },
+      ],
+      vocab,
+    );
+    const [s] = sentences;
+    expect(piece(s, 'morph:Gloss', 1)).toMatchObject({
+      before: 'cat',
+      after: 'cat.N',
+      afterProv: 'machine',
+      replaced: true,
+    });
+    expect(piece(s, 'entry', 0)).toMatchObject({ before: '', after: 'kai', afterProv: 'machine' });
+    expect(s.changedSince).toBe(true);
+  });
+
   // REV-HD-1: the unit of change is one morpheme's value.
   describe('a word of several morphemes', () => {
     const morphemes = [

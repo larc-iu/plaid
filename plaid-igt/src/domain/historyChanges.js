@@ -6,10 +6,14 @@
 //
 // The rows say what each written row was just before the entry's first write
 // to it and just after its last. The document AFTER the entry is the as-of
-// read at the entry's end, and the document BEFORE it is that same read with
-// the before of every row put back (`documentBefore`, `vocabulariesBefore`).
-// So the two differ in the entry's rows and nothing else: what other people
-// wrote between a job's batches stays the same on both sides. Both are derived
+// read at the entry's end with each span and link the entry wrote as the
+// entry left it (`documentAfter`, `vocabulariesAt`), and the document BEFORE
+// it is that same read with the before of every row put back
+// (`documentBefore`). So the two differ in the entry's rows and nothing else:
+// what other people wrote between a job's batches stays the same on both
+// sides, and a value someone changed after the entry wrote it, before the
+// entry ended (a person editing a gloss while a job runs, a later action of
+// the same batch), shows as the entry left it. Both are derived
 // as the Analyze grid derives a document (derive.js), cut into cells as the
 // copy and export formats cut a sentence (igtExport.js wordCells: the joiners,
 // a virtual morpheme, an ignored token), and compared cell by cell. A sentence
@@ -68,12 +72,18 @@ const byKey = (rows, key) => {
   return out;
 };
 
-// A list with the rows' befores in place of what the list holds under their
-// ids: a row the entry made goes, one it deleted comes back.
-const putBack = (list, rows, image = (r) => r.before) => {
+const BEFORE = (r) => r.before;
+const AFTER = (r) => r.after;
+
+// A list with each row's `image` (its before, or its after) in place of what
+// the list holds under its id, and no item for a row with no such image.
+const putBack = (list, rows, image = BEFORE) => {
   const ids = new Set(rows.map((r) => r.id));
   const out = (list || []).filter((x) => !ids.has(x.id));
-  for (const r of rows) if (r.before) out.push(image(r));
+  for (const r of rows) {
+    const img = image(r);
+    if (img) out.push(img);
+  }
   return out;
 };
 
@@ -86,7 +96,7 @@ function documentBefore(raw, rows) {
   const own = rows.filter((r) => DOCUMENT_KINDS.has(r.kind));
   const layers = byKey(own, (r) => r.layer);
   const doc = rows.find((r) => r.kind === 'document' && r.before);
-  const token = (r) => ({ text: r.text, ...r.before });
+  const token = (r) => r.before && { text: r.text, ...r.before };
   return {
     ...raw,
     ...(doc ? { name: doc.before.name, metadata: doc.before.metadata ?? {} } : {}),
@@ -105,10 +115,36 @@ function documentBefore(raw, rows) {
 }
 
 /**
- * `vocabularies` (the document's, after the entry, links folded in) with the
- * before of every entry and link among `rows` put back.
+ * `raw` (the as-of read at the entry's end) with each span among `rows` as
+ * the entry left it. Tokens and the text stay as read: their offsets belong
+ * with the text as it is at the entry's end.
  */
-function vocabulariesBefore(vocabularies, rows) {
+function documentAfter(raw, rows) {
+  const spans = byKey(
+    rows.filter((r) => r.kind === 'span'),
+    (r) => r.layer,
+  );
+  if (!spans.size) return raw;
+  return {
+    ...raw,
+    textLayers: (raw?.textLayers || []).map((tl) => ({
+      ...tl,
+      tokenLayers: (tl.tokenLayers || []).map((tkl) => ({
+        ...tkl,
+        spanLayers: (tkl.spanLayers || []).map((sl) =>
+          spans.has(sl.id) ? { ...sl, spans: putBack(sl.spans, spans.get(sl.id), AFTER) } : sl,
+        ),
+      })),
+    })),
+  };
+}
+
+/**
+ * `vocabularies` (the document's, as read at the entry's end, links folded
+ * in) with every entry and link among `rows` as `image` gives it (BEFORE, the
+ * vocabularies before the entry, or AFTER, as the entry left them).
+ */
+function vocabulariesAt(vocabularies, rows, image) {
   const links = rows.filter((r) => r.kind === 'vocab-link');
   const linkIds = new Set(links.map((r) => r.id));
   const items = byKey(
@@ -119,13 +155,13 @@ function vocabulariesBefore(vocabularies, rows) {
   for (const [id, vocab] of Object.entries(vocabularies || {})) {
     out[id] = {
       ...vocab,
-      items: items.has(id) ? putBack(vocab.items, items.get(id)) : vocab.items,
-      // Every link the rows name leaves, wherever it is after, and comes back
-      // in the vocabulary of the entry it named before.
+      items: items.has(id) ? putBack(vocab.items, items.get(id), image) : vocab.items,
+      // Every link the rows name leaves, wherever it is, and comes back in
+      // the vocabulary of the entry its image names.
       vocabLinks: links.length
         ? [
             ...(vocab.vocabLinks || []).filter((l) => !linkIds.has(l.id)),
-            ...links.filter((r) => r.before?.vocabItem?.layer === id).map((r) => r.before),
+            ...links.filter((r) => image(r)?.vocabItem?.layer === id).map(image),
           ]
         : vocab.vocabLinks,
     };
@@ -511,8 +547,8 @@ const derived = (raw, vocabularies) => {
  * IgtDocument holds).
  */
 export function sentenceChanges({ raw, vocabularies }, rows) {
-  const after = derived(raw, vocabularies);
-  const before = derived(documentBefore(raw, rows), vocabulariesBefore(vocabularies, rows));
+  const after = derived(documentAfter(raw, rows), vocabulariesAt(vocabularies, rows, AFTER));
+  const before = derived(documentBefore(raw, rows), vocabulariesAt(vocabularies, rows, BEFORE));
   const fields = fieldsOf(after.info);
   const rowsShown = rowsOf(fields);
   const sides = [before, after];
