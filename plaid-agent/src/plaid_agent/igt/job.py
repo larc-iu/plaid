@@ -739,7 +739,8 @@ class IgtRunner:
         #: document id -> sentence id -> its writing rows as core held them
         #: when this worker first read them (:meth:`intents`), None before
         self.rows_read: Optional[Dict[str, Dict[str, Dict[str, Any]]]] = None
-        #: document id -> how many writes core refused for something gone
+        #: (document id, a stretch's first sentence id) -> how many of that
+        #: stretch's writes core refused for something gone
         self.gone_refused: Counter = Counter()
         #: (lexicon, form, gloss) -> an entry the model staged and nothing linked
         self.proposed: Dict[Tuple[Any, Any, Any], Dict[str, Any]] = {}
@@ -1309,10 +1310,12 @@ class IgtRunner:
                 if _gone_now(e) and not e.wrote:
                     # Refused for something gone, nothing landed: the
                     # stretch's sentences are skipped as changed the
-                    # JOB_DEFER_ROUNDS-th time, never the document ended in
-                    # use for it (REV-FIX3-5).
-                    self.gone_refused[document_id] += 1
-                    if self.gone_refused[document_id] >= JOB_DEFER_ROUNDS:
+                    # JOB_DEFER_ROUNDS-th time the same stretch (known by its
+                    # first sentence) is refused, never the document ended in
+                    # use for it (REV-FIX3-5, REV-B4-3).
+                    refused = (document_id, part[0].id)
+                    self.gone_refused[refused] += 1
+                    if self.gone_refused[refused] >= JOB_DEFER_ROUNDS:
                         for s in part:
                             self.skip(document_id, doc, s.id, 'changed', None)
                         return

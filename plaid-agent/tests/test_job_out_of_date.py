@@ -111,6 +111,45 @@ def test_a_write_refused_for_something_gone_every_time_skips_its_sentences_as_ch
     assert not client.batches
 
 
+def test_refusals_for_something_gone_of_different_stretches_do_not_add_up(monkeypatch):
+    """REV-B4-3: three stretches each refused once for an entry deleted in
+    the moment, each written on its next walk. The count is per stretch (its
+    first sentence), so none is skipped: only a refusal that keeps coming
+    back for the same stretch skips it."""
+    monkeypatch.setattr(igt_job, 'JOB_STRETCH_SENTENCES', 1)
+    client = JobClient({'d1': document('d1', 'Story', [{'words': ['ka']}, {'words': ['ta']}, {'words': ['pa']}])})
+    job = start(client, ['gloss'], id=J)
+
+    def model(asked, n, kwargs):
+        if n > 1:
+            return reply('Done.')
+        s = int(next(x for x in asked.splitlines() if x.startswith('Analyse '))[len('Analyse s'):].split('.')[0])
+        return reply(calls=[call(1, 'set_analysis', {'document': 'Story', 'ref': f's{s}.w1', 'morphemes': [
+            {'form': 'x', 'fields': {'Morph Gloss': 'go'}}]})])
+    use(monkeypatch, Model(model))
+    real = igt_job.execute_plan
+    refused = set()
+
+    def execute(c, ops, **kw):
+        sentence = ops[0]['word_id'].rsplit('w', 1)[0]
+        if sentence not in refused:
+            refused.add(sentence)
+            try:
+                raise PlaidAPIError('HTTP 404 Vocab item not found', status=404)
+            except PlaidAPIError as e:
+                raise PlanError('Vocab item not found', 0, len(ops)) from e
+        return real(c, ops, **kw)
+    monkeypatch.setattr(igt_job, 'execute_plan', execute)
+    r = runner(job)
+    state = r.document('d1')
+    while state == 'deferred':
+        r.waited.add('d1')
+        state = r.document('d1')
+    assert state == 'done'
+    assert refused == {'d1-s1', 'd1-s2', 'd1-s3'}
+    assert not job.rows['d1'].get('skipped'), job.rows['d1']['skipped']
+
+
 def _harmonize_job(monkeypatch, refusing):
     client = JobClient({'d1': document('d1', 'Story', [{'words': [
         ('ka', [('ka', 'go')], J), ('ka', [('ka', 'go')], J), ('ka', [('ka', 'come')], J)]}])})
