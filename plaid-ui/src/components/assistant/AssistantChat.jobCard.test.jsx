@@ -124,6 +124,14 @@ describe('a job card in the chat', () => {
     await flush(m);
     expect(cardText(m)).toBeNull();
   });
+
+  it('says a reply sent no text where the app draws no card for it', async () => {
+    const conv = structuredClone(CONV);
+    conv.display[1].text = '';
+    const m = await mountChat(chatClient({ meta: META, conv, answer: 'Answered.' }));
+    await flush(m);
+    expect(m.container.textContent).toContain('(The assistant sent no text.)');
+  });
 });
 
 describe('a job card in the Markdown export', () => {

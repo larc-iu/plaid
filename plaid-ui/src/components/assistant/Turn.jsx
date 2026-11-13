@@ -420,7 +420,7 @@ export const Turn = ({
           />
         ) : (
           !item.plan &&
-          !item.job && (
+          !(item.job && adapter.JobCard) && (
             <div className="text-sm italic text-muted-foreground">
               (The assistant sent no text.)
             </div>
