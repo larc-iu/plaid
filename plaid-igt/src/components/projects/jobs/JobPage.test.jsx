@@ -462,6 +462,7 @@ describe('the job page', () => {
       'no-clear-majority': 'No two-thirds majority',
       'in-use': 'Document in use',
       touched: 'Changed since the job wrote it',
+      unvouched: 'Not checked: the job could not confirm its own write here.',
       commented: 'Has a comment',
       'in-mwe': 'In a multi-word expression',
       refused: 'Could not be written',

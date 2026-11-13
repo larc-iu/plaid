@@ -232,7 +232,35 @@ def test_a_person_editing_under_the_lock_after_the_jobs_last_batch_is_not_record
     staged = _staged(monkeypatch)
     out = runner(job).harmonize(job)
     assert _rewritten(staged) == []
-    assert any(x['reason'] == 'touched' for x in out['left'])
+    # Not one of these words is known to be changed: none is listed so
+    # (REV-FIX3-2), each is listed as not checked.
+    assert out['left'] == [{'form': 'sani', 'reason': 'unvouched', 'analyses': [
+        {'analysis': 'sa-ni ‘go-now’', 'count': 4}, {'analysis': 'sa-ni ‘go-_’', 'count': 1}]}]
+
+
+def test_a_word_the_job_vouched_for_and_a_person_changed_is_touched_beside_one_it_could_not_vouch_for(monkeypatch):
+    """Two sentences: s1's words recorded with their keys, s2's without
+    (its write could not be vouched for). A person clears a gloss in each:
+    the s1 word is touched, the s2 words are unvouched, and the job's own
+    s1 words, still as it wrote them, are made consistent."""
+    staged = _staged(monkeypatch)
+    before = [{'words': [sani('now')] * 3 + [sani('then')]}, {'words': [sani('now'), sani('then')]}]
+    client = JobClient({'d1': document('d1', 'Story', before)})
+    job = start(client, ['gloss'], id=J)
+    job.update_row('d1', state='done')
+    recorded(job)
+    import json
+    rows = client.jobs.decision_rows[J]
+    for k, r in rows.items():
+        if k[0] == RECORD_FORM + 'd1-s2':
+            r['analysis'] = json.dumps({**json.loads(r['analysis']), 'words': {}})
+    after = [{'words': [sani('now')] * 2 + [sani(None), sani('then')]}, {'words': [sani('now'), sani(None)]}]
+    client._holder('d1')['documents']['d1'] = document('d1', 'Story', after)
+    out = runner(job).harmonize(job)
+    assert _rewritten(staged) == ['d1-s1w4']
+    left = {x['reason']: x['analyses'] for x in out['left']}
+    assert left == {'touched': [{'analysis': 'sa-ni ‘go-_’', 'count': 1}],
+                    'unvouched': [{'analysis': 'sa-ni ‘go-_’', 'count': 1}]}, out['left']
 
 
 def test_a_crash_before_the_record_and_a_persons_deletion_before_the_resume(monkeypatch):

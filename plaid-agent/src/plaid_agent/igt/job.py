@@ -251,6 +251,9 @@ def job_owned(w: Word, job_id: str) -> bool:
 #: Why harmonize leaves a word the job wrote on, as its report lists it
 #: (CONTRACT, added by J-FIX-B and J-FIX-B2), and the word it never looks at.
 TOUCHED, COMMENTED, IN_MWE, NOT_THE_JOBS = 'touched', 'commented', 'in-mwe', 'not-the-jobs'
+#: A word the job wrote and could not vouch for: its sentence's record holds
+#: no key for it (REV-FIX3-2).
+UNVOUCHED = 'unvouched'
 #: A rewrite the staging refused (a guard of the tools), so nothing of the
 #: word was written (REV-J-B2 S3-2).
 REFUSED = 'refused'
@@ -297,9 +300,12 @@ def harmonize_bar(w: Word, job_id: str, recorded: Dict[str, str], commented: set
     * ``touched``: something on it is not this job's own unverified work
       (:func:`job_owned`), or it is not what the job recorded it wrote ON
       THIS WORD (``recorded``, a word id to the :func:`word_key` its
-      sentence's record holds for it). A word the job could not vouch for
-      has no key there. So a piece a person deleted or changed is never put
-      back, even when the job wrote what is left of the word elsewhere,
+      sentence's record holds for it). So a piece a person deleted or
+      changed is never put back, even when the job wrote what is left of the
+      word elsewhere,
+    * ``unvouched``: the job could not vouch for its own write on the word
+      (its sentence's record holds no key for it, REV-J-B3 B3-2), so it
+      cannot tell whether anyone changed it, and leaves it,
     * ``commented``: a comment hangs on the word or a piece of it
       (``commented``, the ids the document's comments are anchored to),
     * ``in-mwe``: the word is a member of a multi-word expression, which a
@@ -307,7 +313,11 @@ def harmonize_bar(w: Word, job_id: str, recorded: Dict[str, str], commented: set
     pieces = word_pieces(w)
     if not any(job_piece(p, job_id) for p in pieces):
         return NOT_THE_JOBS
-    if not job_owned(w, job_id) or recorded.get(w.id) != word_key(w):
+    if not job_owned(w, job_id):
+        return TOUCHED
+    if w.id not in recorded:
+        return UNVOUCHED
+    if recorded[w.id] != word_key(w):
         return TOUCHED
     if word_ids(w) & commented:
         return COMMENTED
