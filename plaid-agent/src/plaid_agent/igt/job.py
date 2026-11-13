@@ -947,6 +947,9 @@ class IgtRunner:
         #: document id -> counts of a stretch none of whose sentences was
         #: recorded yet (all taken again), added to the next record
         self.carry: Dict[str, Counter] = {}
+        #: ids of the ops a write sent that may have landed: a selection
+        #: hands on to its next write only changes no write may have sent
+        self.sent: set = set()
 
     # --- reading ---------------------------------------------------------------
 
@@ -1306,9 +1309,13 @@ class IgtRunner:
             except Deferred:
                 # Its writes were dropped: it is worked again as a piece of its own.
                 core_job.through_core(job, lambda: (self.fall_back(d, 'in-use'), self.defer(d)))
+                # What a send of it may have written is never sent again
+                # nor listed: the rest goes with the next write.
+                loose = [op for op in loose if id(op) not in self.sent]
                 continue
             except Gone:
                 core_job.through_core(job, lambda: job.update_row(d, state='gone'))
+                loose = [op for op in loose if id(op) not in self.sent]
                 continue
             # What a read printed to the model is what it read, never what a
             # tool loaded (REV-JG3-1): a sentence it was never shown, and did
@@ -2130,7 +2137,10 @@ class IgtRunner:
                 # sentences are targets again.
                 if not (isinstance(e, PlanError) and e.wrote):
                     self.unsent.setdefault(document_id, set()).update(sentences)
+                else:
+                    self.sent.update(id(o) for o in kept)
                 raise
+            self.sent.update(id(o) for o in kept)
         known = client.document_versions.get(document_id)
         after = self.read(project, document_id, client)
         exact = known is not None and str(after.version) == str(known)

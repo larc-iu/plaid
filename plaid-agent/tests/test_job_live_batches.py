@@ -103,7 +103,10 @@ def test_a_write_refused_on_a_later_batch_sends_nothing_again_under_its_keys(wor
     raw = admin.documents.get(d1, include_body=True)
     glosses = [sp['value'] for tl in raw['text_layers'] for tk in tl['token_layers']
                for sl in tk.get('span_layers') or [] for sp in sl.get('spans') or []]
-    assert glosses.count('now') == 2 and 'typed' in glosses
+    # The piece run next is s3's, with s1 and s2 as its context, and this
+    # model stages there whatever its piece: a later piece's change is
+    # written (REV-JH-1), so s2's words are glossed by it.
+    assert glosses.count('now') == 4 and 'typed' in glosses
 
 
 @pytest.fixture
