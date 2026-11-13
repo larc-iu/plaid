@@ -171,6 +171,12 @@ job left undone, the reply must name both, which only the job's record (read_job
 blank word as shoot, the approved plan must write exactly that morpheme (`checks/igt_job_discuss.py`). Validated
 only.
 
+`igt-delete-sentence` and `igt-job-delete-sentence` delete a sentence typed twice: the setup types Lezgi text 5's
+sentence 2 again as sentence 3, with no analysis. The chat's plan must be one deleted sentence and nothing else
+(`checks/igt_delete_sentence.py`), the job's report must propose nothing (`igt_job_plan`, mode `deleted` with no
+`to`), and both pass when the copy is gone and every other sentence reads as before, sentence 2 with its analysis.
+Validated only.
+
 ## The model gate
 
 `lib/gate.py` is an OpenAI-compatible proxy in `run.py`'s own process. `run.py` reads the key from the file `$PLAID_BENCH_KEY_FILE` names into the gate's memory once, and the gate sends requests on to `$PLAID_BENCH_UPSTREAM`. The key is sent upstream in a header and appears nowhere else: not in a file, a log, argv or a child's environment. The assistants get a dummy key and `--api-base http://127.0.0.1:<gate>/<run tag>/v1`.

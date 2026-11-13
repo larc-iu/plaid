@@ -1,0 +1,18 @@
+# A job told to delete a sentence typed twice (BRIEF-JS: the task JH could not
+# build, now that delete_sentence exists). The setup types Lezgi text 5's
+# sentence 2 again as sentence 3, a copy with no analysis. Pass: the copy is
+# gone, sentence 2 reads as before with its analysis, every other sentence
+# reads as before, nothing is proposed.
+id: igt-job-delete-sentence
+app: igt
+project: igt-lezgi
+as: B
+job:
+  instructions: "In Lezgi text 5, sentence 3 is a copy of sentence 2, typed twice by mistake. Delete sentence 3 from the text. Change nothing else."
+  documents: [Lezgi text 5]
+check: igt_job_plan
+args:
+  mode: deleted
+  document: Lezgi text 5
+  from: "Вичин хва рекьиз кӀан жени ?"
+max_wall_s: 3600

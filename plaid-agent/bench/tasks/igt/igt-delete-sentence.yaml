@@ -1,0 +1,18 @@
+# A sentence typed twice, removed in the chat (BRIEF-JS). The setup types
+# Lezgi text 5's sentence 2 again as sentence 3, a copy with no analysis. The
+# right plan is one delete_sentence of sentence 3 and nothing else: sentence
+# 2 keeps its analysis, every other sentence reads as before.
+id: igt-delete-sentence
+app: igt
+project: igt-lezgi
+as: B
+where: {document: Lezgi text 5}
+turns:
+  - say: >-
+      Sentence 3 of this text is the same as sentence 2: I typed it twice by
+      mistake. Remove the duplicate.
+    approve: true
+check: igt_delete_sentence
+args:
+  document: Lezgi text 5
+  from: "Вичин хва рекьиз кӀан жени ?"

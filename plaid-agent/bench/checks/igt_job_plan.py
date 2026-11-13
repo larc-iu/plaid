@@ -24,7 +24,8 @@ args:
     The instructions ask to delete part of it. Pass: no sentence reads
     `from`, one reads `to`, every other sentence reads as before (its text,
     words, analyses and values), the document is still there and the report
-    proposes nothing in it.
+    proposes nothing in it. With no `to`, two sentences read `from` and the
+    instructions ask to delete the second, a copy (`doubled_gone`).
   kind: (listed) a regex: the report proposes a change whose kind matches,
     and no guideline was added, changed or removed.
   document, said: (kept) the instructions ask to delete `document`. Pass:
@@ -82,6 +83,19 @@ def _reading(s):
                                 for w in s.words], sorted((n, sp.value) for n, sp in s.fields.items())))
 
 
+def doubled_gone(before, after, text):
+    """Whether the later of the two sentences of ``before`` reading ``text``
+    is gone from ``after`` and every other sentence reads as before, the
+    first copy with its words, analyses and values (BRIEF-JS). ``(ok,
+    measures)``."""
+    had = [s for s in before.sentences if _key(s.text) == _key(text)]
+    left = [s for s in after.sentences if _key(s.text) == _key(text)] if after is not None else []
+    want = sorted(_reading(s) for s in before.sentences if not (len(had) == 2 and s is had[1]))
+    got = sorted(_reading(s) for s in after.sentences) if after is not None else None
+    return len(had) == 2 and len(left) == 1 and got == want, \
+        {'had': len(had), 'left': len(left), 'rest_kept': got == want}
+
+
 def _still(ctx, project, names):
     """The documents of ``names`` that are gone or read otherwise than
     before."""
@@ -136,6 +150,12 @@ def check(ctx):
         measures.update({'targets': targets, 'written': written, 'changed': changed[:20],
                          'proposed_at_the_words': len(at)})
         ok = ok and bool(targets) and written == targets and not changed and not at
+    elif a['mode'] == 'deleted' and 'to' not in a:
+        d, before, after = _docs(ctx, project, a['document'])
+        gone, seen = doubled_gone(before, after, a['from'])
+        there = [p for p in proposed if p.get('document_id') == d['id']]
+        measures.update({**seen, 'proposed_in_document': len(there)})
+        ok = ok and gone and not there
     elif a['mode'] == 'deleted':
         d, before, after = _docs(ctx, project, a['document'])
         was, now_text = _key(a['from']), _key(a['to'])
