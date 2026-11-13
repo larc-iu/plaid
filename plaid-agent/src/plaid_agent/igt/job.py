@@ -98,6 +98,8 @@ CHANGE_FORM = ' change '
 NOTE_FORM = ' note '
 TABLE_FORM = ' table '
 DROPPED_FORM = ' dropped'
+#: How many tables pieces handed the report past JOB_TABLES_MAX a job keeps.
+TABLES_DROPPED_FORM = ' tables dropped'
 #: How the plan cuts the work (``plan_work``'s ``pieces``).
 SENTENCES, DOCUMENT, SELECTION = 'sentences', 'document', 'selection'
 PIECES = (SENTENCES, DOCUMENT, SELECTION)
@@ -828,6 +830,8 @@ class IgtRunner:
         self.plan_made: Optional[Dict[str, Any]] = None
         #: the plan made and not yet kept in core (its row's call failed)
         self.plan_pending: Optional[Dict[str, Any]] = None
+        #: the tables the job keeps among its decisions, read once per worker
+        self.tables_kept: Optional[set] = None
         #: keys of the proposed changes core holds for the job, and how many
         #: the cap dropped (CONTRACT, added by JG), read once per worker
         self.changes: Optional[set] = None
@@ -2253,7 +2257,26 @@ class IgtRunner:
                               'sentences': None if piece.get('whole') else where, 'note': note})
             rows.append({'form': NOTE_FORM + key, 'key': key, 'analysis': text, 'count': 1,
                          'document_id': piece.get('document'), 'sentence_id': None})
+        if self.tables_kept is None and tables:
+            self.tables_kept = {str(r.get('form'))[len(TABLE_FORM):].rsplit(' ', 1)[0] for r in self.job.decisions()
+                                if str(r.get('form') or '').startswith(TABLE_FORM)}
+        # The job keeps JOB_TABLES_MAX tables, the report's own cap, and
+        # counts the rest (REV-JG-15). A piece taken again keeps its own.
+        kept = self.tables_kept if self.tables_kept is not None else set()
+        room = max(0, JOB_TABLES_MAX - len(kept))
+        keep = []
         for i, t in enumerate(list(tables)[:JOB_TABLES_PER_PIECE]):
+            if f'{key} {i:02d}' in kept:
+                keep.append((i, t))
+            elif room:
+                room -= 1
+                keep.append((i, t))
+        if len(list(tables)[:JOB_TABLES_PER_PIECE]) > len(keep):
+            rows.append({'form': TABLES_DROPPED_FORM, 'key': 'tables-dropped', 'analysis': '{}',
+                         'count': len(list(tables)[:JOB_TABLES_PER_PIECE]) - len(keep), 'document_id': None,
+                         'sentence_id': None})
+        for i, t in keep:
+            kept.add(f'{key} {i:02d}')
             for part_no, text in enumerate(table_rows_text(t)):
                 tkey = analysis_key(f'{key}/{i}/{part_no}')
                 rows.append({'form': f'{TABLE_FORM}{key} {i:02d} {part_no:03d}', 'key': tkey, 'analysis': text,
@@ -3014,12 +3037,15 @@ class IgtRunner:
         except Exception as e:  # noqa: BLE001 - a report without these parts rather than none
             logger.warning('Job %s: its plan and proposed changes could not be read for the report: %s', job.id, e)
             rows = []
-        plan, changes, notes, dropped, fallback = None, [], [], 0, []
+        plan, changes, notes, dropped, fallback, tables_dropped = None, [], [], 0, [], 0
         tables: Dict[str, Dict[str, Any]] = {}
         for r in rows:
             form = str(r.get('form') or '')
             if form == DROPPED_FORM:
                 dropped += r.get('count') or 0
+                continue
+            if form == TABLES_DROPPED_FORM:
+                tables_dropped += r.get('count') or 0
                 continue
             if not form.startswith(' '):
                 continue
@@ -3061,7 +3087,7 @@ class IgtRunner:
         return {'plan': plan,
                 'proposed': listed, 'proposed_more': more + dropped, 'proposed_dropped': dropped,
                 'notes': shown_notes, 'notes_more': notes_more, 'tables': made[:JOB_TABLES_MAX],
-                'tables_more': max(0, len(made) - JOB_TABLES_MAX)}
+                'tables_more': max(0, len(made) - JOB_TABLES_MAX) + tables_dropped}
 
     def left_blank(self, job) -> Dict[str, List[Dict[str, Any]]]:
         """Per document, the targets the job left blank, read from every

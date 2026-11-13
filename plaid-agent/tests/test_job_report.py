@@ -222,3 +222,25 @@ def test_a_proposed_change_of_values_that_json_escapes_fits_a_decision():
                        'from': odd, 'to': odd, 'label': odd}], note=odd)
     rows = [x for (f, _), x in client.jobs.decision_rows[job.id].items() if f.startswith(CHANGE_FORM)]
     assert len(rows) == 1 and len(rows[0]['analysis']) <= JOB_ANALYSIS_MAX_CHARS
+
+
+def test_a_job_keeps_at_most_the_tables_its_report_holds_and_counts_the_rest():
+    """REV-JG-15: every piece of a long job may hand the report five tables.
+    The job keeps the first JOB_TABLES_MAX among its decisions and only
+    counts the rest, which the report says."""
+    from plaid_agent.core.limits import JOB_TABLES_MAX, JOB_TABLES_PER_PIECE
+    from plaid_agent.igt import job as igt_job
+    client, job = _job()
+    r = runner(job)
+    project = r.project()
+    pieces = JOB_TABLES_MAX // JOB_TABLES_PER_PIECE + 2
+    for p in range(pieces):
+        tables = [{'title': f'T{p}.{t}', 'columns': ['a'], 'rows': [['x']], 'more': 0}
+                  for t in range(JOB_TABLES_PER_PIECE)]
+        r.record_piece(project, {'document': 'd1', 'first': f's{p}', 'whole': False}, 'note', tables)
+    kept = {f[len(igt_job.TABLE_FORM):].rsplit(' ', 1)[0] for (f, _), _r in client.jobs.decision_rows[job.id].items()
+            if f.startswith(igt_job.TABLE_FORM)}
+    assert len(kept) == JOB_TABLES_MAX
+    parts = runner(job).report_parts(job)
+    assert len(parts['tables']) == JOB_TABLES_MAX
+    assert parts['tables_more'] == pieces * JOB_TABLES_PER_PIECE - JOB_TABLES_MAX
