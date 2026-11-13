@@ -19,6 +19,7 @@ from live import _skip_or_fail, core_url, login, seed
 from plaid_client import PlaidAPIError
 from plaid_agent.core.agent import ModelConfig
 from plaid_agent.core.job import Job, run_job
+from plaid_agent.core.opkind import ROW
 from plaid_agent.core.plan import PlanError
 from plaid_agent.igt import job as igt_job
 from plaid_agent.igt.job import IgtRunner
@@ -198,7 +199,9 @@ def test_a_deletion_and_a_merge_sent_again_after_a_lost_answer_delete_and_merge_
                 try:
                     raise cause
                 except PlaidAPIError as e:
-                    raise PlanError('the answer was lost', len(ops), len(ops), unknown=True) from e
+                    # Every batch was sent, the last one's answer lost.
+                    raise PlanError('the answer was lost', len(ops), len(ops), unknown=True,
+                                    sent=[o[ROW] for o in ops]) from e
             return out
         monkeypatch.setattr(igt_job, 'execute_plan', execute)
         job = _job(admin, writer, s, 'Delete the doubled ka, gloss sa as go, delete the entry old and merge the two '

@@ -420,13 +420,45 @@ class TrackingBatcher(Batcher):
         # The same for each member of a folded row (``opkind.MEMBER``), keyed
         # (row, member).
         self._members: Dict[Any, List[int]] = {}
+        # The card row of each change being written (``writing_for``), the
+        # rows with a write queued in the open batch, and those with a write
+        # in a batch that was sent (``sent_rows``).
+        self._row_of: List[Any] = []
+        self._queued_rows: set = set()
+        self._sent_rows: set = set()
         if tracker is not None:
             tracker.batcher = self
+
+    @contextmanager
+    def writing_for(self, op_or_document):
+        self._row_of.append(op_or_document.get(ROW) if isinstance(op_or_document, dict) else None)
+        try:
+            with super().writing_for(op_or_document):
+                yield
+        finally:
+            self._row_of.pop()
+
+    def _note(self) -> None:
+        row = next((r for r in reversed(self._row_of) if r is not None), None)
+        if row is not None:
+            self._queued_rows.add(row)
+
+    def add(self, fn, weight: int = 1, count: int = 1) -> int:
+        self._note()
+        return super().add(fn, weight, count)
+
+    def update(self, resource: str, entity_id: str, value: Any = _UNSET,
+               metadata: Optional[List[Dict[str, Any]]] = None) -> None:
+        self._note()
+        super().update(resource, entity_id, value, metadata)
 
     def flush(self) -> None:
         self._drain()
         n = self._weight
         sending = self._batch is not None
+        if sending:
+            self._sent_rows |= self._queued_rows
+            self._queued_rows = set()
         try:
             super().flush()
         except Exception as e:
@@ -470,6 +502,15 @@ class TrackingBatcher(Batcher):
         """The card rows every write of which stands."""
         return sorted(r for r, counts in self._rows.items() if self._stands(counts))
 
+    def sent_rows(self) -> List[Any]:
+        """The card rows with a write in a batch that was sent, its answer
+        back or not: after a lost answer, what may have landed. A row whose
+        writes were all to come, or still queued, sent nothing. (A change too
+        big for one batch counts from the batch sent before its first write.
+        A write the executor makes on the client itself, a text edit or a
+        restore, is not counted.)"""
+        return sorted(self._sent_rows)
+
     def written_members(self) -> Dict[Any, int]:
         """For each card row that folds many changes, how many of them stand
         in full, where that is some and not all (a row written whole is in
@@ -508,7 +549,8 @@ class PlanError(Exception):
 
     def __init__(self, message: str, applied: int, total: int, unknown: bool = False,
                  written: Optional[List[Any]] = None, members: Optional[Dict[Any, int]] = None,
-                 partly: Optional[List[Any]] = None, partly_count: Optional[Tuple[int, int, str]] = None):
+                 partly: Optional[List[Any]] = None, partly_count: Optional[Tuple[int, int, str]] = None,
+                 sent: Optional[List[Any]] = None):
         super().__init__(message)
         self.applied = applied
         self.total = total
@@ -526,6 +568,10 @@ class PlanError(Exception):
         #: How much of such a row the other service says it wrote: (written,
         #: of, unit), "234 of 300 sentences", or None when it did not say.
         self.partly_count = partly_count
+        #: The card rows with a write in a batch that was sent
+        #: (``TrackingBatcher.sent_rows``): with ``unknown``, what may have
+        #: landed besides ``written``.
+        self.sent = sent
 
     @property
     def wrote(self) -> bool:
@@ -573,6 +619,9 @@ def applying(ops: List[Dict[str, Any]], run) -> Dict[str, int]:
 
     def members():
         return tracker.batcher.written_members() if tracker.batcher is not None else {}
+
+    def sent():
+        return tracker.batcher.sent_rows() if tracker.batcher is not None else []
     try:
         return run(tracker)
     except PlanError as e:
@@ -580,13 +629,16 @@ def applying(ops: List[Dict[str, Any]], run) -> Dict[str, int]:
             e.written = written()
         if e.members is None:
             e.members = members()
+        if e.sent is None:
+            e.sent = sent()
         raise
     except PlanOutOfDate as e:
         # Found out of date by a write the server refused: settled as out of
         # date when nothing stands, as partly applied when something does.
         if not tracker.applied:
             raise
-        raise PlanError(' '.join(e.reasons), tracker.applied, len(ops), False, written(), members()) from e
+        raise PlanError(' '.join(e.reasons), tracker.applied, len(ops), False, written(), members(),
+                        sent=sent()) from e
     except Exception as e:  # noqa: BLE001 - every failure becomes one the user can read
         applied = getattr(e, '_applied', None)
         unknown = bool(getattr(e, '_unknown', False)) or outcome_unknown(e)
@@ -594,7 +646,7 @@ def applying(ops: List[Dict[str, Any]], run) -> Dict[str, int]:
         # class or the server's address.
         if isinstance(e, PlaidAPIError):
             raise PlanError(requester_message(e), applied if applied is not None else tracker.applied,
-                            len(ops), unknown, written(), members()) from e
+                            len(ops), unknown, written(), members(), sent=sent()) from e
         # A refusal the assistant wrote (a ToolError, a ValueRefusal) is told
         # as written. Anything else, a bare ValueError Python raised among
         # them, is a bug of its own: it reaches the user, after batches may
@@ -607,7 +659,7 @@ def applying(ops: List[Dict[str, Any]], run) -> Dict[str, int]:
             logger.exception('A plan stopped on an error of the assistant\'s own')
         raise PlanError(str(e).strip() if authored else 'The assistant stopped on an error.',
                         applied if applied is not None else tracker.applied, len(ops), unknown,
-                        written(), members()) from e
+                        written(), members(), sent=sent()) from e
 
 
 @contextmanager

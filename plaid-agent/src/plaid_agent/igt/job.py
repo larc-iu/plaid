@@ -50,6 +50,7 @@ from ..core.limits import (JOB_ANALYSIS_MAX_CHARS, JOB_CHANGE_VALUE_CHARS, JOB_C
                            JOB_LOCK_TRIES, JOB_LOCK_WAIT_S, JOB_PERSON_QUIET_S, JOB_PRECEDENT_CHARS,
                            JOB_PRECEDENT_PER_FORM, JOB_SENTENCE_MAX_CHARS, JOB_SENTENCE_MAX_WORDS,
                            JOB_SKIPPED_PER_DOCUMENT, JOB_STRETCH_SENTENCES)
+from ..core.opkind import ROW as CARD_ROW
 from ..core.plan import JOB_DETAIL_KEY, PlanError, held_changes
 from ..core.provenance import Requester
 from ..core.tools import Refusal, ToolError
@@ -219,6 +220,19 @@ def piece_tag(piece: Dict[str, Any]) -> str:
 SENTENCE_DIGEST_CHARS = 16
 #: The tag of the selection piece: one per job.
 SELECTION_TAG = piece_tag({'selection': True})
+#: The key holding a selection's change of no document's place among them,
+#: on the copy of it each document's write carries (``IgtRunner.sent``).
+LOOSE = '_loose'
+
+
+def landed_rows(e: PlanError) -> set:
+    """The card rows of a plan that failed part-way which may have landed:
+    those written, and those in a batch whose answer was lost. A batch core
+    refused landed nothing, and one never sent nothing."""
+    rows = set(e.written or ()) | set(e.members or {})
+    if e.unknown:
+        rows |= set(e.sent or ())
+    return rows
 
 
 def sentence_digest(s: Sentence) -> str:
@@ -952,8 +966,9 @@ class IgtRunner:
         #: document id -> counts of a stretch none of whose sentences was
         #: recorded yet (all taken again), added to the next record
         self.carry: Dict[str, Counter] = {}
-        #: ids of the ops a write sent that may have landed: a selection
-        #: hands on to its next write only changes no write may have sent
+        #: the selection's changes of no document (their ``LOOSE``) that a
+        #: send may have written: a document put off or gone hands on to the
+        #: next write only the others
         self.sent: set = set()
 
     # --- reading ---------------------------------------------------------------
@@ -1285,7 +1300,8 @@ class IgtRunner:
         # the first document's write that lands: the rule applies the
         # lexicon's and proposes project setup. A document put off or gone
         # hands them to the next (REV-JH-2).
-        loose = by_doc.pop(None, [])
+        loose = [{**op, LOOSE: i} for i, op in enumerate(by_doc.pop(None, []))]
+        self.sent = set()
         read = [d for d in live if d in ws._docs]
         # What the piece staged in a document the job does not write in (one
         # outside the job, or one of its own it has finished) is a proposed
@@ -1316,11 +1332,11 @@ class IgtRunner:
                 core_job.through_core(job, lambda: (self.fall_back(d, 'in-use'), self.defer(d)))
                 # What a send of it may have written is never sent again
                 # nor listed: the rest goes with the next write.
-                loose = [op for op in loose if id(op) not in self.sent]
+                loose = [op for op in loose if op[LOOSE] not in self.sent]
                 continue
             except Gone:
                 core_job.through_core(job, lambda: job.update_row(d, state='gone'))
-                loose = [op for op in loose if id(op) not in self.sent]
+                loose = [op for op in loose if op[LOOSE] not in self.sent]
                 continue
             # What a read printed to the model is what it read, never what a
             # tool loaded (REV-JG3-1): a sentence it was never shown, and did
@@ -2142,10 +2158,7 @@ class IgtRunner:
                 # sentences are targets again.
                 if not (isinstance(e, PlanError) and e.wrote):
                     self.unsent.setdefault(document_id, set()).update(sentences)
-                else:
-                    self.sent.update(id(o) for o in kept)
                 raise
-            self.sent.update(id(o) for o in kept)
         known = client.document_versions.get(document_id)
         after = self.read(project, document_id, client)
         exact = known is not None and str(after.version) == str(known)
@@ -2295,9 +2308,16 @@ class IgtRunner:
                 with client.operation(label, kind='job', ref=self.gloss_ref(document_id), group_id=group,
                                       keys={'seed': seed_id, 'stamps': {}}):
                     try:
-                        execute_plan(client, kept, source=self.source, label=label, project=project,
-                                     stamp_mode='machine', detail=self.detail, seed=seed_id)
-                    except (PlanError, PlanOutOfDate):
+                        # Each op its place in the send as its card row, so a
+                        # plan that fails part-way says which may have landed.
+                        execute_plan(client, [{**o, CARD_ROW: i} for i, o in enumerate(kept)], source=self.source,
+                                     label=label, project=project, stamp_mode='machine', detail=self.detail,
+                                     seed=seed_id)
+                    except PlanError as e:
+                        rows = landed_rows(e)
+                        self.sent.update(o[LOOSE] for i, o in enumerate(kept) if i in rows and LOOSE in o)
+                        raise
+                    except PlanOutOfDate:
                         raise
                     except Exception as e:  # noqa: BLE001 - raised before the first write
                         # The plan's reads (offsets, scopes, entries) come
@@ -2307,6 +2327,7 @@ class IgtRunner:
                         # operation's own end, after the write, stays outside:
                         # its error may follow a write that landed.
                         raise PlanError(str(e), 0, len(kept)) from e
+                    self.sent.update(o[LOOSE] for o in kept if LOOSE in o)
                 return kept
             except PlanOutOfDate as e:
                 # Raised before anything is written. Core out of reach while
