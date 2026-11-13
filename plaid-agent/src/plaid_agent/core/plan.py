@@ -136,6 +136,20 @@ def reserve(staged: int, n: int, note: str = '', cap: int = PLAN_MAX_OPS) -> Non
             + (f' {note}' if note else ''))
 
 
+#: A client attribute a caller sets, to a function, to send every plan
+#: applied with that client as ONE request (a job's try, plaid_agent.igt.job):
+#: the batcher then never sends before the plan's end, refuses a plan whose
+#: writes do not fit one request before anything is sent (:class:`TooBig`),
+#: and calls the function once, just before the request goes out, whether a
+#: batch or a write the executor makes on the client itself.
+ONE_REQUEST = '_one_request'
+
+
+class TooBig(Exception):
+    """A plan sent as one request (:data:`ONE_REQUEST`) whose writes do not
+    fit one. Nothing was sent."""
+
+
 class Minter:
     """The ids an applied plan creates its rows under, drawn in order from a
     seed: the plan's own id, a UUIDv7 minted when the plan was staged.
@@ -242,6 +256,9 @@ class Batcher:
         # with an op). The budget is not checked there, so a change is never
         # cut across two batches.
         self._held = 0
+        #: what a plan sent as one request calls before it (``ONE_REQUEST``)
+        self.one = getattr(client, ONE_REQUEST, None)
+        self._sent_one = False
 
     @contextmanager
     def writing_for(self, op_or_document):
@@ -271,8 +288,20 @@ class Batcher:
             self.document = previous
             if change:
                 self._held -= 1
-        if change and not self._held and self._weight >= self.budget:
+        if change and not self._held and self._weight >= self.budget and self.one is None:
             self.flush()
+
+    def _sending(self) -> None:
+        """A request is about to go out: a plan sent as one request calls
+        its caller back, the first time, and refuses a second request (a
+        fault of the caller's, who cut the plan: the first may have
+        landed, so it is no :class:`TooBig`)."""
+        if self.one is None:
+            return
+        if self._sent_one:
+            raise RuntimeError('A plan sent as one request needed a second.')
+        self._sent_one = True
+        self.one()
 
     @contextmanager
     def _stamping(self):
@@ -299,6 +328,7 @@ class Batcher:
         so one whose answer was lost cannot land after the apply gave up on
         it, over an edit made since."""
         previous, self.document = self.document, document
+        self._sending()
         try:
             with self._stamping():
                 yield
@@ -308,6 +338,8 @@ class Batcher:
     def add(self, fn, weight: int = 1, count: int = 1) -> int:
         """Queue what ``fn(batch)`` writes: ``count`` sub-ops, which land in
         one batch together. Returns the result index of the first."""
+        if self.one is not None and self._pending + count > MAX_BATCH_OPS:
+            raise TooBig(f'More than {MAX_BATCH_OPS} writes for one request.')
         if self._batch is not None and self._held and self._pending + count > MAX_BATCH_OPS:
             # A change too big for one batch: the server would take this
             # write in a request of its own anyway.
@@ -319,7 +351,7 @@ class Batcher:
         idx = len(self.results) + self._pending
         self._pending += count
         self._weight += weight
-        if self._weight >= self.budget and (not self._held or self._pending >= MAX_BATCH_OPS):
+        if self._weight >= self.budget and (not self._held or self._pending >= MAX_BATCH_OPS) and self.one is None:
             self.flush()
         return idx
 
@@ -334,7 +366,7 @@ class Batcher:
             item['value'] = value
         if metadata:
             item.setdefault('metadata', []).extend(metadata)
-        if sum(len(v) for v in self._bulk.values()) >= self.budget:
+        if sum(len(v) for v in self._bulk.values()) >= self.budget and self.one is None:
             self._drain()
 
     @property
@@ -361,9 +393,10 @@ class Batcher:
 
     def flush(self) -> None:
         self._drain()
-        batch, self._batch = self._batch, None
-        if batch is None:
+        if self._batch is None:
             return
+        self._sending()
+        batch, self._batch = self._batch, None
         try:
             res = batch.submit()
         except PlaidAPIError as e:
@@ -420,45 +453,13 @@ class TrackingBatcher(Batcher):
         # The same for each member of a folded row (``opkind.MEMBER``), keyed
         # (row, member).
         self._members: Dict[Any, List[int]] = {}
-        # The card row of each change being written (``writing_for``), the
-        # rows with a write queued in the open batch, and those with a write
-        # in a batch that was sent (``sent_rows``).
-        self._row_of: List[Any] = []
-        self._queued_rows: set = set()
-        self._sent_rows: set = set()
         if tracker is not None:
             tracker.batcher = self
-
-    @contextmanager
-    def writing_for(self, op_or_document):
-        self._row_of.append(op_or_document.get(ROW) if isinstance(op_or_document, dict) else None)
-        try:
-            with super().writing_for(op_or_document):
-                yield
-        finally:
-            self._row_of.pop()
-
-    def _note(self) -> None:
-        row = next((r for r in reversed(self._row_of) if r is not None), None)
-        if row is not None:
-            self._queued_rows.add(row)
-
-    def add(self, fn, weight: int = 1, count: int = 1) -> int:
-        self._note()
-        return super().add(fn, weight, count)
-
-    def update(self, resource: str, entity_id: str, value: Any = _UNSET,
-               metadata: Optional[List[Dict[str, Any]]] = None) -> None:
-        self._note()
-        super().update(resource, entity_id, value, metadata)
 
     def flush(self) -> None:
         self._drain()
         n = self._weight
         sending = self._batch is not None
-        if sending:
-            self._sent_rows |= self._queued_rows
-            self._queued_rows = set()
         try:
             super().flush()
         except Exception as e:
@@ -502,15 +503,6 @@ class TrackingBatcher(Batcher):
         """The card rows every write of which stands."""
         return sorted(r for r, counts in self._rows.items() if self._stands(counts))
 
-    def sent_rows(self) -> List[Any]:
-        """The card rows with a write in a batch that was sent, its answer
-        back or not: after a lost answer, what may have landed. A row whose
-        writes were all to come, or still queued, sent nothing. (A change too
-        big for one batch counts from the batch sent before its first write.
-        A write the executor makes on the client itself, a text edit or a
-        restore, is not counted.)"""
-        return sorted(self._sent_rows)
-
     def written_members(self) -> Dict[Any, int]:
         """For each card row that folds many changes, how many of them stand
         in full, where that is some and not all (a row written whole is in
@@ -549,8 +541,7 @@ class PlanError(Exception):
 
     def __init__(self, message: str, applied: int, total: int, unknown: bool = False,
                  written: Optional[List[Any]] = None, members: Optional[Dict[Any, int]] = None,
-                 partly: Optional[List[Any]] = None, partly_count: Optional[Tuple[int, int, str]] = None,
-                 sent: Optional[List[Any]] = None):
+                 partly: Optional[List[Any]] = None, partly_count: Optional[Tuple[int, int, str]] = None):
         super().__init__(message)
         self.applied = applied
         self.total = total
@@ -568,10 +559,6 @@ class PlanError(Exception):
         #: How much of such a row the other service says it wrote: (written,
         #: of, unit), "234 of 300 sentences", or None when it did not say.
         self.partly_count = partly_count
-        #: The card rows with a write in a batch that was sent
-        #: (``TrackingBatcher.sent_rows``): with ``unknown``, what may have
-        #: landed besides ``written``.
-        self.sent = sent
 
     @property
     def wrote(self) -> bool:
@@ -620,25 +607,21 @@ def applying(ops: List[Dict[str, Any]], run) -> Dict[str, int]:
     def members():
         return tracker.batcher.written_members() if tracker.batcher is not None else {}
 
-    def sent():
-        return tracker.batcher.sent_rows() if tracker.batcher is not None else []
     try:
         return run(tracker)
-    except PlanError as e:
-        if e.written is None:
-            e.written = written()
-        if e.members is None:
-            e.members = members()
-        if e.sent is None:
-            e.sent = sent()
+    except (PlanError, TooBig) as e:
+        if isinstance(e, PlanError):
+            if e.written is None:
+                e.written = written()
+            if e.members is None:
+                e.members = members()
         raise
     except PlanOutOfDate as e:
         # Found out of date by a write the server refused: settled as out of
         # date when nothing stands, as partly applied when something does.
         if not tracker.applied:
             raise
-        raise PlanError(' '.join(e.reasons), tracker.applied, len(ops), False, written(), members(),
-                        sent=sent()) from e
+        raise PlanError(' '.join(e.reasons), tracker.applied, len(ops), False, written(), members()) from e
     except Exception as e:  # noqa: BLE001 - every failure becomes one the user can read
         applied = getattr(e, '_applied', None)
         unknown = bool(getattr(e, '_unknown', False)) or outcome_unknown(e)
@@ -646,7 +629,7 @@ def applying(ops: List[Dict[str, Any]], run) -> Dict[str, int]:
         # class or the server's address.
         if isinstance(e, PlaidAPIError):
             raise PlanError(requester_message(e), applied if applied is not None else tracker.applied,
-                            len(ops), unknown, written(), members(), sent=sent()) from e
+                            len(ops), unknown, written(), members()) from e
         # A refusal the assistant wrote (a ToolError, a ValueRefusal) is told
         # as written. Anything else, a bare ValueError Python raised among
         # them, is a bug of its own: it reaches the user, after batches may
@@ -659,7 +642,7 @@ def applying(ops: List[Dict[str, Any]], run) -> Dict[str, int]:
             logger.exception('A plan stopped on an error of the assistant\'s own')
         raise PlanError(str(e).strip() if authored else 'The assistant stopped on an error.',
                         applied if applied is not None else tracker.applied, len(ops), unknown,
-                        written(), members(), sent=sent()) from e
+                        written(), members()) from e
 
 
 @contextmanager

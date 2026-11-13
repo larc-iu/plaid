@@ -96,16 +96,14 @@ def _clear(admin, writer, s, begin):
 
 def _crash_then_resume(admin, writer, s, monkeypatch, pieces, between):
     job = _job(admin, writer, s, pieces)
-    real = job.add_decisions
+    real = IgtRunner.record
 
-    def add(decisions):
-        if any(d['form'].startswith(RECORD_FORM) for d in decisions):
-            raise Crash()
-        return real(decisions)
-    monkeypatch.setattr(job, 'add_decisions', add)
+    def record(self, *a, **kw):
+        raise Crash()
+    monkeypatch.setattr(IgtRunner, 'record', record)
     with pytest.raises(Crash):
         run_job(job, _runner(job))
-    monkeypatch.setattr(job, 'add_decisions', real)
+    monkeypatch.setattr(IgtRunner, 'record', real)
     assert {t['begin'] for t in _morphs(admin, s)} == {0, 3, PA, SA}, 'the write landed'
     between()
     # A new worker process: the rows as core has them, a new runner.
@@ -121,7 +119,7 @@ def test_a_crash_after_the_write_and_a_cleared_word_is_never_written_again(world
     assert finished['state'] == 'done', (finished.get('reason'), finished.get('message'))
     assert SA not in {t['begin'] for t in _morphs(admin, s)}, 'sa is left as the starter left it'
     row = finished['documents'][0]
-    assert [(x['sentence'], x['reason']) for x in row['skipped']] == [('s2', 'interrupted')], row
+    assert row['skipped'] == [] and row['counts']['words'] == 4, 'core says the write landed: counted, not listed'
 
 
 @pytest.mark.parametrize('pieces', PIECES)
@@ -164,20 +162,20 @@ def test_a_passing_error_on_the_record_and_a_word_cleared_in_the_wait(world, mon
             state['n'] = 2
             _clear(admin, writer, s, SA)
     job = _job(admin, writer, s, pieces, sleep=sleep)
-    real = job.add_decisions
+    real = job.update_row
 
-    def add(decisions):
-        if any(d['form'].startswith(RECORD_FORM) for d in decisions) and not state['n']:
+    def update(document_id, **fields):
+        if (fields.get('counts') or {}).get('words') and not state['n']:
             state['n'] = 1
-            raise PlaidAPIError('HTTP 502', status=502, method='POST')
-        return real(decisions)
-    monkeypatch.setattr(job, 'add_decisions', add)
+            raise PlaidAPIError('HTTP 502', status=502, method='PUT')
+        return real(document_id, **fields)
+    monkeypatch.setattr(job, 'update_row', update)
     finished = run_job(job, _runner(job))
     assert state['n'] == 2, 'the 502 was met and the starter cleared sa in the wait'
     assert finished['state'] == 'done', (finished.get('reason'), finished.get('message'))
     assert SA not in {t['begin'] for t in _morphs(admin, s)}, 'sa is left as the starter left it'
     row = finished['documents'][0]
-    assert [(x['sentence'], x['reason']) for x in row['skipped']] == [('s2', 'interrupted')], row
+    assert row['skipped'] == [] and row['counts']['words'] == 4, 'core says the write landed: counted, not listed'
 
 
 @pytest.mark.parametrize('pieces', PIECES)

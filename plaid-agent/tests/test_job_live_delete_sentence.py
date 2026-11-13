@@ -16,7 +16,6 @@ from live import _skip_or_fail, core_url, login, seed
 from plaid_client import PlaidAPIError
 from plaid_agent.core.agent import ModelConfig
 from plaid_agent.core.job import Job, run_job
-from plaid_agent.core.opkind import ROW
 from plaid_agent.core.plan import PlanError
 from plaid_agent.igt import job as igt_job
 from plaid_agent.igt.job import IgtRunner
@@ -170,9 +169,8 @@ def test_a_later_pieces_deletion_of_a_recorded_sentence_sent_again_after_a_lost_
         monkeypatch):
     """REV-JSF-1 on a real core: piece s3's write deletes xa, which piece s2
     recorded, and its answer is lost (a proxy's 502 after the last batch).
-    The same worker settles the document: xa is gone and s3's own writing
-    row names it, so the write landed. Piece s3 is not run again over what
-    is left, and ka stays."""
+    The same worker asks core, which says the write landed: piece s3 is
+    not run again over what is left, and ka stays."""
     monkeypatch.setattr(igt_job, 'JOB_STRETCH_SENTENCES', 1)
     admin = _admin()
     writer, s = _seeded(admin, 'job-del-later', LINES)
@@ -189,8 +187,7 @@ def test_a_later_pieces_deletion_of_a_recorded_sentence_sent_again_after_a_lost_
                 try:
                     raise cause
                 except PlaidAPIError as e:
-                    raise PlanError('the answer was lost', len(ops), len(ops), unknown=True,
-                                    sent=[o[ROW] for o in ops]) from e
+                    raise PlanError('the answer was lost', len(ops), len(ops), unknown=True) from e
             return out
         monkeypatch.setattr(igt_job, 'execute_plan', execute)
         job = _job(admin, writer, s, 'Delete the line before each line reading sa.', 'sentences')
@@ -206,11 +203,9 @@ def test_a_later_pieces_deletion_of_a_recorded_sentence_sent_again_after_a_lost_
 
 def test_a_later_pieces_deletion_of_a_recorded_sentence_that_landed_before_a_crash_is_never_made_again(monkeypatch):
     """REV-JSF-1, the crash, on a real core: the same write lands and the
-    worker dies before its record. A new worker reads the records of every
-    sentence the job has a writing row for, xa's included, and takes s3 as
-    written because its own row names xa, which is gone. ka stays."""
+    worker dies before its record. A new worker asks core, which says the
+    write landed: s3 is written and never worked again, and ka stays."""
     monkeypatch.setattr(igt_job, 'JOB_STRETCH_SENTENCES', 1)
-    from plaid_agent.igt.job import RECORD_FORM
     admin = _admin()
     writer, s = _seeded(admin, 'job-del-crash', LINES)
     try:
@@ -223,16 +218,16 @@ def test_a_later_pieces_deletion_of_a_recorded_sentence_that_landed_before_a_cra
             return real(c, ops, **kw)
         monkeypatch.setattr(igt_job, 'execute_plan', execute)
         job = _job(admin, writer, s, 'Delete the line before each line reading sa.', 'sentences')
-        real_add, s3 = job.add_decisions, s.ids['dA-s3']
+        real_record, s3 = IgtRunner.record, s.ids['dA-s3']
 
-        def add(decisions):
-            if any(d['form'] == RECORD_FORM + s3 for d in decisions):
+        def record(self, project, document_id, doc, part, *a, **kw):
+            if s3 in [x.id for x in part]:
                 raise Crash()
-            return real_add(decisions)
-        monkeypatch.setattr(job, 'add_decisions', add)
+            return real_record(self, project, document_id, doc, part, *a, **kw)
+        monkeypatch.setattr(IgtRunner, 'record', record)
         with pytest.raises(Crash):
             run_job(job, _runner(job))
-        monkeypatch.setattr(job, 'add_decisions', real_add)
+        monkeypatch.setattr(IgtRunner, 'record', real_record)
         assert sent == [['delete_sentence']] and _read(admin, s)[0] == 'ka. sa. ta.', 'the write landed'
         # A new worker process: the rows as core has them, a new runner.
         job.rows = {x['document_id']: dict(x) for x in admin.jobs.get(job.id)['documents']}
@@ -249,9 +244,9 @@ def test_a_later_pieces_deletion_of_a_recorded_sentence_that_landed_before_a_cra
 def test_a_lexicon_batch_after_a_sentence_deletion_in_the_same_write_passes_the_strict_version_check(monkeypatch):
     """REV-JS-JHFIX, not yet checked: a document piece deletes the doubled
     s2 and renames gam, which s1 links. The deletion is a text edit that
-    moves the document's version, and the rename is written after it, in
-    the plan's last batch, under strict mode: core takes it, the write
-    lands once, and nothing is put off or proposed."""
+    moves the document's version, and the rename is the write's last try,
+    after it, under strict mode: core takes it, each lands once, and
+    nothing is put off or proposed."""
     from plaid_client import PlaidClient
     admin = _admin()
     email = f'job-del-lex-{uuid.uuid4().hex[:8]}@example.org'
@@ -280,7 +275,7 @@ def test_a_lexicon_batch_after_a_sentence_deletion_in_the_same_write_passes_the_
         job = _job(admin, writer, s, 'Delete the doubled sentence and rename gam to gaam.', 'document')
         finished = run_job(job, _runner(job))
         assert finished['state'] == 'done', (finished.get('reason'), job.status.get('message'))
-        assert sent == [['delete_sentence', 'rename_entry']], f'sent once: {sent}'
+        assert sent == [['delete_sentence'], ['rename_entry']], f'sent once: {sent}'
         body, sentences, _words = _read(admin, s)
         assert body == 'ka. sa.' and len(sentences) == 2, body
         items = admin.vocab_layers.get(s.ids['v1'], include_items=True).get('items') or []

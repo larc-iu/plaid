@@ -232,30 +232,36 @@ def runner(job, write_summary=False, **kw):
 
 def recorded(job):
     """The job's record of every word it holds in its documents as they read
-    now, as its stretches would have left it among its decisions, each word
-    vouched for: harmonize rewrites only what the job recorded it wrote on
-    that word (REV-J-B2 S3-1, REV-J-B3)."""
+    now, as its writes would have left it among its decisions, each word
+    vouched for: a writing row of a write that landed (it sends nothing,
+    so it needs no lookup) and the sentence's record of the words' keys.
+    Harmonize rewrites only what the job recorded it wrote on that word
+    (REV-J-B2 S3-1, REV-J-B3)."""
     from plaid_agent.igt import job as igt_job
     r = runner(job)
     project = r.project()
     docs = {d: r.read(project, d) for d in job.order}
     for d, doc in docs.items():
-        # The writing row each stretch sends before its write (REV-FIX3-1),
-        # every word of its sentence named (REV-B4-1). All of them before
-        # the runner reads any, as a worker that resumes finds them.
         rows = []
         for s in doc.sentences:
-            words = [igt_job.word_tag(w.id) for w in s.words if igt_job.job_owned(w, job.id)]
-            others = [igt_job.word_tag(w.id) for w in s.words if igt_job.word_tag(w.id) not in words]
+            mine = [w for w in s.words if igt_job.job_owned(w, job.id)]
+            words = [igt_job.word_tag(w.id) for w in mine]
             own = igt_job.translation_state(s, project, job.id) == 'own'
-            if words or own:
-                text = igt_job.writing_text(d, 'translations' if own else None, words, others)
-                rows.append({'form': igt_job.writing_form(s.id), 'key': igt_job.analysis_key(text),
-                             'analysis': text, 'count': 1, 'document_id': d, 'sentence_id': s.id})
+            if not (words or own):
+                continue
+            counts = {'words': len(words), 'analyzed': 1, **({'translations': 1} if own else {})}
+            text = igt_job.writing_text({'document': d, 'write': 'fixture', 'try': '', 'piece': '', 'own': True,
+                                         'words': words, 'others': [igt_job.word_tag(w.id) for w in s.words
+                                                                    if igt_job.word_tag(w.id) not in words],
+                                         'counts': counts, 'left': []})
+            rows.append({'form': igt_job.writing_form(s.id), 'key': igt_job.analysis_key(text), 'analysis': text,
+                         'count': 1, 'document_id': d, 'sentence_id': s.id})
+            if mine:
+                mark = igt_job.mark_text(d, {igt_job.word_tag(w.id): igt_job.word_key(w) for w in mine})
+                rows.append({'form': igt_job.mark_form(s.id), 'key': igt_job.analysis_key(mark), 'analysis': mark,
+                             'count': 1, 'document_id': d, 'sentence_id': s.id})
         if rows:
             job.add_decisions(rows)
-    for d, doc in docs.items():
-        r.settle(project, d, doc, own=True)
     return job
 
 

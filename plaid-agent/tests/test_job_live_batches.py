@@ -1,10 +1,10 @@
-"""A stretch whose write spans batches, refused on a later batch, under a
-real core (REV-J-B3 B3-8): the starter types in the document between two of
-the job's batches, and core refuses the next batch for the moved version.
-The job writes nothing again under the keys it already used (core would
-refuse a different request under a key it stored, 422
-``idempotency-key-reused``), puts the document off, and finishes it later.
-And a write whose record was lost, after which the starter deleted what the
+"""A stretch whose write spans requests, refused on a later one, under a
+real core (REV-J-B3 B3-8): the write is cut into tries of one request each,
+the starter types in the document between two of them, and core refuses the
+next for the moved version. The job writes nothing again under the keys it
+already used (core would refuse a different request under a key it stored,
+422 ``idempotency-key-reused``), puts the document off, and finishes it later.
+And a write whose answer was lost, after which the starter deleted what the
 job wrote in a sentence, is not written again (REV-FIX3-1).
 
 Runs on the session's core (``live.py``), or the one PLAID_TEST_URL names."""
@@ -71,10 +71,9 @@ def test_a_write_refused_on_a_later_batch_sends_nothing_again_under_its_keys(wor
         offset['s'] += seconds
     job = Job(admin, claimed, WORKER, client_for=lambda token: PlaidClient(core_url(), token), model='fake/m',
               sleep=sleep, now=lambda: time.time() + offset['s'])
-    # Each change a batch of its own: s1's two land, then the starter types
-    # in s3, and s2's first batch is refused for the moved version.
-    budget = plan.TrackingBatcher.__init__.__defaults__
-    monkeypatch.setattr(plan.TrackingBatcher.__init__, '__defaults__', (1,) + budget[1:])
+    # One analysis a request (five writes each): s1's two land, then the
+    # starter types in s3, and s2's first is refused for the moved version.
+    monkeypatch.setattr(plan, 'MAX_BATCH_OPS', 6)
     real, sent, refused = PlaidBatch.submit, {'n': 0}, []
     d1 = s.ids['d1']
 
@@ -95,11 +94,8 @@ def test_a_write_refused_on_a_later_batch_sends_nothing_again_under_its_keys(wor
     assert not any(status == 422 for status, _ in refused), f'a key used again for another request: {refused}'
     assert finished['state'] == 'done', (finished.get('reason'), writer.jobs.get(made['id']).get('message'))
     row = writer.jobs.get(made['id'])['documents'][0]
-    # s1 landed and is recorded. Nothing of s2's write landed, and the
-    # starter's edit is the newest change: the job cannot tell that from a
-    # person's removal of the job's work, so s2 is left (REV-FIX3-1) until
-    # the later piece below writes in it, which records it and takes it off
-    # the list (REV-JSF-5).
+    # s1 landed. Nothing of s2 landed, as core says: it is a target again,
+    # and a later piece writes it.
     assert row['state'] == 'done' and row['counts']['words'] == 4, row
     assert not row['skipped'], row
     raw = admin.documents.get(d1, include_body=True)
@@ -145,9 +141,9 @@ def _translations(admin, s):
 
 def test_a_translation_the_starter_deleted_after_a_lost_answer_is_not_written_again(story, monkeypatch):
     """REV-FIX3-1 (its L5): the job's write lands, its answer is lost, and
-    in the wait the starter deletes the job's translation of s1. The job
-    holds a writing row for s1, finds nothing of its own there and a
-    person's edit since: s1 is left, listed as interrupted."""
+    in the wait the starter deletes the job's translation of s1. Core says
+    the write landed: s1 is not written again, nothing is listed, and both
+    translations the job wrote are counted."""
     admin, writer, s = story
     from plaid_client import PlaidAPIError, PlaidClient
     from plaid_client.batch import PlaidBatch
@@ -184,5 +180,5 @@ def test_a_translation_the_starter_deleted_after_a_lost_answer_is_not_written_ag
     assert [v for _, v in _translations(admin, s)] == ['s2 by the job.'], 'the deletion stands'
     assert sum(1 for c in model.calls if c['n'] == 1) == 1, 'the model was not asked again'
     report = writer.jobs.get(made['id'])['report']
-    assert [(x['sentence'], x['reason']) for x in report['documents'][0]['skipped']] == [('s1', 'interrupted')]
-    assert report['totals']['translations'] == 1 and report['totals']['skipped_interrupted'] == 1
+    assert report['documents'][0]['skipped'] == []
+    assert report['totals']['translations'] == 2 and report['totals']['skipped_interrupted'] == 0

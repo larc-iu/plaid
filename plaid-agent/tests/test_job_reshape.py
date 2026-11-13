@@ -355,9 +355,11 @@ def test_a_split_off_half_of_a_sentence_the_job_translated_is_not_translated(mon
     assert runner(job).document('d1') == 'done'
     assert seen == [['d1-s1'], ['d1-s2']], seen
     row = _rows(client)['d1-s1']
-    assert len(row.pop('before')) == 1 and len(row.pop('pieces')) == 1 and row.pop('deletes') == []
-    assert row == {'document': 'd1', 'others': ['d1-s1w1', 'd1-s1w2', 'd1-s1w3'], 'translation': 'translations',
-                   'words': []}
+    assert len(row.pop('try')) == 36 and len(row.pop('write')) == 16 and len(row.pop('piece')) == 16
+    assert row == {'others': ['d1-s1w1', 'd1-s1w2', 'd1-s1w3'], 'words': [],
+                   'counts': {'analyzed': 1, 'changes': 1, 'translations': 1, 'left': 3},
+                   'left': [{'ref': 's1.w1', 'begin': 0, 'form': 'ka'}, {'ref': 's1.w2', 'begin': 3, 'form': 'ta'},
+                            {'ref': 's1.w3', 'begin': 6, 'form': 'pa'}]}
 
 
 def test_a_merged_sentence_whose_joined_translation_a_person_cleared_is_not_translated(monkeypatch):
@@ -412,9 +414,12 @@ def test_a_writing_row_holds_every_word_of_the_longest_sentence_a_job_takes():
     document id as long as core's and the longest translation outcome, is
     named whole within core's cap on a decision."""
     tags = [igt_job.word_tag(f'01a1d34a-0cde-7002-b1c0-{i:012x}') for i in range(JOB_SENTENCE_MAX_WORDS)]
-    doc = '01a1d34a-0a05-7000-828b-bd5cf572de1a'
     for split in (0, JOB_SENTENCE_MAX_WORDS // 2, JOB_SENTENCE_MAX_WORDS):
-        text = igt_job.writing_text(doc, 'refreshed', tags[:split], tags[split:])
+        counts = {'analyzed': 1, 'changes': 2 * split, 'words': split, 'links': split, 'refreshed': 1,
+                  'left': JOB_SENTENCE_MAX_WORDS - split}
+        text = igt_job.writing_text({'write': '0123456789abcdef', 'try': '01a1d34a-0a05-7000-828b-bd5cf572de1a',
+                                     'piece': '0123456789abcdef', 'words': tags[:split], 'others': tags[split:],
+                                     'counts': counts, 'left': []})
         assert len(text) <= JOB_ANALYSIS_MAX_CHARS
         row = json.loads(text)
         assert row['words'] + row['others'] == tags

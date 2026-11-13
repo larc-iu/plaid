@@ -15,12 +15,14 @@ The worker's loop, the heartbeat, the budgets and the halving are
 * the write under the document's lock, an op dropped where its sentence
   changed since the piece read it, the rest by the apply rule
   (:meth:`IgtRunner.write`, :mod:`plaid_agent.igt.jobapply`), each value
-  stamped as the job's machine proposal,
+  stamped as the job's machine proposal, sent as tries of one request each
+  with their writing rows first (:meth:`IgtRunner.send`), and what landed of
+  a write whose answer was lost, or whose worker died, asked of core
+  (:meth:`IgtRunner.settle`),
 * the walk of a document, the skip and retry of one in use, the cursor,
 * harmonize and the entries pass, and the app's parts of the report.
 """
 
-import dataclasses
 import json
 import logging
 import os
@@ -38,7 +40,6 @@ from plaid_client.workflows.igt.derive import word_state as _stored_word_state
 
 from ..core import job as core_job
 from ..core.agent import ModelConfig, Toolkit, TurnCancelled, run_turn
-from ..core.fingerprint import fingerprint
 from ..core.garble import seed
 from ..core.guidelines import manual_chars
 from ..core.job import (BUDGET, ROW_FINAL, SKIPPED_MORE, JobStopped, Pace, StretchFailed, canonical, analysis_key,
@@ -50,8 +51,7 @@ from ..core.limits import (JOB_ANALYSIS_MAX_CHARS, JOB_CHANGE_VALUE_CHARS, JOB_C
                            JOB_LOCK_TRIES, JOB_LOCK_WAIT_S, JOB_PERSON_QUIET_S, JOB_PRECEDENT_CHARS,
                            JOB_PRECEDENT_PER_FORM, JOB_SENTENCE_MAX_CHARS, JOB_SENTENCE_MAX_WORDS,
                            JOB_SKIPPED_PER_DOCUMENT, JOB_STRETCH_SENTENCES)
-from ..core.opkind import ROW as CARD_ROW
-from ..core.plan import JOB_DETAIL_KEY, PlanError, held_changes
+from ..core.plan import JOB_DETAIL_KEY, ONE_REQUEST, PlanError, TooBig, held_changes
 from ..core.provenance import Requester
 from ..core.tools import Refusal, ToolError
 from ..core.version import agent_version
@@ -80,15 +80,14 @@ RECORD_FORM = ' sentence '
 #: The form of an entry the model staged and nothing linked (``propose``),
 #: kept among the decisions the same way, so a resumed job still reports it.
 PROPOSED_FORM = ' proposed '
-#: The form of a sentence's writing row: the job is about to write in it.
-#: Written before the write is sent, so that the job's having written in a
-#: sentence is a fact core holds, never one read back from the document,
-#: where a person may have removed it (REV-FIX3-1).
+#: The form of a writing row: a try of the job's is about to write in a
+#: sentence (or, with the document's id, a change of no sentence). Written
+#: just before the try's request is sent, naming the try, so whether the
+#: job wrote there is a fact core holds (``POST /jobs/{id}/landed``), never
+#: one read back from the document (BRIEF RX).
 WRITING_FORM = ' writing '
-#: Why a sentence is skipped when the job wrote in it, its record was lost,
-#: and nothing of the job is left in it now: whether the write landed and a
-#: person removed it, or it never landed, cannot be told, and the job writes
-#: nothing more there (REV-FIX3-1).
+#: Why a sentence is listed when a write landed in it in part: some of the
+#: write's tries landed and one of its tries there did not.
 INTERRUPTED = 'interrupted'
 #: The job's plan, made once (``plan_work`` or the default), and where the
 #: plan's pieces were cut smaller (a document too large for one piece, a
@@ -174,36 +173,24 @@ def writing_form(sentence_id: str) -> str:
     return WRITING_FORM + sentence_id
 
 
-def writing_text(document_id: str, translation: Optional[str], words: List[str], others=(), before=(),
-                 pieces=(), deletes=()) -> str:
-    """A writing row's analysis: the document, what the write does to the
-    sentence's translation (``translations`` writes one where there was
-    none, ``refreshed`` replaces one, None leaves it), the tags of the words
-    it analyses (:func:`word_tag`), the tags of the sentence's other words
-    (``others``), so that every word of a sentence the job wrote in is known
-    to it wherever a person moves it (REV-B4-1), and the digest of the
-    sentence before the write (``before``, :func:`sentence_digest`), so that
-    a write that leaves no stamp of the job (a deletion, a text edit) is
-    known to have landed, and the piece whose write it was (``pieces``,
-    :func:`piece_tag`), so that only that piece, run again, leaves the
-    sentence alone (REV-JH-1), and the sentences the write deletes
-    (``deletes``), so that one of them gone says the write landed
-    (REV-JSF-1). Every tag of a sentence of JOB_SENTENCE_MAX_WORDS words fits
-    a decision's analysis. Past that (a sentence a person made longer since
-    the checks) the others are cut first, then the words, then the
-    deletions but one (any one gone says the write landed)."""
-    words, others, deletes = list(words), list(others), list(deletes)
+def writing_text(row: Dict[str, Any]) -> str:
+    """A writing row's analysis (:meth:`IgtRunner.intend`) as canonical
+    JSON within JOB_ANALYSIS_MAX_CHARS: the try, the write, the piece and
+    the counts are never cut. Past the limit the blanks listed are cut
+    first (the counts say how many), then the changes of no sentence
+    described and those proposed (a write that landed lists the proposed
+    itself), then the tags of the sentence's other words, then of the words
+    the try writes on (a sentence a person made longer since the checks:
+    every tag of one of JOB_SENTENCE_MAX_WORDS words fits)."""
+    row = {k: (list(v) if isinstance(v, list) else v) for k, v in row.items()}
     while True:
-        text = canonical({'before': list(before), 'deletes': deletes, 'document': document_id, 'others': others,
-                          'pieces': list(pieces), 'translation': translation, 'words': words})
-        if len(text) <= JOB_ANALYSIS_MAX_CHARS or not (words or others or len(deletes) > 1):
+        text = canonical(row)
+        if len(text) <= JOB_ANALYSIS_MAX_CHARS:
             return text
-        if others:
-            others.pop()
-        elif words:
-            words.pop()
-        else:
-            deletes.pop()
+        cut = next((k for k in ('left', 'ops', 'proposed', 'others', 'words') if row.get(k)), None)
+        if cut is None:
+            return text
+        row[cut].pop()
 
 
 def piece_tag(piece: Dict[str, Any]) -> str:
@@ -213,64 +200,30 @@ def piece_tag(piece: Dict[str, Any]) -> str:
     ``{"selection"}`` for the selection. The same piece run again after an
     interruption (a crash, a lost answer, a write put off) has the same
     tag."""
-    return analysis_key(canonical(piece))[:SENTENCE_DIGEST_CHARS]
+    return analysis_key(canonical(piece))[:PIECE_TAG_CHARS]
 
 
-#: How many hex characters of a sentence's fingerprint a writing row keeps.
-SENTENCE_DIGEST_CHARS = 16
+#: How many hex characters of a piece's key its tag keeps.
+PIECE_TAG_CHARS = 16
 #: The tag of the selection piece: one per job.
 SELECTION_TAG = piece_tag({'selection': True})
 #: The key holding a selection's change of no document's place among them,
-#: on the copy of it each document's write carries (``IgtRunner.sent``).
+#: on the copy of it each document's write carries (``IgtRunner.try_loose``).
 LOOSE = '_loose'
 
 
-def landed_rows(e: PlanError) -> set:
-    """The card rows of a plan that failed part-way which may have landed:
-    those written, and those in a batch whose answer was lost. A batch core
-    refused landed nothing, and one never sent nothing."""
-    rows = set(e.written or ()) | set(e.members or {})
-    if e.unknown:
-        rows |= set(e.sent or ())
-    return rows
-
-
-def sentence_digest(s: Sentence) -> str:
-    """A sentence as a writing row keeps it: the start of the key of its
-    fingerprint (everything it holds, its offsets from its own start, as a
-    piece's print is), so the same sentence gives the same digest wherever
-    it moved in the text. Left out, as nothing a write in the sentence
-    changes (REV-JH-3): its index (a merge or a deletion before it moves
-    it) and what a link holds of its entry and of other sentences (the
-    entry's form, renamed in the lexicon, and a multi-word expression's
-    members by sentence index). A link is its id and its entry's id."""
-    def link(x):
-        return None if x is None else {'id': x.id, 'item_id': x.item_id}
-    words = [dataclasses.replace(w, link=link(w.link), mwes=[link(x) for x in w.mwes],
-                                 morphemes=[dataclasses.replace(m, link=link(m.link)) for m in w.morphemes])
-             for w in s.words]
-    return analysis_key(fingerprint(dataclasses.replace(s, index=0, words=words),
-                                    origin=s.begin))[:SENTENCE_DIGEST_CHARS]
-
-
-def mark_text(counts: Dict[str, int], document_id: str, left: List[Dict[str, Any]],
-              words: Optional[Dict[str, str]] = None) -> str:
-    """A sentence record's analysis: its counts, its document, the targets
-    the job left blank in it (``left``) and what it wrote on each of its
-    words it can vouch for (``words``, :func:`word_tag` to :func:`word_key`),
-    as many as a decision's analysis holds (``JOB_ANALYSIS_MAX_CHARS``). The
-    blanks are cut first (the counts say how many there were), then the
-    words, and a word not listed is one harmonize leaves."""
-    left = list(left)
-    pairs = list((words or {}).items())
+def mark_text(document_id: str, words: Dict[str, str]) -> str:
+    """A sentence record's analysis: its document and what the job wrote on
+    each of its words it can vouch for (:func:`word_tag` to
+    :func:`word_key`), as many as a decision's analysis holds
+    (``JOB_ANALYSIS_MAX_CHARS``). A word not listed is one harmonize
+    leaves."""
+    pairs = list(words.items())
     while True:
-        text = canonical({'counts': counts, 'document': document_id, 'left': left, 'words': dict(pairs)})
-        if len(text) <= JOB_ANALYSIS_MAX_CHARS or not (left or pairs):
+        text = canonical({'document': document_id, 'words': dict(pairs)})
+        if len(text) <= JOB_ANALYSIS_MAX_CHARS or not pairs:
             return text
-        if left:
-            left.pop()
-        else:
-            pairs.pop()
+        pairs.pop()
 
 
 def job_label(instructions: Optional[str]) -> str:
@@ -348,15 +301,6 @@ def translation_state(s: Sentence, project: IgtProject, job_id: str) -> str:
     return 'own' if _job_of(sp.metadata) == job_id else 'machine'
 
 
-def translated_by(s: Sentence, project: IgtProject, job_id: str) -> bool:
-    """Whether ``s``'s translation is one this job wrote, confirmed by a
-    person since or not: approving keeps a piece's ``provDetail``, which
-    names the job (REV-B4-5)."""
-    f = translation_field(project)
-    sp = s.fields.get(f.name) if f else None
-    return sp is not None and (sp.value or '') != '' and _job_of(sp.metadata) == job_id
-
-
 def translation_target(s: Sentence, project: IgtProject, job_id: str) -> bool:
     """An empty translation: what the walk of a ``sentences`` plan looks for.
     A piece replaces any other translation when its instructions say so,
@@ -369,17 +313,17 @@ def sentence_targets(s: Sentence, project: IgtProject, job_id: str,
     """What is empty in ``s``: its blank words and whether its translation
     is empty. A job walks a document's sentences that hold something empty
     (a job has no task types: what it fills is its instructions' business).
-    Nothing in a sentence that holds a word of a sentence the job began to
-    write in (``known``, :meth:`IgtRunner.known_words`)."""
+    Nothing in a sentence that holds a word of a sentence a landed write of
+    the job wrote in (``known``, :meth:`IgtRunner.known_words`)."""
     if wrote_in(s, known):
         return [], False
     return [w for w in s.words if word_target(w)], translation_target(s, project, job_id)
 
 
 def wrote_in(s: Sentence, known) -> bool:
-    """Whether ``s`` holds a word of a sentence the job began to write in:
-    ``known`` holds the tags (:func:`word_tag`) of every word of such
-    sentences, as their writing rows name them. A sentence split or merged
+    """Whether ``s`` holds a word of a sentence a landed write of the job
+    wrote in: ``known`` holds the tags (:func:`word_tag`) of every word of
+    such sentences, as their writing rows name them. A sentence split or merged
     keeps its words' ids and may get a new id of its own, so the job knows
     where it wrote by word as well as by sentence: such a sentence is never
     a target again, whatever its id now (REV-B4-1)."""
@@ -426,18 +370,6 @@ def job_owned(w: Word, job_id: str) -> bool:
         return False
     pieces = word_pieces(w)
     return bool(pieces) and all(job_piece(p, job_id) for p in pieces)
-
-
-def job_wrote(w: Word, job_id: str) -> bool:
-    """A word whose analysis is wholly this job's work, whether or not a
-    person has confirmed it since: every piece on it names this job
-    (approving keeps a piece's ``provDetail``). Counted as a word the job
-    analysed. Only :func:`job_owned` words are the job's to harmonize
-    (REV-B4-5)."""
-    if word_state(w) == 'unanalyzed':
-        return False
-    pieces = word_pieces(w)
-    return bool(pieces) and all(_job_of(p) == job_id for p in pieces)
 
 
 #: Why harmonize leaves a word the job wrote on, as its report lists it
@@ -903,6 +835,161 @@ def entries_part(created, unlinked) -> Dict[str, Any]:
             'lexicons': list(dict.fromkeys(e['lexicon'] for e in created))}
 
 
+#: The kinds the executor writes in a request of their own, outside its
+#: batches: each is a try of its own (a respelling's try holds every
+#: respelling of its text, one request), in the executor's order.
+OWN_REQUEST_KINDS = ('edit_text', 'respell', 'delete_sentence')
+#: The lexicon's renames, merges and deletions: the executor's last batch.
+LEXICON_KINDS = ('rename_entry', 'merge_entries', 'delete_entry')
+
+
+class Write:
+    """One write of a piece in one document under its lock: the ops the
+    apply rule kept, cut into TRIES of one request each (:meth:`tries`),
+    and what its writing rows say of each sentence (``IgtRunner.intend``).
+    ``own`` are the piece's own sentences the write is for (its part, less
+    those that changed since the read), ``counts`` what the write dropped,
+    proposed or left out, ``proposed`` the changes the rule proposed."""
+
+    def __init__(self, document_id: str, piece: str, st: Stretch, own: List[str], ops: List[Dict[str, Any]],
+                 counts: Counter, fresh=None, proposed=()):
+        #: the write's tag in its rows: the start of a UUIDv7, which sorts by time
+        self.id = uuid7().replace('-', '')[:PIECE_TAG_CHARS]
+        self.document_id, self.piece, self.st, self.ops, self.counts = document_id, piece, st, ops, counts
+        self.proposed = list(proposed)
+        self.own = list(own)
+        self.fresh = fresh
+        self.layer = translation_layer(st.project)
+        #: the tries sent (their seeds), the sentences given a row, and the
+        #: tries not yet sent
+        self.seeds: set = set()
+        self.rowed: set = set()
+        #: whether the write's own counts are in a row already
+        self.counted = False
+        self.queue: List[List[Dict[str, Any]]] = []
+        #: the words the write analyses, the sentences it deletes and those
+        #: it translates
+        self.touched = {w for o in ops for w in [self.word_of(o)] if w is not None}
+        self.deleted = {o.get('sentence_id') for o in ops if o.get('kind') == 'delete_sentence'}
+        self.translated = {s.id for o in ops if self.translation(o) for s in [self.sentence_of(o)] if s is not None}
+
+    def sentence_of(self, op: Dict[str, Any]) -> Optional[Sentence]:
+        from .jobapply import sentence_of
+        return sentence_of(op, self.st.doc) if op.get('kind') != 'create_entry' else None
+
+    def word_of(self, op: Dict[str, Any]) -> Optional[str]:
+        """The word an op writes on, or None."""
+        from .jobapply import _found
+        hit = _found(self.st.doc, op.get('analysis_word_id') or op.get('word_id') or op.get('token_id'))
+        return hit[1].id if hit is not None and hit[1] is not None else None
+
+    def translation(self, op: Dict[str, Any]) -> Optional[str]:
+        """``translations`` or ``refreshed`` for a write of the translation
+        field (by its layer, never another sentence field, REV-JG-11) that
+        fills one where there was none or replaces one, else None."""
+        if op.get('kind') == 'set_span' and op.get('layer_id') == self.layer and op.get('value') \
+                and op.get('token_id') in self.st.where and self.st.where[op['token_id']].id == op['token_id']:
+            return 'refreshed' if op.get('span_id') is not None else 'translations'
+        return None
+
+    def tries(self) -> List[List[Dict[str, Any]]]:
+        """The write's tries, in the order the executor writes: the batched
+        changes, each text edit (the highest first), the respellings of each
+        text, each sentence deletion, the lexicon's renames, merges and
+        deletions."""
+        batch, edits, respells, deletions, lexicon = [], [], {}, [], []
+        for o in self.ops:
+            k = o.get('kind')
+            if k == 'edit_text':
+                edits.append(o)
+            elif k == 'respell':
+                respells.setdefault(o.get('text_id'), []).append(o)
+            elif k == 'delete_sentence':
+                deletions.append(o)
+            elif k in LEXICON_KINDS:
+                lexicon.append(o)
+            else:
+                batch.append(o)
+        self.queue = (([batch] if batch else []) + [[o] for o in sorted(edits, key=lambda o: -(o.get('begin') or 0))]
+                      + list(respells.values()) + [[o] for o in deletions] + ([lexicon] if lexicon else []))
+        return self.queue
+
+    def halve(self, ops: List[Dict[str, Any]]) -> Optional[List[List[Dict[str, Any]]]]:
+        """A try that does not fit one request cut in two: at a sentence
+        boundary when it writes in two or more sentences (in document
+        order), else in the middle of its ops. An entry it creates goes with
+        each half that links it (the second links the one the first made,
+        ``IgtRunner.entries_that_fit``), and the changes of no sentence with
+        the first. None for one change."""
+        creates = [o for o in ops if o.get('kind') == 'create_entry']
+        rest = [o for o in ops if o.get('kind') != 'create_entry']
+        if len(rest) + len(creates) < 2:
+            return None
+        order = {s.id: i for i, s in enumerate(self.st.doc.sentences)}
+        sid = {id(o): getattr(self.sentence_of(o), 'id', None) for o in rest}
+        sids = sorted({x for x in sid.values() if x is not None}, key=lambda x: order.get(x, 0))
+        if len(sids) >= 2:
+            first = set(sids[:len(sids) // 2])
+            halves = [[o for o in rest if sid[id(o)] in first or sid[id(o)] is None],
+                      [o for o in rest if sid[id(o)] is not None and sid[id(o)] not in first]]
+        else:
+            halves = [rest[:len(rest) // 2], rest[len(rest) // 2:]]
+        out = []
+        for i, half in enumerate(halves):
+            keys = {o.get('new_entry_key') for o in half}
+            mine = [c for c in creates if c.get('key') in keys
+                    or (i == 0 and not any(o.get('new_entry_key') == c.get('key') for o in rest))]
+            if mine or half:
+                out.append(mine + half)
+        return out if len(out) > 1 else None
+
+    def counts_of(self, ops: List[Dict[str, Any]]) -> Counter:
+        """What a try writes in one sentence, as the record counts it: the
+        changes, those that take something away, the links made, the
+        translation written, and the sentence as one written in. The words
+        it analyses are its row's ``words`` (:meth:`words_of`)."""
+        from .jobapply import deletes
+        c = Counter()
+        if not ops:
+            return c
+        c['changes'] = len(ops)
+        c['deletions'] = sum(1 for o in ops if deletes(o))
+        c['links'] = sum(1 for o in ops if o.get('kind') in ('link', 'link_phrase'))
+        for o in ops:
+            t = self.translation(o)
+            if t:
+                c[t] = 1
+        c['analyzed'] = 1
+        return c
+
+    def words_of(self, ops: List[Dict[str, Any]]) -> List[str]:
+        """The tags of the words ``ops`` analyse (:func:`word_tag`): a word
+        analysed by two writes is one word analysed."""
+        return list(dict.fromkeys(word_tag(w) for w in (self.word_of(o) for o in ops if o.get('kind') == 'set_analysis')
+                                  if w is not None))
+
+    def left_in(self, sid: str) -> List[Dict[str, Any]]:
+        """The targets of a sentence of the piece the write leaves blank:
+        its blank words no change of the write is on, and its empty
+        translation when the write writes none (a ``form`` of None). None
+        in a sentence the write deletes."""
+        s = self.st.where.get(sid)
+        if s is None or s.id != sid or sid in self.deleted:
+            # A sentence the write deletes leaves nothing blank (REV-JSF-4).
+            return []
+        out = [{'ref': f's{s.index}.w{w.index}', 'begin': w.begin, 'form': w.surface}
+               for w in s.words if w.id in self.st.words and w.id not in self.touched]
+        if sid in self.st.translations and sid not in self.translated:
+            out.append({'ref': f's{s.index}', 'begin': None, 'form': None})
+        return out
+
+    def opless(self, now: Dict[Optional[str], List[Dict[str, Any]]]) -> List[str]:
+        """The piece's own sentences with no row yet and nothing in the try
+        about to be sent (``now``), the write's last, which names them: they
+        are written only when the whole write landed."""
+        return [sid for sid in self.own if sid not in self.rowed and sid not in now]
+
+
 class IgtRunner:
     """One job over interlinear text, run by ``core.job.run_job``."""
 
@@ -933,17 +1020,15 @@ class IgtRunner:
         self.people_read: Dict[str, Tuple[Any, Dict[str, Any]]] = {}
         #: what harmonize has written so far, for the report of a job stopped in it
         self.harmonize_done: Optional[Dict[str, Any]] = None
-        #: document id -> the sentences whose record is in core (their marks)
-        self.recorded: Dict[str, Dict[str, Dict[str, int]]] = {}
-        #: document id -> the sentences the job has a writing row for in
-        #: core, each with what its writes were to do (:meth:`intents`)
-        self.writing: Dict[str, Dict[str, Dict[str, Any]]] = {}
-        #: document id -> sentences with a writing row whose write this
-        #: worker knows did not land: they are targets again
-        self.unsent: Dict[str, set] = {}
-        #: document id -> sentence id -> its writing rows as core held them
-        #: when this worker first read them (:meth:`intents`), None before
-        self.rows_read: Optional[Dict[str, Dict[str, Dict[str, Any]]]] = None
+        #: document id -> the job's writing rows of it (:meth:`writing_rows`),
+        #: None before they are read
+        self.rows: Optional[Dict[str, List[Dict[str, Any]]]] = None
+        #: the seeds of the tries known to have landed, and of those known
+        #: not to have (:meth:`look_up`)
+        self.landed: set = set()
+        self.dead: set = set()
+        #: the documents this worker has settled once (:meth:`settle`)
+        self.settled: set = set()
         #: (document id, a stretch's first sentence id) -> how many of that
         #: stretch's writes core refused for something gone
         self.gone_refused: Counter = Counter()
@@ -963,13 +1048,10 @@ class IgtRunner:
         #: failed or changed, and too long for a stretch
         self.unlisted: Dict[str, set] = {}
         self.too_long: Dict[str, set] = {}
-        #: document id -> counts of a stretch none of whose sentences was
-        #: recorded yet (all taken again), added to the next record
-        self.carry: Dict[str, Counter] = {}
-        #: the selection's changes of no document (their ``LOOSE``) that a
-        #: send may have written: a document put off or gone hands on to the
-        #: next write only the others
-        self.sent: set = set()
+        #: a try's seed -> the places among the selection's changes of no
+        #: document (their ``LOOSE``) its ops held: a document put off or
+        #: gone hands on to the next write only those no landed try wrote
+        self.try_loose: Dict[str, set] = {}
 
     # --- reading ---------------------------------------------------------------
 
@@ -1301,7 +1383,7 @@ class IgtRunner:
         # lexicon's and proposes project setup. A document put off or gone
         # hands them to the next (REV-JH-2).
         loose = [{**op, LOOSE: i} for i, op in enumerate(by_doc.pop(None, []))]
-        self.sent = set()
+        self.try_loose = {}
         read = [d for d in live if d in ws._docs]
         # What the piece staged in a document the job does not write in (one
         # outside the job, or one of its own it has finished) is a proposed
@@ -1330,13 +1412,15 @@ class IgtRunner:
             except Deferred:
                 # Its writes were dropped: it is worked again as a piece of its own.
                 core_job.through_core(job, lambda: (self.fall_back(d, 'in-use'), self.defer(d)))
-                # What a send of it may have written is never sent again
-                # nor listed: the rest goes with the next write.
-                loose = [op for op in loose if op[LOOSE] not in self.sent]
+                # What a landed try of it wrote is never sent again nor
+                # listed: the rest goes with the next write.
+                done = core_job.through_core(job, self.loose_landed)
+                loose = [op for op in loose if op[LOOSE] not in done]
                 continue
             except Gone:
                 core_job.through_core(job, lambda: job.update_row(d, state='gone'))
-                loose = [op for op in loose if op[LOOSE] not in self.sent]
+                done = core_job.through_core(job, self.loose_landed)
+                loose = [op for op in loose if op[LOOSE] not in done]
                 continue
             # What a read printed to the model is what it read, never what a
             # tool loaded (REV-JG3-1): a sentence it was never shown, and did
@@ -1526,18 +1610,6 @@ class IgtRunner:
             return False
         return self.job.now() - when < JOB_PERSON_QUIET_S
 
-    def quiet(self, last: Optional[Dict[str, Any]], document_id: str) -> bool:
-        """Nobody but the job has written in the document since the job's
-        last glossing write in it, or since the job was made: ``last``, its
-        :meth:`newest_change`, is that write, or older than the job, or there
-        is none. Then everything the job wrote there reads as it wrote it,
-        and a write of its that is not there never landed (``settle``)."""
-        if not last or str(last.get('ref') or '') == self.gloss_ref(document_id):
-            return True
-        when = core_job._iso_seconds(last.get('end_time'))
-        created = core_job._iso_seconds(self.job.job.get('created_at'))
-        return when is not None and created is not None and when <= created
-
     def document(self, document_id: str) -> str:
         """Work one document from its cursor: ``done``, ``deferred`` or
         ``gone``.
@@ -1579,16 +1651,10 @@ class IgtRunner:
         while True:
             job.check()
             client = job.client()
-            # The document first, then its History: when the newest change
-            # is still the job's own work (or older than the job), nothing
-            # was written between that change and this read, so what the job
-            # wrote and did not record is exactly as it wrote it (``settle``,
-            # :meth:`quiet`).
             doc = self.read(project, document_id, client)
-            last = self.newest_change(client, document_id)
-            if self.in_use(last, f'job:{job.id}/'):
+            if self.in_use(self.newest_change(client, document_id), f'job:{job.id}/'):
                 return self.defer(document_id)
-            self.settle(project, document_id, doc, own=self.quiet(last, document_id))
+            self.settle(project, document_id, doc)
             whole = self.whole_document(project, doc)
             pending = self.pending(doc, project, document_id, every=self.every_sentence())
             if not pending:
@@ -1637,25 +1703,21 @@ class IgtRunner:
 
     def pending(self, doc, project: IgtProject, document_id: str, every: bool = False) -> List[Sentence]:
         """The sentences after the cursor the job works, in document order,
-        less those skipped, those recorded already and those the job has
-        begun to write in (a writing row, or a word of such a sentence,
-        which a split or a merge may have moved into a sentence of another
-        id) unless their write is known not to have landed. In stretches,
+        less those skipped and those a landed write wrote in (a writing row,
+        or a word of such a sentence, which a split or a merge may have moved
+        into a sentence of another id: :meth:`excluded`). In stretches,
         only sentences that hold something empty (:func:`sentence_targets`).
         With ``every`` (:meth:`every_sentence`) every such sentence, empty or
         not: what the piece does is its instructions'. A cursor
         whose sentence is gone starts from the top (SPEC 3.8)."""
         row = self.job.rows.get(document_id) or {}
-        skipped = {s.get('sentence_id') for s in row.get('skipped') or []}
-        recorded = self.recorded.get(document_id) or {}
-        skipped |= (self.unlisted.get(document_id) or set()) | (self.too_long.get(document_id) or set())
-        skipped |= set(self.writing.get(document_id) or ()) - (self.unsent.get(document_id) or set())
+        skipped = self.excluded(document_id)
         known = self.known_words(document_id)
         ids = [s.id for s in doc.sentences]
         start = ids.index(row['last_sentence']) + 1 if row.get('last_sentence') in ids else 0
         out = []
         for s in doc.sentences[start:]:
-            if s.id in skipped or s.id in recorded:
+            if s.id in skipped:
                 continue
             if every:
                 if not wrote_in(s, known):
@@ -1744,7 +1806,9 @@ class IgtRunner:
         st = Stretch(doc, project, part, job.id, self.known_words(document_id))
         whole = self.whole_document(project, doc)
         if st.empty() and not self.every_sentence():
-            self.record(project, document_id, doc, part, st, Counter(), [])
+            # Nothing to do: rows that say so, as a write that sends nothing.
+            self.intend(Write(document_id, '', st, [s.id for s in part], [], Counter(), doc), None, [], Counter())
+            self.record(project, document_id, doc, part, st)
             return None
         ws.stretch = st
         # Every sentence's print, not only the piece's: an op the model
@@ -1960,48 +2024,132 @@ class IgtRunner:
         return '\n'.join([head, *blocks, *tail])
 
     # --- the write (SPEC 5.4) --------------------------------------------------------
+    def writing_rows(self, document_id: str) -> List[Dict[str, Any]]:
+        """The job's writing rows of a document (:meth:`intend`), each its
+        analysis with its sentence id (the document's id for a row of the
+        changes of no sentence), those of sentences gone since included.
+        Every row of the job is read once per worker (``GET
+        /jobs/{id}/decisions``): no other worker writes rows while this one
+        holds the job, and this one keeps its own as it writes them."""
+        if self.rows is None:
+            rows: Dict[str, List[Dict[str, Any]]] = {}
+            for r in self.job.decisions():
+                form = r.get('form') or ''
+                if form.startswith(WRITING_FORM):
+                    rows.setdefault(r.get('first_document'), []).append(
+                        {**json.loads(r['analysis']), 'sentence': form[len(WRITING_FORM):]})
+            self.rows = rows
+        return self.rows.setdefault(document_id, [])
+
+    def landed_row(self, row: Dict[str, Any]) -> bool:
+        """Whether a writing row's try landed, as this worker knows it: a try
+        it saw land or core said landed (:meth:`look_up`), or no try at all
+        (a write that sent nothing, whose rows say so)."""
+        return not row['try'] or row['try'] in self.landed
+
+    def look_up(self, seeds) -> None:
+        """Ask core which of the tries ``seeds`` landed (``POST
+        /jobs/{id}/landed``): a try is one request, its key ``<seed>.0``.
+        Exact and for good: core keeps every write's key in its audit log."""
+        seeds = sorted(set(seeds))
+        for i in range(0, len(seeds), JOB_DECISIONS_PER_CALL):
+            part = seeds[i:i + JOB_DECISIONS_PER_CALL]
+            keys = set(self.job.landed(part))
+            self.landed |= {s for s in part if f'{s}.0' in keys}
+            self.dead |= {s for s in part if f'{s}.0' not in keys}
+
+    def unknown(self, document_id: str) -> List[str]:
+        """The tries of a document's writing rows this worker does not know
+        the fate of."""
+        return [r['try'] for r in self.writing_rows(document_id)
+                if r['try'] and r['try'] not in self.landed and r['try'] not in self.dead]
+
+    def finished(self, document_id: str) -> set:
+        """The sentences a landed write wrote in, or recorded with nothing
+        to write: never a target again."""
+        return {r['sentence'] for r in self.writing_rows(document_id) if not r.get('loose') and self.landed_row(r)}
+
+    def interrupted(self, document_id: str) -> set:
+        """The sentences a write landed in part: written in (a landed row),
+        where a try of a write that landed some of its tries did not land,
+        and no later write landed since (one that wrote the sentence again,
+        the piece taken up again). A write none of whose tries landed never
+        happened: its own sentences are targets again, and its piece is
+        asked again. A write's tag sorts by its time."""
+        rows = self.writing_rows(document_id)
+        wrote = {r['write'] for r in rows if r['try'] and self.landed_row(r)}
+        newest: Dict[str, str] = {}
+        for r in rows:
+            if not r.get('loose') and self.landed_row(r):
+                newest[r['sentence']] = max(newest.get(r['sentence'], ''), r['write'])
+        return {r['sentence'] for r in rows if not r.get('loose') and not self.landed_row(r)
+                and r['write'] in wrote and r['sentence'] in newest and newest[r['sentence']] <= r['write']}
 
     def unsettled(self, document_id: str) -> bool:
         """Whether this worker may not write in the document before it
-        settles it (:meth:`settle`): it has not read the job's record of the
-        document yet, or a sentence the job began to write in is neither
-        recorded, skipped nor known to have sent nothing (a write whose
-        record was lost: a crash, a passing error, a write put off)."""
-        if document_id not in self.recorded:
-            return True
-        marks = self.recorded[document_id]
-        unsent = self.unsent.get(document_id) or set()
-        skipped = {s.get('sentence_id') for s in (self.job.rows.get(document_id) or {}).get('skipped') or []}
-        return any(sid not in marks and sid not in unsent and sid not in skipped
-                   for sid in self.writing.get(document_id) or ())
+        settles it (:meth:`settle`): it has not read the job's writing rows
+        yet, or one of the document's tries is of unknown fate (an answer
+        lost, a crash, a write put off)."""
+        return self.rows is None or document_id not in self.settled or bool(self.unknown(document_id))
 
     def gate(self, project: IgtProject, document_id: str, client=None) -> None:
         """THE GATE every write of the job in a document passes first (a
         stretch, a document piece, a selection piece, harmonize): when the
-        document is :meth:`unsettled`, the document is read, then its newest
-        History unit, and :meth:`settle` records or skips what the job
-        wrote there and did not record. So no write starts where the job
-        does not know what it wrote: a word a person cleared after a write
-        whose record was lost is never taken for an empty one (REV-FIX3-1,
-        REV-JG-1). A walk settles before each stretch, so on that path this
-        reads nothing."""
+        document is :meth:`unsettled`, it is read and :meth:`settle` asks
+        core what landed. So no write starts where the job does not know
+        what it wrote. A walk settles before each stretch, so on that path
+        this reads nothing."""
         if not self.unsettled(document_id):
             return
-        client = client or self.job.client()
-        fresh = self.read(project, document_id, client)
-        last = self.newest_change(client, document_id)
-        self.settle(project, document_id, fresh, own=self.quiet(last, document_id))
+        self.settle(project, document_id, self.read(project, document_id, client or self.job.client()))
+
+    def settle(self, project: IgtProject, document_id: str, doc) -> None:
+        """Before a document's pieces: core is asked which of the
+        document's tries of unknown fate landed (:meth:`look_up`), and what
+        follows is knowledge, never read from the document (SPEC 3.8, BRIEF
+        RX): a sentence with a landed row is written (its counts are its
+        rows'), one whose rows all failed to land is a target again, one a
+        write landed in part is listed as interrupted, and the changes of
+        no sentence of a write that landed some of its tries and not those
+        are listed as proposed changes. The row's counts are written whole
+        from the rows."""
+        job = self.job
+        unknown = self.unknown(document_id)
+        if unknown:
+            self.look_up(unknown)
+        rows = self.writing_rows(document_id)
+        skipped = {s.get('sentence_id') for s in (job.rows.get(document_id) or {}).get('skipped') or []}
+        for sid in sorted(self.interrupted(document_id) - skipped):
+            self.skip(document_id, doc, sid, INTERRUPTED, None, cursor=False)
+        if unknown or document_id not in self.settled:
+            # The changes a landed write proposed (kept once: a write whose
+            # record was cut short by an error keeps them here), and the
+            # changes of no sentence a write that landed in part did not.
+            wrote = {r['write'] for r in rows if self.landed_row(r)}
+            self.record_changes([c for r in rows if r.get('loose') and r['write'] in wrote
+                                 for c in (r.get('proposed') or []) + ([] if self.landed_row(r) else r.get('ops') or [])])
+            job.update_row(document_id, **self.tally(document_id, (job.rows.get(document_id) or {}).get('skipped')))
+            self.settled.add(document_id)
 
     def excluded(self, document_id: str) -> set:
-        """The sentences of a document no piece writes in: skipped,
-        recorded, or begun (a writing row) and not known to have sent
-        nothing."""
+        """The sentences of a document no piece works: skipped, or written
+        (:meth:`finished`)."""
         row = self.job.rows.get(document_id) or {}
         out = {s.get('sentence_id') for s in row.get('skipped') or []}
-        out |= set(self.recorded.get(document_id) or {})
+        out |= self.finished(document_id)
         out |= (self.unlisted.get(document_id) or set()) | (self.too_long.get(document_id) or set())
-        out |= set(self.writing.get(document_id) or ()) - (self.unsent.get(document_id) or set())
         return out
+
+    def known_words(self, document_id: str, piece: Optional[str] = None) -> frozenset:
+        """The tags of every word of every sentence a landed write of the job
+        wrote in (its writing rows), wherever a person has since moved them.
+        A sentence holding any of them is not a target (:func:`wrote_in`,
+        REV-B4-1). With ``piece``, only the sentences that piece wrote in."""
+        out: set = set()
+        for r in self.writing_rows(document_id):
+            if not r.get('loose') and self.landed_row(r) and (piece is None or r['piece'] == piece):
+                out |= set(r.get('words') or ()) | set(r.get('others') or ())
+        return frozenset(out)
 
     def write(self, project: IgtProject, document_id: str, ws: JobWorkspace, doc, part: List[Sentence],
               prints: Dict[str, str], ops: List[Dict[str, Any]], note: str = '', piece: str = '',
@@ -2009,42 +2157,36 @@ class IgtRunner:
         """THE write of every piece of the job in one document, whatever the
         plan cut (a stretch, a whole document, the whole selection): through
         :meth:`gate` first, then under the document's lock by the apply rule
-        (SPEC 5.4), its writing rows before it is sent (:meth:`intend`), then
+        (SPEC 5.4), sent as tries of one request each (:meth:`send`), then
         its record (:meth:`record`) and the changes it proposes
         (:meth:`record_changes`). ``doc`` is the document as the piece read
         it, ``part`` the piece's sentences in it, ``piece`` its tag
         (:func:`piece_tag`), ``selection`` whether it is a selection's write
         (:meth:`entries_that_fit`).
 
-        Safe to do again after a failure anywhere in it: the gate settles
-        what landed, a sentence it settles (recorded, or skipped as
-        interrupted) leaves the piece and the ops the piece staged there are
-        dropped, never applied again nor applied where a person removed what
-        landed. A word written is no longer a target, a translation written
-        is the job's own, and a sentence recorded is not recorded again.
-        True when the write landed, False when it was refused and its
-        sentences skipped."""
+        Safe to do again after a failure anywhere in it: the gate asks core
+        what landed, and the same piece leaves out what it staged in a
+        sentence its own landed write wrote in. True when the write landed,
+        False when it was refused and its sentences skipped."""
         job = self.job
         self.gate(project, document_id)
         ops = self.entries_that_fit(project, ops, selection)
-        # A sentence THIS piece has written in already (a writing row naming
-        # it, or a word of such a sentence wherever a split or a merge moved
-        # it, not known to have sent nothing: its write that landed before a
-        # crash or a lost answer, settled now, and the piece run or sent
-        # again) is not written in again: what the piece staged there is
-        # left out, and counted (``repeated``). What a later piece stages in
-        # a sentence an earlier one wrote in is written as any change
-        # (REV-JH-1).
-        unsent = self.unsent.get(document_id) or set()
-        written = {sid for sid, plan in (self.writing.get(document_id) or {}).items()
-                   if piece in (plan.get('pieces') or ()) and sid not in unsent}
+        # A sentence THIS piece's landed write wrote in (by id, or a word of
+        # it wherever a split or a merge moved it: the piece taken up again
+        # after a lost answer, a crash, a write put off) is not written in
+        # again, nor is a selection's change of no document a landed try
+        # wrote: what the piece staged there is left out, and counted
+        # (``repeated``). What a later piece stages in a sentence an earlier
+        # one wrote in is written as any change (REV-JH-1).
         known = self.known_words(document_id, piece)
-        again = {s.id for s in doc.sentences if s.id in written or wrote_in(s, known)}
-        repeated = 0
-        if again:
-            from .jobapply import sentence_of
-            kept = [o for o in ops if getattr(sentence_of(o, doc), 'id', None) not in again]
-            repeated, ops = len(ops) - len(kept), kept
+        mine = {r['sentence'] for r in self.writing_rows(document_id)
+                if not r.get('loose') and r['piece'] == piece and self.landed_row(r)}
+        again = {s.id for s in doc.sentences if s.id in mine or wrote_in(s, known)}
+        done = self.loose_done()
+        from .jobapply import sentence_of
+        kept = [o for o in ops if getattr(sentence_of(o, doc), 'id', None) not in again
+                and (o.get(LOOSE) is None or o[LOOSE] not in done)]
+        repeated, ops = len(ops) - len(kept), kept
         out = self.excluded(document_id)
         part = [s for s in part if s.id not in out]
         st = Stretch(doc, project, part, job.id, self.known_words(document_id))
@@ -2054,38 +2196,28 @@ class IgtRunner:
             group = uuid7()
             job.update_row(document_id, gloss_group=group)
         for tries in range(2):
-            # Keys of its own for each try (REV-J-B3 B3-8): a try never
-            # sends a request under a key an earlier try's request used.
-            seed_id = uuid7()
             client = job.client()
             lock = self.hold(client, document_id)
             try:
                 try:
-                    written_ops, counts, changed, after, vouched, proposed = self.write_held(
-                        project, document_id, client, ws, st, prints, ops, group, seed_id, piece)
+                    w, changed, after, vouched, proposed = self.write_held(
+                        project, document_id, client, ws, st, prints, ops, group, piece, repeated)
                 finally:
                     lock.__exit__(None, None, None)
             except DocumentLockLost as e:
                 # The lock lapsed as the write ended (REV-J-B3 B3-4): put off
-                # as any lock conflict, what landed recorded when it comes back.
+                # as any lock conflict, what landed known when it comes back.
                 raise Deferred(document_id) from e
             except PlanError as e:
+                wrote = getattr(e, 'wrote_any', True)
                 # The starter's own browser wrote between the read under the
                 # lock and the write (strict mode): taken again at once when
-                # nothing of it landed. Sent again after a batch had landed, it
-                # would send other requests under that batch's keys, which core
-                # refuses (422 idempotency-key-reused, REV-J-B3 B3-8). When a batch of it had landed, the
-                # document is put off: it is recorded when it comes back, as
-                # an interrupted write is (``settle``), never vouched for past
-                # the person's edit (REV-J-B3 B3-2).
-                if _status(e) == 409 and tries == 0 and not (e.applied or e.unknown):
+                # nothing of it landed. When a try of it had landed, the
+                # document is put off, and the gate asks core what landed
+                # when it comes back.
+                if _status(e) == 409 and tries == 0 and not wrote:
                     continue
-                # A conflict, or something the write names gone in the moment
-                # since the check (the document, an entry): put off, and the
-                # next walk reads what is there (REV-J-B3 B3-3).
-                # A lock lost in the write is a 423 (its renewal's refusal,
-                # REV-J-B3 B3-4).
-                if _gone_now(e) and not e.wrote and part:
+                if _gone_now(e) and not wrote and part:
                     # Refused for something gone, nothing landed: the
                     # stretch's sentences are skipped as changed the
                     # JOB_DEFER_ROUNDS-th time the same stretch (known by its
@@ -2097,16 +2229,25 @@ class IgtRunner:
                         for s in part:
                             self.skip(document_id, doc, s.id, 'changed', None)
                         return False
+                # A conflict, something the write names gone in the moment
+                # since the check, or a lock lost in the write (a 423): put
+                # off, and the next walk reads what is there (REV-J-B3 B3-3,
+                # B3-4).
                 if _status(e) in (409, 423) or _gone_now(e):
                     raise Deferred(document_id) from e
                 raise
             break
         # The write landed: what the rule did not apply is recorded as the
-        # piece's proposed changes, never before (REV-J-B2 S4).
-        self.record_changes(proposed, note)
-        counts['repeated'] += repeated
-        made = self.made_entries(ws, after, st, written_ops)
-        self.record(project, document_id, after, part, st, counts, written_ops, made, changed, vouched)
+        # piece's proposed changes, never before (REV-J-B2 S4). A call core
+        # fails here leaves the document to be settled again, which keeps
+        # them from the write's rows (REV-JG3-2).
+        try:
+            self.record_changes(proposed, note)
+            self.record(project, document_id, after, part, st, changed, vouched,
+                        self.made_entries(ws, after, st, w.ops))
+        except BaseException:
+            self.settled.discard(document_id)
+            raise
         return True
 
     def gloss_ref(self, document_id: str) -> str:
@@ -2128,206 +2269,186 @@ class IgtRunner:
         raise Deferred(document_id)
 
     def write_held(self, project: IgtProject, document_id: str, client, ws: JobWorkspace, st: Stretch,
-                   prints: Dict[str, str], ops: List[Dict[str, Any]], group: str, seed_id: str, piece: str = ''):
-        """The write, the lock held: the stretch's ops checked again against
-        the document as it is (:meth:`recheck`), written, and the document
-        read again BEFORE the lock goes. ``(written ops, dropped counts,
-        changed sentences, the document after, the words vouched for)``.
+                   prints: Dict[str, str], ops: List[Dict[str, Any]], group: str, piece: str = '',
+                   repeated: int = 0):
+        """The write, the lock held: the piece's ops checked again against
+        the document as it is (:meth:`recheck`), sent (:meth:`send`), and
+        the document read again BEFORE the lock goes. ``(the write, changed
+        sentences, the document after, the words vouched for, the proposed
+        changes)``.
 
         The words vouched for are those the job knows it wrote exactly as
         they now read (REV-J-B3 B3-1, B3-2): targets still blank as the lock
         was taken, in a document whose version is still the one the job's
-        own last batch left (strict mode moves the client's version with
+        own last write left (strict mode moves the client's version with
         each of the job's writes, and under the lock only the starter's own
         browser could write besides). Any other write since, and none is
-        vouched for: their sentence is recorded without their keys, and
-        harmonize leaves them."""
+        vouched for: harmonize leaves them."""
         job = self.job
         fresh = self.read(project, document_id, client)
         kept, counts, changed, proposed = self.recheck(ws, project, fresh, st, prints, ops)
+        counts['repeated'] += repeated
         blank = {w.id for s in fresh.sentences if s.id in st.sentence_ids and s.id not in changed
                  for w in s.words if w.id in st.words and word_target(w)}
-        if kept:
-            self.machine_status(project, kept)
-            sentences = self.intend(document_id, st, kept, fresh, piece)
-            try:
-                kept = self.apply(client, project, document_id, group, kept, seed_id, counts)
-            except (PlanOutOfDate, Deferred, PlanError) as e:
-                # Known to have written nothing (out of date is found before
-                # any write, a plan error says whether anything landed): its
-                # sentences are targets again.
-                if not (isinstance(e, PlanError) and e.wrote):
-                    self.unsent.setdefault(document_id, set()).update(sentences)
-                raise
+        self.machine_status(project, kept)
+        own = [s.id for s in st.doc.sentences if s.id in st.sentence_ids and s.id not in changed]
+        w = Write(document_id, piece, st, own, kept, counts, fresh, proposed)
+        self.send(client, project, document_id, group, w)
         known = client.document_versions.get(document_id)
         after = self.read(project, document_id, client)
         exact = known is not None and str(after.version) == str(known)
         if not exact:
             logger.info('Job %s: %s moved during the write (version %s, read %s): its words are not vouched for',
                         job.id, document_id, known, after.version)
-        return kept, counts, changed, after, frozenset(blank) if exact else frozenset(), proposed
+        return w, changed, after, frozenset(blank) if exact else frozenset(), proposed
 
-    def intend(self, document_id: str, st: Stretch, kept: List[Dict[str, Any]], fresh, piece: str = ''):
-        """Before a write is sent: a writing row in core for each sentence
-        ``kept`` writes in, saying what it writes there, naming every word of
-        the sentence as ``fresh`` (the document under the lock) holds it, and
-        holding the digest of the sentence as it is before the write
-        (``before``) and the tag of the piece writing (``pieces``), in one
-        call. The sentences, which are no longer targets
-        once the call has landed, nor is any sentence a word of theirs is
-        moved into, whatever happens to what the write leaves in them
-        (``settle``, :meth:`known_words`)."""
-        plans: Dict[str, Dict[str, Any]] = {}
-        translation = translation_layer(st.project)
-        from .jobapply import sentence_of
-        for o in kept:
-            if o.get('kind') == 'create_entry':
+    def send(self, client, project: IgtProject, document_id: str, group: str, w: Write) -> None:
+        """Send a write as TRIES of one request each, in the executor's own
+        order (:meth:`Write.tries`), each under a seed of its own: its writing
+        rows go to core just before its request (:meth:`intend`, called back
+        by the executor, ``ONE_REQUEST``), and a try that does not fit one
+        request is cut in two before anything of it is sent. A write with
+        nothing to send has rows that say so. Raises what a try raised, with
+        ``wrote_any``: whether anything of the write may have landed."""
+        queue = w.tries()
+        refit = False
+        while queue:
+            ops = queue.pop(0)
+            if refit and any(o.get('kind') == 'create_entry' for o in ops):
+                # A half cut after another landed: the entry the first made
+                # is linked, never made again.
+                ops = self.entries_that_fit(project, ops, True)
+            seed = uuid7()
+            try:
+                self.apply(client, project, document_id, group, ops, seed, w)
+            except TooBig:
+                halves = w.halve(ops)
+                if halves is None:
+                    # One change that alone needs more than one request:
+                    # listed for a person, never sent in part.
+                    self.record_changes([self.describe(o, w.st.doc, project) if w.sentence_of(o) is not None
+                                         else self.describe_loose(o) for o in ops])
+                    continue
+                queue[0:0] = halves
                 continue
-            token = o.get('analysis_word_id') or o.get('word_id') or o.get('token_id')
-            s = st.sentence_of(token) if token else sentence_of(o, st.doc)
-            if s is None:
-                continue
-            plan = plans.setdefault(s.id, {'translation': None, 'words': []})
-            if token == s.id:
-                # A value of the sentence's own: its translation only when
-                # it is the translation field the job writes, by the field's
-                # layer, never another sentence field (REV-JG-11).
-                if o.get('kind') == 'set_span' and o.get('layer_id') == translation and o.get('value'):
-                    plan['translation'] = 'refreshed' if o.get('span_id') is not None else 'translations'
-            elif token:
-                tag = word_tag(st.word_of.get(token, token))
-                if tag not in plan['words']:
-                    plan['words'].append(tag)
-        # A write that deletes a sentence has a row for every sentence of
-        # the piece, each naming the sentences it deletes: once one of them
-        # is gone the write landed, none of the rows' sentences is worked
-        # again (``settle``), and the piece never decides a second deletion.
-        deletes = sorted({o.get('sentence_id') for o in kept if o.get('kind') == 'delete_sentence'} - {None})
-        if deletes:
-            for sid in sorted(st.sentence_ids):
-                plans.setdefault(sid, {'translation': None, 'words': []})
-        now = {s.id: s for s in fresh.sentences}
-        for sid, plan in plans.items():
-            s = now.get(sid) or st.where.get(sid)
-            plan['others'] = [word_tag(w.id) for w in (s.words if s is not None else [])
-                              if word_tag(w.id) not in plan['words']]
-            plan['before'] = [sentence_digest(now[sid])] if sid in now else []
-            plan['pieces'] = [piece] if piece else []
-            plan['deletes'] = deletes
+            except BaseException as e:
+                e.wrote_any = bool(w.seeds & self.landed) or (isinstance(e, PlanError) and e.wrote)
+                raise
+            if seed in w.seeds:
+                self.landed.add(seed)
+                refit = True
+        # The piece's sentences nothing was sent for: rows that say so.
+        self.intend(w, None, [], Counter())
+
+    def intend(self, w: Write, seed: Optional[str], ops: List[Dict[str, Any]], drops: Counter) -> None:
+        """A try's writing rows, in core before its request is sent: a row
+        for each sentence ``ops`` write in, naming the try (``seed``), the
+        write, the piece, every word of the sentence (REV-B4-1) and what the
+        try writes there, as counts (for the piece's own sentence, also what
+        the write leaves blank there, in its first row). The changes of no
+        sentence have a row of the document. The write's LAST try also names
+        each sentence of the piece the write wrote nothing in, and carries
+        the write's own counts and proposed changes: a write cut short
+        before its last try is the piece's to do again (BRIEF RX). ``seed``
+        None: rows of a write with nothing more to send."""
+        from .jobapply import IGNORED_KINDS, deletes
+        by: Dict[Optional[str], List[Dict[str, Any]]] = {}
+        for o in ops:
+            s = w.sentence_of(o)
+            by.setdefault(s.id if s is not None else None, []).append(o)
+        loose = by.pop(None, [])
+        now = {s.id: s for s in (w.fresh.sentences if w.fresh is not None else [])}
         rows = []
-        for sid, plan in plans.items():
-            text = writing_text(document_id, plan['translation'], plan['words'], plan['others'], plan['before'],
-                                plan['pieces'], plan['deletes'])
-            rows.append({'form': writing_form(sid), 'key': analysis_key(text), 'analysis': text, 'count': 1,
-                         'document_id': document_id, 'sentence_id': sid})
-        if rows:
-            self.job.add_decisions(rows)
-        writing = self.writing.setdefault(document_id, {})
-        unsent = self.unsent.setdefault(document_id, set())
-        for sid, plan in plans.items():
-            # A try after one known to have sent nothing replaces it: what
-            # that try was for was never written (REV-B4-7).
-            writing[sid] = self.merged(None if sid in unsent else writing.get(sid), plan)
-        unsent.difference_update(plans)
-        return list(plans)
+        last = not w.queue
+        for sid in list(by) + (w.opless(by) if last else []):
+            counts = w.counts_of(by.get(sid) or [])
+            left = []
+            if sid in w.own and sid not in w.rowed:
+                w.rowed.add(sid)
+                left = w.left_in(sid)
+                counts['left'] = sum(1 for e in left if e['form'] is not None)
+                counts['left_translations'] = sum(1 for e in left if e['form'] is None)
+            words = w.words_of(by.get(sid) or [])
+            s = now.get(sid) or w.st.where.get(sid)
+            rows.append((sid, {'write': w.id, 'try': seed or '', 'piece': w.piece, 'words': words,
+                               'others': [word_tag(x.id) for x in (s.words if s is not None else [])
+                                          if word_tag(x.id) not in words],
+                               'counts': {k: n for k, n in counts.items() if n}, 'left': left}))
+        mine = last and not w.counted
+        extra = Counter(drops) + (Counter(w.counts) if mine else Counter())
+        proposed = w.proposed if mine else []
+        w.counted = w.counted or last
+        if loose or +extra or proposed:
+            counts = extra + Counter({'changes': len(loose), 'deletions': sum(1 for o in loose if deletes(o)),
+                                      'entries': sum(1 for o in loose if o.get('kind') == 'create_entry')})
+            rows.append((w.document_id, {
+                'write': w.id, 'try': seed or '', 'piece': w.piece, 'loose': True,
+                'counts': {k: n for k, n in counts.items() if n},
+                'ops': [self.describe_loose(o) for o in loose if o.get('kind') not in IGNORED_KINDS],
+                'proposed': proposed}))
+        if not rows:
+            return
+        decisions = []
+        for sid, row in rows:
+            text = writing_text(row)
+            decisions.append({'form': writing_form(sid), 'key': analysis_key(text), 'analysis': text, 'count': 1,
+                              'document_id': w.document_id, 'sentence_id': None if row.get('loose') else sid})
+        self.job.add_decisions(decisions)
+        self.writing_rows(w.document_id).extend({**json.loads(d['analysis']), 'sentence': sid}
+                                                for d, (sid, _) in zip(decisions, rows))
+        if seed is not None:
+            w.seeds.add(seed)
+            places = {o[LOOSE] for o in ops if o.get(LOOSE) is not None}
+            if places:
+                self.try_loose[seed] = places
 
-    @staticmethod
-    def merged(had: Optional[Dict[str, Any]], plan: Dict[str, Any]) -> Dict[str, Any]:
-        """Two writing rows of one sentence as one (a try after one that
-        landed nothing): every word either analyses, every word either names,
-        and the translation counted as replacing a machine draft when either
-        says so, every digest of the sentence before a write (``before``),
-        every piece that wrote (``pieces``) and every sentence a write
-        deletes (``deletes``)."""
-        if not had:
-            return {'translation': plan.get('translation'), 'words': set(plan.get('words') or ()),
-                    'others': set(plan.get('others') or ()), 'before': set(plan.get('before') or ()),
-                    'pieces': set(plan.get('pieces') or ()), 'deletes': set(plan.get('deletes') or ())}
-        translation = had.get('translation') or plan.get('translation')
-        if 'refreshed' in (had.get('translation'), plan.get('translation')):
-            translation = 'refreshed'
-        return {'translation': translation, 'words': set(had['words']) | set(plan.get('words') or ()),
-                'others': set(had.get('others') or ()) | set(plan.get('others') or ()),
-                'before': set(had.get('before') or ()) | set(plan.get('before') or ()),
-                'pieces': set(had.get('pieces') or ()) | set(plan.get('pieces') or ()),
-                'deletes': set(had.get('deletes') or ()) | set(plan.get('deletes') or ())}
+    def loose_done(self) -> set:
+        """The places among a selection's changes of no document of those a
+        landed try of this worker wrote (``LOOSE``)."""
+        return {i for seed, places in self.try_loose.items() if seed in self.landed for i in places}
 
-    def intents(self, document_id: str) -> Dict[str, Dict[str, Any]]:
-        """The writing rows core holds for a document, one per sentence
-        (:meth:`merged`), those of sentences it no longer holds included (a
-        sentence merged away, whose words are still the ones the job wrote
-        in, REV-B4-1). Every row of the job is read once per worker (``GET
-        /jobs/{id}/decisions``): no other worker writes rows while this one
-        holds the job, and this one's own are kept as it writes them
-        (:meth:`intend`)."""
-        if self.rows_read is None:
-            rows: Dict[str, Dict[str, Dict[str, Any]]] = {}
-            for r in self.job.decisions():
-                form = r.get('form') or ''
-                if not form.startswith(WRITING_FORM):
-                    continue
-                try:
-                    plan = json.loads(r['analysis'])
-                except (ValueError, TypeError, KeyError):
-                    continue
-                if not isinstance(plan, dict):
-                    continue
-                by_sentence = rows.setdefault(plan.get('document'), {})
-                sid = form[len(WRITING_FORM):]
-                by_sentence[sid] = self.merged(by_sentence.get(sid), plan)
-            self.rows_read = rows
-        return dict(self.rows_read.get(document_id) or {})
-
-    def known_words(self, document_id: str, piece: Optional[str] = None) -> frozenset:
-        """The tags of every word of every sentence of the document the job
-        began to write in (its writing rows), wherever a person has since
-        moved them, but those of a sentence whose write this worker knows
-        sent nothing. A sentence holding any of them is not a target
-        (:func:`wrote_in`, REV-B4-1). With ``piece``, only the sentences
-        that piece began to write in."""
-        unsent = self.unsent.get(document_id) or set()
-        out: set = set()
-        for sid, plan in (self.writing.get(document_id) or {}).items():
-            if sid not in unsent and (piece is None or piece in (plan.get('pieces') or ())):
-                out |= set(plan.get('words') or ()) | set(plan.get('others') or ())
-        return frozenset(out)
+    def loose_landed(self) -> set:
+        """:meth:`loose_done`, once core has said which of this worker's
+        tries holding such changes landed (a write put off after a lost
+        answer leaves one of unknown fate)."""
+        unknown = [s for s in self.try_loose if s not in self.landed and s not in self.dead]
+        if unknown:
+            self.look_up(unknown)
+        return self.loose_done()
 
     def apply(self, client, project: IgtProject, document_id: str, group: str, kept: List[Dict[str, Any]],
-              seed_id: str, counts: Counter) -> List[Dict[str, Any]]:
-        """Write ``kept`` as one more part of the document's glossing entry.
-        A link to an entry gone since the model read it (deleted, merged
-        away, its lexicon taken out of the project) is dropped as
-        ``changed`` and the rest is written (SPEC 12, REV-J-B3 B3-3): the
-        plan's own check, asked again of each link and entry alone, says
-        which. An entry staged only for links dropped so is not created. A plan still
-        out of date after that, or one whose ops are none of them out of date
-        alone, puts the document off. The ops written."""
+              seed: str, w: Write) -> List[Dict[str, Any]]:
+        """Write ``kept`` as one try (one request, ``ONE_REQUEST``) of the
+        document's glossing entry, its rows sent just before the request
+        (:meth:`intend`). A link to an entry gone since the model read it
+        (deleted, merged away, its lexicon taken out of the project) is
+        dropped as ``changed`` and the rest is written (SPEC 12, REV-J-B3
+        B3-3): the plan's own check, asked again of each link and entry
+        alone, says which. An entry staged only for links dropped so is not
+        created. A plan still out of date after that, or one whose ops are
+        none of them out of date alone, puts the document off. The ops
+        written."""
         label = job_label(self.job.instructions)
+        drops = Counter()
         for n in range(2):
             try:
-                with client.operation(label, kind='job', ref=self.gloss_ref(document_id), group_id=group,
-                                      keys={'seed': seed_id, 'stamps': {}}):
-                    try:
-                        # Each op its place in the send as its card row, so a
-                        # plan that fails part-way says which may have landed.
-                        execute_plan(client, [{**o, CARD_ROW: i} for i, o in enumerate(kept)], source=self.source,
-                                     label=label, project=project, stamp_mode='machine', detail=self.detail,
-                                     seed=seed_id)
-                    except PlanError as e:
-                        rows = landed_rows(e)
-                        self.sent.update(o[LOOSE] for i, o in enumerate(kept) if i in rows and LOOSE in o)
-                        raise
-                    except PlanOutOfDate:
-                        raise
-                    except Exception as e:  # noqa: BLE001 - raised before the first write
-                        # The plan's reads (offsets, scopes, entries) come
-                        # before its first write, and once it writes nothing
-                        # leaves it but a PlanError or PlanOutOfDate
-                        # (``applying``). So nothing was sent (REV-B4-6). The
-                        # operation's own end, after the write, stays outside:
-                        # its error may follow a write that landed.
-                        raise PlanError(str(e), 0, len(kept)) from e
-                    self.sent.update(o[LOOSE] for o in kept if LOOSE in o)
+                setattr(client, ONE_REQUEST, lambda: self.intend(w, seed, kept, drops))
+                try:
+                    with client.operation(label, kind='job', ref=self.gloss_ref(document_id), group_id=group,
+                                          keys={'seed': seed, 'stamps': {}}):
+                        try:
+                            execute_plan(client, kept, source=self.source, label=label, project=project,
+                                         stamp_mode='machine', detail=self.detail, seed=seed)
+                        except (PlanError, PlanOutOfDate, TooBig):
+                            raise
+                        except Exception as e:  # noqa: BLE001 - raised before the first write
+                            # The plan's reads (offsets, scopes, entries) come
+                            # before its request, and once it sends nothing
+                            # leaves it but a PlanError or PlanOutOfDate
+                            # (``applying``). So nothing was sent (REV-B4-6).
+                            raise PlanError(str(e), 0, len(kept)) from e
+                finally:
+                    setattr(client, ONE_REQUEST, None)
                 return kept
             except PlanOutOfDate as e:
                 # Raised before anything is written. Core out of reach while
@@ -2343,13 +2464,15 @@ class IgtRunner:
                 rest = [o for o in kept if id(o) not in gone
                         and not (o.get('kind') == 'link' and o.get('new_entry_key') in unmade)]
                 left = {id(o) for o in rest}
-                counts['changed'] += sum(1 for o in kept if o.get('kind') == 'link' and id(o) not in left)
+                drops['changed'] += sum(1 for o in kept if o.get('kind') == 'link' and id(o) not in left)
                 # An entry made only for links that are now dropped is not made.
                 wanted = {o.get('new_entry_key') for o in kept if o.get('kind') == 'link'}
                 linked = {o.get('new_entry_key') for o in rest if o.get('kind') == 'link'}
                 kept = [o for o in rest if o.get('kind') != 'create_entry' or o.get('key') in linked
                         or o.get('key') not in wanted]
                 if not kept:
+                    if +drops:
+                        self.intend(w, None, [], drops)
                     return kept
         return kept
 
@@ -2617,51 +2740,23 @@ class IgtRunner:
                   for m in w.morphemes if m.link is not None}
         return frozenset(linked - known)
 
-    # --- the record of a stretch (SPEC 3.8, 7.3) ---------------------------------------
+    # --- the record of a write (SPEC 3.8, 7.3) -----------------------------------------
 
     def record(self, project: IgtProject, document_id: str, doc, part: List[Sentence], st: Stretch,
-               dropped: Counter, ops: List[Dict[str, Any]], made: frozenset = frozenset(),
-               changed=frozenset(), vouched=frozenset()) -> None:
-        """After a stretch's write: each finished sentence's counts and
-        decisions, stored once (:meth:`commit`), and the row's cursor.
-        ``vouched``: the words the job knows it wrote as ``doc`` reads them
-        (:meth:`write_held`)."""
+               changed=frozenset(), vouched=frozenset(), made: frozenset = frozenset()) -> None:
+        """After a piece's write landed: the cursor, a sentence changed
+        since the piece read it taken again once and then skipped, what the
+        job wrote on each word it vouches for (``vouched``, ids, as ``doc``
+        reads them: :meth:`write_held`), stored once (:meth:`commit`), and
+        the row's counts, written whole from the writing rows
+        (:meth:`tally`)."""
         job = self.job
         row = job.rows.get(document_id) or {}
         now = {s.id: s for s in doc.sentences}
-        layer = translation_layer(project)
-        translated = {o.get('token_id'): o for o in ops if o.get('kind') == 'set_span' and o.get('layer_id') == layer}
-        # What the write was for: a target it wrote that reads blank now was
-        # cleared by a person under the lock, never left by the model
-        # (REV-B4-2, as ``settle`` lists it, REV-FIX3-3).
-        wrote = {st.word_of.get(t, t) for o in ops if o.get('kind') != 'create_entry'
-                 for t in [o.get('analysis_word_id') or o.get('word_id') or o.get('token_id')]
-                 if not (o.get('kind') == 'set_span' and t in st.translations)}
-        from .jobapply import deletes, sentence_of
-        # The sentences the write wrote in (``analyzed``, "Sentences written in").
-        written_in = {s.id for s in (sentence_of(o, st.doc) for o in ops if st.doc is not None) if s is not None}
-        # Taken off only once the record holding it is in core (below).
-        extra = Counter(self.carry.get(document_id) or {})
-        extra['changed'] += dropped.get('changed', 0)
-        extra['proposed'] += dropped.get('proposed', 0)
-        extra['repeated'] += dropped.get('repeated', 0)
-        # Every entry the write created, linked or not, wherever its links
-        # are (REV-JH-6): the creates it applied.
-        extra['entries'] += sum(1 for o in ops if o.get('kind') == 'create_entry')
-        # What the write applied, and how much of it took something away.
-        extra['changes'] += len(ops)
-        extra['deletions'] += sum(1 for o in ops if deletes(o))
         records = []
         last = None
         retry = []
         skipped = list(row.get('skipped') or [])
-        # A sentence listed as interrupted that this write wrote in (a later
-        # piece's change there, ruling 20) is no longer listed: it is
-        # recorded with the piece's own (REV-JSF-5).
-        again = {x.get('sentence_id') for x in skipped if x.get('reason') == INTERRUPTED} & written_in
-        if again:
-            skipped = [x for x in skipped if x.get('sentence_id') not in again]
-            part = [s for s in st.doc.sentences if s.id in again] + list(part)
         for s in part:
             if s.id in changed:
                 self.changed[s.id] += 1
@@ -2674,24 +2769,10 @@ class IgtRunner:
                 continue
             if not retry:
                 last = s.id
-            if s.id not in now:
-                # Deleted by the write: nothing in it is left blank, as
-                # ``settle`` records it (REV-JSF-4).
-                records.append(self.sentence_record(document_id, s, [], None, written=s.id in written_in))
-                continue
-            cur = now[s.id]
-            words = [w for w in cur.words if w.id in st.words or w.id in wrote]
-            translation = None
-            if translated_by(cur, project, job.id) and s.id in translated:
-                translation = 'refreshed' if translated[s.id].get('span_id') is not None else 'translations'
-            elif s.id in st.translations and s.id not in translated \
-                    and translation_state(cur, project, job.id) == 'empty':
-                translation = 'left'
-            records.append(self.sentence_record(document_id, cur, [w for w in words if not (
-                w.id in wrote and word_target(w))], translation, made, vouched, written=s.id in written_in))
-        if records:
-            for k, n in extra.items():
-                records[0]['counts'][k] = records[0]['counts'].get(k, 0) + n
+            if s.id in now and vouched:
+                r = self.vouched_record(document_id, now[s.id], vouched, made)
+                if r is not None:
+                    records.append(r)
         fields: Dict[str, Any] = {}
         if retry:
             first = retry[0]
@@ -2704,120 +2785,78 @@ class IgtRunner:
             fields['last_sentence'] = last
         if len(skipped) != len(row.get('skipped') or []):
             fields['skipped'] = skipped
-        # What no record holds yet is carried to the next, and the row's
-        # counts hold it meanwhile (``tally``): a write that recorded no
-        # sentence (all of them settled before it, or taken again) still
-        # counts what it wrote, proposed or left out.
-        had = self.carry.get(document_id)
-        if records:
-            self.carry.pop(document_id, None)
-        elif any(extra.values()):
-            self.carry[document_id] = extra
-        try:
-            self.commit(document_id, records, fields)
-        except Exception:
-            # As before the record: taken again, it carries what it carried.
-            if had is None:
-                self.carry.pop(document_id, None)
-            else:
-                self.carry[document_id] = had
-            raise
-
-    def sentence_record(self, document_id: str, s: Sentence, words: List[Word], translation: Optional[str],
-                        made: frozenset = frozenset(), vouched=frozenset(), written: bool = False) -> Dict[str, Any]:
-        """One sentence's part of a stretch's record: what the job wrote on
-        ``words`` (those of them now the job's own), what it left blank of
-        them, the translation's outcome (``translations``, ``refreshed``,
-        ``left`` or None), and, for the words written that the job vouches
-        for (``vouched``, ids), each one's key (``words``, which harmonize
-        compares the word with) and their decisions (the precedent of later
-        stretches). A word written and not vouched for is counted and
-        nothing more: harmonize leaves it, and no stretch learns from it."""
-        counts = Counter()
-        decisions: Dict[Tuple[str, str], Dict[str, Any]] = {}
-        left: List[Dict[str, Any]] = []
-        keys: Dict[str, str] = {}
-        for w in words:
-            if job_owned(w, self.job.id):
-                counts['words'] += 1
-                a = word_analysis(w, made)
-                counts['links'] += sum(1 for m in a['morphemes'] if m['entry'])
-                if w.id not in vouched:
-                    continue
-                keys[word_tag(w.id)] = word_key(w)
-                text = canonical(a)
-                if len(text) > JOB_ANALYSIS_MAX_CHARS:
-                    # Core keeps no analysis this long: the word is counted,
-                    # and its analysis is not offered as a decision.
-                    continue
-                key = (form_key(w.surface), analysis_key(text))
-                slot = decisions.setdefault(key, {'form': key[0], 'key': key[1], 'analysis': text, 'count': 0,
-                                                  'document_id': document_id, 'sentence_id': s.id})
-                slot['count'] += 1
-            elif job_wrote(w, self.job.id):
-                # Confirmed by a person since it was written: counted, never
-                # the job's to harmonize, nor a decision of its (REV-B4-5).
-                counts['words'] += 1
-                counts['links'] += sum(1 for m in word_analysis(w, made)['morphemes'] if m['entry'])
-            elif word_target(w):
-                counts['left'] += 1
-                left.append({'ref': f's{s.index}.w{w.index}', 'begin': w.begin, 'form': w.surface})
-        if translation:
-            counts['left_translations' if translation == 'left' else translation] += 1
-            if translation == 'left':
-                left.append({'ref': f's{s.index}', 'begin': None, 'form': None})
-        if written or counts['words'] or translation in ('translations', 'refreshed'):
-            counts['analyzed'] = 1
-        return {'sentence': s.id, 'counts': dict(counts), 'decisions': list(decisions.values()), 'left': left,
-                'words': keys}
-
-    def commit(self, document_id: str, records: List[Dict[str, Any]], fields: Dict[str, Any]) -> None:
-        """Store each sentence's record once, then the row.
-
-        A sentence's decisions go to core in one call with a MARK of their
-        own, a decision row whose form is ``RECORD_FORM`` and the sentence id
-        (a form with a space, which no word has) and whose analysis holds the
-        sentence's counts. A mark core holds says the sentence was recorded:
-        before a call the marks are asked again, so a call that landed before
-        an error, or before a crash, is never sent twice. The row's counts
-        and ``done`` are then the sum of the document's marks and its skipped
-        sentences, written whole, so writing them again changes nothing."""
-        job = self.job
-        marks = self.recorded.setdefault(document_id, {})
-        fresh = [r for r in records if r['sentence'] not in marks]
-        if fresh:
-            there = self.marks_in_core([r['sentence'] for r in fresh])
-            batch: List[Dict[str, Any]] = []
-            for r in fresh:
-                if r['sentence'] in there:
-                    continue
-                text = mark_text(r['counts'], document_id, r.get('left') or [], r.get('words') or {})
-                group = r['decisions'] + [{'form': mark_form(r['sentence']), 'key': analysis_key(text),
-                                           'analysis': text, 'count': 1, 'document_id': document_id,
-                                           'sentence_id': r['sentence']}]
-                if len(batch) + len(group) > JOB_DECISIONS_PER_CALL:
-                    job.add_decisions(batch)
-                    batch = []
-                batch += group
-            if batch:
-                job.add_decisions(batch)
-            for r in fresh:
-                marks[r['sentence']] = r['counts']
-        row = job.rows.get(document_id) or {}
+        self.commit(document_id, records)
         job.update_row(document_id, **fields, **self.tally(document_id, fields.get('skipped', row.get('skipped'))))
 
+    def vouched_record(self, document_id: str, s: Sentence, vouched, made: frozenset = frozenset()):
+        """What the job wrote on each word of ``s`` it vouches for (``vouched``,
+        ids) and that is wholly its own: each one's key (``words``, which
+        harmonize compares the word with) and their decisions (the precedent
+        of later pieces), or None when there is none. A word written and not
+        vouched for is counted (its writing row) and nothing more: harmonize
+        leaves it, and no piece learns from it."""
+        decisions: Dict[Tuple[str, str], Dict[str, Any]] = {}
+        keys: Dict[str, str] = {}
+        for w in s.words:
+            if w.id not in vouched or not job_owned(w, self.job.id):
+                continue
+            keys[word_tag(w.id)] = word_key(w)
+            text = canonical(word_analysis(w, made))
+            if len(text) > JOB_ANALYSIS_MAX_CHARS:
+                # Core keeps no analysis this long: the word is not offered
+                # as a decision.
+                continue
+            key = (form_key(w.surface), analysis_key(text))
+            slot = decisions.setdefault(key, {'form': key[0], 'key': key[1], 'analysis': text, 'count': 0,
+                                              'document_id': document_id, 'sentence_id': s.id})
+            slot['count'] += 1
+        return {'sentence': s.id, 'words': keys, 'decisions': list(decisions.values())} if keys else None
+
+    def commit(self, document_id: str, records: List[Dict[str, Any]]) -> None:
+        """Store what the job vouches for in each sentence once: its
+        decisions in one call with a MARK of their own, a decision row whose
+        form is ``RECORD_FORM`` and the sentence id (a form with a space,
+        which no word has) and whose analysis holds the words' keys. Before
+        a call the marks are asked again, so a call that landed before an
+        error is never sent twice."""
+        if not records:
+            return
+        there = self.marks([r['sentence'] for r in records])
+        batch: List[Dict[str, Any]] = []
+        for r in records:
+            if r['sentence'] in there:
+                continue
+            text = mark_text(document_id, r['words'])
+            group = r['decisions'] + [{'form': mark_form(r['sentence']), 'key': analysis_key(text),
+                                       'analysis': text, 'count': 1, 'document_id': document_id,
+                                       'sentence_id': r['sentence']}]
+            if len(batch) + len(group) > JOB_DECISIONS_PER_CALL:
+                self.job.add_decisions(batch)
+                batch = []
+            batch += group
+        if batch:
+            self.job.add_decisions(batch)
+
     def tally(self, document_id: str, skipped) -> Dict[str, Any]:
-        """A row's counts and ``done`` as its record makes them: the counts of
-        the document's recorded sentences and what no record holds yet
-        (``carry``), and how many sentences were
-        finished, each once (recorded or skipped). ``targets`` grows with a
-        sentence that became a target after the checks, so done never passes
-        it."""
-        marks = self.recorded.get(document_id) or {}
+        """A row's counts and ``done``, from the document's writing rows
+        whose tries landed (what they wrote, each once) and its skipped
+        sentences: ``analyzed`` counts each sentence written in once,
+        ``words`` each word analysed once, ``done`` each sentence finished
+        once (written, or skipped). ``targets`` grows
+        with a sentence that became a target after the checks, so done never
+        passes it."""
         counts = empty_counts()
-        for c in [*marks.values(), self.carry.get(document_id) or {}]:
-            for k, n in c.items():
-                counts[k] = counts.get(k, 0) + n
+        analyzed, words = set(), set()
+        for r in self.writing_rows(document_id):
+            if not self.landed_row(r):
+                continue
+            words |= set(r.get('words') or ())
+            for k, n in (r.get('counts') or {}).items():
+                if k == 'analyzed':
+                    analyzed.add(r['sentence'])
+                else:
+                    counts[k] = counts.get(k, 0) + n
+        counts['analyzed'], counts['words'] = len(analyzed), len(words)
         row = self.job.rows.get(document_id) or {}
         failed = len(self.unlisted.get(document_id) or ())
         more = max((row.get('counts') or {}).get(SKIPPED_MORE) or 0,
@@ -2826,131 +2865,22 @@ class IgtRunner:
             counts[SKIPPED_MORE] = more
         # A sentence too long for a stretch was never a target (the checks
         # leave it out of ``targets``), so it is not counted done.
-        done = len(set(marks) | {s.get('sentence_id') for s in skipped or [] if s.get('reason') != 'too-long'}) \
-            + failed
+        done = len(self.finished(document_id)
+                   | {s.get('sentence_id') for s in skipped or [] if s.get('reason') != 'too-long'}) + failed
         out = {'counts': counts, 'done': done}
         if done > (row.get('targets') or 0):
             out['targets'] = done
         return out
 
-    def marks_in_core(self, sentence_ids: List[str]) -> Dict[str, Dict[str, int]]:
-        """The sentences of ``sentence_ids`` core holds a record of, with the
-        counts each was recorded with."""
-        return {sid: dict(mark.get('counts') or {}) for sid, mark in self.marks(sentence_ids).items()}
-
     def marks(self, sentence_ids: List[str]) -> Dict[str, Dict[str, Any]]:
         """The record core holds of each sentence of ``sentence_ids`` that
-        has one, as :func:`mark_text` wrote it (an unreadable one is empty)."""
+        has one, as :func:`mark_text` wrote it."""
         out: Dict[str, Dict[str, Any]] = {}
         for r in self.job.lookup_decisions([mark_form(sid) for sid in sentence_ids]):
             form = r.get('form') or ''
             if form.startswith(RECORD_FORM):
-                try:
-                    mark = json.loads(r['analysis'])
-                except (ValueError, TypeError):
-                    mark = None
-                out[form[len(RECORD_FORM):]] = mark if isinstance(mark, dict) else {}
+                out[form[len(RECORD_FORM):]] = json.loads(r['analysis'])
         return out
-
-    def settle(self, project: IgtProject, document_id: str, doc, own: bool = False) -> None:
-        """Before a document's stretches: what core holds of its record (once
-        per document a runner visits), and a record for every sentence the
-        job began to write in (its writing row) without recording it, which a
-        crash, an error or a write put off between a write and its record
-        leaves (SPEC 3.8). Such a sentence is recorded from the document as it
-        is, as its stretch would have recorded it: the job's own words and
-        translation, and the targets left blank. One with nothing of the job
-        left in it is a target again when nobody wrote since the job's last
-        write (its write never landed), else skipped as ``interrupted``: a
-        person may have removed the job's work, which the same piece never
-        writes again (REV-FIX3-1). A later piece may write there (ruling 20),
-        which takes it off the list (:meth:`record`, REV-JSF-5). Its words
-        are vouched for only
-        when ``own`` (:meth:`quiet`: the newest change of the document is the
-        job's own glossing, or older than the job), so that nobody wrote
-        since: otherwise a person's deletion would read as the job's work
-        (REV-J-B3 B3-2)."""
-        job = self.job
-        if document_id not in self.recorded:
-            self.writing[document_id] = self.intents(document_id)
-            # The records of the sentences it holds and of every sentence
-            # the job began to write in, those deleted since included.
-            ids = list(dict.fromkeys([s.id for s in doc.sentences] + list(self.writing[document_id])))
-            marks = self.marks_in_core(ids)
-            self.recorded[document_id] = marks
-            row = job.rows.get(document_id) or {}
-            if self.recorded[document_id]:
-                try:
-                    job.update_row(document_id, **self.tally(document_id, row.get('skipped')))
-                except Exception:
-                    # Read again, and the row written, when taken again.
-                    self.recorded.pop(document_id, None)
-                    raise
-        marks = self.recorded[document_id]
-        writing = self.writing[document_id]
-        unsent = self.unsent.setdefault(document_id, set())
-        skipped = {s.get('sentence_id') for s in (job.rows.get(document_id) or {}).get('skipped') or []}
-        orphans = []
-        # A sentence the job began to write in that is no longer there, nor
-        # any word of it, was deleted: recorded, with nothing left to work.
-        here = {s.id for s in doc.sentences}
-        held = {word_tag(w.id) for s in doc.sentences for w in s.words}
-
-        def deleted(sid):
-            plan = writing.get(sid) or {}
-            return sid not in here and not (set(plan.get('words') or ()) | set(plan.get('others') or ())) & held
-        gone = [sid for sid in writing if deleted(sid) and sid not in marks and sid not in skipped
-                and sid not in unsent]
-        for sid in gone:
-            orphans.append({'sentence': sid, 'counts': {'analyzed': 1} if own else {}, 'decisions': [], 'left': [],
-                            'words': {}})
-        for s in doc.sentences:
-            # Only a sentence the job began to write in (a writing row,
-            # REV-FIX3-1), and not recorded or skipped since.
-            if s.id not in writing or s.id in marks or s.id in skipped or s.id in unsent:
-                continue
-            mine = [w for w in s.words if job_owned(w, job.id)]
-            state = translation_state(s, project, job.id)
-            ours = translated_by(s, project, job.id)
-            # Did the job's write land here: a piece naming the job, a person
-            # having confirmed it since or not (REV-B4-5).
-            if not ours and not any(_job_of(p) == job.id for w in s.words for p in word_pieces(w)):
-                # Nothing of the job is in it. When nobody wrote since the
-                # job's last write, its write here never landed if the
-                # sentence reads as it did before the write (a target
-                # again) and no sentence its own row says the write deletes
-                # is gone, and landed otherwise (a deletion or an edit
-                # leaves no stamp): recorded below. A sentence gone for
-                # another reason (an earlier write deleted it, a person did)
-                # says nothing of this write (REV-JSF-1, REV-JSF-2).
-                # Otherwise a person may have removed what landed, and the
-                # job leaves the sentence.
-                if not own:
-                    self.skip(document_id, doc, s.id, INTERRUPTED, None, cursor=False)
-                    continue
-                plan = writing[s.id]
-                if (sentence_digest(s) in (plan.get('before') or ()) or not plan.get('before')) \
-                        and not any(deleted(d) for d in plan.get('deletes') or ()):
-                    unsent.add(s.id)
-                    continue
-            # As its stretch would have recorded it (REV-J-B3 B3-7): the
-            # job's words, the targets still blank that it was not writing
-            # (left: a target it wrote that reads blank now was cleared by a
-            # person, or its batch never landed, REV-FIX3-3), and the
-            # translation, written (as its writing row says, filled or
-            # replaced) or left blank.
-            plan = writing[s.id]
-            ids = {w.id for w in mine}
-            words = [w for w in s.words if w.id in ids or job_wrote(w, job.id)
-                     or (word_target(w) and word_tag(w.id) not in plan['words'])]
-            if ours:
-                translation = 'refreshed' if plan.get('translation') == 'refreshed' else 'translations'
-            else:
-                translation = 'left' if state == 'empty' and not plan.get('translation') else None
-            orphans.append(self.sentence_record(document_id, s, words, translation,
-                                                vouched=ids if own else frozenset(), written=True))
-        if orphans:
-            self.commit(document_id, orphans, {})
 
     # --- harmonize (SPEC 8) -------------------------------------------------------------
 
@@ -3397,26 +3327,25 @@ class IgtRunner:
 
     def left_blank(self, job) -> Dict[str, List[Dict[str, Any]]]:
         """Per document, the targets the job left blank, read from every
-        sentence record the job holds in core (a resumed job's runs before
+        landed writing row the job holds in core (a resumed job's runs before
         this one included), in document order: ``{ref, sentence_id, begin,
         form}``, ``begin`` and ``form`` None for a translation. Nothing when
-        the records cannot be read: the report is still written."""
+        the rows cannot be read: the report is still written."""
+        def known():
+            for d in job.order:
+                self.writing_rows(d)
+            self.look_up([r['try'] for rows in (self.rows or {}).values() for r in rows
+                          if r['try'] and r['try'] not in self.landed and r['try'] not in self.dead])
         try:
-            rows = core_job.through_core(job, job.decisions)
+            core_job.through_core(job, known)
         except Exception as e:  # noqa: BLE001 - a report without the list rather than none
             logger.warning('Job %s: the words it left blank could not be read for the report: %s', job.id, e)
             return {}
         out: Dict[str, List[Dict[str, Any]]] = {}
-        for r in rows:
-            form = str(r.get('form') or '')
-            if not form.startswith(RECORD_FORM):
-                continue
-            try:
-                record = json.loads(r['analysis'])
-            except (ValueError, TypeError, KeyError):
-                continue
-            for e in record.get('left') or []:
-                out.setdefault(record.get('document'), []).append({**e, 'sentence_id': form[len(RECORD_FORM):]})
+        for d, rows in (self.rows or {}).items():
+            for r in rows:
+                if self.landed_row(r):
+                    out.setdefault(d, []).extend({**e, 'sentence_id': r['sentence']} for e in r.get('left') or [])
         for listed in out.values():
             listed.sort(key=lambda e: [int(n) for n in re.findall(r'\d+', e.get('ref') or '')])
         return out

@@ -11,6 +11,7 @@ import pytest
 from job_fixtures import JobClient, call, document, reply, runner, start, use
 
 from plaid_agent.core.job import run_job, through_core
+from plaid_agent.igt import job as igt_job
 from plaid_agent.igt.job import Stretch
 from test_job_pieces import _docs, _model
 
@@ -76,22 +77,23 @@ def test_a_put_off_counted_once_when_its_row_meets_a_502():
     assert job.rows['d1']['defers'] == 1 and core['defers'] == 1, (job.rows['d1'], core)
 
 
-def test_the_counts_a_record_carries_survive_one_502_on_its_call():
-    """The counts a stretch carried to the next record (none of its own
-    sentences was recorded) were taken off before the call: a 502 there lost
-    them."""
+def test_the_counts_a_write_keeps_in_its_rows_survive_one_502_on_the_rows_update():
+    """What a write dropped is in its writing rows, in core before anything
+    is sent, and the row's counts are the rows' sums: a 502 on the row's
+    update loses nothing (once ``carry``, kept by the worker alone)."""
     client = JobClient(_docs(1))
     job = start(client, id=J)
     r = runner(job)
     project = r.project()
     doc = r.read(project, 'd1')
     r.settle(project, 'd1', doc)
-    r.carry['d1'] = Counter({'changed': 2})
     st = Stretch(doc, project, doc.sentences, J)
-    failed = _fail_once(client, 'add_decisions', _has_form(' sentence '))
-    through_core(job, lambda: r.record(project, 'd1', doc, doc.sentences, st, Counter(), []))
+    r.intend(igt_job.Write('d1', '', st, [s.id for s in doc.sentences], [], Counter({'changed': 2}), doc), None, [],
+             Counter())
+    failed = _fail_once(client, 'update_document', lambda args, kwargs: 'counts' in kwargs)
+    through_core(job, lambda: r.record(project, 'd1', doc, doc.sentences, st))
     assert failed
-    assert sum((c or {}).get('changed', 0) for c in r.recorded['d1'].values()) == 2, r.recorded['d1']
+    assert job.rows['d1']['counts']['changed'] == 2, job.rows['d1']['counts']
 
 
 def test_a_documents_row_in_core_holds_its_counts_after_one_502_on_its_record(monkeypatch):

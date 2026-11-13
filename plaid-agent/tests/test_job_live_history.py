@@ -1,7 +1,7 @@
 """What a History unit's times are on a real core (REV-B4-4): ``time`` is
 its first member's and ``end_time`` its last's, and core places a unit by
 its last. A group a person began before the job was made and wrote in
-after it is someone in the document now, and the document is not quiet.
+after it is someone in the document now.
 
 Runs on the session's core (``live.py``), or the one PLAID_TEST_URL names."""
 
@@ -33,4 +33,3 @@ def test_a_group_begun_before_the_job_and_written_in_after_it_is_a_person_in_the
     newest = runner.newest_change(admin, d1)
     assert newest['time'] < job.job['created_at'] < newest['end_time'], (newest, job.job['created_at'])
     assert runner.in_use(newest, f'job:{job.id}/')
-    assert not runner.quiet(newest, d1)

@@ -269,7 +269,6 @@ def test_the_trace_folder_is_the_operators_alone_and_a_resumed_run_gets_its_own(
         # stretches from 1 as well.
         job.update_row('d1', state='working')
         r = runner(job, trace_dir=str(tmp_path))
-        r.recorded['d1'] = {}
         r.model_work(r.project(), 'd1', ['d1-s1'])
     finally:
         os.umask(old)

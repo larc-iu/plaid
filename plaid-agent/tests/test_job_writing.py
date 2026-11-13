@@ -1,11 +1,13 @@
-"""A sentence the job began to write in is never a target again unless its
-write is known not to have landed (REV-FIX3-1). Before a write is sent the
-job stores a writing row for each sentence it writes in. When the write's
-record is lost (a crash, a passing error, a write put off) and a person then
-removes everything the job wrote in a sentence, the sentence reads as never
-written: it is left, listed as interrupted, and the job writes nothing more
-there. Each way into that window is tested, and each way a write is known
-to have sent nothing, which makes its sentences targets again."""
+"""What a write did is KNOWN, never read back from the document (BRIEF RX).
+Each try of a write is one request under a seed of its own, and its writing
+rows are in core just before it is sent. After a crash or a lost answer the
+worker asks core which tries landed (``POST /jobs/{id}/landed``): a sentence
+a landed try wrote in is written, whatever a person did to it since, and one
+whose tries did not land is a target again, asked of the model again.
+Each way into the window between a write and its record is tested: a crash
+before the request, after it, a lost answer that landed and one that did not,
+with deletions (which leave nothing of the job to read back), a later piece's
+deletion, and a person's edits in between."""
 
 import contextlib
 import json
@@ -62,39 +64,41 @@ def _job(monkeypatch, instructions=INSTRUCTIONS, before=BLANK, after=WRITTEN, mo
     return client, job, clock, model
 
 
-def _crash_at_record(monkeypatch, job):
-    """The process dies on the record's call, after the write landed."""
-    real = job.add_decisions
+def _crash_at_record(monkeypatch, job, sentence=None):
+    """The process dies once the write landed, before its record (of the
+    write of ``sentence``'s piece, when given)."""
+    real = igt_job.IgtRunner.record
 
-    def add(decisions):
-        if any(d['form'].startswith(RECORD_FORM) for d in decisions):
+    def record(self, project, document_id, doc, part, *a, **kw):
+        if sentence is None or sentence in [s.id for s in part]:
             raise Crash()
-        return real(decisions)
-    monkeypatch.setattr(job, 'add_decisions', add)
+        return real(self, project, document_id, doc, part, *a, **kw)
+    monkeypatch.setattr(igt_job.IgtRunner, 'record', record)
     try:
         runner(job).document('d1')
     except Crash:
         pass
-    monkeypatch.setattr(job, 'add_decisions', real)
+    monkeypatch.setattr(igt_job.IgtRunner, 'record', real)
 
 
 def _crash_before_write(monkeypatch, job, nth=1):
-    """The process dies after the writing rows, before the ``nth`` write is
-    sent."""
-    real = igt_job.execute_plan
+    """The process dies with the ``nth`` try's writing rows in core, before
+    its request is sent."""
+    real = igt_job.IgtRunner.intend
     n = {'n': 0}
 
-    def execute(c, ops, **kw):
-        n['n'] += 1
-        if n['n'] == nth:
-            raise Crash()
-        return real(c, ops, **kw)
-    monkeypatch.setattr(igt_job, 'execute_plan', execute)
+    def intend(self, w, seed, ops, drops):
+        real(self, w, seed, ops, drops)
+        if seed is not None:
+            n['n'] += 1
+            if n['n'] == nth:
+                raise Crash()
+    monkeypatch.setattr(igt_job.IgtRunner, 'intend', intend)
     try:
         runner(job).document('d1')
     except Crash:
         pass
-    monkeypatch.setattr(igt_job, 'execute_plan', real)
+    monkeypatch.setattr(igt_job.IgtRunner, 'intend', real)
 
 
 def _resume(client, job):
@@ -122,17 +126,25 @@ def _writing(client):
     return sorted(f[len(WRITING_FORM):] for f, _ in client.jobs.decision_rows.get(J, {}) if f.startswith(WRITING_FORM))
 
 
-def _mark(client, sid):
-    rows = [r for (f, _), r in client.jobs.decision_rows[J].items() if f == RECORD_FORM + sid]
-    assert len(rows) == 1, rows
-    return json.loads(rows[0]['analysis'])
+def _marks(client):
+    return [f for f, _ in client.jobs.decision_rows.get(J, {}) if f.startswith(RECORD_FORM)]
+
+
+def _rows(client, sid):
+    """The writing rows of a sentence, as core holds them."""
+    return [json.loads(r['analysis']) for (f, _), r in client.jobs.decision_rows[J].items() if f == WRITING_FORM + sid]
+
+
+def _left(job):
+    return [e['ref'] for e in runner(job).left_blank(job).get('d1', [])]
 
 
 # --- the window between a write and its record ---------------------------------------
 
 def test_a_crash_after_the_write_and_a_person_clearing_every_analysis_of_a_sentence(monkeypatch):
-    """REV-FIX3 F1: s1 reads as never written. It is left and listed, s2 is
-    recorded, and nothing is asked or written again."""
+    """REV-FIX3 F1: s1 reads as never written. Core says the write landed:
+    nothing is asked or written again, nothing is listed, and the rows count
+    what the write wrote."""
     client, job, clock, model = _job(monkeypatch)
     _crash_at_record(monkeypatch, job)
     assert _writing(client) == ['d1-s1', 'd1-s2'], 'stored before the write'
@@ -143,14 +155,14 @@ def test_a_crash_after_the_write_and_a_person_clearing_every_analysis_of_a_sente
     staged = _staged(monkeypatch)
     assert _resume(client, job).document('d1') == 'done'
     assert not staged and len(model.calls) == asked, 'the cleared words are not glossed again'
-    assert _skipped(job) == [('d1-s1', 'interrupted')]
-    assert _mark(client, 'd1-s2')['counts']['words'] == 1
-    assert job.rows['d1']['done'] == 2
+    assert _skipped(job) == []
+    assert job.rows['d1']['counts']['words'] == 3 and job.rows['d1']['done'] == 2
 
 
 def test_one_passing_error_after_the_write_and_a_person_deleting_the_translation_in_the_wait(monkeypatch):
     """REV-FIX3 L5 on the fake: the record's call meets a 502, the starter
-    deletes the job's translation of s1 in the 30 s wait. s1 is left."""
+    deletes the job's translation of s1 in the 30 s wait. The write landed:
+    nothing is written or asked again, and both translations are counted."""
     def translate(asked, n, kwargs):
         if n > 1:
             return reply('Done.')
@@ -159,15 +171,15 @@ def test_one_passing_error_after_the_write_and_a_person_deleting_the_translation
     before = [{'words': ['ka']}, {'words': ['sa']}]
     after = [{'words': ['ka'], 'translation': ('T1.', J)}, {'words': ['sa'], 'translation': ('T2.', J)}]
     client, job, clock, model = _job(monkeypatch, 'Translate the empty translations.', before, after, translate)
-    real = client.jobs.add_decisions
+    real = client.jobs.update_document
     lost = {'n': 0}
 
-    def add(job_id, worker_id, decisions):
-        if any(d['form'].startswith(RECORD_FORM) for d in decisions) and not lost['n']:
+    def update(job_id, document_id, worker_id, **fields):
+        if (fields.get('counts') or {}).get('translations') and not lost['n']:
             lost['n'] += 1
             raise PlaidAPIError('HTTP 502', status=502)
-        return real(job_id, worker_id, decisions)
-    client.jobs.add_decisions = add
+        return real(job_id, document_id, worker_id, **fields)
+    client.jobs.update_document = update
     slept = job._sleep
 
     def sleep(s):
@@ -180,27 +192,28 @@ def test_one_passing_error_after_the_write_and_a_person_deleting_the_translation
     staged = _staged(monkeypatch)
     finished = run_job(job, runner(job))
     assert finished['state'] == 'done', client.jobs.rows[J]['message']
+    assert lost['n'] == 2, 'the 502 was met'
     assert [o['token_id'] for o in staged] == ['d1-s1', 'd1-s2'], 'each translated once'
     assert len([c for c in model.calls if c['n'] == 1]) == 1, 'nothing asked again'
     report = client.jobs.rows[J]['report']
-    assert report['totals']['translations'] == 1 and report['totals']['skipped_interrupted'] == 1
-    assert [(s['sentence'], s['reason']) for s in report['documents'][0]['skipped']] == [('s1', 'interrupted')]
+    assert report['totals']['translations'] == 2 and report['totals']['skipped_interrupted'] == 0
+    assert report['documents'][0]['skipped'] == []
 
 
-def test_a_crash_after_the_write_with_nobody_writing_since_is_recorded_whole(monkeypatch):
+def test_a_crash_after_the_write_with_nobody_writing_since_is_counted_and_never_vouched_for(monkeypatch):
     client, job, clock, model = _job(monkeypatch)
     _crash_at_record(monkeypatch, job)
     staged = _staged(monkeypatch)
     assert _resume(client, job).document('d1') == 'done'
     assert not staged and not _skipped(job)
     assert job.rows['d1']['counts']['words'] == 3 and job.rows['d1']['done'] == 2
-    assert len(_mark(client, 'd1-s1')['words']) == 2, 'vouched for: the newest change is the job\'s own glossing'
+    assert not _marks(client), 'never read back as written: harmonize leaves its words'
 
 
 def test_a_person_clearing_one_of_the_jobs_words_is_not_listed_as_left_blank(monkeypatch):
-    """REV-FIX3-3: the record of an interrupted write lists as left only the
-    targets the job was not writing. A word it wrote that reads blank now
-    was cleared by a person (or its batch never landed): not "Left blank"."""
+    """REV-FIX3-3: "Left blank" lists only the targets the write had nothing
+    for, as its rows say before it is sent. A word it wrote that reads blank
+    now was cleared by a person: not "Left blank", and counted as written."""
     def first_two(asked, n, kwargs):
         if n > 1:
             return reply('Done.')
@@ -214,11 +227,10 @@ def test_a_person_clearing_one_of_the_jobs_words_is_not_listed_as_left_blank(mon
     _person_edits(client, 'd1', [{'words': [MINE['ka'], 'ta', 'pa']}], 3, clock)
     clock['t'] += 3600
     assert _resume(client, job).document('d1') == 'done'
-    mark = _mark(client, 'd1-s1')
-    # The record holds every blank it passed, the empty translation too: the
-    # report lists only what the job filled somewhere (``document_reports``).
-    assert [x['ref'] for x in mark['left'] if x['form']] == ['s1.w3'], 'only the word the model left'
-    assert mark['counts']['words'] == 1 and mark['counts']['left'] == 1
+    # The rows hold every blank the write passed, the empty translation too:
+    # the report lists only what the job filled somewhere (``document_reports``).
+    assert [x for x in _left(job) if '.w' in x] == ['s1.w3'], 'only the word the model left'
+    assert job.rows['d1']['counts']['words'] == 2 and job.rows['d1']['counts']['left'] == 1
 
 
 def test_a_write_the_starter_confirmed_after_a_crash_is_recorded_and_counted(monkeypatch):
@@ -236,7 +248,7 @@ def test_a_write_the_starter_confirmed_after_a_crash_is_recorded_and_counted(mon
     assert _resume(client, job).document('d1') == 'done'
     assert not staged and not _skipped(job)
     assert job.rows['d1']['counts']['words'] == 3 and job.rows['d1']['counts']['analyzed'] == 2
-    assert _mark(client, 'd1-s1')['words'] == {}, 'a confirmed word is no longer the job\'s to harmonize'
+    assert not _marks(client), 'nothing vouched for after a crash'
 
 
 def test_a_translation_the_starter_confirmed_after_a_crash_is_recorded_and_counted(monkeypatch):
@@ -277,9 +289,9 @@ def test_another_machines_translation_is_replaced_and_counted(monkeypatch):
     assert not [f for (f, _k) in client.jobs.decision_rows[J] if f.startswith(' change ')]
 
 
-def test_a_crash_between_the_writing_row_and_the_write_with_nobody_writing_takes_the_sentences_again(monkeypatch):
-    """The document's newest change is older than the job: nothing of the
-    job ever landed, so its sentences are targets again, written once."""
+def test_a_crash_between_the_writing_row_and_the_write_takes_the_sentences_again(monkeypatch):
+    """The rows are in core, the request was never sent: core says nothing
+    of the try landed, so its sentences are targets again, written once."""
     client, job, clock, model = _job(monkeypatch)
     _crash_before_write(monkeypatch, job)
     assert _writing(client) == ['d1-s1', 'd1-s2'] and not client.batches
@@ -290,8 +302,8 @@ def test_a_crash_between_the_writing_row_and_the_write_with_nobody_writing_takes
 
 
 def test_a_crash_before_a_later_stretchs_write_after_the_jobs_own_glossing_takes_it_again(monkeypatch):
-    """The newest change is the job's glossing of the stretch before:
-    nobody wrote since, so s2's write never landed."""
+    """s2's rows are in core and its request was never sent: a target
+    again, while s1's landed write is not taken again."""
     monkeypatch.setattr(igt_job, 'JOB_STRETCH_SENTENCES', 1)
     client, job, clock, model = _job(monkeypatch, after=[{'words': [MINE['ka'], MINE['ta']]}, {'words': ['sa']}])
     _crash_before_write(monkeypatch, job, nth=2)
@@ -308,10 +320,11 @@ def test_a_crash_before_a_later_stretchs_write_after_the_jobs_own_glossing_takes
     assert not _skipped(job) and job.rows['d1']['counts']['words'] == 3
 
 
-def test_a_crash_between_the_writing_row_and_the_write_then_a_person_writing_leaves_the_sentences(monkeypatch):
-    """The safe side: the job cannot tell a write that never left from one
-    whose work a person removed, so it writes nothing more there and lists
-    each sentence as interrupted."""
+def test_a_crash_between_the_writing_row_and_the_write_then_a_person_writing_takes_the_sentences_again(monkeypatch):
+    """Once the job could not tell a write that never left from one whose
+    work a person removed, and left both, unwritten. Now core tells: the
+    write never landed, so the sentences are asked and written, whoever
+    wrote in the document since."""
     client, job, clock, model = _job(monkeypatch)
     _crash_before_write(monkeypatch, job)
     clock['t'] += 3600
@@ -319,26 +332,8 @@ def test_a_crash_between_the_writing_row_and_the_write_then_a_person_writing_lea
     clock['t'] += 3600
     staged = _staged(monkeypatch)
     assert _resume(client, job).document('d1') == 'done'
-    assert not staged
-    assert _skipped(job) == [('d1-s1', 'interrupted'), ('d1-s2', 'interrupted')]
-    assert job.rows['d1']['done'] == 2
-
-
-def test_a_unit_begun_before_the_job_and_ended_after_it_is_someone_writing_since(monkeypatch):
-    """REV-B4-4: a crash between the writing row and the write, then a
-    person writes in a group they began before the job was made (core gives
-    the unit its first member's ``time`` and its last's ``end_time``). The
-    document is not quiet: the safe side, the sentences are left."""
-    client, job, clock, model = _job(monkeypatch)
-    _crash_before_write(monkeypatch, job)
-    created = clock['t'] - 3600
-    client._holder('d1')['audit'].append({'id': 'person-0', 'time': _iso(created - 100),
-                                          'end_time': _iso(clock['t'] - 700), 'ref': None,
-                                          'documents': [{'id': 'd1'}], 'ops': []})
-    staged = _staged(monkeypatch)
-    assert _resume(client, job).document('d1') == 'done'
-    assert not staged
-    assert _skipped(job) == [('d1-s1', 'interrupted'), ('d1-s2', 'interrupted')]
+    assert sorted(o['word_id'] for o in staged) == ['d1-s1w1', 'd1-s1w2', 'd1-s2w1']
+    assert _skipped(job) == [] and job.rows['d1']['done'] == 2 and job.rows['d1']['counts']['words'] == 3
 
 
 # --- known to have sent nothing: targets again in the same worker ----------------------
@@ -378,6 +373,10 @@ def test_a_write_put_off_having_sent_nothing_is_taken_again_after_a_person_wrote
 
 
 def test_a_writing_row_whose_answer_is_lost_sends_nothing_and_the_walk_takes_the_sentences_again(monkeypatch):
+    """The rows' call lands and its answer is lost: the request is never
+    sent, the try never lands, and the walk takes its sentences again under
+    a try of their own. A later worker finds the first rows' try never
+    landed."""
     client, job, clock, model = _job(monkeypatch)
     real = client.jobs.add_decisions
     lost = {'n': 1}
@@ -388,10 +387,13 @@ def test_a_writing_row_whose_answer_is_lost_sends_nothing_and_the_walk_takes_the
             lost['n'] -= 1
             raise PlaidAPIError('HTTP 502', status=502)
     client.jobs.add_decisions = add
-    staged = _staged(monkeypatch)
     assert runner(job).document('d1') == 'done'
-    assert sorted(o['word_id'] for o in staged) == ['d1-s1w1', 'd1-s1w2', 'd1-s2w1'], 'written once'
+    assert len(client.batches) == 1, 'written once'
     assert not _skipped(job) and job.rows['d1']['counts']['words'] == 3
+    assert len(_rows(client, 'd1-s1')) == 2, 'the rows of both tries'
+    again = _resume(client, job)
+    again.settle(again.project(), 'd1', again.read(again.project(), 'd1'))
+    assert job.rows['d1']['counts']['words'] == 3 and job.rows['d1']['done'] == 2
 
 
 def test_a_stretch_halved_stores_a_writing_row_only_for_what_it_writes(monkeypatch):
@@ -409,9 +411,8 @@ def test_a_stretch_halved_stores_a_writing_row_only_for_what_it_writes(monkeypat
 def test_a_word_a_try_that_sent_nothing_was_for_is_left_blank_when_the_next_try_leaves_it(monkeypatch):
     """REV-B4-7: the first try was for ka, ta and sa and sent nothing (the
     version moved on both tries). Taken again, the model now leaves ta. The
-    record of s1 is then lost to a passing error and s1 is recorded from the
-    document (``settle``): ta is "Left blank", since no write that was sent
-    was for it."""
+    record of s1 is then cut short by a passing error: ta is "Left blank",
+    as the write that was sent says."""
     asked = {'n': 0}
 
     def model(text, n, kwargs):
@@ -447,9 +448,8 @@ def test_a_word_a_try_that_sent_nothing_was_for_is_left_blank_when_the_next_try_
     assert r.document('d1') == 'deferred'
     assert r.document('d1') == 'done'
     assert asked['n'] == 2
-    mark = _mark(client, 'd1-s1')
-    assert [x['ref'] for x in mark['left'] if x['form']] == ['s1.w2'], mark
-    assert mark['counts']['left'] == 1 and mark['counts']['words'] == 1
+    assert [x for x in _left(job) if '.w' in x] == ['s1.w2']
+    assert job.rows['d1']['counts']['left'] == 1 and job.rows['d1']['counts']['words'] == 2
 
 
 # --- a passing error inside the write: before it or after it -------------------------------
@@ -483,8 +483,8 @@ def test_a_read_refused_before_the_write_sends_nothing_and_the_walk_takes_the_se
 def test_an_error_after_the_write_landed_is_still_taken_as_a_write_that_may_have_landed(monkeypatch):
     """The other side of REV-B4-6, which must stay: the write lands and the
     operation's end then meets a 502 (``end_operation``, after the last
-    batch). In the wait the starter clears the job's work in s1. s1 is not
-    written again: it is listed "Write interrupted"."""
+    batch). In the wait the starter clears the job's work in s1. Core says
+    the write landed: s1 is not written again and nothing is listed."""
     client, job, clock, model = _job(monkeypatch)
     real_op = client.operation
     once = {'n': 1}
@@ -509,17 +509,16 @@ def test_an_error_after_the_write_landed_is_still_taken_as_a_write_that_may_have
     staged = _staged(monkeypatch)
     assert runner(job).document('d1') == 'done'
     assert sorted(o['word_id'] for o in staged) == ['d1-s1w1', 'd1-s1w2', 'd1-s2w1'], 'written once'
-    assert _skipped(job) == [('d1-s1', 'interrupted')]
-    assert _mark(client, 'd1-s2')['counts']['words'] == 1
+    assert _skipped(job) == [] and job.rows['d1']['counts']['words'] == 3
 
 
 # --- what the starter clears under the lock, right after the write -------------------------
 
 def test_a_word_the_starter_clears_under_the_lock_is_not_listed_left_blank(monkeypatch):
     """REV-B4-2: the write lands whole and the starter clears the job's
-    proposal on pa before the job reads the document again. pa was not left
-    blank by the model: it is not "Left blank" (as ``settle`` already
-    lists, REV-FIX3-3)."""
+    proposal on ta before the job reads the document again. ta was not left
+    blank by the model: it is not "Left blank", and the rows count it as
+    written."""
     client, job, clock, model = _job(monkeypatch, before=[{'words': ['ka', 'ta']}],
                                      after=[{'words': [MINE['ka'], MINE['ta']]}])
     real = igt_job.execute_plan
@@ -530,9 +529,8 @@ def test_a_word_the_starter_clears_under_the_lock_is_not_listed_left_blank(monke
         return out
     monkeypatch.setattr(igt_job, 'execute_plan', execute)
     assert runner(job).document('d1') == 'done'
-    mark = _mark(client, 'd1-s1')
-    assert [x for x in mark['left'] if x['form']] == [] and mark['counts'].get('left', 0) == 0, mark
-    assert mark['counts']['words'] == 1
+    assert [x for x in _left(job) if '.w' in x] == [] and not job.rows['d1']['counts'].get('left')
+    assert job.rows['d1']['counts']['words'] == 2
 
 
 def test_a_translation_the_starter_clears_under_the_lock_is_not_listed_left_blank(monkeypatch):
@@ -551,8 +549,7 @@ def test_a_translation_the_starter_clears_under_the_lock_is_not_listed_left_blan
         return out
     monkeypatch.setattr(igt_job, 'execute_plan', execute)
     assert runner(job).document('d1') == 'done'
-    mark = _mark(client, 'd1-s1')
-    assert [x for x in mark['left'] if not x['form']] == [] and mark['counts'].get('left_translations', 0) == 0, mark
+    assert [x for x in _left(job) if '.w' not in x] == [] and not job.rows['d1']['counts'].get('left_translations')
 
 
 # --- a sentence's other values are not its translation (REV-JG-11) -------------------------
@@ -591,9 +588,8 @@ def test_a_sentence_value_the_job_writes_counts_as_a_translation_only_in_the_tra
     use(monkeypatch, Model(model))
     finished = run_job(job, runner(job))
     assert finished['state'] == 'done', client.jobs.rows[J]['message']
-    row = json.loads(next(r['analysis'] for (f, _), r in client.jobs.decision_rows[J].items()
-                          if f == WRITING_FORM + 'd1-s1'))
-    assert row['translation'] is None and row['words'] == [], row
+    (row,) = _rows(client, 'd1-s1')
+    assert 'translations' not in row['counts'] and row['words'] == [], row
     report = finished['report']
     assert report['totals']['translations'] == 1
     assert [x['ref'] for x in report['documents'][0]['left']] == ['s1'], report['documents'][0]['left']
@@ -617,9 +613,8 @@ def _undouble(asked, n, kwargs):
 def test_a_deletion_that_landed_before_a_crash_is_never_made_again(monkeypatch):
     """BRIEF-JH item 10: a stretch's write that only deletes a word leaves
     nothing of the job in its sentence. It lands, the worker dies before the
-    record, nobody writes since. The sentence no longer reads as it did
-    before the write (its writing row's digest), so the write landed: it is
-    recorded, never a target again, and no second word is deleted."""
+    record. Core says it landed: never a target again, and no second word is
+    deleted."""
     client, job, clock, model = _job(monkeypatch, 'Delete the doubled words.', _DOUBLED, _UNDOUBLED, _undouble)
     staged = _staged(monkeypatch)
     _crash_at_record(monkeypatch, job)
@@ -627,14 +622,13 @@ def test_a_deletion_that_landed_before_a_crash_is_never_made_again(monkeypatch):
     assert _resume(client, job).document('d1') == 'done'
     assert [o['kind'] for o in staged] == ['delete_word'], 'one deletion, never a second'
     assert len([c for c in model.calls if c['n'] == 1]) == 1, 'the model is not asked again'
-    assert _mark(client, 'd1-s2')['counts'].get('analyzed') == 1
+    assert job.rows['d1']['counts']['deletions'] == 1 and job.rows['d1']['counts']['analyzed'] == 1
     assert not _skipped(job)
 
 
 def test_a_deletion_that_never_landed_before_a_crash_is_made_on_the_resume(monkeypatch):
-    """The guard: the writing row was sent, the write was not. The sentence
-    reads as before, nobody wrote since: it is a target again, and its one
-    deletion is made then."""
+    """The guard: the writing row was sent, the write was not. Core says it
+    never landed: a target again, and its one deletion is made then."""
     client, job, clock, model = _job(monkeypatch, 'Delete the doubled words.', _DOUBLED, _UNDOUBLED, _undouble)
     _crash_before_write(monkeypatch, job)
     assert _writing(client) == ['d1-s2'] and not client.batches
@@ -667,8 +661,8 @@ def _unrepeat(asked, n, kwargs):
 
 def test_a_sentence_deletion_that_landed_before_a_crash_is_never_made_again(monkeypatch):
     """BRIEF-JS: a stretch's write that deletes a sentence leaves no sentence
-    to record. It lands, the worker dies before the record, nobody writes
-    since. No second sentence is deleted."""
+    to record. It lands, the worker dies before the record. Core says it
+    landed: no second sentence is deleted."""
     client, job, clock, model = _job(monkeypatch, 'Delete a sentence that repeats the one before it.', _REPEATED,
                                      _REPEATED[:3], _unrepeat)
     staged = _staged(monkeypatch)
@@ -678,8 +672,8 @@ def test_a_sentence_deletion_that_landed_before_a_crash_is_never_made_again(monk
     assert _resume(client, job).document('d1') == 'done'
     assert [o['kind'] for o in staged] == ['delete_sentence'], 'one deletion, never a second'
     assert len([c for c in model.calls if c['n'] == 1]) == 1, 'the model is not asked again'
-    assert _mark(client, 'd1-s4')['counts'] == {'analyzed': 1}
-    assert all(_mark(client, f'd1-s{i}') for i in (1, 2, 3)) and not _skipped(job)
+    assert _rows(client, 'd1-s4')[0]['counts'] == {'analyzed': 1, 'changes': 1, 'deletions': 1}
+    assert not _skipped(job) and job.rows['d1']['done'] == 4
 
 
 def test_a_sentence_the_jobs_write_deleted_is_not_left_blank(monkeypatch):
@@ -690,17 +684,16 @@ def test_a_sentence_the_jobs_write_deleted_is_not_left_blank(monkeypatch):
     client, job, clock, model = _job(monkeypatch, 'Delete a sentence that repeats the one before it.', _REPEATED,
                                      _REPEATED[:3], _unrepeat)
     assert runner(job).document('d1') == 'done'
-    assert _mark(client, 'd1-s4')['counts'] == {'analyzed': 1}
-    assert not _mark(client, 'd1-s4')['left']
+    assert _rows(client, 'd1-s4')[0]['counts'] == {'analyzed': 1, 'changes': 1, 'deletions': 1}
+    assert not _rows(client, 'd1-s4')[0]['left']
     assert not any(e['sentence_id'] == 'd1-s4' for e in runner(job).left_blank(job).get('d1', [])), 'not listed'
     counts = job.rows['d1']['counts']
     assert (counts['left'], counts['left_translations']) == (3, 3), 's1 to s3, not s4'
 
 
 def test_a_sentence_deletion_that_never_landed_before_a_crash_is_made_on_the_resume(monkeypatch):
-    """The guard: the rows were sent, the write was not. Every sentence
-    reads as before and none is gone: the piece is taken again, and its one
-    deletion is made then."""
+    """The guard: the rows were sent, the write was not. Core says it never
+    landed: the piece is taken again, and its one deletion is made then."""
     client, job, clock, model = _job(monkeypatch, 'Delete a sentence that repeats the one before it.', _REPEATED,
                                      _REPEATED[:3], _unrepeat)
     _crash_before_write(monkeypatch, job)
@@ -770,51 +763,21 @@ def test_a_later_piece_corrects_an_earlier_pieces_gloss(monkeypatch):
 
 
 def test_a_writing_row_names_the_piece_that_wrote(monkeypatch):
-    """Each sentence's writing row names the piece whose write it was for:
-    s1's names piece 1 and piece 2 (its link), s2's piece 2 only."""
+    """Each sentence's writing rows name the piece whose write each was for:
+    s1's piece 1 and piece 2 (its link), s2's piece 2 only."""
     client, job, batches = _two_pieces(monkeypatch, [call(3, 'link_entry', {'document': 'Story', 'refs': ['s1.w1.m1'],
                                                                              'entry_id': 'vi-gam'})])
-    pieces = {}
-    for (f, _), r in client.jobs.decision_rows[J].items():
-        if f.startswith(WRITING_FORM):
-            pieces.setdefault(f[len(WRITING_FORM):], set()).update(json.loads(r['analysis'])['pieces'])
-    assert len(pieces['d1-s1']) == 2 and len(pieces['d1-s2']) == 1 and pieces['d1-s2'] < pieces['d1-s1'], pieces
+    s1, s2 = {r['piece'] for r in _rows(client, 'd1-s1')}, {r['piece'] for r in _rows(client, 'd1-s2')}
+    assert len(s1) == 2 and len(s2) == 1 and s2 < s1, (s1, s2)
 
 
-# --- the digest reads only what a write in the sentence changes (REV-JH-3) ------------------
-
-def test_the_digest_reads_neither_the_sentence_index_nor_an_entry_form():
-    """A sentence moved by a merge or a deletion before it, or one whose
-    linked entry was renamed in the lexicon, has the digest it had: neither
-    is something a write in the sentence does. A link's entry still counts."""
-    import dataclasses
-    from fixtures import PID
-    from plaid_agent.igt.project import Link, load_document, load_project
-    client = JobClient({'d1': document('d1', 'Story', [{'words': ['ka', 'ta']}, {'words': ['sa']}])})
-    doc = load_document(client, load_project(client, PID), 'd1')
-    s = doc.sentences[1]
-    d0 = igt_job.sentence_digest(s)
-    assert igt_job.sentence_digest(dataclasses.replace(s, index=1)) == d0, 'the index'
-    m = s.words[0].morphemes[0]
-    m.link = Link(id='l1', item_id='vi-gam', form='gam', vocab_id='v', members=[(2, 1)])
-    linked = igt_job.sentence_digest(s)
-    assert linked != d0, 'a link made'
-    m.link = Link(id='l1', item_id='vi-gam', form='gaam', vocab_id='v', members=[(1, 1)])
-    assert igt_job.sentence_digest(s) == linked, 'the entry renamed, the sentence moved'
-    m.link = Link(id='l1', item_id='vi-gem', form='gaam', vocab_id='v')
-    assert igt_job.sentence_digest(s) != linked, 'another entry'
-    s.words[0].mwes = [Link(id='l2', item_id='vi-x', form='x', vocab_id='v', tokens=['a', 'b'], members=[(2, 1)])]
-    with_mwe = igt_job.sentence_digest(s)
-    s.words[0].mwes = [Link(id='l2', item_id='vi-x', form='y', vocab_id='v', tokens=['a', 'b'], members=[(1, 1)])]
-    assert igt_job.sentence_digest(s) == with_mwe, "an expression's entry renamed, its sentence moved"
-
+# --- what the worker knows does not move with the text (REV-JH-3) -------------------------------
 
 def test_an_entry_renamed_while_the_worker_is_down_does_not_read_as_a_deletion_that_landed(monkeypatch):
     """REV-JH-3: the writing row is sent, the worker dies before the write
     that deletes the doubled sa. While it is down a person renames gam, which
-    a morpheme of s2 links, on the Entries screen (no unit in the document's
-    History). s2 reads as it did before the write: a target again, and its
-    one deletion is made on the resume."""
+    a morpheme of s2 links, on the Entries screen. Core says the write never
+    landed: a target again, and its one deletion is made on the resume."""
     doubled = [{'words': [('ka', [('ka', 'go', 'vi-gam')], 'human')], 'translation': ('One.', 'human')},
                {'words': [('sa', [('sa', 'go', 'vi-gam')], 'human'), 'sa'], 'translation': ('Two.', 'human')}]
     undoubled = [doubled[0], {'words': [('sa', [('sa', 'go', 'vi-gam')], 'human')], 'translation': ('Two.', 'human')}]
@@ -841,7 +804,7 @@ def test_an_entry_renamed_while_the_worker_is_down_does_not_read_as_a_deletion_t
     assert not _skipped(job)
 
 
-# --- a write landed only when a sentence its own rows delete is gone (REV-JSF-1, -2) --------
+# --- a sentence gone says nothing: core says what landed (REV-JSF-1, -2) ------------------
 
 def _renamed(raw, mapping):
     """``raw`` with each id of ``mapping`` renamed, in order."""
@@ -880,34 +843,25 @@ def _lines_job(monkeypatch):
 
 def test_a_later_pieces_deletion_of_a_recorded_sentence_that_landed_before_a_crash_is_never_made_again(monkeypatch):
     """REV-JSF-1, the crash: piece s3's write deletes s2, which piece s2
-    recorded, and the worker dies before the record. s3 reads as before and
-    nothing of the job is in it, but its own row says the write deletes s2,
-    which is gone: the write landed, s3 is recorded and no second sentence is
-    deleted."""
+    recorded, and the worker dies before the record. Core says the write
+    landed: s3 is written (its row names the try), its piece is not run
+    again, and no second sentence is deleted."""
     client, job, model = _lines_job(monkeypatch)
     staged = _staged(monkeypatch)
-    real = job.add_decisions
-
-    def add(decisions):
-        if any(d['form'] == RECORD_FORM + 'd1-s3' for d in decisions):
-            raise Crash()
-        return real(decisions)
-    monkeypatch.setattr(job, 'add_decisions', add)
-    with pytest.raises(Crash):
-        runner(job).document('d1')
-    monkeypatch.setattr(job, 'add_decisions', real)
+    _crash_at_record(monkeypatch, job, sentence='d1-s3')
+    assert staged, 'the deletion was sent'
     asked = len([c for c in model.calls if c['n'] == 1])
     assert _resume(client, job).document('d1') == 'done'
     assert [(o['kind'], o['sentence_id']) for o in staged] == [('delete_sentence', 'd1-s2')], 'one deletion only'
     assert len([c for c in model.calls if c['n'] == 1]) == asked + 1, 'only ta, the last piece, is asked on the resume'
-    assert _mark(client, 'd1-s3')['counts'].get('analyzed') == 1
+    assert job.rows['d1']['counts']['deletions'] == 1 and not _skipped(job)
 
 
 def test_a_later_pieces_deletion_of_a_recorded_sentence_whose_answer_is_lost_is_never_made_again(monkeypatch):
     """REV-JSF-1, the lost answer: the same write lands and core's answer is
-    lost (a proxy's 502 at the operation's end). The same worker settles
-    the document: s2 is gone though recorded, and s3's row names it, so s3
-    is recorded and its piece is not run again over what is left."""
+    lost (a proxy's 502 at the operation's end). The same worker asks core:
+    it landed, so s3 is written and its piece is not run again over what is
+    left."""
     client, job, model = _lines_job(monkeypatch)
     staged = _staged(monkeypatch)
     real_op, once = client.operation, {'n': 1}
@@ -944,10 +898,10 @@ def _gloss_or_unrepeat(asked, n, kwargs):
 
 def test_the_jobs_own_earlier_deletion_does_not_make_a_later_write_that_never_landed_read_as_landed(monkeypatch):
     """REV-JSF-2, no person at all: ka. ka. sa. ta. in stretches of one.
-    Piece s2 deletes itself (recorded as usual), piece s3 glosses sa, piece
-    s4's writing row is sent and the worker dies before its write. On the
-    resume s2 is gone, but no row of s4 names it: s4 reads as before, so it
-    is a target again, asked and glossed."""
+    Piece s2 deletes itself, piece s3 glosses sa, piece s4's writing row is
+    sent and the worker dies before its request. On the resume core says
+    s4's try never landed, whatever is gone: a target again, asked and
+    glossed."""
     monkeypatch.setattr(igt_job, 'JOB_STRETCH_SENTENCES', 1)
     before = [{'words': ['ka']}, {'words': ['ka']}, {'words': ['sa']}, {'words': ['ta']}]
     client, job, clock, model = _job(monkeypatch, 'Delete a sentence that repeats the one before it, and gloss '
@@ -961,11 +915,18 @@ def test_the_jobs_own_earlier_deletion_does_not_make_a_later_write_that_never_la
                     [('d1-s3', 'd1-s4'), ('d1-s2', 'd1-s3')]),
     }
     real, n, sent = igt_job.execute_plan, {'n': 0}, []
+    real_intend = igt_job.IgtRunner.intend
+
+    def intend(self, w, seed, ops, drops):
+        real_intend(self, w, seed, ops, drops)
+        if seed is not None and n['n'] > 3:
+            raise Crash()
+    monkeypatch.setattr(igt_job.IgtRunner, 'intend', intend)
 
     def execute(c, ops, **kw):
         n['n'] += 1
         if n['n'] > 3:
-            raise Crash()
+            return real(c, ops, **kw)
         sent.extend((o['kind'], o.get('word_id') or o.get('sentence_id')) for o in ops)
         if n['n'] == 2:
             # The deletion reads the text as it is before it.
@@ -980,6 +941,7 @@ def test_the_jobs_own_earlier_deletion_does_not_make_a_later_write_that_never_la
         runner(job).document('d1')
     assert sent == [('set_analysis', 'd1-s1w1'), ('delete_sentence', 'd1-s2'), ('set_analysis', 'd1-s3w1')], sent
     assert 'd1-s4' in _writing(client)
+    monkeypatch.setattr(igt_job.IgtRunner, 'intend', real_intend)
     asked = len([c for c in model.calls if c['n'] == 1])
     monkeypatch.setattr(igt_job, 'execute_plan', lambda c, ops, **kw: (sent.extend(
         (o['kind'], o.get('word_id') or o.get('sentence_id')) for o in ops), real(c, ops, **kw))[1])
@@ -991,10 +953,10 @@ def test_the_jobs_own_earlier_deletion_does_not_make_a_later_write_that_never_la
 
 def test_a_sentence_a_person_deleted_does_not_make_a_later_write_that_never_landed_read_as_landed(monkeypatch):
     """REV-JSF-2 with a person: ka. sa. ta. in stretches of one. The job
-    glosses s1 and records it, a person deletes s1 on the Baseline tab,
-    piece s2 (old s2) glosses sa, which makes the document quiet again, and
-    the worker dies after piece s3's writing row, before its write. On the
-    resume s1 is gone, but no row of s3 names it: s3 is asked and glossed."""
+    glosses s1, a person deletes s1 on the Baseline tab, piece s2 (old s2)
+    glosses sa, and the worker dies after piece s3's writing row, before its
+    request. On the resume core says s3's try never landed: s3 is asked and
+    glossed."""
     monkeypatch.setattr(igt_job, 'JOB_STRETCH_SENTENCES', 1)
     before = [{'words': ['ka']}, {'words': ['sa']}, {'words': ['ta']}]
 
@@ -1006,6 +968,13 @@ def test_a_sentence_a_person_deleted_does_not_make_a_later_write_that_never_land
                                                      'morphemes': [{'form': 'xx', 'fields': {'Morph Gloss': 'go'}}]})])
     client, job, clock, m = _job(monkeypatch, 'Gloss every word.', before, model=model)
     real, n, sent = igt_job.execute_plan, {'n': 0}, []
+    real_intend = igt_job.IgtRunner.intend
+
+    def intend(self, w, seed, ops, drops):
+        real_intend(self, w, seed, ops, drops)
+        if seed is not None and n['n'] > 2:
+            raise Crash()
+    monkeypatch.setattr(igt_job.IgtRunner, 'intend', intend)
 
     def execute(c, ops, **kw):
         n['n'] += 1
@@ -1017,7 +986,7 @@ def test_a_sentence_a_person_deleted_does_not_make_a_later_write_that_never_land
                                                                          before[2]], version=4),
                                                 [('d1-s2', 'd1-s3'), ('d1-s1', 'd1-s2')])
         else:
-            raise Crash()
+            return real(c, ops, **kw)
         sent.extend((o['kind'], o.get('word_id')) for o in ops)
         return real(c, ops, **kw)
     monkeypatch.setattr(igt_job, 'execute_plan', execute)
@@ -1041,6 +1010,7 @@ def test_a_sentence_a_person_deleted_does_not_make_a_later_write_that_never_land
     monkeypatch.setattr(job, 'add_decisions', real_add)
     assert sent == [('set_analysis', 'd1-s1w1'), ('set_analysis', 'd1-s2w1')], sent
     assert 'd1-s3' in _writing(client)
+    monkeypatch.setattr(igt_job.IgtRunner, 'intend', real_intend)
     asked = len([c for c in m.calls if c['n'] == 1])
     monkeypatch.setattr(igt_job, 'execute_plan', lambda c, ops, **kw: (sent.extend(
         (o['kind'], o.get('word_id')) for o in ops), real(c, ops, **kw))[1])
@@ -1051,11 +1021,12 @@ def test_a_sentence_a_person_deleted_does_not_make_a_later_write_that_never_land
 
 def test_a_document_piece_put_off_after_its_first_batch_deletes_its_sentence_once_when_taken_up_again(monkeypatch):
     """REV-JS-JHFIX, not yet checked: a document piece glosses ka in s1 and
-    deletes s3, which repeats s2. Its batch lands, core refuses the
-    deletion (409, the starter's own browser wrote), and the document is
-    put off. Taken up again, s1 is settled as written, s2 and s3 read as
-    before and s3, which the rows name, is still there: the piece runs
-    again, its gloss of s1 is left out as written, and s3 is deleted once."""
+    deletes s3, which repeats s2. Its first try (the gloss) lands, core
+    refuses the second (the deletion, 409, the starter's own browser
+    wrote), and the document is put off. Taken up again, core says what
+    landed: s1 and s2 are written, s3 is a target again, so the piece runs
+    again, its gloss of s1 is left out as written, s3 is deleted once, and
+    nothing is listed (the deletion was made by the piece taken again)."""
     before = [{'words': ['ka']}, {'words': ['sa']}, {'words': ['sa']}]
     glossed = [{'words': [MINE['ka']]}, {'words': ['sa']}, {'words': ['sa']}]
     client = JobClient({'d1': document('d1', 'Story', before)})

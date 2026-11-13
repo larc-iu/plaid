@@ -200,7 +200,9 @@ def test_a_crash_anywhere_between_the_write_and_its_record_counts_the_write_once
     undo()
     model = _resume(client, job, monkeypatch)
     assert not model.calls, 'the words written are not asked again'
-    assert _decided(client) == {'ka': 1, 'ta': 1}, 'each decision stored once'
+    # The words' decisions are kept with what the job vouches for, which a
+    # write settled after a crash before its record never is.
+    assert _decided(client) == ({} if where == 'decisions' else {'ka': 1, 'ta': 1}), 'each decision stored once'
     row = client.jobs.get(J)['documents'][0]
     assert row['counts']['words'] == 2 and row['done'] == 2 and row['targets'] == 2
 
@@ -222,10 +224,10 @@ def test_decisions_that_landed_before_core_answered_an_error_are_not_sent_again(
     assert job.rows['d1']['counts']['words'] == 2 and job.rows['d1']['done'] == 2
 
 
-def test_a_record_is_a_mark_with_the_sentences_counts():
+def test_a_record_is_a_mark_with_the_words_keys():
     client, job, clock = _job()
     r = runner(job)
-    r.commit('d1', [{'sentence': 'd1-s1', 'counts': {'words': 1}, 'decisions': []}], {})
+    r.commit('d1', [{'sentence': 'd1-s1', 'words': {'s1w1': 'k1'}, 'decisions': []}])
     marks = [v for (form, key), v in _real_rows(client).items() if form.startswith(RECORD_FORM)]
-    assert len(marks) == 1 and json.loads(marks[0]['analysis'])['counts'] == {'words': 1}
+    assert len(marks) == 1 and json.loads(marks[0]['analysis']) == {'document': 'd1', 'words': {'s1w1': 'k1'}}
     assert marks[0]['form'] == ' sentence d1-s1' and core_job.analysis_key(marks[0]['analysis']) == marks[0]['key']

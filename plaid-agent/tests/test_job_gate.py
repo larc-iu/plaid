@@ -1,10 +1,10 @@
 """THE GATE: every write of a job in a document goes through one write
 (``IgtRunner.write``), whatever the plan cut (stretches of sentences, a whole
 document, the whole selection), and that write first settles the document
-(``IgtRunner.gate``): what the job wrote there and did not record is recorded,
-or skipped as interrupted when nothing of the job is left in it. Then its
-writing rows, the recheck and the apply rule under the lock, and its record
-(REV-JG-1).
+(``IgtRunner.gate``): core is asked which of the job's tries there of unknown
+fate landed, and what landed is written, never read back from the document
+(BRIEF RX). Then the recheck and the apply rule under the lock, the tries with
+their writing rows, and its record (REV-JG-1).
 
 Each way into the window between a write and its record that the earlier
 reviews found for stretches is tested here for every piece kind: a crash and a
@@ -155,8 +155,9 @@ def test_every_piece_writes_through_the_one_gate(monkeypatch, pieces):
 def test_a_crash_after_the_write_and_a_person_clearing_a_sentence_is_never_written_again(monkeypatch, pieces):
     """REV-JG-1 (and REV-FIX3-1 for stretches): the write lands, the worker
     dies before its record, a person clears the job's analyses of s1, and a
-    new worker takes the job up. Nothing is written in s1 again, it is listed
-    as interrupted, and s2 is recorded as the job wrote it."""
+    new worker takes the job up. Core says the write landed: nothing is
+    written in s1 again, nothing is listed, and the rows count what the job
+    wrote, not what is left of it."""
     client, job, clock, model = _job(monkeypatch, pieces)
     _crash_at_record(monkeypatch, job)
     assert _writing(client) == ['d1-s1', 'd1-s2'], 'stored before the write'
@@ -167,8 +168,8 @@ def test_a_crash_after_the_write_and_a_person_clearing_a_sentence_is_never_writt
     staged = _staged(monkeypatch)
     _resume(client, job).work(job)
     assert _analysed(staged) == [], 'nothing the person cleared is written again'
-    assert ('d1-s1', 'interrupted') in _skipped(job)
-    assert _mark(client, 'd1-s2')['counts']['words'] == 1
+    assert not _skipped(job)
+    assert job.rows['d1']['counts']['words'] == 3 and job.rows['d1']['done'] == 2
     assert job.rows['d1']['state'] == 'done'
 
 
@@ -176,9 +177,10 @@ def test_a_crash_after_the_write_and_a_person_clearing_a_sentence_is_never_writt
 def test_a_crash_after_the_write_with_nobody_writing_since_is_recorded_whole_and_proposes_nothing(monkeypatch,
                                                                                                  pieces):
     """A second worker takes the job up with nobody having written since:
-    everything the job wrote is recorded and vouched for, nothing is
-    written twice, and nothing is proposed from the job's analysis to the
-    same analysis (REV-JG-1's noise)."""
+    everything the job wrote is counted from its rows, nothing is written
+    twice, and nothing is proposed from the job's analysis to the same
+    analysis (REV-JG-1's noise). A write settled after a crash is not
+    vouched for: harmonize leaves its words."""
     client, job, clock, model = _job(monkeypatch, pieces)
     _crash_at_record(monkeypatch, job)
     staged = _staged(monkeypatch)
@@ -186,7 +188,7 @@ def test_a_crash_after_the_write_with_nobody_writing_since_is_recorded_whole_and
     assert _analysed(staged) == []
     assert not _skipped(job)
     assert job.rows['d1']['counts']['words'] == 3 and job.rows['d1']['state'] == 'done'
-    assert len(_mark(client, 'd1-s1')['words']) == 2, 'vouched for'
+    assert not [f for f, _ in client.jobs.decision_rows[J] if f.startswith(RECORD_FORM)], 'not vouched for'
     assert _changes(client) == []
 
 
@@ -195,9 +197,9 @@ def test_a_crash_after_the_write_with_nobody_writing_since_is_recorded_whole_and
 @pytest.mark.parametrize('pieces', PIECES)
 def test_one_passing_error_on_the_record_and_a_person_clearing_a_sentence_in_the_wait(monkeypatch, pieces):
     """The record's call meets a 502 and the starter clears the job's
-    analyses of s1 in the 30 s wait. The write is taken again from the gate:
-    s1 is left and listed, nothing is written twice, the model is not asked
-    again, and the job ends done."""
+    analyses of s1 in the 30 s wait. The write is taken again from the gate,
+    which knows it landed: nothing is written twice, the model is not asked
+    again, nothing is listed, and the job ends done."""
     client, job, clock, model = _job(monkeypatch, pieces)
     real = client.jobs.add_decisions
     lost = {'n': 0}
@@ -223,81 +225,7 @@ def test_one_passing_error_on_the_record_and_a_person_clearing_a_sentence_in_the
     assert lost['n'] == 2, 'the 502 was met'
     assert _analysed(staged) == ['d1-s1w1', 'd1-s1w2', 'd1-s2w1'], 'each word written once'
     assert len([c for c in model.calls if c['n'] == 1]) == 1, 'the model is not asked again'
-    assert _skipped(job) == [('d1-s1', 'interrupted')]
-    assert job.rows['d1']['state'] == 'done'
-
-
-# --- a write put off halfway --------------------------------------------------------------
-
-def _sani(gloss):
-    morphs = [('sa', 'go')] + ([('ni', gloss)] if gloss else [('ni', None)])
-    return ('sani', morphs, J)
-
-
-@pytest.mark.parametrize('pieces', PIECES)
-def test_a_write_put_off_after_its_first_batch_landed_puts_nothing_back(monkeypatch, pieces):
-    """A write of two batches: s1's lands, s2's is refused, the starter
-    having typed in s3. When the document comes back the starter has
-    cleared the job's gloss on s1.w2: the piece run again writes nothing in
-    s1 or s2, s2 is listed as interrupted, and s1 is not vouched for.
-
-    In stretches (and a selection put off, worked in stretches) the piece
-    run next is s3's, a later piece with s1 and s2 as its context: what it
-    stages there is written, as a later piece's change is (REV-JH-1), and
-    s2 is then no longer listed as interrupted (REV-JSF-5). This model
-    stages in s1 and s2 whatever its piece."""
-    human = {'form': 'ka', 'morphs': [('ka', 'go')], 'who': 'human'}
-    typed = {'form': 'ka', 'morphs': [('ka', 'went')], 'who': 'human'}
-    blank = [{'words': ['sani', 'sani']}, {'words': ['sani', 'sani']}, {'words': [human]}]
-    refs = {'s1.w1': 'sani', 's1.w2': 'sani', 's2.w1': 'sani', 's2.w2': 'sani'}
-
-    def model(asked, n, kwargs):
-        if n > 1:
-            return reply('Done.')
-        return reply(calls=[call(i, 'set_analysis', {'document': 'Story', 'ref': ref, 'morphemes': [
-            {'form': 'sa', 'fields': {'Morph Gloss': 'go'}}, {'form': 'ni', 'fields': {'Morph Gloss': 'now'}}]})
-            for i, ref in enumerate(refs, start=1)])
-    client, job, clock, _ = _job(monkeypatch, pieces, before=blank, after=blank, model=model)
-    from plaid_agent.core import plan
-    budget = plan.TrackingBatcher.__init__.__defaults__
-    monkeypatch.setattr(plan.TrackingBatcher.__init__, '__defaults__', (2,) + budget[1:])
-    from plaid_client import testing
-    real, n = testing._Batch.submit, {'n': 0}
-
-    def submit(self):
-        n['n'] += 1
-        if n['n'] == 2:
-            done = [{'words': [_sani('now'), _sani('now')]}, {'words': ['sani', 'sani']}, {'words': [typed]}]
-            _person_edits(client, 'd1', done, 3, {'t': clock['t'] - 700})
-            raise PlaidAPIError('HTTP 409 version', status=409)
-        if n['n'] == 3:
-            # Back later: the person cleared the gloss of -ni on s1.w2.
-            cleared = [{'words': [_sani('now'), _sani(None)]}, {'words': ['sani', 'sani']}, {'words': [typed]}]
-            _person_edits(client, 'd1', cleared, 4, {'t': clock['t'] - 700})
-        return real(self)
-    monkeypatch.setattr(testing._Batch, 'submit', submit)
-
-    def wait(s):
-        clock['t'] += s
-        if n['n'] == 2:
-            cleared = [{'words': [_sani('now'), _sani(None)]}, {'words': ['sani', 'sani']}, {'words': [typed]}]
-            _person_edits(client, 'd1', cleared, 4, {'t': clock['t'] - 700})
-            n['n'] = 99
-    job._sleep = wait
-    staged = _staged(monkeypatch)
-    runner(job).work(job)
-    assert n['n'] >= 2, 'the second batch was refused'
-    written = [o.get('word_id') for o in staged if o.get('kind') == 'set_analysis']
-    again = 1 if pieces == 'document' else 2
-    assert written.count('d1-s1w2') == again and written.count('d1-s2w1') == again, \
-        f'the same piece writes nothing of s1 or s2 again, a later piece does: {written}'
-    if pieces == 'document':
-        assert job.rows['d1']['counts']['repeated'] == 4, 'what the piece staged again is counted'
-    if pieces == 'document':
-        assert ('d1-s2', 'interrupted') in _skipped(job)
-    else:
-        assert not _skipped(job), 'a later piece wrote in s2'
-    assert not _mark(client, 'd1-s1').get('words'), 's1 is not vouched for'
+    assert _skipped(job) == []
     assert job.rows['d1']['state'] == 'done'
 
 
@@ -428,7 +356,7 @@ def test_harmonize_settles_a_document_before_it_rewrites_in_it(monkeypatch):
     monkeypatch.setattr(r, 'gate', gate)
     r.harmonize(job)
     assert asked and asked[0] == ('d1', True), asked
-    assert _mark(client, 'd1-s1')['counts']['words'] == 2
+    assert job.rows['d1']['counts']['words'] == 3
 
 
 # --- core out of reach during the write ------------------------------------------------------

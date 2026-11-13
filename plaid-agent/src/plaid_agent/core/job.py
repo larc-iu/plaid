@@ -501,6 +501,11 @@ class Job:
     def decisions(self) -> List[Dict[str, Any]]:
         return list(self.admin.jobs.decisions(self.id) or [])
 
+    def landed(self, refs: List[str]) -> List[str]:
+        """The keys (``<seed>.<n>``) of the writes made under each seed of
+        ``refs`` that landed, as core's audit log holds them."""
+        return list(self.admin.jobs.landed(self.id, refs) or [])
+
 
 # --- the frame of a job ------------------------------------------------------------
 

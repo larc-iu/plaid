@@ -44,29 +44,6 @@ def test_the_batcher_counts_the_members_of_a_row_that_stand():
     assert b.written_members() == {}, 'a row written whole is counted as a row'
 
 
-def test_the_batcher_names_the_rows_with_a_write_in_a_batch_sent():
-    """REV-JSF-3: after a lost answer, what may have landed is the rows with
-    a write in a batch that was sent, never a row whose writes were all to
-    come (a lexicon change written in the plan's last batch) or still
-    queued."""
-    b = core_plan.TrackingBatcher(FakeClient([]))
-    ops = [{ROW: 0}, {ROW: 1}, {ROW: 2}, {ROW: 3}]
-    b.expect(ops)
-    with b.writing_for(ops[0]):
-        b.add(lambda batch: None)
-    with b.writing_for(ops[1]):
-        b.update('spans', 's1', value='x')
-    with b.writing_for(ops[2]):
-        pass  # deferred to a later pass
-    b.flush()
-    assert b.sent_rows() == [0, 1]
-    with b.writing_for(ops[3]):
-        b.add(lambda batch: None)
-    assert b.sent_rows() == [0, 1], 'queued, not sent'
-    b.flush()
-    assert b.sent_rows() == [0, 1, 3]
-
-
 def test_the_note_says_how_much_of_a_folded_row_was_written():
     note = partial_note(['dep on 600 words', 'lemma of s1.w1'], [1], False, 'HTTP 500',
                         parts={0: (400, 600)})

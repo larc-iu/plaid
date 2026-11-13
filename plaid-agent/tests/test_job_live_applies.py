@@ -19,7 +19,6 @@ from live import _skip_or_fail, core_url, login, seed
 from plaid_client import PlaidAPIError
 from plaid_agent.core.agent import ModelConfig
 from plaid_agent.core.job import Job, run_job
-from plaid_agent.core.opkind import ROW
 from plaid_agent.core.plan import PlanError
 from plaid_agent.igt import job as igt_job
 from plaid_agent.igt.job import IgtRunner
@@ -154,11 +153,9 @@ def test_what_kept_a_job_off_a_word_or_a_translation_keeps_it_off_no_longer(monk
 def test_a_deletion_and_a_merge_sent_again_after_a_lost_answer_delete_and_merge_nothing_more(monkeypatch):
     """BRIEF-JH item 10, on a real core. A selection deletes the doubled ka
     of s1, analyses sa in s2, deletes the entry old and merges gam#2 into
-    gam. The write lands and its answer is lost (a proxy's 502 after the
-    last batch), so the same write is sent again from the gate: s1 and s2
-    are settled as written (s1 reads otherwise than before the write, though
-    nothing of the job is in it), their ops are not sent again, and the
-    lexicon's are refused for the entries they name being gone. One word
+    gam. The write's last try, the lexicon's, lands and its answer is lost
+    (a proxy's 502), so the same write is taken again from the gate, which
+    asks core: every try landed, so nothing of it is sent again. One word
     deleted, two entries gone, every other entry and word as it was."""
     admin = _admin()
     email, writer = _writer(admin, 'job-lost')
@@ -193,24 +190,24 @@ def test_a_deletion_and_a_merge_sent_again_after_a_lost_answer_delete_and_merge_
         def execute(c, ops, **kw):
             sent.append([o['kind'] for o in ops])
             out = real(c, ops, **kw)
-            if not lost:
+            if not lost and any(o['kind'] == 'delete_entry' for o in ops):
                 lost.append([o['kind'] for o in ops])
                 cause = PlaidAPIError('HTTP 502 Bad Gateway', status=502, method='POST')
                 try:
                     raise cause
                 except PlaidAPIError as e:
-                    # Every batch was sent, the last one's answer lost.
-                    raise PlanError('the answer was lost', len(ops), len(ops), unknown=True,
-                                    sent=[o[ROW] for o in ops]) from e
+                    # The lexicon's try landed, its answer lost.
+                    raise PlanError('the answer was lost', len(ops), len(ops), unknown=True) from e
             return out
         monkeypatch.setattr(igt_job, 'execute_plan', execute)
         job = _job(admin, writer, s, 'Delete the doubled ka, gloss sa as go, delete the entry old and merge the two '
                                      'gam entries.', 'selection')
         finished = run_job(job, _runner(job))
         assert finished['state'] == 'done', (finished.get('reason'), job.status.get('message'))
-        assert lost and sorted(lost[0]) == ['delete_entry', 'delete_word', 'merge_entries', 'set_analysis'], lost
-        assert len(sent) == 2 and sorted(sent[1]) == ['delete_entry', 'merge_entries'], \
-            f'sent again from the gate, the sentences\' ops left out: {sent}'
+        assert lost and sorted(lost[0]) == ['delete_entry', 'merge_entries'], lost
+        assert [sorted(x) for x in sent] == [['delete_word', 'set_analysis'], ['delete_entry', 'merge_entries']], \
+            f'each try sent once, nothing sent again from the gate: {sent}'
+        assert finished['report']['totals']['repeated'] == 4, 'all four left out when taken again'
         items = admin.vocab_layers.get(s.ids['v1'], include_items=True).get('items') or []
         assert sorted(it['id'] for it in items) == sorted([ids['gam'], ids['keep']]), items
         raw = _raw(admin, s)

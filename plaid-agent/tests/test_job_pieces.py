@@ -823,29 +823,28 @@ def test_a_selections_lexicon_change_no_write_carries_is_proposed(monkeypatch):
     assert [p['kind'] for p in proposed] == ['set_entry_field'], proposed
 
 
-# --- what a send that failed part-way may have written (REV-JSF-3) -------------------------
+# --- a write that failed: what landed is known (REV-JSF-3, BRIEF RX) -------------------------
 
 def _lexicon_selection_batches(monkeypatch, answers):
-    """The selection of ``_lexicon_selection``, each change its own batch
-    (Story 1's write: its analysis, then the lexicon change it carries),
-    the n-th batch answered as ``answers`` says (``refused``: core refuses
-    it, 409, ``lost``: it lands and its answer is lost, a proxy's 502), the
-    rest landing. The kinds each write sent, the kinds and fate of each
-    batch, and the finished job."""
+    """The selection of ``_lexicon_selection``: Story 1's write carries the
+    lexicon change in its one request (a try), the n-th request answered as
+    ``answers`` says (``refused``: core refuses it, 409, ``lost``: it lands
+    and its answer is lost, ``unsent``: its answer is lost and it never
+    landed, a proxy's 502 either way), the rest landing. The kinds each
+    write sent, the kinds and fate of each request, and the finished job."""
     from plaid_client import PlaidAPIError
     client = JobClient(_docs(2))
     job = start(client, 'Gloss ka in every text and gloss the entry gam as fish-net.', id=J, plan='selection')
-    from plaid_agent.core import plan
-    budget = plan.TrackingBatcher.__init__.__defaults__
-    monkeypatch.setattr(plan.TrackingBatcher.__init__, '__defaults__', (1,) + budget[1:])
     from plaid_client import testing
     real_submit, batches = testing._Batch.submit, []
 
     def submit(self):
         fate = answers.get(len(batches) + 1, 'landed')
         batches.append((sorted({k for k, _ in self.queued}), fate))
-        if fate == 'refused':
-            raise PlaidAPIError('HTTP 409', status=409, method='POST')
+        if fate in ('refused', 'unsent'):
+            self.open = False
+            raise PlaidAPIError(f'HTTP {409 if fate == "refused" else 502}', status=409 if fate == 'refused' else 502,
+                                method='POST')
         out = real_submit(self)
         if fate == 'lost':
             raise PlaidAPIError('HTTP 502', status=502, method='POST')
@@ -874,41 +873,42 @@ def _lexicon_selection_batches(monkeypatch, answers):
     return sent, batches, run_job(job, runner(job))
 
 
-PATCH = ['vocab_items.patch_metadata']
+STORY1 = ['spans.create', 'tokens.create', 'vocab_items.patch_metadata']
 
 
-def test_a_selections_lexicon_change_in_a_batch_never_sent_goes_with_the_next_write(monkeypatch):
-    """REV-JSF-3: Story 1's first batch (its analysis) lands, core refuses
-    the second (the starter's own browser wrote, 409), which held the
-    lexicon change. Story 1 is put off, and the change, which never landed,
-    goes with Story 2's write: written, not dropped."""
-    sent, batches, finished = _lexicon_selection_batches(monkeypatch, {2: 'refused'})
+def test_a_selections_lexicon_change_in_a_write_that_never_landed_goes_with_the_next_write(monkeypatch):
+    """REV-JSF-3: core refuses Story 1's request twice (the starter's own
+    browser wrote, 409): nothing of it landed, Story 1 is put off, and the
+    lexicon change it carried goes with Story 2's write: written once."""
+    sent, batches, finished = _lexicon_selection_batches(monkeypatch, {1: 'refused', 2: 'refused'})
     assert finished['state'] == 'done'
-    assert batches[1] == (PATCH, 'refused')
-    assert sent[1] == ['set_analysis', 'set_entry_field'], f'Story 2 carries it: {sent}'
-    assert [b for b in batches if b == (PATCH, 'landed')], 'it landed with Story 2'
+    assert batches[:2] == [(STORY1, 'refused')] * 2
+    assert sent[2] == ['set_analysis', 'set_entry_field'], f'Story 2 carries it: {sent}'
+    assert [b for b, fate in batches if fate == 'landed' and 'vocab_items.patch_metadata' in b] == [STORY1]
     assert not finished['report'].get('proposed')
 
 
-def test_a_selections_lexicon_change_in_a_batch_whose_answer_was_lost_is_not_sent_again(monkeypatch):
-    """The second batch, the lexicon change's, lands and its answer is
-    lost. The write sent again from the gate is refused twice (409, nothing
-    landed): Story 1 is put off. The change was in a batch that was sent, so
-    it may have landed: not handed on, not listed (1c9f9ee91)."""
-    sent, batches, finished = _lexicon_selection_batches(monkeypatch, {2: 'lost', 3: 'refused', 4: 'refused'})
+def test_a_selections_lexicon_change_in_a_write_whose_answer_was_lost_is_never_sent_again(monkeypatch):
+    """Story 1's request lands and its answer is lost. The write taken
+    again from the gate asks core: it landed, so nothing of it is sent
+    again, Story 2's write does not carry the change, and nothing is
+    listed."""
+    sent, batches, finished = _lexicon_selection_batches(monkeypatch, {1: 'lost'})
     assert finished['state'] == 'done'
-    assert batches[1] == (PATCH, 'lost')
-    assert all('set_entry_field' not in b for b in sent[3:]), f'Story 2 does not carry it: {sent}'
+    assert batches[0] == (STORY1, 'lost')
+    assert sum('vocab_items.patch_metadata' in b for b, _ in batches) == 1, batches
+    assert sent[1:] == [['set_analysis']], f'Story 2 alone: {sent}'
     assert not finished['report'].get('proposed')
+    assert finished['report']['totals']['repeated'] == 2, 'its analysis and the change, left out when sent again'
 
 
-def test_a_selections_lexicon_change_after_a_batch_whose_answer_was_lost_goes_with_the_next_write(monkeypatch):
-    """The first batch's answer is lost, so the second, the lexicon
-    change's, is never sent. The write sent again is refused twice (409,
-    nothing landed): Story 1 is put off, and Story 2's write carries the
-    change."""
-    sent, batches, finished = _lexicon_selection_batches(monkeypatch, {1: 'lost', 2: 'refused', 3: 'refused'})
+def test_a_selections_lexicon_change_in_a_write_whose_answer_was_lost_unlanded_is_sent_once(monkeypatch):
+    """Story 1's answer is lost and the request never landed: taken again
+    from the gate, core says so, and the same write is sent again (refused
+    twice then, 409): Story 1 is put off and Story 2's write carries the
+    change, written once."""
+    sent, batches, finished = _lexicon_selection_batches(monkeypatch, {1: 'unsent', 2: 'refused', 3: 'refused'})
     assert finished['state'] == 'done'
-    assert batches[0] == (['spans.create', 'tokens.create'], 'lost')
-    assert [b for b in batches if b == (PATCH, 'landed')], f'it landed with Story 2: {batches}'
+    assert batches[0] == (STORY1, 'unsent')
+    assert [b for b, fate in batches if fate == 'landed' and 'vocab_items.patch_metadata' in b] == [STORY1]
     assert not finished['report'].get('proposed')

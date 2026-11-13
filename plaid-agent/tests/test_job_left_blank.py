@@ -12,7 +12,7 @@ from job_fixtures import JobClient, Model, call, document, reply, runner, start,
 from plaid_agent.core import job as core_job
 from plaid_agent.core.job import run_job
 from plaid_agent.core.limits import JOB_ANALYSIS_MAX_CHARS
-from plaid_agent.igt.job import RECORD_FORM, mark_text
+from plaid_agent.igt.job import RECORD_FORM, writing_text
 
 J = 'JL'
 
@@ -110,12 +110,14 @@ def test_a_resumed_job_reports_what_an_earlier_run_left(monkeypatch):
     assert [e['ref'] for e in doc['left']] == ['s1.w2', 's2.w2', 's2.w3']
 
 
-def test_a_record_holds_what_fits_and_the_rest_is_counted():
+def test_a_writing_row_holds_what_fits_and_the_rest_is_counted():
     left = [{'ref': f's1.w{i}', 'begin': i * 10, 'form': 'x' * 30} for i in range(1, 200)]
-    text = mark_text({'left': len(left)}, 'd1', left)
+    text = writing_text({'write': 'w', 'try': '', 'piece': 'p', 'words': [], 'others': ['t1', 't2'],
+                         'counts': {'left': len(left)}, 'left': left})
     assert len(text) <= JOB_ANALYSIS_MAX_CHARS
-    kept = json.loads(text)['left']
-    assert 0 < len(kept) < len(left) and kept == left[:len(kept)]
+    row = json.loads(text)
+    assert 0 < len(row['left']) < len(left) and row['left'] == left[:len(row['left'])]
+    assert row['others'] == ['t1', 't2'] and row['counts'] == {'left': len(left)}, 'the blanks are cut first'
 
 
 def test_a_cut_record_counts_the_rest_as_more(monkeypatch):

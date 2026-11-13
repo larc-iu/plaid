@@ -83,6 +83,10 @@ def _job(monkeypatch):
     return client, job, clock
 
 
+def _marks(client):
+    return [r for r in client.jobs.decisions(J) if r['form'].startswith(RECORD_FORM)]
+
+
 def _mark(client, sentence_id='d1-s1'):
     rows = [r for r in client.jobs.decisions(J) if r['form'] == RECORD_FORM + sentence_id]
     assert len(rows) == 1, rows
@@ -226,8 +230,7 @@ def test_a_person_editing_under_the_lock_after_the_jobs_last_batch_is_not_record
         return out
     monkeypatch.setattr(igt_job, 'execute_plan', execute)
     assert runner(job).document('d1') == 'done'
-    mark = _mark(client)
-    assert not mark.get('words') and mark['counts']['words'] == 5
+    assert not _marks(client) and job.rows['d1']['counts']['words'] == 5, 'counted, nothing vouched for'
     assert not [r for r in client.jobs.decisions(J) if r['form'] == 'sani'], 'no precedent from it either'
     staged = _staged(monkeypatch)
     out = runner(job).harmonize(job)
@@ -283,13 +286,16 @@ def test_a_crash_before_the_record_and_a_persons_deletion_before_the_resume(monk
     clock['t'] += 3600
     job.rows = {r['document_id']: dict(r) for r in client.jobs.get(J)['documents']}
     assert runner(job).document('d1') == 'done'
-    assert not _mark(client).get('words')
+    assert not _marks(client)
     staged = _staged(monkeypatch)
     runner(job).harmonize(job)
     assert _rewritten(staged) == [], 'the deletion is not put back'
 
 
-def test_a_crash_before_the_record_with_nobody_writing_since_is_recorded_whole(monkeypatch):
+def test_a_crash_before_the_record_with_nobody_writing_since_is_counted_and_never_vouched_for(monkeypatch):
+    """Core says the write landed: it is counted from its rows, and nothing
+    of it is vouched for (what it wrote was never read back as it wrote it),
+    so harmonize leaves its words and says so."""
     client, job, clock = _job(monkeypatch)
     real = job.add_decisions
 
@@ -306,10 +312,11 @@ def test_a_crash_before_the_record_with_nobody_writing_since_is_recorded_whole(m
     monkeypatch.setattr(job, 'add_decisions', real)
     job.rows = {r['document_id']: dict(r) for r in client.jobs.get(J)['documents']}
     assert runner(job).document('d1') == 'done'
-    assert len(_mark(client)['words']) == 5, 'the newest change is the job\'s own glossing'
+    assert not _marks(client) and job.rows['d1']['counts']['words'] == 5
     staged = _staged(monkeypatch)
-    runner(job).harmonize(job)
-    assert _rewritten(staged) == ['d1-s1w5']
+    out = runner(job).harmonize(job)
+    assert _rewritten(staged) == []
+    assert [x['reason'] for x in out['left']] == ['unvouched']
 
 
 def test_one_passing_error_after_the_write_and_a_persons_deletion_in_the_wait(monkeypatch):
@@ -337,72 +344,10 @@ def test_one_passing_error_after_the_write_and_a_persons_deletion_in_the_wait(mo
     assert runner(job).document('d1') in ('done', 'deferred')
     clock['t'] += 3600
     assert runner(job).document('d1') == 'done'
-    assert not _mark(client).get('words')
+    assert not _marks(client)
     staged = _staged(monkeypatch)
     runner(job).harmonize(job)
     assert _rewritten(staged) == []
-
-
-def test_a_write_refused_on_its_second_batch_is_put_off_and_never_vouched_for(monkeypatch):
-    """A stretch of two sentences written in two batches: s1's lands, s2's
-    is refused, the starter having typed in s3 meanwhile. The document is
-    put off, s2 is not written again at once, and when the document comes
-    back the person's edit is its newest change: what the job wrote in s1
-    is recorded without its keys, whatever the person did to it, and s2,
-    holding nothing of the job, is skipped as interrupted until a later
-    piece writes in it."""
-    human = {'form': 'ka', 'morphs': [('ka', 'go')], 'who': 'human'}
-    blank = [{'words': ['sani', 'sani']}, {'words': ['sani', 'sani']}, {'words': [human]}]
-    typed = {'form': 'ka', 'morphs': [('ka', 'went')], 'who': 'human'}
-    client = JobClient({'d1': document('d1', 'Story', blank)})
-    clock = {'t': 1_800_000_000.0}
-    job = start(client, id=J, now=lambda: clock['t'])
-    job._sleep = lambda s: clock.__setitem__('t', clock['t'] + s)
-    job.job['created_at'] = _iso(clock['t'] - 3600)
-
-    def model(asked, n, kwargs):
-        if n > 1:
-            return reply('Done.')
-        return reply(calls=[call(i, 'set_analysis', {'document': 'Story', 'ref': ref, 'morphemes': [
-            {'form': 'sa', 'fields': {'Morph Gloss': 'go'}}, {'form': 'ni', 'fields': {'Morph Gloss': 'now'}}]})
-            for i, ref in enumerate(['s1.w1', 's1.w2', 's2.w1', 's2.w2'], start=1)])
-    use(monkeypatch, Model(model))
-    from plaid_agent.core import plan
-    budget = plan.TrackingBatcher.__init__.__defaults__
-    monkeypatch.setattr(plan.TrackingBatcher.__init__, '__defaults__', (2,) + budget[1:])
-    from plaid_client import testing
-    real, n = testing._Batch.submit, {'n': 0}
-
-    def submit(self):
-        n['n'] += 1
-        if n['n'] == 2:
-            # The starter typed in s3 just before: newest in History, and
-            # older than the quiet window by the time anyone looks.
-            done = [{'words': [sani('now'), sani('now')]}, {'words': ['sani', 'sani']}, {'words': [typed]}]
-            _person_edits(client, 'd1', done, 3, {'t': clock['t'] - 700})
-            raise PlaidAPIError('HTTP 409 version', status=409)
-        return real(self)
-    monkeypatch.setattr(testing._Batch, 'submit', submit)
-    landed = len(client.batches)
-    assert runner(job).document('d1') == 'deferred'
-    assert len(client.batches) - landed == 1, 'the first batch landed, and nothing was sent again at once'
-    # Back later: the person cleared the gloss of -ni on s1.w2 meanwhile.
-    clock['t'] += 3600
-    cleared = [{'words': [sani('now'), sani(None)]}, {'words': ['sani', 'sani']}, {'words': [typed]}]
-    _person_edits(client, 'd1', cleared, 4, {'t': clock['t'] - 700})
-    monkeypatch.setattr(testing._Batch, 'submit', real)
-    staged = _staged(monkeypatch)
-    assert runner(job).document('d1') == 'done'
-    assert not _mark(client, 'd1-s1').get('words'), 's1 is not vouched for'
-    # s2's batch never landed, but the job cannot tell that from a person's
-    # removal of what landed: it leaves s2 and says so (REV-FIX3-1). The
-    # piece run now is s3's, with s1 and s2 as its context: this model
-    # stages there whatever its piece, and a later piece's change is
-    # written (REV-JH-1). s2, which it wrote in, is then no longer listed
-    # as interrupted (REV-JSF-5).
-    assert sorted(o['word_id'] for o in staged) == ['d1-s1w1', 'd1-s1w2', 'd1-s2w1', 'd1-s2w2'], staged
-    assert not job.rows['d1'].get('skipped')
-    assert _mark(client, 'd1-s2')['counts'].get('analyzed') == 1, 'recorded'
 
 
 def test_a_write_refused_before_anything_landed_is_sent_once_more_and_vouched_for(monkeypatch):
@@ -425,15 +370,14 @@ def test_a_write_refused_before_anything_landed_is_sent_once_more_and_vouched_fo
 
 # --- the record's size ----------------------------------------------------------------
 
-def test_a_record_cuts_the_blanks_first_and_then_the_words():
-    left = [{'ref': f's1.w{i}', 'begin': i, 'form': 'x' * 30} for i in range(60)]
+def test_a_record_holds_the_keys_that_fit():
     words = {f'{i:012d}': 'a' * 12 for i in range(200)}
-    text = igt_job.mark_text({'left': 60}, 'd1', left, words)
+    text = igt_job.mark_text('d1', words)
     import json
     mark = json.loads(text)
-    assert len(text) <= 4000 and mark['left'] == [] and 0 < len(mark['words']) < 200
-    small = json.loads(igt_job.mark_text({'left': 1}, 'd1', left[:1], dict(list(words.items())[:3])))
-    assert len(small['left']) == 1 and len(small['words']) == 3
+    assert len(text) <= 4000 and 0 < len(mark['words']) < 200
+    small = json.loads(igt_job.mark_text('d1', dict(list(words.items())[:3])))
+    assert small == {'document': 'd1', 'words': dict(list(words.items())[:3])}
 
 
 def test_a_write_sent_once_more_draws_its_keys_from_a_seed_of_its_own(monkeypatch):
