@@ -209,10 +209,23 @@ def recorded(job):
     now, as its stretches would have left it among its decisions, each word
     vouched for: harmonize rewrites only what the job recorded it wrote on
     that word (REV-J-B2 S3-1, REV-J-B3)."""
+    from plaid_agent.igt import job as igt_job
     r = runner(job)
     project = r.project()
     for d in job.order:
-        r.settle(project, d, r.read(project, d), own=True)
+        doc = r.read(project, d)
+        # The writing row each stretch sends before its write (REV-FIX3-1).
+        rows = []
+        for s in doc.sentences:
+            words = [igt_job.word_tag(w.id) for w in s.words if igt_job.job_owned(w, job.id)]
+            own = igt_job.translation_state(s, project, job.id) == 'own'
+            if words or own:
+                text = igt_job.writing_text(d, 'translations' if own else None, words)
+                rows.append({'form': igt_job.writing_form(s.id), 'key': igt_job.analysis_key(text),
+                             'analysis': text, 'count': 1, 'document_id': d, 'sentence_id': s.id})
+        if rows:
+            job.add_decisions(rows)
+        r.settle(project, d, doc, own=True)
     return job
 
 

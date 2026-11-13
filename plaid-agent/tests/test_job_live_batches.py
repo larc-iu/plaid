@@ -4,6 +4,8 @@ the job's batches, and core refuses the next batch for the moved version.
 The job writes nothing again under the keys it already used (core would
 refuse a different request under a key it stored, 422
 ``idempotency-key-reused``), puts the document off, and finishes it later.
+And a write whose record was lost, after which the starter deleted what the
+job wrote in a sentence, is not written again (REV-FIX3-1).
 
 Runs on the session's core (``live.py``), or the one PLAID_TEST_URL names."""
 
@@ -90,8 +92,87 @@ def test_a_write_refused_on_a_later_batch_sends_nothing_again_under_its_keys(wor
     assert not any(status == 422 for status, _ in refused), f'a key used again for another request: {refused}'
     assert finished['state'] == 'done', (finished.get('reason'), writer.jobs.get(made['id']).get('message'))
     row = writer.jobs.get(made['id'])['documents'][0]
-    assert row['state'] == 'done' and row['counts']['words'] == 4, row
+    # s1 landed and is recorded. Nothing of s2's write landed, and the
+    # starter's edit is the newest change: the job cannot tell that from a
+    # person's removal of the job's work, so s2 is left (REV-FIX3-1).
+    assert row['state'] == 'done' and row['counts']['words'] == 2, row
+    assert [(x['sentence'], x['reason']) for x in row['skipped']] == [('s2', 'interrupted')], row
     raw = admin.documents.get(d1, include_body=True)
     glosses = [sp['value'] for tl in raw['text_layers'] for tk in tl['token_layers']
                for sl in tk.get('span_layers') or [] for sp in sl.get('spans') or []]
-    assert glosses.count('now') == 4 and 'typed' in glosses
+    assert glosses.count('now') == 2 and 'typed' in glosses
+
+
+@pytest.fixture
+def story():
+    try:
+        admin = login()
+    except Exception as e:  # noqa: BLE001
+        _skip_or_fail(f'no core: {e}')
+    from plaid_client import PlaidClient
+    email = f'job-writing-{uuid.uuid4().hex[:8]}@example.org'
+    admin.users.create(email, 'job-writing-pass-1', False)
+    writer = PlaidClient.login(core_url(), email, 'job-writing-pass-1')
+    docs = {'d1': document('d1', 'Story', [{'words': ['sani']}, {'words': ['gam', 'sani']}])}
+    lexicon = {'id': 'v1', 'name': 'Lexicon', 'project': 'p1', 'items': []}
+    s = seed(admin, job_project(), docs, {'v1': lexicon}, name=f'job writing {uuid.uuid4().hex[:6]}')
+    admin.projects.add_writer(s.project_id, email)
+    yield admin, writer, s
+    s.delete()
+
+
+def _translate(asked, n, kwargs):
+    if n > 1:
+        return reply('Done.')
+    line = next(x for x in asked.splitlines() if x.startswith('Translate '))
+    named = [r.strip() for r in line[len('Translate '):].split('.')[0].split(',')]
+    return reply(calls=[call(i, 'set_field', {'document': 'Story', 'refs': [sid], 'field': 'Translation',
+                                              'value': f'{sid} by the job.'}) for i, sid in enumerate(named, 1)])
+
+
+def _translations(admin, s):
+    raw = admin.documents.get(s.ids['d1'], include_body=True)
+    return [(sp['id'], sp['value']) for tl in raw['text_layers'] for tk in tl['token_layers']
+            for sl in tk.get('span_layers') or [] for sp in sl.get('spans') or [] if sp.get('value')]
+
+
+def test_a_translation_the_starter_deleted_after_a_lost_answer_is_not_written_again(story, monkeypatch):
+    """REV-FIX3-1 (its L5): the job's write lands, its answer is lost, and
+    in the wait the starter deletes the job's translation of s1. The job
+    holds a writing row for s1, finds nothing of its own there and a
+    person's edit since: s1 is left, listed as interrupted."""
+    admin, writer, s = story
+    from plaid_client import PlaidAPIError, PlaidClient
+    from plaid_client.batch import PlaidBatch
+    model = use(monkeypatch, Model(_translate))
+    made = writer.jobs.create(s.project_id, 'igt', ['translate'])
+    claimed = admin.jobs.claim(WORKER, 'fake/m', ['igt'])
+    assert claimed and claimed['job']['id'] == made['id']
+    offset, deleted = {'s': 0.0}, []
+
+    def sleep(seconds):
+        for sid, value in _translations(admin, s):
+            if value == 's1 by the job.' and not deleted:
+                writer.spans.delete(sid)
+                deleted.append(sid)
+        offset['s'] += seconds
+    job = Job(admin, claimed, WORKER, client_for=lambda token: PlaidClient(core_url(), token), model='fake/m',
+              sleep=sleep, now=lambda: time.time() + offset['s'])
+    real, sent = PlaidBatch.submit, {'n': 0}
+
+    def submit(self):
+        sent['n'] += 1
+        out = real(self)
+        if sent['n'] == 1:
+            raise PlaidAPIError('HTTP 502 lost after landing', status=502, method='POST', url='/batch')
+        return out
+    monkeypatch.setattr(PlaidBatch, 'submit', submit)
+    runner = IgtRunner(job, ModelConfig(model='fake/m', stream=False, max_steps=1000), count=count_chars)
+    finished = run_job(job, runner)
+    assert deleted, 'the starter deleted the job\'s translation in the wait'
+    assert finished['state'] == 'done', (finished.get('reason'), writer.jobs.get(made['id']).get('message'))
+    assert [v for _, v in _translations(admin, s)] == ['s2 by the job.'], 'the deletion stands'
+    assert sum(1 for c in model.calls if c['n'] == 1) == 1, 'the model was not asked again'
+    report = writer.jobs.get(made['id'])['report']
+    assert [(x['sentence'], x['reason']) for x in report['documents'][0]['skipped']] == [('s1', 'interrupted')]
+    assert report['totals']['translations'] == 1 and report['totals']['skipped_interrupted'] == 1

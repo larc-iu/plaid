@@ -240,7 +240,10 @@ def test_a_crash_before_the_record_and_a_persons_deletion_before_the_resume(monk
     real = job.add_decisions
 
     def crash(decisions):
-        raise Crash()
+        # The record's call, after the write: its writing row landed before it.
+        if any(d['form'].startswith(RECORD_FORM) for d in decisions):
+            raise Crash()
+        return real(decisions)
     monkeypatch.setattr(job, 'add_decisions', crash)
     try:
         runner(job).document('d1')
@@ -263,7 +266,10 @@ def test_a_crash_before_the_record_with_nobody_writing_since_is_recorded_whole(m
     real = job.add_decisions
 
     def crash(decisions):
-        raise Crash()
+        # The record's call, after the write: its writing row landed before it.
+        if any(d['form'].startswith(RECORD_FORM) for d in decisions):
+            raise Crash()
+        return real(decisions)
     monkeypatch.setattr(job, 'add_decisions', crash)
     try:
         runner(job).document('d1')
@@ -285,11 +291,13 @@ def test_one_passing_error_after_the_write_and_a_persons_deletion_in_the_wait(mo
     real = client.jobs.add_decisions
     calls = {'n': 0}
 
-    def add(*a, **kw):
-        calls['n'] += 1
-        if calls['n'] == 1:
-            raise PlaidAPIError('HTTP 502', status=502)
-        return real(*a, **kw)
+    def add(job_id, worker_id, decisions):
+        # The record's call, after the write (the writing row before it lands).
+        if any(d['form'].startswith(RECORD_FORM) for d in decisions):
+            calls['n'] += 1
+            if calls['n'] == 1:
+                raise PlaidAPIError('HTTP 502', status=502)
+        return real(job_id, worker_id, decisions)
     client.jobs.add_decisions = add
     real_sleep = job._sleep
 
@@ -312,7 +320,8 @@ def test_a_write_refused_on_its_second_batch_is_put_off_and_never_vouched_for(mo
     is refused, the starter having typed in s3 meanwhile. The document is
     put off, s2 is not written again at once, and when the document comes
     back the person's edit is its newest change: what the job wrote in s1
-    is recorded without its keys, whatever the person did to it."""
+    is recorded without its keys, whatever the person did to it, and s2,
+    holding nothing of the job, is skipped as interrupted."""
     human = {'form': 'ka', 'morphs': [('ka', 'go')], 'who': 'human'}
     blank = [{'words': ['sani', 'sani']}, {'words': ['sani', 'sani']}, {'words': [human]}]
     typed = {'form': 'ka', 'morphs': [('ka', 'went')], 'who': 'human'}
@@ -353,18 +362,14 @@ def test_a_write_refused_on_its_second_batch_is_put_off_and_never_vouched_for(mo
     cleared = [{'words': [sani('now'), sani(None)]}, {'words': ['sani', 'sani']}, {'words': [typed]}]
     _person_edits(client, 'd1', cleared, 4, {'t': clock['t'] - 700})
     monkeypatch.setattr(testing._Batch, 'submit', real)
-    real_execute = igt_job.execute_plan
-
-    def execute(c, ops, **kw):
-        # What the job's write of s2 leaves.
-        client.after_write['d1'] = document('d1', 'Story', [{'words': [sani('now'), sani(None)]},
-                                                            {'words': [sani('now'), sani('now')]},
-                                                            {'words': [typed]}], version=5)
-        return real_execute(c, ops, **kw)
-    monkeypatch.setattr(igt_job, 'execute_plan', execute)
+    staged = _staged(monkeypatch)
     assert runner(job).document('d1') == 'done'
     assert not _mark(client, 'd1-s1').get('words'), 's1 is not vouched for'
-    assert len(_mark(client, 'd1-s2')['words']) == 2, 's2 was written whole under one lock'
+    # s2's batch never landed, but the job cannot tell that from a person's
+    # removal of what landed: it leaves s2 and says so (REV-FIX3-1).
+    assert not staged, 'nothing is written again'
+    assert {'sentence': 's2', 'sentence_id': 'd1-s2', 'reason': 'interrupted', 'kind': None} \
+        in job.rows['d1']['skipped']
 
 
 def test_a_write_refused_before_anything_landed_is_sent_once_more_and_vouched_for(monkeypatch):

@@ -124,7 +124,10 @@ def test_a_sentence_recorded_after_a_crash_counts_and_lists_what_was_left_blank(
     real = job.add_decisions
 
     def crash(decisions):
-        raise _Crash()
+        # The record's call, after the write: its writing row landed before it.
+        if any(d['form'].startswith(RECORD_FORM) for d in decisions):
+            raise _Crash()
+        return real(decisions)
     monkeypatch.setattr(job, 'add_decisions', crash)
     try:
         runner(job).document('d1')

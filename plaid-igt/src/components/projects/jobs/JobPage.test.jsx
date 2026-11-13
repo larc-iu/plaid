@@ -92,6 +92,7 @@ const REPORT = {
     skippedTooLong: 1,
     skippedFailed: 1,
     skippedChanged: 0,
+    skippedInterrupted: 1,
     changed: 2,
     protected: 0,
   },
@@ -102,6 +103,7 @@ const REPORT = {
       skipped: [
         { sentence: 's12', sentenceId: 'sen12', reason: 'too-long', kind: null },
         { sentence: 's30', sentenceId: 'sen30', reason: 'failed', kind: 'repeating' },
+        { sentence: 's31', sentenceId: 'sen31', reason: 'interrupted', kind: null },
       ],
     },
   ],
@@ -362,6 +364,7 @@ describe('the job page', () => {
     expect(sums).not.toHaveProperty('Documents in use');
     expect(sums['Words analyzed']).toBe('120');
     expect(sums['Sentences skipped as too long']).toBe('1');
+    expect(sums['Sentences skipped after an interrupted write']).toBe('1');
     expect(sums['Changes not written, sentence changed meanwhile']).toBe('2');
     expect(sums['Paused for people']).toBe('12 min');
     expect(sums).not.toHaveProperty('Waiting for the model');
@@ -372,6 +375,7 @@ describe('the job page', () => {
     );
     expect(t).toContain('s12 Too long');
     expect(t).toContain('s30 Failed: model repeated itself');
+    expect(t).toContain('s31 Write interrupted');
     // Harmonize.
     expect(t).toContain('ka ‘go’');
     expect(t).toContain('A person’s analysis');

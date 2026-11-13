@@ -42,6 +42,7 @@ const totalRows = (report) => {
   optional('Sentences skipped as too long', t.skippedTooLong);
   optional('Sentences skipped as failed', t.skippedFailed);
   optional('Sentences skipped as changed during the job', t.skippedChanged);
+  optional('Sentences skipped after an interrupted write', t.skippedInterrupted);
   optional('Sentences skipped and not listed', t.skippedMore);
   optional('Changes not written, sentence changed meanwhile', t.changed);
   optional('Changes not written, a person’s work', t.protected);

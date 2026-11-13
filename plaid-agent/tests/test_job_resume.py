@@ -6,7 +6,7 @@ import json
 from job_fixtures import JobClient, Model, call, document, reply, runner, start, use
 
 from plaid_agent.core.job import analysis_key, canonical
-from plaid_agent.igt.job import RECORD_FORM, IgtRunner
+from plaid_agent.igt.job import RECORD_FORM, WRITING_FORM, IgtRunner
 
 
 def _analyse_all(asked, n, kwargs):
@@ -43,7 +43,7 @@ def test_a_stretch_counts_what_it_wrote_and_records_its_decisions(monkeypatch):
     by_form = {}
     for (form, key), r in decided.items():
         assert key == analysis_key(r['analysis'])
-        if form.startswith(RECORD_FORM):
+        if form.startswith((RECORD_FORM, WRITING_FORM)):
             continue
         by_form.setdefault(form, []).append(r)
         assert key == analysis_key(r['analysis']) and r['analysis'] == canonical(json.loads(r['analysis']))

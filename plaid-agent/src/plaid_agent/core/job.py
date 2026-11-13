@@ -659,8 +659,8 @@ def build_report(job: Job, state: str, reason: Optional[str], documents: List[Di
     one entry per document in the job's order, from the app."""
     totals = {'documents_done': 0, 'documents_in_use': 0, 'documents_gone': 0, 'documents_not_reached': 0,
               'sentences': 0, 'translations': 0, 'refreshed': 0, 'words': 0, 'links': 0, 'entries': 0,
-              'skipped_too_long': 0, 'skipped_failed': 0, 'skipped_changed': 0, 'skipped_more': 0, 'changed': 0,
-              'protected': 0}
+              'skipped_too_long': 0, 'skipped_failed': 0, 'skipped_changed': 0, 'skipped_interrupted': 0,
+              'skipped_more': 0, 'changed': 0, 'protected': 0}
     for d in documents:
         key = {'done': 'documents_done', 'in-use': 'documents_in_use', 'gone': 'documents_gone'}.get(
             d.get('state'), 'documents_not_reached')

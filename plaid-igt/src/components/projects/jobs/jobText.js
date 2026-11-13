@@ -38,6 +38,7 @@ const FAILURE_TEXT = {
 export const skippedText = ({ reason, kind }) => {
   if (reason === 'too-long') return 'Too long';
   if (reason === 'changed') return 'Changed during the job';
+  if (reason === 'interrupted') return 'Write interrupted';
   if (reason === 'failed') return FAILURE_TEXT[kind] ? `Failed: ${FAILURE_TEXT[kind]}` : 'Failed';
   return reason;
 };

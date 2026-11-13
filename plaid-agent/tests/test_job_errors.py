@@ -14,10 +14,12 @@ from job_fixtures import JobClient, Model, call, document, reply, runner, start,
 
 from plaid_client import PlaidAPIError
 from plaid_agent.core import job as core_job
+from plaid_agent.core.plan import PlanError
 from plaid_agent.core.job import failure_kind, run_job
 from plaid_agent.core.limits import JOB_CORE_TRIES, JOB_CORE_WAIT_S
 from plaid_agent.igt import job as igt_job
 RECORD_FORM = ' sentence '  # a sentence's record among the decisions (CONTRACT, added by J-FIX-B)
+WRITING_FORM = ' writing '  # a sentence the job is about to write in (CONTRACT, added by J-FIX-B4)
 
 J = 'JE'
 
@@ -66,7 +68,8 @@ def _real_rows(client):
 
 
 def _decided(client):
-    return {form: r['count'] for (form, key), r in _real_rows(client).items() if not form.startswith(RECORD_FORM)}
+    return {form: r['count'] for (form, key), r in _real_rows(client).items()
+            if not form.startswith((RECORD_FORM, WRITING_FORM))}
 
 
 def _targets_asked(model):
@@ -82,7 +85,8 @@ def test_a_core_error_on_the_write_is_tried_again_and_never_halved(monkeypatch):
     def execute(c, ops, **kw):
         if left['n']:
             left['n'] -= 1
-            raise PlaidAPIError('HTTP 500', status=500)
+            # As execute_plan says it: nothing landed.
+            raise PlanError('HTTP 500', 0, len(ops)) from PlaidAPIError('HTTP 500', status=500)
         return real(c, ops, **kw)
     monkeypatch.setattr(igt_job, 'execute_plan', execute)
     assert runner(job).document('d1') == 'done'
@@ -96,7 +100,8 @@ def test_core_out_of_reach_for_long_puts_the_document_off(monkeypatch):
     use(monkeypatch, Model(_analyse))
 
     def execute(c, ops, **kw):
-        raise PlaidAPIError('Network error', status=0)
+        # As execute_plan says it: no answer came, so it may have landed.
+        raise PlanError('Network error', 0, len(ops), unknown=True) from PlaidAPIError('Network error', status=0)
     monkeypatch.setattr(igt_job, 'execute_plan', execute)
     assert runner(job).document('d1') == 'deferred'
     assert not job.rows['d1'].get('skipped') and job.rows['d1']['state'] == 'deferred'
@@ -167,7 +172,10 @@ def _crash_at(monkeypatch, job, where):
         real = job.add_decisions
 
         def add(decisions):
-            raise Crash()
+            # The record's call, after the write: the writing row before it lands.
+            if any(d['form'].startswith(RECORD_FORM) for d in decisions):
+                raise Crash()
+            return real(decisions)
         monkeypatch.setattr(job, 'add_decisions', add)
         return lambda: monkeypatch.setattr(job, 'add_decisions', real)
     real = job.update_row

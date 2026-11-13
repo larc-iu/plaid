@@ -7,6 +7,7 @@ where half of them fail, and one stopped midway."""
 from job_fixtures import JobClient, Model, call, document, reply, runner, start, targets_named, use
 
 from plaid_agent.core.job import run_job
+from plaid_agent.igt import job as igt_job
 
 J = 'JT'
 
@@ -46,9 +47,14 @@ def test_a_job_whose_every_call_fails_analysed_no_sentence(monkeypatch):
 def test_a_job_where_half_the_sentences_fail_counts_the_other_half(monkeypatch):
     mine = ('ka', [('ka', 'go')], J)
     client = JobClient({d: document(d, d, [{'words': ['ka']}, {'words': ['ka']}]) for d in ('d1', 'd2')})
-    for d in ('d1', 'd2'):
-        # The document once the job wrote its s1.
+    real = igt_job.execute_plan
+
+    def execute(c, ops, **kw):
+        # The document once the job wrote its s1, from that write on.
+        d = next(o['word_id'] for o in ops if o.get('word_id')).split('-')[0]
         client.after_write[d] = document(d, d, [{'words': [mine]}, {'words': ['ka']}], version=2)
+        return real(c, ops, **kw)
+    monkeypatch.setattr(igt_job, 'execute_plan', execute)
     job = start(client, ['gloss'], id=J)
     use(monkeypatch, Model(_analysing(bad=(2,))))
     finished = run_job(job, runner(job))
