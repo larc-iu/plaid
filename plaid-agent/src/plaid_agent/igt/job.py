@@ -663,17 +663,28 @@ class JobWorkspace(Workspace):
         v = next((x for x in self.project.vocabs if x['id'] == op.get('vocab_id')), None)
         if v is None or v.get('borrowed'):
             return
-        gloss = IgtProject.lexicon_field(v, ROLE_GLOSS)
-        form = _nfc(op.get('form'))
-        value = _nfc((op.get('metadata') or {}).get(gloss)) if gloss else ''
-        for item in self.lexicon(v):
-            if _nfc(item.get('form')) == form and _nfc((item.get('metadata') or {}).get(gloss)) == value:
-                raise ToolError(f'{self.entry_name(item)} ‘{value}’ exists: link it.', kind='conflict')
-        for o in self.ops:
-            if o.get('kind') == 'create_entry' and o.get('vocab_id') == v['id'] and _nfc(o.get('form')) == form \
-                    and _nfc((o.get('metadata') or {}).get(gloss)) == value:
-                raise ToolError(f'"{form}" ‘{value}’ is staged already as entry_id {o.get("key")}: link it.',
-                                kind='conflict')
+        value = _entry_gloss(op, IgtProject.lexicon_field(v, ROLE_GLOSS))
+        item = fitting_entry(v, self.lexicon(v), op)
+        if item is not None:
+            raise ToolError(f'{self.entry_name(item)} ‘{value}’ exists: link it.', kind='conflict')
+        staged = fitting_entry(v, [o for o in self.ops if o.get('kind') == 'create_entry'
+                                   and o.get('vocab_id') == v['id']], op)
+        if staged is not None:
+            raise ToolError(f'"{_nfc(op.get("form"))}" ‘{value}’ is staged already as entry_id {staged.get("key")}: '
+                            'link it.', kind='conflict')
+
+
+def _entry_gloss(item: Dict[str, Any], gloss: Optional[str]) -> str:
+    return _nfc((item.get('metadata') or {}).get(gloss)) if gloss else ''
+
+
+def fitting_entry(v: Dict[str, Any], items: List[Dict[str, Any]], op: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """The first of ``items`` (entries of lexicon ``v``) that fits the
+    create ``op``: the same form and gloss, after NFC (SPEC 7.2). No entry is
+    created where one fits, made by anyone, of any status."""
+    gloss = IgtProject.lexicon_field(v, ROLE_GLOSS)
+    form, value = _nfc(op.get('form')), _entry_gloss(op, gloss)
+    return next((it for it in items if _nfc(it.get('form')) == form and _entry_gloss(it, gloss) == value), None)
 
 
 # --- the runner --------------------------------------------------------------------
@@ -1205,11 +1216,42 @@ class IgtRunner:
         def step():
             part = list(doc.sentences)
             prints = {s.id: ws.sentence_print(doc, s) for s in doc.sentences}
-            self.write(project, document_id, ws, doc, part, prints, ops, note)
+            self.write(project, document_id, ws, doc, part, prints, self.entries_that_fit(project, ops), note)
 
         def put_off():
             raise Deferred(document_id)
         core_job.through_core(self.job, step, gave_up=put_off)
+
+    def entries_that_fit(self, project: IgtProject, ops: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """``ops`` with no entry created where one fits now (``fitting_entry``,
+        the rule ``fit_guard`` holds at staging, asked again of the lexicon as
+        it is at the write): such a create is left out and every link naming
+        it names the entry there. So the entry a selection links in several
+        documents is created with the first document written, and the others
+        link it, even when that write landed and the job was then taken up
+        again (REV-JG2-2). The lexicon is read only for ops holding a create."""
+        creates = [o for o in ops if o.get('kind') == 'create_entry']
+        if not creates:
+            return ops
+        ws = Workspace(self.job.client(), project)
+        found: Dict[str, str] = {}
+        for o in creates:
+            v = next((x for x in project.vocabs if x['id'] == o.get('vocab_id')), None)
+            if v is None or v.get('borrowed'):
+                continue
+            item = fitting_entry(v, ws.lexicon(v), o)
+            if item is not None:
+                found[o.get('key')] = item['id']
+        if not found:
+            return ops
+        out = []
+        for o in ops:
+            if o.get('kind') == 'create_entry' and o.get('key') in found:
+                continue
+            if o.get('kind') in ('link', 'link_phrase') and o.get('new_entry_key') in found:
+                o = {**o, 'item_id': found[o['new_entry_key']], 'new_entry_key': None}
+            out.append(o)
+        return out
 
     def selection_work(self, project: IgtProject, documents: List[str]):
         job = self.job
@@ -1232,7 +1274,9 @@ class IgtRunner:
         """A piece's ops by the document each writes in (by the token it
         names, among the documents the piece read), None for an op of no
         document: an entry of its own, a guideline, a setting. A create is
-        put with the first link that names it."""
+        put with every document whose ops link it: the first written creates
+        it, and the others find it there (:meth:`entries_that_fit`), so one
+        entry linked in several documents is created once (REV-JG2-2)."""
         from .jobapply import token_of
         where: Dict[str, str] = {}
         for d, doc in ws._docs.items():
@@ -1254,11 +1298,11 @@ class IgtRunner:
             d = op.get('document_id') or where.get(token)
             out.setdefault(d, []).append(op)
             key = op.get('new_entry_key')
-            if key in creates and key not in placed:
+            if key in creates and (d, key) not in placed:
                 out[d].insert(0, creates[key])
-                placed.add(key)
+                placed.add((d, key))
         for key, op in creates.items():
-            if key not in placed:
+            if not any(k == key for _, k in placed):
                 out.setdefault(None, []).append(op)
         return out
 

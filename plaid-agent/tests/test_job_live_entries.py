@@ -126,3 +126,56 @@ def test_a_draft_a_person_unlinks_during_the_job_is_never_deleted(world, monkeyp
     assert md.get('gloss') == ('rock' if edit == 'gloss' else 'stone')
     entries = finished['report']['entries']
     assert [e['id'] for e in entries['unlinked']] == [item['id']] and not entries.get('deleted')
+
+
+class Crash(BaseException):
+    """The worker's process dies here."""
+
+
+def _tok_in_both(asked, n, kwargs):
+    """The selection analyses tok in both documents, makes one entry for it
+    and links both, by its form."""
+    if n == 1:
+        return reply(calls=[
+            call(1, 'set_analysis', {'document': 'Alpha', 'ref': 's1.w1',
+                                     'morphemes': [{'form': 'tok', 'fields': {'Morph Gloss': 'stone'}}]}),
+            call(2, 'set_analysis', {'document': 'Beta', 'ref': 's1.w1',
+                                     'morphemes': [{'form': 'tok', 'fields': {'Morph Gloss': 'stone'}}]}),
+            call(3, 'create_entry', {'form': 'tok', 'fields': {'gloss': 'stone'}})])
+    if n == 2:
+        return reply(calls=[call(4 + i, 'link_entry', {'document': d, 'refs': ['s1.w1.m1'], 'entry_form': 'tok'})
+                            for i, d in enumerate(['Alpha', 'Beta'])])
+    return reply('Glossed tok in both.')
+
+
+@pytest.mark.parametrize('crash', [False, True])
+def test_a_selection_links_one_new_entry_in_two_documents_and_creates_it_once(world, monkeypatch, crash):
+    """REV-JG2-2: one entry, made with the first document's write, and the
+    second document's link names it. With a crash between the two documents'
+    writes, the job taken up again by a new worker creates nothing again and
+    links the second document to the entry the first write made."""
+    admin, writer, make = world
+    s = make({'dA': document('dA', 'Alpha', [{'words': ['tok']}]), 'dB': document('dB', 'Beta', [{'words': ['tok']}])})
+    use(monkeypatch, Model(_tok_in_both))
+    job = _job(admin, writer, s, 'selection')
+    if crash:
+        real = IgtRunner.write
+
+        def write(self, project, d, *a, **kw):
+            if d == s.ids['dB']:
+                raise Crash()
+            return real(self, project, d, *a, **kw)
+        monkeypatch.setattr(IgtRunner, 'write', write)
+        with pytest.raises(Crash):
+            run_job(job, _runner(job))
+        monkeypatch.setattr(IgtRunner, 'write', real)
+        assert len([x for x in _items(admin, s) if x.get('form') == 'tok']) == 1, 'the first write made it'
+        job.rows = {x['document_id']: dict(x) for x in admin.jobs.get(job.id)['documents']}
+    finished = run_job(job, _runner(job))
+    assert finished['state'] == 'done', (finished.get('reason'), job.status.get('message'))
+    made = [x for x in _items(admin, s) if x.get('form') == 'tok']
+    assert len(made) == 1, made
+    for d in ('dA', 'dB'):
+        assert [link['vocab_item']['id'] if isinstance(link['vocab_item'], dict) else link['vocab_item']
+                for link in _links(admin, s, d)] == [made[0]['id']], d
+        assert len(_morphs(admin, s, d)) == 1

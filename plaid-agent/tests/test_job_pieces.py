@@ -314,6 +314,91 @@ def test_a_selection_is_one_piece_whose_writes_land_document_by_document(monkeyp
     assert finished['report']['notes'][0]['note'] == 'Glossed ka in both texts.'
 
 
+def _lexicon_takes_creates(monkeypatch, client):
+    """The fake's lexicon holds what the job's writes create, as core's
+    does: each entry a write created is in the next read of the lexicon."""
+    real = igt_job.execute_plan
+
+    def execute(c, ops, **kw):
+        before = len(client.calls)
+        out = real(c, ops, **kw)
+        for kind, p in client.calls[before:]:
+            if kind == 'vocab_items.create':
+                vocab_id, form, metadata = (list(p['args']) + [None])[:3]
+                client._lexicon['items'].append({'id': p['kwargs']['id'], 'form': form,
+                                                 'metadata': metadata or p['kwargs'].get('metadata') or {}})
+        return out
+    monkeypatch.setattr(igt_job, 'execute_plan', execute)
+
+
+@pytest.mark.parametrize('first', ['Story 1', 'Story 2'])
+def test_a_selection_that_links_one_new_entry_in_two_documents_creates_it_once(monkeypatch, first):
+    """REV-JG2-2: the selection makes one entry and links it in both
+    documents, the links staged in either order. The entry is created with
+    the first document written that links it, and the other document's link
+    names the entry made: the job ends done, one entry, both linked."""
+    client = JobClient(_docs(2))
+    _lexicon_takes_creates(monkeypatch, client)
+    job = start(client, 'Gloss and link every word nobody analysed.', id=J, plan='selection')
+
+    def piece(asked, n):
+        if n == 1:
+            return reply(calls=[
+                call(1, 'set_analysis', {'document': 'Story 1', 'ref': 's1.w1',
+                                         'morphemes': [{'form': 'ka', 'fields': {'Morph Gloss': 'go'}}]}),
+                call(2, 'set_analysis', {'document': 'Story 2', 'ref': 's1.w1',
+                                         'morphemes': [{'form': 'ka', 'fields': {'Morph Gloss': 'go'}}]}),
+                call(3, 'create_entry', {'form': 'ka', 'fields': {'gloss': 'go'}})])
+        if n == 2:
+            names = [first] + [x for x in ('Story 1', 'Story 2') if x != first]
+            return reply(calls=[call(4 + i, 'link_entry', {'document': d, 'refs': ['s1.w1.m1'],
+                                                           'entry_id': 'new:v1:ka#1'}) for i, d in enumerate(names)])
+        return reply('Glossed ka in both texts and linked it.')
+    use(monkeypatch, _model(piece=piece))
+    finished = run_job(job, runner(job))
+    assert finished['state'] == 'done', (finished.get('reason'), job.status.get('message'))
+    made = [p['kwargs']['id'] for k, p in client.calls if k == 'vocab_items.create']
+    assert len(made) == 1, made
+    links = [p for k, p in client.calls if k == 'vocab_links.create']
+    assert len(links) == 2 and all(made[0] in (list(p['args']) + list(p['kwargs'].values())) for p in links), links
+    assert [d['state'] for d in finished['report']['documents']] == ['done', 'done']
+    assert [e['id'] for e in finished['report']['entries']['created']] == made
+
+
+def test_a_selections_second_document_links_an_entry_that_fits_and_creates_none(monkeypatch):
+    """The entry the selection staged exists already when its second
+    document is written (made by the first document's write before a passing
+    error, or by anyone): no entry is created where one fits, at the write
+    as at staging, and the link names the one there."""
+    client = JobClient(_docs(2))
+    _lexicon_takes_creates(monkeypatch, client)
+    job = start(client, 'Gloss and link every word nobody analysed.', id=J, plan='selection')
+    real = igt_job.IgtRunner.write_piece
+
+    def write_piece(self, project, d, *a, **kw):
+        if d == 'd2':
+            client._lexicon['items'].append({'id': 'e-made', 'form': 'ka', 'metadata': {'gloss': 'go'}})
+        return real(self, project, d, *a, **kw)
+    monkeypatch.setattr(igt_job.IgtRunner, 'write_piece', write_piece)
+
+    def piece(asked, n):
+        if n == 1:
+            return reply(calls=[
+                call(1, 'set_analysis', {'document': 'Story 2', 'ref': 's1.w1',
+                                         'morphemes': [{'form': 'ka', 'fields': {'Morph Gloss': 'go'}}]}),
+                call(2, 'create_entry', {'form': 'ka', 'fields': {'gloss': 'go'}})])
+        if n == 2:
+            return reply(calls=[call(3, 'link_entry', {'document': 'Story 2', 'refs': ['s1.w1.m1'],
+                                                       'entry_id': 'new:v1:ka#1'})])
+        return reply('Glossed ka and linked it.')
+    use(monkeypatch, _model(piece=piece))
+    finished = run_job(job, runner(job))
+    assert finished['state'] == 'done', (finished.get('reason'), job.status.get('message'))
+    assert not [p for k, p in client.calls if k == 'vocab_items.create']
+    links = [p for k, p in client.calls if k == 'vocab_links.create']
+    assert len(links) == 1 and 'e-made' in str(links), links
+
+
 @pytest.mark.parametrize('pieces', ['sentences', 'document', 'selection'])
 def test_a_change_in_a_document_outside_the_job_is_proposed_and_listed(monkeypatch, pieces):
     """REV-JG-6: a piece stages in a document of the project the job does
