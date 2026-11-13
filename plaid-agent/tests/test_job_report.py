@@ -50,8 +50,9 @@ def test_the_report_has_the_contracts_shape_and_cuts_its_lists():
     assert (t['documents_done'], t['documents_in_use'], t['documents_not_reached']) == (1, 1, 0)
     # "sentences" is the sentences analysed (``analyzed``), not those done.
     assert (t['sentences'], t['words'], t['links'], t['changed'], t['skipped_too_long']) == (2, 5, 4, 1, 1)
-    assert t['entries'] == JOB_REPORT_LIST_MAX + 3, 'counted whole, listed cut'
-    assert len(report['entries']['created']) == JOB_REPORT_LIST_MAX and report['entries']['created_more'] == 3
+    assert t['entries'] == 1, "the sum of the documents' rows, as every count is (REV-JH-6)"
+    assert len(report['entries']['created']) == JOB_REPORT_LIST_MAX and report['entries']['created_more'] == 3, \
+        'listed cut'
     assert {e['lexicon'] for e in report['entries']['created']} == {'v1'}
     assert report['entries']['lexicons'] == ['v1', 'v2'], 'every lexicon it created in, the cut ones too'
     assert report['harmonize']['changed_more'] == 0 and report['harmonize']['left_more'] == 0

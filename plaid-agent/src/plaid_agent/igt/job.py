@@ -2547,9 +2547,11 @@ class IgtRunner:
 
     @staticmethod
     def made_entries(ws: JobWorkspace, doc, st: Stretch, ops: List[Dict[str, Any]]) -> frozenset:
-        """The entries this stretch created: those its target words now link
-        to that were not in the lexicon as the stretch read it (a create is
-        staged only after its lexicon was read, ``fit_guard``). No read of
+        """The entries this stretch created that its target words now link
+        to, those not in the lexicon as the stretch read it, which their
+        decisions mark as made (the count of entries created is the creates
+        the write applied, :meth:`record`). A create is staged only after
+        its lexicon was read (``fit_guard``). No read of
         the lexicon is made for it (REV-J-B S3-10)."""
         if not any(o.get('kind') == 'create_entry' for o in ops):
             return frozenset()
@@ -2586,7 +2588,9 @@ class IgtRunner:
         extra['changed'] += dropped.get('changed', 0)
         extra['proposed'] += dropped.get('proposed', 0)
         extra['repeated'] += dropped.get('repeated', 0)
-        extra['entries'] += len(made)
+        # Every entry the write created, linked or not, wherever its links
+        # are (REV-JH-6): the creates it applied.
+        extra['entries'] += sum(1 for o in ops if o.get('kind') == 'create_entry')
         # What the write applied, and how much of it took something away.
         extra['changes'] += len(ops)
         extra['deletions'] += sum(1 for o in ops if deletes(o))

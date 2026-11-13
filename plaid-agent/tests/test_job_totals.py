@@ -137,3 +137,30 @@ def test_the_totals_add_up_to_what_the_job_wrote_and_deleted(monkeypatch):
     for k in ('changes', 'deletions', 'translations', 'refreshed', 'words', 'changed'):
         assert totals[k] == sum((d['counts'] or {}).get(k, 0) for d in docs), k
     assert totals['refreshed'] == 1, 'a person\'s translation replaced is counted'
+
+
+def test_entries_created_counts_every_entry_the_job_created_and_the_rows_agree(monkeypatch):
+    """REV-JH-6, pilot run3 (totals 7, the document's row 5): the job
+    re-analyses a person's word with an entry it creates and links, and
+    creates an entry nothing links. "Entries created" is 2 in the
+    document's row and in the totals."""
+    story = [{'words': [('ka', [('ka', 'go')], 'human'), 'ta']}]
+    client = JobClient({'d1': document('d1', 'Story', story)})
+    job = start(client, 'Analyse ka as kaa "walk" and add the entry tok "stone".', id=J, plan='document')
+
+    def answer(asked, n, kwargs):
+        if n > 1:
+            return reply('Done.')
+        return reply(calls=[
+            call(1, 'set_analysis', {'document': 'Story', 'ref': 's1.w1', 'morphemes': [
+                {'form': 'kaa', 'type': 'stem', 'fields': {'Morph Gloss': 'walk'}}]}),
+            call(2, 'create_entry', {'form': 'kaa', 'fields': {'gloss': 'walk'}}),
+            call(3, 'link_entry', {'document': 'Story', 'refs': ['s1.w1.m1'], 'entry_id': 'new:v1:kaa#1'}),
+            call(4, 'create_entry', {'form': 'tok', 'fields': {'gloss': 'stone'}})])
+    use(monkeypatch, Model(answer))
+    finished = run_job(job, runner(job))
+    assert finished['state'] == 'done'
+    assert len([k for k, _ in client.calls if k == 'vocab_items.create']) == 2
+    report = client.jobs.rows[J]['report']
+    assert report['documents'][0]['counts']['entries'] == 2, report['documents'][0]['counts']
+    assert report['totals']['entries'] == 2

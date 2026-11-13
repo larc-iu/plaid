@@ -777,15 +777,13 @@ def build_report(job: Job, state: str, reason: Optional[str], documents: List[Di
         # The sentences the job wrote in, never one finished with nothing
         # written, skipped or failed (REV-J-B2 S3-5): ``done`` counts those.
         totals['sentences'] += counts.get('analyzed') or 0
-        for k in ('translations', 'refreshed', 'words', 'links', 'changed', 'proposed', 'skipped_more', 'changes',
-                  'deletions', 'repeated'):
+        for k in ('translations', 'refreshed', 'words', 'links', 'entries', 'changed', 'proposed', 'skipped_more',
+                  'changes', 'deletions', 'repeated'):
             totals[k] += counts.get(k) or 0
         for s in d.get('skipped') or []:
             k = f'skipped_{str(s.get("reason") or "").replace("-", "_")}'
             if k in totals:
                 totals[k] += 1
-    created = list(entries.get('created') or [])
-    totals['entries'] = len(created)
     changed, changed_more = cut(harmonize.get('changed') or [])
     left, left_more = cut(harmonize.get('left') or [])
     lists = {}
