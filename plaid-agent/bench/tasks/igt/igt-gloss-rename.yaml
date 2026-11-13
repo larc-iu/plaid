@@ -15,8 +15,11 @@ check: igt_changes
 args:
   rules:
     - gloss: {form: mz, from: PREP, to: LOC}
-  # The user names the texts ("Change all of them, in every text"), so the
-  # lexicon's PREP sense of mz renamed beside them is collateral: PLAN WHAT WAS
-  # ASKED offers it (BENCH-FIX, 2026-11-13, after glm53-stretch-3 reps 2 and 3).
+  # "Everywhere in the project" may well take the lexicon in: the lexicon's
+  # PREP sense of mz renamed beside the texts is no fault (REV-JG3, the lead's
+  # reading, 2026-11-13). igt-bulk-abbrev-hard and igt-migrate-glosses-hard,
+  # whose users name the texts alone, count it collateral.
+  optional:
+    "LEX|mz|PREP:gloss": LOC
   # The user states a convention and asks for no guideline, so one drafted is
   # collateral (the owner's ruling of 2026-11-12: drafted only when asked).

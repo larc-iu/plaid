@@ -17,9 +17,10 @@ def right(ctx):
     _change(ctx)
 
 
-def wrong_lexicon_too(ctx):
-    # The texts right, and the lexicon's PREP sense renamed beside them, which
-    # the user did not ask for (glm53-stretch-3 reps 2 and 3).
+def right_lexicon_too(ctx):
+    # The texts right, and the lexicon's PREP sense renamed beside them: the
+    # user says "Everywhere in the project", which may well take the lexicon
+    # in (the owner's reading, REV-JG3, after glm53-stretch-3 reps 2 and 3).
     _change(ctx)
     L.patch_entry(ctx, 'mz|PREP', {'gloss': 'LOC'})
 
