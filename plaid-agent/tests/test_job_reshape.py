@@ -355,7 +355,7 @@ def test_a_split_off_half_of_a_sentence_the_job_translated_is_not_translated(mon
     assert runner(job).document('d1') == 'done'
     assert seen == [['d1-s1'], ['d1-s2']], seen
     row = _rows(client)['d1-s1']
-    assert len(row.pop('before')) == 1 and len(row.pop('pieces')) == 1
+    assert len(row.pop('before')) == 1 and len(row.pop('pieces')) == 1 and row.pop('deletes') == []
     assert row == {'document': 'd1', 'others': ['d1-s1w1', 'd1-s1w2', 'd1-s1w3'], 'translation': 'translations',
                    'words': []}
 

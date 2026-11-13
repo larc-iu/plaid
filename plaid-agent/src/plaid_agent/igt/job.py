@@ -174,7 +174,7 @@ def writing_form(sentence_id: str) -> str:
 
 
 def writing_text(document_id: str, translation: Optional[str], words: List[str], others=(), before=(),
-                 pieces=()) -> str:
+                 pieces=(), deletes=()) -> str:
     """A writing row's analysis: the document, what the write does to the
     sentence's translation (``translations`` writes one where there was
     none, ``refreshed`` replaces one, None leaves it), the tags of the words
@@ -185,19 +185,24 @@ def writing_text(document_id: str, translation: Optional[str], words: List[str],
     a write that leaves no stamp of the job (a deletion, a text edit) is
     known to have landed, and the piece whose write it was (``pieces``,
     :func:`piece_tag`), so that only that piece, run again, leaves the
-    sentence alone (REV-JH-1). Every tag of a sentence of JOB_SENTENCE_MAX_WORDS
-    words fits a decision's analysis. Past that (a sentence a person made
-    longer since the checks) the others are cut first, then the words."""
-    words, others = list(words), list(others)
+    sentence alone (REV-JH-1), and the sentences the write deletes
+    (``deletes``), so that one of them gone says the write landed
+    (REV-JSF-1). Every tag of a sentence of JOB_SENTENCE_MAX_WORDS words fits
+    a decision's analysis. Past that (a sentence a person made longer since
+    the checks) the others are cut first, then the words, then the
+    deletions but one (any one gone says the write landed)."""
+    words, others, deletes = list(words), list(others), list(deletes)
     while True:
-        text = canonical({'before': list(before), 'document': document_id, 'others': others,
+        text = canonical({'before': list(before), 'deletes': deletes, 'document': document_id, 'others': others,
                           'pieces': list(pieces), 'translation': translation, 'words': words})
-        if len(text) <= JOB_ANALYSIS_MAX_CHARS or not (words or others):
+        if len(text) <= JOB_ANALYSIS_MAX_CHARS or not (words or others or len(deletes) > 1):
             return text
         if others:
             others.pop()
-        else:
+        elif words:
             words.pop()
+        else:
+            deletes.pop()
 
 
 def piece_tag(piece: Dict[str, Any]) -> str:
@@ -2181,9 +2186,11 @@ class IgtRunner:
                 if tag not in plan['words']:
                     plan['words'].append(tag)
         # A write that deletes a sentence has a row for every sentence of
-        # the piece: once it has landed, none of them is worked again
-        # (``settle``), so the piece never decides a second deletion.
-        if any(o.get('kind') == 'delete_sentence' for o in kept):
+        # the piece, each naming the sentences it deletes: once one of them
+        # is gone the write landed, none of the rows' sentences is worked
+        # again (``settle``), and the piece never decides a second deletion.
+        deletes = sorted({o.get('sentence_id') for o in kept if o.get('kind') == 'delete_sentence'} - {None})
+        if deletes:
             for sid in sorted(st.sentence_ids):
                 plans.setdefault(sid, {'translation': None, 'words': []})
         now = {s.id: s for s in fresh.sentences}
@@ -2193,10 +2200,11 @@ class IgtRunner:
                               if word_tag(w.id) not in plan['words']]
             plan['before'] = [sentence_digest(now[sid])] if sid in now else []
             plan['pieces'] = [piece] if piece else []
+            plan['deletes'] = deletes
         rows = []
         for sid, plan in plans.items():
             text = writing_text(document_id, plan['translation'], plan['words'], plan['others'], plan['before'],
-                                plan['pieces'])
+                                plan['pieces'], plan['deletes'])
             rows.append({'form': writing_form(sid), 'key': analysis_key(text), 'analysis': text, 'count': 1,
                          'document_id': document_id, 'sentence_id': sid})
         if rows:
@@ -2215,19 +2223,21 @@ class IgtRunner:
         """Two writing rows of one sentence as one (a try after one that
         landed nothing): every word either analyses, every word either names,
         and the translation counted as replacing a machine draft when either
-        says so, every digest of the sentence before a write (``before``) and
-        every piece that wrote (``pieces``)."""
+        says so, every digest of the sentence before a write (``before``),
+        every piece that wrote (``pieces``) and every sentence a write
+        deletes (``deletes``)."""
         if not had:
             return {'translation': plan.get('translation'), 'words': set(plan.get('words') or ()),
                     'others': set(plan.get('others') or ()), 'before': set(plan.get('before') or ()),
-                    'pieces': set(plan.get('pieces') or ())}
+                    'pieces': set(plan.get('pieces') or ()), 'deletes': set(plan.get('deletes') or ())}
         translation = had.get('translation') or plan.get('translation')
         if 'refreshed' in (had.get('translation'), plan.get('translation')):
             translation = 'refreshed'
         return {'translation': translation, 'words': set(had['words']) | set(plan.get('words') or ()),
                 'others': set(had.get('others') or ()) | set(plan.get('others') or ()),
                 'before': set(had.get('before') or ()) | set(plan.get('before') or ()),
-                'pieces': set(had.get('pieces') or ()) | set(plan.get('pieces') or ())}
+                'pieces': set(had.get('pieces') or ()) | set(plan.get('pieces') or ()),
+                'deletes': set(had.get('deletes') or ()) | set(plan.get('deletes') or ())}
 
     def intents(self, document_id: str) -> Dict[str, Dict[str, Any]]:
         """The writing rows core holds for a document, one per sentence
@@ -2827,9 +2837,11 @@ class IgtRunner:
         (REV-J-B3 B3-2)."""
         job = self.job
         if document_id not in self.recorded:
-            ids = [s.id for s in doc.sentences]
-            marks = self.marks_in_core(ids)
             self.writing[document_id] = self.intents(document_id)
+            # The records of the sentences it holds and of every sentence
+            # the job began to write in, those deleted since included.
+            ids = list(dict.fromkeys([s.id for s in doc.sentences] + list(self.writing[document_id])))
+            marks = self.marks_in_core(ids)
             self.recorded[document_id] = marks
             row = job.rows.get(document_id) or {}
             if self.recorded[document_id]:
@@ -2846,12 +2858,14 @@ class IgtRunner:
         orphans = []
         # A sentence the job began to write in that is no longer there, nor
         # any word of it, was deleted: recorded, with nothing left to work.
-        # In a quiet document the job's write deleted it, so that write
-        # landed, and every other sentence it has a row for is recorded too.
         here = {s.id for s in doc.sentences}
         held = {word_tag(w.id) for s in doc.sentences for w in s.words}
-        gone = [sid for sid, plan in writing.items() if sid not in here and sid not in marks and sid not in skipped
-                and sid not in unsent and not (set(plan.get('words') or ()) | set(plan.get('others') or ())) & held]
+
+        def deleted(sid):
+            plan = writing.get(sid) or {}
+            return sid not in here and not (set(plan.get('words') or ()) | set(plan.get('others') or ())) & held
+        gone = [sid for sid in writing if deleted(sid) and sid not in marks and sid not in skipped
+                and sid not in unsent]
         for sid in gone:
             orphans.append({'sentence': sid, 'counts': {'analyzed': 1} if own else {}, 'decisions': [], 'left': [],
                             'words': {}})
@@ -2869,14 +2883,19 @@ class IgtRunner:
                 # Nothing of the job is in it. When nobody wrote since the
                 # job's last write, its write here never landed if the
                 # sentence reads as it did before the write (a target
-                # again), and landed if it does not (a deletion or an edit
-                # leaves no stamp): recorded below. Otherwise a person may
-                # have removed what landed, and the job leaves the sentence.
+                # again) and no sentence its own row says the write deletes
+                # is gone, and landed otherwise (a deletion or an edit
+                # leaves no stamp): recorded below. A sentence gone for
+                # another reason (an earlier write deleted it, a person did)
+                # says nothing of this write (REV-JSF-1, REV-JSF-2).
+                # Otherwise a person may have removed what landed, and the
+                # job leaves the sentence.
                 if not own:
                     self.skip(document_id, doc, s.id, INTERRUPTED, None, cursor=False)
                     continue
-                if (sentence_digest(s) in (writing[s.id].get('before') or ()) or not writing[s.id].get('before')) \
-                        and not gone:
+                plan = writing[s.id]
+                if (sentence_digest(s) in (plan.get('before') or ()) or not plan.get('before')) \
+                        and not any(deleted(d) for d in plan.get('deletes') or ()):
                     unsent.add(s.id)
                     continue
             # As its stretch would have recorded it (REV-J-B3 B3-7): the

@@ -9,6 +9,7 @@ to have sent nothing, which makes its sentences targets again."""
 
 import contextlib
 import json
+import re
 
 import pytest
 
@@ -823,3 +824,211 @@ def test_an_entry_renamed_while_the_worker_is_down_does_not_read_as_a_deletion_t
     assert len([c for c in model.calls if c['n'] == 1]) == 2, 'asked again, as nothing landed'
     assert [o['kind'] for o in staged] == ['delete_word']
     assert not _skipped(job)
+
+
+# --- a write landed only when a sentence its own rows delete is gone (REV-JSF-1, -2) --------
+
+def _renamed(raw, mapping):
+    """``raw`` with each id of ``mapping`` renamed, in order."""
+    text = json.dumps(raw)
+    for a, b in mapping:
+        text = text.replace(a, b)
+    return json.loads(text)
+
+
+_LINES = [{'words': ['ka']}, {'words': ['xa']}, {'words': ['sa']}, {'words': ['ta']}]
+# After s2 is deleted: ka, sa (d1-s3), ta (d1-s4).
+_LINES_LEFT = _renamed(document('d1', 'Story', [_LINES[0], _LINES[2], _LINES[3]], version=2),
+                       [('d1-s3', 'd1-s4'), ('d1-s2', 'd1-s3')])
+
+
+def _delete_before_sa(asked, n, kwargs):
+    """Deletes the sentence before its piece when its piece reads sa: run
+    again over what is left, it deletes another sentence."""
+    if n > 1:
+        return reply('Done.')
+    k = targets_named(asked)[0]
+    if k > 1 and f'[s{k}] sa.' in asked:
+        return reply(calls=[call(1, 'delete_sentence', {'document': 'Story', 'refs': [f's{k - 1}']})])
+    return reply('Done.')
+
+
+def _lines_job(monkeypatch):
+    """Stretches of one sentence over ka. xa. sa. ta.: piece s3 (s1 and s2
+    its context) deletes s2, which piece s2 recorded."""
+    monkeypatch.setattr(igt_job, 'JOB_STRETCH_SENTENCES', 1)
+    client, job, clock, model = _job(monkeypatch, 'Delete the line before each line reading sa.', _LINES,
+                                     model=_delete_before_sa)
+    client.after_write['d1'] = _LINES_LEFT
+    return client, job, model
+
+
+def test_a_later_pieces_deletion_of_a_recorded_sentence_that_landed_before_a_crash_is_never_made_again(monkeypatch):
+    """REV-JSF-1, the crash: piece s3's write deletes s2, which piece s2
+    recorded, and the worker dies before the record. s3 reads as before and
+    nothing of the job is in it, but its own row says the write deletes s2,
+    which is gone: the write landed, s3 is recorded and no second sentence is
+    deleted."""
+    client, job, model = _lines_job(monkeypatch)
+    staged = _staged(monkeypatch)
+    real = job.add_decisions
+
+    def add(decisions):
+        if any(d['form'] == RECORD_FORM + 'd1-s3' for d in decisions):
+            raise Crash()
+        return real(decisions)
+    monkeypatch.setattr(job, 'add_decisions', add)
+    with pytest.raises(Crash):
+        runner(job).document('d1')
+    monkeypatch.setattr(job, 'add_decisions', real)
+    asked = len([c for c in model.calls if c['n'] == 1])
+    assert _resume(client, job).document('d1') == 'done'
+    assert [(o['kind'], o['sentence_id']) for o in staged] == [('delete_sentence', 'd1-s2')], 'one deletion only'
+    assert len([c for c in model.calls if c['n'] == 1]) == asked + 1, 'only ta, the last piece, is asked on the resume'
+    assert _mark(client, 'd1-s3')['counts'].get('analyzed') == 1
+
+
+def test_a_later_pieces_deletion_of_a_recorded_sentence_whose_answer_is_lost_is_never_made_again(monkeypatch):
+    """REV-JSF-1, the lost answer: the same write lands and core's answer is
+    lost (a proxy's 502 at the operation's end). The same worker settles
+    the document: s2 is gone though recorded, and s3's row names it, so s3
+    is recorded and its piece is not run again over what is left."""
+    client, job, model = _lines_job(monkeypatch)
+    staged = _staged(monkeypatch)
+    real_op, once = client.operation, {'n': 1}
+
+    @contextlib.contextmanager
+    def operation(*args, **kwargs):
+        with real_op(*args, **kwargs) as op:
+            yield op
+        if once['n'] and kwargs.get('kind') == 'job' and staged:
+            once['n'] = 0
+            raise PlaidAPIError('HTTP 502', status=502, method='POST')
+    monkeypatch.setattr(client, 'operation', operation)
+    assert runner(job).document('d1') == 'done'
+    assert not once['n'], 'the answer was lost'
+    assert [(o['kind'], o['sentence_id']) for o in staged] == [('delete_sentence', 'd1-s2')], 'one deletion only'
+    pieces = [targets_named(c['asked'])[0] for c in model.calls if c['n'] == 1]
+    assert pieces == [1, 2, 3, 3], f'each piece asked once, ta last as s3: {pieces}'
+    assert job.rows['d1']['counts'].get('deletions') in (None, 0, 1)
+
+
+def _gloss_or_unrepeat(asked, n, kwargs):
+    """Deletes its sentence when it reads as the one before it, else glosses
+    its word."""
+    if n > 1:
+        return reply('Done.')
+    k = targets_named(asked)[0]
+    mine = re.search(rf'^\[s{k}\] (\S+)\.', asked, re.M).group(1)
+    prev = re.search(rf'^\[s{k - 1}\] (\S+)\.', asked, re.M) if k > 1 else None
+    if prev and prev.group(1) == mine:
+        return reply(calls=[call(1, 'delete_sentence', {'document': 'Story', 'refs': [f's{k}']})])
+    return reply(calls=[call(1, 'set_analysis', {'document': 'Story', 'ref': f's{k}.w1',
+                                                 'morphemes': [{'form': mine, 'fields': {'Morph Gloss': 'go'}}]})])
+
+
+def test_the_jobs_own_earlier_deletion_does_not_make_a_later_write_that_never_landed_read_as_landed(monkeypatch):
+    """REV-JSF-2, no person at all: ka. ka. sa. ta. in stretches of one.
+    Piece s2 deletes itself (recorded as usual), piece s3 glosses sa, piece
+    s4's writing row is sent and the worker dies before its write. On the
+    resume s2 is gone, but no row of s4 names it: s4 reads as before, so it
+    is a target again, asked and glossed."""
+    monkeypatch.setattr(igt_job, 'JOB_STRETCH_SENTENCES', 1)
+    before = [{'words': ['ka']}, {'words': ['ka']}, {'words': ['sa']}, {'words': ['ta']}]
+    client, job, clock, model = _job(monkeypatch, 'Delete a sentence that repeats the one before it, and gloss '
+                                     'every word.', before, model=_gloss_or_unrepeat)
+    g = lambda f: (f, [(f, 'go')], J)  # noqa: E731
+    states = {
+        1: document('d1', 'Story', [{'words': [g('ka')]}, *before[1:]], version=2),
+        2: _renamed(document('d1', 'Story', [{'words': [g('ka')]}, before[2], before[3]], version=3),
+                    [('d1-s3', 'd1-s4'), ('d1-s2', 'd1-s3')]),
+        3: _renamed(document('d1', 'Story', [{'words': [g('ka')]}, {'words': [g('sa')]}, before[3]], version=4),
+                    [('d1-s3', 'd1-s4'), ('d1-s2', 'd1-s3')]),
+    }
+    real, n, sent = igt_job.execute_plan, {'n': 0}, []
+
+    def execute(c, ops, **kw):
+        n['n'] += 1
+        if n['n'] > 3:
+            raise Crash()
+        sent.extend((o['kind'], o.get('word_id') or o.get('sentence_id')) for o in ops)
+        if n['n'] == 2:
+            # The deletion reads the text as it is before it.
+            out = real(c, ops, **kw)
+            client.after_write['d1'] = states[2]
+            client.document_versions['d1'] = 3
+            return out
+        client.after_write['d1'] = states[n['n']]
+        return real(c, ops, **kw)
+    monkeypatch.setattr(igt_job, 'execute_plan', execute)
+    with pytest.raises(Crash):
+        runner(job).document('d1')
+    assert sent == [('set_analysis', 'd1-s1w1'), ('delete_sentence', 'd1-s2'), ('set_analysis', 'd1-s3w1')], sent
+    assert 'd1-s4' in _writing(client)
+    asked = len([c for c in model.calls if c['n'] == 1])
+    monkeypatch.setattr(igt_job, 'execute_plan', lambda c, ops, **kw: (sent.extend(
+        (o['kind'], o.get('word_id') or o.get('sentence_id')) for o in ops), real(c, ops, **kw))[1])
+    assert _resume(client, job).document('d1') == 'done'
+    assert len([c for c in model.calls if c['n'] == 1]) == asked + 1, 'piece s4 is asked again'
+    assert sent[3:] == [('set_analysis', 'd1-s4w1')], sent
+    assert sent.count(('delete_sentence', 'd1-s2')) == 1
+
+
+def test_a_sentence_a_person_deleted_does_not_make_a_later_write_that_never_landed_read_as_landed(monkeypatch):
+    """REV-JSF-2 with a person: ka. sa. ta. in stretches of one. The job
+    glosses s1 and records it, a person deletes s1 on the Baseline tab,
+    piece s2 (old s2) glosses sa, which makes the document quiet again, and
+    the worker dies after piece s3's writing row, before its write. On the
+    resume s1 is gone, but no row of s3 names it: s3 is asked and glossed."""
+    monkeypatch.setattr(igt_job, 'JOB_STRETCH_SENTENCES', 1)
+    before = [{'words': ['ka']}, {'words': ['sa']}, {'words': ['ta']}]
+
+    def model(asked, n, kwargs):
+        if n > 1:
+            return reply('Done.')
+        k = targets_named(asked)[0]
+        return reply(calls=[call(1, 'set_analysis', {'document': 'Story', 'ref': f's{k}.w1',
+                                                     'morphemes': [{'form': 'xx', 'fields': {'Morph Gloss': 'go'}}]})])
+    client, job, clock, m = _job(monkeypatch, 'Gloss every word.', before, model=model)
+    real, n, sent = igt_job.execute_plan, {'n': 0}, []
+
+    def execute(c, ops, **kw):
+        n['n'] += 1
+        if n['n'] == 1:
+            client.after_write['d1'] = document('d1', 'Story', [{'words': [('ka', [('ka', 'go')], J)]}] + before[1:],
+                                                version=2)
+        elif n['n'] == 2:
+            client.after_write['d1'] = _renamed(document('d1', 'Story', [{'words': [('sa', [('sa', 'go')], J)]},
+                                                                         before[2]], version=4),
+                                                [('d1-s2', 'd1-s3'), ('d1-s1', 'd1-s2')])
+        else:
+            raise Crash()
+        sent.extend((o['kind'], o.get('word_id')) for o in ops)
+        return real(c, ops, **kw)
+    monkeypatch.setattr(igt_job, 'execute_plan', execute)
+    real_add, done = job.add_decisions, {'n': 0}
+
+    def add(decisions):
+        real_add(decisions)
+        if not done['n'] and any(d['form'] == RECORD_FORM + 'd1-s1' for d in decisions):
+            done['n'] = 1
+            # A person deletes s1, which the job glossed, on the Baseline tab.
+            raw = _renamed(document('d1', 'Story', before[1:], version=3), [('d1-s2', 'd1-s3'), ('d1-s1', 'd1-s2')])
+            client.after_write['d1'] = raw
+            client._holder('d1')['documents']['d1'] = raw
+            history = client._holder('d1')['audit']
+            newest = max((e.get('time') or '' for e in history), default='')
+            history.append({'id': 'person-x', 'time': newest[:-1] + '9Z', 'ref': None, 'documents': [{'id': 'd1'}],
+                            'ops': []})
+    monkeypatch.setattr(job, 'add_decisions', add)
+    with pytest.raises(Crash):
+        runner(job).document('d1')
+    monkeypatch.setattr(job, 'add_decisions', real_add)
+    assert sent == [('set_analysis', 'd1-s1w1'), ('set_analysis', 'd1-s2w1')], sent
+    assert 'd1-s3' in _writing(client)
+    asked = len([c for c in m.calls if c['n'] == 1])
+    monkeypatch.setattr(igt_job, 'execute_plan', lambda c, ops, **kw: (sent.extend(
+        (o['kind'], o.get('word_id')) for o in ops), real(c, ops, **kw))[1])
+    assert _resume(client, job).document('d1') == 'done'
+    assert len([c for c in m.calls if c['n'] == 1]) == asked + 1, 'piece s3 is asked again'
+    assert sent[2:] == [('set_analysis', 'd1-s3w1')], sent
