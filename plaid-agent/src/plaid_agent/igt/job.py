@@ -758,15 +758,6 @@ def fitting_entry(v: Dict[str, Any], items: List[Dict[str, Any]], op: Dict[str, 
                  and _morph_type(it, by_id) == kind), None)
 
 
-def entry_key(v: Dict[str, Any], op: Dict[str, Any]) -> str:
-    """The key of the entry a create ``op`` makes in lexicon ``v``, as the
-    job's row of an entry it made holds it: what :func:`fitting_entry`
-    compares, its lexicon, form and gloss after NFC."""
-    gloss = IgtProject.lexicon_field(v, ROLE_GLOSS)
-    return analysis_key(canonical({'lexicon': v['id'], 'form': _nfc(op.get('form')),
-                                   'gloss': _entry_gloss(op, gloss), 'type': _morph_type(op, {})}))
-
-
 # --- the runner --------------------------------------------------------------------
 
 class Deferred(Exception):
