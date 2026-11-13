@@ -16,7 +16,7 @@ import { CHANGE_ROWS_CEILING, useChangeRows } from './useChangeRows.js';
 
 // How many sentences are drawn at once. Every row is read before any is
 // drawn, and drawing is what a long entry pages.
-export const SENTENCES_SHOWN = 50;
+const SENTENCES_SHOWN = 50;
 
 /**
  * What a History entry changed in this document, the default view of a whole

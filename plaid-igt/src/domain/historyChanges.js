@@ -400,7 +400,7 @@ const tokenPlaces = (raws) => {
 // every token after it.
 const onlyMoved = (r) => {
   if (!r.before || !r.after) return false;
-  const rest = ({ begin, end, ...x }) => JSON.stringify(x);
+  const rest = (img) => JSON.stringify({ ...img, begin: null, end: null });
   return rest(r.before) === rest(r.after);
 };
 
