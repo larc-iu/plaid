@@ -657,95 +657,6 @@ ALREADY_PLANNED = ('Nothing was staged again: the same call earlier in this turn
                    'Do not repeat it. Plan the next change or reply to the user.')
 
 
-# A reply that says this turn planned changes, when it planned none: the user
-# is told to approve a card that does not exist. Seen in every app on a 27B
-# model (bench build-q38-1: ten of 35 failed runs). The phrases are the ones
-# those replies used, and those of glm-5.3-flash after the stretch line ("I
-# read the first five sentences and staged ...", "The plan card holds three
-# changes", bench glm53-stretch-2). Read sentence by sentence. A claim does
-# not count where the sentence offers to plan before it ("I'll plan it and you
-# approve it"), places the plan in an earlier message ("the plan from your
-# last message"), or where the three words before it deny it, make it a
-# condition or put it in the future ("nothing was staged", "can be staged",
-# "to be planned"). English only: a reply in another language is never read
-# as a claim.
-_DONE = r"(?:staged|planned|queued|prepared|drafted)"
-_CLAIMED = [re.compile(p, re.I) for p in (
-    # "Twelve values are staged", "three changes have been staged".
-    rf"\b(?:is|are|was|were|been|be|being)\s+(?:(?:now|all|already|also|just|both)\s+)?{_DONE}\b"
-    r"(?!\s+(?:nothing|none|no)\b)",
-    # "Here's the staged plan", "Staged plan:".
-    r"\bstaged (?:plan|change|changes|edit|edits)\b",
-    # "**Plan:**", "**Planned (1 change):**".
-    r"\*\*(?:plan|planned|proposed changes?)(?: \(\d+ changes?\))?:\*\*",
-    # "approve the pending split".
-    r"\b(?:the|a|your) pending (?:plan|split|merge|change|changes|card|edit|edits)\b",
-    # "this turn's plan holds just that one change", "this turn holds just that".
-    r"\b(?:plan|this turn) holds\b(?! nothing| no\b)",
-    # "The plan card holds three changes", "the card lists 12 words", "your plan is ready".
-    r"\b(?:the|this|your|my) (?:plan card|plan|card) (?:(?:now|already|also) )?(?:holds|contains|lists|has|sets"
-    r"|covers|marks|includes|shows|changes|touches|adds|fixes|restores|is ready|is waiting|waits)\b"
-    r"(?!\s+(?:nothing|no)\b)",
-    # "They are on the plan card".
-    r"\b(?:on|in) (?:the|your|this) (?:plan )?card\b",
-    # "waiting for your approval", "ready for your approval".
-    r"\b(?:waiting for|awaiting|ready for) (?:your )?approval\b|\bwaiting for you to approve\b",
-)]
-# "I read the first five and staged ...", "we went through s1–s5 and queued
-# ...": a verb of _DONE whose nearest subject before it is I or we.
-_DONE_VERB = re.compile(rf"\b{_DONE}\b(?!\s+(?:nothing|none|no)\b)", re.I)
-_SUBJECT = re.compile(r"\b(i|we|you|they|he|she|someone|somebody|nobody)\b", re.I)
-_DETERMINER = re.compile(r"\b(?:the|a|an|this|that|these|those|your|my|our|its|any|every|each)\s+$", re.I)
-_APPROVE = re.compile(r"\bapprove (?:it|the|this|that|them|to|and|when|once|on)\b", re.I)
-# What the three words before a claim may not hold: a denial, a condition, a
-# future. Before "approve" only a denial counts, since "once you approve the
-# card" presupposes a card as much as "approve the card" does.
-_DENIED = re.compile(r"\b(?:no|not|nothing|none|never|without|nor)\b|n['’]t\b", re.I)
-_UNSAID = re.compile(r"\b(?:can|could|would|will|shall|should|might|may|must|if|once|when|until|unless)\b"
-                     r"|['’]ll\b|\bto be\b|\bto have\b|\bto$", re.I)
-_OFFER = re.compile(r"\b(?:i['’]ll|i will|i can|i could|i would|i['’]d|shall i|should i|(?:want|like) me to"
-                    r"|let me)\s+(?:\w+\s+){0,2}?(?:plan|stage|queue|prepare|draft|make|set|mark|fix|do|change"
-                    r"|write|add|apply)\b|\b(?:if you['’]d like|if you want|if you wish|say the word)\b", re.I)
-_EARLIER = re.compile(r"\b(?:earlier|previous(?:ly)?|last (?:message|turn|time|plan)|you approved"
-                      r"|(?:was|were|been) (?:applied|approved|written)|already (?:applied|approved))\b", re.I)
-_SENTENCE = re.compile(r"(?<=[.!?:;])\s+|\n+")
-
-
-def _last_words(text: str, n: int = 3) -> str:
-    return ' '.join(text.split()[-n:])
-
-
-def _said(s: str) -> bool:
-    """Whether the sentence ``s`` claims this turn's plan."""
-    if _EARLIER.search(s):
-        return False
-    for p in _CLAIMED:
-        for m in p.finditer(s):
-            before = s[:m.start()]
-            if not _OFFER.search(before) and not _DENIED.search(_last_words(before)) \
-                    and not _UNSAID.search(_last_words(before)):
-                return True
-    for m in _APPROVE.finditer(s):
-        before = s[:m.start()]
-        if not _OFFER.search(before) and not _DENIED.search(_last_words(before)):
-            return True
-    for m in _DONE_VERB.finditer(s):
-        before = s[:m.start()]
-        subjects = _SUBJECT.findall(before)
-        if subjects and subjects[-1].lower() in ('i', 'we') and not _DETERMINER.search(before) \
-                and not _OFFER.search(before) and not _DENIED.search(_last_words(before)) \
-                and not _UNSAID.search(_last_words(before)):
-            return True
-    return False
-
-
-def claims_a_plan(text: Optional[str]) -> bool:
-    """Whether ``text`` tells the user a plan was made in this turn: says it
-    staged, planned, queued, prepared or drafted changes, that they are on
-    the plan card or wait for approval, or tells them to approve."""
-    return any(_said(s) for s in _SENTENCE.split(text or ''))
-
-
 # A reply that writes a tool call out as text instead of making it: small
 # local models do this often (52 of Gemma's 137 failed bench runs, BENCH-GEMMA),
 # as `set_value(...)`, `<plan_change document=...>`, `<action>set_value</action>`
@@ -845,19 +756,6 @@ def written_call_note(name: str) -> str:
 #: The step that note is in the trace, and its line.
 WRITTEN_CALL_STEP = 'written_call'
 WRITTEN_CALL_LABEL = 'Told the assistant that a tool call written as text did not run'
-
-
-#: What a turn that claimed a plan it never made is sent back with, once.
-#: The user sees only the reply that follows it, so the note says to repeat
-#: what the first one answered and not to narrate the correction: second
-#: replies lost the first's count and opened "I've now staged" (bench q38-2).
-NOTHING_PLANNED = ('(system) Nothing is planned in this turn: no plan card will show. Make the changes with '
-                   'the plan tools now, or tell the user you have not planned them. The user sees only your '
-                   'next reply, not the one above, so repeat in it everything the one above answered, and do '
-                   'not mention this note or that the changes were staged only now.')
-#: The step that note is in the trace, and its line.
-NOTHING_PLANNED_STEP = 'nothing_planned'
-NOTHING_PLANNED_LABEL = 'Told the assistant that nothing was planned'
 
 
 def named_args(ws: Any, args: Any) -> Any:
@@ -1305,21 +1203,11 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
     # line its tool gave, which the repeat is traced after.
     made: Dict[tuple, Optional[str]] = {}
     spend = Spend()
-    # Whether this turn's model was told it planned nothing (`claims_a_plan`),
-    # and whether it was told a call it wrote as text did not run.
-    nudged = False
+    # Whether this turn's model was told a call it wrote as text did not run.
     wrote_once = False
     # The tools whose calls went through, in earlier turns and this one: a
     # reply that writes one out is restating it (REV7-AGENT R7A-1, R8A-5).
     ran: set = went_through(history)
-
-    def claimed_nothing(text: str) -> bool:
-        """The reply says it planned, and the plan holds nothing now (none
-        went through, or discard_plan emptied it), the turn drafted no job
-        card, and no card from an earlier message still waits (the reply
-        may be about that one)."""
-        return (not held_changes(ws) and getattr(ws, 'job_card', None) is None
-                and not getattr(ws, 'waiting', None) and claims_a_plan(text))
 
     # A model call that failed after a plan was staged (`keep_the_plan`): the
     # failure and the text that call had written.
@@ -1540,8 +1428,7 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
                 text, more = ask_for_the_reply(kwargs, '(system) Your last message was empty. '
                                                        'Reply now with your answer to the user.')
                 thinking = _joined(thinking, more)
-            # A tool call written out as text, which did not run, and a reply
-            # that says it planned when it planned nothing: once each, the
+            # A tool call written out as text, which did not run: once, the
             # model is told and gets its tools back. Its reply and the note
             # stay in the transcript, and the trace has a step for them,
             # whose round holds the reply and the note as sent.
@@ -1551,9 +1438,6 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
             if wrote:
                 wrote_once = True
                 back = (WRITTEN_CALL_STEP, WRITTEN_CALL_LABEL, written_call_note(wrote))
-            elif not nudged and claimed_nothing(text):
-                nudged = True
-                back = (NOTHING_PLANNED_STEP, NOTHING_PLANNED_LABEL, NOTHING_PLANNED)
             else:
                 back = None
             if back is not None:
