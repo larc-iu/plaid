@@ -982,6 +982,7 @@ An entry a job created that ends with no links is listed in its report under **E
 == Undoing a job
 
 Each document's History has one entry for the job's work in it, named **Assistant job:** with the first words of its instructions, and one for making its analyses consistent.
+A job's page links each document to them, and each opens on what the job changed there (see <<_changes_in_an_entry>>).
 A maintainer undoes either one by restoring the document to the moment before it (see <<_history>>), which also brings back what the job deleted or changed in the document.
 Restoring a document does not undo what a job did in the lexicon: the entries it created, changed, merged or deleted stay as the job left them.
 
@@ -1183,7 +1184,8 @@ Comments are not part of the history, and neither is the recording itself, so a 
 Open a document's **history** with **History** at the end of its tab row, or from the rail at the left edge of the editor.
 Each entry is one action as you performed it, such as "Merge morphemes" or "Tokenize".
 An edit made in a cell names the field, the word or morpheme, the sentence and the value, such as `Gloss of "dogs" in sentence 3: DOG`.
-Selecting an entry shows the document as it was right after that action, and an entry made of several changes expands to show each one.
+Selecting an entry shows what it changed (see <<_changes_in_an_entry>>), and **Document** above it shows the document as it was right after that action.
+An entry made of several changes expands to show each one, and selecting one of those shows the document right after it.
 
 Actions performed by a service show up the same way, under the service's name and naming the person who ran it: `LLM translation (12 sentences), requested by Ana`.
 A change made through an API token names the token too.
@@ -1203,11 +1205,24 @@ A dialog lists what will change before anything is written, and says what cannot
 The restore is one more entry in the history, and the message that confirms it offers **Undo**.
 Restoring is for a project's maintainers.
 
+[[_changes_in_an_entry]]
+== Changes in an entry
+
+An entry opens on the sentences it changed, in document order, each drawn interlinear with the value after the entry above the one it replaced, struck through.
+Each value carries its usual mark, so a machine-made, contributed or confirmed value reads as it does in the grid, and a person's value the entry replaced is struck through in red.
+A word or sentence the entry added or deleted shows as such, and a sentence someone changed after the entry says **Changed again later**.
+
+The count above the sentences says how many changes the entry made and how many replaced a person's value, and **A person's value replaced** shows only the sentences where one did.
+Below the sentences come the document's name and metadata, and the lexicon entries the entry created, changed, merged or deleted, each a link.
+A large entry shows its first changes, and **Show more changes** reads the next.
+The address of the page names the entry, so it can be shared, and a job's page links each document to its entries.
+
 == Vocabulary history
 
 A vocabulary has a history of its own, opened with **History** beside the vocabulary's name.
 It lists every change to the vocabulary and its entries, but not links, which belong to each document's history.
-Selecting a history entry shows the vocabulary's entries as they were at that point.
+Selecting a history entry shows what it changed: the entries it created, changed, merged or deleted, before and after, and the links it moved, removed or made, counted per document.
+**Vocabulary** above it shows the vocabulary's entries as they were at that point.
 **History** on an open entry lists only the changes to that entry.
 
 To put one entry back as it was, open it in the past state and click **Restore**.
