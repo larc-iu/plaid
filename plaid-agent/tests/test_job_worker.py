@@ -221,9 +221,12 @@ def test_a_scripted_model_is_refused_beside_an_api_base(tmp_path, capsys):
 def test_the_flags_are_the_contracts():
     args = jobworker.parser().parse_args(['--url', 'u', '--model', 'm', '--api-base', 'b', '--context-window',
                                           '196608', '--model-pool', 'reallms', '--timeout', '200',
-                                          '--max-output-tokens', '9000', '--trace-dir', 'd', '--apps', 'igt'])
+                                          '--max-output-tokens', '9000', '--trace-dir', 'd', '--apps', 'igt',
+                                          '--reasoning-effort', 'low'])
     assert (args.model_pool, args.trace_dir, args.apps, args.context_window, args.max_tokens) == \
         ('reallms', 'd', ['igt'], 196608, 9000)
+    assert args.reasoning_effort == 'low'
+    assert jobworker.parser().parse_args(['--url', 'u', '--model', 'm']).reasoning_effort is None
 
 
 def test_the_assistants_take_model_pool_into_their_extras(monkeypatch):

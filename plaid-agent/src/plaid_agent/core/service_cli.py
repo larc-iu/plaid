@@ -35,6 +35,10 @@ class ServiceCli:
                                  'A call that reaches it ends the turn with a message to the user.')
         add_timeout_argument(parser)
         add_model_pool_argument(parser)
+        parser.add_argument('--reasoning-effort', default=None, metavar='LEVEL',
+                            help='How hard the model should reason, in the provider\'s own word for it '
+                                 '(for example low or high), sent with every model call. Without it '
+                                 'the provider\'s default holds.')
         parser.add_argument('--context-window', type=_positive_int, default=None, metavar='TOKENS',
                             help='How many tokens the model can be sent. The conversation gauge shows '
                                  'how full a conversation is against it and warns near the limit. '
@@ -72,6 +76,7 @@ class ServiceCli:
                                max_tokens=output_cap(args.model, args.max_tokens),
                                stream=not getattr(args, 'no_stream', False), timeout=args.timeout,
                                context_window=getattr(args, 'context_window', None),
+                               reasoning_effort=getattr(args, 'reasoning_effort', None),
                                keep_reasoning=os.environ.get(KEEP_REASONING_ENV) == '1')
         self.kit = self.toolkit()
         # A provider quotes the key it refused back in its own error text.
@@ -120,6 +125,8 @@ class ServiceCli:
                   'percentage. State it with --context-window.')
         print(f'  Output cap: {self.cfg.max_tokens} tokens per model call'
               + (' (--max-output-tokens).' if args.max_tokens else '.'))
+        if self.cfg.reasoning_effort:
+            print(f'  Reasoning effort: {self.cfg.reasoning_effort} (--reasoning-effort).')
         # Ask the model one question before registering. A service that cannot
         # reach its model has nothing to offer, and the operator is here NOW.
         started = time.monotonic()

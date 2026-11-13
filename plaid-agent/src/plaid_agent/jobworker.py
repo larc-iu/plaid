@@ -85,6 +85,9 @@ def parser() -> argparse.ArgumentParser:
                    help='The most one model call may write, its reasoning included')
     add_timeout_argument(p)
     add_model_pool_argument(p)
+    p.add_argument('--reasoning-effort', default=None, metavar='LEVEL',
+                   help='How hard the model should reason, in the provider\'s own word for it (for example '
+                        'low or high), sent with every model call')
     p.add_argument('--trace-dir', default=None, metavar='DIR',
                    help='Write every model call of every stretch to this folder, one file per call')
     p.add_argument('--apps', nargs='+', default=sorted(APPS), choices=sorted(APPS),
@@ -111,9 +114,12 @@ def main(argv=None) -> int:
         print(f'Model: scripted, from {args.scripted_model}')
     cfg = ModelConfig(model=args.model, api_base=args.api_base, api_key=args.api_key, max_steps=1000,
                       max_tokens=output_cap(args.model, args.max_tokens), timeout=args.timeout,
-                      context_window=args.context_window, stream=not args.scripted_model)
+                      context_window=args.context_window, stream=not args.scripted_model,
+                      reasoning_effort=args.reasoning_effort)
     if not args.scripted_model:
         print(f'Model: {cfg.model}' + (f' via {cfg.api_base}' if cfg.api_base else ''))
+        if cfg.reasoning_effort:
+            print(f'Reasoning effort: {cfg.reasoning_effort} (--reasoning-effort).')
         try:
             ping_model(cfg)
         except ModelTooSlow:

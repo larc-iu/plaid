@@ -106,6 +106,10 @@ class ModelConfig:
     # (--context-window). None asks the model library, which knows many
     # models by name and nothing about one behind a proxy.
     context_window: Optional[int] = None
+    # How hard the model should reason, in the provider's own word for it
+    # (the operator's --reasoning-effort, sent as ``reasoning_effort``).
+    # None sends nothing, so the provider's default holds.
+    reasoning_effort: Optional[str] = None
 
     def describe(self) -> Dict[str, Any]:
         """Which model answers. The base URL stays out, as it does from the
@@ -252,6 +256,8 @@ def _provider_kwargs(cfg: ModelConfig) -> Dict[str, Any]:
         out['api_base'] = cfg.api_base
     if cfg.api_key:
         out['api_key'] = cfg.api_key
+    if cfg.reasoning_effort:
+        out['reasoning_effort'] = cfg.reasoning_effort
     return out
 
 

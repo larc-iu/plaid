@@ -189,6 +189,22 @@ def test_every_model_call_carries_the_output_cap(monkeypatch):
     assert seen[0] == 500
 
 
+def test_the_reasoning_effort_goes_with_every_model_call_only_when_stated(monkeypatch):
+    seen = []
+    script = Script(_resp(calls=[_call(1, 'read', '{}')]), _resp(''), _resp('ok'))
+
+    def spy(**kwargs):
+        seen.append(kwargs.get('reasoning_effort', 'absent'))
+        return script(**kwargs)
+
+    _turn(monkeypatch, spy)
+    assert seen == ['absent'] * 3
+    seen.clear()
+    script = Script(_resp(calls=[_call(1, 'read', '{}')]), _resp(''), _resp('ok'))
+    _turn(monkeypatch, spy, reasoning_effort='low')
+    assert seen == ['low'] * 3
+
+
 def test_a_call_that_reaches_the_cap_ends_the_turn_and_keeps_what_it_wrote(monkeypatch):
     """A local model fell into a loop and wrote 229,501 tokens in one call.
     With the cap the call ends, and the turn ends with it rather than reading
@@ -254,6 +270,8 @@ def test_the_cap_flag_reaches_the_model_config():
     args = parser.parse_args(['--model', 'openai/x', '--max-output-tokens', '4096'])
     assert args.max_tokens == 4096
     assert parser.parse_args(['--model', 'openai/x']).max_tokens is None
+    assert parser.parse_args(['--model', 'openai/x']).reasoning_effort is None
+    assert parser.parse_args(['--model', 'openai/x', '--reasoning-effort', 'low']).reasoning_effort == 'low'
     with pytest.raises(SystemExit):
         parser.parse_args(['--model', 'openai/x', '--max-output-tokens', '0'])
 

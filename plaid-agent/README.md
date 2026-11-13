@@ -157,6 +157,9 @@ write less). A call that reaches the cap ends the turn with a message asking
 the user to try again more narrowly, and what the model wrote stays on the
 turn as a stop's does. `--max-steps` caps the tool-call rounds of one turn
 (default 50), and `--temperature` is passed to the model as it is.
+`--reasoning-effort LEVEL` is sent with every model call as `reasoning_effort`,
+in the provider's own word for it (for example `low` or `high`). Without it
+the provider's default holds. The job worker takes the same flag.
 
 A turn whose request the Plaid server no longer knows (it answers the turn's
 progress updates with 404, as after a restart) is stopped as if the user had
