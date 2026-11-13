@@ -464,7 +464,7 @@ describe('the job page', () => {
       'no-clear-majority': 'No two-thirds majority',
       'in-use': 'Document in use',
       touched: 'Changed since the job wrote it',
-      unvouched: 'Not checked: the job could not confirm its own write here.',
+      unvouched: 'Not checked',
       commented: 'Has a comment',
       'in-mwe': 'In a multi-word expression',
       refused: 'Could not be written',
@@ -476,9 +476,11 @@ describe('the job page', () => {
     }));
     const report = { ...REPORT, harmonize: { ...REPORT.harmonize, left, leftMore: 0 } };
     const v = await mount(clientOf(jobOf({ state: 'done', report })));
-    const t = text(v.container.querySelector('section[aria-label="Report"]'));
+    const section = v.container.querySelector('section[aria-label="Report"]');
+    const t = text(section);
+    const cells = all(section, 'td').map((td) => td.textContent);
     for (const [code, words] of Object.entries(reasons)) {
-      expect(t).toContain(words);
+      expect(cells).toContain(words);
       expect(t).not.toContain(` ${code} `);
     }
     await v.unmount();

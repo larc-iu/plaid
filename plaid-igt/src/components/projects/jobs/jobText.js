@@ -48,7 +48,7 @@ export const HARMONIZE_LEFT_TEXT = {
   'no-clear-majority': 'No two-thirds majority',
   'in-use': 'Document in use',
   touched: 'Changed since the job wrote it',
-  unvouched: 'Not checked: the job could not confirm its own write here.',
+  unvouched: 'Not checked',
   commented: 'Has a comment',
   'in-mwe': 'In a multi-word expression',
   refused: 'Could not be written',
