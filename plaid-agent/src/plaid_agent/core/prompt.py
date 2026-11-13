@@ -90,20 +90,26 @@ another value, narrower), stage the whole corrected plan in this message.'''
 # sweeps stopped after five sentences (FX-STRETCH). Narrowed and cut to its
 # rule (FABLE-REVIEW 2026-11-12): the paragraph was 195 words of exceptions to
 # exceptions, and the reply it scripted ("once they approve this plan") was
-# written by a model that had staged nothing.
+# written by a model that had staged nothing. That cut lost "read ONLY those
+# sentences, not the whole document", and 8 of 9 runs then read all 20
+# sentences before staging 5, the deciding call back to 23,409 reasoning
+# tokens of a 32,768 cap (bench glm53-stretch-3). Put back in the rule: the
+# whole read was each run's first call, so no tool result could say it first.
 IN_STRETCHES = '''- WORK IN STRETCHES. Work you judge word by word ({full}), even picking from a list the user \
-gives, is done about {n} sentences at a time: read, decide and stage the first {n} or so, then end your turn \
-and offer to go on. Done whole: the same value on everything one search finds, a single call that changes many \
-sentences ({bulk}), one value per sentence{light}, and questions.'''
+gives, is done about {n} sentences at a time: read ONLY the first {n} or so, not the whole document, decide and \
+stage them, then end your turn and offer to go on. Done whole: the same value on everything one search finds, one call over \
+many sentences ({bulk}), one value per sentence{light}, and questions.'''
 
 # A reply claimed a staged plan in a turn that had staged nothing: the model
 # read, reasoned, and wrote the reply the stretch rule scripted (bench
 # glm53-stretch-2, the stretch task's rep 1). Every tool result now
 # ends with the plan's state (PLAN_LINE), and the reply is taken from it.
+# "Nothing is written until the user approves" went: the plan contract says
+# it, and the stretch rule's words came out of it (bench glm53-stretch-3).
 FINAL_MESSAGE = '''- The reply the user reads is your LAST message of the turn: text beside a tool call goes into \
 folded steps they may never open. It answers every question of the turn, with its numbers. It reports the plan \
 as the last tool result states it: how many {noun} it touches, what it does and anything uncertain, or that \
-nothing is planned. Nothing is written until the user approves.'''
+nothing is planned.'''
 
 # One whole turn, narrated, with the reply it ends in. The prompt said in four
 # places what a turn must not be and never showed one, where for citations a

@@ -123,14 +123,16 @@ def test_every_prompt_says_how_much_to_analyse_at_once_and_what_that_leaves_alon
         line = next(x for x in text.splitlines() if x.startswith('- WORK IN STRETCHES.'))
         assert f'Work you judge word by word ({full[app]}), even picking from a list the user gives, is done ' \
                f'about {STRETCH_SENTENCES} sentences at a time' in line, app
-        assert f'read, decide and stage the first {STRETCH_SENTENCES} or so, then end your turn and offer to ' \
-               'go on.' in line, app
+        # 8 of 9 runs read all 20 sentences before staging 5 once "read ONLY those sentences, not the whole
+        # document" was cut (bench glm53-stretch-3), and the deciding call's reasoning rose to 23,409 tokens.
+        assert f'read ONLY the first {STRETCH_SENTENCES} or so, not the whole document, decide and stage them, ' \
+               'then end your turn and offer to go on.' in line, app
         assert 'Done whole: the same value on everything one search finds' in line, app
         assert light[app] in line and bulk[app] in line, app
         assert not re.search(r'\b(?:10|ten)\b', line), app
         # No reply is scripted: what the reply says of the plan is FINAL_MESSAGE's, from the last result.
         assert 'approve this plan' not in line and 'in your reply' not in line, app
-        assert len(line.split()) < 90, (app, len(line.split()))
+        assert len(line.split()) < 95, (app, len(line.split()))
         assert text.index('A plan lives for ONE turn') < text.index('- WORK IN STRETCHES.'), app
 
 
