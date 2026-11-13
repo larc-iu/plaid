@@ -97,9 +97,11 @@ def test_a_write_refused_on_a_later_batch_sends_nothing_again_under_its_keys(wor
     row = writer.jobs.get(made['id'])['documents'][0]
     # s1 landed and is recorded. Nothing of s2's write landed, and the
     # starter's edit is the newest change: the job cannot tell that from a
-    # person's removal of the job's work, so s2 is left (REV-FIX3-1).
-    assert row['state'] == 'done' and row['counts']['words'] == 2, row
-    assert [(x['sentence'], x['reason']) for x in row['skipped']] == [('s2', 'interrupted')], row
+    # person's removal of the job's work, so s2 is left (REV-FIX3-1) until
+    # the later piece below writes in it, which records it and takes it off
+    # the list (REV-JSF-5).
+    assert row['state'] == 'done' and row['counts']['words'] == 4, row
+    assert not row['skipped'], row
     raw = admin.documents.get(d1, include_body=True)
     glosses = [sp['value'] for tl in raw['text_layers'] for tk in tl['token_layers']
                for sl in tk.get('span_layers') or [] for sp in sl.get('spans') or []]

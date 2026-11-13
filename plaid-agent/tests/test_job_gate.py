@@ -243,8 +243,9 @@ def test_a_write_put_off_after_its_first_batch_landed_puts_nothing_back(monkeypa
 
     In stretches (and a selection put off, worked in stretches) the piece
     run next is s3's, a later piece with s1 and s2 as its context: what it
-    stages there is written, as a later piece's change is (REV-JH-1). This
-    model stages in s1 and s2 whatever its piece."""
+    stages there is written, as a later piece's change is (REV-JH-1), and
+    s2 is then no longer listed as interrupted (REV-JSF-5). This model
+    stages in s1 and s2 whatever its piece."""
     human = {'form': 'ka', 'morphs': [('ka', 'go')], 'who': 'human'}
     typed = {'form': 'ka', 'morphs': [('ka', 'went')], 'who': 'human'}
     blank = [{'words': ['sani', 'sani']}, {'words': ['sani', 'sani']}, {'words': [human]}]
@@ -292,7 +293,10 @@ def test_a_write_put_off_after_its_first_batch_landed_puts_nothing_back(monkeypa
         f'the same piece writes nothing of s1 or s2 again, a later piece does: {written}'
     if pieces == 'document':
         assert job.rows['d1']['counts']['repeated'] == 4, 'what the piece staged again is counted'
-    assert ('d1-s2', 'interrupted') in _skipped(job)
+    if pieces == 'document':
+        assert ('d1-s2', 'interrupted') in _skipped(job)
+    else:
+        assert not _skipped(job), 'a later piece wrote in s2'
     assert not _mark(client, 'd1-s1').get('words'), 's1 is not vouched for'
     assert job.rows['d1']['state'] == 'done'
 

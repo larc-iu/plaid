@@ -349,7 +349,8 @@ def test_a_write_refused_on_its_second_batch_is_put_off_and_never_vouched_for(mo
     put off, s2 is not written again at once, and when the document comes
     back the person's edit is its newest change: what the job wrote in s1
     is recorded without its keys, whatever the person did to it, and s2,
-    holding nothing of the job, is skipped as interrupted."""
+    holding nothing of the job, is skipped as interrupted until a later
+    piece writes in it."""
     human = {'form': 'ka', 'morphs': [('ka', 'go')], 'who': 'human'}
     blank = [{'words': ['sani', 'sani']}, {'words': ['sani', 'sani']}, {'words': [human]}]
     typed = {'form': 'ka', 'morphs': [('ka', 'went')], 'who': 'human'}
@@ -397,10 +398,11 @@ def test_a_write_refused_on_its_second_batch_is_put_off_and_never_vouched_for(mo
     # removal of what landed: it leaves s2 and says so (REV-FIX3-1). The
     # piece run now is s3's, with s1 and s2 as its context: this model
     # stages there whatever its piece, and a later piece's change is
-    # written (REV-JH-1).
+    # written (REV-JH-1). s2, which it wrote in, is then no longer listed
+    # as interrupted (REV-JSF-5).
     assert sorted(o['word_id'] for o in staged) == ['d1-s1w1', 'd1-s1w2', 'd1-s2w1', 'd1-s2w2'], staged
-    assert {'sentence': 's2', 'sentence_id': 'd1-s2', 'reason': 'interrupted', 'kind': None} \
-        in job.rows['d1']['skipped']
+    assert not job.rows['d1'].get('skipped')
+    assert _mark(client, 'd1-s2')['counts'].get('analyzed') == 1, 'recorded'
 
 
 def test_a_write_refused_before_anything_landed_is_sent_once_more_and_vouched_for(monkeypatch):

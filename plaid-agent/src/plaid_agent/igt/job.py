@@ -2655,6 +2655,13 @@ class IgtRunner:
         last = None
         retry = []
         skipped = list(row.get('skipped') or [])
+        # A sentence listed as interrupted that this write wrote in (a later
+        # piece's change there, ruling 20) is no longer listed: it is
+        # recorded with the piece's own (REV-JSF-5).
+        again = {x.get('sentence_id') for x in skipped if x.get('reason') == INTERRUPTED} & written_in
+        if again:
+            skipped = [x for x in skipped if x.get('sentence_id') not in again]
+            part = [s for s in st.doc.sentences if s.id in again] + list(part)
         for s in part:
             if s.id in changed:
                 self.changed[s.id] += 1
@@ -2855,8 +2862,10 @@ class IgtRunner:
         translation, and the targets left blank. One with nothing of the job
         left in it is a target again when nobody wrote since the job's last
         write (its write never landed), else skipped as ``interrupted``: a
-        person may have removed the job's work, which the job never writes
-        again (REV-FIX3-1). Its words are vouched for only
+        person may have removed the job's work, which the same piece never
+        writes again (REV-FIX3-1). A later piece may write there (ruling 20),
+        which takes it off the list (:meth:`record`, REV-JSF-5). Its words
+        are vouched for only
         when ``own`` (:meth:`quiet`: the newest change of the document is the
         job's own glossing, or older than the job), so that nobody wrote
         since: otherwise a person's deletion would read as the job's work
