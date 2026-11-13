@@ -724,12 +724,17 @@ class IgtRunner:
                 job.update_row(d, state='gone')
                 continue
             skipped = list(row.get('skipped') or [])
+            # Checks run again after a crash in them meet the rows they wrote
+            # (REV-J-B3 B3-5): a sentence listed already is not listed twice.
+            listed = {x.get('sentence_id') for x in skipped}
             targets = 0
             for s in doc.sentences:
                 words, translate = sentence_targets(s, project, tasks, job.id)
                 if not words and not translate:
                     continue
                 if len(render_sentence(s, project)) > JOB_SENTENCE_MAX_CHARS:
+                    if s.id in listed:
+                        continue
                     if len(skipped) < JOB_SKIPPED_PER_DOCUMENT:
                         skipped.append({'sentence': f's{s.index}', 'sentence_id': s.id, 'reason': 'too-long',
                                         'kind': None})

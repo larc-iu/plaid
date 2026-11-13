@@ -106,3 +106,16 @@ def test_a_job_that_crashed_in_harmonize_runs_it_again_and_skips_the_checks_and_
     r = Runner(job, runner(job).cfg)
     done = run_job(job, r)
     assert calls == ['harmonize', 'entries'] and done['state'] == 'done'
+
+
+def test_the_checks_run_again_after_a_crash_in_them_list_a_too_long_sentence_once():
+    """A worker that died during the checks runs them again on rows it had
+    written (REV-J-B3 B3-5)."""
+    from plaid_agent.core.limits import JOB_SENTENCE_MAX_CHARS
+    long = ['w' + str(i) for i in range(JOB_SENTENCE_MAX_CHARS // 3)]
+    client = JobClient({'d1': document('d1', 'Story', [{'words': long}, {'words': ['ka']}])})
+    job = start(client, ['gloss'], id='JR5')
+    runner(job).check(job)
+    runner(job).check(job)
+    assert [s['sentence_id'] for s in job.rows['d1']['skipped']] == ['d1-s1']
+    assert job.rows['d1']['targets'] == 1
