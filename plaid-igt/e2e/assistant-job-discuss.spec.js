@@ -133,7 +133,6 @@ test('a job is discussed from its page, and a gloss for the word it left blank i
     serviceId,
     script: script(jobId),
   });
-  let convId = null;
   try {
     await expect
       .poll(
@@ -172,7 +171,7 @@ test('a job is discussed from its page, and a gloss for the word it left blank i
       includeValues: true,
     });
     expect(metas).toHaveLength(1);
-    convId = metas[0].key.split(':').at(-1);
+    const convId = metas[0].key.split(':').at(-1);
     expect(metas[0].value.about).toMatchObject({ jobId });
     const conv = (await client.userData.get(userId, `igt:assistant:${projectId}:conv:${convId}`))
       .value;
