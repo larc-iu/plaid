@@ -94,7 +94,9 @@ import { cn } from '../../lib/utils.js';
 //   the line over it switches to the document as of the entry and back
 //   (`?historyView=document`). Not given, an entry shows the document as of
 //   it, as before. The context carries `historySnapshot`, the document after
-//   the entry once it has been read (null until then).
+//   the entry once it has been read (null until then), and `backToNow()`, for
+//   a write the view makes from History (an undo): it leaves the entry for the
+//   document now, read again, with the rail read again, as a restore does.
 // - `focusParams(focus)`: the URL params a citation's focus opens, or null
 //   when it names nothing on this page. Or `useFocusHere({ documentId,
 //   onEditor })`, a hook answering the citation itself (`onFocusHere`).
@@ -552,6 +554,7 @@ const DocumentEditor = ({ app, documentClient }) => {
     // How a tab sends the reader to another tab.
     goToTab: setQueryTab,
     historySnapshot,
+    backToNow: history.handleRestored,
   };
 
   return (

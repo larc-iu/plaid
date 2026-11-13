@@ -97,8 +97,9 @@ export function useHistoryView({ documentId, client, doc, reload, onExpired }) {
     if (selectedEntry) selectEntry(null);
   };
 
-  // After a restore (or an undo of one) the live document has changed and the
-  // rail has a new newest entry: leave the snapshot, then re-read both.
+  // After a restore (or an undo of one), or an undo of an entry, the live
+  // document has changed and the rail has a new newest entry: leave the
+  // snapshot, then re-read both.
   const handleRestored = async () => {
     if (latest.current.selectedEntry) await selectEntry(null);
     await Promise.all([latest.current.reload(), history.fetchAuditLog()]);

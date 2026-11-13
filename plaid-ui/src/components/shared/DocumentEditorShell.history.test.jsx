@@ -78,7 +78,11 @@ vi.mock('../../hooks/useHistoryView.js', async () => {
         historyError: null,
         restoreEntry: null,
         setRestoreEntry: () => {},
-        handleRestored: () => {},
+        // A restore or an undo: back to the document now.
+        handleRestored: async () => {
+          seen.restored = (seen.restored || 0) + 1;
+          setSelected(null);
+        },
       };
     },
   };
@@ -116,13 +120,16 @@ const app = (over = {}) => ({
       {tab}
     </div>
   ),
-  historyChanges: (context) => (
-    <div
-      data-testid="changes"
-      data-entry={context.pastEntry.id}
-      data-snapshot={context.historySnapshot?.raw?.name ?? ''}
-    />
-  ),
+  historyChanges: (context) => {
+    seen.context = context;
+    return (
+      <div
+        data-testid="changes"
+        data-entry={context.pastEntry.id}
+        data-snapshot={context.historySnapshot?.raw?.name ?? ''}
+      />
+    );
+  },
   sentenceRef: (s, i) => `s${i + 1}`,
   ...over,
 });
@@ -274,6 +281,19 @@ describe('a History entry in the address', () => {
     expect(q().get('history')).toBeNull();
     expect(q().get('tab')).toBe('analyze');
     expect(changes()).toBeNull();
+    await view.unmount();
+  });
+
+  it('hands the view the way back to the document now, after it wrote', async () => {
+    seen.restored = 0;
+    await mount('/p/p1/d/d1?tab=analyze&history=g1');
+    expect(changes()).not.toBeNull();
+    await view.step(() => seen.context.backToNow());
+    await settle();
+    expect(seen.restored).toBe(1);
+    expect(changes()).toBeNull();
+    expect(q().get('history')).toBeNull();
+    expect(body().textContent).toBe('analyze');
     await view.unmount();
   });
 
