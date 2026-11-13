@@ -70,10 +70,8 @@ export const stoppedReport = ({ instructions, document, startedAt }) => ({
   harmonize: { changed: [], left: [], changedMore: 0, leftMore: 0 },
   entries: {
     created: [],
-    deleted: [],
     unlinked: [],
     createdMore: 0,
-    deletedMore: 0,
     unlinkedMore: 0,
     lexicons: [],
   },

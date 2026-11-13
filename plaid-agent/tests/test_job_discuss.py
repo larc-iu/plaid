@@ -37,8 +37,8 @@ def _report(**over):
                                                'analyses': [{'analysis': 'ka ‘go’', 'count': 2},
                                                             {'analysis': 'ka ‘come’', 'count': 2}]}],
                       'changed_more': 0, 'left_more': 0},
-        'entries': {'created': [{'id': 'e9', 'lexicon': 'v1', 'form': 'tuna', 'gloss': 'fish'}], 'deleted': [],
-                    'unlinked': [], 'created_more': 0, 'deleted_more': 0, 'unlinked_more': 0, 'lexicons': ['v1'],
+        'entries': {'created': [{'id': 'e9', 'lexicon': 'v1', 'form': 'tuna', 'gloss': 'fish'}],
+                    'unlinked': [], 'created_more': 0, 'unlinked_more': 0, 'lexicons': ['v1'],
                     'proposed': [], 'proposed_more': 0},
     }
     report.update(over)

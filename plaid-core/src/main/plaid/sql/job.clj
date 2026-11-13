@@ -360,8 +360,8 @@
 ;; ============================================================
 
 (def ^:private empty-harmonize {:changed [] :left [] :changed-more 0 :left-more 0})
-(def ^:private empty-entries {:created [] :deleted [] :unlinked []
-                              :created-more 0 :deleted-more 0 :unlinked-more 0
+(def ^:private empty-entries {:created [] :unlinked []
+                              :created-more 0 :unlinked-more 0
                               :lexicons []})
 
 (defn- settle-rows!
@@ -409,8 +409,13 @@
               :skipped-too-long (skipped-of "too-long")
               :skipped-failed (skipped-of "failed")
               :skipped-changed (skipped-of "changed")
+              :skipped-interrupted (skipped-of "interrupted")
+              :skipped-more (count-of :skipped-more)
               :changed (count-of :changed)
-              :proposed (count-of :proposed)}
+              :proposed (count-of :proposed)
+              :changes (count-of :changes)
+              :deletions (count-of :deletions)
+              :repeated (count-of :repeated)}
      :documents (mapv #(select-keys % [:document-id :name :state :sentences :targets :done
                                        :counts :skipped :gloss-group :harmonize-group])
                       docs)

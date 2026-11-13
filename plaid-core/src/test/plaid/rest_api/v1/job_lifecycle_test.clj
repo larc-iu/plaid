@@ -288,8 +288,9 @@
           (claim! jh/worker-b)
           (fix/assert-ok (call admin-request :put (str "/api/v1/jobs/" j "/documents/" d)
                                {:worker-id jh/worker-b :state "done" :sentences 10 :targets 8 :done 8
-                                :counts {:words 30 :links 12}
-                                :skipped [{:sentence "s4" :sentence-id "x" :reason "too-long" :kind nil}]}))
+                                :counts {:words 30 :links 12 :changes 40 :deletions 3 :repeated 2 :skipped-more 4}
+                                :skipped [{:sentence "s4" :sentence-id "x" :reason "too-long" :kind nil}
+                                          {:sentence "s5" :sentence-id "y" :reason "interrupted" :kind nil}]}))
           (when (= "stopping" state)
             (fix/assert-ok (call st :post (str "/api/v1/jobs/" j "/cancel"))))
           (lapse! j)
@@ -306,6 +307,11 @@
             (is (= 8 (-> report :totals :sentences)))
             (is (= 30 (-> report :totals :words)))
             (is (= 1 (-> report :totals :skipped-too-long)))
+            (is (= {:changes 40 :deletions 3 :repeated 2 :skipped-more 4 :skipped-interrupted 1}
+                   (select-keys (:totals report) [:changes :deletions :repeated :skipped-more
+                                                  :skipped-interrupted]))
+                "every total the worker's report holds")
+            (is (not (contains? (:entries report) :deleted)) "a job lists no deleted entries")
             (is (= ["done" "not-reached"] (mapv :state (:documents report))))))))
     (testing "an ended job"
       (let [j (job-id (start! st p))]

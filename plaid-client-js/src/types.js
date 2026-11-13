@@ -182,8 +182,9 @@
 /**
  * A document's row of a job, in the job's order. `name` is the document's
  * name now, null once it is deleted. `counts` holds `translations`,
- * `refreshed`, `words`, `links`, `entries`, `left`, `changed` and
- * `proposed`. `lastSentence` is the cursor, the id of the last sentence the
+ * `refreshed`, `words`, `links`, `entries`, `left`, `leftTranslations`,
+ * `changed`, `proposed`, `analyzed`, `changes`, `deletions` and `repeated`.
+ * `lastSentence` is the cursor, the id of the last sentence the
  * job finished.
  * @typedef {object} JobDocument
  * @property {string} documentId
@@ -261,7 +262,7 @@
  * @property {Record<string, number>} totals
  * @property {Array<{documentId: string, name: string | null, state: string, sentences: number | null, targets: number | null, done: number | null, counts: Record<string, number>, skipped: JobSkipped[], glossGroup: string | null, harmonizeGroup: string | null, left?: JobLeft[], leftMore?: number}>} documents
  * @property {{changed: object[], left: object[], changedMore: number, leftMore: number}} harmonize
- * @property {{created: object[], deleted: object[], unlinked: object[], createdMore: number, deletedMore: number, unlinkedMore: number, lexicons: string[]}} entries
+ * @property {{created: object[], unlinked: object[], createdMore: number, unlinkedMore: number, lexicons: string[]}} entries
  * @property {string | null} [summary] the final context's prose
  * @property {object | null} [plan] the job's plan
  * @property {object[]} [proposed] changes the job proposed, with `proposedMore`

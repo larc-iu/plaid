@@ -3778,7 +3778,8 @@ class JobsResource(_Resource):
             last_sentence: The cursor, the id of the last sentence finished
             defers: How many times the document was deferred
             counts: ``{translations, refreshed, words, links, entries, left,
-                changed, protected}``
+                left_translations, changed, proposed, analyzed, changes,
+                deletions, repeated}``
             skipped: ``[{sentence, sentence_id, reason, kind}]``, at most 500
             gloss_group: The operation group of the job's glossing here
             harmonize_group: The operation group of its harmonize here

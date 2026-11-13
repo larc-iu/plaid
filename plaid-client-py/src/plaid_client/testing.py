@@ -1837,7 +1837,8 @@ _JOB_REPORT_MAX_BYTES = 1000000
 _JOB_ANALYSIS_MAX_CHARS = 4000
 _JOB_DECISIONS_PER_CALL = 1000
 _JOB_SKIPPED_PER_DOCUMENT = 500
-_JOB_COUNT_KEYS = ('translations', 'refreshed', 'words', 'links', 'entries', 'changed', 'proposed')
+_JOB_COUNT_KEYS = ('translations', 'refreshed', 'words', 'links', 'entries', 'changed', 'proposed', 'changes',
+                   'deletions', 'repeated', 'skipped_more')
 
 
 class _FakeJobs:
@@ -1974,14 +1975,14 @@ class _FakeJobs:
                 'sentences': sum(r['done'] or 0 for r in rows),
                 **{k: sums[k] for k in ('translations', 'refreshed', 'words', 'links', 'entries')},
                 'skipped_too_long': skips('too-long'), 'skipped_failed': skips('failed'),
-                'skipped_changed': skips('changed'),
-                'changed': sums['changed'], 'proposed': sums['proposed']},
+                'skipped_changed': skips('changed'), 'skipped_interrupted': skips('interrupted'),
+                'skipped_more': sums['skipped_more'], 'changed': sums['changed'], 'proposed': sums['proposed'],
+                'changes': sums['changes'], 'deletions': sums['deletions'], 'repeated': sums['repeated']},
             'documents': [{k: copy.deepcopy(r[k]) for k in
                            ('document_id', 'state', 'sentences', 'targets', 'done', 'counts',
                             'skipped', 'gloss_group', 'harmonize_group')} for r in rows],
             'harmonize': {'changed': [], 'left': [], 'changed_more': 0, 'left_more': 0},
-            'entries': {'created': [], 'deleted': [], 'unlinked': [],
-                        'created_more': 0, 'deleted_more': 0, 'unlinked_more': 0, 'lexicons': []},
+            'entries': {'created': [], 'unlinked': [], 'created_more': 0, 'unlinked_more': 0, 'lexicons': []},
         }
 
     def _settle_rows(self, job):
