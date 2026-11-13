@@ -929,8 +929,11 @@ class IgtRunner:
             if d not in order and (job.rows.get(d) or {}).get('state') not in ROW_FINAL + ('not-reached',):
                 job.update_row(d, state='not-reached')
         if plan['pieces'] == SELECTION and SELECTION not in self.fallen_back():
-            if self.selection(job, order):
-                return
+            self.selection(job, order)
+        # Every document still to finish is walked, a selection's too: the
+        # walk settles it, ends it done when nothing is left, and works what
+        # is (a sentence a person changed during the piece is taken again,
+        # a document whose write was put off is worked as a piece of its own).
         deferred = []
         for d in order:
             if (job.rows.get(d) or {}).get('state') in ROW_FINAL:
@@ -1070,9 +1073,10 @@ class IgtRunner:
     def selection(self, job, order: List[str]) -> bool:
         """The whole selection as one piece: one model context reads the
         documents with its tools, and what it staged is written document by
-        document, each under its lock by the apply rule. True when done;
-        False when the piece failed (the documents are then worked one
-        piece each, and the report says so)."""
+        document, each through THE write (:meth:`write`: the gate, the lock,
+        the apply rule, the record). The walk then finishes every document
+        (:meth:`work`). True when the piece ran, False when it failed (the
+        documents are then worked one piece each, and the report says so)."""
         project = self.project()
         live = [d for d in order if (job.rows.get(d) or {}).get('state') not in ROW_FINAL]
         if not live:
@@ -1107,29 +1111,36 @@ class IgtRunner:
         # Changes no document holds (a guideline, a setting) go with the
         # first document's write, and are proposed there.
         loose = by_doc.pop(None, [])
-        if loose and live:
-            by_doc.setdefault(live[0], []).extend(loose)
-        deferred = []
+        if loose:
+            by_doc.setdefault(next((d for d in live if d in ws._docs), live[0]), []).extend(loose)
         for d in live:
             job.check()
             job.set(current_document=d)
             try:
                 doc = ws._docs.get(d) or self.read(project, d)
-                part = self.pending(doc, project, d, every=True)
-                st = Stretch(doc, project, part, job.id, self.known_words(d))
-                prints = {s.id: ws.sentence_print(doc, s) for s in doc.sentences}
-                core_job.through_core(job, lambda: self.write(project, d, ws, doc, part, st, prints,
-                                                              by_doc.get(d, []), note))
-                job.update_row(d, state='done')
+                self.write_piece(project, d, ws, doc, by_doc.get(d, []), note)
             except Deferred:
-                deferred.append(d)
+                # Its writes were dropped: it is worked again as a piece of its own.
+                self.fall_back(d, 'in-use')
+                self.defer(d)
             except Gone:
                 job.update_row(d, state='gone')
-        for d in deferred:
-            # Its writes were dropped: it is worked again as a piece of its own.
-            self.fall_back(d, 'in-use')
-            self.defer(d)
-        return not deferred
+        return True
+
+    def write_piece(self, project: IgtProject, document_id: str, ws: JobWorkspace, doc,
+                    ops: List[Dict[str, Any]], note: str) -> None:
+        """A selection's write in one of its documents: THE write
+        (:meth:`write`), its piece every sentence of the document as the
+        piece read it (the gate takes out those the job finished), and every
+        sentence's print, so a sentence anyone changed since the read is
+        taken again by the walk. A document the piece did not read is read
+        now and recorded as it is. Tried again from the gate after core's
+        passing trouble."""
+        def step():
+            part = list(doc.sentences)
+            prints = {s.id: ws.sentence_print(doc, s) for s in doc.sentences}
+            self.write(project, document_id, ws, doc, part, prints, ops, note)
+        core_job.through_core(self.job, step)
 
     def selection_work(self, project: IgtProject, documents: List[str]):
         job = self.job
@@ -1457,7 +1468,7 @@ class IgtRunner:
         # What the piece staged outside its document goes with its write and
         # is proposed there, never written: the rule finds no such token in
         # the document under the lock.
-        return ws, doc, part, st, prints, list(ws.ops), note
+        return ws, doc, part, prints, list(ws.ops), note
 
     def run_piece(self, ws: JobWorkspace, project: IgtProject, message: str, folder: str) -> str:
         """One piece's model context: the job's prompt, the interactive
@@ -1653,14 +1664,77 @@ class IgtRunner:
 
     # --- the write (SPEC 5.4) --------------------------------------------------------
 
+    def unsettled(self, document_id: str) -> bool:
+        """Whether this worker may not write in the document before it
+        settles it (:meth:`settle`): it has not read the job's record of the
+        document yet, or a sentence the job began to write in is neither
+        recorded, skipped nor known to have sent nothing (a write whose
+        record was lost: a crash, a passing error, a write put off)."""
+        if document_id not in self.recorded:
+            return True
+        marks = self.recorded[document_id]
+        unsent = self.unsent.get(document_id) or set()
+        skipped = {s.get('sentence_id') for s in (self.job.rows.get(document_id) or {}).get('skipped') or []}
+        return any(sid not in marks and sid not in unsent and sid not in skipped
+                   for sid in self.writing.get(document_id) or ())
+
+    def gate(self, project: IgtProject, document_id: str, client=None) -> None:
+        """THE GATE every write of the job in a document passes first (a
+        stretch, a document piece, a selection piece, harmonize): when the
+        document is :meth:`unsettled`, the document is read, then its newest
+        History unit, and :meth:`settle` records or skips what the job
+        wrote there and did not record. So no write starts where the job
+        does not know what it wrote: a word a person cleared after a write
+        whose record was lost is never taken for an empty one (REV-FIX3-1,
+        REV-JG-1). A walk settles before each stretch, so on that path this
+        reads nothing."""
+        if not self.unsettled(document_id):
+            return
+        client = client or self.job.client()
+        fresh = self.read(project, document_id, client)
+        last = self.newest_change(client, document_id)
+        self.settle(project, document_id, fresh, own=self.quiet(last, document_id))
+
+    def excluded(self, document_id: str) -> set:
+        """The sentences of a document no piece writes in: skipped,
+        recorded, or begun (a writing row) and not known to have sent
+        nothing."""
+        row = self.job.rows.get(document_id) or {}
+        out = {s.get('sentence_id') for s in row.get('skipped') or []}
+        out |= set(self.recorded.get(document_id) or {})
+        out |= (self.unlisted.get(document_id) or set()) | (self.too_long.get(document_id) or set())
+        out |= set(self.writing.get(document_id) or ()) - (self.unsent.get(document_id) or set())
+        return out
+
     def write(self, project: IgtProject, document_id: str, ws: JobWorkspace, doc, part: List[Sentence],
-              st: Stretch, prints: Dict[str, str], ops: List[Dict[str, Any]], note: str = '') -> None:
-        """A piece's write in one document under its lock (SPEC 5.4), by the
-        apply rule, then its record (:meth:`record`) and the changes it
-        proposes (:meth:`record_changes`). Safe to do again after a failure anywhere in
-        it: a word written is no longer a target, a translation written is
-        the job's own, and a sentence recorded is not recorded again."""
+              prints: Dict[str, str], ops: List[Dict[str, Any]], note: str = '') -> None:
+        """THE write of every piece of the job in one document, whatever the
+        plan cut (a stretch, a whole document, the whole selection): through
+        :meth:`gate` first, then under the document's lock by the apply rule
+        (SPEC 5.4), its writing rows before it is sent (:meth:`intend`), then
+        its record (:meth:`record`) and the changes it proposes
+        (:meth:`record_changes`). ``doc`` is the document as the piece read
+        it, ``part`` the piece's sentences in it.
+
+        Safe to do again after a failure anywhere in it: the gate settles
+        what landed, a sentence it settles (recorded, or skipped as
+        interrupted) leaves the piece and the ops the piece staged there are
+        dropped, never applied again nor applied where a person removed what
+        landed. A word written is no longer a target, a translation written
+        is the job's own, and a sentence recorded is not recorded again."""
         job = self.job
+        self.gate(project, document_id)
+        out = self.excluded(document_id)
+        settled = {s.id for s in part if s.id in out}
+        if settled:
+            # What this piece staged in a sentence the job wrote in and did
+            # not record is that earlier write's: it landed (recorded now) or
+            # was cut off (skipped), and is not written again.
+            from .jobapply import token_of
+            where = Stretch(doc, project, [], job.id)
+            ops = [o for o in ops if getattr(where.sentence_of(token_of(o)), 'id', None) not in settled]
+            part = [s for s in part if s.id not in settled]
+        st = Stretch(doc, project, part, job.id, self.known_words(document_id))
         row = job.rows.get(document_id) or {}
         group = row.get('gloss_group')
         if not group:
@@ -1698,7 +1772,7 @@ class IgtRunner:
                 # next walk reads what is there (REV-J-B3 B3-3).
                 # A lock lost in the write is a 423 (its renewal's refusal,
                 # REV-J-B3 B3-4).
-                if _gone_now(e) and not e.wrote:
+                if _gone_now(e) and not e.wrote and part:
                     # Refused for something gone, nothing landed: the
                     # stretch's sentences are skipped as changed the
                     # JOB_DEFER_ROUNDS-th time the same stretch (known by its
@@ -2427,6 +2501,11 @@ class IgtRunner:
             if (job.rows.get(d) or {}).get('state') == 'gone':
                 continue
             try:
+                # Through the gate, as every write of the job: what the job
+                # wrote and did not record is recorded first, so harmonize
+                # never takes a word it wrote for one it cannot vouch for, or
+                # a word a person cleared for the job's.
+                self.gate(project, d, client)
                 docs[d] = self.read(project, d, client)
             except Gone:
                 job.update_row(d, state='gone')
