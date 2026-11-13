@@ -900,7 +900,8 @@ class IgtRunner:
 
     def newest_change(self, client, document_id: str) -> Optional[Dict[str, Any]]:
         """The newest unit of the document's History, or None. Core places a
-        unit by its newest operation, so this is whoever wrote last."""
+        unit by its newest operation, so this is whoever wrote last, at its
+        ``end_time`` (its ``time`` is its first operation's, REV-B4-4)."""
         try:
             page = client.documents.audit_page(document_id, order='desc', limit=1) or {}
         except PlaidAPIError as e:
@@ -916,7 +917,7 @@ class IgtRunner:
             return False
         if str(last.get('ref') or '').startswith(job_ref):
             return False
-        when = core_job._iso_seconds(last.get('time') or last.get('timestamp') or last.get('created_at'))
+        when = core_job._iso_seconds(last.get('end_time'))
         if when is None:
             return False
         # Only what was written after the job was made counts: the edit its
@@ -935,7 +936,7 @@ class IgtRunner:
         and a write of its that is not there never landed (``settle``)."""
         if not last or str(last.get('ref') or '') == self.gloss_ref(document_id):
             return True
-        when = core_job._iso_seconds(last.get('time') or last.get('timestamp') or last.get('created_at'))
+        when = core_job._iso_seconds(last.get('end_time'))
         created = core_job._iso_seconds(self.job.job.get('created_at'))
         return when is not None and created is not None and when <= created
 

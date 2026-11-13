@@ -281,6 +281,23 @@ def test_a_crash_between_the_writing_row_and_the_write_then_a_person_writing_lea
     assert job.rows['d1']['done'] == 2
 
 
+def test_a_unit_begun_before_the_job_and_ended_after_it_is_someone_writing_since(monkeypatch):
+    """REV-B4-4: a crash between the writing row and the write, then a
+    person writes in a group they began before the job was made (core gives
+    the unit its first member's ``time`` and its last's ``end_time``). The
+    document is not quiet: the safe side, the sentences are left."""
+    client, job, clock, model = _job(monkeypatch)
+    _crash_before_write(monkeypatch, job)
+    created = clock['t'] - 3600
+    client._holder('d1')['audit'].append({'id': 'person-0', 'time': _iso(created - 100),
+                                          'end_time': _iso(clock['t'] - 700), 'ref': None,
+                                          'documents': [{'id': 'd1'}], 'ops': []})
+    staged = _staged(monkeypatch)
+    assert _resume(client, job).document('d1') == 'done'
+    assert not staged
+    assert _skipped(job) == [('d1-s1', 'interrupted'), ('d1-s2', 'interrupted')]
+
+
 # --- known to have sent nothing: targets again in the same worker ----------------------
 
 def _moved(c, ops):

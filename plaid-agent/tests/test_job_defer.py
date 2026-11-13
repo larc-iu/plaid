@@ -70,6 +70,18 @@ def test_a_recent_entry_by_someone_else_defers_and_the_jobs_own_does_not(monkeyp
     assert r.document('d1') == 'done'
 
 
+def test_a_unit_begun_before_the_job_and_ended_a_minute_ago_defers(monkeypatch):
+    """REV-B4-4: core gives a History unit the time of its first member
+    (``time``) and of its last (``end_time``), and places it by its last. A
+    group a person began before the job was made and wrote in a minute ago
+    is a person in the document now."""
+    client, job, clock = _job()
+    _model(monkeypatch)
+    client._holder('d1')['audit'].append({'id': 'a0', 'time': _iso(NOW - 7200), 'end_time': _iso(NOW - 60),
+                                          'ref': None, 'kind': None, 'documents': [{'id': 'd1'}], 'ops': []})
+    assert runner(job).document('d1') == 'deferred'
+
+
 def test_an_old_entry_does_not_defer(monkeypatch):
     client, job, clock = _job()
     _model(monkeypatch)
