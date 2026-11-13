@@ -1629,6 +1629,12 @@ class IgtRunner:
         row = job.rows.get(document_id) or {}
         now = {s.id: s for s in doc.sentences}
         translated = {o.get('token_id'): o for o in ops if o.get('kind') == 'set_span'}
+        # What the write was for: a target it wrote that reads blank now was
+        # cleared by a person under the lock, never left by the model
+        # (REV-B4-2, as ``settle`` lists it, REV-FIX3-3).
+        wrote = {st.word_of.get(t, t) for o in ops if o.get('kind') != 'create_entry'
+                 for t in [o.get('analysis_word_id') or o.get('word_id') or o.get('token_id')]
+                 if not (o.get('kind') == 'set_span' and t in st.translations)}
         extra = self.carry.pop(document_id, Counter())
         extra['changed'] += dropped.get('changed', 0)
         extra['protected'] += dropped.get('protected', 0)
@@ -1657,8 +1663,9 @@ class IgtRunner:
                 if state == 'own' and s.id in translated:
                     translation = 'refreshed' if translated[s.id].get('span_id') is not None else 'translations'
                 else:
-                    translation = 'left' if state in ('empty', 'machine') else None
-            records.append(self.sentence_record(document_id, cur, words, translation, made, vouched))
+                    translation = 'left' if state in ('empty', 'machine') and s.id not in translated else None
+            records.append(self.sentence_record(document_id, cur, [w for w in words if not (
+                w.id in wrote and word_target(w))], translation, made, vouched))
         if records:
             for k, n in extra.items():
                 records[0]['counts'][k] = records[0]['counts'].get(k, 0) + n

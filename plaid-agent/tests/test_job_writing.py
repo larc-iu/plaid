@@ -451,3 +451,45 @@ def test_an_error_after_the_write_landed_is_still_taken_as_a_write_that_may_have
     assert sorted(o['word_id'] for o in staged) == ['d1-s1w1', 'd1-s1w2', 'd1-s2w1'], 'written once'
     assert _skipped(job) == [('d1-s1', 'interrupted')]
     assert _mark(client, 'd1-s2')['counts']['words'] == 1
+
+
+# --- what the starter clears under the lock, right after the write -------------------------
+
+def test_a_word_the_starter_clears_under_the_lock_is_not_listed_left_blank(monkeypatch):
+    """REV-B4-2: the write lands whole and the starter clears the job's
+    proposal on pa before the job reads the document again. pa was not left
+    blank by the model: it is not "Left blank" (as ``settle`` already
+    lists, REV-FIX3-3)."""
+    client, job, clock, model = _job(monkeypatch, before=[{'words': ['ka', 'ta']}],
+                                     after=[{'words': [MINE['ka'], MINE['ta']]}])
+    real = igt_job.execute_plan
+
+    def execute(c, ops, **kw):
+        out = real(c, ops, **kw)
+        client.after_write['d1'] = document('d1', 'Story', [{'words': [MINE['ka'], 'ta']}], version=9)
+        return out
+    monkeypatch.setattr(igt_job, 'execute_plan', execute)
+    assert runner(job).document('d1') == 'done'
+    mark = _mark(client, 'd1-s1')
+    assert mark['left'] == [] and mark['counts'].get('left', 0) == 0, mark
+    assert mark['counts']['words'] == 1
+
+
+def test_a_translation_the_starter_clears_under_the_lock_is_not_listed_left_blank(monkeypatch):
+    def translate(asked, n, kwargs):
+        if n > 1:
+            return reply('Done.')
+        return reply(calls=[call(1, 'set_field', {'document': 'Story', 'refs': ['s1'], 'field': 'Translation',
+                                                  'value': 'T1.'})])
+    client, job, clock, model = _job(monkeypatch, ('translate',), [{'words': ['ka']}],
+                                     [{'words': ['ka'], 'translation': ('T1.', J)}], translate)
+    real = igt_job.execute_plan
+
+    def execute(c, ops, **kw):
+        out = real(c, ops, **kw)
+        client.after_write['d1'] = document('d1', 'Story', [{'words': ['ka']}], version=9)
+        return out
+    monkeypatch.setattr(igt_job, 'execute_plan', execute)
+    assert runner(job).document('d1') == 'done'
+    mark = _mark(client, 'd1-s1')
+    assert mark['left'] == [] and mark['counts'].get('left', 0) == 0, mark
