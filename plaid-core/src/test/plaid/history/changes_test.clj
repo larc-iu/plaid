@@ -369,7 +369,8 @@
         (is (= (:op/id op) (:audit/id e)))
         (is (= [(:op/id op)] (map :op/id (:audit/ops e))))
         (is (= (:op/end-time op) (:audit/end-time e)) "a time inside a batch reads as before it")
-        (is (not (contains? e :audit/batch-id)) "the entry is the operation, not its batch")))))
+        (is (not (contains? e :audit/batch-id)) "the entry is the operation, not its batch")
+        (is (= batch-id (:audit/part-of e)) "and it names the entry it is part of")))))
 
 ;; An action inside a group (an operation of it, by its own id) is read as an
 ;; entry of its own: what it changed, and its entry in a document's log.
@@ -390,7 +391,9 @@
       (assert-ok r)
       (is (= [(:op/id op1) [(:op/id op1)] (:op/end-time op1)]
              [(:audit/id e) (map :op/id (:audit/ops e)) (:audit/end-time e)]))
-      (is (not (contains? e :audit/group-id)) "the entry is the operation, not its group"))))
+      (is (not (contains? e :audit/group-id)) "the entry is the operation, not its group")
+      (is (= g (str (:audit/part-of e))) "and it names the entry it is part of")
+      (is (not (contains? group :audit/part-of)) "a whole entry is part of nothing"))))
 
 ;; ============================================================
 ;; Paging while the unit and others go on writing

@@ -155,7 +155,9 @@ export function auditMethods(client, kind) {
      * @param {number} [opts.opsLimit] - Keep only each entry's oldest N
      *   operations in `ops` (1..1000). `opCount` on every entry says how
      *   many it has
-     * @param {string} [opts.entryId] - Read only this entry, not a page
+     * @param {string} [opts.entryId] - Read only this entry, not a page. An
+     *   operation's id inside an entry reads that operation alone, its `partOf`
+     *   naming the entry
      * @returns {Promise<Page<AuditEntry>>}
      */
     auditPage: (

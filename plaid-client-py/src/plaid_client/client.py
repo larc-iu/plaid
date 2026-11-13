@@ -620,7 +620,9 @@ class VocabLayersResource(_ConfigMethods, _Resource):
             ops_limit: Keep only each entry's oldest N operations in
                 ``ops`` (1..1000). ``op_count`` on every entry says how many
                 it has
-            entry_id: Read only this entry, not a page
+            entry_id: Read only this entry, not a page. An operation's id
+                inside an entry reads that operation alone, its ``part_of``
+                naming the entry
             item_id: Only the changes that wrote this one entry
         """
         return list_page(self._client, f'/api/v1/vocab-layers/{id}/audit', limit=limit, cursor=cursor,
@@ -1174,7 +1176,9 @@ class UsersResource(_Resource):
             ops_limit: Keep only each entry's oldest N operations in
                 ``ops`` (1..1000). ``op_count`` on every entry says how many
                 it has
-            entry_id: Read only this entry, not a page
+            entry_id: Read only this entry, not a page. An operation's id
+                inside an entry reads that operation alone, its ``part_of``
+                naming the entry
         """
         return list_page(self._client, f'/api/v1/users/{user_id}/audit', limit=limit, cursor=cursor,
                          query=_audit_query(start_time, end_time, op_types, kinds, order=order,
@@ -2288,7 +2292,9 @@ class DocumentsResource(_MetadataMethods, _Resource):
             ops_limit: Keep only each entry's oldest N operations in
                 ``ops`` (1..1000). ``op_count`` on every entry says how many
                 it has
-            entry_id: Read only this entry, not a page
+            entry_id: Read only this entry, not a page. An operation's id
+                inside an entry reads that operation alone, its ``part_of``
+                naming the entry
         """
         return list_page(self._client, f'/api/v1/documents/{document_id}/audit', limit=limit, cursor=cursor,
                          query=_audit_query(start_time, end_time, op_types, kinds, order=order,
@@ -2783,7 +2789,9 @@ class ProjectsResource(_ConfigMethods, _Resource):
             ops_limit: Keep only each entry's oldest N operations in
                 ``ops`` (1..1000). ``op_count`` on every entry says how many
                 it has
-            entry_id: Read only this entry, not a page
+            entry_id: Read only this entry, not a page. An operation's id
+                inside an entry reads that operation alone, its ``part_of``
+                naming the entry
         """
         return list_page(self._client, f'/api/v1/projects/{project_id}/audit', limit=limit, cursor=cursor,
                          query=_audit_query(start_time, end_time, op_types, kinds, order=order,
@@ -3474,7 +3482,9 @@ class AuditResource(_Resource):
             ops_limit: Keep only each entry's oldest N operations in
                 ``ops`` (1..1000). ``op_count`` on every entry says how many
                 it has
-            entry_id: Read only this entry, not a page
+            entry_id: Read only this entry, not a page. An operation's id
+                inside an entry reads that operation alone, its ``part_of``
+                naming the entry
         """
         return list_page(self._client, '/api/v1/audit', limit=limit, cursor=cursor,
                          query=_audit_query(start_time, end_time, op_types, kinds, order=order,

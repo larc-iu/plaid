@@ -134,6 +134,8 @@
                      older than the column, service on some from
                      2026-10-06 to 2026-10-08). Each op carries
                      its own as :op/credential
+    :audit/part-of   when the entry is one operation read by its own id inside
+                     a group or a batch (an action): that group's or batch's id
     :audit/op-count  how many members the unit has in this read. More than
                      `:audit/ops` holds when `ops-limit` cut the list
 
@@ -208,6 +210,7 @@
                 (:kind group) (assoc :audit/kind (:kind group))
                 (:ref group) (assoc :audit/ref (:ref group))
                 (and (not (:group_id head)) (= unit (:batch_id head))) (assoc :audit/batch-id unit)
+                (not= unit (row-unit head)) (assoc :audit/part-of (row-unit head))
                 token (assoc :audit/api-token token)
                 (:credential head) (assoc :audit/credential (:credential head)))))
           units)))

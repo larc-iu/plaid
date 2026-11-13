@@ -342,7 +342,7 @@ To read the rest of one entry, pass its id as `entry_id` / `entryId` with a `sta
 `audit.changes` answers, for one entry, every row of a document or a vocabulary it wrote, as it was just before the entry and just after.
 A row the entry made has no `before`, and one it deleted has no `after`.
 `changed_since` / `changedSince` says the row has been changed since.
-The id of one operation inside an entry answers for that operation alone, and an audit read's `entry_id` / `entryId` takes it too, as an entry of that one operation.
+The id of one operation inside an entry answers for that operation alone, and an audit read's `entry_id` / `entryId` takes it too, as an entry of that one operation, whose `part_of` / `partOf` names the entry it is part of.
 
 [,python]
 ----

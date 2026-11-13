@@ -759,6 +759,7 @@
  * @property {OperationKind} [kind]
  * @property {string} [ref]
  * @property {string} [batchId]
+ * @property {string} [partOf] An action read by its own id: the entry (group or batch) it is part of
  * @property {{id: string, name: string}} [apiToken]
  * @property {string} [credential]
  */
