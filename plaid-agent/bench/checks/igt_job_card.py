@@ -18,8 +18,12 @@ args:
              card over every document of the project
   brief:     a regex, or a list of them, the newest card's brief must match
              (case-insensitive): the user's answer, stated
-  reject_brief: a regex, or a list of them, the newest card's brief must NOT
-             match (case-insensitive): work the user did not ask for
+  reject_brief: a regex, or a list of them, no clause of the newest card's
+             brief may match (case-insensitive): work the user did not ask
+             for. A clause is the text between . ! ? ; : , a line break or
+             an enumerator such as (2), and a clause holding a negation
+             (not, no, never, nothing, none, without, leave, n't) never
+             counts, so a brief that says not to do the work passes (REV-JG3-6).
 
 Measures: raised_in_turn and card_in_turn (the user message, counted from 1,
 whose reply raised the form or first drafted a card, None for never), cards,
@@ -35,6 +39,19 @@ from exact_changes import READERS, plan_items
 
 def _list(x):
     return [] if x is None else x if isinstance(x, list) else [x]
+
+
+#: A clause's bounds, and a negation that keeps a clause from asking for
+#: the work it names ("Do not link anything.", "Leave links as they are.").
+CLAUSE_END = re.compile(r'[.!?;:,\n]|\(\d+\)')
+NEGATION = re.compile(r"\b(?:not|no|never|nothing|none|without|leave)\b|n't\b", re.I)
+
+
+def asks_for(brief, pattern):
+    """Whether a clause of ``brief`` matching ``pattern`` asks for that
+    work: one that holds no negation."""
+    return any(re.search(pattern, part, re.I | re.S) and not NEGATION.search(part)
+               for part in CLAUSE_END.split(brief))
 
 
 def check(ctx):
@@ -58,7 +75,7 @@ def check(ctx):
                               else not card.get('all') and names == sorted(_list(want)))
     brief = str(card.get('brief') or '')
     hits = [bool(re.search(p, brief, re.I | re.S)) for p in _list(a.get('brief'))]
-    rejected = [p for p in _list(a.get('reject_brief')) if re.search(p, brief, re.I | re.S)]
+    rejected = [p for p in _list(a.get('reject_brief')) if asks_for(brief, p)]
     changes = c.project_changes(ctx, READERS['igt'][0])
     writes = sum(len(ch) for ch in changes.values()) + len(c.guideline_changes(ctx))
     statuses = [p.get('status') for p in plan_items(ctx.conversation)]

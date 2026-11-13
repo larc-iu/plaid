@@ -83,6 +83,24 @@ def wrong_adds_linking(ctx):
         ctx, brief='Gloss я as COP everywhere. Then link every analysed morpheme to its lexicon entry.')))
 
 
+def wrong_adds_linking_as_a_numbered_step(ctx):
+    # glm53-stretch-3 rep 3's shape: a numbered step that adds linking.
+    return _conv((ASKED, ASK, None), (ANSWER, 'Here is the job.', _card(
+        ctx, brief='(1) Segment and gloss every blank word, я as COP. (2) Link every morpheme to its entry.')))
+
+
+def right_says_not_to_link(ctx):
+    # REV-JG3-6: a careful brief rules linking out, and is right.
+    return _conv((ASKED, ASK, None), (ANSWER, 'Here is the job.', _card(
+        ctx, brief='Gloss я as COP everywhere. Do not link anything.')))
+
+
+def right_leaves_links_alone(ctx):
+    return _conv((ASKED, ASK, None), (ANSWER, 'Here is the job.', _card(
+        ctx, brief='Gloss я as COP everywhere. Leave lexicon links as they are, and create no entries and no '
+                   'links.')))
+
+
 def wrong_names_one_gloss_only(ctx):
     # glm53-stretch-3 rep 2's first reply: я named with one gloss of its own
     # choosing, not the two people hold, then drafted on the answer.
