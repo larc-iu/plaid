@@ -313,6 +313,8 @@ const JobDocuments = ({ job, projectId }) => {
     ['words', 'Words'],
     ['links', 'Links'],
     ['entries', 'Entries'],
+    ['changes', 'Changes'],
+    ['deletions', 'Deletions'],
     ['proposed', 'Proposed'],
   ]) {
     if (some(key)) columns.push({ key, label, align: 'right', render: (d) => count(d, key) });

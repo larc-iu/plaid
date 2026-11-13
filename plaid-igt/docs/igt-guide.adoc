@@ -908,7 +908,7 @@ Conversations already saved still open from their own links.
 = Assistant jobs
 
 An **assistant job** has the assistant work through documents on its own, by written instructions, with nobody at the screen.
-It writes into what is empty and lists every other change it would make for a person to approve.
+It writes the changes it decides on, and lists changes to the project's setup for a person to make.
 A job can take hours, and it goes on after you close the browser.
 
 **Start job**, beside **New document** on the **Documents** tab, on the **Jobs** tab and in a document's header, needs Writer access.
@@ -932,11 +932,16 @@ The card keeps how it ended, with a link to the job's page once the job has star
 == What a job writes
 
 A job first plans how to cut the work: a few sentences at a time, one document at a time, or all the documents at once.
+Worked a few sentences at a time, it takes the sentences with an empty translation or a word nobody analyzed, unless its plan takes every sentence, as for a job that checks or corrects work already there.
 Each piece is worked by the assistant with its usual tools, the project's guidelines, the instructions, and how people in the project analyzed the same words.
-What fills an empty value, or revises what the job itself wrote, is written as a machine proposal (see <<_provenance>>), in the name of the person who started the job.
-Every other change, such as a different analysis of a word someone analyzed, a deletion or a text edit, is not written: the job's report lists it as a proposed change.
-A word nobody analyzed counts as analyzed when anything of someone else's is on it, such as a comment, a link to an entry or a multi-word expression it is part of, and an empty translation counts as written when its sentence has a comment: what the job would write there is a proposed change too.
-Clearing a value deletes it, so a job fills it as it fills any empty value: to keep a job off a word, comment on the word, and to keep it off a translation, comment on the sentence.
+
+A job writes every change it plans in its documents and in the project's lexicons, in the name of the person who started the job: values, analyses, links, comments, text edits, splits and merges, changes to entries, and deletions.
+It can change and delete what people wrote or confirmed.
+Each value it writes is a machine proposal (see <<_provenance>>), also where it replaces a value a person wrote or confirmed.
+A job never deletes a document, and never changes the project's setup: a guideline, a tagset, a document's name or metadata, or a new document is listed in its report as a proposed change, for a person to make.
+So is a change in a document outside the job, a corpus-wide change, a confirmation, a restore of a document, and the renaming, merging or deleting of an entry when the person who started the job is not a maintainer of the project.
+When someone changes a sentence while the job works on it, the job does not write over the change: it takes the sentence again, and lists it as **Changed during the job** when it changes once more.
+
 When it finishes, it makes its own analyses consistent: a word it analyzed in more than one way takes the analysis people gave that word, or else the one it gave at least two times in three.
 
 The job keeps out of the way of people.
@@ -947,7 +952,7 @@ A document someone is editing is left for later and taken up again after the oth
 
 The project's **Jobs** tab lists its jobs, and each opens to its own page.
 The page shows what the job is doing, how it cut the work and what the assistant told each piece of it, each document's progress, and once the job has ended its report.
-The report opens with a summary the job wrote, then lists the documents its plan left out, what it wrote, the changes it proposed, a note from each piece of its work, any tables it counted, the sentences it skipped and why, what it left blank, the analyses it made consistent, the entries it created, and those of them with no links.
+The report opens with a summary the job wrote, then gives the totals of what it wrote and deleted, and lists the documents its plan left out, the changes it proposed, a note from each piece of its work, any tables it counted, the sentences it skipped and why, what it left blank, the analyses it made consistent, the entries it created, and those of them with no links.
 A document the job is working in shows a banner with its progress.
 
 **Stop**, on the job's page or on the banner, is for the person who started the job and for maintainers.
@@ -970,14 +975,14 @@ On a vocabulary's **Entries** tab, **N machine drafts** lists only those entries
 While it is on, **Mark reviewed** sets the status of every listed entry to reviewed.
 **Delete**, for a maintainer of the vocabulary's project, deletes them all with their links, and leaves the glosses.
 A job's report links to each lexicon's machine drafts.
-A job deletes no entry: one it created that ends with no links is listed in its report under **Entries with no links**, for a person to delete.
-A job does not make again an entry it made that a person then deleted or changed: its report lists the entry as a proposed change.
+An existing entry a job edits keeps its status.
+An entry a job created that ends with no links is listed in its report under **Entries with no links**, for a person to delete, and a job deletes such entries only when its instructions say so.
 
 == Undoing a job
 
 Each document's History has one entry for the job's work in it, named **Assistant job:** with the first words of its instructions, and one for making its analyses consistent.
-A maintainer undoes either one by restoring the document to the moment before it (see <<_history>>).
-A restore leaves the lexicon as it is, so the job's entries stay as machine drafts with fewer links.
+A maintainer undoes either one by restoring the document to the moment before it (see <<_history>>), which also brings back what the job deleted or changed in the document.
+Restoring a document does not undo what a job did in the lexicon: the entries it created, changed, merged or deleted stay as the job left them.
 
 == The job worker
 

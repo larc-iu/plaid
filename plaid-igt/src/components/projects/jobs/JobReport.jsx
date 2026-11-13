@@ -9,8 +9,8 @@ import SECTIONS from './jobSections.json';
 // camelCase): the summary the job wrote, the totals, the changes it proposed,
 // each piece's note, the tables its code made, each document's skipped
 // sentences and the targets it left blank, what harmonize changed and left,
-// the entries the job made, and those of them nothing links (a job deletes
-// nothing: a person deletes them).
+// the entries the job made, and those of them nothing links (the job runs no
+// cleanup of its own: a person deletes them).
 // Every list the worker cut says how many it left out. A section's heading is
 // jobSections.json's, which the assistant names sections by (read_job).
 
@@ -35,8 +35,10 @@ const totalRows = (report) => {
   optional('Documents deleted', t.documentsGone);
   optional('Documents not reached', t.documentsNotReached);
   rows.push(['Sentences written in', t.sentences]);
-  optional('Translations filled', t.translations);
-  optional('Translations of the job revised', t.refreshed);
+  optional('Changes written', t.changes);
+  optional('Deletions', t.deletions);
+  optional('Translations written', t.translations);
+  optional('Translations replaced', t.refreshed);
   optional('Words analyzed', t.words);
   optional('Lexicon links made', t.links);
   optional('Entries created', t.entries);
@@ -46,7 +48,7 @@ const totalRows = (report) => {
   optional('Sentences skipped as changed during the job', t.skippedChanged);
   optional('Sentences skipped after an interrupted write', t.skippedInterrupted);
   optional('Sentences skipped and not listed', t.skippedMore);
-  optional('Changes not written, sentence changed meanwhile', t.changed);
+  optional('Changes not written, changed during the job', t.changed);
   return rows.map(([label, n]) => [label, (n ?? 0).toLocaleString()]);
 };
 
@@ -64,9 +66,11 @@ const EntryLine = ({ entry }) => (
   </li>
 );
 
-// The changes the job staged and did not apply (the apply rule), each where
-// it is, from what to what, and the note of the piece that staged it: what a
-// person approves in a conversation with the assistant about the job.
+// The changes the job staged and did not apply (the apply rule: project
+// setup, and the few it cannot make under a document's lock), each where it
+// is, from what to what, and the note of the piece that staged it: what a
+// person approves in a conversation with the assistant about the job. Hidden
+// when there are none.
 const ProposedChanges = ({ report, projectId }) => {
   const list = report.proposed || [];
   const more = report.proposedMore || 0;

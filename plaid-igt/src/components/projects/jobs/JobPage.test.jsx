@@ -97,18 +97,20 @@ const REPORT = {
     skippedInterrupted: 1,
     changed: 2,
     proposed: 1,
+    changes: 40,
+    deletions: 5,
   },
   proposed: [
     {
-      kind: 'set_span',
+      kind: 'rename_document',
       documentId: 'd1',
       document: 'Story A',
-      ref: 's4',
-      field: 'Translation',
-      from: 'A person wrote this.',
-      to: 'Better.',
-      label: 'Translation of s4',
-      note: 'Translated s4.',
+      ref: null,
+      field: null,
+      from: null,
+      to: null,
+      label: 'rename Story A to Story One',
+      note: 'Named the text.',
     },
   ],
   proposedMore: 2,
@@ -277,6 +279,26 @@ describe('the job page', () => {
     expect(folded.querySelector('summary').textContent).toBe('Show');
     expect(folded.textContent).toContain(told);
     expect(totals(v.container).Instructions).toBe('Gloss ka as GO.');
+    await v.unmount();
+  });
+
+  it('says a plan in stretches took every sentence when it did', async () => {
+    const plan = {
+      pieces: 'sentences',
+      everySentence: true,
+      by: 'model',
+      fallback: [],
+      leftOut: [],
+    };
+    let v = await mount(clientOf(jobOf({ state: 'done', report: { ...REPORT, plan } })));
+    expect(totals(v.container).Plan).toBe('Worked in stretches of sentences, every sentence.');
+    await v.unmount();
+    v = await mount(
+      clientOf(
+        jobOf({ state: 'done', report: { ...REPORT, plan: { ...plan, everySentence: false } } }),
+      ),
+    );
+    expect(totals(v.container).Plan).toBe('Worked in stretches of sentences.');
     await v.unmount();
   });
 
@@ -450,7 +472,11 @@ describe('the job page', () => {
     expect(sums['Words analyzed']).toBe('120');
     expect(sums['Sentences skipped as too long']).toBe('1');
     expect(sums['Sentences skipped after an interrupted write']).toBe('1');
-    expect(sums['Changes not written, sentence changed meanwhile']).toBe('2');
+    expect(sums['Changes not written, changed during the job']).toBe('2');
+    expect(sums['Changes written']).toBe('40');
+    expect(sums['Deletions']).toBe('5');
+    expect(sums['Translations written']).toBe('3');
+    expect(sums['Translations replaced']).toBe('2');
     expect(sums['Paused for people']).toBe('12 min');
     expect(sums).not.toHaveProperty('Waiting for the model');
     // A skipped sentence links to it on the grid, with why it was skipped.
@@ -480,14 +506,11 @@ describe('the job page', () => {
     expect(text(report.querySelector('[data-testid="job-summary"]'))).toBe(
       'The job glossed Story A and proposed one change.',
     );
-    // What the job proposed and did not apply, where, from what to what.
-    const proposed = text(byText(report, 'table', 'From').closest('table'));
-    expect(proposed).toContain('Story A s4');
-    expect(proposed).toContain('A person wrote this.');
-    expect(proposed).toContain('Better.');
-    expect(byText(report, 'a', 'Story A s4').getAttribute('href')).toBe(
-      '/projects/p1/documents/d1',
-    );
+    // What the job proposed and did not apply: project setup, where, and what.
+    const table = byText(report, 'table', 'From').closest('table');
+    expect(text(table)).toContain('rename Story A to Story One');
+    expect(table.querySelector('a').textContent).toBe('Story A');
+    expect(table.querySelector('a').getAttribute('href')).toBe('/projects/p1/documents/d1');
     expect(t).toContain('And 2 more changes.');
     expect(sums['Changes proposed']).toBe('1');
     // Each piece's note, and a table the job's code made, as data.
@@ -626,9 +649,11 @@ describe('the job page', () => {
       stopped: 'without-worker',
       summary: null,
       summaryFailed: true,
-      totals: { ...REPORT.totals, words: 0, links: 0, entries: 0 },
+      totals: { ...REPORT.totals, words: 0, links: 0, entries: 0, proposed: 0, deletions: 0 },
       harmonize: { changed: [], left: [], changedMore: 0, leftMore: 0 },
       entries: { created: [], unlinked: [], lexicons: [] },
+      proposed: [],
+      proposedMore: 0,
     };
     const job = jobOf({ state: 'cancelled', report });
     const v = await mount(clientOf(job));
@@ -636,7 +661,9 @@ describe('the job page', () => {
     const t = text(section);
     expect(t).toContain('Stopped with no worker running.');
     expect(t).toContain('The summary could not be written.');
-    expect(totals(section)['Translations filled']).toBe('3');
+    expect(totals(section)['Translations written']).toBe('3');
+    expect(totals(section)).not.toHaveProperty('Deletions');
+    expect(all(section, 'h3').map((h) => h.textContent)).not.toContain('Proposed changes');
     expect(totals(section)).not.toHaveProperty('Words analyzed');
     expect(t).not.toContain('Machine drafts');
     expect(t).not.toContain('Analyses made consistent');

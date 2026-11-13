@@ -147,8 +147,9 @@ const StartJobDialog = ({ projectId, client, documents: given, documentId, onClo
         <DialogHeader>
           <DialogTitle>Start job</DialogTitle>
           <DialogDescription>
-            The assistant works through the chosen documents by the instructions. It writes into
-            what is empty and lists every other change in its report for approval.
+            The assistant works through the chosen documents by the instructions. It writes every
+            change it decides on, deletions included, and lists changes to the project setup in its
+            report.
           </DialogDescription>
         </DialogHeader>
 
