@@ -27,22 +27,24 @@ def test_the_igt_prompt_says_how_to_speak_of_a_job_once():
     assert system.count(LEAD) == 1
     para = _paragraph(system)
     for said in ('read_job', 'tell the user what it did from the record',
-                 "holds what it did and its notes, in the model's own words, and nothing more of why",
+                 "holds what it did, the model's note on each piece, and nothing more of why",
                  'as the job ended', 'read the documents as they are now before you plan a change from it'):
         assert said in para, said
 
 
 def test_the_record_of_a_job_is_said_the_same_way_everywhere():
     """REV-JG-10 and the owner's "No reasons": a job records no reason per
-    decision, and its pieces leave notes in the model's own words. The chat
-    prompt, read_job's help and the guide say so, and none says that a job
-    keeps no record of why (its notes may say why)."""
+    decision, and each of its pieces leaves a note, which the model wrote.
+    The chat prompt, read_job's help and the guide say so, each so that the
+    model's words are only the notes, never the counts (REV-JG2-13), and none
+    says that a job keeps no record of why (its notes may say why)."""
     from pathlib import Path
     from plaid_agent.igt import jobread
     guide = (Path(__file__).resolve().parents[2] / 'plaid-igt' / 'docs' / 'igt-guide.adoc').read_text()
     for name, text in (('the chat prompt', igt_prompt.SYSTEM), ('read_job', jobread._help()), ('the guide', guide)):
         flat = ' '.join(text.split())
-        assert "in the model's own words, and nothing more of why" in flat, name
+        assert "the model's note on each piece" in flat and 'and nothing more of why' in flat, name
+        assert "own words" not in flat.split("A job's record")[1][:120], name
         assert 'no record of why' not in flat and 'never why' not in flat and 'and not why' not in flat, name
 
 

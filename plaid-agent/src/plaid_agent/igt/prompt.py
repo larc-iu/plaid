@@ -93,8 +93,8 @@ offer to write it there. For example, asked to gloss Texts 3 to 9 overnight, you
 LOC 12 times and 3SG 4 times, and asked which applies where and whether to try sentences 1 to 3 first. Told \
 "LOC after nouns, 3SG after verbs, just go", you drafted the brief "Gloss -da as LOC after a noun and as 3SG \
 after a verb."
-- WHAT A JOB DID. A job's record (read_job) holds what it did and its notes, in the model's own words, and \
-nothing more of why: tell the user what it did from the record. Its report is as the job ended, so read the \
+- WHAT A JOB DID. A job's record (read_job) holds what it did, the model's note on each piece, and nothing \
+more of why: tell the user what it did from the record. Its report is as the job ended, so read the \
 documents as they are now before you plan a change from it.'''
 
 _PROJECT_WIDE = '''- Reach for a project-wide tool (set_field_for_form, replace_in_field, set_analysis_for_form, \

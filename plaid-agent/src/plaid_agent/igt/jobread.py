@@ -464,7 +464,7 @@ def _table_lines(table: Dict[str, Any]) -> str:
 def _help() -> str:
     return '\n'.join([
         'read_job reads an assistant job of this project: what it did, as its record says. A job\'s record holds '
-        'what it did and the notes it left, in the model\'s own words, and nothing more of why.',
+        'what it did, the model\'s note on each piece, and nothing more of why.',
         '- No job: the project\'s jobs, newest first, each with its id.',
         '- job: its summary (state, who started it and when, the instructions whole, how its work was cut, the '
         'summary the job wrote, totals) and the report\'s sections with how many rows each holds.',
