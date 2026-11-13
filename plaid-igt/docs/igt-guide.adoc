@@ -953,6 +953,14 @@ A document the job is working in shows a banner with its progress.
 **Stop**, on the job's page or on the banner, is for the person who started the job and for maintainers.
 The job stops after the sentences in hand, and what it wrote stays.
 
+== Discussing a job with the assistant
+
+**Discuss with the assistant**, on the page of a job that has ended, opens the assistant panel on a new conversation about that job.
+The assistant reads the job's report and tells you what the job did.
+A job records what it did and not why, and the assistant says so when asked why.
+The report is as the job ended, so the assistant reads the documents as they are now before it plans a change, and you approve the change as any other plan.
+From any page, the assistant can also list the project's jobs and read their reports.
+
 [[_machine_draft_entries]]
 == Machine draft entries
 

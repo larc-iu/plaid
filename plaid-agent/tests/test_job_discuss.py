@@ -348,3 +348,17 @@ def test_a_turn_from_a_job_page_stamps_the_job_shows_its_summary_and_records_onl
     assert ('get', {'job_id': job}) in client.jobs.calls
     assert seen[1][1] == 'And the inconsistent forms?'
     assert 'Report sections and their rows:' in seen[1][0]
+
+
+def test_the_guide_names_the_button_as_the_job_page_does():
+    """The guide's section on discussing a job (BRIEF-JD item 6), in the copy
+    the assistant reads, names the button by the job page's own words."""
+    from pathlib import Path
+
+    from plaid_agent.igt.guide import t_app_guide
+    page = (Path(__file__).resolve().parents[2] / 'plaid-igt' / 'src' / 'components' / 'projects' / 'jobs'
+            / 'JobPage.jsx').read_text()
+    assert 'Discuss with the assistant' in page
+    text = t_app_guide(_ws(), 'Discussing a job with the assistant')
+    assert '**Discuss with the assistant**' in text, text[:300]
+    assert 'why' in text and 'as the job ended' in text
