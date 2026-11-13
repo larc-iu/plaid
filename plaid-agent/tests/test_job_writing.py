@@ -1047,3 +1047,48 @@ def test_a_sentence_a_person_deleted_does_not_make_a_later_write_that_never_land
     assert _resume(client, job).document('d1') == 'done'
     assert len([c for c in m.calls if c['n'] == 1]) == asked + 1, 'piece s3 is asked again'
     assert sent[2:] == [('set_analysis', 'd1-s3w1')], sent
+
+
+def test_a_document_piece_put_off_after_its_first_batch_deletes_its_sentence_once_when_taken_up_again(monkeypatch):
+    """REV-JS-JHFIX, not yet checked: a document piece glosses ka in s1 and
+    deletes s3, which repeats s2. Its batch lands, core refuses the
+    deletion (409, the starter's own browser wrote), and the document is
+    put off. Taken up again, s1 is settled as written, s2 and s3 read as
+    before and s3, which the rows name, is still there: the piece runs
+    again, its gloss of s1 is left out as written, and s3 is deleted once."""
+    before = [{'words': ['ka']}, {'words': ['sa']}, {'words': ['sa']}]
+    glossed = [{'words': [MINE['ka']]}, {'words': ['sa']}, {'words': ['sa']}]
+    client = JobClient({'d1': document('d1', 'Story', before)})
+    client.after_write['d1'] = document('d1', 'Story', glossed, version=2)
+    clock = {'t': 1_800_000_000.0}
+    job = start(client, 'Gloss ka and delete a sentence that repeats the one before it.', id=J,
+                now=lambda: clock['t'], plan='document')
+    job._sleep = lambda s: clock.__setitem__('t', clock['t'] + s)
+    job.job['created_at'] = _iso(clock['t'] - 3600)
+
+    def model(asked, n, kwargs):
+        if n > 1 or 'Your piece: the whole document' not in asked:
+            return reply('Done.')
+        return reply(calls=[call(1, 'set_analysis', {'document': 'Story', 'ref': 's1.w1', 'morphemes': [
+            {'form': 'ka', 'fields': {'Morph Gloss': 'go'}}]}),
+            call(2, 'delete_sentence', {'document': 'Story', 'refs': ['s3']})])
+    m = use(monkeypatch, Model(model))
+    staged = _staged(monkeypatch)
+    real_edit, edits = client.texts.edit, []
+
+    def edit(*args, **kwargs):
+        edits.append('refused' if not edits else 'landed')
+        if len(edits) == 1:
+            raise PlaidAPIError('HTTP 409 version', status=409, method='POST')
+        out = real_edit(*args, **kwargs)
+        client.after_write['d1'] = document('d1', 'Story', glossed[:2], version=3)
+        return out
+    monkeypatch.setattr(client.texts, 'edit', edit)
+    runner(job).work(job)
+    assert edits == ['refused', 'landed'], edits
+    assert len([c for c in m.calls if c['n'] == 1 and 'Your piece: the whole document' in c['asked']]) == 2
+    assert [o['word_id'] for o in staged if o['kind'] == 'set_analysis'] == ['d1-s1w1'], 'glossed once'
+    assert [o['sentence_id'] for o in staged if o['kind'] == 'delete_sentence'] == ['d1-s3', 'd1-s3']
+    row = job.rows['d1']
+    assert row['state'] == 'done' and not row.get('skipped'), row
+    assert row['counts']['repeated'] == 1 and row['counts']['deletions'] == 1, row['counts']
