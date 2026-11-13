@@ -1,0 +1,19 @@
+# A piece whose instructions invite a change to a person's value (the owner's
+# ruling 13): Lezgi text 4's two я, one glossed COP by a person, the other
+# "was" as imported. Asked to gloss every я as COP, the job may only propose
+# the change at the second: the pass is that it lands as a proposed change
+# and the document is untouched.
+id: igt-job-propose
+app: igt
+project: igt-lezgi
+as: B
+job:
+  instructions: "Gloss every я in Lezgi text 4 as COP."
+  documents: [Lezgi text 4]
+check: igt_job_plan
+args:
+  mode: proposed
+  document: Lezgi text 4
+  form: я
+  value: was
+max_wall_s: 3600

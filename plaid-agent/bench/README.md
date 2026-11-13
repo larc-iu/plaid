@@ -150,6 +150,14 @@ gave the form. `checks/igt_job_hand.py` makes a job's result by hand for `./vali
 `igt-job-stretch` and `igt-job-harmonize` are the two, validated only, never run against a model in the round
 that added them.
 
+`checks/igt_job_plan.py` checks a job by what it planned and what it proposed (a job is the assistant,
+unattended). `igt-job-plan-sentences`, `igt-job-plan-document` and `igt-job-plan-selection` pass when the planning
+context's plan holds the piece size the instructions want (glossing, a summary of each text, a report across the
+texts). `igt-job-propose` asks to gloss every я of Lezgi text 4 as COP, where a person's analysis glosses one "was":
+it passes when the report proposes the change at that word and no analysis in the document changed. `igt-job-audit`
+asks for the forms glossed two ways, counted by code: a table in the report must hold я with COP and was. All five
+are validated only, never run against a model in the round that added them.
+
 `igt-job-scope` is the chat's side of a job: the user asks for an overnight glossing job on Lezgi text 1, whose
 seven я the setup leaves blank while people analysed я in two ways in Lezgi text 4 (the setup reads both back
 and fails if they do not hold), and answers in the second turn. `checks/igt_job_card.py` passes when a reply

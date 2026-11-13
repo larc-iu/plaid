@@ -1,0 +1,15 @@
+# The planning context of a glossing job (JG, the owner's ruling 14): work
+# judged word by word wants stretches of sentences. Five blank sentences of
+# Lezgi text 1, as igt-job-stretch has them.
+id: igt-job-plan-sentences
+app: igt
+project: igt-lezgi
+as: B
+job:
+  instructions: "Segment and gloss every word nobody has analyzed. Follow how people in the project analyzed the same forms."
+  documents: [Lezgi text 1]
+check: igt_job_plan
+args:
+  mode: plan
+  pieces: sentences
+max_wall_s: 3600

@@ -1,0 +1,16 @@
+# A selection audit (the owner's ruling 15): Lezgi text 4's two я are glossed
+# COP and "was", the planted inconsistency. The job's code must count it into
+# a table kept in the report, so the numbers come from code.
+id: igt-job-audit
+app: igt
+project: igt-lezgi
+as: B
+job:
+  instructions: "Find the forms whose morphemes are glossed in more than one way in these texts. Count them with code and keep the counts as a table with the columns form, gloss and count. Change nothing."
+  documents: [Lezgi text 4]
+check: igt_job_plan
+args:
+  mode: table
+  form: я
+  glosses: ["COP", "was"]
+max_wall_s: 3600
