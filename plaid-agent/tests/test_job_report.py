@@ -190,3 +190,35 @@ def test_a_report_that_fits_is_left_whole():
     whole = __import__('copy').deepcopy(report)
     fit_report(report)
     assert report == {**whole, 'tables_more': 0}
+
+
+# --- a row the job keeps always fits core's cap (REV-JG-12, REV-JG-20) -------------------------
+
+def test_a_table_cell_holding_a_huge_number_is_cut_as_text_is():
+    """REV-JG-12: code hands table() a number of thousands of digits. The
+    cell is cut as a text cell is, and the table's rows fit a decision."""
+    from plaid_agent.core.limits import JOB_ANALYSIS_MAX_CHARS, JOB_TABLE_CELL_CHARS
+    from plaid_agent.igt import job as igt_job
+    from plaid_agent.igt.sandbox import table_api
+    client, job = _job()
+    ws = igt_job.JobWorkspace(client, runner(job).project())
+    table_api(ws)('t', ['a'] * 8, [[10 ** 4000] * 8, [7, 2.5, True, None, 'x', -3, 0, 10 ** 200]])
+    rows = ws.tables[0]['rows']
+    assert all(len(v) <= JOB_TABLE_CELL_CHARS for v in rows[0])
+    assert rows[1][:7] == [7, 2.5, True, None, 'x', -3, 0], 'a number that fits stays a number'
+    assert max(len(t) for t in igt_job.table_rows_text(ws.tables[0])) <= JOB_ANALYSIS_MAX_CHARS
+
+
+def test_a_proposed_change_of_values_that_json_escapes_fits_a_decision():
+    """REV-JG-20: a proposed change keeps four values of 300 characters, and
+    a control character costs six where it is kept. The row is cut to fit,
+    and the job does not fail on it."""
+    from plaid_agent.core.limits import JOB_ANALYSIS_MAX_CHARS
+    from plaid_agent.igt.job import CHANGE_FORM
+    client, job = _job()
+    r = runner(job)
+    odd = '\x01' * 300
+    r.record_changes([{'kind': 'set_span', 'document_id': 'd1', 'document': 'One', 'ref': 's1', 'field': 'Gloss',
+                       'from': odd, 'to': odd, 'label': odd}], note=odd)
+    rows = [x for (f, _), x in client.jobs.decision_rows[job.id].items() if f.startswith(CHANGE_FORM)]
+    assert len(rows) == 1 and len(rows[0]['analysis']) <= JOB_ANALYSIS_MAX_CHARS

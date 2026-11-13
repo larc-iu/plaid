@@ -232,9 +232,21 @@ def table_api(ws) -> Callable:
     from ..core.limits import JOB_TABLE_CELL_CHARS, JOB_TABLE_COLUMNS, JOB_TABLE_ROWS, JOB_TABLES_PER_PIECE
 
     def cell(v):
-        if v is None or isinstance(v, (int, float, bool)):
+        if v is None or isinstance(v, (float, bool)):
             return v
-        text = str(v)
+        if isinstance(v, int):
+            # A number stays a number while it fits a cell. One of more
+            # digits is cut as text is, so a row always fits where the job
+            # keeps it (REV-JG-12). One too long for Python to spell at all
+            # is kept as "…".
+            try:
+                text = str(v)
+            except ValueError:
+                return '…'
+            if len(text) <= JOB_TABLE_CELL_CHARS:
+                return v
+        else:
+            text = str(v)
         return text if len(text) <= JOB_TABLE_CELL_CHARS else text[:JOB_TABLE_CELL_CHARS - 1] + '…'
 
     def table(title, columns, rows) -> str:

@@ -2207,7 +2207,7 @@ class IgtRunner:
                             if str(r.get('form') or '').startswith(CHANGE_FORM)}
         rows, dropped = [], 0
         for c in changes:
-            text = canonical({**c, 'note': _cut(_first_line(note), JOB_CHANGE_VALUE_CHARS)})
+            text = self.change_text(c, note)
             key = analysis_key(canonical(c))
             if key in self.changes:
                 continue
@@ -2222,6 +2222,21 @@ class IgtRunner:
                          'document_id': None, 'sentence_id': None})
         if rows:
             self.job.add_decisions(rows)
+
+    @staticmethod
+    def change_text(change: Dict[str, Any], note: str) -> str:
+        """A proposed change as its decision row keeps it, with the first
+        line of its piece's note. Its values are each cut at
+        JOB_CHANGE_VALUE_CHARS, and cut shorter while the row would pass
+        JOB_ANALYSIS_MAX_CHARS, which values of characters JSON escapes can
+        (REV-JG-20)."""
+        limit = JOB_CHANGE_VALUE_CHARS
+        while True:
+            row = {k: (_cut(v, limit) if isinstance(v, str) else v) for k, v in change.items()}
+            text = canonical({**row, 'note': _cut(_first_line(note), limit)})
+            if len(text) <= JOB_ANALYSIS_MAX_CHARS or limit <= 1:
+                return text
+            limit //= 2
 
     def record_piece(self, project: IgtProject, piece: Dict[str, Any], note: str, tables, doc=None,
                      part=()) -> None:
