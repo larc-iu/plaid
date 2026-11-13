@@ -835,11 +835,10 @@ def entries_part(created, unlinked) -> Dict[str, Any]:
             'lexicons': list(dict.fromkeys(e['lexicon'] for e in created))}
 
 
-#: The kinds the executor writes in a request of their own, outside its
-#: batches: each is a try of its own (a respelling's try holds every
-#: respelling of its text, one request), in the executor's order.
-OWN_REQUEST_KINDS = ('edit_text', 'respell', 'delete_sentence')
-#: The lexicon's renames, merges and deletions: the executor's last batch.
+#: The lexicon's renames, merges and deletions: the executor's last batch
+#: (``igt.plan._write_lexicon``), a try of their own. Text edits,
+#: respellings and sentence deletions, which the executor writes on the
+#: client one request each, are cut by :meth:`Write.tries` itself.
 LEXICON_KINDS = ('rename_entry', 'merge_entries', 'delete_entry')
 
 

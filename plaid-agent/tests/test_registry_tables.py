@@ -268,8 +268,10 @@ def test_a_change_made_by_name_beats_a_scope_by_the_kind_s_own_declaration():
 #: The apply rule's table (igt/jobapply.py) is kept by hand on purpose: a job
 #: applies a kind only once it is named there, and a kind the registry adds is
 #: refused (recorded as proposed) until then, which test_job_apply holds. What
-#: the report counts as a deletion is its own choice of kinds too.
-HAND_KEPT = {('igt/bulk.py', 'VALUE_KINDS'), ('igt/bulk.py', 'NAMED_KINDS'), ('umr/plan.py', 'GRAPH_KINDS'),
+#: the report counts as a deletion is its own choice of kinds too. A job's
+#: try of the lexicon's renames, merges and deletions (igt/job.py) follows the
+#: executor's last batch, which names those kinds in its own code.
+HAND_KEPT = {('igt/job.py', 'LEXICON_KINDS'), ('igt/bulk.py', 'VALUE_KINDS'), ('igt/bulk.py', 'NAMED_KINDS'), ('umr/plan.py', 'GRAPH_KINDS'),
              ('igt/jobapply.py', 'APPLIED_KINDS'), ('igt/jobapply.py', 'SETUP_KINDS'),
              ('igt/jobapply.py', 'UNAPPLIED_KINDS'), ('igt/jobapply.py', 'IGNORED_KINDS'),
              ('igt/jobapply.py', 'DELETING_KINDS')}

@@ -137,7 +137,7 @@ def reserve(staged: int, n: int, note: str = '', cap: int = PLAN_MAX_OPS) -> Non
 
 
 #: A client attribute a caller sets, to a function, to send every plan
-#: applied with that client as ONE request (a job's try, plaid_agent.igt.job):
+#: applied with that client as ONE request (as an unattended job sends a try):
 #: the batcher then never sends before the plan's end, refuses a plan whose
 #: writes do not fit one request before anything is sent (:class:`TooBig`),
 #: and calls the function once, just before the request goes out, whether a
