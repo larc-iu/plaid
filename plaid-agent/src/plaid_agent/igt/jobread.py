@@ -294,7 +294,7 @@ def _list_jobs(ws, page: int) -> str:
     jobs = ws.client.jobs.list(ws.project.id)
     start = (page - 1) * JOB_LIST_PER_PAGE
     shown = jobs[start:start + JOB_LIST_PER_PAGE]
-    ws.note_read(len(shown), 'row', of=len(jobs), which='jobs')
+    ws.note_read(len(shown), 'row', of=len(jobs))
     if not jobs:
         return 'This project has no jobs.'
     if not shown:
@@ -339,7 +339,7 @@ def _section_rows(ws, job: Dict[str, Any], section: str, document: Optional[str]
         scope = f' in {_document_name(ws, {"name": names.get(doc_id)}, doc_id)}'
     start = (page - 1) * JOB_ROWS_PER_PAGE
     shown = rows[start:start + JOB_ROWS_PER_PAGE]
-    ws.note_read(len(shown), 'row', of=len(rows), which=section)
+    ws.note_read(len(shown), 'row', of=len(rows))
     if rows and not shown:
         raise ToolError(f'Page {page} is past the end: {len(rows):,} rows, {JOB_ROWS_PER_PAGE} a page.',
                         kind='not-found')
@@ -384,7 +384,6 @@ def t_read_job(ws, job: Optional[str] = None, section: Optional[str] = None, doc
     job_id = str(job).strip() if job else ''
     section = str(section).strip() if section else ''
     if section.lower() == 'help':
-        ws.note_read(0, 'row', which='how to read a job')
         return _help()
     if not job_id:
         if section or document:
@@ -396,8 +395,9 @@ def t_read_job(ws, job: Optional[str] = None, section: Optional[str] = None, doc
         if document:
             raise ToolError('document narrows a section: name the section too.', kind='invalid-argument')
         report = found.get('report')
-        n = sum(len(rows) + more for _, rows, more in sections(report))
-        ws.note_read(n, 'row', which='summary')
-        return truncate('\n'.join([f'Job {job_id}.', *summary(found, note_chars=None),
-                                   'read_job with a section reads its rows.' if report else '']).rstrip())
+        text = '\n'.join([f'Job {job_id}.', *summary(found, note_chars=None),
+                          'read_job with a section reads its rows.' if report else '']).rstrip()
+        # The summary holds counts, never a row: it is said as the lines it printed.
+        ws.note_read(text.count('\n') + 1, 'printed')
+        return truncate(text)
     return _section_rows(ws, found, section, str(document).strip() if document else None, page)

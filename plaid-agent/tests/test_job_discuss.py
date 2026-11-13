@@ -158,7 +158,7 @@ def test_with_no_job_it_lists_the_project_s_jobs():
     out = call_tool(ws, 'read_job', {})
     assert out.startswith('Jobs of this project, newest first: 1 to 1 of 1.')
     assert f'{first} | done | gloss, link | started by user, 2026-' in out and '| 1 document' in out
-    assert ws.reads[-1] == {'n': 1, 'unit': 'row', 'of': 1, 'which': 'jobs'}
+    assert ws.reads[-1] == {'n': 1, 'unit': 'row', 'of': 1}
 
 
 def test_the_job_list_pages():
@@ -191,7 +191,7 @@ def test_a_section_gives_its_rows_with_the_places_to_read_and_plan():
     assert out.splitlines() == [
         f'Job {job}, report section left: rows 1 to 1 of 1. As the job ended, 2026-11-13 03:10 UTC.',
         '"Text 1" | ref: s2.w3 | form: pele']
-    assert ws.reads[-1] == {'n': 1, 'unit': 'row', 'of': 1, 'which': 'left'}
+    assert ws.reads[-1] == {'n': 1, 'unit': 'row', 'of': 1}
     out = call_tool(ws, 'read_job', {'job': job, 'section': 'harmonize.left'})
     assert 'form: ka | reason: no-clear-majority | analyses: ka ‘go’ ×2, ka ‘come’ ×2' in out
     out = call_tool(ws, 'read_job', {'job': job, 'section': 'entries.created'})
@@ -229,7 +229,7 @@ def test_a_section_pages_and_says_what_it_left_out():
     assert len(lines) == 42 and lines[-1] == 'Rows 41 to 45: page 2.'
     out = call_tool(ws, 'read_job', {'job': job, 'section': 'left', 'page': 2})
     assert 'rows 41 to 45 of 45' in out and out.splitlines()[-1] == '"Text 1" | ref: s45.w1 | form: w45'
-    assert ws.reads[-1] == {'n': 5, 'unit': 'row', 'of': 45, 'which': 'left'}
+    assert ws.reads[-1] == {'n': 5, 'unit': 'row', 'of': 45}
     assert call_tool(ws, 'read_job', {'job': job, 'section': 'left', 'page': 3}).startswith(
         'Error: Page 3 is past the end: 45 rows, 40 a page.')
 
@@ -362,3 +362,22 @@ def test_the_guide_names_the_button_as_the_job_page_does():
     text = t_app_guide(_ws(), 'Discussing a job with the assistant')
     assert '**Discuss with the assistant**' in text, text[:300]
     assert 'why' in text and 'as the job ended' in text
+
+
+def test_each_step_says_what_it_read_as_the_panel_says_it():
+    """The step's label and what it read, as the panel draws them. A section's
+    name read as a range once made "row left of 1"."""
+    from plaid_agent.core.trace import say_saw
+    from plaid_agent.igt.trace import TRACER
+    ws = _ws()
+    job = _ended(ws.client)
+    said = []
+    for args in ({}, {'job': job}, {'job': job, 'section': 'left'}, {'job': job, 'section': 'help'}):
+        ws.reads = []
+        call_tool(ws, 'read_job', args)
+        said.append((TRACER.describe('read_job', args), say_saw(ws.reads)))
+    assert said[0] == ('Listed the jobs', '1 row')
+    assert said[1][0] == 'Read a job\'s summary' and said[1][1].startswith('printed ')
+    assert said[2] == ('Read \u201cleft\u201d of a job\'s report', '1 row')
+    assert said[3][0] == 'Read how to read a job'
+    assert TRACER.kind('read_job') is not None

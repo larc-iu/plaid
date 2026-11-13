@@ -303,7 +303,9 @@ _PROGRESS = {
 _READING = {'tagsets': lambda a: {'help': META, 'check': READ}.get(_action(a)),
             'senses': lambda a: META if _action(a) == 'help' else None,
             'app_guide': lambda a: META,
-            'propose_job': lambda a: META if _action(a) == 'help' else PLAN}
+            'propose_job': lambda a: META if _action(a) == 'help' else PLAN,
+            # Its manual is bookkeeping, as a tool's help is.
+            'read_job': lambda a: META if str(a.get('section') or '').strip().lower() == 'help' else None}
 
 TRACER = tracer_for(WEB_TOOLS, WRITE_TOOLS, _own, _PROGRESS, searches=('sequence_search', 'concordance'),
                     reading=_READING)
