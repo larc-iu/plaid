@@ -7,6 +7,7 @@ written: it is left, listed as interrupted, and the job writes nothing more
 there. Each way into that window is tested, and each way a write is known
 to have sent nothing, which makes its sentences targets again."""
 
+import contextlib
 import json
 
 import pytest
@@ -389,3 +390,64 @@ def test_a_word_a_try_that_sent_nothing_was_for_is_left_blank_when_the_next_try_
     mark = _mark(client, 'd1-s1')
     assert [x['ref'] for x in mark['left']] == ['s1.w2'], mark
     assert mark['counts']['left'] == 1 and mark['counts']['words'] == 1
+
+
+# --- a passing error inside the write: before it or after it -------------------------------
+
+def test_a_read_refused_before_the_write_sends_nothing_and_the_walk_takes_the_sentences_again(monkeypatch):
+    """REV-B4-6: the plan's reads come before its first write (offsets
+    rebased, scopes resolved, entries checked). One 502 there, in a document
+    the starter wrote in twelve minutes ago: nothing was sent, so the
+    stretch's sentences are targets again, never "Write interrupted"."""
+    from plaid_agent.core import fingerprint
+    client, job, clock, model = _job(monkeypatch)
+    _person_edits(client, 'd1', BLANK, 3, {'t': clock['t'] - 700})
+    client.after_write['d1'] = document('d1', 'Story', WRITTEN, version=4)
+    real = fingerprint.rebase_offsets
+    once = {'n': 1}
+
+    def rebase(c, kind, ops):
+        if once['n']:
+            once['n'] -= 1
+            raise PlaidAPIError('HTTP 502', status=502, method='GET')
+        return real(c, kind, ops)
+    monkeypatch.setattr(fingerprint, 'rebase_offsets', rebase)
+    staged = _staged(monkeypatch)
+    assert runner(job).document('d1') == 'done'
+    assert not _skipped(job)
+    assert sorted(o['word_id'] for o in staged) == ['d1-s1w1', 'd1-s1w1', 'd1-s1w2', 'd1-s1w2', 'd1-s2w1',
+                                                     'd1-s2w1'], 'asked again once, the first ask refused'
+    assert job.rows['d1']['counts']['words'] == 3
+
+
+def test_an_error_after_the_write_landed_is_still_taken_as_a_write_that_may_have_landed(monkeypatch):
+    """The other side of REV-B4-6, which must stay: the write lands and the
+    operation's end then meets a 502 (``end_operation``, after the last
+    batch). In the wait the starter clears the job's work in s1. s1 is not
+    written again: it is listed "Write interrupted"."""
+    client, job, clock, model = _job(monkeypatch)
+    real_op = client.operation
+    once = {'n': 1}
+
+    @contextlib.contextmanager
+    def operation(*args, **kwargs):
+        with real_op(*args, **kwargs) as op:
+            yield op
+        if once['n'] and kwargs.get('kind') == 'job':
+            once['n'] -= 1
+            raise PlaidAPIError('HTTP 502', status=502)
+    monkeypatch.setattr(client, 'operation', operation)
+    slept = job._sleep
+
+    def sleep(s):
+        if not once['n']:
+            once['n'] = -1
+            _person_edits(client, 'd1', [{'words': ['ka', 'ta']}, {'words': [MINE['sa']]}], 3,
+                          {'t': clock['t'] - 700})
+        slept(s)
+    job._sleep = sleep
+    staged = _staged(monkeypatch)
+    assert runner(job).document('d1') == 'done'
+    assert sorted(o['word_id'] for o in staged) == ['d1-s1w1', 'd1-s1w2', 'd1-s2w1'], 'written once'
+    assert _skipped(job) == [('d1-s1', 'interrupted')]
+    assert _mark(client, 'd1-s2')['counts']['words'] == 1

@@ -1499,8 +1499,19 @@ class IgtRunner:
             try:
                 with client.operation(label, kind='job', ref=self.gloss_ref(document_id), group_id=group,
                                       keys={'seed': seed_id, 'stamps': {}}):
-                    execute_plan(client, kept, source=self.source, label=label, project=project,
-                                 stamp_mode='machine', detail=self.detail, seed=seed_id)
+                    try:
+                        execute_plan(client, kept, source=self.source, label=label, project=project,
+                                     stamp_mode='machine', detail=self.detail, seed=seed_id)
+                    except (PlanError, PlanOutOfDate):
+                        raise
+                    except Exception as e:  # noqa: BLE001 - raised before the first write
+                        # The plan's reads (offsets, scopes, entries) come
+                        # before its first write, and once it writes nothing
+                        # leaves it but a PlanError or PlanOutOfDate
+                        # (``applying``). So nothing was sent (REV-B4-6). The
+                        # operation's own end, after the write, stays outside:
+                        # its error may follow a write that landed.
+                        raise PlanError(str(e), 0, len(kept)) from e
                 return kept
             except PlanOutOfDate as e:
                 # Raised before anything is written. Core out of reach while
