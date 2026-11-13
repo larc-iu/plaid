@@ -192,6 +192,28 @@ def test_a_crash_after_the_write_with_nobody_writing_since_is_recorded_whole(mon
     assert len(_mark(client, 'd1-s1')['words']) == 2, 'vouched for: the newest change is the job\'s own glossing'
 
 
+def test_a_person_clearing_one_of_the_jobs_words_is_not_listed_as_left_blank(monkeypatch):
+    """REV-FIX3-3: the record of an interrupted write lists as left only the
+    targets the job was not writing. A word it wrote that reads blank now
+    was cleared by a person (or its batch never landed): not "Left blank"."""
+    def first_two(asked, n, kwargs):
+        if n > 1:
+            return reply('Done.')
+        return reply(calls=[call(i, 'set_analysis', {'document': 'Story', 'ref': f's1.w{i}', 'morphemes': [
+            {'form': f, 'fields': {'Morph Gloss': 'go'}}]}) for i, f in ((1, 'ka'), (2, 'ta'))])
+    before = [{'words': ['ka', 'ta', 'pa']}]
+    after = [{'words': [MINE['ka'], MINE['ta'], 'pa']}]
+    client, job, clock, model = _job(monkeypatch, before=before, after=after, model=first_two)
+    _crash_at_record(monkeypatch, job)
+    clock['t'] += 3600
+    _person_edits(client, 'd1', [{'words': [MINE['ka'], 'ta', 'pa']}], 3, clock)
+    clock['t'] += 3600
+    assert _resume(client, job).document('d1') == 'done'
+    mark = _mark(client, 'd1-s1')
+    assert [x['ref'] for x in mark['left']] == ['s1.w3'], 'only the word the model left'
+    assert mark['counts']['words'] == 1 and mark['counts']['left'] == 1
+
+
 # --- a write that never left: its writing row and nothing else ------------------------
 
 def test_a_crash_between_the_writing_row_and_the_write_with_nobody_writing_takes_the_sentences_again(monkeypatch):

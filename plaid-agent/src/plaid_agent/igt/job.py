@@ -1747,11 +1747,18 @@ class IgtRunner:
                     self.skip(document_id, doc, s.id, INTERRUPTED, None, cursor=False)
                 continue
             # As its stretch would have recorded it (REV-J-B3 B3-7): the
-            # job's words, the targets still blank (left), and the
-            # translation, written or left blank.
+            # job's words, the targets still blank that it was not writing
+            # (left: a target it wrote that reads blank now was cleared by a
+            # person, or its batch never landed, REV-FIX3-3), and the
+            # translation, written or left blank as its writing row says.
+            plan = writing[s.id]
             ids = {w.id for w in mine}
-            words = [w for w in s.words if w.id in ids or ('gloss' in job.tasks and word_target(w))]
-            translation = 'translations' if state == 'own' else 'left' if state in ('empty', 'machine') else None
+            words = [w for w in s.words if w.id in ids or ('gloss' in job.tasks and word_target(w)
+                                                           and word_tag(w.id) not in plan['words'])]
+            if state == 'own':
+                translation = 'translations'
+            else:
+                translation = 'left' if state in ('empty', 'machine') and not plan.get('translation') else None
             orphans.append(self.sentence_record(document_id, s, words, translation,
                                                 vouched=ids if own else frozenset()))
         if orphans:
