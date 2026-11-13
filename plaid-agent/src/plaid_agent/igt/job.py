@@ -607,6 +607,27 @@ class DiskRounds:
         return True
 
 
+def with_earlier(earlier: List[Dict[str, Any]], report: Dict[str, Any]) -> Dict[str, Any]:
+    """Harmonize's ``report`` with the forms an earlier run of it in this
+    worker changed (``earlier``, its ``changed``) added: per form, each
+    analysis rewritten with its words counted once per run and the
+    documents of both, the form set to as the latest run says."""
+    if not earlier:
+        return report
+    by_form: Dict[str, Dict[str, Any]] = {}
+    for c in list(earlier) + list(report['changed']):
+        slot = by_form.setdefault(c['form'], {**c, 'from': []})
+        slot.update({k: v for k, v in c.items() if k != 'from'})
+        for f in c['from']:
+            had = next((x for x in slot['from'] if x['analysis'] == f['analysis']), None)
+            if had is None:
+                slot['from'].append(dict(f))
+            else:
+                had['count'] += f['count']
+                had['documents'] = sorted(set(had['documents']) | set(f['documents']))
+    return {**report, 'changed': [by_form[f] for f in sorted(by_form)]}
+
+
 def entries_part(created, deleted, unlinked, proposed=()) -> Dict[str, Any]:
     """The report's entries part (CONTRACT 5.3), its three lists uncut, with
     ``lexicons``: every lexicon the job created an entry in, in the order
@@ -1597,6 +1618,9 @@ class IgtRunner:
     def harmonize(self, job) -> Dict[str, Any]:
         if 'gloss' not in job.tasks:
             return {'changed': [], 'left': []}
+        # Taken again from its start (``through_core``, after core trouble):
+        # what an earlier run of it wrote stays in the report (REV-J-B3 B3-6).
+        earlier = (self.harmonize_done or {}).get('changed') or []
         project = self.project()
         client = job.client()
         self.read_people(project)
@@ -1684,7 +1708,7 @@ class IgtRunner:
         #: stayed in use, or under the lock it was found changed, or its
         #: rewrite was refused
         unwritten: Dict[Tuple[str, str], str] = {}
-        self.harmonize_done = self.harmonize_report(moves, left, written, unwritten, gloss)
+        self.harmonize_done = with_earlier(earlier, self.harmonize_report(moves, left, written, unwritten, gloss))
         for d in job.order:
             if d not in rewrites:
                 continue
@@ -1696,7 +1720,8 @@ class IgtRunner:
             else:
                 written |= {(d, wid) for wid in done['written']}
                 unwritten.update({(d, wid): why for wid, why in done['left'].items()})
-            self.harmonize_done = self.harmonize_report(moves, left, written, unwritten, gloss)
+            self.harmonize_done = with_earlier(earlier,
+                                              self.harmonize_report(moves, left, written, unwritten, gloss))
         return self.harmonize_done
 
     @staticmethod

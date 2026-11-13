@@ -142,3 +142,46 @@ def test_the_entries_pass_keeps_its_drafts_when_one_went_since_staging(monkeypat
     monkeypatch.setattr(igt_job, 'execute_plan', execute)
     out = runner(job).entries(job)
     assert out['deleted'] == [] and [e['id'] for e in out['unlinked']] == ['e-unlinked']
+
+
+def test_harmonize_taken_again_after_core_trouble_reports_what_it_wrote_the_first_time(monkeypatch):
+    """Core fails a call after harmonize rewrote Story 1, and harmonize is
+    run again from its start (``through_core``). Story 1's rewrite is still
+    in the report (REV-J-B3 B3-6)."""
+    from plaid_agent.core.job import through_core
+    ka = {'go': ('ka', [('ka', 'go')], J), 'come': ('ka', [('ka', 'come')], J)}
+    docs = {'d1': [{'words': [ka['go'], ka['go'], ka['come']]}], 'd2': [{'words': [ka['go'], ka['go'], ka['come']]}]}
+    client = JobClient({d: document(d, f'Story {d}', s) for d, s in docs.items()})
+    job = start(client, ['gloss'], id=J)
+    for d in docs:
+        job.update_row(d, state='done')
+    recorded(job)
+    real = igt_job.execute_plan
+    seen = {'n': 0}
+
+    def execute(c, ops, **kw):
+        out = real(c, ops, **kw)
+        seen['n'] += 1
+        if seen['n'] == 1:
+            # What Story 1 reads once its rewrite landed, then core fails the
+            # next call.
+            client._holder('d1')['documents']['d1'] = document('d1', 'Story d1', [
+                {'words': [ka['go'], ka['go'], ka['go']]}], version=2)
+            client.comments.list = _failing_once(client.comments.list)
+        return out
+    monkeypatch.setattr(igt_job, 'execute_plan', execute)
+    kept = runner(job)
+    out = through_core(job, lambda: kept.harmonize(job))
+    assert out['changed'] == [{'form': 'ka', 'to': 'ka ‘go’', 'by': 'majority', 'from': [
+        {'analysis': 'ka ‘come’', 'count': 2, 'documents': ['d1', 'd2']}]}], out
+
+
+def _failing_once(call):
+    left = {'n': 1}
+
+    def failing(*a, **kw):
+        if left['n']:
+            left['n'] -= 1
+            raise PlaidAPIError('HTTP 502', status=502)
+        return call(*a, **kw)
+    return failing
