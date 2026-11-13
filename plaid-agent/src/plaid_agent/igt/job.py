@@ -101,6 +101,9 @@ DROPPED_FORM = ' dropped'
 TABLES_DROPPED_FORM = ' tables dropped'
 #: How the plan cuts the work (``plan_work``'s ``pieces``).
 SENTENCES, DOCUMENT, SELECTION = 'sentences', 'document', 'selection'
+#: Why a document of a selection is worked as a piece of its own: the
+#: selection's piece never read it (REV-JG2-5, CONTRACT, added by JG-FIX2).
+NOT_READ = 'not-read'
 PIECES = (SENTENCES, DOCUMENT, SELECTION)
 
 
@@ -1197,21 +1200,30 @@ class IgtRunner:
         # Changes no document holds (a guideline, a setting) go with the
         # first document's write, and are proposed there.
         loose = by_doc.pop(None, [])
-        if loose:
-            by_doc.setdefault(next((d for d in live if d in ws._docs), live[0]), []).extend(loose)
+        read = [d for d in live if d in ws._docs]
+        if loose and read:
+            by_doc.setdefault(read[0], []).extend(loose)
         # What the piece staged in a document the job does not write in (one
         # outside the job, or one of its own it has finished) is a proposed
         # change, listed in the report: the job may not write there (REV-JG-6).
+        # So is a change of no document when the piece read none of the job's.
         from .jobapply import IGNORED_KINDS
         outside = [self.describe(op, ws._docs[d], project) if d in ws._docs else self.describe_loose(op)
                    for d in by_doc if d not in live for op in by_doc[d] if op.get('kind') not in IGNORED_KINDS]
+        if not read:
+            outside += [self.describe_loose(op) for op in loose if op.get('kind') not in IGNORED_KINDS]
         core_job.through_core(job, lambda: self.record_changes(outside, note))
         for d in live:
             job.check()
+            if d not in ws._docs:
+                # The piece never read it (its budget ran out, say): it is not
+                # recorded as worked. The walk works it as a piece of its own,
+                # and the report's plan says so (REV-JG2-5).
+                core_job.through_core(job, lambda: self.fall_back(d, NOT_READ))
+                continue
             job.set(current_document=d)
             try:
-                doc = ws._docs.get(d) or core_job.through_core(job, lambda: self.read(project, d))
-                self.write_piece(project, d, ws, doc, by_doc.get(d, []), note)
+                self.write_piece(project, d, ws, ws._docs[d], by_doc.get(d, []), note)
             except Deferred:
                 # Its writes were dropped: it is worked again as a piece of its own.
                 core_job.through_core(job, lambda: (self.fall_back(d, 'in-use'), self.defer(d)))
@@ -1221,12 +1233,11 @@ class IgtRunner:
 
     def write_piece(self, project: IgtProject, document_id: str, ws: JobWorkspace, doc,
                     ops: List[Dict[str, Any]], note: str) -> None:
-        """A selection's write in one of its documents: THE write
-        (:meth:`write`), its piece every sentence of the document as the
+        """A selection's write in one of the documents its piece read: THE
+        write (:meth:`write`), its piece every sentence of the document as the
         piece read it (the gate takes out those the job finished), and every
         sentence's print, so a sentence anyone changed since the read is
-        taken again by the walk. A document the piece did not read is read
-        now and recorded as it is. Tried again from the gate after core's
+        taken again by the walk. Tried again from the gate after core's
         passing trouble, and put off (:class:`Deferred`) when the trouble
         outlasts the tries, as a stretch's document is (REV-JG-4)."""
         def step():
@@ -2370,21 +2381,26 @@ class IgtRunner:
         """Document id (or ``selection``) -> why it was worked in smaller
         pieces than the plan's, as the job's decisions hold it."""
         if getattr(self, '_fallbacks', None) is None:
-            self._fallbacks = {}
+            # Kept only once read whole: a read core fails is read again.
+            read = {}
             for r in self.rows_of(FALLBACK_FORM):
                 v = r['value']
                 if isinstance(v, dict):
-                    self._fallbacks[str(v.get('document'))] = v.get('reason')
+                    read[str(v.get('document'))] = v.get('reason')
+            self._fallbacks = read
         return self._fallbacks
 
     def fall_back(self, what: str, reason: str) -> None:
+        """Record that ``what`` (a document, or ``selection``) is worked in
+        smaller pieces than the plan's, and why. Kept here only once core
+        holds it, so a call core fails is made again."""
         if what in self.fallen_back():
             return
-        self._fallbacks[what] = reason
         text = canonical({'document': what, 'reason': reason})
         self.job.add_decisions([{'form': FALLBACK_FORM + what, 'key': analysis_key(text), 'analysis': text,
                                  'count': 1, 'document_id': None if what == SELECTION else what,
                                  'sentence_id': None}])
+        self._fallbacks[what] = reason
 
     def machine_status(self, project: IgtProject, ops: List[Dict[str, Any]]) -> None:
         """Every entry the job creates carries Status ``machine``, whatever
