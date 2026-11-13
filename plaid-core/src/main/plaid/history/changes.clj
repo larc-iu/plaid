@@ -162,7 +162,7 @@
                         :vocab/project (:project_id r)
                         :config (psc/parse-config (:config r))}))))
 
-(defn- shape
+(defn shape
   "What the row shows, for telling whether a write changed it: its entity,
   with a link's entry named by id alone (an entry renamed is the entry's
   change, not the link's)."
@@ -324,8 +324,9 @@
 
 (defn- run-1
   "Entries of the first run beyond position `pos` (nil for the start), at
-  most `n`. Returns `[entries done?]`."
-  [db ops unit? pos n narrow keep?]
+  most `n`, each made by `emit` from the row changes of a step. Returns
+  `[entries done?]`."
+  [db ops unit? pos n narrow emit]
   (loop [pos pos
          out []]
     (let [ahead (->> ops
@@ -343,7 +344,7 @@
                                 (when (and c (= (position (:first c)) (position r)))
                                   (assoc c :table (first k) :id (second k) :pos (position r)))))
                             rows)
-              out (into out (entries-of db changes keep?))]
+              out (into out (emit changes))]
           (cond
             (>= (count out) n) [(subvec out 0 n) false]
             (= (count rows) rows-per-step) (recur (position (peek (vec rows))) out)
@@ -410,8 +411,9 @@
 
 (defn- run-2
   "Entries of the second run beyond `pos` (`[doc table id]`, nil for the
-  start), at most `n`. Returns `[entries done?]`."
-  [db ops unit? pos n only-doc keep-doc? keep?]
+  start), at most `n`, each made by `emit` as in `run-1`. Returns
+  `[entries done?]`."
+  [db ops unit? pos n only-doc keep-doc? emit]
   (let [unit-end [(str (:ts (last ops))) Long/MAX_VALUE]
         docs (cond->> (created-documents db (map :id ops))
                only-doc (filter #(= (str only-doc) (:doc %))))
@@ -444,7 +446,7 @@
                                 (some-> (row-change table (get hists [table i] []) unit?)
                                         (assoc :table table :id i :pos [doc table i]))))
                             ids)
-              out (into out (entries-of db changes keep?))]
+              out (into out (emit changes))]
           (cond
             (>= (count out) n) [(subvec out 0 n) false]
             done? (recur (rest steps) nil out)
@@ -504,12 +506,13 @@
                      document-id [:= :document_id (str document-id)]
                      vocab-id [:= :vocab_layer_id (str vocab-id)])
             [run pos] (parse-cursor cursor-vals)
+            emit #(entries-of db % keep?)
             [out1 done1?] (if (= run :run-1)
-                            (run-1 db ops unit? pos n narrow keep?)
+                            (run-1 db ops unit? pos n narrow emit)
                             [[] true])
             [out2 _] (if (and done1? (< (count out1) n) (not vocab-id))
                        (run-2 db ops unit? (when (= run :run-2) pos) (- n (count out1))
-                              document-id #(readable-document? (psc/->uuid %)) keep?)
+                              document-id #(readable-document? (psc/->uuid %)) emit)
                        [[] true])
             out (into out1 out2)
             lst (peek out)]
@@ -517,3 +520,33 @@
          :next-cursor (when (= (count out) n)
                         (let [p (::pos lst)]
                           (if (= 2 (count p)) (into ["a"] p) (into ["b"] p))))}))))
+
+;; ============================================================
+;; Every row, raw, for undo
+;; ============================================================
+
+(defn unit-rows
+  "Every row unit `unit-id` changed, as `{:ops [...] :rows [...]}`, or nil
+  when no unit has that id. Each row is `{:table :id :before :after
+  :changed-since :changed-between}` with `:before` and `:after` the row's
+  columns as the audit log folds them (with its `:tokens` and `:metadata`
+  folds, ids as strings), absent where `changes-page` leaves its entity out.
+  The rows and their order are `changes-page`'s, all of them at once, and a
+  row that shows the same before and after is left out as it is there.
+  `:document-id` keeps the rows of that document only."
+  [db unit-id {:keys [document-id]}]
+  (let [ops (unit-ops db unit-id)]
+    (when (seq ops)
+      (let [unit-ids (into #{} (map :id) ops)
+            unit? #(contains? unit-ids %)
+            narrow (when document-id [:= :document_id (str document-id)])
+            emit (fn [changes]
+                   (into []
+                         (keep (fn [{:keys [table before after] :as c}]
+                                 (when (not= (shape table before) (shape table after))
+                                   (select-keys c [:table :id :before :after
+                                                   :changed-since :changed-between]))))
+                         changes))
+            [out1 _] (run-1 db ops unit? nil Long/MAX_VALUE narrow emit)
+            [out2 _] (run-2 db ops unit? nil Long/MAX_VALUE document-id (constantly true) emit)]
+        {:ops ops :rows (into out1 out2)}))))

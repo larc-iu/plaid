@@ -1523,6 +1523,21 @@
                     (throw (ex-info "Layer rules left violations after their remedies." {:code 500})))
                   bumped)))))))))
 
+(defn pending-violations
+  "Every violation the transaction's writes so far leave, of any type,
+  without refusing or remedying any (`finish!` does both). An undo
+  (`plaid.history.undo`) asks before its end, and drops the rows a violation
+  names, so no remedy ever writes past what it puts back."
+  [tx]
+  (let [notes (some-> psaw/*pending* deref)]
+    (if (empty? notes)
+      []
+      (let [docs (distinct (keep (comp u :doc) (vals notes)))
+            layers (when (seq docs) (constrained-layers tx docs))]
+        (if (empty? layers)
+          []
+          (check-all (make-ctx tx notes) (instances layers)))))))
+
 (defn finish!
   "First the partitions of the texts the transaction saved
   (`plaid.sql.text/finish-partitions!`). Then check the layer constraints

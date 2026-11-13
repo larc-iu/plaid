@@ -180,9 +180,10 @@
 
 (defn- meta-of [row] (or (:metadata row) {}))
 
-(defn- diff-table
+(defn diff-table
   "Rows to delete (current rows), insert (target rows), and update
-  (`{:id :row :attrs? :tokens? :meta?}` with the target row)."
+  (`{:id :row :attrs? :tokens? :meta?}` with the target row). Undo
+  (`plaid.history.undo`) diffs the rows it puts back here too."
   [table cur tgt]
   (let [cur-by-id (into {} (map (juxt :id identity)) cur)
         tgt-by-id (into {} (map (juxt :id identity)) tgt)
@@ -332,10 +333,15 @@
         texts-held (into #{} (comp (map :text_id) (filter (doomed :texts))) token-holders)]
     {:spans spans-held :tokens tokens-held :texts texts-held}))
 
-(defn- apply-plan!
+(defn apply-plan!
   "Deletes bottom-up of what nothing that stays names, inserts top-down,
   updates, then deletes bottom-up of what waited for the updates. No
-  delete is swept by a foreign key cascade (`delete-rows!` refuses one)."
+  delete is swept by a foreign key cascade (`delete-rows!` refuses one).
+  `p` is a plan of document `doc-id` (`plan`'s shape: `:name`,
+  `:document-metadata?` with `:document-metadata`, and a `diff-table` per
+  table), `cur` the current rows its deletes and updates are among, in
+  `plaid.sql.document-rows/read-rows`'s shape. Undo applies its rows of a
+  document with it too."
   [tx doc-id p cur]
   (let [held (held-deletes p cur)
         deletes (fn [table pred] (filterv #(pred (contains? (get held table #{}) (:id %)))
@@ -371,11 +377,13 @@
   (ex-info (str "The state at that time no longer fits " (pr-str (:name layer)) " as it is now.")
            {:code 409 :layer (:id layer) :detail detail}))
 
-(defn- validate-final-state!
-  "Every token layer of the document, checked in memory against its
-  text: bounds, overlap mode, and containment in the parent layer. The
-  state was valid when it was live, so this catches what changed
-  around it since, and whatever the plan itself got wrong."
+(defn final-state-violation
+  "The first misfit of document `doc-id`'s token layers as they stand in
+  `tx`, as the ex-info of a 409, or nil when every layer fits: each token
+  layer checked in memory against its text for bounds, overlap mode, and
+  containment in the parent layer. A restored state was valid when it was
+  live, so this catches what changed around it since, and whatever the
+  plan itself got wrong."
   [tx doc-id]
   (let [texts (psc/q tx {:select [:id :body] :from [:texts] :where [:= :document_id doc-id]})
         length-of (into {} (map (fn [t] [(:id t) (code-points (:body t))])) texts)
@@ -383,35 +391,47 @@
         layers (into {} (map (juxt :id identity))
                      (drows/q-in tx :token_layers :id (map :token_layer_id tokens)))
         by-layer-text (group-by (juxt :token_layer_id :text_id) tokens)]
-    (doseq [[[lid tid] toks] by-layer-text]
-      (let [layer (get layers lid)
-            len (get length-of tid 0)
-            mode (keyword (or (:overlap_mode layer) "any"))
-            sorted (sort-by (juxt :begin :end_) toks)]
-        (doseq [t toks]
-          (when-not (<= 0 (:begin t) (:end_ t) len)
-            (throw (violation layer (str "token " (:begin t) "-" (:end_ t)
-                                         " falls outside the text of " len " code points")))))
-        (case mode
-          :partitioning
-          (try
-            (tc/validate-partition! (map (fn [t] {:token/id (:id t) :token/begin (:begin t) :token/end (:end_ t)})
-                                         toks)
-                                    len)
-            (catch ExceptionInfo e
-              (throw (violation layer (ex-message e)))))
-          :non-overlapping
-          (doseq [[a b] (partition 2 1 sorted)]
-            (when (< (:begin b) (:end_ a))
-              (throw (violation layer (str "tokens " (:begin a) "-" (:end_ a) " and "
-                                           (:begin b) "-" (:end_ b) " overlap")))))
-          nil)
-        (when-let [pid (:parent_token_layer_id layer)]
-          (let [parents (get by-layer-text [pid tid])]
-            (doseq [t toks]
-              (when-not (some #(and (<= (:begin %) (:begin t)) (<= (:end_ t) (:end_ %))) parents)
-                (throw (violation layer (str "token " (:begin t) "-" (:end_ t)
-                                             " has no containing token in its parent layer")))))))))))
+    (some
+     (fn [[[lid tid] toks]]
+       (let [layer (get layers lid)
+             len (get length-of tid 0)
+             mode (keyword (or (:overlap_mode layer) "any"))
+             sorted (sort-by (juxt :begin :end_) toks)]
+         (or (some (fn [t]
+                     (when-not (<= 0 (:begin t) (:end_ t) len)
+                       (violation layer (str "token " (:begin t) "-" (:end_ t)
+                                             " falls outside the text of " len " code points"))))
+                   toks)
+             (case mode
+               :partitioning
+               (try
+                 (tc/validate-partition! (map (fn [t] {:token/id (:id t) :token/begin (:begin t) :token/end (:end_ t)})
+                                              toks)
+                                         len)
+                 nil
+                 (catch ExceptionInfo e
+                   (violation layer (ex-message e))))
+               :non-overlapping
+               (some (fn [[a b]]
+                       (when (< (:begin b) (:end_ a))
+                         (violation layer (str "tokens " (:begin a) "-" (:end_ a) " and "
+                                               (:begin b) "-" (:end_ b) " overlap"))))
+                     (partition 2 1 sorted))
+               nil)
+             (when-let [pid (:parent_token_layer_id layer)]
+               (let [parents (get by-layer-text [pid tid])]
+                 (some (fn [t]
+                         (when-not (some #(and (<= (:begin %) (:begin t)) (<= (:end_ t) (:end_ %))) parents)
+                           (violation layer (str "token " (:begin t) "-" (:end_ t)
+                                                 " has no containing token in its parent layer"))))
+                       toks))))))
+     by-layer-text)))
+
+(defn- validate-final-state!
+  "Throw `final-state-violation`'s 409 when document `doc-id` has one."
+  [tx doc-id]
+  (when-let [e (final-state-violation tx doc-id)]
+    (throw e)))
 
 ;; ============================================================
 ;; Public API

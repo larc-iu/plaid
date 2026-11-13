@@ -2,10 +2,13 @@
   (:require [clojure.string]
             [plaid.history.changes :as changes]
             [plaid.history.read :as hread]
+            [plaid.history.undo :as undo]
             [plaid.rest-api.v1.schema :as schema]
             [plaid.rest-api.v1.auth :as pra]
+            [plaid.rest-api.v1.middleware :as prm]
             [plaid.rest-api.v1.pagination :as pagination]
             [plaid.sql.audit :as audit]
+            [plaid.sql.common :as psc]
             [plaid.sql.document :as doc]
             [plaid.sql.operation-group :as og]
             [plaid.sql.user :as user])
@@ -248,6 +251,90 @@
             {:status 400 :body {:error (ex-message e)}}
             (throw e)))))))
 
+(def ^:private undo-query
+  [:map
+   [:dry-run {:optional true} boolean?]
+   [:document-id {:optional true} :uuid]
+   [:vocab-layer-id {:optional true} :uuid]])
+
+(def ^:private undo-doc
+  (str "Undo one audit entry (a group, a batch, one operation, or an action inside one, as the changes read takes "
+       "it), as one operation of type audit-entry/undo: every row the entry wrote is put back as it was just before "
+       "the entry. A row it made is deleted, one it deleted is inserted again under its old id, one it changed is "
+       "set back, in its documents and its vocabularies together. A row is left as it is, and listed under skipped "
+       "({kind, id, document or vocab-layer, reason}, the first 1,000, skipped-count for all), when: a later "
+       "operation wrote it (changed-since), someone else wrote it between the entry's own writes (changed-between), "
+       "the caller may not maintain it (not-permitted), another user holds its document's lock (locked), it is a "
+       "vocabulary's own name or settings (not-undone), the entry made it and a row that stays names it (built-on, "
+       "with by naming that row: a span, link, child token or comment on a token, a link to an entry or a reference "
+       "to it in metadata, and for a document anything written in it since), it needs a row that will not be there "
+       "(needs, naming it: a parent gone since, or a row of this undo that is left), its offsets belong to a text "
+       "that does not go back (text-changed-since: a text is put back only when nothing in its document wrote a "
+       "text or a token since the entry began), a document's name another document holds now (name-taken), its "
+       "document's layers would not hold, so all that document's rows are left (does-not-fit), or a closed list no "
+       "longer allows its value (value-not-allowed). Leaving is closed under dependency. Changes to a project, its "
+       "layers, a vocabulary's name or settings, users and memberships are not undone: not-undone lists the "
+       "entry's operations that made them ({op-type, count}). A project's deletion is not an entry: it cannot be "
+       "undone. The response counts what was undone per kind (undone: {inserted, updated, deleted} for documents, "
+       "texts, tokens, spans, relations, vocab-links and vocab-items), total, rows (the entry's rows) and, when the "
+       "call wrote, operation (the undo's own id, an entry that can be undone in turn). An entry undone twice finds "
+       "nothing left the second time and writes nothing. Pass ?document-id= for that document's rows only (its "
+       "links included), or ?vocab-layer-id= for that vocabulary's entries and the links that name one of them, "
+       "before or after. With dry-run true nothing is written and the answer is what the call would do. Requires "
+       "maintainer rights: on a document's project for its rows, on a vocabulary's home project for its entries. "
+       "Rows the caller may not maintain are skipped, and a caller who may maintain none is refused 403. A "
+       "delegated token undoes only document rows of the projects it reaches. An entry of more than "
+       (format "%,d" undo/max-rows) " rows is refused 413. The versions of the documents written are returned in "
+       "X-Document-Versions."))
+
+(defn- entry-undo
+  [{db :db {{:keys [entry-id]} :path query :query} :parameters :as request}]
+  (let [user-id (pra/->user-id request)
+        record (:user/record request)
+        scoped? (some? (:auth/token-scope request))
+        maintains? (memoize (fn [pid] (boolean (pra/privileged? request :project/maintainers (constantly pid)))))
+        may-document? (memoize (fn [doc-id]
+                                 (boolean (when-let [p (changes/document-project db doc-id)]
+                                            (and (hread/project-live? db p) (maintains? p))))))
+        ;; As the entry restore route: a delegated token puts back no entry.
+        may-vocab? (memoize (fn [vocab-id]
+                              (boolean (and (not scoped?) vocab-id
+                                            (pra/vocab-maintainer? db vocab-id user-id record)))))
+        ops (changes/unit-ops db entry-id)
+        refused {:status 403 :body {:error (str "User " user-id " lacks sufficient privileges to undo this entry")}}]
+    (cond
+      (and (empty? ops) (user/admin? record))
+      (if (psc/q1 db {:select [:id] :from [:operations]
+                      :where [:and [:= :op_type "project/delete"]
+                              [:or [:= :id (str entry-id)] [:= :group_id (str entry-id)]
+                               [:= :batch_id (str entry-id)]]]})
+        {:status 422 :body {:error "A project's deletion cannot be undone."}}
+        {:status 404 :body {:error "Entry not found"}})
+
+      (empty? ops)
+      (assoc-in refused [:body :unresolved] true)
+
+      :else
+      (let [{:keys [summary documents error code]}
+            (undo/undo db entry-id {:user user-id
+                                    :dry-run? (boolean (:dry-run query))
+                                    :document-id (:document-id query)
+                                    :vocab-id (:vocab-layer-id query)
+                                    :may-document? may-document?
+                                    :may-vocab? may-vocab?})]
+        (cond
+          error {:status code :body {:error error}}
+
+          (if (pos? (:rows summary))
+            (zero? (:permitted summary))
+            (not-any? maintains? (distinct (keep :project_id ops))))
+          refused
+
+          :else
+          (prm/assoc-document-versions-in-header
+           {:status 200 :body (dissoc summary :permitted)}
+           db (pra/readable-document-ids request documents)))))))
+
 (def audit-routes
   [["/projects/:project-id/audit"
     {:parameters {:path [:map [:project-id :uuid]]}
@@ -317,6 +404,15 @@
      :get {:summary    changes-doc
            :parameters {:query changes-query}
            :handler    entry-changes}}]
+
+   ["/audit/entries/:entry-id/undo"
+    {:parameters {:path [:map [:entry-id :uuid]]}
+     ;; Gated row by row in the handler, as the changes read is, through the
+     ;; same maintainer and vocabulary checks a scoped token is held to.
+     :plaid/token-scope (fn [_ _] nil)
+     :post {:summary    undo-doc
+            :parameters {:query undo-query}
+            :handler    entry-undo}}]
 
    ["/audit"
     {:get {:summary    (str "Get the audit log across every project. Admin only. " op-types-doc kinds-doc order-doc ops-limit-doc)
