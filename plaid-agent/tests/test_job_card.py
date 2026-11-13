@@ -309,3 +309,15 @@ def test_an_unknown_card_or_outcome_is_an_error():
     assert helper.errors == ['No such job card in this conversation']
     helper, _conv, _meta = _settle(client, 'nope', outcome='approved')
     assert helper.errors == ['Unknown outcome: approved']
+
+
+# --- the turn's own account of the draft --------------------------------------------------
+
+def test_the_step_says_a_job_was_drafted_and_the_result_ends_with_the_card_line(monkeypatch):
+    from test_nothing_planned import APPS, _reply, _run
+    ws, kit, _plan, _read = APPS['igt']()
+    out, _sent = _run(monkeypatch, ws, kit, [_reply(('propose_job', GLOSS)), _reply(text='Here is the job.')])
+    (step,) = out.steps
+    assert step['label'] == 'Drafted a job', step
+    (result,) = [m['content'] for m in out.messages if m.get('role') == 'tool']
+    assert result.endswith('\n[Plan of this turn: a job card, 1 document, gloss.]'), result

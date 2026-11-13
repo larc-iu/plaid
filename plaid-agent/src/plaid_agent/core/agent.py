@@ -885,8 +885,11 @@ def named_args(ws: Any, args: Any) -> Any:
 
 def _plan_snapshot(ws: Any) -> List[str]:
     """The plan as it stands, to tell whether a call changed it. In any order:
-    a change staged again over itself may move to the end of the plan."""
-    return sorted(json.dumps(op, sort_keys=True, default=str) for op in getattr(ws, 'ops', None) or [])
+    a change staged again over itself may move to the end of the plan. A job
+    card the turn drafted is part of it."""
+    card = getattr(ws, 'job_card', None)
+    return sorted(json.dumps(op, sort_keys=True, default=str) for op in getattr(ws, 'ops', None) or []) + \
+        ([json.dumps(card, sort_keys=True, default=str)] if card is not None else [])
 
 
 def model_failure_line(e: BaseException, timeout: Optional[float] = None) -> Optional[str]:
