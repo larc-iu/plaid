@@ -137,9 +137,9 @@ max_wall_s: 1800                # per request (optional)
 
 ## Job tasks
 
-A task may run an unattended job in place of panel turns: `job: {tasks: [gloss], documents: [Lezgi text 1]}`
-instead of `turns` (documents by name, every document of the project when left out, and `note` for the
-starter's instructions). The task's user starts the job, `plaid-job-worker --once` takes it with the run's model
+A task may run an unattended job in place of panel turns: `job: {instructions: Gloss the words., documents:
+[Lezgi text 1]}` instead of `turns` (the starter's instructions, and documents by name, every document of the
+project when left out). The task's user starts the job, `plaid-job-worker --once` takes it with the run's model
 through the gate and runs it to its end, and the checker reads the job as `ctx.job` (kept as `job.json` beside
 `worker.log`, and every model call of every stretch in `transcript/`, the worker's `--trace-dir`). `checks/igt_job.py` judges an igt job by rules of its own, never the worker's: the job ended done, nothing a
 person made changed, every word that changed was blank and is wholly the job's own machine proposal, no entry

@@ -9,7 +9,6 @@ from plaid_agent.igt import toolkit
 from plaid_agent.igt.job import JobWorkspace, Stretch
 from plaid_agent.igt.project import load_project
 
-TASKS = ['gloss', 'link']
 
 
 def _ws(project=None):

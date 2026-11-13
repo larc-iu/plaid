@@ -606,7 +606,7 @@ PLAN_WORK = _fn(
     'documents and in what order. pieces: "sentences" (stretches of a few sentences, each its own context), '
     '"document" (one context per document) or "selection" (one context for all the documents). '
     'piece_instructions: what every piece is told, as decisions, added to the instructions. documents: names or '
-    'ids, a subset of the job\'s documents in the order to work them; left out, all of them in the job\'s order.',
+    'ids, a subset of the job\'s documents in the order to work them. Left out, all of them in the job\'s order.',
     {'pieces': {'type': 'string', 'enum': ['sentences', 'document', 'selection']},
      'piece_instructions': {'type': 'string'},
      'documents': {'type': 'array', 'items': {'type': 'string'}}}, ['pieces'])

@@ -12,7 +12,6 @@ from plaid_agent.igt import toolkit
 from plaid_agent.igt.job import JobWorkspace, Stretch
 from plaid_agent.igt.project import load_project, parse_document
 
-TASKS = ['translate', 'gloss', 'link']
 
 
 def _story():
@@ -24,7 +23,7 @@ def _story():
     ]
 
 
-def _ws(sentences=None, tasks=TASKS):
+def _ws(sentences=None):
     client = JobClient({'d1': document('d1', 'Story', sentences or _story())})
     project = load_project(client, 'p1')
     ws = JobWorkspace(client, project)

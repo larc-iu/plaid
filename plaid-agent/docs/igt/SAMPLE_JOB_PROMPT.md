@@ -63,7 +63,7 @@ Its 24 tools are the chat's reads and code, as `SAMPLE_PROMPT.md` shows them, an
 
 ### plan_work
 
-End the planning: how the job's work is cut into pieces, what every piece is told, and optionally which documents and in what order. pieces: "sentences" (stretches of a few sentences, each its own context), "document" (one context per document) or "selection" (one context for all the documents). piece_instructions: what every piece is told, as decisions, added to the instructions. documents: names or ids, a subset of the job's documents in the order to work them; left out, all of them in the job's order.
+End the planning: how the job's work is cut into pieces, what every piece is told, and optionally which documents and in what order. pieces: "sentences" (stretches of a few sentences, each its own context), "document" (one context per document) or "selection" (one context for all the documents). piece_instructions: what every piece is told, as decisions, added to the instructions. documents: names or ids, a subset of the job's documents in the order to work them. Left out, all of them in the job's order.
 
 - `pieces` (one of `sentences`, `document`, `selection`, required)
 - `piece_instructions` (string)

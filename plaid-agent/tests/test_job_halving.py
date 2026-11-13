@@ -12,7 +12,7 @@ from plaid_agent.core.limits import JOB_CALL_DECIDE_AT_TOKENS, JOB_STRETCH_MAX_R
 from plaid_agent.core.prompt import JOB_DECIDE_NOW
 
 
-def _job(n=5, tasks=('gloss',)):
+def _job(n=5):
     client = JobClient({'d1': document('d1', 'Story', blank(n))})
     return client, start(client)
 

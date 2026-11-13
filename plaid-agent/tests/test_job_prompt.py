@@ -141,7 +141,9 @@ def test_no_job_prompt_has_a_semicolon_or_an_em_dash_of_its_own():
     for text in (shared.JOB_CONTRACT, shared.JOB_FIND_FIRST, shared.JOB_STAGE_NOW, shared.JOB_PLAN_WHAT_WAS_ASKED,
                  shared.JOB_VALUES, shared.JOB_NOTE, shared.JOB_DECIDE_NOW, shared.JOB_PLAN_CONTRACT,
                  prompt.JOB_PLAN_RULES, shared.JOB_PLAN_NOW, shared.JOB_SUMMARY_CONTRACT, prompt._JOB_EXAMPLE_DID,
-                 prompt._JOB_EXAMPLE_NOTE, prompt._JOB_PROJECT_WIDE, prompt.JOB_TABLES):
+                 prompt._JOB_EXAMPLE_NOTE, prompt._JOB_PROJECT_WIDE, prompt.JOB_TABLES,
+                 # What the planning context reads of plan_work (REV-JG-16).
+                 toolkit.PLAN_WORK['function']['description']):
         assert ';' not in text and '—' not in text, text[:80]
 
 

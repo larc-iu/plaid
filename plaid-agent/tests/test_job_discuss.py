@@ -19,14 +19,14 @@ def _report(**over):
     client hands it over): Text 1 done with a word left blank and a sentence
     skipped, a form left inconsistent, an entry created."""
     report = {
-        'state': 'done', 'reason': None, 'tasks': ['gloss', 'link'], 'note': 'Gloss ka as "go".',
+        'state': 'done', 'reason': None, 'instructions': 'Gloss ka as "go".',
         'started_by': 'user@example.com', 'model': 'm', 'started_at': '2026-11-12T22:01:00Z',
         'finished_at': '2026-11-13T03:10:00Z', 'paused_for_people_s': 0, 'paused_for_model_s': 0,
         'stopped': None,
         'totals': {'documents_done': 1, 'documents_in_use': 0, 'documents_gone': 0, 'documents_not_reached': 0,
                    'sentences': 4, 'translations': 0, 'refreshed': 0, 'words': 9, 'links': 7, 'entries': 1,
                    'skipped_too_long': 1, 'skipped_failed': 0, 'skipped_changed': 0, 'skipped_more': 0,
-                   'changed': 0, 'protected': 0},
+                   'changed': 0, 'proposed': 0},
         'documents': [{'document_id': 'd1', 'name': 'Text 1', 'state': 'done', 'sentences': 5, 'targets': 5,
                        'done': 5, 'counts': {'words': 9, 'links': 7, 'left': 1},
                        'skipped': [{'sentence': 's5', 'sentence_id': 'S5', 'reason': 'too-long', 'kind': None}],

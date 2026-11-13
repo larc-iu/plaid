@@ -72,7 +72,7 @@ def test_a_stop_between_documents_leaves_the_next_one_alone(monkeypatch):
     assert [d['state'] for d in report['documents']] == ['done', 'not-reached']
 
 
-def _harmonize_job(monkeypatch, tasks=('gloss',)):
+def _harmonize_job(monkeypatch):
     w = lambda g: ('ka', [('ka', g)], J)  # noqa: E731
     client = JobClient({'d1': document('d1', 'A', [{'words': [w('go'), w('go'), w('go'), w('go'), w('come')]}]),
                         'd2': document('d2', 'B', [{'words': [w('come')]}])})
