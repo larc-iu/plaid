@@ -127,6 +127,26 @@ def test_another_projects_workspace_drafts_nothing():
 
 # --- a plan or a card, never both: the first staged stands ----------------------------------
 
+def test_a_reader_is_refused_at_staging_with_the_line_the_card_says():
+    """The owner's ruling (REV-JB question 3): a reader's card is a dead end,
+    so staging refuses it, by the page's own rule (canStartJob: a writer, a
+    maintainer or an administrator, from the project's lists as core gives
+    them)."""
+    from fixtures import project_raw
+    for role, admin, may in ((None, False, False), ('readers', False, False), ('writers', False, True),
+                             ('maintainers', False, True), (None, True, True)):
+        raw = project_raw()
+        if role:
+            raw[role] = ['u@x']
+        ws = fake_ws(FakeClient(project=raw))
+        ws.requester_id = 'u@x'
+        ws.requester_is_admin = lambda admin=admin: admin
+        out = _draft(ws)
+        assert out.startswith('Drafted the job card.') == may, (role, admin, out)
+        if not may:
+            assert 'Starting a job needs write access.' in out and ws.job_card is None
+
+
 def test_a_turn_that_read_the_web_drafts_no_card_as_it_plans_no_change():
     """REV-JB-3: the web-read refusal add_op owes a plan, asked of a draft by
     the same function."""
@@ -190,6 +210,13 @@ def _send(svc, client, rid, text='Draft a glossing job.', create=False):
     return helper
 
 
+def _writer_client():
+    """The fake core, with the user the turns act for (u@x) a writer of the
+    project, as a user who may start a job is."""
+    from fixtures import project_raw
+    return FakeClient(project={**project_raw(), 'writers': ['u@x']})
+
+
 def _card_turn(monkeypatch, client, svc=None, rid='r1', create=True, **args):
     svc = svc or _service()
     _drafting_turn(monkeypatch, args)
@@ -199,7 +226,7 @@ def _card_turn(monkeypatch, client, svc=None, rid='r1', create=True, **args):
 
 
 def test_the_reply_carries_the_card_waiting(monkeypatch):
-    client = FakeClient()
+    client = _writer_client()
     _svc, conv = _card_turn(monkeypatch, client)
     reply = conv['display'][-1]
     assert reply['plan'] is None and reply['job']['status'] is None
@@ -207,7 +234,7 @@ def test_the_reply_carries_the_card_waiting(monkeypatch):
 
 
 def test_the_service_reads_cores_limits_with_its_own_client(monkeypatch):
-    client = FakeClient()
+    client = _writer_client()
     svc = _service()
     svc.client = client
     _card_turn(monkeypatch, client, svc=svc)
@@ -215,7 +242,7 @@ def test_the_service_reads_cores_limits_with_its_own_client(monkeypatch):
 
 
 def test_a_newer_card_replaces_one_still_waiting(monkeypatch):
-    client = FakeClient()
+    client = _writer_client()
     svc, conv = _card_turn(monkeypatch, client)
     first = conv['display'][-1]['job']['id']
     _svc, conv = _card_turn(monkeypatch, client, svc=svc, rid='r2', create=False, brief='Leave loanwords.')

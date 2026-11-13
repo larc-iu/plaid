@@ -12,7 +12,8 @@ Staging asks what core asks at the start, so the model hears a refusal while
 it can still change the draft: documents of this project, at most the number
 core publishes, a known task set, the brief within the note's limit core
 publishes, a lexicon when it is to link, and no job already active on the
-project. A turn holds a job card or a plan of changes, never both: whichever
+project, and a user who may start one (a writer, as the page's Start job
+asks). A turn holds a job card or a plan of changes, never both: whichever
 is staged first stands (``core.workspace.JOB_CARD_REFUSAL`` for the other way
 round).
 """
@@ -124,6 +125,21 @@ def _active_refusal(ws, job: Dict[str, Any]) -> str:
             f'with a link to its page: [the job]({page}). Draft this one once it has ended.')
 
 
+#: A user who may not start a job (a reader): the card would be a dead end.
+READER_REFUSAL = ('Starting a job needs write access. Tell the user so, and that a writer of the project can start '
+                  'one.')
+
+
+def _may_start(ws) -> bool:
+    """The page's rule (plaid-ui ``canStartJob``, which is
+    ``canEditProject``): a writer or maintainer of the project, by its lists
+    as core gives them with the project, or an administrator. No user (a
+    script, a test) is left to core, which checks at the start anyway."""
+    if ws.requester_id is None:
+        return True
+    return ws.requester_role() in ('maintainer', 'writer') or ws.requester_is_admin()
+
+
 def summary(card: Dict[str, Any]) -> str:
     """The card in the words of the plan line: "3 documents, gloss and link"."""
     n = card['count']
@@ -143,6 +159,8 @@ def t_propose_job(ws, action: str, documents: Optional[Any] = None, tasks: Optio
         raise ToolError('action is help or draft. Call with action "help" first.', kind='invalid-argument')
     ws.refuse_read_only()
     ws.refuse_web_read()
+    if not _may_start(ws):
+        raise ToolError(READER_REFUSAL, kind='not-allowed')
     if ws.ops:
         held = held_changes(ws)
         raise ToolError(f'This turn planned {held} change{"s" if held != 1 else ""}, and a turn holds a plan or '
