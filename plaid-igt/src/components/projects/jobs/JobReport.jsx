@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
 import { TYPE } from '@ui/lib/typeScale.js';
+import { historyHref } from '@ui/hooks/useHistoryParam.js';
 import { plural } from '@ui/lib/plural.js';
 import { APP_ROUTES } from '@/appRoutes.js';
 import { HARMONIZE_BY_TEXT, HARMONIZE_LEFT_TEXT, durationText, skippedText } from './jobText.js';
@@ -60,12 +61,38 @@ const Analysis = ({ text, count }) => (
   </span>
 );
 
-const EntryLine = ({ entry }) => (
-  <li>
-    {entry.form}
-    {entry.gloss ? ` ‘${entry.gloss}’` : ''}
-  </li>
-);
+// An entry the job made, a link to it where the report names its lexicon.
+const EntryLine = ({ entry }) => {
+  const text = `${entry.form}${entry.gloss ? ` ‘${entry.gloss}’` : ''}`;
+  return (
+    <li>
+      {entry.id && entry.lexicon ? (
+        <Link
+          className="underline"
+          to={`/vocabularies/${entry.lexicon}?item=${encodeURIComponent(entry.id)}`}
+        >
+          {text}
+        </Link>
+      ) : (
+        text
+      )}
+    </li>
+  );
+};
+
+// A document of the report by its name, a link to what the job changed in it
+// (its History entry for the job's work there) where it has one.
+const DocumentName = ({ projectId, d }) =>
+  d.name && d.glossGroup ? (
+    <Link
+      className="font-medium underline"
+      to={historyHref(APP_ROUTES.document(projectId, d.documentId), d.glossGroup)}
+    >
+      {d.name}
+    </Link>
+  ) : (
+    <span className="font-medium">{d.name ?? 'Deleted document'}</span>
+  );
 
 // The changes the job staged and did not apply (the apply rule: project
 // setup, and the few it cannot make under a document's lock), each where it
@@ -269,7 +296,9 @@ export const JobReport = ({ report, projectId, vocabs = [] }) => {
           <Heading section="skipped" />
           {skipped.map((d) => (
             <div key={d.documentId} className="mb-3 text-sm">
-              <p className="font-medium">{d.name ?? 'Deleted document'}</p>
+              <p>
+                <DocumentName projectId={projectId} d={d} />
+              </p>
               <ul className="ml-4 list-disc">
                 {d.skipped.map((s) => (
                   <li key={s.sentenceId ?? s.sentence}>
@@ -302,7 +331,9 @@ export const JobReport = ({ report, projectId, vocabs = [] }) => {
           <Heading section="left" />
           {blank.map((d) => (
             <div key={d.documentId} className="mb-3 text-sm">
-              <p className="font-medium">{d.name ?? 'Deleted document'}</p>
+              <p>
+                <DocumentName projectId={projectId} d={d} />
+              </p>
               <ul className="ml-4 list-disc">
                 {(d.left || []).map((l) => (
                   <li key={`${l.sentenceId} ${l.ref}`}>

@@ -32,6 +32,7 @@ import {
   jobStoppable,
 } from '@ui/domain/jobs.js';
 import { JobReport } from './JobReport.jsx';
+import { JobHistoryLinks } from './JobHistoryLinks.jsx';
 import { durationText, jobName, jobsTabPath, planText } from './jobText.js';
 
 /**
@@ -307,6 +308,14 @@ const JobDocuments = ({ job, projectId }) => {
       label: 'Translations',
       align: 'right',
       render: (d) => ((d.counts?.translations ?? 0) + (d.counts?.refreshed ?? 0)).toLocaleString(),
+    });
+  }
+  // Each pass's History entry in the document: what the job changed there.
+  if (rows.some((d) => d.glossGroup || d.harmonizeGroup)) {
+    columns.push({
+      key: 'history',
+      label: 'History',
+      render: (d) => <JobHistoryLinks projectId={projectId} document={d} />,
     });
   }
   for (const [key, label] of [

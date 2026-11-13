@@ -240,6 +240,37 @@ describe('the job page', () => {
     await first.unmount();
   });
 
+  it('links each document to what the job changed in it, and the report’s entries to themselves', async () => {
+    const ended = jobOf({
+      state: 'done',
+      finishedAt: '2026-11-12T11:00:00Z',
+      documents: [
+        { ...jobOf().documents[0], glossGroup: 'g-d1', harmonizeGroup: 'h-d1' },
+        { ...jobOf().documents[1], glossGroup: 'g-d2' },
+      ],
+      report: {
+        ...REPORT,
+        documents: REPORT.documents.map((d) => ({ ...d, glossGroup: 'g-d1' })),
+      },
+    });
+    const v = await mount(clientOf(ended));
+    const rows = all(v.container, '#job-documents tbody tr, tbody tr');
+    expect(all(rows[0], 'a').map((a) => [a.textContent, a.getAttribute('href')])).toEqual([
+      ['Story A', '/projects/p1/documents/d1'],
+      ['Changes', '/projects/p1/documents/d1?history=g-d1'],
+      ['Analyses made consistent', '/projects/p1/documents/d1?history=h-d1'],
+    ]);
+    // A deleted document has no History to open.
+    expect(all(rows[1], 'a')).toHaveLength(0);
+    const report = v.container.querySelector('section[aria-label="Report"]');
+    // The skipped sentences and the blanks, each under its document's name.
+    expect(all(report, 'p > a').map((a) => [a.textContent, a.getAttribute('href')])).toContainEqual(
+      ['Story A', '/projects/p1/documents/d1?history=g-d1'],
+    );
+    expect(byText(report, 'a', 'ka ‘go’').getAttribute('href')).toBe('/vocabularies/v1?item=e1');
+    await v.unmount();
+  });
+
   it('lists the job’s facts and a row per document, a deleted one by that word', async () => {
     const v = await mount(clientOf(jobOf()));
     const t = text(v.container);
