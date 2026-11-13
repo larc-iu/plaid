@@ -337,6 +337,18 @@ An entry of a machine run can hold tens of thousands of writes.
 A page read with `ops_limit` / `opsLimit` keeps only each entry's oldest operations, and `op-count` says how many there are in all.
 To read the rest of one entry, pass its id as `entry_id` / `entryId` with a `start_time` at the last operation you have.
 
+=== Changes in one entry
+
+`audit.changes` answers, for one entry, every row of a document or a vocabulary it wrote, as it was just before the entry and just after.
+A row the entry made has no `before`, and one it deleted has no `after`.
+`changed_since` / `changedSince` says the row has been changed since.
+
+[,python]
+----
+for row in c.audit.changes(entry_id, document_id=document_id):
+    print(row["kind"], row.get("before"), row.get("after"))
+----
+
 === Last edit per document
 
 `my_last_edits` / `myLastEdits` answers, in one request, when the calling user last wrote to each document in a project:
