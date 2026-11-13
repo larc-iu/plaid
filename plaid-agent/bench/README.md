@@ -157,6 +157,12 @@ before that answer names я and both of people's glosses of it (before any card,
 one), the newest job card covers exactly that text with the gloss task, its brief carries the answer, and
 nothing was written. Validated only.
 
+`igt-job-discuss` is talking about a job that ran: the setup ends a job over Gitksan text 1 with a report that
+lists guxw (s20.w5, left unanalysed) under "Left blank" and wila under "Forms left inconsistent". Asked what the
+job left undone, the reply must name both, which only the job's record (read_job) says, and asked then to gloss the
+blank word as shoot, the approved plan must write exactly that morpheme (`checks/igt_job_discuss.py`). Validated
+only.
+
 ## The model gate
 
 `lib/gate.py` is an OpenAI-compatible proxy in `run.py`'s own process. `run.py` reads the key from the file `$PLAID_BENCH_KEY_FILE` names into the gate's memory once, and the gate sends requests on to `$PLAID_BENCH_UPSTREAM`. The key is sent upstream in a header and appears nowhere else: not in a file, a log, argv or a child's environment. The assistants get a dummy key and `--api-base http://127.0.0.1:<gate>/<run tag>/v1`.

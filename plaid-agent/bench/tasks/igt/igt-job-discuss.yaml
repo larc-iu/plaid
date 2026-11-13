@@ -1,0 +1,25 @@
+# Talking about a job that ran (BRIEF-JD): a job over Gitksan text 1 ended with
+# a report (made by the setup, no worker runs) whose "Left blank" lists guxw
+# (s20.w5, unanalysed by the setup) and whose "Forms left inconsistent" lists
+# wila. Asked what the job left undone, the reply must name both, which only
+# the job's record says (read_job). Asked then to gloss the blank word as
+# shoot, the plan must write exactly that one morpheme, approved.
+id: igt-job-discuss
+app: igt
+project: igt-gitksan
+as: B
+turns:
+  - say: >-
+      What did the last assistant job leave undone?
+  - say: >-
+      Gloss the word it left blank as shoot, as a single morpheme.
+    approve: true
+check: igt_job_discuss
+args:
+  named: ['(?<![^\W_])guxw(?![^\W_])', '(?<![^\W_])wila(?![^\W_])']
+  expect:
+    "Gitksan text 1|s20.w5.m1:form": guxw
+    "Gitksan text 1|s20.w5.m1:Gloss": shoot
+  # Linking the new morpheme to its entry is no fault, as in igt-segment-word.
+  optional:
+    "Gitksan text 1|s20.w5.m1:link": "guxw|shoot"
