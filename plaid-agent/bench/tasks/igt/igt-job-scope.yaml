@@ -1,0 +1,22 @@
+# Scoping a job in the chat (BRIEF-JB): the user asks for an overnight
+# glossing job on two texts in which я is blank, while people analysed я in
+# two ways elsewhere (setup: some glossed "was", some COP). The assistant must
+# raise я before it drafts the job (or in the reply that drafts it and asks),
+# leave a job card over exactly those two texts with the gloss task, and the
+# card's brief must carry the user's answer (COP). Nothing is written.
+id: igt-job-scope
+app: igt
+project: igt-lezgi
+as: B
+turns:
+  - say: >-
+      Set up an overnight job to segment and gloss Lezgi text 1 and Lezgi
+      text 2.
+  - say: >-
+      Gloss я as COP everywhere. Draft the job.
+check: igt_job_card
+args:
+  form: я
+  documents: [Lezgi text 1, Lezgi text 2]
+  tasks: [gloss]
+  brief: ['\bCOP\b', '(?<![^\W_])я(?![^\W_])']

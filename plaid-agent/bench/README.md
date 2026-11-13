@@ -150,6 +150,11 @@ gave the form. `checks/igt_job_hand.py` makes a job's result by hand for `./vali
 `igt-job-stretch` and `igt-job-harmonize` are the two, validated only, never run against a model in the round
 that added them.
 
+`igt-job-scope` is the chat's side of a job: the user asks for an overnight glossing job on two texts whose form я
+people analysed in two ways, and answers in the second turn. `checks/igt_job_card.py` passes when a reply before
+that answer names я (before any card, or in the reply that drafts one and asks), the newest job card covers
+exactly the two texts with the gloss task, its brief carries the answer, and nothing was written. Validated only.
+
 ## The model gate
 
 `lib/gate.py` is an OpenAI-compatible proxy in `run.py`'s own process. `run.py` reads the key from the file `$PLAID_BENCH_KEY_FILE` names into the gate's memory once, and the gate sends requests on to `$PLAID_BENCH_UPSTREAM`. The key is sent upstream in a header and appears nowhere else: not in a file, a log, argv or a child's environment. The assistants get a dummy key and `--api-base http://127.0.0.1:<gate>/<run tag>/v1`.
