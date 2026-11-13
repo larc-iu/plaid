@@ -940,7 +940,7 @@ A job writes every change it plans in its documents and in the project's lexicon
 It can change and delete what people wrote or confirmed.
 Each value it writes is a machine proposal (see <<_provenance>>), also where it replaces a value a person wrote or confirmed.
 A job never deletes a document, and never changes the project's setup: a guideline, a tagset, a document's name or metadata, or a new document is listed in its report as a proposed change, for a person to make.
-So is a change in a document outside the job, a corpus-wide change, a confirmation, a restore of a document, and the renaming, merging or deleting of an entry when the person who started the job is not a maintainer of the project.
+So is a change in a document other than the one being worked (when the job works all its documents at once, in a document outside the job), a corpus-wide change, a confirmation, a restore of a document, and the renaming, merging or deleting of an entry when the person who started the job is not a maintainer of the project.
 When someone changes a sentence while the job works on it, the job does not write over the change: it takes the sentence again, and lists it as **Changed during the job** when it changes once more.
 
 When it finishes, it makes its own analyses consistent: a word it analyzed in more than one way takes the analysis people gave that word, or else the one it gave at least two times in three.

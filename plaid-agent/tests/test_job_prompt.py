@@ -205,15 +205,20 @@ def test_the_planning_prompt_says_its_code_stages_nothing(monkeypatch):
 def test_the_contract_says_a_job_applies_what_it_plans_but_project_setup():
     """BRIEF-JH item 7: what is staged is applied when the piece ends,
     whoever wrote what it changes, deletions included, and project setup is
-    listed for a person. The lines that keep a piece to what the
-    instructions ask stay, and the whole is shorter than ruling 13's."""
+    listed for a person, as is everything else not applied (REV-JH-5, -7).
+    The lines that keep a piece to what the instructions ask stay, and the
+    whole is no longer than JH's 121 words."""
     text = _job_prompt()
     contract = shared.JOB_CONTRACT
     assert 'is applied by the job when you end, whoever wrote what it changes' in contract
     assert 'deletions' in contract and 'unverified machine proposal' in contract
-    assert 'Project setup' in contract and 'report lists it for a person' in contract
+    # REV-JH-5 and -7: everything listed and not applied, named.
+    assert 'Listed in the report, not applied: project setup' in contract
+    for listed in ("changes outside your piece's documents", 'confirmations', 'document restores',
+                   'corpus-wide rules', 'renaming, merging or deleting entries unless the starter maintains'):
+        assert listed in contract, listed
     assert 'stage what the instructions ask for, and nothing more' in contract
     assert 'fills something empty' not in text and 'not written' not in contract
     assert 'DO WHAT THE INSTRUCTIONS ASK' in text and 'WHAT THE INSTRUCTIONS STATE WINS' in text
-    assert len(contract.split()) <= 151, len(contract.split())
+    assert len(contract.split()) <= 121, len(contract.split())
     assert ';' not in contract and '—' not in contract
