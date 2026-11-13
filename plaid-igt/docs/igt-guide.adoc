@@ -1210,6 +1210,8 @@ Restoring is for a project's maintainers.
 
 An entry opens on the sentences it changed, in document order, each drawn interlinear with the value after the entry above the one it replaced, struck through.
 Each morpheme's values are shown apart, so a gloss written beside another in the same word is marked on its own.
+A word segmented anew shows its old morphemes struck through on a line under the new ones.
+Only what the entry itself wrote is marked: a value another change wrote on a morpheme the entry made reads as it is.
 Each value carries its usual mark, so a machine-made, contributed or confirmed value reads as it does in the grid, and a person's value the entry replaced is struck through in red.
 A person's value counts as replaced when the entry deleted it, changed it, or wrote it again as a machine's.
 A change to the text is shown as old and new text and is never a person's value replaced.
@@ -1219,7 +1221,7 @@ The count above the sentences says how many changes the entry made and how many 
 Below the sentences come the document's name and metadata, the lexicon entries the entry created, changed, merged or deleted, each a link, and counts of changes the sentences do not show: to transcript segments, to other annotations (those of other apps, and changes the grid draws no difference for), and to annotations deleted later.
 Every change in an entry is read before it is drawn, with a count of those read so far.
 The sentences are drawn 50 at a time, and **Show more sentences** draws the next.
-An entry of more than 20,000 changes says so instead, with **Show document** for the document as of it.
+An entry too large to draw reads **Too many changes to show here.**, with **Show document** for the document as of it.
 The address of the page names the entry, so it can be shared, and a job's page links each document to its entries.
 
 == Vocabulary history
@@ -1227,7 +1229,7 @@ The address of the page names the entry, so it can be shared, and a job's page l
 A vocabulary has a history of its own, opened with **History** beside the vocabulary's name.
 It lists every change to the vocabulary and its entries, but not links, which belong to each document's history.
 Selecting a history entry shows what it changed: the entries it created, changed, merged or deleted, before and after, and the links it moved, removed or made, counted per document.
-Links are not counted for an entry of more than 20,000 changes in documents.
+Links are not counted for an entry with too many changes in documents to count.
 **Vocabulary** above it shows the vocabulary's entries as they were at that point.
 **History** on an open entry lists only the changes to that entry.
 
