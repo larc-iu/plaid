@@ -120,6 +120,29 @@ def _cut(text, limit: int):
     return text if len(text) <= limit else text[:limit - 1] + '…'
 
 
+#: How a piece's note says it was cut (:func:`piece_note`).
+NOTE_CUT = ' (The rest of this note is cut.)'
+
+
+def piece_note(text) -> str:
+    """A piece's note as the job keeps it: whole when it is at most
+    JOB_NOTE_MAX_CHARS, else cut after its last whole sentence that fits
+    (after its last whole word when no sentence does) and saying so in
+    words (:data:`NOTE_CUT`). Never cut inside a word, never an ellipsis: a
+    reader takes a note's last words as written (pilot finding 4)."""
+    text = str(text or '').strip()
+    if len(text) <= JOB_NOTE_MAX_CHARS:
+        return text
+    room = JOB_NOTE_MAX_CHARS - len(NOTE_CUT)
+    ends = [i + 1 for i in range(room) if text[i] in '.!?' and text[i + 1].isspace()]
+    if ends:
+        head = text[:ends[-1]]
+    else:
+        spaces = [i for i in range(room + 1) if text[i].isspace()]
+        head = text[:spaces[-1]] if spaces else text[:room]
+    return head.rstrip() + NOTE_CUT
+
+
 def _first_line(text) -> str:
     return next((line.strip() for line in str(text or '').splitlines() if line.strip()), '')
 
@@ -1739,7 +1762,7 @@ class IgtRunner:
             ws.decide_now = True
         result = self.turn(ws, kit, system, transcript, decided)
         job.check()
-        return _cut((result.text or '').strip(), JOB_NOTE_MAX_CHARS)
+        return piece_note(result.text)
 
     def turn(self, ws, kit, system: str, transcript, decided=lambda: None):
         """One model context of the job, under the stretch's budgets, asked

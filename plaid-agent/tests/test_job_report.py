@@ -318,3 +318,27 @@ def test_a_piece_taken_again_that_drops_another_number_of_tables_is_counted_once
     r.record_piece(project, piece, 'first run', [t])
     r.record_piece(project, piece, 'second run', [t, t])
     assert runner(job).report_parts(job)['tables_more'] == 1
+
+
+# --- what the final context reads (pilot findings 4 and 5) ------------------------------------
+
+def test_a_long_note_is_cut_at_a_sentence_end_and_says_so():
+    """Pilot finding 4: a note past JOB_NOTE_MAX_CHARS is cut after its
+    last whole sentence that fits, and says in words that it was cut. Never
+    mid-word, never with an ellipsis."""
+    from plaid_agent.core.limits import JOB_NOTE_MAX_CHARS
+    from plaid_agent.igt.job import NOTE_CUT, piece_note
+    first = 'Glossed every word of s16 to s18 and linked each morpheme to its entry. '
+    note = first * 5 + 'No translation was asked for, so none was written.'
+    assert len(note) > JOB_NOTE_MAX_CHARS
+    cut = piece_note(note)
+    assert len(cut) <= JOB_NOTE_MAX_CHARS and cut.endswith(NOTE_CUT) and '…' not in cut, cut
+    assert cut[:-len(NOTE_CUT)].rstrip() == (first * 5).rstrip(), cut
+    short = 'Glossed it all.'
+    assert piece_note(short) == short
+    # One sentence longer than the cap: cut after a whole word.
+    word = 'translation '
+    long = (word * 60).strip()
+    one = piece_note(long)
+    assert one.endswith(NOTE_CUT) and one[:-len(NOTE_CUT)].rstrip().endswith('translation'), one
+    assert piece_note('  Done.  \n') == 'Done.'
