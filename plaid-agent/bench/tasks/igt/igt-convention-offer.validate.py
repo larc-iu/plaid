@@ -48,5 +48,22 @@ def wrong_mentions_without_offering(ctx):
                  'guidelines.')
 
 
+def right_offers_and_waits(ctx):
+    # REV-JG3-11: an offer that is not a question.
+    _fill(ctx)
+    return _said('The plan holds 49 changes. I can also write this convention into the guidelines: just say so.')
+
+
+def right_asks_in_other_words(ctx):
+    _fill(ctx)
+    return _said('The plan holds 49 changes. Should I add that hl is always CN to the guidelines?')
+
+
+def wrong_mentions_in_passing(ctx):
+    # REV-JG3-11: names the guidelines and says "if you", and offers nothing.
+    _fill(ctx)
+    return _said('The plan holds 49 changes. Nothing was added to the guidelines, if you were wondering.')
+
+
 def wrong_nothing(ctx):
     return h.no_plan()

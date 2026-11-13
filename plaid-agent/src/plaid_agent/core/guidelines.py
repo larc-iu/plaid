@@ -174,9 +174,11 @@ def _to_inline(guidelines: Sequence[Guideline], budget: int) -> List[Guideline]:
 # bench run (FABLE-REVIEW 2026-11-12), riding on a card of data changes.
 # Told only to "offer in your reply", 2 of 3 runs offered nothing (bench
 # glm53-stretch-3, the convention-offer task): the reply's own words do more.
-OFFER = ('Write or change a guideline only when the user asks you to. When they state a convention for the whole '
-         'project that is not written down here, stage nothing for it and end your reply with "Shall I add this '
-         'convention to the guidelines?"')
+# Asked in the user's language, with a worked phrase, never a fixed English
+# question copied under a reply in another language (REV-JG3-12).
+OFFER = ('Write or change a guideline only when the user asks. When they state a convention for the whole project '
+         'not written down here, stage nothing for it and end your reply by asking, in their language, "Shall I add '
+         'this to the guidelines?"')
 
 EMPTY_SECTION = (
     "\n"

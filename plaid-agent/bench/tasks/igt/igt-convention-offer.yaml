@@ -18,6 +18,9 @@ args:
   rules:
     - gloss: {form: hl, from: null, to: CN}
   # The reply offers to write the convention down: a sentence naming the
-  # guidelines that asks, or says "if you". A bare mention ("nothing staged for
-  # the guidelines") is no offer (BENCH-FIX, 2026-11-13).
-  match: ['guidelines?\b[^.!?\n]*(?:\?|\bif you\b)|\bif you\b[^.!?\n]*guideline']
+  # guidelines that asks, says "if you want" (like, wish, agree) or "just say",
+  # or one that puts "shall I" (should, can, may, could) before the guidelines.
+  # A bare mention ("nothing staged for the guidelines", "nothing was added to
+  # the guidelines, if you were wondering") is no offer (BENCH-FIX and REV-JG3,
+  # 2026-11-13). The prompt asks in the user's language: this task's is English.
+  match: ['\bguidelines?\b[^.!?\n]*(?:\?|\bif you (?:want|like|wish|agree)\b|\bjust say\b)|\bif you (?:want|like|wish|agree)\b[^.!?\n]*\bguidelines?\b|\b(?:shall|should|can|may|could) I\b[^.!?\n]*\bguidelines?\b']
