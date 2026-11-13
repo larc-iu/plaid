@@ -188,7 +188,7 @@ describe('sentenceChanges', () => {
       before: { id, begin: b[0], end: b[1] },
       after: { id, begin: a[0], end: a[1] },
     });
-    const { sentences } = read(raw, [
+    const { sentences, elsewhere } = read(raw, [
       {
         kind: 'text',
         id: 'text-1',
@@ -203,6 +203,8 @@ describe('sentenceChanges', () => {
     ]);
     expect(sentences.map((s) => [s.id, s.number])).toEqual([['s-1', 1]]);
     expect(line(sentences[0], 'surface').cells[0]).toMatchObject({ before: 'ab', after: 'aab' });
+    // The tokens it only moved are no change anywhere.
+    expect(elsewhere).toEqual({ transcript: 0, other: 0, deleted: 0 });
   });
 
   it('shows a deleted sentence by its number before the entry', () => {
@@ -563,9 +565,9 @@ describe('sentenceChanges', () => {
     });
   });
 
-  it('lists a row no sentence holds apart', () => {
+  it('counts a transcript segment apart', () => {
     const raw = docAfter({ alignmentTokens: [{ id: 'a1', text: 'text-1', begin: 0, end: 7 }] });
-    const { sentences, unplaced } = read(raw, [
+    const { sentences, elsewhere } = read(raw, [
       {
         kind: 'token',
         id: 'a1',
@@ -575,7 +577,78 @@ describe('sentenceChanges', () => {
       },
     ]);
     expect(sentences).toEqual([]);
-    expect(unplaced.map((r) => r.id)).toEqual(['a1']);
+    expect(elsewhere).toEqual({ transcript: 1, other: 0, deleted: 0 });
+  });
+
+  // REV-HD-3: a change igt does not draw is counted, never dropped.
+  describe('rows igt draws in no sentence', () => {
+    it('counts a span of a layer igt does not draw, on igt’s words, as another annotation', () => {
+      const { sentences, elsewhere } = read(docAfter(), [
+        {
+          kind: 'span',
+          id: 'ud1',
+          layer: 'ud-upos',
+          before: span('ud1', 'ud-upos', ['w-1'], 'DET'),
+          after: span('ud1', 'ud-upos', ['w-1'], 'NOUN'),
+        },
+      ]);
+      expect(sentences).toEqual([]);
+      expect(elsewhere).toEqual({ transcript: 0, other: 1, deleted: 0 });
+    });
+
+    it('counts a link on another app’s tokens, and a relation, as other annotations', () => {
+      const raw = docAfter();
+      raw.textLayers[0].tokenLayers.push({
+        id: 'udWords',
+        name: 'Syntactic words',
+        config: {},
+        tokens: [{ id: 'sw1', text: 'text-1', begin: 0, end: 3 }],
+        spanLayers: [],
+        vocabs: [],
+      });
+      const { sentences, elsewhere } = read(raw, [
+        {
+          kind: 'vocab-link',
+          id: 'l1',
+          document: 'doc-1',
+          after: { id: 'l1', vocabItem: { id: 'i1', layer: 'v1', form: 'the' }, tokens: ['sw1'] },
+        },
+        { kind: 'relation', id: 'r1', layer: 'deps', after: { id: 'r1', value: 'det' } },
+      ]);
+      expect(sentences).toEqual([]);
+      expect(elsewhere).toEqual({ transcript: 0, other: 2, deleted: 0 });
+    });
+
+    it('counts a span on a transcript segment with the transcript', () => {
+      const raw = docAfter({ alignmentTokens: [{ id: 'a1', text: 'text-1', begin: 0, end: 7 }] });
+      const alignment = raw.textLayers[0].tokenLayers.find((l) => l.id === 'alignL');
+      alignment.spanLayers = [{ id: 'spk', name: 'Speaker', config: {}, spans: [] }];
+      const { elsewhere } = read(raw, [
+        { kind: 'span', id: 'sp', layer: 'spk', after: span('sp', 'spk', ['a1'], 'A') },
+      ]);
+      expect(elsewhere).toEqual({ transcript: 1, other: 0, deleted: 0 });
+    });
+
+    it('counts a change to a gloss igt shows no difference in as another annotation', () => {
+      const was = span('sp1', 'msl-0', ['m-1'], 'DEF', { ...MACHINE, provProb: 0.4 });
+      const now = span('sp1', 'msl-0', ['m-1'], 'DEF', { ...MACHINE, provProb: 0.9 });
+      const raw = docAfter({ spans: { 'msl-0': [now] } });
+      const { sentences, elsewhere } = read(raw, [
+        { kind: 'span', id: 'sp1', layer: 'msl-0', before: was, after: now },
+      ]);
+      expect(sentences).toEqual([]);
+      expect(elsewhere).toEqual({ transcript: 0, other: 1, deleted: 0 });
+    });
+
+    // REV-HD-8: a word deleted while a job ran, inside the job's group.
+    it('counts a gloss on a word deleted before the entry ended apart', () => {
+      const made = span('sp9', 'msl-0', ['m-9'], 'DEF', MACHINE);
+      const { sentences, elsewhere } = read(docAfter(), [
+        { kind: 'span', id: 'sp9', layer: 'msl-0', after: made, changedSince: true },
+      ]);
+      expect(sentences).toEqual([]);
+      expect(elsewhere).toEqual({ transcript: 0, other: 0, deleted: 1 });
+    });
   });
 });
 

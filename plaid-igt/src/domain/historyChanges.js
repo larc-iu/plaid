@@ -376,71 +376,115 @@ const diffSentence = (b, a, rows, fields) => {
   };
 };
 
-// Where every token of both documents is, for placing a span's or a link's.
+// Each token of both documents by id, with its layer, for placing a span's or
+// a link's.
 const tokenPlaces = (raws) => {
   const out = new Map();
   for (const raw of raws) {
     for (const tl of raw?.textLayers || []) {
       for (const tkl of tl.tokenLayers || []) {
-        for (const t of tkl.tokens || []) if (!out.has(t.id)) out.set(t.id, t);
+        for (const t of tkl.tokens || [])
+          if (!out.has(t.id)) out.set(t.id, { ...t, layer: tkl.id });
       }
     }
   }
   return out;
 };
 
-// The ids of the sentences the rows touch, on either side, and the rows that
-// touch none (a transcript segment, another app's layer).
-const touched = (rows, sides, info) => {
+// A token row whose image moved and nothing else: what a text edit does to
+// every token after it.
+const onlyMoved = (r) => {
+  if (!r.before || !r.after) return false;
+  const rest = ({ begin, end, ...x }) => JSON.stringify(x);
+  return rest(r.before) === rest(r.after);
+};
+
+/**
+ * Where each row is drawn. `{ids, placed, elsewhere}`: the ids of the
+ * sentences the rows touch on either side; `placed`, each row of an igt layer
+ * in a sentence with the ids of its sentences; and `elsewhere`, the rows igt
+ * draws in no sentence, by where they are: a transcript segment or a span on
+ * one (`transcript`), a layer igt does not draw, whatever tokens it sits on,
+ * or a relation (`other`), and a span or link whose tokens neither document
+ * has, deleted before the entry ended (`deleted`).
+ */
+const placeRows = (rows, sides, info) => {
   const ids = new Set();
-  const unplaced = [];
-  if (rows.some((r) => r.kind === 'text')) {
-    for (const side of sides) for (const s of side.bundle.sentences) ids.add(s.id);
-  }
+  const placed = [];
+  const elsewhere = { transcript: [], other: [], deleted: [] };
+  const all = sides.flatMap((s) => s.bundle.sentences.map((x) => x.id));
+  if (rows.some((r) => r.kind === 'text')) for (const id of all) ids.add(id);
   const places = tokenPlaces(sides.map((s) => s.raw));
-  const sentenceIds = new Set(sides.flatMap((s) => s.bundle.sentences.map((x) => x.id)));
+  const sentenceIds = new Set(all);
   const sentenceLayer = info.sentenceTokenLayer?.id;
-  const place = (pos) => {
-    let hit = false;
+  const wordLayers = new Set(
+    [info.primaryTokenLayer?.id, info.morphemeTokenLayer?.id].filter(Boolean),
+  );
+  const igtSpanLayers = new Set(
+    [...info.spanLayers.word, ...info.spanLayers.morpheme, ...info.spanLayers.sentence].map(
+      (l) => l.id,
+    ),
+  );
+  const transcriptLayer = info.alignmentTokenLayer;
+  const transcriptSpanLayers = new Set((transcriptLayer?.spanLayers || []).map((l) => l.id));
+  const at = (pos, out) => {
     for (const side of sides) {
       const s = pos && side.bundle.findSentenceForToken(pos);
-      if (s) {
-        ids.add(s.id);
-        hit = true;
-      }
+      if (s) out.add(s.id);
     }
-    return hit;
   };
-  const placeToken = (id) => {
-    if (sentenceIds.has(id)) {
-      ids.add(id);
-      return true;
+  // The sentences the tokens `tokens` (ids) are in, or null when a token is
+  // in neither document, or `false` when one is not igt's.
+  const onTokens = (tokens) => {
+    const out = new Set();
+    for (const id of tokens) {
+      if (sentenceIds.has(id)) {
+        out.add(id);
+        continue;
+      }
+      const t = places.get(id);
+      if (!t) return null;
+      if (!wordLayers.has(t.layer)) return false;
+      at(t, out);
     }
-    return place(places.get(id));
+    return out;
   };
   for (const r of rows) {
-    let hit = false;
-    if (r.kind === 'token') {
+    let where = 'other';
+    let mine = null;
+    if (r.kind === 'text') {
+      where = 'text';
+    } else if (r.kind === 'document') {
+      where = 'document';
+    } else if (r.kind === 'token') {
       if (r.layer && r.layer === sentenceLayer) {
-        ids.add(r.id);
-        hit = true;
-      } else if (
-        r.layer === info.primaryTokenLayer?.id ||
-        r.layer === info.morphemeTokenLayer?.id
-      ) {
-        hit = [place(r.before), place(r.after)].some(Boolean);
+        mine = new Set([r.id]);
+      } else if (wordLayers.has(r.layer)) {
+        mine = new Set();
+        at(r.before, mine);
+        at(r.after, mine);
+      } else if (transcriptLayer && r.layer === transcriptLayer.id) {
+        where = 'transcript';
       }
     } else if (r.kind === 'span' || r.kind === 'vocab-link') {
-      for (const img of [r.before, r.after]) {
-        for (const t of img?.tokens || []) if (placeToken(t)) hit = true;
+      const igt = r.kind === 'vocab-link' || igtSpanLayers.has(r.layer);
+      if (r.kind === 'span' && transcriptSpanLayers.has(r.layer)) {
+        where = 'transcript';
+      } else if (igt) {
+        const tokens = [...(r.before?.tokens || []), ...(r.after?.tokens || [])];
+        const found = onTokens(tokens);
+        if (found === null) where = 'deleted';
+        else if (found) mine = found;
       }
-    } else if (r.kind === 'text' || r.kind === 'document') {
-      hit = true;
     }
-    if (!hit && DOCUMENT_KINDS.has(r.kind)) unplaced.push(r);
-    if (!hit && r.kind === 'vocab-link') unplaced.push(r);
+    if (mine && mine.size) {
+      for (const id of mine) ids.add(id);
+      placed.push({ row: r, ids: mine });
+    } else if (where === 'transcript' || where === 'other' || where === 'deleted') {
+      elsewhere[where].push(r);
+    }
   }
-  return { ids, unplaced };
+  return { ids, placed, elsewhere };
 };
 
 const derived = (raw, vocabularies) => {
@@ -449,25 +493,30 @@ const derived = (raw, vocabularies) => {
 };
 
 /**
- * The sentences `rows` (a document's rows of one entry) changed, in reading
- * order: `{id, number, state, columns, lines, fields, mwes, text, changes,
- * replaced}`, `number` counting from 1 in the document after the entry (in
- * the one before it, for a sentence the entry deleted), `changedSince` when
- * someone changed one of its rows after the entry. And `unplaced`, the
- * rows in no sentence. `after` is the document read at the entry's end
- * (`raw`, `vocabularies`, the shape IgtDocument holds).
+ * The sentences `rows` (a document's rows of one entry, all of them) changed,
+ * in reading order: `{id, number, state, columns, lines, fields, mwes, text,
+ * changes, replaced}`, `number` counting from 1 in the document after the
+ * entry (in the one before it, for a sentence the entry deleted),
+ * `changedSince` when someone changed one of its rows after the entry. And
+ * `elsewhere`, the rows igt draws in no sentence, counted where they are
+ * (`{transcript, other, deleted}`, see placeRows): a row placed only in
+ * sentences that show no change is one of `other`, since igt draws nothing
+ * of it, unless it is a token a text edit only moved. `after` is the
+ * document read at the entry's end (`raw`, `vocabularies`, the shape
+ * IgtDocument holds).
  */
 export function sentenceChanges({ raw, vocabularies }, rows) {
   const after = derived(raw, vocabularies);
   const before = derived(documentBefore(raw, rows), vocabulariesBefore(vocabularies, rows));
   const fields = fieldsOf(after.info);
   const rowsShown = rowsOf(fields);
-  const { ids, unplaced } = touched(rows, [before, after], after.info);
+  const sides = [before, after];
+  const { ids, placed, elsewhere } = placeRows(rows, sides, after.info);
   // The sentences a row of which someone changed after the entry. A text
   // edit since is no row of a sentence.
-  const since = touched(
+  const since = placeRows(
     rows.filter((r) => r.changedSince && r.kind !== 'text'),
-    [before, after],
+    sides,
     after.info,
   ).ids;
   const pick = (side) => side.bundle.sentences.filter((s) => ids.has(s.id));
@@ -483,7 +532,20 @@ export function sentenceChanges({ raw, vocabularies }, rows) {
     d.changedSince = since.has(p.id);
     sentences.push(d);
   }
-  return { sentences, unplaced, fields };
+  const drawn = new Set(sentences.map((s) => s.id));
+  const undrawn = placed
+    .filter((p) => ![...p.ids].some((id) => drawn.has(id)))
+    .filter(({ row }) => !(row.kind === 'token' && onlyMoved(row)))
+    .map(({ row }) => row);
+  return {
+    sentences,
+    elsewhere: {
+      transcript: elsewhere.transcript.length,
+      other: elsewhere.other.length + undrawn.length,
+      deleted: elsewhere.deleted.length,
+    },
+    fields,
+  };
 }
 
 // ---------------------------------------------------------------------------

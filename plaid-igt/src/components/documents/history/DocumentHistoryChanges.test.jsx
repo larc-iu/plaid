@@ -354,6 +354,36 @@ describe('DocumentHistoryChanges', () => {
     expect(text()).toContain('1 change to transcript segments');
   });
 
+  it('counts another app’s change on a shared word, never "No changes to show."', async () => {
+    const udSpan = (value) => ({ id: 'ud1', value, tokens: ['w-1'], metadata: {} });
+    const client = clientOf({
+      document: [
+        [
+          {
+            kind: 'span',
+            id: 'ud1',
+            layer: 'ud-lemma',
+            before: udSpan('cats'),
+            after: udSpan('cat'),
+          },
+          {
+            kind: 'span',
+            id: 'g9',
+            layer: 'msl-0',
+            after: { id: 'g9', value: 'DEF', tokens: ['m-9'], metadata: MACHINE },
+          },
+        ],
+      ],
+    });
+    await mount(after(), client);
+    expect(text()).not.toContain('No changes to show.');
+    expect(count()).toBe('2 changes, 0 replaced a person’s value');
+    expect(sentences()).toHaveLength(0);
+    expect(view.container.querySelector('[data-testid="changes-elsewhere"]').textContent).toBe(
+      '1 change to other annotations1 change to annotations deleted later',
+    );
+  });
+
   it('lays a right-to-left document’s columns out from the right', async () => {
     const doc = after({
       body: 'שלום עולם',

@@ -8,7 +8,6 @@ import { countOf } from '@ui/lib/plural.js';
 import { TYPE } from '@ui/lib/typeScale.js';
 import { documentViewSearch } from '@ui/hooks/useHistoryParam.js';
 import { documentRowChanges, entryChanges, sentenceChanges } from '@/domain/historyChanges.js';
-import { getIgtLayerInfo } from '@/domain/layerInfo.js';
 import { SentenceChange } from './SentenceChange.jsx';
 import { EntryChangeList } from './EntryChangeList.jsx';
 import { ChangeValue } from './ChangeValue.jsx';
@@ -63,7 +62,7 @@ export const DocumentHistoryChanges = ({ context }) => {
   );
   const view = useMemo(() => {
     if (!after || !docRows) return null;
-    const { sentences, unplaced } = sentenceChanges(
+    const { sentences, elsewhere } = sentenceChanges(
       { raw: after.raw, vocabularies: after.vocabularies },
       docRows,
     );
@@ -72,16 +71,15 @@ export const DocumentHistoryChanges = ({ context }) => {
       after.vocabularies,
     );
     const documentFields = documentRowChanges(docRows);
-    const transcriptLayer = getIgtLayerInfo(after.raw).alignmentTokenLayer?.id;
-    const transcript = unplaced.filter((r) => r.layer && r.layer === transcriptLayer).length;
-    const other = unplaced.length - transcript;
     const changes =
       sentences.reduce((n, s) => n + s.changes, 0) +
       entries.length +
       documentFields.length +
-      unplaced.length;
+      elsewhere.transcript +
+      elsewhere.other +
+      elsewhere.deleted;
     const replaced = sentences.reduce((n, s) => n + s.replaced, 0);
-    return { sentences, entries, documentFields, transcript, other, changes, replaced };
+    return { sentences, entries, documentFields, elsewhere, changes, replaced };
   }, [after, docRows, entryRows]);
 
   if (!after) return <Loading label="Loading changes…" />;
@@ -116,6 +114,7 @@ export const DocumentHistoryChanges = ({ context }) => {
   const persons = only === 'persons';
   const picked = persons ? view.sentences.filter((s) => s.replaced > 0) : view.sentences;
   const sentences = picked.slice(0, shown);
+  const { elsewhere } = view;
   const dir = after.textDirection;
 
   return (
@@ -177,12 +176,17 @@ export const DocumentHistoryChanges = ({ context }) => {
         </section>
       )}
 
-      {!persons && (view.transcript > 0 || view.other > 0) && (
-        <ul className="text-sm text-muted-foreground">
-          {view.transcript > 0 && (
-            <li>{countOf(view.transcript, 'change')} to transcript segments</li>
+      {!persons && (elsewhere.transcript > 0 || elsewhere.other > 0 || elsewhere.deleted > 0) && (
+        <ul className="text-sm text-muted-foreground" data-testid="changes-elsewhere">
+          {elsewhere.transcript > 0 && (
+            <li>{countOf(elsewhere.transcript, 'change')} to transcript segments</li>
           )}
-          {view.other > 0 && <li>{countOf(view.other, 'change')} to other annotations</li>}
+          {elsewhere.other > 0 && (
+            <li>{countOf(elsewhere.other, 'change')} to other annotations</li>
+          )}
+          {elsewhere.deleted > 0 && (
+            <li>{countOf(elsewhere.deleted, 'change')} to annotations deleted later</li>
+          )}
         </ul>
       )}
     </div>
