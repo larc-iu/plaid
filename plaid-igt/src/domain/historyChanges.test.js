@@ -743,6 +743,22 @@ describe('sentenceChanges', () => {
       expect(elsewhere).toEqual({ transcript: 0, other: 1, deleted: 0 });
     });
 
+    // REV-HD2-5
+    it('counts a morpheme the entry made and someone deleted before it ended apart', () => {
+      const { sentences, elsewhere } = read(docAfter(), [
+        {
+          kind: 'token',
+          id: 'm-9',
+          layer: 'morphL',
+          text: 'text-1',
+          after: { id: 'm-9', begin: 0, end: 3, precedence: 2, metadata: { form: 'e' } },
+          changedSince: true,
+        },
+      ]);
+      expect(sentences).toEqual([]);
+      expect(elsewhere).toEqual({ transcript: 0, other: 0, deleted: 1 });
+    });
+
     // REV-HD-8: a word deleted while a job ran, inside the job's group.
     it('counts a gloss on a word deleted before the entry ended apart', () => {
       const made = span('sp9', 'msl-0', ['m-9'], 'DEF', MACHINE);

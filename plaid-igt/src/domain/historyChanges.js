@@ -537,6 +537,9 @@ const placeRows = (rows, sides, info) => {
     } else if (r.kind === 'token') {
       if (r.layer && r.layer === sentenceLayer) {
         mine = new Set([r.id]);
+      } else if (wordLayers.has(r.layer) && r.after && !places.has(r.id)) {
+        // left by the entry, in neither document: deleted before it ended
+        where = 'deleted';
       } else if (wordLayers.has(r.layer)) {
         mine = new Set();
         at(r.before, mine);
