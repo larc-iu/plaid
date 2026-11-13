@@ -568,6 +568,8 @@ def summary_message(report: Dict[str, Any]) -> str:
         c = d.get('counts') or {}
         lines.append(f'- "{d.get("name")}": {d.get("state")}, '
                      + ', '.join(f'{k} {v:,}' for k, v in sorted(c.items()) if v and isinstance(v, int)))
+    lines.append('In the documents, "left" and "left_translations" count the words and translations no piece '
+                 'staged anything for (the report\'s Left blank).')
     proposed = len(report.get('proposed') or []) + (report.get('proposed_more') or 0)
     lines += ['', f'Changes proposed for a person to approve: {proposed:,}.', '', 'Each piece\'s note:']
     size, left = 0, 0

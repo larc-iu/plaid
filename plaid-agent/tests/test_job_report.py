@@ -342,3 +342,17 @@ def test_a_long_note_is_cut_at_a_sentence_end_and_says_so():
     one = piece_note(long)
     assert one.endswith(NOTE_CUT) and one[:-len(NOTE_CUT)].rstrip().endswith('translation'), one
     assert piece_note('  Done.  \n') == 'Done.'
+
+
+def test_the_final_context_reads_whole_notes_and_what_left_counts():
+    """Pilot findings 4 and 5: the notes reach the final context as stored,
+    and it is told that a document's "left" counts what no piece staged
+    anything for (the report's Left blank), not a mismatch to reconcile."""
+    from plaid_agent.igt.job import summary_message
+    report = {'instructions': 'Gloss.', 'totals': {'words': 3},
+              'documents': [{'name': 'Story', 'state': 'done', 'counts': {'words': 3, 'left': 2}}],
+              'notes': [{'name': 'Story', 'sentences': 's1 to s3', 'note': 'Fully staged. No translation asked.'}]}
+    text = summary_message(report)
+    assert '- Story s1 to s3: Fully staged. No translation asked.' in text
+    assert ('"left" and "left_translations" count the words and translations no piece staged anything for '
+            "(the report's Left blank).") in text, text
