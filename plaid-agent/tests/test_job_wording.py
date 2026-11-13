@@ -54,4 +54,18 @@ def test_no_job_prompt_speaks_of_a_plan_card():
     assert 'Tagsets:' in text and 'more' in text, 'the long tagset is in the prompt, cut'
     for prompt in (text, build_plan_prompt(project), build_summary_prompt(project)):
         assert not re.search(r'plan card|\bcard\b|end your turn|in a later message', prompt, re.I)
-    assert toolkit.JOB_LEFT_OUT == ('propose_job',)
+    assert toolkit.JOB_LEFT_OUT == ('propose_job', 'read_job')
+
+
+def test_no_job_context_is_offered_drafting_or_reading_jobs_nor_the_planning_one_plan_tools():
+    """REV-JG-13: read_job is the chat's (CONTRACT, added by JD: not among a
+    job's own tools). REV-JG-22: the planning context stages nothing, so a
+    tool that reads or drops a staged plan means nothing there."""
+    from fixtures import FakeClient, fake_ws
+    from plaid_agent.igt.job import JobWorkspace
+    project = fake_ws(FakeClient()).project
+    piece = {t['function']['name'] for t in toolkit.job_piece_tools(JobWorkspace(FakeClient(), project))}
+    plan = {t['function']['name'] for t in toolkit.job_plan_tools(JobWorkspace(FakeClient(), project, mode='plan'))}
+    assert not {'propose_job', 'read_job'} & (piece | plan)
+    assert not {'discard_plan', 'plan_status'} & plan
+    assert {'discard_plan', 'plan_status'} <= piece, 'a piece may still read and drop what it staged'

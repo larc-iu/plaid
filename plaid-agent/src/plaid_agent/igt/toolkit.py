@@ -592,8 +592,12 @@ TOOLS, WRITE_TOOLS, tools_for, call_tool = toolkit.build(
 # it stages by the apply rule (igt/jobapply.py). The planning context is
 # offered the reads and code, and plan_work.
 
-#: Tools no job context is offered: drafting a job is a person's business.
-JOB_LEFT_OUT = ('propose_job',)
+#: Tools no job context is offered: drafting a job, and reading jobs, are the
+#: chat's business (REV-JG-13).
+JOB_LEFT_OUT = ('propose_job', 'read_job')
+#: Tools the planning context is not offered besides: it stages nothing, so
+#: reading or dropping a staged plan means nothing there (REV-JG-22).
+PLAN_LEFT_OUT = ('discard_plan', 'plan_status')
 
 #: The last word of a planning context (``plan_work``).
 PLAN_WORK = _fn(
@@ -671,7 +675,7 @@ def job_plan_tools(ws, plan_only: bool = False) -> list:
     if plan_only:
         return [PLAN_WORK]
     reads = [t for t in tools_for(ws) if t['function']['name'] not in WRITE_TOOLS
-             and t['function']['name'] not in JOB_LEFT_OUT]
+             and t['function']['name'] not in JOB_LEFT_OUT + PLAN_LEFT_OUT]
     return reads + [PLAN_WORK]
 
 

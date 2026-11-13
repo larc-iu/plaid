@@ -59,7 +59,7 @@ Running code:
 - run_code runs Python over the project in ONE call, for a loop, a join or a tally the reads do not give directly: two fields at once, a condition on a word and its morphemes together, a count under your own definition, anything across more than a handful of documents. Before that, read_sentences reads chosen sentences of several documents in one call, and fields= on it and on read_document keeps only the fields the question needs. Not for what search, concordance, frequency_list, worklist or check_consistency answer outright. It sees documents(), load(document), query(q) and lexicon(), and stages nothing.
 ```
 
-Its 27 tools are the chat's reads and code, as `SAMPLE_PROMPT.md` shows them, and `plan_work`:
+Its 24 tools are the chat's reads and code, as `SAMPLE_PROMPT.md` shows them, and `plan_work`:
 
 ### plan_work
 
@@ -128,7 +128,7 @@ Running code:
 - A table code makes with table(title, columns, rows) is kept as data in the job's report, so a count or a finding is given by code and not retyped.
 ```
 
-Its 63 tools are the chat's, as `SAMPLE_PROMPT.md` shows them, less `propose_job`: project_overview, list_documents, read_document, read_sentences, search, read_lexicon, set_field, set_field_for_form, replace_in_field, set_analysis, set_analysis_for_form, set_morpheme, set_orthography, copy_to_orthography, respell, respell_all, link_entry, unlink_entry, link_phrase, unlink_phrase, create_entry, set_entry_field, concordance, analyses_of, lexicon_entry, check_consistency, recent_changes, comments, add_comment, restore_document, plan_status, set_document_metadata, create_document, discard_plan, confirm, discard_analysis, make_sense_of, senses, corpus_stats, frequency_list, worklist, check_lexicon, check_integrity, sequence_search, merge_entries, delete_entry, rename_entry, rename_document, split_word, merge_words, delete_word, split_sentence, merge_sentences, append_text, retype_sentence, query_help, query, tagsets, app_guide, read_job, guidelines, run_code, code_help.
+Its 62 tools are the chat's, as `SAMPLE_PROMPT.md` shows them, less `propose_job`, `read_job`: project_overview, list_documents, read_document, read_sentences, search, read_lexicon, set_field, set_field_for_form, replace_in_field, set_analysis, set_analysis_for_form, set_morpheme, set_orthography, copy_to_orthography, respell, respell_all, link_entry, unlink_entry, link_phrase, unlink_phrase, create_entry, set_entry_field, concordance, analyses_of, lexicon_entry, check_consistency, recent_changes, comments, add_comment, restore_document, plan_status, set_document_metadata, create_document, discard_plan, confirm, discard_analysis, make_sense_of, senses, corpus_stats, frequency_list, worklist, check_lexicon, check_integrity, sequence_search, merge_entries, delete_entry, rename_entry, rename_document, split_word, merge_words, delete_word, split_sentence, merge_sentences, append_text, retype_sentence, query_help, query, tagsets, app_guide, guidelines, run_code, code_help.
 
 
 ## The final context

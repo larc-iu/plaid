@@ -86,11 +86,11 @@ def test_the_prompt_shows_one_whole_piece_in_prose():
     assert 'set_analysis(' not in text and '{"' not in text, 'calls told in prose, never call syntax'
 
 
-def test_a_piece_is_offered_the_chats_tools_but_drafting_a_job():
+def test_a_piece_is_offered_the_chats_tools_but_drafting_and_reading_jobs():
     ws = JobWorkspace(FakeClient(), _project())
     names = [t['function']['name'] for t in toolkit.job_piece_tools(ws)]
     chat = [t['function']['name'] for t in toolkit.tools_for(ws)]
-    assert names == [n for n in chat if n != 'propose_job'], 'the same list, in the same order'
+    assert names == [n for n in chat if n not in ('propose_job', 'read_job')], 'the same list, in the same order'
     assert 'run_code' in names or 'run_code' not in chat, 'the code tool wherever the chat has it'
     assert {t['function']['name'] for t in toolkit.job_piece_tools(ws, plan_only=True)} == \
         {n for n in names if n in toolkit.WRITE_TOOLS}
