@@ -615,10 +615,12 @@ def t_plan_work(ws, pieces: str = None, piece_instructions: str = '', documents=
     from ..core.limits import JOB_PIECE_INSTRUCTIONS_MAX_CHARS
     if pieces not in ('sentences', 'document', 'selection'):
         raise ToolError('pieces: give "sentences", "document" or "selection".', kind='invalid-argument')
-    text = str(piece_instructions or '').strip()
+    # Control characters but the line break and the tab mean nothing in
+    # instructions, and each would cost six characters where the plan is kept.
+    text = ''.join(c for c in str(piece_instructions or '') if c in '\n\t' or ord(c) >= 32).strip()
     if len(text) > JOB_PIECE_INSTRUCTIONS_MAX_CHARS:
         raise ToolError(f'piece_instructions: at most {JOB_PIECE_INSTRUCTIONS_MAX_CHARS:,} characters, these are '
-                        f'{len(text):,}.', kind='invalid-argument')
+                        f'{len(text):,}. Write them shorter: the decisions only.', kind='invalid-argument')
     known = list(getattr(ws, 'job_documents', None) or [])
     order = None
     if documents:

@@ -166,6 +166,71 @@ def test_a_resumed_job_does_not_plan_again(monkeypatch):
     assert real
 
 
+def test_a_plan_whose_row_meets_a_passing_error_is_kept_and_made_once(monkeypatch):
+    """REV-JG-8: one 502 on the plan's own row. The plan is kept (a resumed
+    job reads it back, the report shows it), and the planning context is
+    not asked again for it."""
+    from plaid_client import PlaidAPIError
+    client = JobClient(_docs(1))
+    job = start(client, id=J, plan=None)
+    model = use(monkeypatch, _model(plan={'pieces': 'document'}))
+    real = job.add_decisions
+    once = {'n': 1}
+
+    def add(decisions):
+        if once['n'] and any(d['form'] == igt_job.PLAN_FORM for d in decisions):
+            once['n'] = 0
+            raise PlaidAPIError('HTTP 502', status=502, method='POST')
+        return real(decisions)
+    monkeypatch.setattr(job, 'add_decisions', add)
+    finished = run_job(job, runner(job))
+    assert once['n'] == 0, 'the 502 was met'
+    assert [p['pieces'] for p in _plan_rows(client)] == ['document']
+    assert finished['report']['plan']['pieces'] == 'document'
+    assert model.seen['plan'] == 1, 'planned once'
+
+
+def test_the_largest_plan_the_tool_takes_is_kept_and_read_back_in_its_order(monkeypatch):
+    """REV-JG-3: a job of the most documents a job takes, all named by the
+    planning context in an order of its own, with the longest piece
+    instructions plan_work accepts, written in the characters that cost
+    most to keep. The plan fits one row, the job ends done, and a resumed
+    job reads the same order back."""
+    import uuid
+    from plaid_agent.core.limits import JOB_ANALYSIS_MAX_CHARS, JOB_PIECE_INSTRUCTIONS_MAX_CHARS
+    ids = [str(uuid.uuid4()) for _ in range(500)]
+    glossed = [{'words': [('ka', [('ka', 'go')], 'human')], 'translation': ('T.', 'human')}]
+    client = JobClient({d: document(d, f'Text {i}', glossed) for i, d in enumerate(ids)})
+    job = start(client, 'Gloss every word nobody analysed.', id=J, plan=None)
+    told = '"\\\n' * (JOB_PIECE_INSTRUCTIONS_MAX_CHARS // 3)
+    model = use(monkeypatch, _model(plan={'pieces': 'sentences', 'documents': list(reversed(ids)),
+                                          'piece_instructions': told}))
+    finished = run_job(job, runner(job))
+    assert finished['state'] == 'done', (finished['state'], finished.get('reason'), finished.get('message'))
+    rows = [r for (f, _), r in client.jobs.decision_rows[J].items() if f == igt_job.PLAN_FORM]
+    assert len(rows) == 1 and len(rows[0]['analysis']) <= JOB_ANALYSIS_MAX_CHARS
+    assert finished['report']['plan']['documents'] == list(reversed(ids))
+    r = runner(job)
+    assert r.plan(job)['documents'] == list(reversed(ids))
+    assert r.plan(job)['piece_instructions'] == told.strip()
+    assert model.seen['plan'] == 1
+
+
+def test_plan_work_refuses_piece_instructions_past_their_cap_with_what_to_do():
+    from plaid_agent.core.limits import JOB_PIECE_INSTRUCTIONS_MAX_CHARS
+    from plaid_agent.core.tools import ToolError
+    from plaid_agent.igt.toolkit import t_plan_work
+
+    class Ws:
+        job_documents = []
+        plan_work = None
+    with pytest.raises(ToolError) as e:
+        t_plan_work(Ws(), 'sentences', 'x' * (JOB_PIECE_INSTRUCTIONS_MAX_CHARS + 1))
+    assert f'at most {JOB_PIECE_INSTRUCTIONS_MAX_CHARS:,} characters' in str(e.value)
+    assert 'shorter' in str(e.value)
+    t_plan_work(Ws(), 'sentences', 'x' * JOB_PIECE_INSTRUCTIONS_MAX_CHARS)
+
+
 # --- pieces of a document and of the selection ---------------------------------------------
 
 def test_a_document_piece_sees_the_whole_document_once(monkeypatch):

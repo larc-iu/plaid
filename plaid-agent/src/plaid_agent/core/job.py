@@ -548,7 +548,7 @@ def run_job(job: Job, runner) -> Optional[Dict[str, Any]]:
             through_core(job, lambda: runner.plan(job))
         if job.status.get('phase') in (PLANNING, runner.WORK_PHASE):
             job.set(phase=runner.WORK_PHASE)
-            runner.plan(job)
+            through_core(job, lambda: runner.plan(job))
             runner.work(job)
         job.check()
         # Each change of phase is a heartbeat, which may be the first to hear

@@ -116,7 +116,7 @@ def test_the_planning_context_reads_and_plans_and_stages_nothing():
 
 @pytest.mark.parametrize('args,said', [
     ({'pieces': 'chapters'}, 'pieces: give "sentences", "document" or "selection".'),
-    ({'pieces': 'document', 'piece_instructions': 'x' * 2001}, 'piece_instructions: at most 2,000 characters'),
+    ({'pieces': 'document', 'piece_instructions': 'x' * 1001}, 'piece_instructions: at most 1,000 characters'),
     ({'pieces': 'document', 'documents': ['Text 9']}, 'documents: not documents of this job: "Text 9"'),
 ])
 def test_plan_work_takes_only_the_menu(args, said):

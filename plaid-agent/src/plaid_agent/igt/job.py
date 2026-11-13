@@ -816,8 +816,10 @@ class IgtRunner:
         #: (document id, a stretch's first sentence id) -> how many of that
         #: stretch's writes core refused for something gone
         self.gone_refused: Counter = Counter()
-        #: the job's plan (``plan_work`` or the default), once read or made
+        #: the job's plan (``plan_work`` or the default), once read or kept
         self.plan_made: Optional[Dict[str, Any]] = None
+        #: the plan made and not yet kept in core (its row's call failed)
+        self.plan_pending: Optional[Dict[str, Any]] = None
         #: keys of the proposed changes core holds for the job, and how many
         #: the cap dropped (CONTRACT, added by JG), read once per worker
         self.changes: Optional[set] = None
@@ -964,24 +966,48 @@ class IgtRunner:
         job works in stretches of sentences, and its plan says why."""
         if self.plan_made is not None:
             return self.plan_made
-        stored = self.rows_of(PLAN_FORM)
+        stored = [r for r in self.rows_of(PLAN_FORM) if r.get('form') == PLAN_FORM]
         if stored and isinstance(stored[0]['value'], dict):
-            self.plan_made = stored[0]['value']
+            self.plan_made = self.plan_read(stored[0]['value'])
             return self.plan_made
-        project = self.project()
-        facts = self.document_facts(project, job)
-        plan, why = None, None
-        try:
-            plan = self.planning(project, facts)
-            why = None if plan else 'no-plan'
-        except StretchFailed as e:
-            why = e.kind
-        made = plan or {'pieces': SENTENCES, 'piece_instructions': '', 'documents': None}
-        self.plan_made = {**made, 'by': 'model' if plan else 'default', 'why': why}
-        text = canonical(self.plan_made)
+        if self.plan_pending is None:
+            project = self.project()
+            facts = self.document_facts(project, job)
+            plan, why = None, None
+            try:
+                plan = self.planning(project, facts)
+                why = None if plan else 'no-plan'
+            except StretchFailed as e:
+                why = e.kind
+            made = plan or {'pieces': SENTENCES, 'piece_instructions': '', 'documents': None}
+            # Made once: a passing error on its row below sends the same plan
+            # again, never plans again (REV-JG-8).
+            self.plan_pending = {**made, 'by': 'model' if plan else 'default', 'why': why}
+        text = canonical(self.plan_kept(self.plan_pending))
         job.add_decisions([{'form': PLAN_FORM, 'key': analysis_key(text), 'analysis': text, 'count': 1,
                             'document_id': None, 'sentence_id': None}])
+        # The job works by its plan only once core holds it.
+        self.plan_made = self.plan_pending
         return self.plan_made
+
+    def plan_kept(self, plan: Dict[str, Any]) -> Dict[str, Any]:
+        """The plan as its decision row holds it: the documents it names
+        as their places in the job's order, so the plan of a job of the most
+        documents, named in any order, fits one row (REV-JG-3)."""
+        named = plan.get('documents')
+        if not named:
+            return plan
+        place = {d: i for i, d in enumerate(self.job.order)}
+        return {**plan, 'documents': [place[d] for d in named if d in place]}
+
+    def plan_read(self, value: Dict[str, Any]) -> Dict[str, Any]:
+        """The plan as its row holds it (:meth:`plan_kept`), with its
+        documents named by id again."""
+        places = value.get('documents')
+        if not places:
+            return value
+        order = list(self.job.order)
+        return {**value, 'documents': [order[i] for i in places if isinstance(i, int) and 0 <= i < len(order)]}
 
     def document_facts(self, project: IgtProject, job) -> List[Dict[str, Any]]:
         """What the planning context is told of each document still to work:
@@ -2962,7 +2988,7 @@ class IgtRunner:
             except (ValueError, TypeError, KeyError):
                 continue
             if form == PLAN_FORM:
-                plan = value
+                plan = self.plan_read(value) if isinstance(value, dict) else None
             elif form.startswith(FALLBACK_FORM):
                 fallback.append({'document_id': None if value.get('document') == SELECTION
                                  else value.get('document'), 'reason': value.get('reason')})
