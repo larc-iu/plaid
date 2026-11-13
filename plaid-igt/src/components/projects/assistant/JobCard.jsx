@@ -55,7 +55,7 @@ const Documents = ({ card, projectId }) => {
   );
 };
 
-export const JobCard = ({ card, projectId, client, readOnly = false, onSettle }) => {
+export const JobCard = ({ card, projectId, client, readOnly = false, busy = false, onSettle }) => {
   const user = useContext(AuthContext)?.user ?? null;
   const undecided = card.status == null;
   const [project, setProject] = useState(null);
@@ -197,7 +197,7 @@ export const JobCard = ({ card, projectId, client, readOnly = false, onSettle })
                 size="sm"
                 variant="secondary"
                 onClick={start}
-                disabled={starting || noteOver}
+                disabled={busy || starting || noteOver}
               >
                 <Play className="h-4 w-4" /> {starting ? 'Starting…' : 'Start job'}
               </Button>
@@ -211,7 +211,7 @@ export const JobCard = ({ card, projectId, client, readOnly = false, onSettle })
               size="sm"
               variant="outline"
               onClick={() => onSettle({ outcome: 'discarded' })}
-              disabled={starting}
+              disabled={busy || starting}
             >
               <X className="h-4 w-4" /> Discard
             </Button>

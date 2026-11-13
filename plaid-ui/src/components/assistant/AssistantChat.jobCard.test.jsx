@@ -83,6 +83,7 @@ describe('a job card in the chat', () => {
     expect(props.projectId).toBe('p1');
     expect(props.client).toBe(client);
     expect(props.readOnly).toBe(false);
+    expect(props.busy).toBe(false);
     expect(m.container.textContent).not.toContain('The assistant sent no text.');
   });
 

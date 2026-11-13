@@ -461,6 +461,7 @@ export const Turn = ({
             projectId={projectId}
             client={client}
             readOnly={readOnly || !onSettleJob}
+            busy={busy}
             onSettle={onSettleJob}
           />
         )}

@@ -59,8 +59,9 @@ export const ADAPTER_MEMBERS = [
 // resolves true when it wrote something.
 // Optional: `JobCard`, the component drawing a job card a reply carries (an
 // unattended job the app's assistant drafted), given `{card, projectId, client,
-// readOnly, onSettle}`. `onSettle({outcome, brief, reason, activeJob})` tells the
-// service how the card ended once the page has started the job, or did not.
+// readOnly, busy, onSettle}`. `busy` is the plan card's: a turn runs, so the card
+// waits. `onSettle({outcome, brief, reason, activeJob})` tells the service how
+// the card ended once the page has started the job, or did not.
 // An app with no jobs has none, and its replies carry no card.
 
 export const missingFromAdapter = (adapter) =>

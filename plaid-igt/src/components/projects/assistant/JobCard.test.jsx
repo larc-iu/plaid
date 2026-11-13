@@ -239,6 +239,12 @@ describe('the job card', () => {
     expect(byText(v.container, '[data-testid="job-note-count"]', '21 / 20')).toBeTruthy();
   });
 
+  it('waits to start or discard while a turn runs, as a plan card does', async () => {
+    const { v } = await draw({ card: card(), busy: true });
+    expect(button(v, 'Start job').disabled).toBe(true);
+    expect(button(v, 'Discard').disabled).toBe(true);
+  });
+
   it('discards', async () => {
     const { v, onSettle } = await draw({ card: card() });
     await v.step(() => button(v, 'Discard').click());
