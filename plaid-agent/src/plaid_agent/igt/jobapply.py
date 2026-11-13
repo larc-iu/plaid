@@ -144,6 +144,8 @@ class Rule:
         return hit is not None and hit[1] is not None and self.own(hit[1])
 
     def create_entry(self, op) -> bool:
+        if op.get('job_why'):
+            return False  # an entry the job may not make (``IgtRunner.entries_that_fit``)
         v = next((x for x in self.project.vocabs if x['id'] == op.get('vocab_id')), None)
         if v is None or v.get('borrowed') or not IgtProject.lexicon_field(v, ROLE_STATUS):
             return False

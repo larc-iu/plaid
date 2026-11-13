@@ -16,7 +16,7 @@ from live import _skip_or_fail, core_url, login, seed
 
 from plaid_agent.core.agent import ModelConfig
 from plaid_agent.core.job import Job, run_job
-from plaid_agent.igt.job import IgtRunner
+from plaid_agent.igt.job import ENTRY_GONE, IgtRunner
 from plaid_agent.jobworker import count_chars
 
 WORKER = '0193a5c0-0000-7000-8000-0000000000f2'
@@ -181,3 +181,68 @@ def test_a_selection_links_one_new_entry_in_two_documents_and_creates_it_once(wo
         assert len(_morphs(admin, s, d)) == 1
     # REV-JG2-11: the entry taken up again is never proposed as a new one.
     assert not [c for c in finished['report']['proposed'] if c['kind'] == 'create_entry'], finished['report']['proposed']
+
+
+def _tok_alone(doc):
+    """A piece's model: analyse tok in ``doc``, make its entry, link it."""
+    def answer(asked, n, kwargs):
+        if f'"{doc}"' not in asked:
+            return reply('Nothing for me here.')
+        if n == 1:
+            return reply(calls=[
+                call(1, 'set_analysis', {'document': doc, 'ref': 's1.w1',
+                                         'morphemes': [{'form': 'tok', 'fields': {'Morph Gloss': 'stone'}}]}),
+                call(2, 'create_entry', {'form': 'tok', 'fields': {'gloss': 'stone'}})])
+        if n == 2:
+            return reply(calls=[call(3, 'link_entry', {'document': doc, 'refs': ['s1.w1.m1'],
+                                                       'entry_form': 'tok'})])
+        return reply('Glossed tok.')
+    return answer
+
+
+@pytest.mark.parametrize('edit', ['crash-then-delete', 'merge'])
+def test_a_draft_a_person_took_away_is_never_made_again(world, monkeypatch, edit):
+    """The lead's ruling on REV-JG3-5. The job makes tok 'stone' with Alpha
+    and links it. Then a person takes the draft away: deletes it while the
+    worker is down (a crash, a new worker takes the job up), or merges it
+    into an entry of their own, toka 'rock'. Beta's piece makes tok 'stone'
+    afresh (nothing fits it now): the create and its link are proposed,
+    nothing is made again. After the merge, the job's link in Alpha names
+    the person's entry, as core's merge moves every link of the entry merged
+    away to the one it is merged into."""
+    admin, writer, make = world
+    s = make({'dA': document('dA', 'Alpha', [{'words': ['tok']}]), 'dB': document('dB', 'Beta', [{'words': ['tok']}])})
+    job = _job(admin, writer, s, 'document')
+    use(monkeypatch, Model(_tok_alone('Alpha')))
+    real = IgtRunner.document
+
+    def document_(self, d):
+        if d == s.ids['dB']:
+            raise Crash()
+        return real(self, d)
+    monkeypatch.setattr(IgtRunner, 'document', document_)
+    with pytest.raises(Crash):
+        run_job(job, _runner(job))
+    monkeypatch.setattr(IgtRunner, 'document', real)
+    draft = [x for x in _items(admin, s) if x.get('form') == 'tok']
+    assert len(draft) == 1 and [link['vocab_item'] if not isinstance(link['vocab_item'], dict)
+                                else link['vocab_item']['id'] for link in _links(admin, s, 'dA')] == [draft[0]['id']]
+    survivor = None
+    if edit == 'merge':
+        survivor = admin.vocab_items.create(s.ids['v1'], 'toka', {'gloss': 'rock'})['id']
+        admin.vocab_items.merge(survivor, [draft[0]['id']])
+    else:
+        admin.vocab_items.delete(draft[0]['id'])
+    job.rows = {x['document_id']: dict(x) for x in admin.jobs.get(job.id)['documents']}
+    use(monkeypatch, Model(_tok_alone('Beta')))
+    finished = run_job(job, _runner(job))
+    assert finished['state'] == 'done', (finished.get('reason'), job.status.get('message'))
+    left = [x for x in _items(admin, s) if x.get('form') in ('tok', 'toka')]
+    assert [x['id'] for x in left] == ([survivor] if survivor else []), f'the job made tok again ({edit})'
+    assert not _links(admin, s, 'dB'), 'Beta links nothing'
+    proposed = finished['report']['proposed']
+    assert [c for c in proposed if c['kind'] == 'create_entry' and ENTRY_GONE in c['label']], proposed
+    assert [c for c in proposed if c['kind'] == 'link' and c['document'] == 'Beta'], proposed
+    alpha = [link['vocab_item'] if not isinstance(link['vocab_item'], dict) else link['vocab_item']['id']
+             for link in _links(admin, s, 'dA')]
+    assert alpha == ([survivor] if survivor else []), alpha

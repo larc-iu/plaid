@@ -970,6 +970,7 @@ While it is on, **Mark reviewed** sets the status of every listed entry to revie
 **Delete**, for a maintainer of the vocabulary's project, deletes them all with their links, and leaves the glosses.
 A job's report links to each lexicon's machine drafts.
 A job deletes no entry: one it created that ends with no links is listed in its report under **Entries with no links**, for a person to delete.
+A job does not make again an entry it made that a person then deleted or changed: its report lists the entry as a proposed change.
 
 == Undoing a job
 

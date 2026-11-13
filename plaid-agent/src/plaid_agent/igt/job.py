@@ -99,6 +99,15 @@ TABLE_FORM = ' table '
 DROPPED_FORM = ' dropped'
 #: How many tables pieces handed the report past JOB_TABLES_MAX a job keeps.
 TABLES_DROPPED_FORM = ' tables dropped'
+#: The form of an entry the job creates: a row written with the write's
+#: writing rows, before the write is sent, keyed by the entry's lexicon,
+#: form and gloss (:func:`entry_key`). An entry the job made is never made
+#: again once it is gone: a create of that key that nothing fits is a
+#: proposed change (the lead's ruling on REV-JG3-5).
+MADE_FORM = ' made '
+#: Why a create is a proposed change and not applied, as its change says:
+#: the job made this entry before, and it is gone or no longer reads so.
+ENTRY_GONE = 'This job made this entry before, and it was deleted or changed since.'
 #: How the plan cuts the work (``plan_work``'s ``pieces``).
 SENTENCES, DOCUMENT, SELECTION = 'sentences', 'document', 'selection'
 #: Why a document of a selection is worked as a piece of its own: the
@@ -690,6 +699,15 @@ def fitting_entry(v: Dict[str, Any], items: List[Dict[str, Any]], op: Dict[str, 
     return next((it for it in items if _nfc(it.get('form')) == form and _entry_gloss(it, gloss) == value), None)
 
 
+def entry_key(v: Dict[str, Any], op: Dict[str, Any]) -> str:
+    """The key of the entry a create ``op`` makes in lexicon ``v``, as the
+    job's row of an entry it made holds it: what :func:`fitting_entry`
+    compares, its lexicon, form and gloss after NFC."""
+    gloss = IgtProject.lexicon_field(v, ROLE_GLOSS)
+    return analysis_key(canonical({'lexicon': v['id'], 'form': _nfc(op.get('form')),
+                                   'gloss': _entry_gloss(op, gloss)}))
+
+
 # --- the runner --------------------------------------------------------------------
 
 class Deferred(Exception):
@@ -870,6 +888,9 @@ class IgtRunner:
         #: the cap dropped (CONTRACT, added by JG), read once per worker
         self.changes: Optional[set] = None
         self.changes_dropped = 0
+        #: the keys (:func:`entry_key`) of the entries the job made, as its
+        #: rows hold them, read once per worker and kept as it writes them
+        self.made: Optional[set] = None
         #: documents the job has waited for once at least: their defers count
         self.waited: set = set()
         #: document id -> sentences skipped past the cap of the row's list:
@@ -1243,42 +1264,75 @@ class IgtRunner:
         def step():
             part = list(doc.sentences)
             prints = {s.id: ws.sentence_print(doc, s) for s in doc.sentences}
-            self.write(project, document_id, ws, doc, part, prints, self.entries_that_fit(project, ops), note)
+            self.write(project, document_id, ws, doc, part, prints, ops, note, selection=True)
 
         def put_off():
             raise Deferred(document_id)
         core_job.through_core(self.job, step, gave_up=put_off)
 
-    def entries_that_fit(self, project: IgtProject, ops: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """``ops`` with no entry created where one fits now (``fitting_entry``,
-        the rule ``fit_guard`` holds at staging, asked again of the lexicon as
-        it is at the write): such a create is left out and every link naming
-        it names the entry there. So the entry a selection links in several
-        documents is created with the first document written, and the others
-        link it, even when that write landed and the job was then taken up
-        again (REV-JG2-2). The lexicon is read only for ops holding a create."""
+    def entries_that_fit(self, project: IgtProject, ops: List[Dict[str, Any]],
+                         selection: bool = False) -> List[Dict[str, Any]]:
+        """``ops`` as the lexicon is at the write, asked of every create
+        before any piece's write (a stretch, a document, a selection):
+
+        * no entry is created where one fits now (``fitting_entry``, the rule
+          ``fit_guard`` holds at staging): such a create is left out and every
+          link naming it names the entry there. So the entry a selection
+          links in several documents is created with the first document
+          written, and the others link it, even when that write landed and
+          the job was then taken up again (REV-JG2-2);
+        * no entry the job made before is made again once nothing fits it (a
+          person deleted it, merged it away or changed its form or gloss): the
+          create is marked (``job_why``, :data:`ENTRY_GONE`), the apply rule
+          proposes it, and the links naming it with it (the lead's ruling on
+          REV-JG3-5). A write the job cannot tell from one that never landed
+          (a crash before its answer) counts as made: the job never risks
+          putting back what a person deleted.
+
+        The lexicon is read again for a selection's creates, staged before
+        any of its documents was written, and for a create of an entry the
+        job made before. A stretch's or a document's other creates were
+        staged against the lexicon as it was after the job's last write
+        (``fit_guard``), which is not read again."""
         creates = [o for o in ops if o.get('kind') == 'create_entry']
+        vocab = {x['id']: x for x in project.vocabs if not x.get('borrowed')}
+        if not selection:
+            creates = [o for o in creates if o.get('vocab_id') in vocab
+                       and entry_key(vocab[o['vocab_id']], o) in self.made_keys()]
         if not creates:
             return ops
         ws = Workspace(self.job.client(), project)
         found: Dict[str, str] = {}
+        gone: set = set()
         for o in creates:
-            v = next((x for x in project.vocabs if x['id'] == o.get('vocab_id')), None)
-            if v is None or v.get('borrowed'):
+            v = vocab.get(o.get('vocab_id'))
+            if v is None:
                 continue
             item = fitting_entry(v, ws.lexicon(v), o)
             if item is not None:
                 found[o.get('key')] = item['id']
-        if not found:
+            elif entry_key(v, o) in self.made_keys():
+                gone.add(o.get('key'))
+        if not found and not gone:
             return ops
         out = []
         for o in ops:
             if o.get('kind') == 'create_entry' and o.get('key') in found:
                 continue
+            if o.get('kind') == 'create_entry' and o.get('key') in gone:
+                o = {**o, 'job_why': ENTRY_GONE}
             if o.get('kind') in ('link', 'link_phrase') and o.get('new_entry_key') in found:
                 o = {**o, 'item_id': found[o['new_entry_key']], 'new_entry_key': None}
             out.append(o)
         return out
+
+    def made_keys(self) -> set:
+        """The keys of the entries the job made (:data:`MADE_FORM` rows),
+        read from core once per worker and kept as the worker writes them."""
+        if self.made is None:
+            self.made = {str(r.get('form'))[len(MADE_FORM):] for r in self.job.decisions()
+                         if str(r.get('form') or '').startswith(MADE_FORM)}
+        return self.made
 
     def selection_work(self, project: IgtProject, documents: List[str]):
         job = self.job
@@ -1337,9 +1391,12 @@ class IgtRunner:
     def describe_loose(op: Dict[str, Any]) -> Dict[str, Any]:
         """A proposed change of no document."""
         after = op.get('form') if op.get('kind') == 'create_entry' else None
+        what = op.get('label') or op.get('kind') or ''
+        if op.get('job_why'):
+            what = f'{what}. {op["job_why"]}'
         return {'kind': op.get('kind'), 'document_id': None, 'document': None, 'ref': None, 'field': None,
                 'from': None, 'to': _cut(after, JOB_CHANGE_VALUE_CHARS),
-                'label': _cut(op.get('label') or op.get('kind'), JOB_CHANGE_VALUE_CHARS)}
+                'label': _cut(what, JOB_CHANGE_VALUE_CHARS)}
 
     def wait_for_people(self, documents: List[str]) -> None:
         """Wait :data:`JOB_DEFER_WAIT_S` before taking ``documents`` again,
@@ -1857,14 +1914,15 @@ class IgtRunner:
         return out
 
     def write(self, project: IgtProject, document_id: str, ws: JobWorkspace, doc, part: List[Sentence],
-              prints: Dict[str, str], ops: List[Dict[str, Any]], note: str = '') -> None:
+              prints: Dict[str, str], ops: List[Dict[str, Any]], note: str = '', selection: bool = False) -> None:
         """THE write of every piece of the job in one document, whatever the
         plan cut (a stretch, a whole document, the whole selection): through
         :meth:`gate` first, then under the document's lock by the apply rule
         (SPEC 5.4), its writing rows before it is sent (:meth:`intend`), then
         its record (:meth:`record`) and the changes it proposes
         (:meth:`record_changes`). ``doc`` is the document as the piece read
-        it, ``part`` the piece's sentences in it.
+        it, ``part`` the piece's sentences in it, ``selection`` whether it is
+        a selection's write (:meth:`entries_that_fit`).
 
         Safe to do again after a failure anywhere in it: the gate settles
         what landed, a sentence it settles (recorded, or skipped as
@@ -1874,6 +1932,7 @@ class IgtRunner:
         is the job's own, and a sentence recorded is not recorded again."""
         job = self.job
         self.gate(project, document_id)
+        ops = self.entries_that_fit(project, ops, selection)
         # A sentence of the piece the job has written in already (a write of
         # this piece that landed before a crash or a passing error, settled
         # now: recorded, or skipped as interrupted) leaves the piece, and
@@ -1989,16 +2048,20 @@ class IgtRunner:
                  for w in s.words if w.id in st.words and word_target(w)}
         if kept:
             self.machine_status(project, kept)
-            sentences = self.intend(document_id, st, kept, fresh)
+            sentences, made = self.intend(document_id, st, kept, fresh)
             try:
                 kept = self.apply(client, project, document_id, group, kept, seed_id, counts)
             except (PlanOutOfDate, Deferred, PlanError) as e:
                 # Known to have written nothing (out of date is found before
                 # any write, a plan error says whether anything landed): its
-                # sentences are targets again.
+                # sentences are targets again, and its entries were not made.
                 if not (isinstance(e, PlanError) and e.wrote):
                     self.unsent.setdefault(document_id, set()).update(sentences)
+                    self.made_keys().difference_update(made.values())
                 raise
+            # An entry the write left out (its links out of date) was not made.
+            written = {o.get('key') for o in kept if o.get('kind') == 'create_entry'}
+            self.made_keys().difference_update(k for key, k in made.items() if key not in written)
         known = client.document_versions.get(document_id)
         after = self.read(project, document_id, client)
         exact = known is not None and str(after.version) == str(known)
@@ -2007,18 +2070,24 @@ class IgtRunner:
                         job.id, document_id, known, after.version)
         return kept, counts, changed, after, frozenset(blank) if exact else frozenset(), proposed
 
-    def intend(self, document_id: str, st: Stretch, kept: List[Dict[str, Any]], fresh) -> List[str]:
+    def intend(self, document_id: str, st: Stretch, kept: List[Dict[str, Any]], fresh):
         """Before a write is sent: a writing row in core for each sentence
         ``kept`` writes in, saying what it writes there and naming every
         word of the sentence as ``fresh`` (the document under the lock)
-        holds it, in one call. The sentences, which are no longer targets
-        once the call has landed, nor is any sentence a word of theirs is
-        moved into, whatever happens to what the write leaves in them
-        (``settle``, :meth:`known_words`)."""
+        holds it, and a row for each entry it creates (:data:`MADE_FORM`),
+        in one call. ``(the sentences, {create's key: entry key})``: the
+        sentences are no longer targets once the call has landed, nor is any
+        sentence a word of theirs is moved into, whatever happens to what
+        the write leaves in them (``settle``, :meth:`known_words`), and the
+        entries count as made by the job from then on."""
         plans: Dict[str, Dict[str, Any]] = {}
         translation = translation_layer(st.project)
+        made: Dict[str, str] = {}
         for o in kept:
             if o.get('kind') == 'create_entry':
+                v = next((x for x in st.project.vocabs if x['id'] == o.get('vocab_id')), None)
+                if v is not None and entry_key(v, o) not in self.made_keys():
+                    made[o.get('key')] = entry_key(v, o)
                 continue
             token = o.get('analysis_word_id') or o.get('word_id') or o.get('token_id')
             s = st.sentence_of(token)
@@ -2045,8 +2114,12 @@ class IgtRunner:
             text = writing_text(document_id, plan['translation'], plan['words'], plan['others'])
             rows.append({'form': writing_form(sid), 'key': analysis_key(text), 'analysis': text, 'count': 1,
                          'document_id': document_id, 'sentence_id': sid})
+        for key in dict.fromkeys(made.values()):
+            rows.append({'form': MADE_FORM + key, 'key': key, 'analysis': '{}', 'count': 1,
+                         'document_id': document_id, 'sentence_id': None})
         if rows:
             self.job.add_decisions(rows)
+        self.made_keys().update(made.values())
         writing = self.writing.setdefault(document_id, {})
         unsent = self.unsent.setdefault(document_id, set())
         for sid, plan in plans.items():
@@ -2054,7 +2127,7 @@ class IgtRunner:
             # that try was for was never written (REV-B4-7).
             writing[sid] = self.merged(None if sid in unsent else writing.get(sid), plan)
         unsent.difference_update(plans)
-        return list(plans)
+        return list(plans), made
 
     @staticmethod
     def merged(had: Optional[Dict[str, Any]], plan: Dict[str, Any]) -> Dict[str, Any]:
@@ -2273,6 +2346,8 @@ class IgtRunner:
         elif kind == 'create_entry':
             after = op.get('form')
         what = (op.get('label') or kind or '')
+        if op.get('job_why'):
+            what = f'{what}. {op["job_why"]}'
         return {'kind': kind, 'document_id': doc.id, 'document': doc.name, 'ref': ref, 'field': field,
                 'from': _cut(before, JOB_CHANGE_VALUE_CHARS), 'to': _cut(after, JOB_CHANGE_VALUE_CHARS),
                 'label': _cut(what, JOB_CHANGE_VALUE_CHARS)}
