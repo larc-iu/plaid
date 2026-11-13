@@ -1334,7 +1334,7 @@ class IgtRunner:
                 return self.defer(document_id)
             self.settle(project, document_id, doc, own=self.quiet(last, document_id))
             whole = self.whole_document(project, doc)
-            pending = self.pending(doc, project, document_id, every=whole)
+            pending = self.pending(doc, project, document_id, every=self.every_sentence())
             if not pending:
                 job.update_row(document_id, state='done')
                 return 'done'
@@ -1363,6 +1363,16 @@ class IgtRunner:
         self.fall_back(doc.id, 'too-long')
         return False
 
+    def every_sentence(self) -> bool:
+        """Whether the walk takes every sentence of a document, empty or
+        not: when the plan cut the work by documents or as one selection.
+        A document of such a plan that is worked in stretches (too long for
+        one piece, or put off from the selection) is still worked whole: the
+        fallback changes the size of the pieces, never what is worked
+        (REV-JG-7). A plan in sentences walks only sentences that hold
+        something empty."""
+        return (self.plan_made or {}).get('pieces') in (DOCUMENT, SELECTION)
+
     def pending(self, doc, project: IgtProject, document_id: str, every: bool = False) -> List[Sentence]:
         """The sentences after the cursor the job works, in document order,
         less those skipped, those recorded already and those the job has
@@ -1370,8 +1380,8 @@ class IgtRunner:
         which a split or a merge may have moved into a sentence of another
         id) unless their write is known not to have landed. In stretches,
         only sentences that hold something empty (:func:`sentence_targets`).
-        With ``every`` (a whole document is one piece) every such sentence,
-        empty or not: what the piece does is its instructions'. A cursor
+        With ``every`` (:meth:`every_sentence`) every such sentence, empty or
+        not: what the piece does is its instructions'. A cursor
         whose sentence is gone starts from the top (SPEC 3.8)."""
         row = self.job.rows.get(document_id) or {}
         skipped = {s.get('sentence_id') for s in row.get('skipped') or []}
@@ -1464,7 +1474,7 @@ class IgtRunner:
         part = [s for s in doc.sentences if s.id in sentence_ids]
         st = Stretch(doc, project, part, job.id, self.known_words(document_id))
         whole = self.whole_document(project, doc)
-        if st.empty() and not whole:
+        if st.empty() and not self.every_sentence():
             self.record(project, document_id, doc, part, st, Counter(), [])
             return None
         ws.stretch = st

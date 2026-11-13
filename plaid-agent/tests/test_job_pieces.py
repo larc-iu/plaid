@@ -189,6 +189,39 @@ def test_a_document_too_large_for_one_piece_is_worked_in_stretches_and_the_repor
     assert finished['report']['plan']['fallback'] == [{'document_id': 'd1', 'reason': 'too-long'}]
 
 
+GLOSSED = [{'words': [('ka', [('ka', 'go')], 'human'), ('ta', [('ta', 'go')], 'human')], 'translation': ('T.', 'human')},
+           {'words': [('sa', [('sa', 'go')], 'human')], 'translation': ('S.', 'human')}]
+
+
+@pytest.mark.parametrize('pieces', ['document', 'selection'])
+def test_a_document_too_long_for_one_piece_is_worked_in_stretches_over_every_sentence(monkeypatch, pieces):
+    """REV-JG-7: a check job planned by documents (or as one selection that
+    fell back), whose long document has nothing empty. Its stretches cover
+    every sentence, so the instructions are carried out on the whole text."""
+    monkeypatch.setattr(igt_job, 'JOB_DOCUMENT_PIECE_MAX_CHARS', 10)
+    client = JobClient({'d1': document('d1', 'Story 1', GLOSSED)})
+    job = start(client, 'Check every gloss and propose corrections.', id=J, plan=pieces)
+    if pieces == 'selection':
+        # The selection's one piece failed: each document is worked alone.
+        runner(job).fall_back(igt_job.SELECTION, 'failed')
+    model = use(monkeypatch, _model(piece=lambda asked, n: reply('Checked.')))
+    finished = run_job(job, runner(job))
+    named = [c['asked'].splitlines()[-1] for c in model.calls if c['n'] == 1 and _kind(c['asked']) == 'piece']
+    assert named == ['Your piece: s1, s2.'], named
+    assert finished['report']['documents'][0]['state'] == 'done'
+
+
+def test_a_sentences_plan_walks_only_sentences_with_something_empty(monkeypatch):
+    """The fixer's ruling 1, kept: in a job planned in sentences, a fully
+    glossed document is not read by any piece."""
+    client = JobClient({'d1': document('d1', 'Story 1', GLOSSED)})
+    job = start(client, 'Gloss every word nobody analysed.', id=J, plan='sentences')
+    model = use(monkeypatch, _model(piece=lambda asked, n: reply('Checked.')))
+    finished = run_job(job, runner(job))
+    assert not [c for c in model.calls if _kind(c['asked']) == 'piece']
+    assert finished['report']['documents'][0]['state'] == 'done'
+
+
 def test_a_selection_is_one_piece_whose_writes_land_document_by_document(monkeypatch):
     client = JobClient(_docs(2))
     job = start(client, 'Gloss ka in every text.', id=J, plan='selection')
