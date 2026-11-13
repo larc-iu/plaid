@@ -2087,16 +2087,27 @@ class IgtRunner:
         known = self.known_words(fresh.id)
         vouch: Dict[str, Any] = {}
 
+        def commented() -> set:
+            if 'commented' not in vouch:
+                vouch['commented'] = self.commented(ws.client, project, fresh.id)
+            return vouch['commented']
+
         def own(w) -> bool:
             # The words the job vouches for, and the comments, read once,
             # only when an op asks about a word the job wrote on.
             if not any(job_piece(p, self.job.id) for p in word_pieces(w)):
                 return False
-            if not vouch:
+            if 'recorded' not in vouch:
                 vouch['recorded'] = self.recorded_words({fresh.id: fresh})
-                vouch['commented'] = self.commented(ws.client, project, fresh.id)
-            return harmonize_bar(w, self.job.id, vouch['recorded'], vouch['commented']) is None
-        rule = jobapply.Rule(fresh, project, known, own=own, target=word_target, tag=word_tag,
+            return harmonize_bar(w, self.job.id, vouch['recorded'], commented()) is None
+
+        def blank(w) -> bool:
+            # A blank word is the job's to fill, but one a person commented
+            # on, or that sits in a person's multi-word expression: people's
+            # ground, as harmonize holds it (the lead's ruling on REV-JG).
+            return word_target(w) and not any(not job_piece(link.metadata, self.job.id) for link in w.mwes) \
+                and not (word_ids(w) & commented())
+        rule = jobapply.Rule(fresh, project, known, own=own, target=blank, tag=word_tag,
                              job_piece=lambda md: job_piece(md, self.job.id))
 
         def sentence_of(token):

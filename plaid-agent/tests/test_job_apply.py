@@ -40,8 +40,15 @@ def _story():
 class _Setup:
     """A piece's workspace over the story, and the runner that applies."""
 
-    def __init__(self, sentences=None, known=()):
+    def __init__(self, sentences=None, known=(), mwe=None):
         self.client = JobClient({'d1': document('d1', 'Story', sentences or _story())})
+        if mwe:
+            # A person's multi-word expression over the two word ids ``mwe``.
+            from fixtures import WORD_LAYER
+            layer = next(tl for tl in self.client._holder('d1')['documents']['d1']['text_layers'][0]['token_layers']
+                         if tl['id'] == WORD_LAYER)
+            layer['vocabs'][0]['vocab_links'].append({'id': 'mwe1', 'vocab_item': {'id': 'e-mwe', 'form': 'x y'},
+                                                      'tokens': list(mwe), 'metadata': {}})
         self.job = start(self.client, id=J)
         self.runner = runner(self.job)
         self.project = load_project(self.client, 'p1')
@@ -128,6 +135,32 @@ def test_each_change_by_what_it_changes(name, args, applied):
     s.stage(name, args)
     kept, proposed = s.decide()
     assert bool(kept) == applied and bool(proposed) != applied, (kept, proposed)
+
+
+@pytest.mark.parametrize('name,args', [
+    ('set_analysis', {'ref': 's1.w1', 'morphemes': [{'form': 'blank'}]}),
+    ('set_field', {'refs': ['s1.w1'], 'field': 'Gloss', 'value': 'g'}),
+    ('link_entry', {'refs': ['s1.w1.m1'], 'entry_id': 'vi-gam'}),
+])
+@pytest.mark.parametrize('why', ['comment', 'mwe'])
+def test_a_blank_word_with_a_comment_or_in_a_persons_expression_is_not_blank(name, args, why):
+    """The lead's ruling on REV-JG's "blank": a blank word that carries a
+    comment, or sits in a person's multi-word expression, is people's
+    ground, as harmonize already holds it: what fills it is proposed."""
+    s = _Setup(mwe=('d1-s1w1', 'd1-s3w1') if why == 'mwe' else None)
+    if why == 'comment':
+        s.runner.commented = lambda client, project, document_id: {'d1-s1w1'}
+    s.stage(name, args)
+    kept, proposed = s.decide()
+    assert not kept and proposed, (kept, proposed)
+
+
+def test_a_blank_word_with_neither_is_filled():
+    """The guard: the same blank word, nothing on it, is filled."""
+    s = _Setup()
+    s.stage('set_analysis', {'ref': 's1.w1', 'morphemes': [{'form': 'blank'}]})
+    kept, proposed = s.decide()
+    assert kept and not proposed
 
 
 def test_an_empty_value_is_a_deletion_and_is_proposed():
