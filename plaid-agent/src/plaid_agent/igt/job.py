@@ -28,7 +28,7 @@ import uuid
 from collections import Counter
 from typing import Any, Dict, List, Optional, Tuple
 
-from plaid_client import PlaidAPIError
+from plaid_client import DocumentLockLost, PlaidAPIError
 from plaid_client.ids import uuid7
 from plaid_client.provenance import PROV_CONFIRMED_KEY, PROV_DETAIL_KEY, prov_state, service_source
 from plaid_client.service import locked_for_writes
@@ -524,11 +524,10 @@ class Gone(Exception):
 
 
 def _status(e: BaseException) -> int:
-    while e is not None:
-        if isinstance(e, PlaidAPIError):
-            return e.status or 0
-        e = e.__cause__ or e.__context__
-    return 0
+    """The status of core's refusal in ``e`` or in what caused it (a lost
+    lock's renewal included), else 0."""
+    err = core_job.plaid_error(e)
+    return (err.status or 0) if err is not None else 0
 
 
 def _unresolved(e: BaseException) -> bool:
@@ -1160,8 +1159,15 @@ class IgtRunner:
             client = job.client()
             lock = self.hold(client, document_id)
             try:
-                written_ops, counts, changed, after, vouched = self.write_held(
-                    project, document_id, client, ws, st, prints, ops, group, seed_id)
+                try:
+                    written_ops, counts, changed, after, vouched = self.write_held(
+                        project, document_id, client, ws, st, prints, ops, group, seed_id)
+                finally:
+                    lock.__exit__(None, None, None)
+            except DocumentLockLost as e:
+                # The lock lapsed as the write ended (REV-J-B3 B3-4): put off
+                # as any lock conflict, what landed recorded when it comes back.
+                raise Deferred(document_id) from e
             except PlanError as e:
                 # The starter's own browser wrote between the read under the
                 # lock and the write (strict mode): taken again at once when
@@ -1174,11 +1180,11 @@ class IgtRunner:
                 # A conflict, or something the write names gone in the moment
                 # since the check (the document, an entry): put off, and the
                 # next walk reads what is there (REV-J-B3 B3-3).
+                # A lock lost in the write is a 423 (its renewal's refusal,
+                # REV-J-B3 B3-4).
                 if _status(e) in (409, 423) or _gone_now(e):
                     raise Deferred(document_id) from e
                 raise
-            finally:
-                lock.__exit__(None, None, None)
             break
         # The write landed: the entries the model staged that it did not
         # create are reported as proposed, never before (REV-J-B2 S4).

@@ -27,7 +27,7 @@ from datetime import datetime, timezone
 from typing import Any, Callable, Dict, List, Optional
 
 import litellm
-from plaid_client import PlaidAPIError
+from plaid_client import DocumentLockLost, PlaidAPIError
 from plaid_client.workflows.llm import did_not_answer, is_busy, is_timeout, transient_errors
 
 from .agent import REPEATING_LINE, TurnCancelled, TurnFailed, token_counter, too_long
@@ -231,10 +231,16 @@ def api_code(e: BaseException) -> Optional[str]:
 
 
 def plaid_error(e: Optional[BaseException]) -> Optional[PlaidAPIError]:
-    """The refusal of core in ``e`` or in what caused it, or None."""
+    """The refusal of core in ``e`` or in what caused it, or None. A
+    document's lock lost (``DocumentLockLost``) carries what its renewal met
+    as ``cause``, which is followed too: core refusing the renewal (423, a
+    restart dropped the lock) or out of reach (REV-J-B3 B3-4)."""
     while e is not None:
         if isinstance(e, PlaidAPIError):
             return e
+        if isinstance(e, DocumentLockLost) and e.cause is not None:
+            e = e.cause
+            continue
         e = e.__cause__ or e.__context__
     return None
 
