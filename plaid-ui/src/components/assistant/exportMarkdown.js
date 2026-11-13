@@ -78,9 +78,12 @@ const JOB_CARD_ENDS = {
   replaced: 'Replaced by a later job card.',
 };
 const jobCardToMarkdown = (card) => {
+  const names = (card.documents || []).map((d) => d.name || d.id);
+  // A settled card keeps only its first names: the rest is counted.
+  const more = (card.count ?? names.length) - names.length;
   const docs = card.all
     ? `All documents (${card.count})`
-    : markdownText((card.documents || []).map((d) => d.name || d.id).join(', '));
+    : markdownText(names.join(', ')) + (more > 0 ? ` and ${more.toLocaleString()} more` : '');
   const tasks = (card.tasks || []).map(jobTaskText).join(', ');
   const said = JOB_CARD_ENDS[card.status] ?? 'Not yet started.';
   const brief = card.status === 'started' ? card.sentBrief : card.brief;

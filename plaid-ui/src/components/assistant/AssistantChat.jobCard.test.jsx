@@ -147,6 +147,10 @@ describe('a job card in the Markdown export', () => {
     const started = md({ ...CARD, status: 'started', sentBrief: 'Gloss ka as come.' });
     expect(started).toContain('(Started.)');
     expect(started).toContain('Gloss ka as come.');
+    const names = Array.from({ length: 5 }, (_, i) => ({ id: `d${i}`, name: `Text ${i + 1}` }));
+    expect(md({ ...CARD, documents: names, count: 12, status: 'discarded' })).toContain(
+      '**Proposed job:** Text 1, Text 2, Text 3, Text 4, Text 5 and 7 more. Segment and gloss. (Discarded.)',
+    );
     expect(md({ ...CARD, all: true, count: 9, status: 'discarded' })).toContain(
       '**Proposed job:** All documents (9). Segment and gloss. (Discarded.)',
     );

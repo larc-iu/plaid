@@ -308,6 +308,18 @@ def test_an_edited_brief_is_what_the_model_hears():
                                                'as sent:\nGloss ka as "come".')
 
 
+def test_a_settled_card_keeps_five_names_and_its_count():
+    """REV-JB-8: as a settled plan drops its documents, a settled card keeps
+    the names it shows (five) and the count, ended or replaced."""
+    from plaid_agent.core.conversation import job_card_settling, replace_undecided_cards
+    docs = [{'id': f'd{i}', 'name': f'Text {i}'} for i in range(1, 13)]
+    item = {'kind': 'assistant', 'job': {'id': 'c', 'all': False, 'count': 12, 'documents': docs, 'status': None}}
+    stored = {'messages': [], 'display': [item]}
+    for card in (job_card_settling('c', 'discarded')(stored)['display'][0]['job'],
+                 replace_undecided_cards([item])[0]['job']):
+        assert card['documents'] == docs[:5] and card['count'] == 12, card
+
+
 def test_a_cleared_brief_is_said_as_no_brief():
     """REV-JB-11: a start with the brief cleared, which core holds as no note."""
     client = FakeClient()

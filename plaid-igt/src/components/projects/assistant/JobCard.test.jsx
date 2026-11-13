@@ -79,6 +79,13 @@ describe('the job card', () => {
     expect(link.getAttribute('href')).toBe('/projects/p1/documents/d1');
   });
 
+  it('counts the documents a settled card no longer lists by name', async () => {
+    const { v } = await draw({
+      card: card({ documents: docs(5), count: 12, status: 'discarded' }),
+    });
+    expect(text(v)).toContain('Story 1, Story 2, Story 3, Story 4, Story 5 and 7 more');
+  });
+
   it('names every document of the project as all of them', async () => {
     const { v } = await draw({ card: card({ all: true, count: 42, documents: undefined }) });
     expect(text(v)).toContain('All documents (42)');

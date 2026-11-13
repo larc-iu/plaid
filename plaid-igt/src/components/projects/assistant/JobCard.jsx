@@ -39,7 +39,9 @@ const Documents = ({ card, projectId }) => {
   if (card.all) return <>All documents ({card.count.toLocaleString()})</>;
   const docs = card.documents || [];
   const shown = docs.slice(0, JOB_CARD_NAMES);
-  const more = docs.length - shown.length;
+  // A settled card keeps only the first names (plaid-agent conversation.py),
+  // so the rest is counted from `count`.
+  const more = (card.count ?? docs.length) - shown.length;
   return (
     <>
       {shown.map((d, i) => (

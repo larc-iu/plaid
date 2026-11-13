@@ -832,6 +832,18 @@ def replace_undecided(display: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 JOB_CARD_ENDS = ('started', 'discarded', 'failed')
 
 
+#: Names a settled card keeps (the card shows five, then "and N more" by
+#: ``count``): as a settled plan drops its documents, nothing reads the rest.
+JOB_CARD_SETTLED_NAMES = 5
+
+
+def _settled_card(card: Dict[str, Any], **fields) -> Dict[str, Any]:
+    out = {**card, **fields, 'settled_at': now_iso()}
+    if isinstance(card.get('documents'), list):
+        out['documents'] = card['documents'][:JOB_CARD_SETTLED_NAMES]
+    return out
+
+
 def find_job_card(conv: Dict[str, Any], card_id: str) -> Tuple[int, Optional[Dict[str, Any]]]:
     """(index, display item) of the reply carrying the job card ``card_id``,
     or (-1, None)."""
@@ -845,9 +857,8 @@ def find_job_card(conv: Dict[str, Any], card_id: str) -> Tuple[int, Optional[Dic
 def replace_undecided_cards(display: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """Every job card still waiting, marked replaced: the turn drafting a new
     one calls this, as a new plan replaces a waiting one."""
-    stamp = now_iso()
     return [
-        {**d, 'job': {**d['job'], 'status': 'replaced', 'settled_at': stamp}}
+        {**d, 'job': _settled_card(d['job'], status='replaced')}
         if isinstance(d, dict) and isinstance(d.get('job'), dict) and d['job'].get('status') is None
         else d
         for d in display
@@ -881,7 +892,7 @@ def job_card_settling(card_id: str, status: str, **fields):
         card = item['job']
         note = job_card_note(card, status, sent_brief=fields.get('sent_brief'), reason=fields.get('reason'))
         display = list(stored['display'])
-        display[index] = {**item, 'job': {**card, **fields, 'status': status, 'settled_at': now_iso()}}
+        display[index] = {**item, 'job': _settled_card(card, **fields, status=status)}
         return {'messages': stored['messages'] + [{'role': 'user', 'content': note}], 'display': display}
     return change
 
