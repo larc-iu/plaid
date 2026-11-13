@@ -62,7 +62,7 @@ enabled = false
 // Linux's /proc (the LISTEN row's inode among the process's open files).
 // Where there is no /proc this cannot be told, and a login that answers is
 // taken as the core's.
-export async function listens(pid, port) {
+async function listens(pid, port) {
   if (!existsSync('/proc/net/tcp')) return true;
   const inodes = new Set();
   for (const table of ['/proc/net/tcp', '/proc/net/tcp6']) {
