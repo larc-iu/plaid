@@ -145,7 +145,7 @@ export const JobCard = ({ card, projectId, client, readOnly = false, onSettle })
         <dt className="text-muted-foreground">Tasks</dt>
         <dd>{(card.tasks || []).map(jobTaskText).join(', ')}</dd>
       </dl>
-      {undecided && !readOnly ? (
+      {undecided && !readOnly && mayStart ? (
         <div className="flex flex-col gap-1">
           <Label htmlFor={`job-brief-${card.id}`}>Instructions</Label>
           <Textarea
@@ -181,7 +181,7 @@ export const JobCard = ({ card, projectId, client, readOnly = false, onSettle })
         ))}
       {undecided && !readOnly && (
         <>
-          <NoWorkerLine worker={worker} />
+          {mayStart && <NoWorkerLine worker={worker} />}
           <div className="flex flex-wrap items-center gap-2">
             {mayStart ? (
               <Button

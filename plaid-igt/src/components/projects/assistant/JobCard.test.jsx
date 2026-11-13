@@ -191,11 +191,15 @@ describe('the job card', () => {
     expect(onSettle).toHaveBeenCalledWith({ outcome: 'discarded' });
   });
 
-  it('offers a reader no Start, with the reason, and still Discard', async () => {
-    const { v } = await draw({ card: card() }, { user: READER });
+  it('offers a reader no Start, with the reason, the brief to read and still Discard', async () => {
+    const client = fakeClient({ seenAt: '2020-01-01T00:00:00Z' });
+    const { v } = await draw({ card: card(), client }, { user: READER });
     expect(button(v, 'Start job')).toBeNull();
     expect(text(v)).toContain('Starting a job needs write access.');
     expect(button(v, 'Discard')).toBeTruthy();
+    expect(v.container.querySelector('textarea')).toBeNull();
+    expect(byText(v.container, '[data-testid="job-card-brief"]', 'Gloss ka as go.')).toBeTruthy();
+    expect(text(v)).not.toContain('No job worker is running.');
   });
 
   it('offers no decision where the conversation is only read, and reads nothing', async () => {
