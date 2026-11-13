@@ -112,6 +112,9 @@ import { HistoryDrawer, HISTORY_DRAWER_WIDTH } from '@ui/components/shared/Histo
 import { fullTimestamp } from '@ui/lib/formatTime.js';
 import { sameName } from '@ui/lib/nameKey.js';
 import { useVocabHistory } from './useVocabHistory';
+import { VocabHistoryChanges } from './VocabHistoryChanges.jsx';
+import { useHistoryParam } from '@ui/hooks/useHistoryParam.js';
+import { SegmentedControl } from '@ui/components/shared/SegmentedControl.jsx';
 import { TYPE } from '@ui/lib/typeScale.js';
 import { cn } from '@ui/lib/utils';
 
@@ -462,6 +465,37 @@ export const VocabularyDetail = () => {
       history.past ? normalizeVocabFields(readVocabFields(history.past.vocabulary?.config)) : null,
     [history.past],
   );
+  // The entry open is in the address (`?history=`), as a document's is: a link
+  // from a document's History opens it here.
+  const historyParam = useHistoryParam({
+    selectedId: history.selected?.id,
+    ready: !!vocabulary && !isNewVocabulary && !!client,
+    open: async (id) => {
+      if (!id) {
+        history.select(null);
+        return;
+      }
+      if (!history.open) history.openHistory();
+      try {
+        const page = await client.vocabLayers.auditPage(vocabularyId, { entryId: id, opsLimit: 1 });
+        const entry = page?.entries?.[0];
+        if (!entry) throw new Error('This vocabulary has no such history entry.');
+        history.select({
+          id: entry.id,
+          time: entry.endTime || entry.time,
+          label: entry.message || entry.ops?.[0]?.description || '',
+          unit: true,
+        });
+      } catch (err) {
+        if (statusOf(err) === 401) {
+          logout('expired');
+          return;
+        }
+        notifyError(err, 'Failed to open that history entry');
+        historyParam.clear();
+      }
+    },
+  });
 
   // The tab rides in `?tab=`, so a reload or a shared link reopens the same one.
   // Only the tabs this user actually gets are legal values, so a maintainer's
@@ -1365,9 +1399,14 @@ export const VocabularyDetail = () => {
   // drawn. The others stay on the vocabulary as it is now.
   const selectPast = (entry) => {
     if (entry && activeTab !== 'items') setActiveTab('items');
+    historyParam.select(entry?.id ?? null);
     history.select(entry);
   };
   const viewingPast = !!history.selected;
+  // A whole entry opens on what it changed, the vocabulary as of it one
+  // click away.
+  const changesShown = !!history.selected?.unit;
+  const showChanges = changesShown && historyParam.view === 'changes';
 
   return (
     <div
@@ -1421,15 +1460,41 @@ export const VocabularyDetail = () => {
             </p>
             {viewingPast && (
               <Notice tone="warning" icon={Info}>
-                {history.loadingPast
-                  ? `Loading the vocabulary as of ${fullTimestamp(history.selected.time)}…`
-                  : `Read-only. This is the vocabulary as of ${fullTimestamp(history.past?.time ?? history.selected.time)}.`}
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span>
+                    {showChanges
+                      ? `Changes made in this entry, ${fullTimestamp(history.selected.time)}.`
+                      : history.loadingPast
+                        ? `Loading the vocabulary as of ${fullTimestamp(history.selected.time)}…`
+                        : `Read-only. This is the vocabulary as of ${fullTimestamp(history.past?.time ?? history.selected.time)}.`}
+                  </span>
+                  {changesShown && (
+                    <SegmentedControl
+                      label="View"
+                      value={historyParam.view}
+                      onChange={historyParam.setView}
+                      options={[
+                        { value: 'changes', label: 'Changes' },
+                        { value: 'document', label: 'Vocabulary' },
+                      ]}
+                    />
+                  )}
+                </div>
               </Notice>
             )}
           </div>
         )}
 
-        {!isNewVocabulary && !isEditing && (
+        {!isNewVocabulary && showChanges && (
+          <VocabHistoryChanges
+            client={client}
+            vocabularyId={vocabularyId}
+            entry={history.selected}
+            past={history.loadingPast ? null : history.past}
+          />
+        )}
+
+        {!isNewVocabulary && !isEditing && !showChanges && (
           <Tabs value={activeTab} onValueChange={setActiveTab} guard={guardLeavingTab}>
             <TabsList>
               <TabsTrigger value="items" to={tabHref(vocabPath, 'items')}>

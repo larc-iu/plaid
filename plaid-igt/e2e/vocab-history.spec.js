@@ -45,6 +45,12 @@ const openPast = async (page, itemId) => {
   await page.goto(`/#/vocabularies/${vocabId}?item=${itemId}`);
   await page.getByRole('button', { name: 'History', exact: true }).first().click();
   await page.getByText('Add entries').click();
+  // An entry opens on what it changed. The vocabulary as of it is beside that.
+  await expect(page.getByTestId('history-changes')).toBeVisible();
+  await page
+    .getByRole('group', { name: 'View' })
+    .getByRole('button', { name: 'Vocabulary' })
+    .click();
   await expect(page.getByText('Read-only. This is the vocabulary as of')).toBeVisible();
 };
 
