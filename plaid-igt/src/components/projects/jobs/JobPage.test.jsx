@@ -398,6 +398,60 @@ describe('the job page', () => {
     await v.unmount();
   });
 
+  it('lists the targets the job left blank, each linked into the grid, with how many more', async () => {
+    const report = {
+      ...REPORT,
+      documents: [
+        {
+          documentId: 'd1',
+          name: 'Story A',
+          skipped: [],
+          left: [
+            { ref: 's3', sentenceId: 'sen3', begin: null, form: null },
+            { ref: 's3.w2', sentenceId: 'sen3', begin: 14, form: 'kata' },
+          ],
+          leftMore: 4,
+        },
+        {
+          documentId: 'd2',
+          name: null,
+          skipped: [],
+          left: [{ ref: 's1.w1', sentenceId: 'sen1', begin: 0, form: 'ra' }],
+          leftMore: 0,
+        },
+        { documentId: 'd3', name: 'Story C', skipped: [], left: [], leftMore: 0 },
+      ],
+    };
+    const job = jobOf({ state: 'done', finishedAt: '2026-11-12T11:00:00Z', report });
+    const v = await mount(clientOf(job));
+    const section = v.container.querySelector('section[aria-label="Report"]');
+    expect(all(section, 'h3').map((h) => h.textContent)).toContain('Left blank');
+    const t = text(section);
+    expect(t).toContain('s3 Translation');
+    expect(t).toContain('s3.w2 kata');
+    expect(t).toContain('And 4 more');
+    expect(byText(section, 'a', 's3.w2').getAttribute('href')).toBe(
+      '/projects/p1/documents/d1?tab=analyze&focusSentence=sen3&focusWord=14',
+    );
+    expect(byText(section, 'a', 's3').getAttribute('href')).toBe(
+      '/projects/p1/documents/d1?tab=analyze&focusSentence=sen3',
+    );
+    // A deleted document's are named and not linked, and one with none is not listed.
+    expect(t).toContain('Deleted document');
+    expect(t).toContain('s1.w1 ra');
+    expect(all(section, 'a').find((a) => a.textContent === 's1.w1')).toBeUndefined();
+    expect(t).not.toContain('Story C');
+    await v.unmount();
+  });
+
+  it('draws no Left blank section for a job that left nothing', async () => {
+    const job = jobOf({ state: 'done', finishedAt: '2026-11-12T11:00:00Z', report: REPORT });
+    const v = await mount(clientOf(job));
+    const section = v.container.querySelector('section[aria-label="Report"]');
+    expect(all(section, 'h3').map((h) => h.textContent)).not.toContain('Left blank');
+    await v.unmount();
+  });
+
   it('words every reason a form is left inconsistent', async () => {
     const reasons = {
       'people-differ': 'People analyzed it in more than one way',

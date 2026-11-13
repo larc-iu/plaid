@@ -5,8 +5,9 @@ import { APP_ROUTES } from '@/appRoutes.js';
 import { HARMONIZE_BY_TEXT, HARMONIZE_LEFT_TEXT, durationText, skippedText } from './jobText.js';
 
 // A finished job's report (CONTRACT 5.3, as the client hands it over, keys in
-// camelCase): the totals, each document's skipped sentences, what harmonize
-// changed and left, and the entries the job made, deleted or left unlinked.
+// camelCase): the totals, each document's skipped sentences and the targets
+// it left blank, what harmonize changed and left, and the entries the job
+// made, deleted or left unlinked.
 // Every list the worker cut says how many it left out.
 
 const Heading = ({ children }) => <h3 className={`${TYPE.card} mb-2 mt-6`}>{children}</h3>;
@@ -67,6 +68,7 @@ export const JobReport = ({ report, projectId, vocabs = [] }) => {
     ['Waiting for the model', report.pausedForModelS],
   ].filter(([, s]) => s > 0);
   const skipped = (report.documents || []).filter((d) => d.skipped?.length);
+  const blank = (report.documents || []).filter((d) => d.left?.length || d.leftMore > 0);
   const harmonize = report.harmonize || {};
   const entries = report.entries || {};
   const changed = harmonize.changed || [];
@@ -128,6 +130,39 @@ export const JobReport = ({ report, projectId, vocabs = [] }) => {
                 <p className="ml-4 text-muted-foreground">
                   And {d.counts.skippedMore.toLocaleString()} more
                 </p>
+              )}
+            </div>
+          ))}
+        </>
+      )}
+
+      {blank.length > 0 && (
+        <>
+          <Heading>Left blank</Heading>
+          {blank.map((d) => (
+            <div key={d.documentId} className="mb-3 text-sm">
+              <p className="font-medium">{d.name ?? 'Deleted document'}</p>
+              <ul className="ml-4 list-disc">
+                {(d.left || []).map((l) => (
+                  <li key={`${l.sentenceId} ${l.ref}`}>
+                    {d.name && l.sentenceId ? (
+                      <Link
+                        className="underline"
+                        to={APP_ROUTES.sentence(projectId, d.documentId, l.sentenceId, {
+                          word: l.begin ?? undefined,
+                        })}
+                      >
+                        {l.ref}
+                      </Link>
+                    ) : (
+                      l.ref
+                    )}{' '}
+                    <span className="text-muted-foreground">{l.form ?? 'Translation'}</span>
+                  </li>
+                ))}
+              </ul>
+              {d.leftMore > 0 && (
+                <p className="ml-4 text-muted-foreground">And {d.leftMore.toLocaleString()} more</p>
               )}
             </div>
           ))}

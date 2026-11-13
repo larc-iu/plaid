@@ -86,6 +86,19 @@ def mark_form(sentence_id: str) -> str:
     return RECORD_FORM + sentence_id
 
 
+def mark_text(counts: Dict[str, int], document_id: str, left: List[Dict[str, Any]]) -> str:
+    """A sentence record's analysis: its counts, its document, and the
+    targets the job left blank in it (``left``), as many as a decision's
+    analysis holds (``JOB_ANALYSIS_MAX_CHARS``). The rest are counted and not
+    listed: the counts say how many there were."""
+    left = list(left)
+    while True:
+        text = canonical({'counts': counts, 'document': document_id, 'left': left})
+        if len(text) <= JOB_ANALYSIS_MAX_CHARS or not left:
+            return text
+        left.pop()
+
+
 def gloss_label(tasks) -> str:
     order = ('translate', 'gloss', 'link')
     return 'Assistant job: ' + LABELS[tuple(t for t in order if t in tasks)]
@@ -1285,6 +1298,7 @@ class IgtRunner:
         ``left`` or None), and the decisions of the words written."""
         counts = Counter()
         decisions: Dict[Tuple[str, str], Dict[str, Any]] = {}
+        left: List[Dict[str, Any]] = []
         for w in words:
             if job_owned(w, self.job.id):
                 counts['words'] += 1
@@ -1301,11 +1315,14 @@ class IgtRunner:
                 slot['count'] += 1
             elif word_target(w):
                 counts['left'] += 1
+                left.append({'ref': f's{s.index}.w{w.index}', 'begin': w.begin, 'form': w.surface})
         if translation:
             counts[translation] += 1
+            if translation == 'left':
+                left.append({'ref': f's{s.index}', 'begin': None, 'form': None})
         if counts['words'] or translation in ('translations', 'refreshed'):
             counts['analyzed'] = 1
-        return {'sentence': s.id, 'counts': dict(counts), 'decisions': list(decisions.values())}
+        return {'sentence': s.id, 'counts': dict(counts), 'decisions': list(decisions.values()), 'left': left}
 
     def commit(self, document_id: str, records: List[Dict[str, Any]], fields: Dict[str, Any]) -> None:
         """Store each sentence's record once, then the row.
@@ -1327,7 +1344,7 @@ class IgtRunner:
             for r in fresh:
                 if r['sentence'] in there:
                     continue
-                text = canonical({'counts': r['counts'], 'document': document_id})
+                text = mark_text(r['counts'], document_id, r.get('left') or [])
                 group = r['decisions'] + [{'form': mark_form(r['sentence']), 'key': analysis_key(text),
                                            'analysis': text, 'count': 1, 'document_id': document_id,
                                            'sentence_id': r['sentence']}]
@@ -1772,14 +1789,49 @@ class IgtRunner:
 
     def document_reports(self, job) -> List[Dict[str, Any]]:
         out = []
+        blank = self.left_blank(job)
         for d in job.order:
             row = job.rows.get(d) or {}
             state = row.get('state')
+            counts = row.get('counts') or empty_counts()
+            # What the job could not decide, for people to (CONTRACT, added by
+            # JB): every target of the document's recorded sentences it left
+            # blank, cut as every report list is. A sentence whose record
+            # could not hold its whole list counts the rest as more.
+            listed = blank.get(d) or []
+            left, _ = core_job.cut(listed)
             out.append({'document_id': d, 'name': self.names.get(d) or row.get('name'),
                         'state': state if state in ('done', 'in-use', 'gone') else 'not-reached',
                         'sentences': row.get('sentences'), 'targets': row.get('targets'), 'done': row.get('done'),
-                        'counts': row.get('counts') or empty_counts(), 'skipped': row.get('skipped') or [],
-                        'gloss_group': row.get('gloss_group'), 'harmonize_group': row.get('harmonize_group')})
+                        'counts': counts, 'skipped': row.get('skipped') or [],
+                        'gloss_group': row.get('gloss_group'), 'harmonize_group': row.get('harmonize_group'),
+                        'left': left, 'left_more': max(len(listed), counts.get('left') or 0) - len(left)})
+        return out
+
+    def left_blank(self, job) -> Dict[str, List[Dict[str, Any]]]:
+        """Per document, the targets the job left blank, read from every
+        sentence record the job holds in core (a resumed job's runs before
+        this one included), in document order: ``{ref, sentence_id, begin,
+        form}``, ``begin`` and ``form`` None for a translation. Nothing when
+        the records cannot be read: the report is still written."""
+        try:
+            rows = core_job.through_core(job, job.decisions)
+        except Exception as e:  # noqa: BLE001 - a report without the list rather than none
+            logger.warning('Job %s: the words it left blank could not be read for the report: %s', job.id, e)
+            return {}
+        out: Dict[str, List[Dict[str, Any]]] = {}
+        for r in rows:
+            form = str(r.get('form') or '')
+            if not form.startswith(RECORD_FORM):
+                continue
+            try:
+                record = json.loads(r['analysis'])
+            except (ValueError, TypeError, KeyError):
+                continue
+            for e in record.get('left') or []:
+                out.setdefault(record.get('document'), []).append({**e, 'sentence_id': form[len(RECORD_FORM):]})
+        for listed in out.values():
+            listed.sort(key=lambda e: [int(n) for n in re.findall(r'\d+', e.get('ref') or '')])
         return out
 
 

@@ -214,6 +214,18 @@
  */
 
 /**
+ * A target a job left blank because it could not decide: a word (`ref`
+ * `s3.w2` as the job read it, `begin` its offset, `form` its spelling) or a
+ * sentence's translation (`ref` `s3`, `begin` and `form` null), in the
+ * sentence `sentenceId`.
+ * @typedef {object} JobLeft
+ * @property {string} ref
+ * @property {string} sentenceId
+ * @property {number | null} begin
+ * @property {string | null} form
+ */
+
+/**
  * What a worker sets on a document's row (`jobs.updateDocument`). A field
  * left out is left as it is.
  * @typedef {object} JobDocumentFields
@@ -247,10 +259,11 @@
  * @property {number | null} pausedForModelS
  * @property {"without-worker" | null} stopped
  * @property {Record<string, number>} totals
- * @property {Array<{documentId: string, name: string | null, state: string, sentences: number | null, targets: number | null, done: number | null, counts: Record<string, number>, skipped: JobSkipped[], glossGroup: string | null, harmonizeGroup: string | null}>} documents
+ * @property {Array<{documentId: string, name: string | null, state: string, sentences: number | null, targets: number | null, done: number | null, counts: Record<string, number>, skipped: JobSkipped[], glossGroup: string | null, harmonizeGroup: string | null, left?: JobLeft[], leftMore?: number}>} documents
  * @property {{changed: object[], left: object[], changedMore: number, leftMore: number}} harmonize
  * @property {{created: object[], deleted: object[], unlinked: object[], createdMore: number, deletedMore: number, unlinkedMore: number, lexicons: string[], proposed?: Array<{lexicon: string, form: string, gloss: string | null}>, proposedMore?: number}} entries
  *   `proposed`: entries the model staged that nothing linked, never created (absent from a report core writes).
+ *   A document's `left` and `leftMore`: the targets the job left blank (absent from a report core writes).
  */
 
 /**
