@@ -1783,16 +1783,21 @@ class IgtRunner:
         is the job's own, and a sentence recorded is not recorded again."""
         job = self.job
         self.gate(project, document_id)
-        out = self.excluded(document_id)
-        settled = {s.id for s in part if s.id in out}
-        if settled:
-            # What this piece staged in a sentence the job wrote in and did
-            # not record is that earlier write's: it landed (recorded now) or
-            # was cut off (skipped), and is not written again.
+        # A sentence of the piece the job has written in already (a write of
+        # this piece that landed before a crash or a passing error, settled
+        # now: recorded, or skipped as interrupted) leaves the piece, and
+        # what the piece staged there is not written again. A stretch's or
+        # a document piece's sentences never hold one: the walk leaves them
+        # out. Other sentences the job finished leave the piece too, and
+        # what was staged there goes to the rule like any op outside it.
+        written = set(self.writing.get(document_id) or ()) - (self.unsent.get(document_id) or set())
+        again = {s.id for s in part if s.id in written}
+        if again:
             from .jobapply import token_of
             where = Stretch(doc, project, [], job.id)
-            ops = [o for o in ops if getattr(where.sentence_of(token_of(o)), 'id', None) not in settled]
-            part = [s for s in part if s.id not in settled]
+            ops = [o for o in ops if getattr(where.sentence_of(token_of(o)), 'id', None) not in again]
+        out = self.excluded(document_id)
+        part = [s for s in part if s.id not in out]
         st = Stretch(doc, project, part, job.id, self.known_words(document_id))
         row = job.rows.get(document_id) or {}
         group = row.get('gloss_group')
