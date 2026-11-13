@@ -122,25 +122,8 @@ def test_a_stop_before_the_entries_pass_deletes_nothing(monkeypatch):
     r.harmonize = lambda j: (_stop(client, j), {'changed': [], 'left': []})[1]
     report = _ended_cancelled(client, job, run_job(job, r))
     assert not [k for k, _ in client.calls if k == 'vocab_items.delete']
-    assert report['entries']['deleted'] == []
     assert {e['id'] for e in report['entries']['created']} >= {'e-linked', 'e-unlinked'}, \
         'the report still lists the entries the job made'
-
-
-def test_a_stop_during_the_entries_pass_deletes_nothing(monkeypatch):
-    from test_job_entries import _entries_job
-    client, job = _entries_job(maintainer=True)
-    job.status['phase'] = 'harmonizing'
-    r = runner(job)
-    real = r.nothing_hangs_on
-
-    def hangs(*a, **kw):
-        _stop(client, job)
-        return real(*a, **kw)
-    r.nothing_hangs_on = hangs
-    report = _ended_cancelled(client, job, run_job(job, r))
-    assert not [k for k, _ in client.calls if k == 'vocab_items.delete']
-    assert report['entries']['deleted'] == []
 
 
 def test_a_done_refused_because_a_stop_came_last_ends_the_job_cancelled(monkeypatch):

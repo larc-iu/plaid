@@ -1,7 +1,9 @@
 """The entries a job makes (SPEC 7.2, 7.5): none where one fits, never in a
-borrowed lexicon, always a machine draft, and after the job only an unlinked
-draft of its own is deleted, and only when its starter maintains the
-lexicon's home."""
+borrowed lexicon, always a machine draft, and after the job none is deleted:
+an entry of the job with no links is listed for a person to delete (the
+lead's ruling on REV-JG2-1, a job deletes nothing)."""
+
+import pytest
 
 from job_fixtures import JobClient, Model, call, document, job_project, reply, runner, start, stamp, use
 
@@ -94,88 +96,41 @@ def _entries_job(maintainer, lexicon=None, ref_field=False):
     return client, job
 
 
-def test_the_entries_pass_deletes_an_unlinked_draft_of_its_own_for_a_maintainer():
-    client, job = _entries_job(maintainer=True)
+def _no_delete(client):
+    """No call of the job's deletes anything, and nothing is executed as a
+    plan by the entries pass."""
+    return not [k for k, _ in client.calls if 'delete' in k]
+
+
+@pytest.mark.parametrize('maintainer', [True, False])
+def test_the_entries_pass_deletes_nothing_and_lists_each_entry_with_no_links(maintainer):
+    """A job deletes nothing (the lead's ruling on REV-JG2-1): an entry the
+    job created that has no link is left as it is and listed, whoever
+    started the job."""
+    client, job = _entries_job(maintainer=maintainer)
     out = runner(job).entries(job)
-    deleted = [p for k, p in client.calls if k == 'vocab_items.delete']
-    assert len(deleted) == 1 and 'e-unlinked' in str(deleted), deleted
-    assert [e['id'] for e in out['deleted']] == ['e-unlinked']
-    assert out['unlinked'] == []
-    assert {e['id'] for e in out['created']} == {'e-linked', 'e-reviewed'}
-    tags = [t for t in client.operation_tags if t['kind'] == 'job']
-    assert tags == [{'kind': 'job', 'ref': 'job:J9/pass:entries'}]
+    assert _no_delete(client), [k for k, _ in client.calls if 'delete' in k]
+    assert not [t for t in client.operation_tags if t['kind'] == 'job'], 'the pass writes nothing'
+    assert 'deleted' not in out
+    assert [e['id'] for e in out['unlinked']] == ['e-unlinked', 'e-reviewed']
+    assert {e['id'] for e in out['created']} == {'e-unlinked', 'e-linked', 'e-reviewed'}
+    assert all(e['lexicon'] == 'v1' for e in out['unlinked'])
 
 
-def test_the_entries_pass_lists_the_draft_for_a_writer_and_deletes_nothing():
-    client, job = _entries_job(maintainer=False)
-    out = runner(job).entries(job)
-    assert not [k for k, _ in client.calls if k == 'vocab_items.delete']
-    assert [e['id'] for e in out['unlinked']] == ['e-unlinked'] and out['deleted'] == []
-
-
-# --- what hangs on a draft keeps it (REV-J-B S2-1) ------------------------------
-
-def _hanging_job(extra_items=(), audit=None, comments=None, maintainer=True, ref_field=False):
-    """A maintainer's job J9 whose draft "aa" has no link, with ``extra_items``
-    beside it in the lexicon, the vocabulary's History of the draft
-    (``audit``, entries of {ref}) and comments on its entries."""
-    lexicon = _lexicon('J9')
-    lexicon['items'] = [lexicon['items'][0]] + list(extra_items)
-    client, job = _entries_job(maintainer, lexicon=lexicon, ref_field=ref_field)
-    client.vocab_audit[('v1', 'e-unlinked')] = list(audit or [{'id': 'a1', 'ref': 'job:J9/doc:d1/pass:gloss'}])
-    client.vocab_comments = {'v1': list(comments or [])}
-    return client, job
-
-
-def _deleted(client):
-    return [p for k, p in client.calls if k == 'vocab_items.delete']
-
-
-def test_a_draft_a_person_put_a_sense_under_is_kept_and_listed():
-    sense = {'id': 'e-sense', 'form': 'aa', 'metadata': {'gloss': 'AA2', 'parent': 'e-unlinked'}}
-    client, job = _hanging_job([sense])
-    out = runner(job).entries(job)
-    assert not _deleted(client) and out['deleted'] == []
-    assert [e['id'] for e in out['unlinked']] == ['e-unlinked']
-
-
-def test_a_draft_another_entry_refers_to_is_kept():
-    referring = {'id': 'e-ref', 'form': 'zz', 'metadata': {'gloss': 'ZZ', 'variantOf': 'e-unlinked'}}
-    client, job = _hanging_job([referring], ref_field=True)
-    out = runner(job).entries(job)
-    assert not _deleted(client) and out['deleted'] == []
-
-
-def test_a_draft_someone_else_changed_is_kept():
-    client, job = _hanging_job(audit=[{'id': 'a1', 'ref': 'job:J9/doc:d1/pass:gloss'},
-                                      {'id': 'a2', 'ref': None, 'kind': 'edit'}])
-    out = runner(job).entries(job)
-    assert not _deleted(client) and out['deleted'] == []
-
-
-def test_a_draft_with_a_comment_is_kept():
-    client, job = _hanging_job(comments=[{'id': 'c1', 'entity_type': 'vocab-item', 'entity_id': 'e-unlinked',
-                                          'body': 'Is this right?'}])
-    out = runner(job).entries(job)
-    assert not _deleted(client) and out['deleted'] == []
-
-
-def test_a_draft_with_nothing_on_it_is_deleted_through_the_apps_delete_rules():
-    client, job = _hanging_job()
-    staged = []
-    from plaid_agent.igt import job as igt_job
-    real = igt_job.execute_plan
-
-    def execute(c, ops, **kw):
-        staged.extend(ops)
-        return real(c, ops, **kw)
-    igt_job.execute_plan = execute
-    try:
-        out = runner(job).entries(job)
-    finally:
-        igt_job.execute_plan = real
-    assert [o['kind'] for o in staged] == ['delete_entry'] and staged[0]['item_id'] == 'e-unlinked'
-    assert [e['id'] for e in out['deleted']] == ['e-unlinked']
+@pytest.mark.parametrize('maintainer', [True, False])
+def test_a_job_ending_with_a_draft_of_its_own_with_no_links_deletes_nothing(maintainer):
+    """The end of a job (harmonize, the entries pass, the report) with a
+    draft of its own nothing links: the draft stays, no delete call of any
+    kind is made, and the report lists it with no links."""
+    from plaid_agent.core.job import run_job
+    client, job = _entries_job(maintainer=maintainer)
+    job.status['phase'] = 'harmonizing'
+    finished = run_job(job, runner(job))
+    assert finished['state'] == 'done'
+    assert _no_delete(client), [k for k, _ in client.calls if 'delete' in k]
+    entries = finished['report']['entries']
+    assert 'deleted' not in entries
+    assert [e['id'] for e in entries['unlinked']] == ['e-unlinked', 'e-reviewed']
 
 
 def _proposed_creates(report):

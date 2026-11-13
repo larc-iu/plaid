@@ -9,6 +9,5 @@
   "harmonize.changed": "Analyses made consistent",
   "harmonize.left": "Forms left inconsistent",
   "entries.created": "Entries created",
-  "entries.deleted": "Entries deleted as unlinked",
-  "entries.unlinked": "Machine drafts with no links"
+  "entries.unlinked": "Entries with no links"
 }

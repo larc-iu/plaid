@@ -55,7 +55,7 @@ from .plan import PlanOutOfDate, check_entries, execute_plan
 from .project import IgtProject, Sentence, Word, is_virtual, load_project, render_sentence
 from .prompt import JOB_SYSTEM, build_job_prompt
 from .trace import TRACER
-from .vocab import ROLE_GLOSS, ROLE_STATUS, references_to
+from .vocab import ROLE_GLOSS, ROLE_STATUS
 from .workspace import Workspace
 
 logger = logging.getLogger(__name__)
@@ -67,7 +67,6 @@ MACHINE_STATUS = 'machine'
 #: How many words of its instructions name a job in History (CONTRACT, added by JG).
 LABEL_WORDS = 6
 HARMONIZE_LABEL = 'Assistant job: analyses made consistent'
-ENTRIES_LABEL = 'Assistant job: delete unlinked machine drafts'
 
 
 #: The form of a sentence's record among the job's decisions: a space, then
@@ -772,13 +771,14 @@ def with_earlier(earlier: List[Dict[str, Any]], report: Dict[str, Any]) -> Dict[
     return {**report, 'changed': [by_form[f] for f in sorted(by_form)]}
 
 
-def entries_part(created, deleted, unlinked) -> Dict[str, Any]:
-    """The report's entries part (CONTRACT 5.3), its three lists uncut, with
+def entries_part(created, unlinked) -> Dict[str, Any]:
+    """The report's entries part (CONTRACT 5.3), its two lists uncut (the
+    entries the job created, and those of them with no links), with
     ``lexicons``: every lexicon the job created an entry in, in the order
     first met, so the job page links each one's machine drafts (J-INT). An
     entry the model staged and the job did not create is one of the job's
     proposed changes (the apply rule)."""
-    return {'created': created, 'deleted': deleted, 'unlinked': unlinked,
+    return {'created': created, 'unlinked': unlinked,
             'lexicons': list(dict.fromkeys(e['lexicon'] for e in created))}
 
 
@@ -787,7 +787,7 @@ class IgtRunner:
 
     WORK_PHASE = WORK_PHASE
     #: The entries part of a job that never reached its entries.
-    NO_ENTRIES = entries_part([], [], [])
+    NO_ENTRIES = entries_part([], [])
 
     def __init__(self, job, cfg: ModelConfig, trace_dir: Optional[str] = None, count=None,
                  write_summary: bool = True):
@@ -2872,99 +2872,38 @@ class IgtRunner:
 
     # --- the entries pass (SPEC 7.5) ------------------------------------------------------
 
-    def entries(self, job, delete: bool = True) -> Dict[str, Any]:
-        """The entries this job made, after the job's last write: those it
-        created, its unlinked drafts deleted (SPEC 7.5) and those left. With
-        ``delete`` False (a job that stopped) nothing is deleted: the entries
-        are only read for the report."""
+    def entries(self, job) -> Dict[str, Any]:
+        """The entries this job created, read after its last write, and among
+        them those nothing links (``unlinked``). A job deletes nothing (the
+        lead's ruling on REV-JG2-1): an entry of the job with no links is
+        left as it is, listed for a person to delete from the Entries
+        screen's machine drafts or in a conversation about the job. Reads
+        only, so a stopped job reports its entries the same way."""
         project = self.project()
-        client = job.client()
-        ws = Workspace(client, project)
-        maintains = job.starter in (project.roles.get('maintainers') or [])
-        created, deleted, unlinked = [], [], []
-        doomed = []
+        ws = Workspace(job.client(), project)
+        created, unlinked = [], []
         for v in project.vocabs:
             if v.get('borrowed'):
                 continue
-            status = IgtProject.lexicon_field(v, ROLE_STATUS)
             gloss = IgtProject.lexicon_field(v, ROLE_GLOSS)
-            items = ws.lexicon(v)
-            comments = None
-            for it in items:
+            for it in ws.lexicon(v):
                 md = it.get('metadata') or {}
                 if _job_of(md) != job.id:
                     continue
                 entry = {'id': it['id'], 'lexicon': v['id'], 'form': it.get('form'),
                          'gloss': md.get(gloss) if gloss else None}
-                if not status or md.get(status) != MACHINE_STATUS or self.linked(ws, it['id']):
-                    created.append(entry)
-                    continue
-                if comments is None:
-                    comments = {c.get('entity_id') for c in client.comments.list_in_vocab(v['id']) or []}
-                if delete and maintains and self.nothing_hangs_on(client, v, items, it, comments):
-                    doomed.append(entry)
-                else:
-                    created.append(entry)
+                created.append(entry)
+                if not self.linked(ws, it['id']):
                     unlinked.append(entry)
-        if doomed:
-            job.check()
-            kept = self.delete_entries(client, project, doomed)
-            for e in doomed:
-                if e['id'] in kept:
-                    created.append(e)
-                    unlinked.append(e)
-                else:
-                    deleted.append({k: e[k] for k in ('id', 'form', 'gloss')})
-        return entries_part(created, deleted, unlinked)
+        return entries_part(created, unlinked)
 
     @staticmethod
     def linked(ws: Workspace, item_id: str) -> bool:
         """Whether anything links to entry ``item_id``: one query, asked of
-        the job's drafts alone, in place of a walk of every document of the
+        the job's entries alone, in place of a walk of every document of the
         project (REV-J-B S3-10)."""
         return bool(ws.corpus.entities([['vocab', '?v', {}], ['=', '?v.id', item_id], ['vocab-link', '?t', '?v']],
                                        ['?t'], 1))
-
-    def nothing_hangs_on(self, client, v: Dict[str, Any], items: List[Dict[str, Any]], it: Dict[str, Any],
-                         commented: set) -> bool:
-        """Whether nothing at all hangs on the job's draft ``it`` that the
-        job did not make (REV-J-B S2-1): the entry is the job's own
-        unverified work (:func:`job_piece`), no sense sits under it, no entry
-        refers to it, nobody commented on it, and every change in its History
-        is this job's. Links are counted by the caller."""
-        if not job_piece(it.get('metadata'), self.job.id) or it['id'] in commented:
-            return False
-        if references_to(items, v.get('fields'), it['id']):
-            return False
-        mine = f'job:{self.job.id}/'
-        return all(str(e.get('ref') or '').startswith(mine)
-                   for e in client.vocab_layers.audit(v['id'], item_id=it['id']) or [])
-
-    def delete_entries(self, client, project: IgtProject, doomed: List[Dict[str, Any]]) -> set:
-        """Delete the job's unlinked drafts ``doomed`` as the app deletes an
-        entry: through the plan's ``delete_entry`` (its links taken with it
-        and claimed by count, its senses freed and the references to it
-        cleared in the same operation, refused when anything changed since
-        it was read), as one History entry with no document. The ids kept."""
-        ws = Workspace(client, project)
-        kept = set()
-        for e in doomed:
-            if isinstance(toolkit.call_tool(ws, 'delete_entry', {'entry_id': e['id']}), Refusal):
-                kept.add(e['id'])
-        if not ws.ops:
-            return kept
-        seed_id = uuid7()
-        try:
-            with client.operation(ENTRIES_LABEL, kind='job', ref=f'job:{self.job.id}/pass:entries',
-                                  keys={'seed': seed_id, 'stamps': {}}):
-                execute_plan(client, list(ws.ops), source=self.source, label=ENTRIES_LABEL, project=project,
-                             stamp_mode='machine', detail=self.detail, seed=seed_id)
-        except (PlanError, PlanOutOfDate) as err:
-            # Refused, or out of date before anything was written (a draft
-            # deleted or linked since it was staged, REV-J-B3 B3-3).
-            logger.warning('Job %s: its unlinked drafts were kept: %s', self.job.id, err)
-            return {e['id'] for e in doomed}
-        return kept
 
     # --- the report (SPEC 9) --------------------------------------------------------------
 

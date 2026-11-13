@@ -9,7 +9,8 @@ import SECTIONS from './jobSections.json';
 // camelCase): the summary the job wrote, the totals, the changes it proposed,
 // each piece's note, the tables its code made, each document's skipped
 // sentences and the targets it left blank, what harmonize changed and left,
-// and the entries the job made, deleted or left unlinked.
+// the entries the job made, and those of them nothing links (a job deletes
+// nothing: a person deletes them).
 // Every list the worker cut says how many it left out. A section's heading is
 // jobSections.json's, which the assistant names sections by (read_job).
 
@@ -214,11 +215,10 @@ export const JobReport = ({ report, projectId, vocabs = [] }) => {
   // The project's lexicons the job created entries in, in the project's order.
   const madeIn = new Set(entries.lexicons || []);
   const draftLexicons = vocabs.filter((v) => madeIn.has(v.id));
-  const entryLists = [
-    ['Created', entries.created, entries.createdMore],
-    ['Deleted as unlinked', entries.deleted, entries.deletedMore],
-    ['Machine drafts with no links', entries.unlinked, entries.unlinkedMore],
-  ].filter(([, list = [], more = 0]) => list.length || more);
+  const entryLists = [['Created', entries.created, entries.createdMore]].filter(
+    ([, list = [], more = 0]) => list.length || more,
+  );
+  const unlinked = entries.unlinked || [];
 
   return (
     <section aria-label="Report">
@@ -413,6 +413,23 @@ export const JobReport = ({ report, projectId, vocabs = [] }) => {
               ))}
             </ul>
           )}
+        </>
+      )}
+
+      {(unlinked.length > 0 || entries.unlinkedMore > 0) && (
+        <>
+          <Heading section="entries.unlinked" />
+          <ul className="ml-4 list-disc text-sm">
+            {unlinked.map((e) => (
+              <li key={e.id}>
+                <Link className="underline" to={`/vocabularies/${e.lexicon}?item=${e.id}`}>
+                  {e.form}
+                  {e.gloss ? ` ‘${e.gloss}’` : ''}
+                </Link>
+              </li>
+            ))}
+          </ul>
+          <More n={entries.unlinkedMore || 0} noun="entry" />
         </>
       )}
     </section>

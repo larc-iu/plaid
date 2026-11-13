@@ -160,11 +160,9 @@ const REPORT = {
   },
   entries: {
     created: [{ id: 'e1', lexicon: 'v1', form: 'ka', gloss: 'go' }],
-    deleted: [],
     unlinked: [{ id: 'e2', lexicon: 'v1', form: 'ra', gloss: 'eat' }],
     createdMore: 3,
-    deletedMore: 0,
-    unlinkedMore: 0,
+    unlinkedMore: 2,
     lexicons: ['v1', 'v3'],
   },
 };
@@ -469,9 +467,12 @@ describe('the job page', () => {
     // Entries, each list with its own cut, and the lexicon's machine drafts.
     expect(t).toContain('ka ‘go’');
     expect(t).toContain('And 3 more entries.');
-    expect(t).toContain('Machine drafts with no links');
-    expect(t).toContain('ra ‘eat’');
-    expect(t).not.toContain('Deleted as unlinked');
+    // The job's entries nothing links, a section of their own, each linked
+    // to the entry: the job deletes none (REV-JG2-1).
+    expect(all(report, 'h3').map((h) => h.textContent)).toContain('Entries with no links');
+    expect(byText(report, 'a', 'ra ‘eat’').getAttribute('href')).toBe('/vocabularies/v1?item=e2');
+    expect(t).toContain('And 2 more entries.');
+    expect(t).not.toContain('Deleted');
     // The prose the job wrote, above the sections.
     expect(text(report.querySelector('[data-testid="job-summary"]'))).toBe(
       'The job glossed Story A and proposed one change.',
@@ -597,15 +598,13 @@ describe('the job page', () => {
     await v.unmount();
   });
 
-  it('draws no Entries section for a linking job that made, deleted and left no entry', async () => {
+  it('draws no Entries section for a linking job that made no entry', async () => {
     const report = {
       ...REPORT,
       entries: {
         created: [],
-        deleted: [],
         unlinked: [],
         createdMore: 0,
-        deletedMore: 0,
         unlinkedMore: 0,
         lexicons: [],
       },
@@ -614,6 +613,7 @@ describe('the job page', () => {
     const v = await mount(clientOf(job));
     const section = v.container.querySelector('section[aria-label="Report"]');
     expect(all(section, 'h3').map((h) => h.textContent)).not.toContain('Entries');
+    expect(all(section, 'h3').map((h) => h.textContent)).not.toContain('Entries with no links');
     await v.unmount();
   });
 
@@ -625,7 +625,7 @@ describe('the job page', () => {
       summaryFailed: true,
       totals: { ...REPORT.totals, words: 0, links: 0, entries: 0 },
       harmonize: { changed: [], left: [], changedMore: 0, leftMore: 0 },
-      entries: { created: [], deleted: [], unlinked: [], lexicons: [] },
+      entries: { created: [], unlinked: [], lexicons: [] },
     };
     const job = jobOf({ state: 'cancelled', report });
     const v = await mount(clientOf(job));

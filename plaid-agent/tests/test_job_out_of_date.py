@@ -185,24 +185,6 @@ def test_harmonize_lists_a_documents_words_refused_when_something_went_in_the_wr
     assert {'form': 'ka', 'reason': 'refused', 'analyses': [{'analysis': 'ka ‘come’', 'count': 1}]} in out['left']
 
 
-def test_the_entries_pass_keeps_its_drafts_when_one_went_since_staging(monkeypatch):
-    """A person deletes the draft (or links it from a project the job
-    cannot open) between the staging of the delete and its write: the plan
-    is refused as out of date before anything is written, and the drafts
-    are kept and listed."""
-    from test_job_entries import _hanging_job
-    client, job = _hanging_job()
-    real = igt_job.execute_plan
-
-    def execute(c, ops, **kw):
-        if kw.get('label') == igt_job.ENTRIES_LABEL:
-            raise PlanOutOfDate(['the lexicon entry "aa" no longer exists'])
-        return real(c, ops, **kw)
-    monkeypatch.setattr(igt_job, 'execute_plan', execute)
-    out = runner(job).entries(job)
-    assert out['deleted'] == [] and [e['id'] for e in out['unlinked']] == ['e-unlinked']
-
-
 def test_harmonize_taken_again_after_core_trouble_reports_what_it_wrote_the_first_time(monkeypatch):
     """Core fails a call after harmonize rewrote Story 1, and harmonize is
     run again from its start (``through_core``). Story 1's rewrite is still

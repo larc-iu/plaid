@@ -606,12 +606,12 @@ def through_core(job: Job, step: Callable[[], Any], gave_up: Optional[Callable[[
 def _stopped_parts(job: Job, runner, harmonize, entries):
     """What a job that stopped early reports of harmonize and of its
     entries: what harmonize wrote before the stop (``runner.harmonize_done``),
-    and the entries the job made, read and never deleted. Reads only, and a
+    and the entries the job made, read as at any end. Reads only, and a
     read that fails leaves its part empty."""
     harmonize = harmonize or getattr(runner, 'harmonize_done', None) or {}
     if not entries and job.status.get('phase') not in (None, CHECKING):
         try:
-            entries = runner.entries(job, delete=False)
+            entries = runner.entries(job)
         except Exception as e:  # noqa: BLE001 - a report without its entries rather than none
             logger.warning('Job %s: its entries could not be read for the report: %s', job.id, e)
             entries = {}
@@ -691,7 +691,7 @@ def _report_cuts(report: Dict[str, Any]):
     for d in reversed(report.get('documents') or []):
         yield d, 'left', ('left_more',)
         yield d, 'skipped', ('skipped',)
-    for part, keys in (('harmonize', ('changed', 'left')), ('entries', ('created', 'deleted', 'unlinked'))):
+    for part, keys in (('harmonize', ('changed', 'left')), ('entries', ('created', 'unlinked'))):
         for key in keys:
             yield report.get(part) or {}, key, (f'{key}_more',)
     yield report, 'documents', ('documents_more',)
@@ -779,11 +779,11 @@ def build_report(job: Job, state: str, reason: Optional[str], documents: List[Di
     changed, changed_more = cut(harmonize.get('changed') or [])
     left, left_more = cut(harmonize.get('left') or [])
     lists = {}
-    for name in ('created', 'deleted', 'unlinked'):
+    for name in ('created', 'unlinked'):
         lists[name], lists[f'{name}_more'] = cut(entries.get(name) or [])
     # The app's own keys of the part (what the job page links to), as the
     # app gave them, taken before the cut.
-    lists.update({k: v for k, v in entries.items() if k not in ('created', 'deleted', 'unlinked')})
+    lists.update({k: v for k, v in entries.items() if k not in ('created', 'unlinked')})
     return {
         'state': state, 'reason': reason, 'instructions': job.instructions, 'started_by': job.starter,
         'model': job.model, 'started_at': job.started_at,

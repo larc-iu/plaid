@@ -42,7 +42,7 @@ def test_the_report_has_the_contracts_shape_and_cuts_its_lists():
                for i in range(JOB_REPORT_LIST_MAX + 3)]
     report = build_report(job, 'done', None, runner(job).document_reports(job),
                           {'changed': [{'form': 'ka', 'to': 'ka ‘go’', 'by': 'majority', 'from': []}], 'left': []},
-                          entries_part(created, [], []))
+                          entries_part(created, []))
     assert set(report) == KEYS
     assert report['instructions'] == 'Gloss loans whole.' and 'tasks' not in report
     assert report['stopped'] is None
@@ -148,7 +148,7 @@ def _huge_report():
                               'from': [{'analysis': long, 'count': 2, 'documents': ['d1']}]}] * 500,
                  'left': [{'form': long, 'reason': 'touched', 'analyses': [{'analysis': long, 'count': 1}]}] * 500}
     entries = {'created': [{'id': 'e', 'lexicon': 'v1', 'form': long, 'gloss': long}] * 500,
-               'deleted': [], 'unlinked': [], 'lexicons': ['v1']}
+               'unlinked': [], 'lexicons': ['v1']}
     report = build_report(job, 'done', None, docs, harmonize, entries)
     report.update({'proposed': [dict(row) for _ in range(500)], 'proposed_more': 0,
                    'notes': [{'document': 'd1', 'name': long, 'sentences': 's1', 'note': 'я' * 400}] * 500,
@@ -184,7 +184,7 @@ def test_a_report_that_fits_is_left_whole():
     from plaid_agent.core.job import fit_report
     client, job = _job()
     report = build_report(job, 'done', None, runner(job).document_reports(job), {'changed': [], 'left': []},
-                          entries_part([], [], []))
+                          entries_part([], []))
     report.update({'tables': [{'title': 't', 'columns': ['a'], 'rows': [['1']], 'more': 0}], 'notes': [],
                    'proposed': []})
     whole = __import__('copy').deepcopy(report)
