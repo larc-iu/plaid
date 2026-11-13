@@ -114,6 +114,35 @@ def answers(url: str) -> bool:
     return True
 
 
+def listens(pid: int, port: int) -> bool:
+    """Whether process ``pid`` holds the socket listening on ``port``, read
+    from Linux's /proc. Where there is no /proc this cannot be told, and a
+    server answering on the port is taken as the one started."""
+    if not Path('/proc/net/tcp').exists():
+        return True
+    inodes = set()
+    for table in ('/proc/net/tcp', '/proc/net/tcp6'):
+        try:
+            rows = Path(table).read_text().splitlines()[1:]
+        except OSError:
+            continue
+        for row in rows:
+            f = row.split()
+            if f[3] == '0A' and int(f[1].rsplit(':', 1)[1], 16) == port:
+                inodes.add(f'socket:[{f[9]}]')
+    try:
+        fds = os.listdir(f'/proc/{pid}/fd')
+    except OSError:
+        return False
+    for fd in fds:
+        try:
+            if os.readlink(f'/proc/{pid}/fd/{fd}') in inodes:
+                return True
+        except OSError:
+            pass
+    return False
+
+
 def _die_with_parent() -> None:
     """In the child, on Linux: be sent SIGTERM when the process that started
     it ends, however it ends, so a test run that is killed takes its core with
@@ -167,7 +196,16 @@ class PrivateCore:
                 raise RuntimeError(f'the private Plaid core exited ({self.proc.returncode}) before it was ready:\n'
                                    + self.tail())
             if answers(self.url):
-                return
+                if listens(self.proc.pid, self.port):
+                    return
+                # Another process's server answers on the port this core was
+                # handed, so this one cannot bind it.
+                if relaunches < PORT_RELAUNCHES:
+                    relaunches += 1
+                    self._end()
+                    self._launch()
+                    continue
+                raise RuntimeError(f'port {self.port} answers from another process:\n' + self.tail())
             time.sleep(0.5)
         raise RuntimeError(f'the private Plaid core was not ready after {timeout:.0f}s:\n' + self.tail())
 
@@ -177,7 +215,7 @@ class PrivateCore:
         except OSError:
             return ''
 
-    def stop(self) -> None:
+    def _end(self) -> None:
         if self.proc.poll() is None:
             try:
                 os.killpg(self.proc.pid, signal.SIGTERM)
@@ -187,6 +225,9 @@ class PrivateCore:
                 self.proc.wait()
             except ProcessLookupError:
                 pass
+
+    def stop(self) -> None:
+        self._end()
         self.log.close()
         shutil.rmtree(self.dir, ignore_errors=True)
 

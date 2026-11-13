@@ -64,19 +64,60 @@ def free_port() -> int:
         return s.getsockname()[1]
 
 
+def listens(pid: int, port: int) -> bool:
+    """Whether process `pid` holds the socket listening on `port`, read from
+    Linux's /proc. Where there is no /proc this cannot be told, and a server
+    answering on the port is taken as the one started."""
+    if not Path('/proc/net/tcp').exists():
+        return True
+    inodes = set()
+    for table in ('/proc/net/tcp', '/proc/net/tcp6'):
+        try:
+            rows = Path(table).read_text().splitlines()[1:]
+        except OSError:
+            continue
+        for row in rows:
+            f = row.split()
+            if f[3] == '0A' and int(f[1].rsplit(':', 1)[1], 16) == port:
+                inodes.add(f'socket:[{f[9]}]')
+    try:
+        fds = os.listdir(f'/proc/{pid}/fd')
+    except OSError:
+        return False
+    for fd in fds:
+        try:
+            if os.readlink(f'/proc/{pid}/fd/{fd}') in inodes:
+                return True
+        except OSError:
+            pass
+    return False
+
+
+# Launches on a fresh port after the one handed out was taken before the core
+# bound it (another shard's core, most likely).
+PORT_RELAUNCHES = 2
+
+
 class Core:
     """A plaid-core on its own port over the database directory `db_dir`
     (plaid.db plus jwt-secret.txt), its log in `log`. Started in its own
-    process group, so stop() takes exactly what start() made."""
+    process group, so stop() takes exactly what start() made. A port named by
+    the caller is used or the start fails. Otherwise a port taken before the
+    core binds it is left for a fresh one."""
 
     def __init__(self, code: Path, db_dir: Path, log: Path, port: int = None, admin=True):
         self.code, self.db_dir, self.log = code, Path(db_dir), Path(log)
+        self.named_port = port
         self.port = port or free_port()
         self.url = f'http://127.0.0.1:{self.port}'
         self.proc = None
         self.admin = admin
 
-    def start(self, timeout=120):
+    def command(self, cfg: Path) -> list:
+        return ['java', '-Xmx3g', *JAVA_OPTS, '-jar', str(self.code / 'plaid-core/target/plaid.jar'),
+                '--config', str(cfg)]
+
+    def _launch(self):
         cfg = self.db_dir / 'config.toml'
         cfg.write_text(f'[server]\nport = {self.port}\n[logging]\nlevel = "info"\nlibrary_level = "warn"\n'
                        f'[database]\npath = "{self.db_dir / "plaid.db"}"\n'
@@ -85,25 +126,63 @@ class Core:
         env.pop('OPENAI_API_KEY', None)
         if self.admin:
             env.update(PLAID_ADMIN_EMAIL=USERS['A'][0], PLAID_ADMIN_PASSWORD=USERS['A'][1])
+        self.log_from = self.log.stat().st_size if self.log.exists() else 0
         self.proc = subprocess.Popen(
-            ['java', '-Xmx3g', *JAVA_OPTS, '-jar', str(self.code / 'plaid-core/target/plaid.jar'),
-             '--config', str(cfg)],
+            self.command(cfg),
             stdout=open(self.log, 'ab'), stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
             env=env, start_new_session=True, cwd=str(self.db_dir))
+
+    def tail(self) -> str:
+        """This launch's log, its last lines."""
+        try:
+            with open(self.log, 'rb') as f:
+                f.seek(self.log_from)
+                return f.read().decode(errors='replace')[-3000:]
+        except OSError:
+            return ''
+
+    def _answers(self) -> bool:
+        try:
+            req = urllib.request.Request(self.url + '/api/v1/login', data=b'{}', method='POST',
+                                         headers={'content-type': 'application/json'})
+            urllib.request.urlopen(req, timeout=2)
+        except urllib.error.HTTPError:
+            pass
+        except Exception:
+            return False
+        return True
+
+    def _relaunch(self, why):
+        """On a fresh port, or the start fails with `why` when the caller named
+        the port or the relaunches are spent."""
+        self.stop()
+        if self.named_port or self.relaunches >= PORT_RELAUNCHES:
+            raise RuntimeError(f'{why}\n{self.tail()}')
+        self.relaunches += 1
+        self.port = free_port()
+        self.url = f'http://127.0.0.1:{self.port}'
+        self._launch()
+
+    def start(self, timeout=120):
+        """Returns once the core this process started answers on its port.
+        The core must hold the port itself: a server another process runs
+        there is never taken for it."""
+        self.relaunches = 0
+        self._launch()
         deadline = time.time() + timeout
         while time.time() < deadline:
             if self.proc.poll() is not None:
-                raise RuntimeError(f'core exited ({self.proc.returncode}), see {self.log}')
-            try:
-                req = urllib.request.Request(self.url + '/api/v1/login', data=b'{}', method='POST',
-                                             headers={'content-type': 'application/json'})
-                urllib.request.urlopen(req, timeout=2)
-                return self
-            except urllib.error.HTTPError:
-                return self
-            except Exception:
-                time.sleep(0.3)
-        raise RuntimeError(f'core not up after {timeout}s, see {self.log}')
+                if 'Address already in use' in self.tail():
+                    self._relaunch(f'core could not bind port {self.port}, see {self.log}')
+                    continue
+                raise RuntimeError(f'core exited ({self.proc.returncode}), see {self.log}\n{self.tail()}')
+            if self._answers():
+                if listens(self.proc.pid, self.port):
+                    return self
+                self._relaunch(f'port {self.port} answers from another process, see {self.log}')
+                continue
+            time.sleep(0.3)
+        raise RuntimeError(f'core not up after {timeout}s, see {self.log}\n{self.tail()}')
 
     def stop(self, timeout=30):
         if not self.proc or self.proc.poll() is not None:

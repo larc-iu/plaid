@@ -3,8 +3,10 @@ that finds it taken is launched again on a fresh one, so a busy CI runner
 cannot fail the whole live suite (v0.2.0-alpha.31's release run, 2026-10-27).
 A small Python server stands in for the core."""
 
+import http.server
 import socket
 import sys
+import threading
 
 import private_core
 
@@ -57,3 +59,27 @@ def test_a_core_that_fails_for_another_reason_still_raises(monkeypatch):
             raise AssertionError('a core that cannot start must raise')
     finally:
         core.stop()
+
+
+def test_a_port_another_core_answers_on_is_left_for_a_fresh_one(monkeypatch):
+    """Another process's server answers HTTP on the port before this core
+    binds it. The core started here is the one waited for, never that one."""
+    slow = STAND_IN.replace('port = int(', 'import time; time.sleep(1)\nport = int(', 1)
+    other = http.server.ThreadingHTTPServer(('127.0.0.1', 0), http.server.BaseHTTPRequestHandler)
+    threading.Thread(target=other.serve_forever, daemon=True).start()
+    first = other.server_address[1]
+    try:
+        ports = iter([first])
+        real = private_core._free_port
+        monkeypatch.setattr(private_core, '_free_port', lambda: next(ports, None) or real())
+        monkeypatch.setattr(private_core, 'command', lambda config: [sys.executable, '-c', slow, str(config)])
+        core = private_core.PrivateCore()
+        try:
+            core.wait(timeout=30)
+            assert core.port != first
+            assert private_core.listens(core.proc.pid, core.port)
+        finally:
+            core.stop()
+    finally:
+        other.shutdown()
+        other.server_close()
