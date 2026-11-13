@@ -1113,6 +1113,13 @@ class IgtRunner:
         loose = by_doc.pop(None, [])
         if loose:
             by_doc.setdefault(next((d for d in live if d in ws._docs), live[0]), []).extend(loose)
+        # What the piece staged in a document the job does not write in (one
+        # outside the job, or one of its own it has finished) is a proposed
+        # change, listed in the report: the job may not write there (REV-JG-6).
+        from .jobapply import IGNORED_KINDS
+        outside = [self.describe(op, ws._docs[d], project) if d in ws._docs else self.describe_loose(op)
+                   for d in by_doc if d not in live for op in by_doc[d] if op.get('kind') not in IGNORED_KINDS]
+        core_job.through_core(job, lambda: self.record_changes(outside, note))
         for d in live:
             job.check()
             job.set(current_document=d)

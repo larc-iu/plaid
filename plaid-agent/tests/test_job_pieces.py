@@ -214,6 +214,37 @@ def test_a_selection_is_one_piece_whose_writes_land_document_by_document(monkeyp
     assert finished['report']['notes'][0]['note'] == 'Glossed ka in both texts.'
 
 
+@pytest.mark.parametrize('pieces', ['sentences', 'document', 'selection'])
+def test_a_change_in_a_document_outside_the_job_is_proposed_and_listed(monkeypatch, pieces):
+    """REV-JG-6: a piece stages in a document of the project the job does
+    not hold. The job may not write there: the change is a proposed change,
+    listed in the report and counted, whatever the plan cut, and the
+    document is untouched."""
+    docs = _docs(2)
+    client = JobClient(docs)
+    job = start(client, 'Gloss every word nobody analysed.', documents=['d1'], id=J, plan=pieces)
+    written = []
+    real = igt_job.execute_plan
+
+    def execute(c, ops, **kw):
+        written.extend(o.get('word_id') for o in ops)
+        return real(c, ops, **kw)
+    monkeypatch.setattr(igt_job, 'execute_plan', execute)
+
+    def piece(asked, n):
+        if n == 1:
+            return reply(calls=[call(1, 'set_analysis', {'document': 'Story 2', 'ref': 's1.w1',
+                                                         'morphemes': [{'form': 'ka', 'fields': {'Morph Gloss': 'go'}}]})])
+        return reply('Glossed ka in Story 2.')
+    use(monkeypatch, _model(piece=piece))
+    finished = run_job(job, runner(job))
+    report = finished['report']
+    assert 'd2-s1w1' not in written, 'nothing is written outside the job'
+    changes = [(c['document_id'], c['ref'], c['kind']) for c in report['proposed']]
+    assert ('d2', 's1.w1', 'set_analysis') in changes, report['proposed']
+    assert report['totals']['proposed'] >= 1
+
+
 @pytest.mark.skipif(sandbox.available() is not None, reason='the code sandbox is not installed')
 def test_a_selections_code_makes_a_table_kept_as_data_in_the_report(monkeypatch):
     client = JobClient(_docs(2))
