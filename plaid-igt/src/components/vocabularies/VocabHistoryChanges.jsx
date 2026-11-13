@@ -1,21 +1,19 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { Button } from '@ui/components/ui/button';
 import { Loading } from '@ui/components/shared/Loading.jsx';
 import { Notice } from '@ui/components/shared/Notice.jsx';
 import { countOf } from '@ui/lib/plural.js';
 import { TYPE } from '@ui/lib/typeScale.js';
-import { historyHref } from '@ui/hooks/useHistoryParam.js';
+import { documentViewSearch, historyHref } from '@ui/hooks/useHistoryParam.js';
 import { entryChanges, linkCounts } from '@/domain/historyChanges.js';
 import { APP_ROUTES } from '@/appRoutes.js';
 import { EntryChangeList } from '../documents/history/EntryChangeList.jsx';
-import { useChangeRows } from '../documents/history/useChangeRows.js';
+import { CHANGE_ROWS_CEILING, useChangeRows } from '../documents/history/useChangeRows.js';
 
 // How many documents the links list names, of an entry that moved links in
 // more (a merge of a common entry reaches every document of a corpus).
 const LINK_DOCUMENTS_SHOWN = 50;
-
-const STREAMS = [{ key: 'all', opts: {} }];
 
 /**
  * What a History entry of a vocabulary changed, the default view of a whole
@@ -25,41 +23,51 @@ const STREAMS = [{ key: 'all', opts: {} }];
  * link to its own History at this entry. `past` is the vocabulary as of the
  * entry's end (`{time, vocabulary}`, useVocabHistory), which names entries.
  *
- * The rows are the entry's whole read (a link is a document's row, so a
- * vocabulary's own read leaves links out), a page at a time.
+ * Both reads are read whole before anything is drawn (useChangeRows): the
+ * vocabulary's own rows (`?vocab-layer-id=`), its entries and itself, and the
+ * whole entry's for the links, since a link is a document's row and the
+ * vocabulary's read leaves links out. Past CHANGE_ROWS_CEILING rows, the
+ * entries are not drawn (a link to the vocabulary as of the entry instead),
+ * and the links not counted.
  */
 export const VocabHistoryChanges = ({ client, vocabularyId, entry, past }) => {
-  const data = useChangeRows(client, past ? entry.id : null, STREAMS);
-  const rows = useMemo(
-    () => data.rows.all ?? (data.loading ? undefined : []),
-    [data.rows.all, data.loading],
+  const streams = useMemo(
+    () => [
+      { key: 'own', opts: { vocabLayerId: vocabularyId } },
+      { key: 'all', opts: {} },
+    ],
+    [vocabularyId],
   );
+  const data = useChangeRows(client, past ? entry.id : null, streams);
+  const { search } = useLocation();
+  const errors = Object.values(data.errors);
+  const done = !data.reading && !errors.length && !data.over.own;
   const view = useMemo(() => {
-    if (!past || !rows) return null;
+    if (!past || !done) return null;
     const vocabularies = { [vocabularyId]: past.vocabulary };
-    const mine = rows.filter(
-      (r) => r.kind === 'vocab-link' || (r.kind === 'vocab-item' && r.vocabLayer === vocabularyId),
-    );
-    const own = rows.find((r) => r.kind === 'vocab-layer' && r.id === vocabularyId);
+    const own = data.rows.own;
+    const links = data.rows.all.filter((r) => r.kind === 'vocab-link');
+    const mine = [...own.filter((r) => r.kind === 'vocab-item'), ...links];
+    const self = own.find((r) => r.kind === 'vocab-layer' && r.id === vocabularyId);
     const settings = [];
-    if (own?.before && own?.after) {
-      if ((own.before.name ?? '') !== (own.after.name ?? '')) {
+    if (self?.before && self?.after) {
+      if ((self.before.name ?? '') !== (self.after.name ?? '')) {
         settings.push({
           label: 'Name',
-          before: own.before.name ?? '',
-          after: own.after.name ?? '',
+          before: self.before.name ?? '',
+          after: self.after.name ?? '',
         });
       }
-      if (JSON.stringify(own.before.config ?? {}) !== JSON.stringify(own.after.config ?? {})) {
+      if (JSON.stringify(self.before.config ?? {}) !== JSON.stringify(self.after.config ?? {})) {
         settings.push({ label: 'Settings', before: '', after: 'Changed' });
       }
     }
     return {
       entries: entryChanges(mine, vocabularies),
-      links: linkCounts(rows, vocabularyId),
+      links: data.over.all ? null : linkCounts(links, vocabularyId),
       settings,
     };
-  }, [past, rows, vocabularyId]);
+  }, [past, done, data.rows, data.over.all, vocabularyId]);
 
   const shownDocs = useMemo(
     () => (view?.links || []).slice(0, LINK_DOCUMENTS_SHOWN).map((c) => c.documentId),
@@ -67,26 +75,46 @@ export const VocabHistoryChanges = ({ client, vocabularyId, entry, past }) => {
   );
   const docs = useDocumentNames(client, shownDocs);
 
-  if (!view) return <Loading label="Loading changes…" />;
-  const errors = Object.values(data.errors);
-  const linkTotal = view.links.reduce((n, c) => n + c.moved + c.removed + c.made, 0);
-  const nothing = !view.entries.length && !view.links.length && !view.settings.length;
+  if (!past) return <Loading label="Loading changes…" />;
+  if (data.reading) {
+    return <Loading label={`Reading changes, ${data.read.toLocaleString()} so far`} />;
+  }
+  if (errors.length) {
+    return (
+      <div className="flex flex-col gap-2" data-testid="history-changes">
+        {errors.map((e) => (
+          <Notice key={e} tone="error">
+            {e}
+          </Notice>
+        ))}
+      </div>
+    );
+  }
+  if (!view) {
+    return (
+      <div className="flex flex-col items-start gap-2" data-testid="history-changes">
+        <p className="text-sm" data-testid="change-count">
+          More than {CHANGE_ROWS_CEILING.toLocaleString()} changes.
+        </p>
+        <Button asChild variant="outline" size="sm">
+          <Link to={{ search: documentViewSearch(search) }}>Show vocabulary</Link>
+        </Button>
+      </div>
+    );
+  }
+  const links = view.links || [];
+  const linkTotal = links.reduce((n, c) => n + c.moved + c.removed + c.made, 0);
+  const nothing = !view.entries.length && !links.length && !view.settings.length && !!view.links;
 
   return (
     <div className="flex flex-col gap-4" data-testid="history-changes">
-      {errors.map((e) => (
-        <Notice key={e} tone="error">
-          {e}
-        </Notice>
-      ))}
-      {nothing && !data.more ? (
+      {nothing ? (
         <p className="text-sm text-muted-foreground">No changes to show.</p>
       ) : (
         <p className="text-sm" data-testid="change-count">
           {countOf(view.entries.length, 'entry', 'entries')}
           {linkTotal > 0 &&
-            `, ${countOf(linkTotal, 'link')} in ${countOf(view.links.length, 'document')}`}
-          {data.more && ' so far'}
+            `, ${countOf(linkTotal, 'link')} in ${countOf(links.length, 'document')}`}
         </p>
       )}
 
@@ -106,7 +134,16 @@ export const VocabHistoryChanges = ({ client, vocabularyId, entry, past }) => {
 
       {view.entries.length > 0 && <EntryChangeList entries={view.entries} entryId={entry.id} />}
 
-      {view.links.length > 0 && (
+      {!view.links && (
+        <section>
+          <h3 className={`${TYPE.card} mb-2`}>Links</h3>
+          <p className="text-sm text-muted-foreground" data-testid="link-counts">
+            Not counted: more than {CHANGE_ROWS_CEILING.toLocaleString()} changes in documents.
+          </p>
+        </section>
+      )}
+
+      {links.length > 0 && (
         <section>
           <h3 className={`${TYPE.card} mb-2`}>Links</h3>
           <table className="text-sm" data-testid="link-counts">
@@ -119,7 +156,7 @@ export const VocabHistoryChanges = ({ client, vocabularyId, entry, past }) => {
               </tr>
             </thead>
             <tbody>
-              {view.links.slice(0, LINK_DOCUMENTS_SHOWN).map((c) => {
+              {links.slice(0, LINK_DOCUMENTS_SHOWN).map((c) => {
                 const doc = docs[c.documentId];
                 return (
                   <tr key={c.documentId} className="border-t" data-document={c.documentId}>
@@ -144,20 +181,12 @@ export const VocabHistoryChanges = ({ client, vocabularyId, entry, past }) => {
               })}
             </tbody>
           </table>
-          {view.links.length > LINK_DOCUMENTS_SHOWN && (
+          {links.length > LINK_DOCUMENTS_SHOWN && (
             <p className="mt-1 text-sm text-muted-foreground">
-              And {countOf(view.links.length - LINK_DOCUMENTS_SHOWN, 'more document')}.
+              And {countOf(links.length - LINK_DOCUMENTS_SHOWN, 'more document')}.
             </p>
           )}
         </section>
-      )}
-
-      {data.more && (
-        <div>
-          <Button variant="outline" size="sm" onClick={data.loadMore} disabled={data.loading}>
-            {data.loading ? 'Loading…' : 'Show more changes'}
-          </Button>
-        </div>
       )}
     </div>
   );

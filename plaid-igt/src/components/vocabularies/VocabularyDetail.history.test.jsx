@@ -40,6 +40,9 @@ const auth = vi.hoisted(() => ({
 vi.mock('../../contexts/AuthContext', () => ({ useAuth: () => auth }));
 
 const { VocabularyDetail } = await import('./VocabularyDetail.jsx');
+const { CHANGE_ROWS_CEILING, CHANGE_ROWS_PAGE } = await import(
+  '../documents/history/useChangeRows.js'
+);
 
 const THEN = '2026-09-20T10:00:00Z';
 const reads = [];
@@ -298,6 +301,7 @@ describe('the vocabulary History', () => {
       ],
     };
     log.push(twoActions);
+    const changesPage = client.audit.changesPage;
     client.audit.changesPage = async (entryId) => {
       asked.push(entryId);
       return { entries: changes, nextCursor: null };
@@ -325,6 +329,96 @@ describe('the vocabulary History', () => {
       await view.unmount();
     } finally {
       log.pop();
+      client.audit.changesPage = changesPage;
     }
+  });
+
+  // A job's group: a few of the vocabulary's entries, and thousands of rows
+  // in documents, the links among them.
+  const opened = async (changesPage) => {
+    auth.client = { ...client, audit: { changesPage } };
+    const view = await renderComponent(
+      <MemoryRouter initialEntries={['/vocabularies/A?history=op1']}>
+        <Routes>
+          <Route path="/vocabularies/:vocabularyId" element={<VocabularyDetail />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    for (let i = 0; i < 4; i++) await settle(view);
+    return view;
+  };
+  const span = (i) => ({
+    kind: 'span',
+    id: `s${i}`,
+    document: 'd1',
+    layer: 'L',
+    after: { id: `s${i}`, value: 'X', tokens: ['t'] },
+  });
+  // The entry's whole read in pages of `size`, `n` rows of spans with the
+  // three links at the very end.
+  const wholeRead =
+    (n, size) =>
+    (entryId, { vocabLayerId, cursor }) => {
+      if (vocabLayerId) return Promise.resolve({ entries: changes.slice(0, 2), nextCursor: null });
+      const rows = [...Array.from({ length: n }, (_, i) => span(i)), ...changes.slice(2)];
+      const at = cursor ? Number(cursor) : 0;
+      const next = at + size < rows.length ? String(at + size) : null;
+      return Promise.resolve({ entries: rows.slice(at, at + size), nextCursor: next });
+    };
+
+  it('reads a job’s group whole: its entries narrowed, its links from every page', async () => {
+    const changesPage = vi.fn(wholeRead(2500, CHANGE_ROWS_PAGE));
+    const view = await opened(changesPage);
+    expect(changesPage).toHaveBeenCalledWith('op1', {
+      vocabLayerId: 'A',
+      limit: CHANGE_ROWS_PAGE,
+      cursor: undefined,
+    });
+    // Three pages of the whole read, to its end.
+    expect(changesPage.mock.calls.filter(([, o]) => !o.vocabLayerId)).toHaveLength(3);
+    expect(document.body.querySelector('[data-testid="change-count"]').textContent).toBe(
+      '2 entries, 3 links in 2 documents',
+    );
+    expect(button('Show more changes')).toBeUndefined();
+    await view.unmount();
+  });
+
+  it('shows the entries of an entry past the ceiling, its links not counted', async () => {
+    const view = await opened(vi.fn(wholeRead(CHANGE_ROWS_CEILING + 10, CHANGE_ROWS_PAGE)));
+    expect(document.body.querySelector('[data-testid="change-count"]').textContent).toBe(
+      '2 entries',
+    );
+    expect(all(document.body, '[data-entry]').map((e) => e.dataset.entry)).toEqual(['a', 'b']);
+    expect(document.body.querySelector('[data-testid="link-counts"]').textContent).toBe(
+      'Not counted: more than 20,000 changes in documents.',
+    );
+    await view.unmount();
+  });
+
+  it('draws no entries past the ceiling of the vocabulary’s own rows, and links it as of the entry', async () => {
+    const item = (i) => ({
+      kind: 'vocab-item',
+      id: `i${i}`,
+      vocabLayer: 'A',
+      after: { id: `i${i}`, form: `w${i}`, metadata: {} },
+    });
+    const changesPage = vi.fn((entryId, { vocabLayerId, cursor }) => {
+      const at = cursor ? Number(cursor) : 0;
+      return Promise.resolve({
+        entries: vocabLayerId
+          ? Array.from({ length: CHANGE_ROWS_PAGE }, (_, i) => item(at + i))
+          : [],
+        nextCursor: vocabLayerId ? String(at + CHANGE_ROWS_PAGE) : null,
+      });
+    });
+    const view = await opened(changesPage);
+    for (let i = 0; i < 10; i++) await settle(view);
+    expect(document.body.querySelector('[data-testid="change-count"]').textContent).toBe(
+      'More than 20,000 changes.',
+    );
+    expect(all(document.body, '[data-entry]')).toHaveLength(0);
+    const link = all(document.body, 'a').find((a) => a.textContent === 'Show vocabulary');
+    expect(link.getAttribute('href')).toBe('/vocabularies/A?history=op1&historyView=document');
+    await view.unmount();
   });
 });
