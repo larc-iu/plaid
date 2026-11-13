@@ -109,7 +109,7 @@ export const SentenceChange = ({ s, dir, projectId, documentId }) => (
 // the entry took away (a word segmented anew) are a line of their own under
 // them, struck, so none reads as a morpheme of the word as it is now.
 const Pieces = ({ pieces, gloss }) => {
-  const line = (list, gone) =>
+  const line = (list) =>
     list.map((p, i) => (
       <span key={p.id} className="inline-flex items-start" data-piece={p.id}>
         {i > 0 && p.joiner && <span className="text-muted-foreground">{p.joiner}</span>}
