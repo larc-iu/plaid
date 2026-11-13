@@ -49,6 +49,13 @@ READ_ONLY_REFUSAL = (
     'This conversation plans changes in "{home}" only. Tell the user what you would change in '
     '"{here}" and let them make it there.')
 
+# A turn holds a plan of changes or a job card, never both (the job card,
+# `job_card` below): whichever is staged first stands, and the other is
+# refused with what to do instead.
+JOB_CARD_REFUSAL = (
+    'This turn staged a job card, and a turn holds a job card or changes, not both. Offer these changes in '
+    'your reply, for the user to ask for in their next message.')
+
 
 #: Characters a typed document name has in place of the stored one's.
 _NAME_FOLDS = str.maketrans({'\u2019': "'", '\u2018': "'", '\u02bc': "'", '\u201c': '"', '\u201d': '"',
@@ -234,6 +241,10 @@ class BaseWorkspace:
         # The documents a call's ``documents`` argument resolved to, by the
         # name a reply uses (core.scope), for its trace. Reset per call.
         self.scoped_documents: Optional[List[str]] = None
+        # The job this turn drafted for the user to start (an app's tool
+        # stages it, and the reply carries it as ``job``), or None. It is
+        # the turn's whole proposal: no change is staged beside it.
+        self.job_card: Optional[Dict[str, Any]] = None
 
     def close(self) -> None:
         """Release what the turn held: the code worker and any reads still
@@ -767,6 +778,7 @@ class BaseWorkspace:
         refusals a plan owes itself live here rather than in the tools.
         """
         self.refuse_read_only()
+        self.refuse_job_card()
         if (self.web is not None and getattr(self.web, 'read', False)) or self.read_untrusted:
             raise ToolError(WEB_READ_REFUSAL, kind='not-allowed')
         at = self.replacing(op)
@@ -803,6 +815,7 @@ class BaseWorkspace:
         approved a change the model never told them about.
         """
         self.refuse_read_only()
+        self.refuse_job_card()
         self.reserve(len(ops))
         # Each op against the plan AS IT STANDS, never against the batch's own
         # earlier ops, so a tool naming four words is refused here before any
@@ -841,6 +854,11 @@ class BaseWorkspace:
         if not self.writable:
             home = self.reach.home_project.name if self.reach is not None else ''
             raise ToolError(READ_ONLY_REFUSAL.format(home=home, here=self.project.name), kind='not-allowed')
+
+    def refuse_job_card(self) -> None:
+        """Nothing is staged in a turn that drafted a job card."""
+        if self.job_card is not None:
+            raise ToolError(JOB_CARD_REFUSAL, kind='not-allowed')
 
     @contextmanager
     def staging(self):

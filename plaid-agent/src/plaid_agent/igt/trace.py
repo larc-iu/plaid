@@ -12,7 +12,7 @@ from typing import Any, Dict, List, Optional
 from ..core.refs import read_ref
 from ..core.scope import is_all
 from ..core.tools import ToolError
-from ..core.trace import META, READ, count, in_doc as _in_one_doc, plural, q, tracer_for
+from ..core.trace import META, PLAN, READ, count, in_doc as _in_one_doc, plural, q, tracer_for
 from .toolkit import WEB_TOOLS, WRITE_TOOLS
 from .workspace import _refs
 
@@ -249,6 +249,10 @@ def _own(name: str, a: Dict[str, Any]) -> Optional[str]:
             return f'Planned the tagset {q(a.get("tagset"))} on {q(a.get("field"))}'
         return f'Planned a change to the tagset {q(a.get("tagset"))}'
 
+    # --- a job drafted for the user to start ------------------------------------
+    if name == 'propose_job':
+        return 'Read how to draft a job' if _action(a) == 'help' else 'Drafted a job'
+
     return None
 
 
@@ -278,6 +282,7 @@ _PROGRESS = {
     'check_integrity': lambda a: 'Checking data integrity…',
     'sequence_search': lambda a: 'Searching for the sequence…',
     'app_guide': lambda a: 'Reading the app guide…',
+    'propose_job': lambda a: 'Reading how to draft a job…' if _action(a) == 'help' else 'Drafting a job…',
 }
 
 
@@ -285,7 +290,8 @@ _PROGRESS = {
 # manual) and check.
 _READING = {'tagsets': lambda a: {'help': META, 'check': READ}.get(_action(a)),
             'senses': lambda a: META if _action(a) == 'help' else None,
-            'app_guide': lambda a: META}
+            'app_guide': lambda a: META,
+            'propose_job': lambda a: META if _action(a) == 'help' else PLAN}
 
 TRACER = tracer_for(WEB_TOOLS, WRITE_TOOLS, _own, _PROGRESS, searches=('sequence_search', 'concordance'),
                     reading=_READING)

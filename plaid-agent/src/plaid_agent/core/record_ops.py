@@ -12,9 +12,10 @@ from typing import Any, Dict, Optional
 
 from plaid_client import ServiceCancelled
 
-from .conversation import (DIED_NOTE, DIED_OUTCOME, DISCARDED_NOTE, MESSAGE_ROOM, MissingConversation, build_meta, conversation_bytes,
-                           error_item, find_plan, kept_meta, now_iso, prune, record_budget, rewind_for_retry,
-                           settle_plan, title_from, turn_ending, user_item, value_cap)
+from .conversation import (DIED_NOTE, DIED_OUTCOME, DISCARDED_NOTE, JOB_CARD_ENDS, MESSAGE_ROOM, MissingConversation,
+                           build_meta, conversation_bytes, error_item, find_job_card, find_plan, job_card_settling,
+                           kept_meta, now_iso, prune, record_budget, rewind_for_retry, settle_plan, title_from,
+                           turn_ending, user_item, value_cap)
 from .files import store_parts, sweep_orphans
 from .outcome import recorded_as
 from .ops import CONVERSATION_FULL, MESSAGE_TOO_LONG, about_of, busy_why, hold_free, refused
@@ -228,6 +229,61 @@ class RecordOps:
                 return out['meta']
             if not ctx.store.write(ctx.conv_id, change, meta_of, ctx.request_id):
                 self._refuse(ctx, 'decided', meta=meta)
+                return
+        self._done(ctx, out['meta'])
+
+    def _op_job(self, ctx) -> None:
+        """How a job card ended, as the page saw it: ``started`` (the page
+        made the job, under the card's id), ``discarded``, or ``failed`` with
+        the ``reason`` core gave (and ``active_job``, the project's job that
+        stood in its way). A start is read back from core before it is
+        recorded: the card says what core holds, the brief as sent included.
+        A card already ended the same way answers done. The record is written
+        whatever the conversation is doing (``work`` False): the job exists
+        whether or not a turn runs."""
+        data = ctx.data
+        card_id, status = data.get('card_id'), data.get('outcome')
+        if status not in JOB_CARD_ENDS:
+            ctx.helper.error(f'Unknown outcome: {status}')
+            return
+        fields: Dict[str, Any] = {}
+        if status == 'started':
+            try:
+                job = ctx.client.jobs.get(card_id)
+            except Exception as e:  # noqa: BLE001 - the page is told, and the card waits
+                ctx.helper.error(f'The job could not be read: {e}')
+                return
+            if not isinstance(job, dict) or job.get('project') != ctx.store.project_id:
+                ctx.helper.error('No such job in this project')
+                return
+            fields = {'job_id': job.get('id'), 'sent_brief': job.get('note') or ''}
+        elif status == 'failed':
+            fields = {'reason': str(data.get('reason') or '')[:JOB_CARD_REASON_MAX]}
+            if data.get('active_job'):
+                fields['active_job'] = str(data['active_job'])
+        with ctx.lock:
+            conv, meta = self._prepare(ctx)
+            if not self._gate(ctx, conv, meta, work=False):
+                return
+            _, item = find_job_card(conv, card_id) if card_id else (-1, None)
+            if item is None:
+                ctx.helper.error('No such job card in this conversation')
+                return
+            was = item['job'].get('status')
+            if was == status:
+                self._done(ctx, meta)
+                return
+            if was is not None:
+                self._refuse(ctx, 'decided', JOB_CARD_DECIDED, meta=meta)
+                return
+            out = {}
+
+            def meta_of(c, prev):
+                out['meta'] = self._holding(ctx, kept_meta(prev, c))
+                return out['meta']
+            if not ctx.store.write(ctx.conv_id, job_card_settling(card_id, status, **fields), meta_of,
+                                   ctx.request_id):
+                self._refuse(ctx, 'gone')
                 return
         self._done(ctx, out['meta'])
 
@@ -497,3 +553,9 @@ def _own_question(conv, meta, request_id) -> Optional[Dict[str, Any]]:
     answer = next((d for d in after if d.get('kind') == 'assistant'), None)
     return {'answered': answer is not None, 'answer': (answer or {}).get('text') or '',
             'where': display[at].get('where')}
+
+
+#: What the page is told of a job card another tab or request already ended.
+JOB_CARD_DECIDED = 'This job card was already decided.'
+#: The most characters of a refusal's reason a failed card keeps.
+JOB_CARD_REASON_MAX = 500

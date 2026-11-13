@@ -34,6 +34,8 @@ from ..core.replace import REPLACEMENT_HELP
 from ..core.scope import among_documents
 from .guide import t_app_guide
 from .tagsets import t_tagsets
+from .jobcard import t_propose_job
+from .prompt import JOB_TASKS
 from .shape import (t_append_text, t_delete_word, t_merge_sentences, t_merge_words,
                     t_retype_sentence, t_split_sentence, t_split_word)
 from .stats import (t_check_integrity, t_check_lexicon, t_corpus_stats, t_frequency_list,
@@ -539,6 +541,18 @@ TOOLS += [_fn('app_guide',
               'The app\'s user guide, for "how do I ..." questions. No topic lists its parts.',
               {'topic': {'type': 'string'}}, [])]
 _IMPL['app_guide'] = t_app_guide
+
+# Drafting an unattended job with the user, behind one short schema and its
+# manual: few conversations end in a job (jobcard.py).
+TOOLS += [_fn('propose_job',
+              'Draft an unattended job for the user to start: the documents, the tasks and the brief its model '
+              'follows. Writes nothing. Call with action "help" first.',
+              {'action': {'type': 'string', 'enum': ['help', 'draft']},
+               'documents': {'type': 'array', 'items': {'type': 'string'},
+                             'description': 'Names or ids, or ["all"].'},
+               'tasks': {'type': 'array', 'items': {'type': 'string', 'enum': list(JOB_TASKS)}},
+               'brief': {'type': 'string'}}, ['action'])]
+_IMPL['propose_job'] = t_propose_job
 
 _IMPL.update({'run_code': t_run_code, 'code_help': t_code_help})
 

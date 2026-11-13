@@ -95,7 +95,7 @@ Running code:
 
 ## Tools
 
-65 tools, in the order the model receives them: 37 plan a change (`PLAN:`), 2 reach the web, the rest read the project or manage the plan.
+66 tools, in the order the model receives them: 37 plan a change (`PLAN:`), 2 reach the web, the rest read the project or manage the plan.
 
 ### project_overview
 
@@ -629,6 +629,15 @@ PLAN: set up tagsets (the value lists fields are held to): create, change, close
 The app's user guide, for "how do I ..." questions. No topic lists its parts.
 
 - `topic` (string)
+
+### propose_job
+
+Draft an unattended job for the user to start: the documents, the tasks and the brief its model follows. Writes nothing. Call with action "help" first.
+
+- `action` (one of `help`, `draft`, required)
+- `documents` (array of string): Names or ids, or ["all"].
+- `tasks` (array of one of `translate`, `gloss`, `link`)
+- `brief` (string)
 
 ### guidelines
 

@@ -818,6 +818,72 @@ def replace_undecided(display: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     ]
 
 
+# --- job cards ------------------------------------------------------------------
+#
+# A reply may carry a JOB CARD in place of a plan (``job``): an unattended job
+# the turn drafted with the user, which the page starts as the user, with the
+# card's id as the job's. The card's own ``status`` says how it ended:
+# ``started`` (the job's id is the card's, ``sent_brief`` the instructions as
+# core holds them, the user's edits included), ``discarded``, ``failed``
+# (``reason``, and ``active_job`` when the project already had one) or
+# ``replaced`` (a later turn drafted another). None while it waits.
+
+#: How a job card can end.
+JOB_CARD_ENDS = ('started', 'discarded', 'failed')
+
+
+def find_job_card(conv: Dict[str, Any], card_id: str) -> Tuple[int, Optional[Dict[str, Any]]]:
+    """(index, display item) of the reply carrying the job card ``card_id``,
+    or (-1, None)."""
+    for i, d in enumerate(conv['display']):
+        card = d.get('job') if isinstance(d, dict) else None
+        if isinstance(card, dict) and card.get('id') == card_id:
+            return i, d
+    return -1, None
+
+
+def replace_undecided_cards(display: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Every job card still waiting, marked replaced: the turn drafting a new
+    one calls this, as a new plan replaces a waiting one."""
+    stamp = now_iso()
+    return [
+        {**d, 'job': {**d['job'], 'status': 'replaced', 'settled_at': stamp}}
+        if isinstance(d, dict) and isinstance(d.get('job'), dict) and d['job'].get('status') is None
+        else d
+        for d in display
+    ]
+
+
+def job_card_note(card: Dict[str, Any], status: str, sent_brief: Optional[str] = None,
+                  reason: Optional[str] = None) -> str:
+    """What the model is told of how a job card it drafted ended, in the
+    next turn, as it is told a plan's outcome."""
+    if status == 'started':
+        if (sent_brief or '') == (card.get('brief') or ''):
+            return '(note) The user started the job with the brief as drafted.'
+        return f'(note) The user changed the brief and started the job. The brief as sent:\n{sent_brief or ""}'
+    if status == 'discarded':
+        return '(note) The user discarded the job card. No job was started.'
+    return f'(note) The job did not start: {reason or "the server refused it."}'
+
+
+def job_card_settling(card_id: str, status: str, **fields):
+    """The change that ends the job card ``card_id`` as ``status``
+    (:data:`JOB_CARD_ENDS`), with ``fields`` on the card and the note for
+    the model (`job_card_note`). A card already ended, or gone, leaves the
+    record as it is."""
+    def change(stored: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        index, item = find_job_card(stored, card_id)
+        if item is None or item['job'].get('status') is not None:
+            return stored
+        card = item['job']
+        note = job_card_note(card, status, sent_brief=fields.get('sent_brief'), reason=fields.get('reason'))
+        display = list(stored['display'])
+        display[index] = {**item, 'job': {**card, **fields, 'status': status, 'settled_at': now_iso()}}
+        return {'messages': stored['messages'] + [{'role': 'user', 'content': note}], 'display': display}
+    return change
+
+
 # --- what a request writes, made on the record as it is stored --------------------
 #
 # A request writes the record at its end, minutes after it read it, and the
@@ -836,7 +902,7 @@ def _same_item(a: Any, b: Any) -> bool:
 
 def turn_ending(base: Dict[str, Any], asked: List[Dict[str, Any]], item: Dict[str, Any],
                 added: Sequence[Dict[str, Any]] = (), replaces: bool = False,
-                fit: Callable[[Dict[str, Any]], Dict[str, Any]] = lambda c: c):
+                fit: Callable[[Dict[str, Any]], Dict[str, Any]] = lambda c: c, replaces_card: bool = False):
     """The change that ends a turn with ``item`` (its reply, or the error
     item of a turn that failed or was stopped), for :meth:`ConversationStore.write`.
 
@@ -845,7 +911,9 @@ def turn_ending(base: Dict[str, Any], asked: List[Dict[str, Any]], item: Dict[st
     answer, the question as the turn stamped it, kept whether or not the turn
     was answered, and ``added`` what the turn adds after it.
     ``replaces``: the reply stages a plan, so every plan still waiting is
-    marked replaced (`replace_undecided`). ``fit`` holds the result to the
+    marked replaced (`replace_undecided`). ``replaces_card``: the reply
+    carries a job card, so every card still waiting is
+    (`replace_undecided_cards`). ``fit`` holds the result to the
     record's budget (`prune`).
 
     Made on the stored record: the items before the question are taken as
@@ -872,6 +940,8 @@ def turn_ending(base: Dict[str, Any], asked: List[Dict[str, Any]], item: Dict[st
             return None
         kept = [d for d in after if not (isinstance(d, dict) and d.get('kind') == 'error')]
         earlier = replace_undecided(shown[:n]) if replaces else list(shown[:n])
+        if replaces_card:
+            earlier = replace_undecided_cards(earlier)
         held = stored['messages']
         notes = held[len(known):] if held[:len(known)] == known else []
         return fit({'messages': list(asked) + notes + list(added), 'display': earlier + kept + [item]})

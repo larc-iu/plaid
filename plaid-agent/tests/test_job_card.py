@@ -1,0 +1,311 @@
+"""The chat drafts an unattended job with the user (BRIEF-JB, 2026-11-13):
+``propose_job`` stages a JOB CARD on the reply, validated at staging by
+core's own rules, never beside a plan of changes; the page starts the job and
+tells the service how the card ended (op ``job``), and the model hears of it
+in its next turn."""
+
+import pytest
+from fixtures import FakeClient, fake_ws
+from test_service_flow import Helper, _service
+from test_single_writer import TAB, _req, _store
+
+from plaid_agent.core import turn as turn_mod
+from plaid_agent.core.agent import TurnResult
+from plaid_agent.core.conversation import (assistant_item, build_meta, find_job_card, user_item)
+from plaid_agent.core.plan import plan_line
+from plaid_agent.igt.toolkit import call_tool
+
+GLOSS = {'action': 'draft', 'documents': ['Text 1'], 'tasks': ['gloss'], 'brief': 'Gloss ka as "go".'}
+
+
+def _draft(ws, **args):
+    return call_tool(ws, 'propose_job', {**GLOSS, **args})
+
+
+# --- staging ------------------------------------------------------------------------------
+
+def test_a_draft_stages_one_card_and_the_plan_line_says_so():
+    ws = fake_ws(FakeClient())
+    out = _draft(ws, tasks=['link', 'gloss'], brief='  Gloss ka as "go".  ')
+    assert out.startswith('Drafted the job card.'), out
+    card = ws.job_card
+    assert card['documents'] == [{'id': 'd1', 'name': 'Text 1'}] and card['count'] == 1 and not card['all']
+    assert card['tasks'] == ['gloss', 'link'] and card['brief'] == 'Gloss ka as "go".'
+    assert len(card['id']) == 36 and card['id'][14] == '7'
+    assert plan_line(ws) == '[Plan of this turn: a job card, 1 document, gloss and link.]'
+    assert not ws.ops
+    assert call_tool(ws, 'plan_status', {}).startswith('This turn drafted a job card (1 document, gloss and link) '
+                                                       'and plans no changes beside it.')
+
+
+def test_all_documents_are_counted_and_not_listed():
+    ws = fake_ws(FakeClient())
+    _draft(ws, documents=['all'], tasks=['translate', 'gloss'])
+    assert ws.job_card['all'] is True and ws.job_card['count'] == 1 and 'documents' not in ws.job_card
+    assert plan_line(ws) == '[Plan of this turn: a job card, all 1 document, translate and gloss.]'
+
+
+def test_a_second_draft_in_the_turn_replaces_the_first():
+    ws = fake_ws(FakeClient())
+    _draft(ws)
+    first = ws.job_card['id']
+    out = _draft(ws, brief='Leave loanwords.')
+    assert 'in place of the one drafted earlier in this turn' in out
+    assert ws.job_card['brief'] == 'Leave loanwords.' and ws.job_card['id'] != first
+
+
+def test_help_reads_the_limits_core_publishes():
+    client = FakeClient()
+    ws = fake_ws(client)
+    ws.job_facts = lambda: {'note_max_chars': 1234, 'documents_max': 7}
+    text = call_tool(ws, 'propose_job', {'action': 'help'})
+    assert 'At most 1,234 characters.' in text and 'at most 7' in text
+    assert ws.job_card is None
+
+
+@pytest.mark.parametrize('args, said', [
+    ({'tasks': []}, 'tasks: give one or more of translate, gloss, link.'),
+    ({'tasks': ['parse']}, 'tasks: give one or more of translate, gloss, link.'),
+    ({'tasks': ['link']}, 'tasks: link needs gloss'),
+    ({'documents': None}, 'Name the documents, or ["all"]'),
+    ({'documents': ['Text 9']}, 'Text 9'),
+    ({'brief': '   '}, 'Write the brief'),
+    ({'action': 'start'}, 'action is help or draft'),
+])
+def test_each_refusal_says_what_to_change(args, said):
+    ws = fake_ws(FakeClient())
+    out = _draft(ws, **args)
+    assert out.startswith('Error') and said in out, out
+    assert ws.job_card is None
+
+
+def test_the_limits_are_core_s_as_published():
+    ws = fake_ws(FakeClient())
+    ws.job_facts = lambda: {'note_max_chars': 10, 'documents_max': 0}
+    out = _draft(ws, brief='x' * 11)
+    assert 'The brief is 11 characters, and a job\'s brief is at most 10.' in out
+    ws.job_facts = lambda: {'note_max_chars': 2000, 'documents_max': 1}
+    assert _draft(ws).startswith('Drafted')
+    ws.job_card = None
+    ws.documents = lambda: [{'id': 'd1', 'name': 'Text 1'}, {'id': 'd2', 'name': 'Text 2'}]
+    out = _draft(ws, documents=['all'])
+    assert 'A job takes at most 1 documents, and this names 2.' in out, out
+
+
+def test_unreadable_limits_leave_them_to_core():
+    ws = fake_ws(FakeClient())
+
+    def fails():
+        raise RuntimeError('403')
+    ws.job_facts = fails
+    assert _draft(ws, brief='x' * 5000).startswith('Drafted')
+
+
+def test_link_needs_a_lexicon():
+    ws = fake_ws(FakeClient())
+    ws.project.vocabs = []
+    out = _draft(ws, tasks=['gloss', 'link'])
+    assert 'The project has no lexicon, so the job cannot link. Leave out link.' in out
+    assert _draft(ws).startswith('Drafted')
+
+
+def test_an_active_job_is_named_with_a_link_to_its_page():
+    client = FakeClient()
+    job = client.jobs.create('p1', 'igt', ['gloss'])
+    ws = fake_ws(client)
+    out = _draft(ws)
+    assert 'This project already has a job, waiting to start' in out
+    assert f'[the job](#/projects/p1/jobs/{job["id"]})' in out
+    assert ws.job_card is None
+
+
+def test_another_projects_workspace_drafts_nothing():
+    ws = fake_ws(FakeClient())
+    ws.writable = False
+    assert _draft(ws).startswith('Error') and ws.job_card is None
+
+
+# --- a plan or a card, never both: the first staged stands ----------------------------------
+
+def test_a_card_is_refused_in_a_turn_that_planned_changes():
+    ws = fake_ws(FakeClient())
+    call_tool(ws, 'set_field', {'document': 'Text 1', 'refs': ['s1.w1'], 'field': 'Gloss', 'value': 'X'})
+    out = _draft(ws)
+    assert 'This turn planned 1 change, and a turn holds a plan or a job card, not both.' in out
+    assert 'discard_plan first' in out and ws.job_card is None and ws.ops
+
+
+def test_changes_are_refused_once_a_card_is_staged_by_every_route():
+    ws = fake_ws(FakeClient())
+    _draft(ws)
+    one = call_tool(ws, 'set_field', {'document': 'Text 1', 'refs': ['s1.w1'], 'field': 'Gloss', 'value': 'X'})
+    many = call_tool(ws, 'set_field', {'document': 'Text 1', 'refs': ['s1.w1', 's1.w2'], 'field': 'Gloss',
+                                       'value': 'X'})
+    rule = call_tool(ws, 'set_field_for_form', {'form': 'gam', 'field': 'Gloss', 'value': 'X'})
+    guideline = call_tool(ws, 'guidelines', {'action': 'add', 'title': 'Ka', 'body': 'Gloss ka as go.'})
+    for out in (one, many, rule, guideline):
+        assert 'This turn staged a job card, and a turn holds a job card or changes, not both.' in out, out
+    assert not ws.ops and ws.job_card is not None
+
+
+def test_discard_plan_takes_the_card_back_so_changes_can_be_planned():
+    ws = fake_ws(FakeClient())
+    _draft(ws)
+    assert call_tool(ws, 'discard_plan', {}).startswith('Discarded the job card.')
+    assert ws.job_card is None
+    out = call_tool(ws, 'set_field', {'document': 'Text 1', 'refs': ['s1.w1'], 'field': 'Gloss', 'value': 'X'})
+    assert not out.startswith('Error') and plan_line(ws) == '[Plan of this turn: 1 change.]'
+
+
+# --- the turn carries the card, and a newer card replaces a waiting one -------------------------
+
+def _drafting_turn(monkeypatch, args=None, text='Here is the job.'):
+    def fake_run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text=None):
+        said = kit.call_tool(ws, 'propose_job', {**GLOSS, **(args or {})})
+        assert said.startswith('Drafted'), said
+        return TurnResult(text, [{'role': 'assistant', 'content': text}], [])
+    monkeypatch.setattr(turn_mod, 'run_turn', fake_run_turn)
+
+
+def _send(svc, client, rid, text='Draft a glossing job.', create=False):
+    helper = Helper(request_id=rid)
+    svc.process_request(_req(client, 'send', text=text, create=create), helper)
+    assert not helper.errors, helper.errors
+    return helper
+
+
+def _card_turn(monkeypatch, client, svc=None, rid='r1', create=True, **args):
+    svc = svc or _service()
+    _drafting_turn(monkeypatch, args)
+    _send(svc, client, rid, create=create)
+    conv, _meta = _store(client).load('c1')
+    return svc, conv
+
+
+def test_the_reply_carries_the_card_waiting(monkeypatch):
+    client = FakeClient()
+    _svc, conv = _card_turn(monkeypatch, client)
+    reply = conv['display'][-1]
+    assert reply['plan'] is None and reply['job']['status'] is None
+    assert reply['job']['tasks'] == ['gloss'] and reply['job']['documents'] == [{'id': 'd1', 'name': 'Text 1'}]
+
+
+def test_the_service_reads_cores_limits_with_its_own_client(monkeypatch):
+    client = FakeClient()
+    svc = _service()
+    svc.client = client
+    _card_turn(monkeypatch, client, svc=svc)
+    assert ('worker', {}) in client.jobs.calls
+
+
+def test_a_newer_card_replaces_one_still_waiting(monkeypatch):
+    client = FakeClient()
+    svc, conv = _card_turn(monkeypatch, client)
+    first = conv['display'][-1]['job']['id']
+    _svc, conv = _card_turn(monkeypatch, client, svc=svc, rid='r2', create=False, brief='Leave loanwords.')
+    _, old = find_job_card(conv, first)
+    assert old['job']['status'] == 'replaced' and old['job']['settled_at']
+    assert conv['display'][-1]['job']['status'] is None
+
+
+# --- how a card ends: op job ------------------------------------------------------------------
+
+def _seed_card(client, brief='Gloss ka as "go".'):
+    store = _store(client)
+    card = {'id': '0190f000-0000-7000-8000-000000000001', 'all': False, 'count': 1,
+            'documents': [{'id': 'd1', 'name': 'Text 1'}], 'tasks': ['gloss'], 'brief': brief,
+            'summary': '1 document, gloss', 'status': None}
+    item = assistant_item('Here is the job.', None, [], [], '', 'fake/model', service='igt:assist:fake')
+    item['job'] = card
+    conv = {'messages': [{'role': 'user', 'content': 'job'}, {'role': 'assistant', 'content': 'Here is the job.'}],
+            'display': [user_item('job'), item]}
+    store.save('c1', conv, build_meta(None, 'c1', conv, 'igt:assist:fake', 'fake/model'))
+    return card['id']
+
+
+def _settle(client, card_id, rid='r5', tab=TAB, **fields):
+    helper = Helper(request_id=rid)
+    _service().process_request(_req(client, 'job', tab=tab, card_id=card_id, **fields), helper)
+    conv, meta = _store(client).load('c1')
+    return helper, conv, meta
+
+
+def test_a_start_is_read_back_from_core_with_the_brief_as_sent():
+    client = FakeClient()
+    card_id = _seed_card(client)
+    client.jobs.create('p1', 'igt', ['gloss'], ['d1'], 'Gloss ka as "go".', id=card_id)
+    helper, conv, meta = _settle(client, card_id, outcome='started')
+    assert helper.done[0]['kind'] == 'done' and not helper.errors
+    card = conv['display'][-1]['job']
+    assert card['status'] == 'started' and card['job_id'] == card_id and card['sent_brief'] == 'Gloss ka as "go".'
+    assert conv['messages'][-1] == {'role': 'user', 'content': '(note) The user started the job with the brief as '
+                                                                'drafted.'}
+    assert meta['holder']['tab'] == TAB
+
+
+def test_an_edited_brief_is_what_the_model_hears():
+    client = FakeClient()
+    card_id = _seed_card(client)
+    client.jobs.create('p1', 'igt', ['gloss'], ['d1'], 'Gloss ka as "come".', id=card_id)
+    _helper, conv, _meta = _settle(client, card_id, outcome='started')
+    assert conv['display'][-1]['job']['sent_brief'] == 'Gloss ka as "come".'
+    assert conv['messages'][-1]['content'] == ('(note) The user changed the brief and started the job. The brief '
+                                               'as sent:\nGloss ka as "come".')
+
+
+def test_a_start_core_does_not_hold_is_not_recorded():
+    client = FakeClient()
+    card_id = _seed_card(client)
+    helper, conv, _meta = _settle(client, card_id, outcome='started')
+    assert helper.errors and conv['display'][-1]['job']['status'] is None
+    assert conv['messages'][-1]['role'] == 'assistant'
+
+
+def test_a_discard_and_a_failure_are_recorded_with_their_notes():
+    client = FakeClient()
+    card_id = _seed_card(client)
+    _helper, conv, _meta = _settle(client, card_id, outcome='discarded')
+    assert conv['display'][-1]['job']['status'] == 'discarded'
+    assert conv['messages'][-1]['content'] == '(note) The user discarded the job card. No job was started.'
+
+    client = FakeClient()
+    card_id = _seed_card(client)
+    _helper, conv, _meta = _settle(client, card_id, outcome='failed', reason='This project already has a job.',
+                                   active_job='j-1')
+    card = conv['display'][-1]['job']
+    assert card['status'] == 'failed' and card['reason'] == 'This project already has a job.'
+    assert card['active_job'] == 'j-1'
+    assert conv['messages'][-1]['content'] == '(note) The job did not start: This project already has a job.'
+
+
+def test_an_ended_card_answers_done_again_and_refuses_another_end():
+    client = FakeClient()
+    card_id = _seed_card(client)
+    _settle(client, card_id, outcome='discarded')
+    helper, conv, _meta = _settle(client, card_id, rid='r6', outcome='discarded')
+    assert helper.done[0]['kind'] == 'done'
+    assert sum(1 for m in conv['messages'] if 'discarded the job card' in str(m.get('content'))) == 1
+    helper, conv, _meta = _settle(client, card_id, rid='r7', outcome='failed', reason='x')
+    assert helper.done[0] == {'kind': 'refused', 'why': 'decided', 'message': 'This job card was already decided.',
+                              'meta': helper.done[0]['meta']}
+    assert conv['display'][-1]['job']['status'] == 'discarded'
+
+
+def test_another_tab_holding_the_conversation_is_refused():
+    client = FakeClient()
+    card_id = _seed_card(client)
+    store = _store(client)
+    conv, meta = store.load('c1')
+    from plaid_agent.core.conversation import now_iso
+    store.save('c1', conv, {**meta, 'holder': {'tab': 'tab-b', 'at': now_iso()}})
+    helper, conv, _meta = _settle(client, card_id, outcome='discarded')
+    assert helper.done[0]['why'] == 'held' and conv['display'][-1]['job']['status'] is None
+
+
+def test_an_unknown_card_or_outcome_is_an_error():
+    client = FakeClient()
+    _seed_card(client)
+    helper, _conv, _meta = _settle(client, 'nope', outcome='discarded')
+    assert helper.errors == ['No such job card in this conversation']
+    helper, _conv, _meta = _settle(client, 'nope', outcome='approved')
+    assert helper.errors == ['Unknown outcome: approved']

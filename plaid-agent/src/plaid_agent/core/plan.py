@@ -1251,7 +1251,11 @@ def plan_line(ws) -> str:
     (bench glm53-stretch-2, the stretch task's rep 1). Nothing it
     had been shown said what the plan held. Now every result does, and the
     prompt's reply rule reports the plan from it (owner, 2026-11-12: the
-    prompt and what the tools tell the model, not a check of the reply)."""
+    prompt and what the tools tell the model, not a check of the reply).
+    A turn that drafted a job card says so in the same line."""
+    card = getattr(ws, 'job_card', None)
+    if card is not None:
+        return f'[Plan of this turn: a job card, {card["summary"]}.]'
     held = held_changes(ws)
     if held:
         return f'[Plan of this turn: {held} change{"s" if held != 1 else ""}.]'
@@ -1286,6 +1290,9 @@ def plan_status(ws) -> str:
     (2026-10-12 survey). With nothing staged, the waiting card's rows are
     listed, read only, so the model can plan a corrected version in full."""
     waiting = getattr(ws, 'waiting', None)
+    card = getattr(ws, 'job_card', None)
+    if card is not None:
+        return f'This turn drafted a job card ({card["summary"]}) and plans no changes beside it.'
     if not ws.ops:
         if waiting:
             return '\n'.join([f'Nothing is planned in this turn. {waiting_phrase(waiting, "The")} is still waiting '
@@ -1311,6 +1318,10 @@ def plan_status(ws) -> str:
 
 
 def discard_plan(ws) -> str:
+    if getattr(ws, 'job_card', None) is not None:
+        # The turn's proposal is a job card: it goes as a plan would.
+        ws.job_card = None
+        return 'Discarded the job card.'
     n = len(ws.ops)
     held = held_phrase(ws.plan_view()) if n else ''
     ws.ops.clear()

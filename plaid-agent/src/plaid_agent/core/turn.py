@@ -274,6 +274,10 @@ class Turn:
                               version=self.version, service=self.service_id, reply_round=turn.reply_round,
                               reply_thought=turn.reply_thought, failed=failure is not None,
                               partial=getattr(turn, 'partial', None))
+        card = getattr(ws, 'job_card', None)
+        if card is not None:
+            # The job the turn drafted, for the user to start from its card.
+            item['job'] = {**card, 'status': None}
         item['elapsed_ms'] = int((time.monotonic() - started) * 1000)
         if ws.keeper.refs:
             # The files this turn stored, which later turns read as the
@@ -284,7 +288,8 @@ class Turn:
         # A new plan replaces any still waiting: the model restates what still
         # applies in the plan it stages, so the older card is not left
         # approvable beside it.
-        ending = turn_ending(conv, transcript, item, turn.messages, replaces=bool(item.get('plan')), fit=fit)
+        ending = turn_ending(conv, transcript, item, turn.messages, replaces=bool(item.get('plan')), fit=fit,
+                             replaces_card=card is not None)
         try:
             written = self._write(store, conv_id, ending, request_id, model)
         except Exception as e:  # noqa: BLE001 - the answer is in hand; say so rather than lose it

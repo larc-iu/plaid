@@ -15,6 +15,7 @@ request naming an ``op`` and the tab it was sent from:
 ``rename``   title
 ``hold``     take: the tab that may act on the conversation (``take``: Continue here)
 ``unmark``   plan_id: the page's write after a ready preflight failed, so the plan's mark comes off
+``job``      card_id, outcome, reason, active_job: how a job card ended (the page starts the job itself)
 
 A model-free op answers ``{kind: 'done', meta}``. Any op may answer
 ``{kind: 'refused', why, message, meta}``: ``message`` is the sentence the page
@@ -31,7 +32,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
 #: Every op a page may send.
-OPS = ('send', 'retry', 'approve', 'discard', 'attach', 'delete', 'rename', 'hold', 'unmark')
+OPS = ('send', 'retry', 'approve', 'discard', 'attach', 'delete', 'rename', 'hold', 'unmark', 'job')
 
 #: How long a tab's hold lasts without a renewal, in seconds. A tab renews it
 #: every two minutes while it is visible (plaid-ui hold.js).

@@ -72,6 +72,14 @@ class AssistantService(BaseAssistantService):
                      {'link': 'item_id', 'link_phrase': 'item_id', 'merge_entries': 'remove_id',
                       'merge_words': 'other_ids', 'merge_sentences': 'other_id'})
 
+    def make_workspace(self, client, project, on_progress):
+        ws = super().make_workspace(client, project, on_progress)
+        # Core's limits on a job are published where only a person's own
+        # session reads them (CONTRACT 3.9), so the service reads them with
+        # its own (jobcard._facts).
+        ws.job_facts = lambda: self.client.jobs.worker()
+        return ws
+
     def page_wrote(self, client, project_id: str, ops) -> Optional[Dict[str, int]]:
         # Tagset changes, always a plan of their own, are written by the app
         # (plaid-igt domain/tagsetPlan.js) before it sends the approval.

@@ -53,7 +53,9 @@ SKIP = ('web_search', 'read_url')   # the network is not the tools' contract
 # substring). Without them the tool refuses every call, which the sweep accepts
 # as an answer and which leaves its body unrun (see
 # test_every_read_tool_answered_at_least_once).
-EXTRA = {'igt': {'analyses_of': {'forms': ['gam']}, 'lexicon_entry': {'entry_form': 'gam#1'}},
+EXTRA = {'igt': {'analyses_of': {'forms': ['gam']}, 'lexicon_entry': {'entry_form': 'gam#1'},
+                 'propose_job': {'action': 'help', 'documents': ['all'], 'tasks': ['gloss'],
+                                 'brief': 'Gloss every word.'}},
          'ud': {'grew_search': {'pattern': 'pattern { V [upos=VERB] }'}},
          'umr': {'find_nodes': {'concept': 'dog'}}}
 
