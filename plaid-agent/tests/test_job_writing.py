@@ -764,3 +764,62 @@ def test_a_writing_row_names_the_piece_that_wrote(monkeypatch):
             pieces.setdefault(f[len(WRITING_FORM):], set()).update(json.loads(r['analysis'])['pieces'])
     assert len(pieces['d1-s1']) == 2 and len(pieces['d1-s2']) == 1 and pieces['d1-s2'] < pieces['d1-s1'], pieces
 
+
+# --- the digest reads only what a write in the sentence changes (REV-JH-3) ------------------
+
+def test_the_digest_reads_neither_the_sentence_index_nor_an_entry_form():
+    """A sentence moved by a merge or a deletion before it, or one whose
+    linked entry was renamed in the lexicon, has the digest it had: neither
+    is something a write in the sentence does. A link's entry still counts."""
+    import dataclasses
+    from fixtures import PID
+    from plaid_agent.igt.project import Link, load_document, load_project
+    client = JobClient({'d1': document('d1', 'Story', [{'words': ['ka', 'ta']}, {'words': ['sa']}])})
+    doc = load_document(client, load_project(client, PID), 'd1')
+    s = doc.sentences[1]
+    d0 = igt_job.sentence_digest(s)
+    assert igt_job.sentence_digest(dataclasses.replace(s, index=1)) == d0, 'the index'
+    m = s.words[0].morphemes[0]
+    m.link = Link(id='l1', item_id='vi-gam', form='gam', vocab_id='v', members=[(2, 1)])
+    linked = igt_job.sentence_digest(s)
+    assert linked != d0, 'a link made'
+    m.link = Link(id='l1', item_id='vi-gam', form='gaam', vocab_id='v', members=[(1, 1)])
+    assert igt_job.sentence_digest(s) == linked, 'the entry renamed, the sentence moved'
+    m.link = Link(id='l1', item_id='vi-gem', form='gaam', vocab_id='v')
+    assert igt_job.sentence_digest(s) != linked, 'another entry'
+    s.words[0].mwes = [Link(id='l2', item_id='vi-x', form='x', vocab_id='v', tokens=['a', 'b'], members=[(2, 1)])]
+    with_mwe = igt_job.sentence_digest(s)
+    s.words[0].mwes = [Link(id='l2', item_id='vi-x', form='y', vocab_id='v', tokens=['a', 'b'], members=[(1, 1)])]
+    assert igt_job.sentence_digest(s) == with_mwe, "an expression's entry renamed, its sentence moved"
+
+
+def test_an_entry_renamed_while_the_worker_is_down_does_not_read_as_a_deletion_that_landed(monkeypatch):
+    """REV-JH-3: the writing row is sent, the worker dies before the write
+    that deletes the doubled sa. While it is down a person renames gam, which
+    a morpheme of s2 links, on the Entries screen (no unit in the document's
+    History). s2 reads as it did before the write: a target again, and its
+    one deletion is made on the resume."""
+    doubled = [{'words': [('ka', [('ka', 'go', 'vi-gam')], 'human')], 'translation': ('One.', 'human')},
+               {'words': [('sa', [('sa', 'go', 'vi-gam')], 'human'), 'sa'], 'translation': ('Two.', 'human')}]
+    undoubled = [doubled[0], {'words': [('sa', [('sa', 'go', 'vi-gam')], 'human')], 'translation': ('Two.', 'human')}]
+    client, job, clock, model = _job(monkeypatch, 'Delete the doubled words.', doubled, undoubled, _undouble)
+    _crash_before_write(monkeypatch, job)
+    assert _writing(client) == ['d1-s2'] and not client.batches
+    client.after_write.pop('d1')
+    raw = client._holder('d1')['documents']['d1']
+    for tl in raw['text_layers'][0]['token_layers']:
+        for v in tl.get('vocabs') or []:
+            for link in v['vocab_links']:
+                link['vocab_item']['form'] = 'gaam'
+    real = igt_job.execute_plan
+    staged = []
+
+    def execute(c, ops, **kw):
+        staged.extend(ops)
+        client.after_write['d1'] = document('d1', 'Story', undoubled, version=3)
+        return real(c, ops, **kw)
+    monkeypatch.setattr(igt_job, 'execute_plan', execute)
+    assert _resume(client, job).document('d1') == 'done'
+    assert len([c for c in model.calls if c['n'] == 1]) == 2, 'asked again, as nothing landed'
+    assert [o['kind'] for o in staged] == ['delete_word']
+    assert not _skipped(job)

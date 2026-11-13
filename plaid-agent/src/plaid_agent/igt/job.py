@@ -20,6 +20,7 @@ The worker's loop, the heartbeat, the budgets and the halving are
 * harmonize and the entries pass, and the app's parts of the report.
 """
 
+import dataclasses
 import json
 import logging
 import os
@@ -196,8 +197,18 @@ def sentence_digest(s: Sentence) -> str:
     """A sentence as a writing row keeps it: the start of the key of its
     fingerprint (everything it holds, its offsets from its own start, as a
     piece's print is), so the same sentence gives the same digest wherever
-    it moved in the text."""
-    return analysis_key(fingerprint(s, origin=s.begin))[:SENTENCE_DIGEST_CHARS]
+    it moved in the text. Left out, as nothing a write in the sentence
+    changes (REV-JH-3): its index (a merge or a deletion before it moves
+    it) and what a link holds of its entry and of other sentences (the
+    entry's form, renamed in the lexicon, and a multi-word expression's
+    members by sentence index). A link is its id and its entry's id."""
+    def link(x):
+        return None if x is None else {'id': x.id, 'item_id': x.item_id}
+    words = [dataclasses.replace(w, link=link(w.link), mwes=[link(x) for x in w.mwes],
+                                 morphemes=[dataclasses.replace(m, link=link(m.link)) for m in w.morphemes])
+             for w in s.words]
+    return analysis_key(fingerprint(dataclasses.replace(s, index=0, words=words),
+                                    origin=s.begin))[:SENTENCE_DIGEST_CHARS]
 
 
 def mark_text(counts: Dict[str, int], document_id: str, left: List[Dict[str, Any]],
