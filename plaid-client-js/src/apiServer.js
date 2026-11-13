@@ -400,7 +400,8 @@ export function auditApi(client) {
      * outside it did between the entry's first and last write. A row that
      * shows the same before and after is left out, and so is a row of a
      * document or vocabulary the caller cannot read. Follows every page.
-     * @param {string} entryId - An entry's `id`: a group, a batch or one operation
+     * @param {string} entryId - An entry's `id` (a group, a batch or one operation), or an
+     *   operation's id inside one, for what that operation alone changed
      * @param {object} [opts]
      * @param {string} [opts.documentId] - Only the rows of this document
      * @param {string} [opts.vocabLayerId] - Only the rows of this vocabulary
@@ -413,7 +414,7 @@ export function auditApi(client) {
     /**
      * One page of the same rows, in a fixed order that later writes do not
      * disturb.
-     * @param {string} entryId - An entry's `id`
+     * @param {string} entryId - An entry's `id`, or an operation's id inside one
      * @param {object} [opts]
      * @param {string} [opts.documentId] - Only the rows of this document
      * @param {string} [opts.vocabLayerId] - Only the rows of this vocabulary

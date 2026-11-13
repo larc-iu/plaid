@@ -78,8 +78,10 @@
 (defn unit-ops
   "The operations of unit `unit-id` (`{:id :ts :project_id}`, oldest first),
   found as the audit reads find a unit's members: by its group, else its
-  batch, else the operation itself. An operation of a project being removed,
-  or removed, is left out, as every audit read leaves it out."
+  batch, else the operation itself. An action inside a group or a batch, named
+  by its own id, is a unit of its own: that one operation. An operation of a
+  project being removed, or removed, is left out, as every audit read leaves
+  it out."
   [db unit-id]
   (let [id (str unit-id)
         live [:or [:= [:raw "+project_id"] nil]
@@ -87,7 +89,7 @@
         branch (fn [w] {:select [:id :ts :project_id] :from [:operations] :where [:and w live]})]
     (psc/q db {:union [(branch [:= :group_id id])
                        (branch [:and [:= :batch_id id] [:= :group_id nil]])
-                       (branch [:and [:= :id id] [:= :group_id nil] [:= :batch_id nil]])]
+                       (branch [:= :id id])]
                :order-by [:ts]})))
 
 (defn unit-scopes
@@ -471,7 +473,8 @@
 (defn changes-page
   "One page of the rows unit `unit-id` changed, in the uniform envelope
   `{:entries [...] :next-cursor vals-or-nil}`, or nil when no unit has that
-  id (none of its operations is left, see `unit-ops`).
+  id (none of its operations is left, see `unit-ops`). An operation's own id
+  reads what that one operation changed.
 
   Options:
     `:limit` `:cursor-vals`   the page (default 100, at most 1000);

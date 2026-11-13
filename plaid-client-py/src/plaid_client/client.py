@@ -3503,7 +3503,8 @@ class AuditResource(_Resource):
         vocabulary the caller cannot read.
 
         Args:
-            entry_id: An entry's ``id``: a group, a batch or one operation
+            entry_id: An entry's ``id`` (a group, a batch or one operation), or
+                an operation's id inside one, for what that operation alone changed
             document_id: Only the rows of this document
             vocab_layer_id: Only the rows of this vocabulary
         """
@@ -3517,7 +3518,7 @@ class AuditResource(_Resource):
         not disturb.
 
         Args:
-            entry_id: An entry's ``id``
+            entry_id: An entry's ``id``, or an operation's id inside one
             document_id: Only the rows of this document
             vocab_layer_id: Only the rows of this vocabulary
             limit: Page size (1..1000)

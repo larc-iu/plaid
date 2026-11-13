@@ -179,9 +179,9 @@
                          doc (assoc :op/document doc)
                          (:batch_id row) (assoc :op/batch-id (:batch_id row)))))]
     (mapv (fn [{:keys [unit head_ts]}]
-            (let [ops   (vec (by-unit unit))
+            (let [ops   (vec (or (by-unit unit) (filter #(= unit (:id %)) member-rows)))
                   head  (first ops)
-                  group (when (:group_id head) (get groups unit))
+                  group (when (= unit (:group_id head)) (get groups unit))
                   token (some-> (:token_id head) tokens select-token)]
               (cond-> {:audit/id unit
                        :audit/time head_ts
@@ -203,11 +203,11 @@
                                              vec)
                        :audit/ops (mapv op-summary (shown ops))
                        :audit/op-count (count ops)}
-                (:group_id head) (assoc :audit/group-id unit)
+                (= unit (:group_id head)) (assoc :audit/group-id unit)
                 (:message group) (assoc :audit/message (:message group))
                 (:kind group) (assoc :audit/kind (:kind group))
                 (:ref group) (assoc :audit/ref (:ref group))
-                (and (not (:group_id head)) (:batch_id head)) (assoc :audit/batch-id unit)
+                (and (not (:group_id head)) (= unit (:batch_id head))) (assoc :audit/batch-id unit)
                 token (assoc :audit/api-token token)
                 (:credential head) (assoc :audit/credential (:credential head)))))
           units)))
@@ -318,7 +318,8 @@
   `op-types` and `kinds`, oldest first. A unit is found through the column
   its key came from (group, batch, or the op itself), each indexed, and a row
   counts only when its own unit is one of `units`: an op in both a group and
-  a batch belongs to the group."
+  a batch belongs to the group. An op inside a group or a batch named by its
+  own id counts too, as a unit of its own (an action, read by its id)."
   [db {:keys [member?]} [start-time end-time] op-types kinds units]
   (if (empty? units)
     []
@@ -334,7 +335,7 @@
                     :where (conj-where (conj filters [:in col ids]))})]
       (->> (psc/q db {:union [(branch :group_id) (branch :batch_id) (branch :id)]
                       :order-by [:ts :id]})
-           (filterv #(contains? wanted (row-unit %)))))))
+           (filterv #(or (contains? wanted (row-unit %)) (contains? wanted (:id %))))))))
 
 (defn- ts-max [a b] (if (pos? (compare a b)) a b))
 (defn- ts-min [a b] (if (neg? (compare a b)) a b))

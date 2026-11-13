@@ -351,8 +351,46 @@
                               [(:span/id s) s]))]
         (is (= (:before (row (nth spans 0))) (values (nth spans 0))))
         (is (= (:before (row (nth spans 1))) (values (nth spans 1))))))
-    (testing "one operation of a batch is not an entry"
-      (is (= 404 (:status (changes-page admin-request (-> entry :audit/ops first :op/id))))))))
+    (testing "one operation of a batch, by its id, is what that operation changed"
+      (let [[op1 op2] (map :op/id (:audit/ops entry))
+            one (all-changes admin-request op1)
+            two (all-changes admin-request op2)]
+        (is (= [[(nth spans 0) "DET" "a" true]]
+               (map (juxt :id (comp :span/value :before) (comp :span/value :after) :changed-since) one)))
+        (is (= [[(nth spans 0) "a" "b" false]]
+               (map (juxt :id (comp :span/value :before) (comp :span/value :after) :changed-since) two)))))
+    (testing "and the document's log reads it as an entry of its own, done at the batch's end"
+      (let [op (-> entry :audit/ops second)
+            r (api-call admin-request {:method :get
+                                       :path (str "/api/v1/documents/" doc "/audit?entry-id=" (:op/id op))})
+            [e :as es] (-> r :body :entries)]
+        (assert-ok r)
+        (is (= 1 (count es)))
+        (is (= (:op/id op) (:audit/id e)))
+        (is (= [(:op/id op)] (map :op/id (:audit/ops e))))
+        (is (= (:op/end-time op) (:audit/end-time e)) "a time inside a batch reads as before it")
+        (is (not (contains? e :audit/batch-id)) "the entry is the operation, not its batch")))))
+
+;; An action inside a group (an operation of it, by its own id) is read as an
+;; entry of its own: what it changed, and its entry in a document's log.
+(deftest an-action-inside-a-group
+  (let [{:keys [doc spans]} (setup!)
+        g (str (random-uuid))
+        r (in-group admin-request g)
+        _ (assert-ok (update-span r (nth spans 0) :value "one"))
+        _ (assert-ok (update-span r (nth spans 1) :value "two"))
+        group (last (-> (get-document-audit admin-request doc) :body :entries))
+        [op1 op2] (:audit/ops group)]
+    (is (= g (str (:audit/group-id group))))
+    (is (= [(nth spans 1)] (map :id (all-changes admin-request (:op/id op2)))))
+    (is (= [(nth spans 0) (nth spans 1)] (map :id (all-changes admin-request g))) "the group is unchanged")
+    (let [r (api-call admin-request {:method :get
+                                     :path (str "/api/v1/documents/" doc "/audit?entry-id=" (:op/id op1))})
+          e (-> r :body :entries first)]
+      (assert-ok r)
+      (is (= [(:op/id op1) [(:op/id op1)] (:op/end-time op1)]
+             [(:audit/id e) (map :op/id (:audit/ops e)) (:audit/end-time e)]))
+      (is (not (contains? e :audit/group-id)) "the entry is the operation, not its group"))))
 
 ;; ============================================================
 ;; Paging while the unit and others go on writing

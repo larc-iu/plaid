@@ -118,7 +118,8 @@
        "it has in the read. Pass ?entry-id= to read that one entry instead of a "
        "page (no entries when the window and filters leave none of its "
        "operations), which with ?start-time= at the last operation held fetches "
-       "the rest of an entry ?ops-limit cut."))
+       "the rest of an entry ?ops-limit cut. The id of an operation inside a group or a batch reads as an "
+       "entry of that one operation."))
 
 (def order-doc
   (str " Pass ?order=desc to page newest-first, which is what a feed wants; the "
@@ -194,7 +195,7 @@
 (def ^:private changes-doc
   (str "What one audit entry changed, row by row: every row of a document or a vocabulary that the entry's "
        "operations wrote (a logical group, an atomic batch or one operation, as ?entry-id= names it in every "
-       "audit read). Each row has kind (document, text, token, span, relation, vocab-link, vocab-item, "
+       "audit read). The id of an operation inside a group or a batch reads what that operation alone changed. Each row has kind (document, text, token, span, relation, vocab-link, vocab-item, "
        "vocab-layer), id, document or vocab-layer, layer (texts, tokens, spans, relations), text (tokens), "
        "before (the row just before the entry's first write to it, absent when the entry made it), after "
        "(just after its last write to it, absent when the entry deleted it), changed-since (an operation "
