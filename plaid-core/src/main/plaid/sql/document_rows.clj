@@ -106,6 +106,52 @@
   [rows]
   (vec (sort-by (comp str :id) rows)))
 
+;; One builder per kind of row: the entity a deep read serves for it. The
+;; deep read below and the read of what one operation changed
+;; (`plaid.history.changes`) both build their entities here, so a row reads
+;; the same way in either.
+
+(defn text-entity [r]
+  (attach-metadata {:text/id (:id r)
+                    :text/document (:document_id r)
+                    :text/body (:body r)
+                    :text/digest (digest/text-digest (:body r))}
+                   r))
+
+(defn token-entity [r]
+  (attach-metadata {:token/id (:id r)
+                    :token/begin (:begin r)
+                    :token/end (:end_ r)
+                    :token/precedence (:precedence r)}
+                   r))
+
+(defn span-entity [r]
+  (attach-metadata {:span/id (:id r)
+                    :span/value (psc/read-json (:value r))
+                    :span/tokens (tokens-of r)}
+                   r))
+
+(defn relation-entity [r]
+  (attach-metadata {:relation/id (:id r)
+                    :relation/source (:source_span_id r)
+                    :relation/target (:target_span_id r)
+                    :relation/value (psc/read-json (:value r))}
+                   r))
+
+(defn link-entity
+  "A link names its entry by id, layer and form only: the entry's metadata
+  lives in the vocabulary read, and repeating it on every link made up a
+  quarter of a large document's body. `item-by-id` gives the entry's row,
+  or nil when there is none."
+  [r item-by-id]
+  (attach-metadata {:vocab-link/id (:id r)
+                    :vocab-link/vocab-item (when-let [item (item-by-id (:vocab_item_id r))]
+                                             {:vocab-item/id (:vocab_item_id r)
+                                              :vocab-item/layer (:vocab_layer_id item)
+                                              :vocab-item/form (:form item)})
+                    :vocab-link/tokens (tokens-of r)}
+                   r))
+
 (defn assemble
   "The deep document read: `doc` with `:document/text-layers` under it —
   the layer tree of the document's project, and every row the document
@@ -160,36 +206,7 @@
                                (remove nil?)
                                distinct)))
                 {} links)
-        build-token (fn [r]
-                      (attach-metadata {:token/id (:id r)
-                                        :token/begin (:begin r)
-                                        :token/end (:end_ r)
-                                        :token/precedence (:precedence r)}
-                                       r))
-        build-span (fn [r]
-                     (attach-metadata {:span/id (:id r)
-                                       :span/value (psc/read-json (:value r))
-                                       :span/tokens (tokens-of r)}
-                                      r))
-        build-relation (fn [r]
-                         (attach-metadata {:relation/id (:id r)
-                                           :relation/source (:source_span_id r)
-                                           :relation/target (:target_span_id r)
-                                           :relation/value (psc/read-json (:value r))}
-                                          r))
-        ;; A link names its entry by id, layer and form only: the entry's
-        ;; metadata lives in the vocabulary read, and repeating it on every
-        ;; link made up a quarter of a large document's body.
-        build-item (fn [item-id]
-                     (when-let [r (item-by-id item-id)]
-                       {:vocab-item/id item-id
-                        :vocab-item/layer (:vocab_layer_id r)
-                        :vocab-item/form (:form r)}))
-        build-link (fn [r]
-                     (attach-metadata {:vocab-link/id (:id r)
-                                       :vocab-link/vocab-item (build-item (:vocab_item_id r))
-                                       :vocab-link/tokens (tokens-of r)}
-                                      r))
+        build-link (fn [r] (link-entity r item-by-id))
         build-vocabs (fn [tl-id]
                        (->> (get links-by-token-layer tl-id [])
                             (mapv build-link)
@@ -208,7 +225,7 @@
            :relation-layer/name (:name rl)
            :config (psc/parse-config (:config rl))
            :constraints (psc/parse-config (:constraints rl))
-           :relation-layer/relations (mapv build-relation
+           :relation-layer/relations (mapv relation-entity
                                            (get relations-by-layer (:id rl) []))})
         build-span-layer
         (fn [sl]
@@ -216,7 +233,7 @@
            :span-layer/name (:name sl)
            :config (psc/parse-config (:config sl))
            :constraints (psc/parse-config (:constraints sl))
-           :span-layer/spans (mapv build-span (get spans-by-layer (:id sl) []))
+           :span-layer/spans (mapv span-entity (get spans-by-layer (:id sl) []))
            :span-layer/relation-layers (->> (get relation-layers-by-span-layer (:id sl) [])
                                             (sort-by :order_idx)
                                             (mapv build-relation-layer))})
@@ -229,7 +246,7 @@
            :token-layer/overlap-mode (some-> (:overlap_mode tl) keyword)
            :token-layer/parent-token-layer (:parent_token_layer_id tl)
            :token-layer/tokens (vec (token-layer/sort-token-records
-                                     (map build-token (get tokens-by-layer (:id tl) []))))
+                                     (map token-entity (get tokens-by-layer (:id tl) []))))
            :token-layer/span-layers (->> (get span-layers-by-token-layer (:id tl) [])
                                          (sort-by :order_idx)
                                          (mapv build-span-layer))
@@ -240,12 +257,7 @@
             {:text-layer/id (:id txtl)
              :text-layer/name (:name txtl)
              :config (psc/parse-config (:config txtl))
-             :text-layer/text (when text-row
-                                (attach-metadata {:text/id (:id text-row)
-                                                  :text/document (:document_id text-row)
-                                                  :text/body (:body text-row)
-                                                  :text/digest (digest/text-digest (:body text-row))}
-                                                 text-row))
+             :text-layer/text (when text-row (text-entity text-row))
              :text-layer/token-layers (->> (get token-layers-by-text-layer (:id txtl) [])
                                            (sort-by :order_idx)
                                            (mapv build-token-layer))}))]

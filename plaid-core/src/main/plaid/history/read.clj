@@ -145,7 +145,7 @@
 ;; Fetch + fold
 ;; ============================================================
 
-(defn- parse-image
+(defn parse-image
   "The image of audit row `row` → map with keyword TOP-LEVEL keys only; value
   subtrees (the `:metadata` fold) keep STRING keys — keywordizing them
   is lossy for keys containing '/' (the 8cc3ef3 contract). An image is
@@ -217,7 +217,7 @@
                        (ts-clause bound)]
                :order-by [:ts :seq]})))
 
-(defn- coerce-entity
+(defn coerce-entity
   "Image maps carry UUIDs as JSON strings; coerce :id / *_id columns and
   the `:tokens` junction fold back to UUIDs so the assembled shape
   matches the OLTP row shape exactly. `psc/->uuid` keeps non-UUID
@@ -327,7 +327,7 @@
 ;; Public API
 ;; ============================================================
 
-(defn- project-live?
+(defn project-live?
   "True iff `project-id` still exists in OLTP. A deleted project is truly
   gone and is NOT time-travelable: once its row is dropped (see
   `plaid.sql.project/delete`) the descendant deletions are intentionally

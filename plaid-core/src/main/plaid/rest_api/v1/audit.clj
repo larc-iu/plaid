@@ -1,11 +1,14 @@
 (ns plaid.rest-api.v1.audit
   (:require [clojure.string]
+            [plaid.history.changes :as changes]
+            [plaid.history.read :as hread]
             [plaid.rest-api.v1.schema :as schema]
             [plaid.rest-api.v1.auth :as pra]
             [plaid.rest-api.v1.pagination :as pagination]
             [plaid.sql.audit :as audit]
             [plaid.sql.document :as doc]
-            [plaid.sql.operation-group :as og])
+            [plaid.sql.operation-group :as og]
+            [plaid.sql.user :as user])
   (:import (java.time Instant)
            (java.time.format DateTimeParseException)))
 
@@ -172,6 +175,78 @@
        "first, at the cost of a second grouped scan. Not paginated: the row count is the number of "
        "people, not the number of operations."))
 
+;; What one entry changed, row by row (`plaid.history.changes`). An entry is
+;; the unit every audit read already names (`audit/id`, `?entry-id=`), and its
+;; rows can lie in many documents and a vocabulary, in more than one project
+;; (a merge rewrites links in every project that borrows the vocabulary). So
+;; the read hangs off the unscoped `/audit` and is gated row by row: a row of
+;; a document or vocabulary the caller cannot read is left out, the way a
+;; scoped audit read keeps only the members in its scope. The entry itself
+;; follows the unknown-id ruling: an id no entry has is a 404 to an admin and
+;; a 403 with `unresolved: true` to anyone else, and an entry none of whose
+;; projects, documents or vocabularies the caller may read is a 403.
+(def ^:private changes-query
+  (into [:map
+         [:document-id {:optional true} :uuid]
+         [:vocab-layer-id {:optional true} :uuid]]
+        pagination/query-params))
+
+(def ^:private changes-doc
+  (str "What one audit entry changed, row by row: every row of a document or a vocabulary that the entry's "
+       "operations wrote (a logical group, an atomic batch or one operation, as ?entry-id= names it in every "
+       "audit read). Each row has kind (document, text, token, span, relation, vocab-link, vocab-item, "
+       "vocab-layer), id, document or vocab-layer, layer (texts, tokens, spans, relations), text (tokens), "
+       "before (the row just before the entry's first write to it, absent when the entry made it), after "
+       "(just after its last write to it, absent when the entry deleted it), changed-since (an operation "
+       "after the entry's last write changed the row) and changed-between (an operation outside the entry "
+       "changed it between the entry's first and last write). before and after are the entities a document "
+       "or vocabulary read serves, without versions or times. A row that shows the same before and after is "
+       "left out, and so is a row of a document or vocabulary the caller cannot read. Pass ?document-id= or "
+       "?vocab-layer-id= for the rows of that document or vocabulary only. Paginated, in a fixed order that "
+       "new writes do not disturb."))
+
+(defn- entry-changes
+  [{db :db {{:keys [entry-id]} :path query :query} :parameters :as request}]
+  (let [user-id (pra/->user-id request)
+        record (:user/record request)
+        readable-project? (pra/project-readable-fn request)
+        readable-document? (memoize (fn [doc-id]
+                                      (boolean (when-let [p (changes/document-project db doc-id)]
+                                                 (and (hread/project-live? db p) (readable-project? p))))))
+        readable-vocab? (memoize (fn [vocab-id] (pra/vocab-reader? db vocab-id user-id record)))
+        ops (changes/unit-ops db entry-id)
+        seen? (fn []
+                (or (some readable-project? (distinct (keep :project_id ops)))
+                    (let [{:keys [documents vocabs]} (changes/unit-scopes db ops)]
+                      (or (some readable-document? documents)
+                          (some readable-vocab? vocabs)))))]
+    (cond
+      (and (empty? ops) (user/admin? record))
+      {:status 404 :body {:error "Entry not found"}}
+
+      (empty? ops)
+      {:status 403 :body {:error (str "User " user-id " lacks sufficient privileges to read this entry")
+                          :unresolved true}}
+
+      (not (seen?))
+      {:status 403 :body {:error (str "User " user-id " lacks sufficient privileges to read this entry")}}
+
+      :else
+      (try
+        (pagination/list-response
+         query
+         (fn [{:keys [limit cursor-vals]}]
+           (changes/changes-page db entry-id {:limit limit
+                                              :cursor-vals cursor-vals
+                                              :document-id (:document-id query)
+                                              :vocab-id (:vocab-layer-id query)
+                                              :readable-document? readable-document?
+                                              :readable-vocab? readable-vocab?})))
+        (catch clojure.lang.ExceptionInfo e
+          (if (= 400 (:code (ex-data e)))
+            {:status 400 :body {:error (ex-message e)}}
+            (throw e)))))))
+
 (def audit-routes
   [["/projects/:project-id/audit"
     {:parameters {:path [:map [:project-id :uuid]]}
@@ -232,6 +307,15 @@
                                                                       :start-time  start-time
                                                                       :end-time    end-time
                                                                       :daily?      daily})}})}}]
+
+   ["/audit/entries/:entry-id/changes"
+    {:parameters {:path [:map [:entry-id :uuid]]}
+     ;; Gated row by row in the handler, through the same project and
+     ;; vocabulary checks a scoped token is held to elsewhere.
+     :plaid/token-scope (fn [_ _] nil)
+     :get {:summary    changes-doc
+           :parameters {:query changes-query}
+           :handler    entry-changes}}]
 
    ["/audit"
     {:get {:summary    (str "Get the audit log across every project. Admin only. " op-types-doc kinds-doc order-doc ops-limit-doc)
