@@ -91,6 +91,26 @@ def test_a_write_refused_for_something_gone_puts_the_document_off(monkeypatch):
     assert runner(job).document('d1') == 'deferred'
 
 
+def test_a_write_refused_for_something_gone_every_time_skips_its_sentences_as_changed(monkeypatch):
+    """REV-FIX3-5: the same refusal on every walk. The JOB_DEFER_ROUNDS-th
+    time the stretch's sentences are skipped as changed and the document is
+    done, never ended "in use", which would say people were working in it."""
+    client, job = _gam_job(monkeypatch, delete_at=0)
+
+    def execute(c, ops, **kw):
+        try:
+            raise PlaidAPIError('HTTP 404 Vocab item not found', status=404)
+        except PlaidAPIError as e:
+            raise PlanError('Vocab item not found', 0, len(ops)) from e
+    monkeypatch.setattr(igt_job, 'execute_plan', execute)
+    finished = run_job(job, runner(job))
+    assert finished['state'] == 'done'
+    rows = {r['document_id']: r for r in client.jobs.get(J)['documents']}
+    assert rows['d1']['state'] == 'done' and rows['d2']['state'] == 'done', rows
+    assert [(x['sentence'], x['reason']) for x in rows['d1']['skipped']] == [('s1', 'changed')]
+    assert not client.batches
+
+
 def _harmonize_job(monkeypatch, refusing):
     client = JobClient({'d1': document('d1', 'Story', [{'words': [
         ('ka', [('ka', 'go')], J), ('ka', [('ka', 'go')], J), ('ka', [('ka', 'come')], J)]}])})

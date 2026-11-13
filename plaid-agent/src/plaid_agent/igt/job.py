@@ -712,6 +712,8 @@ class IgtRunner:
         #: document id -> sentences with a writing row whose write this
         #: worker knows did not land: they are targets again
         self.unsent: Dict[str, set] = {}
+        #: document id -> how many writes core refused for something gone
+        self.gone_refused: Counter = Counter()
         #: (lexicon, form, gloss) -> an entry the model staged and nothing linked
         self.proposed: Dict[Tuple[Any, Any, Any], Dict[str, Any]] = {}
         #: documents the job has waited for once at least: their defers count
@@ -1272,6 +1274,16 @@ class IgtRunner:
                 # next walk reads what is there (REV-J-B3 B3-3).
                 # A lock lost in the write is a 423 (its renewal's refusal,
                 # REV-J-B3 B3-4).
+                if _gone_now(e) and not e.wrote:
+                    # Refused for something gone, nothing landed: the
+                    # stretch's sentences are skipped as changed the
+                    # JOB_DEFER_ROUNDS-th time, never the document ended in
+                    # use for it (REV-FIX3-5).
+                    self.gone_refused[document_id] += 1
+                    if self.gone_refused[document_id] >= JOB_DEFER_ROUNDS:
+                        for s in part:
+                            self.skip(document_id, doc, s.id, 'changed', None)
+                        return
                 if _status(e) in (409, 423) or _gone_now(e):
                     raise Deferred(document_id) from e
                 raise
