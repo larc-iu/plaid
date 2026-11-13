@@ -57,6 +57,11 @@ export const ADAPTER_MEMBERS = [
 // service opens one for a plan, `planOperation`), on `client`, one of its own. It returns at once for any
 // other plan, and an error it throws is the approval's, with nothing sent. It
 // resolves true when it wrote something.
+// Optional: `JobCard`, the component drawing a job card a reply carries (an
+// unattended job the app's assistant drafted), given `{card, projectId, client,
+// readOnly, onSettle}`. `onSettle({outcome, brief, reason, activeJob})` tells the
+// service how the card ended once the page has started the job, or did not.
+// An app with no jobs has none, and its replies carry no card.
 
 export const missingFromAdapter = (adapter) =>
   adapter ? ADAPTER_MEMBERS.filter((k) => adapter[k] == null) : ADAPTER_MEMBERS;

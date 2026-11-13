@@ -17,6 +17,7 @@ import {
   staleLine,
 } from './planChanges.js';
 import { formatElapsed } from '../../hooks/useRunProgress.js';
+import { jobTaskText } from '../../domain/jobs.js';
 import {
   couldNotOpen,
   namedCitations,
@@ -66,6 +67,28 @@ export const replyToMarkdown = (text, citations, ctx) => {
   const out = lines.join('\n');
   if (!inline.length) return out;
   return `${out}\n\n**Cited examples**\n\n${inline.map((c) => cardToMarkdown(c, ctx)).join('\n\n')}`;
+};
+
+// A job card a reply drafted (an unattended job for the user to start): what
+// it covers, how it ended, and its instructions as sent, or as drafted.
+const JOB_CARD_ENDS = {
+  started: 'Started.',
+  discarded: 'Discarded.',
+  failed: 'Not started.',
+  replaced: 'Replaced by a later job card.',
+};
+const jobCardToMarkdown = (card) => {
+  const docs = card.all
+    ? `All documents (${card.count})`
+    : markdownText((card.documents || []).map((d) => d.name || d.id).join(', '));
+  const tasks = (card.tasks || []).map(jobTaskText).join(', ');
+  const said = JOB_CARD_ENDS[card.status] ?? 'Not yet started.';
+  const brief = card.status === 'started' ? card.sentBrief : card.brief;
+  return [
+    `**Proposed job:** ${docs}. ${tasks}. (${said})`,
+    '',
+    ...(brief ? [markdownText(brief)] : []),
+  ].join('\n');
 };
 
 // A plan that stopped partway says how much was written in the service's own
@@ -196,6 +219,7 @@ export const conversationToMarkdown = (conv, meta, { origin, projectId, projectN
           ),
           '',
         );
+      if (d.job) out.push(plain(jobCardToMarkdown(d.job)), '');
     }
   });
   return (

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { Play } from 'lucide-react';
 import { notifyError } from '@/utils/feedback';
 import { Button } from '@ui/components/ui/button';
@@ -14,13 +14,9 @@ import {
   DialogFooter,
 } from '@ui/components/ui/dialog';
 import { SearchInput } from '@ui/components/shared/list-search';
-import { createOnce } from '@ui/lib/createOnce.js';
-import { statusOf } from '@ui/lib/errors.js';
-import { jobTaskText, workerSeen } from '@ui/domain/jobs.js';
-import { JOB_TASKS, jobPath } from './jobText.js';
-
-// A note's length as core counts it: in characters, never UTF-16 units.
-const noteLength = (note) => [...note].length;
+import { jobTaskText } from '@ui/domain/jobs.js';
+import { JOB_TASKS, activeJobOf, jobPath, noteLength, startJob } from './jobText.js';
+import { JobActiveLine, NoWorkerLine, NoteCount } from './jobLines.jsx';
 
 const byName = (a, b) => (a.name || '').localeCompare(b.name || '') || a.id.localeCompare(b.id);
 
@@ -151,21 +147,17 @@ const StartJobDialog = ({
     setStarting(true);
     setActiveJob(null);
     try {
-      const body = {
-        app: 'igt',
-        tasks: JOB_TASKS.filter((t) => tasks.has(t)),
-      };
-      if (!allChosen) body.documents = documents.filter((d) => chosen.has(d.id)).map((d) => d.id);
-      if (note.trim()) body.note = note.trim();
-      const job = await createOnce(mint, (id) => client.jobs.create(projectId, { ...body, id }));
+      const job = await startJob(client, projectId, mint, {
+        tasks: [...tasks],
+        documents: allChosen ? null : documents.filter((d) => chosen.has(d.id)).map((d) => d.id),
+        note,
+      });
       onClose();
       navigate(jobPath(projectId, job.id));
     } catch (err) {
-      if (statusOf(err) === 409 && err.responseData?.code === 'job-active') {
-        setActiveJob(err.responseData.job);
-      } else {
-        notifyError(err, 'Failed to start the job');
-      }
+      const active = activeJobOf(err);
+      if (active) setActiveJob(active);
+      else notifyError(err, 'Failed to start the job');
     } finally {
       setStarting(false);
     }
@@ -298,30 +290,12 @@ const StartJobDialog = ({
               onChange={(e) => setNote(e.target.value)}
               aria-invalid={noteOver ? true : undefined}
             />
-            {noteMax !== null && (
-              <p
-                data-testid="job-note-count"
-                className={`text-right text-xs ${noteOver ? 'text-destructive' : 'text-muted-foreground'}`}
-              >
-                {noteLength(note).toLocaleString()} / {noteMax.toLocaleString()}
-              </p>
-            )}
+            <NoteCount note={note} max={noteMax} />
           </div>
 
-          {worker && !workerSeen(worker) && (
-            <p className="text-sm text-muted-foreground">
-              No job worker is running. The job waits until one starts.
-            </p>
-          )}
+          <NoWorkerLine worker={worker} />
 
-          {activeJob && (
-            <p role="alert" className="text-sm text-destructive">
-              This project already has a job.{' '}
-              <Link className="underline" to={jobPath(projectId, activeJob)} onClick={onClose}>
-                Open it
-              </Link>
-            </p>
-          )}
+          {activeJob && <JobActiveLine projectId={projectId} jobId={activeJob} onOpen={onClose} />}
         </div>
 
         <DialogFooter>

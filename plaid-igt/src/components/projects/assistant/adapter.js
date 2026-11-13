@@ -9,6 +9,7 @@ import { readInitialized, readLanguages } from '../../../domain/igtConfig.js';
 import { isTagsetPlan, writeTagsetPlan } from '../../../domain/tagsetPlan.js';
 import { putRulesInForce } from '../settings/putRulesInForce.js';
 import { ExampleCard } from './ExampleCard.jsx';
+import { JobCard } from './JobCard.jsx';
 import { citationToMarkdown } from './citationMarkdown.js';
 import { citationHighlights, citationRows, citationTitle, sentenceHref } from './cite.js';
 
@@ -117,6 +118,8 @@ export const IGT_ASSISTANT = {
   citationHref: sentenceHref,
   ExampleCard,
   citationToMarkdown,
+  // An unattended job a reply drafted, which the page starts (JobCard.jsx).
+  JobCard,
   changePlace,
   groupOf,
   parseCitationHref,

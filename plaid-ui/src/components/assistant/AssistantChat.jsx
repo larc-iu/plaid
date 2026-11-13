@@ -920,6 +920,46 @@ export const AssistantChat = ({
     await back();
   };
 
+  // How a job card ended, once the page started its job (or core refused it,
+  // or the user discarded the card): shown at once, then asked of the
+  // service, which records it and tells the model, and the record is shown
+  // as it is.
+  const settleJob = async (index, { outcome, brief = null, reason = null, activeJob = null }) => {
+    const conv = activeRef.current;
+    const card = conv?.display[index]?.job;
+    if (!conv || !card || !service || readOnly) return;
+    const shown = shownJobEnded(conv, index, { outcome, brief, reason, activeJob });
+    activeRef.current = shown;
+    setActive(shown);
+    setNotice(null);
+    let result;
+    try {
+      result = await ask(
+        store,
+        service,
+        conv.id,
+        'job',
+        { cardId: card.id, outcome, reason, activeJob },
+        { tab: held.tab },
+      );
+    } catch (e) {
+      notifyError(humanizeError(e, 'Failed to record the job card.'), 'Not recorded');
+      result = null;
+    }
+    const m = metaOf(store, result);
+    if (m) applyMeta(m);
+    if (result?.kind === 'refused') notifyWarning(result.message, 'Not recorded');
+    try {
+      const read = await readConv(store, conv.id);
+      if (activeRef.current?.id !== conv.id) return;
+      activeRef.current = read.conv;
+      setActive(read.conv);
+      if (read.meta) applyMeta(read.meta);
+    } catch {
+      // The card stays as shown: the next read of the conversation says.
+    }
+  };
+
   const display = active?.display || [];
   // A plan's card that now says how its approval ended closes the error
   // toast that approval raised.
@@ -1141,6 +1181,8 @@ export const AssistantChat = ({
                   onDownloadFile={downloadFile}
                   onApprove={(opts) => approve(d.plan, opts, d.service)}
                   onDiscard={() => discard(i)}
+                  client={client}
+                  onSettleJob={d.job ? (ended) => settleJob(i, ended) : null}
                   onOpenPlan={() =>
                     client.events?.record?.('plan.opened', {
                       projectId,
@@ -1299,6 +1341,18 @@ const shownMeta = (prev, conv, projectId, service, where, tab, j) => {
       startedAt: now,
     },
   };
+};
+
+// The conversation with the job card at `index` shown ended, as the service
+// will record it: a start under the card's own id with the brief as sent.
+const shownJobEnded = (conv, index, { outcome, brief, reason, activeJob }) => {
+  const d = conv.display[index];
+  const job = { ...d.job, status: outcome, settledAt: itemTime() };
+  if (outcome === 'started') Object.assign(job, { jobId: d.job.id, sentBrief: brief ?? '' });
+  if (outcome === 'failed') Object.assign(job, { reason, activeJob });
+  const display = [...conv.display];
+  display[index] = { ...d, job };
+  return { ...conv, display };
 };
 
 // The conversation with the plan at `index` shown discarded, as the service

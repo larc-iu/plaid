@@ -2,7 +2,8 @@
 // (plaid_agent/core/ops.py) against a map of stored records, as the real one
 // writes them, in the page's camelCase. Only what the page tests exercise:
 // send and retry (the model's answer is `answer`, or none), hold, rename,
-// discard, attach, delete, approve (settled applied).
+// discard, attach, delete, approve (settled applied), job (a job card ended:
+// a start records the card's brief as sent).
 //
 // `records` is the Map the fake client's `userData` reads. Each op is logged
 // in `ops`, newest last, with what it was sent.
@@ -131,6 +132,26 @@ export const fakeAssistantService = (
           display,
         };
         records.set(k.conv, next);
+        const m = held({ ...meta, updatedAt: now() });
+        records.set(k.meta, m);
+        return { kind: 'done', meta: m };
+      }
+      if (op === 'job') {
+        const i = conv.display.findIndex((d) => d.job?.id === data.cardId);
+        const d = conv.display[i];
+        if (d.job.status === data.outcome) return { kind: 'done', meta };
+        if (d.job.status != null) return refused('decided', 'This job card was already decided.');
+        const job = { ...d.job, status: data.outcome, settledAt: now() };
+        if (data.outcome === 'started')
+          Object.assign(job, { jobId: d.job.id, sentBrief: d.job.brief });
+        if (data.outcome === 'failed')
+          Object.assign(job, { reason: data.reason, activeJob: data.activeJob });
+        const display = [...conv.display];
+        display[i] = { ...d, job };
+        records.set(k.conv, {
+          messages: [...conv.messages, { role: 'user', content: '(note)' }],
+          display,
+        });
         const m = held({ ...meta, updatedAt: now() });
         records.set(k.meta, m);
         return { kind: 'done', meta: m };

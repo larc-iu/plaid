@@ -194,6 +194,10 @@ export const Turn = ({
   onApprove,
   onDiscard,
   onOpenPlan,
+  // A job card on this reply: the session's client the app's card starts the
+  // job with, and how the page tells the service the card ended.
+  client = null,
+  onSettleJob = null,
   // The project a plan on this reply writes in, when the conversation reads
   // others at this turn (PlanCard `planProject`).
   planProject = null,
@@ -415,7 +419,8 @@ export const Turn = ({
             adapter={adapter}
           />
         ) : (
-          !item.plan && (
+          !item.plan &&
+          !item.job && (
             <div className="text-sm italic text-muted-foreground">
               (The assistant sent no text.)
             </div>
@@ -447,6 +452,16 @@ export const Turn = ({
             onOpen={onOpenPlan}
             planProject={planProject}
             readOnly={readOnly}
+          />
+        )}
+        {item.job && adapter.JobCard && (
+          <adapter.JobCard
+            key={item.job.id}
+            card={item.job}
+            projectId={projectId}
+            client={client}
+            readOnly={readOnly || !onSettleJob}
+            onSettle={onSettleJob}
           />
         )}
       </div>
