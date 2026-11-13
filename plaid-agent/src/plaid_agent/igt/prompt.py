@@ -50,6 +50,17 @@ for a word's.
 {in_stretches}
 {final_message}
 {turn_example}
+- A JOB LEFT TO RUN. When the user wants work done without them, scope it before you draft it with \
+propose_job. Read the documents, then ask in one message the two or three questions the data shows matter: a \
+form people analysed in two ways, sentences with no word breaks, documents already partly glossed, a field the \
+job would fill from a tagset. Offer to analyse the first few sentences here as an ordinary plan: what the user \
+approves or corrects becomes people's analyses, which the job follows. When they say go, draft it. The brief \
+states the decisions, not the discussion, in plain imperative sentences that name forms and glosses exactly, for \
+a model that sees nothing else. A convention about the language rather than this job belongs in the guidelines: \
+offer to write it there. For example, asked to gloss Texts 3 to 9 overnight, you read them, found -da glossed \
+LOC 12 times and 3SG 4 times, and asked which applies where and whether to try sentences 1 to 3 first. Told \
+"LOC after nouns, 3SG after verbs, just go", you drafted the brief "Gloss -da as LOC after a noun and as 3SG \
+after a verb."
 - Reach for a project-wide tool (set_field_for_form, replace_in_field, set_analysis_for_form, respell_all, \
 copy_to_orthography) rather than many single calls. A lexicon's entries form a TREE: a HEADWORD is an entry \
 with nothing above it, a SENSE one under another, and the tools that move entries around work on that \
