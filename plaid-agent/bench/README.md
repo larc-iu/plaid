@@ -150,10 +150,12 @@ gave the form. `checks/igt_job_hand.py` makes a job's result by hand for `./vali
 `igt-job-stretch` and `igt-job-harmonize` are the two, validated only, never run against a model in the round
 that added them.
 
-`igt-job-scope` is the chat's side of a job: the user asks for an overnight glossing job on two texts whose form я
-people analysed in two ways, and answers in the second turn. `checks/igt_job_card.py` passes when a reply before
-that answer names я (before any card, or in the reply that drafts one and asks), the newest job card covers
-exactly the two texts with the gloss task, its brief carries the answer, and nothing was written. Validated only.
+`igt-job-scope` is the chat's side of a job: the user asks for an overnight glossing job on Lezgi text 1, whose
+seven я the setup leaves blank while people analysed я in two ways in Lezgi text 4 (the setup reads both back
+and fails if they do not hold), and answers in the second turn. `checks/igt_job_card.py` passes when a reply
+before that answer names я and asks something (before any card, or in the reply that drafts one and asks), the
+newest job card covers exactly that text with the gloss task, its brief carries the answer, and nothing was
+written. Validated only.
 
 ## The model gate
 

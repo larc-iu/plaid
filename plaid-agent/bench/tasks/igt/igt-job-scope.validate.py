@@ -1,9 +1,9 @@
 import igt_job_hand as H
 import igtlib as L
 
-TEXTS = ('Lezgi text 1', 'Lezgi text 2')
-ASK = ('Both texts have я unanalysed, and the other texts gloss it two ways: "was" and COP. Which should the '
-       'job write? I can also analyse the first sentences here first.')
+TEXTS = ('Lezgi text 1',)
+ASK = ('Lezgi text 1 has я unanalysed seven times, and Lezgi text 4 glosses it two ways: "was" and COP. Which '
+       'should the job write? I can also analyse the first sentences here first.')
 
 
 def _card(ctx, docs=TEXTS, tasks=('gloss',), brief='Gloss я as COP everywhere.', every=False, status=None):
@@ -28,7 +28,7 @@ def _conv(*turns):
     return {'messages': [], 'display': display}
 
 
-ASKED = 'Set up an overnight job to segment and gloss Lezgi text 1 and Lezgi text 2.'
+ASKED = 'Set up an overnight job to segment and gloss Lezgi text 1.'
 ANSWER = 'Gloss я as COP everywhere. Draft the job.'
 
 
@@ -52,6 +52,12 @@ def wrong_never_raised(ctx):
                  (ANSWER, 'Here is the job, with я as COP.', _card(ctx)))
 
 
+def wrong_named_without_asking(ctx):
+    # REV-JB-10: я named in passing, nothing asked, then drafted.
+    return _conv((ASKED, 'Lezgi text 1 has 40 blank words, я among them. Say go and I will draft the job.', None),
+                 (ANSWER, 'Here is the job, with я as COP.', _card(ctx)))
+
+
 def wrong_asked_about_another_form(ctx):
     return _conv((ASKED, 'Should the job gloss loanwords? I can draft it after.', None),
                  (ANSWER, 'Here is the job, with я as COP.', _card(ctx)))
@@ -62,7 +68,7 @@ def wrong_no_card(ctx):
 
 
 def wrong_documents(ctx):
-    return _conv((ASKED, ASK, None), (ANSWER, 'Here is the job.', _card(ctx, docs=TEXTS[:1])))
+    return _conv((ASKED, ASK, None), (ANSWER, 'Here is the job.', _card(ctx, docs=TEXTS + ('Lezgi text 2',))))
 
 
 def wrong_every_document(ctx):

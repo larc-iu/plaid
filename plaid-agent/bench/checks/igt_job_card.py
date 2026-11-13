@@ -6,8 +6,10 @@ answer. Nothing is written: a card writes nothing, and the user starts it.
 args:
   form:      the form people analysed in two ways. A reply before the
              user's message that answers (``answer_turn``, the second by
-             default) must name it, a word of its own, case-insensitive:
-             raised before any draft, or in the reply that drafts and asks.
+             default) must raise it: name it, a word of its own,
+             case-insensitive, in a reply that asks something (holds a "?"
+             anywhere, a fixed rule that does not judge what is asked).
+             Raised before any draft, or in the reply that drafts and asks.
              A card drafted before it was raised fails too.
   documents: the names the newest card must cover, exactly, or "all" for a
              card over every document of the project
@@ -35,7 +37,8 @@ def check(ctx):
     replies = [(i, d) for i, d in enumerate(display) if isinstance(d, dict) and d.get('kind') == 'assistant']
     cards = [(i, d['job']) for i, d in replies if isinstance(d.get('job'), dict)]
     form = re.compile(rf'(?<![^\W_]){re.escape(a["form"])}(?![^\W_])', re.I)
-    raised = next((i for i, d in replies if form.search(c.shown_text(ctx.app, d) or '')), None)
+    raised = next((i for i, d in replies
+                   if form.search(c.shown_text(ctx.app, d) or '') and '?' in (c.shown_text(ctx.app, d) or '')), None)
     first = cards[0][0] if cards else None
     asked = [i for i, d in enumerate(display) if isinstance(d, dict) and d.get('kind') == 'user']
     turn = int(a.get('answer_turn') or 2)
