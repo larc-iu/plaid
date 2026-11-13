@@ -179,3 +179,5 @@ def test_a_selection_links_one_new_entry_in_two_documents_and_creates_it_once(wo
         assert [link['vocab_item']['id'] if isinstance(link['vocab_item'], dict) else link['vocab_item']
                 for link in _links(admin, s, d)] == [made[0]['id']], d
         assert len(_morphs(admin, s, d)) == 1
+    # REV-JG2-11: the entry taken up again is never proposed as a new one.
+    assert not [c for c in finished['report']['proposed'] if c['kind'] == 'create_entry'], finished['report']['proposed']

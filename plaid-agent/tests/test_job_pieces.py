@@ -144,6 +144,26 @@ def test_a_subset_of_documents_in_the_plans_order_and_the_rest_not_reached(monke
     assert finished['report']['plan']['left_out'] == [{'document_id': 'd2', 'name': 'Story 2'}]
 
 
+def test_a_document_gone_at_the_checks_is_gone_and_not_left_out_by_the_plan(monkeypatch):
+    """REV-JG2-7: Story 2 is deleted before the checks, and the plan names
+    the other two. The report lists Story 2 as gone, never as left out by
+    the plan."""
+    from plaid_client import PlaidAPIError
+    client = JobClient(_docs(3))
+    job = start(client, id=J, plan=None)
+    get = client.documents.get
+
+    def going(document_id, **kw):
+        if document_id == 'd2':
+            raise PlaidAPIError('HTTP 404', status=404)
+        return get(document_id, **kw)
+    client.documents.get = going
+    use(monkeypatch, _model(plan={'pieces': 'sentences', 'documents': ['Story 3', 'Story 1']}, piece=_gloss_all))
+    finished = run_job(job, runner(job))
+    assert [d['state'] for d in finished['report']['documents']] == ['done', 'gone', 'done']
+    assert finished['report']['plan']['left_out'] == []
+
+
 def test_a_resumed_job_does_not_plan_again(monkeypatch):
     """A crash after plan_work was kept: the next worker reads the plan back."""
     client = JobClient(_docs(1))

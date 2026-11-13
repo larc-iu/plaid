@@ -289,6 +289,7 @@ describe('the job page', () => {
         by: 'model',
         fallback: [],
         leftOut: [{ documentId: 'd2', name: null }],
+        leftOutMore: 3,
       },
     };
     const job = jobOf({
@@ -302,6 +303,8 @@ describe('the job page', () => {
     const v = await mount(clientOf(job));
     const section = v.container.querySelector('section[aria-label="Report"]');
     expect(all(section, 'h3').map((h) => h.textContent)).toContain('Left out by the plan');
+    // A report too large for core lists the first and counts the rest.
+    expect(text(section)).toContain('And 3 more documents.');
     const rows = all(v.container, '#job-documents tbody tr, tbody tr').map((r) => text(r));
     expect(rows[1]).toContain('Left out by the plan');
     await v.unmount();

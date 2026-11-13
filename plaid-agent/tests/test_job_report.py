@@ -244,3 +244,59 @@ def test_a_job_keeps_at_most_the_tables_its_report_holds_and_counts_the_rest():
     parts = runner(job).report_parts(job)
     assert len(parts['tables']) == JOB_TABLES_MAX
     assert parts['tables_more'] == pieces * JOB_TABLES_PER_PIECE - JOB_TABLES_MAX
+
+
+# --- REV-JG2's S5s ------------------------------------------------------------------------------
+
+def test_a_plans_list_of_documents_left_out_is_cut_to_fit_and_counted():
+    """REV-JG2-6: 499 documents left out by the plan, each named with 500
+    letters of four bytes. The list is cut like any other and counted in
+    ``left_out_more``: the report fits."""
+    from plaid_agent.core.job import fit_report
+    from plaid_agent.core.limits import JOB_REPORT_BUDGET_BYTES
+    name = chr(0x1E900) * 500
+    docs = [{'document_id': f'{i:036d}', 'name': name, 'state': 'not-reached', 'counts': {}, 'skipped': [],
+             'left': []} for i in range(500)]
+    report = {'totals': {}, 'documents': docs, 'summary': 'x' * 3000, 'instructions': 'y' * 2000,
+              'plan': {'pieces': 'document', 'documents': [docs[0]['document_id']],
+                       'left_out': [{'document_id': d['document_id'], 'name': d['name']} for d in docs[1:]]},
+              'harmonize': {}, 'entries': {}}
+    fit_report(report)
+    assert _bytes(report) <= JOB_REPORT_BUDGET_BYTES
+    plan = report['plan']
+    assert plan['left_out'] == [] and plan['left_out_more'] == 499, 'cut whole before the documents'
+    assert len(report['documents']) + report['documents_more'] == 500
+
+
+def test_a_report_cut_to_fit_leaves_the_rows_of_the_job_whole():
+    """REV-JG2-9: the report's document entries hold copies of the rows'
+    lists, so a cut to fit leaves the job's rows as they are (a finish
+    refused and redone reports from them)."""
+    from plaid_agent.core.job import fit_report
+    client, job = _job()
+    skipped = [{'sentence': f's{k}', 'sentence_id': f'x{k}', 'reason': 'failed', 'kind': 'budget'}
+               for k in range(300)]
+    for d in job.order:
+        job.rows[d]['skipped'] = list(skipped)
+    report = build_report(job, 'done', None, runner(job).document_reports(job), {'changed': [], 'left': []},
+                          entries_part([], []))
+    fit_report(report, budget=2000)
+    assert all(len(job.rows[d]['skipped']) == 300 for d in job.order)
+
+
+def test_a_piece_taken_again_counts_the_tables_it_dropped_once():
+    """REV-JG2-8: a piece whose tables pass the job's cap is recorded again
+    (taken again after its write was put off). Its dropped tables are
+    counted once."""
+    from plaid_agent.core.limits import JOB_TABLES_MAX, JOB_TABLES_PER_PIECE
+    client, job = _job()
+    r = runner(job)
+    project = r.project()
+    pieces = JOB_TABLES_MAX // JOB_TABLES_PER_PIECE + 1
+    for p in range(pieces):
+        tables = [{'title': f'T{p}.{t}', 'columns': ['a'], 'rows': [['x']], 'more': 0}
+                  for t in range(JOB_TABLES_PER_PIECE)]
+        r.record_piece(project, {'document': 'd1', 'first': f's{p}', 'whole': False}, 'note', tables)
+        if p == pieces - 1:
+            r.record_piece(project, {'document': 'd1', 'first': f's{p}', 'whole': False}, 'note', tables)
+    assert runner(job).report_parts(job)['tables_more'] == pieces * JOB_TABLES_PER_PIECE - JOB_TABLES_MAX

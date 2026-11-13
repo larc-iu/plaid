@@ -683,7 +683,8 @@ def _report_cuts(report: Dict[str, Any]):
     """The report's lists in the order they are cut when it does not fit:
     the tables, the notes and the proposed changes, then each document's
     blanks and skipped sentences from the last document up, then
-    harmonize's lists and the entries', the documents last. Each as (the
+    harmonize's lists and the entries', the plan's documents left out, the
+    documents last. Each as (the
     list's holder, its key, what to count a cut row as)."""
     yield report, 'tables', ('tables_more',)
     yield report, 'notes', ('notes_more',)
@@ -694,6 +695,8 @@ def _report_cuts(report: Dict[str, Any]):
     for part, keys in (('harmonize', ('changed', 'left')), ('entries', ('created', 'unlinked'))):
         for key in keys:
             yield report.get(part) or {}, key, (f'{key}_more',)
+    # The plan's documents it left out, an app's part (REV-JG2-6).
+    yield report.get('plan') or {}, 'left_out', ('left_out_more',)
     yield report, 'documents', ('documents_more',)
 
 

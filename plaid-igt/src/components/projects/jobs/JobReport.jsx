@@ -112,10 +112,12 @@ const ProposedChanges = ({ report, projectId }) => {
   );
 };
 
-// The documents of the job its plan did not work.
+// The documents of the job its plan did not work, and how many a report too
+// large for core could not list.
 const LeftOut = ({ report, projectId }) => {
   const list = report.plan?.leftOut || [];
-  if (!list.length) return null;
+  const more = report.plan?.leftOutMore || 0;
+  if (!list.length && !more) return null;
   return (
     <>
       <Heading section="plan.left_out" />
@@ -135,6 +137,7 @@ const LeftOut = ({ report, projectId }) => {
           </li>
         ))}
       </ul>
+      <More n={more} noun="document" />
     </>
   );
 };

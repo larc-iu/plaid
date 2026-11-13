@@ -2364,10 +2364,11 @@ class IgtRunner:
             elif room:
                 room -= 1
                 keep.append((i, t))
-        if len(list(tables)[:JOB_TABLES_PER_PIECE]) > len(keep):
-            rows.append({'form': TABLES_DROPPED_FORM, 'key': 'tables-dropped', 'analysis': '{}',
-                         'count': len(list(tables)[:JOB_TABLES_PER_PIECE]) - len(keep), 'document_id': None,
-                         'sentence_id': None})
+        dropped = len(list(tables)[:JOB_TABLES_PER_PIECE]) - len(keep)
+        if dropped:
+            text = canonical({'dropped': dropped})
+            rows.append({'form': f'{TABLES_DROPPED_FORM} {key}', 'key': analysis_key(text), 'analysis': text,
+                         'count': 1, 'document_id': None, 'sentence_id': None})
         for i, t in keep:
             kept.add(f'{key} {i:02d}')
             for part_no, text in enumerate(table_rows_text(t)):
@@ -3026,7 +3027,7 @@ class IgtRunner:
             out.append({'document_id': d, 'name': self.names.get(d) or row.get('name'),
                         'state': state if state in ('done', 'in-use', 'gone') else 'not-reached',
                         'sentences': row.get('sentences'), 'targets': row.get('targets'), 'done': row.get('done'),
-                        'counts': counts, 'skipped': row.get('skipped') or [],
+                        'counts': counts, 'skipped': list(row.get('skipped') or []),
                         'gloss_group': row.get('gloss_group'), 'harmonize_group': row.get('harmonize_group'),
                         'left': left, 'left_more': max(len(listed), counted) - len(left)})
         return out
@@ -3081,8 +3082,14 @@ class IgtRunner:
             if form == DROPPED_FORM:
                 dropped += r.get('count') or 0
                 continue
-            if form == TABLES_DROPPED_FORM:
-                tables_dropped += r.get('count') or 0
+            if form.startswith(TABLES_DROPPED_FORM + ' '):
+                # One row per piece, its count in its analysis: a piece taken
+                # again sends its row again, which core counts, and is
+                # counted once here (REV-JG2-8).
+                try:
+                    tables_dropped += int(json.loads(r['analysis']).get('dropped') or 0)
+                except (ValueError, TypeError, KeyError, AttributeError):
+                    pass
                 continue
             if not form.startswith(' '):
                 continue
@@ -3116,11 +3123,14 @@ class IgtRunner:
             made.append({'title': t['title'], 'columns': t['columns'], 'rows': rows, 'more': t['more']})
         if plan is not None:
             # Each document the job holds that the plan left out, listed as
-            # such on the job page and in read_job (the lead's ruling).
+            # such on the job page and in read_job (the lead's ruling), but
+            # one already final when the plan was made (gone at the checks:
+            # its row says so, REV-JG2-7).
             named = set(plan.get('documents') or job.order)
             plan = {**plan, 'fallback': fallback,
                     'left_out': [{'document_id': d, 'name': self.names.get(d) or (job.rows.get(d) or {}).get('name')}
-                                 for d in job.order if d not in named]}
+                                 for d in job.order
+                                 if d not in named and (job.rows.get(d) or {}).get('state') not in ROW_FINAL]}
         return {'plan': plan,
                 'proposed': listed, 'proposed_more': more + dropped, 'proposed_dropped': dropped,
                 'notes': shown_notes, 'notes_more': notes_more, 'tables': made[:JOB_TABLES_MAX],
