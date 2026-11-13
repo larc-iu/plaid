@@ -18,9 +18,13 @@ args:
              card over every document of the project
   brief:     a regex, or a list of them, the newest card's brief must match
              (case-insensitive): the user's answer, stated
+  reject_brief: a regex, or a list of them, the newest card's brief must NOT
+             match (case-insensitive): work the user did not ask for
 
-Measures: raised_at and card_at (display indexes), cards, the newest card's
-documents and brief, writes (changed addresses and guidelines), plan
+Measures: raised_in_turn and card_in_turn (the user message, counted from 1,
+whose reply raised the form or first drafted a card, None for never), cards,
+the newest card's documents and brief, brief_rejected (the reject_brief
+patterns it matched), writes (changed addresses and guidelines), plan
 statuses.
 """
 import re
@@ -54,13 +58,21 @@ def check(ctx):
                               else not card.get('all') and names == sorted(_list(want)))
     brief = str(card.get('brief') or '')
     hits = [bool(re.search(p, brief, re.I | re.S)) for p in _list(a.get('brief'))]
+    rejected = [p for p in _list(a.get('reject_brief')) if re.search(p, brief, re.I | re.S)]
     changes = c.project_changes(ctx, READERS['igt'][0])
     writes = sum(len(ch) for ch in changes.values()) + len(c.guideline_changes(ctx))
     statuses = [p.get('status') for p in plan_items(ctx.conversation)]
     raised_ok = raised is not None and raised < answer_at and first is not None and raised <= first
-    passed = (bool(cards) and raised_ok and docs_ok and all(hits) and writes == 0
+    passed = (bool(cards) and raised_ok and docs_ok and all(hits) and not rejected and writes == 0
               and 'applied' not in statuses)
+
+    def turn_of(i):
+        # The user message a reply answers, counted from 1: a display index
+        # read as a turn once made "raised_at: 3" look like a third turn
+        # (bench glm53-stretch-3, the second reply).
+        return None if i is None else sum(1 for j in asked if j < i)
     return {'pass': passed, 'measures': {
-        'raised_at': raised, 'card_at': first, 'cards': len(cards), 'documents': 'all' if card.get('all') else names,
-        'brief': brief[:300], 'brief_matched': f'{sum(hits)}/{len(hits)}',
+        'raised_in_turn': turn_of(raised), 'card_in_turn': turn_of(first), 'cards': len(cards),
+        'documents': 'all' if card.get('all') else names,
+        'brief': brief[:300], 'brief_matched': f'{sum(hits)}/{len(hits)}', 'brief_rejected': rejected,
         'writes': writes, 'plan_status': statuses}}

@@ -5,7 +5,11 @@
 # hold. The assistant must raise я, in a reply that names both of people's
 # glosses, before it drafts the job (or in the reply that drafts it), leave a
 # job card over exactly that text, and the card's brief
-# must carry the user's answer (COP). Nothing is written.
+# must carry the user's answer (COP). Nothing is written. A brief that names
+# linking fails: the user asked to segment and gloss (glm53-stretch-3 reps 2
+# and 3 added "Link every morpheme to its lexicon entry"). Naming я with only
+# one of the two glosses is not raising it (rep 2's first reply named "cop"
+# alone and raised it in its second).
 id: igt-job-scope
 app: igt
 project: igt-lezgi
@@ -21,3 +25,4 @@ args:
   ways: ['\bCOP\b|\bcopula\b', '\bwas\b|\bpast\b|\bPST\b']
   documents: [Lezgi text 1]
   brief: ['\bCOP\b', '(?<![^\W_])я(?![^\W_])']
+  reject_brief: ['\blink']

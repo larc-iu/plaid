@@ -76,6 +76,20 @@ def wrong_asked_about_another_form(ctx):
                  (ANSWER, 'Here is the job, with я as COP.', _card(ctx)))
 
 
+def wrong_adds_linking(ctx):
+    # glm53-stretch-3 reps 2 and 3: the brief carries COP and adds a link task
+    # nobody asked for.
+    return _conv((ASKED, ASK, None), (ANSWER, 'Here is the job.', _card(
+        ctx, brief='Gloss я as COP everywhere. Then link every analysed morpheme to its lexicon entry.')))
+
+
+def wrong_names_one_gloss_only(ctx):
+    # glm53-stretch-3 rep 2's first reply: я named with one gloss of its own
+    # choosing, not the two people hold, then drafted on the answer.
+    return _conv((ASKED, 'Seven я have no analysis. Gloss them "cop", as ава is? Say so and I draft the job.', None),
+                 (ANSWER, 'Here is the job, with я as COP.', _card(ctx)))
+
+
 def wrong_no_card(ctx):
     return _conv((ASKED, ASK, None), (ANSWER, 'I will gloss я as COP.', None))
 

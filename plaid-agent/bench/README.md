@@ -162,8 +162,8 @@ are validated only, never run against a model in the round that added them.
 seven я the setup leaves blank while people analysed я in two ways in Lezgi text 4 (the setup reads both back
 and fails if they do not hold), and answers in the second turn. `checks/igt_job_card.py` passes when a reply
 before that answer names я and both of people's glosses of it (before any card, or in the reply that drafts
-one), the newest job card covers exactly that text with the gloss task, its brief carries the answer, and
-nothing was written. Validated only.
+one), the newest job card covers exactly that text, its brief carries the answer and names no linking (the user
+asked to segment and gloss), and nothing was written. Run once against glm-5.3-flash (glm53-stretch-3, 1 of 3).
 
 `igt-job-discuss` is talking about a job that ran: the setup ends a job over Gitksan text 1 with a report that
 lists guxw (s20.w5, left unanalysed) under "Left blank" and wila under "Forms left inconsistent". Asked what the
