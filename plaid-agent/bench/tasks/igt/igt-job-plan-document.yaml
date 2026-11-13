@@ -1,5 +1,7 @@
 # The planning context of a job about whole texts: a summary of each text
 # wants one piece per document.
+# A job applies what it plans (ruling 17), so "Change nothing" is held: the
+# texts read as before (`still`).
 id: igt-job-plan-document
 app: igt
 project: igt-lezgi
@@ -11,4 +13,5 @@ check: igt_job_plan
 args:
   mode: plan
   pieces: document
+  still: [Lezgi text 1, Lezgi text 2]
 max_wall_s: 3600

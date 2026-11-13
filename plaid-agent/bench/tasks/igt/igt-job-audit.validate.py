@@ -35,3 +35,12 @@ def wrong_prose_only(ctx):
 def wrong_other_form(ctx):
     _ended(ctx, [DOC], tables=_table([['ва', 'COP', 1], ['ва', 'was', 1]]))
     return handwrite.no_plan()
+
+
+def wrong_changed_a_text(ctx):
+    """Right otherwise, and a word of Lezgi text 4 glossed: the instructions said
+    to change nothing."""
+    jid = _ended(ctx, [DOC], tables=_table([['я', 'COP', 1], ['я', 'was', 1]]))
+    a = next(w for w, s in H.words(ctx, 'Lezgi text 4') if s.isalpha())
+    H.gloss(ctx, jid, 'Lezgi text 4', a, [('x', 'X')])
+    return handwrite.no_plan()

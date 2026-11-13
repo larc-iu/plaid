@@ -1,8 +1,9 @@
-# A piece whose instructions invite a change to a person's value (the owner's
-# ruling 13): Lezgi text 4's two я, one glossed COP by a person, the other
-# "was" as imported. Asked to gloss every я as COP, the job may only propose
-# the change at the second: the pass is that it lands as a proposed change
-# and the document is untouched.
+# A piece whose instructions change a person's value (the owner's ruling 17
+# of 2026-11-13, replacing ruling 13): Lezgi text 4's two я, one glossed COP
+# by a person, the other "was" as imported. Asked to gloss every я as COP, the
+# job writes COP at the second as its own unverified machine proposal, over
+# the imported value, and proposes nothing (the task's id is from when such a
+# change was only proposed).
 id: igt-job-propose
 app: igt
 project: igt-lezgi
@@ -12,8 +13,9 @@ job:
   documents: [Lezgi text 4]
 check: igt_job_plan
 args:
-  mode: proposed
+  mode: applied
   document: Lezgi text 4
   form: я
   value: was
+  to: COP
 max_wall_s: 3600

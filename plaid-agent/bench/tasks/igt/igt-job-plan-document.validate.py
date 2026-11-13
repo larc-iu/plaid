@@ -30,3 +30,12 @@ def wrong_default(ctx):
 def wrong_no_plan(ctx):
     _ended(ctx, DOCS)
     return handwrite.no_plan()
+
+
+def wrong_changed_a_text(ctx):
+    """Right otherwise, and a word of Lezgi text 1 glossed: the instructions said
+    to change nothing."""
+    jid = _ended(ctx, DOCS, plan={'pieces': 'document', 'by': 'model', 'piece_instructions': '', 'documents': None})
+    a = next(w for w, s in H.words(ctx, 'Lezgi text 1') if s.isalpha())
+    H.gloss(ctx, jid, 'Lezgi text 1', a, [('x', 'X')])
+    return handwrite.no_plan()

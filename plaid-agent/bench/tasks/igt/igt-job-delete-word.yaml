@@ -1,0 +1,20 @@
+# A job told to delete a word (the owner's ruling 17 of 2026-11-13: a job
+# applies what it plans, deletions included). The setup types Lezgi text 5's
+# sentence 2 with хва twice. Pass: the sentence reads with хва once, every
+# other sentence reads as before, nothing is proposed. A whole sentence is
+# not asked for: the assistant's tools delete one only over two plans (a
+# merge, then a retype), and a piece of a job is one plan.
+id: igt-job-delete-word
+app: igt
+project: igt-lezgi
+as: B
+job:
+  instructions: "In Lezgi text 5, sentence 2 has the word хва twice. Delete the second хва from the text. Change nothing else."
+  documents: [Lezgi text 5]
+check: igt_job_plan
+args:
+  mode: deleted
+  document: Lezgi text 5
+  from: "Вичин хва хва рекьиз кӀан жени ?"
+  to: "Вичин хва рекьиз кӀан жени ?"
+max_wall_s: 3600

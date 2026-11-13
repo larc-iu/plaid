@@ -1,6 +1,8 @@
 # A selection audit (the owner's ruling 15): Lezgi text 4's two я are glossed
 # COP and "was", the planted inconsistency. The job's code must count it into
 # a table kept in the report, so the numbers come from code.
+# A job applies what it plans (ruling 17), so "Change nothing" is held: the
+# texts read as before (`still`).
 id: igt-job-audit
 app: igt
 project: igt-lezgi
@@ -13,4 +15,5 @@ args:
   mode: table
   form: я
   glosses: ["COP", "was"]
+  still: [Lezgi text 4]
 max_wall_s: 3600

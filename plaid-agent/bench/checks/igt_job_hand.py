@@ -68,3 +68,22 @@ def gloss(ctx, job_id, document, word_addr, morphs):
     did = L.doc_of(ctx, document)['id']
     with ctx.user.operation('Assistant job: analyses', kind='job', ref=f'job:{job_id}/doc:{did}/pass:gloss'):
         analyze(ctx, document, word_addr, morphs, job_stamp(job_id))
+
+
+def staged(ctx, client, calls, stamp_mode='human', detail=None):
+    """Stage ``calls`` (tool name and arguments) as the assistant's tools
+    do and apply them with ``client``: how a setup reshapes a text, and how
+    a hand-made job's write is made (``stamp_mode`` machine, ``detail``
+    naming the job)."""
+    from plaid_client import uuid7
+    from plaid_agent.igt import toolkit
+    from plaid_agent.igt.plan import execute_plan
+    from plaid_agent.igt.project import load_project
+    from plaid_agent.igt.workspace import Workspace
+    project = load_project(client, ctx.project['id'])
+    ws = Workspace(client, project)
+    for name, args in calls:
+        out = toolkit.call_tool(ws, name, args)
+        assert not str(out).startswith('Error'), out
+    execute_plan(client, list(ws.ops), source=SOURCE, label='bench', project=project, stamp_mode=stamp_mode,
+                 detail=detail, seed=str(uuid7()))

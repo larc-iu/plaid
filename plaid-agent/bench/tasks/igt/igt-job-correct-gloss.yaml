@@ -1,0 +1,19 @@
+# A piece told to correct a person's wrong gloss (the owner's ruling 17 of
+# 2026-11-13): the setup glosses Lezgi text 4's first я DOG, a person's
+# value confirmed as verified. Pass: it now holds COP as the job's unverified
+# machine proposal, every other analysed word is as it was, nothing proposed.
+id: igt-job-correct-gloss
+app: igt
+project: igt-lezgi
+as: B
+job:
+  instructions: "In Lezgi text 4, я is glossed DOG by mistake. Correct that gloss to COP. Change nothing else."
+  documents: [Lezgi text 4]
+check: igt_job_plan
+args:
+  mode: applied
+  document: Lezgi text 4
+  form: я
+  value: DOG
+  to: COP
+max_wall_s: 3600

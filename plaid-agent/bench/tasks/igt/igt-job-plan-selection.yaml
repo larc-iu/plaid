@@ -1,5 +1,7 @@
 # The planning context of a job across texts: a report of inconsistent
 # glosses across the texts wants one piece for the whole selection.
+# A job applies what it plans (ruling 17), so "Change nothing" is held: the
+# texts read as before (`still`).
 id: igt-job-plan-selection
 app: igt
 project: igt-lezgi
@@ -11,4 +13,5 @@ check: igt_job_plan
 args:
   mode: plan
   pieces: selection
+  still: [Lezgi text 1, Lezgi text 2, Lezgi text 3, Lezgi text 4]
 max_wall_s: 3600
