@@ -122,6 +122,7 @@ def t_read_sentences(ws: Workspace, items=None, fields=None) -> str:
             left.append(_named_left(ws, doc_id, named))
             continue
         out.append(text)
+        ws.note_shown(doc, shown)
         used += len(text) + 1
         total += len(shown)
         if shown:

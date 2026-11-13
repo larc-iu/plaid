@@ -370,7 +370,8 @@ class Workspace(BaseWorkspace):
 
     def render(self, doc, from_sentence: int = 1, to_sentence: Optional[int] = None,
                indexes: Optional[List[int]] = None, budget: Optional[int] = None,
-               shown_out: Optional[List[int]] = None, fields=None, pointer: bool = True) -> str:
+               shown_out: Optional[List[int]] = None, fields=None, pointer: bool = True,
+               max_sentences: Optional[int] = None) -> str:
         # The legend once a turn: later reads point back at it, and a later
         # document of the same read (``pointer`` False) says nothing.
         view = read_view(self.project, fields) if fields is not None else None
@@ -380,7 +381,8 @@ class Workspace(BaseWorkspace):
         recording = (True, seconds) if has else None
         out = render_document(doc, self.project, start=from_sentence, end=to_sentence, indexes=indexes,
                               ref_name=self.corpus.ref_name(doc.id), budget=budget, shown_out=shown_out,
-                              legend=legend, view=view, recording=recording, name=self.link_name)
+                              legend=legend, view=view, recording=recording, name=self.link_name,
+                              **({'max_sentences': max_sentences} if max_sentences else {}))
         self.legend_shown = self.legend_shown or FORMAT_LEGEND in out
         return out
 

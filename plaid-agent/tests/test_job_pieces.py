@@ -4,6 +4,7 @@ note and the tables its code makes; the final context that writes the
 report's prose; and a crash and resume at each new step."""
 
 import json
+import re
 
 import pytest
 
@@ -322,6 +323,9 @@ def test_a_selection_is_one_piece_whose_writes_land_document_by_document(monkeyp
 
     def piece(asked, n):
         if n == 1:
+            return reply(calls=[call(9, 'read_sentences', {'items': [{'document': f'Story {i}', 'sentences': [1, 2]}
+                                                                     for i in (1, 2)]})])
+        if n == 2:
             return reply(calls=[call(1, 'set_analysis', {'document': f'Story {i}', 'ref': 's1.w1',
                                                          'morphemes': [{'form': 'ka', 'fields': {'Morph Gloss': 'go'}}]})
                                 for i in (1, 2)])
@@ -437,6 +441,8 @@ def test_a_document_the_selection_never_read_is_worked_as_a_piece_of_its_own(mon
     def piece(asked, n):
         if '"Story 1"' in asked and '"Story 2"' in asked:
             if n == 1:
+                return reply(calls=[call(9, 'read_document', {'document': 'Story 1'})])
+            if n == 2:
                 return reply(calls=[call(1, 'set_analysis', {'document': 'Story 1', 'ref': 's1.w1', 'morphemes': [
                     {'form': 'ka', 'fields': {'Morph Gloss': 'go'}}]})])
             return reply('Glossed ka in Story 1, and ran out of time.')
@@ -452,6 +458,74 @@ def test_a_document_the_selection_never_read_is_worked_as_a_piece_of_its_own(mon
     assert {'document_id': 'd1', 'reason': 'not-read'} not in plan['fallback']
     assert sorted(w for w in written if w.startswith('d2')) == ['d2-s1w1', 'd2-s1w2', 'd2-s2w1'], written
     assert [d['state'] for d in finished['report']['documents']] == ['done', 'done']
+
+
+def test_a_document_the_selection_read_in_part_is_worked_where_it_was_not_shown(monkeypatch):
+    """REV-JG3-1: what the selection read is what a read printed to the
+    model, never what a tool loaded. Its model reads s1 of Story 1 alone,
+    glosses ka there and runs out of time. Story 1's s2 was never shown: the
+    walk works it as a piece of its own, and the report's plan says Story 1
+    was worked apart in part (``not-read``)."""
+    client = JobClient(_docs(2))
+    job = start(client, 'Gloss every word nobody analysed.', id=J, plan='selection')
+    alone = []
+
+    def piece(asked, n):
+        if '"Story 1"' in asked and '"Story 2"' in asked:
+            if n == 1:
+                return reply(calls=[call(1, 'read_document', {'document': 'Story 1', 'from_sentence': 1,
+                                                              'to_sentence': 1})])
+            if n == 2:
+                return reply(calls=[call(2, 'set_analysis', {'document': 'Story 1', 'ref': 's1.w1', 'morphemes': [
+                    {'form': 'ka', 'fields': {'Morph Gloss': 'go'}}]})])
+            return reply('Glossed ka in Story 1 and ran out of time.')
+        if n == 1:
+            alone.append((asked.split('"')[1], re.search(r'Your piece: ([^.]*)\.', asked).group(1)))
+        return _gloss_all(asked, n)
+    use(monkeypatch, _model(piece=piece))
+    finished = run_job(job, runner(job))
+    assert finished['state'] == 'done'
+    assert ('Story 1', 's2') in alone, alone
+    assert {'document_id': 'd1', 'reason': 'not-read'} in finished['report']['plan']['fallback']
+
+
+def test_a_selection_that_was_shown_every_sentence_of_a_text_works_it_whole(monkeypatch):
+    """The guard: a text whose every sentence a read printed is the
+    selection's, and no piece of its own works it again."""
+    client = JobClient(_docs(1))
+    job = start(client, 'Gloss every word nobody analysed.', id=J, plan='selection')
+    alone = []
+
+    def piece(asked, n):
+        if 'Your piece: the whole selection above.' in asked:
+            if n == 1:
+                return reply(calls=[call(1, 'read_sentences', {'items': [{'document': 'Story 1',
+                                                                          'sentences': ['s1', 's2']}]})])
+            if n == 2:
+                return reply(calls=[call(2, 'set_analysis', {'document': 'Story 1', 'ref': 's1.w1', 'morphemes': [
+                    {'form': 'ka', 'fields': {'Morph Gloss': 'go'}}]})])
+            return reply('Glossed ka, and left the rest.')
+        alone.append(asked)
+        return reply('Nothing.')
+    use(monkeypatch, _model(piece=piece))
+    finished = run_job(job, runner(job))
+    assert finished['state'] == 'done' and not alone
+    assert finished['report']['plan']['fallback'] == []
+
+
+def test_a_document_piece_shows_every_sentence_of_its_document(monkeypatch):
+    """A whole document is handed to its piece whole, past a read's cap of
+    sentences (MAX_SENTENCES_PER_READ): its piece says the whole document,
+    and the model is shown all of it."""
+    from plaid_agent.core.limits import MAX_SENTENCES_PER_READ
+    n = MAX_SENTENCES_PER_READ + 5
+    client = JobClient({'d1': document('d1', 'Story 1', [{'words': [f'w{i}']} for i in range(1, n + 1)])})
+    job = start(client, 'Gloss every word nobody analysed.', id=J, plan='document')
+    model = use(monkeypatch, _model(piece=lambda asked, k: reply('Nothing.')))
+    run_job(job, runner(job))
+    first = next(c['asked'] for c in model.calls if c['n'] == 1 and 'Your piece: the whole document' in c['asked'])
+    assert f'Your piece: the whole document "Story 1", {n} sentences.' in first
+    assert f'[s{n}] w{n}.' in first.splitlines(), 'the last sentence is shown'
 
 
 def test_a_document_the_selection_never_read_is_not_reached_when_the_job_stops_first(monkeypatch):
@@ -546,6 +620,8 @@ def test_a_selections_code_makes_a_table_kept_as_data_in_the_report(monkeypatch)
             'print(table("Sentences per text", ["text", "sentences"], rows))')
 
     def piece(asked, n):
+        if 'Your piece: the whole selection above.' not in asked:
+            return reply('Nothing to do here.')
         if n == 1:
             return reply(calls=[call(1, 'run_code', {'code': code})])
         return reply('Counted the sentences.')

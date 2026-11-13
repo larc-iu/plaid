@@ -187,6 +187,10 @@ class BaseWorkspace:
         self._gone: set = set()
         self._gone_at = 0
         self._corpus = None  # the query helper, made on the first corpus-wide read
+        #: document id -> the ids of the sentences a read printed to the
+        #: model whole (:meth:`note_shown`): what a job's selection counts as
+        #: read, never what a tool loaded (REV-JG3-1)
+        self.shown: Dict[str, set] = {}
         # Set when the operator configured web search. None means the web tools
         # are not offered to the model at all.
         self.web = None
@@ -470,6 +474,15 @@ class BaseWorkspace:
         for its step's label and the summary line."""
         if self.reads is not None:
             self.reads.append(trace_note(n, unit, of, which))
+
+    def note_shown(self, doc, positions) -> None:
+        """Keep the sentences of ``doc`` at ``positions`` (1-based) as shown
+        to the model: called where a read's text, holding them whole, goes
+        back to the model."""
+        held = self.shown.setdefault(doc.id, set())
+        for i in positions:
+            if 1 <= i <= len(doc.sentences):
+                held.add(doc.sentences[i - 1].id)
 
     def sentence_position(self, doc, item) -> Optional[int]:
         """The position of the sentence a read_document argument names in

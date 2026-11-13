@@ -41,9 +41,14 @@ class Crash(BaseException):
 
 def _gloss(refs=REFS):
     """A piece that glosses every word it was told of, whatever its kind:
-    the scripted model reads nothing, so each piece stages all of them, and
-    what the job does with each is the job's business."""
+    each piece stages all of them, and what the job does with each is the
+    job's business. A selection reads the document first, as what a read
+    printed is what its piece read (REV-JG3-1)."""
     def answer(asked, n, kwargs):
+        if 'Your piece: the whole selection above.' in asked:
+            if n == 1:
+                return reply(calls=[call(9, 'read_document', {'document': 'Story'})])
+            n -= 1
         if n > 1:
             return reply('Glossed the blank words.')
         return reply(calls=[call(i, 'set_analysis', {'document': 'Story', 'ref': r,

@@ -434,6 +434,7 @@ def _noted(ws, doc, render: Callable[[List[int]], str]) -> str:
     (`BaseWorkspace.note_read`) by the numbers the app shows for them."""
     shown: List[int] = []
     out = truncate(render(shown))
+    ws.note_shown(doc, shown)
     if shown:
         numbers = [ws.sentence_shown(doc, doc.sentences[i - 1]) for i in shown]
         ws.note_read(len(shown), 'sentence', of=len(doc.sentences), which=ranges(numbers))

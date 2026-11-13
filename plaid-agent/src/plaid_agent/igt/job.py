@@ -1259,7 +1259,8 @@ class IgtRunner:
         core_job.through_core(job, lambda: self.record_changes(outside, note))
         for d in live:
             job.check()
-            if d not in ws._docs:
+            shown = ws.shown.get(d) or set()
+            if d not in ws._docs or not (shown or by_doc.get(d)):
                 # The piece never read it (its budget ran out, say): it is not
                 # recorded as worked. The walk works it as a piece of its own,
                 # and the report's plan says so (REV-JG2-5).
@@ -1267,25 +1268,35 @@ class IgtRunner:
                 continue
             job.set(current_document=d)
             try:
-                self.write_piece(project, d, ws, ws._docs[d], by_doc.get(d, []), note)
+                self.write_piece(project, d, ws, ws._docs[d], by_doc.get(d, []), note, shown)
             except Deferred:
                 # Its writes were dropped: it is worked again as a piece of its own.
                 core_job.through_core(job, lambda: (self.fall_back(d, 'in-use'), self.defer(d)))
+                continue
             except Gone:
                 core_job.through_core(job, lambda: job.update_row(d, state='gone'))
+                continue
+            # What a read printed to the model is what it read, never what a
+            # tool loaded (REV-JG3-1): a sentence it was never shown, and did
+            # not write in, is worked by the walk in pieces of its own.
+            out = self.excluded(d)
+            if any(s.id not in shown and s.id not in out for s in ws._docs[d].sentences):
+                core_job.through_core(job, lambda: self.fall_back(d, NOT_READ))
         return True
 
     def write_piece(self, project: IgtProject, document_id: str, ws: JobWorkspace, doc,
-                    ops: List[Dict[str, Any]], note: str) -> None:
+                    ops: List[Dict[str, Any]], note: str, shown=frozenset()) -> None:
         """A selection's write in one of the documents its piece read: THE
-        write (:meth:`write`), its piece every sentence of the document as the
-        piece read it (the gate takes out those the job finished), and every
-        sentence's print, so a sentence anyone changed since the read is
-        taken again by the walk. Tried again from the gate after core's
+        write (:meth:`write`), its piece the sentences of the document a read
+        printed to the model (``shown``, sentence ids, REV-JG3-1: the gate
+        takes out those the job finished), and every sentence's print, so a
+        sentence anyone changed since the read is taken again by the walk.
+        What it staged in a sentence it was not shown goes to the apply rule
+        as any op of the document. Tried again from the gate after core's
         passing trouble, and put off (:class:`Deferred`) when the trouble
         outlasts the tries, as a stretch's document is (REV-JG-4)."""
         def step():
-            part = list(doc.sentences)
+            part = [s for s in doc.sentences if s.id in shown]
             prints = {s.id: ws.sentence_print(doc, s) for s in doc.sentences}
             self.write(project, document_id, ws, doc, part, prints, ops, note, selection=True)
 
@@ -1755,7 +1766,9 @@ class IgtRunner:
         else:
             context = [s for s in doc.sentences if first - JOB_CONTEXT_SENTENCES <= s.index < first]
             shown = [s.index for s in context + part]
-        rendered = ws.render(doc, indexes=shown)
+        # Every sentence of the piece, past a read's cap of sentences: a
+        # whole document is within JOB_DOCUMENT_PIECE_MAX_CHARS.
+        rendered = ws.render(doc, indexes=shown, max_sentences=len(shown))
         lines = [f'Document "{doc.name}".', '', rendered, '']
         for s in part:
             words = [w for w in s.words if w.id in st.words]
