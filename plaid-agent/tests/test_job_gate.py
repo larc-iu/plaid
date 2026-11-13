@@ -238,8 +238,13 @@ def _sani(gloss):
 def test_a_write_put_off_after_its_first_batch_landed_puts_nothing_back(monkeypatch, pieces):
     """A write of two batches: s1's lands, s2's is refused, the starter
     having typed in s3. When the document comes back the starter has
-    cleared the job's gloss on s1.w2: nothing in s1 or s2 is written again,
-    s2 is listed as interrupted, and s1 is not vouched for."""
+    cleared the job's gloss on s1.w2: the piece run again writes nothing in
+    s1 or s2, s2 is listed as interrupted, and s1 is not vouched for.
+
+    In stretches (and a selection put off, worked in stretches) the piece
+    run next is s3's, a later piece with s1 and s2 as its context: what it
+    stages there is written, as a later piece's change is (REV-JH-1). This
+    model stages in s1 and s2 whatever its piece."""
     human = {'form': 'ka', 'morphs': [('ka', 'go')], 'who': 'human'}
     typed = {'form': 'ka', 'morphs': [('ka', 'went')], 'who': 'human'}
     blank = [{'words': ['sani', 'sani']}, {'words': ['sani', 'sani']}, {'words': [human]}]
@@ -282,8 +287,11 @@ def test_a_write_put_off_after_its_first_batch_landed_puts_nothing_back(monkeypa
     runner(job).work(job)
     assert n['n'] >= 2, 'the second batch was refused'
     written = [o.get('word_id') for o in staged if o.get('kind') == 'set_analysis']
-    assert written.count('d1-s1w2') == 1 and written.count('d1-s2w1') == 1, \
-        f'nothing of s1 or s2 is written again: {written}'
+    again = 1 if pieces == 'document' else 2
+    assert written.count('d1-s1w2') == again and written.count('d1-s2w1') == again, \
+        f'the same piece writes nothing of s1 or s2 again, a later piece does: {written}'
+    if pieces == 'document':
+        assert job.rows['d1']['counts']['repeated'] == 4, 'what the piece staged again is counted'
     assert ('d1-s2', 'interrupted') in _skipped(job)
     assert not _mark(client, 'd1-s1').get('words'), 's1 is not vouched for'
     assert job.rows['d1']['state'] == 'done'
@@ -472,3 +480,22 @@ def test_what_a_piece_stages_in_a_sentence_skipped_as_too_long_meets_the_rule_wh
         assert ('d1-s1', 'too-long') in _skipped(job), pieces
         written[pieces] = (_analysed(staged), finished['report']['totals']['proposed'])
     assert written['document'] == written['selection'], written
+
+
+# --- what a piece stages again is left out, and counted (REV-JH-1) -----------------------------
+
+def test_a_resumed_selection_writes_once_and_counts_what_it_staged_again(monkeypatch):
+    """The selection's write lands, the worker dies before its record, and a
+    new worker runs the selection again: it stages the same three analyses
+    in sentences its first run wrote. They are left out, never written
+    twice, and counted ("repeated")."""
+    client, job, clock, model = _job(monkeypatch, 'selection')
+    _crash_at_record(monkeypatch, job)
+    staged = _staged(monkeypatch)
+    from plaid_agent.core.job import run_job
+    finished = run_job(job, _resume(client, job))
+    assert finished['state'] == 'done', finished.get('reason')
+    assert _analysed(staged) == [], 'nothing written twice'
+    assert len([c for c in model.calls if c['n'] == 1]) == 2, 'the selection ran again'
+    assert finished['report']['totals']['repeated'] == 3, finished['report']['totals']
+    assert job.rows['d1']['counts']['repeated'] == 3

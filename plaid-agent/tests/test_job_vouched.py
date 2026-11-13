@@ -394,8 +394,11 @@ def test_a_write_refused_on_its_second_batch_is_put_off_and_never_vouched_for(mo
     assert runner(job).document('d1') == 'done'
     assert not _mark(client, 'd1-s1').get('words'), 's1 is not vouched for'
     # s2's batch never landed, but the job cannot tell that from a person's
-    # removal of what landed: it leaves s2 and says so (REV-FIX3-1).
-    assert not staged, 'nothing is written again'
+    # removal of what landed: it leaves s2 and says so (REV-FIX3-1). The
+    # piece run now is s3's, with s1 and s2 as its context: this model
+    # stages there whatever its piece, and a later piece's change is
+    # written (REV-JH-1).
+    assert sorted(o['word_id'] for o in staged) == ['d1-s1w1', 'd1-s1w2', 'd1-s2w1', 'd1-s2w2'], staged
     assert {'sentence': 's2', 'sentence_id': 'd1-s2', 'reason': 'interrupted', 'kind': None} \
         in job.rows['d1']['skipped']
 

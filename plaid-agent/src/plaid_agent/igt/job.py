@@ -149,7 +149,8 @@ def writing_form(sentence_id: str) -> str:
     return WRITING_FORM + sentence_id
 
 
-def writing_text(document_id: str, translation: Optional[str], words: List[str], others=(), before=()) -> str:
+def writing_text(document_id: str, translation: Optional[str], words: List[str], others=(), before=(),
+                 pieces=()) -> str:
     """A writing row's analysis: the document, what the write does to the
     sentence's translation (``translations`` writes one where there was
     none, ``refreshed`` replaces one, None leaves it), the tags of the words
@@ -158,13 +159,15 @@ def writing_text(document_id: str, translation: Optional[str], words: List[str],
     to it wherever a person moves it (REV-B4-1), and the digest of the
     sentence before the write (``before``, :func:`sentence_digest`), so that
     a write that leaves no stamp of the job (a deletion, a text edit) is
-    known to have landed. Every tag of a sentence of JOB_SENTENCE_MAX_WORDS
+    known to have landed, and the piece whose write it was (``pieces``,
+    :func:`piece_tag`), so that only that piece, run again, leaves the
+    sentence alone (REV-JH-1). Every tag of a sentence of JOB_SENTENCE_MAX_WORDS
     words fits a decision's analysis. Past that (a sentence a person made
     longer since the checks) the others are cut first, then the words."""
     words, others = list(words), list(others)
     while True:
         text = canonical({'before': list(before), 'document': document_id, 'others': others,
-                          'translation': translation, 'words': words})
+                          'pieces': list(pieces), 'translation': translation, 'words': words})
         if len(text) <= JOB_ANALYSIS_MAX_CHARS or not (words or others):
             return text
         if others:
@@ -173,8 +176,20 @@ def writing_text(document_id: str, translation: Optional[str], words: List[str],
             words.pop()
 
 
+def piece_tag(piece: Dict[str, Any]) -> str:
+    """How a writing row names the piece whose write it was: the start of
+    the key of the piece, ``{"document", "first"}`` for a stretch (its first
+    sentence), ``{"document", "whole"}`` for a whole document and
+    ``{"selection"}`` for the selection. The same piece run again after an
+    interruption (a crash, a lost answer, a write put off) has the same
+    tag."""
+    return analysis_key(canonical(piece))[:SENTENCE_DIGEST_CHARS]
+
+
 #: How many hex characters of a sentence's fingerprint a writing row keeps.
 SENTENCE_DIGEST_CHARS = 16
+#: The tag of the selection piece: one per job.
+SELECTION_TAG = piece_tag({'selection': True})
 
 
 def sentence_digest(s: Sentence) -> str:
@@ -1289,7 +1304,7 @@ class IgtRunner:
         def step():
             part = [s for s in doc.sentences if s.id in shown]
             prints = {s.id: ws.sentence_print(doc, s) for s in doc.sentences}
-            self.write(project, document_id, ws, doc, part, prints, ops, note, selection=True)
+            self.write(project, document_id, ws, doc, part, prints, ops, note, SELECTION_TAG, selection=True)
 
         def put_off():
             raise Deferred(document_id)
@@ -1678,10 +1693,15 @@ class IgtRunner:
         note = self.run_piece(ws, project, message, document_id)
         piece = {'document': document_id, 'first': part[0].id if part else None, 'whole': whole}
         self.record_piece(project, piece, note, ws.tables, doc, part)
+        # The piece as its writing rows name it: a whole document's is the
+        # same whatever sentence it starts from, so the piece run again
+        # after an interruption is known as the same.
+        tag = piece_tag({'document': document_id, 'whole': True} if whole else
+                        {'document': document_id, 'first': piece['first']})
         # What the piece staged outside its document goes with its write and
         # is proposed there, never written: it is not under this document's
         # lock (the rule's ``place``).
-        return ws, doc, part, prints, list(ws.ops), note
+        return ws, doc, part, prints, list(ws.ops), note, tag
 
     def run_piece(self, ws: JobWorkspace, project: IgtProject, message: str, folder: str) -> str:
         """One piece's model context: the job's prompt, the interactive
@@ -1922,15 +1942,17 @@ class IgtRunner:
         return out
 
     def write(self, project: IgtProject, document_id: str, ws: JobWorkspace, doc, part: List[Sentence],
-              prints: Dict[str, str], ops: List[Dict[str, Any]], note: str = '', selection: bool = False) -> None:
+              prints: Dict[str, str], ops: List[Dict[str, Any]], note: str = '', piece: str = '',
+              selection: bool = False) -> None:
         """THE write of every piece of the job in one document, whatever the
         plan cut (a stretch, a whole document, the whole selection): through
         :meth:`gate` first, then under the document's lock by the apply rule
         (SPEC 5.4), its writing rows before it is sent (:meth:`intend`), then
         its record (:meth:`record`) and the changes it proposes
         (:meth:`record_changes`). ``doc`` is the document as the piece read
-        it, ``part`` the piece's sentences in it, ``selection`` whether it is
-        a selection's write (:meth:`entries_that_fit`).
+        it, ``part`` the piece's sentences in it, ``piece`` its tag
+        (:func:`piece_tag`), ``selection`` whether it is a selection's write
+        (:meth:`entries_that_fit`).
 
         Safe to do again after a failure anywhere in it: the gate settles
         what landed, a sentence it settles (recorded, or skipped as
@@ -1941,20 +1963,24 @@ class IgtRunner:
         job = self.job
         self.gate(project, document_id)
         ops = self.entries_that_fit(project, ops, selection)
-        # A sentence the job has written in already (its writing row, or a
-        # word of such a sentence wherever a split or a merge moved it, not
-        # known to have sent nothing: a write of this piece that landed
-        # before a crash or a passing error, settled now, or an earlier
-        # piece's) is not written in again: what this piece staged there is
-        # left out. The job works each sentence once: a stretch's or a
-        # document piece's own sentences never hold one (the walk leaves
-        # them out), a resumed selection's and a later piece's context may.
-        written = set(self.writing.get(document_id) or ()) - (self.unsent.get(document_id) or set())
-        known = self.known_words(document_id)
+        # A sentence THIS piece has written in already (a writing row naming
+        # it, or a word of such a sentence wherever a split or a merge moved
+        # it, not known to have sent nothing: its write that landed before a
+        # crash or a lost answer, settled now, and the piece run or sent
+        # again) is not written in again: what the piece staged there is
+        # left out, and counted (``repeated``). What a later piece stages in
+        # a sentence an earlier one wrote in is written as any change
+        # (REV-JH-1).
+        unsent = self.unsent.get(document_id) or set()
+        written = {sid for sid, plan in (self.writing.get(document_id) or {}).items()
+                   if piece in (plan.get('pieces') or ()) and sid not in unsent}
+        known = self.known_words(document_id, piece)
         again = {s.id for s in doc.sentences if s.id in written or wrote_in(s, known)}
+        repeated = 0
         if again:
             from .jobapply import sentence_of
-            ops = [o for o in ops if getattr(sentence_of(o, doc), 'id', None) not in again]
+            kept = [o for o in ops if getattr(sentence_of(o, doc), 'id', None) not in again]
+            repeated, ops = len(ops) - len(kept), kept
         out = self.excluded(document_id)
         part = [s for s in part if s.id not in out]
         st = Stretch(doc, project, part, job.id, self.known_words(document_id))
@@ -1972,7 +1998,7 @@ class IgtRunner:
             try:
                 try:
                     written_ops, counts, changed, after, vouched, proposed = self.write_held(
-                        project, document_id, client, ws, st, prints, ops, group, seed_id)
+                        project, document_id, client, ws, st, prints, ops, group, seed_id, piece)
                 finally:
                     lock.__exit__(None, None, None)
             except DocumentLockLost as e:
@@ -2014,6 +2040,7 @@ class IgtRunner:
         # The write landed: what the rule did not apply is recorded as the
         # piece's proposed changes, never before (REV-J-B2 S4).
         self.record_changes(proposed, note)
+        counts['repeated'] += repeated
         made = self.made_entries(ws, after, st, written_ops)
         self.record(project, document_id, after, part, st, counts, written_ops, made, changed, vouched)
 
@@ -2036,7 +2063,7 @@ class IgtRunner:
         raise Deferred(document_id)
 
     def write_held(self, project: IgtProject, document_id: str, client, ws: JobWorkspace, st: Stretch,
-                   prints: Dict[str, str], ops: List[Dict[str, Any]], group: str, seed_id: str):
+                   prints: Dict[str, str], ops: List[Dict[str, Any]], group: str, seed_id: str, piece: str = ''):
         """The write, the lock held: the stretch's ops checked again against
         the document as it is (:meth:`recheck`), written, and the document
         read again BEFORE the lock goes. ``(written ops, dropped counts,
@@ -2057,7 +2084,7 @@ class IgtRunner:
                  for w in s.words if w.id in st.words and word_target(w)}
         if kept:
             self.machine_status(project, kept)
-            sentences = self.intend(document_id, st, kept, fresh)
+            sentences = self.intend(document_id, st, kept, fresh, piece)
             try:
                 kept = self.apply(client, project, document_id, group, kept, seed_id, counts)
             except (PlanOutOfDate, Deferred, PlanError) as e:
@@ -2075,12 +2102,13 @@ class IgtRunner:
                         job.id, document_id, known, after.version)
         return kept, counts, changed, after, frozenset(blank) if exact else frozenset(), proposed
 
-    def intend(self, document_id: str, st: Stretch, kept: List[Dict[str, Any]], fresh):
+    def intend(self, document_id: str, st: Stretch, kept: List[Dict[str, Any]], fresh, piece: str = ''):
         """Before a write is sent: a writing row in core for each sentence
         ``kept`` writes in, saying what it writes there, naming every word of
         the sentence as ``fresh`` (the document under the lock) holds it, and
         holding the digest of the sentence as it is before the write
-        (``before``), in one call. The sentences, which are no longer targets
+        (``before``) and the tag of the piece writing (``pieces``), in one
+        call. The sentences, which are no longer targets
         once the call has landed, nor is any sentence a word of theirs is
         moved into, whatever happens to what the write leaves in them
         (``settle``, :meth:`known_words`)."""
@@ -2117,9 +2145,11 @@ class IgtRunner:
             plan['others'] = [word_tag(w.id) for w in (s.words if s is not None else [])
                               if word_tag(w.id) not in plan['words']]
             plan['before'] = [sentence_digest(now[sid])] if sid in now else []
+            plan['pieces'] = [piece] if piece else []
         rows = []
         for sid, plan in plans.items():
-            text = writing_text(document_id, plan['translation'], plan['words'], plan['others'], plan['before'])
+            text = writing_text(document_id, plan['translation'], plan['words'], plan['others'], plan['before'],
+                                plan['pieces'])
             rows.append({'form': writing_form(sid), 'key': analysis_key(text), 'analysis': text, 'count': 1,
                          'document_id': document_id, 'sentence_id': sid})
         if rows:
@@ -2138,17 +2168,19 @@ class IgtRunner:
         """Two writing rows of one sentence as one (a try after one that
         landed nothing): every word either analyses, every word either names,
         and the translation counted as replacing a machine draft when either
-        says so, and every digest of the sentence before a write
-        (``before``)."""
+        says so, every digest of the sentence before a write (``before``) and
+        every piece that wrote (``pieces``)."""
         if not had:
             return {'translation': plan.get('translation'), 'words': set(plan.get('words') or ()),
-                    'others': set(plan.get('others') or ()), 'before': set(plan.get('before') or ())}
+                    'others': set(plan.get('others') or ()), 'before': set(plan.get('before') or ()),
+                    'pieces': set(plan.get('pieces') or ())}
         translation = had.get('translation') or plan.get('translation')
         if 'refreshed' in (had.get('translation'), plan.get('translation')):
             translation = 'refreshed'
         return {'translation': translation, 'words': set(had['words']) | set(plan.get('words') or ()),
                 'others': set(had.get('others') or ()) | set(plan.get('others') or ()),
-                'before': set(had.get('before') or ()) | set(plan.get('before') or ())}
+                'before': set(had.get('before') or ()) | set(plan.get('before') or ()),
+                'pieces': set(had.get('pieces') or ()) | set(plan.get('pieces') or ())}
 
     def intents(self, document_id: str) -> Dict[str, Dict[str, Any]]:
         """The writing rows core holds for a document, one per sentence
@@ -2176,16 +2208,17 @@ class IgtRunner:
             self.rows_read = rows
         return dict(self.rows_read.get(document_id) or {})
 
-    def known_words(self, document_id: str) -> frozenset:
+    def known_words(self, document_id: str, piece: Optional[str] = None) -> frozenset:
         """The tags of every word of every sentence of the document the job
         began to write in (its writing rows), wherever a person has since
         moved them, but those of a sentence whose write this worker knows
         sent nothing. A sentence holding any of them is not a target
-        (:func:`wrote_in`, REV-B4-1)."""
+        (:func:`wrote_in`, REV-B4-1). With ``piece``, only the sentences
+        that piece began to write in."""
         unsent = self.unsent.get(document_id) or set()
         out: set = set()
         for sid, plan in (self.writing.get(document_id) or {}).items():
-            if sid not in unsent:
+            if sid not in unsent and (piece is None or piece in (plan.get('pieces') or ())):
                 out |= set(plan.get('words') or ()) | set(plan.get('others') or ())
         return frozenset(out)
 
@@ -2531,6 +2564,7 @@ class IgtRunner:
         extra = Counter(self.carry.get(document_id) or {})
         extra['changed'] += dropped.get('changed', 0)
         extra['proposed'] += dropped.get('proposed', 0)
+        extra['repeated'] += dropped.get('repeated', 0)
         extra['entries'] += len(made)
         # What the write applied, and how much of it took something away.
         extra['changes'] += len(ops)
@@ -2576,11 +2610,24 @@ class IgtRunner:
             fields['last_sentence'] = last
         if len(skipped) != len(row.get('skipped') or []):
             fields['skipped'] = skipped
-        self.commit(document_id, records, fields)
+        # What no record holds yet is carried to the next, and the row's
+        # counts hold it meanwhile (``tally``): a write that recorded no
+        # sentence (all of them settled before it, or taken again) still
+        # counts what it wrote, proposed or left out.
+        had = self.carry.get(document_id)
         if records:
             self.carry.pop(document_id, None)
         elif any(extra.values()):
             self.carry[document_id] = extra
+        try:
+            self.commit(document_id, records, fields)
+        except Exception:
+            # As before the record: taken again, it carries what it carried.
+            if had is None:
+                self.carry.pop(document_id, None)
+            else:
+                self.carry[document_id] = had
+            raise
 
     def sentence_record(self, document_id: str, s: Sentence, words: List[Word], translation: Optional[str],
                         made: frozenset = frozenset(), vouched=frozenset(), written: bool = False) -> Dict[str, Any]:
@@ -2667,13 +2714,14 @@ class IgtRunner:
 
     def tally(self, document_id: str, skipped) -> Dict[str, Any]:
         """A row's counts and ``done`` as its record makes them: the counts of
-        the document's recorded sentences, and how many sentences were
+        the document's recorded sentences and what no record holds yet
+        (``carry``), and how many sentences were
         finished, each once (recorded or skipped). ``targets`` grows with a
         sentence that became a target after the checks, so done never passes
         it."""
         marks = self.recorded.get(document_id) or {}
         counts = empty_counts()
-        for c in marks.values():
+        for c in [*marks.values(), self.carry.get(document_id) or {}]:
             for k, n in c.items():
                 counts[k] = counts.get(k, 0) + n
         row = self.job.rows.get(document_id) or {}

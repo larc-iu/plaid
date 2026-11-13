@@ -49,6 +49,7 @@ const totalRows = (report) => {
   optional('Sentences skipped after an interrupted write', t.skippedInterrupted);
   optional('Sentences skipped and not listed', t.skippedMore);
   optional('Changes not written, changed during the job', t.changed);
+  optional('Changes left out, sentence written before an interruption', t.repeated);
   return rows.map(([label, n]) => [label, (n ?? 0).toLocaleString()]);
 };
 

@@ -99,6 +99,7 @@ const REPORT = {
     proposed: 1,
     changes: 40,
     deletions: 5,
+    repeated: 3,
   },
   proposed: [
     {
@@ -475,6 +476,7 @@ describe('the job page', () => {
     expect(sums['Changes not written, changed during the job']).toBe('2');
     expect(sums['Changes written']).toBe('40');
     expect(sums['Deletions']).toBe('5');
+    expect(sums['Changes left out, sentence written before an interruption']).toBe('3');
     expect(sums['Translations written']).toBe('3');
     expect(sums['Translations replaced']).toBe('2');
     expect(sums['Paused for people']).toBe('12 min');
@@ -649,7 +651,15 @@ describe('the job page', () => {
       stopped: 'without-worker',
       summary: null,
       summaryFailed: true,
-      totals: { ...REPORT.totals, words: 0, links: 0, entries: 0, proposed: 0, deletions: 0 },
+      totals: {
+        ...REPORT.totals,
+        words: 0,
+        links: 0,
+        entries: 0,
+        proposed: 0,
+        deletions: 0,
+        repeated: 0,
+      },
       harmonize: { changed: [], left: [], changedMore: 0, leftMore: 0 },
       entries: { created: [], unlinked: [], lexicons: [] },
       proposed: [],
@@ -663,6 +673,9 @@ describe('the job page', () => {
     expect(t).toContain('The summary could not be written.');
     expect(totals(section)['Translations written']).toBe('3');
     expect(totals(section)).not.toHaveProperty('Deletions');
+    expect(totals(section)).not.toHaveProperty(
+      'Changes left out, sentence written before an interruption',
+    );
     expect(all(section, 'h3').map((h) => h.textContent)).not.toContain('Proposed changes');
     expect(totals(section)).not.toHaveProperty('Words analyzed');
     expect(t).not.toContain('Machine drafts');

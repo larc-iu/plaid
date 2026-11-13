@@ -700,3 +700,67 @@ def test_a_sentence_deletion_that_never_landed_before_a_crash_is_made_on_the_res
     assert len([c for c in model.calls if c['n'] == 1]) == 2, 'asked again, as nothing landed'
     assert [(o['kind'], o['sentence_id']) for o in staged] == [('delete_sentence', 'd1-s4')]
     assert not _skipped(job)
+
+
+# --- a later piece writes where an earlier piece wrote (REV-JH-1) ---------------------------
+
+def _two_pieces(monkeypatch, second):
+    """Stretches of one sentence: piece 1 glosses ka in s1, piece 2 glosses
+    sa in s2 and stages ``second`` (more calls) in s1, its context. The
+    batches each write sent, and the job."""
+    monkeypatch.setattr(igt_job, 'JOB_STRETCH_SENTENCES', 1)
+
+    def model(asked, n, kwargs):
+        if n > 1:
+            return reply('Done.')
+        if targets_named(asked) == [1]:
+            return reply(calls=[call(1, 'set_analysis', {'document': 'Story', 'ref': 's1.w1',
+                                                         'morphemes': [{'form': 'ka', 'fields': {'Morph Gloss': 'go'}}]})])
+        return reply(calls=[call(2, 'set_analysis', {'document': 'Story', 'ref': 's2.w1',
+                                                     'morphemes': [{'form': 'sa', 'fields': {'Morph Gloss': 'go'}}]}),
+                            *second])
+    before = [{'words': ['ka'], 'translation': ('One.', 'human')}, {'words': ['sa'], 'translation': ('Two.', 'human')}]
+    after = [{'words': [('ka', [('ka', 'go')], J)], 'translation': ('One.', 'human')},
+             {'words': ['sa'], 'translation': ('Two.', 'human')}]
+    client, job, clock, m = _job(monkeypatch, 'Gloss and link every word.', before, after, model)
+    batches = []
+    real = igt_job.execute_plan
+
+    def execute(c, ops, **kw):
+        batches.append(ops)
+        return real(c, ops, **kw)
+    monkeypatch.setattr(igt_job, 'execute_plan', execute)
+    assert runner(job).document('d1') == 'done'
+    return client, job, batches
+
+
+def test_a_later_piece_links_a_morpheme_an_earlier_piece_analysed(monkeypatch):
+    """REV-JH-1: piece 2 is shown s1 as context and links the morpheme piece
+    1 analysed there. The link is written with piece 2's analysis of s2."""
+    client, job, batches = _two_pieces(monkeypatch, [call(3, 'link_entry', {'document': 'Story', 'refs': ['s1.w1.m1'],
+                                                                             'entry_id': 'vi-gam'})])
+    assert [sorted(o['kind'] for o in b) for b in batches] == [['set_analysis'], ['link', 'set_analysis']]
+    counts = job.rows['d1']['counts']
+    assert counts['changes'] == 3 and not counts.get('proposed') and not counts.get('repeated'), counts
+
+
+def test_a_later_piece_corrects_an_earlier_pieces_gloss(monkeypatch):
+    """Ruling 17: piece 2 corrects the gloss piece 1 wrote on ka. Written."""
+    client, job, batches = _two_pieces(monkeypatch, [call(3, 'set_analysis', {
+        'document': 'Story', 'ref': 's1.w1', 'morphemes': [{'form': 'ka', 'fields': {'Morph Gloss': 'went'}}]})])
+    second = [(o['kind'], o.get('word_id')) for o in batches[1]]
+    assert ('set_analysis', 'd1-s1w1') in second, second
+    assert job.rows['d1']['counts']['changes'] == 3
+
+
+def test_a_writing_row_names_the_piece_that_wrote(monkeypatch):
+    """Each sentence's writing row names the piece whose write it was for:
+    s1's names piece 1 and piece 2 (its link), s2's piece 2 only."""
+    client, job, batches = _two_pieces(monkeypatch, [call(3, 'link_entry', {'document': 'Story', 'refs': ['s1.w1.m1'],
+                                                                             'entry_id': 'vi-gam'})])
+    pieces = {}
+    for (f, _), r in client.jobs.decision_rows[J].items():
+        if f.startswith(WRITING_FORM):
+            pieces.setdefault(f[len(WRITING_FORM):], set()).update(json.loads(r['analysis'])['pieces'])
+    assert len(pieces['d1-s1']) == 2 and len(pieces['d1-s2']) == 1 and pieces['d1-s2'] < pieces['d1-s1'], pieces
+
