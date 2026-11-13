@@ -412,3 +412,42 @@ def test_harmonize_settles_a_document_before_it_rewrites_in_it(monkeypatch):
     r.harmonize(job)
     assert asked and asked[0] == ('d1', True), asked
     assert _mark(client, 'd1-s1')['counts']['words'] == 2
+
+
+# --- core out of reach during the write ------------------------------------------------------
+
+@pytest.mark.parametrize('pieces', PIECES)
+def test_core_out_of_reach_during_a_write_puts_the_document_off_and_the_job_ends_done(monkeypatch, pieces):
+    """REV-JG-4: core answers 502 to every write. The document is put off as
+    a stretch's is, waited for, and ended in use: the job ends done, never
+    failed with the error."""
+    client, job, clock, _ = _job(monkeypatch, pieces)
+
+    def down(c, ops, **kw):
+        raise PlaidAPIError('HTTP 502', status=502, method='POST')
+    monkeypatch.setattr(igt_job, 'execute_plan', down)
+    from plaid_agent.core.job import run_job
+    finished = run_job(job, runner(job))
+    assert finished['state'] == 'done', (finished['state'], finished.get('reason'), job.status.get('message'))
+    assert finished['report']['documents'][0]['state'] == 'in-use'
+
+
+@pytest.mark.parametrize('pieces', PIECES)
+def test_core_back_after_a_put_off_write_writes_the_document(monkeypatch, pieces):
+    """The same, core back after the first put-off: the document is written
+    when it comes back, and the job ends done."""
+    client, job, clock, _ = _job(monkeypatch, pieces, after=WRITTEN)
+    real = igt_job.execute_plan
+    fails = {'n': 3}
+
+    def flaky(c, ops, **kw):
+        if fails['n']:
+            fails['n'] -= 1
+            raise PlaidAPIError('HTTP 502', status=502, method='POST')
+        return real(c, ops, **kw)
+    monkeypatch.setattr(igt_job, 'execute_plan', flaky)
+    from plaid_agent.core.job import run_job
+    finished = run_job(job, runner(job))
+    assert finished['state'] == 'done', (finished['state'], finished.get('reason'), job.status.get('message'))
+    assert finished['report']['documents'][0]['state'] == 'done'
+    assert finished['report']['totals']['words'] == 3

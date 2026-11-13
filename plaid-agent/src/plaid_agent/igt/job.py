@@ -1142,12 +1142,16 @@ class IgtRunner:
         sentence's print, so a sentence anyone changed since the read is
         taken again by the walk. A document the piece did not read is read
         now and recorded as it is. Tried again from the gate after core's
-        passing trouble."""
+        passing trouble, and put off (:class:`Deferred`) when the trouble
+        outlasts the tries, as a stretch's document is (REV-JG-4)."""
         def step():
             part = list(doc.sentences)
             prints = {s.id: ws.sentence_print(doc, s) for s in doc.sentences}
             self.write(project, document_id, ws, doc, part, prints, ops, note)
-        core_job.through_core(self.job, step)
+
+        def put_off():
+            raise Deferred(document_id)
+        core_job.through_core(self.job, step, gave_up=put_off)
 
     def selection_work(self, project: IgtProject, documents: List[str]):
         job = self.job
