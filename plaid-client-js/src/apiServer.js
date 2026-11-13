@@ -91,6 +91,7 @@ export const BACKUP_TIMEOUT_MS = 30 * 60 * 1000;
  * @typedef {import("./types.js").AuditTarget} AuditTarget
  * @typedef {import("./types.js").AuditOp} AuditOp
  * @typedef {import("./types.js").AuditEntry} AuditEntry
+ * @typedef {import("./types.js").AuditRowChange} AuditRowChange
  * @typedef {import("./types.js").LockGrant} LockGrant
  * @typedef {import("./types.js").DocumentRestoreSummary} DocumentRestoreSummary
  * @typedef {import("./types.js").RestoreCounts} RestoreCounts
@@ -388,6 +389,43 @@ export function auditApi(client) {
       iterPages(client, "/api/v1/audit", {
         pageSize,
         query: auditQuery({ startTime, endTime, opTypes, kinds }),
+      }),
+    /**
+     * What one audit entry changed, row by row: every row of a document or a
+     * vocabulary its operations wrote, with the row just before the entry's
+     * first write to it (`before`, absent when the entry made it) and just
+     * after its last (`after`, absent when the entry deleted it), each the
+     * entity a document or vocabulary read serves. `changedSince` says an
+     * operation after the entry changed the row, `changedBetween` that one
+     * outside it did between the entry's first and last write. A row that
+     * shows the same before and after is left out, and so is a row of a
+     * document or vocabulary the caller cannot read. Follows every page.
+     * @param {string} entryId - An entry's `id`: a group, a batch or one operation
+     * @param {object} [opts]
+     * @param {string} [opts.documentId] - Only the rows of this document
+     * @param {string} [opts.vocabLayerId] - Only the rows of this vocabulary
+     * @returns {Promise<AuditRowChange[]>}
+     */
+    changes: (entryId, { documentId, vocabLayerId } = {}) =>
+      listAll(client, `/api/v1/audit/entries/${entryId}/changes`, {
+        query: { "document-id": documentId, "vocab-layer-id": vocabLayerId },
+      }),
+    /**
+     * One page of the same rows, in a fixed order that later writes do not
+     * disturb.
+     * @param {string} entryId - An entry's `id`
+     * @param {object} [opts]
+     * @param {string} [opts.documentId] - Only the rows of this document
+     * @param {string} [opts.vocabLayerId] - Only the rows of this vocabulary
+     * @param {number} [opts.limit] - Page size (1..1000; server default 100)
+     * @param {string} [opts.cursor] - Opaque cursor from a previous page
+     * @returns {Promise<Page<AuditRowChange>>}
+     */
+    changesPage: (entryId, { documentId, vocabLayerId, limit, cursor } = {}) =>
+      listPage(client, `/api/v1/audit/entries/${entryId}/changes`, {
+        limit,
+        cursor,
+        query: { "document-id": documentId, "vocab-layer-id": vocabLayerId },
       }),
     /**
      * Per-user activity counts. `changes` is the number of logical actions,

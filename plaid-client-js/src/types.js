@@ -764,6 +764,25 @@
  */
 
 /**
+ * One row an audit entry changed (`audit.changes`). `before` and `after` are
+ * the entity a document or vocabulary read serves for the row (a token's
+ * `{id, begin, end, precedence, metadata}`, a span's `{id, value, tokens,
+ * metadata}` and so on), a document's own row its `{id, name, project,
+ * metadata}` and a vocabulary's `{id, name, project, config}`.
+ * @typedef {object} AuditRowChange
+ * @property {"document"|"text"|"token"|"span"|"relation"|"vocab-link"|"vocab-item"|"vocab-layer"} kind
+ * @property {string} id
+ * @property {string} [document] The document a document's row is in
+ * @property {string} [vocabLayer] The vocabulary an entry or a vocabulary's own row is
+ * @property {string} [layer] The layer of a text, token, span or relation
+ * @property {string} [text] The text a token is on
+ * @property {object} [before] The row just before the entry's first write to it, absent when the entry made it
+ * @property {object} [after] The row just after the entry's last write to it, absent when the entry deleted it
+ * @property {boolean} changedSince An operation after the entry's last write changed the row
+ * @property {boolean} changedBetween An operation outside the entry changed the row between its first and last write
+ */
+
+/**
  * A document lock as its holder sees it. `expiresAt` is in epoch
  * milliseconds.
  * @typedef {{lockId: string, userId: string, expiresAt: number}} LockGrant

@@ -976,6 +976,38 @@ def _audit_filter(entries, start_time, end_time, op_types, kinds=None):
     return [_with_entry_end_time(e, given) for e, given in out]
 
 
+class _AuditLog(list):
+    """The fake's audit log of its home project: the list of entries it always
+    was, which also answers ``audit.changes`` and ``audit.changes_page`` from
+    the fake's ``unit_changes``, as the real ``client.audit`` does from core.
+    An entry the fake does not hold is the 404 core gives an administrator."""
+
+    def __init__(self, entries, root):
+        super().__init__(entries)
+        self._root = root
+
+    def _changes(self, entry_id, document_id, vocab_layer_id):
+        path = f'/api/v1/audit/entries/{entry_id}/changes'
+        rows = self._root.unit_changes.get(entry_id)
+        if rows is None:
+            raise _refusal(self._root, 404, 'Entry not found', 'GET', path)
+        return [copy.deepcopy(r) for r in rows
+                if (not document_id or r.get('document') == document_id)
+                and (not vocab_layer_id or r.get('vocab_layer') == vocab_layer_id)]
+
+    def changes(self, entry_id, *, document_id=None, vocab_layer_id=None):
+        return self._changes(entry_id, document_id, vocab_layer_id)
+
+    def changes_page(self, entry_id, *, document_id=None, vocab_layer_id=None, limit=None,
+                     cursor=None):
+        """The cursor is opaque to a caller, so here it is the offset the next
+        page starts at."""
+        rows = self._changes(entry_id, document_id, vocab_layer_id)
+        start = int(cursor) if cursor else 0
+        end = start + (limit or 100)
+        return {'entries': rows[start:end], 'next_cursor': str(end) if end < len(rows) else None}
+
+
 class FakeClient:
     """Enough of PlaidClient to drive a handler or an assistant: documents to
     read back, and a log of everything it is asked to do, in order.
@@ -1024,6 +1056,13 @@ class FakeClient:
     has no history. ``vocab_items.get`` reads one entry out of them, and an
     entry no vocabulary holds is the server's 404.
 
+    ``unit_changes`` is ``{entry_id: [rows]}``, what ``audit.changes`` and
+    ``audit.changes_page`` answer for that entry, each row as the real client
+    gives it (``kind``, ``id``, ``document`` or ``vocab_layer``, ``before``,
+    ``after``, ``changed_since``, ``changed_between``). The fake keeps no log
+    to work them out from, so a test records them. ``audit`` stays the list of
+    the home project's entries, and answers those two reads as well.
+
     ``users.get`` answers any user's record, an administrator when ``admins``
     names them.
 
@@ -1039,7 +1078,7 @@ class FakeClient:
     def __init__(self, documents, fails=None, *, project=None, audit=None, guidelines=None,
                  comments=None, restore_summary=None, projects=None, services=None,
                  vocabularies=None, vocab_audit=None, vocab_restore_summary=None,
-                 limits=None, admins=()):
+                 limits=None, admins=(), unit_changes=None):
         self._documents = documents if isinstance(documents, dict) else list(documents)
         self.base_url = 'http://plaid.internal:8085'
         self.token = 'tok'
@@ -1065,6 +1104,8 @@ class FakeClient:
         #: {'tokens.bulk_create': <exception>} -- raised when that call is made.
         self.fails = dict(fails or {})
         self.project = project
+        #: {entry_id: [rows]} for ``audit.changes``
+        self.unit_changes = dict(unit_changes or {})
         self.audit = list(audit or [])
         self.guideline_rows = list(guidelines or [])
         self.comment_rows = list(comments or [])
@@ -1346,6 +1387,16 @@ class FakeClient:
             if self._operation_depth == 0 and not any(
                     kind not in _NOT_WRITES for kind, _ in self.calls[start:]):
                 self.operation_labels[op._index] = message
+
+    @property
+    def audit(self):
+        """The home project's audit entries, which also answer
+        ``audit.changes`` (see ``_AuditLog``)."""
+        return self._audit
+
+    @audit.setter
+    def audit(self, entries):
+        self._audit = _AuditLog(entries or [], self)
 
     def _audit_page(self, entries, order, limit, cursor, start_time, ops_limit=None,
                     entry_id=None):

@@ -441,5 +441,19 @@
     "js": ["tokenLayers.countMatching", ["L1", "L2"], {"regex": "[^\\p{P}]", "flags": "i"}],
     "sends": [{"method": "POST", "path": "/api/v1/query/token-counts",
                "body": {"layers": ["L1", "L2"], "value": {"regex": "[^\\p{P}]", "flags": "i"}}}]
+  },
+  {
+    "name": "an entry's changes follow every page, narrowed to one document",
+    "js": ["audit.changes", "e1", {"documentId": "d1"}],
+    "py": ["audit.changes", "e1"],
+    "py_kw": {"document_id": "d1"},
+    "sends": [{"method": "GET", "path": "/api/v1/audit/entries/e1/changes", "query": {"limit": "1000", "document-id": "d1"}}]
+  },
+  {
+    "name": "one page of an entry's changes, narrowed to one vocabulary",
+    "js": ["audit.changesPage", "e1", {"vocabLayerId": "v1", "limit": 50, "cursor": "c1"}],
+    "py": ["audit.changes_page", "e1"],
+    "py_kw": {"vocab_layer_id": "v1", "limit": 50, "cursor": "c1"},
+    "sends": [{"method": "GET", "path": "/api/v1/audit/entries/e1/changes", "query": {"vocab-layer-id": "v1", "limit": "50", "cursor": "c1"}}]
   }
 ]

@@ -3488,6 +3488,45 @@ class AuditResource(_Resource):
         return iter_pages(self._client, '/api/v1/audit', page_size=page_size,
                           query=_audit_query(start_time, end_time, op_types, kinds))
 
+    def changes(self, entry_id: str, *, document_id: str | None = None,
+                vocab_layer_id: str | None = None) -> Any:
+        """What one audit entry changed, row by row, following every page.
+
+        Every row of a document or a vocabulary the entry's operations wrote,
+        with the row just before the entry's first write to it (``before``,
+        absent when the entry made it) and just after its last (``after``,
+        absent when the entry deleted it), each the entity a document or
+        vocabulary read serves. ``changed_since`` says an operation after the
+        entry changed the row, ``changed_between`` that one outside it did
+        between the entry's first and last write. A row that shows the same
+        before and after is left out, and so is a row of a document or
+        vocabulary the caller cannot read.
+
+        Args:
+            entry_id: An entry's ``id``: a group, a batch or one operation
+            document_id: Only the rows of this document
+            vocab_layer_id: Only the rows of this vocabulary
+        """
+        return list_all(self._client, f'/api/v1/audit/entries/{entry_id}/changes',
+                        query={'document-id': document_id, 'vocab-layer-id': vocab_layer_id})
+
+    def changes_page(self, entry_id: str, *, document_id: str | None = None,
+                     vocab_layer_id: str | None = None, limit: int | None = None,
+                     cursor: str | None = None) -> Any:
+        """One page of the same rows, in a fixed order that later writes do
+        not disturb.
+
+        Args:
+            entry_id: An entry's ``id``
+            document_id: Only the rows of this document
+            vocab_layer_id: Only the rows of this vocabulary
+            limit: Page size (1..1000)
+            cursor: Opaque cursor from a previous page's ``next_cursor``
+        """
+        return list_page(self._client, f'/api/v1/audit/entries/{entry_id}/changes',
+                         limit=limit, cursor=cursor,
+                         query={'document-id': document_id, 'vocab-layer-id': vocab_layer_id})
+
     def tally(self, *, project_id: str | None = None, start_time: str | None = None,
               end_time: str | None = None, daily: bool | None = None) -> Any:
         """Per-user activity counts.

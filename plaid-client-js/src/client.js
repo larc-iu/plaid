@@ -124,6 +124,7 @@ import { bodyOf } from "./families.js";
  * @typedef {import("./types.js").AuditTarget} AuditTarget
  * @typedef {import("./types.js").AuditOp} AuditOp
  * @typedef {import("./types.js").AuditEntry} AuditEntry
+ * @typedef {import("./types.js").AuditRowChange} AuditRowChange
  * @typedef {import("./types.js").LockGrant} LockGrant
  * @typedef {import("./types.js").DocumentRestoreSummary} DocumentRestoreSummary
  * @typedef {import("./types.js").RestoreCounts} RestoreCounts
