@@ -169,3 +169,13 @@ def test_km_4_nothing_is_said_of_a_kept_link_that_still_fits():
     assert 'stays linked' not in out, out
 
 
+# --- REV-KM-6 ---------------------------------------------------------------------------------
+
+
+def test_km_6_set_analysis_for_form_says_it_took_back_a_planned_analysis():
+    w = ws()
+    call_tool(w, 'set_analysis_for_form', {'form': 'Ali-di', 'morphemes': [{'form': 'Alidi', 'fields': {'Morph Gloss': 'X'}}]})
+    out = call_tool(w, 'set_analysis_for_form', {'form': 'Ali-di', 'morphemes': [
+        ALIDI[0], {'form': 'di', 'fields': {'Morph Gloss': 'GEN'}}]})
+    assert 'Took back the planned change of 1 occurrence.' in out, out
+    assert [o['kind'] for o in w.ops] == ['set_span']

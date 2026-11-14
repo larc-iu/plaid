@@ -1593,9 +1593,9 @@ def t_set_analysis_for_form(ws: Workspace, form: str, morphemes: list, document:
         if changes is not None:
             gone = in_place_back(ws, w['id'], kept, staged_out)
             back += gone
+            took += bool(gone)
             if not changes:
                 held += 1
-                took += bool(gone)
             for c in changes:
                 m = kept[c['index']]
                 values_staged.append({**value_op(ws.corpus.label_ref(w['document'], m['id'], budget)
@@ -1614,15 +1614,17 @@ def t_set_analysis_for_form(ws: Workspace, form: str, morphemes: list, document:
     with ws.staging():
         gone_entries = take_back(ws, back) if back else []
         ws.add_ops(staged)
+    # A planned change taken back from an occurrence that gets values (REV-KM-6).
+    back_said = (f' Took back the planned change of {took} occurrence{"s" if took != 1 else ""}.' if took else '')
     if not held:
         return (_bulk_note(ws, staged, f'occurrences of "{form}"') + (' ' + first_note if first_note else '')
-                + entries_note(gone_entries))
+                + back_said + entries_note(gone_entries))
     same = (f'{held} occurrence{"s" if held != 1 else ""} of "{form}" already {"holds" if held == 1 else "hold"} '
-            'that analysis' + (f' (the planned change of {took} taken back)' if took else ''))
+            'that analysis')
     if not staged:
-        return f'Nothing to change: {same}.' + entries_note(gone_entries) + confirm_hint(ws)
+        return f'Nothing to change: {same}.' + back_said + entries_note(gone_entries) + confirm_hint(ws)
     return (_bulk_note(ws, staged, f'occurrences of "{form}"') + (' ' + first_note if first_note else '')
-            + f' Nothing staged for {same}.' + entries_note(gone_entries))
+            + f' Nothing staged for {same}.' + back_said + entries_note(gone_entries))
 
 
 # --- lexicon and document operations ----------------------------------------------

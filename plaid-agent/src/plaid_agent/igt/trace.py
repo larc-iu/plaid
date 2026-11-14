@@ -134,7 +134,7 @@ def _own(name: str, a: Dict[str, Any]) -> Optional[str]:
             return f'Planned {sets} on {_counted(a)}{in_doc(a)}'
         return f'Planned {a.get("field")} = {q(a.get("value"))} on {_counted(a)}{in_doc(a)}'
     if name == 'set_analysis':
-        return f'Planned a new analysis for {a.get("ref")}{in_doc(a)}'
+        return f'Planned an analysis for {a.get("ref")}{in_doc(a)}'
     if name == 'analyze_sentence':
         if a.get('help'):
             return 'Read how to analyse a sentence from interlinear lines'

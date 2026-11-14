@@ -1047,11 +1047,16 @@ def test_a_document_piece_put_off_after_its_first_batch_deletes_its_sentence_onc
     job._sleep = lambda s: clock.__setitem__('t', clock['t'] + s)
     job.job['created_at'] = _iso(clock['t'] - 3600)
 
+    pieces = []
+
     def model(asked, n, kwargs):
         if n > 1 or 'Your piece: the whole document' not in asked:
             return reply('Done.')
+        # Asked again, another gloss (REV-L2B-9): a value on the morpheme ka
+        # keeps, in a sentence the piece's own write wrote.
+        pieces.append(asked)
         return reply(calls=[call(1, 'set_analysis', {'document': 'Story', 'ref': 's1.w1', 'morphemes': [
-            {'form': 'ka', 'fields': {'Morph Gloss': 'go'}}]}),
+            {'form': 'ka', 'fields': {'Morph Gloss': 'went' if len(pieces) > 1 else 'go'}}]}),
             call(2, 'delete_sentence', {'document': 'Story', 'refs': ['s3']})])
     m = use(monkeypatch, Model(model))
     staged = _staged(monkeypatch)
@@ -1072,6 +1077,6 @@ def test_a_document_piece_put_off_after_its_first_batch_deletes_its_sentence_onc
     assert [o['sentence_id'] for o in staged if o['kind'] == 'delete_sentence'] == ['d1-s3', 'd1-s3']
     row = job.rows['d1']
     assert row['state'] == 'done' and not row.get('skipped'), row
-    # The gloss of s1 staged again is what s1 holds: a restatement, staged
-    # and counted nowhere (REV-L2-1), where it was counted repeated.
-    assert row['counts']['repeated'] == 0 and row['counts']['deletions'] == 1, row['counts']
+    # The other gloss of s1, staged again: left out as written before,
+    # counted repeated (REV-L2B-9).
+    assert row['counts']['repeated'] == 1 and row['counts']['deletions'] == 1, row['counts']

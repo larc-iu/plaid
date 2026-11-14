@@ -37,10 +37,11 @@ class Crash(BaseException):
     """The worker's process dies here."""
 
 
-def _model(delete, lexicon, entry, asked_pieces):
-    """Glosses ka in s1, deletes the sentence that repeats the one before it
-    when ``delete`` (none once it is gone), and renames gam to gaam when
-    ``lexicon``. A selection reads its document first."""
+def _model(delete, lexicon, entry, asked_pieces, again=None):
+    """Glosses ka in s1 (``again`` when asked a second time, if given),
+    deletes the sentence that repeats the one before it when ``delete``
+    (none once it is gone), and renames gam to gaam when ``lexicon``. A
+    selection reads its document first."""
     def answer(asked, n, kwargs):
         selection = 'Your piece: the whole selection above.' in asked
         if not selection and 'Your piece:' not in asked:
@@ -50,9 +51,10 @@ def _model(delete, lexicon, entry, asked_pieces):
         if n > (2 if selection else 1):
             return reply('Done.')
         text = '\n'.join(str(m.get('content') or '') for m in kwargs['messages'])
+        gloss = again if again and asked_pieces else 'go'
         asked_pieces.append(asked)
         calls = [call(1, 'set_analysis', {'document': 'Alpha', 'ref': 's1.w1', 'morphemes': [
-            {'form': 'ka', 'fields': {'Morph Gloss': 'go'}}]})]
+            {'form': 'ka', 'fields': {'Morph Gloss': gloss}}]})]
         lines = re.findall(r'^\[s(\d+)\] (.*)$', text, re.M)
         if delete:
             double = next((k for (k, t), (_, before) in zip(lines[1:], lines) if t == before), None)
@@ -163,13 +165,14 @@ def test_a_write_of_three_tries_whose_middle_answer_is_lost_sends_nothing_twice(
     gam: three tries, one request each. The deletion's lands and its answer
     is lost, so the rename is never sent. Taken again, core says the gloss
     and the deletion landed: the piece is asked again over what is left, its
-    gloss of s1 restates what s1 holds and stages nothing, it finds no doubled sentence, and
+    other gloss of s1 (went, a value on the morpheme ka keeps) is left out as
+    written before (repeated, REV-L2B-9), it finds no doubled sentence, and
     the rename is sent once."""
     admin = _admin()
     writer, s = _world(admin, 'document')
     try:
         asked = []
-        use(monkeypatch, Model(_model(True, True, s.ids['e-gam'], asked)))
+        use(monkeypatch, Model(_model(True, True, s.ids['e-gam'], asked, again='went')))
         real, sent, lost = igt_job.execute_plan, [], []
 
         def execute(c, ops, **kw):
@@ -195,9 +198,9 @@ def test_a_write_of_three_tries_whose_middle_answer_is_lost_sends_nothing_twice(
         assert len(_morphs(admin, s)) == 1 and _forms(admin, s) == ['gaam']
         report = finished['report']
         assert report['documents'][0]['skipped'] == [] and report['proposed'] == []
-        # The gloss of s1 asked again is what s1 holds: a restatement, staged
-        # and counted nowhere (REV-L2-1), where it was counted repeated.
-        assert report['totals']['repeated'] == 0, 'the gloss of s1, asked again, restates it'
+        # The other gloss of s1, asked again in a sentence the piece's own
+        # landed write wrote: left out, counted repeated (REV-L2B-9).
+        assert report['totals']['repeated'] == 1, report['totals']
         assert (report['totals']['words'], report['totals']['deletions']) == (1, 1), report['totals']
     finally:
         s.delete()

@@ -80,8 +80,8 @@ Checks. An item of punctuation alone is left out. Then the items must be as many
 and item n is word n's: another number stages nothing of the sentence, and the answer shows the words \
 beside the items. A word whose forms and gloss differ in morphemes, hold an empty one, or are over \
 twice the word's length plus 3, is listed and not staged: the other words are. Forms that differ from \
-the word otherwise are staged with a note. A word given the morphemes it holds, as many and of the \
-same forms, keeps them: only values that differ and links of unlinked morphemes are staged. Up \
+the word otherwise are staged with a note. A word given the morphemes it holds, as many, of the same \
+forms and joints, keeps them: only values that differ and links of unlinked morphemes are staged. Up \
 to 20 sentences a call, each on its own.'''
 
 #: An item's columns when a sentence names none.
