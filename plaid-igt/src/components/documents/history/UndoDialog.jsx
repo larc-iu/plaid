@@ -24,14 +24,19 @@ import {
 import { Loading } from '@ui/components/shared/Loading.jsx';
 import { historyHref } from '@ui/hooks/useHistoryParam.js';
 import { countOf } from '@ui/lib/plural.js';
-import { notifyError, notifySuccess } from '@/utils/feedback';
+import { notifyError, notifyInfo, notifySuccess, notifyWarning } from '@/utils/feedback';
+import { isUnknownOutcome } from '@ui/lib/errors.js';
 import {
+  leftCounts,
   leftGroups,
   notUndoneLines,
   undoError,
   undoneLine,
   undoneToast,
 } from '@/domain/undoSummary.js';
+
+const UNKNOWN_UNDO =
+  'The server did not answer. The undo may have been made. History shows whether it was.';
 
 /**
  * `entry`: the History entry open (`{id, label, action}`). `place(row)`: where
@@ -85,6 +90,9 @@ export const UndoDialog = ({
 
   const line = preview ? undoneLine(preview, { tokenRows }) : '';
   const groups = preview ? leftGroups(preview, place) : [];
+  // Core lists the first rows left only: past them, each group counts the
+  // rows listed, and one line says how many more there are.
+  const left = leftCounts(preview);
   const notUndone = preview ? notUndoneLines(preview) : [];
   const nothing = !!preview && !line;
 
@@ -97,12 +105,21 @@ export const UndoDialog = ({
     setBusy(true);
     try {
       const res = await client.audit.undo(entryId, { documentId, vocabLayerId });
-      const { title, message } = undoneToast(res, { tokenRows });
-      notifySuccess(message, title);
+      const { title, message, undid } = undoneToast(res, { tokenRows });
+      (undid ? notifySuccess : notifyInfo)(message, title);
       onOpenChange(false);
       await onUndoneRef.current?.();
     } catch (err) {
       console.error('Undo failed:', err);
+      if (isUnknownOutcome(err)) {
+        // No answer, even to the client's resends under the undo's key: it
+        // may have been made. History, read again, shows whether it was. A
+        // fresh dry run would read the undo's own writes as changed since.
+        notifyWarning(UNKNOWN_UNDO, 'Not confirmed');
+        onOpenChange(false);
+        await onUndoneRef.current?.();
+        return;
+      }
       notifyError(undoError(err, 'The undo was not applied.'), 'Failed to undo');
       await onUndoneRef.current?.();
       setReread((n) => n + 1);
@@ -143,7 +160,12 @@ export const UndoDialog = ({
 
           {groups.length > 0 && (
             <div data-testid="undo-left">
-              <p className="mb-1 text-sm font-medium">Left as they are</p>
+              <p className="mb-1 text-sm font-medium">
+                Left as they are
+                <span className="ms-2 font-normal tabular-nums text-muted-foreground">
+                  {left.total.toLocaleString()}
+                </span>
+              </p>
               <ul className="flex flex-col gap-1 text-sm">
                 {groups.map((g) => (
                   <li key={g.reason} data-reason={g.reason}>
@@ -151,10 +173,12 @@ export const UndoDialog = ({
                       <summary className="cursor-pointer">
                         {g.label}
                         <span className="ms-2 tabular-nums text-muted-foreground">
-                          {g.count.toLocaleString()}
+                          {left.unlisted
+                            ? `${g.count.toLocaleString()} listed`
+                            : g.count.toLocaleString()}
                         </span>
                       </summary>
-                      <ul className="ml-5 mt-1 flex flex-col gap-0.5">
+                      <ul className="ms-5 mt-1 flex flex-col gap-0.5">
                         {g.places.map((p) => (
                           <li key={p.key ?? ''} data-place={p.key ?? ''}>
                             {p.to ? (
@@ -174,6 +198,11 @@ export const UndoDialog = ({
                   </li>
                 ))}
               </ul>
+              {left.unlisted > 0 && (
+                <p className="mt-1 text-sm text-muted-foreground" data-testid="undo-unlisted">
+                  {left.unlisted.toLocaleString()} more not listed.
+                </p>
+              )}
             </div>
           )}
 

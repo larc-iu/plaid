@@ -132,13 +132,13 @@ describe('Undo over a vocabulary History entry’s changes', () => {
     await press(undoButton());
     await settle();
     expect(dialog().querySelector('[data-testid="undo-line"]').textContent).toBe(
-      '1 link and 1 lexicon entry',
+      '1 link and 1 lexicon entry brought back',
     );
     await press(undoButton(dialog()));
     await settle();
     expect(undo).toHaveBeenLastCalledWith('g1', { documentId: undefined, vocabLayerId: 'v1' });
     expect(feedback.notifySuccess).toHaveBeenCalledWith(
-      '1 link and 1 lexicon entry undone.',
+      '1 link and 1 lexicon entry brought back.',
       'Undone',
     );
     expect(onUndone).toHaveBeenCalledTimes(1);

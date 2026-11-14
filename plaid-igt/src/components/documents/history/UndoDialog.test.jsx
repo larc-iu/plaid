@@ -8,7 +8,12 @@ import { renderComponent, all, byText } from '@ui/test/renderComponent.jsx';
 // why, then undoes on one button. Driven here by canned answers of
 // audit.undo, one per state the dialog has.
 
-const feedback = vi.hoisted(() => ({ notifySuccess: vi.fn(), notifyError: vi.fn() }));
+const feedback = vi.hoisted(() => ({
+  notifySuccess: vi.fn(),
+  notifyError: vi.fn(),
+  notifyInfo: vi.fn(),
+  notifyWarning: vi.fn(),
+}));
 vi.mock('@/utils/feedback', () => feedback);
 
 const { UndoDialog } = await import('./UndoDialog.jsx');
@@ -59,8 +64,7 @@ afterEach(async () => {
   view = null;
 });
 beforeEach(() => {
-  feedback.notifySuccess.mockReset();
-  feedback.notifyError.mockReset();
+  for (const f of Object.values(feedback)) f.mockReset();
 });
 
 const settle = async () => {
@@ -119,7 +123,7 @@ describe('UndoDialog', () => {
     expect(byText(dialog(), 'h2', 'Undo this entry?')).not.toBeNull();
     expect(text()).toContain('Gloss of "kai" in sentence 1: go');
     expect(dialog().querySelector('[data-testid="undo-line"]').textContent).toBe(
-      '12 values, 1 word, 1 morpheme, 5 links and 2 lexicon entries',
+      '12 values, 1 word, 1 morpheme, 5 links and 2 lexicon entries brought back',
     );
     expect(dialog().querySelector('[data-testid="undo-left"]')).toBeNull();
     expect(buttons()).toEqual(expect.arrayContaining(['Cancel', 'Undo']));
@@ -281,7 +285,7 @@ describe('UndoDialog', () => {
     });
     await settle();
     expect(feedback.notifySuccess).toHaveBeenCalledWith(
-      '3 values undone. 1 change left as it was.',
+      '3 values. 1 change left as it was.',
       'Undone',
     );
     expect(onOpenChange).toHaveBeenCalledWith(false);
@@ -304,6 +308,87 @@ describe('UndoDialog', () => {
     expect(onUndone).toHaveBeenCalledTimes(1);
     expect(undo).toHaveBeenCalledTimes(3);
     expect(undo.mock.calls[2][1].dryRun).toBe(true);
+  });
+
+  it('titles a call that undid nothing as such', async () => {
+    // Someone wrote between the dry run and the call.
+    const undo = vi
+      .fn()
+      .mockResolvedValueOnce(answer({ spans: counts(1) }))
+      .mockResolvedValueOnce(
+        answer({}, [{ kind: 'span', id: 'r0', document: 'd1', reason: 'changed-since' }]),
+      );
+    await mount(undo);
+    await press(button('Undo'));
+    await settle();
+    expect(feedback.notifySuccess).not.toHaveBeenCalled();
+    expect(feedback.notifyInfo).toHaveBeenCalledWith('1 change left as it was.', 'Nothing undone');
+  });
+
+  it('says an undo whose answer was lost may have been made, and goes back to now', async () => {
+    const lost = Object.assign(new Error('HTTP 0 network at http://x/y'), {
+      status: 0,
+      method: 'POST',
+    });
+    const undo = vi
+      .fn()
+      .mockResolvedValueOnce(answer({ spans: counts(1) }))
+      .mockRejectedValueOnce(lost);
+    const { onOpenChange, onUndone } = await mount(undo);
+    await press(button('Undo'));
+    await settle();
+    expect(feedback.notifyWarning).toHaveBeenCalledWith(
+      'The server did not answer. The undo may have been made. History shows whether it was.',
+      'Not confirmed',
+    );
+    expect(feedback.notifyError).not.toHaveBeenCalled();
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+    expect(onUndone).toHaveBeenCalledTimes(1);
+    // No fresh dry run, whose "Nothing to undo" would read the undo's own
+    // writes as changed since.
+    expect(undo).toHaveBeenCalledTimes(2);
+  });
+
+  it('counts what is left truly when core lists only the first rows', async () => {
+    const skipped = [
+      ...Array.from({ length: 600 }, (_, i) => ({
+        kind: 'span',
+        id: `c${i}`,
+        document: 'd1',
+        reason: 'changed-since',
+      })),
+      ...Array.from({ length: 400 }, (_, i) => ({
+        kind: 'span',
+        id: `b${i}`,
+        document: 'd1',
+        reason: 'built-on',
+      })),
+    ];
+    await mount(
+      vi.fn().mockResolvedValue({ ...answer({ spans: counts(1) }, skipped), skippedCount: 2500 }),
+    );
+    const left = dialog().querySelector('[data-testid="undo-left"]');
+    expect(left.querySelector('p').textContent).toBe('Left as they are2,500');
+    expect(all(left, 'summary').map((x) => x.textContent)).toEqual([
+      'Changed again later600 listed',
+      'Something was added to it since400 listed',
+    ]);
+    expect(left.querySelector('[data-testid="undo-unlisted"]').textContent).toBe(
+      '1,500 more not listed.',
+    );
+  });
+
+  it('indents the places on the side the text starts', async () => {
+    await mount(
+      vi
+        .fn()
+        .mockResolvedValue(
+          answer({}, [{ kind: 'span', id: 'r0', document: 'd1', reason: 'changed-since' }]),
+        ),
+    );
+    const list = dialog().querySelector('[data-reason] details ul');
+    expect(list.className).toContain('ms-5');
+    expect(dialog().innerHTML).not.toMatch(/\b(ml|mr|pl|pr)-\d/);
   });
 
   it('names an action inside an entry as one', async () => {

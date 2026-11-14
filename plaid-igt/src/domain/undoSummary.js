@@ -12,15 +12,27 @@ import { humanizeError, statusOf } from '@ui/lib/errors.js';
 import { TOKEN_ROLE_WORDS } from './restoreSummary.js';
 
 // What each kind of row is called, in the order the line names them. Tokens
-// are named by role where the entry's rows say which (see undoneLine).
+// are named by role where the entry's rows say which (see undoneLine). An
+// entry or a document is named by what happens to it: one the entry deleted
+// is brought back, one it made is removed, and one it changed is set back
+// (a document's own row is its name and details).
 const KIND_WORDS = [
   ['spans', ['value', 'values']],
   ['tokens', null],
   ['vocabLinks', ['link', 'links']],
-  ['vocabItems', ['lexicon entry', 'lexicon entries']],
+  ['vocabItems', null],
   ['texts', ['text', 'texts']],
-  ['documents', ['document', 'documents']],
+  ['documents', null],
   ['relations', ['other annotation', 'other annotations']],
+];
+
+const ENTRY = ['lexicon entry', 'lexicon entries'];
+const DOCUMENT = ['document', 'documents'];
+
+const byWhatHappens = (c, words, changed) => [
+  ...(c?.inserted ? [`${countOf(c.inserted, ...words)} brought back`] : []),
+  ...(c?.deleted ? [`${countOf(c.deleted, ...words)} removed`] : []),
+  ...(c?.updated ? [changed(c.updated)] : []),
 ];
 
 const TOKEN_WORDS = ['token', 'tokens'];
@@ -59,6 +71,19 @@ export const undoneLine = (summary, { tokenRows } = {}) => {
   for (const [kind, words] of KIND_WORDS) {
     const n = sum(summary?.undone?.[kind]);
     if (!n) continue;
+    const c = summary.undone[kind];
+    if (kind === 'vocabItems') {
+      parts.push(...byWhatHappens(c, ENTRY, (k) => `${countOf(k, ...ENTRY)} set back`));
+      continue;
+    }
+    if (kind === 'documents') {
+      parts.push(
+        ...byWhatHappens(c, DOCUMENT, (k) =>
+          k === 1 ? 'the document’s name or details' : `${k} documents’ names or details`,
+        ),
+      );
+      continue;
+    }
     if (kind !== 'tokens') {
       parts.push(countOf(n, ...words));
       continue;
@@ -96,11 +121,12 @@ const REASON_ORDER = new Map(REASONS.map(([r], i) => [r, i]));
 /**
  * The rows `summary` leaves, grouped by reason in the dialog's order (a
  * reason this table does not know comes last, named by its code): `[{reason,
- * label, count, places}]`. `count` is the group's listed rows, or for the
- * only group core's whole count. `place(row)` says where a row can be shown
- * (`{key, label, to}`, `to` an address or null), or null where it cannot:
- * `places` counts the group's rows per place, in the order first met, the
- * rows no place takes last as one place with no key.
+ * label, count, places}]`. `count` is the group's listed rows: core lists the
+ * first of them only (`leftCounts` says how many it did not). `place(row)`
+ * says where a row can be shown (`{key, label, to}`, `to` an address or
+ * null), or null where it cannot: `places` counts the group's rows per place,
+ * in the order first met, the rows no place takes last as one place with no
+ * key.
  */
 export const leftGroups = (summary, place = () => null) => {
   const skipped = summary?.skipped || [];
@@ -127,7 +153,7 @@ export const leftGroups = (summary, place = () => null) => {
     if (p) p.count += 1;
     else g.byPlace.set(at.key, { ...at, count: 1 });
   }
-  const out = [...groups.values()]
+  return [...groups.values()]
     .sort(
       (a, b) =>
         (REASON_ORDER.get(a.reason) ?? REASONS.length) -
@@ -140,15 +166,18 @@ export const leftGroups = (summary, place = () => null) => {
         ...(unplaced ? [{ key: null, label: 'Elsewhere', to: null, count: unplaced }] : []),
       ],
     }));
-  // One reason for every row: core's count covers the rows past those it
-  // lists too.
-  const total = summary?.skippedCount ?? skipped.length;
-  if (out.length === 1 && total > out[0].count) out[0].count = total;
-  return out;
 };
 
-/** How many rows `summary` leaves, listed or not. */
-export const leftCount = (summary) => summary?.skippedCount ?? summary?.skipped?.length ?? 0;
+/**
+ * How many rows `summary` leaves (`total`, core's count), how many of them it
+ * lists (`listed`), and how many it does not (`unlisted`), whose reasons are
+ * not known.
+ */
+export const leftCounts = (summary) => {
+  const listed = summary?.skipped?.length ?? 0;
+  const total = Math.max(summary?.skippedCount ?? listed, listed);
+  return { total, listed, unlisted: total - listed };
+};
 
 // What core never undoes, by the operation types that wrote it.
 const NOT_UNDONE = [
@@ -157,33 +186,38 @@ const NOT_UNDONE = [
   [/^vocab\//, 'Vocabularies and their settings'],
   [/^(user|invite|api-token)\//, 'Users and invitations'],
   [/^comment\//, 'Comments'],
+  [/^media\//, 'Recordings'],
 ];
 
 /**
  * One line for each kind of change the entry made that no undo takes back
  * (`summary.notUndone`): "Project settings are not undone." An operation type
- * the table does not know is named by its code.
+ * the table does not know reads "Changes of type <code> are not undone."
  */
 export const notUndoneLines = (summary) => {
   const words = [];
   for (const { opType } of summary?.notUndone || []) {
-    const w = NOT_UNDONE.find(([re]) => re.test(opType))?.[1] ?? opType;
+    const w = NOT_UNDONE.find(([re]) => re.test(opType))?.[1] ?? `Changes of type ${opType}`;
     if (!words.includes(w)) words.push(w);
   }
   return words.map((w) => `${w} are not undone.`);
 };
 
-/** The toast after an undo: `{title, message}`. */
+/**
+ * The toast after an undo: `{title, message, undid}`. Titled by what the call
+ * did, which a write between the dry run and it may have changed: "Undone",
+ * or "Nothing undone".
+ */
 export const undoneToast = (summary, opts) => {
   const line = undoneLine(summary, opts);
-  const left = leftCount(summary);
+  const left = leftCounts(summary).total;
   const message = [
-    line ? `${line[0].toUpperCase()}${line.slice(1)} undone.` : 'Nothing undone.',
+    line ? `${line[0].toUpperCase()}${line.slice(1)}.` : '',
     left ? `${countOf(left, 'change')} left as ${left === 1 ? 'it was' : 'they were'}.` : '',
   ]
     .filter(Boolean)
     .join(' ');
-  return { title: 'Undone', message };
+  return { title: line ? 'Undone' : 'Nothing undone', message, undid: !!line };
 };
 
 /** The sentence for an undo core refused, or failed to give. */

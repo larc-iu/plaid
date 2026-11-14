@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { ROLES } from '@larc-iu/plaid-client';
 import {
-  leftCount,
+  leftCounts,
   leftGroups,
   notUndoneLines,
   undoError,
@@ -34,7 +34,23 @@ describe('undoneLine', () => {
       vocabLinks: counts(5),
       texts: counts(0),
     });
-    expect(undoneLine(s)).toBe('12 values, 5 links and 2 lexicon entries');
+    expect(undoneLine(s)).toBe('12 values, 5 links and 2 lexicon entries brought back');
+  });
+
+  it('says whether an entry or a document comes back, goes, or is set back', () => {
+    expect(
+      undoneLine(
+        summary({ vocabItems: { inserted: 1, deleted: 2, updated: 3 }, vocabLinks: counts(1) }),
+      ),
+    ).toBe(
+      '1 link, 1 lexicon entry brought back, 2 lexicon entries removed and 3 lexicon entries set back',
+    );
+    // A document's own row is its name and details, not the document.
+    expect(undoneLine(summary({ documents: counts(1) }))).toBe('the document’s name or details');
+    expect(undoneLine(summary({ documents: counts(1, 'inserted') }))).toBe(
+      '1 document brought back',
+    );
+    expect(undoneLine(summary({ documents: counts(1, 'deleted') }))).toBe('1 document removed');
   });
 
   it('says nothing for an undo of nothing', () => {
@@ -129,10 +145,23 @@ describe('leftGroups', () => {
     ]);
   });
 
-  it('takes core’s count for rows past those listed when one reason holds them all', () => {
-    const s = { ...summary({}, [row('a', 'changed-since')]), skippedCount: 1500 };
-    expect(leftGroups(s)[0].count).toBe(1500);
-    expect(leftCount(s)).toBe(1500);
+  it('counts only the listed rows in each group, and says how many are not listed', () => {
+    const listed = [
+      ...Array.from({ length: 600 }, (_, i) => row(`c${i}`, 'changed-since')),
+      ...Array.from({ length: 400 }, (_, i) => row(`b${i}`, 'built-on')),
+    ];
+    const s = { ...summary({}, listed), skippedCount: 2500 };
+    expect(leftGroups(s).map((g) => g.count)).toEqual([600, 400]);
+    expect(leftCounts(s)).toEqual({ total: 2500, listed: 1000, unlisted: 1500 });
+    // One reason too: its count is the rows listed, never core's whole.
+    const one = { ...summary({}, [row('a', 'changed-since')]), skippedCount: 1500 };
+    expect(leftGroups(one)[0].count).toBe(1);
+    expect(leftCounts(one).unlisted).toBe(1499);
+    expect(leftCounts(summary({}, [row('a', 'locked')]))).toEqual({
+      total: 1,
+      listed: 1,
+      unlisted: 0,
+    });
   });
 });
 
@@ -145,6 +174,7 @@ describe('notUndoneLines', () => {
         { opType: 'span-layer/update', count: 1 },
         { opType: 'vocab/update', count: 1 },
         { opType: 'user/update', count: 1 },
+        { opType: 'media/upload', count: 1 },
         { opType: 'thing/new', count: 1 },
       ],
     });
@@ -153,7 +183,8 @@ describe('notUndoneLines', () => {
       'Fields and their settings are not undone.',
       'Vocabularies and their settings are not undone.',
       'Users and invitations are not undone.',
-      'thing/new are not undone.',
+      'Recordings are not undone.',
+      'Changes of type thing/new are not undone.',
     ]);
   });
 });
@@ -162,16 +193,26 @@ describe('undoneToast', () => {
   it('says what was undone and how many were left', () => {
     expect(undoneToast(summary({ spans: counts(1) }))).toEqual({
       title: 'Undone',
-      message: '1 value undone.',
+      message: '1 value.',
+      undid: true,
     });
     const left = summary({ spans: counts(3) }, [
       { kind: 'span', id: 'a', reason: 'changed-since' },
       { kind: 'span', id: 'b', reason: 'changed-since' },
     ]);
-    expect(undoneToast(left).message).toBe('3 values undone. 2 changes left as they were.');
-    expect(undoneToast(summary({}, [{ kind: 'span', id: 'a', reason: 'locked' }])).message).toBe(
-      'Nothing undone. 1 change left as it was.',
+    expect(undoneToast(left).message).toBe('3 values. 2 changes left as they were.');
+    // Core's count of what was left, past the rows it lists.
+    expect(undoneToast({ ...left, skippedCount: 1200 }).message).toBe(
+      '3 values. 1,200 changes left as they were.',
     );
+  });
+
+  it('is not titled Undone when the call undid nothing', () => {
+    expect(undoneToast(summary({}, [{ kind: 'span', id: 'a', reason: 'locked' }]))).toEqual({
+      title: 'Nothing undone',
+      message: '1 change left as it was.',
+      undid: false,
+    });
   });
 });
 
