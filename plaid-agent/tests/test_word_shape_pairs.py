@@ -41,9 +41,11 @@ def test_a_sentence_split_between_words_a_merge_joins_is_refused(live_client, me
         out = call_tool(ws, *second)
         assert 'a merged word cannot be cut by a sentence boundary' in out, out
         assert len(ws.ops) == 1, ws.ops
-        # A split anywhere else in the sentence stands beside the merge.
+        # A split anywhere else in the sentence stands beside the merge: before
+        # the merged word (one after it is renumbered by the merge, which
+        # retyped.renumbered_cut refuses).
         call_tool(ws, 'split_sentence' if merge_first else 'merge_words',
-                  {'document': 'Doc A', 'ref': 's1', 'before_word': 4} if merge_first
+                  {'document': 'Doc A', 'ref': 's1', 'before_word': 2} if merge_first
                   else {'document': 'Doc A', 'refs': ['s1.w1', 's1.w2']})
         assert len(ws.ops) == 2, ws.ops
         _p, h, _ = approve(c, s.project_id, ws)

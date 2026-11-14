@@ -428,11 +428,11 @@ def t_split_sentence(ws: Workspace, document: str, ref: str, before_word: int) -
         raise ToolError(f'before_word must be between 2 and {len(s.words)} for {ref} (a split before w1 changes nothing)',
                         kind='invalid-argument')
     w = s.words[n - 1]
-    renumbered_cut(ws, s, w, f'{ws.doc_label(doc.id)} {ref}', n)
     # The same, staged the other way round: a word a merge folds into the
     # word before it starts no sentence.
     if any(w.id in (op.get('other_ids') or []) for op in ws.ops if op.get('kind') == 'merge_words'):
         raise ToolError(CUT_IN_MERGE.format(ref=ref), kind='conflict')
+    renumbered_cut(ws, s, w, f'{ws.doc_label(doc.id)} {ref}', n)
     left = doc.body[s.begin:w.begin].strip()
     right = doc.body[w.begin:s.end].strip()
     note = ' (sentence values such as the translation stay with the first part)' if s.fields else ''
