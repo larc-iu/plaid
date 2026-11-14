@@ -282,7 +282,7 @@ def test_a_morpheme_no_entry_fits_is_listed_with_the_entries_spelled_so():
     assert links(w) == []
     assert 'No entry fits, nothing linked:\n  gam ‘catch’ ×1 (s1.w2.m1). Spelled so:' in out
     assert 'id=e-gam form=gam#1 gam | gloss=fish (Lexicon)' in out and 'id=e-gam2 form=gam#2 gam | gloss=net' in out
-    assert 'new_entries: true creates 1 of them.' in out
+    assert 'new_entries' not in out, 'the answer does not advertise creating entries'
 
 
 def test_new_entries_creates_one_entry_per_form_and_gloss_across_calls_and_links_every_one():
@@ -495,3 +495,8 @@ def test_a_missing_line_is_named_in_one_sentence_in_a_list_too():
     out = call(w, sentences=[{'ref': 's1', 'gloss': 'x y z'}, {'ref': 's2', 'forms': 'Gam=ar', 'gloss': 'fish=FOC'}])
     assert 's1 not staged: give forms, the segmented line' in out and '(none)' not in out
     assert 's2: 1 word analysed, 2 links.' in out
+
+
+def test_the_schema_says_new_entries_is_for_when_new_entries_are_asked_for():
+    spec = next(t['function'] for t in TOOLS if t['function']['name'] == 'analyze_sentence')
+    assert 'ask for new entries' in spec['parameters']['properties']['new_entries']['description']

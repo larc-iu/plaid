@@ -190,7 +190,8 @@ TOOLS = [
          'fields': {'type': 'object', 'additionalProperties': {'type': 'string'}},
          'sentences': {'type': 'array', 'description': 'Several at once: [{ref, forms, gloss}, ...].',
                        'items': {'type': 'object'}},
-         'new_entries': {'type': 'boolean', 'description': 'Create an entry for each form and gloss no entry '
+         'new_entries': {'type': 'boolean', 'description': 'Only when the instructions or the user ask for new '
+                                                           'entries: create one for each form and gloss no entry '
                                                            'has, and link it.'},
          'lexicon': {'type': 'string', 'description': 'Lexicon for new entries (needed only when the project '
                                                       'has several).'},

@@ -213,7 +213,7 @@ PLAN: segment and gloss a sentence, or a run of its words, from interlinear line
 - `gloss` (string)
 - `fields` (object of string)
 - `sentences` (array of object): Several at once: [{ref, forms, gloss}, ...].
-- `new_entries` (boolean): Create an entry for each form and gloss no entry has, and link it.
+- `new_entries` (boolean): Only when the instructions or the user ask for new entries: create one for each form and gloss no entry has, and link it.
 - `lexicon` (string): Lexicon for new entries (needed only when the project has several).
 - `help` (boolean)
 

@@ -69,8 +69,9 @@ Other morpheme fields. fields maps a field name to its aligned line, e.g. {"POS"
 Links. Each glossed morpheme is linked to the one lexicon entry, or sense, whose form is its form and \
 whose gloss is its gloss. Where several fit, or \
 none does, nothing is linked and the answer lists the morpheme with the entries to choose from: link one \
-with link_entry (sN.wN.mN, entry_id). new_entries: true creates an entry, once, for each form and gloss \
-no entry has, and links every morpheme of it. An ambiguous one is never created for.
+with link_entry (sN.wN.mN, entry_id). new_entries: true, only when the instructions or the user ask for \
+new entries, creates an entry, once, for each form and gloss no entry has, and links every morpheme of \
+it. An ambiguous one is never created for.
 
 Checks. A line with another number of words than the ref stages nothing of the sentence, and the \
 answer shows its words beside what was given. A word whose lines give it different numbers of \
@@ -414,10 +415,6 @@ def _answer(ws: Workspace, n: int, said: List[str], notes: List[str], listed: Di
             out.append(head(e) + '.' + _none_detail(ws, e['form'], e['gloss']))
     if shown < len(several) + len(none):
         out.append(f'{len(several) + len(none) - shown} more not listed.')
-    if none and not new_entries:
-        new = sum(1 for e in none if _creatable(ws, e['form'], e['gloss']))
-        if new:
-            out.append(f'new_entries: true creates {new} of them.')
     if made:
         out.append('New entries: ' + ', '.join(made[:MAX_LISTED])
                    + (f' and {len(made) - MAX_LISTED} more' if len(made) > MAX_LISTED else '') + '.')
