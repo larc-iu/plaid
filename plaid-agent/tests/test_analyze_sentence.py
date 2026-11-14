@@ -187,27 +187,39 @@ def test_run4s_mistake_a_sentence_on_its_first_word_is_refused_with_the_words_li
 def test_run4s_mistake_through_a_run_of_one_word_is_refused_by_the_surface_check():
     w = ws()
     out = call(w, ref='s1.w2', forms='Ali-di-gam-aku-na', gloss='Ali-ERG-fish-see-PST')
-    assert out == ('Error: s1.w2 not staged: w2: forms "Alidigamakuna" are over twice as long as "gam" plus 3.\n'
-                   '  w2 gam | Ali-di-gam-aku-na | Ali-ERG-fish-see-PST')
+    assert out == ('Error: s1.w2 not staged: w2.\n'
+                   '  w2 gam | Ali-di-gam-aku-na | Ali-ERG-fish-see-PST: forms "Alidigamakuna" are over twice as '
+                   'long as "gam" plus 3')
     assert w.ops == []
 
 
-@pytest.mark.parametrize('args, said', [
+@pytest.mark.parametrize('args, bad, said', [
     ({'forms': 'Ali-di gam aku-na', 'gloss': 'Ali-ERG fish see'},
-     's1 not staged: w3: 2 forms, 1 in gloss.'),
+     'w3', '  w3 akuna | aku-na | see: 2 forms, 1 in gloss'),
     ({'forms': 'Ali--di gam aku-na', 'gloss': 'Ali--ERG fish see-PST'},
-     's1 not staged: w1: an empty morpheme in "Ali--di"; w1: an empty morpheme in gloss "Ali--ERG".'),
+     'w1', '  w1 Ali-di | Ali--di | Ali--ERG: an empty morpheme in "Ali--di"; an empty morpheme in gloss "Ali--ERG"'),
     ({'forms': 'Ali-di gam aku-na-', 'gloss': 'Ali-ERG fish see-PST'},
-     's1 not staged: w3: an empty morpheme in "aku-na-"; w3: 3 forms, 2 in gloss.'),
+     'w3', '  w3 akuna | aku-na- | see-PST: an empty morpheme in "aku-na-"; 3 forms, 2 in gloss'),
     ({'forms': '_ gam aku-na', 'gloss': 'Ali fish see-PST'},
-     's1 not staged: w1: _ in forms and not in gloss.'),
+     'w1', '  w1 Ali-di | _ | Ali: _ in forms and not in gloss'),
     ({'forms': 'Ali-di gamgamgamg aku-na', 'gloss': 'Ali-ERG fish see-PST'},
-     's1 not staged: w2: forms "gamgamgamg" are over twice as long as "gam" plus 3.'),
+     'w2', '  w2 gam | gamgamgamg | fish: forms "gamgamgamg" are over twice as long as "gam" plus 3'),
 ])
-def test_a_line_that_does_not_line_up_stages_nothing_and_says_where(args, said):
+def test_a_word_that_does_not_line_up_is_not_staged_and_the_others_are(args, bad, said):
+    """v2: refused by word when every line has the sentence's number of
+    words. 61 refusals of the Natugu night run were one word's morpheme
+    counts, and they took the whole sentence with them."""
     w = ws()
     out = call(w, ref='s1', **args)
-    assert out.startswith('Error: ' + said + '\n  w1 Ali-di | '), out
+    assert f's1: 2 of 3 words analysed, ' in out and f'. Not staged: {bad}\n{said}' in out, out
+    staged = [o['word_id'] for o in w.ops if o['kind'] == 'set_analysis']
+    assert len(staged) == 2 and f'w-{bad[1:]}' not in staged
+
+
+def test_a_wrong_number_of_words_still_refuses_the_whole_sentence():
+    w = ws()
+    out = call(w, ref='s1', forms='Ali-di gam', gloss='Ali-ERG fish')
+    assert out.startswith('Error: s1 not staged: forms has 2 words, s1 has 3; gloss has 2 words, s1 has 3.')
     assert w.ops == []
 
 

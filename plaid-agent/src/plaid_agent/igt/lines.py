@@ -72,9 +72,10 @@ none does, nothing is linked and the answer lists the morpheme with the entries 
 with link_entry (sN.wN.mN, entry_id). new_entries: true creates an entry, once, for each form and gloss \
 no entry has, and links every morpheme of it. An ambiguous one is never created for.
 
-Checks. A sentence whose lines do not line up, or a word whose forms are more than twice as long as the \
-word plus 3, is not staged at all, and the answer shows its words beside what was given. A word \
-whose forms differ from it otherwise is staged, with a note.
+Checks. A line with another number of words than the ref stages nothing of the sentence, and the \
+answer shows its words beside what was given. A word whose lines give it different numbers of \
+morphemes, an empty morpheme, or forms more than twice as long as the word plus 3, is not staged and \
+is listed, and the other words are. A word whose forms differ from it otherwise is staged, with a note.
 
 Several sentences: sentences=[{ref, forms, gloss, fields?}, ...], up to 20, each staged or \
 refused on its own.'''
@@ -182,51 +183,60 @@ def _lines(ws: Workspace, item: Dict[str, Any]):
     return out
 
 
-def _check(ws: Workspace, label: str, words, lines) -> Tuple[List[str], List[Optional[list]]]:
-    """``(problems, parsed)``: what keeps the lines from lining up with
-    ``words``, and per word its morphemes (None for one left as it is), each
-    ``(form, delimiter before, {line name: value})``."""
+def _check(ws: Workspace, label: str, words, lines) -> Tuple[List[str], List[Optional[list]], Dict[int, List[str]]]:
+    """``(problems, parsed, bad)``: what keeps the lines from lining up with
+    ``words`` as a whole (a line with another number of words, which refuses
+    the sentence), per word its morphemes (None for one left as it is or not
+    staged), each ``(form, delimiter before, {line name: value})``, and what
+    is wrong with each word that is not staged, by its place in ``words``."""
     n = len(words)
     problems = [f'{name} has {len(ws_)} word{"s" if len(ws_) != 1 else ""}, {label} has {n}'
                 for name, ws_, _f in lines if len(ws_) != n]
     if problems:
-        return problems, []
+        return problems, [], {}
     parsed: List[Optional[list]] = []
+    bad: Dict[int, List[str]] = {}
     cfg = ws.project.ignored_cfg
     for i, w in enumerate(words):
-        at = f'w{w.index}'
         given = {name: line[i] for name, line, _f in lines}
+        wrong: List[str] = []
         if given['forms'] == PLACEHOLDER:
             off = [name for name, v in given.items() if v != PLACEHOLDER]
             if off:
-                problems.append(f'{at}: _ in forms and not in {", ".join(off)}')
+                bad[i] = [f'_ in forms and not in {", ".join(off)}']
             parsed.append(None)
             continue
         forms, delims = _pieces(given['forms'])
-        bad = False
         if any(f == '' for f in forms):
-            problems.append(f'{at}: an empty morpheme in "{given["forms"]}"')
-            bad = True
+            wrong.append(f'an empty morpheme in "{given["forms"]}"')
         cut = {}
         for name, v in given.items():
             if name == 'forms':
                 continue
             pieces, _ = _pieces(v)
             if len(pieces) != len(forms):
-                problems.append(f'{at}: {len(forms)} form{"s" if len(forms) != 1 else ""}, {len(pieces)} in {name}')
-                bad = True
+                wrong.append(f'{len(forms)} form{"s" if len(forms) != 1 else ""}, {len(pieces)} in {name}')
             elif any(p == '' for p in pieces):
-                problems.append(f'{at}: an empty morpheme in {name} "{v}"')
-                bad = True
+                wrong.append(f'an empty morpheme in {name} "{v}"')
             cut[name] = pieces
-        if not bad:
+        if not wrong:
             misfit = surface_misfit(w.surface, forms, cfg)
             if misfit:
-                problems.append(f'{at}: {misfit}')
-                bad = True
-        parsed.append(None if bad else [(f, delims[k - 1] if k else '', {name: cut[name][k] for name in cut})
-                                        for k, f in enumerate(forms)])
-    return problems, parsed
+                wrong.append(misfit)
+        if wrong:
+            bad[i] = wrong
+            parsed.append(None)
+            continue
+        parsed.append([(f, delims[k - 1] if k else '', {name: cut[name][k] for name in cut})
+                       for k, f in enumerate(forms)])
+    return problems, parsed, bad
+
+
+def _word_lines(words, lines, bad: Dict[int, List[str]]) -> List[str]:
+    """The lineup line of each word not staged, with what is wrong with it."""
+    shown = [line for name, line, _f in lines if name in ('forms', 'gloss')]
+    return [f'  w{words[i].index} {words[i].surface}' + ''.join(f' | {line[i]}' for line in shown)
+            + ': ' + '; '.join(why) for i, why in sorted(bad.items())]
 
 
 def _lineup(words, lines) -> List[str]:
@@ -243,15 +253,20 @@ def _lineup(words, lines) -> List[str]:
 def _stage_sentence(ws: Workspace, doc: IgtDoc, item: Dict[str, Any], new_entries: bool, lexicon: Optional[str],
                     listed: Dict[tuple, Dict[str, Any]], made: List[str]) -> Tuple[str, List[str]]:
     """Stage one sentence: every word's analysis, the entries to create, the
-    links. All of it or none of it."""
+    links, all of it or none of it. A word whose lines do not line up is
+    left out and listed (v2), a line with another number of words refuses
+    the sentence."""
     label, s, words = _words_of(doc, item.get('ref'))
     if not words:
         raise _Refused(f'{label} not staged: it has no words.')
     lines = _lines(ws, item)
-    problems, parsed = _check(ws, label, words, lines)
+    problems, parsed, bad = _check(ws, label, words, lines)
     if problems:
         raise _Refused('\n'.join([f'{label} not staged: ' + '; '.join(problems) + '.'] + _lineup(words, lines)))
+    not_staged = ', '.join(f'w{words[i].index}' for i in sorted(bad))
     if all(p is None for p in parsed):
+        if bad:
+            raise _Refused('\n'.join([f'{label} not staged: {not_staged}.'] + _word_lines(words, lines, bad)))
         raise _Refused(f'{label} not staged: every word is _.')
     fields = {name: f for name, _l, f in lines if f is not None}
     g = next((f for name, _l, f in lines if name == 'gloss'), None)
@@ -307,11 +322,16 @@ def _stage_sentence(ws: Workspace, doc: IgtDoc, item: Dict[str, Any], new_entrie
     for key, entry in found.items():
         into = listed.setdefault(key, {**entry, 'refs': []})
         into['refs'] += entry['refs']
-    counts = [f'{n_analysed} word{"s" if n_analysed != 1 else ""} analysed',
+    given = n_analysed + len(bad)
+    counts = [(f'{n_analysed} of {given} words analysed' if bad
+               else f'{n_analysed} word{"s" if n_analysed != 1 else ""} analysed'),
               f'{n_links} link{"s" if n_links != 1 else ""}']
     if creates:
         counts.append(f'{creates} entr{"ies" if creates != 1 else "y"} to create')
-    return f'{label}: ' + ', '.join(counts) + '.', notes
+    line = f'{label}: ' + ', '.join(counts) + '.'
+    if bad:
+        line = '\n'.join([f'{line} Not staged: {not_staged}'] + _word_lines(words, lines, bad))
+    return line, notes
 
 
 def _items_of(ws: Workspace, v: dict) -> List[dict]:
