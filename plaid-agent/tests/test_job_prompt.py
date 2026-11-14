@@ -288,7 +288,7 @@ def test_the_planner_is_told_every_sentence_by_default_and_when_to_skip_analysed
             ) in description
 
 
-NOTHING = 'This plan works no sentence: every sentence is already analysed.'
+NOTHING = 'This plan works no sentence: no word is left to analyse and no translation to write.'
 
 
 def _planned(docs, args):

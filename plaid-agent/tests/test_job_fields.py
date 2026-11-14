@@ -198,7 +198,7 @@ def test_a_planner_told_its_plan_works_nothing_plans_again(monkeypatch):
         return reply('Planned.')
     model.answer = answer
     finished = run_job(job, runner(job))
-    assert 'This plan works no sentence: every sentence is already analysed.' in answers[0], answers
+    assert 'This plan works no sentence: no word is left to analyse and no translation to write.' in answers[0], answers
     assert finished['report']['plan']['by'] == 'model' and 'only_empty' not in finished['report']['plan']
     assert [p for p in _pieces(model) if p.startswith('Your piece')] == ['Your piece: s1, s2, s3.']
     _check_report(finished, written)

@@ -703,7 +703,7 @@ def t_plan_work(ws, pieces: str = None, piece_instructions: str = '', documents=
 
 #: plan_work's answer to a plan whose walk takes no sentence: every document
 #: it works is analysed and translated throughout.
-PLAN_WORKS_NOTHING = 'This plan works no sentence: every sentence is already analysed.'
+PLAN_WORKS_NOTHING = 'This plan works no sentence: no word is left to analyse and no translation to write.'
 
 
 #: What ends a sentence when a space or the end follows it: the full stop,
