@@ -2082,13 +2082,13 @@ class IgtRunner:
                 full.append(f's{s.index}')
         if full:
             # A sentence the walk takes with nothing empty (every sentence
-            # is walked unless the plan says only_empty) reads as what it
-            # is, analysed, so a piece told to fill a field or check glosses
-            # works from what the sentence holds (BRIEF EW).
-            one = len(full) == 1
-            lines.append(f'Nothing empty in {", ".join(full)}: {"its" if one else "their"} words are analysed'
-                         + (f' and {"its translation" if one else "their translations"} written'
-                            if translation_field(project) is not None else '') + '.')
+            # is walked unless the plan says only_empty) says so, so a piece
+            # told to fill a field or check glosses works from what the
+            # sentence holds (BRIEF EW). By the job's own rule (word_target),
+            # never "analysed": a word holding only a word field's value is
+            # no target either (REV-L2-8).
+            lines.append(f'Nothing empty in {", ".join(full)}: no word to analyse'
+                         + (' and no translation to write' if translation_field(project) is not None else '') + '.')
         precedent = self.precedent(ws, project, list(st.words.values()))
         if precedent:
             lines += ['', precedent]

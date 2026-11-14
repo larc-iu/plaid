@@ -140,7 +140,7 @@ def test_a_job_fills_a_field_on_every_word_of_a_fully_analysed_document(monkeypa
                               else ['Your piece: the whole document "Story", 3 sentences.'])
     asked = next(c['asked'] for c in model.calls if c['n'] == 1 and 'Instructions from' in c['asked'])
     assert 'Empty in' not in asked
-    assert 'Nothing empty in s1, s2, s3: their words are analysed and their translations written.' in asked
+    assert 'Nothing empty in s1, s2, s3: no word to analyse and no translation to write.' in asked
     _check_report(finished, written)
     # The document's row in core holds the field's count too, and the final
     # context and read_job say it.

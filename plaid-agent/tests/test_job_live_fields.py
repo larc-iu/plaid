@@ -71,7 +71,7 @@ def test_a_job_fills_a_field_on_every_word_and_undo_job_takes_it_back(world, mon
     assert finished['state'] == 'done', (finished.get('reason'), job.status.get('message'))
     pieces = [c['asked'] for c in model.calls if c['n'] == 1 and 'Instructions from' in c['asked']]
     assert [p.splitlines()[-1] for p in pieces] == ['Your piece: s1, s2, s3.']
-    assert 'Nothing empty in s1, s2, s3: their words are analysed and their translations written.' in pieces[0]
+    assert 'Nothing empty in s1, s2, s3: no word to analyse and no translation to write.' in pieces[0]
     expected = {f'd1-s{si}w{wi}': role_of(si, wi) for si, ws in enumerate(WORDS, start=1)
                 for wi in range(1, len(ws) + 1)}
     assert _roles(admin, s) == expected, 'the write landed'

@@ -326,7 +326,7 @@ def test_a_sentences_plan_walks_every_sentence_of_a_fully_analysed_document(monk
     pieces = [c['asked'] for c in model.calls if _kind(c['asked']) == 'piece' and c['n'] == 1]
     assert [p.splitlines()[-1] for p in pieces] == ['Your piece: s1, s2.']
     assert 'Empty in' not in pieces[0]
-    assert 'Nothing empty in s1, s2: their words are analysed and their translations written.' in pieces[0]
+    assert 'Nothing empty in s1, s2: no word to analyse and no translation to write.' in pieces[0]
     (doc,) = finished['report']['documents']
     assert doc['state'] == 'done' and doc['done'] == doc['targets'] == 2 and not doc['skipped']
     assert doc['left'] == [] and not doc['counts'].get('left') and not doc['counts'].get('not_reached')
