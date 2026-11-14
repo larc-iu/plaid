@@ -552,7 +552,9 @@ def summary_message(report: Dict[str, Any]) -> str:
     for d in report.get('documents') or []:
         c = d.get('counts') or {}
         lines.append(f'- "{d.get("name")}": {d.get("state")}, '
-                     + ', '.join(f'{k} {v:,}' for k, v in sorted(c.items()) if v and isinstance(v, int)))
+                     + ', '.join(f'{k} {v:,}' for k, v in sorted(c.items()) if v and isinstance(v, int))
+                     + ('. Left blank could not be read: what is blank there is not known.'
+                        if d.get('left_unread') else ''))
     lines.append('In the documents, "left" and "left_translations" count the words and translations still blank '
                  'at the end (the report\'s Left blank).')
     proposed = len(report.get('proposed') or []) + (report.get('proposed_more') or 0)
@@ -3389,18 +3391,23 @@ class IgtRunner:
                 counts, done, targets = {**counts, **tally['counts']}, tally['done'], tally.get('targets', targets)
             # What is blank in the sentences the job worked, read from the
             # document at the end (BRIEF NW), cut as every report list is.
-            # ``left`` and ``left_translations`` count the whole list.
+            # ``left`` and ``left_translations`` count the whole list. A
+            # document that could not be read has neither count, never 0,
+            # and says so (``left_unread``, REV-LNW-2).
+            unread = d in blank and blank[d] is None
             listed = [e for e in blank.get(d) or [] if (filled_words if e.get('form') is not None
                                                         else filled_translations)]
-            counts = {**counts, 'left': sum(1 for e in listed if e.get('form') is not None),
-                      'left_translations': sum(1 for e in listed if e.get('form') is None)}
+            counts = {k: v for k, v in counts.items() if k not in ('left', 'left_translations')}
+            if not unread:
+                counts.update({'left': sum(1 for e in listed if e.get('form') is not None),
+                               'left_translations': sum(1 for e in listed if e.get('form') is None)})
             left, more = core_job.cut(listed)
             out.append({'document_id': d, 'name': self.names.get(d) or row.get('name'),
                         'state': state if state in ('done', 'in-use', 'gone') else 'not-reached',
                         'sentences': row.get('sentences'), 'targets': targets, 'done': done,
                         'counts': counts, 'skipped': list(row.get('skipped') or []),
                         'gloss_group': row.get('gloss_group'), 'harmonize_group': row.get('harmonize_group'),
-                        'left': left, 'left_more': more})
+                        'left': left, 'left_more': more, **({'left_unread': True} if unread else {})})
         return out
 
     def summarize(self, job, report: Dict[str, Any]) -> Optional[str]:
@@ -3536,7 +3543,7 @@ class IgtRunner:
                       if r['try'] and (r['try'] not in self.looked or self.key_of(r) not in self.landed)])
         self.ended = True
 
-    def left_blank(self, job) -> Dict[str, List[Dict[str, Any]]]:
+    def left_blank(self, job) -> Dict[str, Optional[List[Dict[str, Any]]]]:
         """Per document, what is blank in it as it now is, read when the
         report is written: in each sentence the job worked (its own piece's
         landed write finished it, :meth:`finished`, wherever a split or a
@@ -3546,23 +3553,27 @@ class IgtRunner:
         (:meth:`written`): one that reads blank was cleared by a person, and
         it is counted as written (REV-LNW-4). In document order: ``{ref,
         sentence_id, begin, form}``, ``begin`` and ``form`` None for a
-        translation. A document that cannot be read lists nothing: the
-        report is still written."""
+        translation. None for a document that could not be read (every
+        document, when what landed could not be read): the report says so
+        (REV-LNW-2). A document gone lists nothing."""
         try:
             core_job.through_core(job, lambda: self.known_at_end(job))
             project = core_job.through_core(job, self.project)
         except Exception as e:  # noqa: BLE001 - a report without the list rather than none
             logger.warning('Job %s: the words it left blank could not be read for the report: %s', job.id, e)
-            return {}
-        out: Dict[str, List[Dict[str, Any]]] = {}
+            return {d: None for d in job.order}
+        out: Dict[str, Optional[List[Dict[str, Any]]]] = {}
         for d in job.order:
             worked, known, written = self.finished(d), self.known_words(d), self.written(d)
             if not worked:
                 continue
             try:
                 doc = core_job.through_core(job, lambda: self.read(project, d))
-            except Exception as e:  # noqa: BLE001 - gone, or unreadable: the rest is still listed
+            except Gone:
+                continue
+            except Exception as e:  # noqa: BLE001 - unreadable: the report says so, the rest is still listed
                 logger.warning('Job %s: %s could not be read for the words left blank: %s', job.id, d, e)
+                out[d] = None
                 continue
             listed = out.setdefault(d, [])
             for s in doc.sentences:

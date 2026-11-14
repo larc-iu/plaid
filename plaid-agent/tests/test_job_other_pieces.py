@@ -301,3 +301,28 @@ def test_a_translation_the_job_wrote_and_a_person_cleared_is_not_written_again(m
     (doc,) = finished['report']['documents']
     assert doc['counts']['changed'] == 1 and doc['left'] == []
 
+
+def test_a_document_unreadable_at_the_report_says_so_and_counts_no_left(monkeypatch):
+    """REV-LNW-2: the document cannot be read as the report is written. Its
+    counts hold no left at all (never 0), the document says Left blank
+    could not be read, and so does the final context."""
+    from plaid_agent.core import job as core_job
+    from plaid_agent.igt.job import summary_message
+    client = JobClient({'d1': document('d1', 'Story', [{'words': ['ka', 'pata']}])})
+    client.after_write['d1'] = document('d1', 'Story', [{'words': [('ka', [('ka', 'g')], J), 'pata']}], version=2)
+    job = start(client, id=J)
+    use(monkeypatch, Model(_first_words))
+    real_left = igt_job.IgtRunner.left_blank
+
+    def left_blank(self, job):
+        def read(*a, **kw):
+            raise RuntimeError('core answered 503 for good')
+        self.read = read
+        return real_left(self, job)
+    monkeypatch.setattr(igt_job.IgtRunner, 'left_blank', left_blank)
+    monkeypatch.setattr(core_job, 'through_core', lambda job, f, **kw: f())
+    finished = run_job(job, runner(job))
+    (doc,) = finished['report']['documents']
+    assert 'left' not in doc['counts'] and 'left_translations' not in doc['counts'], doc['counts']
+    assert doc['left_unread'] is True and doc['left'] == []
+    assert 'Left blank could not be read' in summary_message(finished['report'])
