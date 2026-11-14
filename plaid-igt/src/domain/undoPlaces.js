@@ -95,3 +95,38 @@ export const vocabularyPlacer = ({ vocabularyId, vocabularyName, entryName, docu
     return null;
   };
 };
+
+/**
+ * On a job's page, where a job's rows span its documents and the lexicon: a
+ * row in a document is placed at its document (`documents`, the job's, by
+ * name, in the job's order, "Deleted document" for one gone), a link to it,
+ * and an entry at its vocabulary (`vocabs`, the project's), after every
+ * document.
+ */
+export const jobPlacer = ({ projectId, documents = [], vocabs = [] }) => {
+  const docs = new Map(documents.map((d, i) => [d.documentId, { ...d, rank: i }]));
+  const vocabRank = new Map(vocabs.map((v, i) => [v.id, { ...v, rank: documents.length + i }]));
+  return (row) => {
+    if (row.document) {
+      const d = docs.get(row.document);
+      const named = d?.name !== null && d?.name !== undefined;
+      return {
+        key: row.document,
+        label: named ? d.name : 'Deleted document',
+        to: named ? APP_ROUTES.document(projectId, row.document) : null,
+        rank: d?.rank ?? documents.length,
+      };
+    }
+    const vocab = row.vocabLayer ?? (row.kind === 'vocab-layer' ? row.id : null);
+    if (vocab) {
+      const v = vocabRank.get(vocab);
+      return {
+        key: vocab,
+        label: v?.name || 'Lexicon',
+        to: `/vocabularies/${vocab}`,
+        rank: v?.rank ?? documents.length + vocabs.length,
+      };
+    }
+    return null;
+  };
+};

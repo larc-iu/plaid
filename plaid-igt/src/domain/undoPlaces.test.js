@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { buildRawDoc, makeIgtDoc } from './test-helpers.js';
-import { documentPlacer, vocabularyPlacer } from './undoPlaces.js';
+import { documentPlacer, jobPlacer, vocabularyPlacer } from './undoPlaces.js';
+import { leftGroups } from './undoSummary.js';
 
 // Where the Undo dialog points a row it lists as left.
 
@@ -82,5 +83,34 @@ describe('vocabularyPlacer', () => {
       to: null,
     });
     expect(place({ kind: 'vocab-layer', id: 'v1' }).label).toBe('Lexicon');
+  });
+});
+
+describe('jobPlacer', () => {
+  it('places rows at their documents in the job’s order, then the lexicon', () => {
+    const place = jobPlacer({
+      projectId: 'p1',
+      documents: [
+        { documentId: 'd1', name: 'Story one' },
+        { documentId: 'd2', name: 'Story two' },
+        { documentId: 'd3', name: null },
+      ],
+      vocabs: [{ id: 'v1', name: 'Story lexicon' }],
+    });
+    const summary = {
+      skipped: [
+        { kind: 'vocab-item', id: 'i1', vocabLayer: 'v1', reason: 'changed-since' },
+        { kind: 'span', id: 's2', document: 'd2', reason: 'changed-since' },
+        { kind: 'span', id: 's3', document: 'd2', reason: 'changed-since' },
+        { kind: 'span', id: 's1', document: 'd1', reason: 'changed-since' },
+        { kind: 'token', id: 't9', document: 'd3', reason: 'changed-since' },
+      ],
+    };
+    expect(leftGroups(summary, place)[0].places.map((p) => [p.label, p.to, p.count])).toEqual([
+      ['Story one', '/projects/p1/documents/d1', 1],
+      ['Story two', '/projects/p1/documents/d2', 2],
+      ['Deleted document', null, 1],
+      ['Story lexicon', '/vocabularies/v1', 1],
+    ]);
   });
 });

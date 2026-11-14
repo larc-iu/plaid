@@ -47,13 +47,22 @@ const UNKNOWN_UNDO =
  * rows leaves entries as they are (a link to an entry a merge or a deletion
  * took needs it, and stays), so the dialog says where they are undone, with
  * every link to them: each vocabulary's History, at this entry.
+ *
+ * `send({dryRun})`, where it is not one entry's undo through `scope` (a job's
+ * undo), and `noun`, what the title calls it ("job"). `errorText(err,
+ * fallback)` words a refusal, undoError by default. `onUndone(summary)` is
+ * called after the undo, with core's answer, or with null when it is not
+ * known whether the undo was made.
  */
 export const UndoDialog = ({
   open,
   onOpenChange,
   client,
   entry,
-  scope,
+  scope = {},
+  send,
+  noun,
+  errorText = undoError,
   place,
   tokenRows,
   vocabularies = [],
@@ -69,19 +78,28 @@ export const UndoDialog = ({
   const { documentId, vocabLayerId } = scope;
   const onUndoneRef = useRef(onUndone);
   onUndoneRef.current = onUndone;
+  const sendRef = useRef(null);
+  sendRef.current =
+    send ??
+    (({ dryRun }) =>
+      client.audit.undo(entryId, { dryRun: dryRun || undefined, documentId, vocabLayerId }));
+  const errorTextRef = useRef(errorText);
+  errorTextRef.current = errorText;
 
   useEffect(() => {
     if (!open || !entryId) return undefined;
     let cancelled = false;
     setPreview(null);
     setError('');
-    client.audit
-      .undo(entryId, { dryRun: true, documentId, vocabLayerId })
+    sendRef
+      .current({ dryRun: true })
       .then((s) => {
         if (!cancelled) setPreview(s);
       })
       .catch((err) => {
-        if (!cancelled) setError(undoError(err, 'Failed to read what would be undone.'));
+        if (!cancelled) {
+          setError(errorTextRef.current(err, 'Failed to read what would be undone.'));
+        }
       });
     return () => {
       cancelled = true;
@@ -104,11 +122,11 @@ export const UndoDialog = ({
   const undo = async () => {
     setBusy(true);
     try {
-      const res = await client.audit.undo(entryId, { documentId, vocabLayerId });
+      const res = await sendRef.current({ dryRun: false });
       const { title, message, undid } = undoneToast(res, { tokenRows });
       (undid ? notifySuccess : notifyInfo)(message, title);
       onOpenChange(false);
-      await onUndoneRef.current?.();
+      await onUndoneRef.current?.(res);
     } catch (err) {
       console.error('Undo failed:', err);
       if (isUnknownOutcome(err)) {
@@ -117,11 +135,11 @@ export const UndoDialog = ({
         // fresh dry run would read the undo's own writes as changed since.
         notifyWarning(UNKNOWN_UNDO, 'Not confirmed');
         onOpenChange(false);
-        await onUndoneRef.current?.();
+        await onUndoneRef.current?.(null);
         return;
       }
-      notifyError(undoError(err, 'The undo was not applied.'), 'Failed to undo');
-      await onUndoneRef.current?.();
+      notifyError(errorTextRef.current(err, 'The undo was not applied.'), 'Failed to undo');
+      await onUndoneRef.current?.(null);
       setReread((n) => n + 1);
     } finally {
       setBusy(false);
@@ -132,7 +150,7 @@ export const UndoDialog = ({
     <Dialog open={open} onOpenChange={(o) => (o ? onOpenChange(true) : close())}>
       <DialogContent className="max-w-md" data-testid="undo-dialog">
         <DialogHeader>
-          <DialogTitle>Undo this {entry?.action ? 'action' : 'entry'}?</DialogTitle>
+          <DialogTitle>Undo this {noun ?? (entry?.action ? 'action' : 'entry')}?</DialogTitle>
         </DialogHeader>
 
         {/* Nothing in it leads away while the undo runs. */}

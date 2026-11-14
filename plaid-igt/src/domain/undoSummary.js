@@ -162,7 +162,8 @@ export const leftGroups = (summary, place = () => null) => {
     .map(({ byPlace, unplaced, ...g }) => ({
       ...g,
       places: [
-        ...byPlace.values(),
+        // In the order the place gives (`rank`), else as first met.
+        ...[...byPlace.values()].sort((a, b) => (a.rank ?? 0) - (b.rank ?? 0)),
         ...(unplaced ? [{ key: null, label: 'Elsewhere', to: null, count: unplaced }] : []),
       ],
     }));
@@ -230,4 +231,28 @@ export const undoError = (err, fallback) => {
   }
   if (status === 403) return 'Only a maintainer can undo this entry.';
   return humanizeError(err, fallback);
+};
+
+/**
+ * The sentence for a job's undo core refused. Past the limit, how many
+ * changes the job made (core's 413 names the number) and that it is undone
+ * document by document, from each document's Changes link on this page.
+ */
+export const jobUndoError = (err, fallback) => {
+  const status = statusOf(err);
+  if (status === 413) {
+    const n = Number(
+      /changed (\d+) rows/.exec(err?.responseData?.error ?? err?.message ?? '')?.[1],
+    );
+    const made =
+      Number.isFinite(n) && n > 0
+        ? `This job made ${countOf(n, 'change')}.`
+        : 'This job made more than 20,000 changes.';
+    return `${made} An undo takes at most 20,000, so this job is undone document by document, from each document’s Changes link on this page.`;
+  }
+  if (status === 409) return 'This job has not ended. A job is undone once it has stopped.';
+  if (status === 403 && !err?.responseData?.unresolved)
+    return 'Only a maintainer can undo this job.';
+  if (status === 404 || status === 403) return 'This job does not exist or cannot be opened.';
+  return undoError(err, fallback);
 };

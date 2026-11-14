@@ -14,7 +14,12 @@ import { TYPE } from '@ui/lib/typeScale.js';
 import { countOf } from '@ui/lib/plural.js';
 import { fullTimestamp, timeAgo } from '@ui/lib/formatTime.js';
 import { projectNotFound } from '@ui/lib/errors.js';
-import { canEditProject, canStopJob } from '@ui/domain/permissions.js';
+import { canEditProject, canManageProject, canStopJob } from '@ui/domain/permissions.js';
+import { historyHref } from '@ui/hooks/useHistoryParam.js';
+import { UndoDialog } from '../../documents/history/UndoDialog.jsx';
+import { jobPlacer } from '@/domain/undoPlaces.js';
+import { jobUndoError } from '@/domain/undoSummary.js';
+import { dropPrecedent } from '@/domain/precedentCache';
 import { isReviewed } from '@larc-iu/plaid-client';
 import { AssistantMark } from '@ui/components/assistant/PlaidMarks.jsx';
 import { useAssistantSubject, useStartConversation } from '@ui/components/assistant/subject.js';
@@ -53,6 +58,12 @@ export const JobPage = ({ project, projectId, jobId, client }) => {
   const [error, setError] = useState(null);
   const [attempt, setAttempt] = useState(0);
   const [stopping, setStopping] = useState(false);
+  const [undoOpen, setUndoOpen] = useState(false);
+  // The job undone from this page: when, and its History entry in the first
+  // of its documents the undo wrote in. Only until the page is left: nothing
+  // core keeps says which job an undo was of ("Undo job: <label>" names the
+  // job by its label, which another job may share).
+  const [undone, setUndone] = useState(null);
 
   useEffect(() => {
     let live = true;
@@ -137,6 +148,35 @@ export const JobPage = ({ project, projectId, jobId, client }) => {
 
   const stoppable = jobStoppable(job) && canStopJob(job, project, user);
   const discussable = !isJobActive(job) && !!job.report;
+  // A maintainer undoes an ended job whole, documents and lexicon together.
+  const undoable = !isJobActive(job) && canManageProject(project, user) && !undone;
+
+  // After an undo: say so, with a link to the undo in the History of the
+  // first of the job's documents it wrote in.
+  const afterUndo = async (res) => {
+    dropPrecedent();
+    if (!res?.operation) return;
+    const at = new Date().toISOString();
+    setUndone({ at, href: null });
+    for (const d of job.documents || []) {
+      try {
+        const page = await client.documents.auditPage(d.documentId, {
+          entryId: res.operation,
+          opsLimit: 1,
+        });
+        const entry = page?.entries?.[0];
+        if (!entry) continue;
+        const href = historyHref(
+          `/projects/${projectId}/documents/${d.documentId}`,
+          entry.partOf ?? entry.id,
+        );
+        setUndone({ at, href });
+        return;
+      } catch {
+        // Not in this document's History: the next one.
+      }
+    }
+  };
 
   return (
     <div>
@@ -144,9 +184,14 @@ export const JobPage = ({ project, projectId, jobId, client }) => {
       <SectionHeader
         title="Job"
         actions={
-          (stoppable || discussable) && (
+          (stoppable || discussable || undoable) && (
             <div className="flex gap-2">
               {discussable && <Discuss client={client} projectId={projectId} />}
+              {undoable && (
+                <Button variant="outline" onClick={() => setUndoOpen(true)}>
+                  Undo job
+                </Button>
+              )}
               {stoppable && (
                 <Button variant="outline" onClick={stop} disabled={stopping}>
                   Stop
@@ -157,6 +202,36 @@ export const JobPage = ({ project, projectId, jobId, client }) => {
         }
       />
       <JobStatus job={job} />
+      {undone && (
+        <p className="-mt-4 mb-6 text-sm" data-testid="job-undone">
+          Job undone {fullTimestamp(undone.at)}.
+          {undone.href && (
+            <>
+              {' '}
+              <Link to={undone.href} className="text-primary hover:underline">
+                Show in History
+              </Link>
+            </>
+          )}
+        </p>
+      )}
+      {undoable && (
+        <UndoDialog
+          open={undoOpen}
+          onOpenChange={setUndoOpen}
+          client={client}
+          entry={{ id: jobId, label: jobName(job) }}
+          noun="job"
+          send={({ dryRun }) => client.jobs.undo(jobId, { dryRun })}
+          errorText={jobUndoError}
+          place={jobPlacer({
+            projectId,
+            documents: job.documents || [],
+            vocabs: project?.vocabs || [],
+          })}
+          onUndone={afterUndo}
+        />
+      )}
       <JobFacts job={job} readAt={readAt} />
       <h3 className={`${TYPE.card} mb-2 mt-8`}>Documents</h3>
       <JobDocuments job={job} projectId={projectId} />

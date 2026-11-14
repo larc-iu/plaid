@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { ROLES } from '@larc-iu/plaid-client';
 import {
+  jobUndoError,
   leftCounts,
   leftGroups,
   notUndoneLines,
@@ -228,5 +229,24 @@ describe('undoError', () => {
     );
     expect(undoError(httpError(404))).toBe('This entry does not exist or cannot be opened.');
     expect(undoError(httpError(500), 'Failed.')).not.toMatch(/http:/);
+  });
+});
+
+describe('jobUndoError', () => {
+  it('says how many changes a job too large made, and where it is undone instead', () => {
+    const big = Object.assign(httpError(413), {
+      responseData: { error: 'This entry changed 25550 rows. An undo takes at most 20000.' },
+    });
+    expect(jobUndoError(big)).toBe(
+      'This job made 25,550 changes. An undo takes at most 20,000, so this job is undone document by document, from each document’s Changes link on this page.',
+    );
+    expect(jobUndoError(httpError(413))).toMatch(/^This job made more than 20,000 changes\. /);
+    expect(jobUndoError(httpError(409))).toBe(
+      'This job has not ended. A job is undone once it has stopped.',
+    );
+    expect(jobUndoError(httpError(403))).toBe('Only a maintainer can undo this job.');
+    expect(jobUndoError(httpError(403, { unresolved: true }))).toBe(
+      'This job does not exist or cannot be opened.',
+    );
   });
 });
