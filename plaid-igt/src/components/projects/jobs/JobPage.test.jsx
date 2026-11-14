@@ -767,6 +767,32 @@ describe('the job page', () => {
     await v.unmount();
   });
 
+  it('says how many values the job set in each field, a row per field', async () => {
+    const report = {
+      ...REPORT,
+      totals: {
+        ...REPORT.totals,
+        words: 0,
+        fields: [
+          { field: 'Animacy', values: 1 },
+          { field: 'Thematic role', values: 1107 },
+        ],
+      },
+    };
+    const v = await mount(clientOf(jobOf({ state: 'done', report })));
+    const section = v.container.querySelector('section[aria-label="Report"]');
+    const sums = totals(section);
+    expect(sums['Thematic role']).toBe('1,107 values');
+    expect(sums['Animacy']).toBe('1 value');
+    expect(sums).not.toHaveProperty('Words analyzed');
+    const labels = all(section, 'dl dt').map((dt) => dt.textContent);
+    expect(labels.indexOf('Animacy')).toBe(labels.indexOf('Translations replaced') + 1);
+    await v.unmount();
+    const none = await mount(clientOf(jobOf({ state: 'done', report: REPORT })));
+    expect(totals(none.container)).not.toHaveProperty('Thematic role');
+    await none.unmount();
+  });
+
   it('lists the changes a write cut short did not write under a line of their own', async () => {
     const report = {
       ...REPORT,

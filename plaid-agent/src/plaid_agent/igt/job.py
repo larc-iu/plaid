@@ -43,6 +43,7 @@ from ..core.agent import ModelConfig, Toolkit, TurnCancelled, run_turn
 from ..core.garble import seed
 from ..core.guidelines import manual_chars
 from ..core.job import (BUDGET, ROW_FINAL, SKIPPED_MORE, JobStopped, Pace, StretchFailed, canonical, analysis_key,
+                        field_counts,
                         empty_counts, failure_kind, halve, harmonized, not_answering)
 from ..core.limits import (JOB_ANALYSIS_MAX_CHARS, JOB_CHANGE_VALUE_CHARS, JOB_CHANGES_MAX, JOB_CONTEXT_SENTENCES,
                            JOB_DOCUMENT_PIECE_MAX_CHARS, JOB_NOTE_MAX_CHARS, JOB_SUMMARY_MAX_CHARS,
@@ -537,6 +538,11 @@ def rendering(analysis: Dict[str, Any], gloss: Optional[str], entries: Optional[
     return line
 
 
+def fields_text(fields) -> str:
+    """``counts.fields`` or ``totals.fields`` as a line says it."""
+    return ', '.join(f'{f.get("field")} {f.get("values"):,} values' for f in fields or [])
+
+
 def summary_message(report: Dict[str, Any]) -> str:
     """What the final context is handed: the report's sections as text, each
     bounded (JOB_SUMMARY_NOTES_CHARS for the notes, JOB_SUMMARY_TABLE_CHARS
@@ -544,7 +550,8 @@ def summary_message(report: Dict[str, Any]) -> str:
     totals = report.get('totals') or {}
     lines = ['The job\'s instructions:', report.get('instructions') or '', '',
              'The report\'s totals (the worker counted these):',
-             ', '.join(f'{k.replace("_", " ")} {v:,}' for k, v in sorted(totals.items()) if v), '']
+             ', '.join([f'{k.replace("_", " ")} {v:,}' for k, v in sorted(totals.items()) if v and isinstance(v, int)]
+                       + ([fields_text(totals['fields'])] if totals.get('fields') else [])), '']
     plan = report.get('plan') or {}
     if plan:
         lines += [f'How the work was cut: {plan.get("pieces")}.', '']
@@ -552,7 +559,8 @@ def summary_message(report: Dict[str, Any]) -> str:
     for d in report.get('documents') or []:
         c = d.get('counts') or {}
         lines.append(f'- "{d.get("name")}": {d.get("state")}, '
-                     + ', '.join(f'{k} {v:,}' for k, v in sorted(c.items()) if v and isinstance(v, int))
+                     + ', '.join([f'{k} {v:,}' for k, v in sorted(c.items()) if v and isinstance(v, int)]
+                                 + ([fields_text(c['fields'])] if c.get('fields') else []))
                      + ('. Left blank could not be read: what is blank there is not known.'
                         if d.get('left_unread') else ''))
     lines.append('In the documents, "left" and "left_translations" count the words and translations still blank '
@@ -999,6 +1007,19 @@ class Write:
         return list(dict.fromkeys(word_tag(w) for w in (self.word_of(o) for o in ops if o.get('kind') == 'set_analysis')
                                   if w is not None))
 
+    def fields_of(self, ops: List[Dict[str, Any]]) -> Dict[str, int]:
+        """The values ``ops`` set, by field name: each ``set_span`` that
+        writes a value (not one that clears it), on a word, a morpheme or a
+        sentence alike. What an analysis writes is its word's
+        (:meth:`words_of`)."""
+        out: Counter = Counter()
+        for o in ops:
+            if o.get('kind') == 'set_span' and o.get('value') not in (None, ''):
+                f = self.st.project.field_by_layer(o.get('layer_id'))
+                if f is not None:
+                    out[f.name] += 1
+        return dict(out)
+
     def _others(self, sid: str, words: List[str]) -> List[str]:
         now = {s.id: s for s in (self.fresh.sentences if self.fresh is not None else [])}
         s = now.get(sid) or self.st.where.get(sid)
@@ -1011,6 +1032,9 @@ class Write:
         row.update({'words': words, 'others': self._others(sid, words),
                     'counts': {k: n for k, n in counts.items() if n},
                     'ops': [self.describe(o, True) for o in ops]})
+        fields = self.fields_of(ops)
+        if fields:
+            row['fields'] = fields
         return row
 
     def rows(self, seed: str, ops: List[Dict[str, Any]], replaces: Optional[str] = None,
@@ -3050,18 +3074,21 @@ class IgtRunner:
         them from the document (:meth:`left_blank`), and a row never says
         nothing is left where nothing was counted (BRIEF NW round 3)."""
         counts = {k: n for k, n in empty_counts().items() if k not in ('left', 'left_translations')}
-        analyzed, words = set(), set()
+        analyzed, words, fields = set(), set(), Counter()
         rows, landed = self.view(document_id)
         for r in rows:
             if not landed(r):
                 continue
             words |= set(r.get('words') or ())
+            fields.update(r.get('fields') or {})
             for k, n in (r.get('counts') or {}).items():
                 if k == 'analyzed':
                     analyzed.add(r['sentence'])
                 else:
                     counts[k] = counts.get(k, 0) + n
         counts['analyzed'], counts['words'] = len(analyzed), len(words)
+        if fields:
+            counts['fields'] = field_counts(fields)
         row = self.job.rows.get(document_id) or {}
         failed = len(self.unlisted.get(document_id) or ())
         more = max((row.get('counts') or {}).get(SKIPPED_MORE) or 0,

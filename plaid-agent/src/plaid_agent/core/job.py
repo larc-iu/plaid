@@ -23,6 +23,7 @@ import math
 import threading
 import time
 import uuid
+from collections import Counter
 from datetime import datetime, timezone
 from typing import Any, Callable, Dict, List, Optional
 
@@ -683,6 +684,14 @@ def _finish(job: Job, state: str, runner, harmonize, entries, reason: Optional[s
         return None
 
 
+def field_counts(by_name) -> List[Dict[str, Any]]:
+    """The values a job set by field (``{name: n}``), as a document's
+    ``counts.fields`` and the report's ``totals.fields`` hold them (BRIEF
+    EW): a list by name, never a map keyed by a field's name, which the
+    clients would re-case."""
+    return [{'field': name, 'values': n} for name, n in sorted(by_name.items()) if n]
+
+
 def report_bytes(value: Any) -> int:
     """The size of ``value`` as core measures a report: its JSON, every
     character written as itself (no escape for a letter outside ASCII), in
@@ -774,6 +783,7 @@ def build_report(job: Job, state: str, reason: Optional[str], documents: List[Di
               'sentences': 0, 'translations': 0, 'refreshed': 0, 'words': 0, 'links': 0, 'entries': 0,
               'skipped_too_long': 0, 'skipped_failed': 0, 'skipped_changed': 0, 'skipped_interrupted': 0,
               'skipped_more': 0, 'changed': 0, 'proposed': 0, 'changes': 0, 'deletions': 0, 'repeated': 0}
+    fields = Counter()
     for d in documents:
         key = {'done': 'documents_done', 'in-use': 'documents_in_use', 'gone': 'documents_gone'}.get(
             d.get('state'), 'documents_not_reached')
@@ -789,6 +799,10 @@ def build_report(job: Job, state: str, reason: Optional[str], documents: List[Di
             k = f'skipped_{str(s.get("reason") or "").replace("-", "_")}'
             if k in totals:
                 totals[k] += 1
+        for f in counts.get('fields') or []:
+            fields[f.get('field')] += f.get('values') or 0
+    if fields:
+        totals['fields'] = field_counts(fields)
     changed, changed_more = cut(harmonize.get('changed') or [])
     left, left_more = cut(harmonize.get('left') or [])
     lists = {}

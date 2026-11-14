@@ -40,11 +40,13 @@ const documentSum = (report, key) =>
   (report.documents || []).reduce((n, d) => n + (d.counts?.[key] ?? 0), 0);
 
 // One "label: value" row of the totals, left out when it is an optional row
-// with nothing in it.
+// with nothing in it. The values the job set in each field follow the words
+// it analyzed, one row per field ("Thematic role: 107 values").
 const totalRows = (report) => {
   const t = report.totals || {};
   const rows = [['Documents done', t.documentsDone]];
   const optional = (label, n) => n > 0 && rows.push([label, n]);
+  const value = (n) => `${n.toLocaleString()} ${plural(n, 'value')}`;
   optional('Documents in use', t.documentsInUse);
   optional('Documents deleted', t.documentsGone);
   optional('Documents not reached', t.documentsNotReached);
@@ -54,6 +56,7 @@ const totalRows = (report) => {
   optional('Translations written', t.translations);
   optional('Translations replaced', t.refreshed);
   optional('Words analyzed', t.words);
+  (t.fields || []).forEach((f) => f.values > 0 && rows.push([f.field, value(f.values)]));
   optional('Lexicon links made', t.links);
   optional('Entries created', t.entries);
   optional('Changes proposed', t.proposed);
@@ -69,7 +72,7 @@ const totalRows = (report) => {
     'Blank translations in sentences not reached',
     documentSum(report, 'notReachedTranslations'),
   );
-  return rows.map(([label, n]) => [label, (n ?? 0).toLocaleString()]);
+  return rows.map(([label, n]) => [label, typeof n === 'string' ? n : (n ?? 0).toLocaleString()]);
 };
 
 const Analysis = ({ text, count }) => (

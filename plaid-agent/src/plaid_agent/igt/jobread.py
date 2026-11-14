@@ -157,6 +157,7 @@ def _words(key: str) -> str:
 def _totals(report: Dict[str, Any]) -> str:
     totals = report.get('totals') or {}
     said = [f'{_words(k)} {v:,}' for k, v in totals.items() if isinstance(v, int) and v]
+    said += [f'{f.get("field")} {f.get("values"):,} values' for f in totals.get('fields') or []]
     return ', '.join(said) if said else 'nothing counted'
 
 
