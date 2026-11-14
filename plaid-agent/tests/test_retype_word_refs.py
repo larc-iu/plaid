@@ -93,7 +93,9 @@ REFUSED_NOW = {('retype', a) for a in ANNOTATIONS
 #: the delete or the respell then names by its bare number. Staged the other
 #: way, the split, delete or respell of s1.w3 holds its word's id and the delete of s1.w2 names
 #: a word before it, so both stand, as plaid-ud's rule has it (REV-RR-4).
-RENUMBERED = {('split_word', 'delete_word'), ('delete_word', 'delete_word'), ('respell', 'delete_word')}
+RENUMBERED = {('split_word', 'delete_word'), ('delete_word', 'delete_word'), ('respell', 'delete_word'),
+              # split_sentence's before_word 3 counts words as read (REV-RR2-3)
+              ('split_sentence', 'delete_word')}
 
 
 def _stage(w, tool, args):
@@ -646,3 +648,26 @@ def test_a_rule_that_reaches_only_other_sentences_stands_beside_a_retype():
     assert not out.startswith('Error'), out
     assert call_tool(w, 'retype_sentence', {'document': 'd1', 'ref': 's1', 'text': 'Ali-di ∅ gam.'}) \
         .startswith('Error: Text 1 s1: this plan\'s set_field_for_form')
+
+
+def test_a_sentence_split_by_a_word_number_a_planned_reshape_renumbers_is_refused():
+    """REV-RR2-3: before_word counts words as read, as a bare reference does,
+    and takes no form: after split_word s1.w1, before_word 3 was staged as
+    "split before w3 "akuna"" while w3 is "gam" once the plan runs. Refused
+    when the word's number changes or the plan takes the word, staged when
+    the reshape is after it or is staged after the split."""
+    w = ws()
+    call_tool(w, 'split_word', {'document': 'd1', 'ref': 's1.w1', 'at': 3})
+    out = call_tool(w, 'split_sentence', {'document': 'd1', 'ref': 's1', 'before_word': 3})
+    assert out == ('Error: Text 1 s1: before_word 3 is w3 "akuna" now, but this plan\'s split_word renumbers s1, so '
+                   'the number names another word once it is applied. Split the sentence once the plan is applied.'), out
+    w = ws()
+    call_tool(w, 'delete_word', {'document': 'd1', 'refs': ['s1.w2']})
+    assert 'Split the sentence once the plan is applied.' in call_tool(
+        w, 'split_sentence', {'document': 'd1', 'ref': 's1', 'before_word': 2})
+    w = ws()
+    call_tool(w, 'split_word', {'document': 'd1', 'ref': 's1.w3', 'at': 2})
+    assert call_tool(w, 'split_sentence', {'document': 'd1', 'ref': 's1', 'before_word': 2}).startswith('Planned')
+    w = ws()
+    call_tool(w, 'split_sentence', {'document': 'd1', 'ref': 's1', 'before_word': 3})
+    assert call_tool(w, 'split_word', {'document': 'd1', 'ref': 's1.w1', 'at': 3}).startswith('Planned')

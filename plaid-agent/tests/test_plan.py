@@ -762,10 +762,12 @@ def test_op_keys_survive_the_wire_unchanged():
         assert not call_tool(w, name, args).startswith('Error'), name
     ops += w.ops
     w = shape_ws()
-    for name, args in [('split_word', {'document': 'Text 1', 'ref': 's1.w1', 'at': 2}),
+    # The sentence split first: before_word counts words as read, and the
+    # reshapes after it renumber them (retyped.renumbered_cut).
+    for name, args in [('split_sentence', {'document': 'Text 1', 'ref': 's1', 'before_word': 2}),
+                       ('split_word', {'document': 'Text 1', 'ref': 's1.w1', 'at': 2}),
                        # By its form: the split before it renumbers it (retyped.renumbered).
                        ('delete_word', {'document': 'Text 1', 'refs': ['s1.w2 "gam"']}),
-                       ('split_sentence', {'document': 'Text 1', 'ref': 's1', 'before_word': 2}),
                        ('append_text', {'document': 'Text 1', 'text': 'Yeni cümlə.'})]:
         assert not call_tool(w, name, args).startswith('Error'), name
     ops += w.ops

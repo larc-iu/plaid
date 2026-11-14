@@ -69,6 +69,11 @@ def test_delete_word_and_sentence_ops():
                         'label': 'Text 1 s1.w3 "akuna": delete the word token (the text is unchanged)', 'change_at': 22}
     assert w.ops[1]['word_id'] == 'w-1' and w.ops[1]['morpheme_ids'] == ['m-1a', 'm-1b'] and 'analysis, values, and link are deleted' in w.ops[1]['label']
 
+    # A sentence split counts words as read, and the deletes above renumber
+    # gam (retyped.renumbered_cut): refused, and planned on its own.
+    assert 'Split the sentence once the plan is applied.' in call_tool(
+        w, 'split_sentence', {'document': 'd1', 'ref': 's1', 'before_word': 2})
+    w = ws()
     out = call_tool(w, 'split_sentence', {'document': 'd1', 'ref': 's1', 'before_word': 2})
     assert 'Planned 1 change' in out
     assert w.ops[-1] == {'kind': 'split_sentence', 'sentence_id': 's-1', 'position': 7, 'token_at': {'begin': 0, 'end': 17},

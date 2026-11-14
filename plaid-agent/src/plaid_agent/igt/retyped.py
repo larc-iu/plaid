@@ -619,6 +619,21 @@ def renumbered(ws, doc, ref: str, obj) -> None:
                     f'read now, so add the form to say which you mean: {here} "{w.surface}".{made}', kind='conflict')
 
 
+def renumbered_cut(ws, s, w, where: str, n: int) -> None:
+    """split_sentence's ``before_word`` ``n`` (word ``w`` of sentence ``s``
+    as read) refused when a split, merge or word delete the plan holds in the
+    sentence gives that word another number or takes it: the number names one
+    word now and another once the plan runs, and before_word takes no form
+    (REV-RR2-3)."""
+    shapes = _shapes_in(ws.ops, s)
+    if not shapes or numbers_after(s, shapes).get(w.id) == w.index:
+        return
+    by = ' and '.join(dict.fromkeys(o.get('kind') for o in shapes))
+    raise ToolError(f'{where}: before_word {n} is w{n} {qv(w.surface)} now, but this plan\'s {by} '
+                    f'renumber{"" if " and " in by else "s"} s{s.index}, so the number names another word once it is '
+                    'applied. Split the sentence once the plan is applied.', kind='conflict')
+
+
 def resolve_in(ws, doc, ref: str):
     """``project.resolve`` for a reference a tool was given: the thing it
     names, refused when it is a bare word number the plan's reshapes

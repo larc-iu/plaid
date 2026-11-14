@@ -25,8 +25,8 @@ from ..core.plan import labelled
 from ..core.tools import ToolError
 from .plan import reshaped_subjects, written_before_merge
 from .project import Link, Sentence, Span, Word, plain_ref, planned_word_count, resolve, split_sentences, word_ref
-from .retyped import (gone_words, listing, planned_words, refuse_retype_under_rule, renumbered, resolve_in,
-                      restage_on_retype, trimmed, word_gaps)
+from .retyped import (gone_words, listing, planned_words, refuse_retype_under_rule, renumbered, renumbered_cut,
+                      resolve_in, restage_on_retype, trimmed, word_gaps)
 from .tools import (reshape_guards, refuse_comment_and_text_edit, refuse_shape_and_analysis,
                     refuse_shape_and_respell, refuse_text_in_deleted_sentence)
 from .workspace import Workspace, _need, _refs
@@ -428,6 +428,7 @@ def t_split_sentence(ws: Workspace, document: str, ref: str, before_word: int) -
         raise ToolError(f'before_word must be between 2 and {len(s.words)} for {ref} (a split before w1 changes nothing)',
                         kind='invalid-argument')
     w = s.words[n - 1]
+    renumbered_cut(ws, s, w, f'{ws.doc_label(doc.id)} {ref}', n)
     # The same, staged the other way round: a word a merge folds into the
     # word before it starts no sentence.
     if any(w.id in (op.get('other_ids') or []) for op in ws.ops if op.get('kind') == 'merge_words'):
