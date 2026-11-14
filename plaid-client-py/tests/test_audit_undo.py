@@ -66,15 +66,30 @@ def test_the_fake_records_an_undo_and_answers_its_summary():
     ]
 
 
-def test_an_undo_goes_out_with_no_idempotency_key_dry_or_not():
-    # The undo's dry run, and each attempt a misfit ends, roll back inside the
-    # undo's own transaction. A keyed write runs inside an outer one that
-    # commits with its stored answer, which would keep what they rolled back:
-    # a dry run sent with a key wrote the undo.
-    client = PlaidClient('http://x', 'tok')
+def test_an_undo_goes_out_keyed_a_key_each_and_waits_as_long_as_a_batch():
+    # An undo holds the write lock for its whole run, as a batch does, and may
+    # take longer than one request's timeout. A key of its own for the dry run
+    # and for the real call, so a lost answer is sent again.
+    client = PlaidClient('http://x', 'tok', timeout=30, batch_timeout=180)
     client.session = recording_session([{'entry': 'e1', 'total': 0, 'skipped': []}])
     client.audit.undo('e1', dry_run=True, document_id='d1')
     client.audit.undo('e1')
-    assert len(client.session.sent) == 2
-    for sent in client.session.sent:
-        assert 'Idempotency-Key' not in (sent['headers'] or {})
+    keys = [(s['headers'] or {}).get('Idempotency-Key') for s in client.session.sent]
+    assert keys[0] and keys[1] and keys[0] != keys[1]
+    assert [s['timeout'] for s in client.session.sent] == [180, 180]
+
+
+def test_an_undo_whose_answer_was_lost_is_sent_again_under_its_key():
+    import requests
+    client = PlaidClient('http://x', 'tok', retry_delays=[0, 0, 0])
+    keys = []
+
+    def answer(kw):
+        keys.append((kw['headers'] or {}).get('Idempotency-Key'))
+        if len(keys) == 1:
+            raise requests.ConnectionError('lost')
+        return {'entry': 'e1', 'total': 3, 'operation': 'o1'}
+
+    client.session = recording_session(answer)
+    assert client.audit.undo('e1', document_id='d1')['operation'] == 'o1'
+    assert len(keys) == 2 and keys[0] == keys[1]

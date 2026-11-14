@@ -57,20 +57,52 @@ test("an undo's summary is recased, its skipped rows with the row each names", a
   }
 });
 
-// The undo's dry run, and each attempt a misfit ends, roll back inside the
-// undo's own transaction. A keyed write runs inside an outer one that commits
-// with its stored answer, which would keep what they rolled back: a dry run
-// sent with a key wrote the undo. So it goes out with none, and no batch can
-// carry it.
-test("an undo goes out with no Idempotency-Key, dry or not", async () => {
+// An undo holds the write lock for its whole run, as a batch does, and may
+// take longer than one request's timeout. It goes out under an
+// Idempotency-Key, a key of its own for the dry run and for the real call,
+// so a lost answer is sent again and the stored answer comes back, and it
+// waits as long as a batch.
+test("an undo goes out keyed, a key each, and waits as long as a batch", async () => {
   const { sent, restore } = stub({ entry: "e1", total: 0, skipped: [] });
+  const realTimeout = AbortSignal.timeout;
+  const waits = [];
+  AbortSignal.timeout = (ms) => {
+    waits.push(ms);
+    return realTimeout.call(AbortSignal, ms);
+  };
   try {
-    const client = new PlaidClient("http://x", "tok");
+    const client = new PlaidClient("http://x", "tok", { timeout: 30000, batchTimeout: 180000 });
     await client.audit.undo("e1", { dryRun: true, documentId: "d1" });
     await client.audit.undo("e1");
     assert.equal(sent.length, 2);
-    for (const s of sent) assert.equal(s.headers.get("Idempotency-Key"), null);
+    const keys = sent.map((s) => s.headers.get("Idempotency-Key"));
+    assert.ok(keys[0] && keys[1]);
+    assert.notEqual(keys[0], keys[1]);
+    assert.deepEqual(waits, [180000, 180000]);
   } finally {
+    AbortSignal.timeout = realTimeout;
     restore();
+  }
+});
+
+test("an undo whose answer was lost is sent again under its key", async () => {
+  const real = globalThis.fetch;
+  const keys = [];
+  globalThis.fetch = async (url, opts) => {
+    keys.push(new Headers(opts.headers).get("Idempotency-Key"));
+    if (keys.length === 1) throw new TypeError("fetch failed");
+    return new Response(JSON.stringify({ entry: "e1", total: 3, operation: "o1" }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  };
+  try {
+    const client = new PlaidClient("http://x", "tok", { retryDelaysMs: [0, 0, 0] });
+    const got = await client.audit.undo("e1", { documentId: "d1" });
+    assert.equal(got.operation, "o1");
+    assert.equal(keys.length, 2);
+    assert.equal(keys[0], keys[1]);
+  } finally {
+    globalThis.fetch = real;
   }
 });
