@@ -135,7 +135,10 @@ def test_a_link_a_person_removed_is_not_put_back_when_the_job_left_that_form_unl
     touched = [(o.get('kind'), o.get('word_id') or o.get('analysis_word_id') or o.get('token_id')) for o in staged]
     assert ('set_analysis', 'd1-s1w5') not in touched
     assert not any(x and x.startswith('d1-s1w5') for k, x in touched if k == 'link'), touched
-    assert ('set_analysis', 'd1-s1w6') in touched, 'the job\'s own unlinked word is linked as the majority'
+    # Its analysis is the majority's but for the link, so the link alone is
+    # staged: the analysis restated stages nothing (REV-L2-1).
+    assert ('link', 'd1-s1w6m1') in touched and ('set_analysis', 'd1-s1w6') not in touched, \
+        'the job\'s own unlinked word is linked as the majority'
 
 
 def test_a_word_is_known_by_its_id_so_a_word_put_in_before_it_changes_nothing(monkeypatch):

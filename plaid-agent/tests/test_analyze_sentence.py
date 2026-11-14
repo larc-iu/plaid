@@ -334,12 +334,22 @@ def _strip(ops):
     return [{k: v for k, v in o.items() if k not in ('_seq',)} for o in ops]
 
 
+def _glossed_gen():
+    """The fixture's document with Ali-di's di glossed GEN, so analysing it
+    Ali-ERG is a change on both paths (a restatement stages nothing in
+    set_analysis whatever it links, REV-L2-1)."""
+    raw = document_raw()
+    morph = raw['text_layers'][0]['token_layers'][2]
+    morph['span_layers'][0]['spans'][1]['value'] = 'GEN'
+    return raw
+
+
 def test_the_ops_are_the_ops_set_analysis_create_entry_and_link_entry_stage():
-    new = ws()
+    new = ws(_glossed_gen())
     call(new, sentences=[
         {'ref': 's1', 'words': items('Ali-di gam aku-na', 'Ali-ERG catch see-PST')},
         {'ref': 's2', 'words': ['Gam=ar catch=FOC']}], new_entries=True)
-    old = ws()
+    old = ws(_glossed_gen())
     for ref, morphemes in [
             ('s1.w1', [{'form': 'Ali', 'equals': False, 'fields': {'Morph Gloss': 'Ali'}},
                        {'form': 'di', 'equals': False, 'fields': {'Morph Gloss': 'ERG'}}]),

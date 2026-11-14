@@ -1068,4 +1068,6 @@ def test_a_document_piece_put_off_after_its_first_batch_deletes_its_sentence_onc
     assert [o['sentence_id'] for o in staged if o['kind'] == 'delete_sentence'] == ['d1-s3', 'd1-s3']
     row = job.rows['d1']
     assert row['state'] == 'done' and not row.get('skipped'), row
-    assert row['counts']['repeated'] == 1 and row['counts']['deletions'] == 1, row['counts']
+    # The gloss of s1 staged again is what s1 holds: a restatement, staged
+    # and counted nowhere (REV-L2-1), where it was counted repeated.
+    assert row['counts']['repeated'] == 0 and row['counts']['deletions'] == 1, row['counts']

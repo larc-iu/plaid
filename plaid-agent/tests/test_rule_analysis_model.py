@@ -81,8 +81,10 @@ def run_case(c, case):
         stored = {k[1]: v for k, v in values_of(ws).items() if k[2] == 'Morph Gloss'}
         forms = {'s1.w1.m1': 'ka', 's1.w2.m1': 'ka', 's1.w2.m2': 'n', 's1.w3.m1': 'ka', 's1.w3.m2': 'n'}
         assert set(stored) == set(forms), stored
+        # A type the word does not hold, so the analysis is a change: the
+        # analysis a word holds stages nothing (REV-L2-1).
         out = call_tool(ws, 'set_analysis', {'document': 'Doc A', 'ref': 's1.w2',
-                                             'morphemes': [{'form': 'ka'}, {'form': 'n'}]})
+                                             'morphemes': [{'form': 'ka', 'type': 'root'}, {'form': 'n'}]})
         # Every call, in order, one answered "Nothing to change" too.
         calls = [('ana',)]
         log.append(['ana', out[:200]])

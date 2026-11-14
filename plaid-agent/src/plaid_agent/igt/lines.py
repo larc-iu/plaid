@@ -37,7 +37,7 @@ from ..core.tools import ToolError
 from .fit import collation_key, fits, nfc, spelled
 from .lexicon import _create_entry
 from .project import IgtDoc, IgtProject
-from .tools import parse_analysis, surface_misfit, t_link_entry, word_analysis_op
+from .tools import NEW_ENTRY, already_so, parse_analysis, surface_misfit, t_link_entry, word_analysis_op
 from .vocab import ROLE_GLOSS
 from .workspace import Workspace
 
@@ -80,7 +80,8 @@ Checks. An item of punctuation alone is left out. Then the items must be as many
 and item n is word n's: another number stages nothing of the sentence, and the answer shows the words \
 beside the items. A word whose forms and gloss differ in morphemes, hold an empty one, or are over \
 twice the word's length plus 3, is listed and not staged: the other words are. Forms that differ from \
-the word otherwise are staged with a note. Up to 20 sentences a call, each on its own.'''
+the word otherwise are staged with a note. A word given the analysis it holds, with the links it holds, \
+stages nothing. Up to 20 sentences a call, each on its own.'''
 
 #: An item's columns when a sentence names none.
 COLUMNS = ['forms', 'gloss']
@@ -314,7 +315,8 @@ def _stage_sentence(ws: Workspace, doc: IgtDoc, item: Dict[str, Any], new_entrie
     created: List[str] = []
     with ws.staging():
         n_analysed = 0
-        for w, morphs in zip(words, parsed):
+        held: List[str] = []
+        for j, (w, morphs) in enumerate(zip(words, parsed)):
             if morphs is None:
                 continue
             ref = f's{s.index}.w{w.index}'
@@ -322,7 +324,14 @@ def _stage_sentence(ws: Workspace, doc: IgtDoc, item: Dict[str, Any], new_entrie
                       'fields': {fields[name].name: v for name, v in cut.items()
                                  if name in fields and v != NO_VALUE}}
                      for form, delim, cut in morphs]
-            op, note = word_analysis_op(ws, doc, ref, parse_analysis(ws, given))
+            op, note = word_analysis_op(ws, doc, ref, parse_analysis(ws, given),
+                                        links=[_would_link(ws, g, form, cut, new_entries) for form, _d, cut in morphs])
+            if op is None:
+                # The analysis it holds, links and all: nothing staged, nothing linked.
+                already_so(ws, w.id)
+                held.append(f'w{w.index}')
+                parsed[j] = None
+                continue
             ws.add_ops([op])
             n_analysed += 1
             if note:
@@ -369,6 +378,8 @@ def _stage_sentence(ws: Workspace, doc: IgtDoc, item: Dict[str, Any], new_entrie
     if creates:
         counts.append(f'{creates} entr{"ies" if creates != 1 else "y"} to create')
     line = f'{label}: ' + ', '.join(counts) + '.'
+    if held:
+        line += f' Nothing to change in {", ".join(held)}: {"it holds" if len(held) == 1 else "they hold"} that analysis.'
     if bad:
         line = '\n'.join([f'{line} Not staged: {not_staged}'] + _word_lines(words, bad))
     return line, notes
@@ -389,6 +400,22 @@ def _fits(ws: Workspace, form: str, gloss: str) -> List[tuple]:
         for it in fits(v, _items_of(ws, v), form, gloss):
             out.append((v, it.get('id') or it.get('key'), it))
     return out
+
+
+def _would_link(ws: Workspace, g, form: str, cut: Dict[str, str], new_entries: bool):
+    """The entry the link pass below would link a morpheme to, as
+    ``word_analysis_op`` compares it with the one it is linked to: the one
+    entry that fits, ``NEW_ENTRY`` for one it would create, None for no
+    link."""
+    value = cut.get('gloss', NO_VALUE)
+    if g is None or value == NO_VALUE:
+        return None
+    hits = _fits(ws, form, value)
+    if len(hits) == 1:
+        return hits[0][1]
+    if not hits and new_entries and _creatable(ws, form, value):
+        return NEW_ENTRY
+    return None
 
 
 def _creatable(ws: Workspace, form: str, gloss: str) -> bool:

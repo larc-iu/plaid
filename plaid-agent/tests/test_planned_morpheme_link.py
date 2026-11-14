@@ -25,6 +25,8 @@ VERIFIED = {'prov': 'inferred', 'provConfirmed': True}
 
 # s1.w3 "akuna" has no stored morphemes, s2.w1 "Gam-ar" has two (m-4a, m-4b),
 # and s1.w1 "Ali-di" has two, the second linked to -di (l-2).
+# A planned analysis below names a type its word's first morpheme does not
+# hold: the analysis a word holds stages nothing (REV-L2-1).
 AKUNA = {'document': 'd1', 'ref': 's1.w3',
          'morphemes': [{'form': 'akun', 'type': 'stem', 'fields': {'Morph Gloss': 'see'}},
                        {'form': 'a', 'type': 'suffix', 'fields': {'Morph Gloss': 'ERG'}}]}
@@ -128,7 +130,7 @@ def test_a_morpheme_later_than_the_first_starts_with_no_link():
     """m-1b's link to -di goes with m-1b, which the analysis deletes, so a
     link at m2 replaces nothing."""
     w = fake_ws(FakeClient())
-    call_tool(w, 'set_analysis', {'document': 'd1', 'ref': 's1.w1', 'morphemes': [{'form': 'Ali'}, {'form': 'di'}]})
+    call_tool(w, 'set_analysis', {'document': 'd1', 'ref': 's1.w1', 'morphemes': [{'form': 'Ali', 'type': 'root'}, {'form': 'di'}]})
     call_tool(w, 'link_entry', _link('s1.w1.m2', 'vi-erg'))
     assert w.ops[-1]['existing_link_id'] is None
     assert w.plan_payload()['changes'][-1]['change'] == 'link "-di"'
@@ -152,7 +154,7 @@ def test_a_discard_of_the_planned_analysis_takes_its_links():
         if m['id'] == 'm-4b':
             m['metadata'] = {**m['metadata'], 'prov': 'inferred', 'provSource': 'service:x'}
     w = fake_ws(c)
-    call_tool(w, 'set_analysis', {'document': 'd1', 'ref': 's2.w1', 'morphemes': [{'form': 'Gam'}, {'form': 'ar'}]})
+    call_tool(w, 'set_analysis', {'document': 'd1', 'ref': 's2.w1', 'morphemes': [{'form': 'Gam', 'type': 'root'}, {'form': 'ar'}]})
     call_tool(w, 'link_entry', _link('s2.w1.m2', 'vi-erg'))
     out = call_tool(w, 'discard_analysis', {'document': 'd1', 'refs': ['s2.w1']})
     assert [op['kind'] for op in w.ops] == ['discard_analysis'], out
@@ -325,7 +327,7 @@ def test_unlinking_a_morpheme_the_planned_analysis_replaces_never_unlinks_the_st
     link (l-2) beside the deletion of m-1b is a delete of a link the server has
     already cascaded away: a 404 that fails the whole plan at approval."""
     w = fake_ws(FakeClient())
-    call_tool(w, 'set_analysis', {'document': 'd1', 'ref': 's1.w1', 'morphemes': [{'form': 'Ali'}, {'form': 'di'}]})
+    call_tool(w, 'set_analysis', {'document': 'd1', 'ref': 's1.w1', 'morphemes': [{'form': 'Ali', 'type': 'root'}, {'form': 'di'}]})
     call_tool(w, 'link_entry', _link('s1.w1.m2', 'vi-gam'))
     call_tool(w, 'unlink_entry', {'document': 'd1', 'refs': ['s1.w1.m2']})
     assert [op['kind'] for op in w.ops] == ['set_analysis']
@@ -336,7 +338,7 @@ def test_unlinking_a_morpheme_the_planned_analysis_replaces_never_unlinks_the_st
 
 def test_unlinking_the_kept_first_morpheme_unlinks_its_stored_link_in_place_of_a_planned_one():
     w = fake_ws(_linked_kept_first())
-    call_tool(w, 'set_analysis', {'document': 'd1', 'ref': 's2.w1', 'morphemes': [{'form': 'Gam'}, {'form': 'ar'}]})
+    call_tool(w, 'set_analysis', {'document': 'd1', 'ref': 's2.w1', 'morphemes': [{'form': 'Gam', 'type': 'root'}, {'form': 'ar'}]})
     call_tool(w, 'link_entry', {'document': 'd1', 'refs': ['s2.w1.m1'], 'entry_id': 'vi-ali'})
     out = call_tool(w, 'unlink_entry', {'document': 'd1', 'refs': ['s2.w1.m1']})
     assert [(op['kind'], op.get('link_id')) for op in w.ops] == [('set_analysis', None), ('unlink', 'l-3')], out
@@ -355,7 +357,7 @@ def test_the_link_a_planned_link_replaces_goes_in_the_batch_that_writes_its_repl
     Deleting it in an earlier one left the morpheme with no link at all when
     the later one failed (an entry deleted since the plan was made)."""
     w = fake_ws(_linked_kept_first())
-    call_tool(w, 'set_analysis', {'document': 'd1', 'ref': 's2.w1', 'morphemes': [{'form': 'Gam'}, {'form': 'ar'}]})
+    call_tool(w, 'set_analysis', {'document': 'd1', 'ref': 's2.w1', 'morphemes': [{'form': 'Gam', 'type': 'root'}, {'form': 'ar'}]})
     call_tool(w, 'link_entry', {'document': 'd1', 'refs': ['s2.w1.m1'], 'entry_id': 'vi-ali'})
     c = _linked_kept_first()
     execute_plan(c, w.plan_payload()['ops'], source='s', label='l')
@@ -369,7 +371,7 @@ def test_a_link_by_place_on_the_kept_first_morpheme_must_name_the_morpheme_the_a
     made against another first morpheme (a chain read in another order) would
     replace the link of a morpheme the analysis deletes."""
     w = fake_ws(_linked_kept_first())
-    call_tool(w, 'set_analysis', {'document': 'd1', 'ref': 's2.w1', 'morphemes': [{'form': 'Gam'}, {'form': 'ar'}]})
+    call_tool(w, 'set_analysis', {'document': 'd1', 'ref': 's2.w1', 'morphemes': [{'form': 'Gam', 'type': 'root'}, {'form': 'ar'}]})
     call_tool(w, 'link_entry', {'document': 'd1', 'refs': ['s2.w1.m1'], 'entry_id': 'vi-ali'})
     analysis, link = w.ops
     moved = dict(analysis, existing=list(reversed(analysis['existing'])))
@@ -381,7 +383,7 @@ def test_linking_a_kept_morpheme_back_to_its_stored_entry_takes_the_planned_chan
     """Nothing to write: the stored link stays as it is, a person's, rather
     than being deleted and written again as the assistant's."""
     w = fake_ws(_linked_kept_first())
-    call_tool(w, 'set_analysis', {'document': 'd1', 'ref': 's2.w1', 'morphemes': [{'form': 'Gam'}, {'form': 'ar'}]})
+    call_tool(w, 'set_analysis', {'document': 'd1', 'ref': 's2.w1', 'morphemes': [{'form': 'Gam', 'type': 'root'}, {'form': 'ar'}]})
     call_tool(w, 'link_entry', {'document': 'd1', 'refs': ['s2.w1.m1'], 'entry_id': 'vi-ali'})
     out = call_tool(w, 'link_entry', {'document': 'd1', 'refs': ['s2.w1.m1'], 'entry_id': 'vi-gam2'})
     assert [op['kind'] for op in w.ops] == ['set_analysis'], out

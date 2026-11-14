@@ -131,7 +131,8 @@ def test_set_analysis_takes_one_word_and_points_a_sentence_to_analyze_sentence()
     assert 'analyses' not in spec['parameters']['properties']
     assert 'one call per sentence' not in spec['description'] and 'analyze_sentence' in spec['description']
     assert spec['parameters']['required'] == ['document', 'ref', 'morphemes']
-    out = call_tool(w, 'set_analysis', {'document': 'd1', 'ref': 's1.w2', 'morphemes': [{'form': 'gam'}]})
+    out = call_tool(w, 'set_analysis', {'document': 'd1', 'ref': 's1.w2', 'morphemes': [
+        {'form': 'gam', 'fields': {'Morph Gloss': 'fish'}}]})
     assert out.startswith('Planned 1 change') and [(o['kind'], o['word_id']) for o in w.ops] == [('set_analysis', 'w-2')]
 
 

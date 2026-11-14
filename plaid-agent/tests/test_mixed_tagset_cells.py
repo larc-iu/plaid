@@ -75,8 +75,9 @@ def test_a_new_analysis_carries_a_gloss_the_word_holds_off_the_list():
 def test_set_analysis_for_form_carries_a_gloss_the_word_holds_off_the_list():
     from fixtures import FakeClient, fake_ws
     w = fake_ws(FakeClient(documents={'d1': _held_off_list()}))
+    # Segmented again (the analysis it holds would stage nothing, REV-L2-1).
     out = call_tool(w, 'set_analysis_for_form', {'form': 'Ali-di', 'morphemes': [
-        {'form': 'Ali'}, {'form': 'di', 'type': 'suffix', 'fields': {'Morph Gloss': 'OBL'}}]})
+        {'form': 'Al'}, {'form': 'i'}, {'form': 'di', 'type': 'suffix', 'fields': {'Morph Gloss': 'OBL'}}]})
     assert out.startswith('Planned'), out
 
 
@@ -97,7 +98,8 @@ def test_set_analysis_for_form_reads_what_the_word_holds_from_its_corpus_read(mo
             self._docs = saved
     monkeypatch.setattr(Workspace, 'held_values', corpus_only)
     w = fake_ws(FakeClient(documents={'d1': _held_off_list()}))
+    # Segmented again (the analysis it holds would stage nothing, REV-L2-1).
     out = call_tool(w, 'set_analysis_for_form', {'form': 'Ali-di', 'morphemes': [
-        {'form': 'Ali'}, {'form': 'di', 'type': 'suffix', 'fields': {'Morph Gloss': 'OBL'}}]})
+        {'form': 'Al'}, {'form': 'i'}, {'form': 'di', 'type': 'suffix', 'fields': {'Morph Gloss': 'OBL'}}]})
     assert out.startswith('Planned'), out
     assert w.word_held.get(('w-1', 'sl-mgloss')) == {'Ali', 'OBL'}

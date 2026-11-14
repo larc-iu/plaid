@@ -39,7 +39,7 @@ class Crash(BaseException):
     """The worker's process dies here."""
 
 
-def _gloss(refs=REFS):
+def _gloss(refs=REFS, gloss='go'):
     """A piece that glosses every word it was told of, whatever its kind:
     each piece stages all of them, and what the job does with each is the
     job's business. A selection reads the document first, as what a read
@@ -52,7 +52,7 @@ def _gloss(refs=REFS):
         if n > 1:
             return reply('Glossed the blank words.')
         return reply(calls=[call(i, 'set_analysis', {'document': 'Story', 'ref': r,
-                                                     'morphemes': [{'form': f, 'fields': {'Morph Gloss': 'go'}}]})
+                                                     'morphemes': [{'form': f, 'fields': {'Morph Gloss': gloss}}]})
                             for i, (r, f) in enumerate(refs.items(), start=1)])
     return answer
 
@@ -416,18 +416,21 @@ def test_what_a_piece_stages_in_a_sentence_skipped_as_too_long_meets_the_rule_wh
 
 # --- what a piece stages again is left out, and counted (REV-JH-1) -----------------------------
 
-def test_a_resumed_selection_writes_once_and_counts_what_it_staged_again(monkeypatch):
+@pytest.mark.parametrize('gloss, repeated', [('went', 3), ('go', 0)], ids=['another-gloss', 'the-same'])
+def test_a_resumed_selection_writes_once_and_counts_what_it_staged_again(monkeypatch, gloss, repeated):
     """The selection's write lands, the worker dies before its record, and a
-    new worker runs the selection again: it stages the same three analyses
-    in sentences its first run wrote. They are left out, never written
-    twice, and counted ("repeated")."""
+    new worker runs the selection again: it stages three analyses in
+    sentences its first run wrote. They are left out, never written twice,
+    and counted ("repeated"). The same three analyses again restate what the
+    words hold, so nothing is staged and nothing counted (REV-L2-1)."""
     client, job, clock, model = _job(monkeypatch, 'selection')
     _crash_at_record(monkeypatch, job)
+    again = use(monkeypatch, Model(_gloss(gloss=gloss)))
     staged = _staged(monkeypatch)
     from plaid_agent.core.job import run_job
     finished = run_job(job, _resume(client, job))
     assert finished['state'] == 'done', finished.get('reason')
     assert _analysed(staged) == [], 'nothing written twice'
-    assert len([c for c in model.calls if c['n'] == 1]) == 2, 'the selection ran again'
-    assert finished['report']['totals']['repeated'] == 3, finished['report']['totals']
-    assert job.rows['d1']['counts']['repeated'] == 3
+    assert len([c for c in again.calls if c['n'] == 1]) == 1, 'the selection ran again'
+    assert finished['report']['totals']['repeated'] == repeated, finished['report']['totals']
+    assert job.rows['d1']['counts']['repeated'] == repeated

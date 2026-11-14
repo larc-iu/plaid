@@ -1806,8 +1806,8 @@ def _derived_morpheme(ws: Workspace, word: Dict[str, Any]) -> Dict[str, Any]:
 
 def q_analysis_targets(ws: Workspace, form: str, skip_analyzed: bool, cap: int):
     """Word occurrences of a form with their current morpheme chains (ids,
-    precedence, span ids) and the entry each linked morpheme of them is linked
-    to, without loading documents."""
+    precedence, span ids), each morpheme's values by layer, and the entry each
+    linked morpheme of them is linked to, without loading documents."""
     c = ws.corpus
     where = [c.word('?w', value=rx(form, whole=True))]
     if skip_analyzed:
@@ -1819,6 +1819,7 @@ def q_analysis_targets(ws: Workspace, form: str, skip_analyzed: bool, cap: int):
     words = [r[0] for r in rows if isinstance(r[0], dict) and not c.ignored(r[0].get('value'))]
     chains: Dict[str, List[dict]] = defaultdict(list)
     spans: Dict[str, List[str]] = defaultdict(list)
+    values: Dict[str, Dict[str, str]] = defaultdict(dict)
     entries: Dict[str, str] = {}
     if c.M and words:
         # Even an unanalyzed word carries its default morpheme, which the executor reuses.
@@ -1833,6 +1834,7 @@ def q_analysis_targets(ws: Workspace, form: str, skip_analyzed: bool, cap: int):
         for sp, m in c.entities(base + [['span', '?s', {'layer': '?sl'}], ['covers', '?s', '?m']], ['?s', '?m'], ROW_LIMIT):
             if isinstance(sp, dict) and isinstance(m, dict):
                 spans[m['id']].append(sp['id'])
+                values[m['id']][sp.get('layer')] = sp.get('value') or ''
                 ws.note_metadata(sp['id'], sp.get('metadata'))
                 # What the word holds, which its new analysis may carry.
                 ws.word_held.setdefault((word_of.get(m['id']), sp.get('layer')), set()).add(sp.get('value'))
@@ -1840,4 +1842,4 @@ def q_analysis_targets(ws: Workspace, form: str, skip_analyzed: bool, cap: int):
             for m, v in c.entities(base + [['vocab-link', '?m', '?v']], ['?m', '?v'], ROW_LIMIT):
                 if isinstance(m, dict) and isinstance(v, dict):
                     entries[m['id']] = v['id']
-    return words, chains, spans, entries
+    return words, chains, spans, values, entries

@@ -3401,9 +3401,13 @@ class IgtRunner:
         staged: a word is rewritten whole or not at all."""
         ref = f's{s.index}.w{w.index}'
         name = doc.name
+        # Every morpheme field the word holds is named, '' where ``to`` has
+        # none, so the analysis set is ``to``'s whole (set_analysis compares
+        # only what a call names).
+        held = sorted({n for m in w.morphemes for n, sp in m.fields.items() if sp.value not in (None, '')})
         calls = [('set_analysis', {'document': name, 'ref': ref, 'morphemes': [
             {'form': m['form'], **({'type': m['type']} if m.get('type') else {}), 'equals': bool(m.get('equals')),
-             'fields': dict(m.get('fields') or {})} for m in to['morphemes']]})]
+             'fields': {**{n: '' for n in held}, **dict(m.get('fields') or {})}} for m in to['morphemes']]})]
         calls += [('link_entry', {'document': name, 'refs': [f'{ref}.m{i}'], 'entry_id': m['entry']})
                   for i, m in enumerate(to['morphemes'], start=1) if m.get('entry')]
         values = {field: (to.get('word') or {}).get(field, '') for field, sp in sorted(w.fields.items())

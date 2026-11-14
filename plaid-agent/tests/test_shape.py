@@ -263,7 +263,7 @@ def test_one_plan_changes_a_word_s_boundaries_or_its_analysis_never_both():
          ('delete_word', {'document': 'd1', 'refs': ['s1.w1']})),
         (('merge_words', {'document': 'd1', 'refs': ['s1.w1', 's1.w2']}),
          ('set_morpheme', {'document': 'd1', 'ref': 's1.w1.m1', 'form': 'Al'})),
-        (('set_analysis', {'document': 'd1', 'ref': 's1.w2', 'morphemes': [{'form': 'gam'}]}),
+        (('set_analysis', {'document': 'd1', 'ref': 's1.w2', 'morphemes': [{'form': 'gam', 'type': 'root'}]}),
          ('merge_words', {'document': 'd1', 'refs': ['s1.w1', 's1.w2']})),
     ]:
         w = ws()
