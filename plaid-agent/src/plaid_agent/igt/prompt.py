@@ -134,8 +134,8 @@ _CHAT = {
         '"gloss this text" of a text of 20 sentences',
         'read sentences 1 to 5 and how their forms were analysed elsewhere, then staged one analyze_sentence call per '
         'sentence',
-        '5 changes',
-        'Sentences 1 to 5 are segmented and glossed: the plan holds 5 changes, one per sentence, 31 words in all. '
+        '58 changes',
+        'Sentences 1 to 5 are segmented and glossed: the plan holds 58 changes, 31 words and 27 links. '
         'The gloss of the last word of sentence 3 is a guess. The text has 20 sentences, more than I do at once: '
         'approve this plan, then ask me to go on with sentences 6 to 10. Nine of these words have no lexicon '
         'entry, and I can link them if you want.'),

@@ -647,3 +647,8 @@ def test_rev_las_7_no_allomorphy_note_for_case_or_the_words_own_hyphen():
     assert 'allomorphy' not in out, out
     out = call(ws(), sentences=[{'ref': 's1.w3', 'words': ['akun-nan see-PST']}])
     assert 'allomorphy' in out
+
+
+def test_rev_las_8_the_worked_turn_counts_a_change_per_word_and_per_link():
+    from plaid_agent.igt.prompt import SYSTEM
+    assert 'one per sentence' not in SYSTEM and 'the plan holds 58 changes, 31 words and 27 links.' in SYSTEM
