@@ -188,6 +188,28 @@ def test_set_analysis_for_form_changes_the_one_value_on_each_occurrence():
     assert out.startswith('Planned 1 change '), out
 
 
+# --- harmonize ---------------------------------------------------------------------------------
+
+
+def test_harmonize_rewrites_a_kept_word_value_by_value_and_unlinks_what_the_target_does_not_link():
+    """The target analysis has the word's shape: its glosses differ on m2, it
+    names no POS (cleared) and links m2 to no entry (unlinked), m1's link
+    stays as the target has it."""
+    from plaid_agent.igt.job import IgtRunner
+    raw = doc()
+    raw['text_layers'][0]['token_layers'][2]['vocabs'][0]['vocab_links'].append(
+        {'id': 'l-1a', 'vocab_item': {'id': 'vi-ali', 'form': 'Ali'}, 'tokens': ['m-1a']})
+    w = fake_ws(FakeClient(project=project(), documents={'d1': raw}, lexicon=lexicon_raw()))
+    d = w.doc('d1')
+    s = d.sentences[0]
+    to = {'morphemes': [{'form': 'Ali', 'fields': {'Morph Gloss': 'Ali'}, 'entry': 'vi-ali'},
+                        {'form': 'di', 'type': 'suffix', 'fields': {'Morph Gloss': 'GEN'}}], 'word': {'Gloss': 'Ali'}}
+    assert IgtRunner.stage(w, d, s, s.words[0], to) is None
+    got = sorted((o['kind'], o.get('span_id') or o.get('link_id'), o.get('value')) for o in w.ops)
+    assert got == [('set_span', 'sp-m1b', 'GEN'), ('set_span', 'sp-p1a', ''), ('set_span', 'sp-p1b', ''),
+                   ('unlink', 'l-2', None)], got
+
+
 # --- a job -------------------------------------------------------------------------------------
 
 

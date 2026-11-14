@@ -3414,6 +3414,12 @@ class IgtRunner:
              'fields': {**{n: '' for n in held}, **dict(m.get('fields') or {})}} for m in to['morphemes']]})]
         calls += [('link_entry', {'document': name, 'refs': [f'{ref}.m{i}'], 'entry_id': m['entry']})
                   for i, m in enumerate(to['morphemes'], start=1) if m.get('entry')]
+        # A morpheme the analysis keeps keeps its link (tools.in_place), and
+        # the first one keeps it when the chain is replaced: one ``to`` links
+        # to no entry is unlinked.
+        bare = [f'{ref}.m{i}' for i, m in enumerate(to['morphemes'], start=1) if not m.get('entry')]
+        if bare and any(m.link is not None for m in w.morphemes if not m.virtual):
+            calls.append(('unlink_entry', {'document': name, 'refs': bare}))
         values = {field: (to.get('word') or {}).get(field, '') for field, sp in sorted(w.fields.items())
                   if (to.get('word') or {}).get(field, '') != _nfc(sp.value)}
         if values:
