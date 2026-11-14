@@ -747,13 +747,26 @@ def job_piece_call(ws, name: str, args: Dict[str, Any]) -> str:
     return call_tool(ws, name, args)
 
 
+#: The sentence of analyses_of's description the planning context does not
+#: read: plans copied it into every piece's instructions ("check analyses_of
+#: first and follow the majority", 42 of the night's 60 plans), and a piece
+#: in sentences is handed those analyses (BRIEF-EV).
+CHECK_FIRST = 'Check this before proposing an analysis, and follow the majority unless there is reason not to. '
+
+
+def _without_check_first(t: Dict[str, Any]) -> Dict[str, Any]:
+    if t['function']['name'] != 'analyses_of':
+        return t
+    return {**t, 'function': {**t['function'], 'description': t['function']['description'].replace(CHECK_FIRST, '')}}
+
+
 def job_plan_tools(ws, plan_only: bool = False) -> list:
     """The schemas the planning context offers: the assistant's reads and
-    code (no tool that stages a change), and plan_work. Once told to decide,
-    plan_work alone."""
+    code (no tool that stages a change), and plan_work, analyses_of without
+    :data:`CHECK_FIRST`. Once told to decide, plan_work alone."""
     if plan_only:
         return [PLAN_WORK]
-    reads = [t for t in tools_for(ws) if t['function']['name'] not in WRITE_TOOLS
+    reads = [_without_check_first(t) for t in tools_for(ws) if t['function']['name'] not in WRITE_TOOLS
              and t['function']['name'] not in JOB_LEFT_OUT + PLAN_LEFT_OUT]
     return reads + [PLAN_WORK]
 

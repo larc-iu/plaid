@@ -125,9 +125,14 @@ def render_job() -> str:
     parts = [f'# What a job\'s model sees\n\n{intro}\n\n    bb sample-prompts\n',
              '\n## The planning context\n', 'Its system prompt:\n', '```text',
              prompt.build_plan_prompt(ws.project).rstrip(), '```\n',
-             f'Its {len(plan_tools)} tools are the chat\'s reads and code, as `SAMPLE_PROMPT.md` shows them, and '
-             '`plan_work`:\n', render_tool(toolkit.PLAN_WORK),
-             '\n## A piece\n', 'Its system prompt:\n', '```text', prompt.build_job_prompt(ws.project).rstrip(), '```\n',
+             f'Its {len(plan_tools)} tools are the chat\'s reads and code, as `SAMPLE_PROMPT.md` shows them '
+             '(analyses_of without "' + toolkit.CHECK_FIRST.strip() + '"), and `plan_work`:\n',
+             render_tool(toolkit.PLAN_WORK),
+             '\n## A piece of a plan in sentences\n', 'Its system prompt (its message also holds the evidence '
+             'block, `src/plaid_agent/igt/evidence.py`):\n', '```text',
+             prompt.build_job_prompt(ws.project, sentences=True).rstrip(), '```\n',
+             '\n## A piece of a document or selection plan\n', 'Its system prompt:\n', '```text',
+             prompt.build_job_prompt(ws.project).rstrip(), '```\n',
              f'Its {len(tools)} tools are the chat\'s, as `SAMPLE_PROMPT.md` shows them, less '
              + ', '.join(f'`{n}`' for n in toolkit.JOB_LEFT_OUT) + ': ' + ', '.join(names) + '.\n',
              '\n## The final context\n', 'Its system prompt, with no tools:\n', '```text',

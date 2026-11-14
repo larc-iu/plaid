@@ -151,3 +151,51 @@ def test_a_piece_of_a_document_or_selection_plan_gets_the_precedent_as_before(mo
     if plan == 'document':
         assert '- "ka,": people' not in asked[0] and 'How these forms were analysed before' not in asked[0], \
             'the precedent keys a form by its surface as typed, as it did'
+
+
+# --- the prompt lines (EV 3) -----------------------------------------------------
+
+def _bullet(text, start):
+    return next(b for b in text.split('\n- ') if b.startswith(start))
+
+
+def test_a_piece_in_sentences_is_told_to_stage_first_in_no_more_words():
+    from plaid_agent.igt import prompt
+    project = fake_ws(FakeClient()).project
+    sentences, other = prompt.build_job_prompt(project, sentences=True), prompt.build_job_prompt(project)
+    old, new = _bullet(other, 'Use the tools rather than guessing.'), _bullet(sentences, 'The message holds')
+    # Empty words, never each sentence: a plan in sentences walks analysed
+    # sentences too (EW), and analyze_sentence over one replaces people's
+    # analyses (EV2).
+    assert new == ('The message holds how your words were analysed and the lexicon entries in them. Stage empty '
+                   'words with analyze_sentence first, and look up only what its answer lists as several or none.')
+    assert len(new.split()) <= len(old.split())
+    assert 'Read before you write' not in sentences and 'concordance of "na"' not in sentences
+    assert "It listed the entries na 'PRS' and ku 'INF'." in sentences
+    assert len(sentences.split()) < len(other.split()), 'no new paragraph: lines replaced'
+    assert sentences.count('\n') == other.count('\n')
+
+
+def test_each_piece_gets_the_prompt_of_its_plan(monkeypatch):
+    seen = {}
+    for plan in ('sentences', 'document'):
+        job = start(_small(), id=J, documents=['A'], plan=plan)
+        model = use(monkeypatch, Model(lambda asked, n, kwargs: reply('Done.')))
+        run_job(job, runner(job))
+        seen[plan] = model.calls[0]['kwargs']['messages'][0]['content']
+    assert 'Stage empty words with analyze_sentence first' in seen['sentences']
+    assert 'Read before you write' in seen['document'] and 'Stage empty words' not in seen['document']
+
+
+def test_the_planning_context_is_not_told_to_check_analyses_of_first():
+    from plaid_agent.igt import prompt, toolkit
+    from plaid_agent.igt.job import JobWorkspace
+    ws = JobWorkspace(FakeClient(), fake_ws(FakeClient()).project, mode=JobWorkspace.PLAN)
+    tools = toolkit.job_plan_tools(ws)
+    analyses = next(t for t in tools if t['function']['name'] == 'analyses_of')
+    assert 'Check this before' not in analyses['function']['description']
+    assert analyses['function']['description'].startswith('How a form has been analyzed so far')
+    text = prompt.build_plan_prompt(ws.project) + ' '.join(t['function']['description'] for t in tools)
+    assert 'follow the majority' not in text and 'Check this before' not in text
+    chat = next(t for t in toolkit.tools_for(ws) if t['function']['name'] == 'analyses_of')
+    assert toolkit.CHECK_FIRST in chat['function']['description'], 'the chat keeps its tool as it was'

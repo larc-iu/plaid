@@ -2039,7 +2039,7 @@ class IgtRunner:
         # as the model read it.
         prints = {s.id: ws.sentence_print(doc, s) for s in doc.sentences}
         message = self.message(ws, project, doc, part, st, whole)
-        note = self.run_piece(ws, project, message, document_id)
+        note = self.run_piece(ws, project, message, document_id, sentences=self.in_sentences() and not whole)
         piece = {'document': document_id, 'first': part[0].id if part else None, 'whole': whole}
         self.record_piece(project, piece, note, ws.tables, doc, part)
         # The piece as its writing rows name it: a whole document's is the
@@ -2052,14 +2052,15 @@ class IgtRunner:
         # lock (the rule's ``place``).
         return ws, doc, part, prints, list(ws.ops), note, tag
 
-    def run_piece(self, ws: JobWorkspace, project: IgtProject, message: str, folder: str) -> str:
+    def run_piece(self, ws: JobWorkspace, project: IgtProject, message: str, folder: str,
+                  sentences: bool = False) -> str:
         """One piece's model context: the job's prompt, the interactive
         assistant's tools (:func:`toolkit.job_piece_tools`), the piece's
         message, the stretch budgets (:class:`Pace`), its rounds to the trace
         folder. Its reply is the piece's note. Raises the model's failures
         for the caller to sort."""
         job = self.job
-        system = build_job_prompt(project)
+        system = build_job_prompt(project, sentences=sentences)
         transcript = [{'role': 'user', 'content': message}]
         seed(ws.seen, system, transcript, lambda tool, args: True)
         kit = Toolkit(tools_for=lambda w: toolkit.job_piece_tools(w, plan_only=w.decide_now),

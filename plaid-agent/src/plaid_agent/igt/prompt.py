@@ -29,9 +29,7 @@ lexicon (vocabulary) of entries that words and morphemes link to.
 {guidelines}
 
 {how_to_work}
-- Use the tools rather than guessing. Read before you write: check analyses_of and the lexicon before \
-proposing glosses, and follow the conventions already in the data (gloss abbreviations, capitalization, morph \
-types, orthography).
+{read_first}
 - Address things positionally: sN (sentence), sN.wN (word), sN.wN.mN (morpheme), always together with the \
 document. Numbers restart in every document and sentence. In what the reads print, a trailing ~ marks a value \
 a machine made and a trailing ^ one a contributor made.
@@ -108,6 +106,14 @@ _JOB_PROJECT_WIDE = '''- A project-wide tool (set_field_for_form, replace_in_fie
 respell_all, copy_to_orthography) stages a rule, which a job lists as a proposed change and never applies: \
 stage changes item by item where they are to be applied.'''
 
+_READ_FIRST = '''- Use the tools rather than guessing. Read before you write: check analyses_of and the lexicon before \
+proposing glosses, and follow the conventions already in the data (gloss abbreviations, capitalization, morph \
+types, orthography).'''
+#: The same bullet for a piece of a job planned in sentences, whose message
+#: holds what the bullet above sends the model to read (igt/evidence.py).
+_JOB_SENTENCES_READ_FIRST = '''- The message holds how your words were analysed and the lexicon entries in them. \
+Stage empty words with analyze_sentence first, and look up only what its answer lists as several or none.'''
+
 _FIND_SUBJECT = 'item (worklist, search, frequency_list)'
 _USER_VALUE_KINDS = 'a gloss, a form, a part of speech, a translation'
 
@@ -115,6 +121,7 @@ _CHAT = {
     'plan_contract': shared.plan_contract(),
     'project_shape': shared.project_shape(),
     'how_to_work': shared.how_to_work(),
+    'read_first': _READ_FIRST,
     'open_document': _OPEN_DOCUMENT,
     'cite_items': _CITE_ITEMS,
     'jobs': _JOBS,
@@ -240,6 +247,12 @@ _JOB_EXAMPLE_DID = (
     'PRS, prefix INF, stem come) and w3 as le-o as people have it, and set the translation of s7. You left w2 '
     'of s7, a name you could not place.')
 _JOB_EXAMPLE_NOTE = 'Glossed s6 and translated s7. Left s7.w2, a name nobody has glossed.'
+#: The worked piece of a piece planned in sentences: what settled "na" was
+#: in its message, not a read.
+_JOB_SENTENCES_EXAMPLE_DID = _JOB_EXAMPLE_DID.replace(
+    'Nothing settled "na", so you read the concordance of "na" and saw it before verbs glossed PRS in four '
+    'sentences.', 'It listed the entries na \'PRS\' and ku \'INF\'.')
+assert _JOB_SENTENCES_EXAMPLE_DID != _JOB_EXAMPLE_DID
 
 _JOB = {
     **_CHAT,
@@ -264,6 +277,11 @@ _JOB = {
 #: chat's template, the person's paragraphs put the job's way. Empty holes
 #: leave no blank line.
 JOB_SYSTEM = re.sub(r'\n{2,}(?=- |\Z)', '\n', shared.filled(_SYSTEM, _JOB)).rstrip('\n') + '\n'
+#: The prompt of a piece of a job planned in sentences: two lines of
+#: JOB_SYSTEM say that its message holds the evidence (BRIEF-EV).
+JOB_SENTENCES_SYSTEM = re.sub(r'\n{2,}(?=- |\Z)', '\n', shared.filled(_SYSTEM, {
+    **_JOB, 'read_first': _JOB_SENTENCES_READ_FIRST,
+    'turn_example': shared.job_example(_JOB_SENTENCES_EXAMPLE_DID, _JOB_EXAMPLE_NOTE)})).rstrip('\n') + '\n'
 
 
 #: The tagsets' first line in a job's prompt: nobody sees the value as the
@@ -291,11 +309,12 @@ PLAN_CODE = shared.code_section(
     sees='documents(), load(document), query(q) and lexicon(), and stages nothing.')
 
 
-def build_job_prompt(project: IgtProject) -> str:
+def build_job_prompt(project: IgtProject, sentences: bool = False) -> str:
     """The system prompt of every piece of a job on ``project``: the chat's
     prompt with the job's paragraphs, the project's shape and its guidelines
-    whole, and the code section where the sandbox is."""
-    out = _filled(JOB_SYSTEM, project)
+    whole, and the code section where the sandbox is. A piece of a plan in
+    sentences (``sentences``) is told its message holds the evidence."""
+    out = _filled(JOB_SENTENCES_SYSTEM if sentences else JOB_SYSTEM, project)
     return out + JOB_CODE + JOB_TABLES if sandbox.available() is None else out
 
 
