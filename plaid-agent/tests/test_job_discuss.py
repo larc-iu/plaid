@@ -454,3 +454,13 @@ def test_each_step_says_what_it_read_as_the_panel_says_it():
     assert TRACER.describe('read_job', {'job': job, 'section': 'Left blank'}) == said[2][0], 'by its heading too'
     assert said[3][0] == 'Read how to read a job'
     assert TRACER.kind('read_job') is not None
+
+
+def test_the_totals_sum_the_documents_field_rows_when_core_s_report_holds_none():
+    """REV-L2-4, as the page: core's own report of a job no worker finished
+    sums named counts only, while each document's counts keep its fields."""
+    report = {'totals': {'changes': 12}, 'documents': [
+        {'counts': {'changes': 9, 'fields': [{'field': 'Thematic role', 'values': 9}]}},
+        {'counts': {'changes': 3, 'fields': [{'field': 'Animacy', 'values': 2},
+                                             {'field': 'Thematic role', 'values': 1}]}}]}
+    assert jobread._totals(report) == 'changes 12, Animacy 2 values, Thematic role 10 values'

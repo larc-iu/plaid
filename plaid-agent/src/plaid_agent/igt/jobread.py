@@ -37,6 +37,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from ..core.args import read_int
 from ..core.history import doc_label
+from ..core.job import field_counts
 from ..core.record_ops import _names_nothing
 from ..core.tools import ToolError, truncate
 
@@ -157,7 +158,16 @@ def _words(key: str) -> str:
 def _totals(report: Dict[str, Any]) -> str:
     totals = report.get('totals') or {}
     said = [f'{_words(k)} {v:,}' for k, v in totals.items() if isinstance(v, int) and v]
-    said += [f'{f.get("field")} {f.get("values"):,} values' for f in totals.get('fields') or []]
+    fields = totals.get('fields')
+    if fields is None:
+        # Core's own report of a job no worker finished sums named counts
+        # only: the documents' rows, summed by field (REV-L2-4).
+        by: Dict[str, int] = {}
+        for d in report.get('documents') or []:
+            for f in (d.get('counts') or {}).get('fields') or []:
+                by[f.get('field')] = by.get(f.get('field'), 0) + (f.get('values') or 0)
+        fields = field_counts(by)
+    said += [f'{f.get("field")} {f.get("values"):,} values' for f in fields]
     return ', '.join(said) if said else 'nothing counted'
 
 
