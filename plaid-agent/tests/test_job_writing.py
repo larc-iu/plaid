@@ -135,7 +135,7 @@ def _rows(client, sid):
 
 
 def _left(job):
-    return [e['ref'] for e in runner(job).left_blank(job).get('d1', [])]
+    return [e['ref'] for e in runner(job).left_blank(job).get('d1', {}).get('left', [])]
 
 
 def _report_counts(job):
@@ -691,7 +691,7 @@ def test_a_sentence_the_jobs_write_deleted_is_not_left_blank(monkeypatch):
                                      _REPEATED[:3], _unrepeat)
     assert runner(job).document('d1') == 'done'
     assert _rows(client, 'd1-s4')[0]['counts'] == {'analyzed': 1, 'changes': 1, 'deletions': 1}
-    blank = runner(job).left_blank(job).get('d1', [])
+    blank = runner(job).left_blank(job).get('d1', {}).get('left', [])
     assert sorted({e['sentence_id'] for e in blank}) == ['d1-s1', 'd1-s2', 'd1-s3'], 's1 to s3, not s4'
     counts = _report_counts(job)
     assert (counts['left'], counts['left_translations']) == (0, 0)

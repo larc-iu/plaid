@@ -40,7 +40,7 @@ def test_a_stretch_counts_what_it_wrote_and_records_its_decisions(monkeypatch):
     # Another machine's translation of s2 is not empty: the job is not shown
     # it as such, and refreshes nothing.
     assert row['counts']['words'] == 3 and row['counts']['translations'] == 1 and not row['counts'].get('refreshed')
-    assert row['counts']['left'] == 0 and row['done'] == 2 and row['last_sentence'] == 'd1-s2'
+    assert 'left' not in row['counts'] and row['done'] == 2 and row['last_sentence'] == 'd1-s2'
     decided = client.jobs.decision_rows['J5']
     by_form = {}
     for (form, key), r in decided.items():

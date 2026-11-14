@@ -22,6 +22,7 @@ import re
 import pytest
 
 from job_fixtures import JobClient, Model, call, document, keep_plan, reply, runner, start, targets_named, use
+from test_job_left_all import adds_up
 
 from plaid_agent.core.job import analysis_key, canonical, run_job
 from plaid_agent.igt import job as igt_job
@@ -108,7 +109,7 @@ def test_a_bulk_op_of_one_piece_closes_no_sentence_of_another(monkeypatch, every
     (doc,) = finished['report']['documents']
     assert [e['ref'] for e in doc['left']] == ['s4.w2']
     assert doc['counts']['words'] == 7 and doc['counts']['left'] == 1
-    assert doc['counts']['words'] + doc['counts']['left'] == sum(len(s) for s in SENTENCES)
+    adds_up(doc, sum(len(s) for s in SENTENCES))
     assert doc['done'] == doc['targets'] == 4
 
 
@@ -195,7 +196,7 @@ def test_the_second_half_of_a_halved_stretch_keeps_its_sentence_the_first_half_w
     assert 'd1-s3w2' in analysed, 'sa glossed by the second half'
     (doc,) = finished['report']['documents']
     assert [e['ref'] for e in doc['left']] == ['s4.w2']
-    assert doc['counts']['words'] + doc['counts']['left'] == sum(len(s) for s in SENTENCES)
+    adds_up(doc, sum(len(s) for s in SENTENCES))
 
 
 # --- a word the job wrote and a person cleared is never written again (REV-LNW-1) ---------------
@@ -259,6 +260,7 @@ def test_a_word_the_bulk_op_wrote_and_a_person_cleared_is_not_written_again(monk
     second = next(c['asked'] for c in model.calls if c['n'] == 1 and targets_named(c['asked']) == [3, 4])
     assert re.findall(r'^Empty in s3: words (.*?)(?: and the translation)?\.$', second, re.M) == ['w2 "sa"']
     assert doc['left'] == [] and doc['counts']['left'] == 0 and doc['counts']['words'] == 8
+    adds_up(doc, sum(len(s) for s in SENTENCES))
     assert doc['counts'].get('changed', 0) == (1 if blind else 0)
 
 

@@ -15,6 +15,7 @@ import pytest
 
 from fixtures import MORPH_LAYER, WORD_LAYER
 from job_fixtures import Model, call, document, reply, use
+from test_job_left_all import adds_up
 from test_job_live_entries import _job, _runner, world  # noqa: F401 - the fixture
 
 from plaid_agent.core.job import run_job
@@ -95,7 +96,7 @@ def _check(admin, s, finished):
     (doc,) = finished['report']['documents']
     assert [e['ref'] for e in doc['left']] == ['s4.w2'], doc['left']
     assert doc['counts']['words'] == WORDS - 1 and doc['counts']['left'] == 1
-    assert doc['counts']['words'] + doc['counts']['left'] == WORDS, 'every word analysed or left'
+    adds_up(doc, WORDS)
     assert doc['done'] == doc['targets'] == len(SENTENCES)
 
 
@@ -187,3 +188,4 @@ def test_a_word_the_bulk_op_wrote_and_the_starter_cleared_is_not_written_again(w
     assert _analysed(admin, s) == ['s1.w1', 's1.w2', 's2.w1', 's2.w2', 's3.w2', 's4.w1']
     (doc,) = finished['report']['documents']
     assert [e['ref'] for e in doc['left']] == ['s4.w2'] and doc['counts']['words'] == WORDS - 1
+    adds_up(doc, WORDS)

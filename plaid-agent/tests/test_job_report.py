@@ -355,4 +355,4 @@ def test_the_final_context_reads_whole_notes_and_what_left_counts():
     text = summary_message(report)
     assert '- Story s1 to s3: Fully staged. No translation asked.' in text
     assert ('"left" and "left_translations" count the words and translations still blank at the end '
-            "(the report's Left blank).") in text, text
+            '(the report\'s Left blank), "not_reached" those in sentences the job did not reach.') in text, text

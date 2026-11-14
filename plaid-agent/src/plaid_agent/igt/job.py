@@ -556,7 +556,7 @@ def summary_message(report: Dict[str, Any]) -> str:
                      + ('. Left blank could not be read: what is blank there is not known.'
                         if d.get('left_unread') else ''))
     lines.append('In the documents, "left" and "left_translations" count the words and translations still blank '
-                 'at the end (the report\'s Left blank).')
+                 'at the end (the report\'s Left blank), "not_reached" those in sentences the job did not reach.')
     proposed = len(report.get('proposed') or []) + (report.get('proposed_more') or 0)
     lines += ['', f'Changes proposed for a person to approve: {proposed:,}.', '', 'Each piece\'s note:']
     size, left = 0, 0
@@ -3028,8 +3028,10 @@ class IgtRunner:
         ``words`` each word analysed once, ``done`` each sentence finished
         once (written, or skipped). ``targets`` grows
         with a sentence that became a target after the checks, so done never
-        passes it."""
-        counts = empty_counts()
+        passes it. No ``left`` or ``left_translations``: the report counts
+        them from the document (:meth:`left_blank`), and a row never says
+        nothing is left where nothing was counted (BRIEF NW round 3)."""
+        counts = {k: n for k, n in empty_counts().items() if k not in ('left', 'left_translations')}
         analyzed, words = set(), set()
         rows, landed = self.view(document_id)
         for r in rows:
@@ -3400,13 +3402,21 @@ class IgtRunner:
             # ``left`` and ``left_translations`` count the whole list. A
             # document that could not be read has neither count, never 0,
             # and says so (``left_unread``, REV-LNW-2).
+            # The words of the sentences it did not reach are counted apart
+            # (``not_reached``, ``not_reached_translations``), never listed.
             unread = d in blank and blank[d] is None
-            listed = [e for e in blank.get(d) or [] if (filled_words if e.get('form') is not None
-                                                        else filled_translations)]
+
+            def kept(entries):
+                return [e for e in entries if (filled_words if e.get('form') is not None else filled_translations)]
+            listed = kept((blank.get(d) or {}).get('left') or [])
+            unreached = kept((blank.get(d) or {}).get('not_reached') or [])
             counts = {k: v for k, v in counts.items() if k not in ('left', 'left_translations')}
             if not unread:
                 counts.update({'left': sum(1 for e in listed if e.get('form') is not None),
                                'left_translations': sum(1 for e in listed if e.get('form') is None)})
+                if unreached:
+                    counts.update({'not_reached': sum(1 for e in unreached if e.get('form') is not None),
+                                   'not_reached_translations': sum(1 for e in unreached if e.get('form') is None)})
             left, more = core_job.cut(listed)
             out.append({'document_id': d, 'name': self.names.get(d) or row.get('name'),
                         'state': state if state in ('done', 'in-use', 'gone') else 'not-reached',
@@ -3549,30 +3559,44 @@ class IgtRunner:
                       if r['try'] and (r['try'] not in self.looked or self.key_of(r) not in self.landed)])
         self.ended = True
 
-    def left_blank(self, job) -> Dict[str, Optional[List[Dict[str, Any]]]]:
-        """Per document, what is blank in it as it now is, read when the
-        report is written: in each sentence the job worked (its own piece's
-        landed write finished it, :meth:`finished`, wherever a split or a
-        merge moved its words), every word with no analysis
-        (:func:`word_target`) and an empty translation, whoever staged what
-        there or nothing (BRIEF NW), but a word or translation the job wrote
-        (:meth:`written`): one that reads blank was cleared by a person, and
-        it is counted as written (REV-LNW-4). In document order: ``{ref,
-        sentence_id, begin, form}``, ``begin`` and ``form`` None for a
-        translation. None for a document that could not be read (every
-        document, when what landed could not be read): the report says so
-        (REV-LNW-2). A document gone lists nothing."""
+    def left_blank(self, job) -> Dict[str, Optional[Dict[str, List[Dict[str, Any]]]]]:
+        """Per document the job reached, what is blank in it as it now is,
+        read when the report is written, in the sentences the job was to
+        work, less what the job wrote (:meth:`written`: one that reads blank
+        was cleared by a person, and is counted as written, REV-LNW-4):
+        every word with no analysis (:func:`word_target`) and every empty
+        translation, as ``{ref, sentence_id, begin, form}`` in document
+        order (``begin`` and ``form`` None for a translation), in two lists:
+
+        * ``left``: in the sentences the job worked (a landed write of their
+          own piece finished them, :meth:`finished`, wherever a split or a
+          merge moved their words), whatever the piece staged there or not,
+        * ``not_reached``: in its other sentences, but those skipped (listed
+          as skipped): the walk had not reached them when the job ended
+          (stopped, or the document put off for good). A sentence of a
+          document whose walk ended holds nothing here unless it became
+          blank after the walk passed it.
+
+        A sentence the walk takes (every sentence, or one holding something
+        blank) is in exactly one of worked, skipped and not reached, so what
+        the job analysed, left, skipped and did not reach add up to the
+        words it was to work. A document the job never reached is not read
+        (its state says not reached). None for a document that could not be
+        read (every document, when what landed could not be read): the
+        report says so (REV-LNW-2). A document gone lists nothing."""
         try:
             core_job.through_core(job, lambda: self.known_at_end(job))
             project = core_job.through_core(job, self.project)
         except Exception as e:  # noqa: BLE001 - a report without the list rather than none
             logger.warning('Job %s: the words it left blank could not be read for the report: %s', job.id, e)
             return {d: None for d in job.order}
-        out: Dict[str, Optional[List[Dict[str, Any]]]] = {}
+        out: Dict[str, Optional[Dict[str, List[Dict[str, Any]]]]] = {}
         for d in job.order:
             worked, known, written = self.finished(d), self.known_words(d), self.written(d)
-            if not worked:
+            row = job.rows.get(d) or {}
+            if not worked and row.get('state') not in ('done', 'working', 'deferred', 'in-use'):
                 continue
+            skipped = self.excluded(d) - worked
             try:
                 doc = core_job.through_core(job, lambda: self.read(project, d))
             except Gone:
@@ -3581,17 +3605,20 @@ class IgtRunner:
                 logger.warning('Job %s: %s could not be read for the words left blank: %s', job.id, d, e)
                 out[d] = None
                 continue
-            listed = out.setdefault(d, [])
+            lists = out.setdefault(d, {'left': [], 'not_reached': []})
             for s in doc.sentences:
-                if s.id not in worked and not wrote_in(s, known):
+                if s.id in worked or wrote_in(s, known):
+                    into = lists['left']
+                elif s.id in skipped:
                     continue
-                listed += [{'ref': f's{s.index}.w{w.index}', 'sentence_id': s.id, 'begin': w.begin,
-                            'form': w.surface} for w in s.words
-                           if word_target(w) and word_tag(w.id) not in written.words]
+                else:
+                    into = lists['not_reached']
+                into += [{'ref': f's{s.index}.w{w.index}', 'sentence_id': s.id, 'begin': w.begin,
+                          'form': w.surface} for w in s.words
+                         if word_target(w) and word_tag(w.id) not in written.words]
                 if translation_target(s, project, job.id) and s.id not in written.translations:
-                    listed.append({'ref': f's{s.index}', 'sentence_id': s.id, 'begin': None, 'form': None})
+                    into.append({'ref': f's{s.index}', 'sentence_id': s.id, 'begin': None, 'form': None})
         return out
-
 
 def runner_factory(cfg: ModelConfig, trace_dir: Optional[str] = None, count=None):
     """What the worker builds a claimed igt job's runner with."""
