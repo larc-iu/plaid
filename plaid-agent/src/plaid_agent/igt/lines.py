@@ -157,7 +157,7 @@ def _words_of(ws: Workspace, doc: IgtDoc, ref: str):
     label = f's{si}.w{a}-w{b}' if b > a else f's{si}.w{a}'
     moved = next((m for m in (renumbering(ws, s, w) for w in s.words[a - 1:b]) if m), None)
     if moved is not None:
-        raise _Refused(f'{label} not staged: this plan\'s {moved[0]} renumbers s{si}, so these numbers name other '
+        raise _Refused(f'{label} not staged: this plan\'s {moved[0]} renumber{"" if " and " in moved[0] else "s"} s{si}, so these numbers name other '
                        'words once it is applied. Analyze these words once the plan is applied.')
     return label, s, s.words[a - 1:b]
 

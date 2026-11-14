@@ -429,10 +429,11 @@ def test_a_bare_number_a_planned_reshape_renumbers_is_refused_in_both_orders(sha
     call_tool(w, shape, {'document': 'd1', **args})
     out = call_tool(w, 'set_field', {'document': 'd1', 'refs': ['s1.w3'], 'field': 'Gloss', 'value': 'see'})
     first = 2 if shape == 'split_word' else 2
+    # Only a split makes a word: a delete makes none (REV-RR-7).
+    made = ' The right part of a split word is named once the plan is applied.' if shape == 'split_word' else ''
     assert out == (f'Error: Text 1 s1.w3: s1.w3 is "akuna" now, but this plan\'s {shape} renumbers s1: once it is '
                    f'applied, "akuna" is w{new}. Words before w{first} keep their numbers. A plan names words by '
-                   f'their numbers as read now, so add the form to say which you mean: s1.w3 "akuna". A word the '
-                   f'{shape} makes is named once the plan is applied.'), out
+                   f'their numbers as read now, so add the form to say which you mean: s1.w3 "akuna".{made}'), out
     assert call_tool(w, 'set_field', {'document': 'd1', 'refs': ['s1.w3 "akuna"'], 'field': 'Gloss',
                                       'value': 'see'}).startswith('Planned 1 change')
     assert w.ops[-1]['token_id'] == 'w-3'
@@ -588,3 +589,20 @@ def test_a_sentence_split_and_a_retype_of_it_never_share_a_plan():
     w = ws()
     call_tool(w, 'retype_sentence', {'document': 'd1', 'ref': 's2', 'text': 'Gam-ar ∅.'})
     assert call_tool(w, 'split_sentence', split).startswith('Planned')
+
+
+def test_the_refusals_wording():
+    """REV-RR-7: two reshapes of kinds apart are both named, and a word past
+    the count as read in a retyped sentence is refused as one of the
+    retype's, not with the count as read."""
+    w = ws()
+    call_tool(w, 'delete_word', {'document': 'd1', 'refs': ['s1.w1']})
+    assert call_tool(w, 'split_word', {'document': 'd1', 'ref': 's1.w3 "akuna"', 'at': 2}).startswith('Planned')
+    out = call_tool(w, 'set_field', {'document': 'd1', 'refs': ['s1.w3'], 'field': 'Gloss', 'value': 'x'})
+    assert "this plan's delete_word and split_word renumber s1: once it is applied" in out, out
+    assert out.endswith('The right part of a split word is named once the plan is applied.'), out
+    w = ws()
+    call_tool(w, 'retype_sentence', {'document': 'd1', 'ref': 's1', 'text': 'Ali-di ∅ gam akuna.'})
+    out = call_tool(w, 'link_entry', {'document': 'd1', 'refs': ['s1.w4'], 'entry_form': 'gam', 'entry_gloss': 'fish'})
+    assert out.startswith(f'Error: Text 1 s1.w4: {RETYPED}'), out
+    assert 'has 3 words' not in out

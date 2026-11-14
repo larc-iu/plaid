@@ -519,10 +519,10 @@ def _kept_numbers(s, after: Dict[str, int]) -> str:
 
 
 def renumbering(ws, s, w):
-    """``(the reshape's kind, the word's number once applied, every word's
-    number then)`` when a split, merge or word delete the plan holds in
-    sentence ``s`` gives word ``w`` another number, else None. A word the
-    reshape itself takes has no number after: None."""
+    """``(the reshapes' kinds joined by "and", the word's number once
+    applied, every word's number then)`` when a split, merge or word delete
+    the plan holds in sentence ``s`` gives word ``w`` another number, else
+    None. A word the reshape itself takes has no number after: None."""
     shapes = _shapes_in(ws.ops, s)
     if not shapes:
         return None
@@ -530,7 +530,7 @@ def renumbering(ws, s, w):
     new = after.get(w.id)
     if new is None or new == w.index:
         return None
-    return next(o.get('kind') for o in shapes), new, after
+    return ' and '.join(dict.fromkeys(o.get('kind') for o in shapes)), new, after
 
 
 def renumbered(ws, doc, ref: str, obj, named: Optional[str] = None) -> None:
@@ -560,17 +560,32 @@ def renumbered(ws, doc, ref: str, obj, named: Optional[str] = None) -> None:
     here = f's{s.index}.w{w.index}'
     if named is None:
         named = f'{here}.m{obj.index} "{obj.form}"' if isinstance(obj, Morpheme) else f'{here} "{w.surface}"'
+    # Only a split makes a word (its right part): a delete makes none, and a
+    # merge's word is its first, named as read (REV-RR-7).
+    made = ' The right part of a split word is named once the plan is applied.' if 'split_word' in by else ''
     raise ToolError(f'{ws.doc_label(doc.id)} {ref}: {here} is {qv(w.surface)} now, but this '
-                    f'plan\'s {by} renumbers s{s.index}: once it is applied, {qv(w.surface)} is w{new}. '
-                    f'{_kept_numbers(s, after)} A plan names words by their numbers as read now, so add the form '
-                    f'to say which you mean: {named}. A word the {by} makes is '
-                    'named once the plan is applied.', kind='conflict')
+                    f'plan\'s {by} renumber{"" if " and " in by else "s"} s{s.index}: once it is applied, '
+                    f'{qv(w.surface)} is w{new}. {_kept_numbers(s, after)} A plan names words by their numbers as '
+                    f'read now, so add the form to say which you mean: {named}.{made}', kind='conflict')
 
 
 def resolve_in(ws, doc, ref: str):
     """``project.resolve`` for a reference a tool was given: the thing it
     names, refused when it is a bare word number the plan's reshapes
     renumber (:func:`renumbered`)."""
-    obj = resolve(doc, ref)
+    try:
+        obj = resolve(doc, ref)
+    except ValueError:
+        # A word past the count as read, in a sentence the plan retypes:
+        # its words are the retype's, which another tool cannot name yet,
+        # never the count as read (REV-RR-7).
+        r = read_ref(ref, 'wm')
+        if r is not None and r.parts[0] is not None and 1 <= r.sentence <= len(doc.sentences):
+            s = doc.sentences[r.sentence - 1]
+            edit = retype_of(ws.ops, s.id)
+            if edit is not None:
+                raise ToolError(RENUMBERED.format(where=f'{ws.doc_label(doc.id)} {ref}', n=s.index),
+                                kind='conflict') from None
+        raise
     renumbered(ws, doc, ref, obj)
     return obj
