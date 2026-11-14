@@ -358,6 +358,27 @@ describe('the job page', () => {
     await v.unmount();
   });
 
+  it('keeps the assistant’s summary of a job that only made a table, after the totals', async () => {
+    const report = {
+      ...REPORT,
+      summary: 'Ka is glossed go three times and come once.',
+      summaryBy: 'model',
+      totals: { ...REPORT.totals, changes: 0, proposed: 0, words: 0, links: 0, entries: 0 },
+      proposed: [],
+      proposedMore: 0,
+      harmonize: { changed: [], left: [], changedMore: 0, leftMore: 0 },
+    };
+    const v = await mount(clientOf(jobOf({ state: 'done', report })));
+    const section = v.container.querySelector('section[aria-label="Report"]');
+    const headings = all(section, 'h3').map((h) => h.textContent);
+    expect(headings.slice(0, 2)).toEqual(['Totals', 'Assistant’s summary']);
+    expect(headings).toContain('Tables');
+    const summary = section.querySelector('[data-testid="job-summary"]');
+    expect(summary.previousElementSibling.textContent).toBe('Assistant’s summary');
+    expect(text(summary)).toBe('Ka is glossed go three times and come once.');
+    await v.unmount();
+  });
+
   it('puts the line of a job that wrote and proposed nothing first, as the report’s own', async () => {
     const line = 'The job wrote no change and proposed none.';
     const report = { ...REPORT, summary: line, summaryBy: 'worker' };

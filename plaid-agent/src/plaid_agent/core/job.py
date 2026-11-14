@@ -758,8 +758,9 @@ def fit_report(report: Dict[str, Any], budget: int = JOB_REPORT_BUDGET_BYTES) ->
     return report
 
 
-#: The summary of a job that wrote no change and proposed none, the
-#: worker's own words: no model is asked to describe nothing (BRIEF PF).
+#: The summary of a job that wrote no change, proposed none and made no
+#: table, the worker's own words: no model is asked to describe nothing
+#: (BRIEF PF).
 NOTHING_WRITTEN = 'The job wrote no change and proposed none.'
 #: The same, when the job worked by the default plan.
 NOTHING_WRITTEN_BY_DEFAULT = ('Planning ended with no plan, and the job worked by the default plan. It wrote no '
@@ -767,19 +768,20 @@ NOTHING_WRITTEN_BY_DEFAULT = ('Planning ended with no plan, and the job worked b
 
 
 def wrote_nothing(report: Dict[str, Any]) -> bool:
-    """Whether the job wrote no change and proposed none, by the worker's
-    own counts: no change written in a document or the lexicon, none
-    proposed, nothing harmonize changed."""
+    """Whether the job wrote no change, proposed none and made no table, by
+    the worker's own counts and rows: no change written in a document or
+    the lexicon, none proposed, nothing harmonize changed, no table its
+    code made (a job that reads and reports keeps the assistant's summary)."""
     totals = report.get('totals') or {}
     harmonize = report.get('harmonize') or {}
     return not (totals.get('changes') or totals.get('proposed') or harmonize.get('changed')
-                or harmonize.get('changed_more'))
+                or harmonize.get('changed_more') or report.get('tables') or report.get('tables_more'))
 
 
 def _summary(job: Job, runner, report: Dict[str, Any]) -> Dict[str, Any]:
     """The report's prose, written by the job's final model context from the
     report's own sections (``runner.summarize``), ``summary_by`` model. A job
-    that wrote nothing and proposed nothing gets the worker's fixed sentence
+    that wrote nothing, proposed nothing and made no table gets the worker's fixed sentence
     instead, ``summary_by`` worker, and no model is asked. When the prose
     cannot be written the report has none and says so (``summary_failed``).
     A stop during it leaves it out."""

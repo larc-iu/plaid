@@ -695,6 +695,41 @@ def test_a_selections_code_makes_a_table_kept_as_data_in_the_report(monkeypatch)
 
 
 @pytest.mark.skipif(sandbox.available() is not None, reason='the code sandbox is not installed')
+def test_a_job_that_only_made_a_table_keeps_the_assistants_summary(monkeypatch):
+    """BRIEF PF follow-up: a job whose work is to read and report wrote and
+    proposed nothing but made a table. Its summary is the final context's,
+    not the worker's line."""
+    client = JobClient(_docs(2))
+    job = start(client, 'Report how long each text is.', id=J, plan='selection')
+    code = ('rows = [[d["name"], len(load(d["id"])["sentences"])] for d in documents()]\n'
+            'print(table("Sentences per text", ["text", "sentences"], rows))')
+
+    def piece(asked, n):
+        if 'Your piece: the whole selection above.' not in asked:
+            return reply('Nothing to do here.')
+        if n == 1:
+            return reply(calls=[call(1, 'run_code', {'code': code})])
+        return reply('Counted the sentences.')
+    model = use(monkeypatch, _model(piece=piece, summary='Both texts have two sentences.'))
+    finished = run_job(job, runner(job, write_summary=True))
+    report = finished['report']
+    assert report['totals']['changes'] == 0 and report['totals']['proposed'] == 0 and report['tables']
+    assert model.seen['summary'] == 1
+    assert report['summary'] == 'Both texts have two sentences.' and report['summary_by'] == 'model'
+
+
+def test_the_fixed_line_is_only_for_a_job_that_wrote_proposed_and_made_nothing():
+    from plaid_agent.core.job import wrote_nothing
+    empty = {'totals': {'changes': 0, 'proposed': 0}, 'harmonize': {'changed': [], 'changed_more': 0},
+             'tables': [], 'tables_more': 0}
+    assert wrote_nothing(empty)
+    assert not wrote_nothing({**empty, 'tables': [{'title': 'T', 'columns': [], 'rows': [], 'more': 0}]})
+    assert not wrote_nothing({**empty, 'tables_more': 1}), 'a table the report could not hold is a table made'
+    assert not wrote_nothing({**empty, 'totals': {'changes': 1, 'proposed': 0}})
+    assert not wrote_nothing({**empty, 'totals': {'changes': 0, 'proposed': 2}})
+
+
+@pytest.mark.skipif(sandbox.available() is not None, reason='the code sandbox is not installed')
 def test_code_in_a_piece_writes_only_through_the_plan(monkeypatch):
     """How the sandbox guarantees it: code runs in a monty worker with no
     filesystem and no network, and reaches the project only through the
