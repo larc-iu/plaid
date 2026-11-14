@@ -69,3 +69,14 @@ def test_km2_1_a_piece_is_shown_that_precedent():
     d = r.read(project, 'd1')
     out = r.precedent(Workspace(job.client(), project), project, [d.sentences[0].words[3]])
     assert 'people: ka-ta ‘g1-g2’ (3)' in out, out
+
+
+# --- REV-KM2-2 --------------------------------------------------------------------------------
+
+
+def test_km2_2_set_analysis_for_form_says_the_kept_links_once():
+    w = ws()
+    out = call_tool(w, 'set_analysis_for_form', {'form': 'Ali-di', 'morphemes': [
+        ALIDI[0], {'form': 'di', 'fields': {'Morph Gloss': 'GEN'}}]})
+    assert '\n1 occurrence keeps a link the new gloss does not fit, e.g. Text 1 s1.w1.m2 stays linked to -di.' in out, out
+    assert out.count('stays linked') == 1, out

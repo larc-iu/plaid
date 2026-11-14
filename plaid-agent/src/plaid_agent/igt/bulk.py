@@ -1524,6 +1524,17 @@ def _occurrences(ws: Workspace, args: Dict[str, Any]) -> int:
         ws.partial_read = None
 
 
+def _kept_link(ws: Workspace, ref: str, m: Dict[str, Any], gloss: str) -> str:
+    """lines.kept_link_note for a morpheme read by query (``m`` as
+    set_analysis_for_form holds it): its ref, its form, its entry."""
+    from types import SimpleNamespace
+    from .lines import kept_link_note
+    v = ws.vocab_of_item(m['link'])
+    item = (ws.view(v).tree.by_id.get(m['link']) if v is not None else None) or {}
+    link = SimpleNamespace(item_id=m['link'], form=item.get('form') or '')
+    return kept_link_note(ws, ref, SimpleNamespace(link=link), m['form'] or '', gloss)
+
+
 def t_set_analysis_for_form(ws: Workspace, form: str, morphemes: list, document: Optional[str] = None,
                             skip_analyzed: bool = False) -> str:
     """PLAN: apply one analysis (segmentation + morpheme fields) to every
@@ -1552,6 +1563,10 @@ def t_set_analysis_for_form(ws: Workspace, form: str, morphemes: list, document:
     # Values set on morphemes the analysis keeps, and the planned changes
     # it takes back (tools.in_place_back).
     values_staged: List[Dict[str, Any]] = []
+    # Each occurrence whose stored link stays beside a gloss its entry no
+    # longer fits (REV-KM-4, REV-KM2-2), said once for the call.
+    stays: List[str] = []
+    gloss = ws.project.gloss_field('Morpheme')
     back: List[Dict[str, Any]] = []
     held, took = 0, 0
     first_note = ''
@@ -1598,6 +1613,10 @@ def t_set_analysis_for_form(ws: Workspace, form: str, morphemes: list, document:
                 held += 1
             for c in changes:
                 m = kept[c['index']]
+                if gloss is not None and c['layer_id'] == gloss.layer_id and c['value'] and m['link']:
+                    note = _kept_link(ws, ws.corpus.label_ref(w['document'], m['id'], budget), m, c['value'])
+                    if note:
+                        stays.append(note)
                 values_staged.append({**value_op(ws.corpus.label_ref(w['document'], m['id'], budget)
                                                  + f' {qv((m["form"] or "")[:40])}',
                                                  ws.project.field_by_layer(c['layer_id']), m['id'], c['span_id'],
@@ -1616,15 +1635,21 @@ def t_set_analysis_for_form(ws: Workspace, form: str, morphemes: list, document:
         ws.add_ops(staged)
     # A planned change taken back from an occurrence that gets values (REV-KM-6).
     back_said = (f' Took back the planned change of {took} occurrence{"s" if took != 1 else ""}.' if took else '')
+    if stays:
+        back_said += (f' {len(stays)} occurrence{"s keep" if len(stays) != 1 else " keeps"} a link the new gloss '
+                      f'does not fit, e.g.{stays[0]}')
+    # After the card's lines, on a line of its own (REV-KM2-4).
+    after = (back_said + entries_note(gone_entries)).strip()
+    after = '\n' + after if after else ''
     if not held:
         return (_bulk_note(ws, staged, f'occurrences of "{form}"') + (' ' + first_note if first_note else '')
-                + back_said + entries_note(gone_entries))
+                + after)
     same = (f'{held} occurrence{"s" if held != 1 else ""} of "{form}" already {"holds" if held == 1 else "hold"} '
             'that analysis')
     if not staged:
         return f'Nothing to change: {same}.' + back_said + entries_note(gone_entries) + confirm_hint(ws)
     return (_bulk_note(ws, staged, f'occurrences of "{form}"') + (' ' + first_note if first_note else '')
-            + f' Nothing staged for {same}.' + back_said + entries_note(gone_entries))
+            + f' Nothing staged for {same}.' + after)
 
 
 # --- lexicon and document operations ----------------------------------------------
