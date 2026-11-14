@@ -60,7 +60,11 @@ def test_a_morpheme_never_fits_an_entry_stored_with_its_marker_and_the_block_doe
     "di" names nothing, and a piece whose word is "Gamdi" is not shown "-di"
     as an entry spelled inside it: what the block lists is what can link."""
     w = fake_ws(FakeClient(project=untagged()))
-    out = analyze(w, ref='s1.w1', forms='Ali-di', gloss='Ali-ERG')
+    # "=" where the word holds "-": a new shape, so the analysis replaces the
+    # chain and each morpheme is linked by the rule. Given as held, "di"
+    # would keep its stored link to "-di" and be fitted to nothing (the
+    # keep rule, tools.in_place).
+    out = analyze(w, ref='s1.w1', forms='Ali=di', gloss='Ali=ERG')
     assert links(w) == [('w-1.m1', 'vi-ali')]
     assert 'di ‘ERG’ ×1 (s1.w1.m2).' in out
     assert call_tool(w, 'link_entry', {'document': 'd1', 'refs': ['s1.w1.m2'], 'entry_form': 'di'}).startswith('Error')
@@ -75,7 +79,7 @@ def test_the_rule_is_one_function(monkeypatch):
     analyze_sentence, link_entry names it, and the block lists it."""
     monkeypatch.setattr(fit, 'form_key', lambda form: fit.collation_key(form).strip('-='))
     w = fake_ws(FakeClient(project=untagged()))
-    analyze(w, ref='s1.w1', forms='Ali-di', gloss='Ali-ERG')
+    analyze(w, ref='s1.w1', forms='Ali=di', gloss='Ali=ERG')
     assert links(w) == [('w-1.m1', 'vi-ali'), ('w-1.m2', 'vi-erg')]
     w = fake_ws(FakeClient(project=untagged()))
     assert call_tool(w, 'link_entry', {'document': 'd1', 'refs': ['s1.w1.m2'], 'entry_form': 'di'}).startswith(
