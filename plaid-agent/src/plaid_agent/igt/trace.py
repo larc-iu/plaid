@@ -138,9 +138,8 @@ def _own(name: str, a: Dict[str, Any]) -> Optional[str]:
     if name == 'analyze_sentence':
         if a.get('help'):
             return 'Read how to analyse a sentence from interlinear lines'
-        many = a.get('sentences') if isinstance(a.get('sentences'), list) else None
-        what = plural(len(many), 'sentence') if many is not None else a.get('ref')
-        return f'Planned analyses of {what}{in_doc(a)}'
+        many = a.get('sentences') if isinstance(a.get('sentences'), list) else []
+        return f'Planned analyses of {plural(len(many), "sentence")}{in_doc(a)}'
     if name == 'set_morpheme':
         bits = [b for b in (f'form {q(a["form"])}' if a.get('form') is not None else '',
                             f'type {q(a["type"])}' if a.get('type') is not None else '') if b]

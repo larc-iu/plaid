@@ -488,9 +488,9 @@ The modules below are `igt/` unless they say otherwise.
   the escape hatch `query` + `query_help` (Plaid's query language,
   project-scoped, layers by name). Writes append resolved operations to the turn's plan:
   `set_field` (one field, or several at once with `values`, each on the refs
-  of its scope), `set_analysis` (one word), `analyze_sentence` (a sentence,
-  or a run of its words, from a segmented line and a gloss line, refused whole
-  where they do not line up with the words; it links each morpheme to the one
+  of its scope), `set_analysis` (one word), `analyze_sentence` (sentences, or
+  runs of their words, from one "FORMS GLOSS" item per word, a word that does
+  not line up left out and listed; it links each morpheme to the one
   entry with its form and gloss, `fit.py`, and creates entries when asked,
   through the ops `set_analysis`, `create_entry` and `link_entry` stage:
   `lines.py`), `set_morpheme` (one morpheme's form or type, chain kept),

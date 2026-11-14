@@ -39,7 +39,7 @@ def test_a_piece_analyses_five_sentences_and_core_holds_each_word_on_its_own(mon
                 return reply('Glossed the piece.')
             return reply(calls=[call(1, 'analyze_sentence', {
                 'document': 'Alpha', 'new_entries': True,
-                'sentences': [{'ref': f's{t}', 'forms': f'ka-{t} ta', 'gloss': f'go-X{t} that'}
+                'sentences': [{'ref': f's{t}', 'words': [f'ka-{t} go-X{t}', 'ta that']}
                               for t in range(1, 6)]})])
         use(monkeypatch, Model(answer))
         real, sent = igt_job.execute_plan, []

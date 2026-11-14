@@ -179,24 +179,23 @@ TOOLS = [
          'morphemes': _MORPHEMES},
         ['document', 'ref', 'morphemes']),
     _fn('analyze_sentence',
-        'PLAN: segment and gloss a sentence, or a run of its words, from interlinear lines: forms "na-ku-ja '
-        'le=o", gloss "PRS-INF-come today=DEF", one word per word of the ref, morphemes apart by "-" or "=". '
-        'Each glossed morpheme is linked to the one entry with that form and gloss; the answer lists those '
-        'with several or none. help: true for the rest (other fields, words left as they are, '
-        'new_entries).',
-        {'document': _DOC, 'ref': {'type': 'string', 'description': 'A sentence, "s4", or a run of its words, '
-                                                                    '"s4.w3-w5".'},
-         'forms': {'type': 'string'}, 'gloss': {'type': 'string'},
-         'fields': {'type': 'object', 'additionalProperties': {'type': 'string'}},
-         'sentences': {'type': 'array', 'description': 'Several at once: [{ref, forms, gloss}, ...].',
-                       'items': {'type': 'object'}},
+        'PLAN: segment and gloss sentences word by word. Each sentence is {ref, words}, words one "FORMS GLOSS" '
+        'item per word of the ref, in order: morphemes apart by "-" or "=", one space before the gloss, e.g. '
+        '{"ref": "s4", "words": ["na-ku-ja PRS-INF-come", "le=o today=DEF"]}. Each glossed morpheme is linked '
+        'to the one entry with that form and gloss; the answer lists those with several or none. help: true '
+        'for the rest (other fields, words left as they are, new_entries).',
+        {'document': _DOC,
+         'sentences': {'type': 'array', 'items': {'type': 'object', 'properties': {
+             'ref': {'type': 'string', 'description': 'A sentence, "s4", or a run of its words, "s4.w3-w5".'},
+             'words': {'type': 'array', 'items': {'type': 'string'}},
+             'columns': {'type': 'array', 'items': {'type': 'string'}}}, 'required': ['ref', 'words']}},
          'new_entries': {'type': 'boolean', 'description': 'Only when the instructions or the user ask for new '
                                                            'entries: create one for each form and gloss no entry '
                                                            'has, and link it.'},
          'lexicon': {'type': 'string', 'description': 'Lexicon for new entries (needed only when the project '
                                                       'has several).'},
          'help': {'type': 'boolean'}},
-        ['document']),
+        ['document', 'sentences']),
     _fn('set_morpheme',
         'PLAN: change one morpheme\'s stored form and/or type in place, keeping the chain and every value on it '
         '(e.g. make sN.wN.m2 an enclitic). type "" clears the type. A linked morpheme goes by its entry\'s type: '

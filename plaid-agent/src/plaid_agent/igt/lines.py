@@ -1,9 +1,10 @@
-"""analyze_sentence: a sentence, or a run of its words, analysed from
-interlinear lines, as a linguist writes them (AS, 2026-11-14).
+"""analyze_sentence: sentences, or runs of their words, analysed word by
+word (AS, 2026-11-14, the v3 shape).
 
-The model writes a segmented line and a gloss line, words apart by spaces,
-morphemes by ``-`` and ``=``. The tool lines them up against the sentence's
-real words, refuses the sentence whole where they do not line up, and links
+The model gives one item per word, "FORMS GLOSS" (morphemes apart by ``-``
+and ``=``), so a word's forms and gloss are paired where it writes them and
+two parallel lines cannot drift (v3, after the Natugu night runs). The tool
+lines the items up against the sentence's real words, and links
 every morpheme to the one lexicon entry with its form and gloss. It was made
 after run4 of the job pilot, where a job at low reasoning put each whole
 sentence's morphemes on its first word in 5 of 20 sentences, and spent 390
@@ -21,8 +22,8 @@ The pieces a variant of this tool would change, each in one place:
 - ``new_entries``: :func:`_stage_sentence`, where a morpheme no entry fits
   is created for, and :func:`_creatable`, which says when it may be;
 - the surface check: ``tools.surface_misfit`` and ``tools.SURFACE_SLACK``;
-- the answer's wording: :func:`_answer`, :func:`_lineup` and the problem
-  texts in :func:`_check`; the manual: :data:`HELP`.
+- the answer's wording: :func:`_answer`, :func:`_lineup`, :func:`_word_lines`
+  and the problem texts in :func:`_check`; the manual: :data:`HELP`.
 """
 
 import re
@@ -49,63 +50,54 @@ MAX_LISTED, MAX_CANDIDATES, MAX_REFS = 12, 4, 6
 _REF = re.compile(r'^\s*s(\d+)(?:\.w(\d+)(?:\s*-\s*w?(\d+))?)?\s*$', re.IGNORECASE)
 _SPLIT = re.compile(r'([-=])')
 
-HELP = '''analyze_sentence: a sentence, or a run of its words, from interlinear lines.
+HELP = '''analyze_sentence: sentences, or runs of their words, analysed word by word.
 
-Lines. forms is the segmented line and gloss the gloss line, as a linguist writes them: one word of the \
-sentence per space-separated word, in order, and its morphemes apart by "-", or by "=" at a clitic \
-boundary. Every line has as many words as the ref has, and each word as many morphemes on every line. \
+sentences is a list of {ref, words}. ref is a sentence ("s4") or a run of its words ("s4.w3-w5"). words \
+has one item per word of the ref, in order, each "FORMS GLOSS": the word's morphemes apart by "-", or by \
+"=" at a clitic boundary, one space, and their glosses apart the same way.
+  {"ref": "s4", "words": ["na-ku-ja PRS-INF-come", "le=o today=DEF"]}
+"_" as an item leaves that word as it is. "_" as one gloss of a word gives that morpheme none. A form or \
+gloss holding a space, "-", "=" or "_" cannot be written here: give "_" and use set_analysis. \
 Punctuation on a word is not part of its forms.
-  ref "s4", forms "na-ku-ja le=o", gloss "PRS-INF-come today=DEF"
-ref "s4.w3-w5" is a run of words of one sentence.
-_ as a whole word on every line leaves that word as it is. _ for one morpheme on the gloss or a field \
-line gives it no value. A form or gloss holding "-", "=", "_" or a space cannot be written here: \
-put _ for that word and analyse it with set_analysis.
+
+Other morpheme fields: columns names an item's columns, e.g. "columns": ["forms", "gloss", "POS"] and \
+items like "na-ku-ja PRS-INF-come v-asp-v".
 
 Types. A linked morpheme goes by its entry's type, and one after "=" is typed as a clitic. The rest \
 take none: set_morpheme sets a type where one is needed.
 
-Other morpheme fields. fields maps a field name to its aligned line, e.g. {"POS": "v-asp"}.
-
 Links. Each glossed morpheme is linked to the one lexicon entry, or sense, whose form is its form and \
-whose gloss is its gloss. Where several fit, or \
-none does, nothing is linked and the answer lists the morpheme with the entries to choose from: link one \
-with link_entry (sN.wN.mN, entry_id). new_entries: true, only when the instructions or the user ask for \
-new entries, creates an entry, once, for each form and gloss no entry has, and links every morpheme of \
-it. An ambiguous one is never created for.
+whose gloss is its gloss. Where several fit, or none does, nothing is linked and the answer lists the \
+morpheme with the entries to choose from: link one with link_entry (sN.wN.mN, entry_id). new_entries: \
+true, only when the instructions or the user ask for new entries, creates an entry, once, for each form \
+and gloss no entry has, and links every morpheme of it. An ambiguous one is never created for.
 
-Checks. A line with another number of words than the ref stages nothing of the sentence, and the \
-answer shows its words beside what was given. A word whose lines give it different numbers of \
-morphemes, an empty morpheme, or forms more than twice as long as the word plus 3, is not staged and \
-is listed, and the other words are. A word whose forms differ from it otherwise is staged, with a note.
+Checks. words with another number of items than the ref has words stages nothing of the sentence. A \
+word whose forms and gloss have different numbers of morphemes, an empty morpheme, or forms more than \
+twice as long as the word plus 3, is not staged and is listed, and the other words are. A word whose \
+forms differ from it otherwise is staged, with a note. Up to 20 sentences a call, each on its own.'''
 
-Several sentences: sentences=[{ref, forms, gloss, fields?}, ...], up to 20, each staged or \
-refused on its own.'''
+#: An item's columns when a sentence names none.
+COLUMNS = ['forms', 'gloss']
 
 
 class _Refused(Exception):
     """A sentence not staged, with what the answer says of it."""
 
 
-def t_analyze_sentence(ws: Workspace, document: Optional[str] = None, ref: Optional[str] = None,
-                       forms: Optional[str] = None, gloss: Optional[str] = None,
-                       fields: Optional[dict] = None, sentences: Optional[list] = None,
+def t_analyze_sentence(ws: Workspace, document: Optional[str] = None, sentences: Optional[list] = None,
                        new_entries: bool = False, lexicon: Optional[str] = None, help: bool = False) -> str:
     if help:
         return HELP
     if not ws.project.morpheme_layer_id:
         raise ToolError('This project has no morpheme layer.', kind='not-found')
-    one = {k: v for k, v in (('ref', ref), ('forms', forms), ('gloss', gloss),
-                             ('fields', fields)) if v is not None}
-    if sentences is not None and one:
-        raise ToolError('Give ref, forms and gloss, or sentences (a list of them), not both.',
-                        kind='invalid-argument')
-    items = list(sentences) if sentences is not None else [one]
-    if not items or items == [{}]:
-        raise ToolError('Give ref, forms and gloss. help: true explains the lines.', kind='invalid-argument')
-    if len(items) > MAX_SENTENCES:
-        raise ToolError(f'At most {MAX_SENTENCES} sentences per call: split the list.', kind='too-large')
     if not document:
         raise ToolError('Give document.', kind='invalid-argument')
+    if not isinstance(sentences, list) or not sentences:
+        raise ToolError('Give sentences, a list of {ref, words}, e.g. [{"ref": "s4", "words": '
+                        '["na-ku-ja PRS-INF-come", "le=o today=DEF"]}].', kind='invalid-argument')
+    if len(sentences) > MAX_SENTENCES:
+        raise ToolError(f'At most {MAX_SENTENCES} sentences per call: split the list.', kind='too-large')
     doc = ws.doc(document)
     before = {id(o) for o in ws.ops}
     said: List[str] = []
@@ -113,9 +105,9 @@ def t_analyze_sentence(ws: Workspace, document: Optional[str] = None, ref: Optio
     listed: Dict[tuple, Dict[str, Any]] = {}
     made: List[str] = []
     staged_any = False
-    for item in items:
+    for item in sentences:
         if not isinstance(item, dict):
-            said.append('A sentence is {ref, forms, gloss}: not staged.')
+            said.append('A sentence is {ref, words}: not staged.')
             continue
         try:
             line, word_notes = _stage_sentence(ws, doc, item, bool(new_entries), lexicon, listed, made)
@@ -129,7 +121,7 @@ def t_analyze_sentence(ws: Workspace, document: Optional[str] = None, ref: Optio
     if not staged_any:
         raise ToolError('\n'.join(said), kind='invalid-argument')
     n = sum(1 for o in ws.ops if id(o) not in before)
-    return _answer(ws, n, said, notes, listed, made, bool(new_entries))
+    return _answer(ws, n, said, notes, listed, made)
 
 
 def _words_of(doc: IgtDoc, ref: str):
@@ -140,8 +132,7 @@ def _words_of(doc: IgtDoc, ref: str):
                        'e.g. "ref": "s4".')
     m = _REF.match(str(ref or ''))
     if not m:
-        raise _Refused(f'{ref or "(no ref)"} not staged: a ref is a sentence ("s4") or a run of its words '
-                       '("s4.w3-w5").')
+        raise _Refused(f'{ref} not staged: a ref is a sentence ("s4") or a run of its words ("s4.w3-w5").')
     si = int(m.group(1))
     if not 1 <= si <= len(doc.sentences):
         raise _Refused(f's{si} not staged: document {doc.quoted} has {len(doc.sentences)} sentences.')
@@ -156,85 +147,77 @@ def _words_of(doc: IgtDoc, ref: str):
 
 
 def _pieces(word: str) -> Tuple[List[str], List[str]]:
-    """A word of a line cut at its delimiters: the pieces, and the delimiter
-    before each piece after the first."""
+    """A column of an item cut at its delimiters: the pieces, and the
+    delimiter before each piece after the first."""
     parts = _SPLIT.split(word)
     return parts[0::2], parts[1::2]
 
 
-#: What a sentence missing a line is told (v2: one plain sentence, never a
-#: lineup of "(none)").
-MISSING = {'forms': 'forms, the segmented line, one word per word of the ref, e.g. "forms": "na-ku-ja le=o"',
-           'gloss': 'gloss, the gloss line, one word per word of the ref, e.g. "gloss": "PRS-INF-come today=DEF"'}
-
-
-def _lines(ws: Workspace, item: Dict[str, Any], label: str):
-    """``[(name, line words, field)]``: the forms line first, then the gloss
-    line and every other field's line, ``field`` None for forms. The gloss
-    line given under ``fields`` by the gloss field's name is the gloss."""
+def _columns(ws: Workspace, item: Dict[str, Any], label: str):
+    """``[(name, field)]``: what each column of an item is, "forms" first,
+    ``field`` None for it. The gloss field's own name is the gloss."""
+    names = item.get('columns') or COLUMNS
+    if not isinstance(names, list) or not all(isinstance(n, str) for n in names):
+        raise _Refused(f'{label} not staged: columns is a list of names, e.g. ["forms", "gloss", "POS"].')
     g = ws.project.gloss_field('Morpheme')
-    extra = item.get('fields') or {}
-    if not isinstance(extra, dict):
-        raise ToolError('fields maps a morpheme field name to its line, e.g. {"POS": "v-asp"}.',
-                        kind='invalid-argument')
-    fields = [(ws.project.field(name), line) for name, line in extra.items()]
-    gloss = item.get('gloss')
-    if gloss is None and g is not None:
-        gloss = next((line for f, line in fields if f.layer_id == g.layer_id), None)
-        fields = [(f, line) for f, line in fields if f.layer_id != g.layer_id]
-    if not str(item.get('forms') or '').strip():
-        raise _Refused(f'{label} not staged: give {MISSING["forms"]}.')
-    out = [('forms', str(item['forms']).split(), None)]
-    if gloss is not None:
-        if g is None:
-            raise ToolError('This project has no morpheme field for glosses.', kind='not-found')
-        out.append(('gloss', str(gloss).split(), g))
-    elif g is not None:
-        raise _Refused(f'{label} not staged: give {MISSING["gloss"]}.')
-    for f, line in fields:
+    out = []
+    for name in names:
+        key = name.strip().lower()
+        if key == 'forms':
+            out.append(('forms', None))
+            continue
+        if key == 'gloss' and g is not None:
+            out.append(('gloss', g))
+            continue
+        f = ws.project.field(name)
         if f.scope != 'Morpheme':
-            raise ToolError(f'"{f.name}" is a {f.scope} field: set_field sets it.', kind='invalid-argument')
-        if g is not None and f.layer_id == g.layer_id:
-            raise ToolError(f'"{f.name}" is the gloss line: give it as gloss.', kind='invalid-argument')
-        out.append((f.name, str(line or '').split(), f))
+            raise _Refused(f'{label} not staged: "{f.name}" is a {f.scope} field: set_field sets it.')
+        out.append(('gloss' if g is not None and f.layer_id == g.layer_id else f.name, f))
+    names = [n for n, _f in out]
+    if names[:1] != ['forms'] or len(set(names)) != len(names) or (g is not None and 'gloss' not in names):
+        raise _Refused(f'{label} not staged: columns starts with "forms", has "gloss", and names each once.')
     return out
 
 
-def _check(ws: Workspace, label: str, words, lines) -> Tuple[List[str], List[Optional[list]], Dict[int, List[str]]]:
-    """``(problems, parsed, bad)``: what keeps the lines from lining up with
-    ``words`` as a whole (a line with another number of words, which refuses
-    the sentence), per word its morphemes (None for one left as it is or not
-    staged), each ``(form, delimiter before, {line name: value})``, and what
-    is wrong with each word that is not staged, by its place in ``words``."""
+def _check(ws: Workspace, label: str, words, items: List[str], columns) -> Tuple[List[str], List[Optional[list]],
+                                                                                Dict[int, List[str]]]:
+    """``(problems, parsed, bad)``: what keeps the items from lining up
+    with ``words`` as a whole (another number of items, which refuses the
+    sentence), per word its morphemes (None for one left as it is or not
+    staged), each ``(form, delimiter before, {column name: value})``, and
+    what is wrong with each word that is not staged, by its place in
+    ``words``."""
     n = len(words)
-    problems = [f'{name} has {len(ws_)} word{"s" if len(ws_) != 1 else ""}, {label} has {n}'
-                for name, ws_, _f in lines if len(ws_) != n]
-    if problems:
-        return problems, [], {}
+    if len(items) != n:
+        return [f'words has {len(items)} item{"s" if len(items) != 1 else ""}, {label} has {n} '
+                f'word{"s" if n != 1 else ""}'], [], {}
     parsed: List[Optional[list]] = []
     bad: Dict[int, List[str]] = {}
     cfg = ws.project.ignored_cfg
+    names = [name for name, _f in columns]
     for i, w in enumerate(words):
-        given = {name: line[i] for name, line, _f in lines}
-        wrong: List[str] = []
-        if given['forms'] == PLACEHOLDER:
-            off = [name for name, v in given.items() if v != PLACEHOLDER]
-            if off:
-                bad[i] = [f'_ in forms and not in {", ".join(off)}']
+        text = str(items[i] or '').strip()
+        if text == PLACEHOLDER:
             parsed.append(None)
             continue
+        cols = text.split()
+        if len(cols) != len(names):
+            bad[i] = [f'{len(cols)} column{"s" if len(cols) != 1 else ""}, give "{" ".join(n.upper() for n in names)}"'
+                      ' with one space between and none inside']
+            parsed.append(None)
+            continue
+        given = dict(zip(names, cols))
+        wrong: List[str] = []
         forms, delims = _pieces(given['forms'])
         if any(f == '' for f in forms):
             wrong.append(f'an empty morpheme in "{given["forms"]}"')
         cut = {}
-        for name, v in given.items():
-            if name == 'forms':
-                continue
-            pieces, _ = _pieces(v)
+        for name in names[1:]:
+            pieces, _ = _pieces(given[name])
             if len(pieces) != len(forms):
                 wrong.append(f'{len(forms)} form{"s" if len(forms) != 1 else ""}, {len(pieces)} in {name}')
             elif any(p == '' for p in pieces):
-                wrong.append(f'an empty morpheme in {name} "{v}"')
+                wrong.append(f'an empty morpheme in {name} "{given[name]}"')
             cut[name] = pieces
         if not wrong:
             misfit = surface_misfit(w.surface, forms, cfg)
@@ -246,47 +229,49 @@ def _check(ws: Workspace, label: str, words, lines) -> Tuple[List[str], List[Opt
             continue
         parsed.append([(f, delims[k - 1] if k else '', {name: cut[name][k] for name in cut})
                        for k, f in enumerate(forms)])
-    return problems, parsed, bad
+    return [], parsed, bad
 
 
-def _word_lines(words, lines, bad: Dict[int, List[str]]) -> List[str]:
-    """The lineup line of each word not staged, with what is wrong with it."""
-    shown = [line for name, line, _f in lines if name in ('forms', 'gloss')]
-    return [f'  w{words[i].index} {words[i].surface}' + ''.join(f' | {line[i]}' for line in shown)
-            + ': ' + '; '.join(why) for i, why in sorted(bad.items())]
+def _word_lines(words, items, bad: Dict[int, List[str]]) -> List[str]:
+    """The line of each word not staged: the word, the item given, what is
+    wrong."""
+    return [f'  w{words[i].index} {words[i].surface} | {items[i]}: ' + '; '.join(why) for i, why in sorted(bad.items())]
 
 
-def _lineup(words, lines) -> List[str]:
-    """The sentence's words, numbered, beside what each line gave them."""
-    shown = [(name, line) for name, line, _f in lines if name in ('forms', 'gloss')]
+def _lineup(words, items) -> List[str]:
+    """The sentence's words, numbered, beside the items given."""
     out = []
-    for p in range(max([len(words)] + [len(line) for _n, line in shown])):
+    for p in range(max(len(words), len(items))):
         w = words[p] if p < len(words) else None
         head = f'  w{w.index} {w.surface}' if w is not None else '  (no word)'
-        out.append(head + ''.join(f' | {line[p] if p < len(line) else "(none)"}' for _n, line in shown))
+        out.append(head + f' | {items[p] if p < len(items) else "(none)"}')
     return out
 
 
 def _stage_sentence(ws: Workspace, doc: IgtDoc, item: Dict[str, Any], new_entries: bool, lexicon: Optional[str],
                     listed: Dict[tuple, Dict[str, Any]], made: List[str]) -> Tuple[str, List[str]]:
     """Stage one sentence: every word's analysis, the entries to create, the
-    links, all of it or none of it. A word whose lines do not line up is
-    left out and listed (v2), a line with another number of words refuses
-    the sentence."""
+    links, all of it or none of it. A word whose item does not line up is
+    left out and listed, another number of items refuses the sentence."""
     label, s, words = _words_of(doc, item.get('ref'))
     if not words:
         raise _Refused(f'{label} not staged: it has no words.')
-    lines = _lines(ws, item, label)
-    problems, parsed, bad = _check(ws, label, words, lines)
+    items = item.get('words')
+    if not isinstance(items, list) or not items:
+        raise _Refused(f'{label} not staged: give words, one "FORMS GLOSS" item per word of the ref, e.g. '
+                       '"words": ["na-ku-ja PRS-INF-come", "le=o today=DEF"].')
+    items = [str(x) for x in items]
+    columns = _columns(ws, item, label)
+    problems, parsed, bad = _check(ws, label, words, items, columns)
     if problems:
-        raise _Refused('\n'.join([f'{label} not staged: ' + '; '.join(problems) + '.'] + _lineup(words, lines)))
+        raise _Refused('\n'.join([f'{label} not staged: ' + '; '.join(problems) + '.'] + _lineup(words, items)))
     not_staged = ', '.join(f'w{words[i].index}' for i in sorted(bad))
     if all(p is None for p in parsed):
         if bad:
-            raise _Refused('\n'.join([f'{label} not staged: {not_staged}.'] + _word_lines(words, lines, bad)))
+            raise _Refused('\n'.join([f'{label} not staged: {not_staged}.'] + _word_lines(words, items, bad)))
         raise _Refused(f'{label} not staged: every word is _.')
-    fields = {name: f for name, _l, f in lines if f is not None}
-    g = next((f for name, _l, f in lines if name == 'gloss'), None)
+    fields = {name: f for name, f in columns if f is not None}
+    g = fields.get('gloss')
     notes: List[str] = []
     found: Dict[tuple, Dict[str, Any]] = {}
     created: List[str] = []
@@ -347,7 +332,7 @@ def _stage_sentence(ws: Workspace, doc: IgtDoc, item: Dict[str, Any], new_entrie
         counts.append(f'{creates} entr{"ies" if creates != 1 else "y"} to create')
     line = f'{label}: ' + ', '.join(counts) + '.'
     if bad:
-        line = '\n'.join([f'{line} Not staged: {not_staged}'] + _word_lines(words, lines, bad))
+        line = '\n'.join([f'{line} Not staged: {not_staged}'] + _word_lines(words, items, bad))
     return line, notes
 
 
@@ -386,7 +371,7 @@ def _lexicon_for_new(ws: Workspace, lexicon: Optional[str]) -> dict:
 
 
 def _answer(ws: Workspace, n: int, said: List[str], notes: List[str], listed: Dict[tuple, Dict[str, Any]],
-            made: List[str], new_entries: bool) -> str:
+            made: List[str]) -> str:
     out = [ws.planned_note(n)] + said + notes
     several = [e for e in listed.values() if len(e['hits']) > 1]
     none = [e for e in listed.values() if not e['hits']]

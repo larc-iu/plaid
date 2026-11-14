@@ -7,6 +7,11 @@ FORMS = "ii ji-da hlen-txw-'y dim ii gipaykw bisde'y"
 GLOSS = "CCNJ IRR-SPT move-PASS-1SG.II PROSP CCNJ fly grouse"
 
 
+def _items():
+    """The lines as the tool takes them, one "FORMS GLOSS" item per word."""
+    return [f"{f} {g}" for f, g in zip(FORMS.split(), GLOSS.split())]
+
+
 def _morphs():
     """{word address: [(form, gloss), ...]} of sentence 14 as the lines give it."""
     return {f's14.w{i}': list(zip(f.split('-'), g.split('-')))
@@ -28,7 +33,8 @@ def _write(ctx, morphs, link=True):
 def _run4(ctx):
     """Run4's mistake as the model made it: every morpheme of the sentence
     on its first word."""
-    return {'document': DOC, 'ref': 's14', 'forms': FORMS.replace(' ', '-'), 'gloss': GLOSS.replace(' ', '-')}
+    return {'document': DOC, 'sentences': [{'ref': 's14', 'words': [
+        FORMS.replace(' ', '-') + ' ' + GLOSS.replace(' ', '-')]}]}
 
 
 def right(ctx):
@@ -37,15 +43,15 @@ def right(ctx):
 
 def right_through_the_tool(ctx):
     # The tool itself, its plan applied as an approval applies it.
-    H.staged(ctx, ctx.user, [('analyze_sentence', {'document': DOC, 'ref': 's14', 'forms': FORMS,
-                                                   'gloss': GLOSS})], stamp_mode='verified')
+    H.staged(ctx, ctx.user, [('analyze_sentence', {'document': DOC, 'sentences': [
+        {'ref': 's14', 'words': _items()}]})], stamp_mode='verified')
 
 
 def wrong_run4_refused(ctx):
     # The tool refuses the whole sentence on its first word and stages
     # nothing, so the plan applied writes nothing at all.
     said, ops = H.tool_answer(ctx, ctx.user, 'analyze_sentence', _run4(ctx))
-    assert said.startswith('Error: s14 not staged: forms has 1 word, s14 has 7') and not ops, said
+    assert said.startswith('Error: s14 not staged: words has 1 item, s14 has 7 words') and not ops, said
 
 
 def wrong_run4_written(ctx):

@@ -27,6 +27,11 @@ def _lines(words):
             'gloss': ' '.join('-'.join(g or '_' for _, g in ms) for _, ms in words)}
 
 
+def _items(words):
+    """One "FORMS GLOSS" item per word, as the tool takes them."""
+    return ['-'.join(f for f, _ in ms) + ' ' + '-'.join(g or '_' for _, g in ms) for _, ms in words]
+
+
 def _ended(ctx, calls=()):
     jid = H.start(ctx, [DOC])
     if calls:
@@ -42,7 +47,7 @@ def right(ctx):
     # One analyze_sentence call over the five sentences, as a piece makes it.
     gold = _gold(ctx)
     return _ended(ctx, [('analyze_sentence', {'document': DOC, 'new_entries': True, 'sentences': [
-        {'ref': f's{s}', **_lines(words)} for s, words in sorted(gold.items())]})])
+        {'ref': f's{s}', 'words': _items(words)} for s, words in sorted(gold.items())]})])
 
 
 def right_by_hand(ctx):
@@ -58,11 +63,12 @@ def wrong_run4_refused(ctx):
     """Run4's piece: each sentence's morphemes on its first word. The tool
     refuses every sentence and stages nothing, so the job writes nothing."""
     gold = _gold(ctx)
-    run4 = [{'ref': f's{s}', 'forms': _lines(words)['forms'].replace(' ', '-'),
-             'gloss': _lines(words)['gloss'].replace(' ', '-')} for s, words in sorted(gold.items())]
+    run4 = [{'ref': f's{s}', 'words': [_lines(words)['forms'].replace(' ', '-') + ' '
+                                       + _lines(words)['gloss'].replace(' ', '-')]}
+            for s, words in sorted(gold.items())]
     said, ops = H.tool_answer(ctx, ctx.user, 'analyze_sentence',
                               {'document': DOC, 'new_entries': True, 'sentences': run4})
-    assert said.startswith('Error: s16 not staged: forms has 1 word, s16 has 11') and not ops, said
+    assert said.startswith('Error: s16 not staged: words has 1 item, s16 has 11 words') and not ops, said
     return _ended(ctx)
 
 

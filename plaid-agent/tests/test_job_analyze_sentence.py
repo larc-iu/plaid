@@ -52,7 +52,7 @@ def _run(monkeypatch, line):
 
 
 def test_a_piece_analyses_five_sentences_word_for_word_and_the_report_counts_it(monkeypatch):
-    client, job, finished, sent = _run(monkeypatch, lambda t: {'forms': f'ka-{t} ta', 'gloss': f'go-X{t} that'})
+    client, job, finished, sent = _run(monkeypatch, lambda t: {'words': [f'ka-{t} go-X{t}', 'ta that']})
     # Every morpheme sits on its own word: ka-<t> on the word ka<t>, ta on ta.
     layers = client.raw['text_layers'][0]
     body = layers['text']['body']
@@ -74,6 +74,6 @@ def test_a_piece_analyses_five_sentences_word_for_word_and_the_report_counts_it(
 
 
 def test_run4s_mistake_in_a_piece_writes_nothing_on_the_first_word(monkeypatch):
-    client, job, finished, sent = _run(monkeypatch, lambda t: {'forms': f'ka-{t}-ta', 'gloss': f'go-X{t}-that'})
+    client, job, finished, sent = _run(monkeypatch, lambda t: {'words': [f'ka-{t}-ta go-X{t}-that']})
     assert sent == [], sent
     assert finished['report']['totals']['changes'] == 0

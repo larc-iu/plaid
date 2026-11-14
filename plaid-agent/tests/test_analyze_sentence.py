@@ -48,7 +48,16 @@ def ws(doc=None, lex=None, project=None):
                               lexicon=lex or lexicon()))
 
 
-def call(w, **args):
+def items(forms, gloss):
+    """The v3 items of an interlinear forms line and gloss line, word by
+    word ("_" where the forms line has "_")."""
+    return [f if f == '_' else f'{f} {g}' for f, g in zip(forms.split(), gloss.split())]
+
+
+def call(w, ref=None, forms=None, gloss=None, columns=None, **args):
+    """The tool, a sentence given as two lines turned into its items."""
+    if forms is not None:
+        args['sentences'] = [{'ref': ref, 'words': items(forms, gloss), **({'columns': columns} if columns else {})}]
     return call_tool(w, 'analyze_sentence', {'document': 'd1', **args})
 
 
@@ -72,10 +81,13 @@ def links(w):
 def test_the_schema_is_short_and_the_manual_is_behind_help():
     spec = next(t['function'] for t in TOOLS if t['function']['name'] == 'analyze_sentence')
     assert spec['description'].startswith('PLAN: ') and len(spec['description']) < 520
-    assert spec['parameters']['required'] == ['document']
+    assert spec['parameters']['required'] == ['document', 'sentences']
+    assert set(spec['parameters']['properties']) == {'document', 'sentences', 'new_entries', 'lexicon', 'help'}
+    item = spec['parameters']['properties']['sentences']['items']
+    assert item['required'] == ['ref', 'words']
     w = ws()
     out = call(w, help=True)
-    assert 'Several sentences' in out and 'new_entries' in out and w.ops == []
+    assert 'FORMS GLOSS' in out and 'new_entries' in out and w.ops == []
 
 
 # --- a sentence, lined up -------------------------------------------------------------
@@ -164,7 +176,8 @@ def test_another_morpheme_field_by_its_line():
     morph = raw['text_layers'][0]['token_layers'][2]
     morph['span_layers'].append({'id': 'sl-pos', 'name': 'POS', 'config': {'igt': {'scope': 'Morpheme'}}})
     w = ws(project=raw)
-    call(w, ref='s1.w3', forms='aku-na', gloss='see-PST', fields={'POS': 'v-asp'})
+    out = call(w, sentences=[{'ref': 's1.w3', 'columns': ['forms', 'gloss', 'POS'], 'words': ['aku-na see-PST v-asp']}])
+    assert out.startswith('Planned'), out
     (op,) = [o for o in w.ops if o['kind'] == 'set_analysis']
     assert [{f['layer_id']: f['value'] for f in m['fields']} for m in op['morphemes']] == [
         {MGLOSS: 'see', 'sl-pos': 'v'}, {MGLOSS: 'PST', 'sl-pos': 'asp'}]
@@ -172,10 +185,10 @@ def test_another_morpheme_field_by_its_line():
 
 # --- refusals, each with its text -----------------------------------------------------
 
-RUN4 = ('s1 not staged: forms has 1 word, s1 has 3; gloss has 1 word, s1 has 3.\n'
-        '  w1 Ali-di | Ali-di-gam-aku-na | Ali-ERG-fish-see-PST\n'
-        '  w2 gam | (none) | (none)\n'
-        '  w3 akuna | (none) | (none)')
+RUN4 = ('s1 not staged: words has 1 item, s1 has 3 words.\n'
+        '  w1 Ali-di | Ali-di-gam-aku-na Ali-ERG-fish-see-PST\n'
+        '  w2 gam | (none)\n'
+        '  w3 akuna | (none)')
 
 
 def test_run4s_mistake_a_sentence_on_its_first_word_is_refused_with_the_words_lined_up():
@@ -188,38 +201,39 @@ def test_run4s_mistake_through_a_run_of_one_word_is_refused_by_the_surface_check
     w = ws()
     out = call(w, ref='s1.w2', forms='Ali-di-gam-aku-na', gloss='Ali-ERG-fish-see-PST')
     assert out == ('Error: s1.w2 not staged: w2.\n'
-                   '  w2 gam | Ali-di-gam-aku-na | Ali-ERG-fish-see-PST: forms "Alidigamakuna" are over twice as '
+                   '  w2 gam | Ali-di-gam-aku-na Ali-ERG-fish-see-PST: forms "Alidigamakuna" are over twice as '
                    'long as "gam" plus 3')
     assert w.ops == []
 
 
-@pytest.mark.parametrize('args, bad, said', [
-    ({'forms': 'Ali-di gam aku-na', 'gloss': 'Ali-ERG fish see'},
-     'w3', '  w3 akuna | aku-na | see: 2 forms, 1 in gloss'),
-    ({'forms': 'Ali--di gam aku-na', 'gloss': 'Ali--ERG fish see-PST'},
-     'w1', '  w1 Ali-di | Ali--di | Ali--ERG: an empty morpheme in "Ali--di"; an empty morpheme in gloss "Ali--ERG"'),
-    ({'forms': 'Ali-di gam aku-na-', 'gloss': 'Ali-ERG fish see-PST'},
-     'w3', '  w3 akuna | aku-na- | see-PST: an empty morpheme in "aku-na-"; 3 forms, 2 in gloss'),
-    ({'forms': '_ gam aku-na', 'gloss': 'Ali fish see-PST'},
-     'w1', '  w1 Ali-di | _ | Ali: _ in forms and not in gloss'),
-    ({'forms': 'Ali-di gamgamgamg aku-na', 'gloss': 'Ali-ERG fish see-PST'},
-     'w2', '  w2 gam | gamgamgamg | fish: forms "gamgamgamg" are over twice as long as "gam" plus 3'),
+@pytest.mark.parametrize('words, bad, said', [
+    (['Ali-di Ali-ERG', 'gam fish', 'aku-na see'],
+     'w3', '  w3 akuna | aku-na see: 2 forms, 1 in gloss'),
+    (['Ali--di Ali--ERG', 'gam fish', 'aku-na see-PST'],
+     'w1', '  w1 Ali-di | Ali--di Ali--ERG: an empty morpheme in "Ali--di"; an empty morpheme in gloss "Ali--ERG"'),
+    (['Ali-di Ali-ERG', 'gam fish', 'aku-na- see-PST'],
+     'w3', '  w3 akuna | aku-na- see-PST: an empty morpheme in "aku-na-"; 3 forms, 2 in gloss'),
+    (['Ali-di Ali-ERG', 'gam fish', 'aku-na see PST'],
+     'w3', '  w3 akuna | aku-na see PST: 3 columns, give "FORMS GLOSS" with one space between and none inside'),
+    (['Ali-di', 'gam fish', 'aku-na see-PST'],
+     'w1', '  w1 Ali-di | Ali-di: 1 column, give "FORMS GLOSS" with one space between and none inside'),
+    (['Ali-di Ali-ERG', 'gamgamgamg fish', 'aku-na see-PST'],
+     'w2', '  w2 gam | gamgamgamg fish: forms "gamgamgamg" are over twice as long as "gam" plus 3'),
 ])
-def test_a_word_that_does_not_line_up_is_not_staged_and_the_others_are(args, bad, said):
-    """v2: refused by word when every line has the sentence's number of
-    words. 61 refusals of the Natugu night run were one word's morpheme
-    counts, and they took the whole sentence with them."""
+def test_a_word_that_does_not_line_up_is_not_staged_and_the_others_are(words, bad, said):
+    """v2: refused by word. v3: a word's forms and gloss are one item, so
+    only that item can be wrong."""
     w = ws()
-    out = call(w, ref='s1', **args)
+    out = call(w, sentences=[{'ref': 's1', 'words': words}])
     assert f's1: 2 of 3 words analysed, ' in out and f'. Not staged: {bad}\n{said}' in out, out
     staged = [o['word_id'] for o in w.ops if o['kind'] == 'set_analysis']
     assert len(staged) == 2 and f'w-{bad[1:]}' not in staged
 
 
-def test_a_wrong_number_of_words_still_refuses_the_whole_sentence():
+def test_a_wrong_number_of_items_far_off_refuses_the_whole_sentence():
     w = ws()
-    out = call(w, ref='s1', forms='Ali-di gam', gloss='Ali-ERG fish')
-    assert out.startswith('Error: s1 not staged: forms has 2 words, s1 has 3; gloss has 2 words, s1 has 3.')
+    out = call(w, ref='s1', forms='Ali-di', gloss='Ali-ERG')
+    assert out.startswith('Error: s1 not staged: words has 1 item, s1 has 3 words.')
     assert w.ops == []
 
 
@@ -229,22 +243,19 @@ def test_a_wrong_number_of_words_still_refuses_the_whole_sentence():
     ({'ref': 's1.w2.m1', 'forms': 'a', 'gloss': 'b'},
      's1.w2.m1 not staged: a ref is a sentence ("s4") or a run of its words ("s4.w3-w5").'),
     ({'ref': 's1', 'forms': '_ _ _', 'gloss': '_ _ _'}, 's1 not staged: every word is _.'),
-    ({'ref': 's1', 'forms': 'a b c'},
-     's1 not staged: give gloss, the gloss line, one word per word of the ref, e.g. "gloss": '
-     '"PRS-INF-come today=DEF".'),
-    ({'ref': 's1', 'gloss': 'x y z'},
-     's1 not staged: give forms, the segmented line, one word per word of the ref, e.g. "forms": '
-     '"na-ku-ja le=o".'),
-    ({'ref': 's1', 'forms': '', 'gloss': 'x y z'},
-     's1 not staged: give forms, the segmented line, one word per word of the ref, e.g. "forms": '
-     '"na-ku-ja le=o".'),
-    ({'forms': 'a b c', 'gloss': 'x y z'},
+    ({'sentences': [{'ref': 's1'}]},
+     's1 not staged: give words, one "FORMS GLOSS" item per word of the ref, e.g. "words": '
+     '["na-ku-ja PRS-INF-come", "le=o today=DEF"].'),
+    ({'sentences': [{'ref': 's1', 'words': []}]},
+     's1 not staged: give words, one "FORMS GLOSS" item per word of the ref, e.g. "words": '
+     '["na-ku-ja PRS-INF-come", "le=o today=DEF"].'),
+    ({'sentences': [{'words': ['a b']}]},
      'A sentence not staged: give ref, the sentence ("s4") or a run of its words ("s4.w3-w5"), e.g. '
      '"ref": "s4".'),
-    ({'ref': 's1', 'forms': 'a b c', 'gloss': 'x y z', 'fields': {'Morph Gloss': 'x y z'}},
-     's1 not staged: "Morph Gloss" is the gloss line: give it as gloss.'),
-    ({'ref': 's1', 'forms': 'a b c', 'gloss': 'x y z', 'fields': {'Gloss': 'x y z'}},
-     's1 not staged: "Gloss" is a Word field: set_field sets it.'),
+    ({'sentences': [{'ref': 's1', 'words': ['a b'] * 3, 'columns': ['gloss', 'forms']}]},
+     's1 not staged: columns starts with "forms", has "gloss", and names each once.'),
+    ({'sentences': [{'ref': 's1', 'words': ['a b c'] * 3, 'columns': ['forms', 'gloss', 'Translation']}]},
+     's1 not staged: "Translation" is a Sentence field: set_field sets it.'),
 ])
 def test_the_other_refusals(args, said):
     w = ws()
@@ -254,16 +265,17 @@ def test_the_other_refusals(args, said):
 
 def test_the_call_shape_refusals():
     w = ws()
-    assert 'Give ref, forms and gloss' in call(w)
-    assert 'not both' in call(w, ref='s1', forms='a', sentences=[{'ref': 's2'}])
+    assert 'Give sentences, a list of {ref, words}' in call(w)
+    assert 'cannot be called with those arguments' in call_tool(w, 'analyze_sentence', {
+        'document': 'd1', 'ref': 's1', 'forms': 'a', 'gloss': 'b'})
     assert 'At most 20 sentences' in call(w, sentences=[{'ref': 's1'}] * 21)
     assert w.ops == []
 
 
 def test_one_sentence_refused_leaves_the_others_staged():
     w = ws()
-    out = call(w, sentences=[{'ref': 's1', 'forms': 'Ali-di-gam-aku-na', 'gloss': 'Ali-ERG-fish-see-PST'},
-                             {'ref': 's2', 'forms': 'Gam=ar', 'gloss': 'fish=FOC'}])
+    out = call(w, sentences=[{'ref': 's1', 'words': ['Ali-di-gam-aku-na Ali-ERG-fish-see-PST']},
+                             {'ref': 's2', 'words': ['Gam=ar fish=FOC']}])
     assert RUN4 in out and 's2: 1 word analysed, 2 links.' in out
     assert [o['word_id'] for o in w.ops if o['kind'] == 'set_analysis'] == ['w-4']
 
@@ -325,8 +337,8 @@ def _strip(ops):
 def test_the_ops_are_the_ops_set_analysis_create_entry_and_link_entry_stage():
     new = ws()
     call(new, sentences=[
-        {'ref': 's1', 'forms': 'Ali-di gam aku-na', 'gloss': 'Ali-ERG catch see-PST'},
-        {'ref': 's2', 'forms': 'Gam=ar', 'gloss': 'catch=FOC'}], new_entries=True)
+        {'ref': 's1', 'words': items('Ali-di gam aku-na', 'Ali-ERG catch see-PST')},
+        {'ref': 's2', 'words': ['Gam=ar catch=FOC']}], new_entries=True)
     old = ws()
     for ref, morphemes in [
             ('s1.w1', [{'form': 'Ali', 'equals': False, 'fields': {'Morph Gloss': 'Ali'}},
@@ -404,7 +416,7 @@ def test_right_to_left_text_is_lined_up_in_its_logical_order():
     assert 'رأيت ‘see.PST.1SG’ ×1 (s1.w1.m1)' in out
     out = call(ws(doc=_doc(body, [(0, len(body))], _spans(body, 'رأيت', 'شقيقته'))), ref='s1',
                forms='رأيت-شقيقة-ه', gloss='see-sister-3SG.M')
-    assert out.startswith('Error: s1 not staged: forms has 1 word, s1 has 2;') and '  w2 شقيقته | (none)' in out
+    assert out.startswith('Error: s1 not staged: words has 1 item, s1 has 2 words.') and '  w2 شقيقته | (none)' in out
 
 
 def test_a_script_with_no_spaces_between_its_words():
@@ -475,25 +487,23 @@ def test_a_sentence_refused_while_staging_names_no_entry_it_did_not_create():
     w = ws()
     call_tool(w, 'merge_words', {'document': 'd1', 'refs': ['s1.w2', 's1.w3']})
     before = list(w.ops)
-    out = call(w, sentences=[{'ref': 's1.w2', 'forms': 'gam', 'gloss': 'catch'},
-                             {'ref': 's2', 'forms': 'Gam=ar', 'gloss': 'fish=FOC'}], new_entries=True)
+    out = call(w, sentences=[{'ref': 's1.w2', 'words': ['gam catch']},
+                             {'ref': 's2', 'words': ['Gam=ar fish=FOC']}], new_entries=True)
     assert 's1.w2 not staged:' in out and 'New entries' not in out, out
     assert [o for o in w.ops if o['kind'] == 'create_entry'] == []
     assert w.ops[:len(before)] == before
 
 
-def test_the_gloss_line_given_under_fields_is_the_gloss():
-    """v2: 17 calls of the Natugu night run put the gloss line under fields
-    by the gloss field's name."""
+def test_columns_may_name_the_gloss_field_by_its_name():
     w = ws()
-    out = call(w, ref='s1.w2', forms='gam', fields={'Morph Gloss': 'fish'})
+    out = call(w, sentences=[{'ref': 's1.w2', 'columns': ['forms', 'Morph Gloss'], 'words': ['gam fish']}])
     assert out.startswith('Planned') and links(w) == [('w-2.m1', 'e-gam')], out
 
 
-def test_a_missing_line_is_named_in_one_sentence_in_a_list_too():
+def test_a_missing_words_list_is_named_in_one_sentence_in_a_list_too():
     w = ws()
-    out = call(w, sentences=[{'ref': 's1', 'gloss': 'x y z'}, {'ref': 's2', 'forms': 'Gam=ar', 'gloss': 'fish=FOC'}])
-    assert 's1 not staged: give forms, the segmented line' in out and '(none)' not in out
+    out = call(w, sentences=[{'ref': 's1'}, {'ref': 's2', 'words': ['Gam=ar fish=FOC']}])
+    assert 's1 not staged: give words, one "FORMS GLOSS" item per word' in out and '(none)' not in out
     assert 's2: 1 word analysed, 2 links.' in out
 
 
