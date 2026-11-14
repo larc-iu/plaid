@@ -626,22 +626,25 @@ PLAN_WORK = _fn(
     'End the planning: how the job\'s work is cut into pieces, what every piece is told, and optionally which '
     'documents and in what order. pieces: "sentences" (stretches of a few sentences, each its own context), '
     '"document" (one context per document) or "selection" (one context for all the documents). '
-    'only_empty: with "sentences", true to work only the sentences with an empty translation or a word nobody '
-    'analysed, false (the default) for every sentence. '
+    'skip_analyzed_sentences: with "sentences", true skips every sentence whose words are all analysed and whose '
+    'translation is written. A job that fills a field or checks analyses leaves it out. '
     'piece_instructions: what every piece is told, as decisions, added to the instructions. documents: names or '
     'ids, a subset of the job\'s documents in the order to work them. Left out, all of them in the job\'s order.',
     {'pieces': {'type': 'string', 'enum': ['sentences', 'document', 'selection']},
-     'only_empty': {'type': 'boolean'},
+     'skip_analyzed_sentences': {'type': 'boolean'},
      'piece_instructions': {'type': 'string'},
      'documents': {'type': 'array', 'items': {'type': 'string'}}}, ['pieces'])
 
 
 def t_plan_work(ws, pieces: str = None, piece_instructions: str = '', documents=None,
-                only_empty: bool = False) -> str:
+                skip_analyzed_sentences: bool = False) -> str:
     """Check the planning context's plan and keep it on the workspace
     (``ws.plan_work``): a piece size of the menu, whether stretches walk
-    only the sentences with something empty (``only_empty``), instructions
-    within their cap, a subset of the job's documents named once each."""
+    only the sentences with something empty (``skip_analyzed_sentences``,
+    kept as ``only_empty``, the key the job page reads: BRIEF OE renamed only
+    what the model sees, after planners filling a field read only_empty as
+    "only words whose field is empty"), instructions within their cap, a
+    subset of the job's documents named once each."""
     from ..core.job import composed
     from ..core.limits import JOB_PIECE_INSTRUCTIONS_MAX_CHARS
     if pieces not in ('sentences', 'document', 'selection'):
@@ -674,9 +677,10 @@ def t_plan_work(ws, pieces: str = None, piece_instructions: str = '', documents=
             raise ToolError('documents: not documents of this job: ' + ', '.join(f'"{u}"' for u in unknown[:5])
                             + '. Leave them out of documents, or leave documents out for every document.',
                             kind='invalid-argument')
+    skip = skip_analyzed_sentences is True and pieces == 'sentences'
     # Kept only when true: the plan's row holds the largest plan at its cap.
     ws.plan_work = {'pieces': pieces, 'piece_instructions': text, 'documents': order,
-                    **({'only_empty': True} if only_empty is True and pieces == 'sentences' else {}),
+                    **({'only_empty': True} if skip else {}),
                     **({'instructions_cut': given} if len(text) < given else {})}
     if len(text) < given:
         kept = (f'kept up to their last whole sentence within it, {len(text):,} characters' if whole

@@ -245,32 +245,47 @@ def test_the_planner_is_told_pieces_have_the_guidelines_and_the_instructions():
 
 @pytest.mark.parametrize('pieces', ['sentences', 'document', 'selection'])
 @pytest.mark.parametrize('only', [True, False, None])
-def test_plan_work_keeps_only_empty_only_when_true_on_a_plan_in_sentences(pieces, only):
-    """BRIEF EW: a plan in sentences walks every sentence unless it says
-    only_empty. The flag is kept only when true, and only on a plan in
-    sentences. every_sentence is gone."""
+def test_plan_work_keeps_skip_analyzed_sentences_only_when_true_on_a_plan_in_sentences(pieces, only):
+    """BRIEF EW: a plan in sentences walks every sentence unless it says so.
+    BRIEF OE: the model sets skip_analyzed_sentences (only_empty was read
+    as "only words whose field is empty" by a planner filling a field). The
+    plan keeps it as only_empty, the key the job page reads, only when true
+    and only on a plan in sentences."""
     ws = JobWorkspace(FakeClient(), _project(), mode=JobWorkspace.PLAN)
     ws.job_documents = [{'id': 'd1', 'name': 'Text 1'}]
-    args = {'pieces': pieces, **({} if only is None else {'only_empty': only})}
-    assert toolkit.job_plan_call(ws, 'plan_work', args).startswith('The plan is kept.')
+    args = {'pieces': pieces, **({} if only is None else {'skip_analyzed_sentences': only})}
+    assert toolkit.job_plan_call(ws, 'plan_work', args) == 'The plan is kept. End now with a one-line reply.'
     assert ws.plan_work.get('only_empty') is (True if only and pieces == 'sentences' else None)
+    assert 'skip_analyzed_sentences' not in ws.plan_work
     props = toolkit.PLAN_WORK['function']['parameters']['properties']
-    assert 'only_empty' in props and 'every_sentence' not in props
+    assert 'skip_analyzed_sentences' in props and 'only_empty' not in props and 'every_sentence' not in props
 
 
-def test_the_planner_is_told_every_sentence_by_default_and_only_empty_for_blanks_only():
-    """BRIEF EW: the guidance line, no longer than the one it replaced (30
-    words), says a plan in sentences takes every sentence and when to set
-    only_empty, and plan_work's description says the same."""
+def test_plan_work_takes_no_only_empty():
+    """BRIEF OE: the old name is refused as any argument it does not take."""
+    ws = JobWorkspace(FakeClient(), _project(), mode=JobWorkspace.PLAN)
+    ws.job_documents = [{'id': 'd1', 'name': 'Text 1'}]
+    out = toolkit.job_plan_call(ws, 'plan_work', {'pieces': 'sentences', 'only_empty': True})
+    assert 'plan_work takes no only_empty.' in out and ws.plan_work is None
+
+
+def test_the_planner_is_told_every_sentence_by_default_and_when_to_skip_analysed_sentences():
+    """BRIEF EW and OE: the guidance line, no longer than the one it replaced
+    (30 words), says a plan in sentences takes every sentence and when to set
+    skip_analyzed_sentences, and plan_work's description says what it skips
+    and that a job filling a field or checking analyses leaves it out."""
     line = next(x for x in prompt.JOB_PLAN_RULES.replace('\\\n', '').splitlines()
                 if x.startswith('- pieces "sentences"'))
     assert len(line[2:].split()) <= 30, len(line[2:].split())
-    assert 'Every sentence, unless instructions only fill unanalysed words or empty translations: then only_empty ' \
-           'true.' in line
-    assert 'every_sentence' not in prompt.build_plan_prompt(_project())
+    assert 'Every sentence, unless instructions only fill unanalysed words or empty translations: then ' \
+           'skip_analyzed_sentences true.' in line
+    built = prompt.build_plan_prompt(_project())
+    assert 'every_sentence' not in built and 'only_empty' not in built
     description = toolkit.PLAN_WORK['function']['description']
-    assert 'only_empty: with "sentences", true to work only the sentences with an empty translation or a word ' \
-           'nobody analysed, false (the default) for every sentence.' in description
+    assert 'only_empty' not in description
+    assert ('skip_analyzed_sentences: with "sentences", true skips every sentence whose words are all analysed '
+            'and whose translation is written. A job that fills a field or checks analyses leaves it out.'
+            ) in description
 
 
 def test_no_job_prompt_has_a_semicolon_or_an_em_dash_of_its_own():

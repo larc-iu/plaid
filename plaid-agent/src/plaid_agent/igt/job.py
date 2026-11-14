@@ -1874,7 +1874,7 @@ class IgtRunner:
     def every_sentence(self) -> bool:
         """Whether the walk takes every sentence of a document, empty or
         not: always, but under a plan in sentences with ``only_empty``
-        (plan_work's flag, for instructions that only fill words nobody
+        (plan_work's ``skip_analyzed_sentences``, for instructions that only fill words nobody
         analysed or empty translations), which walks only sentences that
         hold something empty (BRIEF EW: a job filling a new field, or
         checking glosses, on texts already analysed has every sentence to

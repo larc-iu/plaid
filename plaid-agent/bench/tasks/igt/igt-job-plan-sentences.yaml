@@ -1,8 +1,9 @@
 # The planning context of a glossing job (JG, the owner's ruling 14): work
 # judged word by word wants stretches of sentences. Five blank sentences of
 # Lezgi text 1, as igt-job-stretch has them. A plan in sentences walks every
-# sentence unless it says only_empty (BRIEF EW), and these instructions only
-# fill words nobody analysed: the plan must say only_empty.
+# sentence unless plan_work says skip_analyzed_sentences, kept in the plan as
+# only_empty (BRIEF EW, OE), and these instructions only fill words nobody
+# analysed: the plan must say only_empty.
 id: igt-job-plan-sentences
 app: igt
 project: igt-lezgi

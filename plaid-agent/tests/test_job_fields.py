@@ -2,7 +2,8 @@
 Real users' jobs are mostly not "gloss the words nobody analysed": they fill a
 new word field (thematic role, animacy) on every word of analysed texts by a
 guideline, or check the glosses there. A plan in sentences now walks every
-sentence unless it says ``only_empty``, so such a job works its documents
+sentence unless it skips analysed ones (plan_work's
+``skip_analyzed_sentences``, kept as ``only_empty``), so such a job works its documents
 whole, and its report says how many values of each field it set.
 
 The fake applies each value a write sets to what the reads answer next."""
@@ -130,7 +131,7 @@ def _check_report(finished, written):
 @pytest.mark.parametrize('pieces', ['sentences', 'document'])
 def test_a_job_fills_a_field_on_every_word_of_a_fully_analysed_document(monkeypatch, pieces):
     """The guideline says how to fill Thematic role. The plan in sentences
-    (no only_empty) or by documents takes every sentence, the piece reads
+    (no skip_analyzed_sentences) or by documents takes every sentence, the piece reads
     them as analysed and sets the field on each word with set_field. The
     report counts 9 values of Thematic role, analysed no word and lists
     nothing as left blank."""
