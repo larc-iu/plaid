@@ -22,6 +22,7 @@ import logging
 import math
 import threading
 import time
+import unicodedata
 import uuid
 from collections import Counter
 from datetime import datetime, timezone
@@ -206,9 +207,18 @@ def analysis_key(text: str) -> str:
     return hashlib.sha256(text.encode('utf-8')).hexdigest()[:32]
 
 
+def composed(text: str) -> str:
+    """``text`` as core keeps and measures it: composed (NFC), which can
+    make it longer (a precomposed nukta letter is two characters composed,
+    REV-L2-2). Every capped text the worker sends core is measured and cut
+    through this."""
+    return unicodedata.normalize('NFC', text)
+
+
 def canonical(value: Any) -> str:
-    """JSON with sorted keys and no spaces: the one spelling of a decision."""
-    return json.dumps(value, sort_keys=True, separators=(',', ':'), ensure_ascii=False)
+    """JSON with sorted keys and no spaces, composed (:func:`composed`): the
+    one spelling of a decision, as core keeps it."""
+    return composed(json.dumps(value, sort_keys=True, separators=(',', ':'), ensure_ascii=False))
 
 
 def cut(items: List[Any], limit: int = JOB_REPORT_LIST_MAX):
@@ -293,7 +303,7 @@ def error_line(e: BaseException) -> str:
     """The job's message for an error the worker has no rule for, at most
     the 300 characters core keeps. The error's own words, never Python's
     class name (test_error_text): the worker's log has the traceback."""
-    return f'The job worker met an error and stopped the job: {e}'[:300]
+    return composed(f'The job worker met an error and stopped the job: {e}')[:300]
 
 
 class Job:

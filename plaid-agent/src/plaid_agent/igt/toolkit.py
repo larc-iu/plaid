@@ -641,12 +641,14 @@ def t_plan_work(ws, pieces: str = None, piece_instructions: str = '', documents=
     (``ws.plan_work``): a piece size of the menu, whether stretches walk
     only the sentences with something empty (``only_empty``), instructions
     within their cap, a subset of the job's documents named once each."""
+    from ..core.job import composed
     from ..core.limits import JOB_PIECE_INSTRUCTIONS_MAX_CHARS
     if pieces not in ('sentences', 'document', 'selection'):
         raise ToolError('pieces: give "sentences", "document" or "selection".', kind='invalid-argument')
     # Control characters but the line break and the tab mean nothing in
     # instructions, and each would cost six characters where the plan is kept.
-    text = ''.join(c for c in str(piece_instructions or '') if c in '\n\t' or ord(c) >= 32).strip()
+    # Composed first, as core measures it (REV-L2-2).
+    text = composed(''.join(c for c in str(piece_instructions or '') if c in '\n\t' or ord(c) >= 32)).strip()
     # Longer instructions are cut, never refused: a planner refused for
     # them asked again with the same ones until its calls ran out (BRIEF PF).
     given = len(text)

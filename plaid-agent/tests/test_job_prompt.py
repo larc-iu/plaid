@@ -167,6 +167,34 @@ def test_plan_work_cuts_one_long_sentence_at_the_cap():
     assert ws.plan_work['piece_instructions'] == 'x' * cap and ws.plan_work['instructions_cut'] == cap + 7
 
 
+def test_plan_work_measures_its_instructions_composed_as_core_does():
+    """REV-L2-2: core composes (NFC) every string of a job route before it
+    measures, and a precomposed nukta letter (U+09DF) is two characters
+    composed. Instructions of 3,999 of them passed the cut and core refused
+    the plan with a 400. They are composed, then measured and cut."""
+    import unicodedata
+    from plaid_agent.core.limits import JOB_PIECE_INSTRUCTIONS_MAX_CHARS as cap
+    ws = JobWorkspace(FakeClient(), _project(), mode=JobWorkspace.PLAN)
+    ws.job_documents = []
+    told = chr(0x9DF) * (cap - 1)
+    toolkit.job_plan_call(ws, 'plan_work', {'pieces': 'document', 'piece_instructions': told})
+    kept = ws.plan_work['piece_instructions']
+    assert unicodedata.normalize('NFC', kept) == kept and len(kept) <= cap
+    assert ws.plan_work['instructions_cut'] == 2 * (cap - 1)
+
+
+def test_every_decision_and_message_the_worker_sends_is_composed():
+    """REV-L2-2: one helper for every capped text the worker measures (a
+    decision's analysis, which holds notes, table cells and proposed values,
+    and the job's message): composed before it is measured."""
+    import unicodedata
+    from plaid_agent.core.job import canonical, error_line
+    letter = chr(0x9DF)
+    assert canonical({'note': letter}) == unicodedata.normalize('NFC', '{"note":"' + letter + '"}')
+    line = error_line(Exception(letter * 400))
+    assert unicodedata.normalize('NFC', line) == line and len(line) <= 300
+
+
 def test_plan_work_at_the_cap_is_kept_whole_and_not_marked():
     from plaid_agent.core.limits import JOB_PIECE_INSTRUCTIONS_MAX_CHARS as cap
     ws = JobWorkspace(FakeClient(), _project(), mode=JobWorkspace.PLAN)
