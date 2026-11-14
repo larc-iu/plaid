@@ -439,3 +439,17 @@ def test_the_prompts_name_analyze_sentence_where_they_named_set_analysis_for_a_s
     from plaid_agent.igt.prompt import JOB_SYSTEM, SYSTEM
     assert 'staged one analyze_sentence call per sentence' in SYSTEM and 'set_analysis call per' not in SYSTEM
     assert 'You staged one analyze_sentence for s6' in JOB_SYSTEM and 'staged one set_analysis' not in JOB_SYSTEM
+
+
+def test_a_sentence_refused_while_staging_names_no_entry_it_did_not_create():
+    """s1.w2 creates gam 'catch', then the link to it is refused (the word
+    is merged in this plan): the sentence is taken back whole, and the answer
+    lists no new entry."""
+    w = ws()
+    call_tool(w, 'merge_words', {'document': 'd1', 'refs': ['s1.w2', 's1.w3']})
+    before = list(w.ops)
+    out = call(w, sentences=[{'ref': 's1.w2', 'forms': 'gam', 'gloss': 'catch'},
+                             {'ref': 's2', 'forms': 'Gam=ar', 'gloss': 'fish=FOC'}], new_entries=True)
+    assert 's1.w2 not staged:' in out and 'New entries' not in out, out
+    assert [o for o in w.ops if o['kind'] == 'create_entry'] == []
+    assert w.ops[:len(before)] == before

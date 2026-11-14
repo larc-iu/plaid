@@ -270,6 +270,7 @@ def _stage_sentence(ws: Workspace, doc: IgtDoc, item: Dict[str, Any], new_entrie
     g = next((f for name, _l, f in lines if name == 'gloss'), None)
     notes: List[str] = []
     found: Dict[tuple, Dict[str, Any]] = {}
+    created: List[str] = []
     with ws.staging():
         n_analysed = 0
         for w, morphs in zip(words, parsed):
@@ -306,7 +307,7 @@ def _stage_sentence(ws: Workspace, doc: IgtDoc, item: Dict[str, Any], new_entrie
                                         kind='invalid-argument')
                     _create_entry(ws, v, form, {key: value}, kind, None)
                     creates += 1
-                    made.append(f'{form} ‘{value}’')
+                    created.append(f'{form} ‘{value}’')
                     hits = _fits(ws, form, value, kind)
                 if len(hits) == 1:
                     links.setdefault(hits[0][1], []).append(mref)
@@ -318,6 +319,7 @@ def _stage_sentence(ws: Workspace, doc: IgtDoc, item: Dict[str, Any], new_entrie
         for target, refs in links.items():
             t_link_entry(ws, doc.id, refs, entry_id=target)
             n_links += len(refs)
+    made += created
     for key, entry in found.items():
         into = listed.setdefault(key, {**entry, 'refs': []})
         into['refs'] += entry['refs']
