@@ -39,7 +39,7 @@ from .project import Morpheme, Word, resolve, split_sentences
 PLANNED = 'planned_word'
 
 RENUMBERED = ('{where}: s{n} is retyped in this plan, so its words are renumbered when it is applied. Plan this '
-              'once the retype is applied, or discard_plan to start over. Only word field values can be planned on '
+              'once the retype is applied. Only word field values can be planned on '
               'its words in this plan (set_field, by the numbers the retype listed).')
 UNNUMBERED = ('{where}: s{n} is retyped in this plan, and its new text changes its words in a way that cannot be '
               'numbered before it is applied. Plan values on its words once the retype is applied, or discard_plan '
@@ -634,10 +634,11 @@ def renumbered_cut(ws, s, w, where: str, n: int) -> None:
                     'applied. Split the sentence once the plan is applied.', kind='conflict')
 
 
-def resolve_in(ws, doc, ref: str):
+def resolve_in(ws, doc, ref: str, renumber: bool = True):
     """``project.resolve`` for a reference a tool was given: the thing it
     names, refused when it is a bare word number the plan's reshapes
-    renumber (:func:`renumbered`)."""
+    renumber (:func:`renumbered`), unless ``renumber`` is False (a tool that
+    asks it after its own guards)."""
     try:
         obj = resolve(doc, ref)
     except ValueError:
@@ -652,5 +653,6 @@ def resolve_in(ws, doc, ref: str):
                 raise ToolError(RENUMBERED.format(where=f'{ws.doc_label(doc.id)} {ref}', n=s.index),
                                 kind='conflict') from None
         raise
-    renumbered(ws, doc, ref, obj)
+    if renumber:
+        renumbered(ws, doc, ref, obj)
     return obj

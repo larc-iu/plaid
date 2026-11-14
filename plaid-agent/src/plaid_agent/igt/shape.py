@@ -314,7 +314,7 @@ def t_merge_words(ws: Workspace, document: str, refs) -> str:
     if len(refs) < 2:
         raise ToolError('Give at least two word references in one sentence, e.g. ["s3.w2", "s3.w3"]',
                         kind='invalid-argument')
-    named = [(r, _need(resolve(doc, r), Word, r)) for r in refs]
+    named = [(r, _need(resolve_in(ws, doc, r, renumber=False), Word, r)) for r in refs]
     words = [w for _, w in named]
     sents = {resolve(doc, r.split('.')[0]).id for r in refs}
     if len(sents) != 1:

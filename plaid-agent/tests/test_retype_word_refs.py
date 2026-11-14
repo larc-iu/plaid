@@ -614,7 +614,11 @@ def test_the_refusals_wording():
     call_tool(w, 'retype_sentence', {'document': 'd1', 'ref': 's1', 'text': 'Ali-di ∅ gam akuna.'})
     out = call_tool(w, 'link_entry', {'document': 'd1', 'refs': ['s1.w4'], 'entry_form': 'gam', 'entry_gloss': 'fish'})
     assert out.startswith(f'Error: Text 1 s1.w4: {RETYPED}'), out
-    assert 'has 3 words' not in out
+    assert 'has 3 words' not in out and 'discard_plan' not in out
+    # merge_words too, which asks the renumbering after its own guards
+    # (REV-RR2-4)
+    out = call_tool(w, 'merge_words', {'document': 'd1', 'refs': ['s1.w3', 's1.w4']})
+    assert out.startswith(f'Error: Text 1 s1.w4: {RETYPED}') and 'discard_plan' not in out, out
 
 
 # --- a rule over a retyped sentence (REV-RR-6) -------------------------------------------
