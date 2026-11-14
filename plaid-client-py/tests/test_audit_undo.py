@@ -93,3 +93,15 @@ def test_an_undo_whose_answer_was_lost_is_sent_again_under_its_key():
     client.session = recording_session(answer)
     assert client.audit.undo('e1', document_id='d1')['operation'] == 'o1'
     assert len(keys) == 2 and keys[0] == keys[1]
+
+
+def test_an_undo_never_joins_an_open_logical_operation():
+    # An entry of its own: no group stamp while the caller has an operation open.
+    client = PlaidClient('http://x', 'tok')
+    client.session = recording_session([{'entry': 'e1', 'total': 1, 'operation': 'o1'}])
+    with client.operation('Edit'):
+        client.audit.undo('e1', document_id='d1')
+    sent = [s for s in client.session.sent if '/undo' in s['url']]
+    assert len(sent) == 1
+    assert 'group-id' not in repr(sent[0])
+    assert (sent[0]['headers'] or {}).get('Idempotency-Key')

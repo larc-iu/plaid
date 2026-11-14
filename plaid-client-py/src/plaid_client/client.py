@@ -3574,7 +3574,10 @@ class AuditResource(_Resource):
                              query_params={'dry-run': 'true' if dry_run else None,
                                            'document-id': document_id,
                                            'vocab-layer-id': vocab_layer_id},
-                             timeout=self._client.batch_timeout)
+                             timeout=self._client.batch_timeout,
+                             # An entry of its own, never part of an open
+                             # logical operation (as the JS client).
+                             no_operation=True)
 
     def tally(self, *, project_id: str | None = None, start_time: str | None = None,
               end_time: str | None = None, daily: bool | None = None) -> Any:

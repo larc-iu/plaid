@@ -467,6 +467,10 @@ export function auditApi(client) {
           "vocab-layer-id": vocabLayerId,
         },
         timeout: client.batchTimeout,
+        // An entry of its own, never part of a logical operation the page has
+        // open: joined, History would fold it into that edit, and it would
+        // take a key from that operation's seed.
+        noOperation: true,
       }),
     /**
      * Per-user activity counts. `changes` is the number of logical actions,

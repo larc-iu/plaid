@@ -106,3 +106,21 @@ test("an undo whose answer was lost is sent again under its key", async () => {
     globalThis.fetch = real;
   }
 });
+
+// An undo is an entry of its own. Sent while the page has a logical operation
+// open, it does not join it: no group stamp, and a key that is not one of the
+// operation's.
+test("an undo never joins an open logical operation", async () => {
+  const { sent, restore } = stub({ entry: "e1", total: 1, operation: "o1" });
+  try {
+    const client = new PlaidClient("http://x", "tok");
+    await client.withOperation("Edit", async () => {
+      await client.audit.undo("e1", { documentId: "d1" });
+    });
+    assert.equal(sent.length, 1);
+    assert.equal(sent[0].url.searchParams.has("group-id"), false);
+    assert.ok(sent[0].headers.get("Idempotency-Key"));
+  } finally {
+    restore();
+  }
+});
