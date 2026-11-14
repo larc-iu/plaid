@@ -216,11 +216,11 @@ def test_a_crash_after_the_write_with_nobody_writing_since_is_counted_and_never_
     assert not _marks(client), 'never read back as written: harmonize leaves its words'
 
 
-def test_a_word_a_person_cleared_after_the_write_is_listed_as_left_blank(monkeypatch):
-    """BRIEF NW (it replaces REV-FIX3-3): "Left blank" is what the document
-    holds blank at the end, whoever staged what. A word the job wrote that a
-    person cleared since is listed with the word the model left, and still
-    counted as written."""
+def test_a_person_clearing_one_of_the_jobs_words_is_not_listed_as_left_blank(monkeypatch):
+    """REV-FIX3-3, as REV-LNW-4 keeps it: "Left blank" is read from the
+    document at the end, less what the job wrote. A word it wrote that reads
+    blank now was cleared by a person: not "Left blank", and counted as
+    written."""
     def first_two(asked, n, kwargs):
         if n > 1:
             return reply('Done.')
@@ -236,8 +236,8 @@ def test_a_word_a_person_cleared_after_the_write_is_listed_as_left_blank(monkeyp
     assert _resume(client, job).document('d1') == 'done'
     # The empty translation is blank too: the report lists only what the job
     # filled somewhere (``document_reports``).
-    assert [x for x in _left(job) if '.w' in x] == ['s1.w2', 's1.w3']
-    assert job.rows['d1']['counts']['words'] == 2 and _report_counts(job)['left'] == 2
+    assert [x for x in _left(job) if '.w' in x] == ['s1.w3'], 'only the word the model left'
+    assert job.rows['d1']['counts']['words'] == 2 and _report_counts(job)['left'] == 1
 
 
 def test_a_write_the_starter_confirmed_after_a_crash_is_recorded_and_counted(monkeypatch):
@@ -521,11 +521,10 @@ def test_an_error_after_the_write_landed_is_still_taken_as_a_write_that_may_have
 
 # --- what the starter clears under the lock, right after the write -------------------------
 
-def test_a_word_the_starter_clears_under_the_lock_is_listed_left_blank(monkeypatch):
-    """The write lands whole and the starter clears the job's proposal on
-    ta before the job reads the document again. ta is blank at the end: it
-    is "Left blank" (BRIEF NW, which replaces REV-B4-2), and the rows count
-    it as written."""
+def test_a_word_the_starter_clears_under_the_lock_is_not_listed_left_blank(monkeypatch):
+    """REV-B4-2: the write lands whole and the starter clears the job's
+    proposal on ta before the job reads the document again. The job wrote
+    ta: it is not "Left blank", and the rows count it as written."""
     client, job, clock, model = _job(monkeypatch, before=[{'words': ['ka', 'ta']}],
                                      after=[{'words': [MINE['ka'], MINE['ta']]}])
     real = igt_job.execute_plan
@@ -536,11 +535,11 @@ def test_a_word_the_starter_clears_under_the_lock_is_listed_left_blank(monkeypat
         return out
     monkeypatch.setattr(igt_job, 'execute_plan', execute)
     assert runner(job).document('d1') == 'done'
-    assert [x for x in _left(job) if '.w' in x] == ['s1.w2'] and _report_counts(job)['left'] == 1
+    assert [x for x in _left(job) if '.w' in x] == [] and not _report_counts(job)['left']
     assert job.rows['d1']['counts']['words'] == 2
 
 
-def test_a_translation_the_starter_clears_under_the_lock_is_listed_left_blank(monkeypatch):
+def test_a_translation_the_starter_clears_under_the_lock_is_not_listed_left_blank(monkeypatch):
     def translate(asked, n, kwargs):
         if n > 1:
             return reply('Done.')
@@ -556,7 +555,7 @@ def test_a_translation_the_starter_clears_under_the_lock_is_listed_left_blank(mo
         return out
     monkeypatch.setattr(igt_job, 'execute_plan', execute)
     assert runner(job).document('d1') == 'done'
-    assert [x for x in _left(job) if '.w' not in x] == ['s1'] and _report_counts(job)['left_translations'] == 1
+    assert [x for x in _left(job) if '.w' not in x] == [] and not _report_counts(job)['left_translations']
 
 
 # --- a sentence's other values are not its translation (REV-JG-11) -------------------------

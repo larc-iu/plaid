@@ -151,3 +151,39 @@ def test_a_selection_that_read_part_of_a_document_leaves_the_rest_to_the_walk(wo
     finished = run_job(job, _runner(job))
     assert pieces == [[3, 4]], pieces
     _check(admin, s, finished)
+
+
+def test_a_word_the_bulk_op_wrote_and_the_starter_cleared_is_not_written_again(world, monkeypatch):
+    """REV-LNW-1 on a real core: the starter clears ka in s3 right after the
+    bulk piece's write. The piece of s3 and s4 is not told it is empty and
+    never writes it, and glosses sa. ka in s3 is counted as written, not
+    as left."""
+    admin, writer, make = world
+    s = make({'dA': document('dA', 'Alpha', [{'words': w} for w in SENTENCES])})
+    monkeypatch.setattr(igt_job, 'JOB_STRETCH_SENTENCES', 2)
+    pieces, sent = [], []
+    use(monkeypatch, Model(_model(pieces)))
+    real = igt_job.execute_plan
+
+    def execute(c, ops, **kw):
+        out = real(c, ops, **kw)
+        sent.append([o.get('word_id') for o in ops if o.get('kind') == 'set_analysis'])
+        if len(sent) == 1:
+            raw = admin.documents.get(s.ids['dA'], include_body=True)
+            layers = {tk['id']: tk for tl in raw['text_layers'] for tk in tl['token_layers']}
+            ka3 = layers[s.ids[WORD_LAYER]]['tokens'][4]
+            for t in layers[s.ids[MORPH_LAYER]].get('tokens') or []:
+                if (t['begin'], t['end']) == (ka3['begin'], ka3['end']):
+                    writer.tokens.delete(t['id'])
+        return out
+    monkeypatch.setattr(igt_job, 'execute_plan', execute)
+    job = _job(admin, writer, s, 'sentences')
+    finished = run_job(job, _runner(job))
+    assert finished['state'] == 'done'
+    assert pieces == [[1, 2], [3, 4]]
+    later = {w for ws in sent[1:] for w in ws}
+    assert s.ids['dA-s3w1'] in set(sent[0]) and s.ids['dA-s3w1'] not in later, sent
+    assert s.ids['dA-s3w2'] in later
+    assert _analysed(admin, s) == ['s1.w1', 's1.w2', 's2.w1', 's2.w2', 's3.w2', 's4.w1']
+    (doc,) = finished['report']['documents']
+    assert [e['ref'] for e in doc['left']] == ['s4.w2'] and doc['counts']['words'] == WORDS - 1

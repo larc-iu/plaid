@@ -312,16 +312,46 @@ def translation_target(s: Sentence, project: IgtProject, job_id: str) -> bool:
     return translation_field(project) is not None and translation_state(s, project, job_id) == 'empty'
 
 
+class Written:
+    """What any landed write of the job wrote, whoever's sentence it was in
+    (:meth:`IgtRunner.written`): the tags of the words it analysed
+    (:func:`word_tag`) and the sentences whose translation it wrote. The job
+    never writes these again once they read blank: a person undid them
+    (REV-JG-1, REV-LNW-1)."""
+
+    def __init__(self, words=frozenset(), translations=frozenset()):
+        self.words, self.translations = frozenset(words), frozenset(translations)
+
+    def undone(self, op: Dict[str, Any], doc, project: IgtProject, job_id: str) -> bool:
+        """Whether ``op`` writes again on a word or a translation the job
+        wrote that reads blank in ``doc``: never written (counted as
+        ``changed``, a person changed it during the job)."""
+        from .jobapply import _found
+        hit = _found(doc, op.get('analysis_word_id') or op.get('word_id') or op.get('token_id'))
+        if hit is not None and hit[1] is not None:
+            w = hit[1]
+            return word_tag(w.id) in self.words and word_target(w)
+        if hit is not None and op.get('kind') == 'set_span' and op.get('layer_id') == translation_layer(project) \
+                and hit[0] is not None and hit[0].id == op.get('token_id'):
+            return hit[0].id in self.translations and translation_target(hit[0], project, job_id)
+        return False
+
+
 def sentence_targets(s: Sentence, project: IgtProject, job_id: str,
-                     known=frozenset()) -> Tuple[List[Word], bool]:
+                     known=frozenset(), written: Optional[Written] = None) -> Tuple[List[Word], bool]:
     """What is empty in ``s``: its blank words and whether its translation
     is empty. A job walks a document's sentences that hold something empty
     (a job has no task types: what it fills is its instructions' business).
     Nothing in a sentence that holds a word of a sentence a landed write of
-    the job wrote in (``known``, :meth:`IgtRunner.known_words`)."""
+    the job wrote in as one of its own (``known``,
+    :meth:`IgtRunner.known_words`), and never a word or a translation any
+    landed write of the job wrote (``written``): one that reads blank was
+    cleared by a person."""
     if wrote_in(s, known):
         return [], False
-    return [w for w in s.words if word_target(w)], translation_target(s, project, job_id)
+    written = written or Written()
+    return ([w for w in s.words if word_target(w) and word_tag(w.id) not in written.words],
+            translation_target(s, project, job_id) and s.id not in written.translations)
 
 
 def wrote_in(s: Sentence, known) -> bool:
@@ -558,7 +588,8 @@ class Stretch:
     """The targets of one stretch: which words and translations may be
     written, and where every token of the document sits."""
 
-    def __init__(self, doc, project: IgtProject, sentences: List[Sentence], job_id: str, known=frozenset()):
+    def __init__(self, doc, project: IgtProject, sentences: List[Sentence], job_id: str, known=frozenset(),
+                 written: Optional['Written'] = None):
         self.doc = doc
         self.project = project
         self.sentence_ids = {s.id for s in sentences}
@@ -573,7 +604,7 @@ class Stretch:
                     self.where[m.id] = s
         self.word_of: Dict[str, str] = {}
         for s in sentences:
-            words, translate = sentence_targets(s, project, job_id, known)
+            words, translate = sentence_targets(s, project, job_id, known, written)
             for w in words:
                 self.words[w.id] = w
                 for m in w.morphemes:
@@ -1789,6 +1820,7 @@ class IgtRunner:
         row = self.job.rows.get(document_id) or {}
         skipped = self.excluded(document_id)
         known = self.known_words(document_id)
+        written = self.written(document_id)
         ids = [s.id for s in doc.sentences]
         start = ids.index(row['last_sentence']) + 1 if row.get('last_sentence') in ids else 0
         out = []
@@ -1799,7 +1831,7 @@ class IgtRunner:
                 if not wrote_in(s, known):
                     out.append(s)
                 continue
-            words, translate = sentence_targets(s, project, self.job.id, known)
+            words, translate = sentence_targets(s, project, self.job.id, known, written)
             if words or translate:
                 out.append(s)
         return out
@@ -1879,7 +1911,7 @@ class IgtRunner:
         ws._docs[document_id] = doc
         doc = ws.doc(document_id)
         part = [s for s in doc.sentences if s.id in sentence_ids]
-        st = Stretch(doc, project, part, job.id, self.known_words(document_id))
+        st = Stretch(doc, project, part, job.id, self.known_words(document_id), self.written(document_id))
         whole = self.whole_document(project, doc)
         if st.empty() and not self.every_sentence():
             # Nothing to do: rows that say so, as a write that sends nothing.
@@ -2279,6 +2311,21 @@ class IgtRunner:
                 out |= set(r.get('words') or ()) | set(r.get('others') or ())
         return frozenset(out)
 
+    def written(self, document_id: str) -> Written:
+        """What any landed write of the job wrote in the document
+        (:class:`Written`), its own sentences or not: the words its rows
+        name as analysed and the sentences whose translation it wrote."""
+        rows, landed = self.view(document_id)
+        words, translations = set(), set()
+        for r in rows:
+            if r.get('loose') or not landed(r):
+                continue
+            words |= set(r.get('words') or ())
+            counts = r.get('counts') or {}
+            if counts.get('translations') or counts.get('refreshed'):
+                translations.add(r['sentence'])
+        return Written(words, translations)
+
     def write(self, project: IgtProject, document_id: str, ws: JobWorkspace, doc, part: List[Sentence],
               prints: Dict[str, str], ops: List[Dict[str, Any]], note: str = '', piece: str = '',
               selection: bool = False) -> bool:
@@ -2315,9 +2362,16 @@ class IgtRunner:
         kept = [o for o in ops if getattr(sentence_of(o, doc), 'id', None) not in again
                 and (o.get(LOOSE) is None or o[LOOSE] not in done)]
         repeated, ops = len(ops) - len(kept), kept
+        # A word or a translation any landed write of the job wrote, in any
+        # sentence, that reads blank now: a person undid it, and the job
+        # never writes it again (REV-JG-1, REV-LNW-1). Counted as changed
+        # during the job.
+        written = self.written(document_id)
+        kept = [o for o in ops if not written.undone(o, doc, project, job.id)]
+        undone, ops = len(ops) - len(kept), kept
         out = self.excluded(document_id)
         part = [s for s in part if s.id not in out]
-        st = Stretch(doc, project, part, job.id, self.known_words(document_id))
+        st = Stretch(doc, project, part, job.id, self.known_words(document_id), self.written(document_id))
         row = job.rows.get(document_id) or {}
         group = row.get('gloss_group')
         if not group:
@@ -2329,7 +2383,7 @@ class IgtRunner:
             try:
                 try:
                     w, changed, after, vouched, proposed = self.write_held(
-                        project, document_id, client, ws, st, prints, ops, group, piece, repeated)
+                        project, document_id, client, ws, st, prints, ops, group, piece, repeated, undone)
                 finally:
                     lock.__exit__(None, None, None)
             except DocumentLockLost as e:
@@ -2398,7 +2452,7 @@ class IgtRunner:
 
     def write_held(self, project: IgtProject, document_id: str, client, ws: JobWorkspace, st: Stretch,
                    prints: Dict[str, str], ops: List[Dict[str, Any]], group: str, piece: str = '',
-                   repeated: int = 0):
+                   repeated: int = 0, undone: int = 0):
         """The write, the lock held: the piece's ops checked again against
         the document as it is (:meth:`recheck`), sent (:meth:`send`), and
         the document read again BEFORE the lock goes. ``(the write, changed
@@ -2416,6 +2470,7 @@ class IgtRunner:
         fresh = self.read(project, document_id, client)
         kept, counts, changed, proposed = self.recheck(ws, project, fresh, st, prints, ops)
         counts['repeated'] += repeated
+        counts['changed'] += undone
         blank = {w.id for s in fresh.sentences if s.id in st.sentence_ids and s.id not in changed
                  for w in s.words if w.id in st.words and word_target(w)}
         self.machine_status(project, kept)
@@ -3487,7 +3542,9 @@ class IgtRunner:
         landed write finished it, :meth:`finished`, wherever a split or a
         merge moved its words), every word with no analysis
         (:func:`word_target`) and an empty translation, whoever staged what
-        there or nothing (BRIEF NW). In document order: ``{ref,
+        there or nothing (BRIEF NW), but a word or translation the job wrote
+        (:meth:`written`): one that reads blank was cleared by a person, and
+        it is counted as written (REV-LNW-4). In document order: ``{ref,
         sentence_id, begin, form}``, ``begin`` and ``form`` None for a
         translation. A document that cannot be read lists nothing: the
         report is still written."""
@@ -3499,7 +3556,7 @@ class IgtRunner:
             return {}
         out: Dict[str, List[Dict[str, Any]]] = {}
         for d in job.order:
-            worked, known = self.finished(d), self.known_words(d)
+            worked, known, written = self.finished(d), self.known_words(d), self.written(d)
             if not worked:
                 continue
             try:
@@ -3512,8 +3569,9 @@ class IgtRunner:
                 if s.id not in worked and not wrote_in(s, known):
                     continue
                 listed += [{'ref': f's{s.index}.w{w.index}', 'sentence_id': s.id, 'begin': w.begin,
-                            'form': w.surface} for w in s.words if word_target(w)]
-                if translation_target(s, project, job.id):
+                            'form': w.surface} for w in s.words
+                           if word_target(w) and word_tag(w.id) not in written.words]
+                if translation_target(s, project, job.id) and s.id not in written.translations:
                     listed.append({'ref': f's{s.index}', 'sentence_id': s.id, 'begin': None, 'form': None})
         return out
 

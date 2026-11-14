@@ -7,9 +7,11 @@ ran, and the report neither counted nor listed the words left blank there.
 The rule (the piece key, CONTRACT "Added by JH-FIX" and "Added by RX"): a
 sentence is closed to a piece only by that piece's own landed write in it as
 one of its own sentences. The sentence's own piece still gets it, sees what
-is analysed there, and works the rest. And the report's Left blank is read
-from the document as it is at the end: every word with no analysis in a
-sentence the job worked, whoever staged what.
+is analysed there, and works the rest. A word or a translation any landed
+write of the job wrote is never a target again, in any sentence: one a
+person cleared is never written again (REV-LNW-1). And the report's Left
+blank is read from the document as it is at the end: every word with no
+analysis in a sentence the job worked, but those the job wrote.
 
 The fake applies each set_analysis it is sent to the document its reads
 answer next, so each piece reads what the pieces before it wrote. The bulk
@@ -119,21 +121,23 @@ def _first_words(asked, n, kwargs):
 
 
 def test_left_blank_is_what_the_document_holds_blank_at_the_end(monkeypatch):
-    """Left blank is read from the document as the report is written: s2's
-    first word, which the job glossed and which reads blank again at the end
-    (a later write took it away), is listed with the words nobody staged
-    anything for, and ``left`` counts the list."""
+    """Left blank is read from the document as the report is written. pata,
+    which the model left and a person analysed during the job, is not
+    listed. ka in s2, which the job glossed and a person cleared, is counted
+    as written and not listed (REV-LNW-4): analysed plus left counts each
+    word once. ta and sa, which nobody staged anything for, are listed."""
     client = JobClient({'d1': document('d1', 'Story', [{'words': ['ka', 'pata']}, {'words': ['ka', 'ta', 'sa']}])})
     mine = ('ka', [('ka', 'g')], J)
-    client.after_write['d1'] = document('d1', 'Story', [{'words': [mine, 'pata']}, {'words': ['ka', 'ta', 'sa']}],
+    theirs = ('pata', [('pata', 'p')], 'human')
+    client.after_write['d1'] = document('d1', 'Story', [{'words': [mine, theirs]}, {'words': ['ka', 'ta', 'sa']}],
                                         version=2)
     job = start(client, id=J)
     use(monkeypatch, Model(_first_words))
     finished = run_job(job, runner(job))
     assert finished['state'] == 'done'
     (doc,) = finished['report']['documents']
-    assert [e['ref'] for e in doc['left']] == ['s1.w2', 's2.w1', 's2.w2', 's2.w3']
-    assert doc['counts']['left'] == 4 and doc['left_more'] == 0
+    assert [e['ref'] for e in doc['left']] == ['s2.w2', 's2.w3']
+    assert doc['counts']['left'] == 2 and doc['left_more'] == 0 and doc['counts']['words'] == 2
 
 
 def test_the_left_count_is_the_whole_list_when_the_list_is_cut(monkeypatch):
@@ -192,3 +196,108 @@ def test_the_second_half_of_a_halved_stretch_keeps_its_sentence_the_first_half_w
     (doc,) = finished['report']['documents']
     assert [e['ref'] for e in doc['left']] == ['s4.w2']
     assert doc['counts']['words'] + doc['counts']['left'] == sum(len(s) for s in SENTENCES)
+
+
+# --- a word the job wrote and a person cleared is never written again (REV-LNW-1) ---------------
+
+def _stage_named(asked, n, kwargs, also=()):
+    """The piece of s1 is _bulk_then_each's. Any other piece glosses every
+    word its message names as empty, and stages ``also`` besides."""
+    if n > 1 or 'Your piece: s' not in asked:
+        return reply('Done.')
+    if 1 in targets_named(asked):
+        return _bulk_then_each(asked, n, kwargs)
+    calls = list(also)
+    for s, words in re.findall(r'^Empty in s(\d+): words (.*?)(?: and the translation)?\.$', asked, re.M):
+        for i, form in re.findall(r'w(\d+) "([^"]+)"', words):
+            calls.append(call(len(calls) + 20, 'set_analysis', {'document': 'Story', 'ref': f's{s}.w{i}', 'morphemes': [
+                {'form': form, 'fields': {'Morph Gloss': 'g'}}]}))
+    return reply(calls=calls)
+
+
+def _clearing(monkeypatch, client, cleared):
+    """Each write's set_analysis applied to what the reads answer next, and
+    the starter clearing ``cleared`` (word ids) right after the first. The
+    words each write sent."""
+    analysed, real, writes = set(), igt_job.execute_plan, []
+
+    def execute(c, ops, **kw):
+        out = real(c, ops, **kw)
+        writes.append([o['word_id'] for o in ops if o.get('kind') == 'set_analysis'])
+        analysed.update(writes[-1])
+        if len(writes) == 1:
+            analysed.difference_update(cleared)
+        client.after_write['d1'] = _doc(analysed, version=len(client.writes) + 1)
+        return out
+    monkeypatch.setattr(igt_job, 'execute_plan', execute)
+    return writes
+
+
+@pytest.mark.parametrize('blind', [False, True], ids=['as-told', 'staged-anyway'])
+def test_a_word_the_bulk_op_wrote_and_a_person_cleared_is_not_written_again(monkeypatch, blind):
+    """The reviewer's probe (REV-LAND-NW): piece s1-s2 glosses ka in s1 and
+    s3 with set_analysis_for_form, the starter clears ka in s3 at once. The
+    piece of s3 and s4 is not told s3.w1 is empty and never writes it
+    (staged anyway, it is left out and counted as changed during the job),
+    and it glosses the rest of s3. ka in s3 is counted as written, not as
+    left: 8 words, 8 analysed, nothing left."""
+    monkeypatch.setattr(igt_job, 'JOB_STRETCH_SENTENCES', 2)
+    client = JobClient({'d1': _doc(set())})
+    job = start(client, id=J)
+    writes = _clearing(monkeypatch, client, {'d1-s3w1'})
+    again = [call(19, 'set_analysis', {'document': 'Story', 'ref': 's3.w1', 'morphemes': [
+        {'form': 'ka', 'fields': {'Morph Gloss': 'g'}}]})] if blind else []
+    model = use(monkeypatch, Model(lambda a, n, k: _stage_named(a, n, k, again)))
+    finished = run_job(job, runner(job))
+    assert finished['state'] == 'done'
+    assert _asked(model) == [[1, 2], [3, 4]]
+    assert 'd1-s3w1' in writes[0], 'the bulk op wrote ka in s3'
+    later = [w for ws in writes[1:] for w in ws]
+    assert 'd1-s3w1' not in later, 'ka in s3, cleared by a person, is never written again'
+    assert {'d1-s3w2', 'd1-s4w1', 'd1-s4w2'} <= set(later), 'the rest of s3 and s4 is worked'
+    (doc,) = finished['report']['documents']
+    second = next(c['asked'] for c in model.calls if c['n'] == 1 and targets_named(c['asked']) == [3, 4])
+    assert re.findall(r'^Empty in s3: words (.*?)(?: and the translation)?\.$', second, re.M) == ['w2 "sa"']
+    assert doc['left'] == [] and doc['counts']['left'] == 0 and doc['counts']['words'] == 8
+    assert doc['counts'].get('changed', 0) == (1 if blind else 0)
+
+
+def test_a_translation_the_job_wrote_and_a_person_cleared_is_not_written_again(monkeypatch):
+    """Piece s1-s2 also translates s3 (the bulk of its instructions), the
+    starter clears it. The piece of s3 and s4 is not told s3's translation
+    is empty, and when it writes one anyway it is left out."""
+    monkeypatch.setattr(igt_job, 'JOB_STRETCH_SENTENCES', 2)
+    sentences = [{'words': [w]} for w in ('ka', 'pa', 'sa', 'mo')]
+    client = JobClient({'d1': document('d1', 'Story', sentences)})
+    job = start(client, 'Translate the empty translations.', id=J)
+    real, sent, translated = igt_job.execute_plan, [], set()
+
+    def execute(c, ops, **kw):
+        out = real(c, ops, **kw)
+        sent.append([o.get('token_id') for o in ops if o.get('kind') == 'set_span'])
+        translated.update(sent[-1])
+        if len(sent) == 1:
+            translated.discard('d1-s3')
+        client.after_write['d1'] = document('d1', 'Story', [
+            {**x, **({'translation': ('T.', J)} if f'd1-s{i}' in translated else {})}
+            for i, x in enumerate(sentences, start=1)], version=len(client.writes) + 1)
+        return out
+    monkeypatch.setattr(igt_job, 'execute_plan', execute)
+    told = []
+
+    def model(asked, n, kwargs):
+        if n > 1 or 'Your piece: s' not in asked:
+            return reply('Done.')
+        mine = targets_named(asked)
+        told.append(re.findall(r'^Empty in s(\d+): .*the translation\.$', asked, re.M))
+        refs = ['s1', 's2', 's3'] if 1 in mine else ['s3', 's4']
+        return reply(calls=[call(1, 'set_field', {'document': 'Story', 'refs': refs, 'field': 'Translation',
+                                                  'value': 'T.'})])
+    use(monkeypatch, Model(model))
+    finished = run_job(job, runner(job))
+    assert finished['state'] == 'done'
+    assert told == [['1', '2'], ['4']], told
+    assert 'd1-s3' in sent[0] and all('d1-s3' not in x for x in sent[1:]), sent
+    (doc,) = finished['report']['documents']
+    assert doc['counts']['changed'] == 1 and doc['left'] == []
+

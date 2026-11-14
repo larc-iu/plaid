@@ -23,7 +23,10 @@ from plaid_agent.igt.job import RECORD_FORM, IgtRunner
 from plaid_agent.jobworker import count_chars
 
 WORKER = '0193a5c0-0000-7000-8000-0000000000d7'
-PIECES = ['document', 'selection']
+PIECES = ['document', 'selection', 'selection-reads']
+#: Whether the selection's model reads Story before it glosses it (``selection-reads``):
+#: else it writes in sentences no read printed to it.
+_READS = {'first': False}
 # "ka ta pa. sa." : ka at 0, ta at 3, pa at 6, sa at 10.
 SA, PA = 10, 6
 
@@ -51,10 +54,11 @@ def world():
 
 
 def _gloss(asked, n, kwargs):
-    """Every word of Story, whatever the piece. A selection reads Story
-    first: a sentence it wrote in and was never shown is not one of its own,
-    and the walk works it again (BRIEF NW)."""
-    if 'Your piece: the whole selection above.' in asked:
+    """Every word of Story, whatever the piece. Under ``selection-reads`` a
+    selection reads Story first: the sentences are its own. Else it writes
+    in sentences it was never shown, which the walk works again, and a word
+    it wrote there is never written again (BRIEF NW, REV-LNW-1)."""
+    if _READS['first'] and 'Your piece: the whole selection above.' in asked:
         if n == 1:
             return reply(calls=[call(9, 'read_document', {'document': 'Story'})])
         n -= 1
@@ -67,6 +71,8 @@ def _gloss(asked, n, kwargs):
 
 def _job(admin, writer, s, pieces, sleep=None):
     from plaid_client import PlaidClient
+    _READS['first'] = pieces == 'selection-reads'
+    pieces = 'selection' if pieces.startswith('selection') else pieces
     made = writer.jobs.create(s.project_id, 'igt', 'Gloss every word nobody analysed.')
     claimed = admin.jobs.claim(WORKER, 'fake/m', ['igt'])
     assert claimed and claimed['job']['id'] == made['id']
