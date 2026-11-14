@@ -294,3 +294,70 @@ def test_a_scripted_worker_starts_without_the_providers_banner(tmp_path, capsys,
     with pytest.raises(SystemExit):
         jobworker.main(['--url', 'http://localhost:1', '--model', 'fake/m', '--scripted-model', str(path), '--once'])
     assert 'Provider List' not in capsys.readouterr().out
+
+
+# --- the worker's start (BRIEF PF, C) -------------------------------------------------
+
+def _start(monkeypatch, failures):
+    """main() with a model whose ping raises each of ``failures`` in turn,
+    then answers. Returns what it returned (None once it reached core), the
+    waits it made and the pings."""
+    pings, waits = [], []
+
+    def ping(cfg):
+        pings.append(1)
+        if len(pings) <= len(failures):
+            raise failures[len(pings) - 1]
+
+    class Reached(Exception):
+        pass
+
+    def no_core(url):
+        raise Reached()
+    monkeypatch.setattr(jobworker, 'ping_model', ping)
+    monkeypatch.setattr(jobworker.time, 'sleep', waits.append)
+    monkeypatch.setattr(jobworker.BaseService, 'get_client', staticmethod(no_core))
+    try:
+        out = jobworker.main(['--url', 'http://localhost:1', '--model', 'openai/m', '--api-base', 'http://x',
+                              '--once'])
+    except Reached:
+        out = None
+    return out, waits, pings
+
+
+def _busy():
+    return litellm.RateLimitError(message='Rate limit exceeded. Limit type: max_parallel_requests',
+                                  llm_provider='openai', model='m')
+
+
+@pytest.mark.parametrize('failure', [
+    _busy,
+    lambda: litellm.ServiceUnavailableError(message='at capacity', llm_provider='openai', model='m'),
+    lambda: litellm.APIConnectionError(message='connection refused', llm_provider='openai', model='m'),
+    lambda: litellm.Timeout(message='timed out', model='m', llm_provider='openai'),
+], ids=['rate-limit', 'capacity', 'connection', 'timeout'])
+def test_a_worker_started_while_the_model_cannot_answer_waits_and_asks_again(monkeypatch, caplog, failure):
+    """A worker started by a script while the endpoint was full exited at
+    once, and jobs waited with nothing to say why. Now its opening ping is
+    asked again after JOB_MODEL_RETRY_S, one line logged each time, until
+    the model answers. The failure is told by the provider's error class."""
+    import logging
+    caplog.set_level(logging.WARNING)
+    out, waits, pings = _start(monkeypatch, [failure() for _ in range(3)])
+    assert out is None, 'it went on to ask core for jobs'
+    assert waits == [JOB_MODEL_RETRY_S] * 3 and len(pings) == 4
+    lines = [r.getMessage() for r in caplog.records if 'The model did not answer' in r.getMessage()]
+    assert len(lines) == 3, lines
+    assert lines[0].endswith(f'Asking it again in {JOB_MODEL_RETRY_S} s.'), lines[0]
+
+
+@pytest.mark.parametrize('failure', [
+    lambda: litellm.AuthenticationError(message='invalid api key', llm_provider='openai', model='m'),
+    lambda: litellm.NotFoundError(message='model not found', model='m', llm_provider='openai'),
+    lambda: litellm.BadRequestError(message='bad request', model='m', llm_provider='openai'),
+], ids=['authentication', 'unknown-model', 'bad-request'])
+def test_a_worker_whose_model_refuses_it_for_what_waiting_does_not_heal_exits_at_once(monkeypatch, capsys,
+                                                                                      failure):
+    out, waits, pings = _start(monkeypatch, [failure()])
+    assert out == 1 and waits == [] and len(pings) == 1
+    assert 'The model did not answer:' in capsys.readouterr().out

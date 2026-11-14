@@ -25,14 +25,15 @@ import argparse
 import json
 import logging
 import sys
+import time
 from types import SimpleNamespace
 
 from plaid_client import BaseService, PlaidClient
 from plaid_client.workflows.llm import add_model_pool_argument, add_timeout_argument
 
 from .core.agent import ModelConfig, ModelTooSlow, output_cap, ping_model
-from .core.job import Worker
-from .core.limits import JOB_IDLE_POLL_S
+from .core.job import Worker, not_answering
+from .core.limits import JOB_IDLE_POLL_S, JOB_MODEL_RETRY_S
 from .igt.job import runner_factory
 
 #: The apps a worker can run, and how it builds each one's runner.
@@ -70,6 +71,32 @@ def count_chars(value) -> int:
     of the characters."""
     text = value if isinstance(value, str) else json.dumps(value, ensure_ascii=False)
     return len(text) // 4
+
+
+def answered(cfg: ModelConfig) -> bool:
+    """Ping the model until it answers, as a job asks a model that does not
+    answer mid-job: a failure that passes (a rate limit, a provider at
+    capacity or down, a timeout, no connection: :func:`~.core.job.not_answering`,
+    by the provider's error class, never its message) is logged in one line
+    and asked again after JOB_MODEL_RETRY_S, so a worker a script starts
+    while the endpoint is full is there once it is not (BRIEF PF). Any
+    other failure (a refused key, an unknown model, another 4xx) does not
+    heal by waiting: False, and the worker exits."""
+    while True:
+        try:
+            ping_model(cfg)
+            return True
+        except ModelTooSlow:
+            print('  No answer to the ping in time. Running anyway: the first stretch will wait for it.')
+            return True
+        except Exception as e:  # noqa: BLE001 - the provider's own complaint is what the operator needs
+            if not not_answering(e):
+                print(f'  The model did not answer: {e}')
+                return False
+            logging.getLogger(__name__).warning('The model did not answer (%s: %s). Asking it again in %s s.',
+                                                type(e).__name__, ' '.join(str(e).split())[:200],
+                                                JOB_MODEL_RETRY_S)
+            time.sleep(JOB_MODEL_RETRY_S)
 
 
 def parser() -> argparse.ArgumentParser:
@@ -120,12 +147,7 @@ def main(argv=None) -> int:
         print(f'Model: {cfg.model}' + (f' via {cfg.api_base}' if cfg.api_base else ''))
         if cfg.reasoning_effort:
             print(f'Reasoning effort: {cfg.reasoning_effort} (--reasoning-effort).')
-        try:
-            ping_model(cfg)
-        except ModelTooSlow:
-            print('  No answer to the ping in time. Running anyway: the first stretch will wait for it.')
-        except Exception as e:  # noqa: BLE001 - the provider's own complaint is what the operator needs
-            print(f'  The model did not answer: {e}')
+        if not answered(cfg):
             return 1
     if args.model_pool:
         print(f'Model key: "{args.model_pool}". Jobs wait while services of that key are working.')
