@@ -262,7 +262,7 @@
  * @property {number | null} pausedForModelS
  * @property {"without-worker" | null} stopped
  * @property {Record<string, number>} totals
- * @property {Array<{documentId: string, name: string | null, state: string, sentences: number | null, targets: number | null, done: number | null, counts: Record<string, number>, skipped: JobSkipped[], glossGroup: string | null, harmonizeGroup: string | null, left?: JobLeft[], leftMore?: number}>} documents
+ * @property {Array<{documentId: string, name: string | null, state: string, sentences: number | null, targets: number | null, done: number | null, counts: Record<string, number>, skipped: JobSkipped[], glossGroup: string | null, harmonizeGroup: string | null, left?: JobLeft[], leftMore?: number, leftUnread?: boolean}>} documents
  * @property {{changed: object[], left: object[], changedMore: number, leftMore: number}} harmonize
  * @property {{created: object[], unlinked: object[], createdMore: number, unlinkedMore: number, lexicons: string[]}} entries
  * @property {string | null} [summary] the final context's prose
@@ -271,6 +271,9 @@
  * @property {object[]} [notes] each piece's note, with `notesMore`
  * @property {object[]} [tables] tables the job's code made, with `tablesMore`
  *   A document's `left` and `leftMore`: the targets the job left blank (absent from a report core writes).
+ *   A document's `leftUnread`: true when its blanks could not be read for the report (then no `left`, and its
+ *   `counts` hold no `left` or `leftTranslations`). Its `counts.notReached` and `counts.notReachedTranslations`:
+ *   the blank words and translations of its sentences the job did not reach, counted and never listed.
  *   A report the worker writes is kept under core's size cap: rows that do not fit are cut from the end of its
  *   lists, tables first, and counted in the list's `...More`.
  */

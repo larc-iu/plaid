@@ -607,6 +607,57 @@ describe('the job page', () => {
     await v.unmount();
   });
 
+  it('says where a document could not be read for its blanks, and counts the sentences not reached', async () => {
+    const report = {
+      ...REPORT,
+      documents: [
+        {
+          documentId: 'd1',
+          name: 'Story A',
+          skipped: [],
+          counts: { words: 4 },
+          left: [],
+          leftMore: 0,
+          leftUnread: true,
+        },
+        {
+          documentId: 'd2',
+          name: 'Story B',
+          skipped: [],
+          counts: { words: 2, left: 1, notReached: 12, notReachedTranslations: 1 },
+          left: [{ ref: 's1.w3', sentenceId: 'sen1', begin: 9, form: 'kata' }],
+          leftMore: 0,
+        },
+        {
+          documentId: 'd3',
+          name: 'Story C',
+          skipped: [],
+          counts: { notReached: 1 },
+          left: [],
+          leftMore: 0,
+        },
+        { documentId: 'd4', name: 'Story D', skipped: [], counts: { words: 3 }, left: [] },
+      ],
+    };
+    const job = jobOf({ state: 'cancelled', finishedAt: '2026-11-12T11:00:00Z', report });
+    const v = await mount(clientOf(job));
+    const section = v.container.querySelector('section[aria-label="Report"]');
+    expect(all(section, 'h3').map((h) => h.textContent)).toContain('Left blank');
+    const t = text(section);
+    expect(t).toContain('Story ACould not be read.');
+    expect(t).toContain('s1.w3 kata');
+    expect(t).toContain('Sentences not reached: 12 blank words, 1 blank translation');
+    expect(t).toContain('Story CSentences not reached: 1 blank word');
+    expect(t).not.toContain('Story D');
+    // The totals sum the documents' counts.
+    const totals = Object.fromEntries(
+      all(section, 'dt').map((dt) => [dt.textContent, dt.nextElementSibling.textContent]),
+    );
+    expect(totals['Blank words in sentences not reached']).toBe('13');
+    expect(totals['Blank translations in sentences not reached']).toBe('1');
+    await v.unmount();
+  });
+
   it('counts the tables and notes a report too large for core could not hold', async () => {
     const report = { ...REPORT, tables: [], tablesMore: 3, notes: [], notesMore: 2 };
     const job = jobOf({ state: 'done', finishedAt: '2026-11-12T11:00:00Z', report });

@@ -15,7 +15,9 @@ import SECTIONS from './jobSections.json';
 // A finished job's report (CONTRACT 5.3, as the client hands it over, keys in
 // camelCase): the summary the job wrote, the totals, the changes it proposed,
 // each piece's note, the tables its code made, each document's skipped
-// sentences and the targets it left blank, what harmonize changed and left,
+// sentences and the targets it left blank (or that its document could not be
+// read for them, `leftUnread`, and how many blank words and translations the
+// sentences it did not reach hold, `notReached`), what harmonize changed and left,
 // the entries the job made, and those of them nothing links (the job runs no
 // cleanup of its own: a person deletes them).
 // Every list the worker cut says how many it left out. A section's heading is
@@ -31,6 +33,11 @@ const More = ({ n, noun }) =>
       And {n.toLocaleString()} more {plural(n, noun)}.
     </p>
   ) : null;
+
+// A count summed over the report's documents, for a count the report's
+// totals do not hold (the blanks of the sentences a job did not reach).
+const documentSum = (report, key) =>
+  (report.documents || []).reduce((n, d) => n + (d.counts?.[key] ?? 0), 0);
 
 // One "label: value" row of the totals, left out when it is an optional row
 // with nothing in it.
@@ -57,6 +64,11 @@ const totalRows = (report) => {
   optional('Sentences skipped and not listed', t.skippedMore);
   optional('Changes not written, changed during the job', t.changed);
   optional('Changes left out, sentence written before an interruption', t.repeated);
+  optional('Blank words in sentences not reached', documentSum(report, 'notReached'));
+  optional(
+    'Blank translations in sentences not reached',
+    documentSum(report, 'notReachedTranslations'),
+  );
   return rows.map(([label, n]) => [label, (n ?? 0).toLocaleString()]);
 };
 
@@ -99,6 +111,19 @@ const DocumentName = ({ projectId, d }) =>
   ) : (
     <span className="font-medium">{d.name ?? 'Deleted document'}</span>
   );
+
+// How many blank words and translations a document's sentences the job did
+// not reach hold: counted, never listed.
+const NotReached = ({ counts }) => {
+  const parts = [
+    [counts?.notReached ?? 0, 'blank word'],
+    [counts?.notReachedTranslations ?? 0, 'blank translation'],
+  ]
+    .filter(([n]) => n > 0)
+    .map(([n, noun]) => `${n.toLocaleString()} ${plural(n, noun)}`);
+  if (!parts.length) return null;
+  return <p className="ml-4 text-muted-foreground">Sentences not reached: {parts.join(', ')}</p>;
+};
 
 // The changes the job staged and did not apply (the apply rule: project
 // setup, and the few it cannot make under a document's lock), each where it
@@ -263,7 +288,14 @@ export const JobReport = ({ report, projectId, vocabs = [] }) => {
     ['Waiting for the model', report.pausedForModelS],
   ].filter(([, s]) => s > 0);
   const skipped = (report.documents || []).filter((d) => d.skipped?.length);
-  const blank = (report.documents || []).filter((d) => d.left?.length || d.leftMore > 0);
+  const blank = (report.documents || []).filter(
+    (d) =>
+      d.left?.length ||
+      d.leftMore > 0 ||
+      d.leftUnread ||
+      d.counts?.notReached > 0 ||
+      d.counts?.notReachedTranslations > 0,
+  );
   const harmonize = report.harmonize || {};
   const entries = report.entries || {};
   const changed = harmonize.changed || [];
@@ -377,6 +409,8 @@ export const JobReport = ({ report, projectId, vocabs = [] }) => {
               {d.leftMore > 0 && (
                 <p className="ml-4 text-muted-foreground">And {d.leftMore.toLocaleString()} more</p>
               )}
+              {d.leftUnread && <p className="ml-4 text-muted-foreground">Could not be read.</p>}
+              <NotReached counts={d.counts} />
             </div>
           ))}
         </>
