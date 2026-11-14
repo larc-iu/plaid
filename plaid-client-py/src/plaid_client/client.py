@@ -3549,7 +3549,9 @@ class AuditResource(_Resource):
         it is and listed under ``skipped`` with its reason (``changed-since``,
         ``changed-between``, ``not-permitted``, ``locked``, ``not-undone``,
         ``built-on``, ``needs``, ``text-changed-since``, ``name-taken``,
-        ``does-not-fit``, ``value-not-allowed``). Changes to a project, its
+        ``place-taken``, ``does-not-fit``, ``value-not-allowed``). A row in a
+        document or vocabulary the caller cannot read is neither counted nor
+        listed. Changes to a project, its
         layers, a vocabulary's name or settings, users and memberships are not
         undone: ``not_undone`` lists the entry's operations that made them.
         Undoing an entry again finds nothing left and writes nothing. The undo

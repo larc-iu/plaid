@@ -439,8 +439,9 @@ export function auditApi(client) {
      * on, or that cannot come back is left as it is and listed under
      * `skipped` with its reason (`changed-since`, `changed-between`,
      * `not-permitted`, `locked`, `not-undone`, `built-on`, `needs`,
-     * `text-changed-since`, `name-taken`, `does-not-fit`,
-     * `value-not-allowed`). Changes to a project, its layers, a
+     * `text-changed-since`, `name-taken`, `place-taken`, `does-not-fit`,
+     * `value-not-allowed`). A row in a document or vocabulary the caller
+     * cannot read is neither counted nor listed. Changes to a project, its layers, a
      * vocabulary's name or settings, users and memberships are not undone:
      * `notUndone` lists the entry's operations that made them. Undoing an
      * entry again finds nothing left and writes nothing. The undo is itself an

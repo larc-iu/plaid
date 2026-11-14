@@ -359,7 +359,10 @@ A merge comes undone whole: the merged entries come back, their links point to t
 What people did since is left alone.
 A row is left as it is, and listed under `skipped` with its reason, when someone wrote it since (`changed-since`), or between the entry's own writes (`changed-between`), when the entry made it and something that stays is built on it, such as an annotation on a token or a link to an entry (`built-on`), or when it needs something that will not be there (`needs`).
 A text goes back only when nothing in its document wrote a text or a token since the entry began (`text-changed-since`).
-When a document's layers would no longer hold with the entry's rows put back, that document's rows are all left (`does-not-fit`), and a value a closed list no longer allows is left too (`value-not-allowed`).
+A token goes back onto its offsets only when nothing outside the entry wrote its text since the entry began (`text-changed-since`), and a text goes back only into a layer that holds no other text of the document now (`place-taken`).
+A row is never set back to name, in its metadata, a row that will not be there afterwards (`needs`).
+When a document's layers would no longer hold with the entry's rows put back, that document's rows are all left (`does-not-fit`).
+An undo is held to each layer's closed list as it is now, unlike a restore, since it puts single values back into today's document: a value the list no longer allows is left (`value-not-allowed`).
 Changes to a project, its layers, a vocabulary's name or settings, users and memberships are not undone, and `not_undone` / `notUndone` names the operations that made them.
 A project's deletion cannot be undone.
 After a vocabulary is deleted, only an administrator can read its entries' history, so only an administrator can undo what an entry did to them.
@@ -374,7 +377,7 @@ c.audit.undo(done["operation"])  # and back again
 
 `document_id` / `documentId` takes one document's rows only, its links included, and `vocab_layer_id` / `vocabLayerId` takes one vocabulary's entries and the links that name one of them.
 An undo needs a maintainer: of a document's project for its rows, of a vocabulary's home project for its entries.
-Rows the caller may not maintain are listed as `not-permitted` and the rest undone.
+Rows the caller may not maintain are listed as `not-permitted` and the rest undone, and rows in a document or vocabulary the caller cannot read are neither counted nor listed.
 A delegated token undoes only the rows of documents in the projects it reaches.
 Undoing the same entry again finds nothing left and writes nothing.
 An entry of more than 20,000 rows is refused.

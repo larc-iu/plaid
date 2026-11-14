@@ -800,7 +800,7 @@
  * @property {string} id
  * @property {string} [document]
  * @property {string} [vocabLayer]
- * @property {"changed-since"|"changed-between"|"not-permitted"|"locked"|"not-undone"|"built-on"|"needs"|"text-changed-since"|"name-taken"|"does-not-fit"|"value-not-allowed"} reason
+ * @property {"changed-since"|"changed-between"|"not-permitted"|"locked"|"not-undone"|"built-on"|"needs"|"text-changed-since"|"name-taken"|"place-taken"|"does-not-fit"|"value-not-allowed"} reason
  * @property {{kind: string, id: string}} [by]
  * @property {{kind: string, id: string}} [needs]
  */
