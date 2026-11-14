@@ -651,3 +651,9 @@ def test_with_the_same_number_a_word_unlike_its_forms_keeps_its_item_by_place():
     w = ws()
     out = call(w, sentences=[{'ref': 's1', 'words': ['Ali-di Ali-ERG', 'g fish', 'aku-na see-PST']}])
     assert _analysed(w) == {'w-1': 'Alidi', 'w-2': 'g', 'w-3': 'akuna'} and 'Not staged' not in out, out
+
+
+def test_the_help_states_the_line_up_rule_and_its_numbers():
+    from plaid_agent.igt.lines import HELP, MATCH_AT_LEAST, MAX_SLIP
+    assert f'{round((1 - MATCH_AT_LEAST) * 100)}% of the word' in HELP and f'more than {MAX_SLIP} off' in HELP
+    assert 'punctuation alone is left out' in HELP and len(HELP) < 2400

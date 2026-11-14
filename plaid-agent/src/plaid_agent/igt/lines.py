@@ -78,10 +78,13 @@ morpheme with the entries to choose from: link one with link_entry (sN.wN.mN, en
 true, only when the instructions or the user ask for new entries, creates an entry, once, for each form \
 and gloss no entry has, and links every morpheme of it. An ambiguous one is never created for.
 
-Checks. words with another number of items than the ref has words stages nothing of the sentence. A \
-word whose forms and gloss have different numbers of morphemes, an empty morpheme, or forms more than \
-twice as long as the word plus 3, is not staged and is listed, and the other words are. A word whose \
-forms differ from it otherwise is staged, with a note. Up to 20 sentences a call, each on its own.'''
+Checks. An item of punctuation alone is left out. Items go to the ref's words by their forms: an item \
+matches a word when its forms, joined, are no more than 40% of the word's length in edits from it, and \
+between two matched words as many items as words go to them in order. A word with no item, an item \
+with no word, and a word whose forms and gloss differ in morphemes, hold an empty one, or are over \
+twice the word's length plus 3, are listed and not staged: the other words are. One item for several \
+words, or a count more than 3 off, stages nothing. Forms that differ from the word otherwise are staged \
+with a note. Up to 20 sentences a call, each on its own.'''
 
 #: An item's columns when a sentence names none.
 COLUMNS = ['forms', 'gloss']
