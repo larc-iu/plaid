@@ -93,9 +93,8 @@ def answered(cfg: ModelConfig) -> bool:
             if not not_answering(e):
                 print(f'  The model did not answer: {e}')
                 return False
-            logging.getLogger(__name__).warning('The model did not answer (%s: %s). Asking it again in %s s.',
-                                                type(e).__name__, ' '.join(str(e).split())[:200],
-                                                JOB_MODEL_RETRY_S)
+            logging.getLogger(__name__).warning('The model did not answer (%s). Asking it again in %s s.',
+                                                ' '.join(str(e).split())[:200], JOB_MODEL_RETRY_S)
             time.sleep(JOB_MODEL_RETRY_S)
 
 
