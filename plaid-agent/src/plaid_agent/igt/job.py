@@ -56,11 +56,11 @@ from ..core.plan import JOB_DETAIL_KEY, ONE_REQUEST, PlanError, TooBig, held_cha
 from ..core.provenance import Requester
 from ..core.tools import Refusal, ToolError
 from ..core.version import agent_version
-from . import toolkit
+from . import evidence, toolkit
 from .plan import LEXICON_MAINTAINER, PlanOutOfDate, check_entries, execute_plan
 from .project import IgtProject, Sentence, Word, is_virtual, load_project, render_sentence
 from .prompt import JOB_SYSTEM, build_job_prompt
-from .tools import ANALYSIS_OF
+from .tools import ANALYSIS_OF, trim_ignored_edges
 from .trace import TRACER
 from .fit import entry_gloss as _entry_gloss, fitting_entry  # noqa: F401 (fitting_entry: tests)
 from .vocab import ROLE_GLOSS, ROLE_STATUS
@@ -2132,7 +2132,13 @@ class IgtRunner:
             # no target either (REV-L2-8).
             lines.append(f'Nothing empty in {", ".join(full)}: no word to analyse'
                          + (' and no translation to write' if translation_field(project) is not None else '') + '.')
-        precedent = self.precedent(ws, project, list(st.words.values()))
+        # A piece of a plan in sentences is handed the evidence its model
+        # would otherwise look up (igt/evidence.py), a document's or a
+        # selection's the precedent alone.
+        if self.in_sentences() and not whole:
+            precedent = self.evidence(ws, project, list(st.words.values()))
+        else:
+            precedent = self.precedent(ws, project, list(st.words.values()))
         if precedent:
             lines += ['', precedent]
         lines += self.instructions_lines()
@@ -2224,6 +2230,29 @@ class IgtRunner:
             except PlaidAPIError:
                 continue
         return out
+
+    def in_sentences(self) -> bool:
+        """Whether the job's plan cuts the work in sentences (the default
+        plan does)."""
+        return (self.plan_made or {}).get('pieces', SENTENCES) == SENTENCES
+
+    def evidence(self, ws: Workspace, project: IgtProject, words: List[Word]) -> str:
+        """The evidence block of a piece of a plan in sentences
+        (:func:`evidence.block`), read now: people's analyses as the walk of
+        the document last read them, the job's own decisions and the lexicon
+        as they are when the piece starts."""
+        if not words:
+            return ''
+        surfaces = [w.surface for w in words]
+        people = self.people_index(ws, project)
+        keys = list(dict.fromkeys(k for s in surfaces
+                                  for k in (form_key(s), form_key(trim_ignored_edges(s, project.ignored_cfg)))))
+        mine: Dict[str, List[Dict[str, Any]]] = {}
+        for row in self.job.lookup_decisions(keys):
+            mine.setdefault(row.get('form'), []).append({**row, 'analysis': json.loads(row['analysis'])})
+        gloss = getattr(project.gloss_field('Morpheme'), 'name', None)
+        entries = self.entry_forms(ws, project)
+        return evidence.block(ws, project, surfaces, people, mine, lambda a: rendering(a, gloss, entries))
 
     def precedent(self, ws: Workspace, project: IgtProject, words: List[Word]) -> str:
         if not words:
