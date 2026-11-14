@@ -43,7 +43,7 @@ const documentSum = (report, key) =>
 
 // The values the job set in each field: the totals' rows, or, when the totals
 // hold none (core's own report of a job no worker finished sums named counts
-// only), the documents' rows summed by field name in the order first seen.
+// only), the documents' rows summed by field name, by name as the totals are.
 const fieldSums = (report) => {
   if (report.totals?.fields) return report.totals.fields;
   const sums = new Map();
@@ -52,7 +52,9 @@ const fieldSums = (report) => {
       sums.set(f.field, (sums.get(f.field) ?? 0) + (f.values ?? 0)),
     ),
   );
-  return [...sums].map(([field, values]) => ({ field, values }));
+  return [...sums]
+    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+    .map(([field, values]) => ({ field, values }));
 };
 
 // One "label: value" row of the totals, left out when it is an optional row

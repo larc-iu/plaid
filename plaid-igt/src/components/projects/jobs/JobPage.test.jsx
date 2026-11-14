@@ -893,6 +893,9 @@ describe('the job page', () => {
     const sums = totals(v.container.querySelector('section[aria-label="Report"]'));
     expect(sums['Thematic role']).toBe('10 values');
     expect(sums['Animacy']).toBe('2 values');
+    // By name, as the worker's totals and read_job list them (REV-L2B-10).
+    const order = Object.keys(sums);
+    expect(order.indexOf('Animacy')).toBeLessThan(order.indexOf('Thematic role'));
     await v.unmount();
   });
 
