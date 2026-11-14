@@ -714,6 +714,37 @@ describe('the job page', () => {
     await v.unmount();
   });
 
+  it('lists the changes a write cut short did not write under a line of their own', async () => {
+    const report = {
+      ...REPORT,
+      proposed: [
+        ...REPORT.proposed,
+        {
+          kind: 'rename_entry',
+          documentId: null,
+          document: null,
+          ref: null,
+          field: null,
+          from: null,
+          to: null,
+          label: 'Rename entry gam to gaam',
+          reason: 'interrupted',
+        },
+      ],
+      proposedMore: 0,
+    };
+    const job = jobOf({ state: 'done', finishedAt: '2026-11-12T11:00:00Z', report });
+    const v = await mount(clientOf(job));
+    const section = v.container.querySelector('section[aria-label="Report"]');
+    const tables = all(section, 'table').filter((t) => text(t).includes('From'));
+    expect(tables).toHaveLength(2);
+    expect(text(tables[0])).toContain('rename Story A to Story One');
+    expect(text(tables[0])).not.toContain('gaam');
+    expect(text(tables[1])).toContain('Rename entry gam to gaam');
+    expect(text(tables[1].previousElementSibling)).toBe('Not written, the write was interrupted');
+    await v.unmount();
+  });
+
   it('says a job it cannot read is not found', async () => {
     const client = {
       jobs: {

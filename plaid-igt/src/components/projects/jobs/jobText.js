@@ -59,6 +59,12 @@ export const skippedText = ({ reason, kind }) => {
   return reason;
 };
 
+// Why a change the job applied is listed among the proposed changes: its
+// write was cut short (a lost answer, a crash, a refusal) and it was not
+// written. The one reason there is.
+export const changeReasonText = (reason) =>
+  reason === 'interrupted' ? 'Not written, the write was interrupted' : reason;
+
 export const HARMONIZE_LEFT_TEXT = {
   'people-differ': 'People analyzed it in more than one way',
   'no-clear-majority': 'No two-thirds majority',

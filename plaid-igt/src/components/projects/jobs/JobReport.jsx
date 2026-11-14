@@ -3,7 +3,13 @@ import { TYPE } from '@ui/lib/typeScale.js';
 import { historyHref } from '@ui/hooks/useHistoryParam.js';
 import { plural } from '@ui/lib/plural.js';
 import { APP_ROUTES } from '@/appRoutes.js';
-import { HARMONIZE_BY_TEXT, HARMONIZE_LEFT_TEXT, durationText, skippedText } from './jobText.js';
+import {
+  HARMONIZE_BY_TEXT,
+  HARMONIZE_LEFT_TEXT,
+  changeReasonText,
+  durationText,
+  skippedText,
+} from './jobText.js';
 import SECTIONS from './jobSections.json';
 
 // A finished job's report (CONTRACT 5.3, as the client hands it over, keys in
@@ -97,48 +103,63 @@ const DocumentName = ({ projectId, d }) =>
 // The changes the job staged and did not apply (the apply rule: project
 // setup, and the few it cannot make under a document's lock), each where it
 // is, from what to what, and the note of the piece that staged it: what a
-// person approves in a conversation with the assistant about the job. Hidden
-// when there are none.
+// person approves in a conversation with the assistant about the job. Then,
+// under a line of their own, the changes it applied whose write was cut short
+// and that were not written (`reason`). Hidden when there are none.
+const ChangesTable = ({ list, projectId }) => (
+  <table className="w-full text-sm">
+    <thead className="text-left text-muted-foreground">
+      <tr>
+        <th className="py-1 pr-4 font-medium">Where</th>
+        <th className="py-1 pr-4 font-medium">Change</th>
+        <th className="py-1 pr-4 font-medium">From</th>
+        <th className="py-1 font-medium">To</th>
+      </tr>
+    </thead>
+    <tbody>
+      {list.map((c, i) => (
+        <tr key={i} className="border-t align-top">
+          <td className="py-1 pr-4">
+            {c.documentId ? (
+              <Link
+                className="underline"
+                to={`/projects/${projectId}/documents/${c.documentId}`}
+              >{`${c.document ?? 'Document'}${c.ref ? ` ${c.ref}` : ''}`}</Link>
+            ) : (
+              <span className="text-muted-foreground">Project</span>
+            )}
+          </td>
+          <td className="py-1 pr-4">{c.field ?? c.label}</td>
+          <td className="py-1 pr-4 text-muted-foreground" dir="auto">
+            {c.from ?? ''}
+          </td>
+          <td className="py-1" dir="auto">
+            {c.to ?? ''}
+          </td>
+        </tr>
+      ))}
+    </tbody>
+  </table>
+);
+
 const ProposedChanges = ({ report, projectId }) => {
   const list = report.proposed || [];
   const more = report.proposedMore || 0;
   if (!list.length && !more) return null;
+  const staged = list.filter((c) => !c.reason);
+  const unwritten = list.filter((c) => c.reason);
   return (
     <>
       <Heading section="proposed" />
-      <table className="w-full text-sm">
-        <thead className="text-left text-muted-foreground">
-          <tr>
-            <th className="py-1 pr-4 font-medium">Where</th>
-            <th className="py-1 pr-4 font-medium">Change</th>
-            <th className="py-1 pr-4 font-medium">From</th>
-            <th className="py-1 font-medium">To</th>
-          </tr>
-        </thead>
-        <tbody>
-          {list.map((c, i) => (
-            <tr key={i} className="border-t align-top">
-              <td className="py-1 pr-4">
-                {c.documentId ? (
-                  <Link
-                    className="underline"
-                    to={`/projects/${projectId}/documents/${c.documentId}`}
-                  >{`${c.document ?? 'Document'}${c.ref ? ` ${c.ref}` : ''}`}</Link>
-                ) : (
-                  <span className="text-muted-foreground">Project</span>
-                )}
-              </td>
-              <td className="py-1 pr-4">{c.field ?? c.label}</td>
-              <td className="py-1 pr-4 text-muted-foreground" dir="auto">
-                {c.from ?? ''}
-              </td>
-              <td className="py-1" dir="auto">
-                {c.to ?? ''}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      {staged.length > 0 && <ChangesTable list={staged} projectId={projectId} />}
+      {unwritten.length > 0 && (
+        <>
+          <p className={`text-sm font-medium ${staged.length ? 'mt-3' : ''}`}>
+            {changeReasonText(unwritten[0].reason)}
+          </p>
+          <ChangesTable list={unwritten} projectId={projectId} />
+        </>
+      )}
       <More n={more} noun="change" />
     </>
   );
