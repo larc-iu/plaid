@@ -365,10 +365,39 @@ def planned_token(s, entry: Dict[str, Any]) -> str:
     return entry['word_id'] or s.id
 
 
+def _where(ws, doc_id: Optional[str], sentence_id: Optional[str]) -> Tuple[Optional[int], str]:
+    doc = ws._docs.get(doc_id) if doc_id else None
+    if doc is None:
+        doc = next((d for d in ws._docs.values() if d.find(sentence_id) is not None), None) if sentence_id else None
+    n = sentence_number(doc, sentence_id)
+    return n, (f'{ws.doc_label(doc.id)} s{n}' if doc is not None else f's{n}')
+
+
+def refuse_split_and_retype(ws, op: Dict[str, Any], others) -> None:
+    """A sentence split and a retype of the same sentence never share a plan,
+    whichever is staged first: the split reads the words of the sentence as
+    read (``before_word``) and is written before the retype, at the place
+    it read, so a split named by the words the retype listed would land
+    elsewhere (REV-RR-1), and a retype after a split is listed and checked
+    against the one sentence it was read as (REV-RR-2)."""
+    kind, sid = op.get('kind'), op.get('sentence_id')
+    if kind == 'split_sentence' and retype_of(others, sid) is not None:
+        n, where = _where(ws, retype_of(others, sid).get('document_id'), sid)
+        raise ToolError(f'{where}: this plan retypes s{n}, and a split reads its words as they are now. Split it '
+                        'once the retype is applied.', kind='conflict')
+    if kind == 'edit_text' and sid and any(o.get('kind') == 'split_sentence' and o.get('sentence_id') == sid
+                                           for o in others):
+        n, where = _where(ws, op.get('document_id'), sid)
+        raise ToolError(f'{where}: this plan splits s{n}, and a retype reads it as one sentence. Retype it once the '
+                        'split is applied.', kind='conflict')
+
+
 def refuse_on_retyped(ws, op: Dict[str, Any], others) -> None:
     """A change naming a word or a morpheme of a sentence the plan retypes,
-    other than a planned word value: refused (``RENUMBERED``)."""
+    other than a planned word value: refused (``RENUMBERED``). And a sentence
+    split beside a retype of the sentence (:func:`refuse_split_and_retype`)."""
     from .plan import KIND, TEXT_SHAPE
+    refuse_split_and_retype(ws, op, others)
     if op.get(PLANNED) is not None or KIND.get(op.get('kind')) is None or KIND[op['kind']].shape == TEXT_SHAPE:
         return
     # A confirmation over a scope leaves out what the plan may delete when it

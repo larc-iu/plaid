@@ -2115,8 +2115,10 @@ def _execute(client, ops, *, label, project, counts, notes, stamps: Stamps, trac
                 raise ValueError('edit_text needs the project')
             values = ctx.after_edit.get(op.get('sentence_id'), []) if op.get('sentence_id') else []
             with b.on_client(op['document_id']):
-                _write_text_edit(client, project, op, b.new_id, values=values, stamps=ctx.stamps)
-            b.finish(op)
+                # Finished once the edit is written: a refusal of its values
+                # after it leaves it counted as written (REV-RR-2).
+                _write_text_edit(client, project, op, b.new_id, values=values, stamps=ctx.stamps,
+                                 edited=lambda o=op: b.finish(o))
             for v in values:
                 b.finish(v)
         # Whole-token replaces keep the token (and its morphemes, which share
@@ -2375,7 +2377,7 @@ def _line_starts(body: str, begin: int, end: int) -> List[int]:
 
 
 def _write_text_edit(client, project, op: Dict[str, Any], new_id, values=(),
-                     stamps: Optional[Stamps] = None) -> None:
+                     stamps: Optional[Stamps] = None, edited=None) -> None:
     """Replace body[begin:end] (verified to still read ``old``) with ``new``
     as edits at their place (``texts.edit`` with the digest of the body read),
     so no word outside the region can be taken for the one changed, then, in
@@ -2392,7 +2394,11 @@ def _write_text_edit(client, project, op: Dict[str, Any], new_id, values=(),
     the sentence reads as the retype planned it: the same words in the same
     order, each a word it already had where the plan says so and a new one
     where it says that. A sentence that came out otherwise is refused before
-    the follow-up, so no value is written on a word it was not planned for."""
+    the follow-up, so no value is written on a word it was not planned for.
+    The follow-up is not sent at all then: a job reads its values as written
+    once the follow-up's key landed. ``edited()`` is called once the edit
+    itself is written, so a refusal after it counts the edit as written
+    (REV-RR-2)."""
     from plaid_client import gaps_to_ops
     from .project import find_layer
     doc_id, text_id, new = op['document_id'], op.get('text_id'), op['new']
@@ -2412,6 +2418,8 @@ def _write_text_edit(client, project, op: Dict[str, Any], new_id, values=(),
     client.texts.edit(text_id, gaps_to_ops(gaps), None,
                       base=((tl or {}).get('text') or {}).get('digest'), versioned=True,
                       tokenize_layer=project.word_layer_id if project.tokenize_new_text else None)
+    if edited is not None:
+        edited()
     raw = client.documents.get(doc_id, include_body=True)
     stored_tl, sent_layer = find_layer(raw.get('text_layers'), project.sentence_layer_id)
     # The server stores the body composed: text written that composes with a

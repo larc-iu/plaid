@@ -23,6 +23,7 @@ from plaid_client import apply_text_ops
 
 from plaid_agent.igt.plan import PlanError, execute_plan, normalize_ops
 from plaid_agent.igt.project import load_project
+from plaid_agent.core.opkind import ROW
 from plaid_agent.core.tools import ValueRefusal
 from plaid_agent.igt.toolkit import call_tool
 
@@ -321,9 +322,15 @@ def test_a_sentence_that_comes_out_otherwise_is_refused_and_no_value_written():
     w = fake_ws(c)
     call_tool(w, 'retype_sentence', {'document': 'd1', 'ref': 's1', 'text': 'Ali-di ∅ gam akuna.'})
     call_tool(w, 'set_field', {'document': 'd1', 'refs': ['s1.w2'], 'field': 'Gloss', 'value': 'he'})
-    with pytest.raises(PlanError, match='reads as the words .* not as planned'):
-        _approve(w, c)
+    ops, notes = normalize_ops(copy.deepcopy(w.ops))
+    # each its card row, as approval numbers them (core.approval)
+    ops = [{**op, ROW: i} for i, op in enumerate(ops)]
+    with pytest.raises(PlanError, match='reads as the words .* not as planned') as e:
+        execute_plan(c, ops, source='s', label='l', project=load_project(c, 'p1'))
     assert not c.batches and not c.payloads('spans.create')
+    # The retype was written, and the count says so: "1 of 2", not "0 of 2"
+    # (REV-RR-2).
+    assert e.value.written == [0], e.value.written
 
 
 def test_a_deleted_word_and_a_value_on_its_neighbour():
@@ -555,3 +562,29 @@ def test_a_retype_names_the_words_it_takes_by_their_number(body, glosses, text, 
     assert f'Analyzed words that lose their analysis: {", ".join(lost)})' in label, label
     # the pairing rule as it was: the earliest word spelled alike is kept
     assert [p['word_id'] for p in w.ops[0]['planned_words']] == ['w-1', 'w-2' if body.startswith('ka') else 'w-4']
+
+
+# --- a sentence split beside a retype of the same sentence (REV-RR-1, REV-RR-2) ----------
+
+def test_a_sentence_split_and_a_retype_of_it_never_share_a_plan():
+    """The split reads before_word against the sentence as read and is
+    written before the retype at the place it read: after a retype whose
+    answer numbered the words anew, "before_word 3" split before the old
+    third word (REV-RR-1). A retype after a split was listed as one
+    sentence and its values refused after both were written (REV-RR-2).
+    Each is refused, whichever comes first, and says what order works."""
+    retype = {'document': 'd1', 'ref': 's1', 'text': 'Ali-di ∅ gam akuna.'}
+    split = {'document': 'd1', 'ref': 's1', 'before_word': 3}
+    w = ws()
+    call_tool(w, 'retype_sentence', retype)
+    assert call_tool(w, 'split_sentence', split) == ('Error: Text 1 s1: this plan retypes s1, and a split reads its '
+                                                     'words as they are now. Split it once the retype is applied.')
+    w = ws()
+    call_tool(w, 'split_sentence', split)
+    assert call_tool(w, 'retype_sentence', retype) == ('Error: Text 1 s1: this plan splits s1, and a retype reads '
+                                                       'it as one sentence. Retype it once the split is applied.')
+    assert [o['kind'] for o in w.ops] == ['split_sentence']
+    # another sentence's split or retype is no concern of it
+    w = ws()
+    call_tool(w, 'retype_sentence', {'document': 'd1', 'ref': 's2', 'text': 'Gam-ar ∅.'})
+    assert call_tool(w, 'split_sentence', split).startswith('Planned')
