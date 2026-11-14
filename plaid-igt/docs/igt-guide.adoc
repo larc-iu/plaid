@@ -983,8 +983,9 @@ An entry a job created that ends with no links is listed in its report under **E
 
 Each document's History has one entry for the job's work in it, named **Assistant job:** with the first words of its instructions, and one for making its analyses consistent.
 A job's page links each document to them, and each opens on what the job changed there (see <<_changes_in_an_entry>>).
-A maintainer undoes either one by restoring the document to the moment before it (see <<_history>>), which also brings back what the job deleted or changed in the document.
-Restoring a document does not undo what a job did in the lexicon: the entries it created, changed, merged or deleted stay as the job left them.
+Once a job has ended, **Undo job** on its page, for a project's maintainers, takes back what the job wrote in every document and in the lexicon, as one entry in the history, and leaves what people changed since.
+A dialog lists what will be undone and what is left before anything is written, and a job too large to undo at once is undone document by document from each document's History.
+Restoring a document to the moment before the job (see <<_history>>) also takes back the job's work in that document, but not in the lexicon.
 
 == The job worker
 
