@@ -119,6 +119,25 @@ export function jobsApi(client) {
     cancel: (jobId) =>
       client._request("POST", `/api/v1/jobs/${jobId}/cancel`, { noOperation: true }),
     /**
+     * Undo everything an ended job wrote, as one operation named "Undo job:
+     * <label>": every group of every document of it (its gloss and its
+     * harmonize pass, its lexicon writes among them), found by core from the
+     * job's own rows. The answer is `audit.undo`'s summary, `entries` naming
+     * the groups. A job still waiting, running or stopping is refused 409.
+     * Rows the caller may not maintain are left `not-permitted`, and 403 when
+     * it maintains none. More than 20,000 rows: 413, saying how many.
+     * @param {string} jobId - The job
+     * @param {object} [opts]
+     * @param {boolean} [opts.dryRun] - Write nothing and say what would be done
+     * @returns {Promise<import("./types.js").AuditUndoSummary>}
+     */
+    undo: (jobId, { dryRun } = {}) =>
+      client._request("POST", `/api/v1/jobs/${jobId}/undo`, {
+        queryParams: { "dry-run": dryRun ? "true" : undefined },
+        timeout: client.batchTimeout,
+        noOperation: true,
+      }),
+    /**
      * When a job worker last asked for work since core started, and the
      * model it runs: `{seenAt, model, instructionsMaxChars, documentsMax}`,
      * `seenAt` and `model` null when none has asked. `instructionsMaxChars`

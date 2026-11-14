@@ -473,6 +473,25 @@ export function auditApi(client) {
         noOperation: true,
       }),
     /**
+     * Undo several audit entries as ONE operation (`undo`'s summary, with
+     * `entries` in place of `entry`): the rows of all of them, each put back
+     * as it was before the earliest of them wrote it. Its dry run is exact
+     * where one undo per entry is not (each would see the others' rows as
+     * built on). The same access row by row and the same limit over all the
+     * rows (413). A job is undone with `jobs.undo`.
+     * @param {string[]} entryIds - The entries' ids
+     * @param {object} [opts]
+     * @param {boolean} [opts.dryRun] - Write nothing and say what would be done
+     * @returns {Promise<AuditUndoSummary>}
+     */
+    undoEntries: (entryIds, { dryRun } = {}) =>
+      client._request("POST", "/api/v1/audit/undo", {
+        body: { entries: entryIds },
+        queryParams: { "dry-run": dryRun ? "true" : undefined },
+        timeout: client.batchTimeout,
+        noOperation: true,
+      }),
+    /**
      * Per-user activity counts. `changes` is the number of logical actions,
      * folded the way the audit feed folds them, so one "Confirm word
      * analysis" counts once however many rows it wrote; `operations` is the

@@ -1020,6 +1020,15 @@ class _AuditLog(list):
                           {'body': self._root.undo_summary})
         return self._root.undo_summary
 
+    def undo_entries(self, entry_ids, *, dry_run=False):
+        """The server's undo of several entries as one, recorded dry or not,
+        answered with the fake's ``undo_summary`` as ``undo`` is."""
+        self._root.fail_if_asked('audit.undo_entries')
+        self._root.record('audit.undo_entries',
+                          {'args': (list(entry_ids),), 'kwargs': {'dry_run': dry_run}},
+                          {'body': self._root.undo_summary})
+        return self._root.undo_summary
+
 
 class FakeClient:
     """Enough of PlaidClient to drive a handler or an assistant: documents to
@@ -2196,6 +2205,17 @@ class _FakeJobs:
         else:
             job['state'] = 'stopping'
         return self._shape(job)
+
+    def undo(self, job_id, *, dry_run=False):
+        """Core's undo of a whole job: refused 409 while the job is waiting,
+        running or stopping, else answered with the client's ``undo_summary``
+        (the fake applies nothing), recorded dry or not."""
+        path = f'/api/v1/jobs/{job_id}/undo'
+        self.calls.append(('undo', {'job_id': job_id, 'dry_run': dry_run}))
+        job = self._job(job_id, 'POST', path)
+        if job['state'] not in _JOB_FINAL:
+            raise self._refuse(409, 'POST', path, 'This job has not ended. A job is undone once it has stopped.')
+        return self._client.undo_summary
 
     def worker(self):
         self.calls.append(('worker', {}))

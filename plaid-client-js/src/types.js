@@ -808,7 +808,8 @@
 /**
  * What `audit.undo` did, or with `dryRun` would do.
  * @typedef {object} AuditUndoSummary
- * @property {string} entry The entry undone
+ * @property {string} [entry] The entry undone (`audit.undo`)
+ * @property {string[]} [entries] The entries undone together (`audit.undoEntries`, `jobs.undo`)
  * @property {boolean} dryRun
  * @property {{documents: UndoCounts, texts: UndoCounts, tokens: UndoCounts, spans: UndoCounts, relations: UndoCounts, vocabLinks: UndoCounts, vocabItems: UndoCounts}} undone
  * @property {number} total Rows put back

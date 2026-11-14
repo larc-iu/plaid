@@ -475,5 +475,18 @@
     "py": ["audit.undo", "e1"],
     "py_kw": {"vocab_layer_id": "v1"},
     "sends": [{"method": "POST", "path": "/api/v1/audit/entries/e1/undo", "query": {"vocab-layer-id": "v1"}}]
+  },
+  {
+    "name": "several entries undone as one, dry",
+    "js": ["audit.undoEntries", ["e1", "e2"], {"dryRun": true}],
+    "py": ["audit.undo_entries", ["e1", "e2"]],
+    "py_kw": {"dry_run": true},
+    "sends": [{"method": "POST", "path": "/api/v1/audit/undo", "query": {"dry-run": "true"}, "body": {"entries": ["e1", "e2"]}}]
+  },
+  {
+    "name": "a job undone whole",
+    "js": ["jobs.undo", "j1"],
+    "py": ["jobs.undo", "j1"],
+    "sends": [{"method": "POST", "path": "/api/v1/jobs/j1/undo"}]
   }
 ]

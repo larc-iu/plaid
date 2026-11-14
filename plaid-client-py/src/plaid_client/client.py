@@ -3579,6 +3579,24 @@ class AuditResource(_Resource):
                              # logical operation (as the JS client).
                              no_operation=True)
 
+    def undo_entries(self, entry_ids: list, *, dry_run: bool = False) -> Any:
+        """Undo several audit entries as ONE operation.
+
+        ``undo``'s summary, with ``entries`` in place of ``entry``: the rows
+        of all of them, each put back as it was before the earliest of them
+        wrote it. Its dry run is exact where one undo per entry is not (each
+        would see the others' rows as built on). The same access row by row
+        and the same limit over all the rows (413). A job is undone with
+        ``jobs.undo``.
+
+        Args:
+            entry_ids: The entries' ids
+            dry_run: Write nothing and say what would be done
+        """
+        return self._request('POST', '/api/v1/audit/undo', body={'entries': list(entry_ids)},
+                             query_params={'dry-run': 'true' if dry_run else None},
+                             timeout=self._client.batch_timeout, no_operation=True)
+
     def tally(self, *, project_id: str | None = None, start_time: str | None = None,
               end_time: str | None = None, daily: bool | None = None) -> Any:
         """Per-user activity counts.
@@ -3794,6 +3812,25 @@ class JobsResource(_Resource):
         worker holds it. Refused with 409 ``job-finished`` once it has ended.
         """
         return self._request('POST', f'/api/v1/jobs/{job_id}/cancel', no_operation=True)
+
+    def undo(self, job_id: str, *, dry_run: bool = False) -> Any:
+        """Undo everything an ended job wrote, as one operation.
+
+        Named "Undo job: <label>": every group of every document of it (its
+        gloss and its harmonize pass, its lexicon writes among them), found by
+        core from the job's own rows. The answer is ``audit.undo``'s summary,
+        ``entries`` naming the groups. A job still waiting, running or
+        stopping is refused 409. Rows the caller may not maintain are left
+        ``not-permitted``, and 403 when it maintains none. More than 20,000
+        rows: 413, saying how many.
+
+        Args:
+            job_id: The job
+            dry_run: Write nothing and say what would be done
+        """
+        return self._request('POST', f'/api/v1/jobs/{job_id}/undo',
+                             query_params={'dry-run': 'true' if dry_run else None},
+                             timeout=self._client.batch_timeout, no_operation=True)
 
     def worker(self) -> Any:
         """When a job worker last asked for work since core started, and the

@@ -105,3 +105,23 @@ def test_an_undo_never_joins_an_open_logical_operation():
     assert len(sent) == 1
     assert 'group-id' not in repr(sent[0])
     assert (sent[0]['headers'] or {}).get('Idempotency-Key')
+
+
+def test_the_fake_records_several_entries_and_a_job_undone():
+    summary = {'entries': ['e1', 'e2'], 'total': 3, 'skipped': [], 'skipped_count': 0}
+    fake = FakeClient({}, undo_summary=summary)
+    assert fake.audit.undo_entries(['e1', 'e2'], dry_run=True) == summary
+    assert ('audit.undo_entries', {'args': (['e1', 'e2'],), 'kwargs': {'dry_run': True}}) in fake.calls
+
+
+def test_the_fake_undoes_a_job_only_once_it_has_ended():
+    import pytest
+    from plaid_client.http import PlaidAPIError
+    summary = {'entries': ['g1'], 'total': 1, 'skipped': [], 'skipped_count': 0}
+    fake = FakeClient({'d1': {'id': 'd1', 'name': 'One'}}, undo_summary=summary, project={'id': 'p1'})
+    job = fake.jobs.create('p1', 'igt', 'Gloss')
+    with pytest.raises(PlaidAPIError) as refused:
+        fake.jobs.undo(job['id'])
+    assert refused.value.status == 409
+    fake.jobs.cancel(job['id'])
+    assert fake.jobs.undo(job['id'], dry_run=True) == summary
