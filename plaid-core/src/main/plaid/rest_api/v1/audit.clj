@@ -366,10 +366,36 @@
                                          :vocab-id (:vocab-layer-id query)}))))
 
 (defn- entries-undo
+  "Several entries undone as one. Refused before anything is written, as
+  an entry's own route refuses (REV-UN4-2): an id no entry has (404 to an
+  admin, 403 unresolved otherwise), an entry none of whose projects the
+  caller reads (403), and entries whose operations name more than one
+  project (422), since the undo's own operation, and its History entry, is
+  one project's."
   [{db :db {{:keys [entries]} :body query :query} :parameters :as request}]
-  (let [ids (vec (distinct entries))]
-    (if (some #(empty? (changes/unit-ops db %)) ids)
-      (unknown-entry request (remove #(seq (changes/unit-ops db %)) ids))
+  (let [ids (vec (distinct entries))
+        ops-of (into {} (map (fn [i] [i (changes/unit-ops db i)])) ids)
+        readable? (pra/project-readable-fn request)
+        projects (distinct (keep :project_id (mapcat val ops-of)))]
+    (cond
+      (some (comp empty? val) ops-of)
+      (unknown-entry request (keep (fn [[i ops]] (when (empty? ops) i)) ops-of))
+
+      ;; an entry is read through a project its operations name, else (an
+      ;; entry's metadata write names none) through its rows' documents or
+      ;; vocabularies, as the changes read lets it be seen
+      (some (fn [[_ ops]]
+              (not (or (some readable? (distinct (keep :project_id ops)))
+                       (let [{:keys [readable-document? readable-vocab?]} (undo-gates request)
+                             {:keys [documents vocabs]} (changes/unit-scopes db ops)]
+                         (or (some readable-document? documents) (some readable-vocab? vocabs))))))
+            ops-of)
+      (undo-refusal request)
+
+      (< 1 (count projects))
+      {:status 422 :body {:error "The entries are in more than one project. Undo each project's entries on their own."}}
+
+      :else
       (undo-answer request ids (changes/units-ops db ids) {:dry-run? (boolean (:dry-run query))}))))
 
 (defn- job-label

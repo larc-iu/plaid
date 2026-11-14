@@ -962,18 +962,26 @@
   whether the job stands undone (`plaid.sql.job/undone`): `job:<id>/undo`
   for a job's undo (given), and for an undo of an entry that lies in such a
   group the other pass, `/redo` for an undo of a job's undo and `/undo` again
-  for an undo of that redo. nil for any other entry."
-  [db ops given]
+  for an undo of that redo. Only a WHOLE undo of such a group flips it: one
+  not narrowed (`narrowed?`) whose operations hold every operation of the
+  group. An undo of one document's part, or of one action, gets nil, so the
+  job still reads undone while the rest is (REV-UN4-1). nil for any other
+  entry."
+  [db ops given narrowed?]
   (or given
-      (let [refs (psc/in-chunks #(psc/q db {:select-distinct [:g.ref]
-                                            :from [[:operations :o]]
-                                            :join [[:operation_groups :g] [:= :g.id :o.group_id]]
-                                            :where [:and [:in :o.id (mapv str %)] [:<> :g.ref nil]]})
-                                (map :id ops))]
-        (some (fn [{:keys [ref]}]
-                (when-let [[_ job pass] (re-matches job-ref-pattern (str ref))]
-                  (str "job:" job "/" (if (= pass "undo") "redo" "undo"))))
-              refs))))
+      (when-not narrowed?
+        (let [mine (into #{} (map (comp str :id)) ops)
+              rows (psc/in-chunks #(psc/q db {:select [:g.id :g.ref]
+                                              :from [[:operations :o]]
+                                              :join [[:operation_groups :g] [:= :g.id :o.group_id]]
+                                              :where [:and [:in :o.id (mapv str %)] [:<> :g.ref nil]]})
+                                  (map :id ops))]
+          (some (fn [{:keys [id ref]}]
+                  (when-let [[_ job pass] (re-matches job-ref-pattern (str ref))]
+                    (let [members (psc/q db {:select [:id] :from [:operations] :where [:= :group_id (str id)]})]
+                      (when (every? #(contains? mine (str (:id %))) members)
+                        (str "job:" job "/" (if (= pass "undo") "redo" "undo"))))))
+                (distinct rows))))))
 
 (defn entry-label
   "The words an undo's description names its entry by: the group's message,
@@ -1022,7 +1030,7 @@
             not-undone (not-undone-ops db ops)
             ;; An undo that a job's read must find gets a group of its own,
             ;; whose ref names the job (`job-ref`), one id for every attempt.
-            group-ref (job-ref db ops (:group-ref opts))
+            group-ref (job-ref db ops (:group-ref opts) (or (:document-id opts) (:vocab-id opts)))
             group-id (when group-ref (random-uuid))]
         (loop [excluded {}
                n 1]

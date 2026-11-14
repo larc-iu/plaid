@@ -1355,3 +1355,59 @@
         (is (nil? (-> (job-read admin-request job) :body :job/undone)))
         (let [again (str (:operation (undone! admin-request redo)))]
           (is (= again (-> (job-read admin-request job) :body :job/undone :operation))))))))
+
+;; ============================================================
+;; Round 6 (REV-UN4)
+;; ============================================================
+
+(defn- undo-list [req ids & {:keys [dry-run]}]
+  (api-call req {:method :post :path (str "/api/v1/audit/undo" (when dry-run "?dry-run=true")) :body {:entries ids}}))
+
+(deftest rev-un4-1-only-a-whole-redo-makes-a-job-stand-again
+  (let [{:keys [job doc]} (job-world!)
+        undone #(-> (job-read admin-request job) :body :job/undone)
+        op (str (:operation (:body (undo-job admin-request job))))]
+    (testing "a redo of one document's part leaves the job undone"
+      (is (some? (:operation (undone! admin-request op :document-id doc))))
+      (is (= op (:operation (undone)))))
+    (testing "a redo of the rest, whole, makes it stand"
+      (is (some? (:operation (undone! admin-request op))))
+      (is (nil? (undone))))))
+
+(deftest rev-un4-2-a-list-is-one-project-the-caller-reads
+  (testing "an entry the caller cannot read: 403, nothing written"
+    (let [{:keys [proj spans]} (setup!)
+          other (create-test-project admin-request "Secret")
+          od (create-test-document admin-request other "SD")
+          otl (id (create-text-layer admin-request other "T"))
+          qg (str (random-uuid))
+          _ (create-text (in-group admin-request qg) otl od "secret")
+          pg (str (random-uuid))
+          _ (assert-ok (update-span (in-group admin-request pg) (nth spans 0) :value "P"))
+          _ (assert-no-content (api-call admin-request {:method :post :path (str "/api/v1/projects/" proj "/maintainers/user1@example.com")}))
+          ops (op-count)
+          resp (undo-list user1-request [qg pg])]
+      (is (= 403 (:status resp)))
+      (is (= ops (op-count)))
+      (is (= "P" (-> (get-span admin-request (nth spans 0)) :body :span/value)))))
+  (testing "entries of two projects: 422, nothing written"
+    (let [a (setup!)
+          b (setup!)
+          ga (str (random-uuid))
+          gb (str (random-uuid))
+          _ (assert-ok (update-span (in-group admin-request ga) (nth (:spans a) 0) :value "A"))
+          _ (assert-ok (update-span (in-group admin-request gb) (nth (:spans b) 0) :value "B"))
+          ops (op-count)
+          resp (undo-list admin-request [gb ga])]
+      (is (= 422 (:status resp)))
+      (is (= "The entries are in more than one project. Undo each project's entries on their own."
+             (-> resp :body :error)))
+      (is (= ops (op-count)))))
+  (testing "entries of one project: the undo is that project's"
+    (let [{:keys [proj spans]} (setup!)
+          g1 (str (random-uuid))
+          g2 (str (random-uuid))
+          _ (assert-ok (update-span (in-group admin-request g1) (nth spans 0) :value "1"))
+          _ (assert-ok (update-span (in-group admin-request g2) (nth spans 1) :value "2"))
+          op (str (:operation (:body (undo-list admin-request [g2 g1]))))]
+      (is (= (str proj) (str (:project_id (psc/fetch-by-id db :operations op))))))))
