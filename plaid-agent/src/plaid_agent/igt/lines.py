@@ -108,13 +108,14 @@ def t_analyze_sentence(ws: Workspace, document: Optional[str] = None, sentences:
     notes: List[str] = []
     listed: Dict[tuple, Dict[str, Any]] = {}
     made: List[str] = []
+    taken: set = set()
     staged_any = False
     for item in sentences:
         if not isinstance(item, dict):
             said.append('A sentence is {ref, words}: not staged.')
             continue
         try:
-            line, word_notes = _stage_sentence(ws, doc, item, bool(new_entries), lexicon, listed, made)
+            line, word_notes = _stage_sentence(ws, doc, item, bool(new_entries), lexicon, listed, made, taken)
             said.append(line)
             notes += word_notes
             staged_any = True
@@ -274,13 +275,19 @@ def _lineup(words, items) -> List[str]:
 
 
 def _stage_sentence(ws: Workspace, doc: IgtDoc, item: Dict[str, Any], new_entries: bool, lexicon: Optional[str],
-                    listed: Dict[tuple, Dict[str, Any]], made: List[str]) -> Tuple[str, List[str]]:
+                    listed: Dict[tuple, Dict[str, Any]], made: List[str], taken: set) -> Tuple[str, List[str]]:
     """Stage one sentence: every word's analysis, the entries to create, the
     links, all of it or none of it. A word whose item does not line up is
     left out and listed, another number of items refuses the sentence."""
     label, s, words = _words_of(doc, item.get('ref'))
     if not words:
         raise _Refused(f'{label} not staged: it has no words.')
+    again = [w for w in words if w.id in taken]
+    if again:
+        # A word staged twice in one call: the second analysis superseded
+        # the first and the answer counted both (REV-LAS-6).
+        raise _Refused(f'{label} not staged: {", ".join(f"w{w.index}" for w in again)} '
+                       f'{"is" if len(again) == 1 else "are"} in an earlier sentence of this call.')
     items = item.get('words')
     if not isinstance(items, list) or not items:
         raise _Refused(f'{label} not staged: give words, one "FORMS GLOSS" item per word of the ref, e.g. '
@@ -350,6 +357,7 @@ def _stage_sentence(ws: Workspace, doc: IgtDoc, item: Dict[str, Any], new_entrie
             t_link_entry(ws, doc.id, refs, entry_id=target)
             n_links += len(refs)
     made += created
+    taken.update(w.id for w, morphs in zip(words, parsed) if morphs is not None)
     for key, entry in found.items():
         into = listed.setdefault(key, {**entry, 'refs': []})
         into['refs'] += entry['refs']

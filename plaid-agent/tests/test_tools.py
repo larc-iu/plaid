@@ -118,7 +118,7 @@ def test_set_analysis_plans_a_resolved_chain():
         {'form': 'gam', 'morph_type': 'stem', 'fields': [{'layer_id': 'sl-mgloss', 'value': 'fish'}]},
         {'form': 'ar', 'morph_type': 'suffix', 'fields': [{'layer_id': 'sl-mgloss', 'value': 'PL'}]}]
     assert op['label'] == 'Text 1 s2.w1 "Gam-ar": Gam=ar → gam-ar, Morph Gloss fish-PL'
-    assert 'differ from the surface' in out  # gam+ar vs Gam-ar (hyphen, case)
+    assert 'differ from the surface' not in out  # gam+ar vs Gam-ar: case and the word's own hyphen (REV-LAS-7)
     assert 'is a Word field' in call_tool(w, 'set_analysis', {'document': 'd1', 'ref': 's1.w2',
                                                                'morphemes': [{'form': 'gam', 'fields': {'Gloss': 'x'}}]})
 

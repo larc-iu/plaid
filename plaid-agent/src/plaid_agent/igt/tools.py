@@ -450,7 +450,9 @@ def analysis_op(ws: Workspace, head: str, surface: str, word_id: str, text_id: s
     """A set_analysis op with its label, and the allomorphy note if the forms
     do not add up to the surface."""
     joined = ''.join(m['form'] for m in out)
-    if joined.replace(' ', '') != trim_ignored_edges(surface, ws.project.ignored_cfg).replace(' ', ''):
+    # Case and a hyphen the word itself has are no allomorphy (REV-LAS-7).
+    word = trim_ignored_edges(surface, ws.project.ignored_cfg)
+    if joined.replace(' ', '').lower() != word.replace(' ', '').replace('-', '').lower():
         note = f' (note: forms "{joined}" differ from the surface "{surface}"; that is allowed for allomorphy)'
     else:
         note = ''

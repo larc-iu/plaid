@@ -629,3 +629,21 @@ def test_rev_las_4_an_item_that_is_not_a_string_is_refused_for_its_word():
     assert "['Ali" not in str(w.ops)
     out = call(ws(), sentences=[{'ref': 's1.w2', 'words': [None]}])
     assert out == 'Error: s1.w2 not staged: w2.\n  w2 gam | null: an item is one string, "FORMS GLOSS"'
+
+
+def test_rev_las_6_a_word_given_twice_in_one_call_is_staged_once():
+    w = ws()
+    out = call(w, sentences=[{'ref': 's1', 'words': items('Ali-di gam aku-na', 'Ali-ERG fish see-PST')},
+                             {'ref': 's1.w2', 'words': ['gam net']}])
+    assert 's1: 3 words analysed, 4 links.' in out
+    assert 's1.w2 not staged: w2 is in an earlier sentence of this call.' in out
+    assert links(w).count(('w-2.m1', 'e-gam')) == 1 and ('w-2.m1', 'e-gam2') not in links(w)
+
+
+def test_rev_las_7_no_allomorphy_note_for_case_or_the_words_own_hyphen():
+    w = ws()
+    out = call(w, sentences=[{'ref': 's1', 'words': ['ali-di Ali-ERG', 'gam fish', 'aku-na see-PST']},
+                             {'ref': 's2', 'words': ['gam=ar fish=FOC']}])
+    assert 'allomorphy' not in out, out
+    out = call(ws(), sentences=[{'ref': 's1.w3', 'words': ['akun-nan see-PST']}])
+    assert 'allomorphy' in out
