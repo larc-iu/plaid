@@ -17,7 +17,7 @@ see what they always saw.
 
 The pieces a variant of this tool would change, each in one place:
 - the linking rule: ``fit.fits`` (form as the pair picker finds it, gloss
-  after NFC, type where the types line gives one), asked in :func:`_fits`;
+  after NFC), asked in :func:`_fits`;
 - ``new_entries``: :func:`_stage_sentence`, where a morpheme no entry fits
   is created for, and :func:`_creatable`, which says when it may be;
 - the surface check: ``tools.surface_misfit`` and ``tools.SURFACE_SLACK``;
@@ -32,7 +32,6 @@ from ..core.tools import ToolError
 
 from .fit import collation_key, fits, nfc, spelled
 from .lexicon import _create_entry
-from .lexview import morph_type
 from .project import IgtDoc, IgtProject
 from .tools import parse_analysis, surface_misfit, t_link_entry, word_analysis_op
 from .vocab import ROLE_GLOSS
@@ -40,7 +39,7 @@ from .workspace import Workspace
 
 #: The word left as it is: this on every line.
 PLACEHOLDER = '_'
-#: A morpheme of the gloss, types or another field's line with no value.
+#: A morpheme of the gloss or another field's line with no value.
 NO_VALUE = '_'
 #: Sentences in one call.
 MAX_SENTENCES = 20
@@ -58,18 +57,17 @@ boundary. Every line has as many words as the ref has, and each word as many mor
 Punctuation on a word is not part of its forms.
   ref "s4", forms "na-ku-ja le=o", gloss "PRS-INF-come today=DEF"
 ref "s4.w3-w5" is a run of words of one sentence.
-_ as a whole word on every line leaves that word as it is. _ for one morpheme on the gloss, types or a \
-field line gives it no value. A form or gloss holding "-", "=", "_" or a space cannot be written here: \
+_ as a whole word on every line leaves that word as it is. _ for one morpheme on the gloss or a field \
+line gives it no value. A form or gloss holding "-", "=", "_" or a space cannot be written here: \
 put _ for that word and analyse it with set_analysis.
 
-Types. types is an optional aligned line of morph types (stem, prefix, suffix, enclitic, ...). A linked \
-morpheme goes by its entry's type. A morpheme with neither takes none, except one after "=", which \
-the clitic rule types as set_analysis types it.
+Types. A linked morpheme goes by its entry's type, and one after "=" is typed as a clitic. The rest \
+take none: set_morpheme sets a type where one is needed.
 
 Other morpheme fields. fields maps a field name to its aligned line, e.g. {"POS": "v-asp"}.
 
 Links. Each glossed morpheme is linked to the one lexicon entry, or sense, whose form is its form and \
-whose gloss is its gloss (and whose type is its type, where types gives one). Where several fit, or \
+whose gloss is its gloss. Where several fit, or \
 none does, nothing is linked and the answer lists the morpheme with the entries to choose from: link one \
 with link_entry (sN.wN.mN, entry_id). new_entries: true creates an entry, once, for each form and gloss \
 no entry has, and links every morpheme of it. An ambiguous one is never created for.
@@ -78,7 +76,7 @@ Checks. A sentence whose lines do not line up, or a word whose forms are more th
 word plus 3, is not staged at all, and the answer shows its words beside what was given. A word \
 whose forms differ from it otherwise is staged, with a note.
 
-Several sentences: sentences=[{ref, forms, gloss, types?, fields?}, ...], up to 20, each staged or \
+Several sentences: sentences=[{ref, forms, gloss, fields?}, ...], up to 20, each staged or \
 refused on its own.'''
 
 
@@ -87,14 +85,14 @@ class _Refused(Exception):
 
 
 def t_analyze_sentence(ws: Workspace, document: Optional[str] = None, ref: Optional[str] = None,
-                       forms: Optional[str] = None, gloss: Optional[str] = None, types: Optional[str] = None,
+                       forms: Optional[str] = None, gloss: Optional[str] = None,
                        fields: Optional[dict] = None, sentences: Optional[list] = None,
                        new_entries: bool = False, lexicon: Optional[str] = None, help: bool = False) -> str:
     if help:
         return HELP
     if not ws.project.morpheme_layer_id:
         raise ToolError('This project has no morpheme layer.', kind='not-found')
-    one = {k: v for k, v in (('ref', ref), ('forms', forms), ('gloss', gloss), ('types', types),
+    one = {k: v for k, v in (('ref', ref), ('forms', forms), ('gloss', gloss),
                              ('fields', fields)) if v is not None}
     if sentences is not None and one:
         raise ToolError('Give ref, forms and gloss, or sentences (a list of them), not both.',
@@ -161,8 +159,7 @@ def _pieces(word: str) -> Tuple[List[str], List[str]]:
 
 def _lines(ws: Workspace, item: Dict[str, Any]):
     """``[(name, line words, field)]``: the forms line first, then the gloss
-    line, types, and every other field's line, ``field`` None for forms and
-    types."""
+    line and every other field's line, ``field`` None for forms."""
     g = ws.project.gloss_field('Morpheme')
     out = [('forms', str(item.get('forms') or '').split(), None)]
     if item.get('gloss') is not None:
@@ -171,8 +168,6 @@ def _lines(ws: Workspace, item: Dict[str, Any]):
         out.append(('gloss', str(item['gloss']).split(), g))
     elif g is not None:
         raise ToolError('Give gloss, the gloss line.', kind='invalid-argument')
-    if item.get('types') is not None:
-        out.append(('types', str(item['types']).split(), None))
     extra = item.get('fields') or {}
     if not isinstance(extra, dict):
         raise ToolError('fields maps a morpheme field name to its line, e.g. {"POS": "v-asp"}.',
@@ -224,14 +219,6 @@ def _check(ws: Workspace, label: str, words, lines) -> Tuple[List[str], List[Opt
                 problems.append(f'{at}: an empty morpheme in {name} "{v}"')
                 bad = True
             cut[name] = pieces
-        if 'types' in cut and not bad:
-            for t in cut['types']:
-                if t != NO_VALUE:
-                    try:
-                        morph_type(t)
-                    except ToolError:
-                        problems.append(f'{at}: no morph type "{t}"')
-                        bad = True
         if not bad:
             misfit = surface_misfit(w.surface, forms, cfg)
             if misfit:
@@ -278,7 +265,6 @@ def _stage_sentence(ws: Workspace, doc: IgtDoc, item: Dict[str, Any], new_entrie
                 continue
             ref = f's{s.index}.w{w.index}'
             given = [{'form': form, 'equals': delim == '=',
-                      **({'type': cut['types']} if cut.get('types', NO_VALUE) != NO_VALUE else {}),
                       'fields': {fields[name].name: v for name, v in cut.items()
                                  if name in fields and v != NO_VALUE}}
                      for form, delim, cut in morphs]
@@ -295,24 +281,22 @@ def _stage_sentence(ws: Workspace, doc: IgtDoc, item: Dict[str, Any], new_entrie
                 value = cut.get('gloss', NO_VALUE)
                 if g is None or value == NO_VALUE:
                     continue
-                stated = cut.get('types', NO_VALUE)
-                kind = morph_type(stated) if stated != NO_VALUE else None
                 mref = f's{s.index}.w{w.index}.m{k}'
-                hits = _fits(ws, form, value, kind)
+                hits = _fits(ws, form, value)
                 if not hits and new_entries and _creatable(ws, form, value):
                     v = _lexicon_for_new(ws, lexicon)
                     key = IgtProject.lexicon_field(v, ROLE_GLOSS)
                     if not key:
                         raise ToolError(f'new_entries: lexicon "{v["name"]}" has no gloss field.',
                                         kind='invalid-argument')
-                    _create_entry(ws, v, form, {key: value}, kind, None)
+                    _create_entry(ws, v, form, {key: value}, None, None)
                     creates += 1
                     created.append(f'{form} ‘{value}’')
-                    hits = _fits(ws, form, value, kind)
+                    hits = _fits(ws, form, value)
                 if len(hits) == 1:
                     links.setdefault(hits[0][1], []).append(mref)
                     continue
-                key = (collation_key(form), nfc(value), kind)
+                key = (collation_key(form), nfc(value))
                 entry = found.setdefault(key, {'form': form, 'gloss': value, 'refs': [], 'hits': hits})
                 entry['refs'].append(mref)
         n_links = 0
@@ -337,12 +321,12 @@ def _items_of(ws: Workspace, v: dict) -> List[dict]:
                                      for k, e in ws.new_entries.items() if e.get('vocab_id') == v['id']]
 
 
-def _fits(ws: Workspace, form: str, gloss: str, kind: Optional[str]) -> List[tuple]:
+def _fits(ws: Workspace, form: str, gloss: str) -> List[tuple]:
     """``[(lexicon, entry id or new entry key, entry)]``: the entries of
     every lexicon of the project that fit (``fit.fits``)."""
     out = []
     for v in ws.project.vocabs:
-        for it in fits(v, _items_of(ws, v), form, gloss, kind):
+        for it in fits(v, _items_of(ws, v), form, gloss):
             out.append((v, it.get('id') or it.get('key'), it))
     return out
 
@@ -350,7 +334,7 @@ def _fits(ws: Workspace, form: str, gloss: str, kind: Optional[str]) -> List[tup
 def _creatable(ws: Workspace, form: str, gloss: str) -> bool:
     """Whether ``new_entries`` creates an entry for this form and gloss: no
     entry of any lexicon has that form and that gloss, whatever its type."""
-    return not _fits(ws, form, gloss, None)
+    return not _fits(ws, form, gloss)
 
 
 def _lexicon_for_new(ws: Workspace, lexicon: Optional[str]) -> dict:
@@ -414,7 +398,7 @@ def _candidate_lines(ws: Workspace, hits: List[tuple]) -> List[str]:
 
 def _none_detail(ws: Workspace, form: str, gloss: str) -> str:
     """For a morpheme no entry fits: the entries spelled as it is (other
-    glosses or types), else the headwords spelled close to it."""
+    glosses), else the headwords spelled close to it."""
     same = [(v, it) for v in ws.project.vocabs for it in spelled(v, ws.view(v).items, form)]
     if same:
         lines = ws.entry_lines(same[:MAX_CANDIDATES], [])

@@ -97,20 +97,26 @@ def test_a_sentence_is_analysed_word_for_word_and_linked_where_one_entry_fits():
     assert 'type=suffix' in out and 'type=stem' in out
 
 
-def test_the_types_line_takes_part_in_the_fit_and_types_the_morphemes():
+def test_there_is_no_types_line_and_no_morpheme_is_typed_but_by_the_equals_rule():
+    """v2: a types line that did not line up refused 53 sentences of the
+    Natugu night run. A linked morpheme goes by its entry, one after "=" by
+    the clitic rule, the rest by none (set_morpheme sets one)."""
+    spec = next(t['function'] for t in TOOLS if t['function']['name'] == 'analyze_sentence')
+    assert 'types' not in spec['parameters']['properties'] and 'types' not in spec['description']
     w = ws()
     out = call(w, ref='s1', forms='Ali-di gam aku-na', gloss='Ali-ERG fish see-PST', types='_-_ _ stem-suffix')
-    assert ('w-3.m2', 'e-na') in links(w) and 'Several entries fit' not in out
+    assert 'analyze_sentence cannot be called with those arguments' in out and w.ops == []
+    call(w, ref='s1', forms='Ali-di gam aku-na', gloss='Ali-ERG fish see-PST')
     w3 = next(o for o in w.ops if o.get('word_id') == 'w-3')
-    assert [m.get('morph_type') for m in w3['morphemes']] == ['stem', 'suffix']
+    assert [m.get('morph_type') for m in w3['morphemes']] == [None, None]
 
 
 def test_a_run_of_words():
     w = ws()
-    out = call(w, ref='s1.w2-w3', forms='gam aku-na', gloss='net see-PST', types='_ _-suffix')
+    out = call(w, ref='s1.w2-w3', forms='gam aku-na', gloss='net see-PST')
     assert [o['word_id'] for o in w.ops if o['kind'] == 'set_analysis'] == ['w-2', 'w-3']
-    assert links(w) == [('w-2.m1', 'e-gam2'), ('w-3.m1', 'e-aku'), ('w-3.m2', 'e-na')]
-    assert out.splitlines()[1] == 's1.w2-w3: 2 words analysed, 3 links.'
+    assert links(w) == [('w-2.m1', 'e-gam2'), ('w-3.m1', 'e-aku')]
+    assert out.splitlines()[1] == 's1.w2-w3: 2 words analysed, 2 links.'
 
 
 def test_an_equals_is_a_clitic_boundary():
@@ -134,9 +140,9 @@ def test_a_hyphen_between_morphemes_is_no_equals():
 
 def test_the_placeholder_leaves_a_word_as_it_is():
     w = ws()
-    out = call(w, ref='s1', forms='_ gam aku-na', gloss='_ fish see-PST', types='_ _ _-suffix')
+    out = call(w, ref='s1', forms='_ gam aku-na', gloss='_ fish see-PST')
     assert [o['word_id'] for o in w.ops if o['kind'] == 'set_analysis'] == ['w-2', 'w-3']
-    assert 's1: 2 words analysed, 3 links.' in out
+    assert 's1: 2 words analysed, 2 links.' in out
 
 
 def test_a_morpheme_with_no_gloss_is_staged_and_not_linked():
@@ -195,8 +201,6 @@ def test_run4s_mistake_through_a_run_of_one_word_is_refused_by_the_surface_check
      's1 not staged: w3: an empty morpheme in "aku-na-"; w3: 3 forms, 2 in gloss.'),
     ({'forms': '_ gam aku-na', 'gloss': 'Ali fish see-PST'},
      's1 not staged: w1: _ in forms and not in gloss.'),
-    ({'forms': 'Ali-di gam aku-na', 'gloss': 'Ali-ERG fish see-PST', 'types': '_-_ _ _-sufix'},
-     's1 not staged: w3: no morph type "sufix".'),
     ({'forms': 'Ali-di gamgamgamg aku-na', 'gloss': 'Ali-ERG fish see-PST'},
      's1 not staged: w2: forms "gamgamgamg" are over twice as long as "gam" plus 3.'),
 ])
@@ -276,17 +280,17 @@ def test_new_entries_never_resolves_several_and_never_creates_beside_a_form_and_
     assert 'Several entries fit' in out
 
 
-def test_new_entries_takes_the_stated_type():
+def test_new_entries_gives_no_type():
     w = ws()
-    call(w, ref='s1.w3', forms='aku-ti', gloss='see-FUT', types='_-suffix', new_entries=True)
+    call(w, ref='s1.w3', forms='aku-ti', gloss='see-FUT', new_entries=True)
     (create,) = [o for o in w.ops if o['kind'] == 'create_entry']
-    assert create['form'] == 'ti' and create['metadata'] == {'gloss': 'FUT', 'morphType': 'suffix'}
+    assert create['form'] == 'ti' and create['metadata'] == {'gloss': 'FUT'}
 
 
-def test_homonyms_told_apart_only_by_type():
+def test_homonyms_told_apart_only_by_type_both_fit_and_neither_is_linked():
     w = ws()
-    call(w, ref='s1.w2', forms='na', gloss='PST', types='stem')
-    assert links(w) == [('w-2.m1', 'e-na2')]
+    out = call(w, ref='s1.w2', forms='na', gloss='PST')
+    assert links(w) == [] and 'Several entries fit' in out and 'type=stem' in out and 'type=suffix' in out
 
 
 # --- what it stages is what the old calls staged ------------------------------------------
@@ -298,19 +302,19 @@ def _strip(ops):
 def test_the_ops_are_the_ops_set_analysis_create_entry_and_link_entry_stage():
     new = ws()
     call(new, sentences=[
-        {'ref': 's1', 'forms': 'Ali-di gam aku-na', 'gloss': 'Ali-ERG catch see-PST', 'types': '_-_ _ stem-suffix'},
+        {'ref': 's1', 'forms': 'Ali-di gam aku-na', 'gloss': 'Ali-ERG catch see-PST'},
         {'ref': 's2', 'forms': 'Gam=ar', 'gloss': 'catch=FOC'}], new_entries=True)
     old = ws()
     for ref, morphemes in [
             ('s1.w1', [{'form': 'Ali', 'equals': False, 'fields': {'Morph Gloss': 'Ali'}},
                        {'form': 'di', 'equals': False, 'fields': {'Morph Gloss': 'ERG'}}]),
             ('s1.w2', [{'form': 'gam', 'equals': False, 'fields': {'Morph Gloss': 'catch'}}]),
-            ('s1.w3', [{'form': 'aku', 'type': 'stem', 'equals': False, 'fields': {'Morph Gloss': 'see'}},
-                       {'form': 'na', 'type': 'suffix', 'equals': False, 'fields': {'Morph Gloss': 'PST'}}])]:
+            ('s1.w3', [{'form': 'aku', 'equals': False, 'fields': {'Morph Gloss': 'see'}},
+                       {'form': 'na', 'equals': False, 'fields': {'Morph Gloss': 'PST'}}])]:
         assert call_tool(old, 'set_analysis', {'document': 'd1', 'ref': ref, 'morphemes': morphemes}).startswith('Planned')
     key = call_tool(old, 'create_entry', {'form': 'gam', 'fields': {'gloss': 'catch'}}).split('entry_id: ')[1].split()[0]
     for refs, entry in [(['s1.w1.m1'], 'e-ali'), (['s1.w1.m2'], 'e-di'), (['s1.w2.m1'], key),
-                        (['s1.w3.m1'], 'e-aku'), (['s1.w3.m2'], 'e-na')]:
+                        (['s1.w3.m1'], 'e-aku')]:
         call_tool(old, 'link_entry', {'document': 'd1', 'refs': refs, 'entry_id': entry})
     call_tool(old, 'set_analysis', {'document': 'd1', 'ref': 's2.w1', 'morphemes': [
         {'form': 'Gam', 'equals': False, 'fields': {'Morph Gloss': 'catch'}},
@@ -397,7 +401,7 @@ def test_a_script_with_no_spaces_between_its_words():
 
 def test_a_word_nobody_segmented_is_analysed_on_its_derived_morpheme():
     w = ws()
-    call(w, ref='s1.w3', forms='aku-na', gloss='see-PST', types='_-suffix')
+    call(w, ref='s1.w3', forms='aku-na', gloss='see-PST')
     (op,) = [o for o in w.ops if o['kind'] == 'set_analysis']
     assert op['word_id'] == 'w-3' and op['existing'] == []
     c = applied(w)
@@ -411,7 +415,7 @@ def test_a_word_in_a_multi_word_expression_keeps_the_expression():
     words['vocabs'][0]['vocab_links'].append({'id': 'l-mwe', 'vocab_item': {'id': 'e-kai', 'form': 'kai'},
                                               'tokens': ['w-2', 'w-3']})
     w = ws(doc=raw)
-    out = call(w, ref='s1.w2-w3', forms='gam aku-na', gloss='fish see-PST', types='_ _-suffix')
+    out = call(w, ref='s1.w2-w3', forms='gam aku-na', gloss='fish see-PST')
     assert out.startswith('Planned') and 'unlink' not in kinds(w) and 'unlink_phrase' not in kinds(w)
     assert [o['word_id'] for o in w.ops if o['kind'] == 'set_analysis'] == ['w-2', 'w-3']
 

@@ -182,12 +182,11 @@ TOOLS = [
         'PLAN: segment and gloss a sentence, or a run of its words, from interlinear lines: forms "na-ku-ja '
         'le=o", gloss "PRS-INF-come today=DEF", one word per word of the ref, morphemes apart by "-" or "=". '
         'Each glossed morpheme is linked to the one entry with that form and gloss; the answer lists those '
-        'with several or none. help: true for the rest (types, other fields, words left as they are, '
+        'with several or none. help: true for the rest (other fields, words left as they are, '
         'new_entries).',
         {'document': _DOC, 'ref': {'type': 'string', 'description': 'A sentence, "s4", or a run of its words, '
                                                                     '"s4.w3-w5".'},
          'forms': {'type': 'string'}, 'gloss': {'type': 'string'},
-         'types': {'type': 'string'},
          'fields': {'type': 'object', 'additionalProperties': {'type': 'string'}},
          'sentences': {'type': 'array', 'description': 'Several at once: [{ref, forms, gloss}, ...].',
                        'items': {'type': 'object'}},

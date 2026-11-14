@@ -205,13 +205,12 @@ PLAN: apply one analysis (same shape as set_analysis's morphemes) to every occur
 
 ### analyze_sentence
 
-PLAN: segment and gloss a sentence, or a run of its words, from interlinear lines: forms "na-ku-ja le=o", gloss "PRS-INF-come today=DEF", one word per word of the ref, morphemes apart by "-" or "=". Each glossed morpheme is linked to the one entry with that form and gloss; the answer lists those with several or none. help: true for the rest (types, other fields, words left as they are, new_entries).
+PLAN: segment and gloss a sentence, or a run of its words, from interlinear lines: forms "na-ku-ja le=o", gloss "PRS-INF-come today=DEF", one word per word of the ref, morphemes apart by "-" or "=". Each glossed morpheme is linked to the one entry with that form and gloss; the answer lists those with several or none. help: true for the rest (other fields, words left as they are, new_entries).
 
 - `document` (string, required): Document id or exact name (see project_overview).
 - `ref` (string): A sentence, "s4", or a run of its words, "s4.w3-w5".
 - `forms` (string)
 - `gloss` (string)
-- `types` (string)
 - `fields` (object of string)
 - `sentences` (array of object): Several at once: [{ref, forms, gloss}, ...].
 - `new_entries` (boolean): Create an entry for each form and gloss no entry has, and link it.
