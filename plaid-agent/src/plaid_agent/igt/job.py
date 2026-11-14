@@ -60,7 +60,8 @@ from .plan import LEXICON_MAINTAINER, PlanOutOfDate, check_entries, execute_plan
 from .project import IgtProject, Sentence, Word, is_virtual, load_project, render_sentence
 from .prompt import JOB_SYSTEM, build_job_prompt
 from .trace import TRACER
-from .vocab import ROLE_GLOSS, ROLE_STATUS, parent_of
+from .fit import entry_gloss as _entry_gloss, fitting_entry  # noqa: F401 (fitting_entry: tests)
+from .vocab import ROLE_GLOSS, ROLE_STATUS
 from .workspace import Workspace
 
 logger = logging.getLogger(__name__)
@@ -680,37 +681,6 @@ class JobWorkspace(Workspace):
         if staged is not None:
             raise ToolError(f'"{_nfc(op.get("form"))}" ‘{value}’ is staged already as entry_id {staged.get("key")}: '
                             'link it.', kind='conflict')
-
-
-def _entry_gloss(item: Dict[str, Any], gloss: Optional[str]) -> str:
-    return _nfc((item.get('metadata') or {}).get(gloss)) if gloss else ''
-
-
-def _morph_type(item: Dict[str, Any], by_id: Dict[str, Dict[str, Any]]) -> Optional[str]:
-    """The morph type an entry goes by: its own (the reserved key
-    ``morphType``), else its headword's, else None. ``morph_type_of``'s rule,
-    for items that may be staged creates with no id."""
-    seen, cur = set(), item
-    while cur is not None and id(cur) not in seen:
-        seen.add(id(cur))
-        t = (cur.get('metadata') or {}).get('morphType')
-        if isinstance(t, str) and t:
-            return t
-        cur = by_id.get(parent_of({'metadata': cur.get('metadata') or {}}) or '')
-    return None
-
-
-def fitting_entry(v: Dict[str, Any], items: List[Dict[str, Any]], op: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-    """The first of ``items`` (entries of lexicon ``v``) that fits the
-    create ``op``: the same form, gloss and morph type, after NFC (SPEC 7.2,
-    the type since REV-JG3-8: a suffix -ka 'go' is not the stem ka 'go'). No
-    entry is created where one fits, made by anyone, of any status."""
-    gloss = IgtProject.lexicon_field(v, ROLE_GLOSS)
-    form, value = _nfc(op.get('form')), _entry_gloss(op, gloss)
-    by_id = {it['id']: it for it in items if it.get('id')}
-    kind = _morph_type(op, by_id)
-    return next((it for it in items if _nfc(it.get('form')) == form and _entry_gloss(it, gloss) == value
-                 and _morph_type(it, by_id) == kind), None)
 
 
 # --- the runner --------------------------------------------------------------------

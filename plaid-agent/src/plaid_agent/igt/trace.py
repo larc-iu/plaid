@@ -135,6 +135,12 @@ def _own(name: str, a: Dict[str, Any]) -> Optional[str]:
         return f'Planned {a.get("field")} = {q(a.get("value"))} on {_counted(a)}{in_doc(a)}'
     if name == 'set_analysis':
         return f'Planned a new analysis for {a.get("ref")}{in_doc(a)}'
+    if name == 'analyze_sentence':
+        if a.get('help'):
+            return 'Read how to analyse a sentence from interlinear lines'
+        many = a.get('sentences') if isinstance(a.get('sentences'), list) else None
+        what = plural(len(many), 'sentence') if many is not None else a.get('ref')
+        return f'Planned analyses of {what}{in_doc(a)}'
     if name == 'set_morpheme':
         bits = [b for b in (f'form {q(a["form"])}' if a.get('form') is not None else '',
                             f'type {q(a["type"])}' if a.get('type') is not None else '') if b]
@@ -301,7 +307,8 @@ _PROGRESS = {
 
 # The tagsets tool plans with edit and assign, and only reads with help (its
 # manual) and check.
-_READING = {'tagsets': lambda a: {'help': META, 'check': READ}.get(_action(a)),
+_READING = {'analyze_sentence': lambda a: META if a.get('help') else None,
+            'tagsets': lambda a: {'help': META, 'check': READ}.get(_action(a)),
             'senses': lambda a: META if _action(a) == 'help' else None,
             'app_guide': lambda a: META,
             'propose_job': lambda a: META if _action(a) == 'help' else PLAN,

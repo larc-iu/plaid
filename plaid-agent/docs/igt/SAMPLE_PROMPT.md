@@ -97,7 +97,7 @@ Running code:
 
 ## Tools
 
-68 tools, in the order the model receives them: 38 plan a change (`PLAN:`), 2 reach the web, the rest read the project or manage the plan.
+69 tools, in the order the model receives them: 39 plan a change (`PLAN:`), 2 reach the web, the rest read the project or manage the plan.
 
 ### project_overview
 
@@ -202,6 +202,21 @@ PLAN: apply one analysis (same shape as set_analysis's morphemes) to every occur
 - `morphemes` (array of object {form: string (required), type: string, fields: object of string}, required)
 - `document` (string): Document id or exact name (see project_overview).
 - `skip_analyzed` (boolean)
+
+### analyze_sentence
+
+PLAN: segment and gloss a sentence, or a run of its words, from interlinear lines: forms "na-ku-ja le=o", gloss "PRS-INF-come today=DEF", one word per word of the ref, morphemes apart by "-" or "=". Each glossed morpheme is linked to the one entry with that form and gloss; the answer lists those with several or none. help: true for the rest (types, other fields, words left as they are, new_entries).
+
+- `document` (string, required): Document id or exact name (see project_overview).
+- `ref` (string): A sentence, "s4", or a run of its words, "s4.w3-w5".
+- `forms` (string)
+- `gloss` (string)
+- `types` (string)
+- `fields` (object of string)
+- `sentences` (array of object): Several at once: [{ref, forms, gloss}, ...].
+- `new_entries` (boolean): Create an entry for each form and gloss no entry has, and link it.
+- `lexicon` (string): Lexicon for new entries (needed only when the project has several).
+- `help` (boolean)
 
 ### set_morpheme
 

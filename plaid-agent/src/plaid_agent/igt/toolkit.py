@@ -21,6 +21,7 @@ from ..core.tools import ToolError, fn, limit_arg
 from .bulk import (t_copy_to_orthography, t_delete_entry, t_merge_entries, t_rename_document,
                    t_rename_entry, t_replace_in_field, t_respell_all, t_set_analysis_for_form,
                    t_set_field_for_form)
+from .lines import t_analyze_sentence
 from .lexicon import t_create_entry, t_make_sense_of, t_senses, t_set_entry_field
 from .query import t_query, t_query_help
 from ..core.history import (add_comment_on_values as t_add_comment, comments_on_values as t_comments,
@@ -177,6 +178,25 @@ TOOLS = [
         {'document': _DOC, 'ref': {'type': 'string', 'description': 'The word, sN.wN.'},
          'morphemes': _MORPHEMES},
         ['document', 'ref', 'morphemes']),
+    _fn('analyze_sentence',
+        'PLAN: segment and gloss a sentence, or a run of its words, from interlinear lines: forms "na-ku-ja '
+        'le=o", gloss "PRS-INF-come today=DEF", one word per word of the ref, morphemes apart by "-" or "=". '
+        'Each glossed morpheme is linked to the one entry with that form and gloss; the answer lists those '
+        'with several or none. help: true for the rest (types, other fields, words left as they are, '
+        'new_entries).',
+        {'document': _DOC, 'ref': {'type': 'string', 'description': 'A sentence, "s4", or a run of its words, '
+                                                                    '"s4.w3-w5".'},
+         'forms': {'type': 'string'}, 'gloss': {'type': 'string'},
+         'types': {'type': 'string'},
+         'fields': {'type': 'object', 'additionalProperties': {'type': 'string'}},
+         'sentences': {'type': 'array', 'description': 'Several at once: [{ref, forms, gloss}, ...].',
+                       'items': {'type': 'object'}},
+         'new_entries': {'type': 'boolean', 'description': 'Create an entry for each form and gloss no entry '
+                                                           'has, and link it.'},
+         'lexicon': {'type': 'string', 'description': 'Lexicon for new entries (needed only when the project '
+                                                      'has several).'},
+         'help': {'type': 'boolean'}},
+        ['document']),
     _fn('set_morpheme',
         'PLAN: change one morpheme\'s stored form and/or type in place, keeping the chain and every value on it '
         '(e.g. make sN.wN.m2 an enclitic). type "" clears the type. A linked morpheme goes by its entry\'s type: '
@@ -331,7 +351,8 @@ _IMPL = {
     'read_sentences': t_read_sentences,
     'list_documents': t_list_documents,
     'read_lexicon': t_read_lexicon,
-    'set_field': t_set_field, 'set_analysis': t_set_analysis, 'set_morpheme': t_set_morpheme,
+    'set_field': t_set_field, 'set_analysis': t_set_analysis, 'analyze_sentence': t_analyze_sentence,
+    'set_morpheme': t_set_morpheme,
     'set_orthography': t_set_orthography,
     'respell': t_respell, 'link_entry': t_link_entry, 'unlink_entry': t_unlink_entry,
     'link_phrase': t_link_phrase, 'unlink_phrase': t_unlink_phrase,

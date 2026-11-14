@@ -456,7 +456,7 @@ The modules below are `igt/` unless they say otherwise.
 - `toolkit.py`: the tool table and the dispatch behind it. Every tool is
   declared once beside the function that implements it, in `reads.py` (reading
   a document, an entry, or the change history), `tools.py` (the plan tools that
-  annotate), `lexicon.py` (the plan tools that change a lexicon), `shape.py`,
+  annotate), `lines.py` (`analyze_sentence`), `lexicon.py` (the plan tools that change a lexicon), `shape.py`,
   `stats.py`, `bulk.py`, `query.py` and `sandbox.py`. Reads run immediately:
   `project_overview` (with how many items hold a value in each field), `list_documents`, `read_document` (all of a sentence or
   the `fields` named), `read_sentences` (chosen sentences of several documents
@@ -488,8 +488,12 @@ The modules below are `igt/` unless they say otherwise.
   the escape hatch `query` + `query_help` (Plaid's query language,
   project-scoped, layers by name). Writes append resolved operations to the turn's plan:
   `set_field` (one field, or several at once with `values`, each on the refs
-  of its scope), `set_analysis` (one word, or a whole sentence's words in one
-  call), `set_morpheme` (one morpheme's form or type, chain kept),
+  of its scope), `set_analysis` (one word), `analyze_sentence` (a sentence,
+  or a run of its words, from a segmented line and a gloss line, refused whole
+  where they do not line up with the words; it links each morpheme to the one
+  entry with its form and gloss, `fit.py`, and creates entries when asked,
+  through the ops `set_analysis`, `create_entry` and `link_entry` stage:
+  `lines.py`), `set_morpheme` (one morpheme's form or type, chain kept),
   `set_orthography`, `respell`, `link_entry`, `unlink_entry`, `link_phrase`
   and `unlink_phrase` (a multi-word expression: one lexicon link shared by
   two or more words, which a member's own link never displaces),
