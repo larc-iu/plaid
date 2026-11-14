@@ -544,7 +544,7 @@
                    (into []
                          (keep (fn [{:keys [table before after] :as c}]
                                  (when (not= (shape table before) (shape table after))
-                                   (select-keys c [:table :id :before :after
+                                   (select-keys c [:table :id :before :after :before-pos
                                                    :changed-since :changed-between]))))
                          changes))
             [out1 _] (run-1 db ops unit? nil Long/MAX_VALUE narrow emit)

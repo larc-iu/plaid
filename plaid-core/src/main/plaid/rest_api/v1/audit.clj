@@ -272,7 +272,9 @@
        "that does not go back (text-changed-since: a text is put back only when nothing in its document wrote a "
        "text or a token since the entry began), a document's name another document holds now (name-taken), its "
        "document's layers would not hold, so all that document's rows are left (does-not-fit), or a closed list no "
-       "longer allows its value (value-not-allowed). Leaving is closed under dependency. Changes to a project, its "
+       "longer allows its value (value-not-allowed), or its place is taken: a text where its layer holds another text "
+       "of the document now (place-taken). A row of a document or vocabulary the caller cannot read is neither "
+       "counted nor listed. Leaving is closed under dependency. Changes to a project, its "
        "layers, a vocabulary's name or settings, users and memberships are not undone: not-undone lists the "
        "entry's operations that made them ({op-type, count}). A project's deletion is not an entry: it cannot be "
        "undone. The response counts what was undone per kind (undone: {inserted, updated, deleted} for documents, "
@@ -300,6 +302,11 @@
         may-vocab? (memoize (fn [vocab-id]
                               (boolean (and (not scoped?) vocab-id
                                             (pra/vocab-maintainer? db vocab-id user-id record)))))
+        readable-project? (pra/project-readable-fn request)
+        readable-document? (memoize (fn [doc-id]
+                                      (boolean (when-let [p (changes/document-project db doc-id)]
+                                                 (and (hread/project-live? db p) (readable-project? p))))))
+        readable-vocab? (memoize (fn [vocab-id] (boolean (and vocab-id (pra/vocab-reader? db vocab-id user-id record)))))
         ops (changes/unit-ops db entry-id)
         refused {:status 403 :body {:error (str "User " user-id " lacks sufficient privileges to undo this entry")}}]
     (cond
@@ -321,7 +328,9 @@
                                     :document-id (:document-id query)
                                     :vocab-id (:vocab-layer-id query)
                                     :may-document? may-document?
-                                    :may-vocab? may-vocab?})]
+                                    :may-vocab? may-vocab?
+                                    :readable-document? readable-document?
+                                    :readable-vocab? readable-vocab?})]
         (cond
           error {:status code :body {:error error}}
 

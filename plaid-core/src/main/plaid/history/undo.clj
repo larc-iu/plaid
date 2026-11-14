@@ -27,13 +27,19 @@
                         entry or a reference to it in metadata, a comment,
                         and for a document anything written in it since,
     needs               it needs a row that will not be there (`needs`): its
-                        parent, gone since, or a row of this undo that is
-                        left,
+                        parent, gone since, a row of this undo that is left,
+                        or a row its metadata would name again,
     text-changed-since  its offsets belong to a text that does not go back:
                         something in its document wrote a text or a token
                         since the entry began, or a token of the entry on the
-                        text is left,
+                        text is left. And a token the entry put on, took off
+                        or reshaped on a text anyone else wrote since stays,
+                        whether or not the entry changed that text. After
+                        the writes, every token put back is read against the
+                        text it was made on, as a last check,
     name-taken          a document's name, which another document holds now,
+    place-taken         a text, where its layer holds another text of the
+                        document now,
     does-not-fit        its document's layers would not hold (restore's final
                         check, or a rule a layer declares), so every row of
                         that document is left,
@@ -51,7 +57,8 @@
   deleted. Then each document written is checked as restore checks it, and
   the layer rules are read (`plaid.sql.constraints.layer/pending-violations`).
   A misfit rolls the transaction back, the rows it names are left (the
-  document's, or the one value's row), and the undo is planned again, so no
+  document's, or the one value's row), and the undo is planned again, as it
+  is when a constraint refuses a write the plan did not foresee, so no
   layer rule's remedy ever writes past what the undo puts back. A dry run is
   the same transaction rolled back at its end, so it says exactly what the
   call would do."
@@ -143,7 +150,7 @@
 
 (defn- item
   "One row of the entry, as undo plans it."
-  [{:keys [table id before after changed-since changed-between]}]
+  [{:keys [table id before after before-pos changed-since changed-between]}]
   (let [b (norm before)
         a (norm after)
         r (or b a)]
@@ -159,6 +166,7 @@
               "vocab_items" (:vocab_layer_id r)
               "vocab_layers" (psc/->uuid id)
               nil)
+     :before-pos before-pos
      :changed-since changed-since
      :changed-between changed-between}))
 
@@ -166,7 +174,16 @@
   {"text_layers" "text-layer" "token_layers" "token-layer" "span_layers" "span-layer"
    "relation_layers" "relation-layer" "projects" "project"})
 
-(defn- row-ref [[table id]] {:kind (or (kind-of table) (parent-kind table) table) :id id})
+(defn- row-ref
+  "A row named in a summary (`by`, `needs`), with where it lies, `{:doc id}`
+  or `{:vocab id}` (nil when unknown), which `summarize` reads to name it
+  only to a caller who can read it there, and then drops."
+  ([k] (row-ref k nil))
+  ([[table id] place]
+   (cond-> {:kind (or (kind-of table) (parent-kind table) table) :id id}
+     place (assoc ::place place))))
+
+(defn- place-of [i] (if (:doc i) {:doc (:doc i)} {:vocab (:vocab i)}))
 
 ;; ============================================================
 ;; Reading what the plan is checked against
@@ -229,22 +246,24 @@
                                       (map str %))
                              {:uuid-cols #{:parent :child}})
                      tokens))
+        made-span? (set spans)
         m (reduce (fn [m r]
                     (cond-> m
-                      (some #{(:source_span_id r)} spans) (add ["spans" (:source_span_id r)] {:k ["relations" (:id r)]})
-                      (some #{(:target_span_id r)} spans) (add ["spans" (:target_span_id r)] {:k ["relations" (:id r)]})))
+                      (made-span? (:source_span_id r)) (add ["spans" (:source_span_id r)] {:k ["relations" (:id r)]})
+                      (made-span? (:target_span_id r)) (add ["spans" (:target_span_id r)] {:k ["relations" (:id r)]})))
                   m
-                  (let [spans (set spans)]
-                    (distinct
-                     (concat (q #(psc/q db {:select [:id :source_span_id :target_span_id] :from [:relations]
-                                            :where [:in :source_span_id (mapv str %)]})
-                                spans)
-                             (q #(psc/q db {:select [:id :source_span_id :target_span_id] :from [:relations]
-                                            :where [:in :target_span_id (mapv str %)]})
-                                spans)))))
-        m (reduce (fn [m r] (add m ["vocab_items" (:vocab_item_id r)] {:k ["vocab_links" (:id r)]}))
+                  (distinct
+                   (concat (q #(psc/q db {:select [:id :source_span_id :target_span_id] :from [:relations]
+                                          :where [:in :source_span_id (mapv str %)]})
+                              spans)
+                           (q #(psc/q db {:select [:id :source_span_id :target_span_id] :from [:relations]
+                                          :where [:in :target_span_id (mapv str %)]})
+                              spans))))
+        m (reduce (fn [m r] (add m ["vocab_items" (:vocab_item_id r)]
+                                 {:k ["vocab_links" (:id r)] :place {:doc (:document_id r)}}))
                   m
-                  (q #(psc/q db {:select [:id :vocab_item_id] :from [:vocab_links] :where [:in :vocab_item_id (mapv str %)]})
+                  (q #(psc/q db {:select [:id :vocab_item_id :document_id] :from [:vocab_links]
+                                 :where [:in :vocab_item_id (mapv str %)]})
                      entries))
         made-keys (for [i items :when (and (= :delete (:op i)) (not= "documents" (:table i)))] (:k i))
         m (reduce (fn [m k] (add m k {:k ["comments" (second k)]})) m (keys (comments-on db made-keys)))]
@@ -270,23 +289,23 @@
                                            " AND em.entity_id = x.id AND " atom-in)
                                       (str vocab-id) ids-json]
                                   {:string-cols #{:entity_id :ref}})]
-                     (assoc r :etype "vocab-item"))
+                     (assoc r :etype "vocab-item" :place {:vocab vocab-id}))
                    (mapcat (fn [[etype table col]]
-                             (for [r (psc/q db [(str "SELECT em.entity_id, jt.atom AS ref"
+                             (for [r (psc/q db [(str "SELECT em.entity_id, jt.atom AS ref, dd.id AS doc"
                                                      " FROM (" docs-sql ") dd CROSS JOIN " table " x"
                                                      " CROSS JOIN entity_metadata em, json_tree(em.value) jt"
                                                      " WHERE x." col " = dd.id AND em.entity_type = ?"
                                                      " AND em.entity_id = x.id AND " atom-in)
                                                 (str vocab-id) etype ids-json]
-                                            {:string-cols #{:entity_id :ref}})]
-                               (assoc r :etype etype)))
+                                            {:string-cols #{:entity_id :ref :doc}})]
+                               (assoc r :etype etype :place {:doc (psc/->uuid (:doc r))})))
                            [["document" "documents" "id"] ["text" "texts" "document_id"]
                             ["token" "tokens" "document_id"] ["span" "spans" "document_id"]
                             ["relation" "relations" "document_id"] ["vocab-link" "vocab_links" "document_id"]]))]
-         (reduce (fn [m {:keys [entity_id ref etype]}]
+         (reduce (fn [m {:keys [entity_id ref etype place]}]
                    (let [dep [(table-of-etype etype) (psc/->uuid entity_id)]
                          k ["vocab_items" (psc/->uuid ref)]]
-                     (if (= dep k) m (update m k (fnil conj []) {:k dep}))))
+                     (if (= dep k) m (update m k (fnil conj []) {:k dep :place place}))))
                  m rows)))
      {}
      (group-by :vocab made))))
@@ -312,6 +331,79 @@
               m rows)
       (reduce (fn [m r] (if (unit? (:id r)) m (update m (psc/->uuid (str (:document_id r))) (fnil conj #{}) :op)))
               m ops))))
+
+(defn- texts-written
+  "The texts of the documents `doc-ids` that an operation outside the entry
+  wrote since the entry began. A token's offsets belong to its text as it was
+  then, so none goes back onto one of these (REV-UN-1)."
+  [db doc-ids unit? start]
+  (into #{}
+        (keep (fn [r] (when-not (unit? (:op_id r)) (psc/->uuid (str (:target_id r))))))
+        (psc/in-chunks #(psc/q db {:select-distinct [:target_id :op_id] :from [:audit_writes]
+                                   :where [:and [:= :target_table "texts"] [:in :document_id (mapv str %)]
+                                           [:>= :ts start]]})
+                       doc-ids)))
+
+(defn- slot-holders
+  "`{[document text-layer] text-id}`: the text each layer holds now in each of
+  `doc-ids` (one at most, `UNIQUE (document_id, text_layer_id)`)."
+  [db doc-ids]
+  (into {} (map (fn [r] [[(:document_id r) (:text_layer_id r)] (:id r)]))
+        (psc/in-chunks #(psc/q db {:select [:id :document_id :text_layer_id] :from [:texts]
+                                   :where [:in :document_id (mapv str %)]})
+                       doc-ids)))
+
+(defn- uuid-atoms
+  "Every string in `v`, at any depth, that reads as a UUID, as UUIDs."
+  [v]
+  (cond
+    (string? v) (if-let [u (parse-uuid v)] #{u} #{})
+    (map? v) (into #{} (mapcat uuid-atoms) (vals v))
+    (sequential? v) (into #{} (mapcat uuid-atoms) v)
+    :else #{}))
+
+(defn- new-references
+  "The ids a row's metadata names when it is put back that it does not name
+  now: the references undoing it would make."
+  [i live-row]
+  (when (#{:insert :update} (:op i))
+    (disj (reduce disj (uuid-atoms (:metadata (:before i))) (uuid-atoms (:metadata live-row)))
+          (:id i))))
+
+(def ^:private referable
+  "The tables a metadata reference can name a row of."
+  ["vocab_items" "documents" "texts" "tokens" "spans" "relations" "vocab_links"])
+
+(defn- referenced-rows
+  "`{id {:k [table id] :place {...}}}` for the ids among `ids` that are rows
+  of a referable table, now or at any time, read from the audit log by the
+  target index and from the live tables (a row an import made has no audit
+  row until something changes it)."
+  [db ids]
+  (if (empty? ids)
+    {}
+    (reduce
+     (fn [m table]
+       (let [logged (psc/in-chunks #(psc/q db {:select-distinct [:target_id :document_id :vocab_layer_id]
+                                               :from [:audit_writes]
+                                               :where [:and [:= :target_table table] [:in :target_id (mapv str %)]]}
+                                           {:string-cols #{:target_id :document_id :vocab_layer_id}})
+                                   ids)
+             live (psc/in-chunks #(psc/q db {:select (if (= table "vocab_items") [:id :vocab_layer_id]
+                                                         (if (= table "documents") [:id] [:id :document_id]))
+                                             :from [(keyword table)] :where [:in :id (mapv str %)]})
+                                 ids)
+             place (fn [doc vocab id] (cond (= table "documents") {:doc id}
+                                            doc {:doc (psc/->uuid (str doc))}
+                                            vocab {:vocab (psc/->uuid (str vocab))}))]
+         (as-> m m
+           (reduce (fn [m r] (let [id (psc/->uuid (str (:target_id r)))]
+                               (assoc m id {:k [table id] :place (place (:document_id r) (:vocab_layer_id r) id)})))
+                   m logged)
+           (reduce (fn [m r] (assoc m (:id r) {:k [table (:id r)] :place (place (:document_id r) (:vocab_layer_id r) (:id r))}))
+                   m live))))
+     {}
+     referable)))
 
 (defn- existing
   "`{table #{id}}`: which of the ids each table names exist now."
@@ -393,7 +485,7 @@
   "Why `i` cannot be undone in the state the applied rows leave, or nil.
   `on?` says whether a row is there in that state."
   [i {:keys [applied? item-of on? deps refs foreign doc-commented moving tokens-on rows-in project-of
-             vocab-of linked? name-holder]}]
+             vocab-of linked? name-holder texts-since slots references]}]
   (let [{:keys [table op before k]} i
         stays? (fn [{dk :k inside? :inside?}]
                  (let [d (item-of dk)]
@@ -403,18 +495,36 @@
                      :else true)))]
     (case op
       :delete
-      (or (when (= table "documents")
+      (or (when (and (= table "tokens") (contains? texts-since (:text_id (:after i))))
+            ;; a token the entry made, on a text written since: it goes
+            ;; with the rest of the entry's tokens there or not at all
+            {:reason "text-changed-since"})
+          (when (= table "documents")
             (cond
               (contains? foreign (:id i)) {:reason "built-on"}
               (contains? doc-commented (:id i)) {:reason "built-on"}
               :else (when-let [left (first (remove applied? (get rows-in (:id i))))]
-                      {:reason "built-on" :by (row-ref (:k left))})))
+                      {:reason "built-on" :by (row-ref (:k left) (place-of left))})))
           (when-let [d (first (filter stays? (concat (get deps k) (get refs k))))]
-            {:reason "built-on" :by (when-not (= "comments" (first (:k d))) (row-ref (:k d)))}))
+            {:reason "built-on"
+             :by (when-not (= "comments" (first (:k d)))
+                   (row-ref (:k d) (or (:place d) (place-of i))))}))
 
       (:insert :update)
       (or (when-let [missing (first (remove on? (parents-of table before)))]
-            {:reason "needs" :needs (row-ref missing)})
+            {:reason "needs" :needs (row-ref missing (if (= "vocab_items" (first missing))
+                                                       {:vocab (vocab-of (second missing))}
+                                                       (place-of i)))})
+          (when (and (= table "texts") (= op :insert))
+            (let [holder (get slots [(:document_id before) (:text_layer_id before)])
+                  h (when holder (item-of ["texts" holder]))]
+              (when (and holder (not= holder (:id i))
+                         (not (and h (applied? h) (= :delete (:op h)))))
+                {:reason "place-taken"})))
+          (when-let [{rk :k place :place} (first (remove (comp on? :k) (keep references (get-in i [:new-refs]))))]
+            {:reason "needs" :needs (row-ref rk place)})
+          (when (and (= table "tokens") (moves-offsets? i) (contains? texts-since (:text_id before)))
+            {:reason "text-changed-since"})
           (when (and (= table "vocab_links") (not (linked? (project-of (:document_id before)) (vocab-of (:vocab_item_id before)))))
             {:reason "needs" :needs {:kind "vocab-layer" :id (vocab-of (:vocab_item_id before))}})
           (when (and (= table "documents")
@@ -425,7 +535,7 @@
             (or (when (contains? (get foreign (:doc i)) "tokens") {:reason "text-changed-since"})
                 (when (contains? (get foreign (:doc i)) "texts") {:reason "text-changed-since"})
                 (when-let [left (first (remove applied? (get tokens-on (:id i))))]
-                  {:reason "needs" :needs (row-ref (:k left))})))
+                  {:reason "needs" :needs (row-ref (:k left) (place-of left))})))
           (when (and (= table "tokens") (moves-offsets? i) (contains? moving (:text_id before))
                      (not (applied? (item-of ["texts" (:text_id before)]))))
             {:reason "text-changed-since"})))))
@@ -527,6 +637,28 @@
      :current {:texts (cur "texts") :tokens (cur "tokens") :spans (cur "spans")
                :relations (cur "relations") :vocab-links (cur "vocab_links")}}))
 
+(defn- constraint-failure?
+  "Whether `e`, or what caused it, is SQLite refusing a write for a
+  constraint (a unique key, a foreign key), or restore's apply refusing a
+  delete that would cascade."
+  [^Throwable e]
+  (boolean (some (fn [^Throwable x]
+                   (or (str/includes? (str (.getMessage x)) "SQLITE_CONSTRAINT")
+                       (contains? (ex-data x) :dependent)))
+                 (take-while some? (iterate #(.getCause ^Throwable %) e)))))
+
+(defn- guard
+  "Run `f`, and when a constraint refuses one of its writes, leave `k` (a
+  row's key or `[:doc id]`) and plan again: the last line of defence for a
+  place the plan did not foresee (REV-UN-3), never an Internal error."
+  [k f]
+  (try (f)
+       (catch Exception e
+         (if (constraint-failure? e)
+           (do (log/warn "Undo leaves" (pr-str k) "for a constraint:" (ex-message e))
+               (throw (ex-info "misfit" {::bad {k {:reason "does-not-fit"}}})))
+           (throw e)))))
+
 (defn- apply!
   "Write the applied rows. Returns the documents to check: every document
   written that still stands."
@@ -535,11 +667,11 @@
         doc-deletes (set (map :id (of "documents" :delete)))
         bumped (atom #{})]
     (doseq [i (of "documents" :insert)]
-      (insert-document! tx i))
+      (guard [:doc (:id i)] #(insert-document! tx i)))
     (doseq [i (of "vocab_items" :insert)]
-      (insert-entry! tx i))
+      (guard (:k i) #(insert-entry! tx i)))
     (doseq [i (of "vocab_items" :update)]
-      (swap! bumped into (set-entry-back! tx i (get-in live ["vocab_items" (:id i)]))))
+      (guard (:k i) #(swap! bumped into (set-entry-back! tx i (get-in live ["vocab_items" (:id i)])))))
     (let [per-doc (->> applied
                        (filter #(and (:doc %) (not (contains? doc-deletes (:doc %)))))
                        (remove #(and (= "documents" (:table %)) (= :insert (:op %))))
@@ -547,22 +679,57 @@
                        (sort-by (comp str key)))]
       (doseq [[doc-id doc-items] per-doc]
         (let [{:keys [plan current]} (document-plan doc-items live)]
-          (restore/apply-plan! tx doc-id plan current)))
+          (guard [:doc doc-id] #(restore/apply-plan! tx doc-id plan current))))
       (doseq [d (sort-by str doc-deletes)]
-        (document/cascade-delete! tx d))
-      (let [entries (map :id (of "vocab_items" :delete))]
-        (when (seq entries)
-          (vocab-item/delete-items! tx entries)))
+        (guard [:doc d] #(document/cascade-delete! tx d)))
+      (doseq [i (of "vocab_items" :delete)]
+        (guard (:k i) #(vocab-item/delete-items! tx [(:id i)])))
       (let [inserted (set (map :id (of "documents" :insert)))
             written (into (set (map key per-doc)) inserted)]
         (op/bump-document-versions! tx (remove inserted (into written (remove doc-deletes @bumped))))
         (op/touch-vocab-layers! tx (distinct (keep #(when (= "vocab_items" (:table %)) (:vocab %)) applied)))
         (sort-by str written)))))
 
+(defn- cp-slice [^String s b e]
+  (when (and s (<= 0 b e (.codePointCount s 0 (.length s))))
+    (let [cps (.toArray (.codePoints s))]
+      (String. cps (int b) (int (- e b))))))
+
+(defn- body-before
+  "Text `text-id`'s body just before the operation stamped `ts`, from its
+  audit rows, or its live body when the log never named it (an import's)."
+  [tx text-id ts]
+  (let [rows (psc/q tx {:select [:target_table :target_id :document_id :post_image :change_type]
+                        :from [:audit_writes]
+                        :where [:and [:= :target_table "texts"] [:= :target_id (str text-id)] [:< :ts ts]]
+                        :order-by [:ts :seq]})]
+    (if (empty? rows)
+      (:body (psc/fetch-by-id tx :texts text-id))
+      (:body (reduce (fn [m r] (if (= "delete" (:change_type r)) nil (merge m (hread/parse-image r)))) nil rows)))))
+
+(defn- offsets-misread
+  "`{key reason}` for each token the undo put offsets back on that does not
+  read now what it read when the entry first wrote it: the text it is on
+  changed under it (REV-UN-1). The check of last resort behind the
+  `text-changed-since` rule. Reads each such text's history once."
+  [tx applied]
+  (let [written (filter #(and (= "tokens" (:table %)) (moves-offsets? %) (:before-pos %)) applied)
+        bodies (memoize (fn [text-id ts] (body-before tx text-id ts)))]
+    (into {}
+          (keep (fn [i]
+                  (let [b (:before i)
+                        now (psc/fetch-by-id tx :tokens (:id i))
+                        live-body (:body (psc/fetch-by-id tx :texts (:text_id b)))
+                        then (cp-slice (bodies (:text_id b) (first (:before-pos i))) (:begin b) (:end_ b))]
+                    (when (or (nil? now) (not= then (cp-slice live-body (:begin now) (:end_ now))))
+                      [(:k i) {:reason "text-changed-since"}]))))
+          written)))
+
 (defn- misfits
   "`{key reason}` of what the written state breaks: a document that does not
-  fit (`[:doc id]`), or a row whose value a closed list refuses."
-  [tx docs applied-keys]
+  fit (`[:doc id]`), a row whose value a closed list refuses, or a token that
+  would read other characters than it did."
+  [tx docs applied-keys applied]
   (let [docs-bad (into {} (keep (fn [d] (when-let [e (restore/final-state-violation tx d)]
                                           (log/info "Undo leaves document" d ":" (ex-message e))
                                           [[:doc d] {:reason "does-not-fit"}])))
@@ -581,7 +748,7 @@
                                                               (:ids v)))))
                     :when (:document v)]
                 [[:doc (psc/->uuid (str (:document v)))] {:reason "does-not-fit"}])]
-    (merge docs-bad (into {} rows-bad) (into {} other))))
+    (merge (offsets-misread tx applied) docs-bad (into {} rows-bad) (into {} other))))
 
 ;; ============================================================
 ;; The summary
@@ -590,8 +757,20 @@
 (defn- place [i]
   (if (:doc i) {:document (:doc i)} {:vocab-layer (:vocab i)}))
 
-(defn- summarize [items left]
-  (let [applied (remove #(contains? left (:k %)) items)
+(defn- summarize
+  "The summary, of the rows `readable?` lets the caller read (a row in a
+  document or vocabulary it cannot read is neither counted nor named, as the
+  changes read leaves it out, REV-UN-4). A row named under `by` or `needs` is
+  named only where it lies is readable."
+  [items left readable?]
+  (let [items (filter #(readable? (place-of %)) items)
+        name-ref (fn [r] (let [p (::place r)]
+                           (when (and p (readable? p)) (dissoc r ::place))))
+        left (update-vals left (fn [r] (cond-> r
+                                         (:by r) (update :by name-ref)
+                                         (:needs r) (update :needs name-ref)
+                                         true (as-> r (into {} (remove (comp nil? val)) r)))))
+        applied (remove #(contains? left (:k %)) items)
         tally (fn [kind]
                 (let [xs (filter #(= kind (kind-of (:table %))) applied)
                       n (fn [o] (count (filter #(= o (:op %)) xs)))]
@@ -602,6 +781,7 @@
               :spans (tally "span") :relations (tally "relation") :vocab-links (tally "vocab-link")
               :vocab-items (tally "vocab-item")}
      :total (count applied)
+     :rows (count items)
      :skipped (vec (take max-listed skipped))
      :skipped-count (count skipped)}))
 
@@ -666,6 +846,8 @@
       {:too-many (count items) :ops ops}
       (let [by-table (group-by :table items)
             live (into {} (for [[t is] by-table] [t (live-rows tx t (map :id is))]))
+            items (mapv (fn [i] (assoc i :new-refs (new-references i (get-in live [(:table i) (:id i)])))) items)
+            references (referenced-rows tx (distinct (mapcat :new-refs items)))
             item-of (into {} (map (juxt :k identity)) items)
             docs (distinct (keep :doc items))
             locked (into #{} (filter #(not= :ok (locks/check-document-locks [%] user))) docs)
@@ -683,7 +865,8 @@
             wanted (reduce (fn [m [t id]] (if id (update m t (fnil conj #{}) id) m))
                            {}
                            (concat (for [i items :when (#{:insert :update} (:op i)) p (parents-of (:table i) (:before i))] p)
-                                   (for [i items] [(:table i) (:id i)])))
+                                   (for [i items] [(:table i) (:id i)])
+                                   (map :k (vals references))))
             exists (existing tx wanted)
             project-of (let [m (into {} (map (juxt :id :project_id)) (vals (get live "documents")))
                              from-items (into {} (keep (fn [i] (when (= "documents" (:table i))
@@ -702,6 +885,9 @@
                  :foreign foreign :doc-commented (doc-comments tx made-docs) :moving moving
                  :tokens-on tokens-on :rows-in rows-in :project-of project-of :vocab-of item-vocab
                  :linked? (fn [p v] (contains? pv [p v]))
+                 :texts-since (texts-written tx docs unit? start)
+                 :slots (slot-holders tx docs)
+                 :references references
                  :name-holder (fn [i] (names/held tx (:project_id (:before i)) (:name (:before i)) (:id i)))}
             left (fixpoint items ctx)
             applied (remove #(contains? left (:k %)) items)]
@@ -732,7 +918,9 @@
   Options: `:user`, `:document-id` (only that document's rows),
   `:vocab-id` (only that vocabulary's entries, and the links naming one of
   them), `:may-document?` and `:may-vocab?` (may the caller maintain a
-  document's rows, a vocabulary's entries), `:dry-run?`.
+  document's rows, a vocabulary's entries), `:readable-document?` and
+  `:readable-vocab?` (may the caller read them: a row it cannot read is left
+  out of the summary, all when not given), `:dry-run?`.
 
   Returns `{:summary {...}}`, where the summary has `:undone` (per kind,
   `{:inserted :updated :deleted}`), `:total`, `:skipped` (`{:kind :id
@@ -765,9 +953,11 @@
                             (if too-many
                               (do (reset! out a)
                                   (throw (ex-info "too many" {:code 413})))
-                              (let [written (when (seq applied) (apply! tx applied live))
-                                    bad (when (seq applied)
-                                          (misfits tx written (into #{} (map :k) applied)))]
+                              (let [bad (try (when (seq applied)
+                                               (let [written (apply! tx applied live)]
+                                                 (misfits tx written (into #{} (map :k) applied) applied)))
+                                             (catch ExceptionInfo e
+                                               (or (::bad (ex-data e)) (throw e))))]
                                 (reset! out (assoc a :bad bad))
                                 (cond
                                   (seq bad) (throw (ex-info "misfit" {:code 409 ::retry true}))
@@ -792,8 +982,11 @@
               {:error (:error result) :code (:code result)}
 
               :else
-              (let [summary (summarize items left)
-                    {:keys [may-document? may-vocab?]} opts
+              (let [{:keys [may-document? may-vocab? readable-document? readable-vocab?]} opts
+                    summary (summarize items left (fn [{:keys [doc vocab]}]
+                                                    (if doc
+                                                      ((or readable-document? (constantly true)) doc)
+                                                      ((or readable-vocab? (constantly true)) vocab))))
                     permitted (count (filter #(if (:doc %) (may-document? (:doc %)) (may-vocab? (:vocab %))) items))
                     operation (when (and (not dry-run?) (:success result)) (:extra result))]
                 (when operation
@@ -807,7 +1000,6 @@
                 {:summary (cond-> (assoc summary
                                          :entry entry-id
                                          :dry-run (boolean dry-run?)
-                                         :rows (count items)
                                          :permitted permitted
                                          :not-undone not-undone)
                             operation (assoc :operation operation))

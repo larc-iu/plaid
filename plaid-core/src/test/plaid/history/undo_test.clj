@@ -868,3 +868,177 @@
       (is (zero? (:total summary)))
       (is (= "not-undone" (why vocab)))
       (is (= "needs" (why fox))))))
+
+;; ============================================================
+;; Round 2 (REV-UN)
+;; ============================================================
+
+(defn- token-text
+  "What token `tok-id` reads now, by code points."
+  [tok-id]
+  (let [t (psc/fetch-by-id db :tokens tok-id)
+        body (:body (psc/fetch-by-id db :texts (:text_id t)))]
+    (when t
+      (let [cps (.toArray (.codePoints ^String body))]
+        (String. cps (int (:begin t)) (int (- (:end_ t) (:begin t))))))))
+
+(defn- five-words [overlap]
+  (let [proj (create-test-project admin-request "P")
+        d (create-test-document admin-request proj "D")
+        tl (id (create-text-layer admin-request proj "Text"))
+        text (id (create-text admin-request tl d "the quick brown fox jumps"))
+        word (id (if overlap
+                   (create-token-layer-opts admin-request tl "Words" {:overlap-mode overlap})
+                   (create-token-layer admin-request tl "Words")))
+        pos (id (create-span-layer admin-request word "POS"))
+        toks (-> (bulk-create-tokens admin-request
+                                     (mapv (fn [[b e]] {:token-layer-id word :text text :begin b :end e})
+                                           [[0 3] [4 9] [10 15] [16 19] [20 25]]))
+                 :body :ids)]
+    {:proj proj :d d :tl tl :text text :word word :pos pos :toks toks}))
+
+(deftest rev-un-1-offsets-never-go-back-onto-a-text-written-since
+  (doseq [overlap [nil "non-overlapping"]]
+    (testing (str "a layer of overlap " (or overlap "any"))
+      (testing "a deleted token, the text edited since by someone else"
+        (let [{:keys [text toks pos]} (five-words overlap)
+              brown (nth toks 2)
+              g (str (random-uuid))
+              r (in-group admin-request g)
+              s (id (create-span admin-request pos [brown] "ADJ"))
+              _ (assert-done (delete-span r s))
+              _ (assert-done (delete-token r brown))
+              _ (assert-ok (update-text admin-request text "a the quick brown fox jumps"))
+              summary (undone! admin-request g)]
+          (is (= {brown "text-changed-since" s "needs"} (reasons summary)))
+          (is (nil? (psc/fetch-by-id db :tokens brown)))))
+      (testing "an extent set back, characters no token holds deleted since"
+        (let [{:keys [text toks]} (five-words overlap)
+              brown (nth toks 2)
+              g (str (random-uuid))
+              _ (assert-ok (update-token (in-group admin-request g) brown :end 13))
+              _ (assert-ok (update-text admin-request text "the quick bro fox jumps"))
+              summary (undone! admin-request g)]
+          (is (= {brown "text-changed-since"} (reasons summary)))
+          (is (= "bro" (token-text brown)))))
+      (testing "a merge, a split and a boundary shift, the text edited since after them"
+        (doseq [[what act] [["merge" (fn [toks] (merge-tokens admin-request (nth toks 1) (nth toks 2)))]
+                            ["split" (fn [toks] (split-token admin-request (nth toks 2) 13))]
+                            ["shift" (fn [toks] (shift-token-boundary admin-request (nth toks 2) :begin 12))]]]
+          (let [{:keys [d text toks]} (five-words overlap)
+                _ (assert-done (act toks))
+                entry (:id (psc/q1 db {:select [:id] :from [:operations] :order-by [[:ts :desc]] :limit 1}))
+                _ (assert-ok (update-text admin-request text "the quick brown fox jumps!"))
+                readings (fn [] (into {} (map (fn [t] [(:id t) (token-text (:id t))]))
+                                      (psc/q db {:select [:id] :from [:tokens] :where [:= :document_id (str d)]})))
+                was (readings)
+                summary (undone! admin-request entry)]
+            (is (pos? (:skipped-count summary)) what)
+            (is (every? #{"text-changed-since" "needs" "built-on"} (map :reason (:skipped summary))) what)
+            (is (= was (readings)) (str what ": no token reads other characters"))))))))
+
+(deftest rev-un-2-a-row-is-never-set-back-to-name-a-row-that-will-not-be-there
+  (let [mw (fn [] (let [w (merge-world!)] w))]
+    (testing "a borrowing project's maintainer: the borrower's span keeps naming the survivor"
+      (let [{:keys [borrower fox foxes fuchs bs]} (mw)
+            _ (assert-no-content (api-call admin-request {:method :post :path (str "/api/v1/projects/" borrower "/maintainers/user2@example.com")}))
+            entry (merge! fox [foxes fuchs])
+            summary (undone! user2-request entry)]
+        (is (= "needs" ((reasons summary) bs)))
+        (is (= {:kind "vocab-item" :id fuchs} (:needs (first (filter #(= bs (:id %)) (:skipped summary))))))
+        (is (= {"see" [(str fox) "x"]} (-> (get-span admin-request bs) :body :metadata)))))
+    (testing "a document's part: its span keeps naming the survivor, the loser out of scope"
+      (let [{:keys [hd fox foxes fuchs hs]} (mw)
+            entry (merge! fox [foxes fuchs])
+            summary (undone! admin-request entry :document-id hd)]
+        (is (= "needs" ((reasons summary) hs)))
+        (is (= {"see" (str fox)} (-> (get-span admin-request hs) :body :metadata)))))
+    (testing "a vocabulary's part: the sense entry names its loser again, which comes back, the spans stay as they are"
+      (let [{:keys [vocab fox foxes fuchs sense hs]} (mw)
+            entry (merge! fox [foxes fuchs])
+            summary (undone! admin-request entry :vocab-layer-id vocab)]
+        (is (zero? (:skipped-count summary)))
+        (is (= {"parent" (str foxes)} (:metadata (:body (get-vocab-item admin-request sense)))))
+        (is (= {"see" (str fox)} (-> (get-span admin-request hs) :body :metadata)))))
+    (testing "a reference to an entry deleted since"
+      (let [{:keys [vocab spans]} (setup!)
+            e (id (create-vocab-item admin-request vocab "e"))
+            _ (assert-ok (update-span-metadata admin-request (nth spans 0) {"entry" (str e)}))
+            g (str (random-uuid))
+            _ (assert-ok (update-span-metadata (in-group admin-request g) (nth spans 0) {"other" "x"}))
+            _ (assert-done (delete-vocab-item admin-request e))
+            summary (undone! admin-request g)]
+        (is (= {(nth spans 0) "needs"} (reasons summary)))
+        (is (= {"other" "x"} (-> (get-span admin-request (nth spans 0)) :body :metadata)))))))
+
+(deftest rev-un-3-a-place-taken-since-is-skipped-never-a-500
+  (testing "a text put back where its layer holds another text of the document now"
+    (let [{:keys [doc tl text toks spans]} (setup!)
+          g (str (random-uuid))
+          r (in-group admin-request g)
+          _ (assert-ok (update-span r (nth spans 0) :value "g"))
+          _ (assert-done (delete-text r text))
+          mine (id (create-text admin-request tl doc "a new text"))
+          dry (undo admin-request g :dry-run true)
+          resp (undo admin-request g)]
+      (is (= 200 (:status dry)))
+      (is (= 200 (:status resp)))
+      (is (= "place-taken" ((reasons (:body resp)) text)))
+      (is (= "needs" ((reasons (:body resp)) (first toks))))
+      (is (= "a new text" (:body (psc/fetch-by-id db :texts mine))))))
+  (testing "a constraint the plan did not foresee leaves its document and plans again, never Internal error"
+    (let [{:keys [doc spans]} (setup!)
+          g (str (random-uuid))
+          _ (assert-ok (update-span (in-group admin-request g) (nth spans 0) :value "g"))
+          real-apply plaid.history.restore/apply-plan!
+          calls (atom 0)]
+      (with-redefs [plaid.history.restore/apply-plan!
+                    (fn [tx d p cur]
+                      (when (= 1 (swap! calls inc))
+                        (throw (org.sqlite.SQLiteException. "[SQLITE_CONSTRAINT_UNIQUE] probe"
+                                                            org.sqlite.SQLiteErrorCode/SQLITE_CONSTRAINT_UNIQUE)))
+                      (real-apply tx d p cur))]
+        (let [resp (undo admin-request g)]
+          (is (= 200 (:status resp)))
+          (is (= {(nth spans 0) "does-not-fit"} (reasons (:body resp))))
+          (is (some? doc)))))))
+
+(deftest rev-un-4-rows-the-caller-cannot-read-are-not-named
+  (let [{:keys [proj pos toks]} (setup!)
+        other (create-test-project admin-request "Secret")
+        od (create-test-document admin-request other "Secret doc")
+        otl (id (create-text-layer admin-request other "T"))
+        g (str (random-uuid))
+        r (in-group admin-request g)
+        mine (id (create-span r pos [(nth toks 0)] "X"))
+        _ (create-text r otl od "secret words")
+        _ (assert-done (add-project-reader admin-request other "user2@example.com"))
+        _ (assert-no-content (api-call admin-request {:method :post :path (str "/api/v1/projects/" proj "/maintainers/user1@example.com")}))
+        _ (assert-no-content (api-call admin-request {:method :post :path (str "/api/v1/projects/" proj "/maintainers/user2@example.com")}))
+        for1 (:body (undo user1-request g :dry-run true))
+        for2 (:body (undo user2-request g :dry-run true))]
+    (testing "a caller who cannot read the other project: its rows are not counted or named"
+      (is (= 1 (:rows for1)))
+      (is (zero? (:skipped-count for1)))
+      (is (empty? (:skipped for1)))
+      (is (= 1 (:total for1))))
+    (testing "a caller who reads it but does not maintain it: listed not-permitted"
+      (is (= 2 (:rows for2)))
+      (is (= ["not-permitted"] (map :reason (:skipped for2)))))
+    (is (some? mine))))
+
+(deftest rev-un-1-the-engine-checks-what-every-token-it-put-back-reads
+  ;; with the rule off, the check after the writes still finds the token that
+  ;; would read other characters, leaves it, and plans again
+  (with-redefs [plaid.history.undo/texts-written (fn [& _] #{})]
+    (let [{:keys [text toks pos]} (five-words nil)
+          brown (nth toks 2)
+          g (str (random-uuid))
+          r (in-group admin-request g)
+          s (id (create-span admin-request pos [brown] "ADJ"))
+          _ (assert-done (delete-span r s))
+          _ (assert-done (delete-token r brown))
+          _ (assert-ok (update-text admin-request text "a the quick brown fox jumps"))
+          summary (undone! admin-request g)]
+      (is (= {brown "text-changed-since" s "needs"} (reasons summary)))
+      (is (nil? (psc/fetch-by-id db :tokens brown))))))
