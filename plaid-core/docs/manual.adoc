@@ -389,6 +389,7 @@ Several entries can be undone together as one, with `audit.undo_entries` / `audi
 Each row goes back to how it was before the first of those entries wrote it, so a word one entry linked to a lexicon entry another one made comes undone with it.
 The answer is the same summary, with `entries` naming what was undone, and the limit of 20,000 rows counts them all.
 A job that is still waiting, running or stopping is refused until it has ended.
+While a job stands undone, its read carries `undone`, the undo's operation, time and user, and an undo of that undo takes it away again.
 
 [,python]
 ----

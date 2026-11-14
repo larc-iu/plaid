@@ -125,3 +125,15 @@ def test_the_fake_undoes_a_job_only_once_it_has_ended():
     assert refused.value.status == 409
     fake.jobs.cancel(job['id'])
     assert fake.jobs.undo(job['id'], dry_run=True) == summary
+
+
+def test_the_fake_job_reads_undone_after_an_undo_that_wrote():
+    summary = {'entries': ['g1'], 'total': 1, 'skipped': [], 'skipped_count': 0, 'operation': 'o1'}
+    fake = FakeClient({'d1': {'id': 'd1', 'name': 'One'}}, undo_summary=summary, project={'id': 'p1'})
+    job = fake.jobs.create('p1', 'igt', 'Gloss')
+    fake.jobs.cancel(job['id'])
+    fake.jobs.undo(job['id'], dry_run=True)
+    assert 'undone' not in fake.jobs.get(job['id'])
+    fake.jobs.undo(job['id'])
+    undone = fake.jobs.get(job['id'])['undone']
+    assert undone['operation'] == 'o1' and undone['user'] == fake.jobs.user and undone['time']

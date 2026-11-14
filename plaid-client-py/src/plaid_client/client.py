@@ -3822,7 +3822,8 @@ class JobsResource(_Resource):
         ``entries`` naming the groups. A job still waiting, running or
         stopping is refused 409. Rows the caller may not maintain are left
         ``not-permitted``, and 403 when it maintains none. More than 20,000
-        rows: 413, saying how many.
+        rows: 413, saying how many. The job's read then carries ``undone``
+        (``{operation, time, user}``) until that undo is itself undone.
 
         Args:
             job_id: The job

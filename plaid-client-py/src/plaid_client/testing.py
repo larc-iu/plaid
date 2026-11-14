@@ -2215,7 +2215,14 @@ class _FakeJobs:
         job = self._job(job_id, 'POST', path)
         if job['state'] not in _JOB_FINAL:
             raise self._refuse(409, 'POST', path, 'This job has not ended. A job is undone once it has stopped.')
-        return self._client.undo_summary
+        summary = self._client.undo_summary
+        # As core's read: the job stands undone once an undo wrote something.
+        # The fake keeps no log, so an undo of that undo is not followed.
+        if not dry_run and summary and summary.get('operation'):
+            job['undone'] = {'operation': summary['operation'],
+                             'time': _now_iso(),
+                             'user': self.user}
+        return summary
 
     def worker(self):
         self.calls.append(('worker', {}))

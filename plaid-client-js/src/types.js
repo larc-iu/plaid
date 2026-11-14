@@ -305,6 +305,7 @@
  * @property {JobDocument[]} [documents]
  * @property {number} [documentCount] - On a list's entries: how many documents the job holds
  * @property {JobReport | null} [report]
+ * @property {{operation: string, time: string, user: string}} [undone] - Present while the job stands undone (`jobs.undo`): the undo's operation, its time and who undid it. Absent again once that undo is itself undone
  */
 
 /**
