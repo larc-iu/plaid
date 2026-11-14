@@ -107,6 +107,29 @@ beforeEach(() => {
   for (const f of Object.values(feedback)) f.mockReset();
 });
 
+describe('a job that stands undone', () => {
+  const UNDONE = { operation: 'o1', time: '2026-11-12T11:00:00Z', user: 'm' };
+
+  it('says so on load, links the undo in History, and offers no Undo job', async () => {
+    const client = clientOf(jobOf({ undone: UNDONE }));
+    const v = await mount(client);
+    const line = v.container.querySelector('[data-testid="job-undone"]');
+    expect(line.textContent).toMatch(/^Job undone .+\. Show in History$/);
+    expect(line.querySelector('a').getAttribute('href')).toBe(
+      '/projects/p1/documents/d2?history=b1',
+    );
+    expect(button(v.container, 'Undo job')).toBeNull();
+    await v.unmount();
+  });
+
+  it('after a redo, says nothing of it and offers Undo job again', async () => {
+    const v = await mount(clientOf(jobOf()));
+    expect(v.container.querySelector('[data-testid="job-undone"]')).toBeNull();
+    expect(button(v.container, 'Undo job')).not.toBeNull();
+    await v.unmount();
+  });
+});
+
 describe('Undo job', () => {
   it('is offered on an ended job to a maintainer and an admin only', async () => {
     const who = [
@@ -140,6 +163,12 @@ describe('Undo job', () => {
       .mockResolvedValueOnce(SUMMARY)
       .mockResolvedValueOnce({ ...SUMMARY, dryRun: false, operation: 'o1' });
     const client = clientOf(jobOf(), undo);
+    // Read again after the undo, the job stands undone.
+    client.jobs.get
+      .mockResolvedValueOnce(jobOf())
+      .mockResolvedValueOnce(
+        jobOf({ undone: { operation: 'o1', time: '2026-11-12T11:00:00Z', user: 'm' } }),
+      );
     const v = await mount(client);
     await press(v, button(v.container, 'Undo job'));
     await settle(v);

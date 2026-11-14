@@ -240,9 +240,30 @@ test('a job is undone but for what a person changed since, which is listed', asy
   expect(await glossesOf(docs[1])).toEqual([null, 'hand']);
   expect(await entryForms()).toEqual([]);
 
-  // Pressed again after a reload, it says the truth.
+  // After a reload the page still knows, from the job's read, and the Jobs
+  // tab says it beside the job's state.
   await page.reload();
-  await page.getByRole('button', { name: 'Undo job' }).click();
-  await expect(dialog.getByText('Comparing…')).toHaveCount(0, { timeout: 20_000 });
-  await expect(dialog.getByText('Nothing to undo.')).toBeVisible();
+  await expect(page.getByTestId('job-undone')).toContainText('Job undone', { timeout: 20_000 });
+  await expect(page.getByRole('button', { name: 'Undo job' })).toHaveCount(0);
+  await page.goto(`/#/projects/${projectId}?tab=jobs`);
+  await expect(page.locator('tbody tr').first().locator('[data-undone]')).toHaveText('Undone', {
+    timeout: 20_000,
+  });
+
+  // The undo undone from a document's History (a redo): the line goes and
+  // Undo job is offered again.
+  await page.goto(`/#/projects/${projectId}/jobs/${job.id}`);
+  await page.getByTestId('job-undone').getByRole('link', { name: 'Show in History' }).click();
+  await expect(page.getByTestId('history-changes')).toBeVisible({ timeout: 20_000 });
+  await page
+    .getByTestId('history-changes')
+    .getByRole('button', { name: 'Undo', exact: true })
+    .click();
+  const redo = page.getByRole('dialog');
+  await expect(redo.getByText('Comparing…')).toHaveCount(0, { timeout: 20_000 });
+  await redo.getByRole('button', { name: 'Undo', exact: true }).click();
+  await expect(redo).toHaveCount(0, { timeout: 20_000 });
+  await page.goto(`/#/projects/${projectId}/jobs/${job.id}`);
+  await expect(page.getByRole('button', { name: 'Undo job' })).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByTestId('job-undone')).toHaveCount(0);
 });

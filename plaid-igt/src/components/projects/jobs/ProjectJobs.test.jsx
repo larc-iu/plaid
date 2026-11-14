@@ -70,6 +70,25 @@ describe('the Jobs tab', () => {
     await v.unmount();
   });
 
+  it('says a job that stands undone beside its state', async () => {
+    const undone = { operation: 'o1', time: '2026-11-12T10:00:00Z', user: 'm' };
+    const client = {
+      jobs: {
+        list: vi.fn(async () => [
+          job('a', { createdAt: '2026-11-11T10:00:00Z', undone }),
+          job('b', { createdAt: '2026-11-01T10:00:00Z' }),
+        ]),
+      },
+    };
+    const v = await mount(client);
+    const [first, second] = rows(v.container);
+    expect(first[0]).toBe('Done Undone');
+    expect(second[0]).toBe('Done');
+    const mark = v.container.querySelector('tbody tr td [data-undone]');
+    expect(mark.className).toContain('text-muted-foreground');
+    await v.unmount();
+  });
+
   it('says when there are none, and draws the Start job it is handed', async () => {
     const client = { jobs: { list: vi.fn(async () => []) } };
     const v = await mount(client, <button type="button">Start job</button>);

@@ -59,11 +59,43 @@ export const JobPage = ({ project, projectId, jobId, client }) => {
   const [attempt, setAttempt] = useState(0);
   const [stopping, setStopping] = useState(false);
   const [undoOpen, setUndoOpen] = useState(false);
-  // The job undone from this page: when, and its History entry in the first
-  // of its documents the undo wrote in. Only until the page is left: nothing
-  // core keeps says which job an undo was of ("Undo job: <label>" names the
-  // job by its label, which another job may share).
-  const [undone, setUndone] = useState(null);
+  // Where the job's undo is in History, while the job stands undone (core's
+  // `undone`): its entry in the first of the job's documents whose History
+  // has it, or null until found or where none does.
+  const [undoneHref, setUndoneHref] = useState(null);
+  const undoneOp = job?.undone?.operation ?? null;
+  const documentIds = (job?.documents || []).map((d) => d.documentId).join(',');
+  useEffect(() => {
+    setUndoneHref(null);
+    if (!undoneOp) return undefined;
+    let live = true;
+    (async () => {
+      for (const documentId of documentIds ? documentIds.split(',') : []) {
+        try {
+          const page = await client.documents.auditPage(documentId, {
+            entryId: undoneOp,
+            opsLimit: 1,
+          });
+          const entry = page?.entries?.[0];
+          if (!entry) continue;
+          if (live) {
+            setUndoneHref(
+              historyHref(
+                `/projects/${projectId}/documents/${documentId}`,
+                entry.partOf ?? entry.id,
+              ),
+            );
+          }
+          return;
+        } catch {
+          // Not in this document's History: the next one.
+        }
+      }
+    })();
+    return () => {
+      live = false;
+    };
+  }, [client, projectId, undoneOp, documentIds]);
 
   useEffect(() => {
     let live = true;
@@ -149,32 +181,18 @@ export const JobPage = ({ project, projectId, jobId, client }) => {
   const stoppable = jobStoppable(job) && canStopJob(job, project, user);
   const discussable = !isJobActive(job) && !!job.report;
   // A maintainer undoes an ended job whole, documents and lexicon together.
-  const undoable = !isJobActive(job) && canManageProject(project, user) && !undone;
+  // Not while it stands undone: a redo, from History, offers it again.
+  const undoable = !isJobActive(job) && canManageProject(project, user) && !job.undone;
 
-  // After an undo: say so, with a link to the undo in the History of the
-  // first of the job's documents it wrote in.
+  // After an undo: the job read again, which says it stands undone.
   const afterUndo = async (res) => {
     dropPrecedent();
     if (!res?.operation) return;
-    const at = new Date().toISOString();
-    setUndone({ at, href: null });
-    for (const d of job.documents || []) {
-      try {
-        const page = await client.documents.auditPage(d.documentId, {
-          entryId: res.operation,
-          opsLimit: 1,
-        });
-        const entry = page?.entries?.[0];
-        if (!entry) continue;
-        const href = historyHref(
-          `/projects/${projectId}/documents/${d.documentId}`,
-          entry.partOf ?? entry.id,
-        );
-        setUndone({ at, href });
-        return;
-      } catch {
-        // Not in this document's History: the next one.
-      }
+    try {
+      setJob(await client.jobs.get(jobId));
+      setReadAt(Date.now());
+    } catch (err) {
+      notifyError(err, 'Failed to read the job again');
     }
   };
 
@@ -202,13 +220,13 @@ export const JobPage = ({ project, projectId, jobId, client }) => {
         }
       />
       <JobStatus job={job} />
-      {undone && (
+      {job.undone && (
         <p className="-mt-4 mb-6 text-sm" data-testid="job-undone">
-          Job undone {fullTimestamp(undone.at)}.
-          {undone.href && (
+          Job undone {fullTimestamp(job.undone.time)}.
+          {undoneHref && (
             <>
               {' '}
-              <Link to={undone.href} className="text-primary hover:underline">
+              <Link to={undoneHref} className="text-primary hover:underline">
                 Show in History
               </Link>
             </>

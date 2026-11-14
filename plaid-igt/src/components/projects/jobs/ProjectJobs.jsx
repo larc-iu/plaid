@@ -56,7 +56,20 @@ export const ProjectJobs = ({ projectId, client, startJob = null }) => {
     {
       key: 'state',
       label: 'State',
-      render: (j) => cell(j, jobStateText(j.state) ?? j.state),
+      // A job that stands undone says so beside its state, muted.
+      render: (j) =>
+        cell(
+          j,
+          <>
+            {jobStateText(j.state) ?? j.state}
+            {j.undone && ' '}
+            {j.undone && (
+              <span data-undone className="text-muted-foreground">
+                Undone
+              </span>
+            )}
+          </>,
+        ),
       sort: (j) => jobStateText(j.state) ?? j.state,
     },
     {
