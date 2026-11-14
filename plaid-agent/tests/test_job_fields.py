@@ -178,6 +178,32 @@ def test_only_empty_works_nothing_of_a_fully_analysed_document(monkeypatch):
     assert 'fields' not in finished['report']['totals']
 
 
+def test_a_planner_told_its_plan_works_nothing_plans_again(monkeypatch):
+    """BRIEF OE: the measured fault. A planner filling a field sets
+    skip_analyzed_sentences on a fully analysed document. plan_work keeps
+    the plan and answers that it works no sentence, the planner plans again
+    in the same context without it, and the job fills the field."""
+    client, job, model, written = _job(monkeypatch, None, plan=False)
+    fill = model.answer
+    answers = []
+
+    def answer(asked, n, kwargs):
+        if not asked.endswith('Plan the job and end with plan_work.'):
+            return fill(asked, n, kwargs)
+        if n == 1:
+            return reply(calls=[call(1, 'plan_work', {'pieces': 'sentences', 'skip_analyzed_sentences': True})])
+        if n == 2:
+            answers.append(kwargs['messages'][-1]['content'])
+            return reply(calls=[call(2, 'plan_work', {'pieces': 'sentences'})])
+        return reply('Planned.')
+    model.answer = answer
+    finished = run_job(job, runner(job))
+    assert 'This plan works no sentence: every sentence is already analysed.' in answers[0], answers
+    assert finished['report']['plan']['by'] == 'model' and 'only_empty' not in finished['report']['plan']
+    assert [p for p in _pieces(model) if p.startswith('Your piece')] == ['Your piece: s1, s2, s3.']
+    _check_report(finished, written)
+
+
 class Crash(BaseException):
     """The worker's process dies here."""
 

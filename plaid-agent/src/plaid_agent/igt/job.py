@@ -1431,7 +1431,9 @@ class IgtRunner:
         while True:
             job.check()
             ws = JobWorkspace(job.client(), project, mode=JobWorkspace.PLAN)
-            ws.job_documents = [{'id': f['id'], 'name': f['name']} for f in facts]
+            # Its counts tell plan_work a plan that would work no sentence.
+            ws.job_documents = [{'id': f['id'], 'name': f['name'], 'sentences': f['sentences'],
+                                 'empty': f['blank_words'] + f['empty_translations']} for f in facts]
             system = build_plan_prompt(project)
             transcript = [{'role': 'user', 'content': self.plan_message(facts)}]
             seed(ws.seen, system, transcript, lambda tool, args: True)
@@ -1874,11 +1876,11 @@ class IgtRunner:
     def every_sentence(self) -> bool:
         """Whether the walk takes every sentence of a document, empty or
         not: always, but under a plan in sentences with ``only_empty``
-        (plan_work's ``skip_analyzed_sentences``, for instructions that only fill words nobody
-        analysed or empty translations), which walks only sentences that
-        hold something empty (BRIEF EW: a job filling a new field, or
-        checking glosses, on texts already analysed has every sentence to
-        do). A document of a plan by documents or selection that is worked
+        (plan_work's ``skip_analyzed_sentences``, for instructions that only
+        fill words nobody analysed or empty translations), which walks only
+        sentences that hold something empty (BRIEF EW: a job filling a new
+        field, or checking glosses, on texts already analysed has every
+        sentence to do). A document of a plan by documents or selection that is worked
         in stretches (too long for one piece, or put off from the selection)
         is still worked whole: the fallback changes the size of the pieces,
         never what is worked (REV-JG-7)."""

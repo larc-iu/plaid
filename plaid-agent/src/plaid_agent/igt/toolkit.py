@@ -644,7 +644,9 @@ def t_plan_work(ws, pieces: str = None, piece_instructions: str = '', documents=
     kept as ``only_empty``, the key the job page reads: BRIEF OE renamed only
     what the model sees, after planners filling a field read only_empty as
     "only words whose field is empty"), instructions within their cap, a
-    subset of the job's documents named once each."""
+    subset of the job's documents named once each. A plan that skips every
+    sentence of the documents it works is kept, and its answer says so
+    (:data:`PLAN_WORKS_NOTHING`), so the planner may plan again."""
     from ..core.job import composed
     from ..core.limits import JOB_PIECE_INSTRUCTIONS_MAX_CHARS
     if pieces not in ('sentences', 'document', 'selection'):
@@ -682,13 +684,26 @@ def t_plan_work(ws, pieces: str = None, piece_instructions: str = '', documents=
     ws.plan_work = {'pieces': pieces, 'piece_instructions': text, 'documents': order,
                     **({'only_empty': True} if skip else {}),
                     **({'instructions_cut': given} if len(text) < given else {})}
+    out = ['The plan is kept.']
     if len(text) < given:
         kept = (f'kept up to their last whole sentence within it, {len(text):,} characters' if whole
                 else f'cut at {len(text):,} characters, inside a sentence')
-        return (f'The plan is kept. piece_instructions were {given:,} characters, past the most, '
-                f'{JOB_PIECE_INSTRUCTIONS_MAX_CHARS:,}: they are {kept}. Pieces already have the guidelines and the '
-                'instructions. End now with a one-line reply.')
-    return 'The plan is kept. End now with a one-line reply.'
+        out.append(f'piece_instructions were {given:,} characters, past the most, '
+                   f'{JOB_PIECE_INSTRUCTIONS_MAX_CHARS:,}: they are {kept}. Pieces already have the guidelines and '
+                   'the instructions.')
+    worked = [d for d in known if order is None or d['id'] in order]
+    if skip and sum(d.get('sentences', 0) for d in worked) and not any(d.get('empty', 0) for d in worked):
+        # A fixed rule on the planning context's own counts: the walk would
+        # take no sentence of any document the plan works (BRIEF OE).
+        out += [PLAN_WORKS_NOTHING, 'Call plan_work again to change it, or end now with a one-line reply.']
+    else:
+        out.append('End now with a one-line reply.')
+    return ' '.join(out)
+
+
+#: plan_work's answer to a plan whose walk takes no sentence: every document
+#: it works is analysed and translated throughout.
+PLAN_WORKS_NOTHING = 'This plan works no sentence: every sentence is already analysed.'
 
 
 #: What ends a sentence when a space or the end follows it: the full stop,

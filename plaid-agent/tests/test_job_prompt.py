@@ -288,6 +288,52 @@ def test_the_planner_is_told_every_sentence_by_default_and_when_to_skip_analysed
             ) in description
 
 
+NOTHING = 'This plan works no sentence: every sentence is already analysed.'
+
+
+def _planned(docs, args):
+    ws = JobWorkspace(FakeClient(), _project(), mode=JobWorkspace.PLAN)
+    ws.job_documents = docs
+    return ws, toolkit.job_plan_call(ws, 'plan_work', args)
+
+
+FULL = {'id': 'd1', 'name': 'Text 1', 'sentences': 3, 'empty': 0}
+HALF = {'id': 'd2', 'name': 'Text 2', 'sentences': 4, 'empty': 2}
+
+
+def test_a_plan_that_skips_every_sentence_is_kept_and_says_so():
+    """BRIEF OE item 3: skip_analyzed_sentences on documents whose every
+    sentence is analysed works nothing. The answer says so in one line, as
+    a fixed rule on the planning context's counts, and the plan is kept, so
+    the planner may call plan_work again in the same context."""
+    ws, out = _planned([FULL], {'pieces': 'sentences', 'skip_analyzed_sentences': True})
+    assert out == f'The plan is kept. {NOTHING} Call plan_work again to change it, or end now with a one-line reply.'
+    assert ws.plan_work['only_empty'] is True
+    # Planned again in the same context, the new plan replaces it.
+    assert toolkit.job_plan_call(ws, 'plan_work', {'pieces': 'sentences'}) == \
+        'The plan is kept. End now with a one-line reply.'
+    assert 'only_empty' not in ws.plan_work
+
+
+@pytest.mark.parametrize('docs, args', [
+    ([FULL, HALF], {'pieces': 'sentences', 'skip_analyzed_sentences': True}),
+    ([FULL], {'pieces': 'sentences'}),
+    ([FULL], {'pieces': 'document', 'skip_analyzed_sentences': True}),
+    ([{**FULL, 'sentences': 0}], {'pieces': 'sentences', 'skip_analyzed_sentences': True}),
+    ([FULL, HALF], {'pieces': 'sentences', 'skip_analyzed_sentences': True, 'documents': ['Text 2']}),
+], ids=['one-has-blanks', 'not-set', 'by-documents', 'no-sentences', 'planned-one-has-blanks'])
+def test_a_plan_that_works_some_sentence_says_nothing_of_it(docs, args):
+    _, out = _planned(docs, args)
+    assert out == 'The plan is kept. End now with a one-line reply.'
+
+
+def test_the_documents_a_plan_names_are_the_ones_counted():
+    """A plan naming only the analysed one of two documents works nothing."""
+    _, out = _planned([FULL, HALF], {'pieces': 'sentences', 'skip_analyzed_sentences': True,
+                                     'documents': ['Text 1']})
+    assert NOTHING in out
+
+
 def test_no_job_prompt_has_a_semicolon_or_an_em_dash_of_its_own():
     """The job's own paragraphs (the chat's are the chat's)."""
     for text in (shared.JOB_CONTRACT, shared.JOB_FIND_FIRST, shared.JOB_STAGE_NOW, shared.JOB_PLAN_WHAT_WAS_ASKED,
