@@ -227,7 +227,7 @@ def test_a_default_plan_and_whose_summary_it_is_are_read_as_the_page_says_them()
     says whose words it is: the worker's fixed line for a job that wrote
     nothing, else the final model context's."""
     ws = _ws()
-    line = 'Planning ended with no plan, and the job worked by the default plan. It wrote no change and proposed none.'
+    line = 'The job wrote no change and proposed none.'
     report = _report(plan={'pieces': 'sentences', 'piece_instructions': '', 'documents': None, 'by': 'default',
                            'why': 'no-plan', 'fallback': [], 'left_out': []}, summary=line, summary_by='worker')
     out = call_tool(ws, 'read_job', {'job': _ended(ws.client, report)})

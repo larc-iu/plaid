@@ -798,16 +798,16 @@ def test_a_job_that_wrote_and_proposed_nothing_gets_a_fixed_summary_and_no_final
 
 def test_a_planner_that_never_plans_and_a_job_that_writes_nothing_says_both(monkeypatch):
     """BRIEF PF (2, B): the planning context ends with no plan, the job works
-    by the default plan and writes nothing. The summary is the worker's and
-    says so, and the plan says it was the default."""
+    by the default plan and writes nothing. The summary is the worker's
+    line, and the plan says it was the default: the page shows the plan, so
+    the line does not say it again (REV-L2-9)."""
     client = JobClient(_docs(1))
     job = start(client, id=J, plan=None)
     model = use(monkeypatch, _model(plan=None))
     finished = run_job(job, runner(job, write_summary=True))
     assert finished['report']['plan']['by'] == 'default'
     assert model.seen['summary'] == 0
-    assert finished['report']['summary'] == ('Planning ended with no plan, and the job worked by the default plan. It '
-                                             'wrote no change and proposed none.')
+    assert finished['report']['summary'] == 'The job wrote no change and proposed none.'
     assert finished['report']['summary_by'] == 'worker'
 
 

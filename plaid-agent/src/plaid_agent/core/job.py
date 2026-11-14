@@ -772,15 +772,13 @@ def fit_report(report: Dict[str, Any], budget: int = JOB_REPORT_BUDGET_BYTES) ->
 #: table, the worker's own words: no model is asked to describe nothing
 #: (BRIEF PF).
 NOTHING_WRITTEN = 'The job wrote no change and proposed none.'
-#: The same, when the job worked by the default plan.
-NOTHING_WRITTEN_BY_DEFAULT = ('Planning ended with no plan, and the job worked by the default plan. It wrote no '
-                              'change and proposed none.')
 
 
 def wrote_nothing(report: Dict[str, Any]) -> bool:
     """Whether the job wrote no change, proposed none and made no table, by
     the worker's own counts and rows: no change written anywhere, none
-    proposed, nothing harmonize changed, no table its code made (a job that reads and reports keeps the assistant's summary)."""
+    proposed, nothing harmonize changed, no table its code made (a job that
+    reads and reports keeps the assistant's summary)."""
     totals = report.get('totals') or {}
     harmonize = report.get('harmonize') or {}
     return not (totals.get('changes') or totals.get('proposed') or harmonize.get('changed')
@@ -793,11 +791,10 @@ def _summary(job: Job, runner, report: Dict[str, Any]) -> Dict[str, Any]:
     that wrote nothing, proposed nothing and made no table gets the worker's fixed sentence
     instead, ``summary_by`` worker, and no model is asked. When the prose
     cannot be written the report has none and says so (``summary_failed``).
-    A stop during it leaves it out."""
+    A stop during it leaves it out. The line says nothing of the plan: the
+    report's plan says it, and the page and read_job show it (REV-L2-9)."""
     if wrote_nothing(report):
-        default = (report.get('plan') or {}).get('by') == 'default'
-        return {'summary': NOTHING_WRITTEN_BY_DEFAULT if default else NOTHING_WRITTEN, 'summary_by': 'worker',
-                'summary_failed': False}
+        return {'summary': NOTHING_WRITTEN, 'summary_by': 'worker', 'summary_failed': False}
     try:
         return {'summary': through_core(job, lambda: runner.summarize(job, report)), 'summary_by': 'model',
                 'summary_failed': False}
