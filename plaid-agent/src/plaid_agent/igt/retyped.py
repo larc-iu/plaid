@@ -624,13 +624,21 @@ def renumbered_cut(ws, s, w, where: str, n: int) -> None:
     as read) refused when a split, merge or word delete the plan holds in the
     sentence gives that word another number or takes it: the number names one
     word now and another once the plan runs, and before_word takes no form
-    (REV-RR2-3)."""
+    (REV-RR2-3). A word the plan takes is said to be taken, not renumbered,
+    and when no word has its number once applied (the last word deleted)
+    the refusal says so (REV-RR3-1)."""
     shapes = _shapes_in(ws.ops, s)
-    if not shapes or numbers_after(s, shapes).get(w.id) == w.index:
+    after = numbers_after(s, shapes) if shapes else {}
+    if not shapes or after.get(w.id) == w.index:
         return
     by = ' and '.join(dict.fromkeys(o.get('kind') for o in shapes))
-    raise ToolError(f'{where}: before_word {n} is w{n} {qv(w.surface)} now, but this plan\'s {by} '
-                    f'renumber{"" if " and " in by else "s"} s{s.index}, so the number names another word once it is '
+    plural = ' and ' in by
+    if w.id in after:
+        what = f'renumber{"" if plural else "s"} s{s.index}, so the number names another word'
+    else:
+        then = 'the number names another word' if n in after.values() else 'no word has that number'
+        what = f'take{"" if plural else "s"} that word, so {then}'
+    raise ToolError(f'{where}: before_word {n} is w{n} {qv(w.surface)} now, but this plan\'s {by} {what} once it is '
                     'applied. Split the sentence once the plan is applied.', kind='conflict')
 
 

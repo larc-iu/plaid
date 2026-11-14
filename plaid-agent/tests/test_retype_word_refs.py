@@ -669,6 +669,24 @@ def test_a_sentence_split_by_a_word_number_a_planned_reshape_renumbers_is_refuse
     call_tool(w, 'delete_word', {'document': 'd1', 'refs': ['s1.w2']})
     assert 'Split the sentence once the plan is applied.' in call_tool(
         w, 'split_sentence', {'document': 'd1', 'ref': 's1', 'before_word': 2})
+
+
+def test_a_sentence_split_before_a_word_the_plan_deletes_says_the_delete_takes_it():
+    """REV-RR3-1: a delete of the before_word word itself takes it, and a
+    delete of the last word leaves no word with its number: the refusal said
+    the delete "renumbers" the sentence, though no word of it changes its
+    number."""
+    w = ws()
+    call_tool(w, 'delete_word', {'document': 'd1', 'refs': ['s1.w3']})
+    out = call_tool(w, 'split_sentence', {'document': 'd1', 'ref': 's1', 'before_word': 3})
+    assert out == ('Error: Text 1 s1: before_word 3 is w3 "akuna" now, but this plan\'s delete_word takes that word, '
+                   'so no word has that number once it is applied. Split the sentence once the plan is applied.'), out
+    w = ws()
+    call_tool(w, 'delete_word', {'document': 'd1', 'refs': ['s1.w2']})
+    out = call_tool(w, 'split_sentence', {'document': 'd1', 'ref': 's1', 'before_word': 2})
+    assert out == ('Error: Text 1 s1: before_word 2 is w2 "gam" now, but this plan\'s delete_word takes that word, '
+                   'so the number names another word once it is applied. Split the sentence once the plan is '
+                   'applied.'), out
     w = ws()
     call_tool(w, 'split_word', {'document': 'd1', 'ref': 's1.w3', 'at': 2})
     assert call_tool(w, 'split_sentence', {'document': 'd1', 'ref': 's1', 'before_word': 2}).startswith('Planned')
