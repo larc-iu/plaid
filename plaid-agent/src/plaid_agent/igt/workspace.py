@@ -1118,6 +1118,9 @@ class Workspace(BaseWorkspace):
         self.entry_no = saved['entry_no']
         self._patch_version += 1
 
+    #: A job's workspace (job.JobWorkspace), where nobody approves a plan.
+    UNATTENDED = False
+
     def add_op(self, op: Dict[str, Any]) -> None:
         self.place_virtual(op)
         self.pin_entry(op)

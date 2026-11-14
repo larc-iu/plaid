@@ -659,6 +659,8 @@ class JobWorkspace(Workspace):
     in the job's report (:func:`plaid_agent.igt.sandbox.api`)."""
 
     PIECE, PLAN = 'piece', 'plan'
+    #: Nobody reads its answers but the job's model (tools.CONFIRM_HINT).
+    UNATTENDED = True
 
     def __init__(self, client, project: IgtProject, stretch: Optional[Stretch] = None, mode: str = PIECE):
         super().__init__(client, project)

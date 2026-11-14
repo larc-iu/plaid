@@ -138,7 +138,8 @@ def only_erg():
 
 
 def test_analyze_sentence_restating_a_linked_word_stages_nothing():
-    """Ali fits no entry (no link), di fits the one it is linked to."""
+    """Ali is unlinked and no entry fits it, di keeps the link it holds (no
+    entry fits "di" by the fit rules, and a link on a morpheme kept stays)."""
     w = ws(only_erg())
     out = call_tool(w, 'analyze_sentence', {'document': 'd1', 'sentences': [
         {'ref': 's1.w1', 'words': ['Ali-di Ali-ERG']}]})
@@ -157,14 +158,15 @@ def test_analyze_sentence_restating_beside_a_new_analysis_stages_only_the_new_on
     assert not any(o.get('kind') == 'link' and o.get('token_id') in ('m-1a', 'm-1b') for o in w.ops)
 
 
-def test_analyze_sentence_that_would_link_another_entry_stages_the_link_alone():
-    """di 'ERG' fits another entry than the one it is linked to: that link
-    is staged, on the morpheme the word keeps (KM)."""
+def test_analyze_sentence_where_another_entry_fits_keeps_the_link_held():
+    """di 'ERG' fits another entry than the one it is linked to: the
+    morpheme the word keeps keeps its link, which only a call naming an
+    entry changes (KM, REV-L2B-2). Ali, unlinked, fits none."""
     lex = lexicon_raw()
     lex['items'] = [{'id': 'vi-erg2', 'form': 'di', 'metadata': {'gloss': 'ERG', 'morphType': 'suffix'}}]
     w = ws(lex)
     call_tool(w, 'analyze_sentence', {'document': 'd1', 'sentences': [{'ref': 's1.w1', 'words': ['Ali-di Ali-ERG']}]})
-    assert [(o['kind'], o.get('token_id'), o.get('item_id')) for o in w.ops] == [('link', 'm-1b', 'vi-erg2')]
+    assert w.ops == []
 
 
 def test_analyze_sentence_that_would_create_an_entry_stages_it_and_its_links_alone():
@@ -172,8 +174,9 @@ def test_analyze_sentence_that_would_create_an_entry_stages_it_and_its_links_alo
     call_tool(w, 'analyze_sentence', {'document': 'd1', 'new_entries': True, 'sentences': [
         {'ref': 's1.w1', 'words': ['Ali-di Ali-ERG']}]})
     assert analyses(w) == []
-    assert sorted(o['kind'] for o in w.ops) == ['create_entry', 'create_entry', 'link', 'link']
-    assert {o.get('token_id') for o in w.ops if o['kind'] == 'link'} == {'m-1a', 'm-1b'}
+    # Ali, unlinked: its entry made and linked. di keeps its link.
+    assert sorted(o['kind'] for o in w.ops) == ['create_entry', 'link']
+    assert [o.get('token_id') for o in w.ops if o['kind'] == 'link'] == ['m-1a']
 
 
 # --- set_analysis_for_form ---------------------------------------------------------------------

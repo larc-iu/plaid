@@ -23,7 +23,7 @@ from .plan import KIND, REFS_READ, REPAIR_OF, SENSES_READ, SCOPES, analysed_morp
 from .project import join_morphemes, word_ref
 from ..core.tools import ToolError
 from .lexicon import _meta_patch, _refuse_doomed_entry, _refuse_removing_survivor
-from .tools import (parse_analysis, analysis_op, ANALYSIS_OF, in_place, in_place_back, plan_retypes, value_op, surface_misfit, stage_equals, no_scope_reaches, refuse_shape_and_analysis,
+from .tools import (parse_analysis, analysis_op, ANALYSIS_OF, confirm_hint, entries_note, take_back, in_place, in_place_back, plan_retypes, value_op, surface_misfit, stage_equals, no_scope_reaches, refuse_shape_and_analysis,
                     edit_planned_morpheme, left_for_analysis, _planned_place)
 from .lexview import entry_line
 from .workspace import Workspace, _matcher, op_target
@@ -1612,18 +1612,17 @@ def t_set_analysis_for_form(ws: Workspace, form: str, morphemes: list, document:
             first_note = note.strip()
     staged += values_staged
     with ws.staging():
-        if back:
-            ws.take_back(back)
-            ws.unlink_orphans()
+        gone_entries = take_back(ws, back) if back else []
         ws.add_ops(staged)
     if not held:
-        return _bulk_note(ws, staged, f'occurrences of "{form}"') + (' ' + first_note if first_note else '')
+        return (_bulk_note(ws, staged, f'occurrences of "{form}"') + (' ' + first_note if first_note else '')
+                + entries_note(gone_entries))
     same = (f'{held} occurrence{"s" if held != 1 else ""} of "{form}" already {"holds" if held == 1 else "hold"} '
             'that analysis' + (f' (the planned change of {took} taken back)' if took else ''))
     if not staged:
-        return f'Nothing to change: {same}.'
+        return f'Nothing to change: {same}.' + entries_note(gone_entries) + confirm_hint(ws)
     return (_bulk_note(ws, staged, f'occurrences of "{form}"') + (' ' + first_note if first_note else '')
-            + f' Nothing staged for {same}.')
+            + f' Nothing staged for {same}.' + entries_note(gone_entries))
 
 
 # --- lexicon and document operations ----------------------------------------------

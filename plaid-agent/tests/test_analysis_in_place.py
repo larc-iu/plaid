@@ -151,13 +151,22 @@ def linked_doc():
 
 
 def test_analyze_sentence_changing_only_a_link_stages_the_link_alone():
-    w = fake_ws(FakeClient(project=project(), documents={'d1': linked_doc()}, lexicon=alis()))
+    """m1 is unlinked and one entry fits it: the link alone. m2 holds a
+    link and fits no entry: it keeps it, unlisted."""
+    w = fake_ws(FakeClient(project=project(), documents={'d1': doc()}, lexicon=alis()))
     out = call_tool(w, 'analyze_sentence', {'document': 'd1', 'sentences': [{'ref': 's1.w1', 'words': ['Ali-di Ali-ERG']}]})
     (op,) = w.ops
-    assert (op['kind'], op['token_id'], op['item_id'], op['existing_link_id']) == ('link', 'm-1a', 'vi-ali', 'l-1a')
+    assert (op['kind'], op['token_id'], op['item_id'], op['existing_link_id']) == ('link', 'm-1a', 'vi-ali', None)
     assert 's1.w1: 0 words analysed, 1 link.' in out, out
-    # A morpheme it keeps that holds a link and fits no entry keeps it, unlisted.
     assert 's1.w1.m2' not in out, out
+
+
+def test_analyze_sentence_keeps_a_link_a_person_chose_where_another_entry_fits():
+    """m1 is linked to Ali 'name', Ali 'Ali' fits: the call names no entry,
+    so the link stays (REV-L2B-2) and nothing is staged."""
+    w = fake_ws(FakeClient(project=project(), documents={'d1': linked_doc()}, lexicon=alis()))
+    out = call_tool(w, 'analyze_sentence', {'document': 'd1', 'sentences': [{'ref': 's1.w1', 'words': ['Ali-di Ali-ERG']}]})
+    assert w.ops == [] and 'Nothing to change in w1' in out, out
 
 
 def test_analyze_sentence_changing_a_gloss_keeps_the_morphemes_and_their_links():

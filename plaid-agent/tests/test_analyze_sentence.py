@@ -371,8 +371,9 @@ def test_the_ops_are_the_ops_set_analysis_create_entry_and_link_entry_stage():
                        {'form': 'na', 'equals': False, 'fields': {'Morph Gloss': 'PST'}}])]:
         assert call_tool(old, 'set_analysis', {'document': 'd1', 'ref': ref, 'morphemes': morphemes}).startswith('Planned')
     key = call_tool(old, 'create_entry', {'form': 'gam', 'fields': {'gloss': 'catch'}}).split('entry_id: ')[1].split()[0]
-    for refs, entry in [(['s1.w1.m1'], 'e-ali'), (['s1.w1.m2'], 'e-di'), (['s1.w2.m1'], key),
-                        (['s1.w3.m1'], 'e-aku')]:
+    # Ali-di keeps its morphemes, and di its link to vi-erg: a kept
+    # morpheme's link changes only when an entry is named (KM, REV-L2B-2).
+    for refs, entry in [(['s1.w1.m1'], 'e-ali'), (['s1.w2.m1'], key), (['s1.w3.m1'], 'e-aku')]:
         call_tool(old, 'link_entry', {'document': 'd1', 'refs': refs, 'entry_id': entry})
     call_tool(old, 'set_analysis', {'document': 'd1', 'ref': 's2.w1', 'morphemes': [
         {'form': 'Gam', 'equals': False, 'fields': {'Morph Gloss': 'catch'}},

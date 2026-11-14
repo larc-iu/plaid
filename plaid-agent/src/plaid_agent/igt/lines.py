@@ -37,7 +37,7 @@ from ..core.tools import ToolError
 from .fit import collation_key, fits, nfc, spelled
 from .lexicon import _create_entry
 from .project import IgtDoc, IgtProject
-from .tools import NEW_ENTRY, held_chain, parse_analysis, surface_misfit, t_link_entry, word_analysis_op
+from .tools import NEW_ENTRY, confirm_hint, entries_note, held_chain, parse_analysis, surface_misfit, t_link_entry, word_analysis_op
 from .vocab import ROLE_GLOSS
 from .workspace import Workspace
 
@@ -81,7 +81,7 @@ and item n is word n's: another number stages nothing of the sentence, and the a
 beside the items. A word whose forms and gloss differ in morphemes, hold an empty one, or are over \
 twice the word's length plus 3, is listed and not staged: the other words are. Forms that differ from \
 the word otherwise are staged with a note. A word given the morphemes it holds, as many and of the \
-same forms, keeps them: only the values and links that differ are staged, and fields not given stay. Up \
+same forms, keeps them: only values that differ and links of unlinked morphemes are staged. Up \
 to 20 sentences a call, each on its own.'''
 
 #: An item's columns when a sentence names none.
@@ -317,9 +317,14 @@ def _stage_sentence(ws: Workspace, doc: IgtDoc, item: Dict[str, Any], new_entrie
     with ws.staging():
         n_analysed = 0
         held: List[str] = []
+        # Words whose planned analysis or values this call took back.
+        took: List[str] = []
+        gone_entries: List[str] = []
         # The stored links of each word whose morphemes the analysis keeps
-        # (``tools.in_place``): a morpheme linked to the entry it would be
-        # linked to is left as it is.
+        # (``tools.in_place``). Such a morpheme's link stays whatever entry
+        # fits: a person may have chosen a homonym, and only a call that
+        # names an entry (link_entry) changes a link. An unlinked one is
+        # linked as an analysed one is.
         kept: Dict[str, List[Optional[str]]] = {}
         for j, (w, morphs) in enumerate(zip(words, parsed)):
             if morphs is None:
@@ -330,11 +335,13 @@ def _stage_sentence(ws: Workspace, doc: IgtDoc, item: Dict[str, Any], new_entrie
                                  if name in fields and v != NO_VALUE}}
                      for form, delim, cut in morphs]
             staged = word_analysis_op(ws, doc, ref, parse_analysis(ws, given))
-            staged.stage(ws)
+            if staged.stage(ws):
+                took.append(f'w{w.index}')
+                gone_entries += staged.entries
             if not staged.whole:
                 kept[w.id] = [h['link'] for h in held_chain(w)]
                 if not staged.ops and all(
-                        link is None or link == was for link, was in
+                        was is not None or link is None for link, was in
                         zip([_would_link(ws, g, form, cut, new_entries) for form, _d, cut in morphs], kept[w.id])):
                     # The analysis it holds, links and all: nothing staged, nothing linked.
                     held.append(f'w{w.index}')
@@ -352,10 +359,7 @@ def _stage_sentence(ws: Workspace, doc: IgtDoc, item: Dict[str, Any], new_entrie
                 value = cut.get('gloss', NO_VALUE)
                 if g is None or value == NO_VALUE:
                     continue
-                if w.id in kept and kept[w.id][k - 1] is not None \
-                        and _would_link(ws, g, form, cut, new_entries) in (None, kept[w.id][k - 1]):
-                    # A morpheme the analysis keeps keeps its link, but for
-                    # another entry it would be linked to.
+                if w.id in kept and kept[w.id][k - 1] is not None:
                     continue
                 mref = f's{s.index}.w{w.index}.m{k}'
                 hits = _fits(ws, form, value)
@@ -392,7 +396,10 @@ def _stage_sentence(ws: Workspace, doc: IgtDoc, item: Dict[str, Any], new_entrie
         counts.append(f'{creates} entr{"ies" if creates != 1 else "y"} to create')
     line = f'{label}: ' + ', '.join(counts) + '.'
     if held:
-        line += f' Nothing to change in {", ".join(held)}: {"it holds" if len(held) == 1 else "they hold"} that analysis.'
+        line += (f' Nothing to change in {", ".join(held)}: {"it holds" if len(held) == 1 else "they hold"} that '
+                 'analysis.' + confirm_hint(ws))
+    if took:
+        line += f' Took back the planned change to {", ".join(took)}.' + entries_note(gone_entries)
     if bad:
         line = '\n'.join([f'{line} Not staged: {not_staged}'] + _word_lines(words, bad))
     return line, notes

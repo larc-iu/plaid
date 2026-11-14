@@ -258,17 +258,19 @@ def t_set_analysis(ws: Workspace, document: str, ref: str, morphemes: list) -> s
     staged = word_analysis_op(ws, doc, ref, parse_analysis(ws, morphemes))
     with ws.staging():
         took = staged.stage(ws)
+    what = ('analysis' if any(o.get('kind') in _ANALYSIS_KINDS for o in staged.back)
+            else 'change to the values')
     if not staged.ops:
         if took:
-            what = ('analysis' if any(o.get('kind') in _ANALYSIS_KINDS for o in staged.back)
-                    else 'change to the values')
             return (f'Took back the planned {what} of {r}: it keeps the analysis it holds, which is the one '
-                    f'given. The plan now holds {held_changes(ws)} change{"s" if held_changes(ws) != 1 else ""}.')
-        return f'Nothing to change: {r} already holds that analysis.'
+                    f'given.{entries_note(staged.entries)} The plan now holds {held_changes(ws)} '
+                    f'change{"s" if held_changes(ws) != 1 else ""}.')
+        return f'Nothing to change: {r} already holds that analysis.' + confirm_hint(ws)
     if staged.whole:
         return ws.planned_note(1) + staged.note
     # The morphemes it keeps: the answer says what changes, set_field's lines.
-    return ws.planned_note(len(staged.ops)) + ' ' + '; '.join(staged.lines) + '.'
+    return (ws.planned_note(len(staged.ops)) + ' ' + '; '.join(staged.lines) + '.'
+            + (f' Took back the planned {what} of {r}.' if took else '') + entries_note(staged.entries))
 
 
 class Staged:
@@ -283,17 +285,50 @@ class Staged:
         self.ops, self.back, self.whole, self.note = ops, back, whole, note
         #: Each value op as the answer says it: the morpheme, the change.
         self.lines = lines or []
+        #: The forms of the planned entries taken out with ``back``.
+        self.entries: List[str] = []
 
     def stage(self, ws: Workspace) -> bool:
         """Take ``back`` out of the plan (with the links made against an
         analysis it takes back), then stage ``ops``. True if anything was
         taken back. Call inside ``ws.staging()``."""
         if self.back:
-            ws.take_back(self.back)
-            ws.unlink_orphans()
+            self.entries = take_back(ws, self.back)
         if self.ops:
             ws.add_ops(self.ops)
         return bool(self.back)
+
+
+def confirm_hint(ws: Workspace) -> str:
+    """In chat, where a person may give an analysis back to have it
+    verified: the tool that does that."""
+    return '' if ws.UNATTENDED else ' confirm verifies what it holds.'
+
+
+def take_back(ws: Workspace, ops: List[Dict[str, Any]]) -> List[str]:
+    """Take ``ops`` out of the plan, the links made against an analysis
+    among them (``unlink_orphans``), and the entries the plan creates that
+    only those links used (REV-L2B-5): nothing else in the plan names their
+    key. The forms of the entries taken out."""
+    import json
+    linked = {o.get('new_entry_key') for o in ws.ops if o.get('kind') in ('link', 'link_phrase')} - {None}
+    ws.take_back(ops)
+    ws.unlink_orphans()
+    rest = [json.dumps(o, default=str) for o in ws.ops if o.get('kind') != 'create_entry']
+    gone = [o for o in ws.ops if o.get('kind') == 'create_entry' and o.get('key') in linked
+            and not any(json.dumps(o['key']) in r for r in rest)]
+    ws.take_back(gone)
+    for o in gone:
+        ws.new_entries.pop(o['key'], None)
+    return [o.get('form') or '' for o in gone]
+
+
+def entries_note(forms: List[str]) -> str:
+    """What an answer says of the planned entries a take-back took out."""
+    if not forms:
+        return ''
+    return (f' The planned entr{"y" if len(forms) == 1 else "ies"} {", ".join(qv(f) for f in forms)} '
+            f'{"was" if len(forms) == 1 else "were"} taken out with {"it" if len(forms) == 1 else "them"}.')
 
 
 def word_analysis_op(ws: Workspace, doc: IgtDoc, ref: str, parsed: List[Dict[str, Any]]) -> Staged:
