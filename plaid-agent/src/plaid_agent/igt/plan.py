@@ -2404,6 +2404,8 @@ def _write_text_edit(client, project, op: Dict[str, Any], new_id, values=(),
     doc_id, text_id, new = op['document_id'], op.get('text_id'), op['new']
     if not text_id:
         _seed_text(client, project, doc_id, new, new_id)
+        if edited is not None:
+            edited()
         return
     raw = client.documents.get(doc_id, include_body=True)
     tl, _ = find_layer(raw.get('text_layers'), project.word_layer_id)

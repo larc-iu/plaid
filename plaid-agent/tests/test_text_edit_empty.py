@@ -89,3 +89,31 @@ def test_the_seeded_sentences_cover_the_body_the_server_stored():
     execute_plan(c, ws.ops, source='s', label='l', project=load_project(c, 'p1'))
     [sentences] = c.payloads('tokens.bulk_create')
     assert [(t['begin'], t['end']) for t in sentences] == [(0, 11), (11, len(typed) - 2)]
+
+
+def test_an_append_to_a_document_with_no_text_counts_as_written_when_a_later_write_fails(monkeypatch):
+    """REV-RR2-2: the executor counts a text edit as written once it is
+    (``_write_text_edit``'s ``edited``), and a document with no text yet
+    took a branch that never said so: a later write that failed left the
+    append, whose text was in the document, read as not applied."""
+    from plaid_agent.core.opkind import ROW
+    from plaid_agent.core.plan import PlanError
+    from plaid_agent.core.tools import ValueRefusal
+    from plaid_agent.igt import plan as P
+    empty = _empty_doc()
+    empty['id'], empty['name'] = 'd2', 'Empty'
+    empty['text_layers'][0].pop('text')
+    c = FakeClient(project=project_raw(), documents={'d1': document_raw(), 'd2': empty})
+    ws = Workspace(c, load_project(c, 'p1'))
+    assert call_tool(ws, 'append_text', {'document': 'Empty', 'text': 'Hi there.'}).startswith('Planned')
+    assert call_tool(ws, 'delete_sentence', {'document': 'Text 1', 'refs': ['s2']}).startswith('Planned')
+    monkeypatch.setattr(P, '_seed_text', lambda *a, **k: 'text-new')
+
+    def fails(*a, **k):
+        raise ValueRefusal('the sentence delete failed', kind='conflict')
+    monkeypatch.setattr(P, '_write_sentence_delete', fails)
+    ops = [{**o, ROW: i} for i, o in enumerate(ws.plan_payload()['ops'])]
+    assert [o['kind'] for o in ops] == ['edit_text', 'delete_sentence']
+    with pytest.raises(PlanError) as e:
+        execute_plan(c, ops, source='s', label='l', project=load_project(c, 'p1'))
+    assert e.value.written == [0], e.value.written
