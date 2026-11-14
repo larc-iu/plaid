@@ -652,7 +652,7 @@ def t_plan_work(ws, pieces: str = None, piece_instructions: str = '', documents=
     # Longer instructions are cut, never refused: a planner refused for
     # them asked again with the same ones until its calls ran out (BRIEF PF).
     given = len(text)
-    text = whole_sentences(text, JOB_PIECE_INSTRUCTIONS_MAX_CHARS)
+    text, whole = whole_sentences(text, JOB_PIECE_INSTRUCTIONS_MAX_CHARS)
     known = list(getattr(ws, 'job_documents', None) or [])
     order = None
     if documents:
@@ -678,22 +678,33 @@ def t_plan_work(ws, pieces: str = None, piece_instructions: str = '', documents=
                     **({'only_empty': True} if only_empty is True and pieces == 'sentences' else {}),
                     **({'instructions_cut': given} if len(text) < given else {})}
     if len(text) < given:
+        kept = (f'kept up to their last whole sentence within it, {len(text):,} characters' if whole
+                else f'cut at {len(text):,} characters, inside a sentence')
         return (f'The plan is kept. piece_instructions were {given:,} characters, past the most, '
-                f'{JOB_PIECE_INSTRUCTIONS_MAX_CHARS:,}: they are kept up to their last whole sentence within it, '
-                f'{len(text):,} characters. Pieces already have the guidelines and the instructions. End now with a '
-                'one-line reply.')
+                f'{JOB_PIECE_INSTRUCTIONS_MAX_CHARS:,}: they are {kept}. Pieces already have the guidelines and the '
+                'instructions. End now with a one-line reply.')
     return 'The plan is kept. End now with a one-line reply.'
 
 
-def whole_sentences(text: str, limit: int) -> str:
-    """``text`` when it is at most ``limit`` characters, else cut after
-    the last full stop, question or exclamation mark followed by a space,
-    or line break, within ``limit``, and at ``limit`` when there is none."""
+#: What ends a sentence when a space or the end follows it: the full stop,
+#: the question and exclamation marks, the danda, the Arabic question mark.
+SENTENCE_ENDS = '.!?\u0964\u061f'
+#: What ends a sentence whatever follows it: a line break, the ideographic
+#: full stop (no space after it in Chinese or Japanese).
+SENTENCE_BREAKS = '\n\u3002'
+
+
+def whole_sentences(text: str, limit: int):
+    """``(text, True)`` when it is at most ``limit`` characters, else
+    ``text`` cut after the last sentence end within ``limit``
+    (:data:`SENTENCE_ENDS` followed by a space or the end, or
+    :data:`SENTENCE_BREAKS`), True, and at ``limit``, False, when there is
+    none (REV-L2-7: the answer says which)."""
     if len(text) <= limit:
-        return text
-    end = max((i + 1 for i in range(limit) if text[i] == '\n'
-               or (text[i] in '.!?' and (i + 1 == len(text) or text[i + 1].isspace()))), default=limit)
-    return text[:end].strip()
+        return text, True
+    end = max((i + 1 for i in range(limit) if text[i] in SENTENCE_BREAKS
+               or (text[i] in SENTENCE_ENDS and (i + 1 == len(text) or text[i + 1].isspace()))), default=None)
+    return (text[:end].strip(), True) if end is not None else (text[:limit].strip(), False)
 
 
 def job_piece_tools(ws, plan_only: bool = False) -> list:

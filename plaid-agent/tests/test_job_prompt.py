@@ -167,6 +167,33 @@ def test_plan_work_cuts_one_long_sentence_at_the_cap():
     assert ws.plan_work['piece_instructions'] == 'x' * cap and ws.plan_work['instructions_cut'] == cap + 7
 
 
+def test_plan_work_says_when_it_cut_inside_a_sentence():
+    """REV-L2-7: with no sentence end within the cap the cut is at the cap,
+    and the answer says so rather than "last whole sentence"."""
+    from plaid_agent.core.limits import JOB_PIECE_INSTRUCTIONS_MAX_CHARS as cap
+    ws = JobWorkspace(FakeClient(), _project(), mode=JobWorkspace.PLAN)
+    ws.job_documents = []
+    out = toolkit.job_plan_call(ws, 'plan_work', {'pieces': 'document', 'piece_instructions': 'x' * (cap + 7)})
+    assert out == (f'The plan is kept. piece_instructions were {cap + 7:,} characters, past the most, 4,000: they '
+                   f'are cut at {cap:,} characters, inside a sentence. Pieces already have the guidelines and the '
+                   'instructions. End now with a one-line reply.'), out
+
+
+@pytest.mark.parametrize('end', [chr(0x3002), chr(0x964) + ' ', chr(0x61F) + ' '], ids=['cjk', 'danda', 'arabic'])
+def test_plan_work_cuts_after_a_sentence_end_of_other_scripts(end):
+    """REV-L2-7: the ideographic full stop (no space after it), the danda and
+    the Arabic question mark end a sentence too."""
+    from plaid_agent.core.limits import JOB_PIECE_INSTRUCTIONS_MAX_CHARS as cap
+    ws = JobWorkspace(FakeClient(), _project(), mode=JobWorkspace.PLAN)
+    ws.job_documents = []
+    sentence = 'y' * 37 + end
+    told = sentence * (cap // len(sentence) + 3)
+    out = toolkit.job_plan_call(ws, 'plan_work', {'pieces': 'document', 'piece_instructions': told})
+    kept = ws.plan_work['piece_instructions']
+    assert kept.endswith(end.strip()) and len(kept) > cap - len(sentence) - 1, len(kept)
+    assert 'last whole sentence' in out
+
+
 def test_plan_work_measures_its_instructions_composed_as_core_does():
     """REV-L2-2: core composes (NFC) every string of a job route before it
     measures, and a precomposed nukta letter (U+09DF) is two characters
