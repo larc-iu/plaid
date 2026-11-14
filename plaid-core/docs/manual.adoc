@@ -380,6 +380,9 @@ An undo needs a maintainer: of a document's project for its rows, of a vocabular
 Rows the caller may not maintain are listed as `not-permitted` and the rest undone, and rows in a document or vocabulary the caller cannot read are neither counted nor listed.
 A delegated token undoes only the rows of documents in the projects it reaches.
 Undoing the same entry again finds nothing left and writes nothing.
+An undo may be sent with an `Idempotency-Key` or inside a batch: a dry run there writes nothing either.
+A dry run and a real undo are different requests, so one key answers only the one it was first sent with.
+A row the entry made is also kept when anything that stays names its id in its metadata, such as an entry that took a word of it as an example (`built-on`).
 An entry of more than 20,000 rows is refused.
 
 === Last edit per document
