@@ -769,9 +769,8 @@ NOTHING_WRITTEN_BY_DEFAULT = ('Planning ended with no plan, and the job worked b
 
 def wrote_nothing(report: Dict[str, Any]) -> bool:
     """Whether the job wrote no change, proposed none and made no table, by
-    the worker's own counts and rows: no change written in a document or
-    the lexicon, none proposed, nothing harmonize changed, no table its
-    code made (a job that reads and reports keeps the assistant's summary)."""
+    the worker's own counts and rows: no change written anywhere, none
+    proposed, nothing harmonize changed, no table its code made (a job that reads and reports keeps the assistant's summary)."""
     totals = report.get('totals') or {}
     harmonize = report.get('harmonize') or {}
     return not (totals.get('changes') or totals.get('proposed') or harmonize.get('changed')
