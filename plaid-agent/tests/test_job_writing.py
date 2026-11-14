@@ -15,8 +15,8 @@ import re
 
 import pytest
 
-from job_fixtures import (INSTRUCTIONS, JobClient, Model, call, document, empty_translations, reply, runner, start,
-                          targets_named, use)
+from job_fixtures import (INSTRUCTIONS, JobClient, Model, call, document, empty_translations, every_tool, reply,
+                          runner, start, targets_named, use)
 
 from plaid_client import PlaidAPIError
 from plaid_agent.core.job import run_job
@@ -24,6 +24,13 @@ from plaid_agent.core.plan import PlanError, PlanOutOfDate
 from plaid_agent.igt import job as igt_job
 from plaid_agent.igt.job import RECORD_FORM, WRITING_FORM
 from test_job_vouched import _iso, _person_edits
+
+
+@pytest.fixture(autouse=True)
+def _every_tool(monkeypatch):
+    """These tests script tools a piece of a plan in sentences is no longer offered."""
+    every_tool(monkeypatch)
+
 
 J = 'JW'
 MINE = {'ka': ('ka', [('ka', 'go')], J), 'ta': ('ta', [('ta', 'go')], J), 'sa': ('sa', [('sa', 'go')], J)}

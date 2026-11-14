@@ -727,12 +727,27 @@ def whole_sentences(text: str, limit: int):
     return (text[:end].strip(), True) if end is not None else (text[:limit].strip(), False)
 
 
+#: The tools a piece of a job planned in sentences is offered (BRIEF-EV):
+#: its message holds how its words were analysed and the lexicon entries in
+#: them, so it stages, links, sets the translation and word fields, makes the
+#: text edits instructions may ask for, and looks up what analyze_sentence
+#: lists. The toolkit has no path to reach the rest on purpose. None offers
+#: such a piece every tool a document's piece has (the tests of the worker's
+#: handling of the other tools set it so).
+SENTENCES_PIECE_TOOLS = ('analyze_sentence', 'set_analysis', 'link_entry', 'create_entry', 'set_field',
+                         'retype_sentence', 'split_sentence', 'merge_sentences', 'delete_sentence',
+                         'read_lexicon', 'analyses_of')
+
+
 def job_piece_tools(ws, plan_only: bool = False) -> list:
     """The schemas a piece of a job offers: the assistant's own, as the chat
     offers them on this workspace (code where the sandbox is, the web where
-    it is set up), less :data:`JOB_LEFT_OUT`. Once the piece has been told
-    to decide (``plan_only``), the plan tools alone."""
+    it is set up), less :data:`JOB_LEFT_OUT`, and for a piece of a plan in
+    sentences (``ws.in_sentences``) only :data:`SENTENCES_PIECE_TOOLS`. Once
+    the piece has been told to decide (``plan_only``), the plan tools alone."""
     tools = [t for t in tools_for(ws) if t['function']['name'] not in JOB_LEFT_OUT]
+    if getattr(ws, 'in_sentences', False) and SENTENCES_PIECE_TOOLS is not None:
+        tools = [_without_check_first(t) for t in tools if t['function']['name'] in SENTENCES_PIECE_TOOLS]
     if plan_only:
         tools = [t for t in tools if t['function']['name'] in WRITE_TOOLS]
     return tools

@@ -112,6 +112,9 @@ def render_job() -> str:
     piece = JobWorkspace(ws.client, ws.project)
     planning = JobWorkspace(ws.client, ws.project, mode=JobWorkspace.PLAN)
     tools = toolkit.job_piece_tools(piece)
+    in_sentences = JobWorkspace(ws.client, ws.project)
+    in_sentences.in_sentences = True
+    short = toolkit.job_piece_tools(in_sentences)
     plan_tools = toolkit.job_plan_tools(planning)
     intro = textwrap.fill(
         'The system prompts and the tools an unattended job sends to the model, rendered for the small project '
@@ -131,6 +134,8 @@ def render_job() -> str:
              '\n## A piece of a plan in sentences\n', 'Its system prompt (its message also holds the evidence '
              'block, `src/plaid_agent/igt/evidence.py`):\n', '```text',
              prompt.build_job_prompt(ws.project, sentences=True).rstrip(), '```\n',
+             f'Its {len(short)} tools (`toolkit.SENTENCES_PIECE_TOOLS`, analyses_of without "'
+             + toolkit.CHECK_FIRST.strip() + '"): ' + ', '.join(t['function']['name'] for t in short) + '.\n',
              '\n## A piece of a document or selection plan\n', 'Its system prompt:\n', '```text',
              prompt.build_job_prompt(ws.project).rstrip(), '```\n',
              f'Its {len(tools)} tools are the chat\'s, as `SAMPLE_PROMPT.md` shows them, less '

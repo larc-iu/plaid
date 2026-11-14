@@ -299,6 +299,14 @@ class Model:
         return self.answer(asked, n, kwargs)
 
 
+def every_tool(monkeypatch):
+    """A piece of a plan in sentences offered every tool, as a document's
+    piece is: for the tests of how the worker handles a tool such a piece is
+    no longer offered (toolkit.SENTENCES_PIECE_TOOLS)."""
+    from plaid_agent.igt import toolkit
+    monkeypatch.setattr(toolkit, 'SENTENCES_PIECE_TOOLS', None)
+
+
 def use(monkeypatch, model):
     from plaid_agent.core import agent
     monkeypatch.setattr(agent.litellm, 'completion', model)

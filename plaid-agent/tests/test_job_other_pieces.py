@@ -21,12 +21,19 @@ import re
 
 import pytest
 
-from job_fixtures import JobClient, Model, call, document, keep_plan, reply, runner, start, targets_named, use
+from job_fixtures import every_tool, JobClient, Model, call, document, keep_plan, reply, runner, start, targets_named, use
 from test_job_left_all import adds_up
 
 from plaid_agent.core.job import analysis_key, canonical, run_job
 from plaid_agent.igt import job as igt_job
 from plaid_agent.igt.job import PLAN_FORM
+
+
+@pytest.fixture(autouse=True)
+def _every_tool(monkeypatch):
+    """These tests script tools a piece of a plan in sentences is no longer offered."""
+    every_tool(monkeypatch)
+
 
 J = 'JNW'
 SENTENCES = [['ka', 'mi'], ['pa', 'ni'], ['ka', 'sa'], ['mo', 'lu']]

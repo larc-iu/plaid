@@ -683,6 +683,8 @@ class JobWorkspace(Workspace):
         self.stretch = stretch
         self.mode = mode
         self.decide_now = False
+        #: a piece of a plan in sentences, offered the short list of tools
+        self.in_sentences = False
         self.tables: List[Dict[str, Any]] = []
         #: the planning context's plan_work, once valid
         self.plan_work: Optional[Dict[str, Any]] = None
@@ -2034,6 +2036,9 @@ class IgtRunner:
             self.record(project, document_id, doc, part, st)
             return None
         ws.stretch = st
+        # A piece of a plan in sentences is offered the short list of tools
+        # (toolkit.SENTENCES_PIECE_TOOLS).
+        ws.in_sentences = self.in_sentences() and not whole
         # Every sentence's print, not only the piece's: an op the model
         # stages anywhere in the document is checked against the sentence
         # as the model read it.

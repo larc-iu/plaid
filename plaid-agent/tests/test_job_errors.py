@@ -10,7 +10,7 @@ import json
 
 import pytest
 
-from job_fixtures import JobClient, Model, call, document, reply, runner, start, use
+from job_fixtures import every_tool, JobClient, Model, call, document, reply, runner, start, use
 
 from plaid_client import PlaidAPIError
 from plaid_agent.core import job as core_job
@@ -18,6 +18,12 @@ from plaid_agent.core.plan import PlanError
 from plaid_agent.core.job import failure_kind, run_job
 from plaid_agent.core.limits import JOB_CORE_TRIES, JOB_CORE_WAIT_S
 from plaid_agent.igt import job as igt_job
+
+
+@pytest.fixture(autouse=True)
+def _every_tool(monkeypatch):
+    """These tests script tools a piece of a plan in sentences is no longer offered."""
+    every_tool(monkeypatch)
 RECORD_FORM = ' sentence '  # a sentence's record among the decisions (CONTRACT, added by J-FIX-B)
 WRITING_FORM = ' writing '  # a sentence the job is about to write in (CONTRACT, added by J-FIX-B4)
 

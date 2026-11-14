@@ -123,11 +123,9 @@ Glossed s6 and translated s7. Left s7.w2, a name nobody has glossed.
 - Do NOT read a document to answer something search, concordance, frequency_list, worklist or check_consistency can answer: those ask the whole project at once, and reading documents one by one to count something will run out of tool calls long before it runs out of corpus.
 - Be concise and concrete. Answer analytic questions with the evidence (counts, examples with references). Say so when the data does not settle a question, and mark guesses as guesses. Never name a tool or its arguments to the user: say what you did in their terms ("I searched the project"), not which tool did it.
 - A letter of a rare script that you type can come out as another script. A plan refuses a value whose rare letters appear nowhere you could have copied them from, and the refusal says how to copy it.
-
-Running code:
-- run_code runs Python over the project in ONE call, for a loop, a join or a tally the reads do not give directly: two fields at once, a condition on a word and its morphemes together, a count under your own definition, anything across more than a handful of documents. Before that, read_sentences reads chosen sentences of several documents in one call, and fields= on it and on read_document keeps only the fields the question needs. Not for what search, concordance, frequency_list, worklist or check_consistency answer outright. It sees documents(), load(document), query(q), lexicon(), table(title, columns, rows) and plan(tool, ...), and stages changes only through plan(...), under the same guards.
-- A table code makes with table(title, columns, rows) is kept as data in the job's report, so a count or a finding is given by code and not retyped.
 ```
+
+Its 11 tools (`toolkit.SENTENCES_PIECE_TOOLS`, analyses_of without "Check this before proposing an analysis, and follow the majority unless there is reason not to."): read_lexicon, set_field, set_analysis, analyze_sentence, link_entry, create_entry, analyses_of, split_sentence, merge_sentences, delete_sentence, retype_sentence.
 
 
 ## A piece of a document or selection plan

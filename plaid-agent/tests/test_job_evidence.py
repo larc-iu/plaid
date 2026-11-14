@@ -172,6 +172,8 @@ def test_a_piece_in_sentences_is_told_to_stage_first_in_no_more_words():
     assert len(new.split()) <= len(old.split())
     assert 'Read before you write' not in sentences and 'concordance of "na"' not in sentences
     assert "It listed the entries na 'PRS' and ku 'INF'." in sentences
+    other = other.split('\nRunning code:')[0]  # a piece in sentences has no code tool (EV 4)
+    sentences = sentences.split('\nRunning code:')[0]
     assert len(sentences.split()) < len(other.split()), 'no new paragraph: lines replaced'
     assert sentences.count('\n') == other.count('\n')
 
@@ -199,3 +201,33 @@ def test_the_planning_context_is_not_told_to_check_analyses_of_first():
     assert 'follow the majority' not in text and 'Check this before' not in text
     chat = next(t for t in toolkit.tools_for(ws) if t['function']['name'] == 'analyses_of')
     assert toolkit.CHECK_FIRST in chat['function']['description'], 'the chat keeps its tool as it was'
+
+
+# --- the short tool list (EV 4) --------------------------------------------------
+
+def test_a_piece_in_sentences_is_offered_the_short_list(monkeypatch):
+    from plaid_agent.igt import toolkit
+    seen = {}
+    for plan in ('sentences', 'document'):
+        job = start(_small(), id=J, documents=['A'], plan=plan)
+        model = use(monkeypatch, Model(lambda asked, n, kwargs: reply('Done.')))
+        run_job(job, runner(job))
+        seen[plan] = [t['function']['name'] for t in model.calls[0]['kwargs']['tools']]
+    assert seen['sentences'] == ['read_lexicon', 'set_field', 'set_analysis', 'analyze_sentence', 'link_entry',
+                                 'create_entry', 'analyses_of', 'split_sentence', 'merge_sentences',
+                                 'delete_sentence', 'retype_sentence']
+    assert set(seen['sentences']) == set(toolkit.SENTENCES_PIECE_TOOLS)
+    assert 'concordance' in seen['document'] and len(seen['document']) > 50, 'a document piece keeps its tools'
+
+
+def test_a_tool_off_the_short_list_is_refused():
+    from plaid_agent.igt import toolkit
+    from plaid_agent.igt.job import JobWorkspace
+    ws = JobWorkspace(FakeClient(), fake_ws(FakeClient()).project)
+    ws.in_sentences = True
+    out = toolkit.job_piece_call(ws, 'concordance', {'pattern': 'gam'})
+    assert str(out).startswith('Error') and "not one of this job's" in out
+    assert {t['function']['name'] for t in toolkit.job_piece_tools(ws, plan_only=True)} == {
+        'set_field', 'set_analysis', 'analyze_sentence', 'link_entry', 'create_entry', 'split_sentence',
+        'merge_sentences', 'delete_sentence', 'retype_sentence'}
+

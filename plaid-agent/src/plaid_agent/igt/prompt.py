@@ -315,7 +315,8 @@ def build_job_prompt(project: IgtProject, sentences: bool = False) -> str:
     whole, and the code section where the sandbox is. A piece of a plan in
     sentences (``sentences``) is told its message holds the evidence."""
     out = _filled(JOB_SENTENCES_SYSTEM if sentences else JOB_SYSTEM, project)
-    return out + JOB_CODE + JOB_TABLES if sandbox.available() is None else out
+    # A piece in sentences is not offered run_code (toolkit.SENTENCES_PIECE_TOOLS).
+    return out + JOB_CODE + JOB_TABLES if sandbox.available() is None and not sentences else out
 
 
 #: What a piece's code is told of ``table()``, only where code runs.

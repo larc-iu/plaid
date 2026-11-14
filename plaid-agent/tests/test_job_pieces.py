@@ -8,12 +8,19 @@ import re
 
 import pytest
 
-from job_fixtures import JobClient, Model, call, document, keep_plan, reply, runner, start, use
+from job_fixtures import every_tool, JobClient, Model, call, document, keep_plan, reply, runner, start, use
 
 from plaid_agent.core import sandbox
 from plaid_agent.core.job import run_job
 from plaid_agent.core.prompt import JOB_PLAN_NOW
 from plaid_agent.igt import job as igt_job
+
+
+@pytest.fixture(autouse=True)
+def _every_tool(monkeypatch):
+    """These tests script tools a piece of a plan in sentences is no longer offered."""
+    every_tool(monkeypatch)
+
 
 J = 'JP'
 PLANNING = 'Plan the job and end with plan_work.'
