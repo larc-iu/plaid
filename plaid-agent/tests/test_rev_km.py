@@ -117,6 +117,35 @@ def test_km_2_a_planned_link_stays_when_a_later_call_keeps_the_gloss():
     assert [(o['kind'], o['token_id']) for o in w.ops] == [('link', 'm-1a')]
 
 
+# --- REV-KM-3: people's precedent, per value ------------------------------------------------
+
+
+def test_km_3_a_word_the_job_changed_in_place_is_no_ones_precedent():
+    """w1 a person's ka-ta whose m2 gloss the job changed in place, w2 and
+    w3 the job's own analyses. Harmonize sets the form by the job's own
+    words, never "by: person"."""
+    from job_fixtures import JobClient, document, recorded, runner, start
+    J = 'JH'
+    raw = document('d1', 'Story d1', [{'words': [('kata', [('ka', 'g1'), ('ta', 'G2')], J),
+                                                 ('kata', [('ka', 'g1'), ('ta', 'G2')], J),
+                                                 ('kata', [('ka', 'g1'), ('ta', 'g9')], J)]}])
+    ml = next(tl for tl in raw['text_layers'][0]['token_layers'] if tl['id'] == 'tk-morph')
+    for t in ml['tokens']:
+        if t['id'].startswith('d1-s1w1'):
+            t['metadata'] = {'form': t['metadata']['form']}
+    for sp in ml['span_layers'][0]['spans']:
+        if sp['tokens'] == ['d1-s1w1m1']:
+            sp['metadata'] = {}
+    client = JobClient({'d1': raw})
+    job = start(client, id=J)
+    job.update_row('d1', state='done')
+    recorded(job)
+    r = runner(job)
+    out = r.harmonize(job)
+    assert all(c['by'] != 'person' for c in out['changed']), out
+    assert r.people.get('kata') in (None, {}), r.people
+
+
 # --- REV-KM-4: a kept link its entry no longer fits ------------------------------------------
 
 

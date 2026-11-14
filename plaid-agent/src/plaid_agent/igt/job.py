@@ -404,6 +404,18 @@ def word_pieces(w: Word) -> List[Dict[str, Any]]:
     return pieces
 
 
+def word_values(w: Word) -> List[Dict[str, Any]]:
+    """The metadata of a word's values and links, morphemes' and its own:
+    what people's precedent is decided by, value by value (REV-KM-3). A
+    token is substrate, not a value."""
+    out = []
+    for m in w.morphemes:
+        if m.virtual:
+            continue
+        out += [sp.metadata for sp in m.fields.values()] + ([m.link.metadata] if m.link is not None else [])
+    return out + [sp.metadata for sp in w.fields.values()] + ([w.link.metadata] if w.link is not None else [])
+
+
 def job_owned(w: Word, job_id: str) -> bool:
     """A word that is wholly this job's unverified work: it has an analysis,
     and every piece of content on it, its word fields included, is
@@ -2166,11 +2178,15 @@ class IgtRunner:
     @staticmethod
     def people_of(doc) -> Dict[str, Dict[str, Any]]:
         """One document's part of the index: form -> {key: {analysis,
-        count}} over its words people analysed."""
+        count}} over its words people analysed. Decided per value by its own
+        provenance (REV-KM-3): a word holding any unverified machine value
+        or link (a job's in-place proposal beside a person's morphemes, any
+        producer's draft) is no one's precedent, as its analysis is not all
+        people's work."""
         part: Dict[str, Dict[str, Any]] = {}
         for s in doc.sentences:
             for w in s.words:
-                if word_state(w) != 'protected':
+                if word_state(w) != 'protected' or any(prov_state(p) == 'machine' for p in word_values(w)):
                     continue
                 a = word_analysis(w)
                 slot = part.setdefault(form_key(w.surface), {}).setdefault(analysis_key(canonical(a)),
