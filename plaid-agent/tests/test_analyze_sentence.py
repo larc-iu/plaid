@@ -344,7 +344,9 @@ def test_homonyms_told_apart_only_by_type_both_fit_and_neither_is_linked():
 # --- what it stages is what the old calls staged ------------------------------------------
 
 def _strip(ops):
-    return [{k: v for k, v in o.items() if k not in ('_seq',)} for o in ops]
+    # analysis_of and fitted_to: what analyze_sentence notes on a link it
+    # stages on a morpheme a word keeps (REV-KM-2), which link_entry does not.
+    return [{k: v for k, v in o.items() if k not in ('_seq', 'analysis_of', 'fitted_to')} for o in ops]
 
 
 def _glossed_gen():
@@ -382,7 +384,7 @@ def test_the_ops_are_the_ops_set_analysis_create_entry_and_link_entry_stage():
     call_tool(old, 'link_entry', {'document': 'd1', 'refs': ['s2.w1.m2'], 'entry_id': 'e-ar'})
     assert [o.get('label') for o in new.ops] == [o.get('label') for o in old.ops]
     assert _strip(new.ops) == _strip(old.ops)
-    assert new.plan_payload()['ops'] == old.plan_payload()['ops']
+    assert _strip(new.plan_payload()['ops']) == _strip(old.plan_payload()['ops'])
     # And approval writes the same, the ids each approval mints aside.
     assert _minted(applied(new).calls) == _minted(applied(old).calls)
 

@@ -96,3 +96,47 @@ def test_km_1_a_type_the_call_gives_is_still_compared():
     call_tool(w, 'set_analysis', {'document': 'd1', 'ref': 's1.w1', 'morphemes': [
         {'form': 'ku', 'fields': {'Morph Gloss': 'DEM'}}, {'form': 'gam', 'type': 'root', 'fields': {'Morph Gloss': 'fish'}}]})
     assert [o['kind'] for o in w.ops] == ['set_analysis']
+
+
+# --- REV-KM-2: a link planned by an earlier call --------------------------------------------
+
+
+def test_km_2_a_planned_link_goes_when_a_later_call_changes_the_gloss():
+    w = ws()
+    analyse(w, 'Ali-di Ali-ERG')
+    assert [(o['kind'], o['token_id'], o['item_id']) for o in w.ops] == [('link', 'm-1a', 'vi-ali')]
+    out = analyse(w, 'Ali-di PERSON-ERG')
+    assert brief(w) == [('set_span', 'm-1a', 'PERSON')], out
+    assert 'Took back the planned change to w1.' in out, out
+
+
+def test_km_2_a_planned_link_stays_when_a_later_call_keeps_the_gloss():
+    w = ws()
+    analyse(w, 'Ali-di Ali-ERG')
+    call_tool(w, 'set_analysis', {'document': 'd1', 'ref': 's1.w1', 'morphemes': ALIDI})
+    assert [(o['kind'], o['token_id']) for o in w.ops] == [('link', 'm-1a')]
+
+
+# --- REV-KM-4: a kept link its entry no longer fits ------------------------------------------
+
+
+def test_km_4_a_kept_link_whose_entry_no_longer_fits_is_said():
+    w = ws()
+    out = analyse(w, 'Ali-di Ali-GEN')
+    assert 's1.w1.m2 stays linked to' in out and '-di' in out.split('stays linked to')[1], out
+    w = ws()
+    out = call_tool(w, 'set_analysis', {'document': 'd1', 'ref': 's1.w1', 'morphemes': [
+        ALIDI[0], {'form': 'di', 'fields': {'Morph Gloss': 'GEN'}}]})
+    assert 's1.w1.m2 stays linked to' in out, out
+
+
+def test_km_4_nothing_is_said_of_a_kept_link_that_still_fits():
+    lex = lexicon_raw()
+    lex['items'].append({'id': 'vi-di', 'form': 'di', 'metadata': {'gloss': 'GEN'}})
+    raw = doc()
+    raw['text_layers'][0]['token_layers'][2]['vocabs'][0]['vocab_links'][0]['vocab_item'] = {'id': 'vi-di', 'form': 'di'}
+    w = mkws(raw, lex)
+    out = analyse(w, 'Ali-di Ali-GEN')
+    assert 'stays linked' not in out, out
+
+

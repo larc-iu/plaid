@@ -268,8 +268,17 @@ def t_set_analysis(ws: Workspace, document: str, ref: str, morphemes: list) -> s
         return f'Nothing to change: {r} already holds that analysis.' + confirm_hint(ws)
     if staged.whole:
         return ws.planned_note(1) + staged.note
-    # The morphemes it keeps: the answer says what changes, set_field's lines.
-    return (ws.planned_note(len(staged.ops)) + ' ' + '; '.join(staged.lines) + '.'
+    # The morphemes it keeps: the answer says what changes, set_field's lines,
+    # and a stored link kept beside a gloss its entry no longer fits (REV-KM-4).
+    from .lines import kept_link_note
+    gloss = ws.project.gloss_field('Morpheme')
+    stays = ''
+    for o in staged.ops:
+        hit = doc.find(o['token_id']) if gloss is not None and o.get('layer_id') == gloss.layer_id else None
+        if hit and hit[2] is not None and o.get('value'):
+            s_, w_, m_ = hit
+            stays += kept_link_note(ws, f's{s_.index}.w{w_.index}.m{m_.index}', m_, m_.form, o['value'])
+    return (ws.planned_note(len(staged.ops)) + ' ' + '; '.join(staged.lines) + '.' + stays
             + (f' Took back the planned {what} of {r}.' if took else '') + entries_note(staged.entries))
 
 
@@ -549,6 +558,10 @@ NEW_ENTRY = object()
 #: (:func:`in_place`): the word whose analysis it is, so a job counts the
 #: word analysed as it counts one whose chain an analysis replaces.
 ANALYSIS_OF = 'analysis_of'
+#: The key on a link analyze_sentence stages on a morpheme a word keeps:
+#: ``[layer id, gloss]``, the gloss it was fitted to. A later analysis of the
+#: word naming another gloss there takes it back (``in_place_back``, REV-KM-2).
+FITTED_TO = 'fitted_to'
 
 
 def held_chain(w: Word) -> List[Dict[str, Any]]:
@@ -625,9 +638,18 @@ def in_place_back(ws: Workspace, word_id: str, held: List[Dict[str, Any]],
     replaces the planned one, and one it does not name stays planned."""
     named = {(h['id'], fv['layer_id']) for h, m in zip(held, staged) for fv in m.get('fields') or []
              if _same_text(h['values'].get(fv['layer_id']), fv.get('value'))}
+    given = {(h['id'], fv['layer_id']): fv.get('value') for h, m in zip(held, staged) for fv in m.get('fields') or []}
+
+    def refitted(o) -> bool:
+        # A link fitted to a gloss the call now names otherwise: the call's
+        # own link pass decides afresh (REV-KM-2).
+        at = o.get(FITTED_TO)
+        return (o.get('kind') == 'link' and o.get(ANALYSIS_OF) == word_id and isinstance(at, list) and len(at) == 2
+                and (o.get('token_id'), at[0]) in given and not _same_text(given[(o['token_id'], at[0])], at[1]))
     return [o for o in ws.ops
             if (o.get('kind') in _ANALYSIS_KINDS and o.get('word_id') == word_id)
-            or (o.get('kind') == 'set_span' and (o.get('token_id'), o.get('layer_id')) in named)]
+            or (o.get('kind') == 'set_span' and (o.get('token_id'), o.get('layer_id')) in named)
+            or refitted(o)]
 
 
 def plan_retypes(ws: Workspace, morpheme_ids: set) -> bool:

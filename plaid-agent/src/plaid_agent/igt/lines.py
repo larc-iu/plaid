@@ -37,7 +37,7 @@ from ..core.tools import ToolError
 from .fit import collation_key, fits, nfc, spelled
 from .lexicon import _create_entry
 from .project import IgtDoc, IgtProject
-from .tools import NEW_ENTRY, confirm_hint, entries_note, held_chain, parse_analysis, surface_misfit, t_link_entry, word_analysis_op
+from .tools import ANALYSIS_OF, FITTED_TO, NEW_ENTRY, confirm_hint, entries_note, held_chain, parse_analysis, surface_misfit, t_link_entry, word_analysis_op
 from .vocab import ROLE_GLOSS
 from .workspace import Workspace
 
@@ -320,6 +320,7 @@ def _stage_sentence(ws: Workspace, doc: IgtDoc, item: Dict[str, Any], new_entrie
         # Words whose planned analysis or values this call took back.
         took: List[str] = []
         gone_entries: List[str] = []
+        stays: List[str] = []
         # The stored links of each word whose morphemes the analysis keeps
         # (``tools.in_place``). Such a morpheme's link stays whatever entry
         # fits: a person may have chosen a homonym, and only a call that
@@ -354,14 +355,25 @@ def _stage_sentence(ws: Workspace, doc: IgtDoc, item: Dict[str, Any], new_entrie
                              'the word (allowed for allomorphy).')
         links: Dict[str, List[str]] = {}
         creates = 0
+        # A link staged on a morpheme a word keeps, by the morpheme: its word
+        # and the gloss it was fitted to (REV-KM-2, ``tools.in_place_back``).
+        fitted: Dict[str, List[str]] = {}
+        before = {id(o) for o in ws.ops}
         for w, morphs in zip(words, parsed):
+            stored = [m for m in w.morphemes if not m.virtual]
             for k, (form, _d, cut) in enumerate(morphs or [], start=1):
                 value = cut.get('gloss', NO_VALUE)
                 if g is None or value == NO_VALUE:
                     continue
-                if w.id in kept and kept[w.id][k - 1] is not None:
-                    continue
                 mref = f's{s.index}.w{w.index}.m{k}'
+                if w.id in kept and kept[w.id][k - 1] is not None:
+                    # The owner's ruling: a stored link stays whatever the
+                    # gloss. Said when its entry no longer fits (REV-KM-4).
+                    if not _same(stored[k - 1].fields.get(g.name), value):
+                        stays.append(kept_link_note(ws, mref, stored[k - 1], form, value))
+                    continue
+                if w.id in kept:
+                    fitted[stored[k - 1].id] = [w.id, g.layer_id, value]
                 hits = _fits(ws, form, value)
                 if not hits and new_entries and _creatable(ws, form, value):
                     v = _lexicon_for_new(ws, lexicon)
@@ -383,6 +395,9 @@ def _stage_sentence(ws: Workspace, doc: IgtDoc, item: Dict[str, Any], new_entrie
         for target, refs in links.items():
             t_link_entry(ws, doc.id, refs, entry_id=target)
             n_links += len(refs)
+        for o in ws.ops:
+            if id(o) not in before and o.get('kind') == 'link' and o.get('token_id') in fitted:
+                o[ANALYSIS_OF], o[FITTED_TO] = fitted[o['token_id']][0], fitted[o['token_id']][1:]
     made += created
     taken.update(w.id for w, morphs in zip(words, parsed) if morphs is not None)
     for key, entry in found.items():
@@ -400,6 +415,7 @@ def _stage_sentence(ws: Workspace, doc: IgtDoc, item: Dict[str, Any], new_entrie
                  'analysis.' + confirm_hint(ws))
     if took:
         line += f' Took back the planned change to {", ".join(took)}.' + entries_note(gone_entries)
+    line += ''.join(x for x in stays if x)
     if bad:
         line = '\n'.join([f'{line} Not staged: {not_staged}'] + _word_lines(words, bad))
     return line, notes
@@ -420,6 +436,20 @@ def _fits(ws: Workspace, form: str, gloss: str) -> List[tuple]:
         for it in fits(v, _items_of(ws, v), form, gloss):
             out.append((v, it.get('id') or it.get('key'), it))
     return out
+
+
+def _same(span, value: str) -> bool:
+    """Whether a stored span holds ``value`` (NFC), none holding ''."""
+    return nfc(span.value if span is not None else '') == nfc(value)
+
+
+def kept_link_note(ws: Workspace, ref: str, m, form: str, gloss: str) -> str:
+    """' s1.w1.m2 stays linked to -di.' when the stored link of morpheme
+    ``m`` names an entry that does not fit ``form`` and the gloss given,
+    else ''. The link stays (the owner's ruling, REV-KM-4)."""
+    if m.link is None or any(hit[1] == m.link.item_id for hit in _fits(ws, form, gloss)):
+        return ''
+    return f' {ref} stays linked to {ws.entry_shown(m.link.item_id, m.link.form)}.'
 
 
 def _would_link(ws: Workspace, g, form: str, cut: Dict[str, str], new_entries: bool):

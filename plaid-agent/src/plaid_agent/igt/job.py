@@ -1023,7 +1023,8 @@ class Write:
         sets (``tools.ANALYSIS_OF``). A word analysed by two writes is one
         word analysed."""
         return list(dict.fromkeys(word_tag(w) for w in (self.word_of(o) for o in ops
-                                                        if o.get('kind') == 'set_analysis' or o.get(ANALYSIS_OF))
+                                                        if o.get('kind') == 'set_analysis'
+                                                        or (o.get('kind') == 'set_span' and o.get(ANALYSIS_OF)))
                                   if w is not None))
 
     def fields_of(self, ops: List[Dict[str, Any]]) -> Dict[str, int]:

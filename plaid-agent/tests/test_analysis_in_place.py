@@ -37,7 +37,8 @@ def test_one_gloss_changed_is_one_value_on_the_morpheme_it_keeps():
     assert op[ANALYSIS_OF] == 'w-1'
     assert op['label'].endswith('s1.w1.m2 "di": Morph Gloss "ERG" → "GEN"'), op['label']
     assert out.startswith('Planned 1 change '), out
-    assert out.endswith(' s1.w1.m2 "di": Morph Gloss "ERG" → "GEN".'), out
+    # di's link stays, and its entry, -di 'ERG', no longer fits (REV-KM-4).
+    assert out.endswith(' s1.w1.m2 "di": Morph Gloss "ERG" → "GEN". s1.w1.m2 stays linked to -di.'), out
 
 
 def test_a_field_named_empty_is_cleared_and_one_not_named_stays():
