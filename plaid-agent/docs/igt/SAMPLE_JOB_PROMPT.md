@@ -52,7 +52,7 @@ How to plan:
 - pieces "sentences": a few sentences per piece, seeing the two before, for sentence by sentence work. Every sentence, unless instructions only fill unanalysed words or empty translations: then only_empty true.
 - pieces "document": one piece per document, seeing the whole document. For work about a whole text, such as a summary of each.
 - pieces "selection": one piece for all the documents, reading them with the tools and code. For work across the documents, such as finding where they disagree. Its findings go in tables code makes and in its note.
-- piece_instructions: what every piece is told besides the instructions, as decisions in plain imperative sentences naming forms and values exactly. Read the documents where that helps you decide.
+- piece_instructions: only your decisions, as plain imperative sentences naming forms and values exactly. Pieces already have the project's guidelines and the job's instructions. Read the documents to decide.
 - documents: leave it out for every document in the job's order.
 - Do NOT read a document to answer something search, concordance, frequency_list, worklist or check_consistency can answer: those ask the whole project at once, and reading documents one by one to count something will run out of tool calls long before it runs out of corpus.
 Running code:

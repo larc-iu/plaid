@@ -97,6 +97,9 @@ INTERRUPTED = 'interrupted'
 #: selection that failed): rows of the job's decisions, so a resumed job
 #: never plans again (CONTRACT, added by JG).
 PLAN_FORM = ' plan'
+#: The plan's instructions for every piece, as written (not JSON): a row of
+#: their own, so they may be as long as one row holds (BRIEF PF).
+PLAN_INSTRUCTIONS_FORM = ' plan instructions'
 FALLBACK_FORM = ' fallback '
 #: A change a piece staged that the apply rule did not apply, a piece's
 #: note, a table a piece's code made, and how many changes the cap dropped.
@@ -1320,9 +1323,9 @@ class IgtRunner:
         job works in stretches of sentences, and its plan says why."""
         if self.plan_made is not None:
             return self.plan_made
-        stored = [r for r in self.rows_of(PLAN_FORM) if r.get('form') == PLAN_FORM]
-        if stored and isinstance(stored[0]['value'], dict):
-            self.plan_made = self.plan_read(stored[0]['value'])
+        stored = self.plan_stored(self.job.decisions())
+        if stored is not None:
+            self.plan_made = stored
             return self.plan_made
         if self.plan_pending is None:
             project = self.project()
@@ -1338,8 +1341,14 @@ class IgtRunner:
             # again, never plans again (REV-JG-8).
             self.plan_pending = {**made, 'by': 'model' if plan else 'default', 'why': why}
         text = canonical(self.plan_kept(self.plan_pending))
-        job.add_decisions([{'form': PLAN_FORM, 'key': analysis_key(text), 'analysis': text, 'count': 1,
-                            'document_id': None, 'sentence_id': None}])
+        rows = [{'form': PLAN_FORM, 'key': analysis_key(text), 'analysis': text, 'count': 1,
+                 'document_id': None, 'sentence_id': None}]
+        told = self.plan_pending.get('piece_instructions') or ''
+        if told:
+            # In the same call as the plan, so core holds both or neither.
+            rows.append({'form': PLAN_INSTRUCTIONS_FORM, 'key': analysis_key(told), 'analysis': told, 'count': 1,
+                         'document_id': None, 'sentence_id': None})
+        job.add_decisions(rows)
         # The job works by its plan only once core holds it.
         self.plan_made = self.plan_pending
         return self.plan_made
@@ -1347,16 +1356,31 @@ class IgtRunner:
     def plan_kept(self, plan: Dict[str, Any]) -> Dict[str, Any]:
         """The plan as its decision row holds it: the documents it names
         as their places in the job's order, so the plan of a job of the most
-        documents, named in any order, fits one row (REV-JG-3)."""
+        documents, named in any order, fits one row (REV-JG-3), and its
+        instructions in a row of their own (``PLAN_INSTRUCTIONS_FORM``)."""
+        plan = {k: v for k, v in plan.items() if k != 'piece_instructions'}
         named = plan.get('documents')
         if not named:
             return plan
         place = {d: i for i, d in enumerate(self.job.order)}
         return {**plan, 'documents': [place[d] for d in named if d in place]}
 
-    def plan_read(self, value: Dict[str, Any]) -> Dict[str, Any]:
-        """The plan as its row holds it (:meth:`plan_kept`), with its
-        documents named by id again."""
+    def plan_stored(self, rows: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+        """The plan among the job's decision ``rows``, or None when it has
+        none: its row as :meth:`plan_kept` holds it, with its documents named
+        by id again and its instructions read from their row."""
+        value, told = None, ''
+        for r in rows:
+            if r.get('form') == PLAN_FORM:
+                try:
+                    value = json.loads(r['analysis'])
+                except (ValueError, TypeError, KeyError):
+                    continue
+            elif r.get('form') == PLAN_INSTRUCTIONS_FORM:
+                told = r.get('analysis') or ''
+        if not isinstance(value, dict):
+            return None
+        value = {**value, 'piece_instructions': told}
         places = value.get('documents')
         if not places:
             return value
@@ -3514,7 +3538,7 @@ class IgtRunner:
         except Exception as e:  # noqa: BLE001 - a report without these parts rather than none
             logger.warning('Job %s: its plan and proposed changes could not be read for the report: %s', job.id, e)
             rows = []
-        plan, changes, notes, dropped, fallback, tables_dropped = None, [], [], 0, [], 0
+        plan, changes, notes, dropped, fallback, tables_dropped = self.plan_stored(rows), [], [], 0, [], 0
         keys: set = set()
         tables: Dict[str, Dict[str, Any]] = {}
         for r in rows:
@@ -3531,15 +3555,13 @@ class IgtRunner:
                 except (ValueError, TypeError, KeyError, AttributeError):
                     pass
                 continue
-            if not form.startswith(' '):
+            if not form.startswith(' ') or form in (PLAN_FORM, PLAN_INSTRUCTIONS_FORM):
                 continue
             try:
                 value = json.loads(r['analysis'])
             except (ValueError, TypeError, KeyError):
                 continue
-            if form == PLAN_FORM:
-                plan = self.plan_read(value) if isinstance(value, dict) else None
-            elif form.startswith(FALLBACK_FORM):
+            if form.startswith(FALLBACK_FORM):
                 fallback.append({'document_id': None if value.get('document') == SELECTION
                                  else value.get('document'), 'reason': value.get('reason')})
             elif form.startswith(CHANGE_FORM):

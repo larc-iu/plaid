@@ -274,12 +274,15 @@ JOB_DECISIONS_PER_CALL = 1000
 JOB_DOCUMENT_PIECE_MAX_CHARS = 40000
 #: The documents the planning context is told of, one line each.
 JOB_PLAN_DOCUMENT_LINES = 200
-#: The longest instructions the plan adds for every piece (``plan_work``
-#: refuses longer ones). The plan is kept as one of the job's decisions, its
-#: documents as their places in the job: JOB_DOCUMENTS_MAX of them in any
-#: order and instructions this long, each character one that JSON escapes,
-#: fit JOB_ANALYSIS_MAX_CHARS (REV-JG-3).
-JOB_PIECE_INSTRUCTIONS_MAX_CHARS = 1000
+#: The longest instructions the plan adds for every piece: ``plan_work``
+#: cuts longer ones at their last whole sentence within it, and the plan
+#: says so (BRIEF PF). They are kept as written in a decision row of their
+#: own, so the cap is core's on one row (JOB_ANALYSIS_MAX_CHARS). Every piece
+#: is sent them, about 1,000 to 2,000 tokens, beside guidelines of up to
+#: GUIDELINES_INLINE_CHARS and a piece of up to JOB_DOCUMENT_PIECE_MAX_CHARS
+#: within JOB_CALL_MAX_PROMPT_TOKENS. The plan's own row holds the rest, its
+#: documents as their places in the job (REV-JG-3).
+JOB_PIECE_INSTRUCTIONS_MAX_CHARS = JOB_ANALYSIS_MAX_CHARS
 #: A piece's note for the report (its last reply), cut at this length.
 JOB_NOTE_MAX_CHARS = 400
 #: The most changes the job keeps as proposed (the report's list cap). Past

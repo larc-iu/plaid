@@ -116,8 +116,10 @@ def test_the_planning_context_reads_and_plans_and_stages_nothing():
 
 @pytest.mark.parametrize('args,said', [
     ({'pieces': 'chapters'}, 'pieces: give "sentences", "document" or "selection".'),
-    ({'pieces': 'document', 'piece_instructions': 'x' * 1001}, 'piece_instructions: at most 1,000 characters'),
-    ({'pieces': 'document', 'documents': ['Text 9']}, 'documents: not documents of this job: "Text 9"'),
+    ({'pieces': 'document', 'documents': ['Text 9']}, 'documents: not documents of this job: "Text 9". Leave them '
+     'out of documents, or leave documents out for every document.'),
+    # BRIEF PF: an argument plan_work does not take is named, with the fix.
+    ({'pieces': 'document', 'every_sentence': True}, 'plan_work takes no every_sentence. Call it again without it.'),
 ])
 def test_plan_work_takes_only_the_menu(args, said):
     ws = JobWorkspace(FakeClient(), _project(), mode=JobWorkspace.PLAN)
@@ -134,6 +136,56 @@ def test_plan_work_keeps_a_valid_plan():
                                                   'documents': ['text 2', 'd1', 'Text 2']})
     assert out.startswith('The plan is kept.'), out
     assert ws.plan_work == {'pieces': 'document', 'piece_instructions': 'Gloss -da as LOC.', 'documents': ['d2', 'd1']}
+
+
+def test_plan_work_cuts_piece_instructions_past_their_cap_at_a_whole_sentence_and_says_so():
+    """BRIEF PF: instructions past the cap are never refused (a planner
+    refused eight times in a row for them ran out of calls). They are cut at
+    the end of their last whole sentence within the cap, the answer says
+    so, and the plan records how long they were."""
+    from plaid_agent.core.limits import JOB_PIECE_INSTRUCTIONS_MAX_CHARS as cap
+    assert cap == 4000
+    ws = JobWorkspace(FakeClient(), _project(), mode=JobWorkspace.PLAN)
+    ws.job_documents = [{'id': 'd1', 'name': 'Text 1'}]
+    sentence = 'Gloss -da as LOC wherever it follows a noun.'
+    told = ' '.join([sentence] * 100)
+    out = toolkit.job_plan_call(ws, 'plan_work', {'pieces': 'document', 'piece_instructions': told})
+    kept = ws.plan_work['piece_instructions']
+    assert len(kept) <= cap and kept.endswith('noun.') and told.startswith(kept)
+    assert len(kept) > cap - len(sentence) - 1, 'every whole sentence that fits'
+    assert ws.plan_work['instructions_cut'] == len(told)
+    assert out == (f'The plan is kept. piece_instructions were {len(told):,} characters, past the most, 4,000: they '
+                   f'are kept up to their last whole sentence within it, {len(kept):,} characters. Pieces already '
+                   'have the guidelines and the instructions. End now with a one-line reply.'), out
+
+
+def test_plan_work_cuts_one_long_sentence_at_the_cap():
+    from plaid_agent.core.limits import JOB_PIECE_INSTRUCTIONS_MAX_CHARS as cap
+    ws = JobWorkspace(FakeClient(), _project(), mode=JobWorkspace.PLAN)
+    ws.job_documents = []
+    toolkit.job_plan_call(ws, 'plan_work', {'pieces': 'document', 'piece_instructions': 'x' * (cap + 7)})
+    assert ws.plan_work['piece_instructions'] == 'x' * cap and ws.plan_work['instructions_cut'] == cap + 7
+
+
+def test_plan_work_at_the_cap_is_kept_whole_and_not_marked():
+    from plaid_agent.core.limits import JOB_PIECE_INSTRUCTIONS_MAX_CHARS as cap
+    ws = JobWorkspace(FakeClient(), _project(), mode=JobWorkspace.PLAN)
+    ws.job_documents = []
+    out = toolkit.job_plan_call(ws, 'plan_work', {'pieces': 'document', 'piece_instructions': 'x' * cap})
+    assert out == 'The plan is kept. End now with a one-line reply.'
+    assert ws.plan_work['piece_instructions'] == 'x' * cap and 'instructions_cut' not in ws.plan_work
+
+
+def test_the_planner_is_told_pieces_have_the_guidelines_and_the_instructions():
+    """BRIEF PF: the piece_instructions line, in no more words than it had
+    (28), says pieces already have the project's guidelines and the job's
+    instructions, so piece_instructions hold only what the planner decided."""
+    line = next(x for x in prompt.JOB_PLAN_RULES.replace('\\\n', '').splitlines()
+                if x.startswith('- piece_instructions:'))
+    assert len(line[2:].split()) <= 28, len(line[2:].split())
+    assert line == ('- piece_instructions: only your decisions, as plain imperative sentences naming forms and '
+                    'values exactly. Pieces already have the project\'s guidelines and the job\'s instructions. Read '
+                    'the documents to decide.')
 
 
 @pytest.mark.parametrize('pieces', ['sentences', 'document', 'selection'])

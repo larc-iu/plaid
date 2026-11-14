@@ -208,19 +208,19 @@ def start(client, instructions=INSTRUCTIONS, documents=None, now=None, id=None, 
     return Job(client, claimed, 'worker-1', client_for=lambda token: client, model='fake/m', sleep=sleep, now=now)
 
 
-def plan_row(pieces='sentences', piece_instructions='', documents=None):
-    """The decision row of a job's plan, as the planning context keeps it."""
+def plan_row(pieces='sentences', documents=None):
+    """The decision row of a job's plan, as the planning context keeps it
+    (its instructions for every piece, none here, are a row of their own)."""
     from plaid_agent.core.job import analysis_key, canonical
     from plaid_agent.igt.job import PLAN_FORM
-    text = canonical({'pieces': pieces, 'piece_instructions': piece_instructions, 'documents': documents,
-                      'by': 'model', 'why': None})
+    text = canonical({'pieces': pieces, 'documents': documents, 'by': 'model', 'why': None})
     return {'form': PLAN_FORM, 'key': analysis_key(text), 'analysis': text, 'count': 1, 'document_id': None,
             'sentence_id': None}
 
 
-def keep_plan(client, job_id, pieces='sentences', piece_instructions='', documents=None, worker='worker-1'):
+def keep_plan(client, job_id, pieces='sentences', documents=None, worker='worker-1'):
     """The job's plan among its decisions, as the planning context keeps it."""
-    client.jobs.add_decisions(job_id, worker, [plan_row(pieces, piece_instructions, documents)])
+    client.jobs.add_decisions(job_id, worker, [plan_row(pieces, documents)])
 
 
 def runner(job, write_summary=False, **kw):

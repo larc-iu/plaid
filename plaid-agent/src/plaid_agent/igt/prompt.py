@@ -312,8 +312,8 @@ sentence, unless instructions only fill unanalysed words or empty translations: 
 a summary of each.
 - pieces "selection": one piece for all the documents, reading them with the tools and code. For work across \
 the documents, such as finding where they disagree. Its findings go in tables code makes and in its note.
-- piece_instructions: what every piece is told besides the instructions, as decisions in plain imperative \
-sentences naming forms and values exactly. Read the documents where that helps you decide.
+- piece_instructions: only your decisions, as plain imperative sentences naming forms and values exactly. \
+Pieces already have the project's guidelines and the job's instructions. Read the documents to decide.
 - documents: leave it out for every document in the job's order.'''
 
 #: The planning context's prompt: who it is, the project, and how to plan.

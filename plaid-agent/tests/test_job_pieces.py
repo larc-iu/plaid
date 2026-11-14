@@ -87,8 +87,9 @@ def test_the_first_context_plans_and_the_plan_is_kept_and_reported(monkeypatch):
     assert 'Story 1": 2 sentences, 3 words, 3 words nobody analysed, 0 empty translations' in model.calls[0]['asked']
     plan_tools = {t['function']['name'] for t in model.calls[0]['kwargs']['tools']}
     assert 'plan_work' in plan_tools and 'set_analysis' not in plan_tools
-    assert _plan_rows(client) == [{'pieces': 'sentences', 'piece_instructions': 'Gloss ka as go.', 'documents': None,
-                                   'by': 'model', 'why': None}]
+    assert _plan_rows(client) == [{'pieces': 'sentences', 'documents': None, 'by': 'model', 'why': None}]
+    assert [r['analysis'] for (f, _k), r in client.jobs.decision_rows[J].items()
+            if f == igt_job.PLAN_INSTRUCTIONS_FORM] == ['Gloss ka as go.']
     pieces = [c['asked'] for c in model.calls if _kind(c['asked']) == 'piece' and c['n'] == 1]
     assert pieces and all('Instructions from user:\nSegment and gloss the blank words.' in p for p in pieces), \
         'the instructions verbatim'
@@ -232,6 +233,10 @@ def test_the_largest_plan_the_tool_takes_is_kept_and_read_back_in_its_order(monk
     assert finished['state'] == 'done', (finished['state'], finished.get('reason'), finished.get('message'))
     rows = [r for (f, _), r in client.jobs.decision_rows[J].items() if f == igt_job.PLAN_FORM]
     assert len(rows) == 1 and len(rows[0]['analysis']) <= JOB_ANALYSIS_MAX_CHARS
+    # The instructions are a row of their own, as written (BRIEF PF).
+    told_rows = [r for (f, _), r in client.jobs.decision_rows[J].items() if f == igt_job.PLAN_INSTRUCTIONS_FORM]
+    assert [r['analysis'] for r in told_rows] == [told.strip()]
+    assert len(told_rows[0]['analysis']) <= JOB_ANALYSIS_MAX_CHARS
     assert finished['report']['plan']['documents'] == list(reversed(ids))
     r = runner(job)
     assert r.plan(job)['documents'] == list(reversed(ids))
@@ -239,19 +244,29 @@ def test_the_largest_plan_the_tool_takes_is_kept_and_read_back_in_its_order(monk
     assert model.seen['plan'] == 1
 
 
-def test_plan_work_refuses_piece_instructions_past_their_cap_with_what_to_do():
-    from plaid_agent.core.limits import JOB_PIECE_INSTRUCTIONS_MAX_CHARS
-    from plaid_agent.core.tools import ToolError
-    from plaid_agent.igt.toolkit import t_plan_work
-
-    class Ws:
-        job_documents = []
-        plan_work = None
-    with pytest.raises(ToolError) as e:
-        t_plan_work(Ws(), 'sentences', 'x' * (JOB_PIECE_INSTRUCTIONS_MAX_CHARS + 1))
-    assert f'at most {JOB_PIECE_INSTRUCTIONS_MAX_CHARS:,} characters' in str(e.value)
-    assert 'shorter' in str(e.value)
-    t_plan_work(Ws(), 'sentences', 'x' * JOB_PIECE_INSTRUCTIONS_MAX_CHARS)
+def test_a_planner_that_overshoots_the_cap_plans_at_once_with_its_instructions_cut(monkeypatch):
+    """BRIEF PF (A): a planner that restated a guideline in piece_instructions
+    was refused 18 times and the job fell back to the default plan. Now its
+    first plan_work is kept, the instructions cut at a whole sentence within
+    the cap, the plan says they were cut, and every piece is told what was
+    kept."""
+    from plaid_agent.core.limits import JOB_PIECE_INSTRUCTIONS_MAX_CHARS as cap
+    client = JobClient(_docs(1))
+    job = start(client, 'Fill the thematic role of every word.', id=J, plan=None)
+    told = ' '.join(f'Rule {i}: a subject of a transitive verb is the agent.' for i in range(120))
+    assert len(told) > cap
+    model = use(monkeypatch, _model(plan={'pieces': 'sentences', 'piece_instructions': told}, piece=_gloss_all))
+    finished = run_job(job, runner(job))
+    assert finished['state'] == 'done'
+    planning = [c for c in model.calls if _kind(c['asked']) == 'plan']
+    assert len(planning) == 2, 'one plan_work, then its one-line reply'
+    kept = told[:cap].rsplit('. ', 1)[0] + '.'
+    assert finished['report']['plan']['by'] == 'model'
+    assert finished['report']['plan']['piece_instructions'] == kept
+    assert finished['report']['plan']['instructions_cut'] == len(told)
+    assert _plan_rows(client)[0]['instructions_cut'] == len(told)
+    pieces = [c['asked'] for c in model.calls if _kind(c['asked']) == 'piece' and c['n'] == 1]
+    assert pieces and all(f'How to do every piece, as the job was planned:\n{kept}\n' in p for p in pieces)
 
 
 # --- pieces of a document and of the selection ---------------------------------------------

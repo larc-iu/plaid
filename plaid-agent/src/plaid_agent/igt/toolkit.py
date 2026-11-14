@@ -647,9 +647,10 @@ def t_plan_work(ws, pieces: str = None, piece_instructions: str = '', documents=
     # Control characters but the line break and the tab mean nothing in
     # instructions, and each would cost six characters where the plan is kept.
     text = ''.join(c for c in str(piece_instructions or '') if c in '\n\t' or ord(c) >= 32).strip()
-    if len(text) > JOB_PIECE_INSTRUCTIONS_MAX_CHARS:
-        raise ToolError(f'piece_instructions: at most {JOB_PIECE_INSTRUCTIONS_MAX_CHARS:,} characters, these are '
-                        f'{len(text):,}. Write them shorter: the decisions only.', kind='invalid-argument')
+    # Longer instructions are cut, never refused: a planner refused for
+    # them asked again with the same ones until its calls ran out (BRIEF PF).
+    given = len(text)
+    text = whole_sentences(text, JOB_PIECE_INSTRUCTIONS_MAX_CHARS)
     known = list(getattr(ws, 'job_documents', None) or [])
     order = None
     if documents:
@@ -668,11 +669,29 @@ def t_plan_work(ws, pieces: str = None, piece_instructions: str = '', documents=
                 order.append(got)
         if unknown:
             raise ToolError('documents: not documents of this job: ' + ', '.join(f'"{u}"' for u in unknown[:5])
-                            + '. Name them as the message lists them.', kind='invalid-argument')
+                            + '. Leave them out of documents, or leave documents out for every document.',
+                            kind='invalid-argument')
     # Kept only when true: the plan's row holds the largest plan at its cap.
     ws.plan_work = {'pieces': pieces, 'piece_instructions': text, 'documents': order,
-                    **({'only_empty': True} if only_empty is True and pieces == 'sentences' else {})}
+                    **({'only_empty': True} if only_empty is True and pieces == 'sentences' else {}),
+                    **({'instructions_cut': given} if len(text) < given else {})}
+    if len(text) < given:
+        return (f'The plan is kept. piece_instructions were {given:,} characters, past the most, '
+                f'{JOB_PIECE_INSTRUCTIONS_MAX_CHARS:,}: they are kept up to their last whole sentence within it, '
+                f'{len(text):,} characters. Pieces already have the guidelines and the instructions. End now with a '
+                'one-line reply.')
     return 'The plan is kept. End now with a one-line reply.'
+
+
+def whole_sentences(text: str, limit: int) -> str:
+    """``text`` when it is at most ``limit`` characters, else cut after
+    the last full stop, question or exclamation mark followed by a space,
+    or line break, within ``limit``, and at ``limit`` when there is none."""
+    if len(text) <= limit:
+        return text
+    end = max((i + 1 for i in range(limit) if text[i] == '\n'
+               or (text[i] in '.!?' and (i + 1 == len(text) or text[i + 1].isspace()))), default=limit)
+    return text[:end].strip()
 
 
 def job_piece_tools(ws, plan_only: bool = False) -> list:
@@ -712,5 +731,10 @@ def job_plan_call(ws, name: str, args: Dict[str, Any]) -> str:
     if name not in offered:
         return refused('that tool is not one of this context\'s: call one of those listed.', 'invalid-argument')
     if name == 'plan_work':
+        # An argument it does not take is named, with the fix (BRIEF PF).
+        unknown = [a for a in (args or {}) if a not in PLAN_WORK['function']['parameters']['properties']]
+        if unknown:
+            return refused(f'plan_work takes no {", ".join(unknown)}. Call it again without '
+                           f'{"it" if len(unknown) == 1 else "them"}.', 'invalid-argument')
         return run_tool(ws, name, t_plan_work, args, schema=PLAN_WORK['function']['parameters'], reading=True)
     return call_tool(ws, name, args)
