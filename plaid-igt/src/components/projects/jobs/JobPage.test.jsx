@@ -314,20 +314,22 @@ describe('the job page', () => {
     await v.unmount();
   });
 
-  it('says a plan in stretches took every sentence when it did', async () => {
+  it('says a plan in stretches took only the sentences with something empty when it did', async () => {
     const plan = {
       pieces: 'sentences',
-      everySentence: true,
+      onlyEmpty: true,
       by: 'model',
       fallback: [],
       leftOut: [],
     };
     let v = await mount(clientOf(jobOf({ state: 'done', report: { ...REPORT, plan } })));
-    expect(totals(v.container).Plan).toBe('Worked in stretches of sentences, every sentence.');
+    expect(totals(v.container).Plan).toBe(
+      'Worked in stretches of sentences, only those with something empty.',
+    );
     await v.unmount();
     v = await mount(
       clientOf(
-        jobOf({ state: 'done', report: { ...REPORT, plan: { ...plan, everySentence: false } } }),
+        jobOf({ state: 'done', report: { ...REPORT, plan: { ...plan, onlyEmpty: false } } }),
       ),
     );
     expect(totals(v.container).Plan).toBe('Worked in stretches of sentences.');

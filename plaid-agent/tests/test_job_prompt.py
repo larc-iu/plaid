@@ -136,6 +136,36 @@ def test_plan_work_keeps_a_valid_plan():
     assert ws.plan_work == {'pieces': 'document', 'piece_instructions': 'Gloss -da as LOC.', 'documents': ['d2', 'd1']}
 
 
+@pytest.mark.parametrize('pieces', ['sentences', 'document', 'selection'])
+@pytest.mark.parametrize('only', [True, False, None])
+def test_plan_work_keeps_only_empty_only_when_true_on_a_plan_in_sentences(pieces, only):
+    """BRIEF EW: a plan in sentences walks every sentence unless it says
+    only_empty. The flag is kept only when true, and only on a plan in
+    sentences. every_sentence is gone."""
+    ws = JobWorkspace(FakeClient(), _project(), mode=JobWorkspace.PLAN)
+    ws.job_documents = [{'id': 'd1', 'name': 'Text 1'}]
+    args = {'pieces': pieces, **({} if only is None else {'only_empty': only})}
+    assert toolkit.job_plan_call(ws, 'plan_work', args).startswith('The plan is kept.')
+    assert ws.plan_work.get('only_empty') is (True if only and pieces == 'sentences' else None)
+    props = toolkit.PLAN_WORK['function']['parameters']['properties']
+    assert 'only_empty' in props and 'every_sentence' not in props
+
+
+def test_the_planner_is_told_every_sentence_by_default_and_only_empty_for_blanks_only():
+    """BRIEF EW: the guidance line, no longer than the one it replaced (30
+    words), says a plan in sentences takes every sentence and when to set
+    only_empty, and plan_work's description says the same."""
+    line = next(x for x in prompt.JOB_PLAN_RULES.replace('\\\n', '').splitlines()
+                if x.startswith('- pieces "sentences"'))
+    assert len(line[2:].split()) <= 30, len(line[2:].split())
+    assert 'Every sentence, unless instructions only fill unanalysed words or empty translations: then only_empty ' \
+           'true.' in line
+    assert 'every_sentence' not in prompt.build_plan_prompt(_project())
+    description = toolkit.PLAN_WORK['function']['description']
+    assert 'only_empty: with "sentences", true to work only the sentences with an empty translation or a word ' \
+           'nobody analysed, false (the default) for every sentence.' in description
+
+
 def test_no_job_prompt_has_a_semicolon_or_an_em_dash_of_its_own():
     """The job's own paragraphs (the chat's are the chat's)."""
     for text in (shared.JOB_CONTRACT, shared.JOB_FIND_FIRST, shared.JOB_STAGE_NOW, shared.JOB_PLAN_WHAT_WAS_ASKED,

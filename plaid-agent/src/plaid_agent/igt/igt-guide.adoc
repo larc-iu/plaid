@@ -933,7 +933,7 @@ The card keeps how it ended, with a link to the job's page once the job has star
 == What a job writes
 
 A job first plans how to cut the work: a few sentences at a time, one document at a time, or all the documents at once.
-Worked a few sentences at a time, it takes the sentences with an empty translation or a word nobody analyzed, unless its plan takes every sentence, as for a job that checks or corrects work already there.
+Worked a few sentences at a time, it takes every sentence, unless its plan takes only the sentences with an empty translation or a word nobody analyzed, as for a job that only fills those.
 Each piece is worked by the assistant with its usual tools, the project's guidelines, the instructions, and how people in the project analyzed the same words.
 
 A job writes every change it plans in its documents and in the project's lexicons, in the name of the person who started the job: values, analyses, links, comments, text edits, splits and merges, changes to entries, and deletions, whole sentences included.

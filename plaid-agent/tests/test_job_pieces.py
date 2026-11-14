@@ -299,32 +299,61 @@ def test_a_document_too_long_for_one_piece_is_worked_in_stretches_over_every_sen
     assert finished['report']['documents'][0]['state'] == 'done'
 
 
-def test_a_sentences_plan_walks_only_sentences_with_something_empty(monkeypatch):
-    """The fixer's ruling 1, kept: in a job planned in sentences, a fully
-    glossed document is not read by any piece."""
+def test_a_sentences_plan_walks_every_sentence_of_a_fully_analysed_document(monkeypatch):
+    """BRIEF EW: a job filling a new field, or checking glosses, on texts
+    already analysed. A plan in sentences without only_empty walks every
+    sentence, and each piece reads its sentences as analysed. A piece that
+    stages nothing ends its sentences worked, with nothing left blank."""
     client = JobClient({'d1': document('d1', 'Story 1', GLOSSED)})
-    job = start(client, 'Gloss every word nobody analysed.', id=J, plan='sentences')
+    job = start(client, 'Check every gloss and correct the wrong ones.', id=J, plan='sentences')
     model = use(monkeypatch, _model(piece=lambda asked, n: reply('Checked.')))
     finished = run_job(job, runner(job))
-    assert not [c for c in model.calls if _kind(c['asked']) == 'piece']
-    assert finished['report']['documents'][0]['state'] == 'done'
+    pieces = [c['asked'] for c in model.calls if _kind(c['asked']) == 'piece' and c['n'] == 1]
+    assert [p.splitlines()[-1] for p in pieces] == ['Your piece: s1, s2.']
+    assert 'Empty in' not in pieces[0]
+    assert 'Nothing empty in s1, s2: their words are analysed and their translations written.' in pieces[0]
+    (doc,) = finished['report']['documents']
+    assert doc['state'] == 'done' and doc['done'] == doc['targets'] == 2 and not doc['skipped']
+    assert doc['left'] == [] and not doc['counts'].get('left') and not doc['counts'].get('not_reached')
 
 
-@pytest.mark.parametrize('every', [True, False])
-def test_a_sentences_plan_that_asks_for_every_sentence_walks_glossed_ones_too(monkeypatch, every):
-    """BRIEF-JH item 6: plan_work's every_sentence, for a job that corrects
-    or checks work already there in stretches. Its plan row keeps the flag
-    only when true, and a fully glossed document is then worked."""
-    client = JobClient({'d1': document('d1', 'Story 1', GLOSSED)})
-    job = start(client, 'Check every gloss and correct the wrong ones.', id=J, plan=None)
-    model = use(monkeypatch, _model(plan={'pieces': 'sentences', 'every_sentence': every},
+HALF = [GLOSSED[0], {'words': ['sa'], 'translation': ('S.', 'human')}, GLOSSED[1]]
+
+
+@pytest.mark.parametrize('only', [False, True], ids=['every-sentence', 'only-empty'])
+def test_a_sentences_plan_that_says_only_empty_walks_only_sentences_with_something_empty(monkeypatch, only):
+    """plan_work's only_empty (BRIEF EW, which reversed BRIEF-JH item 6's
+    every_sentence): for instructions that only fill words nobody analysed
+    or empty translations. Its plan row keeps the flag only when true. Then
+    only s2, the sentence with a blank word, is worked, as a plan in
+    sentences did before. Without it every sentence is."""
+    client = JobClient({'d1': document('d1', 'Story 1', HALF)})
+    job = start(client, 'Gloss every word nobody analysed.', id=J, plan=None)
+    model = use(monkeypatch, _model(plan={'pieces': 'sentences', 'only_empty': only},
                                     piece=lambda asked, n: reply('Checked.')))
     finished = run_job(job, runner(job))
     rows = _plan_rows(client)
-    assert rows[0].get('every_sentence') is (True if every else None)
-    pieces = [c for c in model.calls if _kind(c['asked']) == 'piece' and c['n'] == 1]
-    assert bool(pieces) is every
-    assert finished['report']['documents'][0]['state'] == 'done'
+    assert rows[0].get('only_empty') is (True if only else None) and 'every_sentence' not in rows[0]
+    assert finished['report']['plan'].get('only_empty') is (True if only else None)
+    pieces = [c['asked'] for c in model.calls if _kind(c['asked']) == 'piece' and c['n'] == 1]
+    assert [p.splitlines()[-1] for p in pieces] == (['Your piece: s2. s1 is context.'] if only
+                                                    else ['Your piece: s1, s2, s3.'])
+    assert 'Empty in s2: words w1 "sa".' in pieces[0]
+    (doc,) = finished['report']['documents']
+    assert doc['state'] == 'done' and doc['done'] == doc['targets'] == (1 if only else 3)
+
+
+def test_only_empty_means_nothing_under_a_plan_by_documents(monkeypatch):
+    """only_empty is a plan in sentences' only: plan_work keeps it on no
+    other, and a plan by documents walks every sentence."""
+    client = JobClient({'d1': document('d1', 'Story 1', GLOSSED)})
+    job = start(client, 'Check every gloss.', id=J, plan=None)
+    model = use(monkeypatch, _model(plan={'pieces': 'document', 'only_empty': True},
+                                    piece=lambda asked, n: reply('Checked.')))
+    run_job(job, runner(job))
+    assert 'only_empty' not in _plan_rows(client)[0]
+    assert [c['asked'].splitlines()[-1] for c in model.calls if _kind(c['asked']) == 'piece' and c['n'] == 1] == [
+        'Your piece: the whole document "Story 1", 2 sentences.']
 
 
 def test_a_selection_is_one_piece_whose_writes_land_document_by_document(monkeypatch):

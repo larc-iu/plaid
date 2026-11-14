@@ -306,8 +306,8 @@ count or a finding is given by code and not retyped.
 
 #: How the planning context cuts the work, in the app's words.
 JOB_PLAN_RULES = '''How to plan:
-- pieces "sentences": a few sentences at a time, each piece seeing them and the two before, for sentence by \
-sentence work. Only those with something empty, unless every_sentence is true.
+- pieces "sentences": a few sentences per piece, seeing the two before, for sentence by sentence work. Every \
+sentence, unless instructions only fill unanalysed words or empty translations: then only_empty true.
 - pieces "document": one piece per document, seeing the whole document. For work about a whole text, such as \
 a summary of each.
 - pieces "selection": one piece for all the documents, reading them with the tools and code. For work across \

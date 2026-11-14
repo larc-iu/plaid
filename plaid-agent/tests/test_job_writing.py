@@ -637,7 +637,7 @@ def test_a_deletion_that_never_landed_before_a_crash_is_made_on_the_resume(monke
     never landed: a target again, and its one deletion is made then."""
     client, job, clock, model = _job(monkeypatch, 'Delete the doubled words.', _DOUBLED, _UNDOUBLED, _undouble)
     _crash_before_write(monkeypatch, job)
-    assert _writing(client) == ['d1-s2'] and not client.batches
+    assert _writing(client) == ['d1-s1', 'd1-s2'] and not client.batches
     client.after_write.pop('d1')
     real = igt_job.execute_plan
 
@@ -789,7 +789,7 @@ def test_an_entry_renamed_while_the_worker_is_down_does_not_read_as_a_deletion_t
     undoubled = [doubled[0], {'words': [('sa', [('sa', 'go', 'vi-gam')], 'human')], 'translation': ('Two.', 'human')}]
     client, job, clock, model = _job(monkeypatch, 'Delete the doubled words.', doubled, undoubled, _undouble)
     _crash_before_write(monkeypatch, job)
-    assert _writing(client) == ['d1-s2'] and not client.batches
+    assert _writing(client) == ['d1-s1', 'd1-s2'] and not client.batches
     client.after_write.pop('d1')
     raw = client._holder('d1')['documents']['d1']
     for tl in raw['text_layers'][0]['token_layers']:

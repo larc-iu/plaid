@@ -84,7 +84,10 @@ def test_a_cursor_whose_sentence_is_gone_starts_from_the_top_and_writes_nothing_
     model = use(monkeypatch, Model(_analyse_all))
     runner(job).document('d1')
     asked = [c['asked'] for c in model.calls if c['n'] == 1]
-    assert len(asked) == 1 and asked[0].splitlines()[-1].startswith('Your piece: s2.')
+    # Every sentence is walked (BRIEF EW): s1 is in the piece, its word the
+    # job's own and nothing in it empty, so nothing is written there twice.
+    assert len(asked) == 1 and asked[0].splitlines()[-1] == 'Your piece: s1, s2.'
+    assert 'Empty in s1' not in asked[0] and 'Nothing empty in s1: its words are analysed' in asked[0]
 
 
 def test_a_job_that_crashed_in_harmonize_runs_it_again_and_skips_the_checks_and_the_documents():

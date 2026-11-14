@@ -49,7 +49,7 @@ Idiomatic English, not a word-by-word rendering.
 --- the project's guidelines end ---
 
 How to plan:
-- pieces "sentences": a few sentences at a time, each piece seeing them and the two before, for sentence by sentence work. Only those with something empty, unless every_sentence is true.
+- pieces "sentences": a few sentences per piece, seeing the two before, for sentence by sentence work. Every sentence, unless instructions only fill unanalysed words or empty translations: then only_empty true.
 - pieces "document": one piece per document, seeing the whole document. For work about a whole text, such as a summary of each.
 - pieces "selection": one piece for all the documents, reading them with the tools and code. For work across the documents, such as finding where they disagree. Its findings go in tables code makes and in its note.
 - piece_instructions: what every piece is told besides the instructions, as decisions in plain imperative sentences naming forms and values exactly. Read the documents where that helps you decide.
@@ -63,10 +63,10 @@ Its 24 tools are the chat's reads and code, as `SAMPLE_PROMPT.md` shows them, an
 
 ### plan_work
 
-End the planning: how the job's work is cut into pieces, what every piece is told, and optionally which documents and in what order. pieces: "sentences" (stretches of a few sentences, each its own context), "document" (one context per document) or "selection" (one context for all the documents). every_sentence: with "sentences", true to work every sentence, false (the default) for only the sentences with an empty translation or a word nobody analysed. piece_instructions: what every piece is told, as decisions, added to the instructions. documents: names or ids, a subset of the job's documents in the order to work them. Left out, all of them in the job's order.
+End the planning: how the job's work is cut into pieces, what every piece is told, and optionally which documents and in what order. pieces: "sentences" (stretches of a few sentences, each its own context), "document" (one context per document) or "selection" (one context for all the documents). only_empty: with "sentences", true to work only the sentences with an empty translation or a word nobody analysed, false (the default) for every sentence. piece_instructions: what every piece is told, as decisions, added to the instructions. documents: names or ids, a subset of the job's documents in the order to work them. Left out, all of them in the job's order.
 
 - `pieces` (one of `sentences`, `document`, `selection`, required)
-- `every_sentence` (boolean)
+- `only_empty` (boolean)
 - `piece_instructions` (string)
 - `documents` (array of string)
 

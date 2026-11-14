@@ -12,6 +12,13 @@ DOCS = ['Lezgi text 1']
 
 
 def right(ctx):
+    _ended(ctx, DOCS, plan={'pieces': 'sentences', 'by': 'model', 'piece_instructions': '', 'documents': None,
+                            'only_empty': True})
+    return handwrite.no_plan()
+
+
+def wrong_every_sentence(ctx):
+    """In sentences, but every sentence: the analysed ones too."""
     _ended(ctx, DOCS, plan={'pieces': 'sentences', 'by': 'model', 'piece_instructions': '', 'documents': None})
     return handwrite.no_plan()
 
@@ -23,7 +30,8 @@ def wrong_other_pieces(ctx):
 
 def wrong_default(ctx):
     """The planning ended with no plan: the job fell back to stretches."""
-    _ended(ctx, DOCS, plan={'pieces': 'sentences', 'by': 'default', 'why': 'no-plan', 'documents': None})
+    _ended(ctx, DOCS, plan={'pieces': 'sentences', 'by': 'default', 'why': 'no-plan', 'documents': None,
+                            'only_empty': True})
     return handwrite.no_plan()
 
 

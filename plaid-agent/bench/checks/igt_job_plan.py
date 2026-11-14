@@ -13,6 +13,8 @@ args:
     fingerprint, which any value, token or link written changes)
   pieces: (plan) the piece size the job's plan must hold, made by the model
     (`by` model, not the default a failed planning falls back to)
+  only_empty: (plan) whether the plan must say `only_empty` (a plan in
+    sentences walks every sentence unless it does, BRIEF EW). Left out, either
   document, form, value, to: (applied) words spelt `form` in `document`
     hold an analysis whose morpheme gloss is `value`, a person's. The
     instructions ask to change it to `to`. Pass: each such word now has a
@@ -127,6 +129,8 @@ def check(ctx):
     if a['mode'] == 'plan':
         plan = report.get('plan') or {}
         ok = ok and plan.get('pieces') == a['pieces'] and plan.get('by') == 'model'
+        if 'only_empty' in a:
+            ok = ok and (plan.get('only_empty') is True) == bool(a['only_empty'])
     elif a['mode'] == 'applied':
         d, before, after = _docs(ctx, project, a['document'])
         now = {w.id: w for s in after.sentences for w in s.words} if after is not None else {}

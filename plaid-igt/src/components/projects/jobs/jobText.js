@@ -25,8 +25,8 @@ export const STARTER_TEXTS = [
 ];
 
 // How a job's work was cut, in one line, from its plan (CONTRACT, added by
-// JG and JH): "Worked in stretches of sentences, every sentence, 2 documents
-// in smaller pieces."
+// JG, JH and EW): "Worked in stretches of sentences, only those with something
+// empty, 2 in smaller pieces."
 const PIECES_TEXT = {
   sentences: 'Worked in stretches of sentences',
   document: 'Worked one document at a time',
@@ -36,7 +36,7 @@ const PIECES_TEXT = {
 export const planText = (plan) => {
   if (!plan) return null;
   let text = PIECES_TEXT[plan.pieces] ?? plan.pieces;
-  if (plan.pieces === 'sentences' && plan.everySentence) text += ', every sentence';
+  if (plan.pieces === 'sentences' && plan.onlyEmpty) text += ', only those with something empty';
   if (plan.by === 'default') text += ', as planning gave no plan';
   const smaller = (plan.fallback || []).length;
   if (smaller) text += `, ${smaller.toLocaleString()} in smaller pieces`;

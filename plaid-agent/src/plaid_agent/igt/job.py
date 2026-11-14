@@ -1217,11 +1217,11 @@ class IgtRunner:
             # Checks run again after a crash in them meet the rows they wrote
             # (REV-J-B3 B3-5): a sentence listed already is not listed twice.
             listed = {x.get('sentence_id') for x in skipped}
+            # Every sentence, as the walk takes them unless the plan, made
+            # after the checks, says only those with something empty (the
+            # walk then counts its targets again, :meth:`walk`).
             targets = 0
             for s in doc.sentences:
-                words, translate = sentence_targets(s, project, job.id)
-                if not words and not translate:
-                    continue
                 # Every word of a sentence the job writes in is named in its
                 # writing row (REV-B4-1), which holds JOB_SENTENCE_MAX_WORDS.
                 if len(render_sentence(s, project)) > JOB_SENTENCE_MAX_CHARS \
@@ -1779,6 +1779,11 @@ class IgtRunner:
                 return 'done'
             row = job.rows.get(document_id) or {}
             total, done = row.get('targets') or 0, row.get('done') or 0
+            if total != done + len(pending):
+                # What the walk takes, as the plan says (the checks counted
+                # every sentence before there was a plan).
+                total = done + len(pending)
+                job.update_row(document_id, targets=total)
             part = pending if whole else pending[:JOB_STRETCH_SENTENCES]
             last = done + len(part)
             job.set(message=f'Sentences {done + 1} to {last} of {max(total, last)}.')
@@ -1804,16 +1809,17 @@ class IgtRunner:
 
     def every_sentence(self) -> bool:
         """Whether the walk takes every sentence of a document, empty or
-        not: when the plan cut the work by documents or as one selection, or
-        in sentences with ``every_sentence`` (plan_work's flag, for a job
-        that corrects or checks work already there). A document of a plan by
-        documents or selection that is worked in stretches (too long for one
-        piece, or put off from the selection) is still worked whole: the
-        fallback changes the size of the pieces, never what is worked
-        (REV-JG-7). Otherwise a plan in sentences walks only sentences that
-        hold something empty."""
+        not: always, but under a plan in sentences with ``only_empty``
+        (plan_work's flag, for instructions that only fill words nobody
+        analysed or empty translations), which walks only sentences that
+        hold something empty (BRIEF EW: a job filling a new field, or
+        checking glosses, on texts already analysed has every sentence to
+        do). A document of a plan by documents or selection that is worked
+        in stretches (too long for one piece, or put off from the selection)
+        is still worked whole: the fallback changes the size of the pieces,
+        never what is worked (REV-JG-7)."""
         plan = self.plan_made or {}
-        return plan.get('pieces') in (DOCUMENT, SELECTION) or plan.get('every_sentence') is True
+        return not (plan.get('pieces', SENTENCES) == SENTENCES and plan.get('only_empty') is True)
 
     def pending(self, doc, project: IgtProject, document_id: str, every: bool = False) -> List[Sentence]:
         """The sentences after the cursor the job works, in document order,
@@ -2004,6 +2010,7 @@ class IgtRunner:
         # whole document is within JOB_DOCUMENT_PIECE_MAX_CHARS.
         rendered = ws.render(doc, indexes=shown, max_sentences=len(shown))
         lines = [f'Document "{doc.name}".', '', rendered, '']
+        full = []
         for s in part:
             words = [w for w in s.words if w.id in st.words]
             bits = []
@@ -2013,6 +2020,17 @@ class IgtRunner:
                 bits.append('the translation')
             if bits:
                 lines.append(f'Empty in s{s.index}: ' + ' and '.join(bits) + '.')
+            else:
+                full.append(f's{s.index}')
+        if full:
+            # A sentence the walk takes with nothing empty (every sentence
+            # is walked unless the plan says only_empty) reads as what it
+            # is, analysed, so a piece told to fill a field or check glosses
+            # works from what the sentence holds (BRIEF EW).
+            one = len(full) == 1
+            lines.append(f'Nothing empty in {", ".join(full)}: {"its" if one else "their"} words are analysed'
+                         + (f' and {"its translation" if one else "their translations"} written'
+                            if translation_field(project) is not None else '') + '.')
         precedent = self.precedent(ws, project, list(st.words.values()))
         if precedent:
             lines += ['', precedent]
