@@ -870,6 +870,32 @@ describe('the job page', () => {
     await none.unmount();
   });
 
+  it('sums the documents’ field rows when the totals hold none, as core’s own report does', async () => {
+    // REV-L2-4: a job no worker finished has core's report, whose totals sum
+    // named keys only, while each document's counts keep its fields.
+    const doc = (id, fields) => ({
+      ...REPORT.documents[0],
+      documentId: id,
+      counts: { changes: 3, fields },
+    });
+    const report = {
+      ...REPORT,
+      totals: { ...REPORT.totals, fields: undefined },
+      documents: [
+        doc('a', [{ field: 'Thematic role', values: 9 }]),
+        doc('b', [
+          { field: 'Animacy', values: 2 },
+          { field: 'Thematic role', values: 1 },
+        ]),
+      ],
+    };
+    const v = await mount(clientOf(jobOf({ state: 'done', report })));
+    const sums = totals(v.container.querySelector('section[aria-label="Report"]'));
+    expect(sums['Thematic role']).toBe('10 values');
+    expect(sums['Animacy']).toBe('2 values');
+    await v.unmount();
+  });
+
   it('lists the changes a write cut short did not write under a line of their own', async () => {
     const report = {
       ...REPORT,

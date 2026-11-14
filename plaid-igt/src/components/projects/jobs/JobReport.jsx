@@ -41,6 +41,20 @@ const More = ({ n, noun }) =>
 const documentSum = (report, key) =>
   (report.documents || []).reduce((n, d) => n + (d.counts?.[key] ?? 0), 0);
 
+// The values the job set in each field: the totals' rows, or, when the totals
+// hold none (core's own report of a job no worker finished sums named counts
+// only), the documents' rows summed by field name in the order first seen.
+const fieldSums = (report) => {
+  if (report.totals?.fields) return report.totals.fields;
+  const sums = new Map();
+  (report.documents || []).forEach((d) =>
+    (d.counts?.fields || []).forEach((f) =>
+      sums.set(f.field, (sums.get(f.field) ?? 0) + (f.values ?? 0)),
+    ),
+  );
+  return [...sums].map(([field, values]) => ({ field, values }));
+};
+
 // One "label: value" row of the totals, left out when it is an optional row
 // with nothing in it. The values the job set in each field follow the words
 // it analyzed, one row per field ("Thematic role: 107 values").
@@ -58,7 +72,7 @@ const totalRows = (report) => {
   optional('Translations written', t.translations);
   optional('Translations replaced', t.refreshed);
   optional('Words analyzed', t.words);
-  (t.fields || []).forEach((f) => f.values > 0 && rows.push([f.field, value(f.values)]));
+  fieldSums(report).forEach((f) => f.values > 0 && rows.push([f.field, value(f.values)]));
   optional('Lexicon links made', t.links);
   optional('Entries created', t.entries);
   optional('Changes proposed', t.proposed);
