@@ -873,7 +873,7 @@
  "proj sequence_search {\"sequence\": [{\"morpheme\": \"ar\"}]}": "1 sentence match:\ns2 [Gam-ar]\n    w1 Gam-ar | seg=Gam=ar types=?,enclitic",
  "proj sequence_search {\"sequence\": [{\"type\": \"suffix\"}, {\"form\": \"gam\"}]}": "1 sentence match:\ns1 [Ali-di] [gam] akuna\n    w1 Ali-di | seg=Ali-di types=?,suffix | Morph Gloss=Ali-ERG | Gloss=Ali | IPA=alidi | link=Ali | mlinks=m2:-di\n    w2 gam",
  "proj set_analysis_for_form {\"form\": \"Ali-di\", \"morphemes\": [{\"form\": \"Ali\"}, {\"fields\": {\"Morph Gloss\": \"ERG\"}, \"form\": \"di\", \"type\": \"suffix\"}]}": {
-  "answer": "Planned 1 change (nothing is written until the user approves; the plan now holds 1 change). Describe the plan to the user in your reply.\nIn 1 document: \"Text 1\" 1.\n  Text 1 s1.w1 \"Ali-di\": Ali-di → Ali-di, Morph Gloss _-ERG (replaces 2 existing morpheme values) (note: forms \"Alidi\" differ from the surface \"Ali-di\"; that is allowed for allomorphy)",
+  "answer": "Planned 1 change (nothing is written until the user approves; the plan now holds 1 change). Describe the plan to the user in your reply.\nIn 1 document: \"Text 1\" 1.\n  Text 1 s1.w1 \"Ali-di\": Ali-di → Ali-di, Morph Gloss _-ERG (replaces 2 existing morpheme values)",
   "ops": [
    {
     "begin": 0,
