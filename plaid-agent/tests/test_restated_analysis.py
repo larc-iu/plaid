@@ -5,7 +5,9 @@ set_field's "Nothing to change": the word's stored morphemes equal the given
 ones in number, order, form and every value the call names, and the link the
 call would make on each morpheme is the one it holds (or it makes none). Then
 no op is made, and the word keeps its provenance, its links and the values
-nobody named. Where any part differs, the analysis is staged as before."""
+nobody named. Where a value or a link differs, only it is staged
+(test_analysis_in_place, KM), and where the shape differs the analysis
+replaces the chain as before."""
 
 import copy
 
@@ -70,17 +72,25 @@ def test_set_analysis_restating_the_word_stages_nothing(given):
 
 
 @pytest.mark.parametrize('given', [
-    [ALIDI[0], {'form': 'di', 'fields': {'Morph Gloss': 'GEN'}}],
-    [ALIDI[0], {'form': 'di', 'fields': {'Morph Gloss': 'ERG', 'POS': ''}}],
     [ALIDI[0], {**ALIDI[1], 'type': 'enclitic'}],
     [{'form': 'Ali', 'fields': {'Morph Gloss': 'Ali'}}, {'form': 'di', 'equals': True}],
     [{'form': 'Alidi', 'fields': {'Morph Gloss': 'Ali'}}],
     [{'form': 'Ali'}, {'form': 'd'}, {'form': 'i'}],
-], ids=['gloss', 'cleared', 'type', 'equals', 'fewer', 'more'])
-def test_set_analysis_that_changes_any_part_is_staged(given):
+], ids=['type', 'equals', 'fewer', 'more'])
+def test_set_analysis_that_changes_the_shape_is_staged(given):
     w = ws()
     call_tool(w, 'set_analysis', {'document': 'd1', 'ref': 's1.w1', 'morphemes': given})
     assert len(analyses(w)) == 1
+
+
+@pytest.mark.parametrize('given', [
+    [ALIDI[0], {'form': 'di', 'fields': {'Morph Gloss': 'GEN'}}],
+    [ALIDI[0], {'form': 'di', 'fields': {'Morph Gloss': 'ERG', 'POS': ''}}],
+], ids=['gloss', 'cleared'])
+def test_set_analysis_that_changes_a_value_stages_the_value(given):
+    w = ws()
+    call_tool(w, 'set_analysis', {'document': 'd1', 'ref': 's1.w1', 'morphemes': given})
+    assert [(o['kind'], o['token_id']) for o in w.ops] == [('set_span', 'm-1b')]
 
 
 def test_an_unanalysed_word_given_its_surface_is_staged():
@@ -94,6 +104,12 @@ def test_restating_after_a_planned_change_takes_it_back():
     w = ws()
     call_tool(w, 'set_analysis', {'document': 'd1', 'ref': 's1.w1',
                                   'morphemes': [ALIDI[0], {'form': 'di', 'fields': {'Morph Gloss': 'GEN'}}]})
+    assert [o['kind'] for o in w.ops] == ['set_span']
+    out = call_tool(w, 'set_analysis', {'document': 'd1', 'ref': 's1.w1', 'morphemes': ALIDI})
+    assert out.startswith('Took back the planned change to the values of s1.w1'), out
+    assert w.ops == []
+    # A planned analysis of another shape is taken back the same way.
+    call_tool(w, 'set_analysis', {'document': 'd1', 'ref': 's1.w1', 'morphemes': [{'form': 'Alidi'}]})
     assert len(analyses(w)) == 1
     out = call_tool(w, 'set_analysis', {'document': 'd1', 'ref': 's1.w1', 'morphemes': ALIDI})
     assert out.startswith('Took back the planned analysis of s1.w1'), out
@@ -131,30 +147,33 @@ def test_analyze_sentence_restating_a_linked_word_stages_nothing():
 
 
 def test_analyze_sentence_restating_beside_a_new_analysis_stages_only_the_new_one():
+    """gam keeps its one stored morpheme and gets its gloss, akuna (no
+    morpheme stored) gets an analysis."""
     w = ws(only_erg())
     call_tool(w, 'analyze_sentence', {'document': 'd1', 'sentences': [
         {'ref': 's1', 'words': ['Ali-di Ali-ERG', 'gam fish', 'aku-na see-PST']}]})
-    assert sorted(o['word_id'] for o in analyses(w)) == ['w-2', 'w-3']
+    assert [o['word_id'] for o in analyses(w)] == ['w-3']
+    assert [(o['token_id'], o['value']) for o in w.ops if o['kind'] == 'set_span'] == [('m-2', 'fish')]
     assert not any(o.get('kind') == 'link' and o.get('token_id') in ('m-1a', 'm-1b') for o in w.ops)
 
 
-def test_analyze_sentence_that_would_link_another_entry_is_staged():
-    """di 'ERG' fits another entry than the one it is linked to: as before,
-    the analysis and that link are staged."""
+def test_analyze_sentence_that_would_link_another_entry_stages_the_link_alone():
+    """di 'ERG' fits another entry than the one it is linked to: that link
+    is staged, on the morpheme the word keeps (KM)."""
     lex = lexicon_raw()
     lex['items'] = [{'id': 'vi-erg2', 'form': 'di', 'metadata': {'gloss': 'ERG', 'morphType': 'suffix'}}]
     w = ws(lex)
     call_tool(w, 'analyze_sentence', {'document': 'd1', 'sentences': [{'ref': 's1.w1', 'words': ['Ali-di Ali-ERG']}]})
-    assert len(analyses(w)) == 1
-    assert any(o.get('kind') == 'link' and o.get('item_id') == 'vi-erg2' for o in w.ops)
+    assert [(o['kind'], o.get('token_id'), o.get('item_id')) for o in w.ops] == [('link', 'm-1b', 'vi-erg2')]
 
 
-def test_analyze_sentence_that_would_create_an_entry_is_staged():
+def test_analyze_sentence_that_would_create_an_entry_stages_it_and_its_links_alone():
     w = ws(only_erg())
     call_tool(w, 'analyze_sentence', {'document': 'd1', 'new_entries': True, 'sentences': [
         {'ref': 's1.w1', 'words': ['Ali-di Ali-ERG']}]})
-    assert len(analyses(w)) == 1
-    assert 'create_entry' in [o['kind'] for o in w.ops]
+    assert analyses(w) == []
+    assert sorted(o['kind'] for o in w.ops) == ['create_entry', 'create_entry', 'link', 'link']
+    assert {o.get('token_id') for o in w.ops if o['kind'] == 'link'} == {'m-1a', 'm-1b'}
 
 
 # --- set_analysis_for_form ---------------------------------------------------------------------
@@ -167,11 +186,11 @@ def test_set_analysis_for_form_restating_stages_nothing():
     assert w.ops == []
 
 
-def test_set_analysis_for_form_that_changes_a_gloss_is_staged():
+def test_set_analysis_for_form_that_changes_a_gloss_stages_the_gloss():
     w = ws()
     call_tool(w, 'set_analysis_for_form', {'form': 'Ali-di', 'morphemes': [
         ALIDI[0], {'form': 'di', 'fields': {'Morph Gloss': 'GEN'}}]})
-    assert len(analyses(w)) == 1
+    assert [(o['kind'], o['token_id'], o['value']) for o in w.ops] == [('set_span', 'm-1b', 'GEN')]
 
 
 # --- a job's walk ------------------------------------------------------------------------------
@@ -246,20 +265,22 @@ def test_a_job_restating_a_linked_word_keeps_its_links(monkeypatch):
 # --- what the plan already holds ---------------------------------------------------------------
 
 
-def test_a_restatement_after_a_change_planned_on_a_morpheme_is_staged_as_before():
-    """The rule compares with what the word holds. When the plan holds a change
-    of its own to one of the word's morphemes, the word no longer holds that
-    once approved, so the analysis is staged as before and supersedes it."""
+def test_a_restatement_after_a_value_planned_on_a_morpheme_takes_it_back():
+    """The rule compares with what the word holds. A value planned on one
+    of the word's morphemes that the analysis names as stored is taken back,
+    set_field's rule (KM). A planned form or type makes the analysis whole
+    (test_analysis_in_place)."""
     w = ws()
     call_tool(w, 'set_field', {'document': 'd1', 'refs': ['s1.w1.m1'], 'field': 'Morph Gloss', 'value': 'new'})
     out = call_tool(w, 'set_analysis', {'document': 'd1', 'ref': 's1.w1', 'morphemes': ALIDI})
-    assert [o['kind'] for o in w.ops] == ['set_analysis'], out
+    assert w.ops == [], out
 
 
 def test_harmonize_names_every_field_the_word_holds_so_its_rewrite_is_whole():
     """Harmonize rewrites a word of the job's whole to the analysis chosen.
     A morpheme field the word holds and the chosen analysis does not is
-    named empty, so the rewrite is no restatement and clears it, as before."""
+    named empty, so the rewrite clears it, on the morphemes the word keeps
+    (KM)."""
     from plaid_agent.igt.job import IgtRunner
     w = ws()
     d = w.doc('d1')
@@ -267,5 +288,6 @@ def test_harmonize_names_every_field_the_word_holds_so_its_rewrite_is_whole():
     to = {'morphemes': [{'form': 'Ali', 'fields': {'Morph Gloss': 'Ali'}},
                         {'form': 'di', 'type': 'suffix', 'fields': {'Morph Gloss': 'ERG'}}], 'word': {}}
     assert IgtRunner.stage(w, d, s, s.words[0], to) is None
-    (a,) = analyses(w)
-    assert {fv['layer_id']: fv['value'] for fv in a['morphemes'][0]['fields']}[POS_LAYER] == ''
+    assert analyses(w) == []
+    assert {(o['span_id'], o['value']) for o in w.ops if o['kind'] == 'set_span' and o['layer_id'] == POS_LAYER} \
+        == {('sp-p1a', ''), ('sp-p1b', '')}

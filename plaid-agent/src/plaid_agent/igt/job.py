@@ -60,6 +60,7 @@ from . import toolkit
 from .plan import LEXICON_MAINTAINER, PlanOutOfDate, check_entries, execute_plan
 from .project import IgtProject, Sentence, Word, is_virtual, load_project, render_sentence
 from .prompt import JOB_SYSTEM, build_job_prompt
+from .tools import ANALYSIS_OF
 from .trace import TRACER
 from .fit import entry_gloss as _entry_gloss, fitting_entry  # noqa: F401 (fitting_entry: tests)
 from .vocab import ROLE_GLOSS, ROLE_STATUS
@@ -1015,19 +1016,22 @@ class Write:
         return c
 
     def words_of(self, ops: List[Dict[str, Any]]) -> List[str]:
-        """The tags of the words ``ops`` analyse (:func:`word_tag`): a word
-        analysed by two writes is one word analysed."""
-        return list(dict.fromkeys(word_tag(w) for w in (self.word_of(o) for o in ops if o.get('kind') == 'set_analysis')
+        """The tags of the words ``ops`` analyse (:func:`word_tag`): a
+        set_analysis, or a value an analysis that keeps the word's morphemes
+        sets (``tools.ANALYSIS_OF``). A word analysed by two writes is one
+        word analysed."""
+        return list(dict.fromkeys(word_tag(w) for w in (self.word_of(o) for o in ops
+                                                        if o.get('kind') == 'set_analysis' or o.get(ANALYSIS_OF))
                                   if w is not None))
 
     def fields_of(self, ops: List[Dict[str, Any]]) -> Dict[str, int]:
         """The values ``ops`` set, by field name: each ``set_span`` that
         writes a value (not one that clears it), on a word, a morpheme or a
         sentence alike. What an analysis writes is its word's
-        (:meth:`words_of`)."""
+        (:meth:`words_of`), a value it sets on a morpheme it keeps too."""
         out: Counter = Counter()
         for o in ops:
-            if o.get('kind') == 'set_span' and o.get('value') not in (None, ''):
+            if o.get('kind') == 'set_span' and o.get('value') not in (None, '') and not o.get(ANALYSIS_OF):
                 f = self.st.project.field_by_layer(o.get('layer_id'))
                 if f is not None:
                     out[f.name] += 1

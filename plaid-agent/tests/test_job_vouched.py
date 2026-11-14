@@ -15,6 +15,7 @@ from plaid_client import PlaidAPIError
 from plaid_agent.core.plan import PlanError
 from plaid_agent.igt import job as igt_job
 from plaid_agent.igt.job import RECORD_FORM
+from plaid_agent.igt.tools import ANALYSIS_OF
 
 J = 'JV'
 
@@ -40,7 +41,10 @@ def _staged(monkeypatch):
 
 
 def _rewritten(staged, start=0):
-    return sorted(o['word_id'] for o in staged[start:] if o.get('kind') == 'set_analysis')
+    """The words rewritten: by a set_analysis, or by the values set on the
+    morphemes a word keeps (KM)."""
+    return sorted({o['word_id'] if o.get('kind') == 'set_analysis' else o[ANALYSIS_OF] for o in staged[start:]
+                   if o.get('kind') == 'set_analysis' or o.get(ANALYSIS_OF)})
 
 
 def _person_edits(client, doc_id, sentences, version, clock):
@@ -133,8 +137,7 @@ def test_a_link_a_person_removed_is_not_put_back_when_the_job_left_that_form_unl
     client._holder('d1')['documents']['d1'] = document('d1', 'Story', after)
     runner(job).harmonize(job)
     touched = [(o.get('kind'), o.get('word_id') or o.get('analysis_word_id') or o.get('token_id')) for o in staged]
-    assert ('set_analysis', 'd1-s1w5') not in touched
-    assert not any(x and x.startswith('d1-s1w5') for k, x in touched if k == 'link'), touched
+    assert not any(x and x.startswith('d1-s1w5') for k, x in touched), touched
     # Its analysis is the majority's but for the link, so the link alone is
     # staged: the analysis restated stages nothing (REV-L2-1).
     assert ('link', 'd1-s1w6m1') in touched and ('set_analysis', 'd1-s1w6') not in touched, \

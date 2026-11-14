@@ -37,7 +37,7 @@ from ..core.tools import ToolError
 from .fit import collation_key, fits, nfc, spelled
 from .lexicon import _create_entry
 from .project import IgtDoc, IgtProject
-from .tools import NEW_ENTRY, already_so, parse_analysis, surface_misfit, t_link_entry, word_analysis_op
+from .tools import NEW_ENTRY, held_chain, parse_analysis, surface_misfit, t_link_entry, word_analysis_op
 from .vocab import ROLE_GLOSS
 from .workspace import Workspace
 
@@ -80,8 +80,9 @@ Checks. An item of punctuation alone is left out. Then the items must be as many
 and item n is word n's: another number stages nothing of the sentence, and the answer shows the words \
 beside the items. A word whose forms and gloss differ in morphemes, hold an empty one, or are over \
 twice the word's length plus 3, is listed and not staged: the other words are. Forms that differ from \
-the word otherwise are staged with a note. A word given the analysis it holds, with the links it holds, \
-stages nothing. Up to 20 sentences a call, each on its own.'''
+the word otherwise are staged with a note. A word given the morphemes it holds, as many and of the \
+same forms, keeps them: only the values and links that differ are staged, and fields not given stay. Up \
+to 20 sentences a call, each on its own.'''
 
 #: An item's columns when a sentence names none.
 COLUMNS = ['forms', 'gloss']
@@ -316,6 +317,10 @@ def _stage_sentence(ws: Workspace, doc: IgtDoc, item: Dict[str, Any], new_entrie
     with ws.staging():
         n_analysed = 0
         held: List[str] = []
+        # The stored links of each word whose morphemes the analysis keeps
+        # (``tools.in_place``): a morpheme linked to the entry it would be
+        # linked to is left as it is.
+        kept: Dict[str, List[Optional[str]]] = {}
         for j, (w, morphs) in enumerate(zip(words, parsed)):
             if morphs is None:
                 continue
@@ -324,17 +329,20 @@ def _stage_sentence(ws: Workspace, doc: IgtDoc, item: Dict[str, Any], new_entrie
                       'fields': {fields[name].name: v for name, v in cut.items()
                                  if name in fields and v != NO_VALUE}}
                      for form, delim, cut in morphs]
-            op, note = word_analysis_op(ws, doc, ref, parse_analysis(ws, given),
-                                        links=[_would_link(ws, g, form, cut, new_entries) for form, _d, cut in morphs])
-            if op is None:
-                # The analysis it holds, links and all: nothing staged, nothing linked.
-                already_so(ws, w.id)
-                held.append(f'w{w.index}')
-                parsed[j] = None
-                continue
-            ws.add_ops([op])
-            n_analysed += 1
-            if note:
+            staged = word_analysis_op(ws, doc, ref, parse_analysis(ws, given))
+            staged.stage(ws)
+            if not staged.whole:
+                kept[w.id] = [h['link'] for h in held_chain(w)]
+                if not staged.ops and all(
+                        link is None or link == was for link, was in
+                        zip([_would_link(ws, g, form, cut, new_entries) for form, _d, cut in morphs], kept[w.id])):
+                    # The analysis it holds, links and all: nothing staged, nothing linked.
+                    held.append(f'w{w.index}')
+                    parsed[j] = None
+                    continue
+            if staged.ops:
+                n_analysed += 1
+            if staged.note:
                 notes.append(f'{ref} {w.surface} | {"".join(d + f for f, d, _c in morphs)}: forms differ from '
                              'the word (allowed for allomorphy).')
         links: Dict[str, List[str]] = {}
@@ -343,6 +351,11 @@ def _stage_sentence(ws: Workspace, doc: IgtDoc, item: Dict[str, Any], new_entrie
             for k, (form, _d, cut) in enumerate(morphs or [], start=1):
                 value = cut.get('gloss', NO_VALUE)
                 if g is None or value == NO_VALUE:
+                    continue
+                if w.id in kept and kept[w.id][k - 1] is not None \
+                        and _would_link(ws, g, form, cut, new_entries) in (None, kept[w.id][k - 1]):
+                    # A morpheme the analysis keeps keeps its link, but for
+                    # another entry it would be linked to.
                     continue
                 mref = f's{s.index}.w{w.index}.m{k}'
                 hits = _fits(ws, form, value)

@@ -23,7 +23,7 @@ from .plan import KIND, REFS_READ, REPAIR_OF, SENSES_READ, SCOPES, analysed_morp
 from .project import join_morphemes, word_ref
 from ..core.tools import ToolError
 from .lexicon import _meta_patch, _refuse_doomed_entry, _refuse_removing_survivor
-from .tools import (parse_analysis, analysis_op, already_so, plan_touches, restates, surface_misfit, stage_equals, no_scope_reaches, refuse_shape_and_analysis,
+from .tools import (parse_analysis, analysis_op, ANALYSIS_OF, in_place, in_place_back, plan_retypes, value_op, surface_misfit, stage_equals, no_scope_reaches, refuse_shape_and_analysis,
                     edit_planned_morpheme, left_for_analysis, _planned_place)
 from .lexview import entry_line
 from .workspace import Workspace, _matcher, op_target
@@ -1549,6 +1549,10 @@ def t_set_analysis_for_form(ws: Workspace, form: str, morphemes: list, document:
     ws.note_versions(w['document'] for w in words)
     budget = _docs_of([[w] for w in words])
     staged = []
+    # Values set on morphemes the analysis keeps, and the planned changes
+    # it takes back (tools.in_place_back).
+    values_staged: List[Dict[str, Any]] = []
+    back: List[Dict[str, Any]] = []
     held, took = 0, 0
     first_note = ''
     # The refusals t_set_analysis makes. These ops are built by hand, and once
@@ -1574,15 +1578,31 @@ def t_set_analysis_for_form(ws: Workspace, form: str, morphemes: list, document:
         # The word's typed "=" as set_analysis keeps them (stage_equals).
         staged_out = stage_equals([((m.get('metadata') or {}).get('form'),
                                     (m.get('metadata') or {}).get('equalsBefore') is True) for m in chain], out)
-        # The analysis the word holds is not staged again (REV-L2-1).
-        if restates([{'form': (m.get('metadata') or {}).get('form')
-                      or ((m.get('value') or '') if len(chain) == 1 else None),
-                      'equals_before': (m.get('metadata') or {}).get('equalsBefore') is True,
-                      'type': morpheme_morph_type(m.get('metadata'), types.get(entries.get(m['id']))),
-                      'values': values.get(m['id']) or {}, 'link': entries.get(m['id'])} for m in chain],
-                    staged_out) and not plan_touches(ws, {m['id'] for m in chain}):
-            held += 1
-            took += already_so(ws, w['id'])
+        # THE rule of set_analysis (tools.in_place): a word that keeps its
+        # morphemes gets only the values that differ, none when it holds the
+        # analysis (REV-L2-1).
+        kept = [{'id': m['id'], 'form': (m.get('metadata') or {}).get('form')
+                 or ((m.get('value') or '') if len(chain) == 1 else None),
+                 'equals_before': (m.get('metadata') or {}).get('equalsBefore') is True,
+                 'type': morpheme_morph_type(m.get('metadata'), types.get(entries.get(m['id']))),
+                 'values': {layer: v for layer, (_sid, v) in (values.get(m['id']) or {}).items()},
+                 'spans': {layer: sid for layer, (sid, _v) in (values.get(m['id']) or {}).items()},
+                 'link': entries.get(m['id'])} for m in chain]
+        changes = None if plan_retypes(ws, {m['id'] for m in chain}) else in_place(
+            kept, staged_out, [m.get('equals') for m in out])
+        if changes is not None:
+            gone = in_place_back(ws, w['id'], kept, staged_out)
+            back += gone
+            if not changes:
+                held += 1
+                took += bool(gone)
+            for c in changes:
+                m = kept[c['index']]
+                values_staged.append({**value_op(ws.corpus.label_ref(w['document'], m['id'], budget)
+                                                 + f' {qv((m["form"] or "")[:40])}',
+                                                 ws.project.field_by_layer(c['layer_id']), m['id'], c['span_id'],
+                                                 c['old'], c['value']),
+                                      'doc': w['document'], ANALYSIS_OF: w['id']})
             continue
         op, note = analysis_op(ws, head, w.get('value') or '', w['id'], w['text'], w['begin'], w['end'],
                                existing, seg, had_values, staged_out)
@@ -1590,11 +1610,16 @@ def t_set_analysis_for_form(ws: Workspace, form: str, morphemes: list, document:
         staged.append(op)
         if not first_note and note:
             first_note = note.strip()
-    ws.add_ops(staged)
+    staged += values_staged
+    with ws.staging():
+        if back:
+            ws.take_back(back)
+            ws.unlink_orphans()
+        ws.add_ops(staged)
     if not held:
         return _bulk_note(ws, staged, f'occurrences of "{form}"') + (' ' + first_note if first_note else '')
     same = (f'{held} occurrence{"s" if held != 1 else ""} of "{form}" already {"holds" if held == 1 else "hold"} '
-            'that analysis' + (f' (the planned analysis of {took} taken back)' if took else ''))
+            'that analysis' + (f' (the planned change of {took} taken back)' if took else ''))
     if not staged:
         return f'Nothing to change: {same}.'
     return (_bulk_note(ws, staged, f'occurrences of "{form}"') + (' ' + first_note if first_note else '')

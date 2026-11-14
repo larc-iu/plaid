@@ -760,12 +760,16 @@ def test_a_later_piece_links_a_morpheme_an_earlier_piece_analysed(monkeypatch):
 
 
 def test_a_later_piece_corrects_an_earlier_pieces_gloss(monkeypatch):
-    """Ruling 17: piece 2 corrects the gloss piece 1 wrote on ka. Written."""
+    """Ruling 17: piece 2 corrects the gloss piece 1 wrote on ka. Written,
+    as the gloss alone on the morpheme ka keeps (KM): one change, and ka
+    a word analysed."""
+    from plaid_agent.igt.tools import ANALYSIS_OF
     client, job, batches = _two_pieces(monkeypatch, [call(3, 'set_analysis', {
         'document': 'Story', 'ref': 's1.w1', 'morphemes': [{'form': 'ka', 'fields': {'Morph Gloss': 'went'}}]})])
-    second = [(o['kind'], o.get('word_id')) for o in batches[1]]
-    assert ('set_analysis', 'd1-s1w1') in second, second
-    assert job.rows['d1']['counts']['changes'] == 3
+    second = [(o['kind'], o.get('word_id') or o.get(ANALYSIS_OF), o.get('value')) for o in batches[1]]
+    assert ('set_span', 'd1-s1w1', 'went') in second, second
+    counts = job.rows['d1']['counts']
+    assert (counts['changes'], counts['words']) == (3, 2), counts
 
 
 def test_a_writing_row_names_the_piece_that_wrote(monkeypatch):

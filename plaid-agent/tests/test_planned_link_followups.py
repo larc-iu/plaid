@@ -315,7 +315,6 @@ def test_set_morpheme_past_the_end_of_the_planned_analysis_is_refused():
 
 
 @pytest.mark.parametrize('tool, args', [
-    ('set_field', {'refs': ['s1.w1.m1'], 'field': 'Morph Gloss', 'value': 'new'}),
     ('set_morpheme', {'ref': 's1.w1.m1', 'type': 'root'}),
     ('set_morpheme', {'ref': 's1.w1.m1', 'form': 'Alo'}),
 ])
@@ -332,6 +331,16 @@ def test_a_change_to_a_stored_morpheme_is_superseded_by_a_later_analysis_of_its_
     c = FakeClient()
     counts = execute_plan(c, w.plan_payload()['ops'], source='s', label='l')
     assert 'notes' not in counts and c.payloads('spans.bulk_update') == []
+
+
+def test_a_value_planned_on_a_stored_morpheme_stays_under_an_analysis_that_keeps_the_morphemes():
+    """An analysis of the word's own shape writes only the values it names
+    (KM): a value planned on one of its morphemes that it does not name stays
+    planned, as it stays under set_field."""
+    w = fake_ws(FakeClient())
+    call_tool(w, 'set_field', {'document': 'd1', 'refs': ['s1.w1.m1'], 'field': 'Morph Gloss', 'value': 'new'})
+    call_tool(w, 'set_analysis', {'document': 'd1', 'ref': 's1.w1', 'morphemes': [{'form': 'Ali'}, {'form': 'di'}]})
+    assert [(op['kind'], op['token_id'], op['value']) for op in w.ops] == [('set_span', 'm-1a', 'new')]
 
 
 def test_a_morpheme_change_by_id_on_a_planned_analysis_is_refused_at_staging():

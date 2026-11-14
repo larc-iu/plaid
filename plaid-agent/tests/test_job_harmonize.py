@@ -11,6 +11,7 @@ import pytest
 from job_fixtures import WORD_LAYER, JobClient, document, recorded, runner, start
 
 from plaid_agent.core.job import harmonized
+from plaid_agent.igt.tools import ANALYSIS_OF
 
 J = 'JH'
 
@@ -145,8 +146,15 @@ def test_a_touched_word_is_listed_as_left_where_its_form_was_made_consistent(mon
         'd1': [{'words': [_wg('go', 'go'), _wg('go', 'go'), _wg('come', 'come'),
                           _wg('come', 'walk', word_who='human')]}],
     })
-    assert [o['word_id'] for o in staged if o.get('kind') == 'set_analysis'] == ['d1-s1w3']
+    assert _analysed(staged) == ['d1-s1w3']
     assert {'form': 'ka', 'reason': 'touched', 'analyses': [{'analysis': 'ka ‘come’', 'count': 1}]} in out['left']
+
+
+def _analysed(staged):
+    """The words harmonize rewrote, in order: by a set_analysis, or by the
+    values it set on the morphemes a word keeps (KM)."""
+    return list(dict.fromkeys(o['word_id'] if o.get('kind') == 'set_analysis' else o[ANALYSIS_OF]
+                              for o in staged if o.get('kind') == 'set_analysis' or o.get(ANALYSIS_OF)))
 
 
 def _word_ops(staged):
@@ -218,7 +226,7 @@ def test_the_rest_of_the_form_is_still_made_consistent_around_a_word_left(monkey
     staged = _staged(monkeypatch)
     client, job, out, tags = _run({'d1': [{'words': [w('ka', 'go'), w('ka', 'go'), w('ka', 'go'), w('ka', 'come'),
                                                      w('ka', 'come')]}]}, comments=[('d1', 'd1-s1w5')])
-    assert [o['word_id'] for o in staged if o.get('kind') == 'set_analysis'] == ['d1-s1w4']
+    assert _analysed(staged) == ['d1-s1w4']
     assert {'form': 'ka', 'reason': 'commented', 'analyses': [{'analysis': 'ka ‘come’', 'count': 1}]} in out['left']
 
 
@@ -273,8 +281,8 @@ def test_harmonize_never_changes_a_word_holding_anything_not_the_jobs_own(monkey
         wid = f'd1-s1w{i}'
         if all(p == J for p in pieces) and since[i - 1] in (None, 'mwe') and wid not in in_mwe:
             own.add(wid)
-    touched = {o.get('word_id') or o.get('analysis_word_id') or str(o.get('token_id', '')).split('m')[0]
-               for o in staged}
+    touched = {o.get('word_id') or o.get('analysis_word_id') or o.get(ANALYSIS_OF)
+               or str(o.get('token_id', '')).split('m')[0] for o in staged}
     assert touched <= own, (seed, words, staged)
     assert all(o.get('kind') in ('set_analysis', 'link', 'set_span') for o in staged), 'the analysis, links, fields'
     # Every word harmonize rewrote ends with all the job wrote on it agreeing
@@ -282,7 +290,9 @@ def test_harmonize_never_changes_a_word_holding_anything_not_the_jobs_own(monkey
     # it held one (that of most of people's words of the chosen gloss when
     # people hold it, else of the job's own, the first on a tie).
     rewritten = {o['word_id']: o for o in staged if o.get('kind') == 'set_analysis'}
-    if rewritten:
+    # A word that keeps its one morpheme gets its gloss by itself (KM).
+    kept = {o[ANALYSIS_OF]: o['value'] for o in staged if o.get(ANALYSIS_OF) and o.get('layer_id') == 'sl-mgloss'}
+    if rewritten or kept:
         to = out['changed'][0]['to']
         chosen = to.split('‘')[1].rstrip('’') if '‘' in to else None
 
@@ -300,9 +310,12 @@ def test_harmonize_never_changes_a_word_holding_anything_not_the_jobs_own(monkey
         fields = _word_ops(staged)
         for i, w in enumerate(words, start=1):
             wid = f'd1-s1w{i}'
-            if wid not in rewritten:
+            if wid not in rewritten and wid not in kept:
                 continue
-            assert [f['value'] for f in rewritten[wid]['morphemes'][0]['fields']] == ([chosen] if chosen else [])
+            if wid in rewritten:
+                assert [f['value'] for f in rewritten[wid]['morphemes'][0]['fields']] == ([chosen] if chosen else [])
+            else:
+                assert kept[wid] == (chosen or ''), (seed, wid, kept)
             had = (w.get('gloss') or (None,))[0]
             if had is None:
                 assert wid not in fields, 'no field added'
@@ -392,7 +405,7 @@ def test_a_value_off_the_tagset_is_written_as_a_stretch_writes_it(monkeypatch):
     staged = _staged(monkeypatch)
     client, job, out, tags = _run({'d1': [{'words': [w('ka', 'XYZ'), w('ka', 'XYZ'), w('ka', 'XYZ'),
                                                      w('ka', 'come')]}]})
-    assert [o['word_id'] for o in staged if o.get('kind') == 'set_analysis'] == ['d1-s1w4']
+    assert _analysed(staged) == ['d1-s1w4']
     assert out['changed'][0]['to'] == 'ka ‘XYZ’' and out['left'] == []
 
 

@@ -30,9 +30,10 @@ from ..core.provenance import unmark
 from ..core.refs import read_ref, same_form
 from ..core.tools import ToolError, kind_of
 
-from .plan import ANALYSIS, KIND, TEXT_SHAPE, WORD_SHAPE, analysed_morphemes, reshaped_subjects
+from .plan import (ANALYSIS, KIND, MORPHEME_KEY, MORPHEME_WRITERS, TEXT_SHAPE, WORD_SHAPE, analysed_morphemes,
+                   reshaped_subjects)
 from .project import (IgtDoc, Sentence, Word, Morpheme, Link, MARKERS, parse_ref, resolve, mwe_ref,
-                      join_morphemes, plain_ref, planned_word_count, segmentation, split_sentences, word_ref)
+                      join_morphemes, joiner, plain_ref, planned_word_count, segmentation, split_sentences, word_ref)
 from .lexview import morph_type
 from .workspace import Workspace, _need, _refs, _sentence_of, _words_of
 from .vocab import morph_type_of
@@ -234,10 +235,16 @@ _REF_SHAPE = {'Sentence': 'sN', 'Word': 'sN.wN', 'Morpheme': 'sN.wN.mN'}
 
 def span_op(ws: Workspace, doc, ref: str, what: str, f, token_id: str, old, value: str) -> Dict[str, Any]:
     """A set_span op with its human label. ``old`` is the current Span or None."""
-    return {'kind': 'set_span', 'layer_id': f.layer_id, 'token_id': token_id,
-            'span_id': old.id if old else None, 'value': value,
-            **labelled(f'{ws.doc_label(doc.id)} {plain_ref(doc, ref)} {qv(what[:40])}',
-                       f'{f.name} ' + (f'{qv(old.value)} → {qv(value)}' if old and old.value != '' else f'= {qv(value)}')
+    return value_op(f'{ws.doc_label(doc.id)} {plain_ref(doc, ref)} {qv(what[:40])}', f, token_id,
+                    old.id if old else None, old.value if old else None, value)
+
+
+def value_op(place: str, f, token_id: str, span_id: Optional[str], old: Optional[str], value: str) -> Dict[str, Any]:
+    """A set_span op on ``token_id``, its label set_field's line at
+    ``place``: the field, the value it holds (``old``, on span ``span_id``)
+    and the value it gets."""
+    return {'kind': 'set_span', 'layer_id': f.layer_id, 'token_id': token_id, 'span_id': span_id, 'value': value,
+            **labelled(place, f'{f.name} ' + (f'{qv(old)} → {qv(value)}' if old else f'= {qv(value)}')
                        + (' (cleared)' if value == '' else ''))}
 
 
@@ -247,27 +254,59 @@ def t_set_analysis(ws: Workspace, document: str, ref: str, morphemes: list) -> s
     sentences on their first word in run4 of the job pilot (AS,
     2026-11-14)."""
     doc = ws.doc(document)
-    op, note = word_analysis_op(ws, doc, ref, parse_analysis(ws, morphemes))
-    if op is None:
-        r = str(ref or '').strip()
-        if already_so(ws, _need(resolve(doc, r), Word, r).id):
-            return (f'Took back the planned analysis of {r}: it keeps the analysis it holds, which is the one '
+    r = str(ref or '').strip()
+    staged = word_analysis_op(ws, doc, ref, parse_analysis(ws, morphemes))
+    with ws.staging():
+        took = staged.stage(ws)
+    if not staged.ops:
+        if took:
+            what = ('analysis' if any(o.get('kind') in _ANALYSIS_KINDS for o in staged.back)
+                    else 'change to the values')
+            return (f'Took back the planned {what} of {r}: it keeps the analysis it holds, which is the one '
                     f'given. The plan now holds {held_changes(ws)} change{"s" if held_changes(ws) != 1 else ""}.')
         return f'Nothing to change: {r} already holds that analysis.'
-    ws.add_ops([op])
-    return ws.planned_note(1) + note
+    if staged.whole:
+        return ws.planned_note(1) + staged.note
+    # The morphemes it keeps: the answer says what changes, set_field's lines.
+    return ws.planned_note(len(staged.ops)) + ' ' + '; '.join(staged.lines) + '.'
 
 
-def word_analysis_op(ws: Workspace, doc: IgtDoc, ref: str, parsed: List[Dict[str, Any]],
-                     links: Optional[List[Any]] = None):
-    """``(op, note)``: the set_analysis op of word ``ref`` for the morphemes
-    ``parse_analysis`` read, with every refusal a word's analysis owes (no
-    morpheme layer, a plan that reshapes the word or holds a corpus-wide
-    change over the document, forms too long for the word), and the
-    allomorphy note. ``(None, '')`` when the analysis is the one the word
-    holds (:func:`restates`, with ``links`` the entry the caller would link
-    each morpheme to). Stages nothing: set_analysis and analyze_sentence
-    stage what it gives, so the two make the same op."""
+class Staged:
+    """What a word's analysis stages (:func:`word_analysis_op`): ``ops``, the
+    planned changes it takes back (``back``), ``whole`` when ``ops`` is one
+    set_analysis replacing the chain (else values on the morphemes the word
+    keeps, :func:`in_place`, each said in ``lines``), and the allomorphy
+    ``note``."""
+
+    def __init__(self, ops: List[Dict[str, Any]], back: List[Dict[str, Any]], whole: bool, note: str = '',
+                 lines: Optional[List[str]] = None):
+        self.ops, self.back, self.whole, self.note = ops, back, whole, note
+        #: Each value op as the answer says it: the morpheme, the change.
+        self.lines = lines or []
+
+    def stage(self, ws: Workspace) -> bool:
+        """Take ``back`` out of the plan (with the links made against an
+        analysis it takes back), then stage ``ops``. True if anything was
+        taken back. Call inside ``ws.staging()``."""
+        if self.back:
+            ws.take_back(self.back)
+            ws.unlink_orphans()
+        if self.ops:
+            ws.add_ops(self.ops)
+        return bool(self.back)
+
+
+def word_analysis_op(ws: Workspace, doc: IgtDoc, ref: str, parsed: List[Dict[str, Any]]) -> Staged:
+    """What word ``ref``'s analysis for the morphemes ``parse_analysis``
+    read stages, with every refusal a word's analysis owes (no morpheme
+    layer, a plan that reshapes the word or holds a corpus-wide change over
+    the document, forms too long for the word), and the allomorphy note.
+    THE rule (:func:`in_place`): when the word keeps its morphemes, only the
+    values that differ are set, each a set_field change on its morpheme
+    (none when it restates the word), and a change the plan holds for it is
+    taken back. Else one set_analysis replaces the chain. Stages nothing:
+    set_analysis and analyze_sentence stage what it gives, so the two make
+    the same ops."""
     if not ws.project.morpheme_layer_id:
         raise ToolError('This project has no morpheme layer.', kind='not-found')
     reshape_guards(ws, doc)
@@ -279,15 +318,25 @@ def word_analysis_op(ws: Workspace, doc: IgtDoc, ref: str, parsed: List[Dict[str
         raise ToolError(f'{r} {qv(w.surface)}: {misfit}, too long for one word. Give the word\'s own morphemes: a '
                         'sentence or a run of words takes analyze_sentence.', kind='invalid-argument')
     out = stage_equals([(x.form, x.equals_before) for x in w.morphemes if not x.virtual], parsed)
-    if restates(held_chain(w), out, links) and not plan_touches(ws, {m.id for m in w.morphemes if not m.virtual}):
-        return None, ''
+    held = held_chain(w)
+    changes = None if plan_retypes(ws, {h['id'] for h in held}) else in_place(
+        held, out, [m.get('equals') for m in parsed])
+    if changes is not None:
+        s = doc.find(w.id)[0]
+        refs = [f's{s.index}.w{w.index}.m{c["index"] + 1} {qv(held[c["index"]]["form"][:40])}' for c in changes]
+        ops = [value_op(f'{ws.doc_label(doc.id)} {at}', ws.project.field_by_layer(c['layer_id']),
+                        held[c['index']]['id'], c['span_id'], c['old'], c['value']) | {ANALYSIS_OF: w.id}
+               for at, c in zip(refs, changes)]
+        return Staged(ops, in_place_back(ws, w.id, held, out), False,
+                      lines=[f'{at}: {change_of(o)}' for at, o in zip(refs, ops)])
     # A derived morpheme (an unsegmented word's) is stored nowhere, so
     # there is nothing for the analysis to keep or delete.
     existing = [{'id': m.id, 'span_ids': [sp.id for sp in m.fields.values()]} for m in w.morphemes
                 if not m.virtual]
     had_values = sum(1 for m in w.morphemes for sp in m.fields.values() if sp.value != '')
-    return analysis_op(ws, f'{ws.doc_label(doc.id)} {r} {qv(w.surface)}', w.surface, w.id, w.text_id, w.begin,
-                       w.end, existing, segmentation(w) if existing else '', had_values, out)
+    op, note = analysis_op(ws, f'{ws.doc_label(doc.id)} {r} {qv(w.surface)}', w.surface, w.id, w.text_id,
+                           w.begin, w.end, existing, segmentation(w) if existing else '', had_values, out)
+    return Staged([op], [], True, note)
 
 
 #: The surface check (AS, 2026-11-14), one fixed rule: a word's forms,
@@ -461,12 +510,20 @@ def stage_equals(chain, out: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 NEW_ENTRY = object()
 
 
+#: The key on a value set by an analysis that keeps the word's morphemes
+#: (:func:`in_place`): the word whose analysis it is, so a job counts the
+#: word analysed as it counts one whose chain an analysis replaces.
+ANALYSIS_OF = 'analysis_of'
+
+
 def held_chain(w: Word) -> List[Dict[str, Any]]:
-    """Word ``w``'s stored morphemes as :func:`restates` compares them: form,
-    a "=" before it, the type it goes by, its values by layer, the entry it
-    is linked to. A derived morpheme is stored nowhere, so it is not one."""
-    return [{'form': m.form, 'equals_before': m.equals_before, 'type': m.goes_by,
+    """Word ``w``'s stored morphemes as :func:`in_place` compares them: id,
+    form, a "=" before it, the type it goes by, its values and their spans
+    by layer, the entry it is linked to. A derived morpheme is stored
+    nowhere, so it is not one."""
+    return [{'id': m.id, 'form': m.form, 'equals_before': m.equals_before, 'type': m.goes_by,
              'values': {sp.layer_id: sp.value for sp in m.fields.values()},
+             'spans': {sp.layer_id: sp.id for sp in m.fields.values()},
              'link': m.link.item_id if m.link else None}
             for m in w.morphemes if not m.virtual]
 
@@ -475,41 +532,73 @@ def _same_text(a, b) -> bool:
     return unicodedata.normalize('NFC', a or '') == unicodedata.normalize('NFC', b or '')
 
 
-def restates(held: List[Dict[str, Any]], staged: List[Dict[str, Any]], links: Optional[List[Any]] = None) -> bool:
-    """THE rule of an analysis that changes nothing (REV-L2-1), as set_field's
-    "Nothing to change": the word's stored morphemes (``held``,
+def in_place(held: List[Dict[str, Any]], staged: List[Dict[str, Any]],
+             stated: Optional[List[Optional[bool]]] = None) -> Optional[List[Dict[str, Any]]]:
+    """THE rule of an analysis that keeps the word's morphemes (KM, after
+    REV-L2-1), compared BY PLACE: the word's stored morphemes (``held``,
     :func:`held_chain`) are as many as the ones given (``staged``, as
-    :func:`stage_equals` leaves them), and each holds the same form, the same
-    "=" before it, the type given if one is, every value given (an empty one
-    too), and the entry the call would link it to if it would link it
-    (``links``, one per morpheme, None for none). What the call does not name
-    is not compared. Then no op is made: the word keeps its analysis, its
-    provenance, its links and the values nobody named."""
+    :func:`stage_equals` leaves them), and each holds the same form (NFC),
+    the same "=" before it, and the type given if one is. A joint the call
+    states (``stated``, the ``equals`` each morpheme was given, None where
+    none) is compared with the joint the word shows there, "=" before or
+    after a clitic too (``project.joiner``). Then the values
+    given that differ from what the morpheme holds, each ``{index (from 0),
+    layer_id, span_id, old, value}`` (an empty value clears), and nothing
+    else is written: no morpheme is deleted or made, a value or a link the
+    call does not name stays as it is with its provenance. ``[]`` restates
+    the word. None when the shape differs: the analysis replaces the chain."""
     if not held or len(held) != len(staged):
-        return False
+        return None
+    out = []
     for k, (h, m) in enumerate(zip(held, staged)):
         if not _same_text(h['form'], m['form']):
-            return False
-        if k and bool(h['equals_before']) != (m.get('equals_before') is True):
-            return False
+            return None
+        said = stated[k] if stated else None
+        if k and isinstance(said, bool):
+            if (joiner(held[k - 1]['type'], h['type'], h['equals_before']) == '=') != said:
+                return None
+        elif k and bool(h['equals_before']) != (m.get('equals_before') is True):
+            return None
         if m.get('morph_type') and m['morph_type'] != h['type']:
-            return False
-        if any(not _same_text(h['values'].get(fv['layer_id']), fv.get('value')) for fv in m.get('fields') or []):
-            return False
-        link = links[k] if links else None
-        if link is not None and link != h['link']:
-            return False
-    return True
+            return None
+        for fv in m.get('fields') or []:
+            old = h['values'].get(fv['layer_id'])
+            if not _same_text(old, fv.get('value')):
+                out.append({'index': k, 'layer_id': fv['layer_id'], 'span_id': h['spans'].get(fv['layer_id']),
+                            'old': old, 'value': fv.get('value') or ''})
+    return out
 
 
-def plan_touches(ws: Workspace, morpheme_ids: set) -> bool:
-    """Whether the plan holds a change of its own to one of the stored
-    morphemes ``morpheme_ids`` (a value, a form, a type, a link). Then an
-    analysis restating the word is staged as before, superseding it: the
-    rule of :func:`restates` compares with what the word holds, and the plan
-    no longer leaves it so."""
-    return any(ws.moot_under(o, morpheme_ids) or (o.get('kind') == 'link' and o.get('token_id') in morpheme_ids)
-               for o in ws.ops)
+def restates(held: List[Dict[str, Any]], staged: List[Dict[str, Any]], links: Optional[List[Any]] = None) -> bool:
+    """An analysis that changes nothing (REV-L2-1): :func:`in_place` finds
+    no value to change, and the entry the call would link each morpheme to
+    (``links``, one per morpheme, None for none) is the one it holds."""
+    if in_place(held, staged) != []:
+        return False
+    return all(link is None or link == h['link'] for h, link in zip(held, links or [None] * len(held)))
+
+
+def in_place_back(ws: Workspace, word_id: str, held: List[Dict[str, Any]],
+                  staged: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """What an analysis that keeps the word's morphemes takes out of the
+    plan: an analysis or a discard of the word the plan holds (the analysis
+    given is the one it keeps), and a value planned on one of its morphemes
+    that the call names as the value the morpheme holds (set_field's rule
+    for a value set back to what is stored). A value it names otherwise
+    replaces the planned one, and one it does not name stays planned."""
+    named = {(h['id'], fv['layer_id']) for h, m in zip(held, staged) for fv in m.get('fields') or []
+             if _same_text(h['values'].get(fv['layer_id']), fv.get('value'))}
+    return [o for o in ws.ops
+            if (o.get('kind') in _ANALYSIS_KINDS and o.get('word_id') == word_id)
+            or (o.get('kind') == 'set_span' and (o.get('token_id'), o.get('layer_id')) in named)]
+
+
+def plan_retypes(ws: Workspace, morpheme_ids: set) -> bool:
+    """Whether the plan holds a change of its own to the form or the type of
+    one of the stored morphemes ``morpheme_ids``. Then an analysis of the
+    word replaces the chain, superseding it: :func:`in_place` compares with
+    what the word holds, and the plan no longer leaves it so."""
+    return any(o.get('kind') in MORPHEME_WRITERS and o.get(MORPHEME_KEY) in morpheme_ids for o in ws.ops)
 
 
 def already_so(ws: Workspace, word_id: str) -> bool:

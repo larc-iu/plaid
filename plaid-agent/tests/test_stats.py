@@ -161,7 +161,8 @@ def test_bulk_plans():
     # on its own.
     w = ws()
     out = call_tool(w, 'set_analysis_for_form', {'form': 'GAM', 'morphemes': [{'form': 'gam', 'fields': {'Morph Gloss': 'fish'}}]})
-    assert 'Planned 1 change' in out and w.ops[-1]['kind'] == 'set_analysis' and w.ops[-1]['word_id'] == 'w-2'
+    # gam keeps its one stored morpheme: its gloss alone (KM).
+    assert 'Planned 1 change' in out and w.ops[-1]['kind'] == 'set_span' and w.ops[-1]['analysis_of'] == 'w-2'
     assert 'Nothing to change' in call_tool(w, 'set_analysis_for_form', {'form': 'Ali-di', 'skip_analyzed': True,
                                                                           'morphemes': [{'form': 'Ali-di'}]})
 
@@ -398,7 +399,7 @@ def test_set_analysis_for_form_still_says_what_it_supersedes():
     assert 'superseded' not in call_tool(w, 'set_analysis_for_form', first)
     out = call_tool(w, 'set_analysis_for_form', second)
     assert '1 earlier planned change on the same target superseded' in out
-    assert len(w.ops) == 1 and w.ops[0]['morphemes'][0]['fields'][0]['value'] == 'net'
+    assert len(w.ops) == 1 and w.ops[0]['value'] == 'net'
     # And it is reported once, not again on the next tool call.
     assert 'superseded' not in call_tool(w, 'set_field', {'document': 'd1', 'ref': 's1.w3',
                                                           'field': 'Gloss', 'value': 'x'})

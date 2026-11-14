@@ -126,8 +126,9 @@ def test_each_applied_kind_is_applied_in_the_document_under_the_lock(kind):
     # A word: blank, a person's, another machine's, the job's own.
     ('set_analysis', {'ref': 's1.w1', 'morphemes': [{'form': 'blank'}]}, 'set_analysis'),
     ('set_analysis', {'ref': 's1.w2', 'morphemes': [{'form': 'done'}]}, 'set_analysis'),
+    # Another machine's analysis given its own morpheme: the gloss alone (KM).
     ('set_analysis', {'ref': 's1.w3', 'morphemes': [{'form': 'mach', 'fields': {'Morph Gloss': 'N'}}]},
-     'set_analysis'),
+     'set_span'),
     ('set_analysis', {'ref': 's1.w4', 'morphemes': [{'form': 'ow'}, {'form': 'n'}]}, 'set_analysis'),
     # A morpheme's value and link on a person's analysis.
     ('set_field', {'refs': ['s1.w2.m1'], 'field': 'Morph Gloss', 'value': 'X'}, 'set_span'),

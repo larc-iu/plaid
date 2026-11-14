@@ -43,8 +43,21 @@ def untagged():
     return raw
 
 
+def bare():
+    """The fixture's document with Ali-di, gam and Gam-ar unanalysed (their
+    stored morphemes, values and links taken out), so each call here makes
+    an analysis. What a call does to a word that keeps its morphemes is
+    test_analysis_in_place's (KM)."""
+    raw = copy.deepcopy(document_raw())
+    morph = raw['text_layers'][0]['token_layers'][2]
+    morph['tokens'] = []
+    morph['span_layers'][0]['spans'] = []
+    morph['vocabs'][0]['vocab_links'] = []
+    return raw
+
+
 def ws(doc=None, lex=None, project=None):
-    return fake_ws(FakeClient(project=project or untagged(), documents={'d1': doc or document_raw()},
+    return fake_ws(FakeClient(project=project or untagged(), documents={'d1': doc or bare()},
                               lexicon=lex or lexicon()))
 
 
@@ -143,7 +156,7 @@ def test_an_equals_is_a_clitic_boundary():
 
 
 def test_a_hyphen_between_morphemes_is_no_equals():
-    w = ws()
+    w = ws(document_raw())
     call(w, ref='s2', forms='Gam-ar', gloss='fish-FOC')
     (op,) = [o for o in w.ops if o['kind'] == 'set_analysis']
     # The stored "=" the word had (m-4b is an enclitic) is not kept: the line says "-".
@@ -455,7 +468,7 @@ def test_a_word_nobody_segmented_is_analysed_on_its_derived_morpheme():
 
 
 def test_a_word_in_a_multi_word_expression_keeps_the_expression():
-    raw = copy.deepcopy(document_raw())
+    raw = bare()
     words = raw['text_layers'][0]['token_layers'][1]
     words['vocabs'][0]['vocab_links'].append({'id': 'l-mwe', 'vocab_item': {'id': 'e-kai', 'form': 'kai'},
                                               'tokens': ['w-2', 'w-3']})
