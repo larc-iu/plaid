@@ -111,6 +111,13 @@ class _Lexicon(JobClient):
         self._before = value
 
 
+def test_the_bound_holds_however_many_forms_nobody_analysed():
+    ws = fake_ws(FakeClient(lexicon=_big_lexicon(3)))
+    out = evidence.block(ws, ws.project, [f'zz{i}' for i in range(500)], {}, {}, str, budget=400)
+    assert len(out) <= 400
+    assert out.startswith('Analysed nowhere before: zz0, zz1, ') and ' more.' in out.split('\n')[0]
+
+
 def test_a_later_piece_sees_what_an_earlier_one_wrote(monkeypatch):
     """The block is read as each piece starts: the entry the first piece's
     write made and the analysis it wrote are in the second piece's block."""

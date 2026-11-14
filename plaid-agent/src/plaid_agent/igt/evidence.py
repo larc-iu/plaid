@@ -20,8 +20,9 @@ Three parts, in this order, each a fixed rule:
 
 The whole is at most ``JOB_EVIDENCE_CHARS`` characters. What does not fit is
 cut in a fixed order: entries first, the shortest forms first (the last in
-order among forms of one length), then analysed forms from the last, and one
-line says what was left out and which tool reads it.
+order among forms of one length), then analysed forms from the last, then the
+forms analysed nowhere from the last ("and N more"), and one line says what
+was left out and which tool reads it.
 """
 
 from typing import Any, Dict, Iterable, List, Optional
@@ -128,7 +129,16 @@ def block(ws, project: IgtProject, surfaces: Iterable[str], people: Dict[str, Di
     def size(lines):
         return sum(len(x) + 1 for x in lines)
     tail_room = 160  # the left-out line, whatever its numbers
-    fixed = ([ANALYSED_HEAD] if analysed else []) + ([NOWHERE_HEAD + ', '.join(nowhere) + '.'] if nowhere else [])
+    # The forms analysed nowhere go last of all, from the last, so the
+    # bound holds whatever the piece.
+    shown_nowhere = list(nowhere)
+
+    def nowhere_line():
+        more = len(nowhere) - len(shown_nowhere)
+        return NOWHERE_HEAD + ', '.join(shown_nowhere) + (f' and {more} more' if more else '') + '.'
+    while shown_nowhere and len(nowhere_line()) + len(ANALYSED_HEAD) + 2 + tail_room > budget:
+        shown_nowhere.pop()
+    fixed = ([ANALYSED_HEAD] if analysed else []) + ([nowhere_line()] if nowhere else [])
     kept_analysed = list(analysed)
     while kept_analysed and size(fixed + kept_analysed) + tail_room > budget:
         kept_analysed.pop()
@@ -148,7 +158,7 @@ def block(ws, project: IgtProject, surfaces: Iterable[str], people: Dict[str, Di
     if kept_analysed:
         lines += [ANALYSED_HEAD, *kept_analysed]
     if nowhere:
-        lines.append(NOWHERE_HEAD + ', '.join(nowhere) + '.')
+        lines.append(nowhere_line())
     if kept_entries:
         lines += [ENTRIES_HEAD, *kept_entries]
     left = []
