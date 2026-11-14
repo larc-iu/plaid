@@ -178,19 +178,18 @@ def writing_form(sentence_id: str) -> str:
 def writing_text(row: Dict[str, Any]) -> str:
     """A writing row's analysis (:meth:`IgtRunner.manifest`) as canonical
     JSON within JOB_ANALYSIS_MAX_CHARS: the try, the write, the piece and
-    the counts are never cut. Past the limit the blanks listed are cut
-    first (the counts say how many), then the changes the row would list
-    (``more`` says how many), then those proposed (a write that landed
-    lists the proposed itself), then the tags of the sentence's other
-    words, then of the words the try writes on (a sentence a person made
-    longer since the checks: every tag of one of JOB_SENTENCE_MAX_WORDS
-    words fits)."""
+    the counts are never cut. Past the limit the changes the row would
+    list are cut first (``more`` says how many), then those proposed (a
+    write that landed lists the proposed itself), then the tags of the
+    sentence's other words, then of the words the try writes on (a sentence
+    a person made longer since the checks: every tag of one of
+    JOB_SENTENCE_MAX_WORDS words fits)."""
     row = {k: (list(v) if isinstance(v, list) else v) for k, v in row.items()}
     while True:
         text = canonical(row)
         if len(text) <= JOB_ANALYSIS_MAX_CHARS:
             return text
-        cut = next((k for k in ('left', 'ops', 'proposed', 'others', 'words') if row.get(k)), None)
+        cut = next((k for k in ('ops', 'proposed', 'others', 'words') if row.get(k)), None)
         if cut is None:
             return text
         row[cut].pop()
@@ -524,8 +523,8 @@ def summary_message(report: Dict[str, Any]) -> str:
         c = d.get('counts') or {}
         lines.append(f'- "{d.get("name")}": {d.get("state")}, '
                      + ', '.join(f'{k} {v:,}' for k, v in sorted(c.items()) if v and isinstance(v, int)))
-    lines.append('In the documents, "left" and "left_translations" count the words and translations no piece '
-                 'staged anything for (the report\'s Left blank).')
+    lines.append('In the documents, "left" and "left_translations" count the words and translations still blank '
+                 'at the end (the report\'s Left blank).')
     proposed = len(report.get('proposed') or []) + (report.get('proposed_more') or 0)
     lines += ['', f'Changes proposed for a person to approve: {proposed:,}.', '', 'Each piece\'s note:']
     size, left = 0, 0
@@ -845,14 +844,6 @@ class Write:
         #: (by id): made again only when the earlier did not land, so never
         #: counted or listed twice
         self.again: set = set()
-        #: sentence id -> the seed of the try whose row there says what the
-        #: write leaves blank in it
-        self.left_at: Dict[str, str] = {}
-        #: the words the write analyses, the sentences it deletes and those
-        #: it translates
-        self.touched = {w for o in ops for w in [self.word_of(o)] if w is not None}
-        self.deleted = {o.get('sentence_id') for o in ops if o.get('kind') == 'delete_sentence'}
-        self.translated = {s.id for o in ops if self.translation(o) for s in [self.sentence_of(o)] if s is not None}
 
     def sentence_of(self, op: Dict[str, Any]) -> Optional[Sentence]:
         from .jobapply import sentence_of
@@ -975,21 +966,6 @@ class Write:
         return list(dict.fromkeys(word_tag(w) for w in (self.word_of(o) for o in ops if o.get('kind') == 'set_analysis')
                                   if w is not None))
 
-    def left_in(self, sid: str) -> List[Dict[str, Any]]:
-        """The targets of a sentence of the piece the write leaves blank:
-        its blank words no change of the write is on, and its empty
-        translation when the write writes none (a ``form`` of None). None
-        in a sentence the write deletes."""
-        s = self.st.where.get(sid)
-        if s is None or s.id != sid or sid in self.deleted:
-            # A sentence the write deletes leaves nothing blank (REV-JSF-4).
-            return []
-        out = [{'ref': f's{s.index}.w{w.index}', 'begin': w.begin, 'form': w.surface}
-               for w in s.words if w.id in self.st.words and w.id not in self.touched]
-        if sid in self.st.translations and sid not in self.translated:
-            out.append({'ref': f's{s.index}', 'begin': None, 'form': None})
-        return out
-
     def _others(self, sid: str, words: List[str]) -> List[str]:
         now = {s.id: s for s in (self.fresh.sentences if self.fresh is not None else [])}
         s = now.get(sid) or self.st.where.get(sid)
@@ -998,12 +974,6 @@ class Write:
     def _sentence_row(self, sid: str, seed: str, ops: List[Dict[str, Any]], replaces: Optional[str]):
         counts = self.counts_of(ops)
         row = {'write': self.id, 'try': seed, 'piece': self.piece, 'own': sid in self.own}
-        if sid in self.own and (sid not in self.left_at or self.left_at[sid] == replaces):
-            self.left_at[sid] = seed
-            left = self.left_in(sid)
-            counts['left'] = sum(1 for e in left if e['form'] is not None)
-            counts['left_translations'] = sum(1 for e in left if e['form'] is None)
-            row['left'] = left
         words = self.words_of(ops)
         row.update({'words': words, 'others': self._others(sid, words),
                     'counts': {k: n for k, n in counts.items() if n},
@@ -1015,11 +985,10 @@ class Write:
         """A try's writing rows, ``(sentence or document id, row)``: one for
         each sentence its ops write in, naming the try (``seed``), the write,
         the piece, whether the sentence is one of the write's own, every word
-        of the sentence (REV-B4-1), what the try writes there as counts and
-        as the changes the report would list (``ops``), and, in the
-        sentence's first row of the write, what the write leaves blank there
-        (``left``). The changes of no sentence have a row of the document. A
-        text edit's try has a row of its follow-up (``req`` 1). ``replaces``:
+        of the sentence (REV-B4-1), and what the try writes there as counts
+        and as the changes the report would list (``ops``). The changes of
+        no sentence have a row of the document. A text edit's try has a row
+        of its follow-up (``req`` 1). ``replaces``:
         the seed of the try these replace (one cut in two, or one written
         again without the links gone since), whose rows then count for
         nothing (``of``). ``drops``: what was dropped from the try it
@@ -1076,12 +1045,8 @@ class Write:
         for sid in self.own:
             if sid in written:
                 continue
-            left = self.left_in(sid)
-            counts = {'left': sum(1 for e in left if e['form'] is not None),
-                      'left_translations': sum(1 for e in left if e['form'] is None)}
             out.append((sid, {'write': self.id, 'try': '', 'piece': self.piece, 'own': True, 'words': [],
-                              'others': self._others(sid, []), 'counts': {k: n for k, n in counts.items() if n},
-                              'left': left}))
+                              'others': self._others(sid, []), 'counts': {}}))
         if +Counter(self.counts) or self.proposed:
             out.append((self.document_id, {'write': self.id, 'try': '', 'piece': self.piece, 'loose': True,
                                            'counts': {k: n for k, n in Counter(self.counts).items() if n},
@@ -3367,21 +3332,20 @@ class IgtRunner:
                 # (:meth:`known_at_end`).
                 tally = self.tally(d, row.get('skipped'))
                 counts, done, targets = {**counts, **tally['counts']}, tally['done'], tally.get('targets', targets)
-            # What the job could not decide, for people to (CONTRACT, added by
-            # JB): every target of the document's recorded sentences it left
-            # blank, cut as every report list is. A sentence whose record
-            # could not hold its whole list counts the rest as more.
+            # What is blank in the sentences the job worked, read from the
+            # document at the end (BRIEF NW), cut as every report list is.
+            # ``left`` and ``left_translations`` count the whole list.
             listed = [e for e in blank.get(d) or [] if (filled_words if e.get('form') is not None
                                                         else filled_translations)]
-            counted = ((counts.get('left') or 0) if filled_words else 0) + (
-                (counts.get('left_translations') or 0) if filled_translations else 0)
-            left, _ = core_job.cut(listed)
+            counts = {**counts, 'left': sum(1 for e in listed if e.get('form') is not None),
+                      'left_translations': sum(1 for e in listed if e.get('form') is None)}
+            left, more = core_job.cut(listed)
             out.append({'document_id': d, 'name': self.names.get(d) or row.get('name'),
                         'state': state if state in ('done', 'in-use', 'gone') else 'not-reached',
                         'sentences': row.get('sentences'), 'targets': targets, 'done': done,
                         'counts': counts, 'skipped': list(row.get('skipped') or []),
                         'gloss_group': row.get('gloss_group'), 'harmonize_group': row.get('harmonize_group'),
-                        'left': left, 'left_more': max(len(listed), counted) - len(left)})
+                        'left': left, 'left_more': more})
         return out
 
     def summarize(self, job, report: Dict[str, Any]) -> Optional[str]:
@@ -3518,24 +3482,39 @@ class IgtRunner:
         self.ended = True
 
     def left_blank(self, job) -> Dict[str, List[Dict[str, Any]]]:
-        """Per document, the targets the job left blank, read from every
-        landed writing row the job holds in core (a resumed job's runs before
-        this one included), in document order: ``{ref, sentence_id, begin,
-        form}``, ``begin`` and ``form`` None for a translation. Nothing when
-        the rows cannot be read: the report is still written."""
+        """Per document, what is blank in it as it now is, read when the
+        report is written: in each sentence the job worked (its own piece's
+        landed write finished it, :meth:`finished`, wherever a split or a
+        merge moved its words), every word with no analysis
+        (:func:`word_target`) and an empty translation, whoever staged what
+        there or nothing (BRIEF NW). In document order: ``{ref,
+        sentence_id, begin, form}``, ``begin`` and ``form`` None for a
+        translation. A document that cannot be read lists nothing: the
+        report is still written."""
         try:
             core_job.through_core(job, lambda: self.known_at_end(job))
+            project = core_job.through_core(job, self.project)
         except Exception as e:  # noqa: BLE001 - a report without the list rather than none
             logger.warning('Job %s: the words it left blank could not be read for the report: %s', job.id, e)
             return {}
         out: Dict[str, List[Dict[str, Any]]] = {}
-        for d in list(self.rows or {}):
-            rows, landed = self.view(d)
-            for r in rows:
-                if landed(r):
-                    out.setdefault(d, []).extend({**e, 'sentence_id': r['sentence']} for e in r.get('left') or [])
-        for listed in out.values():
-            listed.sort(key=lambda e: [int(n) for n in re.findall(r'\d+', e.get('ref') or '')])
+        for d in job.order:
+            worked, known = self.finished(d), self.known_words(d)
+            if not worked:
+                continue
+            try:
+                doc = core_job.through_core(job, lambda: self.read(project, d))
+            except Exception as e:  # noqa: BLE001 - gone, or unreadable: the rest is still listed
+                logger.warning('Job %s: %s could not be read for the words left blank: %s', job.id, d, e)
+                continue
+            listed = out.setdefault(d, [])
+            for s in doc.sentences:
+                if s.id not in worked and not wrote_in(s, known):
+                    continue
+                listed += [{'ref': f's{s.index}.w{w.index}', 'sentence_id': s.id, 'begin': w.begin,
+                            'form': w.surface} for w in s.words if word_target(w)]
+                if translation_target(s, project, job.id):
+                    listed.append({'ref': f's{s.index}', 'sentence_id': s.id, 'begin': None, 'form': None})
         return out
 
 

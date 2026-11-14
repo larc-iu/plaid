@@ -2,17 +2,16 @@
 document, every target the job left blank because it could not decide (SPEC
 counts them as ``left``), cut by the report's rule with how many more, each
 with what the job page links into the grid (the sentence id and the word's
-offset). Recorded in each sentence's record among the job's decisions, so a
-resumed job reports what an earlier run left too."""
-
-import json
+offset). Read from the document as the report is written, in the sentences
+the job worked (BRIEF NW), so a resumed job reports what an earlier run left
+too."""
 
 from job_fixtures import JobClient, Model, call, document, reply, runner, start, targets_named, use
 
 from plaid_agent.core import job as core_job
 from plaid_agent.core.job import run_job
 from plaid_agent.core.limits import JOB_ANALYSIS_MAX_CHARS
-from plaid_agent.igt.job import RECORD_FORM, writing_text
+from plaid_agent.igt.job import RECORD_FORM
 
 J = 'JL'
 
@@ -110,17 +109,9 @@ def test_a_resumed_job_reports_what_an_earlier_run_left(monkeypatch):
     assert [e['ref'] for e in doc['left']] == ['s1.w2', 's2.w2', 's2.w3']
 
 
-def test_a_writing_row_holds_what_fits_and_the_rest_is_counted():
-    left = [{'ref': f's1.w{i}', 'begin': i * 10, 'form': 'x' * 30} for i in range(1, 200)]
-    text = writing_text({'write': 'w', 'try': '', 'piece': 'p', 'words': [], 'others': ['t1', 't2'],
-                         'counts': {'left': len(left)}, 'left': left})
-    assert len(text) <= JOB_ANALYSIS_MAX_CHARS
-    row = json.loads(text)
-    assert 0 < len(row['left']) < len(left) and row['left'] == left[:len(row['left'])]
-    assert row['others'] == ['t1', 't2'] and row['counts'] == {'left': len(left)}, 'the blanks are cut first'
-
-
-def test_a_cut_record_counts_the_rest_as_more(monkeypatch):
+def test_a_sentence_of_many_blank_words_lists_them_all(monkeypatch):
+    """Left blank is read from the document (BRIEF NW): no row has to hold
+    a sentence's blanks."""
     words = [f'w{i:03}' + 'x' * 8 for i in range(100)]
     client = JobClient({'d1': document('d1', 'Story', [{'words': words}, {'words': ['zz']}])})
     client.after_write['d1'] = document('d1', 'Story', [{'words': words}, {'words': [('zz', [('zz', 'G')], J)]}],
@@ -136,7 +127,7 @@ def test_a_cut_record_counts_the_rest_as_more(monkeypatch):
     assert run_job(job, runner(job))['state'] == 'done'
     (doc,) = _report(client)['documents']
     assert doc['counts']['left'] == 100
-    assert 0 < len(doc['left']) < 100 and len(doc['left']) + doc['left_more'] == 100
+    assert len(doc['left']) + doc['left_more'] == 100
     marks = [r for r in client.jobs.decisions(J) if r['form'].startswith(RECORD_FORM)]
     assert all(len(r['analysis']) <= JOB_ANALYSIS_MAX_CHARS for r in marks)
 
@@ -171,6 +162,6 @@ def test_a_sentence_recorded_after_a_crash_counts_and_lists_what_was_left_blank(
     assert run_job(job, runner(job))['state'] == 'done'
     assert not model.calls, 'nothing is asked again'
     (doc,) = _report(client)['documents']
-    assert doc['counts']['left'] == 3 and doc['counts']['left_translations'] == 2 and doc['counts']['words'] == 2
-    # It wrote no translation, so the two empty ones are counted, not listed.
+    assert doc['counts']['left'] == 3 and doc['counts']['left_translations'] == 0 and doc['counts']['words'] == 2
+    # It wrote no translation, so the two empty ones are neither listed nor counted.
     assert [x['ref'] for x in doc['left']] == ['s1.w2', 's2.w2', 's2.w3']

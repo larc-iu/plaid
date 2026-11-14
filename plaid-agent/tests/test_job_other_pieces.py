@@ -110,6 +110,48 @@ def test_a_bulk_op_of_one_piece_closes_no_sentence_of_another(monkeypatch, every
     assert doc['done'] == doc['targets'] == 4
 
 
+def _first_words(asked, n, kwargs):
+    """Glosses the first word of each sentence of its piece."""
+    if n > 1 or 'Your piece: s' not in asked:
+        return reply('Done.')
+    return reply(calls=[call(k, 'set_analysis', {'document': 'Story', 'ref': f's{s}.w1', 'morphemes': [
+        {'form': 'x', 'fields': {'Morph Gloss': 'g'}}]}) for k, s in enumerate(targets_named(asked), 1)])
+
+
+def test_left_blank_is_what_the_document_holds_blank_at_the_end(monkeypatch):
+    """Left blank is read from the document as the report is written: s2's
+    first word, which the job glossed and which reads blank again at the end
+    (a later write took it away), is listed with the words nobody staged
+    anything for, and ``left`` counts the list."""
+    client = JobClient({'d1': document('d1', 'Story', [{'words': ['ka', 'pata']}, {'words': ['ka', 'ta', 'sa']}])})
+    mine = ('ka', [('ka', 'g')], J)
+    client.after_write['d1'] = document('d1', 'Story', [{'words': [mine, 'pata']}, {'words': ['ka', 'ta', 'sa']}],
+                                        version=2)
+    job = start(client, id=J)
+    use(monkeypatch, Model(_first_words))
+    finished = run_job(job, runner(job))
+    assert finished['state'] == 'done'
+    (doc,) = finished['report']['documents']
+    assert [e['ref'] for e in doc['left']] == ['s1.w2', 's2.w1', 's2.w2', 's2.w3']
+    assert doc['counts']['left'] == 4 and doc['left_more'] == 0
+
+
+def test_the_left_count_is_the_whole_list_when_the_list_is_cut(monkeypatch):
+    from plaid_agent.core import job as core_job
+    client = JobClient({'d1': document('d1', 'Story', [{'words': ['ka', 'pata', 'mo']}, {'words': ['ka', 'ta']}])})
+    mine = ('ka', [('ka', 'g')], J)
+    client.after_write['d1'] = document('d1', 'Story', [{'words': [mine, 'pata', 'mo']}, {'words': [mine, 'ta']}],
+                                        version=2)
+    job = start(client, id=J)
+    use(monkeypatch, Model(_first_words))
+    real = core_job.cut
+    monkeypatch.setattr(core_job, 'cut', lambda items, limit=None: real(items, 2))
+    finished = run_job(job, runner(job))
+    (doc,) = finished['report']['documents']
+    assert [e['ref'] for e in doc['left']] == ['s1.w2', 's1.w3'] and doc['left_more'] == 1
+    assert doc['counts']['left'] == 3 == len(doc['left']) + doc['left_more']
+
+
 def _empty_named(asked, n, kwargs):
     """A stretch over all four sentences reads for ever (it is halved). A
     piece glosses ka everywhere when s1.w1 is empty in it, and each other
