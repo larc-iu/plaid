@@ -38,6 +38,18 @@
     (-> row
         (update :headers #(some-> % json/read-str)))))
 
+(defn keys-under
+  "The keys `<prefix>.<n>` of the answers in force that `user-id` sent under
+  `prefix`, audited or not (a comment is not)."
+  [db user-id prefix]
+  (mapv :key (psc/q db {:select [:key]
+                        :from [:idempotency_keys]
+                        :where [:and
+                                [:= :user_id user-id]
+                                [:>= :key (str prefix ".")]
+                                [:< :key (str prefix "/")]
+                                [:>= :created_at (cutoff)]]})))
+
 (defn store!
   "Record the answer to `key`: `headers` a map of the document-version
   headers, `body` the response's JSON text. Runs inside the write's

@@ -210,6 +210,27 @@ def test_fake_landed_answers_the_keys_of_writes_that_landed():
     _refused(lambda: client.jobs.landed('nope', [s]), 404)
 
 
+def test_fake_landed_answers_as_core_by_user_and_what_core_audits():
+    """As core answers (REV-RX-6): only the starter's writes, and a write
+    core does not audit (a comment) only for the day core keeps its
+    answer."""
+    client, _ = _fake()
+    job = client.jobs.create('p1', 'igt', 'Gloss.')
+    client.jobs.claim('w1', 'm', ['igt'])
+    mine, theirs = client.key_seed(), client.key_seed()
+    with client.operation('Job', keys=mine):
+        with client.batched() as b:
+            b.comments.create('token', 't1', 'Check.')
+        client.tokens.create('l1', 't1', 0, 1)
+    client.jobs.user = 'someone@example.org'
+    with client.operation('Theirs', keys=theirs):
+        client.tokens.create('l1', 't1', 1, 2)
+    s = mine['seed']
+    assert client.jobs.landed(job['id'], [s, theirs['seed']]) == [f'{s}.0', f'{s}.1'], 'nothing of another user'
+    client.forget_answers()
+    assert client.jobs.landed(job['id'], [s]) == [f'{s}.1'], 'a comment is known for a day'
+
+
 def test_finish_sends_a_reason_only_when_given():
     client = _client([WIRE_JOB])
     client.jobs.finish('j1', 'w1', 'failed', {}, reason='no-lexicon')

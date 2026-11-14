@@ -489,7 +489,7 @@ class _Batch:
             raise
         self.client.batches.append(list(queued))
         self.client.calls.extend(queued)
-        self.client._landed_write()
+        self.client._landed_write(audited=any(not str(k).startswith('comments.') for k, _ in queued))
         self.client.cascaded.extend(cascade)
         self.results = results
         return self.results
@@ -1166,8 +1166,14 @@ class FakeClient:
         #: the Idempotency-Key of each write that landed inside an operation
         #: opened with ``keys``, ``<seed>.<n>`` as the real client numbers
         #: them (a batch is one write), which ``jobs.landed`` answers from,
-        #: as core answers from its audit log
+        #: as core answers from its audit log and its idempotency store
         self.landed_keys = []
+        #: ``{key, user, audited}`` of each of them: who made it (the jobs'
+        #: ``user``), and whether core audits it (a comment it does not)
+        self.landed_writes = []
+        #: whether the day core keeps a keyed write's answer has passed
+        #: (:meth:`forget_answers`)
+        self.answers_forgotten = False
         self._key_frames = []
         self.documents = FakeClient._Documents(self)
         self.projects = FakeClient._Projects(self)
@@ -1215,15 +1221,23 @@ class FakeClient:
         self.note_stamp(kind)
         self.calls.append((kind, payload))
         if kind not in _NOT_WRITES:
-            self._landed_write()
+            self._landed_write(audited=not str(kind).startswith('comments.'))
 
-    def _landed_write(self):
+    def _landed_write(self, audited=True):
         """A write made inside an operation opened with ``keys`` landed:
-        its key, the next of the innermost keyed operation's, is kept."""
+        its key, the next of the innermost keyed operation's, is kept, with
+        who made it and whether core audits it."""
         if self._key_frames:
             frame = self._key_frames[-1]
-            self.landed_keys.append(f'{frame[0]}.{frame[1]}')
+            key = f'{frame[0]}.{frame[1]}'
+            self.landed_keys.append(key)
+            self.landed_writes.append({'key': key, 'user': self.jobs.user, 'audited': audited})
             frame[1] += 1
+
+    def forget_answers(self):
+        """The day core keeps each keyed write's answer has passed: ``jobs.
+        landed`` answers only what core audits from now on."""
+        self.answers_forgotten = True
 
     def note_cascade(self, kind, taken):
         """What a delete made on the client takes with it."""
@@ -2366,17 +2380,22 @@ class _FakeJobs:
         return [dict(r) for r in sorted(rows, key=lambda r: (r['form'], -r['count'], r['key']))]
 
     def landed(self, job_id, refs):
-        """The keys of the writes made under each seed of ``refs`` that
-        landed (the client's ``landed_keys``), as core reads them from its
-        audit log."""
+        """The keys of the writes the job's starter made under each seed of
+        ``refs`` that landed (the client's ``landed_writes``), as core reads
+        them: from its audit log for a write it audits, and from its
+        idempotency store, for a day, for any (``forget_answers``). The fake
+        keeps no project for a write, so it answers the starter's writes in
+        any project, as core's store does for that day."""
         path = f'/api/v1/jobs/{job_id}/landed'
         self.calls.append(('landed', {'job_id': job_id, 'refs': list(refs)}))
-        self._job(job_id, 'POST', path)
+        job = self._job(job_id, 'POST', path)
         if not refs:
             raise self._refuse(400, 'POST', path, 'refs: give at least one.')
         if len(refs) > _JOB_DECISIONS_PER_CALL:
             raise self._refuse(400, 'POST', path, f'refs: at most {_JOB_DECISIONS_PER_CALL} in one call.')
-        return sorted({k for k in self._client.landed_keys if k.rsplit('.', 1)[0] in set(refs)})
+        return sorted({w['key'] for w in self._client.landed_writes if w['key'].rsplit('.', 1)[0] in set(refs)
+                       and w['user'] == job['started_by']
+                       and (w['audited'] or not self._client.answers_forgotten)})
 
     def decisions(self, job_id):
         self.calls.append(('decisions', {'job_id': job_id}))

@@ -2,13 +2,16 @@
   "What a job worker asks after a lost answer or a crash: which of the writes
   it sent under a seed landed (`POST /jobs/{id}/landed`). Every operation
   keeps the Idempotency-Key it was sent with (`operations.request_key`), for
-  as long as the audit log is kept, so the answer is exact at any time."
+  as long as the audit log is kept, so the answer is exact at any time for a
+  write core audits. One it does not (a comment) is answered from the
+  idempotency store, for the day it keeps the answer."
   (:require [clojure.test :refer [deftest is testing use-fixtures]]
             [plaid.fixtures :as fix :refer [with-db with-mount-states with-clean-db
                                             with-rest-handler with-admin with-test-users
                                             admin-request]]
             [plaid.rest-api.v1.job-helpers :as jh :refer [as call start! job-id claim!]]
             [plaid.sql.common :as psc]
+            [plaid.sql.idempotency :as idem]
             [ring.mock.request :as mock]))
 
 (use-fixtures :once with-db with-mount-states with-rest-handler with-admin with-test-users)
@@ -52,7 +55,7 @@
     (testing "a seed nothing was sent under"
       (is (= [] (-> (landed admin-request j [s2]) :body :keys))))))
 
-(deftest nothing-of-another-user-or-project
+(deftest nothing-of-another-user-and-of-another-project-after-a-day
   (let [{:keys [p q] :as world} (jh/world!)
         _ (jh/grant! q "writers" "starter@example.com")
         j (job-id (start! (:st world) p))
@@ -60,8 +63,28 @@
         s2 (seed)]
     (is (= 201 (keyed admin-request (str s1 ".0") :post "/api/v1/documents" {:project-id p :name "admin's"})))
     (is (= 201 (keyed (:st world) (str s2 ".0") :post "/api/v1/documents" {:project-id q :name "elsewhere"})))
-    (is (= [] (-> (landed admin-request j [s1 s2]) :body :keys))
-        "another user's write in the project, and the starter's in another project")))
+    (testing "another user's write in the project, never"
+      (is (= [(str s2 ".0")] (-> (landed admin-request j [s1 s2]) :body :keys))
+          "the starter's in another project, for the day its answer is kept"))
+    (testing "once the idempotency store has forgotten it, the starter's write in another project is not answered"
+      (with-redefs [idem/retention-hours (constantly 0)]
+        (is (= [] (-> (landed admin-request j [s1 s2]) :body :keys)))))))
+
+(deftest a-write-core-does-not-audit-is-known-for-a-day
+  (let [{:keys [p d1] :as world} (jh/world!)
+        j (job-id (start! (:st world) p))
+        token (as (-> (claim! jh/worker-a) :body :token))
+        s1 (seed)]
+    (testing "a batch of comments alone writes no operation"
+      (is (= 200 (keyed token (str s1 ".0") :post "/api/v1/batch"
+                        [{:path "/api/v1/comments" :method "POST"
+                          :body {:entity-type "document" :entity-id d1 :body "Check this."}}])))
+      (is (= 0 (count (psc/q fix/db {:select [:id] :from [:operations] :where [:= :request_key (str s1 ".0")]})))))
+    (testing "and is answered as landed from the idempotency store"
+      (is (= [(str s1 ".0")] (-> (landed token j [s1]) :body :keys))))
+    (testing "for as long as the store keeps its answer"
+      (with-redefs [idem/retention-hours (constantly 0)]
+        (is (= [] (-> (landed token j [s1]) :body :keys)))))))
 
 (deftest who-may-ask
   (let [{:keys [p q] :as world} (jh/world!)

@@ -22,6 +22,7 @@
   (:require [clojure.string :as str]
             [plaid.sql.common :as psc]
             [plaid.sql.datasource :as psd]
+            [plaid.sql.idempotency :as idem]
             [plaid.sql.pagination :as pg]
             [plaid.sql.project :as prj]
             [plaid.sql.user :as user]
@@ -735,26 +736,31 @@
 (defn landed-keys
   "Of the writes job `job-id`'s worker sent under each seed of `refs` (keys
   `<seed>.<n>`, the client's numbering of an operation's writes), the keys
-  of those that landed: the distinct `request_key` of the operations its
-  starter made in its project under each seed, in key order. Read from the
-  audit log, which keeps them for good, never from the idempotency store,
-  which forgets them after a day. Nothing of any other user or project is
-  read, so the answer says nothing about them. Nil for an unknown job."
+  of those that landed, in key order: the distinct `request_key` of the
+  operations its starter made in its project under each seed, read from the
+  audit log, which keeps them for good, and the keys of the starter's
+  answers the idempotency store holds under each seed, which it keeps for a
+  day (`idempotency/retention-hours`) whether core audits the write or not
+  (a comment it does not). Nothing of any other user is read. Nil for an
+  unknown job."
   [db job-id refs]
   (when-let [row (job-row db job-id)]
-    (->> (distinct refs)
-         (mapcat (fn [ref]
-                   (psc/q db {:select-distinct [:request_key]
-                              :from [:operations]
-                              :where [:and
-                                      [:>= :request_key (str ref ".")]
-                                      [:< :request_key (str ref "/")]
-                                      [:= :user_id (str (:started_by row))]
-                                      [:= :project_id (str (:project_id row))]]})))
-         (map :request_key)
-         distinct
-         sort
-         vec)))
+    (let [user (str (:started_by row))]
+      (->> (distinct refs)
+           (mapcat (fn [ref]
+                     (concat
+                      (map :request_key
+                           (psc/q db {:select-distinct [:request_key]
+                                      :from [:operations]
+                                      :where [:and
+                                              [:>= :request_key (str ref ".")]
+                                              [:< :request_key (str ref "/")]
+                                              [:= :user_id user]
+                                              [:= :project_id (str (:project_id row))]]}))
+                      (idem/keys-under db user ref))))
+           distinct
+           sort
+           vec))))
 
 (defn decisions-page
   "One page of job `job-id`'s decisions by `(form, key)`."
