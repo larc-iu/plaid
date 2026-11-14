@@ -38,12 +38,14 @@ export function dropFrame(group, frame) {
 /**
  * The key for the next keyed request, and the strict-mode stamp it must
  * claim when an earlier run of its operation already sent it. `joins` says
- * whether the request joins the open logical operation.
+ * whether the request joins the open logical operation. One that does not
+ * (a comment) takes the operation's next key too when its keys say `every`.
  * Returns `{ key, pin, record }`: `pin` is undefined when nothing is pinned,
  * and `record(version)` pins what this request claimed, the first time.
  */
 export function nextIdempotencyKey(client, joins) {
-  const frame = joins ? client.operationGroup?.frames.at(-1) : null;
+  const top = client.operationGroup?.frames.at(-1);
+  const frame = top && (joins || top.keys?.every) ? top : null;
   const keys = frame?.keys;
   if (!keys) return { key: uuidv7(), pin: undefined, record: () => {} };
   const n = frame.count;

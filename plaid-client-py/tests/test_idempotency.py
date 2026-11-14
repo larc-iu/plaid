@@ -326,6 +326,23 @@ def test_a_comment_made_while_an_operation_is_open_takes_none_of_its_keys_and_jo
     assert requests[2]['key'] == f"{keys['seed']}.1"
 
 
+def test_with_every_a_comment_takes_the_operations_next_key_and_still_joins_nothing():
+    """An operation whose keys say ``every`` (a job's try): its comment, alone
+    in a batch too, takes the next key, so the request is known by its key
+    (REV-RX-4). It still carries no group: core audits no comment."""
+    client = PlaidClient('http://x', 'tok', **FAST)
+    keys = {**client.key_seed(), 'every': True}
+    requests = _stub_server(client, lambda request, n: Response(201, {'id': 'x'}) if n < 2 else Response(200, [
+        {'status': 201, 'headers': {}, 'body': {'id': 'y'}}]))
+    with client.operation('Gloss', keys=keys):
+        client.spans.update('s1', 'A')
+        client.comments.create('span', 's1', 'hmm')
+        with client.batched() as b:
+            b.comments.create('span', 's1', 'again')
+    assert [r['key'] for r in requests] == [f"{keys['seed']}.{n}" for n in range(3)]
+    assert 'group-id' not in requests[1]['url'] and 'group-id' not in requests[2]['url']
+
+
 def test_a_batch_in_a_keyed_operation_takes_its_key_and_pins_its_claim():
     client = PlaidClient('http://x', 'tok', **FAST)
     client.enter_strict_mode('d1')

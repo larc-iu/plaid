@@ -487,7 +487,10 @@ class PlaidClient {
    * first send and writes nothing again. The count starts at 0 at each
    * outermost begin. A nested operation joins the outer one's keys, unless it
    * brings its own: then it numbers from 0 under its own seed until its
-   * matching end, and the outer numbering resumes after it.
+   * matching end, and the outer numbering resumes after it. With `every` in
+   * `keys` (`{ ...keySeed(), every: true }`), a keyed request that joins no
+   * operation (a comment) takes the next key too, so every request of the
+   * run is known by its key.
    *
    * @param {string} message - Human label for the operation.
    * @param {{groupId?: string, kind?: OperationKind, ref?: string, keys?: KeySeed, minted?: Iterable<string>}} [opts] - Optional `{ groupId, kind, ref, keys, minted }`. `groupId` adopts an existing group id instead of minting one (a service joining the requester's operation; `requestService` propagates an open operation to the service automatically). Python's is `group_id`. `kind`, `ref` and `keys` are described above. `minted` is the ids the operation mints for what it creates: a create refused 409 id-taken for one of them was made by an earlier send of the operation, and answers as made.

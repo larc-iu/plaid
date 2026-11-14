@@ -97,7 +97,10 @@ class _Operations:
         starts at 0 at each outermost begin. A nested operation joins the
         outer one's keys, unless it brings its own: then it numbers from 0
         under its own seed until its matching end, and the outer numbering
-        resumes after it.
+        resumes after it. With ``every`` in ``keys`` (``{**key_seed(),
+        'every': True}``), a keyed request that joins no operation (a
+        comment) takes the next key too, so every request of the run is
+        known by its key.
 
         Prefer the ``operation()`` context manager; this is the manual form.
 

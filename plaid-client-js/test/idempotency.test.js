@@ -493,6 +493,38 @@ test("a comment made while an operation is open takes none of its keys and joins
   assert.equal(requests[2].key, `${keys.seed}.1`);
 });
 
+// REV-RX-4: an operation whose keys say `every` (a job's try): its comment,
+// alone in a batch too, takes the next key, so the request is known by its
+// key. It still carries no group: core audits no comment.
+test("with every, a comment takes the operation's next key and still joins nothing", async () => {
+  const client = new PlaidClient("http://x", "tok", fast);
+  const keys = { ...client.keySeed(), every: true };
+  const { requests, restore } = stubServer((req, n) =>
+    n < 2 ? response(201, { id: "x" }) : response(200, [{ status: 201, headers: {}, body: { id: "y" } }]),
+  );
+  try {
+    await client.withOperation(
+      "Gloss",
+      async () => {
+        await client.spans.update("s1", "A");
+        await client.comments.create("span", "s1", "hmm");
+        await client.batched(async (b) => {
+          b.comments.create("span", "s1", "again");
+        });
+      },
+      { keys },
+    );
+  } finally {
+    restore();
+  }
+  assert.deepEqual(
+    requests.map((r) => r.key),
+    [0, 1, 2].map((n) => `${keys.seed}.${n}`),
+  );
+  assert.equal(new URL(requests[1].url).searchParams.get("group-id"), null);
+  assert.equal(new URL(requests[2].url).searchParams.get("group-id"), null);
+});
+
 // REV2 G7: a key frame is ended by the call that opened it. Two keyed
 // operations whose runs overlap in time end in either order, and each end
 // takes away its own frame, never the other's.

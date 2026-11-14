@@ -249,14 +249,16 @@ def retry_unknown(attempt, delays=None, on_retry=None):
 def next_idempotency_key(client, joins):
     """The key for the next keyed request, and the strict-mode stamp it must
     claim when an earlier run of its operation already sent it. ``joins`` says
-    whether the request joins the open logical operation.
+    whether the request joins the open logical operation. One that does not
+    (a comment) takes the operation's next key too when its keys say
+    ``every``.
 
     Returns ``(key, pin, record)``: ``pin`` is ``NO_PIN`` when nothing is
     pinned, and ``record(version)`` pins what this request claimed, the first
     time."""
     group = getattr(client, '_operation_group', None)
-    frame = group['frames'][-1] if joins and group is not None else None
-    keys = frame['keys'] if frame is not None else None
+    frame = group['frames'][-1] if group is not None else None
+    keys = frame['keys'] if frame is not None and (joins or (frame['keys'] or {}).get('every')) else None
     if not keys:
         return uuid7(), NO_PIN, lambda version: None
     n = frame['count']

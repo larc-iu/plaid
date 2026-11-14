@@ -53,7 +53,9 @@
 
 /**
  * Idempotency-Key seed for an operation run more than once (`client.keySeed()`).
- * @typedef {{seed: string, stamps: Map<number, number | null>}} KeySeed
+ * With `every`, a keyed request that joins no operation (a comment) takes the
+ * next key too.
+ * @typedef {{seed: string, stamps: Map<number, number | null>, every?: boolean}} KeySeed
  */
 
 /**

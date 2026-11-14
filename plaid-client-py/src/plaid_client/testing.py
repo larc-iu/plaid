@@ -1226,8 +1226,10 @@ class FakeClient:
     def _landed_write(self, audited=True):
         """A write made inside an operation opened with ``keys`` landed:
         its key, the next of the innermost keyed operation's, is kept, with
-        who made it and whether core audits it."""
-        if self._key_frames:
+        who made it and whether core audits it. A comment (one core does
+        not audit) joins no operation, so it takes a key of the operation's
+        only when its keys say ``every``, as the real client numbers it."""
+        if self._key_frames and (audited or self._key_frames[-1][2]):
             frame = self._key_frames[-1]
             key = f'{frame[0]}.{frame[1]}'
             self.landed_keys.append(key)
@@ -1435,7 +1437,7 @@ class FakeClient:
                         len(self.operations) - 1, self._operation_depth == 0)
         start = len(self.calls)
         self._operation_depth += 1
-        frame = [keys['seed'], 0] if keys else None
+        frame = [keys['seed'], 0, bool(keys.get('every'))] if keys else None
         if frame is not None:
             self._key_frames.append(frame)
         try:

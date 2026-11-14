@@ -217,7 +217,7 @@ def test_fake_landed_answers_as_core_by_user_and_what_core_audits():
     client, _ = _fake()
     job = client.jobs.create('p1', 'igt', 'Gloss.')
     client.jobs.claim('w1', 'm', ['igt'])
-    mine, theirs = client.key_seed(), client.key_seed()
+    mine, theirs = {**client.key_seed(), 'every': True}, client.key_seed()
     with client.operation('Job', keys=mine):
         with client.batched() as b:
             b.comments.create('token', 't1', 'Check.')
@@ -229,6 +229,10 @@ def test_fake_landed_answers_as_core_by_user_and_what_core_audits():
     assert client.jobs.landed(job['id'], [s, theirs['seed']]) == [f'{s}.0', f'{s}.1'], 'nothing of another user'
     client.forget_answers()
     assert client.jobs.landed(job['id'], [s]) == [f'{s}.1'], 'a comment is known for a day'
+    plain = client.key_seed()
+    with client.operation('Edit', keys=plain):
+        client.comments.create('token', 't1', 'Hmm.')
+    assert client.jobs.landed(job['id'], [plain['seed']]) == [], 'a comment takes no key of an operation without every'
 
 
 def test_finish_sends_a_reason_only_when_given():
