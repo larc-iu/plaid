@@ -383,7 +383,18 @@ Undoing the same entry again finds nothing left and writes nothing.
 An undo may be sent with an `Idempotency-Key` or inside a batch: a dry run there writes nothing either.
 A dry run and a real undo are different requests, so one key answers only the one it was first sent with.
 A row the entry made is also kept when anything that stays names its id in its metadata, such as an entry that took a word of it as an example (`built-on`).
-An entry of more than 20,000 rows is refused.
+An entry of more than 20,000 rows is refused, and the refusal says how many rows it has.
+
+Several entries can be undone together as one, with `audit.undo_entries` / `audit.undoEntries`, and a whole job with `jobs.undo`, which finds the job's entries itself: the gloss pass and the harmonize pass of every document.
+Each row goes back to how it was before the first of those entries wrote it, so a word one entry linked to a lexicon entry another one made comes undone with it.
+The answer is the same summary, with `entries` naming what was undone, and the limit of 20,000 rows counts them all.
+A job that is still waiting, running or stopping is refused until it has ended.
+
+[,python]
+----
+plan = c.jobs.undo(job_id, dry_run=True)
+c.jobs.undo(job_id)
+----
 
 === Last edit per document
 
