@@ -955,6 +955,26 @@
           (jdbc/execute! db ["RELEASE plaid_undo"])
           result))))
 
+(def ^:private job-ref-pattern #"job:(.+)/(undo|redo)")
+
+(defn job-ref
+  "The group ref an undo's own operation carries, so a job's read can tell
+  whether the job stands undone (`plaid.sql.job/undone`): `job:<id>/undo`
+  for a job's undo (given), and for an undo of an entry that lies in such a
+  group the other pass, `/redo` for an undo of a job's undo and `/undo` again
+  for an undo of that redo. nil for any other entry."
+  [db ops given]
+  (or given
+      (let [refs (psc/in-chunks #(psc/q db {:select-distinct [:g.ref]
+                                            :from [[:operations :o]]
+                                            :join [[:operation_groups :g] [:= :g.id :o.group_id]]
+                                            :where [:and [:in :o.id (mapv str %)] [:<> :g.ref nil]]})
+                                (map :id ops))]
+        (some (fn [{:keys [ref]}]
+                (when-let [[_ job pass] (re-matches job-ref-pattern (str ref))]
+                  (str "job:" job "/" (if (= pass "undo") "redo" "undo"))))
+              refs))))
+
 (defn entry-label
   "The words an undo's description names its entry by: the group's message,
   else the first operation's description."
@@ -999,13 +1019,21 @@
                               (str "Undo " (count entry-id) " entries: " (entry-label db (first entry-id) ops))
                               (str "Undo entry " entry-id ": " (entry-label db entry-id ops))))
             project (some :project_id ops)
-            not-undone (not-undone-ops db ops)]
+            not-undone (not-undone-ops db ops)
+            ;; An undo that a job's read must find gets a group of its own,
+            ;; whose ref names the job (`job-ref`), one id for every attempt.
+            group-ref (job-ref db ops (:group-ref opts))
+            group-id (when group-ref (random-uuid))]
         (loop [excluded {}
                n 1]
           (let [out (atom nil)
                 result (in-savepoint
                         db (fn [{:keys [success]}] (and success (not dry-run?)))
-                        #(binding [*entry* entry-id]
+                        #(binding [*entry* entry-id
+                                   op/*current-group-id* (or group-id op/*current-group-id*)
+                                   op/*current-group-message* (if group-id description op/*current-group-message*)
+                                   op/*current-group-kind* (if group-id nil op/*current-group-kind*)
+                                   op/*current-group-ref* (or group-ref op/*current-group-ref*)]
                            (op/submit-operation*
                             db
                             {:type :audit-entry/undo

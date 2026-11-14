@@ -212,6 +212,27 @@
 (defn- display-name [db user-id]
   (:display_name (psc/q1 db {:select [:display_name] :from [:users] :where [:= :id user-id]})))
 
+(defn undone-by-job
+  "`{job-id {:operation :time :user}}` for each of `job-ids` that stands
+  undone: the newest operation in a group whose ref is `job:<id>/undo` or
+  `job:<id>/redo` (an undo of the job's undo, `plaid.history.undo/job-ref`)
+  is in an `/undo` one. Only an undo that wrote something has an operation:
+  one that wrote nothing is taken back out. One read over the groups by ref
+  (no index: the groups table is read once), joined to their operations."
+  [db job-ids]
+  (let [refs (mapcat (fn [j] [(str "job:" j "/undo") (str "job:" j "/redo")]) job-ids)
+        rows (psc/in-chunks #(psc/q db {:select [:g.ref :o.id :o.ts :o.user_id]
+                                        :from [[:operation_groups :g]]
+                                        :join [[:operations :o] [:= :o.group_id :g.id]]
+                                        :where [:in :g.ref (vec %)]})
+                            refs)]
+    (into {}
+          (keep (fn [[job rs]]
+                  (let [newest (last (sort-by (comp str :ts) rs))]
+                    (when (str/ends-with? (:ref newest) "/undo")
+                      [job {:operation (str (:id newest)) :time (str (:ts newest)) :user (:user_id newest)}]))))
+          (group-by (fn [r] (second (re-matches #"job:(.+)/(?:undo|redo)" (:ref r)))) rows))))
+
 (defn- row->job
   "A job as the wire carries it. `parts` says what to add: `:documents`, the
   document rows, `:report`, the stored report."
@@ -241,6 +262,10 @@
              :job/lapsed (and (contains? #{"running" "stopping"} (:state row))
                               (not (lease-live? row (Instant/now))))
              :job/ahead (ahead db row)}
+      ;; the list reads every page's at once (`list-page`)
+      (not (:list parts)) (as-> m (if-let [u (clojure.core/get (undone-by-job db [(str (:id row))]) (str (:id row)))]
+                                    (assoc m :job/undone u)
+                                    m))
       (:documents parts) (assoc :job/documents (mapv row->document (document-rows db (:id row))))
       (:report parts) (assoc :job/report (psc/read-json (:report row))))))
 
@@ -278,7 +303,10 @@
                                  seek (conj seek))
                         :order-by [[:j.created_at :desc] [:j.id :desc]]
                         :limit lim})]
-    {:entries (mapv #(assoc (row->job db % #{}) :job/document-count (:document_count %)) rows)
+    {:entries (let [undone (undone-by-job db (map (comp str :id) rows))]
+                (mapv #(cond-> (assoc (row->job db % #{:list}) :job/document-count (:document_count %))
+                         (clojure.core/get undone (str (:id %))) (assoc :job/undone (clojure.core/get undone (str (:id %)))))
+                      rows))
      :next-cursor (when (= (count rows) lim)
                     (let [r (peek rows)] [(:created_at r) (str (:id r))]))}))
 

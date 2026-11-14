@@ -1315,3 +1315,43 @@
                                         :body [{:path (str "/api/v1/jobs/" job "/undo") :method "post"}]})]
       (is (= 200 (:status resp)) (pr-str (:body resp)))
       (is (= before (state [doc d2] [vocab]))))))
+
+;; ============================================================
+;; Round 5: a job's read says it stands undone
+;; ============================================================
+
+(defn- job-read [req job] (api-call req {:method :get :path (str "/api/v1/jobs/" job)}))
+
+(deftest a-jobs-read-says-it-stands-undone
+  (let [{:keys [proj job]} (job-world!)
+        other (:job (job-world!))
+        _ (is (nil? (-> (job-read admin-request job) :body :job/undone)) "not undone yet")
+        first-undo (:body (undo-job admin-request job))
+        op (str (:operation first-undo))
+        undone (-> (job-read admin-request job) :body :job/undone)]
+    (testing "undone, and read back"
+      (is (= op (:operation undone)))
+      (is (= "admin@example.com" (:user undone)))
+      (is (= (str (:ts (psc/fetch-by-id db :operations op))) (:time undone)))
+      (is (= "job:" (subs (str (:ref (psc/q1 db {:select [:g.ref] :from [[:operations :o]]
+                                                 :join [[:operation_groups :g] [:= :g.id :o.group_id]]
+                                                 :where [:= :o.id op]})))
+                          0 4))))
+    (testing "in the project's list too"
+      (let [entries (-> (api-call admin-request {:method :get :path (str "/api/v1/projects/" proj "/jobs")}) :body :entries)]
+        (is (= op (-> (first (filter #(= job (:job/id %)) entries)) :job/undone :operation)))))
+    (testing "a second job with the same label is not undone"
+      (is (nil? (-> (job-read admin-request other) :body :job/undone))))
+    (testing "undone twice: the second writes nothing, the first stands"
+      (is (nil? (:operation (:body (undo-job admin-request job)))))
+      (is (= op (-> (job-read admin-request job) :body :job/undone :operation))))
+    (testing "a reader of the project sees it, a non-member does not"
+      (assert-done (add-project-reader admin-request proj "user1@example.com"))
+      (is (= op (-> (job-read user1-request job) :body :job/undone :operation)))
+      (is (= 403 (:status (job-read user2-request job)))))
+    (testing "the undo undone (a redo): no longer undone; that undone again: undone"
+      (let [redo (:operation (undone! admin-request op))]
+        (is (some? redo))
+        (is (nil? (-> (job-read admin-request job) :body :job/undone)))
+        (let [again (str (:operation (undone! admin-request redo)))]
+          (is (= again (-> (job-read admin-request job) :body :job/undone :operation))))))))

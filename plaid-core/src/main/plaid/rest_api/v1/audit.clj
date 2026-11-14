@@ -409,7 +409,8 @@
         (if (empty? ops)
           {:status 200 :body (nothing-to-undo groups dry-run?)}
           (undo-answer request groups ops {:dry-run? dry-run?
-                                           :description (str "Undo job: " (job-label db job-id groups))}))))))
+                                           :description (str "Undo job: " (job-label db job-id groups))
+                                           :group-ref (str "job:" job-id "/undo")}))))))
 
 (def audit-routes
   [["/projects/:project-id/audit"
