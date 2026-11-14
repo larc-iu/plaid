@@ -540,7 +540,7 @@ def test_punctuation_left_out_is_said_when_the_count_is_still_off():
     assert out.startswith('Error: s1 not staged: words has 1 item, s1 has 3 words (1 item of punctuation left out).')
 
 
-# --- v3 3: a count a little off is lined up by forms ------------------------------------
+# --- the landing round: items by place only ----------------------------------------------
 
 def _five_words():
     """A sentence of five words, "kaba lumi sorek tavi nduma", no morpheme
@@ -556,77 +556,39 @@ def _analysed(w):
     return {o['word_id']: ''.join(m['form'] for m in o['morphemes']) for o in w.ops if o['kind'] == 'set_analysis'}
 
 
-def test_the_matching_rule():
-    from plaid_agent.igt.lines import MATCH_AT_LEAST, MAX_SLIP, similarity
-    assert (MATCH_AT_LEAST, MAX_SLIP) == (0.6, 3)
-    assert similarity('ka-ba', 'kaba') == 1.0 and similarity('So-rek', 'sorek') == 1.0
-    assert similarity('wag̲a-yt', 'waayt') >= 0.6 and similarity('∅-ka=ba', 'kaba') == 1.0
-    assert similarity('lumi', 'tavi') < 0.6 and similarity('kaba', 'nduma') < 0.6
-    # Forms longer than the word cost what they add: a dump that holds the
-    # word matches no word (the Arabic case below), nor does a short word
-    # with more forms added.
-    assert similarity('رأيت-شقيقة-ه', 'شقيقته') < 0.6 and similarity('kaba-ti', 'kaba') < 0.6
+def _w(body, *words):
+    return ws(doc=_doc(body, [(0, len(body))], _spans(body, *words)))
 
 
-def test_a_missing_item_costs_its_word_only_and_no_analysis_lands_on_another_word():
+def test_rev_las_1_with_the_right_count_every_item_stays_on_its_own_place():
+    """REV-LAS-1, Gitksan text 2 s16 of a night run: "ii CCNJ" given where
+    "Sim true" belonged, "'nii on" in its place. By place: the model's
+    mistake stays on w1 (the surface check lets "ii" on "Sim" through, two
+    characters against a bound of nine) and 'nii and win get their own."""
+    w = _w("Sim 'nii win.", 'Sim', "'nii", 'win')
+    out = call(w, sentences=[{'ref': 's1', 'words': ['ii CCNJ', "'nii on", 'win COMP']}])
+    assert _analysed(w) == {'w-1': 'ii', 'w-2': "'nii", 'w-3': 'win'}, out
+    assert 'matches no word' not in out
+
+
+def test_a_count_off_by_one_stages_nothing_and_shows_the_words_beside_the_items():
     w = ws(doc=_five_words())
     out = call(w, sentences=[{'ref': 's1', 'words': FIVE[:2] + FIVE[3:]}])
-    assert _analysed(w) == {'w-1': 'kaba', 'w-2': 'lumi', 'w-4': 'tavi', 'w-5': 'nduma'}
-    assert 's1: 4 of 5 words analysed, 0 links. Not staged: w3\n  w3 sorek: no item' in out, out
-
-
-def test_an_extra_item_is_listed_and_every_word_gets_its_own():
-    w = ws(doc=_five_words())
-    out = call(w, sentences=[{'ref': 's1', 'words': FIVE[:2] + ['mbelo wind'] + FIVE[2:]}])
-    assert _analysed(w) == {'w-1': 'kaba', 'w-2': 'lumi', 'w-3': 'sorek', 'w-4': 'tavi', 'w-5': 'nduma'}
-    assert 's1: 5 words analysed, 0 links.\n  item 3 mbelo wind: matches no word' in out, out
-
-
-def test_a_two_word_gloss_that_shifts_the_list_stays_safe():
-    """The night run's drift, in this shape: an item split in two. Neither
-    half lands on a word its forms do not fit."""
-    w = ws(doc=_five_words())
-    out = call(w, sentences=[{'ref': 's1', 'words': FIVE[:1] + ['lumi', 'house'] + FIVE[2:]}])
-    got = _analysed(w)
-    assert got == {'w-1': 'kaba', 'w-2': 'lumi', 'w-3': 'sorek', 'w-4': 'tavi', 'w-5': 'nduma'} or \
-        ('w-2' not in got and all(got[k] == v for k, v in
-                                  {'w-1': 'kaba', 'w-3': 'sorek', 'w-4': 'tavi', 'w-5': 'nduma'}.items()))
-    assert 'house' not in str([o.get('morphemes') for o in w.ops if o.get('word_id') != 'w-2'])
-
-
-def test_items_that_match_nothing_stage_nothing():
-    w = ws(doc=_five_words())
-    out = call(w, sentences=[{'ref': 's1', 'words': ['xx-yy a-b', 'qq c', 'zz d', 'pp e']}])
-    assert out.startswith('Error: s1 not staged: words has 4 items, s1 has 5 words, and none matches a word.')
+    assert out == ('Error: s1 not staged: words has 4 items, s1 has 5 words.\n'
+                   '  w1 kaba | ka-ba go-PST\n  w2 lumi | lumi house\n  w3 sorek | tavi water\n'
+                   '  w4 tavi | ndu-ma see-1SG\n  w5 nduma | (none)')
     assert w.ops == []
-
-
-def test_more_than_three_off_is_refused_whole():
-    w = ws(doc=_five_words())
-    out = call(w, sentences=[{'ref': 's1', 'words': FIVE[:1]}])
-    assert out.startswith('Error: s1 not staged: words has 1 item, s1 has 5 words.') and w.ops == []
-
-
-def test_a_dump_over_two_items_stages_nothing_on_a_word_it_does_not_fit():
-    """run4's mistake spread over two items of a three-word sentence: the
-    item holding two words' forms matches neither, the other matches its
-    own word."""
-    w = ws()
-    out = call(w, sentences=[{'ref': 's1', 'words': ['Ali-di-gam Ali-ERG-fish', 'aku-na see-PST']}])
-    assert _analysed(w) == {'w-3': 'akuna'}, out
-    assert 'Not staged: w1, w2' in out and 'item 1 Ali-di-gam Ali-ERG-fish: matches no word' in out
+    out = call(w, sentences=[{'ref': 's1', 'words': FIVE + ['mbelo wind']}])
+    assert out.startswith('Error: s1 not staged: words has 6 items, s1 has 5 words.') and \
+        out.endswith('  (no word) | mbelo wind') and w.ops == []
 
 
 @pytest.mark.parametrize('seed', range(60))
-def test_no_analysis_lands_on_a_word_whose_own_item_is_elsewhere_in_the_list(seed):
-    """Random slips (a drop, an extra item, an item split in two) over the
-    five words. An analysis staged on a word is its own item's, or, where
-    its own item was dropped and another put in its place, that item: a
-    word's item and another item for the same word cannot be told apart, as
-    allomorphy cannot. Never the item of another word."""
+def test_no_analysis_lands_anywhere_but_by_place(seed):
+    """Random slips (a drop, an extra item, an item split in two): with the
+    count off nothing is staged, with the count right item n is word n's."""
     import random
     rng = random.Random(seed)
-    own = [FIVE[i].split()[0].replace('-', '') for i in range(5)]
     given = list(FIVE)
     for _ in range(rng.randint(1, 3)):
         k = rng.randrange(len(given))
@@ -637,23 +599,23 @@ def test_no_analysis_lands_on_a_word_whose_own_item_is_elsewhere_in_the_list(see
             given.insert(k, rng.choice(['mbelo wind', 'x y', 'kaba go']))
         else:
             given[k:k + 1] = given[k].split()
-    present = {x.split()[0].replace('-', '') for x in given}
     w = ws(doc=_five_words())
     call(w, sentences=[{'ref': 's1', 'words': given}])
-    for wid, forms in _analysed(w).items():
-        mine = own[int(wid[2:]) - 1]
-        assert forms == mine or (mine not in present and forms not in own), (given, wid, forms)
+    got = _analysed(w)
+    if len(given) != 5:
+        assert got == {}, given
+    for wid, forms in got.items():
+        assert forms == given[int(wid[2:]) - 1].split()[0].replace('-', ''), (given, wid, forms)
 
 
 def test_with_the_same_number_a_word_unlike_its_forms_keeps_its_item_by_place():
-    """Allomorphy: "gam" given as "g" matches no word, and sits between two
-    words that match their items, so it is its word's by place, as before."""
     w = ws()
     out = call(w, sentences=[{'ref': 's1', 'words': ['Ali-di Ali-ERG', 'g fish', 'aku-na see-PST']}])
     assert _analysed(w) == {'w-1': 'Alidi', 'w-2': 'g', 'w-3': 'akuna'} and 'Not staged' not in out, out
 
 
-def test_the_help_states_the_line_up_rule_and_its_numbers():
-    from plaid_agent.igt.lines import HELP, MATCH_AT_LEAST, MAX_SLIP
-    assert f'{round((1 - MATCH_AT_LEAST) * 100)}% of the word' in HELP and f'more than {MAX_SLIP} off' in HELP
-    assert 'punctuation alone is left out' in HELP and len(HELP) < 2400
+def test_the_help_states_the_count_rule():
+    from plaid_agent.igt import lines
+    assert not hasattr(lines, 'similarity') and not hasattr(lines, '_line_up')
+    assert 'punctuation alone is left out' in lines.HELP and 'item n is word n' in lines.HELP
+    assert 'edits' not in lines.HELP and len(lines.HELP) < 2200

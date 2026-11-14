@@ -31,16 +31,12 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from plaid_client.workflows.igt.ignored import is_token_ignored
 
-import unicodedata
-
-from plaid_client.workflows.igt.glossing import is_zero_morph
-
 from ..core.tools import ToolError
 
 from .fit import collation_key, fits, nfc, spelled
 from .lexicon import _create_entry
 from .project import IgtDoc, IgtProject
-from .tools import parse_analysis, surface_misfit, t_link_entry, trim_ignored_edges, word_analysis_op
+from .tools import parse_analysis, surface_misfit, t_link_entry, word_analysis_op
 from .vocab import ROLE_GLOSS
 from .workspace import Workspace
 
@@ -78,13 +74,11 @@ morpheme with the entries to choose from: link one with link_entry (sN.wN.mN, en
 true, only when the instructions or the user ask for new entries, creates an entry, once, for each form \
 and gloss no entry has, and links every morpheme of it. An ambiguous one is never created for.
 
-Checks. An item of punctuation alone is left out. Items go to the ref's words by their forms: an item \
-matches a word when its forms, joined, are no more than 40% of the word's length in edits from it, and \
-between two matched words as many items as words go to them in order. A word with no item, an item \
-with no word, and a word whose forms and gloss differ in morphemes, hold an empty one, or are over \
-twice the word's length plus 3, are listed and not staged: the other words are. One item for several \
-words, or a count more than 3 off, stages nothing. Forms that differ from the word otherwise are staged \
-with a note. Up to 20 sentences a call, each on its own.'''
+Checks. An item of punctuation alone is left out. Then the items must be as many as the ref's words, \
+and item n is word n's: another number stages nothing of the sentence, and the answer shows the words \
+beside the items. A word whose forms and gloss differ in morphemes, hold an empty one, or are over \
+twice the word's length plus 3, is listed and not staged: the other words are. Forms that differ from \
+the word otherwise are staged with a note. Up to 20 sentences a call, each on its own.'''
 
 #: An item's columns when a sentence names none.
 COLUMNS = ['forms', 'gloss']
@@ -196,87 +190,6 @@ def _columns(ws: Workspace, item: Dict[str, Any], label: str):
     return out
 
 
-#: When the number of items is off, by at most this many, and there are two
-#: or more, the items are lined up against the words by their forms (v3,
-#: :func:`_line_up`).
-MAX_SLIP = 3
-#: An item matches a word when :func:`similarity` of its forms and the word
-#: is at least this.
-MATCH_AT_LEAST = 0.6
-
-
-def _bare(text: str) -> str:
-    return unicodedata.normalize('NFC', text or '').lower().replace(' ', '')
-
-
-def similarity(forms: str, surface: str) -> float:
-    """How alike an item's forms column is to a word: one less the edit
-    distance (Levenshtein, by code point) of the two over the WORD's length,
-    so forms longer than the word cost what they add (a whole sentence's
-    forms on one word come out far below zero). The forms are joined (the
-    delimiters and the zero morph left out), ``surface`` is the word as the
-    surface check reads it (the caller trims its edge punctuation), both
-    NFC, in lower case, spaces left out. 1 is the word itself."""
-    a = _bare(''.join(f for f in _SPLIT.split(forms)[0::2] if not is_zero_morph(f)))
-    b = _bare(surface)
-    if not a or not b:
-        return 0.0
-    prev = list(range(len(b) + 1))
-    for i, ca in enumerate(a, 1):
-        cur = [i]
-        for j, cb in enumerate(b, 1):
-            cur.append(min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (ca != cb)))
-        prev = cur
-    return 1 - prev[-1] / len(b)
-
-
-def _line_up(words, items: List[str], cfg) -> List[Tuple[int, int]]:
-    """``[(word place, item place)]``, in order. First the anchors: the
-    order-keeping pairing of items with words that pairs the most items with
-    a word they match (similarity of the item's forms and the word at least
-    :data:`MATCH_AT_LEAST`), and of those the one whose matches are most
-    alike in sum. Then each stretch between two anchors (or before the first,
-    or after the last) that holds as many words as items is paired in order:
-    an item there is the word's by its place, as with the same number of
-    items and words, where every word's own item is its by place unless a
-    shift moves the anchors. A placeholder item matches no word."""
-    surfaces = [trim_ignored_edges(w.surface, cfg) for w in words]
-    n, m = len(words), len(items)
-    sim = [[0.0] * m for _ in range(n)]
-    for j, w in enumerate(surfaces):
-        for i, text in enumerate(items):
-            parts = text.split()
-            if parts and text.strip() != PLACEHOLDER:
-                sim[j][i] = similarity(parts[0], w)
-    best = [[(0, 0.0)] * (m + 1) for _ in range(n + 1)]
-    for j in range(n - 1, -1, -1):
-        for i in range(m - 1, -1, -1):
-            options = [best[j + 1][i], best[j][i + 1]]
-            if sim[j][i] >= MATCH_AT_LEAST:
-                k, t = best[j + 1][i + 1]
-                options.append((k + 1, t + sim[j][i]))
-            best[j][i] = max(options)
-    pairs, j, i = [], 0, 0
-    while j < n and i < m:
-        if sim[j][i] >= MATCH_AT_LEAST:
-            k, t = best[j + 1][i + 1]
-            if best[j][i] == (k + 1, t + sim[j][i]):
-                pairs.append((j, i))
-                j, i = j + 1, i + 1
-                continue
-        if best[j][i] == best[j + 1][i]:
-            j += 1
-        else:
-            i += 1
-    out = []
-    for (pj, pi), (nj, ni) in zip([(-1, -1)] + pairs, pairs + [(n, m)]):
-        if nj - pj == ni - pi:
-            out += [(pj + k, pi + k) for k in range(1, nj - pj)]
-        if nj < n:
-            out.append((nj, ni))
-    return out
-
-
 def _parse_item(text: str, names: List[str], word, cfg):
     """``(morphemes, wrong)`` of one word's item: its morphemes as
     ``(form, delimiter before, {column name: value})``, or None with what is
@@ -311,51 +224,34 @@ def _parse_item(text: str, names: List[str], word, cfg):
 
 
 def _check(ws: Workspace, label: str, words, items: List[str], columns):
-    """``(problems, parsed, bad, extra)``: what keeps the items from lining
-    up with ``words`` as a whole (which refuses the sentence), per word its
-    morphemes (None for one left as it is or not staged), each
-    ``(form, delimiter before, {column name: value})``, per word not staged
-    ``(its item or None, what is wrong)`` by its place in ``words``, and the
-    places of the items that matched no word.
+    """``(problems, parsed, bad)``: what keeps the items from lining up with
+    ``words`` as a whole (another number of items than words, which refuses
+    the sentence), per word its morphemes (None for one left as it is or not
+    staged), each ``(form, delimiter before, {column name: value})``, and
+    per word not staged ``(its item, what is wrong)`` by its place.
 
-    The items are lined up by their forms (:func:`_line_up`), which gives
-    item k to word k when the numbers are the same and no shift shows.
-    Another number is taken when it is off by at most :data:`MAX_SLIP` and
-    there are two items or more: the items are lined up by their forms
-    (:func:`_line_up`), a word with no item and an item with no word are
-    listed, and when no item matches a word nothing is staged."""
+    By place only (the landing round, REV-LAS-1): item n is word n's."""
     n = len(words)
+    if len(items) != n:
+        return [f'words has {len(items)} item{"s" if len(items) != 1 else ""}, {label} has {n} '
+                f'word{"s" if n != 1 else ""}'], [], {}
     cfg = ws.project.ignored_cfg
     names = [name for name, _f in columns]
-    count = (f'words has {len(items)} item{"s" if len(items) != 1 else ""}, {label} has {n} '
-             f'word{"s" if n != 1 else ""}')
-    if abs(len(items) - n) > MAX_SLIP or (len(items) == 1 and n > 1):
-        return [count], [], {}, []
-    pairs = _line_up(words, items, cfg)
-    if not pairs:
-        return [count + ', and none matches a word'], [], {}, []
-    of = dict(pairs)
     parsed: List[Optional[list]] = []
     bad: Dict[int, tuple] = {}
     for j, w in enumerate(words):
-        if j not in of:
-            bad[j] = (None, ['no item'])
-            parsed.append(None)
-            continue
-        morphs, wrong = _parse_item(items[of[j]], names, w, cfg)
+        morphs, wrong = _parse_item(items[j], names, w, cfg)
         if wrong:
-            bad[j] = (items[of[j]], wrong)
+            bad[j] = (items[j], wrong)
         parsed.append(morphs)
-    used = set(of.values())
-    return [], parsed, bad, [i for i in range(len(items)) if i not in used]
+    return [], parsed, bad
 
 
-def _word_lines(words, items, bad: Dict[int, tuple], extra: List[int] = ()) -> List[str]:
-    """The line of each word not staged (the word, the item given, what is
-    wrong) and of each item that matched no word."""
-    return ([f'  w{words[j].index} {words[j].surface}' + (f' | {text}' if text is not None else '') + ': '
-             + '; '.join(why) for j, (text, why) in sorted(bad.items())]
-            + [f'  item {i + 1} {items[i]}: matches no word' for i in extra])
+def _word_lines(words, bad: Dict[int, tuple]) -> List[str]:
+    """The line of each word not staged: the word, the item given, what is
+    wrong."""
+    return [f'  w{words[j].index} {words[j].surface} | {text}: ' + '; '.join(why)
+            for j, (text, why) in sorted(bad.items())]
 
 
 def _lineup(words, items) -> List[str]:
@@ -383,7 +279,7 @@ def _stage_sentence(ws: Workspace, doc: IgtDoc, item: Dict[str, Any], new_entrie
     given = [str(x) for x in items]
     items = [x for x in given if not _punctuation(x, ws.project.ignored_cfg)]
     columns = _columns(ws, item, label)
-    problems, parsed, bad, extra = _check(ws, label, words, items, columns)
+    problems, parsed, bad = _check(ws, label, words, items, columns)
     if problems:
         dropped = len(given) - len(items)
         left = (f' ({dropped} item{"s" if dropped != 1 else ""} of punctuation left out)' if dropped else '')
@@ -392,7 +288,7 @@ def _stage_sentence(ws: Workspace, doc: IgtDoc, item: Dict[str, Any], new_entrie
     not_staged = ', '.join(f'w{words[i].index}' for i in sorted(bad))
     if all(p is None for p in parsed):
         if bad:
-            raise _Refused('\n'.join([f'{label} not staged: {not_staged}.'] + _word_lines(words, items, bad, extra)))
+            raise _Refused('\n'.join([f'{label} not staged: {not_staged}.'] + _word_lines(words, bad)))
         raise _Refused(f'{label} not staged: every word is _.')
     fields = {name: f for name, f in columns if f is not None}
     g = fields.get('gloss')
@@ -456,9 +352,7 @@ def _stage_sentence(ws: Workspace, doc: IgtDoc, item: Dict[str, Any], new_entrie
         counts.append(f'{creates} entr{"ies" if creates != 1 else "y"} to create')
     line = f'{label}: ' + ', '.join(counts) + '.'
     if bad:
-        line = f'{line} Not staged: {not_staged}'
-    if bad or extra:
-        line = '\n'.join([line] + _word_lines(words, items, bad, extra))
+        line = '\n'.join([f'{line} Not staged: {not_staged}'] + _word_lines(words, bad))
     return line, notes
 
 
