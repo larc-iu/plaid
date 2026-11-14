@@ -250,8 +250,8 @@ test('a job is undone but for what a person changed since, which is listed', asy
     timeout: 20_000,
   });
 
-  // The undo undone from a document's History (a redo): the line goes and
-  // Undo job is offered again.
+  // The undo undone from one document's History (a redo of that document's
+  // part): the rest of the undo stands, so the job still reads undone.
   await page.goto(`/#/projects/${projectId}/jobs/${job.id}`);
   await page.getByTestId('job-undone').getByRole('link', { name: 'Show in History' }).click();
   await expect(page.getByTestId('history-changes')).toBeVisible({ timeout: 20_000 });
@@ -264,6 +264,13 @@ test('a job is undone but for what a person changed since, which is listed', asy
   await redo.getByRole('button', { name: 'Undo', exact: true }).click();
   await expect(redo).toHaveCount(0, { timeout: 20_000 });
   await page.goto(`/#/projects/${projectId}/jobs/${job.id}`);
+  await expect(page.getByTestId('job-undone')).toContainText('Job undone', { timeout: 20_000 });
+  await expect(page.getByRole('button', { name: 'Undo job' })).toHaveCount(0);
+
+  // The whole undo undone: the line goes and Undo job is offered again.
+  const { undone } = await client.jobs.get(job.id);
+  await client.audit.undo(undone.operation);
+  await page.reload();
   await expect(page.getByRole('button', { name: 'Undo job' })).toBeVisible({ timeout: 20_000 });
   await expect(page.getByTestId('job-undone')).toHaveCount(0);
 });
