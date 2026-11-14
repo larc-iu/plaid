@@ -619,3 +619,13 @@ def test_the_help_states_the_count_rule():
     assert not hasattr(lines, 'similarity') and not hasattr(lines, '_line_up')
     assert 'punctuation alone is left out' in lines.HELP and 'item n is word n' in lines.HELP
     assert 'edits' not in lines.HELP and len(lines.HELP) < 2200
+
+
+def test_rev_las_4_an_item_that_is_not_a_string_is_refused_for_its_word():
+    w = ws()
+    out = call(w, sentences=[{'ref': 's1', 'words': [['Ali-di', 'Ali-ERG'], 'gam fish', 'aku-na see-PST']}])
+    assert ('s1: 2 of 3 words analysed, 2 links. Not staged: w1\n'
+            '  w1 Ali-di | ["Ali-di", "Ali-ERG"]: an item is one string, "FORMS GLOSS"') in out, out
+    assert "['Ali" not in str(w.ops)
+    out = call(ws(), sentences=[{'ref': 's1.w2', 'words': [None]}])
+    assert out == 'Error: s1.w2 not staged: w2.\n  w2 gam | null: an item is one string, "FORMS GLOSS"'

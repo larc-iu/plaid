@@ -26,6 +26,7 @@ The pieces a variant of this tool would change, each in one place:
   and the problem texts in :func:`_check`; the manual: :data:`HELP`.
 """
 
+import json
 import re
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -194,7 +195,9 @@ def _parse_item(text: str, names: List[str], word, cfg):
     """``(morphemes, wrong)`` of one word's item: its morphemes as
     ``(form, delimiter before, {column name: value})``, or None with what is
     wrong (and None, [] for the placeholder)."""
-    text = str(text or '').strip()
+    if not isinstance(text, str):
+        return None, ['an item is one string, "FORMS GLOSS"']
+    text = text.strip()
     if text == PLACEHOLDER:
         return None, []
     cols = text.split()
@@ -250,8 +253,14 @@ def _check(ws: Workspace, label: str, words, items: List[str], columns):
 def _word_lines(words, bad: Dict[int, tuple]) -> List[str]:
     """The line of each word not staged: the word, the item given, what is
     wrong."""
-    return [f'  w{words[j].index} {words[j].surface} | {text}: ' + '; '.join(why)
+    return [f'  w{words[j].index} {words[j].surface} | {_shown(text)}: ' + '; '.join(why)
             for j, (text, why) in sorted(bad.items())]
+
+
+def _shown(item) -> str:
+    """An item as the answer quotes it: a string as given, anything else as
+    JSON, never as Python writes it."""
+    return item if isinstance(item, str) else json.dumps(item, ensure_ascii=False)
 
 
 def _lineup(words, items) -> List[str]:
@@ -260,7 +269,7 @@ def _lineup(words, items) -> List[str]:
     for p in range(max(len(words), len(items))):
         w = words[p] if p < len(words) else None
         head = f'  w{w.index} {w.surface}' if w is not None else '  (no word)'
-        out.append(head + f' | {items[p] if p < len(items) else "(none)"}')
+        out.append(head + f' | {_shown(items[p]) if p < len(items) else "(none)"}')
     return out
 
 
@@ -276,8 +285,8 @@ def _stage_sentence(ws: Workspace, doc: IgtDoc, item: Dict[str, Any], new_entrie
     if not isinstance(items, list) or not items:
         raise _Refused(f'{label} not staged: give words, one "FORMS GLOSS" item per word of the ref, e.g. '
                        '"words": ["na-ku-ja PRS-INF-come", "le=o today=DEF"].')
-    given = [str(x) for x in items]
-    items = [x for x in given if not _punctuation(x, ws.project.ignored_cfg)]
+    given = list(items)
+    items = [x for x in given if not (isinstance(x, str) and _punctuation(x, ws.project.ignored_cfg))]
     columns = _columns(ws, item, label)
     problems, parsed, bad = _check(ws, label, words, items, columns)
     if problems:
