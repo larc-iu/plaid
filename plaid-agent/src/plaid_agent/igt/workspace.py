@@ -1175,8 +1175,14 @@ class Workspace(BaseWorkspace):
         # Before the funnel asks whether any of them clashes with the plan: a
         # value planned on a morpheme the analysis deletes is superseded by
         # it, not a reason to refuse it.
-        with self.superseding(ops):
-            super().add_ops(ops)
+        # Its ops were named against the document as read together
+        # (``retyped.refuse_renumbered``).
+        self.batch_staging = {id(o) for o in ops}
+        try:
+            with self.superseding(ops):
+                super().add_ops(ops)
+        finally:
+            self.batch_staging = set()
 
     def place_virtual(self, op: Dict[str, Any]) -> None:
         """Note on ``op`` the word an unsegmented word's derived morpheme is

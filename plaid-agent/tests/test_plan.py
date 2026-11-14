@@ -739,7 +739,10 @@ def test_op_keys_survive_the_wire_unchanged():
         ('set_field', {'document': 'Text 1', 'refs': ['s1.w1'], 'field': 'Gloss', 'value': 'X'}),
         # On a word no reshape below names: a plan may change a word's
         # boundaries or its morpheme chain, never both.
-        ('set_analysis', {'document': 'Text 1', 'ref': 's1.w3', 'morphemes': [{'form': 'akuna', 'Morph Gloss': 'see'}]}),
+        # By its form: the merge below renumbers it (retyped.refuse_renumbered).
+        ('merge_words', {'document': 'Text 1', 'refs': ['s1.w1', 's1.w2']}),
+        ('set_analysis', {'document': 'Text 1', 'ref': 's1.w3 "akuna"',
+                          'morphemes': [{'form': 'akuna', 'Morph Gloss': 'see'}]}),
         ('set_orthography', {'document': 'Text 1', 'refs': ['s1.w1'], 'orthography': 'IPA', 'value': 'ali'}),
         # Not a word the merge below takes: a respelling and a reshape of one
         # word never share a plan.
@@ -755,7 +758,6 @@ def test_op_keys_survive_the_wire_unchanged():
         # Not "Ali": a change above sets a field on it, and a plan that writes
         # to an entry it also deletes refuses itself.
         ('delete_entry', {'entry_id': 'vi-erg'}),
-        ('merge_words', {'document': 'Text 1', 'refs': ['s1.w1', 's1.w2']}),
         ('merge_sentences', {'document': 'Text 1', 'ref': 's2'}),
         ('rename_document', {'document': 'Text 1', 'new_name': 'Text One'}),
     ]:
@@ -763,7 +765,7 @@ def test_op_keys_survive_the_wire_unchanged():
     ops += w.ops
     w = shape_ws()
     for name, args in [('split_word', {'document': 'Text 1', 'ref': 's1.w1', 'at': 2}),
-                       ('delete_word', {'document': 'Text 1', 'refs': ['s1.w2']}),
+                       ('delete_word', {'document': 'Text 1', 'refs': ['s1.w2 "gam"']}),
                        ('split_sentence', {'document': 'Text 1', 'ref': 's1', 'before_word': 2}),
                        ('append_text', {'document': 'Text 1', 'text': 'Yeni cümlə.'})]:
         assert not call_tool(w, name, args).startswith('Error'), name

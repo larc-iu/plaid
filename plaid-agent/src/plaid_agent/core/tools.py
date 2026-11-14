@@ -179,7 +179,9 @@ def run_tool(ws, name: str, fn_: Callable, args: Optional[Dict[str, Any]],
     type than it declares is the request's, not the tool's.
     """
     ws.forget_clipping()
-    ws.begin_tool_call()
+    begin = getattr(ws, 'begin_tool_call', None)
+    if begin is not None:
+        begin()
     try:
         bound = inspect.signature(fn_).bind(ws, **(args or {}))
     except TypeError:

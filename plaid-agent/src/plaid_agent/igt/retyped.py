@@ -512,8 +512,8 @@ def refuse_renumbered(ws, op: Dict[str, Any], others) -> None:
     # One call's refs all read the document as it was read, whatever else
     # the call stages: only what earlier calls staged renumbers them.
     before = getattr(ws, 'staged_before_call', None)
-    if before is not None:
-        others = [o for o in others if id(o) in before]
+    batch = getattr(ws, 'batch_staging', None) or set()
+    others = [o for o in others if (before is None or id(o) in before) and id(o) not in batch]
     for doc, s, w in _words_named(ws, op):
         shapes = _shapes_in(others, s)
         if not shapes or w.id in named_by_form(doc):

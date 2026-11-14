@@ -57,7 +57,8 @@ def test_two_word_deletes_that_leave_an_expression_one_member_say_it_goes(live_c
     s, ws = seeded(c, base_project(), _four([('vi-gam', (1, 2, 3))]), name='shape pairs: mwe two deletes')
     try:
         call_tool(ws, 'delete_word', {'document': 'Doc A', 'refs': ['s1.w2']})
-        call_tool(ws, 'delete_word', {'document': 'Doc A', 'refs': ['s1.w3']})
+        # by its form: the delete before it renumbers it (retyped.refuse_renumbered)
+        call_tool(ws, 'delete_word', {'document': 'Doc A', 'refs': ['s1.w3 "cc"']})
         p, h, _ = approve(c, s.project_id, ws)
         rows = [r.get('label') or '' for r in p['changes']]
         assert 'is left with its other words' in rows[0], rows
@@ -73,7 +74,7 @@ def test_a_merge_after_a_delete_that_leaves_an_expression_one_word_drops_it(live
     s, ws = seeded(c, base_project(), _four([('vi-gam', (0, 1, 2))]), name='shape pairs: mwe delete merge')
     try:
         call_tool(ws, 'delete_word', {'document': 'Doc A', 'refs': ['s1.w1']})
-        call_tool(ws, 'merge_words', {'document': 'Doc A', 'refs': ['s1.w2', 's1.w3']})
+        call_tool(ws, 'merge_words', {'document': 'Doc A', 'refs': ['s1.w2 "bb"', 's1.w3 "cc"']})
         p, h, _ = approve(c, s.project_id, ws)
         rows = [r.get('label') or '' for r in p['changes']]
         assert 'the multi-word expression "gam" is dropped' in rows[1], rows
