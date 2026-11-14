@@ -51,7 +51,13 @@ def world():
 
 
 def _gloss(asked, n, kwargs):
-    """Every word of Story, whatever the piece."""
+    """Every word of Story, whatever the piece. A selection reads Story
+    first: a sentence it wrote in and was never shown is not one of its own,
+    and the walk works it again (BRIEF NW)."""
+    if 'Your piece: the whole selection above.' in asked:
+        if n == 1:
+            return reply(calls=[call(9, 'read_document', {'document': 'Story'})])
+        n -= 1
     if n > 1:
         return reply('Glossed.')
     refs = ['s1.w1', 's1.w2', 's1.w3', 's2.w1']
