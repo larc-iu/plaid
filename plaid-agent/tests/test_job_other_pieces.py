@@ -326,3 +326,31 @@ def test_a_document_unreadable_at_the_report_says_so_and_counts_no_left(monkeypa
     assert 'left' not in doc['counts'] and 'left_translations' not in doc['counts'], doc['counts']
     assert doc['left_unread'] is True and doc['left'] == []
     assert 'Left blank could not be read' in summary_message(finished['report'])
+
+
+@pytest.mark.parametrize('writes_s4', [True, False], ids=['wrote-in-the-rest', 'left-the-rest'])
+def test_a_selection_that_read_part_of_a_document_and_wrote_in_the_rest_read_it(monkeypatch, writes_s4):
+    """REV-LNW-3: the selection reads s1 to s3 and glosses them, and s4.w1
+    too (a sentence it was never shown). s4 is not its own, so the walk
+    works it, but the plan does not say the selection did not read the
+    document. Had it written nothing in s4, it would."""
+    client = JobClient({'d1': _doc(set())})
+    job = start(client, id=J, plan='selection')
+    _applying(monkeypatch, client)
+
+    def model(asked, n, kwargs):
+        if 'Your piece: the whole selection above.' in asked:
+            if n == 1:
+                return reply(calls=[call(1, 'read_document', {'document': 'Story', 'from_sentence': 1,
+                                                              'to_sentence': 3})])
+            if n > 2:
+                return reply('Done.')
+            refs = [f's{s}.w{w}' for s in (1, 2, 3) for w in (1, 2)] + (['s4.w1'] if writes_s4 else [])
+            return reply(calls=[call(k, 'set_analysis', {'document': 'Story', 'ref': r, 'morphemes': [
+                {'form': 'x', 'fields': {'Morph Gloss': 'g'}}]}) for k, r in enumerate(refs, start=2)])
+        return reply('Done.')
+    use(monkeypatch, Model(model))
+    finished = run_job(job, runner(job))
+    assert finished['state'] == 'done'
+    fallback = [f['reason'] for f in finished['report']['plan']['fallback'] if f['document_id'] == 'd1']
+    assert fallback == ([] if writes_s4 else ['not-read']), fallback

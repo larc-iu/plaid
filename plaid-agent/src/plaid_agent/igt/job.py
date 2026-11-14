@@ -1531,10 +1531,16 @@ class IgtRunner:
                 loose = [op for op in loose if op[LOOSE] not in done]
                 continue
             # What a read printed to the model is what it read, never what a
-            # tool loaded (REV-JG3-1): a sentence it was never shown, and did
-            # not write in, is worked by the walk in pieces of its own.
+            # tool loaded (REV-JG3-1): a sentence it was never shown is not
+            # one of its own, and the walk works it, whether the selection
+            # wrote in it or not (BRIEF NW). A word it wrote there is never
+            # written again (``Written``). The plan says the selection did not
+            # read the document (``NOT_READ``) only when the document holds a
+            # sentence it was never shown and did not write in (REV-LNW-3).
             out = self.excluded(d)
-            if any(s.id not in shown and s.id not in out for s in ws._docs[d].sentences):
+            rows, landed = self.view(d)
+            wrote = {r['sentence'] for r in rows if not r.get('loose') and r['piece'] == SELECTION_TAG and landed(r)}
+            if any(s.id not in shown and s.id not in out and s.id not in wrote for s in ws._docs[d].sentences):
                 core_job.through_core(job, lambda: self.fall_back(d, NOT_READ))
         if loose and read:
             # No write landed to carry them: listed for a person.
