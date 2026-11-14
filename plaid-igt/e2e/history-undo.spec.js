@@ -132,7 +132,7 @@ test('a person’s edit is undone from History, a second tab follows, and the un
     await undoIn(dialog);
 
     // The document now, the gloss back, the undo at the top of History.
-    await expect(page.getByText('1 value undone.')).toBeVisible();
+    await expect(page.getByText('1 value.', { exact: true })).toBeVisible();
     await expect(changes(page)).toHaveCount(0);
     await expect(page.getByText('Historical state')).toHaveCount(0);
     await expect(glossCell(page, 0)).toHaveValue('go', { timeout: 20_000 });
@@ -208,8 +208,28 @@ test('an assistant plan is undone whole', async ({ page }) => {
   await expect(changes(page)).toBeVisible({ timeout: 20_000 });
   const dialog = await openUndo(page);
   await expect(dialog.getByTestId('undo-line')).toHaveText('3 values');
+  // The undo's answer is lost once after core made it: the client sends it
+  // again under its key, core answers the stored summary, and it is made once.
+  const keys = [];
+  await page.route('**/audit/entries/*/undo?*', async (route) => {
+    const url = new URL(route.request().url());
+    if (url.searchParams.get('dry-run')) return route.continue();
+    keys.push(route.request().headers()['idempotency-key']);
+    if (keys.length === 1) {
+      await route.fetch();
+      return route.abort('connectionreset');
+    }
+    return route.continue();
+  });
   await undoIn(dialog);
-  await expect(page.getByText('3 values undone.')).toBeVisible();
+  await page.unroute('**/audit/entries/*/undo?*');
+  expect(keys.length).toBe(2);
+  expect(keys[1]).toBe(keys[0]);
+  const undos = (await client.documents.audit(documentId))
+    .flatMap((e) => e.ops || [])
+    .filter((o) => o.type === 'audit-entry/undo' && o.description.includes('Assistant: gloss'));
+  expect(undos).toHaveLength(1);
+  await expect(page.getByText('3 values.', { exact: true })).toBeVisible();
   await expect(glossCell(page, 2)).toHaveValue('', { timeout: 20_000 });
   expect(await glosses()).toEqual(before);
 });
@@ -283,9 +303,7 @@ test('a job’s entry is undone but for the value a person wrote since, which is
   await expect(place).toHaveAttribute('href', /focusSentence=/);
   await shot(page, '2-dialog-left');
   await undoIn(dialog);
-  await expect(
-    page.getByText('2 values and 1 link undone. 1 change left as it was.'),
-  ).toBeVisible();
+  await expect(page.getByText('2 values and 1 link. 1 change left as it was.')).toBeVisible();
 
   // The person's value stays, the job's others are gone or back.
   expect(await glossOn(2)).toBe('fish.SG');
@@ -343,9 +361,11 @@ test('a Bulk Edit merge is undone from the vocabulary’s History, and the undo 
   // There: the merged entry back, with its link.
   await expect(changes(page)).toBeVisible({ timeout: 20_000 });
   const dialog = await openUndo(page);
-  await expect(dialog.getByTestId('undo-line')).toHaveText('1 link and 1 lexicon entry');
+  await expect(dialog.getByTestId('undo-line')).toHaveText(
+    '1 link and 1 lexicon entry brought back',
+  );
   await undoIn(dialog);
-  await expect(page.getByText('1 link and 1 lexicon entry undone.')).toBeVisible();
+  await expect(page.getByText('1 link and 1 lexicon entry brought back.')).toBeVisible();
   await expect(changes(page)).toHaveCount(0);
   expect(await itemIds()).toContain(kay.id);
   await expect.poll(linkedTo).toEqual({ kai: 0, kay: 1 });
@@ -358,7 +378,7 @@ test('a Bulk Edit merge is undone from the vocabulary’s History, and the undo 
   await rows.first().click();
   await expect(changes(page)).toBeVisible({ timeout: 20_000 });
   const redo = await openUndo(page);
-  await expect(redo.getByTestId('undo-line')).toHaveText('1 link and 1 lexicon entry');
+  await expect(redo.getByTestId('undo-line')).toHaveText('1 link and 1 lexicon entry removed');
   await undoIn(redo);
   expect(await itemIds()).not.toContain(kay.id);
   await expect.poll(linkedTo).toEqual({ kai: 1, kay: 0 });
