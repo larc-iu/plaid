@@ -335,3 +335,30 @@ def test_a_job_piece_types_a_new_word_and_glosses_it(monkeypatch):
         assert report['totals']['changes'] == 2, report['totals']
     finally:
         s.delete()
+
+
+def test_a_split_of_a_retyped_sentence_is_refused_and_lands_where_its_card_says_once_the_retype_is_applied():
+    """REV-RR-1: after a retype numbered s2's words anew, split_sentence
+    before_word 3 split before the old third word. It is refused in the
+    plan that retypes, and in the next plan the split lands where its card
+    row says."""
+    admin = _admin()
+    email, writer, s = _seeded(admin, 'rr-fix-split')
+    try:
+        ws = Workspace(writer, load_project(writer, s.project_id))
+        assert call_tool(ws, 'retype_sentence', {'document': 'Alpha', 'ref': 's2', 'text': 'sa ∅ na pa ma.'}) \
+            .startswith('Planned')
+        out = call_tool(ws, 'split_sentence', {'document': 'Alpha', 'ref': 's2', 'before_word': 3})
+        assert out.endswith('Split it once the retype is applied.'), out
+        _p, h = _approve(writer, email, s.project_id, ws)
+        assert not h.errors, h.errors
+        ws = Workspace(writer, load_project(writer, s.project_id))
+        assert call_tool(ws, 'split_sentence', {'document': 'Alpha', 'ref': 's2', 'before_word': 3}) \
+            .startswith('Planned')
+        assert 'split before w3 "na"' in ws.ops[-1]['label'].replace('⁨', '').replace('⁩', '')
+        _p, h = _approve(writer, email, s.project_id, ws)
+        assert not h.errors, h.errors
+        assert [w for w, _g in _glosses(admin, s, 2)[0]] == ['sa', '∅']
+        assert _glosses(admin, s, 3)[0] == [('na', 'N'), ('pa', 'P'), ('ma', 'M')]
+    finally:
+        s.delete()
