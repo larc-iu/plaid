@@ -504,3 +504,54 @@ def test_a_change_that_names_no_word_by_its_bare_number_stands_beside_a_reshape(
     assert call_tool(w, 'split_word', {'document': 'd1', 'ref': 's1.w1', 'at': 3}).startswith('Planned')
     out = call_tool(w, tool, {'document': 'd1', **args})
     assert 'renumbers' not in out and not out.startswith('Error'), out
+
+
+# --- which words a retype takes, by number (REV-RR-3) ---------------------------------
+
+def glossed_raw(body: str, glosses):
+    """The fixture's project over one sentence ``body``, its words (cut at
+    spaces, the final period a token of its own) glossed ``glosses`` in
+    order, each analysed as one morpheme."""
+    from fixtures import MORPH_LAYER, SENT_LAYER, WORD_LAYER
+    raw = document_raw()
+    tl = raw['text_layers'][0]
+    tl['text']['body'] = body
+    words, at = [], 0
+    for i, part in enumerate(body.rstrip('.').split(' ')):
+        words.append({'id': f'w-{i + 1}', 'begin': at, 'end': at + len(part)})
+        at += len(part) + 1
+    for layer in tl['token_layers']:
+        if layer['id'] == SENT_LAYER:
+            layer['tokens'] = [{'id': 's-1', 'begin': 0, 'end': len(body)}]
+            layer['span_layers'][0]['spans'] = []
+        elif layer['id'] == WORD_LAYER:
+            layer['tokens'] = words + [{'id': 'w-p', 'begin': len(body) - 1, 'end': len(body)}]
+            layer['span_layers'][0]['spans'] = [{'id': f'sp-{w["id"]}', 'value': g, 'tokens': [w['id']]}
+                                                for w, g in zip(words, glosses)]
+            layer['vocabs'][0]['vocab_links'] = []
+        elif layer['id'] == MORPH_LAYER:
+            layer['tokens'] = [{'id': f'm-{w["id"]}', 'begin': w['begin'], 'end': w['end'], 'precedence': 1}
+                               for w in words]
+            layer['span_layers'][0]['spans'] = []
+            layer['vocabs'][0]['vocab_links'] = []
+    return raw
+
+
+def plain(text: str) -> str:
+    return text.replace('⁨', '').replace('⁩', '')
+
+
+@pytest.mark.parametrize('body,glosses,text,lost', [
+    # The pairing keeps the earliest of two words spelled alike: the second
+    # "sa" goes, and the card and the answer say which by its number.
+    ('sa na sa ma.', ['first', 'N', 'second', 'M'], 'sa ma.', ['s1.w2 "na"', 's1.w3 "sa"']),
+    ('ka ta ka ta.', ['KA', 'then', 'KA2', 'then2'], 'ka ta.', ['s1.w3 "ka"', 's1.w4 "ta"']),
+])
+def test_a_retype_names_the_words_it_takes_by_their_number(body, glosses, text, lost):
+    w = ws(glossed_raw(body, glosses))
+    out = plain(call_tool(w, 'retype_sentence', {'document': 'd1', 'ref': 's1', 'text': text}))
+    assert f'Words that go: {", ".join(lost)}.' in out, out
+    label = plain(w.ops[0]['label'])
+    assert f'Analyzed words that lose their analysis: {", ".join(lost)})' in label, label
+    # the pairing rule as it was: the earliest word spelled alike is kept
+    assert [p['word_id'] for p in w.ops[0]['planned_words']] == ['w-1', 'w-2' if body.startswith('ka') else 'w-4']

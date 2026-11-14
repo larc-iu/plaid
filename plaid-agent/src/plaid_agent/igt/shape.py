@@ -25,7 +25,7 @@ from ..core.plan import labelled
 from ..core.tools import ToolError
 from .plan import reshaped_subjects, written_before_merge
 from .project import Link, Sentence, Span, Word, plain_ref, planned_word_count, resolve, split_sentences, word_ref
-from .retyped import listing, planned_words, renumbered, resolve_in, restage_on_retype, trimmed, word_gaps
+from .retyped import gone_words, listing, planned_words, renumbered, resolve_in, restage_on_retype, trimmed, word_gaps
 from .tools import (reshape_guards, refuse_comment_and_text_edit, refuse_shape_and_analysis,
                     refuse_shape_and_respell, refuse_text_in_deleted_sentence)
 from .workspace import Workspace, _need, _refs
@@ -627,7 +627,7 @@ def t_retype_sentence(ws: Workspace, document: str, ref: str, text: str) -> str:
     ws._gone_at = -1
     note = ws.planned_note(1)
     if planned is not None:
-        return f'{note} {listing(s.index, planned)}'
+        return f'{note}{gone_words(s, planned)} {listing(s.index, planned)}'
     return (f'{note} Its words cannot be numbered before it is applied: plan values on them once the retype is '
             'applied.')
 
@@ -686,8 +686,11 @@ def _retype_effects(ws: Workspace, s: Sentence, at: int, old: str, text: str, ex
     gone = [w for w in touched if lost(w)]
     out = ('Changed words keep their analysis while a letter of theirs is left, words all of whose letters '
            'change or go lose theirs, new words start unanalyzed. Sentence fields stay')
+    # Each by its number as read beside its spelling: two words spelled
+    # alike are told apart (REV-RR-3).
     if kept:
-        out += '. Analyzed words changed: ' + ', '.join(w.surface for w in kept)
+        out += '. Analyzed words changed: ' + ', '.join(f's{s.index}.w{w.index} {qv(w.surface)}' for w in kept)
     if gone:
-        out += '. Analyzed words that lose their analysis: ' + ', '.join(w.surface for w in gone)
+        out += '. Analyzed words that lose their analysis: ' + ', '.join(f's{s.index}.w{w.index} {qv(w.surface)}'
+                                                                          for w in gone)
     return out

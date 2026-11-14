@@ -316,12 +316,12 @@ def test_a_retype_card_says_what_the_plain_rule_does_to_the_words():
     label = w.ops[0]['label']
     assert ('Changed words keep their analysis while a letter of theirs is left, words all of whose letters '
             'change or go lose theirs, new words start unanalyzed.') in label
-    assert 'Analyzed words changed: Ali-di' in label
+    assert 'Analyzed words changed: s1.w1 "Ali-di"' in label
     assert 'lose their analysis:' not in label
     assert 're-tokenized' not in label
     w3 = ws()
     call_tool(w3, 'retype_sentence', {'document': 'd1', 'ref': 's1', 'text': 'Bob gam akuna.'})
-    assert 'Analyzed words that lose their analysis: Ali-di' in w3.ops[0]['label']
+    assert 'Analyzed words that lose their analysis: s1.w1 "Ali-di"' in w3.ops[0]['label']
     assert 'Analyzed words changed' not in w3.ops[0]['label']
     w2 = ws()
     call_tool(w2, 'retype_sentence', {'document': 'd1', 'ref': 's1', 'text': 'Ali-di gam akuna mai.'})
@@ -340,10 +340,10 @@ def test_a_retype_card_leaves_out_punctuation_typed_against_a_word():
         assert 'Analyzed words changed' not in w.ops[0]['label'], text
     w = ws()
     call_tool(w, 'retype_sentence', {'document': 'd1', 'ref': 's1', 'text': 'Ali-dis, gam akuna.'})
-    assert 'Analyzed words changed: Ali-di' in w.ops[0]['label']
+    assert 'Analyzed words changed: s1.w1 "Ali-di"' in w.ops[0]['label']
     w = ws()
     call_tool(w, 'retype_sentence', {'document': 'd1', 'ref': 's1', 'text': 'Ali-d,i gam akuna.'})
-    assert 'Analyzed words changed: Ali-di' in w.ops[0]['label']
+    assert 'Analyzed words changed: s1.w1 "Ali-di"' in w.ops[0]['label']
 
 
 def test_every_reshaping_tool_refuses_a_plan_a_corpus_wide_change_reaches():

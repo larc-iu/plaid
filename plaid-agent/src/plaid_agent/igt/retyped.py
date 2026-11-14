@@ -284,6 +284,14 @@ def listing(n: int, planned: List[Dict[str, Any]]) -> str:
             + f'. In this plan s{n}.wN names these words.')
 
 
+def gone_words(s, planned: List[Dict[str, Any]]) -> str:
+    """The words of sentence ``s`` a retype takes, each by its number as read
+    and its spelling, for the retype's answer: '' when it takes none."""
+    kept = {p['word_id'] for p in planned}
+    gone = [f's{s.index}.w{w.index} {qv(w.surface)}' for w in s.words if w.id not in kept]
+    return f' Words that go: {", ".join(gone)}.' if gone else ''
+
+
 def retype_of(ops, sentence_id: Optional[str]) -> Optional[Dict[str, Any]]:
     """The retype of sentence ``sentence_id`` the plan holds, or None."""
     if not sentence_id:
