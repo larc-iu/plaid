@@ -82,6 +82,7 @@ const REASONS = [
   ['built-on', 'Something was added to it since'],
   ['needs', 'Needs something not brought back'],
   ['text-changed-since', 'Text changed since'],
+  ['place-taken', 'Its place is taken'],
   ['not-permitted', 'Not permitted'],
   ['locked', 'Document locked by someone else'],
   ['name-taken', 'Name taken by another document'],
