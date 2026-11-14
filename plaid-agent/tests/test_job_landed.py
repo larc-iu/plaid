@@ -1,9 +1,10 @@
-"""A write of several tries (one request each, BRIEF RX): what landed of it
-is known from core, try by try, after a lost answer in the middle, a crash
-between two tries, or a refusal after the first landed. Nothing is written
-twice, nothing vanishes unlisted: a sentence a write landed in part is listed
-"Write interrupted", and a piece whose write was cut short is taken again over
-what is left."""
+"""A write of several tries (one request each, BRIEF RX and RX-FIX): what
+landed of it is known from core, try by try, after a lost answer in the
+middle, a crash between two tries, or a refusal after the first landed.
+Nothing is written twice, nothing vanishes unlisted: a change of a write cut
+short is landed, a target again (its sentence one of the piece's where
+nothing of the write landed: the piece is taken again over what is left), or
+listed among the report's proposed changes as not written."""
 
 import json
 
@@ -105,22 +106,21 @@ def test_a_lost_answer_in_the_middle_of_a_write_sends_nothing_twice_and_takes_th
 
 def test_a_crash_between_two_tries_sends_nothing_twice_and_takes_the_rest_again(monkeypatch):
     """The same write, the worker dying after s3's deletion landed, before
-    s4's rows: a new worker asks core and takes the piece again over what is
-    left."""
+    s4's request (its rows in core with the write's whole manifest): a new
+    worker asks core and takes the piece again over what is left."""
     client, job, model = _job(monkeypatch)
     sent = _edits(monkeypatch, client, {})
-    real, n = igt_job.IgtRunner.intend, {'n': 0}
+    real, n = igt_job.IgtRunner.sending, {'n': 0}
 
-    def intend(self, w, seed, ops, drops):
-        if seed is not None:
-            n['n'] += 1
-            if n['n'] == 3:
-                raise Crash()
-        return real(self, w, seed, ops, drops)
-    monkeypatch.setattr(igt_job.IgtRunner, 'intend', intend)
+    def sending(self, w, seed):
+        n['n'] += 1
+        if n['n'] == 3:
+            raise Crash()
+        return real(self, w, seed)
+    monkeypatch.setattr(igt_job.IgtRunner, 'sending', sending)
     with pytest.raises(Crash):
         runner(job).document('d1')
-    monkeypatch.setattr(igt_job.IgtRunner, 'intend', real)
+    monkeypatch.setattr(igt_job.IgtRunner, 'sending', real)
     job.rows = {r['document_id']: dict(r) for r in client.jobs.get(J)['documents']}
     assert runner(job).document('d1') == 'done'
     assert sent == [1, 2] and len(client.batches) == 1
@@ -177,22 +177,26 @@ def test_a_write_too_big_for_one_request_is_cut_at_a_sentence_before_anything_is
 def test_a_sentence_too_big_for_one_request_written_in_part_is_listed_and_never_written_again(monkeypatch):
     """One analysis a request: s1's two analyses are cut into two tries. The
     first lands, core refuses the second (409): put off. Back, core says s1
-    was written in part: listed "Write interrupted", never written again,
-    and what landed is counted."""
+    was written in part: what did not land there is listed among the
+    report's proposed changes as not written, never written again, s2,
+    where nothing of the write landed, is asked again, and what landed is
+    counted (BRIEF RX-FIX item 2)."""
     client, job, sent = _two_words(monkeypatch, 2, refused=(2,), after=[{'words': [KA, 'ta']}, {'words': ['sa']}])
     r = runner(job)
     assert r.document('d1') == 'deferred'
     assert r.document('d1') == 'done'
     assert sent[0] == ['spans.create', 'tokens.create'] and len(sent) == 3, 'ka, ta refused, sa: nothing again'
-    assert _skipped(job) == [('d1-s1', 'interrupted')]
+    assert _skipped(job) == []
+    listed = r.report_parts(job)['proposed']
+    assert [(c['ref'], c['kind'], c['reason']) for c in listed] == [('s1.w2', 'set_analysis', 'interrupted')], listed
     assert job.rows['d1']['counts']['words'] == 2, 'ka and sa'
 
 
 def test_a_later_pieces_deletion_refused_after_its_gloss_landed_lists_the_sentence(monkeypatch):
     """REV-JSF-1's shape: piece s3 (s2 its context, which piece s2 wrote)
     glosses s3 and deletes s2. The gloss lands, the deletion is refused: s3
-    is written, its piece is not run again (no second deletion), and s2,
-    where a write that landed in part did not land, is listed."""
+    is written, its piece is not run again (no second deletion), and the
+    deletion of s2, a sentence not of the piece, is listed as not written."""
     monkeypatch.setattr(igt_job, 'JOB_STRETCH_SENTENCES', 1)
 
     def model(asked, n, kwargs):
@@ -211,7 +215,9 @@ def test_a_later_pieces_deletion_refused_after_its_gloss_landed_lists_the_senten
     assert r.document('d1') == 'done'
     assert sent == [1], 'never sent again'
     assert _asked(m) == [[1], [2], [3], [4]], 'piece s3 is not run again'
-    assert _skipped(job) == [('d1-s2', 'interrupted')]
+    assert _skipped(job) == []
+    listed = r.report_parts(job)['proposed']
+    assert [(c['ref'], c['kind'], c['reason']) for c in listed] == [('s2', 'delete_sentence', 'interrupted')], listed
 
 
 def test_every_try_is_one_request_under_its_own_seed_with_its_rows_first(monkeypatch):

@@ -173,6 +173,17 @@ REPAIR_OF = 'repair_of'
 #: be left under an entry that is gone, so the plan is refused then
 #: (`check_entries`).
 SENSES_READ = 'senses_read'
+#: The kinds of the lexicon's last batch (`_write_lexicon`).
+LEXICON_KINDS = ('rename_entry', 'merge_entries', 'delete_entry')
+
+
+def lexicon_last(op) -> bool:
+    """Whether the executor writes ``op`` in the lexicon's last batch: a
+    rename, a merge or a delete of an entry, and a repair one carries
+    (`_apply_set_entry_metadata`). THE one reading of it."""
+    return op.get('kind') in LEXICON_KINDS or (op.get('kind') == 'set_entry_metadata' and bool(op.get(REPAIR_OF)))
+
+
 #: The key on a delete of an entry holding the ids of the entries whose
 #: reference fields named it as the server had them when the plan was made,
 #: left out when there were none. One that names it since would name an entry
@@ -315,6 +326,17 @@ def written_before_merge(op) -> Optional[str]:
     so the card names what approval writes. A rule's value never lands on a
     merged word or sentence (``bulk._refuse_merged``), so only named ops count."""
     return op.get('token_id') if op.get('kind') in ('set_span', 'link') else None
+
+
+def merge_tokens(op) -> set:
+    """The words or sentences a merge joins (none for any other op). A value
+    or a link of the plan on one of them (:func:`written_before_merge`) is
+    written in a batch before the merge (``_merge``)."""
+    if op.get('kind') == 'merge_words':
+        return {op['word_id'], *op.get('other_ids', ())}
+    if op.get('kind') == 'merge_sentences':
+        return {op['sentence_id'], op['other_id']}
+    return set()
 
 
 def _apply_set_span(ctx: Context, op) -> int:
@@ -565,7 +587,7 @@ def _apply_set_entry_field(ctx: Context, op) -> int:
 def _apply_set_entry_metadata(ctx: Context, op) -> int:
     # What a delete or a merge repairs is written with it, in the lexicon's
     # last batch, so the repairs stand only if the entry goes.
-    if op.get(REPAIR_OF):
+    if lexicon_last(op):
         ctx.repairs.append(op)
         ctx.defer(op, LEXICON)
         return 1
@@ -667,7 +689,7 @@ def _merge(ctx: Context, op, key: str, others: List[str]) -> int:
     # first, in a batch of its own: core joins the values and keeps one link
     # only for what a merge gathers, and refuses a span or a link written in
     # the merge's own transaction as a second one on the token (R1 S3).
-    if ctx.valued & {op[key], *others}:
+    if ctx.valued & merge_tokens(op):
         ctx.b.flush()
     if _stored(op.get('morpheme_ids')):
         ctx.b.add(lambda batch, o=op: batch.tokens.bulk_delete(_stored(o['morpheme_ids'])))
@@ -2296,15 +2318,6 @@ def _sentence_rows(project, text_id: str, body: str, new_id) -> Tuple[List[tuple
     return made, sentences
 
 
-def _seed_sentences(client, project, text_id: str, body: str, new_id) -> List[tuple]:
-    """The sentence partition of a text that has none (see `_sentence_rows`),
-    made in one bulk create. Returns the (begin, end, id) made."""
-    made, sentences = _sentence_rows(project, text_id, body, new_id)
-    if sentences:
-        new_id.once(lambda: client.tokens.bulk_create(sentences), whole=True)
-    return made
-
-
 def _line_starts(body: str, begin: int, end: int) -> List[int]:
     """Where sentences should begin inside body[begin:end): the region's
     first non-blank position and the one after every newline in it (leading
@@ -2330,11 +2343,14 @@ def _line_starts(body: str, begin: int, end: int) -> List[int]:
 def _write_text_edit(client, project, op: Dict[str, Any], new_id) -> None:
     """Replace body[begin:end] (verified to still read ``old``) with ``new``
     as edits at their place (``texts.edit`` with the digest of the body read),
-    so no word outside the region can be taken for the one changed, then give
-    the edited region the sentence boundaries its line starts call for. The
-    edit names the word layer when the project's "Tokenize new text" is on,
-    and the server makes the words of the text it types. What it creates is
-    made under ids from ``new_id()``."""
+    so no word outside the region can be taken for the one changed, then, in
+    ONE batch after it (the edit's follow-up, none when there is nothing to
+    follow), respell the forms the edit respelled and give the edited region
+    the sentence boundaries its line starts call for. So an edit is two
+    requests at most, the edit and its follow-up. The edit names the word
+    layer when the project's "Tokenize new text" is on, and the server makes
+    the words of the text it types. What it creates is made under ids from
+    ``new_id()``."""
     from plaid_client import gaps_to_ops
     from .project import find_layer
     doc_id, text_id, new = op['document_id'], op.get('text_id'), op['new']
@@ -2367,15 +2383,17 @@ def _write_text_edit(client, project, op: Dict[str, Any], new_id) -> None:
     new_body, at = composed
     region_end = at(b + len(new))
     b = at(b)
-    _follow_sole_forms(client, project, before, stored_tl)
+    forms = _followed_forms(project, before, stored_tl)
     sents = sorted((t['begin'], t['end'], t['id']) for t in (sent_layer or {}).get('tokens') or [])
+    seeded: List[Dict[str, Any]] = []
     if not sents:
         # A text with no sentence (an empty one, or an edit that took them
         # all) gets its partition seeded, as the app's save seeds it. It is
         # measured on the body the server stored, since core refuses a
         # partition that does not end at the text's length.
         stored = ((stored_tl or {}).get('text') or {}).get('body') or ''
-        sents = _seed_sentences(client, project, text_id, stored, new_id)
+        sents, seeded = _sentence_rows(project, text_id, stored, new_id)
+    splits = []
     for p in _line_starts(new_body, b, region_end):
         hit = next((s for s in sents if s[0] < p < s[1]), None)
         # Only a boundary that leaves text on both sides: never a blank sentence.
@@ -2383,10 +2401,24 @@ def _write_text_edit(client, project, op: Dict[str, Any], new_id) -> None:
             continue
         sb, se, sid = hit
         made = new_id()
-        new_id.once(lambda: client.tokens.split(sid, p, id=made))
+        splits.append((sid, p, made))
         sents.remove(hit)
         sents.extend([(sb, p, sid), (p, se, made)])
         sents.sort()
+    if not (forms or seeded or splits):
+        return
+
+    # Each write in order, as they were sent one by one: core runs a batch's
+    # writes in order, so a split names a sentence seeded before it.
+    def send():
+        with client.batched() as fb:
+            for i in range(0, len(forms), FORM_CHUNK):
+                fb.tokens.bulk_update(forms[i:i + FORM_CHUNK])
+            if seeded:
+                fb.tokens.bulk_create(seeded)
+            for sid, p, made in splits:
+                fb.tokens.split(sid, p, id=made)
+    new_id.once(send, whole=True)
 
 
 def _write_sentence_delete(client, project, op: Dict[str, Any]) -> None:
@@ -2447,14 +2479,15 @@ def _sole_forms(tl, project, body: str) -> Dict[str, tuple]:
     return out
 
 
-def _follow_sole_forms(client, project, before: Dict[str, tuple], tl) -> None:
-    """A word whose one morpheme's form spelled the whole word, respelled by
-    the edit, gets that form respelled with it (Luke, H17), unstamped as the
-    app's Baseline save writes it. ``tl`` is the text layer as stored after
-    the edit. A new spelling holding whitespace is not followed: a morpheme
-    form never holds a space. Mirror of ``followedForms``."""
+def _followed_forms(project, before: Dict[str, tuple], tl) -> List[Dict[str, Any]]:
+    """The writes that respell, with its word, the form of a word's one
+    morpheme that spelled the whole word, the word respelled by the edit
+    (Luke, H17), unstamped as the app's Baseline save writes it. ``tl`` is
+    the text layer as stored after the edit. A new spelling holding
+    whitespace is not followed: a morpheme form never holds a space. Mirror
+    of ``followedForms``."""
     if not before:
-        return
+        return []
     body = ((tl or {}).get('text') or {}).get('body') or ''
     words, by = _extent_morphemes(tl, project)
     writes = []
@@ -2469,8 +2502,7 @@ def _follow_sole_forms(client, project, before: Dict[str, tuple], tl) -> None:
         if len(ms) != 1 or ms[0]['id'] != was[0] or (ms[0].get('metadata') or {}).get('form') != was[1]:
             continue
         writes.append({'id': was[0], 'metadata': metadata_ops({'form': text})})
-    for i in range(0, len(writes), FORM_CHUNK):
-        client.tokens.bulk_update(writes[i:i + FORM_CHUNK])
+    return writes
 
 
 def _composed_as(body: str, stored: str):

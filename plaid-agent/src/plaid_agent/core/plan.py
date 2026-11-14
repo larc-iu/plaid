@@ -139,15 +139,24 @@ def reserve(staged: int, n: int, note: str = '', cap: int = PLAN_MAX_OPS) -> Non
 #: A client attribute a caller sets, to a function, to send every plan
 #: applied with that client as ONE request (as an unattended job sends a try):
 #: the batcher then never sends before the plan's end, refuses a plan whose
-#: writes do not fit one request before anything is sent (:class:`TooBig`),
-#: and calls the function once, just before the request goes out, whether a
-#: batch or a write the executor makes on the client itself.
+#: writes do not fit one request, or that would need a second, before
+#: anything is sent (:class:`TooBig`, :class:`NeedsTwo`), and calls the
+#: function once, just before the request goes out, whether a batch or a
+#: write the executor makes on the client itself.
 ONE_REQUEST = '_one_request'
 
 
 class TooBig(Exception):
     """A plan sent as one request (:data:`ONE_REQUEST`) whose writes do not
     fit one. Nothing was sent."""
+
+
+class NeedsTwo(TooBig):
+    """A plan sent as one request (:data:`ONE_REQUEST`) whose executor would
+    send a second (a batch it closes and another after it, or a batch and a
+    write on the client). Found before anything is sent: the batch the
+    executor closes is held, not sent, until the plan's end. Nothing was
+    sent."""
 
 
 class Minter:
@@ -259,6 +268,10 @@ class Batcher:
         #: what a plan sent as one request calls before it (``ONE_REQUEST``)
         self.one = getattr(client, ONE_REQUEST, None)
         self._sent_one = False
+        # One request: the batch the executor closed (``flush``), held until
+        # the plan's end (``last``), and whether that end has come.
+        self._sealed = False
+        self._last = False
 
     @contextmanager
     def writing_for(self, op_or_document):
@@ -293,15 +306,25 @@ class Batcher:
 
     def _sending(self) -> None:
         """A request is about to go out: a plan sent as one request calls
-        its caller back, the first time, and refuses a second request (a
-        fault of the caller's, who cut the plan: the first may have
-        landed, so it is no :class:`TooBig`)."""
+        its caller back. A second request cannot come: one is refused before
+        anything is sent (:class:`NeedsTwo`), a write on the client is the
+        plan's last (its caller sends the kinds the executor writes on the
+        client each alone), so this refuses only what would be a fault of
+        this module's."""
         if self.one is None:
             return
         if self._sent_one:
             raise RuntimeError('A plan sent as one request needed a second.')
         self._sent_one = True
         self.one()
+
+    def last(self) -> None:
+        """The plan's end: a plan sent as one request sends its batch now,
+        the one the executor closed or the one still open."""
+        if self.one is None:
+            return
+        self._last = True
+        self.flush()
 
     @contextmanager
     def _stamping(self):
@@ -327,6 +350,8 @@ class Batcher:
         documents they carry ``document``'s version, as a queued write does,
         so one whose answer was lost cannot land after the apply gave up on
         it, over an edit made since."""
+        if self.one is not None and (self._batch is not None or any(self._bulk.values())):
+            raise NeedsTwo('A batch and a write on the client for one request.')
         previous, self.document = self.document, document
         self._sending()
         try:
@@ -338,6 +363,8 @@ class Batcher:
     def add(self, fn, weight: int = 1, count: int = 1) -> int:
         """Queue what ``fn(batch)`` writes: ``count`` sub-ops, which land in
         one batch together. Returns the result index of the first."""
+        if self.one is not None and self._sealed:
+            raise NeedsTwo('A write after the batch was closed, for one request.')
         if self.one is not None and self._pending + count > MAX_BATCH_OPS:
             raise TooBig(f'More than {MAX_BATCH_OPS} writes for one request.')
         if self._batch is not None and self._held and self._pending + count > MAX_BATCH_OPS:
@@ -391,9 +418,18 @@ class Batcher:
                     self.add(lambda batch, r=resource, c=chunk: getattr(batch, r).bulk_update(c),
                              weight=len(chunk))
 
+    def sends(self) -> bool:
+        """Whether :meth:`flush` sends the open batch now: a plan sent as
+        one request holds it until its end."""
+        return self._batch is not None and (self.one is None or self._last)
+
     def flush(self) -> None:
         self._drain()
         if self._batch is None:
+            return
+        if self.one is not None and not self._last:
+            # Closed: nothing joins it, and it goes out at the plan's end.
+            self._sealed = True
             return
         self._sending()
         batch, self._batch = self._batch, None
@@ -459,7 +495,7 @@ class TrackingBatcher(Batcher):
     def flush(self) -> None:
         self._drain()
         n = self._weight
-        sending = self._batch is not None
+        sending = self.sends()
         try:
             super().flush()
         except Exception as e:
@@ -468,8 +504,8 @@ class TrackingBatcher(Batcher):
             # which counting it as not applied told the user was nothing.
             e._unknown = outcome_unknown(e)
             raise
-        self.applied += n
         if sending:
+            self.applied += n
             self.flushed += 1
 
     # A change on the card is written when every operation it became has
@@ -658,6 +694,7 @@ def executing(kind, client, ops: List[Dict[str, Any]], stages, label: str, *, tr
         b = TrackingBatcher(client, tracker=tracker, ids=ids)
         b.expect(ops)
         yield b
+        b.last()
 
 
 def executed(counts, notes: List[str], unwritten=None) -> Dict[str, Any]:

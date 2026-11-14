@@ -501,21 +501,6 @@ def test_execute_append_splits_the_gap_filled_sentence_and_names_the_word_layer(
     c = FakeClient()
     server = _TextServer(c)
     project = load_project(c, 'p1')
-    # tokens.split makes the new right half under the id it is given, and
-    # mimics the server locally
-    made = []
-
-    def split(sid, pos, id=None):
-        for t in c._documents['d1']['text_layers'][0]['token_layers'][0]['tokens']:
-            if t['id'] == sid:
-                new = {'id': id, 'begin': pos, 'end': t['end']}
-                t['end'] = pos
-                c._documents['d1']['text_layers'][0]['token_layers'][0]['tokens'].append(new)
-                c.record('tokens.split', (sid, pos))
-                made.append(id)
-                return {'id': id}
-        raise AssertionError(sid)
-    c.tokens.split = split
     op = {'kind': 'edit_text', 'document_id': 'd1', 'text_id': 'text1', 'sentence_id': None, 'begin': 25, 'end': 25,
           'old': '', 'new': '\nGam akuna.\n\n  Ali gam.', 'word_ids': [], 'morpheme_ids': [], 'label': ''}
     counts = execute_plan(c, [op], source='s', label='l', project=project)
@@ -523,9 +508,13 @@ def test_execute_append_splits_the_gap_filled_sentence_and_names_the_word_layer(
     body = 'Ali-di gam akuna. Gam-ar.\nGam akuna.\n\n  Ali gam.'
     assert ('texts.edit', ('text1', [{'type': 'insert', 'index': 25, 'value': '\nGam akuna.\n\n  Ali gam.'}])) in c.writes
     assert c._documents['d1']['text_layers'][0]['text']['body'] == body
-    splits = c.payloads('tokens.split')
-    # The last sentence was gap-filled over the new text, then split per line.
-    assert splits == [('s-2', 26), (made[0], 40)] and all(made)
+    # The last sentence was gap-filled over the new text, then split per
+    # line, the breaks in ONE batch after the edit (its follow-up, REV-RX-5),
+    # the second naming the half the first made.
+    assert [[k for k, _ in b] for b in c.batches] == [['tokens.split', 'tokens.split']]
+    (_, first), (_, second) = c.batches[0]
+    made = first['kwargs']['id']
+    assert (first['args'], second['args']) == (('s-2', 26), (made, 40)) and made and second['kwargs']['id']
     # The words of the new text are the server's ("Tokenize new text").
     assert server.tokenize_layers == ['tk-word']
     assert not c.payloads('tokens.bulk_create')

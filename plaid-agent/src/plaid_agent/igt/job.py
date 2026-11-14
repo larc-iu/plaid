@@ -80,14 +80,15 @@ RECORD_FORM = ' sentence '
 #: The form of an entry the model staged and nothing linked (``propose``),
 #: kept among the decisions the same way, so a resumed job still reports it.
 PROPOSED_FORM = ' proposed '
-#: The form of a writing row: a try of the job's is about to write in a
-#: sentence (or, with the document's id, a change of no sentence). Written
-#: just before the try's request is sent, naming the try, so whether the
-#: job wrote there is a fact core holds (``POST /jobs/{id}/landed``), never
-#: one read back from the document (BRIEF RX).
+#: The form of a writing row: a try of the job's writes in a sentence (or,
+#: with the document's id, changes of no sentence). Every row of a write is in
+#: core before its first request, naming the try's key, so whether the job
+#: wrote there is a fact core holds (``POST /jobs/{id}/landed``), never one
+#: read back from the document (BRIEF RX, RX-FIX).
 WRITING_FORM = ' writing '
-#: Why a sentence is listed when a write landed in it in part: some of the
-#: write's tries landed and one of its tries there did not.
+#: Why the report lists a change as not written: a try of a write cut short
+#: (a lost answer, a crash, a refusal) did not land, and its change is not
+#: taken again (:meth:`IgtRunner.unwritten`).
 INTERRUPTED = 'interrupted'
 #: The job's plan, made once (``plan_work`` or the default), and where the
 #: plan's pieces were cut smaller (a document too large for one piece, a
@@ -174,14 +175,15 @@ def writing_form(sentence_id: str) -> str:
 
 
 def writing_text(row: Dict[str, Any]) -> str:
-    """A writing row's analysis (:meth:`IgtRunner.intend`) as canonical
+    """A writing row's analysis (:meth:`IgtRunner.manifest`) as canonical
     JSON within JOB_ANALYSIS_MAX_CHARS: the try, the write, the piece and
     the counts are never cut. Past the limit the blanks listed are cut
-    first (the counts say how many), then the changes of no sentence
-    described and those proposed (a write that landed lists the proposed
-    itself), then the tags of the sentence's other words, then of the words
-    the try writes on (a sentence a person made longer since the checks:
-    every tag of one of JOB_SENTENCE_MAX_WORDS words fits)."""
+    first (the counts say how many), then the changes the row would list
+    (``more`` says how many), then those proposed (a write that landed
+    lists the proposed itself), then the tags of the sentence's other
+    words, then of the words the try writes on (a sentence a person made
+    longer since the checks: every tag of one of JOB_SENTENCE_MAX_WORDS
+    words fits)."""
     row = {k: (list(v) if isinstance(v, list) else v) for k, v in row.items()}
     while True:
         text = canonical(row)
@@ -191,6 +193,8 @@ def writing_text(row: Dict[str, Any]) -> str:
         if cut is None:
             return text
         row[cut].pop()
+        if cut == 'ops':
+            row['more'] = (row.get('more') or 0) + 1
 
 
 def piece_tag(piece: Dict[str, Any]) -> str:
@@ -835,37 +839,45 @@ def entries_part(created, unlinked) -> Dict[str, Any]:
             'lexicons': list(dict.fromkeys(e['lexicon'] for e in created))}
 
 
-#: The lexicon's renames, merges and deletions: the executor's last batch
-#: (``igt.plan._write_lexicon``), a try of their own. Text edits,
-#: respellings and sentence deletions, which the executor writes on the
-#: client one request each, are cut by :meth:`Write.tries` itself.
-LEXICON_KINDS = ('rename_entry', 'merge_entries', 'delete_entry')
+#: What the follow-up of a text edit does (``igt.plan._write_text_edit``), as
+#: the report lists it when it was not written: the edit's second request,
+#: none when the edit called for nothing.
+FOLLOW_UP_LABEL = 'Sentence breaks and morpheme forms after the text edit, if it called for any'
 
 
 class Write:
     """One write of a piece in one document under its lock: the ops the
-    apply rule kept, cut into TRIES of one request each (:meth:`tries`),
-    and what its writing rows say of each sentence (``IgtRunner.intend``).
-    ``own`` are the piece's own sentences the write is for (its part, less
-    those that changed since the read), ``counts`` what the write dropped,
-    proposed or left out, ``proposed`` the changes the rule proposed."""
+    apply rule kept, cut into TRIES in the executor's own order (:meth:`cut`),
+    each sent as one request, and its MANIFEST (:meth:`rows`, :meth:`own_rows`):
+    a writing row for each sentence of each try, naming the try's key and what
+    it does there, in core before the write's first request (BRIEF RX-FIX).
+    A text edit's try is the one exception, two requests at most: the edit
+    (``<seed>.0``) and the follow-up it calls for (``<seed>.1``), each with
+    rows of its own. ``own`` are the piece's own sentences the write is for
+    (its part, less those that changed since the read), ``counts`` what the
+    write dropped, proposed or left out, ``proposed`` the changes the rule
+    proposed, ``describe(op, in_a_sentence)`` an op as the report
+    lists a change."""
 
     def __init__(self, document_id: str, piece: str, st: Stretch, own: List[str], ops: List[Dict[str, Any]],
-                 counts: Counter, fresh=None, proposed=()):
+                 counts: Counter, fresh=None, proposed=(), describe=None):
         #: the write's tag in its rows: the start of a UUIDv7, which sorts by time
         self.id = uuid7().replace('-', '')[:PIECE_TAG_CHARS]
         self.document_id, self.piece, self.st, self.ops, self.counts = document_id, piece, st, ops, counts
         self.proposed = list(proposed)
         self.own = list(own)
         self.fresh = fresh
+        self.describe = describe or (lambda op, here: {'kind': op.get('kind'), 'label': op.get('label')})
         self.layer = translation_layer(st.project)
-        #: the tries sent (their seeds), the sentences given a row, and the
-        #: tries not yet sent
-        self.seeds: set = set()
-        self.rowed: set = set()
-        #: whether the write's own counts are in a row already
-        self.counted = False
-        self.queue: List[List[Dict[str, Any]]] = []
+        #: the seeds of the tries that landed (seen to)
+        self.done: set = set()
+        #: the creates a try holds that an earlier try of the write makes
+        #: (by id): made again only when the earlier did not land, so never
+        #: counted or listed twice
+        self.again: set = set()
+        #: sentence id -> the seed of the try whose row there says what the
+        #: write leaves blank in it
+        self.left_at: Dict[str, str] = {}
         #: the words the write analyses, the sentences it deletes and those
         #: it translates
         self.touched = {w for o in ops for w in [self.word_of(o)] if w is not None}
@@ -891,11 +903,17 @@ class Write:
             return 'refreshed' if op.get('span_id') is not None else 'translations'
         return None
 
-    def tries(self) -> List[List[Dict[str, Any]]]:
-        """The write's tries, in the order the executor writes: the batched
+    def cut(self) -> List[List[Dict[str, Any]]]:
+        """The write's tries, in the order the executor writes, each what it
+        sends as one request (``igt.plan._execute``): the values and links
+        on a word or sentence a merge of the write joins, staged before the
+        merge (``written_before_merge``, ``merge_tokens``: the executor
+        writes them in a batch before the merge), the rest of the batched
         changes, each text edit (the highest first), the respellings of each
-        text, each sentence deletion, the lexicon's renames, merges and
-        deletions."""
+        text, each sentence deletion, and the lexicon's renames, merges and
+        deletions with the repairs they carry (``lexicon_last``: only valid
+        together, so one request)."""
+        from .plan import lexicon_last, merge_tokens, written_before_merge
         batch, edits, respells, deletions, lexicon = [], [], {}, [], []
         for o in self.ops:
             k = o.get('kind')
@@ -905,24 +923,50 @@ class Write:
                 respells.setdefault(o.get('text_id'), []).append(o)
             elif k == 'delete_sentence':
                 deletions.append(o)
-            elif k in LEXICON_KINDS:
+            elif lexicon_last(o):
                 lexicon.append(o)
             else:
                 batch.append(o)
-        self.queue = (([batch] if batch else []) + [[o] for o in sorted(edits, key=lambda o: -(o.get('begin') or 0))]
-                      + list(respells.values()) + [[o] for o in deletions] + ([lexicon] if lexicon else []))
-        return self.queue
+        early, seen = set(), []
+        for o in batch:
+            joined = merge_tokens(o)
+            early |= {id(p) for p in seen if joined and written_before_merge(p) in joined}
+            seen.append(o)
+        parts = self.split([[o for o in batch if id(o) in early], [o for o in batch if id(o) not in early]])
+        return (parts + [[o] for o in sorted(edits, key=lambda o: -(o.get('begin') or 0))]
+                + list(respells.values()) + [[o] for o in deletions] + ([lexicon] if lexicon else []))
+
+    def split(self, groups: List[List[Dict[str, Any]]]) -> List[List[Dict[str, Any]]]:
+        """``groups`` of ops as tries, in order, the empty ones left out: an
+        entry a group creates goes with every group that links it (one an
+        earlier group makes too is in :attr:`again`: the later links the
+        entry the earlier made, ``IgtRunner.entries_that_fit``), and one
+        nothing links with the first."""
+        creates = [o for g in groups for o in g if o.get('kind') == 'create_entry']
+        groups = [[o for o in g if o.get('kind') != 'create_entry'] for g in groups]
+
+        def links(c, g):
+            return any(o.get('new_entry_key') == c.get('key') for o in g)
+        out = []
+        for i, g in enumerate(groups):
+            mine = []
+            for c in creates:
+                if links(c, g) or (i == 0 and not any(links(c, h) for h in groups)):
+                    if any(links(c, h) for h in groups[:i]):
+                        c = dict(c)
+                        self.again.add(id(c))
+                    mine.append(c)
+            out.append(mine + g)
+        return [g for g in out if g]
 
     def halve(self, ops: List[Dict[str, Any]]) -> Optional[List[List[Dict[str, Any]]]]:
         """A try that does not fit one request cut in two: at a sentence
         boundary when it writes in two or more sentences (in document
-        order), else in the middle of its ops. An entry it creates goes with
-        each half that links it (the second links the one the first made,
-        ``IgtRunner.entries_that_fit``), and the changes of no sentence with
-        the first. None for one change."""
-        creates = [o for o in ops if o.get('kind') == 'create_entry']
+        order), else in the middle of its ops, the changes of no sentence
+        with the first and its creates as :meth:`split` puts them. None for
+        one change."""
         rest = [o for o in ops if o.get('kind') != 'create_entry']
-        if len(rest) + len(creates) < 2:
+        if len(ops) < 2:
             return None
         order = {s.id: i for i, s in enumerate(self.st.doc.sentences)}
         sid = {id(o): getattr(self.sentence_of(o), 'id', None) for o in rest}
@@ -933,13 +977,7 @@ class Write:
                       [o for o in rest if sid[id(o)] is not None and sid[id(o)] not in first]]
         else:
             halves = [rest[:len(rest) // 2], rest[len(rest) // 2:]]
-        out = []
-        for i, half in enumerate(halves):
-            keys = {o.get('new_entry_key') for o in half}
-            mine = [c for c in creates if c.get('key') in keys
-                    or (i == 0 and not any(o.get('new_entry_key') == c.get('key') for o in rest))]
-            if mine or half:
-                out.append(mine + half)
+        out = self.split([[o for o in ops if o.get('kind') == 'create_entry'] + halves[0], halves[1]])
         return out if len(out) > 1 else None
 
     def counts_of(self, ops: List[Dict[str, Any]]) -> Counter:
@@ -982,11 +1020,110 @@ class Write:
             out.append({'ref': f's{s.index}', 'begin': None, 'form': None})
         return out
 
-    def opless(self, now: Dict[Optional[str], List[Dict[str, Any]]]) -> List[str]:
-        """The piece's own sentences with no row yet and nothing in the try
-        about to be sent (``now``), the write's last, which names them: they
-        are written only when the whole write landed."""
-        return [sid for sid in self.own if sid not in self.rowed and sid not in now]
+    def _others(self, sid: str, words: List[str]) -> List[str]:
+        now = {s.id: s for s in (self.fresh.sentences if self.fresh is not None else [])}
+        s = now.get(sid) or self.st.where.get(sid)
+        return [word_tag(x.id) for x in (s.words if s is not None else []) if word_tag(x.id) not in words]
+
+    def _sentence_row(self, sid: str, seed: str, ops: List[Dict[str, Any]], replaces: Optional[str]):
+        counts = self.counts_of(ops)
+        row = {'write': self.id, 'try': seed, 'piece': self.piece, 'own': sid in self.own}
+        if sid in self.own and (sid not in self.left_at or self.left_at[sid] == replaces):
+            self.left_at[sid] = seed
+            left = self.left_in(sid)
+            counts['left'] = sum(1 for e in left if e['form'] is not None)
+            counts['left_translations'] = sum(1 for e in left if e['form'] is None)
+            row['left'] = left
+        words = self.words_of(ops)
+        row.update({'words': words, 'others': self._others(sid, words),
+                    'counts': {k: n for k, n in counts.items() if n},
+                    'ops': [self.describe(o, True) for o in ops]})
+        return row
+
+    def rows(self, seed: str, ops: List[Dict[str, Any]], replaces: Optional[str] = None,
+             drops: Optional[Counter] = None) -> List[Tuple[str, Dict[str, Any]]]:
+        """A try's writing rows, ``(sentence or document id, row)``: one for
+        each sentence its ops write in, naming the try (``seed``), the write,
+        the piece, whether the sentence is one of the write's own, every word
+        of the sentence (REV-B4-1), what the try writes there as counts and
+        as the changes the report would list (``ops``), and, in the
+        sentence's first row of the write, what the write leaves blank there
+        (``left``). The changes of no sentence have a row of the document. A
+        text edit's try has a row of its follow-up (``req`` 1). ``replaces``:
+        the seed of the try these replace (one cut in two, or one written
+        again without the links gone since), whose rows then count for
+        nothing (``of``). ``drops``: what was dropped from the try it
+        replaces."""
+        from .jobapply import IGNORED_KINDS, deletes
+        by: Dict[Optional[str], List[Dict[str, Any]]] = {}
+        for o in ops:
+            if id(o) in self.again:
+                continue
+            s = self.sentence_of(o)
+            by.setdefault(s.id if s is not None else None, []).append(o)
+        loose = by.pop(None, [])
+        out = [(sid, self._sentence_row(sid, seed, sops, replaces)) for sid, sops in by.items()]
+        for o in ops:
+            if o.get('kind') == 'edit_text':
+                out.append(self.follow_up(seed, o))
+        counts = Counter(drops or {}) + Counter({
+            'changes': len(loose), 'deletions': sum(1 for o in loose if deletes(o)),
+            'entries': sum(1 for o in loose if o.get('kind') == 'create_entry')})
+        if loose or +counts:
+            out.append((self.document_id, {
+                'write': self.id, 'try': seed, 'piece': self.piece, 'loose': True,
+                'counts': {k: n for k, n in counts.items() if n},
+                # A selection's change of no document is handed on to its
+                # next write when this one does not land (``LOOSE``): never
+                # listed here.
+                'ops': [self.describe(o, False) for o in loose if o.get('kind') not in IGNORED_KINDS
+                        and o.get(LOOSE) is None]}))
+        if replaces:
+            for _, row in out:
+                row['of'] = replaces
+        return out
+
+    def follow_up(self, seed: str, op: Dict[str, Any], none: bool = False) -> Tuple[str, Dict[str, Any]]:
+        """The row of a text edit's follow-up (``req`` 1): what it would do,
+        or, ``none``, that the edit landed and called for none."""
+        s = self.sentence_of(op)
+        row = {'write': self.id, 'try': seed, 'req': 1, 'piece': self.piece, 'counts': {}}
+        if none:
+            row['none'] = True
+        else:
+            row['ops'] = [{**self.describe(op, s is not None), 'label': FOLLOW_UP_LABEL}]
+        if s is None:
+            return self.document_id, {**row, 'loose': True}
+        return s.id, {**row, 'own': s.id in self.own, 'words': [], 'others': self._others(s.id, [])}
+
+    def own_rows(self, tries: List[List[Dict[str, Any]]]) -> List[Tuple[str, Dict[str, Any]]]:
+        """The write's own rows (no try of their own, ``try`` empty), which
+        count only once every try of it landed: each of the piece's own
+        sentences the write writes nothing in, and the write's own counts
+        and proposed changes."""
+        written = {s.id for ops in tries for o in ops for s in [self.sentence_of(o)] if s is not None}
+        out = []
+        for sid in self.own:
+            if sid in written:
+                continue
+            left = self.left_in(sid)
+            counts = {'left': sum(1 for e in left if e['form'] is not None),
+                      'left_translations': sum(1 for e in left if e['form'] is None)}
+            out.append((sid, {'write': self.id, 'try': '', 'piece': self.piece, 'own': True, 'words': [],
+                              'others': self._others(sid, []), 'counts': {k: n for k, n in counts.items() if n},
+                              'left': left}))
+        if +Counter(self.counts) or self.proposed:
+            out.append((self.document_id, {'write': self.id, 'try': '', 'piece': self.piece, 'loose': True,
+                                           'counts': {k: n for k, n in Counter(self.counts).items() if n},
+                                           'proposed': self.proposed}))
+        return out
+
+    def marker(self, seed: str) -> Tuple[str, Dict[str, Any]]:
+        """The row of a try that is not sent at all (one change that alone
+        needs more than one request, listed as a proposed change): its rows
+        count for nothing."""
+        return (self.document_id, {'write': self.id, 'try': '', 'piece': self.piece, 'loose': True, 'counts': {},
+                                   'of': seed})
 
 
 class IgtRunner:
@@ -1022,10 +1159,14 @@ class IgtRunner:
         #: document id -> the job's writing rows of it (:meth:`writing_rows`),
         #: None before they are read
         self.rows: Optional[Dict[str, List[Dict[str, Any]]]] = None
-        #: the seeds of the tries known to have landed, and of those known
-        #: not to have (:meth:`look_up`)
+        #: the keys of the requests of the job's tries known to have
+        #: landed, and the seeds of the tries whose fate is known: a key of
+        #: one of them not landed did not land (:meth:`look_up`)
         self.landed: set = set()
-        self.dead: set = set()
+        self.looked: set = set()
+        #: whether the report's last look at what landed was made
+        #: (:meth:`known_at_end`)
+        self.ended = False
         #: the documents this worker has settled once (:meth:`settle`)
         self.settled: set = set()
         #: (document id, a stretch's first sentence id) -> how many of that
@@ -1806,7 +1947,7 @@ class IgtRunner:
         whole = self.whole_document(project, doc)
         if st.empty() and not self.every_sentence():
             # Nothing to do: rows that say so, as a write that sends nothing.
-            self.intend(Write(document_id, '', st, [s.id for s in part], [], Counter(), doc), None, [], Counter())
+            self.manifest(Write(document_id, '', st, [s.id for s in part], [], Counter(), doc))
             self.record(project, document_id, doc, part, st)
             return None
         ws.stretch = st
@@ -2024,7 +2165,7 @@ class IgtRunner:
 
     # --- the write (SPEC 5.4) --------------------------------------------------------
     def writing_rows(self, document_id: str) -> List[Dict[str, Any]]:
-        """The job's writing rows of a document (:meth:`intend`), each its
+        """The job's writing rows of a document (:meth:`manifest`), each its
         analysis with its sentence id (the document's id for a row of the
         changes of no sentence), those of sentences gone since included.
         Every row of the job is read once per worker (``GET
@@ -2040,49 +2181,55 @@ class IgtRunner:
             self.rows = rows
         return self.rows.setdefault(document_id, [])
 
-    def landed_row(self, row: Dict[str, Any]) -> bool:
-        """Whether a writing row's try landed, as this worker knows it: a try
-        it saw land or core said landed (:meth:`look_up`), or no try at all
-        (a write that sent nothing, whose rows say so)."""
-        return not row['try'] or row['try'] in self.landed
+    @staticmethod
+    def key_of(row: Dict[str, Any]) -> str:
+        """The Idempotency-Key of the request a writing row's try sends
+        there: ``<seed>.<n>``, the first unless the row says (``req``)."""
+        return f"{row['try']}.{row.get('req') or 0}"
+
+    def view(self, document_id: str):
+        """The document's writing rows that count, and whether each landed,
+        as this worker knows it: ``(rows, landed(row))``. A try another
+        replaced (``of``: cut in two, written again without what went since,
+        or not sent at all) counts for nothing. A try's row landed when core
+        has its key (:meth:`look_up`), the follow-up of a text edit also when
+        the edit called for none (``none``). A write's own rows (``try``
+        empty) landed when every try of the write did."""
+        rows = self.writing_rows(document_id)
+        replaced = {r['of'] for r in rows if r.get('of')}
+        rows = [r for r in rows if not (r['try'] and r['try'] in replaced)]
+        none = {self.key_of(r) for r in rows if r.get('none')}
+
+        def key_landed(r):
+            return self.key_of(r) in self.landed or self.key_of(r) in none
+        cut = {r['write'] for r in rows if r['try'] and not key_landed(r)}
+
+        def landed(r):
+            return key_landed(r) if r['try'] else r['write'] not in cut
+        return rows, landed
 
     def look_up(self, seeds) -> None:
-        """Ask core which of the tries ``seeds`` landed (``POST
-        /jobs/{id}/landed``): a try is one request, its key ``<seed>.0``.
-        Exact and for good: core keeps every write's key in its audit log."""
+        """Ask core which requests of the tries ``seeds`` landed (``POST
+        /jobs/{id}/landed``): every key ``<seed>.<n>`` it holds. Exact and
+        for good for a write core audits, for a day for one it does not (a
+        comment): core answers from its audit log and from the answers it
+        keeps of keyed writes."""
         seeds = sorted(set(seeds))
         for i in range(0, len(seeds), JOB_DECISIONS_PER_CALL):
             part = seeds[i:i + JOB_DECISIONS_PER_CALL]
-            keys = set(self.job.landed(part))
-            self.landed |= {s for s in part if f'{s}.0' in keys}
-            self.dead |= {s for s in part if f'{s}.0' not in keys}
+            self.landed |= set(self.job.landed(part))
+            self.looked |= set(part)
 
     def unknown(self, document_id: str) -> List[str]:
         """The tries of a document's writing rows this worker does not know
         the fate of."""
-        return [r['try'] for r in self.writing_rows(document_id)
-                if r['try'] and r['try'] not in self.landed and r['try'] not in self.dead]
+        return sorted({r['try'] for r in self.writing_rows(document_id) if r['try'] and r['try'] not in self.looked})
 
     def finished(self, document_id: str) -> set:
         """The sentences a landed write wrote in, or recorded with nothing
         to write: never a target again."""
-        return {r['sentence'] for r in self.writing_rows(document_id) if not r.get('loose') and self.landed_row(r)}
-
-    def interrupted(self, document_id: str) -> set:
-        """The sentences a write landed in part: written in (a landed row),
-        where a try of a write that landed some of its tries did not land,
-        and no later write landed since (one that wrote the sentence again,
-        the piece taken up again). A write none of whose tries landed never
-        happened: its own sentences are targets again, and its piece is
-        asked again. A write's tag sorts by its time."""
-        rows = self.writing_rows(document_id)
-        wrote = {r['write'] for r in rows if r['try'] and self.landed_row(r)}
-        newest: Dict[str, str] = {}
-        for r in rows:
-            if not r.get('loose') and self.landed_row(r):
-                newest[r['sentence']] = max(newest.get(r['sentence'], ''), r['write'])
-        return {r['sentence'] for r in rows if not r.get('loose') and not self.landed_row(r)
-                and r['write'] in wrote and r['sentence'] in newest and newest[r['sentence']] <= r['write']}
+        rows, landed = self.view(document_id)
+        return {r['sentence'] for r in rows if not r.get('loose') and landed(r)}
 
     def unsettled(self, document_id: str) -> bool:
         """Whether this worker may not write in the document before it
@@ -2107,28 +2254,65 @@ class IgtRunner:
         document's tries of unknown fate landed (:meth:`look_up`), and what
         follows is knowledge, never read from the document (SPEC 3.8, BRIEF
         RX): a sentence with a landed row is written (its counts are its
-        rows'), one whose rows all failed to land is a target again, one a
-        write landed in part is listed as interrupted, and the changes of
-        no sentence of a write that landed some of its tries and not those
-        are listed as proposed changes. The row's counts are written whole
-        from the rows."""
+        rows'), and every other change of a write cut short is a target
+        again or listed (:meth:`unwritten`, in the report). The changes a
+        write that landed any of its tries proposed are kept. The row's
+        counts are written whole from the rows."""
         job = self.job
         unknown = self.unknown(document_id)
         if unknown:
             self.look_up(unknown)
-        rows = self.writing_rows(document_id)
-        skipped = {s.get('sentence_id') for s in (job.rows.get(document_id) or {}).get('skipped') or []}
-        for sid in sorted(self.interrupted(document_id) - skipped):
-            self.skip(document_id, doc, sid, INTERRUPTED, None, cursor=False)
         if unknown or document_id not in self.settled:
             # The changes a landed write proposed (kept once: a write whose
-            # record was cut short by an error keeps them here), and the
-            # changes of no sentence a write that landed in part did not.
-            wrote = {r['write'] for r in rows if self.landed_row(r)}
-            self.record_changes([c for r in rows if r.get('loose') and r['write'] in wrote
-                                 for c in (r.get('proposed') or []) + ([] if self.landed_row(r) else r.get('ops') or [])])
+            # record was cut short by an error keeps them here).
+            rows, landed = self.view(document_id)
+            wrote = {r['write'] for r in rows if r['try'] and landed(r)}
+            self.record_changes([c for r in rows if r.get('loose') and not r['try'] and r['write'] in wrote
+                                 for c in r.get('proposed') or []])
             job.update_row(document_id, **self.tally(document_id, (job.rows.get(document_id) or {}).get('skipped')))
             self.settled.add(document_id)
+
+    def unwritten(self, document_id: str) -> Tuple[List[Dict[str, Any]], int]:
+        """THE RULE after a write cut short (a lost answer, a crash, a
+        refusal), applied to each change of each of the write's tries that
+        did not land: it is a TARGET AGAIN, when no try of the write landed
+        in its sentence and that sentence is one of the write's own (or, for
+        a change of no sentence of the piece, when nothing of the write
+        landed and it has own sentences): the piece is taken again over that
+        sentence and the model asked again. Every other such change is
+        LISTED here, as the report's proposed changes do (``reason``
+        INTERRUPTED), never sent again, unless a write of the job that
+        landed made the same change (the piece taken again staged it again).
+        So every change of every write is exactly one of: landed and
+        counted, a target again, or listed.
+        ``(changes, how many more the rows could not hold)``."""
+        rows, landed = self.view(document_id)
+        writes: Dict[str, List[Dict[str, Any]]] = {}
+        for r in rows:
+            writes.setdefault(r['write'], []).append(r)
+        # A change another write of the job made (the piece taken again
+        # staged it again) is written, never listed.
+        made = {canonical(c) for r in rows if r['try'] and landed(r) for c in r.get('ops') or []}
+        out, more = [], 0
+        for wrows in writes.values():
+            tries = [r for r in wrows if r['try']]
+            if all(landed(r) for r in tries):
+                continue
+            some = any(landed(r) for r in tries)
+            own = any(r.get('own') for r in wrows)
+            landed_in = {r['sentence'] for r in tries if landed(r) and not r.get('loose')}
+            for r in tries:
+                if landed(r):
+                    continue
+                if r.get('loose'):
+                    again = not some and own
+                else:
+                    again = r['sentence'] not in landed_in and (r.get('own') or (not some and own))
+                if again:
+                    continue
+                out += [{**c, 'reason': INTERRUPTED} for c in r.get('ops') or [] if canonical(c) not in made]
+                more += r.get('more') or 0
+        return out, more
 
     def excluded(self, document_id: str) -> set:
         """The sentences of a document no piece works: skipped, or written
@@ -2145,8 +2329,9 @@ class IgtRunner:
         A sentence holding any of them is not a target (:func:`wrote_in`,
         REV-B4-1). With ``piece``, only the sentences that piece wrote in."""
         out: set = set()
-        for r in self.writing_rows(document_id):
-            if not r.get('loose') and self.landed_row(r) and (piece is None or r['piece'] == piece):
+        rows, landed = self.view(document_id)
+        for r in rows:
+            if not r.get('loose') and landed(r) and (piece is None or r['piece'] == piece):
                 out |= set(r.get('words') or ()) | set(r.get('others') or ())
         return frozenset(out)
 
@@ -2178,8 +2363,8 @@ class IgtRunner:
         # (``repeated``). What a later piece stages in a sentence an earlier
         # one wrote in is written as any change (REV-JH-1).
         known = self.known_words(document_id, piece)
-        mine = {r['sentence'] for r in self.writing_rows(document_id)
-                if not r.get('loose') and r['piece'] == piece and self.landed_row(r)}
+        rows, landed = self.view(document_id)
+        mine = {r['sentence'] for r in rows if not r.get('loose') and r['piece'] == piece and landed(r)}
         again = {s.id for s in doc.sentences if s.id in mine or wrote_in(s, known)}
         done = self.loose_done()
         from .jobapply import sentence_of
@@ -2291,7 +2476,8 @@ class IgtRunner:
                  for w in s.words if w.id in st.words and word_target(w)}
         self.machine_status(project, kept)
         own = [s.id for s in st.doc.sentences if s.id in st.sentence_ids and s.id not in changed]
-        w = Write(document_id, piece, st, own, kept, counts, fresh, proposed)
+        w = Write(document_id, piece, st, own, kept, counts, fresh, proposed,
+                  describe=lambda o, here: self.describe(o, fresh, project) if here else self.describe_loose(o))
         self.send(client, project, document_id, group, w)
         known = client.document_versions.get(document_id)
         after = self.read(project, document_id, client)
@@ -2302,178 +2488,165 @@ class IgtRunner:
         return w, changed, after, frozenset(blank) if exact else frozenset(), proposed
 
     def send(self, client, project: IgtProject, document_id: str, group: str, w: Write) -> None:
-        """Send a write as TRIES of one request each, in the executor's own
-        order (:meth:`Write.tries`), each under a seed of its own: its writing
-        rows go to core just before its request (:meth:`intend`, called back
-        by the executor, ``ONE_REQUEST``), and a try that does not fit one
-        request is cut in two before anything of it is sent. A write with
-        nothing to send has rows that say so. Raises what a try raised, with
+        """Send a write as TRIES (:meth:`Write.cut`), each one request, in
+        the executor's own order and under a seed of its own, its MANIFEST in
+        core first (:meth:`manifest`). A try that does not fit one request,
+        or that the executor would send as two, is cut in two before
+        anything of it is sent (``TooBig``, ``NeedsTwo``), and the halves'
+        rows replace its own. One change that alone needs more is listed as
+        a proposed change, never sent. Raises what a try raised, with
         ``wrote_any``: whether anything of the write may have landed."""
-        queue = w.tries()
+        queue = [{'seed': uuid7(), 'ops': ops} for ops in w.cut()]
+        self.manifest(w, queue)
         refit = False
         while queue:
-            ops = queue.pop(0)
+            t = queue.pop(0)
+            seed, ops = t['seed'], t['ops']
             if refit and any(o.get('kind') == 'create_entry' for o in ops):
-                # A half cut after another landed: the entry the first made
+                # A try after one that landed: an entry an earlier try made
                 # is linked, never made again.
                 ops = self.entries_that_fit(project, ops, True)
-            seed = uuid7()
             try:
                 self.apply(client, project, document_id, group, ops, seed, w)
             except TooBig:
+                # Nothing of it was sent.
+                self.looked.add(seed)
                 halves = w.halve(ops)
                 if halves is None:
                     # One change that alone needs more than one request:
                     # listed for a person, never sent in part.
-                    self.record_changes([self.describe(o, w.st.doc, project) if w.sentence_of(o) is not None
-                                         else self.describe_loose(o) for o in ops])
+                    self.record_changes([w.describe(o, w.sentence_of(o) is not None) for o in ops
+                                         if id(o) not in w.again])
+                    self.keep_rows(w, [w.marker(seed)])
                     continue
-                queue[0:0] = halves
+                new = [{'seed': uuid7(), 'ops': h} for h in halves]
+                self.keep_rows(w, [r for n in new for r in w.rows(n['seed'], n['ops'], replaces=seed)])
+                queue[0:0] = new
+                continue
+            except PlanOutOfDate as e:
+                self.looked.add(seed)
+                rest, drops = self.without_gone(client, project, ops, e) if not t.get('again') else (None, None)
+                if rest is None:
+                    raise Deferred(document_id) from e
+                # Nothing of the try was sent: written again without what is
+                # gone since, under a seed of its own, its rows replacing its
+                # own and counting what was dropped.
+                if rest:
+                    n = {'seed': uuid7(), 'ops': rest, 'again': True}
+                    self.keep_rows(w, w.rows(n['seed'], rest, replaces=seed, drops=drops))
+                    queue.insert(0, n)
+                else:
+                    self.keep_rows(w, [(w.document_id, {**w.marker(seed)[1], 'counts': dict(drops)})])
                 continue
             except BaseException as e:
-                e.wrote_any = bool(w.seeds & self.landed) or (isinstance(e, PlanError) and e.wrote)
+                e.wrote_any = bool(w.done) or (isinstance(e, PlanError) and e.wrote)
                 raise
-            if seed in w.seeds:
-                self.landed.add(seed)
-                refit = True
-        # The piece's sentences nothing was sent for: rows that say so.
-        self.intend(w, None, [], Counter())
+            w.done.add(seed)
+            self.looked.add(seed)
+            self.landed |= {self.key_of(r) for r in self.writing_rows(document_id) if r['try'] == seed}
+            refit = True
 
-    def intend(self, w: Write, seed: Optional[str], ops: List[Dict[str, Any]], drops: Counter) -> None:
-        """A try's writing rows, in core before its request is sent: a row
-        for each sentence ``ops`` write in, naming the try (``seed``), the
-        write, the piece, every word of the sentence (REV-B4-1) and what the
-        try writes there, as counts (for the piece's own sentence, also what
-        the write leaves blank there, in its first row). The changes of no
-        sentence have a row of the document. The write's LAST try also names
-        each sentence of the piece the write wrote nothing in, and carries
-        the write's own counts and proposed changes: a write cut short
-        before its last try is the piece's to do again (BRIEF RX). ``seed``
-        None: rows of a write with nothing more to send."""
-        from .jobapply import IGNORED_KINDS, deletes
-        by: Dict[Optional[str], List[Dict[str, Any]]] = {}
-        for o in ops:
-            s = w.sentence_of(o)
-            by.setdefault(s.id if s is not None else None, []).append(o)
-        loose = by.pop(None, [])
-        now = {s.id: s for s in (w.fresh.sentences if w.fresh is not None else [])}
-        rows = []
-        last = not w.queue
-        for sid in list(by) + (w.opless(by) if last else []):
-            counts = w.counts_of(by.get(sid) or [])
-            left = []
-            if sid in w.own and sid not in w.rowed:
-                w.rowed.add(sid)
-                left = w.left_in(sid)
-                counts['left'] = sum(1 for e in left if e['form'] is not None)
-                counts['left_translations'] = sum(1 for e in left if e['form'] is None)
-            words = w.words_of(by.get(sid) or [])
-            s = now.get(sid) or w.st.where.get(sid)
-            rows.append((sid, {'write': w.id, 'try': seed or '', 'piece': w.piece, 'words': words,
-                               'others': [word_tag(x.id) for x in (s.words if s is not None else [])
-                                          if word_tag(x.id) not in words],
-                               'counts': {k: n for k, n in counts.items() if n}, 'left': left}))
-        mine = last and not w.counted
-        extra = Counter(drops) + (Counter(w.counts) if mine else Counter())
-        proposed = w.proposed if mine else []
-        w.counted = w.counted or last
-        if loose or +extra or proposed:
-            counts = extra + Counter({'changes': len(loose), 'deletions': sum(1 for o in loose if deletes(o)),
-                                      'entries': sum(1 for o in loose if o.get('kind') == 'create_entry')})
-            rows.append((w.document_id, {
-                'write': w.id, 'try': seed or '', 'piece': w.piece, 'loose': True,
-                'counts': {k: n for k, n in counts.items() if n},
-                'ops': [self.describe_loose(o) for o in loose if o.get('kind') not in IGNORED_KINDS],
-                'proposed': proposed}))
-        if not rows:
-            return
+    def manifest(self, w: Write, queue=()) -> None:
+        """A write's MANIFEST, in core before its first request: the rows of
+        every try of ``queue`` (``{seed, ops}``, :meth:`Write.rows`) and the
+        write's own (:meth:`Write.own_rows`). A write with nothing to send
+        has its own rows alone, which say so."""
+        rows = [r for t in queue for r in w.rows(t['seed'], t['ops'])]
+        self.keep_rows(w, rows + w.own_rows([t['ops'] for t in queue]))
+        for t in queue:
+            places = {o[LOOSE] for o in t['ops'] if o.get(LOOSE) is not None}
+            if places:
+                self.try_loose[t['seed']] = places
+
+    def keep_rows(self, w: Write, rows: List[Tuple[str, Dict[str, Any]]]) -> None:
+        """Writing rows to core, JOB_DECISIONS_PER_CALL a call, and kept by
+        this worker as written."""
         decisions = []
         for sid, row in rows:
             text = writing_text(row)
             decisions.append({'form': writing_form(sid), 'key': analysis_key(text), 'analysis': text, 'count': 1,
                               'document_id': w.document_id, 'sentence_id': None if row.get('loose') else sid})
-        self.job.add_decisions(decisions)
+        for i in range(0, len(decisions), JOB_DECISIONS_PER_CALL):
+            self.job.add_decisions(decisions[i:i + JOB_DECISIONS_PER_CALL])
         self.writing_rows(w.document_id).extend({**json.loads(d['analysis']), 'sentence': sid}
                                                 for d, (sid, _) in zip(decisions, rows))
-        if seed is not None:
-            w.seeds.add(seed)
-            places = {o[LOOSE] for o in ops if o.get(LOOSE) is not None}
-            if places:
-                self.try_loose[seed] = places
+
+    def sending(self, w: Write, seed: str) -> None:
+        """A try's request is about to go out (``ONE_REQUEST``): its rows are
+        in core already (:meth:`manifest`)."""
 
     def loose_done(self) -> set:
         """The places among a selection's changes of no document of those a
         landed try of this worker wrote (``LOOSE``)."""
-        return {i for seed, places in self.try_loose.items() if seed in self.landed for i in places}
+        return {i for seed, places in self.try_loose.items() if f'{seed}.0' in self.landed for i in places}
 
     def loose_landed(self) -> set:
         """:meth:`loose_done`, once core has said which of this worker's
         tries holding such changes landed (a write put off after a lost
         answer leaves one of unknown fate)."""
-        unknown = [s for s in self.try_loose if s not in self.landed and s not in self.dead]
+        unknown = [s for s in self.try_loose if s not in self.looked]
         if unknown:
             self.look_up(unknown)
         return self.loose_done()
 
     def apply(self, client, project: IgtProject, document_id: str, group: str, kept: List[Dict[str, Any]],
-              seed: str, w: Write) -> List[Dict[str, Any]]:
-        """Write ``kept`` as one try (one request, ``ONE_REQUEST``) of the
-        document's glossing entry, its rows sent just before the request
-        (:meth:`intend`). A link to an entry gone since the model read it
-        (deleted, merged away, its lexicon taken out of the project) is
-        dropped as ``changed`` and the rest is written (SPEC 12, REV-J-B3
-        B3-3): the plan's own check, asked again of each link and entry
-        alone, says which. An entry staged only for links dropped so is not
-        created. A plan still out of date after that, or one whose ops are
-        none of them out of date alone, puts the document off. The ops
-        written."""
+              seed: str, w: Write) -> None:
+        """Write ``kept`` as one try (one request, ``ONE_REQUEST``, a text
+        edit two at most) of the document's glossing entry, under ``seed``.
+        A text edit that called for no follow-up says so in a row of its
+        own, so its follow-up's row is never read as one not written."""
         label = job_label(self.job.instructions)
-        drops = Counter()
-        for n in range(2):
-            try:
-                setattr(client, ONE_REQUEST, lambda: self.intend(w, seed, kept, drops))
+        setattr(client, ONE_REQUEST, lambda: self.sending(w, seed))
+        try:
+            # ``every``: a comment, alone in the try too, takes the try's
+            # key, so core knows the request by it (REV-RX-4).
+            with client.operation(label, kind='job', ref=self.gloss_ref(document_id), group_id=group,
+                                  keys={'seed': seed, 'stamps': {}, 'every': True}):
                 try:
-                    with client.operation(label, kind='job', ref=self.gloss_ref(document_id), group_id=group,
-                                          keys={'seed': seed, 'stamps': {}}):
-                        try:
-                            execute_plan(client, kept, source=self.source, label=label, project=project,
-                                         stamp_mode='machine', detail=self.detail, seed=seed)
-                        except (PlanError, PlanOutOfDate, TooBig):
-                            raise
-                        except Exception as e:  # noqa: BLE001 - raised before the first write
-                            # The plan's reads (offsets, scopes, entries) come
-                            # before its request, and once it sends nothing
-                            # leaves it but a PlanError or PlanOutOfDate
-                            # (``applying``). So nothing was sent (REV-B4-6).
-                            raise PlanError(str(e), 0, len(kept)) from e
-                finally:
-                    setattr(client, ONE_REQUEST, None)
-                return kept
-            except PlanOutOfDate as e:
-                # Raised before anything is written. Core out of reach while
-                # checking is core's trouble: it goes up, the walk is tried again.
-                if core_job.plaid_error(e) is not None:
+                    execute_plan(client, kept, source=self.source, label=label, project=project,
+                                 stamp_mode='machine', detail=self.detail, seed=seed)
+                except (PlanError, PlanOutOfDate, TooBig):
                     raise
-                gone = {id(o) for o in kept if o.get('kind') in ('link', 'create_entry')
-                        and out_of_date(client, project, o)} if n == 0 else set()
-                if not gone:
-                    raise Deferred(document_id) from e
-                logger.info('Job %s: links or entries out of date in %s are dropped: %s', self.job.id, document_id, e)
-                unmade = {o.get('key') for o in kept if id(o) in gone and o.get('kind') == 'create_entry'}
-                rest = [o for o in kept if id(o) not in gone
-                        and not (o.get('kind') == 'link' and o.get('new_entry_key') in unmade)]
-                left = {id(o) for o in rest}
-                drops['changed'] += sum(1 for o in kept if o.get('kind') == 'link' and id(o) not in left)
-                # An entry made only for links that are now dropped is not made.
-                wanted = {o.get('new_entry_key') for o in kept if o.get('kind') == 'link'}
-                linked = {o.get('new_entry_key') for o in rest if o.get('kind') == 'link'}
-                kept = [o for o in rest if o.get('kind') != 'create_entry' or o.get('key') in linked
-                        or o.get('key') not in wanted]
-                if not kept:
-                    if +drops:
-                        self.intend(w, None, [], drops)
-                    return kept
-        return kept
+                except Exception as e:  # noqa: BLE001 - raised before the first write
+                    # The plan's reads (offsets, scopes, entries) come
+                    # before its request, and once it sends nothing
+                    # leaves it but a PlanError or PlanOutOfDate
+                    # (``applying``). So nothing was sent (REV-B4-6).
+                    raise PlanError(str(e), 0, len(kept)) from e
+        finally:
+            setattr(client, ONE_REQUEST, None)
+        edit = next((o for o in kept if o.get('kind') == 'edit_text'), None)
+        if edit is not None and f'{seed}.1' not in self.job.landed([seed]):
+            # The edit landed, and core holds no follow-up of it: it called
+            # for none.
+            self.keep_rows(w, [w.follow_up(seed, edit, none=True)])
+
+    def without_gone(self, client, project: IgtProject, kept: List[Dict[str, Any]], e: PlanOutOfDate):
+        """A try refused out of date before anything was sent, written again
+        without what is gone since: a link to an entry gone since the model
+        read it (deleted, merged away, its lexicon taken out of the project)
+        is dropped as ``changed`` (SPEC 12, REV-J-B3 B3-3), the plan's own
+        check asked again of each link and entry alone, and an entry staged
+        only for links dropped so is not created. ``(rest, drops)``, or
+        ``(None, None)`` when none of its ops is out of date alone: the
+        document is put off. Core out of reach while checking is core's
+        trouble: it goes up, the walk is tried again."""
+        if core_job.plaid_error(e) is not None:
+            raise e
+        gone = {id(o) for o in kept if o.get('kind') in ('link', 'create_entry') and out_of_date(client, project, o)}
+        if not gone:
+            return None, None
+        logger.info('Job %s: links or entries out of date are dropped: %s', self.job.id, e)
+        unmade = {o.get('key') for o in kept if id(o) in gone and o.get('kind') == 'create_entry'}
+        rest = [o for o in kept if id(o) not in gone
+                and not (o.get('kind') == 'link' and o.get('new_entry_key') in unmade)]
+        left = {id(o) for o in rest}
+        drops = Counter({'changed': sum(1 for o in kept if o.get('kind') == 'link' and id(o) not in left)})
+        # An entry made only for links that are now dropped is not made.
+        wanted = {o.get('new_entry_key') for o in kept if o.get('kind') == 'link'}
+        linked = {o.get('new_entry_key') for o in rest if o.get('kind') == 'link'}
+        return [o for o in rest if o.get('kind') != 'create_entry' or o.get('key') in linked
+                or o.get('key') not in wanted], drops
 
     def recheck(self, ws: JobWorkspace, project: IgtProject, fresh, st: Stretch, prints: Dict[str, str],
                 ops: List[Dict[str, Any]]):
@@ -2548,12 +2721,15 @@ class IgtRunner:
         it. Each value is cut at JOB_CHANGE_VALUE_CHARS."""
         from .jobapply import _found, token_of
         kind = op.get('kind')
+        from .jobapply import sentence_of
         hit = _found(doc, token_of(op))
         ref = field = before = after = None
         if hit is not None:
             s, w, m = hit
             ref = f's{s.index}' + (f'.w{w.index}' if w is not None else '') + (
                 f'.m{m.index}' if m is not None and not m.virtual else '')
+        elif sentence_of(op, doc) is not None:
+            ref = f's{sentence_of(op, doc).index}'
         gloss = getattr(project.gloss_field('Morpheme'), 'name', None)
         if kind == 'set_span':
             f = project.field_by_layer(op.get('layer_id'))
@@ -2577,6 +2753,8 @@ class IgtRunner:
             after = op.get('entry_form') or op.get('morpheme_form')
         elif kind == 'create_entry':
             after = op.get('form')
+        elif kind in ('edit_text', 'delete_sentence', 'respell'):
+            before, after = op.get('old'), op.get('new') if kind != 'respell' else op.get('value')
         what = (op.get('label') or kind or '')
         return {'kind': kind, 'document_id': doc.id, 'document': doc.name, 'ref': ref, 'field': field,
                 'from': _cut(before, JOB_CHANGE_VALUE_CHARS), 'to': _cut(after, JOB_CHANGE_VALUE_CHARS),
@@ -2846,8 +3024,9 @@ class IgtRunner:
         passes it."""
         counts = empty_counts()
         analyzed, words = set(), set()
-        for r in self.writing_rows(document_id):
-            if not self.landed_row(r):
+        rows, landed = self.view(document_id)
+        for r in rows:
+            if not landed(r):
                 continue
             words |= set(r.get('words') or ())
             for k, n in (r.get('counts') or {}).items():
@@ -3203,6 +3382,12 @@ class IgtRunner:
         for d, row in zip(job.order, rows):
             state = row.get('state')
             counts = row.get('counts') or empty_counts()
+            done, targets = row.get('done'), row.get('targets')
+            if self.ended and (self.rows or {}).get(d):
+                # Counted again from the rows, as core now says what landed
+                # (:meth:`known_at_end`).
+                tally = self.tally(d, row.get('skipped'))
+                counts, done, targets = {**counts, **tally['counts']}, tally['done'], tally.get('targets', targets)
             # What the job could not decide, for people to (CONTRACT, added by
             # JB): every target of the document's recorded sentences it left
             # blank, cut as every report list is. A sentence whose record
@@ -3214,7 +3399,7 @@ class IgtRunner:
             left, _ = core_job.cut(listed)
             out.append({'document_id': d, 'name': self.names.get(d) or row.get('name'),
                         'state': state if state in ('done', 'in-use', 'gone') else 'not-reached',
-                        'sentences': row.get('sentences'), 'targets': row.get('targets'), 'done': row.get('done'),
+                        'sentences': row.get('sentences'), 'targets': targets, 'done': done,
                         'counts': counts, 'skipped': list(row.get('skipped') or []),
                         'gloss_group': row.get('gloss_group'), 'harmonize_group': row.get('harmonize_group'),
                         'left': left, 'left_more': max(len(listed), counted) - len(left)})
@@ -3264,6 +3449,7 @@ class IgtRunner:
             logger.warning('Job %s: its plan and proposed changes could not be read for the report: %s', job.id, e)
             rows = []
         plan, changes, notes, dropped, fallback, tables_dropped = None, [], [], 0, [], 0
+        keys: set = set()
         tables: Dict[str, Dict[str, Any]] = {}
         for r in rows:
             form = str(r.get('form') or '')
@@ -3292,6 +3478,7 @@ class IgtRunner:
                                  else value.get('document'), 'reason': value.get('reason')})
             elif form.startswith(CHANGE_FORM):
                 changes.append(value)
+                keys.add(r.get('key'))
             elif form.startswith(NOTE_FORM):
                 notes.append(value)
             elif form.startswith(TABLE_FORM):
@@ -3299,6 +3486,20 @@ class IgtRunner:
                 slot = tables.setdefault(key, {'title': value.get('title'), 'columns': value.get('columns'),
                                                'rows': [], 'more': value.get('more') or 0, 'parts': {}})
                 slot['parts'][value.get('part') or 0] = value.get('rows') or []
+        # The changes of the job's writes cut short that are not taken
+        # again (:meth:`unwritten`), each once.
+        try:
+            core_job.through_core(job, lambda: self.known_at_end(job))
+            for d in job.order:
+                listed, n = self.unwritten(d)
+                dropped += n
+                for c in listed:
+                    key = analysis_key(canonical({k: v for k, v in c.items() if k != 'reason'}))
+                    if key not in keys:
+                        keys.add(key)
+                        changes.append(c)
+        except Exception as e:  # noqa: BLE001 - a report without them rather than none
+            logger.warning('Job %s: the changes it did not write could not be read for the report: %s', job.id, e)
         order = {d: i for i, d in enumerate(job.order)}
         changes.sort(key=lambda c: (order.get(c.get('document_id'), len(order)),
                                     [int(n) for n in re.findall(r'\d+', c.get('ref') or '')]))
@@ -3324,26 +3525,35 @@ class IgtRunner:
                 'notes': shown_notes, 'notes_more': notes_more, 'tables': made[:JOB_TABLES_MAX],
                 'tables_more': max(0, len(made) - JOB_TABLES_MAX) + tables_dropped}
 
+    def known_at_end(self, job) -> None:
+        """Once, as the report is written: every try of the job whose
+        requests are not all known to have landed is asked of core again
+        (a request still queued in core when it was first asked lands
+        later), so the report counts and lists what core holds now."""
+        if self.ended:
+            return
+        for d in job.order:
+            self.writing_rows(d)
+        self.look_up([r['try'] for rows in (self.rows or {}).values() for r in rows
+                      if r['try'] and (r['try'] not in self.looked or self.key_of(r) not in self.landed)])
+        self.ended = True
+
     def left_blank(self, job) -> Dict[str, List[Dict[str, Any]]]:
         """Per document, the targets the job left blank, read from every
         landed writing row the job holds in core (a resumed job's runs before
         this one included), in document order: ``{ref, sentence_id, begin,
         form}``, ``begin`` and ``form`` None for a translation. Nothing when
         the rows cannot be read: the report is still written."""
-        def known():
-            for d in job.order:
-                self.writing_rows(d)
-            self.look_up([r['try'] for rows in (self.rows or {}).values() for r in rows
-                          if r['try'] and r['try'] not in self.landed and r['try'] not in self.dead])
         try:
-            core_job.through_core(job, known)
+            core_job.through_core(job, lambda: self.known_at_end(job))
         except Exception as e:  # noqa: BLE001 - a report without the list rather than none
             logger.warning('Job %s: the words it left blank could not be read for the report: %s', job.id, e)
             return {}
         out: Dict[str, List[Dict[str, Any]]] = {}
-        for d, rows in (self.rows or {}).items():
+        for d in list(self.rows or {}):
+            rows, landed = self.view(d)
             for r in rows:
-                if self.landed_row(r):
+                if landed(r):
                     out.setdefault(d, []).extend({**e, 'sentence_id': r['sentence']} for e in r.get('left') or [])
         for listed in out.values():
             listed.sort(key=lambda e: [int(n) for n in re.findall(r'\d+', e.get('ref') or '')])

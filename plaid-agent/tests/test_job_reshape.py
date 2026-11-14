@@ -356,7 +356,8 @@ def test_a_split_off_half_of_a_sentence_the_job_translated_is_not_translated(mon
     assert seen == [['d1-s1'], ['d1-s2']], seen
     row = _rows(client)['d1-s1']
     assert len(row.pop('try')) == 36 and len(row.pop('write')) == 16 and len(row.pop('piece')) == 16
-    assert row == {'others': ['d1-s1w1', 'd1-s1w2', 'd1-s1w3'], 'words': [],
+    assert [o['field'] for o in row.pop('ops')] == ['Translation'], 'what the report would list'
+    assert row == {'others': ['d1-s1w1', 'd1-s1w2', 'd1-s1w3'], 'words': [], 'own': True,
                    'counts': {'analyzed': 1, 'changes': 1, 'translations': 1, 'left': 3},
                    'left': [{'ref': 's1.w1', 'begin': 0, 'form': 'ka'}, {'ref': 's1.w2', 'begin': 3, 'form': 'ta'},
                             {'ref': 's1.w3', 'begin': 6, 'form': 'pa'}]}

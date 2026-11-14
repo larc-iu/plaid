@@ -84,21 +84,20 @@ def _crash_at_record(monkeypatch, job, sentence=None):
 def _crash_before_write(monkeypatch, job, nth=1):
     """The process dies with the ``nth`` try's writing rows in core, before
     its request is sent."""
-    real = igt_job.IgtRunner.intend
+    real = igt_job.IgtRunner.sending
     n = {'n': 0}
 
-    def intend(self, w, seed, ops, drops):
-        real(self, w, seed, ops, drops)
-        if seed is not None:
-            n['n'] += 1
-            if n['n'] == nth:
-                raise Crash()
-    monkeypatch.setattr(igt_job.IgtRunner, 'intend', intend)
+    def sending(self, w, seed):
+        real(self, w, seed)
+        n['n'] += 1
+        if n['n'] == nth:
+            raise Crash()
+    monkeypatch.setattr(igt_job.IgtRunner, 'sending', sending)
     try:
         runner(job).document('d1')
     except Crash:
         pass
-    monkeypatch.setattr(igt_job.IgtRunner, 'intend', real)
+    monkeypatch.setattr(igt_job.IgtRunner, 'sending', real)
 
 
 def _resume(client, job):
@@ -915,13 +914,13 @@ def test_the_jobs_own_earlier_deletion_does_not_make_a_later_write_that_never_la
                     [('d1-s3', 'd1-s4'), ('d1-s2', 'd1-s3')]),
     }
     real, n, sent = igt_job.execute_plan, {'n': 0}, []
-    real_intend = igt_job.IgtRunner.intend
+    real_sending = igt_job.IgtRunner.sending
 
-    def intend(self, w, seed, ops, drops):
-        real_intend(self, w, seed, ops, drops)
-        if seed is not None and n['n'] > 3:
+    def sending(self, w, seed):
+        real_sending(self, w, seed)
+        if n['n'] > 3:
             raise Crash()
-    monkeypatch.setattr(igt_job.IgtRunner, 'intend', intend)
+    monkeypatch.setattr(igt_job.IgtRunner, 'sending', sending)
 
     def execute(c, ops, **kw):
         n['n'] += 1
@@ -941,7 +940,7 @@ def test_the_jobs_own_earlier_deletion_does_not_make_a_later_write_that_never_la
         runner(job).document('d1')
     assert sent == [('set_analysis', 'd1-s1w1'), ('delete_sentence', 'd1-s2'), ('set_analysis', 'd1-s3w1')], sent
     assert 'd1-s4' in _writing(client)
-    monkeypatch.setattr(igt_job.IgtRunner, 'intend', real_intend)
+    monkeypatch.setattr(igt_job.IgtRunner, 'sending', real_sending)
     asked = len([c for c in model.calls if c['n'] == 1])
     monkeypatch.setattr(igt_job, 'execute_plan', lambda c, ops, **kw: (sent.extend(
         (o['kind'], o.get('word_id') or o.get('sentence_id')) for o in ops), real(c, ops, **kw))[1])
@@ -968,13 +967,13 @@ def test_a_sentence_a_person_deleted_does_not_make_a_later_write_that_never_land
                                                      'morphemes': [{'form': 'xx', 'fields': {'Morph Gloss': 'go'}}]})])
     client, job, clock, m = _job(monkeypatch, 'Gloss every word.', before, model=model)
     real, n, sent = igt_job.execute_plan, {'n': 0}, []
-    real_intend = igt_job.IgtRunner.intend
+    real_sending = igt_job.IgtRunner.sending
 
-    def intend(self, w, seed, ops, drops):
-        real_intend(self, w, seed, ops, drops)
-        if seed is not None and n['n'] > 2:
+    def sending(self, w, seed):
+        real_sending(self, w, seed)
+        if n['n'] > 2:
             raise Crash()
-    monkeypatch.setattr(igt_job.IgtRunner, 'intend', intend)
+    monkeypatch.setattr(igt_job.IgtRunner, 'sending', sending)
 
     def execute(c, ops, **kw):
         n['n'] += 1
@@ -1010,7 +1009,7 @@ def test_a_sentence_a_person_deleted_does_not_make_a_later_write_that_never_land
     monkeypatch.setattr(job, 'add_decisions', real_add)
     assert sent == [('set_analysis', 'd1-s1w1'), ('set_analysis', 'd1-s2w1')], sent
     assert 'd1-s3' in _writing(client)
-    monkeypatch.setattr(igt_job.IgtRunner, 'intend', real_intend)
+    monkeypatch.setattr(igt_job.IgtRunner, 'sending', real_sending)
     asked = len([c for c in m.calls if c['n'] == 1])
     monkeypatch.setattr(igt_job, 'execute_plan', lambda c, ops, **kw: (sent.extend(
         (o['kind'], o.get('word_id')) for o in ops), real(c, ops, **kw))[1])

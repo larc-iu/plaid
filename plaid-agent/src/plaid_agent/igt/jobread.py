@@ -473,7 +473,8 @@ def _help() -> str:
         '- The sections are the report\'s own lists, named as the job page heads them with their key, among '
         'them: ' + ', '.join(section_name(k) for k in HEADINGS) + '. A section takes its key or its heading. '
         'proposed holds the changes the job staged and did not apply (what, where, from which value to which), '
-        'which a plan can make once the user asks. left holds words and translations it left blank, a sentence '
+        'which a plan can make once the user asks, those with reason interrupted applied by the job but not '
+        'written, its write cut short. left holds words and translations it left blank, a sentence '
         'alone being its translation. tables holds what the job\'s code counted, as data.',
         '- A row gives its document and the place in it (s3.w2, s12), which read_document and the plan tools '
         'take. The report is as the job ended: the document may have changed since.',

@@ -88,8 +88,7 @@ def test_the_counts_a_write_keeps_in_its_rows_survive_one_502_on_the_rows_update
     doc = r.read(project, 'd1')
     r.settle(project, 'd1', doc)
     st = Stretch(doc, project, doc.sentences, J)
-    r.intend(igt_job.Write('d1', '', st, [s.id for s in doc.sentences], [], Counter({'changed': 2}), doc), None, [],
-             Counter())
+    r.manifest(igt_job.Write('d1', '', st, [s.id for s in doc.sentences], [], Counter({'changed': 2}), doc))
     failed = _fail_once(client, 'update_document', lambda args, kwargs: 'counts' in kwargs)
     through_core(job, lambda: r.record(project, 'd1', doc, doc.sentences, st))
     assert failed
