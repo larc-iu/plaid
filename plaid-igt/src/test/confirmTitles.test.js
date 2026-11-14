@@ -16,6 +16,7 @@ const SRC = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 // Confirms that are a plain Dialog, because they hold more than a line: a
 // preview of the restore, a name to type.
 const DIALOG_CONFIRMS = [
+  'components/documents/history/UndoDialog.jsx',
   'components/vocabularies/EntryRestoreDialog.jsx',
   'components/vocabularies/VocabularyDetail.jsx',
 ];

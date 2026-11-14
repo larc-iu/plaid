@@ -1,18 +1,23 @@
 import { useMemo, useState } from 'react';
+import { readRole } from '@larc-iu/plaid-client';
 import { Link, useLocation } from 'react-router-dom';
 import { Button } from '@ui/components/ui/button';
 import { Loading } from '@ui/components/shared/Loading.jsx';
 import { Notice } from '@ui/components/shared/Notice.jsx';
 import { SegmentedControl } from '@ui/components/shared/SegmentedControl.jsx';
 import { countOf } from '@ui/lib/plural.js';
+import { canManageProject } from '@ui/domain/permissions.js';
 import { TYPE } from '@ui/lib/typeScale.js';
 import { documentViewSearch } from '@ui/hooks/useHistoryParam.js';
 import { documentRowChanges, entryChanges, sentenceChanges } from '@/domain/historyChanges.js';
+import { documentPlacer } from '@/domain/undoPlaces.js';
+import { dropPrecedent } from '@/domain/precedentCache';
 import { SentenceChange } from './SentenceChange.jsx';
 import { EntryChangeList } from './EntryChangeList.jsx';
 import { ChangeValue } from './ChangeValue.jsx';
 import { countLine } from './changeMarks.js';
 import { useChangeRows } from './useChangeRows.js';
+import { UndoDialog } from './UndoDialog.jsx';
 
 // How many sentences are drawn at once. Every row is read before any is
 // drawn, and drawing is what a long entry pages.
@@ -33,9 +38,24 @@ const SENTENCES_SHOWN = 50;
  * the shell reads for the entry anyway, and drawn SENTENCES_SHOWN at a time.
  * An entry with a row beyond CHANGE_ROWS_CEILING is not drawn: it says so, with a link
  * to the document as of it.
+ *
+ * Over the changes, Undo for those who may restore (`user` a maintainer of
+ * the project, and no service run writing): it undoes this entry's rows in
+ * this document (UndoDialog), then the page goes back to the document now
+ * (`backToNow`).
  */
-export const DocumentHistoryChanges = ({ context }) => {
-  const { client, projectId, documentId, pastEntry, historySnapshot: after } = context;
+export const DocumentHistoryChanges = ({ context, user = null }) => {
+  const {
+    client,
+    projectId,
+    documentId,
+    pastEntry,
+    historySnapshot: after,
+    liveDoc,
+    backToNow,
+  } = context;
+  const canUndo = canManageProject(context.project, user) && !context.writeLockHeld;
+  const [undoOpen, setUndoOpen] = useState(false);
   const vocabIds = Object.keys(after?.vocabularies || {}).sort();
   const vocabKey = vocabIds.join(',');
   const streams = useMemo(
@@ -82,6 +102,31 @@ export const DocumentHistoryChanges = ({ context }) => {
     return { sentences, entries, documentFields, elsewhere, changes, replaced };
   }, [after, docRows, entryRows]);
 
+  // What the Undo dialog needs of the rows: the role of each token row, and
+  // the vocabularies whose entries the entry changed.
+  const undoRows = useMemo(() => {
+    if (!docRows || !after) return null;
+    const roles = new Map();
+    for (const tl of after.raw?.textLayers || []) {
+      for (const tkl of tl.tokenLayers || []) roles.set(tkl.id, readRole(tkl.config));
+    }
+    const tokenRows = docRows
+      .filter((r) => r.kind === 'token')
+      .map((r) => ({ id: r.id, role: roles.get(r.layer) }));
+    const vocabIds = [
+      ...new Set(entryRows.filter((r) => r.kind === 'vocab-item').map((r) => r.vocabLayer)),
+    ];
+    const vocabularies = vocabIds.map((id) => ({
+      id,
+      name: after.vocabularies?.[id]?.name ?? '',
+    }));
+    return { tokenRows, vocabularies };
+  }, [docRows, entryRows, after]);
+  const place = useMemo(
+    () => documentPlacer(liveDoc, { projectId, documentId }),
+    [liveDoc, projectId, documentId],
+  );
+
   if (!after) return <Loading label="Loading changes…" />;
   if (data.reading) {
     return (
@@ -126,19 +171,43 @@ export const DocumentHistoryChanges = ({ context }) => {
           <p className="text-sm" data-testid="change-count">
             {countLine(view.changes, view.replaced)}
           </p>
-          <SegmentedControl
-            label="Filter"
-            value={only}
-            onChange={(next) => {
-              setOnly(next);
-              setShown(SENTENCES_SHOWN);
-            }}
-            options={[
-              { value: 'all', label: 'All changes' },
-              { value: 'persons', label: 'A person’s value replaced', count: view.replaced },
-            ]}
-          />
+          <div className="flex flex-wrap items-center gap-2">
+            <SegmentedControl
+              label="Filter"
+              value={only}
+              onChange={(next) => {
+                setOnly(next);
+                setShown(SENTENCES_SHOWN);
+              }}
+              options={[
+                { value: 'all', label: 'All changes' },
+                { value: 'persons', label: 'A person’s value replaced', count: view.replaced },
+              ]}
+            />
+            {canUndo && (
+              <Button variant="outline" size="sm" onClick={() => setUndoOpen(true)}>
+                Undo
+              </Button>
+            )}
+          </div>
         </div>
+      )}
+      {canUndo && (
+        <UndoDialog
+          open={undoOpen}
+          onOpenChange={setUndoOpen}
+          client={client}
+          entry={pastEntry}
+          scope={{ documentId }}
+          place={place}
+          tokenRows={undoRows?.tokenRows}
+          vocabularies={undoRows?.vocabularies}
+          onUndone={async () => {
+            // Links may have moved, and with them what the grid proposes.
+            dropPrecedent();
+            await backToNow?.();
+          }}
+        />
       )}
       {view.changes > 0 && <Legend />}
 

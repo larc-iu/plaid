@@ -125,9 +125,7 @@ const IGT_SHELL = {
   roleWords: TOKEN_ROLE_WORDS,
   // A History entry opens on what it changed, keyed by the entry so the
   // filter and the sentences shown start over on the next.
-  historyChanges: (context) => (
-    <DocumentHistoryChanges key={context.pastEntry.id} context={context} />
-  ),
+  historyChanges: (context) => <HistoryChanges key={context.pastEntry.id} context={context} />,
   // Landing on a sentence: the ?focusSentence= handoff, and a citation asking
   // for one of this document's sentences while the reader is on the grid.
   useFocusHere: useSentenceFocus,
@@ -144,6 +142,12 @@ const IGT_SHELL = {
 export const DocumentDetail = () => (
   <DocumentEditorShell app={IGT_SHELL} client={useStrictClient()} />
 );
+
+// What a History entry changed, as the reader signed in sees it.
+const HistoryChanges = ({ context }) => {
+  const { user } = useAuth();
+  return <DocumentHistoryChanges context={context} user={user} />;
+};
 
 // Start job from a document's header, for whoever may start one, and not on a
 // past state. The job is the project's, so it goes through the session's

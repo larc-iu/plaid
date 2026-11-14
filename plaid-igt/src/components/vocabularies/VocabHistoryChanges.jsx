@@ -7,9 +7,11 @@ import { countOf } from '@ui/lib/plural.js';
 import { TYPE } from '@ui/lib/typeScale.js';
 import { documentViewSearch, historyHref } from '@ui/hooks/useHistoryParam.js';
 import { entryChanges, linkCounts } from '@/domain/historyChanges.js';
+import { vocabularyPlacer } from '@/domain/undoPlaces.js';
 import { APP_ROUTES } from '@/appRoutes.js';
 import { EntryChangeList } from '../documents/history/EntryChangeList.jsx';
 import { useChangeRows } from '../documents/history/useChangeRows.js';
+import { UndoDialog } from '../documents/history/UndoDialog.jsx';
 
 // How many documents the links list names, of an entry that moved links in
 // more (a merge of a common entry reaches every document of a corpus).
@@ -29,8 +31,21 @@ const LINK_DOCUMENTS_SHOWN = 50;
  * vocabulary's read leaves links out. Past CHANGE_ROWS_CEILING rows, the
  * entries are not drawn (a link to the vocabulary as of the entry instead),
  * and the links not counted.
+ *
+ * `canUndo`: Undo over the changes, for the vocabulary's maintainers. It
+ * undoes the entry's part in this vocabulary, its entries and every link to
+ * them in any document (UndoDialog), then `onUndone` goes back to the
+ * vocabulary now.
  */
-export const VocabHistoryChanges = ({ client, vocabularyId, entry, past }) => {
+export const VocabHistoryChanges = ({
+  client,
+  vocabularyId,
+  entry,
+  past,
+  canUndo = false,
+  onUndone,
+}) => {
+  const [undoOpen, setUndoOpen] = useState(false);
   const streams = useMemo(
     () => [
       { key: 'own', opts: { vocabLayerId: vocabularyId } },
@@ -74,6 +89,20 @@ export const VocabHistoryChanges = ({ client, vocabularyId, entry, past }) => {
     [view],
   );
   const docs = useDocumentNames(client, shownDocs);
+  // A row the undo leaves is placed at its entry, named by its form in the
+  // entry's rows, or at its document, named where the links table names it.
+  const place = useMemo(() => {
+    const forms = new Map();
+    for (const r of data.rows.own || []) {
+      if (r.kind === 'vocab-item') forms.set(r.id, (r.after ?? r.before)?.form ?? '');
+    }
+    return vocabularyPlacer({
+      vocabularyId,
+      vocabularyName: past?.vocabulary?.name,
+      entryName: (id) => forms.get(id),
+      documentOf: (id) => docs[id] ?? null,
+    });
+  }, [data.rows.own, vocabularyId, past, docs]);
 
   if (!past) return <Loading label="Loading changes…" />;
   if (data.reading) {
@@ -111,11 +140,29 @@ export const VocabHistoryChanges = ({ client, vocabularyId, entry, past }) => {
       {nothing ? (
         <p className="text-sm text-muted-foreground">No changes to show.</p>
       ) : (
-        <p className="text-sm" data-testid="change-count">
-          {countOf(view.entries.length, 'entry', 'entries')}
-          {linkTotal > 0 &&
-            `, ${countOf(linkTotal, 'link')} in ${countOf(links.length, 'document')}`}
-        </p>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-sm" data-testid="change-count">
+            {countOf(view.entries.length, 'entry', 'entries')}
+            {linkTotal > 0 &&
+              `, ${countOf(linkTotal, 'link')} in ${countOf(links.length, 'document')}`}
+          </p>
+          {canUndo && (
+            <Button variant="outline" size="sm" onClick={() => setUndoOpen(true)}>
+              Undo
+            </Button>
+          )}
+        </div>
+      )}
+      {canUndo && (
+        <UndoDialog
+          open={undoOpen}
+          onOpenChange={setUndoOpen}
+          client={client}
+          entry={entry}
+          scope={{ vocabLayerId: vocabularyId }}
+          place={place}
+          onUndone={onUndone}
+        />
       )}
 
       {view.settings.length > 0 && (

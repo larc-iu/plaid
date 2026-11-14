@@ -112,6 +112,7 @@ import { HistoryDrawer, HISTORY_DRAWER_WIDTH } from '@ui/components/shared/Histo
 import { fullTimestamp } from '@ui/lib/formatTime.js';
 import { sameName } from '@ui/lib/nameKey.js';
 import { useVocabHistory } from './useVocabHistory';
+import { dropPrecedent } from '@/domain/precedentCache';
 import { VocabHistoryChanges } from './VocabHistoryChanges.jsx';
 import { useHistoryParam } from '@ui/hooks/useHistoryParam.js';
 import { SegmentedControl } from '@ui/components/shared/SegmentedControl.jsx';
@@ -1487,10 +1488,17 @@ export const VocabularyDetail = () => {
 
         {!isNewVocabulary && showChanges && (
           <VocabHistoryChanges
+            key={history.selected.id}
             client={client}
             vocabularyId={vocabularyId}
             entry={history.selected}
             past={history.loadingPast ? null : history.past}
+            canUndo={canManage}
+            onUndone={async () => {
+              // Entries and links changed, and with them what the grid proposes.
+              dropPrecedent();
+              await history.backToNow();
+            }}
           />
         )}
 
