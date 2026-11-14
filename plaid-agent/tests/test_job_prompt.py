@@ -267,6 +267,8 @@ def test_plan_work_takes_no_only_empty():
     ws.job_documents = [{'id': 'd1', 'name': 'Text 1'}]
     out = toolkit.job_plan_call(ws, 'plan_work', {'pieces': 'sentences', 'only_empty': True})
     assert 'plan_work takes no only_empty.' in out and ws.plan_work is None
+    # The fixed hint names what it takes, the new name among them (REV-KM2-4).
+    assert 'It takes pieces, ' in out and 'skip_analyzed_sentences' in out, out
 
 
 def test_the_planner_is_told_every_sentence_by_default_and_when_to_skip_analysed_sentences():

@@ -768,6 +768,7 @@ def job_plan_call(ws, name: str, args: Dict[str, Any]) -> str:
         unknown = [a for a in (args or {}) if a not in PLAN_WORK['function']['parameters']['properties']]
         if unknown:
             return refused(f'plan_work takes no {", ".join(unknown)}. Call it again without '
-                           f'{"it" if len(unknown) == 1 else "them"}.', 'invalid-argument')
+                           f'{"it" if len(unknown) == 1 else "them"}. It takes '
+                           f'{", ".join(PLAN_WORK["function"]["parameters"]["properties"])}.', 'invalid-argument')
         return run_tool(ws, name, t_plan_work, args, schema=PLAN_WORK['function']['parameters'], reading=True)
     return call_tool(ws, name, args)
