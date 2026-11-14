@@ -469,6 +469,15 @@ class Workspace(BaseWorkspace):
         self.give_entry_types(doc)
         return doc
 
+    def begin_tool_call(self) -> None:
+        """The words named by form are the call's own (``named_by_form``),
+        and so are the changes it stages: the refs of one call all read the
+        document as read (``retyped.refuse_renumbered``)."""
+        from .project import named_by_form
+        for doc in self._docs.values():
+            named_by_form(doc).clear()
+        self.staged_before_call = {id(o) for o in self.ops}
+
     def entry_types(self, vocab: dict) -> Dict[str, str]:
         """The morph type each entry of lexicon ``vocab`` goes by, its own or
         its headword's, for the entries that go by one, as stored."""
@@ -1067,8 +1076,9 @@ class Workspace(BaseWorkspace):
         others = [o for i, o in enumerate(self.ops) if i != replacing]
         # A word of a sentence the plan retypes is renumbered once it is
         # applied: only a word value planned on it as retyped may name it.
-        from .retyped import refuse_on_retyped
+        from .retyped import refuse_on_retyped, refuse_renumbered
         refuse_on_retyped(self, op, others)
+        refuse_renumbered(self, op, others)
         settings = op.get('kind') in SETTINGS_KINDS
         if others and any((o.get('kind') in SETTINGS_KINDS) != settings for o in others):
             raise ToolError(SETTINGS_APART, kind='conflict')

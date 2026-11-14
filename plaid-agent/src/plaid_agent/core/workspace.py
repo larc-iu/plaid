@@ -343,6 +343,10 @@ class BaseWorkspace:
             self._corpus = self.make_corpus()
         return self._corpus
 
+    def begin_tool_call(self) -> None:
+        """A tool call starts. Nothing here: an app forgets what it keeps
+        for one call only."""
+
     def forget_clipping(self) -> None:
         """Forget whether an earlier read in this turn was cut short by the
         engine. Called once per tool call, so each tool answers for its own

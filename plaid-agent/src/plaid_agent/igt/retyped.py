@@ -439,3 +439,118 @@ def planned_value(ws, doc, s, k: int, entry: Dict[str, Any], f, value: str, span
             'doc': doc.id,
             PLANNED: {'sentence_id': s.id, 'index': k, 'surface': entry['surface'], 'word_id': entry['word_id']},
             **labelled(place, change)}
+
+
+# --- bare numbers a planned split, merge or word delete renumbers ---------------------
+
+#: The plan ops that change how many words a sentence has without changing
+#: its text: a word ref after them names the word as read, by its number now.
+WORD_RESHAPES = ('split_word', 'merge_words', 'delete_word')
+
+
+def numbers_after(s, shapes) -> Dict[str, int]:
+    """Each word of sentence ``s`` that ``shapes`` (split, merge and delete
+    ops) leave, to its number once they run: a split word is followed by its
+    right part, a deleted word and a word merged into another are gone."""
+    split = {o.get('word_id') for o in shapes if o.get('kind') == 'split_word'}
+    gone = {o.get('word_id') for o in shapes if o.get('kind') == 'delete_word'}
+    for o in shapes:
+        if o.get('kind') == 'merge_words':
+            gone.update(o.get('other_ids') or [])
+    out, n = {}, 0
+    for w in s.words:
+        if w.id in gone:
+            continue
+        n += 1
+        out[w.id] = n
+        if w.id in split:
+            n += 1
+    return out
+
+
+def _shapes_in(ops, s) -> List[Dict[str, Any]]:
+    ids = {w.id for w in s.words}
+    return [o for o in ops if o.get('kind') in WORD_RESHAPES and o.get('word_id') in ids]
+
+
+def _kept_numbers(s, after: Dict[str, int]) -> str:
+    """Which words keep their numbers once the plan runs, for a refusal."""
+    first = next((w.index for w in s.words if after.get(w.id, w.index) != w.index or w.id not in after), None)
+    if first is None or first == 1:
+        return 'No word of it keeps its number.'
+    return f'Words before w{first} keep their numbers.'
+
+
+def _words_named(ws, op):
+    """``(doc, sentence, word)`` for each word ``op`` names, a morpheme's by
+    its word."""
+    out = []
+    for tid in named_tokens(op):
+        for doc in ws._docs.values():
+            hit = doc.find(tid)
+            if hit is not None and hit[1] is not None:
+                out.append((doc, hit[0], hit[1]))
+                break
+    return out
+
+
+def refuse_renumbered(ws, op: Dict[str, Any], others) -> None:
+    """A word named by its number alone that a split, merge or word delete
+    the plan holds in its sentence renumbers (as plaid-ud's
+    ``renumbered_refusal``): the number names one word now and another once
+    the plan runs, and the model may mean either. Named with its form beside
+    the number, the word is the one read. The other order, the reshape staged
+    after a change naming a word it renumbers, is refused too, so that the
+    order a plan is staged in decides nothing."""
+    from .plan import KIND, TEXT_SHAPE
+    from .project import named_by_form
+    kind = op.get('kind')
+    if KIND.get(kind) is None or KIND[kind].shape == TEXT_SHAPE or op.get(PLANNED) is not None:
+        return
+    if kind == 'confirm' and not op.get('named'):
+        return
+    # One call's refs all read the document as it was read, whatever else
+    # the call stages: only what earlier calls staged renumbers them.
+    before = getattr(ws, 'staged_before_call', None)
+    if before is not None:
+        others = [o for o in others if id(o) in before]
+    for doc, s, w in _words_named(ws, op):
+        shapes = _shapes_in(others, s)
+        if not shapes or w.id in named_by_form(doc):
+            continue
+        after = numbers_after(s, shapes)
+        new = after.get(w.id)
+        if new is None or new == w.index:
+            continue
+        by = next(o.get('kind') for o in shapes)
+        here = f's{s.index}.w{w.index}'
+        raise ToolError(f'{ws.doc_label(doc.id)} {here}: {here} is {qv(w.surface)} now, but this '
+                        f'plan\'s {by} renumbers s{s.index}: once it is applied, {qv(w.surface)} is w{new}. '
+                        f'{_kept_numbers(s, after)} A plan names words by their numbers as read now, so add the form '
+                        f'to say which you mean: s{s.index}.w{w.index} "{w.surface}". A word the {by} makes is '
+                        'named once the plan is applied.', kind='conflict')
+    if kind not in WORD_RESHAPES or getattr(ws, 'restaging', False):
+        return
+    for doc in ws._docs.values():
+        hit = doc.find(op.get('word_id'))
+        if hit is None:
+            continue
+        s = hit[0]
+        shapes = _shapes_in(others, s) + [op]
+        for other in others:
+            spec = KIND.get(other.get('kind'))
+            if spec is None or spec.shape == TEXT_SHAPE:
+                continue
+            # The numbers as the other change would have read them, had this
+            # been staged first: every reshape but its own.
+            after = numbers_after(s, [o for o in shapes if o is not other])
+            for d, s2, w in _words_named(ws, other):
+                if s2.id != s.id or after.get(w.id, w.index) == w.index:
+                    continue
+                raise ToolError(f'{ws.doc_label(doc.id)} s{s.index}: this plan already has a change on '
+                                f's{s.index}.w{w.index} {qv(w.surface)} ({other.get("label") or other.get("kind")}), '
+                                f'and this {kind} '
+                                f'renumbers s{s.index}: once it is applied, {qv(w.surface)} is w{after[w.id]}. '
+                                f'{_kept_numbers(s, after)} discard_plan, plan the {kind} first, then name the later '
+                                f'words with their form (s{s.index}.w{w.index} "{w.surface}").', kind='conflict')
+        return

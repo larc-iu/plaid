@@ -227,7 +227,13 @@ def restage_merges(ws: Workspace, doc, ids) -> None:
         for wid in [op['word_id'], *op['other_ids']]:
             s, w, _m = doc.find(wid)
             refs.append(word_ref(s, w))
-        t_merge_words(ws, doc.id, refs)
+        # The merge the plan held already: what it renumbers was asked when
+        # it was staged (`retyped.refuse_renumbered`).
+        ws.restaging = True
+        try:
+            t_merge_words(ws, doc.id, refs)
+        finally:
+            ws.restaging = False
 
 
 CUT_IN_MERGE = ('{ref}: a sentence boundary and a word merge are planned at the same place, and a merged word '

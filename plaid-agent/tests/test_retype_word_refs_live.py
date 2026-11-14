@@ -214,14 +214,16 @@ def test_a_right_to_left_retype_maps_word_by_word():
 
 def test_a_split_and_a_merge_of_words_with_values_on_both_sides():
     """No text changes: every word keeps its id, and a value names its word
-    as the document was read, on either side of the split or the merge."""
+    as the document was read, on either side of the split or the merge: a
+    word after it by its form beside the number, since the plan renumbers
+    it (a bare number is refused)."""
     admin = _admin()
     email, writer, s = _seeded(admin, 'rr-chat-shape')
     try:
         _chat(writer, email, s, [
             ('split_word', {'ref': 's2.w2', 'at': 1}),
             ('set_field', {'refs': ['s2.w1'], 'field': 'Gloss', 'value': 'S2'}),
-            ('set_field', {'refs': ['s2.w3'], 'field': 'Gloss', 'value': 'P2'})])
+            ('set_field', {'refs': ['s2.w3 "pa"'], 'field': 'Gloss', 'value': 'P2'})])
         words, _t = _glosses(admin, s)
         assert words == [('sa', 'S2'), ('n', 'N'), ('a', None), ('pa', 'P2'), ('ma', 'M')]
     finally:
@@ -231,9 +233,29 @@ def test_a_split_and_a_merge_of_words_with_values_on_both_sides():
         _chat(writer, email, s, [
             ('set_field', {'refs': ['s2.w1'], 'field': 'Gloss', 'value': 'S2'}),
             ('merge_words', {'refs': ['s2.w2', 's2.w3']}),
-            ('set_field', {'refs': ['s2.w4'], 'field': 'Gloss', 'value': 'M2'})])
+            ('set_field', {'refs': ['s2.w4 "ma"'], 'field': 'Gloss', 'value': 'M2'})])
         words, _t = _glosses(admin, s)
         assert words == [('sa', 'S2'), ('na pa', 'N | P'), ('ma', 'M2')]
+    finally:
+        s.delete()
+
+
+def test_a_bare_number_a_split_renumbers_is_refused_and_named_by_form_lands_on_the_word_read():
+    """s2.w3 is "pa" as read and w4 once "na" is split: its bare number is
+    refused, and named with its form it is "pa", applied so."""
+    admin = _admin()
+    email, writer, s = _seeded(admin, 'rr-chat-renum')
+    try:
+        ws = Workspace(writer, load_project(writer, s.project_id))
+        assert call_tool(ws, 'split_word', {'document': 'Alpha', 'ref': 's2.w2', 'at': 1}).startswith('Planned')
+        out = call_tool(ws, 'set_field', {'document': 'Alpha', 'refs': ['s2.w3'], 'field': 'Gloss', 'value': 'P2'})
+        assert 'is "pa" now, but this plan\'s split_word renumbers s2: once it is applied, "pa" is w4. Words ' \
+               'before w3 keep their numbers.' in out, out
+        assert call_tool(ws, 'set_field', {'document': 'Alpha', 'refs': ['s2.w3 "pa"'], 'field': 'Gloss',
+                                           'value': 'P2'}).startswith('Planned')
+        _p, h = _approve(writer, email, s.project_id, ws)
+        assert not h.errors, h.errors
+        assert _glosses(admin, s)[0] == [('sa', 'S'), ('n', 'N'), ('a', None), ('pa', 'P2'), ('ma', 'M')]
     finally:
         s.delete()
 

@@ -87,6 +87,9 @@ REFUSED_BEFORE = {
 #: retyped sentence named by anything but a word value.
 REFUSED_NOW = {('retype', a) for a in ANNOTATIONS
                if a not in ('set_field word', 'set_field sentence')} - REFUSED_BEFORE
+#: Refused now, by the renumbering guard (`retyped.refuse_renumbered`): the
+#: deletion of s1.w2 renumbers s1.w3, which the split or the delete names.
+RENUMBERED = {('split_word', 'delete_word'), ('delete_word', 'delete_word')}
 
 
 def _stage(w, tool, args):
@@ -114,6 +117,9 @@ def test_the_class_map(shape, annotation, order):
         if not staged:
             break
     pair = (shape, annotation)
+    if pair in RENUMBERED:
+        assert said[-1].startswith('Error:') and 'renumbers s1' in said[-1], (pair, order, said)
+        return
     if pair in REFUSED_BEFORE or pair in REFUSED_NOW:
         assert said[-1].startswith('Error:') or said[-1].startswith('Nothing'), (pair, order, said)
         if pair in REFUSED_NOW:
@@ -396,3 +402,40 @@ def test_trimmed_reads_a_gap_as_core_does():
     assert trimmed(body, [{'start': 3, 'end': 5, 'value': 'ni ∅'}], words) == [{'start': 4, 'end': 5, 'value': 'i ∅'}]
     assert trimmed(body, [{'start': 3, 'end': 8, 'value': 'nu'}], words) == [{'start': 3, 'end': 8, 'value': 'nu'}]
     assert trimmed(body, [{'start': 3, 'end': 5, 'value': 'na'}], words) == []
+
+
+# --- a bare number a split, merge or word delete renumbers -------------------------------
+
+@pytest.mark.parametrize('shape,args,new', [
+    ('split_word', {'ref': 's1.w1', 'at': 3}, 4),
+    ('merge_words', {'refs': ['s1.w1', 's1.w2']}, 2),
+    ('delete_word', {'refs': ['s1.w2']}, 2),
+])
+def test_a_bare_number_a_planned_reshape_renumbers_is_refused_in_both_orders(shape, args, new):
+    """As plaid-ud's renumbered_refusal: s1.w3 is "akuna" now and w{new} once
+    the reshape runs, so its bare number is refused, and with its form it
+    is the word read. Staged the other way, the reshape is refused."""
+    w = ws()
+    call_tool(w, shape, {'document': 'd1', **args})
+    out = call_tool(w, 'set_field', {'document': 'd1', 'refs': ['s1.w3'], 'field': 'Gloss', 'value': 'see'})
+    first = 2 if shape == 'split_word' else 2
+    assert out == (f'Error: Text 1 s1.w3: s1.w3 is "akuna" now, but this plan\'s {shape} renumbers s1: once it is '
+                   f'applied, "akuna" is w{new}. Words before w{first} keep their numbers. A plan names words by '
+                   f'their numbers as read now, so add the form to say which you mean: s1.w3 "akuna". A word the '
+                   f'{shape} makes is named once the plan is applied.'), out
+    assert call_tool(w, 'set_field', {'document': 'd1', 'refs': ['s1.w3 "akuna"'], 'field': 'Gloss',
+                                      'value': 'see'}).startswith('Planned 1 change')
+    assert w.ops[-1]['token_id'] == 'w-3'
+    # words before the reshape keep their numbers
+    assert call_tool(w, 'set_field', {'document': 'd1', 'refs': ['s1.w1'], 'field': 'Gloss',
+                                      'value': 'x'}).startswith('Planned 1 change')
+    # the other order
+    w2 = ws()
+    call_tool(w2, 'set_field', {'document': 'd1', 'refs': ['s1.w3'], 'field': 'Gloss', 'value': 'see'})
+    out = call_tool(w2, shape, {'document': 'd1', **args})
+    assert out.startswith('Error: Text 1 s1: this plan already has a change on s1.w3 "akuna" (Text 1 s1.w3 '
+                          f'"akuna": Gloss = "see"), and this {shape} renumbers s1: once it is applied, "akuna" is '
+                          f'w{new}.'), out
+    assert out.endswith(f'discard_plan, plan the {shape} first, then name the later words with their form '
+                        '(s1.w3 "akuna").')
+    assert [o['kind'] for o in w2.ops] == ['set_span']
