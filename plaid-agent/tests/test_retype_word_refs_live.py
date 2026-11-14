@@ -362,3 +362,37 @@ def test_a_split_of_a_retyped_sentence_is_refused_and_lands_where_its_card_says_
         assert _glosses(admin, s, 3)[0] == [('na', 'N'), ('pa', 'P'), ('ma', 'M')]
     finally:
         s.delete()
+
+
+def test_a_morpheme_of_a_renumbered_word_is_refused_with_its_form_or_without():
+    """REV-RR2-1, the reviewer's case: in "ka sa-di pa-di." both -di are
+    spelled alike, so after delete_word s1.w1 the ref s1.w2.m2 "di" names
+    the -di of "sa-di" as read and of "pa-di" once applied alike. Refused,
+    bare or with the morpheme's form. Once the delete is applied, s1.w2.m2
+    is the -di of "pa-di", and the value lands there."""
+    admin = _admin()
+    di = [{'form': 'ka', 'gloss': ('K', 'human')},
+          {'form': 'sa-di', 'gloss': ('S', 'human'), 'morphs': [('sa', 'sit'), ('di', '')]},
+          {'form': 'pa-di', 'gloss': ('P', 'human'), 'morphs': [('pa', 'eat'), ('di', '')]}]
+    email, writer, s = _seeded(admin, 'rr-fix-morph', [{'words': di}])
+    try:
+        ws = Workspace(writer, load_project(writer, s.project_id))
+        assert call_tool(ws, 'delete_word', {'document': 'Alpha', 'refs': ['s1.w1']}).startswith('Planned')
+        for ref in ('s1.w2.m2', 's1.w2.m2 "di"'):
+            out = call_tool(ws, 'set_field', {'document': 'Alpha', 'refs': [ref], 'field': 'Morph Gloss',
+                                              'value': 'loc'})
+            assert out.endswith('Plan it once the plan is applied.'), (ref, out)
+        assert [o['kind'] for o in ws.ops] == ['delete_word']
+        _p, h = _approve(writer, email, s.project_id, ws)
+        assert not h.errors, h.errors
+        ws = Workspace(writer, load_project(writer, s.project_id))
+        assert call_tool(ws, 'set_field', {'document': 'Alpha', 'refs': ['s1.w2.m2 "di"'], 'field': 'Morph Gloss',
+                                           'value': 'loc'}).startswith('Planned')
+        _p, h = _approve(writer, email, s.project_id, ws)
+        assert not h.errors, h.errors
+        doc = Workspace(writer, load_project(writer, s.project_id)).doc('Alpha')
+        got = [(w.surface, [(m.form, m.fields['Morph Gloss'].value if 'Morph Gloss' in m.fields else None)
+                            for m in w.morphemes]) for w in doc.sentences[0].words]
+        assert got == [('sa-di', [('sa', 'sit'), ('di', None)]), ('pa-di', [('pa', 'eat'), ('di', 'loc')])], got
+    finally:
+        s.delete()

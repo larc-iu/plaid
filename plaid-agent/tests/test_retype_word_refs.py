@@ -485,7 +485,7 @@ def test_every_route_a_bare_number_reaches_refuses_it_after_a_reshape_before_it(
     """After delete_word s1.w1, every later word of s1 is renumbered: a bare
     number naming one is refused where it is resolved, whatever the tool
     (REV-RR-4 and 5, as plaid-ud's resolve_in), and named by its form it is
-    the word read."""
+    the word read. A morpheme is refused with its form or without."""
     tool, args, by_form = BY_NUMBER[route]
     w = ws()
     assert call_tool(w, 'delete_word', {'document': 'd1', 'refs': ['s1.w1']}).startswith('Planned')
@@ -496,7 +496,14 @@ def test_every_route_a_bare_number_reaches_refuses_it_after_a_reshape_before_it(
         return
     key = 'refs' if 'refs' in args else 'ref'
     named = {**args, key: [by_form] if key == 'refs' else by_form}
-    assert 'renumbers s1' not in call_tool(w, tool, {'document': 'd1', **named})
+    out = call_tool(w, tool, {'document': 'd1', **named})
+    if '.m' in by_form:
+        # A morpheme's form is the morpheme's, which words spelled alike
+        # share: its word is still a bare number, refused (REV-RR2-1).
+        assert 'renumbers s1' in out and out.endswith('Plan it once the plan is applied.'), out
+        assert len(w.ops) == 1
+    else:
+        assert 'renumbers s1' not in out, out
 
 
 @pytest.mark.parametrize('tool,args', [

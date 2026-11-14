@@ -1047,7 +1047,7 @@ def _planned_place(ws: Workspace, doc: IgtDoc, ref: str) -> Optional[_Place]:
         raise ToolError(f'{ref}: the analysis this plan gives "{w.surface}" has {len(chain)} '
                         f'morpheme{"s" if len(chain) != 1 else ""} (the planned analysis is the one '
                         f'sN.wN.mN names while it is in the plan)', kind='not-found')
-    renumbered(ws, doc, ref, w, named=f's{si}.w{wi}.m{mi} "{chain[mi - 1].get("form")}"')
+    renumbered(ws, doc, ref, w)
     # A form written beside the number is a check, here as in `resolve`.
     given = r.form
     if given and not same_form(given, chain[mi - 1].get('form'), MARKERS):

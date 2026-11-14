@@ -575,21 +575,26 @@ def renumbering(ws, s, w):
     return ' and '.join(dict.fromkeys(o.get('kind') for o in shapes)), new, after
 
 
-def renumbered(ws, doc, ref: str, obj, named: Optional[str] = None) -> None:
+def renumbered(ws, doc, ref: str, obj) -> None:
     """Refuse ``obj`` (what ``ref`` names in ``doc``) when ``ref`` names a
-    word, or a morpheme of it, by its number alone and a split, merge or word
-    delete the plan holds in its sentence gives that word another number
-    once applied, as plaid-ud's ``renumbered_refusal``: the number names one
-    word now and another once the plan runs, and the model may mean either.
-    With its form beside the number, or by form alone, the word is the one
-    read. A word the reshape itself takes (a deleted word, one merged into
-    another) has no number after and is left to the shape guards. ``named``
-    is how the refusal says to name it, for a morpheme of a planned
-    analysis."""
+    word, or a morpheme of it, by the word's number alone and a split, merge
+    or word delete the plan holds in its sentence gives that word another
+    number once applied, as plaid-ud's ``renumbered_refusal``: the number
+    names one word now and another once the plan runs, and the model may mean
+    either. A word with its form beside the number, or by form alone, is the
+    one read. A morpheme is named by its word's number whatever form is
+    beside it (the morpheme's own, which words spelled alike share), and no
+    reference names a morpheme under a word named by its form, so a morpheme
+    of a renumbered word is refused outright (REV-RR2-1). A word the reshape
+    itself takes (a deleted word, one merged into another) has no number
+    after and is left to the shape guards."""
     if getattr(ws, 'restaging', False):
         return
     r = read_ref(ref, 'wm')
-    if r is None or r.by_form or r.form or not isinstance(obj, (Word, Morpheme)):
+    if r is None or r.by_form or not isinstance(obj, (Word, Morpheme)):
+        return
+    morpheme = r.parts[1] is not None
+    if r.form and not morpheme:
         return
     hit = doc.find(obj.id)
     if hit is None or hit[1] is None:
@@ -600,15 +605,18 @@ def renumbered(ws, doc, ref: str, obj, named: Optional[str] = None) -> None:
         return
     by, new, after = moved
     here = f's{s.index}.w{w.index}'
-    if named is None:
-        named = f'{here}.m{obj.index} "{obj.form}"' if isinstance(obj, Morpheme) else f'{here} "{w.surface}"'
+    renumber = f'renumber{"" if " and " in by else "s"}'
+    if morpheme:
+        raise ToolError(f'{ws.doc_label(doc.id)} {ref}: {here} is {qv(w.surface)} now, but this plan\'s {by} '
+                        f'{renumber} s{s.index}: once it is applied, {qv(w.surface)} is w{new}, and a morpheme is '
+                        'named by its word\'s number. Plan it once the plan is applied.', kind='conflict')
     # Only a split makes a word (its right part): a delete makes none, and a
     # merge's word is its first, named as read (REV-RR-7).
     made = ' The right part of a split word is named once the plan is applied.' if 'split_word' in by else ''
     raise ToolError(f'{ws.doc_label(doc.id)} {ref}: {here} is {qv(w.surface)} now, but this '
-                    f'plan\'s {by} renumber{"" if " and " in by else "s"} s{s.index}: once it is applied, '
+                    f'plan\'s {by} {renumber} s{s.index}: once it is applied, '
                     f'{qv(w.surface)} is w{new}. {_kept_numbers(s, after)} A plan names words by their numbers as '
-                    f'read now, so add the form to say which you mean: {named}.{made}', kind='conflict')
+                    f'read now, so add the form to say which you mean: {here} "{w.surface}".{made}', kind='conflict')
 
 
 def resolve_in(ws, doc, ref: str):
