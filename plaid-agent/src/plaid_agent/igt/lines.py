@@ -134,6 +134,9 @@ def t_analyze_sentence(ws: Workspace, document: Optional[str] = None, ref: Optio
 def _words_of(doc: IgtDoc, ref: str):
     """``(label, sentence, words)`` a ref names: a sentence, or a run of its
     words."""
+    if not str(ref or '').strip():
+        raise _Refused('A sentence not staged: give ref, the sentence ("s4") or a run of its words ("s4.w3-w5"), '
+                       'e.g. "ref": "s4".')
     m = _REF.match(str(ref or ''))
     if not m:
         raise _Refused(f'{ref or "(no ref)"} not staged: a ref is a sentence ("s4") or a run of its words '
@@ -158,23 +161,36 @@ def _pieces(word: str) -> Tuple[List[str], List[str]]:
     return parts[0::2], parts[1::2]
 
 
-def _lines(ws: Workspace, item: Dict[str, Any]):
+#: What a sentence missing a line is told (v2: one plain sentence, never a
+#: lineup of "(none)").
+MISSING = {'forms': 'forms, the segmented line, one word per word of the ref, e.g. "forms": "na-ku-ja le=o"',
+           'gloss': 'gloss, the gloss line, one word per word of the ref, e.g. "gloss": "PRS-INF-come today=DEF"'}
+
+
+def _lines(ws: Workspace, item: Dict[str, Any], label: str):
     """``[(name, line words, field)]``: the forms line first, then the gloss
-    line and every other field's line, ``field`` None for forms."""
+    line and every other field's line, ``field`` None for forms. The gloss
+    line given under ``fields`` by the gloss field's name is the gloss."""
     g = ws.project.gloss_field('Morpheme')
-    out = [('forms', str(item.get('forms') or '').split(), None)]
-    if item.get('gloss') is not None:
-        if g is None:
-            raise ToolError('This project has no morpheme field for glosses.', kind='not-found')
-        out.append(('gloss', str(item['gloss']).split(), g))
-    elif g is not None:
-        raise ToolError('Give gloss, the gloss line.', kind='invalid-argument')
     extra = item.get('fields') or {}
     if not isinstance(extra, dict):
         raise ToolError('fields maps a morpheme field name to its line, e.g. {"POS": "v-asp"}.',
                         kind='invalid-argument')
-    for name, line in extra.items():
-        f = ws.project.field(name)
+    fields = [(ws.project.field(name), line) for name, line in extra.items()]
+    gloss = item.get('gloss')
+    if gloss is None and g is not None:
+        gloss = next((line for f, line in fields if f.layer_id == g.layer_id), None)
+        fields = [(f, line) for f, line in fields if f.layer_id != g.layer_id]
+    if not str(item.get('forms') or '').strip():
+        raise _Refused(f'{label} not staged: give {MISSING["forms"]}.')
+    out = [('forms', str(item['forms']).split(), None)]
+    if gloss is not None:
+        if g is None:
+            raise ToolError('This project has no morpheme field for glosses.', kind='not-found')
+        out.append(('gloss', str(gloss).split(), g))
+    elif g is not None:
+        raise _Refused(f'{label} not staged: give {MISSING["gloss"]}.')
+    for f, line in fields:
         if f.scope != 'Morpheme':
             raise ToolError(f'"{f.name}" is a {f.scope} field: set_field sets it.', kind='invalid-argument')
         if g is not None and f.layer_id == g.layer_id:
@@ -259,7 +275,7 @@ def _stage_sentence(ws: Workspace, doc: IgtDoc, item: Dict[str, Any], new_entrie
     label, s, words = _words_of(doc, item.get('ref'))
     if not words:
         raise _Refused(f'{label} not staged: it has no words.')
-    lines = _lines(ws, item)
+    lines = _lines(ws, item, label)
     problems, parsed, bad = _check(ws, label, words, lines)
     if problems:
         raise _Refused('\n'.join([f'{label} not staged: ' + '; '.join(problems) + '.'] + _lineup(words, lines)))

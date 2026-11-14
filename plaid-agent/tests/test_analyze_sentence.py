@@ -229,7 +229,18 @@ def test_a_wrong_number_of_words_still_refuses_the_whole_sentence():
     ({'ref': 's1.w2.m1', 'forms': 'a', 'gloss': 'b'},
      's1.w2.m1 not staged: a ref is a sentence ("s4") or a run of its words ("s4.w3-w5").'),
     ({'ref': 's1', 'forms': '_ _ _', 'gloss': '_ _ _'}, 's1 not staged: every word is _.'),
-    ({'ref': 's1', 'forms': 'a b c'}, 's1 not staged: Give gloss, the gloss line.'),
+    ({'ref': 's1', 'forms': 'a b c'},
+     's1 not staged: give gloss, the gloss line, one word per word of the ref, e.g. "gloss": '
+     '"PRS-INF-come today=DEF".'),
+    ({'ref': 's1', 'gloss': 'x y z'},
+     's1 not staged: give forms, the segmented line, one word per word of the ref, e.g. "forms": '
+     '"na-ku-ja le=o".'),
+    ({'ref': 's1', 'forms': '', 'gloss': 'x y z'},
+     's1 not staged: give forms, the segmented line, one word per word of the ref, e.g. "forms": '
+     '"na-ku-ja le=o".'),
+    ({'forms': 'a b c', 'gloss': 'x y z'},
+     'A sentence not staged: give ref, the sentence ("s4") or a run of its words ("s4.w3-w5"), e.g. '
+     '"ref": "s4".'),
     ({'ref': 's1', 'forms': 'a b c', 'gloss': 'x y z', 'fields': {'Morph Gloss': 'x y z'}},
      's1 not staged: "Morph Gloss" is the gloss line: give it as gloss.'),
     ({'ref': 's1', 'forms': 'a b c', 'gloss': 'x y z', 'fields': {'Gloss': 'x y z'}},
@@ -469,3 +480,18 @@ def test_a_sentence_refused_while_staging_names_no_entry_it_did_not_create():
     assert 's1.w2 not staged:' in out and 'New entries' not in out, out
     assert [o for o in w.ops if o['kind'] == 'create_entry'] == []
     assert w.ops[:len(before)] == before
+
+
+def test_the_gloss_line_given_under_fields_is_the_gloss():
+    """v2: 17 calls of the Natugu night run put the gloss line under fields
+    by the gloss field's name."""
+    w = ws()
+    out = call(w, ref='s1.w2', forms='gam', fields={'Morph Gloss': 'fish'})
+    assert out.startswith('Planned') and links(w) == [('w-2.m1', 'e-gam')], out
+
+
+def test_a_missing_line_is_named_in_one_sentence_in_a_list_too():
+    w = ws()
+    out = call(w, sentences=[{'ref': 's1', 'gloss': 'x y z'}, {'ref': 's2', 'forms': 'Gam=ar', 'gloss': 'fish=FOC'}])
+    assert 's1 not staged: give forms, the segmented line' in out and '(none)' not in out
+    assert 's2: 1 word analysed, 2 links.' in out
