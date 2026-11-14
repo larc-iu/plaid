@@ -404,16 +404,20 @@ def word_pieces(w: Word) -> List[Dict[str, Any]]:
     return pieces
 
 
-def word_values(w: Word) -> List[Dict[str, Any]]:
-    """The metadata of a word's values and links, morphemes' and its own:
-    what people's precedent is decided by, value by value (REV-KM-3). A
-    token is substrate, not a value."""
-    out = []
+def in_place_of_job(w: Word, job_id: Optional[str]) -> bool:
+    """Whether a morpheme of ``w`` that is not this job's holds a value or a
+    link that is (``job_piece``): the job wrote in place on a morpheme
+    someone else made (KM's rule, REV-KM-3, narrowed by REV-KM2-1). Word
+    fields are not looked at."""
+    if not job_id:
+        return False
     for m in w.morphemes:
-        if m.virtual:
+        if m.virtual or job_piece(m.metadata, job_id):
             continue
-        out += [sp.metadata for sp in m.fields.values()] + ([m.link.metadata] if m.link is not None else [])
-    return out + [sp.metadata for sp in w.fields.values()] + ([w.link.metadata] if w.link is not None else [])
+        if any(job_piece(sp.metadata, job_id) for sp in m.fields.values()) or (
+                m.link is not None and job_piece(m.link.metadata, job_id)):
+            return True
+    return False
 
 
 def job_owned(w: Word, job_id: str) -> bool:
@@ -2163,7 +2167,7 @@ class IgtRunner:
                     raise
                 self.people_read.pop(d['id'], None)
                 continue
-            self.people_read[d['id']] = (d.get('version'), self.people_of(doc))
+            self.people_read[d['id']] = (d.get('version'), self.people_of(doc, self.job.id))
         listed_ids = {d['id'] for d in listed}
         index: Dict[str, Dict[str, Any]] = {}
         for did, (_, part) in self.people_read.items():
@@ -2176,17 +2180,16 @@ class IgtRunner:
         self.people = index
 
     @staticmethod
-    def people_of(doc) -> Dict[str, Dict[str, Any]]:
+    def people_of(doc, job_id: Optional[str] = None) -> Dict[str, Dict[str, Any]]:
         """One document's part of the index: form -> {key: {analysis,
-        count}} over its words people analysed. Decided per value by its own
-        provenance (REV-KM-3): a word holding any unverified machine value
-        or link (a job's in-place proposal beside a person's morphemes, any
-        producer's draft) is no one's precedent, as its analysis is not all
-        people's work."""
+        count}} over its words people analysed (``protected``), but a word
+        on whose morphemes someone else made the job ``job_id`` wrote a value
+        or a link in place (``in_place_of_job``, REV-KM-3, REV-KM2-1): its
+        analysis is partly the job's own proposal."""
         part: Dict[str, Dict[str, Any]] = {}
         for s in doc.sentences:
             for w in s.words:
-                if word_state(w) != 'protected' or any(prov_state(p) == 'machine' for p in word_values(w)):
+                if word_state(w) != 'protected' or in_place_of_job(w, job_id):
                     continue
                 a = word_analysis(w)
                 slot = part.setdefault(form_key(w.surface), {}).setdefault(analysis_key(canonical(a)),
