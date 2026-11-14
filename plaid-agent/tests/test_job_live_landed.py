@@ -163,7 +163,7 @@ def test_a_write_of_three_tries_whose_middle_answer_is_lost_sends_nothing_twice(
     gam: three tries, one request each. The deletion's lands and its answer
     is lost, so the rename is never sent. Taken again, core says the gloss
     and the deletion landed: the piece is asked again over what is left, its
-    gloss of s1 is left out as written, it finds no doubled sentence, and
+    gloss of s1 restates what s1 holds and stages nothing, it finds no doubled sentence, and
     the rename is sent once."""
     admin = _admin()
     writer, s = _world(admin, 'document')
@@ -195,7 +195,9 @@ def test_a_write_of_three_tries_whose_middle_answer_is_lost_sends_nothing_twice(
         assert len(_morphs(admin, s)) == 1 and _forms(admin, s) == ['gaam']
         report = finished['report']
         assert report['documents'][0]['skipped'] == [] and report['proposed'] == []
-        assert report['totals']['repeated'] == 1, 'the gloss of s1, left out when asked again'
+        # The gloss of s1 asked again is what s1 holds: a restatement, staged
+        # and counted nowhere (REV-L2-1), where it was counted repeated.
+        assert report['totals']['repeated'] == 0, 'the gloss of s1, asked again, restates it'
         assert (report['totals']['words'], report['totals']['deletions']) == (1, 1), report['totals']
     finally:
         s.delete()

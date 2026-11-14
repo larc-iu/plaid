@@ -873,50 +873,8 @@
  "proj sequence_search {\"sequence\": [{\"morpheme\": \"ar\"}]}": "1 sentence match:\ns2 [Gam-ar]\n    w1 Gam-ar | seg=Gam=ar types=?,enclitic",
  "proj sequence_search {\"sequence\": [{\"type\": \"suffix\"}, {\"form\": \"gam\"}]}": "1 sentence match:\ns1 [Ali-di] [gam] akuna\n    w1 Ali-di | seg=Ali-di types=?,suffix | Morph Gloss=Ali-ERG | Gloss=Ali | IPA=alidi | link=Ali | mlinks=m2:-di\n    w2 gam",
  "proj set_analysis_for_form {\"form\": \"Ali-di\", \"morphemes\": [{\"form\": \"Ali\"}, {\"fields\": {\"Morph Gloss\": \"ERG\"}, \"form\": \"di\", \"type\": \"suffix\"}]}": {
-  "answer": "Planned 1 change (nothing is written until the user approves; the plan now holds 1 change). Describe the plan to the user in your reply.\nIn 1 document: \"Text 1\" 1.\n  Text 1 s1.w1 \"Ali-di\": Ali-di → Ali-di, Morph Gloss _-ERG (replaces 2 existing morpheme values)",
-  "ops": [
-   {
-    "begin": 0,
-    "change_at": 23,
-    "end": 6,
-    "existing": [
-     {
-      "id": "m-1a",
-      "span_ids": [
-       "sp-m1a"
-      ]
-     },
-     {
-      "id": "m-1b",
-      "span_ids": [
-       "sp-m1b"
-      ]
-     }
-    ],
-    "kind": "set_analysis",
-    "label": "Text 1 s1.w1 \"Ali-di\": Ali-di → Ali-di, Morph Gloss _-ERG (replaces 2 existing morpheme values)",
-    "morpheme_layer_id": "tk-morph",
-    "morphemes": [
-     {
-      "fields": [],
-      "form": "Ali",
-      "morph_type": null
-     },
-     {
-      "fields": [
-       {
-        "layer_id": "sl-mgloss",
-        "value": "ERG"
-       }
-      ],
-      "form": "di",
-      "morph_type": "suffix"
-     }
-    ],
-    "text_id": "text1",
-    "word_id": "w-1"
-   }
-  ]
+  "answer": "Nothing to change: 1 occurrence of \"Ali-di\" already holds that analysis.",
+  "ops": []
  },
  "proj set_analysis_for_form {\"form\": \"GAM\", \"morphemes\": [{\"fields\": {\"Morph Gloss\": \"fish\"}, \"form\": \"gam\"}]}": {
   "answer": "Planned 1 change (nothing is written until the user approves; the plan now holds 1 change). Describe the plan to the user in your reply.\nIn 1 document: \"Text 1\" 1.\n  Text 1 s1.w2 \"gam\": gam → gam, Morph Gloss fish",
@@ -952,32 +910,8 @@
   ]
  },
  "proj set_analysis_for_form {\"form\": \"gam\", \"morphemes\": [{\"form\": \"gam\"}], \"skip_analyzed\": true}": {
-  "answer": "Planned 1 change (nothing is written until the user approves; the plan now holds 1 change). Describe the plan to the user in your reply.\nIn 1 document: \"Text 1\" 1.\n  Text 1 s1.w2 \"gam\": gam → gam",
-  "ops": [
-   {
-    "begin": 7,
-    "change_at": 20,
-    "end": 10,
-    "existing": [
-     {
-      "id": "m-2",
-      "span_ids": []
-     }
-    ],
-    "kind": "set_analysis",
-    "label": "Text 1 s1.w2 \"gam\": gam → gam",
-    "morpheme_layer_id": "tk-morph",
-    "morphemes": [
-     {
-      "fields": [],
-      "form": "gam",
-      "morph_type": null
-     }
-    ],
-    "text_id": "text1",
-    "word_id": "w-2"
-   }
-  ]
+  "answer": "Nothing to change: 1 occurrence of \"gam\" already holds that analysis.",
+  "ops": []
  },
  "proj set_field_for_form {\"field\": \"Gloss\", \"form\": \"ali\", \"only_empty\": false, \"value\": \"Ali2\"}": {
   "answer": "Nothing to change: no occurrences of \"ali\" matched.",

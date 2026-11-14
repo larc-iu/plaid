@@ -792,7 +792,7 @@ def _summary(job: Job, runner, report: Dict[str, Any]) -> Dict[str, Any]:
     instead, ``summary_by`` worker, and no model is asked. When the prose
     cannot be written the report has none and says so (``summary_failed``).
     A stop during it leaves it out. The line says nothing of the plan: the
-    report's plan says it, and the page and read_job show it (REV-L2-9)."""
+    report's plan says it, and the job's page shows it (REV-L2-9)."""
     if wrote_nothing(report):
         return {'summary': NOTHING_WRITTEN, 'summary_by': 'worker', 'summary_failed': False}
     try:
