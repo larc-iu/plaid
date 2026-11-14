@@ -340,6 +340,12 @@ class World:
         # The fake keeps the text as it was: the edit's follow-up is worked
         # out over the body the edit was made from.
         monkeypatch.setattr(igt_plan, '_composed_as', lambda body, stored: (body, lambda p: p))
+        # So the words a retype plans are not checked against the words it
+        # made: the values planned on them are written, in the follow-up, on
+        # the tokens they name.
+        monkeypatch.setattr(igt_plan, '_planned_spans', lambda project, op, raw, values, new_id, stamps: {
+            'delete': [], 'update': [],
+            'create': [(v['layer_id'], v['token_id'], v['value'], {}, new_id()) for v in values if v.get('value')]})
 
         def answer(asked, n, kwargs):
             if n > 1 or 'Your piece: s' not in asked:
@@ -449,7 +455,10 @@ def _fates(world, r):
         s = w.sentence_of(o)
         own = s is not None and s.id in w.own
         d = w.describe(o, s is not None)
-        out.append((o['kind'], own, f'{where[id(o)]}.0' in world.client.landed_keys,
+        # A value on a word of a retyped sentence is its edit's follow-up,
+        # the try's second request.
+        req = 1 if o.get('planned_word') is not None else 0
+        out.append((o['kind'], own, f'{where[id(o)]}.{req}' in world.client.landed_keys,
                     (o['kind'], o.get('label')) in redone,
                     any((c['kind'], c.get('ref'), c.get('label')) == (d['kind'], d.get('ref'), d.get('label'))
                         for c in listed),

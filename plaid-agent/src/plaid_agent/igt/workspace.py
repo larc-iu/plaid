@@ -1065,6 +1065,10 @@ class Workspace(BaseWorkspace):
         # Tagset changes are settings, which the app writes with the user's
         # own session when they approve, so they are a plan of their own.
         others = [o for i, o in enumerate(self.ops) if i != replacing]
+        # A word of a sentence the plan retypes is renumbered once it is
+        # applied: only a word value planned on it as retyped may name it.
+        from .retyped import refuse_on_retyped
+        refuse_on_retyped(self, op, others)
         settings = op.get('kind') in SETTINGS_KINDS
         if others and any((o.get('kind') in SETTINGS_KINDS) != settings for o in others):
             raise ToolError(SETTINGS_APART, kind='conflict')

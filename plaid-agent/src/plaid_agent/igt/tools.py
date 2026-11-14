@@ -37,6 +37,7 @@ from .project import (IgtDoc, Sentence, Word, Morpheme, Link, MARKERS, parse_ref
 from .lexview import morph_type
 from .workspace import Workspace, _need, _refs, _sentence_of, _words_of
 from .vocab import morph_type_of
+from .retyped import old_value, planned_ref, planned_value
 
 
 # --- write tools (plan only) ---------------------------------------------------
@@ -93,6 +94,12 @@ def t_set_field(ws: Workspace, document: str, refs, field: Optional[str] = None,
             kind = {'Word': Word, 'Morpheme': Morpheme, 'Sentence': Sentence}[f.scope]
             for ref in refs:
                 if several and _scope_of(doc, ref) != f.scope:
+                    continue
+                # A word of a sentence the plan retypes is one of the sentence
+                # as PLANNED, and its value is written once the retype is.
+                planned = planned_ref(ws, doc, ref, f'{ws.doc_label(doc.id)} {ref}')
+                if planned is not None:
+                    _stage_planned(ws, doc, ref, f, val, planned, staged, dropped, took)
                     continue
                 # A morpheme of a word whose analysis the plan writes is one of
                 # the PLANNED chain, and its value goes into that analysis.
@@ -169,6 +176,26 @@ def t_set_field(ws: Workspace, document: str, refs, field: Optional[str] = None,
         held = held_changes(ws)
         said.append(f'The plan now holds {held} change{"s" if held != 1 else ""}.')
     return ' '.join(said)
+
+
+def _stage_planned(ws: Workspace, doc, ref: str, f, val: str, planned, staged, dropped, took) -> None:
+    """``f`` = ``val`` on a word of a sentence the plan retypes, as the
+    retype plans it (``retyped.planned_ref``). A value the word holds already
+    is no change, and takes back one planned for it."""
+    s, k, entry, _edit = planned
+    if f.scope != 'Word':
+        raise ToolError(f'{ref} is a word, and {f.name} is a {f.scope.lower()} field', kind='invalid-argument')
+    old = old_value(doc, entry['word_id'], f)
+    op = planned_value(ws, doc, s, k, entry, f, val, old=old)
+    mine = [o for o in ws.ops if ws.op_target(o) == ws.op_target(op)]
+    if (old.value if old else '') == val:
+        if mine:
+            dropped += mine
+            took.append(f'{f.name} on {ref}')
+        return
+    if any((o.get('value') or '') == val for o in mine):
+        return
+    staged.append(op)
 
 
 # A value of its own on each ref was written as values keyed by ref, beside

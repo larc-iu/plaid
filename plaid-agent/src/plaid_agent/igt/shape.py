@@ -25,6 +25,7 @@ from ..core.plan import labelled
 from ..core.tools import ToolError
 from .plan import reshaped_subjects, written_before_merge
 from .project import Link, Sentence, Span, Word, plain_ref, planned_word_count, resolve, split_sentences, word_ref
+from .retyped import listing, planned_words, restage_on_retype
 from .tools import (reshape_guards, refuse_comment_and_text_edit, refuse_shape_and_analysis,
                     refuse_shape_and_respell, refuse_text_in_deleted_sentence)
 from .workspace import Workspace, _need, _refs
@@ -598,14 +599,26 @@ def t_retype_sentence(ws: Workspace, document: str, ref: str, text: str) -> str:
     _guard(ws, s, ref, word_ids=word_ids)
     _guard_text_edit(ws, doc.text_id, b, e, f'{ws.doc_label(doc.id)} {ref}', word_ids + morpheme_ids)
     n = len(split_sentences(text))
-    ws.add_op({'kind': 'edit_text', 'document_id': doc.id, 'text_id': doc.text_id, 'sentence_id': s.id,
-               'begin': b, 'end': e, 'old': old, 'new': text,
-               'word_ids': word_ids, 'morpheme_ids': morpheme_ids,
-               **labelled(f'{ws.doc_label(doc.id)} {plain_ref(doc, ref)}',
-                          f'retype {qv(old[:40] + ("…" if len(old) > 40 else ""))} → '
-                          f'{qv(text[:40] + ("…" if len(text) > 40 else ""))}' + (f' ({n} sentences)' if n > 1 else '')
-                          + f' ({_retype_effects(ws, s, b, old, text)})')})
-    return ws.planned_note(1)
+    # The sentence's words once retyped, which its word references name from
+    # now on in this plan (`retyped`).
+    planned = planned_words(ws.project, doc.body, s.words, b, old, text)
+    op = {'kind': 'edit_text', 'document_id': doc.id, 'text_id': doc.text_id, 'sentence_id': s.id,
+          'begin': b, 'end': e, 'old': old, 'new': text,
+          'word_ids': word_ids, 'morpheme_ids': morpheme_ids, 'planned_words': planned,
+          **labelled(f'{ws.doc_label(doc.id)} {plain_ref(doc, ref)}',
+                     f'retype {qv(old[:40] + ("…" if len(old) > 40 else ""))} → '
+                     f'{qv(text[:40] + ("…" if len(text) > 40 else ""))}' + (f' ({n} sentences)' if n > 1 else '')
+                     + f' ({_retype_effects(ws, s, b, old, text)})')}
+    moved = restage_on_retype(ws, doc, s, op, f'{ws.doc_label(doc.id)} {ref}')
+    ws.add_op(op)
+    for i, value in moved:
+        ws.ops[i] = value
+    ws._gone_at = -1
+    note = ws.planned_note(1)
+    if planned is not None:
+        return f'{note} {listing(s.index, planned)}'
+    return (f'{note} Its words cannot be numbered before it is applied: plan values on them once the retype is '
+            'applied.')
 
 
 def _retype_effects(ws: Workspace, s: Sentence, at: int, old: str, text: str) -> str:

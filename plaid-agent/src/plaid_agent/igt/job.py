@@ -948,10 +948,16 @@ class Write:
         deletions with the repairs they carry (``lexicon_last``: only valid
         together, so one request)."""
         from .plan import lexicon_last, merge_tokens, written_before_merge
+        from .retyped import PLANNED
         batch, edits, respells, deletions, lexicon = [], [], {}, [], []
+        # A value on a word of a retyped sentence is written in its text
+        # edit's follow-up, so it is that edit's try.
+        after: Dict[str, List[Dict[str, Any]]] = {}
         for o in self.ops:
             k = o.get('kind')
-            if k == 'edit_text':
+            if o.get(PLANNED) is not None:
+                after.setdefault(o[PLANNED].get('sentence_id'), []).append(o)
+            elif k == 'edit_text':
                 edits.append(o)
             elif k == 'respell':
                 respells.setdefault(o.get('text_id'), []).append(o)
@@ -967,7 +973,8 @@ class Write:
             early |= {id(p) for p in seen if joined and written_before_merge(p) in joined}
             seen.append(o)
         parts = self.split([[o for o in batch if id(o) in early], [o for o in batch if id(o) not in early]])
-        return (parts + [[o] for o in sorted(edits, key=lambda o: -(o.get('begin') or 0))]
+        return (parts + [[o] + (after.get(o.get('sentence_id')) or [] if o.get('sentence_id') else [])
+                         for o in sorted(edits, key=lambda o: -(o.get('begin') or 0))]
                 + list(respells.values()) + [[o] for o in deletions] + ([lexicon] if lexicon else []))
 
     def split(self, groups: List[List[Dict[str, Any]]]) -> List[List[Dict[str, Any]]]:
@@ -1087,14 +1094,25 @@ class Write:
         nothing (``of``). ``drops``: what was dropped from the try it
         replaces."""
         from .jobapply import IGNORED_KINDS, deletes
+        from .retyped import PLANNED
         by: Dict[Optional[str], List[Dict[str, Any]]] = {}
+        after: Dict[str, List[Dict[str, Any]]] = {}
         for o in ops:
             if id(o) in self.again:
                 continue
             s = self.sentence_of(o)
+            if o.get(PLANNED) is not None and s is not None:
+                # Written by the edit's follow-up, its second request.
+                after.setdefault(s.id, []).append(o)
+                continue
             by.setdefault(s.id if s is not None else None, []).append(o)
         loose = by.pop(None, [])
         out = [(sid, self._sentence_row(sid, seed, sops, replaces)) for sid, sops in by.items()]
+        for sid, sops in after.items():
+            row = {**self._sentence_row(sid, seed, sops, replaces), 'req': 1}
+            # The sentence is counted as written in by the edit's own row.
+            row['counts'] = {k: n for k, n in row['counts'].items() if k != 'analyzed'}
+            out.append((sid, row))
         for o in ops:
             if o.get('kind') == 'edit_text':
                 out.append(self.follow_up(seed, o))
@@ -2842,6 +2860,12 @@ class IgtRunner:
         elif sentence_of(op, doc) is not None:
             ref = f's{sentence_of(op, doc).index}'
         gloss = getattr(project.gloss_field('Morpheme'), 'name', None)
+        planned = op.get('planned_word')
+        if planned is not None and hit is not None:
+            # A word of a retyped sentence, by its number once retyped.
+            ref = f's{hit[0].index}.w{planned.get("index")}'
+            if planned.get('word_id') is None:
+                hit = None
         if kind == 'set_span':
             f = project.field_by_layer(op.get('layer_id'))
             field = f.name if f else None

@@ -121,6 +121,7 @@ from ..core.plan import (run_plan, CLEAR_PROV, Minter, PlanError, PlanOutOfDate,
                          check_reach, confirm_note, ConfirmRows, executed, executing, expand_ops,
                          summarize_plan)
 from .project import VIRTUAL_PREFIX, is_virtual, virtual_morpheme_id
+from .retyped import PLANNED
 from .tagsets import verify_settings
 from .vocab import item_ref_fields, parent_of, ref_ids
 from ..core.tools import ValueRefusal
@@ -232,6 +233,9 @@ class Context:
         # is written).
         self.analysis_typed: Dict[str, tuple] = {}
         self.text_edits: List[Dict[str, Any]] = []
+        # The values planned on words of a retyped sentence, by its id
+        # (`retyped`), written in the follow-up of its text edit.
+        self.after_edit: Dict[str, List[Dict[str, Any]]] = {}
         self.sentence_deletes: List[Dict[str, Any]] = []
         # The tokens a value or a link of the plan is queued on. A merge of
         # one of them is written in a batch after it (`_merge`).
@@ -339,7 +343,22 @@ def merge_tokens(op) -> set:
     return set()
 
 
+def _span_target(op):
+    """What a value writes to: its layer on its token, and on a word of a
+    retyped sentence the word's number as planned (``retyped``)."""
+    planned = op.get(PLANNED)
+    if planned is not None:
+        return 'span', op.get('layer_id'), planned.get('sentence_id'), planned.get('index')
+    return 'span', op.get('layer_id'), op.get('token_id')
+
+
 def _apply_set_span(ctx: Context, op) -> int:
+    if op.get(PLANNED) is not None:
+        # On a word of a sentence the plan retypes: written in the text
+        # edit's follow-up, on the word the edit leaves at its place.
+        ctx.after_edit.setdefault(op[PLANNED]['sentence_id'], []).append(op)
+        ctx.defer(op, 'direct')
+        return 1
     span_id, value = op.get('span_id'), op.get('value') or ''
     ctx.valued.add(written_before_merge(op))
     if span_id and ('spans', span_id) in ctx.gone:
@@ -1109,7 +1128,7 @@ KIND = ok.registry([
     *_guidelines.kinds(OpKind),
     OpKind('set_span', ('field value', 'field values'), replaces=_replaces_set_span,
            required=('layer_id', 'token_id'),
-           apply=_apply_set_span, target=lambda op: ('span', op.get('layer_id'), op.get('token_id')),
+           apply=_apply_set_span, target=_span_target,
            at=('token_id',), at_kind=TOKEN, token_keys=('token_id',), deletes=_set_span_deletes,
            compact_each=('token_id', 'span_id', 'value', 'doc', 'virtual_at'), extra={'anchors': _anchors}),
     OpKind('set_analysis', ('analysis', 'analyses'), replaces=_replaced_analysis,
@@ -1758,6 +1777,16 @@ def validate_ops(ops: List[Dict[str, Any]]) -> None:
             raise ValueError(f'op {i + 1} (link_phrase): token_ids must list two or more words')
         if kind == 'confirm' and not any(op.get(k) for k in ('span_ids', 'token_ids', 'link_ids')):
             raise ValueError(f'op {i + 1} (confirm): nothing to confirm')
+        if kind == 'set_span' and op.get(PLANNED) is not None:
+            # A value on a word of a retyped sentence is written in the text
+            # edit's follow-up: one with no such edit in the plan (dropped,
+            # or a job's edit it could not apply) has nowhere to go.
+            p = op[PLANNED]
+            edit = next((o for o in ops if o.get('kind') == 'edit_text' and o.get('planned_words') is not None
+                         and o.get('sentence_id') == p.get('sentence_id')), None)
+            if edit is None or not 1 <= (p.get('index') or 0) <= len(edit['planned_words']):
+                raise ValueRefusal(f'op {i + 1} ({op.get("label") or kind}): names a word of a retyped sentence, '
+                                   'and this plan holds no retype that makes it', kind='conflict')
         if kind == 'merge_words' and not isinstance(op['other_ids'], list):
             raise ValueError(f'op {i + 1} (merge_words): other_ids must be a list')
         if kind == 'edit_text' and not (op['new'] or '').strip():
@@ -1843,7 +1872,9 @@ def normalize_ops(ops: List[Dict[str, Any]]) -> tuple:
         # is moot if the word goes, and the plan was already approved. A
         # confirmation covers several things and keeps the ones that survive,
         # below.
-        if maybe and k != 'confirm':
+        # A value on a word of a retyped sentence names its word as planned,
+        # and is written after the edit, on the word the edit leaves there.
+        if maybe and k != 'confirm' and op.get(PLANNED) is None:
             notes.append(f'dropped: {op.get("label") or k} '
                          '(what it names is deleted or merged away in this plan)')
             continue
@@ -2082,9 +2113,12 @@ def _execute(client, ops, *, label, project, counts, notes, stamps: Stamps, trac
         for op in sorted(ctx.text_edits, key=lambda o: -o['begin']):
             if project is None:
                 raise ValueError('edit_text needs the project')
+            values = ctx.after_edit.get(op.get('sentence_id'), []) if op.get('sentence_id') else []
             with b.on_client(op['document_id']):
-                _write_text_edit(client, project, op, b.new_id)
+                _write_text_edit(client, project, op, b.new_id, values=values, stamps=ctx.stamps)
             b.finish(op)
+            for v in values:
+                b.finish(v)
         # Whole-token replaces keep the token (and its morphemes, which share
         # its extent) and shift everything after it.
         for text_id, edits in ctx.respells.items():
@@ -2340,7 +2374,8 @@ def _line_starts(body: str, begin: int, end: int) -> List[int]:
     return out
 
 
-def _write_text_edit(client, project, op: Dict[str, Any], new_id) -> None:
+def _write_text_edit(client, project, op: Dict[str, Any], new_id, values=(),
+                     stamps: Optional[Stamps] = None) -> None:
     """Replace body[begin:end] (verified to still read ``old``) with ``new``
     as edits at their place (``texts.edit`` with the digest of the body read),
     so no word outside the region can be taken for the one changed, then, in
@@ -2350,7 +2385,14 @@ def _write_text_edit(client, project, op: Dict[str, Any], new_id) -> None:
     requests at most, the edit and its follow-up. The edit names the word
     layer when the project's "Tokenize new text" is on, and the server makes
     the words of the text it types. What it creates is made under ids from
-    ``new_id()``."""
+    ``new_id()``.
+
+    ``values`` are the word values planned on the retyped sentence
+    (``retyped``), written in the follow-up on the words the edit left, once
+    the sentence reads as the retype planned it: the same words in the same
+    order, each a word it already had where the plan says so and a new one
+    where it says that. A sentence that came out otherwise is refused before
+    the follow-up, so no value is written on a word it was not planned for."""
     from plaid_client import gaps_to_ops
     from .project import find_layer
     doc_id, text_id, new = op['document_id'], op.get('text_id'), op['new']
@@ -2405,7 +2447,8 @@ def _write_text_edit(client, project, op: Dict[str, Any], new_id) -> None:
         sents.remove(hit)
         sents.extend([(sb, p, sid), (p, se, made)])
         sents.sort()
-    if not (forms or seeded or splits):
+    spans = _planned_spans(project, op, raw, values, new_id, stamps) if values else None
+    if not (forms or seeded or splits or spans):
         return
 
     # Each write in order, as they were sent one by one: core runs a batch's
@@ -2418,7 +2461,47 @@ def _write_text_edit(client, project, op: Dict[str, Any], new_id) -> None:
                 fb.tokens.bulk_create(seeded)
             for sid, p, made in splits:
                 fb.tokens.split(sid, p, id=made)
+            if spans:
+                if spans['delete']:
+                    fb.spans.bulk_delete(spans['delete'])
+                if spans['update']:
+                    fb.spans.bulk_update(spans['update'])
+                for layer_id, token, value, meta, made in spans['create']:
+                    fb.spans.create(layer_id, [token], value, meta, id=made)
     new_id.once(send, whole=True)
+
+
+def _planned_spans(project, op: Dict[str, Any], raw, values, new_id, stamps: Stamps) -> Dict[str, list]:
+    """The writes of the word values planned on the sentence ``op`` retyped
+    (``values``), read against the document as the edit left it (``raw``):
+    ``{delete, update, create}``. Refused when the sentence does not read as
+    planned (see :func:`_write_text_edit`)."""
+    from .project import parse_document
+    planned = op.get('planned_words')
+    doc = parse_document(raw, project)
+    s = next((x for x in doc.sentences if x.id == op['sentence_id']), None)
+    words = s.words if s is not None else []
+    had = set(op.get('word_ids') or [])
+    nfc = lambda t: unicodedata.normalize('NFC', t or '')  # noqa: E731
+    if planned is None or len(words) != len(planned) or any(
+            nfc(w.surface) != nfc(p['surface']) or (w.id != p['word_id'] if p['word_id'] else w.id in had)
+            for w, p in zip(words, planned)):
+        now = ' '.join(qv(w.surface) for w in words)
+        raise ValueRefusal(f'the retyped sentence "{op["new"][:40]}" reads as the words {now or "(none)"}, not as '
+                           'planned, so the values planned on its words were not written', kind='conflict')
+    out: Dict[str, list] = {'delete': [], 'update': [], 'create': []}
+    for v in values:
+        w = words[v[PLANNED]['index'] - 1]
+        f = project.field_by_layer(v['layer_id'])
+        held = w.fields.get(f.name) if f is not None else None
+        value = v.get('value') or ''
+        if held is not None and value == '':
+            out['delete'].append(held.id)
+        elif held is not None:
+            out['update'].append({'id': held.id, 'value': value, 'metadata': metadata_ops(stamps.restamp())})
+        elif value != '':
+            out['create'].append((v['layer_id'], w.id, value, stamps.stamp(), new_id()))
+    return out
 
 
 def _write_sentence_delete(client, project, op: Dict[str, Any]) -> None:
