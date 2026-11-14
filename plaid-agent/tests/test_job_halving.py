@@ -19,8 +19,8 @@ def _job(n=5):
 
 def analyse(asked, i=1):
     """The calls staging every target sentence the message names."""
-    return [call(i + k, 'set_analysis', {'document': 'Story', 'analyses': [
-        {'ref': f's{n}.w1', 'morphemes': [{'form': f'ka{n}', 'type': 'stem', 'fields': {'Morph Gloss': 'go'}}]}]})
+    return [call(i + k, 'set_analysis', {'document': 'Story', 'ref': f's{n}.w1', 'morphemes': [
+        {'form': f'ka{n}', 'type': 'stem', 'fields': {'Morph Gloss': 'go'}}]})
             for k, n in enumerate(targets_named(asked))]
 
 

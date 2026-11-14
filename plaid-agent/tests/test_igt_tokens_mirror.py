@@ -81,6 +81,15 @@ def test_is_token_ignored_answers_as_the_app_does(app):
             assert is_token_ignored(token, cfg) == expected, (token, cfg)
 
 
+def test_trim_ignored_edges_answers_as_the_app_does(app):
+    """analyze_sentence and set_analysis read a word without the punctuation
+    the app trims off a lexicon form (AS, 2026-11-14)."""
+    from plaid_agent.igt.tools import trim_ignored_edges
+    for cfg, answers in zip(CONFIGS, app['trimmed']):
+        for token, expected in zip(TOKENS + TEXTS, answers):
+            assert trim_ignored_edges(token, cfg) == expected, (token, cfg)
+
+
 def test_the_word_break_class_is_the_editors_on_every_code_point(app):
     """The splitter's punctuation class is a hand copy of the editor's: it
     once kept two Sharada code points the editor had dropped."""

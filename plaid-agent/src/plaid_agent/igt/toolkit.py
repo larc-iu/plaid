@@ -169,17 +169,14 @@ TOOLS = [
         'fields mapping morpheme field names to values, e.g. [{"form":"kitab","type":"stem","fields":{"Gloss":"book"}}, '
         '{"form":"lar","type":"suffix","fields":{"Gloss":"PL"}}]. REPLACES the word\'s whole chain: every existing '
         'morpheme field value on it, human-made ones included, is dropped. To change one morpheme\'s value keep the '
-        'chain and use set_field with sN.wN.mN; to change one morpheme\'s form or type, set_morpheme. Several words '
-        'at once: analyses=[{"ref":"s3.w1","morphemes":[...]}, ...] (one call per sentence, not per word). Once '
+        'chain and use set_field with sN.wN.mN; to change one morpheme\'s form or type, set_morpheme. One word '
+        'per call: a sentence or a run of its words takes analyze_sentence. Once '
         'it is planned, sN.wN.mN of that word names a morpheme of the PLANNED analysis in set_field, set_morpheme, '
         'link_entry and unlink_entry, so its new morphemes can be glossed, retyped or linked in the same plan. '
         'One analysis on every occurrence of a word form, in one call: set_analysis_for_form.',
         {'document': _DOC, 'ref': {'type': 'string', 'description': 'The word, sN.wN.'},
-         'morphemes': _MORPHEMES,
-         'analyses': {'type': 'array', 'description': 'Several words at once: [{ref, morphemes}, ...].',
-                      'items': {'type': 'object', 'properties': {'ref': {'type': 'string'}, 'morphemes': _MORPHEMES},
-                                'required': ['ref', 'morphemes']}}},
-        ['document']),
+         'morphemes': _MORPHEMES},
+        ['document', 'ref', 'morphemes']),
     _fn('set_morpheme',
         'PLAN: change one morpheme\'s stored form and/or type in place, keeping the chain and every value on it '
         '(e.g. make sN.wN.m2 an enclitic). type "" clears the type. A linked morpheme goes by its entry\'s type: '

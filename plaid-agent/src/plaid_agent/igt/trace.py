@@ -134,9 +134,6 @@ def _own(name: str, a: Dict[str, Any]) -> Optional[str]:
             return f'Planned {sets} on {_counted(a)}{in_doc(a)}'
         return f'Planned {a.get("field")} = {q(a.get("value"))} on {_counted(a)}{in_doc(a)}'
     if name == 'set_analysis':
-        many = a.get('analyses') if isinstance(a.get('analyses'), list) else []
-        if many and not a.get('ref'):
-            return f'Planned new analyses for {plural(len(many), "word")}{in_doc(a)}'
         return f'Planned a new analysis for {a.get("ref")}{in_doc(a)}'
     if name == 'set_morpheme':
         bits = [b for b in (f'form {q(a["form"])}' if a.get('form') is not None else '',

@@ -188,12 +188,11 @@ PLAN: substitute inside every value of a field, project-wide or in one document:
 
 ### set_analysis
 
-PLAN: replace a word's morpheme segmentation and morpheme-level fields. Morphemes are given in order; each has a form, an optional type (stem, root, prefix, suffix, infix, enclitic, proclitic, ...), and fields mapping morpheme field names to values, e.g. [{"form":"kitab","type":"stem","fields":{"Gloss":"book"}}, {"form":"lar","type":"suffix","fields":{"Gloss":"PL"}}]. REPLACES the word's whole chain: every existing morpheme field value on it, human-made ones included, is dropped. To change one morpheme's value keep the chain and use set_field with sN.wN.mN; to change one morpheme's form or type, set_morpheme. Several words at once: analyses=[{"ref":"s3.w1","morphemes":[...]}, ...] (one call per sentence, not per word). Once it is planned, sN.wN.mN of that word names a morpheme of the PLANNED analysis in set_field, set_morpheme, link_entry and unlink_entry, so its new morphemes can be glossed, retyped or linked in the same plan. One analysis on every occurrence of a word form, in one call: set_analysis_for_form.
+PLAN: replace a word's morpheme segmentation and morpheme-level fields. Morphemes are given in order; each has a form, an optional type (stem, root, prefix, suffix, infix, enclitic, proclitic, ...), and fields mapping morpheme field names to values, e.g. [{"form":"kitab","type":"stem","fields":{"Gloss":"book"}}, {"form":"lar","type":"suffix","fields":{"Gloss":"PL"}}]. REPLACES the word's whole chain: every existing morpheme field value on it, human-made ones included, is dropped. To change one morpheme's value keep the chain and use set_field with sN.wN.mN; to change one morpheme's form or type, set_morpheme. One word per call: a sentence or a run of its words takes analyze_sentence. Once it is planned, sN.wN.mN of that word names a morpheme of the PLANNED analysis in set_field, set_morpheme, link_entry and unlink_entry, so its new morphemes can be glossed, retyped or linked in the same plan. One analysis on every occurrence of a word form, in one call: set_analysis_for_form.
 
 - `document` (string, required): Document id or exact name (see project_overview).
-- `ref` (string): The word, sN.wN.
-- `morphemes` (array of object {form: string (required), type: string, equals: boolean, fields: object of string})
-- `analyses` (array of object {ref: string (required), morphemes: array of object {form: string (required), type: string, equals: boolean, fields: object of string} (required)}): Several words at once: [{ref, morphemes}, ...].
+- `ref` (string, required): The word, sN.wN.
+- `morphemes` (array of object {form: string (required), type: string, equals: boolean, fields: object of string}, required)
 
 ### set_analysis_for_form
 

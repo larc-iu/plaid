@@ -10,11 +10,14 @@ respelling cannot overlap another) live here.
 """
 
 import copy
+import unicodedata
 from typing import Any, Dict, List, Optional
 
 from plaid_client.constraints import value_set_allows
 from plaid_client.provenance import prov_state, is_machine, needs_review, CONTRIBUTED_STATE
 from plaid_client.workflows.igt.config import orthography_key
+from plaid_client.workflows.igt.glossing import is_zero_morph
+from plaid_client.workflows.igt.ignored import is_ignorable_char
 from plaid_client.workflows.igt.interlinear import EQUALS_TYPE_KEY, choose_type, clitic_types
 
 from ..core import history, keep, opkind
@@ -238,51 +241,81 @@ def span_op(ws: Workspace, doc, ref: str, what: str, f, token_id: str, old, valu
                        + (' (cleared)' if value == '' else ''))}
 
 
-MAX_ANALYSES_PER_CALL = 200
+def t_set_analysis(ws: Workspace, document: str, ref: str, morphemes: list) -> str:
+    """PLAN: one word's analysis. A sentence, or a run of its words, is
+    analyze_sentence's (lines.py): this tool's several-words form put whole
+    sentences on their first word in run4 of the job pilot (AS,
+    2026-11-14)."""
+    doc = ws.doc(document)
+    op, note = word_analysis_op(ws, doc, ref, parse_analysis(ws, morphemes))
+    ws.add_ops([op])
+    return ws.planned_note(1) + note
 
 
-def t_set_analysis(ws: Workspace, document: str, ref: Optional[str] = None, morphemes: Optional[list] = None,
-                   analyses: Optional[list] = None) -> str:
-    """PLAN: one word's analysis (``ref`` + ``morphemes``), or several words'
-    at once (``analyses``: a list of {ref, morphemes}), so a whole sentence
-    is one call. Staged together: a bad item leaves nothing planned."""
+def word_analysis_op(ws: Workspace, doc: IgtDoc, ref: str, parsed: List[Dict[str, Any]]):
+    """``(op, note)``: the set_analysis op of word ``ref`` for the morphemes
+    ``parse_analysis`` read, with every refusal a word's analysis owes (no
+    morpheme layer, a plan that reshapes the word or holds a corpus-wide
+    change over the document, forms too long for the word), and the
+    allomorphy note. Stages nothing: set_analysis and analyze_sentence stage
+    what it gives, so the two make the same op."""
     if not ws.project.morpheme_layer_id:
         raise ToolError('This project has no morpheme layer.', kind='not-found')
-    doc = ws.doc(document)
     reshape_guards(ws, doc)
-    items = list(analyses or [])
-    if ref or morphemes:
-        items.insert(0, {'ref': ref, 'morphemes': morphemes})
-    if not items:
-        raise ToolError('Give ref and morphemes, or analyses (a list of {ref, morphemes}).', kind='invalid-argument')
-    if len(items) > MAX_ANALYSES_PER_CALL:
-        raise ToolError(f'At most {MAX_ANALYSES_PER_CALL} analyses per call; split the list.', kind='too-large')
-    staged: List[Dict[str, Any]] = []
-    notes: List[str] = []
-    seen = set()
-    for item in items:
-        if not isinstance(item, dict) or not item.get('ref'):
-            raise ToolError('each analysis needs a ref (sN.wN) and morphemes', kind='invalid-argument')
-        r = str(item['ref']).strip()
-        w = _need(resolve(doc, r), Word, r)
-        if w.id in seen:
-            raise ToolError(f'{r} is analysed twice in one call', kind='invalid-argument')
-        seen.add(w.id)
-        refuse_shape_and_analysis(ws, w.id, r, analysing=True)
-        out = stage_equals([(x.form, x.equals_before) for x in w.morphemes if not x.virtual],
-                           parse_analysis(ws, item.get('morphemes')))
-        # A derived morpheme (an unsegmented word's) is stored nowhere, so
-        # there is nothing for the analysis to keep or delete.
-        existing = [{'id': m.id, 'span_ids': [sp.id for sp in m.fields.values()]} for m in w.morphemes
-                    if not m.virtual]
-        had_values = sum(1 for m in w.morphemes for sp in m.fields.values() if sp.value != '')
-        op, note = analysis_op(ws, f'{ws.doc_label(doc.id)} {r} {qv(w.surface)}', w.surface, w.id, w.text_id, w.begin,
-                               w.end, existing, segmentation(w) if existing else '', had_values, out)
-        staged.append(op)
-        if note:
-            notes.append(f'{r}{note}' if len(items) > 1 else note)
-    ws.add_ops(staged)
-    return ws.planned_note(len(staged)) + (' ' + ' '.join(notes) if notes else '')
+    r = str(ref or '').strip()
+    w = _need(resolve(doc, r), Word, r)
+    refuse_shape_and_analysis(ws, w.id, r, analysing=True)
+    misfit = surface_misfit(w.surface, [m['form'] for m in parsed], ws.project.ignored_cfg)
+    if misfit:
+        raise ToolError(f'{r} {qv(w.surface)}: {misfit}, too long for one word. Give the word\'s own morphemes: a '
+                        'sentence or a run of words takes analyze_sentence.', kind='invalid-argument')
+    out = stage_equals([(x.form, x.equals_before) for x in w.morphemes if not x.virtual], parsed)
+    # A derived morpheme (an unsegmented word's) is stored nowhere, so
+    # there is nothing for the analysis to keep or delete.
+    existing = [{'id': m.id, 'span_ids': [sp.id for sp in m.fields.values()]} for m in w.morphemes
+                if not m.virtual]
+    had_values = sum(1 for m in w.morphemes for sp in m.fields.values() if sp.value != '')
+    return analysis_op(ws, f'{ws.doc_label(doc.id)} {r} {qv(w.surface)}', w.surface, w.id, w.text_id, w.begin,
+                       w.end, existing, segmentation(w) if existing else '', had_values, out)
+
+
+#: The surface check (AS, 2026-11-14), one fixed rule: a word's forms,
+#: joined, the zero morph and spaces left out, may be at most twice as long as
+#: the word plus this many characters. Generous to allomorphy (the longest
+#: gold analysis of the Gitksan fixture is 1.4 times its word, "waayt" as
+#: wag̲a-yt), and far short of a sentence on one word ("Sim" given 55
+#: characters in run4).
+SURFACE_SLACK = 3
+
+
+def trim_ignored_edges(content: str, cfg) -> str:
+    """plaid-igt's ``trimIgnoredEdges`` (igtConfig.js): ``content`` without
+    the punctuation the project's ignored-token rule ignores at either edge,
+    a letter-like character never trimmed. Under ``blacklist`` or no rule
+    nothing is trimmed, and an all-punctuation form is returned as it is.
+    The JavaScript is the original, ``test_igt_tokens_mirror`` compares."""
+    s = content or ''
+    if not cfg or cfg.get('type') != 'unicodePunctuation':
+        return s
+    chars = list(s)
+    start, end = 0, len(chars)
+    while start < end and is_ignorable_char(chars[start], cfg):
+        start += 1
+    while end > start and is_ignorable_char(chars[end - 1], cfg):
+        end -= 1
+    return s if start >= end else ''.join(chars[start:end])
+
+
+def surface_misfit(surface: str, forms: List[str], cfg) -> Optional[str]:
+    """What is wrong when ``forms`` cannot be an analysis of the word
+    ``surface`` by :data:`SURFACE_SLACK`'s rule, else None. Lengths are in
+    characters after NFC, the word read as :func:`trim_ignored_edges` leaves
+    it."""
+    word = unicodedata.normalize('NFC', trim_ignored_edges(surface, cfg)).replace(' ', '')
+    joined = unicodedata.normalize('NFC', ''.join(f for f in forms if not is_zero_morph(f))).replace(' ', '')
+    if len(joined) <= 2 * len(word) + SURFACE_SLACK:
+        return None
+    return f'forms "{"".join(forms)}" are over twice as long as "{surface}" plus {SURFACE_SLACK}'
 
 
 # A word's BOUNDARIES change (a split, a merge, a delete, a text edit over it)
@@ -417,7 +450,7 @@ def analysis_op(ws: Workspace, head: str, surface: str, word_id: str, text_id: s
     """A set_analysis op with its label, and the allomorphy note if the forms
     do not add up to the surface."""
     joined = ''.join(m['form'] for m in out)
-    if joined.replace(' ', '') != surface.replace(' ', ''):
+    if joined.replace(' ', '') != trim_ignored_edges(surface, ws.project.ignored_cfg).replace(' ', ''):
         note = f' (note: forms "{joined}" differ from the surface "{surface}"; that is allowed for allomorphy)'
     else:
         note = ''

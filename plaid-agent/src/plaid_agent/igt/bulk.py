@@ -23,7 +23,7 @@ from .plan import KIND, REFS_READ, REPAIR_OF, SENSES_READ, SCOPES, analysed_morp
 from .project import join_morphemes, word_ref
 from ..core.tools import ToolError
 from .lexicon import _meta_patch, _refuse_doomed_entry, _refuse_removing_survivor
-from .tools import (parse_analysis, analysis_op, stage_equals, no_scope_reaches, refuse_shape_and_analysis,
+from .tools import (parse_analysis, analysis_op, surface_misfit, stage_equals, no_scope_reaches, refuse_shape_and_analysis,
                     edit_planned_morpheme, left_for_analysis, _planned_place)
 from .lexview import entry_line
 from .workspace import Workspace, _matcher, op_target
@@ -1538,6 +1538,9 @@ def t_set_analysis_for_form(ws: Workspace, form: str, morphemes: list, document:
     if not ws.project.morpheme_layer_id:
         raise ToolError('This project has no morpheme layer.', kind='not-found')
     out = parse_analysis(ws, morphemes)
+    misfit = surface_misfit(form, [m['form'] for m in out], ws.project.ignored_cfg)
+    if misfit:
+        raise ToolError(f'{misfit}, too long for one word. Give the word\'s own morphemes.', kind='invalid-argument')
     with ws.corpus.within(document):
         words, chains, spans, entries = q_analysis_targets(ws, form, skip_analyzed, PLAN_MAX_OPS)
     # A linked morpheme goes by its entry's type and stores no copy of it (R2).

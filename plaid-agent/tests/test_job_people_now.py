@@ -45,8 +45,8 @@ def _job_over_a_then_b(monkeypatch, edit):
         if n > 1:
             return reply('Done.')
         if 'Document "Doc A"' in asked:
-            return reply(calls=[call(1, 'set_analysis', {'document': 'Doc A', 'analyses': [
-                {'ref': f's1.w{i}', 'morphemes': _morph(g)} for i, g in enumerate(['go', 'go', 'come', 'go'], 1)]})])
+            return reply(calls=[call(i, 'set_analysis', {'document': 'Doc A', 'ref': f's1.w{i}', 'morphemes': _morph(g)})
+                                for i, g in enumerate(['go', 'go', 'come', 'go'], 1)])
         edit(client)
         edited['yes'] = True
         return reply(calls=[call(1, 'set_analysis', {'document': 'Doc B', 'ref': 's1.w1', 'morphemes': [

@@ -1,5 +1,5 @@
 """One call per sentence, not per word: analyses_of over several forms,
-set_analysis over several words, and set_morpheme for one morpheme's form
+and set_morpheme for one morpheme's form
 or type without rewriting its chain."""
 
 import json
@@ -117,24 +117,22 @@ def test_the_for_form_tools_read_the_form_from_the_text_once():
     assert n == 2 and w.ops, (n, out)
 
 
-def test_set_analysis_takes_several_words_and_stages_them_together():
+def test_set_analysis_takes_one_word_and_points_a_sentence_to_analyze_sentence():
+    """set_analysis is for one word (AS, 2026-11-14): its several-words form
+    put whole sentences on their first word in run4, so it is gone, and its
+    description names analyze_sentence for a sentence."""
+    from plaid_agent.igt.toolkit import TOOLS
     w = ws()
     out = call_tool(w, 'set_analysis', {'document': 'd1', 'analyses': [
-        {'ref': 's1.w2', 'morphemes': [{'form': 'gam', 'fields': {'Morph Gloss': 'fish'}}]},
-        {'ref': 's1.w3', 'morphemes': [{'form': 'aku', 'fields': {'Morph Gloss': 'see'}}, {'form': 'na', 'type': 'suffix'}]}]})
-    assert out.startswith('Planned 2 changes') and 's1.w3 (note: forms "akuna"' not in out
-    assert [(o['kind'], o['word_id']) for o in w.ops] == [('set_analysis', 'w-2'), ('set_analysis', 'w-3')]
-    # A bad item leaves nothing planned.
-    w2 = ws()
-    out = call_tool(w2, 'set_analysis', {'document': 'd1', 'analyses': [
-        {'ref': 's1.w2', 'morphemes': [{'form': 'gam'}]}, {'ref': 's1.w2', 'morphemes': [{'form': 'ga'}, {'form': 'm'}]}]})
-    assert 'analysed twice' in out and w2.ops == []
-    assert 'each analysis needs a ref' in call_tool(w2, 'set_analysis', {'document': 'd1', 'analyses': [{'morphemes': []}]})
-    assert 'Give ref and morphemes' in call_tool(w2, 'set_analysis', {'document': 'd1'})
-    # Allomorphy notes name the word when several are planned.
-    out = call_tool(w2, 'set_analysis', {'document': 'd1', 'analyses': [
-        {'ref': 's2.w1', 'morphemes': [{'form': 'gam'}, {'form': 'ar'}]}, {'ref': 's1.w2', 'morphemes': [{'form': 'gam'}]}]})
-    assert 's2.w1 (note: forms "gamar" differ from the surface "Gam-ar"' in out
+        {'ref': 's1.w2', 'morphemes': [{'form': 'gam', 'fields': {'Morph Gloss': 'fish'}}]}]})
+    assert out.startswith('Error') and 'set_analysis cannot be called with those arguments' in out, out
+    assert w.ops == []
+    spec = next(t['function'] for t in TOOLS if t['function']['name'] == 'set_analysis')
+    assert 'analyses' not in spec['parameters']['properties']
+    assert 'one call per sentence' not in spec['description'] and 'analyze_sentence' in spec['description']
+    assert spec['parameters']['required'] == ['document', 'ref', 'morphemes']
+    out = call_tool(w, 'set_analysis', {'document': 'd1', 'ref': 's1.w2', 'morphemes': [{'form': 'gam'}]})
+    assert out.startswith('Planned 1 change') and [(o['kind'], o['word_id']) for o in w.ops] == [('set_analysis', 'w-2')]
 
 
 def _no_type_copy():

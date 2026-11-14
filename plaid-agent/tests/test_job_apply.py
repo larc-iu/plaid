@@ -290,9 +290,10 @@ def test_a_piece_writes_what_it_staged_and_lists_only_project_setup(monkeypatch)
 
     def answer(asked, n, kwargs):
         if n == 1:
-            return reply(calls=[call(1, 'set_analysis', {'document': 'Story', 'analyses': [
-                {'ref': 's1.w1', 'morphemes': [{'form': 'blank', 'fields': {'Morph Gloss': 'B'}}]},
-                {'ref': 's1.w2', 'morphemes': [{'form': 'done', 'fields': {'Morph Gloss': 'D'}}]}]}),
+            return reply(calls=[call(1, 'set_analysis', {'document': 'Story', 'ref': 's1.w1', 'morphemes': [
+                {'form': 'blank', 'fields': {'Morph Gloss': 'B'}}]}),
+                call(4, 'set_analysis', {'document': 'Story', 'ref': 's1.w2', 'morphemes': [
+                    {'form': 'done', 'fields': {'Morph Gloss': 'D'}}]}),
                 call(2, 'guidelines', {'action': 'help'})])
         if n == 2:
             return reply(calls=[call(3, 'guidelines', {'action': 'add', 'title': 'Done',

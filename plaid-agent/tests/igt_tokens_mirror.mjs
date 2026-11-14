@@ -3,7 +3,8 @@
 // them answer by answer: `is_token_ignored` (plaid_client.workflows.igt.ignored)
 // against igtConfig.js's `isTokenIgnored`, and `split_words`
 // (plaid_client.workflows.igt.word_breaks) against tokenizationUtils.js's
-// `tokenizeText`.
+// `tokenizeText`, and `trim_ignored_edges` (plaid_agent.igt.tools) against
+// igtConfig.js's `trimIgnoredEdges`.
 //
 // The rules read generated tables of character classes
 // (plaid-igt/tools/punctuationClasses.mjs), so the
@@ -63,6 +64,11 @@ process.stdout.write(
     },
     ignored: cases.configs.map((cfg) =>
       cases.tokens.map((t) => config.isTokenIgnored(t, cfg)),
+    ),
+    trimmed: cases.configs.map((cfg) =>
+      cases.tokens
+        .concat(cases.texts)
+        .map((t) => config.trimIgnoredEdges(t, cfg)),
     ),
     words: cases.configs.map((cfg) =>
       cases.texts.map((text) =>
