@@ -1205,6 +1205,16 @@ A dialog lists what will change before anything is written, and says what cannot
 The restore is one more entry in the history, and the message that confirms it offers **Undo**.
 Restoring is for a project's maintainers.
 
+To take back what one entry did, and nothing else, click **Undo** over its changes.
+Each value, word, morpheme and link it wrote in the document goes back to how it was just before the entry, as one more entry in the history, which can itself be undone.
+A dialog lists what will be undone before anything is written.
+
+What cannot go back is left as it is, and the dialog lists it with the reason and where it is.
+A value changed again later is left, and so is anything something was added to since, such as a word that now has a gloss.
+Lexicon entries are not undone from a document: undoing the same entry in the vocabulary's History puts back its entries and every link to them, such as the links a merge moved.
+Changes to settings, fields, vocabularies and members are never undone.
+Undoing is for a project's maintainers.
+
 [[_changes_in_an_entry]]
 == Changes in an entry
 
@@ -1236,6 +1246,10 @@ Links are not counted for an entry with too many changes in documents to count.
 To put one entry back as it was, open it in the past state and click **Restore**.
 An entry deleted since comes back whole, but without its links in documents.
 Restoring an entry is for maintainers of the vocabulary's project.
+
+**Undo** over a history entry's changes takes back what it did to the vocabulary's entries and to every link to them, in any document.
+An entry it merged or deleted comes back with its links, and an entry it created goes.
+As in a document, the dialog lists what is left and why, and undoing is for maintainers of the vocabulary's project.
 
 = Sharing and Permissions
 
