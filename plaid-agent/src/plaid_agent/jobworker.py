@@ -73,7 +73,7 @@ def count_chars(value) -> int:
     return len(text) // 4
 
 
-def answered(cfg: ModelConfig) -> bool:
+def answered(cfg: ModelConfig, wait: bool = True) -> bool:
     """Ping the model until it answers, as a job asks a model that does not
     answer mid-job: a failure that passes (a rate limit, a provider at
     capacity or down, a timeout, no connection: :func:`~.core.job.not_answering`,
@@ -81,7 +81,9 @@ def answered(cfg: ModelConfig) -> bool:
     and asked again after JOB_MODEL_RETRY_S, so a worker a script starts
     while the endpoint is full is there once it is not (BRIEF PF). Any
     other failure (a refused key, an unknown model, another 4xx) does not
-    heal by waiting: False, and the worker exits."""
+    heal by waiting: False, and the worker exits. With ``wait`` False
+    (``--once``, one job and exit) the ping is asked once and any failure
+    is False (REV-L2-6)."""
     while True:
         try:
             ping_model(cfg)
@@ -90,7 +92,7 @@ def answered(cfg: ModelConfig) -> bool:
             print('  No answer to the ping in time. Running anyway: the first stretch will wait for it.')
             return True
         except Exception as e:  # noqa: BLE001 - the provider's own complaint is what the operator needs
-            if not not_answering(e):
+            if not wait or not not_answering(e):
                 print(f'  The model did not answer: {e}')
                 return False
             logging.getLogger(__name__).warning('The model did not answer (%s). Asking it again in %s s.',
@@ -146,7 +148,7 @@ def main(argv=None) -> int:
         print(f'Model: {cfg.model}' + (f' via {cfg.api_base}' if cfg.api_base else ''))
         if cfg.reasoning_effort:
             print(f'Reasoning effort: {cfg.reasoning_effort} (--reasoning-effort).')
-        if not answered(cfg):
+        if not answered(cfg, wait=not args.once):
             return 1
     if args.model_pool:
         print(f'Model key: "{args.model_pool}". Jobs wait while services of that key are working.')

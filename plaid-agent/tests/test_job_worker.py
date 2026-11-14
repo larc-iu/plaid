@@ -298,7 +298,7 @@ def test_a_scripted_worker_starts_without_the_providers_banner(tmp_path, capsys,
 
 # --- the worker's start (BRIEF PF, C) -------------------------------------------------
 
-def _start(monkeypatch, failures):
+def _start(monkeypatch, failures, once=False):
     """main() with a model whose ping raises each of ``failures`` in turn,
     then answers. Returns what it returned (None once it reached core), the
     waits it made and the pings."""
@@ -318,8 +318,8 @@ def _start(monkeypatch, failures):
     monkeypatch.setattr(jobworker.time, 'sleep', waits.append)
     monkeypatch.setattr(jobworker.BaseService, 'get_client', staticmethod(no_core))
     try:
-        out = jobworker.main(['--url', 'http://localhost:1', '--model', 'openai/m', '--api-base', 'http://x',
-                              '--once'])
+        out = jobworker.main(['--url', 'http://localhost:1', '--model', 'openai/m', '--api-base', 'http://x']
+                             + (['--once'] if once else []))
     except Reached:
         out = None
     return out, waits, pings
@@ -349,6 +349,20 @@ def test_a_worker_started_while_the_model_cannot_answer_waits_and_asks_again(mon
     lines = [r.getMessage() for r in caplog.records if 'The model did not answer' in r.getMessage()]
     assert len(lines) == 3, lines
     assert lines[0].endswith(f'Asking it again in {JOB_MODEL_RETRY_S} s.'), lines[0]
+
+
+@pytest.mark.parametrize('failure', [
+    _busy,
+    lambda: litellm.APIConnectionError(message='connection refused', llm_provider='openai', model='m'),
+], ids=['rate-limit', 'connection'])
+def test_a_worker_run_once_whose_model_cannot_answer_exits_at_once(monkeypatch, capsys, failure):
+    """--once takes one job and exits: its opening ping is asked once and a
+    model that does not answer exits 1, as before PF, so a bench task given a
+    mistyped --api-base fails in seconds rather than waiting out its hour
+    (REV-L2-6)."""
+    out, waits, pings = _start(monkeypatch, [failure()], once=True)
+    assert out == 1 and waits == [] and len(pings) == 1
+    assert 'The model did not answer:' in capsys.readouterr().out
 
 
 @pytest.mark.parametrize('failure', [
