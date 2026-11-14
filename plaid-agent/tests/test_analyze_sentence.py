@@ -431,3 +431,11 @@ def test_a_contributor_stages_the_same_and_approval_stamps_it_theirs():
                  stamp_mode='contributed', contributor=bob)
     stamped = [p for k, p in w.client.calls if k == 'spans.create']
     assert stamped and all('contributed' in str(p) for p in stamped)
+
+
+# --- the prompts --------------------------------------------------------------------------
+
+def test_the_prompts_name_analyze_sentence_where_they_named_set_analysis_for_a_stretch():
+    from plaid_agent.igt.prompt import JOB_SYSTEM, SYSTEM
+    assert 'staged one analyze_sentence call per sentence' in SYSTEM and 'set_analysis call per' not in SYSTEM
+    assert 'You staged one analyze_sentence for s6' in JOB_SYSTEM and 'staged one set_analysis' not in JOB_SYSTEM

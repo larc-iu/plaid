@@ -132,7 +132,7 @@ _CHAT = {
     'final_message': shared.final_message('items'),
     'turn_example': shared.turn_example(
         '"gloss this text" of a text of 20 sentences',
-        'read sentences 1 to 5 and how their forms were analysed elsewhere, then staged one set_analysis call per '
+        'read sentences 1 to 5 and how their forms were analysed elsewhere, then staged one analyze_sentence call per '
         'sentence',
         '5 changes',
         'Sentences 1 to 5 are segmented and glossed: the plan holds 5 changes, one per sentence, 31 words in all. '
@@ -236,7 +236,7 @@ _JOB_EXAMPLE_DID = (
     'The message showed s4 and s5 as context and s6 and s7 as your piece, and the instructions said to segment '
     'and gloss the words nobody analysed and to translate empty translations. It showed that people analysed '
     '"leo" as le-o \'today-DEF\' twice. Nothing settled "na", so you read the concordance of "na" and saw it '
-    'before verbs glossed PRS in four sentences. You staged one set_analysis for s6 with w1 as na-ku-ja (prefix '
+    'before verbs glossed PRS in four sentences. You staged one analyze_sentence for s6 with w1 as na-ku-ja (prefix '
     'PRS, prefix INF, stem come) and w3 as le-o as people have it, and set the translation of s7. You left w2 '
     'of s7, a name you could not place.')
 _JOB_EXAMPLE_NOTE = 'Glossed s6 and translated s7. Left s7.w2, a name nobody has glossed.'
