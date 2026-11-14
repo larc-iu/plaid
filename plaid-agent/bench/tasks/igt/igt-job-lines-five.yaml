@@ -1,0 +1,20 @@
+# The run4 shape (AS, 2026-11-14): a job over five blank sentences, the
+# "Segment, gloss and link" starter text, the sentences run4 of the job pilot
+# put on their first words (s16 to s20 of Gitksan text 2). Right is every word
+# of them analysed on its own word, as the job's machine proposals. Run4's
+# mistake, a sentence's morphemes on its first word, is refused by the tool,
+# so nothing of it is written.
+id: igt-job-lines-five
+app: igt
+project: igt-gitksan
+as: B
+job:
+  instructions: Segment and gloss every word nobody has analyzed, and link each morpheme to its lexicon entry, making an entry where none fits. Follow how people in the project analyzed the same forms.
+  documents: [Gitksan text 2]
+check: igt_job
+args:
+  mode: stretch
+  document: Gitksan text 2
+  sentences: [16, 17, 18, 19, 20]
+  max_left: 0
+max_wall_s: 3600

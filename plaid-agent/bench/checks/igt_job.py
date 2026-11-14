@@ -21,6 +21,8 @@ args:
   mode: stretch | harmonize
   document, sentences: (stretch) the target sentences, every target word of
     which is analysed or left, at least one analysed
+  max_left: (stretch) at most this many target words left blank (default:
+    any), 0 for "every word analysed on its own word"
   form: (harmonize) SPEC 8 for that form, judged by people's analyses as
     the project was when harmonize began (just before its first History
     entry, REV-J-B2 S2-1). People analysed it one way then (the task's
@@ -327,6 +329,8 @@ def check(ctx):
                         left += 1
         if not analysed:
             problems.append('no target word was analysed')
+        if args.get('max_left') is not None and left > args['max_left']:
+            problems.append(f'{left} target words left blank, at most {args["max_left"]} may be')
     if args.get('mode') == 'harmonize':
         _harmonize(ctx, project, jid, docs, args, problems)
     seen = {}

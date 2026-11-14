@@ -87,3 +87,14 @@ def staged(ctx, client, calls, stamp_mode='human', detail=None):
         assert not str(out).startswith('Error'), out
     execute_plan(client, list(ws.ops), source=SOURCE, label='bench', project=project, stamp_mode=stamp_mode,
                  detail=detail, seed=str(uuid7()))
+
+
+def tool_answer(ctx, client, name, args):
+    """What the assistant's tool ``name`` answers ``args`` with, on a
+    workspace of its own over ``client``, staging nothing anyone applies:
+    how a validation shows that a tool refuses a wrong call."""
+    from plaid_agent.igt import toolkit
+    from plaid_agent.igt.project import load_project
+    from plaid_agent.igt.workspace import Workspace
+    ws = Workspace(client, load_project(client, ctx.project['id']))
+    return str(toolkit.call_tool(ws, name, args)), list(ws.ops)
