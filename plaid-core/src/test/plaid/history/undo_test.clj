@@ -1042,3 +1042,140 @@
           summary (undone! admin-request g)]
       (is (= {brown "text-changed-since" s "needs"} (reasons summary)))
       (is (nil? (psc/fetch-by-id db :tokens brown))))))
+
+;; ============================================================
+;; Round 3 (REV-UN2)
+;; ============================================================
+
+(deftest rev-un2-1-a-made-row-named-in-metadata-since-is-built-on
+  (testing "a made token a person since chose as an entry's example"
+    (let [{:keys [proj doc word text vocab]} (setup!)
+          e (id (create-vocab-item admin-request vocab "the"))
+          g (str (random-uuid))
+          t (id (create-token (in-group admin-request g) word text 0 3))
+          _ (assert-ok (update-vocab-item-metadata admin-request e {"examples" [{"document" (str doc) "token" (str t)}]}))
+          summary (undone! admin-request g)]
+      (is (= {t "built-on"} (reasons summary)))
+      (is (= {:kind "vocab-item" :id e} (:by (first (:skipped summary)))))
+      (is (some? (psc/fetch-by-id db :tokens t)))
+      (is (some? proj))))
+  (testing "a made document, imported, a person since took an example from: held whole"
+    (let [proj (create-test-project admin-request "Imp")
+          tl (id (create-text-layer admin-request proj "Text"))
+          word (id (create-token-layer admin-request tl "Words"))
+          vocab (id (create-vocab-layer admin-request proj "Lex"))
+          e (id (create-vocab-item admin-request vocab "a"))
+          g (str (random-uuid))
+          r (in-group admin-request g)
+          d (create-test-document r proj "Imported")
+          text (id (create-text r tl d "a b"))
+          t (id (create-token r word text 0 1))
+          _ (id (create-vocab-link r e [t]))
+          _ (assert-ok (update-vocab-item-metadata admin-request e {"examples" [{"document" (str d) "token" (str t)}]}))
+          summary (undone! admin-request g)
+          why (reasons summary)]
+      (is (= "built-on" (why d)))
+      (is (= "built-on" (why t)))
+      (is (some? (psc/fetch-by-id db :documents d)))
+      (is (some? (psc/fetch-by-id db :tokens t)))
+      (is (some? text))))
+  (testing "a made span named, at depth, from another document row's metadata"
+    (let [{:keys [pos toks spans]} (setup!)
+          g (str (random-uuid))
+          s (id (create-span (in-group admin-request g) pos [(nth toks 0)] "NP"))
+          _ (assert-ok (update-span-metadata admin-request (nth spans 4) {"see" {"also" [(str s)]}}))
+          summary (undone! admin-request g)]
+      (is (= {s "built-on"} (reasons summary)))
+      (is (= {:kind "span" :id (nth spans 4)} (:by (first (:skipped summary)))))))
+  (testing "a reference the undo itself takes away holds nothing"
+    (let [{:keys [pos toks spans]} (setup!)
+          g (str (random-uuid))
+          r (in-group admin-request g)
+          s (id (create-span r pos [(nth toks 0)] "NP"))
+          _ (assert-ok (update-span-metadata r (nth spans 4) {"see" (str s)}))
+          summary (undone! admin-request g)]
+      (is (zero? (:skipped-count summary)))
+      (is (nil? (psc/fetch-by-id db :spans s))))))
+
+(deftest rev-un2-a-failure-the-plan-should-have-foreseen-is-logged-as-an-error
+  (doseq [[what message logged?] [["a unique key" "[SQLITE_CONSTRAINT_UNIQUE] probe" false]
+                                  ["a foreign key" "[SQLITE_CONSTRAINT_FOREIGNKEY] probe" true]]]
+    (testing what
+      (let [{:keys [spans]} (setup!)
+            g (str (random-uuid))
+            _ (assert-ok (update-span (in-group admin-request g) (nth spans 0) :value "g"))
+            real-apply plaid.history.restore/apply-plan!
+            calls (atom 0)
+            errors (atom [])]
+        (with-redefs [plaid.history.restore/apply-plan!
+                      (fn [tx d p cur]
+                        (when (= 1 (swap! calls inc))
+                          (throw (org.sqlite.SQLiteException. message org.sqlite.SQLiteErrorCode/SQLITE_CONSTRAINT)))
+                        (real-apply tx d p cur))
+                      plaid.history.undo/unforeseen! (fn [k _] (swap! errors conj k))]
+          (let [resp (undo admin-request g)]
+            (is (= 200 (:status resp)) "the answer is the same")
+            (is (= {(nth spans 0) "does-not-fit"} (reasons (:body resp))))
+            (is (= logged? (boolean (seq @errors))) "logged at error only when foreseeable")))))))
+
+;; An undo sent with an Idempotency-Key, or inside /batch, runs in an outer
+;; transaction that commits: a dry run and a dropped attempt must still leave
+;; nothing behind (UB).
+
+(defn- keyed [k]
+  (fn [method path] (-> (admin-request method path) (mock/header "Idempotency-Key" k))))
+
+(defn- undo-ops [] (count (psc/q db {:select [:id] :from [:operations] :where [:= :op_type "audit-entry/undo"]})))
+
+(defn- closed-list-entry!
+  "An entry whose undo misfits on its first attempt (a value a closed list
+  closed since refuses) and lands on its second."
+  []
+  (let [{:keys [pos spans] :as w} (setup!)
+        g (str (random-uuid))
+        r (in-group admin-request g)
+        _ (assert-ok (update-span r (nth spans 1) :value "A"))
+        _ (assert-done (delete-span r (nth spans 0)))
+        _ (declare! "span" pos [{:type "value-set" :values ["A" "ADJ" "NOUN" "VERB"]}])]
+    (assoc w :g g)))
+
+(deftest an-undo-inside-an-outer-transaction-leaves-only-what-it-lists
+  (testing "a keyed dry run writes nothing and leaves no operation"
+    (let [{:keys [g spans]} (closed-list-entry!)
+          ops (op-count)
+          resp (undo (keyed "dry-run-key-0001") g :dry-run true)]
+      (is (= 200 (:status resp)))
+      (is (= 1 (:total (:body resp))))
+      (is (= ops (op-count)))
+      (is (= "A" (-> (get-span admin-request (nth spans 1)) :body :span/value)))))
+  (testing "a keyed real undo whose first attempt misfits keeps only the last attempt's writes"
+    (let [{:keys [g spans]} (closed-list-entry!)
+          resp (undo (keyed "real-undo-key-0001") g)]
+      (is (= 200 (:status resp)))
+      (is (= {(nth spans 0) "value-not-allowed"} (reasons (:body resp))))
+      (is (= 1 (undo-ops)))
+      (is (= 404 (:status (get-span admin-request (nth spans 0)))) "the dropped attempt's insert is gone")
+      (is (= "ADJ" (-> (get-span admin-request (nth spans 1)) :body :span/value)))
+      (testing "its replay answers what it answered and writes nothing more"
+        (let [ops (op-count)
+              again (undo (keyed "real-undo-key-0001") g)]
+          (is (= "true" (get-in again [:headers "Idempotent-Replayed"])))
+          (is (= [(str (:operation (:body resp))) (:total (:body resp)) (:skipped-count (:body resp))]
+                 [(str (:operation (:body again))) (:total (:body again)) (:skipped-count (:body again))]))
+          (is (= ops (op-count)))))
+      (testing "the same key for a dry run is another request: refused"
+        (is (= 422 (:status (undo (keyed "real-undo-key-0001") g :dry-run true)))))))
+  (testing "inside /batch: a dry run writes nothing, a misfit attempt is dropped"
+    (let [{:keys [g spans]} (closed-list-entry!)
+          ops (op-count)
+          undos (undo-ops)
+          dry (api-call admin-request {:method :post :path "/api/v1/batch"
+                                       :body [{:path (str "/api/v1/audit/entries/" g "/undo?dry-run=true") :method "post"}]})]
+      (is (= 200 (:status dry)) (pr-str (:body dry)))
+      (is (= ops (op-count)))
+      (let [real (api-call admin-request {:method :post :path "/api/v1/batch"
+                                          :body [{:path (str "/api/v1/audit/entries/" g "/undo") :method "post"}]})]
+        (is (= 200 (:status real)) (pr-str (:body real)))
+        (is (= (inc undos) (undo-ops)))
+        (is (= 404 (:status (get-span admin-request (nth spans 0)))))
+        (is (= "ADJ" (-> (get-span admin-request (nth spans 1)) :body :span/value)))))))

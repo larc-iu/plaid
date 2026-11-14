@@ -63,6 +63,7 @@
   the same transaction rolled back at its end, so it says exactly what the
   call would do."
   (:require [clojure.string :as str]
+            [next.jdbc :as jdbc]
             [plaid.history.changes :as changes]
             [plaid.history.read :as hread]
             [plaid.history.restore :as restore]
@@ -270,45 +271,58 @@
     m))
 
 (defn- metadata-refs
-  "`{[\"vocab_items\" id] [{:k [table id]} ...]}`: for each entry the entry
-  made, the rows whose metadata names it by its id, wherever its vocabulary
-  can be used (its other entries, and every row of a document of a project
-  linking it), as `plaid.sql.vocab-item` finds what a merge repoints."
+  "`{[table id] [{:k [table id] :place {...}} ...]}`: for each row the entry
+  made, the rows whose metadata names its id, at any depth (REV-UN2-1, the
+  reverse of `new-references`). Core does not know what a reference means
+  (an app may keep a lexicon example as a document and a token id in an
+  entry), so any string equal to the id counts. Read in one pass over the
+  metadata where such a row can be named: the entries of the vocabularies
+  the made entries are in or the made rows' projects link, and every row of
+  the documents of those projects and of the projects linking those
+  vocabularies. Each value is read once, against every made id at once."
   [db items]
-  (let [made (filter #(and (= "vocab_items" (:table %)) (= :delete (:op %))) items)]
-    (reduce
-     (fn [m [vocab-id entries]]
-       (let [ids-json (psc/write-json (mapv (comp str :id) entries))
-             atom-in "jt.type = 'text' AND jt.atom IN (SELECT value FROM json_each(?))"
-             docs-sql (str "SELECT d.id FROM project_vocabs pv CROSS JOIN documents d"
-                           " WHERE pv.vocab_layer_id = ? AND d.project_id = pv.project_id")
-             rows (concat
-                   (for [r (psc/q db [(str "SELECT em.entity_id, jt.atom AS ref"
-                                           " FROM vocab_items x CROSS JOIN entity_metadata em, json_tree(em.value) jt"
-                                           " WHERE x.vocab_layer_id = ? AND em.entity_type = 'vocab-item'"
-                                           " AND em.entity_id = x.id AND " atom-in)
-                                      (str vocab-id) ids-json]
-                                  {:string-cols #{:entity_id :ref}})]
-                     (assoc r :etype "vocab-item" :place {:vocab vocab-id}))
-                   (mapcat (fn [[etype table col]]
-                             (for [r (psc/q db [(str "SELECT em.entity_id, jt.atom AS ref, dd.id AS doc"
-                                                     " FROM (" docs-sql ") dd CROSS JOIN " table " x"
-                                                     " CROSS JOIN entity_metadata em, json_tree(em.value) jt"
-                                                     " WHERE x." col " = dd.id AND em.entity_type = ?"
-                                                     " AND em.entity_id = x.id AND " atom-in)
-                                                (str vocab-id) etype ids-json]
-                                            {:string-cols #{:entity_id :ref :doc}})]
-                               (assoc r :etype etype :place {:doc (psc/->uuid (:doc r))})))
-                           [["document" "documents" "id"] ["text" "texts" "document_id"]
-                            ["token" "tokens" "document_id"] ["span" "spans" "document_id"]
-                            ["relation" "relations" "document_id"] ["vocab-link" "vocab_links" "document_id"]]))]
-         (reduce (fn [m {:keys [entity_id ref etype place]}]
-                   (let [dep [(table-of-etype etype) (psc/->uuid entity_id)]
-                         k ["vocab_items" (psc/->uuid ref)]]
-                     (if (= dep k) m (update m k (fnil conj []) {:k dep :place place}))))
-                 m rows)))
-     {}
-     (group-by :vocab made))))
+  (let [made (filter #(and (= :delete (:op %)) (not= "vocab_layers" (:table %))) items)]
+    (if (empty? made)
+      {}
+      (let [table-of (into {} (map (fn [i] [(str (:id i)) (:table i)])) made)
+            ids-json (psc/write-json (vec (keys table-of)))
+            atom-in "jt.type = 'text' AND jt.atom IN (SELECT value FROM json_each(?))"
+            marks (fn [xs] (str/join "," (repeat (count xs) "?")))
+            in-chunks (fn [f xs] (if (empty? xs) [] (psc/in-chunks f xs)))
+            pv (fn [col xs] (in-chunks #(psc/q db {:select [:project_id :vocab_layer_id] :from [:project_vocabs]
+                                                   :where [:in col (mapv str %)]})
+                                       xs))
+            doc-projects (set (map :project_id (psc/fetch-ids db :documents (mapv str (distinct (keep :doc made))))))
+            vocabs (into (set (keep #(when (= "vocab_items" (:table %)) (:vocab %)) made))
+                         (map :vocab_layer_id (pv :project_id doc-projects)))
+            projects (into doc-projects (map :project_id (pv :vocab_layer_id vocabs)))
+            rows (concat
+                  (for [chunk (partition-all 500 vocabs)
+                        r (psc/q db (into [(str "SELECT em.entity_id, jt.atom AS ref, x.vocab_layer_id AS vocab"
+                                                " FROM vocab_items x CROSS JOIN entity_metadata em, json_tree(em.value) jt"
+                                                " WHERE x.vocab_layer_id IN (" (marks chunk) ")"
+                                                " AND em.entity_type = 'vocab-item' AND em.entity_id = x.id AND " atom-in)]
+                                          (concat (map str chunk) [ids-json]))
+                                 {:string-cols #{:entity_id :ref :vocab}})]
+                    (assoc r :etype "vocab-item" :place {:vocab (psc/->uuid (:vocab r))}))
+                  (for [chunk (partition-all 500 projects)
+                        [etype table col] [["document" "documents" "id"] ["text" "texts" "document_id"]
+                                           ["token" "tokens" "document_id"] ["span" "spans" "document_id"]
+                                           ["relation" "relations" "document_id"]
+                                           ["vocab-link" "vocab_links" "document_id"]]
+                        r (psc/q db (into [(str "SELECT em.entity_id, jt.atom AS ref, d.id AS doc"
+                                                " FROM documents d CROSS JOIN " table " x"
+                                                " CROSS JOIN entity_metadata em, json_tree(em.value) jt"
+                                                " WHERE d.project_id IN (" (marks chunk) ") AND x." col " = d.id"
+                                                " AND em.entity_type = ? AND em.entity_id = x.id AND " atom-in)]
+                                          (concat (map str chunk) [etype ids-json]))
+                                 {:string-cols #{:entity_id :ref :doc}})]
+                    (assoc r :etype etype :place {:doc (psc/->uuid (:doc r))})))]
+        (reduce (fn [m {:keys [entity_id ref etype place]}]
+                  (let [dep [(table-of-etype etype) (psc/->uuid entity_id)]
+                        k [(table-of ref) (psc/->uuid ref)]]
+                    (if (= dep k) m (update m k (fnil conj []) {:k dep :place place}))))
+                {} rows)))))
 
 (defn- foreign-writes
   "The documents among `doc-ids` that an operation outside the entry wrote
@@ -637,6 +651,18 @@
      :current {:texts (cur "texts") :tokens (cur "tokens") :spans (cur "spans")
                :relations (cur "relations") :vocab-links (cur "vocab_links")}}))
 
+(def ^:private ^:dynamic *entry*
+  "The entry being undone, for the guard's log line."
+  nil)
+
+(defn- unforeseen!
+  "Log at error a write the plan should have foreseen (a foreign key, a
+  check, a cascade): the guard leaves its row, and a fault in the plan stays
+  visible in the log."
+  [k ^Throwable e]
+  (log/error e "Undo of entry" *entry* "leaves" (pr-str k)
+             "for a write the plan did not foresee:" (ex-message e)))
+
 (defn- constraint-failure?
   "Whether `e`, or what caused it, is SQLite refusing a write for a
   constraint (a unique key, a foreign key), or restore's apply refusing a
@@ -655,7 +681,11 @@
   (try (f)
        (catch Exception e
          (if (constraint-failure? e)
-           (do (log/warn "Undo leaves" (pr-str k) "for a constraint:" (ex-message e))
+           (do (if (str/includes? (str (ex-message e)) "SQLITE_CONSTRAINT_UNIQUE")
+                 (log/warn "Undo leaves" (pr-str k) "for a unique key:" (ex-message e))
+                 ;; a foreign key, a check or a cascade the plan should have
+                 ;; foreseen: a fault in the plan, kept visible
+                 (unforeseen! k e))
                (throw (ex-info "misfit" {::bad {k {:reason "does-not-fit"}}})))
            (throw e)))))
 
@@ -901,6 +931,30 @@
 ;; Public API
 ;; ============================================================
 
+(defn- in-savepoint
+  "Run `(f)`, one attempt's `submit-operation*`. On a pool it opens and closes
+  its own transaction, and an attempt that throws (a misfit, the dry run's
+  end) rolls back with it. Handed a connection in an outer transaction (a
+  write sent with an Idempotency-Key, an operation of `/batch`), the attempt
+  runs inline and the outer transaction commits whatever it wrote, so the
+  attempt runs inside its own SAVEPOINT, in SQL, kept when `keep?` says so
+  of its result and rolled back to otherwise. The layer rules' collector is
+  the attempt's own there too, so an attempt dropped leaves no notes for the
+  outer transaction's check (the attempt read its own before it ended)."
+  [db keep? f]
+  (if-not (instance? java.sql.Connection db)
+    (f)
+    (do (jdbc/execute! db ["SAVEPOINT plaid_undo"])
+        (let [result (try (binding [psaw/*pending* (atom {})] (f))
+                          (catch Throwable t
+                            (jdbc/execute! db ["ROLLBACK TO plaid_undo"])
+                            (jdbc/execute! db ["RELEASE plaid_undo"])
+                            (throw t)))]
+          (when-not (keep? result)
+            (jdbc/execute! db ["ROLLBACK TO plaid_undo"]))
+          (jdbc/execute! db ["RELEASE plaid_undo"])
+          result))))
+
 (defn entry-label
   "The words an undo's description names its entry by: the group's message,
   else the first operation's description."
@@ -939,30 +993,33 @@
         (loop [excluded {}
                n 1]
           (let [out (atom nil)
-                result (op/submit-operation*
-                        db
-                        {:type :audit-entry/undo
-                         :project project
-                         :document nil
-                         :description description
-                         :user user
-                         :unrecorded-if-empty? true}
-                        (fn [tx]
-                          (let [{:keys [too-many items left applied live] :as a}
-                                (attempt! tx entry-id (assoc opts :excluded excluded))]
-                            (if too-many
-                              (do (reset! out a)
-                                  (throw (ex-info "too many" {:code 413})))
-                              (let [bad (try (when (seq applied)
-                                               (let [written (apply! tx applied live)]
-                                                 (misfits tx written (into #{} (map :k) applied) applied)))
-                                             (catch ExceptionInfo e
-                                               (or (::bad (ex-data e)) (throw e))))]
-                                (reset! out (assoc a :bad bad))
-                                (cond
-                                  (seq bad) (throw (ex-info "misfit" {:code 409 ::retry true}))
-                                  dry-run? (throw (ex-info "dry run" {:code 409 ::dry-run true}))
-                                  :else (when (seq applied) (:id psaw/*op*))))))))
+                result (in-savepoint
+                        db (fn [{:keys [success]}] (and success (not dry-run?)))
+                        #(binding [*entry* entry-id]
+                           (op/submit-operation*
+                            db
+                            {:type :audit-entry/undo
+                             :project project
+                             :document nil
+                             :description description
+                             :user user
+                             :unrecorded-if-empty? true}
+                            (fn [tx]
+                              (let [{:keys [too-many items left applied live] :as a}
+                                    (attempt! tx entry-id (assoc opts :excluded excluded))]
+                                (if too-many
+                                  (do (reset! out a)
+                                      (throw (ex-info "too many" {:code 413})))
+                                  (let [bad (try (when (seq applied)
+                                                   (let [written (apply! tx applied live)]
+                                                     (misfits tx written (into #{} (map :k) applied) applied)))
+                                                 (catch ExceptionInfo e
+                                                   (or (::bad (ex-data e)) (throw e))))]
+                                    (reset! out (assoc a :bad bad))
+                                    (cond
+                                      (seq bad) (throw (ex-info "misfit" {:code 409 ::retry true}))
+                                      dry-run? (throw (ex-info "dry run" {:code 409 ::dry-run true}))
+                                      :else (when (seq applied) (:id psaw/*op*))))))))))
                 {:keys [too-many items left bad]} @out]
             (cond
               too-many
@@ -995,8 +1052,10 @@
                                      (:id %))
                                   items)]
                     (when (media/media-exists? d)
-                      (try (media/delete-media-file! d)
-                           (catch Exception e (log/warn e "Failed to delete media file for" d))))))
+                      ;; after the outer transaction commits, when there is one
+                      (op/after-commit!
+                       #(try (media/delete-media-file! d)
+                             (catch Exception e (log/warn e "Failed to delete media file for" d)))))))
                 {:summary (cond-> (assoc summary
                                          :entry entry-id
                                          :dry-run (boolean dry-run?)
