@@ -1,0 +1,98 @@
+"""REV-KM's probes (scripts/REV-KM/test_revkm_probes.py) as tests: a
+proclitic or a mid-word clitic given back as read keeps the word, a type the
+call gives is still compared, a link a first call planned goes when a later
+call changes its gloss, a job's in-place value is not people's precedent, a
+kept link whose entry no longer fits is said, set_analysis_for_form says what
+it took back."""
+
+import pytest
+
+from fixtures import FakeClient, fake_ws, lexicon_raw
+from test_restated_analysis import ALIDI, doc, project, ws
+
+from plaid_agent.igt.project import segmentation
+from plaid_agent.igt.toolkit import call_tool
+
+
+def w1_doc(morphs, links=(), pos=None):
+    """The fixture document with w-1 holding ``morphs``: [(id, form, type,
+    equalsBefore, gloss)], a POS on each when ``pos`` is given."""
+    raw = doc()
+    ml = raw['text_layers'][0]['token_layers'][2]
+    ml['tokens'] = [t for t in ml['tokens'] if t['id'] not in ('m-1a', 'm-1b')]
+    gl = ml['span_layers'][0]
+    gl['spans'] = [s for s in gl['spans'] if s['tokens'][0] not in ('m-1a', 'm-1b')]
+    ml['span_layers'][-1]['spans'] = []
+    for i, (mid, form, typ, eq, gloss) in enumerate(morphs, start=1):
+        md = {'form': form, **({'morphType': typ} if typ else {}), **({'equalsBefore': True} if eq else {})}
+        ml['tokens'].append({'id': mid, 'begin': 0, 'end': 6, 'precedence': i, 'metadata': md})
+        gl['spans'].append({'id': f'sp-{mid}', 'value': gloss, 'tokens': [mid]})
+        if pos:
+            ml['span_layers'][-1]['spans'].append({'id': f'pos-{mid}', 'value': pos[i - 1], 'tokens': [mid]})
+    ml['vocabs'][0]['vocab_links'] = [{'id': f'l-{mid}', 'vocab_item': {'id': item, 'form': ''}, 'tokens': [mid]}
+                                      for mid, item in links]
+    return raw
+
+
+def mkws(raw, lex=None):
+    return fake_ws(FakeClient(project=project(), documents={'d1': raw}, lexicon=lex or lexicon_raw()))
+
+
+def brief(w):
+    return [(o['kind'], o.get('token_id') or o.get('word_id'), o.get('value')) for o in w.ops]
+
+
+def analyse(w, words):
+    return call_tool(w, 'analyze_sentence', {'document': 'd1', 'sentences': [{'ref': 's1.w1', 'words': [words]}]})
+
+
+# --- REV-KM-1: the joint, not the "=" rule's type --------------------------------------------
+
+
+@pytest.mark.parametrize('m2type', [None, 'stem', 'root'])
+def test_km_1_a_proclitic_given_back_as_read_keeps_the_word(m2type):
+    raw = w1_doc([('ma', 'ku', 'proclitic', False, 'DEM'), ('mb', 'gam', m2type, False, 'fish')], pos=['D', 'N'])
+    w = mkws(raw)
+    seg = segmentation(w.doc('d1').sentences[0].words[0])
+    assert seg == 'ku=gam'
+    out = analyse(w, f'{seg} DEM=fish')
+    # gam, unlinked, gets the one entry that fits: the link alone.
+    assert [(o['kind'], o['token_id']) for o in w.ops] == [('link', 'mb')], out
+    w = mkws(raw)
+    analyse(w, f'{seg} DEM=FISH')
+    assert brief(w) == [('set_span', 'mb', 'FISH')]
+    w = mkws(raw)
+    call_tool(w, 'set_analysis', {'document': 'd1', 'ref': 's1.w1', 'morphemes': [
+        {'form': 'ku', 'fields': {'Morph Gloss': 'DEM'}}, {'form': 'gam', 'fields': {'Morph Gloss': 'FISH'}}]})
+    assert brief(w) == [('set_span', 'mb', 'FISH')]
+
+
+def test_km_1_a_clitic_in_the_middle_given_back_as_read_keeps_the_word():
+    raw = w1_doc([('ma', 'Gam', None, False, 'fish'), ('mb', 'ar', 'enclitic', False, 'FOC'),
+                  ('mc', 'i', 'suffix', False, 'PL')], pos=['N', 'X', 'Y'])
+    w = mkws(raw)
+    seg = segmentation(w.doc('d1').sentences[0].words[0])
+    assert seg == 'Gam=ar=i'
+    out = analyse(w, f'{seg} fish=FOC=PL')
+    assert [k for k, *_ in brief(w)] in ([], ['link']), out
+    assert not [o for o in w.ops if o['kind'] in ('set_analysis', 'set_span')]
+
+
+@pytest.mark.parametrize('typ', [None, 'suffix'])
+def test_km_1_a_typed_equals_before_a_morpheme_of_another_type_keeps_the_word(typ):
+    raw = w1_doc([('ma', 'Ali', None, False, 'Ali'), ('mb', 'di', typ, True, 'ERG')], pos=['N', 'CASE'])
+    w = mkws(raw)
+    call_tool(w, 'set_analysis', {'document': 'd1', 'ref': 's1.w1', 'morphemes': [
+        {'form': 'Ali', 'fields': {'Morph Gloss': 'Ali'}}, {'form': 'di', 'fields': {'Morph Gloss': 'GEN'}}]})
+    assert brief(w) == [('set_span', 'mb', 'GEN')]
+    w = mkws(raw)
+    analyse(w, 'Ali=di Ali=ERG')
+    assert not [o for o in w.ops if o['kind'] in ('set_analysis', 'set_span')], brief(w)
+
+
+def test_km_1_a_type_the_call_gives_is_still_compared():
+    raw = w1_doc([('ma', 'ku', 'proclitic', False, 'DEM'), ('mb', 'gam', None, False, 'fish')])
+    w = mkws(raw)
+    call_tool(w, 'set_analysis', {'document': 'd1', 'ref': 's1.w1', 'morphemes': [
+        {'form': 'ku', 'fields': {'Morph Gloss': 'DEM'}}, {'form': 'gam', 'type': 'root', 'fields': {'Morph Gloss': 'fish'}}]})
+    assert [o['kind'] for o in w.ops] == ['set_analysis']

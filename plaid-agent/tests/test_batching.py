@@ -279,10 +279,16 @@ def _token_creates(c):
 
 def test_set_analysis_keeps_a_typed_equals_whose_boundary_stays():
     """REV-CLITIC CL-12: re-setting a word with the same boundary keeps its
-    typed "=", and the rule types the pieces nobody typed, as the grid does."""
+    typed "=", and the rule types the pieces nobody typed, as the grid does.
+    Given back as it is, the word keeps its morphemes and stages nothing
+    (KM, REV-KM-1). A type given to Ali makes the analysis whole, and di
+    keeps its "=" in it."""
     w = _with_equals_on_di()
     call_tool(w, 'set_analysis', {'document': 'd1', 'ref': 's1.w1',
                                   'morphemes': [{'form': 'Ali'}, {'form': 'di'}]})
+    assert w.ops == []
+    call_tool(w, 'set_analysis', {'document': 'd1', 'ref': 's1.w1',
+                                  'morphemes': [{'form': 'Ali', 'type': 'root'}, {'form': 'di'}]})
     op = w.ops[-1]
     assert [m.get('equals_before') for m in op['morphemes']] == [None, True]
     assert 'Ali=di' in op['label']
@@ -316,10 +322,10 @@ def test_set_analysis_for_form_keeps_and_states_a_typed_equals():
     set_analysis does, word by word, so a person's typed "=" is not lost
     across the corpus."""
     w = _with_equals_on_di()
-    call_tool(w, 'set_analysis_for_form', {'form': 'Ali-di', 'morphemes': [{'form': 'Ali'}, {'form': 'di'}]})
+    call_tool(w, 'set_analysis_for_form', {'form': 'Ali-di', 'morphemes': [{'form': 'Ali', 'type': 'root'}, {'form': 'di'}]})
     op = w.ops[-1]
     assert [m.get('equals_before') for m in op['morphemes']] == [None, True]
-    assert [m.get('morph_type') for m in op['morphemes']] == [None, 'enclitic']
+    assert [m.get('morph_type') for m in op['morphemes']] == ['root', 'enclitic']
     w = fake_ws(FakeClient())
     call_tool(w, 'set_analysis_for_form', {'form': 'akuna',
                                            'morphemes': [{'form': 'aku'}, {'form': 'na', 'equals': True}]})

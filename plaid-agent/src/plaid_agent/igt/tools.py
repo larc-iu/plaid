@@ -594,7 +594,9 @@ def in_place(held: List[Dict[str, Any]], staged: List[Dict[str, Any]],
                 return None
         elif k and bool(h['equals_before']) != (m.get('equals_before') is True):
             return None
-        if m.get('morph_type') and m['morph_type'] != h['type']:
+        # Only a type the call gave: one stage_equals filled in by the "="
+        # rule says the joint, compared above (REV-KM-1).
+        if m.get('morph_type') and not m.get('type_from_equals') and m['morph_type'] != h['type']:
             return None
         for fv in m.get('fields') or []:
             old = h['values'].get(fv['layer_id'])
