@@ -2408,7 +2408,7 @@ def _write_text_edit(client, project, op: Dict[str, Any], new_id, values=(),
                            kind='conflict')
     before = _sole_forms(tl, project, body)
     new_body = body[:b] + new + body[e:]
-    gaps = _region_gaps(op['old'], new, b)
+    gaps = _region_gaps(op['old'], new, b, project.ignored_cfg)
     client.texts.edit(text_id, gaps_to_ops(gaps), None,
                       base=((tl or {}).get('text') or {}).get('digest'), versioned=True,
                       tokenize_layer=project.word_layer_id if project.tokenize_new_text else None)
@@ -2654,16 +2654,16 @@ def _cuts_in(word: str, stored: str):
     return reached.get(len(stored))
 
 
-def _region_gaps(old: str, new: str, at: int) -> List[Dict[str, Any]]:
+def _region_gaps(old: str, new: str, at: int, cfg=None) -> List[Dict[str, Any]]:
     """The gaps (``{start, end, value}``, code points of the body, as Python
     strings index) that make ``new`` of ``old``, which stands at ``at`` in the
-    body: each stretch that changed, found by a diff of the region alone, so
-    the letters the two share stay where they were and the words over them
-    keep their tokens."""
-    import difflib
-    return [{'start': at + i1, 'end': at + i2, 'value': new[j1:j2]}
-            for tag, i1, i2, j1, j2 in difflib.SequenceMatcher(None, old, new, autojunk=False).get_opcodes()
-            if tag != 'equal']
+    body, read word by word (``retyped.word_gaps``): a word the two share is
+    left as it is, a word changed in its place is changed letter by letter,
+    and a word removed or typed goes or comes whole.
+    ``cfg`` is the word layer's ignored-tokens rule, whose characters stand
+    between words."""
+    from .retyped import word_gaps
+    return word_gaps(old, new, at, cfg)
 
 
 def _region_edits(old: str, new: str, at: int) -> List[Dict[str, Any]]:

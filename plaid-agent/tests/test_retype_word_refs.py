@@ -353,3 +353,46 @@ def test_a_jobs_rows_name_the_word_as_retyped():
     new, kept = [IgtRunner.describe(None, o, doc, w.project) for o in w.ops[1:]]
     assert (new['ref'], new['field'], new['from'], new['to']) == ('s1.w2', 'Gloss', None, 'he')
     assert (kept['ref'], kept['field'], kept['from'], kept['to']) == ('s1.w3', 'Gloss', 'fish', 'he')
+
+
+# --- the retype's edits, word by word --------------------------------------------------
+
+PUNCT = {'type': 'unicodePunctuation', 'whitelist': []}
+
+
+@pytest.mark.parametrize('old,new,gaps', [
+    # a removed word goes whole, with the space after it
+    ('sa na pa ma.', 'sa pa ma.', [(3, 6, '')]),
+    ('sa na pa ma.', 'sa ma.', [(3, 9, '')]),
+    ('sa na pa ma.', 'na pa ma.', [(0, 3, '')]),
+    # at the end, with the space before it, the full stop left as it was
+    ('sa na pa ma.', 'sa na pa.', [(8, 11, '')]),
+    # a typed word comes whole, with a space, at the word after it
+    ('ka ta.', 'ka ∅ ta.', [(3, 3, '∅ ')]),
+    ('sa na', '∅ sa na', [(0, 0, '∅ ')]),
+    ('sa na', 'sa na ∅', [(5, 5, ' ∅')]),
+    # a word changed in its place, letter by letter
+    ('sa na pa', 'sa ki pa', [(3, 5, 'ki')]),
+    ('sa pa ma.', 'sa pha ma.', [(4, 4, 'h')]),
+    # spaces and punctuation between words, letter by letter
+    ('sa na pa.', 'sa  na pa!', [(3, 3, ' '), (8, 9, '!')]),
+    # another number of words on both sides: typed over as one stretch
+    ('sa na pa ma.', 'sa ni ∅ pa ma.', [(3, 5, 'ni ∅')]),
+    # of several equal words, the earliest is the one kept
+    ('a b a', 'a', [(1, 5, '')]),
+    ('', 'x y', [(0, 0, 'x y')]),
+])
+def test_word_gaps(old, new, gaps):
+    from plaid_agent.igt.retyped import word_gaps
+    assert [(g['start'], g['end'], g['value']) for g in word_gaps(old, new, 0, PUNCT)] == gaps
+    assert apply_text_ops(old, __import__('plaid_client').gaps_to_ops(word_gaps(old, new, 0, PUNCT))) == new
+
+
+def test_trimmed_reads_a_gap_as_core_does():
+    """Q2 for one word typed over, R60 for a stretch over two or more."""
+    from plaid_agent.igt.retyped import trimmed
+    body = 'sa na pa ma.'
+    words = [(0, 2), (3, 5), (6, 8), (9, 11)]
+    assert trimmed(body, [{'start': 3, 'end': 5, 'value': 'ni ∅'}], words) == [{'start': 4, 'end': 5, 'value': 'i ∅'}]
+    assert trimmed(body, [{'start': 3, 'end': 8, 'value': 'nu'}], words) == [{'start': 3, 'end': 8, 'value': 'nu'}]
+    assert trimmed(body, [{'start': 3, 'end': 5, 'value': 'na'}], words) == []

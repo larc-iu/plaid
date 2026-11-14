@@ -46,29 +46,198 @@ UNNUMBERED = ('{where}: s{n} is retyped in this plan, and its new text changes i
               'to start over.')
 
 
-def planned_words(project, body: str, words, begin: int, old: str, text: str) -> Optional[List[Dict[str, Any]]]:
+# --- the retype's edits, word by word ------------------------------------------------
+
+
+def word_runs(text: str, cfg=None) -> List[Tuple[int, int]]:
+    """The words of ``text`` as a retype pairs them: each run of characters
+    that are neither whitespace (JavaScript's, as the editor reads it) nor
+    one the word layer's ignored-tokens rule keeps out of words (``cfg``,
+    punctuation under the default rule), which stand between words."""
+    out, i = [], 0
+    stop = lambda c: is_js_space(c) or is_kept_out(c, cfg)  # noqa: E731
+    while i < len(text):
+        if stop(text[i]):
+            i += 1
+            continue
+        j = i + 1
+        while j < len(text) and not stop(text[j]):
+            j += 1
+        out.append((i, j))
+        i = j
+    return out
+
+
+def paired_words(old: List[str], new: List[str]) -> List[Tuple[int, int]]:
+    """``(i, j)``: old word i is new word j, the longest common subsequence
+    of the two by exact text, and of the longest ones the one that pairs each
+    new word with the earliest old word it can."""
+    n, m = len(old), len(new)
+    best = [[0] * (m + 1) for _ in range(n + 1)]
+    for i in range(n - 1, -1, -1):
+        for j in range(m - 1, -1, -1):
+            best[i][j] = best[i + 1][j + 1] + 1 if old[i] == new[j] else max(best[i + 1][j], best[i][j + 1])
+    out, i, j = [], 0, 0
+    while i < n and j < m:
+        if old[i] == new[j] and best[i][j] == best[i + 1][j + 1] + 1:
+            out.append((i, j))
+            i, j = i + 1, j + 1
+        elif best[i + 1][j] >= best[i][j + 1]:
+            i += 1
+        else:
+            j += 1
+    return out
+
+
+def _letters(old: str, ob: int, oe: int, new: str, nb: int, ne: int) -> List[Dict[str, Any]]:
+    """The gaps that make ``new[nb:ne]`` of ``old[ob:oe]``, letter by letter
+    (a diff of the two pieces alone)."""
+    return [{'start': ob + i1, 'end': ob + i2, 'value': new[nb + j1:nb + j2]}
+            for tag, i1, i2, j1, j2 in SequenceMatcher(None, old[ob:oe], new[nb:ne], autojunk=False).get_opcodes()
+            if tag != 'equal']
+
+
+def word_gaps(old: str, new: str, at: int = 0, cfg=None) -> List[Dict[str, Any]]:
+    """The gaps (``{start, end, value}``, code points, ``at`` added) a retype
+    of ``old`` as ``new`` is sent as, read word by word:
+
+    - old and new words (``word_runs``, ``cfg`` the word layer's
+      ignored-tokens rule) are paired by exact text
+      (``paired_words``), and a paired word is left as it is;
+    - between two paired words (or a sentence's edge), as many old words as
+      new: the k-th old word is the k-th new word, changed letter by letter,
+      and so is each stretch between words (spaces, punctuation);
+    - between them, fewer new words than old, none: the old words go whole,
+      with the stretch after them up to the paired word after them (before
+      them at the sentence's end), and the stretch left is changed letter by
+      letter into the new one;
+    - more new words than old, none: the new words are typed whole, with
+      the stretch after them, at the paired word after them (with the
+      stretch before them, after the paired word before them, at the
+      sentence's end);
+    - words on both sides, another number: the old words, from the first
+      one's start to the last one's end, are typed over by the new ones as
+      one stretch, which core reads by its own rule (a stretch over two or
+      more words goes whole, R60; one word typed over keeps the letters it
+      shares at either end, Q2).
+
+    Touching gaps are one gap, as core composes them."""
+    ow, nw = word_runs(old, cfg), word_runs(new, cfg)
+    pairs = paired_words([old[b:e] for b, e in ow], [new[b:e] for b, e in nw])
+    gaps: List[Dict[str, Any]] = []
+    anchors = [(-1, -1)] + pairs + [(len(ow), len(nw))]
+    for (i0, j0), (i1, j1) in zip(anchors, anchors[1:]):
+        o, n = ow[i0 + 1:i1], nw[j0 + 1:j1]
+        ob = ow[i0][1] if i0 >= 0 else 0
+        oe = ow[i1][0] if i1 < len(ow) else len(old)
+        nb = nw[j0][1] if j0 >= 0 else 0
+        ne = nw[j1][0] if j1 < len(nw) else len(new)
+        if len(o) == len(n):
+            ocut = [ob] + [x for w in o for x in w] + [oe]
+            ncut = [nb] + [x for w in n for x in w] + [ne]
+            for k in range(len(ocut) - 1):
+                gaps += _letters(old, ocut[k], ocut[k + 1], new, ncut[k], ncut[k + 1])
+        elif o and n:
+            gaps += _letters(old, ob, o[0][0], new, nb, n[0][0])
+            gaps.append({'start': o[0][0], 'end': o[-1][1], 'value': new[n[0][0]:n[-1][1]]})
+            gaps += _letters(old, o[-1][1], oe, new, n[-1][1], ne)
+        elif o:
+            if i1 < len(ow):
+                gaps += _letters(old, ob, o[0][0], new, nb, ne)
+                gaps.append({'start': o[0][0], 'end': oe, 'value': ''})
+            elif i0 >= 0:
+                gaps.append({'start': ob, 'end': o[-1][1], 'value': ''})
+                gaps += _letters(old, o[-1][1], oe, new, nb, ne)
+            else:
+                gaps.append({'start': ob, 'end': oe, 'value': new[nb:ne]})
+        else:
+            if i1 < len(ow):
+                gaps += _letters(old, ob, oe, new, nb, n[0][0])
+                gaps.append({'start': oe, 'end': oe, 'value': new[n[0][0]:ne]})
+            elif i0 >= 0:
+                gaps.append({'start': ob, 'end': ob, 'value': new[nb:n[-1][1]]})
+                gaps += _letters(old, ob, oe, new, n[-1][1], ne)
+            else:
+                gaps.append({'start': ob, 'end': oe, 'value': new[nb:ne]})
+    out: List[Dict[str, Any]] = []
+    for g in sorted(gaps, key=lambda g: (g['start'], g['end'])):
+        if g['start'] == g['end'] and not g['value']:
+            continue
+        if out and out[-1]['end'] == g['start']:
+            out[-1] = {**out[-1], 'end': g['end'], 'value': out[-1]['value'] + g['value']}
+        else:
+            out.append(dict(g))
+    return [{'start': g['start'] + at, 'end': g['end'] + at, 'value': g['value']} for g in out]
+
+
+def trimmed(body: str, gaps: List[Dict[str, Any]], words) -> List[Dict[str, Any]]:
+    """``gaps`` as core reads them (``plaid.algos.text.read/trim-gap``): each
+    less the text its new value shares with the old at either end, back to a
+    word edge where the gap is over two or more of ``words`` (the word
+    layer's ``(begin, end)``, R60), and none where nothing is left."""
+    out = []
+    for g in gaps:
+        start, end, v = g['start'], g['end'], g['value']
+        n, k = len(v), end - start
+        p = 0
+        while p < n and p < k and v[p] == body[start + p]:
+            p += 1
+        s = 0
+        while s < n - p and s < k - p and v[n - 1 - s] == body[end - 1 - s]:
+            s += 1
+        over = [(b, e) for b, e in words if b < max(end, start + 1) and e > start and b < e]
+        several = p + s > 0 and len([1 for b, e in over if b < end and start < e]) > 1
+        x, y = start + p, end - s
+        if several:
+            inside = lambda q: next(((b, e) for b, e in words if b < q < e), None)  # noqa: E731
+            while (w := inside(x)) is not None and start < x:
+                x = max(start, w[0])
+            while (w := inside(y)) is not None and y < end:
+                y = min(end, w[1])
+        p, s = x - start, end - y
+        if p == 0 and s == 0:
+            out.append(dict(g))
+        elif p + s == n and p + s == k:
+            continue
+        else:
+            out.append({'start': start + p, 'end': end - s, 'value': v[p:n - s]})
+    return out
+
+
+def planned_words(project, body: str, words, begin: int, old: str, text: str,
+                  extents=()) -> Optional[List[Dict[str, Any]]]:
     """The words a sentence holds once ``old`` (its text, at ``begin`` in
     ``body``) is retyped as ``text``, in order, as a read numbers them (the
     ignored tokens left out): ``{surface, word_id}``, ``word_id`` the id of
     the word of ``words`` (the sentence's words as read) it is, None for a
     word "Tokenize new text" makes. None when they cannot be numbered here:
     the new text is several sentences, or a space typed inside a word.
+    ``extents`` are the word layer's tokens as ``(begin, end)``, punctuation
+    tokens too, which core's trim reads.
 
-    The server's plain rule, for the edits the executor sends (a diff of the
-    region, ``plan._region_gaps``): a word with a letter of it left keeps its
-    token, from its first kept letter to its last, and takes text typed
-    against its edges up to whitespace or a character its layer keeps out of
-    words. The rest of the text typed is cut into words at whitespace and
-    those characters, each made a word when it holds a typed letter and is
-    not a token the project ignores."""
+    The server's plain rule, for the edits the executor sends
+    (:func:`word_gaps`, as core trims them, :func:`trimmed`): a word with a
+    letter of it left keeps its token, from its first kept letter to its
+    last, and takes text typed against its edges up to whitespace or a
+    character its layer keeps out of words. The rest of the text typed is cut
+    into words at whitespace and those characters, each made a word when it
+    holds a typed letter and is not a token the project ignores."""
     if len(split_sentences(text)) > 1:
         return None
     cfg = project.ignored_cfg
+    gaps = trimmed(body, word_gaps(old, text, begin, cfg), extents or [(w.begin, w.end) for w in words])
     to_new: Dict[int, int] = {}
-    for tag, i1, i2, j1, j2 in SequenceMatcher(None, old, text, autojunk=False).get_opcodes():
-        if tag == 'equal':
-            for k in range(i2 - i1):
-                to_new[begin + i1 + k] = j1 + k
+    shift, gi = 0, 0
+    for i in range(begin, begin + len(old)):
+        while gi < len(gaps) and gaps[gi]['end'] <= i and not (gaps[gi]['start'] == gaps[gi]['end'] == i):
+            shift += len(gaps[gi]['value']) - (gaps[gi]['end'] - gaps[gi]['start'])
+            gi += 1
+        while gi < len(gaps) and gaps[gi]['start'] == gaps[gi]['end'] == i:
+            shift += len(gaps[gi]['value'])
+            gi += 1
+        if gi < len(gaps) and gaps[gi]['start'] <= i < gaps[gi]['end']:
+            continue
+        to_new[i] = i - begin + shift
     kept = set(to_new.values())
 
     def joins(j: int) -> bool:

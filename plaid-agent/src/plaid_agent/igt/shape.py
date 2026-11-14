@@ -25,7 +25,7 @@ from ..core.plan import labelled
 from ..core.tools import ToolError
 from .plan import reshaped_subjects, written_before_merge
 from .project import Link, Sentence, Span, Word, plain_ref, planned_word_count, resolve, split_sentences, word_ref
-from .retyped import listing, planned_words, restage_on_retype
+from .retyped import listing, planned_words, restage_on_retype, trimmed, word_gaps
 from .tools import (reshape_guards, refuse_comment_and_text_edit, refuse_shape_and_analysis,
                     refuse_shape_and_respell, refuse_text_in_deleted_sentence)
 from .workspace import Workspace, _need, _refs
@@ -601,14 +601,15 @@ def t_retype_sentence(ws: Workspace, document: str, ref: str, text: str) -> str:
     n = len(split_sentences(text))
     # The sentence's words once retyped, which its word references name from
     # now on in this plan (`retyped`).
-    planned = planned_words(ws.project, doc.body, s.words, b, old, text)
+    extents = _word_extents(ws, doc)
+    planned = planned_words(ws.project, doc.body, s.words, b, old, text, extents)
     op = {'kind': 'edit_text', 'document_id': doc.id, 'text_id': doc.text_id, 'sentence_id': s.id,
           'begin': b, 'end': e, 'old': old, 'new': text,
           'word_ids': word_ids, 'morpheme_ids': morpheme_ids, 'planned_words': planned,
           **labelled(f'{ws.doc_label(doc.id)} {plain_ref(doc, ref)}',
                      f'retype {qv(old[:40] + ("…" if len(old) > 40 else ""))} → '
                      f'{qv(text[:40] + ("…" if len(text) > 40 else ""))}' + (f' ({n} sentences)' if n > 1 else '')
-                     + f' ({_retype_effects(ws, s, b, old, text)})')}
+                     + f' ({_retype_effects(ws, s, b, old, text, extents, doc.body)})')}
     moved = restage_on_retype(ws, doc, s, op, f'{ws.doc_label(doc.id)} {ref}')
     ws.add_op(op)
     for i, value in moved:
@@ -621,21 +622,28 @@ def t_retype_sentence(ws: Workspace, document: str, ref: str, text: str) -> str:
             'applied.')
 
 
-def _retype_effects(ws: Workspace, s: Sentence, at: int, old: str, text: str) -> str:
+def _word_extents(ws: Workspace, doc) -> List[tuple]:
+    """Every token of the word layer as ``(begin, end)``, punctuation tokens
+    too, which core's trim of an edit reads (``retyped.trimmed``)."""
+    raw = _other_layers(ws, doc)
+    return [(t['begin'], t['end']) for tl in (raw or {}).get('text_layers') or []
+            for layer in tl.get('token_layers') or [] if layer.get('id') == ws.project.word_layer_id
+            for t in layer.get('tokens') or []]
+
+
+def _retype_effects(ws: Workspace, s: Sentence, at: int, old: str, text: str, extents=(), body: str = '') -> str:
     """What a retype does to the sentence's words, for the card. The text is
-    sent as edits at their place (``plan._region_edits``) and the server's
-    plain rule decides: a word with a letter of it left keeps its token and
-    its analysis, a word all of whose letters the edits replace or delete is
-    deleted with its analysis, and text between words becomes new words with
-    none. A character the word layer's ignored-tokens rule leaves out of a
-    word, typed at its edge, stays out of it. The analyzed words an edit
-    reaches are named, those that carry their analysis onto a new spelling
-    apart from those that lose it."""
-    from difflib import SequenceMatcher
+    sent as edits at their place, word by word (``retyped.word_gaps``), and
+    the server's plain rule decides: a word with a letter of it left keeps
+    its token and its analysis, a word all of whose letters the edits replace
+    or delete is deleted with its analysis, and text between words becomes
+    new words with none. A character the word layer's ignored-tokens rule
+    leaves out of a word, typed at its edge, stays out of it. The analyzed
+    words an edit reaches are named, those that carry their analysis onto a
+    new spelling apart from those that lose it."""
     from .stats import _analyzed
-    gaps = [(at + i1, at + i2, text[j1:j2])
-            for tag, i1, i2, j1, j2 in SequenceMatcher(None, old, text, autojunk=False).get_opcodes()
-            if tag != 'equal']
+    gaps = [(g['start'], g['end'], g['value'])
+            for g in trimmed(body, word_gaps(old, text, at, ws.project.ignored_cfg), extents or [(w.begin, w.end) for w in s.words])]
 
     cfg = ws.project.ignored_cfg
 

@@ -8,6 +8,8 @@ Runs on the session's core (``live.py``), or the one PLAID_TEST_URL names."""
 import time
 import uuid
 
+import pytest
+
 from fixtures import GLOSS, SENT_LAYER, TRANS, WORD_LAYER
 from job_fixtures import Model, call, document, job_project, plan_row, reply, use
 from live import _skip_or_fail, core_url, login, seed
@@ -132,21 +134,80 @@ def test_a_word_typed_out_and_its_neighbour_glossed():
         s.delete()
 
 
-def test_the_words_a_retype_lists_are_the_words_the_server_leaves():
-    """The retype's edits are a diff of the sentence (``plan._region_gaps``),
-    which reads "sa na pa ma." to "sa pa ma." as "a n" deleted: "sa" keeps
-    its "s" and "na" its "a". The list says so, and the server makes just
-    that, so a value named by it lands on the word listed."""
+def _core_words(admin, s, sentence):
+    """``[(text, id)]`` of a sentence's words as core holds them."""
+    raw = admin.documents.get(s.ids['dA'], include_body=True)
+    tl = raw['text_layers'][0]
+    body = tl['text']['body']
+    layers = {tk['id']: tk for tk in tl['token_layers']}
+    st = sorted(layers[s.ids[SENT_LAYER]]['tokens'], key=lambda t: t['begin'])[sentence - 1]
+    return [(body[t['begin']:t['end']], t['id']) for t in sorted(
+        (t for t in layers[s.ids[WORD_LAYER]]['tokens'] if st['begin'] <= t['begin'] < st['end']),
+        key=lambda t: t['begin'])]
+
+
+def _retyped(admin, writer, email, s, sentence, text):
+    """Retype sentence ``sentence`` as ``text`` and approve it. Asserts the
+    words the retype listed are the words core then holds: the same text in
+    the same order, each the word it was where the list says so and a word
+    the sentence did not have where it says new. The words and their glosses
+    as core holds them."""
+    before = {i for _, i in _core_words(admin, s, sentence)}
+    ws = Workspace(writer, load_project(writer, s.project_id))
+    out = call_tool(ws, 'retype_sentence', {'document': 'Alpha', 'ref': f's{sentence}', 'text': text})
+    assert out.startswith('Planned 1 change'), out
+    planned = ws.ops[-1]['planned_words']
+    _p, h = _approve(writer, email, s.project_id, ws)
+    assert not h.errors, h.errors
+    held = _core_words(admin, s, sentence)
+    assert [w for w, _ in held] == [p['surface'] for p in planned], (held, planned)
+    for (_w, wid), p in zip(held, planned):
+        assert wid == p['word_id'] if p['word_id'] else wid not in before, (held, planned)
+    return _glosses(admin, s, sentence)[0]
+
+
+#: A person's value on every word of s2, each case: the new text, and the
+#: words with their values once retyped, word by word.
+WORD_BY_WORD = {
+    'remove a word': ('sa pa ma.', [('sa', 'S'), ('pa', 'P'), ('ma', 'M')]),
+    'insert a word': ('sa na ∅ pa ma.', [('sa', 'S'), ('na', 'N'), ('∅', None), ('pa', 'P'), ('ma', 'M')]),
+    'replace a word': ('sa ki pa ma.', [('sa', 'S'), ('ki', None), ('pa', 'P'), ('ma', 'M')]),
+    'remove two adjacent words': ('sa ma.', [('sa', 'S'), ('ma', 'M')]),
+    'change one letter': ('sa na pha ma.', [('sa', 'S'), ('na', 'N'), ('pha', 'P'), ('ma', 'M')]),
+    'spacing and punctuation only': ('sa  na, pa ma!', [('sa', 'S'), ('na', 'N'), ('pa', 'P'), ('ma', 'M')]),
+    'remove the first word': ('na pa ma.', [('na', 'N'), ('pa', 'P'), ('ma', 'M')]),
+    'remove the last word': ('sa na pa.', [('sa', 'S'), ('na', 'N'), ('pa', 'P')]),
+    'insert at both ends': ('∅ sa na pa ma ∅.', [('∅', None), ('sa', 'S'), ('na', 'N'), ('pa', 'P'), ('ma', 'M'),
+                                                  ('∅', None)]),
+    # Fewer old words than new between the same paired words: typed over as
+    # one stretch, "ma" shares no letter at either end with "∅ mu" and goes.
+    'remove one, insert one, change one': ('sa pa ∅ mu.', [('sa', 'S'), ('pa', 'P'), ('∅', None), ('mu', None)]),
+    # One word typed over by two: core keeps the letters it shares (Q2).
+    'one word typed over by two': ('sa ni ∅ pa ma.', [('sa', 'S'), ('ni', 'N'), ('∅', None), ('pa', 'P'),
+                                                      ('ma', 'M')]),
+}
+
+
+@pytest.mark.parametrize('case', list(WORD_BY_WORD))
+def test_a_retype_maps_word_by_word_and_lists_what_core_holds(case):
+    text, want = WORD_BY_WORD[case]
     admin = _admin()
-    email, writer, s = _seeded(admin, 'rr-chat-diff')
+    email, writer, s = _seeded(admin, 'rr-words')
     try:
-        said = _chat(writer, email, s, [
-            ('retype_sentence', {'ref': 's2', 'text': 'sa pa ma.'}),
-            ('set_field', {'refs': ['s2.w3'], 'field': 'Gloss', 'value': 'P2'})])
-        assert said[0].endswith('s2 once retyped: w1 "s", w2 "a", w3 "pa", w4 "ma". In this plan s2.wN names '
-                                'these words.')
-        words, _t = _glosses(admin, s)
-        assert words == [('s', 'S'), ('a', 'N'), ('pa', 'P2'), ('ma', 'M')]
+        assert _retyped(admin, writer, email, s, 2, text) == want
+        assert _glosses(admin, s, 1)[0] == [('ka', 'one'), ('ta', None)]
+    finally:
+        s.delete()
+
+
+def test_a_right_to_left_retype_maps_word_by_word():
+    sentences = [{'words': [_word('שלום', 'peace'), _word('עולם', 'world'), _word('טוב', 'good'),
+                            _word('מאוד', 'very')], 'translation': ('Hello.', 'human')}]
+    admin = _admin()
+    email, writer, s = _seeded(admin, 'rr-words-rtl', sentences)
+    try:
+        assert _retyped(admin, writer, email, s, 1, 'שלום טוב מאד.') == [
+            ('שלום', 'peace'), ('טוב', 'good'), ('מאד', 'very')]
     finally:
         s.delete()
 
