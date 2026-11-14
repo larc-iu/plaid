@@ -14,13 +14,19 @@ import re
 import pytest
 
 from fixtures import MORPH_LAYER, WORD_LAYER
-from job_fixtures import Model, call, document, reply, use
+from job_fixtures import Model, call, document, every_tool, reply, use
 from test_job_left_all import adds_up
 from test_job_live_entries import _job, _runner, world  # noqa: F401 - the fixture
 
 from plaid_agent.core.job import run_job
 from plaid_agent.igt import job as igt_job
 from plaid_agent.igt.job import IgtRunner
+
+
+@pytest.fixture(autouse=True)
+def _every_tool(monkeypatch):
+    """These tests script tools a piece of a plan in sentences is no longer offered."""
+    every_tool(monkeypatch)
 
 SENTENCES = [['ka', 'mi'], ['pa', 'ni'], ['ka', 'sa'], ['mo', 'lu']]
 WORDS = sum(len(s) for s in SENTENCES)

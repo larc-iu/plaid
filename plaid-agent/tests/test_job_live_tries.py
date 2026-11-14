@@ -9,7 +9,7 @@ Runs on the session's core (``live.py``), or the one PLAID_TEST_URL names."""
 
 import pytest
 
-from job_fixtures import Model, call, reply, use
+from job_fixtures import Model, call, every_tool, reply, use
 from test_job_live_delete_sentence import _admin, _job, _read, _runner
 from test_job_live_landed import _forms, _model, _morphs, _world
 
@@ -18,6 +18,12 @@ from plaid_agent.core.job import run_job
 from plaid_agent.core.plan import PlanError
 from plaid_agent.igt import job as igt_job
 from plaid_agent.igt.job import INTERRUPTED
+
+
+@pytest.fixture(autouse=True)
+def _every_tool(monkeypatch):
+    """These tests script tools a piece of a plan in sentences is no longer offered."""
+    every_tool(monkeypatch)
 
 
 class Crash(BaseException):
