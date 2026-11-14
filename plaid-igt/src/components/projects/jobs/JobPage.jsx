@@ -326,6 +326,11 @@ const PlannedInstructions = ({ text }) => {
   );
 };
 
+// Instructions the planning gave past their cap, kept up to a whole sentence
+// (`instructionsCut`, the length given): "Cut to 3,990 of 5,210 characters."
+const cutText = (text, given) =>
+  `Cut to ${[...text].length.toLocaleString()} of ${given.toLocaleString()} characters.`;
+
 const JobFacts = ({ job, readAt }) => {
   const end = job.finishedAt ? new Date(job.finishedAt).getTime() : readAt;
   return (
@@ -336,6 +341,13 @@ const JobFacts = ({ job, readAt }) => {
       {job.report?.plan && <Fact label="Plan">{planText(job.report.plan)}</Fact>}
       {job.report?.plan?.pieceInstructions && (
         <Fact label="Assistant’s instructions">
+          {job.report.plan.instructionsCut > 0 && (
+            <>
+              <span className="block text-muted-foreground">
+                {cutText(job.report.plan.pieceInstructions, job.report.plan.instructionsCut)}
+              </span>{' '}
+            </>
+          )}
           <PlannedInstructions text={job.report.plan.pieceInstructions} />
         </Fact>
       )}

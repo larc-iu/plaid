@@ -315,6 +315,28 @@ describe('the job page', () => {
     await v.unmount();
   });
 
+  it('says when the assistant’s instructions to the pieces were cut', async () => {
+    const told = 'Mark the agent of a transitive verb A.';
+    const plan = {
+      pieces: 'sentences',
+      pieceInstructions: told,
+      instructionsCut: 5210,
+      by: 'model',
+      fallback: [],
+      leftOut: [],
+    };
+    let v = await mount(clientOf(jobOf({ state: 'done', report: { ...REPORT, plan } })));
+    const facts = totals(v.container);
+    expect(facts['Assistant’s instructions']).toBe(
+      `Cut to ${told.length} of 5,210 characters. ${told}`,
+    );
+    await v.unmount();
+    const whole = { ...plan, instructionsCut: undefined };
+    v = await mount(clientOf(jobOf({ state: 'done', report: { ...REPORT, plan: whole } })));
+    expect(totals(v.container)['Assistant’s instructions']).toBe(told);
+    await v.unmount();
+  });
+
   it('says a plan in stretches took only the sentences with something empty when it did', async () => {
     const plan = {
       pieces: 'sentences',
