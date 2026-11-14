@@ -279,3 +279,25 @@ def test_a_scripted_piece_stages_on_its_first_call_from_the_block_alone(monkeypa
     assert staged['items'] == ['gam fish', 'ka eat', '_']
     assert sorted(o['kind'] for o in sent) == ['link', 'set_analysis', 'set_analysis'], sent
     assert [o['item_id'] for o in sent if o['kind'] == 'link'] == ['vi-gam'], 'gam fish fits one entry'
+
+
+# --- a piece that fills a field on analysed text (EV2) -----------------------------
+
+def test_a_piece_filling_a_field_on_analysed_text_is_offered_set_field_and_handed_no_evidence(monkeypatch):
+    """A plan in sentences walks analysed sentences too (EW). A piece whose
+    sentences have nothing empty is offered set_field, the tool that sets a
+    word field, and handed no evidence block: the block is of its empty
+    words, and it has none. Its prompt says to stage empty words, never each
+    sentence, since analyze_sentence over an analysed one replaces it."""
+    import test_job_fields as F
+    client, job, model, written = F._job(monkeypatch, 'sentences')
+    run_job(job, runner(job))
+    first = next(c for c in model.calls if c['n'] == 1 and 'Instructions from' in c['asked'])
+    names = [t['function']['name'] for t in first['kwargs']['tools']]
+    assert 'set_field' in names and len(names) == 11
+    asked = first['asked']
+    assert 'Nothing empty in s1, s2, s3' in asked
+    assert 'How these forms were analysed before' not in asked and 'Lexicon entries spelled inside' not in asked
+    assert 'Analysed nowhere before' not in asked
+    assert 'Stage empty words with analyze_sentence first' in first['kwargs']['messages'][0]['content']
+    assert len(written) == F.VALUES
