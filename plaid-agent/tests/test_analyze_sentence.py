@@ -652,3 +652,19 @@ def test_rev_las_7_no_allomorphy_note_for_case_or_the_words_own_hyphen():
 def test_rev_las_8_the_worked_turn_counts_a_change_per_word_and_per_link():
     from plaid_agent.igt.prompt import SYSTEM
     assert 'one per sentence' not in SYSTEM and 'the plan holds 58 changes, 31 words and 27 links.' in SYSTEM
+
+
+@pytest.mark.parametrize('gloss', ['?', '??'])
+def test_rev_las_5_new_entries_makes_no_entry_for_a_gloss_of_only_question_marks(gloss):
+    w = ws()
+    out = call(w, sentences=[{'ref': 's1.w2', 'words': [f'zzk {gloss}']}], new_entries=True)
+    assert [o for o in w.ops if o['kind'] == 'create_entry'] == [], out
+    assert f'zzk ‘{gloss}’ ×1 (s1.w2.m1)' in out and 'New entries' not in out
+
+
+def test_rev_las_5_a_new_entry_is_the_form_as_given_a_capital_kept():
+    """Fixed, no guessing: "Gam" at the start of s2 makes the entry "Gam"."""
+    w = ws()
+    call(w, sentences=[{'ref': 's2', 'words': ['Gam=ar catch=FOC']}], new_entries=True)
+    (create,) = [o for o in w.ops if o['kind'] == 'create_entry']
+    assert create['form'] == 'Gam'

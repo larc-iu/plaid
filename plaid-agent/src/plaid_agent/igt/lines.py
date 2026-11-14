@@ -73,7 +73,8 @@ Links. Each glossed morpheme is linked to the one lexicon entry, or sense, whose
 whose gloss is its gloss. Where several fit, or none does, nothing is linked and the answer lists the \
 morpheme with the entries to choose from: link one with link_entry (sN.wN.mN, entry_id). new_entries: \
 true, only when the instructions or the user ask for new entries, creates an entry, once, for each form \
-and gloss no entry has, and links every morpheme of it. An ambiguous one is never created for.
+and gloss no entry has (the form as given, never for a gloss of ?), and links every morpheme of it. \
+An ambiguous one is never created for.
 
 Checks. An item of punctuation alone is left out. Then the items must be as many as the ref's words, \
 and item n is word n's: another number stages nothing of the sentence, and the answer shows the words \
@@ -391,8 +392,12 @@ def _fits(ws: Workspace, form: str, gloss: str) -> List[tuple]:
 
 
 def _creatable(ws: Workspace, form: str, gloss: str) -> bool:
-    """Whether ``new_entries`` creates an entry for this form and gloss: no
-    entry of any lexicon has that form and that gloss, whatever its type."""
+    """Whether ``new_entries`` creates an entry for this form and gloss: a
+    gloss that says something (not empty, not only "?", REV-LAS-5), and no
+    entry of any lexicon with that form and that gloss, whatever its type.
+    The entry's form is the morpheme's as given, a capital kept."""
+    if not gloss.strip().strip('?'):
+        return False
     return not _fits(ws, form, gloss)
 
 
