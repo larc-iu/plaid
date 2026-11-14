@@ -523,6 +523,8 @@ def _build_rule(ws: Workspace, tool: str, args: Dict[str, Any], unit: list, chan
     ws.partial_read = None
     found = resolve_rule(ws, tool, args, earlier, removed=removed)
     partial, ws.partial_read = ws.partial_read, None
+    from .retyped import refuse_rule_on_retyped
+    refuse_rule_on_retyped(ws, tool, found, ws.ops)
     # Staged as one rule, its changes never pass add_op, so the values they
     # would write are held to their layers' lists here.
     for o in found:

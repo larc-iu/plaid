@@ -606,3 +606,36 @@ def test_the_refusals_wording():
     out = call_tool(w, 'link_entry', {'document': 'd1', 'refs': ['s1.w4'], 'entry_form': 'gam', 'entry_gloss': 'fish'})
     assert out.startswith(f'Error: Text 1 s1.w4: {RETYPED}'), out
     assert 'has 3 words' not in out
+
+
+# --- a rule over a retyped sentence (REV-RR-6) -------------------------------------------
+
+@pytest.mark.parametrize('tool,args', [
+    ('set_field_for_form', {'form': 'gam', 'field': 'Gloss', 'value': 'X'}),
+    ('copy_to_orthography', {'orthography': 'IPA'}),
+])
+def test_a_rule_that_reaches_a_retyped_sentence_is_refused_in_both_orders(tool, args):
+    """Approval finds a rule's changes before the text edit and leaves out
+    every change on a retyped sentence's words, so the card's promise there
+    was dropped without a word. Now refused, whichever comes first."""
+    retype = {'document': 'd1', 'ref': 's1', 'text': 'Ali-di ∅ gam akuna.'}
+    w = ws()
+    call_tool(w, 'retype_sentence', retype)
+    out = call_tool(w, tool, args)
+    assert out.startswith(f'Error: {tool} would change s1.w') and out.endswith(
+        'in Text 1 s1, a sentence this plan retypes. Plan it once the retype is applied.'), out
+    assert [o['kind'] for o in w.ops] == ['edit_text']
+    w = ws()
+    assert not call_tool(w, tool, args).startswith('Error')
+    out = call_tool(w, 'retype_sentence', retype)
+    assert out == (f"Error: Text 1 s1: this plan's {tool} changes words of s1, which a retype renumbers. "
+                   'Retype it once the plan is applied.'), out
+
+
+def test_a_rule_that_reaches_only_other_sentences_stands_beside_a_retype():
+    w = ws()
+    call_tool(w, 'retype_sentence', {'document': 'd1', 'ref': 's2', 'text': 'Gam-ar ∅.'})
+    out = call_tool(w, 'set_field_for_form', {'form': 'akuna', 'field': 'Gloss', 'value': 'see'})
+    assert not out.startswith('Error'), out
+    assert call_tool(w, 'retype_sentence', {'document': 'd1', 'ref': 's1', 'text': 'Ali-di ∅ gam.'}) \
+        .startswith('Error: Text 1 s1: this plan\'s set_field_for_form')

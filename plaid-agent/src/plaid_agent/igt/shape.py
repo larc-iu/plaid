@@ -25,7 +25,8 @@ from ..core.plan import labelled
 from ..core.tools import ToolError
 from .plan import reshaped_subjects, written_before_merge
 from .project import Link, Sentence, Span, Word, plain_ref, planned_word_count, resolve, split_sentences, word_ref
-from .retyped import gone_words, listing, planned_words, renumbered, resolve_in, restage_on_retype, trimmed, word_gaps
+from .retyped import (gone_words, listing, planned_words, refuse_retype_under_rule, renumbered, resolve_in,
+                      restage_on_retype, trimmed, word_gaps)
 from .tools import (reshape_guards, refuse_comment_and_text_edit, refuse_shape_and_analysis,
                     refuse_shape_and_respell, refuse_text_in_deleted_sentence)
 from .workspace import Workspace, _need, _refs
@@ -621,6 +622,7 @@ def t_retype_sentence(ws: Workspace, document: str, ref: str, text: str) -> str:
                      f'{qv(text[:40] + ("…" if len(text) > 40 else ""))}' + (f' ({n} sentences)' if n > 1 else '')
                      + f' ({_retype_effects(ws, s, b, old, text, extents, doc.body)})')}
     moved = restage_on_retype(ws, doc, s, op, f'{ws.doc_label(doc.id)} {ref}')
+    refuse_retype_under_rule(ws, op, f'{ws.doc_label(doc.id)} {ref}', s.index)
     ws.add_op(op)
     for i, value in moved:
         ws.ops[i] = value

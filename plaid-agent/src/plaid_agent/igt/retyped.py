@@ -392,6 +392,48 @@ def refuse_split_and_retype(ws, op: Dict[str, Any], others) -> None:
                         'split is applied.', kind='conflict')
 
 
+def _rule_hit(ws, found, retyped: Dict[str, Dict[str, Any]]):
+    """``(the retype, doc, sentence, word)`` of the first change of ``found``
+    (a rule's changes) naming a word or morpheme of a retyped sentence."""
+    for o in found:
+        hit = named_tokens(o) & set(retyped)
+        if hit:
+            edit = retyped[next(iter(hit))]
+            doc = ws._docs.get(edit.get('document_id'))
+            got = doc.find(next(iter(hit))) if doc is not None else None
+            if got is not None:
+                return edit, doc, got[0], got[1]
+    return None
+
+
+def refuse_rule_on_retyped(ws, tool: str, found, ops) -> None:
+    """A rule (``tool``, a corpus-wide change) whose changes (``found``) name
+    a word or morpheme of a sentence the plan retypes: refused. Approval
+    finds a rule's changes before the text edit and leaves out every change
+    on a retyped sentence's words, so its value there was dropped without a
+    word (REV-RR-6). The other order is :func:`refuse_retype_under_rule`."""
+    got = _rule_hit(ws, found, retyped_tokens(ops))
+    if got is None:
+        return
+    _edit, doc, s, w = got
+    what = f' s{s.index}.w{w.index} {qv(w.surface)}' if w is not None else ''
+    raise ToolError(f'{tool} would change{what} in {ws.doc_label(doc.id)} s{s.index}, a sentence this plan '
+                    'retypes. Plan it once the retype is applied.', kind='conflict')
+
+
+def refuse_retype_under_rule(ws, edit: Dict[str, Any], where: str, n: int) -> None:
+    """A retype staged after a rule whose changes name a word or morpheme of
+    its sentence: refused (:func:`refuse_rule_on_retyped`)."""
+    from ..core import rules
+    mine = {i: edit for i in list(edit.get('word_ids') or []) + list(edit.get('morpheme_ids') or [])}
+    for op in ws.ops:
+        if not rules.is_rule(op):
+            continue
+        if _rule_hit(ws, ws.rule_found.get(rules.target(op)) or [], mine) is not None:
+            raise ToolError(f'{where}: this plan\'s {op.get("tool")} changes words of s{n}, which a retype '
+                            'renumbers. Retype it once the plan is applied.', kind='conflict')
+
+
 def refuse_on_retyped(ws, op: Dict[str, Any], others) -> None:
     """A change naming a word or a morpheme of a sentence the plan retypes,
     other than a planned word value: refused (``RENUMBERED``). And a sentence
