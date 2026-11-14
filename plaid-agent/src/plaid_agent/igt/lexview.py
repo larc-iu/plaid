@@ -14,6 +14,7 @@ from plaid_client.provenance import PROVENANCE_KEYS
 
 from ..core.tools import ToolError
 
+from . import fit
 from .vocab import (PARENT_KEY, RESERVED_ITEM_KEYS, all_examples, build_item_numbers,
                     build_sense_tree, descendants_of, fields_for_item, item_ref_fields, ref_ids)
 
@@ -138,9 +139,10 @@ def _dict_hits(view: LexView, form: str, suffix: Optional[str], deep: bool = Fal
     ``deep`` widens a bare form to the senses as well. It is for a caller that
     has something else to tell them apart with, such as entry_gloss: the gloss
     that singles one out usually IS a sense's."""
-    roots = [r for r in view.tree.roots if (r.get('form') or '').lower() == (form or '').lower()]
+    want = fit.form_key(form)
+    roots = [r for r in view.tree.roots if fit.form_key(r.get('form')) == want]
     if not roots:
-        others = [it for it in view.items if (it.get('form') or '').lower() == (form or '').lower()]
+        others = [it for it in view.items if fit.form_key(it.get('form')) == want]
         return others if suffix is None else [it for it in others if view.number(it['id']) == suffix]
     family = list(roots)
     for r in roots:

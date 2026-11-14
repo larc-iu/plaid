@@ -1,5 +1,6 @@
 """Which lexicon entry fits a morpheme: the one rule a job's create guard
-(``fitting_entry``) and analyze_sentence's linking (``fits``) share.
+(``fitting_entry``) and analyze_sentence's linking (``fits``) share, and
+:func:`form_key`, the one rule by which a form names an entry in every tool.
 
 An entry fits a form and a gloss when its form is that form and its gloss is
 that gloss, after NFC. The gloss is the value of the entry field the lexicon
@@ -29,6 +30,24 @@ def collation_key(form) -> str:
     """plaid-ui's ``collationKey``: NFC, then JavaScript's toLowerCase,
     which Python's ``lower`` is (not ``casefold``)."""
     return nfc(form).lower()
+
+
+def form_key(form) -> str:
+    """The one key by which a form finds a lexicon entry, compared between
+    the entry's form as stored and the form given: analyze_sentence's linking
+    (:func:`fits`, :func:`spelled`), every tool that names an entry by its
+    form (``lexview._dict_hits``, ``Workspace.find_entry``, link_entry among
+    them), and the entries a job piece's evidence block lists
+    (``evidence.entry_lines``). Every caller reads it through this module, so
+    the rule is changed here or nowhere.
+
+    It is plaid-igt's: the pair picker finds the entries spelled like a
+    morpheme by plaid-ui's ``collationKey`` of each side (``pairRows.js``
+    ``byForm``), and strips no marker, since every writer of an entry form
+    stores it without its affix or clitic markers (plaid_client
+    ``entry_form``, R27) and its type carries them. So a morpheme "di" fits an
+    entry "di" typed suffix and never one stored "-di" (EV2, 2026-11-14)."""
+    return collation_key(form)
 
 
 def entry_gloss(item: Dict[str, Any], gloss: Optional[str]) -> str:
@@ -78,13 +97,13 @@ def fits(v: Dict[str, Any], items: Iterable[Dict[str, Any]], form: str, gloss: s
     items = list(items)
     if by_id is None:
         by_id = {it['id']: it for it in items if it.get('id')}
-    want, value = collation_key(form), nfc(gloss)
-    return [it for it in items if collation_key(it.get('form')) == want and entry_gloss(it, key) == value
+    want, value = form_key(form), nfc(gloss)
+    return [it for it in items if form_key(it.get('form')) == want and entry_gloss(it, key) == value
             and (morph_type is None or item_morph_type(it, by_id) in (None, morph_type))]
 
 
 def spelled(v: Dict[str, Any], items: Iterable[Dict[str, Any]], form: str) -> List[Dict[str, Any]]:
     """The ``items`` whose form is ``form`` as the pair picker finds it,
     whatever their gloss."""
-    want = collation_key(form)
-    return [it for it in items if collation_key(it.get('form')) == want]
+    want = form_key(form)
+    return [it for it in items if form_key(it.get('form')) == want]

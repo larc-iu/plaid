@@ -41,7 +41,8 @@ def test_the_block_of_a_small_piece_exactly(monkeypatch):
         '- "ka": people: ka ‘eat’ (1)',
         'Analysed nowhere before: gamdi, zo.',
         'Lexicon entries spelled inside these forms (form ‘gloss’ type):',
-        '-di ‘ERG’ suffix',
+        # Not "-di", stored with its marker: no morpheme links to it
+        # (fit.form_key, test_link_form_rule).
         'gam#1 ‘fish’',
         'gam#2 ‘net’',
     ]), block

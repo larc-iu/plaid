@@ -33,6 +33,7 @@ from ..core.refs import read_ref, same_form
 from ..core.tools import ToolError
 from ..core.workspace import BaseWorkspace
 
+from . import fit
 from .plan import (ANALYSIS, ENTRY_READ, KIND, LEXICON_MAINTAINER, LEXICON_WRITER, MORPHEME_KEY,
                    MORPHEME_WRITERS, SETTINGS_KINDS, TEXT_SHAPE, _found, analysed_morphemes, entry_stamp,
                    lexicon_need, pinned_entry, planned_morpheme, removed_entries, settle_merges)
@@ -672,7 +673,7 @@ class Workspace(BaseWorkspace):
             return not (e.get('metadata') or {}).get('parent')
 
         news = [(k, e) for k, e in self.new_entries.items()
-                if e['form'].lower() == form.lower() and (not lexicon or e['vocab_id'] == vocabs[0]['id'])
+                if fit.form_key(e['form']) == fit.form_key(form) and (not lexicon or e['vocab_id'] == vocabs[0]['id'])
                 and has_gloss(e.get('metadata')) and planned_ok(e)]
         if len(hits) + len(news) == 1:
             return ('existing', hits[0][1]) if hits else ('new', news[0][0])

@@ -12,7 +12,7 @@ Three parts, in this order, each a fixed rule:
   ignored-token rule trims off its edges, in lower case;
 - one line naming the forms nobody analysed, so the model need not ask;
 - every lexicon entry (senses included, every lexicon of the project) whose
-  form, read the same way and without a leading or trailing "-" or "=", is
+  form, by the key every tool names an entry by (``fit.form_key``), is
   spelled inside one of those forms and is at least
   ``JOB_EVIDENCE_MIN_ENTRY`` characters long: one line each, the entry as a
   tool names it back, its gloss and its morph type. A headword with no
@@ -28,6 +28,7 @@ was left out and which tool reads it.
 from typing import Any, Dict, Iterable, List, Optional
 
 from ..core.limits import JOB_EVIDENCE_CHARS, JOB_EVIDENCE_MIN_ENTRY, JOB_PRECEDENT_PER_FORM
+from . import fit
 from .fit import collation_key, entry_gloss, item_morph_type
 from .project import IgtProject
 from .tools import trim_ignored_edges
@@ -46,9 +47,10 @@ def form_of(surface: str, cfg) -> str:
 
 
 def _bare(form: str) -> str:
-    """An entry's form as it is looked for inside a word: lower case, NFC,
-    without the "-" or "=" an affix's citation form carries at its edges."""
-    return collation_key(form).strip('-=')
+    """An entry's form as it is looked for inside a word: the key a form
+    names an entry by (``fit.form_key``), so the block lists only entries a
+    morpheme spelled so can link to (EV2)."""
+    return fit.form_key(form)
 
 
 def regroup(index: Dict[str, Dict[str, Dict[str, Any]]], cfg) -> Dict[str, Dict[str, Dict[str, Any]]]:
