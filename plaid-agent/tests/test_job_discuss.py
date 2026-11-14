@@ -222,6 +222,22 @@ def test_the_plans_instructions_and_what_it_left_out_are_read_as_the_assistants(
     assert f'the first {jobread.JOB_SUMMARY_NOTE_CHARS} of {len(told):,} characters' in said
 
 
+def test_a_default_plan_and_whose_summary_it_is_are_read_as_the_page_says_them():
+    """BRIEF PF: the plan says planning ended with no plan, and the summary
+    says whose words it is: the worker's fixed line for a job that wrote
+    nothing, else the final model context's."""
+    ws = _ws()
+    line = 'Planning ended with no plan, and the job worked by the default plan. It wrote no change and proposed none.'
+    report = _report(plan={'pieces': 'sentences', 'piece_instructions': '', 'documents': None, 'by': 'default',
+                           'why': 'no-plan', 'fallback': [], 'left_out': []}, summary=line, summary_by='worker')
+    out = call_tool(ws, 'read_job', {'job': _ended(ws.client, report)})
+    assert 'Planning ended with no plan. Worked by the default plan, in stretches of sentences.' in out
+    assert f'The report says: "{line}"' in out and 'own summary' not in out
+    report = _report(summary='Glossed Text 1.', summary_by='model')
+    out = call_tool(ws, 'read_job', {'job': _ended(ws.client, report)})
+    assert 'The job\'s own summary, written by its final model context: "Glossed Text 1."' in out
+
+
 def test_a_section_gives_its_rows_with_the_places_to_read_and_plan():
     ws = _ws()
     job = _ended(ws.client)

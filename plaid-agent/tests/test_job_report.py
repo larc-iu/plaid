@@ -9,7 +9,7 @@ from plaid_agent.igt.job import entries_part
 
 KEYS = {'state', 'reason', 'instructions', 'started_by', 'model', 'started_at', 'finished_at',
         'paused_for_people_s', 'paused_for_model_s', 'stopped', 'totals', 'documents', 'harmonize', 'entries',
-        'summary', 'summary_failed'}
+        'summary', 'summary_by', 'summary_failed'}
 
 
 def _job():

@@ -13,7 +13,9 @@ import {
 import SECTIONS from './jobSections.json';
 
 // A finished job's report (CONTRACT 5.3, as the client hands it over, keys in
-// camelCase): the summary the job wrote, the totals, the changes it proposed,
+// camelCase): the totals, the summary the assistant wrote under a heading
+// that says so (or first, the worker's one line for a job that wrote and
+// proposed nothing, `summaryBy` worker), the changes it proposed,
 // each piece's note, the tables its code made, each document's skipped
 // sentences and the targets it left blank (or that its document could not be
 // read for them, `leftUnread`, and how many blank words and translations the
@@ -317,17 +319,10 @@ export const JobReport = ({ report, projectId, vocabs = [] }) => {
       {report.stopped === 'without-worker' && (
         <p className="mt-2 text-sm text-muted-foreground">Stopped with no worker running.</p>
       )}
-      {report.summary && (
-        <div
-          className="mt-3 max-w-2xl whitespace-pre-wrap text-sm"
-          dir="auto"
-          data-testid="job-summary"
-        >
+      {report.summary && report.summaryBy === 'worker' && (
+        <p className="mt-3 max-w-2xl text-sm" data-testid="job-summary">
           {report.summary}
-        </div>
-      )}
-      {report.summaryFailed && (
-        <p className="mt-2 text-sm text-muted-foreground">The summary could not be written.</p>
+        </p>
       )}
 
       <Heading>Totals</Heading>
@@ -341,6 +336,18 @@ export const JobReport = ({ report, projectId, vocabs = [] }) => {
           ),
         )}
       </dl>
+
+      {((report.summary && report.summaryBy !== 'worker') || report.summaryFailed) && (
+        <Heading>Assistant’s summary</Heading>
+      )}
+      {report.summary && report.summaryBy !== 'worker' && (
+        <div className="max-w-2xl whitespace-pre-wrap text-sm" dir="auto" data-testid="job-summary">
+          {report.summary}
+        </div>
+      )}
+      {report.summaryFailed && (
+        <p className="text-sm text-muted-foreground">The summary could not be written.</p>
+      )}
 
       <LeftOut report={report} projectId={projectId} />
       <ProposedChanges report={report} projectId={projectId} />

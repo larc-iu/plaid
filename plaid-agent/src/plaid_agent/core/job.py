@@ -758,13 +758,38 @@ def fit_report(report: Dict[str, Any], budget: int = JOB_REPORT_BUDGET_BYTES) ->
     return report
 
 
+#: The summary of a job that wrote no change and proposed none, the
+#: worker's own words: no model is asked to describe nothing (BRIEF PF).
+NOTHING_WRITTEN = 'The job wrote no change and proposed none.'
+#: The same, when the job worked by the default plan.
+NOTHING_WRITTEN_BY_DEFAULT = ('Planning ended with no plan, and the job worked by the default plan. It wrote no '
+                              'change and proposed none.')
+
+
+def wrote_nothing(report: Dict[str, Any]) -> bool:
+    """Whether the job wrote no change and proposed none, by the worker's
+    own counts: no change written in a document or the lexicon, none
+    proposed, nothing harmonize changed."""
+    totals = report.get('totals') or {}
+    harmonize = report.get('harmonize') or {}
+    return not (totals.get('changes') or totals.get('proposed') or harmonize.get('changed')
+                or harmonize.get('changed_more'))
+
+
 def _summary(job: Job, runner, report: Dict[str, Any]) -> Dict[str, Any]:
     """The report's prose, written by the job's final model context from the
-    report's own sections (``runner.summarize``), shown above them. When it
+    report's own sections (``runner.summarize``), ``summary_by`` model. A job
+    that wrote nothing and proposed nothing gets the worker's fixed sentence
+    instead, ``summary_by`` worker, and no model is asked. When the prose
     cannot be written the report has none and says so (``summary_failed``).
     A stop during it leaves it out."""
+    if wrote_nothing(report):
+        default = (report.get('plan') or {}).get('by') == 'default'
+        return {'summary': NOTHING_WRITTEN_BY_DEFAULT if default else NOTHING_WRITTEN, 'summary_by': 'worker',
+                'summary_failed': False}
     try:
-        return {'summary': through_core(job, lambda: runner.summarize(job, report)), 'summary_failed': False}
+        return {'summary': through_core(job, lambda: runner.summarize(job, report)), 'summary_by': 'model',
+                'summary_failed': False}
     except JobStopped:
         return {'summary': None, 'summary_failed': False}
     except Exception as e:  # noqa: BLE001 - a report without its prose rather than none
@@ -817,7 +842,8 @@ def build_report(job: Job, state: str, reason: Optional[str], documents: List[Di
         'finished_at': datetime.fromtimestamp(job.now(), timezone.utc).isoformat(timespec='seconds')
         .replace('+00:00', 'Z'),
         'paused_for_people_s': int(job.paused['people']), 'paused_for_model_s': int(job.paused['model']),
-        'stopped': None, 'totals': totals, 'documents': documents, 'summary': None, 'summary_failed': False,
+        'stopped': None, 'totals': totals, 'documents': documents, 'summary': None, 'summary_by': None,
+        'summary_failed': False,
         'harmonize': {'changed': changed, 'left': left, 'changed_more': changed_more, 'left_more': left_more},
         'entries': lists,
     }

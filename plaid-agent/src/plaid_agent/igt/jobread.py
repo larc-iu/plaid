@@ -199,7 +199,7 @@ def plan_line(report: Dict[str, Any]) -> Optional[str]:
         return None
     line = f'Worked in {_PIECES.get(plan.get("pieces"), plan.get("pieces"))}'
     if plan.get('by') == 'default':
-        line += ', as the planning ended with no plan'
+        line = f'Planning ended with no plan. Worked by the default plan, in {_PIECES["sentences"]}'
     smaller = len(plan.get('fallback') or [])
     if smaller:
         line += f', {smaller:,} of them in smaller pieces'
@@ -236,8 +236,12 @@ def summary(job: Dict[str, Any], note_chars: Optional[int] = JOB_SUMMARY_NOTE_CH
         # The assistant's own words when it planned the job, never the
         # starter's instructions (the lead's ruling on REV-JG-14).
         lines.append(_quoted('What the assistant told every piece, as it planned the job', told, note_chars))
-    if report.get('summary'):
-        lines.append(_quoted('The job\'s own summary', report['summary'], note_chars))
+    if report.get('summary') and report.get('summary_by') == 'worker':
+        # The worker's fixed line for a job that wrote and proposed nothing.
+        lines.append(f'The report says: "{report["summary"]}"')
+    elif report.get('summary'):
+        lines.append(_quoted('The job\'s own summary, written by its final model context', report['summary'],
+                             note_chars))
     elif report.get('summary_failed'):
         lines.append('The job\'s own summary could not be written.')
     lines.append(f'Totals: {_totals(report)}.')

@@ -137,7 +137,7 @@ Its 64 tools are the chat's, as `SAMPLE_PROMPT.md` shows them, less `propose_job
 Its system prompt, with no tools:
 
 ```text
-You write the summary at the top of the report of an unattended job on the project "Demo", for the person who started it. The report's own sections follow your summary and are the record: the message gives you their totals, each piece's note and the tables the job's code made. Write a few short paragraphs of plain prose: what the job did, what it found, what it left for people, and what to check first. State no count and no number the message does not hold, and give a table's numbers as the table has them. No headings, no lists of every change: the sections list them.
+You write the summary of the report of an unattended job on the project "Demo", for the person who started it, shown after the report's totals. The report's own sections are the record: the message gives you their totals, each piece's note and the tables the job's code made. Write a few short paragraphs of plain prose: what the job did, what it found, what it left for people, and what to check first. State no count and no number the message does not hold, and give a table's numbers as the table has them. No headings, no lists of every change: the sections list them.
 
 Project shape:
 - Word fields: Gloss

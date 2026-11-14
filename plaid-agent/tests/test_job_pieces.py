@@ -738,10 +738,62 @@ def test_the_summary_is_given_the_reports_own_sections(monkeypatch):
     model = use(monkeypatch, _model(piece=_gloss_all))
     finished = run_job(job, runner(job, write_summary=True))
     (asked,) = [c['asked'] for c in model.calls if _kind(c['asked']) == 'summary']
-    assert asked.startswith('The job\'s instructions:\nSegment and gloss')
+    # BRIEF PF: what the job wrote, as the worker counted it, comes first.
+    assert asked.startswith('This job wrote 3 changes in 2 of 2 sentences.\n\nThe job\'s instructions:\nSegment and '
+                            'gloss'), asked
     assert 'Changes proposed for a person to approve: 0.' in asked and 'Glossed every blank word' in asked
     assert model.calls[-1]['kwargs'].get('tools') in (None, []), 'no tools'
     assert finished['report']['summary'] == 'The job glossed the words it was asked to.'
+    assert finished['report']['summary_by'] == 'model'
+
+
+def test_a_job_that_wrote_and_proposed_nothing_gets_a_fixed_summary_and_no_final_context(monkeypatch):
+    """BRIEF PF (B): a job that wrote nothing was summarised by the model as
+    having filled a field. Now the worker writes the summary, one fixed
+    sentence, and the final context is not asked."""
+    client = JobClient(_docs(1))
+    job = start(client, id=J)
+    model = use(monkeypatch, _model(summary='The job filled the thematic field, sentence by sentence.'))
+    finished = run_job(job, runner(job, write_summary=True))
+    assert finished['state'] == 'done' and finished['report']['totals']['changes'] == 0
+    assert model.seen['summary'] == 0, 'the final context is not asked'
+    assert finished['report']['summary'] == 'The job wrote no change and proposed none.'
+    assert finished['report']['summary_by'] == 'worker' and finished['report']['summary_failed'] is False
+
+
+def test_a_planner_that_never_plans_and_a_job_that_writes_nothing_says_both(monkeypatch):
+    """BRIEF PF (2, B): the planning context ends with no plan, the job works
+    by the default plan and writes nothing. The summary is the worker's and
+    says so, and the plan says it was the default."""
+    client = JobClient(_docs(1))
+    job = start(client, id=J, plan=None)
+    model = use(monkeypatch, _model(plan=None))
+    finished = run_job(job, runner(job, write_summary=True))
+    assert finished['report']['plan']['by'] == 'default'
+    assert model.seen['summary'] == 0
+    assert finished['report']['summary'] == ('Planning ended with no plan, and the job worked by the default plan. It '
+                                             'wrote no change and proposed none.')
+    assert finished['report']['summary_by'] == 'worker'
+
+
+def test_a_job_that_only_proposed_changes_is_summarised_by_the_model(monkeypatch):
+    """A proposed change is something for a person to read about: the final
+    context writes the summary."""
+    client = JobClient(_docs(1))
+    job = start(client, id=J)
+
+    def piece(asked, n):
+        if n == 1:
+            return reply(calls=[call(1, 'guidelines', {'action': 'help'})])
+        if n == 2:
+            return reply(calls=[call(2, 'guidelines', {'action': 'add', 'title': 'Ka', 'body': 'Gloss ka as go.'})])
+        return reply('Proposed a guideline.')
+    model = use(monkeypatch, _model(piece=piece))
+    finished = run_job(job, runner(job, write_summary=True))
+    assert finished['report']['totals']['changes'] == 0 and finished['report']['totals']['proposed'] >= 1, \
+        finished['report']['totals']
+    assert model.seen['summary'] == 1
+    assert finished['report']['summary_by'] == 'model'
 
 
 def test_a_summary_that_cannot_be_written_leaves_the_report_without_prose(monkeypatch):

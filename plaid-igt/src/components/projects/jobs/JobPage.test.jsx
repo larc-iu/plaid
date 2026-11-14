@@ -75,6 +75,7 @@ const REPORT = {
   state: 'done',
   instructions: 'Gloss ka as GO.',
   summary: 'The job glossed Story A and proposed one change.',
+  summaryBy: 'model',
   summaryFailed: false,
   plan: { pieces: 'sentences', by: 'model', fallback: [{ documentId: 'd2', reason: 'too-long' }] },
   pausedForPeopleS: 720,
@@ -336,6 +337,39 @@ describe('the job page', () => {
     await v.unmount();
   });
 
+  it('says when planning ended with no plan and the job worked by the default plan', async () => {
+    const plan = { pieces: 'sentences', by: 'default', why: 'no-plan', fallback: [], leftOut: [] };
+    const v = await mount(clientOf(jobOf({ state: 'done', report: { ...REPORT, plan } })));
+    expect(totals(v.container).Plan).toBe(
+      'Planning ended with no plan. Worked by the default plan, in stretches of sentences.',
+    );
+    await v.unmount();
+  });
+
+  it('shows the totals first and the assistant’s summary after them, under its heading', async () => {
+    const v = await mount(clientOf(jobOf({ state: 'done', report: REPORT })));
+    const report = v.container.querySelector('section[aria-label="Report"]');
+    const headings = all(report, 'h3').map((h) => h.textContent);
+    expect(headings.indexOf('Totals')).toBe(0);
+    expect(headings.indexOf('Assistant’s summary')).toBe(1);
+    const summary = report.querySelector('[data-testid="job-summary"]');
+    expect(summary.previousElementSibling.textContent).toBe('Assistant’s summary');
+    expect(text(summary)).toBe('The job glossed Story A and proposed one change.');
+    await v.unmount();
+  });
+
+  it('puts the line of a job that wrote and proposed nothing first, as the report’s own', async () => {
+    const line = 'The job wrote no change and proposed none.';
+    const report = { ...REPORT, summary: line, summaryBy: 'worker' };
+    const v = await mount(clientOf(jobOf({ state: 'done', report })));
+    const section = v.container.querySelector('section[aria-label="Report"]');
+    const summary = section.querySelector('[data-testid="job-summary"]');
+    expect(text(summary)).toBe(line);
+    expect(summary.previousElementSibling.textContent).toBe('Report');
+    expect(all(section, 'h3').map((h) => h.textContent)).not.toContain('Assistant’s summary');
+    await v.unmount();
+  });
+
   it('lists each document the plan left out, in the report and in the documents table', async () => {
     const report = {
       ...REPORT,
@@ -537,7 +571,7 @@ describe('the job page', () => {
     expect(byText(report, 'a', 'ra ‘eat’').getAttribute('href')).toBe('/vocabularies/v1?item=e2');
     expect(t).toContain('And 2 more entries.');
     expect(t).not.toContain('Deleted');
-    // The prose the job wrote, above the sections.
+    // The prose the assistant wrote, after the totals.
     expect(text(report.querySelector('[data-testid="job-summary"]'))).toBe(
       'The job glossed Story A and proposed one change.',
     );

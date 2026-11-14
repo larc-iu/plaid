@@ -171,6 +171,10 @@ def _n(n: int, word: str) -> str:
     return f'{n} {word}{"" if n == 1 else "s"}'
 
 
+def _n_text(n: int, word: str) -> str:
+    return f'{n:,} {word}{"" if n == 1 else "s"}'
+
+
 def mark_form(sentence_id: str) -> str:
     return RECORD_FORM + sentence_id
 
@@ -551,7 +555,13 @@ def summary_message(report: Dict[str, Any]) -> str:
     bounded (JOB_SUMMARY_NOTES_CHARS for the notes, JOB_SUMMARY_TABLE_CHARS
     for the tables), saying what it left out."""
     totals = report.get('totals') or {}
-    lines = ['The job\'s instructions:', report.get('instructions') or '', '',
+    # What the job wrote, as the worker counted it, first: the model has no
+    # room to assume (BRIEF PF).
+    targets = sum(d.get('targets') or 0 for d in report.get('documents') or [])
+    wrote = (f'This job wrote {_n_text(totals.get("changes") or 0, "change")} in {totals.get("sentences") or 0:,} '
+             f'of {_n_text(targets, "sentence")}')
+    lines = [wrote + (f': {fields_text(totals["fields"])}.' if totals.get('fields') else '.'), '',
+             'The job\'s instructions:', report.get('instructions') or '', '',
              'The report\'s totals (the worker counted these):',
              ', '.join([f'{k.replace("_", " ")} {v:,}' for k, v in sorted(totals.items()) if v and isinstance(v, int)]
                        + ([fields_text(totals['fields'])] if totals.get('fields') else [])), '']

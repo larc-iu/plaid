@@ -934,6 +934,7 @@ The card keeps how it ended, with a link to the job's page once the job has star
 
 A job first plans how to cut the work: a few sentences at a time, one document at a time, or all the documents at once.
 Worked a few sentences at a time, it takes every sentence, unless its plan takes only the sentences with an empty translation or a word nobody analyzed, as for a job that only fills those.
+When planning ends with no plan, the job works every sentence a few at a time, and its page says so.
 Each piece is worked by the assistant with its usual tools, the project's guidelines, the instructions, and how people in the project analyzed the same words.
 
 A job writes every change it plans in its documents and in the project's lexicons, in the name of the person who started the job: values, analyses, links, comments, text edits, splits and merges, changes to entries, and deletions, whole sentences included.
@@ -953,7 +954,8 @@ A document someone is editing is left for later and taken up again after the oth
 
 The project's **Jobs** tab lists its jobs, and each opens to its own page.
 The page shows what the job is doing, how it cut the work and what the assistant told each piece of it, each document's progress, and once the job has ended its report.
-The report opens with a summary the job wrote, then gives the totals of what it wrote and deleted, and lists the documents its plan left out, the changes it proposed, a note from each piece of its work, any tables it counted, the sentences it skipped and why, what it left blank and how much is blank in the sentences it did not reach, the analyses it made consistent, the entries it created, and those of them with no links.
+The report opens with the totals of what the job wrote and deleted, then the assistant's summary of the job, and lists the documents its plan left out, the changes it proposed, a note from each piece of its work, any tables it counted, the sentences it skipped and why, what it left blank and how much is blank in the sentences it did not reach, the analyses it made consistent, the entries it created, and those of them with no links.
+A job that wrote no change and proposed none says so in one line, with no summary.
 A document the job is working in shows a banner with its progress.
 
 **Stop**, on the job's page or on the banner, is for the person who started the job and for maintainers.

@@ -434,10 +434,10 @@ how it is cut. You stage no change. End by calling plan_work once.'''
 #: Sent once to a planning context that ended without plan_work.
 JOB_PLAN_NOW = '(system) End the planning now: call plan_work.'
 
-#: The final context's contract: the prose at the top of the job's report.
-JOB_SUMMARY_CONTRACT = '''You write the summary at the top of the report of an unattended job on the project \
-"{project_name}", for the person who started it. The report's own sections follow your summary and are the \
-record: the message gives you their totals, each piece's note and the tables the job's code made. Write a few \
+#: The final context's contract: the prose after the totals of the job's report.
+JOB_SUMMARY_CONTRACT = '''You write the summary of the report of an unattended job on the project \
+"{project_name}", for the person who started it, shown after the report's totals. The report's own sections are \
+the record: the message gives you their totals, each piece's note and the tables the job's code made. Write a few \
 short paragraphs of plain prose: what the job did, what it found, what it left for people, and what to check \
 first. State no count and no number the message does not hold, and give a table's numbers as the table has \
 them. No headings, no lists of every change: the sections list them.'''
