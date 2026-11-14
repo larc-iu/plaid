@@ -37,7 +37,7 @@ from .project import (IgtDoc, Sentence, Word, Morpheme, Link, MARKERS, parse_ref
 from .lexview import morph_type
 from .workspace import Workspace, _need, _refs, _sentence_of, _words_of
 from .vocab import morph_type_of
-from .retyped import old_value, planned_ref, planned_value
+from .retyped import old_value, planned_ref, planned_value, renumbered, resolve_in
 
 
 # --- write tools (plan only) ---------------------------------------------------
@@ -107,7 +107,7 @@ def t_set_field(ws: Workspace, document: str, refs, field: Optional[str] = None,
                 if place is not None:
                     edits += edit_planned_morpheme(ws, doc, ref, place, field=f, value=val)
                     continue
-                obj = _need(resolve(doc, ref), kind, ref)
+                obj = _need(resolve_in(ws, doc, ref), kind, ref)
                 old = obj.fields.get(f.name)
                 what = obj.text if isinstance(obj, Sentence) else (obj.surface if isinstance(obj, Word) else obj.form)
                 target = ('span', f.layer_id, obj.id)
@@ -382,7 +382,7 @@ def word_analysis_op(ws: Workspace, doc: IgtDoc, ref: str, parsed: List[Dict[str
         raise ToolError('This project has no morpheme layer.', kind='not-found')
     reshape_guards(ws, doc)
     r = str(ref or '').strip()
-    w = _need(resolve(doc, r), Word, r)
+    w = _need(resolve_in(ws, doc, r), Word, r)
     refuse_shape_and_analysis(ws, w.id, r, analysing=True)
     misfit = surface_misfit(w.surface, [m['form'] for m in parsed], ws.project.ignored_cfg)
     if misfit:
@@ -731,7 +731,7 @@ def t_set_orthography(ws: Workspace, document: str, refs, orthography: str, valu
     doc = ws.doc(document)
     staged: List[Dict[str, Any]] = []
     for ref in _refs(refs):
-        w = _need(resolve(doc, ref), Word, ref)
+        w = _need(resolve_in(ws, doc, ref), Word, ref)
         old = w.orthographies.get(o, '')
         if old == (value or ''):
             continue
@@ -755,7 +755,7 @@ def morpheme_form_op(ws: Workspace, doc, ref: str, w: Word, m: Morpheme, new: st
 
 def t_respell(ws: Workspace, document: str, ref: str, new_text: str, morpheme_forms: bool = True) -> str:
     doc = ws.doc(document)
-    w = _need(resolve(doc, ref), Word, ref)
+    w = _need(resolve_in(ws, doc, ref), Word, ref)
     new_text = (new_text or '').strip()
     if not new_text:
         raise ToolError('new_text must not be empty (to remove a word from the text, retype_sentence without it; '
@@ -939,7 +939,7 @@ def t_link_entry(ws: Workspace, document: str, refs, entry_form: Optional[str] =
             else:
                 staged.append(op)
             continue
-        obj = _resolve_for_link(doc, ref)
+        obj = _resolve_for_link(ws, doc, ref)
         if isinstance(obj, Sentence):
             raise ToolError(f'{ref}: link words (sN.wN) or morphemes (sN.wN.mN), not sentences',
                             kind='invalid-argument')
@@ -1047,6 +1047,7 @@ def _planned_place(ws: Workspace, doc: IgtDoc, ref: str) -> Optional[_Place]:
         raise ToolError(f'{ref}: the analysis this plan gives "{w.surface}" has {len(chain)} '
                         f'morpheme{"s" if len(chain) != 1 else ""} (the planned analysis is the one '
                         f'sN.wN.mN names while it is in the plan)', kind='not-found')
+    renumbered(ws, doc, ref, w, named=f's{si}.w{wi}.m{mi} "{chain[mi - 1].get("form")}"')
     # A form written beside the number is a check, here as in `resolve`.
     given = r.form
     if given and not same_form(given, chain[mi - 1].get('form'), MARKERS):
@@ -1156,10 +1157,10 @@ def left_for_analysis(n: int) -> str:
             'planned analysis.')
 
 
-def _resolve_for_link(doc: IgtDoc, ref: str):
-    """``resolve``, saying how to link a morpheme that does not exist yet."""
+def _resolve_for_link(ws: Workspace, doc: IgtDoc, ref: str):
+    """``resolve_in``, saying how to link a morpheme that does not exist yet."""
     try:
-        return resolve(doc, ref)
+        return resolve_in(ws, doc, ref)
     except ValueError as e:
         r = read_ref(ref, 'wm')
         if r is None or r.by_form or r.parts[1] is None:
@@ -1196,7 +1197,7 @@ def t_unlink_entry(ws: Workspace, document: str, refs) -> str:
                                                    'morpheme_index': place.index,
                                                    'reuses_morpheme_id': kept.id if kept is not None else None})))
             continue
-        obj = resolve(doc, ref)
+        obj = resolve_in(ws, doc, ref)
         if isinstance(obj, Sentence):
             continue
         if not obj.link:
@@ -1234,7 +1235,7 @@ def t_link_phrase(ws: Workspace, document: str, refs, entry_form: Optional[str] 
     own links; a multi-word expression already over exactly these words is
     replaced, any other one they belong to stays."""
     doc = ws.doc(document)
-    words = _words_of(doc, refs)
+    words = _words_of(ws, doc, refs)
     if len(words) < 2:
         raise ToolError('A multi-word expression needs two or more distinct words, e.g. ["s3.w2", "s3.w3"]',
                         kind='invalid-argument')
@@ -1276,7 +1277,7 @@ def t_unlink_phrase(ws: Workspace, document: str, refs) -> str:
     words); the words' own links stay. Name any member, or several members
     where a word sits in more than one expression."""
     doc = ws.doc(document)
-    words = _words_of(doc, refs)
+    words = _words_of(ws, doc, refs)
     if not words:
         raise ToolError('Name at least one member word, e.g. ["s3.w2"]', kind='invalid-argument')
     named = {w.id for _, _, w in words}
@@ -1482,7 +1483,7 @@ def t_confirm(ws: Workspace, document: Optional[str] = None, refs=None, field: O
     elif refs:
         doc = ws.doc(document)
         for ref in refs:
-            obj = resolve(doc, ref)
+            obj = resolve_in(ws, doc, ref)
             pieces = _review_pieces(obj, f, project=ws.project)
             mine = pieces.pop('left')
             left.extend(mine)
@@ -1532,7 +1533,7 @@ def t_discard_analysis(ws: Workspace, document: str, refs) -> str:
     reshape_guards(ws, doc)
     words: List[tuple] = []
     for ref in _refs(refs):
-        obj = resolve(doc, ref)
+        obj = resolve_in(ws, doc, ref)
         if isinstance(obj, Sentence):
             words.extend((f'{ref}.{w.ref}', w) for w in obj.words)
         elif isinstance(obj, Word):
@@ -1612,7 +1613,7 @@ def t_set_morpheme(ws: Workspace, document: str, ref: str, form: Optional[str] =
             if type is not None:
                 n += edit_planned_morpheme(ws, doc, ref, _planned_place(ws, doc, ref), morph_type=t)
         return ws.planned_note(n)
-    m = _need(resolve(doc, ref), Morpheme, ref)
+    m = _need(resolve_in(ws, doc, ref), Morpheme, ref)
     # The plan unlinks it: the type is its own then, and this one stands over
     # the one the unlink would keep from the entry (Q1).
     # So does a planned delete of its entry, which takes the link (REV-LAST-5).

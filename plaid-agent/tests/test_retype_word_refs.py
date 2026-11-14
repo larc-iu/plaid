@@ -87,9 +87,12 @@ REFUSED_BEFORE = {
 #: retyped sentence named by anything but a word value.
 REFUSED_NOW = {('retype', a) for a in ANNOTATIONS
                if a not in ('set_field word', 'set_field sentence')} - REFUSED_BEFORE
-#: Refused now, by the renumbering guard (`retyped.refuse_renumbered`): the
-#: deletion of s1.w2 renumbers s1.w3, which the split or the delete names.
-RENUMBERED = {('split_word', 'delete_word'), ('delete_word', 'delete_word')}
+#: Refused now, by the renumbering refusal (`retyped.renumbered`), only when
+#: the deletion of s1.w2 is staged first: it renumbers s1.w3, which the split,
+#: the delete or the respell then names by its bare number. Staged the other
+#: way, the split, delete or respell of s1.w3 holds its word's id and the delete of s1.w2 names
+#: a word before it, so both stand, as plaid-ud's rule has it (REV-RR-4).
+RENUMBERED = {('split_word', 'delete_word'), ('delete_word', 'delete_word'), ('respell', 'delete_word')}
 
 
 def _stage(w, tool, args):
@@ -117,7 +120,7 @@ def test_the_class_map(shape, annotation, order):
         if not staged:
             break
     pair = (shape, annotation)
-    if pair in RENUMBERED:
+    if pair in RENUMBERED and order == 'annotation first':
         assert said[-1].startswith('Error:') and 'renumbers s1' in said[-1], (pair, order, said)
         return
     if pair in REFUSED_BEFORE or pair in REFUSED_NOW:
@@ -429,13 +432,75 @@ def test_a_bare_number_a_planned_reshape_renumbers_is_refused_in_both_orders(sha
     # words before the reshape keep their numbers
     assert call_tool(w, 'set_field', {'document': 'd1', 'refs': ['s1.w1'], 'field': 'Gloss',
                                       'value': 'x'}).startswith('Planned 1 change')
-    # the other order
-    w2 = ws()
-    call_tool(w2, 'set_field', {'document': 'd1', 'refs': ['s1.w3'], 'field': 'Gloss', 'value': 'see'})
-    out = call_tool(w2, shape, {'document': 'd1', **args})
-    assert out.startswith('Error: Text 1 s1: this plan already has a change on s1.w3 "akuna" (Text 1 s1.w3 '
-                          f'"akuna": Gloss = "see"), and this {shape} renumbers s1: once it is applied, "akuna" is '
-                          f'w{new}.'), out
-    assert out.endswith(f'discard_plan, plan the {shape} first, then name the later words with their form '
-                        '(s1.w3 "akuna").')
-    assert [o['kind'] for o in w2.ops] == ['set_span']
+    # The other order: the value holds its word's id, and the reshape names
+    # words before it, so nothing is ambiguous and both stand (REV-RR-4).
+    for named in ('s1.w3', 's1.w3 "akuna"'):
+        w2 = ws()
+        call_tool(w2, 'set_field', {'document': 'd1', 'refs': [named], 'field': 'Gloss', 'value': 'see'})
+        assert call_tool(w2, shape, {'document': 'd1', **args}).startswith('Planned'), named
+        assert [o['kind'] for o in w2.ops] == ['set_span', shape]
+        assert w2.ops[0]['token_id'] == 'w-3'
+        out, notes = normalize_ops(copy.deepcopy(w2.ops))
+        assert len(out) == 2 and not notes, notes
+
+
+#: A tool given a word, a morpheme or a run of words by number, and the same
+#: by its form where the tool takes one: each route a bare number reaches.
+BY_NUMBER = {
+    'set_field word': ('set_field', {'refs': ['s1.w3'], 'field': 'Gloss', 'value': 'X'}, 's1.w3 "akuna"'),
+    'set_field morpheme': ('set_field', {'refs': ['s1.w2.m1'], 'field': 'Morph Gloss', 'value': 'PL'},
+                           's1.w2.m1 "gam"'),
+    'set_analysis': ('set_analysis', {'ref': 's1.w3', 'morphemes': [{'form': 'aku'}, {'form': 'na'}]},
+                     's1.w3 "akuna"'),
+    'set_morpheme': ('set_morpheme', {'ref': 's1.w2.m1', 'form': 'ga'}, 's1.w2.m1 "gam"'),
+    'link_entry': ('link_entry', {'refs': ['s1.w3'], 'entry_form': 'gam', 'entry_gloss': 'fish'},
+                   's1.w3 "akuna"'),
+    'unlink_entry': ('unlink_entry', {'refs': ['s1.w3']}, 's1.w3 "akuna"'),
+    'link_phrase': ('link_phrase', {'refs': ['s1.w2', 's1.w3'], 'entry_form': 'gam', 'entry_gloss': 'fish'},
+                    None),
+    'add_comment': ('add_comment', {'ref': 's1.w3', 'body': 'note'}, 's1.w3 "akuna"'),
+    'discard_analysis': ('discard_analysis', {'refs': ['s1.w3']}, 's1.w3 "akuna"'),
+    'delete_word': ('delete_word', {'refs': ['s1.w3']}, 's1.w3 "akuna"'),
+    'set_orthography': ('set_orthography', {'refs': ['s1.w3'], 'orthography': 'IPA', 'value': 'x'},
+                        's1.w3 "akuna"'),
+    'respell': ('respell', {'ref': 's1.w3', 'new_text': 'akunaa'}, 's1.w3 "akuna"'),
+    'split_word': ('split_word', {'ref': 's1.w3', 'at': 2}, 's1.w3 "akuna"'),
+    'merge_words': ('merge_words', {'refs': ['s1.w2', 's1.w3']}, None),
+    'confirm': ('confirm', {'refs': ['s1.w3']}, 's1.w3 "akuna"'),
+    'analyze_sentence run': ('analyze_sentence', {'sentences': [{'ref': 's1.w2-w3', 'words': [
+        'gam fish', 'akuna see']}]}, None),
+}
+
+
+@pytest.mark.parametrize('route', list(BY_NUMBER))
+def test_every_route_a_bare_number_reaches_refuses_it_after_a_reshape_before_it(route):
+    """After delete_word s1.w1, every later word of s1 is renumbered: a bare
+    number naming one is refused where it is resolved, whatever the tool
+    (REV-RR-4 and 5, as plaid-ud's resolve_in), and named by its form it is
+    the word read."""
+    tool, args, by_form = BY_NUMBER[route]
+    w = ws()
+    assert call_tool(w, 'delete_word', {'document': 'd1', 'refs': ['s1.w1']}).startswith('Planned')
+    out = call_tool(w, tool, {'document': 'd1', **args})
+    assert 'renumbers s1' in out and 'discard_plan' not in out, out
+    assert len(w.ops) == 1
+    if by_form is None:
+        return
+    key = 'refs' if 'refs' in args else 'ref'
+    named = {**args, key: [by_form] if key == 'refs' else by_form}
+    assert 'renumbers s1' not in call_tool(w, tool, {'document': 'd1', **named})
+
+
+@pytest.mark.parametrize('tool,args', [
+    ('set_analysis_for_form', {'form': 'akuna', 'morphemes': [{'form': 'akuna', 'gloss': 'see'}]}),
+    ('set_field_for_form', {'form': 'akuna', 'field': 'Gloss', 'value': 'see'}),
+    ('set_field', {'refs': ['s1."akuna"'], 'field': 'Gloss', 'value': 'see'}),
+    ('set_field', {'refs': ['s1.w1'], 'field': 'Gloss', 'value': 'x'}),
+])
+def test_a_change_that_names_no_word_by_its_bare_number_stands_beside_a_reshape(tool, args):
+    """A rule, a form, or a word before the reshape: no number is
+    read that the plan renumbers, so it stages as on master (REV-RR-5)."""
+    w = ws()
+    assert call_tool(w, 'split_word', {'document': 'd1', 'ref': 's1.w1', 'at': 3}).startswith('Planned')
+    out = call_tool(w, tool, {'document': 'd1', **args})
+    assert 'renumbers' not in out and not out.startswith('Error'), out

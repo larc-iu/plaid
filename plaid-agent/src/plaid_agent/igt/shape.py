@@ -25,7 +25,7 @@ from ..core.plan import labelled
 from ..core.tools import ToolError
 from .plan import reshaped_subjects, written_before_merge
 from .project import Link, Sentence, Span, Word, plain_ref, planned_word_count, resolve, split_sentences, word_ref
-from .retyped import listing, planned_words, restage_on_retype, trimmed, word_gaps
+from .retyped import listing, planned_words, renumbered, resolve_in, restage_on_retype, trimmed, word_gaps
 from .tools import (reshape_guards, refuse_comment_and_text_edit, refuse_shape_and_analysis,
                     refuse_shape_and_respell, refuse_text_in_deleted_sentence)
 from .workspace import Workspace, _need, _refs
@@ -227,8 +227,8 @@ def restage_merges(ws: Workspace, doc, ids) -> None:
         for wid in [op['word_id'], *op['other_ids']]:
             s, w, _m = doc.find(wid)
             refs.append(word_ref(s, w))
-        # The merge the plan held already: what it renumbers was asked when
-        # it was staged (`retyped.refuse_renumbered`).
+        # The merge the plan held already, its words named here by their
+        # numbers as read: none of them is asked again (`retyped.renumbered`).
         ws.restaging = True
         try:
             t_merge_words(ws, doc.id, refs)
@@ -256,7 +256,7 @@ def t_split_word(ws: Workspace, document: str, ref: str, at) -> str:
     """PLAN: split one word into two at a character position."""
     doc = ws.doc(document)
     reshape_guards(ws, doc)
-    w = _need(resolve(doc, ref), Word, ref)
+    w = _need(resolve_in(ws, doc, ref), Word, ref)
     _guard(ws, w, ref)
     # `at` is either a count or the left part itself, so the number is read
     # first and the text is what is left when it is not one. `whole` and not
@@ -313,7 +313,8 @@ def t_merge_words(ws: Workspace, document: str, refs) -> str:
     if len(refs) < 2:
         raise ToolError('Give at least two word references in one sentence, e.g. ["s3.w2", "s3.w3"]',
                         kind='invalid-argument')
-    words = [_need(resolve(doc, r), Word, r) for r in refs]
+    named = [(r, _need(resolve(doc, r), Word, r)) for r in refs]
+    words = [w for _, w in named]
     sents = {resolve(doc, r.split('.')[0]).id for r in refs}
     if len(sents) != 1:
         raise ToolError('Words to merge must be in the same sentence', kind='invalid-argument')
@@ -328,6 +329,9 @@ def t_merge_words(ws: Workspace, document: str, refs) -> str:
                             'Respell or delete the punctuation first if the merge is really wanted.', kind='conflict')
     for w in words:
         _guard(ws, w, word_ref(next(s for s in doc.sentences if s.id in sents), w), merging=True)
+    # After the guards: a word the plan already reshapes is said so first.
+    for r, w in named:
+        renumbered(ws, doc, r, w)
     _refuse_cut_in_merge(ws, next(iter(sents)), words, ' + '.join(refs))
     first, last = words[0], words[-1]
     merged = doc.body[first.begin:last.end]
@@ -370,7 +374,7 @@ def t_delete_word(ws: Workspace, document: str, refs) -> str:
     doc = ws.doc(document)
     reshape_guards(ws, doc)
     staged: List[Dict[str, Any]] = []
-    words = [(ref, _need(resolve(doc, ref), Word, ref)) for ref in _refs(refs)]
+    words = [(ref, _need(resolve_in(ws, doc, ref), Word, ref)) for ref in _refs(refs)]
     going = {w.id for _, w in words}
     gone_mwes = set()
     full = _other_layers(ws, doc) if words else None

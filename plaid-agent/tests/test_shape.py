@@ -30,12 +30,8 @@ def test_split_word_by_left_part_or_length():
     assert 'superseded' in call_tool(w, 'delete_word', {'document': 'd1', 'refs': ['s1.w1']})
     assert [o['kind'] for o in w.ops] == ['delete_word']
     assert 'already split, merged, or deleted' in call_tool(w, 'merge_words', {'document': 'd1', 'refs': ['s1.w1', 's1.w2']})
-    # w2's split of s1.w3 is renumbered by a merge before it (test_retype_word_refs)
-    assert 'renumbers s1' in call_tool(w2, 'merge_words', {'document': 'd1', 'refs': ['s1.w1', 's1.w2']})
-    w3 = ws()
-    call_tool(w3, 'merge_words', {'document': 'd1', 'refs': ['s1.w1', 's1.w2']})
-    assert 'already split, merged, or deleted' in call_tool(w3, 'split_word',
-                                                            {'document': 'd1', 'ref': 's1.w2', 'at': 1})
+    call_tool(w2, 'merge_words', {'document': 'd1', 'refs': ['s1.w1', 's1.w2']})
+    assert 'already split, merged, or deleted' in call_tool(w2, 'split_word', {'document': 'd1', 'ref': 's1.w2', 'at': 1})
 
 
 def test_merge_words_dedups_values_and_links():

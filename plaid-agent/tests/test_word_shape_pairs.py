@@ -57,7 +57,7 @@ def test_two_word_deletes_that_leave_an_expression_one_member_say_it_goes(live_c
     s, ws = seeded(c, base_project(), _four([('vi-gam', (1, 2, 3))]), name='shape pairs: mwe two deletes')
     try:
         call_tool(ws, 'delete_word', {'document': 'Doc A', 'refs': ['s1.w2']})
-        # by its form: the delete before it renumbers it (retyped.refuse_renumbered)
+        # by its form: the delete before it renumbers it (retyped.renumbered)
         call_tool(ws, 'delete_word', {'document': 'Doc A', 'refs': ['s1.w3 "cc"']})
         p, h, _ = approve(c, s.project_id, ws)
         rows = [r.get('label') or '' for r in p['changes']]

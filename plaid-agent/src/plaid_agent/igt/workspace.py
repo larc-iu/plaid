@@ -431,7 +431,10 @@ class Workspace(BaseWorkspace):
         # morpheme or value the plan deletes is refused by the certain-delete
         # guard. A text edit is the one case the guard cannot see, since what
         # it deletes is a guess, so the two are refused here.
+        from .retyped import resolve_in
         from .tools import refuse_comment_and_text_edit
+        if ref:
+            resolve_in(self, doc, ref)
         etype, eid, caption, what = self.comment_caption(doc, ref, field)
         where = f'{self.doc_label(doc.id)} {ref} "{(what or "")[:40]}"' if ref else f'"{self.doc_label(doc.id)}"'
         refuse_comment_and_text_edit(self, eid, where, commenting=True)
@@ -468,15 +471,6 @@ class Workspace(BaseWorkspace):
         doc.label = self.doc_label(did, quote=True)
         self.give_entry_types(doc)
         return doc
-
-    def begin_tool_call(self) -> None:
-        """The words named by form are the call's own (``named_by_form``),
-        and so are the changes it stages: the refs of one call all read the
-        document as read (``retyped.refuse_renumbered``)."""
-        from .project import named_by_form
-        for doc in self._docs.values():
-            named_by_form(doc).clear()
-        self.staged_before_call = {id(o) for o in self.ops}
 
     def entry_types(self, vocab: dict) -> Dict[str, str]:
         """The morph type each entry of lexicon ``vocab`` goes by, its own or
@@ -1076,9 +1070,8 @@ class Workspace(BaseWorkspace):
         others = [o for i, o in enumerate(self.ops) if i != replacing]
         # A word of a sentence the plan retypes is renumbered once it is
         # applied: only a word value planned on it as retyped may name it.
-        from .retyped import refuse_on_retyped, refuse_renumbered
+        from .retyped import refuse_on_retyped
         refuse_on_retyped(self, op, others)
-        refuse_renumbered(self, op, others)
         settings = op.get('kind') in SETTINGS_KINDS
         if others and any((o.get('kind') in SETTINGS_KINDS) != settings for o in others):
             raise ToolError(SETTINGS_APART, kind='conflict')
@@ -1175,14 +1168,8 @@ class Workspace(BaseWorkspace):
         # Before the funnel asks whether any of them clashes with the plan: a
         # value planned on a morpheme the analysis deletes is superseded by
         # it, not a reason to refuse it.
-        # Its ops were named against the document as read together
-        # (``retyped.refuse_renumbered``).
-        self.batch_staging = {id(o) for o in ops}
-        try:
-            with self.superseding(ops):
-                super().add_ops(ops)
-        finally:
-            self.batch_staging = set()
+        with self.superseding(ops):
+            super().add_ops(ops)
 
     def place_virtual(self, op: Dict[str, Any]) -> None:
         """Note on ``op`` the word an unsegmented word's derived morpheme is
@@ -1602,12 +1589,13 @@ def _need(obj, kind, ref):
     return obj
 
 
-def _words_of(doc: IgtDoc, refs) -> List[tuple]:
+def _words_of(ws: 'Workspace', doc: IgtDoc, refs) -> List[tuple]:
     """[(ref, sentence, word)] for word references, in text order, no repeats."""
+    from .retyped import resolve_in
     out = []
     seen = set()
     for ref in _refs(refs):
-        w = _need(resolve(doc, ref), Word, ref)
+        w = _need(resolve_in(ws, doc, ref), Word, ref)
         if w.id in seen:
             continue
         seen.add(w.id)

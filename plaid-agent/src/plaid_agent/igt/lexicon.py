@@ -465,7 +465,7 @@ def t_promote_example(ws: Workspace, document: str, ref: str, entry_form: Option
     """PLAN: mark a word in a document as a usage example of an entry."""
     vocab, view, target = _dict_entry(ws, entry_form, lexicon, entry_id, entry_gloss, 'take an example')
     doc = ws.doc(document)
-    found = _words_of(doc, ref)
+    found = _words_of(ws, doc, ref)
     if len(found) != 1:
         raise ToolError('Give one word reference, e.g. "s3.w2".', kind='invalid-argument')
     _, sent, word = found[0]

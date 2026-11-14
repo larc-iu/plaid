@@ -795,17 +795,6 @@ def _word_by_form(s: 'Sentence', ref: str, r) -> 'Word':
                        kind='ambiguous')
 
 
-def named_by_form(doc: IgtDoc) -> set:
-    """The words of ``doc`` the tool call under way named with their form
-    beside the number, or by form alone (``resolve``), which a plan that
-    renumbers their sentence takes as meant (``retyped.refuse_renumbered``).
-    Emptied at each tool call (``Workspace.begin_tool_call``)."""
-    got = doc.__dict__.get('_by_form')
-    if got is None:
-        got = doc.__dict__['_by_form'] = set()
-    return got
-
-
 def plain_ref(doc: IgtDoc, ref: str) -> str:
     """``ref`` as the place it names, with no form beside it, for a label:
     ``s15.w2`` for ``s15."do"`` and for ``s15.w2 "do"``. A reference that does
@@ -835,17 +824,13 @@ def resolve(doc: IgtDoc, ref: str):
         raise ValueRefusal(f'{ref}: document {doc.quoted} has {len(doc.sentences)} sentences', kind='not-found')
     s = doc.sentences[si - 1]
     if r.by_form:
-        w = _word_by_form(s, ref, r)
-        named_by_form(doc).add(w.id)
-        return w
+        return _word_by_form(s, ref, r)
     if wi is None:
         return s
     if not 1 <= wi <= len(s.words):
         raise ValueRefusal(f'{ref}: {_has_words(s, "sentence")}.', kind='not-found')
     w = s.words[wi - 1]
     if mi is None:
-        if r.form:
-            named_by_form(doc).add(w.id)
         if r.form and not same_form(r.form, w.surface):
             where = [f's{si}.w{x.index}' for x in s.words if same_form(r.form, x.surface)]
             raise ValueRefusal(f'{ref}: s{si}.w{wi} is "{clip(w.surface)}", not "{clip(r.form)}"'

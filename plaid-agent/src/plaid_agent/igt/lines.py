@@ -37,6 +37,7 @@ from ..core.tools import ToolError
 from .fit import collation_key, fits, nfc, spelled
 from .lexicon import _create_entry
 from .project import IgtDoc, IgtProject
+from .retyped import renumbering
 from .tools import ANALYSIS_OF, FITTED_TO, NEW_ENTRY, confirm_hint, entries_note, held_chain, parse_analysis, surface_misfit, t_link_entry, word_analysis_op
 from .vocab import ROLE_GLOSS
 from .workspace import Workspace
@@ -132,9 +133,11 @@ def t_analyze_sentence(ws: Workspace, document: Optional[str] = None, sentences:
     return _answer(ws, n, said, notes, listed, made)
 
 
-def _words_of(doc: IgtDoc, ref: str):
+def _words_of(ws: Workspace, doc: IgtDoc, ref: str):
     """``(label, sentence, words)`` a ref names: a sentence, or a run of its
-    words."""
+    words. A run is named by numbers only, so one whose words a split, merge
+    or word delete the plan holds renumbers is refused
+    (``retyped.renumbering``)."""
     if not str(ref or '').strip():
         raise _Refused('A sentence not staged: give ref, the sentence ("s4") or a run of its words ("s4.w3-w5"), '
                        'e.g. "ref": "s4".')
@@ -151,7 +154,12 @@ def _words_of(doc: IgtDoc, ref: str):
     b = int(m.group(3)) if m.group(3) else a
     if not 1 <= a <= b <= len(s.words):
         raise _Refused(f'{ref} not staged: s{si} has {len(s.words)} words (w1 to w{len(s.words)}).')
-    return f's{si}.w{a}-w{b}' if b > a else f's{si}.w{a}', s, s.words[a - 1:b]
+    label = f's{si}.w{a}-w{b}' if b > a else f's{si}.w{a}'
+    moved = next((m for m in (renumbering(ws, s, w) for w in s.words[a - 1:b]) if m), None)
+    if moved is not None:
+        raise _Refused(f'{label} not staged: this plan\'s {moved[0]} renumbers s{si}, so these numbers name other '
+                       'words once it is applied. Analyze these words once the plan is applied.')
+    return label, s, s.words[a - 1:b]
 
 
 def _punctuation(item: str, cfg) -> bool:
@@ -282,7 +290,7 @@ def _stage_sentence(ws: Workspace, doc: IgtDoc, item: Dict[str, Any], new_entrie
     """Stage one sentence: every word's analysis, the entries to create, the
     links, all of it or none of it. A word whose item does not line up is
     left out and listed, another number of items refuses the sentence."""
-    label, s, words = _words_of(doc, item.get('ref'))
+    label, s, words = _words_of(ws, doc, item.get('ref'))
     if not words:
         raise _Refused(f'{label} not staged: it has no words.')
     again = [w for w in words if w.id in taken]
