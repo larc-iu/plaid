@@ -29,6 +29,8 @@ The pieces a variant of this tool would change, each in one place:
 import re
 from typing import Any, Dict, List, Optional, Tuple
 
+from plaid_client.workflows.igt.ignored import is_token_ignored
+
 from ..core.tools import ToolError
 
 from .fit import collation_key, fits, nfc, spelled
@@ -146,6 +148,14 @@ def _words_of(doc: IgtDoc, ref: str):
     return f's{si}.w{a}-w{b}' if b > a else f's{si}.w{a}', s, s.words[a - 1:b]
 
 
+def _punctuation(item: str, cfg) -> bool:
+    """An item that is no word: every space-separated part of it a token
+    the project's ignored-token rule ignores (``is_token_ignored``, the rule
+    that numbers the words). "_" is the placeholder, never punctuation."""
+    parts = item.split()
+    return bool(parts) and item.strip() != PLACEHOLDER and all(is_token_ignored(p, cfg) for p in parts)
+
+
 def _pieces(word: str) -> Tuple[List[str], List[str]]:
     """A column of an item cut at its delimiters: the pieces, and the
     delimiter before each piece after the first."""
@@ -260,11 +270,15 @@ def _stage_sentence(ws: Workspace, doc: IgtDoc, item: Dict[str, Any], new_entrie
     if not isinstance(items, list) or not items:
         raise _Refused(f'{label} not staged: give words, one "FORMS GLOSS" item per word of the ref, e.g. '
                        '"words": ["na-ku-ja PRS-INF-come", "le=o today=DEF"].')
-    items = [str(x) for x in items]
+    given = [str(x) for x in items]
+    items = [x for x in given if not _punctuation(x, ws.project.ignored_cfg)]
     columns = _columns(ws, item, label)
     problems, parsed, bad = _check(ws, label, words, items, columns)
     if problems:
-        raise _Refused('\n'.join([f'{label} not staged: ' + '; '.join(problems) + '.'] + _lineup(words, items)))
+        dropped = len(given) - len(items)
+        left = (f' ({dropped} item{"s" if dropped != 1 else ""} of punctuation left out)' if dropped else '')
+        raise _Refused('\n'.join([f'{label} not staged: ' + '; '.join(problems) + f'{left}.']
+                                  + _lineup(words, items)))
     not_staged = ', '.join(f'w{words[i].index}' for i in sorted(bad))
     if all(p is None for p in parsed):
         if bad:

@@ -510,3 +510,31 @@ def test_a_missing_words_list_is_named_in_one_sentence_in_a_list_too():
 def test_the_schema_says_new_entries_is_for_when_new_entries_are_asked_for():
     spec = next(t['function'] for t in TOOLS if t['function']['name'] == 'analyze_sentence')
     assert 'ask for new entries' in spec['parameters']['properties']['new_entries']['description']
+
+
+# --- v3 2: punctuation items -------------------------------------------------------
+
+@pytest.mark.parametrize('words', [
+    ['Ali-di Ali-ERG', 'gam fish', 'aku-na see-PST', '.'],
+    ['Ali-di Ali-ERG', ',', 'gam fish', 'aku-na see-PST', '. .'],
+    ['"', 'Ali-di Ali-ERG', 'gam fish', 'aku-na see-PST'],
+])
+def test_an_item_of_punctuation_alone_is_left_out_before_counting(words):
+    """The Natugu night run copied the baseline's punctuation tokens into the
+    forms line as words. An item made only of what the project's
+    ignored-token rule ignores is no word, and nothing is said of it."""
+    w = ws()
+    out = call(w, sentences=[{'ref': 's1', 'words': words}])
+    assert 's1: 3 words analysed, 4 links.' in out and 'punctuation' not in out, out
+
+
+def test_the_placeholder_is_not_punctuation():
+    w = ws()
+    out = call(w, sentences=[{'ref': 's1', 'words': ['_', 'gam fish', 'aku-na see-PST']}])
+    assert 's1: 2 words analysed' in out
+
+
+def test_punctuation_left_out_is_said_when_the_count_is_still_off():
+    w = ws()
+    out = call(w, sentences=[{'ref': 's1', 'words': ['Ali-di Ali-ERG', '.']}])
+    assert out.startswith('Error: s1 not staged: words has 1 item, s1 has 3 words (1 item of punctuation left out).')
