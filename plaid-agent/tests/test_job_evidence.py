@@ -231,3 +231,50 @@ def test_a_tool_off_the_short_list_is_refused():
         'set_field', 'set_analysis', 'analyze_sentence', 'link_entry', 'create_entry', 'split_sentence',
         'merge_sentences', 'delete_sentence', 'retype_sentence'}
 
+
+# --- a scripted piece that stages from the block alone (EV 6) ----------------------
+
+def from_block(asked):
+    """A scripted model's items for the piece's first sentence, read from the
+    evidence block alone: a form people analysed as they did, else a whole
+    form an entry spells with that entry's gloss, else left ("_")."""
+    import re as _re
+    analysed, entries = {}, {}
+    for line in asked.split('\n'):
+        m = _re.match(r'- "(.*)": people: (\S+) ‘(.*?)’', line)
+        if m:
+            analysed[m.group(1)] = f'{m.group(2)} {m.group(3)}'
+        m = _re.match(r'^([^\s#‘]+)(?:#\S+)? ‘(.*?)’', line)
+        if m and not line.startswith(('- ', 'How ', 'Lexicon ')):
+            entries.setdefault(m.group(1).lower(), m.group(2))
+    empty = _re.search(r'^Empty in s1: words (.*?)(?: and the translation)?\.$', asked, _re.M).group(1)
+    items = []
+    for surface in _re.findall(r'w\d+ "(.*?)"(?:, |$)', empty):
+        form = evidence.form_of(surface, None).strip(',.')
+        items.append(analysed.get(form) or (f'{form} {entries[form]}' if form in entries else '_'))
+    return items
+
+
+def test_a_scripted_piece_stages_on_its_first_call_from_the_block_alone(monkeypatch):
+    from plaid_agent.igt import job as igt_job
+    client = JobClient({'A': document('A', 'Doc A', [{'words': ['gam', 'ka,', 'zo']}]),
+                        'P': document('P', 'Other', [{'words': [('ka', [('ka', 'eat')], 'human')]}])})
+    staged = {}
+
+    def answer(asked, n, kwargs):
+        if n == 1:
+            staged['items'] = from_block(asked)
+            return reply(calls=[call(1, 'analyze_sentence', {'document': 'Doc A', 'sentences': [
+                {'ref': 's1', 'words': staged['items']}]})])
+        return reply('Glossed s1.')
+    real, sent = igt_job.execute_plan, []
+
+    def execute(c, ops, **kw):
+        sent.extend(ops)
+        return real(c, ops, **kw)
+    monkeypatch.setattr(igt_job, 'execute_plan', execute)
+    asked = _asked(monkeypatch, client, answer=answer)
+    assert len(asked) == 1
+    assert staged['items'] == ['gam fish', 'ka eat', '_']
+    assert sorted(o['kind'] for o in sent) == ['link', 'set_analysis', 'set_analysis'], sent
+    assert [o['item_id'] for o in sent if o['kind'] == 'link'] == ['vi-gam'], 'gam fish fits one entry'
