@@ -1813,9 +1813,10 @@ class IgtRunner:
 
     def pending(self, doc, project: IgtProject, document_id: str, every: bool = False) -> List[Sentence]:
         """The sentences after the cursor the job works, in document order,
-        less those skipped and those a landed write wrote in (a writing row,
-        or a word of such a sentence, which a split or a merge may have moved
-        into a sentence of another id: :meth:`excluded`). In stretches,
+        less those skipped and those a landed write of their own piece wrote
+        in (:meth:`finished`: a writing row, or a word of such a sentence,
+        which a split or a merge may have moved into a sentence of another
+        id: :meth:`excluded`). In stretches,
         only sentences that hold something empty (:func:`sentence_targets`).
         With ``every`` (:meth:`every_sentence`) every such sentence, empty or
         not: what the piece does is its instructions'. A cursor
@@ -2196,10 +2197,13 @@ class IgtRunner:
         return sorted({r['try'] for r in self.writing_rows(document_id) if r['try'] and r['try'] not in self.looked})
 
     def finished(self, document_id: str) -> set:
-        """The sentences a landed write wrote in, or recorded with nothing
-        to write: never a target again."""
+        """The sentences a landed write of their own piece wrote in, or
+        recorded with nothing to write, as one of its own sentences: never a
+        target again. A write in a sentence not of its piece (another
+        piece's, through a project-wide tool) closes nothing: the
+        sentence's own piece still works it (BRIEF NW)."""
         rows, landed = self.view(document_id)
-        return {r['sentence'] for r in rows if not r.get('loose') and landed(r)}
+        return {r['sentence'] for r in rows if not r.get('loose') and r.get('own') and landed(r)}
 
     def unsettled(self, document_id: str) -> bool:
         """Whether this worker may not write in the document before it
@@ -2295,13 +2299,18 @@ class IgtRunner:
 
     def known_words(self, document_id: str, piece: Optional[str] = None) -> frozenset:
         """The tags of every word of every sentence a landed write of the job
-        wrote in (its writing rows), wherever a person has since moved them.
-        A sentence holding any of them is not a target (:func:`wrote_in`,
-        REV-B4-1). With ``piece``, only the sentences that piece wrote in."""
+        wrote in as one of its piece's own (its writing rows,
+        :meth:`finished`), wherever a person has since moved them. A
+        sentence holding any of them is not a target (:func:`wrote_in`,
+        REV-B4-1). With ``piece``, every sentence that piece's landed writes
+        wrote in, its own or not: the same piece taken up again leaves them
+        out (``repeated``), and another piece's write there is not its own."""
         out: set = set()
         rows, landed = self.view(document_id)
         for r in rows:
-            if not r.get('loose') and landed(r) and (piece is None or r['piece'] == piece):
+            if r.get('loose') or not landed(r):
+                continue
+            if r['piece'] == piece if piece is not None else r.get('own'):
                 out |= set(r.get('words') or ()) | set(r.get('others') or ())
         return frozenset(out)
 
