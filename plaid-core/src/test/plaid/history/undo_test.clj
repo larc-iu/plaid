@@ -1179,3 +1179,139 @@
         (is (= (inc undos) (undo-ops)))
         (is (= 404 (:status (get-span admin-request (nth spans 0)))))
         (is (= "ADJ" (-> (get-span admin-request (nth spans 1)) :body :span/value)))))))
+
+;; ============================================================
+;; Round 4: several entries, a whole job, as one undo
+;; ============================================================
+
+(defn- job-world!
+  "A project with two documents and a vocabulary, and an ended job over both
+  that wrote under four groups as the worker does: each document's gloss
+  pass (spans, and the lexicon: entry `made` created in the first
+  document's group, linked from a word of each document) and its harmonize
+  pass (a span value set again)."
+  [& {:keys [job-state] :or {job-state "done"}}]
+  (let [{:keys [proj doc tl word pos toks spans vocab fox] :as w} (setup!)
+        d2 (create-test-document admin-request proj "Doc2")
+        t2 (id (create-text admin-request tl d2 "fox jumps"))
+        [k0 k1] (-> (bulk-create-tokens admin-request [{:token-layer-id word :text t2 :begin 0 :end 3}
+                                                       {:token-layer-id word :text t2 :begin 4 :end 9}])
+                    :body :ids)
+        s2 (id (create-span admin-request pos [k0] "N"))
+        before (state [doc d2] [vocab])
+        job (str (random-uuid))
+        [g1 g2 h1 h2] (repeatedly 4 #(str (random-uuid)))
+        in (fn [g] (fn [m p] (admin-request m (str p (if (str/includes? p "?") "&" "?") "group-id=" g
+                                                   "&group-kind=job&group-message=Assistant%20job%3A%20gloss"))))
+        made (id (create-vocab-item (in g1) vocab "made" {"gloss" "new"}))
+        l1 (id (create-vocab-link (in g1) made [(nth toks 1)]))
+        _ (assert-ok (update-span (in g1) (nth spans 1) :value "JOB"))
+        new-span (id (create-span (in g1) pos [(nth toks 2)] "J"))
+        l2 (id (create-vocab-link (in g2) made [k1]))
+        _ (assert-ok (update-span (in g2) s2 :value "JOB2"))
+        _ (assert-ok (update-span (in h1) (nth spans 2) :value "H"))
+        _ (assert-ok (update-vocab-item-metadata (in h2) fox {"gloss" "harmonized"}))
+        now (psc/now-iso)]
+    (psc/execute! db {:insert-into :jobs
+                      :values [{:id job :project_id (str proj) :app "igt" :started_by "admin@example.com"
+                                :state job-state :created_at now :instructions "Gloss"}]})
+    (psc/execute! db {:insert-into :job_documents
+                      :values [{:job_id job :document_id (str doc) :position 0 :state "done"
+                                :gloss_group g1 :harmonize_group h1 :updated_at now}
+                               {:job_id job :document_id (str d2) :position 1 :state "done"
+                                :gloss_group g2 :harmonize_group h2 :updated_at now}]})
+    (assoc w :d2 d2 :k1 k1 :s2 s2 :before before :job job :groups [g1 g2 h1 h2] :made made :l1 l1 :l2 l2
+           :new-span new-span)))
+
+(defn- undo-job [req job & {:keys [dry-run]}]
+  (api-call req {:method :post :path (str "/api/v1/jobs/" job "/undo" (when dry-run "?dry-run=true"))}))
+
+(deftest undoing-a-whole-job-in-one-action
+  (testing "what one undo per group gets wrong: the second document's link holds the entry"
+    (let [{:keys [groups made]} (job-world!)
+          summary (:body (undo admin-request (first groups) :dry-run true))]
+      (is (= "built-on" ((reasons summary) made)))))
+  (testing "the job undone whole: every table as before it, the dry run said so, one entry in History"
+    (let [{:keys [doc d2 vocab job before groups]} (job-world!)
+          after (state [doc d2] [vocab])
+          dry (:body (undo-job admin-request job :dry-run true))
+          _ (is (= after (state [doc d2] [vocab])) "the dry run wrote nothing")
+          ops (op-count)
+          resp (undo-job admin-request job)
+          real (:body resp)]
+      (is (= 200 (:status resp)) (pr-str real))
+      (is (zero? (:skipped-count real)) (pr-str (:skipped real)))
+      (is (= before (state [doc d2] [vocab])))
+      (is (= (dissoc dry :dry-run) (dissoc real :dry-run :operation)))
+      (is (= (set groups) (set (:entries real))))
+      (is (= (inc ops) (op-count)))
+      (is (= "Undo job: Assistant job: gloss"
+             (:description (psc/q1 db {:select [:description] :from [:operations]
+                                       :where [:= :id (str (:operation real))]}))))
+      (testing "twice: nothing left"
+        (let [again (:body (undo-job admin-request job))]
+          (is (zero? (:total again)))
+          (is (nil? (:operation again)))))
+      (testing "the undo undone: the job's work is back"
+        (undone! admin-request (:operation real))
+        (is (= after (state [doc d2] [vocab]))))))
+  (testing "the same list of entries on /audit/undo"
+    (let [{:keys [doc d2 vocab before groups]} (job-world!)
+          resp (api-call admin-request {:method :post :path "/api/v1/audit/undo" :body {:entries groups}})]
+      (is (= 200 (:status resp)))
+      (is (zero? (:skipped-count (:body resp))))
+      (is (= before (state [doc d2] [vocab]))))))
+
+(deftest undoing-a-job-someone-built-on
+  (let [{:keys [spans toks made l1 l2 new-span job]} (job-world!)
+        ;; a person edits one sentence's value the job wrote, and links a word to the job's entry
+        _ (assert-ok (update-span admin-request (nth spans 1) :value "MINE"))
+        mine (id (create-vocab-link admin-request made [(nth toks 4)]))
+        summary (:body (undo-job admin-request job))
+        why (reasons summary)]
+    (is (= {(nth spans 1) "changed-since" made "built-on"} why))
+    (is (= {:kind "vocab-link" :id mine} (:by (first (filter #(= made (:id %)) (:skipped summary))))))
+    (is (= "MINE" (-> (get-span admin-request (nth spans 1)) :body :span/value)))
+    (is (nil? (psc/fetch-by-id db :vocab_links l1)))
+    (is (nil? (psc/fetch-by-id db :vocab_links l2)))
+    (is (nil? (psc/fetch-by-id db :spans new-span)))
+    (is (some? (psc/fetch-by-id db :vocab_links mine)))
+    (is (some? (psc/fetch-by-id db :vocab_items made)))))
+
+(deftest a-job-undo-refused
+  (testing "a job not ended: 409"
+    (let [{:keys [job]} (job-world! :job-state "running")
+          resp (undo-job admin-request job)]
+      (is (= 409 (:status resp)))
+      (is (= "This job has not ended. A job is undone once it has stopped." (-> resp :body :error)))))
+  (testing "a writer of the project: 403, nothing written"
+    (let [{:keys [proj job spans]} (job-world!)
+          _ (assert-done (add-project-writer admin-request proj "user1@example.com"))]
+      (is (= 403 (:status (undo-job user1-request job))))
+      (is (= "JOB" (-> (get-span admin-request (nth spans 1)) :body :span/value)))))
+  (testing "a stranger and an unknown job: 403, an admin's unknown job 404"
+    (let [{:keys [job]} (job-world!)]
+      (is (= 403 (:status (undo-job user2-request job))))
+      (is (true? (-> (undo-job user2-request (random-uuid)) :body :unresolved)))
+      (is (= 404 (:status (undo-job admin-request (random-uuid)))))))
+  (testing "past the limit: 413, saying how many rows"
+    (let [{:keys [job]} (job-world!)]
+      (with-redefs [plaid.history.undo/max-rows 3]
+        (let [resp (undo-job admin-request job)]
+          (is (= 413 (:status resp)))
+          (is (re-find #"changed \d+ rows" (-> resp :body :error))))))))
+
+(deftest a-job-undo-keyed-and-in-a-batch
+  (testing "a keyed dry run writes nothing, a keyed real undo lands once"
+    (let [{:keys [doc d2 vocab job before]} (job-world!)
+          ops (op-count)]
+      (is (= 200 (:status (undo-job (keyed "job-dry-key-0001") job :dry-run true))))
+      (is (= ops (op-count)))
+      (is (= 200 (:status (undo-job (keyed "job-real-key-0001") job))))
+      (is (= before (state [doc d2] [vocab])))))
+  (testing "inside a batch"
+    (let [{:keys [doc d2 vocab job before]} (job-world!)
+          resp (api-call admin-request {:method :post :path "/api/v1/batch"
+                                        :body [{:path (str "/api/v1/jobs/" job "/undo") :method "post"}]})]
+      (is (= 200 (:status resp)) (pr-str (:body resp)))
+      (is (= before (state [doc d2] [vocab]))))))

@@ -969,6 +969,12 @@
   `:dry-run?` say what that would do without writing. nil when no entry has
   that id (`plaid.history.changes/unit-ops`).
 
+  `entry-id` may be a collection of entry ids, undone together as ONE
+  operation (a job's groups): the rows of all of them, each put back as it
+  was before the earliest of them wrote it, a write by any of them none of
+  the others' \"since\" (`plaid.history.changes/units-ops`). The summary then
+  names them under `:entries`. `:description` gives the operation's own.
+
   Options: `:user`, `:document-id` (only that document's rows),
   `:vocab-id` (only that vocabulary's entries, and the links naming one of
   them), `:may-document?` and `:may-vocab?` (may the caller maintain a
@@ -985,9 +991,13 @@
   undo's own id). `:documents` names the documents whose versions moved.
   `{:error msg :code n}` when it could not be done."
   [db entry-id {:keys [user dry-run?] :as opts}]
-  (let [ops (changes/unit-ops db entry-id)]
+  (let [several? (coll? entry-id)
+        ops (if several? (changes/units-ops db entry-id) (changes/unit-ops db entry-id))]
     (when (seq ops)
-      (let [description (str "Undo entry " entry-id ": " (entry-label db entry-id ops))
+      (let [description (or (:description opts)
+                            (if several?
+                              (str "Undo " (count entry-id) " entries: " (entry-label db (first entry-id) ops))
+                              (str "Undo entry " entry-id ": " (entry-label db entry-id ops))))
             project (some :project_id ops)
             not-undone (not-undone-ops db ops)]
         (loop [excluded {}
@@ -1057,7 +1067,7 @@
                        #(try (media/delete-media-file! d)
                              (catch Exception e (log/warn e "Failed to delete media file for" d)))))))
                 {:summary (cond-> (assoc summary
-                                         :entry entry-id
+                                         (if several? :entries :entry) entry-id
                                          :dry-run (boolean dry-run?)
                                          :permitted permitted
                                          :not-undone not-undone)

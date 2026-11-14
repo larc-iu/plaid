@@ -289,60 +289,127 @@
        (format "%,d" undo/max-rows) " rows is refused 413. The versions of the documents written are returned in "
        "X-Document-Versions."))
 
-(defn- entry-undo
-  [{db :db {{:keys [entry-id]} :path query :query} :parameters :as request}]
+(defn- undo-gates
+  "The predicates an undo is held to row by row, for `request`'s caller."
+  [{db :db :as request}]
   (let [user-id (pra/->user-id request)
         record (:user/record request)
         scoped? (some? (:auth/token-scope request))
         maintains? (memoize (fn [pid] (boolean (pra/privileged? request :project/maintainers (constantly pid)))))
-        may-document? (memoize (fn [doc-id]
-                                 (boolean (when-let [p (changes/document-project db doc-id)]
-                                            (and (hread/project-live? db p) (maintains? p))))))
-        ;; As the entry restore route: a delegated token puts back no entry.
-        may-vocab? (memoize (fn [vocab-id]
-                              (boolean (and (not scoped?) vocab-id
-                                            (pra/vocab-maintainer? db vocab-id user-id record)))))
         readable-project? (pra/project-readable-fn request)
-        readable-document? (memoize (fn [doc-id]
-                                      (boolean (when-let [p (changes/document-project db doc-id)]
-                                                 (and (hread/project-live? db p) (readable-project? p))))))
-        readable-vocab? (memoize (fn [vocab-id] (boolean (and vocab-id (pra/vocab-reader? db vocab-id user-id record)))))
-        ops (changes/unit-ops db entry-id)
-        refused {:status 403 :body {:error (str "User " user-id " lacks sufficient privileges to undo this entry")}}]
-    (cond
-      (and (empty? ops) (user/admin? record))
-      (if (psc/q1 db {:select [:id] :from [:operations]
-                      :where [:and [:= :op_type "project/delete"]
-                              [:or [:= :id (str entry-id)] [:= :group_id (str entry-id)]
-                               [:= :batch_id (str entry-id)]]]})
-        {:status 422 :body {:error "A project's deletion cannot be undone."}}
-        {:status 404 :body {:error "Entry not found"}})
+        in-live? (fn [ok? doc-id] (boolean (when-let [p (changes/document-project db doc-id)]
+                                             (and (hread/project-live? db p) (ok? p)))))]
+    {:maintains? maintains?
+     :may-document? (memoize #(in-live? maintains? %))
+     ;; As the entry restore route: a delegated token puts back no entry.
+     :may-vocab? (memoize (fn [vocab-id]
+                            (boolean (and (not scoped?) vocab-id
+                                          (pra/vocab-maintainer? db vocab-id user-id record)))))
+     :readable-document? (memoize #(in-live? readable-project? %))
+     :readable-vocab? (memoize (fn [vocab-id] (boolean (and vocab-id (pra/vocab-reader? db vocab-id user-id record)))))}))
 
-      (empty? ops)
-      (assoc-in refused [:body :unresolved] true)
+(defn- undo-refusal [request]
+  {:status 403 :body {:error (str "User " (pra/->user-id request) " lacks sufficient privileges to undo this entry")}})
+
+(defn- nothing-to-undo
+  "The summary of an undo with no entry to undo (a job that wrote nothing)."
+  [ids dry-run?]
+  (let [zero {:inserted 0 :updated 0 :deleted 0}]
+    {:entries (vec ids) :dry-run (boolean dry-run?)
+     :undone (zipmap [:documents :texts :tokens :spans :relations :vocab-links :vocab-items] (repeat zero))
+     :total 0 :rows 0 :skipped [] :skipped-count 0 :not-undone []}))
+
+(defn- undo-answer
+  "Run the undo of `ids` (one entry id, or a collection read as one) whose
+  operations are `ops`, and answer it: 403 when the caller maintains none of
+  its rows, the summary otherwise."
+  [{db :db :as request} ids ops opts]
+  (let [{:keys [maintains?] :as gates} (undo-gates request)
+        {:keys [summary documents error code]}
+        (undo/undo db ids (merge (select-keys gates [:may-document? :may-vocab? :readable-document? :readable-vocab?])
+                                 {:user (pra/->user-id request)}
+                                 opts))]
+    (cond
+      error {:status code :body {:error error}}
+
+      (if (pos? (:rows summary))
+        (zero? (:permitted summary))
+        (not-any? maintains? (distinct (keep :project_id ops))))
+      (undo-refusal request)
 
       :else
-      (let [{:keys [summary documents error code]}
-            (undo/undo db entry-id {:user user-id
-                                    :dry-run? (boolean (:dry-run query))
-                                    :document-id (:document-id query)
-                                    :vocab-id (:vocab-layer-id query)
-                                    :may-document? may-document?
-                                    :may-vocab? may-vocab?
-                                    :readable-document? readable-document?
-                                    :readable-vocab? readable-vocab?})]
-        (cond
-          error {:status code :body {:error error}}
+      (prm/assoc-document-versions-in-header
+       {:status 200 :body (dissoc summary :permitted)}
+       db (pra/readable-document-ids request documents)))))
 
-          (if (pos? (:rows summary))
-            (zero? (:permitted summary))
-            (not-any? maintains? (distinct (keep :project_id ops))))
-          refused
+(defn- unknown-entry
+  "The answer to entry ids no entry has: 404 to an admin (422 for a
+  project's deletion, which is no entry anyone can undo), 403 unresolved to
+  anyone else."
+  [{db :db :as request} ids]
+  (if (user/admin? (:user/record request))
+    (if (psc/q1 db {:select [:id] :from [:operations]
+                    :where [:and [:= :op_type "project/delete"]
+                            [:or [:in :id (mapv str ids)] [:in :group_id (mapv str ids)]
+                             [:in :batch_id (mapv str ids)]]]})
+      {:status 422 :body {:error "A project's deletion cannot be undone."}}
+      {:status 404 :body {:error "Entry not found"}})
+    (assoc-in (undo-refusal request) [:body :unresolved] true)))
 
-          :else
-          (prm/assoc-document-versions-in-header
-           {:status 200 :body (dissoc summary :permitted)}
-           db (pra/readable-document-ids request documents)))))))
+(defn- entry-undo
+  [{db :db {{:keys [entry-id]} :path query :query} :parameters :as request}]
+  (let [ops (changes/unit-ops db entry-id)]
+    (if (empty? ops)
+      (unknown-entry request [entry-id])
+      (undo-answer request entry-id ops {:dry-run? (boolean (:dry-run query))
+                                         :document-id (:document-id query)
+                                         :vocab-id (:vocab-layer-id query)}))))
+
+(defn- entries-undo
+  [{db :db {{:keys [entries]} :body query :query} :parameters :as request}]
+  (let [ids (vec (distinct entries))]
+    (if (some #(empty? (changes/unit-ops db %)) ids)
+      (unknown-entry request (remove #(seq (changes/unit-ops db %)) ids))
+      (undo-answer request ids (changes/units-ops db ids) {:dry-run? (boolean (:dry-run query))}))))
+
+(defn- job-label
+  "What a job's undo names it by: the message of its first group (the
+  worker's label for the job), else its id."
+  [db job-id groups]
+  (or (some #(:message (psc/q1 db {:select [:message] :from [:operation_groups] :where [:= :id (str %)]})) groups)
+      (str "job " job-id)))
+
+(defn- job-undo
+  [{db :db {{:keys [job-id]} :path query :query} :parameters :as request}]
+  (let [job (psc/q1 db {:select [:id :project_id :state] :from [:jobs] :where [:= :id (str job-id)]})
+        dry-run? (boolean (:dry-run query))]
+    (cond
+      (nil? job)
+      (if (user/admin? (:user/record request))
+        {:status 404 :body {:error "Job not found"}}
+        (assoc-in (undo-refusal request) [:body :unresolved] true))
+
+      (not (pra/privileged? request :project/readers (constantly (:project_id job))))
+      (undo-refusal request)
+
+      (contains? #{"waiting" "running" "stopping"} (:state job))
+      {:status 409 :body {:error "This job has not ended. A job is undone once it has stopped."}}
+
+      :else
+      ;; Every group the job wrote under: each document's gloss pass and its
+      ;; harmonize pass, read from its own rows, so a caller names the job only.
+      (let [groups (->> (psc/q db {:select [:gloss_group :harmonize_group] :from [:job_documents]
+                                   :where [:= :job_id (str job-id)] :order-by [:position]})
+                        (mapcat (juxt :gloss_group :harmonize_group))
+                        (remove nil?)
+                        (map str)
+                        distinct
+                        vec)
+            ops (changes/units-ops db groups)]
+        (if (empty? ops)
+          {:status 200 :body (nothing-to-undo groups dry-run?)}
+          (undo-answer request groups ops {:dry-run? dry-run?
+                                           :description (str "Undo job: " (job-label db job-id groups))}))))))
 
 (def audit-routes
   [["/projects/:project-id/audit"
@@ -422,6 +489,29 @@
      :post {:summary    undo-doc
             :parameters {:query undo-query}
             :handler    entry-undo}}]
+
+   ["/audit/undo"
+    {:plaid/token-scope (fn [_ _] nil)
+     :post {:summary    (str "Undo several audit entries as ONE operation, as one entry's undo does one: the rows of "
+                             "all of them, each put back as it was before the earliest of them wrote it, a write by one "
+                             "of them none of the others' changed-since. The body is entries, the ids of the entries "
+                             "(groups, batches, operations). Same answer, with entries in place of entry, the same dry "
+                             "run, the same access row by row and the same limit over all their rows (413, with rows). "
+                             "Narrowing is not taken. A job is undone by POST /jobs/{id}/undo.")
+            :parameters {:query [:map [:dry-run {:optional true} boolean?]]
+                         :body [:map [:entries [:vector {:min 1 :max 1000} :uuid]]]}
+            :handler    entries-undo}}]
+
+   ["/jobs/:job-id/undo"
+    {:parameters {:path [:map [:job-id :uuid]]}
+     :plaid/token-scope (fn [_ _] nil)
+     :post {:summary    (str "Undo everything a job wrote, as one operation named \"Undo job: <label>\": every group "
+                             "of every document of it, its gloss pass and its harmonize pass, its lexicon writes among "
+                             "them, read from the job's own rows, undone together as POST /audit/undo does. A job "
+                             "still waiting, running or stopping is refused 409. Same answer, dry run, access and "
+                             "limit as an entry's undo, with entries naming the job's groups.")
+            :parameters {:query [:map [:dry-run {:optional true} boolean?]]}
+            :handler    job-undo}}]
 
    ["/audit"
     {:get {:summary    (str "Get the audit log across every project. Admin only. " op-types-doc kinds-doc order-doc ops-limit-doc)

@@ -525,9 +525,23 @@
 ;; Every row, raw, for undo
 ;; ============================================================
 
+(defn units-ops
+  "The operations of every unit among `unit-ids`, as `unit-ops` finds each
+  unit's, each once, oldest first. Several units read as one: a row's
+  `before` is its image before the EARLIEST of them wrote it, and only an
+  operation outside all of them is someone else's write."
+  [db unit-ids]
+  (->> unit-ids
+       (mapcat #(unit-ops db %))
+       (reduce (fn [m o] (assoc m (str (:id o)) o)) {})
+       vals
+       (sort-by (comp str :ts))
+       vec))
+
 (defn unit-rows
-  "Every row unit `unit-id` changed, as `{:ops [...] :rows [...]}`, or nil
-  when no unit has that id. Each row is `{:table :id :before :after
+  "Every row unit `unit-id` changed (or the units of a collection of ids,
+  read as one, `units-ops`), as `{:ops [...] :rows [...]}`, or nil when no
+  unit has that id. Each row is `{:table :id :before :after
   :changed-since :changed-between}` with `:before` and `:after` the row's
   columns as the audit log folds them (with its `:tokens` and `:metadata`
   folds, ids as strings), absent where `changes-page` leaves its entity out.
@@ -535,7 +549,7 @@
   row that shows the same before and after is left out as it is there.
   `:document-id` keeps the rows of that document only."
   [db unit-id {:keys [document-id]}]
-  (let [ops (unit-ops db unit-id)]
+  (let [ops (if (coll? unit-id) (units-ops db unit-id) (unit-ops db unit-id))]
     (when (seq ops)
       (let [unit-ids (into #{} (map :id) ops)
             unit? #(contains? unit-ids %)
