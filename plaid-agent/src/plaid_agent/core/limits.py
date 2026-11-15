@@ -217,8 +217,8 @@ JOB_PRECEDENT_PER_FORM = 3
 #: The most characters the precedent block of one stretch may take.
 JOB_PRECEDENT_CHARS = 8000
 #: The most characters the evidence block of a piece of a job planned in
-#: sentences may take (igt/evidence.py): its forms' analyses, the forms
-#: nobody analysed and the lexicon entries spelled inside them.
+#: sentences may take: what the app shows of how its words were annotated
+#: before and of the entries spelled inside them.
 JOB_EVIDENCE_CHARS = 8000
 #: The shortest entry form the evidence block looks for inside a word.
 JOB_EVIDENCE_MIN_ENTRY = 1
