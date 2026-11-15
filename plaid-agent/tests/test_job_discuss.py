@@ -464,3 +464,15 @@ def test_the_totals_sum_the_documents_field_rows_when_core_s_report_holds_none()
         {'counts': {'changes': 3, 'fields': [{'field': 'Animacy', 'values': 2},
                                              {'field': 'Thematic role', 'values': 1}]}}]}
     assert jobread._totals(report) == 'changes 12, Animacy 2 values, Thematic role 10 values'
+
+
+def test_the_totals_say_what_is_still_blank_of_each_thing_the_job_fills():
+    """REV-DAY-P-4: read_job's totals carry the report's blanks per target,
+    summed from the documents when the totals hold none."""
+    blank = [{'target': 'segmentation', 'unit': 'word', 'left': 3, 'not_reached': 0},
+             {'target': 'Translation', 'unit': 'sentence', 'left': 1, 'not_reached': 2}]
+    report = {'totals': {'changes': 4, 'blank': blank}}
+    assert jobread._totals(report) == ('changes 4, segmentation left blank 3 words, Translation left blank 1 '
+                                       'sentence (2 sentences more in sentences not reached)')
+    by_documents = {'totals': {'changes': 4}, 'documents': [{'counts': {'blank': blank}}, {'counts': {'blank': blank}}]}
+    assert 'segmentation left blank 6 words' in jobread._totals(by_documents)

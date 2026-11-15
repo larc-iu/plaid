@@ -9,6 +9,7 @@ import {
   changeReasonText,
   durationText,
   skippedText,
+  stoppedPartway,
 } from './jobText.js';
 import SECTIONS from './jobSections.json';
 
@@ -36,10 +37,31 @@ const More = ({ n, noun }) =>
     </p>
   ) : null;
 
-// A count summed over the report's documents, for a count the report's
-// totals do not hold (the blanks of the sentences a job did not reach).
-const documentSum = (report, key) =>
-  (report.documents || []).reduce((n, d) => n + (d.counts?.[key] ?? 0), 0);
+// What is still blank of each thing the job fills (the plan's targets, by
+// name): the totals' rows, or, when the totals hold none, the documents' rows
+// summed by target in the order they come. Each `{target, unit, left,
+// notReached}`, `unit` a word or a sentence (what Left blank lists). A job
+// that fills nothing has none, and core's own report of a job no worker
+// finished counts none.
+const blankSums = (report) => {
+  if (report.totals?.blank) return report.totals.blank;
+  const sums = new Map();
+  (report.documents || []).forEach((d) =>
+    (d.counts?.blank || []).forEach((b) => {
+      const s = sums.get(b.target) ?? { target: b.target, unit: b.unit, left: 0, notReached: 0 };
+      s.left += b.left ?? 0;
+      s.notReached += b.notReached ?? 0;
+      sums.set(b.target, s);
+    }),
+  );
+  return [...sums.values()];
+};
+
+// A target's name at the start of a row: "segmentation" reads "Segmentation".
+const capital = (name) => (name ? name[0].toLocaleUpperCase() + name.slice(1) : name);
+
+// A count of what a target holds blank, in the unit Left blank lists.
+const unitCount = (n, unit) => `${n.toLocaleString()} ${plural(n, unit)}`;
 
 // The values the job set in each field: the totals' rows, or, when the totals
 // hold none (core's own report of a job no worker finished sums named counts
@@ -59,7 +81,9 @@ const fieldSums = (report) => {
 
 // One "label: value" row of the totals, left out when it is an optional row
 // with nothing in it. The values the job set in each field follow the words
-// it analyzed, one row per field ("Thematic role: 107 values").
+// it analyzed, one row per field ("Thematic role: 107 values"), then what is
+// still blank of each thing the job fills, in the worked sentences and in
+// those it did not reach ("Role left blank: 7 words"), so the rows sum.
 const totalRows = (report) => {
   const t = report.totals || {};
   const rows = [['Documents done', t.documentsDone]];
@@ -67,7 +91,15 @@ const totalRows = (report) => {
   const value = (n) => `${n.toLocaleString()} ${plural(n, 'value')}`;
   optional('Documents in use', t.documentsInUse);
   optional('Documents deleted', t.documentsGone);
-  optional('Documents not reached', t.documentsNotReached);
+  // A document the job did not finish reads "stopped partway" once it
+  // finished a sentence, by the report's own rows.
+  const unfinished = (report.documents || []).filter((d) => d.state === 'not-reached');
+  const partway = unfinished.filter(stoppedPartway).length;
+  optional(
+    'Documents not reached',
+    report.documents ? unfinished.length - partway : t.documentsNotReached,
+  );
+  optional('Documents stopped partway', partway);
   rows.push(['Sentences written in', t.sentences]);
   optional('Changes written', t.changes);
   optional('Deletions', t.deletions);
@@ -75,6 +107,15 @@ const totalRows = (report) => {
   optional('Translations replaced', t.refreshed);
   optional('Words analyzed', t.words);
   fieldSums(report).forEach((f) => f.values > 0 && rows.push([f.field, value(f.values)]));
+  blankSums(report).forEach((b) => {
+    rows.push([`${capital(b.target)} left blank`, unitCount(b.left ?? 0, b.unit)]);
+    if (b.notReached > 0) {
+      rows.push([
+        `${capital(b.target)} blank in sentences not reached`,
+        unitCount(b.notReached, b.unit),
+      ]);
+    }
+  });
   optional('Lexicon links made', t.links);
   optional('Entries created', t.entries);
   optional('Changes proposed', t.proposed);
@@ -86,11 +127,6 @@ const totalRows = (report) => {
   optional('Sentences skipped and not listed', t.skippedMore);
   optional('Changes not written, changed during the job', t.changed);
   optional('Changes left out, sentence written before an interruption', t.repeated);
-  optional('Blank words in sentences not reached', documentSum(report, 'notReached'));
-  optional(
-    'Blank translations in sentences not reached',
-    documentSum(report, 'notReachedTranslations'),
-  );
   return rows.map(([label, n]) => [label, typeof n === 'string' ? n : (n ?? 0).toLocaleString()]);
 };
 
@@ -134,17 +170,58 @@ const DocumentName = ({ projectId, d }) =>
     <span className="font-medium">{d.name ?? 'Deleted document'}</span>
   );
 
-// How many blank words and translations a document's sentences the job did
-// not reach hold: counted, never listed.
+// How much of each thing the job fills is blank in the sentences of a
+// document the job did not reach: counted, never listed.
+const notReachedParts = (counts) =>
+  (counts?.blank || [])
+    .filter((b) => b.notReached > 0)
+    .map((b) => `${b.target} ${unitCount(b.notReached, b.unit)}`);
+
 const NotReached = ({ counts }) => {
-  const parts = [
-    [counts?.notReached ?? 0, 'blank word'],
-    [counts?.notReachedTranslations ?? 0, 'blank translation'],
-  ]
-    .filter(([n]) => n > 0)
-    .map(([n, noun]) => `${n.toLocaleString()} ${plural(n, noun)}`);
+  const parts = notReachedParts(counts);
   if (!parts.length) return null;
-  return <p className="ml-4 text-muted-foreground">Sentences not reached: {parts.join(', ')}</p>;
+  return (
+    <p className="ml-4 text-muted-foreground">
+      Blank in sentences not reached: {parts.join(', ')}.
+    </p>
+  );
+};
+
+// What a refusal the job could not follow left in a document's sentences
+// (`refused`): each sentence, linked into the grid, with what was refused.
+// Never counted as left blank.
+const Refused = ({ projectId, d }) => {
+  const list = d.refused || [];
+  if (!list.length && !(d.refusedMore > 0)) return null;
+  return (
+    <>
+      <p className="ml-4 mt-1">Not done, refused:</p>
+      <ul className="ml-8 list-disc">
+        {list.map((r, i) => (
+          <li key={`${r.sentenceId ?? r.sentence} ${i}`}>
+            {d.name && r.sentenceId ? (
+              <Link
+                className="underline"
+                to={APP_ROUTES.sentence(projectId, d.documentId, r.sentenceId)}
+              >
+                {r.sentence}
+              </Link>
+            ) : (
+              r.sentence
+            )}{' '}
+            <span className="text-muted-foreground" dir="auto">
+              {r.what}
+            </span>
+          </li>
+        ))}
+      </ul>
+      {d.refusedMore > 0 && (
+        <p className="ml-8 text-muted-foreground">
+          And {d.refusedMore.toLocaleString()} more refused.
+        </p>
+      )}
+    </>
+  );
 };
 
 // The changes the job staged and did not apply (the apply rule: project
@@ -315,8 +392,9 @@ export const JobReport = ({ report, projectId, vocabs = [] }) => {
       d.left?.length ||
       d.leftMore > 0 ||
       d.leftUnread ||
-      d.counts?.notReached > 0 ||
-      d.counts?.notReachedTranslations > 0,
+      notReachedParts(d.counts).length > 0 ||
+      d.refused?.length ||
+      d.refusedMore > 0,
   );
   const harmonize = report.harmonize || {};
   const entries = report.entries || {};
@@ -429,15 +507,23 @@ export const JobReport = ({ report, projectId, vocabs = [] }) => {
                     ) : (
                       l.ref
                     )}{' '}
-                    <span className="text-muted-foreground">{l.form ?? 'Translation'}</span>
+                    {l.form !== null && l.form !== undefined && (
+                      <>
+                        <span dir="auto">{l.form}</span>{' '}
+                      </>
+                    )}
+                    <span className="text-muted-foreground">{(l.targets || []).join(', ')}</span>
                   </li>
                 ))}
               </ul>
               {d.leftMore > 0 && (
-                <p className="ml-4 text-muted-foreground">And {d.leftMore.toLocaleString()} more</p>
+                <p className="ml-4 text-muted-foreground">
+                  And {d.leftMore.toLocaleString()} more left blank.
+                </p>
               )}
               {d.leftUnread && <p className="ml-4 text-muted-foreground">Could not be read.</p>}
               <NotReached counts={d.counts} />
+              <Refused projectId={projectId} d={d} />
             </div>
           ))}
         </>

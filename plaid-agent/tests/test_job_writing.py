@@ -567,7 +567,8 @@ def test_a_translation_the_starter_clears_under_the_lock_is_not_listed_left_blan
         return out
     monkeypatch.setattr(igt_job, 'execute_plan', execute)
     assert runner(job).document('d1') == 'done'
-    assert [x for x in _left(job) if '.w' not in x] == [] and not _report_counts(job)['left_translations']
+    assert [x for x in _left(job) if '.w' not in x] == [] \
+        and all(b['left'] == 0 for b in _report_counts(job)['blank'] if b['unit'] == 'sentence')
 
 
 # --- a sentence's other values are not its translation (REV-JG-11) -------------------------
@@ -705,7 +706,7 @@ def test_a_sentence_the_jobs_write_deleted_is_not_left_blank(monkeypatch):
     blank = runner(job).left_blank(job).get('d1', {}).get('left', [])
     assert sorted({e['sentence_id'] for e in blank}) == ['d1-s1', 'd1-s2', 'd1-s3'], 's1 to s3, not s4'
     counts = _report_counts(job)
-    assert (counts['left'], counts['left_translations']) == (len(blank), 0)
+    assert counts['left'] == len(blank) and all(e['form'] is not None for e in blank)
 
 
 def test_a_sentence_deletion_that_never_landed_before_a_crash_is_made_on_the_resume(monkeypatch):

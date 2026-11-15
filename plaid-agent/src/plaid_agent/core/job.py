@@ -533,14 +533,15 @@ ROW_FINAL = ('done', 'in-use', 'gone')
 #: The keys of a row's ``counts`` (CONTRACT 5.2), each a whole number.
 #: ``analyzed`` counts the sentences the job wrote in, whatever it wrote
 #: (added by J-FIX-B2, any write since JH): the report's "sentences".
-#: ``proposed`` counts the staged changes the apply rule did not apply, and
-#: ``left_translations`` the empty translations left of ``left`` (added by JG).
-#: ``changes`` counts the changes a write applied and ``deletions`` those of
-#: them that took something away (added by JH). ``repeated`` counts the
-#: changes a piece staged again, after an interruption, in a sentence its
-#: own write had landed in, which are left out (added by JH-FIX).
-COUNT_KEYS = ('translations', 'refreshed', 'words', 'links', 'entries', 'left', 'left_translations', 'changed',
-              'proposed', 'analyzed', 'changes', 'deletions', 'repeated')
+#: ``proposed`` counts the staged changes the apply rule did not apply (added
+#: by JG). ``changes`` counts the changes a write applied and ``deletions``
+#: those of them that took something away (added by JH). ``repeated`` counts
+#: the changes a piece staged again, after an interruption, in a sentence its
+#: own write had landed in, which are left out (added by JH-FIX). A row holds
+#: nothing of what is left blank: the report counts that from the documents
+#: as they are at the end (BRIEF NW round 3, DF2).
+COUNT_KEYS = ('translations', 'refreshed', 'words', 'links', 'entries', 'changed', 'proposed', 'analyzed',
+              'changes', 'deletions', 'repeated')
 #: A row's count of the sentences skipped past the cap of its ``skipped``
 #: list (core's JOB_SKIPPED_PER_DOCUMENT), which are counted and not listed.
 SKIPPED_MORE = 'skipped_more'
@@ -707,6 +708,33 @@ def field_counts(by_name) -> List[Dict[str, Any]]:
     return [{'field': name, 'values': n} for name, n in sorted(by_name.items()) if n]
 
 
+def blank_sums(documents: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """What is still blank of each thing the job fills, summed over the
+    documents' ``counts.blank`` rows (an app's, ``{target, unit, left,
+    not_reached}``), by target in the order they first come: the report's
+    ``totals.blank``. A list by name, never a map keyed by a name."""
+    out: Dict[str, Dict[str, Any]] = {}
+    for d in documents:
+        for b in (d.get('counts') or {}).get('blank') or []:
+            row = out.setdefault(b.get('target'), {'target': b.get('target'), 'unit': b.get('unit'), 'left': 0,
+                                                   'not_reached': 0})
+            row['left'] += b.get('left') or 0
+            row['not_reached'] += b.get('not_reached') or 0
+    return list(out.values())
+
+
+def blank_text(rows) -> str:
+    """``counts.blank`` or ``totals.blank`` as a line says it: "segmentation
+    left blank 6 words (4 more in sentences not reached), Translation left
+    blank 0 sentences"."""
+    def n(k, unit):
+        return f'{k:,} {unit}{"" if k == 1 else "s"}'
+    return ', '.join(f'{b.get("target")} left blank {n(b.get("left") or 0, b.get("unit") or "place")}'
+                     + (f' ({n(b["not_reached"], b.get("unit") or "place")} more in sentences not reached)'
+                        if b.get('not_reached') else '')
+                     for b in rows or [])
+
+
 def report_bytes(value: Any) -> int:
     """The size of ``value`` as core measures a report: its JSON, every
     character written as itself (no escape for a letter outside ASCII), in
@@ -820,7 +848,8 @@ def build_report(job: Job, state: str, reason: Optional[str], documents: List[Di
     totals = {'documents_done': 0, 'documents_in_use': 0, 'documents_gone': 0, 'documents_not_reached': 0,
               'sentences': 0, 'translations': 0, 'refreshed': 0, 'words': 0, 'links': 0, 'entries': 0,
               'skipped_too_long': 0, 'skipped_failed': 0, 'skipped_changed': 0, 'skipped_interrupted': 0,
-              'skipped_no_answer': 0, 'skipped_more': 0, 'changed': 0, 'proposed': 0, 'changes': 0, 'deletions': 0, 'repeated': 0}
+              'skipped_no_answer': 0, 'skipped_more': 0, 'changed': 0, 'proposed': 0, 'changes': 0, 'deletions': 0,
+              'repeated': 0}
     fields = Counter()
     for d in documents:
         key = {'done': 'documents_done', 'in-use': 'documents_in_use', 'gone': 'documents_gone'}.get(
@@ -841,6 +870,9 @@ def build_report(job: Job, state: str, reason: Optional[str], documents: List[Di
             fields[f.get('field')] += f.get('values') or 0
     if fields:
         totals['fields'] = field_counts(fields)
+    blank = blank_sums(documents)
+    if blank:
+        totals['blank'] = blank
     changed, changed_more = cut(harmonize.get('changed') or [])
     left, left_more = cut(harmonize.get('left') or [])
     lists = {}

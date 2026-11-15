@@ -184,8 +184,8 @@
 /**
  * A document's row of a job, in the job's order. `name` is the document's
  * name now, null once it is deleted. `counts` holds `translations`,
- * `refreshed`, `words`, `links`, `entries`, `left`, `leftTranslations`,
- * `changed`, `proposed`, `analyzed`, `changes`, `deletions` and `repeated`.
+ * `refreshed`, `words`, `links`, `entries`, `changed`, `proposed`,
+ * `analyzed`, `changes`, `deletions` and `repeated`.
  * `lastSentence` is the cursor, the id of the last sentence the
  * job finished.
  * @typedef {object} JobDocument
@@ -218,15 +218,17 @@
  */
 
 /**
- * A target a job left blank because it could not decide: a word (`ref`
- * `s3.w2` as the job read it, `begin` its offset, `form` its spelling) or a
- * sentence's translation (`ref` `s3`, `begin` and `form` null), in the
- * sentence `sentenceId`.
+ * A place still blank of what a job fills, in a sentence it worked: a word
+ * (`ref` `s3.w2` as the job read it, `begin` its offset, `form` its
+ * spelling) or a sentence (`ref` `s3`, `begin` and `form` null), in the
+ * sentence `sentenceId`. `targets` names what of the job's plan it is blank
+ * for (segmentation, or a field's name).
  * @typedef {object} JobLeft
  * @property {string} ref
  * @property {string} sentenceId
  * @property {number | null} begin
  * @property {string | null} form
+ * @property {string[]} targets
  */
 
 /**
@@ -272,8 +274,11 @@
  * @property {object[]} [tables] tables the job's code made, with `tablesMore`
  *   A document's `left` and `leftMore`: the targets the job left blank (absent from a report core writes).
  *   A document's `leftUnread`: true when its blanks could not be read for the report (then no `left`, and its
- *   `counts` hold no `left` or `leftTranslations`). Its `counts.notReached` and `counts.notReachedTranslations`:
- *   the blank words and translations of its sentences the job did not reach, counted and never listed.
+ *   `counts` hold no `left`, `notReached` or `blank`). Its `counts.blank`: per thing the job fills,
+ *   `{target, unit, left, notReached}`, how many places (a word or a sentence, `unit`) are still blank in the
+ *   sentences it worked and in those it did not reach, which are counted and never listed (`totals.blank` sums
+ *   them). Its `counts.left` and `counts.notReached`: the words among them. A document's `refused` and
+ *   `refusedMore`: the sentences a refusal the job could not follow left, `{sentence, sentenceId, what}`.
  *   A report the worker writes is kept under core's size cap: rows that do not fit are cut from the end of its
  *   lists, tables first, and counted in the list's `...More`.
  */

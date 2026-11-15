@@ -139,6 +139,23 @@ def test_a_job_on_any_field_is_told_offered_written_and_reported_by_its_targets(
     names = {e['ref']: e['targets'] for e in doc['left']}
     if job_on != 'gloss':
         assert set(n for ts in names.values() for n in ts) == {tg.of_ids(client_project(client), [job_on])[0].name}
+    # What is still blank, per target of the plan and only those: a job that
+    # fills no translation says nothing of translations (REV-DAY-P-4, S-9).
+    assert doc['counts']['blank'] == BLANK[job_on], doc['counts']
+    assert finished['report']['totals']['blank'] == BLANK[job_on]
+    assert 'left_translations' not in doc['counts'] and 'not_reached_translations' not in doc['counts']
+    if job_on == NOTE:
+        assert 'left' not in doc['counts'], 'a plan that fills no word counts no word left'
+    else:
+        assert doc['counts']['left'] == len(left)
+
+
+def _blank(target, left, unit='word'):
+    return {'target': target, 'unit': unit, 'left': left, 'not_reached': 0}
+
+
+BLANK = {ROLE: [_blank('Role', 2)], MPOS: [_blank('Morph POS', 4)], NOTE: [_blank('Note', 1, 'sentence')],
+         'gloss': [_blank('segmentation', 2), _blank('Morph Gloss', 3)]}
 
 
 def client_project(client):
@@ -156,7 +173,9 @@ def test_a_plan_that_fills_nothing_tells_no_piece_anything_is_empty(monkeypatch)
     assert 'Empty in' not in asked and 'Nothing empty' not in asked and 'How these forms' not in asked
     assert sorted(t['function']['name'] for t in model.calls[0]['kwargs']['tools']) == [
         'analyses_of', 'read_lexicon', 'set_field']
-    assert finished['report']['documents'][0]['left'] == []
+    doc = finished['report']['documents'][0]
+    assert doc['left'] == [] and 'blank' not in doc['counts'] and 'left' not in doc['counts']
+    assert 'blank' not in finished['report']['totals']
 
 
 def test_the_evidence_of_a_word_field_is_its_values_on_the_same_form(monkeypatch):

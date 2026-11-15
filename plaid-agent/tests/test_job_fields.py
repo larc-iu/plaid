@@ -155,7 +155,7 @@ def test_a_job_fills_a_field_on_every_word_of_a_fully_analysed_document(monkeypa
     assert 'changes 9, documents done 1, sentences 3, Thematic role 9 values' in told, told
     assert '- "Story": done, analyzed 3, changes 9, Thematic role 9 values' in told, told
     from plaid_agent.igt.jobread import _totals
-    assert _totals(finished['report']).endswith('Thematic role 9 values')
+    assert _totals(finished['report']).endswith('Thematic role 9 values, Thematic role left blank 0 words')
 
 
 def test_a_default_plan_does_not_reach_a_fully_analysed_document(monkeypatch):

@@ -49,6 +49,16 @@ export const planText = (plan) => {
   return plan.editsText ? `${text}. Text edits allowed.` : `${text}.`;
 };
 
+// A document of the job the worker did not finish: never reached, or
+// stopped partway once it finished a sentence (REV-DAY-P-13).
+export const stoppedPartway = (d) => d.state === 'not-reached' && (d.done ?? 0) > 0;
+
+// How many places a document's Left blank lists (each a word or a
+// sentence), those cut from the list included, or null when the report holds
+// no list for it (a document that could not be read, core's own report).
+export const leftCount = (d) =>
+  d?.left && !d.leftUnread ? d.left.length + (d.leftMore ?? 0) : null;
+
 const FAILURE_TEXT = {
   budget: 'over budget',
   context: 'prompt too long',

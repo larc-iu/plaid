@@ -40,7 +40,9 @@ def _totals(client):
 
 
 def _nonzero(totals):
-    return {k: v for k, v in totals.items() if v}
+    """The totals that count something (what is left blank, per target,
+    is a list of its own, ``blank``)."""
+    return {k: v for k, v in totals.items() if v and isinstance(v, int)}
 
 
 def test_a_job_whose_every_call_fails_analysed_no_sentence(monkeypatch):

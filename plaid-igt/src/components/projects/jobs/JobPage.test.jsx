@@ -656,7 +656,7 @@ describe('the job page', () => {
     await v.unmount();
   });
 
-  it('lists the targets the job left blank, each linked into the grid, with how many more', async () => {
+  it('lists the targets the job left blank, each linked into the grid, with what is blank there', async () => {
     const report = {
       ...REPORT,
       documents: [
@@ -665,8 +665,14 @@ describe('the job page', () => {
           name: 'Story A',
           skipped: [],
           left: [
-            { ref: 's3', sentenceId: 'sen3', begin: null, form: null },
-            { ref: 's3.w2', sentenceId: 'sen3', begin: 14, form: 'kata' },
+            { ref: 's3', sentenceId: 'sen3', begin: null, form: null, targets: ['Note'] },
+            {
+              ref: 's3.w2',
+              sentenceId: 'sen3',
+              begin: 14,
+              form: 'kata',
+              targets: ['segmentation', 'Morph Gloss'],
+            },
           ],
           leftMore: 4,
         },
@@ -674,7 +680,7 @@ describe('the job page', () => {
           documentId: 'd2',
           name: null,
           skipped: [],
-          left: [{ ref: 's1.w1', sentenceId: 'sen1', begin: 0, form: 'ra' }],
+          left: [{ ref: 's1.w1', sentenceId: 'sen1', begin: 0, form: 'ra', targets: ['Role'] }],
           leftMore: 0,
         },
         { documentId: 'd3', name: 'Story C', skipped: [], left: [], leftMore: 0 },
@@ -685,9 +691,11 @@ describe('the job page', () => {
     const section = v.container.querySelector('section[aria-label="Report"]');
     expect(all(section, 'h3').map((h) => h.textContent)).toContain('Left blank');
     const t = text(section);
-    expect(t).toContain('s3 Translation');
-    expect(t).toContain('s3.w2 kata');
-    expect(t).toContain('And 4 more');
+    // A sentence field by its name (never "Translation" for any of them), a
+    // word by its form and the targets it is blank for.
+    expect(t).toContain('s3 Note');
+    expect(t).toContain('s3.w2 kata segmentation, Morph Gloss');
+    expect(t).toContain('And 4 more left blank.');
     expect(byText(section, 'a', 's3.w2').getAttribute('href')).toBe(
       '/projects/p1/documents/d1?tab=analyze&focusSentence=sen3&focusWord=14',
     );
@@ -696,13 +704,14 @@ describe('the job page', () => {
     );
     // A deleted document's are named and not linked, and one with none is not listed.
     expect(t).toContain('Deleted document');
-    expect(t).toContain('s1.w1 ra');
+    expect(t).toContain('s1.w1 ra Role');
     expect(all(section, 'a').find((a) => a.textContent === 's1.w1')).toBeUndefined();
     expect(t).not.toContain('Story C');
     await v.unmount();
   });
 
   it('says where a document could not be read for its blanks, and counts the sentences not reached', async () => {
+    const blank = (target, unit, left, notReached) => ({ target, unit, left, notReached });
     const report = {
       ...REPORT,
       documents: [
@@ -711,27 +720,44 @@ describe('the job page', () => {
           name: 'Story A',
           skipped: [],
           counts: { words: 4 },
-          left: [],
-          leftMore: 0,
           leftUnread: true,
         },
         {
           documentId: 'd2',
           name: 'Story B',
           skipped: [],
-          counts: { words: 2, left: 1, notReached: 12, notReachedTranslations: 1 },
-          left: [{ ref: 's1.w3', sentenceId: 'sen1', begin: 9, form: 'kata' }],
+          counts: {
+            words: 2,
+            left: 1,
+            notReached: 12,
+            blank: [blank('segmentation', 'word', 1, 12), blank('Translation', 'sentence', 0, 1)],
+          },
+          left: [
+            { ref: 's1.w3', sentenceId: 'sen1', begin: 9, form: 'kata', targets: ['segmentation'] },
+          ],
           leftMore: 0,
         },
         {
           documentId: 'd3',
           name: 'Story C',
           skipped: [],
-          counts: { notReached: 1 },
+          counts: {
+            notReached: 1,
+            blank: [blank('segmentation', 'word', 0, 1), blank('Translation', 'sentence', 0, 0)],
+          },
           left: [],
           leftMore: 0,
         },
-        { documentId: 'd4', name: 'Story D', skipped: [], counts: { words: 3 }, left: [] },
+        {
+          documentId: 'd4',
+          name: 'Story D',
+          skipped: [],
+          counts: {
+            words: 3,
+            blank: [blank('segmentation', 'word', 0, 0), blank('Translation', 'sentence', 0, 0)],
+          },
+          left: [],
+        },
       ],
     };
     const job = jobOf({ state: 'cancelled', finishedAt: '2026-11-12T11:00:00Z', report });
@@ -740,16 +766,141 @@ describe('the job page', () => {
     expect(all(section, 'h3').map((h) => h.textContent)).toContain('Left blank');
     const t = text(section);
     expect(t).toContain('Story ACould not be read.');
-    expect(t).toContain('s1.w3 kata');
-    expect(t).toContain('Sentences not reached: 12 blank words, 1 blank translation');
-    expect(t).toContain('Story CSentences not reached: 1 blank word');
-    expect(t).not.toContain('Story D');
-    // The totals sum the documents' counts.
-    const totals = Object.fromEntries(
-      all(section, 'dt').map((dt) => [dt.textContent, dt.nextElementSibling.textContent]),
+    expect(t).toContain('s1.w3 kata segmentation');
+    expect(t).toContain(
+      'Blank in sentences not reached: segmentation 12 words, Translation 1 sentence.',
     );
-    expect(totals['Blank words in sentences not reached']).toBe('13');
-    expect(totals['Blank translations in sentences not reached']).toBe('1');
+    expect(t).toContain('Story CBlank in sentences not reached: segmentation 1 word.');
+    expect(t).not.toContain('Story D');
+    // The totals sum the documents' rows, per target, a row each even at
+    // nothing left, so they add up on screen.
+    const sums = totals(section);
+    expect(sums['Segmentation left blank']).toBe('1 word');
+    expect(sums['Segmentation blank in sentences not reached']).toBe('13 words');
+    expect(sums['Translation left blank']).toBe('0 sentences');
+    expect(sums['Translation blank in sentences not reached']).toBe('1 sentence');
+    await v.unmount();
+  });
+
+  it('takes what is left blank from the totals when they hold it, and says it beside each document', async () => {
+    const report = {
+      ...REPORT,
+      totals: {
+        ...REPORT.totals,
+        blank: [{ target: 'Role', unit: 'word', left: 7, notReached: 0 }],
+      },
+      documents: [
+        {
+          documentId: 'd1',
+          name: 'Story A',
+          skipped: [],
+          counts: { left: 7, blank: [{ target: 'Role', unit: 'word', left: 7, notReached: 0 }] },
+          left: [{ ref: 's1.w1', sentenceId: 'sen1', begin: 0, form: 'ka', targets: ['Role'] }],
+          leftMore: 6,
+        },
+      ],
+    };
+    const job = jobOf({
+      state: 'done',
+      finishedAt: '2026-11-12T11:00:00Z',
+      documents: [{ ...jobOf().documents[0], state: 'done', done: 40, targets: 40 }],
+      report,
+    });
+    const v = await mount(clientOf(job));
+    const section = v.container.querySelector('section[aria-label="Report"]');
+    expect(totals(section)['Role left blank']).toBe('7 words');
+    expect(totals(section)).not.toHaveProperty('Role blank in sentences not reached');
+    // The documents table: "40 of 40" with how many places are left blank.
+    const row = v.container.querySelector('[data-testid="job-documents"] tbody tr, table tbody tr');
+    expect(text(row)).toContain('40 of 40');
+    expect(text(row)).toContain('7');
+    const headers = all(v.container, 'th').map((h) => h.textContent);
+    expect(headers).toContain('Left blank');
+    await v.unmount();
+  });
+
+  it('lists under Left blank what a refusal the job could not follow left, each sentence linked', async () => {
+    const report = {
+      ...REPORT,
+      documents: [
+        {
+          documentId: 'd1',
+          name: 'Story A',
+          skipped: [],
+          left: [],
+          leftMore: 0,
+          refused: [
+            {
+              sentence: 's1',
+              sentenceId: 'sen1',
+              what: 's1.w2: s1 is retyped in this plan, so its words cannot be analysed',
+            },
+          ],
+          refusedMore: 2,
+        },
+      ],
+    };
+    const job = jobOf({ state: 'done', finishedAt: '2026-11-12T11:00:00Z', report });
+    const v = await mount(clientOf(job));
+    const section = v.container.querySelector('section[aria-label="Report"]');
+    expect(all(section, 'h3').map((h) => h.textContent)).toContain('Left blank');
+    const t = text(section);
+    expect(t).toContain('Not done, refused:');
+    expect(t).toContain('s1 s1.w2: s1 is retyped in this plan, so its words cannot be analysed');
+    expect(t).toContain('And 2 more refused.');
+    expect(byText(section, 'a', 's1').getAttribute('href')).toBe(
+      '/projects/p1/documents/d1?tab=analyze&focusSentence=sen1',
+    );
+    await v.unmount();
+  });
+
+  it('says a document the job did not finish stopped partway once it finished a sentence', async () => {
+    const report = {
+      ...REPORT,
+      totals: { ...REPORT.totals, documentsDone: 0, documentsGone: 0, documentsNotReached: 2 },
+      documents: [
+        {
+          documentId: 'd1',
+          name: 'Story A',
+          state: 'not-reached',
+          done: 6,
+          targets: 8,
+          skipped: [],
+        },
+        {
+          documentId: 'd2',
+          name: 'Story B',
+          state: 'not-reached',
+          done: 0,
+          targets: 3,
+          skipped: [],
+        },
+      ],
+    };
+    const job = jobOf({
+      state: 'cancelled',
+      finishedAt: '2026-11-12T11:00:00Z',
+      documents: [
+        { ...jobOf().documents[0], state: 'not-reached', done: 6, targets: 8 },
+        {
+          ...jobOf().documents[0],
+          documentId: 'd2',
+          name: 'Story B',
+          state: 'not-reached',
+          done: 0,
+          targets: 3,
+        },
+      ],
+      report,
+    });
+    const v = await mount(clientOf(job));
+    const section = v.container.querySelector('section[aria-label="Report"]');
+    const sums = totals(section);
+    expect(sums['Documents stopped partway']).toBe('1');
+    expect(sums['Documents not reached']).toBe('1');
+    const rows = all(v.container, 'tbody tr').map((r) => text(r));
+    expect(rows.find((r) => r.includes('Story A'))).toContain('Stopped partway');
+    expect(rows.find((r) => r.includes('Story B'))).toContain('Not reached');
     await v.unmount();
   });
 

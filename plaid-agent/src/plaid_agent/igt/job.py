@@ -44,7 +44,7 @@ from ..core.garble import seed
 from ..core.guidelines import manual_chars
 from ..core.job import (BUDGET, ROW_FINAL, SKIPPED_MORE, JobStopped, Pace, StretchFailed, canonical, analysis_key,
                         field_counts,
-                        empty_counts, failure_kind, halve, harmonized, not_answering)
+                        blank_text, empty_counts, failure_kind, halve, harmonized, not_answering)
 from ..core.limits import (JOB_ANALYSIS_MAX_CHARS, JOB_CHANGE_VALUE_CHARS, JOB_CHANGES_MAX, JOB_CONTEXT_SENTENCES,
                            JOB_DOCUMENT_PIECE_MAX_CHARS, JOB_NOTE_MAX_CHARS, JOB_SUMMARY_MAX_CHARS,
                            JOB_SUMMARY_NOTES_CHARS, JOB_SUMMARY_TABLE_CHARS, JOB_TABLES_MAX, JOB_TABLES_PER_PIECE,
@@ -601,6 +601,15 @@ def fields_text(fields) -> str:
     return ', '.join(f'{f.get("field")} {f.get("values"):,} values' for f in fields or [])
 
 
+def state_text(d: Dict[str, Any]) -> str:
+    """A document's state as the final context reads it: one the job did
+    not finish is "stopped partway, 6 of 8 sentences done" once it finished a
+    sentence, else "not reached" (REV-DAY-P-13)."""
+    if d.get('state') == 'not-reached' and (d.get('done') or 0) > 0:
+        return f'stopped partway, {d.get("done"):,} of {d.get("targets") or 0:,} sentences done'
+    return str(d.get('state'))
+
+
 def summary_message(report: Dict[str, Any]) -> str:
     """What the final context is handed: the report's sections as text, each
     bounded (JOB_SUMMARY_NOTES_CHARS for the notes, JOB_SUMMARY_TABLE_CHARS
@@ -611,24 +620,30 @@ def summary_message(report: Dict[str, Any]) -> str:
     targets = sum(d.get('targets') or 0 for d in report.get('documents') or [])
     wrote = (f'This job wrote {_n_text(totals.get("changes") or 0, "change")} in {totals.get("sentences") or 0:,} '
              f'of {_n_text(targets, "sentence")}')
-    lines = [wrote + (f': {fields_text(totals["fields"])}.' if totals.get('fields') else '.'), '',
-             'The job\'s instructions:', report.get('instructions') or '', '',
-             'The report\'s totals (the worker counted these):',
-             ', '.join([f'{k.replace("_", " ")} {v:,}' for k, v in sorted(totals.items()) if v and isinstance(v, int)]
-                       + ([fields_text(totals['fields'])] if totals.get('fields') else [])), '']
+    lines = [wrote + (f': {fields_text(totals["fields"])}.' if totals.get('fields') else '.')]
+    if totals.get('blank'):
+        # What is still blank of what it fills, beside what it wrote: never
+        # a count of work done alone (REV-DAY-P-4, S-9).
+        lines.append(f'Of what it fills: {blank_text(totals["blank"])}.')
+    lines += ['', 'The job\'s instructions:', report.get('instructions') or '', '',
+              'The report\'s totals (the worker counted these):',
+              ', '.join([f'{k.replace("_", " ")} {v:,}' for k, v in sorted(totals.items()) if v and isinstance(v, int)]
+                        + ([fields_text(totals['fields'])] if totals.get('fields') else [])), '']
     plan = report.get('plan') or {}
     if plan:
         lines += [f'How the work was cut: {plan.get("pieces")}.', '']
     lines.append('Documents:')
     for d in report.get('documents') or []:
         c = d.get('counts') or {}
-        lines.append(f'- "{d.get("name")}": {d.get("state")}, '
+        lines.append(f'- "{d.get("name")}": {state_text(d)}, '
                      + ', '.join([f'{k} {v:,}' for k, v in sorted(c.items()) if v and isinstance(v, int)]
-                                 + ([fields_text(c['fields'])] if c.get('fields') else []))
+                                 + ([fields_text(c['fields'])] if c.get('fields') else [])
+                                 + ([blank_text(c['blank'])] if c.get('blank') else []))
                      + ('. Left blank could not be read: what is blank there is not known.'
                         if d.get('left_unread') else ''))
-    lines.append('In the documents, "left" and "left_translations" count the words and translations still blank '
-                 'at the end (the report\'s Left blank), "not_reached" those in sentences the job did not reach.')
+    lines.append('In the documents, "left" counts the words still blank at the end (the report\'s Left blank), '
+                 '"not_reached" those in sentences the job did not reach, and "left blank" what is still blank of '
+                 'each thing the job fills.')
     proposed = len(report.get('proposed') or []) + (report.get('proposed_more') or 0)
     lines += ['', f'Changes proposed for a person to approve: {proposed:,}.', '', 'Each piece\'s note:']
     size, left = 0, 0
@@ -3390,10 +3405,10 @@ class IgtRunner:
         ``words`` each word analysed once, ``done`` each sentence finished
         once (written, or skipped). ``targets`` grows
         with a sentence that became a target after the checks, so done never
-        passes it. No ``left`` or ``left_translations``: the report counts
-        them from the document (:meth:`left_blank`), and a row never says
-        nothing is left where nothing was counted (BRIEF NW round 3)."""
-        counts = {k: n for k, n in empty_counts().items() if k not in ('left', 'left_translations')}
+        passes it. Nothing of what is left blank: the report counts it from
+        the document (:meth:`left_blank`), and a row never says nothing is
+        left where nothing was counted (BRIEF NW round 3)."""
+        counts = empty_counts()
         analyzed, words, fields = set(), set(), Counter()
         rows, landed = self.view(document_id)
         for r in rows:
@@ -3780,8 +3795,7 @@ class IgtRunner:
         rows = [job.rows.get(d) or {} for d in job.order]
         # "Left blank" lists what is empty of what the plan fills (its
         # targets, :meth:`left_blank`): nothing for a plan that fills
-        # nothing. ``left`` counts the words, ``left_translations`` the
-        # sentence fields (each entry names its targets).
+        # nothing. ``counts.blank`` counts it per target.
         for d, row in zip(job.order, rows):
             state = row.get('state')
             counts = row.get('counts') or empty_counts()
@@ -3792,22 +3806,26 @@ class IgtRunner:
                 tally = self.tally(d, row.get('skipped'))
                 counts, done, targets = {**counts, **tally['counts']}, tally['done'], tally.get('targets', targets)
             # What is blank in the sentences the job worked, read from the
-            # document at the end (BRIEF NW), cut as every report list is.
-            # ``left`` and ``left_translations`` count the whole list. A
-            # document that could not be read has neither count, never 0,
-            # and says so (``left_unread``, REV-LNW-2).
-            # The words of the sentences it did not reach are counted apart
-            # (``not_reached``, ``not_reached_translations``), never listed.
+            # document at the end (BRIEF NW), cut as every report list is,
+            # and per target of the plan (``blank``: ``{target, unit, left,
+            # not_reached}``, the whole list counted). The places of the
+            # sentences it did not reach are counted apart, never listed.
+            # ``left`` and ``not_reached`` count the words among them, for a
+            # plan that fills something at word or morpheme level. A
+            # document that could not be read has none of these, never 0,
+            # and says so (``left_unread``, REV-LNW-2). One the job never
+            # reached has none either: its state says so.
             unread = d in blank and blank[d] is None
-            listed = (blank.get(d) or {}).get('left') or []
-            unreached = (blank.get(d) or {}).get('not_reached') or []
-            counts = {k: v for k, v in counts.items() if k not in ('left', 'left_translations')}
-            if not unread:
-                counts.update({'left': sum(1 for e in listed if e.get('form') is not None),
-                               'left_translations': sum(1 for e in listed if e.get('form') is None)})
-                if unreached:
-                    counts.update({'not_reached': sum(1 for e in unreached if e.get('form') is not None),
-                                   'not_reached_translations': sum(1 for e in unreached if e.get('form') is None)})
+            found = blank.get(d) or {}
+            listed = found.get('left') or []
+            unreached = found.get('not_reached') or []
+            counts = {k: v for k, v in counts.items() if k not in ('left', 'not_reached', 'blank')}
+            if found.get('blank'):
+                counts['blank'] = found['blank']
+                if any(b['unit'] == 'word' for b in found['blank']):
+                    counts['left'] = sum(1 for e in listed if e.get('form') is not None)
+                    if unreached:
+                        counts['not_reached'] = sum(1 for e in unreached if e.get('form') is not None)
             left, more = core_job.cut(listed)
             # What a refusal the job could not follow left (REV-DAY-SURFACE
             # point 2): listed, never counted as left blank.
@@ -3993,7 +4011,9 @@ class IgtRunner:
         :func:`sentence_targets`), as ``{ref, sentence_id, begin, form,
         targets}`` in document order (``begin`` and ``form`` None for a
         sentence field, ``targets`` the names of the targets it is empty
-        for), in two lists:
+        for), in two lists, and ``blank``, per target of the plan,
+        ``{target, unit, left, not_reached}``, how many places of each list
+        are empty for it:
 
         * ``left``: in the sentences the job worked (a landed write of their
           own piece finished them, :meth:`finished`, wherever a split or a
@@ -4033,22 +4053,35 @@ class IgtRunner:
                 logger.warning('Job %s: %s could not be read for the words left blank: %s', job.id, d, e)
                 out[d] = None
                 continue
-            lists = out.setdefault(d, {'left': [], 'not_reached': []})
+            lists = out.setdefault(d, {'left': [], 'not_reached': [], 'blank': []})
+            tally = {t.id: {'left': 0, 'not_reached': 0} for t in fill}
             for s in doc.sentences:
                 if s.id in worked or wrote_in(s, known):
-                    into = lists['left']
+                    where = 'left'
                 elif s.id in skipped:
                     continue
                 else:
-                    into = lists['not_reached']
+                    where = 'not_reached'
                 # THE rule over the plan's targets (:func:`sentence_targets`),
                 # each entry naming the targets it is empty for.
                 words, fields = sentence_targets(s, project, job.id, written=written, targets=fill)
-                into += [{'ref': f's{s.index}.w{w.index}', 'sentence_id': s.id, 'begin': w.begin,
-                          'form': w.surface, 'targets': [t.name for t in tg.empty_in_word(w, fill)]}
-                         for w in words]
-                into += [{'ref': f's{s.index}', 'sentence_id': s.id, 'begin': None, 'form': None,
-                          'targets': [t.name]} for t in fields]
+                for w in words:
+                    empty = tg.empty_in_word(w, fill)
+                    lists[where].append({'ref': f's{s.index}.w{w.index}', 'sentence_id': s.id, 'begin': w.begin,
+                                         'form': w.surface, 'targets': [t.name for t in empty]})
+                    for t in empty:
+                        tally[t.id][where] += 1
+                for t in fields:
+                    lists[where].append({'ref': f's{s.index}', 'sentence_id': s.id, 'begin': None, 'form': None,
+                                         'targets': [t.name]})
+                    tally[t.id][where] += 1
+            # Per target of the plan, a row even at nothing left, counted by
+            # the places Left blank lists (a word for a word or morpheme
+            # level target, a sentence for a sentence level one). A target
+            # the plan does not fill has no row, so nothing claims "0 left"
+            # of it (REV-DAY-P-4, S-9).
+            lists['blank'] = [{'target': t.name, 'unit': 'sentence' if t.scope == 'Sentence' else 'word',
+                               **tally[t.id]} for t in fill]
         return out
 
 def runner_factory(cfg: ModelConfig, trace_dir: Optional[str] = None, count=None):

@@ -174,6 +174,6 @@ def test_a_sentence_recorded_after_a_crash_counts_and_lists_what_was_left_blank(
     assert run_job(job, runner(job))['state'] == 'done'
     assert not model.calls, 'nothing is asked again'
     (doc,) = _report(client)['documents']
-    assert doc['counts']['left'] == 3 and doc['counts']['left_translations'] == 0 and doc['counts']['words'] == 2
+    assert doc['counts']['left'] == 3 and doc['counts']['words'] == 2
     # It wrote no translation, so the two empty ones are neither listed nor counted.
     assert [x['ref'] for x in doc['left']] == ['s1.w2', 's2.w2', 's2.w3']

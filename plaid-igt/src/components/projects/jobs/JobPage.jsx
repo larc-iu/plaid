@@ -38,7 +38,14 @@ import {
 } from '@ui/domain/jobs.js';
 import { JobReport } from './JobReport.jsx';
 import { JobHistoryLinks } from './JobHistoryLinks.jsx';
-import { durationText, jobName, jobsTabPath, planText } from './jobText.js';
+import {
+  durationText,
+  jobName,
+  jobsTabPath,
+  leftCount,
+  planText,
+  stoppedPartway,
+} from './jobText.js';
 
 /**
  * A job's own page, `/projects/:projectId/jobs/:jobId`: its state, each of its
@@ -371,9 +378,12 @@ const JobFacts = ({ job, readAt }) => {
 
 const count = (row, key) => (row.counts?.[key] ?? 0).toLocaleString();
 
-// A row per document of the job, in the job's order.
+// A row per document of the job, in the job's order. Once the job has a
+// report, how many places each document's Left blank lists stands beside its
+// sentences, so "8 of 8" never reads as nothing left (REV-DAY-P-4).
 const JobDocuments = ({ job, projectId }) => {
   const leftOut = new Set((job.report?.plan?.leftOut || []).map((d) => d.documentId));
+  const reported = new Map((job.report?.documents || []).map((d) => [d.documentId, d]));
   const columns = [
     {
       key: 'name',
@@ -393,7 +403,9 @@ const JobDocuments = ({ job, projectId }) => {
       render: (d) =>
         leftOut.has(d.documentId)
           ? 'Left out by the plan'
-          : (jobDocumentStateText(d.state) ?? d.state),
+          : stoppedPartway(d)
+            ? 'Stopped partway'
+            : (jobDocumentStateText(d.state) ?? d.state),
     },
     {
       key: 'done',
@@ -403,6 +415,14 @@ const JobDocuments = ({ job, projectId }) => {
         d.targets === null || d.targets === undefined ? '' : `${d.done ?? 0} of ${d.targets}`,
     },
   ];
+  if ([...reported.values()].some((d) => leftCount(d) !== null)) {
+    columns.push({
+      key: 'left',
+      label: 'Left blank',
+      align: 'right',
+      render: (d) => leftCount(reported.get(d.documentId))?.toLocaleString() ?? '',
+    });
+  }
   // A job has no task types: a column shows only once a document holds a
   // count of its kind.
   const rows = job.documents || [];

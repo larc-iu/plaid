@@ -354,5 +354,24 @@ def test_the_final_context_reads_whole_notes_and_what_left_counts():
               'notes': [{'name': 'Story', 'sentences': 's1 to s3', 'note': 'Fully staged. No translation asked.'}]}
     text = summary_message(report)
     assert '- Story s1 to s3: Fully staged. No translation asked.' in text
-    assert ('"left" and "left_translations" count the words and translations still blank at the end '
-            '(the report\'s Left blank), "not_reached" those in sentences the job did not reach.') in text, text
+    assert ('"left" counts the words still blank at the end (the report\'s Left blank), "not_reached" those in '
+            'sentences the job did not reach, and "left blank" what is still blank of each thing the job fills.') \
+        in text, text
+
+
+def test_the_final_context_hears_what_is_still_blank_beside_what_was_written():
+    """REV-DAY-P-4, S-9: a Role job that wrote 5 of 12 values is told, after
+    what it wrote, that 7 words are still blank in Role, per document too,
+    and a document it did not finish reads stopped partway (REV-DAY-P-13)."""
+    from plaid_agent.igt.job import summary_message
+    blank = [{'target': 'Role', 'unit': 'word', 'left': 7, 'not_reached': 2}]
+    report = {'instructions': 'Fill Role.',
+              'totals': {'changes': 5, 'sentences': 2, 'fields': [{'field': 'Role', 'values': 5}], 'blank': blank},
+              'documents': [{'name': 'Story', 'state': 'not-reached', 'done': 2, 'targets': 3,
+                             'counts': {'changes': 5, 'blank': blank}}]}
+    text = summary_message(report)
+    lines = text.splitlines()
+    assert lines[0] == 'This job wrote 5 changes in 2 of 3 sentences: Role 5 values.', lines[0]
+    assert lines[1] == 'Of what it fills: Role left blank 7 words (2 words more in sentences not reached).', lines[1]
+    assert ('- "Story": stopped partway, 2 of 3 sentences done, changes 5, Role left blank 7 words (2 words more '
+            'in sentences not reached)') in text, text

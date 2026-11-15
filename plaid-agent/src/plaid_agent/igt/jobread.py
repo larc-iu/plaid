@@ -37,7 +37,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from ..core.args import read_int
 from ..core.history import doc_label
-from ..core.job import field_counts
+from ..core.job import blank_sums, blank_text, field_counts
 from ..core.record_ops import _names_nothing
 from ..core.tools import ToolError, truncate
 
@@ -168,6 +168,13 @@ def _totals(report: Dict[str, Any]) -> str:
                 by[f.get('field')] = by.get(f.get('field'), 0) + (f.get('values') or 0)
         fields = field_counts(by)
     said += [f'{f.get("field")} {f.get("values"):,} values' for f in fields]
+    # What is still blank of what the job fills, per target, from the
+    # documents when the totals hold none.
+    blank = totals.get('blank')
+    if blank is None:
+        blank = blank_sums(report.get('documents') or [])
+    if blank:
+        said.append(blank_text(blank))
     return ', '.join(said) if said else 'nothing counted'
 
 
