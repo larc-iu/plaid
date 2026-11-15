@@ -23,7 +23,7 @@ from .plan import KIND, REFS_READ, REPAIR_OF, SENSES_READ, SCOPES, analysed_morp
 from .project import join_morphemes, word_ref
 from ..core.tools import ToolError
 from .lexicon import _meta_patch, _refuse_doomed_entry, _refuse_removing_survivor
-from .tools import (parse_analysis, analysis_op, ANALYSIS_OF, confirm_hint, entries_note, take_back, in_place, in_place_back, plan_retypes, value_op, surface_misfit, stage_equals, no_scope_reaches, refuse_shape_and_analysis,
+from .tools import (parse_analysis, analysis_op, ANALYSIS_OF, confirm_hint, entries_note, take_back, holds_nothing, in_place, in_place_back, plan_retypes, value_op, surface_misfit, stage_equals, no_scope_reaches, refuse_shape_and_analysis,
                     edit_planned_morpheme, left_for_analysis, _planned_place)
 from .lexview import entry_line
 from .workspace import Workspace, _matcher, op_target
@@ -1604,7 +1604,9 @@ def t_set_analysis_for_form(ws: Workspace, form: str, morphemes: list, document:
                  'type': morpheme_morph_type(m.get('metadata'), types.get(entries.get(m['id']))),
                  'values': {layer: v for layer, (_sid, v) in (values.get(m['id']) or {}).items()},
                  'spans': {layer: sid for layer, (sid, _v) in (values.get(m['id']) or {}).items()},
-                 'link': entries.get(m['id'])} for m in chain]
+                 'link': entries.get(m['id']),
+                 'bare': holds_nothing(m.get('metadata'), [v for _sid, v in (values.get(m['id']) or {}).values()],
+                                       entries.get(m['id']))} for m in chain]
         changes = None if plan_retypes(ws, {m['id'] for m in chain}) else in_place(
             kept, staged_out, [m.get('equals') for m in out])
         if changes is not None:

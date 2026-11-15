@@ -591,15 +591,29 @@ ANALYSIS_OF = 'analysis_of'
 FITTED_TO = 'fitted_to'
 
 
+def holds_nothing(metadata: Optional[dict], values, link) -> bool:
+    """A stored morpheme with no form, no type, no value and no link of its
+    own (``metadata`` as stored, ``values`` its span values): the editor's
+    default before 2026-09-11, every field of it derivable from the word.
+    :func:`in_place` keeps no such morpheme, so an analysis given to its
+    word is written whole, form included, as for a word with no morpheme
+    stored (FX)."""
+    md = metadata or {}
+    return (md.get('form') in (None, '') and not md.get('morphType') and not link
+            and all(v in (None, '') for v in values))
+
+
 def held_chain(w: Word) -> List[Dict[str, Any]]:
     """Word ``w``'s stored morphemes as :func:`in_place` compares them: id,
     form, a "=" before it, the type it goes by, its values and their spans
-    by layer, the entry it is linked to. A derived morpheme is stored
-    nowhere, so it is not one."""
+    by layer, the entry it is linked to, and whether it holds nothing of its
+    own (:func:`holds_nothing`). A derived morpheme is stored nowhere, so it
+    is not one."""
     return [{'id': m.id, 'form': m.form, 'equals_before': m.equals_before, 'type': m.goes_by,
              'values': {sp.layer_id: sp.value for sp in m.fields.values()},
              'spans': {sp.layer_id: sp.id for sp in m.fields.values()},
-             'link': m.link.item_id if m.link else None}
+             'link': m.link.item_id if m.link else None,
+             'bare': holds_nothing(m.metadata, [sp.value for sp in m.fields.values()], m.link)}
             for m in w.morphemes if not m.virtual]
 
 
@@ -621,8 +635,10 @@ def in_place(held: List[Dict[str, Any]], staged: List[Dict[str, Any]],
     layer_id, span_id, old, value}`` (an empty value clears), and nothing
     else is written: no morpheme is deleted or made, a value or a link the
     call does not name stays as it is with its provenance. ``[]`` restates
-    the word. None when the shape differs: the analysis replaces the chain."""
-    if not held or len(held) != len(staged):
+    the word. None when the shape differs: the analysis replaces the chain.
+    None too when a morpheme the word holds has nothing of its own
+    (:func:`holds_nothing`): the word has no analysis yet to keep."""
+    if not held or len(held) != len(staged) or any(h.get('bare') for h in held):
         return None
     out = []
     for k, (h, m) in enumerate(zip(held, staged)):

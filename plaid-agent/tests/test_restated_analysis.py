@@ -148,13 +148,13 @@ def test_analyze_sentence_restating_a_linked_word_stages_nothing():
 
 
 def test_analyze_sentence_restating_beside_a_new_analysis_stages_only_the_new_one():
-    """gam keeps its one stored morpheme and gets its gloss, akuna (no
-    morpheme stored) gets an analysis."""
+    """gam's one stored morpheme holds nothing of its own and akuna has
+    none stored: both get an analysis, written whole (FX)."""
     w = ws(only_erg())
     call_tool(w, 'analyze_sentence', {'document': 'd1', 'sentences': [
         {'ref': 's1', 'words': ['Ali-di Ali-ERG', 'gam fish', 'aku-na see-PST']}]})
-    assert [o['word_id'] for o in analyses(w)] == ['w-3']
-    assert [(o['token_id'], o['value']) for o in w.ops if o['kind'] == 'set_span'] == [('m-2', 'fish')]
+    assert [o['word_id'] for o in analyses(w)] == ['w-2', 'w-3']
+    assert not any(o['kind'] == 'set_span' for o in w.ops)
     assert not any(o.get('kind') == 'link' and o.get('token_id') in ('m-1a', 'm-1b') for o in w.ops)
 
 

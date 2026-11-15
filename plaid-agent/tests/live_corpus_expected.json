@@ -877,23 +877,65 @@
   "ops": []
  },
  "proj set_analysis_for_form {\"form\": \"GAM\", \"morphemes\": [{\"fields\": {\"Morph Gloss\": \"fish\"}, \"form\": \"gam\"}]}": {
-  "answer": "Planned 1 change (nothing is written until the user approves; the plan now holds 1 change). Describe the plan to the user in your reply.\nIn 1 document: \"Text 1\" 1.\n  Text 1 s1.w2.m1 \"gam\": Morph Gloss = \"fish\"",
+  "answer": "Planned 1 change (nothing is written until the user approves; the plan now holds 1 change). Describe the plan to the user in your reply.\nIn 1 document: \"Text 1\" 1.\n  Text 1 s1.w2 \"gam\": gam → gam, Morph Gloss fish",
   "ops": [
    {
-    "analysis_of": "w-2",
-    "change_at": 23,
-    "kind": "set_span",
-    "label": "Text 1 s1.w2.m1 \"gam\": Morph Gloss = \"fish\"",
-    "layer_id": "sl-mgloss",
-    "span_id": null,
-    "token_id": "m-2",
-    "value": "fish"
+    "begin": 7,
+    "change_at": 20,
+    "end": 10,
+    "existing": [
+     {
+      "id": "m-2",
+      "span_ids": []
+     }
+    ],
+    "kind": "set_analysis",
+    "label": "Text 1 s1.w2 \"gam\": gam → gam, Morph Gloss fish",
+    "morpheme_layer_id": "tk-morph",
+    "morphemes": [
+     {
+      "fields": [
+       {
+        "layer_id": "sl-mgloss",
+        "value": "fish"
+       }
+      ],
+      "form": "gam",
+      "morph_type": null
+     }
+    ],
+    "text_id": "text1",
+    "word_id": "w-2"
    }
   ]
  },
  "proj set_analysis_for_form {\"form\": \"gam\", \"morphemes\": [{\"form\": \"gam\"}], \"skip_analyzed\": true}": {
-  "answer": "Nothing to change: 1 occurrence of \"gam\" already holds that analysis. confirm verifies what it holds.",
-  "ops": []
+  "answer": "Planned 1 change (nothing is written until the user approves; the plan now holds 1 change). Describe the plan to the user in your reply.\nIn 1 document: \"Text 1\" 1.\n  Text 1 s1.w2 \"gam\": gam → gam",
+  "ops": [
+   {
+    "begin": 7,
+    "change_at": 20,
+    "end": 10,
+    "existing": [
+     {
+      "id": "m-2",
+      "span_ids": []
+     }
+    ],
+    "kind": "set_analysis",
+    "label": "Text 1 s1.w2 \"gam\": gam → gam",
+    "morpheme_layer_id": "tk-morph",
+    "morphemes": [
+     {
+      "fields": [],
+      "form": "gam",
+      "morph_type": null
+     }
+    ],
+    "text_id": "text1",
+    "word_id": "w-2"
+   }
+  ]
  },
  "proj set_field_for_form {\"field\": \"Gloss\", \"form\": \"ali\", \"only_empty\": false, \"value\": \"Ali2\"}": {
   "answer": "Nothing to change: no occurrences of \"ali\" matched.",
