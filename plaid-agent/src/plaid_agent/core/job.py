@@ -588,6 +588,10 @@ def run_job(job: Job, runner) -> Optional[Dict[str, Any]]:
             # plan), a new job and a resumed one alike.
             failure = through_core(job, lambda: runner.plan_failure(job))
             if failure is not None:
+                # A heartbeat first, which may be the first to hear of a stop:
+                # a job stopped during its planning ends stopped (REV-DF4-3).
+                job.beat()
+                job.check()
                 return _finish(job, 'failed', runner, harmonize, entries, reason=failure)
             job.set(phase=runner.WORK_PHASE)
             runner.work(job)

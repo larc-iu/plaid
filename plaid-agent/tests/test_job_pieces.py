@@ -366,6 +366,26 @@ def test_a_piece_that_writes_a_call_out_as_text_is_told_it_did_not_run(monkeypat
     assert told and all(c['n'] == 2 for c in told), [c['kwargs']['messages'][-1] for c in pieces]
 
 
+def test_a_stop_pressed_during_a_planning_that_ends_with_no_plan_ends_the_job_stopped(monkeypatch):
+    """REV-DF4-3: Stop pressed in the planning's last round, unheard by a
+    heartbeat before planning ended with no plan, ended the job failed
+    (core takes failed from stopping). The job hears it first and ends
+    stopped, writing nothing."""
+    client = JobClient(_docs(1))
+    job = start(client, id=J, plan=None)
+
+    def answer(asked, n, kwargs):
+        if _kind(asked) == 'plan':
+            if kwargs['messages'][-1].get('content') == JOB_PLAN_NOW:
+                client.jobs.cancel(J)
+            return reply('I will plan.')
+        return _gloss_all(asked, n)
+    use(monkeypatch, Model(answer))
+    finished = run_job(job, runner(job))
+    assert finished['state'] == 'cancelled', (finished['state'], finished.get('reason'))
+    assert not client.writes
+
+
 def test_a_job_resumed_after_planning_ended_with_no_plan_ends_the_same(monkeypatch):
     """The plan that names nothing is kept: a worker that takes the job
     again after a crash reads it back, never plans again, and ends."""
