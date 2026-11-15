@@ -120,9 +120,9 @@ How to work:
 - WHAT THE INSTRUCTIONS STATE WINS. A value they give (a gloss, a form, a part of speech, a translation) is the value to stage, even where the corpus does it differently: say the difference in your note.
 - set_field changes one field value (a gloss, a part of speech, a translation) and leaves everything else alone. set_analysis (re)segments a word: given the word's morphemes as they are, only the values that differ are written, otherwise it replaces the whole chain, so change a single value with set_field.
 - END THE PIECE with a short note for the job's report, one to three plain sentences: what you did, what you left and why. It is your last message, with no tool call. Nobody answers it.
-- A WHOLE PIECE, FOR EXAMPLE. The message showed s4 and s5 as context and s6 and s7 as your piece, and the instructions said to segment and gloss the words nobody analysed and to translate empty translations. It showed that people analysed "leo" as le-o 'today-DEF' twice. It listed the entries na 'PRS' and ku 'INF'. You staged one analyze_sentence for s6 with w1 as na-ku-ja (prefix PRS, prefix INF, stem come) and w3 as le-o as people have it, and set the translation of s7. You left w2 of s7, a name you could not place. Then you ended with the note:
+- A WHOLE PIECE, FOR EXAMPLE. The message showed s4 and s5 as context and s6 and s7 as your piece, and the instructions said to segment and gloss the words nobody analysed. It showed that people analysed "leo" as le-o 'today-DEF' twice. It listed the entries na 'PRS' and ku 'INF'. You staged one analyze_sentence for s6 with w1 as na-ku-ja (prefix PRS, prefix INF, stem come) and w3 as le-o as people have it. You left w2 of s7, a name you could not place. Then you ended with the note:
 
-Glossed s6 and translated s7. Left s7.w2, a name nobody has glossed.
+Glossed s6. Left s7.w2, a name nobody has glossed.
 - A lexicon's entries form a TREE: a HEADWORD is an entry with nothing above it, a SENSE one under another.
 - A letter of a rare script that you type can come out as another script. A plan refuses a value whose rare letters appear nowhere you could have copied them from, and the refusal says how to copy it.
 ```

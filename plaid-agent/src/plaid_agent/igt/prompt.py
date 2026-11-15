@@ -6,6 +6,7 @@ what run_code is for. Everything here is IGT's own.
 """
 
 import re
+from typing import Optional
 
 from ..core import prompt as shared, sandbox, webtools
 from ..core.guidelines import section as guidelines_section
@@ -118,6 +119,11 @@ up only what its answer lists as several or none.'''
 _JOB_FIELDS_READ_FIRST = '''- The message says what is empty in your piece, and the values those fields hold on \
 other words or morphemes of the same forms. Fill what is empty with set_field.'''
 _JOB_NOTHING_READ_FIRST = '''- Use the tools rather than guessing, and follow the conventions already in the data.'''
+#: The bullet of a job that segments and does not gloss (REV-DF-D-10):
+#: analyze_sentence takes a gloss for every word, set_analysis forms alone.
+_JOB_SEGMENTS_READ_FIRST = '''- The message says what is empty in your piece, how those forms were analysed and the \
+lexicon entries in them. Segment each word with set_analysis, giving its morphemes' forms and only the values the \
+job fills.'''
 
 #: set_field and set_analysis, as set_analysis's own description has it
 #: since KM (REV-DAY-P-9).
@@ -272,6 +278,35 @@ _JOB_SENTENCES_EXAMPLE_DID = _JOB_EXAMPLE_DID.replace(
     'Nothing settled "na", so you read the concordance of "na" and saw it before verbs glossed PRS in four '
     'sentences.', 'It listed the entries na \'PRS\' and ku \'INF\'.')
 assert _JOB_SENTENCES_EXAMPLE_DID != _JOB_EXAMPLE_DID
+
+
+def _job_segments_example(gloss: bool, sentence: Optional[str]) -> tuple:
+    """The worked piece and note of a piece in sentences of a job that
+    segments, built from what its plan fills (REV-DF-D-10, one prompt, parts
+    by target kind): glossing too (``gloss``: the morpheme field the
+    configuration pairs with the lexicon's gloss is a target) or segmenting
+    alone, and a sentence level target, the translation (``sentence``
+    "translation", by the configuration's role) or another ("field")."""
+    task = 'segment and gloss the words nobody analysed' if gloss else 'segment the words nobody analysed'
+    task += {'translation': ' and to translate empty translations', 'field': ' and to fill an empty sentence field',
+             None: ''}[sentence]
+    then = {'translation': ', and set the translation of s7', 'field': ', and set that field on s7', None: ''}[sentence]
+    if gloss:
+        staged = ('It showed that people analysed "leo" as le-o \'today-DEF\' twice. It listed the entries na '
+                  '\'PRS\' and ku \'INF\'. You staged one analyze_sentence for s6 with w1 as na-ku-ja (prefix PRS, '
+                  'prefix INF, stem come) and w3 as le-o as people have it')
+    else:
+        staged = ('It showed that people analysed "leo" as le-o twice. You staged set_analysis for s6.w1 as na-ku-ja '
+                  'and for s6.w3 as le-o as people have it')
+    did = (f'The message showed s4 and s5 as context and s6 and s7 as your piece, and the instructions said to {task}. '
+           f'{staged}{then}. You left w2 of s7, a name you could not place.')
+    done = ('Glossed s6' if gloss else 'Segmented s6') + {'translation': ' and translated s7', 'field': ' and filled s7',
+                                                          None: ''}[sentence]
+    note = f'{done}. Left s7.w2, a name nobody has {"glossed" if gloss else "analysed"}.'
+    return did, note
+
+
+assert _job_segments_example(True, 'translation') == (_JOB_SENTENCES_EXAMPLE_DID, _JOB_EXAMPLE_NOTE)
 #: The worked piece of a piece in sentences of a job that fills fields only.
 _JOB_FIELDS_EXAMPLE_DID = (
     'The message showed s4 and s5 as context and s6 and s7 as your piece, and the instructions said to fill a word '
@@ -340,6 +375,24 @@ JOB_NOTHING_SYSTEM = _sentences_system(_JOB_NOTHING_READ_FIRST, _JOB_NOTHING_EXA
                                        _ONE_VALUE_FIELDS, evidence=False)
 
 
+def job_segments_system(project: IgtProject, targets) -> str:
+    """The prompt of a piece in sentences of a job that segments, its
+    read-first bullet and worked piece by what else the plan fills: the
+    gloss (the configuration's morpheme gloss field), a sentence level
+    target (the translation by its role, or another). Glossing and
+    translating is :data:`JOB_SENTENCES_SYSTEM` (REV-DF-D-10)."""
+    ids = {t.id for t in targets}
+    gloss_field, translation = project.gloss_field('Morpheme'), project.gloss_field('Sentence')
+    gloss = gloss_field is not None and gloss_field.layer_id in ids
+    sentences = [t for t in targets if t.scope == 'Sentence']
+    sentence = None if not sentences else 'translation' if translation is not None and any(
+        t.id == translation.layer_id for t in sentences) else 'field'
+    if gloss and sentence == 'translation':
+        return JOB_SENTENCES_SYSTEM
+    did, note = _job_segments_example(gloss, sentence)
+    return _sentences_system(_JOB_SENTENCES_READ_FIRST if gloss else _JOB_SEGMENTS_READ_FIRST, did, note)
+
+
 #: The tagsets' first line in a job's prompt: nobody sees the value as the
 #: job stages it, and an off-list one is stored as the job wrote it (SPEC 6.4).
 JOB_TAGSET_LEAD = ('Tagsets: use the listed spellings, and write an unlisted value only where no listed one means '
@@ -381,11 +434,11 @@ def build_job_prompt(project: IgtProject, sentences: bool = False, edits_text: b
     segmentation, the analyses; fields only, set_field; nothing, neither. A
     piece of a plan that does not edit the text (``edits_text`` False) is
     told nothing of the tools it is not offered (:data:`NO_TEXT_EDITS`)."""
-    from .targets import SEGMENTATION
+    targets = list(targets or ())
     if not sentences:
         template = JOB_SYSTEM
-    elif any(t.id == SEGMENTATION for t in targets or ()):
-        template = JOB_SENTENCES_SYSTEM
+    elif any(t.segments for t in targets):
+        template = job_segments_system(project, targets)
     else:
         template = JOB_FIELDS_SYSTEM if targets else JOB_NOTHING_SYSTEM
     out = _filled(template, project)

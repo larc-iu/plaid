@@ -501,7 +501,9 @@ def test_set_analysis_for_form_is_said_to_apply_in_its_own_document(edits_text):
 SHAPE_WORDS = {'guidelines', 'tagsets'}
 
 
-@pytest.mark.parametrize('fills', [('segmentation', 'sl-mgloss'), ('sl-gloss',), ()], ids=['glossing', 'field', 'none'])
+@pytest.mark.parametrize('fills', [('segmentation', 'sl-mgloss'), ('sl-gloss',), (), ('segmentation',),
+                                   ('segmentation', 'sl-trans')], ids=['glossing', 'field', 'none', 'segmentation',
+                                                                      'segmentation-translation'])
 @pytest.mark.parametrize('edits_text', [False, True])
 def test_a_sentences_piece_is_told_of_no_tool_it_is_not_offered(fills, edits_text):
     """REV-DAY-P-8: the sentences prompt, every tool description and the
@@ -533,3 +535,35 @@ def test_the_set_field_line_says_set_analysis_as_its_description_does():
     text = _job_prompt()
     line = next(b for b in text.split('\n- ') if b.startswith('set_field changes one field value'))
     assert 'only the values that differ are' in line and 'never to change a single gloss' not in line
+
+
+@pytest.mark.parametrize('fills, said, unsaid', [
+    (('segmentation',), ['Segment each word with set_analysis', 'the instructions said to segment the words nobody '
+                         'analysed.', 'Segmented s6. Left s7.w2, a name nobody has analysed.'],
+     ['gloss', 'Gloss', 'analyze_sentence', 'translat']),
+    (('segmentation', 'sl-gloss'), ['Segment each word with set_analysis'], ['analyze_sentence', 'translat']),
+    (('segmentation', 'sl-mgloss'), ['the instructions said to segment and gloss the words nobody analysed.',
+                                     'Glossed s6. Left s7.w2', 'analyze_sentence'], ['translat']),
+    (('segmentation', 'sl-trans'), ['segment the words nobody analysed and to translate empty translations',
+                                    'set the translation of s7', 'Segmented s6 and translated s7.'],
+     ['analyze_sentence', 'Glossed']),
+    (('segmentation', 'sl-mgloss', 'sl-trans'), ['segment and gloss the words nobody analysed and to translate'],
+     []),
+], ids=['segmentation', 'with-a-word-field', 'glossing', 'translating', 'glossing-and-translating'])
+def test_a_segmenting_piece_is_told_its_task_by_what_its_plan_fills(fills, said, unsaid):
+    """REV-DF-D-10: a job that segments and does not gloss gets no glossing
+    example and no glossing-shaped line (analyze_sentence takes a gloss for
+    every word, so it segments with set_analysis). One prompt, its task
+    lines and worked piece built from the targets."""
+    from plaid_agent.igt import targets as tg
+    project = _project()
+    fill = [t for t in tg.fillable(project) if t.id in fills]
+    text = prompt.build_job_prompt(project, sentences=True, targets=fill)
+    piece = text[text.index('A WHOLE PIECE, FOR EXAMPLE.'):] if 'A WHOLE PIECE' in text else text
+    read_first = next(b for b in text.split('\n- ') if b.startswith('The message says what is empty'))
+    for x in said:
+        assert x in text, (x, text)
+    for x in unsaid:
+        assert x not in piece and x not in read_first, (x, piece, read_first)
+    if fills == ('segmentation', 'sl-mgloss', 'sl-trans'):
+        assert text == prompt.build_job_prompt(project, sentences=True, targets=tg.app_default(project))
