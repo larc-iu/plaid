@@ -31,7 +31,9 @@ change in a sentence a reshape of the plan re-cuts).
 
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
-from .plan import KIND, LEXICON_MAINTAINER, RESHAPES, analysed_morphemes, lexicon_need
+from ..core.opkind import EXCLUSIVE, shaped
+from .plan import (KIND, LEXICON_MAINTAINER, RESHAPES, SENTENCE_SHAPE, TEXT_SHAPE, WORD_SHAPE, analysed_morphemes,
+                   lexicon_need)
 from .project import IgtProject, is_virtual
 from .vocab import ROLE_STATUS
 
@@ -60,6 +62,24 @@ APPLIED_KINDS = frozenset({
 #: link removed, an entry deleted, a sentence deleted. A merge keeps what it
 #: merges into, and a rewrite replaces: neither is counted here.
 DELETING_KINDS = frozenset({'discard_analysis', 'delete_word', 'delete_sentence', 'unlink', 'delete_entry'})
+
+#: Kinds that change the text or which words and sentences it has: every
+#: kind the plan registry tags as moving a word or sentence boundary or
+#: rewriting the text, and the exclusive kind (a restore). A job applies none unless its plan
+#: says the instructions ask for the text to change (plan_work's
+#: ``edits_text``, the owner's ruling of 2026-11-15), and its workspace
+#: stages none either (``JobWorkspace.guard_op``).
+TEXT_KINDS = frozenset(shaped(KIND, WORD_SHAPE, SENTENCE_SHAPE, TEXT_SHAPE, EXCLUSIVE))
+#: Corpus-wide rules that change the text, by the tool a rule op names.
+TEXT_RULE_TOOLS = frozenset({'respell_all'})
+
+
+def edits_text(op: Dict[str, Any]) -> bool:
+    """Whether ``op`` changes the text or its words and sentences
+    (:data:`TEXT_KINDS`, or a rule of :data:`TEXT_RULE_TOOLS`)."""
+    kind = op.get('kind')
+    return kind in TEXT_KINDS or (kind == 'bulk_scope' and op.get('tool') in TEXT_RULE_TOOLS)
+
 
 APPLY, PROPOSE, IGNORE = 'apply', 'propose', 'ignore'
 
@@ -134,12 +154,16 @@ class Rule:
     """The rule over one document as read under its lock (``doc``).
     ``maintainer()`` says whether the person who started the job may
     rename, merge or delete entries (core refuses the job's token
-    otherwise), asked only of such a change."""
+    otherwise), asked only of such a change. ``edits_text``: the job's plan
+    says it may change the text, else an op that does (:func:`edits_text`)
+    is proposed, never applied."""
 
-    def __init__(self, doc, project: IgtProject, maintainer: Callable[[], bool] = lambda: True):
+    def __init__(self, doc, project: IgtProject, maintainer: Callable[[], bool] = lambda: True,
+                 edits_text: bool = False):
         self.doc = doc
         self.project = project
         self.maintainer = maintainer
+        self.edits_text = edits_text
 
     def create_entry(self, op) -> bool:
         """An entry is made in a lexicon of the project's own that has a
@@ -154,6 +178,8 @@ class Rule:
             return IGNORE
         if kind not in APPLIED_KINDS:
             return PROPOSE
+        if not self.edits_text and edits_text(op):
+            return PROPOSE  # the plan does not edit the text
         if place(op, self.doc) == 'elsewhere':
             return PROPOSE  # not under this document's lock
         if kind == 'create_entry' and not self.create_entry(op):

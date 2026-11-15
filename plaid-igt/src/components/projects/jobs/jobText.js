@@ -44,7 +44,9 @@ export const planText = (plan) => {
   if (plan.pieces === 'sentences' && plan.onlyEmpty) text += ', only those with something empty';
   const smaller = (plan.fallback || []).length;
   if (smaller) text += `, ${smaller.toLocaleString()} in smaller pieces`;
-  return `${text}.`;
+  // The plan says the instructions ask for the text itself to change
+  // (plan_work's edits_text): only then may the job edit it.
+  return plan.editsText ? `${text}. Text edits allowed.` : `${text}.`;
 };
 
 const FAILURE_TEXT = {

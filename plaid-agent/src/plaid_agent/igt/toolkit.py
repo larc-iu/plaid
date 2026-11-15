@@ -628,22 +628,28 @@ PLAN_WORK = _fn(
     '"document" (one context per document) or "selection" (one context for all the documents). '
     'skip_analyzed_sentences: with "sentences", true skips every sentence whose words are all analysed and whose '
     'translation is written. A job that fills a field or checks analyses leaves it out. '
+    'edits_text: true when the instructions ask for the text itself to change: words or sentences retyped, '
+    'respelled, split, merged, inserted or deleted. '
     'piece_instructions: what every piece is told, as decisions, added to the instructions. documents: names or '
     'ids, a subset of the job\'s documents in the order to work them. Left out, all of them in the job\'s order.',
     {'pieces': {'type': 'string', 'enum': ['sentences', 'document', 'selection']},
      'skip_analyzed_sentences': {'type': 'boolean'},
+     'edits_text': {'type': 'boolean'},
      'piece_instructions': {'type': 'string'},
      'documents': {'type': 'array', 'items': {'type': 'string'}}}, ['pieces'])
 
 
 def t_plan_work(ws, pieces: str = None, piece_instructions: str = '', documents=None,
-                skip_analyzed_sentences: bool = False) -> str:
+                skip_analyzed_sentences: bool = False, edits_text: bool = False) -> str:
     """Check the planning context's plan and keep it on the workspace
     (``ws.plan_work``): a piece size of the menu, whether stretches walk
     only the sentences with something empty (``skip_analyzed_sentences``,
     kept as ``only_empty``, the key the job page reads: BRIEF OE renamed only
     what the model sees, after planners filling a field read only_empty as
-    "only words whose field is empty"), instructions within their cap, a
+    "only words whose field is empty"), whether its pieces may change the
+    text (``edits_text``, kept only when true: a plan without it, the
+    default plan too, offers no tool that changes the text, the owner's
+    ruling of 2026-11-15), instructions within their cap, a
     subset of the job's documents named once each. A plan that skips every
     sentence of the documents it works is kept, and its answer says so
     (:data:`PLAN_WORKS_NOTHING`), so the planner may plan again."""
@@ -683,6 +689,7 @@ def t_plan_work(ws, pieces: str = None, piece_instructions: str = '', documents=
     # Kept only when true: the plan's row holds the largest plan at its cap.
     ws.plan_work = {'pieces': pieces, 'piece_instructions': text, 'documents': order,
                     **({'only_empty': True} if skip else {}),
+                    **({'edits_text': True} if edits_text is True else {}),
                     **({'instructions_cut': given} if len(text) < given else {})}
     out = ['The plan is kept.']
     if len(text) < given:
@@ -739,13 +746,24 @@ SENTENCES_PIECE_TOOLS = ('analyze_sentence', 'set_analysis', 'link_entry', 'crea
                          'read_lexicon', 'analyses_of')
 
 
+#: The tools that change the text or which words and sentences it has,
+#: offered to a piece only when the job's plan says its instructions ask for
+#: that (plan_work's ``edits_text``). Morpheme segmentation is no text edit.
+#: Whatever stages such a change otherwise (code, a rule) is refused by the
+#: job's workspace (``jobapply.edits_text``).
+TEXT_TOOLS = ('append_text', 'retype_sentence', 'split_sentence', 'merge_sentences', 'delete_sentence', 'split_word',
+              'merge_words', 'delete_word', 'respell', 'respell_all', 'restore_document')
+
+
 def job_piece_tools(ws, plan_only: bool = False) -> list:
     """The schemas a piece of a job offers: the assistant's own, as the chat
     offers them on this workspace (code where the sandbox is, the web where
-    it is set up), less :data:`JOB_LEFT_OUT`, and for a piece of a plan in
+    it is set up), less :data:`JOB_LEFT_OUT`, less :data:`TEXT_TOOLS` unless
+    the plan edits the text (``ws.edits_text``), and for a piece of a plan in
     sentences (``ws.in_sentences``) only :data:`SENTENCES_PIECE_TOOLS`. Once
     the piece has been told to decide (``plan_only``), the plan tools alone."""
-    tools = [t for t in tools_for(ws) if t['function']['name'] not in JOB_LEFT_OUT]
+    left_out = JOB_LEFT_OUT if getattr(ws, 'edits_text', False) else JOB_LEFT_OUT + TEXT_TOOLS
+    tools = [t for t in tools_for(ws) if t['function']['name'] not in left_out]
     if getattr(ws, 'in_sentences', False) and SENTENCES_PIECE_TOOLS is not None:
         tools = [_without_check_first(t) for t in tools if t['function']['name'] in SENTENCES_PIECE_TOOLS]
     if plan_only:

@@ -359,6 +359,18 @@ describe('the job page', () => {
     await v.unmount();
   });
 
+  it('says the job may edit the text when its plan says so', async () => {
+    const plan = { pieces: 'document', by: 'model', fallback: [], leftOut: [] };
+    let v = await mount(
+      clientOf(jobOf({ state: 'done', report: { ...REPORT, plan: { ...plan, editsText: true } } })),
+    );
+    expect(totals(v.container).Plan).toBe('Worked one document at a time. Text edits allowed.');
+    await v.unmount();
+    v = await mount(clientOf(jobOf({ state: 'done', report: { ...REPORT, plan } })));
+    expect(totals(v.container).Plan).toBe('Worked one document at a time.');
+    await v.unmount();
+  });
+
   it('says when planning ended with no plan and the job worked by the default plan', async () => {
     const plan = { pieces: 'sentences', by: 'default', why: 'no-plan', fallback: [], leftOut: [] };
     const v = await mount(clientOf(jobOf({ state: 'done', report: { ...REPORT, plan } })));

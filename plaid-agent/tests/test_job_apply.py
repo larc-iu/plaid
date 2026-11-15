@@ -16,7 +16,7 @@ import re
 
 import pytest
 
-from job_fixtures import every_tool, JobClient, Model, call, document, job_project, reply, runner, start, use
+from job_fixtures import every_tool, text_edits, JobClient, Model, call, document, job_project, reply, runner, start, use
 
 from plaid_agent.igt import jobapply, toolkit
 from plaid_agent.igt.job import JobWorkspace, Stretch
@@ -26,8 +26,10 @@ from plaid_agent.igt.project import load_project
 
 @pytest.fixture(autouse=True)
 def _every_tool(monkeypatch):
-    """These tests script tools a piece of a plan in sentences is no longer offered."""
+    """These tests script tools a piece of a plan in sentences is no longer
+    offered, and text edits: their plans say the job may change the text."""
     every_tool(monkeypatch)
+    text_edits(monkeypatch)
 
 
 J = 'J1'
@@ -58,6 +60,8 @@ class _Setup:
         self.runner._maintains = maintains
         self.project = load_project(self.client, 'p1')
         self.ws = JobWorkspace(self.client, self.project)
+        # As run_piece sets it from the job's plan.
+        self.ws.edits_text = self.runner.edits_text()
         self.doc = self.ws.doc('d1')
         self.st = Stretch(self.doc, self.project, self.doc.sentences, J)
         self.ws.stretch = self.st
@@ -112,8 +116,9 @@ def test_each_proposed_kind_is_never_applied_whatever_it_touches(kind):
 
 @pytest.mark.parametrize('kind', sorted(jobapply.APPLIED_KINDS - {'create_entry'}))
 def test_each_applied_kind_is_applied_in_the_document_under_the_lock(kind):
+    """A text kind by a job whose plan says it may change the text."""
     s = _Setup()
-    rule = jobapply.Rule(s.doc, s.project)
+    rule = jobapply.Rule(s.doc, s.project, edits_text=True)
     w = s.doc.sentences[0].words[1]
     assert rule.alone({'kind': kind, 'word_id': w.id}) == jobapply.APPLY
 

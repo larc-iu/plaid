@@ -13,7 +13,7 @@ import random
 import pytest
 
 from fixtures import lexicon_raw
-from job_fixtures import every_tool, JobClient, Model, call, document, reply, runner, start, targets_named, use
+from job_fixtures import every_tool, text_edits, JobClient, Model, call, document, reply, runner, start, targets_named, use
 
 from plaid_client import PlaidAPIError, testing
 from plaid_agent.igt import job as igt_job
@@ -24,8 +24,10 @@ from test_job_vouched import _iso
 
 @pytest.fixture(autouse=True)
 def _every_tool(monkeypatch):
-    """These tests script tools a piece of a plan in sentences is no longer offered."""
+    """These tests script tools a piece of a plan in sentences is no longer
+    offered, and text edits: their plans say the job may change the text."""
     every_tool(monkeypatch)
+    text_edits(monkeypatch)
 
 
 J = 'JT'

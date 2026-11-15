@@ -15,7 +15,7 @@ import re
 
 import pytest
 
-from job_fixtures import (INSTRUCTIONS, JobClient, Model, call, document, empty_translations, every_tool, reply,
+from job_fixtures import (INSTRUCTIONS, JobClient, Model, call, document, empty_translations, every_tool, text_edits, reply,
                           runner, start, targets_named, use)
 
 from plaid_client import PlaidAPIError
@@ -28,8 +28,10 @@ from test_job_vouched import _iso, _person_edits
 
 @pytest.fixture(autouse=True)
 def _every_tool(monkeypatch):
-    """These tests script tools a piece of a plan in sentences is no longer offered."""
+    """These tests script tools a piece of a plan in sentences is no longer
+    offered, and text edits: their plans say the job may change the text."""
     every_tool(monkeypatch)
+    text_edits(monkeypatch)
 
 
 J = 'JW'

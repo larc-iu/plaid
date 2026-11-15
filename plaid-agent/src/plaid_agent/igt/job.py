@@ -56,7 +56,7 @@ from ..core.plan import JOB_DETAIL_KEY, ONE_REQUEST, PlanError, TooBig, held_cha
 from ..core.provenance import Requester
 from ..core.tools import Refusal, ToolError
 from ..core.version import agent_version
-from . import evidence, toolkit
+from . import evidence, jobapply, toolkit
 from .plan import LEXICON_MAINTAINER, PlanOutOfDate, check_entries, execute_plan
 from .project import IgtProject, Sentence, Word, is_virtual, load_project, render_sentence
 from .prompt import JOB_SYSTEM, build_job_prompt
@@ -685,6 +685,9 @@ class JobWorkspace(Workspace):
         self.decide_now = False
         #: a piece of a plan in sentences, offered the short list of tools
         self.in_sentences = False
+        #: the job's plan says it may change the text (plan_work's
+        #: ``edits_text``): else no op that does is staged (``guard_op``)
+        self.edits_text = False
         self.tables: List[Dict[str, Any]] = []
         #: the planning context's plan_work, once valid
         self.plan_work: Optional[Dict[str, Any]] = None
@@ -692,6 +695,11 @@ class JobWorkspace(Workspace):
     def guard_op(self, op: Dict[str, Any], replacing: Optional[int] = None) -> None:
         if self.mode == self.PLAN:
             raise ToolError('This context plans the job and stages no change: end with plan_work.',
+                            kind='not-allowed')
+        if not self.edits_text and jobapply.edits_text(op):
+            # Whatever path staged it: a tool, a rule, code (the owner's
+            # ruling of 2026-11-15). The tools are not offered either.
+            raise ToolError('This job does not edit the text: its plan leaves the words and sentences as they are.',
                             kind='not-allowed')
         if op.get('kind') == 'create_entry':
             self.fit_guard(op)
@@ -2065,7 +2073,8 @@ class IgtRunner:
         folder. Its reply is the piece's note. Raises the model's failures
         for the caller to sort."""
         job = self.job
-        system = build_job_prompt(project, sentences=sentences)
+        ws.edits_text = self.edits_text()
+        system = build_job_prompt(project, sentences=sentences, edits_text=ws.edits_text)
         transcript = [{'role': 'user', 'content': message}]
         seed(ws.seen, system, transcript, lambda tool, args: True)
         kit = Toolkit(tools_for=lambda w: toolkit.job_piece_tools(w, plan_only=w.decide_now),
@@ -2241,6 +2250,14 @@ class IgtRunner:
         """Whether the job's plan cuts the work in sentences (the default
         plan does)."""
         return (self.plan_made or {}).get('pieces', SENTENCES) == SENTENCES
+
+    def edits_text(self) -> bool:
+        """Whether the job's plan says its instructions ask for the text to
+        change (plan_work's ``edits_text``; the default plan does not). The
+        plan kept in core is read when this worker has not read it yet."""
+        if self.plan_made is None:
+            self.plan_made = self.plan_stored(self.job.decisions())
+        return (self.plan_made or {}).get('edits_text') is True
 
     def evidence(self, ws: Workspace, project: IgtProject, words: List[Word]) -> str:
         """The evidence block of a piece of a plan in sentences
@@ -2836,7 +2853,8 @@ class IgtRunner:
                 counts['changed'] += 1
                 continue
             live.append(op)
-        rule = jobapply.Rule(fresh, project, maintainer=lambda: self.starter_maintains(ws, project))
+        rule = jobapply.Rule(fresh, project, maintainer=lambda: self.starter_maintains(ws, project),
+                             edits_text=self.edits_text())
 
         def sentence_of(token):
             s = st.sentence_of(token)

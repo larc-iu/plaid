@@ -15,7 +15,7 @@ import uuid
 import pytest
 
 from fixtures import MORPH_LAYER
-from job_fixtures import Model, call, document, job_project, reply, use
+from job_fixtures import Model, call, document, job_project, reply, text_edits, use
 from live import seed
 from test_job_live_delete_sentence import _admin, _job, _read, _runner
 
@@ -31,6 +31,12 @@ from plaid_agent.igt.job import IgtRunner
 #: not).
 SENTENCES = [{'words': ['ka', 'ta']}, {'words': ['ka', 'ta']}, {'words': ['sa']}]
 PIECES = ['sentences', 'document', 'selection', 'selection-lexicon']
+
+
+@pytest.fixture(autouse=True)
+def _text_edits(monkeypatch):
+    """These jobs' pieces change the text: their plans say they may (FX)."""
+    text_edits(monkeypatch)
 
 
 class Crash(BaseException):

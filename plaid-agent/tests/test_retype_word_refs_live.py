@@ -11,7 +11,7 @@ import uuid
 import pytest
 
 from fixtures import GLOSS, SENT_LAYER, TRANS, WORD_LAYER
-from job_fixtures import Model, call, document, job_project, plan_row, reply, use
+from job_fixtures import Model, call, document, job_project, plan_row, reply, text_edits, use
 from live import _skip_or_fail, core_url, login, seed
 from test_delete_sentence_live import _approve
 
@@ -25,6 +25,12 @@ from plaid_agent.jobworker import count_chars
 
 PASSWORD = 'retype-word-refs-1'
 WORKER = '0193a5c0-0000-7000-8000-0000000000f7'
+
+
+@pytest.fixture(autouse=True)
+def _text_edits(monkeypatch):
+    """These jobs' pieces change the text: their plans say they may (FX)."""
+    text_edits(monkeypatch)
 
 
 def _word(form, gloss):

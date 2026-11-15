@@ -937,8 +937,9 @@ Worked a few sentences at a time, it takes every sentence, unless its plan takes
 When planning ends with no plan, the job works every sentence a few at a time, and its page says so.
 Each piece is worked by the assistant with its usual tools, the project's guidelines, the instructions, and how people in the project analyzed the same words.
 
-A job writes every change it plans in its documents and in the project's lexicons, in the name of the person who started the job: values, analyses, links, comments, text edits, splits and merges, changes to entries, and deletions, whole sentences included.
+A job writes every change it plans in its documents and in the project's lexicons, in the name of the person who started the job: values, analyses, links, comments, changes to entries, and deletions.
 It can change and delete what people wrote or confirmed.
+It edits the text, retyping, splitting, merging or deleting words and sentences, only when its plan says the instructions ask for that, and its page then reads **Text edits allowed**.
 Each value it writes is a machine proposal (see <<_provenance>>), also where it replaces a value a person wrote or confirmed.
 A job never deletes a document, and never changes the project's setup: a guideline, a tagset, a document's name or metadata, or a new document is listed in its report as a proposed change, for a person to make.
 So is a change in a document other than the one being worked (when the job works all its documents at once, in a document outside the job), a corpus-wide change, a confirmation, a restore of a document, and the renaming, merging or deleting of an entry when the person who started the job is not a maintainer of the project.

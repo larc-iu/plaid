@@ -13,7 +13,7 @@ import uuid
 import pytest
 
 from fixtures import GLOSS, MORPH_LAYER, TEXT_ID, TRANS, WORD_LAYER
-from job_fixtures import plan_row, Model, call, document, job_project, reply, use
+from job_fixtures import plan_row, Model, call, document, job_project, reply, text_edits, use
 from live import _skip_or_fail, core_url, login, seed
 
 from plaid_client import PlaidAPIError
@@ -29,6 +29,12 @@ WORKER = '0193a5c0-0000-7000-8000-0000000000f4'
 #: the withdrawn rule all but the first three kept the job off.
 MARKS = ['sentence-comment', 'translation-comment', 'nothing', 'word-comment', 'mwe', 'word-link',
          'morpheme-comment', 'empty-word-gloss']
+
+
+@pytest.fixture(autouse=True)
+def _text_edits(monkeypatch):
+    """These jobs' pieces change the text: their plans say they may (FX)."""
+    text_edits(monkeypatch)
 
 
 def _admin():

@@ -184,18 +184,19 @@ def newest_after(when):
 INSTRUCTIONS = 'Segment and gloss the words nobody has analysed.'
 
 
-def start(client, instructions=INSTRUCTIONS, documents=None, now=None, id=None, plan='sentences'):
+def start(client, instructions=INSTRUCTIONS, documents=None, now=None, id=None, plan='sentences', edits_text=None):
     """A job started and claimed on ``client``, held as the worker holds it
     (no heartbeat thread: a test beats by hand). Its plan is kept as the
     planning context would have kept it (``plan`` the pieces, None for no
-    plan: the job's first model context then plans it)."""
+    plan: the job's first model context then plans it, ``edits_text`` its
+    plan_work flag, :data:`EDITS_TEXT` when not given)."""
     if now is not None:
         client.jobs.now = now
     made = client.jobs.create(PID, 'igt', instructions, documents, id=id)
     claimed = client.jobs.claim('worker-1', 'fake/m', ['igt'])
     assert claimed['job']['id'] == made['id']
     if plan is not None:
-        keep_plan(client, made['id'], plan)
+        keep_plan(client, made['id'], plan, edits_text=edits_text)
     if now is None:
         clock = {'t': __import__('time').time()}
         now = lambda: clock['t']  # noqa: E731
@@ -208,19 +209,34 @@ def start(client, instructions=INSTRUCTIONS, documents=None, now=None, id=None, 
     return Job(client, claimed, 'worker-1', client_for=lambda token: client, model='fake/m', sleep=sleep, now=now)
 
 
-def plan_row(pieces='sentences', documents=None):
+#: Whether a test's plans say the job may change the text (plan_work's
+#: ``edits_text``) unless a test says: a module whose pieces script text
+#: edits sets it with :func:`text_edits`.
+EDITS_TEXT = False
+
+
+def text_edits(monkeypatch):
+    """The plans this test keeps say the job may change the text: for the
+    tests whose pieces retype, split, merge or delete words or sentences."""
+    import job_fixtures
+    monkeypatch.setattr(job_fixtures, 'EDITS_TEXT', True)
+
+
+def plan_row(pieces='sentences', documents=None, edits_text=None):
     """The decision row of a job's plan, as the planning context keeps it
     (its instructions for every piece, none here, are a row of their own)."""
     from plaid_agent.core.job import analysis_key, canonical
     from plaid_agent.igt.job import PLAN_FORM
-    text = canonical({'pieces': pieces, 'documents': documents, 'by': 'model', 'why': None})
+    edits = EDITS_TEXT if edits_text is None else edits_text
+    text = canonical({'pieces': pieces, 'documents': documents, 'by': 'model', 'why': None,
+                      **({'edits_text': True} if edits else {})})
     return {'form': PLAN_FORM, 'key': analysis_key(text), 'analysis': text, 'count': 1, 'document_id': None,
             'sentence_id': None}
 
 
-def keep_plan(client, job_id, pieces='sentences', documents=None, worker='worker-1'):
+def keep_plan(client, job_id, pieces='sentences', documents=None, worker='worker-1', edits_text=None):
     """The job's plan among its decisions, as the planning context keeps it."""
-    client.jobs.add_decisions(job_id, worker, [plan_row(pieces, documents)])
+    client.jobs.add_decisions(job_id, worker, [plan_row(pieces, documents, edits_text)])
 
 
 def runner(job, write_summary=False, **kw):

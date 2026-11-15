@@ -214,10 +214,10 @@ def test_a_piece_in_sentences_is_offered_the_short_list(monkeypatch):
         model = use(monkeypatch, Model(lambda asked, n, kwargs: reply('Done.')))
         run_job(job, runner(job))
         seen[plan] = [t['function']['name'] for t in model.calls[0]['kwargs']['tools']]
+    # The sentence tools only when the plan edits the text (FX).
     assert seen['sentences'] == ['read_lexicon', 'set_field', 'set_analysis', 'analyze_sentence', 'link_entry',
-                                 'create_entry', 'analyses_of', 'split_sentence', 'merge_sentences',
-                                 'delete_sentence', 'retype_sentence']
-    assert set(seen['sentences']) == set(toolkit.SENTENCES_PIECE_TOOLS)
+                                 'create_entry', 'analyses_of']
+    assert set(seen['sentences']) == set(toolkit.SENTENCES_PIECE_TOOLS) - set(toolkit.TEXT_TOOLS)
     assert 'concordance' in seen['document'] and len(seen['document']) > 50, 'a document piece keeps its tools'
 
 
@@ -228,6 +228,9 @@ def test_a_tool_off_the_short_list_is_refused():
     ws.in_sentences = True
     out = toolkit.job_piece_call(ws, 'concordance', {'pattern': 'gam'})
     assert str(out).startswith('Error') and "not one of this job's" in out
+    assert {t['function']['name'] for t in toolkit.job_piece_tools(ws, plan_only=True)} == {
+        'set_field', 'set_analysis', 'analyze_sentence', 'link_entry', 'create_entry'}
+    ws.edits_text = True
     assert {t['function']['name'] for t in toolkit.job_piece_tools(ws, plan_only=True)} == {
         'set_field', 'set_analysis', 'analyze_sentence', 'link_entry', 'create_entry', 'split_sentence',
         'merge_sentences', 'delete_sentence', 'retype_sentence'}
@@ -294,7 +297,7 @@ def test_a_piece_filling_a_field_on_analysed_text_is_offered_set_field_and_hande
     run_job(job, runner(job))
     first = next(c for c in model.calls if c['n'] == 1 and 'Instructions from' in c['asked'])
     names = [t['function']['name'] for t in first['kwargs']['tools']]
-    assert 'set_field' in names and len(names) == 11
+    assert 'set_field' in names and len(names) == 7
     asked = first['asked']
     assert 'Nothing empty in s1, s2, s3' in asked
     assert 'How these forms were analysed before' not in asked and 'Lexicon entries spelled inside' not in asked

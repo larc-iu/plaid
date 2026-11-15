@@ -135,11 +135,16 @@ def render_job() -> str:
              'block, `src/plaid_agent/igt/evidence.py`):\n', '```text',
              prompt.build_job_prompt(ws.project, sentences=True).rstrip(), '```\n',
              f'Its {len(short)} tools (`toolkit.SENTENCES_PIECE_TOOLS`, analyses_of without "'
-             + toolkit.CHECK_FIRST.strip() + '"): ' + ', '.join(t['function']['name'] for t in short) + '.\n',
+             + toolkit.CHECK_FIRST.strip() + '", less `toolkit.TEXT_TOOLS` unless the plan sets edits_text): '
+             + ', '.join(t['function']['name'] for t in short) + '.\n',
              '\n## A piece of a document or selection plan\n', 'Its system prompt:\n', '```text',
              prompt.build_job_prompt(ws.project).rstrip(), '```\n',
              f'Its {len(tools)} tools are the chat\'s, as `SAMPLE_PROMPT.md` shows them, less '
-             + ', '.join(f'`{n}`' for n in toolkit.JOB_LEFT_OUT) + ': ' + ', '.join(names) + '.\n',
+             + ', '.join(f'`{n}`' for n in toolkit.JOB_LEFT_OUT) + ' and, unless the plan sets edits_text, '
+             + ', '.join(f'`{n}`' for n in toolkit.TEXT_TOOLS) + ': ' + ', '.join(names) + '.\n',
+             'A plan that sets edits_text offers those tools too, and its pieces\' prompt reads as above but '
+             'for: ' + '; '.join(f'"{said}" where it says "{instead}"' for said, instead in prompt.NO_TEXT_EDITS)
+             + '.\n',
              '\n## The final context\n', 'Its system prompt, with no tools:\n', '```text',
              prompt.build_summary_prompt(ws.project).rstrip(), '```\n']
     return '\n'.join(parts)

@@ -10,7 +10,7 @@ import uuid
 import pytest
 
 from fixtures import SENT_LAYER, WORD_LAYER
-from job_fixtures import Model, call, document, job_project, plan_row, reply, targets_named, use
+from job_fixtures import Model, call, document, job_project, plan_row, reply, targets_named, text_edits, use
 from live import _skip_or_fail, core_url, login, seed
 
 from plaid_client import PlaidAPIError
@@ -28,6 +28,12 @@ SENTENCES = [{'words': ['ka', 'ta'], 'translation': ('First.', 'human')},
              {'words': ['ka', 'ta'], 'translation': ('First again.', 'human')},
              {'words': ['sa', 'ta']},
              {'words': ['sa', 'ta']}]
+
+
+@pytest.fixture(autouse=True)
+def _text_edits(monkeypatch):
+    """These jobs' pieces change the text: their plans say they may (FX)."""
+    text_edits(monkeypatch)
 
 
 def _admin():

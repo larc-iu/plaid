@@ -309,12 +309,25 @@ PLAN_CODE = shared.code_section(
     sees='documents(), load(document), query(q) and lexicon(), and stages nothing.')
 
 
-def build_job_prompt(project: IgtProject, sentences: bool = False) -> str:
+#: What a piece of a job whose plan does not edit the text is not told: the
+#: tools it is not offered (toolkit.TEXT_TOOLS) and what they would write.
+NO_TEXT_EDITS = (('deletions and text edits included', 'deletions included'),
+                 ('confirmations, document restores, corpus-wide rules', 'confirmations, corpus-wide rules'),
+                 ('set_analysis_for_form, respell_all, copy_to_orthography', 'set_analysis_for_form, copy_to_orthography'))
+
+
+def build_job_prompt(project: IgtProject, sentences: bool = False, edits_text: bool = False) -> str:
     """The system prompt of every piece of a job on ``project``: the chat's
     prompt with the job's paragraphs, the project's shape and its guidelines
     whole, and the code section where the sandbox is. A piece of a plan in
-    sentences (``sentences``) is told its message holds the evidence."""
+    sentences (``sentences``) is told its message holds the evidence. A
+    piece of a plan that does not edit the text (``edits_text`` False) is
+    told nothing of the tools it is not offered (:data:`NO_TEXT_EDITS`)."""
     out = _filled(JOB_SENTENCES_SYSTEM if sentences else JOB_SYSTEM, project)
+    if not edits_text:
+        for said, instead in NO_TEXT_EDITS:
+            assert said in out, said
+            out = out.replace(said, instead)
     # A piece in sentences is not offered run_code (toolkit.SENTENCES_PIECE_TOOLS).
     return out + JOB_CODE + JOB_TABLES if sandbox.available() is None and not sentences else out
 
@@ -334,6 +347,7 @@ a summary of each.
 the documents, such as finding where they disagree. Its findings go in tables code makes and in its note.
 - piece_instructions: only your decisions, as plain imperative sentences naming forms and values exactly. \
 Pieces already have the project's guidelines and the job's instructions. Read the documents to decide.
+- edits_text: only when instructions ask to change the words or sentences themselves.
 - documents: leave it out for every document in the job's order.'''
 
 #: The planning context's prompt: who it is, the project, and how to plan.

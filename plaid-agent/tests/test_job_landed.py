@@ -10,7 +10,7 @@ import json
 
 import pytest
 
-from job_fixtures import JobClient, Model, call, document, reply, runner, start, targets_named, use
+from job_fixtures import JobClient, Model, call, document, reply, runner, start, targets_named, text_edits, use
 
 from plaid_client import PlaidAPIError
 from plaid_agent.igt import job as igt_job
@@ -24,6 +24,12 @@ FOUR = [{'words': ['ka']}, {'words': ['sa']}, {'words': ['sa']}, {'words': ['sa'
 # s1 glossed, s3 deleted: ka, sa, sa (d1-s4).
 THREE = _renamed(document('d1', 'Story', [{'words': [KA]}, FOUR[1], FOUR[3]], version=3), [('d1-s3', 'd1-s4')])
 TWO = document('d1', 'Story', [{'words': [KA]}, FOUR[1]], version=4)
+
+
+@pytest.fixture(autouse=True)
+def _text_edits(monkeypatch):
+    """These tests' pieces delete words or sentences: their plans say the job may change the text."""
+    text_edits(monkeypatch)
 
 
 class Crash(BaseException):

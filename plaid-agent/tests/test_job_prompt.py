@@ -87,7 +87,10 @@ def test_the_prompt_shows_one_whole_piece_in_prose():
 
 
 def test_a_piece_is_offered_the_chats_tools_but_drafting_and_reading_jobs():
+    """A plan that edits the text: every tool of the chat's but the two
+    (test_job_text_edits has the plan that does not)."""
     ws = JobWorkspace(FakeClient(), _project())
+    ws.edits_text = True
     names = [t['function']['name'] for t in toolkit.job_piece_tools(ws)]
     chat = [t['function']['name'] for t in toolkit.tools_for(ws)]
     assert names == [n for n in chat if n not in ('propose_job', 'read_job')], 'the same list, in the same order'

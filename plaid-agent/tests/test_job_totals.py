@@ -4,12 +4,20 @@ analysis or a translation), never one it skipped or failed, nor one it only
 finished with nothing written. Checked on a job whose every call fails, one
 where half of them fail, and one stopped midway."""
 
-from job_fixtures import JobClient, Model, call, document, reply, runner, start, targets_named, use
+import pytest
+
+from job_fixtures import JobClient, Model, call, document, reply, runner, start, targets_named, text_edits, use
 
 from plaid_agent.core.job import run_job
 from plaid_agent.igt import job as igt_job
 
 J = 'JT'
+
+
+@pytest.fixture(autouse=True)
+def _text_edits(monkeypatch):
+    """These tests' pieces delete words or sentences: their plans say the job may change the text."""
+    text_edits(monkeypatch)
 
 
 def _analysing(bad=()):
