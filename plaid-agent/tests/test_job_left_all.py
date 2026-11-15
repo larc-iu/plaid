@@ -94,6 +94,41 @@ def test_a_stopped_job_counts_the_sentences_it_did_not_reach_apart(monkeypatch):
     adds_up(doc, WORDS)
 
 
+def test_a_document_the_job_never_reached_counts_its_blanks_as_not_reached(monkeypatch):
+    """REV-DF-S-3: cancelled after the first piece of Story, Tale (three
+    blank words) was never reached. Its blanks are read at the end and
+    counted as not reached, in its row and in the totals, never listed and
+    never left. A document the plan left out is not read."""
+    monkeypatch.setattr(igt_job, 'JOB_STRETCH_SENTENCES', 2)
+    tale = document('d2', 'Tale', [{'words': ['mo', 'ri']}, {'words': ['su']}])
+    client = JobClient({'d1': _doc(set()), 'd2': tale})
+    job = start(client, id=J)
+    _applying(monkeypatch, client, after=lambda: client.jobs.cancel(J))
+    use(monkeypatch, Model(_first_piece_only))
+    finished = run_job(job, runner(job))
+    assert finished['state'] == 'cancelled'
+    story, never = finished['report']['documents']
+    assert never['state'] == 'not-reached' and never['done'] in (0, None) and never['left'] == []
+    assert never['counts']['not_reached'] == 3, never['counts']
+    seg = next(b for b in finished['report']['totals']['blank'] if b['target'] == 'segmentation')
+    assert seg['not_reached'] == WORDS - 4 + 3 and seg['left'] == 0, seg
+
+
+def test_a_document_the_plan_left_out_is_not_read_for_its_blanks(monkeypatch):
+    monkeypatch.setattr(igt_job, 'JOB_STRETCH_SENTENCES', 2)
+    from job_fixtures import keep_plan
+    tale = document('d2', 'Tale', [{'words': ['mo', 'ri']}])
+    client = JobClient({'d1': _doc(set()), 'd2': tale})
+    job = start(client, id=J, plan=None)
+    keep_plan(client, J, 'sentences', documents=[0])
+    _applying(monkeypatch, client)
+    use(monkeypatch, Model(_first_piece_only))
+    finished = run_job(job, runner(job))
+    assert [d['document_id'] for d in finished['report']['plan']['left_out']] == ['d2']
+    tale_doc = finished['report']['documents'][1]
+    assert 'blank' not in tale_doc['counts'] and not tale_doc['counts'].get('not_reached'), tale_doc
+
+
 def test_a_skipped_sentence_is_neither_left_nor_not_reached(monkeypatch):
     """s3's piece fails every time (halved to s3 alone, then skipped): its
     words are under Skipped, not Left blank, and the totals add up with

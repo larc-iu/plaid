@@ -4115,8 +4115,9 @@ class IgtRunner:
         A sentence the walk takes (every sentence, or one holding something
         blank) is in exactly one of worked, skipped and not reached, so what
         the job analysed, left, skipped and did not reach add up to the
-        words it was to work. A document the job never reached is not read
-        (its state says not reached). None for a document that could not be
+        words it was to work. A document the job never reached is read too,
+        everything blank in it not reached; one the plan left out is not.
+        None for a document that could not be
         read (every document, when what landed could not be read): the
         report says so (REV-LNW-2). A document gone lists nothing."""
         try:
@@ -4127,10 +4128,13 @@ class IgtRunner:
             return {d: None for d in job.order}
         out: Dict[str, Optional[Dict[str, List[Dict[str, Any]]]]] = {}
         fill = self.targets(project)
+        # Every document the plan works is read, those it never reached too:
+        # their blanks are not reached (REV-DF-S-3). A document the plan
+        # left out is not the job's work.
+        planned = (self.plan_made or {}).get('documents')
         for d in job.order:
             worked, known, written = self.finished(d), self.known_words(d), self.written(d)
-            row = job.rows.get(d) or {}
-            if not worked and row.get('state') not in ('done', 'working', 'deferred', 'in-use'):
+            if planned and d not in planned and not worked:
                 continue
             skipped = self.excluded(d) - worked
             try:
