@@ -342,3 +342,16 @@ def test_a_linked_analysis_names_its_entry_as_the_entry_lines_do_and_look_alikes
                             ('gam', [('gam', 'net', 'vi-gam2')], 'human')]}])})
     asked = _asked(monkeypatch, client)
     assert '- "gam": people: gam ‘net’ (entries gam#2) (2)' in asked[0], asked[0]
+
+
+def test_an_answer_to_a_sentences_piece_drops_a_one_word_tool_named_as_a_tool_and_keeps_it_as_data():
+    """DF1 open point 6: answers were filtered of underscore names only, so
+    "senses action ..." or "use search" reached a piece offered neither. A
+    one-word name goes where the answers name a tool, never where it is a
+    form or a gloss in the data."""
+    from plaid_agent.igt.toolkit import _without_names
+    names = {'senses', 'search', 'set_morpheme'}
+    text = ('Staged gam.\nA sense is renumbered with senses action "move". Kept.\nUse search to look. Done.\n'
+            '- "search": people: search ‘look.for’ (2)\nset_morpheme sets a type. Fine.')
+    assert _without_names(text, names, underscored=True) == (
+        'Staged gam.\nKept.\nDone.\n- "search": people: search ‘look.for’ (2)\nFine.')

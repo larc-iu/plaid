@@ -836,14 +836,31 @@ _TOOL_NAMES = frozenset(t['function']['name'] for t in TOOLS)
 
 def _without_names(text: str, names, underscored: bool = False) -> str:
     """``text`` less every parenthesis, then every sentence, that names one
-    of ``names`` (a whole word; only names holding an underscore when
-    ``underscored``, for an answer whose data may hold plain words). Line
-    breaks are kept."""
-    names = {n for n in names if '_' in n} if underscored else set(names)
+    of ``names`` (a whole word). ``underscored``, for an answer whose data
+    may hold plain words: a name holding an underscore anywhere, and a
+    one-word name (search, senses) only where the answers name a tool, after
+    "use", "call" or "with", or before "action", "tool" or "(" (DF1 open
+    point 6): a form or a gloss "search" in the data stays. Line breaks are
+    kept."""
+    names = set(names)
     if not names or not any(n in text for n in names):
         return text
-    pattern = re.compile(r'(?<![A-Za-z0-9_])(' + '|'.join(sorted(map(re.escape, names), key=len, reverse=True))
-                         + r')(?![A-Za-z0-9_])')
+    if underscored:
+        long = sorted(map(re.escape, (n for n in names if '_' in n)), key=len, reverse=True)
+        short = sorted(map(re.escape, (n for n in names if '_' not in n)), key=len, reverse=True)
+        alts = []
+        if long:
+            alts.append(r'(?<![A-Za-z0-9_])(?:' + '|'.join(long) + r')(?![A-Za-z0-9_])')
+        if short:
+            one = '(?:' + '|'.join(short) + ')'
+            alts.append(r'(?:(?<=\b[Uu]se )|(?<=\b[Cc]all )|(?<=\b[Ww]ith ))' + one + r'(?![A-Za-z0-9_])')
+            alts.append(r'(?<![A-Za-z0-9_])' + one + r'(?= action\b| tool\b|\()')
+        if not alts:
+            return text
+        pattern = re.compile('|'.join(alts))
+    else:
+        pattern = re.compile(r'(?<![A-Za-z0-9_])(' + '|'.join(sorted(map(re.escape, names), key=len, reverse=True))
+                             + r')(?![A-Za-z0-9_])')
     text = re.sub(r' ?\([^()\n]*\)', lambda m: '' if pattern.search(m.group(0)) else m.group(0), text)
     lines = []
     for line in text.split('\n'):
