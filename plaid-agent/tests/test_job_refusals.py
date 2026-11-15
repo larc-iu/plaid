@@ -160,9 +160,10 @@ def test_a_reference_to_an_entry_this_plan_creates_is_worded_by_who_reads_it(job
                    'reference.'), out
 
 
-CODES = {'new entry then rename': 'lexicon', 'deleted entry then rename': 'lexicon',
-         'merge then delete what it keeps': 'lexicon', 'entry numbers moved': 'lexicon',
-         'phrase then link a word in it': 'expression'}
+CODES = {'new entry then rename': 'entry-new', 'deleted entry then rename': 'entry-gone',
+         'merge then delete what it keeps': 'entry-gone', 'entry numbers moved': 'entry-gone',
+         'phrase then link a word in it': 'expression', 'analysis then retype': 'shape',
+         'rule then retype': 'shape'}
 
 
 @pytest.mark.parametrize('scenario', list(SCENARIOS))
@@ -173,4 +174,4 @@ def test_what_a_refusal_left_says_what_kind_of_refusal_it_was(scenario):
     w, _ = _said(SCENARIOS[scenario])
     assert w.left_by_refusal and {e['code'] for e in w.left_by_refusal} == {CODES.get(scenario, 'text')}, \
         w.left_by_refusal
-    assert set(LEFT_CODES) == {'text', 'lexicon', 'expression'}
+    assert set(LEFT_CODES) == {'text', 'shape', 'entry-new', 'entry-gone', 'expression'}

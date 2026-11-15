@@ -92,13 +92,16 @@ export const skippedText = ({ reason, kind }) => {
   return reason;
 };
 
-// What a refusal the job could not follow left a sentence for, by the code
-// the refusal carries (a closed set, never its text): the label a person
-// reads under "Not done, refused:" (REV-DF-S-4).
+// What a refusal the job could not follow left undone in a sentence, by the
+// code the refusal carries (a closed set, never its text): the label a
+// person reads under "Not done, refused:", naming the change not made
+// (REV-DF-S-4, REV-DF3-5).
 const REFUSED_TEXT = {
-  text: 'Words changed by the job',
-  lexicon: 'Lexicon entry changed by the job',
-  expression: 'In a multi-word expression the job made',
+  text: 'Change to words the job retyped, split, merged or deleted',
+  shape: 'Retype, split, merge or delete of words the job also changed',
+  'entry-new': 'Change naming an entry the job made',
+  'entry-gone': 'Change naming an entry the job deleted or merged',
+  expression: 'Link inside a multi-word expression the job made',
 };
 export const refusedText = (code) => REFUSED_TEXT[code] ?? 'Refused';
 

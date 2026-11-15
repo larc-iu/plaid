@@ -1667,7 +1667,7 @@ def _existing(ws: Workspace, form, lexicon, entry_id, gloss=None, what: str = 'b
     kind, target = ws.find_entry(form, lexicon, entry_id, gloss)
     if kind == 'new':
         raise ToolError(f'That entry is new in this plan{ADVICE}', kind='conflict',
-                        code='lexicon', advice='; approve the plan first, then merge or rename it.')
+                        code='entry-new', advice='; approve the plan first, then merge or rename it.')
     _refuse_doomed_entry(ws, target, what)
     return target
 

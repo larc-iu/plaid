@@ -284,7 +284,7 @@
  *   listed (`totals.blank` sums them). Its `counts.left` and `counts.notReached`: the words and morphemes among
  *   them. Its `counts.leftUnits`: `[{unit, left}]`, the places Left blank lists by unit, the cut ones too. A
  *   document's `refused` and `refusedMore`: the sentences a refusal the job could not follow left,
- *   `{sentence, sentenceId, what, code}`, `code` one of `text`, `lexicon`, `expression` or null.
+ *   `{sentence, sentenceId, what, code}`, `code` one of `text`, `shape`, `entry-new`, `entry-gone`, `expression` or null.
  *   A report the worker writes is kept under core's size cap: rows that do not fit are cut from the end of its
  *   lists, tables first, and counted in the list's `...More`.
  */

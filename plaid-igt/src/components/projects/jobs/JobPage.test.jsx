@@ -1103,7 +1103,7 @@ describe('the job page', () => {
               sentence: 's2',
               sentenceId: 'sen2',
               what: 'That entry is new in this plan',
-              code: 'lexicon',
+              code: 'entry-new',
             },
             {
               sentence: 's3',
@@ -1112,6 +1112,14 @@ describe('the job page', () => {
               code: 'expression',
             },
             { sentence: 's4', sentenceId: null, what: 'something else', code: null },
+            {
+              sentence: 's5',
+              sentenceId: 'sen5',
+              what: 's5.w1 has an analysis change',
+              code: 'shape',
+            },
+            { sentence: 's6', sentenceId: 'sen6', what: 'vi-gam is deleted', code: 'entry-gone' },
+            { sentence: null, sentenceId: null, what: 's1.w2 is already split', code: 'text' },
           ],
           refusedMore: 2,
         },
@@ -1123,11 +1131,21 @@ describe('the job page', () => {
     expect(all(section, 'h3').map((h) => h.textContent)).toContain('Left blank');
     const t = text(section);
     expect(t).toContain('Not done, refused:');
-    // A fixed label per kind of refusal, never the model's text (REV-DF-S-4).
-    expect(t).toContain('s1 Words changed by the job');
-    expect(t).toContain('s2 Lexicon entry changed by the job');
-    expect(t).toContain('s3 In a multi-word expression the job made');
-    expect(t).toContain('s4 Refused');
+    // A fixed label per kind of refusal, naming the change not made, never
+    // the model's text (REV-DF-S-4, REV-DF3-5).
+    const items = all(section, 'li').map((li) => text(li).trim());
+    expect(items).toEqual(
+      expect.arrayContaining([
+        's1 Change to words the job retyped, split, merged or deleted',
+        's2 Change naming an entry the job made',
+        's3 Link inside a multi-word expression the job made',
+        's4 Refused',
+        's5 Retype, split, merge or delete of words the job also changed',
+        's6 Change naming an entry the job deleted or merged',
+        // The shape guard's refusal, with no sentence (D-14), is labelled too.
+        'Change to words the job retyped, split, merged or deleted',
+      ]),
+    );
     expect(t).not.toContain('retyped in this plan');
     expect(t).not.toContain('new in this plan');
     expect(t).toContain('And 2 more refused.');

@@ -135,7 +135,7 @@ def _resolve_ref(ws: Workspace, vocab: dict, field: dict, value: str, own_id: Op
     elif value in ws.new_entries:
         raise ToolError(f'"{field["name"]}" must name an entry that already exists. "{value}" is created by this '
                         f'same plan and has no id until it is approved{ADVICE}', kind='conflict',
-                        code='lexicon', advice=': approve the plan, then set the reference.')
+                        code='entry-new', advice=': approve the plan, then set the reference.')
     else:
         form, suffix = value, None
         if '#' in value:
@@ -286,7 +286,7 @@ def _refuse_doomed_entry(ws: Workspace, item: dict, what: str):
     if item['id'] in ws.doomed_entries():
         raise ToolError(f'{ws.entry_name(item)} is deleted or merged away by this same plan, so it cannot '
                         f'{what}.', kind='conflict',
-                        code='lexicon',
+                        code='entry-gone',
                         advice='Leave that change out (discard_plan and stage the rest again), or work on the entry '
                         'that survives.')
 
@@ -298,7 +298,7 @@ def _refuse_removing_survivor(ws: Workspace, item: dict, what: str):
     if any(op.get('kind') == 'merge_entries' and op.get('keep_id') == item['id'] for op in ws.ops):
         raise ToolError(f'{ws.entry_name(item)} is what another change in this plan merges into, so it cannot '
                         f'{what}.', kind='conflict',
-                        code='lexicon',
+                        code='entry-gone',
                         advice='Leave that merge out (discard_plan and stage the rest again), or merge into an entry '
                         'that stays.')
 

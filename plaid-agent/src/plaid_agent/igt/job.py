@@ -109,11 +109,15 @@ FALLBACK_FORM = ' fallback '
 CHANGE_FORM = ' change '
 NOTE_FORM = ' note '
 #: What a refusal a job cannot follow is about (``ToolError.code``, given
-#: where it is raised): a change to the text or the words of the sentence in
-#: the same plan, a lexicon entry the same plan creates, deletes or merges, a
-#: multi-word expression the same plan makes. The job page labels each
-#: (REV-DF-S-4).
-LEFT_CODES = ('text', 'lexicon', 'expression')
+#: where it is raised): ``text``, a change to words the same plan retypes,
+#: splits, merges or deletes; ``shape``, a retype, split, merge or delete of
+#: words the same plan also changes otherwise (an analysis, a value, a rule,
+#: a comment); ``entry-new``, a change naming an entry the same plan creates;
+#: ``entry-gone``, one naming an entry the same plan deletes or merges (or
+#: an entry number that plan moves); ``expression``, a link inside a
+#: multi-word expression the same plan makes. The job page labels each by
+#: what was not done (REV-DF-S-4, REV-DF3-5).
+LEFT_CODES = ('text', 'shape', 'entry-new', 'entry-gone', 'expression')
 #: What a refusal the job could not follow left (``JobWorkspace.leave_it``).
 REFUSED_FORM = ' refused '
 TABLE_FORM = ' table '

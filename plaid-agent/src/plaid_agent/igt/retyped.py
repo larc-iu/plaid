@@ -453,7 +453,7 @@ def refuse_retype_under_rule(ws, edit: Dict[str, Any], where: str, n: int) -> No
             continue
         if _rule_hit(ws, ws.rule_found.get(rules.target(op)) or [], mine) is not None:
             raise ToolError(f'{where}: this plan\'s {op.get("tool")} changes words of s{n}, which a retype '
-                            'renumbers.', kind='conflict', code='text', advice='Retype it once the plan is applied.',
+                            'renumbers.', kind='conflict', code='shape', advice='Retype it once the plan is applied.',
                             sentence_id=edit.get('sentence_id'))
 
 
@@ -506,7 +506,7 @@ def restage_on_retype(ws, doc, s, edit: Dict[str, Any], where: str) -> List[Tupl
         if f is None or f.scope != 'Word':
             raise ToolError(f'{where}: this plan already has a change on a word of this sentence ({label}), and '
                             'a retype renumbers its words when it is applied.', kind='conflict',
-                            code='text', advice='Plan one of them, or discard_plan to start over', sentence_id=s.id)
+                            code='shape', advice='Plan one of them, or discard_plan to start over', sentence_id=s.id)
         word_id = p.get('word_id') if p is not None else op.get('token_id')
         if planned is None:
             raise unnumbered_refusal(where, s)
@@ -514,7 +514,7 @@ def restage_on_retype(ws, doc, s, edit: Dict[str, Any], where: str) -> List[Tupl
         if k is None:
             raise ToolError(f'{where}: this plan already has a value on a word this retype takes away or that an '
                             f'earlier retype made ({label}).', kind='conflict',
-                            code='text', advice='Plan one of them, or discard_plan to start over', sentence_id=s.id)
+                            code='shape', advice='Plan one of them, or discard_plan to start over', sentence_id=s.id)
         out.append((i, planned_value(ws, doc, s, k, planned[k - 1], f, op.get('value') or '',
                                      span_id=op.get('span_id'), old=old_value(doc, word_id, f))))
     return out

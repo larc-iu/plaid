@@ -494,7 +494,7 @@ def refuse_shape_and_analysis(ws: Workspace, word_id, ref: str, *, analysing: bo
     elif any(op.get('kind') in _ANALYSIS_KINDS and op.get('word_id') in ids for op in ws.ops):
         raise ToolError(f'{ref} has an analysis change in this plan, so its boundaries cannot also change: a '
                         'boundary change deletes the morphemes that analysis writes.', kind='conflict',
-                        code='text', advice='discard_plan to start over, or plan the two in separate turns.')
+                        code='shape', advice='discard_plan to start over, or plan the two in separate turns.')
 
 
 # A text edit names every word and morpheme of the region it rewrites, and
@@ -529,7 +529,7 @@ def refuse_comment_and_text_edit(ws: Workspace, ids, where: str, *, commenting: 
     if clash:
         raise ToolError(f'{where}: this plan rewrites the text over a word it also comments on, and the '
                         'rewrite may take the word the comment is anchored to.', kind='conflict',
-                        code='text', advice='discard_plan to start over, or plan the two in separate turns.')
+                        code='text' if commenting else 'shape', advice='discard_plan to start over, or plan the two in separate turns.')
 
 
 def parse_analysis(ws: Workspace, morphemes: list) -> List[Dict[str, Any]]:
