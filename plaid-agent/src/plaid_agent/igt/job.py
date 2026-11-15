@@ -3904,7 +3904,11 @@ class IgtRunner:
                         'sentences': row.get('sentences'), 'targets': targets, 'done': done,
                         'counts': counts, 'skipped': list(row.get('skipped') or []),
                         'gloss_group': row.get('gloss_group'), 'harmonize_group': row.get('harmonize_group'),
-                        'left': left, 'left_more': more, **({'left_unread': True} if unread else {}),
+                        # No list where nothing was counted (a plan that
+                        # fills nothing, a document deleted or unread), so
+                        # nothing reads "0 left blank" of it (REV-DF-S-2).
+                        **({'left': left, 'left_more': more} if found.get('blank') else {}),
+                        **({'left_unread': True} if unread else {}),
                         **({'refused': gone, 'refused_more': gone_more} if gone else {})})
         return out
 

@@ -209,7 +209,7 @@ def test_a_plan_that_fills_nothing_tells_no_piece_anything_is_empty(monkeypatch)
     assert sorted(t['function']['name'] for t in model.calls[0]['kwargs']['tools']) == [
         'analyses_of', 'read_lexicon', 'set_field']
     doc = finished['report']['documents'][0]
-    assert doc['left'] == [] and 'blank' not in doc['counts'] and 'left' not in doc['counts']
+    assert 'left' not in doc and 'blank' not in doc['counts'] and 'left' not in doc['counts']
     assert 'blank' not in finished['report']['totals']
 
 

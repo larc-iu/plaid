@@ -871,6 +871,85 @@ describe('the job page', () => {
     await v.unmount();
   });
 
+  it('leaves Left blank empty where nothing was counted', async () => {
+    const blank = (left, notReached) => [
+      { target: 'Role', unit: 'word', left, notReached, skipped: 0 },
+    ];
+    const row = (documentId, name, state, done) => ({
+      documentId,
+      name,
+      position: 0,
+      state,
+      sentences: 4,
+      targets: 4,
+      done,
+      counts: {},
+      skipped: [],
+    });
+    const report = {
+      ...REPORT,
+      documents: [
+        {
+          documentId: 'd1',
+          name: 'Done',
+          state: 'done',
+          done: 4,
+          counts: { blank: blank(2, 0) },
+          skipped: [],
+          left: [{ ref: 's1.w1', sentenceId: 'sen1', begin: 0, form: 'ka', targets: ['Role'] }],
+          leftMore: 1,
+        },
+        {
+          documentId: 'd2',
+          name: 'Never',
+          state: 'not-reached',
+          done: 0,
+          counts: { blank: blank(0, 6) },
+          skipped: [],
+          left: [],
+          leftMore: 0,
+        },
+        { documentId: 'd3', name: null, state: 'gone', done: null, counts: {}, skipped: [] },
+        {
+          documentId: 'd4',
+          name: 'Partway',
+          state: 'not-reached',
+          done: 2,
+          counts: { blank: blank(0, 3) },
+          skipped: [],
+          left: [],
+          leftMore: 0,
+        },
+      ],
+    };
+    const job = jobOf({
+      state: 'cancelled',
+      finishedAt: '2026-11-12T11:00:00Z',
+      documents: [
+        row('d1', 'Done', 'done', 4),
+        row('d2', 'Never', 'not-reached', 0),
+        row('d3', null, 'gone', null),
+        row('d4', 'Partway', 'not-reached', 2),
+      ],
+      report,
+    });
+    const v = await mount(clientOf(job));
+    const headers = all(v.container, 'th').map((h) => h.textContent);
+    const at = headers.indexOf('Left blank');
+    expect(at).toBeGreaterThan(-1);
+    const cells = all(v.container, 'tbody tr').map((tr) => all(tr, 'td')[at]?.textContent);
+    expect(cells.slice(0, 4)).toEqual(['2', '', '', '0']);
+    await v.unmount();
+    // A job that fills nothing has no Left blank column at all.
+    const none = {
+      ...report,
+      documents: report.documents.map((d) => ({ ...d, counts: {}, left: undefined })),
+    };
+    const w = await mount(clientOf(jobOf({ ...job, report: none })));
+    expect(all(w.container, 'th').map((h) => h.textContent)).not.toContain('Left blank');
+    await w.unmount();
+  });
+
   it('says how many values people wrote and how much of the text the job changed, beside each document’s History', async () => {
     const report = {
       ...REPORT,

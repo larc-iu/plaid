@@ -59,10 +59,13 @@ export const planText = (plan) => {
 export const stoppedPartway = (d) => d.state === 'not-reached' && (d.done ?? 0) > 0;
 
 // How many places a document's Left blank lists (each a word or a
-// sentence), those cut from the list included, or null when the report holds
-// no list for it (a document that could not be read, core's own report).
+// sentence), those cut from the list included, or null when nothing was
+// counted there: a job that fills nothing, a document deleted, one that could
+// not be read, one the job never reached, core's own report (REV-DF-S-2).
 export const leftCount = (d) =>
-  d?.left && !d.leftUnread ? d.left.length + (d.leftMore ?? 0) : null;
+  d?.counts?.blank && !d.leftUnread && !(d.state === 'not-reached' && !(d.done > 0))
+    ? (d.left?.length ?? 0) + (d.leftMore ?? 0)
+    : null;
 
 const FAILURE_TEXT = {
   budget: 'over budget',
