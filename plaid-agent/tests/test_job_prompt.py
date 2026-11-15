@@ -567,3 +567,21 @@ def test_a_segmenting_piece_is_told_its_task_by_what_its_plan_fills(fills, said,
         assert x not in piece and x not in read_first, (x, piece, read_first)
     if fills == ('segmentation', 'sl-mgloss', 'sl-trans'):
         assert text == prompt.build_job_prompt(project, sentences=True, targets=tg.app_default(project))
+
+
+@pytest.mark.parametrize('context', ['document', 'planning'])
+def test_no_description_a_document_piece_or_the_planner_reads_names_a_tool_it_is_not_offered(context):
+    """REV-DF-D-18: recent_changes named restore_document to a document
+    piece that may not edit the text, lexicon_entry named senses to the
+    planning context. Every description is read less what names a tool the
+    context is not offered (underscore names: a plain word may be data)."""
+    import json
+    import re
+    ws = JobWorkspace(FakeClient(), _project(), mode=JobWorkspace.PLAN if context == 'planning' else JobWorkspace.PIECE)
+    ws.job_documents = [{'id': 'd1', 'name': 'Text 1'}]
+    tools = toolkit.job_plan_tools(ws) if context == 'planning' else toolkit.job_piece_tools(ws)
+    offered = {t['function']['name'] for t in tools}
+    arguments = {a for t in tools for a in (t['function'].get('parameters') or {}).get('properties') or {}}
+    names = {t['function']['name'] for t in toolkit.TOOLS} | {'restore_document', 'senses'}
+    stray = sorted(set(re.findall(r'\b([a-z]+_[a-z0-9_]+)\b', json.dumps(tools))) & names - offered - arguments)
+    assert not stray, stray

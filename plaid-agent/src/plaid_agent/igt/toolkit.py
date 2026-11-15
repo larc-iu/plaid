@@ -818,7 +818,8 @@ def job_piece_tools(ws, plan_only: bool = False) -> list:
     if getattr(ws, 'in_sentences', False):
         allowed = sentences_piece_tools(getattr(ws, 'fills', ()))
         tools = [_without_check_first(t) for t in tools if t['function']['name'] in allowed]
-        tools = _offered_only(tools)
+    # Every piece's descriptions name only tools it is offered (REV-DF-D-18).
+    tools = _offered_only(tools)
     if plan_only:
         tools = [t for t in tools if t['function']['name'] in WRITE_TOOLS]
     return tools
@@ -932,7 +933,8 @@ def job_plan_tools(ws, plan_only: bool = False) -> list:
         return [PLAN_WORK]
     reads = [_without_check_first(t) for t in tools_for(ws) if t['function']['name'] not in WRITE_TOOLS
              and t['function']['name'] not in JOB_LEFT_OUT + PLAN_LEFT_OUT]
-    return reads + [PLAN_WORK]
+    # Its descriptions name only tools it is offered (REV-DF-D-18).
+    return _offered_only(reads + [PLAN_WORK])
 
 
 def job_plan_call(ws, name: str, args: Dict[str, Any]) -> str:
