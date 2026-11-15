@@ -269,17 +269,22 @@
  * @property {{changed: object[], left: object[], changedMore: number, leftMore: number}} harmonize
  * @property {{created: object[], unlinked: object[], createdMore: number, unlinkedMore: number, lexicons: string[]}} entries
  * @property {string | null} [summary] the final context's prose
- * @property {object | null} [plan] the job's plan
+ * @property {object | null} [plan] the job's plan; its `fillsNames`, what the plan fills by the names the project
+ *   gives its targets (an empty list for a plan that fills nothing, absent for a plan that names no fills)
  * @property {object[]} [proposed] changes the job proposed, with `proposedMore`
  * @property {object[]} [notes] each piece's note, with `notesMore`
  * @property {object[]} [tables] tables the job's code made, with `tablesMore`
- *   A document's `left` and `leftMore`: the targets the job left blank (absent from a report core writes).
- *   A document's `leftUnread`: true when its blanks could not be read for the report (then no `left`, and its
- *   `counts` hold no `left`, `notReached` or `blank`). Its `counts.blank`: per thing the job fills,
- *   `{target, unit, left, notReached}`, how many places (a word or a sentence, `unit`) are still blank in the
- *   sentences it worked and in those it did not reach, which are counted and never listed (`totals.blank` sums
- *   them). Its `counts.left` and `counts.notReached`: the words among them. A document's `refused` and
- *   `refusedMore`: the sentences a refusal the job could not follow left, `{sentence, sentenceId, what}`.
+ *   A document's `left` and `leftMore`: the places the job left blank, each a word, a morpheme or a sentence
+ *   field with the targets it is blank for (absent from a report core writes, and where nothing was counted:
+ *   a plan that fills nothing, a document deleted or unread). A document's `leftUnread`: true when its blanks
+ *   could not be read for the report (then no `left`, and its `counts` hold no `left`, `notReached` or
+ *   `blank`). Its `counts.blank`: per thing the job fills, `{target, unit, left, notReached, skipped}`, how many
+ *   places (a word, a morpheme or a sentence, `unit`) are still blank in the sentences it worked, in those it
+ *   did not reach (a document it never reached too) and in those it skipped, the last two counted and never
+ *   listed (`totals.blank` sums them). Its `counts.left` and `counts.notReached`: the words and morphemes among
+ *   them. Its `counts.leftUnits`: `[{unit, left}]`, the places Left blank lists by unit, the cut ones too. A
+ *   document's `refused` and `refusedMore`: the sentences a refusal the job could not follow left,
+ *   `{sentence, sentenceId, what, code}`, `code` one of `text`, `lexicon`, `expression` or null.
  *   A report the worker writes is kept under core's size cap: rows that do not fit are cut from the end of its
  *   lists, tables first, and counted in the list's `...More`.
  */
