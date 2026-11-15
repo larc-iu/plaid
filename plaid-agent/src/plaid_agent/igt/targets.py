@@ -324,7 +324,9 @@ def said_setup(setup, gone: Iterable[str] = ()) -> Optional[str]:
         return UNREAD_LINE
     gone = set(gone)
     fills = setup['fills']
-    return setup_line([f['name'] for f in fills], setup['text'], [i for i, f in enumerate(fills) if f['id'] in gone])
+    # An empty name (an API caller's) reads as the id, as on the page (REV-SUFIX-5).
+    return setup_line([f['name'] or f['id'] for f in fills], setup['text'],
+                      [i for i, f in enumerate(fills) if f['id'] in gone])
 
 
 #: What read_job and the final context say of a setup :func:`readable` refuses.

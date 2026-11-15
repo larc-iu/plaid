@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+  planEndedText,
   JOB_ACTIVE_POLL_MS,
   JOB_POLL_MS,
   JOB_WORKER_SEEN_S,
@@ -208,6 +209,22 @@ describe('the words', () => {
     ]);
     expect(jobReasonText({ reason: 'cancelled', message: null })).toBe(null);
     expect(jobReasonText(null)).toBe(null);
+  });
+});
+
+describe('planEndedText', () => {
+  // REV-SUFIX-5: a setup's empty name (an API caller's) reads as its id, as
+  // the page's setup line and read_job show it.
+  it('names a gone field by the card’s name, or by its id when the name is empty', () => {
+    expect(
+      planEndedText({
+        why: 'setup-gone',
+        gone: [
+          { id: 'L1', name: 'Part of Speech' },
+          { id: 'L2', name: '' },
+        ],
+      }),
+    ).toBe('The fields this job was set up to fill are gone: Part of Speech, L2.');
   });
 });
 

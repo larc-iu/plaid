@@ -88,14 +88,15 @@ const REASON_WORDS = {
  * How a job whose planning kept no plan says so, by its plan's `why`: the
  * model planned nothing it could keep (`no-plan`), the fields its setup names
  * are all gone (`setup-gone`, named as the card named them, from the plan's
- * `gone`), its setup could not be read (`setup-unreadable`), or it failed
- * during planning (any other `why`, the kind of the fault).
+ * `gone`, an empty name by its id as the page's setup line shows it), its
+ * setup could not be read (`setup-unreadable`), or it failed during planning
+ * (any other `why`, the kind of the fault).
  */
 export const planEndedText = (plan) => {
   if (plan?.why === 'no-plan') return 'Planning ended with no plan.';
   if (plan?.why === 'setup-gone') {
     const names = (Array.isArray(plan.gone) ? plan.gone : [])
-      .map((g) => (typeof g?.name === 'string' ? g.name : null))
+      .map((g) => (typeof g?.name === 'string' && g.name ? g.name : g?.id))
       .filter(Boolean);
     return `The fields this job was set up to fill are gone: ${names.join(', ')}.`;
   }

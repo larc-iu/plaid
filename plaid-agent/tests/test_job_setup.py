@@ -275,6 +275,21 @@ def test_read_job_says_what_the_job_was_set_up_to_fill_by_the_cards_names():
            'edit the text.\n' in out, out
 
 
+def test_an_empty_name_in_a_setup_is_shown_by_its_id_everywhere():
+    """REV-SUFIX-5: only an API caller can send a fill named "", and it reads
+    as its id in read_job's setup line, its gone line, and on the page."""
+    from fixtures import fake_ws
+    from plaid_agent.igt.toolkit import call_tool
+    ws = fake_ws(FakeClient())
+    made = ws.client.jobs.create('p1', 'igt', 'Fill Case.', ['d1'],
+                                 setup={'fills': [{'id': 'L1', 'name': ''}], 'text': False})
+    out = call_tool(ws, 'read_job', {'job': made['id']})
+    assert 'This job was set up to fill only "L1". It may not edit the text.' in out, out
+    assert tg.said_setup({'fills': [{'id': 'L1', 'name': ''}], 'text': False}, ['L1']) == (
+        'This job was set up to fill only "L1" (deleted). It may not edit the text.')
+    assert tg.gone_text({'gone': [{'id': 'L1', 'name': ''}]}) == 'L1'
+
+
 def test_read_job_says_nothing_of_a_setup_a_job_does_not_have():
     from plaid_agent.igt import jobread
     job = {'id': 'j', 'state': 'waiting', 'instructions': 'x', 'documents': []}
