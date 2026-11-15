@@ -185,7 +185,8 @@
  * A document's row of a job, in the job's order. `name` is the document's
  * name now, null once it is deleted. `counts` holds `translations`,
  * `refreshed`, `words`, `links`, `entries`, `changed`, `proposed`,
- * `analyzed`, `changes`, `deletions` and `repeated`.
+ * `analyzed`, `changes`, `deletions`, `repeated`, `peoplesValuesChanged`
+ * and `textChanges`.
  * `lastSentence` is the cursor, the id of the last sentence the
  * job finished.
  * @typedef {object} JobDocument

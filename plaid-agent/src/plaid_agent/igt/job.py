@@ -596,6 +596,33 @@ def holds_change(doc, project: IgtProject, change: Dict[str, Any]) -> bool:
     return False
 
 
+def replaces_people(op: Dict[str, Any], doc, project: IgtProject) -> bool:
+    """Whether ``op`` changes or takes away something people wrote, by the
+    provenance of what it replaces in ``doc`` (the document before the
+    write), never by its words (REV-DAY-S-3): a value whose span is not a
+    machine's (a person's, a contributor's or confirmed) set to another value
+    or cleared, an analysis replaced or discarded on a word holding any piece
+    people wrote (``word_state`` protected), a link people made replaced or
+    taken away."""
+    from .jobapply import _found, token_of
+    hit = _found(doc, token_of(op))
+    if hit is None:
+        return False
+    s, w, m = hit
+    kind = op.get('kind')
+    if kind == 'set_span':
+        f = project.field_by_layer(op.get('layer_id'))
+        holder = None if f is None else m if f.scope == 'Morpheme' else w if f.scope == 'Word' else s
+        sp = holder.fields.get(f.name) if holder is not None else None
+        return (sp is not None and sp.value not in (None, '') and prov_state(sp.metadata) != 'machine'
+                and (op.get('value') or '') != sp.value)
+    if kind in ('set_analysis', 'discard_analysis'):
+        return w is not None and word_state(w) == 'protected'
+    if kind in ('link', 'unlink'):
+        return m is not None and m.link is not None and prov_state(m.link.metadata) != 'machine'
+    return False
+
+
 def fields_text(fields) -> str:
     """``counts.fields`` or ``totals.fields`` as a line says it."""
     return ', '.join(f'{f.get("field")} {f.get("values"):,} values' for f in fields or [])
@@ -1115,12 +1142,24 @@ class Write:
         c['changes'] = len(ops)
         c['deletions'] = sum(1 for o in ops if deletes(o))
         c['links'] = sum(1 for o in ops if o.get('kind') in ('link', 'link_phrase'))
+        c.update(self.of_people_and_text(ops))
         for o in ops:
             t = self.translation(o)
             if t:
                 c[t] = 1
         c['analyzed'] = 1
         return c
+
+    def of_people_and_text(self, ops: List[Dict[str, Any]]) -> Counter:
+        """``peoples_values_changed``: the changes of ``ops`` that change or
+        take away something people wrote, by its provenance in the document
+        as it was before the write (:func:`replaces_people`).
+        ``text_changes``: those that change the text or its words and
+        sentences (``jobapply.TEXT_KINDS``). From the worker's own ops,
+        never from words (REV-DAY-S-3)."""
+        doc = self.fresh if self.fresh is not None else self.st.doc
+        return Counter({'peoples_values_changed': sum(1 for o in ops if replaces_people(o, doc, self.st.project)),
+                        'text_changes': sum(1 for o in ops if o.get('kind') in jobapply.TEXT_KINDS)})
 
     def words_of(self, ops: List[Dict[str, Any]]) -> List[str]:
         """The tags of the words whose segmentation ``ops`` write
@@ -1203,7 +1242,7 @@ class Write:
                 out.append(self.follow_up(seed, o))
         counts = Counter(drops or {}) + Counter({
             'changes': len(loose), 'deletions': sum(1 for o in loose if deletes(o)),
-            'entries': sum(1 for o in loose if o.get('kind') == 'create_entry')})
+            'entries': sum(1 for o in loose if o.get('kind') == 'create_entry')}) + self.of_people_and_text(loose)
         if loose or +counts:
             out.append((self.document_id, {
                 'write': self.id, 'try': seed, 'piece': self.piece, 'loose': True,

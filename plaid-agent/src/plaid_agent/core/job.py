@@ -540,8 +540,11 @@ ROW_FINAL = ('done', 'in-use', 'gone')
 #: own write had landed in, which are left out (added by JH-FIX). A row holds
 #: nothing of what is left blank: the report counts that from the documents
 #: as they are at the end (BRIEF NW round 3, DF2).
+#: ``peoples_values_changed`` counts the changes that changed or took away
+#: something people wrote, by its provenance, and ``text_changes`` those that
+#: changed the text or its words and sentences (DF2, REV-DAY-S-3).
 COUNT_KEYS = ('translations', 'refreshed', 'words', 'links', 'entries', 'changed', 'proposed', 'analyzed',
-              'changes', 'deletions', 'repeated')
+              'changes', 'deletions', 'repeated', 'peoples_values_changed', 'text_changes')
 #: A row's count of the sentences skipped past the cap of its ``skipped``
 #: list (core's JOB_SKIPPED_PER_DOCUMENT), which are counted and not listed.
 SKIPPED_MORE = 'skipped_more'
@@ -849,7 +852,7 @@ def build_report(job: Job, state: str, reason: Optional[str], documents: List[Di
               'sentences': 0, 'translations': 0, 'refreshed': 0, 'words': 0, 'links': 0, 'entries': 0,
               'skipped_too_long': 0, 'skipped_failed': 0, 'skipped_changed': 0, 'skipped_interrupted': 0,
               'skipped_no_answer': 0, 'skipped_more': 0, 'changed': 0, 'proposed': 0, 'changes': 0, 'deletions': 0,
-              'repeated': 0}
+              'repeated': 0, 'peoples_values_changed': 0, 'text_changes': 0}
     fields = Counter()
     for d in documents:
         key = {'done': 'documents_done', 'in-use': 'documents_in_use', 'gone': 'documents_gone'}.get(
@@ -860,7 +863,7 @@ def build_report(job: Job, state: str, reason: Optional[str], documents: List[Di
         # written, skipped or failed (REV-J-B2 S3-5): ``done`` counts those.
         totals['sentences'] += counts.get('analyzed') or 0
         for k in ('translations', 'refreshed', 'words', 'links', 'entries', 'changed', 'proposed', 'skipped_more',
-                  'changes', 'deletions', 'repeated'):
+                  'changes', 'deletions', 'repeated', 'peoples_values_changed', 'text_changes'):
             totals[k] += counts.get(k) or 0
         for s in d.get('skipped') or []:
             k = f'skipped_{str(s.get("reason") or "").replace("-", "_")}'

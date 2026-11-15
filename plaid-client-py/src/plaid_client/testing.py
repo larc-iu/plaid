@@ -1953,7 +1953,7 @@ _JOB_ANALYSIS_MAX_CHARS = 4000
 _JOB_DECISIONS_PER_CALL = 1000
 _JOB_SKIPPED_PER_DOCUMENT = 500
 _JOB_COUNT_KEYS = ('translations', 'refreshed', 'words', 'links', 'entries', 'changed', 'proposed', 'changes',
-                   'deletions', 'repeated', 'skipped_more', 'analyzed')
+                   'deletions', 'repeated', 'skipped_more', 'analyzed', 'peoples_values_changed', 'text_changes')
 
 
 class _FakeJobs:
@@ -2094,7 +2094,8 @@ class _FakeJobs:
                 'skipped_changed': skips('changed'), 'skipped_interrupted': skips('interrupted'),
                 'skipped_no_answer': skips('no-answer'),
                 'skipped_more': sums['skipped_more'], 'changed': sums['changed'], 'proposed': sums['proposed'],
-                'changes': sums['changes'], 'deletions': sums['deletions'], 'repeated': sums['repeated']},
+                'changes': sums['changes'], 'deletions': sums['deletions'], 'repeated': sums['repeated'],
+                'peoples_values_changed': sums['peoples_values_changed'], 'text_changes': sums['text_changes']},
             'documents': [{k: copy.deepcopy(r[k]) for k in
                            ('document_id', 'state', 'sentences', 'targets', 'done', 'counts',
                             'skipped', 'gloss_group', 'harmonize_group')} for r in rows],

@@ -103,6 +103,10 @@ const totalRows = (report) => {
   rows.push(['Sentences written in', t.sentences]);
   optional('Changes written', t.changes);
   optional('Deletions', t.deletions);
+  // What the job changed of what people wrote, by provenance, and of the
+  // text: each document's History entry shows the changes (REV-DAY-S-3).
+  optional('Changes to values people wrote', t.peoplesValuesChanged);
+  optional('Changes to the text', t.textChanges);
   optional('Translations written', t.translations);
   optional('Translations replaced', t.refreshed);
   optional('Words analyzed', t.words);

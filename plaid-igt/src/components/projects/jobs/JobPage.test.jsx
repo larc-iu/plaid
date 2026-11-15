@@ -819,6 +819,35 @@ describe('the job page', () => {
     await v.unmount();
   });
 
+  it('says how many values people wrote and how much of the text the job changed, beside each document’s History', async () => {
+    const report = {
+      ...REPORT,
+      totals: { ...REPORT.totals, peoplesValuesChanged: 3, textChanges: 1 },
+    };
+    const job = jobOf({
+      state: 'done',
+      finishedAt: '2026-11-12T11:00:00Z',
+      documents: [
+        {
+          ...jobOf().documents[0],
+          state: 'done',
+          glossGroup: 'g1',
+          counts: { changes: 9, peoplesValuesChanged: 3, textChanges: 1 },
+        },
+      ],
+      report,
+    });
+    const v = await mount(clientOf(job));
+    const sums = totals(v.container.querySelector('section[aria-label="Report"]'));
+    expect(sums['Changes to values people wrote']).toBe('3');
+    expect(sums['Changes to the text']).toBe('1');
+    const headers = all(v.container, 'th').map((h) => h.textContent);
+    expect(headers).toContain('Changes to values people wrote');
+    expect(headers).toContain('Changes to the text');
+    expect(headers).toContain('History');
+    await v.unmount();
+  });
+
   it('lists under Left blank what a refusal the job could not follow left, each sentence linked', async () => {
     const report = {
       ...REPORT,

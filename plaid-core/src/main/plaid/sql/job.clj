@@ -448,7 +448,9 @@
               :proposed (count-of :proposed)
               :changes (count-of :changes)
               :deletions (count-of :deletions)
-              :repeated (count-of :repeated)}
+              :repeated (count-of :repeated)
+              :peoples-values-changed (count-of :peoples-values-changed)
+              :text-changes (count-of :text-changes)}
      :documents (mapv #(select-keys % [:document-id :name :state :sentences :targets :done
                                        :counts :skipped :gloss-group :harmonize-group])
                       docs)
