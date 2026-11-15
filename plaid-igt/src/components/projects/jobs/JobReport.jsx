@@ -480,7 +480,7 @@ export const JobReport = ({ report, projectId, vocabs = [] }) => {
               </ul>
               {d.counts?.skippedMore > 0 && (
                 <p className="ml-4 text-muted-foreground">
-                  And {d.counts.skippedMore.toLocaleString()} more
+                  And {d.counts.skippedMore.toLocaleString()} more skipped.
                 </p>
               )}
             </div>

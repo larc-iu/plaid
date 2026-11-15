@@ -140,6 +140,7 @@ const REPORT = {
         { sentence: 's31', sentenceId: 'sen31', reason: 'interrupted', kind: null },
         { sentence: 's32', sentenceId: 'sen32', reason: 'no-answer', kind: null },
       ],
+      counts: { skippedMore: 3 },
     },
   ],
   harmonize: {
@@ -615,6 +616,7 @@ describe('the job page', () => {
     expect(t).toContain('s30 Failed: model repeated itself');
     expect(t).toContain('s31 Write interrupted');
     expect(t).toContain('s32 No answer from the assistant');
+    expect(t).toContain('And 3 more skipped.');
     // Harmonize.
     expect(t).toContain('ka ‘go’');
     expect(t).toContain('A person’s analysis');

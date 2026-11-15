@@ -329,3 +329,16 @@ def test_a_piece_filling_a_field_on_analysed_text_is_offered_set_field_and_hande
     system = first['kwargs']['messages'][0]['content']
     assert 'analyze_sentence' not in system and 'Fill what is empty with set_field.' in system
     assert len(written) == F.VALUES
+
+
+def test_a_linked_analysis_names_its_entry_as_the_entry_lines_do_and_look_alikes_are_one_line(monkeypatch):
+    """REV-DAY-P-19: people linked gam to the homonym gam 'net': the block
+    says "(entries gam#2)", as its entry lines name it, never "(entries
+    gam)". REV-DAY-S-15: two of people's analyses that differ only in a
+    word field (one word has a word gloss) read as one line, counted 2."""
+    word = {'form': 'gam', 'morphs': [('gam', 'net', 'vi-gam2')], 'who': 'human', 'gloss': ('net', 'human')}
+    client = JobClient({'A': document('A', 'Doc A', [{'words': ['gam']}]),
+                        'P': document('P', 'Other', [{'words': [word]}, {'words': [
+                            ('gam', [('gam', 'net', 'vi-gam2')], 'human')]}])})
+    asked = _asked(monkeypatch, client)
+    assert '- "gam": people: gam ‘net’ (entries gam#2) (2)' in asked[0], asked[0]

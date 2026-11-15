@@ -2441,11 +2441,16 @@ class IgtRunner:
         return out
 
     def entry_forms(self, ws: Workspace, project: IgtProject) -> Dict[str, str]:
+        """Entry id to the address a tool names it by (``gam#2``, a sense
+        ``kwatha#1.2``), as the evidence block's entry lines name it, so a
+        linked analysis and the entries beside it agree (REV-DAY-P-19)."""
         out = {}
         for v in project.vocabs:
             try:
-                for it in ws.lexicon(v):
-                    out[it['id']] = it.get('form') or it['id']
+                view = ws.view(v)
+                for it in view.items:
+                    if it.get('id'):
+                        out[it['id']] = view.address(it['id']) or it['id']
             except PlaidAPIError:
                 continue
         return out
@@ -3976,6 +3981,10 @@ class IgtRunner:
         changes.sort(key=lambda c: (order.get(c.get('document_id'), len(order)),
                                     [int(n) for n in re.findall(r'\d+', c.get('ref') or '')]))
         listed, more = core_job.cut(changes)
+        # Each piece's note in the job's document order, then by its first
+        # sentence, never in the order core keeps the rows (REV-DAY-P-20).
+        notes.sort(key=lambda n: (order.get(n.get('document'), len(order)),
+                                  [int(x) for x in re.findall(r'\d+', n.get('sentences') or '')[:1]]))
         shown_notes, notes_more = core_job.cut(notes)
         made = []
         for key in sorted(tables):

@@ -156,15 +156,26 @@ def _block(ws, project, surfaces, people, mine, render, budget, lexicon, fields,
         for key, rows in mine.items():
             ours_by.setdefault(form_of(key, cfg), []).extend(rows)
         analysed, none = [], []
+
+        def lines(rows):
+            """Analyses as their lines with their counts, most first: two
+            that read as the same line (differing only in what the line does
+            not show, a word field) are one line, their counts summed
+            (REV-DAY-S-15)."""
+            by: Dict[str, int] = {}
+            for x in rows:
+                line = render(x['analysis'])
+                by[line] = by.get(line, 0) + (x.get('count') or 0)
+            return '; '.join(f'{line} ({n})' for line, n in
+                             sorted(by.items(), key=lambda kv: -kv[1])[:JOB_PRECEDENT_PER_FORM])
         for form in forms:
             bits = []
-            theirs = sorted((theirs_by.get(form) or {}).values(),
-                            key=lambda x: -x['count'])[:JOB_PRECEDENT_PER_FORM]
+            theirs = list((theirs_by.get(form) or {}).values())
             if theirs:
-                bits.append('people: ' + '; '.join(f'{render(x["analysis"])} ({x["count"]})' for x in theirs))
-            ours = sorted(ours_by.get(form) or [], key=lambda r: -(r.get('count') or 0))[:JOB_PRECEDENT_PER_FORM]
+                bits.append('people: ' + lines(theirs))
+            ours = ours_by.get(form) or []
             if ours:
-                bits.append('this job: ' + '; '.join(f'{render(r["analysis"])} ({r.get("count")})' for r in ours))
+                bits.append('this job: ' + lines(ours))
             if bits:
                 analysed.append(f'- "{form}": ' + ' | '.join(bits))
             else:

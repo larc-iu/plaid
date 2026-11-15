@@ -375,3 +375,24 @@ def test_the_final_context_hears_what_is_still_blank_beside_what_was_written():
     assert lines[1] == 'Of what it fills: Role left blank 7 words (2 words more in sentences not reached).', lines[1]
     assert ('- "Story": stopped partway, 2 of 3 sentences done, changes 5, Role left blank 7 words (2 words more '
             'in sentences not reached)') in text, text
+
+
+def test_the_notes_come_in_the_jobs_document_order_then_by_sentence():
+    """REV-DAY-P-20: core keeps the note rows in its key order, which is
+    effectively random. The report lists them by the job's documents, then
+    by each piece's first sentence."""
+    from job_fixtures import JobClient, document, runner, start
+    from plaid_agent.core.job import canonical, analysis_key
+    from plaid_agent.igt.job import NOTE_FORM
+    client = JobClient({d: document(d, d.upper(), [{'words': ['ka']}]) for d in ('d1', 'd2')})
+    job = start(client, documents=['d1', 'd2'])
+    rows = []
+    pieces = [(d, f's{k}', f'{d} s{k}') for d in ('d2', 'd1') for k in (12, 3, 7, 1, 10, 5)]
+    for d, where, note in pieces:
+        text = canonical({'document': d, 'name': d.upper(), 'sentences': where, 'note': note})
+        key = analysis_key(text)
+        rows.append({'form': NOTE_FORM + key, 'key': key, 'analysis': text, 'count': 1, 'document_id': d,
+                     'sentence_id': None})
+    job.add_decisions(rows)
+    notes = runner(job).report_parts(job)['notes']
+    assert [n['note'] for n in notes] == [f'{d} s{k}' for d in ('d1', 'd2') for k in (1, 3, 5, 7, 10, 12)], notes
