@@ -258,6 +258,48 @@ def test_a_planning_that_ends_in_a_model_fault_twice_ends_the_job_failed_saying_
     assert _plan_rows(client) == [{'by': 'none', 'why': 'output'}]
 
 
+@pytest.mark.parametrize('kind,tries,reason', [('output', 2, 'planning-failed'), ('repeating', 2, 'planning-failed'),
+                                               ('budget', 1, 'no-plan'), ('context', 1, 'no-plan')])
+def test_only_a_model_fault_in_planning_is_planned_again_and_worded_as_one(monkeypatch, kind, tries, reason):
+    """REV-DF5-1: a budget spent or a context too long is planned again and
+    read "The assistant's model failed", though a second start ends the
+    same. Only an output fault (the cap, a provider's refusal) and a model
+    repeating itself are faults of the model: planned once more, and
+    planning-failed. A budget or a context ends as no plan, planned once.
+    By the StretchFailed's kind alone."""
+    from plaid_agent.core.job import StretchFailed
+    client = JobClient(_docs(1))
+    job = start(client, id=J, plan=None)
+    seen = []
+
+    def planning(self, project, facts):
+        seen.append(kind)
+        raise StretchFailed(kind, 'scripted')
+    monkeypatch.setattr(igt_job.IgtRunner, 'planning', planning)
+    model = use(monkeypatch, Model(lambda asked, n, kwargs: _gloss_all(asked, n)))
+    finished = run_job(job, runner(job))
+    assert len(seen) == tries
+    assert finished['state'] == 'failed' and finished['reason'] == reason, finished
+    assert _plan_rows(client) == [{'by': 'none', 'why': kind if reason == 'planning-failed' else 'no-plan'}]
+    assert not client.writes and not model.calls
+
+
+def test_a_planner_that_spends_its_budget_on_reads_ends_with_no_plan_planned_once(monkeypatch):
+    """REV-DF5-1 (REV-DF5's worst case): a planner that reads a new place
+    every call reaches its budget. Planning ended with no plan, once."""
+    client = JobClient(_docs(1))
+    job = start(client, id=J, plan=None)
+
+    def answer(asked, n, kwargs):
+        if _kind(asked) == 'plan':
+            return reply(calls=[call(1000 + n, 'read_document', {'document': 'Story 1', 'from': n})])
+        return _gloss_all(asked, n)
+    model = use(monkeypatch, Model(answer))
+    finished = run_job(job, runner(job))
+    _ended_with_no_plan(client, finished, model)
+    assert sum(_fresh(c) for c in model.calls) == 1, 'planned once'
+
+
 def test_a_model_fault_after_plan_work_kept_a_plan_keeps_it(monkeypatch):
     """REV-DF4-2 (a): the call after plan_work (its one-line end) failing
     lost the kept plan. The plan is kept and worked, never planned again."""

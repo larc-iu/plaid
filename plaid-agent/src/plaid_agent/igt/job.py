@@ -42,7 +42,7 @@ from ..core import job as core_job
 from ..core.agent import ModelConfig, Toolkit, TurnCancelled, run_turn
 from ..core.garble import seed
 from ..core.guidelines import manual_chars
-from ..core.job import (BUDGET, ROW_FINAL, SKIPPED_MORE, JobStopped, Pace, StretchFailed, canonical, analysis_key,
+from ..core.job import (BUDGET, OUTPUT, REPEATING, ROW_FINAL, SKIPPED_MORE, JobStopped, Pace, StretchFailed, canonical, analysis_key,
                         field_counts,
                         BLANK_WHERE, blank_text, empty_counts, failure_kind, halve, harmonized, not_answering)
 from ..core.limits import (JOB_ANALYSIS_MAX_CHARS, JOB_CHANGE_VALUE_CHARS, JOB_CHANGES_MAX, JOB_CONTEXT_SENTENCES,
@@ -170,6 +170,12 @@ NO_PLAN = 'none'
 NO_PLAN_REASON = 'no-plan'
 #: The reason of a job whose planning ended in a model fault, twice (REV-DF4-2).
 PLANNING_FAILED_REASON = 'planning-failed'
+#: The StretchFailed kinds that are the model's fault: a call that reached
+#: the output cap or that the provider refused (a provider error is
+#: ``output`` by :func:`failure_kind`), and a model repeating itself. A
+#: budget spent or a context too long is the planning's own size, and a
+#: model that does not answer is waited for, never a kind (REV-DF5-1).
+MODEL_FAULTS = (OUTPUT, REPEATING)
 
 #: Why a piece's sentences are skipped when its model answered nothing twice
 #: (:func:`answered_nothing`).
@@ -1533,8 +1539,10 @@ class IgtRunner:
         without a valid one after its budget and one decide-now round, the
         plan kept names nothing to work (``by`` :data:`NO_PLAN`, ``why``),
         and the job ends without writing (:meth:`plan_failure`). A planning
-        that ends in a model fault is planned once more, in a fresh context,
-        and ``why`` is then the fault's kind when the second ends in one."""
+        that ends in a model fault (:data:`MODEL_FAULTS`) is planned once
+        more, in a fresh context, and ``why`` is then the fault's kind when
+        the second ends in one. One that spends its budget or meets a context
+        too long ends with no plan, planned once (REV-DF5-1)."""
         if self.plan_made is not None:
             return self.plan_made
         stored = self.plan_stored(self.job.decisions())
@@ -1545,14 +1553,19 @@ class IgtRunner:
             project = self.project()
             facts = self.document_facts(project, job)
             plan, why = None, None
-            # A planning that ends in a model fault (a StretchFailed, by its
-            # kind) is planned once more in a fresh context (REV-DF4-2).
+            # A planning that ends in a model fault (a StretchFailed of kind
+            # output or repeating) is planned once more in a fresh context
+            # (REV-DF4-2). A budget spent or a context too long is no plan,
+            # planned once: a second planning would end the same (REV-DF5-1).
             for _ in range(2):
                 try:
                     plan = self.planning(project, facts)
                     why = None if plan else NO_PLAN_REASON
                     break
                 except StretchFailed as e:
+                    if e.kind not in MODEL_FAULTS:
+                        why = NO_PLAN_REASON
+                        break
                     why = e.kind
             # No plan is never a plan made up for the job: one that filled the
             # app's default filled glosses and translations on a job asked
@@ -1575,9 +1588,10 @@ class IgtRunner:
     def plan_failure(self, job) -> Optional[str]:
         """The reason the job ends before its work, or None, by the plan
         row's ``why``: ``no-plan`` when planning ended with no plan the model
-        could keep (REV-DF3-2), ``planning-failed`` when it ended in a model
-        fault, twice (REV-DF4-2). Every document still to work is then not
-        reached, and nothing is written."""
+        could keep (REV-DF3-2) or its budget or context ran out (REV-DF5-1),
+        ``planning-failed`` when it ended in a model fault, twice
+        (REV-DF4-2). Every document still to work is then not reached, and
+        nothing is written."""
         made = self.plan_made or {}
         if made.get('by') != NO_PLAN:
             return None
