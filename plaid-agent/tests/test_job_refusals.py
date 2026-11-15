@@ -55,6 +55,26 @@ SCENARIOS = {
                             ('rename_entry', {'entry_form': 'gam#2', 'new_form': 'gama'})],
     'phrase then link a word in it': [('link_phrase', {'refs': ['s1.w2', 's1.w3'], 'entry_id': 'vi-gam'}),
                                       ('link_entry', {'refs': ['s1.w2'], 'entry_id': 'vi-gam2'})],
+    # The rest of the refusals that carry advice (REV-DF3-7), each pinned in
+    # the chat as at 358c37f7a.
+    'merge words then split a merged word': [('merge_words', {'refs': ['s1.w2', 's1.w3']}),
+                                             ('split_word', {'ref': 's1.w3', 'at': 2})],
+    'split sentence then merge across it': [('split_sentence', {'ref': 's1', 'before_word': 3}),
+                                            ('merge_words', {'refs': ['s1.w2', 's1.w3']})],
+    'merge words then split the sentence between them': [('merge_words', {'refs': ['s1.w2', 's1.w3']}),
+                                                         ('split_sentence', {'ref': 's1', 'before_word': 3})],
+    'retype then delete the sentence': [RT, ('delete_sentence', {'refs': ['s1']})],
+    'respell then delete the sentence': [('respell', {'ref': 's1.w3', 'new_text': 'akunaa'}),
+                                         ('delete_sentence', {'refs': ['s1']})],
+    'respell then retype before it': [('respell', {'ref': 's2.w1', 'new_text': 'Gam-arr'}), RT],
+    'retype then comment on a word': [RT, ('add_comment', {'ref': 's1.w3', 'body': 'Check this.'})],
+    'comment then retype': [('add_comment', {'ref': 's1.w3', 'body': 'Check this.'}), RT],
+    'morpheme gloss then retype': [('set_field', {'refs': ['s1.w1.m1'], 'field': 'Morph Gloss', 'value': 'person'}),
+                                   RT],
+    'word gloss then retype taking the word': [('set_field', {'refs': ['s1.w3'], 'field': 'Gloss', 'value': 'see'}),
+                                               ('retype_sentence', {'ref': 's1', 'text': 'Ali-di gam.'})],
+    'unnumbered retype then a value': [('retype_sentence', {'ref': 's1', 'text': 'A li-di ga m akuna.'}),
+                                       ('set_field', {'refs': ['s1.w2'], 'field': 'Gloss', 'value': 'see'})],
 }
 #: Tools that take no document.
 NO_DOCUMENT = ('create_entry', 'rename_entry', 'delete_entry', 'merge_entries')
@@ -69,7 +89,15 @@ def _said(steps, job=True):
     return w, [str(call(w, tool, args if tool in NO_DOCUMENT else {'document': 'd1', **args})) for tool, args in steps]
 
 
-@pytest.mark.parametrize('scenario', list(SCENARIOS))
+#: Scenarios whose job answers still hold a chat step (open): the retype's
+#: own answer, not a refusal, says "plan values on them once the retype is
+#: applied" when its words cannot be numbered. Reachable only with edits_text.
+JOB_STEP_LEFT = {'unnumbered retype then a value'}
+
+
+@pytest.mark.parametrize('scenario', [
+    pytest.param(s, marks=pytest.mark.xfail(strict=True, reason='the retype answer keeps a chat step'))
+    if s in JOB_STEP_LEFT else s for s in SCENARIOS])
 def test_no_refusal_a_job_reads_advises_a_step_it_cannot_take(scenario):
     w, said = _said(SCENARIOS[scenario])
     refused = [x for x in said if x.startswith('Error')]
@@ -86,7 +114,8 @@ def test_the_chat_reads_every_refusal_byte_for_byte_as_before(scenario):
     """REV-DF-D-22: every answer the chat gets in every scenario, the
     refusals that carry advice among them, is the one it got before the
     refusals were split into a fact and advice (job_refusals_chat.json, made
-    at 358c37f7a, before DF3 moved the lexicon's, REV-DF-D-5)."""
+    at 358c37f7a, before DF3 moved the lexicon's, REV-DF-D-5; the scenarios
+    REV-DF3-7 added made from 358c37f7a's source too)."""
     import json
     import os
     with open(os.path.join(os.path.dirname(__file__), 'job_refusals_chat.json'), encoding='utf-8') as f:
@@ -163,7 +192,8 @@ def test_a_reference_to_an_entry_this_plan_creates_is_worded_by_who_reads_it(job
 CODES = {'new entry then rename': 'entry-new', 'deleted entry then rename': 'entry-gone',
          'merge then delete what it keeps': 'entry-gone', 'entry numbers moved': 'entry-gone',
          'phrase then link a word in it': 'expression', 'analysis then retype': 'shape',
-         'rule then retype': 'shape'}
+         'rule then retype': 'shape', 'comment then retype': 'shape', 'morpheme gloss then retype': 'shape',
+         'word gloss then retype taking the word': 'shape'}
 
 
 @pytest.mark.parametrize('scenario', list(SCENARIOS))

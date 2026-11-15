@@ -3,6 +3,10 @@
   "Planned 4 changes (nothing is written until the user approves; the plan now holds 4 changes). Describe the plan to the user in your reply.\ns1: 2 words analysed, 2 links.\nNo entry fits, nothing linked:\n  akuna ‘see’ ×1 (s1.w3.m1).",
   "Error: s1 has an analysis change in this plan, so its boundaries cannot also change: a boundary change deletes the morphemes that analysis writes. discard_plan to start over, or plan the two in separate turns."
  ],
+ "comment then retype": [
+  "Planned 1 change (nothing is written until the user approves; the plan now holds 1 change). Describe the plan to the user in your reply.",
+  "Error: Text 1 s1: this plan rewrites the text over a word it also comments on, and the rewrite may take the word the comment is anchored to. discard_plan to start over, or plan the two in separate turns."
+ ],
  "delete_word then bare numbers": [
   "Planned 1 change (nothing is written until the user approves; the plan now holds 1 change). Describe the plan to the user in your reply.",
   "Error: Text 1 s1.w3.m1: s1.w3 is \"akuna\" now, but this plan's delete_word renumbers s1: once it is applied, \"akuna\" is w2, and a morpheme is named by its word's number. Plan it once the plan is applied.",
@@ -21,6 +25,18 @@
   "Planned 1 change (nothing is written until the user approves; the plan now holds 1 change). Describe the plan to the user in your reply. 0 link(s) will move.",
   "Error: \"gam#1\" is what another change in this plan merges into, so it cannot be deleted. Leave that merge out (discard_plan and stage the rest again), or merge into an entry that stays."
  ],
+ "merge words then split a merged word": [
+  "Planned 1 change (nothing is written until the user approves; the plan now holds 1 change). Describe the plan to the user in your reply.",
+  "Error: s1.w3 is already split, merged, or deleted in this plan; discard_plan to start over"
+ ],
+ "merge words then split the sentence between them": [
+  "Planned 1 change (nothing is written until the user approves; the plan now holds 1 change). Describe the plan to the user in your reply.",
+  "Error: s1: a sentence boundary and a word merge are planned at the same place, and a merged word cannot be cut by a sentence boundary. Plan one of them, or discard_plan to start over"
+ ],
+ "morpheme gloss then retype": [
+  "Planned 1 change (nothing is written until the user approves; the plan now holds 1 change). Describe the plan to the user in your reply.",
+  "Error: Text 1 s1: this plan already has a change on a word of this sentence (Text 1 s1.w1.m1 \"Ali\": Morph Gloss \"Ali\" → \"person\"), and a retype renumbers its words when it is applied. Plan one of them, or discard_plan to start over"
+ ],
  "new entry then rename": [
   "Planned 1 change (nothing is written until the user approves; the plan now holds 1 change). Describe the plan to the user in your reply.\nentry_id: new:v1:zork#1  (use it to link this entry in the same plan)",
   "Error: That entry is new in this plan; approve the plan first, then merge or rename it."
@@ -29,11 +45,27 @@
   "Planned 1 change (nothing is written until the user approves; the plan now holds 1 change). Describe the plan to the user in your reply.",
   "Error: s1.w2 is part of a multi-word expression planned in this turn; a word keeps its own link inside one, so discard_plan first if you meant to replace it"
  ],
+ "respell then delete the sentence": [
+  "Planned 1 change (nothing is written until the user approves; the plan now holds 1 change). Describe the plan to the user in your reply.",
+  "Error: Text 1 s1: this plan already respells a word of this sentence. Plan one of them, or discard_plan to start over"
+ ],
+ "respell then retype before it": [
+  "Planned 1 change (nothing is written until the user approves; the plan now holds 1 change). Describe the plan to the user in your reply. Morpheme forms Gam, ar are kept as they are; use set_analysis to respell them, or respell_all with a pattern to carry the change into morpheme forms.",
+  "Error: Text 1 s1: a respelling is planned at 18-24 in the same text, after this point; plan the respellings in a separate plan (or discard_plan)"
+ ],
  "retype then analyse": [
   "Planned 1 change (nothing is written until the user approves; the plan now holds 1 change). Describe the plan to the user in your reply. s1 once retyped: w1 \"Ali-di\", w2 \"∅\" (new), w3 \"gam\", w4 \"akuna\". In this plan s1.wN names these words.",
   "Error: s1 not staged: words has 4 items, s1 has 3 words.\n  w1 Ali-di | Ali-di Ali-ERG\n  w2 gam | ∅ 3SG\n  w3 akuna | gam fish\n  (no word) | akuna see",
   "Error: Text 1 s1.w2 \"∅\": s1 is retyped in this plan, so its words are renumbered when it is applied. Plan this once the retype is applied. Only word field values can be planned on its words in this plan (set_field, by the numbers the retype listed).",
   "Error: Text 1 s1.w2.m1: s1 is retyped in this plan, so its words are renumbered when it is applied. Plan this once the retype is applied. Only word field values can be planned on its words in this plan (set_field, by the numbers the retype listed)."
+ ],
+ "retype then comment on a word": [
+  "Planned 1 change (nothing is written until the user approves; the plan now holds 1 change). Describe the plan to the user in your reply. s1 once retyped: w1 \"Ali-di\", w2 \"∅\" (new), w3 \"gam\", w4 \"akuna\". In this plan s1.wN names these words.",
+  "Error: Text 1 s1.w3 \"akuna\": this plan rewrites the text over a word it also comments on, and the rewrite may take the word the comment is anchored to. discard_plan to start over, or plan the two in separate turns."
+ ],
+ "retype then delete the sentence": [
+  "Planned 1 change (nothing is written until the user approves; the plan now holds 1 change). Describe the plan to the user in your reply. s1 once retyped: w1 \"Ali-di\", w2 \"∅\" (new), w3 \"gam\", w4 \"akuna\". In this plan s1.wN names these words.",
+  "Error: Text 1 s1: this plan already retypes this sentence. Plan one of them, or discard_plan to start over"
  ],
  "retype then rule": [
   "Planned 1 change (nothing is written until the user approves; the plan now holds 1 change). Describe the plan to the user in your reply. s1 once retyped: w1 \"Ali-di\", w2 \"∅\" (new), w3 \"gam\", w4 \"akuna\". In this plan s1.wN names these words.",
@@ -47,6 +79,10 @@
   "Planned 1 value in 1 document, as one row on the card (nothing is written until the user approves; the plan now holds 1 change). Describe the plan to the user in your reply.\nEvery distinct change it makes, the card lists the same:\n  \"\" → \"fish\" 1 value\nIn 1 document: \"Text 1\" 1.\nFor example:\n  Text 1 s1.w2 \"gam\": Gloss = \"fish\"\nStored as a rule, found again when the user approves. To leave one value out, set_field it to what it holds now.",
   "Error: Text 1 s1: this plan's set_field_for_form changes words of s1, which a retype renumbers. Retype it once the plan is applied."
  ],
+ "split sentence then merge across it": [
+  "Planned 1 change (nothing is written until the user approves; the plan now holds 1 change). Describe the plan to the user in your reply.",
+  "Error: s1.w2 + s1.w3: a sentence boundary and a word merge are planned at the same place, and a merged word cannot be cut by a sentence boundary. Plan one of them, or discard_plan to start over"
+ ],
  "split then retype": [
   "Planned 1 change (nothing is written until the user approves; the plan now holds 1 change). Describe the plan to the user in your reply.",
   "Error: Text 1 s1: this plan splits s1, and a retype reads it as one sentence. Retype it once the split is applied."
@@ -54,5 +90,13 @@
  "split_word then analyse": [
   "Planned 1 change (nothing is written until the user approves; the plan now holds 1 change). Describe the plan to the user in your reply.",
   "Error: s1.w2 is split, merged, deleted or retyped in this plan, so its analysis cannot also change: a boundary change deletes the word's morphemes. discard_plan to start over, or plan the two in separate turns."
+ ],
+ "unnumbered retype then a value": [
+  "Planned 1 change (nothing is written until the user approves; the plan now holds 1 change). Describe the plan to the user in your reply. Its words cannot be numbered before it is applied: plan values on them once the retype is applied.",
+  "Error: Text 1 s1.w2: s1 is retyped in this plan, and its new text changes its words in a way that cannot be numbered before it is applied. Plan values on its words once the retype is applied, or discard_plan to start over."
+ ],
+ "word gloss then retype taking the word": [
+  "Planned 1 change (nothing is written until the user approves; the plan now holds 1 change). Describe the plan to the user in your reply.",
+  "Error: Text 1 s1: this plan already has a value on a word this retype takes away or that an earlier retype made (Text 1 s1.w3 \"akuna\": Gloss = \"see\"). Plan one of them, or discard_plan to start over"
  ]
 }
