@@ -429,7 +429,10 @@
               :documents-in-use (in-state "in-use")
               :documents-gone (in-state "gone")
               :documents-not-reached (in-state "not-reached")
-              :sentences (reduce + 0 (keep :done docs))
+              ;; The sentences written in (`analyzed`), as the worker's report
+              ;; counts them, never `done`, which counts a sentence finished
+              ;; with nothing written or skipped too.
+              :sentences (count-of :analyzed)
               :translations (count-of :translations)
               :refreshed (count-of :refreshed)
               :words (count-of :words)
@@ -439,6 +442,7 @@
               :skipped-failed (skipped-of "failed")
               :skipped-changed (skipped-of "changed")
               :skipped-interrupted (skipped-of "interrupted")
+              :skipped-no-answer (skipped-of "no-answer")
               :skipped-more (count-of :skipped-more)
               :changed (count-of :changed)
               :proposed (count-of :proposed)

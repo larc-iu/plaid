@@ -61,6 +61,8 @@ export const skippedText = ({ reason, kind }) => {
   if (reason === 'too-long') return 'Too long';
   if (reason === 'changed') return 'Changed during the job';
   if (reason === 'interrupted') return 'Write interrupted';
+  // The piece's model answered twice with nothing staged and nothing said.
+  if (reason === 'no-answer') return 'No answer from the assistant';
   if (reason === 'failed') return FAILURE_TEXT[kind] ? `Failed: ${FAILURE_TEXT[kind]}` : 'Failed';
   return reason;
 };

@@ -1953,7 +1953,7 @@ _JOB_ANALYSIS_MAX_CHARS = 4000
 _JOB_DECISIONS_PER_CALL = 1000
 _JOB_SKIPPED_PER_DOCUMENT = 500
 _JOB_COUNT_KEYS = ('translations', 'refreshed', 'words', 'links', 'entries', 'changed', 'proposed', 'changes',
-                   'deletions', 'repeated', 'skipped_more')
+                   'deletions', 'repeated', 'skipped_more', 'analyzed')
 
 
 class _FakeJobs:
@@ -2087,10 +2087,12 @@ class _FakeJobs:
                 'documents_gone': sum(1 for r in rows if r['state'] == 'gone'),
                 'documents_not_reached': sum(1 for r in rows
                                              if r['state'] not in ('done', 'in-use', 'gone')),
-                'sentences': sum(r['done'] or 0 for r in rows),
+                # The sentences written in, as the worker counts them.
+                'sentences': sums['analyzed'],
                 **{k: sums[k] for k in ('translations', 'refreshed', 'words', 'links', 'entries')},
                 'skipped_too_long': skips('too-long'), 'skipped_failed': skips('failed'),
                 'skipped_changed': skips('changed'), 'skipped_interrupted': skips('interrupted'),
+                'skipped_no_answer': skips('no-answer'),
                 'skipped_more': sums['skipped_more'], 'changed': sums['changed'], 'proposed': sums['proposed'],
                 'changes': sums['changes'], 'deletions': sums['deletions'], 'repeated': sums['repeated']},
             'documents': [{k: copy.deepcopy(r[k]) for k in

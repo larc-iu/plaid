@@ -96,6 +96,7 @@ const REPORT = {
     skippedFailed: 1,
     skippedChanged: 0,
     skippedInterrupted: 1,
+    skippedNoAnswer: 1,
     changed: 2,
     proposed: 1,
     changes: 40,
@@ -137,6 +138,7 @@ const REPORT = {
         { sentence: 's12', sentenceId: 'sen12', reason: 'too-long', kind: null },
         { sentence: 's30', sentenceId: 'sen30', reason: 'failed', kind: 'repeating' },
         { sentence: 's31', sentenceId: 'sen31', reason: 'interrupted', kind: null },
+        { sentence: 's32', sentenceId: 'sen32', reason: 'no-answer', kind: null },
       ],
     },
   ],
@@ -595,6 +597,7 @@ describe('the job page', () => {
     expect(sums['Words analyzed']).toBe('120');
     expect(sums['Sentences skipped as too long']).toBe('1');
     expect(sums['Sentences skipped after an interrupted write']).toBe('1');
+    expect(sums['Sentences skipped with no answer from the assistant']).toBe('1');
     expect(sums['Changes not written, changed during the job']).toBe('2');
     expect(sums['Changes written']).toBe('40');
     expect(sums['Deletions']).toBe('5');
@@ -611,6 +614,7 @@ describe('the job page', () => {
     expect(t).toContain('s12 Too long');
     expect(t).toContain('s30 Failed: model repeated itself');
     expect(t).toContain('s31 Write interrupted');
+    expect(t).toContain('s32 No answer from the assistant');
     // Harmonize.
     expect(t).toContain('ka ‘go’');
     expect(t).toContain('A person’s analysis');

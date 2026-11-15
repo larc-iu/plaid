@@ -415,16 +415,18 @@ def test_fake_cancel_follows_each_path():
     lapsed = jobs.create('p2', 'igt', 'Gloss.')
     jobs.claim('w1', 'm', ['igt'])
     jobs.update_document(lapsed['id'], 'd3', 'w1', state='done', done=2,
-                         counts={'words': 4, 'changes': 6, 'deletions': 1, 'repeated': 2},
+                         counts={'words': 4, 'changes': 6, 'deletions': 1, 'repeated': 2, 'analyzed': 1},
                          skipped=[{'sentence': 's2', 'sentence_id': 't2', 'reason': 'failed', 'kind': 'budget'},
-                                  {'sentence': 's3', 'sentence_id': 't3', 'reason': 'interrupted', 'kind': None}])
+                                  {'sentence': 's3', 'sentence_id': 't3', 'reason': 'interrupted', 'kind': None},
+                                  {'sentence': 's4', 'sentence_id': 't4', 'reason': 'no-answer', 'kind': None}])
     clock['t'] += 121
     gone = jobs.cancel(lapsed['id'])
     assert gone['state'] == 'cancelled'
     report = gone['report']
     assert report['stopped'] == 'without-worker'
     assert report['totals']['documents_done'] == 1 and report['totals']['words'] == 4
-    assert report['totals']['skipped_failed'] == 1 and report['totals']['sentences'] == 2
+    assert report['totals']['skipped_failed'] == 1 and report['totals']['skipped_no_answer'] == 1
+    assert report['totals']['sentences'] == 1, 'the sentences written in, never those done'
     assert [report['totals'][k] for k in ('changes', 'deletions', 'repeated', 'skipped_interrupted')] == [6, 1, 2, 1]
     assert 'deleted' not in report['entries'], 'a job lists no deleted entries'
     assert [r['state'] for r in gone['documents']] == ['done'], 'a done row stays done'

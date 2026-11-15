@@ -288,9 +288,11 @@
           (claim! jh/worker-b)
           (fix/assert-ok (call admin-request :put (str "/api/v1/jobs/" j "/documents/" d)
                                {:worker-id jh/worker-b :state "done" :sentences 10 :targets 8 :done 8
-                                :counts {:words 30 :links 12 :changes 40 :deletions 3 :repeated 2 :skipped-more 4}
+                                :counts {:words 30 :links 12 :changes 40 :deletions 3 :repeated 2 :skipped-more 4
+                                         :analyzed 6}
                                 :skipped [{:sentence "s4" :sentence-id "x" :reason "too-long" :kind nil}
-                                          {:sentence "s5" :sentence-id "y" :reason "interrupted" :kind nil}]}))
+                                          {:sentence "s5" :sentence-id "y" :reason "interrupted" :kind nil}
+                                          {:sentence "s6" :sentence-id "z" :reason "no-answer" :kind nil}]}))
           (when (= "stopping" state)
             (fix/assert-ok (call st :post (str "/api/v1/jobs/" j "/cancel"))))
           (lapse! j)
@@ -304,12 +306,13 @@
             (is (= [] (-> report :entries :lexicons)) "a report core writes names no lexicon")
             (is (= 1 (-> report :totals :documents-done)))
             (is (= 1 (-> report :totals :documents-not-reached)))
-            (is (= 8 (-> report :totals :sentences)))
+            (is (= 6 (-> report :totals :sentences)) "the sentences written in, never those done")
             (is (= 30 (-> report :totals :words)))
             (is (= 1 (-> report :totals :skipped-too-long)))
-            (is (= {:changes 40 :deletions 3 :repeated 2 :skipped-more 4 :skipped-interrupted 1}
+            (is (= {:changes 40 :deletions 3 :repeated 2 :skipped-more 4 :skipped-interrupted 1
+                    :skipped-no-answer 1}
                    (select-keys (:totals report) [:changes :deletions :repeated :skipped-more
-                                                  :skipped-interrupted]))
+                                                  :skipped-interrupted :skipped-no-answer]))
                 "every total the worker's report holds")
             (is (not (contains? (:entries report) :deleted)) "a job lists no deleted entries")
             (is (= ["done" "not-reached"] (mapv :state (:documents report))))))))
