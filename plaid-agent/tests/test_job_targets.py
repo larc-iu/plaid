@@ -409,3 +409,20 @@ def test_a_field_sharing_its_name_with_an_orthography_is_named_by_its_label():
     for name in ('"IPA" (orthography, word level)', 'IPA (orthography)'):
         assert [t.id for t in tg.named(project, [name])[0]] == ['orthography:IPA'], name
     assert '"IPA" (word level)' in tg.listed_names(project)
+
+
+def test_a_word_segmented_as_one_morpheme_is_not_empty_for_segmentation():
+    """REV-DF3-4: a word the job segmented as one morpheme, its form and no
+    value (word_state reads it unanalyzed: such a morpheme does not vote),
+    is segmented. The empty rule for segmentation is unsegmented's: no
+    stored morpheme, or one that holds nothing, the keep rule's own test."""
+    raw = document('d1', 'Story', [{'words': [('ka', [('ka', None)], J), 'mo', ('pele', [('pe', None), ('le', None)], J)]}])
+    client = JobClient({'d1': raw}, project=fields_project())
+    project = load_project(client, 'p1')
+    (s1,) = parse_document(client.documents.get('d1', include_body=True), project).sentences
+    seg = _target(project, 'segmentation')
+    assert word_state(s1.words[0]) == 'unanalyzed', 'what the rule must not read'
+    assert [tg.empty(seg, w=w) for w in s1.words] == [False, True, False]
+    assert [tg.unsegmented(w) for w in s1.words] == [False, True, False]
+    assert tg.count([s1], seg) == 1
+    assert tg.empty_line(s1, [seg]) == 'Empty in s1: segmentation in w2 "mo".'

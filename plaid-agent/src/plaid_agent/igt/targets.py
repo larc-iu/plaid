@@ -10,8 +10,9 @@ id: ``segmentation``, or the field's layer id.
 
 A unit is EMPTY for a target when it holds no value for it (:func:`empty`):
 
-- a word, for segmentation, when it holds no morpheme analysis (its stored
-  state is "unanalyzed": ``plaid_client.workflows.igt.derive.word_state``),
+- a word, for segmentation, when it holds no morpheme of its own
+  (:func:`unsegmented`: none stored, or one that holds no form, no type, no
+  value and no link, the keep rule's :func:`holds_nothing`),
 - a word, for a word field, when the field holds no value on it,
 - a word, for an orthography (a second writing of the word, such as IPA),
   when it holds no value in it,
@@ -193,9 +194,12 @@ def _holds(holder, f: Field) -> bool:
 def empty(t: Target, s: Optional[Sentence] = None, w: Optional[Word] = None,
           m: Optional[Morpheme] = None) -> bool:
     """THE rule: whether the unit of ``t``'s level (a word for segmentation
-    and a word field, a morpheme, a sentence) holds no value for ``t``."""
+    and a word field, a morpheme, a sentence) holds no value for ``t``. A
+    word is empty for segmentation when it is :func:`unsegmented`: a word
+    segmented as one morpheme, its form and no value, is segmented, though
+    ``word_state`` reads it unanalyzed (REV-DF3-4)."""
     if t.segments:
-        return word_state(w) == 'unanalyzed'
+        return unsegmented(w)
     if t.orthography is not None:
         return not w.orthographies.get(t.orthography)
     return not _holds(m if t.scope == 'Morpheme' else w if t.scope == 'Word' else s, t.field)
