@@ -935,7 +935,7 @@ To change what the job fills or whether it may edit the text, tell the assistant
 **Start job** on the card starts the job, and **Discard** drops it.
 The card keeps how it ended, with a link to the job's page once the job has started.
 
-The job fills only what its card names, and edits the text only when the card says it may.
+The job is planned to fill only what its card names, and edits the text only when the card says it may.
 Its page says so from the start, with a link to the conversation for the person who started it.
 A job started from the form has no such limits.
 

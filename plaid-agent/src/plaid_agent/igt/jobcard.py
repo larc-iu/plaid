@@ -49,7 +49,7 @@ def _help(facts: Dict[str, Any]) -> str:
         '- action "draft" drafts the card from:',
         f'  - documents: names or ids{most}, or ["all"] for every document of the project.',
         '  - fills: what the job may fill, each named as facts lists it under What a job can fill, [] for a job '
-        'that fills nothing, such as a check or a summary. The job fills these and nothing else.',
+        'that fills nothing, such as a check or a summary. The job is planned to fill only these.',
         '  - edits_text: true only when the user agreed the job may change the text itself: retype, respell, '
         'split, merge, insert or delete words or sentences. Left out, false.',
         '  - brief: the job\'s instructions, which its model reads with every piece of its work, with nothing of '

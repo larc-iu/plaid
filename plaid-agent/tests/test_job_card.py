@@ -610,3 +610,19 @@ def test_the_setup_note_is_part_of_the_assistants_version():
     from plaid_agent.igt.jobcard import JOB_SETUP_NOTE
     texts, _tools = _service().prompt_template()
     assert JOB_SETUP_NOTE in texts
+
+
+def test_help_and_the_guide_say_the_fills_bind_the_jobs_plan_never_what_it_writes():
+    """REV-SU-B-1 and REV-SU-F-3: the limit on what a job fills is held when
+    it is planned, never when a piece writes, so neither the help (inlined in
+    every setup turn) nor the guide promises that the job writes nothing
+    else. The text half is held end to end."""
+    from pathlib import Path
+    import plaid_agent.igt as igt
+    out = call_tool(fake_ws(FakeClient()), 'propose_job', {'action': 'help'})
+    assert 'that fills nothing, such as a check or a summary. The job is planned to fill only these.\n' in out, out
+    assert 'nothing else' not in out
+    guide = (Path(igt.__file__).parent / 'igt-guide.adoc').read_text()
+    assert ('The job is planned to fill only what its card names, and edits the text only when the card says it '
+            'may.\n') in guide
+    assert 'The job fills only what its card names' not in guide
