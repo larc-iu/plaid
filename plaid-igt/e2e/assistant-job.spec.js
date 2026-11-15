@@ -1,7 +1,7 @@
 import PlaidClient, { ROLES } from '@larc-iu/plaid-client';
 import { test, expect, seedAuth, readToken, CORE } from './fixtures.js';
 import { createScratchProject, roleOf } from './fixtureProject.js';
-import { proposeJobTakesFills, skipUnlessAgent, startIgtAssistant } from './assistantService.js';
+import { skipUnlessAgent, startIgtAssistant } from './assistantService.js';
 import { fakeJobWorker } from './jobWorker.js';
 
 // A job scoped in the chat (BRIEF-JB): the real IGT assistant on a scripted
@@ -286,10 +286,6 @@ test('Set up job opens a job setup conversation, and its card binds the job it s
     .flatMap((t) => t.tokenLayers || [])
     .flatMap((t) => t.spanLayers || [])
     .find((l) => l.name === 'Gloss').id;
-  // SU-UI stand-in (remove at SU-INT): propose_job in this checkout may not
-  // take fills and edits_text yet, and then the spec writes them onto the
-  // card in the record, as propose_job will.
-  const takesFills = proposeJobTakesFills();
   const SETUP_SCRIPT = [
     {
       content: '',
@@ -300,7 +296,8 @@ test('Set up job opens a job setup conversation, and its card binds the job it s
             action: 'draft',
             documents: [DOC],
             brief: BRIEF,
-            ...(takesFills ? { fills: ['Gloss'], edits_text: false } : {}),
+            fills: ['Gloss'],
+            edits_text: false,
           },
         },
       ],
@@ -341,21 +338,9 @@ test('Set up job opens a job setup conversation, and its card binds the job it s
     const card = panel.getByTestId('job-card');
     await expect(card).toBeVisible({ timeout: 60_000 });
     const key = `igt:assistant:${projectId}:conv:${convId}`;
-    if (!takesFills) {
-      // SU-UI stand-in (remove at SU-INT): the card as propose_job will draft
-      // it, written in the record the page reads it from.
-      const conv = (await client.userData.get(userId, key)).value;
-      const at = conv.display.findIndex((d) => d.job);
-      conv.display[at] = {
-        ...conv.display[at],
-        job: { ...conv.display[at].job, fills: [{ id: glossId, name: 'Gloss' }], editsText: false },
-      };
-      await client.userData.put(userId, key, conv);
-      await page.reload();
-    }
     // The card as the page receives it: `edits_text` read as `editsText`.
     const stored = (await client.userData.get(userId, key)).value.display.find((d) => d.job).job;
-    expect(stored.fills).toEqual([{ id: glossId, name: expect.any(String) }]);
+    expect(stored.fills).toEqual([{ id: glossId, name: 'Gloss' }]);
     expect(stored.editsText).toBe(false);
     const name = stored.fills[0].name;
 
