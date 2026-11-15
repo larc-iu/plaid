@@ -38,6 +38,7 @@ import {
 } from '@ui/domain/jobs.js';
 import { JobReport } from './JobReport.jsx';
 import { JobHistoryLinks } from './JobHistoryLinks.jsx';
+import { FillsNames } from './jobLines.jsx';
 import {
   durationText,
   jobName,
@@ -228,6 +229,7 @@ export const JobPage = ({ project, projectId, jobId, client }) => {
         }
       />
       <JobStatus job={job} />
+      <JobSetup job={job} projectId={projectId} user={user} />
       {job.undone && (
         <p className="-mt-4 mb-6 text-sm" data-testid="job-undone">
           Job undone {fullTimestamp(job.undone.time)}.
@@ -276,10 +278,38 @@ const Discuss = ({ client, projectId }) => {
   const discuss = useStartConversation();
   if (available !== true || !wide) return null;
   return (
-    <Button variant="outline" className="gap-1.5" onClick={discuss}>
+    <Button variant="outline" className="gap-1.5" onClick={() => discuss()}>
       <AssistantMark className="h-4 w-4" />
       Discuss with the assistant
     </Button>
+  );
+};
+
+// What a job set up in a conversation was set up to do, from its start on
+// (its `setup`, which the job card gave it): what it fills and whether it may
+// edit the text. The conversation is its starter's own, so only they get the
+// link. A job started from the form has no setup, and no line.
+const JobSetup = ({ job, projectId, user }) => {
+  const setup = job.setup;
+  if (!setup) return null;
+  const conversation =
+    setup.conversation && user?.id && user.id === job.startedBy ? setup.conversation : null;
+  return (
+    <p className="-mt-4 mb-6 text-sm" data-testid="job-setup">
+      Set up to fill <FillsNames fills={setup.fills} none="nothing" />.{' '}
+      {setup.text ? 'Text may be edited.' : 'Text unchanged.'}
+      {conversation && (
+        <>
+          {' '}
+          <Link
+            to={IGT_ASSISTANT.convHref(projectId, conversation)}
+            className="text-primary hover:underline"
+          >
+            Open conversation
+          </Link>
+        </>
+      )}
+    </p>
   );
 };
 

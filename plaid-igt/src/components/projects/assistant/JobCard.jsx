@@ -10,15 +10,32 @@ import { humanizeError, statusOf } from '@ui/lib/errors.js';
 import { notifyError } from '@/utils/feedback';
 import { cn } from '@ui/lib/utils';
 import { APP_ROUTES } from '../../../appRoutes.js';
-import { activeJobOf, instructionsLength, jobPath, startJob } from '../jobs/jobText.js';
-import { AppLink, InstructionsCount, JobActiveLine, NoWorkerLine } from '../jobs/jobLines.jsx';
+import {
+  activeJobOf,
+  instructionsLength,
+  jobPath,
+  jobSetupOf,
+  setupTextText,
+  startJob,
+} from '../jobs/jobText.js';
+import {
+  AppLink,
+  FillsNames,
+  InstructionsCount,
+  JobActiveLine,
+  NoWorkerLine,
+} from '../jobs/jobLines.jsx';
 
 // The job card: an unattended job the assistant drafted with the user
 // (plaid-agent's propose_job), on the reply that drafted it. The page starts
 // the job, as the signed-in user and under the card's id, with the call the
 // Start job dialog makes, then tells the assistant how the card ended
 // (`onSettle`), which records it in the conversation. Only the brief can be
-// changed here: the documents and the tasks are what the conversation settled.
+// changed here: the documents, what the job fills and whether it may edit the
+// text are what the conversation settled, and the job is held to the last two
+// (its `setup`, with the conversation's id). The card reaches the page through
+// the client, which camel-cases the record's keys: `edits_text` is
+// `editsText` here.
 
 // Document names the card lists before "and N more".
 const JOB_CARD_NAMES = 5;
@@ -56,7 +73,15 @@ const Documents = ({ card, projectId }) => {
   );
 };
 
-export const JobCard = ({ card, projectId, client, readOnly = false, busy = false, onSettle }) => {
+export const JobCard = ({
+  card,
+  projectId,
+  client,
+  conversationId = null,
+  readOnly = false,
+  busy = false,
+  onSettle,
+}) => {
   const user = useContext(AuthContext)?.user ?? null;
   const undecided = card.status == null;
   const [project, setProject] = useState(null);
@@ -84,6 +109,7 @@ export const JobCard = ({ card, projectId, client, readOnly = false, busy = fals
   const briefOver = briefMax !== null && instructionsLength(brief) > briefMax;
   const mayStart = canStartJob(project, user);
   const badge = BADGES[card.status];
+  const setup = jobSetupOf(card, conversationId);
 
   // Every press makes the job under the card's own id. A press after a reload,
   // or after a start whose answer or record was lost, is refused for that very
@@ -99,6 +125,7 @@ export const JobCard = ({ card, projectId, client, readOnly = false, busy = fals
         {
           documents: card.all ? null : (card.documents || []).map((d) => d.id),
           instructions: brief,
+          setup,
         },
       );
       await started();
@@ -150,6 +177,16 @@ export const JobCard = ({ card, projectId, client, readOnly = false, busy = fals
         <dd className="min-w-0">
           <Documents card={card} projectId={projectId} />
         </dd>
+        {setup && (
+          <>
+            <dt className="text-muted-foreground">Fills</dt>
+            <dd className="min-w-0">
+              <FillsNames fills={setup.fills} none="Nothing" />
+            </dd>
+            <dt className="text-muted-foreground">Text</dt>
+            <dd>{setupTextText(setup.text)}</dd>
+          </>
+        )}
       </dl>
       {undecided && !readOnly && mayStart ? (
         <div className="flex flex-col gap-1">

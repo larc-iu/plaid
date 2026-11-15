@@ -155,12 +155,37 @@ export const instructionsLength = (text) => [...text].length;
 
 // Start a job as the signed-in user: the one client call, under the id `mint`
 // holds (createOnce.js: a press again after a lost answer makes no second
-// job). `documents` null is every document of the project. Resolves to the job.
-export const startJob = (client, projectId, mint, { documents = null, instructions = '' }) => {
+// job). `documents` null is every document of the project. `setup` is what
+// the job was set up to do (`jobSetupOf`), none for a job started from the
+// form. Resolves to the job.
+export const startJob = (
+  client,
+  projectId,
+  mint,
+  { documents = null, instructions = '', setup = null },
+) => {
   const body = { app: 'igt', instructions: instructions.trim() };
   if (documents) body.documents = documents;
+  if (setup) body.setup = setup;
   return createOnce(mint, (id) => client.jobs.create(projectId, { ...body, id }));
 };
+
+// The setup a job card gives the job it starts (CONTRACT, "Added by SU"):
+// the targets it may fill, by id and the name the card showed, whether it may
+// edit the text, and the conversation that set it up. Keys of one word, since
+// the client re-cases keys. A card with no `fills` (drafted before cards had
+// them) gives none, and its job has no limit.
+export const jobSetupOf = (card, conversationId = null) => {
+  if (!Array.isArray(card?.fills)) return null;
+  return {
+    fills: card.fills.map((f) => ({ id: f.id, name: f.name })),
+    text: card.editsText === true,
+    ...(conversationId ? { conversation: conversationId } : {}),
+  };
+};
+
+// What a card's Text row says of a setup's `text`.
+export const setupTextText = (text) => (text ? 'May be edited' : 'Unchanged');
 
 // The project's job that stood in the way of a start (core's 409 `job-active`),
 // or null for any other error.

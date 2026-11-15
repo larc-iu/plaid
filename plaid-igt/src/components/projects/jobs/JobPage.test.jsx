@@ -441,6 +441,46 @@ describe('the job page', () => {
     await v.unmount();
   });
 
+  // A job set up in a conversation (BRIEF-SU) says, from its creation on,
+  // what it was set up to fill and whether it may edit the text, and links
+  // the conversation for the person who started it, whose it is.
+  it('says what a job was set up to fill, and links its conversation for its starter', async () => {
+    const setup = {
+      fills: [
+        { id: 'L1', name: 'Case' },
+        { id: 'L2', name: 'Word class' },
+      ],
+      text: false,
+      conversation: 'c9',
+    };
+    const line = (root) => root.querySelector('[data-testid="job-setup"]');
+    let v = await mount(clientOf(jobOf({ state: 'waiting', phase: null, setup })));
+    expect(line(v.container).textContent).toBe(
+      'Set up to fill Case, Word class. Text unchanged. Open conversation',
+    );
+    const link = byText(v.container, 'a', 'Open conversation');
+    expect(link.getAttribute('href')).toBe('/projects/p1?tab=assistant&conversation=c9');
+    await v.unmount();
+
+    auth.user = { id: 'w2', isAdmin: false };
+    v = await mount(clientOf(jobOf({ setup: { ...setup, fills: [], text: true } })));
+    expect(line(v.container).textContent).toBe('Set up to fill nothing. Text may be edited.');
+    expect(byText(v.container, 'a', 'Open conversation')).toBeFalsy();
+    await v.unmount();
+
+    auth.user = { id: 'w', isAdmin: false };
+    v = await mount(
+      clientOf(jobOf({ setup: { fills: [{ id: 'L1', name: 'Case' }], text: false } })),
+    );
+    expect(line(v.container).textContent).toBe('Set up to fill Case. Text unchanged.');
+    await v.unmount();
+
+    v = await mount(clientOf(jobOf()));
+    expect(line(v.container)).toBeNull();
+    expect(text(v.container)).not.toContain('Set up to');
+    await v.unmount();
+  });
+
   it('says when planning ended with no plan and nothing was written', async () => {
     const plan = { by: 'none', why: 'no-plan', pieceInstructions: '', fallback: [], leftOut: [] };
     const v = await mount(

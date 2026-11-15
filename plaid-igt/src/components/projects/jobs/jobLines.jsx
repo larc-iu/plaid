@@ -29,6 +29,18 @@ export const JobActiveLine = ({ projectId, jobId, onOpen }) => (
   </p>
 );
 
+// The targets a setup names, each by the name the card showed and isolated
+// from its neighbours' direction, or `none` when it names none.
+export const FillsNames = ({ fills, none }) =>
+  fills?.length
+    ? fills.map((f, i) => (
+        <span key={`${f.id}:${i}`}>
+          {i > 0 && ', '}
+          <bdi>{f.name || f.id}</bdi>
+        </span>
+      ))
+    : none;
+
 // The instructions' count against core's cap, once the cap is read.
 export const InstructionsCount = ({ text, max }) =>
   max === null || max === undefined ? null : (

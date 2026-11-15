@@ -153,5 +153,13 @@ describe('a job card in the Markdown export', () => {
     expect(md({ ...CARD, all: true, count: 9, status: 'discarded' })).toContain(
       '**Proposed job:** All documents (9). (Discarded.)',
     );
+    // What the job fills and whether it may edit the text, as the card shows
+    // them, on a card that has them.
+    expect(md(CARD)).not.toContain('Fills:');
+    const set = md({ ...CARD, fills: [{ id: 'L1', name: 'Case' }], editsText: false });
+    expect(set).toContain('Fills: Case. Text: Unchanged.');
+    expect(md({ ...CARD, fills: [], editsText: true })).toContain(
+      'Fills: Nothing. Text: May be edited.',
+    );
   });
 });

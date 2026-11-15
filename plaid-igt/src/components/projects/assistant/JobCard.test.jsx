@@ -330,4 +330,93 @@ describe('the job card', () => {
       `#/projects/p1/jobs/${CARD_ID}`,
     );
   });
+
+  // What the setup conversation settled (BRIEF-SU): what the job fills and
+  // whether it may edit the text, read off the card as the page receives it.
+  // The record is written in snake_case and read through the client, which
+  // camel-cases every key of a value: `edits_text` arrives as `editsText`
+  // (one-word keys, `fills`, `id`, `name`, as they are).
+  describe('what the job fills, and the text', () => {
+    const SET = {
+      fills: [
+        { id: 'L1', name: 'Case' },
+        { id: 'segmentation', name: 'segmentation' },
+      ],
+    };
+    const row = (v, label) => {
+      const dt = all(v.container, 'dt').find((d) => d.textContent === label);
+      return dt ? dt.nextElementSibling.textContent : null;
+    };
+
+    it('shows Fills and Text, not as fields to edit', async () => {
+      const { v } = await draw({ card: card({ ...SET, editsText: false }) });
+      expect(row(v, 'Fills')).toBe('Case, segmentation');
+      expect(row(v, 'Text')).toBe('Unchanged');
+      expect(all(v.container, 'textarea')).toHaveLength(1);
+      expect(all(v.container, 'input')).toHaveLength(0);
+    });
+
+    it('says Nothing for a job that fills nothing, and May be edited', async () => {
+      const { v } = await draw({ card: card({ fills: [], editsText: true }) });
+      expect(row(v, 'Fills')).toBe('Nothing');
+      expect(row(v, 'Text')).toBe('May be edited');
+    });
+
+    it('shows them on a settled card too', async () => {
+      const { v } = await draw({ card: card({ ...SET, editsText: false, status: 'started' }) });
+      expect(row(v, 'Fills')).toBe('Case, segmentation');
+      expect(row(v, 'Text')).toBe('Unchanged');
+    });
+
+    it("starts the job with a setup from the card and the conversation's id", async () => {
+      const client = fakeClient();
+      const { v } = await draw({
+        card: card({ ...SET, editsText: false }),
+        client,
+        conversationId: 'conv-1',
+      });
+      await v.step(() => button(v, 'Start job').click());
+      await v.step(async () => {});
+      expect(client.jobs.create).toHaveBeenCalledWith('p1', {
+        app: 'igt',
+        documents: ['d1', 'd2'],
+        instructions: 'Gloss ka as go.',
+        setup: {
+          fills: [
+            { id: 'L1', name: 'Case' },
+            { id: 'segmentation', name: 'segmentation' },
+          ],
+          text: false,
+          conversation: 'conv-1',
+        },
+        id: CARD_ID,
+      });
+    });
+
+    it('a card that may edit the text starts one whose setup says so', async () => {
+      const client = fakeClient();
+      const { v } = await draw({
+        card: card({ fills: [], editsText: true }),
+        client,
+        conversationId: 'conv-1',
+      });
+      await v.step(() => button(v, 'Start job').click());
+      await v.step(async () => {});
+      expect(client.jobs.create.mock.calls[0][1].setup).toEqual({
+        fills: [],
+        text: true,
+        conversation: 'conv-1',
+      });
+    });
+
+    it("an old conversation's card, with no fills, shows neither row and starts a job with no setup", async () => {
+      const client = fakeClient();
+      const { v } = await draw({ card: card(), client, conversationId: 'conv-1' });
+      expect(row(v, 'Fills')).toBe(null);
+      expect(row(v, 'Text')).toBe(null);
+      await v.step(() => button(v, 'Start job').click());
+      await v.step(async () => {});
+      expect(client.jobs.create.mock.calls[0][1]).not.toHaveProperty('setup');
+    });
+  });
 });

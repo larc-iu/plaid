@@ -85,9 +85,24 @@ const jobCardToMarkdown = (card) => {
     : markdownText(names.join(', ')) + (more > 0 ? ` and ${more.toLocaleString()} more` : '');
   const said = JOB_CARD_ENDS[card.status] ?? 'Not yet started.';
   const brief = card.status === 'started' ? card.sentBrief : card.brief;
-  return [`**Proposed job:** ${docs}. (${said})`, '', ...(brief ? [markdownText(brief)] : [])].join(
-    '\n',
-  );
+  // What the job fills and whether it may edit the text, as the card's rows
+  // say them (a card drafted before cards had them has neither).
+  const fills = Array.isArray(card.fills)
+    ? card.fills.map((f) => f.name || f.id).join(', ') || 'Nothing'
+    : null;
+  const setup =
+    fills === null
+      ? []
+      : [
+          '',
+          markdownText(`Fills: ${fills}. Text: ${card.editsText ? 'May be edited' : 'Unchanged'}.`),
+        ];
+  return [
+    `**Proposed job:** ${docs}. (${said})`,
+    ...setup,
+    '',
+    ...(brief ? [markdownText(brief)] : []),
+  ].join('\n');
 };
 
 // A plan that stopped partway says how much was written in the service's own
