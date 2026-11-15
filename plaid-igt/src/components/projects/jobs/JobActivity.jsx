@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Button } from '@ui/components/ui/button';
+import { ListHint } from '@ui/components/shared/list-search.jsx';
 import { TYPE } from '@ui/lib/typeScale.js';
 import { fullTimestamp, timeAgo } from '@ui/lib/formatTime.js';
 import { TALL_LIST_PAGE_SIZE } from '@ui/hooks/usePagedList.js';
@@ -22,6 +23,9 @@ import {
  * TALL_LIST_PAGE_SIZE rows, and as many more as Show more asks for. A job
  * whose worker kept none, and has ended, shows nothing.
  */
+// The most rows one read of the route answers (core's page cap).
+const PIECES_MAX = 1000;
+
 export const JobActivity = ({ client, job, projectId, readAt }) => {
   const [shown, setShown] = useState(TALL_LIST_PAGE_SIZE);
   const [page, setPage] = useState(null);
@@ -38,8 +42,10 @@ export const JobActivity = ({ client, job, projectId, readAt }) => {
     };
   }, [client, job.id, shown, readAt]);
 
-  const rows = page?.entries || [];
   const active = isJobActive(job);
+  // Once the job has ended the page's Plan line says the plan, from the
+  // report, with what was known only later: the list leaves its plan out.
+  const rows = (page?.entries || []).filter((r) => !(r.piece.plan && !active && job.report?.plan));
   if (!rows.length && !active) return null;
   // Not "Activity": the project's tab of that name is on the same screen.
   const heading = active ? 'Work so far' : 'Work, in order';
@@ -73,12 +79,17 @@ export const JobActivity = ({ client, job, projectId, readAt }) => {
             Some finished work is not listed here. The report below counts all of it.
           </p>
         )}
-      {page?.nextCursor && (
+      {page?.nextCursor && shown >= PIECES_MAX && (
+        <ListHint className="mt-2">
+          Only the newest {PIECES_MAX.toLocaleString()} are listed.
+        </ListHint>
+      )}
+      {page?.nextCursor && shown < PIECES_MAX && (
         <Button
           variant="outline"
           size="sm"
           className="mt-2"
-          onClick={() => setShown((n) => n + TALL_LIST_PAGE_SIZE)}
+          onClick={() => setShown((n) => Math.min(n + TALL_LIST_PAGE_SIZE, PIECES_MAX))}
         >
           Show more
         </Button>

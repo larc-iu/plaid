@@ -107,7 +107,9 @@ test('a running job lists each piece as it finishes, with its note and its Chang
     await page.goto(`/#/projects/${projectId}/jobs/${job.id}`);
     await expect(page.getByRole('region', { name: 'Report' })).toBeVisible({ timeout: 30_000 });
     const ended = page.getByRole('region', { name: 'Work, in order' });
-    await expect(ended.getByTestId('job-activity').locator(':scope > li')).toHaveCount(2);
+    // The page's Plan line says the plan now: the list leaves its own out.
+    await expect(ended.getByTestId('job-activity').locator(':scope > li')).toHaveCount(1);
+    await expect(page.getByText('Worked one document at a time. Fills: Gloss.')).toHaveCount(1);
     await expect(page.getByRole('link', { name: 'Changes', exact: true })).toBeVisible();
   } finally {
     await client.jobs.cancel(job.id).catch(() => {});

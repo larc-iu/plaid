@@ -613,7 +613,13 @@ def test_fake_pieces_are_the_piece_rows_newest_first():
     assert jobs.pieces(job['id']) == [{'seq': '000001', 'piece': {'first_id': 't1', 'note': 'Glossed.'}},
                                       {'seq': '000000', 'piece': {'plan': {'pieces': 'sentences'}}}]
     page = jobs.pieces_page(job['id'], limit=1)
-    assert [e['seq'] for e in page['entries']] == ['000001'] and page['next_cursor'] == '1'
+    assert [e['seq'] for e in page['entries']] == ['000001'] and page['next_cursor'] is not None
+    # A row added between two pages is newer: the next page does not read it, nor any row again.
+    jobs.add_decisions(job['id'], 'w1', [
+        {'form': ' piece', 'key': '000002', 'analysis': '{"note":"New."}', 'count': 1,
+         'document_id': 'd1', 'sentence_id': 't2'}])
+    rest = jobs.pieces_page(job['id'], limit=1, cursor=page['next_cursor'])
+    assert [e['seq'] for e in rest['entries']] == ['000000'] and rest['next_cursor'] is None
     _refused(lambda: jobs.pieces('nope'), 404)
 
 

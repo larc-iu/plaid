@@ -281,4 +281,31 @@ describe('the job page’s list of its work', () => {
     expect(w.container.querySelector('[data-testid="job-activity-short"]')).toBe(null);
     await w.unmount();
   });
+
+  it('stops offering more at the route’s cap of 1,000 and says so', async () => {
+    const client = clientOf([jobOf()], [page([SECOND, FIRST], 'c')]);
+    const v = await mount(client);
+    for (let i = 0; i < 39; i++) {
+      await v.step(() => byText(activity(v.container), 'button', 'Show more').click());
+    }
+    expect(client.jobs.piecesPage).toHaveBeenLastCalledWith('j1', { limit: 1000 });
+    expect(all(activity(v.container), 'button')).toHaveLength(0);
+    expect(text(activity(v.container))).toContain('Only the newest 1,000 are listed.');
+    await v.unmount();
+  });
+
+  it('leaves its plan out once the job has ended and the page says the plan', async () => {
+    const ended = jobOf({
+      state: 'done',
+      finishedAt: '2026-11-12T11:00:00Z',
+      report: {
+        plan: { by: 'model', pieces: 'sentences', fillsNames: ['Gloss'], fallback: [] },
+        totals: {},
+        documents: [],
+      },
+    });
+    const v = await mount(clientOf([ended], [page([FIRST, PLAN])]));
+    expect(rows(v.container).map((li) => li.dataset.seq)).toEqual(['000001']);
+    await v.unmount();
+  });
 });

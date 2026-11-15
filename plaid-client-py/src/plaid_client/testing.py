@@ -2244,12 +2244,12 @@ class _FakeJobs:
                 for r in sorted(rows, key=lambda r: r['key'], reverse=True)]
 
     def pieces_page(self, job_id, *, limit=None, cursor=None):
-        """One page, as the envelope the real client hands back. The cursor
-        is opaque to a caller, so here it is the index the next page starts at."""
-        rows = self.pieces(job_id)
-        start = int(cursor or 0)
-        end = start + (limit or 100)
-        return {'entries': rows[start:end], 'next_cursor': str(end) if end < len(rows) else None}
+        """One page, as the envelope the real client hands back. Keyset, as
+        core's: the cursor is the last number of the page before, so a row
+        added between two pages (newer, so above it) is never read twice."""
+        rows = [r for r in self.pieces(job_id) if cursor is None or r['seq'] < cursor]
+        page = rows[:limit or 100]
+        return {'entries': page, 'next_cursor': page[-1]['seq'] if len(page) < len(rows) else None}
 
     def active(self, project_id):
         self.calls.append(('active', {'project_id': project_id}))
