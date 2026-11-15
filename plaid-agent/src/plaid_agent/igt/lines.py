@@ -155,11 +155,20 @@ def _words_of(ws: Workspace, doc: IgtDoc, ref: str):
     if not 1 <= a <= b <= len(s.words):
         raise _Refused(f'{ref} not staged: s{si} has {len(s.words)} words (w1 to w{len(s.words)}).')
     label = f's{si}.w{a}-w{b}' if b > a else f's{si}.w{a}'
-    moved = next((m for m in (renumbering(ws, s, w) for w in s.words[a - 1:b]) if m), None)
-    if moved is not None:
-        raise _Refused(f'{label} not staged: this plan\'s {moved[0]} renumber{"" if " and " in moved[0] else "s"} s{si}, so these numbers name other '
-                       'words once it is applied. Analyze these words once the plan is applied.')
+    _refuse_renumbered(ws, label, s, s.words[a - 1:b], 'these words')
     return label, s, s.words[a - 1:b]
+
+
+def _refuse_renumbered(ws: Workspace, label: str, s, words, what: str) -> None:
+    """Refuse a run of words, or the words given of a whole sentence, when
+    a split, merge or word delete the plan holds renumbers one of them
+    (``retyped.renumbering``): analyze_sentence names words by number only
+    and takes no form beside one."""
+    moved = next((m for m in (renumbering(ws, s, w) for w in words) if m), None)
+    if moved is not None:
+        raise _Refused(f'{label} not staged: this plan\'s {moved[0]} renumber{"" if " and " in moved[0] else "s"} '
+                       f's{s.index}, so these numbers name other words once it is applied. Analyze {what} once the '
+                       'plan is applied.')
 
 
 def _punctuation(item: str, cfg) -> bool:
@@ -317,6 +326,8 @@ def _stage_sentence(ws: Workspace, doc: IgtDoc, item: Dict[str, Any], new_entrie
         if bad:
             raise _Refused('\n'.join([f'{label} not staged: {not_staged}.'] + _word_lines(words, bad)))
         raise _Refused(f'{label} not staged: every word is _.')
+    if '.w' not in label:
+        _refuse_renumbered(ws, label, s, [w for w, p in zip(words, parsed) if p is not None], 'this sentence')
     fields = {name: f for name, f in columns if f is not None}
     g = fields.get('gloss')
     notes: List[str] = []

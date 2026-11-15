@@ -508,6 +508,23 @@ def test_every_route_a_bare_number_reaches_refuses_it_after_a_reshape_before_it(
         assert 'renumbers s1' not in out, out
 
 
+def test_a_whole_sentence_a_reshape_renumbers_is_refused_as_a_run_is():
+    """analyze_sentence takes no form for a word, so a whole sentence whose
+    given words a planned reshape renumbers gets a run's refusal, never the
+    advice to add a form (FX, LAND2 P1). A word before the reshape, or a
+    renumbered one given "_", stands."""
+    w = ws()
+    assert call_tool(w, 'delete_word', {'document': 'd1', 'refs': ['s1.w2']}).startswith('Planned')
+    out = call_tool(w, 'analyze_sentence', {'document': 'd1', 'sentences': [
+        {'ref': 's1', 'words': ['Ali-di Ali-ERG', '_', 'akuna see']}]})
+    assert out == ('Error: s1 not staged: this plan\'s delete_word renumbers s1, so these numbers name other words once '
+                   'it is applied. Analyze this sentence once the plan is applied.'), out
+    assert len(w.ops) == 1
+    out = call_tool(w, 'analyze_sentence', {'document': 'd1', 'sentences': [
+        {'ref': 's1', 'words': ['Ali-di Ali-PL', '_', '_']}]})
+    assert 'renumber' not in out and not out.startswith('Error'), out
+
+
 @pytest.mark.parametrize('tool,args', [
     ('set_analysis_for_form', {'form': 'akuna', 'morphemes': [{'form': 'akuna', 'gloss': 'see'}]}),
     ('set_field_for_form', {'form': 'akuna', 'field': 'Gloss', 'value': 'see'}),
