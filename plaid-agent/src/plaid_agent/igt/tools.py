@@ -34,6 +34,7 @@ from .plan import (ANALYSIS, KIND, MORPHEME_KEY, MORPHEME_WRITERS, TEXT_SHAPE, W
                    reshaped_subjects)
 from .project import (IgtDoc, Sentence, Word, Morpheme, Link, MARKERS, parse_ref, resolve, mwe_ref,
                       join_morphemes, joiner, plain_ref, planned_word_count, segmentation, split_sentences, word_ref)
+from .fit import form_key
 from .lexview import morph_type
 from .workspace import Workspace, _need, _refs, _sentence_of, _words_of
 from .vocab import morph_type_of
@@ -626,7 +627,9 @@ def in_place(held: List[Dict[str, Any]], staged: List[Dict[str, Any]],
     """THE rule of an analysis that keeps the word's morphemes (KM, after
     REV-L2-1), compared BY PLACE: the word's stored morphemes (``held``,
     :func:`held_chain`) are as many as the ones given (``staged``, as
-    :func:`stage_equals` leaves them), and each holds the same form (NFC),
+    :func:`stage_equals` leaves them), and each holds the same form by the
+    app's own key (``fit.form_key``: a case-only difference is the same
+    form, and the stored one is kept, REV-DAY-S-1),
     the same "=" before it, and the type given if one is. A joint the call
     states (``stated``, the ``equals`` each morpheme was given, None where
     none) is compared with the joint the word shows there, "=" before or
@@ -642,7 +645,7 @@ def in_place(held: List[Dict[str, Any]], staged: List[Dict[str, Any]],
         return None
     out = []
     for k, (h, m) in enumerate(zip(held, staged)):
-        if not _same_text(h['form'], m['form']):
+        if form_key(h['form'] or '') != form_key(m['form'] or ''):
             return None
         said = stated[k] if stated else None
         if k and isinstance(said, bool):
