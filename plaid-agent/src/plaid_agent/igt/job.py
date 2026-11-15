@@ -50,7 +50,7 @@ from ..core.limits import (JOB_ANALYSIS_MAX_CHARS, JOB_CHANGE_VALUE_CHARS, JOB_C
                            JOB_SUMMARY_NOTES_CHARS, JOB_SUMMARY_TABLE_CHARS, JOB_TABLES_MAX, JOB_TABLES_PER_PIECE,
                            JOB_DECISIONS_PER_CALL, JOB_DEFER_ROUNDS, JOB_DEFER_WAIT_S, JOB_GUIDELINES_MAX_CHARS,
                            JOB_LOCK_TRIES, JOB_LOCK_WAIT_S, JOB_PERSON_QUIET_S, JOB_PRECEDENT_CHARS,
-                           JOB_PRECEDENT_PER_FORM, JOB_SENTENCE_MAX_CHARS, JOB_SENTENCE_MAX_WORDS,
+                           JOB_EVIDENCE_CHARS, JOB_SENTENCE_MAX_CHARS, JOB_SENTENCE_MAX_WORDS,
                            JOB_SKIPPED_PER_DOCUMENT, JOB_STRETCH_SENTENCES)
 from ..core.plan import JOB_DETAIL_KEY, ONE_REQUEST, PlanError, TooBig, held_changes
 from ..core.prompt import JOB_ANSWER_AGAIN
@@ -63,7 +63,7 @@ from .project import IgtProject, Sentence, Word, is_virtual, load_project, rende
 from .prompt import JOB_SYSTEM, build_job_prompt
 from .tools import ANALYSIS_OF, trim_ignored_edges
 from .trace import TRACER
-from .fit import entry_gloss as _entry_gloss, fitting_entry  # noqa: F401 (fitting_entry: tests)
+from .fit import entry_gloss as _entry_gloss, fitting_entry, surface_key  # noqa: F401 (fitting_entry: tests)
 from .vocab import ROLE_GLOSS, ROLE_STATUS
 from .workspace import Workspace
 
@@ -266,11 +266,6 @@ def job_source(model: str) -> str:
     assistants' service ids are made (``core.service_cli``)."""
     slug = re.sub(r'[^A-Za-z0-9._-]+', '-', model).strip('-')
     return service_source(f'igt:job:{slug}')
-
-
-def form_key(surface: str) -> str:
-    """A form as the decisions are keyed: NFC, case-folded (CONTRACT 2.3)."""
-    return unicodedata.normalize('NFC', surface or '').casefold()
 
 
 def _nfc(text) -> str:
@@ -481,7 +476,7 @@ def word_tag(word_id: str) -> str:
 def word_key(w: Word) -> str:
     """What harmonize compares a word with: the start of the key of its
     form and its analysis as CONTRACT 5.1 shapes it (nothing ``made``)."""
-    return analysis_key(canonical([form_key(w.surface), word_analysis(w)]))[:WORD_KEY_CHARS]
+    return analysis_key(canonical([surface_key(w.surface), word_analysis(w)]))[:WORD_KEY_CHARS]
 
 
 def harmonize_bar(w: Word, job_id: str, recorded: Dict[str, str], commented: set) -> Optional[str]:
@@ -2303,7 +2298,7 @@ class IgtRunner:
                 if word_state(w) != 'protected' or in_place_of_job(w, job_id):
                     continue
                 a = word_analysis(w)
-                slot = part.setdefault(form_key(w.surface), {}).setdefault(analysis_key(canonical(a)),
+                slot = part.setdefault(surface_key(w.surface), {}).setdefault(analysis_key(canonical(a)),
                                                                            {'analysis': a, 'count': 0})
                 slot['count'] += 1
         return part
@@ -2331,59 +2326,34 @@ class IgtRunner:
             self.plan_made = self.plan_stored(self.job.decisions())
         return (self.plan_made or {}).get('edits_text') is True
 
-    def evidence(self, ws: Workspace, project: IgtProject, words: List[Word]) -> str:
+    def evidence(self, ws: Workspace, project: IgtProject, words: List[Word], budget: int = JOB_EVIDENCE_CHARS,
+                 lexicon: bool = True) -> str:
         """The evidence block of a piece of a plan in sentences
         (:func:`evidence.block`), read now: people's analyses as the walk of
         the document last read them, the job's own decisions and the lexicon
-        as they are when the piece starts."""
+        as they are when the piece starts. Every form is looked up by its
+        surface and by its surface trimmed, each by ``fit.surface_key``, the
+        key people's index and the decisions are kept by (REV-DAY-P-1)."""
         if not words:
             return ''
         surfaces = [w.surface for w in words]
         people = self.people_index(ws, project)
         keys = list(dict.fromkeys(k for s in surfaces
-                                  for k in (form_key(s), form_key(trim_ignored_edges(s, project.ignored_cfg)))))
+                                  for k in (surface_key(s), surface_key(trim_ignored_edges(s, project.ignored_cfg)))))
         mine: Dict[str, List[Dict[str, Any]]] = {}
         for row in self.job.lookup_decisions(keys):
             mine.setdefault(row.get('form'), []).append({**row, 'analysis': json.loads(row['analysis'])})
         gloss = getattr(project.gloss_field('Morpheme'), 'name', None)
         entries = self.entry_forms(ws, project)
-        return evidence.block(ws, project, surfaces, people, mine, lambda a: rendering(a, gloss, entries))
+        return evidence.block(ws, project, surfaces, people, mine, lambda a: rendering(a, gloss, entries),
+                              budget=budget, lexicon=lexicon)
 
     def precedent(self, ws: Workspace, project: IgtProject, words: List[Word]) -> str:
-        if not words:
-            return ''
-        forms = list(dict.fromkeys(form_key(w.surface) for w in words))
-        people = self.people_index(ws, project)
-        mine: Dict[str, List[Dict[str, Any]]] = {}
-        for row in self.job.lookup_decisions(forms):
-            mine.setdefault(row.get('form'), []).append(row)
-        gloss = getattr(project.gloss_field('Morpheme'), 'name', None)
-        entries = self.entry_forms(ws, project)
-        blocks, left = [], 0
-        size = 0
-        for form in forms:
-            bits = []
-            theirs = sorted(people.get(form, {}).values(), key=lambda x: -x['count'])[:JOB_PRECEDENT_PER_FORM]
-            if theirs:
-                bits.append('people: ' + '; '.join(f'{rendering(x["analysis"], gloss, entries)} ({x["count"]})'
-                                                  for x in theirs))
-            ours = sorted(mine.get(form, []), key=lambda r: -(r.get('count') or 0))[:JOB_PRECEDENT_PER_FORM]
-            if ours:
-                bits.append('this job: ' + '; '.join(
-                    f'{rendering(json.loads(r["analysis"]), gloss, entries)} ({r.get("count")})' for r in ours))
-            if not bits:
-                continue
-            line = f'- "{form}": ' + ' | '.join(bits)
-            if size + len(line) > JOB_PRECEDENT_CHARS:
-                left += 1
-                continue
-            blocks.append(line)
-            size += len(line) + 1
-        if not blocks:
-            return ''
-        head = 'How these forms were analysed before (by people in this project, and earlier in this job):'
-        tail = [f'and {left} more forms not shown'] if left else []
-        return '\n'.join([head, *blocks, *tail])
+        """The precedent of a document's or a selection's piece: the
+        evidence block (one code path, one key) within JOB_PRECEDENT_CHARS,
+        without the forms analysed nowhere and the entries, which such a
+        piece reads with its tools (REV-DAY-P-16)."""
+        return self.evidence(ws, project, words, budget=JOB_PRECEDENT_CHARS, lexicon=False)
 
     # --- the write (SPEC 5.4) --------------------------------------------------------
     def writing_rows(self, document_id: str) -> List[Dict[str, Any]]:
@@ -3243,7 +3213,7 @@ class IgtRunner:
                 # Core keeps no analysis this long: the word is not offered
                 # as a decision.
                 continue
-            key = (form_key(w.surface), analysis_key(text))
+            key = (surface_key(w.surface), analysis_key(text))
             slot = decisions.setdefault(key, {'form': key[0], 'key': key[1], 'analysis': text, 'count': 0,
                                               'document_id': document_id, 'sentence_id': s.id})
             slot['count'] += 1
@@ -3366,7 +3336,7 @@ class IgtRunner:
                     into = mine if why is None else held.setdefault(why, {})
                     full = word_analysis(w)
                     a = harmonized_part(full)
-                    slot = into.setdefault(form_key(w.surface), {}).setdefault(
+                    slot = into.setdefault(surface_key(w.surface), {}).setdefault(
                         analysis_key(canonical(a)), {'analysis': a, 'words': [], 'word': Counter()})
                     slot['words'].append((d, w.id))
                     slot['word'][canonical(full['word'])] += 1

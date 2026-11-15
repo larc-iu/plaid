@@ -9,7 +9,7 @@ Three parts, in this order, each a fixed rule:
   the project and earlier in this job (the job's precedent, up to
   ``JOB_PRECEDENT_PER_FORM`` analyses from each source), a form read as the
   surface check reads a word: without the punctuation the project's
-  ignored-token rule trims off its edges, in lower case;
+  ignored-token rule trims off its edges, by ``fit.surface_key``;
 - one line naming the forms nobody analysed, so the model need not ask;
 - every lexicon entry (senses included, every lexicon of the project) whose
   form, by the key every tool names an entry by (``fit.form_key``), is
@@ -29,7 +29,7 @@ from typing import Any, Dict, Iterable, List, Optional
 
 from ..core.limits import JOB_EVIDENCE_CHARS, JOB_EVIDENCE_MIN_ENTRY, JOB_PRECEDENT_PER_FORM
 from . import fit
-from .fit import collation_key, entry_gloss, item_morph_type
+from .fit import entry_gloss, item_morph_type, surface_key
 from .project import IgtProject
 from .tools import trim_ignored_edges
 from .vocab import ROLE_GLOSS
@@ -42,8 +42,9 @@ ENTRIES_HEAD = 'Lexicon entries spelled inside these forms (form ‘gloss’ typ
 
 def form_of(surface: str, cfg) -> str:
     """A word's form as the block keys it: the surface without the edge
-    punctuation the ignored-token rule trims, NFC, lower case."""
-    return collation_key(trim_ignored_edges(surface or '', cfg))
+    punctuation the ignored-token rule trims, by the key the job's decisions
+    and people's index are kept by (``fit.surface_key``)."""
+    return surface_key(trim_ignored_edges(surface or '', cfg))
 
 
 def _bare(form: str) -> str:
@@ -54,7 +55,7 @@ def _bare(form: str) -> str:
 
 
 def regroup(index: Dict[str, Dict[str, Dict[str, Any]]], cfg) -> Dict[str, Dict[str, Dict[str, Any]]]:
-    """People's index (form_key of the surface -> {key: {analysis, count}})
+    """People's index (surface_key of the surface -> {key: {analysis, count}})
     keyed by :func:`form_of` instead, the counts of one analysis under
     several surfaces ("aloohl" and "aloohl,") added up."""
     out: Dict[str, Dict[str, Dict[str, Any]]] = {}
@@ -99,12 +100,15 @@ def entry_lines(ws, project: IgtProject, forms: Iterable[str]) -> List[tuple]:
 
 
 def block(ws, project: IgtProject, surfaces: Iterable[str], people: Dict[str, Dict[str, Dict[str, Any]]],
-          mine: Dict[str, List[Dict[str, Any]]], render, budget: int = JOB_EVIDENCE_CHARS) -> str:
+          mine: Dict[str, List[Dict[str, Any]]], render, budget: int = JOB_EVIDENCE_CHARS,
+          lexicon: bool = True) -> str:
     """The block for the piece whose empty words have ``surfaces``.
 
     ``people`` is people's index as :meth:`IgtRunner.people_index` keeps it,
     ``mine`` the job's own decisions by the form they were looked up under,
-    ``render(analysis)`` an analysis as one short line."""
+    ``render(analysis)`` an analysis as one short line. The precedent of a
+    document's or a selection's piece is this block without the forms
+    analysed nowhere and the entries (``lexicon`` False): one code path."""
     cfg = project.ignored_cfg
     forms = list(dict.fromkeys(f for f in (form_of(s, cfg) for s in surfaces) if f))
     if not forms:
@@ -126,7 +130,9 @@ def block(ws, project: IgtProject, surfaces: Iterable[str], people: Dict[str, Di
             analysed.append(f'- "{form}": ' + ' | '.join(bits))
         else:
             nowhere.append(form)
-    entries = entry_lines(ws, project, forms)
+    if not lexicon:
+        nowhere = []
+    entries = entry_lines(ws, project, forms) if lexicon else []
 
     def size(lines):
         return sum(len(x) + 1 for x in lines)

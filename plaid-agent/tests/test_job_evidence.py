@@ -150,8 +150,23 @@ def test_a_piece_of_a_document_or_selection_plan_gets_the_precedent_as_before(mo
     for text in asked:
         assert evidence.ENTRIES_HEAD not in text and evidence.NOWHERE_HEAD not in text
     if plan == 'document':
-        assert '- "ka,": people' not in asked[0] and 'How these forms were analysed before' not in asked[0], \
-            'the precedent keys a form by its surface as typed, as it did'
+        # One code path and one key with the evidence block (REV-DAY-P-16):
+        # "ka," is looked up trimmed, as the block of a piece in sentences.
+        assert '- "ka": people: ka ‘eat’ (1)' in asked[0], asked[0]
+
+
+@pytest.mark.parametrize('plan', ['sentences', 'document'])
+@pytest.mark.parametrize('word', ['Straße', 'λόγος', 'ﬁsh', 'gam'])
+def test_a_form_people_analysed_is_found_whatever_its_case_folding(monkeypatch, plan, word):
+    """REV-DAY-P-1: people's index and the decisions key a surface by
+    fit.surface_key (casefold), and the block and the precedent look it up
+    by the same key: "Straße", a final sigma and a ligature read as people
+    analysed them, never "Analysed nowhere"."""
+    client = JobClient({'A': document('A', 'Doc A', [{'words': [word.upper() if word != 'ﬁsh' else word]}]),
+                        'P': document('P', 'Other', [{'words': [(word, [(word, 'x')], 'human')]}])})
+    asked = _asked(monkeypatch, client, plan=plan)
+    assert '": people: ' in asked[0] and '(1)' in asked[0], asked[0]
+    assert evidence.NOWHERE_HEAD not in asked[0]
 
 
 # --- the prompt lines (EV 3) -----------------------------------------------------

@@ -50,6 +50,16 @@ def form_key(form) -> str:
     return collation_key(form)
 
 
+def surface_key(surface) -> str:
+    """The key of a word's surface (never an entry's form, :func:`form_key`
+    names those): NFC, then case-folded (CONTRACT 2.3). A job's decisions,
+    people's index of analyses, and the evidence and precedent a piece is
+    handed (``evidence.form_of``) all key forms by it, so what is looked up
+    is found under the key it was kept by (REV-DAY-P-1: "Straße" and a final
+    sigma were analysed nowhere under the lower-case key)."""
+    return nfc(surface).casefold()
+
+
 def entry_gloss(item: Dict[str, Any], gloss: Optional[str]) -> str:
     """The NFC value an entry (or a staged create) holds in entry field
     ``gloss``, '' without one."""
