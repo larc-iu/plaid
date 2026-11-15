@@ -88,3 +88,36 @@ def test_the_report_sums_them_per_document_and_in_its_totals(monkeypatch):
         doc['counts']
     assert report['totals']['changes'] >= 2
     assert report['totals']['text_changes'] == 0
+
+
+def _linked_write(who):
+    """s1.w1 "gam" with a word link of ``who``'s (wl1) and its morpheme with a person's link (l-d1-s1w1m1)."""
+    from job_fixtures import stamp
+    spec = [{'words': [('gam', [('gam', 'fish', 'vi-gam')], 'human'), 'ka']}]
+    raw = document('d1', 'Story', spec)
+    word_layer = raw['text_layers'][0]['token_layers'][1]
+    word_layer['vocabs'][0]['vocab_links'].append({'id': 'wl1', 'vocab_item': {'id': 'vi-x', 'form': 'gam'},
+                                                   'tokens': ['d1-s1w1'], 'metadata': stamp(who)})
+    client = JobClient({'d1': raw})
+    project = load_project(client, 'p1')
+    doc = parse_document(client.documents.get('d1', include_body=True), project)
+    return igt_job.Write('d1', '', Stretch(doc, project, doc.sentences, J), [], [], Counter(), doc)
+
+
+def test_a_word_link_people_made_replaced_or_removed_counts_and_a_machines_does_not():
+    """REV-DF-S-1: a word's link is found by its own id (the op's
+    existing_link_id or link_id): a word has no morpheme to find it by."""
+    replace = {'kind': 'link', 'token_id': 'd1-s1w1', 'item_id': 'vi-y', 'existing_link_id': 'wl1'}
+    remove = {'kind': 'unlink', 'token_id': 'd1-s1w1', 'link_id': 'wl1'}
+    first = {'kind': 'link', 'token_id': 'd1-s1w2', 'item_id': 'vi-y', 'existing_link_id': None}
+    for op, n in ((replace, 1), (remove, 1), (first, 0)):
+        assert _linked_write('human').of_people_and_text([op])['peoples_values_changed'] == n, op
+        assert _linked_write('svc').of_people_and_text([op])['peoples_values_changed'] == 0, op
+
+
+def test_the_link_op_of_a_planned_analysis_replacing_peoples_link_counts():
+    """REV-DF-S-1: the link op of an analysis not written in place names no
+    token, the word it is for and the link it replaces."""
+    op = {'kind': 'link', 'token_id': None, 'analysis_word_id': 'd1-s1w1', 'morpheme_index': 0, 'item_id': 'vi-y',
+          'existing_link_id': 'l-d1-s1w1m1'}
+    assert _linked_write('human').of_people_and_text([op])['peoples_values_changed'] == 1

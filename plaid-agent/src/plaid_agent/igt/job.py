@@ -605,11 +605,24 @@ def replaces_people(op: Dict[str, Any], doc, project: IgtProject) -> bool:
     people wrote (``word_state`` protected), a link people made replaced or
     taken away."""
     from .jobapply import _found, token_of
+    kind = op.get('kind')
+    if kind in ('link', 'link_phrase', 'unlink'):
+        # The link it replaces or takes away, a word's, a morpheme's or an
+        # expression's, by its own id (REV-DF-S-1): a word's link has no
+        # morpheme to be found by.
+        lid = op.get('existing_link_id') or op.get('link_id')
+        found = doc.find(lid) if lid else None
+        if found is None:
+            return False
+        _s, w, m = found
+        links = ([m.link] if m is not None and m.link is not None else []) + (
+            [w.link] if w is not None and w.link is not None else []) + list(w.mwes if w is not None else [])
+        link = next((x for x in links if x.id == lid), None)
+        return link is not None and prov_state(link.metadata) != 'machine'
     hit = _found(doc, token_of(op))
     if hit is None:
         return False
     s, w, m = hit
-    kind = op.get('kind')
     if kind == 'set_span':
         f = project.field_by_layer(op.get('layer_id'))
         holder = None if f is None else m if f.scope == 'Morpheme' else w if f.scope == 'Word' else s
@@ -618,8 +631,6 @@ def replaces_people(op: Dict[str, Any], doc, project: IgtProject) -> bool:
                 and (op.get('value') or '') != sp.value)
     if kind in ('set_analysis', 'discard_analysis'):
         return w is not None and word_state(w) == 'protected'
-    if kind in ('link', 'unlink'):
-        return m is not None and m.link is not None and prov_state(m.link.metadata) != 'machine'
     return False
 
 
