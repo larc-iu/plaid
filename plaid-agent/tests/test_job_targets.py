@@ -367,6 +367,8 @@ def test_a_job_fills_an_orthography_through_the_same_code_as_a_word_field(monkey
     assert 'Empty in s1: IPA in w1 "ka", w2 "pata", w3 "sa".' in first['asked'], first['asked']
     assert sorted(t['function']['name'] for t in first['kwargs']['tools']) == [
         'analyses_of', 'read_lexicon', 'set_field', 'set_orthography']
+    assert 'Fill what is empty with set_field, and an orthography with set_orthography.' in \
+        first['kwargs']['messages'][0]['content']
     assert set(written) == {'d1-s1w1', 'd1-s1w2'}
     (doc,) = finished['report']['documents']
     assert [(e['ref'], e['targets']) for e in doc['left']] == [('s1.w3', ['IPA']), ('s2.w1', ['IPA'])]

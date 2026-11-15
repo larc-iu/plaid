@@ -375,6 +375,13 @@ JOB_NOTHING_SYSTEM = _sentences_system(_JOB_NOTHING_READ_FIRST, _JOB_NOTHING_EXA
                                        _ONE_VALUE_FIELDS, evidence=False)
 
 
+#: What a piece in sentences that fills an orthography is told in place of
+#: its fields' line.
+ORTHOGRAPHY_SAID = 'Fill what is empty with set_field.'
+ORTHOGRAPHY_INSTEAD = 'Fill what is empty with set_field, and an orthography with set_orthography.'
+assert ORTHOGRAPHY_SAID in _JOB_FIELDS_READ_FIRST
+
+
 def job_segments_system(project: IgtProject, targets) -> str:
     """The prompt of a piece in sentences of a job that segments, its
     read-first bullet and worked piece by what else the plan fills: the
@@ -442,6 +449,9 @@ def build_job_prompt(project: IgtProject, sentences: bool = False, edits_text: b
     else:
         template = JOB_FIELDS_SYSTEM if targets else JOB_NOTHING_SYSTEM
     out = _filled(template, project)
+    if sentences and any(t.orthography is not None for t in targets):
+        # The tool such a piece fills an orthography with (REV-DF-D-6).
+        out = out.replace(ORTHOGRAPHY_SAID, ORTHOGRAPHY_INSTEAD)
     if not edits_text:
         for said, instead in NO_TEXT_EDITS:
             # A piece in sentences is told of no project-wide tool at all.
