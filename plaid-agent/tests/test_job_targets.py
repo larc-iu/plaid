@@ -174,3 +174,25 @@ def test_the_evidence_of_a_word_field_is_its_values_on_the_same_form(monkeypatch
     assert 'Role on no other word of: ka, pata, mo.' in asked
     assert 'How these forms were analysed' not in asked and 'Lexicon entries' not in asked
 
+
+def test_a_default_plan_shows_no_piece_a_sentence_people_analysed(monkeypatch):
+    """REV-DAY-S-12: planning fails. The default plan fills the app's
+    default and skips filled sentences, so the piece is handed s2 alone and
+    the person's analysed and translated s1 only as context."""
+    client = JobClient({'d1': document('d1', 'Story', [
+        {'words': [('gam', [('gam', 'fish')], 'human')], 'translation': ('Fish.', 'human')},
+        {'words': ['ka']}])})
+    job = start(client, id=J, plan=None)
+
+    def answer(asked, n, kwargs):
+        if asked.endswith('Plan the job and end with plan_work.'):
+            return reply('No plan.')
+        return reply('Done.')
+    model = use(monkeypatch, Model(answer))
+    finished = run_job(job, runner(job))
+    plan = finished['report']['plan']
+    assert plan['by'] == 'default' and plan['only_empty'] is True
+    assert plan['fills'] == ['segmentation', MGLOSS, TRANS]
+    pieces = [c['asked'] for c in model.calls if 'Your piece:' in c['asked'] and c['n'] == 1]
+    assert [p.splitlines()[-1] for p in pieces] == ['Your piece: s2. s1 is context.'], pieces
+    assert 'Empty in s2: segmentation and Morph Gloss in w1 "ka" | Translation.' in pieces[0]

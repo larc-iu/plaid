@@ -1428,10 +1428,12 @@ class IgtRunner:
                 why = None if plan else 'no-plan'
             except StretchFailed as e:
                 why = e.kind
-            # A default plan fills the app's configured default (segmentation
-            # and the gloss and translation fields the configuration names,
-            # targets.app_default): it knows nothing else of the job.
-            made = plan or {'pieces': SENTENCES, 'piece_instructions': '', 'documents': None,
+            # A default plan knows nothing of the job: it fills the app's
+            # configured default (segmentation and the gloss and translation
+            # fields the configuration names, targets.app_default) and takes
+            # the narrowest walk, the sentences where some of that is empty,
+            # so it never shows a piece a sentence people filled (REV-DAY-S-12).
+            made = plan or {'pieces': SENTENCES, 'piece_instructions': '', 'documents': None, 'only_empty': True,
                             **({'fills': ids} if (ids := [t.id for t in tg.app_default(project)]) else {})}
             # Made once: a passing error on its row below sends the same plan
             # again, never plans again (REV-JG-8).

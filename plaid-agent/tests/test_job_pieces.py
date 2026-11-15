@@ -122,7 +122,7 @@ def test_a_planning_that_ends_without_a_plan_gets_one_decide_now_round_then_work
     assert any(m.get('content') == JOB_PLAN_NOW for m in planning[1]['kwargs']['messages'])
     assert {t['function']['name'] for t in planning[1]['kwargs']['tools']} == {'plan_work'}
     assert finished['report']['plan'] == {'pieces': 'sentences', 'piece_instructions': '', 'documents': None,
-                                          'fills': ['segmentation', 'sl-mgloss', 'sl-trans'],
+                                          'fills': ['segmentation', 'sl-mgloss', 'sl-trans'], 'only_empty': True,
                                           'by': 'default', 'why': 'no-plan', 'fallback': [], 'left_out': []}
 
 

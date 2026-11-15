@@ -158,13 +158,18 @@ def test_a_job_fills_a_field_on_every_word_of_a_fully_analysed_document(monkeypa
     assert _totals(finished['report']).endswith('Thematic role 9 values')
 
 
-def test_a_default_plan_fills_the_field_too(monkeypatch):
-    """A planning context that ends with no plan_work: the job works in
-    sentences, every sentence."""
+def test_a_default_plan_does_not_reach_a_fully_analysed_document(monkeypatch):
+    """A planning context that ends with no plan_work: the default plan
+    knows nothing of the job, so it fills the app's default (segmentation,
+    the gloss, the translation) and takes the narrowest walk, skipping
+    filled sentences (REV-DAY-S-12). On analysed and translated text it
+    works no sentence: no piece is shown people's analyses."""
     client, job, model, written = _job(monkeypatch, None, plan=False)
     finished = run_job(job, runner(job))
-    assert finished['report']['plan']['by'] == 'default'
-    _check_report(finished, written)
+    plan = finished['report']['plan']
+    assert plan['by'] == 'default' and plan['only_empty'] is True
+    assert [p for p in _pieces(model) if p.startswith('Your piece')] == [] and written == {}
+    assert finished['report']['documents'][0]['state'] == 'done'
 
 
 def test_only_empty_works_nothing_of_a_fully_analysed_document(monkeypatch):
