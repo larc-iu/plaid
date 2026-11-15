@@ -7,7 +7,13 @@ import { fullTimestamp, timeAgo } from '@ui/lib/formatTime.js';
 import { TALL_LIST_PAGE_SIZE } from '@ui/hooks/usePagedList.js';
 import { isJobActive } from '@ui/domain/jobs.js';
 import { APP_ROUTES } from '@/appRoutes.js';
-import { pieceWrittenText, planText, refusedText, skippedText } from './jobText.js';
+import {
+  pieceWrittenText,
+  piecesFallShort,
+  planText,
+  refusedText,
+  skippedText,
+} from './jobText.js';
 
 /**
  * What a job has done so far (`jobs.piecesPage`, CONTRACT, added by LV): a row
@@ -54,6 +60,18 @@ export const JobActivity = ({ client, job, projectId, readAt }) => {
           </li>
         ))}
       </ul>
+      {!active &&
+        job.report &&
+        page &&
+        !page.nextCursor &&
+        piecesFallShort(
+          rows.map((r) => r.piece),
+          job.documents,
+        ) && (
+          <p className="mt-2 text-sm" data-testid="job-activity-short">
+            Some finished work is not listed here. The report below counts all of it.
+          </p>
+        )}
       {page?.nextCursor && (
         <Button
           variant="outline"

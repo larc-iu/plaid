@@ -253,4 +253,29 @@ describe('the job page’s Activity', () => {
     expect(all(rows(v.container)[0], 'p').map(text)).toContain('…');
     await v.unmount();
   });
+
+  it('says once the job has ended that some finished work is not listed, when the rows count less', async () => {
+    const ended = jobOf({
+      state: 'done',
+      finishedAt: '2026-11-12T11:00:00Z',
+      report: { totals: { documentsDone: 1, sentences: 2 }, documents: [] },
+    });
+    const short = await mount(clientOf([ended], [page([FIRST, PLAN])]));
+    // The document counts 4 words and 6 changes, the row 4 and 6: nothing short.
+    expect(short.container.querySelector('[data-testid="job-activity-short"]')).toBe(null);
+    await short.unmount();
+    const more = jobOf({
+      ...ended,
+      documents: [{ ...ended.documents[0], counts: { words: 7, changes: 6 } }],
+    });
+    const v = await mount(clientOf([more], [page([FIRST, PLAN])]));
+    expect(text(v.container.querySelector('[data-testid="job-activity-short"]'))).toBe(
+      'Some finished work is not listed here. The report below counts all of it.',
+    );
+    await v.unmount();
+    // Not while the job runs.
+    const w = await mount(clientOf([jobOf({ documents: more.documents })], [page([FIRST, PLAN])]));
+    expect(w.container.querySelector('[data-testid="job-activity-short"]')).toBe(null);
+    await w.unmount();
+  });
 });

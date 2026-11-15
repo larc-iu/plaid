@@ -322,3 +322,31 @@ def test_an_oversized_plan_summary_never_fails_the_planning(monkeypatch):
     assert finished['state'] == 'done', (finished.get('reason'), job.status.get('message'))
     plan = dict(_summaries(client, J))['000000']
     assert plan['cut'] is True and plan['plan']['fills-names-more'] > 0
+
+
+# --- REV-LV-3: a selection run again after a crash counts what it wrote ---------------------
+
+def test_a_selection_run_again_after_a_crash_counts_what_its_earlier_try_wrote(monkeypatch):
+    """The worker dies on the selection's summary call, after its write. The
+    next worker runs the selection again, which writes nothing new: its row
+    says what the selection's writes landed, not "Nothing written.". The
+    rows then sum to the document's counts."""
+    import test_job_gate as gate
+    client, job, clock, _ = gate._job(monkeypatch, 'selection')
+    gate._staged(monkeypatch)
+    real = job.add_decisions
+
+    def add(decisions):
+        if any(d['form'] == PIECE_FORM and d['key'] != '000000' for d in decisions):
+            raise gate.Crash()
+        return real(decisions)
+    monkeypatch.setattr(job, 'add_decisions', add)
+    with pytest.raises(gate.Crash):
+        runner(job).work(job)
+    monkeypatch.setattr(job, 'add_decisions', real)
+    clock['t'] += 3600
+    gate._resume(client, job).work(job)
+    counts = job.rows['d1']['counts']
+    rows = [v for k, v in _summaries(client, gate.J) if k != '000000']
+    assert len(rows) == 1 and rows[0]['document'] is None
+    assert rows[0]['counts'].get('words', 0) == counts['words'] > 0, (rows, counts)

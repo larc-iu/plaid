@@ -95,6 +95,28 @@ export const pieceWrittenText = (piece) => {
   return parts.length ? `${parts.join(', ')}.` : 'Nothing written.';
 };
 
+// Whether the pieces' rows count less than the documents' rows do, in any of
+// the counts both keep (REV-LV-3): a piece whose worker stopped before its
+// row was kept. By the numbers only.
+const COMPARED = [
+  'analyzed',
+  'words',
+  'changes',
+  'deletions',
+  'links',
+  'entries',
+  'translations',
+  'refreshed',
+  'peoplesValuesChanged',
+  'textChanges',
+];
+export const piecesFallShort = (pieces, documents) =>
+  COMPARED.some(
+    (k) =>
+      pieces.reduce((n, p) => n + (p.counts?.[k] ?? 0), 0) <
+      (documents || []).reduce((n, d) => n + (d.counts?.[k] ?? 0), 0),
+  );
+
 // The History entry of the job's work in a document, where it wrote
 // something there: the worker names the group before its first write, so a
 // group with no change opens nothing (REV-DF-S-5).

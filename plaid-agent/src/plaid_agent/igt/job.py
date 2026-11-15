@@ -3669,13 +3669,21 @@ class IgtRunner:
         if key in self.summarized:
             self.unsummed.pop(key, None)
             return
-        unknown = [t for d in p['parts'] for t in self.unknown(d)]
+        # The selection is one piece of the job, whatever worker ran it: its
+        # row says everything its writes landed, an earlier worker's too (a
+        # crash before that worker's summary), so a selection run again never
+        # reads "Nothing written." beside what it wrote (REV-LV-3). A worker
+        # that finds a selection summary in core sums up none (the guard).
+        selection = p['document'] is None
+        docs = list(self.job.order) if selection else list(p['parts'])
+        unknown = [t for d in docs for t in self.unknown(d)]
         if unknown:
             self.look_up(unknown)
         rows = []
-        for d in p['parts']:
+        for d in docs:
             mine, landed = self.view(d)
-            rows += [r for r in mine if r.get('write') in p['writes'] and landed(r)]
+            rows += [r for r in mine if landed(r) and (r.get('piece') == SELECTION_TAG if selection
+                                                       else r.get('write') in p['writes'])]
         skipped = [{**s, 'document_id': d} for d, ids in p['parts'].items()
                    for s in (self.job.rows.get(d) or {}).get('skipped') or [] if s.get('sentence_id') in ids]
         if p['seq'] is None:
