@@ -123,6 +123,11 @@ def test_the_class_map(shape, annotation, order):
         if not staged:
             break
     pair = (shape, annotation)
+    if pair == ('retype', 'set_field word') and order == 'shape first':
+        # s1.w2 is "gam" as read and the new "∅" once retyped: the bare
+        # number is refused, asking for the form (REV-DAY-S-4).
+        assert said[-1].startswith('Error:') and 'Add the form to say which you mean: s1.w2 "∅".' in said[-1]
+        return
     if pair in RENUMBERED and order == 'annotation first':
         assert said[-1].startswith('Error:') and 'renumbers s1' in said[-1], (pair, order, said)
         return
@@ -167,7 +172,7 @@ def test_the_retype_lists_the_words_it_plans_and_refs_name_them():
     assert RETYPED in call_tool(w, 'set_field', {'document': 'd1', 'refs': ['s1.w1.m1'], 'field': 'Morph Gloss',
                                                  'value': 'PL'})
     # the same value again is one change, last wins
-    call_tool(w, 'set_field', {'document': 'd1', 'refs': ['s1.w2'], 'field': 'Gloss', 'value': 'she'})
+    call_tool(w, 'set_field', {'document': 'd1', 'refs': ['s1.w2 "∅"'], 'field': 'Gloss', 'value': 'she'})
     assert [o.get('value') for o in w.ops if o.get('planned_word')] == ['she']
 
 
@@ -199,11 +204,11 @@ def test_a_value_on_a_word_the_retype_takes_refuses_the_retype():
 def test_a_second_retype_moves_the_values_on_its_words_and_refuses_one_on_a_word_the_first_made():
     w = ws()
     call_tool(w, 'retype_sentence', {'document': 'd1', 'ref': 's1', 'text': 'Ali-di ∅ gam akuna.'})
-    call_tool(w, 'set_field', {'document': 'd1', 'refs': ['s1.w3'], 'field': 'Gloss', 'value': 'fish'})
+    call_tool(w, 'set_field', {'document': 'd1', 'refs': ['s1.w3 "gam"'], 'field': 'Gloss', 'value': 'fish'})
     out = call_tool(w, 'retype_sentence', {'document': 'd1', 'ref': 's1', 'text': 'Ali-di gam ∅ akuna.'})
     assert out.startswith('Planned 1 change'), out
     assert [o['planned_word']['index'] for o in w.ops if o.get('planned_word')] == [2]
-    call_tool(w, 'set_field', {'document': 'd1', 'refs': ['s1.w3'], 'field': 'Gloss', 'value': 'he'})
+    call_tool(w, 'set_field', {'document': 'd1', 'refs': ['s1.w3 "∅"'], 'field': 'Gloss', 'value': 'he'})
     assert 'an earlier retype made' in call_tool(w, 'retype_sentence', {'document': 'd1', 'ref': 's1',
                                                                         'text': 'Ali-di gam ∅ akuna ∅.'})
 
@@ -287,7 +292,7 @@ def test_the_observed_sequence_glosses_the_new_word_and_keeps_the_persons():
     _Server(c, INSERTED)
     w = fake_ws(c)
     call_tool(w, 'retype_sentence', {'document': 'd1', 'ref': 's1', 'text': 'Ali-di ∅ gam akuna.'})
-    call_tool(w, 'set_field', {'document': 'd1', 'refs': ['s1.w2'], 'field': 'Gloss', 'value': 'he'})
+    call_tool(w, 'set_field', {'document': 'd1', 'refs': ['s1.w2 "∅"'], 'field': 'Gloss', 'value': 'he'})
     call_tool(w, 'set_field', {'document': 'd1', 'refs': ['s1.w4'], 'field': 'Gloss', 'value': 'see'})
     counts = _approve(w, c)
     assert counts['field values'] == 2
@@ -323,7 +328,7 @@ def test_a_sentence_that_comes_out_otherwise_is_refused_and_no_value_written():
     _Server(c, [(0, 6, 'w-1'), (7, 12, 'w-2'), (13, 18, 'w-3'), (18, 19, 'w-p')])
     w = fake_ws(c)
     call_tool(w, 'retype_sentence', {'document': 'd1', 'ref': 's1', 'text': 'Ali-di ∅ gam akuna.'})
-    call_tool(w, 'set_field', {'document': 'd1', 'refs': ['s1.w2'], 'field': 'Gloss', 'value': 'he'})
+    call_tool(w, 'set_field', {'document': 'd1', 'refs': ['s1.w2 "∅"'], 'field': 'Gloss', 'value': 'he'})
     ops, notes = normalize_ops(copy.deepcopy(w.ops))
     # each its card row, as approval numbers them (core.approval)
     ops = [{**op, ROW: i} for i, op in enumerate(ops)]
@@ -342,7 +347,7 @@ def test_a_deleted_word_and_a_value_on_its_neighbour():
     out = call_tool(w, 'retype_sentence', {'document': 'd1', 'ref': 's1', 'text': 'Ali-di akuna.'})
     assert out.endswith('s1 once retyped: w1 "Ali-di", w2 "akuna". In this plan s1.wN '
                         'names these words.')
-    call_tool(w, 'set_field', {'document': 'd1', 'refs': ['s1.w2'], 'field': 'Gloss', 'value': 'see'})
+    call_tool(w, 'set_field', {'document': 'd1', 'refs': ['s1.w2 "akuna"'], 'field': 'Gloss', 'value': 'see'})
     _approve(w, c)
     [batch] = c.batches
     assert [(p['args'][1], p['args'][2]) for k, p in batch if k == 'spans.create'] == [(['w-3'], 'see')]
@@ -351,7 +356,7 @@ def test_a_deleted_word_and_a_value_on_its_neighbour():
 def test_the_executor_refuses_a_planned_value_whose_retype_is_not_in_the_plan():
     w = ws()
     call_tool(w, 'retype_sentence', {'document': 'd1', 'ref': 's1', 'text': 'Ali-di ∅ gam akuna.'})
-    call_tool(w, 'set_field', {'document': 'd1', 'refs': ['s1.w2'], 'field': 'Gloss', 'value': 'he'})
+    call_tool(w, 'set_field', {'document': 'd1', 'refs': ['s1.w2 "∅"'], 'field': 'Gloss', 'value': 'he'})
     c = FakeClient()
     with pytest.raises(ValueRefusal, match='names a word of a retyped sentence'):
         execute_plan(c, [w.ops[1]], source='s', label='l', project=load_project(c, 'p1'))
@@ -366,7 +371,7 @@ def test_a_jobs_rows_name_the_word_as_retyped():
     c = FakeClient(documents={'d1': _glossed()})
     w = fake_ws(c)
     call_tool(w, 'retype_sentence', {'document': 'd1', 'ref': 's1', 'text': 'Ali-di ∅ gam akuna.'})
-    call_tool(w, 'set_field', {'document': 'd1', 'refs': ['s1.w2', 's1.w3'], 'field': 'Gloss', 'value': 'he'})
+    call_tool(w, 'set_field', {'document': 'd1', 'refs': ['s1.w2 "∅"', 's1.w3 "gam"'], 'field': 'Gloss', 'value': 'he'})
     doc = w.doc('d1')
     new, kept = [IgtRunner.describe(None, o, doc, w.project) for o in w.ops[1:]]
     assert (new['ref'], new['field'], new['from'], new['to']) == ('s1.w2', 'Gloss', None, 'he')
@@ -710,3 +715,25 @@ def test_a_sentence_split_before_a_word_the_plan_deletes_says_the_delete_takes_i
     w = ws()
     call_tool(w, 'split_sentence', {'document': 'd1', 'ref': 's1', 'before_word': 3})
     assert call_tool(w, 'split_word', {'document': 'd1', 'ref': 's1.w1', 'at': 3}).startswith('Planned')
+
+
+# --- REV-DAY-S-4: a bare number that names one word as read and another once retyped ------------
+
+@pytest.mark.parametrize('ref, ok', [('s1.w2', False), ('s1.w3', False), ('s1.w1', True), ('s1.w4', True),
+                                     ('s1.w2 "∅"', True), ('s1.w3 "gam"', True)])
+def test_a_bare_number_of_a_retyped_sentence_that_names_another_word_as_read_is_refused(ref, ok):
+    """After the retype "Ali-di ∅ gam akuna.", s1.w3 is akuna as read and
+    gam once retyped: a value by the bare number would land on a word the
+    model may not mean (REV-DAY-S-4, the class of the real job's 21 values on
+    wrong words). It is refused, asking for the form. A number that names
+    the same word both ways (w1), one past the words as read (w4), or one
+    with its form is taken."""
+    w = ws()
+    call_tool(w, 'retype_sentence', {'document': 'Text 1', 'ref': 's1', 'text': 'Ali-di ∅ gam akuna.'})
+    out = call_tool(w, 'set_field', {'document': 'Text 1', 'refs': [ref], 'field': 'Gloss', 'value': 'X'})
+    if ok:
+        assert not str(out).startswith('Error'), out
+        return
+    n = ref[-1]
+    assert str(out).startswith('Error') and f's1.w{n} is ' in out and 'once retyped' in out and 'Add the form' in out, out
+    assert not any(o.get('kind') == 'set_span' for o in w.ops)

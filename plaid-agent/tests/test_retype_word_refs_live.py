@@ -100,7 +100,7 @@ def test_a_new_word_typed_in_and_glossed_gets_the_gloss_and_the_persons_word_kee
     try:
         said = _chat(writer, email, s, [
             ('retype_sentence', {'ref': 's2', 'text': 'sa na ∅ pa ma.'}),
-            ('set_field', {'refs': ['s2.w3'], 'field': 'Gloss', 'value': 'he'})])
+            ('set_field', {'refs': ['s2.w3 "∅"'], 'field': 'Gloss', 'value': 'he'})])
         assert said[0].endswith('s2 once retyped: w1 "sa", w2 "na", w3 "∅" (new), w4 "pa", w5 "ma". In this '
                                 'plan s2.wN names these words.')
         words, translation = _glosses(admin, s)
@@ -132,7 +132,7 @@ def test_a_word_typed_out_and_its_neighbour_glossed():
     try:
         said = _chat(writer, email, s, [
             ('retype_sentence', {'ref': 's2', 'text': 'sa na ma.'}),
-            ('set_field', {'refs': ['s2.w3'], 'field': 'Gloss', 'value': 'M2'})])
+            ('set_field', {'refs': ['s2.w3 "ma"'], 'field': 'Gloss', 'value': 'M2'})])
         assert said[0].endswith('s2 once retyped: w1 "sa", w2 "na", w3 "ma". In this plan s2.wN names these words.')
         words, _t = _glosses(admin, s)
         assert words == [('sa', 'S'), ('na', 'N'), ('ma', 'M2')]
@@ -291,7 +291,7 @@ def test_right_to_left_text():
     try:
         said = _chat(writer, email, s, [
             ('retype_sentence', {'ref': 's1', 'text': 'שלום עולם ∅ טוב.'}),
-            ('set_field', {'refs': ['s1.w3'], 'field': 'Gloss', 'value': 'it'})])
+            ('set_field', {'refs': ['s1.w3 "∅"'], 'field': 'Gloss', 'value': 'it'})])
         assert said[0].endswith('s1 once retyped: w1 "שלום", w2 "עולם", w3 "∅" (new), w4 "טוב". In this plan '
                                 's1.wN names these words.')
         words, translation = _glosses(admin, s, 1)
@@ -327,7 +327,7 @@ def test_a_job_piece_types_a_new_word_and_glosses_it(monkeypatch):
                 return reply('Typed the zero subject in and glossed it.')
             return reply(calls=[
                 call(1, 'retype_sentence', {'document': 'Alpha', 'ref': 's2', 'text': 'sa na ∅ pa ma.'}),
-                call(2, 'set_field', {'document': 'Alpha', 'refs': ['s2.w3'], 'field': 'Gloss', 'value': 'he'})])
+                call(2, 'set_field', {'document': 'Alpha', 'refs': ['s2.w3 "∅"'], 'field': 'Gloss', 'value': 'he'})])
         use(monkeypatch, Model(answer))
         job = _job(admin, writer, s, 'Type a zero subject before pa in s2 and gloss it "he".', 'document')
         finished = run_job(job, IgtRunner(job, ModelConfig(model='fake/m', stream=False, max_steps=1000),

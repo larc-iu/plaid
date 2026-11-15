@@ -356,6 +356,14 @@ def planned_ref(ws, doc, ref: str, where: str):
     if r.form and not same_form(r.form, planned[wi - 1]['surface']):
         raise ToolError(f'{ref}: s{s.index}.w{wi} is {qv(planned[wi - 1]["surface"])} once retyped, not '
                         f'{qv(r.form)}. {listing(s.index, planned)}', kind='not-found')
+    if not r.by_form and not r.form and wi <= len(s.words) and s.words[wi - 1].id != planned[wi - 1]['word_id']:
+        # A bare number naming one word as read and another once retyped:
+        # the model may mean either (REV-DAY-S-4, a value by the number as
+        # read landed on the new word). Its form says which.
+        read = s.words[wi - 1].surface
+        raise ToolError(f'{ref}: s{s.index}.w{wi} is {qv(read)} as read and {qv(planned[wi - 1]["surface"])} once '
+                        f'retyped. {listing(s.index, planned)} Add the form to say which you mean: s{s.index}.w{wi} '
+                        f'"{planned[wi - 1]["surface"]}".', kind='conflict')
     return s, wi, planned[wi - 1], edit
 
 
