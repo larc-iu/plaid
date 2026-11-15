@@ -22,7 +22,7 @@ from ..core.bidi import qv
 from ..core.args import whole
 from ..core.loss import count_delete_loss, loss_note, other_layers_crossing
 from ..core.plan import labelled
-from ..core.tools import ToolError
+from ..core.tools import ToolError, next_step
 from .plan import reshaped_subjects, written_before_merge
 from .project import Link, Sentence, Span, Word, plain_ref, planned_word_count, resolve, split_sentences, word_ref
 from .retyped import (gone_words, listing, planned_words, refuse_retype_under_rule, renumbered, renumbered_cut,
@@ -633,8 +633,8 @@ def t_retype_sentence(ws: Workspace, document: str, ref: str, text: str) -> str:
     note = ws.planned_note(1)
     if planned is not None:
         return f'{note}{gone_words(s, planned)} {listing(s.index, planned)}'
-    return (f'{note} Its words cannot be numbered before it is applied: plan values on them once the retype is '
-            'applied.')
+    return f'{note} Its words cannot be numbered before it is applied: ' + next_step(
+        ws, 'plan values on them once the retype is applied.', 'no value can be planned on them in this job.')
 
 
 def _word_extents(ws: Workspace, doc) -> List[tuple]:

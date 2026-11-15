@@ -90,6 +90,14 @@ def advised(ws, fact: str, advice: Optional[str], sentence_id: Optional[str] = N
     return leave_it(with_advice(fact, None), sentence_id, code)
 
 
+def next_step(ws, chat: str, job: str) -> str:
+    """A tool's answer's next step worded by who reads it, as
+    :func:`advised` words a refusal's: ``chat`` for a chat's model, ``job``
+    for an unattended job's (a workspace with ``leave_it``), which has no
+    later turn (REV-DF4-5). Nothing is kept as left: it is no refusal."""
+    return job if getattr(ws, 'leave_it', None) is not None else chat
+
+
 class ValueRefusal(ValueError):
     """A ValueError whose message the model reads, with its kind.
 

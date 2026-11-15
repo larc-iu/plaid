@@ -89,15 +89,7 @@ def _said(steps, job=True):
     return w, [str(call(w, tool, args if tool in NO_DOCUMENT else {'document': 'd1', **args})) for tool, args in steps]
 
 
-#: Scenarios whose job answers still hold a chat step (open): the retype's
-#: own answer, not a refusal, says "plan values on them once the retype is
-#: applied" when its words cannot be numbered. Reachable only with edits_text.
-JOB_STEP_LEFT = {'unnumbered retype then a value'}
-
-
-@pytest.mark.parametrize('scenario', [
-    pytest.param(s, marks=pytest.mark.xfail(strict=True, reason='the retype answer keeps a chat step'))
-    if s in JOB_STEP_LEFT else s for s in SCENARIOS])
+@pytest.mark.parametrize('scenario', list(SCENARIOS))
 def test_no_refusal_a_job_reads_advises_a_step_it_cannot_take(scenario):
     w, said = _said(SCENARIOS[scenario])
     refused = [x for x in said if x.startswith('Error')]
@@ -122,6 +114,20 @@ def test_the_chat_reads_every_refusal_byte_for_byte_as_before(scenario):
         before = json.load(f)
     _, said = _said(SCENARIOS[scenario], job=False)
     assert said == before[scenario]
+
+
+def test_the_retype_whose_words_cannot_be_numbered_gives_a_job_its_own_next_step():
+    """REV-DF4-5: the retype's own answer (a success, not a refusal) told a
+    job to "plan values on them once the retype is applied", a chat step. A
+    job reads its own, through the one place a next step is worded by who
+    reads it (core.tools.next_step), the chat its own as before."""
+    steps = SCENARIOS['unnumbered retype then a value'][:1]
+    _, (job,) = _said(steps)
+    assert job.endswith('Its words cannot be numbered before it is applied: no value can be planned on them in '
+                        'this job.'), job
+    _, (chat,) = _said(steps, job=False)
+    assert chat.endswith('Its words cannot be numbered before it is applied: plan values on them once the retype '
+                         'is applied.'), chat
 
 
 def test_the_chat_reads_the_same_refusals_as_before():
