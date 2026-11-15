@@ -216,3 +216,39 @@ def test_after_a_cut_no_piece_is_summed_up_twice_or_claims_a_write_that_did_not_
                     assert summed == counts.get(name, 0), (k, how, name, summed, counts)
                 else:
                     assert summed <= counts.get(name, 0), (k, how, name, summed, counts)
+
+
+# --- REV-LV-1: a piece this worker takes again gets a row of its own ------------------------
+
+def _summaries(client, job_id):
+    return sorted(((k, json.loads(x['analysis'])) for (f, k), x in client.jobs.decision_rows[job_id].items()
+                   if f == PIECE_FORM), key=lambda kv: kv[0])
+
+
+@pytest.mark.parametrize('pieces', ['sentences', 'document', 'selection'])
+def test_a_piece_taken_again_after_a_person_edited_its_first_sentence_has_a_row_of_its_own(monkeypatch, pieces):
+    """REV-LV-1 (test_job_gate's "a sentence a person edits during the piece is
+    taken again"): the walk takes the piece again from the same first
+    sentence, so under the same key. Its write lands, and its row is kept
+    with the next number: the rows sum to the document's counts."""
+    import test_job_gate as gate
+    client, job, clock, _ = gate._job(monkeypatch, pieces, after=gate.BLANK)
+    edited = [{'words': ['ka', 'ta'], 'translation': ('One, edited.', 'human')},
+              {'words': ['sa'], 'translation': ('Two.', 'human')}]
+    once = {'n': 0}
+
+    def model(asked, n, kwargs):
+        if n > 1:
+            if not once['n']:
+                once['n'] = 1
+                client._holder('d1')['documents']['d1'] = document('d1', 'Story', edited, version=5)
+                client.after_write['d1'] = document('d1', 'Story', edited, version=5)
+            return reply('Glossed.')
+        return gate._gloss()(asked, n, kwargs)
+    use(monkeypatch, Model(model))
+    gate._staged(monkeypatch)
+    runner(job).work(job)
+    counts = job.rows['d1']['counts']
+    rows = [v for k, v in _summaries(client, gate.J) if k != '000000']
+    for name in ('words', 'changes', 'analyzed'):
+        assert sum((v.get('counts') or {}).get(name, 0) for v in rows) == counts.get(name, 0), (name, rows, counts)

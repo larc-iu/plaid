@@ -1529,9 +1529,9 @@ class IgtRunner:
         self.try_loose: Dict[str, set] = {}
         #: piece key -> the summary of a piece not yet kept (:meth:`begin_summary`)
         self.unsummed: Dict[str, Dict[str, Any]] = {}
-        #: the keys of the pieces whose summary core holds, and the highest
-        #: sequence number among them, read once per worker
-        #: (:meth:`summaries_known`)
+        #: the keys of the pieces whose summary core held before this worker
+        #: started, and the highest sequence number among them, read once per
+        #: worker (:meth:`summaries_known`)
         self.summarized: Optional[set] = None
         self.piece_seq = 0
         #: the model calls of the planning or of the piece in hand, and the
@@ -3592,7 +3592,7 @@ class IgtRunner:
     def summaries_known(self) -> None:
         """Read once per worker which pieces core holds a summary of, and
         the highest sequence number: a resumed job numbers on from it, and
-        never sums a piece up twice."""
+        never sums up again a piece an earlier worker summed up."""
         if self.summarized is not None:
             return
         found, seq = set(), 0
@@ -3630,7 +3630,11 @@ class IgtRunner:
         the fate of any try not known asked of core first), never what a try
         meant to write, its skipped sentences, its refusals, its note, its
         model calls and when it ended. Its sequence number is given once, so
-        a call sent again is the same row."""
+        a call sent again is the same row. Only a piece an earlier worker
+        summed up is skipped: a piece this worker summed up and takes again
+        (a person changed its first sentence while the model worked) is a
+        new run with writes of its own, and gets a row of its own with the
+        next number (REV-LV-1)."""
         p = self.unsummed.get(key)
         if p is None:
             return
@@ -3655,7 +3659,6 @@ class IgtRunner:
                  **written_sums(rows), 'ended_at': self.now_iso(),
                  **({'skipped': skipped} if skipped else {}), **({'refused': p['refused']} if p['refused'] else {})}
         self.job.add_decisions([self.summary_row(p['seq'], value, p['document'], p['first_id'])])
-        self.summarized.add(key)
         self.unsummed.pop(key, None)
 
     def end_summaries(self) -> None:
