@@ -184,6 +184,22 @@ export const jobSetupOf = (card, conversationId = null) => {
   };
 };
 
+// Whether a job's `setup` has the card's shape (the worker's rule,
+// igt/targets.py `readable`): `fills` a list of maps each with a string `id`
+// and a string `name`, and `text` true or false. Core keeps any map, so the
+// page draws nothing of one that is not (REV-SU-F-1).
+export const readableSetup = (setup) =>
+  Array.isArray(setup?.fills) &&
+  typeof setup.text === 'boolean' &&
+  setup.fills.every(
+    (f) =>
+      f !== null &&
+      typeof f === 'object' &&
+      typeof f.id === 'string' &&
+      f.id !== '' &&
+      typeof f.name === 'string',
+  );
+
 // What a card's Text row says of a setup's `text`.
 export const setupTextText = (text) => (text ? 'May be edited' : 'Unchanged');
 

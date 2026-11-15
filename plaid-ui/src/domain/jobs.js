@@ -81,14 +81,15 @@ const REASON_WORDS = {
   'no-plan': 'Planning ended with no plan.',
   'planning-failed': 'The assistant’s model failed during planning. Start the job again.',
   'setup-gone': 'The fields this job was set up to fill are gone.',
+  'setup-unreadable': 'This job’s setup could not be read.',
 };
 
 /**
  * How a job whose planning kept no plan says so, by its plan's `why`: the
  * model planned nothing it could keep (`no-plan`), the fields its setup names
  * are all gone (`setup-gone`, named as the card named them, from the plan's
- * `gone`), or it failed during planning (any other `why`, the kind of the
- * fault).
+ * `gone`), its setup could not be read (`setup-unreadable`), or it failed
+ * during planning (any other `why`, the kind of the fault).
  */
 export const planEndedText = (plan) => {
   if (plan?.why === 'no-plan') return 'Planning ended with no plan.';
@@ -98,6 +99,7 @@ export const planEndedText = (plan) => {
       .filter(Boolean);
     return `The fields this job was set up to fill are gone: ${names.join(', ')}.`;
   }
+  if (plan?.why === 'setup-unreadable') return 'This job’s setup could not be read.';
   return 'The assistant’s model failed during planning.';
 };
 

@@ -233,6 +233,8 @@ def plan_line(report: Dict[str, Any]) -> Optional[str]:
             # Its setup's targets are all gone, named as the card named them
             # (REV-SU-B-3).
             return f'The fields this job was set up to fill are gone: {gone_text(plan)}. Nothing was written.'
+        if plan.get('why') == 'setup-unreadable':
+            return "This job's setup could not be read. Nothing was written."
         return 'The assistant’s model failed during planning. Nothing was written.'
     line = f'Worked in {_PIECES.get(plan.get("pieces"), plan.get("pieces"))}'
     smaller = len(plan.get('fallback') or [])

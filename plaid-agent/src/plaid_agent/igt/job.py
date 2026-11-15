@@ -173,6 +173,9 @@ PLANNING_FAILED_REASON = 'planning-failed'
 #: The reason, and the plan row's ``why``, of a job set up to fill targets
 #: the project no longer has at all: it ends before planning (REV-SU-B-3).
 SETUP_GONE_REASON = 'setup-gone'
+#: The reason, and the plan row's ``why``, of a job whose setup is not the
+#: card's shape: it ends before planning (REV-SU-B-6).
+SETUP_UNREAD_REASON = 'setup-unreadable'
 #: The StretchFailed kinds that are the model's fault: a call that reached
 #: the output cap or that the provider refused (a provider error is
 #: ``output`` by :func:`failure_kind`), and a model repeating itself. A
@@ -1565,8 +1568,8 @@ class IgtRunner:
             # A job set up to fill targets the project no longer has at all
             # ends with no plan, never planning freely (BRIEF-SU), and says
             # so by a why of its own (REV-SU-B-3).
-            tries = 0 if setup is not None and setup.all_gone else 2
-            why = SETUP_GONE_REASON if not tries else None
+            tries = 0 if setup is not None and (setup.all_gone or setup.unread) else 2
+            why = None if tries else SETUP_UNREAD_REASON if setup.unread else SETUP_GONE_REASON
             # A planning that ends in a model fault (a StretchFailed of kind
             # output or repeating) is planned once more in a fresh context
             # (REV-DF4-2). A budget spent or a context too long is no plan,
@@ -1617,7 +1620,7 @@ class IgtRunner:
             if (job.rows.get(d) or {}).get('state') not in ROW_FINAL + ('not-reached',):
                 job.update_row(d, state='not-reached')
         why = made.get('why')
-        return why if why in (NO_PLAN_REASON, SETUP_GONE_REASON) else PLANNING_FAILED_REASON
+        return why if why in (NO_PLAN_REASON, SETUP_GONE_REASON, SETUP_UNREAD_REASON) else PLANNING_FAILED_REASON
 
     def plan_kept(self, plan: Dict[str, Any]) -> Dict[str, Any]:
         """The plan as its decision row holds it: the documents it names

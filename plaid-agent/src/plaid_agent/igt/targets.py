@@ -212,11 +212,14 @@ class Setup:
     whether it may edit the text, and ``gone`` the card's fills the project
     no longer has (``{id, name}``, the name the person saw), which the plan
     row keeps (REV-SU-B-3). Compared by id only. ``names`` are the targets as
-    :func:`shown_names` tells them."""
+    :func:`shown_names` tells them. ``unread`` when the setup is not the
+    card's shape (:func:`readable`): it names nothing and allows nothing
+    (REV-SU-B-6)."""
     targets: Tuple[Target, ...]
     text: bool
     gone: Tuple[Dict[str, str], ...] = ()
     names: Tuple[str, ...] = ()
+    unread: bool = False
 
     @property
     def ids(self) -> Tuple[str, ...]:
@@ -233,17 +236,27 @@ class Setup:
         return setup_line(self.names, self.text)
 
 
+def readable(setup) -> bool:
+    """Whether a job's ``setup`` has the card's shape: ``fills`` a list of
+    maps each with a string ``id`` and a string ``name``, and ``text`` true
+    or false. The job page draws its line by the same rule."""
+    fills = setup.get('fills') if isinstance(setup, dict) else None
+    return (isinstance(fills, list) and isinstance(setup.get('text'), bool)
+            and all(isinstance(f, dict) and isinstance(f.get('id'), str) and f['id'] and isinstance(f.get('name'), str)
+                    for f in fills))
+
+
 def setup_of(project: IgtProject, setup) -> Optional[Setup]:
     """The :class:`Setup` of a job's ``setup``, or None for a job with none
     (no limit)."""
     if not isinstance(setup, dict):
         return None
-    fills = setup.get('fills')
-    fills = [f for f in fills if isinstance(f, dict) and f.get('id')] if isinstance(fills, list) else []
-    targets = of_ids(project, [str(f['id']) for f in fills])
+    if not readable(setup):
+        return Setup((), False, unread=True)
+    fills = setup['fills']
+    targets = of_ids(project, [f['id'] for f in fills])
     have = {t.id for t in targets}
-    gone = tuple({'id': str(f['id']), 'name': str(f.get('name') or f['id'])} for f in fills
-                 if str(f['id']) not in have)
+    gone = tuple({'id': f['id'], 'name': f['name']} for f in fills if f['id'] not in have)
     return Setup(tuple(targets), setup.get('text') is True, gone, tuple(shown_names(project, targets)))
 
 
@@ -283,11 +296,15 @@ def said_setup(setup, gone: Iterable[str] = ()) -> Optional[str]:
     marked deleted, or None for a job with none."""
     if not isinstance(setup, dict):
         return None
-    fills = setup.get('fills') if isinstance(setup.get('fills'), list) else []
-    fills = [f for f in fills if isinstance(f, dict) and (f.get('name') or f.get('id'))]
+    if not readable(setup):
+        return UNREAD_LINE
     gone = set(gone)
-    return setup_line([str(f.get('name') or f.get('id')) for f in fills], setup.get('text') is True,
-                      [i for i, f in enumerate(fills) if str(f.get('id')) in gone])
+    fills = setup['fills']
+    return setup_line([f['name'] for f in fills], setup['text'], [i for i, f in enumerate(fills) if f['id'] in gone])
+
+
+#: What read_job and the final context say of a setup :func:`readable` refuses.
+UNREAD_LINE = "This job's setup could not be read. The job writes nothing."
 
 
 def gone_text(plan) -> str:

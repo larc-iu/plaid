@@ -195,6 +195,7 @@ describe('the words', () => {
         'no-plan',
         'planning-failed',
         'setup-gone',
+        'setup-unreadable',
       ].map((reason) => jobReasonText({ reason, message: null })),
     ).toEqual([
       'The person who started it can no longer write in this project.',
@@ -203,6 +204,7 @@ describe('the words', () => {
       'Planning ended with no plan.',
       'The assistant’s model failed during planning. Start the job again.',
       'The fields this job was set up to fill are gone.',
+      'This job’s setup could not be read.',
     ]);
     expect(jobReasonText({ reason: 'cancelled', message: null })).toBe(null);
     expect(jobReasonText(null)).toBe(null);

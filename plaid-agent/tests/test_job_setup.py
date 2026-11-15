@@ -363,3 +363,39 @@ def test_the_card_keeps_the_label_that_tells_a_shared_name_apart(fills, name):
     out = call_tool(ws, 'propose_job', {'action': 'draft', 'documents': ['Text 1'], 'fills': fills, 'brief': 'Do it.'})
     assert out.startswith('Drafted'), out
     assert [f['name'] for f in ws.job_card['fills']] == [name]
+
+
+# --- a setup that is not the card's shape (REV-SU-B-6) -----------------------------------
+
+UNREADABLE = [{}, {'fills': 'Thematic role'}, {'fills': [{'name': ROLE_NAME}], 'text': False},
+              {'fills': [ROLE], 'text': False}, {'fills': [{'id': ROLE, 'name': ROLE_NAME}], 'text': 'true'},
+              {'fills': [{'id': ROLE, 'name': ROLE_NAME}]}, {'fills': [{'id': ROLE, 'name': {'a': 1}}], 'text': False},
+              {'fills': [None, 3], 'text': False}, {'fills': {'id': ROLE, 'name': ROLE_NAME}, 'text': False}]
+
+
+@pytest.mark.parametrize('setup', UNREADABLE)
+def test_a_setup_that_cannot_be_read_ends_the_job_saying_so_and_read_job_agrees(monkeypatch, setup):
+    """Only an API caller can send one (the page builds the card's shape).
+    It is never read as a limit it does not state: the job ends before
+    planning, with a reason and a plan row of its own, and read_job says the
+    same."""
+    from plaid_agent.igt import jobread
+    assert tg.setup_of(load_project(_client(), 'p1'), setup).unread
+    client = _client()
+    job, model = _planned(client, setup, [INSIDE], monkeypatch)
+    finished = run_job(job, runner(job))
+    assert finished['state'] == 'failed' and finished['reason'] == 'setup-unreadable', finished
+    assert finished['report']['plan'] == {'by': 'none', 'why': 'setup-unreadable', 'piece_instructions': '',
+                                          'fallback': [], 'left_out': []}
+    assert model.calls == [] and not _written(client)
+    said = jobread.summary({'id': J, 'state': 'failed', 'reason': 'setup-unreadable', 'instructions': 'x',
+                            'documents': [], 'setup': setup, 'report': finished['report']})
+    assert said[4] == "This job's setup could not be read. The job writes nothing.", said
+    assert "This job's setup could not be read. Nothing was written." in said
+    assert not any('set up to fill' in line for line in said)
+
+
+def test_the_cards_own_shape_is_read():
+    project = load_project(_client(), 'p1')
+    for setup in (ROLE_ONLY, {'fills': [], 'text': True}, {**ROLE_ONLY, 'conversation': None}):
+        assert not tg.setup_of(project, setup).unread, setup

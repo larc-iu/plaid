@@ -46,6 +46,7 @@ import {
   changesGroup,
   leftText,
   planText,
+  readableSetup,
   stoppedPartway,
 } from './jobText.js';
 
@@ -288,10 +289,11 @@ const Discuss = ({ client, projectId }) => {
 // What a job set up in a conversation was set up to do, from its start on
 // (its `setup`, which the job card gave it): what it fills and whether it may
 // edit the text. The conversation is its starter's own, so only they get the
-// link. A job started from the form has no setup, and no line.
+// link. A job started from the form has no setup, and no line, and neither
+// has one whose setup is not the card's shape (`readableSetup`).
 const JobSetup = ({ job, projectId, user }) => {
   const setup = job.setup;
-  if (!setup) return null;
+  if (!readableSetup(setup)) return null;
   const conversation =
     setup.conversation && user?.id && user.id === job.startedBy ? setup.conversation : null;
   // The fields its plan found gone, by id (REV-SU-B-3).
@@ -300,7 +302,7 @@ const JobSetup = ({ job, projectId, user }) => {
   return (
     <p className="-mt-4 mb-6 text-sm" data-testid="job-setup">
       Set up to fill <FillsNames fills={setup.fills} none="nothing" gone={gone} />.{' '}
-      {setup.text ? 'Text may be edited.' : 'Text unchanged.'}
+      {setup.text === true ? 'Text may be edited.' : 'Text unchanged.'}
       {conversation && (
         <>
           {' '}

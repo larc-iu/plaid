@@ -538,6 +538,47 @@ describe('the job page', () => {
     await v.unmount();
   });
 
+  // REV-SU-F-1, REV-SU-B-6: core keeps any map as a setup, so the page draws
+  // the line only for the card's shape and never blanks on another. A job
+  // whose setup the worker could not read ends saying so.
+  it('draws no setup line for a setup that is not the card’s shape, and says when it could not be read', async () => {
+    const line = (root) => root.querySelector('[data-testid="job-setup"]');
+    for (const setup of [
+      { fills: 'Gloss', text: 'no' },
+      { fills: [{ id: 'x', name: { a: 1 } }], text: false },
+      { fills: [null, 3], text: false },
+      { fills: { id: 'x', name: 'Gloss' }, text: false },
+      {},
+      { fills: [{ id: 'x' }], text: false },
+      { fills: [{ name: 'Gloss' }], text: false },
+      { fills: [{ id: 'x', name: 'Gloss' }], text: 'yes' },
+    ]) {
+      const v = await mount(clientOf(jobOf({ setup })));
+      expect(text(v.container)).toContain('Instructions');
+      expect(line(v.container)).toBeNull();
+      await v.unmount();
+    }
+    const plan = { by: 'none', why: 'setup-unreadable', fallback: [], leftOut: [] };
+    const v = await mount(
+      clientOf(
+        jobOf({
+          state: 'failed',
+          reason: 'setup-unreadable',
+          message: null,
+          setup: { fills: 'Gloss' },
+          report: { ...REPORT, plan },
+        }),
+      ),
+    );
+    expect(totals(v.container).Plan).toBe(
+      'This job’s setup could not be read. Nothing was written.',
+    );
+    expect(text(v.container.querySelector('[role="status"]'))).toContain(
+      'This job’s setup could not be read.',
+    );
+    await v.unmount();
+  });
+
   it('says when the model failed during planning, apart from a planning with no plan', async () => {
     const plan = { by: 'none', why: 'output', pieceInstructions: '', fallback: [], leftOut: [] };
     const v = await mount(
