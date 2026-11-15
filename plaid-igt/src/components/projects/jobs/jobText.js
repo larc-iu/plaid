@@ -44,9 +44,14 @@ export const planText = (plan) => {
   if (plan.pieces === 'sentences' && plan.onlyEmpty) text += ', only those with something empty';
   const smaller = (plan.fallback || []).length;
   if (smaller) text += `, ${smaller.toLocaleString()} in smaller pieces`;
+  text += '.';
+  // What the plan fills, by the names the report gives (REV-DF-D-1).
+  if (Array.isArray(plan.fillsNames)) {
+    text += plan.fillsNames.length ? ` Fills: ${plan.fillsNames.join(', ')}.` : ' Fills nothing.';
+  }
   // The plan says the instructions ask for the text itself to change
   // (plan_work's edits_text): only then may the job edit it.
-  return plan.editsText ? `${text}. Text edits allowed.` : `${text}.`;
+  return plan.editsText ? `${text} Text edits allowed.` : text;
 };
 
 // A document of the job the worker did not finish: never reached, or

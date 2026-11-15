@@ -135,10 +135,11 @@ def test_plan_work_takes_only_the_menu(args, said):
 def test_plan_work_keeps_a_valid_plan():
     ws = JobWorkspace(FakeClient(), _project(), mode=JobWorkspace.PLAN)
     ws.job_documents = [{'id': 'd1', 'name': 'Text 1'}, {'id': 'd2', 'name': 'Text 2'}]
-    out = toolkit.job_plan_call(ws, 'plan_work', {'pieces': 'document', 'piece_instructions': ' Gloss -da as LOC. ',
+    out = toolkit.job_plan_call(ws, 'plan_work', {'pieces': 'document', 'fills': ['segmentation'], 'piece_instructions': ' Gloss -da as LOC. ',
                                                   'documents': ['text 2', 'd1', 'Text 2']})
     assert out.startswith('The plan is kept.'), out
-    assert ws.plan_work == {'pieces': 'document', 'piece_instructions': 'Gloss -da as LOC.', 'documents': ['d2', 'd1']}
+    assert ws.plan_work == {'pieces': 'document', 'piece_instructions': 'Gloss -da as LOC.', 'documents': ['d2', 'd1'],
+                            'fills': ['segmentation']}
 
 
 def test_plan_work_cuts_piece_instructions_past_their_cap_at_a_whole_sentence_and_says_so():
@@ -152,7 +153,7 @@ def test_plan_work_cuts_piece_instructions_past_their_cap_at_a_whole_sentence_an
     ws.job_documents = [{'id': 'd1', 'name': 'Text 1'}]
     sentence = 'Gloss -da as LOC wherever it follows a noun.'
     told = ' '.join([sentence] * 100)
-    out = toolkit.job_plan_call(ws, 'plan_work', {'pieces': 'document', 'piece_instructions': told})
+    out = toolkit.job_plan_call(ws, 'plan_work', {'pieces': 'document', 'fills': ['segmentation'], 'piece_instructions': told})
     kept = ws.plan_work['piece_instructions']
     assert len(kept) <= cap and kept.endswith('noun.') and told.startswith(kept)
     assert len(kept) > cap - len(sentence) - 1, 'every whole sentence that fits'
@@ -166,7 +167,7 @@ def test_plan_work_cuts_one_long_sentence_at_the_cap():
     from plaid_agent.core.limits import JOB_PIECE_INSTRUCTIONS_MAX_CHARS as cap
     ws = JobWorkspace(FakeClient(), _project(), mode=JobWorkspace.PLAN)
     ws.job_documents = []
-    toolkit.job_plan_call(ws, 'plan_work', {'pieces': 'document', 'piece_instructions': 'x' * (cap + 7)})
+    toolkit.job_plan_call(ws, 'plan_work', {'pieces': 'document', 'fills': ['segmentation'], 'piece_instructions': 'x' * (cap + 7)})
     assert ws.plan_work['piece_instructions'] == 'x' * cap and ws.plan_work['instructions_cut'] == cap + 7
 
 
@@ -176,7 +177,7 @@ def test_plan_work_says_when_it_cut_inside_a_sentence():
     from plaid_agent.core.limits import JOB_PIECE_INSTRUCTIONS_MAX_CHARS as cap
     ws = JobWorkspace(FakeClient(), _project(), mode=JobWorkspace.PLAN)
     ws.job_documents = []
-    out = toolkit.job_plan_call(ws, 'plan_work', {'pieces': 'document', 'piece_instructions': 'x' * (cap + 7)})
+    out = toolkit.job_plan_call(ws, 'plan_work', {'pieces': 'document', 'fills': ['segmentation'], 'piece_instructions': 'x' * (cap + 7)})
     assert out == (f'The plan is kept. piece_instructions were {cap + 7:,} characters, past the most, 4,000: they '
                    f'are cut at {cap:,} characters, inside a sentence. Pieces already have the guidelines and the '
                    'instructions. End now with a one-line reply.'), out
@@ -191,7 +192,7 @@ def test_plan_work_cuts_after_a_sentence_end_of_other_scripts(end):
     ws.job_documents = []
     sentence = 'y' * 37 + end
     told = sentence * (cap // len(sentence) + 3)
-    out = toolkit.job_plan_call(ws, 'plan_work', {'pieces': 'document', 'piece_instructions': told})
+    out = toolkit.job_plan_call(ws, 'plan_work', {'pieces': 'document', 'fills': ['segmentation'], 'piece_instructions': told})
     kept = ws.plan_work['piece_instructions']
     assert kept.endswith(end.strip()) and len(kept) > cap - len(sentence) - 1, len(kept)
     assert 'last whole sentence' in out
@@ -207,7 +208,7 @@ def test_plan_work_measures_its_instructions_composed_as_core_does():
     ws = JobWorkspace(FakeClient(), _project(), mode=JobWorkspace.PLAN)
     ws.job_documents = []
     told = chr(0x9DF) * (cap - 1)
-    toolkit.job_plan_call(ws, 'plan_work', {'pieces': 'document', 'piece_instructions': told})
+    toolkit.job_plan_call(ws, 'plan_work', {'pieces': 'document', 'fills': ['segmentation'], 'piece_instructions': told})
     kept = ws.plan_work['piece_instructions']
     assert unicodedata.normalize('NFC', kept) == kept and len(kept) <= cap
     assert ws.plan_work['instructions_cut'] == 2 * (cap - 1)
@@ -229,7 +230,7 @@ def test_plan_work_at_the_cap_is_kept_whole_and_not_marked():
     from plaid_agent.core.limits import JOB_PIECE_INSTRUCTIONS_MAX_CHARS as cap
     ws = JobWorkspace(FakeClient(), _project(), mode=JobWorkspace.PLAN)
     ws.job_documents = []
-    out = toolkit.job_plan_call(ws, 'plan_work', {'pieces': 'document', 'piece_instructions': 'x' * cap})
+    out = toolkit.job_plan_call(ws, 'plan_work', {'pieces': 'document', 'fills': ['segmentation'], 'piece_instructions': 'x' * cap})
     assert out == 'The plan is kept. End now with a one-line reply.'
     assert ws.plan_work['piece_instructions'] == 'x' * cap and 'instructions_cut' not in ws.plan_work
 
@@ -269,7 +270,7 @@ def test_plan_work_takes_no_old_name(old):
     """The old names are refused as any argument it does not take."""
     ws = JobWorkspace(FakeClient(), _project(), mode=JobWorkspace.PLAN)
     ws.job_documents = [{'id': 'd1', 'name': 'Text 1'}]
-    out = toolkit.job_plan_call(ws, 'plan_work', {'pieces': 'sentences', old: True})
+    out = toolkit.job_plan_call(ws, 'plan_work', {'pieces': 'sentences', 'fills': [], old: True})
     assert f'plan_work takes no {old}.' in out and ws.plan_work is None
     assert 'It takes pieces, ' in out and 'skip_filled_sentences' in out and 'fills' in out, out
 
@@ -314,14 +315,44 @@ def test_a_plan_that_skips_every_sentence_is_kept_and_says_so():
     ws, out = _planned([FULL], {'pieces': 'sentences', 'fills': ['segmentation'], 'skip_filled_sentences': True})
     assert out == f'The plan is kept. {NOTHING} Call plan_work again to change it, or end now with a one-line reply.'
     assert ws.plan_work['only_empty'] is True and ws.plan_work['fills'] == ['segmentation']
-    assert toolkit.job_plan_call(ws, 'plan_work', {'pieces': 'sentences'}) == \
+    assert toolkit.job_plan_call(ws, 'plan_work', {'pieces': 'sentences', 'fills': ['segmentation']}) == \
         'The plan is kept. End now with a one-line reply.'
-    assert 'only_empty' not in ws.plan_work and 'fills' not in ws.plan_work
+    assert 'only_empty' not in ws.plan_work and ws.plan_work['fills'] == ['segmentation']
 
 
 def test_a_plan_that_fills_nothing_and_skips_works_nothing():
-    _, out = _planned([HALF], {'pieces': 'sentences', 'skip_filled_sentences': True})
+    _, out = _planned([HALF], {'pieces': 'sentences', 'fills': [], 'skip_filled_sentences': True})
     assert NOTHING in out
+
+
+FILLS_NOTHING = ('This plan fills nothing: its pieces are shown nothing as empty, and the report lists nothing as '
+                 'left blank.')
+
+
+def test_plan_work_refuses_a_plan_that_does_not_say_what_it_fills():
+    """REV-DF-D-1: fills is required. A planner that left it out made a job
+    that filled nothing and said nothing: it is refused with a line it can
+    act on, naming what the project can fill and the empty list."""
+    assert toolkit.PLAN_WORK['function']['parameters']['required'] == ['pieces', 'fills']
+    ws, out = _planned([HALF], {'pieces': 'sentences', 'skip_filled_sentences': True})
+    assert out == ('Error: fills: say what the job fills, each named as listed under What a job can fill: '
+                   'segmentation, Gloss, Morph Gloss, Translation. Give [] when it fills nothing, such as a check '
+                   'or a summary.'), out
+    assert ws.plan_work is None
+
+
+@pytest.mark.parametrize('pieces, said', [
+    ('sentences', f'{FILLS_NOTHING} Its pieces are offered only set_field and reads.'),
+    ('document', FILLS_NOTHING),
+    ('selection', FILLS_NOTHING),
+])
+def test_a_plan_that_fills_nothing_is_kept_and_says_so(pieces, said):
+    """REV-DF-D-1: an empty fills is a plan that fills nothing (a check, a
+    summary): kept, with fills [], and its answer says so in one line, so a
+    planner that meant the job to fill something may plan again."""
+    ws, out = _planned([HALF], {'pieces': pieces, 'fills': []})
+    assert out == f'The plan is kept. {said} Call plan_work again to change it, or end now with a one-line reply.'
+    assert ws.plan_work['fills'] == []
 
 
 @pytest.mark.parametrize('docs, args', [

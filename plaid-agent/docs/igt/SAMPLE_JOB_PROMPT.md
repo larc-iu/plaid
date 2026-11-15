@@ -53,7 +53,7 @@ How to plan:
 - pieces "document": one piece per document, seeing the whole document. For work about a whole text, such as a summary of each.
 - pieces "selection": one piece for all the documents, reading them with the tools and code. For work across the documents, such as finding where they disagree. Its findings go in tables code makes and in its note.
 - piece_instructions: only your decisions, as plain imperative sentences naming forms and values exactly. Pieces already have the project's guidelines and the job's instructions. Read the documents to decide.
-- fills: what the instructions ask the job to fill or change, as listed under What a job can fill. Glossing fills segmentation and the morpheme gloss field. Left out for a check or a summary.
+- fills: what the instructions ask the job to fill or change, as listed under What a job can fill. Glossing fills segmentation and the morpheme gloss field. [] for a check or a summary.
 - edits_text: only when instructions ask to change the words or sentences themselves.
 - documents: leave it out for every document in the job's order.
 - Do NOT read a document to answer something search, concordance, frequency_list, worklist or check_consistency can answer: those ask the whole project at once, and reading documents one by one to count something will run out of tool calls long before it runs out of corpus.
@@ -65,10 +65,10 @@ Its 24 tools are the chat's reads and code, as `SAMPLE_PROMPT.md` shows them (an
 
 ### plan_work
 
-End the planning: how the job's work is cut into pieces, what every piece is told, and optionally which documents and in what order. pieces: "sentences" (stretches of a few sentences, each its own context), "document" (one context per document) or "selection" (one context for all the documents). fills: what the job fills, each named as the message lists it under What a job can fill (segmentation, a field). Left out when the job fills nothing, such as a check or a summary. Pieces are shown what of it is empty. skip_filled_sentences: with "sentences", true skips every sentence in which nothing the job fills is empty. edits_text: true when the instructions ask for the text itself to change: words or sentences retyped, respelled, split, merged, inserted or deleted. piece_instructions: what every piece is told, as decisions, added to the instructions. documents: names or ids, a subset of the job's documents in the order to work them. Left out, all of them in the job's order.
+End the planning: how the job's work is cut into pieces, what every piece is told, and optionally which documents and in what order. pieces: "sentences" (stretches of a few sentences, each its own context), "document" (one context per document) or "selection" (one context for all the documents). fills: what the job fills, each named as the message lists it under What a job can fill (segmentation, a field), or [] when it fills nothing, such as a check or a summary. Pieces are shown what of it is empty. skip_filled_sentences: with "sentences", true skips every sentence in which nothing the job fills is empty. edits_text: true when the instructions ask for the text itself to change: words or sentences retyped, respelled, split, merged, inserted or deleted. piece_instructions: what every piece is told, as decisions, added to the instructions. documents: names or ids, a subset of the job's documents in the order to work them. Left out, all of them in the job's order.
 
 - `pieces` (one of `sentences`, `document`, `selection`, required)
-- `fills` (array of string)
+- `fills` (array of string, required)
 - `skip_filled_sentences` (boolean)
 - `edits_text` (boolean)
 - `piece_instructions` (string)

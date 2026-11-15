@@ -220,7 +220,12 @@ def plan_line(report: Dict[str, Any]) -> Optional[str]:
     smaller = len(plan.get('fallback') or [])
     if smaller:
         line += f', {smaller:,} of them in smaller pieces'
-    return line + ('. Text edits allowed.' if plan.get('edits_text') is True else '.')
+    line += '.'
+    # What the plan fills, by the names the report gives (REV-DF-D-1).
+    names = plan.get('fills_names')
+    if isinstance(names, list):
+        line += f' Fills: {", ".join(names)}.' if names else ' Fills nothing.'
+    return line + (' Text edits allowed.' if plan.get('edits_text') is True else '')
 
 
 def summary(job: Dict[str, Any], note_chars: Optional[int] = JOB_SUMMARY_NOTE_CHARS) -> List[str]:

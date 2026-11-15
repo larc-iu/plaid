@@ -64,7 +64,7 @@ def _planning():
 @pytest.mark.parametrize('given', [None, False, True])
 def test_plan_work_keeps_edits_text_only_when_true(pieces, given):
     ws = _planning()
-    args = {'pieces': pieces, **({} if given is None else {'edits_text': given})}
+    args = {'pieces': pieces, 'fills': ['segmentation'], **({} if given is None else {'edits_text': given})}
     assert toolkit.job_plan_call(ws, 'plan_work', args) == 'The plan is kept. End now with a one-line reply.'
     assert ws.plan_work.get('edits_text') is (True if given else None)
 
@@ -270,6 +270,19 @@ def test_a_piece_not_offered_the_text_tools_is_told_of_none(sentences):
     assert 'text edits' not in without and 'document restores' not in without
     # A piece in sentences is told of no project-wide tool at all (REV-DAY-P-8).
     assert ('respell_all' in with_) is not sentences and 'deletions and text edits included' in with_
+
+
+@pytest.mark.parametrize('names, said', [
+    (['segmentation', 'Morph Gloss'], ' Fills: segmentation, Morph Gloss.'),
+    ([], ' Fills nothing.'),
+    (None, ''),
+])
+def test_read_job_names_what_the_plan_fills(names, said):
+    """REV-DF-D-1: read_job's plan line names what the plan fills by the
+    names the report gives, or says it fills nothing."""
+    plan = {'pieces': 'sentences', 'by': 'model', 'fallback': [], 'edits_text': True,
+            **({} if names is None else {'fills_names': names})}
+    assert jobread.plan_line({'plan': plan}) == f'Worked in stretches of sentences.{said} Text edits allowed.'
 
 
 def test_read_job_says_the_job_may_edit_the_text():

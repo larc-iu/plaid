@@ -374,6 +374,29 @@ describe('the job page', () => {
     await v.unmount();
   });
 
+  it('names what the plan fills, or says it fills nothing', async () => {
+    const plan = { pieces: 'sentences', by: 'model', fallback: [], leftOut: [], editsText: true };
+    let v = await mount(
+      clientOf(
+        jobOf({
+          state: 'done',
+          report: { ...REPORT, plan: { ...plan, fillsNames: ['segmentation', 'Morph Gloss'] } },
+        }),
+      ),
+    );
+    expect(totals(v.container).Plan).toBe(
+      'Worked in stretches of sentences. Fills: segmentation, Morph Gloss. Text edits allowed.',
+    );
+    await v.unmount();
+    v = await mount(
+      clientOf(jobOf({ state: 'done', report: { ...REPORT, plan: { ...plan, fillsNames: [] } } })),
+    );
+    expect(totals(v.container).Plan).toBe(
+      'Worked in stretches of sentences. Fills nothing. Text edits allowed.',
+    );
+    await v.unmount();
+  });
+
   it('says when planning ended with no plan and the job worked by the default plan', async () => {
     const plan = { pieces: 'sentences', by: 'default', why: 'no-plan', fallback: [], leftOut: [] };
     const v = await mount(clientOf(jobOf({ state: 'done', report: { ...REPORT, plan } })));

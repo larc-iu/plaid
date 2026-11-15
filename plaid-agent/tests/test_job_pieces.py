@@ -47,8 +47,12 @@ def _kind(asked):
 
 def _model(plan=None, piece=None, summary='The job glossed the words it was asked to.'):
     """A model that plans with ``plan`` (args of plan_work, or None to end
-    without), does ``piece(asked, n)`` for a piece, and writes ``summary``."""
+    without), does ``piece(asked, n)`` for a piece, and writes ``summary``.
+    A plan that does not say what it fills fills a glossing job's targets
+    (fills is required, REV-DF-D-1)."""
     seen = {'plan': 0, 'piece': 0, 'summary': 0}
+    if plan is not None:
+        plan = {'fills': ['segmentation', 'Morph Gloss'], **plan}
 
     def answer(asked, n, kwargs):
         kind = _kind(asked)
@@ -109,6 +113,8 @@ def test_the_first_context_plans_and_the_plan_is_kept_and_reported(monkeypatch):
         'the instructions verbatim'
     assert all('How to do every piece, as the job was planned:\nGloss ka as go.' in p for p in pieces), 'and the plan'
     assert finished['report']['plan']['pieces'] == 'sentences' and finished['report']['plan']['fallback'] == []
+    # By the names the project gives its targets, for the page and read_job (REV-DF-D-1).
+    assert finished['report']['plan']['fills_names'] == ['segmentation', 'Morph Gloss']
     assert finished['report']['summary'] == 'The job glossed the words it was asked to.'
     assert finished['report']['summary_failed'] is False
 
@@ -124,6 +130,7 @@ def test_a_planning_that_ends_without_a_plan_gets_one_decide_now_round_then_work
     assert {t['function']['name'] for t in planning[1]['kwargs']['tools']} == {'plan_work'}
     assert finished['report']['plan'] == {'pieces': 'sentences', 'piece_instructions': '', 'documents': None,
                                           'fills': ['segmentation', 'sl-mgloss', 'sl-trans'], 'only_empty': True,
+                                          'fills_names': ['segmentation', 'Morph Gloss', 'Translation'],
                                           'by': 'default', 'why': 'no-plan', 'fallback': [], 'left_out': []}
 
 

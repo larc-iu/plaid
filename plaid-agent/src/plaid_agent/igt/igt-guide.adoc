@@ -934,6 +934,7 @@ The card keeps how it ended, with a link to the job's page once the job has star
 
 A job first plans how to cut the work: a few sentences at a time, one document at a time, or all the documents at once.
 Its plan also names what the job fills: segmentation into morphemes, any of the project's fields at word, morpheme or sentence level, or nothing, for a job that only checks or counts.
+Its page says which, such as **Fills: segmentation, Morph Gloss** or **Fills nothing**.
 A word, a morpheme or a sentence is empty for a field when the field holds no value on it, and a word is empty for segmentation when it has no morpheme analysis.
 Worked a few sentences at a time, it takes every sentence, unless its plan takes only the sentences with something empty of what it fills.
 When planning ends with no plan, the job fills segmentation, the morpheme gloss and the translation, a few sentences at a time, in the sentences where one of them is empty, and its page says so.

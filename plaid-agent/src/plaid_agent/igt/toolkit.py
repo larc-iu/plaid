@@ -628,8 +628,7 @@ PLAN_WORK = _fn(
     'documents and in what order. pieces: "sentences" (stretches of a few sentences, each its own context), '
     '"document" (one context per document) or "selection" (one context for all the documents). '
     'fills: what the job fills, each named as the message lists it under What a job can fill (segmentation, a '
-    'field). Left out when the job fills nothing, such as a check or a summary. Pieces are shown what of it is '
-    'empty. '
+    'field), or [] when it fills nothing, such as a check or a summary. Pieces are shown what of it is empty. '
     'skip_filled_sentences: with "sentences", true skips every sentence in which nothing the job fills is empty. '
     'edits_text: true when the instructions ask for the text itself to change: words or sentences retyped, '
     'respelled, split, merged, inserted or deleted. '
@@ -640,15 +639,16 @@ PLAN_WORK = _fn(
      'skip_filled_sentences': {'type': 'boolean'},
      'edits_text': {'type': 'boolean'},
      'piece_instructions': {'type': 'string'},
-     'documents': {'type': 'array', 'items': {'type': 'string'}}}, ['pieces'])
+     'documents': {'type': 'array', 'items': {'type': 'string'}}}, ['pieces', 'fills'])
 
 
 def t_plan_work(ws, pieces: str = None, piece_instructions: str = '', documents=None, fills=None,
                 skip_filled_sentences: bool = False, edits_text: bool = False) -> str:
     """Check the planning context's plan and keep it on the workspace
     (``ws.plan_work``): a piece size of the menu, what the job fills
-    (``fills``, names of :func:`targets.fillable`, kept as target ids, only
-    when any), whether stretches walk only the sentences where something it
+    (``fills``, required, names of :func:`targets.fillable`, kept as target
+    ids, an empty list for a job that fills nothing, said in the answer:
+    :data:`PLAN_FILLS_NOTHING`), whether stretches walk only the sentences where something it
     fills is empty (``skip_filled_sentences``, kept as ``only_empty``, the key
     the job page reads), whether its pieces may change the
     text (``edits_text``, kept only when true: a plan without it, the
@@ -690,9 +690,15 @@ def t_plan_work(ws, pieces: str = None, piece_instructions: str = '', documents=
                             + '. Leave them out of documents, or leave documents out for every document.',
                             kind='invalid-argument')
     from . import targets as tg
+    if fills is None:
+        # Required (REV-DF-D-1): a planner that leaves it out would make a
+        # job that fills nothing and says nothing.
+        raise ToolError('fills: say what the job fills, each named as listed under What a job can fill: '
+                        + ', '.join(t.name for t in tg.fillable(ws.project)) + '. Give [] when it fills nothing, '
+                        'such as a check or a summary.', kind='invalid-argument')
     if isinstance(fills, str):
         fills = [fills]
-    chosen, unknown = tg.named(ws.project, fills or [])
+    chosen, unknown = tg.named(ws.project, fills)
     if unknown:
         raise ToolError('fills: not something a job on this project can fill: '
                         + ', '.join(f'"{u}"' for u in unknown[:5]) + '. Name each as listed under What a job can '
@@ -700,7 +706,7 @@ def t_plan_work(ws, pieces: str = None, piece_instructions: str = '', documents=
     skip = skip_filled_sentences is True and pieces == 'sentences'
     # Kept only when true: the plan's row holds the largest plan at its cap.
     ws.plan_work = {'pieces': pieces, 'piece_instructions': text, 'documents': order,
-                    **({'fills': [t.id for t in chosen]} if chosen else {}),
+                    'fills': [t.id for t in chosen],
                     **({'only_empty': True} if skip else {}),
                     **({'edits_text': True} if edits_text is True else {}),
                     **({'instructions_cut': given} if len(text) < given else {})}
@@ -712,19 +718,29 @@ def t_plan_work(ws, pieces: str = None, piece_instructions: str = '', documents=
                    f'{JOB_PIECE_INSTRUCTIONS_MAX_CHARS:,}: they are {kept}. Pieces already have the guidelines and '
                    'the instructions.')
     worked = [d for d in known if order is None or d['id'] in order]
+    said = len(out)
+    if not chosen:
+        # Said in one line, as the plan is kept: a planner that meant the job
+        # to fill something plans again (REV-DF-D-1).
+        out.append(PLAN_FILLS_NOTHING + (' ' + PLAN_FILLS_NOTHING_SENTENCES if pieces == 'sentences' else ''))
     if skip and sum(d.get('sentences', 0) for d in worked) \
             and not any((d.get('empty') or {}).get(t.id) for d in worked for t in chosen):
         # A fixed rule on the planning context's own counts: the walk would
         # take no sentence of any document the plan works (BRIEF OE).
-        out += [PLAN_WORKS_NOTHING, 'Call plan_work again to change it, or end now with a one-line reply.']
-    else:
-        out.append('End now with a one-line reply.')
+        out.append(PLAN_WORKS_NOTHING)
+    out.append('Call plan_work again to change it, or end now with a one-line reply.' if len(out) > said
+               else 'End now with a one-line reply.')
     return ' '.join(out)
 
 
 #: plan_work's answer to a plan whose walk takes no sentence: nothing it
 #: fills is empty in any document it works (or it fills nothing).
 PLAN_WORKS_NOTHING = 'This plan works no sentence: nothing it fills is empty in its documents.'
+#: plan_work's answer to a plan whose fills are empty (a check, a summary),
+#: and what it adds for a plan in sentences.
+PLAN_FILLS_NOTHING = ('This plan fills nothing: its pieces are shown nothing as empty, and the report lists nothing '
+                      'as left blank.')
+PLAN_FILLS_NOTHING_SENTENCES = 'Its pieces are offered only set_field and reads.'
 
 
 #: What ends a sentence when a space or the end follows it: the full stop,

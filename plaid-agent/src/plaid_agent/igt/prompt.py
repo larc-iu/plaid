@@ -415,7 +415,7 @@ the documents, such as finding where they disagree. Its findings go in tables co
 - piece_instructions: only your decisions, as plain imperative sentences naming forms and values exactly. \
 Pieces already have the project's guidelines and the job's instructions. Read the documents to decide.
 - fills: what the instructions ask the job to fill or change, as listed under What a job can fill. Glossing \
-fills segmentation and the morpheme gloss field. Left out for a check or a summary.
+fills segmentation and the morpheme gloss field. [] for a check or a summary.
 - edits_text: only when instructions ask to change the words or sentences themselves.
 - documents: leave it out for every document in the job's order.'''
 

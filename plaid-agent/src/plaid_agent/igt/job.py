@@ -4006,7 +4006,7 @@ class IgtRunner:
             # one already final when the plan was made (gone at the checks:
             # its row says so, REV-JG2-7).
             named = set(plan.get('documents') or job.order)
-            plan = {**plan, 'fallback': fallback,
+            plan = {**plan, **self.fills_named(job, plan), 'fallback': fallback,
                     'left_out': [{'document_id': d, 'name': self.names.get(d) or (job.rows.get(d) or {}).get('name')}
                                  for d in job.order
                                  if d not in named and (job.rows.get(d) or {}).get('state') not in ROW_FINAL]}
@@ -4014,6 +4014,20 @@ class IgtRunner:
                 'proposed': listed, 'proposed_more': more + dropped, 'proposed_dropped': dropped,
                 'notes': shown_notes, 'notes_more': notes_more, 'tables': made[:JOB_TABLES_MAX],
                 'tables_more': max(0, len(made) - JOB_TABLES_MAX) + tables_dropped}
+
+    def fills_named(self, job, plan: Dict[str, Any]) -> Dict[str, Any]:
+        """``fills_names``: what the plan fills by the targets' names as the
+        project now names them, for the job page and read_job ("Fills:
+        segmentation, Morph Gloss.", "Fills nothing.", REV-DF-D-1). Nothing
+        for a plan with no ``fills`` or when the project cannot be read."""
+        if not isinstance(plan.get('fills'), list):
+            return {}
+        try:
+            project = core_job.through_core(job, self.project)
+        except Exception as e:  # noqa: BLE001 - the plan without the names rather than no report
+            logger.warning('Job %s: what its plan fills could not be named for the report: %s', job.id, e)
+            return {}
+        return {'fills_names': [t.name for t in tg.of_ids(project, plan['fills'])]}
 
     def still_proposed(self, job, changes: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """``changes`` less each one its document already holds as the
