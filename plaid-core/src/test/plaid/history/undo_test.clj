@@ -1262,6 +1262,36 @@
       (is (zero? (:skipped-count (:body resp))))
       (is (= before (state [doc d2] [vocab]))))))
 
+(deftest a-job-undo-names-only-groups-that-wrote
+  (testing "a document whose gloss group wrote nothing (the worker names it before its write) is no entry"
+    (let [{:keys [proj job groups doc before d2 vocab]} (job-world!)
+          d3 (create-test-document admin-request proj "Doc3")
+          silent (str (random-uuid))
+          _ (psc/execute! db {:insert-into :job_documents
+                              :values [{:job_id job :document_id (str d3) :position 2 :state "done"
+                                        :gloss_group silent :updated_at (psc/now-iso)}]})
+          dry (:body (undo-job admin-request job :dry-run true))]
+      (is (= (set groups) (set (:entries dry))) (pr-str (:entries dry)))
+      (is (not-any? #{silent} (:entries dry)))
+      (let [real (:body (undo-job admin-request job))]
+        (is (= (set groups) (set (:entries real))))
+        (is (= before (state [doc d2] [vocab]))))))
+  (testing "a job that wrote nothing at all names no entry"
+    (let [{:keys [proj]} (setup!)
+          d (create-test-document admin-request proj "Quiet")
+          job (str (random-uuid))
+          now (psc/now-iso)]
+      (psc/execute! db {:insert-into :jobs
+                        :values [{:id job :project_id (str proj) :app "igt" :started_by "admin@example.com"
+                                  :state "done" :created_at now :instructions "Gloss"}]})
+      (psc/execute! db {:insert-into :job_documents
+                        :values [{:job_id job :document_id (str d) :position 0 :state "done"
+                                  :gloss_group (str (random-uuid)) :updated_at now}]})
+      (let [resp (undo-job admin-request job :dry-run true)]
+        (is (= 200 (:status resp)))
+        (is (= [] (:entries (:body resp))))
+        (is (zero? (:total (:body resp))))))))
+
 (deftest undoing-a-job-someone-built-on
   (let [{:keys [spans toks made l1 l2 new-span job]} (job-world!)
         ;; a person edits one sentence's value the job wrote, and links a word to the job's entry

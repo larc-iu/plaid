@@ -424,13 +424,16 @@
       :else
       ;; Every group the job wrote under: each document's gloss pass and its
       ;; harmonize pass, read from its own rows, so a caller names the job only.
+      ;; A row names its group before its first write, so a group under which
+      ;; nothing was written (a document the job wrote nothing in) has no
+      ;; entry: it is left out, so the answer names only entries History has.
       (let [groups (->> (psc/q db {:select [:gloss_group :harmonize_group] :from [:job_documents]
                                    :where [:= :job_id (str job-id)] :order-by [:position]})
                         (mapcat (juxt :gloss_group :harmonize_group))
                         (remove nil?)
                         (map str)
                         distinct
-                        vec)
+                        (filterv #(seq (changes/unit-ops db %))))
             ops (changes/units-ops db groups)]
         (if (empty? ops)
           {:status 200 :body (nothing-to-undo groups dry-run?)}
