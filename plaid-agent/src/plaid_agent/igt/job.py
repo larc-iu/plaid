@@ -671,7 +671,7 @@ def state_text(d: Dict[str, Any]) -> str:
     return str(d.get('state'))
 
 
-def summary_message(report: Dict[str, Any]) -> str:
+def summary_message(report: Dict[str, Any], setup: Optional[str] = None) -> str:
     """What the final context is handed: the report's sections as text, each
     bounded (JOB_SUMMARY_NOTES_CHARS for the notes, JOB_SUMMARY_TABLE_CHARS
     for the tables), saying what it left out."""
@@ -686,7 +686,9 @@ def summary_message(report: Dict[str, Any]) -> str:
         # What is still blank of what it fills, beside what it wrote: never
         # a count of work done alone (REV-DAY-P-4, S-9).
         lines.append(f'Of what it fills: {blank_text(totals["blank"])}.')
-    lines += ['', 'The job\'s instructions:', report.get('instructions') or '', '',
+    lines += ['', 'The job\'s instructions:', report.get('instructions') or '',
+              # What the job was set up to fill (BRIEF-SU), :func:`targets.said_setup`.
+              *([setup] if setup else []), '',
               'The report\'s totals (the worker counted these):',
               ', '.join([f'{k.replace("_", " ")} {v:,}' for k, v in sorted(totals.items()) if v and isinstance(v, int)]
                         + ([fields_text(totals['fields'])] if totals.get('fields') else [])), '']
@@ -1555,12 +1557,17 @@ class IgtRunner:
         if self.plan_pending is None:
             project = self.project()
             facts = self.document_facts(project, job)
-            plan, why = None, None
+            plan = None
+            setup = self.job_setup(project)
+            # A job set up to fill targets the project no longer has at all
+            # ends with no plan, never planning freely (BRIEF-SU).
+            tries = 0 if setup is not None and setup.gone else 2
+            why = NO_PLAN_REASON if not tries else None
             # A planning that ends in a model fault (a StretchFailed of kind
             # output or repeating) is planned once more in a fresh context
             # (REV-DF4-2). A budget spent or a context too long is no plan,
             # planned once: a second planning would end the same (REV-DF5-1).
-            for _ in range(2):
+            for _ in range(tries):
                 try:
                     plan = self.planning(project, facts)
                     why = None if plan else NO_PLAN_REASON
@@ -1651,10 +1658,7 @@ class IgtRunner:
             except Gone:
                 job.update_row(d, state='gone')
                 continue
-            words = [w for s in doc.sentences for w in s.words]
-            out.append({'id': d, 'name': doc.name, 'sentences': len(doc.sentences), 'words': len(words),
-                        'empty': {t.id: tg.count(doc.sentences, t) for t in tg.fillable(project)},
-                        'characters': sum(len(render_sentence(s, project)) + 1 for s in doc.sentences)})
+            out.append({**tg.document_fact(doc, project), 'id': d})
         return out
 
     def planning(self, project: IgtProject, facts: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
@@ -1665,6 +1669,8 @@ class IgtRunner:
         while True:
             job.check()
             ws = JobWorkspace(job.client(), project, mode=JobWorkspace.PLAN)
+            # plan_work refuses, by id, what the job was not set up to do.
+            ws.job_setup = self.job_setup(project)
             # Its counts tell plan_work a plan that would work no sentence.
             ws.job_documents = [{'id': f['id'], 'name': f['name'], 'sentences': f['sentences'],
                                  'empty': f['empty']} for f in facts]
@@ -1718,29 +1724,22 @@ class IgtRunner:
         can fill (:func:`targets.fillable`, for plan_work's ``fills``) and the
         documents, one line each with how much is empty of each, at most
         JOB_PLAN_DOCUMENT_LINES."""
-        from ..core.limits import JOB_PLAN_DOCUMENT_LINES, JOB_PLAN_EMPTY_TARGETS
-        fill = tg.fillable(project or self.project())
-        names = {t.id: t.name for t in fill}
+        project = project or self.project()
+        setup = self.job_setup(project)
+        # A job set up to fill some targets is shown only those it still
+        # has, with the line that says so (BRIEF-SU).
+        fill = list(setup.targets) if setup is not None else tg.fillable(project)
         lines = [f'Instructions from {self.job.starter_name}:', self.job.instructions or '', '',
-                 'What a job can fill (name them in plan_work\'s fills):', *[f'- {t.label}' for t in fill], '',
-                 f'The job\'s documents, in its order ({len(facts)}):']
-        for f in facts[:JOB_PLAN_DOCUMENT_LINES]:
-            # Only the targets with something empty, the most first (the
-            # configuration's order on a tie), at most JOB_PLAN_EMPTY_TARGETS,
-            # the rest counted: a project with many fields keeps short lines.
-            order = {t.id: k for k, t in enumerate(fill)}
-            some = sorted(((i, n) for i, n in (f.get('empty') or {}).items() if i in names and n),
-                          key=lambda x: (-x[1], order[x[0]]))
-            empties = ', '.join(f'{names[i]} {n:,}' for i, n in some[:JOB_PLAN_EMPTY_TARGETS])
-            if len(some) > JOB_PLAN_EMPTY_TARGETS:
-                empties += f', and {len(some) - JOB_PLAN_EMPTY_TARGETS} more'
-            said = f' Empty: {empties}.' if empties else (' Nothing empty.' if fill else '')
-            lines.append(f'- "{f["name"]}": {_n(f["sentences"], "sentence")}, {_n(f["words"], "word")}, '
-                         f'{f["characters"]:,} characters.{said}')
-        if len(facts) > JOB_PLAN_DOCUMENT_LINES:
-            lines.append(f'and {len(facts) - JOB_PLAN_DOCUMENT_LINES} more documents not shown')
-        lines += ['', 'Plan the job and end with plan_work.']
+                 *tg.fill_lines(fill, facts, 'plan_work', 'The job\'s documents, in its order',
+                                setup=setup.line if setup is not None else None),
+                 '', 'Plan the job and end with plan_work.']
         return '\n'.join(lines)
+
+    def job_setup(self, project: IgtProject) -> Optional[tg.Setup]:
+        """What the job was set up to fill and whether it may edit the text
+        (its ``setup``, the card the person started), on ``project`` as it is
+        now, or None for a job with no setup: no limit (BRIEF-SU)."""
+        return tg.setup_of(project, getattr(self.job, 'setup', None))
 
     def planned_order(self, job, plan: Dict[str, Any]) -> List[str]:
         """The documents the job works, in the plan's order: the plan's
@@ -3998,7 +3997,7 @@ class IgtRunner:
         from .prompt import build_summary_prompt
         project = self.project()
         job.set(message='Writing the report.')
-        message = summary_message(report)
+        message = summary_message(report, tg.said_setup(getattr(job, 'setup', None)))
         while True:
             job.check()
             ws = JobWorkspace(job.client(), project, mode=JobWorkspace.PLAN)

@@ -163,6 +163,114 @@ def listed_names(project: IgtProject) -> List[str]:
     return [t.name if seen[t.name.casefold()] == 1 else t.label for t in targets]
 
 
+def resolve_fills(project: IgtProject, fills) -> List[Target]:
+    """The targets ``fills`` names (plan_work's and propose_job's), or a
+    ToolError naming what a job on ``project`` can fill. Required: a list,
+    [] for a job that fills nothing (REV-DF-D-1: one left out made a job
+    that filled nothing and said nothing). A list of one comma string is
+    read as the string is (``core.args.names_list``)."""
+    import json
+    from ..core.args import names_list
+    from ..core.tools import ToolError
+    listed = listed_names(project)
+    if fills is None:
+        raise ToolError('fills: say what the job fills, each named as listed under What a job can fill: '
+                        + ', '.join(listed) + '. Give [] when it fills nothing, such as a check or a summary.',
+                        kind='invalid-argument')
+    fills = names_list(fills, lambda n: not named(project, [n])[1])
+    if fills is None:
+        raise ToolError('fills is a list of names, such as ' + json.dumps(listed[:2], ensure_ascii=False)
+                        + '. Name each as listed under What a job can fill: ' + ', '.join(listed) + '.',
+                        kind='invalid-argument')
+    chosen, unknown = named(project, fills)
+    if unknown:
+        raise ToolError('fills: not something a job on this project can fill: '
+                        + ', '.join(f'"{u}"' for u in unknown[:5]) + '. Name each as listed under What a job can '
+                        'fill: ' + ', '.join(listed) + '.', kind='invalid-argument')
+    return chosen
+
+
+# --- what a job was set up to fill (BRIEF-SU) ------------------------------------------
+
+@dataclass(frozen=True)
+class Setup:
+    """What a job was set up to do, from its ``setup`` (``{fills: [{id,
+    name}], text, conversation}``, the card the person started): ``targets``
+    the targets it names that the project still has, in its order, ``text``
+    whether it may edit the text, and ``gone`` when it named targets and the
+    project has none of them now. Compared by id only."""
+    targets: Tuple[Target, ...]
+    text: bool
+    gone: bool
+
+    @property
+    def ids(self) -> Tuple[str, ...]:
+        return tuple(t.id for t in self.targets)
+
+    @property
+    def names(self) -> List[str]:
+        return [t.name for t in self.targets]
+
+    @property
+    def line(self) -> str:
+        """:func:`setup_line` of the targets the project still has."""
+        return setup_line(self.names, self.text)
+
+
+def setup_of(project: IgtProject, setup) -> Optional[Setup]:
+    """The :class:`Setup` of a job's ``setup``, or None for a job with none
+    (no limit)."""
+    if not isinstance(setup, dict):
+        return None
+    fills = setup.get('fills')
+    ids = [str(f.get('id')) for f in fills if isinstance(f, dict) and f.get('id')] if isinstance(fills, list) else []
+    targets = of_ids(project, ids)
+    return Setup(tuple(targets), setup.get('text') is True, bool(ids) and not targets)
+
+
+def _names(names: Iterable[str]) -> str:
+    quoted = [f'"{n}"' for n in names]
+    return quoted[0] if len(quoted) == 1 else ', '.join(quoted[:-1]) + ' and ' + quoted[-1]
+
+
+def setup_fills(names: List[str]) -> str:
+    """What a job was set up to fill, as a clause: ``fill only "Case"``,
+    ``fill nothing``."""
+    return f'fill only {_names(names)}' if names else 'fill nothing'
+
+
+def setup_line(names: List[str], text: bool) -> str:
+    """The one fixed line said of a job's setup, ``names`` the targets it
+    may fill and ``text`` whether it may edit the text: to the planning
+    context (the targets the project still has), in read_job and to the
+    final context (the names the person saw on the card)."""
+    return f'This job was set up to {setup_fills(names)}. ' + ('It may edit the text.' if text
+                                                               else 'It may not edit the text.')
+
+
+def said_setup(setup) -> Optional[str]:
+    """:func:`setup_line` of a job's ``setup`` as core holds it, by the
+    names on the card, or None for a job with none."""
+    if not isinstance(setup, dict):
+        return None
+    fills = setup.get('fills') if isinstance(setup.get('fills'), list) else []
+    names = [str(f.get('name') or f.get('id')) for f in fills if isinstance(f, dict) and (f.get('name') or f.get('id'))]
+    return setup_line(names, setup.get('text') is True)
+
+
+def outside_setup(setup: Setup, chosen: Iterable[Target], edits_text: bool) -> Optional[str]:
+    """plan_work's refusal of a plan that goes past the job's setup: a
+    target outside it (by id), or edits_text when the setup keeps the text.
+    None when the plan is inside it."""
+    out = []
+    extra = [t.name for t in chosen if t.id not in setup.ids]
+    if extra:
+        out.append(f'fills: this job was set up to {setup_fills(setup.names)}. Leave out {_names(extra)}.')
+    if edits_text and not setup.text:
+        out.append('edits_text: this job was set up not to edit the text. Give false.')
+    return ' '.join(out) or None
+
+
 def holds_nothing(metadata: Optional[dict], values, link) -> bool:
     """A stored morpheme with no form, no type, no value and no link of its
     own (``metadata`` as stored, ``values`` its span values): the editor's
@@ -278,6 +386,55 @@ def count(sentences: Iterable[Sentence], t: Target) -> int:
             for w in s.words:
                 n += sum(1 for m in w.morphemes if empty(t, m=m)) if t.scope == 'Morpheme' else empty(t, w=w)
     return n
+
+
+def document_fact(doc, project: IgtProject) -> Dict[str, object]:
+    """What is said of one document where a job is planned or set up: its
+    name, its sentences and words, its length as rendered, and how many units
+    are empty for each thing a job on ``project`` can fill (``empty``,
+    target id -> count, by :func:`count`)."""
+    from .project import render_sentence
+    return {'id': doc.id, 'name': doc.name, 'sentences': len(doc.sentences),
+            'words': sum(len(s.words) for s in doc.sentences),
+            'empty': {t.id: count(doc.sentences, t) for t in fillable(project)},
+            'characters': sum(len(render_sentence(s, project)) + 1 for s in doc.sentences)}
+
+
+def _n(n: int, word: str) -> str:
+    return f'{n} {word}{"" if n == 1 else "s"}'
+
+
+def fill_lines(fill: List[Target], facts: List[Dict[str, object]], tool: str, heading: str,
+               setup: Optional[str] = None) -> List[str]:
+    """What a job can fill and how much of it is empty in each document, as
+    the planning context is shown it and as propose_job's facts answer it
+    (one text, BRIEF-SU): ``fill`` the targets listed, ``facts`` each
+    document's :func:`document_fact`, ``tool`` the tool whose ``fills``
+    names them, ``heading`` the documents' heading before their count, and
+    ``setup`` a line said under the list. At most JOB_PLAN_DOCUMENT_LINES
+    document lines, each naming at most JOB_PLAN_EMPTY_TARGETS targets."""
+    from ..core.limits import JOB_PLAN_DOCUMENT_LINES, JOB_PLAN_EMPTY_TARGETS
+    names = {t.id: t.name for t in fill}
+    order = {t.id: k for k, t in enumerate(fill)}
+    lines = [f'What a job can fill (name them in {tool}\'s fills):', *[f'- {t.label}' for t in fill]]
+    if setup:
+        lines.append(setup)
+    lines += ['', f'{heading} ({len(facts)}):']
+    for f in facts[:JOB_PLAN_DOCUMENT_LINES]:
+        # Only the targets with something empty, the most first (the
+        # configuration's order on a tie), at most JOB_PLAN_EMPTY_TARGETS,
+        # the rest counted: a project with many fields keeps short lines.
+        some = sorted(((i, n) for i, n in (f.get('empty') or {}).items() if i in names and n),
+                      key=lambda x: (-x[1], order[x[0]]))
+        empties = ', '.join(f'{names[i]} {n:,}' for i, n in some[:JOB_PLAN_EMPTY_TARGETS])
+        if len(some) > JOB_PLAN_EMPTY_TARGETS:
+            empties += f', and {len(some) - JOB_PLAN_EMPTY_TARGETS} more'
+        said = f' Empty: {empties}.' if empties else (' Nothing empty.' if fill else '')
+        lines.append(f'- "{f["name"]}": {_n(f["sentences"], "sentence")}, {_n(f["words"], "word")}, '
+                     f'{f["characters"]:,} characters.{said}')
+    if len(facts) > JOB_PLAN_DOCUMENT_LINES:
+        lines.append(f'and {len(facts) - JOB_PLAN_DOCUMENT_LINES} more documents not shown')
+    return lines
 
 
 def empty_line(s: Sentence, targets: List[Target], words: Optional[set] = None,

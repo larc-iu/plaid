@@ -18,7 +18,7 @@ from .conversation import (DIED_NOTE, DIED_OUTCOME, DISCARDED_NOTE, JOB_CARD_END
                            turn_ending, user_item, value_cap)
 from .files import store_parts, sweep_orphans
 from .outcome import recorded_as
-from .ops import CONVERSATION_FULL, MESSAGE_TOO_LONG, about_of, busy_why, hold_free, refused
+from .ops import CONVERSATION_FULL, MESSAGE_TOO_LONG, about_of, busy_why, hold_free, purpose_of, refused
 
 
 class RecordOps:
@@ -393,6 +393,11 @@ class RecordOps:
             meta = build_meta(None, ctx.conv_id, first, self.service_id, self.cfg.model, pending=marker,
                               version=self.version)
             meta['about'] = about_of(fields.get('where'))
+            # What the conversation is for, sent with the send creating it
+            # and never changed after (BRIEF-SU): the app is told every turn.
+            purpose = purpose_of(data.get('purpose'))
+            if purpose:
+                meta['purpose'] = purpose
             meta = self._holding(ctx, meta)
             if not ctx.store.create(ctx.conv_id, first, meta):
                 self._refuse(ctx, 'gone')

@@ -21,10 +21,12 @@ from typing import Any, Dict, List, Optional
 
 from plaid_client import uuid7
 
+from ..core.args import read_bool
 from ..core.history import doc_label
 from ..core.plan import held_changes
 from ..core.scope import is_all, resolve_documents
 from ..core.tools import ToolError
+from . import targets as tg
 
 #: What a job's states are called in a refusal.
 _STATE_WORDS = {'waiting': 'waiting to start', 'running': 'running', 'stopping': 'stopping'}
@@ -40,15 +42,23 @@ def _help(facts: Dict[str, Any]) -> str:
         'tools, by the brief alone. Every change it plans in the documents and the lexicons is written, deletions '
         'included, each value an unverified machine proposal that people check in the grid. Project setup and a '
         'few other kinds of change are listed in the job\'s report for a person to approve. The draft writes '
-        'nothing and starts nothing. The user reads the card, may edit the '
-        'brief, and starts the job or discards it.',
-        f'- documents: names or ids{most}, or ["all"] for every document of the project.',
-        '- brief: the job\'s instructions, which its model reads with every piece of its work, with nothing of '
+        'nothing and starts nothing. The user reads the card, may edit the brief, and starts the job or '
+        'discards it. To change anything else on it, draft again.',
+        '- action "facts", with documents: what a job can fill on this project, and how much of each is empty '
+        'in each document.',
+        '- action "draft" drafts the card from:',
+        f'  - documents: names or ids{most}, or ["all"] for every document of the project.',
+        '  - fills: what the job may fill, each named as facts lists it under What a job can fill, [] for a job '
+        'that fills nothing, such as a check or a summary. The job fills these and nothing else.',
+        '  - edits_text: true only when the user agreed the job may change the text itself: retype, respell, '
+        'split, merge, insert or delete words or sentences. Left out, false.',
+        '  - brief: the job\'s instructions, which its model reads with every piece of its work, with nothing of '
         'this conversation. Write the decisions, not the discussion: what to do, what to leave, the conventions '
-        'settled, in plain imperative sentences that name forms and glosses exactly, such as "Gloss -da as '
-        f'LOC after a noun and as 3SG after a verb." or "Leave the Russian loanwords unanalysed."{within}',
+        'settled, in plain imperative sentences that name forms and values exactly, such as "Gloss -da as '
+        'LOC after a noun and as 3SG after a verb.", "Give every word ending in -ka the Word class V." or '
+        f'"Leave the Russian loanwords unanalysed."{within}',
         '- The job changes and deletes what people wrote where the brief asks it to, and follows how people '
-        'analysed a form.',
+        'annotated a form.',
         '- A turn holds a job card or a plan of changes, not both. Drafting again in the same turn replaces the '
         'card.',
     ])
@@ -132,13 +142,35 @@ def summary(card: Dict[str, Any]) -> str:
     return f'{"all " if card.get("all") else ""}{n:,} document{"s" if n != 1 else ""}'
 
 
-def t_propose_job(ws, action: str, documents: Optional[Any] = None, brief: Optional[str] = None) -> str:
-    """Draft a job for the user to start (see the module's note)."""
+def _facts_answer(ws, documents) -> str:
+    """propose_job's facts: what a job on this project can fill and how much
+    of each is empty in each document named, in the planning context's own
+    lines (:func:`targets.fill_lines`), reading at most as many documents as
+    those lines show."""
+    from ..core.limits import JOB_PLAN_DOCUMENT_LINES
+    if documents is None or documents == [] or documents == '':
+        raise ToolError('Name the documents, or ["all"] for every document of the project.',
+                        kind='invalid-argument')
+    ids = [d['id'] for d in ws.documents()] if is_all(documents) else resolve_documents(ws, documents)
+    if not ids:
+        raise ToolError('This project has no documents.', kind='not-found')
+    facts = [tg.document_fact(ws.doc(i), ws.project) for i in ids[:JOB_PLAN_DOCUMENT_LINES]]
+    # Those past the lines shown are counted, never read.
+    facts += [{'id': i} for i in ids[JOB_PLAN_DOCUMENT_LINES:]]
+    return '\n'.join(tg.fill_lines(tg.fillable(ws.project), facts, 'propose_job', 'The documents'))
+
+
+def t_propose_job(ws, action: str, documents: Optional[Any] = None, brief: Optional[str] = None,
+                  fills: Optional[Any] = None, edits_text: Any = False) -> str:
+    """Draft a job for the user to start (see the module's note), or say
+    what a job can fill and how much of it is empty (``facts``)."""
     act = (action or '').strip().lower() if isinstance(action, str) else ''
     if act == 'help':
         return _help(_facts(ws))
+    if act == 'facts':
+        return _facts_answer(ws, documents)
     if act != 'draft':
-        raise ToolError('action is help or draft. Call with action "help" first.', kind='invalid-argument')
+        raise ToolError('action is help, facts or draft. Call with action "help" first.', kind='invalid-argument')
     ws.refuse_read_only()
     ws.refuse_web_read()
     if not _may_start(ws):
@@ -150,13 +182,45 @@ def t_propose_job(ws, action: str, documents: Optional[Any] = None, brief: Optio
                         'a later message.', kind='not-allowed')
     facts = _facts(ws)
     card: Dict[str, Any] = _documents(ws, documents, facts)
+    chosen = tg.resolve_fills(ws.project, fills)
+    edits_text = read_bool(edits_text, 'edits_text')
     text = _brief(brief, facts)
     active = ws.client.jobs.active(ws.project.id)
     if active:
         raise ToolError(_active_refusal(ws, active), kind='not-allowed')
     replaced = ws.job_card is not None
-    card.update({'id': str(uuid7()), 'brief': text})
+    # What the job may fill and whether it may edit the text: the page puts
+    # them in the job's setup, which binds its planning (BRIEF-SU).
+    card.update({'id': str(uuid7()), 'brief': text, 'fills': [{'id': t.id, 'name': t.name} for t in chosen],
+                 'edits_text': edits_text})
     card['summary'] = summary(card)
     ws.job_card = card
     return ('Drafted the job card' + (', in place of the one drafted earlier in this turn' if replaced else '')
             + '. The user reads it, may edit the brief, and starts the job or discards it.')
+
+
+# --- a conversation that sets up a job (BRIEF-SU) -------------------------------------------
+
+#: The ``purpose`` of a conversation the page opens to set up a job ("Set up
+#: job"), sent with the send that creates it and kept in its entry.
+JOB_SETUP_PURPOSE = 'job-setup'
+
+#: What the system prompt adds in such a conversation: what it is for, the
+#: steps, and propose_job's help inlined, so the model need not call help.
+JOB_SETUP_NOTE = '''This conversation sets up an assistant job. The person says what the job should do, and you \
+draft the job card with propose_job. In order:
+1. Read what the person asks the job to do, and on which documents.
+2. Call propose_job with action "facts" and those documents.
+3. Tell the person how much is empty of what they asked for. Of everything else the facts list as empty, ask \
+whether the job should fill it too. Never assume.
+4. Draft with propose_job action "draft", with exactly the fills the person agreed to, and edits_text true only \
+when they agreed the job may change the text itself.
+
+How propose_job works (no need to call help):
+{help}'''
+
+
+def setup_note(ws) -> str:
+    """The system prompt's note in a conversation that sets up a job, with
+    the limits core publishes in propose_job's help."""
+    return JOB_SETUP_NOTE.format(help=_help(_facts(ws)))

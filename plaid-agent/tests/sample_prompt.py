@@ -94,6 +94,13 @@ def _render(app: str) -> str:
               '```text', kit.call_tool(ws, 'project_overview', {}).rstrip(), '```\n',
               f'`read_document` on "{document}":\n',
               '```text', kit.call_tool(ws, 'read_document', {'document': document}).rstrip(), '```\n']
+    if app == 'igt':
+        # A conversation the page opened with "Set up job" (purpose
+        # job-setup) has this note at the end of its system prompt.
+        from plaid_agent.igt.jobcard import setup_note
+        parts += ['## A conversation that sets up a job\n',
+                  'Opened with "Set up job" (its purpose `job-setup`), the system prompt ends with:\n',
+                  '```text', setup_note(ws).rstrip(), '```\n']
     return '\n'.join(parts)
 
 
@@ -115,7 +122,7 @@ def render_job() -> str:
     from plaid_agent.igt import targets as tg
     in_sentences = JobWorkspace(ws.client, ws.project)
     in_sentences.in_sentences = True
-    # A glossing plan's piece: it fills segmentation and the morpheme gloss.
+    # A plan's piece that fills segmentation and the morpheme gloss.
     gloss = ws.project.gloss_field('Morpheme')
     in_sentences.fills = [t for t in tg.fillable(ws.project)
                           if t.id == tg.SEGMENTATION or (gloss is not None and t.id == gloss.layer_id)]

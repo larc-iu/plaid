@@ -650,10 +650,12 @@ The app's user guide, for "how do I ..." questions. No topic lists its parts.
 
 ### propose_job
 
-Draft an unattended job for the user to start: the documents and the brief its model follows. Writes nothing. Call with action "help" first.
+Draft an unattended job for the user to start: the documents, what it fills and the brief its model follows. Writes nothing. Call with action "help" first.
 
-- `action` (one of `help`, `draft`, required)
+- `action` (one of `help`, `facts`, `draft`, required)
 - `documents` (array of string): Names or ids, or ["all"].
+- `fills` (array of string)
+- `edits_text` (boolean)
 - `brief` (string)
 
 ### read_job
@@ -747,4 +749,27 @@ Showing s1-s2.
   w3 akuna
 [s2] Gam-ar.
   w1 Gam-ar | seg=Gam=ar types=?,enclitic
+```
+
+## A conversation that sets up a job
+
+Opened with "Set up job" (its purpose `job-setup`), the system prompt ends with:
+
+```text
+This conversation sets up an assistant job. The person says what the job should do, and you draft the job card with propose_job. In order:
+1. Read what the person asks the job to do, and on which documents.
+2. Call propose_job with action "facts" and those documents.
+3. Tell the person how much is empty of what they asked for. Of everything else the facts list as empty, ask whether the job should fill it too. Never assume.
+4. Draft with propose_job action "draft", with exactly the fills the person agreed to, and edits_text true only when they agreed the job may change the text itself.
+
+How propose_job works (no need to call help):
+propose_job drafts an unattended job: the assistant works the documents in the background, with its tools, by the brief alone. Every change it plans in the documents and the lexicons is written, deletions included, each value an unverified machine proposal that people check in the grid. Project setup and a few other kinds of change are listed in the job's report for a person to approve. The draft writes nothing and starts nothing. The user reads the card, may edit the brief, and starts the job or discards it. To change anything else on it, draft again.
+- action "facts", with documents: what a job can fill on this project, and how much of each is empty in each document.
+- action "draft" drafts the card from:
+  - documents: names or ids, at most 500, or ["all"] for every document of the project.
+  - fills: what the job may fill, each named as facts lists it under What a job can fill, [] for a job that fills nothing, such as a check or a summary. The job fills these and nothing else.
+  - edits_text: true only when the user agreed the job may change the text itself: retype, respell, split, merge, insert or delete words or sentences. Left out, false.
+  - brief: the job's instructions, which its model reads with every piece of its work, with nothing of this conversation. Write the decisions, not the discussion: what to do, what to leave, the conventions settled, in plain imperative sentences that name forms and values exactly, such as "Gloss -da as LOC after a noun and as 3SG after a verb.", "Give every word ending in -ka the Word class V." or "Leave the Russian loanwords unanalysed." At most 2,000 characters.
+- The job changes and deletes what people wrote where the brief asks it to, and follows how people annotated a form.
+- A turn holds a job card or a plan of changes, not both. Drafting again in the same turn replaces the card.
 ```

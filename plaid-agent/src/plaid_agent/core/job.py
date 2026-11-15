@@ -333,6 +333,10 @@ class Job:
         self.id = self.job['id']
         self.project_id = self.job['project']
         self.instructions = self.job.get('instructions') or ''
+        #: What the job was set up to do, as the app wrote it at the start
+        #: (core keeps it verbatim and knows none of its keys), or None for a
+        #: job started with none (BRIEF-SU): the app reads it.
+        self.setup = self.job.get('setup')
         #: kept in the report as the instructions were when the job started
         self.starter = self.job.get('started_by')
         self.starter_name = self.job.get('started_by_name') or self.starter

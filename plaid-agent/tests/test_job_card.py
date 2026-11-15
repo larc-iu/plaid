@@ -15,7 +15,7 @@ from plaid_agent.core.conversation import (assistant_item, build_meta, find_job_
 from plaid_agent.core.plan import plan_line
 from plaid_agent.igt.toolkit import call_tool
 
-GLOSS = {'action': 'draft', 'documents': ['Text 1'], 'brief': 'Gloss ka as "go".'}
+GLOSS = {'action': 'draft', 'documents': ['Text 1'], 'fills': ['segmentation', 'Morph Gloss'], 'brief': 'Gloss ka as "go".'}
 
 
 def _draft(ws, **args):
@@ -79,7 +79,7 @@ def test_help_reads_the_limits_core_publishes():
     ({'documents': None}, 'Name the documents, or ["all"]'),
     ({'documents': ['Text 9']}, 'Text 9'),
     ({'brief': '   '}, 'Write the brief'),
-    ({'action': 'start'}, 'action is help or draft'),
+    ({'action': 'start'}, 'action is help, facts or draft'),
 ])
 def test_each_refusal_says_what_to_change(args, said):
     ws = fake_ws(FakeClient())
@@ -115,7 +115,7 @@ def test_a_card_has_no_task_types():
     argument is not one propose_job takes."""
     ws = fake_ws(FakeClient())
     out = _draft(ws, tasks=['gloss'])
-    assert out.startswith('Error') and 'It takes: action, documents, brief.' in out, out
+    assert out.startswith('Error') and 'It takes: action, documents, brief, fills, edits_text.' in out, out
     from plaid_agent.igt.toolkit import TOOLS
     schema = next(t for t in TOOLS if t['function']['name'] == 'propose_job')
     assert 'tasks' not in schema['function']['parameters']['properties']
@@ -431,3 +431,182 @@ def test_the_step_says_a_job_was_drafted_and_the_result_ends_with_the_card_line(
     assert step['label'] == 'Drafted a job', step
     (result,) = [m['content'] for m in out.messages if m.get('role') == 'tool']
     assert result.endswith('\n[Plan of this turn: a job card, 1 document.]'), result
+
+
+# --- what the card binds: fills and edits_text (BRIEF-SU) ----------------------------------
+
+def _ids(ws, *names):
+    from plaid_agent.igt import targets as tg
+    return [{'id': t.id, 'name': t.name} for t in tg.named(ws.project, names)[0]]
+
+
+def test_a_card_says_what_the_job_fills_by_id_and_name_and_keeps_the_text_by_default():
+    ws = fake_ws(FakeClient())
+    assert _draft(ws).startswith('Drafted the job card.')
+    card = ws.job_card
+    assert card['fills'] == _ids(ws, 'segmentation', 'Morph Gloss') == [
+        {'id': 'segmentation', 'name': 'segmentation'}, {'id': 'sl-mgloss', 'name': 'Morph Gloss'}]
+    assert card['edits_text'] is False
+
+
+@pytest.mark.parametrize('given', [True, 'true'])
+def test_a_card_may_let_the_job_edit_the_text(given):
+    ws = fake_ws(FakeClient())
+    assert _draft(ws, edits_text=given).startswith('Drafted')
+    assert ws.job_card['edits_text'] is True
+
+
+def test_a_card_that_fills_nothing_says_so_with_an_empty_list():
+    ws = fake_ws(FakeClient())
+    assert _draft(ws, fills=[]).startswith('Drafted')
+    assert ws.job_card['fills'] == []
+
+
+def test_fills_are_read_as_plan_work_reads_them():
+    """A name with its quotes and level, any case, and a list of one comma
+    string (REV-DF5-3), as plan_work takes them."""
+    ws = fake_ws(FakeClient())
+    assert _draft(ws, fills=['"translation" (sentence level)', 'IPA (orthography)']).startswith('Drafted')
+    assert [f['name'] for f in ws.job_card['fills']] == ['Translation', 'IPA']
+    assert _draft(ws, fills=['Gloss, Translation']).startswith('Drafted')
+    assert [f['name'] for f in ws.job_card['fills']] == ['Gloss', 'Translation']
+
+
+@pytest.mark.parametrize('fills, said', [
+    (None, 'Error: fills: say what the job fills, each named as listed under What a job can fill: segmentation, '
+           'Gloss, Morph Gloss, Translation, IPA. Give [] when it fills nothing, such as a check or a summary.'),
+    (['Gloss', 'Case'], 'Error: fills: not something a job on this project can fill: "Case". Name each as listed '
+                        'under What a job can fill: segmentation, Gloss, Morph Gloss, Translation, IPA.'),
+])
+def test_fills_are_required_and_an_unknown_name_is_refused_with_the_list(fills, said):
+    ws = fake_ws(FakeClient())
+    args = {k: v for k, v in GLOSS.items() if k != 'fills'}
+    out = call_tool(ws, 'propose_job', {**args, **({'fills': fills} if fills is not None else {})})
+    assert out == said, out
+    assert ws.job_card is None
+
+
+def test_a_settled_or_replaced_card_keeps_what_it_binds():
+    from plaid_agent.core.conversation import job_card_settling, replace_undecided_cards
+    fills = [{'id': 'sl-mgloss', 'name': 'Morph Gloss'}]
+    item = {'kind': 'assistant', 'job': {'id': 'c', 'all': True, 'count': 1, 'status': None, 'fills': fills,
+                                         'edits_text': True}}
+    stored = {'messages': [], 'display': [item]}
+    for card in (job_card_settling('c', 'discarded')(stored)['display'][0]['job'],
+                 replace_undecided_cards([item])[0]['job']):
+        assert card['fills'] == fills and card['edits_text'] is True, card
+
+
+def test_the_reply_carries_what_the_card_binds(monkeypatch):
+    client = _writer_client()
+    _svc, conv = _card_turn(monkeypatch, client, edits_text=True)
+    card = conv['display'][-1]['job']
+    assert card['fills'] == [{'id': 'segmentation', 'name': 'segmentation'},
+                             {'id': 'sl-mgloss', 'name': 'Morph Gloss'}]
+    assert card['edits_text'] is True
+
+
+# --- facts: what a job can fill, as the planner is shown it --------------------------------
+
+def test_facts_answers_the_planners_own_lines():
+    """BRIEF-SU: the same "What a job can fill" list and per-document lines
+    the planning context is shown, from one function (targets.fill_lines)."""
+    from job_fixtures import JobClient, document, runner, start
+    from plaid_agent.igt.project import load_project
+    client = JobClient({'d1': document('d1', 'Story 1', [{'words': ['ka', 'ta']}, {'words': ['sa']}]),
+                        'd2': document('d2', 'Story 2', [{'words': ['mo']}])})
+    ws = fake_ws(client)
+    out = call_tool(ws, 'propose_job', {'action': 'facts', 'documents': ['all']})
+    job = start(client, plan=None)
+    r = runner(job)
+    project = load_project(client, 'p1')
+    planner = r.plan_message(r.document_facts(project, job), project)
+    head, docs = out.split('\n\n')
+    assert head.startswith("What a job can fill (name them in propose_job's fills):\n- segmentation (word level")
+    assert head.split('\n')[1:] == planner.split("What a job can fill (name them in plan_work's fills):\n")[1] \
+        .split('\n\n')[0].split('\n')
+    assert docs.split('\n')[0] == 'The documents (2):'
+    lines = docs.split('\n')[1:]
+    assert lines == [line for line in planner.split('\n') if line.startswith('- "Story ')], (lines, planner)
+    assert lines[0].startswith('- "Story 1": 2 sentences, 3 words, ') and 'Empty: segmentation 3' in lines[0]
+    assert not ws.ops and ws.job_card is None, 'facts stages nothing'
+
+
+def test_facts_names_documents_and_reads_no_more_than_its_lines_show(monkeypatch):
+    import plaid_agent.core.limits as limits
+    ws = fake_ws(FakeClient())
+    out = call_tool(ws, 'propose_job', {'action': 'facts', 'documents': ['Text 1']})
+    assert '\nThe documents (1):\n- "Text 1": ' in out, out
+    assert call_tool(ws, 'propose_job', {'action': 'facts'}) == ('Error: Name the documents, or ["all"] for every '
+                                                                  'document of the project.')
+    monkeypatch.setattr(limits, 'JOB_PLAN_DOCUMENT_LINES', 0)
+    read = []
+    monkeypatch.setattr(ws, 'doc', lambda d: read.append(d))
+    out = call_tool(ws, 'propose_job', {'action': 'facts', 'documents': ['Text 1']})
+    assert out.endswith('The documents (1):\nand 1 more documents not shown') and read == [], out
+
+
+def test_help_says_how_to_draft_what_the_job_fills_and_never_privileges_glossing():
+    out = call_tool(fake_ws(FakeClient()), 'propose_job', {'action': 'help'})
+    assert '- action "facts", with documents: what a job can fill on this project' in out
+    assert '\n  - fills: what the job may fill, each named as facts lists it under What a job can fill' in out
+    assert '\n  - edits_text: true only when the user agreed the job may change the text itself' in out
+    assert 'Give every word ending in -ka the Word class V.' in out
+
+
+# --- a conversation set up for a job: its purpose (BRIEF-SU) -------------------------------
+
+def _systems(monkeypatch):
+    """Every turn's system prompt, as the model is sent it."""
+    seen = []
+
+    def fake_run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text=None):
+        seen.append(system)
+        return TurnResult('Which documents?', [{'role': 'assistant', 'content': 'Which documents?'}], [])
+    monkeypatch.setattr(turn_mod, 'run_turn', fake_run_turn)
+    return seen
+
+
+def _sent(svc, client, rid, create, **fields):
+    helper = Helper(request_id=rid)
+    svc.process_request(_req(client, 'send', text='Fill Case on every word.', create=create, **fields), helper)
+    assert not helper.errors, helper.errors
+    return _store(client).load('c1')[1]
+
+
+def test_a_job_setup_conversation_keeps_its_purpose_and_is_told_what_it_is_for_every_turn(monkeypatch):
+    from plaid_agent.igt.jobcard import setup_note
+    client = _writer_client()
+    svc = _service()
+    systems = _systems(monkeypatch)
+    meta = _sent(svc, client, 'r1', True, purpose='job-setup')
+    assert meta['purpose'] == 'job-setup'
+    # The next send names no purpose, and a later one cannot change it.
+    meta = _sent(svc, client, 'r2', False)
+    assert meta['purpose'] == 'job-setup'
+    meta = _sent(svc, client, 'r3', False, purpose='other')
+    assert meta['purpose'] == 'job-setup'
+    ws = fake_ws(client)
+    ws.job_facts = lambda: {}  # the service's own client, which this test does not give it
+    note = setup_note(ws)
+    assert len(systems) == 3 and all(s.endswith('\n\n' + note) for s in systems), systems[0][-3000:]
+    assert note.startswith('This conversation sets up an assistant job. The person says what the job should do, '
+                           'and you draft the job card with propose_job. In order:\n'
+                           '1. Read what the person asks the job to do, and on which documents.\n'
+                           '2. Call propose_job with action "facts" and those documents.\n')
+    assert '\nHow propose_job works (no need to call help):\npropose_job drafts an unattended job' in note
+
+
+@pytest.mark.parametrize('purpose', [None, 'other', 'Job Setup', 'job-setup ' * 5, 7, {'kind': 'job-setup'}])
+def test_any_other_conversation_is_told_nothing_of_a_setup(monkeypatch, purpose):
+    client = _writer_client()
+    systems = _systems(monkeypatch)
+    meta = _sent(_service(), client, 'r1', True, **({'purpose': purpose} if purpose is not None else {}))
+    assert meta.get('purpose') == ('other' if purpose == 'other' else None), meta
+    assert 'sets up an assistant job' not in systems[0]
+
+
+def test_the_setup_note_is_part_of_the_assistants_version():
+    from plaid_agent.igt.jobcard import JOB_SETUP_NOTE
+    texts, _tools = _service().prompt_template()
+    assert JOB_SETUP_NOTE in texts

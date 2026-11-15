@@ -575,11 +575,13 @@ _IMPL['app_guide'] = t_app_guide
 # Drafting an unattended job with the user, behind one short schema and its
 # manual: few conversations end in a job (jobcard.py).
 TOOLS += [_fn('propose_job',
-              'Draft an unattended job for the user to start: the documents and the brief its model follows. '
-              'Writes nothing. Call with action "help" first.',
-              {'action': {'type': 'string', 'enum': ['help', 'draft']},
+              'Draft an unattended job for the user to start: the documents, what it fills and the brief its '
+              'model follows. Writes nothing. Call with action "help" first.',
+              {'action': {'type': 'string', 'enum': ['help', 'facts', 'draft']},
                'documents': {'type': 'array', 'items': {'type': 'string'},
                              'description': 'Names or ids, or ["all"].'},
+               'fills': {'type': 'array', 'items': {'type': 'string'}},
+               'edits_text': {'type': 'boolean'},
                'brief': {'type': 'string'}}, ['action'])]
 _IMPL['propose_job'] = t_propose_job
 
@@ -706,23 +708,12 @@ def t_plan_work(ws, pieces: str = None, piece_instructions: str = '', documents=
                             + '. Leave them out of documents, or leave documents out for every document.',
                             kind='invalid-argument')
     from . import targets as tg
-    if fills is None:
-        # Required (REV-DF-D-1): a planner that leaves it out would make a
-        # job that fills nothing and says nothing.
-        raise ToolError('fills: say what the job fills, each named as listed under What a job can fill: '
-                        + ', '.join(tg.listed_names(ws.project)) + '. Give [] when it fills nothing, '
-                        'such as a check or a summary.', kind='invalid-argument')
-    listed = tg.listed_names(ws.project)
-    fills = names_list(fills, lambda n: not tg.named(ws.project, [n])[1])
-    if fills is None:
-        raise ToolError('fills is a list of names, such as ' + json.dumps(listed[:2], ensure_ascii=False)
-                        + '. Name each as listed under What a job can fill: ' + ', '.join(listed) + '.',
-                        kind='invalid-argument')
-    chosen, unknown = tg.named(ws.project, fills)
-    if unknown:
-        raise ToolError('fills: not something a job on this project can fill: '
-                        + ', '.join(f'"{u}"' for u in unknown[:5]) + '. Name each as listed under What a job can '
-                        'fill: ' + ', '.join(tg.listed_names(ws.project)) + '.', kind='invalid-argument')
+    chosen = tg.resolve_fills(ws.project, fills)
+    setup = getattr(ws, 'job_setup', None)
+    if setup is not None:
+        refusal = tg.outside_setup(setup, chosen, edits_text)
+        if refusal:
+            raise ToolError(refusal, kind='invalid-argument')
     skip = skip_filled_sentences and pieces == 'sentences'
     # Kept only when true: the plan's row holds the largest plan at its cap.
     ws.plan_work = {'pieces': pieces, 'piece_instructions': text, 'documents': order,

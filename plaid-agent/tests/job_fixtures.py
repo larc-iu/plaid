@@ -192,15 +192,16 @@ INSTRUCTIONS = 'Segment and gloss the words nobody has analysed.'
 
 
 def start(client, instructions=INSTRUCTIONS, documents=None, now=None, id=None, plan='sentences', edits_text=None,
-          fills=FILLS, only_empty=False):
+          fills=FILLS, only_empty=False, setup=None):
     """A job started and claimed on ``client``, held as the worker holds it
     (no heartbeat thread: a test beats by hand). Its plan is kept as the
     planning context would have kept it (``plan`` the pieces, None for no
     plan: the job's first model context then plans it, ``edits_text`` its
-    plan_work flag, :data:`EDITS_TEXT` when not given)."""
+    plan_work flag, :data:`EDITS_TEXT` when not given, ``setup`` the job's
+    setup as the page sends it, BRIEF-SU)."""
     if now is not None:
         client.jobs.now = now
-    made = client.jobs.create(PID, 'igt', instructions, documents, id=id)
+    made = client.jobs.create(PID, 'igt', instructions, documents, id=id, setup=setup)
     claimed = client.jobs.claim('worker-1', 'fake/m', ['igt'])
     assert claimed['job']['id'] == made['id']
     if plan is not None:

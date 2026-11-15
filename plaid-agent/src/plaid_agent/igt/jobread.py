@@ -40,6 +40,7 @@ from ..core.history import doc_label
 from ..core.job import blank_sums, blank_text, field_counts
 from ..core.record_ops import _names_nothing
 from ..core.tools import ToolError, truncate
+from .targets import said_setup
 
 #: How much of a job's instructions, and of its summary, a turn's summary
 #: quotes. read_job with the job gives them whole.
@@ -259,6 +260,10 @@ def summary(job: Dict[str, Any], note_chars: Optional[int] = JOB_SUMMARY_NOTE_CH
         count = len(job.get('documents') or [])
     lines.append(f'Documents: {count:,}.')
     lines.append(_quoted('Instructions as sent', job.get('instructions') or '', note_chars))
+    setup = said_setup(job.get('setup'))
+    if setup:
+        # What the person's setup conversation bound the job to (BRIEF-SU).
+        lines.append(setup)
     if report is None:
         lines.append('No report yet.' if job.get('state') in ('waiting', 'running', 'stopping')
                      else 'It has no report.')
