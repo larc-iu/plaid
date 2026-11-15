@@ -47,6 +47,16 @@ def form_of(surface: str, cfg) -> str:
     return surface_key(trim_ignored_edges(surface or '', cfg))
 
 
+def as_typed(surfaces: Iterable[str], cfg) -> Dict[str, str]:
+    """Each form key (:func:`form_of`) to the first surface of it, trimmed
+    as the key is: what the block labels a form with, never the casefolded
+    key (REV-DF-D-12: "Straße", not "strasse")."""
+    out: Dict[str, str] = {}
+    for s in surfaces:
+        out.setdefault(form_of(s, cfg), trim_ignored_edges(s or '', cfg))
+    return out
+
+
 def _bare(form: str) -> str:
     """An entry's form as it is looked for inside a word: the key a form
     names an entry by (``fit.form_key``), so the block lists only entries a
@@ -148,7 +158,9 @@ def block(ws, project: IgtProject, surfaces: Iterable[str], people: Dict[str, Di
 def _block(ws, project, surfaces, people, mine, render, budget, lexicon, fields, nowhere=True) -> str:
     cfg = project.ignored_cfg
     sections = []  # (head, nowhere head, lines, forms nowhere, left-out text)
+    surfaces = list(surfaces)
     forms = list(dict.fromkeys(f for f in (form_of(s, cfg) for s in surfaces) if f))
+    typed = as_typed(surfaces, cfg)
     entry_forms = list(forms)
     if forms:
         theirs_by = regroup(people, cfg)
@@ -177,13 +189,14 @@ def _block(ws, project, surfaces, people, mine, render, budget, lexicon, fields,
             if ours:
                 bits.append('this job: ' + lines(ours))
             if bits:
-                analysed.append(f'- "{form}": ' + ' | '.join(bits))
+                analysed.append(f'- "{typed[form]}": ' + ' | '.join(bits))
             else:
-                none.append(form)
+                none.append(typed[form])
         sections.append((ANALYSED_HEAD, NOWHERE_HEAD, analysed, none,
                          lambda n: f'how {n} form{"" if n == 1 else "s"} were analysed (analyses_of reads them)'))
     for fe in fields:
         fforms = list(dict.fromkeys(f for f in (form_of(s, cfg) for s in fe.surfaces) if f))
+        ftyped = as_typed(fe.surfaces, cfg)
         if not fforms:
             continue
         if fe.lexicon:
@@ -197,9 +210,9 @@ def _block(ws, project, surfaces, people, mine, render, budget, lexicon, fields,
             if ours_v.get(form):
                 bits.append('this job: ' + _top(ours_v[form]))
             if bits:
-                lines.append(f'- "{form}": ' + ' | '.join(bits))
+                lines.append(f'- "{ftyped[form]}": ' + ' | '.join(bits))
             else:
-                none.append(form)
+                none.append(ftyped[form])
         units = f'{fe.level}s'
         sections.append((f'{fe.name} on other {units} of these forms (by people in this project, and earlier in '
                          'this job):', f'{fe.name} on no other {fe.level} of: ', lines, none,

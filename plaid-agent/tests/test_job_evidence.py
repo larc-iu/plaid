@@ -39,7 +39,7 @@ def test_the_block_of_a_small_piece_exactly(monkeypatch):
     assert block == '\n'.join([
         'How these forms were analysed before (by people in this project, and earlier in this job):',
         '- "ka": people: ka ‘eat’ (1)',
-        'Analysed nowhere before: gamdi, zo.',
+        'Analysed nowhere before: Gamdi, zo.',
         'Lexicon entries spelled inside these forms (form ‘gloss’ type):',
         # Not "-di", stored with its marker: no morpheme links to it
         # (fit.form_key, test_link_form_rule).
@@ -167,6 +167,10 @@ def test_a_form_people_analysed_is_found_whatever_its_case_folding(monkeypatch, 
     asked = _asked(monkeypatch, client, plan=plan)
     assert '": people: ' in asked[0] and '(1)' in asked[0], asked[0]
     assert evidence.NOWHERE_HEAD not in asked[0]
+    # Labelled by the form as typed in the piece, never the casefolded key
+    # (REV-DF-D-12).
+    typed = word.upper() if word != 'ﬁsh' else word
+    assert f'- "{typed}": people: ' in asked[0], asked[0]
 
 
 # --- the prompt lines (EV 3) -----------------------------------------------------
