@@ -84,7 +84,7 @@ def test_a_job_whose_plan_fills_nothing_lists_nothing_left_blank(monkeypatch):
     use(monkeypatch, Model(lambda asked, n, kwargs: reply('Done.')))
     assert run_job(job, runner(job))['state'] == 'done'
     (doc,) = _report(client)['documents']
-    assert doc['left'] == [] and doc['left_more'] == 0
+    assert 'left' not in doc and 'left_more' not in doc
 
 
 def test_a_glossing_job_that_wrote_nothing_lists_its_blank_word(monkeypatch):

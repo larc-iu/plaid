@@ -328,7 +328,7 @@ def test_a_document_unreadable_at_the_report_says_so_and_counts_no_left(monkeypa
     finished = run_job(job, runner(job))
     (doc,) = finished['report']['documents']
     assert 'left' not in doc['counts'] and 'left_translations' not in doc['counts'], doc['counts']
-    assert doc['left_unread'] is True and doc['left'] == []
+    assert doc['left_unread'] is True and 'left' not in doc
     assert 'Left blank could not be read' in summary_message(finished['report'])
 
 
