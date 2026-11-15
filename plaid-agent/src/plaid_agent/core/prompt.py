@@ -447,8 +447,12 @@ how it is cut. You stage no change. End by calling plan_work once.'''
 
 #: What a job's model is told to do after a call it wrote as text, in the
 #: note a chat's model is sent (``core.agent.written_call_note``): nobody
-#: reads a job's reply.
-JOB_WRITTEN_CALL_NEXT = 'Call the tool itself now.'
+#: reads a job's reply. A way out, as the chat's has, for a note that quotes
+#: a call the piece decided against (REV-DF5-2).
+JOB_WRITTEN_CALL_NEXT = 'Call the tool itself now, or end without it.'
+#: The planning context's: it has nothing to end without, its way out is
+#: plan_work (REV-DF5-2).
+JOB_PLAN_WRITTEN_CALL_NEXT = 'Call the tool itself now, or end with plan_work.'
 
 #: Sent once to a planning context that ended without plan_work, and as the
 #: planning context's decide-now line (its budget's, ``core.job.Pace``).

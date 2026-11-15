@@ -321,9 +321,11 @@ def test_a_model_fault_after_plan_work_kept_a_plan_keeps_it(monkeypatch):
 
 
 def _written(name='plan_work'):
+    """The note a job's model is sent after a call written as text: the
+    planner's for plan_work, a piece's for any other tool here."""
     from plaid_agent.core.agent import written_call_note
-    from plaid_agent.core.prompt import JOB_WRITTEN_CALL_NEXT
-    return written_call_note(name, JOB_WRITTEN_CALL_NEXT)
+    from plaid_agent.core.prompt import JOB_PLAN_WRITTEN_CALL_NEXT, JOB_WRITTEN_CALL_NEXT
+    return written_call_note(name, JOB_PLAN_WRITTEN_CALL_NEXT if name == 'plan_work' else JOB_WRITTEN_CALL_NEXT)
 
 
 def test_a_planner_that_writes_plan_work_out_as_text_is_told_it_did_not_run(monkeypatch):
@@ -346,8 +348,10 @@ def test_a_planner_that_writes_plan_work_out_as_text_is_told_it_did_not_run(monk
     assert finished['state'] == 'done', finished.get('reason')
     planning = [c for c in model.calls if _kind(c['asked']) == 'plan']
     assert planning[1]['kwargs']['messages'][-1] == {'role': 'user', 'content': _written()}
+    # REV-DF5-2: a planner has nothing to end without, so its way out is
+    # plan_work, never an ending with no plan.
     assert _written() == ('(system) Your reply wrote a plan_work call as text, so it did not run: nothing was '
-                          'done. Call the tool itself now.')
+                          'done. Call the tool itself now, or end with plan_work.')
 
 
 def test_a_planner_that_writes_plan_work_out_as_text_every_time_is_told_twice_and_ends_with_no_plan(monkeypatch):
@@ -406,6 +410,10 @@ def test_a_piece_that_writes_a_call_out_as_text_is_told_it_did_not_run(monkeypat
     pieces = [c for c in model.calls if _kind(c['asked']) == 'piece']
     told = [c for c in pieces if c['kwargs']['messages'][-1].get('content') == _written('set_analysis')]
     assert told and all(c['n'] == 2 for c in told), [c['kwargs']['messages'][-1] for c in pieces]
+    # REV-DF5-2: a piece whose note quotes a call it decided against is
+    # given a way out, as the chat's model is (to reply without the call).
+    assert _written('set_analysis') == ('(system) Your reply wrote a set_analysis call as text, so it did not run: '
+                                        'nothing was done. Call the tool itself now, or end without it.')
 
 
 def test_a_stop_pressed_during_a_planning_that_ends_with_no_plan_ends_the_job_stopped(monkeypatch):

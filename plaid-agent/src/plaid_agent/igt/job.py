@@ -53,7 +53,7 @@ from ..core.limits import (JOB_ANALYSIS_MAX_CHARS, JOB_CHANGE_VALUE_CHARS, JOB_C
                            JOB_EVIDENCE_CHARS, JOB_SENTENCE_MAX_CHARS, JOB_SENTENCE_MAX_WORDS,
                            JOB_SKIPPED_PER_DOCUMENT, JOB_STRETCH_SENTENCES)
 from ..core.plan import JOB_DETAIL_KEY, ONE_REQUEST, PlanError, TooBig, held_changes
-from ..core.prompt import JOB_ANSWER_AGAIN, JOB_LEAVE_IT, JOB_WRITTEN_CALL_NEXT
+from ..core.prompt import JOB_ANSWER_AGAIN, JOB_LEAVE_IT, JOB_PLAN_WRITTEN_CALL_NEXT, JOB_WRITTEN_CALL_NEXT
 from ..core.provenance import Requester
 from ..core.tools import Refusal, ToolError
 from ..core.version import agent_version
@@ -846,9 +846,12 @@ class JobWorkspace(Workspace):
     # say a person approves a plan card and is told of it in a reply.
 
     tool_fault_next = 'Try another way of asking rather than the same call again.'
-    # After a call written as text (core.agent.written_call_note): nobody
-    # reads a job's reply (REV-DF4-2).
-    written_call_next = JOB_WRITTEN_CALL_NEXT
+    @property
+    def written_call_next(self) -> str:
+        """After a call written as text (core.agent.written_call_note):
+        nobody reads a job's reply (REV-DF4-2). A piece may end without the
+        call, the planning context ends with plan_work (REV-DF5-2)."""
+        return JOB_PLAN_WRITTEN_CALL_NEXT if self.mode == self.PLAN else JOB_WRITTEN_CALL_NEXT
 
     def staged_count(self) -> int:
         return held_changes(self)
