@@ -1666,8 +1666,8 @@ def t_set_analysis_for_form(ws: Workspace, form: str, morphemes: list, document:
 def _existing(ws: Workspace, form, lexicon, entry_id, gloss=None, what: str = 'be changed') -> dict:
     kind, target = ws.find_entry(form, lexicon, entry_id, gloss)
     if kind == 'new':
-        raise ToolError('That entry is new in this plan; approve the plan first, then merge or rename it.',
-                        kind='conflict')
+        raise ToolError(f'That entry is new in this plan{ADVICE}', kind='conflict',
+                        advice='; approve the plan first, then merge or rename it.')
     _refuse_doomed_entry(ws, target, what)
     return target
 

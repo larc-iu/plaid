@@ -30,7 +30,7 @@ from ..core.java_regex import PatternError, matcher
 from ..core.plan import change_of, docs_of_op, labelled
 from ..core.keep import is_keep
 from ..core.refs import read_ref, same_form
-from ..core.tools import ToolError
+from ..core.tools import ADVICE, ToolError
 from ..core.workspace import BaseWorkspace
 
 from . import fit
@@ -642,7 +642,8 @@ class Workspace(BaseWorkspace):
                 raise ToolError(
                     f'"{form}#{suffix}" is not a name any more: this plan deletes or merges away an '
                     f'entry spelled "{form}", so the numbers beside the others have moved. '
-                    'Pass entry_id, or discard_plan and plan again without that change.', kind='conflict')
+                    + ADVICE, kind='conflict', advice='Pass entry_id, or discard_plan and plan again without that '
+                    'change.')
         g = (gloss or '').strip().casefold()
 
         def has_gloss(meta, view=None):

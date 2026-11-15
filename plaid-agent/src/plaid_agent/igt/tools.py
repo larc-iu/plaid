@@ -947,7 +947,8 @@ def t_link_entry(ws: Workspace, document: str, refs, entry_form: Optional[str] =
                             kind='invalid-argument')
         if _planned_phrase_over(ws, obj.id):
             raise ToolError(f'{ref} is part of a multi-word expression planned in this turn; a word keeps its own '
-                            'link inside one, so discard_plan first if you meant to replace it', kind='conflict')
+                            f'link inside one{ADVICE}', kind='conflict',
+                            advice=', so discard_plan first if you meant to replace it')
         if isinstance(obj, Morpheme):
             linking.append((ref, obj.id))
         if kind == 'existing' and obj.link and obj.link.item_id == target['id']:

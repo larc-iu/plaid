@@ -13,7 +13,7 @@ from typing import Any, Dict, Optional
 from ..core.bidi import qv
 from ..core.args import whole
 from ..core.plan import change_of, labelled
-from ..core.tools import ToolError
+from ..core.tools import ADVICE, ToolError
 
 from .project import word_ref
 from .reads import _example_line
@@ -134,8 +134,8 @@ def _resolve_ref(ws: Workspace, vocab: dict, field: dict, value: str, own_id: Op
         target = value
     elif value in ws.new_entries:
         raise ToolError(f'"{field["name"]}" must name an entry that already exists. "{value}" is created by this '
-                        'same plan and has no id until it is approved: approve the plan, then set the reference.',
-                        kind='conflict')
+                        f'same plan and has no id until it is approved{ADVICE}', kind='conflict',
+                        advice=': approve the plan, then set the reference.')
     else:
         form, suffix = value, None
         if '#' in value:
@@ -285,8 +285,9 @@ def _refuse_doomed_entry(ws: Workspace, item: dict, what: str):
     """
     if item['id'] in ws.doomed_entries():
         raise ToolError(f'{ws.entry_name(item)} is deleted or merged away by this same plan, so it cannot '
-                        f'{what}. Leave that change out (discard_plan and stage the rest again), or work on the entry that survives.',
-                        kind='conflict')
+                        f'{what}.', kind='conflict',
+                        advice='Leave that change out (discard_plan and stage the rest again), or work on the entry '
+                        'that survives.')
 
 
 def _refuse_removing_survivor(ws: Workspace, item: dict, what: str):
@@ -295,8 +296,9 @@ def _refuse_removing_survivor(ws: Workspace, item: dict, what: str):
     itself after the user has approved it."""
     if any(op.get('kind') == 'merge_entries' and op.get('keep_id') == item['id'] for op in ws.ops):
         raise ToolError(f'{ws.entry_name(item)} is what another change in this plan merges into, so it cannot '
-                        f'{what}. Leave that merge out (discard_plan and stage the rest again), or merge into an entry that stays.',
-                        kind='conflict')
+                        f'{what}.', kind='conflict',
+                        advice='Leave that merge out (discard_plan and stage the rest again), or merge into an entry '
+                        'that stays.')
 
 
 def t_add_sense(ws: Workspace, entry_form: Optional[str] = None, lexicon: Optional[str] = None,
