@@ -248,52 +248,51 @@ def test_the_planner_is_told_pieces_have_the_guidelines_and_the_instructions():
 
 @pytest.mark.parametrize('pieces', ['sentences', 'document', 'selection'])
 @pytest.mark.parametrize('only', [True, False, None])
-def test_plan_work_keeps_skip_analyzed_sentences_only_when_true_on_a_plan_in_sentences(pieces, only):
+def test_plan_work_keeps_skip_filled_sentences_only_when_true_on_a_plan_in_sentences(pieces, only):
     """BRIEF EW: a plan in sentences walks every sentence unless it says so.
-    BRIEF OE: the model sets skip_analyzed_sentences (only_empty was read
-    as "only words whose field is empty" by a planner filling a field). The
-    plan keeps it as only_empty, the key the job page reads, only when true
-    and only on a plan in sentences."""
+    DF1 (the owner's steer): the model sets skip_filled_sentences, which
+    means what it reads as (skip a sentence where nothing the job fills is
+    empty). The plan keeps it as only_empty, the key the job page reads,
+    only when true and only on a plan in sentences."""
     ws = JobWorkspace(FakeClient(), _project(), mode=JobWorkspace.PLAN)
     ws.job_documents = [{'id': 'd1', 'name': 'Text 1'}]
-    args = {'pieces': pieces, **({} if only is None else {'skip_analyzed_sentences': only})}
-    assert toolkit.job_plan_call(ws, 'plan_work', args) == 'The plan is kept. End now with a one-line reply.'
+    args = {'pieces': pieces, 'fills': ['segmentation'], **({} if only is None else {'skip_filled_sentences': only})}
+    assert toolkit.job_plan_call(ws, 'plan_work', args).startswith('The plan is kept.')
     assert ws.plan_work.get('only_empty') is (True if only and pieces == 'sentences' else None)
-    assert 'skip_analyzed_sentences' not in ws.plan_work
+    assert 'skip_filled_sentences' not in ws.plan_work
     props = toolkit.PLAN_WORK['function']['parameters']['properties']
-    assert 'skip_analyzed_sentences' in props and 'only_empty' not in props and 'every_sentence' not in props
+    assert 'skip_filled_sentences' in props and 'only_empty' not in props and 'skip_analyzed_sentences' not in props
 
 
-def test_plan_work_takes_no_only_empty():
-    """BRIEF OE: the old name is refused as any argument it does not take."""
+@pytest.mark.parametrize('old', ['only_empty', 'skip_analyzed_sentences'])
+def test_plan_work_takes_no_old_name(old):
+    """The old names are refused as any argument it does not take."""
     ws = JobWorkspace(FakeClient(), _project(), mode=JobWorkspace.PLAN)
     ws.job_documents = [{'id': 'd1', 'name': 'Text 1'}]
-    out = toolkit.job_plan_call(ws, 'plan_work', {'pieces': 'sentences', 'only_empty': True})
-    assert 'plan_work takes no only_empty.' in out and ws.plan_work is None
-    # The fixed hint names what it takes, the new name among them (REV-KM2-4).
-    assert 'It takes pieces, ' in out and 'skip_analyzed_sentences' in out, out
+    out = toolkit.job_plan_call(ws, 'plan_work', {'pieces': 'sentences', old: True})
+    assert f'plan_work takes no {old}.' in out and ws.plan_work is None
+    assert 'It takes pieces, ' in out and 'skip_filled_sentences' in out and 'fills' in out, out
 
 
-def test_the_planner_is_told_every_sentence_by_default_and_when_to_skip_analysed_sentences():
-    """BRIEF EW and OE: the guidance line, no longer than the one it replaced
-    (30 words), says a plan in sentences takes every sentence and when to set
-    skip_analyzed_sentences, and plan_work's description says what it skips
-    and that a job filling a field or checking analyses leaves it out."""
+def test_the_planner_is_told_every_sentence_by_default_and_when_to_skip_filled_sentences():
+    """The guidance line says a plan in sentences takes every sentence, what
+    a sentences piece can do (REV-DAY-P-10), and when to set
+    skip_filled_sentences, and plan_work's description says what it skips
+    and what fills is."""
     line = next(x for x in prompt.JOB_PLAN_RULES.replace('\\\n', '').splitlines()
                 if x.startswith('- pieces "sentences"'))
-    assert len(line[2:].split()) <= 30, len(line[2:].split())
-    assert 'Every sentence, unless instructions only fill unanalysed words or empty translations: then ' \
-           'skip_analyzed_sentences true.' in line
+    assert 'Every sentence, unless the job only fills what is empty: then skip_filled_sentences true.' in line
+    assert 'no search or code' in line
     built = prompt.build_plan_prompt(_project())
-    assert 'every_sentence' not in built and 'only_empty' not in built
+    assert 'every_sentence' not in built and 'only_empty' not in built and 'skip_analyzed' not in built
     description = toolkit.PLAN_WORK['function']['description']
     assert 'only_empty' not in description
-    assert ('skip_analyzed_sentences: with "sentences", true skips every sentence whose words are all analysed '
-            'and whose translation is written. A job that fills a field or checks analyses leaves it out.'
-            ) in description
+    assert 'skip_filled_sentences: with "sentences", true skips every sentence in which nothing the job fills is ' \
+           'empty.' in description
+    assert 'fills: what the job fills, each named as the message lists it under What a job can fill' in description
 
 
-NOTHING = 'This plan works no sentence: no word is left to analyse and no translation to write.'
+NOTHING = 'This plan works no sentence: nothing it fills is empty in its documents.'
 
 
 def _planned(docs, args):
@@ -302,41 +301,66 @@ def _planned(docs, args):
     return ws, toolkit.job_plan_call(ws, 'plan_work', args)
 
 
-FULL = {'id': 'd1', 'name': 'Text 1', 'sentences': 3, 'empty': 0}
-HALF = {'id': 'd2', 'name': 'Text 2', 'sentences': 4, 'empty': 2}
+# The planning context's counts, by target id: segmentation, the word Gloss.
+FULL = {'id': 'd1', 'name': 'Text 1', 'sentences': 3, 'empty': {'segmentation': 0, 'sl-gloss': 4}}
+HALF = {'id': 'd2', 'name': 'Text 2', 'sentences': 4, 'empty': {'segmentation': 2, 'sl-gloss': 0}}
 
 
 def test_a_plan_that_skips_every_sentence_is_kept_and_says_so():
-    """BRIEF OE item 3: skip_analyzed_sentences on documents whose every
-    sentence is analysed works nothing. The answer says so in one line, as
-    a fixed rule on the planning context's counts, and the plan is kept, so
-    the planner may call plan_work again in the same context."""
-    ws, out = _planned([FULL], {'pieces': 'sentences', 'skip_analyzed_sentences': True})
+    """BRIEF OE item 3, by the plan's targets: skip_filled_sentences on
+    documents where nothing it fills is empty works nothing. The answer says
+    so in one line, as a fixed rule on the planning context's counts, and
+    the plan is kept, so the planner may call plan_work again."""
+    ws, out = _planned([FULL], {'pieces': 'sentences', 'fills': ['segmentation'], 'skip_filled_sentences': True})
     assert out == f'The plan is kept. {NOTHING} Call plan_work again to change it, or end now with a one-line reply.'
-    assert ws.plan_work['only_empty'] is True
-    # Planned again in the same context, the new plan replaces it.
+    assert ws.plan_work['only_empty'] is True and ws.plan_work['fills'] == ['segmentation']
     assert toolkit.job_plan_call(ws, 'plan_work', {'pieces': 'sentences'}) == \
         'The plan is kept. End now with a one-line reply.'
-    assert 'only_empty' not in ws.plan_work
+    assert 'only_empty' not in ws.plan_work and 'fills' not in ws.plan_work
+
+
+def test_a_plan_that_fills_nothing_and_skips_works_nothing():
+    _, out = _planned([HALF], {'pieces': 'sentences', 'skip_filled_sentences': True})
+    assert NOTHING in out
 
 
 @pytest.mark.parametrize('docs, args', [
-    ([FULL, HALF], {'pieces': 'sentences', 'skip_analyzed_sentences': True}),
-    ([FULL], {'pieces': 'sentences'}),
-    ([FULL], {'pieces': 'document', 'skip_analyzed_sentences': True}),
-    ([{**FULL, 'sentences': 0}], {'pieces': 'sentences', 'skip_analyzed_sentences': True}),
-    ([FULL, HALF], {'pieces': 'sentences', 'skip_analyzed_sentences': True, 'documents': ['Text 2']}),
-], ids=['one-has-blanks', 'not-set', 'by-documents', 'no-sentences', 'planned-one-has-blanks'])
+    ([FULL, HALF], {'pieces': 'sentences', 'fills': ['segmentation'], 'skip_filled_sentences': True}),
+    ([FULL], {'pieces': 'sentences', 'fills': ['Gloss'], 'skip_filled_sentences': True}),
+    ([FULL], {'pieces': 'sentences', 'fills': ['segmentation']}),
+    ([FULL], {'pieces': 'document', 'fills': ['segmentation'], 'skip_filled_sentences': True}),
+    ([{**FULL, 'sentences': 0}], {'pieces': 'sentences', 'fills': ['segmentation'], 'skip_filled_sentences': True}),
+    ([FULL, HALF], {'pieces': 'sentences', 'fills': ['segmentation'], 'skip_filled_sentences': True,
+                    'documents': ['Text 2']}),
+], ids=['one-has-blanks', 'a-field-has-blanks', 'not-set', 'by-documents', 'no-sentences', 'planned-one-has-blanks'])
 def test_a_plan_that_works_some_sentence_says_nothing_of_it(docs, args):
     _, out = _planned(docs, args)
     assert out == 'The plan is kept. End now with a one-line reply.'
 
 
 def test_the_documents_a_plan_names_are_the_ones_counted():
-    """A plan naming only the analysed one of two documents works nothing."""
-    _, out = _planned([FULL, HALF], {'pieces': 'sentences', 'skip_analyzed_sentences': True,
-                                     'documents': ['Text 1']})
+    """A plan naming only the segmented one of two documents works nothing."""
+    _, out = _planned([FULL, HALF], {'pieces': 'sentences', 'fills': ['segmentation'],
+                                     'skip_filled_sentences': True, 'documents': ['Text 1']})
     assert NOTHING in out
+
+
+@pytest.mark.parametrize('given, kept', [
+    (['segmentation', 'Morph Gloss'], ['segmentation', 'sl-mgloss']),
+    (['"Gloss" (word level)', 'translation'], ['sl-gloss', 'sl-trans']),
+    (['morph gloss (morpheme)', 'Morph Gloss'], ['sl-mgloss']),
+])
+def test_plan_work_keeps_what_the_job_fills_by_target_id(given, kept):
+    """fills names targets as the planning message lists them (case aside,
+    with or without quotes and level), and the plan keeps their ids."""
+    ws, out = _planned([HALF], {'pieces': 'sentences', 'fills': given})
+    assert out.startswith('The plan is kept.') and ws.plan_work['fills'] == kept
+
+
+def test_plan_work_refuses_a_target_the_project_does_not_have():
+    ws, out = _planned([HALF], {'pieces': 'sentences', 'fills': ['Word class']})
+    assert 'fills: not something a job on this project can fill: "Word class".' in out and ws.plan_work is None
+    assert 'segmentation, Gloss, Morph Gloss, Translation' in out
 
 
 def test_no_job_prompt_has_a_semicolon_or_an_em_dash_of_its_own():

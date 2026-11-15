@@ -63,7 +63,7 @@ def _job(admin, writer, s):
     made = writer.jobs.create(s.project_id, 'igt', 'Gloss the words.')
     claimed = admin.jobs.claim(WORKER, 'fake/m', ['igt'])
     if claimed:
-        admin.jobs.add_decisions(claimed['job']['id'], WORKER, [plan_row()])
+        admin.jobs.add_decisions(claimed['job']['id'], WORKER, [plan_row(ids=s.ids)])
     assert claimed and claimed['job']['id'] == made['id']
     offset = {'s': 0.0}
     return Job(admin, claimed, WORKER, client_for=lambda token: PlaidClient(core_url(), token), model='fake/m',

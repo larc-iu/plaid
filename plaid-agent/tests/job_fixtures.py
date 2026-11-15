@@ -180,11 +180,20 @@ def newest_after(when):
     return _iso(datetime.fromisoformat(when.replace('Z', '+00:00')).timestamp() + 0.001)
 
 
+#: What a test's plan fills unless it says (plan_work's ``fills``, kept as
+#: target ids): a glossing job's, segmentation and the morpheme gloss.
+FILLS = ('segmentation', MGLOSS)
+#: ... and the translation: the fixture project's app default
+#: (igt/targets.py ``app_default``), what a test that translates fills.
+TRANSLATING = ('segmentation', MGLOSS, TRANS)
+
+
 #: The instructions a test's job is started with, unless it says others.
 INSTRUCTIONS = 'Segment and gloss the words nobody has analysed.'
 
 
-def start(client, instructions=INSTRUCTIONS, documents=None, now=None, id=None, plan='sentences', edits_text=None):
+def start(client, instructions=INSTRUCTIONS, documents=None, now=None, id=None, plan='sentences', edits_text=None,
+          fills=FILLS, only_empty=False):
     """A job started and claimed on ``client``, held as the worker holds it
     (no heartbeat thread: a test beats by hand). Its plan is kept as the
     planning context would have kept it (``plan`` the pieces, None for no
@@ -196,7 +205,7 @@ def start(client, instructions=INSTRUCTIONS, documents=None, now=None, id=None, 
     claimed = client.jobs.claim('worker-1', 'fake/m', ['igt'])
     assert claimed['job']['id'] == made['id']
     if plan is not None:
-        keep_plan(client, made['id'], plan, edits_text=edits_text)
+        keep_plan(client, made['id'], plan, edits_text=edits_text, fills=fills, only_empty=only_empty)
     if now is None:
         clock = {'t': __import__('time').time()}
         now = lambda: clock['t']  # noqa: E731
@@ -222,21 +231,26 @@ def text_edits(monkeypatch):
     monkeypatch.setattr(job_fixtures, 'EDITS_TEXT', True)
 
 
-def plan_row(pieces='sentences', documents=None, edits_text=None):
+def plan_row(pieces='sentences', documents=None, edits_text=None, fills=FILLS, only_empty=False, ids=None):
     """The decision row of a job's plan, as the planning context keeps it
-    (its instructions for every piece, none here, are a row of their own)."""
+    (its instructions for every piece, none here, are a row of their own).
+    ``fills``: target ids, empty for a plan that fills nothing, each a
+    fixture layer id mapped through ``ids`` (a seeded project's) when
+    given."""
     from plaid_agent.core.job import analysis_key, canonical
     from plaid_agent.igt.job import PLAN_FORM
     edits = EDITS_TEXT if edits_text is None else edits_text
     text = canonical({'pieces': pieces, 'documents': documents, 'by': 'model', 'why': None,
+                      **({'fills': [(ids or {}).get(f, f) for f in fills]} if fills else {}), **({'only_empty': True} if only_empty else {}),
                       **({'edits_text': True} if edits else {})})
     return {'form': PLAN_FORM, 'key': analysis_key(text), 'analysis': text, 'count': 1, 'document_id': None,
             'sentence_id': None}
 
 
-def keep_plan(client, job_id, pieces='sentences', documents=None, worker='worker-1', edits_text=None):
+def keep_plan(client, job_id, pieces='sentences', documents=None, worker='worker-1', edits_text=None, fills=FILLS,
+              only_empty=False):
     """The job's plan among its decisions, as the planning context keeps it."""
-    client.jobs.add_decisions(job_id, worker, [plan_row(pieces, documents, edits_text)])
+    client.jobs.add_decisions(job_id, worker, [plan_row(pieces, documents, edits_text, fills, only_empty)])
 
 
 def runner(job, write_summary=False, **kw):
@@ -348,4 +362,59 @@ def instructed(asked, word):
 def empty_translations(asked):
     """The sentences whose translation a piece's message says is empty."""
     import re
-    return [int(m.group(1)) for m in re.finditer(r'^Empty in s(\d+): .*the translation\.$', asked, re.M)]
+    return [int(m.group(1)) for m in re.finditer(r'^Empty in s(\d+): .*\bTranslation\.$', asked, re.M)]
+
+
+def empty_words(asked):
+    """``[(sentence, [(word, form)])]`` a piece's message names as empty in
+    a word or morpheme level target, each word once (``wN`` refs, a
+    morpheme's ``wN.mK`` as its word)."""
+    import re
+    out = []
+    for m in re.finditer(r'^Empty in s(\d+): (.*)\.$', asked, re.M):
+        seen = {}
+        for w, form in re.findall(r'\bw(\d+)(?:\.m\d+)? "([^"]*)"', m.group(2)):
+            seen.setdefault(int(w), form)
+        if seen:
+            out.append((int(m.group(1)), sorted(seen.items())))
+    return out
+
+
+def empty_word_lines(asked):
+    """``[(sentence, 'w1 "ka", w3 "ta"')]``: :func:`empty_words` as text,
+    one entry per sentence naming empty words."""
+    return [(str(s), ', '.join(f'w{w} "{f}"' for w, f in words)) for s, words in empty_words(asked)]
+
+
+# --- a project with one more field at each level (the owner's steer) -------------------
+
+#: A word field (Role), a morpheme field that is not the gloss (Morph POS) and
+#: a sentence field that is not the translation (Note), none linked to the
+#: lexicon.
+ROLE, MPOS, NOTE = 'sl-role', 'sl-mpos', 'sl-note'
+FIELD_LAYERS = {ROLE: (WORD_LAYER, 'Role', 'Word'), MPOS: (MORPH_LAYER, 'Morph POS', 'Morpheme'),
+                NOTE: (SENT_LAYER, 'Note', 'Sentence')}
+
+
+def fields_project():
+    """The job's project with Role, Morph POS and Note."""
+    p = job_project()
+    layers = {tk['id']: tk for tk in p['text_layers'][0]['token_layers']}
+    for layer_id, (token_layer, name, scope) in FIELD_LAYERS.items():
+        layers[token_layer]['span_layers'].append({'id': layer_id, 'name': name, 'config': {'igt': {'scope': scope}}})
+    return p
+
+
+def with_values(raw, values):
+    """``raw`` (a :func:`document`) with ``values``: ``(layer, token id,
+    value, who)`` in the fields of :func:`fields_project`."""
+    layers = {tk['id']: tk for tk in raw['text_layers'][0]['token_layers']}
+    for layer_id, token_id, value, who in values:
+        token_layer = layers[FIELD_LAYERS[layer_id][0]]
+        span_layer = next((sl for sl in token_layer['span_layers'] if sl['id'] == layer_id), None)
+        if span_layer is None:
+            span_layer = {'id': layer_id, 'spans': []}
+            token_layer['span_layers'].append(span_layer)
+        span_layer['spans'].append({'id': f'sp-{layer_id}-{token_id}', 'value': value, 'tokens': [token_id],
+                                    'metadata': stamp(who)})
+    return raw

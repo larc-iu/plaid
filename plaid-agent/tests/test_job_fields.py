@@ -93,7 +93,7 @@ def _job(monkeypatch, pieces, refs_of=_piece_words, plan=True, **fill):
     client.guidelines.create('p1', 'Thematic role', body=GUIDELINE)
     job = start(client, INSTRUCTIONS, id=J, plan=None)
     if plan:
-        keep_plan(client, J, pieces)
+        keep_plan(client, J, pieces, fills=(ROLE,))
     written = {}
     real = igt_job.execute_plan
 
@@ -140,8 +140,12 @@ def test_a_job_fills_a_field_on_every_word_of_a_fully_analysed_document(monkeypa
     assert _pieces(model) == (['Your piece: s1, s2, s3.'] if pieces == 'sentences'
                               else ['Your piece: the whole document "Story", 3 sentences.'])
     asked = next(c['asked'] for c in model.calls if c['n'] == 1 and 'Instructions from' in c['asked'])
-    assert 'Empty in' not in asked
-    assert 'Nothing empty in s1, s2, s3: no word to analyse and no translation to write.' in asked
+    # What the plan fills (Thematic role), by THE rule: every word is empty in it.
+    assert 'Empty in s1: Thematic role in w1 "ka", w2 "ta", w3 "pa".' in asked, asked
+    assert 'Nothing empty' not in asked and 'How these forms were analysed' not in asked
+    # A piece in sentences is told the forms the field is on nowhere else; a
+    # document's piece gets the precedent, without that line.
+    assert ('Thematic role on no other word of: ka, ta, pa' in asked) is (pieces == 'sentences'), asked
     _check_report(finished, written)
     # The document's row in core holds the field's count too, and the final
     # context and read_job say it.
@@ -179,10 +183,11 @@ def test_only_empty_works_nothing_of_a_fully_analysed_document(monkeypatch):
 
 
 def test_a_planner_told_its_plan_works_nothing_plans_again(monkeypatch):
-    """BRIEF OE: the measured fault. A planner filling a field sets
-    skip_analyzed_sentences on a fully analysed document. plan_work keeps
-    the plan and answers that it works no sentence, the planner plans again
-    in the same context without it, and the job fills the field."""
+    """BRIEF OE, by the plan's targets: a planner that fills segmentation
+    and skips filled sentences on a fully analysed document works nothing.
+    plan_work keeps the plan and answers so, the planner plans again in the
+    same context filling Thematic role, skipping filled sentences (which
+    now means what it reads as), and the job fills the field."""
     client, job, model, written = _job(monkeypatch, None, plan=False)
     fill = model.answer
     answers = []
@@ -191,15 +196,18 @@ def test_a_planner_told_its_plan_works_nothing_plans_again(monkeypatch):
         if not asked.endswith('Plan the job and end with plan_work.'):
             return fill(asked, n, kwargs)
         if n == 1:
-            return reply(calls=[call(1, 'plan_work', {'pieces': 'sentences', 'skip_analyzed_sentences': True})])
+            return reply(calls=[call(1, 'plan_work', {'pieces': 'sentences', 'fills': ['segmentation'],
+                                                      'skip_filled_sentences': True})])
         if n == 2:
             answers.append(kwargs['messages'][-1]['content'])
-            return reply(calls=[call(2, 'plan_work', {'pieces': 'sentences'})])
+            return reply(calls=[call(2, 'plan_work', {'pieces': 'sentences', 'fills': ['Thematic role'],
+                                                      'skip_filled_sentences': True})])
         return reply('Planned.')
     model.answer = answer
     finished = run_job(job, runner(job))
-    assert 'This plan works no sentence: no word is left to analyse and no translation to write.' in answers[0], answers
-    assert finished['report']['plan']['by'] == 'model' and 'only_empty' not in finished['report']['plan']
+    assert 'This plan works no sentence: nothing it fills is empty in its documents.' in answers[0], answers
+    assert finished['report']['plan']['by'] == 'model' and finished['report']['plan']['only_empty'] is True
+    assert finished['report']['plan']['fills'] == [ROLE]
     assert [p for p in _pieces(model) if p.startswith('Your piece')] == ['Your piece: s1, s2, s3.']
     _check_report(finished, written)
 

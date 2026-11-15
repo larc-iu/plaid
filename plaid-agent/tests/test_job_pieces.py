@@ -8,7 +8,7 @@ import re
 
 import pytest
 
-from job_fixtures import every_tool, JobClient, Model, call, document, keep_plan, reply, runner, start, use
+from job_fixtures import every_tool, JobClient, Model, call, document, empty_words, keep_plan, reply, runner, start, use
 
 from plaid_agent.core import sandbox
 from plaid_agent.core.job import run_job
@@ -74,9 +74,9 @@ def _gloss_all(asked, n):
     doc = asked.split('"')[1]
     import re
     calls = []
-    for m in re.finditer(r'^Empty in s(\d+): words (.*?)(?: and the translation)?\.$', asked, re.M):
-        for w, form in re.findall(r'w(\d+) "([^"]*)"', m.group(2)):
-            calls.append(call(len(calls) + 1, 'set_analysis', {'document': doc, 'ref': f's{m.group(1)}.w{w}',
+    for s, words in empty_words(asked):
+        for w, form in words:
+            calls.append(call(len(calls) + 1, 'set_analysis', {'document': doc, 'ref': f's{s}.w{w}',
                                                               'morphemes': [{'form': form, 'fields': {'Morph Gloss': 'G'}}]}))
     return reply(calls=calls)
 
@@ -86,15 +86,21 @@ def _gloss_all(asked, n):
 def test_the_first_context_plans_and_the_plan_is_kept_and_reported(monkeypatch):
     client = JobClient(_docs())
     job = start(client, 'Segment and gloss the blank words.', id=J, plan=None)
-    model = use(monkeypatch, _model(plan={'pieces': 'sentences', 'piece_instructions': 'Gloss ka as go.'},
-                                    piece=_gloss_all))
+    model = use(monkeypatch, _model(plan={'pieces': 'sentences', 'piece_instructions': 'Gloss ka as go.',
+                                          'fills': ['segmentation', 'Morph Gloss']}, piece=_gloss_all))
     finished = run_job(job, runner(job, write_summary=True))
     assert finished['state'] == 'done'
     assert model.calls[0]['asked'].splitlines()[0] == 'Instructions from user:'
-    assert 'Story 1": 2 sentences, 3 words, 3 words nobody analysed, 0 empty translations' in model.calls[0]['asked']
+    asked = model.calls[0]['asked']
+    assert "What a job can fill (name them in plan_work's fills):\n- segmentation (word level: words into " \
+           'morphemes)\n- "Gloss" (word level)\n- "Morph Gloss" (morpheme level)\n- "Translation" (sentence level)' \
+           in asked, asked
+    assert 'Story 1": 2 sentences, 3 words, 81 characters. Empty: segmentation 3, Gloss 3, Morph Gloss 3, ' \
+           'Translation 0.' in asked, asked
     plan_tools = {t['function']['name'] for t in model.calls[0]['kwargs']['tools']}
     assert 'plan_work' in plan_tools and 'set_analysis' not in plan_tools
-    assert _plan_rows(client) == [{'pieces': 'sentences', 'documents': None, 'by': 'model', 'why': None}]
+    assert _plan_rows(client) == [{'pieces': 'sentences', 'documents': None, 'by': 'model', 'why': None,
+                                   'fills': ['segmentation', 'sl-mgloss']}]
     assert [r['analysis'] for (f, _k), r in client.jobs.decision_rows[J].items()
             if f == igt_job.PLAN_INSTRUCTIONS_FORM] == ['Gloss ka as go.']
     pieces = [c['asked'] for c in model.calls if _kind(c['asked']) == 'piece' and c['n'] == 1]
@@ -116,6 +122,7 @@ def test_a_planning_that_ends_without_a_plan_gets_one_decide_now_round_then_work
     assert any(m.get('content') == JOB_PLAN_NOW for m in planning[1]['kwargs']['messages'])
     assert {t['function']['name'] for t in planning[1]['kwargs']['tools']} == {'plan_work'}
     assert finished['report']['plan'] == {'pieces': 'sentences', 'piece_instructions': '', 'documents': None,
+                                          'fills': ['segmentation', 'sl-mgloss', 'sl-trans'],
                                           'by': 'default', 'why': 'no-plan', 'fallback': [], 'left_out': []}
 
 
@@ -333,7 +340,7 @@ def test_a_sentences_plan_walks_every_sentence_of_a_fully_analysed_document(monk
     pieces = [c['asked'] for c in model.calls if _kind(c['asked']) == 'piece' and c['n'] == 1]
     assert [p.splitlines()[-1] for p in pieces] == ['Your piece: s1, s2.']
     assert 'Empty in' not in pieces[0]
-    assert 'Nothing empty in s1, s2: no word to analyse and no translation to write.' in pieces[0]
+    assert 'Nothing empty in s1, s2 of what this job fills.' in pieces[0]
     (doc,) = finished['report']['documents']
     assert doc['state'] == 'done' and doc['done'] == doc['targets'] == 2 and not doc['skipped']
     assert doc['left'] == [] and not doc['counts'].get('left') and not doc['counts'].get('not_reached')
@@ -343,7 +350,7 @@ HALF = [GLOSSED[0], {'words': ['sa'], 'translation': ('S.', 'human')}, GLOSSED[1
 
 
 @pytest.mark.parametrize('only', [False, True], ids=['every-sentence', 'skip-analyzed'])
-def test_a_sentences_plan_that_skips_analyzed_sentences_walks_only_sentences_with_something_empty(monkeypatch, only):
+def test_a_sentences_plan_that_skips_filled_sentences_walks_only_sentences_with_something_empty(monkeypatch, only):
     """plan_work's skip_analyzed_sentences (BRIEF EW, which reversed
     BRIEF-JH item 6's every_sentence, named so by BRIEF OE): for instructions
     that only fill words nobody analysed or empty translations. Its plan row
@@ -352,7 +359,8 @@ def test_a_sentences_plan_that_skips_analyzed_sentences_walks_only_sentences_wit
     sentences did before. Without it every sentence is."""
     client = JobClient({'d1': document('d1', 'Story 1', HALF)})
     job = start(client, 'Gloss every word nobody analysed.', id=J, plan=None)
-    model = use(monkeypatch, _model(plan={'pieces': 'sentences', 'skip_analyzed_sentences': only},
+    model = use(monkeypatch, _model(plan={'pieces': 'sentences', 'fills': ['segmentation', 'Morph Gloss'],
+                                          'skip_filled_sentences': only},
                                     piece=lambda asked, n: reply('Checked.')))
     finished = run_job(job, runner(job))
     rows = _plan_rows(client)
@@ -361,17 +369,17 @@ def test_a_sentences_plan_that_skips_analyzed_sentences_walks_only_sentences_wit
     pieces = [c['asked'] for c in model.calls if _kind(c['asked']) == 'piece' and c['n'] == 1]
     assert [p.splitlines()[-1] for p in pieces] == (['Your piece: s2. s1 is context.'] if only
                                                     else ['Your piece: s1, s2, s3.'])
-    assert 'Empty in s2: words w1 "sa".' in pieces[0]
+    assert 'Empty in s2: segmentation and Morph Gloss in w1 "sa".' in pieces[0]
     (doc,) = finished['report']['documents']
     assert doc['state'] == 'done' and doc['done'] == doc['targets'] == (1 if only else 3)
 
 
-def test_skip_analyzed_sentences_means_nothing_under_a_plan_by_documents(monkeypatch):
+def test_skip_filled_sentences_means_nothing_under_a_plan_by_documents(monkeypatch):
     """skip_analyzed_sentences is a plan in sentences' only: plan_work keeps it on no
     other, and a plan by documents walks every sentence."""
     client = JobClient({'d1': document('d1', 'Story 1', GLOSSED)})
     job = start(client, 'Check every gloss.', id=J, plan=None)
-    model = use(monkeypatch, _model(plan={'pieces': 'document', 'skip_analyzed_sentences': True},
+    model = use(monkeypatch, _model(plan={'pieces': 'document', 'skip_filled_sentences': True},
                                     piece=lambda asked, n: reply('Checked.')))
     run_job(job, runner(job))
     assert 'only_empty' not in _plan_rows(client)[0]

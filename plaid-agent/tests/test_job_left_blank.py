@@ -6,6 +6,7 @@ offset). Read from the document as the report is written, in the sentences
 the job worked (BRIEF NW), so a resumed job reports what an earlier run left
 too."""
 
+from fixtures import TRANS
 from job_fixtures import JobClient, Model, call, document, reply, runner, start, targets_named, use
 
 from plaid_agent.core import job as core_job
@@ -48,9 +49,9 @@ def test_the_report_lists_each_word_left_blank_with_where_it_is(monkeypatch):
     (doc,) = _report(client)['documents']
     assert doc['counts']['left'] == 3
     assert doc['left'] == [
-        {'ref': 's1.w2', 'begin': 3, 'form': 'pata', 'sentence_id': 'd1-s1'},
-        {'ref': 's2.w2', 'begin': 12, 'form': 'ta', 'sentence_id': 'd1-s2'},
-        {'ref': 's2.w3', 'begin': 15, 'form': 'sa', 'sentence_id': 'd1-s2'},
+        {'ref': 's1.w2', 'begin': 3, 'form': 'pata', 'sentence_id': 'd1-s1', 'targets': ['segmentation', 'Morph Gloss']},
+        {'ref': 's2.w2', 'begin': 12, 'form': 'ta', 'sentence_id': 'd1-s2', 'targets': ['segmentation', 'Morph Gloss']},
+        {'ref': 's2.w3', 'begin': 15, 'form': 'sa', 'sentence_id': 'd1-s2', 'targets': ['segmentation', 'Morph Gloss']},
     ]
     assert doc['left_more'] == 0
 
@@ -63,27 +64,38 @@ def _translate_first(asked, n, kwargs):
 
 
 def test_a_translation_left_blank_is_listed_by_its_sentence(monkeypatch):
-    """The job translated s1 and left s2: s2's translation is listed. It
-    analysed no word, so the blank words are not: a job has no task types,
-    and the report lists left blank only what the job filled somewhere."""
+    """The job translated s1 and left s2: s2's translation is listed. Its
+    plan fills the translation alone, so the blank words are not listed:
+    Left blank is what is empty of what the plan fills."""
     client = JobClient({'d1': document('d1', 'Story', [{'words': ['ka']}, {'words': ['ta']}])})
     client.after_write['d1'] = document('d1', 'Story', [{'words': ['ka'], 'translation': ('One.', J)},
                                                         {'words': ['ta']}], version=2)
-    job = start(client, 'Translate the empty translations.', id=J)
+    job = start(client, 'Translate the empty translations.', id=J, fills=(TRANS,))
     use(monkeypatch, Model(_translate_first))
     assert run_job(job, runner(job))['state'] == 'done'
     (doc,) = _report(client)['documents']
-    assert doc['left'] == [{'ref': 's2', 'begin': None, 'form': None, 'sentence_id': 'd1-s2'}]
+    assert doc['left'] == [{'ref': 's2', 'begin': None, 'form': None, 'sentence_id': 'd1-s2', 'targets': ['Translation']}]
     assert doc['left_more'] == 0
 
 
-def test_a_job_that_filled_nothing_lists_nothing_left_blank(monkeypatch):
+def test_a_job_whose_plan_fills_nothing_lists_nothing_left_blank(monkeypatch):
+    client = JobClient({'d1': document('d1', 'Story', [{'words': ['ka']}])})
+    job = start(client, 'Check the glosses.', id=J, fills=())
+    use(monkeypatch, Model(lambda asked, n, kwargs: reply('Done.')))
+    assert run_job(job, runner(job))['state'] == 'done'
+    (doc,) = _report(client)['documents']
+    assert doc['left'] == [] and doc['left_more'] == 0
+
+
+def test_a_glossing_job_that_wrote_nothing_lists_its_blank_word(monkeypatch):
+    """REV-DAY-P-4: a job whose pieces all answered "Done." lists every
+    word left empty of what its plan fills, never "nothing left"."""
     client = JobClient({'d1': document('d1', 'Story', [{'words': ['ka']}])})
     job = start(client, id=J)
     use(monkeypatch, Model(lambda asked, n, kwargs: reply('Done.')))
     assert run_job(job, runner(job))['state'] == 'done'
     (doc,) = _report(client)['documents']
-    assert doc['left'] == [] and doc['left_more'] == 0
+    assert [e['ref'] for e in doc['left']] == ['s1.w1'] and doc['counts']['left'] == 1
 
 
 def test_the_list_is_cut_as_every_report_list_is_with_how_many_more(monkeypatch):

@@ -21,12 +21,12 @@ import re
 
 import pytest
 
-from job_fixtures import every_tool, JobClient, Model, call, document, keep_plan, reply, runner, start, targets_named, use
+from fixtures import TRANS
+from job_fixtures import every_tool, JobClient, Model, call, document, empty_translations, empty_word_lines, keep_plan, reply, runner, start, targets_named, use
 from test_job_left_all import adds_up
 
-from plaid_agent.core.job import analysis_key, canonical, run_job
+from plaid_agent.core.job import run_job
 from plaid_agent.igt import job as igt_job
-from plaid_agent.igt.job import PLAN_FORM
 
 
 @pytest.fixture(autouse=True)
@@ -62,13 +62,8 @@ def _applying(monkeypatch, client):
 
 
 def _keep_plan(client, pieces, every):
-    if not every:
-        keep_plan(client, J, pieces)
-        return
-    text = canonical({'pieces': pieces, 'piece_instructions': '', 'documents': None, 'by': 'model', 'why': None,
-                      'every_sentence': True})
-    client.jobs.add_decisions(J, 'worker-1', [{'form': PLAN_FORM, 'key': analysis_key(text), 'analysis': text,
-                                               'count': 1, 'document_id': None, 'sentence_id': None}])
+    """A glossing plan: skipping filled sentences, or walking every one."""
+    keep_plan(client, J, pieces, only_empty=not every)
 
 
 def _bulk_then_each(asked, n, kwargs):
@@ -175,7 +170,7 @@ def _empty_named(asked, n, kwargs):
     if n > 1:
         return reply('Done.')
     calls = []
-    for s, words in re.findall(r'^Empty in s(\d+): words (.*?)(?: and the translation)?\.$', asked, re.M):
+    for s, words in empty_word_lines(asked):
         for i, form in re.findall(r'w(\d+) "([^"]+)"', words):
             if (s, form) == ('1', 'ka'):
                 calls.append(call(len(calls) + 1, 'set_analysis_for_form', {
@@ -216,7 +211,7 @@ def _stage_named(asked, n, kwargs, also=()):
     if 1 in targets_named(asked):
         return _bulk_then_each(asked, n, kwargs)
     calls = list(also)
-    for s, words in re.findall(r'^Empty in s(\d+): words (.*?)(?: and the translation)?\.$', asked, re.M):
+    for s, words in empty_word_lines(asked):
         for i, form in re.findall(r'w(\d+) "([^"]+)"', words):
             calls.append(call(len(calls) + 20, 'set_analysis', {'document': 'Story', 'ref': f's{s}.w{i}', 'morphemes': [
                 {'form': form, 'fields': {'Morph Gloss': 'g'}}]}))
@@ -265,7 +260,7 @@ def test_a_word_the_bulk_op_wrote_and_a_person_cleared_is_not_written_again(monk
     assert {'d1-s3w2', 'd1-s4w1', 'd1-s4w2'} <= set(later), 'the rest of s3 and s4 is worked'
     (doc,) = finished['report']['documents']
     second = next(c['asked'] for c in model.calls if c['n'] == 1 and targets_named(c['asked']) == [3, 4])
-    assert re.findall(r'^Empty in s3: words (.*?)(?: and the translation)?\.$', second, re.M) == ['w2 "sa"']
+    assert [w for s, w in empty_word_lines(second) if s == '3'] == ['w2 "sa"']
     assert doc['left'] == [] and doc['counts']['left'] == 0 and doc['counts']['words'] == 8
     adds_up(doc, sum(len(s) for s in SENTENCES))
     assert doc['counts'].get('changed', 0) == (1 if blind else 0)
@@ -278,7 +273,7 @@ def test_a_translation_the_job_wrote_and_a_person_cleared_is_not_written_again(m
     monkeypatch.setattr(igt_job, 'JOB_STRETCH_SENTENCES', 2)
     sentences = [{'words': [w]} for w in ('ka', 'pa', 'sa', 'mo')]
     client = JobClient({'d1': document('d1', 'Story', sentences)})
-    job = start(client, 'Translate the empty translations.', id=J)
+    job = start(client, 'Translate the empty translations.', id=J, fills=(TRANS,))
     real, sent, translated = igt_job.execute_plan, [], set()
 
     def execute(c, ops, **kw):
@@ -298,7 +293,7 @@ def test_a_translation_the_job_wrote_and_a_person_cleared_is_not_written_again(m
         if n > 1 or 'Your piece: s' not in asked:
             return reply('Done.')
         mine = targets_named(asked)
-        told.append(re.findall(r'^Empty in s(\d+): .*the translation\.$', asked, re.M))
+        told.append([str(s) for s in empty_translations(asked)])
         refs = ['s1', 's2', 's3'] if 1 in mine else ['s3', 's4']
         return reply(calls=[call(1, 'set_field', {'document': 'Story', 'refs': refs, 'field': 'Translation',
                                                   'value': 'T.'})])

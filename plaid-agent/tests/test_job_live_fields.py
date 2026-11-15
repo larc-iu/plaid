@@ -45,7 +45,7 @@ def _job(admin, writer, s, pieces):
     made = writer.jobs.create(s.project_id, 'igt', INSTRUCTIONS)
     claimed = admin.jobs.claim(WORKER, 'fake/m', ['igt'])
     assert claimed and claimed['job']['id'] == made['id']
-    admin.jobs.add_decisions(made['id'], WORKER, [plan_row(pieces)])
+    admin.jobs.add_decisions(made['id'], WORKER, [plan_row(pieces, ids=s.ids, fills=(ROLE,))])
     offset = {'s': 0.0}
 
     def wait(sec):
@@ -71,7 +71,7 @@ def test_a_job_fills_a_field_on_every_word_and_undo_job_takes_it_back(world, mon
     assert finished['state'] == 'done', (finished.get('reason'), job.status.get('message'))
     pieces = [c['asked'] for c in model.calls if c['n'] == 1 and 'Instructions from' in c['asked']]
     assert [p.splitlines()[-1] for p in pieces] == ['Your piece: s1, s2, s3.']
-    assert 'Nothing empty in s1, s2, s3: no word to analyse and no translation to write.' in pieces[0]
+    assert 'Empty in s1: Thematic role in w1 ' in pieces[0], pieces[0]
     expected = {f'd1-s{si}w{wi}': role_of(si, wi) for si, ws in enumerate(WORDS, start=1)
                 for wi in range(1, len(ws) + 1)}
     assert _roles(admin, s) == expected, 'the write landed'

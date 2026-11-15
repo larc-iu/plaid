@@ -49,10 +49,11 @@ Idiomatic English, not a word-by-word rendering.
 --- the project's guidelines end ---
 
 How to plan:
-- pieces "sentences": a few sentences per piece, seeing the two before, for sentence by sentence work. Every sentence, unless instructions only fill unanalysed words or empty translations: then skip_analyzed_sentences true.
+- pieces "sentences": a few sentences per piece, seeing the two before, for sentence by sentence work, with only the tools to set values (and to segment, link and add entries when the job fills those), no search or code. Every sentence, unless the job only fills what is empty: then skip_filled_sentences true.
 - pieces "document": one piece per document, seeing the whole document. For work about a whole text, such as a summary of each.
 - pieces "selection": one piece for all the documents, reading them with the tools and code. For work across the documents, such as finding where they disagree. Its findings go in tables code makes and in its note.
 - piece_instructions: only your decisions, as plain imperative sentences naming forms and values exactly. Pieces already have the project's guidelines and the job's instructions. Read the documents to decide.
+- fills: what the instructions ask the job to fill or change, as listed under What a job can fill. Glossing fills segmentation and the morpheme gloss field. Left out for a check or a summary.
 - edits_text: only when instructions ask to change the words or sentences themselves.
 - documents: leave it out for every document in the job's order.
 - Do NOT read a document to answer something search, concordance, frequency_list, worklist or check_consistency can answer: those ask the whole project at once, and reading documents one by one to count something will run out of tool calls long before it runs out of corpus.
@@ -64,10 +65,11 @@ Its 24 tools are the chat's reads and code, as `SAMPLE_PROMPT.md` shows them (an
 
 ### plan_work
 
-End the planning: how the job's work is cut into pieces, what every piece is told, and optionally which documents and in what order. pieces: "sentences" (stretches of a few sentences, each its own context), "document" (one context per document) or "selection" (one context for all the documents). skip_analyzed_sentences: with "sentences", true skips every sentence whose words are all analysed and whose translation is written. A job that fills a field or checks analyses leaves it out. edits_text: true when the instructions ask for the text itself to change: words or sentences retyped, respelled, split, merged, inserted or deleted. piece_instructions: what every piece is told, as decisions, added to the instructions. documents: names or ids, a subset of the job's documents in the order to work them. Left out, all of them in the job's order.
+End the planning: how the job's work is cut into pieces, what every piece is told, and optionally which documents and in what order. pieces: "sentences" (stretches of a few sentences, each its own context), "document" (one context per document) or "selection" (one context for all the documents). fills: what the job fills, each named as the message lists it under What a job can fill (segmentation, a field). Left out when the job fills nothing, such as a check or a summary. Pieces are shown what of it is empty. skip_filled_sentences: with "sentences", true skips every sentence in which nothing the job fills is empty. edits_text: true when the instructions ask for the text itself to change: words or sentences retyped, respelled, split, merged, inserted or deleted. piece_instructions: what every piece is told, as decisions, added to the instructions. documents: names or ids, a subset of the job's documents in the order to work them. Left out, all of them in the job's order.
 
 - `pieces` (one of `sentences`, `document`, `selection`, required)
-- `skip_analyzed_sentences` (boolean)
+- `fills` (array of string)
+- `skip_filled_sentences` (boolean)
 - `edits_text` (boolean)
 - `piece_instructions` (string)
 - `documents` (array of string)
@@ -110,7 +112,7 @@ Idiomatic English, not a word-by-word rendering.
 --- the project's guidelines end ---
 
 How to work:
-- The message holds how your words were analysed and the lexicon entries in them. Stage empty words with analyze_sentence first, and look up only what its answer lists as several or none.
+- Use the tools rather than guessing, and follow the conventions already in the data.
 - Address things positionally: sN (sentence), sN.wN (word), sN.wN.mN (morpheme), always together with the document. Numbers restart in every document and sentence. In what the reads print, a trailing ~ marks a value a machine made and a trailing ^ one a contributor made.
 - For bulk work, first find every affected item (worklist, search, frequency_list), then stage the changes. Where the instructions are unclear about something, do the part that is clear and say in your note what you left.
 - STAGE everything you decide in this piece before you end: there is no later message to do it in. The message shows how the forms in it were analysed by people and earlier in this job: follow that unless the sentence in front of you clearly needs another reading. Where you cannot tell what is right, leave it: a value left empty is filled by a person later, and a wrong one has to be found first.
@@ -118,16 +120,16 @@ How to work:
 - WHAT THE INSTRUCTIONS STATE WINS. A value they give (a gloss, a form, a part of speech, a translation) is the value to stage, even where the corpus does it differently: say the difference in your note.
 - set_field changes one field value (a gloss, a part of speech, a translation) and leaves everything else alone. set_analysis rewrites a word's whole segmentation with all its morpheme values, so use it only to (re)segment a word, never to change a single gloss.
 - END THE PIECE with a short note for the job's report, one to three plain sentences: what you did, what you left and why. It is your last message, with no tool call. Nobody answers it.
-- A WHOLE PIECE, FOR EXAMPLE. The message showed s4 and s5 as context and s6 and s7 as your piece, and the instructions said to segment and gloss the words nobody analysed and to translate empty translations. It showed that people analysed "leo" as le-o 'today-DEF' twice. It listed the entries na 'PRS' and ku 'INF'. You staged one analyze_sentence for s6 with w1 as na-ku-ja (prefix PRS, prefix INF, stem come) and w3 as le-o as people have it, and set the translation of s7. You left w2 of s7, a name you could not place. Then you ended with the note:
+- A WHOLE PIECE, FOR EXAMPLE. The message showed s6 and s7 as your piece, and the instructions said to correct a field where it disagrees with the guidelines. You read each value, found two that disagree, and set them with set_field on s6.w1 and s7.w3. You left the rest as they were. Then you ended with the note:
 
-Glossed s6 and translated s7. Left s7.w2, a name nobody has glossed.
+Corrected s6.w1 and s7.w3. The other values follow the guidelines.
 - A project-wide tool (set_field_for_form, replace_in_field, copy_to_orthography) stages a rule, which a job lists as a proposed change and never applies: stage changes item by item where they are to be applied. set_analysis_for_form stages a change at every occurrence: those in your piece's document are applied, the others listed as proposed changes. A lexicon's entries form a TREE: a HEADWORD is an entry with nothing above it, a SENSE one under another, and the tools that move entries around work on that structure, never on a field. When no tool can express a question, read query_help and write a query.
 - Do NOT read a document to answer something search, concordance, frequency_list, worklist or check_consistency can answer: those ask the whole project at once, and reading documents one by one to count something will run out of tool calls long before it runs out of corpus.
 - Be concise and concrete. Answer analytic questions with the evidence (counts, examples with references). Say so when the data does not settle a question, and mark guesses as guesses. Never name a tool or its arguments to the user: say what you did in their terms ("I searched the project"), not which tool did it.
 - A letter of a rare script that you type can come out as another script. A plan refuses a value whose rare letters appear nowhere you could have copied them from, and the refusal says how to copy it.
 ```
 
-Its 7 tools (`toolkit.SENTENCES_PIECE_TOOLS`, analyses_of without "Check this before proposing an analysis, and follow the majority unless there is reason not to.", less `toolkit.TEXT_TOOLS` unless the plan sets edits_text): read_lexicon, set_field, set_analysis, analyze_sentence, link_entry, create_entry, analyses_of.
+Its 3 tools (`toolkit.SENTENCES_PIECE_TOOLS`, analyses_of without "Check this before proposing an analysis, and follow the majority unless there is reason not to.", less `toolkit.TEXT_TOOLS` unless the plan sets edits_text): read_lexicon, set_field, analyses_of.
 
 
 ## A piece of a document or selection plan

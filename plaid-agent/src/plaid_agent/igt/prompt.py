@@ -111,9 +111,15 @@ _READ_FIRST = '''- Use the tools rather than guessing. Read before you write: ch
 proposing glosses, and follow the conventions already in the data (gloss abbreviations, capitalization, morph \
 types, orthography).'''
 #: The same bullet for a piece of a job planned in sentences, whose message
-#: holds what the bullet above sends the model to read (igt/evidence.py).
-_JOB_SENTENCES_READ_FIRST = '''- The message holds how your words were analysed and the lexicon entries in them. \
-Stage empty words with analyze_sentence first, and look up only what its answer lists as several or none.'''
+#: holds what the bullet above sends the model to read (igt/evidence.py), by
+#: what the job's plan fills (igt/targets.py): segmentation, only fields, or
+#: nothing. Each names only tools such a piece is offered.
+_JOB_SENTENCES_READ_FIRST = '''- The message says what is empty in your piece, how those forms were analysed and the \
+lexicon entries in them. Stage the words to segment with analyze_sentence first, and look \
+up only what its answer lists as several or none.'''
+_JOB_FIELDS_READ_FIRST = '''- The message says what is empty in your piece, and the values those fields hold on \
+other words or morphemes of the same forms. Fill what is empty with set_field.'''
+_JOB_NOTHING_READ_FIRST = '''- Use the tools rather than guessing, and follow the conventions already in the data.'''
 
 _FIND_SUBJECT = 'item (worklist, search, frequency_list)'
 _USER_VALUE_KINDS = 'a gloss, a form, a part of speech, a translation'
@@ -254,6 +260,19 @@ _JOB_SENTENCES_EXAMPLE_DID = _JOB_EXAMPLE_DID.replace(
     'Nothing settled "na", so you read the concordance of "na" and saw it before verbs glossed PRS in four '
     'sentences.', 'It listed the entries na \'PRS\' and ku \'INF\'.')
 assert _JOB_SENTENCES_EXAMPLE_DID != _JOB_EXAMPLE_DID
+#: The worked piece of a piece in sentences of a job that fills fields only.
+_JOB_FIELDS_EXAMPLE_DID = (
+    'The message showed s4 and s5 as context and s6 and s7 as your piece, and the instructions said to fill a word '
+    'field. It named the words of s6 and s7 empty in that field, and showed that people gave "leo" the value N in '
+    'twelve words. You set the field on s6.w1 and s6.w3 with set_field, "leo" as people have it, and on s7.w1. You '
+    'left s7.w2, a name you could not place.')
+_JOB_FIELDS_EXAMPLE_NOTE = 'Filled the field in s6 and s7. Left s7.w2, a name nobody has a value for.'
+#: The worked piece of a piece in sentences of a job that fills nothing.
+_JOB_NOTHING_EXAMPLE_DID = (
+    'The message showed s6 and s7 as your piece, and the instructions said to correct a field where it disagrees '
+    'with the guidelines. You read each value, found two that disagree, and set them with set_field on s6.w1 and '
+    's7.w3. You left the rest as they were.')
+_JOB_NOTHING_EXAMPLE_NOTE = 'Corrected s6.w1 and s7.w3. The other values follow the guidelines.'
 
 _JOB = {
     **_CHAT,
@@ -278,11 +297,19 @@ _JOB = {
 #: chat's template, the person's paragraphs put the job's way. Empty holes
 #: leave no blank line.
 JOB_SYSTEM = re.sub(r'\n{2,}(?=- |\Z)', '\n', shared.filled(_SYSTEM, _JOB)).rstrip('\n') + '\n'
-#: The prompt of a piece of a job planned in sentences: two lines of
-#: JOB_SYSTEM say that its message holds the evidence (BRIEF-EV).
-JOB_SENTENCES_SYSTEM = re.sub(r'\n{2,}(?=- |\Z)', '\n', shared.filled(_SYSTEM, {
-    **_JOB, 'read_first': _JOB_SENTENCES_READ_FIRST,
-    'turn_example': shared.job_example(_JOB_SENTENCES_EXAMPLE_DID, _JOB_EXAMPLE_NOTE)})).rstrip('\n') + '\n'
+
+
+def _sentences_system(read_first: str, did: str, note: str) -> str:
+    return re.sub(r'\n{2,}(?=- |\Z)', '\n', shared.filled(_SYSTEM, {
+        **_JOB, 'read_first': read_first, 'turn_example': shared.job_example(did, note)})).rstrip('\n') + '\n'
+
+
+#: The prompt of a piece of a job planned in sentences, by what its plan
+#: fills (BRIEF-EV, the owner's steer of 2026-11-15): two lines of JOB_SYSTEM
+#: say what its message holds and how to stage from it.
+JOB_SENTENCES_SYSTEM = _sentences_system(_JOB_SENTENCES_READ_FIRST, _JOB_SENTENCES_EXAMPLE_DID, _JOB_EXAMPLE_NOTE)
+JOB_FIELDS_SYSTEM = _sentences_system(_JOB_FIELDS_READ_FIRST, _JOB_FIELDS_EXAMPLE_DID, _JOB_FIELDS_EXAMPLE_NOTE)
+JOB_NOTHING_SYSTEM = _sentences_system(_JOB_NOTHING_READ_FIRST, _JOB_NOTHING_EXAMPLE_DID, _JOB_NOTHING_EXAMPLE_NOTE)
 
 
 #: The tagsets' first line in a job's prompt: nobody sees the value as the
@@ -317,14 +344,23 @@ NO_TEXT_EDITS = (('deletions and text edits included', 'deletions included'),
                  ('replace_in_field, respell_all, copy_to_orthography', 'replace_in_field, copy_to_orthography'))
 
 
-def build_job_prompt(project: IgtProject, sentences: bool = False, edits_text: bool = False) -> str:
+def build_job_prompt(project: IgtProject, sentences: bool = False, edits_text: bool = False, targets=None) -> str:
     """The system prompt of every piece of a job on ``project``: the chat's
     prompt with the job's paragraphs, the project's shape and its guidelines
     whole, and the code section where the sandbox is. A piece of a plan in
-    sentences (``sentences``) is told its message holds the evidence. A
+    sentences (``sentences``) is told what its message holds and how to stage
+    from it, by what the plan fills (``targets``, igt/targets.py): with
+    segmentation, the analyses; fields only, set_field; nothing, neither. A
     piece of a plan that does not edit the text (``edits_text`` False) is
     told nothing of the tools it is not offered (:data:`NO_TEXT_EDITS`)."""
-    out = _filled(JOB_SENTENCES_SYSTEM if sentences else JOB_SYSTEM, project)
+    from .targets import SEGMENTATION
+    if not sentences:
+        template = JOB_SYSTEM
+    elif any(t.id == SEGMENTATION for t in targets or ()):
+        template = JOB_SENTENCES_SYSTEM
+    else:
+        template = JOB_FIELDS_SYSTEM if targets else JOB_NOTHING_SYSTEM
+    out = _filled(template, project)
     if not edits_text:
         for said, instead in NO_TEXT_EDITS:
             assert said in out, said
@@ -340,14 +376,17 @@ count or a finding is given by code and not retyped.
 
 #: How the planning context cuts the work, in the app's words.
 JOB_PLAN_RULES = '''How to plan:
-- pieces "sentences": a few sentences per piece, seeing the two before, for sentence by sentence work. Every \
-sentence, unless instructions only fill unanalysed words or empty translations: then skip_analyzed_sentences true.
+- pieces "sentences": a few sentences per piece, seeing the two before, for sentence by sentence work, with \
+only the tools to set values (and to segment, link and add entries when the job fills those), no search or code. \
+Every sentence, unless the job only fills what is empty: then skip_filled_sentences true.
 - pieces "document": one piece per document, seeing the whole document. For work about a whole text, such as \
 a summary of each.
 - pieces "selection": one piece for all the documents, reading them with the tools and code. For work across \
 the documents, such as finding where they disagree. Its findings go in tables code makes and in its note.
 - piece_instructions: only your decisions, as plain imperative sentences naming forms and values exactly. \
 Pieces already have the project's guidelines and the job's instructions. Read the documents to decide.
+- fills: what the instructions ask the job to fill or change, as listed under What a job can fill. Glossing \
+fills segmentation and the morpheme gloss field. Left out for a check or a summary.
 - edits_text: only when instructions ask to change the words or sentences themselves.
 - documents: leave it out for every document in the job's order.'''
 

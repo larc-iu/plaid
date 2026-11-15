@@ -626,27 +626,30 @@ PLAN_WORK = _fn(
     'End the planning: how the job\'s work is cut into pieces, what every piece is told, and optionally which '
     'documents and in what order. pieces: "sentences" (stretches of a few sentences, each its own context), '
     '"document" (one context per document) or "selection" (one context for all the documents). '
-    'skip_analyzed_sentences: with "sentences", true skips every sentence whose words are all analysed and whose '
-    'translation is written. A job that fills a field or checks analyses leaves it out. '
+    'fills: what the job fills, each named as the message lists it under What a job can fill (segmentation, a '
+    'field). Left out when the job fills nothing, such as a check or a summary. Pieces are shown what of it is '
+    'empty. '
+    'skip_filled_sentences: with "sentences", true skips every sentence in which nothing the job fills is empty. '
     'edits_text: true when the instructions ask for the text itself to change: words or sentences retyped, '
     'respelled, split, merged, inserted or deleted. '
     'piece_instructions: what every piece is told, as decisions, added to the instructions. documents: names or '
     'ids, a subset of the job\'s documents in the order to work them. Left out, all of them in the job\'s order.',
     {'pieces': {'type': 'string', 'enum': ['sentences', 'document', 'selection']},
-     'skip_analyzed_sentences': {'type': 'boolean'},
+     'fills': {'type': 'array', 'items': {'type': 'string'}},
+     'skip_filled_sentences': {'type': 'boolean'},
      'edits_text': {'type': 'boolean'},
      'piece_instructions': {'type': 'string'},
      'documents': {'type': 'array', 'items': {'type': 'string'}}}, ['pieces'])
 
 
-def t_plan_work(ws, pieces: str = None, piece_instructions: str = '', documents=None,
-                skip_analyzed_sentences: bool = False, edits_text: bool = False) -> str:
+def t_plan_work(ws, pieces: str = None, piece_instructions: str = '', documents=None, fills=None,
+                skip_filled_sentences: bool = False, edits_text: bool = False) -> str:
     """Check the planning context's plan and keep it on the workspace
-    (``ws.plan_work``): a piece size of the menu, whether stretches walk
-    only the sentences with something empty (``skip_analyzed_sentences``,
-    kept as ``only_empty``, the key the job page reads: BRIEF OE renamed only
-    what the model sees, after planners filling a field read only_empty as
-    "only words whose field is empty"), whether its pieces may change the
+    (``ws.plan_work``): a piece size of the menu, what the job fills
+    (``fills``, names of :func:`targets.fillable`, kept as target ids, only
+    when any), whether stretches walk only the sentences where something it
+    fills is empty (``skip_filled_sentences``, kept as ``only_empty``, the key
+    the job page reads), whether its pieces may change the
     text (``edits_text``, kept only when true: a plan without it, the
     default plan too, offers no tool that changes the text, the owner's
     ruling of 2026-11-15), instructions within their cap, a
@@ -685,9 +688,18 @@ def t_plan_work(ws, pieces: str = None, piece_instructions: str = '', documents=
             raise ToolError('documents: not documents of this job: ' + ', '.join(f'"{u}"' for u in unknown[:5])
                             + '. Leave them out of documents, or leave documents out for every document.',
                             kind='invalid-argument')
-    skip = skip_analyzed_sentences is True and pieces == 'sentences'
+    from . import targets as tg
+    if isinstance(fills, str):
+        fills = [fills]
+    chosen, unknown = tg.named(ws.project, fills or [])
+    if unknown:
+        raise ToolError('fills: not something a job on this project can fill: '
+                        + ', '.join(f'"{u}"' for u in unknown[:5]) + '. Name each as listed under What a job can '
+                        'fill: ' + ', '.join(t.name for t in tg.fillable(ws.project)) + '.', kind='invalid-argument')
+    skip = skip_filled_sentences is True and pieces == 'sentences'
     # Kept only when true: the plan's row holds the largest plan at its cap.
     ws.plan_work = {'pieces': pieces, 'piece_instructions': text, 'documents': order,
+                    **({'fills': [t.id for t in chosen]} if chosen else {}),
                     **({'only_empty': True} if skip else {}),
                     **({'edits_text': True} if edits_text is True else {}),
                     **({'instructions_cut': given} if len(text) < given else {})}
@@ -699,7 +711,8 @@ def t_plan_work(ws, pieces: str = None, piece_instructions: str = '', documents=
                    f'{JOB_PIECE_INSTRUCTIONS_MAX_CHARS:,}: they are {kept}. Pieces already have the guidelines and '
                    'the instructions.')
     worked = [d for d in known if order is None or d['id'] in order]
-    if skip and sum(d.get('sentences', 0) for d in worked) and not any(d.get('empty', 0) for d in worked):
+    if skip and sum(d.get('sentences', 0) for d in worked) \
+            and not any((d.get('empty') or {}).get(t.id) for d in worked for t in chosen):
         # A fixed rule on the planning context's own counts: the walk would
         # take no sentence of any document the plan works (BRIEF OE).
         out += [PLAN_WORKS_NOTHING, 'Call plan_work again to change it, or end now with a one-line reply.']
@@ -708,9 +721,9 @@ def t_plan_work(ws, pieces: str = None, piece_instructions: str = '', documents=
     return ' '.join(out)
 
 
-#: plan_work's answer to a plan whose walk takes no sentence: every document
-#: it works is analysed and translated throughout.
-PLAN_WORKS_NOTHING = 'This plan works no sentence: no word is left to analyse and no translation to write.'
+#: plan_work's answer to a plan whose walk takes no sentence: nothing it
+#: fills is empty in any document it works (or it fills nothing).
+PLAN_WORKS_NOTHING = 'This plan works no sentence: nothing it fills is empty in its documents.'
 
 
 #: What ends a sentence when a space or the end follows it: the full stop,
@@ -755,17 +768,45 @@ TEXT_TOOLS = ('append_text', 'retype_sentence', 'split_sentence', 'merge_sentenc
               'merge_words', 'delete_word', 'respell', 'respell_all', 'restore_document')
 
 
+#: What every piece of a plan in sentences is offered whatever its plan
+#: fills: the field tool and two reads.
+SENTENCES_ALWAYS = ('set_field', 'read_lexicon', 'analyses_of')
+#: Offered when segmentation is a target.
+SENTENCES_SEGMENTATION = ('analyze_sentence', 'set_analysis')
+#: Offered when a target is linked to the lexicon.
+SENTENCES_LEXICON = ('link_entry', 'create_entry')
+#: Offered when the plan edits the text (``TEXT_TOOLS`` decides).
+SENTENCES_TEXT = ('retype_sentence', 'split_sentence', 'merge_sentences', 'delete_sentence')
+
+
+def sentences_piece_tools(targets) -> tuple:
+    """The tools a piece of a plan in sentences is offered, from what the
+    plan fills (the owner's steer of 2026-11-15: never a fixed glossing
+    list): :data:`SENTENCES_ALWAYS`, the analysis tools when segmentation is a
+    target, the entry tools when a target is linked to the lexicon, and the
+    sentence text tools (offered only when the plan edits the text)."""
+    from .targets import SEGMENTATION
+    out = SENTENCES_ALWAYS
+    if any(t.id == SEGMENTATION for t in targets):
+        out += SENTENCES_SEGMENTATION
+    if any(t.lexicon for t in targets):
+        out += SENTENCES_LEXICON
+    return out + SENTENCES_TEXT
+
+
 def job_piece_tools(ws, plan_only: bool = False) -> list:
     """The schemas a piece of a job offers: the assistant's own, as the chat
     offers them on this workspace (code where the sandbox is, the web where
     it is set up), less :data:`JOB_LEFT_OUT`, less :data:`TEXT_TOOLS` unless
     the plan edits the text (``ws.edits_text``), and for a piece of a plan in
-    sentences (``ws.in_sentences``) only :data:`SENTENCES_PIECE_TOOLS`. Once
+    sentences (``ws.in_sentences``) only :func:`sentences_piece_tools` of what
+    its plan fills (``ws.fills``). Once
     the piece has been told to decide (``plan_only``), the plan tools alone."""
     left_out = JOB_LEFT_OUT if getattr(ws, 'edits_text', False) else JOB_LEFT_OUT + TEXT_TOOLS
     tools = [t for t in tools_for(ws) if t['function']['name'] not in left_out]
     if getattr(ws, 'in_sentences', False) and SENTENCES_PIECE_TOOLS is not None:
-        tools = [_without_check_first(t) for t in tools if t['function']['name'] in SENTENCES_PIECE_TOOLS]
+        allowed = sentences_piece_tools(getattr(ws, 'fills', ()))
+        tools = [_without_check_first(t) for t in tools if t['function']['name'] in allowed]
     if plan_only:
         tools = [t for t in tools if t['function']['name'] in WRITE_TOOLS]
     return tools

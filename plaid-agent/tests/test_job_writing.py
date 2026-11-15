@@ -15,7 +15,8 @@ import re
 
 import pytest
 
-from job_fixtures import (INSTRUCTIONS, JobClient, Model, call, document, empty_translations, every_tool, text_edits, reply,
+from fixtures import TRANS
+from job_fixtures import (FILLS, INSTRUCTIONS, JobClient, Model, call, document, empty_translations, every_tool, text_edits, reply,
                           runner, start, targets_named, use)
 
 from plaid_client import PlaidAPIError
@@ -66,7 +67,9 @@ def _job(monkeypatch, instructions=INSTRUCTIONS, before=BLANK, after=WRITTEN, mo
     client = JobClient({'d1': document('d1', 'Story', before)})
     client.after_write['d1'] = document('d1', 'Story', after, version=2)
     clock = {'t': 1_800_000_000.0}
-    job = start(client, instructions, id=J, now=lambda: clock['t'])
+    # A job told to translate fills the translation, any other glosses.
+    fills = (TRANS,) if 'ranslat' in instructions else FILLS
+    job = start(client, instructions, id=J, now=lambda: clock['t'], fills=fills)
     job._sleep = lambda s: clock.__setitem__('t', clock['t'] + s)
     job.job['created_at'] = _iso(clock['t'] - 3600)
     model = use(monkeypatch, Model(model))
@@ -591,7 +594,7 @@ def test_a_sentence_value_the_job_writes_counts_as_a_translation_only_in_the_tra
     after = [{'words': ['ka']}, {'words': ['sa'], 'translation': ('T2.', J)}]
     client = JobClient({'d1': document('d1', 'Story', before)}, project=_notes_project())
     client.after_write['d1'] = document('d1', 'Story', after, version=2)
-    job = start(client, 'Translate the sentences.', id=J)
+    job = start(client, 'Translate the sentences.', id=J, fills=(TRANS,))
 
     def model(asked, n, kwargs):
         if n > 1:
@@ -694,8 +697,7 @@ def test_a_sentence_deletion_that_landed_before_a_crash_is_never_made_again(monk
 def test_a_sentence_the_jobs_write_deleted_is_not_left_blank(monkeypatch):
     """REV-JSF-4: the write deletes s4, whose word and translation are
     blank. The report's Left blank is read from the document: only what is
-    still there. The job filled no word and no translation, so the report
-    lists and counts none of them."""
+    still there, of what the plan fills (a glossing plan here)."""
     client, job, clock, model = _job(monkeypatch, 'Delete a sentence that repeats the one before it.', _REPEATED,
                                      _REPEATED[:3], _unrepeat)
     assert runner(job).document('d1') == 'done'
@@ -703,7 +705,7 @@ def test_a_sentence_the_jobs_write_deleted_is_not_left_blank(monkeypatch):
     blank = runner(job).left_blank(job).get('d1', {}).get('left', [])
     assert sorted({e['sentence_id'] for e in blank}) == ['d1-s1', 'd1-s2', 'd1-s3'], 's1 to s3, not s4'
     counts = _report_counts(job)
-    assert (counts['left'], counts['left_translations']) == (0, 0)
+    assert (counts['left'], counts['left_translations']) == (len(blank), 0)
 
 
 def test_a_sentence_deletion_that_never_landed_before_a_crash_is_made_on_the_resume(monkeypatch):

@@ -15,7 +15,7 @@ import uuid
 import pytest
 
 from fixtures import GLOSS
-from job_fixtures import plan_row, empty_translations, Model, call, document, job_project, reply, use
+from job_fixtures import TRANSLATING, plan_row, empty_translations, Model, call, document, job_project, reply, use
 from live import _skip_or_fail, core_url, login, seed
 
 from plaid_agent.core import plan
@@ -63,7 +63,7 @@ def test_a_write_refused_on_a_later_batch_sends_nothing_again_under_its_keys(wor
     made = writer.jobs.create(s.project_id, 'igt', 'Gloss the words.')
     claimed = admin.jobs.claim(WORKER, 'fake/m', ['igt'])
     if claimed:
-        admin.jobs.add_decisions(claimed['job']['id'], WORKER, [plan_row()])
+        admin.jobs.add_decisions(claimed['job']['id'], WORKER, [plan_row(ids=s.ids)])
     assert claimed and claimed['job']['id'] == made['id']
     offset = {'s': 0.0}
 
@@ -151,7 +151,7 @@ def test_a_translation_the_starter_deleted_after_a_lost_answer_is_not_written_ag
     made = writer.jobs.create(s.project_id, 'igt', 'Gloss the words.')
     claimed = admin.jobs.claim(WORKER, 'fake/m', ['igt'])
     if claimed:
-        admin.jobs.add_decisions(claimed['job']['id'], WORKER, [plan_row()])
+        admin.jobs.add_decisions(claimed['job']['id'], WORKER, [plan_row(ids=s.ids, fills=TRANSLATING)])
     assert claimed and claimed['job']['id'] == made['id']
     offset, deleted = {'s': 0.0}, []
 

@@ -15,7 +15,7 @@ import re
 
 import pytest
 
-from job_fixtures import (INSTRUCTIONS, JobClient, Model, call, document, empty_translations, instructed, recorded,
+from job_fixtures import (FILLS, INSTRUCTIONS, TRANSLATING, JobClient, Model, call, document, empty_translations, instructed, recorded,
                           reply, runner, start, use)
 
 from plaid_client import PlaidAPIError
@@ -45,9 +45,9 @@ def _targets(asked):
     """(sentence index, word index) of every target word a stretch names."""
     out = []
     for line in asked.splitlines():
-        m = re.match(r'Empty in s(\d+): words (.*?)(?: and the translation)?\.$', line)
+        m = re.match(r'Empty in s(\d+): (.*)\.$', line)
         if m:
-            out += [(int(m.group(1)), int(w)) for w in re.findall(r'w(\d+) "', m.group(2))]
+            out += list(dict.fromkeys((int(m.group(1)), int(w)) for w in re.findall(r'\bw(\d+) "', m.group(2))))
     return out
 
 
@@ -63,7 +63,7 @@ def gloss(asked, n, kwargs, leave=()):
     name = _named(asked)
     forms = {}
     for line in asked.splitlines():
-        m = re.match(r'Empty in s(\d+): words (.*?)(?: and the translation)?\.$', line)
+        m = re.match(r'Empty in s(\d+): (.*)\.$', line)
         if m:
             forms.update({(int(m.group(1)), int(w)): f for w, f in re.findall(r'w(\d+) "([^"]*)"', m.group(2))})
     calls = [call(i, 'set_analysis', {'document': name, 'ref': f's{s}.w{w}',
@@ -102,7 +102,9 @@ def _job(monkeypatch, before, instructions=INSTRUCTIONS, model=gloss, documents=
     docs = documents or {'d1': document('d1', 'Story', before)}
     client = JobClient(docs)
     clock = {'t': 1_800_000_000.0}
-    job = start(client, instructions, id=J, now=lambda: clock['t'])
+    # A job told to translate fills the translation too.
+    fills = TRANSLATING if 'ranslat' in instructions else FILLS
+    job = start(client, instructions, id=J, now=lambda: clock['t'], fills=fills)
     job._sleep = lambda s: clock.__setitem__('t', clock['t'] + s)
     job.job['created_at'] = _iso(clock['t'] - 3600)
     use(monkeypatch, Model(model))

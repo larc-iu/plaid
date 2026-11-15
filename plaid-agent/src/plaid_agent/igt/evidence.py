@@ -99,58 +99,128 @@ def entry_lines(ws, project: IgtProject, forms: Iterable[str]) -> List[tuple]:
     return out
 
 
+class FieldEvidence:
+    """What the block shows for one field the job fills (a word or a
+    morpheme field): the forms of its empty units, and the values the field
+    holds on other units of the same form, people's and this job's, each
+    ``form key -> {value: count}`` by :func:`form_of` of the unit's form."""
+
+    def __init__(self, name: str, level: str, surfaces: Iterable[str], people: Dict[str, Dict[str, int]],
+                 mine: Dict[str, Dict[str, int]], lexicon: bool = False):
+        self.name, self.level, self.surfaces = name, level, list(surfaces)
+        self.people, self.mine, self.lexicon = people, mine, lexicon
+
+
+def _counts(index: Dict[str, Dict[str, int]], cfg) -> Dict[str, Dict[str, int]]:
+    out: Dict[str, Dict[str, int]] = {}
+    for surface, values in index.items():
+        form = form_of(surface, cfg)
+        for v, n in values.items():
+            out.setdefault(form, {})
+            out[form][v] = out[form].get(v, 0) + n
+    return out
+
+
+def _top(values: Dict[str, int]) -> str:
+    ranked = sorted(values.items(), key=lambda kv: (-kv[1], kv[0]))[:JOB_PRECEDENT_PER_FORM]
+    return '; '.join(f'{v} ({n})' for v, n in ranked)
+
+
 def block(ws, project: IgtProject, surfaces: Iterable[str], people: Dict[str, Dict[str, Dict[str, Any]]],
           mine: Dict[str, List[Dict[str, Any]]], render, budget: int = JOB_EVIDENCE_CHARS,
-          lexicon: bool = True) -> str:
-    """The block for the piece whose empty words have ``surfaces``.
+          lexicon: bool = True, fields: Iterable[FieldEvidence] = (), nowhere: bool = True) -> str:
+    """The block for the piece whose words empty of segmentation have
+    ``surfaces``, and whose units empty in each field it fills are named by
+    ``fields`` (:class:`FieldEvidence`, one section each, after the
+    analyses).
 
     ``people`` is people's index as :meth:`IgtRunner.people_index` keeps it,
     ``mine`` the job's own decisions by the form they were looked up under,
-    ``render(analysis)`` an analysis as one short line. The precedent of a
-    document's or a selection's piece is this block without the forms
-    analysed nowhere and the entries (``lexicon`` False): one code path."""
+    ``render(analysis)`` an analysis as one short line. ``lexicon``: the
+    entries spelled inside the forms of the analyses and of a field linked
+    to the lexicon are listed (a target linked to the lexicon). The
+    precedent of a document's or a selection's piece is this block without
+    the forms filled nowhere (``nowhere`` False) and the entries: one code
+    path."""
+    return _block(ws, project, surfaces, people, mine, render, budget, lexicon, list(fields), nowhere=nowhere)
+
+
+def _block(ws, project, surfaces, people, mine, render, budget, lexicon, fields, nowhere=True) -> str:
     cfg = project.ignored_cfg
+    sections = []  # (head, nowhere head, lines, forms nowhere, left-out text)
     forms = list(dict.fromkeys(f for f in (form_of(s, cfg) for s in surfaces) if f))
-    if not forms:
+    entry_forms = list(forms)
+    if forms:
+        theirs_by = regroup(people, cfg)
+        ours_by: Dict[str, List[Dict[str, Any]]] = {}
+        for key, rows in mine.items():
+            ours_by.setdefault(form_of(key, cfg), []).extend(rows)
+        analysed, none = [], []
+        for form in forms:
+            bits = []
+            theirs = sorted((theirs_by.get(form) or {}).values(),
+                            key=lambda x: -x['count'])[:JOB_PRECEDENT_PER_FORM]
+            if theirs:
+                bits.append('people: ' + '; '.join(f'{render(x["analysis"])} ({x["count"]})' for x in theirs))
+            ours = sorted(ours_by.get(form) or [], key=lambda r: -(r.get('count') or 0))[:JOB_PRECEDENT_PER_FORM]
+            if ours:
+                bits.append('this job: ' + '; '.join(f'{render(r["analysis"])} ({r.get("count")})' for r in ours))
+            if bits:
+                analysed.append(f'- "{form}": ' + ' | '.join(bits))
+            else:
+                none.append(form)
+        sections.append((ANALYSED_HEAD, NOWHERE_HEAD, analysed, none,
+                         lambda n: f'how {n} form{"" if n == 1 else "s"} were analysed (analyses_of reads them)'))
+    for fe in fields:
+        fforms = list(dict.fromkeys(f for f in (form_of(s, cfg) for s in fe.surfaces) if f))
+        if not fforms:
+            continue
+        if fe.lexicon:
+            entry_forms += [f for f in fforms if f not in entry_forms]
+        theirs_v, ours_v = _counts(fe.people, cfg), _counts(fe.mine, cfg)
+        lines, none = [], []
+        for form in fforms:
+            bits = []
+            if theirs_v.get(form):
+                bits.append('people: ' + _top(theirs_v[form]))
+            if ours_v.get(form):
+                bits.append('this job: ' + _top(ours_v[form]))
+            if bits:
+                lines.append(f'- "{form}": ' + ' | '.join(bits))
+            else:
+                none.append(form)
+        units = f'{fe.level}s'
+        sections.append((f'{fe.name} on other {units} of these forms (by people in this project, and earlier in '
+                         'this job):', f'{fe.name} on no other {fe.level} of: ', lines, none,
+                         lambda n, name=fe.name: f'the {name} of {n} form{"" if n == 1 else "s"}'))
+    if not sections:
         return ''
-    theirs_by = regroup(people, cfg)
-    ours_by: Dict[str, List[Dict[str, Any]]] = {}
-    for key, rows in mine.items():
-        ours_by.setdefault(form_of(key, cfg), []).extend(rows)
-    analysed, nowhere = [], []
-    for form in forms:
-        bits = []
-        theirs = sorted((theirs_by.get(form) or {}).values(), key=lambda x: -x['count'])[:JOB_PRECEDENT_PER_FORM]
-        if theirs:
-            bits.append('people: ' + '; '.join(f'{render(x["analysis"])} ({x["count"]})' for x in theirs))
-        ours = sorted(ours_by.get(form) or [], key=lambda r: -(r.get('count') or 0))[:JOB_PRECEDENT_PER_FORM]
-        if ours:
-            bits.append('this job: ' + '; '.join(f'{render(r["analysis"])} ({r.get("count")})' for r in ours))
-        if bits:
-            analysed.append(f'- "{form}": ' + ' | '.join(bits))
-        else:
-            nowhere.append(form)
-    if not lexicon:
-        nowhere = []
-    entries = entry_lines(ws, project, forms) if lexicon else []
+    if not nowhere:
+        sections = [(h, nh, lines, [], left) for h, nh, lines, _, left in sections]
+    entries = entry_lines(ws, project, entry_forms) if lexicon else []
 
     def size(lines):
         return sum(len(x) + 1 for x in lines)
     tail_room = 160  # the left-out line, whatever its numbers
-    # The forms analysed nowhere go last of all, from the last, so the
-    # bound holds whatever the piece.
-    shown_nowhere = list(nowhere)
+    # The forms filled nowhere go last of all, from the last, so the bound
+    # holds whatever the piece.
+    shown = [list(sec[3]) for sec in sections]
 
-    def nowhere_line():
-        more = len(nowhere) - len(shown_nowhere)
-        return NOWHERE_HEAD + ', '.join(shown_nowhere) + (f' and {more} more' if more else '') + '.'
-    while shown_nowhere and len(nowhere_line()) + len(ANALYSED_HEAD) + 2 + tail_room > budget:
-        shown_nowhere.pop()
-    fixed = ([ANALYSED_HEAD] if analysed else []) + ([nowhere_line()] if nowhere else [])
-    kept_analysed = list(analysed)
-    while kept_analysed and size(fixed + kept_analysed) + tail_room > budget:
-        kept_analysed.pop()
-    room = budget - tail_room - size(fixed + kept_analysed) - len(ENTRIES_HEAD) - 1
+    def nowhere_line(i):
+        none = sections[i][3]
+        more = len(none) - len(shown[i])
+        return sections[i][1] + ', '.join(shown[i]) + (f' and {more} more' if more else '') + '.'
+
+    def nowhere_size():
+        return sum(len(nowhere_line(i)) + len(sections[i][0]) + 2 for i in range(len(sections)) if sections[i][3])
+    while any(shown) and nowhere_size() + tail_room > budget:
+        shown[max(i for i in range(len(shown)) if shown[i])].pop()
+    fixed = [x for i, sec in enumerate(sections) for x in ([sec[0]] if sec[2] else []) + (
+        [nowhere_line(i)] if sec[3] else [])]
+    kept = [list(sec[2]) for sec in sections]
+    while any(kept) and size(fixed + [x for k in kept for x in k]) + tail_room > budget:
+        kept[max(i for i in range(len(kept)) if kept[i])].pop()
+    room = budget - tail_room - size(fixed + [x for k in kept for x in k]) - len(ENTRIES_HEAD) - 1
     # Entries kept: the longest forms first, cut where the room ends.
     ranked = sorted(range(len(entries)), key=lambda i: (-len(entries[i][0]), i))
     keep, used = set(), 0
@@ -163,10 +233,11 @@ def block(ws, project: IgtProject, surfaces: Iterable[str], people: Dict[str, Di
     kept_entries = [line for i, (_, line) in enumerate(entries) if i in keep]
     left_entries = [entries[i][0] for i in range(len(entries)) if i not in keep]
     lines = []
-    if kept_analysed:
-        lines += [ANALYSED_HEAD, *kept_analysed]
-    if nowhere:
-        lines.append(nowhere_line())
+    for i, sec in enumerate(sections):
+        if kept[i]:
+            lines += [sec[0], *kept[i]]
+        if sec[3]:
+            lines.append(nowhere_line(i))
     if kept_entries:
         lines += [ENTRIES_HEAD, *kept_entries]
     left = []
@@ -176,9 +247,9 @@ def block(ws, project: IgtProject, surfaces: Iterable[str], people: Dict[str, Di
         span = f'{short}' if short == long else f'{short} to {long}'
         left.append(f'{len(left_entries)} lexicon entr{"y" if len(left_entries) == 1 else "ies"} of {span} '
                     f'letter{"" if span == "1" else "s"} (read_lexicon finds them)')
-    if len(kept_analysed) < len(analysed):
-        n = len(analysed) - len(kept_analysed)
-        left.append(f'how {n} form{"" if n == 1 else "s"} were analysed (analyses_of reads them)')
+    for i, sec in enumerate(sections):
+        if len(kept[i]) < len(sec[2]):
+            left.append(sec[4](len(sec[2]) - len(kept[i])))
     if left:
         lines.append('Left out for length: ' + ' and '.join(left) + '.')
     return '\n'.join(lines)

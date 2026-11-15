@@ -9,6 +9,7 @@ Runs on the session's core (``live.py``), or the one PLAID_TEST_URL names.
 """
 
 import json
+import re
 import time
 import uuid
 
@@ -56,8 +57,8 @@ def _model(asked, n, kwargs):
         if not line.startswith('Empty in s'):
             continue
         s = line.split()[2].rstrip(':')
-        for w in line.split('words ')[1].split(' and ')[0].split(', '):
-            ref, form = w.split(' ')[0], w.split('"')[1]
+        for w, form in re.findall(r'\bw(\d+) "([^"]*)"', line):
+            ref = f'w{w}'
             calls.append(call(len(calls) + 1, 'set_analysis', {'document': doc, 'ref': f'{s}.{ref}', 'morphemes': [
                 {'form': form, 'type': 'stem', 'fields': {'Morph Gloss': gloss if form == 'ka' else 'x'}}]}))
     return reply(calls=calls)
@@ -107,7 +108,7 @@ def test_a_jobs_token_is_refused_on_a_maintainers_route(world):
     made = writer.jobs.create(s.project_id, 'igt', 'Gloss the words.')
     claimed = admin.jobs.claim(WORKER, 'fake/m', ['igt'])
     if claimed:
-        admin.jobs.add_decisions(claimed['job']['id'], WORKER, [plan_row()])
+        admin.jobs.add_decisions(claimed['job']['id'], WORKER, [plan_row(ids=s.ids)])
     assert claimed and claimed['job']['id'] == made['id'] and claimed['token']
     token = PlaidClient(core_url(), claimed['token'])
     try:

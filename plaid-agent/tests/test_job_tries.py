@@ -90,7 +90,7 @@ def test_a_value_on_a_word_and_the_merge_of_that_word_are_two_tries_and_both_are
     client, job, _m = _job(monkeypatch, [{'words': ['ka', 'ta']}, {'words': ['sa']}], _once(lambda asked: [
         call(1, 'set_field', {'document': 'Story', 'refs': ['s1.w1'], 'field': 'Gloss', 'value': 'X'}),
         call(2, 'merge_words', {'document': 'Story', 'refs': ['s1.w1', 's1.w2']})]
-        if targets_named(asked) == [1, 2] else []), plan='document')
+        if 'the whole document' in asked or targets_named(asked) == [1, 2] else []), plan='document')
     sent = _batches(monkeypatch)
     assert _run(runner(job)) == 'done'
     assert sent == [['spans.create'], ['tokens.merge']], sent

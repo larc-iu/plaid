@@ -2,8 +2,9 @@
 resumes after a crash (SPEC 3.8, 7.3)."""
 
 import json
+import re
 
-from job_fixtures import JobClient, Model, call, document, reply, runner, start, use
+from job_fixtures import TRANSLATING, JobClient, Model, call, document, reply, runner, start, use
 
 from plaid_agent.core.job import analysis_key, canonical
 from plaid_agent.igt.job import RECORD_FORM, WRITING_FORM, IgtRunner
@@ -16,12 +17,12 @@ def _analyse_all(asked, n, kwargs):
     for line in asked.splitlines():
         if line.startswith('Empty in s'):
             s = line.split()[2].rstrip(':')
-            for w in line.split('words ')[1].split(' and ')[0].split(', ') if 'words ' in line else []:
-                ref, form = w.split(' ')[0], w.split('"')[1]
+            for w, form in re.findall(r'\bw(\d+) "([^"]*)"', line):
+                ref = f'w{w}'
                 calls.append(call(len(calls) + 1, 'set_analysis', {'document': 'Story', 'ref': f'{s}.{ref}',
                                                                    'morphemes': [{'form': form, 'type': 'stem',
                                                                                   'fields': {'Morph Gloss': 'go'}}]}))
-            if 'the translation' in line:
+            if line.endswith('Translation.'):
                 calls.append(call(len(calls) + 1, 'set_field', {'document': 'Story', 'refs': [s],
                                                                 'field': 'Translation', 'value': 'T.'}))
     return reply(calls=calls)
@@ -33,7 +34,7 @@ def test_a_stretch_counts_what_it_wrote_and_records_its_decisions(monkeypatch):
              {'words': [('ka', [('ka', 'G')], 'J5')], 'translation': ('T.', 'J5')}]
     client = JobClient({'d1': document('d1', 'Story', before)})
     client.after_write['d1'] = document('d1', 'Story', after, version=2)
-    job = start(client, id='J5')
+    job = start(client, id='J5', fills=TRANSLATING)
     use(monkeypatch, Model(_analyse_all))
     assert runner(job).document('d1') == 'done'
     row = job.rows['d1']
@@ -87,7 +88,7 @@ def test_a_cursor_whose_sentence_is_gone_starts_from_the_top_and_writes_nothing_
     # Every sentence is walked (BRIEF EW): s1 is in the piece, its word the
     # job's own and nothing in it empty, so nothing is written there twice.
     assert len(asked) == 1 and asked[0].splitlines()[-1] == 'Your piece: s1, s2.'
-    assert 'Empty in s1' not in asked[0] and 'Nothing empty in s1: no word to analyse' in asked[0]
+    assert 'Empty in s1' not in asked[0] and 'Nothing empty in s1 of what this job fills.' in asked[0]
 
 
 def test_a_job_that_crashed_in_harmonize_runs_it_again_and_skips_the_checks_and_the_documents():

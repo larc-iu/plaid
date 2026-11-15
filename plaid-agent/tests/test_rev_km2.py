@@ -55,6 +55,11 @@ def test_km2_1_peoples_analysis_beside_a_machine_word_field_is_peoples_precedent
     assert (c['to'], c['by']) == ('ka-ta ‘g1-g2’', 'person'), json.dumps(out, ensure_ascii=False)
 
 
+def igt_job_stretch(doc, project, r):
+    from plaid_agent.igt.job import Stretch
+    return Stretch(doc, project, doc.sentences, J, targets=r.targets(project))
+
+
 def test_km2_1_a_piece_is_shown_that_precedent():
     """P3p: three people's words of kata, each with another producer's
     draft Word Gloss: a piece is shown them."""
@@ -67,7 +72,8 @@ def test_km2_1_a_piece_is_shown_that_precedent():
     r = runner(job)
     project = r.project()
     d = r.read(project, 'd1')
-    out = r.precedent(Workspace(job.client(), project), project, [d.sentences[0].words[3]])
+    st = igt_job_stretch(d, project, r)
+    out = r.precedent(Workspace(job.client(), project), project, st)
     assert 'people: ka-ta ‘g1-g2’ (3)' in out, out
 
 

@@ -5,8 +5,9 @@ The worker's loop, the heartbeat, the budgets and the halving are
 (SPEC 3 and 5 to 9 of the jobs round, 2026-11-12):
 
 * the checks before the first request (:meth:`IgtRunner.check`),
-* what a TARGET is (:func:`word_target`, :func:`translation_target`): a blank
-  word, an empty translation, what the walk of a ``sentences`` plan looks for,
+* what the job FILLS, its plan's targets, and what is empty of them
+  (:mod:`.targets`, THE rule): what the walk, a piece's message, the
+  evidence and Left blank all ask,
 * what a stretch is handed (:meth:`IgtRunner.message`): the target sentences,
   two before them, how their forms were analysed by people and earlier in the
   job, the starter's note,
@@ -36,7 +37,6 @@ from plaid_client import DocumentLockLost, PlaidAPIError
 from plaid_client.ids import uuid7
 from plaid_client.provenance import PROV_CONFIRMED_KEY, PROV_DETAIL_KEY, project_role, prov_state, service_source
 from plaid_client.service import locked_for_writes
-from plaid_client.workflows.igt.derive import word_state as _stored_word_state
 
 from ..core import job as core_job
 from ..core.agent import ModelConfig, Toolkit, TurnCancelled, run_turn
@@ -57,12 +57,13 @@ from ..core.prompt import JOB_ANSWER_AGAIN
 from ..core.provenance import Requester
 from ..core.tools import Refusal, ToolError
 from ..core.version import agent_version
-from . import evidence, jobapply, toolkit
+from . import evidence, jobapply, targets as tg, toolkit
 from .plan import LEXICON_MAINTAINER, PlanOutOfDate, check_entries, execute_plan
 from .project import IgtProject, Sentence, Word, is_virtual, load_project, render_sentence
 from .prompt import JOB_SYSTEM, build_job_prompt
 from .tools import ANALYSIS_OF, trim_ignored_edges
 from .trace import TRACER
+from .targets import Target, word_state  # noqa: F401 (word_state: tests)
 from .fit import entry_gloss as _entry_gloss, fitting_entry, surface_key  # noqa: F401 (fitting_entry: tests)
 from .vocab import ROLE_GLOSS, ROLE_STATUS
 from .workspace import Workspace
@@ -274,24 +275,6 @@ def _nfc(text) -> str:
 
 # --- what a target is ------------------------------------------------------------
 
-def word_state(w: Word) -> str:
-    """``plaid_client.workflows.igt.derive.word_state`` of a parsed word: the
-    one rule every machine writer of igt holds a word to."""
-    morphs = [m for m in w.morphemes if not m.virtual]
-    return _stored_word_state({
-        'surface': w.surface,
-        'morphs': [{'id': m.id, 'metadata': m.metadata} for m in morphs],
-        'morph_spans': {m.id: [(n, {'metadata': sp.metadata}) for n, sp in m.fields.items()] for m in morphs},
-        'morph_links': {m.id: [{'metadata': m.link.metadata}] for m in morphs if m.link is not None},
-    })
-
-
-def word_target(w: Word) -> bool:
-    """A word a job analyses: one nobody has analysed (``unanalyzed``) and
-    with no value in a word field, whatever its provenance (SPEC 6.1)."""
-    return word_state(w) == 'unanalyzed' and not any(sp.value not in (None, '') for sp in w.fields.values())
-
-
 def translation_field(project: IgtProject):
     return project.gloss_field('Sentence')
 
@@ -322,10 +305,10 @@ def translation_state(s: Sentence, project: IgtProject, job_id: str) -> str:
 
 
 def translation_target(s: Sentence, project: IgtProject, job_id: str) -> bool:
-    """An empty translation: what the walk of a ``sentences`` plan looks for.
-    A piece replaces any other translation when its instructions say so,
-    and that is applied (the apply rule)."""
-    return translation_field(project) is not None and translation_state(s, project, job_id) == 'empty'
+    """An empty translation, by THE rule (:func:`targets.empty`): what a
+    write the job made and a person cleared is known by (``Written``)."""
+    f = translation_field(project)
+    return f is not None and tg.empty(Target(f.layer_id, f.name, 'Sentence', f), s=s)
 
 
 class Written:
@@ -346,28 +329,31 @@ class Written:
         hit = _found(doc, op.get('analysis_word_id') or op.get('word_id') or op.get('token_id'))
         if hit is not None and hit[1] is not None:
             w = hit[1]
-            return word_tag(w.id) in self.words and word_target(w)
+            return word_tag(w.id) in self.words and tg.empty(tg.SEGMENTED, w=w)
         if hit is not None and op.get('kind') == 'set_span' and op.get('layer_id') == translation_layer(project) \
                 and hit[0] is not None and hit[0].id == op.get('token_id'):
             return hit[0].id in self.translations and translation_target(hit[0], project, job_id)
         return False
 
 
-def sentence_targets(s: Sentence, project: IgtProject, job_id: str,
-                     known=frozenset(), written: Optional[Written] = None) -> Tuple[List[Word], bool]:
-    """What is empty in ``s``: its blank words and whether its translation
-    is empty. A job walks a document's sentences that hold something empty
-    (a job has no task types: what it fills is its instructions' business).
+def sentence_targets(s: Sentence, project: IgtProject, job_id: str, known=frozenset(),
+                     written: Optional[Written] = None,
+                     targets: List[Target] = ()) -> Tuple[List[Word], List[Target]]:
+    """What is empty in ``s`` of what the job fills (``targets``, by THE rule,
+    :mod:`.targets`): the words empty for a word or morpheme level target,
+    and the sentence level targets ``s`` is empty for. A plan in sentences
+    with skip_filled_sentences walks the sentences that hold something.
     Nothing in a sentence that holds a word of a sentence a landed write of
     the job wrote in as one of its own (``known``,
     :meth:`IgtRunner.known_words`), and never a word or a translation any
     landed write of the job wrote (``written``): one that reads blank was
     cleared by a person."""
     if wrote_in(s, known):
-        return [], False
+        return [], []
     written = written or Written()
-    return ([w for w in s.words if word_target(w) and word_tag(w.id) not in written.words],
-            translation_target(s, project, job_id) and s.id not in written.translations)
+    layer = translation_layer(project)
+    return ([w for w in s.words if tg.empty_in_word(w, targets) and word_tag(w.id) not in written.words],
+            [t for t in tg.empty_in_sentence(s, targets) if not (t.id == layer and s.id in written.translations)])
 
 
 def wrote_in(s: Sentence, known) -> bool:
@@ -569,11 +555,6 @@ def rendering(analysis: Dict[str, Any], gloss: Optional[str], entries: Optional[
     return line
 
 
-#: The kinds of proposed change whose value a document is read for
-#: (:func:`holds_change`).
-HELD_KINDS = ('set_span', 'set_analysis')
-
-
 def holds_change(doc, project: IgtProject, change: Dict[str, Any]) -> bool:
     """Whether ``doc`` holds what a proposed ``change`` (as
     ``IgtRunner.describe`` keeps it) would write: the field's value at its
@@ -664,16 +645,20 @@ def summary_message(report: Dict[str, Any]) -> str:
 # --- the job's workspace ---------------------------------------------------------
 
 class Stretch:
-    """The targets of one stretch: which words and translations may be
-    written, and where every token of the document sits."""
+    """What is empty in one stretch of what the job fills (its plan's
+    targets): its words empty for a word or morpheme level target, the
+    sentence level targets empty in each sentence, and where every token of
+    the document sits."""
 
     def __init__(self, doc, project: IgtProject, sentences: List[Sentence], job_id: str, known=frozenset(),
-                 written: Optional['Written'] = None):
+                 written: Optional['Written'] = None, targets: List[Target] = ()):
         self.doc = doc
         self.project = project
+        self.targets = list(targets)
         self.sentence_ids = {s.id for s in sentences}
         self.words: Dict[str, Word] = {}
-        self.translations: set = set()
+        #: sentence id -> the sentence level targets empty in it
+        self.fields: Dict[str, List[Target]] = {}
         self.where: Dict[str, Sentence] = {}
         for s in doc.sentences:
             self.where[s.id] = s
@@ -683,13 +668,13 @@ class Stretch:
                     self.where[m.id] = s
         self.word_of: Dict[str, str] = {}
         for s in sentences:
-            words, translate = sentence_targets(s, project, job_id, known, written)
+            words, fields = sentence_targets(s, project, job_id, known, written, self.targets)
             for w in words:
                 self.words[w.id] = w
                 for m in w.morphemes:
                     self.word_of[m.id] = w.id
-            if translate:
-                self.translations.add(s.id)
+            if fields:
+                self.fields[s.id] = fields
 
     def sentence_of(self, token_id: Optional[str]) -> Optional[Sentence]:
         if is_virtual(token_id):
@@ -697,7 +682,7 @@ class Stretch:
         return self.where.get(token_id)
 
     def empty(self) -> bool:
-        return not self.words and not self.translations
+        return not self.words and not self.fields
 
 
 class JobWorkspace(Workspace):
@@ -728,6 +713,9 @@ class JobWorkspace(Workspace):
         #: ``edits_text``): else no op that does is staged (``guard_op``)
         self.edits_text = False
         self.tables: List[Dict[str, Any]] = []
+        #: what the job's plan fills (:mod:`.targets`): a piece in
+        #: sentences is offered the tools that fill it
+        self.fills: List[Target] = []
         #: the piece's model answered nothing twice (``IgtRunner.run_piece``)
         self.answered_nothing = False
         #: the planning context's plan_work, once valid
@@ -1250,7 +1238,9 @@ class IgtRunner:
         #: people's analyses as last read (``read_people``), and per document
         #: the version it was read at and its part of them
         self.people: Optional[Dict[str, Any]] = None
-        self.people_read: Dict[str, Tuple[Any, Dict[str, Any]]] = {}
+        #: the field values index (:meth:`values_of`), read with ``people``
+        self.values: Dict[Tuple[str, str], Dict[str, Dict[str, int]]] = {}
+        self.people_read: Dict[str, Tuple[Any, Dict[str, Any], Dict[Tuple[str, str], Any]]] = {}
         #: what harmonize has written so far, for the report of a job stopped in it
         self.harmonize_done: Optional[Dict[str, Any]] = None
         #: document id -> the job's writing rows of it (:meth:`writing_rows`),
@@ -1438,7 +1428,11 @@ class IgtRunner:
                 why = None if plan else 'no-plan'
             except StretchFailed as e:
                 why = e.kind
-            made = plan or {'pieces': SENTENCES, 'piece_instructions': '', 'documents': None}
+            # A default plan fills the app's configured default (segmentation
+            # and the gloss and translation fields the configuration names,
+            # targets.app_default): it knows nothing else of the job.
+            made = plan or {'pieces': SENTENCES, 'piece_instructions': '', 'documents': None,
+                            **({'fills': ids} if (ids := [t.id for t in tg.app_default(project)]) else {})}
             # Made once: a passing error on its row below sends the same plan
             # again, never plans again (REV-JG-8).
             self.plan_pending = {**made, 'by': 'model' if plan else 'default', 'why': why}
@@ -1491,7 +1485,9 @@ class IgtRunner:
 
     def document_facts(self, project: IgtProject, job) -> List[Dict[str, Any]]:
         """What the planning context is told of each document still to work:
-        its name, its sentences and words, and how much is blank."""
+        its name, its sentences and words, and how many units are empty for
+        each thing a job can fill (``empty``, target id -> count, THE rule of
+        :mod:`.targets`)."""
         out = []
         for d in job.order:
             if (job.rows.get(d) or {}).get('state') in ROW_FINAL:
@@ -1503,9 +1499,7 @@ class IgtRunner:
                 continue
             words = [w for s in doc.sentences for w in s.words]
             out.append({'id': d, 'name': doc.name, 'sentences': len(doc.sentences), 'words': len(words),
-                        'blank_words': sum(1 for w in words if word_target(w)),
-                        'empty_translations': sum(1 for s in doc.sentences
-                                                  if translation_target(s, project, job.id)),
+                        'empty': {t.id: tg.count(doc.sentences, t) for t in tg.fillable(project)},
                         'characters': sum(len(render_sentence(s, project)) + 1 for s in doc.sentences)})
         return out
 
@@ -1519,9 +1513,9 @@ class IgtRunner:
             ws = JobWorkspace(job.client(), project, mode=JobWorkspace.PLAN)
             # Its counts tell plan_work a plan that would work no sentence.
             ws.job_documents = [{'id': f['id'], 'name': f['name'], 'sentences': f['sentences'],
-                                 'empty': f['blank_words'] + f['empty_translations']} for f in facts]
+                                 'empty': f['empty']} for f in facts]
             system = build_plan_prompt(project)
-            transcript = [{'role': 'user', 'content': self.plan_message(facts)}]
+            transcript = [{'role': 'user', 'content': self.plan_message(facts, project)}]
             seed(ws.seen, system, transcript, lambda tool, args: True)
             kit = Toolkit(tools_for=lambda w: toolkit.job_plan_tools(w, plan_only=w.decide_now),
                           call_tool=toolkit.job_plan_call, tracer=TRACER)
@@ -1553,16 +1547,21 @@ class IgtRunner:
                     raise
                 raise StretchFailed(kind, str(e)) from e
 
-    def plan_message(self, facts: List[Dict[str, Any]]) -> str:
-        """What the planning context is handed: the instructions and the
-        documents, one line each, at most JOB_PLAN_DOCUMENT_LINES."""
+    def plan_message(self, facts: List[Dict[str, Any]], project: Optional[IgtProject] = None) -> str:
+        """What the planning context is handed: the instructions, what a job
+        can fill (:func:`targets.fillable`, for plan_work's ``fills``) and the
+        documents, one line each with how much is empty of each, at most
+        JOB_PLAN_DOCUMENT_LINES."""
         from ..core.limits import JOB_PLAN_DOCUMENT_LINES
+        fill = tg.fillable(project or self.project())
+        names = {t.id: t.name for t in fill}
         lines = [f'Instructions from {self.job.starter_name}:', self.job.instructions or '', '',
+                 'What a job can fill (name them in plan_work\'s fills):', *[f'- {t.label}' for t in fill], '',
                  f'The job\'s documents, in its order ({len(facts)}):']
         for f in facts[:JOB_PLAN_DOCUMENT_LINES]:
+            empties = ', '.join(f'{names[i]} {n:,}' for i, n in (f.get('empty') or {}).items() if i in names)
             lines.append(f'- "{f["name"]}": {_n(f["sentences"], "sentence")}, {_n(f["words"], "word")}, '
-                         f'{f["blank_words"]:,} words nobody analysed, {f["empty_translations"]:,} empty '
-                         f'translations, {f["characters"]:,} characters.')
+                         f'{f["characters"]:,} characters.' + (f' Empty: {empties}.' if empties else ''))
         if len(facts) > JOB_PLAN_DOCUMENT_LINES:
             lines.append(f'and {len(facts) - JOB_PLAN_DOCUMENT_LINES} more documents not shown')
         lines += ['', 'Plan the job and end with plan_work.']
@@ -1997,8 +1996,8 @@ class IgtRunner:
                 if not wrote_in(s, known):
                     out.append(s)
                 continue
-            words, translate = sentence_targets(s, project, self.job.id, known, written)
-            if words or translate:
+            words, fields = sentence_targets(s, project, self.job.id, known, written, self.targets(project))
+            if words or fields:
                 out.append(s)
         return out
 
@@ -2077,7 +2076,8 @@ class IgtRunner:
         ws._docs[document_id] = doc
         doc = ws.doc(document_id)
         part = [s for s in doc.sentences if s.id in sentence_ids]
-        st = Stretch(doc, project, part, job.id, self.known_words(document_id), self.written(document_id))
+        st = Stretch(doc, project, part, job.id, self.known_words(document_id), self.written(document_id),
+                     self.targets(project))
         whole = self.whole_document(project, doc)
         if st.empty() and not self.every_sentence():
             # Nothing to do: rows that say so, as a write that sends nothing.
@@ -2128,7 +2128,8 @@ class IgtRunner:
         (``no-answer``, REV-DAY-S-16)."""
         job = self.job
         ws.edits_text = self.edits_text()
-        system = build_job_prompt(project, sentences=sentences, edits_text=ws.edits_text)
+        ws.fills = self.targets(project)
+        system = build_job_prompt(project, sentences=sentences, edits_text=ws.edits_text, targets=ws.fills)
         transcript = [{'role': 'user', 'content': message}]
         seed(ws.seen, system, transcript, lambda tool, args: True)
         kit = Toolkit(tools_for=lambda w: toolkit.job_piece_tools(w, plan_only=w.decide_now),
@@ -2194,33 +2195,26 @@ class IgtRunner:
         rendered = ws.render(doc, indexes=shown, max_sentences=len(shown))
         lines = [f'Document "{doc.name}".', '', rendered, '']
         full = []
+        # What is empty of what the job fills, by its plan's targets
+        # (:mod:`.targets`, THE rule). A plan that fills nothing (a check, a
+        # summary) is told nothing is empty and handed no evidence.
         for s in part:
-            words = [w for w in s.words if w.id in st.words]
-            bits = []
-            if words:
-                bits.append('words ' + ', '.join(f'w{w.index} "{w.surface}"' for w in words))
-            if s.id in st.translations:
-                bits.append('the translation')
-            if bits:
-                lines.append(f'Empty in s{s.index}: ' + ' and '.join(bits) + '.')
+            line = tg.empty_line(s, st.targets, set(st.words), st.fields.get(s.id, ()))
+            if line:
+                lines.append(line)
             else:
                 full.append(f's{s.index}')
-        if full:
+        if full and st.targets:
             # A sentence the walk takes with nothing empty (every sentence
-            # is walked unless the plan says only_empty) says so, so a piece
-            # told to fill a field or check glosses works from what the
-            # sentence holds (BRIEF EW). By the job's own rule (word_target),
-            # never "analysed": a word holding only a word field's value is
-            # no target either (REV-L2-8).
-            lines.append(f'Nothing empty in {", ".join(full)}: no word to analyse'
-                         + (' and no translation to write' if translation_field(project) is not None else '') + '.')
+            # is walked unless the plan skips filled ones) says so (BRIEF EW).
+            lines.append(f'Nothing empty in {", ".join(full)} of what this job fills.')
         # A piece of a plan in sentences is handed the evidence its model
         # would otherwise look up (igt/evidence.py), a document's or a
         # selection's the precedent alone.
         if self.in_sentences() and not whole:
-            precedent = self.evidence(ws, project, list(st.words.values()))
+            precedent = self.evidence(ws, project, st)
         else:
-            precedent = self.precedent(ws, project, list(st.words.values()))
+            precedent = self.precedent(ws, project, st)
         if precedent:
             lines += ['', precedent]
         lines += self.instructions_lines()
@@ -2273,17 +2267,26 @@ class IgtRunner:
                     raise
                 self.people_read.pop(d['id'], None)
                 continue
-            self.people_read[d['id']] = (d.get('version'), self.people_of(doc, self.job.id))
+            self.people_read[d['id']] = (d.get('version'), self.people_of(doc, self.job.id),
+                                         self.values_of(doc, self.job.id))
         listed_ids = {d['id'] for d in listed}
         index: Dict[str, Dict[str, Any]] = {}
-        for did, (_, part) in self.people_read.items():
+        values: Dict[Tuple[str, str], Dict[str, Dict[str, int]]] = {}
+        for did, (_, part, vals) in self.people_read.items():
             if did not in listed_ids:
                 continue
             for form, keys in part.items():
                 for key, x in keys.items():
                     slot = index.setdefault(form, {}).setdefault(key, {'analysis': x['analysis'], 'count': 0})
                     slot['count'] += x['count']
+            for where, forms in vals.items():
+                into = values.setdefault(where, {})
+                for form, counts in forms.items():
+                    for v, n in counts.items():
+                        into.setdefault(form, {})
+                        into[form][v] = into[form].get(v, 0) + n
         self.people = index
+        self.values = values
 
     @staticmethod
     def people_of(doc, job_id: Optional[str] = None) -> Dict[str, Dict[str, Any]]:
@@ -2302,6 +2305,35 @@ class IgtRunner:
                                                                            {'analysis': a, 'count': 0})
                 slot['count'] += 1
         return part
+
+    @staticmethod
+    def values_of(doc, job_id: Optional[str] = None) -> Dict[Tuple[str, str], Dict[str, Dict[str, int]]]:
+        """One document's part of the field values index: ``(field name,
+        'people' or 'job') -> form -> {value: count}``, every word and
+        morpheme field value by its own provenance (per value): a person's or
+        a confirmed one is people's, an unverified one this job wrote is the
+        job's, another producer's is neither. A word value is keyed by the
+        word's surface, a morpheme value by the morpheme's form, each by
+        ``fit.surface_key``."""
+        out: Dict[Tuple[str, str], Dict[str, Dict[str, int]]] = {}
+
+        def add(name, sp, form):
+            if sp.value in (None, ''):
+                return
+            who = 'job' if job_piece(sp.metadata, job_id) else 'people' if prov_state(sp.metadata) != 'machine' \
+                else None
+            if who is None:
+                return
+            counts = out.setdefault((name, who), {}).setdefault(surface_key(form), {})
+            counts[_nfc(sp.value)] = counts.get(_nfc(sp.value), 0) + 1
+        for s in doc.sentences:
+            for w in s.words:
+                for name, sp in w.fields.items():
+                    add(name, sp, w.surface)
+                for m in w.morphemes:
+                    for name, sp in m.fields.items():
+                        add(name, sp, w.surface if m.virtual else m.form)
+        return out
 
     def entry_forms(self, ws: Workspace, project: IgtProject) -> Dict[str, str]:
         out = {}
@@ -2326,34 +2358,68 @@ class IgtRunner:
             self.plan_made = self.plan_stored(self.job.decisions())
         return (self.plan_made or {}).get('edits_text') is True
 
-    def evidence(self, ws: Workspace, project: IgtProject, words: List[Word], budget: int = JOB_EVIDENCE_CHARS,
-                 lexicon: bool = True) -> str:
-        """The evidence block of a piece of a plan in sentences
-        (:func:`evidence.block`), read now: people's analyses as the walk of
-        the document last read them, the job's own decisions and the lexicon
-        as they are when the piece starts. Every form is looked up by its
-        surface and by its surface trimmed, each by ``fit.surface_key``, the
-        key people's index and the decisions are kept by (REV-DAY-P-1)."""
-        if not words:
+    def evidence(self, ws: Workspace, project: IgtProject, st: Stretch, budget: int = JOB_EVIDENCE_CHARS,
+                 lexicon: bool = True, nowhere: bool = True) -> str:
+        """The evidence block of a piece (:func:`evidence.block`), for what
+        the job fills (the stretch's targets), read now: a word empty for
+        segmentation by how its form was analysed (people's analyses as the
+        walk last read them, the job's own decisions), any other empty unit
+        of a word or morpheme field by the values that field holds on other
+        units of the same form (people's and the job's, per value), the
+        lexicon entries spelled inside them where a target is linked to the
+        lexicon. A sentence field has no form, and no evidence. No target,
+        no block. Every form is looked up by its surface and by its surface
+        trimmed, each by ``fit.surface_key`` (REV-DAY-P-1)."""
+        fill = st.targets
+        words = list(st.words.values())
+        if not fill or not words:
             return ''
-        surfaces = [w.surface for w in words]
+        seg = [w for w in words if any(t.id == tg.SEGMENTATION for t in fill) and tg.empty(tg.SEGMENTED, w=w)]
+        unsegmented = {w.id for w in seg}
         people = self.people_index(ws, project)
-        keys = list(dict.fromkeys(k for s in surfaces
-                                  for k in (surface_key(s), surface_key(trim_ignored_edges(s, project.ignored_cfg)))))
+        fields = []
+        for t in tg.word_level(fill):
+            if t.field is None:
+                continue
+            if t.scope == 'Word':
+                surfaces = [w.surface for w in words if w.id not in unsegmented and tg.empty(t, w=w)]
+                level = 'word'
+            else:
+                surfaces = [w.surface if m.virtual else m.form for w in words if w.id not in unsegmented
+                            for m in w.morphemes if tg.empty(t, m=m)]
+                level = 'morpheme'
+            if surfaces:
+                fields.append(evidence.FieldEvidence(t.name, level, surfaces, self.values.get((t.name, 'people'), {}),
+                                                     self.values.get((t.name, 'job'), {}), t.lexicon))
+        surfaces = [w.surface for w in seg]
         mine: Dict[str, List[Dict[str, Any]]] = {}
-        for row in self.job.lookup_decisions(keys):
-            mine.setdefault(row.get('form'), []).append({**row, 'analysis': json.loads(row['analysis'])})
+        if surfaces:
+            keys = list(dict.fromkeys(k for x in surfaces for k in (
+                surface_key(x), surface_key(trim_ignored_edges(x, project.ignored_cfg)))))
+            for row in self.job.lookup_decisions(keys):
+                mine.setdefault(row.get('form'), []).append({**row, 'analysis': json.loads(row['analysis'])})
+        if not surfaces and not fields:
+            return ''
         gloss = getattr(project.gloss_field('Morpheme'), 'name', None)
         entries = self.entry_forms(ws, project)
         return evidence.block(ws, project, surfaces, people, mine, lambda a: rendering(a, gloss, entries),
-                              budget=budget, lexicon=lexicon)
+                              budget=budget, lexicon=lexicon and any(t.lexicon for t in fill), fields=fields,
+                              nowhere=nowhere)
 
-    def precedent(self, ws: Workspace, project: IgtProject, words: List[Word]) -> str:
+    def precedent(self, ws: Workspace, project: IgtProject, st: Stretch) -> str:
         """The precedent of a document's or a selection's piece: the
         evidence block (one code path, one key) within JOB_PRECEDENT_CHARS,
-        without the forms analysed nowhere and the entries, which such a
-        piece reads with its tools (REV-DAY-P-16)."""
-        return self.evidence(ws, project, words, budget=JOB_PRECEDENT_CHARS, lexicon=False)
+        without the forms filled nowhere and the entries, which such a piece
+        reads with its tools (REV-DAY-P-16)."""
+        return self.evidence(ws, project, st, budget=JOB_PRECEDENT_CHARS, lexicon=False, nowhere=False)
+
+    def targets(self, project: IgtProject) -> List[Target]:
+        """What the job fills, as its plan names it (``fills``, kept as
+        target ids, :mod:`.targets`): none when the plan names nothing. The
+        plan kept in core is read when this worker has not read it yet."""
+        if self.plan_made is None:
+            self.plan_made = self.plan_stored(self.job.decisions())
+        return tg.of_ids(project, (self.plan_made or {}).get('fills'))
 
     # --- the write (SPEC 5.4) --------------------------------------------------------
     def writing_rows(self, document_id: str) -> List[Dict[str, Any]]:
@@ -2595,7 +2661,8 @@ class IgtRunner:
         undone, ops = len(ops) - len(kept), kept
         out = self.excluded(document_id)
         part = [s for s in part if s.id not in out]
-        st = Stretch(doc, project, part, job.id, self.known_words(document_id), self.written(document_id))
+        st = Stretch(doc, project, part, job.id, self.known_words(document_id), self.written(document_id),
+                     self.targets(project))
         row = job.rows.get(document_id) or {}
         group = row.get('gloss_group')
         if not group:
@@ -2696,7 +2763,7 @@ class IgtRunner:
         counts['repeated'] += repeated
         counts['changed'] += undone
         blank = {w.id for s in fresh.sentences if s.id in st.sentence_ids and s.id not in changed
-                 for w in s.words if w.id in st.words and word_target(w)}
+                 for w in s.words if w.id in st.words and tg.empty_in_word(w, st.targets)}
         self.machine_status(project, kept)
         own = [s.id for s in st.doc.sentences if s.id in st.sentence_ids and s.id not in changed]
         w = Write(document_id, piece, st, own, kept, counts, fresh, proposed,
@@ -3617,13 +3684,10 @@ class IgtRunner:
         out = []
         blank = self.left_blank(job)
         rows = [job.rows.get(d) or {} for d in job.order]
-        # "Left blank" lists only what the job filled somewhere: a job that
-        # wrote no translation does not list every translation it passed,
-        # nor one that analysed no word every blank word (a dumb rule: the
-        # job has no task types, its writes say what it did).
-        filled_words = any((r.get('counts') or {}).get('words') for r in rows)
-        filled_translations = any((r.get('counts') or {}).get('translations')
-                                  or (r.get('counts') or {}).get('refreshed') for r in rows)
+        # "Left blank" lists what is empty of what the plan fills (its
+        # targets, :meth:`left_blank`): nothing for a plan that fills
+        # nothing. ``left`` counts the words, ``left_translations`` the
+        # sentence fields (each entry names its targets).
         for d, row in zip(job.order, rows):
             state = row.get('state')
             counts = row.get('counts') or empty_counts()
@@ -3641,11 +3705,8 @@ class IgtRunner:
             # The words of the sentences it did not reach are counted apart
             # (``not_reached``, ``not_reached_translations``), never listed.
             unread = d in blank and blank[d] is None
-
-            def kept(entries):
-                return [e for e in entries if (filled_words if e.get('form') is not None else filled_translations)]
-            listed = kept((blank.get(d) or {}).get('left') or [])
-            unreached = kept((blank.get(d) or {}).get('not_reached') or [])
+            listed = (blank.get(d) or {}).get('left') or []
+            unreached = (blank.get(d) or {}).get('not_reached') or []
             counts = {k: v for k, v in counts.items() if k not in ('left', 'left_translations')}
             if not unread:
                 counts.update({'left': sum(1 for e in listed if e.get('form') is not None),
@@ -3788,7 +3849,7 @@ class IgtRunner:
         later piece of the job may write the same change in its own (REV-DAY-S-2):
         the report counts that write once, as a change. A document that
         cannot be read keeps its changes listed."""
-        if not any(c.get('kind') in HELD_KINDS for c in changes):
+        if not any(c.get('document_id') for c in changes):
             return changes
         try:
             project = core_job.through_core(job, self.project)
@@ -3799,7 +3860,7 @@ class IgtRunner:
         out = []
         for c in changes:
             d = c.get('document_id')
-            if c.get('kind') in HELD_KINDS and d:
+            if d:
                 if d not in docs:
                     try:
                         docs[d] = core_job.through_core(job, lambda: self.read(project, d))
@@ -3829,9 +3890,12 @@ class IgtRunner:
         read when the report is written, in the sentences the job was to
         work, less what the job wrote (:meth:`written`: one that reads blank
         was cleared by a person, and is counted as written, REV-LNW-4):
-        every word with no analysis (:func:`word_target`) and every empty
-        translation, as ``{ref, sentence_id, begin, form}`` in document
-        order (``begin`` and ``form`` None for a translation), in two lists:
+        every word empty for a word or morpheme level target of the plan and
+        every sentence level target a sentence is empty for (THE rule,
+        :func:`sentence_targets`), as ``{ref, sentence_id, begin, form,
+        targets}`` in document order (``begin`` and ``form`` None for a
+        sentence field, ``targets`` the names of the targets it is empty
+        for), in two lists:
 
         * ``left``: in the sentences the job worked (a landed write of their
           own piece finished them, :meth:`finished`, wherever a split or a
@@ -3856,6 +3920,7 @@ class IgtRunner:
             logger.warning('Job %s: the words it left blank could not be read for the report: %s', job.id, e)
             return {d: None for d in job.order}
         out: Dict[str, Optional[Dict[str, List[Dict[str, Any]]]]] = {}
+        fill = self.targets(project)
         for d in job.order:
             worked, known, written = self.finished(d), self.known_words(d), self.written(d)
             row = job.rows.get(d) or {}
@@ -3878,11 +3943,14 @@ class IgtRunner:
                     continue
                 else:
                     into = lists['not_reached']
+                # THE rule over the plan's targets (:func:`sentence_targets`),
+                # each entry naming the targets it is empty for.
+                words, fields = sentence_targets(s, project, job.id, written=written, targets=fill)
                 into += [{'ref': f's{s.index}.w{w.index}', 'sentence_id': s.id, 'begin': w.begin,
-                          'form': w.surface} for w in s.words
-                         if word_target(w) and word_tag(w.id) not in written.words]
-                if translation_target(s, project, job.id) and s.id not in written.translations:
-                    into.append({'ref': f's{s.index}', 'sentence_id': s.id, 'begin': None, 'form': None})
+                          'form': w.surface, 'targets': [t.name for t in tg.empty_in_word(w, fill)]}
+                         for w in words]
+                into += [{'ref': f's{s.index}', 'sentence_id': s.id, 'begin': None, 'form': None,
+                          'targets': [t.name]} for t in fields]
         return out
 
 def runner_factory(cfg: ModelConfig, trace_dir: Optional[str] = None, count=None):

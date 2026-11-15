@@ -9,7 +9,7 @@ import re
 import pytest
 
 from fixtures import FakeClient, fake_ws, lexicon_raw
-from job_fixtures import JobClient, Model, call, document, reply, runner, start, use
+from job_fixtures import JobClient, Model, call, document, empty_words, reply, runner, start, use
 
 from plaid_agent.core.job import run_job
 from plaid_agent.igt import evidence
@@ -178,14 +178,16 @@ def _bullet(text, start):
 def test_a_piece_in_sentences_is_told_to_stage_first_in_no_more_words():
     from plaid_agent.igt import prompt
     project = fake_ws(FakeClient()).project
-    sentences, other = prompt.build_job_prompt(project, sentences=True), prompt.build_job_prompt(project)
-    old, new = _bullet(other, 'Use the tools rather than guessing.'), _bullet(sentences, 'The message holds')
+    from plaid_agent.igt import targets as tg
+    fill = [t for t in tg.fillable(project) if t.id in ('segmentation', 'sl-mgloss')]
+    sentences, other = prompt.build_job_prompt(project, sentences=True, targets=fill), prompt.build_job_prompt(project)
+    old, new = _bullet(other, 'Use the tools rather than guessing.'), _bullet(sentences, 'The message says')
     # Empty words, never each sentence: a plan in sentences walks analysed
     # sentences too (EW), and analyze_sentence over one replaces people's
     # analyses (EV2).
-    assert new == ('The message holds how your words were analysed and the lexicon entries in them. Stage empty '
-                   'words with analyze_sentence first, and look up only what its answer lists as several or none.')
-    assert len(new.split()) <= len(old.split())
+    assert new == ('The message says what is empty in your piece, how those forms were '
+                   'analysed and the lexicon entries in them. Stage the words to segment with analyze_sentence '
+                   'first, and look up only what its answer lists as several or none.')
     assert 'Read before you write' not in sentences and 'concordance of "na"' not in sentences
     assert "It listed the entries na 'PRS' and ku 'INF'." in sentences
     other = other.split('\nRunning code:')[0]  # a piece in sentences has no code tool (EV 4)
@@ -201,8 +203,8 @@ def test_each_piece_gets_the_prompt_of_its_plan(monkeypatch):
         model = use(monkeypatch, Model(lambda asked, n, kwargs: reply('Done.')))
         run_job(job, runner(job))
         seen[plan] = model.calls[0]['kwargs']['messages'][0]['content']
-    assert 'Stage empty words with analyze_sentence first' in seen['sentences']
-    assert 'Read before you write' in seen['document'] and 'Stage empty words' not in seen['document']
+    assert 'Stage the words to segment with analyze_sentence first' in seen['sentences']
+    assert 'Read before you write' in seen['document'] and 'Stage the words' not in seen['document']
 
 
 def test_the_planning_context_is_not_told_to_check_analyses_of_first():
@@ -239,8 +241,10 @@ def test_a_piece_in_sentences_is_offered_the_short_list(monkeypatch):
 def test_a_tool_off_the_short_list_is_refused():
     from plaid_agent.igt import toolkit
     from plaid_agent.igt.job import JobWorkspace
+    from plaid_agent.igt import targets as tg
     ws = JobWorkspace(FakeClient(), fake_ws(FakeClient()).project)
     ws.in_sentences = True
+    ws.fills = [t for t in tg.fillable(ws.project) if t.id in ('segmentation', 'sl-mgloss')]
     out = toolkit.job_piece_call(ws, 'concordance', {'pattern': 'gam'})
     assert str(out).startswith('Error') and "not one of this job's" in out
     assert {t['function']['name'] for t in toolkit.job_piece_tools(ws, plan_only=True)} == {
@@ -266,9 +270,8 @@ def from_block(asked):
         m = _re.match(r'^([^\s#‘]+)(?:#\S+)? ‘(.*?)’', line)
         if m and not line.startswith(('- ', 'How ', 'Lexicon ')):
             entries.setdefault(m.group(1).lower(), m.group(2))
-    empty = _re.search(r'^Empty in s1: words (.*?)(?: and the translation)?\.$', asked, _re.M).group(1)
     items = []
-    for surface in _re.findall(r'w\d+ "(.*?)"(?:, |$)', empty):
+    for surface in [f for s, words in empty_words(asked) if s == 1 for _, f in words]:
         form = evidence.form_of(surface, None).strip(',.')
         items.append(analysed.get(form) or (f'{form} {entries[form]}' if form in entries else '_'))
     return items
@@ -312,10 +315,13 @@ def test_a_piece_filling_a_field_on_analysed_text_is_offered_set_field_and_hande
     run_job(job, runner(job))
     first = next(c for c in model.calls if c['n'] == 1 and 'Instructions from' in c['asked'])
     names = [t['function']['name'] for t in first['kwargs']['tools']]
-    assert 'set_field' in names and len(names) == 7
+    # What the plan fills decides the tools: a word field, not linked to the
+    # lexicon, so the field tool and the two reads (the owner's steer).
+    assert sorted(names) == ['analyses_of', 'read_lexicon', 'set_field']
     asked = first['asked']
-    assert 'Nothing empty in s1, s2, s3' in asked
+    assert 'Empty in s1: Thematic role in w1' in asked
     assert 'How these forms were analysed before' not in asked and 'Lexicon entries spelled inside' not in asked
     assert 'Analysed nowhere before' not in asked
-    assert 'Stage empty words with analyze_sentence first' in first['kwargs']['messages'][0]['content']
+    system = first['kwargs']['messages'][0]['content']
+    assert 'analyze_sentence' not in system and 'Fill what is empty with set_field.' in system
     assert len(written) == F.VALUES

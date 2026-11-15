@@ -23,7 +23,7 @@ def _job(admin, writer, s, edits_text):
     made = writer.jobs.create(s.project_id, 'igt', 'Gloss the words.')
     claimed = admin.jobs.claim(WORKER, 'fake/m', ['igt'])
     assert claimed and claimed['job']['id'] == made['id']
-    admin.jobs.add_decisions(made['id'], WORKER, [plan_row('document', edits_text=edits_text)])
+    admin.jobs.add_decisions(made['id'], WORKER, [plan_row('document', edits_text=edits_text, ids=s.ids)])
     offset = {'s': 3600.0}
 
     def wait(sec):

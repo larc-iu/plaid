@@ -7,6 +7,7 @@ landed is counted once and its decisions are stored once, whatever crashes
 between the write, the decisions and the row."""
 
 import json
+import re
 
 import pytest
 
@@ -43,8 +44,8 @@ def _analyse(asked, n, kwargs):
     for line in asked.splitlines():
         if line.startswith('Empty in s'):
             s = line.split()[2].rstrip(':')
-            for w in line.split('words ')[1].split(' and ')[0].split(', ') if 'words ' in line else []:
-                ref, form = w.split(' ')[0], w.split('"')[1]
+            for w, form in re.findall(r'\bw(\d+) "([^"]*)"', line):
+                ref = f'w{w}'
                 calls.append(call(len(calls) + 1, 'set_analysis', {
                     'document': 'Story', 'ref': f'{s}.{ref}',
                     'morphemes': [{'form': form, 'type': 'stem', 'fields': {'Morph Gloss': 'G'}}]}))

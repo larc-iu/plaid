@@ -14,7 +14,7 @@ import re
 import pytest
 
 from fixtures import MORPH_LAYER, WORD_LAYER
-from job_fixtures import Model, call, document, every_tool, reply, use
+from job_fixtures import Model, call, document, empty_word_lines, every_tool, reply, use
 from test_job_left_all import adds_up
 from test_job_live_entries import _job, _runner, world  # noqa: F401 - the fixture
 
@@ -65,7 +65,7 @@ def _model(pieces):
             return reply('Done.')
         if n > 1:
             return reply('Glossed.')
-        empty = re.findall(r'^Empty in s(\d+): words (.*?)(?: and the translation)?\.$', asked, re.M)
+        empty = empty_word_lines(asked)
         pieces.append([int(s) for s, _ in empty])
         calls, k = [], 1
         for s, words in empty:
