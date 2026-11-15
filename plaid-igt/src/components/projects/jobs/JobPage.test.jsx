@@ -807,6 +807,33 @@ describe('the job page', () => {
     await v.unmount();
   });
 
+  it('counts what is blank in the skipped sentences apart', async () => {
+    const blank = { target: 'Role', unit: 'word', left: 0, notReached: 0, skipped: 4 };
+    const report = {
+      ...REPORT,
+      totals: { ...REPORT.totals, skippedNoAnswer: 2, blank: [blank] },
+      documents: [
+        {
+          documentId: 'd1',
+          name: 'Story A',
+          skipped: [
+            { sentence: 's1', sentenceId: 'sen1', reason: 'no-answer', kind: null },
+            { sentence: 's2', sentenceId: 'sen2', reason: 'no-answer', kind: null },
+          ],
+          counts: { left: 0, blank: [blank] },
+          left: [],
+          leftMore: 0,
+        },
+      ],
+    };
+    const v = await mount(clientOf(jobOf({ state: 'done', report })));
+    const section = v.container.querySelector('section[aria-label="Report"]');
+    expect(totals(section)['Role left blank']).toBe('0 words');
+    expect(totals(section)['Role blank in skipped sentences']).toBe('4 words');
+    expect(text(section)).toContain('Story ABlank in skipped sentences: Role 4 words.');
+    await v.unmount();
+  });
+
   it('takes what is left blank from the totals when they hold it, and says it beside each document', async () => {
     const report = {
       ...REPORT,

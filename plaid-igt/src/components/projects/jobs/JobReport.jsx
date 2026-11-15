@@ -19,8 +19,8 @@ import SECTIONS from './jobSections.json';
 // proposed nothing, `summaryBy` worker), the changes it proposed,
 // each piece's note, the tables its code made, each document's skipped
 // sentences and the targets it left blank (or that its document could not be
-// read for them, `leftUnread`, and how many blank words and translations the
-// sentences it did not reach hold, `notReached`), what harmonize changed and left,
+// read for them, `leftUnread`, and how much is blank in the sentences it did
+// not reach, `notReached`, and in those it skipped, `skipped`), what harmonize changed and left,
 // the entries the job made, and those of them nothing links (the job runs no
 // cleanup of its own: a person deletes them).
 // Every list the worker cut says how many it left out. A section's heading is
@@ -40,17 +40,24 @@ const More = ({ n, noun }) =>
 // What is still blank of each thing the job fills (the plan's targets, by
 // name): the totals' rows, or, when the totals hold none, the documents' rows
 // summed by target in the order they come. Each `{target, unit, left,
-// notReached}`, `unit` a word or a sentence (what Left blank lists). A job
-// that fills nothing has none, and core's own report of a job no worker
+// notReached, skipped}`, `unit` a word or a sentence (what Left blank lists).
+// A job that fills nothing has none, and core's own report of a job no worker
 // finished counts none.
 const blankSums = (report) => {
   if (report.totals?.blank) return report.totals.blank;
   const sums = new Map();
   (report.documents || []).forEach((d) =>
     (d.counts?.blank || []).forEach((b) => {
-      const s = sums.get(b.target) ?? { target: b.target, unit: b.unit, left: 0, notReached: 0 };
+      const s = sums.get(b.target) ?? {
+        target: b.target,
+        unit: b.unit,
+        left: 0,
+        notReached: 0,
+        skipped: 0,
+      };
       s.left += b.left ?? 0;
       s.notReached += b.notReached ?? 0;
+      s.skipped += b.skipped ?? 0;
       sums.set(b.target, s);
     }),
   );
@@ -119,6 +126,9 @@ const totalRows = (report) => {
         unitCount(b.notReached, b.unit),
       ]);
     }
+    if (b.skipped > 0) {
+      rows.push([`${capital(b.target)} blank in skipped sentences`, unitCount(b.skipped, b.unit)]);
+    }
   });
   optional('Lexicon links made', t.links);
   optional('Entries created', t.entries);
@@ -175,21 +185,26 @@ const DocumentName = ({ projectId, d }) =>
   );
 
 // How much of each thing the job fills is blank in the sentences of a
-// document the job did not reach: counted, never listed.
-const notReachedParts = (counts) =>
+// document the job did not reach, or skipped (`key`): counted, never listed.
+const blankParts = (counts, key) =>
   (counts?.blank || [])
-    .filter((b) => b.notReached > 0)
-    .map((b) => `${b.target} ${unitCount(b.notReached, b.unit)}`);
+    .filter((b) => b[key] > 0)
+    .map((b) => `${b.target} ${unitCount(b[key], b.unit)}`);
 
-const NotReached = ({ counts }) => {
-  const parts = notReachedParts(counts);
-  if (!parts.length) return null;
-  return (
-    <p className="ml-4 text-muted-foreground">
-      Blank in sentences not reached: {parts.join(', ')}.
-    </p>
-  );
-};
+const BLANK_ELSEWHERE = [
+  ['notReached', 'Blank in sentences not reached'],
+  ['skipped', 'Blank in skipped sentences'],
+];
+
+const BlankElsewhere = ({ counts }) =>
+  BLANK_ELSEWHERE.map(([key, label]) => {
+    const parts = blankParts(counts, key);
+    return parts.length ? (
+      <p key={key} className="ml-4 text-muted-foreground">
+        {label}: {parts.join(', ')}.
+      </p>
+    ) : null;
+  });
 
 // What a refusal the job could not follow left in a document's sentences
 // (`refused`): each sentence, linked into the grid, with what was refused.
@@ -396,7 +411,7 @@ export const JobReport = ({ report, projectId, vocabs = [] }) => {
       d.left?.length ||
       d.leftMore > 0 ||
       d.leftUnread ||
-      notReachedParts(d.counts).length > 0 ||
+      BLANK_ELSEWHERE.some(([key]) => blankParts(d.counts, key).length > 0) ||
       d.refused?.length ||
       d.refusedMore > 0,
   );
@@ -526,7 +541,7 @@ export const JobReport = ({ report, projectId, vocabs = [] }) => {
                 </p>
               )}
               {d.leftUnread && <p className="ml-4 text-muted-foreground">Could not be read.</p>}
-              <NotReached counts={d.counts} />
+              <BlankElsewhere counts={d.counts} />
               <Refused projectId={projectId} d={d} />
             </div>
           ))}

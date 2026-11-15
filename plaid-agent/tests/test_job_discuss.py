@@ -473,6 +473,6 @@ def test_the_totals_say_what_is_still_blank_of_each_thing_the_job_fills():
              {'target': 'Translation', 'unit': 'sentence', 'left': 1, 'not_reached': 2}]
     report = {'totals': {'changes': 4, 'blank': blank}}
     assert jobread._totals(report) == ('changes 4, segmentation left blank 3 words, Translation left blank 1 '
-                                       'sentence (2 sentences more in sentences not reached)')
+                                       'sentence (2 more in sentences not reached)')
     by_documents = {'totals': {'changes': 4}, 'documents': [{'counts': {'blank': blank}}, {'counts': {'blank': blank}}]}
     assert 'segmentation left blank 6 words' in jobread._totals(by_documents)

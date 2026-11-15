@@ -97,6 +97,32 @@ def test_a_piece_that_answers_nothing_twice_has_its_sentences_skipped_as_no_answ
     assert [c['n'] for c in nothing] == [1, 2]
 
 
+@pytest.mark.parametrize('plan', ['sentences', 'document'])
+def test_the_blanks_of_skipped_sentences_are_counted_apart(monkeypatch, plan):
+    """REV-DF-D-9: the blank words of the sentences skipped as no-answer
+    are counted per target beside left and not reached (``skipped``), never
+    listed, in the documents' and the totals' rows, the final context and
+    read_job, so no target reads 0 blank while skipped sentences hold
+    blanks of it."""
+    from plaid_agent.igt import jobread
+
+    def answer(asked, n, kwargs):
+        if plan == 'document' or 1 in targets_named(asked):
+            return reply(None)
+        return _stage(asked) if n == 1 else reply('Done.')
+    finished, _ = _run(monkeypatch, plan, answer)
+    report = finished['report']
+    (doc,) = report['documents']
+    words = 4 if plan == 'sentences' else 2 * N
+    rows = [{'target': 'segmentation', 'unit': 'word', 'left': 0, 'not_reached': 0, 'skipped': words},
+            {'target': 'Morph Gloss', 'unit': 'word', 'left': 0, 'not_reached': 0, 'skipped': words}]
+    assert doc['counts']['blank'] == rows and report['totals']['blank'] == rows
+    message = igt_job.summary_message(report)
+    assert (f'Of what it fills: segmentation left blank 0 words ({words} more in skipped sentences), Morph Gloss '
+            f'left blank 0 words ({words} more in skipped sentences).') in message, message
+    assert f'segmentation left blank 0 words ({words} more in skipped sentences)' in jobread._totals(report)
+
+
 def test_an_answer_with_a_line_and_nothing_staged_is_not_asked_again(monkeypatch):
     """A piece that says "Nothing to change." and stages nothing is worked
     as before: one call, not asked again, not skipped."""

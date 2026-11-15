@@ -372,8 +372,8 @@ def test_the_final_context_hears_what_is_still_blank_beside_what_was_written():
     text = summary_message(report)
     lines = text.splitlines()
     assert lines[0] == 'This job wrote 5 changes in 2 of 3 sentences: Role 5 values.', lines[0]
-    assert lines[1] == 'Of what it fills: Role left blank 7 words (2 words more in sentences not reached).', lines[1]
-    assert ('- "Story": stopped partway, 2 of 3 sentences done, changes 5, Role left blank 7 words (2 words more '
+    assert lines[1] == 'Of what it fills: Role left blank 7 words (2 more in sentences not reached).', lines[1]
+    assert ('- "Story": stopped partway, 2 of 3 sentences done, changes 5, Role left blank 7 words (2 more '
             'in sentences not reached)') in text, text
 
 

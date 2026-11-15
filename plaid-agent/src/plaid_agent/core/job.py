@@ -714,27 +714,35 @@ def field_counts(by_name) -> List[Dict[str, Any]]:
 def blank_sums(documents: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """What is still blank of each thing the job fills, summed over the
     documents' ``counts.blank`` rows (an app's, ``{target, unit, left,
-    not_reached}``), by target in the order they first come: the report's
-    ``totals.blank``. A list by name, never a map keyed by a name."""
+    not_reached, skipped}``), by target in the order they first come: the
+    report's ``totals.blank``. A list by name, never a map keyed by a name."""
     out: Dict[str, Dict[str, Any]] = {}
     for d in documents:
         for b in (d.get('counts') or {}).get('blank') or []:
-            row = out.setdefault(b.get('target'), {'target': b.get('target'), 'unit': b.get('unit'), 'left': 0,
-                                                   'not_reached': 0})
-            row['left'] += b.get('left') or 0
-            row['not_reached'] += b.get('not_reached') or 0
+            row = out.setdefault(b.get('target'), {'target': b.get('target'), 'unit': b.get('unit'),
+                                                   **{k: 0 for k in BLANK_WHERE}})
+            for k in BLANK_WHERE:
+                row[k] += b.get(k) or 0
     return list(out.values())
+
+
+#: Where a ``blank`` row counts what is blank: in the sentences the job
+#: worked, in those it did not reach, and in those it skipped (REV-DF-D-9).
+BLANK_WHERE = ('left', 'not_reached', 'skipped')
 
 
 def blank_text(rows) -> str:
     """``counts.blank`` or ``totals.blank`` as a line says it: "segmentation
-    left blank 6 words (4 more in sentences not reached), Translation left
-    blank 0 sentences"."""
+    left blank 6 words (4 more in sentences not reached, 2 more in skipped
+    sentences), Translation left blank 0 sentences"."""
     def n(k, unit):
         return f'{k:,} {unit}{"" if k == 1 else "s"}'
-    return ', '.join(f'{b.get("target")} left blank {n(b.get("left") or 0, b.get("unit") or "place")}'
-                     + (f' ({n(b["not_reached"], b.get("unit") or "place")} more in sentences not reached)'
-                        if b.get('not_reached') else '')
+
+    def more(b):
+        said = [f'{b[k]:,} more in {where}' for k, where in (('not_reached', 'sentences not reached'),
+                                                              ('skipped', 'skipped sentences')) if b.get(k)]
+        return f' ({", ".join(said)})' if said else ''
+    return ', '.join(f'{b.get("target")} left blank {n(b.get("left") or 0, b.get("unit") or "place")}{more(b)}'
                      for b in rows or [])
 
 

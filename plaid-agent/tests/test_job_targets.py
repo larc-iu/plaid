@@ -151,7 +151,7 @@ def test_a_job_on_any_field_is_told_offered_written_and_reported_by_its_targets(
 
 
 def _blank(target, left, unit='word'):
-    return {'target': target, 'unit': unit, 'left': left, 'not_reached': 0}
+    return {'target': target, 'unit': unit, 'left': left, 'not_reached': 0, 'skipped': 0}
 
 
 BLANK = {ROLE: [_blank('Role', 2)], MPOS: [_blank('Morph POS', 4)], NOTE: [_blank('Note', 1, 'sentence')],

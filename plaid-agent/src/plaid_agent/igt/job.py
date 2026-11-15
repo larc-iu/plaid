@@ -44,7 +44,7 @@ from ..core.garble import seed
 from ..core.guidelines import manual_chars
 from ..core.job import (BUDGET, ROW_FINAL, SKIPPED_MORE, JobStopped, Pace, StretchFailed, canonical, analysis_key,
                         field_counts,
-                        blank_text, empty_counts, failure_kind, halve, harmonized, not_answering)
+                        BLANK_WHERE, blank_text, empty_counts, failure_kind, halve, harmonized, not_answering)
 from ..core.limits import (JOB_ANALYSIS_MAX_CHARS, JOB_CHANGE_VALUE_CHARS, JOB_CHANGES_MAX, JOB_CONTEXT_SENTENCES,
                            JOB_DOCUMENT_PIECE_MAX_CHARS, JOB_NOTE_MAX_CHARS, JOB_SUMMARY_MAX_CHARS,
                            JOB_SUMMARY_NOTES_CHARS, JOB_SUMMARY_TABLE_CHARS, JOB_TABLES_MAX, JOB_TABLES_PER_PIECE,
@@ -4083,14 +4083,15 @@ class IgtRunner:
         targets}`` in document order (``begin`` and ``form`` None for a
         sentence field, ``targets`` the names of the targets it is empty
         for), in two lists, and ``blank``, per target of the plan,
-        ``{target, unit, left, not_reached}``, how many places of each list
-        are empty for it:
+        ``{target, unit, left, not_reached, skipped}``, how many places of
+        each list, and of the skipped sentences, are empty for it:
 
         * ``left``: in the sentences the job worked (a landed write of their
           own piece finished them, :meth:`finished`, wherever a split or a
           merge moved their words), whatever the piece staged there or not,
-        * ``not_reached``: in its other sentences, but those skipped (listed
-          as skipped): the walk had not reached them when the job ended
+        * ``skipped``: in the sentences listed as skipped (no answer, too
+          long, failed, changed), counted and never listed (REV-DF-D-9),
+        * ``not_reached``: in its other sentences: the walk had not reached them when the job ended
           (stopped, or the document put off for good). A sentence of a
           document whose walk ended holds nothing here unless it became
           blank after the walk passed it.
@@ -4125,26 +4126,31 @@ class IgtRunner:
                 out[d] = None
                 continue
             lists = out.setdefault(d, {'left': [], 'not_reached': [], 'blank': []})
-            tally = {t.id: {'left': 0, 'not_reached': 0} for t in fill}
+            tally = {t.id: {k: 0 for k in BLANK_WHERE} for t in fill}
             for s in doc.sentences:
                 if s.id in worked or wrote_in(s, known):
                     where = 'left'
                 elif s.id in skipped:
-                    continue
+                    # Counted, never listed: the sentence is listed as
+                    # skipped (REV-DF-D-9).
+                    where = 'skipped'
                 else:
                     where = 'not_reached'
                 # THE rule over the plan's targets (:func:`sentence_targets`),
                 # each entry naming the targets it is empty for.
                 words, fields = sentence_targets(s, project, job.id, written=written, targets=fill)
+                listed = lists.get(where)
                 for w in words:
                     empty = tg.empty_in_word(w, fill)
-                    lists[where].append({'ref': f's{s.index}.w{w.index}', 'sentence_id': s.id, 'begin': w.begin,
-                                         'form': w.surface, 'targets': [t.name for t in empty]})
+                    if listed is not None:
+                        listed.append({'ref': f's{s.index}.w{w.index}', 'sentence_id': s.id, 'begin': w.begin,
+                                       'form': w.surface, 'targets': [t.name for t in empty]})
                     for t in empty:
                         tally[t.id][where] += 1
                 for t in fields:
-                    lists[where].append({'ref': f's{s.index}', 'sentence_id': s.id, 'begin': None, 'form': None,
-                                         'targets': [t.name]})
+                    if listed is not None:
+                        listed.append({'ref': f's{s.index}', 'sentence_id': s.id, 'begin': None, 'form': None,
+                                       'targets': [t.name]})
                     tally[t.id][where] += 1
             # Per target of the plan, a row even at nothing left, counted by
             # the places Left blank lists (a word for a word or morpheme
