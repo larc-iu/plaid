@@ -244,17 +244,61 @@ describe('the job page', () => {
     await first.unmount();
   });
 
+  it('offers a document’s Changes only where the job wrote something there', async () => {
+    const ended = jobOf({
+      state: 'done',
+      finishedAt: '2026-11-12T11:00:00Z',
+      documents: [
+        { ...jobOf().documents[0], counts: { changes: 0 }, glossGroup: 'g-d1' },
+        {
+          ...jobOf().documents[0],
+          documentId: 'd3',
+          counts: { changes: 0 },
+          glossGroup: 'g-d3',
+          harmonizeGroup: 'h-d3',
+        },
+      ],
+      report: {
+        ...REPORT,
+        documents: [
+          {
+            documentId: 'd1',
+            name: 'Story A',
+            counts: { changes: 0 },
+            glossGroup: 'g-d1',
+            skipped: [{ sentence: 's1', sentenceId: 'sen1', reason: 'no-answer', kind: null }],
+          },
+        ],
+      },
+    });
+    const v = await mount(clientOf(ended));
+    expect(all(v.container, 'a').map((a) => a.textContent)).not.toContain('Changes');
+    expect(all(v.container, 'a').map((a) => a.textContent)).toContain('Analyses made consistent');
+    const report = v.container.querySelector('section[aria-label="Report"]');
+    expect(all(report, 'p > a').map((a) => a.textContent)).not.toContain('Story A');
+    await v.unmount();
+  });
+
   it('links each document to what the job changed in it, and the report’s entries to themselves', async () => {
     const ended = jobOf({
       state: 'done',
       finishedAt: '2026-11-12T11:00:00Z',
       documents: [
-        { ...jobOf().documents[0], glossGroup: 'g-d1', harmonizeGroup: 'h-d1' },
+        {
+          ...jobOf().documents[0],
+          counts: { ...jobOf().documents[0].counts, changes: 31 },
+          glossGroup: 'g-d1',
+          harmonizeGroup: 'h-d1',
+        },
         { ...jobOf().documents[1], glossGroup: 'g-d2' },
       ],
       report: {
         ...REPORT,
-        documents: REPORT.documents.map((d) => ({ ...d, glossGroup: 'g-d1' })),
+        documents: REPORT.documents.map((d) => ({
+          ...d,
+          counts: { ...d.counts, changes: 3 },
+          glossGroup: 'g-d1',
+        })),
       },
     });
     const v = await mount(clientOf(ended));

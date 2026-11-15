@@ -13,6 +13,7 @@ import {
   stoppedPartway,
 } from './jobText.js';
 import SECTIONS from './jobSections.json';
+import { changesGroup } from './JobHistoryLinks.jsx';
 
 // A finished job's report (CONTRACT 5.3, as the client hands it over, keys in
 // camelCase): the totals, the summary the assistant wrote under a heading
@@ -172,9 +173,9 @@ const EntryLine = ({ entry }) => {
 };
 
 // A document of the report by its name, a link to what the job changed in it
-// (its History entry for the job's work there) where it has one.
+// (its History entry for the job's work there) where it wrote something.
 const DocumentName = ({ projectId, d }) =>
-  d.name && d.glossGroup ? (
+  d.name && changesGroup(d) ? (
     <Link
       className="font-medium underline"
       to={historyHref(APP_ROUTES.document(projectId, d.documentId), d.glossGroup)}

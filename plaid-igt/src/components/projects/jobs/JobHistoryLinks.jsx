@@ -2,17 +2,22 @@ import { Link } from 'react-router-dom';
 import { historyHref } from '@ui/hooks/useHistoryParam.js';
 import { APP_ROUTES } from '@/appRoutes.js';
 
+// The History entry of the job's work in a document, where it wrote
+// something there: the worker names the group before its first write, so a
+// group with no change opens nothing (REV-DF-S-5).
+export const changesGroup = (d) => ((d?.counts?.changes ?? 0) > 0 ? d.glossGroup : null);
+
 /**
  * Links to what a job changed in one document: its History entry for the
- * job's work there (`glossGroup`) and for making analyses consistent
- * (`harmonizeGroup`), each where the job has one. Nothing for a document the
- * job did not write in, or one that is gone.
+ * job's work there (`glossGroup`, where it wrote something) and for making
+ * analyses consistent (`harmonizeGroup`), each where the job has one. Nothing
+ * for a document the job did not write in, or one that is gone.
  */
 export const JobHistoryLinks = ({ projectId, document: d }) => {
   if (d.name === null || d.name === undefined) return null;
   const path = APP_ROUTES.document(projectId, d.documentId);
   const links = [
-    [d.glossGroup, 'Changes'],
+    [changesGroup(d), 'Changes'],
     [d.harmonizeGroup, 'Analyses made consistent'],
   ].filter(([group]) => group);
   return (

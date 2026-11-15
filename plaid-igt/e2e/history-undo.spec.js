@@ -266,7 +266,7 @@ test('a job’s entry is undone but for the value a person wrote since, which is
     sentences: 1,
     targets: 1,
     done: 1,
-    counts: { words: 3, links: 1, entries: 1 },
+    counts: { words: 3, links: 1, entries: 1, changes: 5 },
     glossGroup: groupId,
   });
   const report = stoppedReport({

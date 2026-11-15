@@ -37,7 +37,7 @@ import {
   jobStoppable,
 } from '@ui/domain/jobs.js';
 import { JobReport } from './JobReport.jsx';
-import { JobHistoryLinks } from './JobHistoryLinks.jsx';
+import { JobHistoryLinks, changesGroup } from './JobHistoryLinks.jsx';
 import {
   durationText,
   jobName,
@@ -436,7 +436,7 @@ const JobDocuments = ({ job, projectId }) => {
     });
   }
   // Each pass's History entry in the document: what the job changed there.
-  if (rows.some((d) => d.glossGroup || d.harmonizeGroup)) {
+  if (rows.some((d) => changesGroup(d) || d.harmonizeGroup)) {
     columns.push({
       key: 'history',
       label: 'History',

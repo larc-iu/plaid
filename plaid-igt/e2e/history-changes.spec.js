@@ -247,7 +247,7 @@ test('a job made by hand reads as its work, reached from the job page', async ({
     sentences: 1,
     targets: 1,
     done: 1,
-    counts: { words: 2, links: 1, entries: 1 },
+    counts: { words: 2, links: 1, entries: 1, changes: 4 },
     glossGroup: groupId,
   });
   const report = stoppedReport({
