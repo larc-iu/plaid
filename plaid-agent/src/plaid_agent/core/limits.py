@@ -280,6 +280,10 @@ JOB_DECISIONS_PER_CALL = 1000
 JOB_DOCUMENT_PIECE_MAX_CHARS = 40000
 #: The documents the planning context is told of, one line each.
 JOB_PLAN_DOCUMENT_LINES = 200
+#: The most targets a planning message's document line names as holding
+#: something empty, those with the most first, the rest counted (DF1 open
+#: point 3: a project with many fields made long lines).
+JOB_PLAN_EMPTY_TARGETS = 5
 #: The longest instructions the plan adds for every piece: ``plan_work``
 #: cuts longer ones at their last whole sentence within it, and the plan
 #: says so (BRIEF PF). They are kept as written in a decision row of their

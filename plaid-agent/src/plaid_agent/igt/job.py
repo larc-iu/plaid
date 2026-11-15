@@ -1640,16 +1640,25 @@ class IgtRunner:
         can fill (:func:`targets.fillable`, for plan_work's ``fills``) and the
         documents, one line each with how much is empty of each, at most
         JOB_PLAN_DOCUMENT_LINES."""
-        from ..core.limits import JOB_PLAN_DOCUMENT_LINES
+        from ..core.limits import JOB_PLAN_DOCUMENT_LINES, JOB_PLAN_EMPTY_TARGETS
         fill = tg.fillable(project or self.project())
         names = {t.id: t.name for t in fill}
         lines = [f'Instructions from {self.job.starter_name}:', self.job.instructions or '', '',
                  'What a job can fill (name them in plan_work\'s fills):', *[f'- {t.label}' for t in fill], '',
                  f'The job\'s documents, in its order ({len(facts)}):']
         for f in facts[:JOB_PLAN_DOCUMENT_LINES]:
-            empties = ', '.join(f'{names[i]} {n:,}' for i, n in (f.get('empty') or {}).items() if i in names)
+            # Only the targets with something empty, the most first (the
+            # configuration's order on a tie), at most JOB_PLAN_EMPTY_TARGETS,
+            # the rest counted: a project with many fields keeps short lines.
+            order = {t.id: k for k, t in enumerate(fill)}
+            some = sorted(((i, n) for i, n in (f.get('empty') or {}).items() if i in names and n),
+                          key=lambda x: (-x[1], order[x[0]]))
+            empties = ', '.join(f'{names[i]} {n:,}' for i, n in some[:JOB_PLAN_EMPTY_TARGETS])
+            if len(some) > JOB_PLAN_EMPTY_TARGETS:
+                empties += f', and {len(some) - JOB_PLAN_EMPTY_TARGETS} more'
+            said = f' Empty: {empties}.' if empties else (' Nothing empty.' if fill else '')
             lines.append(f'- "{f["name"]}": {_n(f["sentences"], "sentence")}, {_n(f["words"], "word")}, '
-                         f'{f["characters"]:,} characters.' + (f' Empty: {empties}.' if empties else ''))
+                         f'{f["characters"]:,} characters.{said}')
         if len(facts) > JOB_PLAN_DOCUMENT_LINES:
             lines.append(f'and {len(facts) - JOB_PLAN_DOCUMENT_LINES} more documents not shown')
         lines += ['', 'Plan the job and end with plan_work.']

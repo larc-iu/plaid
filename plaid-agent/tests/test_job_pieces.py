@@ -95,8 +95,9 @@ def test_the_first_context_plans_and_the_plan_is_kept_and_reported(monkeypatch):
     assert "What a job can fill (name them in plan_work's fills):\n- segmentation (word level: words into " \
            'morphemes)\n- "Gloss" (word level)\n- "Morph Gloss" (morpheme level)\n- "Translation" (sentence level)' \
            in asked, asked
-    assert 'Story 1": 2 sentences, 3 words, 81 characters. Empty: segmentation 3, Gloss 3, Morph Gloss 3, ' \
-           'Translation 0.' in asked, asked
+    # Only what has something empty (DF1 open point 3): Translation 0 is not named.
+    assert 'Story 1": 2 sentences, 3 words, 81 characters. Empty: segmentation 3, Gloss 3, Morph Gloss 3.\n' \
+        in asked, asked
     plan_tools = {t['function']['name'] for t in model.calls[0]['kwargs']['tools']}
     assert 'plan_work' in plan_tools and 'set_analysis' not in plan_tools
     assert _plan_rows(client) == [{'pieces': 'sentences', 'documents': None, 'by': 'model', 'why': None,
@@ -1060,3 +1061,35 @@ def test_a_selections_lexicon_change_in_a_write_whose_answer_was_lost_unlanded_i
     assert batches[0] == (STORY1, 'unsent')
     assert [b for b, fate in batches if fate == 'landed' and 'vocab_items.patch_metadata' in b] == [STORY1]
     assert not finished['report'].get('proposed')
+
+
+def test_the_planners_document_line_names_only_what_is_empty_the_most_first_and_counts_the_rest():
+    """DF1 open point 3: a project with many fields made long lines. A line
+    names the targets with something empty, most first, at most
+    JOB_PLAN_EMPTY_TARGETS, then how many more; a document with nothing empty
+    says so."""
+    from plaid_agent.core.limits import JOB_PLAN_EMPTY_TARGETS
+    from plaid_agent.igt import targets as tg
+    from plaid_agent.igt.project import load_project
+    client = JobClient({'d1': document('d1', 'Story 1', [{'words': ['ka']}])})
+    job = start(client)
+    r = runner(job)
+    project = load_project(client, 'p1')
+    ids = [t.id for t in tg.fillable(project)]
+    many = {i: n for i, n in zip(ids, [2, 9, 0, 4])}
+    facts = [{'name': 'A', 'sentences': 1, 'words': 1, 'characters': 2, 'empty': many},
+             {'name': 'B', 'sentences': 1, 'words': 1, 'characters': 2, 'empty': {i: 0 for i in ids}}]
+    text = r.plan_message(facts, project)
+    names = {t.id: t.name for t in tg.fillable(project)}
+    want = sorted(((i, n) for i, n in many.items() if n), key=lambda x: -x[1])
+    line = ', '.join(f'{names[i]} {n}' for i, n in want[:JOB_PLAN_EMPTY_TARGETS])
+    assert f'- "A": 1 sentence, 1 word, 2 characters. Empty: {line}.' in text, text
+    assert '- "B": 1 sentence, 1 word, 2 characters. Nothing empty.' in text, text
+    monkey = dict(many)
+    import plaid_agent.core.limits as limits
+    old, limits.JOB_PLAN_EMPTY_TARGETS = limits.JOB_PLAN_EMPTY_TARGETS, 2
+    try:
+        text = r.plan_message([{**facts[0], 'empty': monkey}], project)
+    finally:
+        limits.JOB_PLAN_EMPTY_TARGETS = old
+    assert f'Empty: {names[want[0][0]]} 9, {names[want[1][0]]} 4, and 1 more.' in text, text
