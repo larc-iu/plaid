@@ -101,8 +101,8 @@ export const skippedText = ({ reason, kind }) => {
 const REFUSED_TEXT = {
   text: 'Change to words the job retyped, split, merged or deleted',
   shape: 'Retype, split, merge or delete of words the job also changed',
-  'entry-new': 'Change naming an entry the job made',
-  'entry-gone': 'Change naming an entry the job deleted or merged',
+  'entry-new': 'Change that uses an entry the job made',
+  'entry-gone': 'Change that uses an entry the job deleted or merged',
   expression: 'Link inside a multi-word expression the job made',
 };
 export const refusedText = (code) => REFUSED_TEXT[code] ?? 'Refused';

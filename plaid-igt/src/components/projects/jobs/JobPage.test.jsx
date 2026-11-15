@@ -1158,11 +1158,11 @@ describe('the job page', () => {
     expect(items).toEqual(
       expect.arrayContaining([
         's1 Change to words the job retyped, split, merged or deleted',
-        's2 Change naming an entry the job made',
+        's2 Change that uses an entry the job made',
         's3 Link inside a multi-word expression the job made',
         's4 Refused',
         's5 Retype, split, merge or delete of words the job also changed',
-        's6 Change naming an entry the job deleted or merged',
+        's6 Change that uses an entry the job deleted or merged',
         // The shape guard's refusal, with no sentence (D-14), is labelled too.
         'Change to words the job retyped, split, merged or deleted',
       ]),
