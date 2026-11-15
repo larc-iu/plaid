@@ -565,3 +565,44 @@ def test_everything_a_job_writes_on_a_target_outside_its_setup_is_counted_under_
                             'report': finished['report']})
     assert ('written outside its setup: Morph Gloss 2 values, Translation 1 value, segmentation 2 values'
             in said[-2]), said[-2]
+
+
+def _literal_raw(raw, names):
+    """``raw`` with :func:`_ipa_raw`'s field and orthography "IPA", and a
+    word field of each of ``names``."""
+    from fixtures import WORD_LAYER
+    raw = _ipa_raw(raw)
+    words = next(tk for tk in raw['text_layers'][0]['token_layers'] if tk['id'] == WORD_LAYER)
+    for i, name in enumerate(names):
+        words['span_layers'].append({'id': f'sl-literal{i}', 'name': name, 'config': {'igt': {'scope': 'Word'}}})
+    return raw
+
+
+@pytest.mark.parametrize('names', [['IPA (word level)'], ['IPA (word level)', '"IPA" (word level)'],
+                                   ['IPA (orthography, word level)', 'IPA (word)'], ['segmentation'],
+                                   ['Gloss (morpheme level)', 'Translation (sentence)']])
+def test_no_two_targets_share_a_shown_name_and_each_reads_back_to_its_own(names):
+    """REV-SUFIX-3: a field literally named as another target's label (a
+    word field "IPA (word level)" beside the field and the orthography
+    "IPA") never shares that target's shown name, and every shown name is
+    read back, by plan_work and propose_job alike, to the target it names."""
+    from fixtures import fake_ws, project_raw
+    from plaid_agent.igt.toolkit import call_tool
+    ws = fake_ws(FakeClient(project=_literal_raw(project_raw(), names)))
+    every = tg.fillable(ws.project)
+    shown = tg.shown_names(ws.project, every)
+    assert len({s.casefold() for s in shown}) == len(shown), shown
+    for t, name in zip(every, shown):
+        assert tg.named(ws.project, [name]) == ([t], []), (t.id, name)
+        ws.job_card = None
+        out = call_tool(ws, 'propose_job', {'action': 'draft', 'documents': ['Text 1'], 'fills': [name],
+                                            'brief': 'Do it.'})
+        assert out.startswith('Drafted'), (name, out)
+        assert ws.job_card['fills'] == [{'id': t.id, 'name': name}], (name, ws.job_card['fills'])
+        pws = JobWorkspace(ws.client, ws.project, mode=JobWorkspace.PLAN)
+        pws.job_documents = [{'id': 'd1', 'name': 'Text 1'}]
+        pws.job_setup = tg.setup_of(ws.project, {'fills': ws.job_card['fills'], 'text': False})
+        assert pws.job_setup.names == (name,)
+        out = _plan_work(pws, fills=[name])
+        assert not out.startswith('Error'), (name, out)
+        assert pws.plan_work["fills"] == [t.id], (name, pws.plan_work)

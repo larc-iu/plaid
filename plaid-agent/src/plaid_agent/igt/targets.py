@@ -138,19 +138,15 @@ def named(project: IgtProject, names: Iterable[str]) -> Tuple[List[Target], List
     target's name as the planning message lists it, case aside, with or
     without its quotes and its level. A name two targets answer to (a field
     named "Segmentation", an orthography named as a field) names neither:
-    only each one's label does (REV-DF-D-21)."""
-    first: Dict[str, List[Target]] = {}
-    later: Dict[str, List[Target]] = {}
-    for t in fillable(project):
-        a, b = _keys(t)
-        for k in a:
-            first.setdefault(k, []).append(t)
-        for k in b:
-            later.setdefault(k, []).append(t)
+    only each one's label does (REV-DF-D-21). Looked up first as written,
+    quotes kept (a name, its label with or without quotes), so the quoted
+    label ``"IPA" (word level)`` names the field "IPA" though a field is
+    named "IPA (word level)", and last by the target's id, which
+    :func:`shown_names` gives a target no name tells apart (REV-SUFIX-3)."""
+    look = _lookup(project)
     out, unknown = [], []
     for name in names:
-        key = str(name).strip().replace('"', '').casefold()
-        hit = first.get(key) or later.get(key) or []
+        hit = look(name)
         if len(hit) != 1:
             unknown.append(str(name))
         elif hit[0] not in out:
@@ -158,16 +154,42 @@ def named(project: IgtProject, names: Iterable[str]) -> Tuple[List[Target], List
     return out, unknown
 
 
-def shown_names(project: IgtProject, targets: Iterable[Target]) -> List[str]:
-    """Each of ``targets`` as a person and a model are told it: its name, or,
-    where two targets of ``project`` share that name (a word field and an
-    orthography both "IPA"), its label without quotes, "IPA (word level)",
-    which :func:`named` reads back. THE rule for every list that names
-    targets: a refusal's, the job card's, the setup line's (REV-SU-B-2)."""
-    seen: Dict[str, int] = {}
+def _lookup(project: IgtProject):
+    """:func:`named`'s lookup over ``project``'s targets: a name to every
+    target that answers to it."""
+    exact: Dict[str, List[Target]] = {}
+    first: Dict[str, List[Target]] = {}
+    later: Dict[str, List[Target]] = {}
+    ids: Dict[str, List[Target]] = {}
     for t in fillable(project):
-        seen[t.name.casefold()] = seen.get(t.name.casefold(), 0) + 1
-    return [t.name if seen.get(t.name.casefold(), 0) <= 1 else t.labelled() for t in targets]
+        for k in dict.fromkeys(k.casefold() for k in (t.name, t.label, t.labelled())):
+            exact.setdefault(k, []).append(t)
+        a, b = _keys(t)
+        for k in a:
+            first.setdefault(k, []).append(t)
+        for k in b:
+            later.setdefault(k, []).append(t)
+        ids.setdefault(t.id, []).append(t)
+
+    def look(name) -> List[Target]:
+        written = str(name).strip()
+        key = written.replace('"', '').casefold()
+        return exact.get(written.casefold()) or first.get(key) or later.get(key) or ids.get(written) or []
+    return look
+
+
+def shown_names(project: IgtProject, targets: Iterable[Target]) -> List[str]:
+    """Each of ``targets`` as a person and a model are told it: the first of
+    its name, its label without quotes ("IPA (word level)", where a word
+    field and an orthography are both "IPA"), its label with them (``"IPA"
+    (word level)``, where a field is named "IPA (word level)" too) and its
+    id that :func:`named` reads back to it alone, so no two targets of
+    ``project`` are ever shown alike (REV-SUFIX-3). THE rule for every list
+    that names targets: a refusal's, the job card's, the setup line's, the
+    plan's and the report's (REV-SU-B-2)."""
+    look = _lookup(project)
+    return [next((n for n in (t.name, t.labelled(), t.label) if n.strip() and look(n) == [t]), t.id)
+            for t in targets]
 
 
 def listed_names(project: IgtProject) -> List[str]:
