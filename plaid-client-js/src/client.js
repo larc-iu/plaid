@@ -78,6 +78,7 @@ import { bodyOf } from "./families.js";
  * @typedef {import("./types.js").JobReport} JobReport
  * @typedef {import("./types.js").JobDecision} JobDecision
  * @typedef {import("./types.js").JobDecisionRow} JobDecisionRow
+ * @typedef {import("./types.js").JobPiece} JobPiece
  * @typedef {import("./types.js").ClientEventType} ClientEventType
  * @typedef {import("./types.js").ClientEvent} ClientEvent
  * @typedef {import("./types.js").Invite} Invite
