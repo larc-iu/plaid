@@ -236,7 +236,9 @@ def test_a_piece_in_sentences_is_offered_the_short_list(monkeypatch):
     # The sentence tools only when the plan edits the text (FX).
     assert seen['sentences'] == ['read_lexicon', 'set_field', 'set_analysis', 'analyze_sentence', 'link_entry',
                                  'create_entry', 'analyses_of']
-    assert set(seen['sentences']) == set(toolkit.SENTENCES_PIECE_TOOLS) - set(toolkit.TEXT_TOOLS)
+    from plaid_agent.igt import targets as tg
+    glossing = [t for t in tg.fillable(fake_ws(FakeClient()).project) if t.id in ('segmentation', 'sl-mgloss')]
+    assert set(seen['sentences']) == set(toolkit.sentences_piece_tools(glossing)) - set(toolkit.TEXT_TOOLS)
     assert 'concordance' in seen['document'] and len(seen['document']) > 50, 'a document piece keeps its tools'
 
 

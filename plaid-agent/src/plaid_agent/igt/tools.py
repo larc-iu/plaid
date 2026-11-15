@@ -578,7 +578,7 @@ def stage_equals(chain, out: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 
 
 #: A link the call would make to an entry it creates, which no morpheme
-#: holds yet (:func:`restates`).
+#: holds yet (analyze_sentence's link pass, ``lines``).
 NEW_ENTRY = object()
 
 
@@ -665,15 +665,6 @@ def in_place(held: List[Dict[str, Any]], staged: List[Dict[str, Any]],
     return out
 
 
-def restates(held: List[Dict[str, Any]], staged: List[Dict[str, Any]], links: Optional[List[Any]] = None) -> bool:
-    """An analysis that changes nothing (REV-L2-1): :func:`in_place` finds
-    no value to change, and the entry the call would link each morpheme to
-    (``links``, one per morpheme, None for none) is the one it holds."""
-    if in_place(held, staged) != []:
-        return False
-    return all(link is None or link == h['link'] for h, link in zip(held, links or [None] * len(held)))
-
-
 def in_place_back(ws: Workspace, word_id: str, held: List[Dict[str, Any]],
                   staged: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """What an analysis that keeps the word's morphemes takes out of the
@@ -704,17 +695,6 @@ def plan_retypes(ws: Workspace, morpheme_ids: set) -> bool:
     word replaces the chain, superseding it: :func:`in_place` compares with
     what the word holds, and the plan no longer leaves it so."""
     return any(o.get('kind') in MORPHEME_WRITERS and o.get(MORPHEME_KEY) in morpheme_ids for o in ws.ops)
-
-
-def already_so(ws: Workspace, word_id: str) -> bool:
-    """A word given the analysis it holds: a change to its analysis the plan
-    holds is taken back (set_field's rule for a value set back to what is
-    stored), with the links made against it. True if one was."""
-    mine = [op for op in ws.ops if op.get('kind') in _ANALYSIS_KINDS and op.get('word_id') == word_id]
-    if mine:
-        ws.take_back(mine)
-        ws.unlink_orphans()
-    return bool(mine)
 
 
 def analysis_op(ws: Workspace, head: str, surface: str, word_id: str, text_id: str, begin: int, end: int,

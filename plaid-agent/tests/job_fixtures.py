@@ -332,9 +332,11 @@ class Model:
 def every_tool(monkeypatch):
     """A piece of a plan in sentences offered every tool, as a document's
     piece is: for the tests of how the worker handles a tool such a piece is
-    no longer offered (toolkit.SENTENCES_PIECE_TOOLS)."""
+    no longer offered (toolkit.sentences_piece_tools): every tool the
+    assistant has is allowed, by the test alone (no production hook)."""
     from plaid_agent.igt import toolkit
-    monkeypatch.setattr(toolkit, 'SENTENCES_PIECE_TOOLS', None)
+    every = tuple(t['function']['name'] for t in toolkit.TOOLS)
+    monkeypatch.setattr(toolkit, 'sentences_piece_tools', lambda targets: every)
 
 
 def use(monkeypatch, model):

@@ -8,11 +8,14 @@ declares with the gloss role, never a field found by its name. A morph type
 takes part where one is given: a suffix -ka 'go' is not the stem ka 'go'
 (for linking, an entry that goes by no type fits a morpheme of any).
 
-The two differ in one place, on purpose. ``fitting_entry`` compares forms as
+The two differ in two places, on purpose. ``fitting_entry`` compares forms as
 they are, and analyze_sentence compares them as the Analyze tab's pair picker
 finds an entry by its form (plaid-ui ``collationKey``: NFC, then lower case),
 so a sentence-initial "Ii" finds the entry "ii". A form the picker would find
-is one analyze_sentence never creates beside it.
+is one analyze_sentence never creates beside it. And for linking an entry
+that goes by no type fits a morpheme of any type (``fits``), while the
+create guard takes an untyped entry only for an untyped create
+(``fitting_entry``).
 """
 
 import unicodedata

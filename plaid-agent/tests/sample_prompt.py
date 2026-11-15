@@ -112,8 +112,13 @@ def render_job() -> str:
     piece = JobWorkspace(ws.client, ws.project)
     planning = JobWorkspace(ws.client, ws.project, mode=JobWorkspace.PLAN)
     tools = toolkit.job_piece_tools(piece)
+    from plaid_agent.igt import targets as tg
     in_sentences = JobWorkspace(ws.client, ws.project)
     in_sentences.in_sentences = True
+    # A glossing plan's piece: it fills segmentation and the morpheme gloss.
+    gloss = ws.project.gloss_field('Morpheme')
+    in_sentences.fills = [t for t in tg.fillable(ws.project)
+                          if t.id == tg.SEGMENTATION or (gloss is not None and t.id == gloss.layer_id)]
     short = toolkit.job_piece_tools(in_sentences)
     plan_tools = toolkit.job_plan_tools(planning)
     intro = textwrap.fill(
@@ -131,10 +136,11 @@ def render_job() -> str:
              f'Its {len(plan_tools)} tools are the chat\'s reads and code, as `SAMPLE_PROMPT.md` shows them '
              '(analyses_of without "' + toolkit.CHECK_FIRST.strip() + '"), and `plan_work`:\n',
              render_tool(toolkit.PLAN_WORK),
-             '\n## A piece of a plan in sentences\n', 'Its system prompt (its message also holds the evidence '
-             'block, `src/plaid_agent/igt/evidence.py`):\n', '```text',
-             prompt.build_job_prompt(ws.project, sentences=True).rstrip(), '```\n',
-             f'Its {len(short)} tools (`toolkit.SENTENCES_PIECE_TOOLS`, analyses_of without "'
+             '\n## A piece of a plan in sentences\n', 'Of a glossing plan (it fills segmentation and the morpheme '
+             'gloss field). Its system prompt (its message also holds the evidence block, '
+             '`src/plaid_agent/igt/evidence.py`):\n', '```text',
+             prompt.build_job_prompt(ws.project, sentences=True, targets=in_sentences.fills).rstrip(), '```\n',
+             f'Its {len(short)} tools (`toolkit.sentences_piece_tools` of what the plan fills, analyses_of without "'
              + toolkit.CHECK_FIRST.strip() + '", less `toolkit.TEXT_TOOLS` unless the plan sets edits_text): '
              + ', '.join(t['function']['name'] for t in short) + '.\n',
              '\n## A piece of a document or selection plan\n', 'Its system prompt:\n', '```text',

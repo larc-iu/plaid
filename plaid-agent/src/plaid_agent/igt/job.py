@@ -2122,7 +2122,7 @@ class IgtRunner:
             return None
         ws.stretch = st
         # A piece of a plan in sentences is offered the short list of tools
-        # (toolkit.SENTENCES_PIECE_TOOLS).
+        # (toolkit.sentences_piece_tools).
         ws.in_sentences = self.in_sentences() and not whole
         # Every sentence's print, not only the piece's: an op the model
         # stages anywhere in the document is checked against the sentence

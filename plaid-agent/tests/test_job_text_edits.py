@@ -121,7 +121,8 @@ def test_a_piece_of_a_plan_that_edits_the_text_is_offered_everything_as_before(m
     assert offered
     for names in offered:
         if pieces == 'sentences':
-            assert set(names) == set(toolkit.SENTENCES_PIECE_TOOLS), names
+            assert set(names) == set(toolkit.SENTENCES_ALWAYS + toolkit.SENTENCES_SEGMENTATION
+                                     + toolkit.SENTENCES_LEXICON + toolkit.SENTENCES_TEXT), names
         else:
             assert TEXT_TOOLS <= set(names), names
 

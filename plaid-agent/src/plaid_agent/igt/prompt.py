@@ -394,7 +394,7 @@ def build_job_prompt(project: IgtProject, sentences: bool = False, edits_text: b
             # A piece in sentences is told of no project-wide tool at all.
             assert said in out or sentences, said
             out = out.replace(said, instead)
-    # A piece in sentences is not offered run_code (toolkit.SENTENCES_PIECE_TOOLS).
+    # A piece in sentences is not offered run_code (toolkit.sentences_piece_tools).
     return out + JOB_CODE + JOB_TABLES if sandbox.available() is None and not sentences else out
 
 

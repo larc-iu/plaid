@@ -748,18 +748,6 @@ def whole_sentences(text: str, limit: int):
     return (text[:end].strip(), True) if end is not None else (text[:limit].strip(), False)
 
 
-#: The tools a piece of a job planned in sentences is offered (BRIEF-EV):
-#: its message holds how its words were analysed and the lexicon entries in
-#: them, so it stages, links, sets the translation and word fields, makes the
-#: text edits instructions may ask for, and looks up what analyze_sentence
-#: lists. The toolkit has no path to reach the rest on purpose. None offers
-#: such a piece every tool a document's piece has (the tests of the worker's
-#: handling of the other tools set it so).
-SENTENCES_PIECE_TOOLS = ('analyze_sentence', 'set_analysis', 'link_entry', 'create_entry', 'set_field',
-                         'retype_sentence', 'split_sentence', 'merge_sentences', 'delete_sentence',
-                         'read_lexicon', 'analyses_of')
-
-
 #: The tools that change the text or which words and sentences it has,
 #: offered to a piece only when the job's plan says its instructions ask for
 #: that (plan_work's ``edits_text``). Morpheme segmentation is no text edit.
@@ -785,7 +773,8 @@ def sentences_piece_tools(targets) -> tuple:
     plan fills (the owner's steer of 2026-11-15: never a fixed glossing
     list): :data:`SENTENCES_ALWAYS`, the analysis tools when segmentation is a
     target, the entry tools when a target is linked to the lexicon, and the
-    sentence text tools (offered only when the plan edits the text)."""
+    sentence text tools (offered only when the plan edits the text). The
+    toolkit has no other path to the rest, on purpose (BRIEF-EV)."""
     from .targets import SEGMENTATION
     out = SENTENCES_ALWAYS
     if any(t.id == SEGMENTATION for t in targets):
@@ -805,7 +794,7 @@ def job_piece_tools(ws, plan_only: bool = False) -> list:
     the piece has been told to decide (``plan_only``), the plan tools alone."""
     left_out = JOB_LEFT_OUT if getattr(ws, 'edits_text', False) else JOB_LEFT_OUT + TEXT_TOOLS
     tools = [t for t in tools_for(ws) if t['function']['name'] not in left_out]
-    if getattr(ws, 'in_sentences', False) and SENTENCES_PIECE_TOOLS is not None:
+    if getattr(ws, 'in_sentences', False):
         allowed = sentences_piece_tools(getattr(ws, 'fills', ()))
         tools = [_without_check_first(t) for t in tools if t['function']['name'] in allowed]
         tools = _offered_only(tools)
@@ -822,7 +811,7 @@ def job_piece_call(ws, name: str, args: Dict[str, Any]) -> str:
     if name not in {t['function']['name'] for t in job_piece_tools(ws, plan_only=ws.decide_now)}:
         return refused('that tool is not one of this job\'s: call one of those listed.', 'invalid-argument')
     out = call_tool(ws, name, args)
-    if getattr(ws, 'in_sentences', False) and SENTENCES_PIECE_TOOLS is not None and isinstance(out, str):
+    if getattr(ws, 'in_sentences', False) and isinstance(out, str):
         offered = {t['function']['name'] for t in job_piece_tools(ws)}
         kept = _without_names(out, _TOOL_NAMES - offered, underscored=True)
         if kept != out:
