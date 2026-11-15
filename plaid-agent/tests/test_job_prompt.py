@@ -6,6 +6,8 @@ rules: nothing in the job's prompt is a second copy of a chat rule.
 
 The constants are CONTRACT 1's and those added by JG."""
 
+import json
+
 import pytest
 
 from fixtures import FakeClient, fake_ws
@@ -263,6 +265,83 @@ def test_plan_work_keeps_skip_filled_sentences_only_when_true_on_a_plan_in_sente
     assert 'skip_filled_sentences' not in ws.plan_work
     props = toolkit.PLAN_WORK['function']['parameters']['properties']
     assert 'skip_filled_sentences' in props and 'only_empty' not in props and 'skip_analyzed_sentences' not in props
+
+
+@pytest.mark.parametrize('fills,kept', [
+    ('segmentation, Morph Gloss', ['segmentation', 'Morph Gloss']),
+    ('["segmentation", "Morph Gloss"]', ['segmentation', 'Morph Gloss']),
+    ('[segmentation, Morph Gloss]', ['segmentation', 'Morph Gloss']),
+    ('Morph Gloss', ['Morph Gloss']),
+    ('[]', []),
+])
+def test_plan_work_reads_fills_given_as_one_string(fills, kept):
+    """REV-DF4-1: a list sent as one string (a tool-call parser's habit with
+    Qwen models) is read as a JSON list, or as names separated by commas
+    when every part names a target, the way the piece tools read refs."""
+    ws = JobWorkspace(FakeClient(), _project(), mode=JobWorkspace.PLAN)
+    ws.job_documents = [{'id': 'd1', 'name': 'Text 1'}]
+    out = toolkit.job_plan_call(ws, 'plan_work', {'pieces': 'sentences', 'fills': fills})
+    assert out.startswith('The plan is kept.'), out
+    from plaid_agent.igt import targets as tg
+    assert ws.plan_work['fills'] == [t.id for t in tg.named(ws.project, kept)[0]]
+
+
+@pytest.mark.parametrize('fills', ['segmentation, glosses', 'segmentation and Morph Gloss', '["segmentation", 3'])
+def test_plan_work_refuses_a_string_of_fills_it_cannot_read_saying_fills_is_a_list(fills):
+    """REV-DF4-1: a string that does not read as names is refused saying
+    what is wrong, with an example in the project's own names."""
+    ws = JobWorkspace(FakeClient(), _project(), mode=JobWorkspace.PLAN)
+    ws.job_documents = [{'id': 'd1', 'name': 'Text 1'}]
+    out = toolkit.job_plan_call(ws, 'plan_work', {'pieces': 'sentences', 'fills': fills})
+    assert out == ('Error: fills is a list of names, such as ["segmentation", "Gloss"]. Name each as listed under '
+                   'What a job can fill: segmentation, Gloss, Morph Gloss, Translation, IPA.'), out
+    assert ws.plan_work is None
+
+
+@pytest.mark.parametrize('documents,kept', [
+    ('Text 2, Text 1', ['d2', 'd1']), ('["Text 2", "d1"]', ['d2', 'd1']), ('Text 1, 2', ['d3'])])
+def test_plan_work_reads_documents_given_as_one_string(documents, kept):
+    """REV-DF4-1: documents given as one string, read the same way. A name
+    holding a comma is a name first."""
+    ws = JobWorkspace(FakeClient(), _project(), mode=JobWorkspace.PLAN)
+    ws.job_documents = [{'id': 'd1', 'name': 'Text 1'}, {'id': 'd2', 'name': 'Text 2'},
+                        {'id': 'd3', 'name': 'Text 1, 2'}]
+    out = toolkit.job_plan_call(ws, 'plan_work', {'pieces': 'document', 'fills': [], 'documents': documents})
+    assert out.startswith('The plan is kept.'), out
+    assert ws.plan_work['documents'] == kept
+
+
+def test_plan_work_refuses_a_string_of_documents_it_cannot_read_saying_documents_is_a_list():
+    ws = JobWorkspace(FakeClient(), _project(), mode=JobWorkspace.PLAN)
+    ws.job_documents = [{'id': 'd1', 'name': 'Text 1'}, {'id': 'd2', 'name': 'Text 2'}]
+    out = toolkit.job_plan_call(ws, 'plan_work', {'pieces': 'document', 'fills': [], 'documents': 'Text 1, Text 9'})
+    assert out == ('Error: documents is a list of names, such as ["Text 1", "Text 2"]. Leave out a document not '
+                   'of this job, or leave documents out for every document.'), out
+    assert ws.plan_work is None
+
+
+@pytest.mark.parametrize('given,read', [('true', True), ('True', True), (' TRUE ', True), ('false', False),
+                                        (True, True), (False, False)])
+@pytest.mark.parametrize('arg', ['skip_filled_sentences', 'edits_text'])
+def test_plan_work_reads_true_and_false_given_as_strings(arg, given, read):
+    """REV-DF4-4: "true" was kept silently as false (the plan walked every
+    sentence). The strings true and false are read as the booleans."""
+    ws = JobWorkspace(FakeClient(), _project(), mode=JobWorkspace.PLAN)
+    ws.job_documents = [{'id': 'd1', 'name': 'Text 1'}]
+    out = toolkit.job_plan_call(ws, 'plan_work', {'pieces': 'sentences', 'fills': ['Gloss'], arg: given})
+    assert out.startswith('The plan is kept.'), out
+    key = {'skip_filled_sentences': 'only_empty', 'edits_text': 'edits_text'}[arg]
+    assert ws.plan_work.get(key) is (True if read else None)
+
+
+@pytest.mark.parametrize('given', ['yes', '', 1, 0, 'none', ['true']])
+@pytest.mark.parametrize('arg', ['skip_filled_sentences', 'edits_text'])
+def test_plan_work_refuses_anything_else_for_true_or_false(arg, given):
+    ws = JobWorkspace(FakeClient(), _project(), mode=JobWorkspace.PLAN)
+    ws.job_documents = [{'id': 'd1', 'name': 'Text 1'}]
+    out = toolkit.job_plan_call(ws, 'plan_work', {'pieces': 'sentences', 'fills': ['Gloss'], arg: given})
+    assert out == f'Error: {arg} is true or false, not {json.dumps(given)}.', out
+    assert ws.plan_work is None
 
 
 @pytest.mark.parametrize('old', ['only_empty', 'skip_analyzed_sentences'])

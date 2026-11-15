@@ -189,6 +189,20 @@ def test_a_planner_refused_until_it_gives_up_ends_the_job_writing_nothing(monkey
     _ended_with_no_plan(client, finished, model)
 
 
+@pytest.mark.parametrize('fills', ['segmentation, Morph Gloss', '["segmentation", "Morph Gloss"]'])
+def test_a_planner_that_sends_fills_as_one_string_has_its_plan_kept(monkeypatch, fills):
+    """REV-DF4-1 (REV-DF4's r2_seq string-list-repeated): a list sent as
+    one string, every time, was refused three times and the job failed.
+    It is read as the list it names, and the job is worked."""
+    client = JobClient(_docs(1))
+    job = start(client, id=J, plan=None)
+    model = use(monkeypatch, _model(plan={'pieces': 'sentences', 'fills': fills}, piece=_gloss_all))
+    finished = run_job(job, runner(job))
+    assert finished['state'] == 'done', finished.get('reason')
+    assert _plan_rows(client)[0]['fills'] == ['segmentation', 'sl-mgloss']
+    assert len([c for c in model.calls if _kind(c['asked']) == 'plan']) == 2, 'planned, then its one-line end'
+
+
 def test_a_job_resumed_after_planning_ended_with_no_plan_ends_the_same(monkeypatch):
     """The plan that names nothing is kept: a worker that takes the job
     again after a crash reads it back, never plans again, and ends."""

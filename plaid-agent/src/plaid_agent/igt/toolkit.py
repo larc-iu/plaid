@@ -11,6 +11,7 @@ so nothing here may be imported back by one of them.
 
 import copy
 import inspect
+import json
 import re
 from typing import Any, Dict
 
@@ -672,13 +673,20 @@ def t_plan_work(ws, pieces: str = None, piece_instructions: str = '', documents=
     text, whole = whole_sentences(text, JOB_PIECE_INSTRUCTIONS_MAX_CHARS)
     known = list(getattr(ws, 'job_documents', None) or [])
     order = None
+    from ..core.args import names_list, read_bool
+    skip_filled_sentences = read_bool(skip_filled_sentences, 'skip_filled_sentences')
+    edits_text = read_bool(edits_text, 'edits_text')
     if documents:
-        if isinstance(documents, str):
-            documents = [documents]
         by = {}
         for d in known:
             by.setdefault(d['id'], d['id'])
             by.setdefault(str(d['name']).casefold(), d['id'])
+        documents = names_list(documents, lambda n: (by.get(n) or by.get(n.casefold())) is not None)
+        if documents is None:
+            raise ToolError('documents is a list of names, such as '
+                            + json.dumps([str(d['name']) for d in known[:2]], ensure_ascii=False)
+                            + '. Leave out a document not of this job, or leave documents out for every document.',
+                            kind='invalid-argument')
         order, unknown = [], []
         for name in documents:
             got = by.get(str(name)) or by.get(str(name).casefold())
@@ -697,19 +705,23 @@ def t_plan_work(ws, pieces: str = None, piece_instructions: str = '', documents=
         raise ToolError('fills: say what the job fills, each named as listed under What a job can fill: '
                         + ', '.join(tg.listed_names(ws.project)) + '. Give [] when it fills nothing, '
                         'such as a check or a summary.', kind='invalid-argument')
-    if isinstance(fills, str):
-        fills = [fills]
+    listed = tg.listed_names(ws.project)
+    fills = names_list(fills, lambda n: not tg.named(ws.project, [n])[1])
+    if fills is None:
+        raise ToolError('fills is a list of names, such as ' + json.dumps(listed[:2], ensure_ascii=False)
+                        + '. Name each as listed under What a job can fill: ' + ', '.join(listed) + '.',
+                        kind='invalid-argument')
     chosen, unknown = tg.named(ws.project, fills)
     if unknown:
         raise ToolError('fills: not something a job on this project can fill: '
                         + ', '.join(f'"{u}"' for u in unknown[:5]) + '. Name each as listed under What a job can '
                         'fill: ' + ', '.join(tg.listed_names(ws.project)) + '.', kind='invalid-argument')
-    skip = skip_filled_sentences is True and pieces == 'sentences'
+    skip = skip_filled_sentences and pieces == 'sentences'
     # Kept only when true: the plan's row holds the largest plan at its cap.
     ws.plan_work = {'pieces': pieces, 'piece_instructions': text, 'documents': order,
                     'fills': [t.id for t in chosen],
                     **({'only_empty': True} if skip else {}),
-                    **({'edits_text': True} if edits_text is True else {}),
+                    **({'edits_text': True} if edits_text else {}),
                     **({'instructions_cut': given} if len(text) < given else {})}
     out = ['The plan is kept.']
     if len(text) < given:

@@ -9,8 +9,9 @@ So no tool calls `int()` on an argument. It calls one of these, which say what
 was wrong in the same voice as every other refusal.
 """
 
+import json
 import re
-from typing import Any, Optional
+from typing import Any, Callable, List, Optional
 
 
 def whole(i, name: str = 'number') -> int:
@@ -93,3 +94,45 @@ def sentence_number(raw: Any, name: str = 'sentence') -> Optional[int]:
     if not first.isdigit():
         raise ValueError(f'"{raw}" does not name a sentence. Use a number or a reference like "s34".')
     return int(first)
+
+
+def names_list(raw: Any, known: Callable[[str], bool]) -> Optional[List[Any]]:
+    """A list of names as a model may send it, ``None`` when it cannot be
+    read. A list is kept as given. A string is a list sent as one string (a
+    habit of tool-call parsers serving some models): it is one name when
+    ``known`` takes it whole, else the JSON text of a list of strings, else
+    names separated by commas when ``known`` takes every part, each with its
+    quotes and the list's brackets dropped (REV-DF4-1). A fixed order of
+    readings, never a guess: a string read none of these ways is ``None``,
+    for the caller to say that it is a list."""
+    if not isinstance(raw, str):
+        return list(raw) if isinstance(raw, (list, tuple)) else None
+    text = raw.strip()
+    if text and known(text):
+        return [text]
+    if text.startswith('['):
+        try:
+            got = json.loads(text)
+        except ValueError:
+            got = None
+        if isinstance(got, list):
+            return got if all(isinstance(g, str) for g in got) else None
+        if not text.endswith(']'):
+            return None
+        text = text[1:-1]
+    parts = [p.strip().strip('"\'').strip() for p in text.split(',')]
+    return parts if all(p and known(p) for p in parts) else None
+
+
+def read_bool(raw: Any, name: str, default: bool = False) -> bool:
+    """A true or false a model sent: the boolean, or the string "true" or
+    "false" in any case, ``default`` when it is absent. Anything else is
+    refused with a :class:`ValueError` saying so, never read as false
+    (REV-DF4-4)."""
+    if raw is None:
+        return default
+    if isinstance(raw, bool):
+        return raw
+    if isinstance(raw, str) and raw.strip().casefold() in ('true', 'false'):
+        return raw.strip().casefold() == 'true'
+    raise ValueError(f'{name} is true or false, not {json.dumps(raw, ensure_ascii=False)}.')
