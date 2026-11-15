@@ -136,7 +136,7 @@ def test_a_job_asked_to_insert_a_zero_element_and_gloss_it_lists_what_the_refusa
     assert refused and JOB_LEAVE_IT in refused[-1] and 'once the retype is applied' not in refused[-1], answers
     (doc,) = finished['report']['documents']
     assert [(r['sentence'], r['sentence_id']) for r in doc['refused']] == [('s1', 'd1-s1')], doc
-    assert 's1 is retyped in this plan' in doc['refused'][0]['what']
+    assert 's1 is retyped in this plan' in doc['refused'][0]['what'] and doc['refused'][0]['code'] == 'text'
 
 
 @pytest.mark.parametrize('job', [True, False], ids=['job', 'chat'])
@@ -158,3 +158,19 @@ def test_a_reference_to_an_entry_this_plan_creates_is_worded_by_who_reads_it(job
            'id until it is approved'
     assert out == (f'Error: {fact}. {JOB_LEAVE_IT}' if job else f'Error: {fact}: approve the plan, then set the '
                    'reference.'), out
+
+
+CODES = {'new entry then rename': 'lexicon', 'deleted entry then rename': 'lexicon',
+         'merge then delete what it keeps': 'lexicon', 'entry numbers moved': 'lexicon',
+         'phrase then link a word in it': 'expression'}
+
+
+@pytest.mark.parametrize('scenario', list(SCENARIOS))
+def test_what_a_refusal_left_says_what_kind_of_refusal_it_was(scenario):
+    """REV-DF-S-4: each refusal a job cannot follow carries a code of a closed
+    set, which the job page labels: never its text."""
+    from plaid_agent.core.tools import LEFT_CODES
+    w, _ = _said(SCENARIOS[scenario])
+    assert w.left_by_refusal and {e['code'] for e in w.left_by_refusal} == {CODES.get(scenario, 'text')}, \
+        w.left_by_refusal
+    assert set(LEFT_CODES) == {'text', 'lexicon', 'expression'}

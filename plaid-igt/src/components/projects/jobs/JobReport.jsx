@@ -8,6 +8,7 @@ import {
   HARMONIZE_LEFT_TEXT,
   changeReasonText,
   durationText,
+  refusedText,
   skippedText,
   stoppedPartway,
 } from './jobText.js';
@@ -207,8 +208,9 @@ const BlankElsewhere = ({ counts }) =>
   });
 
 // What a refusal the job could not follow left in a document's sentences
-// (`refused`): each sentence, linked into the grid, with what was refused.
-// Never counted as left blank.
+// (`refused`): each sentence, linked into the grid, with a fixed label for
+// the kind of refusal (`code`). The refusal's own text is the model's, for
+// read_job and the final context. Never counted as left blank.
 const Refused = ({ projectId, d }) => {
   const list = d.refused || [];
   if (!list.length && !(d.refusedMore > 0)) return null;
@@ -228,9 +230,7 @@ const Refused = ({ projectId, d }) => {
             ) : (
               r.sentence
             )}{' '}
-            <span className="text-muted-foreground" dir="auto">
-              {r.what}
-            </span>
+            <span className="text-muted-foreground">{refusedText(r.code)}</span>
           </li>
         ))}
       </ul>

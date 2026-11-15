@@ -994,7 +994,21 @@ describe('the job page', () => {
               sentence: 's1',
               sentenceId: 'sen1',
               what: 's1.w2: s1 is retyped in this plan, so its words cannot be analysed',
+              code: 'text',
             },
+            {
+              sentence: 's2',
+              sentenceId: 'sen2',
+              what: 'That entry is new in this plan',
+              code: 'lexicon',
+            },
+            {
+              sentence: 's3',
+              sentenceId: 'sen3',
+              what: 's3.w1 is part of ...',
+              code: 'expression',
+            },
+            { sentence: 's4', sentenceId: null, what: 'something else', code: null },
           ],
           refusedMore: 2,
         },
@@ -1006,7 +1020,13 @@ describe('the job page', () => {
     expect(all(section, 'h3').map((h) => h.textContent)).toContain('Left blank');
     const t = text(section);
     expect(t).toContain('Not done, refused:');
-    expect(t).toContain('s1 s1.w2: s1 is retyped in this plan, so its words cannot be analysed');
+    // A fixed label per kind of refusal, never the model's text (REV-DF-S-4).
+    expect(t).toContain('s1 Words changed by the job');
+    expect(t).toContain('s2 Lexicon entry changed by the job');
+    expect(t).toContain('s3 In a multi-word expression the job made');
+    expect(t).toContain('s4 Refused');
+    expect(t).not.toContain('retyped in this plan');
+    expect(t).not.toContain('new in this plan');
     expect(t).toContain('And 2 more refused.');
     expect(byText(section, 'a', 's1').getAttribute('href')).toBe(
       '/projects/p1/documents/d1?tab=analyze&focusSentence=sen1',

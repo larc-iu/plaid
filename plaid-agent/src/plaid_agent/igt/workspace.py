@@ -642,7 +642,8 @@ class Workspace(BaseWorkspace):
                 raise ToolError(
                     f'"{form}#{suffix}" is not a name any more: this plan deletes or merges away an '
                     f'entry spelled "{form}", so the numbers beside the others have moved. '
-                    + ADVICE, kind='conflict', advice='Pass entry_id, or discard_plan and plan again without that '
+                    + ADVICE, kind='conflict',
+                    code='lexicon', advice='Pass entry_id, or discard_plan and plan again without that '
                     'change.')
         g = (gloss or '').strip().casefold()
 

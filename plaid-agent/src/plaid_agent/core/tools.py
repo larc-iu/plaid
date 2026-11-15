@@ -54,13 +54,24 @@ class ToolError(Exception):
     unattended job has: the message is ``message`` and the advice, and a job
     reads ``message`` and its own closing line instead (:func:`advised`).
     ``sentence_id`` is the sentence the refused change was for, when known.
+    ``code`` says what such a refusal is about, one of :data:`LEFT_CODES`,
+    for a fixed label a person reads in a job's report (REV-DF-S-4).
     """
 
     def __init__(self, message: str, *, kind: str, advice: Optional[str] = None,
-                 sentence_id: Optional[str] = None):
+                 sentence_id: Optional[str] = None, code: Optional[str] = None):
         super().__init__(with_advice(message, advice))
         self.kind = refusal_kind(kind)
-        self.fact, self.advice, self.sentence_id = message, advice, sentence_id
+        if code is not None and code not in LEFT_CODES:
+            raise ValueError(f'refusal code {code!r} is not one of {LEFT_CODES}')
+        self.fact, self.advice, self.sentence_id, self.code = message, advice, sentence_id, code
+
+
+#: What a refusal a job cannot follow is about (``ToolError.code``): a
+#: change to the text or the words of the sentence in the same plan, a
+#: lexicon entry the same plan creates, deletes or merges, a multi-word
+#: expression the same plan makes. The job page labels each.
+LEFT_CODES = ('text', 'lexicon', 'expression')
 
 
 #: Where a refusal's advice goes when it is not at its end.
@@ -75,7 +86,8 @@ def with_advice(fact: str, advice: Optional[str]) -> str:
     return fact.replace(ADVICE, advice) if ADVICE in fact else f'{fact} {advice}'
 
 
-def advised(ws, fact: str, advice: Optional[str], sentence_id: Optional[str] = None) -> str:
+def advised(ws, fact: str, advice: Optional[str], sentence_id: Optional[str] = None,
+            code: Optional[str] = None) -> str:
     """THE one place a refusal's next step is worded by who reads it: a
     chat's model is told ``advice`` (a later turn, an approval,
     discard_plan), an unattended job's model, which has none of them, the
@@ -84,7 +96,7 @@ def advised(ws, fact: str, advice: Optional[str], sentence_id: Optional[str] = N
     leave_it = getattr(ws, 'leave_it', None)
     if not advice or leave_it is None:
         return with_advice(fact, advice)
-    return leave_it(with_advice(fact, None), sentence_id)
+    return leave_it(with_advice(fact, None), sentence_id, code)
 
 
 class ValueRefusal(ValueError):
@@ -222,7 +234,7 @@ def run_tool(ws, name: str, fn_: Callable, args: Optional[Dict[str, Any]],
         return out if reading else planned_where(ws, name, after(out) if after else out)
     except (ToolError, ValueError) as e:  # ValueError: a name or reference lookup failed
         if getattr(e, 'advice', None):
-            return refused(advised(ws, e.fact, e.advice, e.sentence_id), e.kind)
+            return refused(advised(ws, e.fact, e.advice, e.sentence_id, getattr(e, 'code', None)), e.kind)
         return refused_for(e)
     except Exception as e:  # noqa: BLE001 - the model gets a sentence; the log gets the trace
         # A workspace whose caller must hear of a failure itself rather than

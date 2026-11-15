@@ -489,11 +489,11 @@ def refuse_shape_and_analysis(ws: Workspace, word_id, ref: str, *, analysing: bo
         if ids & _reshaped_words(ws):
             raise ToolError(f'{ref} is split, merged, deleted or retyped in this plan, so its analysis cannot '
                             'also change: a boundary change deletes the word\'s morphemes.', kind='conflict',
-                            advice='discard_plan to start over, or plan the two in separate turns.')
+                            code='text', advice='discard_plan to start over, or plan the two in separate turns.')
     elif any(op.get('kind') in _ANALYSIS_KINDS and op.get('word_id') in ids for op in ws.ops):
         raise ToolError(f'{ref} has an analysis change in this plan, so its boundaries cannot also change: a '
                         'boundary change deletes the morphemes that analysis writes.', kind='conflict',
-                        advice='discard_plan to start over, or plan the two in separate turns.')
+                        code='text', advice='discard_plan to start over, or plan the two in separate turns.')
 
 
 # A text edit names every word and morpheme of the region it rewrites, and
@@ -528,7 +528,7 @@ def refuse_comment_and_text_edit(ws: Workspace, ids, where: str, *, commenting: 
     if clash:
         raise ToolError(f'{where}: this plan rewrites the text over a word it also comments on, and the '
                         'rewrite may take the word the comment is anchored to.', kind='conflict',
-                        advice='discard_plan to start over, or plan the two in separate turns.')
+                        code='text', advice='discard_plan to start over, or plan the two in separate turns.')
 
 
 def parse_analysis(ws: Workspace, morphemes: list) -> List[Dict[str, Any]]:
@@ -948,7 +948,7 @@ def t_link_entry(ws: Workspace, document: str, refs, entry_form: Optional[str] =
         if _planned_phrase_over(ws, obj.id):
             raise ToolError(f'{ref} is part of a multi-word expression planned in this turn; a word keeps its own '
                             f'link inside one{ADVICE}', kind='conflict',
-                            advice=', so discard_plan first if you meant to replace it')
+                            code='expression', advice=', so discard_plan first if you meant to replace it')
         if isinstance(obj, Morpheme):
             linking.append((ref, obj.id))
         if kind == 'existing' and obj.link and obj.link.item_id == target['id']:

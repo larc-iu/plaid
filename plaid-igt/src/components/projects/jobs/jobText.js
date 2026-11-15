@@ -85,6 +85,16 @@ export const skippedText = ({ reason, kind }) => {
   return reason;
 };
 
+// What a refusal the job could not follow left a sentence for, by the code
+// the refusal carries (a closed set, never its text): the label a person
+// reads under "Not done, refused:" (REV-DF-S-4).
+const REFUSED_TEXT = {
+  text: 'Words changed by the job',
+  lexicon: 'Lexicon entry changed by the job',
+  expression: 'In a multi-word expression the job made',
+};
+export const refusedText = (code) => REFUSED_TEXT[code] ?? 'Refused';
+
 // Why a change the job applied is listed among the proposed changes: its
 // write was cut short (a lost answer, a crash, a refusal) and it was not
 // written. The one reason there is.

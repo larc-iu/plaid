@@ -170,7 +170,7 @@ def _refuse_renumbered(ws: Workspace, label: str, s, words, what: str) -> None:
         raise _Refused(advised(ws, f'{label} not staged: this plan\'s {moved[0]} '
                                    f'renumber{"" if " and " in moved[0] else "s"} s{s.index}, so these numbers name '
                                    'other words once it is applied.', f'Analyze {what} once the plan is applied.',
-                               s.id))
+                               s.id, 'text'))
 
 
 def _punctuation(item: str, cfg) -> bool:

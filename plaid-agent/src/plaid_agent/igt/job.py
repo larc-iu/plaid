@@ -791,13 +791,13 @@ class JobWorkspace(Workspace):
         #: the planning context's plan_work, once valid
         self.plan_work: Optional[Dict[str, Any]] = None
 
-    def leave_it(self, fact: str, sentence_id: Optional[str] = None) -> str:
+    def leave_it(self, fact: str, sentence_id: Optional[str] = None, code: Optional[str] = None) -> str:
         """A refusal whose chat advice a job cannot follow (a later turn,
         an approval, discard_plan), as a job's model reads it: what was
         refused, and the job's closing line, never the chat's step. What it
         left is kept, for the report (``core.tools.advised``)."""
         fact = fact.rstrip(' ;,')
-        entry = {'sentence_id': sentence_id, 'what': fact}
+        entry = {'sentence_id': sentence_id, 'what': fact, 'code': code}
         if entry not in self.left_by_refusal:
             self.left_by_refusal.append(entry)
         return f'{fact}{"" if fact.endswith((".", "!", "?")) else "."} {JOB_LEAVE_IT}'
@@ -3312,7 +3312,7 @@ class IgtRunner:
                     d, where = doc.id, f's{s[0].index}'
                     break
             text = canonical({'document': d, 'sentence_id': e.get('sentence_id'), 'sentence': where,
-                              'what': _cut(e['what'], JOB_CHANGE_VALUE_CHARS)})
+                              'what': _cut(e['what'], JOB_CHANGE_VALUE_CHARS), 'code': e.get('code')})
             key = analysis_key(text)
             rows.append({'form': REFUSED_FORM + key, 'key': key, 'analysis': text, 'count': 1, 'document_id': d,
                          'sentence_id': None})
@@ -3854,7 +3854,8 @@ class IgtRunner:
             except (ValueError, TypeError, KeyError):
                 continue
             out.setdefault(v.get('document'), []).append(
-                {'sentence': v.get('sentence'), 'sentence_id': v.get('sentence_id'), 'what': v.get('what')})
+                {'sentence': v.get('sentence'), 'sentence_id': v.get('sentence_id'), 'what': v.get('what'),
+                 'code': v.get('code')})
         return out
 
     def document_reports(self, job) -> List[Dict[str, Any]]:
