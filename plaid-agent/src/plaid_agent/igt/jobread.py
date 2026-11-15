@@ -156,7 +156,15 @@ def _words(key: str) -> str:
 
 
 def _totals(report: Dict[str, Any]) -> str:
-    totals = report.get('totals') or {}
+    totals = dict(report.get('totals') or {})
+    # A document the job did not finish reads "stopped partway" once it
+    # finished a sentence, as the page and the final context say (REV-DF-S
+    # N-4), by the report's own rows.
+    partway = sum(1 for d in report.get('documents') or []
+                  if d.get('state') == 'not-reached' and (d.get('done') or 0) > 0)
+    if partway and totals.get('documents_not_reached'):
+        totals['documents_not_reached'] -= partway
+        totals['documents_stopped_partway'] = partway
     said = [f'{_words(k)} {v:,}' for k, v in totals.items() if isinstance(v, int) and v]
     fields = totals.get('fields')
     if fields is None:

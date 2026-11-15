@@ -673,15 +673,16 @@ def summary_message(report: Dict[str, Any]) -> str:
     lines.append('Documents:')
     for d in report.get('documents') or []:
         c = d.get('counts') or {}
-        lines.append(f'- "{d.get("name")}": {state_text(d)}, '
-                     + ', '.join([f'{k} {v:,}' for k, v in sorted(c.items()) if v and isinstance(v, int)]
+        lines.append(f'- "{d.get("name")}": '
+                     + ', '.join([state_text(d)] + [f'{k} {v:,}' for k, v in sorted(c.items())
+                                                    if v and isinstance(v, int)]
                                  + ([fields_text(c['fields'])] if c.get('fields') else [])
                                  + ([blank_text(c['blank'])] if c.get('blank') else []))
                      + ('. Left blank could not be read: what is blank there is not known.'
                         if d.get('left_unread') else ''))
-    lines.append('In the documents, "left" counts the words still blank at the end (the report\'s Left blank), '
-                 '"not_reached" those in sentences the job did not reach, and "left blank" what is still blank of '
-                 'each thing the job fills.')
+    lines.append('In the documents, "left" counts the words and morphemes still blank at the end (the report\'s '
+                 'Left blank), "not_reached" those in sentences the job did not reach, and "left blank" what is still '
+                 'blank of each thing the job fills.')
     proposed = len(report.get('proposed') or []) + (report.get('proposed_more') or 0)
     lines += ['', f'Changes proposed for a person to approve: {proposed:,}.', '', 'Each piece\'s note:']
     size, left = 0, 0
@@ -3889,13 +3890,19 @@ class IgtRunner:
             found = blank.get(d) or {}
             listed = found.get('left') or []
             unreached = found.get('not_reached') or []
-            counts = {k: v for k, v in counts.items() if k not in ('left', 'not_reached', 'blank')}
+            counts = {k: v for k, v in counts.items() if k not in ('left', 'not_reached', 'blank', 'left_units')}
             if found.get('blank'):
                 counts['blank'] = found['blank']
-                if any(b['unit'] == 'word' for b in found['blank']):
+                if any(b['unit'] != 'sentence' for b in found['blank']):
                     counts['left'] = sum(1 for e in listed if e.get('form') is not None)
                     if unreached:
                         counts['not_reached'] = sum(1 for e in unreached if e.get('form') is not None)
+                # How many places Left blank lists, by unit, the cut ones
+                # too: the Documents table says its unit (REV-DF-S N-2).
+                units = Counter('sentence' if e.get('form') is None else 'morpheme' if '.m' in e['ref'] else 'word'
+                                for e in listed)
+                counts['left_units'] = [{'unit': u, 'left': units[u]} for u in ('word', 'morpheme', 'sentence')
+                                        if units[u]]
             left, more = core_job.cut(listed)
             # What a refusal the job could not follow left (REV-DAY-SURFACE
             # point 2): listed, never counted as left blank.
@@ -4165,26 +4172,36 @@ class IgtRunner:
                 # each entry naming the targets it is empty for.
                 words, fields = sentence_targets(s, project, job.id, written=written, targets=fill)
                 listed = lists.get(where)
-                for w in words:
-                    empty = tg.empty_in_word(w, fill)
-                    if listed is not None:
-                        listed.append({'ref': f's{s.index}.w{w.index}', 'sentence_id': s.id, 'begin': w.begin,
-                                       'form': w.surface, 'targets': [t.name for t in empty]})
-                    for t in empty:
-                        tally[t.id][where] += 1
-                for t in fields:
-                    if listed is not None:
-                        listed.append({'ref': f's{s.index}', 'sentence_id': s.id, 'begin': None, 'form': None,
-                                       'targets': [t.name]})
+                begins = {f'w{w.index}': w.begin for w in s.words}
+                # One entry per unit as the Empty line names it (targets.units:
+                # a word, a morpheme sN.wK.mJ, a sentence field), with every
+                # target it is empty for (REV-DF-S-6).
+                entries: Dict[str, Dict[str, Any]] = {}
+                for ref, form, t in tg.units(s, fill, words={w.id for w in words}, fields=fields):
                     tally[t.id][where] += 1
-            # Per target of the plan, a row even at nothing left, counted by
-            # the places Left blank lists (a word for a word or morpheme
-            # level target, a sentence for a sentence level one). A target
-            # the plan does not fill has no row, so nothing claims "0 left"
-            # of it (REV-DAY-P-4, S-9).
-            lists['blank'] = [{'target': t.name, 'unit': 'sentence' if t.scope == 'Sentence' else 'word',
-                               **tally[t.id]} for t in fill]
+                    if listed is None:
+                        continue
+                    e = entries.get(ref)
+                    if e is None:
+                        e = entries[ref] = {'ref': f's{s.index}.{ref}' if ref else f's{s.index}', 'sentence_id': s.id,
+                                            'begin': begins.get(ref.split('.')[0]) if ref else None,
+                                            'form': form if ref else None, 'targets': []}
+                    e['targets'].append(t.name)
+                if listed is not None:
+                    # In the order of the text, the sentence's fields last.
+                    listed += sorted(entries.values(), key=lambda e: (
+                        e['begin'] is None, e['begin'] or 0, [int(n) for n in re.findall(r'\d+', e['ref'])]))
+            # Per target of the plan, a row even at nothing left, counted in
+            # its own unit: a word, a morpheme, a sentence (REV-DF-S-6: a
+            # morpheme field's values and blanks sum). A target the plan
+            # does not fill has no row, so nothing claims "0 left" of it
+            # (REV-DAY-P-4, S-9).
+            lists['blank'] = [{'target': t.name, 'unit': UNIT[t.scope], **tally[t.id]} for t in fill]
         return out
+
+#: The unit a target's blanks are counted in, by its level.
+UNIT = {'Word': 'word', 'Morpheme': 'morpheme', 'Sentence': 'sentence'}
+
 
 def runner_factory(cfg: ModelConfig, trace_dir: Optional[str] = None, count=None):
     """What the worker builds a claimed igt job's runner with."""

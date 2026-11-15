@@ -396,3 +396,22 @@ def test_the_notes_come_in_the_jobs_document_order_then_by_sentence():
     job.add_decisions(rows)
     notes = runner(job).report_parts(job)['notes']
     assert [n['note'] for n in notes] == [f'{d} s{k}' for d in ('d1', 'd2') for k in (1, 3, 5, 7, 10, 12)], notes
+
+
+def test_what_read_job_and_the_final_context_say_of_documents_stopped_partway_and_never_reached():
+    """REV-DF-S N-4 and N-5: read_job's totals say a document stopped partway
+    as the page does, the final context's line for a document with no count
+    ends with its state (no dangling comma), and read_job names the totals'
+    lists by heading, never a raw key alone."""
+    from plaid_agent.igt import jobread
+    from plaid_agent.igt.job import summary_message
+    blank = [{'target': 'Role', 'unit': 'word', 'left': 1, 'not_reached': 6, 'skipped': 0}]
+    report = {'totals': {'documents_not_reached': 2, 'changes': 1, 'blank': blank},
+              'documents': [{'name': 'Story', 'state': 'not-reached', 'done': 1, 'targets': 3,
+                             'counts': {'changes': 1, 'blank': blank}},
+                            {'name': 'Tale', 'state': 'not-reached', 'done': 0, 'targets': 2, 'counts': {}}]}
+    said = jobread._totals(report)
+    assert 'documents not reached 1' in said and 'documents stopped partway 1' in said, said
+    text = summary_message(report)
+    assert '- "Tale": not-reached\n' in text, text
+    assert 'Still blank of what the job fills (totals.blank) 1' in jobread._sections_line(report)

@@ -844,10 +844,60 @@ describe('the job page', () => {
     // The totals sum the documents' rows, per target, a row each even at
     // nothing left, so they add up on screen.
     const sums = totals(section);
-    expect(sums['Segmentation left blank']).toBe('1 word');
-    expect(sums['Segmentation blank in sentences not reached']).toBe('13 words');
+    expect(sums['segmentation left blank']).toBe('1 word');
+    expect(sums['segmentation blank in sentences not reached']).toBe('13 words');
     expect(sums['Translation left blank']).toBe('0 sentences');
     expect(sums['Translation blank in sentences not reached']).toBe('1 sentence');
+    await v.unmount();
+  });
+
+  it('counts a morpheme field in morphemes and says each document’s Left blank in its units', async () => {
+    const blank = [
+      { target: 'segmentation', unit: 'word', left: 4, notReached: 0, skipped: 0 },
+      { target: 'Morph POS', unit: 'morpheme', left: 6, notReached: 0, skipped: 0 },
+    ];
+    const report = {
+      ...REPORT,
+      totals: { ...REPORT.totals, fields: [{ field: 'Morph POS', values: 6 }], blank },
+      documents: [
+        {
+          documentId: 'd1',
+          name: 'Story A',
+          state: 'done',
+          done: 4,
+          skipped: [],
+          counts: {
+            blank,
+            leftUnits: [
+              { unit: 'word', left: 4 },
+              { unit: 'morpheme', left: 2 },
+              { unit: 'sentence', left: 1 },
+            ],
+          },
+          left: [
+            { ref: 's1.w2.m2', sentenceId: 'sen1', begin: 3, form: 'ta', targets: ['Morph POS'] },
+          ],
+          leftMore: 6,
+        },
+      ],
+    };
+    const v = await mount(
+      clientOf(
+        jobOf({
+          state: 'done',
+          documents: [{ ...jobOf().documents[0], state: 'done', done: 4, targets: 4 }],
+          report,
+        }),
+      ),
+    );
+    const section = v.container.querySelector('section[aria-label="Report"]');
+    const sums = totals(section);
+    expect(sums['Morph POS']).toBe('6 values');
+    expect(sums['Morph POS left blank']).toBe('6 morphemes');
+    expect(sums['segmentation left blank']).toBe('4 words');
+    expect(text(section)).toContain('s1.w2.m2 ta Morph POS');
+    const row = v.container.querySelector('table tbody tr');
+    expect(text(row)).toContain('4 words, 2 morphemes, 1 sentence');
     await v.unmount();
   });
 
@@ -890,7 +940,11 @@ describe('the job page', () => {
           documentId: 'd1',
           name: 'Story A',
           skipped: [],
-          counts: { left: 7, blank: [{ target: 'Role', unit: 'word', left: 7, notReached: 0 }] },
+          counts: {
+            left: 7,
+            leftUnits: [{ unit: 'word', left: 7 }],
+            blank: [{ target: 'Role', unit: 'word', left: 7, notReached: 0 }],
+          },
           left: [{ ref: 's1.w1', sentenceId: 'sen1', begin: 0, form: 'ka', targets: ['Role'] }],
           leftMore: 6,
         },
@@ -909,7 +963,7 @@ describe('the job page', () => {
     // The documents table: "40 of 40" with how many places are left blank.
     const row = v.container.querySelector('[data-testid="job-documents"] tbody tr, table tbody tr');
     expect(text(row)).toContain('40 of 40');
-    expect(text(row)).toContain('7');
+    expect(text(row)).toContain('7 words');
     const headers = all(v.container, 'th').map((h) => h.textContent);
     expect(headers).toContain('Left blank');
     await v.unmount();
@@ -938,7 +992,7 @@ describe('the job page', () => {
           name: 'Done',
           state: 'done',
           done: 4,
-          counts: { blank: blank(2, 0) },
+          counts: { blank: blank(2, 0), leftUnits: [{ unit: 'word', left: 2 }] },
           skipped: [],
           left: [{ ref: 's1.w1', sentenceId: 'sen1', begin: 0, form: 'ka', targets: ['Role'] }],
           leftMore: 1,
@@ -982,7 +1036,7 @@ describe('the job page', () => {
     const at = headers.indexOf('Left blank');
     expect(at).toBeGreaterThan(-1);
     const cells = all(v.container, 'tbody tr').map((tr) => all(tr, 'td')[at]?.textContent);
-    expect(cells.slice(0, 4)).toEqual(['2', '', '', '0']);
+    expect(cells.slice(0, 4)).toEqual(['2 words', '', '', '0']);
     await v.unmount();
     // A job that fills nothing has no Left blank column at all.
     const none = {

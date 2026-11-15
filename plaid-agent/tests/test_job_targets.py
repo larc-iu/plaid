@@ -128,13 +128,13 @@ JOBS = {
     MPOS: ('Fill Morph POS on every morpheme.',
            ('set_field', {'refs': ['s1.w2.m1'], 'field': 'Morph POS', 'value': 'N'}),
            'Empty in s1: Morph POS in w1.m1 "ka", w2.m1 "pa", w2.m2 "ta", w3.m1 "sa".', [],
-           ['s1.w1', 's1.w2', 's1.w3', 's2.w1']),
+           ['s1.w1.m1', 's1.w2.m2', 's1.w3.m1', 's2.w1.m1']),
     NOTE: ('Write a Note on every sentence.', ('set_field', {'refs': ['s1'], 'field': 'Note', 'value': 'n.'}),
            'Empty in s1: Note.', [], ['s2']),
     'gloss': ('Segment and gloss the words nobody analysed.',
               ('set_analysis', {'ref': 's1.w1', 'morphemes': [{'form': 'ka', 'fields': {'Morph Gloss': 'g'}}]}),
               'Empty in s1: segmentation and Morph Gloss in w1 "ka", w3 "sa" | Morph Gloss in w2.m2 "ta".',
-              ['analyze_sentence', 'create_entry', 'link_entry', 'set_analysis'], ['s1.w2', 's1.w3', 's2.w1']),
+              ['analyze_sentence', 'create_entry', 'link_entry', 'set_analysis'], ['s1.w2.m2', 's1.w3', 's2.w1']),
 }
 
 
@@ -189,8 +189,10 @@ def _blank(target, left, unit='word'):
     return {'target': target, 'unit': unit, 'left': left, 'not_reached': 0, 'skipped': 0}
 
 
-BLANK = {ROLE: [_blank('Role', 2)], MPOS: [_blank('Morph POS', 4)], NOTE: [_blank('Note', 1, 'sentence')],
-         'gloss': [_blank('segmentation', 2), _blank('Morph Gloss', 3)]}
+BLANK = {ROLE: [_blank('Role', 2)], MPOS: [_blank('Morph POS', 4, 'morpheme')],
+         NOTE: [_blank('Note', 1, 'sentence')],
+         # A morpheme field in morphemes, so its values and blanks sum (REV-DF-S-6).
+         'gloss': [_blank('segmentation', 2), _blank('Morph Gloss', 3, 'morpheme')]}
 
 
 def client_project(client):

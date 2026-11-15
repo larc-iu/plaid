@@ -42,7 +42,8 @@ const More = ({ n, noun }) =>
 // What is still blank of each thing the job fills (the plan's targets, by
 // name): the totals' rows, or, when the totals hold none, the documents' rows
 // summed by target in the order they come. Each `{target, unit, left,
-// notReached, skipped}`, `unit` a word or a sentence (what Left blank lists).
+// notReached, skipped}`, `unit` a word, a morpheme or a sentence (what Left
+// blank lists).
 // A job that fills nothing has none, and core's own report of a job no worker
 // finished counts none.
 const blankSums = (report) => {
@@ -66,11 +67,8 @@ const blankSums = (report) => {
   return [...sums.values()];
 };
 
-// A target's name at the start of a row: "segmentation" reads "Segmentation".
-const capital = (name) => (name ? name[0].toLocaleUpperCase() + name.slice(1) : name);
-
 // A count of what a target holds blank, in the unit Left blank lists.
-const unitCount = (n, unit) => `${n.toLocaleString()} ${plural(n, unit)}`;
+export const unitCount = (n, unit) => `${n.toLocaleString()} ${plural(n, unit)}`;
 
 // The values the job set in each field: the totals' rows, or, when the totals
 // hold none (core's own report of a job no worker finished sums named counts
@@ -121,15 +119,13 @@ const totalRows = (report) => {
   optional('Words analyzed', t.words);
   fieldSums(report).forEach((f) => f.values > 0 && rows.push([f.field, value(f.values)]));
   blankSums(report).forEach((b) => {
-    rows.push([`${capital(b.target)} left blank`, unitCount(b.left ?? 0, b.unit)]);
+    // A target is named as everywhere on the page, "segmentation" too (N-1).
+    rows.push([`${b.target} left blank`, unitCount(b.left ?? 0, b.unit)]);
     if (b.notReached > 0) {
-      rows.push([
-        `${capital(b.target)} blank in sentences not reached`,
-        unitCount(b.notReached, b.unit),
-      ]);
+      rows.push([`${b.target} blank in sentences not reached`, unitCount(b.notReached, b.unit)]);
     }
     if (b.skipped > 0) {
-      rows.push([`${capital(b.target)} blank in skipped sentences`, unitCount(b.skipped, b.unit)]);
+      rows.push([`${b.target} blank in skipped sentences`, unitCount(b.skipped, b.unit)]);
     }
   });
   optional('Lexicon links made', t.links);

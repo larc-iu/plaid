@@ -9,5 +9,8 @@
   "harmonize.changed": "Analyses made consistent",
   "harmonize.left": "Forms left inconsistent",
   "entries.created": "Entries created",
-  "entries.unlinked": "Entries with no links"
+  "entries.unlinked": "Entries with no links",
+  "refused": "Not done, refused",
+  "totals.fields": "Values set in each field",
+  "totals.blank": "Still blank of what the job fills"
 }

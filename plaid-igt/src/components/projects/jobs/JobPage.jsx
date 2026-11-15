@@ -42,7 +42,7 @@ import {
   durationText,
   jobName,
   jobsTabPath,
-  leftCount,
+  leftText,
   planText,
   stoppedPartway,
 } from './jobText.js';
@@ -415,12 +415,12 @@ const JobDocuments = ({ job, projectId }) => {
         d.targets === null || d.targets === undefined ? '' : `${d.done ?? 0} of ${d.targets}`,
     },
   ];
-  if ([...reported.values()].some((d) => leftCount(d) !== null)) {
+  if ([...reported.values()].some((d) => leftText(d) !== null)) {
     columns.push({
       key: 'left',
       label: 'Left blank',
       align: 'right',
-      render: (d) => leftCount(reported.get(d.documentId))?.toLocaleString() ?? '',
+      render: (d) => leftText(reported.get(d.documentId)) ?? '',
     });
   }
   // A job has no task types: a column shows only once a document holds a

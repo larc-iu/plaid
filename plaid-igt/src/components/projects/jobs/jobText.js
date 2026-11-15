@@ -5,6 +5,7 @@
 // shared by the Start job dialog and the assistant's job card.
 import { createOnce } from '@ui/lib/createOnce.js';
 import { statusOf } from '@ui/lib/errors.js';
+import { plural } from '@ui/lib/plural.js';
 
 // Instructions a job can start from, which fill the Start job dialog's box
 // and can be edited there. Plain text: nothing knows them once the job is
@@ -58,14 +59,18 @@ export const planText = (plan) => {
 // stopped partway once it finished a sentence (REV-DAY-P-13).
 export const stoppedPartway = (d) => d.state === 'not-reached' && (d.done ?? 0) > 0;
 
-// How many places a document's Left blank lists (each a word or a
-// sentence), those cut from the list included, or null when nothing was
-// counted there: a job that fills nothing, a document deleted, one that could
-// not be read, one the job never reached, core's own report (REV-DF-S-2).
-export const leftCount = (d) =>
-  d?.counts?.blank && !d.leftUnread && !(d.state === 'not-reached' && !(d.done > 0))
-    ? (d.left?.length ?? 0) + (d.leftMore ?? 0)
-    : null;
+// How many places a document's Left blank lists, by unit, those cut from the
+// list included ("4 words, 1 sentence", REV-DF-S N-2), or null when nothing
+// was counted there: a job that fills nothing, a document deleted, one that
+// could not be read, one the job never reached, core's own report
+// (REV-DF-S-2).
+export const leftText = (d) => {
+  if (!d?.counts?.blank || d.leftUnread || (d.state === 'not-reached' && !(d.done > 0)))
+    return null;
+  const units = d.counts.leftUnits || [];
+  if (!units.length) return '0';
+  return units.map((u) => `${u.left.toLocaleString()} ${plural(u.left, u.unit)}`).join(', ');
+};
 
 const FAILURE_TEXT = {
   budget: 'over budget',
