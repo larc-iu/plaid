@@ -121,7 +121,9 @@ class Pace:
     :data:`JOB_CALL_DECIDE_AT_TOKENS`, is sent the decide-now line once, and
     ``decided`` is called so the stretch offers the plan tools alone from then
     on. ``before_call`` runs last, just before the call: the wait for people
-    on the model key, which may raise to stop the job."""
+    on the model key, which may raise to stop the job. One Pace spans every
+    turn of a stretch: the budgets count the calls and tokens of all of
+    them."""
 
     def __init__(self, model: str, before_call: Callable[[], None] = lambda: None,
                  count: Optional[Callable[[Any], int]] = None, decided: Callable[[], None] = lambda: None):
@@ -137,6 +139,9 @@ class Pace:
         return self.count(kwargs.get('messages') or []) + (self.count(kwargs['tools']) if kwargs.get('tools') else 0)
 
     def note(self, rounds: int, kwargs: Dict[str, Any]) -> Optional[str]:
+        # The calls of every turn of the stretch: a piece asked again (it
+        # answered nothing) goes on from the calls its first answer used.
+        rounds = max(rounds, self.calls)
         if rounds >= JOB_STRETCH_MAX_ROUNDS:
             raise StretchFailed(BUDGET, f'more than {JOB_STRETCH_MAX_ROUNDS} model calls')
         if self.told:
@@ -815,7 +820,7 @@ def build_report(job: Job, state: str, reason: Optional[str], documents: List[Di
     totals = {'documents_done': 0, 'documents_in_use': 0, 'documents_gone': 0, 'documents_not_reached': 0,
               'sentences': 0, 'translations': 0, 'refreshed': 0, 'words': 0, 'links': 0, 'entries': 0,
               'skipped_too_long': 0, 'skipped_failed': 0, 'skipped_changed': 0, 'skipped_interrupted': 0,
-              'skipped_more': 0, 'changed': 0, 'proposed': 0, 'changes': 0, 'deletions': 0, 'repeated': 0}
+              'skipped_no_answer': 0, 'skipped_more': 0, 'changed': 0, 'proposed': 0, 'changes': 0, 'deletions': 0, 'repeated': 0}
     fields = Counter()
     for d in documents:
         key = {'done': 'documents_done', 'in-use': 'documents_in_use', 'gone': 'documents_gone'}.get(

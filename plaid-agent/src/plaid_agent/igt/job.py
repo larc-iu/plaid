@@ -53,6 +53,7 @@ from ..core.limits import (JOB_ANALYSIS_MAX_CHARS, JOB_CHANGE_VALUE_CHARS, JOB_C
                            JOB_PRECEDENT_PER_FORM, JOB_SENTENCE_MAX_CHARS, JOB_SENTENCE_MAX_WORDS,
                            JOB_SKIPPED_PER_DOCUMENT, JOB_STRETCH_SENTENCES)
 from ..core.plan import JOB_DETAIL_KEY, ONE_REQUEST, PlanError, TooBig, held_changes
+from ..core.prompt import JOB_ANSWER_AGAIN
 from ..core.provenance import Requester
 from ..core.tools import Refusal, ToolError
 from ..core.version import agent_version
@@ -148,6 +149,17 @@ def piece_note(text) -> str:
         spaces = [i for i in range(room + 1) if text[i].isspace()]
         head = text[:spaces[-1]] if spaces else text[:room]
     return head.rstrip() + NOTE_CUT
+
+
+#: Why a piece's sentences are skipped when its model answered nothing twice
+#: (:func:`answered_nothing`).
+NO_ANSWER = 'no-answer'
+
+
+def answered_nothing(ws, text) -> bool:
+    """Whether a piece's answer staged nothing (no op, no table) and wrote
+    no text: by what the answer holds, never by its words (REV-DAY-S-16)."""
+    return not ws.ops and not ws.tables and not piece_note(text)
 
 
 def _first_line(text) -> str:
@@ -689,6 +701,8 @@ class JobWorkspace(Workspace):
         #: ``edits_text``): else no op that does is staged (``guard_op``)
         self.edits_text = False
         self.tables: List[Dict[str, Any]] = []
+        #: the piece's model answered nothing twice (``IgtRunner.run_piece``)
+        self.answered_nothing = False
         #: the planning context's plan_work, once valid
         self.plan_work: Optional[Dict[str, Any]] = None
 
@@ -2054,6 +2068,12 @@ class IgtRunner:
         message = self.message(ws, project, doc, part, st, whole)
         note = self.run_piece(ws, project, message, document_id, sentences=self.in_sentences() and not whole)
         piece = {'document': document_id, 'first': part[0].id if part else None, 'whole': whole}
+        if ws.answered_nothing:
+            # Asked twice, it staged nothing and said nothing: its sentences
+            # are skipped with a reason of their own, never counted worked.
+            for s in part:
+                self.skip(document_id, doc, s.id, NO_ANSWER, None)
+            return None
         self.record_piece(project, piece, note, ws.tables, doc, part)
         # The piece as its writing rows name it: a whole document's is the
         # same whatever sentence it starts from, so the piece run again
@@ -2071,7 +2091,14 @@ class IgtRunner:
         assistant's tools (:func:`toolkit.job_piece_tools`), the piece's
         message, the stretch budgets (:class:`Pace`), its rounds to the trace
         folder. Its reply is the piece's note. Raises the model's failures
-        for the caller to sort."""
+        for the caller to sort.
+
+        An answer that staged nothing and said nothing (:func:`answered_nothing`,
+        by what it holds, never by its words: reasoning only, or empty) is
+        asked again once with :data:`JOB_ANSWER_AGAIN`, under the same
+        budgets. When the second answer is the same, ``ws.answered_nothing``
+        is set, and the caller lists the piece's sentences as skipped
+        (``no-answer``, REV-DAY-S-16)."""
         job = self.job
         ws.edits_text = self.edits_text()
         system = build_job_prompt(project, sentences=sentences, edits_text=ws.edits_text)
@@ -2083,19 +2110,32 @@ class IgtRunner:
 
         def decided():
             ws.decide_now = True
-        result = self.turn(ws, kit, system, transcript, decided)
+        pace = self.pace(decided)
+        result = self.turn(ws, kit, system, transcript, pace=pace)
         job.check()
+        if answered_nothing(ws, result.text):
+            more = transcript + list(result.messages or []) + [{'role': 'user', 'content': JOB_ANSWER_AGAIN}]
+            result = self.turn(ws, kit, system, more, pace=pace)
+            job.check()
+            ws.answered_nothing = answered_nothing(ws, result.text)
         return piece_note(result.text)
 
-    def turn(self, ws, kit, system: str, transcript, decided=lambda: None):
-        """One model context of the job, under the stretch's budgets, asked
-        only while nobody waits for the model (``yield_to_people``)."""
+    def pace(self, decided=lambda: None) -> Pace:
+        """The budgets of one stretch, asked only while nobody waits for the
+        model (``yield_to_people``)."""
         job = self.job
 
         def before_call():
             job.check()
             job.yield_to_people()
-        pace = Pace(self.cfg.model, before_call=before_call, count=self.count, decided=decided)
+        return Pace(self.cfg.model, before_call=before_call, count=self.count, decided=decided)
+
+    def turn(self, ws, kit, system: str, transcript, decided=lambda: None, pace: Optional[Pace] = None):
+        """One model context of the job, under the stretch's budgets
+        (``pace``, a new one unless given: a piece asked again goes on under
+        its first answer's)."""
+        job = self.job
+        pace = pace or self.pace(decided)
         result = run_turn(self.cfg, kit, ws, system, transcript, cancelled=job.cancelled, pace=pace)
         if result.failure is not None:
             raise result.failure
