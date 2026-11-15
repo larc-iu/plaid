@@ -36,7 +36,7 @@ TRANSLATE = {'kind': 'set_span', 'layer_id': TRANS, 'token_id': 'd1-s1', 'span_i
 
 def test_a_value_changed_in_place_counts_as_its_fields_value_whichever_tool_staged_it():
     by_analysis, by_field = _write([IN_PLACE]), _write([SET_FIELD])
-    assert by_analysis.fields_of([IN_PLACE]) == by_field.fields_of([SET_FIELD]) == {'Morph Gloss': 1}
+    assert by_analysis.fields_of([IN_PLACE]) == by_field.fields_of([SET_FIELD]) == {MGLOSS: 1}
     assert by_analysis.words_of([IN_PLACE]) == by_field.words_of([SET_FIELD]) == []
 
 
