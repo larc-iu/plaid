@@ -142,6 +142,25 @@ def summary(card: Dict[str, Any]) -> str:
     return f'{"all " if card.get("all") else ""}{n:,} document{"s" if n != 1 else ""}'
 
 
+#: A conversation's id as the page's setup holds it, a UUID, for the count.
+_CONVERSATION_ID = 'x' * 36
+
+
+def _setup_fits(fills: List[Dict[str, str]], edits_text: bool) -> None:
+    """Refuse fills whose setup, as the page builds it from the card
+    (``{fills, text, conversation}``, plaid-igt ``jobSetupOf``), core would
+    refuse: over JOB_SETUP_MAX_CHARS characters of compact JSON, as core
+    counts them (REV-SU-B-7)."""
+    import json
+    from ..core.limits import JOB_SETUP_MAX_CHARS
+    setup = {'fills': fills, 'text': edits_text, 'conversation': _CONVERSATION_ID}
+    n = len(json.dumps(setup, ensure_ascii=False, separators=(',', ':')))
+    if n > JOB_SETUP_MAX_CHARS:
+        raise ToolError(f'fills: the {len(fills):,} named come to a setup of {n:,} characters, and a job\'s setup is '
+                        f'at most {JOB_SETUP_MAX_CHARS:,}. Name fewer, and draft another job for the rest.',
+                        kind='too-large')
+
+
 def _facts_answer(ws, documents) -> str:
     """propose_job's facts: what a job on this project can fill and how much
     of each is empty in each document named, in the planning context's own
@@ -193,6 +212,7 @@ def t_propose_job(ws, action: str, documents: Optional[Any] = None, brief: Optio
     # them in the job's setup, which binds its planning (BRIEF-SU).
     # Each named as the person is shown it, two sharing a name told apart.
     fills = [{'id': t.id, 'name': n} for t, n in zip(chosen, tg.shown_names(ws.project, chosen))]
+    _setup_fits(fills, edits_text)
     card.update({'id': str(uuid7()), 'brief': text, 'fills': fills, 'edits_text': edits_text})
     card['summary'] = summary(card)
     ws.job_card = card

@@ -626,3 +626,24 @@ def test_help_and_the_guide_say_the_fills_bind_the_jobs_plan_never_what_it_write
     assert ('The job is planned to fill only what its card names, and edits the text only when the card says it '
             'may.\n') in guide
     assert 'The job fills only what its card names' not in guide
+
+
+def test_a_draft_whose_setup_would_be_over_cores_cap_is_refused_with_what_to_change(monkeypatch):
+    """REV-SU-B-7: the page builds the job's setup from the card ({fills,
+    text, conversation}, a conversation id a UUID), and core refuses one over
+    its cap at Start job, so the draft refuses it first, counted as core
+    counts it."""
+    import json
+    import plaid_agent.core.limits as limits
+    ws = fake_ws(FakeClient())
+    fills = [{'id': 'segmentation', 'name': 'segmentation'}, {'id': 'sl-mgloss', 'name': 'Morph Gloss'}]
+    n = len(json.dumps({'fills': fills, 'text': False, 'conversation': 'x' * 36}, ensure_ascii=False,
+                       separators=(',', ':')))
+    assert limits.JOB_SETUP_MAX_CHARS == 4000
+    monkeypatch.setattr(limits, 'JOB_SETUP_MAX_CHARS', n - 1)
+    out = _draft(ws)
+    assert out == (f'Error: fills: the 2 named come to a setup of {n:,} characters, and a job\'s setup is at most '
+                   f'{n - 1:,}. Name fewer, and draft another job for the rest.'), out
+    assert ws.job_card is None
+    monkeypatch.setattr(limits, 'JOB_SETUP_MAX_CHARS', n)
+    assert _draft(ws).startswith('Drafted')
