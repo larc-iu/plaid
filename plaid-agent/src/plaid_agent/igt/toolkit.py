@@ -628,7 +628,8 @@ PLAN_WORK = _fn(
     'documents and in what order. pieces: "sentences" (stretches of a few sentences, each its own context), '
     '"document" (one context per document) or "selection" (one context for all the documents). '
     'fills: what the job fills, each named as the message lists it under What a job can fill (segmentation, a '
-    'field), or [] when it fills nothing, such as a check or a summary. Pieces are shown what of it is empty. '
+    'field, an orthography), or [] when it fills nothing, such as a check or a summary. Pieces are shown what of '
+    'it is empty. '
     'skip_filled_sentences: with "sentences", true skips every sentence in which nothing the job fills is empty. '
     'edits_text: true when the instructions ask for the text itself to change: words or sentences retyped, '
     'respelled, split, merged, inserted or deleted. '
@@ -780,6 +781,8 @@ SENTENCES_ALWAYS = ('set_field', 'read_lexicon', 'analyses_of')
 SENTENCES_SEGMENTATION = ('analyze_sentence', 'set_analysis')
 #: Offered when a target is linked to the lexicon.
 SENTENCES_LEXICON = ('link_entry', 'create_entry')
+#: Offered when an orthography is a target.
+SENTENCES_ORTHOGRAPHY = ('set_orthography',)
 #: Offered when the plan edits the text (``TEXT_TOOLS`` decides).
 SENTENCES_TEXT = ('retype_sentence', 'split_sentence', 'merge_sentences', 'delete_sentence')
 
@@ -797,6 +800,8 @@ def sentences_piece_tools(targets) -> tuple:
         out += SENTENCES_SEGMENTATION
     if any(t.lexicon for t in targets):
         out += SENTENCES_LEXICON
+    if any(t.orthography is not None for t in targets):
+        out += SENTENCES_ORTHOGRAPHY
     return out + SENTENCES_TEXT
 
 

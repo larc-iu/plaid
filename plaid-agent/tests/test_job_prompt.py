@@ -336,7 +336,7 @@ def test_plan_work_refuses_a_plan_that_does_not_say_what_it_fills():
     assert toolkit.PLAN_WORK['function']['parameters']['required'] == ['pieces', 'fills']
     ws, out = _planned([HALF], {'pieces': 'sentences', 'skip_filled_sentences': True})
     assert out == ('Error: fills: say what the job fills, each named as listed under What a job can fill: '
-                   'segmentation, Gloss, Morph Gloss, Translation. Give [] when it fills nothing, such as a check '
+                   'segmentation, Gloss, Morph Gloss, Translation, IPA. Give [] when it fills nothing, such as a check '
                    'or a summary.'), out
     assert ws.plan_work is None
 

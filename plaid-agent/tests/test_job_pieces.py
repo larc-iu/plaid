@@ -97,10 +97,11 @@ def test_the_first_context_plans_and_the_plan_is_kept_and_reported(monkeypatch):
     assert model.calls[0]['asked'].splitlines()[0] == 'Instructions from user:'
     asked = model.calls[0]['asked']
     assert "What a job can fill (name them in plan_work's fills):\n- segmentation (word level: words into " \
-           'morphemes)\n- "Gloss" (word level)\n- "Morph Gloss" (morpheme level)\n- "Translation" (sentence level)' \
+           'morphemes)\n- "Gloss" (word level)\n- "Morph Gloss" (morpheme level)\n- "Translation" (sentence level)\n' \
+           '- "IPA" (orthography, word level)' \
            in asked, asked
     # Only what has something empty (DF1 open point 3): Translation 0 is not named.
-    assert 'Story 1": 2 sentences, 3 words, 81 characters. Empty: segmentation 3, Gloss 3, Morph Gloss 3.\n' \
+    assert 'Story 1": 2 sentences, 3 words, 81 characters. Empty: segmentation 3, Gloss 3, Morph Gloss 3, IPA 3.\n' \
         in asked, asked
     plan_tools = {t['function']['name'] for t in model.calls[0]['kwargs']['tools']}
     assert 'plan_work' in plan_tools and 'set_analysis' not in plan_tools

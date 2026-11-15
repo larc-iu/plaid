@@ -13,6 +13,8 @@ A unit is EMPTY for a target when it holds no value for it (:func:`empty`):
 - a word, for segmentation, when it holds no morpheme analysis (its stored
   state is "unanalyzed": ``plaid_client.workflows.igt.derive.word_state``),
 - a word, for a word field, when the field holds no value on it,
+- a word, for an orthography (a second writing of the word, such as IPA),
+  when it holds no value in it,
 - a morpheme, for a morpheme field, when the field holds no value on it (an
   unsegmented word's derived morpheme is a morpheme here),
 - a sentence, for a sentence field, when the field holds no value on it.
@@ -30,6 +32,8 @@ from plaid_client.workflows.igt.derive import word_state as _stored_word_state
 from .project import SCOPES, Field, IgtProject, Morpheme, Sentence, Word
 
 SEGMENTATION = 'segmentation'
+#: How an orthography's target id begins.
+ORTHOGRAPHY = 'orthography'
 #: How a level is named to the model.
 LEVEL = {'Word': 'word', 'Morpheme': 'morpheme', 'Sentence': 'sentence'}
 
@@ -41,18 +45,27 @@ class Target:
     are words), ``field`` (None for segmentation) and whether it is linked
     to the lexicon (``lexicon``: segmentation, whose morphemes link to
     entries, or a field the configuration pairs with a lexicon entry field,
-    ``igt.lexiconField``)."""
+    ``igt.lexiconField``). An orthography of the project is a word level
+    target too (``orthography`` its name, ``field`` None)."""
     id: str
     name: str
     scope: str
     field: Optional[Field] = None
     lexicon: bool = False
+    orthography: Optional[str] = None
+
+    @property
+    def segments(self) -> bool:
+        """Whether the target is segmentation into morphemes."""
+        return self.id == SEGMENTATION
 
     @property
     def label(self) -> str:
         """The target as the planning message lists it."""
-        if self.field is None:
+        if self.segments:
             return f'{SEGMENTATION} (word level: words into morphemes)'
+        if self.orthography is not None:
+            return f'"{self.name}" (orthography, word level)'
         return f'"{self.name}" ({LEVEL[self.scope]} level)'
 
 
@@ -80,13 +93,14 @@ def _target(project: IgtProject, f: Field) -> Target:
 def fillable(project: IgtProject) -> List[Target]:
     """Everything a job on ``project`` can fill, in the order the planning
     message lists it: segmentation (when the project has a morpheme layer),
-    then the fields by level, word, morpheme and sentence."""
+    then the fields by level, word, morpheme and sentence, then the
+    orthographies (word level, kept as ``orthography:<name>``)."""
     out = []
     if project.morpheme_layer_id:
         out.append(Target(SEGMENTATION, SEGMENTATION, 'Word', None, bool(project.vocabs)))
     for scope in SCOPES:
         out += [_target(project, f) for f in project.fields_by_scope(scope)]
-    return out
+    return out + [Target(f'{ORTHOGRAPHY}:{o}', o, 'Word', orthography=o) for o in project.orthographies]
 
 
 def of_ids(project: IgtProject, ids: Optional[Iterable[str]]) -> List[Target]:
@@ -105,6 +119,9 @@ def named(project: IgtProject, names: Iterable[str]) -> Tuple[List[Target], List
         by.setdefault(t.name.casefold(), t)
         by.setdefault(f'{t.name} ({LEVEL[t.scope]})'.casefold(), t)
         by.setdefault(f'{t.name} ({LEVEL[t.scope]} level)'.casefold(), t)
+        if t.orthography is not None:
+            by.setdefault(f'{t.name} (orthography, word level)'.casefold(), t)
+            by.setdefault(f'{t.name} (orthography)'.casefold(), t)
     out, unknown = [], []
     for name in names:
         key = str(name).strip().replace('"', '').casefold()
@@ -163,8 +180,10 @@ def empty(t: Target, s: Optional[Sentence] = None, w: Optional[Word] = None,
           m: Optional[Morpheme] = None) -> bool:
     """THE rule: whether the unit of ``t``'s level (a word for segmentation
     and a word field, a morpheme, a sentence) holds no value for ``t``."""
-    if t.field is None:
+    if t.segments:
         return word_state(w) == 'unanalyzed'
+    if t.orthography is not None:
+        return not w.orthographies.get(t.orthography)
     return not _holds(m if t.scope == 'Morpheme' else w if t.scope == 'Word' else s, t.field)
 
 
@@ -207,7 +226,7 @@ def units(s: Sentence, targets: Iterable[Target], words: Optional[set] = None,
     stretch's: what the job wrote is left out)."""
     out = []
     fields = None if fields is None else list(fields)
-    segments = [t for t in targets if t.field is None]
+    segments = [t for t in targets if t.segments]
     for t in targets:
         if t.scope == 'Sentence':
             if empty(t, s=s) and (fields is None or t in fields):

@@ -47,7 +47,7 @@ def test_what_a_job_can_fill_is_read_from_the_configuration():
     assert [(t.id, t.name, t.scope) for t in tg.fillable(project)] == [
         ('segmentation', 'segmentation', 'Word'), ('sl-gloss', 'Gloss', 'Word'), (ROLE, 'Role', 'Word'),
         (MGLOSS, 'Morph Gloss', 'Morpheme'), (MPOS, 'Morph POS', 'Morpheme'), (TRANS, 'Translation', 'Sentence'),
-        (NOTE, 'Note', 'Sentence')]
+        (NOTE, 'Note', 'Sentence'), ('orthography:IPA', 'IPA', 'Word')]
     assert [t.id for t in tg.app_default(project)] == ['segmentation', MGLOSS, TRANS]
 
 
@@ -302,3 +302,53 @@ def test_a_later_piece_reads_peoples_work_as_it_is_when_it_starts(monkeypatch):
     second = next(c['asked'] for c in model.calls if c['n'] == 1 and 'Your piece: s2.' in c['asked'])
     assert 'people: gam ‘fish’ (1)' in first, first
     assert 'gam ‘fish’' not in second, second
+
+
+def test_a_job_fills_an_orthography_through_the_same_code_as_a_word_field(monkeypatch):
+    """REV-DF-D-6 (the owner's word: never forbid it): an orthography is a
+    word level target. plan_work takes its name, a piece in sentences is
+    told which words hold no value in it by THE rule and offered
+    set_orthography, the write lands, and Left blank counts what is left like
+    any word level target. No evidence for it."""
+    from plaid_client.workflows.igt.config import orthography_key
+    from plaid_agent.igt import toolkit
+    from plaid_agent.igt.job import JobWorkspace
+    client = JobClient({'d1': _raw()}, project=fields_project())
+    project = client_project(client)
+    ipa = next(t for t in tg.fillable(project) if t.orthography == 'IPA')
+    assert (ipa.id, ipa.label) == ('orthography:IPA', '"IPA" (orthography, word level)')
+    ws = JobWorkspace(client, project, mode=JobWorkspace.PLAN)
+    ws.job_documents = [{'id': 'd1', 'name': 'Story'}]
+    assert toolkit.job_plan_call(ws, 'plan_work', {'pieces': 'sentences', 'fills': ['IPA']}).startswith(
+        'The plan is kept.')
+    assert ws.plan_work['fills'] == ['orthography:IPA']
+    job = start(client, 'Write the IPA of every word.', id=J, fills=('orthography:IPA',))
+    real, written = igt_job.execute_plan, {}
+
+    def execute(c, ops, **kw):
+        out = real(c, ops, **kw)
+        written.update({o['word_id']: o['value'] for o in ops if o.get('kind') == 'set_orthography'})
+        raw = _raw()
+        for tk in raw['text_layers'][0]['token_layers'][1]['tokens']:
+            if tk['id'] in written:
+                tk['metadata'] = {orthography_key('IPA'): written[tk['id']]}
+        client.after_write['d1'] = {**raw, 'version': len(client.writes) + 1}
+        return out
+    monkeypatch.setattr(igt_job, 'execute_plan', execute)
+
+    def answer(asked, n, kwargs):
+        if n > 1:
+            return reply('Done.')
+        return reply(calls=[call(1, 'set_orthography', {'document': 'Story', 'refs': ['s1.w1', 's1.w2'],
+                                                        'orthography': 'IPA', 'value': 'ka'})])
+    model = use(monkeypatch, Model(answer))
+    finished = run_job(job, runner(job))
+    assert finished['state'] == 'done', finished.get('reason')
+    first = model.calls[0]
+    assert 'Empty in s1: IPA in w1 "ka", w2 "pata", w3 "sa".' in first['asked'], first['asked']
+    assert sorted(t['function']['name'] for t in first['kwargs']['tools']) == [
+        'analyses_of', 'read_lexicon', 'set_field', 'set_orthography']
+    assert set(written) == {'d1-s1w1', 'd1-s1w2'}
+    (doc,) = finished['report']['documents']
+    assert [(e['ref'], e['targets']) for e in doc['left']] == [('s1.w3', ['IPA']), ('s2.w1', ['IPA'])]
+    assert doc['counts']['blank'] == [_blank('IPA', 2)]
