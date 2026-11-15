@@ -21,9 +21,9 @@ from ..core.replace import replacer as _replacer
 from ..core.provenance import unmark
 from .plan import KIND, REFS_READ, REPAIR_OF, SENSES_READ, SCOPES, analysed_morphemes, move_phrase, removed_entries, settle_merges
 from .project import join_morphemes, word_ref
-from ..core.tools import ToolError
+from ..core.tools import ADVICE, ToolError
 from .lexicon import _meta_patch, _refuse_doomed_entry, _refuse_removing_survivor
-from .tools import (parse_analysis, analysis_op, ANALYSIS_OF, confirm_hint, entries_note, take_back, holds_nothing, in_place, in_place_back, plan_retypes, value_op, surface_misfit, stage_equals, no_scope_reaches, refuse_shape_and_analysis,
+from .tools import (parse_analysis, analysis_op, ANALYSIS_OF, confirm_hint, entries_note, take_back, holds_nothing, in_place, in_place_back, in_place_form, plan_retypes, value_op, surface_misfit, stage_equals, no_scope_reaches, refuse_shape_and_analysis,
                     edit_planned_morpheme, left_for_analysis, _planned_place)
 from .lexview import entry_line
 from .workspace import Workspace, _matcher, op_target
@@ -1617,6 +1617,11 @@ def t_set_analysis_for_form(ws: Workspace, form: str, morphemes: list, document:
                 held += 1
             for c in changes:
                 m = kept[c['index']]
+                if 'form' in c:
+                    values_staged.append({**in_place_form(ws.corpus.label_ref(w['document'], m['id'], budget),
+                                                          m['id'], c['form']),
+                                          'doc': w['document'], ANALYSIS_OF: w['id']})
+                    continue
                 if gloss is not None and c['layer_id'] == gloss.layer_id and c['value'] and m['link']:
                     note = _kept_link(ws, ws.corpus.label_ref(w['document'], m['id'], budget), m, c['value'])
                     if note:

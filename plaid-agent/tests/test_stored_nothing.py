@@ -147,3 +147,35 @@ def test_a_zero_morpheme_is_a_stored_form_and_is_kept():
     call_tool(w, 'set_analysis', {'document': 'd1', 'ref': 's1.w2', 'morphemes': [
         {'form': 'gam', 'fields': {'Morph Gloss': 'fish'}}, {'form': '∅', 'fields': {'Morph Gloss': 'PL'}}]})
     assert [(o['kind'], o['token_id'], o['value']) for o in w.ops] == [('set_span', 'm-2z', 'PL')]
+
+
+# --- a morpheme holding nothing inside a person's chain (REV-DF-D-8) ----------------------------
+
+
+def _chain(raw):
+    """gam as a person's "ga" 'fish' linked to an entry, then a morpheme stored with nothing of its own."""
+    m2 = _token(raw, 'm-2')
+    m2['metadata'] = {'form': 'ga'}
+    _morph(raw)['tokens'].append({'id': 'm-2z', 'begin': m2['begin'], 'end': m2['end'], 'precedence': 2,
+                                  'metadata': {}})
+    _gloss(raw, 'm-2', 'fish')
+    _morph(raw)['vocabs'][0]['vocab_links'].append(
+        {'id': 'l-9', 'vocab_item': {'id': 'vi-gam2', 'form': 'ga'}, 'tokens': ['m-2']})
+
+
+@pytest.mark.parametrize('tool', ['set_analysis', 'analyze_sentence', 'set_analysis_for_form'])
+def test_a_chain_with_a_morpheme_holding_nothing_is_kept_and_the_form_given_written_on_it(tool):
+    """REV-DF-D-8: only a word whose ONE morpheme holds nothing has no
+    analysis to keep. A person's chain restated with a morpheme that holds
+    nothing is kept: its "ga", gloss and link stay as they are, and the form
+    given is written on the empty morpheme, with the value given."""
+    w = ws_with(_chain)
+    given = [{'form': 'ga', 'fields': {'Morph Gloss': 'fish'}}, {'form': 'm', 'fields': {'Morph Gloss': 'SG'}}]
+    if tool == 'set_analysis':
+        call_tool(w, tool, {'document': 'd1', 'ref': 's1.w2', 'morphemes': given})
+    elif tool == 'analyze_sentence':
+        call_tool(w, tool, {'document': 'd1', 'sentences': [{'ref': 's1.w2', 'words': ['ga-m fish-SG']}]})
+    else:
+        call_tool(w, tool, {'form': 'gam', 'morphemes': given})
+    assert sorted((o['kind'], o.get('morpheme_id') or o.get('token_id'), o.get('form') or o.get('value'))
+                  for o in w.ops) == [('set_morpheme_form', 'm-2z', 'm'), ('set_span', 'm-2z', 'SG')], w.ops

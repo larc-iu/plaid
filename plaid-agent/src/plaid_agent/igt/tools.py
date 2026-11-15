@@ -277,6 +277,13 @@ def value_op(place: str, f, token_id: str, span_id: Optional[str], old: Optional
                        + (' (cleared)' if value == '' else ''))}
 
 
+def in_place_form(place: str, morpheme_id: str, form: str) -> Dict[str, Any]:
+    """A set_morpheme_form op writing ``form`` on a morpheme of a kept chain
+    that held none (:func:`in_place`)."""
+    return {'kind': 'set_morpheme_form', 'morpheme_id': morpheme_id, 'form': form,
+            **labelled(place, f'morpheme form = {qv(form)}')}
+
+
 def t_set_analysis(ws: Workspace, document: str, ref: str, morphemes: list) -> str:
     """PLAN: one word's analysis. A sentence, or a run of its words, is
     analyze_sentence's (lines.py): this tool's several-words form put whole
@@ -397,8 +404,9 @@ def word_analysis_op(ws: Workspace, doc: IgtDoc, ref: str, parsed: List[Dict[str
     if changes is not None:
         s = doc.find(w.id)[0]
         refs = [f's{s.index}.w{w.index}.m{c["index"] + 1} {qv(held[c["index"]]["form"][:40])}' for c in changes]
-        ops = [value_op(f'{ws.doc_label(doc.id)} {at}', ws.project.field_by_layer(c['layer_id']),
-                        held[c['index']]['id'], c['span_id'], c['old'], c['value']) | {ANALYSIS_OF: w.id}
+        ops = [(in_place_form(f'{ws.doc_label(doc.id)} {at}', held[c['index']]['id'], c['form']) if 'form' in c
+                else value_op(f'{ws.doc_label(doc.id)} {at}', ws.project.field_by_layer(c['layer_id']),
+                              held[c['index']]['id'], c['span_id'], c['old'], c['value'])) | {ANALYSIS_OF: w.id}
                for at, c in zip(refs, changes)]
         return Staged(ops, in_place_back(ws, w.id, held, out), False,
                       lines=[f'{at}: {change_of(o)}' for at, o in zip(refs, ops)])
@@ -628,13 +636,19 @@ def in_place(held: List[Dict[str, Any]], staged: List[Dict[str, Any]],
     else is written: no morpheme is deleted or made, a value or a link the
     call does not name stays as it is with its provenance. ``[]`` restates
     the word. None when the shape differs: the analysis replaces the chain.
-    None too when a morpheme the word holds has nothing of its own
-    (:func:`holds_nothing`): the word has no analysis yet to keep."""
-    if not held or len(held) != len(staged) or any(h.get('bare') for h in held):
+    None too when the word's one morpheme has nothing of its own
+    (:func:`holds_nothing`): the word has no analysis yet to keep. A
+    morpheme holding nothing inside a longer chain keeps the chain
+    (REV-DF-D-8: a person's chain is never replaced for it): it has no form
+    to differ, and the form given is written on it, ``{index, form}``."""
+    if not held or len(held) != len(staged) or (len(held) == 1 and held[0].get('bare')):
         return None
     out = []
     for k, (h, m) in enumerate(zip(held, staged)):
-        if form_key(h['form'] or '') != form_key(m['form'] or ''):
+        if h.get('bare'):
+            if m['form']:
+                out.append({'index': k, 'form': m['form']})
+        elif form_key(h['form'] or '') != form_key(m['form'] or ''):
             return None
         said = stated[k] if stated else None
         if k and isinstance(said, bool):
