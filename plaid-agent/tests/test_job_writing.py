@@ -151,8 +151,8 @@ def _left(job):
 
 
 def _report_counts(job):
-    """The document's counts as the report gives them: ``left`` and
-    ``left_translations`` count its Left blank (BRIEF NW)."""
+    """The document's counts as the report gives them: ``left`` counts the
+    words of its Left blank, ``blank`` what is left per target (DF2)."""
     (doc,) = runner(job).document_reports(job)
     return doc['counts']
 
