@@ -226,7 +226,8 @@ def test_harmonize_rewrites_a_kept_word_value_by_value_and_unlinks_what_the_targ
 def test_a_job_changing_one_gloss_of_peoples_analyses_writes_that_gloss_alone(monkeypatch):
     """A piece gives every word as people have it but one gloss: the job
     sends that one value, on the morpheme the word keeps, and counts one
-    change, one word analysed, no link, no field row, nothing repeated."""
+    change, one value of its field (as set_field's would count, REV-DAY-P-6),
+    no word analysed, no link, nothing repeated."""
     from job_fixtures import call, reply, runner
     from plaid_agent.core.job import run_job
     from test_restated_analysis import _job
@@ -244,5 +245,5 @@ def test_a_job_changing_one_gloss_of_peoples_analyses_writes_that_gloss_alone(mo
     finished = run_job(job, runner(job))
     assert [(o['kind'], o['value'], o.get(ANALYSIS_OF)) for o in sent] == [('set_span', 'G2', 'd1-s1w1')], sent
     t = finished['report']['totals']
-    assert (t['changes'], t['words'], t['links'], t['repeated']) == (1, 1, 0, 0), t
-    assert not t.get('fields'), t
+    assert (t['changes'], t['words'], t['links'], t['repeated']) == (1, 0, 0, 0), t
+    assert t.get('fields') == [{'field': 'Morph Gloss', 'values': 1}], t

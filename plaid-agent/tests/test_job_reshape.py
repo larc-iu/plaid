@@ -360,7 +360,7 @@ def test_a_split_off_half_of_a_sentence_the_job_translated_is_not_translated(mon
     assert len(row.pop('try')) == 36 and len(row.pop('write')) == 16 and len(row.pop('piece')) == 16
     assert [o['field'] for o in row.pop('ops')] == ['Translation'], 'what the report would list'
     assert row == {'others': ['d1-s1w1', 'd1-s1w2', 'd1-s1w3'], 'words': [], 'own': True,
-                   'counts': {'analyzed': 1, 'changes': 1, 'translations': 1}, 'fields': {'Translation': 1}}
+                   'counts': {'analyzed': 1, 'changes': 1, 'translations': 1}}, 'a translation counts once'
 
 
 def test_a_merged_sentence_whose_joined_translation_a_person_cleared_is_not_translated(monkeypatch):

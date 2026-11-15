@@ -61,7 +61,7 @@ from . import evidence, jobapply, targets as tg, toolkit
 from .plan import LEXICON_MAINTAINER, PlanOutOfDate, check_entries, execute_plan
 from .project import IgtProject, Sentence, Word, is_virtual, load_project, render_sentence
 from .prompt import JOB_SYSTEM, build_job_prompt
-from .tools import ANALYSIS_OF, trim_ignored_edges
+from .tools import trim_ignored_edges
 from .trace import TRACER
 from .targets import Target, word_state  # noqa: F401 (word_state: tests)
 from .fit import entry_gloss as _entry_gloss, fitting_entry, surface_key  # noqa: F401 (fitting_entry: tests)
@@ -1108,23 +1108,26 @@ class Write:
         return c
 
     def words_of(self, ops: List[Dict[str, Any]]) -> List[str]:
-        """The tags of the words ``ops`` analyse (:func:`word_tag`): a
-        set_analysis, or a value an analysis that keeps the word's morphemes
-        sets (``tools.ANALYSIS_OF``). A word analysed by two writes is one
-        word analysed."""
+        """The tags of the words whose segmentation ``ops`` write
+        (:func:`word_tag`): a set_analysis. A value an analysis that keeps
+        the word's morphemes sets (``tools.ANALYSIS_OF``) is a value of its
+        field (:meth:`fields_of`), as set_field's is: one change counts one
+        way whichever tool staged it (REV-DAY-P-6). A word analysed by two
+        writes is one word analysed."""
         return list(dict.fromkeys(word_tag(w) for w in (self.word_of(o) for o in ops
-                                                        if o.get('kind') == 'set_analysis'
-                                                        or (o.get('kind') == 'set_span' and o.get(ANALYSIS_OF)))
+                                                        if o.get('kind') == 'set_analysis')
                                   if w is not None))
 
     def fields_of(self, ops: List[Dict[str, Any]]) -> Dict[str, int]:
         """The values ``ops`` set, by field name: each ``set_span`` that
         writes a value (not one that clears it), on a word, a morpheme or a
-        sentence alike. What an analysis writes is its word's
-        (:meth:`words_of`), a value it sets on a morpheme it keeps too."""
+        sentence alike, whichever tool staged it. The values a set_analysis
+        op carries are its word's (:meth:`words_of`). A translation is
+        counted as one (``translations``, ``refreshed``), never again here
+        (REV-DAY-P-7)."""
         out: Counter = Counter()
         for o in ops:
-            if o.get('kind') == 'set_span' and o.get('value') not in (None, '') and not o.get(ANALYSIS_OF):
+            if o.get('kind') == 'set_span' and o.get('value') not in (None, '') and o.get('layer_id') != self.layer:
                 f = self.st.project.field_by_layer(o.get('layer_id'))
                 if f is not None:
                     out[f.name] += 1
