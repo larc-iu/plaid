@@ -42,6 +42,7 @@ from plaid_client.service import locked_for_writes
 from ..core import job as core_job
 from ..core.agent import ModelConfig, Toolkit, TurnCancelled, run_turn
 from ..core.garble import seed
+from ..core.trace import plural
 from ..core.guidelines import manual_chars
 from ..core.job import (BUDGET, OUTPUT, REPEATING, ROW_FINAL, SKIPPED_MORE, JobStopped, Pace, StretchFailed, canonical, analysis_key,
                         field_counts, fields_text,
@@ -1548,10 +1549,10 @@ class IgtRunner:
         #: worker (:meth:`summaries_known`)
         self.summarized: Optional[set] = None
         self.piece_seq = 0
-        #: the model calls of the planning or of the piece in hand, and the
-        #: heartbeat's line as it was before they were counted on it and as
-        #: counted (:meth:`pace`)
-        self.calls_now = 0
+        #: the steps (tool calls, as the chat counts them) of the planning or
+        #: of the piece in hand, and the heartbeat's line as it was before
+        #: they were counted on it and as counted (:meth:`counting`)
+        self.steps_now = 0
         self.counted: Optional[Tuple[str, str]] = None
         #: the plan's summary row, made with the plan and kept in its call
         self.plan_summary: Optional[Dict[str, Any]] = None
@@ -1715,7 +1716,7 @@ class IgtRunner:
             # output or repeating) is planned once more in a fresh context
             # (REV-DF4-2). A budget spent or a context too long is no plan,
             # planned once: a second planning would end the same (REV-DF5-1).
-            self.calls_now = 0
+            self.steps_now = 0
             for _ in range(tries):
                 try:
                     plan = self.planning(project, facts)
@@ -1741,7 +1742,7 @@ class IgtRunner:
                 'plan': {**{k: self.plan_pending.get(k) for k in ('by', 'why', 'pieces', 'only_empty', 'edits_text',
                                                                   'gone') if self.plan_pending.get(k) is not None},
                          **self.fills_named(job, self.plan_pending)},
-                'calls': self.calls_now, 'ended_at': self.now_iso()})
+                'steps': self.steps_now, 'ended_at': self.now_iso()})
         text = canonical(self.plan_kept(self.plan_pending))
         rows = [{'form': PLAN_FORM, 'key': analysis_key(text), 'analysis': text, 'count': 1,
                  'document_id': None, 'sentence_id': None}]
@@ -1841,7 +1842,7 @@ class IgtRunner:
             transcript = [{'role': 'user', 'content': self.plan_message(facts, project)}]
             seed(ws.seen, system, transcript, lambda tool, args: True)
             kit = Toolkit(tools_for=lambda w: toolkit.job_plan_tools(w, plan_only=w.decide_now),
-                          call_tool=toolkit.job_plan_call, tracer=TRACER)
+                          call_tool=self.counting(toolkit.job_plan_call, ''), tracer=TRACER)
             self.trace(ws, system, kit, 'plan')
 
             def decided():
@@ -1849,7 +1850,7 @@ class IgtRunner:
             try:
                 # Its budget's decide-now line is JOB_PLAN_NOW, never a piece's.
                 result = self.turn(ws, kit, system, transcript,
-                                   pace=self.pace(decided, line=JOB_PLAN_NOW, counted=''))
+                                   pace=self.pace(decided, line=JOB_PLAN_NOW))
                 if ws.plan_work is None:
                     # One decide-now round, plan_work alone offered, whatever
                     # the turn ended on (REV-DF4-2: a planner told by its
@@ -1857,7 +1858,7 @@ class IgtRunner:
                     # always reaches the model.
                     ws.decide_now = True
                     more = transcript + list(result.messages or []) + [{'role': 'user', 'content': JOB_PLAN_NOW}]
-                    self.turn(ws, kit, system, more, pace=self.pace(decided, line=JOB_PLAN_NOW, counted=''))
+                    self.turn(ws, kit, system, more, pace=self.pace(decided, line=JOB_PLAN_NOW))
                 return ws.plan_work
             except StretchFailed:
                 # A model fault after plan_work kept a plan loses nothing:
@@ -2486,14 +2487,14 @@ class IgtRunner:
         system = build_job_prompt(project, sentences=sentences, edits_text=ws.edits_text, targets=ws.fills)
         transcript = [{'role': 'user', 'content': message}]
         seed(ws.seen, system, transcript, lambda tool, args: True)
+        self.steps_now = 0
         kit = Toolkit(tools_for=lambda w: toolkit.job_piece_tools(w, plan_only=w.decide_now),
-                      call_tool=toolkit.job_piece_call, tracer=TRACER)
+                      call_tool=self.counting(toolkit.job_piece_call, ' in this piece'), tracer=TRACER)
         self.trace(ws, system, kit, folder)
 
         def decided():
             ws.decide_now = True
-        self.calls_now = 0
-        pace = self.pace(decided, counted=' in this piece')
+        pace = self.pace(decided)
         result = self.turn(ws, kit, system, transcript, pace=pace)
         job.check()
         if answered_nothing(ws, result.text):
@@ -2503,29 +2504,37 @@ class IgtRunner:
             ws.answered_nothing = answered_nothing(ws, result.text)
         return piece_note(result.text)
 
-    def pace(self, decided=lambda: None, line: Optional[str] = None, counted: Optional[str] = None) -> Pace:
+    def pace(self, decided=lambda: None, line: Optional[str] = None) -> Pace:
         """The budgets of one stretch, asked only while nobody waits for the
         model (``yield_to_people``). ``line``: its decide-now line, a
-        piece's unless given. Each call is counted (``calls_now``), and with
-        ``counted`` the heartbeat's line says how many after its own words:
-        "Sentences 26 to 30 of 41. 3 model calls in this piece." The count
-        goes with the next heartbeat, never one of its own (BRIEF LV)."""
+        piece's unless given."""
+        job = self.job
+
+        def before_call():
+            job.check()
+            job.yield_to_people()
+        return Pace(self.cfg.model, before_call=before_call, count=self.count, decided=decided,
+                    **({'line': line} if line else {}))
+
+    def counting(self, call_tool, where: str):
+        """``call_tool`` that counts each step (each tool call, as the chat
+        counts a turn's steps, ``core.trace.plural``) in ``steps_now``, and
+        puts the count on the heartbeat's line after its own words:
+        "Sentences 26 to 30 of 41. 3 steps in this piece.", "Planning the
+        work. 2 steps." Set with :meth:`Job.say`, so the next heartbeat
+        carries it and none is sent for it (BRIEF LV, REV-LV-4)."""
         job = self.job
         said = job.status.get('message') or ''
         if self.counted is not None and said == self.counted[1]:
             said = self.counted[0]
 
-        def before_call():
-            job.check()
-            job.yield_to_people()
-
-        def on_call():
-            self.calls_now += 1
-            if counted is not None and said:
-                self.counted = (said, f'{said} {_n(self.calls_now, "model call")}{counted}.')
+        def call(w, name, args):
+            self.steps_now += 1
+            if said:
+                self.counted = (said, f'{said} {plural(self.steps_now, "step")}{where}.')
                 job.say(self.counted[1])
-        return Pace(self.cfg.model, before_call=before_call, count=self.count, decided=decided, on_call=on_call,
-                    **({'line': line} if line else {}))
+            return call_tool(w, name, args)
+        return call
 
     def turn(self, ws, kit, system: str, transcript, decided=lambda: None, pace: Optional[Pace] = None):
         """One model context of the job, under the stretch's budgets
@@ -3639,7 +3648,7 @@ class IgtRunner:
             'first_id': part[0].id if ranged else None,
             'parts': {**(earlier.get('parts') or {}), **({document_id: {s.id for s in part}} if document_id else {})},
             'writes': set(earlier.get('writes') or ()), 'seq': earlier.get('seq'),
-            'note': note, 'refused': refused, 'calls': (earlier.get('calls') or 0) + self.calls_now}
+            'note': note, 'refused': refused, 'steps': (earlier.get('steps') or 0) + self.steps_now}
 
     def end_summary(self, key: str) -> None:
         """Keep the summary of piece ``key`` among the job's decisions, once
@@ -3690,7 +3699,7 @@ class IgtRunner:
             self.piece_seq += 1
             p['seq'] = self.piece_seq
         value = {'piece': key, **{k: p[k] for k in ('document', 'name', 'first', 'last', 'first_id', 'whole',
-                                                    'note', 'calls')},
+                                                    'note', 'steps')},
                  **written_sums(rows), 'ended_at': self.now_iso(),
                  **({'skipped': skipped} if skipped else {}), **({'refused': p['refused']} if p['refused'] else {})}
         row = self.summary_row(p['seq'], value, p['document'], p['first_id'])

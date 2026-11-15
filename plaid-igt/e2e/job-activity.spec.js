@@ -8,7 +8,7 @@ import { runScriptedJobWorker, skipUnlessAgent } from './assistantService.js';
 // then writes its report on a model that answers 40 seconds late. While it
 // waits the job is still running, and its page already lists the plan and
 // the piece (its document as a link, what it wrote, its note),
-// its line counts the model calls, and the document's "Changes so far" opens
+// "Work so far" counts the piece's steps, and the document's "Changes so far" opens
 // the History entry of what the job has written there. Once it ends the rows
 // stay above the report. A throwaway project, deleted afterwards with its job.
 
@@ -64,7 +64,7 @@ test('a running job lists each piece as it finishes, with its note and its Chang
   });
   try {
     await page.goto(`/#/projects/${projectId}/jobs/${job.id}`);
-    const activity = page.getByRole('region', { name: 'Activity' });
+    const activity = page.getByRole('region', { name: 'Work so far' });
     const rows = activity.getByTestId('job-activity').locator(':scope > li');
     await expect(rows).toHaveCount(2, { timeout: 90_000 });
     // Still running: no report yet.
@@ -75,7 +75,7 @@ test('a running job lists each piece as it finishes, with its note and its Chang
     await expect(plan).toContainText('Plan');
     await expect(plan).toContainText('Worked one document at a time. Fills: Gloss.');
     await expect(piece).toContainText('Gloss: 1 value.');
-    await expect(piece).toContainText('2 model calls');
+    await expect(piece).toContainText('1 step');
     await expect(piece.locator('p[dir="auto"]')).toHaveText(NOTE);
     const where = piece.getByRole('link', { name: DOC, exact: true });
     // A piece of the whole document links the document.
@@ -106,7 +106,8 @@ test('a running job lists each piece as it finishes, with its note and its Chang
     expect(ran.code, ran.log).toBe(0);
     await page.goto(`/#/projects/${projectId}/jobs/${job.id}`);
     await expect(page.getByRole('region', { name: 'Report' })).toBeVisible({ timeout: 30_000 });
-    await expect(rows).toHaveCount(2);
+    const ended = page.getByRole('region', { name: 'Work, in order' });
+    await expect(ended.getByTestId('job-activity').locator(':scope > li')).toHaveCount(2);
     await expect(page.getByRole('link', { name: 'Changes', exact: true })).toBeVisible();
   } finally {
     await client.jobs.cancel(job.id).catch(() => {});

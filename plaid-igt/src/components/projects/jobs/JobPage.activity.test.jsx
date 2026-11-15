@@ -3,7 +3,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { renderComponent, byText, all } from '@ui/test/renderComponent.jsx';
 import { ConfirmProvider } from '@ui/components/shared/ConfirmProvider';
 
-// The job page's Activity (BRIEF LV): a row per piece of the job's work as its
+// The job page's list of the job's work (BRIEF LV, "Work so far" while it runs, "Work, in order" once it has ended): a row per piece of the job's work as its
 // worker summed it up, newest first and the plan last, read again with each
 // read of the job, capped at the tall list's page with Show more, kept above
 // the report once the job has ended. And each document's Changes link while
@@ -26,7 +26,7 @@ const jobOf = (over = {}) => ({
   startedByName: 'Wren',
   state: 'running',
   phase: 'working',
-  message: 'Sentences 3 to 4 of 4. 2 model calls in this piece.',
+  message: 'Sentences 3 to 4 of 4. 2 steps in this piece.',
   createdAt: '2026-11-12T10:00:00Z',
   startedAt: '2026-11-12T10:01:00Z',
   finishedAt: null,
@@ -52,7 +52,7 @@ const PLAN = {
   seq: '000000',
   piece: {
     plan: { by: 'model', pieces: 'sentences', fillsNames: ['Gloss'] },
-    calls: 3,
+    steps: 3,
     endedAt: '2026-11-12T10:02:00Z',
   },
 };
@@ -69,7 +69,7 @@ const FIRST = {
     counts: { analyzed: 2, words: 4, changes: 6 },
     fields: [{ field: 'Gloss', id: 'L1', values: 2 }],
     note: 'Glossed s1 and s2.\nLeft s2.w3: no precedent.',
-    calls: 2,
+    steps: 2,
     endedAt: '2026-11-12T10:03:00Z',
   },
 };
@@ -89,7 +89,7 @@ const SECOND = {
     ],
     refused: [{ sentence: 's3', sentenceId: 'sen3', what: 'x', code: 'shape', document: 'd1' }],
     note: '',
-    calls: 4,
+    steps: 4,
     endedAt: '2026-11-12T10:04:00Z',
   },
 };
@@ -118,7 +118,8 @@ const mount = (client) =>
     </MemoryRouter>,
   );
 
-const activity = (root) => root.querySelector('section[aria-label="Activity"]');
+const activity = (root) =>
+  root.querySelector('section[aria-label="Work so far"], section[aria-label="Work, in order"]');
 const rows = (root) => all(activity(root), '[data-testid="job-activity"] > li');
 const text = (el) => el.textContent.replace(/\s+/g, ' ').trim();
 
@@ -128,16 +129,17 @@ beforeEach(() => {
 });
 afterEach(() => vi.useRealTimers());
 
-describe('the job page’s Activity', () => {
+describe('the job page’s list of its work', () => {
   it('says nothing has finished yet while the job runs with no piece', async () => {
     const client = clientOf(
-      [jobOf({ phase: 'planning', message: 'Planning the work. 1 model call.' })],
+      [jobOf({ phase: 'planning', message: 'Planning the work. 1 step.' })],
       [page([])],
     );
     const v = await mount(client);
     expect(byText(activity(v.container), 'p', 'Nothing finished yet.')).toBeTruthy();
     expect(client.jobs.piecesPage).toHaveBeenCalledWith('j1', { limit: TALL_LIST_PAGE_SIZE });
-    expect(text(v.container)).toContain('Planning the work. 1 model call.');
+    expect(text(v.container)).toContain('Planning the work. 1 step.');
+    expect(activity(v.container).getAttribute('aria-label')).toBe('Work so far');
     await v.unmount();
   });
 
@@ -152,7 +154,7 @@ describe('the job page’s Activity', () => {
     await v.step(() => vi.advanceTimersByTimeAsync(JOB_POLL_MS));
     expect(rows(v.container).map(text)).toEqual([expect.stringContaining('Plan')]);
     expect(text(rows(v.container)[0])).toContain('Worked in stretches of sentences. Fills: Gloss.');
-    expect(text(rows(v.container)[0])).toContain('3 model calls');
+    expect(text(rows(v.container)[0])).toContain('3 steps');
     await v.step(() => vi.advanceTimersByTimeAsync(JOB_POLL_MS));
     const planRow = rows(v.container)[1];
     expect(rows(v.container).map((li) => li.dataset.seq)).toEqual(['000001', '000000']);
@@ -167,7 +169,7 @@ describe('the job page’s Activity', () => {
     expect(text(first)).toContain(
       'Sentences written in: 2, Changes written: 6, Words analyzed: 4, Gloss: 2 values.',
     );
-    expect(text(first)).toContain('2 model calls');
+    expect(text(first)).toContain('2 steps');
     // The note in full, as written.
     expect(first.querySelector('p[dir="auto"]').textContent).toBe(
       'Glossed s1 and s2.\nLeft s2.w3: no precedent.',
@@ -220,6 +222,7 @@ describe('the job page’s Activity', () => {
     });
     const v = await mount(clientOf([ended], [page([FIRST, PLAN])]));
     expect(rows(v.container)).toHaveLength(2);
+    expect(activity(v.container).getAttribute('aria-label')).toBe('Work, in order');
     const report = v.container.querySelector('section[aria-label="Report"]');
     expect(
       activity(v.container).compareDocumentPosition(report) & Node.DOCUMENT_POSITION_FOLLOWING,

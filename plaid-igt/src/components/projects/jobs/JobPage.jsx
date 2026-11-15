@@ -53,7 +53,7 @@ import {
 
 /**
  * A job's own page, `/projects/:projectId/jobs/:jobId`: its state, each of its
- * documents, what each piece of its work did as it finishes (Activity, kept
+ * documents, what each piece of its work did as it finishes (Work so far, kept
  * above the report once the job has ended), Stop for whoever may, and once it
  * has ended its report. Read
  * again every JOB_POLL_MS while the job is active, and once otherwise.

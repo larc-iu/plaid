@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Button } from '@ui/components/ui/button';
 import { TYPE } from '@ui/lib/typeScale.js';
-import { countOf } from '@ui/lib/plural.js';
 import { fullTimestamp, timeAgo } from '@ui/lib/formatTime.js';
 import { TALL_LIST_PAGE_SIZE } from '@ui/hooks/usePagedList.js';
 import { isJobActive } from '@ui/domain/jobs.js';
@@ -42,10 +41,12 @@ export const JobActivity = ({ client, job, projectId, readAt }) => {
   const rows = page?.entries || [];
   const active = isJobActive(job);
   if (!rows.length && !active) return null;
+  // Not "Activity": the project's tab of that name is on the same screen.
+  const heading = active ? 'Work so far' : 'Work, in order';
   const names = new Map((job.documents || []).map((d) => [d.documentId, d.name]));
   return (
-    <section aria-label="Activity">
-      <h3 className={`${TYPE.card} mb-2 mt-8`}>Activity</h3>
+    <section aria-label={heading}>
+      <h3 className={`${TYPE.card} mb-2 mt-8`}>{heading}</h3>
       {page && !rows.length && (
         <p className="text-sm text-muted-foreground">Nothing finished yet.</p>
       )}
@@ -86,11 +87,12 @@ export const JobActivity = ({ client, job, projectId, readAt }) => {
   );
 };
 
-// When the piece ended and how many model calls it made.
+// When the piece ended and its steps, as the chat counts and words a turn's
+// steps (each tool call, "1 step", "3 steps").
 const Ended = ({ piece }) => (
   <span className="whitespace-nowrap text-muted-foreground">
     {piece.endedAt && <span title={fullTimestamp(piece.endedAt)}>{timeAgo(piece.endedAt)}</span>}
-    {piece.calls > 0 && ` · ${countOf(piece.calls, 'model call')}`}
+    {piece.steps > 0 && ` · ${piece.steps} ${piece.steps === 1 ? 'step' : 'steps'}`}
   </span>
 );
 

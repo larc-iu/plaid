@@ -121,17 +121,16 @@ class Pace:
     ``decided`` is called so the stretch offers the plan tools alone from then
     on. ``line`` is that line, a piece's unless given (the planning context
     is sent JOB_PLAN_NOW). ``before_call`` runs last, just before the call: the wait for people
-    on the model key, which may raise to stop the job. ``on_call`` runs as
-    each call goes out. One Pace spans every turn of a stretch: the budgets
-    count the calls and tokens of all of them."""
+    on the model key, which may raise to stop the job. One Pace spans every
+    turn of a stretch: the budgets count the calls and tokens of all of
+    them."""
 
     def __init__(self, model: str, before_call: Callable[[], None] = lambda: None,
                  count: Optional[Callable[[Any], int]] = None, decided: Callable[[], None] = lambda: None,
-                 line: str = JOB_DECIDE_NOW, on_call: Callable[[], None] = lambda: None):
+                 line: str = JOB_DECIDE_NOW):
         self.count = count or token_counter(model)
         self.line = line
         self.before_call = before_call
-        self.on_call = on_call
         self.decided = decided
         self.told = False
         self.sent = 0
@@ -165,7 +164,6 @@ class Pace:
         self.sent += n
         self.calls += 1
         self.largest = max(self.largest, n)
-        self.on_call()
 
 
 def halve(sentences: List[Any], attempt: Callable[[List[Any]], None],

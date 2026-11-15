@@ -4,7 +4,8 @@ each kept once what the piece wrote is known, read by any reader newest first
 (``jobs.pieces``). What a summary says the piece wrote is what LANDED of its
 own writes, never what a try meant to write, and no piece is summed up twice,
 after a lost answer or a crash. And the heartbeat's line counts the model
-calls of the piece in hand, or of the planning, never sending a heartbeat of
+steps (tool calls, as the chat counts them) of the piece in hand, or of the
+planning, never sending a heartbeat of
 its own."""
 
 import json
@@ -76,7 +77,7 @@ def test_each_piece_is_summed_up_once_its_write_landed_newest_first(monkeypatch)
     for p in (first, second):
         assert p['document'] == 'd1' and p['name'] == 'Story' and p['whole'] is False
         assert p['note'] == 'Glossed 1 piece.', 'the note as the model ended it'
-        assert p['calls'] == 2, 'the call that staged and the call that said so'
+        assert p['steps'] == 6, 'each tool call a step, as the chat counts them'
         assert p['counts'] == {'analyzed': 2, 'words': 4, 'changes': 6}, p['counts']
         assert [(f['field'], f['values'], f.get('outside')) for f in p['fields']] == [('Gloss', 2, None)], p['fields']
         assert p['ended_at'].endswith('Z')
@@ -141,11 +142,11 @@ def test_a_plan_made_by_the_model_is_the_first_row(monkeypatch):
     assert rows[-1]['seq'] == '000000'
     plan = rows[-1]['piece']
     assert plan['plan'] == {'by': 'model', 'pieces': 'sentences', 'fills_names': ['segmentation', 'Morph Gloss']}
-    assert plan['calls'] == 3 and plan['ended_at'].endswith('Z')
+    assert plan['steps'] == 2 and plan['ended_at'].endswith('Z'), 'read_document and plan_work'
     assert [r['seq'] for r in rows] == ['000001', '000000']
 
 
-def test_the_heartbeat_line_counts_the_model_calls_of_the_piece_and_sends_no_heartbeat_of_its_own(monkeypatch):
+def test_the_heartbeat_line_counts_the_steps_of_the_piece_and_sends_no_heartbeat_of_its_own(monkeypatch):
     monkeypatch.setattr(igt_job, 'JOB_STRETCH_SENTENCES', 2)
     client = JobClient({'d1': _doc()})
     job = start(client, id=J, plan='sentences')
@@ -158,15 +159,15 @@ def test_the_heartbeat_line_counts_the_model_calls_of_the_piece_and_sends_no_hea
     use(monkeypatch, Model(answer))
     assert run_job(job, runner(job))['state'] == 'done'
     said = [m for m, _ in lines]
-    assert said == ['Sentences 1 to 2 of 4. 1 model call in this piece.',
-                    'Sentences 1 to 2 of 4. 2 model calls in this piece.',
-                    'Sentences 3 to 4 of 4. 1 model call in this piece.',
-                    'Sentences 3 to 4 of 4. 2 model calls in this piece.'], said
+    assert said == ['Sentences 1 to 2 of 4.',
+                    'Sentences 1 to 2 of 4. 6 steps in this piece.',
+                    'Sentences 3 to 4 of 4.',
+                    'Sentences 3 to 4 of 4. 6 steps in this piece.'], said
     beats = [b for _, b in lines]
     assert beats[0] == beats[1] and beats[2] == beats[3], 'a call sends no heartbeat'
 
 
-def test_planning_counts_its_model_calls_on_its_line(monkeypatch):
+def test_planning_counts_its_steps_on_its_line(monkeypatch):
     client = JobClient({'d1': _doc()})
     job = start(client, id=J, plan=None)
     lines = []
@@ -180,7 +181,7 @@ def test_planning_counts_its_model_calls_on_its_line(monkeypatch):
         return reply('Nothing to do.')
     use(monkeypatch, Model(answer))
     run_job(job, runner(job))
-    assert lines[:2] == ['Planning the work. 1 model call.', 'Planning the work. 2 model calls.'], lines
+    assert lines[:2] == ['Planning the work.', 'Planning the work. 1 step.'], lines
 
 
 # --- recovery: never twice, never what did not land ------------------------------------------
