@@ -351,6 +351,13 @@
  */
 
 /**
+ * What one piece of a job's work did, or its plan, as `jobs.pieces` reads it.
+ * @typedef {object} JobPiece
+ * @property {string} seq - Its number in the job, six digits, the plan "000000"
+ * @property {object} piece - The worker's summary of it, keys re-cased
+ */
+
+/**
  * A research-telemetry event type.
  * @typedef {"suggestion.shown" | "suggestion.adopted" | "suggestion.dismissed" | "plan.opened"} ClientEventType
  */

@@ -85,6 +85,14 @@
   "The longest message line a worker sets."
   300)
 
+(def piece-form
+  "The form of the decision rows that are a job's summary of each piece of
+  its work, as the worker keeps them (CONTRACT, added by LV): the one form
+  core reads by name, for `pieces-page`. Each row's key is a sequence number
+  the worker gives, zero-padded, so newest first is the key's order, and its
+  analysis is the worker's JSON, served parsed and never read inside."
+  " piece")
+
 (def active-states #{"waiting" "running" "stopping"})
 (def final-states #{"done" "cancelled" "failed"})
 (def phases #{"checking" "planning" "working" "harmonizing" "reporting"})
@@ -792,3 +800,18 @@
                    :limit limit
                    :cursor-vals cursor-vals
                    :row->entity row->decision}))
+
+(defn pieces-page
+  "One page of job `job-id`'s piece summaries (the rows of `piece-form`),
+  newest first by key, each `{:seq key :piece <its analysis parsed>}`."
+  [db job-id {:keys [limit cursor-vals]}]
+  (let [lim (pg/clamp-limit limit)
+        seek (pg/keyset-where [:key] cursor-vals :desc)
+        rows (psc/q db {:select [:key :analysis]
+                        :from [:job_decisions]
+                        :where (cond-> [:and [:= :job_id (str job-id)] [:= :form piece-form]]
+                                 seek (conj seek))
+                        :order-by [[:key :desc]]
+                        :limit lim})]
+    {:entries (mapv (fn [row] {:seq (:key row) :piece (psc/read-json (:analysis row))}) rows)
+     :next-cursor (when (= (count rows) lim) [(:key (peek rows))])}))

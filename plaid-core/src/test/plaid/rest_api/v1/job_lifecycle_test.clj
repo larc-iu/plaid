@@ -521,6 +521,45 @@
         (is (str/starts-with? (-> r :body :error) "decisions[1]: ")))
       (is (= 400 (:status (add! (vec (repeat 1001 {:form "ka" :key "k1" :analysis "{}" :count 1})))))))))
 
+;; LV: the summary row of each piece of a job's work, which the worker keeps
+;; among its decisions (form " piece", key a zero-padded sequence number), read
+;; by any reader of the job newest first, with no other row of the job.
+(deftest pieces-are-read-newest-first
+  (let [{:keys [p st r d1]} (jh/world!)
+        j (running-job! st p "running")
+        add! (fn [ds] (call admin-request :post (str "/api/v1/jobs/" j "/decisions")
+                            {:worker-id jh/worker-a :decisions ds}))
+        piece (fn [n] {:form " piece" :key (format "%06d" n)
+                       :analysis (str "{\"calls\":" n ",\"first_id\":\"s-" n "\",\"note\":\"Note " n ".\"}")
+                       :count 1 :document-id d1})
+        read (fn [who q] (call who :get (str "/api/v1/jobs/" j "/pieces" q)))]
+    (testing "a job with no piece yet"
+      (is (= {:entries [] :next-cursor nil} (:body (read r "")))))
+    (is (= 204 (:status (add! [(piece 0) (piece 1)
+                               {:form "ka" :key "k1" :analysis "{\"a\":1}" :count 2}
+                               {:form " piece instructions" :key "000009" :analysis "{}" :count 1}
+                               {:form " note x" :key "000008" :analysis "{}" :count 1}]))))
+    (is (= 204 (:status (add! [(piece 2)]))))
+    (testing "every piece, newest first, its row as JSON, nothing of any other form"
+      (let [body (:body (read r ""))]
+        (is (= ["000002" "000001" "000000"] (mapv :seq (:entries body))))
+        (is (= {:calls 2 :first_id "s-2" :note "Note 2."} (:piece (first (:entries body)))))
+        (is (nil? (:next-cursor body)))))
+    (testing "a piece sent again is one row"
+      (is (= 204 (:status (add! [(piece 2)]))))
+      (is (= 3 (count (:entries (:body (read r "")))))))
+    (testing "paged"
+      (let [page1 (:body (read st "?limit=2"))
+            page2 (:body (read st (str "?limit=2&cursor=" (:next-cursor page1))))]
+        (is (= ["000002" "000001"] (mapv :seq (:entries page1))))
+        (is (= ["000000"] (mapv :seq (:entries page2))))
+        (is (nil? (:next-cursor page2)))))
+    (testing "read alike once the job has ended"
+      (fix/assert-ok (finish! j jh/worker-a "done"))
+      (is (= ["000002" "000001" "000000"] (mapv :seq (:entries (:body (read r "")))))))
+    (testing "a bad cursor"
+      (is (= 400 (:status (read r "?cursor=nope")))))))
+
 (deftest an-ended-job-takes-no-row-or-decision
   ;; REV-J-A-4: a late write from a worker that missed the end would change
   ;; what the job page shows for a finished job.

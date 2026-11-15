@@ -842,7 +842,7 @@ Jobs themselves are not recorded in the audit log.
 |`POST /api/v1/projects/{id}/jobs` (start)
 |a writer or maintainer of the project
 
-|`GET /api/v1/projects/{id}/jobs`, `.../jobs/active`, `GET /api/v1/jobs/{id}`
+|`GET /api/v1/projects/{id}/jobs`, `.../jobs/active`, `GET /api/v1/jobs/{id}`, `GET /api/v1/jobs/{id}/pieces`
 |a reader of the project
 
 |`POST /api/v1/jobs/{id}/cancel` (stop)
@@ -859,6 +859,9 @@ Jobs themselves are not recorded in the audit log.
 |===
 
 A delegated token can neither start nor stop a job.
+
+`GET /api/v1/jobs/{id}/pieces` lists what a job has done so far, newest first, in pages.
+The worker keeps one decision of the form `" piece"` for its plan and for each piece of its work once that piece's writes are known, keyed by a six-digit sequence number, and each entry is `{seq, piece}`, `piece` that decision's JSON as the worker wrote it.
 
 === The job worker
 

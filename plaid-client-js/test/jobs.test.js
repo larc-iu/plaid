@@ -342,6 +342,35 @@ test("updateDocument, finish and the decisions send the contract's bodies", asyn
   }
 });
 
+test("pieces reads a job's pieces newest first, keys re-cased, and a page", async () => {
+  const entry = {
+    seq: "000001",
+    piece: { "first-id": "t1", note: "Glossed.", fields: [{ field: "Gloss", id: "L1", values: 2 }] },
+  };
+  const net = capture([
+    { status: 200, body: { entries: [entry], "next-cursor": null } },
+    { status: 200, body: { entries: [entry], "next-cursor": "c2" } },
+  ]);
+  try {
+    const client = new PlaidClient("http://x", "tok");
+    const all = await client.jobs.pieces("j1");
+    assert.deepEqual(all, [
+      {
+        seq: "000001",
+        piece: { firstId: "t1", note: "Glossed.", fields: [{ field: "Gloss", id: "L1", values: 2 }] },
+      },
+    ]);
+    const page = await client.jobs.piecesPage("j1", { limit: 25 });
+    assert.equal(page.nextCursor, "c2");
+    const [a, b] = net.sent;
+    assert.equal(`${a.method} ${a.path}`, "GET /api/v1/jobs/j1/pieces");
+    assert.equal(`${b.method} ${b.path}`, "GET /api/v1/jobs/j1/pieces");
+    assert.deepEqual(b.query, { limit: "25" });
+  } finally {
+    net.restore();
+  }
+});
+
 test("landed asks by seed and answers the keys", async () => {
   const net = capture([{ status: 200, body: { keys: ["s1.0", "s1.1"] } }]);
   try {

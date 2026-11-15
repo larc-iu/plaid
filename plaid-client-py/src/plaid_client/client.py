@@ -3805,6 +3805,26 @@ class JobsResource(_Resource):
         its worker has gone silent. A read changes nothing."""
         return self._request('GET', f'/api/v1/jobs/{job_id}')
 
+    def pieces(self, job_id: str) -> Any:
+        """What a job has done so far, newest first: a row per piece of its
+        work, as its worker summed the piece up once its writes were known,
+        and first of all its plan. Each is ``{seq, piece}``, ``seq`` the
+        piece's number in the job (six digits) and ``piece`` the worker's
+        summary as it wrote it, keys re-cased. Any reader of the job's
+        project. Transparently follows pagination cursors and returns the full
+        flat list."""
+        return list_all(self._client, f'/api/v1/jobs/{job_id}/pieces')
+
+    def pieces_page(self, job_id: str, *, limit: int | None = None, cursor: str | None = None) -> Any:
+        """One page of what a job has done so far, newest first.
+
+        Args:
+            job_id: The job
+            limit: Page size (1..1000)
+            cursor: Opaque cursor from a previous page's ``next_cursor``
+        """
+        return list_page(self._client, f'/api/v1/jobs/{job_id}/pieces', limit=limit, cursor=cursor)
+
     def active(self, project_id: str) -> Any:
         """The project's job that is waiting, running or stopping, with its
         documents and no report, or None when it has none."""

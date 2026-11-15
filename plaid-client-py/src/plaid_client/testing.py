@@ -1965,6 +1965,8 @@ def _composed(value):
 _JOB_REPORT_MAX_BYTES = 1000000
 _JOB_ANALYSIS_MAX_CHARS = 4000
 _JOB_DECISIONS_PER_CALL = 1000
+#: The form of a job's piece summaries among its decisions, the one core reads by name.
+_JOB_PIECE_FORM = ' piece'
 _JOB_SKIPPED_PER_DOCUMENT = 500
 _JOB_COUNT_KEYS = ('translations', 'refreshed', 'words', 'links', 'entries', 'changed', 'proposed', 'changes',
                    'deletions', 'repeated', 'skipped_more', 'analyzed', 'peoples_values_changed', 'text_changes')
@@ -2230,6 +2232,24 @@ class _FakeJobs:
     def get(self, job_id):
         self.calls.append(('get', {'job_id': job_id}))
         return self._shape(self._job(job_id, 'GET', f'/api/v1/jobs/{job_id}'))
+
+    def pieces(self, job_id):
+        """What the job has done so far, newest first: its decision rows of
+        the form ``" piece"``, each ``{seq, piece}`` with the row's JSON read
+        back as the wire gives it."""
+        self.calls.append(('pieces', {'job_id': job_id}))
+        self._job(job_id, 'GET', f'/api/v1/jobs/{job_id}/pieces')
+        rows = [r for (form, _k), r in self.decision_rows.get(job_id, {}).items() if form == _JOB_PIECE_FORM]
+        return [{'seq': r['key'], 'piece': transform_response(json.loads(r['analysis']))}
+                for r in sorted(rows, key=lambda r: r['key'], reverse=True)]
+
+    def pieces_page(self, job_id, *, limit=None, cursor=None):
+        """One page, as the envelope the real client hands back. The cursor
+        is opaque to a caller, so here it is the index the next page starts at."""
+        rows = self.pieces(job_id)
+        start = int(cursor or 0)
+        end = start + (limit or 100)
+        return {'entries': rows[start:end], 'next_cursor': str(end) if end < len(rows) else None}
 
     def active(self, project_id):
         self.calls.append(('active', {'project_id': project_id}))

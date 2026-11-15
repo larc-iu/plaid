@@ -6,7 +6,8 @@
 
   - Start: a writer of the project (`wrap-writer-required`, which an admin
     passes too).
-  - Read a job, list a project's jobs, read its active one: a reader.
+  - Read a job, its pieces, list a project's jobs, read its active one: a
+    reader.
   - Stop: the starter while they still write the project, a maintainer, an
     admin.
   - A delegated (scoped) token may neither start nor stop a job: a job
@@ -220,6 +221,17 @@
              :handler (fn [{{{:keys [job-id]} :path} :parameters db :db}]
                         (if-let [j (job/get db job-id)]
                           {:status 200 :body j}
+                          (not-found)))}}]
+
+     ["/pieces"
+      {:get {:summary (str "What the job has done so far, a row per piece of its work as its worker "
+                           "summed it up once the piece's writes were known, and first the plan; "
+                           "newest first, keyset-paginated. Any reader of the job's project.")
+             :middleware [[pra/wrap-reader-required job-project-id]]
+             :parameters {:query (into [:map] pagination/query-params)}
+             :handler (fn [{{{:keys [job-id]} :path query :query} :parameters db :db}]
+                        (if (job/project-id db job-id)
+                          (pagination/list-response query #(job/pieces-page db job-id %))
                           (not-found)))}}]
 
      ["/cancel"

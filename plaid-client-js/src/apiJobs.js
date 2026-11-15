@@ -23,6 +23,7 @@ import { iterPages, listAll, listPage } from "./pagination.js";
  * @typedef {import("./types.js").JobReport} JobReport
  * @typedef {import("./types.js").JobDecision} JobDecision
  * @typedef {import("./types.js").JobDecisionRow} JobDecisionRow
+ * @typedef {import("./types.js").JobPiece} JobPiece
  */
 
 /**
@@ -103,6 +104,27 @@ export function jobsApi(client) {
      * @returns {Promise<Job>}
      */
     get: (jobId) => client._request("GET", `/api/v1/jobs/${jobId}`),
+    /**
+     * What a job has done so far, newest first: a row per piece of its work,
+     * as its worker summed the piece up once its writes were known, and
+     * first of all its plan. Each is `{seq, piece}`, `seq` the piece's number
+     * in the job (six digits) and `piece` the worker's summary as it wrote it,
+     * keys re-cased. Any reader of the job's project. Transparently follows
+     * pagination cursors and returns the full flat array.
+     * @param {string} jobId - The job
+     * @returns {Promise<JobPiece[]>}
+     */
+    pieces: (jobId) => listAll(client, `/api/v1/jobs/${jobId}/pieces`),
+    /**
+     * One page of what a job has done so far, newest first.
+     * @param {string} jobId - The job
+     * @param {object} [opts]
+     * @param {number} [opts.limit] - Page size (1..1000; server default 100)
+     * @param {string} [opts.cursor] - Opaque cursor from a previous page
+     * @returns {Promise<Page<JobPiece>>}
+     */
+    piecesPage: (jobId, { limit, cursor } = {}) =>
+      listPage(client, `/api/v1/jobs/${jobId}/pieces`, { limit, cursor }),
     /**
      * The project's job that is waiting, running or stopping, with its
      * documents and no report, or null when it has none.

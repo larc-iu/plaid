@@ -65,7 +65,8 @@
       (testing (name c)
         (is (= expected (:status (call (world c) :get (str "/api/v1/projects/" p "/jobs")))) "list")
         (is (= expected (:status (call (world c) :get (str "/api/v1/projects/" p "/jobs/active")))) "active")
-        (is (= expected (:status (call (world c) :get (str "/api/v1/jobs/" j)))) "get")))
+        (is (= expected (:status (call (world c) :get (str "/api/v1/jobs/" j)))) "get")
+        (is (= expected (:status (call (world c) :get (str "/api/v1/jobs/" j "/pieces")))) "pieces")))
     (testing "active answers 204 once the job has ended"
       (fix/assert-ok (call admin-request :post (str "/api/v1/jobs/" j "/cancel")))
       (doseq [c (remove #{:n} columns)]
@@ -135,9 +136,13 @@
           (is (true? (-> resp :body :unresolved))))
         (let [resp (call (world c) :post (str "/api/v1/jobs/" unknown "/cancel"))]
           (is (= 403 (:status resp)))
+          (is (true? (-> resp :body :unresolved))))
+        (let [resp (call (world c) :get (str "/api/v1/jobs/" unknown "/pieces"))]
+          (is (= 403 (:status resp)))
           (is (true? (-> resp :body :unresolved))))))
     (testing "the admin is told it names nothing"
       (is (= {:error "Job not found"} (:body (call admin-request :get (str "/api/v1/jobs/" unknown)))))
+      (is (= {:error "Job not found"} (:body (call admin-request :get (str "/api/v1/jobs/" unknown "/pieces")))))
       (is (= 404 (:status (call admin-request :post (str "/api/v1/jobs/" unknown "/cancel")))))
       (doseq [[method path body] [[:post (str "/api/v1/jobs/" unknown "/heartbeat") {:worker-id jh/worker-a}]
                                   [:post (str "/api/v1/jobs/" unknown "/finish")
@@ -152,11 +157,13 @@
         j (job-id (start! (:st world) p))]
     ;; The mark a project delete sets before the background removal.
     (psc/execute! fix/db {:update :projects :set {:deleted_at (psc/now-iso)} :where [:= :id p]})
-    (doseq [c [:st :m :r]]
-      (let [resp (call (world c) :get (str "/api/v1/jobs/" j))]
-        (is (= 403 (:status resp)) (name c))
-        (is (true? (-> resp :body :unresolved)) (name c))))
+    (doseq [c [:st :m :r]
+            path [(str "/api/v1/jobs/" j) (str "/api/v1/jobs/" j "/pieces")]]
+      (let [resp (call (world c) :get path)]
+        (is (= 403 (:status resp)) (str (name c) " " path))
+        (is (true? (-> resp :body :unresolved)) (str (name c) " " path))))
     (is (= 404 (:status (call admin-request :get (str "/api/v1/jobs/" j)))))
+    (is (= 404 (:status (call admin-request :get (str "/api/v1/jobs/" j "/pieces")))))
     (is (= 204 (:status (jh/claim! jh/worker-a))) "no claim takes it")))
 
 (deftest a-job-names-only-documents-of-its-project

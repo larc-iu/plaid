@@ -180,6 +180,19 @@ def test_update_document_finish_and_the_decisions_send_the_contracts_bodies():
     assert busy['query'] == {'pool': 'glm'}
 
 
+def test_pieces_reads_a_jobs_pieces_newest_first_keys_recased_and_a_page():
+    entry = {'seq': '000001', 'piece': {'first-id': 't1', 'note': 'Glossed.',
+                                        'fields': [{'field': 'Gloss', 'id': 'L1', 'values': 2}]}}
+    client = _client([{'entries': [entry], 'next-cursor': None}, {'entries': [entry], 'next-cursor': 'c2'}])
+    assert client.jobs.pieces('j1') == [{'seq': '000001', 'piece': {
+        'first_id': 't1', 'note': 'Glossed.', 'fields': [{'field': 'Gloss', 'id': 'L1', 'values': 2}]}}]
+    assert client.jobs.pieces_page('j1', limit=25)['next_cursor'] == 'c2'
+    a, b = _sent(client)
+    assert f"{a['method']} {a['path']}" == 'GET /api/v1/jobs/j1/pieces'
+    assert f"{b['method']} {b['path']}" == 'GET /api/v1/jobs/j1/pieces'
+    assert b['query'] == {'limit': '25'}
+
+
 def test_landed_asks_by_seed_and_answers_the_keys():
     client = _client([{'keys': ['s1.0', 's1.1']}])
     assert client.jobs.landed('j1', ['s1', 's2']) == ['s1.0', 's1.1']
@@ -583,6 +596,25 @@ def test_fake_decisions_add_up_and_read_back_in_order():
         {'form': 'x', 'key': 'k', 'analysis': 'x' * 4001, 'count': 1, 'document_id': 'd1',
          'sentence_id': 't1'}]), 400)
     _refused(lambda: jobs.add_decisions(job['id'], 'w2', []), 409, code='job-taken')
+
+
+def test_fake_pieces_are_the_piece_rows_newest_first():
+    client, _ = _fake()
+    jobs = client.jobs
+    job = jobs.create('p1', 'igt', 'Gloss.')
+    jobs.claim('w1', 'm', ['igt'])
+    assert jobs.pieces(job['id']) == []
+    jobs.add_decisions(job['id'], 'w1', [
+        {'form': ' piece', 'key': '000000', 'analysis': '{"plan":{"pieces":"sentences"}}', 'count': 1,
+         'document_id': None, 'sentence_id': None},
+        {'form': ' piece', 'key': '000001', 'analysis': '{"first-id":"t1","note":"Glossed."}', 'count': 1,
+         'document_id': 'd1', 'sentence_id': 't1'},
+        {'form': 'ka', 'key': 'k1', 'analysis': '{"a":1}', 'count': 1, 'document_id': 'd1', 'sentence_id': 't1'}])
+    assert jobs.pieces(job['id']) == [{'seq': '000001', 'piece': {'first_id': 't1', 'note': 'Glossed.'}},
+                                      {'seq': '000000', 'piece': {'plan': {'pieces': 'sentences'}}}]
+    page = jobs.pieces_page(job['id'], limit=1)
+    assert [e['seq'] for e in page['entries']] == ['000001'] and page['next_cursor'] == '1'
+    _refused(lambda: jobs.pieces('nope'), 404)
 
 
 def test_fake_an_ended_job_takes_no_row_or_decision():
