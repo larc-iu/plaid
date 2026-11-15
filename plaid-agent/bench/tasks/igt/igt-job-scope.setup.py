@@ -27,7 +27,7 @@ def held(ctx):
     """What the task is about, read back as the job reads it: я present and
     unanalysed in every document the job covers, and people's analyses of
     я elsewhere in two ways at least (the job's own index, IgtRunner.people_of)."""
-    from plaid_agent.igt.job import IgtRunner, form_key, word_state
+    from plaid_agent.igt.job import IgtRunner, surface_key as form_key, word_state
     from plaid_agent.igt.project import load_document, load_project
     project = load_project(ctx.client, ctx.project['id'])
     ways = set()
