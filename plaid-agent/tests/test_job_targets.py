@@ -369,3 +369,23 @@ def test_a_job_fills_an_orthography_through_the_same_code_as_a_word_field(monkey
     (doc,) = finished['report']['documents']
     assert [(e['ref'], e['targets']) for e in doc['left']] == [('s1.w3', ['IPA']), ('s2.w1', ['IPA'])]
     assert doc['counts']['blank'] == [_blank('IPA', 2)]
+
+
+def test_a_field_named_segmentation_is_never_taken_for_segmentation_by_its_bare_name():
+    """REV-DF-D-21: a word field named "Segmentation" and segmentation both
+    answer to "segmentation", so the bare name names neither and the
+    refusal lists each by its label. Each one's label names it."""
+    raw = fields_project()
+    words = raw['text_layers'][0]['token_layers'][1]
+    words['span_layers'].append({'id': 'sl-segfield', 'name': 'Segmentation', 'config': {'igt': {'scope': 'Word'}}})
+    project = load_project(JobClient({'d1': _raw()}, project=raw), 'p1')
+    assert tg.named(project, ['segmentation']) == ([], ['segmentation'])
+    assert [t.id for t in tg.named(project, ['"Segmentation" (word level)'])[0]] == ['sl-segfield']
+    assert [t.id for t in tg.named(project, ['segmentation (word level: words into morphemes)'])[0]] == \
+        ['segmentation']
+    listed = tg.listed_names(project)
+    assert listed[0] == 'segmentation (word level: words into morphemes)' and '"Segmentation" (word level)' in listed
+    # Without such a field, every way of naming segmentation still names it.
+    plain = client_project(JobClient({'d1': _raw()}, project=fields_project()))
+    for name in ('segmentation', 'Segmentation (word level)', 'segmentation (word)'):
+        assert [t.id for t in tg.named(plain, [name])[0]] == ['segmentation'], name

@@ -110,27 +110,54 @@ def of_ids(project: IgtProject, ids: Optional[Iterable[str]]) -> List[Target]:
     return [by[i] for i in ids or () if i in by]
 
 
+def _keys(t: Target) -> Tuple[List[str], List[str]]:
+    """Every way a planner may name ``t``, quotes and case aside: its name
+    and label, and for a field or an orthography its name with its level;
+    then, looked up only when nothing else answers to it, segmentation with
+    a level (a field named "Segmentation" owns "Segmentation (word level)")."""
+    first = [t.name, t.label]
+    later = [f'{t.name} ({LEVEL[t.scope]})', f'{t.name} ({LEVEL[t.scope]} level)']
+    if t.orthography is not None:
+        first.append(f'{t.name} (orthography)')
+    if not t.segments:
+        first, later = first + later, []
+    fold = lambda ks: list(dict.fromkeys(k.replace('"', '').casefold() for k in ks))  # noqa: E731
+    return fold(first), fold(later)
+
+
 def named(project: IgtProject, names: Iterable[str]) -> Tuple[List[Target], List[str]]:
     """``(targets, unknown names)`` for the names a planner gives: each a
     target's name as the planning message lists it, case aside, with or
-    without its quotes and its level."""
-    by: Dict[str, Target] = {}
+    without its quotes and its level. A name two targets answer to (a field
+    named "Segmentation", an orthography named as a field) names neither:
+    only each one's label does (REV-DF-D-21)."""
+    first: Dict[str, List[Target]] = {}
+    later: Dict[str, List[Target]] = {}
     for t in fillable(project):
-        by.setdefault(t.name.casefold(), t)
-        by.setdefault(f'{t.name} ({LEVEL[t.scope]})'.casefold(), t)
-        by.setdefault(f'{t.name} ({LEVEL[t.scope]} level)'.casefold(), t)
-        if t.orthography is not None:
-            by.setdefault(f'{t.name} (orthography, word level)'.casefold(), t)
-            by.setdefault(f'{t.name} (orthography)'.casefold(), t)
+        a, b = _keys(t)
+        for k in a:
+            first.setdefault(k, []).append(t)
+        for k in b:
+            later.setdefault(k, []).append(t)
     out, unknown = [], []
     for name in names:
         key = str(name).strip().replace('"', '').casefold()
-        t = by.get(key)
-        if t is None:
+        hit = first.get(key) or later.get(key) or []
+        if len(hit) != 1:
             unknown.append(str(name))
-        elif t not in out:
-            out.append(t)
+        elif hit[0] not in out:
+            out.append(hit[0])
     return out, unknown
+
+
+def listed_names(project: IgtProject) -> List[str]:
+    """The targets as a refusal names them: by name, or by label where two
+    share a name."""
+    targets = fillable(project)
+    seen: Dict[str, int] = {}
+    for t in targets:
+        seen[t.name.casefold()] = seen.get(t.name.casefold(), 0) + 1
+    return [t.name if seen[t.name.casefold()] == 1 else t.label for t in targets]
 
 
 def app_default(project: IgtProject) -> List[Target]:

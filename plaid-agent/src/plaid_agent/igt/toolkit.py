@@ -695,7 +695,7 @@ def t_plan_work(ws, pieces: str = None, piece_instructions: str = '', documents=
         # Required (REV-DF-D-1): a planner that leaves it out would make a
         # job that fills nothing and says nothing.
         raise ToolError('fills: say what the job fills, each named as listed under What a job can fill: '
-                        + ', '.join(t.name for t in tg.fillable(ws.project)) + '. Give [] when it fills nothing, '
+                        + ', '.join(tg.listed_names(ws.project)) + '. Give [] when it fills nothing, '
                         'such as a check or a summary.', kind='invalid-argument')
     if isinstance(fills, str):
         fills = [fills]
@@ -703,7 +703,7 @@ def t_plan_work(ws, pieces: str = None, piece_instructions: str = '', documents=
     if unknown:
         raise ToolError('fills: not something a job on this project can fill: '
                         + ', '.join(f'"{u}"' for u in unknown[:5]) + '. Name each as listed under What a job can '
-                        'fill: ' + ', '.join(t.name for t in tg.fillable(ws.project)) + '.', kind='invalid-argument')
+                        'fill: ' + ', '.join(tg.listed_names(ws.project)) + '.', kind='invalid-argument')
     skip = skip_filled_sentences is True and pieces == 'sentences'
     # Kept only when true: the plan's row holds the largest plan at its cap.
     ws.plan_work = {'pieces': pieces, 'piece_instructions': text, 'documents': order,
