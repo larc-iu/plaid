@@ -1611,6 +1611,58 @@ describe('the job page', () => {
     await v.unmount();
   });
 
+  // REV-SUFIX-1: every target the job wrote outside its setup has a row of
+  // its own, by id, with the count the worker's `outside` rows give it, a
+  // translation and segmentation too, and the total is their sum.
+  it('gives each target written outside the setup its own row, and the total sums them', async () => {
+    const setup = { fills: [{ id: 'L1', name: 'Thematic role' }], text: false };
+    const report = {
+      ...REPORT,
+      totals: {
+        ...REPORT.totals,
+        fields: [
+          { field: 'Gloss', id: 'L5', values: 1, outside: true },
+          { field: 'Thematic role', id: 'L1', values: 9 },
+        ],
+        outside: [
+          { field: 'Gloss', id: 'L5', values: 3 },
+          { field: 'Morph Gloss', id: 'L3', values: 2 },
+          { field: 'Translation', id: 'L4', values: 1 },
+          { field: 'segmentation', id: 'segmentation', values: 1 },
+        ],
+      },
+    };
+    let v = await mount(clientOf(jobOf({ state: 'done', setup, report })));
+    let sums = totals(v.container.querySelector('section[aria-label="Report"]'));
+    expect(sums['Gloss']).toBe('3 values, not in the setup');
+    expect(sums['Morph Gloss']).toBe('2 values, not in the setup');
+    expect(sums['Translation']).toBe('1 value, not in the setup');
+    expect(sums['segmentation']).toBe('1 value, not in the setup');
+    expect(sums['Thematic role']).toBe('9 values');
+    expect(sums['Values not in the setup']).toBe('7');
+    await v.unmount();
+
+    // Core's own report: the documents' rows, summed by id.
+    const doc = (id, counts) => ({ ...REPORT.documents[0], documentId: id, counts });
+    const fromRows = {
+      ...REPORT,
+      totals: { ...REPORT.totals, fields: undefined },
+      documents: [
+        doc('a', { outside: [{ field: 'Morph Gloss', id: 'L3', values: 2 }] }),
+        doc('b', {
+          fields: [{ field: 'Thematic role', id: 'L1', values: 3 }],
+          outside: [{ field: 'Morph Gloss', id: 'L3', values: 1 }],
+        }),
+      ],
+    };
+    v = await mount(clientOf(jobOf({ state: 'done', setup, report: fromRows })));
+    sums = totals(v.container.querySelector('section[aria-label="Report"]'));
+    expect(sums['Morph Gloss']).toBe('3 values, not in the setup');
+    expect(sums['Thematic role']).toBe('3 values');
+    expect(sums['Values not in the setup']).toBe('3');
+    await v.unmount();
+  });
+
   it('lists the changes a write cut short did not write under a line of their own', async () => {
     const report = {
       ...REPORT,

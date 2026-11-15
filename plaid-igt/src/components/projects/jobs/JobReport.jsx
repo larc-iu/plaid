@@ -70,33 +70,44 @@ const blankSums = (report) => {
 // A count of what a target holds blank, in the unit Left blank lists.
 const unitCount = (n, unit) => `${n.toLocaleString()} ${plural(n, unit)}`;
 
-// The values the job set in each field: the totals' rows, or, when the totals
-// hold none (core's own report of a job no worker finished sums named counts
-// only), the documents' rows summed by the target's id (each row carries it,
-// REV-SUFIX-2), named as its first row names it, in the order of the names as
-// the totals are. A field the worker marked `outside` (written outside the
-// job's setup, decided by id where it was written, REV-SU-B-4) stays marked.
+// Rows `{field, id, values, outside?}` summed by the target's id (each row
+// carries it, REV-SUFIX-2), named as the first row names it.
+const sumById = (rows, into = new Map()) => {
+  rows.forEach((f) => {
+    const s = into.get(f.id) ?? { field: f.field, id: f.id, values: 0 };
+    s.values += f.values ?? 0;
+    if (f.outside === true) s.outside = true;
+    into.set(f.id, s);
+  });
+  return into;
+};
+
+// What the job wrote outside its setup, a row per target (the worker's
+// `outside` rows, decided by id where it was written: values of a field, a
+// translation or an orthography, and segmentation, one per word or morpheme,
+// REV-SUFIX-1): the totals', or the documents' summed by id.
+const outsideRows = (report) => [
+  ...sumById(
+    report.totals?.outside ?? (report.documents || []).flatMap((d) => d.counts?.outside || []),
+  ).values(),
+];
+
+// The values the job set in each target, in the order of their names: the
+// totals' field rows, or, when the totals hold none (core's own report of a
+// job no worker finished sums named counts only), the documents' summed by id.
+// A target written outside the setup reads the count of its `outside` row,
+// which also holds the values an analysis carries and a translation, so each
+// such target has a row and those rows sum to the total.
 const fieldSums = (report) => {
-  if (report.totals?.fields) return report.totals.fields;
-  const sums = new Map();
-  (report.documents || []).forEach((d) =>
-    (d.counts?.fields || []).forEach((f) => {
-      const s = sums.get(f.id) ?? { field: f.field, id: f.id, values: 0 };
-      s.values += f.values ?? 0;
-      if (f.outside === true) s.outside = true;
-      sums.set(f.id, s);
-    }),
-  );
+  const sums = report.totals?.fields
+    ? sumById(report.totals.fields)
+    : sumById((report.documents || []).flatMap((d) => d.counts?.fields || []));
+  outsideRows(report).forEach((f) => sums.set(f.id, { ...f, outside: true }));
   return [...sums.values()].sort((a, b) => (a.field < b.field ? -1 : a.field > b.field ? 1 : 0));
 };
 
-// How many values the job wrote outside its setup (the worker's `outside`
-// rows, the translation's among them): the totals', or the documents' summed.
-const outsideSum = (report) => {
-  const rows =
-    report.totals?.outside ?? (report.documents || []).flatMap((d) => d.counts?.outside || []);
-  return rows.reduce((n, f) => n + (f.values ?? 0), 0);
-};
+// How many values the job wrote outside its setup: the sum of its rows.
+const outsideSum = (report) => outsideRows(report).reduce((n, f) => n + f.values, 0);
 
 // One "label: value" row of the totals, left out when it is an optional row
 // with nothing in it. The values the job set in each field follow the words

@@ -534,3 +534,32 @@ def test_a_field_and_an_orthography_sharing_a_name_are_counted_and_marked_apart(
     assert totals['outside'] == outside, totals
     (doc,) = finished['report']['documents']
     assert doc['counts']['fields'] == fields and doc['counts']['outside'] == outside, doc['counts']
+
+
+def test_everything_a_job_writes_on_a_target_outside_its_setup_is_counted_under_that_target(monkeypatch):
+    """REV-SUFIX-1: a job set up to fill Thematic role whose document piece
+    re-segments a word with two glosses over the person's one, replaces the
+    translation and changes a morpheme's form: each is counted under its own
+    target by id (segmentation one per word or morpheme, each gloss under
+    Morph Gloss, the translation under its layer), and the totals' outside
+    rows sum to what was written outside the setup. Links and entries are
+    not targets and are not counted."""
+    from plaid_agent.igt import jobread
+    client = _client()
+    finished = _piece_also(monkeypatch, client, ROLE_ONLY, {'pieces': 'document', 'fills': [ROLE_NAME]}, [
+        ('set_analysis', {'document': 'Story', 'ref': 's1.w1',
+                          'morphemes': [{'form': 'k', 'fields': {'Morph Gloss': 'NEW1'}},
+                                        {'form': 'a', 'fields': {'Morph Gloss': 'NEW2'}}]}),
+        ('set_field', {'document': 'Story', 'refs': ['s1'], 'field': 'Translation', 'value': 'Nobody asked.'}),
+        ('set_morpheme', {'document': 'Story', 'ref': 's2.w1.m1', 'form': 'saa'})])
+    assert finished['state'] == 'done', finished.get('reason')
+    outside = [{'field': 'Morph Gloss', 'id': MGLOSS, 'values': 2}, {'field': 'Translation', 'id': TRANS, 'values': 1},
+               {'field': 'segmentation', 'id': 'segmentation', 'values': 2}]
+    totals = finished['report']['totals']
+    assert totals['outside'] == outside, totals
+    (doc,) = finished['report']['documents']
+    assert doc['counts']['outside'] == outside, doc['counts']
+    said = jobread.summary({'id': J, 'state': 'done', 'instructions': 'x', 'documents': [], 'setup': ROLE_ONLY,
+                            'report': finished['report']})
+    assert ('written outside its setup: Morph Gloss 2 values, Translation 1 values, segmentation 2 values'
+            in said[-2]), said[-2]

@@ -1247,27 +1247,45 @@ class Write:
         return dict(out)
 
     def outside_of(self, ops: List[Dict[str, Any]]) -> Dict[str, int]:
-        """The values ``ops`` set in a field or orthography the job's setup
-        does not name, by the target's id, decided by the target id of what
-        is written (the layer, ``orthography:<name>``), never by a name:
-        each ``set_span`` that writes a value, the translation's too, and
-        each ``set_orthography``. Nothing for a job with no setup. Nothing is
-        refused: the setup binds the plan, and the report shows what was
-        written past it (REV-SU-B-4)."""
+        """What ``ops`` write on a target the job's setup does not name, by
+        the target's id, decided by the id of what is written, never by a
+        name (REV-SU-B-4, REV-SUFIX-1): each value a ``set_span`` writes
+        (the translation's too) under its field's layer, each value a
+        ``set_orthography`` writes under ``orthography:<name>``, and under
+        ``segmentation`` one for each word a ``set_analysis`` segments or
+        reshapes and each morpheme whose form or type is set, with each
+        value the analysis carries under its field's layer. A value cleared
+        counts nothing. Links and entries are not targets, so they are not
+        counted. Nothing for a job with no setup. Nothing is refused: the
+        setup binds the plan, and the report shows what was written past
+        it."""
         from plaid_client.workflows.igt.config import is_orthography_key, orthography_name
-        out: Counter = Counter()
         if self.within is None:
             return {}
+        out: Counter = Counter()
+        segmented = set()
+
+        def value(layer_id, v):
+            if v not in (None, '') and layer_id not in self.within \
+                    and self.st.project.field_by_layer(layer_id) is not None:
+                out[layer_id] += 1
         for o in ops:
-            if o.get('value') in (None, ''):
-                continue
-            if o.get('kind') == 'set_span' and o.get('layer_id') not in self.within:
-                if self.st.project.field_by_layer(o.get('layer_id')) is not None:
-                    out[o['layer_id']] += 1
-            elif o.get('kind') == 'set_orthography' and is_orthography_key(o.get('key')):
+            k = o.get('kind')
+            if k == 'set_span':
+                value(o.get('layer_id'), o.get('value'))
+            elif k == 'set_orthography' and is_orthography_key(o.get('key')) and o.get('value') not in (None, ''):
                 target = f'{tg.ORTHOGRAPHY}:{orthography_name(o["key"])}'
                 if target not in self.within:
                     out[target] += 1
+            elif k == 'set_analysis':
+                segmented.add(('word', o.get('word_id')))
+                for m in o.get('morphemes') or []:
+                    for fv in m.get('fields') or []:
+                        value(fv.get('layer_id'), fv.get('value'))
+            elif k in ('set_morpheme_form', 'set_morph_type'):
+                segmented.add(('morpheme', o.get('morpheme_id')))
+        if segmented and tg.SEGMENTATION not in self.within:
+            out[tg.SEGMENTATION] += len(segmented)
         return dict(out)
 
     def named(self, by_id: Dict[str, int]) -> List[Dict[str, Any]]:
