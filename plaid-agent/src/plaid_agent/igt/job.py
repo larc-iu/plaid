@@ -108,6 +108,12 @@ FALLBACK_FORM = ' fallback '
 #: note, a table a piece's code made, and how many changes the cap dropped.
 CHANGE_FORM = ' change '
 NOTE_FORM = ' note '
+#: What a refusal a job cannot follow is about (``ToolError.code``, given
+#: where it is raised): a change to the text or the words of the sentence in
+#: the same plan, a lexicon entry the same plan creates, deletes or merges, a
+#: multi-word expression the same plan makes. The job page labels each
+#: (REV-DF-S-4).
+LEFT_CODES = ('text', 'lexicon', 'expression')
 #: What a refusal the job could not follow left (``JobWorkspace.leave_it``).
 REFUSED_FORM = ' refused '
 TABLE_FORM = ' table '
@@ -793,6 +799,7 @@ class JobWorkspace(Workspace):
         self.plan_work: Optional[Dict[str, Any]] = None
 
     def leave_it(self, fact: str, sentence_id: Optional[str] = None, code: Optional[str] = None) -> str:
+        assert code is None or code in LEFT_CODES, code
         """A refusal whose chat advice a job cannot follow (a later turn,
         an approval, discard_plan), as a job's model reads it: what was
         refused, and the job's closing line, never the chat's step. What it

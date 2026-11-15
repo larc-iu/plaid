@@ -169,7 +169,7 @@ CODES = {'new entry then rename': 'lexicon', 'deleted entry then rename': 'lexic
 def test_what_a_refusal_left_says_what_kind_of_refusal_it_was(scenario):
     """REV-DF-S-4: each refusal a job cannot follow carries a code of a closed
     set, which the job page labels: never its text."""
-    from plaid_agent.core.tools import LEFT_CODES
+    from plaid_agent.igt.job import LEFT_CODES
     w, _ = _said(SCENARIOS[scenario])
     assert w.left_by_refusal and {e['code'] for e in w.left_by_refusal} == {CODES.get(scenario, 'text')}, \
         w.left_by_refusal

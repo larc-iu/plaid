@@ -54,24 +54,15 @@ class ToolError(Exception):
     unattended job has: the message is ``message`` and the advice, and a job
     reads ``message`` and its own closing line instead (:func:`advised`).
     ``sentence_id`` is the sentence the refused change was for, when known.
-    ``code`` says what such a refusal is about, one of :data:`LEFT_CODES`,
-    for a fixed label a person reads in a job's report (REV-DF-S-4).
+    ``code`` says what such a refusal is about, a word of the app's closed
+    set, for a fixed label a person reads in a job's report (REV-DF-S-4).
     """
 
     def __init__(self, message: str, *, kind: str, advice: Optional[str] = None,
                  sentence_id: Optional[str] = None, code: Optional[str] = None):
         super().__init__(with_advice(message, advice))
         self.kind = refusal_kind(kind)
-        if code is not None and code not in LEFT_CODES:
-            raise ValueError(f'refusal code {code!r} is not one of {LEFT_CODES}')
         self.fact, self.advice, self.sentence_id, self.code = message, advice, sentence_id, code
-
-
-#: What a refusal a job cannot follow is about (``ToolError.code``): a
-#: change to the text or the words of the sentence in the same plan, a
-#: lexicon entry the same plan creates, deletes or merges, a multi-word
-#: expression the same plan makes. The job page labels each.
-LEFT_CODES = ('text', 'lexicon', 'expression')
 
 
 #: Where a refusal's advice goes when it is not at its end.
