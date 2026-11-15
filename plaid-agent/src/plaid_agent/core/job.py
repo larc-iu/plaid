@@ -24,7 +24,6 @@ import threading
 import time
 import unicodedata
 import uuid
-from collections import Counter
 from datetime import datetime, timezone
 from typing import Any, Callable, Dict, List, Optional
 
@@ -720,15 +719,23 @@ def _finish(job: Job, state: str, runner, harmonize, entries, reason: Optional[s
         return None
 
 
-def field_counts(by_name, outside=()) -> List[Dict[str, Any]]:
-    """The values a job set by field (``{name: n}``), as a document's
-    ``counts.fields`` and the report's ``totals.fields`` hold them (BRIEF
-    EW): a list by name, never a map keyed by a field's name, which the
-    clients would re-case. A field among ``outside`` (the app's count of what
-    was written outside the job's setup, decided by id where it was
-    written) is marked ``outside: true`` (REV-SU-B-4)."""
-    return [{'field': name, 'values': n, **({'outside': True} if name in outside else {})}
-            for name, n in sorted(by_name.items()) if n]
+def field_counts(rows, outside=()) -> List[Dict[str, Any]]:
+    """The values a job set by target, as a document's ``counts.fields``
+    and the report's ``totals.fields`` hold them (BRIEF EW): ``rows`` (an
+    app's, each ``{field, id, values}``: ``id`` the target's id, ``field``
+    the name the app shows for it) summed by id, each ``{field, id,
+    values}``, in the order of their names. A list, never a map keyed by a
+    name or an id, which the clients would re-case. Two targets that share a
+    name stay two rows (REV-SUFIX-2). A row whose id is among ``outside``
+    (the ids of what the app counted as written outside the job's setup) is
+    marked ``outside: true`` (REV-SU-B-4)."""
+    by: Dict[Any, Dict[str, Any]] = {}
+    for r in rows:
+        s = by.setdefault(r.get('id'), {'field': r.get('field'), 'id': r.get('id'), 'values': 0})
+        s['values'] += r.get('values') or 0
+    outside = set(outside)
+    return [{**s, **({'outside': True} if s['id'] in outside else {})}
+            for s in sorted(by.values(), key=lambda s: (str(s['field']), str(s['id']))) if s['values']]
 
 
 def blank_sums(documents: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -881,7 +888,8 @@ def build_report(job: Job, state: str, reason: Optional[str], documents: List[Di
               'skipped_too_long': 0, 'skipped_failed': 0, 'skipped_changed': 0, 'skipped_interrupted': 0,
               'skipped_no_answer': 0, 'skipped_more': 0, 'changed': 0, 'proposed': 0, 'changes': 0, 'deletions': 0,
               'repeated': 0, 'peoples_values_changed': 0, 'text_changes': 0}
-    fields, outside = Counter(), Counter()
+    fields: List[Dict[str, Any]] = []
+    outside: List[Dict[str, Any]] = []
     for d in documents:
         key = {'done': 'documents_done', 'in-use': 'documents_in_use', 'gone': 'documents_gone'}.get(
             d.get('state'), 'documents_not_reached')
@@ -897,12 +905,10 @@ def build_report(job: Job, state: str, reason: Optional[str], documents: List[Di
             k = f'skipped_{str(s.get("reason") or "").replace("-", "_")}'
             if k in totals:
                 totals[k] += 1
-        for f in counts.get('fields') or []:
-            fields[f.get('field')] += f.get('values') or 0
-        for f in counts.get('outside') or []:
-            outside[f.get('field')] += f.get('values') or 0
+        fields += counts.get('fields') or []
+        outside += counts.get('outside') or []
     if fields:
-        totals['fields'] = field_counts(fields, outside)
+        totals['fields'] = field_counts(fields, {f.get('id') for f in outside})
     if outside:
         # What the job wrote outside its setup (an app's ``counts.outside``).
         totals['outside'] = field_counts(outside)

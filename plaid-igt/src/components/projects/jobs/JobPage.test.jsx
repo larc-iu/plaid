@@ -1029,7 +1029,7 @@ describe('the job page', () => {
     ];
     const report = {
       ...REPORT,
-      totals: { ...REPORT.totals, fields: [{ field: 'Morph POS', values: 6 }], blank },
+      totals: { ...REPORT.totals, fields: [{ field: 'Morph POS', id: 'L5', values: 6 }], blank },
       documents: [
         {
           documentId: 'd1',
@@ -1485,8 +1485,8 @@ describe('the job page', () => {
         ...REPORT.totals,
         words: 0,
         fields: [
-          { field: 'Animacy', values: 1 },
-          { field: 'Thematic role', values: 1107 },
+          { field: 'Animacy', id: 'L2', values: 1 },
+          { field: 'Thematic role', id: 'L1', values: 1107 },
         ],
       },
     };
@@ -1516,10 +1516,10 @@ describe('the job page', () => {
       ...REPORT,
       totals: { ...REPORT.totals, fields: undefined },
       documents: [
-        doc('a', [{ field: 'Thematic role', values: 9 }]),
+        doc('a', [{ field: 'Thematic role', id: 'L1', values: 9 }]),
         doc('b', [
-          { field: 'Animacy', values: 2 },
-          { field: 'Thematic role', values: 1 },
+          { field: 'Animacy', id: 'L2', values: 2 },
+          { field: 'Thematic role', id: 'L1', values: 1 },
         ]),
       ],
     };
@@ -1533,6 +1533,33 @@ describe('the job page', () => {
     await v.unmount();
   });
 
+  it('sums the documents’ field rows by the target’s id, whatever name each row carries', async () => {
+    // REV-SUFIX-2: a row carries the target's id. A field renamed between
+    // two documents is one row, named as its first row names it.
+    const doc = (id, fields) => ({
+      ...REPORT.documents[0],
+      documentId: id,
+      counts: { changes: 3, fields },
+    });
+    const report = {
+      ...REPORT,
+      totals: { ...REPORT.totals, fields: undefined },
+      documents: [
+        doc('a', [{ field: 'Role', id: 'L1', values: 2 }]),
+        doc('b', [
+          { field: 'Animacy', id: 'L2', values: 2 },
+          { field: 'Thematic role', id: 'L1', values: 3 },
+        ]),
+      ],
+    };
+    const v = await mount(clientOf(jobOf({ state: 'done', report })));
+    const sums = totals(v.container.querySelector('section[aria-label="Report"]'));
+    expect(sums['Role']).toBe('5 values');
+    expect(sums).not.toHaveProperty('Thematic role');
+    expect(sums['Animacy']).toBe('2 values');
+    await v.unmount();
+  });
+
   // REV-SU-B-4 (the lead's addition): the limit binds the plan, so a job may
   // write a field its setup does not name. The worker marks such a field's
   // row by id (`outside`), and counts what it wrote outside the setup.
@@ -1543,12 +1570,12 @@ describe('the job page', () => {
       totals: {
         ...REPORT.totals,
         fields: [
-          { field: 'Gloss', values: 1, outside: true },
-          { field: 'Thematic role', values: 9 },
+          { field: 'Gloss', id: 'L3', values: 1, outside: true },
+          { field: 'Thematic role', id: 'L1', values: 9 },
         ],
         outside: [
-          { field: 'Gloss', values: 1 },
-          { field: 'Translation', values: 1 },
+          { field: 'Gloss', id: 'L3', values: 1 },
+          { field: 'Translation', id: 'L4', values: 1 },
         ],
       },
     };
@@ -1566,10 +1593,10 @@ describe('the job page', () => {
       totals: { ...REPORT.totals, fields: undefined },
       documents: [
         doc('a', {
-          fields: [{ field: 'Gloss', values: 2, outside: true }],
-          outside: [{ field: 'Gloss', values: 2 }],
+          fields: [{ field: 'Gloss', id: 'L3', values: 2, outside: true }],
+          outside: [{ field: 'Gloss', id: 'L3', values: 2 }],
         }),
-        doc('b', { fields: [{ field: 'Thematic role', values: 3 }] }),
+        doc('b', { fields: [{ field: 'Thematic role', id: 'L1', values: 3 }] }),
       ],
     };
     v = await mount(clientOf(jobOf({ state: 'done', setup, report: fromRows })));

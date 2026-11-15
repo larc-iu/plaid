@@ -72,26 +72,22 @@ const unitCount = (n, unit) => `${n.toLocaleString()} ${plural(n, unit)}`;
 
 // The values the job set in each field: the totals' rows, or, when the totals
 // hold none (core's own report of a job no worker finished sums named counts
-// only), the documents' rows summed by field name, by name as the totals are.
-// A field the worker marked `outside` (written outside the job's setup,
-// decided by id where it was written, REV-SU-B-4) stays marked.
+// only), the documents' rows summed by the target's id (each row carries it,
+// REV-SUFIX-2), named as its first row names it, in the order of the names as
+// the totals are. A field the worker marked `outside` (written outside the
+// job's setup, decided by id where it was written, REV-SU-B-4) stays marked.
 const fieldSums = (report) => {
   if (report.totals?.fields) return report.totals.fields;
   const sums = new Map();
-  const outside = new Set();
   (report.documents || []).forEach((d) =>
     (d.counts?.fields || []).forEach((f) => {
-      sums.set(f.field, (sums.get(f.field) ?? 0) + (f.values ?? 0));
-      if (f.outside === true) outside.add(f.field);
+      const s = sums.get(f.id) ?? { field: f.field, id: f.id, values: 0 };
+      s.values += f.values ?? 0;
+      if (f.outside === true) s.outside = true;
+      sums.set(f.id, s);
     }),
   );
-  return [...sums]
-    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
-    .map(([field, values]) => ({
-      field,
-      values,
-      ...(outside.has(field) ? { outside: true } : {}),
-    }));
+  return [...sums.values()].sort((a, b) => (a.field < b.field ? -1 : a.field > b.field ? 1 : 0));
 };
 
 // How many values the job wrote outside its setup (the worker's `outside`

@@ -170,22 +170,17 @@ def _totals(report: Dict[str, Any]) -> str:
     fields = totals.get('fields')
     if fields is None:
         # Core's own report of a job no worker finished sums named counts
-        # only: the documents' rows, summed by field (REV-L2-4).
-        by: Dict[str, int] = {}
-        for d in report.get('documents') or []:
-            for f in (d.get('counts') or {}).get('fields') or []:
-                by[f.get('field')] = by.get(f.get('field'), 0) + (f.get('values') or 0)
-        fields = field_counts(by)
+        # only: the documents' rows, summed by target id (REV-L2-4,
+        # REV-SUFIX-2).
+        fields = field_counts([f for d in report.get('documents') or []
+                               for f in (d.get('counts') or {}).get('fields') or []])
     said += [f'{f.get("field")} {f.get("values"):,} values' for f in fields]
     # What it wrote outside its setup, as the worker marked it by id
     # (REV-SU-B-4), from the documents when the totals hold none.
     outside = totals.get('outside')
     if outside is None:
-        by = {}
-        for d in report.get('documents') or []:
-            for f in (d.get('counts') or {}).get('outside') or []:
-                by[f.get('field')] = by.get(f.get('field'), 0) + (f.get('values') or 0)
-        outside = field_counts(by)
+        outside = field_counts([f for d in report.get('documents') or []
+                                for f in (d.get('counts') or {}).get('outside') or []])
     if outside:
         said.append('written outside its setup: ' + ', '.join(f'{f.get("field")} {f.get("values"):,} values'
                                                               for f in outside))

@@ -444,11 +444,12 @@ def _wrote_outside(monkeypatch, client, setup, field, ref):
     return run_job(job, runner(job))
 
 
-@pytest.mark.parametrize('field, ref, fields', [
-    ('Gloss', 's1.w1', [{'field': 'Gloss', 'values': 1, 'outside': True}, {'field': ROLE_NAME, 'values': 9}]),
-    ('Translation', 's1', [{'field': ROLE_NAME, 'values': 9}]),
+@pytest.mark.parametrize('field, ref, layer, fields', [
+    ('Gloss', 's1.w1', 'sl-gloss', [{'field': 'Gloss', 'id': 'sl-gloss', 'values': 1, 'outside': True},
+                                    {'field': ROLE_NAME, 'id': ROLE, 'values': 9}]),
+    ('Translation', 's1', TRANS, [{'field': ROLE_NAME, 'id': ROLE, 'values': 9}]),
 ])
-def test_a_value_written_outside_the_setup_is_marked_by_id_in_the_report(monkeypatch, field, ref, fields):
+def test_a_value_written_outside_the_setup_is_marked_by_id_in_the_report(monkeypatch, field, ref, layer, fields):
     """Nothing is refused (the limit is the plan's): the report marks each
     field row the job wrote that its setup does not name, decided by the
     written layer's id, and counts what it wrote outside its setup."""
@@ -458,9 +459,9 @@ def test_a_value_written_outside_the_setup_is_marked_by_id_in_the_report(monkeyp
     assert finished['state'] == 'done', finished.get('reason')
     totals = finished['report']['totals']
     assert totals['fields'] == fields, totals
-    assert totals['outside'] == [{'field': field, 'values': 1}], totals
+    assert totals['outside'] == [{'field': field, 'id': layer, 'values': 1}], totals
     (doc,) = finished['report']['documents']
-    assert doc['counts']['outside'] == [{'field': field, 'values': 1}], doc['counts']
+    assert doc['counts']['outside'] == [{'field': field, 'id': layer, 'values': 1}], doc['counts']
     said = jobread.summary({'id': J, 'state': 'done', 'instructions': 'x', 'documents': [], 'setup': ROLE_ONLY,
                             'report': finished['report']})
     assert f'written outside its setup: {field} 1 values' in said[-2], said[-2]
@@ -479,3 +480,57 @@ def test_a_job_with_no_setup_marks_nothing_outside(monkeypatch):
     totals = finished['report']['totals']
     assert 'outside' not in totals and not any('outside' in f for f in totals['fields']), totals
     assert all('outside' not in (d.get('counts') or {}) for d in finished['report']['documents'])
+
+
+def _piece_also(monkeypatch, client, setup, plan, calls):
+    """A job of ``setup`` planned as ``plan``, whose first piece first makes
+    ``calls`` (``(tool, args)``), then fills Thematic role."""
+    from test_job_fields import GUIDELINE, INSTRUCTIONS
+    client.guidelines.create('p1', 'Thematic role', body=GUIDELINE)
+    job = start(client, INSTRUCTIONS, id=J, plan=None, setup=setup)
+    base = _fill(_piece_words)
+    st = {}
+
+    def answer(asked, n, kwargs):
+        if asked.rstrip().endswith(PLANNING):
+            return reply(calls=[call(90 + n, 'plan_work', plan)]) if n == 1 else reply('Planned.')
+        if 'Instructions from' in asked and n == 1 and not st.get('also'):
+            st['also'] = True
+            return reply(calls=[call(500 + i, name, args) for i, (name, args) in enumerate(calls)])
+        if 'Instructions from' in asked and n == 2 and not st.get('base'):
+            st['base'] = True
+            return base(asked, 1, kwargs)
+        return base(asked, n, kwargs)
+    use(monkeypatch, Model(answer))
+    return run_job(job, runner(job))
+
+
+@pytest.mark.parametrize('setup_id, setup_name, fields, outside', [
+    ('sl-ipafield', 'IPA (word level)',
+     [{'field': 'IPA (word level)', 'id': 'sl-ipafield', 'values': 1}, {'field': ROLE_NAME, 'id': ROLE, 'values': 9}],
+     [{'field': 'IPA (orthography, word level)', 'id': 'orthography:IPA', 'values': 1}]),
+    ('orthography:IPA', 'IPA (orthography, word level)',
+     [{'field': 'IPA (word level)', 'id': 'sl-ipafield', 'values': 1, 'outside': True},
+      {'field': ROLE_NAME, 'id': ROLE, 'values': 9}],
+     [{'field': 'IPA (word level)', 'id': 'sl-ipafield', 'values': 1}]),
+])
+def test_a_field_and_an_orthography_sharing_a_name_are_counted_and_marked_apart(monkeypatch, setup_id, setup_name,
+                                                                                  fields, outside):
+    """REV-SUFIX-2: each row of ``fields`` and ``outside`` carries the
+    target's id and is summed and marked by it, its ``field`` the name the
+    setup line shows (``targets.shown_names``): a word field "IPA" and the
+    orthography "IPA" are two rows, and only the one outside the setup is
+    marked."""
+    from job_fixtures import JobClient
+    from test_job_fields import role_document
+    client = JobClient({'d1': role_document()}, project=_ipa_raw(role_project()))
+    setup = {'fills': [{'id': ROLE, 'name': ROLE_NAME}, {'id': setup_id, 'name': setup_name}], 'text': False}
+    finished = _piece_also(monkeypatch, client, setup, {'pieces': 'document', 'fills': [ROLE_NAME, setup_name]}, [
+        ('set_field', {'document': 'Story', 'refs': ['s1.w1'], 'field': 'IPA', 'value': 'FIELDVAL'}),
+        ('set_orthography', {'document': 'Story', 'refs': ['s1.w2'], 'orthography': 'IPA', 'value': 'ORTHVAL'})])
+    assert finished['state'] == 'done', finished.get('reason')
+    totals = finished['report']['totals']
+    assert totals['fields'] == fields, totals
+    assert totals['outside'] == outside, totals
+    (doc,) = finished['report']['documents']
+    assert doc['counts']['fields'] == fields and doc['counts']['outside'] == outside, doc['counts']

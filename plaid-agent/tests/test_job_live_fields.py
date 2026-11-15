@@ -77,15 +77,15 @@ def test_a_job_fills_a_field_on_every_word_and_undo_job_takes_it_back(world, mon
     assert _roles(admin, s) == expected, 'the write landed'
     report = finished['report']
     (doc,) = report['documents']
-    assert doc['counts']['fields'] == [{'field': ROLE_NAME, 'values': VALUES}], doc['counts']
-    assert report['totals']['fields'] == [{'field': ROLE_NAME, 'values': VALUES}]
+    assert doc['counts']['fields'] == [{'field': ROLE_NAME, 'id': s.ids[ROLE], 'values': VALUES}], doc['counts']
+    assert report['totals']['fields'] == [{'field': ROLE_NAME, 'id': s.ids[ROLE], 'values': VALUES}]
     assert report['totals']['changes'] == VALUES and report['totals']['words'] == 0
     assert doc['left'] == [] and doc['left_more'] == 0 and not doc['counts'].get('left')
     assert doc['done'] == doc['targets'] == len(WORDS)
     # As core keeps the job: its row and its report, keys as the wire has them.
     read = admin.jobs.get(job.id)
-    assert read['documents'][0]['counts']['fields'] == [{'field': ROLE_NAME, 'values': VALUES}]
-    assert read['report']['totals']['fields'] == [{'field': ROLE_NAME, 'values': VALUES}]
+    assert read['documents'][0]['counts']['fields'] == [{'field': ROLE_NAME, 'id': s.ids[ROLE], 'values': VALUES}]
+    assert read['report']['totals']['fields'] == [{'field': ROLE_NAME, 'id': s.ids[ROLE], 'values': VALUES}]
     undone = writer.jobs.undo(job.id)
     assert undone, undone
     assert _roles(admin, s) == {}, 'Undo job took every value back'

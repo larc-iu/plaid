@@ -1077,6 +1077,9 @@ class Write:
         #: a job with no setup: a value written in any other is counted
         #: outside it (:meth:`outside_of`)
         self.within = within
+        #: each target's id to the name the job's setup line shows it by
+        #: (``targets.shown_names``), what a row of :meth:`named` says
+        self.names = None
         #: the seeds of the tries that landed (seen to)
         self.done: set = set()
         #: the creates a try holds that an earlier try of the write makes
@@ -1230,26 +1233,25 @@ class Write:
                                   if w is not None))
 
     def fields_of(self, ops: List[Dict[str, Any]]) -> Dict[str, int]:
-        """The values ``ops`` set, by field name: each ``set_span`` that
-        writes a value (not one that clears it), on a word, a morpheme or a
-        sentence alike, whichever tool staged it. The values a set_analysis
-        op carries are its word's (:meth:`words_of`). A translation is
-        counted as one (``translations``, ``refreshed``), never again here
-        (REV-DAY-P-7)."""
+        """The values ``ops`` set, by the field's id (its layer): each
+        ``set_span`` that writes a value (not one that clears it), on a word,
+        a morpheme or a sentence alike, whichever tool staged it. The values
+        a set_analysis op carries are its word's (:meth:`words_of`). A
+        translation is counted as one (``translations``, ``refreshed``),
+        never again here (REV-DAY-P-7)."""
         out: Counter = Counter()
         for o in ops:
             if o.get('kind') == 'set_span' and o.get('value') not in (None, '') and o.get('layer_id') != self.layer:
-                f = self.st.project.field_by_layer(o.get('layer_id'))
-                if f is not None:
-                    out[f.name] += 1
+                if self.st.project.field_by_layer(o.get('layer_id')) is not None:
+                    out[o['layer_id']] += 1
         return dict(out)
 
     def outside_of(self, ops: List[Dict[str, Any]]) -> Dict[str, int]:
         """The values ``ops`` set in a field or orthography the job's setup
-        does not name, by its name, decided by the target id of what is
-        written (the layer, ``orthography:<name>``), never by a name: each
-        ``set_span`` that writes a value, the translation's too, and each
-        ``set_orthography``. Nothing for a job with no setup. Nothing is
+        does not name, by the target's id, decided by the target id of what
+        is written (the layer, ``orthography:<name>``), never by a name:
+        each ``set_span`` that writes a value, the translation's too, and
+        each ``set_orthography``. Nothing for a job with no setup. Nothing is
         refused: the setup binds the plan, and the report shows what was
         written past it (REV-SU-B-4)."""
         from plaid_client.workflows.igt.config import is_orthography_key, orthography_name
@@ -1260,14 +1262,23 @@ class Write:
             if o.get('value') in (None, ''):
                 continue
             if o.get('kind') == 'set_span' and o.get('layer_id') not in self.within:
-                f = self.st.project.field_by_layer(o.get('layer_id'))
-                if f is not None:
-                    out[f.name] += 1
+                if self.st.project.field_by_layer(o.get('layer_id')) is not None:
+                    out[o['layer_id']] += 1
             elif o.get('kind') == 'set_orthography' and is_orthography_key(o.get('key')):
-                name = orthography_name(o['key'])
-                if f'{tg.ORTHOGRAPHY}:{name}' not in self.within:
-                    out[name] += 1
+                target = f'{tg.ORTHOGRAPHY}:{orthography_name(o["key"])}'
+                if target not in self.within:
+                    out[target] += 1
         return dict(out)
+
+    def named(self, by_id: Dict[str, int]) -> List[Dict[str, Any]]:
+        """Counts by target id as a writing row keeps them, ``[{field, id,
+        values}]``: ``field`` the name the job's setup line shows the target
+        by (``targets.shown_names``, REV-SUFIX-2), its id when the project
+        has no such target."""
+        if self.names is None:
+            every = tg.fillable(self.st.project)
+            self.names = dict(zip((t.id for t in every), tg.shown_names(self.st.project, every)))
+        return [{'field': self.names.get(i) or i, 'id': i, 'values': n} for i, n in by_id.items()]
 
     def _others(self, sid: str, words: List[str]) -> List[str]:
         now = {s.id: s for s in (self.fresh.sentences if self.fresh is not None else [])}
@@ -1283,10 +1294,10 @@ class Write:
                     'ops': [self.describe(o, True) for o in ops]})
         fields = self.fields_of(ops)
         if fields:
-            row['fields'] = fields
+            row['fields'] = self.named(fields)
         outside = self.outside_of(ops)
         if outside:
-            row['outside'] = outside
+            row['outside'] = self.named(outside)
         return row
 
     def rows(self, seed: str, ops: List[Dict[str, Any]], replaces: Optional[str] = None,
@@ -3595,14 +3606,16 @@ class IgtRunner:
         the document (:meth:`left_blank`), and a row never says nothing is
         left where nothing was counted (BRIEF NW round 3)."""
         counts = empty_counts()
-        analyzed, words, fields, outside = set(), set(), Counter(), Counter()
+        analyzed, words = set(), set()
+        fields: List[Dict[str, Any]] = []
+        outside: List[Dict[str, Any]] = []
         rows, landed = self.view(document_id)
         for r in rows:
             if not landed(r):
                 continue
             words |= set(r.get('words') or ())
-            fields.update(r.get('fields') or {})
-            outside.update(r.get('outside') or {})
+            fields += r.get('fields') or []
+            outside += r.get('outside') or []
             for k, n in (r.get('counts') or {}).items():
                 if k == 'analyzed':
                     analyzed.add(r['sentence'])
@@ -3610,7 +3623,7 @@ class IgtRunner:
                     counts[k] = counts.get(k, 0) + n
         counts['analyzed'], counts['words'] = len(analyzed), len(words)
         if fields:
-            counts['fields'] = field_counts(fields, outside)
+            counts['fields'] = field_counts(fields, {f['id'] for f in outside})
         if outside:
             # What it wrote outside its setup, the translation's too (REV-SU-B-4).
             counts['outside'] = field_counts(outside)

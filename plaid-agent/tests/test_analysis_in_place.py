@@ -246,4 +246,4 @@ def test_a_job_changing_one_gloss_of_peoples_analyses_writes_that_gloss_alone(mo
     assert [(o['kind'], o['value'], o.get(ANALYSIS_OF)) for o in sent] == [('set_span', 'G2', 'd1-s1w1')], sent
     t = finished['report']['totals']
     assert (t['changes'], t['words'], t['links'], t['repeated']) == (1, 0, 0, 0), t
-    assert t.get('fields') == [{'field': 'Morph Gloss', 'values': 1}], t
+    assert t.get('fields') == [{'field': 'Morph Gloss', 'id': MGLOSS, 'values': 1}], t

@@ -120,8 +120,8 @@ def _check_report(finished, written):
     assert all(len(v) == 1 for v in written.values()), f'a value written twice: {written}'
     report = finished['report']
     (doc,) = report['documents']
-    assert doc['counts']['fields'] == [{'field': ROLE_NAME, 'values': VALUES}], doc['counts']
-    assert report['totals']['fields'] == [{'field': ROLE_NAME, 'values': VALUES}]
+    assert doc['counts']['fields'] == [{'field': ROLE_NAME, 'id': ROLE, 'values': VALUES}], doc['counts']
+    assert report['totals']['fields'] == [{'field': ROLE_NAME, 'id': ROLE, 'values': VALUES}]
     assert report['totals']['changes'] == VALUES and report['totals']['words'] == 0
     assert doc['left'] == [] and doc['left_more'] == 0 and not doc['counts'].get('left')
     assert not doc['counts'].get('not_reached') and not doc['skipped']
@@ -149,7 +149,7 @@ def test_a_job_fills_a_field_on_every_word_of_a_fully_analysed_document(monkeypa
     _check_report(finished, written)
     # The document's row in core holds the field's count too, and the final
     # context and read_job say it.
-    assert client.jobs.get(J)['documents'][0]['counts']['fields'] == [{'field': ROLE_NAME, 'values': VALUES}]
+    assert client.jobs.get(J)['documents'][0]['counts']['fields'] == [{'field': ROLE_NAME, 'id': ROLE, 'values': VALUES}]
     told = igt_job.summary_message(finished['report'])
     assert told.startswith('This job wrote 9 changes in 3 of 3 sentences: Thematic role 9 values.\n'), told
     assert 'changes 9, documents done 1, sentences 3, Thematic role 9 values' in told, told
