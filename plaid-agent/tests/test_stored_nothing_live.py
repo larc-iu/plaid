@@ -66,3 +66,35 @@ def test_a_job_writes_the_form_and_its_stamp_on_such_a_word_on_the_core(live_cli
         assert sorted(sp.value for sp in m.fields.values()) == ['fish']
     finally:
         s.delete()
+
+
+@pytest.mark.parametrize('mode', ['machine', 'verified', 'unverified'])
+def test_the_form_written_inside_a_kept_chain_carries_the_writers_stamp_on_the_core(live_client, mode):
+    """REV-DF3-1: a person's "ga" 'fish' then a morpheme holding nothing,
+    given back as ga-m fish-SG, as a job applies it and as a chat plan
+    approved either way: the chain is kept, the person's morpheme untouched,
+    and the form written on the empty one is stamped as its gloss is."""
+    from test_stored_nothing import _gloss, _morph, _token
+    raw = doc()
+    m2 = _token(raw, 'm-2')
+    m2['metadata'] = {'form': 'ga'}
+    _morph(raw)['tokens'].append({'id': 'm-2z', 'begin': m2['begin'], 'end': m2['end'], 'precedence': 2,
+                                  'metadata': {}})
+    _gloss(raw, 'm-2', 'fish')
+    s = seed(live_client, project(), {'d1': raw}, {VOCAB: lexicon_raw()}, name=f'df4 chain form {mode}')
+    try:
+        ws, w = _gam(live_client, s.project_id)
+        call_tool(ws, 'set_analysis', {'document': ws.documents()[0]['name'], 'ref': 's1.w2', 'morphemes': [
+            {'form': 'ga', 'fields': {'Morph Gloss': 'fish'}}, {'form': 'm', 'fields': {'Morph Gloss': 'SG'}}]})
+        source = 'service:igt:job' if mode == 'machine' else 'service:igt:assist'
+        execute_plan(live_client, ws.plan_payload()['ops'], source=source, label='t', stamp_mode=mode,
+                     detail={'job': 'df4'} if mode == 'machine' else None)
+        _ws, w = _gam(live_client, s.project_id)
+        first, second = w.morphemes
+        assert first.metadata.get('form') == 'ga' and 'prov' not in first.metadata, first.metadata
+        assert second.metadata.get('form') == 'm', second.metadata
+        assert second.metadata.get('prov') == 'inferred' and second.metadata.get('provSource') == source, \
+            second.metadata
+        assert bool(second.metadata.get('provConfirmed')) == (mode == 'verified'), second.metadata
+    finally:
+        s.delete()

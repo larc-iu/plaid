@@ -179,3 +179,23 @@ def test_a_chain_with_a_morpheme_holding_nothing_is_kept_and_the_form_given_writ
         call_tool(w, tool, {'form': 'gam', 'morphemes': given})
     assert sorted((o['kind'], o.get('morpheme_id') or o.get('token_id'), o.get('form') or o.get('value'))
                   for o in w.ops) == [('set_morpheme_form', 'm-2z', 'm'), ('set_span', 'm-2z', 'SG')], w.ops
+
+
+@pytest.mark.parametrize('mode,expected', [
+    ('verified', {'prov': 'inferred', 'provSource': 'service:igt:assist:x', 'provConfirmed': True}),
+    ('unverified', {'prov': 'inferred', 'provSource': 'service:igt:assist:x'}),
+])
+def test_the_form_written_on_a_morpheme_holding_nothing_carries_the_writers_stamp(mode, expected):
+    """REV-DF3-1: the form the job or a plan writes on the empty morpheme of a
+    kept chain is the writer's value, stamped as its gloss is, so it never
+    reads as a person's (no prov keys) or a verifier's."""
+    from plaid_client.testing import as_fragment
+    from plaid_agent.igt.plan import execute_plan
+    w = ws_with(_chain)
+    call_tool(w, 'set_analysis', {'document': 'd1', 'ref': 's1.w2', 'morphemes': [
+        {'form': 'ga', 'fields': {'Morph Gloss': 'fish'}}, {'form': 'm', 'fields': {'Morph Gloss': 'SG'}}]})
+    w.client.calls.clear()
+    execute_plan(w.client, w.ops, source='service:igt:assist:x', label='l', project=w.project, stamp_mode=mode)
+    patch = next(as_fragment(p) for tid, p in w.client.patches('tokens') if tid == 'm-2z')
+    assert patch['form'] == 'm'
+    assert {k: v for k, v in patch.items() if k.startswith('prov') and v is not None} == expected, patch

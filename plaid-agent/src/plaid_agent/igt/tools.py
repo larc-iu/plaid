@@ -279,8 +279,9 @@ def value_op(place: str, f, token_id: str, span_id: Optional[str], old: Optional
 
 def in_place_form(place: str, morpheme_id: str, form: str) -> Dict[str, Any]:
     """A set_morpheme_form op writing ``form`` on a morpheme of a kept chain
-    that held none (:func:`in_place`)."""
-    return {'kind': 'set_morpheme_form', 'morpheme_id': morpheme_id, 'form': form,
+    that held none (:func:`in_place`). The form is the writer's value, so it
+    is stamped as the values written beside it are (REV-DF3-1)."""
+    return {'kind': 'set_morpheme_form', 'morpheme_id': morpheme_id, 'form': form, 'restamp': True,
             **labelled(place, f'morpheme form = {qv(form)}')}
 
 
