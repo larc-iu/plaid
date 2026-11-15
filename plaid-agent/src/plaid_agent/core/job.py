@@ -579,8 +579,14 @@ def run_job(job: Job, runner) -> Optional[Dict[str, Any]]:
             job.set(phase=PLANNING, message='Planning the work.')
             through_core(job, lambda: runner.plan(job))
         if job.status.get('phase') in (PLANNING, runner.WORK_PHASE):
-            job.set(phase=runner.WORK_PHASE)
             through_core(job, lambda: runner.plan(job))
+            # A job whose plan names nothing to work ends here, writing
+            # nothing (the runner's ``plan_failure``: planning ended with no
+            # plan), a new job and a resumed one alike.
+            failure = through_core(job, lambda: runner.plan_failure(job))
+            if failure is not None:
+                return _finish(job, 'failed', runner, harmonize, entries, reason=failure)
+            job.set(phase=runner.WORK_PHASE)
             runner.work(job)
         job.check()
         # Each change of phase is a heartbeat, which may be the first to hear

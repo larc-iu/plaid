@@ -15,7 +15,7 @@ import uuid
 
 import pytest
 
-from job_fixtures import plan_row, Model, call, document, job_project, reply, use
+from job_fixtures import plan_row, planned, Model, call, document, job_project, reply, use
 from live import _skip_or_fail, core_url, login, seed
 
 from plaid_agent.core.agent import ModelConfig
@@ -66,7 +66,7 @@ def _model(asked, n, kwargs):
 
 def test_a_two_document_job_end_to_end(world, monkeypatch):
     admin, writer, email, s = world
-    use(monkeypatch, Model(_model))
+    use(monkeypatch, Model(planned(_model)))
     made = writer.jobs.create(s.project_id, 'igt', 'Gloss the words.')
     assert made['state'] == 'waiting'
     from plaid_client import PlaidClient

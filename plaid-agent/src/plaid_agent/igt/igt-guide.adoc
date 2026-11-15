@@ -937,7 +937,7 @@ Its plan also names what the job fills: segmentation into morphemes, any of the 
 Its page says which, such as **Fills: segmentation, Morph Gloss** or **Fills nothing**.
 A word, a morpheme or a sentence is empty for a field when the field holds no value on it, and a word is empty for segmentation when it has no morpheme analysis.
 Worked a few sentences at a time, it takes every sentence, unless its plan takes only the sentences with something empty of what it fills.
-When planning ends with no plan, the job fills segmentation, the morpheme gloss and the translation, a few sentences at a time, in the sentences where one of them is empty, and its page says so.
+When planning ends with no plan, the job ends as failed without writing anything, and its page says **Planning ended with no plan**.
 Each piece is worked by the assistant with the project's guidelines and the instructions.
 A piece of a few sentences is told what is empty in it of what the job fills, how people in the project and the job itself filled the same forms, and, when what it fills is linked to a lexicon, the lexicon entries spelled inside them.
 Its tools are those for setting values and reading the lexicon and earlier analyses, those for analyzing words, linking them and creating entries when the job fills those, and those for retyping, splitting, merging and deleting sentences when its plan allows text edits.

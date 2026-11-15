@@ -222,9 +222,10 @@ def plan_line(report: Dict[str, Any]) -> Optional[str]:
     plan = report.get('plan')
     if not isinstance(plan, dict):
         return None
+    if plan.get('by') == 'none':
+        # Planning ended with no plan, and the job wrote nothing (REV-DF3-2).
+        return 'Planning ended with no plan. Nothing was written.'
     line = f'Worked in {_PIECES.get(plan.get("pieces"), plan.get("pieces"))}'
-    if plan.get('by') == 'default':
-        line = f'Planning ended with no plan. Worked by the default plan, in {_PIECES["sentences"]}'
     smaller = len(plan.get('fallback') or [])
     if smaller:
         line += f', {smaller:,} of them in smaller pieces'

@@ -127,19 +127,6 @@ def test_a_piece_of_a_plan_that_edits_the_text_is_offered_everything_as_before(m
             assert TEXT_TOOLS <= set(names), names
 
 
-def test_a_default_plan_does_not_edit_the_text(monkeypatch):
-    """Planning ended with no plan: the default works in sentences and
-    offers no text tool."""
-    client = JobClient({'d1': document('d1', 'Story', [{'words': ['ka', 'ta']}])})
-    job = start(client, 'Do as asked.', id=J, plan=None)
-    model = use(monkeypatch, Model(_done))
-    r = runner(job)
-    run_job(job, r)
-    assert r.plan_made['by'] == 'default' and 'edits_text' not in r.plan_made
-    offered = _offered(model)
-    assert offered and not set(offered[0]) & TEXT_TOOLS
-
-
 def _retyping(asked, n, kwargs):
     if 'Instructions from' not in asked:
         return reply('Done.')

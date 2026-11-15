@@ -34,14 +34,11 @@ const PIECES_TEXT = {
   selection: 'Worked on all the documents at once',
 };
 
-// The default plan, when planning ended with none: stretches of every sentence.
-const DEFAULT_PLAN_TEXT =
-  'Planning ended with no plan. Worked by the default plan, in stretches of sentences';
-
 export const planText = (plan) => {
   if (!plan) return null;
+  // Planning ended with no plan: the job ended writing nothing (REV-DF3-2).
+  if (plan.by === 'none') return 'Planning ended with no plan. Nothing was written.';
   let text = PIECES_TEXT[plan.pieces] ?? plan.pieces;
-  if (plan.by === 'default') text = DEFAULT_PLAN_TEXT;
   if (plan.pieces === 'sentences' && plan.onlyEmpty) text += ', only those with something empty';
   const smaller = (plan.fallback || []).length;
   if (smaller) text += `, ${smaller.toLocaleString()} in smaller pieces`;

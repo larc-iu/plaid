@@ -183,8 +183,7 @@ def newest_after(when):
 #: What a test's plan fills unless it says (plan_work's ``fills``, kept as
 #: target ids): a glossing job's, segmentation and the morpheme gloss.
 FILLS = ('segmentation', MGLOSS)
-#: ... and the translation: the fixture project's app default
-#: (igt/targets.py ``app_default``), what a test that translates fills.
+#: ... and the translation: what a test that translates fills.
 TRANSLATING = ('segmentation', MGLOSS, TRANS)
 
 
@@ -310,6 +309,27 @@ def call(i, name, args):
 def reply(content=None, calls=None, finish='stop'):
     msg = SimpleNamespace(content=content, tool_calls=calls or None)
     return SimpleNamespace(choices=[SimpleNamespace(message=msg, finish_reason=finish)], usage=None)
+
+
+#: What a job's planning message ends with.
+PLANNING_ENDS = 'Plan the job and end with plan_work.'
+#: The plan :func:`planned` keeps: a glossing and translating job's, in
+#: stretches of the sentences with something empty.
+GLOSSING_PLAN = {'pieces': 'sentences', 'fills': ['segmentation', 'Morph Gloss', 'Translation'],
+                 'skip_filled_sentences': True}
+
+
+def planned(answer, plan=None):
+    """``answer`` for the job's pieces, with a planning context that ends
+    with plan_work (``plan``, :data:`GLOSSING_PLAN` unless given): a job
+    whose planning ends with no plan works nothing (REV-DF3-2)."""
+    plan = plan or GLOSSING_PLAN
+
+    def both(asked, n, kwargs):
+        if str(asked).rstrip().endswith(PLANNING_ENDS):
+            return reply(calls=[call(90 + n, 'plan_work', plan)]) if n == 1 else reply('Planned.')
+        return answer(asked, n, kwargs)
+    return both
 
 
 class Model:

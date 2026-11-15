@@ -652,8 +652,8 @@ def t_plan_work(ws, pieces: str = None, piece_instructions: str = '', documents=
     :data:`PLAN_FILLS_NOTHING`), whether stretches walk only the sentences where something it
     fills is empty (``skip_filled_sentences``, kept as ``only_empty``, the key
     the job page reads), whether its pieces may change the
-    text (``edits_text``, kept only when true: a plan without it, the
-    default plan too, offers no tool that changes the text, the owner's
+    text (``edits_text``, kept only when true: a plan without it
+    offers no tool that changes the text, the owner's
     ruling of 2026-11-15), instructions within their cap, a
     subset of the job's documents named once each. A plan that skips every
     sentence of the documents it works is kept, and its answer says so

@@ -441,11 +441,16 @@ describe('the job page', () => {
     await v.unmount();
   });
 
-  it('says when planning ended with no plan and the job worked by the default plan', async () => {
-    const plan = { pieces: 'sentences', by: 'default', why: 'no-plan', fallback: [], leftOut: [] };
-    const v = await mount(clientOf(jobOf({ state: 'done', report: { ...REPORT, plan } })));
-    expect(totals(v.container).Plan).toBe(
-      'Planning ended with no plan. Worked by the default plan, in stretches of sentences.',
+  it('says when planning ended with no plan and nothing was written', async () => {
+    const plan = { by: 'none', why: 'no-plan', pieceInstructions: '', fallback: [], leftOut: [] };
+    const v = await mount(
+      clientOf(
+        jobOf({ state: 'failed', reason: 'no-plan', message: null, report: { ...REPORT, plan } }),
+      ),
+    );
+    expect(totals(v.container).Plan).toBe('Planning ended with no plan. Nothing was written.');
+    expect(text(v.container.querySelector('[role="status"]'))).toContain(
+      'Planning ended with no plan.',
     );
     await v.unmount();
   });

@@ -4,7 +4,7 @@ to fail the same way, so one job cannot hold the server's one slot forever
 are counted, not listed, so the row core keeps never grows past what core
 takes."""
 
-from job_fixtures import JobClient, ModelConfig, document, reply, runner, start, use, Model
+from job_fixtures import JobClient, ModelConfig, document, planned, reply, runner, start, use, Model
 
 from plaid_client import PlaidAPIError
 from plaid_agent.core import agent
@@ -24,6 +24,7 @@ def _worker(client, factory):
 def test_a_job_whose_runner_breaks_is_failed_and_not_claimed_again(monkeypatch):
     client = _client()
     client.jobs.create('p1', 'igt', 'Gloss the words.')
+    use(monkeypatch, Model(planned(lambda asked, n, kw: reply('Done.'))))
     cfg = ModelConfig(model='fake/m', stream=False, max_steps=1000)
 
     class Broken(IgtRunner):
@@ -40,7 +41,7 @@ def test_a_job_whose_runner_breaks_is_failed_and_not_claimed_again(monkeypatch):
 def test_a_finish_core_refuses_still_ends_the_job_failed(monkeypatch):
     client = _client()
     client.jobs.create('p1', 'igt', 'Gloss the words.')
-    use(monkeypatch, Model(lambda asked, n, kw: reply('Done.')))
+    use(monkeypatch, Model(planned(lambda asked, n, kw: reply('Done.'))))
     real = client.jobs.finish
     refused = {'n': 0}
 

@@ -8,7 +8,7 @@ again once per call with a 502 at that call alone."""
 
 import pytest
 
-from job_fixtures import JobClient, Model, call, document, reply, runner, start, use
+from job_fixtures import JobClient, Model, call, document, planned, reply, runner, start, use
 
 from plaid_client import PlaidAPIError, testing
 from plaid_agent.core.job import run_job
@@ -120,7 +120,7 @@ def _run(monkeypatch, at, how=None, pieces='sentences'):
     _trouble(client, how)
     blips = Blips(at)
     _install(monkeypatch, client, blips)
-    use(monkeypatch, Model(_analyse))
+    use(monkeypatch, Model(planned(_analyse)))
     finished = run_job(job, runner(job))
     return finished, blips, client
 

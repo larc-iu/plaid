@@ -78,6 +78,7 @@ const REASON_WORDS = {
   'starter-access': 'The person who started it can no longer write in this project.',
   'guidelines-too-long': 'The guidelines are too long for a job.',
   'no-documents': 'None of its documents are left.',
+  'no-plan': 'Planning ended with no plan.',
 };
 
 const wordFor = (words) => (code) => words[code] ?? null;

@@ -120,22 +120,43 @@ def test_the_first_context_plans_and_the_plan_is_kept_and_reported(monkeypatch):
     assert finished['report']['summary_failed'] is False
 
 
-def test_a_planning_that_ends_without_a_plan_gets_one_decide_now_round_then_works_in_sentences(monkeypatch):
+#: The plan a job keeps and reports when planning ended with none
+#: (REV-DF3-2): it names nothing to work, and the job writes nothing.
+NO_PLAN = {'by': 'none', 'why': 'no-plan', 'piece_instructions': '', 'fallback': [], 'left_out': []}
+
+
+def _ended_with_no_plan(client, finished, model):
+    """A job whose planning ended with no plan: failed, reason no-plan, no
+    piece and no final context asked, nothing written, every document not
+    reached."""
+    assert finished['state'] == 'failed' and finished['reason'] == 'no-plan', finished
+    assert finished['report']['plan'] == NO_PLAN, finished['report']['plan']
+    assert [c for c in model.calls if _kind(c['asked']) != 'plan'] == [], 'no piece, no final context'
+    assert not client.writes, 'nothing written'
+    assert {d['state'] for d in finished['report']['documents']} == {'not-reached'}
+    assert finished['report']['summary'] is None
+
+
+def test_a_planning_that_ends_without_a_plan_gets_one_decide_now_round_then_the_job_ends_writing_nothing(
+        monkeypatch):
+    """REV-DF3-2, the lead's ruling: no plan is never the app's default
+    plan (it filled segmentation, the gloss and the translation whatever
+    the job was asked). The planner is asked once more to end with
+    plan_work, alone offered, and then the job ends failed, writing
+    nothing."""
     client = JobClient(_docs(1))
     job = start(client, id=J, plan=None)
     model = use(monkeypatch, _model(plan=None, piece=_gloss_all))
-    finished = run_job(job, runner(job))
+    finished = run_job(job, runner(job, write_summary=True))
     planning = [c for c in model.calls if _kind(c['asked']) == 'plan']
     assert len(planning) == 2, 'the planning, then one round told to end with plan_work'
     assert any(m.get('content') == JOB_PLAN_NOW for m in planning[1]['kwargs']['messages'])
     assert {t['function']['name'] for t in planning[1]['kwargs']['tools']} == {'plan_work'}
-    assert finished['report']['plan'] == {'pieces': 'sentences', 'piece_instructions': '', 'documents': None,
-                                          'fills': ['segmentation', 'sl-mgloss', 'sl-trans'], 'only_empty': True,
-                                          'fills_names': ['segmentation', 'Morph Gloss', 'Translation'],
-                                          'by': 'default', 'why': 'no-plan', 'fallback': [], 'left_out': []}
+    _ended_with_no_plan(client, finished, model)
+    assert _plan_rows(client) == [{'by': 'none', 'why': 'no-plan'}], 'kept, so a resumed job ends the same'
 
 
-def test_a_planning_that_runs_out_of_budget_works_in_sentences(monkeypatch):
+def test_a_planning_that_runs_out_of_budget_ends_the_job_writing_nothing(monkeypatch):
     client = JobClient(_docs(1))
     job = start(client, id=J, plan=None)
 
@@ -143,12 +164,50 @@ def test_a_planning_that_runs_out_of_budget_works_in_sentences(monkeypatch):
         if _kind(asked) == 'plan':
             return reply(calls=[call(n, 'read_document', {'document': 'Story 1'})])
         return _gloss_all(asked, n)
-    use(monkeypatch, Model(answer))
+    model = use(monkeypatch, Model(answer))
     finished = run_job(job, runner(job))
-    assert finished['state'] == 'done'
     # Told to decide, it is offered plan_work alone, and its reads are refused
-    # until its turn ends: no plan, so the job works in stretches.
-    assert finished['report']['plan']['by'] == 'default' and finished['report']['plan']['pieces'] == 'sentences'
+    # until its turn ends: no plan, so the job ends.
+    _ended_with_no_plan(client, finished, model)
+
+
+def test_a_planner_refused_until_it_gives_up_ends_the_job_writing_nothing(monkeypatch):
+    """REV-DF3-2's J7: a check whose planner calls plan_work with no fills,
+    is refused, and answers text, twice. The job is not run as glossing."""
+    client = JobClient(_docs(1))
+    job = start(client, id=J, plan=None, instructions='Check the glosses for consistency and report.')
+
+    def answer(asked, n, kwargs):
+        if _kind(asked) == 'plan':
+            return reply(calls=[call(n, 'plan_work', {'pieces': 'sentences'})]) if n == 1 else reply('Planned.')
+        return _gloss_all(asked, n)
+    model = use(monkeypatch, Model(answer))
+    finished = run_job(job, runner(job))
+    planning = [c for c in model.calls if _kind(c['asked']) == 'plan']
+    assert any('fills: say what the job fills' in str(m.get('content')) for c in planning
+               for m in c['kwargs']['messages']), 'refused'
+    _ended_with_no_plan(client, finished, model)
+
+
+def test_a_job_resumed_after_planning_ended_with_no_plan_ends_the_same(monkeypatch):
+    """The plan that names nothing is kept: a worker that takes the job
+    again after a crash reads it back, never plans again, and ends."""
+    client = JobClient(_docs(1))
+    job = start(client, id=J, plan=None)
+    client.jobs.add_decisions(J, 'worker-1', [_none_row()])
+    job.set(phase='working')
+    model = use(monkeypatch, _model(plan={'pieces': 'sentences'}, piece=_gloss_all))
+    finished = run_job(job, runner(job))
+    _ended_with_no_plan(client, finished, model)
+    assert model.calls == [], 'never planned again'
+
+
+def _none_row():
+    from plaid_agent.core.job import analysis_key, canonical
+    from plaid_agent.igt.job import PLAN_FORM
+    text = canonical({'by': 'none', 'why': 'no-plan'})
+    return {'form': PLAN_FORM, 'key': analysis_key(text), 'analysis': text, 'count': 1, 'document_id': None,
+            'sentence_id': None}
 
 
 def test_a_subset_of_documents_in_the_plans_order_and_the_rest_not_reached(monkeypatch):
@@ -269,7 +328,7 @@ def test_the_largest_plan_the_tool_takes_is_kept_and_read_back_in_its_order(monk
 
 def test_a_planner_that_overshoots_the_cap_plans_at_once_with_its_instructions_cut(monkeypatch):
     """BRIEF PF (A): a planner that restated a guideline in piece_instructions
-    was refused 18 times and the job fell back to the default plan. Now its
+    was refused 18 times and the job fell back to a default plan. Now its
     first plan_work is kept, the instructions cut at a whole sentence within
     the cap, the plan says they were cut, and every piece is told what was
     kept."""
@@ -820,21 +879,6 @@ def test_a_job_that_wrote_and_proposed_nothing_gets_a_fixed_summary_and_no_final
     assert model.seen['summary'] == 0, 'the final context is not asked'
     assert finished['report']['summary'] == 'The job wrote no change and proposed none.'
     assert finished['report']['summary_by'] == 'worker' and finished['report']['summary_failed'] is False
-
-
-def test_a_planner_that_never_plans_and_a_job_that_writes_nothing_says_both(monkeypatch):
-    """BRIEF PF (2, B): the planning context ends with no plan, the job works
-    by the default plan and writes nothing. The summary is the worker's
-    line, and the plan says it was the default: the page shows the plan, so
-    the line does not say it again (REV-L2-9)."""
-    client = JobClient(_docs(1))
-    job = start(client, id=J, plan=None)
-    model = use(monkeypatch, _model(plan=None))
-    finished = run_job(job, runner(job, write_summary=True))
-    assert finished['report']['plan']['by'] == 'default'
-    assert model.seen['summary'] == 0
-    assert finished['report']['summary'] == 'The job wrote no change and proposed none.'
-    assert finished['report']['summary_by'] == 'worker'
 
 
 def test_a_job_that_only_proposed_changes_is_summarised_by_the_model(monkeypatch):

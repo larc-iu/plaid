@@ -198,7 +198,8 @@ def test_set_analysis_for_form_that_changes_a_gloss_stages_the_gloss():
 
 # --- a job's walk ------------------------------------------------------------------------------
 # The reviewer's probes (REV-L2 test_revl2_probes.py): a fully analysed text
-# under the default plan, and a piece that restates every analysis it reads.
+# with no plan (the job then ends, REV-DF3-2) or a plan in sentences, and a
+# piece that restates every analysis it reads.
 
 
 J = 'JRS'

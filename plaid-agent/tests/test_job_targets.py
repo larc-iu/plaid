@@ -48,7 +48,6 @@ def test_what_a_job_can_fill_is_read_from_the_configuration():
         ('segmentation', 'segmentation', 'Word'), ('sl-gloss', 'Gloss', 'Word'), (ROLE, 'Role', 'Word'),
         (MGLOSS, 'Morph Gloss', 'Morpheme'), (MPOS, 'Morph POS', 'Morpheme'), (TRANS, 'Translation', 'Sentence'),
         (NOTE, 'Note', 'Sentence'), ('orthography:IPA', 'IPA', 'Word')]
-    assert [t.id for t in tg.app_default(project)] == ['segmentation', MGLOSS, TRANS]
 
 
 def test_the_one_rule_for_each_kind_of_target():
@@ -248,10 +247,10 @@ def test_a_morpheme_field_shows_its_values_for_a_word_the_job_also_segments(monk
     assert 'How these forms were analysed' in asked
 
 
-def test_a_default_plan_shows_no_piece_a_sentence_people_analysed(monkeypatch):
-    """REV-DAY-S-12: planning fails. The default plan fills the app's
-    default and skips filled sentences, so the piece is handed s2 alone and
-    the person's analysed and translated s1 only as context."""
+def test_a_failed_planning_shows_no_piece_anything_and_writes_nothing(monkeypatch):
+    """REV-DAY-S-12 asked that a failed planning show no piece a sentence
+    people analysed. Since REV-DF3-2 it shows no piece anything: the job
+    ends failed, every document not reached."""
     client = JobClient({'d1': document('d1', 'Story', [
         {'words': [('gam', [('gam', 'fish')], 'human')], 'translation': ('Fish.', 'human')},
         {'words': ['ka']}])})
@@ -263,12 +262,10 @@ def test_a_default_plan_shows_no_piece_a_sentence_people_analysed(monkeypatch):
         return reply('Done.')
     model = use(monkeypatch, Model(answer))
     finished = run_job(job, runner(job))
-    plan = finished['report']['plan']
-    assert plan['by'] == 'default' and plan['only_empty'] is True
-    assert plan['fills'] == ['segmentation', MGLOSS, TRANS]
-    pieces = [c['asked'] for c in model.calls if 'Your piece:' in c['asked'] and c['n'] == 1]
-    assert [p.splitlines()[-1] for p in pieces] == ['Your piece: s2. s1 is context.'], pieces
-    assert 'Empty in s2: segmentation and Morph Gloss in w1 "ka" | Translation.' in pieces[0]
+    assert (finished['state'], finished['reason']) == ('failed', 'no-plan')
+    assert finished['report']['plan']['by'] == 'none' and 'fills' not in finished['report']['plan']
+    assert [c for c in model.calls if 'Your piece:' in c['asked']] == [] and not client.writes
+    assert [d['state'] for d in finished['report']['documents']] == ['not-reached']
 
 
 # --- people's precedent, per value, as each piece starts (REV-DAY-S-13, S-10) -----------------
@@ -393,3 +390,4 @@ def test_a_field_named_segmentation_is_never_taken_for_segmentation_by_its_bare_
     plain = client_project(JobClient({'d1': _raw()}, project=fields_project()))
     for name in ('segmentation', 'Segmentation (word level)', 'segmentation (word)'):
         assert [t.id for t in tg.named(plain, [name])[0]] == ['segmentation'], name
+

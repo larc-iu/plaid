@@ -158,18 +158,16 @@ def test_a_job_fills_a_field_on_every_word_of_a_fully_analysed_document(monkeypa
     assert _totals(finished['report']).endswith('Thematic role 9 values, Thematic role left blank 0 words')
 
 
-def test_a_default_plan_does_not_reach_a_fully_analysed_document(monkeypatch):
-    """A planning context that ends with no plan_work: the default plan
-    knows nothing of the job, so it fills the app's default (segmentation,
-    the gloss, the translation) and takes the narrowest walk, skipping
-    filled sentences (REV-DAY-S-12). On analysed and translated text it
-    works no sentence: no piece is shown people's analyses."""
+def test_a_field_job_whose_planning_ends_with_no_plan_writes_nothing(monkeypatch):
+    """A planning context that ends with no plan_work: the job is never
+    worked by a plan made up for it (REV-DF3-2). It ends failed, no piece
+    is shown anything, and nothing is written."""
     client, job, model, written = _job(monkeypatch, None, plan=False)
     finished = run_job(job, runner(job))
-    plan = finished['report']['plan']
-    assert plan['by'] == 'default' and plan['only_empty'] is True
+    assert (finished['state'], finished['reason']) == ('failed', 'no-plan')
+    assert finished['report']['plan']['by'] == 'none'
     assert [p for p in _pieces(model) if p.startswith('Your piece')] == [] and written == {}
-    assert finished['report']['documents'][0]['state'] == 'done'
+    assert finished['report']['documents'][0]['state'] == 'not-reached'
 
 
 def test_only_empty_works_nothing_of_a_fully_analysed_document(monkeypatch):

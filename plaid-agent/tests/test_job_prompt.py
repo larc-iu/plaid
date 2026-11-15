@@ -565,8 +565,6 @@ def test_a_segmenting_piece_is_told_its_task_by_what_its_plan_fills(fills, said,
         assert x in text, (x, text)
     for x in unsaid:
         assert x not in piece and x not in read_first, (x, piece, read_first)
-    if fills == ('segmentation', 'sl-mgloss', 'sl-trans'):
-        assert text == prompt.build_job_prompt(project, sentences=True, targets=tg.app_default(project))
 
 
 @pytest.mark.parametrize('context', ['document', 'planning'])

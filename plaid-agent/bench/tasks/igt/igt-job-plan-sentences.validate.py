@@ -29,9 +29,8 @@ def wrong_other_pieces(ctx):
 
 
 def wrong_default(ctx):
-    """The planning ended with no plan: the job fell back to stretches."""
-    _ended(ctx, DOCS, plan={'pieces': 'sentences', 'by': 'default', 'why': 'no-plan', 'documents': None,
-                            'only_empty': True})
+    """The planning ended with no plan: the job ended writing nothing."""
+    _ended(ctx, DOCS, plan={'by': 'none', 'why': 'no-plan'})
     return handwrite.no_plan()
 
 

@@ -160,6 +160,11 @@ def piece_note(text) -> str:
     return head.rstrip() + NOTE_CUT
 
 
+#: The ``by`` of the plan kept when planning ended with no plan, and the
+#: reason the job then ends failed with, writing nothing (REV-DF3-2).
+NO_PLAN = 'none'
+NO_PLAN_REASON = 'no-plan'
+
 #: Why a piece's sentences are skipped when its model answered nothing twice
 #: (:func:`answered_nothing`).
 NO_ANSWER = 'no-answer'
@@ -1517,7 +1522,8 @@ class IgtRunner:
         sentences, words, how much is blank) with the assistant's reads and
         code, writes nothing, and ends with ``plan_work``. When it ends
         without a valid one after its budget and one decide-now round, the
-        job works in stretches of sentences, and its plan says why."""
+        plan kept names nothing to work (``by`` :data:`NO_PLAN`, ``why``),
+        and the job ends without writing (:meth:`plan_failure`)."""
         if self.plan_made is not None:
             return self.plan_made
         stored = self.plan_stored(self.job.decisions())
@@ -1533,16 +1539,11 @@ class IgtRunner:
                 why = None if plan else 'no-plan'
             except StretchFailed as e:
                 why = e.kind
-            # A default plan knows nothing of the job: it fills the app's
-            # configured default (segmentation and the gloss and translation
-            # fields the configuration names, targets.app_default) and takes
-            # the narrowest walk, the sentences where some of that is empty,
-            # so it never shows a piece a sentence people filled (REV-DAY-S-12).
-            made = plan or {'pieces': SENTENCES, 'piece_instructions': '', 'documents': None, 'only_empty': True,
-                            **({'fills': ids} if (ids := [t.id for t in tg.app_default(project)]) else {})}
-            # Made once: a passing error on its row below sends the same plan
-            # again, never plans again (REV-JG-8).
-            self.plan_pending = {**made, 'by': 'model' if plan else 'default', 'why': why}
+            # No plan is never a plan made up for the job: one that filled the
+            # app's default filled glosses and translations on a job asked
+            # only to check (REV-DF3-2). Made once: a passing error on its row
+            # below sends the same plan again, never plans again (REV-JG-8).
+            self.plan_pending = {**plan, 'by': 'model', 'why': None} if plan else {'by': NO_PLAN, 'why': why}
         text = canonical(self.plan_kept(self.plan_pending))
         rows = [{'form': PLAN_FORM, 'key': analysis_key(text), 'analysis': text, 'count': 1,
                  'document_id': None, 'sentence_id': None}]
@@ -1555,6 +1556,17 @@ class IgtRunner:
         # The job works by its plan only once core holds it.
         self.plan_made = self.plan_pending
         return self.plan_made
+
+    def plan_failure(self, job) -> Optional[str]:
+        """The reason the job ends before its work, or None: ``no-plan``
+        when planning ended with no plan (REV-DF3-2). Every document still
+        to work is then not reached, and nothing is written."""
+        if (self.plan_made or {}).get('by') != NO_PLAN:
+            return None
+        for d in job.order:
+            if (job.rows.get(d) or {}).get('state') not in ROW_FINAL + ('not-reached',):
+                job.update_row(d, state='not-reached')
+        return NO_PLAN_REASON
 
     def plan_kept(self, plan: Dict[str, Any]) -> Dict[str, Any]:
         """The plan as its decision row holds it: the documents it names
@@ -2490,7 +2502,7 @@ class IgtRunner:
 
     def edits_text(self) -> bool:
         """Whether the job's plan says its instructions ask for the text to
-        change (plan_work's ``edits_text``; the default plan does not). The
+        change (plan_work's ``edits_text``). The
         plan kept in core is read when this worker has not read it yet."""
         if self.plan_made is None:
             self.plan_made = self.plan_stored(self.job.decisions())

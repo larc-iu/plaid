@@ -160,21 +160,6 @@ def listed_names(project: IgtProject) -> List[str]:
     return [t.name if seen[t.name.casefold()] == 1 else t.label for t in targets]
 
 
-def app_default(project: IgtProject) -> List[Target]:
-    """What a job fills when its plan names nothing (planning failed): the
-    app's configured default, segmentation (when there is a morpheme layer),
-    the morpheme field ``gloss_field("Morpheme")`` names and the sentence
-    field ``gloss_field("Sentence")`` names (read from the configuration:
-    the field paired with the lexicon's gloss role, the field whose sentence
-    role is translation, else each level's first)."""
-    out = [t for t in fillable(project) if t.id == SEGMENTATION]
-    for scope in ('Morpheme', 'Sentence'):
-        f = project.gloss_field(scope)
-        if f is not None:
-            out.append(_target(project, f))
-    return out
-
-
 def holds_nothing(metadata: Optional[dict], values, link) -> bool:
     """A stored morpheme with no form, no type, no value and no link of its
     own (``metadata`` as stored, ``values`` its span values): the editor's
