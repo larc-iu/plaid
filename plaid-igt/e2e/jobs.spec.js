@@ -176,7 +176,8 @@ test('Stop on the banner stops the job, and the page shows the report', async ({
   await page.goto(`/#/projects/${projectId}/jobs/${jobId}`);
   await expect(jobState(page)).toContainText('Stopped');
   const report = page.getByRole('region', { name: 'Report' });
-  await expect(report).toContainText('Documents not reached');
+  // The document was stopped after 5 of its sentences (REV-DAY-P-13).
+  await expect(report).toContainText('Documents stopped partway');
   await expect(report).toContainText('Too long');
   await expect(report.getByRole('link', { name: 's3' })).toHaveAttribute(
     'href',
