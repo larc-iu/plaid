@@ -79,9 +79,44 @@ def test_what_a_piece_is_told_is_empty():
     assert tg.empty_line(s1, [t['segmentation'], t[MGLOSS]]) == \
         'Empty in s1: segmentation and Morph Gloss in w1 "ka", w3 "sa" | Morph Gloss in w2.m2 "ta".'
     assert tg.empty_line(s1, [t[ROLE]]) == 'Empty in s1: Role in w1 "ka", w2 "pata".'
-    assert tg.empty_line(s1, [t[MPOS]]) == 'Empty in s1: Morph POS in w1 "ka", w2.m1 "pa", w2.m2 "ta", w3 "sa".'
+    assert tg.empty_line(s1, [t[MPOS]]) == \
+        'Empty in s1: Morph POS in w1.m1 "ka", w2.m1 "pa", w2.m2 "ta", w3.m1 "sa".'
     assert tg.empty_line(s1, [t[NOTE], t[TRANS]]) == 'Empty in s1: Note | Translation.'
     assert tg.empty_line(s1, []) is None
+
+
+def test_a_word_with_no_morpheme_of_its_own_is_one_unit_named_as_its_tool_takes_it():
+    """REV-DF-D-3 and D-4: for a morpheme field, a word with no stored
+    morpheme ("ka") and one whose lone stored morpheme holds nothing
+    ("tuna", the editor's default before 2026-09-11) are each ONE unit:
+    named by the word when the job also segments it (the analysis tool
+    takes the word), else wN.m1 (set_field takes it). The Empty line never
+    splits one word in two by a storage detail."""
+    client = JobClient({'d1': document('d1', 'Story', [{'words': [
+        'ka', ('tuna', [(None, None)], None), ('pata', [('pa', 'x'), ('ta', None)], 'human')]}])},
+        project=fields_project())
+    project = load_project(client, 'p1')
+    (s1,) = parse_document(client.documents.get('d1', include_body=True), project).sentences
+    seg, mgloss, mpos = (_target(project, i) for i in ('segmentation', MGLOSS, MPOS))
+    assert [tg.unsegmented(w) for w in s1.words] == [True, True, False]
+    assert tg.empty_line(s1, [seg, mgloss]) == \
+        'Empty in s1: segmentation and Morph Gloss in w1 "ka", w2 "tuna" | Morph Gloss in w3.m2 "ta".'
+    assert tg.empty_line(s1, [mpos]) == 'Empty in s1: Morph POS in w1.m1 "ka", w2.m1 "tuna", w3.m1 "pa", w3.m2 "ta".'
+    assert tg.count([s1], mpos) == 4
+
+
+@pytest.mark.parametrize('ref', ['s1.w1.m1', 's1.w2.m1'], ids=['no-morpheme', 'one-holding-nothing'])
+def test_set_field_takes_the_name_a_morpheme_field_unit_is_given(ref):
+    """The name the Empty line gives a word's one morpheme is one set_field
+    stages its value on (REV-DF-D-3: wN was refused)."""
+    from plaid_agent.igt import toolkit
+    from plaid_agent.igt.workspace import Workspace
+    client = JobClient({'d1': document('d1', 'Story', [{'words': ['ka', ('tuna', [(None, None)], None)]}])},
+                       project=fields_project())
+    ws = Workspace(client, load_project(client, 'p1'))
+    out = toolkit.call_tool(ws, 'set_field', {'document': 'Story', 'refs': [ref], 'field': 'Morph POS', 'value': 'N'})
+    assert not str(out).startswith('Error'), out
+    assert [o['kind'] for o in ws.ops] and all(o.get('value') == 'N' for o in ws.ops if o['kind'] == 'set_span')
 
 
 # --- four jobs through the same code ------------------------------------------------------
@@ -92,8 +127,8 @@ JOBS = {
            'Empty in s1: Role in w1 "ka", w2 "pata".', [], ['s1.w2', 's2.w1']),
     MPOS: ('Fill Morph POS on every morpheme.',
            ('set_field', {'refs': ['s1.w2.m1'], 'field': 'Morph POS', 'value': 'N'}),
-           'Empty in s1: Morph POS in w1 "ka", w2.m1 "pa", w2.m2 "ta", w3 "sa".', [], ['s1.w1', 's1.w2', 's1.w3',
-                                                                                       's2.w1']),
+           'Empty in s1: Morph POS in w1.m1 "ka", w2.m1 "pa", w2.m2 "ta", w3.m1 "sa".', [],
+           ['s1.w1', 's1.w2', 's1.w3', 's2.w1']),
     NOTE: ('Write a Note on every sentence.', ('set_field', {'refs': ['s1'], 'field': 'Note', 'value': 'n.'}),
            'Empty in s1: Note.', [], ['s2']),
     'gloss': ('Segment and gloss the words nobody analysed.',

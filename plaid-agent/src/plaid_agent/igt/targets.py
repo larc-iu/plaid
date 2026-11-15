@@ -131,6 +131,29 @@ def app_default(project: IgtProject) -> List[Target]:
     return out
 
 
+def holds_nothing(metadata: Optional[dict], values, link) -> bool:
+    """A stored morpheme with no form, no type, no value and no link of its
+    own (``metadata`` as stored, ``values`` its span values): the editor's
+    default before 2026-09-11, every field of it derivable from the word.
+    The keep rule (``tools.in_place``) keeps no word whose one morpheme is
+    such, so an analysis given to its word is written whole, form included,
+    as for a word with no morpheme stored (FX), and :func:`unsegmented`
+    counts such a word as one with no morpheme of its own."""
+    md = metadata or {}
+    return (md.get('form') in (None, '') and not md.get('morphType') and not link
+            and all(v in (None, '') for v in values))
+
+
+def unsegmented(w: Word) -> bool:
+    """Whether ``w`` has no morpheme of its own: none stored (it has its
+    derived one), or one stored that holds nothing (:func:`holds_nothing`).
+    Either is ONE unit for a morpheme field (:func:`units`): a storage
+    detail the model cannot see never splits a word in two (REV-DF-D-4)."""
+    stored = [m for m in w.morphemes if not m.virtual]
+    return not stored or (len(stored) == 1 and holds_nothing(
+        stored[0].metadata, [sp.value for sp in stored[0].fields.values()], stored[0].link))
+
+
 def _holds(holder, f: Field) -> bool:
     sp = holder.fields.get(f.name) if holder is not None else None
     return sp is not None and sp.value not in (None, '')
@@ -174,14 +197,17 @@ def empty_in_sentence(s: Sentence, targets: Iterable[Target]) -> List[Target]:
 def units(s: Sentence, targets: Iterable[Target], words: Optional[set] = None,
           fields: Optional[Iterable[Target]] = None) -> List[Tuple[str, str, Target]]:
     """Every unit of ``s`` empty for a target, ``(ref, form, target)`` in the
-    order of the targets and then of the text: ``wN`` for a word (an
-    unsegmented word's derived morpheme too), ``wN.mK`` for a stored
-    morpheme, the form as typed; a sentence field's unit has ref and form
-    ''. ``words`` (word ids) and ``fields`` (sentence level targets), when
-    given, are all that may be named (a stretch's: what the job wrote is
-    left out)."""
+    order of the targets and then of the text: ``wN`` for a word, ``wN.mK``
+    for a morpheme, the form as typed; a sentence field's unit has ref and
+    form ''. An :func:`unsegmented` word is one morpheme for a morpheme
+    field, named as the tool that fills it takes it: ``wN`` when the job
+    also segments it (the analysis tool takes the word), else ``wN.m1``
+    (set_field takes it, REV-DF-D-3). ``words`` (word ids) and ``fields``
+    (sentence level targets), when given, are all that may be named (a
+    stretch's: what the job wrote is left out)."""
     out = []
     fields = None if fields is None else list(fields)
+    segments = [t for t in targets if t.field is None]
     for t in targets:
         if t.scope == 'Sentence':
             if empty(t, s=s) and (fields is None or t in fields):
@@ -190,11 +216,14 @@ def units(s: Sentence, targets: Iterable[Target], words: Optional[set] = None,
         for w in s.words:
             if words is not None and w.id not in words:
                 continue
-            if t.scope == 'Morpheme':
+            if t.scope == 'Morpheme' and unsegmented(w):
+                if empty(t, m=w.morphemes[0]):
+                    whole = any(empty(x, w=w) for x in segments)
+                    out.append((f'w{w.index}' if whole else f'w{w.index}.m1', w.surface, t))
+            elif t.scope == 'Morpheme':
                 for m in w.morphemes:
                     if empty(t, m=m):
-                        out.append((f'w{w.index}' if m.virtual else f'w{w.index}.m{m.index}',
-                                    w.surface if m.virtual else m.form, t))
+                        out.append((f'w{w.index}.m{m.index}', m.form, t))
             elif empty(t, w=w):
                 out.append((f'w{w.index}', w.surface, t))
     return out

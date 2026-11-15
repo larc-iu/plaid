@@ -28,10 +28,11 @@ from ..core.scope import review_documents
 from ..core.plan import by_document, change_of, confirm_preview, held_changes, labelled
 from ..core.provenance import unmark
 from ..core.refs import read_ref, same_form
-from ..core.tools import ToolError, kind_of
+from ..core.tools import ADVICE, ToolError, kind_of
 
 from .plan import (ANALYSIS, KIND, MORPHEME_KEY, MORPHEME_WRITERS, TEXT_SHAPE, WORD_SHAPE, analysed_morphemes,
                    reshaped_subjects)
+from .targets import holds_nothing  # noqa: F401 - the keep rule's, one rule with targets.unsegmented
 from .project import (IgtDoc, Sentence, Word, Morpheme, Link, MARKERS, parse_ref, resolve, mwe_ref,
                       join_morphemes, joiner, plain_ref, planned_word_count, segmentation, split_sentences, word_ref)
 from .fit import form_key
@@ -590,18 +591,6 @@ ANALYSIS_OF = 'analysis_of'
 #: ``[layer id, gloss]``, the gloss it was fitted to. A later analysis of the
 #: word naming another gloss there takes it back (``in_place_back``, REV-KM-2).
 FITTED_TO = 'fitted_to'
-
-
-def holds_nothing(metadata: Optional[dict], values, link) -> bool:
-    """A stored morpheme with no form, no type, no value and no link of its
-    own (``metadata`` as stored, ``values`` its span values): the editor's
-    default before 2026-09-11, every field of it derivable from the word.
-    :func:`in_place` keeps no such morpheme, so an analysis given to its
-    word is written whole, form included, as for a word with no morpheme
-    stored (FX)."""
-    md = metadata or {}
-    return (md.get('form') in (None, '') and not md.get('morphType') and not link
-            and all(v in (None, '') for v in values))
 
 
 def held_chain(w: Word) -> List[Dict[str, Any]]:
