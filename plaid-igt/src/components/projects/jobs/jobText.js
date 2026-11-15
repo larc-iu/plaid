@@ -54,6 +54,47 @@ export const planText = (plan) => {
   return plan.editsText ? `${text} Text may be edited.` : text;
 };
 
+// What one piece of a job wrote, in the report's words for its totals, in
+// their order: "Sentences written in: 2, Changes written: 6, Words analyzed: 4,
+// Gloss: 2 values." Each target's values as the report's rows say them, one
+// written outside the setup said so. "Nothing written." when it wrote nothing.
+const PIECE_COUNTS_BEFORE = [
+  ['analyzed', 'Sentences written in'],
+  ['changes', 'Changes written'],
+  ['deletions', 'Deletions'],
+  ['peoplesValuesChanged', 'Changes to values people wrote'],
+  ['textChanges', 'Changes to the text'],
+  ['translations', 'Translations written'],
+  ['refreshed', 'Translations replaced'],
+  ['words', 'Words analyzed'],
+];
+const PIECE_COUNTS_AFTER = [
+  ['links', 'Lexicon links made'],
+  ['entries', 'Entries created'],
+  ['changed', 'Changes not written, changed during the job'],
+  ['repeated', 'Changes left out, sentence written before an interruption'],
+];
+export const pieceWrittenText = (piece) => {
+  const counts = piece?.counts || {};
+  const said = (pairs) =>
+    pairs
+      .filter(([k]) => counts[k] > 0)
+      .map(([k, label]) => `${label}: ${counts[k].toLocaleString()}`);
+  // A target written outside the setup reads its outside row's count, as the
+  // report's rows do, in the order of their names.
+  const byId = new Map((piece?.fields || []).map((f) => [f.id, f]));
+  (piece?.outside || []).forEach((f) => byId.set(f.id, { ...f, outside: true }));
+  const fields = [...byId.values()]
+    .filter((f) => f.values > 0)
+    .sort((a, b) => (a.field < b.field ? -1 : a.field > b.field ? 1 : 0))
+    .map(
+      (f) =>
+        `${f.field}: ${f.values.toLocaleString()} ${plural(f.values, 'value')}${f.outside === true ? ', not in the setup' : ''}`,
+    );
+  const parts = [...said(PIECE_COUNTS_BEFORE), ...fields, ...said(PIECE_COUNTS_AFTER)];
+  return parts.length ? `${parts.join(', ')}.` : 'Nothing written.';
+};
+
 // The History entry of the job's work in a document, where it wrote
 // something there: the worker names the group before its first write, so a
 // group with no change opens nothing (REV-DF-S-5).

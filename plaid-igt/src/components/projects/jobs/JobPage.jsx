@@ -38,6 +38,7 @@ import {
 } from '@ui/domain/jobs.js';
 import { JobReport } from './JobReport.jsx';
 import { JobHistoryLinks } from './JobHistoryLinks.jsx';
+import { JobActivity } from './JobActivity.jsx';
 import { FillsNames } from './jobLines.jsx';
 import {
   durationText,
@@ -52,7 +53,9 @@ import {
 
 /**
  * A job's own page, `/projects/:projectId/jobs/:jobId`: its state, each of its
- * documents, Stop for whoever may, and once it has ended its report. Read
+ * documents, what each piece of its work did as it finishes (Activity, kept
+ * above the report once the job has ended), Stop for whoever may, and once it
+ * has ended its report. Read
  * again every JOB_POLL_MS while the job is active, and once otherwise.
  *
  * It is a place the assistant reads, as a document is: the panel's turns are
@@ -264,6 +267,7 @@ export const JobPage = ({ project, projectId, jobId, client }) => {
       <JobFacts job={job} readAt={readAt} />
       <h3 className={`${TYPE.card} mb-2 mt-8`}>Documents</h3>
       <JobDocuments job={job} projectId={projectId} />
+      <JobActivity client={client} job={job} projectId={projectId} readAt={readAt} />
       {job.report && (
         <JobReport report={job.report} projectId={projectId} vocabs={project.vocabs || []} />
       )}
@@ -476,7 +480,9 @@ const JobDocuments = ({ job, projectId }) => {
     columns.push({
       key: 'history',
       label: 'History',
-      render: (d) => <JobHistoryLinks projectId={projectId} document={d} />,
+      render: (d) => (
+        <JobHistoryLinks projectId={projectId} document={d} running={isJobActive(job)} />
+      ),
     });
   }
   for (const [key, label] of [

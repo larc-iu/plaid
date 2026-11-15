@@ -70,7 +70,12 @@ const SUMMARY = {
 };
 
 const clientOf = (job, undo = vi.fn(async () => SUMMARY)) => ({
-  jobs: { get: vi.fn(async () => job), cancel: vi.fn(), undo },
+  jobs: {
+    get: vi.fn(async () => job),
+    cancel: vi.fn(),
+    undo,
+    piecesPage: vi.fn(async () => ({ entries: [], nextCursor: null })),
+  },
   documents: {
     auditPage: vi.fn(async (documentId, { entryId }) => ({
       entries: documentId === 'd2' ? [{ id: entryId, partOf: 'b1', ops: [] }] : [],

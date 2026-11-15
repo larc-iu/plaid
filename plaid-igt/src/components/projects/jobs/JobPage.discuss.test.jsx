@@ -59,7 +59,11 @@ const ASSISTANT = {
 };
 
 const clientOf = (job, services = [ASSISTANT]) => ({
-  jobs: { get: vi.fn(async () => job), cancel: vi.fn() },
+  jobs: {
+    get: vi.fn(async () => job),
+    cancel: vi.fn(),
+    piecesPage: vi.fn(async () => ({ entries: [], nextCursor: null })),
+  },
   messages: { discoverServices: vi.fn(async () => services) },
 });
 
