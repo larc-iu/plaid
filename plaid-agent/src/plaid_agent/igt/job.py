@@ -31,6 +31,7 @@ import re
 import unicodedata
 import uuid
 from collections import Counter
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
 from plaid_client import DocumentLockLost, PlaidAPIError
@@ -121,6 +122,13 @@ LEFT_CODES = ('text', 'shape', 'entry-new', 'entry-gone', 'expression')
 #: What a refusal the job could not follow left (``JobWorkspace.leave_it``).
 REFUSED_FORM = ' refused '
 TABLE_FORM = ' table '
+#: The form of a piece's summary among the job's decisions (CONTRACT, added
+#: by LV): core's ``piece-form``, the one form any reader of the job reads
+#: (``GET /jobs/{id}/pieces``). One row for the plan and one for each piece
+#: once what it wrote is known, keyed by a sequence number of
+#: PIECE_SEQ_DIGITS digits, so newest first is the key's order.
+PIECE_FORM = ' piece'
+PIECE_SEQ_DIGITS = 6
 DROPPED_FORM = ' dropped'
 #: How many tables pieces handed the report past JOB_TABLES_MAX a job keeps.
 TABLES_DROPPED_FORM = ' tables dropped'
@@ -162,6 +170,51 @@ def piece_note(text) -> str:
         spaces = [i for i in range(room + 1) if text[i].isspace()]
         head = text[:spaces[-1]] if spaces else text[:room]
     return head.rstrip() + NOTE_CUT
+
+
+def summary_text(value: Dict[str, Any]) -> str:
+    """A piece's summary (or the plan's) as its decision row keeps it:
+    canonical JSON, its keys kebab-cased as the clients send a report, so
+    each client reads them in its own case (``GET /jobs/{id}/pieces``). Within
+    JOB_ANALYSIS_MAX_CHARS: past it the skipped sentences and then the
+    refusals are cut from the end, ``skipped_more`` and ``refused_more``
+    counting them. The note is at most JOB_NOTE_MAX_CHARS already."""
+    from plaid_client.transforms import transform_request
+    value = {k: (list(v) if isinstance(v, list) else v) for k, v in value.items()}
+    while True:
+        text = canonical(transform_request(value))
+        cut = next((k for k in ('skipped', 'refused') if value.get(k)), None)
+        if len(text) <= JOB_ANALYSIS_MAX_CHARS or cut is None:
+            return text
+        value[cut].pop()
+        value[f'{cut}_more'] = (value.get(f'{cut}_more') or 0) + 1
+
+
+def written_sums(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """What writing ``rows`` wrote, as a document row's counts say it:
+    each count summed, ``analyzed`` each sentence written in once, ``words``
+    each word analysed once, ``fields`` and ``outside`` by target
+    (:func:`core_job.field_counts`). Only the non-zero counts."""
+    counts: Counter = Counter()
+    analyzed, words = set(), set()
+    fields: List[Dict[str, Any]] = []
+    outside: List[Dict[str, Any]] = []
+    for r in rows:
+        words |= set(r.get('words') or ())
+        fields += r.get('fields') or []
+        outside += r.get('outside') or []
+        for k, n in (r.get('counts') or {}).items():
+            if k == 'analyzed':
+                analyzed.add(r['sentence'])
+            else:
+                counts[k] += n
+    counts['analyzed'], counts['words'] = len(analyzed), len(words)
+    out: Dict[str, Any] = {'counts': {k: n for k, n in counts.items() if n}}
+    if fields:
+        out['fields'] = field_counts(fields, {f['id'] for f in outside})
+    if outside:
+        out['outside'] = field_counts(outside)
+    return out
 
 
 #: The ``by`` of the plan kept when planning ended with no plan, and the
@@ -1474,6 +1527,20 @@ class IgtRunner:
         #: document (their ``LOOSE``) its ops held: a document put off or
         #: gone hands on to the next write only those no landed try wrote
         self.try_loose: Dict[str, set] = {}
+        #: piece key -> the summary of a piece not yet kept (:meth:`begin_summary`)
+        self.unsummed: Dict[str, Dict[str, Any]] = {}
+        #: the keys of the pieces whose summary core holds, and the highest
+        #: sequence number among them, read once per worker
+        #: (:meth:`summaries_known`)
+        self.summarized: Optional[set] = None
+        self.piece_seq = 0
+        #: the model calls of the planning or of the piece in hand, and the
+        #: heartbeat's line as it was before they were counted on it and as
+        #: counted (:meth:`pace`)
+        self.calls_now = 0
+        self.counted: Optional[Tuple[str, str]] = None
+        #: the plan's summary row, made with the plan and kept in its call
+        self.plan_summary: Optional[Dict[str, Any]] = None
 
     # --- reading ---------------------------------------------------------------
 
@@ -1597,6 +1664,7 @@ class IgtRunner:
                     if (job.rows.get(d) or {}).get('state') != 'in-use':
                         still.append(d)
             deferred = still
+        core_job.through_core(job, self.end_summaries)
 
     # --- the plan (the owner's ruling 14) -----------------------------------------
 
@@ -1633,6 +1701,7 @@ class IgtRunner:
             # output or repeating) is planned once more in a fresh context
             # (REV-DF4-2). A budget spent or a context too long is no plan,
             # planned once: a second planning would end the same (REV-DF5-1).
+            self.calls_now = 0
             for _ in range(tries):
                 try:
                     plan = self.planning(project, facts)
@@ -1652,9 +1721,18 @@ class IgtRunner:
                 # The setup's targets the project no longer has, by the
                 # names the person saw, for the page and read_job.
                 self.plan_pending['gone'] = list(setup.gone)
+            # What the job page shows first of what the job did: the plan,
+            # as the page words it (CONTRACT, added by LV).
+            self.plan_summary = self.summary_row(0, {
+                'plan': {**{k: self.plan_pending.get(k) for k in ('by', 'why', 'pieces', 'only_empty', 'edits_text',
+                                                                  'gone') if self.plan_pending.get(k) is not None},
+                         **self.fills_named(job, self.plan_pending)},
+                'calls': self.calls_now, 'ended_at': self.now_iso()})
         text = canonical(self.plan_kept(self.plan_pending))
         rows = [{'form': PLAN_FORM, 'key': analysis_key(text), 'analysis': text, 'count': 1,
                  'document_id': None, 'sentence_id': None}]
+        if self.plan_summary is not None:
+            rows.append(self.plan_summary)
         told = self.plan_pending.get('piece_instructions') or ''
         if told:
             # In the same call as the plan, so core holds both or neither.
@@ -1756,7 +1834,8 @@ class IgtRunner:
                 ws.decide_now = True
             try:
                 # Its budget's decide-now line is JOB_PLAN_NOW, never a piece's.
-                result = self.turn(ws, kit, system, transcript, pace=self.pace(decided, line=JOB_PLAN_NOW))
+                result = self.turn(ws, kit, system, transcript,
+                                   pace=self.pace(decided, line=JOB_PLAN_NOW, counted=''))
                 if ws.plan_work is None:
                     # One decide-now round, plan_work alone offered, whatever
                     # the turn ended on (REV-DF4-2: a planner told by its
@@ -1764,7 +1843,7 @@ class IgtRunner:
                     # always reaches the model.
                     ws.decide_now = True
                     more = transcript + list(result.messages or []) + [{'role': 'user', 'content': JOB_PLAN_NOW}]
-                    self.turn(ws, kit, system, more, pace=self.pace(decided, line=JOB_PLAN_NOW))
+                    self.turn(ws, kit, system, more, pace=self.pace(decided, line=JOB_PLAN_NOW, counted=''))
                 return ws.plan_work
             except StretchFailed:
                 # A model fault after plan_work kept a plan loses nothing:
@@ -1877,6 +1956,8 @@ class IgtRunner:
                 self.fall_back(SELECTION, 'failed')
                 return False
         ws, note = staged
+        key = analysis_key(canonical({'document': None, 'first': None, 'whole': True}))
+        self.begin_summary(key, None, None, [], True, note, self.refused_of(ws, None))
         # The piece's note and tables, tried again on their own: a passing
         # error on their row never runs the model context again (REV-JG3-9).
         core_job.through_core(job, lambda: self.record_piece(
@@ -1911,8 +1992,9 @@ class IgtRunner:
                 core_job.through_core(job, lambda: self.fall_back(d, NOT_READ))
                 continue
             job.set(current_document=d)
+            self.unsummed[key]['parts'][d] = set(shown)
             try:
-                if self.write_piece(project, d, ws, ws._docs[d], by_doc.get(d, []) + carried, note, shown):
+                if self.write_piece(project, d, ws, ws._docs[d], by_doc.get(d, []) + carried, note, shown, key):
                     loose = []
             except Deferred:
                 # Its writes were dropped: it is worked again as a piece of its own.
@@ -1944,10 +2026,11 @@ class IgtRunner:
             from .jobapply import IGNORED_KINDS
             left = [self.describe_loose(op) for op in loose if op.get('kind') not in IGNORED_KINDS]
             core_job.through_core(job, lambda: self.record_changes(left, note))
+        core_job.through_core(job, lambda: self.end_summary(key))
         return True
 
     def write_piece(self, project: IgtProject, document_id: str, ws: JobWorkspace, doc,
-                    ops: List[Dict[str, Any]], note: str, shown=frozenset()) -> bool:
+                    ops: List[Dict[str, Any]], note: str, shown=frozenset(), summary: Optional[str] = None) -> bool:
         """A selection's write in one of the documents its piece read: THE
         write (:meth:`write`), its piece the sentences of the document a read
         printed to the model (``shown``, sentence ids, REV-JG3-1: the gate
@@ -1961,7 +2044,8 @@ class IgtRunner:
         def step():
             part = [s for s in doc.sentences if s.id in shown]
             prints = {s.id: ws.sentence_print(doc, s) for s in doc.sentences}
-            return self.write(project, document_id, ws, doc, part, prints, ops, note, SELECTION_TAG, selection=True)
+            return self.write(project, document_id, ws, doc, part, prints, ops, note, SELECTION_TAG, selection=True,
+                              summary=summary)
 
         def put_off():
             raise Deferred(document_id)
@@ -2185,7 +2269,7 @@ class IgtRunner:
             last = done + len(part)
             job.set(message=f'Sentences {done + 1} to {last} of {max(total, last)}.')
             halve([s.id for s in part], lambda ids: self.attempt(project, document_id, ids),
-                  lambda sid, kind: self.skip(document_id, doc, sid, 'failed', kind))
+                  lambda sid, kind: self.failed_piece(document_id, doc, sid, kind))
 
     def whole_document(self, project: IgtProject, doc) -> bool:
         """Whether this document is worked as one piece: the plan says
@@ -2308,7 +2392,9 @@ class IgtRunner:
                     raise
                 raise StretchFailed(kind, str(e)) from e
         if staged is not None:
-            self.write(project, document_id, *staged)
+            *staged, key = staged
+            self.write(project, document_id, *staged, summary=key)
+            self.end_summary(key)
 
     def model_work(self, project: IgtProject, document_id: str, sentence_ids: List[str]):
         """The model's part of a piece of one document (a stretch, or the
@@ -2345,11 +2431,14 @@ class IgtRunner:
         message = self.message(ws, project, doc, part, st, whole)
         note = self.run_piece(ws, project, message, document_id, sentences=self.in_sentences() and not whole)
         piece = {'document': document_id, 'first': part[0].id if part else None, 'whole': whole}
+        key = analysis_key(canonical(piece))
+        self.begin_summary(key, document_id, doc.name, part, whole, note, self.refused_of(ws, document_id))
         if ws.answered_nothing:
             # Asked twice, it staged nothing and said nothing: its sentences
             # are skipped with a reason of their own, never counted worked.
             for s in part:
                 self.skip(document_id, doc, s.id, NO_ANSWER, None)
+            self.end_summary(key)
             return None
         self.record_piece(project, piece, note, ws.tables, doc, part)
         self.record_refusals(ws, document_id)
@@ -2361,7 +2450,7 @@ class IgtRunner:
         # What the piece staged outside its document goes with its write and
         # is proposed there, never written: it is not under this document's
         # lock (the rule's ``place``).
-        return ws, doc, part, prints, list(ws.ops), note, tag
+        return ws, doc, part, prints, list(ws.ops), note, tag, key
 
     def run_piece(self, ws: JobWorkspace, project: IgtProject, message: str, folder: str,
                   sentences: bool = False) -> str:
@@ -2389,7 +2478,8 @@ class IgtRunner:
 
         def decided():
             ws.decide_now = True
-        pace = self.pace(decided)
+        self.calls_now = 0
+        pace = self.pace(decided, counted=' in this piece')
         result = self.turn(ws, kit, system, transcript, pace=pace)
         job.check()
         if answered_nothing(ws, result.text):
@@ -2399,16 +2489,28 @@ class IgtRunner:
             ws.answered_nothing = answered_nothing(ws, result.text)
         return piece_note(result.text)
 
-    def pace(self, decided=lambda: None, line: Optional[str] = None) -> Pace:
+    def pace(self, decided=lambda: None, line: Optional[str] = None, counted: Optional[str] = None) -> Pace:
         """The budgets of one stretch, asked only while nobody waits for the
         model (``yield_to_people``). ``line``: its decide-now line, a
-        piece's unless given."""
+        piece's unless given. Each call is counted (``calls_now``), and with
+        ``counted`` the heartbeat's line says how many after its own words:
+        "Sentences 26 to 30 of 41. 3 model calls in this piece." The count
+        goes with the next heartbeat, never one of its own (BRIEF LV)."""
         job = self.job
+        said = job.status.get('message') or ''
+        if self.counted is not None and said == self.counted[1]:
+            said = self.counted[0]
 
         def before_call():
             job.check()
             job.yield_to_people()
-        return Pace(self.cfg.model, before_call=before_call, count=self.count, decided=decided,
+
+        def on_call():
+            self.calls_now += 1
+            if counted is not None and said:
+                self.counted = (said, f'{said} {_n(self.calls_now, "model call")}{counted}.')
+                job.say(self.counted[1])
+        return Pace(self.cfg.model, before_call=before_call, count=self.count, decided=decided, on_call=on_call,
                     **({'line': line} if line else {}))
 
     def turn(self, ws, kit, system: str, transcript, decided=lambda: None, pace: Optional[Pace] = None):
@@ -2892,7 +2994,7 @@ class IgtRunner:
 
     def write(self, project: IgtProject, document_id: str, ws: JobWorkspace, doc, part: List[Sentence],
               prints: Dict[str, str], ops: List[Dict[str, Any]], note: str = '', piece: str = '',
-              selection: bool = False) -> bool:
+              selection: bool = False, summary: Optional[str] = None) -> bool:
         """THE write of every piece of the job in one document, whatever the
         plan cut (a stretch, a whole document, the whole selection): through
         :meth:`gate` first, then under the document's lock by the apply rule
@@ -2901,7 +3003,8 @@ class IgtRunner:
         (:meth:`record_changes`). ``doc`` is the document as the piece read
         it, ``part`` the piece's sentences in it, ``piece`` its tag
         (:func:`piece_tag`), ``selection`` whether it is a selection's write
-        (:meth:`entries_that_fit`).
+        (:meth:`entries_that_fit`), ``summary`` the key of the piece whose
+        summary counts it (:meth:`begin_summary`).
 
         Safe to do again after a failure anywhere in it: the gate asks core
         what landed, and the same piece leaves out what it staged in a
@@ -2948,7 +3051,7 @@ class IgtRunner:
             try:
                 try:
                     w, changed, after, vouched, proposed = self.write_held(
-                        project, document_id, client, ws, st, prints, ops, group, piece, repeated, undone)
+                        project, document_id, client, ws, st, prints, ops, group, piece, repeated, undone, summary)
                 finally:
                     lock.__exit__(None, None, None)
             except DocumentLockLost as e:
@@ -3017,7 +3120,7 @@ class IgtRunner:
 
     def write_held(self, project: IgtProject, document_id: str, client, ws: JobWorkspace, st: Stretch,
                    prints: Dict[str, str], ops: List[Dict[str, Any]], group: str, piece: str = '',
-                   repeated: int = 0, undone: int = 0):
+                   repeated: int = 0, undone: int = 0, summary: Optional[str] = None):
         """The write, the lock held: the piece's ops checked again against
         the document as it is (:meth:`recheck`), sent (:meth:`send`), and
         the document read again BEFORE the lock goes. ``(the write, changed
@@ -3044,6 +3147,9 @@ class IgtRunner:
         w = Write(document_id, piece, st, own, kept, counts, fresh, proposed,
                   describe=lambda o, here: self.describe(o, fresh, project) if here else self.describe_loose(o),
                   within=setup.ids if setup is not None else None)
+        if summary in self.unsummed:
+            # Before the first request: a write cut short is counted by what of it landed.
+            self.unsummed[summary]['writes'].add(w.id)
         self.send(client, project, document_id, group, w)
         known = client.document_versions.get(document_id)
         after = self.read(project, document_id, client)
@@ -3445,6 +3551,20 @@ class IgtRunner:
         (the piece's, when it names none), so the report lists it
         (``refused``, REV-DAY-SURFACE point 2)."""
         rows = []
+        for r in self.refused_of(ws, document_id):
+            text = canonical(r)
+            key = analysis_key(text)
+            rows.append({'form': REFUSED_FORM + key, 'key': key, 'analysis': text, 'count': 1,
+                         'document_id': r['document'], 'sentence_id': None})
+        if rows:
+            self.job.add_decisions(rows)
+
+    @staticmethod
+    def refused_of(ws: JobWorkspace, document_id: Optional[str]) -> List[Dict[str, Any]]:
+        """What the piece's refusals left, each ``{document, sentence_id,
+        sentence, what, code}``, by the document holding its sentence (the
+        piece's, when it names none)."""
+        out = []
         for e in ws.left_by_refusal:
             d, where = document_id, None
             for doc in ws._docs.values():
@@ -3452,13 +3572,106 @@ class IgtRunner:
                 if s is not None and s[0] is not None:
                     d, where = doc.id, f's{s[0].index}'
                     break
-            text = canonical({'document': d, 'sentence_id': e.get('sentence_id'), 'sentence': where,
-                              'what': _cut(e['what'], JOB_CHANGE_VALUE_CHARS), 'code': e.get('code')})
-            key = analysis_key(text)
-            rows.append({'form': REFUSED_FORM + key, 'key': key, 'analysis': text, 'count': 1, 'document_id': d,
-                         'sentence_id': None})
-        if rows:
-            self.job.add_decisions(rows)
+            out.append({'document': d, 'sentence_id': e.get('sentence_id'), 'sentence': where,
+                        'what': _cut(e['what'], JOB_CHANGE_VALUE_CHARS), 'code': e.get('code')})
+        return out
+
+    # --- what each piece did, for the job page (CONTRACT, added by LV) ----------------
+
+    def now_iso(self) -> str:
+        return datetime.fromtimestamp(self.job.now(), timezone.utc).isoformat(timespec='seconds') \
+            .replace('+00:00', 'Z')
+
+    @staticmethod
+    def summary_row(seq: int, value: Dict[str, Any], document_id: Optional[str] = None,
+                    sentence_id: Optional[str] = None) -> Dict[str, Any]:
+        """The decision row of the plan's summary (``seq`` 0) or a piece's."""
+        return {'form': PIECE_FORM, 'key': f'{seq:0{PIECE_SEQ_DIGITS}d}', 'analysis': summary_text(value),
+                'count': 1, 'document_id': document_id, 'sentence_id': sentence_id}
+
+    def summaries_known(self) -> None:
+        """Read once per worker which pieces core holds a summary of, and
+        the highest sequence number: a resumed job numbers on from it, and
+        never sums a piece up twice."""
+        if self.summarized is not None:
+            return
+        found, seq = set(), 0
+        for r in self.job.lookup_decisions([PIECE_FORM]):
+            try:
+                seq = max(seq, int(r.get('key') or 0))
+                key = json.loads(r['analysis']).get('piece')
+            except (ValueError, TypeError, KeyError, AttributeError):
+                continue
+            if key:
+                found.add(key)
+        self.summarized, self.piece_seq = found, max(self.piece_seq, seq)
+
+    def begin_summary(self, key: str, document_id: Optional[str], name: Optional[str], part: List[Sentence],
+                      whole: bool, note: str, refused: List[Dict[str, Any]]) -> None:
+        """A piece whose model context has ended, summed up once what it
+        wrote is known (:meth:`end_summary`). The same piece taken up again
+        (after a write put off, a document gone for a while) keeps the
+        writes of its earlier run and adds its model calls, and its note and
+        refusals are the last run's."""
+        earlier = self.unsummed.get(key) or {}
+        ranged = bool(part) and not whole
+        self.unsummed[key] = {
+            'document': document_id, 'name': name, 'whole': whole,
+            'first': f's{part[0].index}' if ranged else None, 'last': f's{part[-1].index}' if ranged else None,
+            'first_id': part[0].id if ranged else None,
+            'parts': {**(earlier.get('parts') or {}), **({document_id: {s.id for s in part}} if document_id else {})},
+            'writes': set(earlier.get('writes') or ()), 'seq': earlier.get('seq'),
+            'note': note, 'refused': refused, 'calls': (earlier.get('calls') or 0) + self.calls_now}
+
+    def end_summary(self, key: str) -> None:
+        """Keep the summary of piece ``key`` among the job's decisions, once
+        (a piece core already holds one of is not summed up again): what
+        LANDED of its own writes, by the writing rows' rules (:meth:`view`,
+        the fate of any try not known asked of core first), never what a try
+        meant to write, its skipped sentences, its refusals, its note, its
+        model calls and when it ended. Its sequence number is given once, so
+        a call sent again is the same row."""
+        p = self.unsummed.get(key)
+        if p is None:
+            return
+        self.summaries_known()
+        if key in self.summarized:
+            self.unsummed.pop(key, None)
+            return
+        unknown = [t for d in p['parts'] for t in self.unknown(d)]
+        if unknown:
+            self.look_up(unknown)
+        rows = []
+        for d in p['parts']:
+            mine, landed = self.view(d)
+            rows += [r for r in mine if r.get('write') in p['writes'] and landed(r)]
+        skipped = [{**s, 'document_id': d} for d, ids in p['parts'].items()
+                   for s in (self.job.rows.get(d) or {}).get('skipped') or [] if s.get('sentence_id') in ids]
+        if p['seq'] is None:
+            self.piece_seq += 1
+            p['seq'] = self.piece_seq
+        value = {'piece': key, **{k: p[k] for k in ('document', 'name', 'first', 'last', 'first_id', 'whole',
+                                                    'note', 'calls')},
+                 **written_sums(rows), 'ended_at': self.now_iso(),
+                 **({'skipped': skipped} if skipped else {}), **({'refused': p['refused']} if p['refused'] else {})}
+        self.job.add_decisions([self.summary_row(p['seq'], value, p['document'], p['first_id'])])
+        self.summarized.add(key)
+        self.unsummed.pop(key, None)
+
+    def end_summaries(self) -> None:
+        """Sum up every piece not summed up yet: one whose write was put off
+        and never taken again, or whose document went."""
+        for key in list(self.unsummed):
+            self.end_summary(key)
+
+    def failed_piece(self, document_id: str, doc, sentence_id: str, kind: Optional[str]) -> None:
+        """A stretch of one sentence whose model work failed: skipped, and
+        summed up as a piece that wrote nothing."""
+        self.skip(document_id, doc, sentence_id, 'failed', kind)
+        s = next((x for x in doc.sentences if x.id == sentence_id), None)
+        key = analysis_key(canonical({'document': document_id, 'first': sentence_id, 'whole': False}))
+        self.begin_summary(key, document_id, doc.name, [s] if s is not None else [], False, '', [])
+        self.end_summary(key)
 
     def fallen_back(self) -> Dict[str, str]:
         """Document id (or ``selection``) -> why it was worked in smaller
@@ -3618,28 +3831,14 @@ class IgtRunner:
         passes it. Nothing of what is left blank: the report counts it from
         the document (:meth:`left_blank`), and a row never says nothing is
         left where nothing was counted (BRIEF NW round 3)."""
-        counts = empty_counts()
-        analyzed, words = set(), set()
-        fields: List[Dict[str, Any]] = []
-        outside: List[Dict[str, Any]] = []
         rows, landed = self.view(document_id)
-        for r in rows:
-            if not landed(r):
-                continue
-            words |= set(r.get('words') or ())
-            fields += r.get('fields') or []
-            outside += r.get('outside') or []
-            for k, n in (r.get('counts') or {}).items():
-                if k == 'analyzed':
-                    analyzed.add(r['sentence'])
-                else:
-                    counts[k] = counts.get(k, 0) + n
-        counts['analyzed'], counts['words'] = len(analyzed), len(words)
-        if fields:
-            counts['fields'] = field_counts(fields, {f['id'] for f in outside})
-        if outside:
+        sums = written_sums([r for r in rows if landed(r)])
+        counts = {**empty_counts(), **sums['counts']}
+        if sums.get('fields'):
+            counts['fields'] = sums['fields']
+        if sums.get('outside'):
             # What it wrote outside its setup, the translation's too (REV-SU-B-4).
-            counts['outside'] = field_counts(outside)
+            counts['outside'] = sums['outside']
         row = self.job.rows.get(document_id) or {}
         failed = len(self.unlisted.get(document_id) or ())
         more = max((row.get('counts') or {}).get(SKIPPED_MORE) or 0,
@@ -4105,6 +4304,11 @@ class IgtRunner:
         list cut at JOB_REPORT_LIST_MAX. Read from the job's decisions, so a
         resumed job reports its earlier runs too. Empty parts when they
         cannot be read: the report is still written."""
+        try:
+            # A job stopped in its work: what each piece in hand wrote, so far as it is known.
+            core_job.through_core(job, self.end_summaries)
+        except Exception as e:  # noqa: BLE001 - a report without them rather than none
+            logger.warning('Job %s: the summaries of its last pieces could not be kept: %s', job.id, e)
         try:
             rows = core_job.through_core(job, job.decisions)
         except Exception as e:  # noqa: BLE001 - a report without these parts rather than none

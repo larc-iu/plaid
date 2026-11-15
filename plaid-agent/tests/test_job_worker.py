@@ -210,6 +210,16 @@ def test_the_scripted_model_answers_in_order_and_repeats_its_last_reply(tmp_path
     assert m().choices[0].message.content == 'Done.' and m().choices[0].message.content == 'Done.'
 
 
+def test_a_scripted_reply_may_wait_before_it_is_given(tmp_path, monkeypatch):
+    path = tmp_path / 'model.json'
+    path.write_text('[{"content": "Slow.", "wait_s": 7}, {"content": "Done."}]')
+    slept = []
+    monkeypatch.setattr(jobworker.time, 'sleep', slept.append)
+    m = jobworker.ScriptedModel.load(str(path))
+    assert m().choices[0].message.content == 'Slow.' and slept == [7]
+    assert m().choices[0].message.content == 'Done.' and slept == [7]
+
+
 def test_a_scripted_model_is_refused_beside_an_api_base(tmp_path, capsys):
     path = tmp_path / 'model.json'
     path.write_text('[{"content": "Done."}]')

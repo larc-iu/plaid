@@ -7,7 +7,7 @@ import re
 from job_fixtures import TRANSLATING, JobClient, Model, call, document, reply, runner, start, use
 
 from plaid_agent.core.job import analysis_key, canonical
-from plaid_agent.igt.job import RECORD_FORM, WRITING_FORM, IgtRunner
+from plaid_agent.igt.job import PIECE_FORM, RECORD_FORM, WRITING_FORM, IgtRunner
 
 
 def _analyse_all(asked, n, kwargs):
@@ -45,7 +45,8 @@ def test_a_stretch_counts_what_it_wrote_and_records_its_decisions(monkeypatch):
     decided = client.jobs.decision_rows['J5']
     by_form = {}
     for (form, key), r in decided.items():
-        if form.startswith((' note ', ' plan')):
+        # A piece's summary is keyed by its sequence number (BRIEF LV).
+        if form.startswith((' note ', ' plan')) or form == PIECE_FORM:
             continue
         assert key == analysis_key(r['analysis'])
         if form.startswith((RECORD_FORM, WRITING_FORM)):

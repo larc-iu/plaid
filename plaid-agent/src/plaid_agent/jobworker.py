@@ -17,8 +17,10 @@ disk, the only place a job's transcripts go (the owner, SPEC question 2).
 ``--scripted-model PATH`` answers every model call from a file instead of a
 model, for tests and a rehearsal on a sandbox: a JSON list of replies in
 order, each ``{"content": "Done."}`` or ``{"calls": [{"name": ..., "arguments":
-{...}}]}``, the last one given again once the list runs out. No model is
-asked anything, so it is refused together with ``--api-base``.
+{...}}]}``, the last one given again once the list runs out. A reply with
+``"wait_s"`` is given that many seconds late, as a slow model's (a rehearsal
+of a job seen while it runs). No model is asked anything, so it is refused
+together with ``--api-base``.
 """
 
 import argparse
@@ -58,6 +60,8 @@ class ScriptedModel:
     def __call__(self, **kwargs):
         r = self.replies[min(self.n, len(self.replies) - 1)]
         self.n += 1
+        if r.get('wait_s'):
+            time.sleep(r['wait_s'])
         calls = [SimpleNamespace(id=f'scripted-{self.n}-{i}', type='function',
                                  function=SimpleNamespace(name=c['name'],
                                                           arguments=json.dumps(c.get('arguments') or {})))
