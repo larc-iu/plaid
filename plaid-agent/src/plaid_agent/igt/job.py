@@ -521,6 +521,18 @@ def word_analysis(w: Word, made: frozenset = frozenset()) -> Dict[str, Any]:
             'word': {n: _nfc(sp.value) for n, sp in sorted(w.fields.items()) if sp.value not in (None, '')}}
 
 
+def people_analysis(w: Word, job_id: Optional[str]) -> Dict[str, Any]:
+    """``word_analysis`` of a word as people wrote it: every value and link
+    the job ``job_id`` wrote (``job_piece``) left out, per value."""
+    a = word_analysis(w)
+    for m, am in zip(w.morphemes, a['morphemes']):
+        am['fields'] = {n: v for n, v in am['fields'].items() if not job_piece(m.fields[n].metadata, job_id)}
+        if m.link is not None and job_piece(m.link.metadata, job_id):
+            am['entry'] = None
+    a['word'] = {n: v for n, v in a['word'].items() if not job_piece(w.fields[n].metadata, job_id)}
+    return a
+
+
 def harmonized_part(analysis: Dict[str, Any]) -> Dict[str, Any]:
     """What harmonize compares an analysis by: the morphemes (form, type,
     "=", their fields, their entries), never ``made``. The word fields do not
@@ -1254,9 +1266,10 @@ class IgtRunner:
         #: people's analyses as last read (``read_people``), and per document
         #: the version it was read at and its part of them
         self.people: Optional[Dict[str, Any]] = None
+        self.precedent_people: Dict[str, Any] = {}
         #: the field values index (:meth:`values_of`), read with ``people``
         self.values: Dict[Tuple[str, str], Dict[str, Dict[str, int]]] = {}
-        self.people_read: Dict[str, Tuple[Any, Dict[str, Any], Dict[Tuple[str, str], Any]]] = {}
+        self.people_read: Dict[str, Tuple[Any, Dict[str, Any], Dict[Tuple[str, str], Any], Dict[str, Any]]] = {}
         #: what harmonize has written so far, for the report of a job stopped in it
         self.harmonize_done: Optional[Dict[str, Any]] = None
         #: document id -> the job's writing rows of it (:meth:`writing_rows`),
@@ -2098,6 +2111,10 @@ class IgtRunner:
         st = Stretch(doc, project, part, job.id, self.known_words(document_id), self.written(document_id),
                      self.targets(project))
         whole = self.whole_document(project, doc)
+        # People's work as it is when the piece starts (REV-DAY-S-10): one
+        # listing of the documents, and a read of those whose version moved
+        # (the job's own last write, a person's), never the whole project.
+        self.read_people(project)
         if st.empty() and not self.every_sentence():
             # Nothing to do: rows that say so, as a write that sends nothing.
             self.manifest(Write(document_id, '', st, [s.id for s in part], [], Counter(), doc))
@@ -2259,12 +2276,15 @@ class IgtRunner:
     # --- precedent ------------------------------------------------------------------
 
     def people_index(self, ws: Workspace, project: IgtProject) -> Dict[str, Dict[str, Any]]:
-        """form -> {key: {analysis, count}} over every word people analysed
-        in the project (``protected``), as :meth:`read_people` last read it,
-        read now when it never was."""
+        """The evidence's people's index: form -> {key: {analysis, count}}
+        over every word people analysed in the project (``protected``), each
+        analysis per value (``people_of(per_value=True)``), as
+        :meth:`read_people` last read it, read now when it never was.
+        Harmonize decides by ``self.people``, which leaves out a whole word
+        the job wrote in place on (REV-KM-3)."""
         if self.people is None:
             self.read_people(project)
-        return self.people
+        return self.precedent_people
 
     def read_people(self, project: IgtProject) -> None:
         """Read people's analyses as the project is now (REV-J-B2 S2-1): as
@@ -2288,17 +2308,20 @@ class IgtRunner:
                 self.people_read.pop(d['id'], None)
                 continue
             self.people_read[d['id']] = (d.get('version'), self.people_of(doc, self.job.id),
-                                         self.values_of(doc, self.job.id))
+                                         self.values_of(doc, self.job.id),
+                                         self.people_of(doc, self.job.id, per_value=True))
         listed_ids = {d['id'] for d in listed}
         index: Dict[str, Dict[str, Any]] = {}
+        shown: Dict[str, Dict[str, Any]] = {}
         values: Dict[Tuple[str, str], Dict[str, Dict[str, int]]] = {}
-        for did, (_, part, vals) in self.people_read.items():
+        for did, (_, part, vals, by_value) in self.people_read.items():
             if did not in listed_ids:
                 continue
-            for form, keys in part.items():
-                for key, x in keys.items():
-                    slot = index.setdefault(form, {}).setdefault(key, {'analysis': x['analysis'], 'count': 0})
-                    slot['count'] += x['count']
+            for into, of in ((index, part), (shown, by_value)):
+                for form, keys in of.items():
+                    for key, x in keys.items():
+                        slot = into.setdefault(form, {}).setdefault(key, {'analysis': x['analysis'], 'count': 0})
+                        slot['count'] += x['count']
             for where, forms in vals.items():
                 into = values.setdefault(where, {})
                 for form, counts in forms.items():
@@ -2306,21 +2329,26 @@ class IgtRunner:
                         into.setdefault(form, {})
                         into[form][v] = into[form].get(v, 0) + n
         self.people = index
+        self.precedent_people = shown
         self.values = values
 
     @staticmethod
-    def people_of(doc, job_id: Optional[str] = None) -> Dict[str, Dict[str, Any]]:
+    def people_of(doc, job_id: Optional[str] = None, per_value: bool = False) -> Dict[str, Dict[str, Any]]:
         """One document's part of the index: form -> {key: {analysis,
-        count}} over its words people analysed (``protected``), but a word
-        on whose morphemes someone else made the job ``job_id`` wrote a value
-        or a link in place (``in_place_of_job``, REV-KM-3, REV-KM2-1): its
-        analysis is partly the job's own proposal."""
+        count}} over its words people analysed (``protected``), but a word on
+        whose morphemes someone else made the job ``job_id`` wrote a value or
+        a link in place (``in_place_of_job``, REV-KM-3, REV-KM2-1): harmonize
+        never takes the job's proposal for people's. ``per_value`` (the
+        evidence's): such a word counts too, its analysis as people wrote it,
+        the values and links the job wrote left out (:func:`people_analysis`),
+        so a value the job adds never takes people's form and gloss out of
+        their precedent (REV-DAY-S-13)."""
         part: Dict[str, Dict[str, Any]] = {}
         for s in doc.sentences:
             for w in s.words:
-                if word_state(w) != 'protected' or in_place_of_job(w, job_id):
+                if word_state(w) != 'protected' or (not per_value and in_place_of_job(w, job_id)):
                     continue
-                a = word_analysis(w)
+                a = people_analysis(w, job_id) if per_value else word_analysis(w)
                 slot = part.setdefault(surface_key(w.surface), {}).setdefault(analysis_key(canonical(a)),
                                                                            {'analysis': a, 'count': 0})
                 slot['count'] += 1

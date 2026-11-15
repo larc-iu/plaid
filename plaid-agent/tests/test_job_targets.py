@@ -196,3 +196,55 @@ def test_a_default_plan_shows_no_piece_a_sentence_people_analysed(monkeypatch):
     pieces = [c['asked'] for c in model.calls if 'Your piece:' in c['asked'] and c['n'] == 1]
     assert [p.splitlines()[-1] for p in pieces] == ['Your piece: s2. s1 is context.'], pieces
     assert 'Empty in s2: segmentation and Morph Gloss in w1 "ka" | Translation.' in pieces[0]
+
+
+# --- people's precedent, per value, as each piece starts (REV-DAY-S-13, S-10) -----------------
+
+def test_a_field_value_the_job_added_leaves_peoples_form_and_gloss_their_precedent(monkeypatch):
+    """REV-DAY-S-13: the job filled Morph POS on a person's "ka" (eat) in
+    another document. A gloss piece's block still reads people's analysis
+    of ka, never "Analysed nowhere before"."""
+    other = with_values(document('dP', 'Other', [{'words': [('ka', [('ka', 'eat')], 'human')]}]),
+                        [(MPOS, 'dP-s1w1m1', 'V', J)])
+    client = JobClient({'d1': document('d1', 'Story', [{'words': ['ka']}]), 'dP': other}, project=fields_project())
+    job = start(client, id=J, documents=['d1'])
+    model = use(monkeypatch, Model(lambda asked, n, kwargs: reply('Done.')))
+    run_job(job, runner(job))
+    asked = model.calls[0]['asked']
+    assert '- "ka": people: ka ‘eat’ (1)' in asked, asked
+    assert 'Analysed nowhere before' not in asked
+
+
+def test_a_later_piece_reads_peoples_work_as_it_is_when_it_starts(monkeypatch):
+    """REV-DAY-S-10: piece s1 changes a person's gam 'fish' (s3) to 'net' in
+    place. Piece s2, of the same walk, no longer counts it as people's
+    'fish': people's precedent is read as each piece starts, and the
+    gloss the job wrote is the job's, not people's."""
+    monkeypatch.setattr(igt_job, 'JOB_STRETCH_SENTENCES', 1)
+    person = ('gam', [('gam', 'fish')], 'human')
+    before = [{'words': ['gam']}, {'words': ['gam']}, {'words': [person]}]
+    changed = [{'words': ['gam']}, {'words': ['gam']},
+               {'words': [('gam', [('gam', 'net')], {'token': 'human', 'span': J, 'link': 'human'})]}]
+    client = JobClient({'d1': document('d1', 'Story', before)})
+    client.after_write['d1'] = document('d1', 'Story', changed, version=2)
+    job = start(client, id=J)
+    real = igt_job.execute_plan
+
+    def execute(c, ops, **kw):
+        out = real(c, ops, **kw)
+        # The listing moves with the write, as core's does.
+        client._documents['d1'] = document('d1', 'Story', changed, version=2)
+        return out
+    monkeypatch.setattr(igt_job, 'execute_plan', execute)
+
+    def answer(asked, n, kwargs):
+        if n > 1 or 'Your piece: s1.' not in asked:
+            return reply('Done.')
+        return reply(calls=[call(1, 'set_field', {'document': 'Story', 'refs': ['s3.w1.m1'], 'field': 'Morph Gloss',
+                                                  'value': 'net'})])
+    model = use(monkeypatch, Model(answer))
+    run_job(job, runner(job))
+    first = next(c['asked'] for c in model.calls if c['n'] == 1 and 'Your piece: s1.' in c['asked'])
+    second = next(c['asked'] for c in model.calls if c['n'] == 1 and 'Your piece: s2.' in c['asked'])
+    assert 'people: gam ‘fish’ (1)' in first, first
+    assert 'gam ‘fish’' not in second, second
