@@ -63,11 +63,16 @@ class Target:
     @property
     def label(self) -> str:
         """The target as the planning message lists it."""
+        return self.labelled('"')
+
+    def labelled(self, quote: str = '') -> str:
+        """The target with its level, its name in ``quote``: ``"Case" (word
+        level)``, ``IPA (orthography, word level)``."""
         if self.segments:
             return f'{SEGMENTATION} (word level: words into morphemes)'
         if self.orthography is not None:
-            return f'"{self.name}" (orthography, word level)'
-        return f'"{self.name}" ({LEVEL[self.scope]} level)'
+            return f'{quote}{self.name}{quote} (orthography, word level)'
+        return f'{quote}{self.name}{quote} ({LEVEL[self.scope]} level)'
 
 
 #: Segmentation as a target, whatever the project: what :func:`empty` asks of
@@ -153,14 +158,21 @@ def named(project: IgtProject, names: Iterable[str]) -> Tuple[List[Target], List
     return out, unknown
 
 
-def listed_names(project: IgtProject) -> List[str]:
-    """The targets as a refusal names them: by name, or by label where two
-    share a name."""
-    targets = fillable(project)
+def shown_names(project: IgtProject, targets: Iterable[Target]) -> List[str]:
+    """Each of ``targets`` as a person and a model are told it: its name, or,
+    where two targets of ``project`` share that name (a word field and an
+    orthography both "IPA"), its label without quotes, "IPA (word level)",
+    which :func:`named` reads back. THE rule for every list that names
+    targets: a refusal's, the job card's, the setup line's (REV-SU-B-2)."""
     seen: Dict[str, int] = {}
-    for t in targets:
+    for t in fillable(project):
         seen[t.name.casefold()] = seen.get(t.name.casefold(), 0) + 1
-    return [t.name if seen[t.name.casefold()] == 1 else t.label for t in targets]
+    return [t.name if seen.get(t.name.casefold(), 0) <= 1 else t.labelled() for t in targets]
+
+
+def listed_names(project: IgtProject) -> List[str]:
+    """Every target of ``project`` as a refusal names it (:func:`shown_names`)."""
+    return shown_names(project, fillable(project))
 
 
 def resolve_fills(project: IgtProject, fills) -> List[Target]:
@@ -198,18 +210,16 @@ class Setup:
     name}], text, conversation}``, the card the person started): ``targets``
     the targets it names that the project still has, in its order, ``text``
     whether it may edit the text, and ``gone`` when it named targets and the
-    project has none of them now. Compared by id only."""
+    project has none of them now. Compared by id only. ``names`` are the
+    targets as :func:`shown_names` tells them."""
     targets: Tuple[Target, ...]
     text: bool
     gone: bool
+    names: Tuple[str, ...] = ()
 
     @property
     def ids(self) -> Tuple[str, ...]:
         return tuple(t.id for t in self.targets)
-
-    @property
-    def names(self) -> List[str]:
-        return [t.name for t in self.targets]
 
     @property
     def line(self) -> str:
@@ -225,7 +235,8 @@ def setup_of(project: IgtProject, setup) -> Optional[Setup]:
     fills = setup.get('fills')
     ids = [str(f.get('id')) for f in fills if isinstance(f, dict) and f.get('id')] if isinstance(fills, list) else []
     targets = of_ids(project, ids)
-    return Setup(tuple(targets), setup.get('text') is True, bool(ids) and not targets)
+    return Setup(tuple(targets), setup.get('text') is True, bool(ids) and not targets,
+                 tuple(shown_names(project, targets)))
 
 
 def _names(names: Iterable[str]) -> str:
@@ -258,12 +269,13 @@ def said_setup(setup) -> Optional[str]:
     return setup_line(names, setup.get('text') is True)
 
 
-def outside_setup(setup: Setup, chosen: Iterable[Target], edits_text: bool) -> Optional[str]:
+def outside_setup(project: IgtProject, setup: Setup, chosen: Iterable[Target], edits_text: bool) -> Optional[str]:
     """plan_work's refusal of a plan that goes past the job's setup: a
     target outside it (by id), or edits_text when the setup keeps the text.
-    None when the plan is inside it."""
+    None when the plan is inside it. Each target named as
+    :func:`shown_names` tells it."""
     out = []
-    extra = [t.name for t in chosen if t.id not in setup.ids]
+    extra = shown_names(project, [t for t in chosen if t.id not in setup.ids])
     if extra:
         out.append(f'fills: this job was set up to {setup_fills(setup.names)}. Leave out {_names(extra)}.')
     if edits_text and not setup.text:

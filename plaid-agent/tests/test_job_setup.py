@@ -272,3 +272,58 @@ def test_a_setup_that_is_no_map_of_fills_has_no_targets(setup):
     project = load_project(_client(), 'p1')
     got = tg.setup_of(project, setup)
     assert got is None if not isinstance(setup, dict) else (got.targets == () and not got.gone)
+
+
+# --- two targets sharing a name (REV-SU-B-2) ---------------------------------------------
+
+def _ipa_raw(raw):
+    """``raw`` with a word field "IPA" (sl-ipafield) beside its orthography "IPA"."""
+    from fixtures import WORD_LAYER
+    words = next(tk for tk in raw['text_layers'][0]['token_layers'] if tk['id'] == WORD_LAYER)
+    words['span_layers'].append({'id': 'sl-ipafield', 'name': 'IPA', 'config': {'igt': {'scope': 'Word'}}})
+    return raw
+
+
+def _ipa_ws(setup):
+    from job_fixtures import JobClient
+    from test_job_fields import role_document
+    client = JobClient({'d1': role_document()}, project=_ipa_raw(role_project()))
+    ws = JobWorkspace(client, load_project(client, 'p1'), mode=JobWorkspace.PLAN)
+    ws.job_documents = [{'id': 'd1', 'name': 'Story'}]
+    ws.job_setup = tg.setup_of(ws.project, setup)
+    return ws
+
+
+def test_targets_sharing_a_name_are_shown_by_the_label_that_tells_them_apart():
+    ws = _ipa_ws(None)
+    both = [t for t in tg.fillable(ws.project) if t.name == 'IPA']
+    assert tg.shown_names(ws.project, both) == ['IPA (word level)', 'IPA (orthography, word level)']
+    assert tg.shown_names(ws.project, [t for t in tg.fillable(ws.project) if t.id == ROLE]) == [ROLE_NAME]
+    # The one rule: a refusal lists them as the card, the line and the page name them.
+    assert tg.listed_names(ws.project) == tg.shown_names(ws.project, tg.fillable(ws.project))
+    for shown, target in zip(tg.shown_names(ws.project, both), both):
+        assert tg.named(ws.project, [shown])[0] == [target], shown
+
+
+@pytest.mark.parametrize('setup_id, other, line_name, other_name', [
+    ('sl-ipafield', 'IPA (orthography)', 'IPA (word level)', 'IPA (orthography, word level)'),
+    ('orthography:IPA', 'IPA (word level)', 'IPA (orthography, word level)', 'IPA (word level)'),
+])
+def test_the_setup_line_and_the_refusal_tell_a_shared_name_apart(setup_id, other, line_name, other_name):
+    ws = _ipa_ws({'fills': [{'id': setup_id, 'name': line_name}], 'text': False})
+    assert ws.job_setup.line == f'This job was set up to fill only "{line_name}". It may not edit the text.'
+    out = _plan_work(ws, fills=[other])
+    assert out == (f'Error: fills: this job was set up to fill only "{line_name}". Leave out "{other_name}".'), out
+    assert _plan_work(ws, fills=[line_name]).startswith('The plan is kept.')
+
+
+@pytest.mark.parametrize('fills, name', [(['IPA (word level)'], 'IPA (word level)'),
+                                         (['IPA (orthography)'], 'IPA (orthography, word level)'),
+                                         (['Gloss'], 'Gloss')])
+def test_the_card_keeps_the_label_that_tells_a_shared_name_apart(fills, name):
+    from fixtures import fake_ws, project_raw
+    from plaid_agent.igt.toolkit import call_tool
+    ws = fake_ws(FakeClient(project=_ipa_raw(project_raw())))
+    out = call_tool(ws, 'propose_job', {'action': 'draft', 'documents': ['Text 1'], 'fills': fills, 'brief': 'Do it.'})
+    assert out.startswith('Drafted'), out
+    assert [f['name'] for f in ws.job_card['fills']] == [name]

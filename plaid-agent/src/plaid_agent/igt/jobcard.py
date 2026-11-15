@@ -191,8 +191,9 @@ def t_propose_job(ws, action: str, documents: Optional[Any] = None, brief: Optio
     replaced = ws.job_card is not None
     # What the job may fill and whether it may edit the text: the page puts
     # them in the job's setup, which binds its planning (BRIEF-SU).
-    card.update({'id': str(uuid7()), 'brief': text, 'fills': [{'id': t.id, 'name': t.name} for t in chosen],
-                 'edits_text': edits_text})
+    # Each named as the person is shown it, two sharing a name told apart.
+    fills = [{'id': t.id, 'name': n} for t, n in zip(chosen, tg.shown_names(ws.project, chosen))]
+    card.update({'id': str(uuid7()), 'brief': text, 'fills': fills, 'edits_text': edits_text})
     card['summary'] = summary(card)
     ws.job_card = card
     return ('Drafted the job card' + (', in place of the one drafted earlier in this turn' if replaced else '')

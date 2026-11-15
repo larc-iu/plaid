@@ -384,7 +384,8 @@ def test_a_field_named_segmentation_is_never_taken_for_segmentation_by_its_bare_
     assert [t.id for t in tg.named(project, ['segmentation (word level: words into morphemes)'])[0]] == \
         ['segmentation']
     listed = tg.listed_names(project)
-    assert listed[0] == 'segmentation (word level: words into morphemes)' and '"Segmentation" (word level)' in listed
+    # Listed by the label that tells them apart, as the card and the setup line name them (REV-SU-B-2).
+    assert listed[0] == 'segmentation (word level: words into morphemes)' and 'Segmentation (word level)' in listed
     # Without such a field, every way of naming segmentation still names it.
     plain = client_project(JobClient({'d1': _raw()}, project=fields_project()))
     for name in ('segmentation', 'Segmentation (word level)', 'segmentation (word)'):
@@ -407,7 +408,7 @@ def test_a_field_sharing_its_name_with_an_orthography_is_named_by_its_label():
         assert [t.id for t in tg.named(project, [name])[0]] == ['sl-ipafield'], name
     for name in ('"IPA" (orthography, word level)', 'IPA (orthography)'):
         assert [t.id for t in tg.named(project, [name])[0]] == ['orthography:IPA'], name
-    assert '"IPA" (word level)' in tg.listed_names(project)
+    assert 'IPA (word level)' in tg.listed_names(project)
 
 
 def test_a_word_segmented_as_one_morpheme_is_not_empty_for_segmentation():

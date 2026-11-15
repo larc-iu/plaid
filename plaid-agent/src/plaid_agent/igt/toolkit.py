@@ -711,7 +711,7 @@ def t_plan_work(ws, pieces: str = None, piece_instructions: str = '', documents=
     chosen = tg.resolve_fills(ws.project, fills)
     setup = getattr(ws, 'job_setup', None)
     if setup is not None:
-        refusal = tg.outside_setup(setup, chosen, edits_text)
+        refusal = tg.outside_setup(ws.project, setup, chosen, edits_text)
         if refusal:
             raise ToolError(refusal, kind='invalid-argument')
     skip = skip_filled_sentences and pieces == 'sentences'
