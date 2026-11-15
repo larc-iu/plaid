@@ -294,9 +294,12 @@ const JobSetup = ({ job, projectId, user }) => {
   if (!setup) return null;
   const conversation =
     setup.conversation && user?.id && user.id === job.startedBy ? setup.conversation : null;
+  // The fields its plan found gone, by id (REV-SU-B-3).
+  const planGone = job.report?.plan?.gone;
+  const gone = Array.isArray(planGone) ? planGone.map((g) => g?.id) : [];
   return (
     <p className="-mt-4 mb-6 text-sm" data-testid="job-setup">
-      Set up to fill <FillsNames fills={setup.fills} none="nothing" />.{' '}
+      Set up to fill <FillsNames fills={setup.fills} none="nothing" gone={gone} />.{' '}
       {setup.text ? 'Text may be edited.' : 'Text unchanged.'}
       {conversation && (
         <>

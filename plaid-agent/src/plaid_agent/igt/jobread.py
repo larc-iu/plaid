@@ -40,7 +40,7 @@ from ..core.history import doc_label
 from ..core.job import blank_sums, blank_text, field_counts
 from ..core.record_ops import _names_nothing
 from ..core.tools import ToolError, truncate
-from .targets import said_setup
+from .targets import gone_ids, gone_text, said_setup
 
 #: How much of a job's instructions, and of its summary, a turn's summary
 #: quotes. read_job with the job gives them whole.
@@ -229,6 +229,10 @@ def plan_line(report: Dict[str, Any]) -> Optional[str]:
         # planning, by the plan's ``why`` (REV-DF4-2), as the page says it.
         if plan.get('why') == 'no-plan':
             return 'Planning ended with no plan. Nothing was written.'
+        if plan.get('why') == 'setup-gone':
+            # Its setup's targets are all gone, named as the card named them
+            # (REV-SU-B-3).
+            return f'The fields this job was set up to fill are gone: {gone_text(plan)}. Nothing was written.'
         return 'The assistant’s model failed during planning. Nothing was written.'
     line = f'Worked in {_PIECES.get(plan.get("pieces"), plan.get("pieces"))}'
     smaller = len(plan.get('fallback') or [])
@@ -260,7 +264,7 @@ def summary(job: Dict[str, Any], note_chars: Optional[int] = JOB_SUMMARY_NOTE_CH
         count = len(job.get('documents') or [])
     lines.append(f'Documents: {count:,}.')
     lines.append(_quoted('Instructions as sent', job.get('instructions') or '', note_chars))
-    setup = said_setup(job.get('setup'))
+    setup = said_setup(job.get('setup'), gone_ids((report or {}).get('plan')))
     if setup:
         # What the person's setup conversation bound the job to (BRIEF-SU).
         lines.append(setup)

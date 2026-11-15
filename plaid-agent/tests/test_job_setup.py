@@ -202,16 +202,52 @@ def test_a_plan_refused_for_its_setup_to_the_end_ends_with_no_plan(monkeypatch):
     assert all(c['asked'].rstrip().endswith(PLANNING) for c in model.calls), 'no piece'
 
 
-def test_a_setup_whose_targets_are_all_gone_ends_with_no_plan_and_no_model_call(monkeypatch):
+def test_a_setup_whose_targets_are_all_gone_ends_saying_so_and_with_no_model_call(monkeypatch):
+    """REV-SU-B-3, REV-SU-F-2: a reason and a plan row of its own, which
+    keep the card's names of what is gone, never a no-plan read as any
+    other."""
     client = _client()
-    gone = {'fills': [{'id': 'sl-gone', 'name': 'Animacy'}], 'text': False}
+    gone = {'fills': [{'id': 'sl-gone', 'name': 'Animacy'}, {'id': 'sl-gone2', 'name': 'Part of Speech'}],
+            'text': False}
     job, model = _planned(client, gone, [INSIDE], monkeypatch)
     finished = run_job(job, runner(job))
-    assert finished['state'] == 'failed' and finished['reason'] == 'no-plan', finished
-    assert finished['report']['plan'] == {'by': 'none', 'why': 'no-plan', 'piece_instructions': '',
-                                          'fallback': [], 'left_out': []}
+    assert finished['state'] == 'failed' and finished['reason'] == 'setup-gone', finished
+    assert finished['report']['plan'] == {'by': 'none', 'why': 'setup-gone', 'gone': gone['fills'],
+                                          'piece_instructions': '', 'fallback': [], 'left_out': []}
     assert model.calls == [], 'never planned freely'
     assert not _written(client)
+    from plaid_agent.igt import jobread
+    said = jobread.summary({'id': J, 'state': 'failed', 'reason': 'setup-gone', 'instructions': 'x',
+                            'documents': [], 'setup': gone, 'report': finished['report']})
+    assert 'This job was set up to fill only "Animacy" (deleted) and "Part of Speech" (deleted). It may not edit ' \
+           'the text.' in said, said
+    assert 'The fields this job was set up to fill are gone: Animacy, Part of Speech. Nothing was written.' in said
+
+
+def test_a_setup_some_of_whose_targets_are_gone_keeps_their_names_and_says_them_deleted(monkeypatch):
+    client = _client()
+    some = {**ROLE_ONLY, 'fills': [{'id': 'sl-gone', 'name': 'Animacy'}, *ROLE_ONLY['fills']]}
+    job, model = _planned(client, some, [INSIDE], monkeypatch)
+    seen = {}
+    real = igt_job.summary_message
+
+    def spy(report, setup=None):
+        seen['setup'] = setup
+        return real(report, setup)
+    monkeypatch.setattr(igt_job, 'summary_message', spy)
+    finished = run_job(job, runner(job, write_summary=True))
+    assert finished['state'] == 'done', finished.get('reason')
+    plan = finished['report']['plan']
+    assert plan['by'] == 'model' and plan['gone'] == [{'id': 'sl-gone', 'name': 'Animacy'}], plan
+    line = 'This job was set up to fill only "Animacy" (deleted) and "Thematic role". It may not edit the text.'
+    assert seen['setup'] == line
+    from plaid_agent.igt import jobread
+    said = jobread.summary({'id': J, 'state': 'done', 'instructions': 'x', 'documents': [], 'setup': some,
+                            'report': finished['report']})
+    assert line in said, said
+    # Before any plan, nothing is known to be gone: the card's names as they are.
+    assert jobread.summary({'id': J, 'state': 'waiting', 'instructions': 'x', 'documents': [], 'setup': some})[4] \
+        == 'This job was set up to fill only "Animacy" and "Thematic role". It may not edit the text.'
 
 
 def test_a_setup_that_fills_nothing_is_planned(monkeypatch):

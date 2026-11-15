@@ -495,6 +495,49 @@ describe('the job page', () => {
     await v.unmount();
   });
 
+  // REV-SU-B-3, REV-SU-F-2: a job whose setup's fields are all gone ends
+  // saying so, by its plan's why, naming them as the card did, and its setup
+  // line marks each the plan found gone, by id.
+  it('says a job’s setup fields are gone, naming them, and marks a deleted one in its setup line', async () => {
+    const setup = {
+      fills: [
+        { id: 'L1', name: 'Part of Speech' },
+        { id: 'L2', name: 'Case' },
+      ],
+      text: false,
+    };
+    const line = (root) => root.querySelector('[data-testid="job-setup"]');
+    const gone = { by: 'none', why: 'setup-gone', gone: setup.fills, fallback: [], leftOut: [] };
+    let v = await mount(
+      clientOf(
+        jobOf({
+          state: 'failed',
+          reason: 'setup-gone',
+          message: null,
+          setup,
+          report: { ...REPORT, plan: gone },
+        }),
+      ),
+    );
+    expect(totals(v.container).Plan).toBe(
+      'The fields this job was set up to fill are gone: Part of Speech, Case. Nothing was written.',
+    );
+    expect(text(v.container.querySelector('[role="status"]'))).toContain(
+      'The fields this job was set up to fill are gone.',
+    );
+    expect(line(v.container).textContent).toBe(
+      'Set up to fill Part of Speech (deleted), Case (deleted). Text unchanged.',
+    );
+    await v.unmount();
+
+    const some = { ...REPORT.plan, gone: [{ id: 'L1', name: 'Part of Speech' }] };
+    v = await mount(clientOf(jobOf({ setup, report: { ...REPORT, plan: some } })));
+    expect(line(v.container).textContent).toBe(
+      'Set up to fill Part of Speech (deleted), Case. Text unchanged.',
+    );
+    await v.unmount();
+  });
+
   it('says when the model failed during planning, apart from a planning with no plan', async () => {
     const plan = { by: 'none', why: 'output', pieceInstructions: '', fallback: [], leftOut: [] };
     const v = await mount(

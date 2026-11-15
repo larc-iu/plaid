@@ -80,17 +80,26 @@ const REASON_WORDS = {
   'no-documents': 'None of its documents are left.',
   'no-plan': 'Planning ended with no plan.',
   'planning-failed': 'The assistant’s model failed during planning. Start the job again.',
+  'setup-gone': 'The fields this job was set up to fill are gone.',
 };
 
 /**
  * How a job whose planning kept no plan says so, by its plan's `why`: the
- * model planned nothing it could keep (`no-plan`), or it failed during
- * planning (any other `why`, the kind of the fault).
+ * model planned nothing it could keep (`no-plan`), the fields its setup names
+ * are all gone (`setup-gone`, named as the card named them, from the plan's
+ * `gone`), or it failed during planning (any other `why`, the kind of the
+ * fault).
  */
-export const planEndedText = (plan) =>
-  plan?.why === 'no-plan'
-    ? 'Planning ended with no plan.'
-    : 'The assistant’s model failed during planning.';
+export const planEndedText = (plan) => {
+  if (plan?.why === 'no-plan') return 'Planning ended with no plan.';
+  if (plan?.why === 'setup-gone') {
+    const names = (Array.isArray(plan.gone) ? plan.gone : [])
+      .map((g) => (typeof g?.name === 'string' ? g.name : null))
+      .filter(Boolean);
+    return `The fields this job was set up to fill are gone: ${names.join(', ')}.`;
+  }
+  return 'The assistant’s model failed during planning.';
+};
 
 const wordFor = (words) => (code) => words[code] ?? null;
 

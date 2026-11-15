@@ -30,13 +30,15 @@ export const JobActiveLine = ({ projectId, jobId, onOpen }) => (
 );
 
 // The targets a setup names, each by the name the card showed and isolated
-// from its neighbours' direction, or `none` when it names none.
-export const FillsNames = ({ fills, none }) =>
+// from its neighbours' direction, or `none` when it names none. Each whose id
+// is among `gone` (the job's plan found it gone) is marked so.
+export const FillsNames = ({ fills, none, gone = [] }) =>
   fills?.length
     ? fills.map((f, i) => (
         <span key={`${f.id}:${i}`}>
           {i > 0 && ', '}
           <bdi>{f.name || f.id}</bdi>
+          {gone.includes(f.id) && ' (deleted)'}
         </span>
       ))
     : none;

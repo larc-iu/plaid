@@ -170,6 +170,9 @@ NO_PLAN = 'none'
 NO_PLAN_REASON = 'no-plan'
 #: The reason of a job whose planning ended in a model fault, twice (REV-DF4-2).
 PLANNING_FAILED_REASON = 'planning-failed'
+#: The reason, and the plan row's ``why``, of a job set up to fill targets
+#: the project no longer has at all: it ends before planning (REV-SU-B-3).
+SETUP_GONE_REASON = 'setup-gone'
 #: The StretchFailed kinds that are the model's fault: a call that reached
 #: the output cap or that the provider refused (a provider error is
 #: ``output`` by :func:`failure_kind`), and a model repeating itself. A
@@ -1560,9 +1563,10 @@ class IgtRunner:
             plan = None
             setup = self.job_setup(project)
             # A job set up to fill targets the project no longer has at all
-            # ends with no plan, never planning freely (BRIEF-SU).
-            tries = 0 if setup is not None and setup.gone else 2
-            why = NO_PLAN_REASON if not tries else None
+            # ends with no plan, never planning freely (BRIEF-SU), and says
+            # so by a why of its own (REV-SU-B-3).
+            tries = 0 if setup is not None and setup.all_gone else 2
+            why = SETUP_GONE_REASON if not tries else None
             # A planning that ends in a model fault (a StretchFailed of kind
             # output or repeating) is planned once more in a fresh context
             # (REV-DF4-2). A budget spent or a context too long is no plan,
@@ -1582,6 +1586,10 @@ class IgtRunner:
             # only to check (REV-DF3-2). Made once: a passing error on its row
             # below sends the same plan again, never plans again (REV-JG-8).
             self.plan_pending = {**plan, 'by': 'model', 'why': None} if plan else {'by': NO_PLAN, 'why': why}
+            if setup is not None and setup.gone:
+                # The setup's targets the project no longer has, by the
+                # names the person saw, for the page and read_job.
+                self.plan_pending['gone'] = list(setup.gone)
         text = canonical(self.plan_kept(self.plan_pending))
         rows = [{'form': PLAN_FORM, 'key': analysis_key(text), 'analysis': text, 'count': 1,
                  'document_id': None, 'sentence_id': None}]
@@ -1608,7 +1616,8 @@ class IgtRunner:
         for d in job.order:
             if (job.rows.get(d) or {}).get('state') not in ROW_FINAL + ('not-reached',):
                 job.update_row(d, state='not-reached')
-        return NO_PLAN_REASON if made.get('why') == NO_PLAN_REASON else PLANNING_FAILED_REASON
+        why = made.get('why')
+        return why if why in (NO_PLAN_REASON, SETUP_GONE_REASON) else PLANNING_FAILED_REASON
 
     def plan_kept(self, plan: Dict[str, Any]) -> Dict[str, Any]:
         """The plan as its decision row holds it: the documents it names
@@ -3997,7 +4006,8 @@ class IgtRunner:
         from .prompt import build_summary_prompt
         project = self.project()
         job.set(message='Writing the report.')
-        message = summary_message(report, tg.said_setup(getattr(job, 'setup', None)))
+        message = summary_message(report, tg.said_setup(getattr(job, 'setup', None),
+                                                        tg.gone_ids(report.get('plan'))))
         while True:
             job.check()
             ws = JobWorkspace(job.client(), project, mode=JobWorkspace.PLAN)

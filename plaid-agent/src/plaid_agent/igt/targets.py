@@ -209,17 +209,23 @@ class Setup:
     """What a job was set up to do, from its ``setup`` (``{fills: [{id,
     name}], text, conversation}``, the card the person started): ``targets``
     the targets it names that the project still has, in its order, ``text``
-    whether it may edit the text, and ``gone`` when it named targets and the
-    project has none of them now. Compared by id only. ``names`` are the
-    targets as :func:`shown_names` tells them."""
+    whether it may edit the text, and ``gone`` the card's fills the project
+    no longer has (``{id, name}``, the name the person saw), which the plan
+    row keeps (REV-SU-B-3). Compared by id only. ``names`` are the targets as
+    :func:`shown_names` tells them."""
     targets: Tuple[Target, ...]
     text: bool
-    gone: bool
+    gone: Tuple[Dict[str, str], ...] = ()
     names: Tuple[str, ...] = ()
 
     @property
     def ids(self) -> Tuple[str, ...]:
         return tuple(t.id for t in self.targets)
+
+    @property
+    def all_gone(self) -> bool:
+        """Whether it named targets and the project has none of them now."""
+        return bool(self.gone) and not self.targets
 
     @property
     def line(self) -> str:
@@ -233,40 +239,63 @@ def setup_of(project: IgtProject, setup) -> Optional[Setup]:
     if not isinstance(setup, dict):
         return None
     fills = setup.get('fills')
-    ids = [str(f.get('id')) for f in fills if isinstance(f, dict) and f.get('id')] if isinstance(fills, list) else []
-    targets = of_ids(project, ids)
-    return Setup(tuple(targets), setup.get('text') is True, bool(ids) and not targets,
-                 tuple(shown_names(project, targets)))
+    fills = [f for f in fills if isinstance(f, dict) and f.get('id')] if isinstance(fills, list) else []
+    targets = of_ids(project, [str(f['id']) for f in fills])
+    have = {t.id for t in targets}
+    gone = tuple({'id': str(f['id']), 'name': str(f.get('name') or f['id'])} for f in fills
+                 if str(f['id']) not in have)
+    return Setup(tuple(targets), setup.get('text') is True, gone, tuple(shown_names(project, targets)))
 
 
-def _names(names: Iterable[str]) -> str:
-    quoted = [f'"{n}"' for n in names]
+def _names(names: Iterable[str], deleted: Iterable[int] = ()) -> str:
+    deleted = set(deleted)
+    quoted = [f'"{n}"' + (' (deleted)' if i in deleted else '') for i, n in enumerate(names)]
     return quoted[0] if len(quoted) == 1 else ', '.join(quoted[:-1]) + ' and ' + quoted[-1]
 
 
-def setup_fills(names: List[str]) -> str:
+def setup_fills(names: List[str], deleted: Iterable[int] = ()) -> str:
     """What a job was set up to fill, as a clause: ``fill only "Case"``,
-    ``fill nothing``."""
-    return f'fill only {_names(names)}' if names else 'fill nothing'
+    ``fill nothing``, those at the places ``deleted`` marked ``"Case"
+    (deleted)``."""
+    return f'fill only {_names(names, deleted)}' if names else 'fill nothing'
 
 
-def setup_line(names: List[str], text: bool) -> str:
+def setup_line(names: List[str], text: bool, deleted: Iterable[int] = ()) -> str:
     """The one fixed line said of a job's setup, ``names`` the targets it
     may fill and ``text`` whether it may edit the text: to the planning
     context (the targets the project still has), in read_job and to the
-    final context (the names the person saw on the card)."""
-    return f'This job was set up to {setup_fills(names)}. ' + ('It may edit the text.' if text
-                                                               else 'It may not edit the text.')
+    final context (the names the person saw on the card, each the plan
+    found gone marked, ``deleted`` their places)."""
+    return f'This job was set up to {setup_fills(names, deleted)}. ' + ('It may edit the text.' if text
+                                                                        else 'It may not edit the text.')
 
 
-def said_setup(setup) -> Optional[str]:
+def gone_ids(plan) -> List[str]:
+    """The ids of the setup's targets a job's plan row found gone (its
+    ``gone``, REV-SU-B-3), or none."""
+    gone = plan.get('gone') if isinstance(plan, dict) else None
+    return [str(g.get('id')) for g in gone if isinstance(g, dict)] if isinstance(gone, list) else []
+
+
+def said_setup(setup, gone: Iterable[str] = ()) -> Optional[str]:
     """:func:`setup_line` of a job's ``setup`` as core holds it, by the
-    names on the card, or None for a job with none."""
+    names on the card, each whose id is among ``gone`` (:func:`gone_ids`)
+    marked deleted, or None for a job with none."""
     if not isinstance(setup, dict):
         return None
     fills = setup.get('fills') if isinstance(setup.get('fills'), list) else []
-    names = [str(f.get('name') or f.get('id')) for f in fills if isinstance(f, dict) and (f.get('name') or f.get('id'))]
-    return setup_line(names, setup.get('text') is True)
+    fills = [f for f in fills if isinstance(f, dict) and (f.get('name') or f.get('id'))]
+    gone = set(gone)
+    return setup_line([str(f.get('name') or f.get('id')) for f in fills], setup.get('text') is True,
+                      [i for i, f in enumerate(fills) if str(f.get('id')) in gone])
+
+
+def gone_text(plan) -> str:
+    """The plan row's ``gone`` by the names the person saw: "Animacy, Part
+    of Speech"."""
+    gone = plan.get('gone') if isinstance(plan, dict) else None
+    return ', '.join(str(g.get('name') or g.get('id')) for g in gone if isinstance(g, dict)) \
+        if isinstance(gone, list) else ''
 
 
 def outside_setup(project: IgtProject, setup: Setup, chosen: Iterable[Target], edits_text: bool) -> Optional[str]:
