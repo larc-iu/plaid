@@ -154,7 +154,7 @@ that added them.
 unattended). `igt-job-plan-sentences`, `igt-job-plan-document` and `igt-job-plan-selection` pass when the planning
 context's plan holds the piece size the instructions want (glossing, a summary of each text, a report across the
 texts), `igt-job-plan-sentences` also `only_empty` (a plan in sentences walks every sentence unless plan_work
-says skip_analyzed_sentences, kept in the plan as only_empty, and its instructions only fill words nobody
+says skip_filled_sentences, kept in the plan as only_empty, and its instructions only fill words nobody
 analysed). `igt-job-propose` asks to gloss every я of
 Lezgi text 4 as COP, where a person's analysis glosses one "was": it passes when the report proposes the change at that word and no analysis in the document changed. `igt-job-audit`
 asks for the forms glossed two ways, counted by code: a table in the report must hold я with COP and was. All five

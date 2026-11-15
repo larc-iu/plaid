@@ -235,7 +235,7 @@ def units(s: Sentence, targets: Iterable[Target], words: Optional[set] = None,
           fields: Optional[Iterable[Target]] = None) -> List[Tuple[str, str, Target]]:
     """Every unit of ``s`` empty for a target, ``(ref, form, target)`` in the
     order of the targets and then of the text: ``wN`` for a word, ``wN.mK``
-    for a morpheme, the form as typed; a sentence field's unit has ref and
+    for a morpheme, the form as typed (its word's when it has none); a sentence field's unit has ref and
     form ''. An :func:`unsegmented` word is one morpheme for a morpheme
     field, named as the tool that fills it takes it: ``wN`` when the job
     also segments it (the analysis tool takes the word), else ``wN.m1``
@@ -260,7 +260,9 @@ def units(s: Sentence, targets: Iterable[Target], words: Optional[set] = None,
             elif t.scope == 'Morpheme':
                 for m in w.morphemes:
                     if empty(t, m=m):
-                        out.append((f'w{w.index}.m{m.index}', m.form, t))
+                        # A morpheme stored with no form is named by its word,
+                        # as an unsegmented word's is (REV-DF3-8).
+                        out.append((f'w{w.index}.m{m.index}', m.form or w.surface, t))
             elif empty(t, w=w):
                 out.append((f'w{w.index}', w.surface, t))
     return out

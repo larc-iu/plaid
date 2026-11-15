@@ -175,3 +175,11 @@ def test_what_a_refusal_left_says_what_kind_of_refusal_it_was(scenario):
     assert w.left_by_refusal and {e['code'] for e in w.left_by_refusal} == {CODES.get(scenario, 'text')}, \
         w.left_by_refusal
     assert set(LEFT_CODES) == {'text', 'shape', 'entry-new', 'entry-gone', 'expression'}
+
+
+def test_leave_it_keeps_its_docstring_and_takes_any_code():
+    """REV-DF3-8: the assert sat above the docstring, so the docstring was a
+    bare string, and an unknown code raised inside a tool call. The page
+    labels an unknown code "Refused"."""
+    from plaid_agent.igt.job import JobWorkspace
+    assert 'A refusal whose chat advice a job cannot follow' in (JobWorkspace.leave_it.__doc__ or '')

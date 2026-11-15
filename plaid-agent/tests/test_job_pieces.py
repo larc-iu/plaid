@@ -419,7 +419,7 @@ HALF = [GLOSSED[0], {'words': ['sa'], 'translation': ('S.', 'human')}, GLOSSED[1
 
 @pytest.mark.parametrize('only', [False, True], ids=['every-sentence', 'skip-analyzed'])
 def test_a_sentences_plan_that_skips_filled_sentences_walks_only_sentences_with_something_empty(monkeypatch, only):
-    """plan_work's skip_analyzed_sentences (BRIEF EW, which reversed
+    """plan_work's skip_filled_sentences (BRIEF EW, which reversed
     BRIEF-JH item 6's every_sentence, named so by BRIEF OE): for instructions
     that only fill words nobody analysed or empty translations. Its plan row
     keeps it as only_empty only when true. Then
@@ -443,7 +443,7 @@ def test_a_sentences_plan_that_skips_filled_sentences_walks_only_sentences_with_
 
 
 def test_skip_filled_sentences_means_nothing_under_a_plan_by_documents(monkeypatch):
-    """skip_analyzed_sentences is a plan in sentences' only: plan_work keeps it on no
+    """skip_filled_sentences is a plan in sentences' only: plan_work keeps it on no
     other, and a plan by documents walks every sentence."""
     client = JobClient({'d1': document('d1', 'Story 1', GLOSSED)})
     job = start(client, 'Check every gloss.', id=J, plan=None)

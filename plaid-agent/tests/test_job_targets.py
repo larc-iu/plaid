@@ -364,8 +364,7 @@ def test_a_job_fills_an_orthography_through_the_same_code_as_a_word_field(monkey
     assert 'Empty in s1: IPA in w1 "ka", w2 "pata", w3 "sa".' in first['asked'], first['asked']
     assert sorted(t['function']['name'] for t in first['kwargs']['tools']) == [
         'analyses_of', 'read_lexicon', 'set_field', 'set_orthography']
-    assert 'Fill what is empty with set_field, and an orthography with set_orthography.' in \
-        first['kwargs']['messages'][0]['content']
+    assert 'Fill what is empty with set_orthography.' in first['kwargs']['messages'][0]['content']
     assert set(written) == {'d1-s1w1', 'd1-s1w2'}
     (doc,) = finished['report']['documents']
     assert [(e['ref'], e['targets']) for e in doc['left']] == [('s1.w3', ['IPA']), ('s2.w1', ['IPA'])]
@@ -426,3 +425,51 @@ def test_a_word_segmented_as_one_morpheme_is_not_empty_for_segmentation():
     assert [tg.unsegmented(w) for w in s1.words] == [False, True, False]
     assert tg.count([s1], seg) == 1
     assert tg.empty_line(s1, [seg]) == 'Empty in s1: segmentation in w2 "mo".'
+
+
+def test_a_morpheme_holding_nothing_inside_a_chain_is_named_by_its_word():
+    """REV-DF3-8: a person's "kata" as ka 'go' and a second morpheme stored
+    with nothing of its own is named w1.m2 "kata" in the Empty line, never
+    w1.m2 "" (an unsegmented word's morpheme is named the same way)."""
+    raw = document('d1', 'Story', [{'words': [('kata', [('ka', 'go'), ('ta', None)], 'human')]}])
+    for tk in raw['text_layers'][0]['token_layers']:
+        for t in tk.get('tokens') or []:
+            if t['id'] == 'd1-s1w1m2':
+                t['metadata'] = {}
+    client = JobClient({'d1': raw}, project=fields_project())
+    project = load_project(client, 'p1')
+    (s1,) = parse_document(client.documents.get('d1', include_body=True), project).sentences
+    assert tg.empty_line(s1, [_target(project, MGLOSS)]) == 'Empty in s1: Morph Gloss in w1.m2 "kata".'
+
+
+@pytest.mark.parametrize('fills,offered', [
+    (('segmentation',), {'set_analysis'}),
+    (('segmentation', MPOS), {'set_analysis'}),
+    (('segmentation', MGLOSS), {'set_analysis', 'analyze_sentence'}),
+])
+def test_a_piece_that_segments_without_the_gloss_is_offered_set_analysis_alone(fills, offered):
+    """REV-DF3-8: analyze_sentence takes a gloss for every word, so a piece
+    whose plan segments without filling the gloss field is offered
+    set_analysis alone, as its prompt says to segment with it."""
+    from plaid_agent.igt import toolkit
+    project, _ = _parsed()
+    targets = [t for t in tg.fillable(project) if t.id in fills]
+    tools = set(toolkit.sentences_piece_tools(targets, project))
+    assert tools & {'set_analysis', 'analyze_sentence'} == offered, tools
+
+
+def test_a_piece_that_fills_an_orthography_alone_is_shown_set_orthography_in_its_example():
+    """REV-DF3-8: an orthography-only piece's read-first line and worked
+    piece name set_orthography, and promise no values of other words (an
+    orthography has no evidence). With a field beside it, the fields'
+    prompt names both tools."""
+    from plaid_agent.igt import prompt
+    project, _ = _parsed()
+    ipa = [t for t in tg.fillable(project) if t.orthography == 'IPA']
+    text = prompt.build_job_prompt(project, sentences=True, targets=ipa)
+    assert 'Fill what is empty with set_orthography.' in text
+    assert 'with set_orthography. You left s7.w2' in text, text
+    assert 'set_field on s6' not in text and 'the values those fields hold' not in text
+    both = prompt.build_job_prompt(project, sentences=True, targets=ipa + [_target(project, ROLE)])
+    assert 'Fill what is empty with set_field, and an orthography with set_orthography.' in both
+    assert 'set the field on s6.w1 and s6.w3 with set_field' in both

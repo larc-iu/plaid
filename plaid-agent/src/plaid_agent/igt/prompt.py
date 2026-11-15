@@ -119,6 +119,10 @@ up only what its answer lists as several or none.'''
 _JOB_FIELDS_READ_FIRST = '''- The message says what is empty in your piece, and the values those fields hold on \
 other words or morphemes of the same forms. Fill what is empty with set_field.'''
 _JOB_NOTHING_READ_FIRST = '''- Use the tools rather than guessing, and follow the conventions already in the data.'''
+#: The bullet of a job that fills orthographies only, whose message holds no
+#: evidence (REV-DF3-8).
+_JOB_ORTHOGRAPHY_READ_FIRST = '''- The message says what is empty in your piece. Fill what is empty with \
+set_orthography.'''
 #: The bullet of a job that segments and does not gloss (REV-DF-D-10):
 #: analyze_sentence takes a gloss for every word, set_analysis forms alone.
 _JOB_SEGMENTS_READ_FIRST = '''- The message says what is empty in your piece, how those forms were analysed and the \
@@ -314,6 +318,12 @@ _JOB_FIELDS_EXAMPLE_DID = (
     'twelve words. You set the field on s6.w1 and s6.w3 with set_field, "leo" as people have it, and on s7.w1. You '
     'left s7.w2, a name you could not place.')
 _JOB_FIELDS_EXAMPLE_NOTE = 'Filled the field in s6 and s7. Left s7.w2, a name nobody has a value for.'
+#: The worked piece of a piece in sentences of a job that fills orthographies only.
+_JOB_ORTHOGRAPHY_EXAMPLE_DID = (
+    'The message showed s4 and s5 as context and s6 and s7 as your piece, and the instructions said to write each '
+    'word in an orthography. It named the words of s6 and s7 empty in it. You wrote s6.w1, s6.w2, s6.w3 and s7.w1 '
+    'with set_orthography. You left s7.w2, a name you could not place.')
+_JOB_ORTHOGRAPHY_EXAMPLE_NOTE = 'Wrote the orthography in s6 and s7. Left s7.w2, a name with no agreed spelling.'
 #: The worked piece of a piece in sentences of a job that fills nothing.
 _JOB_NOTHING_EXAMPLE_DID = (
     'The message showed s6 and s7 as your piece, and the instructions said to correct a field where it disagrees '
@@ -371,6 +381,8 @@ def _sentences_system(read_first: str, did: str, note: str, one_value: str = _ON
 JOB_SENTENCES_SYSTEM = _sentences_system(_JOB_SENTENCES_READ_FIRST, _JOB_SENTENCES_EXAMPLE_DID, _JOB_EXAMPLE_NOTE)
 JOB_FIELDS_SYSTEM = _sentences_system(_JOB_FIELDS_READ_FIRST, _JOB_FIELDS_EXAMPLE_DID, _JOB_FIELDS_EXAMPLE_NOTE,
                                       _ONE_VALUE_FIELDS)
+JOB_ORTHOGRAPHY_SYSTEM = _sentences_system(_JOB_ORTHOGRAPHY_READ_FIRST, _JOB_ORTHOGRAPHY_EXAMPLE_DID,
+                                          _JOB_ORTHOGRAPHY_EXAMPLE_NOTE, _ONE_VALUE_FIELDS, evidence=False)
 JOB_NOTHING_SYSTEM = _sentences_system(_JOB_NOTHING_READ_FIRST, _JOB_NOTHING_EXAMPLE_DID, _JOB_NOTHING_EXAMPLE_NOTE,
                                        _ONE_VALUE_FIELDS, evidence=False)
 
@@ -446,10 +458,12 @@ def build_job_prompt(project: IgtProject, sentences: bool = False, edits_text: b
         template = JOB_SYSTEM
     elif any(t.segments for t in targets):
         template = job_segments_system(project, targets)
+    elif targets and all(t.orthography is not None for t in targets):
+        template = JOB_ORTHOGRAPHY_SYSTEM
     else:
         template = JOB_FIELDS_SYSTEM if targets else JOB_NOTHING_SYSTEM
     out = _filled(template, project)
-    if sentences and any(t.orthography is not None for t in targets):
+    if template is not JOB_ORTHOGRAPHY_SYSTEM and sentences and any(t.orthography is not None for t in targets):
         # The tool such a piece fills an orthography with (REV-DF-D-6).
         out = out.replace(ORTHOGRAPHY_SAID, ORTHOGRAPHY_INSTEAD)
     if not edits_text:

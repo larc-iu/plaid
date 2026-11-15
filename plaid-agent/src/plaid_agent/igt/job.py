@@ -808,11 +808,11 @@ class JobWorkspace(Workspace):
         self.plan_work: Optional[Dict[str, Any]] = None
 
     def leave_it(self, fact: str, sentence_id: Optional[str] = None, code: Optional[str] = None) -> str:
-        assert code is None or code in LEFT_CODES, code
         """A refusal whose chat advice a job cannot follow (a later turn,
         an approval, discard_plan), as a job's model reads it: what was
         refused, and the job's closing line, never the chat's step. What it
-        left is kept, for the report (``core.tools.advised``)."""
+        left is kept, for the report (``core.tools.advised``), with its
+        ``code``, one of :data:`LEFT_CODES` or None."""
         fact = fact.rstrip(' ;,')
         entry = {'sentence_id': sentence_id, 'what': fact, 'code': code}
         if entry not in self.left_by_refusal:

@@ -777,7 +777,8 @@ TEXT_TOOLS = ('append_text', 'retype_sentence', 'split_sentence', 'merge_sentenc
 #: What every piece of a plan in sentences is offered whatever its plan
 #: fills: the field tool and two reads.
 SENTENCES_ALWAYS = ('set_field', 'read_lexicon', 'analyses_of')
-#: Offered when segmentation is a target.
+#: Offered when segmentation is a target: analyze_sentence only when the
+#: gloss field is one too, as it takes a gloss for every word (REV-DF3-8).
 SENTENCES_SEGMENTATION = ('analyze_sentence', 'set_analysis')
 #: Offered when a target is linked to the lexicon.
 SENTENCES_LEXICON = ('link_entry', 'create_entry')
@@ -787,17 +788,21 @@ SENTENCES_ORTHOGRAPHY = ('set_orthography',)
 SENTENCES_TEXT = ('retype_sentence', 'split_sentence', 'merge_sentences', 'delete_sentence')
 
 
-def sentences_piece_tools(targets) -> tuple:
+def sentences_piece_tools(targets, project=None) -> tuple:
     """The tools a piece of a plan in sentences is offered, from what the
     plan fills (the owner's steer of 2026-11-15: never a fixed glossing
     list): :data:`SENTENCES_ALWAYS`, the analysis tools when segmentation is a
-    target, the entry tools when a target is linked to the lexicon, and the
-    sentence text tools (offered only when the plan edits the text). The
-    toolkit has no other path to the rest, on purpose (BRIEF-EV)."""
+    target (set_analysis alone when the field ``project.gloss_field``
+    names is not one, as the prompt then says), the entry tools when a target
+    is linked to the lexicon, and the sentence text tools (offered only when
+    the plan edits the text). The toolkit has no other path to the rest, on
+    purpose (BRIEF-EV)."""
     from .targets import SEGMENTATION
     out = SENTENCES_ALWAYS
     if any(t.id == SEGMENTATION for t in targets):
-        out += SENTENCES_SEGMENTATION
+        gloss = project.gloss_field('Morpheme') if project is not None else None
+        glossed = project is None or (gloss is not None and any(t.id == gloss.layer_id for t in targets))
+        out += SENTENCES_SEGMENTATION if glossed else ('set_analysis',)
     if any(t.lexicon for t in targets):
         out += SENTENCES_LEXICON
     if any(t.orthography is not None for t in targets):
@@ -816,7 +821,7 @@ def job_piece_tools(ws, plan_only: bool = False) -> list:
     left_out = JOB_LEFT_OUT if getattr(ws, 'edits_text', False) else JOB_LEFT_OUT + TEXT_TOOLS
     tools = [t for t in tools_for(ws) if t['function']['name'] not in left_out]
     if getattr(ws, 'in_sentences', False):
-        allowed = sentences_piece_tools(getattr(ws, 'fills', ()))
+        allowed = sentences_piece_tools(getattr(ws, 'fills', ()), ws.project)
         tools = [_without_check_first(t) for t in tools if t['function']['name'] in allowed]
     # Every piece's descriptions name only tools it is offered (REV-DF-D-18).
     tools = _offered_only(tools)

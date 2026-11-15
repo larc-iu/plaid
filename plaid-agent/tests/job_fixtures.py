@@ -356,7 +356,7 @@ def every_tool(monkeypatch):
     assistant has is allowed, by the test alone (no production hook)."""
     from plaid_agent.igt import toolkit
     every = tuple(t['function']['name'] for t in toolkit.TOOLS)
-    monkeypatch.setattr(toolkit, 'sentences_piece_tools', lambda targets: every)
+    monkeypatch.setattr(toolkit, 'sentences_piece_tools', lambda targets, project=None: every)
 
 
 def use(monkeypatch, model):
