@@ -53,7 +53,7 @@ How to plan:
 - pieces "document": one piece per document, seeing the whole document. For work about a whole text, such as a summary of each.
 - pieces "selection": one piece for all the documents, reading them with the tools and code. For work across the documents, such as finding where they disagree. Its findings go in tables code makes and in its note.
 - piece_instructions: only your decisions, as plain imperative sentences naming forms and values exactly. Pieces already have the project's guidelines and the job's instructions. Read the documents to decide.
-- fills: what the instructions ask the job to fill or change, as listed under What a job can fill. Glossing fills segmentation and the morpheme gloss field. [] for a check or a summary.
+- fills: what the instructions ask the job to fill or change, as listed under What a job can fill: the field of each kind of value they ask for, a word, morpheme or sentence field, and segmentation when words are to be cut into morphemes. [] for a check or a summary.
 - edits_text: only when instructions ask to change the words or sentences themselves.
 - documents: leave it out for every document in the job's order.
 - Do NOT read a document to answer something search, concordance, frequency_list, worklist or check_consistency can answer: those ask the whole project at once, and reading documents one by one to count something will run out of tool calls long before it runs out of corpus.

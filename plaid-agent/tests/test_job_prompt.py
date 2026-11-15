@@ -399,6 +399,14 @@ def test_the_planner_is_told_every_sentence_by_default_and_when_to_skip_filled_s
     assert 'fills: what the job fills, each named as the message lists it under What a job can fill' in description
 
 
+def test_the_planners_fills_rule_gives_no_task_as_the_example():
+    """BRIEF-SU: the rule line gave glossing as THE example of fills. It
+    names each kind of target alike (feedback_jobs_not_glossing_specific)."""
+    line = next(x for x in prompt.JOB_PLAN_RULES.replace('\\\n', '').splitlines() if x.startswith('- fills:'))
+    assert 'loss' not in line, line
+    assert 'a word, morpheme or sentence field, and segmentation when words are to be cut into morphemes' in line
+
+
 NOTHING = 'This plan works no sentence: nothing it fills is empty in its documents.'
 
 
