@@ -464,7 +464,9 @@ def test_a_value_written_outside_the_setup_is_marked_by_id_in_the_report(monkeyp
     assert doc['counts']['outside'] == [{'field': field, 'id': layer, 'values': 1}], doc['counts']
     said = jobread.summary({'id': J, 'state': 'done', 'instructions': 'x', 'documents': [], 'setup': ROLE_ONLY,
                             'report': finished['report']})
-    assert f'written outside its setup: {field} 1 values' in said[-2], said[-2]
+    assert f'written outside its setup: {field} 1 value' in said[-2], said[-2]
+    told = summary_message(finished['report'])
+    assert f'Of those, outside what it was set up to fill: {field} 1 value.' in told, told
     # A field the setup names is never marked, renamed or not: by id.
     client = _client()
     named = {**ROLE_ONLY, 'fills': [*ROLE_ONLY['fills'], {'id': 'sl-gloss' if field == 'Gloss' else TRANS,
@@ -561,5 +563,5 @@ def test_everything_a_job_writes_on_a_target_outside_its_setup_is_counted_under_
     assert doc['counts']['outside'] == outside, doc['counts']
     said = jobread.summary({'id': J, 'state': 'done', 'instructions': 'x', 'documents': [], 'setup': ROLE_ONLY,
                             'report': finished['report']})
-    assert ('written outside its setup: Morph Gloss 2 values, Translation 1 values, segmentation 2 values'
+    assert ('written outside its setup: Morph Gloss 2 values, Translation 1 value, segmentation 2 values'
             in said[-2]), said[-2]

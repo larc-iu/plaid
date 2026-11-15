@@ -43,7 +43,7 @@ from ..core.agent import ModelConfig, Toolkit, TurnCancelled, run_turn
 from ..core.garble import seed
 from ..core.guidelines import manual_chars
 from ..core.job import (BUDGET, OUTPUT, REPEATING, ROW_FINAL, SKIPPED_MORE, JobStopped, Pace, StretchFailed, canonical, analysis_key,
-                        field_counts,
+                        field_counts, fields_text,
                         BLANK_WHERE, blank_text, empty_counts, failure_kind, halve, harmonized, not_answering)
 from ..core.limits import (JOB_ANALYSIS_MAX_CHARS, JOB_CHANGE_VALUE_CHARS, JOB_CHANGES_MAX, JOB_CONTEXT_SENTENCES,
                            JOB_DOCUMENT_PIECE_MAX_CHARS, JOB_NOTE_MAX_CHARS, JOB_SUMMARY_MAX_CHARS,
@@ -661,11 +661,6 @@ def replaces_people(op: Dict[str, Any], doc, project: IgtProject) -> bool:
     if kind in ('set_analysis', 'discard_analysis'):
         return w is not None and word_state(w) == 'protected'
     return False
-
-
-def fields_text(fields) -> str:
-    """``counts.fields`` or ``totals.fields`` as a line says it."""
-    return ', '.join(f'{f.get("field")} {f.get("values"):,} values' for f in fields or [])
 
 
 def state_text(d: Dict[str, Any]) -> str:

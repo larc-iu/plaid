@@ -37,7 +37,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from ..core.args import read_int
 from ..core.history import doc_label
-from ..core.job import blank_sums, blank_text, field_counts
+from ..core.job import blank_sums, blank_text, field_counts, fields_text
 from ..core.record_ops import _names_nothing
 from ..core.tools import ToolError, truncate
 from .targets import gone_ids, gone_text, said_setup
@@ -174,7 +174,8 @@ def _totals(report: Dict[str, Any]) -> str:
         # REV-SUFIX-2).
         fields = field_counts([f for d in report.get('documents') or []
                                for f in (d.get('counts') or {}).get('fields') or []])
-    said += [f'{f.get("field")} {f.get("values"):,} values' for f in fields]
+    if fields:
+        said.append(fields_text(fields))
     # What it wrote outside its setup, as the worker marked it by id
     # (REV-SU-B-4), from the documents when the totals hold none.
     outside = totals.get('outside')
@@ -182,8 +183,7 @@ def _totals(report: Dict[str, Any]) -> str:
         outside = field_counts([f for d in report.get('documents') or []
                                 for f in (d.get('counts') or {}).get('outside') or []])
     if outside:
-        said.append('written outside its setup: ' + ', '.join(f'{f.get("field")} {f.get("values"):,} values'
-                                                              for f in outside))
+        said.append('written outside its setup: ' + fields_text(outside))
     # What is still blank of what the job fills, per target, from the
     # documents when the totals hold none.
     blank = totals.get('blank')

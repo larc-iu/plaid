@@ -474,7 +474,7 @@ def test_the_totals_sum_the_documents_field_rows_when_core_s_report_holds_none()
                                              {'field': 'Thematic role', 'id': 'l-role', 'values': 1}]}}]}
     assert jobread._totals(report) == 'changes 12, Animacy 2 values, Thematic role 10 values'
     report['documents'][1]['counts']['fields'].append({'field': 'Animacy', 'id': 'l-anim2', 'values': 1})
-    assert jobread._totals(report) == 'changes 12, Animacy 2 values, Animacy 1 values, Thematic role 10 values'
+    assert jobread._totals(report) == 'changes 12, Animacy 2 values, Animacy 1 value, Thematic role 10 values'
 
 
 def test_the_totals_say_what_is_still_blank_of_each_thing_the_job_fills():

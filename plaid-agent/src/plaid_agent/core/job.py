@@ -738,6 +738,13 @@ def field_counts(rows, outside=()) -> List[Dict[str, Any]]:
             for s in sorted(by.values(), key=lambda s: (str(s['field']), str(s['id']))) if s['values']]
 
 
+def fields_text(fields) -> str:
+    """Rows of :func:`field_counts` as a line says them: "<name> 1 value,
+    <name> 9 values"."""
+    return ', '.join(f'{f.get("field")} {f.get("values") or 0:,} value{"" if f.get("values") == 1 else "s"}'
+                     for f in fields or [])
+
+
 def blank_sums(documents: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """What is still blank of each thing the job fills, summed over the
     documents' ``counts.blank`` rows (an app's, ``{target, unit, left,
