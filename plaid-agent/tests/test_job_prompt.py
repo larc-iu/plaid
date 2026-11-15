@@ -425,3 +425,17 @@ def test_the_contract_says_a_job_applies_what_it_plans_but_project_setup():
     assert 'DO WHAT THE INSTRUCTIONS ASK' in text and 'WHAT THE INSTRUCTIONS STATE WINS' in text
     assert len(contract.split()) <= 121, len(contract.split())
     assert ';' not in contract and '—' not in contract
+
+
+@pytest.mark.parametrize('edits_text', [False, True])
+def test_set_analysis_for_form_is_said_to_apply_in_its_own_document(edits_text):
+    """REV-DAY-S-2: set_analysis_for_form stages a change at every
+    occurrence, applied in the piece's own document: the prompt does not
+    list it among the tools that stage a rule a job never applies."""
+    text = prompt.build_job_prompt(_project(), edits_text=edits_text)
+    rule = next(line for line in text.split('\n- ') if 'stages a rule' in line)
+    head = rule.split('stages a rule')[0]
+    assert 'set_analysis_for_form' not in head, rule
+    assert ('respell_all' in head) is edits_text
+    assert "set_analysis_for_form stages a change at every occurrence: those in your piece's document are applied, " \
+           'the others listed as proposed changes.' in rule.replace('\n', ' ')

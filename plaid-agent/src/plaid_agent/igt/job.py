@@ -574,6 +574,38 @@ def rendering(analysis: Dict[str, Any], gloss: Optional[str], entries: Optional[
     return line
 
 
+#: The kinds of proposed change whose value a document is read for
+#: (:func:`holds_change`).
+HELD_KINDS = ('set_span', 'set_analysis')
+
+
+def holds_change(doc, project: IgtProject, change: Dict[str, Any]) -> bool:
+    """Whether ``doc`` holds what a proposed ``change`` (as
+    ``IgtRunner.describe`` keeps it) would write: the field's value at its
+    reference, or the word's analysis rendered as the change renders it,
+    each cut as the change's value is. By the values, never by words."""
+    m = re.fullmatch(r's(\d+)(?:\.w(\d+))?(?:\.m(\d+))?', change.get('ref') or '')
+    if m is None:
+        return False
+    si, wi, mi = (int(x) if x else None for x in m.groups())
+    s = next((x for x in doc.sentences if x.index == si), None)
+    w = next((x for x in s.words if x.index == wi), None) if s is not None and wi else None
+    morph = None
+    if w is not None:
+        morph = next((x for x in w.morphemes if x.index == mi), None) if mi else (
+            w.morphemes[0] if len(w.morphemes) == 1 else None)
+    to = change.get('to')
+    if change.get('kind') == 'set_span':
+        f = project.fields.get(change.get('field')) if change.get('field') else None
+        holder = None if f is None else morph if f.scope == 'Morpheme' else w if f.scope == 'Word' else s
+        sp = holder.fields.get(f.name) if holder is not None else None
+        return sp is not None and sp.value not in (None, '') and _cut(sp.value, JOB_CHANGE_VALUE_CHARS) == to
+    if change.get('kind') == 'set_analysis' and w is not None and word_state(w) != 'unanalyzed':
+        gloss = getattr(project.gloss_field('Morpheme'), 'name', None)
+        return _cut(rendering(word_analysis(w), gloss), JOB_CHANGE_VALUE_CHARS) == to
+    return False
+
+
 def fields_text(fields) -> str:
     """``counts.fields`` or ``totals.fields`` as a line says it."""
     return ', '.join(f'{f.get("field")} {f.get("values"):,} values' for f in fields or [])
@@ -3753,6 +3785,7 @@ class IgtRunner:
                         changes.append(c)
         except Exception as e:  # noqa: BLE001 - a report without them rather than none
             logger.warning('Job %s: the changes it did not write could not be read for the report: %s', job.id, e)
+        changes = self.still_proposed(job, changes)
         order = {d: i for i, d in enumerate(job.order)}
         changes.sort(key=lambda c: (order.get(c.get('document_id'), len(order)),
                                     [int(n) for n in re.findall(r'\d+', c.get('ref') or '')]))
@@ -3777,6 +3810,36 @@ class IgtRunner:
                 'proposed': listed, 'proposed_more': more + dropped, 'proposed_dropped': dropped,
                 'notes': shown_notes, 'notes_more': notes_more, 'tables': made[:JOB_TABLES_MAX],
                 'tables_more': max(0, len(made) - JOB_TABLES_MAX) + tables_dropped}
+
+    def still_proposed(self, job, changes: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """``changes`` less each one its document already holds as the
+        report is written (:func:`holds_change`): a project-wide change
+        staged in one piece is proposed in the documents it reaches, and a
+        later piece of the job may write the same change in its own (REV-DAY-S-2):
+        the report counts that write once, as a change. A document that
+        cannot be read keeps its changes listed."""
+        if not any(c.get('kind') in HELD_KINDS for c in changes):
+            return changes
+        try:
+            project = core_job.through_core(job, self.project)
+        except Exception as e:  # noqa: BLE001 - the list as it is rather than none
+            logger.warning('Job %s: its proposed changes could not be checked: %s', job.id, e)
+            return changes
+        docs: Dict[str, Any] = {}
+        out = []
+        for c in changes:
+            d = c.get('document_id')
+            if c.get('kind') in HELD_KINDS and d:
+                if d not in docs:
+                    try:
+                        docs[d] = core_job.through_core(job, lambda: self.read(project, d))
+                    except Exception as e:  # noqa: BLE001 - gone or unreadable: still listed
+                        logger.info('Job %s: %s not read for its proposed changes: %s', job.id, d, e)
+                        docs[d] = None
+                if docs[d] is not None and holds_change(docs[d], project, c):
+                    continue
+            out.append(c)
+        return out
 
     def known_at_end(self, job) -> None:
         """Once, as the report is written: every try of the job whose

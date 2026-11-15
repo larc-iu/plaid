@@ -102,9 +102,10 @@ under another, and the tools that move entries around work on that structure, ne
 can express a question, read query_help and write a query.'''
 #: A project-wide rule is checked under no one document's lock, so a job
 #: lists it as a proposed change (igt/jobapply.py).
-_JOB_PROJECT_WIDE = '''- A project-wide tool (set_field_for_form, replace_in_field, set_analysis_for_form, \
-respell_all, copy_to_orthography) stages a rule, which a job lists as a proposed change and never applies: \
-stage changes item by item where they are to be applied.'''
+_JOB_PROJECT_WIDE = '''- A project-wide tool (set_field_for_form, replace_in_field, respell_all, copy_to_orthography) stages a \
+rule, which a job lists as a proposed change and never applies: stage changes item by item where they are to be \
+applied. set_analysis_for_form stages a change at every occurrence: those in your piece's document are applied, \
+the others listed as proposed changes.'''
 
 _READ_FIRST = '''- Use the tools rather than guessing. Read before you write: check analyses_of and the lexicon before \
 proposing glosses, and follow the conventions already in the data (gloss abbreviations, capitalization, morph \
@@ -313,7 +314,7 @@ PLAN_CODE = shared.code_section(
 #: tools it is not offered (toolkit.TEXT_TOOLS) and what they would write.
 NO_TEXT_EDITS = (('deletions and text edits included', 'deletions included'),
                  ('confirmations, document restores, corpus-wide rules', 'confirmations, corpus-wide rules'),
-                 ('set_analysis_for_form, respell_all, copy_to_orthography', 'set_analysis_for_form, copy_to_orthography'))
+                 ('replace_in_field, respell_all, copy_to_orthography', 'replace_in_field, copy_to_orthography'))
 
 
 def build_job_prompt(project: IgtProject, sentences: bool = False, edits_text: bool = False) -> str:
