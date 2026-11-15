@@ -579,6 +579,27 @@ describe('the job page', () => {
     await v.unmount();
   });
 
+  it('keeps the setup line of a job that ended with no plan, beside its Plan line', async () => {
+    const plan = { by: 'none', why: 'no-plan', pieceInstructions: '', fallback: [], leftOut: [] };
+    const setup = { fills: [{ id: 'L1', name: 'Case' }], text: false };
+    const v = await mount(
+      clientOf(
+        jobOf({
+          state: 'failed',
+          reason: 'no-plan',
+          message: null,
+          setup,
+          report: { ...REPORT, plan },
+        }),
+      ),
+    );
+    expect(v.container.querySelector('[data-testid="job-setup"]').textContent).toBe(
+      'Set up to fill Case. Text unchanged.',
+    );
+    expect(totals(v.container).Plan).toBe('Planning ended with no plan. Nothing was written.');
+    await v.unmount();
+  });
+
   it('says when the model failed during planning, apart from a planning with no plan', async () => {
     const plan = { by: 'none', why: 'output', pieceInstructions: '', fallback: [], leftOut: [] };
     const v = await mount(

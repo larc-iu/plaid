@@ -253,4 +253,53 @@ describe('a conversation started for a purpose', () => {
     expect(m.container.textContent).not.toContain('Ask about Lamkang A.');
     await m.unmount();
   });
+
+  // REV-SU-FRONT's untested points, each a few lines.
+  const docked = (client, props = {}) =>
+    renderComponent(
+      <MemoryRouter initialEntries={['/projects/p1']}>
+        <AssistantPanel
+          projectId="p1"
+          projectName="Lamkang A"
+          client={client}
+          userId="u1"
+          canWrite
+          adapter={ADAPTER}
+          fresh={{ seq: 1, purpose: 'job-setup' }}
+          onFreshTaken={vi.fn()}
+          {...props}
+        />
+      </MemoryRouter>,
+    );
+
+  it('a New conversation from inside a fresh setup drops the purpose', async () => {
+    const client = chatClient({ conv: CONV });
+    const m = await docked(client);
+    await chat.flush(m, 10);
+    expect(m.container.textContent).toContain('Say what the job should do.');
+    await m.step(() => m.container.querySelector('button[title="New conversation"]').click());
+    await chat.flush(m, 10);
+    expect(m.container.textContent).not.toContain('Say what the job should do.');
+    expect(m.container.textContent).toContain('Ask about Lamkang A.');
+    await chat.typeAndSend(m, 'What is here?');
+    await chat.flush(m, 10);
+    expect(sends(client)[0].create).toBe(true);
+    expect(sends(client)[0]).not.toHaveProperty('purpose');
+    await m.unmount();
+  });
+
+  it('the docked panel asks a setup from a document’s header from that document', async () => {
+    const client = chatClient({ conv: CONV });
+    const subject = { kind: 'document', id: 'd1', name: 'Story A' };
+    const m = await docked(client, { subject });
+    await chat.flush(m, 10);
+    await chat.typeAndSend(m, 'Gloss this story.');
+    await chat.flush(m, 10);
+    expect(sends(client)[0]).toMatchObject({
+      create: true,
+      purpose: 'job-setup',
+      where: { kind: 'document', id: 'd1', name: 'Story A' },
+    });
+    await m.unmount();
+  });
 });

@@ -211,4 +211,26 @@ describe('Start without the assistant', () => {
     expect(seen.fresh).toBeNull();
     await v.unmount();
   });
+
+  it('gives focus back to its trigger on Escape', async () => {
+    const v = await mount(<StartWithoutAssistant projectId="p1" client={clientOf()} />, {});
+    const trigger = all(v.container, 'button').find(
+      (b) => b.getAttribute('aria-label') === 'More job actions',
+    );
+    await v.step(() => {
+      trigger.focus();
+      trigger.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    });
+    const menu = document.body.querySelector('[role="menu"]');
+    expect(menu).toBeTruthy();
+    await v.step(() =>
+      document.activeElement.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }),
+      ),
+    );
+    await v.step(async () => {});
+    expect(document.body.querySelector('[role="menu"]')).toBeNull();
+    expect(document.activeElement).toBe(trigger);
+    await v.unmount();
+  });
 });
