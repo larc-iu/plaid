@@ -175,6 +175,40 @@ describe('a conversation started for a purpose', () => {
     await m.unmount();
   });
 
+  it('the full tab opened for a purpose from a document asks its turns from that document', async () => {
+    const client = chatClient({ conv: CONV });
+    client.documents = { get: vi.fn(async (id) => ({ id, name: 'Story A' })) };
+    const at = {};
+    const Where = () => {
+      at.search = useLocation().search;
+      return null;
+    };
+    const m = await renderComponent(
+      <MemoryRouter initialEntries={['/projects/p1?tab=assistant&purpose=job-setup&document=d1']}>
+        <AssistantTab
+          projectId="p1"
+          projectName="Lamkang A"
+          client={client}
+          userId="u1"
+          canWrite
+          adapter={ADAPTER}
+        />
+        <Where />
+      </MemoryRouter>,
+    );
+    await chat.flush(m, 10);
+    expect(m.container.textContent).toContain('Say what the job should do.');
+    expect(at.search).toBe('?tab=assistant');
+    const place = { kind: 'document', id: 'd1', name: 'Story A' };
+    await chat.typeAndSend(m, 'Gloss this story.');
+    await chat.flush(m, 10);
+    expect(sends(client)[0]).toMatchObject({ create: true, purpose: 'job-setup', where: place });
+    await chat.typeAndSend(m, 'Only Gloss.');
+    await chat.flush(m, 10);
+    expect(sends(client)[1]).toMatchObject({ create: false, where: place });
+    await m.unmount();
+  });
+
   it('the docked panel says what to write for a purpose', async () => {
     const client = chatClient({ conv: CONV });
     const m = await renderComponent(

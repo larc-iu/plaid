@@ -102,6 +102,18 @@ describe('Set up job', () => {
     await v.unmount();
   });
 
+  it("from a document's header with no room for the panel, names the document to the tab", async () => {
+    window.innerWidth = 800;
+    const seen = {};
+    const v = await mount(
+      <SetUpJob projectId="p1" client={clientOf()} documentId="d1" small />,
+      seen,
+    );
+    await press(v, 'Set up job');
+    expect(seen.at).toBe('/projects/p1?tab=assistant&purpose=job-setup&document=d1');
+    await v.unmount();
+  });
+
   it('opens the Start job form where no assistant is online', async () => {
     const seen = {};
     const v = await mount(<SetUpJob projectId="p1" client={clientOf([])} />, seen);

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { ChevronDown, ChevronRight, Plus } from 'lucide-react';
 import { cn } from '../../lib/utils.js';
 import { Badge } from '../ui/badge.jsx';
@@ -27,8 +28,14 @@ import {
 //
 // `?purpose=<code>` opens it on a new conversation for that purpose
 // (purposes.js), as a screen too narrow for the docked panel asks for one
-// (`useStartConversation({purpose})` there). The param is dropped once the
-// conversation is started, so a reload or Back does not start another.
+// (`useStartConversation({purpose})` there). With `&document=<id>` (Set up job
+// in a document's header) that conversation's turns are asked from the
+// document, as the panel beside it would ask them. Both params are dropped
+// once the conversation is started, so a reload or Back does not start
+// another.
+// `document` rides with `purpose` and goes with it.
+const ASKED_WITH = { companions: ['document'] };
+
 export const AssistantTab = ({
   projectId,
   projectName,
@@ -39,8 +46,29 @@ export const AssistantTab = ({
   adapter,
 }) => {
   const [convId, setConvId] = useConversationParam();
-  const [asked, setAsked] = useDetailParam('purpose');
-  const fresh = useMemo(() => (asked ? { seq: 1, purpose: asked } : null), [asked]);
+  const [asked, setAsked] = useDetailParam('purpose', ASKED_WITH);
+  const [searchParams] = useSearchParams();
+  const askedDocument = asked ? searchParams.get('document') : null;
+  // The asked document's name, read once, for the place a turn names.
+  const [named, setNamed] = useState(null);
+  useEffect(() => {
+    if (!askedDocument) return undefined;
+    let live = true;
+    const done = (name) => live && setNamed({ id: askedDocument, name });
+    client.documents.get(askedDocument).then(
+      (d) => done(d?.name ?? null),
+      () => done(null),
+    );
+    return () => {
+      live = false;
+    };
+  }, [client, askedDocument]);
+  const fresh = useMemo(() => {
+    if (!asked) return null;
+    if (!askedDocument) return { seq: 1, purpose: asked };
+    if (named?.id !== askedDocument) return null;
+    return { seq: 1, purpose: asked, where: { kind: 'document', ...named } };
+  }, [asked, askedDocument, named]);
   // Phone width only: whether the list is unfolded. Wider, it always shows.
   const [listShown, setListShown] = useState(false);
   const listOpen = listShown || !convId;

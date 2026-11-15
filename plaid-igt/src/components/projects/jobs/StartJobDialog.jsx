@@ -30,8 +30,11 @@ import { InstructionsCount, JobActiveLine, NoWorkerLine } from './jobLines.jsx';
 
 const byName = (a, b) => (a.name || '').localeCompare(b.name || '') || a.id.localeCompare(b.id);
 
-// Where the full Assistant tab opens on a new job setup conversation.
-const setUpHref = (projectId) => `/projects/${projectId}?tab=assistant&purpose=${JOB_SETUP}`;
+// Where the full Assistant tab opens on a new job setup conversation, whose
+// turns are asked from the document when one is named (AssistantTab).
+const setUpHref = (projectId, documentId) =>
+  `/projects/${projectId}?tab=assistant&purpose=${JOB_SETUP}` +
+  (documentId ? `&document=${encodeURIComponent(documentId)}` : '');
 
 /**
  * Set up job: a job is set up in a new assistant conversation, which drafts
@@ -39,8 +42,9 @@ const setUpHref = (projectId) => `/projects/${projectId}?tab=assistant&purpose=$
  * Documents and Jobs tabs and from a document's header, where the
  * conversation's turns are asked from that document. The docked panel opens
  * on it, or the full Assistant tab where the window has no room for the
- * panel. With no assistant online for the project the button opens the Start
- * job form instead. Pressed before the app knows whether one is (discovery
+ * panel, and from a document's header it names the document to the tab, so
+ * the turns are asked from it there too. With no assistant online for the
+ * project the button opens the Start job form instead. Pressed before the app knows whether one is (discovery
  * not answered yet, on a cold load), it waits for the answer, pending as a
  * service's run button is, and then does what the answer says.
  *
@@ -66,7 +70,7 @@ export const SetUpJob = ({
   const act = () => {
     if (available !== true) setOpen(true);
     else if (wide) startConversation({ purpose: JOB_SETUP });
-    else navigate(setUpHref(projectId));
+    else navigate(setUpHref(projectId, documentId));
   };
   const setUp = () => (available === null ? setWaiting(true) : act());
   const Icon = waiting ? Loader2 : Play;

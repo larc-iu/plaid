@@ -138,7 +138,9 @@ export const AssistantChat = ({
   focus = null,
   onClearFocus,
   // A new conversation a screen asked for (subject.js `useStartConversation`),
-  // as a number new for each press, and how to let go of it once taken.
+  // as `{seq, purpose?, where?}` with `seq` new for each press, and how to let
+  // go of it once taken. `where`, the place its turns are asked from, is for a
+  // surface with no subject of its own (the tab opened from a document).
   fresh = null,
   onFreshTaken,
   // Put the chat away. Rendered as the last thing in the header, where the
@@ -442,6 +444,9 @@ export const AssistantChat = ({
   // The project a screen asked for a new conversation in: the newest thread is
   // not resumed over it (see the effect below `startNew`).
   const freshFor = useRef(null);
+  // `{convId, where}`: the place a fresh request named, for that conversation
+  // only. A subject's place comes first.
+  const freshPlace = useRef(null);
   useResumeConversation({
     keepNew: () => freshFor.current === projectIdRef.current,
     projectId,
@@ -520,16 +525,19 @@ export const AssistantChat = ({
   }, [active?.id]);
 
   // A new conversation, for `purpose` when a screen started it for one
-  // (purposes.js).
-  const startFresh = (purpose = null) => {
+  // (purposes.js), its turns asked from `place` where the screen named one
+  // and this surface has no subject.
+  const startFresh = (purpose = null, place = null) => {
     openSeq.current++;
     // Already sitting in an untouched new conversation for the same purpose:
     // nothing to start.
-    const a = activeRef.current;
+    let a = activeRef.current;
     if (!a?.draft || a.display.length || (a.purpose ?? null) !== purpose) {
-      setActive(newConversation(purpose));
+      a = newConversation(purpose);
+      setActive(a);
       setInput('');
     }
+    freshPlace.current = place?.kind && place.id ? { convId: a.id, where: place } : null;
     if (convIdRef.current) setConvId(null);
     inputRef.current?.focus();
   };
@@ -545,7 +553,7 @@ export const AssistantChat = ({
   useEffect(() => {
     if (!fresh) return;
     freshFor.current = projectIdRef.current;
-    startFresh(typeof fresh.purpose === 'string' ? fresh.purpose : null);
+    startFresh(typeof fresh.purpose === 'string' ? fresh.purpose : null, fresh.where ?? null);
     onFreshTaken?.();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fresh]);
@@ -666,6 +674,7 @@ export const AssistantChat = ({
     const base = activeRef.current ?? newConversation();
     // Sent with the send that creates the conversation, and never after.
     const purpose = base.draft ? (base.purpose ?? null) : null;
+    const at = where ?? (freshPlace.current?.convId === base.id ? freshPlace.current.where : null);
     const tab = held.tab;
     const pending = attachments;
     if (pending.length) {
@@ -717,7 +726,7 @@ export const AssistantChat = ({
       kind: 'user',
       text,
       createdAt: itemTime(),
-      ...(where ? { where } : {}),
+      ...(at ? { where: at } : {}),
       ...(sent.length ? { files: sent } : {}),
       ...(joined.length ? { projects: joined } : {}),
     };
@@ -736,7 +745,7 @@ export const AssistantChat = ({
       store,
       service,
       conv,
-      where,
+      where: at,
       text,
       files: sent,
       projects: joined,
@@ -746,7 +755,7 @@ export const AssistantChat = ({
     });
     j.unsentFiles = pending;
     j.reveal = revealOf(j);
-    applyMeta(shownMeta(prevMeta, conv, projectId, service, where, tab, j, purpose));
+    applyMeta(shownMeta(prevMeta, conv, projectId, service, at, tab, j, purpose));
     showJob(j);
   };
 
