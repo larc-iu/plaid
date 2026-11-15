@@ -391,3 +391,21 @@ def test_a_field_named_segmentation_is_never_taken_for_segmentation_by_its_bare_
     for name in ('segmentation', 'Segmentation (word level)', 'segmentation (word)'):
         assert [t.id for t in tg.named(plain, [name])[0]] == ['segmentation'], name
 
+
+def test_a_field_sharing_its_name_with_an_orthography_is_named_by_its_label():
+    """REV-DF3-3: a word field "IPA" beside the orthography "IPA". The bare
+    name names neither, the field answers to the label the planner is shown
+    and its name with its level, the orthography only to its name, its label
+    and "IPA (orthography)", never to a field's "(word level)"."""
+    raw = fields_project()
+    words = raw['text_layers'][0]['token_layers'][1]
+    words['span_layers'].append({'id': 'sl-ipafield', 'name': 'IPA', 'config': {'igt': {'scope': 'Word'}}})
+    project = load_project(JobClient({'d1': _raw()}, project=raw), 'p1')
+    labels = [t.label for t in tg.fillable(project) if t.name == 'IPA']
+    assert labels == ['"IPA" (word level)', '"IPA" (orthography, word level)']
+    assert tg.named(project, ['IPA']) == ([], ['IPA'])
+    for name in ('"IPA" (word level)', 'IPA (word level)', 'IPA (word)'):
+        assert [t.id for t in tg.named(project, [name])[0]] == ['sl-ipafield'], name
+    for name in ('"IPA" (orthography, word level)', 'IPA (orthography)'):
+        assert [t.id for t in tg.named(project, [name])[0]] == ['orthography:IPA'], name
+    assert '"IPA" (word level)' in tg.listed_names(project)

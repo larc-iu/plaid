@@ -112,13 +112,15 @@ def of_ids(project: IgtProject, ids: Optional[Iterable[str]]) -> List[Target]:
 
 def _keys(t: Target) -> Tuple[List[str], List[str]]:
     """Every way a planner may name ``t``, quotes and case aside: its name
-    and label, and for a field or an orthography its name with its level;
-    then, looked up only when nothing else answers to it, segmentation with
-    a level (a field named "Segmentation" owns "Segmentation (word level)")."""
+    and label, for a field its name with its level, and for an orthography
+    "<name> (orthography)", never a field's "(word level)" (REV-DF3-3: a
+    word field sharing an orthography's name is named by its label); then,
+    looked up only when nothing else answers to it, segmentation with a
+    level (a field named "Segmentation" owns "Segmentation (word level)")."""
     first = [t.name, t.label]
     later = [f'{t.name} ({LEVEL[t.scope]})', f'{t.name} ({LEVEL[t.scope]} level)']
     if t.orthography is not None:
-        first.append(f'{t.name} (orthography)')
+        first, later = first + [f'{t.name} (orthography)'], []
     if not t.segments:
         first, later = first + later, []
     fold = lambda ks: list(dict.fromkeys(k.replace('"', '').casefold() for k in ks))  # noqa: E731
