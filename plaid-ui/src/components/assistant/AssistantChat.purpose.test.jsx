@@ -145,6 +145,29 @@ describe('a conversation started for a purpose', () => {
     await m.unmount();
   });
 
+  it('a saved conversation with a title still says it was a job setup, from its purpose', async () => {
+    const client = chatClient({
+      conv: CONV,
+      meta: { ...chat.META, title: 'Gloss the stories', purpose: 'job-setup' },
+    });
+    const m = await mount(client, { fresh: null, onFreshTaken: vi.fn(), seen: {} });
+    await chat.flush(m, 10);
+    const row = m.container.querySelector(`a[href*="conversation=c1"]`);
+    expect(row?.textContent).toContain('Gloss the stories');
+    expect(row?.textContent).toContain('Job setup');
+    await m.unmount();
+  });
+
+  it('a conversation with no purpose names none', async () => {
+    const client = chatClient({ conv: CONV, meta: { ...chat.META, title: 'Gloss the stories' } });
+    const m = await mount(client, { fresh: null, onFreshTaken: vi.fn(), seen: {} });
+    await chat.flush(m, 10);
+    const row = m.container.querySelector(`a[href*="conversation=c1"]`);
+    expect(row?.textContent).toContain('Gloss the stories');
+    expect(row?.textContent).not.toContain('Job setup');
+    await m.unmount();
+  });
+
   it('the full tab opened for a purpose starts a conversation for it and drops the param', async () => {
     const client = chatClient({ conv: CONV });
     const at = {};

@@ -39,8 +39,9 @@ import { useConfirm } from '../shared/ConfirmProvider.jsx';
 
 // The conversation rail: one row per conversation, the assistant picker, and
 // the export menu.
-// One sidebar entry: the title, when it was last written, which model, and
-// whether work was left unfinished.
+// One sidebar entry: the title, when it was last written, what it was started
+// for once a title names it otherwise (its purpose, purposes.js), which model,
+// and whether work was left unfinished.
 // A conversation started from a document says so: the same list holds those
 // and the ones started from the tab, and which document a thread is about is
 // the first thing that tells them apart.
@@ -64,6 +65,7 @@ const ConversationRow = ({ m, opening, elsewhere = null }) => {
         {m.draft
           ? 'Nothing sent yet'
           : (opening === m.id ? 'Opening…' : timeAgo(m.updatedAt)) +
+            (m.title && purposeTitle(m.purpose) ? ` · ${purposeTitle(m.purpose)}` : '') +
             (m.model ? ` · ${m.model.split('/').pop()}` : '') +
             (followable(m.pending) && !jobFor(m.id) ? ' · unfinished' : '')}
       </div>
