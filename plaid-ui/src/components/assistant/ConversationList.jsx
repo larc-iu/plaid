@@ -34,6 +34,7 @@ import { copyText, saveBlob } from '../../lib/download.js';
 import { conversationToMarkdown, markdownFilename } from './exportMarkdown.js';
 import { followable, jobFor } from './jobs.js';
 import { runByLine } from './useAssistantAvailable.js';
+import { purposeTitle } from './purposes.js';
 import { useConfirm } from '../shared/ConfirmProvider.jsx';
 
 // The conversation rail: one row per conversation, the assistant picker, and
@@ -55,7 +56,9 @@ const ConversationRow = ({ m, opening, elsewhere = null }) => {
     <>
       <div className="flex items-center gap-1.5">
         <MessageSquare className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-        <span className={cn('truncate', m.draft && 'italic')}>{m.title || 'Untitled'}</span>
+        <span className={cn('truncate', m.draft && 'italic')}>
+          {m.title || purposeTitle(m.purpose) || 'Untitled'}
+        </span>
       </div>
       <div className="pl-5 text-[11px] text-muted-foreground">
         {m.draft

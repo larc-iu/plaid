@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ChevronDown, ChevronRight, Plus } from 'lucide-react';
 import { cn } from '../../lib/utils.js';
 import { Badge } from '../ui/badge.jsx';
@@ -7,6 +7,8 @@ import { AssistantChat } from './AssistantChat.jsx';
 import { AssistantMark } from './PlaidMarks.jsx';
 import { runByLine } from './useAssistantAvailable.js';
 import { useConversationParam } from './conversationParam.js';
+import { purposeEmpty } from './purposes.js';
+import { useDetailParam } from '../../hooks/useDetailParam.js';
 import {
   AllProjectsSwitch,
   AssistantPicker,
@@ -22,6 +24,11 @@ import {
 // What it adds to the chat: the rail of conversations, the export menu, and
 // the room to introduce itself. The conversation it is showing is in the URL
 // (`?conversation=<id>`), so a thread can be shared and backed out of.
+//
+// `?purpose=<code>` opens it on a new conversation for that purpose
+// (purposes.js), as a screen too narrow for the docked panel asks for one
+// (`useStartConversation({purpose})` there). The param is dropped once the
+// conversation is started, so a reload or Back does not start another.
 export const AssistantTab = ({
   projectId,
   projectName,
@@ -32,6 +39,8 @@ export const AssistantTab = ({
   adapter,
 }) => {
   const [convId, setConvId] = useConversationParam();
+  const [asked, setAsked] = useDetailParam('purpose');
+  const fresh = useMemo(() => (asked ? { seq: 1, purpose: asked } : null), [asked]);
   // Phone width only: whether the list is unfolded. Wider, it always shows.
   const [listShown, setListShown] = useState(false);
   const listOpen = listShown || !convId;
@@ -49,6 +58,8 @@ export const AssistantTab = ({
         adapter={adapter}
         conversationId={convId}
         onConversationId={setConvId}
+        fresh={fresh}
+        onFreshTaken={() => setAsked(null, { replace: true })}
         renderSidebar={({ listProps, allProjects, setAllProjects, startNew }) => (
           <aside className="flex max-h-48 w-full shrink-0 flex-col rounded-lg border bg-card sm:max-h-none sm:w-64">
             <div className="flex items-center justify-between border-b px-3 py-2">
@@ -120,13 +131,15 @@ export const AssistantTab = ({
             />
           )
         }
-        renderEmpty={({ choice, canSend, busy, send }) => (
+        renderEmpty={({ choice, canSend, busy, send, purpose }) => (
           <div className="mt-10 flex flex-col items-center gap-4 text-center">
             {/* No disc around it: the mark is already a rounded square, so a
                 grey circle behind it was a container around a container. */}
             <AssistantMark ring className="h-11 w-11" />
             <div className="max-w-md text-sm text-muted-foreground">
-              {adapter.intro} Changes come back as a plan to approve.
+              {/* A conversation started for a purpose says what to write, and
+                  offers no examples of something else. */}
+              {purposeEmpty(purpose) || `${adapter.intro} Changes come back as a plan to approve.`}
             </div>
             {/* Which assistant answers is settled here, at the start, and then
                 stays put for the rest of the conversation. */}
@@ -139,7 +152,7 @@ export const AssistantTab = ({
               />
             )}
             <div className="flex flex-wrap justify-center gap-2">
-              {adapter.examples.map((ex) => (
+              {(purposeEmpty(purpose) ? [] : adapter.examples).map((ex) => (
                 <button
                   key={ex}
                   type="button"

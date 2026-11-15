@@ -12,10 +12,14 @@ export const AssistantSubjectProvider = ({ children }) => {
   const [focus, setFocus] = useState(null);
   const ask = useCallback((detail) => setFocus(detail || null), []);
   const clearFocus = useCallback(() => setFocus(null), []);
-  // A new conversation a screen asked for, as a number new for each press, so
-  // pressing again after the panel took the first is a request of its own.
+  // A new conversation a screen asked for, as `{seq, purpose}` with `seq` new
+  // for each press, so pressing again after the panel took the first is a
+  // request of its own. A purpose is only ever a string (subject.js).
   const [fresh, setFresh] = useState(null);
-  const startConversation = useCallback(() => setFresh((n) => (n || 0) + 1), []);
+  const startConversation = useCallback((opts) => {
+    const purpose = typeof opts?.purpose === 'string' ? opts.purpose : null;
+    setFresh((was) => ({ seq: (was?.seq || 0) + 1, purpose }));
+  }, []);
   const clearFresh = useCallback(() => setFresh(null), []);
 
   // A reference into a document the reader has since left means nothing, so it

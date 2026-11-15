@@ -197,6 +197,8 @@ export const Turn = ({
   // A job card on this reply: the session's client the app's card starts the
   // job with, and how the page tells the service the card ended.
   client = null,
+  // The conversation the card is in, which a job started from it remembers.
+  conversationId = null,
   onSettleJob = null,
   // The project a plan on this reply writes in, when the conversation reads
   // others at this turn (PlanCard `planProject`).
@@ -460,6 +462,7 @@ export const Turn = ({
             card={item.job}
             projectId={projectId}
             client={client}
+            conversationId={conversationId}
             readOnly={readOnly || !onSettleJob}
             busy={busy}
             onSettle={onSettleJob}

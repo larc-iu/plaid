@@ -67,6 +67,7 @@ import {
   jobs,
 } from './jobs.js';
 import { useHold } from './hold.js';
+import { purposeTitle } from './purposes.js';
 
 // A chat with whatever `assist` service(s) the operator runs (see
 // ../../../../plaid-agent): the transcript, the composer, the plans it comes
@@ -518,25 +519,33 @@ export const AssistantChat = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active?.id]);
 
-  const startNew = () => {
+  // A new conversation, for `purpose` when a screen started it for one
+  // (purposes.js).
+  const startFresh = (purpose = null) => {
     openSeq.current++;
-    // Already sitting in an untouched new conversation: nothing to start.
-    if (!activeRef.current?.draft || activeRef.current.display.length) {
-      setActive(newConversation());
+    // Already sitting in an untouched new conversation for the same purpose:
+    // nothing to start.
+    const a = activeRef.current;
+    if (!a?.draft || a.display.length || (a.purpose ?? null) !== purpose) {
+      setActive(newConversation(purpose));
       setInput('');
     }
     if (convIdRef.current) setConvId(null);
     inputRef.current?.focus();
   };
+  // The New conversation button's: one for nothing in particular. A click's
+  // event is not a purpose.
+  const startNew = () => startFresh(null);
 
-  // A screen asked for a new conversation about itself (a job's page): one is
-  // started, as the New conversation button starts one, and the request let
-  // go. The panel may have just opened for it, and its first read of the list
-  // would then resume the newest thread over this one, which `keepNew` stops.
+  // A screen asked for a new conversation about itself (a job's page), or for
+  // a purpose (Set up job): one is started, as the New conversation button
+  // starts one, and the request let go. The panel may have just opened for
+  // it, and its first read of the list would then resume the newest thread
+  // over this one, which `keepNew` stops.
   useEffect(() => {
     if (!fresh) return;
     freshFor.current = projectIdRef.current;
-    startNew();
+    startFresh(typeof fresh.purpose === 'string' ? fresh.purpose : null);
     onFreshTaken?.();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fresh]);
@@ -655,6 +664,8 @@ export const AssistantChat = ({
     // assistant addresses one. A question that already names it is left alone.
     const text = focus && !typed.includes(focus.ref) ? `${focus.ref}: ${typed}` : typed;
     const base = activeRef.current ?? newConversation();
+    // Sent with the send that creates the conversation, and never after.
+    const purpose = base.draft ? (base.purpose ?? null) : null;
     const tab = held.tab;
     const pending = attachments;
     if (pending.length) {
@@ -730,11 +741,12 @@ export const AssistantChat = ({
       files: sent,
       projects: joined,
       create: !!base.draft,
+      purpose,
       tab,
     });
     j.unsentFiles = pending;
     j.reveal = revealOf(j);
-    applyMeta(shownMeta(prevMeta, conv, projectId, service, where, tab, j));
+    applyMeta(shownMeta(prevMeta, conv, projectId, service, where, tab, j, purpose));
     showJob(j);
   };
 
@@ -1035,7 +1047,15 @@ export const AssistantChat = ({
   // to the project on screen, like every other row: nothing in a list of
   // conversations is from nowhere.
   const rows = active?.draft
-    ? [{ id: active.id, projectId, title: 'New conversation', draft: true }, ...list.rows]
+    ? [
+        {
+          id: active.id,
+          projectId,
+          title: purposeTitle(active.purpose) || 'New conversation',
+          draft: true,
+        },
+        ...list.rows,
+      ]
     : list.rows;
   // What either surface needs to draw that list: the rail in the tab, the
   // header's popover in the panel.
@@ -1085,6 +1105,9 @@ export const AssistantChat = ({
     allProjects: list.allProjects,
     setAllProjects: list.setAllProjects,
     startNew,
+    // What a new conversation was started for (purposes.js), while it is
+    // unsent: the surface's empty state says what to write.
+    purpose: active?.draft ? (active.purpose ?? null) : null,
     choice,
     // The assistant answering, which is null until one is online. renderIdentity
     // is the one place it is a service for certain, because the header calls it
@@ -1202,6 +1225,7 @@ export const AssistantChat = ({
                   onApprove={(opts) => approve(d.plan, opts, d.service)}
                   onDiscard={() => discard(i)}
                   client={client}
+                  conversationId={active?.id ?? null}
                   onSettleJob={d.job ? (ended) => settleJob(i, ended) : null}
                   onOpenPlan={() =>
                     client.events?.record?.('plan.opened', {
@@ -1340,7 +1364,7 @@ const titleFrom = (text) => {
 // The sidebar row for a message just sent, drawn at once as the service will
 // write it (plaid_agent/core/conversation.py `build_meta`): the title from the
 // first message, where it began, this tab holding it, the turn under way.
-const shownMeta = (prev, conv, projectId, service, where, tab, j) => {
+const shownMeta = (prev, conv, projectId, service, where, tab, j, purpose = null) => {
   const now = new Date().toISOString();
   return {
     ...(prev || {}),
@@ -1353,6 +1377,7 @@ const shownMeta = (prev, conv, projectId, service, where, tab, j) => {
     model: prev?.model || service?.extras?.model || null,
     turns: conv.display.filter((d) => d.kind === 'user').length,
     about: prev?.about || aboutOf(where),
+    ...(prev?.purpose || purpose ? { purpose: prev?.purpose || purpose } : {}),
     holder: { tab, at: now },
     pending: {
       kind: 'turn',
