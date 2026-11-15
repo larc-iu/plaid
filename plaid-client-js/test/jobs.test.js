@@ -163,6 +163,54 @@ test("a create with its documents sends them in order, and the list pages", asyn
   }
 });
 
+// A job's setup (SU): an app's own JSON object. Its keys are re-cased like
+// every key, so igt's are one word each and read the same in both clients.
+// Pinned: one-word keys go out and come back as they are, a camelCase key goes
+// out kebab-cased, and a kebab-case key comes back camelCased. The Python
+// client's test_jobs.py pins the same.
+test("a create sends its setup, and every read gives it back, one-word keys as they are", async () => {
+  const setup = {
+    fills: [
+      { id: "segmentation", name: "Morphemes" },
+      { id: "L1", name: "Case" },
+    ],
+    text: false,
+    conversation: "c1",
+  };
+  const net = capture([
+    { status: 201, body: { ...WIRE_JOB, "job/setup": setup } },
+    { status: 200, body: { ...WIRE_JOB, "job/setup": setup } },
+    { status: 200, body: { entries: [{ ...WIRE_JOB, "job/setup": setup }], "next-cursor": null } },
+    { status: 200, body: { ...WIRE_JOB, "job/setup": { "two-words": 1 } } },
+    { status: 201, body: WIRE_JOB },
+  ]);
+  try {
+    const client = new PlaidClient("http://x", "tok");
+    const made = await client.jobs.create("p1", { app: "igt", instructions: "Fill Case.", setup });
+    assert.deepEqual(net.sent[0].body, { app: "igt", instructions: "Fill Case.", setup });
+    assert.deepEqual(made.setup, setup);
+    assert.deepEqual((await client.jobs.get("j1")).setup, setup);
+    assert.deepEqual((await client.jobs.list("p1"))[0].setup, setup);
+    assert.deepEqual((await client.jobs.get("j1")).setup, { twoWords: 1 }, "a kebab-case key is camelCased");
+    const plain = await client.jobs.create("p1", { app: "igt", instructions: "x", setup: { twoWords: 1 } });
+    assert.deepEqual(net.sent[4].body.setup, { "two-words": 1 }, "a camelCase key is kebab-cased");
+    assert.equal(plain.setup, undefined, "a job with no setup has none");
+  } finally {
+    net.restore();
+  }
+});
+
+test("a create with no setup sends none", async () => {
+  const net = capture([{ status: 201, body: WIRE_JOB }]);
+  try {
+    const client = new PlaidClient("http://x", "tok");
+    await client.jobs.create("p1", { app: "igt", instructions: "x" });
+    assert.equal("setup" in net.sent[0].body, false);
+  } finally {
+    net.restore();
+  }
+});
+
 test("a job's create and cancel never join an open operation", async () => {
   const net = capture([{ status: 201, body: WIRE_JOB }]);
   try {

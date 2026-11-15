@@ -1948,6 +1948,7 @@ _JOB_LEASE_S = 120
 _JOB_HEARTBEAT_S = 30
 _JOB_DOCUMENTS_MAX = 500
 _JOB_INSTRUCTIONS_MAX_CHARS = 2000
+_JOB_SETUP_MAX_CHARS = 4000
 _JOB_REPORT_MAX_BYTES = 1000000
 _JOB_ANALYSIS_MAX_CHARS = 4000
 _JOB_DECISIONS_PER_CALL = 1000
@@ -2121,10 +2122,11 @@ class _FakeJobs:
             job['report'] = self._report_from_rows(job, stopped)
 
     # -- a person's calls --
-    def create(self, project_id, app, instructions, documents=None, *, id=None):
+    def create(self, project_id, app, instructions, documents=None, *, id=None, setup=None):
         path = f'/api/v1/projects/{project_id}/jobs'
         self.calls.append(('create', {'project_id': project_id, 'app': app, 'instructions': instructions,
-                                      'documents': None if documents is None else list(documents), 'id': id}))
+                                      'documents': None if documents is None else list(documents), 'id': id,
+                                      'setup': copy.deepcopy(setup)}))
         live = self._documents_of(project_id)
         if app not in _JOB_APPS:
             raise self._refuse(400, 'POST', path, f'Unknown app: {app}.')
@@ -2133,6 +2135,14 @@ class _FakeJobs:
         if len(instructions) > _JOB_INSTRUCTIONS_MAX_CHARS:
             raise self._refuse(400, 'POST', path, f'The instructions are {len(instructions):,} characters. '
                                                   f"A job's instructions are at most {_JOB_INSTRUCTIONS_MAX_CHARS:,}.")
+        if setup is not None:
+            if not isinstance(setup, dict):
+                raise self._refuse(400, 'POST', path, 'setup: give a JSON object.')
+            # core counts the characters of the JSON text it stores, compact
+            n = len(json.dumps(setup, ensure_ascii=False, separators=(',', ':')))
+            if n > _JOB_SETUP_MAX_CHARS:
+                raise self._refuse(400, 'POST', path, f'The setup is {n:,} characters as JSON. '
+                                                      f"A job's setup is at most {_JOB_SETUP_MAX_CHARS:,}.")
         if documents is not None:
             if not documents:
                 raise self._refuse(400, 'POST', path,
@@ -2173,6 +2183,9 @@ class _FakeJobs:
             'heartbeat_s_at': None, 'seq': next(self._seq), 'worker_id': None, 'worker_user': None,
             'core_failed': False,
         }
+        if setup is not None:
+            # kept as core keeps it, and read back as the wire gives it
+            self.rows[job_id]['setup'] = transform_response(transform_request(copy.deepcopy(setup)))
         return self._shape(self.rows[job_id])
 
     def list(self, project_id):

@@ -488,5 +488,15 @@
     "js": ["jobs.undo", "j1"],
     "py": ["jobs.undo", "j1"],
     "sends": [{"method": "POST", "path": "/api/v1/jobs/j1/undo"}]
+  },
+  {
+    "name": "a job's setup goes out with its one-word keys as they are, and a key of two words kebab-cased",
+    "js": ["jobs.create", "p1", {"app": "igt", "instructions": "Fill Case.",
+                                 "setup": {"fills": [{"id": "L1", "name": "Case"}], "text": false, "conversation": "c1", "twoWords": 1}}],
+    "py": ["jobs.create", "p1", "igt", "Fill Case."],
+    "py_kw": {"setup": {"fills": [{"id": "L1", "name": "Case"}], "text": false, "conversation": "c1", "two_words": 1}},
+    "sends": [{"method": "POST", "path": "/api/v1/projects/p1/jobs",
+               "body": {"app": "igt", "instructions": "Fill Case.",
+                        "setup": {"fills": [{"id": "L1", "name": "Case"}], "text": false, "conversation": "c1", "two-words": 1}}}]
   }
 ]

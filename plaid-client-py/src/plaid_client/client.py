@@ -3730,7 +3730,7 @@ class JobsResource(_Resource):
     replays them."""
 
     def create(self, project_id: str, app: str, instructions: str, documents: list | None = None, *,
-               id: str | None = None) -> Any:
+               id: str | None = None, setup: dict | None = None) -> Any:
         """Start a job on a project.
 
         Needs a writer of the project, and a person's own token: a delegated
@@ -3738,7 +3738,8 @@ class JobsResource(_Resource):
         Refused with 409 ``job-active`` (``response_data['job']`` names it)
         while the project has a job waiting or running, and with 400 for an
         unknown app, no instructions or instructions over 2,000 characters, a
-        document of another project, or more than 500 documents.
+        document of another project, more than 500 documents, or a setup that
+        is not a dict or is over 4,000 characters as JSON.
 
         Args:
             project_id: The project
@@ -3749,13 +3750,20 @@ class JobsResource(_Resource):
                 project, by name
             id: Optional. The id to create it under, a UUIDv7 this client
                 minted (``plaid_client.uuid7()``), 409 ``id-taken`` when used.
+            setup: Optional. What the job was set up with: the app's own dict,
+                kept as sent, returned on every read as ``setup`` and never
+                changed. Its keys are re-cased like every key (snake_case goes
+                out kebab-case, kebab-case comes back snake_case), so keys of
+                one lowercase word read the same in both clients. None: no
+                setup, and the job's reads have no ``setup`` key.
         """
         # A job is not audited, so it never joins an open operation, and never
         # takes a number from an operation's Idempotency-Key seed.
         return self._request('POST', f'/api/v1/projects/{project_id}/jobs',
                              body=_body_of(id=_UNSET if id is None else id, app=app,
                                            documents=_UNSET if documents is None else documents,
-                                           instructions=instructions),
+                                           instructions=instructions,
+                                           setup=_UNSET if setup is None else setup),
                              no_operation=True)
 
     def list(self, project_id: str) -> Any:

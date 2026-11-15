@@ -318,6 +318,7 @@
  * @property {number} leaseS
  * @property {boolean} lapsed - Running or stopping with no heartbeat within `leaseS` seconds: its worker has gone silent
  * @property {number | null} ahead
+ * @property {Object<string, any>} [setup] - What the job was set up with, as its start sent it (`jobs.create`). Absent for a job started with none
  * @property {JobDocument[]} [documents]
  * @property {number} [documentCount] - On a list's entries: how many documents the job holds
  * @property {JobReport | null} [report]

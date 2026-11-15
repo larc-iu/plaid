@@ -327,6 +327,60 @@ def test_fake_create_waits_with_its_rows_in_order_and_refuses_as_core_does():
     assert jobs.list('p2')[0]['document_count'] == 1, 'a list entry counts its documents, as core\'s does'
 
 
+# A job's setup (SU): an app's own JSON object. Its keys are re-cased like
+# every key, so igt's are one word each and read the same in both clients.
+# Pinned: one-word keys go out and come back as they are, a snake_case key goes
+# out kebab-cased and a kebab-case key comes back snake_cased. The JS client's
+# jobs.test.js pins the same.
+SETUP = {'fills': [{'id': 'segmentation', 'name': 'Morphemes'}, {'id': 'L1', 'name': 'Case'}],
+         'text': False, 'conversation': 'c1'}
+
+
+def test_a_create_sends_its_setup_and_every_read_gives_it_back_one_word_keys_as_they_are():
+    client = _client([
+        Response(201, {**WIRE_JOB, 'job/setup': SETUP}),
+        {**WIRE_JOB, 'job/setup': SETUP},
+        {'entries': [{**WIRE_JOB, 'job/setup': SETUP}], 'next-cursor': None},
+        {**WIRE_JOB, 'job/setup': {'two-words': 1}},
+        Response(201, WIRE_JOB),
+        Response(201, WIRE_JOB),
+    ])
+    made = client.jobs.create('p1', 'igt', 'Fill Case.', setup=SETUP)
+    assert made['setup'] == SETUP
+    assert client.jobs.get('j1')['setup'] == SETUP
+    assert client.jobs.list('p1')[0]['setup'] == SETUP
+    assert client.jobs.get('j1')['setup'] == {'two_words': 1}, 'a kebab-case key is snake_cased'
+    plain = client.jobs.create('p1', 'igt', 'x', setup={'two_words': 1})
+    assert 'setup' not in plain, 'a job with no setup has none'
+    client.jobs.create('p1', 'igt', 'x')
+    sent = _sent(client)
+    assert sent[0]['body'] == {'app': 'igt', 'instructions': 'Fill Case.', 'setup': SETUP}
+    assert sent[4]['body']['setup'] == {'two-words': 1}, 'a snake_case key is kebab-cased'
+    assert 'setup' not in sent[5]['body'], 'a create with no setup sends none'
+
+
+def test_fake_create_keeps_the_setup_as_core_does():
+    client, _ = _fake()
+    jobs = client.jobs
+    job = jobs.create('p1', 'igt', 'n', setup=SETUP)
+    assert job['setup'] == SETUP
+    assert jobs.get(job['id'])['setup'] == SETUP
+    assert jobs.active('p1')['setup'] == SETUP
+    assert jobs.list('p1')[0]['setup'] == SETUP
+    jobs.cancel(job['id'])
+    assert jobs.get(job['id'])['setup'] == SETUP, 'never changed'
+    held = jobs.create('p1', 'igt', 'n', setup={'two_words': 1, 'a-b': 2})
+    assert jobs.get(held['id'])['setup'] == {'two_words': 1, 'a_b': 2}, 'read back as the wire gives it'
+    jobs.cancel(held['id'])
+    plain = jobs.create('p1', 'igt', 'n')
+    assert 'setup' not in plain and 'setup' not in jobs.list('p1')[0], 'none, and no key'
+    jobs.cancel(plain['id'])
+    _refused(lambda: jobs.create('p1', 'igt', 'n', setup=['L1']), 400, 'setup: give a JSON object.')
+    _refused(lambda: jobs.create('p1', 'igt', 'n', setup={'n': 'é' * 4005}), 400,
+             "The setup is 4,013 characters as JSON. A job's setup is at most 4,000.")
+    assert jobs.create('p1', 'igt', 'n', setup={'n': 'é' * 3992})['setup'] == {'n': 'é' * 3992}
+
+
 def test_fake_claim_takes_the_oldest_and_holds_the_one_slot_until_the_lease_lapses():
     client, clock = _fake()
     jobs = client.jobs

@@ -42,22 +42,27 @@ export function jobsApi(client) {
      * worker takes it. Refused with 409 `job-active` (the error's
      * `responseData.job` names it) while the project has a job waiting or
      * running, and with 400 for an unknown app, no instructions or
-     * instructions over 2,000 characters, a document of another project, or
-     * more than 500 documents.
+     * instructions over 2,000 characters, a document of another project, more
+     * than 500 documents, or a setup that is not an object or is over 4,000
+     * characters as JSON.
      * @param {string} projectId - The project
      * @param {object} job
      * @param {string} job.app - The app it works in: `igt`
      * @param {string} job.instructions - What the job is to do, sent with every piece of its work (at most 2,000 characters)
      * @param {string[]} [job.documents] - The documents, in order. Left out: every document of the project, by name
+     * @param {object} [job.setup] - What the job was set up with: the app's own object, kept as sent,
+     *   returned on every read as `setup` and never changed. Its keys are re-cased like every key
+     *   (camelCase goes out kebab-case, kebab-case comes back camelCase), so keys of one lowercase
+     *   word read the same in both clients
      * @param {string} [job.id] - The new job's id, minted by the caller (see uuidv7)
      * @returns {Promise<Job>}
      */
-    create: (projectId, { app, instructions, documents, id } = {}) =>
+    create: (projectId, { app, instructions, documents, setup, id } = {}) =>
       client._request("POST", `/api/v1/projects/${projectId}/jobs`, {
         // A job is not audited, so it never joins an open operation, and
         // never takes a number from an edit's Idempotency-Key seed.
         noOperation: true,
-        body: bodyOf({ id, app, documents, instructions }),
+        body: bodyOf({ id, app, documents, instructions, setup }),
       }),
     /**
      * A project's jobs, newest first, each without its documents and report
