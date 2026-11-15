@@ -267,7 +267,8 @@ def test_a_piece_not_offered_the_text_tools_is_told_of_none(sentences):
     for name in TEXT_TOOLS:
         assert name not in without, name
     assert 'text edits' not in without and 'document restores' not in without
-    assert 'respell_all' in with_ and 'deletions and text edits included' in with_
+    # A piece in sentences is told of no project-wide tool at all (REV-DAY-P-8).
+    assert ('respell_all' in with_) is not sentences and 'deletions and text edits included' in with_
 
 
 def test_read_job_says_the_job_may_edit_the_text():

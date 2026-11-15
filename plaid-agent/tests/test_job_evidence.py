@@ -193,7 +193,9 @@ def test_a_piece_in_sentences_is_told_to_stage_first_in_no_more_words():
     other = other.split('\nRunning code:')[0]  # a piece in sentences has no code tool (EV 4)
     sentences = sentences.split('\nRunning code:')[0]
     assert len(sentences.split()) < len(other.split()), 'no new paragraph: lines replaced'
-    assert sentences.count('\n') == other.count('\n')
+    # Built from its own parts: the find, read-budget and chat bullets go
+    # (REV-DAY-P-8), never a line added.
+    assert sentences.count('\n') < other.count('\n')
 
 
 def test_each_piece_gets_the_prompt_of_its_plan(monkeypatch):

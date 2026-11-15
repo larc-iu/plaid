@@ -11,6 +11,7 @@ so nothing here may be imported back by one of them.
 
 import copy
 import inspect
+import re
 from typing import Any, Dict
 
 from ..core import toolkit, webtools
@@ -807,6 +808,7 @@ def job_piece_tools(ws, plan_only: bool = False) -> list:
     if getattr(ws, 'in_sentences', False) and SENTENCES_PIECE_TOOLS is not None:
         allowed = sentences_piece_tools(getattr(ws, 'fills', ()))
         tools = [_without_check_first(t) for t in tools if t['function']['name'] in allowed]
+        tools = _offered_only(tools)
     if plan_only:
         tools = [t for t in tools if t['function']['name'] in WRITE_TOOLS]
     return tools
@@ -814,11 +816,72 @@ def job_piece_tools(ws, plan_only: bool = False) -> list:
 
 def job_piece_call(ws, name: str, args: Dict[str, Any]) -> str:
     """One call of a piece's model: a tool its list offers, run as the chat
-    runs it, and a refusal for any other."""
+    runs it, and a refusal for any other. A piece in sentences reads no
+    sentence of an answer naming a tool it is not offered (REV-DAY-P-8)."""
     from ..core.tools import refused
     if name not in {t['function']['name'] for t in job_piece_tools(ws, plan_only=ws.decide_now)}:
         return refused('that tool is not one of this job\'s: call one of those listed.', 'invalid-argument')
-    return call_tool(ws, name, args)
+    out = call_tool(ws, name, args)
+    if getattr(ws, 'in_sentences', False) and SENTENCES_PIECE_TOOLS is not None and isinstance(out, str):
+        offered = {t['function']['name'] for t in job_piece_tools(ws)}
+        kept = _without_names(out, _TOOL_NAMES - offered, underscored=True)
+        if kept != out:
+            out = type(out)(kept) if type(out) is str else _same_kind(out, kept)
+    return out
+
+
+def _same_kind(out, text: str):
+    """``text`` as an answer of ``out``'s kind (a refusal stays one)."""
+    from ..core.tools import Refusal
+    if isinstance(out, Refusal):
+        r = Refusal(text)
+        r.kind = out.kind
+        return r
+    return type(out)(text)
+
+
+#: Every tool name the assistant has (what a piece may be told of only when
+#: it is offered it).
+_TOOL_NAMES = frozenset(t['function']['name'] for t in TOOLS)
+
+
+def _without_names(text: str, names, underscored: bool = False) -> str:
+    """``text`` less every parenthesis, then every sentence, that names one
+    of ``names`` (a whole word; only names holding an underscore when
+    ``underscored``, for an answer whose data may hold plain words). Line
+    breaks are kept."""
+    names = {n for n in names if '_' in n} if underscored else set(names)
+    if not names or not any(n in text for n in names):
+        return text
+    pattern = re.compile(r'(?<![A-Za-z0-9_])(' + '|'.join(sorted(map(re.escape, names), key=len, reverse=True))
+                         + r')(?![A-Za-z0-9_])')
+    text = re.sub(r' ?\([^()\n]*\)', lambda m: '' if pattern.search(m.group(0)) else m.group(0), text)
+    lines = []
+    for line in text.split('\n'):
+        if not pattern.search(line):
+            lines.append(line)
+            continue
+        parts = re.split(r'(?<=[.!?:])\s+(?=[A-Z"(])', line)
+        lines.append(' '.join(p for p in parts if not pattern.search(p)).rstrip())
+    return '\n'.join(lines)
+
+
+def _offered_only(tools: list) -> list:
+    """``tools`` with every description less what names a tool none of
+    them is, nor an argument of one (REV-DAY-P-8: a sentences piece was told
+    of set_morpheme, unlink_entry, set_field_for_form, project_overview)."""
+    offered = {t['function']['name'] for t in tools}
+    arguments = {a for t in tools for a in (t['function'].get('parameters') or {}).get('properties') or {}}
+    stray = _TOOL_NAMES - offered - arguments
+
+    def clean(x):
+        if isinstance(x, dict):
+            return {k: (_without_names(v, stray) if k == 'description' and isinstance(v, str) else clean(v))
+                    for k, v in x.items()}
+        if isinstance(x, list):
+            return [clean(v) for v in x]
+        return x
+    return [clean(t) for t in tools]
 
 
 #: The sentence of analyses_of's description the planning context does not

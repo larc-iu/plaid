@@ -463,3 +463,42 @@ def test_set_analysis_for_form_is_said_to_apply_in_its_own_document(edits_text):
     assert ('respell_all' in head) is edits_text
     assert "set_analysis_for_form stages a change at every occurrence: those in your piece's document are applied, " \
            'the others listed as proposed changes.' in rule.replace('\n', ' ')
+
+
+#: Plain words of the project's shape that are also tool names: the
+#: tagsets' lead line and the guidelines' heading.
+SHAPE_WORDS = {'guidelines', 'tagsets'}
+
+
+@pytest.mark.parametrize('fills', [('segmentation', 'sl-mgloss'), ('sl-gloss',), ()], ids=['glossing', 'field', 'none'])
+@pytest.mark.parametrize('edits_text', [False, True])
+def test_a_sentences_piece_is_told_of_no_tool_it_is_not_offered(fills, edits_text):
+    """REV-DAY-P-8: the sentences prompt, every tool description and the
+    help a sentences piece reads name no tool it is not offered, one-word
+    names included (search, worklist, concordance), whatever its plan fills."""
+    import json
+    import re
+    from plaid_agent.igt import targets as tg
+    project = _project()
+    fill = [t for t in tg.fillable(project) if t.id in fills]
+    ws = JobWorkspace(FakeClient(), project)
+    ws.in_sentences, ws.fills, ws.edits_text = True, fill, edits_text
+    tools = toolkit.job_piece_tools(ws)
+    offered = {t['function']['name'] for t in tools}
+    arguments = {a for t in tools for a in (t['function'].get('parameters') or {}).get('properties') or {}}
+    names = {t['function']['name'] for t in toolkit.TOOLS}
+
+    def stray(text):
+        return sorted(set(re.findall(r'\b([a-z_][a-z0-9_]*)\b', text)) & names - offered - arguments - SHAPE_WORDS)
+    assert not stray(prompt.build_job_prompt(project, sentences=True, edits_text=edits_text, targets=fill))
+    assert not stray(json.dumps(tools))
+    if 'analyze_sentence' in offered:
+        help_text = toolkit.job_piece_call(ws, 'analyze_sentence', {'help': True})
+        assert not [n for n in stray(help_text) if '_' in n], help_text
+
+
+def test_the_set_field_line_says_set_analysis_as_its_description_does():
+    """REV-DAY-P-9: one rule stated one way."""
+    text = _job_prompt()
+    line = next(b for b in text.split('\n- ') if b.startswith('set_field changes one field value'))
+    assert 'only the values that differ are' in line and 'never to change a single gloss' not in line

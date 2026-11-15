@@ -38,9 +38,7 @@ a machine made and a trailing ^ one a contributor made.
 {stage_now}
 {plan_what_was_asked}
 {user_values}
-- set_field changes one field value (a gloss, a part of speech, a translation) and leaves everything else alone. \
-set_analysis rewrites a word's whole segmentation with all its morpheme values, so use it only to (re)segment a \
-word, never to change a single gloss.
+{one_value}
 {cite_items}
 {one_turn}
 {in_stretches}
@@ -121,6 +119,19 @@ _JOB_FIELDS_READ_FIRST = '''- The message says what is empty in your piece, and 
 other words or morphemes of the same forms. Fill what is empty with set_field.'''
 _JOB_NOTHING_READ_FIRST = '''- Use the tools rather than guessing, and follow the conventions already in the data.'''
 
+#: set_field and set_analysis, as set_analysis's own description has it
+#: since KM (REV-DAY-P-9).
+_ONE_VALUE = '''- set_field changes one field value (a gloss, a part of speech, a translation) and leaves everything else \
+alone. set_analysis (re)segments a word: given the word's morphemes as they are, only the values that differ are \
+written, otherwise it replaces the whole chain, so change a single value with set_field.'''
+#: The same for a piece in sentences whose plan does not segment: it has no
+#: set_analysis.
+_ONE_VALUE_FIELDS = '''- set_field changes one field value and leaves everything else alone.'''
+#: The lexicon's shape for a piece in sentences, which moves no entry and
+#: writes no query.
+_SENTENCES_LEXICON_TREE = '''- A lexicon's entries form a TREE: a HEADWORD is an entry with nothing above it, a SENSE \
+one under another.'''
+
 _FIND_SUBJECT = 'item (worklist, search, frequency_list)'
 _USER_VALUE_KINDS = 'a gloss, a form, a part of speech, a translation'
 
@@ -138,6 +149,7 @@ _CHAT = {
     'stage_now': shared.stage_now(),
     'plan_what_was_asked': shared.plan_what_was_asked(),
     'user_values': shared.user_values(_USER_VALUE_KINDS),
+    'one_value': _ONE_VALUE,
     'one_turn': shared.one_turn(),
     'in_stretches': shared.in_stretches(
         'segmenting and glossing, marking every noun phrase, a field on every word',
@@ -299,17 +311,33 @@ _JOB = {
 JOB_SYSTEM = re.sub(r'\n{2,}(?=- |\Z)', '\n', shared.filled(_SYSTEM, _JOB)).rstrip('\n') + '\n'
 
 
-def _sentences_system(read_first: str, did: str, note: str) -> str:
-    return re.sub(r'\n{2,}(?=- |\Z)', '\n', shared.filled(_SYSTEM, {
-        **_JOB, 'read_first': read_first, 'turn_example': shared.job_example(did, note)})).rstrip('\n') + '\n'
+def _sentences_system(read_first: str, did: str, note: str, one_value: str = _ONE_VALUE,
+                      evidence: bool = True) -> str:
+    """The prompt of a piece in sentences, built from its own parts: none
+    names a tool such a piece is not offered (REV-DAY-P-8: no find or corpus
+    reads, no project-wide tools, no entry moves or queries, no chat
+    bullet), and its read-first bullet, worked example and set_field line
+    follow what the plan fills. ``evidence``: its message holds evidence
+    (a plan that fills something)."""
+    out = re.sub(r'\n{2,}(?=- |\Z)', '\n', shared.filled(_SYSTEM, {
+        **_JOB, 'read_first': read_first, 'turn_example': shared.job_example(did, note),
+        'find_first': shared.job_find_first('item'), 'read_budget': '', 'project_wide': _SENTENCES_LEXICON_TREE,
+        'lexicon_tree': '', 'be_concise': '', 'one_value': one_value})).rstrip('\n') + '\n'
+    out = '\n'.join(line.rstrip() for line in out.split('\n'))
+    if not evidence:
+        assert shared.JOB_STAGE_EVIDENCE in out
+        out = out.replace(shared.JOB_STAGE_EVIDENCE, '')
+    return out
 
 
 #: The prompt of a piece of a job planned in sentences, by what its plan
 #: fills (BRIEF-EV, the owner's steer of 2026-11-15): two lines of JOB_SYSTEM
 #: say what its message holds and how to stage from it.
 JOB_SENTENCES_SYSTEM = _sentences_system(_JOB_SENTENCES_READ_FIRST, _JOB_SENTENCES_EXAMPLE_DID, _JOB_EXAMPLE_NOTE)
-JOB_FIELDS_SYSTEM = _sentences_system(_JOB_FIELDS_READ_FIRST, _JOB_FIELDS_EXAMPLE_DID, _JOB_FIELDS_EXAMPLE_NOTE)
-JOB_NOTHING_SYSTEM = _sentences_system(_JOB_NOTHING_READ_FIRST, _JOB_NOTHING_EXAMPLE_DID, _JOB_NOTHING_EXAMPLE_NOTE)
+JOB_FIELDS_SYSTEM = _sentences_system(_JOB_FIELDS_READ_FIRST, _JOB_FIELDS_EXAMPLE_DID, _JOB_FIELDS_EXAMPLE_NOTE,
+                                      _ONE_VALUE_FIELDS)
+JOB_NOTHING_SYSTEM = _sentences_system(_JOB_NOTHING_READ_FIRST, _JOB_NOTHING_EXAMPLE_DID, _JOB_NOTHING_EXAMPLE_NOTE,
+                                       _ONE_VALUE_FIELDS, evidence=False)
 
 
 #: The tagsets' first line in a job's prompt: nobody sees the value as the
@@ -363,7 +391,8 @@ def build_job_prompt(project: IgtProject, sentences: bool = False, edits_text: b
     out = _filled(template, project)
     if not edits_text:
         for said, instead in NO_TEXT_EDITS:
-            assert said in out, said
+            # A piece in sentences is told of no project-wide tool at all.
+            assert said in out or sentences, said
             out = out.replace(said, instead)
     # A piece in sentences is not offered run_code (toolkit.SENTENCES_PIECE_TOOLS).
     return out + JOB_CODE + JOB_TABLES if sandbox.available() is None and not sentences else out

@@ -404,10 +404,13 @@ ask for, and nothing more.'''
 JOB_FIND_FIRST = '''- For bulk work, first find every affected {subject}, then stage the changes. Where the \
 instructions are unclear about something, do the part that is clear and say in your note what you left.'''
 
-JOB_STAGE_NOW = '''- STAGE everything you decide in this piece before you end: there is no later message to do it \
-in. The message shows how the forms in it were analysed by people and earlier in this job: follow that unless \
-the sentence in front of you clearly needs another reading. Where you cannot tell what is right, leave it: a \
-value left empty is filled by a person later, and a wrong one has to be found first.'''
+#: What JOB_STAGE_NOW says of the evidence a piece's message holds, left out
+#: where the message holds none (a plan that fills nothing).
+JOB_STAGE_EVIDENCE = (' The message shows how the forms in it were filled by people and earlier in this job: follow '
+                      'that unless the sentence in front of you clearly needs another reading.')
+JOB_STAGE_NOW = ('- STAGE everything you decide in this piece before you end: there is no later message to do it in.'
+                 + JOB_STAGE_EVIDENCE + ' Where you cannot tell what is right, leave it: a value left empty is '
+                 'filled by a person later, and a wrong one has to be found first.')
 
 JOB_PLAN_WHAT_WAS_ASKED = '''- DO WHAT THE INSTRUCTIONS ASK, in the fields and levels they name. Anything more you \
 notice goes in your note, not in the plan.'''
