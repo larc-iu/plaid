@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { MoreHorizontal, Play } from 'lucide-react';
+import { Loader2, MoreHorizontal, Play } from 'lucide-react';
 import { notifyError } from '@/utils/feedback';
 import { Button } from '@ui/components/ui/button';
 import { Label } from '@ui/components/ui/label';
@@ -40,7 +40,9 @@ const setUpHref = (projectId) => `/projects/${projectId}?tab=assistant&purpose=$
  * conversation's turns are asked from that document. The docked panel opens
  * on it, or the full Assistant tab where the window has no room for the
  * panel. With no assistant online for the project the button opens the Start
- * job form instead.
+ * job form instead. Pressed before the app knows whether one is (discovery
+ * not answered yet, on a cold load), it waits for the answer, pending as a
+ * service's run button is, and then does what the answer says.
  *
  * `documents` is the project's listing when the caller already has it (the
  * Documents tab), else the form reads it on open. `documentId` opens the form
@@ -55,19 +57,36 @@ export const SetUpJob = ({
   small = false,
 }) => {
   const [open, setOpen] = useState(false);
+  // Pressed while it is not yet known whether an assistant is online.
+  const [waiting, setWaiting] = useState(false);
   const available = useAssistantAvailable(client, projectId, IGT_ASSISTANT.app);
   const wide = useWideEnoughToDock();
   const startConversation = useStartConversation();
   const navigate = useNavigate();
-  const setUp = () => {
+  const act = () => {
     if (available !== true) setOpen(true);
     else if (wide) startConversation({ purpose: JOB_SETUP });
     else navigate(setUpHref(projectId));
   };
+  const setUp = () => (available === null ? setWaiting(true) : act());
+  const Icon = waiting ? Loader2 : Play;
+  useEffect(() => {
+    if (!waiting || available === null) return;
+    setWaiting(false);
+    act();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [waiting, available]);
   return (
     <>
-      <Button variant="outline" size={small ? 'sm' : 'default'} className="gap-1.5" onClick={setUp}>
-        <Play className="h-4 w-4" /> Set up job
+      <Button
+        variant="outline"
+        size={small ? 'sm' : 'default'}
+        className="gap-1.5"
+        onClick={setUp}
+        disabled={waiting}
+        aria-busy={waiting || undefined}
+      >
+        <Icon className={waiting ? 'h-4 w-4 animate-spin' : 'h-4 w-4'} /> Set up job
       </Button>
       {open && (
         <StartJobDialog

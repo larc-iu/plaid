@@ -112,6 +112,47 @@ describe('Set up job', () => {
     await v.unmount();
   });
 
+  // Discovery not answered yet (a cold load): the press waits for it, the
+  // button pending meanwhile, and then does what the answer says.
+  const unanswered = () => {
+    let answer;
+    const client = clientOf();
+    client.messages.discoverServices = vi.fn(() => new Promise((r) => (answer = r)));
+    return { client, answer: (services) => answer(services) };
+  };
+
+  it('pressed before it is known whether an assistant is online, waits and then opens the panel', async () => {
+    const { client, answer } = unanswered();
+    const seen = {};
+    const v = await mount(<SetUpJob projectId="p1" client={client} />, seen);
+    await press(v, 'Set up job');
+    const button = byText(v.container, 'button', 'Set up job');
+    expect(button.disabled).toBe(true);
+    expect(button.getAttribute('aria-busy')).toBe('true');
+    expect(dialogTitle()).toBeNull();
+    expect(seen.fresh).toBeNull();
+    await v.step(async () => answer([ASSISTANT]));
+    await v.step(async () => {});
+    expect(seen.fresh).toMatchObject({ purpose: 'job-setup' });
+    expect(dialogTitle()).toBeNull();
+    expect(button.disabled).toBe(false);
+    expect(button.getAttribute('aria-busy')).toBeNull();
+    await v.unmount();
+  });
+
+  it('pressed before it is known, opens the Start job form once none is online', async () => {
+    const { client, answer } = unanswered();
+    const seen = {};
+    const v = await mount(<SetUpJob projectId="p1" client={client} />, seen);
+    await press(v, 'Set up job');
+    expect(dialogTitle()).toBeNull();
+    await v.step(async () => answer([]));
+    await v.step(async () => {});
+    expect(dialogTitle()).toBe('Start job');
+    expect(seen.fresh).toBeNull();
+    await v.unmount();
+  });
+
   it('draws the same button small in a document header', async () => {
     const seen = {};
     const v = await mount(
