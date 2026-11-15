@@ -229,6 +229,23 @@ def test_the_evidence_of_a_word_field_is_its_values_on_the_same_form(monkeypatch
     assert 'How these forms were analysed' not in asked and 'Lexicon entries' not in asked
 
 
+def test_a_morpheme_field_shows_its_values_for_a_word_the_job_also_segments(monkeypatch):
+    """REV-DF-D-13: segmentation and Morph POS. "ka" in s2 is unsegmented,
+    and people gave the morpheme "ka" of s1 the Morph POS N: the block shows
+    it under Morph POS, beside how "ka" was analysed. The gloss field's
+    values stay with the analyses."""
+    spec = [{'words': [('ka', [('ka', 'go')], 'human')]}, {'words': ['ka']}]
+    raw = with_values(document('d1', 'Story', spec), [(MPOS, 'd1-s1w1m1', 'N', 'human')])
+    client = JobClient({'d1': raw}, project=fields_project())
+    job = start(client, 'Segment the words and fill Morph POS.', id=J, fills=('segmentation', MPOS))
+    model = use(monkeypatch, Model(lambda asked, n, kwargs: reply('Done.')))
+    run_job(job, runner(job))
+    asked = model.calls[0]['asked']
+    assert 'Morph POS on other morphemes of these forms (by people in this project, and earlier in this job):\n' \
+           '- "ka": people: N (1)' in asked, asked
+    assert 'How these forms were analysed' in asked
+
+
 def test_a_default_plan_shows_no_piece_a_sentence_people_analysed(monkeypatch):
     """REV-DAY-S-12: planning fails. The default plan fills the app's
     default and skips filled sentences, so the piece is handed s2 alone and

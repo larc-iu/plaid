@@ -2495,16 +2495,21 @@ class IgtRunner:
             return ''
         seg = [w for w in words if any(t.id == tg.SEGMENTATION for t in fill) and tg.empty(tg.SEGMENTED, w=w)]
         unsegmented = {w.id for w in seg}
+        gloss_field = project.gloss_field('Morpheme')
         people = self.people_index(ws, project)
         fields = []
         for t in tg.word_level(fill):
             if t.field is None:
                 continue
+            # A word the job also segments is shown by its analyses, which
+            # render the gloss: the gloss field leaves it out, any other
+            # field shows its values too (REV-DF-D-13).
+            skip = unsegmented if gloss_field is not None and t.id == gloss_field.layer_id else set()
             if t.scope == 'Word':
-                surfaces = [w.surface for w in words if w.id not in unsegmented and tg.empty(t, w=w)]
+                surfaces = [w.surface for w in words if w.id not in skip and tg.empty(t, w=w)]
                 level = 'word'
             else:
-                surfaces = [w.surface if m.virtual else m.form for w in words if w.id not in unsegmented
+                surfaces = [w.surface if m.virtual else m.form for w in words if w.id not in skip
                             for m in w.morphemes if tg.empty(t, m=m)]
                 level = 'morpheme'
             if surfaces:
