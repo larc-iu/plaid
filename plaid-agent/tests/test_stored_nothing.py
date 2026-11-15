@@ -199,3 +199,31 @@ def test_the_form_written_on_a_morpheme_holding_nothing_carries_the_writers_stam
     patch = next(as_fragment(p) for tid, p in w.client.patches('tokens') if tid == 'm-2z')
     assert patch['form'] == 'm'
     assert {k: v for k, v in patch.items() if k.startswith('prov') and v is not None} == expected, patch
+
+
+@pytest.mark.parametrize('tool', ['set_analysis', 'set_analysis_for_form'])
+@pytest.mark.parametrize('mode', ['verified', 'unverified'])
+def test_the_form_written_on_a_morpheme_holding_only_a_persons_joint_leaves_its_stamp(mode, tool):
+    """REV-DF4-6: a token's stamp is the whole token's, so restamping a
+    morpheme that holds a person's "=" (equalsBefore, kept by the keep
+    rule, never written by the call) put the writer's stamp on the person's
+    joint. Only what the call wrote is stamped: on such a morpheme the form
+    is written as a respelling is, and the token keeps the stamp it has."""
+    from plaid_client.testing import as_fragment
+    from plaid_agent.igt.plan import execute_plan
+
+    def chain_eq(raw):
+        _chain(raw)
+        _token(raw, 'm-2z')['metadata'] = {'equalsBefore': True}
+    w = ws_with(chain_eq)
+    given = [{'form': 'ga', 'fields': {'Morph Gloss': 'fish'}},
+             {'form': 'm', 'equals': True, 'fields': {'Morph Gloss': 'SG'}}]
+    if tool == 'set_analysis':
+        call_tool(w, tool, {'document': 'd1', 'ref': 's1.w2', 'morphemes': given})
+    else:
+        call_tool(w, tool, {'form': 'gam', 'morphemes': given})
+    assert sorted(o['kind'] for o in w.ops) == ['set_morpheme_form', 'set_span'], w.ops
+    w.client.calls.clear()
+    execute_plan(w.client, w.ops, source='service:igt:assist:x', label='l', project=w.project, stamp_mode=mode)
+    patch = next(as_fragment(p) for tid, p in w.client.patches('tokens') if tid == 'm-2z')
+    assert patch == {'form': 'm'}, patch

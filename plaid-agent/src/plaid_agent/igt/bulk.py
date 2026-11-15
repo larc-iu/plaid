@@ -1619,7 +1619,7 @@ def t_set_analysis_for_form(ws: Workspace, form: str, morphemes: list, document:
                 m = kept[c['index']]
                 if 'form' in c:
                     values_staged.append({**in_place_form(ws.corpus.label_ref(w['document'], m['id'], budget),
-                                                          m['id'], c['form']),
+                                                          m, c['form']),
                                           'doc': w['document'], ANALYSIS_OF: w['id']})
                     continue
                 if gloss is not None and c['layer_id'] == gloss.layer_id and c['value'] and m['link']:

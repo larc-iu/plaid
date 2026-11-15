@@ -277,11 +277,16 @@ def value_op(place: str, f, token_id: str, span_id: Optional[str], old: Optional
                        + (' (cleared)' if value == '' else ''))}
 
 
-def in_place_form(place: str, morpheme_id: str, form: str) -> Dict[str, Any]:
-    """A set_morpheme_form op writing ``form`` on a morpheme of a kept chain
-    that held none (:func:`in_place`). The form is the writer's value, so it
-    is stamped as the values written beside it are (REV-DF3-1)."""
-    return {'kind': 'set_morpheme_form', 'morpheme_id': morpheme_id, 'form': form, 'restamp': True,
+def in_place_form(place: str, held: Dict[str, Any], form: str) -> Dict[str, Any]:
+    """A set_morpheme_form op writing ``form`` on ``held``, a morpheme of a
+    kept chain that held none (:func:`in_place`, :func:`held_chain`'s
+    shape). The form is the writer's value, so it is stamped as the values
+    written beside it are (REV-DF3-1), unless the morpheme holds a "=" of
+    its own: a token's stamp is the whole token's, and the "=" is not the
+    call's (the keep rule kept it), so the form is then written as a
+    respelling is and the token keeps the stamp it has (REV-DF4-6)."""
+    return {'kind': 'set_morpheme_form', 'morpheme_id': held['id'], 'form': form,
+            **({} if held.get('equals_before') else {'restamp': True}),
             **labelled(place, f'morpheme form = {qv(form)}')}
 
 
@@ -405,7 +410,7 @@ def word_analysis_op(ws: Workspace, doc: IgtDoc, ref: str, parsed: List[Dict[str
     if changes is not None:
         s = doc.find(w.id)[0]
         refs = [f's{s.index}.w{w.index}.m{c["index"] + 1} {qv(held[c["index"]]["form"][:40])}' for c in changes]
-        ops = [(in_place_form(f'{ws.doc_label(doc.id)} {at}', held[c['index']]['id'], c['form']) if 'form' in c
+        ops = [(in_place_form(f'{ws.doc_label(doc.id)} {at}', held[c['index']], c['form']) if 'form' in c
                 else value_op(f'{ws.doc_label(doc.id)} {at}', ws.project.field_by_layer(c['layer_id']),
                               held[c['index']]['id'], c['span_id'], c['old'], c['value'])) | {ANALYSIS_OF: w.id}
                for at, c in zip(refs, changes)]
