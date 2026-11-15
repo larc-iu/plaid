@@ -127,6 +127,33 @@ def test_a_piece_of_a_plan_that_edits_the_text_is_offered_everything_as_before(m
             assert TEXT_TOOLS <= set(names), names
 
 
+CHAT_RETYPE_STEP = ('different word, its old analysis is wrong: tell the user, and once the retype is applied, '
+                    'plan its new analysis.')
+JOB_RETYPE_STEP = 'different word, its old analysis is wrong: say so in your note.'
+
+
+def _retype_description(tools):
+    return next(t['function']['description'] for t in tools if t['function']['name'] == 'retype_sentence')
+
+
+@pytest.mark.parametrize('pieces', ['sentences', 'document', 'selection'])
+def test_the_retype_tool_a_piece_is_offered_gives_no_chat_step(monkeypatch, pieces):
+    """REV-DF5-3: the retype_sentence description a piece was offered said
+    "tell the user, and once the retype is applied, plan its new analysis",
+    a later turn a job does not have. A job's description says what a
+    piece does instead (core.tools.next_step, as its answer is worded). The
+    chat's description is as before."""
+    client, job, model = _job(monkeypatch, pieces, True, _done)
+    run_job(job, runner(job))
+    offered = [c['kwargs']['tools'] for c in model.calls
+               if 'Instructions from' in c['asked'] or 'whole selection' in c['asked']]
+    assert offered
+    for tools in offered:
+        said = _retype_description(tools)
+        assert JOB_RETYPE_STEP in said and 'tell the user' not in said, said
+    assert CHAT_RETYPE_STEP in _retype_description(toolkit.TOOLS)
+
+
 def _retyping(asked, n, kwargs):
     if 'Instructions from' not in asked:
         return reply('Done.')

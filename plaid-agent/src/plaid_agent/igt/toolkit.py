@@ -495,6 +495,13 @@ _IMPL.update({
     'set_analysis_for_form': t_set_analysis_for_form, 'set_field_for_form': t_set_field_for_form, 'merge_entries': t_merge_entries, 'delete_entry': t_delete_entry,
     'rename_entry': t_rename_entry, 'rename_document': t_rename_document,
 })
+
+#: What retype_sentence's description says to do about a respelled word that
+#: is a different word: the chat's step, and a job's, which has no later
+#: turn (``core.tools.next_step``, as the retype's answer is worded, REV-DF5-3).
+RETYPE_CHAT_STEP = 'tell the user, and once the retype is applied, plan its new analysis.'
+RETYPE_JOB_STEP = 'say so in your note.'
+
 TOOLS += [
     _fn('split_word',
         'PLAN: split one word token into two. at: the left part ("Ali") or the number of characters in it. The '
@@ -532,8 +539,8 @@ TOOLS += [
         'A word edited with a letter of it left keeps its analysis (gloss, morphemes, links) under its new '
         'spelling, a word all of whose letters change or go loses it, and new words start unanalyzed. When a '
         'respelled word is a '
-        'different word, its old analysis is wrong: tell the user, and once the retype is applied, plan its new '
-        'analysis. The sentence\'s own fields stay. Newlines in the new text split it into several sentences.'
+        'different word, its old analysis is wrong: ' + RETYPE_CHAT_STEP + ' The sentence\'s own fields stay. '
+        'Newlines in the new text split it into several sentences.'
         + _BASELINE,
         {'document': _DOC, 'ref': {'type': 'string', 'description': 'The sentence, sN.'}, 'text': {'type': 'string'}},
         ['document', 'ref', 'text']),
@@ -836,7 +843,7 @@ def job_piece_tools(ws, plan_only: bool = False) -> list:
         allowed = sentences_piece_tools(getattr(ws, 'fills', ()), ws.project)
         tools = [_without_check_first(t) for t in tools if t['function']['name'] in allowed]
     # Every piece's descriptions name only tools it is offered (REV-DF-D-18).
-    tools = _offered_only(tools)
+    tools = [_worded_for(ws, t) for t in _offered_only(tools)]
     if plan_only:
         tools = [t for t in tools if t['function']['name'] in WRITE_TOOLS]
     return tools
@@ -934,6 +941,17 @@ def _offered_only(tools: list) -> list:
 #: first and follow the majority", 42 of the night's 60 plans), and a piece
 #: in sentences is handed those analyses (BRIEF-EV).
 CHECK_FIRST = 'Check this before proposing an analysis, and follow the majority unless there is reason not to. '
+
+
+def _worded_for(ws, t: Dict[str, Any]) -> Dict[str, Any]:
+    """``t`` with its next step worded by who reads it
+    (``core.tools.next_step``): retype_sentence's, a later turn a job does
+    not have (REV-DF5-3)."""
+    if t['function']['name'] != 'retype_sentence':
+        return t
+    from ..core.tools import next_step
+    said = t['function']['description'].replace(RETYPE_CHAT_STEP, next_step(ws, RETYPE_CHAT_STEP, RETYPE_JOB_STEP))
+    return {**t, 'function': {**t['function'], 'description': said}}
 
 
 def _without_check_first(t: Dict[str, Any]) -> Dict[str, Any]:

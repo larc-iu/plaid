@@ -102,9 +102,12 @@ def names_list(raw: Any, known: Callable[[str], bool]) -> Optional[List[Any]]:
     habit of tool-call parsers serving some models): it is one name when
     ``known`` takes it whole, else the JSON text of a list of strings, else
     names separated by commas when ``known`` takes every part, each with its
-    quotes and the list's brackets dropped (REV-DF4-1). A fixed order of
-    readings, never a guess: a string read none of these ways is ``None``,
-    for the caller to say that it is a list."""
+    quotes and the list's brackets dropped (REV-DF4-1). A list of one string
+    is read as that string is, and kept as given when it reads none of these
+    ways (REV-DF5-3). A fixed order of readings, never a guess: a string read
+    none of these ways is ``None``, for the caller to say that it is a list."""
+    if isinstance(raw, (list, tuple)) and len(raw) == 1 and isinstance(raw[0], str):
+        return names_list(raw[0], known) or list(raw)
     if not isinstance(raw, str):
         return list(raw) if isinstance(raw, (list, tuple)) else None
     text = raw.strip()

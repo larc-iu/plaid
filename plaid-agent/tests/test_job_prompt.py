@@ -286,6 +286,33 @@ def test_plan_work_reads_fills_given_as_one_string(fills, kept):
     assert ws.plan_work['fills'] == [t.id for t in tg.named(ws.project, kept)[0]]
 
 
+@pytest.mark.parametrize('fills,kept', [
+    (['segmentation, Morph Gloss'], ['segmentation', 'Morph Gloss']),
+    (['["segmentation", "Morph Gloss"]'], ['segmentation', 'Morph Gloss']),
+    (['Morph Gloss'], ['Morph Gloss']),
+])
+def test_plan_work_reads_a_list_of_one_string_as_that_string(fills, kept):
+    """REV-DF5-3: a list holding one comma-separated string was answered
+    "not something a job on this project can fill". It is read as the bare
+    string is."""
+    ws = JobWorkspace(FakeClient(), _project(), mode=JobWorkspace.PLAN)
+    ws.job_documents = [{'id': 'd1', 'name': 'Text 1'}]
+    out = toolkit.job_plan_call(ws, 'plan_work', {'pieces': 'sentences', 'fills': fills})
+    assert out.startswith('The plan is kept.'), out
+    from plaid_agent.igt import targets as tg
+    assert ws.plan_work['fills'] == [t.id for t in tg.named(ws.project, kept)[0]]
+
+
+def test_plan_work_answers_a_list_of_one_unknown_name_naming_it():
+    """A list of one string that reads as no names keeps the line that names
+    it (REV-DF4-1)."""
+    ws = JobWorkspace(FakeClient(), _project(), mode=JobWorkspace.PLAN)
+    ws.job_documents = [{'id': 'd1', 'name': 'Text 1'}]
+    out = toolkit.job_plan_call(ws, 'plan_work', {'pieces': 'sentences', 'fills': ['segmentation, glosses']})
+    assert 'not something a job on this project can fill: "segmentation, glosses"' in out, out
+    assert ws.plan_work is None
+
+
 @pytest.mark.parametrize('fills', ['segmentation, glosses', 'segmentation and Morph Gloss', '["segmentation", 3'])
 def test_plan_work_refuses_a_string_of_fills_it_cannot_read_saying_fills_is_a_list(fills):
     """REV-DF4-1: a string that does not read as names is refused saying
