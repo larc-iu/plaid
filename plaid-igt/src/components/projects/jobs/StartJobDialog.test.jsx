@@ -7,10 +7,12 @@ import { renderComponent, byText, all } from '@ui/test/renderComponent.jsx';
 // box and can be edited, nothing knows them afterwards, the instructions are
 // required and counted against core's limit, a project with no worker seen
 // lately says so, and a project that already has a job is answered with a
-// link to it.
+// link to it. Opened here by Set up job on a project with no assistant
+// online, which opens the form (SetUpJob.test.jsx has the rest of it).
 const feedback = vi.hoisted(() => ({ notifyError: vi.fn() }));
 vi.mock('@/utils/feedback', () => feedback);
-const { StartJob } = await import('./StartJobDialog.jsx');
+const { SetUpJob } = await import('./StartJobDialog.jsx');
+const { serviceCache } = await import('@ui/components/assistant/jobs.js');
 
 const DOCS = [
   { id: 'd2', name: 'Story B' },
@@ -24,6 +26,7 @@ const fakeClient = ({ seenAt = new Date().toISOString(), create, documentsMax = 
     create: vi.fn(create ?? (async (_p, body) => ({ id: body.id, state: 'waiting' }))),
   },
   projects: { listDocuments: vi.fn(async () => DOCS) },
+  messages: { discoverServices: vi.fn(async () => []) },
 });
 
 const Where = ({ onAt }) => {
@@ -62,7 +65,7 @@ const open = async (client, props = {}) => {
           path="*"
           element={
             <>
-              <StartJob projectId="p1" client={client} {...props} />
+              <SetUpJob projectId="p1" client={client} {...props} />
               <Where onAt={(p) => (at = p)} />
             </>
           }
@@ -70,7 +73,8 @@ const open = async (client, props = {}) => {
       </Routes>
     </MemoryRouter>,
   );
-  await v.step(() => byText(v.container, 'button', 'Start job').click());
+  await v.step(async () => {});
+  await v.step(() => byText(v.container, 'button', 'Set up job').click());
   await v.step(async () => {});
   if (props.instructions !== null) {
     await v.step(() => typeInstructions(props.instructions ?? 'Gloss the words.'));
@@ -78,7 +82,10 @@ const open = async (client, props = {}) => {
   return { v, at: () => at };
 };
 
-beforeEach(() => feedback.notifyError.mockClear());
+beforeEach(() => {
+  feedback.notifyError.mockClear();
+  serviceCache.clear();
+});
 
 describe('Start job', () => {
   it('offers three starter texts that fill the instructions, which stay editable', async () => {

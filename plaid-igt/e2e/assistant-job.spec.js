@@ -1,7 +1,7 @@
 import PlaidClient, { ROLES } from '@larc-iu/plaid-client';
 import { test, expect, seedAuth, readToken, CORE } from './fixtures.js';
 import { createScratchProject, roleOf } from './fixtureProject.js';
-import { skipUnlessAgent, startIgtAssistant } from './assistantService.js';
+import { proposeJobTakesFills, skipUnlessAgent, startIgtAssistant } from './assistantService.js';
 import { fakeJobWorker } from './jobWorker.js';
 
 // A job scoped in the chat (BRIEF-JB): the real IGT assistant on a scripted
@@ -13,6 +13,13 @@ import { fakeJobWorker } from './jobWorker.js';
 // spec's own (jobWorker.js): it takes the job and ends it with a report whose
 // "Left blank" list links into the grid. Then a second card is drafted and
 // discarded. A throwaway project, deleted afterwards with its jobs.
+//
+// Set up job (BRIEF-SU) opens the panel on a new conversation marked
+// job-setup, whose card shows what the job fills and whether it may edit the
+// text, and the job started from it carries them as its setup, which its page
+// says. The Jobs tab's "⋯" menu still opens the Start job form with an
+// assistant online, and a window too narrow for the panel opens the
+// Assistant tab on the new conversation.
 
 const DOC = 'Story A';
 const BRIEF = 'Gloss kai as "go".';
@@ -234,5 +241,190 @@ test('a job scoped in the chat is started from its card, and a second card is di
       for (const e of all) await client.userData.delete(userId, e.key).catch(() => {});
     }
     await client.messages.discardService(projectId, serviceId).catch(() => {});
+  }
+});
+
+// The service's request to send a message, as the page made it.
+const sendRequest = (page) =>
+  page.waitForRequest(
+    (r) =>
+      r.method() === 'POST' &&
+      /\/services\/[^/]+\/requests/.test(r.url()) &&
+      (r.postData() || '').includes('"op":"send"'),
+  );
+
+const waitOnline = (serviceId, service) =>
+  expect
+    .poll(
+      async () =>
+        (await client.messages.discoverServices(projectId)).some(
+          (s) => s.serviceId === serviceId && s.online,
+        ),
+      { timeout: 90_000, message: () => `the assistant never came online:\n${service.log()}` },
+    )
+    .toBe(true);
+
+const cleanUp = async (service, serviceId) => {
+  await test.info().attach('assistant service log', {
+    body: service.log(),
+    contentType: 'text/plain',
+  });
+  await service.stop();
+  const all = await client.userData.list(userId, { prefix: `igt:assistant:${projectId}:` });
+  for (const e of all) await client.userData.delete(userId, e.key).catch(() => {});
+  await client.messages.discardService(projectId, serviceId).catch(() => {});
+};
+
+test('Set up job opens a job setup conversation, and its card binds the job it starts', async ({
+  page,
+}) => {
+  test.setTimeout(180_000);
+  skipUnlessAgent(test);
+  await seedAuth(page);
+  const project = await client.projects.get(projectId);
+  const glossId = project.textLayers
+    .flatMap((t) => t.tokenLayers || [])
+    .flatMap((t) => t.spanLayers || [])
+    .find((l) => l.name === 'Gloss').id;
+  // SU-UI stand-in (remove at SU-INT): propose_job in this checkout may not
+  // take fills and edits_text yet, and then the spec writes them onto the
+  // card in the record, as propose_job will.
+  const takesFills = proposeJobTakesFills();
+  const SETUP_SCRIPT = [
+    {
+      content: '',
+      calls: [
+        {
+          name: 'propose_job',
+          arguments: {
+            action: 'draft',
+            documents: [DOC],
+            brief: BRIEF,
+            ...(takesFills ? { fills: ['Gloss'], edits_text: false } : {}),
+          },
+        },
+      ],
+    },
+    { content: 'Here is the job. It fills Gloss and leaves the text as it is.' },
+  ];
+  const serviceId = 'igt:assist:e2e-setup';
+  const service = await startIgtAssistant({
+    token: readToken().token,
+    projectId,
+    serviceId,
+    script: SETUP_SCRIPT,
+  });
+  let jobId = null;
+  try {
+    await waitOnline(serviceId, service);
+    await page.goto(`/#/projects/${projectId}`);
+
+    // A new conversation for setting the job up, nothing sent by itself.
+    await page.getByRole('button', { name: 'Set up job' }).click();
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    const panel = page.getByRole('complementary');
+    await expect(panel.getByText('Say what the job should do.', { exact: true })).toBeVisible();
+    await panel.getByRole('button', { name: 'Past conversations' }).click();
+    await expect(page.getByText('Job setup', { exact: true })).toBeVisible();
+    await page.keyboard.press('Escape');
+
+    // The send that creates it carries the purpose.
+    const box = panel.getByRole('textbox', { name: 'Message' });
+    await expect(box).toBeEditable({ timeout: 60_000 });
+    await box.fill('Gloss Story A. Leave the text as it is.');
+    const sent = sendRequest(page);
+    await box.press('Enter');
+    const payload = JSON.parse((await sent).postData());
+    expect(payload).toMatchObject({ op: 'send', create: true, purpose: 'job-setup' });
+    const convId = payload['conversation-id'];
+
+    const card = panel.getByTestId('job-card');
+    await expect(card).toBeVisible({ timeout: 60_000 });
+    const key = `igt:assistant:${projectId}:conv:${convId}`;
+    if (!takesFills) {
+      // SU-UI stand-in (remove at SU-INT): the card as propose_job will draft
+      // it, written in the record the page reads it from.
+      const conv = (await client.userData.get(userId, key)).value;
+      const at = conv.display.findIndex((d) => d.job);
+      conv.display[at] = {
+        ...conv.display[at],
+        job: { ...conv.display[at].job, fills: [{ id: glossId, name: 'Gloss' }], editsText: false },
+      };
+      await client.userData.put(userId, key, conv);
+      await page.reload();
+    }
+    // The card as the page receives it: `edits_text` read as `editsText`.
+    const stored = (await client.userData.get(userId, key)).value.display.find((d) => d.job).job;
+    expect(stored.fills).toEqual([{ id: glossId, name: expect.any(String) }]);
+    expect(stored.editsText).toBe(false);
+    const name = stored.fills[0].name;
+
+    const shown = panel.getByTestId('job-card');
+    await expect(shown).toBeVisible({ timeout: 30_000 });
+    const row = (label) =>
+      shown.locator(`xpath=.//dt[normalize-space()="${label}"]/following-sibling::dd[1]`);
+    await expect(row('Fills')).toHaveText(name);
+    await expect(row('Text')).toHaveText('Unchanged');
+    await shown.getByRole('button', { name: 'Start job' }).click();
+    await expect(shown).toContainText('Started', { timeout: 30_000 });
+
+    // The job carries the card's setup and the conversation's id.
+    jobId = stored.id;
+    const job = await client.jobs.get(jobId);
+    expect(job.setup).toEqual({
+      fills: [{ id: glossId, name }],
+      text: false,
+      conversation: convId,
+    });
+
+    // Its page says so, and links the conversation for its starter.
+    await shown.getByRole('link', { name: 'Open job' }).click();
+    await expect(page).toHaveURL(new RegExp(`#/projects/${projectId}/jobs/${jobId}$`));
+    const line = page.getByTestId('job-setup');
+    await expect(line).toHaveText(`Set up to fill ${name}. Text unchanged. Open conversation`);
+    await expect(line.getByRole('link', { name: 'Open conversation' })).toHaveAttribute(
+      'href',
+      `#/projects/${projectId}?tab=assistant&conversation=${convId}`,
+    );
+  } finally {
+    if (jobId) await client.jobs.cancel(jobId).catch(() => {});
+    await cleanUp(service, serviceId);
+  }
+});
+
+test('with an assistant online, the Jobs tab still opens the Start job form, and a narrow window opens the Assistant tab', async ({
+  page,
+}) => {
+  test.setTimeout(120_000);
+  skipUnlessAgent(test);
+  await seedAuth(page);
+  const serviceId = 'igt:assist:e2e-setup-hatch';
+  const service = await startIgtAssistant({ token: readToken().token, projectId, serviceId });
+  try {
+    await waitOnline(serviceId, service);
+    await page.goto(`/#/projects/${projectId}?tab=jobs`);
+    await expect(page.getByRole('button', { name: 'Set up job' })).toBeVisible();
+
+    // The "⋯" menu, by keyboard.
+    await page.getByRole('button', { name: 'More job actions' }).focus();
+    await page.keyboard.press('Enter');
+    const item = page.getByRole('menuitem', { name: 'Start without the assistant' });
+    await expect(item).toBeFocused();
+    await page.keyboard.press('Enter');
+    const dialog = page.getByRole('dialog');
+    await expect(dialog.getByRole('heading', { name: 'Start job' })).toBeVisible();
+    await expect(dialog).toContainText('All documents (1)');
+    await dialog.getByRole('button', { name: 'Cancel' }).click();
+    await expect(dialog).toHaveCount(0);
+
+    // Too narrow for the panel: the Assistant tab, on a new job setup
+    // conversation, and the address no longer asks for one.
+    await page.setViewportSize({ width: 900, height: 800 });
+    await page.getByRole('button', { name: 'Set up job' }).click();
+    await expect(page).toHaveURL(new RegExp(`#/projects/${projectId}\\?tab=assistant$`));
+    await expect(page.getByText('Say what the job should do.', { exact: true })).toBeVisible();
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+  } finally {
+    await cleanUp(service, serviceId);
   }
 });

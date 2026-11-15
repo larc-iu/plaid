@@ -29,7 +29,7 @@ import { canStartJob, readOnlyReason } from '@ui/domain/permissions.js';
 import { useSentenceFocus } from './hooks/useSentenceFocus.js';
 import { useComposeProject } from '@/hooks/useCompose';
 import { IGT_ASSISTANT } from '../projects/assistant/adapter.js';
-import { StartJob } from '../projects/jobs/StartJobDialog.jsx';
+import { SetUpJob } from '../projects/jobs/StartJobDialog.jsx';
 import { DocumentHistoryChanges } from './history/DocumentHistoryChanges.jsx';
 
 // The Media tab (the timeline, waveform, speech detection, and recording
@@ -115,7 +115,7 @@ const IGT_SHELL = {
     query: { fallback: 'baseline', landing },
   },
   renderTab: (tab, context) => <DocumentBody tab={tab} context={context} />,
-  // Start job beside History, with this document chosen.
+  // Set up job beside History, about this document.
   headerActions: (context) => <DocumentStartJob context={context} />,
   // The check on open is about the document, whatever tab it opens on.
   validateOnOpen: true,
@@ -149,14 +149,15 @@ const HistoryChanges = ({ context }) => {
   return <DocumentHistoryChanges context={context} user={user} />;
 };
 
-// Start job from a document's header, for whoever may start one, and not on a
-// past state. The job is the project's, so it goes through the session's
+// Set up job from a document's header, for whoever may start one, and not on
+// a past state. The conversation's turns are asked from this document, which
+// the screen publishes. The job is the project's, so it goes through the session's
 // client, not this document's strict one.
 const DocumentStartJob = ({ context }) => {
   const { user, client } = useAuth();
   const { project, projectId, documentId, asOf, pastEntry } = context;
   if (asOf || pastEntry || !canStartJob(project, user)) return null;
-  return <StartJob projectId={projectId} client={client} documentId={documentId} small />;
+  return <SetUpJob projectId={projectId} client={client} documentId={documentId} small />;
 };
 
 // What a project with nothing safe to open in it says in place of a tab.

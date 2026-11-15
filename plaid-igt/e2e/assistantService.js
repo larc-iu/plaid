@@ -42,6 +42,25 @@ function agentUnavailable() {
   return null;
 }
 
+// SU-UI stand-in, for SU-INT to remove with its one caller in
+// assistant-job.spec.js: whether propose_job takes `fills` and `edits_text`
+// in this checkout (SU-AGENT's change). Without them the spec writes the two
+// onto the card in the record itself.
+export function proposeJobTakesFills() {
+  const python = agentPython();
+  if (!python) return false;
+  const probe = spawnSync(
+    python,
+    [
+      '-c',
+      'import inspect; from plaid_agent.igt.jobcard import t_propose_job as f; ' +
+        "print('fills' in inspect.signature(f).parameters)",
+    ],
+    { env: { ...process.env, PYTHONPATH }, encoding: 'utf8' },
+  );
+  return probe.stdout.trim() === 'True';
+}
+
 // Skips the calling test when the service cannot start here. In CI the
 // nightly installs plaid-agent so these specs run, and a night whose agent
 // does not import fails rather than going green with skips (REV-W3-REST B2).

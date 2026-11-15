@@ -28,7 +28,7 @@ import { useComposeProject } from '@/hooks/useCompose';
 import { useAssistantAvailable } from '@ui/components/assistant/useAssistantAvailable.js';
 import { IGT_ASSISTANT } from './assistant/adapter.js';
 import { UnfinishedImport } from './UnfinishedImport.jsx';
-import { StartJob } from './jobs/StartJobDialog.jsx';
+import { SetUpJob, StartWithoutAssistant } from './jobs/StartJobDialog.jsx';
 
 // The tabs a visit rarely opens ride in their own chunks: Bulk Edit,
 // Validation, Activity, the Assistant (and its markdown), and Export (and the
@@ -175,9 +175,17 @@ const ProjectBody = ({ project, projectId, client, documents, reload }) => {
   // (settings/access) does not. Gate document-create on this so a reader isn't
   // shown a button that 403s on submit.
   const canWrite = canEditProject(project, user);
-  // Start job, for whoever may start one: beside New document, and on Jobs.
-  const startJob = canStartJob(project, user) && (
-    <StartJob projectId={projectId} client={client} documents={documents} />
+  // Set up job, for whoever may start one: beside New document, and on Jobs,
+  // where a "⋯" menu also offers the Start job form with no assistant.
+  const mayStartJob = canStartJob(project, user);
+  const setUpJob = mayStartJob && (
+    <SetUpJob projectId={projectId} client={client} documents={documents} />
+  );
+  const jobsActions = mayStartJob && (
+    <div className="flex items-center gap-2">
+      {setUpJob}
+      <StartWithoutAssistant projectId={projectId} client={client} documents={documents} />
+    </div>
   );
   // A code bound under Settings applies everywhere this project is open.
   useComposeProject(project);
@@ -263,14 +271,14 @@ const ProjectBody = ({ project, projectId, client, documents, reload }) => {
           readIgnoredTokens(getIgtLayerInfo(project).primaryTokenLayer?.config),
         )}
         href={(documentId) => `/projects/${projectId}/documents/${documentId}`}
-        actions={startJob}
+        actions={setUpJob}
       />
     );
   } else if (active === 'jobs') {
     body = jobId ? (
       <JobPage project={project} projectId={projectId} jobId={jobId} client={client} />
     ) : (
-      <ProjectJobs projectId={projectId} client={client} startJob={startJob} />
+      <ProjectJobs projectId={projectId} client={client} startJob={jobsActions} />
     );
   } else if (active === 'search') {
     body = (

@@ -3,8 +3,10 @@ import { test, expect, seedAuth, readToken, signInAdmin, CORE } from './fixtures
 import { createScratchProject, roleOf } from './fixtureProject.js';
 import { fakeJobWorker, stoppedReport } from './jobWorker.js';
 
-// Assistant jobs in the app (the unattended glossing jobs, SPEC 11): Start job
-// from the Documents tab and from a document, the Jobs tab and the job page as
+// Assistant jobs in the app (the unattended glossing jobs, SPEC 11): the
+// Start job form from the Documents tab and from a document, which Set up job
+// opens on a project with no assistant online (BRIEF-SU), and from the Jobs
+// tab's "⋯" menu as Start without the assistant, the Jobs tab and the job page as
 // a worker moves the job, the banner on the document the job is working in
 // and on no other, Stop from the banner and from the page, the refusal of a
 // second job, and what a reader sees.
@@ -77,7 +79,9 @@ const confirmStop = async (page) => {
   await ask.getByRole('button', { name: 'Stop', exact: true }).click();
 };
 
-test('Start job on the Documents tab makes a waiting job and opens its page', async ({ page }) => {
+test('Set up job on the Documents tab, with no assistant online, opens the form, which makes a waiting job and opens its page', async ({
+  page,
+}) => {
   await seedAuth(page);
   // Core's own answer, as though no worker had asked for work on it: a spec
   // run before this one may have run a worker on the same core.
@@ -86,8 +90,9 @@ test('Start job on the Documents tab makes a waiting job and opens its page', as
     route.fulfill({ response, json: { ...(await response.json()), 'seen-at': null } });
   });
   await page.goto(`/#/projects/${projectId}`);
-  await page.getByRole('button', { name: 'Start job' }).click();
+  await page.getByRole('button', { name: 'Set up job' }).click();
   const dialog = page.getByRole('dialog');
+  await expect(dialog.getByRole('heading', { name: 'Start job' })).toBeVisible();
   await expect(dialog).toContainText('All documents (2)');
   await expect(dialog).toContainText('No job worker is running. The job waits until one starts.');
   await expect(dialog.getByRole('button', { name: 'Start', exact: true })).toBeDisabled();
@@ -101,12 +106,16 @@ test('Start job on the Documents tab makes a waiting job and opens its page', as
   expect(job.state).toBe('waiting');
   expect(job.instructions).toMatch(/^Segment and gloss every word nobody has analyzed, and link/);
   expect(job.documents.map((d) => d.documentId).sort()).toEqual([docA, docB].sort());
+  // A job from the form has no setup, and its page no line for one.
+  expect(job).not.toHaveProperty('setup');
+  await expect(page.getByTestId('job-setup')).toHaveCount(0);
 });
 
 test('a second job is refused with a link to the first', async ({ page }) => {
   await seedAuth(page);
   await page.goto(`/#/projects/${projectId}?tab=jobs`);
-  await page.getByRole('button', { name: 'Start job' }).click();
+  await page.getByRole('button', { name: 'More job actions' }).click();
+  await page.getByRole('menuitem', { name: 'Start without the assistant' }).click();
   const dialog = page.getByRole('dialog');
   await dialog.getByRole('button', { name: 'Translate', exact: true }).click();
   await dialog.getByRole('button', { name: 'Start', exact: true }).click();
@@ -147,7 +156,7 @@ test('the page, the tab and the banner follow the worker, on its document only',
   await expect(banner(page)).toContainText('Sentences 1 to 5 of 10.');
 
   await openDocument(page, docB);
-  await expect(page.getByRole('button', { name: 'Start job' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Set up job' })).toBeVisible();
   await expect(banner(page)).toHaveCount(0);
 });
 
@@ -187,12 +196,12 @@ test('Stop on the banner stops the job, and the page shows the report', async ({
   await expect(page.getByRole('row', { name: /Stopped/ })).toBeVisible();
 });
 
-test('Start job on a document chooses it, and Stop on the page ends a waiting job', async ({
+test('Set up job on a document opens the form with it chosen, and Stop on the page ends a waiting job', async ({
   page,
 }) => {
   await seedAuth(page);
   await openDocument(page, docB);
-  await page.getByRole('button', { name: 'Start job' }).click();
+  await page.getByRole('button', { name: 'Set up job' }).click();
   const dialog = page.getByRole('dialog');
   await expect(dialog.getByRole('radio', { name: 'Selected documents' })).toBeChecked();
   await expect(dialog.getByRole('checkbox', { name: 'Story B' })).toBeChecked();
@@ -212,7 +221,9 @@ test('Start job on a document chooses it, and Stop on the page ends a waiting jo
   expect((await client.jobs.get(jobId)).state).toBe('cancelled');
 });
 
-test('a reader sees the Jobs tab and a job, with no Start job and no Stop', async ({ page }) => {
+test('a reader sees the Jobs tab and a job, with no Set up job, no menu and no Stop', async ({
+  page,
+}) => {
   // A job waiting, so there is something a writer could stop.
   const waiting = await client.jobs.create(projectId, {
     app: 'igt',
@@ -224,11 +235,12 @@ test('a reader sees the Jobs tab and a job, with no Start job and no Stop', asyn
     await page.goto(`/#/projects/${projectId}`);
     await expect(page.getByRole('tab', { name: 'Jobs' })).toBeVisible();
     await expect(page.getByRole('row', { name: /Story A/ })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Start job' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Set up job' })).toHaveCount(0);
 
     await page.getByRole('tab', { name: 'Jobs' }).click();
     await expect(page.getByRole('row', { name: /Waiting/ })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Start job' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Set up job' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'More job actions' })).toHaveCount(0);
     await page
       .getByRole('row', { name: /Waiting/ })
       .getByRole('link')
@@ -239,7 +251,7 @@ test('a reader sees the Jobs tab and a job, with no Start job and no Stop', asyn
     await expect(page.getByRole('button', { name: 'Stop', exact: true })).toHaveCount(0);
 
     await openDocument(page, docA);
-    await expect(page.getByRole('button', { name: 'Start job' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Set up job' })).toHaveCount(0);
   } finally {
     await client.jobs.cancel(waiting.id).catch(() => {});
   }

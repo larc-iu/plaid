@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Play } from 'lucide-react';
+import { MoreHorizontal, Play } from 'lucide-react';
 import { notifyError } from '@/utils/feedback';
 import { Button } from '@ui/components/ui/button';
 import { Label } from '@ui/components/ui/label';
@@ -13,20 +13,41 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@ui/components/ui/dialog';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@ui/components/ui/dropdown-menu';
 import { SearchInput } from '@ui/components/shared/list-search';
+import { JOB_SETUP } from '@ui/components/assistant/purposes.js';
+import { useStartConversation } from '@ui/components/assistant/subject.js';
+import { useAssistantAvailable } from '@ui/components/assistant/useAssistantAvailable.js';
+import { useWideEnoughToDock } from '@ui/components/assistant/useDock.js';
+import { IGT_ASSISTANT } from '../assistant/adapter.js';
 import { STARTER_TEXTS, activeJobOf, instructionsLength, jobPath, startJob } from './jobText.js';
 import { InstructionsCount, JobActiveLine, NoWorkerLine } from './jobLines.jsx';
 
 const byName = (a, b) => (a.name || '').localeCompare(b.name || '') || a.id.localeCompare(b.id);
 
+// Where the full Assistant tab opens on a new job setup conversation.
+const setUpHref = (projectId) => `/projects/${projectId}?tab=assistant&purpose=${JOB_SETUP}`;
+
 /**
- * Start job: the button and its dialog, from the project's Documents tab and
- * from a document's header. `documents` is the project's listing when the
- * caller already has it (the Documents tab), else it is read on open.
- * `documentId` opens the dialog with that one document chosen. `small` draws
- * the button at the size of a document header's buttons.
+ * Set up job: a job is set up in a new assistant conversation, which drafts
+ * the job card the job is started from (BRIEF-SU). From the project's
+ * Documents and Jobs tabs and from a document's header, where the
+ * conversation's turns are asked from that document. The docked panel opens
+ * on it, or the full Assistant tab where the window has no room for the
+ * panel. With no assistant online for the project the button opens the Start
+ * job form instead.
+ *
+ * `documents` is the project's listing when the caller already has it (the
+ * Documents tab), else the form reads it on open. `documentId` opens the form
+ * with that one document chosen. `small` draws the button at the size of a
+ * document header's buttons.
  */
-export const StartJob = ({
+export const SetUpJob = ({
   projectId,
   client,
   documents: given = null,
@@ -34,15 +55,19 @@ export const StartJob = ({
   small = false,
 }) => {
   const [open, setOpen] = useState(false);
+  const available = useAssistantAvailable(client, projectId, IGT_ASSISTANT.app);
+  const wide = useWideEnoughToDock();
+  const startConversation = useStartConversation();
+  const navigate = useNavigate();
+  const setUp = () => {
+    if (available !== true) setOpen(true);
+    else if (wide) startConversation({ purpose: JOB_SETUP });
+    else navigate(setUpHref(projectId));
+  };
   return (
     <>
-      <Button
-        variant="outline"
-        size={small ? 'sm' : 'default'}
-        className="gap-1.5"
-        onClick={() => setOpen(true)}
-      >
-        <Play className="h-4 w-4" /> Start job
+      <Button variant="outline" size={small ? 'sm' : 'default'} className="gap-1.5" onClick={setUp}>
+        <Play className="h-4 w-4" /> Set up job
       </Button>
       {open && (
         <StartJobDialog
@@ -50,6 +75,39 @@ export const StartJob = ({
           client={client}
           documents={given}
           documentId={documentId}
+          onClose={() => setOpen(false)}
+        />
+      )}
+    </>
+  );
+};
+
+/**
+ * The Jobs tab's way to the Start job form with no assistant: a "⋯" menu with
+ * Start without the assistant, for every writer.
+ */
+export const StartWithoutAssistant = ({ projectId, client, documents = null }) => {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="outline" size="icon" aria-label="More job actions" title="More">
+            <MoreHorizontal className="h-4 w-4" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuItem onSelect={() => setOpen(true)}>
+            Start without the assistant
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+      {open && (
+        <StartJobDialog
+          projectId={projectId}
+          client={client}
+          documents={documents}
+          documentId={null}
           onClose={() => setOpen(false)}
         />
       )}

@@ -10,8 +10,8 @@ import { jobPath } from './jobText.js';
 /**
  * The project's Jobs tab: every job of the project, newest first, each row a
  * link to the job's page. Read again every JOB_POLL_MS while one of them is
- * active, so a job's row moves as its worker does. `startJob` is the Start job
- * control, for a writer.
+ * active, so a job's row moves as its worker does. `startJob` is Set up job
+ * and the "⋯" menu with Start without the assistant, for a writer.
  */
 export const ProjectJobs = ({ projectId, client, startJob = null }) => {
   const [jobs, setJobs] = useState(null);

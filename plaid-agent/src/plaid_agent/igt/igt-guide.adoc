@@ -912,23 +912,32 @@ An **assistant job** has the assistant work through documents on its own, by wri
 It writes the changes it decides on, and lists changes to the project's setup for a person to make.
 A job can take hours, and it goes on after you close the browser.
 
-**Start job**, beside **New document** on the **Documents** tab, on the **Jobs** tab and in a document's header, needs Writer access.
-Its dialog asks for the documents (all of them, or a selection, with the open document chosen when started from one) and the **Instructions**, which the job needs.
+**Set up job**, beside **New document** on the **Documents** tab, on the **Jobs** tab and in a document's header, needs Writer access.
+It opens the assistant on a new conversation for setting the job up (see <<_setting_up_a_job>>), on the **Assistant** tab when the window is too narrow for the panel.
+In a project with no assistant connected it opens the **Start job** form instead.
+
+The form is also on the **Jobs** tab's **⋯** menu, as **Start without the assistant**.
+It asks for the documents (all of them, or a selection, with the open document chosen when started from one) and the **Instructions**, which the job needs.
 **Translate**, **Segment and gloss** and **Segment, gloss and link** fill the instructions with a starting text to edit.
 A job takes at most 500 documents, so a larger project starts one on a selection: **Select shown** selects every document the search above the list shows.
 
 A project has one job at a time.
 Jobs run one after another across the server, and a waiting job's page says how many are ahead of it.
 
-== Scoping a job with the assistant
+== Setting up a job
 
-The assistant can set a job up with you in a conversation.
-Ask it for the job, such as glossing a set of texts overnight.
-It reads the documents, asks about what it finds there, such as a word people analyzed in two ways, and can analyze the first few sentences as an ordinary plan for you to correct first.
+In the conversation **Set up job** opens, say what the job should do, such as glossing a set of texts overnight.
+The assistant reads the documents, says what is empty in them, and asks about what it finds there, such as a word people analyzed in two ways.
+It can also analyze the first few sentences as an ordinary plan for you to correct first.
 
-It then drafts the job as a card in the conversation: the documents and the **Instructions**, which you can edit.
-**Start job** on the card starts the job as the **Start job** dialog does, and **Discard** drops it.
+It then drafts the job as a card in the conversation: the documents, what the job **Fills**, whether its **Text** may be edited, and the **Instructions**, which you can edit.
+To change what the job fills or whether it may edit the text, tell the assistant, and it drafts a new card.
+**Start job** on the card starts the job, and **Discard** drops it.
 The card keeps how it ended, with a link to the job's page once the job has started.
+
+The job fills only what its card names, and edits the text only when the card says it may.
+Its page says so from the start, with a link to the conversation for the person who started it.
+A job started from the form has no such limits.
 
 == What a job writes
 
@@ -1005,7 +1014,7 @@ Restoring a document to the moment before the job (see <<_history>>) also takes 
 == The job worker
 
 Jobs run only while the server's operator runs the job worker, `plaid-job-worker`, with an AI model.
-When no worker is running, a job waits, and the **Start job** dialog says so.
+When no worker is running, a job waits, and the **Start job** form and the job card say so.
 
 = Services
 
