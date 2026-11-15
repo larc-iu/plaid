@@ -2435,7 +2435,7 @@ def _write_text_edit(client, project, op: Dict[str, Any], new_id, values=(),
     new_body, at = composed
     region_end = at(b + len(new))
     b = at(b)
-    forms = _followed_forms(project, before, stored_tl)
+    forms = _followed_forms(project, before, stored_tl, people_kept=stamps is not None and stamps.machine)
     sents = sorted((t['begin'], t['end'], t['id']) for t in (sent_layer or {}).get('tokens') or [])
     seeded: List[Dict[str, Any]] = []
     if not sents:
@@ -2572,13 +2572,19 @@ def _sole_forms(tl, project, body: str) -> Dict[str, tuple]:
     return out
 
 
-def _followed_forms(project, before: Dict[str, tuple], tl) -> List[Dict[str, Any]]:
+def _followed_forms(project, before: Dict[str, tuple], tl, people_kept: bool = False) -> List[Dict[str, Any]]:
     """The writes that respell, with its word, the form of a word's one
     morpheme that spelled the whole word, the word respelled by the edit
     (Luke, H17), unstamped as the app's Baseline save writes it. ``tl`` is
     the text layer as stored after the edit. A new spelling holding
     whitespace is not followed: a morpheme form never holds a space. Mirror
-    of ``followedForms``."""
+    of ``followedForms``.
+
+    ``people_kept`` (a machine writer's edit, an unattended job's): a
+    morpheme that is not a machine proposal (a person's, or one a person
+    confirmed) keeps its form. A job's retype changes the text, never a
+    person's analysis behind their back: "gam" stays the form of the
+    person's morpheme under a word the job retyped "Gam" (REV-DAY-S-6)."""
     if not before:
         return []
     body = ((tl or {}).get('text') or {}).get('body') or ''
@@ -2593,6 +2599,8 @@ def _followed_forms(project, before: Dict[str, tuple], tl) -> List[Dict[str, Any
             continue
         ms = by.get((w['begin'], w['end'])) or []
         if len(ms) != 1 or ms[0]['id'] != was[0] or (ms[0].get('metadata') or {}).get('form') != was[1]:
+            continue
+        if people_kept and not is_machine(ms[0].get('metadata') or {}):
             continue
         writes.append({'id': was[0], 'metadata': metadata_ops({'form': text})})
     return writes

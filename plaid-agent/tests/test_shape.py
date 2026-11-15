@@ -473,6 +473,34 @@ class _TextServer:
         tl['text']['body'] = body
 
 
+@pytest.mark.parametrize('who, followed', [
+    ({'form': 'gam'}, False),
+    ({'form': 'gam', 'prov': 'inferred', 'provSource': 'service:x', 'provConfirmed': True}, False),
+    ({'form': 'gam', 'prov': 'inferred', 'provSource': 'service:x'}, True),
+], ids=['a-persons', 'confirmed', 'a-machine-proposal'])
+def test_a_jobs_retype_respells_no_persons_morpheme_form(who, followed):
+    """REV-DAY-S-6: a job's retype (a machine writer's plan) changed the form
+    of a person's verified morpheme ("gam" to "Gam") with no provenance
+    change. Under a machine writer only a machine proposal's sole form
+    follows its word; a person's or a confirmed one keeps its form. A
+    person's own plan follows as before (H17)."""
+    from plaid_agent.core.plan import JOB_DETAIL_KEY
+    from plaid_agent.igt.project import load_project
+    c = FakeClient()
+    _TextServer(c)
+    for layer in c._documents['d1']['text_layers'][0]['token_layers']:
+        for t in layer['tokens']:
+            if t['id'] == 'm-2':
+                t['metadata'] = dict(who)
+    op = {'kind': 'edit_text', 'document_id': 'd1', 'text_id': 'text1', 'sentence_id': 's-1', 'begin': 0, 'end': 17,
+          'old': 'Ali-di gam akuna.', 'new': 'Ali-di gham akuna.', 'word_ids': ['w-1', 'w-2', 'w-3'],
+          'morpheme_ids': ['m-1a', 'm-1b', 'm-2'], 'label': ''}
+    execute_plan(c, [op], source='service:igt:job:m', label='l', project=load_project(c, 'p1'), stamp_mode='machine',
+                 detail={'model': 'm', JOB_DETAIL_KEY: 'J1'})
+    forms = [u for p in c.payloads('tokens.bulk_update') for u in p if u['id'] == 'm-2']
+    assert bool(forms) is followed, forms
+
+
 def test_execute_retype_respells_a_sole_morpheme_form_that_spelled_the_word():
     # HUNT-recent 2: a word whose one morpheme's form is the word follows its
     # new spelling, as the Baseline save does (H17, soleMorphemeForms.js).
