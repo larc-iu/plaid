@@ -675,3 +675,20 @@ def test_the_fake_jobs_take_what_the_real_ones_take():
     for name in real:
         want = list(inspect.signature(getattr(JobsResource, name)).parameters)
         assert list(inspect.signature(getattr(_FakeJobs, name)).parameters) == want, name
+
+
+def test_fake_create_composes_the_setup_and_checks_it_before_the_instructions_as_core_does():
+    """REV-SU-B-8: core composes every body string (NFC) before it counts or
+    keeps the setup, and checks the setup before the instructions."""
+    client, _ = _fake()
+    jobs = client.jobs
+    decomposed = 'é'
+    job = jobs.create('p1', 'igt', 'n', setup={'fills': [{'id': 'L1', 'name': 'Caf' + decomposed}]})
+    assert job['setup'] == {'fills': [{'id': 'L1', 'name': 'Café'}]}
+    jobs.cancel(job['id'])
+    # Counted composed: 3,992 of them are 4,000 characters as core stores them.
+    assert jobs.create('p1', 'igt', 'n', setup={'n': decomposed * 3992})['setup'] == {'n': 'é' * 3992}
+    jobs.cancel(jobs.active('p1')['id'])
+    _refused(lambda: jobs.create('p1', 'igt', '', setup=['L1']), 400, 'setup: give a JSON object.')
+    _refused(lambda: jobs.create('p1', 'igt', 'x' * 5000, setup={'n': 'x' * 4000}), 400,
+             "The setup is 4,008 characters as JSON. A job's setup is at most 4,000.")

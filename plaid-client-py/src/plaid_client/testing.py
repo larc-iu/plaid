@@ -1949,6 +1949,19 @@ _JOB_HEARTBEAT_S = 30
 _JOB_DOCUMENTS_MAX = 500
 _JOB_INSTRUCTIONS_MAX_CHARS = 2000
 _JOB_SETUP_MAX_CHARS = 4000
+
+
+def _composed(value):
+    """``value`` with every string in it, keys too, composed (NFC), as core
+    composes every string of a request body."""
+    import unicodedata
+    if isinstance(value, str):
+        return unicodedata.normalize('NFC', value)
+    if isinstance(value, dict):
+        return {_composed(k): _composed(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_composed(v) for v in value]
+    return value
 _JOB_REPORT_MAX_BYTES = 1000000
 _JOB_ANALYSIS_MAX_CHARS = 4000
 _JOB_DECISIONS_PER_CALL = 1000
@@ -2130,19 +2143,22 @@ class _FakeJobs:
         live = self._documents_of(project_id)
         if app not in _JOB_APPS:
             raise self._refuse(400, 'POST', path, f'Unknown app: {app}.')
+        # core checks the setup before the instructions
+        if setup is not None:
+            if not isinstance(setup, dict):
+                raise self._refuse(400, 'POST', path, 'setup: give a JSON object.')
+            # core composes every string of a body (NFC), then counts the
+            # characters of the compact JSON text it stores
+            setup = _composed(setup)
+            n = len(json.dumps(setup, ensure_ascii=False, separators=(',', ':')))
+            if n > _JOB_SETUP_MAX_CHARS:
+                raise self._refuse(400, 'POST', path, f'The setup is {n:,} characters as JSON. '
+                                                      f"A job's setup is at most {_JOB_SETUP_MAX_CHARS:,}.")
         if not (instructions or '').strip():
             raise self._refuse(400, 'POST', path, 'instructions: say what the job is to do.')
         if len(instructions) > _JOB_INSTRUCTIONS_MAX_CHARS:
             raise self._refuse(400, 'POST', path, f'The instructions are {len(instructions):,} characters. '
                                                   f"A job's instructions are at most {_JOB_INSTRUCTIONS_MAX_CHARS:,}.")
-        if setup is not None:
-            if not isinstance(setup, dict):
-                raise self._refuse(400, 'POST', path, 'setup: give a JSON object.')
-            # core counts the characters of the JSON text it stores, compact
-            n = len(json.dumps(setup, ensure_ascii=False, separators=(',', ':')))
-            if n > _JOB_SETUP_MAX_CHARS:
-                raise self._refuse(400, 'POST', path, f'The setup is {n:,} characters as JSON. '
-                                                      f"A job's setup is at most {_JOB_SETUP_MAX_CHARS:,}.")
         if documents is not None:
             if not documents:
                 raise self._refuse(400, 'POST', path,
