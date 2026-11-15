@@ -1,11 +1,7 @@
 import { Link } from 'react-router-dom';
 import { historyHref } from '@ui/hooks/useHistoryParam.js';
 import { APP_ROUTES } from '@/appRoutes.js';
-
-// The History entry of the job's work in a document, where it wrote
-// something there: the worker names the group before its first write, so a
-// group with no change opens nothing (REV-DF-S-5).
-export const changesGroup = (d) => ((d?.counts?.changes ?? 0) > 0 ? d.glossGroup : null);
+import { changesGroup } from './jobText.js';
 
 /**
  * Links to what a job changed in one document: its History entry for the

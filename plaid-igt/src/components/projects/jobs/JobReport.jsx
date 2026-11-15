@@ -7,13 +7,13 @@ import {
   HARMONIZE_BY_TEXT,
   HARMONIZE_LEFT_TEXT,
   changeReasonText,
+  changesGroup,
   durationText,
   refusedText,
   skippedText,
   stoppedPartway,
 } from './jobText.js';
 import SECTIONS from './jobSections.json';
-import { changesGroup } from './JobHistoryLinks.jsx';
 
 // A finished job's report (CONTRACT 5.3, as the client hands it over, keys in
 // camelCase): the totals, the summary the assistant wrote under a heading
@@ -68,7 +68,7 @@ const blankSums = (report) => {
 };
 
 // A count of what a target holds blank, in the unit Left blank lists.
-export const unitCount = (n, unit) => `${n.toLocaleString()} ${plural(n, unit)}`;
+const unitCount = (n, unit) => `${n.toLocaleString()} ${plural(n, unit)}`;
 
 // The values the job set in each field: the totals' rows, or, when the totals
 // hold none (core's own report of a job no worker finished sums named counts

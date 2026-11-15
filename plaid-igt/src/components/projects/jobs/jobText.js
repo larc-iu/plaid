@@ -55,6 +55,11 @@ export const planText = (plan) => {
   return plan.editsText ? `${text} Text edits allowed.` : text;
 };
 
+// The History entry of the job's work in a document, where it wrote
+// something there: the worker names the group before its first write, so a
+// group with no change opens nothing (REV-DF-S-5).
+export const changesGroup = (d) => ((d?.counts?.changes ?? 0) > 0 ? d.glossGroup : null);
+
 // A document of the job the worker did not finish: never reached, or
 // stopped partway once it finished a sentence (REV-DAY-P-13).
 export const stoppedPartway = (d) => d.state === 'not-reached' && (d.done ?? 0) > 0;

@@ -37,11 +37,12 @@ import {
   jobStoppable,
 } from '@ui/domain/jobs.js';
 import { JobReport } from './JobReport.jsx';
-import { JobHistoryLinks, changesGroup } from './JobHistoryLinks.jsx';
+import { JobHistoryLinks } from './JobHistoryLinks.jsx';
 import {
   durationText,
   jobName,
   jobsTabPath,
+  changesGroup,
   leftText,
   planText,
   stoppedPartway,
