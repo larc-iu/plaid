@@ -4192,7 +4192,9 @@ class IgtRunner:
 
     def fills_named(self, job, plan: Dict[str, Any]) -> Dict[str, Any]:
         """``fills_names``: what the plan fills by the targets' names as the
-        project now names them, for the job page and read_job ("Fills:
+        project now names them, each as the setup line names it
+        (``targets.shown_names``, REV-SUFIX-4), for the job page and
+        read_job ("Fills:
         segmentation, Morph Gloss.", "Fills nothing.", REV-DF-D-1). Nothing
         for a plan with no ``fills`` or when the project cannot be read."""
         if not isinstance(plan.get('fills'), list):
@@ -4202,7 +4204,7 @@ class IgtRunner:
         except Exception as e:  # noqa: BLE001 - the plan without the names rather than no report
             logger.warning('Job %s: what its plan fills could not be named for the report: %s', job.id, e)
             return {}
-        return {'fills_names': [t.name for t in tg.of_ids(project, plan['fills'])]}
+        return {'fills_names': tg.shown_names(project, tg.of_ids(project, plan['fills']))}
 
     def still_proposed(self, job, changes: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """``changes`` less each one its document already holds as the

@@ -606,3 +606,17 @@ def test_no_two_targets_share_a_shown_name_and_each_reads_back_to_its_own(names)
         out = _plan_work(pws, fills=[name])
         assert not out.startswith('Error'), (name, out)
         assert pws.plan_work["fills"] == [t.id], (name, pws.plan_work)
+
+
+@pytest.mark.parametrize('setup_id, setup_name', [('sl-ipafield', 'IPA (word level)'),
+                                                  ('orthography:IPA', 'IPA (orthography, word level)')])
+def test_the_plans_fills_are_named_as_the_setup_line_names_them(monkeypatch, setup_id, setup_name):
+    """REV-SUFIX-4: the page's Plan line ("Fills: ...") and read_job name
+    what the plan fills by targets.shown_names, as the setup line beside it
+    does: never the bare "IPA" two targets share."""
+    from job_fixtures import JobClient
+    from test_job_fields import role_document
+    client = JobClient({'d1': role_document()}, project=_ipa_raw(role_project()))
+    setup = {'fills': [{'id': ROLE, 'name': ROLE_NAME}, {'id': setup_id, 'name': setup_name}], 'text': False}
+    finished = _piece_also(monkeypatch, client, setup, {'pieces': 'document', 'fills': [ROLE_NAME, setup_name]}, [])
+    assert finished['report']['plan']['fills_names'] == [ROLE_NAME, setup_name], finished['report']['plan']
