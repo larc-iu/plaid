@@ -822,7 +822,11 @@ Whoever runs an assistant can state where its model runs and where users' messag
 == Assistant jobs
 
 An **assistant job** is unattended work by an assistant over many documents of a project, such as glossing every blank word.
-A writer of the project starts one, naming the app, its tasks, the documents in order (all of them if left out) and an optional note for the model.
+A writer of the project starts one, naming the app, the documents in order (all of them if left out) and instructions for the model, at most 2,000 characters.
+A job may also carry a **setup**, a JSON object of at most 4,000 characters that the app sends when the job starts.
+The server keeps it as sent, returns it on every read of the job and never changes it, and reads none of its keys.
+Each app decides what goes in it, such as what the job may fill.
+Both clients re-case the keys inside it as they re-case every key, so a key of one lowercase word is the only kind that reads the same in every language.
 A separate program, the **job worker**, does the work, one job at a time across the server, in the order the jobs were started.
 Its edits are recorded under the name of the person who started the job, with the operation kind `job`.
 

@@ -135,14 +135,19 @@
      {:post {:summary (str "Start a job on the project, for the signed-in writer. <body>app</body> names "
                            "the app (`igt`), <body>documents</body> the documents in order (left out: "
                            "every document of the project, by name), <body>instructions</body> what the job "
-                           "is to do, required. 409 with <code>job-active</code> while the project has a job that has "
-                           "not ended. Refused to a delegated token.")
+                           "is to do, required, <body>setup</body> an optional JSON object of what the job was "
+                           "set up with, kept as sent, returned on every read and never changed (at most 4,000 "
+                           "characters as JSON). 409 with <code>job-active</code> while the project has a job "
+                           "that has not ended. Refused to a delegated token.")
              :middleware [wrap-no-delegated [pra/wrap-writer-required (fn [r] (-> r :parameters :path :id))]]
              :parameters {:body [:map
                                  [:id {:optional true} :uuid]
                                  [:app :string]
                                  [:documents {:optional true} [:vector :uuid]]
-                                 [:instructions {:optional true} [:maybe :string]]]}
+                                 [:instructions {:optional true} [:maybe :string]]
+                                 ;; any JSON: `job/create!` refuses what is not
+                                 ;; an object in words a person can read
+                                 [:setup {:optional true} :any]]}
              :handler (fn [{{{:keys [id]} :path body :body} :parameters db :db user-id :user/id}]
                         (answer #(hash-map :status 201
                                            :body (job/create! db id body user-id))))}

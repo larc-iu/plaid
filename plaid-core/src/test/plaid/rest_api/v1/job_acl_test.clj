@@ -34,6 +34,28 @@
             (is (= "A delegated token cannot start or stop a job." (-> resp :body :error))))
           (cancel-any! p))))))
 
+;; A setup is set only by the start, so only who may start may set one, and
+;; every reader reads it back (SU).
+(deftest a-setup-by-role
+  (let [world (jh/world!)
+        p (:p world)
+        expected {:st 201 :w 201 :m 201 :r 403 :n 403 :a 201 :s 403}]
+    (doseq [c columns]
+      (testing (name c)
+        (let [jobs #(:n (psc/q1 fix/db {:select [[[:count :*] :n]] :from [:jobs]}))
+              before (jobs)
+              resp (start! (world c) p {:setup {:text false :fills []}})]
+          (is (= (expected c) (:status resp)) (pr-str (:body resp)))
+          (when (not= 201 (expected c))
+            (is (= before (jobs)) "nothing is stored"))
+          (cancel-any! p))))
+    (testing "every reader reads it"
+      (let [j (job-id (start! (:st world) p {:setup {:text true :fills [{:id "L1" :name "Case"}]}}))]
+        (doseq [c (remove #{:n} columns)]
+          (is (= {"text" true "fills" [{"id" "L1" "name" "Case"}]}
+                 (:job/setup (:body (call (world c) :get (str "/api/v1/jobs/" j)))))
+              (name c)))))))
+
 (deftest reads-by-role
   (let [world (jh/world!)
         p (:p world)

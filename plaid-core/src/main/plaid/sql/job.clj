@@ -57,6 +57,10 @@
   prompt."
   2000)
 
+(def setup-max-chars
+  "The longest setup, in characters of its JSON text as stored."
+  4000)
+
 (def report-max-bytes
   "The largest report, as JSON text in UTF-8."
   1000000)
@@ -268,6 +272,8 @@
                                     (assoc m :job/undone u)
                                     m))
       (:documents parts) (assoc :job/documents (mapv row->document (document-rows db (:id row))))
+      ;; Keys stay strings: a setup is kept as the app sent it.
+      (some? (:setup row)) (assoc :job/setup (psc/read-metadata-value (:setup row)))
       (:report parts) (assoc :job/report (psc/read-json (:report row))))))
 
 (defn get
@@ -326,9 +332,16 @@
 (defn- check-start!
   "The start body's document ids, or a 400 for the first rule it breaks
   (CONTRACT 3.1)."
-  [db project-id {:keys [app documents instructions]}]
+  [db project-id {:keys [app documents instructions setup]}]
   (when-not (contains? apps app)
     (refuse 400 {:error (str "Unknown app: " app ".")}))
+  (when (and (some? setup) (not (map? setup)))
+    (refuse 400 {:error "setup: give a JSON object."}))
+  (when (some? setup)
+    (let [n (cp/cp-count (psc/write-json setup))]
+      (when (> n setup-max-chars)
+        (refuse 400 {:error (str "The setup is " (grouped n) " characters as JSON. A job's setup is at most "
+                                 (grouped setup-max-chars) ".")}))))
   (when (str/blank? instructions)
     (refuse 400 {:error "instructions: say what the job is to do."}))
   (when (> (cp/cp-count instructions) instructions-max-chars)
@@ -355,11 +368,12 @@
 
 (defn create!
   "Start a job on project `project-id` for `user-id`. `body` is `{:id :app
-  :documents :instructions}`. Left out, `documents` is every document of the
-  project, by name then id. Returns the job. Refuses with 400 for a body
+  :documents :instructions :setup}`. Left out, `documents` is every document of the
+  project, by name then id. `setup`, a map or nil, is stored as JSON text as
+  it came and never changed after. Returns the job. Refuses with 400 for a body
   that breaks a rule, 409 `job-active` while the project has an active job,
   and 409 `id-taken` for an id used before."
-  [db project-id {:keys [id instructions] :as body} user-id]
+  [db project-id {:keys [id instructions setup] :as body} user-id]
   (psd/with-tx [tx db]
     (let [docs (check-start! tx project-id body)]
       (when-let [other (psc/q1 tx {:select [:id] :from [:jobs]
@@ -374,6 +388,7 @@
                                     :project_id (str project-id)
                                     :app (:app body)
                                     :instructions instructions
+                                    :setup (some-> setup psc/write-json)
                                     :started_by user-id
                                     :state "waiting"
                                     :created_at now}]})

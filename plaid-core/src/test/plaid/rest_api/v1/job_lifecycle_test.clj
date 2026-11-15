@@ -65,6 +65,75 @@
     (testing "2,000 characters of instructions are taken"
       (is (= 201 (:status (start! st p {:instructions (apply str (repeat 2000 "x"))})))))))
 
+;; A job's setup: a JSON object the app sends at the start, kept as sent and
+;; returned on every read. Core knows none of its keys (SU).
+(def ^:private a-setup
+  {:fills [{:id "segmentation" :name "Morphemes"} {:id "L1" :name "Case"}]
+   :text false
+   :conversation "0197d1a0-2222-7000-8000-000000000001"})
+
+(def ^:private a-setup-read
+  {"fills" [{"id" "segmentation" "name" "Morphemes"} {"id" "L1" "name" "Case"}]
+   "text" false
+   "conversation" "0197d1a0-2222-7000-8000-000000000001"})
+
+(deftest a-setup-is-kept-as-sent-and-on-every-read
+  (let [{:keys [p d1 st]} (jh/world!)
+        resp (start! st p {:setup a-setup})
+        j (job-id resp)
+        active #(:body (call st :get (str "/api/v1/projects/" p "/jobs/active")))
+        entry #(-> (call st :get (str "/api/v1/projects/" p "/jobs")) :body :entries first)]
+    (is (= 201 (:status resp)))
+    (is (= a-setup-read (:job/setup (:body resp))) "the start's answer")
+    (is (= a-setup-read (:job/setup (get-job j))) "get")
+    (is (= a-setup-read (:job/setup (active))) "active")
+    (is (= a-setup-read (:job/setup (entry))) "a list entry")
+    (is (= a-setup-read (-> (claim! jh/worker-a) :body :job :job/setup)) "the claim")
+    (testing "no later call changes it"
+      (fix/assert-ok (heartbeat! j jh/worker-a {:setup {:text true}}))
+      (fix/assert-ok (call admin-request :put (str "/api/v1/jobs/" j "/documents/" d1)
+                           {:worker-id jh/worker-a :state "working" :setup {:text true}}))
+      (fix/assert-ok (finish! j jh/worker-a "done" {:setup {:text true}}))
+      (is (= 409 (:status (start! st p {:id j :setup {:text true}}))) "a second start under its id")
+      (is (= a-setup-read (:job/setup (get-job j)))))
+    (testing "its keys and values are not recased or read"
+      (let [odd {"camelCase" 1 "kebab-case" [true nil] "snake_case" {"a/b" "x"} "" "é"}
+            k (job-id (start! st p {:setup odd}))]
+        (is (= odd (:job/setup (get-job k))))
+        (is (= {"camelCase" 1 "kebab-case" [true nil] "snake_case" {"a/b" "x"} "" "é"}
+               (psc/read-metadata-value (:setup (jh/job-row k)))) "stored as sent")))
+    (testing "an empty object is a setup"
+      (fix/assert-ok (call admin-request :post (str "/api/v1/jobs/" (:job/id (active)) "/cancel")))
+      (is (= {} (:job/setup (:body (start! st p {:setup {}}))))))))
+
+(deftest a-job-with-no-setup-reads-with-none
+  (let [{:keys [p st]} (jh/world!)]
+    (doseq [body [{} {:setup nil}]]
+      (testing (pr-str body)
+        (let [j (job-id (start! st p body))]
+          (is (nil? (:setup (jh/job-row j))))
+          (is (not (contains? (get-job j) :job/setup)) "get")
+          (is (not (contains? (:body (call st :get (str "/api/v1/projects/" p "/jobs/active"))) :job/setup)) "active")
+          (is (not (contains? (-> (call st :get (str "/api/v1/projects/" p "/jobs")) :body :entries first) :job/setup))
+              "a list entry")
+          (fix/assert-ok (call admin-request :post (str "/api/v1/jobs/" j "/cancel"))))))))
+
+(deftest setup-refusals
+  (let [{:keys [p st]} (jh/world!)
+        refused (fn [setup]
+                  (let [r (start! st p {:setup setup})]
+                    (is (= 400 (:status r)) (pr-str setup))
+                    (-> r :body :error)))
+        ;; {"n":"..."} is 8 characters around the string
+        of-length (fn [n letter] {:n (apply str (repeat (- n 8) letter))})]
+    (doseq [v ["fills" 3 true [{:id "L1"}] []]]
+      (is (= "setup: give a JSON object." (refused v))))
+    (is (= "The setup is 4,013 characters as JSON. A job's setup is at most 4,000."
+           (refused (of-length 4013 "é"))) "counted in characters, each as itself")
+    (is (= 204 (:status (call st :get (str "/api/v1/projects/" p "/jobs/active")))))
+    (testing "4,000 characters are taken"
+      (is (= 201 (:status (start! st p {:setup (of-length 4000 "é")})))))))
+
 (deftest at-most-five-hundred-documents
   (let [p (str (h/create-test-project admin-request "Big"))]
     (doseq [i (range 501)]
