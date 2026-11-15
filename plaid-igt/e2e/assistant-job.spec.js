@@ -6,8 +6,10 @@ import { fakeJobWorker } from './jobWorker.js';
 
 // A job scoped in the chat (BRIEF-JB): the real IGT assistant on a scripted
 // model reads the document and asks, then drafts the job with propose_job.
-// The card shows what the job covers and the brief to edit, Start job makes
-// the job as the signed-in user under the card's id with the edited brief,
+// The card shows what the job covers, what it fills and the brief to edit
+// (an ordinary conversation's card binds the job as a job setup's does),
+// Start job makes the job as the signed-in user under the card's id with the
+// edited brief and the card's setup,
 // the card says it started and links the job, the model is told so in the
 // record, and the card reads the same after a reload. The worker is the
 // spec's own (jobWorker.js): it takes the job and ends it with a report whose
@@ -35,7 +37,8 @@ const draft = (brief) => [
     calls: [
       {
         name: 'propose_job',
-        arguments: { action: 'draft', documents: [DOC], brief },
+        // fills is required in every conversation, not only a job setup.
+        arguments: { action: 'draft', documents: [DOC], brief, fills: ['Gloss'] },
       },
     ],
   },
@@ -55,6 +58,13 @@ const SCRIPT = [
   // Turn 3: another draft, which the user discards.
   ...draft('Gloss tuna as "fish".'),
 ];
+
+// The Gloss field's id, as a card names it.
+const glossIdOf = (project) =>
+  project.textLayers
+    .flatMap((t) => t.tokenLayers || [])
+    .flatMap((t) => t.spanLayers || [])
+    .find((l) => l.name === 'Gloss').id;
 
 let client;
 let userId;
@@ -127,6 +137,12 @@ test('a job scoped in the chat is started from its card, and a second card is di
     await expect(card).toContainText('Proposed job');
     await expect(card.getByRole('link', { name: DOC })).toBeVisible();
     await expect(card).not.toContainText('Tasks');
+    // A card drafted in an ordinary conversation binds the job as a job
+    // setup's does: what it fills, and the text left as it is.
+    const row = (label) =>
+      card.locator(`xpath=.//dt[normalize-space()="${label}"]/following-sibling::dd[1]`);
+    await expect(row('Fills')).toHaveText('Gloss');
+    await expect(row('Text')).toHaveText('Unchanged');
     const brief = card.getByRole('textbox', { name: 'Instructions' });
     await expect(brief).toHaveValue(BRIEF);
     await brief.fill(EDITED);
@@ -150,6 +166,14 @@ test('a job scoped in the chat is started from its card, and a second card is di
       startedBy: userId,
     });
     expect(job.documents.map((d) => d.documentId)).toEqual([documentId]);
+    expect(job.setup).toEqual({
+      fills: [{ id: glossIdOf(await client.projects.get(projectId)), name: 'Gloss' }],
+      text: false,
+      conversation: convId,
+    });
+    // No turn of an ordinary conversation is told of a job setup.
+    for (const body of service.asked())
+      expect(body.messages[0].content).not.toContain('This conversation sets up an assistant job.');
     await expect
       .poll(async () => {
         const c = (await client.userData.get(userId, `igt:assistant:${projectId}:conv:${convId}`))
@@ -216,6 +240,9 @@ test('a job scoped in the chat is started from its card, and a second card is di
     await expect(page).toHaveURL(new RegExp(`#/projects/${projectId}/jobs/${jobId}$`));
     const report = page.getByRole('region', { name: 'Report' });
     await expect(report.getByRole('heading', { name: 'Left blank' })).toBeVisible();
+    await expect(page.getByTestId('job-setup')).toHaveText(
+      'Set up to fill Gloss. Text unchanged. Open conversation',
+    );
     await expect(report.getByRole('link', { name: 's1.w2' })).toHaveAttribute(
       'href',
       `#/projects/${projectId}/documents/${documentId}?tab=analyze&focusSentence=${encodeURIComponent(sentenceId)}&focusWord=4`,
@@ -285,11 +312,7 @@ test('Set up job: facts, a question, a card that binds the job, and a planner he
   test.setTimeout(300_000);
   skipUnlessAgent(test);
   await seedAuth(page);
-  const project = await client.projects.get(projectId);
-  const glossId = project.textLayers
-    .flatMap((t) => t.tokenLayers || [])
-    .flatMap((t) => t.spanLayers || [])
-    .find((l) => l.name === 'Gloss').id;
+  const glossId = glossIdOf(await client.projects.get(projectId));
   const SETUP_SCRIPT = [
     // Turn 1: what the documents hold, then the question about the rest.
     {
