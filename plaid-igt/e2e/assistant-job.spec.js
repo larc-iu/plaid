@@ -1,7 +1,7 @@
 import PlaidClient, { ROLES } from '@larc-iu/plaid-client';
 import { test, expect, seedAuth, readToken, CORE } from './fixtures.js';
 import { createScratchProject, roleOf } from './fixtureProject.js';
-import { skipUnlessAgent, startIgtAssistant } from './assistantService.js';
+import { runScriptedJobWorker, skipUnlessAgent, startIgtAssistant } from './assistantService.js';
 import { fakeJobWorker } from './jobWorker.js';
 
 // A job scoped in the chat (BRIEF-JB): the real IGT assistant on a scripted
@@ -15,11 +15,15 @@ import { fakeJobWorker } from './jobWorker.js';
 // discarded. A throwaway project, deleted afterwards with its jobs.
 //
 // Set up job (BRIEF-SU) opens the panel on a new conversation marked
-// job-setup, whose card shows what the job fills and whether it may edit the
-// text, and the job started from it carries them as its setup, which its page
-// says. The Jobs tab's "⋯" menu still opens the Start job form with an
-// assistant online, and a window too narrow for the panel opens the
-// Assistant tab on the new conversation.
+// job-setup, whose every turn tells the model so. The model asks propose_job
+// for the facts, asks the person about the rest, and drafts a card that shows
+// what the job fills and whether it may edit the text. The job started from it
+// carries them as its setup, which its page says, and plaid-agent's own worker
+// on a scripted model (runScriptedJobWorker) holds its planner to it: a plan
+// naming another field is refused with the setup's line, the next is kept and
+// the job fills Gloss. The Jobs tab's "⋯" menu still opens the Start job
+// form with an assistant online, and a window too narrow for the panel opens
+// the Assistant tab on the new conversation.
 
 const DOC = 'Story A';
 const BRIEF = 'Gloss kai as "go".';
@@ -275,10 +279,10 @@ const cleanUp = async (service, serviceId) => {
   await client.messages.discardService(projectId, serviceId).catch(() => {});
 };
 
-test('Set up job opens a job setup conversation, and its card binds the job it starts', async ({
+test('Set up job: facts, a question, a card that binds the job, and a planner held to it', async ({
   page,
 }) => {
-  test.setTimeout(180_000);
+  test.setTimeout(300_000);
   skipUnlessAgent(test);
   await seedAuth(page);
   const project = await client.projects.get(projectId);
@@ -287,6 +291,13 @@ test('Set up job opens a job setup conversation, and its card binds the job it s
     .flatMap((t) => t.spanLayers || [])
     .find((l) => l.name === 'Gloss').id;
   const SETUP_SCRIPT = [
+    // Turn 1: what the documents hold, then the question about the rest.
+    {
+      content: '',
+      calls: [{ name: 'propose_job', arguments: { action: 'facts', documents: [DOC] } }],
+    },
+    { content: 'Gloss is empty on every word of Story A. Translation is empty too: fill it?' },
+    // Turn 2: the person answered, the draft with what they agreed to.
     {
       content: '',
       calls: [
@@ -312,6 +323,7 @@ test('Set up job opens a job setup conversation, and its card binds the job it s
     script: SETUP_SCRIPT,
   });
   let jobId = null;
+  let worker = null;
   try {
     await waitOnline(serviceId, service);
     await page.goto(`/#/projects/${projectId}`);
@@ -328,50 +340,131 @@ test('Set up job opens a job setup conversation, and its card binds the job it s
     // The send that creates it carries the purpose.
     const box = panel.getByRole('textbox', { name: 'Message' });
     await expect(box).toBeEditable({ timeout: 60_000 });
-    await box.fill('Gloss Story A. Leave the text as it is.');
+    await box.fill('Gloss Story A.');
     const sent = sendRequest(page);
     await box.press('Enter');
     const payload = JSON.parse((await sent).postData());
     expect(payload).toMatchObject({ op: 'send', create: true, purpose: 'job-setup' });
     const convId = payload['conversation-id'];
 
+    // The service kept the purpose and told the model what the conversation
+    // is for, and facts answered the planner's own lines.
+    await expect(panel.getByText('Translation is empty too: fill it?')).toBeVisible({
+      timeout: 60_000,
+    });
+    await expect(panel.getByTestId('job-card')).toHaveCount(0);
+    const turn1 = service.asked();
+    expect(turn1).toHaveLength(2);
+    for (const body of turn1)
+      expect(body.messages[0].content).toContain('This conversation sets up an assistant job.');
+    const factsAnswer = turn1[1].messages.find((m) => m.role === 'tool').content;
+    expect(factsAnswer).toContain("What a job can fill (name them in propose_job's fills):");
+    expect(factsAnswer).toContain('"Gloss"');
+    expect(factsAnswer).toContain('- "Story A": 1 sentence');
+    const meta = (await client.userData.get(userId, `igt:assistant:${projectId}:meta:${convId}`))
+      .value;
+    expect(meta.purpose).toBe('job-setup');
+
+    // The answer, and the card. A later send carries no purpose.
+    await box.fill('Only Gloss. Leave the text as it is.');
+    const second = sendRequest(page);
+    await box.press('Enter');
+    expect(JSON.parse((await second).postData())).not.toHaveProperty('purpose');
     const card = panel.getByTestId('job-card');
     await expect(card).toBeVisible({ timeout: 60_000 });
+    for (const body of service.asked().slice(2))
+      expect(body.messages[0].content).toContain('This conversation sets up an assistant job.');
     const key = `igt:assistant:${projectId}:conv:${convId}`;
     // The card as the page receives it: `edits_text` read as `editsText`.
     const stored = (await client.userData.get(userId, key)).value.display.find((d) => d.job).job;
     expect(stored.fills).toEqual([{ id: glossId, name: 'Gloss' }]);
     expect(stored.editsText).toBe(false);
-    const name = stored.fills[0].name;
 
-    const shown = panel.getByTestId('job-card');
-    await expect(shown).toBeVisible({ timeout: 30_000 });
     const row = (label) =>
-      shown.locator(`xpath=.//dt[normalize-space()="${label}"]/following-sibling::dd[1]`);
-    await expect(row('Fills')).toHaveText(name);
+      card.locator(`xpath=.//dt[normalize-space()="${label}"]/following-sibling::dd[1]`);
+    await expect(row('Fills')).toHaveText('Gloss');
     await expect(row('Text')).toHaveText('Unchanged');
-    await shown.getByRole('button', { name: 'Start job' }).click();
-    await expect(shown).toContainText('Started', { timeout: 30_000 });
+    await card.getByRole('button', { name: 'Start job' }).click();
+    await expect(card).toContainText('Started', { timeout: 30_000 });
 
     // The job carries the card's setup and the conversation's id.
     jobId = stored.id;
     const job = await client.jobs.get(jobId);
     expect(job.setup).toEqual({
-      fills: [{ id: glossId, name }],
+      fills: [{ id: glossId, name: 'Gloss' }],
       text: false,
       conversation: convId,
     });
 
-    // Its page says so, and links the conversation for its starter.
-    await shown.getByRole('link', { name: 'Open job' }).click();
+    // Its page says so from its creation on, and links the conversation for
+    // its starter.
+    await card.getByRole('link', { name: 'Open job' }).click();
     await expect(page).toHaveURL(new RegExp(`#/projects/${projectId}/jobs/${jobId}$`));
     const line = page.getByTestId('job-setup');
-    await expect(line).toHaveText(`Set up to fill ${name}. Text unchanged. Open conversation`);
-    await expect(line.getByRole('link', { name: 'Open conversation' })).toHaveAttribute(
-      'href',
-      `#/projects/${projectId}?tab=assistant&conversation=${convId}`,
+    await expect(line).toHaveText('Set up to fill Gloss. Text unchanged. Open conversation');
+
+    // plaid-agent's worker takes it. Its planner names a field the setup
+    // leaves out, is refused with the setup's line, plans within it, and the
+    // job fills Gloss.
+    worker = await runScriptedJobWorker({
+      token: readToken().token,
+      script: [
+        {
+          calls: [
+            {
+              name: 'plan_work',
+              arguments: { pieces: 'sentences', fills: ['Gloss', 'Translation'] },
+            },
+          ],
+        },
+        { calls: [{ name: 'plan_work', arguments: { pieces: 'sentences', fills: ['Gloss'] } }] },
+        { content: 'Planned.' },
+        {
+          calls: [
+            {
+              name: 'set_field',
+              arguments: { document: DOC, refs: ['s1.w1.m1'], field: 'Gloss', value: 'go' },
+            },
+          ],
+        },
+        { content: 'Done.' },
+      ],
+    });
+    expect(worker.code, worker.log).toBe(0);
+    expect(worker.traces).toContain(
+      'This job was set up to fill only \\"Gloss\\". It may not edit the text.',
     );
+    expect(worker.traces).toContain(
+      'fills: this job was set up to fill only \\"Gloss\\". Leave out \\"Translation\\".',
+    );
+    const ended = await client.jobs.get(jobId);
+    expect(ended.state, JSON.stringify(ended.report)).toBe('done');
+    expect(ended.report.plan.fillsNames).toEqual(['Gloss']);
+    const doc = await client.documents.get(documentId, true);
+    const glossed = doc.textLayers
+      .flatMap((t) => t.tokenLayers || [])
+      .flatMap((t) => t.spanLayers || [])
+      .find((l) => l.id === glossId).spans;
+    expect(glossed.map((s) => s.value)).toEqual(['go']);
+
+    // The page of the ended job still says what it was set up to do, and its
+    // link opens the conversation, its card started.
+    await page.reload();
+    await expect(page.getByRole('region', { name: 'Report' })).toBeVisible({ timeout: 30_000 });
+    await expect(line).toHaveText('Set up to fill Gloss. Text unchanged. Open conversation');
+    await line.getByRole('link', { name: 'Open conversation' }).click();
+    await expect(page).toHaveURL(
+      new RegExp(`#/projects/${projectId}\\?tab=assistant&conversation=${convId}$`),
+    );
+    await expect(page.getByTestId('job-card')).toContainText('Started', { timeout: 30_000 });
   } finally {
+    if (worker) {
+      await test.info().attach('job worker log', { body: worker.log, contentType: 'text/plain' });
+      await test.info().attach('job worker traces', {
+        body: worker.traces,
+        contentType: 'text/plain',
+      });
+    }
     if (jobId) await client.jobs.cancel(jobId).catch(() => {});
     await cleanUp(service, serviceId);
   }

@@ -57,8 +57,9 @@ export function skipUnlessAgent(test) {
 // the next of its replies, `{content, calls: [{name, arguments}]}`, and "OK."
 // once it runs out. A reply `{busy: seconds}` refuses that call as the IU
 // endpoint does when its key has every request slot in use: HTTP 429 with
-// `Retry-After: seconds`.
-function startFakeModel(script = []) {
+// `Retry-After: seconds`. `asked` collects the body of every call but the
+// ping, in order, so a spec can read what the model was sent.
+function startFakeModel(script = [], asked = []) {
   const left = [...script];
   let n = 0;
   const server = http.createServer((req, res) => {
@@ -77,6 +78,7 @@ function startFakeModel(script = []) {
         model: 'e2e-fake',
       };
       const ping = (body.messages || []).some((m) => m.content === 'ping');
+      if (!ping) asked.push(body);
       const reply = (!ping && left.shift()) || { content: 'OK.' };
       if (reply.busy !== undefined) {
         res.writeHead(429, {
@@ -144,11 +146,13 @@ function startFakeModel(script = []) {
 
 // Starts the service on one project under `serviceId`, with the token given
 // (the service reads it from a `.token` in its working directory). Returns
-// `stop()`, which ends the process and the model, and `log()`, the service's
-// output so far, for a failure message.
+// `stop()`, which ends the process and the model, `log()`, the service's
+// output so far, for a failure message, and `asked()`, the body of every
+// model call of a turn so far (the system prompt is `messages[0]`).
 export async function startIgtAssistant({ token, projectId, serviceId, script = [] }) {
   const core = coreUrl();
-  const { server, port } = await startFakeModel(script);
+  const asked = [];
+  const { server, port } = await startFakeModel(script, asked);
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'plaid-e2e-agent-'));
   fs.writeFileSync(path.join(dir, '.token'), token);
   let output = '';
@@ -176,6 +180,7 @@ export async function startIgtAssistant({ token, projectId, serviceId, script = 
   const exited = new Promise((resolve) => child.on('exit', resolve));
   return {
     log: () => output,
+    asked: () => [...asked],
     stop: async () => {
       if (child.exitCode === null) {
         child.kill('SIGTERM');
@@ -187,4 +192,53 @@ export async function startIgtAssistant({ token, projectId, serviceId, script = 
       fs.rmSync(dir, { recursive: true, force: true });
     },
   };
+}
+
+// plaid-agent's job worker (plaid-job-worker) for one job: with `--once` it
+// takes the job that waits on the core, runs it as the worker does with a
+// scripted model (`--scripted-model`: `script`'s replies in order, each
+// `{content}` or `{calls: [{name, arguments}]}`, the last one given again once
+// they run out), and exits. `token` is an administrator's, as the worker's
+// routes are. Every model call is written to its trace folder, and the answer
+// is `{code, log, traces}`: the exit code, the worker's output and every
+// trace file's text, joined, for what the model was sent and told.
+export async function runScriptedJobWorker({ token, script, timeoutMs = 150_000 }) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'plaid-e2e-worker-'));
+  fs.writeFileSync(path.join(dir, '.token'), token);
+  fs.writeFileSync(path.join(dir, 'script.json'), JSON.stringify(script));
+  const traceDir = path.join(dir, 'traces');
+  let output = '';
+  const child = spawn(
+    agentPython(),
+    [
+      '-m',
+      'plaid_agent.jobworker',
+      '--url',
+      coreUrl(),
+      '--model',
+      'openai/e2e-scripted',
+      '--scripted-model',
+      path.join(dir, 'script.json'),
+      '--trace-dir',
+      traceDir,
+      '--once',
+    ],
+    { cwd: dir, env: { ...process.env, PYTHONPATH }, stdio: ['ignore', 'pipe', 'pipe'] },
+  );
+  child.stdout.on('data', (d) => (output += d));
+  child.stderr.on('data', (d) => (output += d));
+  const timer = setTimeout(() => child.kill('SIGKILL'), timeoutMs);
+  const code = await new Promise((resolve) => child.on('exit', resolve));
+  clearTimeout(timer);
+  const traces = fs.existsSync(traceDir)
+    ? fs
+        .readdirSync(traceDir, { recursive: true })
+        .map((f) => path.join(traceDir, f))
+        .filter((f) => fs.statSync(f).isFile())
+        .sort()
+        .map((f) => fs.readFileSync(f, 'utf8'))
+        .join('\n')
+    : '';
+  fs.rmSync(dir, { recursive: true, force: true });
+  return { code, log: output, traces };
 }
