@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Loader2, MoreHorizontal, Play } from 'lucide-react';
+import { Loader2, MoreHorizontal } from 'lucide-react';
+import { AssistantMark } from '@ui/components/assistant/PlaidMarks.jsx';
 import { notifyError } from '@/utils/feedback';
 import { Button } from '@ui/components/ui/button';
 import { Label } from '@ui/components/ui/label';
@@ -73,7 +74,9 @@ export const SetUpJob = ({
     else navigate(setUpHref(projectId, documentId));
   };
   const setUp = () => (available === null ? setWaiting(true) : act());
-  const Icon = waiting ? Loader2 : Play;
+  // It opens a conversation: the assistant's mark, as Discuss with the
+  // assistant has (REV-SU-F-6).
+  const Icon = waiting ? Loader2 : AssistantMark;
   useEffect(() => {
     if (!waiting || available === null) return;
     setWaiting(false);

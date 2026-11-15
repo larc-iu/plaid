@@ -165,6 +165,16 @@ describe('Set up job', () => {
     await v.unmount();
   });
 
+  // REV-SU-F-6: it opens a conversation, so it carries the assistant's mark,
+  // as Discuss with the assistant does, never Start job's Play.
+  it('carries the assistant’s mark, not the Play of Start job', async () => {
+    const v = await mount(<SetUpJob projectId="p1" client={clientOf()} />, {});
+    const button = byText(v.container, 'button', 'Set up job');
+    expect(button.querySelector('svg.lucide-play')).toBeNull();
+    expect(button.querySelector('svg clipPath')).not.toBeNull();
+    await v.unmount();
+  });
+
   it('draws the same button small in a document header', async () => {
     const seen = {};
     const v = await mount(
