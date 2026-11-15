@@ -235,6 +235,12 @@ def test_no_plan_and_whose_summary_it_is_are_read_as_the_page_says_them():
     assert 'Planning ended with no plan. Nothing was written.' in out
     assert 'Worked' not in out and 'Fills' not in out
     assert f'The report says: "{line}"' in out and 'own summary' not in out
+    # REV-DF4-2 (c): a model fault during planning, by the plan's why.
+    report = _report(plan={'by': 'none', 'why': 'output', 'piece_instructions': '', 'fallback': [],
+                           'left_out': []}, summary=line, summary_by='worker')
+    out = call_tool(ws, 'read_job', {'job': _ended(ws.client, report)})
+    assert 'The assistant’s model failed during planning. Nothing was written.' in out
+    assert 'Planning ended with no plan' not in out
     report = _report(summary='Glossed Text 1.', summary_by='model')
     out = call_tool(ws, 'read_job', {'job': _ended(ws.client, report)})
     assert 'The job\'s own summary, written by its final model context: "Glossed Text 1."' in out

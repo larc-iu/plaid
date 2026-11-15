@@ -53,7 +53,7 @@ from ..core.limits import (JOB_ANALYSIS_MAX_CHARS, JOB_CHANGE_VALUE_CHARS, JOB_C
                            JOB_EVIDENCE_CHARS, JOB_SENTENCE_MAX_CHARS, JOB_SENTENCE_MAX_WORDS,
                            JOB_SKIPPED_PER_DOCUMENT, JOB_STRETCH_SENTENCES)
 from ..core.plan import JOB_DETAIL_KEY, ONE_REQUEST, PlanError, TooBig, held_changes
-from ..core.prompt import JOB_ANSWER_AGAIN, JOB_LEAVE_IT
+from ..core.prompt import JOB_ANSWER_AGAIN, JOB_LEAVE_IT, JOB_WRITTEN_CALL_NEXT
 from ..core.provenance import Requester
 from ..core.tools import Refusal, ToolError
 from ..core.version import agent_version
@@ -168,6 +168,8 @@ def piece_note(text) -> str:
 #: reason the job then ends failed with, writing nothing (REV-DF3-2).
 NO_PLAN = 'none'
 NO_PLAN_REASON = 'no-plan'
+#: The reason of a job whose planning ended in a model fault, twice (REV-DF4-2).
+PLANNING_FAILED_REASON = 'planning-failed'
 
 #: Why a piece's sentences are skipped when its model answered nothing twice
 #: (:func:`answered_nothing`).
@@ -838,6 +840,9 @@ class JobWorkspace(Workspace):
     # say a person approves a plan card and is told of it in a reply.
 
     tool_fault_next = 'Try another way of asking rather than the same call again.'
+    # After a call written as text (core.agent.written_call_note): nobody
+    # reads a job's reply (REV-DF4-2).
+    written_call_next = JOB_WRITTEN_CALL_NEXT
 
     def staged_count(self) -> int:
         return held_changes(self)
@@ -1527,7 +1532,9 @@ class IgtRunner:
         code, writes nothing, and ends with ``plan_work``. When it ends
         without a valid one after its budget and one decide-now round, the
         plan kept names nothing to work (``by`` :data:`NO_PLAN`, ``why``),
-        and the job ends without writing (:meth:`plan_failure`)."""
+        and the job ends without writing (:meth:`plan_failure`). A planning
+        that ends in a model fault is planned once more, in a fresh context,
+        and ``why`` is then the fault's kind when the second ends in one."""
         if self.plan_made is not None:
             return self.plan_made
         stored = self.plan_stored(self.job.decisions())
@@ -1538,11 +1545,15 @@ class IgtRunner:
             project = self.project()
             facts = self.document_facts(project, job)
             plan, why = None, None
-            try:
-                plan = self.planning(project, facts)
-                why = None if plan else 'no-plan'
-            except StretchFailed as e:
-                why = e.kind
+            # A planning that ends in a model fault (a StretchFailed, by its
+            # kind) is planned once more in a fresh context (REV-DF4-2).
+            for _ in range(2):
+                try:
+                    plan = self.planning(project, facts)
+                    why = None if plan else NO_PLAN_REASON
+                    break
+                except StretchFailed as e:
+                    why = e.kind
             # No plan is never a plan made up for the job: one that filled the
             # app's default filled glosses and translations on a job asked
             # only to check (REV-DF3-2). Made once: a passing error on its row
@@ -1562,15 +1573,18 @@ class IgtRunner:
         return self.plan_made
 
     def plan_failure(self, job) -> Optional[str]:
-        """The reason the job ends before its work, or None: ``no-plan``
-        when planning ended with no plan (REV-DF3-2). Every document still
-        to work is then not reached, and nothing is written."""
-        if (self.plan_made or {}).get('by') != NO_PLAN:
+        """The reason the job ends before its work, or None, by the plan
+        row's ``why``: ``no-plan`` when planning ended with no plan the model
+        could keep (REV-DF3-2), ``planning-failed`` when it ended in a model
+        fault, twice (REV-DF4-2). Every document still to work is then not
+        reached, and nothing is written."""
+        made = self.plan_made or {}
+        if made.get('by') != NO_PLAN:
             return None
         for d in job.order:
             if (job.rows.get(d) or {}).get('state') not in ROW_FINAL + ('not-reached',):
                 job.update_row(d, state='not-reached')
-        return NO_PLAN_REASON
+        return NO_PLAN_REASON if made.get('why') == NO_PLAN_REASON else PLANNING_FAILED_REASON
 
     def plan_kept(self, plan: Dict[str, Any]) -> Dict[str, Any]:
         """The plan as its decision row holds it: the documents it names
@@ -1647,14 +1661,24 @@ class IgtRunner:
             def decided():
                 ws.decide_now = True
             try:
-                result = self.turn(ws, kit, system, transcript, decided)
-                if ws.plan_work is None and not ws.decide_now:
-                    # One decide-now round, plan_work alone offered.
+                # Its budget's decide-now line is JOB_PLAN_NOW, never a piece's.
+                result = self.turn(ws, kit, system, transcript, pace=self.pace(decided, line=JOB_PLAN_NOW))
+                if ws.plan_work is None:
+                    # One decide-now round, plan_work alone offered, whatever
+                    # the turn ended on (REV-DF4-2: a planner told by its
+                    # budget had none). Under budgets of its own, so it
+                    # always reaches the model.
                     ws.decide_now = True
                     more = transcript + list(result.messages or []) + [{'role': 'user', 'content': JOB_PLAN_NOW}]
-                    self.turn(ws, kit, system, more)
+                    self.turn(ws, kit, system, more, pace=self.pace(decided, line=JOB_PLAN_NOW))
                 return ws.plan_work
-            except (StretchFailed, JobStopped):
+            except StretchFailed:
+                # A model fault after plan_work kept a plan loses nothing:
+                # the plan is the planning's substance (REV-DF4-2).
+                if ws.plan_work is not None:
+                    return ws.plan_work
+                raise
+            except JobStopped:
                 raise
             except TurnCancelled:
                 job.check()
@@ -1662,6 +1686,8 @@ class IgtRunner:
             except Exception as e:  # noqa: BLE001 - sorted as a piece's are
                 if core_job.core_fault(e) is not None:
                     raise
+                if ws.plan_work is not None and (not_answering(e) or failure_kind(e) is not None):
+                    return ws.plan_work
                 if not_answering(e):
                     job.wait_for_model()
                     continue
@@ -2286,15 +2312,17 @@ class IgtRunner:
             ws.answered_nothing = answered_nothing(ws, result.text)
         return piece_note(result.text)
 
-    def pace(self, decided=lambda: None) -> Pace:
+    def pace(self, decided=lambda: None, line: Optional[str] = None) -> Pace:
         """The budgets of one stretch, asked only while nobody waits for the
-        model (``yield_to_people``)."""
+        model (``yield_to_people``). ``line``: its decide-now line, a
+        piece's unless given."""
         job = self.job
 
         def before_call():
             job.check()
             job.yield_to_people()
-        return Pace(self.cfg.model, before_call=before_call, count=self.count, decided=decided)
+        return Pace(self.cfg.model, before_call=before_call, count=self.count, decided=decided,
+                    **({'line': line} if line else {}))
 
     def turn(self, ws, kit, system: str, transcript, decided=lambda: None, pace: Optional[Pace] = None):
         """One model context of the job, under the stretch's budgets

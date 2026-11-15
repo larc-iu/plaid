@@ -188,14 +188,15 @@ describe('the words', () => {
       }),
     ).toBe('The project’s guidelines are 31,204 characters. A job reads at most 24,000.');
     expect(
-      ['starter-access', 'guidelines-too-long', 'no-documents', 'no-plan'].map((reason) =>
-        jobReasonText({ reason, message: null }),
+      ['starter-access', 'guidelines-too-long', 'no-documents', 'no-plan', 'planning-failed'].map(
+        (reason) => jobReasonText({ reason, message: null }),
       ),
     ).toEqual([
       'The person who started it can no longer write in this project.',
       'The guidelines are too long for a job.',
       'None of its documents are left.',
       'Planning ended with no plan.',
+      'The assistant’s model failed during planning. Start the job again.',
     ]);
     expect(jobReasonText({ reason: 'cancelled', message: null })).toBe(null);
     expect(jobReasonText(null)).toBe(null);

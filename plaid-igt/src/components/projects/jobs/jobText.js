@@ -3,6 +3,7 @@
 // job's codes (its state, phase, reason, a document's state) are plaid-ui's
 // (domain/jobs.js), since every app says them. Also how a job is started,
 // shared by the Start job dialog and the assistant's job card.
+import { planEndedText } from '@ui/domain/jobs.js';
 import { createOnce } from '@ui/lib/createOnce.js';
 import { statusOf } from '@ui/lib/errors.js';
 import { plural } from '@ui/lib/plural.js';
@@ -36,8 +37,9 @@ const PIECES_TEXT = {
 
 export const planText = (plan) => {
   if (!plan) return null;
-  // Planning ended with no plan: the job ended writing nothing (REV-DF3-2).
-  if (plan.by === 'none') return 'Planning ended with no plan. Nothing was written.';
+  // Planning ended with no plan: the job ended writing nothing (REV-DF3-2),
+  // worded by why it ended (REV-DF4-2).
+  if (plan.by === 'none') return `${planEndedText(plan)} Nothing was written.`;
   let text = PIECES_TEXT[plan.pieces] ?? plan.pieces;
   if (plan.pieces === 'sentences' && plan.onlyEmpty) text += ', only those with something empty';
   const smaller = (plan.fallback || []).length;

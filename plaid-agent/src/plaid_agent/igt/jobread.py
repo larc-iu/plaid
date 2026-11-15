@@ -223,8 +223,12 @@ def plan_line(report: Dict[str, Any]) -> Optional[str]:
     if not isinstance(plan, dict):
         return None
     if plan.get('by') == 'none':
-        # Planning ended with no plan, and the job wrote nothing (REV-DF3-2).
-        return 'Planning ended with no plan. Nothing was written.'
+        # Planning ended with no plan, and the job wrote nothing (REV-DF3-2):
+        # the model planned nothing it could keep, or it failed during
+        # planning, by the plan's ``why`` (REV-DF4-2), as the page says it.
+        if plan.get('why') == 'no-plan':
+            return 'Planning ended with no plan. Nothing was written.'
+        return 'The assistant’s model failed during planning. Nothing was written.'
     line = f'Worked in {_PIECES.get(plan.get("pieces"), plan.get("pieces"))}'
     smaller = len(plan.get('fallback') or [])
     if smaller:

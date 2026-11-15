@@ -455,6 +455,27 @@ describe('the job page', () => {
     await v.unmount();
   });
 
+  it('says when the model failed during planning, apart from a planning with no plan', async () => {
+    const plan = { by: 'none', why: 'output', pieceInstructions: '', fallback: [], leftOut: [] };
+    const v = await mount(
+      clientOf(
+        jobOf({
+          state: 'failed',
+          reason: 'planning-failed',
+          message: null,
+          report: { ...REPORT, plan },
+        }),
+      ),
+    );
+    expect(totals(v.container).Plan).toBe(
+      'The assistant’s model failed during planning. Nothing was written.',
+    );
+    const status = text(v.container.querySelector('[role="status"]'));
+    expect(status).toContain('The assistant’s model failed during planning. Start the job again.');
+    expect(status).not.toContain('Planning ended with no plan.');
+    await v.unmount();
+  });
+
   it('shows the totals first and the assistant’s summary after them, under its heading', async () => {
     const v = await mount(clientOf(jobOf({ state: 'done', report: REPORT })));
     const report = v.container.querySelector('section[aria-label="Report"]');

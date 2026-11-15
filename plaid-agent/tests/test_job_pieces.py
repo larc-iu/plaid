@@ -203,6 +203,169 @@ def test_a_planner_that_sends_fills_as_one_string_has_its_plan_kept(monkeypatch,
     assert len([c for c in model.calls if _kind(c['asked']) == 'plan']) == 2, 'planned, then its one-line end'
 
 
+def _plan_args():
+    return {'pieces': 'sentences', 'fills': ['segmentation', 'Morph Gloss']}
+
+
+def _fresh(c):
+    """Whether a model call is the first of a context: its system prompt
+    and its message, nothing else."""
+    return [m['role'] for m in c['kwargs']['messages']] == ['system', 'user']
+
+
+def test_a_planning_that_ends_in_a_model_fault_is_planned_once_more_in_a_fresh_context(monkeypatch):
+    """REV-DF4-2 (a): one provider refusal in the planning call ended the
+    job failed. A planning that ends in a model fault (the worker's own
+    StretchFailed kinds) is planned once more, in a fresh context."""
+    import litellm
+    client = JobClient(_docs(1))
+    job = start(client, id=J, plan=None)
+    seen = {'faults': 0}
+
+    def answer(asked, n, kwargs):
+        if _kind(asked) == 'plan':
+            if not seen['faults']:
+                seen['faults'] += 1
+                raise litellm.BadRequestError('bad tool call json', model='m', llm_provider='openai')
+            return reply(calls=[call(90 + n, 'plan_work', _plan_args())]) if n == 1 else reply('Planned.')
+        return _gloss_all(asked, n)
+    model = use(monkeypatch, Model(answer))
+    finished = run_job(job, runner(job))
+    assert finished['state'] == 'done', finished.get('reason')
+    planning = [c for c in model.calls if _kind(c['asked']) == 'plan']
+    assert [_fresh(c) for c in planning] == [True, True, False], 'the fault, a fresh context, its one-line end'
+    assert _plan_rows(client)[0]['by'] == 'model'
+
+
+def test_a_planning_that_ends_in_a_model_fault_twice_ends_the_job_failed_saying_so(monkeypatch):
+    """REV-DF4-2 (a, c): twice, and the job ends failed writing nothing,
+    its reason planning-failed (by the plan row's why, a StretchFailed kind,
+    never by any text), apart from no-plan."""
+    import litellm
+    client = JobClient(_docs(1))
+    job = start(client, id=J, plan=None)
+
+    def answer(asked, n, kwargs):
+        if _kind(asked) == 'plan':
+            raise litellm.BadRequestError('bad tool call json', model='m', llm_provider='openai')
+        return _gloss_all(asked, n)
+    model = use(monkeypatch, Model(answer))
+    finished = run_job(job, runner(job))
+    assert finished['state'] == 'failed' and finished['reason'] == 'planning-failed', finished
+    assert finished['report']['plan'] == {**NO_PLAN, 'why': 'output'}
+    assert [_fresh(c) for c in model.calls] == [True, True], 'planned twice, no piece'
+    assert not client.writes
+    assert _plan_rows(client) == [{'by': 'none', 'why': 'output'}]
+
+
+def test_a_model_fault_after_plan_work_kept_a_plan_keeps_it(monkeypatch):
+    """REV-DF4-2 (a): the call after plan_work (its one-line end) failing
+    lost the kept plan. The plan is kept and worked, never planned again."""
+    import litellm
+    client = JobClient(_docs(1))
+    job = start(client, id=J, plan=None)
+
+    def answer(asked, n, kwargs):
+        if _kind(asked) == 'plan':
+            if n == 1:
+                return reply(calls=[call(91, 'plan_work', _plan_args())])
+            raise litellm.BadRequestError('bad', model='m', llm_provider='openai')
+        return _gloss_all(asked, n)
+    model = use(monkeypatch, Model(answer))
+    finished = run_job(job, runner(job))
+    assert finished['state'] == 'done', finished.get('reason')
+    assert len([c for c in model.calls if _kind(c['asked']) == 'plan']) == 2, 'never planned again'
+    assert _plan_rows(client)[0]['by'] == 'model'
+
+
+def _written(name='plan_work'):
+    from plaid_agent.core.agent import written_call_note
+    from plaid_agent.core.prompt import JOB_WRITTEN_CALL_NEXT
+    return written_call_note(name, JOB_WRITTEN_CALL_NEXT)
+
+
+def test_a_planner_that_writes_plan_work_out_as_text_is_told_it_did_not_run(monkeypatch):
+    """REV-DF4-2 (b): a job's turn sent no note for a call written as text,
+    the chat's fixed one (core.agent.written_call, our own call syntax only).
+    It now gets it once a turn, with the job's next step."""
+    client = JobClient(_docs(1))
+    job = start(client, id=J, plan=None)
+
+    def answer(asked, n, kwargs):
+        if _kind(asked) == 'plan':
+            if n == 1:
+                return reply('plan_work(pieces="sentences", fills=["segmentation", "Morph Gloss"])')
+            if n == 2:
+                return reply(calls=[call(92, 'plan_work', _plan_args())])
+            return reply('Planned.')
+        return _gloss_all(asked, n)
+    model = use(monkeypatch, Model(answer))
+    finished = run_job(job, runner(job))
+    assert finished['state'] == 'done', finished.get('reason')
+    planning = [c for c in model.calls if _kind(c['asked']) == 'plan']
+    assert planning[1]['kwargs']['messages'][-1] == {'role': 'user', 'content': _written()}
+    assert _written() == ('(system) Your reply wrote a plan_work call as text, so it did not run: nothing was '
+                          'done. Call the tool itself now.')
+
+
+def test_a_planner_that_writes_plan_work_out_as_text_every_time_is_told_twice_and_ends_with_no_plan(monkeypatch):
+    """REV-DF4-2 (b): the note once in the planning turn, the decide-now
+    round, the note once in it, then no plan."""
+    client = JobClient(_docs(1))
+    job = start(client, id=J, plan=None)
+
+    def answer(asked, n, kwargs):
+        if _kind(asked) == 'plan':
+            return reply('plan_work(pieces="sentences", fills=["segmentation", "Morph Gloss"])')
+        return _gloss_all(asked, n)
+    model = use(monkeypatch, Model(answer))
+    finished = run_job(job, runner(job))
+    _ended_with_no_plan(client, finished, model)
+    last = [c['kwargs']['messages'][-1]['content'] for c in model.calls]
+    assert last[1:] == [_written(), JOB_PLAN_NOW, _written()], last
+
+
+def test_a_planner_told_to_decide_by_its_budget_is_told_to_call_plan_work_and_still_gets_its_round(monkeypatch):
+    """REV-DF4-2 (b): the budget's decide-now line sent to a planner was a
+    piece's ("stage your work on the piece and end with your note"), and
+    the decide-now round was then skipped. The planner is sent JOB_PLAN_NOW
+    by its budget, and the round when it ends without a plan all the same."""
+    from plaid_agent.core.limits import JOB_STRETCH_DECIDE_AT_ROUNDS
+    from plaid_agent.core.prompt import JOB_DECIDE_NOW
+    client = JobClient(_docs(1))
+    job = start(client, id=J, plan=None)
+
+    def answer(asked, n, kwargs):
+        if _kind(asked) == 'plan':
+            if kwargs['messages'][-1].get('content') == JOB_PLAN_NOW:
+                return reply('I will plan.')
+            return reply(calls=[call(n, 'read_document', {'document': 'Story 1'})])
+        return _gloss_all(asked, n)
+    model = use(monkeypatch, Model(answer))
+    finished = run_job(job, runner(job))
+    _ended_with_no_plan(client, finished, model)
+    sent = [m.get('content') for c in model.calls for m in c['kwargs']['messages']]
+    assert JOB_DECIDE_NOW not in sent
+    told = [c for c in model.calls if c['kwargs']['messages'][-1].get('content') == JOB_PLAN_NOW]
+    assert len(told) == 2 and told[0]['n'] == JOB_STRETCH_DECIDE_AT_ROUNDS, [c['n'] for c in told]
+
+
+def test_a_piece_that_writes_a_call_out_as_text_is_told_it_did_not_run(monkeypatch):
+    """REV-DF4-2 (b): one code path for the note, a piece's and the
+    planner's (the job's turn in core.agent)."""
+    client = JobClient(_docs(1))
+    job = start(client, id=J, plan=None)
+    told = []
+
+    def piece(asked, n):
+        return reply('set_analysis(document="Story 1", ref="s1.w1")') if n == 1 else reply('Done.')
+    model = use(monkeypatch, _model(plan={'pieces': 'sentences'}, piece=piece))
+    run_job(job, runner(job))
+    pieces = [c for c in model.calls if _kind(c['asked']) == 'piece']
+    told = [c for c in pieces if c['kwargs']['messages'][-1].get('content') == _written('set_analysis')]
+    assert told and all(c['n'] == 2 for c in told), [c['kwargs']['messages'][-1] for c in pieces]
+
+
 def test_a_job_resumed_after_planning_ended_with_no_plan_ends_the_same(monkeypatch):
     """The plan that names nothing is kept: a worker that takes the job
     again after a crash reads it back, never plans again, and ends."""

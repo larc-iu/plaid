@@ -753,10 +753,16 @@ def went_through(messages: Iterable[Dict[str, Any]]) -> set:
     return out
 
 
-def written_call_note(name: str) -> str:
-    """What a reply that wrote ``name`` out as a call is sent back with, once."""
-    return (f'(system) Your reply wrote a {name} call as text, so it did not run: nothing was done. '
-            'Call the tool itself now, or reply to the user without the call.')
+#: What a chat's model is told to do after a call it wrote as text.
+WRITTEN_CALL_NEXT = 'Call the tool itself now, or reply to the user without the call.'
+
+
+def written_call_note(name: str, then: str = WRITTEN_CALL_NEXT) -> str:
+    """What a reply that wrote ``name`` out as a call is sent back with, once
+    a turn. ``then`` is what to do next: a chat's by default, the
+    workspace's own where it differs (``ws.written_call_next``: a job has
+    nobody to reply to)."""
+    return f'(system) Your reply wrote a {name} call as text, so it did not run: nothing was done. {then}'
 
 
 #: The step that note is in the trace, and its line.
@@ -1105,9 +1111,10 @@ def run_turn(cfg: ModelConfig, kit: Toolkit, ws: Any, system: str, transcript: L
     (a budget spent) or answer a line the model is sent before the call (the
     decide-now line), and ``pace.sending(kwargs)`` sees the call as it will go
     out. With a pace nobody reads the reply: the turn ends at the first
-    answer with no tool calls, and the loop sends no note asking for words
-    (an empty reply, a claimed plan, a call written as text, a call that
-    keeps failing). A chat's turn is unchanged."""
+    answer with no tool calls, but for one that writes a call out as text,
+    told once a turn as a chat is (with ``ws.written_call_next``), and the
+    loop sends no note asking for words (an empty reply, a claimed plan, a
+    call that keeps failing). A chat's turn is unchanged."""
     trace: List[Dict[str, Any]] = []
     live: Dict[str, Any] = {'round': None, 'text': '', 'n': 1}
     keeper = getattr(ws, 'rounds', None)
@@ -1417,7 +1424,23 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
             rnd['thinking'] = thinking
         if not calls:
             text = (d.get('content') or '').strip()
-            if pace is not None:
+            if pace is None and not text:
+                # Some models end a tool-heavy turn with an empty message (or
+                # reasoning only). Ask once, without tools, for the reply.
+                new.pop()
+                text, more = ask_for_the_reply(kwargs, '(system) Your last message was empty. '
+                                                       'Reply now with your answer to the user.')
+                thinking = _joined(thinking, more)
+            # A tool call written out as text, which did not run: once a
+            # turn, the model is told and gets its tools back, in a chat and
+            # in a job alike (REV-DF4-2: a job's planner that wrote plan_work
+            # as text was never told). Its reply and the note stay in the
+            # transcript, and the trace has a step for them, whose round
+            # holds the reply and the note as sent.
+            wrote = None if wrote_once else written_call(
+                text, [t['function']['name'] for t in kwargs.get('tools') or [] if t.get('function')],
+                ran, run_code_of(history + new))
+            if pace is not None and not wrote:
                 # Nobody reads a job's reply: what it staged is its answer.
                 # The call's round is kept all the same, with what the model
                 # wrote, so a stretch's trace holds every call (REV-J-B2 S4).
@@ -1427,23 +1450,10 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
                     rnd['said'] = text
                 kept = keeper.store(rnd)
                 return done(text, rnd['id'] if kept else None, bool(kept and thinking))
-            if not text:
-                # Some models end a tool-heavy turn with an empty message (or
-                # reasoning only). Ask once, without tools, for the reply.
-                new.pop()
-                text, more = ask_for_the_reply(kwargs, '(system) Your last message was empty. '
-                                                       'Reply now with your answer to the user.')
-                thinking = _joined(thinking, more)
-            # A tool call written out as text, which did not run: once, the
-            # model is told and gets its tools back. Its reply and the note
-            # stay in the transcript, and the trace has a step for them,
-            # whose round holds the reply and the note as sent.
-            wrote = None if wrote_once else written_call(
-                text, [t['function']['name'] for t in kwargs.get('tools') or [] if t.get('function')],
-                ran, run_code_of(history + new))
             if wrote:
                 wrote_once = True
-                back = (WRITTEN_CALL_STEP, WRITTEN_CALL_LABEL, written_call_note(wrote))
+                back = (WRITTEN_CALL_STEP, WRITTEN_CALL_LABEL,
+                        written_call_note(wrote, getattr(ws, 'written_call_next', WRITTEN_CALL_NEXT)))
             else:
                 back = None
             if back is not None:

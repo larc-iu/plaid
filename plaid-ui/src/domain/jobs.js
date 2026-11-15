@@ -79,7 +79,18 @@ const REASON_WORDS = {
   'guidelines-too-long': 'The guidelines are too long for a job.',
   'no-documents': 'None of its documents are left.',
   'no-plan': 'Planning ended with no plan.',
+  'planning-failed': 'The assistant’s model failed during planning. Start the job again.',
 };
+
+/**
+ * How a job whose planning kept no plan says so, by its plan's `why`: the
+ * model planned nothing it could keep (`no-plan`), or it failed during
+ * planning (any other `why`, the kind of the fault).
+ */
+export const planEndedText = (plan) =>
+  plan?.why === 'no-plan'
+    ? 'Planning ended with no plan.'
+    : 'The assistant’s model failed during planning.';
 
 const wordFor = (words) => (code) => words[code] ?? null;
 

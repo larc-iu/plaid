@@ -445,7 +445,13 @@ started it with instructions and documents. Nobody reads your messages and nobod
 work is done in pieces, each its own context with the assistant's tools and the instructions, and you decide \
 how it is cut. You stage no change. End by calling plan_work once.'''
 
-#: Sent once to a planning context that ended without plan_work.
+#: What a job's model is told to do after a call it wrote as text, in the
+#: note a chat's model is sent (``core.agent.written_call_note``): nobody
+#: reads a job's reply.
+JOB_WRITTEN_CALL_NEXT = 'Call the tool itself now.'
+
+#: Sent once to a planning context that ended without plan_work, and as the
+#: planning context's decide-now line (its budget's, ``core.job.Pace``).
 JOB_PLAN_NOW = '(system) End the planning now: call plan_work.'
 
 #: The final context's contract: the prose after the totals of the job's report.

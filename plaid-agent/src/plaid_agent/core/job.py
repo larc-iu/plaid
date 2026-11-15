@@ -120,14 +120,17 @@ class Pace:
     :data:`JOB_STRETCH_DECIDE_AT_ROUNDS`, or the first whose prompt reaches
     :data:`JOB_CALL_DECIDE_AT_TOKENS`, is sent the decide-now line once, and
     ``decided`` is called so the stretch offers the plan tools alone from then
-    on. ``before_call`` runs last, just before the call: the wait for people
+    on. ``line`` is that line, a piece's unless given (the planning context
+    is sent JOB_PLAN_NOW). ``before_call`` runs last, just before the call: the wait for people
     on the model key, which may raise to stop the job. One Pace spans every
     turn of a stretch: the budgets count the calls and tokens of all of
     them."""
 
     def __init__(self, model: str, before_call: Callable[[], None] = lambda: None,
-                 count: Optional[Callable[[Any], int]] = None, decided: Callable[[], None] = lambda: None):
+                 count: Optional[Callable[[Any], int]] = None, decided: Callable[[], None] = lambda: None,
+                 line: str = JOB_DECIDE_NOW):
         self.count = count or token_counter(model)
+        self.line = line
         self.before_call = before_call
         self.decided = decided
         self.told = False
@@ -149,7 +152,7 @@ class Pace:
         if rounds + 1 >= JOB_STRETCH_DECIDE_AT_ROUNDS or self._prompt(kwargs) >= JOB_CALL_DECIDE_AT_TOKENS:
             self.told = True
             self.decided()
-            return JOB_DECIDE_NOW
+            return self.line
         return None
 
     def sending(self, kwargs: Dict[str, Any]) -> None:
