@@ -32,7 +32,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from plaid_client.workflows.igt.ignored import is_token_ignored
 
-from ..core.tools import ToolError
+from ..core.tools import ToolError, advised
 
 from .fit import collation_key, fits, nfc, spelled
 from .lexicon import _create_entry
@@ -166,9 +166,11 @@ def _refuse_renumbered(ws: Workspace, label: str, s, words, what: str) -> None:
     and takes no form beside one."""
     moved = next((m for m in (renumbering(ws, s, w) for w in words) if m), None)
     if moved is not None:
-        raise _Refused(f'{label} not staged: this plan\'s {moved[0]} renumber{"" if " and " in moved[0] else "s"} '
-                       f's{s.index}, so these numbers name other words once it is applied. Analyze {what} once the '
-                       'plan is applied.')
+        # A job cannot take the step a chat is told (core.tools.advised).
+        raise _Refused(advised(ws, f'{label} not staged: this plan\'s {moved[0]} '
+                                   f'renumber{"" if " and " in moved[0] else "s"} s{s.index}, so these numbers name '
+                                   'other words once it is applied.', f'Analyze {what} once the plan is applied.',
+                               s.id))
 
 
 def _punctuation(item: str, cfg) -> bool:

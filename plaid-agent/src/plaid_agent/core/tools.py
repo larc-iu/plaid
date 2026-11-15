@@ -48,11 +48,43 @@ class ToolError(Exception):
     it from shared code, and an app that caught only its own would let those
     through as a traceback instead of as a sentence the model can act on.
     Every raise names its ``kind`` (:data:`REFUSAL_KINDS`).
+
+    ``advice`` is the step a refusal tells a chat's model to take next when
+    that step is a later turn, an approval or discard_plan, none of which an
+    unattended job has: the message is ``message`` and the advice, and a job
+    reads ``message`` and its own closing line instead (:func:`advised`).
+    ``sentence_id`` is the sentence the refused change was for, when known.
     """
 
-    def __init__(self, message: str, *, kind: str):
-        super().__init__(message)
+    def __init__(self, message: str, *, kind: str, advice: Optional[str] = None,
+                 sentence_id: Optional[str] = None):
+        super().__init__(with_advice(message, advice))
         self.kind = refusal_kind(kind)
+        self.fact, self.advice, self.sentence_id = message, advice, sentence_id
+
+
+#: Where a refusal's advice goes when it is not at its end.
+ADVICE = '{advice}'
+
+
+def with_advice(fact: str, advice: Optional[str]) -> str:
+    """A refusal as a chat reads it: ``advice`` where ``fact`` holds
+    :data:`ADVICE`, else after it."""
+    if not advice:
+        return fact.replace(' ' + ADVICE, '').replace(ADVICE, '')
+    return fact.replace(ADVICE, advice) if ADVICE in fact else f'{fact} {advice}'
+
+
+def advised(ws, fact: str, advice: Optional[str], sentence_id: Optional[str] = None) -> str:
+    """THE one place a refusal's next step is worded by who reads it: a
+    chat's model is told ``advice`` (a later turn, an approval,
+    discard_plan), an unattended job's model, which has none of them, the
+    job's closing line (``ws.leave_it``), and the job keeps what was left
+    (REV-DAY-SURFACE point 2). No advice, no change."""
+    leave_it = getattr(ws, 'leave_it', None)
+    if not advice or leave_it is None:
+        return with_advice(fact, advice)
+    return leave_it(with_advice(fact, None), sentence_id)
 
 
 class ValueRefusal(ValueError):
@@ -189,6 +221,8 @@ def run_tool(ws, name: str, fn_: Callable, args: Optional[Dict[str, Any]],
         out = truncate(fn_(*bound.args, **bound.kwargs))
         return out if reading else planned_where(ws, name, after(out) if after else out)
     except (ToolError, ValueError) as e:  # ValueError: a name or reference lookup failed
+        if getattr(e, 'advice', None):
+            return refused(advised(ws, e.fact, e.advice, e.sentence_id), e.kind)
         return refused_for(e)
     except Exception as e:  # noqa: BLE001 - the model gets a sentence; the log gets the trace
         # A workspace whose caller must hear of a failure itself rather than

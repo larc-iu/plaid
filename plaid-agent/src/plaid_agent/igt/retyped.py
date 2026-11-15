@@ -38,12 +38,25 @@ from .project import Morpheme, Word, resolve, split_sentences
 #: The key of a value planned on a word of a retyped sentence.
 PLANNED = 'planned_word'
 
-RENUMBERED = ('{where}: s{n} is retyped in this plan, so its words are renumbered when it is applied. Plan this '
-              'once the retype is applied. Only word field values can be planned on '
-              'its words in this plan (set_field, by the numbers the retype listed).')
+RENUMBERED = ('{where}: s{n} is retyped in this plan, so its words are renumbered when it is applied. {advice} '
+              'Only word field values can be planned on its words in this plan (set_field, by the numbers the retype '
+              'listed).')
+RENUMBERED_ADVICE = 'Plan this once the retype is applied.'
 UNNUMBERED = ('{where}: s{n} is retyped in this plan, and its new text changes its words in a way that cannot be '
-              'numbered before it is applied. Plan values on its words once the retype is applied, or discard_plan '
-              'to start over.')
+              'numbered before it is applied.')
+UNNUMBERED_ADVICE = 'Plan values on its words once the retype is applied, or discard_plan to start over.'
+
+
+def renumbered_refusal(where: str, s) -> ToolError:
+    """RENUMBERED for sentence ``s``, its advice a chat's alone
+    (``core.tools.advised``)."""
+    return ToolError(RENUMBERED.format(where=where, n=s.index, advice='{advice}'), kind='conflict',
+                     advice=RENUMBERED_ADVICE, sentence_id=s.id)
+
+
+def unnumbered_refusal(where: str, s) -> ToolError:
+    return ToolError(UNNUMBERED.format(where=where, n=s.index), kind='conflict', advice=UNNUMBERED_ADVICE,
+                     sentence_id=s.id)
 
 
 # --- the retype's edits, word by word ------------------------------------------------
@@ -342,10 +355,10 @@ def planned_ref(ws, doc, ref: str, where: str):
     if edit is None or (wi is None and not r.by_form):
         return None
     if mi is not None:
-        raise ToolError(RENUMBERED.format(where=where, n=s.index), kind='conflict')
+        raise renumbered_refusal(where, s)
     planned = edit.get('planned_words')
     if planned is None:
-        raise ToolError(UNNUMBERED.format(where=where, n=s.index), kind='conflict')
+        raise unnumbered_refusal(where, s)
     if r.by_form:
         from .project import _word_by_form
         shown = SimpleNamespace(index=s.index, words=[SimpleNamespace(surface=p['surface'], index=i)
@@ -391,13 +404,13 @@ def refuse_split_and_retype(ws, op: Dict[str, Any], others) -> None:
     kind, sid = op.get('kind'), op.get('sentence_id')
     if kind == 'split_sentence' and retype_of(others, sid) is not None:
         n, where = _where(ws, retype_of(others, sid).get('document_id'), sid)
-        raise ToolError(f'{where}: this plan retypes s{n}, and a split reads its words as they are now. Split it '
-                        'once the retype is applied.', kind='conflict')
+        raise ToolError(f'{where}: this plan retypes s{n}, and a split reads its words as they are now.',
+                        kind='conflict', advice='Split it once the retype is applied.', sentence_id=sid)
     if kind == 'edit_text' and sid and any(o.get('kind') == 'split_sentence' and o.get('sentence_id') == sid
                                            for o in others):
         n, where = _where(ws, op.get('document_id'), sid)
-        raise ToolError(f'{where}: this plan splits s{n}, and a retype reads it as one sentence. Retype it once the '
-                        'split is applied.', kind='conflict')
+        raise ToolError(f'{where}: this plan splits s{n}, and a retype reads it as one sentence.', kind='conflict',
+                        advice='Retype it once the split is applied.', sentence_id=sid)
 
 
 def _rule_hit(ws, found, retyped: Dict[str, Dict[str, Any]]):
@@ -426,7 +439,7 @@ def refuse_rule_on_retyped(ws, tool: str, found, ops) -> None:
     _edit, doc, s, w = got
     what = f' s{s.index}.w{w.index} {qv(w.surface)}' if w is not None else ''
     raise ToolError(f'{tool} would change{what} in {ws.doc_label(doc.id)} s{s.index}, a sentence this plan '
-                    'retypes. Plan it once the retype is applied.', kind='conflict')
+                    'retypes.', kind='conflict', advice='Plan it once the retype is applied.', sentence_id=s.id)
 
 
 def refuse_retype_under_rule(ws, edit: Dict[str, Any], where: str, n: int) -> None:
@@ -439,7 +452,8 @@ def refuse_retype_under_rule(ws, edit: Dict[str, Any], where: str, n: int) -> No
             continue
         if _rule_hit(ws, ws.rule_found.get(rules.target(op)) or [], mine) is not None:
             raise ToolError(f'{where}: this plan\'s {op.get("tool")} changes words of s{n}, which a retype '
-                            'renumbers. Retype it once the plan is applied.', kind='conflict')
+                            'renumbers.', kind='conflict', advice='Retype it once the plan is applied.',
+                            sentence_id=edit.get('sentence_id'))
 
 
 def refuse_on_retyped(ws, op: Dict[str, Any], others) -> None:
@@ -462,7 +476,7 @@ def refuse_on_retyped(ws, op: Dict[str, Any], others) -> None:
     doc = ws._docs.get(edit.get('document_id'))
     n = sentence_number(doc, edit.get('sentence_id'))
     where = f'{ws.doc_label(doc.id)} s{n}' if doc is not None else f's{n}'
-    raise ToolError(RENUMBERED.format(where=where, n=n), kind='conflict')
+    raise renumbered_refusal(where, SimpleNamespace(index=n, id=edit.get('sentence_id')))
 
 
 def restage_on_retype(ws, doc, s, edit: Dict[str, Any], where: str) -> List[Tuple[int, Dict[str, Any]]]:
@@ -490,16 +504,16 @@ def restage_on_retype(ws, doc, s, edit: Dict[str, Any], where: str) -> List[Tupl
         label = op.get('label') or op.get('kind')
         if f is None or f.scope != 'Word':
             raise ToolError(f'{where}: this plan already has a change on a word of this sentence ({label}), and '
-                            'a retype renumbers its words when it is applied. Plan one of them, or discard_plan '
-                            'to start over', kind='conflict')
+                            'a retype renumbers its words when it is applied.', kind='conflict',
+                            advice='Plan one of them, or discard_plan to start over', sentence_id=s.id)
         word_id = p.get('word_id') if p is not None else op.get('token_id')
         if planned is None:
-            raise ToolError(UNNUMBERED.format(where=where, n=s.index), kind='conflict')
+            raise unnumbered_refusal(where, s)
         k = next((k for k, x in enumerate(planned, start=1) if word_id and x['word_id'] == word_id), None)
         if k is None:
             raise ToolError(f'{where}: this plan already has a value on a word this retype takes away or that an '
-                            f'earlier retype made ({label}). Plan one of them, or discard_plan to start over',
-                            kind='conflict')
+                            f'earlier retype made ({label}).', kind='conflict',
+                            advice='Plan one of them, or discard_plan to start over', sentence_id=s.id)
         out.append((i, planned_value(ws, doc, s, k, planned[k - 1], f, op.get('value') or '',
                                      span_id=op.get('span_id'), old=old_value(doc, word_id, f))))
     return out
@@ -617,7 +631,8 @@ def renumbered(ws, doc, ref: str, obj) -> None:
     if morpheme:
         raise ToolError(f'{ws.doc_label(doc.id)} {ref}: {here} is {qv(w.surface)} now, but this plan\'s {by} '
                         f'{renumber} s{s.index}: once it is applied, {qv(w.surface)} is w{new}, and a morpheme is '
-                        'named by its word\'s number. Plan it once the plan is applied.', kind='conflict')
+                        'named by its word\'s number.', kind='conflict', advice='Plan it once the plan is applied.',
+                        sentence_id=s.id)
     # Only a split makes a word (its right part): a delete makes none, and a
     # merge's word is its first, named as read (REV-RR-7).
     made = ' The right part of a split word is named once the plan is applied.' if 'split_word' in by else ''
@@ -647,7 +662,8 @@ def renumbered_cut(ws, s, w, where: str, n: int) -> None:
         then = 'the number names another word' if n in after.values() else 'no word has that number'
         what = f'take{"" if plural else "s"} that word, so {then}'
     raise ToolError(f'{where}: before_word {n} is w{n} {qv(w.surface)} now, but this plan\'s {by} {what} once it is '
-                    'applied. Split the sentence once the plan is applied.', kind='conflict')
+                    'applied.', kind='conflict', advice='Split the sentence once the plan is applied.',
+                    sentence_id=s.id)
 
 
 def resolve_in(ws, doc, ref: str, renumber: bool = True):
@@ -666,8 +682,7 @@ def resolve_in(ws, doc, ref: str, renumber: bool = True):
             s = doc.sentences[r.sentence - 1]
             edit = retype_of(ws.ops, s.id)
             if edit is not None:
-                raise ToolError(RENUMBERED.format(where=f'{ws.doc_label(doc.id)} {ref}', n=s.index),
-                                kind='conflict') from None
+                raise renumbered_refusal(f'{ws.doc_label(doc.id)} {ref}', s) from None
         raise
     if renumber:
         renumbered(ws, doc, ref, obj)

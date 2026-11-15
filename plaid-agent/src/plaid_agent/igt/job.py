@@ -53,7 +53,7 @@ from ..core.limits import (JOB_ANALYSIS_MAX_CHARS, JOB_CHANGE_VALUE_CHARS, JOB_C
                            JOB_EVIDENCE_CHARS, JOB_SENTENCE_MAX_CHARS, JOB_SENTENCE_MAX_WORDS,
                            JOB_SKIPPED_PER_DOCUMENT, JOB_STRETCH_SENTENCES)
 from ..core.plan import JOB_DETAIL_KEY, ONE_REQUEST, PlanError, TooBig, held_changes
-from ..core.prompt import JOB_ANSWER_AGAIN
+from ..core.prompt import JOB_ANSWER_AGAIN, JOB_LEAVE_IT
 from ..core.provenance import Requester
 from ..core.tools import Refusal, ToolError
 from ..core.version import agent_version
@@ -108,6 +108,8 @@ FALLBACK_FORM = ' fallback '
 #: note, a table a piece's code made, and how many changes the cap dropped.
 CHANGE_FORM = ' change '
 NOTE_FORM = ' note '
+#: What a refusal the job could not follow left (``JobWorkspace.leave_it``).
+REFUSED_FORM = ' refused '
 TABLE_FORM = ' table '
 DROPPED_FORM = ' dropped'
 #: How many tables pieces handed the report past JOB_TABLES_MAX a job keeps.
@@ -716,10 +718,24 @@ class JobWorkspace(Workspace):
         #: what the job's plan fills (:mod:`.targets`): a piece in
         #: sentences is offered the tools that fill it
         self.fills: List[Target] = []
+        #: what a refusal the job cannot follow left (``leave_it``):
+        #: ``{sentence_id, what}``, recorded with the piece
+        self.left_by_refusal: List[Dict[str, Any]] = []
         #: the piece's model answered nothing twice (``IgtRunner.run_piece``)
         self.answered_nothing = False
         #: the planning context's plan_work, once valid
         self.plan_work: Optional[Dict[str, Any]] = None
+
+    def leave_it(self, fact: str, sentence_id: Optional[str] = None) -> str:
+        """A refusal whose chat advice a job cannot follow (a later turn,
+        an approval, discard_plan), as a job's model reads it: what was
+        refused, and the job's closing line, never the chat's step. What it
+        left is kept, for the report (``core.tools.advised``)."""
+        fact = fact.rstrip(' ;,')
+        entry = {'sentence_id': sentence_id, 'what': fact}
+        if entry not in self.left_by_refusal:
+            self.left_by_refusal.append(entry)
+        return f'{fact}{"" if fact.endswith((".", "!", "?")) else "."} {JOB_LEAVE_IT}'
 
     def guard_op(self, op: Dict[str, Any], replacing: Optional[int] = None) -> None:
         if self.mode == self.PLAN:
@@ -1638,6 +1654,7 @@ class IgtRunner:
         # error on their row never runs the model context again (REV-JG3-9).
         core_job.through_core(job, lambda: self.record_piece(
             project, {'document': None, 'first': None, 'whole': True}, note, ws.tables))
+        core_job.through_core(job, lambda: self.record_refusals(ws, None))
         by_doc = self.ops_by_document(ws, live)
         # Changes no document holds (a lexicon change, a guideline) go with
         # the first document's write that lands: the rule applies the
@@ -2104,6 +2121,7 @@ class IgtRunner:
                 self.skip(document_id, doc, s.id, NO_ANSWER, None)
             return None
         self.record_piece(project, piece, note, ws.tables, doc, part)
+        self.record_refusals(ws, document_id)
         # The piece as its writing rows name it: a whole document's is the
         # same whatever sentence it starts from, so the piece run again
         # after an interruption is known as the same.
@@ -3165,6 +3183,27 @@ class IgtRunner:
             self.job.add_decisions(rows)
         kept.update(f'{key} {i:02d}' for i, _ in keep)
 
+    def record_refusals(self, ws: JobWorkspace, document_id: Optional[str]) -> None:
+        """Keep what the piece's refusals left (``ws.left_by_refusal``) among
+        the job's decisions, each once, by the document holding its sentence
+        (the piece's, when it names none), so the report lists it
+        (``refused``, REV-DAY-SURFACE point 2)."""
+        rows = []
+        for e in ws.left_by_refusal:
+            d, where = document_id, None
+            for doc in ws._docs.values():
+                s = doc.find(e['sentence_id']) if e.get('sentence_id') else None
+                if s is not None and s[0] is not None:
+                    d, where = doc.id, f's{s[0].index}'
+                    break
+            text = canonical({'document': d, 'sentence_id': e.get('sentence_id'), 'sentence': where,
+                              'what': _cut(e['what'], JOB_CHANGE_VALUE_CHARS)})
+            key = analysis_key(text)
+            rows.append({'form': REFUSED_FORM + key, 'key': key, 'analysis': text, 'count': 1, 'document_id': d,
+                         'sentence_id': None})
+        if rows:
+            self.job.add_decisions(rows)
+
     def fallen_back(self) -> Dict[str, str]:
         """Document id (or ``selection``) -> why it was worked in smaller
         pieces than the plan's, as the job's decisions hold it."""
@@ -3682,9 +3721,31 @@ class IgtRunner:
 
     # --- the report (SPEC 9) --------------------------------------------------------------
 
+    def refusals(self, job) -> Dict[Optional[str], List[Dict[str, Any]]]:
+        """What refusals the job could not follow left, by document
+        (:meth:`record_refusals`), each ``{sentence, sentence_id, what}``, in
+        the order kept. Empty when the decisions cannot be read."""
+        try:
+            rows = core_job.through_core(job, job.decisions)
+        except Exception as e:  # noqa: BLE001 - a report without them rather than none
+            logger.warning('Job %s: what its refusals left could not be read for the report: %s', job.id, e)
+            return {}
+        out: Dict[Optional[str], List[Dict[str, Any]]] = {}
+        for r in rows:
+            if not str(r.get('form') or '').startswith(REFUSED_FORM):
+                continue
+            try:
+                v = json.loads(r['analysis'])
+            except (ValueError, TypeError, KeyError):
+                continue
+            out.setdefault(v.get('document'), []).append(
+                {'sentence': v.get('sentence'), 'sentence_id': v.get('sentence_id'), 'what': v.get('what')})
+        return out
+
     def document_reports(self, job) -> List[Dict[str, Any]]:
         out = []
         blank = self.left_blank(job)
+        refused = self.refusals(job)
         rows = [job.rows.get(d) or {} for d in job.order]
         # "Left blank" lists what is empty of what the plan fills (its
         # targets, :meth:`left_blank`): nothing for a plan that fills
@@ -3717,12 +3778,16 @@ class IgtRunner:
                     counts.update({'not_reached': sum(1 for e in unreached if e.get('form') is not None),
                                    'not_reached_translations': sum(1 for e in unreached if e.get('form') is None)})
             left, more = core_job.cut(listed)
+            # What a refusal the job could not follow left (REV-DAY-SURFACE
+            # point 2): listed, never counted as left blank.
+            gone, gone_more = core_job.cut(refused.get(d) or [])
             out.append({'document_id': d, 'name': self.names.get(d) or row.get('name'),
                         'state': state if state in ('done', 'in-use', 'gone') else 'not-reached',
                         'sentences': row.get('sentences'), 'targets': targets, 'done': done,
                         'counts': counts, 'skipped': list(row.get('skipped') or []),
                         'gloss_group': row.get('gloss_group'), 'harmonize_group': row.get('harmonize_group'),
-                        'left': left, 'left_more': more, **({'left_unread': True} if unread else {})})
+                        'left': left, 'left_more': more, **({'left_unread': True} if unread else {}),
+                        **({'refused': gone, 'refused_more': gone_more} if gone else {})})
         return out
 
     def summarize(self, job, report: Dict[str, Any]) -> Optional[str]:

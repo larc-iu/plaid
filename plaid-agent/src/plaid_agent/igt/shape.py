@@ -47,8 +47,8 @@ def _guard(ws: Workspace, obj, ref: str, merging: bool = False, word_ids=None) -
     came first: see :func:`refuse_shape_and_analysis`.
     """
     if obj.id in reshaped_subjects(ws.ops, merges_only=not merging):
-        raise ToolError(f'{ref} is already split, merged, or deleted in this plan; discard_plan to start over',
-                        kind='conflict')
+        raise ToolError(f'{ref} is already split, merged, or deleted in this plan;', kind='conflict',
+                        advice='discard_plan to start over')
     if isinstance(obj, Word):
         refuse_shape_and_respell(ws, [obj], ref)
     refuse_shape_and_analysis(ws, word_ids if word_ids is not None else obj.id, ref, analysing=False)
@@ -238,7 +238,8 @@ def restage_merges(ws: Workspace, doc, ids) -> None:
 
 
 CUT_IN_MERGE = ('{ref}: a sentence boundary and a word merge are planned at the same place, and a merged word '
-                'cannot be cut by a sentence boundary. Plan one of them, or discard_plan to start over')
+                'cannot be cut by a sentence boundary.')
+CUT_IN_MERGE_ADVICE = 'Plan one of them, or discard_plan to start over'
 
 
 def _refuse_cut_in_merge(ws: Workspace, sentence_id: str, words: List[Word], ref: str) -> None:
@@ -250,7 +251,7 @@ def _refuse_cut_in_merge(ws: Workspace, sentence_id: str, words: List[Word], ref
     cuts = {op.get('position') for op in ws.ops
             if op.get('kind') == 'split_sentence' and op.get('sentence_id') == sentence_id}
     if any(w.begin in cuts for w in words[1:]):
-        raise ToolError(CUT_IN_MERGE.format(ref=ref), kind='conflict')
+        raise ToolError(CUT_IN_MERGE.format(ref=ref), kind='conflict', advice=CUT_IN_MERGE_ADVICE)
 
 
 def t_split_word(ws: Workspace, document: str, ref: str, at) -> str:
@@ -431,7 +432,7 @@ def t_split_sentence(ws: Workspace, document: str, ref: str, before_word: int) -
     # The same, staged the other way round: a word a merge folds into the
     # word before it starts no sentence.
     if any(w.id in (op.get('other_ids') or []) for op in ws.ops if op.get('kind') == 'merge_words'):
-        raise ToolError(CUT_IN_MERGE.format(ref=ref), kind='conflict')
+        raise ToolError(CUT_IN_MERGE.format(ref=ref), kind='conflict', advice=CUT_IN_MERGE_ADVICE)
     renumbered_cut(ws, s, w, f'{ws.doc_label(doc.id)} {ref}', n)
     left = doc.body[s.begin:w.begin].strip()
     right = doc.body[w.begin:s.end].strip()
@@ -510,11 +511,11 @@ def t_delete_sentence(ws: Workspace, document: str, refs) -> str:
         for op in ws.ops:
             if op.get('kind') == 'edit_text' and op.get('document_id') == doc.id \
                     and op['begin'] < max(s.end, s.begin + 1) and s.begin < max(op['end'], op['begin'] + 1):
-                raise ToolError(f'{where}: this plan already retypes this sentence. Plan one of them, or '
-                                'discard_plan to start over', kind='conflict')
+                raise ToolError(f'{where}: this plan already retypes this sentence.', kind='conflict',
+                                advice='Plan one of them, or discard_plan to start over', sentence_id=s.id)
         if any(b < s.end and s.begin < e for b, e in ws.planned_respells(doc.text_id)):
-            raise ToolError(f'{where}: this plan already respells a word of this sentence. Plan one of them, or '
-                            'discard_plan to start over', kind='conflict')
+            raise ToolError(f'{where}: this plan already respells a word of this sentence.', kind='conflict',
+                            advice='Plan one of them, or discard_plan to start over', sentence_id=s.id)
         spans = [sp.id for sp in s.fields.values()] + [sp.id for w in s.words for sp in w.fields.values()] \
             + [sp.id for w in s.words for m in w.morphemes for sp in m.fields.values()]
         links = [l.id for w in s.words for l in [w.link] + [m.link for m in w.morphemes] if l is not None]
@@ -550,8 +551,8 @@ def _guard_text_edit(ws: Workspace, text_id: Optional[str], begin: int, end: int
     as deleted, which nothing else in the plan may be anchored to."""
     for b, e in ws.planned_respells(text_id):
         if e > begin:
-            raise ToolError(f'{where}: a respelling is planned at {b}-{e} in the same text, after this point; '
-                            'plan the respellings in a separate plan (or discard_plan)', kind='conflict')
+            raise ToolError(f'{where}: a respelling is planned at {b}-{e} in the same text, after this point;',
+                            kind='conflict', advice='plan the respellings in a separate plan (or discard_plan)')
     for op in ws.ops:
         if op.get('kind') == 'edit_text' and op.get('text_id') == text_id and (op['begin'], op['end']) != (begin, end) \
                 and op['begin'] < max(end, begin + 1) and begin < max(op['end'], op['begin'] + 1):

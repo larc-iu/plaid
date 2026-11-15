@@ -425,6 +425,11 @@ JOB_EXAMPLE = '''- A WHOLE PIECE, FOR EXAMPLE. {did} Then you ended with the not
 #: offered the plan tools alone.
 JOB_DECIDE_NOW = '(system) Decide now with what you have: stage your work on the piece and end with your note.'
 
+#: What a piece's model is told in place of a refusal's chat advice (a later
+#: turn, an approval, discard_plan), which a job cannot follow
+#: (``tools.advised``).
+JOB_LEAVE_IT = 'A job cannot do this in its piece: leave it and say so in your note.'
+
 #: The line a piece's model is sent once when its answer staged nothing and
 #: said nothing (no change, no text: reasoning only, or empty). Decided by
 #: what the answer holds, never by its words.

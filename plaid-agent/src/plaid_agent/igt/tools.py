@@ -479,12 +479,12 @@ def refuse_shape_and_analysis(ws: Workspace, word_id, ref: str, *, analysing: bo
     if analysing:
         if ids & _reshaped_words(ws):
             raise ToolError(f'{ref} is split, merged, deleted or retyped in this plan, so its analysis cannot '
-                            'also change: a boundary change deletes the word\'s morphemes. discard_plan to '
-                            'start over, or plan the two in separate turns.', kind='conflict')
+                            'also change: a boundary change deletes the word\'s morphemes.', kind='conflict',
+                            advice='discard_plan to start over, or plan the two in separate turns.')
     elif any(op.get('kind') in _ANALYSIS_KINDS and op.get('word_id') in ids for op in ws.ops):
         raise ToolError(f'{ref} has an analysis change in this plan, so its boundaries cannot also change: a '
-                        'boundary change deletes the morphemes that analysis writes. discard_plan to start '
-                        'over, or plan the two in separate turns.', kind='conflict')
+                        'boundary change deletes the morphemes that analysis writes.', kind='conflict',
+                        advice='discard_plan to start over, or plan the two in separate turns.')
 
 
 # A text edit names every word and morpheme of the region it rewrites, and
@@ -518,8 +518,8 @@ def refuse_comment_and_text_edit(ws: Workspace, ids, where: str, *, commenting: 
         clash = ids & {op.get('entity_id') for op in ws.ops if op.get('kind') == 'add_comment'}
     if clash:
         raise ToolError(f'{where}: this plan rewrites the text over a word it also comments on, and the '
-                        'rewrite may take the word the comment is anchored to. discard_plan to start over, '
-                        'or plan the two in separate turns.', kind='conflict')
+                        'rewrite may take the word the comment is anchored to.', kind='conflict',
+                        advice='discard_plan to start over, or plan the two in separate turns.')
 
 
 def parse_analysis(ws: Workspace, morphemes: list) -> List[Dict[str, Any]]:
