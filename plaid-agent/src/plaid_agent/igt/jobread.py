@@ -177,6 +177,18 @@ def _totals(report: Dict[str, Any]) -> str:
                 by[f.get('field')] = by.get(f.get('field'), 0) + (f.get('values') or 0)
         fields = field_counts(by)
     said += [f'{f.get("field")} {f.get("values"):,} values' for f in fields]
+    # What it wrote outside its setup, as the worker marked it by id
+    # (REV-SU-B-4), from the documents when the totals hold none.
+    outside = totals.get('outside')
+    if outside is None:
+        by = {}
+        for d in report.get('documents') or []:
+            for f in (d.get('counts') or {}).get('outside') or []:
+                by[f.get('field')] = by.get(f.get('field'), 0) + (f.get('values') or 0)
+        outside = field_counts(by)
+    if outside:
+        said.append('written outside its setup: ' + ', '.join(f'{f.get("field")} {f.get("values"):,} values'
+                                                              for f in outside))
     # What is still blank of what the job fills, per target, from the
     # documents when the totals hold none.
     blank = totals.get('blank')

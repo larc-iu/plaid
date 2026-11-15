@@ -688,6 +688,9 @@ def summary_message(report: Dict[str, Any], setup: Optional[str] = None) -> str:
     wrote = (f'This job wrote {_n_text(totals.get("changes") or 0, "change")} in {totals.get("sentences") or 0:,} '
              f'of {_n_text(targets, "sentence")}')
     lines = [wrote + (f': {fields_text(totals["fields"])}.' if totals.get('fields') else '.')]
+    if totals.get('outside'):
+        # Values in fields its setup does not name (REV-SU-B-4).
+        lines.append(f'Of those, outside what it was set up to fill: {fields_text(totals["outside"])}.')
     if totals.get('blank'):
         # What is still blank of what it fills, beside what it wrote: never
         # a count of work done alone (REV-DAY-P-4, S-9).
@@ -1061,7 +1064,7 @@ class Write:
     lists a change."""
 
     def __init__(self, document_id: str, piece: str, st: Stretch, own: List[str], ops: List[Dict[str, Any]],
-                 counts: Counter, fresh=None, proposed=(), describe=None):
+                 counts: Counter, fresh=None, proposed=(), describe=None, within=None):
         #: the write's tag in its rows: the start of a UUIDv7, which sorts by time
         self.id = uuid7().replace('-', '')[:PIECE_TAG_CHARS]
         self.document_id, self.piece, self.st, self.ops, self.counts = document_id, piece, st, ops, counts
@@ -1070,6 +1073,10 @@ class Write:
         self.fresh = fresh
         self.describe = describe or (lambda op, here: {'kind': op.get('kind'), 'label': op.get('label')})
         self.layer = translation_layer(st.project)
+        #: the target ids the job's setup names (``Setup.ids``), or None for
+        #: a job with no setup: a value written in any other is counted
+        #: outside it (:meth:`outside_of`)
+        self.within = within
         #: the seeds of the tries that landed (seen to)
         self.done: set = set()
         #: the creates a try holds that an earlier try of the write makes
@@ -1237,6 +1244,31 @@ class Write:
                     out[f.name] += 1
         return dict(out)
 
+    def outside_of(self, ops: List[Dict[str, Any]]) -> Dict[str, int]:
+        """The values ``ops`` set in a field or orthography the job's setup
+        does not name, by its name, decided by the target id of what is
+        written (the layer, ``orthography:<name>``), never by a name: each
+        ``set_span`` that writes a value, the translation's too, and each
+        ``set_orthography``. Nothing for a job with no setup. Nothing is
+        refused: the setup binds the plan, and the report shows what was
+        written past it (REV-SU-B-4)."""
+        from plaid_client.workflows.igt.config import is_orthography_key, orthography_name
+        out: Counter = Counter()
+        if self.within is None:
+            return {}
+        for o in ops:
+            if o.get('value') in (None, ''):
+                continue
+            if o.get('kind') == 'set_span' and o.get('layer_id') not in self.within:
+                f = self.st.project.field_by_layer(o.get('layer_id'))
+                if f is not None:
+                    out[f.name] += 1
+            elif o.get('kind') == 'set_orthography' and is_orthography_key(o.get('key')):
+                name = orthography_name(o['key'])
+                if f'{tg.ORTHOGRAPHY}:{name}' not in self.within:
+                    out[name] += 1
+        return dict(out)
+
     def _others(self, sid: str, words: List[str]) -> List[str]:
         now = {s.id: s for s in (self.fresh.sentences if self.fresh is not None else [])}
         s = now.get(sid) or self.st.where.get(sid)
@@ -1252,6 +1284,9 @@ class Write:
         fields = self.fields_of(ops)
         if fields:
             row['fields'] = fields
+        outside = self.outside_of(ops)
+        if outside:
+            row['outside'] = outside
         return row
 
     def rows(self, seed: str, ops: List[Dict[str, Any]], replaces: Optional[str] = None,
@@ -2981,8 +3016,10 @@ class IgtRunner:
                  for w in s.words if w.id in st.words and tg.empty_in_word(w, st.targets)}
         self.machine_status(project, kept)
         own = [s.id for s in st.doc.sentences if s.id in st.sentence_ids and s.id not in changed]
+        setup = self.job_setup(project)
         w = Write(document_id, piece, st, own, kept, counts, fresh, proposed,
-                  describe=lambda o, here: self.describe(o, fresh, project) if here else self.describe_loose(o))
+                  describe=lambda o, here: self.describe(o, fresh, project) if here else self.describe_loose(o),
+                  within=setup.ids if setup is not None else None)
         self.send(client, project, document_id, group, w)
         known = client.document_versions.get(document_id)
         after = self.read(project, document_id, client)
@@ -3558,13 +3595,14 @@ class IgtRunner:
         the document (:meth:`left_blank`), and a row never says nothing is
         left where nothing was counted (BRIEF NW round 3)."""
         counts = empty_counts()
-        analyzed, words, fields = set(), set(), Counter()
+        analyzed, words, fields, outside = set(), set(), Counter(), Counter()
         rows, landed = self.view(document_id)
         for r in rows:
             if not landed(r):
                 continue
             words |= set(r.get('words') or ())
             fields.update(r.get('fields') or {})
+            outside.update(r.get('outside') or {})
             for k, n in (r.get('counts') or {}).items():
                 if k == 'analyzed':
                     analyzed.add(r['sentence'])
@@ -3572,7 +3610,10 @@ class IgtRunner:
                     counts[k] = counts.get(k, 0) + n
         counts['analyzed'], counts['words'] = len(analyzed), len(words)
         if fields:
-            counts['fields'] = field_counts(fields)
+            counts['fields'] = field_counts(fields, outside)
+        if outside:
+            # What it wrote outside its setup, the translation's too (REV-SU-B-4).
+            counts['outside'] = field_counts(outside)
         row = self.job.rows.get(document_id) or {}
         failed = len(self.unlisted.get(document_id) or ())
         more = max((row.get('counts') or {}).get(SKIPPED_MORE) or 0,

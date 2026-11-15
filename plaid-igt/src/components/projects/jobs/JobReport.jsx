@@ -73,17 +73,33 @@ const unitCount = (n, unit) => `${n.toLocaleString()} ${plural(n, unit)}`;
 // The values the job set in each field: the totals' rows, or, when the totals
 // hold none (core's own report of a job no worker finished sums named counts
 // only), the documents' rows summed by field name, by name as the totals are.
+// A field the worker marked `outside` (written outside the job's setup,
+// decided by id where it was written, REV-SU-B-4) stays marked.
 const fieldSums = (report) => {
   if (report.totals?.fields) return report.totals.fields;
   const sums = new Map();
+  const outside = new Set();
   (report.documents || []).forEach((d) =>
-    (d.counts?.fields || []).forEach((f) =>
-      sums.set(f.field, (sums.get(f.field) ?? 0) + (f.values ?? 0)),
-    ),
+    (d.counts?.fields || []).forEach((f) => {
+      sums.set(f.field, (sums.get(f.field) ?? 0) + (f.values ?? 0));
+      if (f.outside === true) outside.add(f.field);
+    }),
   );
   return [...sums]
     .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
-    .map(([field, values]) => ({ field, values }));
+    .map(([field, values]) => ({
+      field,
+      values,
+      ...(outside.has(field) ? { outside: true } : {}),
+    }));
+};
+
+// How many values the job wrote outside its setup (the worker's `outside`
+// rows, the translation's among them): the totals', or the documents' summed.
+const outsideSum = (report) => {
+  const rows =
+    report.totals?.outside ?? (report.documents || []).flatMap((d) => d.counts?.outside || []);
+  return rows.reduce((n, f) => n + (f.values ?? 0), 0);
 };
 
 // One "label: value" row of the totals, left out when it is an optional row
@@ -117,7 +133,15 @@ const totalRows = (report) => {
   optional('Translations written', t.translations);
   optional('Translations replaced', t.refreshed);
   optional('Words analyzed', t.words);
-  fieldSums(report).forEach((f) => f.values > 0 && rows.push([f.field, value(f.values)]));
+  fieldSums(report).forEach(
+    (f) =>
+      f.values > 0 &&
+      rows.push([
+        f.field,
+        f.outside === true ? `${value(f.values)}, not in the setup` : value(f.values),
+      ]),
+  );
+  optional('Values not in the setup', outsideSum(report));
   blankSums(report).forEach((b) => {
     // A target is named as everywhere on the page, "segmentation" too (N-1).
     rows.push([`${b.target} left blank`, unitCount(b.left ?? 0, b.unit)]);

@@ -720,12 +720,15 @@ def _finish(job: Job, state: str, runner, harmonize, entries, reason: Optional[s
         return None
 
 
-def field_counts(by_name) -> List[Dict[str, Any]]:
+def field_counts(by_name, outside=()) -> List[Dict[str, Any]]:
     """The values a job set by field (``{name: n}``), as a document's
     ``counts.fields`` and the report's ``totals.fields`` hold them (BRIEF
     EW): a list by name, never a map keyed by a field's name, which the
-    clients would re-case."""
-    return [{'field': name, 'values': n} for name, n in sorted(by_name.items()) if n]
+    clients would re-case. A field among ``outside`` (the app's count of what
+    was written outside the job's setup, decided by id where it was
+    written) is marked ``outside: true`` (REV-SU-B-4)."""
+    return [{'field': name, 'values': n, **({'outside': True} if name in outside else {})}
+            for name, n in sorted(by_name.items()) if n]
 
 
 def blank_sums(documents: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -878,7 +881,7 @@ def build_report(job: Job, state: str, reason: Optional[str], documents: List[Di
               'skipped_too_long': 0, 'skipped_failed': 0, 'skipped_changed': 0, 'skipped_interrupted': 0,
               'skipped_no_answer': 0, 'skipped_more': 0, 'changed': 0, 'proposed': 0, 'changes': 0, 'deletions': 0,
               'repeated': 0, 'peoples_values_changed': 0, 'text_changes': 0}
-    fields = Counter()
+    fields, outside = Counter(), Counter()
     for d in documents:
         key = {'done': 'documents_done', 'in-use': 'documents_in_use', 'gone': 'documents_gone'}.get(
             d.get('state'), 'documents_not_reached')
@@ -896,8 +899,13 @@ def build_report(job: Job, state: str, reason: Optional[str], documents: List[Di
                 totals[k] += 1
         for f in counts.get('fields') or []:
             fields[f.get('field')] += f.get('values') or 0
+        for f in counts.get('outside') or []:
+            outside[f.get('field')] += f.get('values') or 0
     if fields:
-        totals['fields'] = field_counts(fields)
+        totals['fields'] = field_counts(fields, outside)
+    if outside:
+        # What the job wrote outside its setup (an app's ``counts.outside``).
+        totals['outside'] = field_counts(outside)
     blank = blank_sums(documents)
     if blank:
         totals['blank'] = blank

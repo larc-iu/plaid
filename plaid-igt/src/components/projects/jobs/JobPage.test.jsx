@@ -1512,6 +1512,57 @@ describe('the job page', () => {
     await v.unmount();
   });
 
+  // REV-SU-B-4 (the lead's addition): the limit binds the plan, so a job may
+  // write a field its setup does not name. The worker marks such a field's
+  // row by id (`outside`), and counts what it wrote outside the setup.
+  it('marks a field the job wrote outside its setup, and counts the values written outside it', async () => {
+    const setup = { fills: [{ id: 'L1', name: 'Thematic role' }], text: false };
+    const report = {
+      ...REPORT,
+      totals: {
+        ...REPORT.totals,
+        fields: [
+          { field: 'Gloss', values: 1, outside: true },
+          { field: 'Thematic role', values: 9 },
+        ],
+        outside: [
+          { field: 'Gloss', values: 1 },
+          { field: 'Translation', values: 1 },
+        ],
+      },
+    };
+    let v = await mount(clientOf(jobOf({ state: 'done', setup, report })));
+    let sums = totals(v.container.querySelector('section[aria-label="Report"]'));
+    expect(sums['Gloss']).toBe('1 value, not in the setup');
+    expect(sums['Thematic role']).toBe('9 values');
+    expect(sums['Values not in the setup']).toBe('2');
+    await v.unmount();
+
+    // Core's own report: the documents' rows, summed.
+    const doc = (id, counts) => ({ ...REPORT.documents[0], documentId: id, counts });
+    const fromRows = {
+      ...REPORT,
+      totals: { ...REPORT.totals, fields: undefined },
+      documents: [
+        doc('a', {
+          fields: [{ field: 'Gloss', values: 2, outside: true }],
+          outside: [{ field: 'Gloss', values: 2 }],
+        }),
+        doc('b', { fields: [{ field: 'Thematic role', values: 3 }] }),
+      ],
+    };
+    v = await mount(clientOf(jobOf({ state: 'done', setup, report: fromRows })));
+    sums = totals(v.container.querySelector('section[aria-label="Report"]'));
+    expect(sums['Gloss']).toBe('2 values, not in the setup');
+    expect(sums['Thematic role']).toBe('3 values');
+    expect(sums['Values not in the setup']).toBe('2');
+    await v.unmount();
+
+    v = await mount(clientOf(jobOf({ state: 'done', report: REPORT })));
+    expect(totals(v.container)).not.toHaveProperty('Values not in the setup');
+    await v.unmount();
+  });
+
   it('lists the changes a write cut short did not write under a line of their own', async () => {
     const report = {
       ...REPORT,

@@ -418,3 +418,64 @@ def test_under_a_setup_plan_works_unknown_name_refusal_lists_only_the_setups_tar
     # With no setup, every target of the project.
     free = _plan_ws(None)
     assert 'Morph Gloss' in _plan_work(free, fills=['Thematc role'])
+
+
+# --- what a job wrote outside its setup (REV-SU-B-4, the lead's addition) ----------------
+
+def _wrote_outside(monkeypatch, client, setup, field, ref):
+    """A job of ``setup`` planned in sentences to fill Thematic role, whose
+    first piece also writes ``field`` at ``ref`` with set_field (offered to
+    every piece in sentences), then fills Thematic role."""
+    from test_job_fields import GUIDELINE, INSTRUCTIONS
+    client.guidelines.create('p1', 'Thematic role', body=GUIDELINE)
+    job = start(client, INSTRUCTIONS, id=J, plan=None, setup=setup)
+    base = _fill(_piece_words)
+
+    def answer(asked, n, kwargs):
+        if asked.rstrip().endswith(PLANNING):
+            return reply(calls=[call(90 + n, 'plan_work', INSIDE)]) if n == 1 else reply('Planned.')
+        if 'Instructions from' in asked and n == 1 and 'Your piece: s1' in asked:
+            return reply(calls=[call(500, 'set_field', {'document': 'Story', 'refs': [ref], 'field': field,
+                                                        'value': 'NOBODY ASKED'})])
+        if 'Instructions from' in asked and n == 2 and 'Your piece: s1' in asked:
+            return base(asked, 1, kwargs)
+        return base(asked, n, kwargs)
+    use(monkeypatch, Model(answer))
+    return run_job(job, runner(job))
+
+
+@pytest.mark.parametrize('field, ref, fields', [
+    ('Gloss', 's1.w1', [{'field': 'Gloss', 'values': 1, 'outside': True}, {'field': ROLE_NAME, 'values': 9}]),
+    ('Translation', 's1', [{'field': ROLE_NAME, 'values': 9}]),
+])
+def test_a_value_written_outside_the_setup_is_marked_by_id_in_the_report(monkeypatch, field, ref, fields):
+    """Nothing is refused (the limit is the plan's): the report marks each
+    field row the job wrote that its setup does not name, decided by the
+    written layer's id, and counts what it wrote outside its setup."""
+    from plaid_agent.igt import jobread
+    client = _client()
+    finished = _wrote_outside(monkeypatch, client, ROLE_ONLY, field, ref)
+    assert finished['state'] == 'done', finished.get('reason')
+    totals = finished['report']['totals']
+    assert totals['fields'] == fields, totals
+    assert totals['outside'] == [{'field': field, 'values': 1}], totals
+    (doc,) = finished['report']['documents']
+    assert doc['counts']['outside'] == [{'field': field, 'values': 1}], doc['counts']
+    said = jobread.summary({'id': J, 'state': 'done', 'instructions': 'x', 'documents': [], 'setup': ROLE_ONLY,
+                            'report': finished['report']})
+    assert f'written outside its setup: {field} 1 values' in said[-2], said[-2]
+    # A field the setup names is never marked, renamed or not: by id.
+    client = _client()
+    named = {**ROLE_ONLY, 'fills': [*ROLE_ONLY['fills'], {'id': 'sl-gloss' if field == 'Gloss' else TRANS,
+                                                          'name': 'An old name'}]}
+    finished = _wrote_outside(monkeypatch, client, named, field, ref)
+    assert 'outside' not in finished['report']['totals']
+    assert not any(f.get('outside') for f in finished['report']['totals']['fields'])
+
+
+def test_a_job_with_no_setup_marks_nothing_outside(monkeypatch):
+    client = _client()
+    finished = _wrote_outside(monkeypatch, client, None, 'Gloss', 's1.w1')
+    totals = finished['report']['totals']
+    assert 'outside' not in totals and not any('outside' in f for f in totals['fields']), totals
+    assert all('outside' not in (d.get('counts') or {}) for d in finished['report']['documents'])
