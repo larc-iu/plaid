@@ -708,8 +708,8 @@ def t_plan_work(ws, pieces: str = None, piece_instructions: str = '', documents=
                             + '. Leave them out of documents, or leave documents out for every document.',
                             kind='invalid-argument')
     from . import targets as tg
-    chosen = tg.resolve_fills(ws.project, fills)
     setup = getattr(ws, 'job_setup', None)
+    chosen = tg.resolve_fills(ws.project, fills, setup)
     if setup is not None:
         refusal = tg.outside_setup(ws.project, setup, chosen, edits_text)
         if refusal:

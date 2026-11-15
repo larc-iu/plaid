@@ -175,30 +175,32 @@ def listed_names(project: IgtProject) -> List[str]:
     return shown_names(project, fillable(project))
 
 
-def resolve_fills(project: IgtProject, fills) -> List[Target]:
+def resolve_fills(project: IgtProject, fills, setup: Optional['Setup'] = None) -> List[Target]:
     """The targets ``fills`` names (plan_work's and propose_job's), or a
-    ToolError naming what a job on ``project`` can fill. Required: a list,
+    ToolError naming what a job on ``project`` can fill, or under ``setup``
+    only the setup's targets (REV-SU-B-5: the planner is shown no other).
+    Required: a list,
     [] for a job that fills nothing (REV-DF-D-1: one left out made a job
     that filled nothing and said nothing). A list of one comma string is
     read as the string is (``core.args.names_list``)."""
     import json
     from ..core.args import names_list
     from ..core.tools import ToolError
-    listed = listed_names(project)
+    listed = list(setup.names) if setup is not None else listed_names(project)
+    where = ('Name each as listed under What a job can fill: ' + ', '.join(listed) + '.' if listed
+             else 'This job was set up to fill nothing: give [].')
     if fills is None:
         raise ToolError('fills: say what the job fills, each named as listed under What a job can fill: '
-                        + ', '.join(listed) + '. Give [] when it fills nothing, such as a check or a summary.',
-                        kind='invalid-argument')
+                        + ', '.join(listed) + '. Give [] when it fills nothing, such as a check or a summary.'
+                        if listed else 'fills: say what the job fills. ' + where, kind='invalid-argument')
     fills = names_list(fills, lambda n: not named(project, [n])[1])
     if fills is None:
-        raise ToolError('fills is a list of names, such as ' + json.dumps(listed[:2], ensure_ascii=False)
-                        + '. Name each as listed under What a job can fill: ' + ', '.join(listed) + '.',
-                        kind='invalid-argument')
+        raise ToolError('fills is a list of names' + (', such as ' + json.dumps(listed[:2], ensure_ascii=False)
+                                                       if listed else '') + '. ' + where, kind='invalid-argument')
     chosen, unknown = named(project, fills)
     if unknown:
         raise ToolError('fills: not something a job on this project can fill: '
-                        + ', '.join(f'"{u}"' for u in unknown[:5]) + '. Name each as listed under What a job can '
-                        'fill: ' + ', '.join(listed) + '.', kind='invalid-argument')
+                        + ', '.join(f'"{u}"' for u in unknown[:5]) + '. ' + where, kind='invalid-argument')
     return chosen
 
 

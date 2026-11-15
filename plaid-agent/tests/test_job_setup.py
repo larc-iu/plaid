@@ -399,3 +399,22 @@ def test_the_cards_own_shape_is_read():
     project = load_project(_client(), 'p1')
     for setup in (ROLE_ONLY, {'fills': [], 'text': True}, {**ROLE_ONLY, 'conversation': None}):
         assert not tg.setup_of(project, setup).unread, setup
+
+
+# --- plan_work's lists under a setup (REV-SU-B-5) ----------------------------------------
+
+def test_under_a_setup_plan_works_unknown_name_refusal_lists_only_the_setups_targets():
+    ws = _plan_ws({'fills': [{'id': ROLE, 'name': ROLE_NAME}, {'id': TRANS, 'name': 'Translation'}], 'text': False})
+    out = _plan_work(ws, fills=['Thematc role'])
+    assert out == ('Error: fills: not something a job on this project can fill: "Thematc role". Name each as listed '
+                   'under What a job can fill: Thematic role, Translation.'), out
+    assert _plan_work(ws) == ('Error: fills: say what the job fills, each named as listed under What a job can '
+                              'fill: Thematic role, Translation. Give [] when it fills nothing, such as a check or '
+                              'a summary.')
+    nothing = _plan_ws({'fills': [], 'text': False})
+    assert _plan_work(nothing, fills=['Thematc role']) == (
+        'Error: fills: not something a job on this project can fill: "Thematc role". This job was set up to fill '
+        'nothing: give [].')
+    # With no setup, every target of the project.
+    free = _plan_ws(None)
+    assert 'Morph Gloss' in _plan_work(free, fills=['Thematc role'])
