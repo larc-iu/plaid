@@ -246,4 +246,11 @@ describe('the job page’s Activity', () => {
     );
     await w.unmount();
   });
+
+  it('marks a row the worker cut with …', async () => {
+    const cut = { seq: '000004', piece: { ...FIRST.piece, cut: true, fields: [] } };
+    const v = await mount(clientOf([jobOf()], [page([cut])]));
+    expect(all(rows(v.container)[0], 'p').map(text)).toContain('…');
+    await v.unmount();
+  });
 });

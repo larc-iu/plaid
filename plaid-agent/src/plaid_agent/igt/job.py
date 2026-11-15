@@ -172,22 +172,36 @@ def piece_note(text) -> str:
     return head.rstrip() + NOTE_CUT
 
 
-def summary_text(value: Dict[str, Any]) -> str:
+def summary_text(value: Dict[str, Any]) -> Optional[str]:
     """A piece's summary (or the plan's) as its decision row keeps it:
     canonical JSON, its keys kebab-cased as the clients send a report, so
-    each client reads them in its own case (``GET /jobs/{id}/pieces``). Within
-    JOB_ANALYSIS_MAX_CHARS: past it the skipped sentences and then the
-    refusals are cut from the end, ``skipped_more`` and ``refused_more``
-    counting them. The note is at most JOB_NOTE_MAX_CHARS already."""
+    each client reads them in its own case (``GET /jobs/{id}/pieces``).
+    Within JOB_ANALYSIS_MAX_CHARS: past it, the lists are cut from the end
+    (the skipped sentences, the refusals, then the targets written outside
+    the setup and the values by target, each ``<list>_more`` counting what
+    was cut, and the plan's gone fields and names), then the note and the
+    document's name are halved, and the row says it was cut (``cut``).
+    None when even that is over the cap: no row (REV-LV-2)."""
     from plaid_client.transforms import transform_request
-    value = {k: (list(v) if isinstance(v, list) else v) for k, v in value.items()}
+    value = json.loads(json.dumps(value))
+    plan = value.get('plan') if isinstance(value.get('plan'), dict) else {}
     while True:
         text = canonical(transform_request(value))
-        cut = next((k for k in ('skipped', 'refused') if value.get(k)), None)
-        if len(text) <= JOB_ANALYSIS_MAX_CHARS or cut is None:
+        if len(text) <= JOB_ANALYSIS_MAX_CHARS:
             return text
-        value[cut].pop()
-        value[f'{cut}_more'] = (value.get(f'{cut}_more') or 0) + 1
+        value['cut'] = True
+        where = next(((d, k) for d, k in [(value, 'skipped'), (value, 'refused'), (value, 'outside'),
+                                          (value, 'fields'), (plan, 'gone'), (plan, 'fills_names')]
+                      if isinstance(d.get(k), list) and d[k]), None)
+        if where is not None:
+            d, k = where
+            d[k].pop()
+            d[f'{k}_more'] = (d.get(f'{k}_more') or 0) + 1
+            continue
+        k = next((k for k in ('note', 'name') if isinstance(value.get(k), str) and len(value[k]) > 1), None)
+        if k is None:
+            return None
+        value[k] = value[k][:len(value[k]) // 2]
 
 
 def written_sums(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
@@ -3584,9 +3598,13 @@ class IgtRunner:
 
     @staticmethod
     def summary_row(seq: int, value: Dict[str, Any], document_id: Optional[str] = None,
-                    sentence_id: Optional[str] = None) -> Dict[str, Any]:
-        """The decision row of the plan's summary (``seq`` 0) or a piece's."""
-        return {'form': PIECE_FORM, 'key': f'{seq:0{PIECE_SEQ_DIGITS}d}', 'analysis': summary_text(value),
+                    sentence_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        """The decision row of the plan's summary (``seq`` 0) or a piece's,
+        or None when it cannot be cut to core's cap (:func:`summary_text`)."""
+        text = summary_text(value)
+        if text is None:
+            return None
+        return {'form': PIECE_FORM, 'key': f'{seq:0{PIECE_SEQ_DIGITS}d}', 'analysis': text,
                 'count': 1, 'document_id': document_id, 'sentence_id': sentence_id}
 
     def summaries_known(self) -> None:
@@ -3638,6 +3656,15 @@ class IgtRunner:
         p = self.unsummed.get(key)
         if p is None:
             return
+        try:
+            self.keep_summary(key, p)
+        except Exception as e:  # noqa: BLE001 - a summary never fails the job (REV-LV-2)
+            if core_job.core_fault(e) in ('passing', 'mine', 'access'):
+                raise
+            logger.warning('Job %s: the summary of a piece was not kept: %s', self.job.id, e)
+            self.unsummed.pop(key, None)
+
+    def keep_summary(self, key: str, p: Dict[str, Any]) -> None:
         self.summaries_known()
         if key in self.summarized:
             self.unsummed.pop(key, None)
@@ -3658,7 +3685,11 @@ class IgtRunner:
                                                     'note', 'calls')},
                  **written_sums(rows), 'ended_at': self.now_iso(),
                  **({'skipped': skipped} if skipped else {}), **({'refused': p['refused']} if p['refused'] else {})}
-        self.job.add_decisions([self.summary_row(p['seq'], value, p['document'], p['first_id'])])
+        row = self.summary_row(p['seq'], value, p['document'], p['first_id'])
+        if row is None:
+            logger.warning('Job %s: the summary of a piece is too large to keep', self.job.id)
+        else:
+            self.job.add_decisions([row])
         self.unsummed.pop(key, None)
 
     def end_summaries(self) -> None:

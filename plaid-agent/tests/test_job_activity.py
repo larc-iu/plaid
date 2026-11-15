@@ -252,3 +252,73 @@ def test_a_piece_taken_again_after_a_person_edited_its_first_sentence_has_a_row_
     rows = [v for k, v in _summaries(client, gate.J) if k != '000000']
     for name in ('words', 'changes', 'analyzed'):
         assert sum((v.get('counts') or {}).get(name, 0) for v in rows) == counts.get(name, 0), (name, rows, counts)
+
+
+# --- REV-LV-2: a summary never fails the job ------------------------------------------------
+
+def test_a_summary_over_the_cap_is_cut_and_says_so():
+    from plaid_agent.igt.job import summary_text
+    value = {'piece': 'k', 'document': 'd1', 'name': 'N' * 500, 'note': 'x' * 400,
+             'fields': [{'field': 'F' * 300 + str(i), 'id': f'id-{i}', 'values': 1} for i in range(20)],
+             'outside': [{'field': 'O' * 300 + str(i), 'id': f'od-{i}', 'values': 1} for i in range(20)]}
+    text = summary_text(value)
+    assert len(text) <= 4000
+    row = json.loads(text)
+    assert row['cut'] is True
+    assert row['outside-more'] + len(row.get('outside') or []) == 20
+    assert row['fields-more'] + len(row.get('fields') or []) == 20 or 'fields-more' not in row
+    small = json.loads(summary_text({'piece': 'k', 'note': 'Fine.'}))
+    assert 'cut' not in small
+
+
+def test_a_summary_with_nothing_left_to_cut_but_its_name_and_note_is_cut_there():
+    from plaid_agent.igt.job import summary_text
+    row = json.loads(summary_text({'piece': 'k', 'name': 'N' * 3800, 'note': 'y' * 400}))
+    assert row['cut'] is True and len(json.dumps(row)) <= 4000
+    assert row['name'].startswith('NNN') and row['note'].startswith('yyy')
+
+
+def test_a_summary_core_refuses_is_left_out_and_the_job_goes_on(monkeypatch):
+    """REV-LV-2 (the reviewer's probe): a document name of 3,800 characters,
+    which the fake keeps. The job ends done, its summaries cut."""
+    import test_job_gate as gate
+    client, job, clock, _ = gate._job(monkeypatch, 'sentences')
+    client._holder('d1')['documents']['d1']['name'] = 'N' * 3800
+    finished = run_job(job, runner(job))
+    assert finished['state'] == 'done', (finished.get('reason'), job.status.get('message'))
+    rows = [v for k, v in _summaries(client, gate.J) if k != '000000']
+    assert rows and all(v['cut'] is True for v in rows)
+
+
+def test_a_refusal_of_a_summary_is_logged_and_the_job_goes_on(monkeypatch, caplog):
+    from plaid_client import PlaidAPIError
+    import test_job_gate as gate
+    client, job, clock, _ = gate._job(monkeypatch, 'sentences')
+    real = job.add_decisions
+
+    def add(decisions):
+        if any(d['form'] == PIECE_FORM for d in decisions):
+            raise PlaidAPIError('HTTP 400 no', status=400, method='POST')
+        return real(decisions)
+    monkeypatch.setattr(job, 'add_decisions', add)
+    finished = run_job(job, runner(job))
+    assert finished['state'] == 'done', (finished.get('reason'), job.status.get('message'))
+    assert any('summary' in r.getMessage() for r in caplog.records)
+
+
+def test_an_oversized_plan_summary_never_fails_the_planning(monkeypatch):
+    client = JobClient({'d1': _doc()})
+    job = start(client, id=J, plan=None)
+    monkeypatch.setattr(igt_job.IgtRunner, 'fills_named',
+                        lambda self, job, plan: {'fills_names': ['F' * 500 + str(i) for i in range(20)]})
+
+    def answer(asked, n, kwargs=None):
+        if asked.rstrip().endswith('Plan the job and end with plan_work.'):
+            return reply(calls=[call(1, 'plan_work', {'pieces': 'sentences', 'fills': ['Morph Gloss']})]) \
+                if n == 1 else reply('Planned.')
+        return reply('Nothing to do.')
+    use(monkeypatch, Model(answer))
+    finished = run_job(job, runner(job))
+    assert finished['state'] == 'done', (finished.get('reason'), job.status.get('message'))
+    plan = dict(_summaries(client, J))['000000']
+    assert plan['cut'] is True and plan['plan']['fills-names-more'] > 0

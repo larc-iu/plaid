@@ -82,7 +82,10 @@ const PlanRow = ({ piece }) => (
       <span className="font-medium">Plan</span>
       <Ended piece={piece} />
     </div>
-    <p>{planText(piece.plan)}</p>
+    <p>
+      {planText(piece.plan)}
+      {piece.cut && ' …'}
+    </p>
   </>
 );
 
@@ -173,6 +176,8 @@ const PieceRow = ({ piece, projectId, names }) => {
           {piece.note}
         </p>
       )}
+      {/* A row the worker cut to fit core's cap (REV-LV-2). */}
+      {piece.cut && <p className="text-muted-foreground">…</p>}
     </>
   );
 };
