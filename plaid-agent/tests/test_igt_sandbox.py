@@ -123,3 +123,35 @@ def test_the_help_spells_the_lexicons_entry_fields():
     help_text = call_tool(w, 'code_help', {})
     assert 'lexicon(name=None)' in help_text and '"Lexicon": "gloss", "pos"\n' in help_text
     assert 'plan("set_entry_field", entry_id=e["id"], field="pos"' in help_text
+
+
+def _kinds_ws():
+    """A document of the five kinds of word: ka with no morpheme stored, ta
+    with one stored that holds nothing, pa analysed as one morpheme equal to
+    itself with a gloss, sa with only a word-level gloss, mo of two."""
+    from job_fixtures import JobClient, document
+    raw = document('d1', 'Story', [{'words': [
+        {'form': 'ka'}, ('ta', [(None, None)], None), ('pa', [('pa', 'g')], 'human'),
+        {'form': 'sa', 'gloss': ('G', 'human')}, ('mo', [('m', 'g1'), ('o', 'g2')], 'human')],
+        'translation': None}])
+    return fake_ws(JobClient({'d1': raw}))
+
+
+def test_each_loaded_word_says_whether_it_is_segmented_by_the_one_rule():
+    """An unsegmented word still lists one morpheme, its whole form (the
+    model tested len(w["morphemes"]) and found every word analysed, 2026-11-15).
+    "segmented" is targets.unsegmented's answer, the walk's and Left blank's:
+    no morpheme stored, or a lone one holding nothing, is unsegmented, and a
+    word analysed as one morpheme is segmented. The morphemes list is as it
+    was."""
+    w = _kinds_ws()
+    words = view(w.doc('d1'))['sentences'][0]['words']
+    assert [(x['surface'], x['segmented']) for x in words] == [
+        ('ka', False), ('ta', False), ('pa', True), ('sa', False), ('mo', True)]
+    assert [len(x['morphemes']) for x in words] == [1, 1, 1, 1, 2]
+    assert words[0]['morphemes'][0]['form'] == 'ka'
+    out = call_tool(w, 'run_code', {'code': 'print([w["ref"] for s in load("Story")["sentences"] for w in s["words"] '
+                                            'if not w["segmented"]])'})
+    assert out.startswith("['s1.w1', 's1.w2', 's1.w4']"), out
+    shape = call_tool(w, 'code_help', {})
+    assert 'w["segmented"]' in shape, shape

@@ -16,6 +16,7 @@ from ..core import filetools, sandbox
 from ..core.tools import ToolError
 from .lexview import LexView
 from .project import IgtDoc, word_ref
+from .targets import unsegmented
 from .vocab import RESERVED_ITEM_KEYS, item_ref_fields, morph_type_of, ref_ids
 from .workspace import Workspace
 
@@ -23,8 +24,9 @@ IGT_SHAPE = '''\
 A LOADED DOCUMENT IN SHORT (dicts and lists, keys also read as attributes):
   doc = load("Text 1")          # or load(d) for d in documents()
   s = doc["sentences"][2]       # {"ref": "s3", "text", "fields", "words"}
-  w = s["words"][1]             # {"ref": "s3.w2", "surface", "fields", "link", "morphemes", ...}
+  w = s["words"][1]             # {"ref": "s3.w2", "surface", "fields", "link", "segmented", "morphemes", ...}
   m = w["morphemes"][0]         # {"ref": "s3.w2.m1", "form", "type", "fields", "link", "review"}
+  # an unsegmented word still lists one morpheme, its whole form: test w["segmented"], not the list
   {example}  # a field by its exact name, "" when empty
   # a ref ("s3", "s3.w2") is unique only within its document: key a collection over several
   # documents by (doc["name"], ref), or "s12" of one document merges with "s12" of another
@@ -56,12 +58,13 @@ THE SHAPE load(document) RETURNS:
      {"ref": "s3", "text": "...", "time": [12.3, 15.0] or None, "fields": {"Translation": "...", ...}, "words": [
         {"ref": "s3.w2", "surface": "...", "orthographies": {"<name>": "..."}, "fields": {"<word field>": "..."},
          "link": "<lexicon headword>" or None, "link_id": "<its entry's id>" or None, "mwes": ["<headword>", ...],
-         "review": {"<field>": "human"|"machine"|"contributed"|"verified"},
+         "review": {"<field>": "human"|"machine"|"contributed"|"verified"}, "segmented": true|false,
          "morphemes": [{"ref": "s3.w2.m1", "form": "...", "type": "stem"|"prefix"|"suffix"|..., "fields": {...},
                         "link": "<headword>" or None, "link_id": ..., "review": {...}}, ...]}, ...]}, ...]}
   Field names are the project's own (project_overview lists them; a name shared by a word field and a
   morpheme field is written "Gloss (Word)" and "Gloss (Morpheme)"). A missing value is "". review names,
-  per field, who made the value and whether it has been confirmed. "segments" is the time alignment, in seconds
+  per field, who made the value and whether it has been confirmed. "segmented" says whether the word is
+  segmented into morphemes: an unsegmented word still lists one morpheme, its whole form. "segments" is the time alignment, in seconds
   (empty without one); a sentence's "time" spans the segments inside it, or the one segment around it.
   recording(document) -> the length in seconds of the document's recording, None without one or when its
   length cannot be read. Minutes transcribed: sum(g["end"] - g["start"] for g in load(d)["segments"]).
@@ -131,7 +134,10 @@ def view(doc: IgtDoc) -> Dict[str, Any]:
                 'link': w.link.form if w.link else None,
                 'link_id': w.link.item_id if w.link else None,
                 'mwes': [l.form for l in (w.mwes or [])],
-                'review': _review(w.fields), 'morphemes': morphemes})
+                'review': _review(w.fields),
+                # THE rule of what is segmented (the walk's, Left blank's):
+                # an unsegmented word still lists its derived morpheme.
+                'segmented': not unsegmented(w), 'morphemes': morphemes})
         time = doc.sentence_time(s) if doc.segments else None
         sentences.append({'ref': f's{s.index}', 'text': s.text, 'time': list(time) if time else None,
                           'fields': {name: sp.value or '' for name, sp in s.fields.items()},
