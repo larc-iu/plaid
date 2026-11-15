@@ -257,7 +257,7 @@ def plan_line(report: Dict[str, Any]) -> Optional[str]:
     names = plan.get('fills_names')
     if isinstance(names, list):
         line += f' Fills: {", ".join(names)}.' if names else ' Fills nothing.'
-    return line + (' Text edits allowed.' if plan.get('edits_text') is True else '')
+    return line + (' Text may be edited.' if plan.get('edits_text') is True else '')
 
 
 def summary(job: Dict[str, Any], note_chars: Optional[int] = JOB_SUMMARY_NOTE_CHARS) -> List[str]:

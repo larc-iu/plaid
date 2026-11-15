@@ -296,11 +296,11 @@ def test_read_job_names_what_the_plan_fills(names, said):
     names the report gives, or says it fills nothing."""
     plan = {'pieces': 'sentences', 'by': 'model', 'fallback': [], 'edits_text': True,
             **({} if names is None else {'fills_names': names})}
-    assert jobread.plan_line({'plan': plan}) == f'Worked in stretches of sentences.{said} Text edits allowed.'
+    assert jobread.plan_line({'plan': plan}) == f'Worked in stretches of sentences.{said} Text may be edited.'
 
 
 def test_read_job_says_the_job_may_edit_the_text():
     plan = {'pieces': 'sentences', 'by': 'model', 'fallback': []}
     assert jobread.plan_line({'plan': plan}) == 'Worked in stretches of sentences.'
     assert jobread.plan_line({'plan': {**plan, 'edits_text': True}}) == \
-        'Worked in stretches of sentences. Text edits allowed.'
+        'Worked in stretches of sentences. Text may be edited.'

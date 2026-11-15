@@ -411,7 +411,7 @@ describe('the job page', () => {
     let v = await mount(
       clientOf(jobOf({ state: 'done', report: { ...REPORT, plan: { ...plan, editsText: true } } })),
     );
-    expect(totals(v.container).Plan).toBe('Worked one document at a time. Text edits allowed.');
+    expect(totals(v.container).Plan).toBe('Worked one document at a time. Text may be edited.');
     await v.unmount();
     v = await mount(clientOf(jobOf({ state: 'done', report: { ...REPORT, plan } })));
     expect(totals(v.container).Plan).toBe('Worked one document at a time.');
@@ -429,14 +429,14 @@ describe('the job page', () => {
       ),
     );
     expect(totals(v.container).Plan).toBe(
-      'Worked in stretches of sentences. Fills: segmentation, Morph Gloss. Text edits allowed.',
+      'Worked in stretches of sentences. Fills: segmentation, Morph Gloss. Text may be edited.',
     );
     await v.unmount();
     v = await mount(
       clientOf(jobOf({ state: 'done', report: { ...REPORT, plan: { ...plan, fillsNames: [] } } })),
     );
     expect(totals(v.container).Plan).toBe(
-      'Worked in stretches of sentences. Fills nothing. Text edits allowed.',
+      'Worked in stretches of sentences. Fills nothing. Text may be edited.',
     );
     await v.unmount();
   });

@@ -51,7 +51,7 @@ export const planText = (plan) => {
   }
   // The plan says the instructions ask for the text itself to change
   // (plan_work's edits_text): only then may the job edit it.
-  return plan.editsText ? `${text} Text edits allowed.` : text;
+  return plan.editsText ? `${text} Text may be edited.` : text;
 };
 
 // The History entry of the job's work in a document, where it wrote
