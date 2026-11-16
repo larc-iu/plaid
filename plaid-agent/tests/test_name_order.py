@@ -20,7 +20,7 @@ RUNNER = os.path.join(HERE, 'name_order_mirror.mjs')
 #: locale, this by code point.
 NAMES = ['(10) Frog story', '(2) Pear', '(1) Intro', '10. Ten', '2. Two', '1. One', 'Text 10', 'text 2',
          'Text 1', 'Text', 'text', '12', '02', '2', 'Zebra', 'apple', 'Banana', '', 'קובץ 10', 'קובץ 2',
-         'نص ١٠', 'نص ٢']
+         'نص ١٠', 'نص ٢', 'Story ①', 'Story ②', 'Text²', 'm³ notes', 'Text １２', 'Text ３']
 
 
 def _sorted(names):
@@ -58,3 +58,15 @@ def test_the_apps_order_the_same_names_the_same_way(tmp_path):
     run = subprocess.run([node, RUNNER, str(path)], capture_output=True, text=True, timeout=120)
     assert run.returncode == 0, run.stderr
     assert _sorted(NAMES) == json.loads(run.stdout)
+
+
+def test_a_circled_or_superscript_digit_never_raises():
+    """REV-SF2-1: "①", "²" and "³" are digits to isdigit() and refused by
+    int(): one such name broke every list of its project. They are no
+    decimal digits (as \\d reads them), so they sort as characters; a
+    full-width run is a number."""
+    names = ['Story ①', 'Story 2', 'Text²', 'm³ notes', 'Text １２', 'Text ３']
+    assert _sorted(names)[0] in names
+    assert _sorted(['Text １２', 'Text ３']) == ['Text ３', 'Text １２']
+    for n in names + ['⑩', '¹²', '٣']:
+        name_key(n)

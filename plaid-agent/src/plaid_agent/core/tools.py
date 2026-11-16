@@ -371,8 +371,11 @@ _PIECES = re.compile(r'\d+|\D')
 def _piece(p: str) -> tuple:
     """One piece of a name as :func:`name_key` compares it: a run of digits as
     its number, after a space or a mark and before a letter, as the apps'
-    collator files digits. Other characters by code point within their kind."""
-    if p[0].isdigit():
+    collator files digits. Other characters by code point within their kind.
+    A decimal digit only, as ``\\d`` cut the piece: "①", "²" and "³" are
+    digits to ``isdigit`` and refused by ``int`` (REV-SF2-1), so they are
+    characters here, and no name can raise."""
+    if p[0].isdecimal():
         return 1, int(p), ''
     return (2 if p.isalnum() else 0), 0, p
 
