@@ -167,7 +167,8 @@ describe('the kind of an operation', () => {
       ]),
     );
     const cells = texts(view.container, 'td');
-    expect(cells).toContain('ReviewAccept word analysis');
+    // A space after the kind, so the row reads as words (RPF3-E: "JobAssistant job:").
+    expect(cells).toContain('Review Accept word analysis');
     expect(cells).toContain('changed bee');
     expect(view.container.querySelectorAll('[data-operation-kind]')).toHaveLength(1);
     await view.unmount();

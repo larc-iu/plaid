@@ -34,13 +34,17 @@ const unitLabel = (entry) =>
 export const KindChip = ({ kind }) => {
   const label = operationKindLabel(kind);
   if (!label) return null;
+  // A space after it, not a margin: the row's text reads "Job Assistant
+  // job: ...", never "JobAssistant job:" (RPF3-E).
   return (
-    <span
-      data-operation-kind={kind}
-      className="mr-1.5 inline-block rounded border px-1.5 align-[1px] text-[11px] font-medium text-muted-foreground"
-    >
-      {label}
-    </span>
+    <>
+      <span
+        data-operation-kind={kind}
+        className="inline-block rounded border px-1.5 align-[1px] text-[11px] font-medium text-muted-foreground"
+      >
+        {label}
+      </span>{' '}
+    </>
   );
 };
 
