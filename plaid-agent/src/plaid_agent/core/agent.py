@@ -1501,6 +1501,7 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
             key = (name, raw)
             repeated = False
             nothing = False
+            already = False
             told = None
             cut = False
             saw = None
@@ -1530,6 +1531,9 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
                 # is never read as the call's doing.
                 planned_before = held_changes(ws)
                 before = _plan_snapshot(ws) if plan_call else None
+                # How many plan ops a call replaced on targets the plan
+                # already held (``add_op``'s ``replaced``).
+                replaced_before = getattr(ws, 'replaced', 0)
                 line = kit.tracer.progress(name, named_args(ws, args))
                 on_progress(min(85, 8 + rounds * 5), line)
                 ws.announced = line
@@ -1575,8 +1579,12 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
                         told = again_label(made[key] or kit.tracer.describe(name, named_args(ws, args)))
                     else:
                         # A plan call that went through and left the plan as
-                        # it was planned nothing, and its step says so.
+                        # it was planned nothing, and its step says so: as
+                        # already in the plan when it restated changes the
+                        # plan held (CC-A T5: a link analyze_sentence had
+                        # planned, linked again), else as nothing to change.
                         nothing = unchanged
+                        already = unchanged and getattr(ws, 'replaced', 0) > replaced_before
                         made[key] = told
             if not failed:
                 ran.add(name)
@@ -1593,7 +1601,8 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
                                     saw=saw, round_id=rnd['id'] if keeper is not None else None,
                                     said=rnd.get('said') if first else None,
                                     thought=first and keeper is not None and bool(rnd.get('thinking')),
-                                    nothing=(nothing or repeated) and not failed, told=told, again=repeated))
+                                    nothing=(nothing or repeated) and not failed, told=told, again=repeated,
+                                    already=already and not failed))
             if keeper is not None and first:
                 # The round's text and reasoning are on its first step now,
                 # not the call's.

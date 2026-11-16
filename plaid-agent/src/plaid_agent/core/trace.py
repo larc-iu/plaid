@@ -298,6 +298,19 @@ def nothing_label(label: str) -> str:
     return NOTHING + label
 
 
+ALREADY = 'Already in the plan: '
+
+
+def already_label(label: str) -> str:
+    """The line for a plan call that restated changes the plan already
+    held, leaving it as it was: "Already in the plan: linking ..." where it
+    would have said "Planned linking ..." (CC-A T5)."""
+    for done, _tried in _FAILED_VERBS:
+        if label.startswith(done):
+            return ALREADY + label[len(done):]
+    return ALREADY + label
+
+
 AGAIN = 'Nothing staged again: '
 
 
@@ -321,7 +334,7 @@ def trace_step(tracer: Tracer, call_id: str, name: str, args: Dict[str, Any],
                saved: Optional[List[str]] = None,
                saw: Optional[List[Dict[str, Any]]] = None, round_id: Optional[str] = None,
                said: Optional[str] = None, thought: bool = False, nothing: bool = False,
-               told: Optional[str] = None, again: bool = False) -> Dict[str, Any]:
+               told: Optional[str] = None, again: bool = False, already: bool = False) -> Dict[str, Any]:
     """One trace item. ``document`` rides along on a document read so the
     summary can count distinct documents without re-reading the arguments.
     ``failed`` marks a call the tool refused: it keeps its kind (the tab
@@ -343,7 +356,8 @@ def trace_step(tracer: Tracer, call_id: str, name: str, args: Dict[str, Any],
     where the arguments alone would misread it: a value kept out of a
     corpus-wide change is not a change planned. ``again`` marks the same
     plan call made a second time, which ``told`` already says
-    (:func:`again_label`)."""
+    (:func:`again_label`). ``already`` marks a plan call that left the
+    plan as it was by restating changes it held (:func:`already_label`)."""
     kind = tracer.call_kind(name, args)
     if told and not failed:
         label = told
@@ -355,7 +369,8 @@ def trace_step(tracer: Tracer, call_id: str, name: str, args: Dict[str, Any],
     if shown and not failed:
         label = f'{label}: {say_saw(shown)}'
     item = {'id': call_id, 'name': name, 'kind': kind,
-            'label': failed_label(label) if failed else nothing_label(label) if nothing and not again else label}
+            'label': failed_label(label) if failed else (already_label(label) if already else nothing_label(label))
+            if nothing and not again else label}
     if failed:
         item['failed'] = True
         if error_kind:

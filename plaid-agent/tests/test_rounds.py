@@ -619,6 +619,40 @@ def test_a_plan_call_that_planned_nothing_says_so(monkeypatch):
     assert hit['label'] == 'Planned replacing hit' and 'nothing' not in hit and hit['planned'] == 1
 
 
+def test_a_plan_call_whose_change_the_plan_already_held_says_already_in_the_plan(monkeypatch):
+    """CC-A T5: link_entry on a morpheme analyze_sentence had already planned
+    linked to the same entry restated the planned link (the op replaced the
+    plan's own, same target): the plan was unchanged and the step read
+    "Nothing to change: linking 1 morpheme to ...", read as a failure. A
+    call that left the plan as it was by restating what the plan holds
+    (the workspace's ``replaced`` moved) reads "Already in the plan: ..."."""
+    from plaid_agent.core.trace import PLAN
+    tracer = Tracer(kind=lambda n: PLAN, describe=lambda n, a: f'Planned linking {a["q"]}',
+                    progress=lambda n, a: 'Planning…')
+
+    class PlanWs(Ws):
+        def __init__(self):
+            self.ops = [{'kind': 'link', 'v': 1}]
+            self.replaced = 0
+
+    def call(ws, name, args):
+        if args['q'] == 'again':
+            ws.ops[0] = {'kind': 'link', 'v': 1}
+            ws.replaced += 1
+        return 'Staged 0 changes.'
+    client = FakeClient()
+    ws = PlanWs()
+    ws.rounds = RoundKeeper(_store(client), 'c1')
+    monkeypatch.setattr(agent.litellm, 'completion', _model([
+        _calls(('c1', 'link', '{"q": "again"}'), ('c2', 'link', '{"q": "none"}')), _reply('ok')]))
+    turn = run_turn(ModelConfig(model='fake/m', stream=False),
+                    Toolkit(tools_for=lambda ws: [], call_tool=call, tracer=tracer), ws, 'system',
+                    [{'role': 'user', 'content': 'hi'}])
+    again, none = turn.steps
+    assert again['label'] == 'Already in the plan: linking again' and again['nothing'] is True
+    assert none['label'] == 'Nothing to change: linking none'
+
+
 def test_a_request_refused_as_too_long_is_asked_again_on_a_transcript_held_to_the_window_it_named(monkeypatch):
     """H13-PANEL-1: the window is learned from the refusal, kept for the
     process, and the call asked once more with older results dropped."""
