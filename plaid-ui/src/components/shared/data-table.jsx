@@ -8,6 +8,7 @@ import { SearchInput, ListCount, ListPager, SortHeader } from './list-search.jsx
 import { Loading } from './Loading.jsx';
 import { pageKey, usePagedList } from '../../hooks/usePagedList.js';
 import { listPrefKey, useStickySort } from '../../hooks/useStickyState.js';
+import { sortRows } from '../../lib/sortRows.js';
 import { useScrollEdges } from '../../hooks/useScrollEdges.js';
 import { fadeStyle } from '../../lib/scrollEdges.js';
 import { ScrollEdgeCue } from './ScrollEdgeCue.jsx';
@@ -48,24 +49,6 @@ import { ScrollEdgeCue } from './ScrollEdgeCue.jsx';
 //
 // `more` is for rows the server holds past the ones loaded (ListPager's `more`):
 // Next page on the last loaded page fetches them.
-
-/**
- * Order two values, with a missing one counting as the smallest.
- *
- * A blank participates in the ordering rather than being pinned to one end,
- * so it flips with the column like every other value. That is what the data
- * usually means: a project with no last change is the least recently changed
- * one, so ascending "Last change" puts it first and descending puts it last.
- */
-const compare = (a, b, own) => {
-  if (a === b) return 0;
-  const aMissing = a === null || a === undefined;
-  const bMissing = b === null || b === undefined;
-  if (aMissing || bMissing) return aMissing ? -1 : 1;
-  if (own) return own(a, b);
-  if (typeof a === 'string' && typeof b === 'string') return a.localeCompare(b);
-  return a < b ? -1 : 1;
-};
 
 export const DataTable = ({
   rows,
@@ -112,13 +95,7 @@ export const DataTable = ({
   const sorted = useMemo(() => {
     const column = columns.find((c) => c.key === sort.key && c.sort);
     if (!column) return matched;
-    const dir = sort.dir === 'asc' ? 1 : -1;
-    // Sorted on a COPY, and the key is the tiebreak so equal values keep a
-    // stable order instead of shuffling between renders.
-    return [...matched].sort((a, b) => {
-      const primary = compare(column.sort(a), column.sort(b), column.compare);
-      return primary !== 0 ? primary * dir : compare(rowKey(a), rowKey(b));
-    });
+    return sortRows(matched, column, sort.dir, rowKey);
   }, [matched, columns, sort, rowKey]);
 
   const paged = usePagedList(sorted, {
