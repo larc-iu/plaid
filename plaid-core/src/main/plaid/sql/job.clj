@@ -26,7 +26,8 @@
             [plaid.sql.pagination :as pg]
             [plaid.sql.project :as prj]
             [plaid.sql.user :as user]
-            [plaid.util.codepoint :as cp])
+            [plaid.util.codepoint :as cp]
+            [plaid.util.name-order :as name-order])
   (:import (java.time Instant)
            (java.util Locale)))
 
@@ -330,12 +331,17 @@
 ;; ============================================================
 
 (defn- live-documents
-  "The ids of project `project-id`'s documents, by name then id."
+  "The ids of project `project-id`'s documents, by name in number order (as
+  the apps list them, `plaid.util.name-order`) then id. SQL cannot order so,
+  hence the sort here."
   [db project-id]
-  (mapv (comp str :id)
-        (psc/q db {:select [:id] :from [:documents]
-                   :where [:= :project_id (str project-id)]
-                   :order-by [:name :id]})))
+  (->> (psc/q db {:select [:id :name] :from [:documents]
+                  :where [:= :project_id (str project-id)]})
+       (map (fn [{:keys [id name]}] [(str id) name]))
+       (sort (fn [[ia na] [ib nb]]
+               (let [c (name-order/compare-names na nb)]
+                 (if (zero? c) (compare ia ib) c))))
+       (mapv first)))
 
 (defn- check-start!
   "The start body's document ids, or a 400 for the first rule it breaks
@@ -377,7 +383,7 @@
 (defn create!
   "Start a job on project `project-id` for `user-id`. `body` is `{:id :app
   :documents :instructions :setup}`. Left out, `documents` is every document of the
-  project, by name then id. `setup`, a map or nil, is stored as JSON text as
+  project, by name in number order then id. `setup`, a map or nil, is stored as JSON text as
   it came and never changed after. Returns the job. Refuses with 400 for a body
   that breaks a rule, 409 `job-active` while the project has an active job,
   and 409 `id-taken` for an id used before."

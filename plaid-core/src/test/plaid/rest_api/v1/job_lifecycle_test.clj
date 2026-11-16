@@ -46,6 +46,23 @@
       (let [j2 (:body (start! st p {:documents [d1 d2 d1]}))]
         (is (= [d1 d2] (mapv :document-id (:job/documents j2))) "each once")))))
 
+(deftest a-job-for-all-documents-takes-them-in-number-order
+  (let [{:keys [st]} (jh/world!)
+        p (str (h/create-test-project admin-request "Numbered"))
+        names ["Text 10" "(10) c" "Text 2" "(2) b" "(1) a"]
+        ids (zipmap names (map #(str (h/create-test-document admin-request p %)) names))
+        _ (jh/grant! p "writers" "starter@example.com")
+        j (:body (start! st p))]
+    (is (= ["(1) a" "(2) b" "(10) c" "Text 2" "Text 10"] (mapv :name (:job/documents j)))
+        "a run of digits counts as its number")
+    (is (= (mapv ids ["(1) a" "(2) b" "(10) c" "Text 2" "Text 10"]) (mapv :document-id (:job/documents j))))
+    (is (= [0 1 2 3 4] (mapv :position (:job/documents j))))
+    (testing "documents named keep the order they were named in"
+      (fix/assert-ok (call admin-request :post (str "/api/v1/jobs/" (:job/id j) "/cancel")))
+      (let [named ["Text 10" "(1) a" "(10) c" "Text 2"]
+            j2 (:body (start! st p {:documents (mapv ids named)}))]
+        (is (= named (mapv :name (:job/documents j2))))))))
+
 (deftest start-refusals
   (let [{:keys [p st]} (jh/world!)
         empty-project (str (h/create-test-project admin-request "Empty"))

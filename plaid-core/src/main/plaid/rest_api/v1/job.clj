@@ -135,7 +135,7 @@
     [""
      {:post {:summary (str "Start a job on the project, for the signed-in writer. <body>app</body> names "
                            "the app (`igt`), <body>documents</body> the documents in order (left out: "
-                           "every document of the project, by name), <body>instructions</body> what the job "
+                           "every document of the project, by name with a run of digits as its number), <body>instructions</body> what the job "
                            "is to do, required, <body>setup</body> an optional JSON object of what the job was "
                            "set up with, kept as sent, returned on every read and never changed (at most 4,000 "
                            "characters as JSON). 409 with <code>job-active</code> while the project has a job "
