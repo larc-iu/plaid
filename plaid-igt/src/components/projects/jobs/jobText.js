@@ -336,13 +336,32 @@ const notReadThrough = (d) => d?.state === 'done' && d.counts?.notWalked === tru
 
 // A document's sentences as the Documents table says them: those worked of
 // its sentences, and those skipped, "0 of 2, 2 skipped" (REV-RPF-P-9).
-export const documentSentencesText = (d) => {
+// A document walked after a selection's piece only for its sentences with
+// something empty (`narrowed`, RPF3 round 3) counts against all its
+// sentences, the others said as having nothing to fill: "1 of 8, 7 with
+// nothing to fill", never "1 of 1".
+export const documentSentencesText = (d, narrowed = false) => {
   if (notReadThrough(d)) return 'Not read through';
   if (d.targets === null || d.targets === undefined) return '';
   const skipped = Math.min(skippedCount(d), d.done ?? 0);
-  const worked = `${((d.done ?? 0) - skipped).toLocaleString()} of ${d.targets.toLocaleString()}`;
-  return skipped > 0 ? `${worked}, ${skipped.toLocaleString()} skipped` : worked;
+  const all = narrowed && d.sentences > d.targets ? d.sentences : d.targets;
+  const worked = `${((d.done ?? 0) - skipped).toLocaleString()} of ${all.toLocaleString()}`;
+  const said = [
+    ...(skipped > 0 ? [`${skipped.toLocaleString()} skipped`] : []),
+    ...(all > d.targets ? [`${(all - d.targets).toLocaleString()} with nothing to fill`] : []),
+  ];
+  return [worked, ...said].join(', ');
 };
+
+// Whether a document was walked after a selection's piece only for its
+// sentences with something empty: worked apart (not read or not shown) under
+// a plan of the whole selection that fills something.
+export const walkedForEmpty = (plan, documentId) =>
+  plan?.pieces === 'selection' &&
+  (plan.fills?.length ?? plan.fillsNames?.length ?? 0) > 0 &&
+  (plan.fallback || []).some(
+    (f) => f.documentId === documentId && (f.reason === 'not-read' || f.reason === 'not-shown'),
+  );
 
 // The report's documents counted as the page says them (REV-RPF3-4): done,
 // not read through, skipped, stopped partway and not reached, each document

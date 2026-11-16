@@ -54,6 +54,7 @@ import {
   wroteNothing,
   allSkipped,
   documentSentencesText,
+  walkedForEmpty,
 } from './jobText.js';
 
 /**
@@ -552,7 +553,8 @@ const JobDocuments = ({ job, projectId }) => {
       key: 'done',
       label: 'Sentences',
       align: 'right',
-      render: (d) => documentSentencesText(d),
+      render: (d) =>
+        documentSentencesText(d, walkedForEmpty(job.report?.plan ?? null, d.documentId)),
     },
   ];
   if ([...reported.values()].some((d) => leftText(d) !== null)) {

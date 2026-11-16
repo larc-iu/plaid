@@ -1652,6 +1652,37 @@ describe('the job page', () => {
     await v.unmount();
   });
 
+  // RPF3 round 3: a document walked after the selection's piece only for its
+  // one sentence with something empty reads against all its sentences.
+  it('counts a document walked only where it was empty against all its sentences', async () => {
+    const docs = [
+      {
+        ...jobOf().documents[0],
+        state: 'done',
+        sentences: 8,
+        done: 1,
+        targets: 1,
+        counts: { changes: 1 },
+      },
+    ];
+    const plan = {
+      pieces: 'selection',
+      by: 'model',
+      fills: ['L1'],
+      fillsNames: ['Gloss'],
+      fallback: [{ documentId: 'd1', reason: 'not-read' }],
+    };
+    const job = jobOf({
+      state: 'done',
+      documents: docs,
+      report: { ...REPORT, plan, documents: docs },
+    });
+    const v = await mount(clientOf(job));
+    const rows = all(v.container, 'tbody tr').map((r) => [...r.querySelectorAll('td')].map(text));
+    expect(rows[0].slice(1, 3)).toEqual(['Done', '1 of 8, 7 with nothing to fill']);
+    await v.unmount();
+  });
+
   // REV-RPF3-6: never a raw user id. Another person by the name the
   // directory gives, else "another user".
   it('names who stopped or undid the job, never by a raw id', async () => {
