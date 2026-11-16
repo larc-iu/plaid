@@ -933,6 +933,8 @@ It can also analyze the first few sentences as an ordinary plan for you to corre
 
 It then drafts the job as a card in the conversation: the documents, what the job **Fills**, whether its **Text** may be edited, and the **Instructions**, which you can edit.
 A job that may edit the text can be held to fill only the words it adds, and its card then says **Fills only the words this job adds**.
+A word the job retypes whole, keeping no letter of the old word, counts as a word it adds.
+The limit covers values, analyses and links on words and sentences, not lexicon entries.
 To change what the job fills or whether it may edit the text, tell the assistant, and it drafts a new card.
 **Start job** on the card starts the job, and **Discard** drops it.
 The card keeps how it ended, with a link to the job's page once the job has started.
