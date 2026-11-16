@@ -53,12 +53,31 @@ const BADGES = {
 };
 
 const Documents = ({ card, projectId }) => {
+  const [open, setOpen] = useState(false);
   if (card.all) return <>All documents ({card.count.toLocaleString()})</>;
   const docs = card.documents || [];
-  const shown = docs.slice(0, JOB_CARD_NAMES);
+  const shown = open ? docs : docs.slice(0, JOB_CARD_NAMES);
   // A settled card keeps only the first names (plaid-agent conversation.py),
-  // so the rest is counted from `count`.
+  // so the rest is counted from `count`. Names the card holds open in place,
+  // and a started card's others are on its job's page (RPF3-E, RP2-3).
   const more = (card.count ?? docs.length) - shown.length;
+  const moreText = `and ${more.toLocaleString()} more`;
+  let rest = null;
+  if (more > 0 && docs.length > shown.length) {
+    rest = (
+      <button type="button" className="underline" onClick={() => setOpen(true)}>
+        {moreText}
+      </button>
+    );
+  } else if (more > 0 && card.status === 'started' && card.jobId) {
+    rest = (
+      <AppLink className="underline" to={jobPath(projectId, card.jobId)}>
+        {moreText}
+      </AppLink>
+    );
+  } else if (more > 0) {
+    rest = moreText;
+  }
   return (
     <>
       {shown.map((d, i) => (
@@ -69,7 +88,7 @@ const Documents = ({ card, projectId }) => {
           </AppLink>
         </span>
       ))}
-      {more > 0 && ` and ${more.toLocaleString()} more`}
+      {rest && <> {rest}</>}
     </>
   );
 };

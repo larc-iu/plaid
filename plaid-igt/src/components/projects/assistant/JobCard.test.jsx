@@ -89,6 +89,27 @@ describe('the job card', () => {
     expect(link.getAttribute('href')).toBe('/projects/p1/documents/d1');
   });
 
+  // RPF3-E (RP2-3): "and 7 more" opens in place where the card holds the
+  // names, and leads to the job's page where a started card no longer does.
+  it('opens its other documents in place, or on its job’s page', async () => {
+    const { v } = await draw({ card: card({ documents: docs(7), count: 7 }) });
+    await v.step(() => button(v, 'and 2 more').click());
+    expect(text(v)).toContain('Story 5, Story 6, Story 7');
+    expect(button(v, 'and 2 more')).toBeNull();
+    const started = await draw({
+      card: card({
+        documents: docs(5),
+        count: 12,
+        status: 'started',
+        jobId: CARD_ID,
+        sentBrief: 'x',
+      }),
+    });
+    expect(byText(started.v.container, 'a', 'and 7 more').getAttribute('href')).toBe(
+      `/projects/p1/jobs/${CARD_ID}`,
+    );
+  });
+
   it('counts the documents a settled card no longer lists by name', async () => {
     const { v } = await draw({
       card: card({ documents: docs(5), count: 12, status: 'discarded' }),
