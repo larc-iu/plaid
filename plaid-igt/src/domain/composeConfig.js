@@ -129,6 +129,9 @@ export function rowsToConfig(rows) {
   return { codes, removed };
 }
 
+/** The problem a row has when another listed row has its code. */
+export const DUPLICATE_CODE = 'This code already exists.';
+
 /**
  * What is wrong with one row, as a list of reasons the settings screen can
  * show. `others` are the other rows, for the duplicate check.
@@ -144,7 +147,7 @@ export function validateCode(row, others = []) {
   if (code.includes('\\')) problems.push('A code cannot contain a backslash.');
   if (!isFilledString(row?.char)) problems.push('Enter a character.');
   if (others.some((o) => o !== row && o.code === code && o.origin !== 'removed' && code !== '')) {
-    problems.push('This code already exists.');
+    problems.push(DUPLICATE_CODE);
   }
   return problems;
 }

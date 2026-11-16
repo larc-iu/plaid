@@ -84,7 +84,10 @@ const save = async (page) =>
     await settle();
   });
 
-beforeEach(() => localStorage.clear());
+beforeEach(() => {
+  localStorage.clear();
+  Element.prototype.scrollIntoView = vi.fn();
+});
 
 describe('the labels', () => {
   it('heads the columns Code, Character, Note and Last modified', async () => {
@@ -155,7 +158,7 @@ describe('a new row given a built-in code', () => {
     const fresh = field.closest('[data-code-row]');
     expect(fresh.dataset.codeRow).toBe('sw');
     expect(fresh.querySelector('input[aria-label="Code"]')).toBe(field);
-    expect(fresh.textContent).toContain('This code already exists.');
+    expect(fresh.textContent).toContain('This code already exists: \\sw is ə.');
     expect(fresh.querySelector('button[aria-label="Reset code sw"]')).toBeNull();
     await view.unmount();
   });
@@ -173,6 +176,92 @@ describe('a new row given a built-in code', () => {
     expect(view.container.querySelectorAll('[data-code-row="sw"]')).toHaveLength(1);
     expect(button(view.container, 'Save').disabled).toBe(true);
     await view.unmount();
+  });
+});
+
+describe('a code that clashes with another', () => {
+  // The new row, found by its editable Code field, and the other row of the
+  // same code, which has none.
+  const newRow = (c) => c.querySelector('input[aria-label="Code"]').closest('[data-code-row]');
+  const builtInRowOf = (c, code) =>
+    [...c.querySelectorAll(`[data-code-row="${code}"]`)].find(
+      (r) => !r.querySelector('input[aria-label="Code"]'),
+    );
+  const typeNew = async (view, code, extra = {}) => {
+    await view.step(() => button(view.container, 'Add code').click());
+    const fresh = row(view.container, '');
+    const field = fresh.querySelector('input[aria-label="Code"]');
+    field.focus();
+    await view.step(() => type(field, code));
+    if (extra.char)
+      await view.step(() => type(fresh.querySelector('input[aria-label="Character"]'), extra.char));
+    if (extra.note)
+      await view.step(() => type(fresh.querySelector('input[aria-label="Note"]'), extra.note));
+    field.focus();
+    return field;
+  };
+  const showIn = (r) => [...r.querySelectorAll('button')].find((b) => b.textContent === 'Show');
+
+  it('names what the other code types, and its note cut short', async () => {
+    const { view } = await open({
+      codes: [{ code: 'ng', char: 'ŋ̊', description: 'voiceless eng, as in the 1992 survey' }],
+      removed: [],
+    });
+    const field = await typeNew(view, 'ng');
+    const text = newRow(view.container).textContent;
+    expect(text).toContain('This code already exists: \\ng is ŋ̊ (voiceless eng, as in…).');
+    expect(showIn(newRow(view.container))).toBeDefined();
+    expect(document.activeElement).toBe(field);
+    await view.unmount();
+  });
+
+  it('Show clears a search that hides the other row, scrolls to it, marks it and focuses it', async () => {
+    const { view } = await open();
+    await typeNew(view, 'sw', { note: 'mine' });
+    await search(view, 'mine');
+    expect(builtInRowOf(view.container, 'sw')).toBeUndefined();
+    await view.step(() => showIn(newRow(view.container)).click());
+    await view.step(settle);
+    const target = builtInRowOf(view.container, 'sw');
+    expect(target).toBeDefined();
+    expect(view.container.querySelector('input[aria-label="Search codes"]').value).toBe('');
+    expect(Element.prototype.scrollIntoView).toHaveBeenCalledWith({ block: 'center' });
+    expect(Element.prototype.scrollIntoView.mock.contexts.at(-1)).toBe(target);
+    expect(target.classList.contains('located-flash')).toBe(true);
+    expect(document.activeElement).toBe(target.querySelector('input[aria-label="Character"]'));
+    // Both ways out are on it.
+    expect(target.querySelector('button[aria-label="Delete code sw"]')).not.toBeNull();
+    await view.unmount();
+  });
+
+  it('works between two new rows', async () => {
+    const { view } = await open();
+    const first = await typeNew(view, 'qq', { char: 'x' });
+    const second = await typeNew(view, 'qq', { char: 'y' });
+    const rowOf = (field) => field.closest('[data-code-row]');
+    expect(rowOf(second).textContent).toContain('This code already exists: \\qq is x.');
+    expect(rowOf(first).textContent).toContain('This code already exists: \\qq is y.');
+    await view.step(() => showIn(rowOf(second)).click());
+    await view.step(settle);
+    expect(Element.prototype.scrollIntoView.mock.contexts.at(-1)).toBe(rowOf(first));
+    expect(document.activeElement).toBe(first);
+    await view.unmount();
+  });
+
+  it('is no clash with a built-in the project deleted', async () => {
+    const page = await open({ codes: [], removed: ['sw'] });
+    const c = () => page.view.container;
+    await typeNew(page.view, 'sw', { char: 'ɘ' });
+    expect(c().textContent).not.toContain('This code already exists');
+    expect(button(c(), 'Save').disabled).toBe(false);
+    await save(page);
+    await page.reopen();
+    await search(page.view, 'sw');
+    const rows = [...c().querySelectorAll('[data-code-row="sw"]')];
+    expect(rows).toHaveLength(1);
+    expect(rows[0].querySelector('input[aria-label="Character"]').value).toBe('ɘ');
+    expect(c().textContent).not.toContain('This code already exists');
+    await page.view.unmount();
   });
 });
 

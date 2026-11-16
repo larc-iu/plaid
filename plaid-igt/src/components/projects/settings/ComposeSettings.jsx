@@ -16,6 +16,7 @@ import {
   isBuiltInCode,
   rowsToConfig,
   validateCode,
+  DUPLICATE_CODE,
 } from '@/domain/composeConfig';
 import { textIncludes } from '@ui/domain/collation.js';
 import { TYPE } from '@ui/lib/typeScale.js';
@@ -60,6 +61,18 @@ const sortKey = (r) => r.was.code;
 // new row stays the project's own, an editable code, even when what is typed
 // into it is a built-in code: the duplicate check says so.
 const isBuiltInRow = (r) => !!r.was && isBuiltInCode(r.was.code);
+
+// How long a row the reader was taken to stays marked (located-flash).
+const FLASH_MS = 2400;
+const NOTE_SHOWN = 20;
+
+// "This code already exists: \sw is ə (schwa)." for the row `other`.
+const clashText = (other) => {
+  const note = other.description || '';
+  const cut = note.length > NOTE_SHOWN ? `${note.slice(0, NOTE_SHOWN)}…` : note;
+  const what = other.char ? ` is ${other.char}${cut ? ` (${cut})` : ''}` : '';
+  return `${DUPLICATE_CODE.slice(0, -1)}: \\${other.code}${what}.`;
+};
 
 const edited = (r) =>
   !r.was ||
@@ -144,6 +157,39 @@ export const ComposeSettings = ({ project, projectId, client, onProjectUpdate })
     pageSize: TALL_LIST_PAGE_SIZE,
     resetKey: `${q}:${sort.key}:${sort.dir}`,
   });
+
+  // The other listed row with this row's code, for the duplicate message.
+  const clashOf = (row) => live.find((o) => o !== row && o.code === row.code);
+
+  // Show: the row a code clashes with, brought onto the page, scrolled to the
+  // middle, marked and focused. The search is cleared when it hides the row.
+  const listRef = useRef(null);
+  const [locate, setLocate] = useState(null);
+  const show = (other) => {
+    if (!matches.includes(other)) setQ('');
+    setLocate(other.uid);
+  };
+  const { page, setPage } = paged;
+  useEffect(() => {
+    if (!locate) return;
+    const at = ordered.findIndex((r) => r.uid === locate);
+    if (at < 0) {
+      setLocate(null);
+      return;
+    }
+    // Set even when it is the page shown: a search just cleared turns the
+    // list back to its first page in this same pass.
+    const target = Math.floor(at / TALL_LIST_PAGE_SIZE);
+    setPage(target);
+    if (target !== page) return;
+    const el = listRef.current?.querySelector(`[data-row-uid="${locate}"]`);
+    if (!el) return;
+    setLocate(null);
+    el.scrollIntoView({ block: 'center' });
+    el.classList.add('located-flash');
+    setTimeout(() => el.classList.remove('located-flash'), FLASH_MS);
+    el.querySelector('input, button')?.focus();
+  }, [locate, ordered, page, setPage]);
 
   const patch = (row, next) =>
     setDraft((rows) => rows.map((r) => (r === row ? { ...r, ...next } : r)));
@@ -260,7 +306,7 @@ export const ComposeSettings = ({ project, projectId, client, onProjectUpdate })
         </div>
 
         <div className="overflow-x-auto rounded-md border">
-          <div className="min-w-[36rem]">
+          <div className="min-w-[36rem]" ref={listRef}>
             <div className="border-b bg-muted/30 py-2 text-xs">
               <div className={GRID} data-compose-header>
                 <SortHeader field="code" label="Code" sort={sort} onSort={onSort} />
@@ -283,6 +329,7 @@ export const ComposeSettings = ({ project, projectId, client, onProjectUpdate })
                   key={row.uid}
                   className="border-b py-1.5 last:border-b-0"
                   data-code-row={row.code}
+                  data-row-uid={row.uid}
                 >
                   <div className={GRID} data-compose-grid>
                     <div className="min-w-0">
@@ -349,11 +396,26 @@ export const ComposeSettings = ({ project, projectId, client, onProjectUpdate })
                       </Button>
                     </div>
                   </div>
-                  {problems.map((p) => (
-                    <p key={p} className="px-3 pt-1 text-xs text-destructive">
-                      {p}
-                    </p>
-                  ))}
+                  {problems.map((p) => {
+                    const other = p === DUPLICATE_CODE ? clashOf(row) : null;
+                    return (
+                      <p key={p} className="px-3 pt-1 text-xs text-destructive">
+                        {other ? clashText(other) : p}
+                        {other && (
+                          <>
+                            {' '}
+                            <Button
+                              variant="link"
+                              className="h-auto p-0 text-xs"
+                              onClick={() => show(other)}
+                            >
+                              Show
+                            </Button>
+                          </>
+                        )}
+                      </p>
+                    );
+                  })}
                 </div>
               );
             })}
