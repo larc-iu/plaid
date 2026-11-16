@@ -1356,6 +1356,7 @@ Every code is the project's to change.
 Under **Special characters**, each code is a row with its **Code**, its **Character**, a **Note**, and when the project **Last modified** it.
 Search for a code to see what it types, and click a column heading to sort by it.
 Point a code at a different character, delete it, or add a two-character code of your own, then **Save**.
+A code that is already in the list says what the existing one types, and **Show** brings that one into view.
 A change applies to everyone working on the project.
 
 The reset button beside a changed code puts it back as it ships.
