@@ -529,3 +529,73 @@ test('with an assistant online, the Jobs tab still opens the Start job form, and
     await cleanUp(service, serviceId);
   }
 });
+
+// RP-2: a setup conversation's first reply staged a plan with Approve, and a
+// later reply drafted the job card. The plan stayed approvable beside the job.
+// A reply that carries a job card now marks every plan still waiting
+// replaced (RPF-A, b012f7bac): the plan card reads Replaced with no Approve,
+// in the record as on the page, and the box no longer asks about it.
+test('a plan staged before a job card is drafted is replaced once the card appears', async ({
+  page,
+}) => {
+  test.setTimeout(180_000);
+  skipUnlessAgent(test);
+  await seedAuth(page);
+  const serviceId = 'igt:assist:e2e-plan-then-card';
+  const service = await startIgtAssistant({
+    token: readToken().token,
+    projectId,
+    serviceId,
+    script: [
+      {
+        content: '',
+        calls: [
+          {
+            name: 'set_field',
+            arguments: { document: DOC, refs: ['s1.w1.m1'], field: 'Gloss', value: 'go' },
+          },
+        ],
+      },
+      { content: 'Here is kai glossed in sentence 1.' },
+      ...draft(BRIEF),
+    ],
+  });
+  try {
+    await waitOnline(serviceId, service);
+    await page.goto(`/#/projects/${projectId}`);
+    await page.getByRole('button', { name: 'Set up job' }).click();
+    const panel = page.getByRole('complementary');
+    await expect(panel.getByText('Say what the job should do.', { exact: true })).toBeVisible();
+
+    await send(page, 'Gloss kai as "go".');
+    const plan = panel.getByText('Proposed changes', { exact: true }).locator('xpath=../..');
+    await expect(plan).toBeVisible({ timeout: 60_000 });
+    await expect(plan.getByRole('button', { name: 'Approve as unverified' })).toBeVisible();
+    const box = panel.getByRole('textbox', { name: 'Message' });
+    await expect(box).toHaveAttribute('placeholder', /^Approve or discard the plan above/);
+
+    await send(page, 'Make it a job.');
+    await expect(panel.getByTestId('job-card')).toBeVisible({ timeout: 60_000 });
+    await expect(plan).toContainText('Replaced');
+    await expect(plan.getByRole('button', { name: /^Approve/ })).toHaveCount(0);
+    await expect(box).not.toHaveAttribute('placeholder', /Approve or discard/);
+    // The record, as the service settled it.
+    const records = await Promise.all(
+      (await client.userData.list(userId, { prefix: `igt:assistant:${projectId}:conv:` })).map(
+        async (e) => (await client.userData.get(userId, e.key)).value,
+      ),
+    );
+    const stored = records.find((c) => (c.display || []).some((d) => d.job));
+    const staged = stored.display.find((d) => d.plan);
+    expect(staged.status).toBe('replaced');
+    expect(stored.display.find((d) => d.job).job.status ?? null).toBe(null);
+
+    // The same after a reload.
+    await page.reload();
+    await expect(panel.getByTestId('job-card')).toBeVisible({ timeout: 30_000 });
+    await expect(plan).toContainText('Replaced');
+    await expect(plan.getByRole('button', { name: /^Approve/ })).toHaveCount(0);
+  } finally {
+    await cleanUp(service, serviceId);
+  }
+});
