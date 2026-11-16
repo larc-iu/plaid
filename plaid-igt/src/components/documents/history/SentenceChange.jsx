@@ -1,8 +1,8 @@
 import { Link } from 'react-router-dom';
 import { cn } from '@ui/lib/utils';
-import { countOf } from '@ui/lib/plural.js';
 import { APP_ROUTES } from '@/appRoutes.js';
 import { ChangeValue } from './ChangeValue.jsx';
+import { kindsLine } from './changeMarks.js';
 
 // Rows whose values are glosses, set in small caps as the grid sets them.
 const GLOSS_KINDS = new Set(['word', 'morph']);
@@ -42,7 +42,7 @@ export const SentenceChange = ({ s, dir, projectId, documentId }) => (
           {STATE_WORDS[s.state]}
         </span>
       )}
-      <span className="text-muted-foreground">{countOf(s.changes, 'change')}</span>
+      <span className="text-muted-foreground">{kindsLine(s.kinds || {})}</span>
       {s.changedSince && <span className="text-muted-foreground">Changed again later</span>}
     </div>
     <div className="overflow-x-auto">

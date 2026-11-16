@@ -92,12 +92,12 @@ const settle = () =>
 describe('Undo over a document History entry’s changes', () => {
   it('is offered to a maintainer, not to a writer, a reader, or while a run writes', async () => {
     await mount({ user: { id: 'boss' } });
-    expect(view.container.textContent).toContain('1 change, 1 replaced a person’s value');
+    expect(view.container.textContent).toContain('1 value changed, 1 replaced a person’s value');
     expect(undoButton()).not.toBeNull();
     await view.unmount();
     for (const user of [{ id: 'ana' }, { id: 'rea' }, null]) {
       await mount({ user });
-      expect(view.container.textContent).toContain('1 change');
+      expect(view.container.textContent).toContain('1 value changed');
       expect(undoButton()).toBeNull();
       await view.unmount();
     }

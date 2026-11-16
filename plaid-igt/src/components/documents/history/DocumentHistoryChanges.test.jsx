@@ -124,9 +124,11 @@ describe('DocumentHistoryChanges', () => {
       limit: CHANGE_ROWS_PAGE,
       cursor: undefined,
     });
-    expect(count()).toBe('2 changes, 1 replaced a person’s value');
-    // What the count is made of, in the nouns the job's report uses (RP-3).
-    expect(kinds()).toBe('2 values');
+    // What the count is made of, in the nouns the job's report uses, and no
+    // bare count of "changes" to read against another screen's (RP-3,
+    // REV-RPF-P-1).
+    expect(count()).toBe('2 values changed, 1 replaced a person’s value');
+    expect(kinds()).toBeUndefined();
     expect(sentences()).toHaveLength(1);
     const gloss = cellsOf('morph:Gloss');
     expect(gloss[0]).toMatchObject({ change: 'added', was: null });
@@ -159,7 +161,7 @@ describe('DocumentHistoryChanges', () => {
       doc,
       clientOf({ document: [[{ kind: 'span', id: 'g9', layer: 'msl-0', after: made }]] }),
     );
-    expect(count()).toBe('1 change, 0 replaced a person’s value');
+    expect(count()).toBe('1 value changed, 0 replaced a person’s value');
     const cell = view.container.querySelector('tr[data-row="morph:Gloss"] td');
     const pieces = all(cell, '[data-piece]');
     expect(pieces.map((p) => p.dataset.piece)).toEqual(['m-1', 'm-9']);
@@ -334,8 +336,7 @@ describe('DocumentHistoryChanges', () => {
       expect.objectContaining({ change: 'changed', now: 'dog', was: 'cat' }),
       expect.objectContaining({ change: 'deleted', column: 'deleted', was: 'sat' }),
     ]);
-    expect(count()).toBe('3 changes, 0 replaced a person’s value');
-    expect(kinds()).toBe('3 words');
+    expect(count()).toBe('3 words changed, 0 replaced a person’s value');
     expect(first.textContent).toContain('Text');
     // The deleted sentence links nowhere: it is not in the document.
     expect(second.querySelector('a')).toBeNull();
@@ -376,7 +377,7 @@ describe('DocumentHistoryChanges', () => {
       limit: CHANGE_ROWS_PAGE,
       cursor: undefined,
     });
-    expect(count()).toBe('3 changes, 0 replaced a person’s value');
+    expect(count()).toBe('3 lexicon entries changed, 0 replaced a person’s value');
     const entries = all(view.container, '[data-entry]');
     expect(entries.map((e) => e.querySelector('a').getAttribute('href'))).toEqual([
       '/vocabularies/v1?item=i1',
@@ -442,7 +443,7 @@ describe('DocumentHistoryChanges', () => {
     });
     await mount(after(), client);
     expect(text()).not.toContain('No changes to show.');
-    expect(count()).toBe('2 changes, 0 replaced a person’s value');
+    expect(count()).toBe('2 other annotations changed, 0 replaced a person’s value');
     expect(sentences()).toHaveLength(0);
     expect(view.container.querySelector('[data-testid="changes-elsewhere"]').textContent).toBe(
       '1 change to other annotations1 change to annotations deleted later',
@@ -541,7 +542,7 @@ describe('DocumentHistoryChanges', () => {
       cursor: '1',
     });
     // The count is final, every row read.
-    expect(count()).toBe('120 changes, 0 replaced a person’s value');
+    expect(count()).toBe('120 values changed, 0 replaced a person’s value');
     expect(sentences()).toHaveLength(50);
     await click(button('Show more sentences'));
     expect(sentences()).toHaveLength(100);
@@ -571,7 +572,7 @@ describe('DocumentHistoryChanges', () => {
       });
       for (let i = 0; i < 5; i++) await Promise.resolve();
     });
-    expect(count()).toBe('120 changes, 0 replaced a person’s value');
+    expect(count()).toBe('120 values changed, 0 replaced a person’s value');
   });
 
   // REV-HD-2: a text edit near the start writes the shifted tokens before
@@ -615,7 +616,7 @@ describe('DocumentHistoryChanges', () => {
     const client = clientOf({ document: chunks(rows, 1000) });
     await mount(doc, client);
     expect(client.audit.changesPage).toHaveBeenCalledTimes(Math.ceil(rows.length / 1000));
-    expect(count()).toBe('1 change, 0 replaced a person’s value');
+    expect(count()).toBe('1 sentence text changed, 0 replaced a person’s value');
     expect(sentences()).toHaveLength(1);
     expect(sentences()[0].textContent).toContain('Sentence 1');
     expect(view.container.querySelector('[data-change]')).not.toBeNull();

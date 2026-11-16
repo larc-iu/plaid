@@ -15,7 +15,7 @@ import { dropPrecedent } from '@/domain/precedentCache';
 import { SentenceChange } from './SentenceChange.jsx';
 import { EntryChangeList } from './EntryChangeList.jsx';
 import { ChangeValue } from './ChangeValue.jsx';
-import { countLine, kindsLine } from './changeMarks.js';
+import { countLine } from './changeMarks.js';
 import { useChangeRows } from './useChangeRows.js';
 import { UndoDialog } from './UndoDialog.jsx';
 
@@ -28,8 +28,8 @@ const SENTENCES_SHOWN = 50;
  * entry (the shell's `historyChanges`): each sentence it changed, in reading
  * order, before and after; then the document's name and metadata, the
  * lexicon entries it created, changed, merged or deleted, and what it changed
- * outside the sentences. A count over it says how many changes, and how many
- * replaced a person's value, which a switch shows alone.
+ * outside the sentences. A line over it says what it changed, by kind, and
+ * how many of those replaced a person's value, which a switch shows alone.
  *
  * Read whole from core before anything is drawn (useChangeRows): this
  * document's rows, and each of its vocabularies' entry rows, since a page of
@@ -175,14 +175,9 @@ export const DocumentHistoryChanges = ({ context, user = null }) => {
         <p className="text-sm text-muted-foreground">No changes to show.</p>
       ) : (
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <div>
-            <p className="text-sm" data-testid="change-count">
-              {countLine(view.changes, view.replaced)}
-            </p>
-            <p className="text-xs text-muted-foreground" data-testid="change-kinds">
-              {kindsLine(view.kinds)}
-            </p>
-          </div>
+          <p className="text-sm" data-testid="change-count">
+            {countLine(view.kinds, view.replaced)}
+          </p>
           <div className="flex flex-wrap items-center gap-2">
             <SegmentedControl
               label="Filter"

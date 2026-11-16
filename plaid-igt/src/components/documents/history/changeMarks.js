@@ -17,24 +17,29 @@ export const provClass = (prov) => PROV_CLASS[prov] ?? '';
 /** What a value's tooltip says of whose it was or is. */
 export const provTitle = (prov) => (prov ? PROV_WORDS[prov] : undefined);
 
-/** "12 changes, 3 replaced a person’s value". */
 // What the changes counted are, by kind (`kinds`, kind to count), in the
 // nouns a job's report uses, in this order: "169 values, 169 morphemes and
-// 151 links" (RP-3).
+// 151 links" (RP-3). Each noun reads before "changed" (REV-RPF-P-1).
 const KIND_WORDS = [
   ['values', 'value', 'values'],
   ['morphemes', 'morpheme', 'morphemes'],
   ['words', 'word', 'words'],
   ['links', 'link', 'links'],
-  ['text', 'text edit', 'text edits'],
+  ['text', 'sentence text', 'sentence texts'],
   ['entries', 'lexicon entry', 'lexicon entries'],
   ['details', 'document detail', 'document details'],
-  ['other', 'other change', 'other changes'],
+  ['other', 'other annotation', 'other annotations'],
 ];
 export const kindsLine = (kinds) =>
   andList(
     KIND_WORDS.filter(([k]) => kinds[k] > 0).map(([k, one, many]) => countOf(kinds[k], one, many)),
   );
 
-export const countLine = (changes, replaced) =>
-  `${countOf(changes, 'change')}, ${replaced.toLocaleString()} replaced a person’s value`;
+// The line over an entry's changes: what it changed, each number with its
+// noun, and how many of those replaced a person's value. "6 values and 5
+// morphemes changed, 1 replaced a person’s value". Never a bare count of
+// "changes", which a job's report counts in its own units: an analysis is
+// one change there and its morphemes and values each a mark here
+// (REV-RPF-P-1).
+export const countLine = (kinds, replaced) =>
+  `${kindsLine(kinds)} changed, ${replaced.toLocaleString()} replaced a person’s value`;
