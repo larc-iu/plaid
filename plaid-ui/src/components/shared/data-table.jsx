@@ -21,9 +21,12 @@ import { ScrollEdgeCue } from './ScrollEdgeCue.jsx';
 // lists and missing from the rest, and the comparator was copied verbatim
 // three times. This owns all of it: search, sort, paging, and the markup.
 //
-// A column is `{key, label, render, sort, align, className, headerClassName}`.
-// `render(row)` draws the cell; `sort(row)` returns the value to order by, and
-// a column WITHOUT it is simply not sortable. Rows arrive already filtered by
+// A column is `{key, label, render, sort, compare, align, className,
+// headerClassName}`. `render(row)` draws the cell; `sort(row)` returns the
+// value to order by, and a column WITHOUT it is simply not sortable.
+// `compare(a, b)`, optional, orders two of those values in place of the
+// plain compare: a document or project name column passes `compareNames`
+// (`domain/collation.js`), so "(2)" comes before "(10)". Rows arrive already filtered by
 // whatever the caller filters on that this cannot know about (a status
 // dropdown, a time window). Text search is this component's job when a
 // `search` prop is given.
@@ -54,11 +57,12 @@ import { ScrollEdgeCue } from './ScrollEdgeCue.jsx';
  * usually means: a project with no last change is the least recently changed
  * one, so ascending "Last change" puts it first and descending puts it last.
  */
-const compare = (a, b) => {
+const compare = (a, b, own) => {
   if (a === b) return 0;
   const aMissing = a === null || a === undefined;
   const bMissing = b === null || b === undefined;
   if (aMissing || bMissing) return aMissing ? -1 : 1;
+  if (own) return own(a, b);
   if (typeof a === 'string' && typeof b === 'string') return a.localeCompare(b);
   return a < b ? -1 : 1;
 };
@@ -112,7 +116,7 @@ export const DataTable = ({
     // Sorted on a COPY, and the key is the tiebreak so equal values keep a
     // stable order instead of shuffling between renders.
     return [...matched].sort((a, b) => {
-      const primary = compare(column.sort(a), column.sort(b));
+      const primary = compare(column.sort(a), column.sort(b), column.compare);
       return primary !== 0 ? primary * dir : compare(rowKey(a), rowKey(b));
     });
   }, [matched, columns, sort, rowKey]);

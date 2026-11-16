@@ -4,7 +4,7 @@ import { DataTable } from './data-table';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../ui/tooltip';
 import { timeAgo, fullTimestamp } from '../../lib/formatTime.js';
 import { notifyWarning } from '../../lib/notify.js';
-import { textIncludes } from '../../domain/collation.js';
+import { compareNames, textIncludes } from '../../domain/collation.js';
 import { wordCountsByDocument } from '../../domain/layerCounts.js';
 import { PendingCell } from './PendingCell.jsx';
 import { EmptyState } from './EmptyState.jsx';
@@ -170,7 +170,8 @@ export const DocumentTable = ({
     {
       key: 'name',
       label: 'Document',
-      sort: (d) => d.name?.toLowerCase() ?? '',
+      sort: (d) => d.name ?? '',
+      compare: compareNames,
       className: 'p-0',
       render: (d) =>
         linked(

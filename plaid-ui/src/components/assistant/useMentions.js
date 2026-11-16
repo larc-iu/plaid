@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { compareNames } from '../../domain/collation.js';
 import { flattenOptions, normalizeOptions } from '../shared/comboboxOptions.js';
 import { activeMention, filterMentions, insertMention, withMentionIds } from './mentions.js';
 
@@ -39,7 +40,13 @@ export const useMentions = ({ client, projectId, enabled, text, setText, inputRe
     let alive = true;
     client.projects
       .listDocumentsPage(projectId, { limit: 1000 })
-      .then((page) => alive && setDocuments(page?.entries || []))
+      // By name in number order: core lists them in plain string order, which
+      // files "(10)" before "(2)".
+      .then(
+        (page) =>
+          alive &&
+          setDocuments([...(page?.entries || [])].sort((a, b) => compareNames(a.name, b.name))),
+      )
       // Without them the list still offers what the screen knows, which is
       // the half a reader is most likely to want.
       .catch(() => alive && setDocuments([]));

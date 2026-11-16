@@ -12,6 +12,7 @@
 // partitioning): each paragraph's last sentence absorbs the trailing newline.
 
 import { pickEn } from './fwdataParser.js';
+import { compareNames } from '../../../../plaid-ui/src/domain/collation.js';
 import { DEFAULT_IGNORED_TOKENS, isTokenIgnored } from '../../domain/igtConfig.js';
 import { countOf } from '../../../../plaid-ui/src/lib/plural.js';
 import { keepTimeRule } from '../../domain/alignmentTimes.js';
@@ -313,7 +314,8 @@ export function buildDocuments(ir, opts = {}) {
     });
   }
 
-  documents.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+  // The order of every document list (compareNames): "Text 2" before "Text 10".
+  documents.sort((a, b) => compareNames(a.name, b.name));
 
   const totalAnalyses = ir.texts
     .flatMap((t) => t.paragraphs.flatMap((p) => p.segments.flatMap((s) => s.analyses)))

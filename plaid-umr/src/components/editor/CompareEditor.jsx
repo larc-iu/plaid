@@ -15,6 +15,7 @@ import { ServiceRunButton } from '@ui/components/services/ServiceRunButton.jsx';
 import { heldBy, runHeldNotice } from '@ui/components/services/runHeld.js';
 import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
 import { canEditProject } from '@ui/domain/permissions.js';
+import { compareNames } from '@ui/domain/collation.js';
 import { useAuth } from '../../contexts/AuthContext.jsx';
 import { useDocumentEditor } from '@ui/hooks/useDocumentEditor.js';
 import { UmrDocument } from '../../domain/UmrDocument.js';
@@ -57,7 +58,8 @@ export const CompareEditor = () => {
   const report = readAdjudication(doc.layerInfo.nodeTokenLayer?.tokens, doc.sentences);
   const canRun = canEditProject(project, user);
 
-  // The project's other documents, for the picker. The one the last report
+  // The project's other documents, for the picker, by name in number order
+  // (compareNames: core lists "(10)" before "(2)"). The one the last report
   // was against is the natural default.
   const [documents, setDocuments] = useState(null);
   const [listError, setListError] = useState(null);
@@ -65,7 +67,15 @@ export const CompareEditor = () => {
     let live = true;
     client.projects
       .listDocuments(projectId)
-      .then((list) => live && setDocuments((list || []).filter((d) => d.id !== documentId)))
+      .then(
+        (list) =>
+          live &&
+          setDocuments(
+            (list || [])
+              .filter((d) => d.id !== documentId)
+              .sort((a, b) => compareNames(a.name, b.name)),
+          ),
+      )
       .catch(
         (error) => live && setListError(humanizeError(error, 'Failed to list the documents.')),
       );

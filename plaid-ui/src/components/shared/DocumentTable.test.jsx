@@ -149,4 +149,30 @@ describe('DocumentTable', () => {
     expect(mine).toEqual(['—', '—']);
     await unmount();
   });
+
+  it('sorts by name in number order, whatever shape the number takes', async () => {
+    localStorage.clear();
+    const documents = [
+      '(10) Frog story',
+      '(2) Pear',
+      '(1) Intro',
+      '10. Ten',
+      '2. Two',
+      'Text 10',
+      'text 2',
+      'Afterword',
+    ].map((name, i) => ({ id: `d${i}`, name, timeModified: '2026-09-01T00:00:00Z' }));
+    const { container, unmount } = await mount({ documents });
+    expect(texts(container, 'tbody tr td:first-child')).toEqual([
+      '(1) Intro',
+      '(2) Pear',
+      '(10) Frog story',
+      '2. Two',
+      '10. Ten',
+      'Afterword',
+      'text 2',
+      'Text 10',
+    ]);
+    await unmount();
+  });
 });

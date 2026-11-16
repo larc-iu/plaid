@@ -175,6 +175,35 @@ describe('the kind of an operation', () => {
   });
 });
 
+describe('the Where column', () => {
+  it('sorts the places by name in number order', async () => {
+    localStorage.clear();
+    const d = deferred();
+    d.at('A');
+    const view = await renderComponent(feed(d, 'A'));
+    const project = { id: 'p', name: 'P' };
+    await view.step(async () =>
+      d.settle(
+        'A',
+        ['(10) Ten', '(2) Two', '(1) One'].map((name, i) => ({
+          ...entry(`e${i}`),
+          projects: [project],
+          documents: [{ id: `d${i}`, name }],
+        })),
+      ),
+    );
+    const where = [...view.container.querySelectorAll('thead button')].find((b) =>
+      b.textContent.startsWith('Where'),
+    );
+    await view.step(() => where.click());
+    const places = [...view.container.querySelectorAll('tbody tr')].map(
+      (tr) => tr.textContent.match(/\((\d+)\)/)?.[1],
+    );
+    expect(places).toEqual(['1', '2', '10']);
+    await view.unmount();
+  });
+});
+
 describe('the href builders the app owes the feed', () => {
   it('are named when one is missing, rather than dropping the links', async () => {
     // Each app routes to a document differently, so the package cannot guess.

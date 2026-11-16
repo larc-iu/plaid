@@ -352,6 +352,30 @@ describe('the shared chrome', () => {
     expect(text()).toContain('New IGT project');
   });
 
+  it('ProjectListPage sorts by name in number order', async () => {
+    localStorage.clear();
+    client.projects.list.mockResolvedValueOnce(
+      ['(10) Ten', 'project 2', '(2) Two', 'Project 10', '(1) One'].map((name, i) => ({
+        id: `p${i}`,
+        name,
+      })),
+    );
+    await mount(
+      <ProjectListPage wordLayerId={() => null} newProject="New project" form={() => null} />,
+      '/projects',
+    );
+    const header = [...view.container.querySelectorAll('thead button')].find((b) =>
+      b.textContent.startsWith('Project'),
+    );
+    const order = () =>
+      [...view.container.querySelectorAll('tbody tr')].map((tr) =>
+        tr.querySelector('td').textContent.trim(),
+      );
+    // The list opens newest first. One click orders it by name, ascending.
+    await view.step(() => header.click());
+    expect(order()).toEqual(['(1) One', '(2) Two', '(10) Ten', 'project 2', 'Project 10']);
+  });
+
   it('ProjectListPage links to the app’s new-project page when it has one', async () => {
     await mount(
       <ProjectListPage

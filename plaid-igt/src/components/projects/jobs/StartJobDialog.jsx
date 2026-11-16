@@ -21,6 +21,7 @@ import {
   DropdownMenuTrigger,
 } from '@ui/components/ui/dropdown-menu';
 import { SearchInput } from '@ui/components/shared/list-search';
+import { compareNames } from '@ui/domain/collation.js';
 import { JOB_SETUP } from '@ui/components/assistant/purposes.js';
 import { useStartConversation } from '@ui/components/assistant/subject.js';
 import { useAssistantAvailable } from '@ui/components/assistant/useAssistantAvailable.js';
@@ -29,10 +30,9 @@ import { IGT_ASSISTANT } from '../assistant/adapter.js';
 import { STARTER_TEXTS, activeJobOf, instructionsLength, jobPath, startJob } from './jobText.js';
 import { InstructionsCount, JobActiveLine, NoWorkerLine } from './jobLines.jsx';
 
-// Natural order, so "Text 2" comes before "Text 10" (RP-9).
-const byName = (a, b) =>
-  (a.name || '').localeCompare(b.name || '', undefined, { numeric: true }) ||
-  a.id.localeCompare(b.id);
+// Number order, so "Text 2" comes before "Text 10" (RP-9), the order of
+// every document list (compareNames).
+const byName = (a, b) => compareNames(a.name, b.name) || a.id.localeCompare(b.id);
 
 // Where the full Assistant tab opens on a new job setup conversation, whose
 // turns are asked from the document when one is named (AssistantTab).

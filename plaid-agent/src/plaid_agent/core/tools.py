@@ -7,7 +7,9 @@ told it can look something up or run code when it cannot.
 """
 
 import inspect
+import re
 import traceback
+import unicodedata
 from typing import Any, Callable, Dict, List, Optional
 
 from .args import clamp_limit, read_int, sentence_number
@@ -363,9 +365,33 @@ def list_documents(ws, pattern: str = None, limit: int = None, offset: int = 0) 
     return documents_page(ws, pattern, limit, offset)
 
 
+_PIECES = re.compile(r'\d+|\D')
+
+
+def _piece(p: str) -> tuple:
+    """One piece of a name as :func:`name_key` compares it: a run of digits as
+    its number, after a space or a mark and before a letter, as the apps'
+    collator files digits. Other characters by code point within their kind."""
+    if p[0].isdigit():
+        return 1, int(p), ''
+    return (2 if p.isalnum() else 0), 0, p
+
+
+def name_key(name: Optional[str]) -> tuple:
+    """The sort key of a document's name, in the order every app lists them
+    (plaid-ui domain/collation.js ``compareNames``, tests/test_name_order.py):
+    case dropped, and a run of digits, in any script, counts as its number, so
+    "(2)" comes before "(10)", "2." before "10." and "Text 2" before "Text 10".
+    Names that are the same that way ("02" and "2") fall back to the name
+    itself. A blank name is the smallest. Marks among themselves and accented
+    letters go by code point here and by the locale in the apps."""
+    s = unicodedata.normalize('NFC', name or '')
+    return tuple(_piece(p) for p in _PIECES.findall(s.casefold())), s
+
+
 def _by_name(docs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """Documents in the order list_documents pages through them."""
-    return sorted(docs, key=lambda d: (d.get('name') or '').casefold())
+    return sorted(docs, key=lambda d: name_key(d.get('name')))
 
 
 def document_lines(docs: List[Dict[str, Any]]) -> List[str]:

@@ -7,7 +7,7 @@ import { timeAgo, fullTimestamp } from '@ui/lib/formatTime.js';
 import { ownerOf } from '@ui/domain/appOwners.js';
 import { notifySuccess, notifyError, humanizeError } from '@/utils/feedback';
 import { findBaselineTextLayer, readInitialized } from '../../domain/igtConfig';
-import { textIncludes } from '@ui/domain/collation.js';
+import { compareNames, textIncludes } from '@ui/domain/collation.js';
 import { projectRole } from '@larc-iu/plaid-client';
 
 // Every project on the server, including the ones this admin has no role in.
@@ -76,7 +76,8 @@ export const AdminProjects = ({ client, currentUser }) => {
     {
       key: 'name',
       label: 'Name',
-      sort: (p) => p.name.toLowerCase(),
+      sort: (p) => p.name,
+      compare: compareNames,
       // A project's name is its way in, and it leads to the app that owns it.
       // Another app is a full page load, so a plain anchor, not a router Link.
       render: (p) => {

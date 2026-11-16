@@ -8,7 +8,7 @@ import { notifyWarning } from '../../lib/notify.js';
 import { Button } from '../ui/button';
 import { LinkedListPage, CountCell, TimeCell, NewLinkButton } from './LinkedListPage.jsx';
 import { wordCountsByProject } from '../../domain/layerCounts.js';
-import { textIncludes } from '../../domain/collation.js';
+import { compareNames, textIncludes } from '../../domain/collation.js';
 import { ProjectTartan } from './ProjectTartan.jsx';
 
 /**
@@ -123,7 +123,8 @@ export const ProjectListPage = ({
       key: 'name',
       label: 'Project',
       fill: true,
-      sort: (p) => p.name?.toLowerCase() ?? '',
+      sort: (p) => p.name ?? '',
+      compare: compareNames,
       cell: (p) => (
         <div className="flex min-w-0 items-center gap-2">
           <ProjectTartan project={p} size={16} className="shrink-0" />

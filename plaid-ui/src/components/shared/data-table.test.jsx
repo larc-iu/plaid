@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import { renderComponent, all } from '../../test/renderComponent.jsx';
 import { DataTable } from './data-table';
-import { textIncludes } from '../../domain/collation.js';
+import { compareNames, textIncludes } from '../../domain/collation.js';
 
 // DataTable is the one browsable table every admin screen uses, so its sort,
 // search and paging are load-bearing in a way a single screen's are not.
@@ -76,6 +76,29 @@ describe('DataTable', () => {
     expect(names(container)[0]).toBe('Bob');
     await step(() => header(container, 'Changes').click());
     expect(names(container).at(-1)).toBe('Bob');
+    await unmount();
+  });
+
+  it('orders by a column’s own compare, a missing value still the smallest', async () => {
+    const rows = [
+      { id: 'x', name: '(10) Ten' },
+      { id: 'y', name: '(2) Two' },
+      { id: 'z', name: null },
+      { id: 'w', name: '(1) One' },
+    ];
+    const columns = [
+      {
+        key: 'name',
+        label: 'Name',
+        sort: (r) => r.name,
+        compare: compareNames,
+        render: (r) => r.name ?? 'none',
+      },
+    ];
+    const { container, step, unmount } = await table({ rows, columns });
+    expect(names(container)).toEqual(['none', '(1) One', '(2) Two', '(10) Ten']);
+    await step(() => header(container, 'Name').click());
+    expect(names(container)).toEqual(['(10) Ten', '(2) Two', '(1) One', 'none']);
     await unmount();
   });
 

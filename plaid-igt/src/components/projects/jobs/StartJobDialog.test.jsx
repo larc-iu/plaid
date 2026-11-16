@@ -181,6 +181,16 @@ describe('Start job', () => {
     await v.unmount();
   });
 
+  it('lists numbered names in number order, whatever shape the number takes', async () => {
+    const client = fakeClient({ documentsMax: 500 });
+    const NUMBERED = ['(10) Ten', '10. Ten', '(2) Two', '2. Two', '(1) One', 'Afterword'].map(
+      (name, i) => ({ id: `n${i}`, name }),
+    );
+    const { v } = await open(client, { documents: NUMBERED });
+    expect(listed()).toEqual(['(1) One', '(2) Two', '(10) Ten', '2. Two', '10. Ten', 'Afterword']);
+    await v.unmount();
+  });
+
   // RP-9: the form chose all 41 documents before anyone looked, listed them
   // as text sorts ("Lezgi text 1, Lezgi text 10, ..., Lezgi text 2") and said
   // nothing of what the job fills.

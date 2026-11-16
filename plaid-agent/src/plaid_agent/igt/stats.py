@@ -9,7 +9,7 @@ from collections import Counter, defaultdict
 from typing import Any, Dict, List, Optional
 
 from .project import (IgtDoc, Word, render_word, segmentation, word_ref)
-from ..core.tools import ToolError, truncate
+from ..core.tools import ToolError, name_key, truncate
 from .lexview import entry_line
 from .workspace import Workspace
 from .vocab import descendants_of, validate_vocab_refs
@@ -144,7 +144,7 @@ def t_corpus_stats(ws: Workspace, document: Optional[str] = None, by: Optional[s
         head += ['segments', 'transcribed', 'recording'] if times else []
         head += project.document_metadata
         lines.append('\t'.join(h for h in head if h))
-        for did in sorted(rows, key=lambda i: (names.get(i) or '').lower()):
+        for did in sorted(rows, key=lambda i: name_key(names.get(i))):
             n = rows[did]
             cells = [ws.doc_label(did), str(n['sentences']), str(n['words']), _pct(n['analyzed'], n['words']),
                      _pct(n['linked'], n['words']) if project.vocabs else None,

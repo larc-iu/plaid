@@ -48,6 +48,20 @@ const render = async (c) => {
 const releaseButtons = (view) =>
   all(view.container, 'button').filter((b) => b.textContent.trim() === 'Release');
 
+describe('AdminServices projects', () => {
+  it('lists a service’s projects by name in number order', async () => {
+    const names = ['(10) Ten', '(2) Two', '(1) One'];
+    const c = client(Object.fromEntries(names.map((_, i) => [`p${i}`, [svc()]])));
+    c.projects.list = vi.fn(async () => names.map((name, i) => project(`p${i}`, name)));
+    const view = await render(c);
+    const text = view.container.textContent;
+    const at = names.map((n) => text.indexOf(n));
+    expect(at.every((i) => i >= 0)).toBe(true);
+    expect(at[2]).toBeLessThan(at[1]);
+    expect(at[1]).toBeLessThan(at[0]);
+  });
+});
+
 describe('AdminServices release', () => {
   it('offers Release for an offline id another account holds, and names the holder', async () => {
     const c = client({

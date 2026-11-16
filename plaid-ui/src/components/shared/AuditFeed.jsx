@@ -7,7 +7,7 @@ import { humanizeError } from '../../lib/errors.js';
 import { useLatestCall } from '../../hooks/useLatestCall.js';
 import { readableDescription, operationKindLabel } from '../../lib/auditText.js';
 import { KindChip } from './HistoryDrawer.jsx';
-import { textIncludes } from '../../domain/collation.js';
+import { compareNames, textIncludes } from '../../domain/collation.js';
 
 // A paged audit feed. `fetchPage({cursor, limit})` returns the server's
 // `{entries, nextCursor}` newest-first, and this holds what has been loaded so
@@ -166,7 +166,9 @@ export const AuditFeed = ({
     {
       key: 'where',
       label: 'Where',
-      sort: (e) => (placeOf(e)?.name || '').toLowerCase(),
+      // A document's or a project's name, in number order (compareNames).
+      sort: (e) => placeOf(e)?.name || '',
+      compare: compareNames,
       className: 'text-muted-foreground',
       render: (e) => {
         const project = e.projects?.[0];

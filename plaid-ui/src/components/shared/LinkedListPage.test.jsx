@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import { renderComponent, all, byText } from '../../test/renderComponent.jsx';
 import { LinkedListPage, CountCell, TimeCell } from './LinkedListPage.jsx';
+import { compareNames } from '../../domain/collation.js';
 
 const ROWS = [
   { id: 'a', name: 'Alpha', count: 3 },
@@ -44,6 +45,26 @@ describe('LinkedListPage', () => {
     const { container, unmount } = await mount();
     const page = container.firstElementChild;
     expect(page.className).not.toMatch(/\b(mx-auto|max-w-\S+|px-\d+|py-\d+)\b/);
+    await unmount();
+  });
+
+  it('hands a column’s compare to the table', async () => {
+    const rows = ['(10) c', '(2) b', '(1) a'].map((name, i) => ({ id: `r${i}`, name }));
+    const columns = [
+      {
+        key: 'name',
+        label: 'Thing',
+        sort: (r) => r.name,
+        compare: compareNames,
+        cell: (r) => r.name,
+      },
+    ];
+    const { container, unmount } = await mount({ rows, columns, tableId: 'things-numbered' });
+    expect(all(container, 'tbody tr').map((tr) => tr.textContent)).toEqual([
+      '(1) a',
+      '(2) b',
+      '(10) c',
+    ]);
     await unmount();
   });
 

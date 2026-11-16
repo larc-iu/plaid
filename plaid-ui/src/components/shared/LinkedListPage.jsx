@@ -43,8 +43,9 @@ export const TimeCell = ({ at }) =>
  * link fills it: that is what `columns` gives up in exchange for naming only
  * its content.
  *
- * A column is `{key, label, align, sort, cell, nowrap, fill}`, where `cell(row)`
- * returns what goes inside the link. The `fill` column (the name) takes the
+ * A column is `{key, label, align, sort, compare, cell, nowrap, fill}`, where
+ * `cell(row)` returns what goes inside the link and `sort` and `compare` are
+ * DataTable's. The `fill` column (the name) takes the
  * width the others leave and no more, so a `truncate` inside it cuts a long
  * name there, down to a floor of 10rem. Without it the column grows to the
  * whole name and pushes the rest of the row out of sight.
@@ -91,6 +92,7 @@ export const LinkedListPage = ({
     key: column.key,
     label: column.label,
     sort: column.sort,
+    compare: column.compare,
     align: column.align,
     headerClassName: column.headerClassName,
     // `min-w-40` is the floor: below it the table scrolls sideways, the way

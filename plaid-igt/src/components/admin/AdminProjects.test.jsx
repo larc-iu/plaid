@@ -59,6 +59,28 @@ const render = async (projects) => {
 };
 
 describe('AdminProjects', () => {
+  it('sorts by name in number order', async () => {
+    localStorage.clear();
+    const view = await render(
+      ['(10) Ten', '(2) Two', '(1) One'].map((name, i) => ({
+        id: `p${i}`,
+        name,
+        config: { igt: { initialized: true } },
+        textLayers: [],
+      })),
+    );
+    const header = [...view.container.querySelectorAll('thead button')].find((b) =>
+      b.textContent.startsWith('Name'),
+    );
+    // The list opens newest first. One click orders it by name, ascending.
+    await view.step(() => header.click());
+    expect(texts(view.container, 'tbody tr td:first-child')).toEqual([
+      '(1) One',
+      '(2) Two',
+      '(10) Ten',
+    ]);
+  });
+
   it('labels a UD project UD, and an IGT one IGT', async () => {
     const view = await render([
       udProject(),

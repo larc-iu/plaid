@@ -10,7 +10,7 @@ import { timeAgo, fullTimestamp } from '@ui/lib/formatTime.js';
 import { notifySuccess, notifyError, humanizeError } from '@/utils/feedback';
 import { useConfirm } from '@ui/components/shared/ConfirmProvider';
 import { AuditFeed } from '@ui/components/shared/AuditFeed';
-import { textIncludes } from '@ui/domain/collation.js';
+import { compareNames, textIncludes } from '@ui/domain/collation.js';
 import { projectRole } from '@larc-iu/plaid-client';
 import { useLatestCall } from '@ui/hooks/useLatestCall.js';
 import { TYPE } from '@ui/lib/typeScale.js';
@@ -150,7 +150,8 @@ export const UserDetail = ({ client, userId, backTo, onEdit, dialogs }) => {
               {
                 key: 'name',
                 label: 'Project',
-                sort: (p) => p.name.toLowerCase(),
+                sort: (p) => p.name,
+                compare: compareNames,
                 render: (p) => (
                   <Link to={`/projects/${p.id}`} className="hover:underline">
                     {p.name}

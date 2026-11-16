@@ -7,7 +7,7 @@ import { DataTable } from '@ui/components/shared/data-table';
 import { timeAgo, fullTimestamp } from '@ui/lib/formatTime.js';
 import { notifySuccess, notifyError, humanizeError } from '@/utils/feedback';
 import { useConfirm } from '@ui/components/shared/ConfirmProvider';
-import { textIncludes } from '@ui/domain/collation.js';
+import { compareNames, textIncludes } from '@ui/domain/collation.js';
 import { countOf } from '@ui/lib/plural.js';
 
 // Services register per project, so "is the analyze service up" can only be
@@ -40,7 +40,7 @@ const groupByService = (registrations) => {
       serviceName: freshest?.serviceName || serviceId,
       description: freshest?.description || '',
       tasks: [...new Set(entries.flatMap((e) => e.extras?.tasks || []))],
-      entries: [...entries].sort((a, b) => a.project.name.localeCompare(b.project.name)),
+      entries: [...entries].sort((a, b) => compareNames(a.project.name, b.project.name)),
       projects: entries.length,
       online: online.length,
       lastSeenAt: entries

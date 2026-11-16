@@ -1,5 +1,6 @@
 import { Label } from '@ui/components/ui/label';
 import { countOf } from '@ui/lib/plural.js';
+import { compareNames } from '@ui/domain/collation.js';
 
 // Step 3: what to export. Scope is a run-time choice, never part of the
 // preset; includeVocabularies IS preset state, so this step SAYS what the
@@ -12,6 +13,10 @@ import { countOf } from '@ui/lib/plural.js';
 // zipNote (the dataset-level formats) replaces the vocabularies line with that
 // note: those archives zip at every scope and decide for themselves what to do
 // with the project's vocabularies.
+// The documents by name in number order: core lists them in plain string
+// order, which files "(10)" before "(2)".
+const byName = (documents) => [...(documents || [])].sort((a, b) => compareNames(a.name, b.name));
+
 export const ScopeStep = ({
   scope,
   onScopeChange,
@@ -72,7 +77,7 @@ export const ScopeStep = ({
 
       {scope === 'documents' && (
         <div className="flex max-h-48 flex-col gap-1 overflow-y-auto rounded-md border p-2">
-          {(documents || []).map((d) => (
+          {byName(documents).map((d) => (
             <label
               key={d.id}
               className="flex cursor-pointer items-center gap-2 rounded-sm px-1 py-0.5 text-sm hover:bg-muted/50"

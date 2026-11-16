@@ -72,6 +72,15 @@ describe('useMentions', () => {
     await m.unmount();
   });
 
+  it('lists the documents by name in number order', async () => {
+    // Core hands them back in plain string order, "(10)" before "(2)".
+    const client = fakeClient([{ name: '(1) One' }, { name: '(10) Ten' }, { name: '(2) Two' }]);
+    const m = await mount(client);
+    await m.type('@');
+    expect(m.read()).toBe('(1) One,(2) Two,(10) Ten');
+    await m.unmount();
+  });
+
   it('asks for one page of the project’s documents', async () => {
     const client = fakeClient([{ name: 'Text 1' }]);
     const m = await mount(client);
