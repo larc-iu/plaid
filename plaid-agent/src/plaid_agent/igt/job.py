@@ -2157,6 +2157,9 @@ class IgtRunner:
         #: such a piece is the one in hand (:meth:`after_text`, RPF3-B)
         self.text_edited: Dict[str, set] = {}
         self.following = False
+        #: the documents whose piece after a text edit was put off once: it
+        #: goes back to be taken at the start of the walk once (REV-RPF3-5)
+        self.after_text_put_off: set = set()
 
     # --- reading ---------------------------------------------------------------
 
@@ -2984,6 +2987,11 @@ class IgtRunner:
             doc = self.read(project, document_id, client)
             if self.in_use(self.newest_change(client, document_id), f'job:{job.id}/'):
                 return self.defer(document_id)
+            if document_id in self.text_edited:
+                # A piece after a text edit put off earlier, taken first
+                # (REV-RPF3-5).
+                self.after_text(project, document_id)
+                continue
             self.settle(project, document_id, doc)
             whole = self.whole_document(project, doc)
             pending = self.pending(doc, project, document_id,
@@ -3171,14 +3179,26 @@ class IgtRunner:
         its own plan could not do: an analysis of a word the plan retypes is
         refused. Never a loop: a piece after a text edit is followed by none.
         No model call when nothing is empty there. A failure of its model is
-        its own: its sentences are left as they are, and Left blank lists
-        what is empty there."""
+        recorded as a stretch's is: its sentences skipped ``failed``, on a row
+        of its own. Like a stretch, it is not run while someone else edits
+        the document, and a write of it put off by a person's edit is not
+        summed up: either way its sentences go back to be taken at the start
+        of the document's walk, once (REV-RPF3-5, -8). A second put-off
+        leaves them, and Left blank lists what is empty there."""
         ids = self.text_edited.pop(document_id, None)
         if not ids:
             return
         job = self.job
         job.check()
         client = job.client()
+
+        def put_off():
+            if document_id not in self.after_text_put_off:
+                self.after_text_put_off.add(document_id)
+                self.text_edited[document_id] = set(ids)
+            raise Deferred(document_id)
+        if self.in_use(self.newest_change(client, document_id), f'job:{job.id}/'):
+            put_off()
         ws = JobWorkspace(client, project)
         try:
             doc = self.read(project, document_id, client)
@@ -3213,7 +3233,8 @@ class IgtRunner:
                 except TurnCancelled:
                     job.check()
                     raise JobStopped('cancelled')
-                except StretchFailed:
+                except StretchFailed as e:
+                    self.after_text_failed(document_id, doc, part, piece, e.kind)
                     return
                 except Exception as e:  # noqa: BLE001 - sorted as a piece's are
                     if core_job.core_fault(e) is not None:
@@ -3221,19 +3242,39 @@ class IgtRunner:
                     if not_answering(e):
                         job.wait_for_model()
                         continue
-                    if failure_kind(e) is None:
+                    kind = failure_kind(e)
+                    if kind is None:
                         raise
+                    self.after_text_failed(document_id, doc, part, piece, kind)
                     return
             self.begin_summary(key, document_id, doc.name, part, False, note, self.refused_of(ws, document_id),
                                after_text='added' if self.only_new() is not None else 'edited')
             self.record_piece(project, piece, note, ws.tables, doc, part)
             self.record_refusals(ws, document_id)
             if ws.ops:
-                self.write(project, document_id, ws, doc, part, prints, list(ws.ops), note, piece_tag(piece),
-                           summary=key)
+                try:
+                    self.write(project, document_id, ws, doc, part, prints, list(ws.ops), note, piece_tag(piece),
+                               summary=key)
+                except Deferred:
+                    # Its note is never shown beside no changes: the piece is
+                    # taken again, once, at the start of the walk.
+                    self.unsummed.pop(key, None)
+                    put_off()
             self.end_summary(key)
         finally:
             self.following = False
+
+    def after_text_failed(self, document_id: str, doc, part: List[Sentence], piece: Dict[str, Any],
+                          kind: Optional[str]) -> None:
+        """A piece after a text edit whose model failed: its sentences
+        skipped ``failed`` with the failure's kind, and a row of its own,
+        as a stretch's failure is (REV-RPF3-5)."""
+        for s in part:
+            self.skip(document_id, doc, s.id, 'failed', kind, cursor=False)
+        key = analysis_key(canonical(piece))
+        self.begin_summary(key, document_id, doc.name, part, False, '', [],
+                           after_text='added' if self.only_new() is not None else 'edited')
+        self.end_summary(key)
 
     def after_text_label(self) -> str:
         """How the work list names a piece after a text edit: the words the

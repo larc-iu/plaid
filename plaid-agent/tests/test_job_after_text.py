@@ -166,3 +166,81 @@ def test_what_the_piece_after_the_text_edit_leaves_empty_is_in_left_blank(monkey
     (doc,) = finished['report']['documents']
     assert not doc.get('refused'), doc.get('refused')
     assert [e['form'] for e in doc['left']] == ['xosan'], doc['left']
+
+
+def _inserting(asked, n, kwargs):
+    if 'Instructions from' not in asked:
+        return reply('Done.')
+    if igt_job.AFTER_TEXT_LINE in asked:
+        if n == 1:
+            return reply(calls=[call(9, 'set_analysis', {'document': 'Story', 'ref': 's1.w2 "xosan"', 'morphemes': [
+                {'form': 'xosan', 'fields': {'Morph Gloss': 'good'}}]})])
+        return reply('Glossed xosan.')
+    if n == 1:
+        return reply(calls=[call(1, 'retype_sentence', {'document': 'Story', 'ref': 's1', 'text': 'sa xosan jut.'})])
+    return reply('Inserted xosan.')
+
+
+def test_a_piece_after_a_text_edit_put_off_is_taken_again_once_and_never_shown_beside_no_changes(monkeypatch):
+    """REV-RPF3-5 (the reviewer's b2a): the write of the piece after the text
+    edit meets a person's edit, twice. It goes back to be taken at the start
+    of the walk once; put off again, it is left. No row shows its note beside
+    no changes, and xosan is in Left blank."""
+    from plaid_agent.core.plan import PlanError
+    from plaid_client import PlaidAPIError
+    client, job, model, sent = _job(monkeypatch, _inserting, after=[AFTER[0], BEFORE[1]])
+    real = igt_job.execute_plan
+
+    def execute(c, ops, **kw):
+        if any(o['kind'] == 'set_analysis' for o in ops):
+            try:
+                raise PlaidAPIError('HTTP 409 version', status=409)
+            except PlaidAPIError as e:
+                raise PlanError('moved', 0, len(ops)) from e
+        return real(c, ops, **kw)
+    monkeypatch.setattr(igt_job, 'execute_plan', execute)
+    finished = run_job(job, runner(job))
+    assert finished['state'] == 'done', finished.get('reason')
+    after = [c for c in model.calls if igt_job.AFTER_TEXT_LINE in c['asked'] and c['n'] == 1]
+    assert len(after) == 2, 'taken again once'
+    rows = [p['piece'] for p in client.jobs.pieces(J)]
+    assert not [r for r in rows if r.get('after_text') and r.get('note')], rows
+    (doc,) = finished['report']['documents']
+    assert [e['form'] for e in doc['left']] == ['xosan'], doc['left']
+
+
+def test_a_piece_after_a_text_edit_whose_model_fails_is_skipped_failed_on_a_row(monkeypatch):
+    """REV-RPF3-5 (b2b): its model fails. Its sentence is skipped "failed" and
+    it has a row of its own, as a stretch's failure has."""
+    from plaid_agent.core.job import StretchFailed
+
+    def answer(asked, n, kwargs):
+        if 'Instructions from' in asked and igt_job.AFTER_TEXT_LINE in asked:
+            raise StretchFailed('output', 'the model failed')
+        return _inserting(asked, n, kwargs)
+    client, job, _model, _sent = _job(monkeypatch, answer, after=[AFTER[0], BEFORE[1]])
+    finished = run_job(job, runner(job))
+    (doc,) = finished['report']['documents']
+    assert [(s['sentence'], s['reason'], s['kind']) for s in doc['skipped']] == [('s1', 'failed', 'output')]
+    rows = [p['piece'] for p in client.jobs.pieces(J) if p['piece'].get('after_text')]
+    assert len(rows) == 1 and rows[0].get('skipped'), rows
+
+
+def test_a_piece_after_a_text_edit_waits_while_a_person_edits_the_document(monkeypatch):
+    """REV-RPF3-8: the same in-use check a stretch makes. A person edits the
+    document as the text edit lands: the piece after it is not run then; the
+    document is put off and the piece runs when the walk takes it again."""
+    client, job, model, _sent = _job(monkeypatch, _inserting, after=[AFTER[0], BEFORE[1]])
+    r = runner(job)
+    calls = {'n': 0}
+    real = type(r).in_use
+
+    def in_use(self, last, ref):
+        calls['n'] += 1
+        return calls['n'] == 2 or real(self, last, ref)
+    monkeypatch.setattr(type(r), 'in_use', in_use)
+    finished = run_job(job, r)
+    assert finished['state'] == 'done', finished.get('reason')
+    after = [c for c in model.calls if igt_job.AFTER_TEXT_LINE in c['asked'] and c['n'] == 1]
+    assert len(after) == 1, 'run once, after the wait'
+    assert finished['report']['documents'][0]['left'] == []
