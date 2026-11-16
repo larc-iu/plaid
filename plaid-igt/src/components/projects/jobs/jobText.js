@@ -267,6 +267,25 @@ export const changesGroup = (d) => ((d?.counts?.changes ?? 0) > 0 ? d.glossGroup
 // stopped partway once it finished a sentence (REV-DAY-P-13).
 export const stoppedPartway = (d) => d.state === 'not-reached' && (d.done ?? 0) > 0;
 
+// How many of a document's sentences the job skipped (its rows' skipped list,
+// and those past the list's cap). Its `done` counts them with the sentences
+// it worked.
+export const skippedCount = (d) => (d?.skipped?.length ?? 0) + (d?.counts?.skippedMore ?? 0);
+
+// Whether the job finished a document by skipping every sentence of it:
+// nothing in it was worked, so it never reads "Done" (REV-RPF-P-9).
+export const allSkipped = (d) =>
+  d.state === 'done' && (d.done ?? 0) > 0 && skippedCount(d) >= (d.done ?? 0);
+
+// A document's sentences as the Documents table says them: those worked of
+// its sentences, and those skipped, "0 of 2, 2 skipped" (REV-RPF-P-9).
+export const documentSentencesText = (d) => {
+  if (d.targets === null || d.targets === undefined) return '';
+  const skipped = Math.min(skippedCount(d), d.done ?? 0);
+  const worked = `${((d.done ?? 0) - skipped).toLocaleString()} of ${d.targets.toLocaleString()}`;
+  return skipped > 0 ? `${worked}, ${skipped.toLocaleString()} skipped` : worked;
+};
+
 // How many places a document's Left blank lists, by unit, those cut from the
 // list included ("4 words, 1 sentence", REV-DF-S N-2), or null when nothing
 // was counted there: a job that fills nothing, a document deleted, one that

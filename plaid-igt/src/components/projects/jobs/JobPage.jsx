@@ -51,6 +51,8 @@ import {
   readableSetup,
   stoppedPartway,
   wroteNothing,
+  allSkipped,
+  documentSentencesText,
 } from './jobText.js';
 
 /**
@@ -495,14 +497,15 @@ const JobDocuments = ({ job, projectId }) => {
           ? 'Left out by the plan'
           : stoppedPartway(d)
             ? 'Stopped partway'
-            : (jobDocumentStateText(d.state) ?? d.state),
+            : allSkipped(d)
+              ? 'Skipped'
+              : (jobDocumentStateText(d.state) ?? d.state),
     },
     {
       key: 'done',
       label: 'Sentences',
       align: 'right',
-      render: (d) =>
-        d.targets === null || d.targets === undefined ? '' : `${d.done ?? 0} of ${d.targets}`,
+      render: (d) => documentSentencesText(d),
     },
   ];
   if ([...reported.values()].some((d) => leftText(d) !== null)) {

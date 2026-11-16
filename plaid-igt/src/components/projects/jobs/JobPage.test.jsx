@@ -1461,6 +1461,38 @@ describe('the job page', () => {
     await v.unmount();
   });
 
+  // REV-RPF-P-9: a document all of whose sentences were skipped read "Done"
+  // and "2 of 2". Nothing in it was worked.
+  it('says a document all of whose sentences were skipped was skipped, not done', async () => {
+    const skipped = ['s1', 's2'].map((s, i) => ({
+      sentence: s,
+      sentenceId: `sen${i}`,
+      reason: 'no-answer',
+    }));
+    const job = jobOf({
+      state: 'done',
+      documents: [
+        { ...jobOf().documents[0], state: 'done', done: 2, targets: 2, skipped },
+        {
+          ...jobOf().documents[0],
+          documentId: 'd2',
+          name: 'Story B',
+          state: 'done',
+          done: 3,
+          targets: 3,
+          skipped: skipped.slice(0, 1),
+        },
+      ],
+    });
+    const v = await mount(clientOf(job));
+    const rows = all(v.container, 'tbody tr').map((r) => [...r.querySelectorAll('td')].map(text));
+    const a = rows.find((r) => r[0] === 'Story A');
+    expect(a.slice(1, 3)).toEqual(['Skipped', '0 of 2, 2 skipped']);
+    const b = rows.find((r) => r[0] === 'Story B');
+    expect(b.slice(1, 3)).toEqual(['Done', '2 of 3, 1 skipped']);
+    await v.unmount();
+  });
+
   it('counts the tables and notes a report too large for core could not hold', async () => {
     const report = { ...REPORT, tables: [], tablesMore: 3, notes: [], notesMore: 2 };
     const job = jobOf({ state: 'done', finishedAt: '2026-11-12T11:00:00Z', report });
