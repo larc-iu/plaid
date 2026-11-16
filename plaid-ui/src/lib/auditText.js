@@ -85,12 +85,12 @@ export const operationKindLabel = (kind) => KIND_LABELS[kind] ?? null;
 // The line over a History entry's changes. Where the entry's first change
 // (`from`) was earlier than its end (`time`, what is read at), it says both,
 // so it never reads as another time than the rail's row, which says the
-// first (RP-3).
+// first (RP-3). Two that read the same (the same second) are said once
+// (REV-RPF-P-5).
 export const changesMadeText = (entry) => {
   const what = entry.action ? 'action' : 'entry';
-  const when =
-    entry.from && entry.from !== entry.time
-      ? `from ${fullTimestamp(entry.from)} to ${fullTimestamp(entry.time)}`
-      : fullTimestamp(entry.time);
+  const to = fullTimestamp(entry.time);
+  const from = entry.from ? fullTimestamp(entry.from) : to;
+  const when = from !== to ? `from ${from} to ${to}` : to;
   return `Changes made in this ${what}, ${when}.`;
 };

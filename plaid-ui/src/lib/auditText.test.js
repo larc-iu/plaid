@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { readableDescription, operationKindLabel } from './auditText.js';
+import { changesMadeText, readableDescription, operationKindLabel } from './auditText.js';
+import { fullTimestamp } from './formatTime.js';
 
 // The audit log is immutable, so these descriptions are already stored with the
 // id in them and the tidy-up has to happen at read time.
@@ -421,5 +422,22 @@ describe('operationKindLabel', () => {
   it('names nothing for an operation with no kind', () => {
     expect(operationKindLabel(undefined)).toBe(null);
     expect(operationKindLabel(null)).toBe(null);
+  });
+});
+
+describe('changesMadeText', () => {
+  // REV-RPF-P-5: first and last change in the same second read as one time.
+  it('says one time when the first and last change read the same', () => {
+    const entry = { from: '2026-11-16T03:20:56.120Z', time: '2026-11-16T03:20:56.870Z' };
+    expect(changesMadeText(entry)).toBe(
+      `Changes made in this entry, ${fullTimestamp(entry.time)}.`,
+    );
+  });
+
+  it('says both when they read differently', () => {
+    const entry = { action: true, from: '2026-11-16T03:20:00Z', time: '2026-11-16T03:25:00Z' };
+    expect(changesMadeText(entry)).toBe(
+      `Changes made in this action, from ${fullTimestamp(entry.from)} to ${fullTimestamp(entry.time)}.`,
+    );
   });
 });
