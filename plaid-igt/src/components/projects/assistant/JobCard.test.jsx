@@ -403,6 +403,27 @@ describe('the job card', () => {
       );
     });
 
+    // A card on screen when its job is undone elsewhere reads it again when
+    // the window comes back into focus.
+    it('started, its job undone while the card is shown: says Undone on focus', async () => {
+      const client = fakeClient({ state: 'done' });
+      const started = card({ status: 'started', jobId: CARD_ID, sentBrief: 'x' });
+      const { v } = await draw({ card: started, client });
+      await v.step(async () => {});
+      expect(v.container.querySelector('[data-testid="job-card-state"]').textContent).toBe('Done');
+      client.jobs.get.mockImplementation(async (id) => ({
+        id,
+        state: 'done',
+        startedAt: 'x',
+        undone: { operation: 'op1', time: '2026-11-16T10:31:36Z', user: 'w@x' },
+      }));
+      await v.step(() => window.dispatchEvent(new Event('focus')));
+      await v.step(async () => {});
+      expect(v.container.querySelector('[data-testid="job-card-state"]').textContent).toBe(
+        'Undone',
+      );
+    });
+
     it('discarded and replaced: the state alone', async () => {
       let { v } = await draw({ card: card({ status: 'discarded' }) });
       expect(text(v)).toContain('Discarded');

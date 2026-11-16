@@ -168,9 +168,14 @@ export const JobCard = ({
         })
         .catch(() => live && setNotStarted(null));
     look();
+    // Read again when the window comes back into focus: a job undone on its
+    // own page then reads "Undone" here (REV-RPF3 note on D3).
+    const onFocus = () => look();
+    window.addEventListener('focus', onFocus);
     return () => {
       live = false;
       clearTimeout(timer);
+      window.removeEventListener('focus', onFocus);
     };
   }, [client, jobId, readOnly]);
 
