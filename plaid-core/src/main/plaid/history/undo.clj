@@ -247,14 +247,25 @@
                      tokens))
         m (reduce (fn [m r] (add m ["tokens" (:parent r)] {:k ["tokens" (:child r)] :inside? true}))
                   m
+                  ;; only tokens of a layer with a child layer can hold one, and
+                  ;; a child inside its parent begins no later than the
+                  ;; parent ends: that bound keeps the text index's range to
+                  ;; the parent's extent, not the rest of the text
                   (q #(psc/q db (into [(str "SELECT p.id AS parent, c.id AS child FROM tokens p"
                                             " JOIN token_layers cl ON cl.parent_token_layer_id = p.token_layer_id"
                                             " JOIN tokens c ON c.token_layer_id = cl.id AND c.text_id = p.text_id"
-                                            " AND c.begin >= p.begin AND c.end_ <= p.end_"
+                                            " AND c.begin >= p.begin AND c.begin <= p.end_ AND c.end_ <= p.end_"
                                             " WHERE p.id IN (" (str/join "," (repeat (count %) "?")) ")")]
                                       (map str %))
                              {:uuid-cols #{:parent :child}})
-                     tokens))
+                     (let [layer-of (into {} (keep (fn [i] (when (and (= "tokens" (:table i)) (= :delete (:op i)))
+                                                             [(:id i) (:token_layer_id (:after i))])))
+                                          items)
+                           parents (into #{} (map :parent_token_layer_id)
+                                         (q #(psc/q db {:select-distinct [:parent_token_layer_id] :from [:token_layers]
+                                                        :where [:in :parent_token_layer_id (mapv str %)]})
+                                            (distinct (vals layer-of))))]
+                       (filterv #(contains? parents (layer-of %)) tokens))))
         made-span? (set spans)
         m (reduce (fn [m r]
                     (cond-> m
