@@ -945,7 +945,7 @@ def notice(totals: Dict[str, Any]) -> Optional[str]:
     out = []
     people = totals.get('peoples_values_changed') or 0
     if people:
-        out.append(f'People\'s work: {n(people, "value, analysis or link", "values, analyses or links")} people '
+        out.append(f'People\'s work: {n(people, "value, morpheme or link", "values, morphemes or links")} people '
                    f'wrote {"was" if people == 1 else "were"} changed or removed. What the job wrote in their place '
                    'is unverified.')
     added, changed = totals.get('words_added') or 0, totals.get('tokens_changed') or 0

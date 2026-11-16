@@ -544,7 +544,7 @@ const JobDocuments = ({ job, projectId }) => {
     ['entries', 'Entries'],
     ['changes', 'Changes'],
     ['deletions', 'Deletions'],
-    ['peoplesValuesChanged', 'Changes to values people wrote'],
+    ['peoplesValuesChanged', 'People’s values, morphemes and links changed or removed'],
     ['textChanges', 'Changes to the text'],
     ['proposed', 'Proposed'],
   ]) {

@@ -132,7 +132,7 @@ export const noticeText = (totals) => {
   const people = t.peoplesValuesChanged || 0;
   if (people) {
     out.push(
-      `People's work: ${countOf(people, 'value, analysis or link', 'values, analyses or links')} ` +
+      `People's work: ${countOf(people, 'value, morpheme or link', 'values, morphemes or links')} ` +
         `people wrote ${people === 1 ? 'was' : 'were'} changed or removed. What the job wrote in ` +
         'their place is unverified.',
     );
@@ -198,7 +198,7 @@ const PIECE_COUNTS_BEFORE = [
   ['analyzed', 'Sentences written in'],
   ['changes', 'Changes written'],
   ['deletions', 'Deletions'],
-  ['peoplesValuesChanged', 'Changes to values people wrote'],
+  ['peoplesValuesChanged', 'People’s values, morphemes and links changed or removed'],
   ['textChanges', 'Changes to the text'],
   ['wordsAdded', 'Words added'],
   ['tokensChanged', 'Existing words or punctuation marks changed or removed'],

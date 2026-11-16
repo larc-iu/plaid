@@ -175,12 +175,12 @@ test('a job that edits the text and writes over a person: its line, its counts i
   const report = page.getByRole('region', { name: 'Report' });
   // The worker's own line first, from its counts (R4).
   await expect(report.getByTestId('job-notice')).toHaveText(
-    "People's work: 1 value, analysis or link people wrote was changed or removed. What the job wrote in their place is unverified. Text: 1 word added, 1 existing word or punctuation mark changed or removed.",
+    "People's work: 1 value, morpheme or link people wrote was changed or removed. What the job wrote in their place is unverified. Text: 1 word added, 1 existing word or punctuation mark changed or removed.",
   );
   const totals = await totalsOf(page);
   expect(totals).toMatchObject({
     'Changes written': '4 (3 values and 1 text edit)',
-    'Changes to values people wrote': '1',
+    'People’s values, morphemes and links changed or removed': '1',
     'Changes to the text': '1',
     'Words added': '1',
     'Existing words or punctuation marks changed or removed': '1',
@@ -215,7 +215,7 @@ test('a job that edits the text and writes over a person: its line, its counts i
   await expect(inconsistent).toContainText('The job’s analyses differ, none by two thirds');
   // The piece's line says the same parts.
   await expect(page.getByTestId('job-activity')).toContainText(
-    'Changes written: 4 (3 values and 1 text edit), Changes to values people wrote: 1, Changes to the text: 1, Words added: 1, Existing words or punctuation marks changed or removed: 1, Gloss: 3 values.',
+    'Changes written: 4 (3 values and 1 text edit), People’s values, morphemes and links changed or removed: 1, Changes to the text: 1, Words added: 1, Existing words or punctuation marks changed or removed: 1, Gloss: 3 values.',
   );
 
   // The Undo dialog names what it undoes in the report's nouns: the values,
@@ -300,6 +300,68 @@ test('an analysis job: the report and the Changes view each say what they count,
   await page.getByRole('link', { name: 'Changes', exact: true }).first().click();
   await expect(page.getByTestId('change-count')).toHaveText(
     '6 values and 5 morphemes changed, 1 replaced a person’s value',
+    { timeout: 20_000 },
+  );
+});
+
+// REV-RPF2-1 (the reviewer's Story Q): two retypes take away a person's ro (its
+// morpheme, its Gloss and its Part of Speech) and type over a person's tqmc
+// (its morpheme and Gloss). The report counts what people wrote piece by
+// piece, as the Changes view does: 5 and 5.
+test('a retype that removes people’s words counts what people wrote as the Changes view does', async ({
+  page,
+}) => {
+  test.setTimeout(240_000);
+  skipUnlessAgent(test);
+  const DOC = 'Story Q';
+  const doc = await addDocument(DOC, ['pa ro', 'sc tqmc']);
+  const { tokens: morphemes } = await tokensOf(doc, ROLES.MORPHEME, glossLayerId);
+  const { tokens: words } = await tokensOf(doc, ROLES.WORD, posLayerId);
+  await client.withOperation('Seed', async () => {
+    await client.spans.create(glossLayerId, [morphemes[1].id], 'come');
+    await client.spans.create(posLayerId, [words[1].id], 'V');
+    await client.spans.create(glossLayerId, [morphemes[3].id], 'he');
+  });
+  const job = await client.jobs.create(projectId, {
+    app: 'igt',
+    instructions: 'Fix the text.',
+    documents: [doc],
+  });
+  const ran = await runScriptedJobWorker({
+    token: readToken().token,
+    script: [
+      {
+        calls: [
+          {
+            name: 'plan_work',
+            arguments: { pieces: 'document', fills: ['Gloss'], edits_text: true },
+          },
+        ],
+      },
+      { content: 'Planned.' },
+      {
+        calls: [
+          { name: 'retype_sentence', arguments: { document: DOC, ref: 's1', text: 'pa' } },
+          { name: 'retype_sentence', arguments: { document: DOC, ref: 's2', text: 'sc bolo' } },
+        ],
+      },
+      { content: 'Done.' },
+      { content: 'Fixed.' },
+    ],
+  });
+  expect(ran.code, ran.log).toBe(0);
+  await seedAuth(page);
+  await openJob(page, job);
+  const report = page.getByRole('region', { name: 'Report' });
+  await expect(report.getByTestId('job-notice')).toContainText(
+    "People's work: 5 values, morphemes or links people wrote were changed or removed.",
+  );
+  expect((await totalsOf(page))['People’s values, morphemes and links changed or removed']).toBe(
+    '5',
+  );
+  await page.getByRole('link', { name: 'Changes', exact: true }).first().click();
+  await expect(page.getByTestId('change-count')).toHaveText(
+    '3 values, 2 morphemes and 3 words changed, 5 replaced a person’s value',
     { timeout: 20_000 },
   );
 });

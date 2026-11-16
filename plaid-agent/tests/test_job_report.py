@@ -375,8 +375,7 @@ def test_the_final_context_hears_what_is_still_blank_beside_what_was_written():
     text = summary_message(report)
     lines = text.splitlines()
     assert lines[0] == 'This job wrote 5 changes in 2 of 3 sentences: Role 5 values.', lines[0]
-    assert lines[1] == ('Changes to what people wrote (a value, analysis or link people wrote, changed or removed): '
-                        '0.'), lines[1]
+    assert lines[1] == 'Values, morphemes and links people wrote, changed or removed: 0.', lines[1]
     assert lines[2] == ('Changes to the text: 0 text edits, 0 words added, 0 existing words or punctuation marks '
                         'changed or removed.'), lines[2]
     assert lines[3] == 'Of what it fills: Role left blank 7 words (2 more in sentences not reached).', lines[3]
@@ -440,7 +439,7 @@ def test_the_final_context_reads_every_count_with_what_it_counts():
     assert lines[:5] == [
         'This job wrote 193 changes in 18 of 20 sentences: Word class 179 values.',
         'Its 193 changes, by kind: 179 values set or cleared, 14 text edits.',
-        'Changes to what people wrote (a value, analysis or link people wrote, changed or removed): 0.',
+        'Values, morphemes and links people wrote, changed or removed: 0.',
         'Changes to the text: 14 text edits, 25 words added, 2 existing words or punctuation marks changed or removed.',
         'The report opens with the worker\'s own line: "Text: 25 words added, 2 existing words or punctuation marks '
         'changed or removed."'], lines[:5]

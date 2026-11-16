@@ -865,14 +865,45 @@ def holds_change(doc, project: IgtProject, change: Dict[str, Any]) -> bool:
     return False
 
 
-def replaces_people(op: Dict[str, Any], doc, project: IgtProject) -> bool:
-    """Whether ``op`` changes or takes away something people wrote, by the
+def peoples(metadata, value=True) -> bool:
+    """A piece people wrote: a person's, a contributor's or one confirmed
+    (not a machine's), holding something (``value`` not blank)."""
+    return prov_state(metadata) != 'machine' and value not in (None, '')
+
+
+def peoples_in_morphemes(w: Word) -> int:
+    """What people wrote in a word's morphemes, piece by piece as the Changes
+    view counts "replaced a person's value" (REV-RPF2-1): each stored
+    morpheme not a machine's (a person's segmentation, or the default one a
+    person's tokenization made), each value on one, each link on one."""
+    n = 0
+    for m in w.morphemes:
+        if m.virtual:
+            continue
+        n += peoples(m.metadata)
+        n += sum(peoples(sp.metadata, sp.value) for sp in m.fields.values())
+        n += m.link is not None and peoples(m.link.metadata)
+    return n
+
+
+def peoples_on_word(w: Word) -> int:
+    """What people wrote on a word, piece by piece (REV-RPF2-1): its
+    morphemes' (:func:`peoples_in_morphemes`), its word values and its own
+    link."""
+    return (peoples_in_morphemes(w) + sum(peoples(sp.metadata, sp.value) for sp in w.fields.values())
+            + (w.link is not None and peoples(w.link.metadata)))
+
+
+def replaces_people(op: Dict[str, Any], doc, project: IgtProject) -> int:
+    """How many pieces people wrote ``op`` changes or takes away, by the
     provenance of what it replaces in ``doc`` (the document before the
-    write), never by its words (REV-DAY-S-3): a value whose span is not a
-    machine's (a person's, a contributor's or confirmed) set to another value
-    or cleared, an analysis replaced or discarded on a word holding any piece
-    people wrote (``word_state`` protected), a link people made replaced or
-    taken away."""
+    write), never by its words (REV-DAY-S-3), each counted as the Changes
+    view counts "replaced a person's value" (REV-RPF2-1): a value whose span
+    is not a machine's (a person's, a contributor's or confirmed) set to
+    another value or cleared, one; an analysis replaced or discarded on a
+    word holding any piece people wrote (``word_state`` protected), each
+    morpheme, value and link of people's in its morphemes; a link people
+    made replaced or taken away, one."""
     from .jobapply import _found, token_of
     kind = op.get('kind')
     if kind in ('link', 'link_phrase', 'unlink'):
@@ -882,12 +913,12 @@ def replaces_people(op: Dict[str, Any], doc, project: IgtProject) -> bool:
         lid = op.get('existing_link_id') or op.get('link_id')
         found = doc.find(lid) if lid else None
         if found is None:
-            return False
+            return 0
         _s, w, m = found
         links = ([m.link] if m is not None and m.link is not None else []) + (
             [w.link] if w is not None and w.link is not None else []) + list(w.mwes if w is not None else [])
         link = next((x for x in links if x.id == lid), None)
-        return link is not None and prov_state(link.metadata) != 'machine'
+        return int(link is not None and prov_state(link.metadata) != 'machine')
     hit = _found(doc, token_of(op))
     if hit is None:
         return False
@@ -896,30 +927,20 @@ def replaces_people(op: Dict[str, Any], doc, project: IgtProject) -> bool:
         f = project.field_by_layer(op.get('layer_id'))
         holder = None if f is None else m if f.scope == 'Morpheme' else w if f.scope == 'Word' else s
         sp = holder.fields.get(f.name) if holder is not None else None
-        return (sp is not None and sp.value not in (None, '') and prov_state(sp.metadata) != 'machine'
-                and (op.get('value') or '') != sp.value)
+        return int(sp is not None and sp.value not in (None, '') and prov_state(sp.metadata) != 'machine'
+                   and (op.get('value') or '') != sp.value)
     if kind in ('set_analysis', 'discard_analysis'):
-        return w is not None and word_state(w) == 'protected'
-    return False
-
-
-def holds_peoples(w: Word) -> bool:
-    """Whether a word holds anything people wrote: an analysis with a
-    person's piece (``word_state`` protected, as :func:`replaces_people`
-    reads an analysis), or a word field or link whose provenance is not a
-    machine's."""
-    return word_state(w) == 'protected' or any(prov_state(sp.metadata) != 'machine' and sp.value not in (None, '')
-                                               for sp in w.fields.values()) or (
-        w.link is not None and prov_state(w.link.metadata) != 'machine')
+        return peoples_in_morphemes(w) if w is not None and word_state(w) == 'protected' else 0
+    return 0
 
 
 def removes_people(op: Dict[str, Any], doc) -> int:
     """How much people wrote a text op takes away with the tokens it removes,
     by provenance in ``doc`` (the document read under the lock before the
-    write), never by its words (REV-RPF-W-4): one for each word it removes
-    that holds people's work (:func:`holds_peoples`: its analysis, values
-    and link together, as replacing a person's analysis counts one), and one
-    for each sentence-level value people wrote on a sentence it removes. A
+    write), never by its words (REV-RPF-W-4), piece by piece as the Changes
+    view counts "replaced a person's value" (REV-RPF2-1): each morpheme,
+    value and link people wrote on a word it removes (:func:`peoples_on_word`),
+    and each sentence-level value people wrote on a sentence it removes. A
     word a retype removes is one of the sentence's words that its planned
     words do not keep (typed over whole, or deleted in the retype). A
     respelled or split word keeps its token and what is on it, and a merge
@@ -946,8 +967,8 @@ def removes_people(op: Dict[str, Any], doc) -> int:
             continue
         if kind == 'delete_sentence':
             gone_words += [w.id for w in s.words]
-        n += sum(1 for sp in s.fields.values() if sp.value not in (None, '') and prov_state(sp.metadata) != 'machine')
-    return n + sum(1 for wid in gone_words if wid in words and holds_peoples(words[wid]))
+        n += sum(peoples(sp.metadata, sp.value) for sp in s.fields.values())
+    return n + sum(peoples_on_word(words[wid]) for wid in gone_words if wid in words)
 
 
 def state_text(d: Dict[str, Any]) -> str:
@@ -975,7 +996,7 @@ CHANGE_NOUNS = {'values': ('value set or cleared', 'values set or cleared'),
                 'text': ('text edit', 'text edits'), 'other': ('other change', 'other changes')}
 #: The totals' keys the final context reads by another name: what each counts.
 TOTAL_WORDS = {'changes': 'changes written', 'sentences': 'sentences written in', 'text_changes': 'text edits',
-               'peoples_values_changed': 'changes to what people wrote', 'words': 'words segmented',
+               'peoples_values_changed': 'values, morphemes and links people wrote, changed or removed', 'words': 'words segmented',
                'words_added': 'words added by text edits',
                'tokens_changed': 'existing words or punctuation marks changed or removed by text edits'}
 #: How much of the plan's instructions for every piece the final context is handed.
@@ -1003,7 +1024,7 @@ def summary_message(report: Dict[str, Any], setup: Optional[str] = None) -> str:
             one, many = CHANGE_NOUNS.get(p['kind'], ('other change', 'other changes'))
             said.append(f'{p["n"]:,} {one if p["n"] == 1 else many}')
         lines.append(f'Its {_n_text(totals.get("changes") or 0, "change")}, by kind: ' + ', '.join(said) + '.')
-    lines.append(f'Changes to what people wrote (a value, analysis or link people wrote, changed or removed): '
+    lines.append(f'Values, morphemes and links people wrote, changed or removed: '
                  f'{totals.get("peoples_values_changed") or 0:,}.')
     lines.append(f'Changes to the text: {totals.get("text_changes") or 0:,} text edits, '
                  f'{_n_text(totals.get("words_added") or 0, "word")} added, '
@@ -1639,7 +1660,7 @@ class Write:
         sentences (``jobapply.TEXT_KINDS``). From the worker's own ops,
         never from words (REV-DAY-S-3)."""
         doc = self.fresh if self.fresh is not None else self.st.doc
-        return Counter({'peoples_values_changed': sum(1 for o in ops if replaces_people(o, doc, self.st.project))
+        return Counter({'peoples_values_changed': sum(replaces_people(o, doc, self.st.project) for o in ops)
                         + sum(removes_people(o, doc) for o in ops if o.get('kind') in jobapply.TEXT_KINDS),
                         'text_changes': sum(1 for o in ops if o.get('kind') in jobapply.TEXT_KINDS)})
 

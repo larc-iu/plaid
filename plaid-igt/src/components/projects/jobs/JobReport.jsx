@@ -157,7 +157,7 @@ const totalRows = (report) => {
   optional('Deletions', t.deletions);
   // What the job changed of what people wrote, by provenance, and of the
   // text: each document's History entry shows the changes (REV-DAY-S-3).
-  optional('Changes to values people wrote', t.peoplesValuesChanged);
+  optional('People’s values, morphemes and links changed or removed', t.peoplesValuesChanged);
   optional('Changes to the text', t.textChanges);
   // What the text edits did to the words (RP-6).
   optional('Words added', t.wordsAdded);

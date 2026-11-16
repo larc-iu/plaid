@@ -152,16 +152,16 @@ def test_a_jobs_retype_is_counted_in_its_report_and_its_notice(monkeypatch, _edi
 @pytest.mark.parametrize('totals,line', [
     ({}, None),
     ({'changes': 4}, None),
-    ({'peoples_values_changed': 33}, "People's work: 33 values, analyses or links people wrote were changed or "
+    ({'peoples_values_changed': 33}, "People's work: 33 values, morphemes or links people wrote were changed or "
                                      "removed. What the job wrote in their place is unverified."),
-    ({'peoples_values_changed': 1}, "People's work: 1 value, analysis or link people wrote was changed or removed. "
+    ({'peoples_values_changed': 1}, "People's work: 1 value, morpheme or link people wrote was changed or removed. "
                                     "What the job wrote in their place is unverified."),
     ({'text_changes': 14, 'words_added': 25, 'tokens_changed': 2},
      'Text: 25 words added, 2 existing words or punctuation marks changed or removed.'),
     ({'text_changes': 14, 'words_added': 25}, 'Text: 25 words added.'),
     ({'text_changes': 2}, 'Text: 2 text edits, no word added, changed or removed.'),
     ({'peoples_values_changed': 2, 'text_changes': 1, 'tokens_changed': 1},
-     "People's work: 2 values, analyses or links people wrote were changed or removed. What the job wrote in "
+     "People's work: 2 values, morphemes or links people wrote were changed or removed. What the job wrote in "
      "their place is unverified. Text: 1 existing word or punctuation mark changed or removed."),
 ])
 def test_the_notice_says_what_was_changed_of_peoples_work_and_the_text(totals, line):
@@ -178,10 +178,11 @@ def _human(form, gloss='go', word_gloss=None):
 
 
 @pytest.mark.parametrize('calls,people', [
-    # ta typed over whole: its token goes with the person's analysis on it.
-    ([('retype_sentence', {'document': 'Story', 'ref': 's1', 'text': 'ka bolo.'})], 1),
+    # ta typed over whole: its token goes with the person's morpheme and its
+    # gloss (two, as the Changes view counts them, REV-RPF2-1).
+    ([('retype_sentence', {'document': 'Story', 'ref': 's1', 'text': 'ka bolo.'})], 2),
     # ta deleted.
-    ([('delete_word', {'document': 'Story', 'refs': ['s1.w2']})], 1),
+    ([('delete_word', {'document': 'Story', 'refs': ['s1.w2']})], 2),
     # ta respelled keeps its token and what is on it: nothing of people's lost.
     ([('retype_sentence', {'document': 'Story', 'ref': 's1', 'text': 'ka tax.'})], 0),
     # a word inserted beside it: nothing lost.
@@ -204,4 +205,42 @@ def test_peoples_work_on_a_word_a_text_edit_removes_is_counted_as_peoples(monkey
     report = _report(client)
     assert report['totals']['peoples_values_changed'] == people, report['totals']
     assert report['documents'][0]['counts'].get('peoples_values_changed', 0) == people
-    assert (report['notice'] or '').startswith("People's work: 1 value") == (people == 1), report['notice']
+    assert (report['notice'] or '').startswith(f"People's work: {people} values") == (people > 0), report['notice']
+
+
+def test_rev_rpf2_1_each_persons_value_morpheme_and_link_a_retype_removes_is_counted(monkeypatch, _edits):
+    """The reviewer's Story Q: "pa ro" retyped "pa" takes away ro with a
+    person's morpheme, its Gloss and a word Gloss; "sc tqmc" retyped "sc bolo"
+    types over tqmc with a person's morpheme and Gloss. The Changes view reads
+    "5 replaced a person's value" (3 values and 2 morphemes): the report's
+    count of what people wrote changed or removed is 5 too, not 2 words."""
+    def answer(asked, n, kwargs):
+        if 'Instructions from' not in asked or n > 1:
+            return reply('Done.')
+        return reply(calls=[call(1, 'retype_sentence', {'document': 'Story', 'ref': 's1', 'text': 'pa.'}),
+                            call(2, 'retype_sentence', {'document': 'Story', 'ref': 's2', 'text': 'sc bolo.'})])
+    client = JobClient({'d1': document('d1', 'Story', [{'words': ['pa', _human('ro', 'come', 'arrive')]},
+                                                       {'words': ['sc', _human('tqmc', 'he')]}])})
+    client.texts.edit = lambda *a, **kw: client.record('texts.edit', {'args': a, 'kwargs': kw})
+    job = start(client, 'Fix the text.', id=J, plan='document', edits_text=True)
+    use(monkeypatch, Model(answer))
+    run_job(job, runner(job))
+    report = _report(client)
+    assert report['totals']['peoples_values_changed'] == 5, report['totals']
+    assert report['notice'].startswith("People's work: 5 values, morphemes or links people wrote were changed or "
+                                       "removed."), report['notice']
+
+
+def test_an_analysis_replacing_a_persons_counts_each_morpheme_value_and_link_it_replaces():
+    """A set_analysis over a word holding a person's analysis replaces each of
+    its morphemes and their values and links, as the Changes view counts them
+    (REV-RPF2-1), not one per word."""
+    from fixtures import FakeClient
+    from plaid_agent.igt.job import replaces_people
+    client = JobClient({'d1': document('d1', 'Story', [{'words': [_human('ro', 'come')]}])})
+    project = load_project(client, 'p1')
+    from plaid_agent.igt.project import parse_document
+    doc = parse_document(client.documents.get('d1', include_body=True), project)
+    w = doc.sentences[0].words[0]
+    op = {'kind': 'set_analysis', 'word_id': w.id, 'morphemes': [{'form': 'r'}, {'form': 'o'}]}
+    assert replaces_people(op, doc, project) == 2, 'the morpheme and its gloss'
