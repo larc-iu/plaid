@@ -1683,6 +1683,25 @@ describe('the job page', () => {
     await v.unmount();
   });
 
+  // RPF3 round 4 (RP3-4): an entry the job made beside one of the same form.
+  it('says an entry the job made sits beside an existing entry of its form', async () => {
+    const report = {
+      ...REPORT,
+      entries: {
+        ...REPORT.entries,
+        created: [
+          { id: 'e9', lexicon: 'v1', form: 'nidr', gloss: 'be.3AUGII', besideExisting: true },
+        ],
+        createdMore: 0,
+      },
+    };
+    const job = jobOf({ state: 'done', finishedAt: '2026-11-12T11:00:00Z', report });
+    const v = await mount(clientOf(job));
+    const section = v.container.querySelector('section[aria-label="Report"]');
+    expect(text(section)).toContain('nidr ‘be.3AUGII’, beside an existing entry of this form');
+    await v.unmount();
+  });
+
   // REV-RPF3-6: never a raw user id. Another person by the name the
   // directory gives, else "another user".
   it('names who stopped or undid the job, never by a raw id', async () => {

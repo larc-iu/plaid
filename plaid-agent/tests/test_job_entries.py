@@ -213,3 +213,17 @@ def test_a_change_is_recorded_as_proposed_only_once_the_stretch_was_written(monk
     assert [p for k, p in client.calls if k == 'vocab_items.create'], 'linked the second time, so created'
     assert not _proposed_rows(client, job), 'the write that would have proposed it never landed'
     assert finished['report']['proposed'] == []
+
+
+def test_an_entry_the_job_made_beside_an_existing_entry_of_its_form_is_said_so():
+    """RPF3 round 4 (RP3-4): asked to correct the gloss of the entry nidr, a
+    piece with no tool to edit an entry made a second entry nidr, listed only
+    as created. An entry the job made whose form, by fit.form_key, an entry
+    not the job's already has is marked ``beside_existing``."""
+    lexicon = _lexicon('J9')
+    lexicon['items'].append({'id': 'e-dd', 'form': 'dd', 'metadata': {'gloss': 'DD2', 'status': 'machine',
+                                                                       **stamp('J9')}})
+    client, job = _entries_job(maintainer=True, lexicon=lexicon)
+    out = runner(job).entries(job)
+    beside = {e['id']: e.get('beside_existing', False) for e in out['created']}
+    assert beside == {'e-unlinked': False, 'e-linked': False, 'e-reviewed': False, 'e-dd': True}, beside

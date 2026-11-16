@@ -214,7 +214,9 @@ const Analysis = ({ text, count }) => (
   </span>
 );
 
-// An entry the job made, a link to it where the report names its lexicon.
+// An entry the job made, a link to it where the report names its lexicon,
+// and said to sit beside an entry of the same form the job did not make
+// (`besideExisting`, RPF3 round 4).
 const EntryLine = ({ entry }) => {
   const text = `${entry.form}${entry.gloss ? ` ‘${entry.gloss}’` : ''}`;
   return (
@@ -228,6 +230,9 @@ const EntryLine = ({ entry }) => {
         </Link>
       ) : (
         text
+      )}
+      {entry.besideExisting && (
+        <span className="text-muted-foreground">, beside an existing entry of this form</span>
       )}
     </li>
   );

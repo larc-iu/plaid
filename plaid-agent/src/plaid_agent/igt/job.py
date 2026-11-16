@@ -5253,12 +5253,21 @@ class IgtRunner:
             if v.get('borrowed'):
                 continue
             gloss = IgtProject.lexicon_field(v, ROLE_GLOSS)
-            for it in ws.lexicon(v):
+            items = ws.lexicon(v)
+            from .fit import form_key
+            # The forms of the entries not this job's, by the one key a form
+            # finds an entry by: an entry the job made beside one of them is
+            # said so (RPF3 round 4, RP3-4: a second entry nidr read as the
+            # fix of the first).
+            others = {form_key(it.get('form')) for it in items
+                      if _job_of(it.get('metadata') or {}) != job.id}
+            for it in items:
                 md = it.get('metadata') or {}
                 if _job_of(md) != job.id:
                     continue
                 entry = {'id': it['id'], 'lexicon': v['id'], 'form': it.get('form'),
-                         'gloss': md.get(gloss) if gloss else None}
+                         'gloss': md.get(gloss) if gloss else None,
+                         **({'beside_existing': True} if form_key(it.get('form')) in others else {})}
                 created.append(entry)
                 if not self.linked(ws, it['id']):
                     unlinked.append(entry)
