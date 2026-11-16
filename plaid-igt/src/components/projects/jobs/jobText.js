@@ -54,13 +54,22 @@ export const planText = (plan) => {
     text += ', only those with something empty';
   }
   // The documents worked apart: smaller than planned, or, after all of them
-  // at once, walked a few sentences at a time (RP-4).
-  const smaller = (plan.fallback || []).length;
-  if (smaller) {
-    text +=
-      plan.pieces === 'selection'
-        ? `, then ${smaller.toLocaleString()} in stretches of sentences`
-        : `, ${smaller.toLocaleString()} in smaller pieces`;
+  // at once, each worked on its own, by the fallback's own kind (REV-SF2-5):
+  // after a selection whose piece failed every document as a whole, after a
+  // write put off that document, and either way one too long for one piece
+  // in stretches of sentences.
+  const fallback = plan.fallback || [];
+  if (plan.pieces === 'selection' && fallback.length) {
+    const failed = fallback.some((f) => f.documentId === null || f.documentId === undefined);
+    const tooLong = fallback.filter((f) => f.documentId && f.reason === 'too-long').length;
+    const apart = fallback.filter((f) => f.documentId && f.reason !== 'too-long').length;
+    if (failed) text += ', then each document as a whole';
+    else if (apart) text += `, then ${apart.toLocaleString()} as a whole`;
+    if (tooLong) {
+      text += `, ${tooLong.toLocaleString()} ${failed || apart ? 'of them ' : ''}in stretches of sentences`;
+    }
+  } else if (fallback.length) {
+    text += `, ${fallback.length.toLocaleString()} in smaller pieces`;
   }
   text += '.';
   // What the plan fills, by the names the report gives (REV-DF-D-1).

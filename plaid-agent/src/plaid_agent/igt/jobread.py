@@ -267,9 +267,20 @@ def plan_line(report: Dict[str, Any]) -> Optional[str]:
         return 'The assistant’s model failed during planning. Nothing was written.'
     line = f'Worked in {_PIECES.get(plan.get("pieces"), plan.get("pieces"))}'
     line += search_part(plan)
-    smaller = len(plan.get('fallback') or [])
-    if smaller:
-        line += f', {smaller:,} of them in smaller pieces'
+    fallback = plan.get('fallback') or []
+    if plan.get('pieces') == 'selection' and fallback:
+        # By the fallback's own kind, as the page says it (REV-SF2-5).
+        failed = any(f.get('document_id') is None for f in fallback)
+        too_long = sum(1 for f in fallback if f.get('document_id') and f.get('reason') == 'too-long')
+        apart = sum(1 for f in fallback if f.get('document_id') and f.get('reason') != 'too-long')
+        if failed:
+            line += ', then each document as a whole'
+        elif apart:
+            line += f', then {apart:,} as a whole'
+        if too_long:
+            line += f', {too_long:,} {"of them " if failed or apart else ""}in stretches of sentences'
+    elif fallback:
+        line += f', {len(fallback):,} of them in smaller pieces'
     line += '.'
     # What the plan fills, by the names the report gives (REV-DF-D-1).
     names = plan.get('fills_names')

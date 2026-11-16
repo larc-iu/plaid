@@ -1512,6 +1512,25 @@ describe('the job page', () => {
     await w.unmount();
   });
 
+  // REV-SF2-5: a selection whose piece failed: each document as a whole.
+  it('says how a selection whose piece failed was worked', async () => {
+    const plan = {
+      pieces: 'selection',
+      by: 'model',
+      fillsNames: ['Gloss'],
+      fallback: [
+        { documentId: null, reason: 'failed' },
+        { documentId: 'd2', reason: 'too-long' },
+      ],
+    };
+    const job = jobOf({ state: 'done', report: { ...REPORT, plan } });
+    const v = await mount(clientOf(job));
+    expect(totals(v.container).Plan).toBe(
+      'Worked on all the documents at once, then each document as a whole, 1 of them in stretches of sentences. Fills: Gloss.',
+    );
+    await v.unmount();
+  });
+
   // SF round 2 (RP4-4 findings 1 and 2, RP4-5 F3): a whole-selection job's
   // documents are Done and worked in the one step, counted with those it
   // changed, never "Documents done 0" nor "Not read through".
@@ -2410,12 +2429,13 @@ describe('the job page', () => {
     let v = await mount(clientOf(jobOf({ state: 'done', report: { ...REPORT, plan: plan([]) } })));
     expect(totals(v.container).Plan).toBe('Worked on all the documents at once. Fills: Gloss.');
     await v.unmount();
-    const fallback = [1, 2, 3, 4, 5].map((n) => ({ documentId: `d${n}`, reason: 'walk' }));
+    // Five documents whose write was put off, each worked on its own after it.
+    const fallback = [1, 2, 3, 4, 5].map((n) => ({ documentId: `d${n}`, reason: 'in-use' }));
     v = await mount(
       clientOf(jobOf({ state: 'done', report: { ...REPORT, plan: plan(fallback) } })),
     );
     expect(totals(v.container).Plan).toBe(
-      'Worked on all the documents at once, then 5 in stretches of sentences. Fills: Gloss.',
+      'Worked on all the documents at once, then 5 as a whole. Fills: Gloss.',
     );
     await v.unmount();
   });
