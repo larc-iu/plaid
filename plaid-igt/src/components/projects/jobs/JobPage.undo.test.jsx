@@ -208,7 +208,7 @@ describe('Undo job', () => {
     await settle(v);
     expect(client.jobs.undo).toHaveBeenLastCalledWith('j1', { dryRun: false });
     expect(feedback.notifySuccess).toHaveBeenCalledWith(
-      '4 values put back as they were, 2 links removed and 1 lexicon entry removed. 2 values and 1 link left as they were.',
+      '4 values put back as they were, 2 links removed and 1 lexicon entry removed. 2 values and 1 link not undone.',
       'Undone',
     );
     const line = v.container.querySelector('[data-testid="job-undone"]');
@@ -281,11 +281,17 @@ describe('Undo job', () => {
       await line({
         totals: { changes: 193, textChanges: 14, changesParts: [{ kind: 'text', n: 14 }] },
       }),
-    ).toBe('179 values put back as they were and the text with its words and sentences');
+    ).toBe(
+      '179 values put back as they were and the text with its words and sentences put back as it was',
+    );
+    // A job that segmented and glossed words nobody had analysed: its undo
+    // removes the morphemes it made, with their values and links
+    // (REV-RPF3B-2: the fixture had the values put back, which no such job
+    // makes).
     const glossed = {
       ...summary,
       undone: {
-        spans: counts(169),
+        spans: counts(169, 'deleted'),
         tokens: counts(169, 'deleted'),
         vocabLinks: counts(151, 'deleted'),
       },
@@ -299,7 +305,7 @@ describe('Undo job', () => {
     await press(v, button(v.container, 'Undo job'));
     await settle(v);
     expect(dialog().querySelector('[data-testid="undo-line"]').textContent).toBe(
-      '169 values put back as they were, 169 morphemes and 151 links removed',
+      '169 values removed, 169 morphemes removed and 151 links removed',
     );
     await v.unmount();
   });
@@ -330,7 +336,7 @@ describe('Undo job', () => {
     await press(v, button(dialog(), 'Undo'));
     await settle(v);
     expect(feedback.notifyInfo).toHaveBeenCalledWith(
-      '2 values and 1 link left as they were.',
+      '2 values and 1 link not undone.',
       'Nothing undone',
     );
     expect(v.container.querySelector('[data-testid="job-undone"]')).toBeNull();

@@ -123,7 +123,7 @@ describe('UndoDialog', () => {
     expect(byText(dialog(), 'h2', 'Undo this entry?')).not.toBeNull();
     expect(text()).toContain('Gloss of "kai" in sentence 1: go');
     expect(dialog().querySelector('[data-testid="undo-line"]').textContent).toBe(
-      '12 values put back as they were, 1 word, 1 morpheme, 5 links put back as they were and 2 lexicon entries brought back',
+      '12 values put back as they were, 1 word removed, 1 morpheme removed, 5 links put back as they were and 2 lexicon entries brought back',
     );
     expect(dialog().querySelector('[data-testid="undo-left"]')).toBeNull();
     expect(buttons()).toEqual(expect.arrayContaining(['Cancel', 'Undo']));
@@ -285,7 +285,7 @@ describe('UndoDialog', () => {
     });
     await settle();
     expect(feedback.notifySuccess).toHaveBeenCalledWith(
-      '3 values put back as they were. 1 value left as it was.',
+      '3 values put back as they were. 1 value not undone.',
       'Undone',
     );
     expect(onOpenChange).toHaveBeenCalledWith(false);
@@ -322,7 +322,7 @@ describe('UndoDialog', () => {
     await press(button('Undo'));
     await settle();
     expect(feedback.notifySuccess).not.toHaveBeenCalled();
-    expect(feedback.notifyInfo).toHaveBeenCalledWith('1 value left as it was.', 'Nothing undone');
+    expect(feedback.notifyInfo).toHaveBeenCalledWith('1 value not undone.', 'Nothing undone');
   });
 
   it('says an undo whose answer was lost may have been made, and goes back to now', async () => {

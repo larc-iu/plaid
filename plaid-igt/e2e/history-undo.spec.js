@@ -311,7 +311,7 @@ test('a job’s entry is undone but for the value a person wrote since, which is
   await undoIn(dialog);
   await expect(
     page.getByText(
-      '1 value removed, 1 value put back as it was and 1 link removed. 1 value left as it was.',
+      '1 value removed, 1 value put back as it was and 1 link removed. 1 value not undone.',
     ),
   ).toBeVisible();
 

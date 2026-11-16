@@ -46,10 +46,12 @@ describe('undoneLine', () => {
         summary({ vocabItems: { inserted: 1, deleted: 2, updated: 3 }, vocabLinks: counts(1) }),
       ),
     ).toBe(
-      '1 link put back as it was, 1 lexicon entry brought back, 2 lexicon entries removed and 3 lexicon entries set back',
+      '1 link put back as it was, 1 lexicon entry brought back, 2 lexicon entries removed and 3 lexicon entries put back as they were',
     );
     // A document's own row is its name and details, not the document.
-    expect(undoneLine(summary({ documents: counts(1) }))).toBe('the document’s name or details');
+    expect(undoneLine(summary({ documents: counts(1) }))).toBe(
+      'the document’s name or details put back as they were',
+    );
     expect(undoneLine(summary({ documents: counts(1, 'inserted') }))).toBe(
       '1 document brought back',
     );
@@ -77,18 +79,73 @@ describe('undoneLine', () => {
       { id: 'm2', role: ROLES.MORPHEME },
       { id: 'm4', role: ROLES.MORPHEME },
     ];
-    expect(undoneLine(s, { tokenRows })).toBe('1 value put back as it was, 1 word and 2 morphemes');
+    expect(undoneLine(s, { tokenRows })).toBe(
+      '1 value put back as it was, 1 word removed and 2 morphemes removed',
+    );
   });
 
   it('counts tokens as one when the rows do not account for them all', () => {
     const s = summary({ tokens: counts(3, 'deleted') });
-    expect(undoneLine(s)).toBe('3 tokens');
-    expect(undoneLine(s, { tokenRows: [{ id: 'w1', role: ROLES.WORD }] })).toBe('3 tokens');
+    expect(undoneLine(s)).toBe('3 tokens removed');
+    expect(undoneLine(s, { tokenRows: [{ id: 'w1', role: ROLES.WORD }] })).toBe('3 tokens removed');
     // Rows left past the listed ones: which tokens they are is not known.
     const cut = { ...s, skippedCount: 1500 };
     const rows = ['a', 'b', 'c'].map((id) => ({ id, role: ROLES.WORD }));
-    expect(undoneLine(cut, { tokenRows: rows })).toBe('3 tokens');
-    expect(undoneLine(s, { tokenRows: rows })).toBe('3 words');
+    expect(undoneLine(cut, { tokenRows: rows })).toBe('3 tokens removed');
+    expect(undoneLine(s, { tokenRows: rows })).toBe('3 words removed');
+  });
+
+  // REV-RPF3B-2: every part says what happens to it, so no bare count reads
+  // under the next part's verb. REV-RPF3B-7: one verb for one act.
+  it('says what happens to the tokens, the text and the documents too', () => {
+    const morphemes = (n, p = 'm') =>
+      Array.from({ length: n }, (_, i) => ({ id: `${p}${i}`, role: ROLES.MORPHEME }));
+    // A person re-segments a word: two glossed morphemes made one linked one.
+    expect(
+      undoneLine(
+        summary({
+          spans: { inserted: 2, updated: 0, deleted: 1 },
+          tokens: { inserted: 2, updated: 0, deleted: 1 },
+          vocabLinks: counts(1, 'deleted'),
+        }),
+        { tokenRows: [...morphemes(2), { id: 'n0', role: ROLES.MORPHEME }] },
+      ),
+    ).toBe(
+      '2 values brought back, 1 value removed, 2 morphemes brought back, 1 morpheme removed and 1 link removed',
+    );
+    // A job segments a word and re-points an existing link.
+    expect(
+      undoneLine(
+        summary({
+          spans: counts(2, 'deleted'),
+          tokens: counts(2, 'deleted'),
+          vocabLinks: counts(1),
+        }),
+        { tokenRows: morphemes(2) },
+      ),
+    ).toBe('2 values removed, 2 morphemes removed and 1 link put back as it was');
+    // Words and morphemes, some brought back and some removed: as tokens.
+    expect(
+      undoneLine(summary({ tokens: { inserted: 1, updated: 0, deleted: 2 } }), {
+        tokenRows: [{ id: 'w1', role: ROLES.WORD }, ...morphemes(2)],
+      }),
+    ).toBe('1 token brought back and 2 tokens removed');
+    // A job that edited the text.
+    expect(
+      undoneLine(summary({ spans: counts(1, 'deleted'), tokens: counts(3), texts: counts(1) }), {
+        tokens: 'with-text',
+      }),
+    ).toBe('1 value removed and the text with its words and sentences put back as it was');
+    // An import undone.
+    expect(
+      undoneLine(
+        summary({
+          tokens: counts(9880, 'deleted'),
+          texts: counts(1, 'deleted'),
+          documents: counts(1, 'deleted'),
+        }),
+      ),
+    ).toBe('9,880 tokens removed, 1 text removed and 1 document removed');
   });
 });
 
@@ -204,13 +261,11 @@ describe('undoneToast', () => {
       { kind: 'span', id: 'b', reason: 'changed-since' },
     ]);
     // What was left is counted in the nouns of what was undone (RPF-INT 5).
-    expect(undoneToast(left).message).toBe(
-      '3 values put back as they were. 2 values left as they were.',
-    );
+    expect(undoneToast(left).message).toBe('3 values put back as they were. 2 values not undone.');
     // Core's count of what was left, past the rows it lists, whose kinds are
     // not known.
     expect(undoneToast({ ...left, skippedCount: 1200 }).message).toBe(
-      '3 values put back as they were. 2 values and 1,198 more left as they were.',
+      '3 values put back as they were. 2 values and 1,198 more not undone.',
     );
     const mixed = summary({ spans: counts(1) }, [
       { kind: 'span', id: 'a', reason: 'changed-since' },
@@ -219,11 +274,11 @@ describe('undoneToast', () => {
       { kind: 'text', id: 'd', reason: 'text-changed-since' },
     ]);
     expect(undoneToast(mixed).message).toBe(
-      '1 value put back as it was. 1 value, 1 token, 1 link and 1 text left as they were.',
+      '1 value put back as it was. 1 value, 1 token, 1 link and 1 text not undone.',
     );
     // Tokens named as the line of what is undone names them.
     expect(undoneToast(mixed, { tokens: 'morphemes' }).message).toBe(
-      '1 value put back as it was. 1 value, 1 morpheme, 1 link and 1 text left as they were.',
+      '1 value put back as it was. 1 value, 1 morpheme, 1 link and 1 text not undone.',
     );
     expect(
       undoneToast(mixed, {
@@ -232,13 +287,13 @@ describe('undoneToast', () => {
           { id: 'z', role: ROLES.WORD },
         ],
       }).message,
-    ).toBe('1 value put back as it was. 1 value, 1 word, 1 link and 1 text left as they were.');
+    ).toBe('1 value put back as it was. 1 value, 1 word, 1 link and 1 text not undone.');
   });
 
   it('is not titled Undone when the call undid nothing', () => {
     expect(undoneToast(summary({}, [{ kind: 'span', id: 'a', reason: 'locked' }]))).toEqual({
       title: 'Nothing undone',
-      message: '1 value left as it was.',
+      message: '1 value not undone.',
       undid: false,
     });
   });

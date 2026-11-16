@@ -12,28 +12,36 @@ import { humanizeError, statusOf } from '@ui/lib/errors.js';
 import { TOKEN_ROLE_WORDS } from './restoreSummary.js';
 
 // What each kind of row is called, in the order the line names them. Tokens
-// are named by role where the entry's rows say which (see undoneLine). An
-// entry or a document is named by what happens to it: one the entry deleted
-// is brought back, one it made is removed, and one it changed is set back
-// (a document's own row is its name and details).
+// are named by role where the entry's rows say which (see undoneLine). A
+// document's own row is its name and details.
 const KIND_WORDS = [
   ['spans', ['value', 'values']],
   ['tokens', null],
   ['vocabLinks', ['link', 'links']],
-  ['vocabItems', null],
+  ['vocabItems', ['lexicon entry', 'lexicon entries']],
   ['texts', ['text', 'texts']],
   ['documents', null],
   ['relations', ['other annotation', 'other annotations']],
 ];
 
-const ENTRY = ['lexicon entry', 'lexicon entries'];
 const DOCUMENT = ['document', 'documents'];
 
-const byWhatHappens = (c, words, changed) => [
-  ...(c?.inserted ? [`${countOf(c.inserted, ...words)} brought back`] : []),
-  ...(c?.deleted ? [`${countOf(c.deleted, ...words)} removed`] : []),
-  ...(c?.updated ? [changed(c.updated)] : []),
-];
+// What happens to `k` rows by the undo's act on them, one verb for one act
+// whatever the kind (REV-RPF3B-7): one the entry deleted is brought back, one
+// it made is removed, one it changed is put back as it was.
+const VERBS = {
+  inserted: () => 'brought back',
+  deleted: () => 'removed',
+  updated: (k) => `put back as ${k === 1 ? 'it was' : 'they were'}`,
+};
+const ACTS = ['inserted', 'deleted', 'updated'];
+
+// Every part of `c` said by what happens to it (REV-RPF3B-2: a bare count
+// read under the next part's verb). `noun(k)` names `k` rows.
+const byWhatHappens = (c, noun) =>
+  ACTS.filter((a) => c?.[a]).map((a) => `${noun(c[a])} ${VERBS[a](c[a])}`);
+
+const counted = (words) => (k) => countOf(k, ...words);
 
 const TOKEN_WORDS = ['token', 'tokens'];
 
@@ -67,9 +75,25 @@ const textWithWords = (n) =>
     ? 'the text with its words and sentences'
     : `${n.toLocaleString()} texts with their words and sentences`;
 
+// The tokens' parts: by role where the rows give the roles and either one
+// role or one act, so each count has its own verb; else as one noun (a job's
+// morphemes, words, or tokens), each act its own count.
+const tokenParts = (c, roles, fallback) => {
+  const present = roles ? ROLE_ORDER.filter((r) => roles[r]) : [];
+  const acts = ACTS.filter((a) => c?.[a]);
+  if (present.length === 1) return byWhatHappens(c, counted(TOKEN_ROLE_WORDS[present[0]]));
+  if (present.length > 1 && acts.length === 1) {
+    return present.map(
+      (r) => `${countOf(roles[r], ...TOKEN_ROLE_WORDS[r])} ${VERBS[acts[0]](roles[r])}`,
+    );
+  }
+  return byWhatHappens(c, counted(fallback));
+};
+
 /**
- * What `summary` undoes, as one line: "12 values, 3 morphemes, 2 lexicon
- * entries and 5 links". Empty when it undoes nothing. `tokenRows`, the
+ * What `summary` undoes, as one line, every part said by what happens to it:
+ * "12 values put back as they were, 3 morphemes removed and 2 lexicon
+ * entries brought back". Empty when it undoes nothing. `tokenRows`, the
  * entry's token rows with the role of each one's layer, name the tokens by
  * role. Where there are none, `tokens` says what the tokens are, from what
  * wrote them (a job's report): `morphemes` (a job that edited no text writes
@@ -84,57 +108,38 @@ export const undoneLine = (summary, { tokenRows, tokens } = {}) => {
     const n = sum(summary?.undone?.[kind]);
     if (!n) continue;
     const c = summary.undone[kind];
-    if (kind === 'vocabItems') {
-      parts.push(...byWhatHappens(c, ENTRY, (k) => `${countOf(k, ...ENTRY)} set back`));
-      continue;
-    }
     if (kind === 'documents') {
+      // A document's own row changed is its name and details.
       parts.push(
-        ...byWhatHappens(c, DOCUMENT, (k) =>
-          k === 1 ? 'the document’s name or details' : `${k} documents’ names or details`,
+        ...ACTS.filter((a) => c[a]).map((a) =>
+          a === 'updated'
+            ? `${c[a] === 1 ? 'the document’s name or details' : `${c[a].toLocaleString()} documents’ names or details`} ${VERBS.updated(2)}`
+            : `${countOf(c[a], ...DOCUMENT)} ${VERBS[a](c[a])}`,
         ),
       );
       continue;
     }
     if (kind === 'texts' && withText) {
-      parts.push(textWithWords(n));
-      continue;
-    }
-    if (kind === 'spans' || kind === 'vocabLinks' || kind === 'relations') {
-      // Each part says what happens to it: one the entry wrote over goes
-      // back to what it was, one it made goes, one it deleted comes back
-      // (RPF3 round 4, RP3-4: "10 values removed" read as deleting values
-      // that undo restores).
-      parts.push(
-        ...byWhatHappens(
-          c,
-          words,
-          (k) => `${countOf(k, ...words)} put back as ${k === 1 ? 'it was' : 'they were'}`,
-        ),
-      );
+      parts.push(...byWhatHappens(c, textWithWords));
       continue;
     }
     if (kind !== 'tokens') {
-      parts.push(countOf(n, ...words));
+      parts.push(...byWhatHappens(c, counted(words)));
       continue;
     }
     const roles = tokensByRole(summary, tokenRows);
-    if (!roles) {
-      if (withText) {
-        // Said with the text, or, with no text undone, as words.
-        if (!sum(summary?.undone?.texts)) parts.push(countOf(n, 'word', 'words'));
-        continue;
-      }
-      parts.push(
-        tokens === 'morphemes' && !tokenRows?.length
-          ? countOf(n, 'morpheme', 'morphemes')
-          : countOf(n, ...TOKEN_WORDS),
-      );
+    if (!roles && withText) {
+      // Said with the text, or, with no text undone, as words.
+      if (!sum(summary?.undone?.texts)) parts.push(...byWhatHappens(c, counted(['word', 'words'])));
       continue;
     }
-    for (const role of ROLE_ORDER) {
-      if (roles[role]) parts.push(countOf(roles[role], ...TOKEN_ROLE_WORDS[role]));
-    }
+    parts.push(
+      ...tokenParts(
+        c,
+        roles,
+        tokens === 'morphemes' && !tokenRows?.length ? ['morpheme', 'morphemes'] : TOKEN_WORDS,
+      ),
+    );
   }
   return andList(parts);
 };
@@ -214,7 +219,7 @@ const ROW_WORDS = [
   ['span', ['value', 'values']],
   ['token', null],
   ['vocab-link', ['link', 'links']],
-  ['vocab-item', ENTRY],
+  ['vocab-item', ['lexicon entry', 'lexicon entries']],
   ['text', ['text', 'texts']],
   ['document', ['document detail', 'document details']],
   ['relation', ['other annotation', 'other annotations']],
@@ -310,9 +315,9 @@ export const undoneToast = (summary, opts) => {
   const left = total ? leftLine(summary?.skipped, opts, unlisted) : '';
   const message = [
     line ? `${line[0].toUpperCase()}${line.slice(1)}.` : '',
-    left
-      ? `${left[0].toUpperCase()}${left.slice(1)} left as ${total === 1 ? 'it was' : 'they were'}.`
-      : '',
+    // Said apart from what was undone, never "as they were" twice
+    // (REV-RPF3B-7).
+    left ? `${left[0].toUpperCase()}${left.slice(1)} not undone.` : '',
   ]
     .filter(Boolean)
     .join(' ');
