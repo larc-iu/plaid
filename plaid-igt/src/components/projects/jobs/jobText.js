@@ -44,8 +44,10 @@ export const planText = (plan) => {
   if (plan.pieces === 'sentences' && plan.search) {
     // Only the sentences the plan's search matched, said by the worker's
     // words for it (`search.said`, CONTRACT, added by SF), as read_job says it.
+    // Isolated (FSI ... PDI), as the page isolates every value it shows: a
+    // pattern in a right-to-left script keeps its place in the line (REV-SF-2).
     text +=
-      `, only the sentences matching ${plan.search.said}: ` +
+      `, only the sentences matching \u2068${plan.search.said}\u2069: ` +
       `${countOf(plan.search.sentences ?? 0, 'sentence')} in ${countOf(plan.search.documents ?? 0, 'document')}`;
     if (plan.onlyEmpty) text += ', of them only those with something empty';
   } else if (plan.pieces === 'sentences' && plan.onlyEmpty) {

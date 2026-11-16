@@ -425,7 +425,8 @@ const JobStatus = ({ job, user, names }) => {
 const Fact = ({ label, children }) => (
   <div className="contents">
     <dt className="text-muted-foreground">{label}</dt>
-    <dd>{children}</dd>
+    {/* A long unbroken value (a search's pattern) wraps (REV-SF-6). */}
+    <dd className="min-w-0 [overflow-wrap:anywhere]">{children}</dd>
   </div>
 );
 

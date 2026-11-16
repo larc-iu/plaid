@@ -2520,7 +2520,7 @@ describe('the job page', () => {
       });
       const v = await mount(clientOf(job));
       expect(totals(v.container).Plan).toBe(
-        'Worked in stretches of sentences, only the sentences matching Gloss "be.3ᴀᴜɢII": ' +
+        'Worked in stretches of sentences, only the sentences matching \u2068Gloss "be.3ᴀᴜɢII"\u2069: ' +
           '33 sentences in 24 documents. Fills: Gloss.',
       );
       await v.unmount();
@@ -2531,10 +2531,31 @@ describe('the job page', () => {
       });
       const w = await mount(clientOf(both));
       expect(totals(w.container).Plan).toBe(
-        'Worked in stretches of sentences, only the sentences matching Gloss "be.3ᴀᴜɢII": ' +
+        'Worked in stretches of sentences, only the sentences matching \u2068Gloss "be.3ᴀᴜɢII"\u2069: ' +
           '33 sentences in 24 documents, of them only those with something empty. Fills: Gloss.',
       );
       await w.unmount();
+    });
+
+    // REV-SF-2, REV-SF-6: the search isolated in the line, so a pattern in a
+    // right-to-left script keeps its place, and a long one wraps.
+    it('isolates the search on the Plan line and lets it wrap', async () => {
+      const job = jobOf({
+        state: 'done',
+        documents: searchDocs,
+        report: {
+          ...REPORT,
+          plan: planOf({ search: { ...SEARCH, said: 'word form "שלום"' } }),
+          documents: searchDocs,
+        },
+      });
+      const v = await mount(clientOf(job));
+      expect(totals(v.container).Plan).toContain(
+        'matching \u2068word form "שלום"\u2069: 33 sentences',
+      );
+      const dd = all(v.container, 'dl dt').find((dt) => dt.textContent === 'Plan').nextSibling;
+      expect(dd.className).toContain('[overflow-wrap:anywhere]');
+      await v.unmount();
     });
 
     it('says a document with no matching sentence as such, and counts it apart', async () => {

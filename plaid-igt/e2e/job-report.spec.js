@@ -534,7 +534,7 @@ test('a plan limited by a search says it on the Plan line, the documents and the
   await seedAuth(page);
   await openJob(page, job);
   await expect(page.getByText(/^Worked in stretches of sentences, only the sentences/)).toHaveText(
-    'Worked in stretches of sentences, only the sentences matching word form "kai": ' +
+    'Worked in stretches of sentences, only the sentences matching \u2068word form "kai"\u2069: ' +
       '2 sentences in 1 document. Fills: Gloss.',
   );
   const rowA = page.getByRole('row', { name: /Story S1/ });
