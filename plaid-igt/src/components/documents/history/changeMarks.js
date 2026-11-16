@@ -1,5 +1,5 @@
 import { PROV_STATES } from '@larc-iu/plaid-client';
-import { countOf } from '@ui/lib/plural.js';
+import { andList, countOf } from '@ui/lib/plural.js';
 import { PROV_WORDS } from '@/domain/historyChanges.js';
 
 // The marks a value wears in History's view of what an entry changed: the
@@ -18,5 +18,23 @@ export const provClass = (prov) => PROV_CLASS[prov] ?? '';
 export const provTitle = (prov) => (prov ? PROV_WORDS[prov] : undefined);
 
 /** "12 changes, 3 replaced a person’s value". */
+// What the changes counted are, by kind (`kinds`, kind to count), in the
+// nouns a job's report uses, in this order: "169 values, 169 morphemes and
+// 151 links" (RP-3).
+const KIND_WORDS = [
+  ['values', 'value', 'values'],
+  ['morphemes', 'morpheme', 'morphemes'],
+  ['words', 'word', 'words'],
+  ['links', 'link', 'links'],
+  ['text', 'text edit', 'text edits'],
+  ['entries', 'lexicon entry', 'lexicon entries'],
+  ['details', 'document detail', 'document details'],
+  ['other', 'other change', 'other changes'],
+];
+export const kindsLine = (kinds) =>
+  andList(
+    KIND_WORDS.filter(([k]) => kinds[k] > 0).map(([k, one, many]) => countOf(kinds[k], one, many)),
+  );
+
 export const countLine = (changes, replaced) =>
   `${countOf(changes, 'change')}, ${replaced.toLocaleString()} replaced a person’s value`;

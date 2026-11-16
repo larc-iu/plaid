@@ -76,6 +76,7 @@ const mount = async (doc, client) => {
 
 const text = () => view.container.textContent;
 const count = () => view.container.querySelector('[data-testid="change-count"]')?.textContent;
+const kinds = () => view.container.querySelector('[data-testid="change-kinds"]')?.textContent;
 const sentences = () => all(view.container, '[data-sentence]');
 const cellsOf = (row) =>
   all(view.container, `tr[data-row="${row}"] td`).map((td) => ({
@@ -124,6 +125,8 @@ describe('DocumentHistoryChanges', () => {
       cursor: undefined,
     });
     expect(count()).toBe('2 changes, 1 replaced a person’s value');
+    // What the count is made of, in the nouns the job's report uses (RP-3).
+    expect(kinds()).toBe('2 values');
     expect(sentences()).toHaveLength(1);
     const gloss = cellsOf('morph:Gloss');
     expect(gloss[0]).toMatchObject({ change: 'added', was: null });
@@ -332,6 +335,7 @@ describe('DocumentHistoryChanges', () => {
       expect.objectContaining({ change: 'deleted', column: 'deleted', was: 'sat' }),
     ]);
     expect(count()).toBe('3 changes, 0 replaced a person’s value');
+    expect(kinds()).toBe('3 words');
     expect(first.textContent).toContain('Text');
     // The deleted sentence links nowhere: it is not in the document.
     expect(second.querySelector('a')).toBeNull();

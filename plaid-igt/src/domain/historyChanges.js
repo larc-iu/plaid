@@ -406,6 +406,15 @@ const hasValue = (c) =>
 // Every value a cell holds that the entry could have changed.
 const valuesOf = (c) => c.pieces ?? [c];
 
+// What a changed mark of each row is counted as, in the nouns a job's
+// report uses (RP-3): a word itself, a morpheme's form, a link, or a value.
+const KIND_OF_ROW = {
+  surface: 'words',
+  morphemes: 'morphemes',
+  entry: 'links',
+  wordEntry: 'links',
+};
+
 const diffSentence = (b, a, rows, fields, own) => {
   const pairs = mergeById(b?.words || [], a?.words || []);
   const columns = pairs.map((p) => ({
@@ -435,12 +444,25 @@ const diffSentence = (b, a, rows, fields, own) => {
     changed: textChanged,
     replaced: false,
   };
+  const textMark = lines.some((l) => l.kind === 'surface' && l.cells.some((c) => c.changed))
+    ? []
+    : [text];
   const marks = [
     ...lines.flatMap((l) => l.cells.flatMap(valuesOf)),
     ...sentFields,
     ...mwes,
-    ...(lines.some((l) => l.kind === 'surface' && l.cells.some((c) => c.changed)) ? [] : [text]),
+    ...textMark,
   ];
+  // The changes counted by kind, summing to `changes`.
+  const kinds = {};
+  const tally = (kind, list) => {
+    const n = list.filter((m) => m.changed).length;
+    if (n) kinds[kind] = (kinds[kind] ?? 0) + n;
+  };
+  lines.forEach((l) => tally(KIND_OF_ROW[l.kind] ?? 'values', l.cells.flatMap(valuesOf)));
+  tally('values', sentFields);
+  tally('links', mwes);
+  tally('text', textMark);
   return {
     id: (a ?? b).id,
     state: !b ? 'added' : !a ? 'deleted' : 'kept',
@@ -451,6 +473,7 @@ const diffSentence = (b, a, rows, fields, own) => {
     text,
     changes: marks.filter((m) => m.changed).length,
     replaced: marks.filter((m) => m.replaced).length,
+    kinds,
   };
 };
 

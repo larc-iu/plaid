@@ -15,7 +15,7 @@ import { dropPrecedent } from '@/domain/precedentCache';
 import { SentenceChange } from './SentenceChange.jsx';
 import { EntryChangeList } from './EntryChangeList.jsx';
 import { ChangeValue } from './ChangeValue.jsx';
-import { countLine } from './changeMarks.js';
+import { countLine, kindsLine } from './changeMarks.js';
 import { useChangeRows } from './useChangeRows.js';
 import { UndoDialog } from './UndoDialog.jsx';
 
@@ -99,7 +99,14 @@ export const DocumentHistoryChanges = ({ context, user = null }) => {
       elsewhere.other +
       elsewhere.deleted;
     const replaced = sentences.reduce((n, s) => n + s.replaced, 0);
-    return { sentences, entries, documentFields, elsewhere, changes, replaced };
+    // What the count is made of, by kind (RP-3).
+    const kinds = {};
+    const add = (k, n) => n > 0 && (kinds[k] = (kinds[k] ?? 0) + n);
+    sentences.forEach((s) => Object.entries(s.kinds || {}).forEach(([k, n]) => add(k, n)));
+    add('entries', entries.length);
+    add('details', documentFields.length);
+    add('other', elsewhere.transcript + elsewhere.other + elsewhere.deleted);
+    return { sentences, entries, documentFields, elsewhere, changes, replaced, kinds };
   }, [after, docRows, entryRows]);
 
   // What the Undo dialog needs of the rows: the role of each token row, and
@@ -168,9 +175,14 @@ export const DocumentHistoryChanges = ({ context, user = null }) => {
         <p className="text-sm text-muted-foreground">No changes to show.</p>
       ) : (
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <p className="text-sm" data-testid="change-count">
-            {countLine(view.changes, view.replaced)}
-          </p>
+          <div>
+            <p className="text-sm" data-testid="change-count">
+              {countLine(view.changes, view.replaced)}
+            </p>
+            <p className="text-xs text-muted-foreground" data-testid="change-kinds">
+              {kindsLine(view.kinds)}
+            </p>
+          </div>
           <div className="flex flex-wrap items-center gap-2">
             <SegmentedControl
               label="Filter"
