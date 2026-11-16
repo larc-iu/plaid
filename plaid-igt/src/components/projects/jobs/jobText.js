@@ -465,8 +465,10 @@ const REFUSED_TEXT = {
   'not-added': 'Value on a word or sentence the job did not add',
   // An analysis of a word in a sentence the piece's own plan retyped (RPF3-B).
   retyped: 'Analysis of a word in a sentence the job retyped',
-  // A change outside the piece's own sentences (RP3-2).
-  outside: 'Change outside the sentences of the piece that made it',
+  // A change outside the piece's own sentences (RP3-2), a text edit too
+  // under onlynew (REV-RPF3B-5). Named by where, as it was never made
+  // (REV-RPF3B-10).
+  outside: 'Outside the piece’s own sentences',
 };
 export const refusedText = (code) => REFUSED_TEXT[code] ?? 'Refused';
 

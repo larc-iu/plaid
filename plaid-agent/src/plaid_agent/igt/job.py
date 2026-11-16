@@ -1321,8 +1321,9 @@ def not_added(op: Dict[str, Any], only_new: Optional[Tuple[set, set]],
 
 def outside_piece(op: Dict[str, Any], stretch: Optional['Stretch'], docs: Iterable[Any]) -> Optional[Tuple[str]]:
     """``(the sentence id,)`` when ``op`` writes a value, an analysis or a
-    link (:data:`ONLY_NEW_KINDS`) on a word, a morpheme or a sentence that is
-    not one of the piece's own sentences (``stretch``: a stretch's, a whole
+    link (:data:`ONLY_NEW_KINDS`), or edits the text (REV-RPF3B-5: the model
+    is told a piece writes only in its own), on a word, a morpheme or a
+    sentence that is not one of the piece's own sentences (``stretch``: a stretch's, a whole
     document's, the sentences a piece after a text edit was given), else None
     (RP3-2: under onlynew a later piece linked a word an earlier piece
     added). onlynew narrows what a piece writes, never widens it. None for a
@@ -1330,7 +1331,7 @@ def outside_piece(op: Dict[str, Any], stretch: Optional['Stretch'], docs: Iterab
     apply rule. A planned value on a retyped sentence's word is that
     sentence's."""
     from . import jobapply
-    if stretch is None or jobapply.change_kind(op) not in ONLY_NEW_KINDS:
+    if stretch is None or jobapply.change_kind(op) not in ONLY_NEW_KINDS | {'text'}:
         return None
     from .jobapply import _found, token_of
     from .retyped import PLANNED

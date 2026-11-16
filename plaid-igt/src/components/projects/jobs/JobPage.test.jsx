@@ -2320,6 +2320,27 @@ describe('the job page', () => {
     await v.unmount();
   });
 
+  // REV-RPF3B-10: a change refused outside its piece was never made: its
+  // label names where, not a change.
+  it('words a change refused outside its piece by where it was', async () => {
+    const report = {
+      ...REPORT,
+      documents: [
+        {
+          documentId: 'd1',
+          name: 'Story A',
+          skipped: [],
+          left: [],
+          leftMore: 0,
+          refused: [{ sentence: 's1', sentenceId: 'sen1', what: 'x', code: 'outside' }],
+        },
+      ],
+    };
+    const v = await mount(clientOf(jobOf({ state: 'done', report })));
+    expect(text(v.container)).toContain('s1 Outside the piece’s own sentences');
+    await v.unmount();
+  });
+
   // A5, RP-4: the one report of a job that fills nothing, in full, first.
   it('shows the findings of a job that fills nothing first on the page, rendered, with Copy', async () => {
     const findings = '## Part 1\n\n| form | glosses |\n|---|---|\n| на | AOR 78, AOC 22 |\n';
