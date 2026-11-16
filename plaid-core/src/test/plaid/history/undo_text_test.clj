@@ -51,11 +51,34 @@
 
 (defn- reasons [summary] (into {} (map (juxt :id :reason)) (:skipped summary)))
 
+(def ^:private astral-zero
+  "MATHEMATICAL DOUBLE-STRUCK DIGIT ZERO, U+1D7D8, outside the BMP."
+  (String. (Character/toChars 0x1D7D8)))
+
+(defn- cps
+  "The length of `s` in code points."
+  [^String s]
+  (.codePointCount s 0 (.length s)))
+
+(defn- code-points [^String s] (vec (.toArray (.codePoints s))))
+
 (defn- runs
-  "The [begin end] of each run of non-space characters of `s`."
-  [s]
-  (let [m (re-matcher #"\S+" s)]
-    (loop [out []] (if (.find m) (recur (conj out [(.start m) (.end m)])) out))))
+  "The [begin end] in code points of each run of non-space characters of `s`."
+  [^String s]
+  (let [cs (code-points s)]
+    (loop [i 0 start nil out []]
+      (if (= i (count cs))
+        (cond-> out start (conj [start i]))
+        (let [sp (Character/isWhitespace (int (cs i)))]
+          (cond (and sp start) (recur (inc i) nil (conj out [start i]))
+                (and (not sp) (nil? start)) (recur (inc i) i out)
+                :else (recur (inc i) start out)))))))
+
+(defn- indexes-of
+  "The code point indexes of the code point `c` (a one-character string) in `s`."
+  [^String s ^String c]
+  (let [k (.codePointAt c 0)]
+    (keep-indexed (fn [i x] (when (= x k) i)) (code-points s))))
 
 (defn- add-document!
   "A document of `proj` whose text is `sentences` joined by spaces, a
@@ -67,7 +90,7 @@
         text (id (create-text admin-request tl d body))
         bounds (loop [at 0 [s & more] sents out []]
                  (if s
-                   (let [end (if (seq more) (+ at (count s) 1) (count body))]
+                   (let [end (if (seq more) (+ at (cps s) 1) (cps body))]
                      (recur end more (conj out [at end])))
                    out))]
     (assert-created (bulk-create-tokens admin-request (mapv (fn [[b e]] {:token-layer-id sentences :text text :begin b :end e})
@@ -79,16 +102,23 @@
 (def ^:private story ["kai pele" "\" tuna lo" "mo sa"])
 
 (defn- world!
-  "A project with igt's layers and one document of `sents`."
-  ([] (world! story))
-  ([sents]
+  "A project with igt's layers and one document of `sents`, user1 a writer.
+  With `:morphs`, a morpheme layer under the words with a gloss layer."
+  ([] (world! story {}))
+  ([sents] (world! sents {}))
+  ([sents {:keys [morphs]}]
    (let [proj (create-test-project admin-request "Retypes")
          tl (id (create-text-layer admin-request proj "Baseline"))
          sentences (id (create-token-layer-opts admin-request tl "Sentences" {:overlap-mode "partitioning"}))
          words (id (create-token-layer-opts admin-request tl "Words" {:overlap-mode "non-overlapping"
                                                                       :parent-token-layer-id sentences}))
+         morphs (when morphs
+                  (id (create-token-layer-opts admin-request tl "Morphemes" {:overlap-mode "non-overlapping"
+                                                                             :parent-token-layer-id words})))
          pos (id (create-span-layer admin-request words "Part of Speech"))
-         w {:proj proj :tl tl :sentences sentences :words words :pos pos}]
+         gloss (when morphs (id (create-span-layer admin-request morphs "Gloss")))
+         _ (assert-done (add-project-writer admin-request proj "user1@example.com"))
+         w {:proj proj :tl tl :sentences sentences :words words :morphs morphs :pos pos :gloss gloss}]
      (merge w (add-document! w "Story" sents)))))
 
 (defn- body [text] (:body (psc/fetch-by-id db :texts text)))
@@ -107,7 +137,7 @@
   (assert-ok (api-call req {:method :patch :path (str "/api/v1/texts/" text)
                             :body {:edits edits :tokenize-layer words}})))
 
-(defn- replace-op [i old new] {:type "replace" :index i :length (count old) :value new})
+(defn- replace-op [i old new] {:type "replace" :index i :length (cps old) :value new})
 (defn- insert-op [i v] {:type "insert" :index i :value v})
 
 (defn- word-at
@@ -148,23 +178,117 @@
   [st]
   (into {} (filter (fn [[[kind] _]] (#{"text" "token" "span"} kind))) st))
 
+(defn- coverage
+  "`{[text layer] {:body b :covered #{code point index}}}` for the texts of
+  `docs`: which characters the tokens of each layer cover now."
+  [docs]
+  (into {}
+        (for [d docs
+              t (psc/q db {:select [:id :body] :from [:texts] :where [:= :document_id (str d)]})
+              [layer ks] (group-by :token_layer_id
+                                   (psc/q db {:select [:token_layer_id :begin :end_] :from [:tokens]
+                                              :where [:= :text_id (str (:id t))]}))]
+          [[(:id t) layer] {:body (:body t) :covered (into #{} (mapcat (fn [k] (range (:begin k) (:end_ k)))) ks)}])))
+
+(defn- problems
+  "What is wrong with document `d` now, as strings: a token outside its
+  text, a partitioning layer that does not tile its text, an overlap on a
+  non-overlapping layer, a child token outside every parent, a span, link or
+  relation naming a row that is not there."
+  [d]
+  (let [texts (psc/q db {:select [:id :body] :from [:texts] :where [:= :document_id (str d)]})
+        tokens (psc/q db {:select [:id :token_layer_id :text_id :begin :end_] :from [:tokens]
+                          :where [:= :document_id (str d)]})
+        layers (into {} (map (juxt :id identity))
+                     (psc/q db {:select [:id :overlap_mode :parent_token_layer_id] :from [:token_layers]}))
+        tok-ids (set (map :id tokens))
+        span-ids (set (map :id (psc/q db {:select [:id] :from [:spans] :where [:= :document_id (str d)]})))
+        out (atom [])
+        p! #(swap! out conj %)]
+    (doseq [t texts
+            :let [n (cps (:body t))
+                  ts (filter #(= (:id t) (:text_id %)) tokens)]]
+      (doseq [k ts] (when-not (<= 0 (:begin k) (:end_ k) n) (p! (str "token outside its text " (pr-str k)))))
+      (doseq [[lid lts] (group-by :token_layer_id ts)
+              :let [mode (:overlap_mode (layers lid))
+                    srt (sort-by (juxt :begin :end_) lts)]]
+        (when (and (= "partitioning" mode)
+                   (not (and (= 0 (:begin (first srt))) (= n (:end_ (last srt)))
+                             (every? (fn [[a b]] (= (:end_ a) (:begin b))) (partition 2 1 srt)))))
+          (p! (str "partition broken " (pr-str (map (juxt :begin :end_) srt)))))
+        (when (#{"non-overlapping" "partitioning"} mode)
+          (doseq [[a b] (partition 2 1 srt)] (when (< (:begin b) (:end_ a)) (p! (str "overlap " (pr-str [a b]))))))
+        (when-let [par (:parent_token_layer_id (layers lid))]
+          (let [ps (filter #(= par (:token_layer_id %)) ts)]
+            (doseq [k lts]
+              (when-not (some #(<= (:begin %) (:begin k) (:end_ k) (:end_ %)) ps)
+                (p! (str "child outside its parents " (pr-str k)))))))))
+    (doseq [r (psc/q db ["SELECT st.token_id FROM span_tokens st JOIN spans s ON s.id = st.span_id WHERE s.document_id = ?" (str d)])]
+      (when-not (tok-ids (:token_id r)) (p! (str "span on a missing token " (:token_id r)))))
+    (doseq [r (psc/q db {:select [:id :source_span_id :target_span_id] :from [:relations] :where [:= :document_id (str d)]})]
+      (when-not (and (span-ids (:source_span_id r)) (span-ids (:target_span_id r)))
+        (p! (str "relation on a missing span " (:id r)))))
+    (doseq [r (psc/q db ["SELECT lt.token_id FROM vocab_link_tokens lt JOIN vocab_links l ON l.id = lt.vocab_link_id WHERE l.document_id = ?" (str d)])]
+      (when-not (tok-ids (:token_id r)) (p! (str "link on a missing token " (:token_id r)))))
+    @out))
+
+(defn- bodies [docs]
+  (into {} (for [d docs t (psc/q db {:select [:id :body] :from [:texts] :where [:= :document_id (str d)]})]
+             [(:id t) (:body t)])))
+
+(defn- snapshot
+  "The `state` of `docs`, carrying in its metadata which characters each
+  layer covers and each text's body, so an undo can be checked against the
+  state before the unit (`invariant!`). Equal to `state` under `=`."
+  [docs]
+  (with-meta (state docs) {:cover (coverage docs) :bodies (bodies docs)}))
+
 (defn- invariant!
-  "What every undo must leave, whatever it undid: every token of document
-  `d` lies within its text (begin <= end <= the body's length in code
-  points), and each text holds tokens over the same characters it held
-  either before the undo or after it, never the text of one with the tokens
-  of the other: the text and the tokens on it went back together or not at
-  all. `was` is the documents' state before the undo, `then` their state
-  before the unit, `now` after the undo."
-  [docs was then now]
-  (doseq [d docs
-          t (psc/q db {:select [:id :body] :from [:texts] :where [:= :document_id (str d)]})
-          :let [n (.codePointCount ^String (:body t) 0 (count (:body t)))]]
-    (doseq [k (psc/q db {:select [:id :begin :end_] :from [:tokens] :where [:= :text_id (str (:id t))]})]
-      (is (<= 0 (:begin k) (:end_ k) n) (str "token " (:id k) " lies within its text"))))
+  "What every undo must leave, whatever it undid, in the documents `docs`:
+  1. every document is valid (`problems`: every token within its text in
+     code points, every layer's rules, nothing naming a row not there);
+  2. on every text whose body the undo did not change, every character a
+     token of a layer covered before the undo is still covered by a token of
+     that layer, unless no token of that layer covered it before the unit
+     either: an undo takes away only coverage the unit added, and never
+     leaves characters bare that were covered before the unit and after it
+     (REV-RPF-P-2, REV-UT-2). `cover` is the `coverage` before the undo.
+     `then` is a `snapshot` before the unit (or nil, when only the state
+     before the undo is known: then nothing covered before the undo may be
+     uncovered);
+  3. each text and its tokens are as they were before the undo (`was`) or as
+     they were before the unit (`then`), never the text of one with the
+     tokens of the other: together or not at all."
+  [docs cover was then now]
+  (doseq [d docs] (is (empty? (problems d)) (pr-str (problems d))))
+  (let [now-cover (coverage docs)
+        now-bodies (bodies docs)
+        {then-cover :cover then-bodies :bodies} (meta then)]
+    (doseq [[[text layer :as k] {:keys [body covered]}] cover
+            :when (= body (now-bodies text))
+            :let [needed (if (and then (= body (get then-bodies text)))
+                           (filter (or (:covered (get then-cover k)) #{}) covered)
+                           covered)]]
+      (is (every? (or (:covered (get now-cover k)) #{}) needed)
+          (str "characters left bare on layer " layer " of " (pr-str body)))))
   (let [part (fn [st] (into {} (filter (fn [[[kind] _]] (#{"text" "token"} kind))) st))]
-    (is (or (= (part now) (part was)) (= (part now) (part then)))
+    (is (or (= (part now) (part was)) (and then (= (part now) (part then))))
         "the text and its tokens are as the unit left them or as they were before it")))
+
+(defn- undo-checked!
+  "Undo by `call` (a function of dry?), dry run first, over the documents
+  `docs`: the dry run writes nothing and says what the real call does, and
+  the invariant holds after (`then` the state before the unit, or nil).
+  Returns the real call's summary."
+  [docs then call]
+  (let [was (state docs)
+        cover (coverage docs)
+        dry (body-of (call true))
+        _ (is (= was (state docs)) "the dry run wrote nothing")
+        real (body-of (call false))]
+    (is (= (dissoc dry :dry-run) (dissoc real :dry-run :operation)) "the dry run said what the call did")
+    (invariant! docs cover was then (state docs))
+    real))
 
 ;; ============================================================
 ;; The reviewer's case, and its shapes
@@ -178,8 +302,7 @@
   (let [r (in-group admin-request g)]
     (edit! r w text [(replace-op (at text "\"") "\"" nul)])
     (edit! r w text [(insert-op 0 (str nul " "))])
-    (let [b (body text)
-          nuls (keep-indexed (fn [i c] (when (= nul (str c)) i)) b)]
+    (let [nuls (indexes-of (body text) nul)]
       (doseq [i nuls] (id (create-span r pos [(word-at words text i (inc i))] "PRON")))
       (id (create-span r pos [(word-at words text (at text "tuna") (+ 4 (at text "tuna")))] "N")))))
 
@@ -188,17 +311,11 @@
   the documents `docs` go back to `before` exactly, nothing is skipped, and
   the dry run said what the call did."
   [entry docs before]
-  (let [call (fn [& dry] (if (vector? entry)
-                           (undo-job admin-request (second entry) :dry-run (first dry))
-                           (undo-entry admin-request entry :dry-run (first dry))))
-        after (state docs)
-        dry (body-of (call true))
-        _ (is (= after (state docs)) "the dry run wrote nothing")
-        real (body-of (call))]
+  (let [real (undo-checked! docs before #(if (vector? entry)
+                                           (undo-job admin-request (second entry) :dry-run %)
+                                           (undo-entry admin-request entry :dry-run %)))]
     (is (zero? (:skipped-count real)) (pr-str (:skipped real)))
     (is (= before (state docs)) "every row as before the unit")
-    (is (= (dissoc dry :dry-run) (dissoc real :dry-run :operation)) "the dry run said what the call did")
-    (invariant! docs after before (state docs))
     real))
 
 (defn- job!
@@ -218,7 +335,7 @@
 (deftest two-retypes-of-one-text-one-dropping-a-mark-undo-exactly
   (testing "by the entry's route"
     (let [{:keys [doc] :as w} (world!)
-          before (state [doc])
+          before (snapshot [doc])
           g (str (random-uuid))]
       (reviewers-case! w g)
       (is (= (str nul " kai pele " nul " tuna lo mo sa") (body (:text w))))
@@ -226,14 +343,14 @@
       (is (= "kai pele \" tuna lo mo sa" (body (:text w))))))
   (testing "by the job's route"
     (let [{:keys [proj doc] :as w} (world!)
-          before (state [doc])
+          before (snapshot [doc])
           g (str (random-uuid))
           _ (reviewers-case! w g)
           job (job! proj [doc] [g])]
       (exact-undo! [:job job] [doc] before)))
   (testing "by the engine, the job's groups read as one unit"
     (let [{:keys [doc] :as w} (world!)
-          before (state [doc])
+          before (snapshot [doc])
           g1 (str (random-uuid))
           g2 (str (random-uuid))
           r1 (in-group admin-request g1)
@@ -245,7 +362,7 @@
       (let [{:keys [summary]} (undo/undo db [g1 g2] {:user "admin@example.com" :may-document? (constantly true)
                                                      :may-vocab? (constantly true)})]
         (is (zero? (:skipped-count summary)) (pr-str (:skipped summary)))
-        (is (= before (state [doc])))))))
+        (is (= before (snapshot [doc])))))))
 
 (deftest the-shapes-of-several-text-writes-by-one-unit
   ;; each edit is read against the body the edits before it left
@@ -269,7 +386,7 @@
              (fn [t] [(replace-op (at t nul) nul "'")])]]]]
     (testing what
       (let [{:keys [doc text] :as w} (world!)
-            before (state [doc])
+            before (snapshot [doc])
             g (str (random-uuid))
             r (in-group admin-request g)]
         (doseq [e edits] (edit! r w text (e text)))
@@ -278,7 +395,7 @@
 (deftest the-same-in-two-documents-of-one-job
   (let [{:keys [proj doc] :as w} (world!)
         d2 (add-document! w "Story 2" ["mo sa" "\" tuna kai"])
-        before (state [doc (:doc d2)])
+        before (snapshot [doc (:doc d2)])
         g1 (str (random-uuid))
         g2 (str (random-uuid))]
     (reviewers-case! w g1)
@@ -297,14 +414,12 @@
   two edits, `after` after the unit's last write."
   [{:keys [between after]}]
   (let [{:keys [proj doc text pos words] :as w} (world!)
-        _ (assert-done (add-project-writer admin-request proj "user1@example.com"))
         g (str (random-uuid))
         r (in-group admin-request g)
         _ (edit! r w text [(replace-op (at text "\"") "\"" nul)])
         _ (when between (between w))
         _ (edit! r w text [(insert-op (at text "mo") (str nul " "))])
-        b (body text)
-        pron (vec (for [i (keep-indexed (fn [i c] (when (= nul (str c)) i)) b)]
+        pron (vec (for [i (indexes-of (body text) nul)]
                     (id (create-span r pos [(word-at words text i (inc i))] "PRON"))))
         kai (id (create-span r pos [(word-at words text 0 3)] "N"))
         dep (id (create-relation-layer admin-request pos "Dependencies"))
@@ -318,7 +433,7 @@
 (defn- person-edit! [{:keys [text] :as w}]
   ;; a person adds a word at the end of s3, as the Baseline sends it
   (assert-ok (api-call user1-request {:method :patch :path (str "/api/v1/texts/" text)
-                                      :body {:edits [(insert-op (count (body text)) " ke")]}})))
+                                      :body {:edits [(insert-op (cps (body text)) " ke")]}})))
 
 (deftest a-persons-edit-between-or-after-the-units-holds-its-text-and-its-tokens
   (doseq [[what opts reason] [["between the unit's edits" {:between person-edit!} "changed-between"]
@@ -326,12 +441,9 @@
     (testing what
       (let [{:keys [doc text g pron kai rel link]} (person-world! opts)
             was (state [doc])
-            dry (body-of (undo-entry admin-request g :dry-run true))
-            _ (is (= was (state [doc])))
-            real (body-of (undo-entry admin-request g))
+            real (undo-checked! [doc] nil #(undo-entry admin-request g :dry-run %))
             why (reasons real)
             now (state [doc])]
-        (is (= (dissoc dry :dry-run) (dissoc real :dry-run :operation)))
         (is (= reason (why text)) "the text is the person's to keep")
         (is (every? #{"text-changed-since" "changed-since"} (vals (dissoc why text)))
             "every other row is left for its text, or for the person's edit of it")
@@ -342,8 +454,7 @@
         (is (= "text-changed-since" (why link)) "a link on a new word stays with it")
         (is (some? (psc/fetch-by-id db :relations rel)))
         (is (some? (psc/fetch-by-id db :vocab_links link)))
-        (is (nil? (get now ["span" kai])) "a value on a word no edit moved is undone")
-        (invariant! [doc] was nil now)))))
+        (is (nil? (get now ["span" kai])) "a value on a word no edit moved is undone")))))
 
 (deftest a-text-left-for-any-reason-keeps-the-words-made-on-it
   ;; The unit types two new words. A person gives one of them a value, so
@@ -357,14 +468,91 @@
         second-new (word-at words text 2 3)
         mine (id (create-span admin-request pos [first-new] "PRON"))
         was (state [doc])
-        real (body-of (undo-entry admin-request g))
+        real (undo-checked! [doc] nil #(undo-entry admin-request g :dry-run %))
         why (reasons real)
         now (state [doc])]
     (is (= "built-on" (why first-new)))
     (is (= "text-changed-since" (why second-new)) "the second new word stays with its text")
     (is (= (text-part was) (text-part now)) "nothing of the text is undone")
-    (is (some? (psc/fetch-by-id db :spans mine)))
-    (invariant! [doc] was nil now)))
+    (is (some? (psc/fetch-by-id db :spans mine)))))
+
+;; ============================================================
+;; REV-UT-1: a value the unit wrote on an old word its edit only shifted
+;; ============================================================
+
+(defn- word-of
+  "The word over the first `s` in `text` now."
+  [{:keys [words]} text s]
+  (let [b (at text s)] (word-at words text b (+ b (cps s)))))
+
+(defn- shifted-world!
+  "The job types `∅ ` at the start (every old word shifts), gives PRON to
+  the new word, N to the old word tuna and CONJ to the old word kai."
+  [opts]
+  (let [{:keys [doc text pos words] :as w} (world! story opts)
+        then (snapshot [doc])
+        g (str (random-uuid))
+        r (in-group admin-request g)
+        _ (edit! r w text [(insert-op 0 (str nul " "))])
+        pron (id (create-span r pos [(word-at words text 0 1)] "PRON"))
+        tuna (id (create-span r pos [(word-of w text "tuna")] "N"))
+        kai (id (create-span r pos [(word-of w text "kai")] "CONJ"))]
+    (assoc w :g g :then then :pron pron :tuna tuna :kai kai)))
+
+(deftest a-value-on-an-old-word-the-edit-only-shifted-is-undone-when-the-text-stays
+  (doseq [[what opts person]
+          [["a person's morpheme on an untouched word" {:morphs true}
+            (fn [{:keys [morphs text]}] (let [b (at text "sa")] (create-token user1-request morphs text b (+ b 2))))]
+           ["a person's split of an untouched word" {}
+            (fn [{:keys [text] :as w}] (split-token user1-request (word-of w text "pele") (+ 2 (at text "pele"))))]
+           ["a person's note on an old word" {}
+            (fn [{:keys [text] :as w}] (update-token-metadata user1-request (word-of w text "lo") {"note" "x"}))]
+           ["a person typing at the end of the text" {}
+            (fn [{:keys [text]}] (api-call user1-request {:method :patch :path (str "/api/v1/texts/" text)
+                                                          :body {:edits [(insert-op (cps (body text)) " ke")]}}))]
+           ["a person's value on the new word" {}
+            (fn [{:keys [pos words text]}] (create-span user1-request pos [(word-at words text 0 1)] "DET"))]]]
+    (testing what
+      (let [{:keys [doc text g then pron tuna kai] :as w} (shifted-world! opts)
+            _ (assert-done (person w))
+            real (undo-checked! [doc] then #(undo-entry admin-request g :dry-run %))
+            why (reasons real)]
+        (is (str/starts-with? (body text) (str nul " kai pele \" tuna lo mo sa")) "the text stays")
+        (is (nil? (psc/fetch-by-id db :spans tuna)) "the job's value on tuna is undone")
+        (is (nil? (psc/fetch-by-id db :spans kai)) "the job's value on kai is undone")
+        (is (nil? (why tuna)))
+        (when (= "text-changed-since" (why (word-at (:words w) text 0 1)))
+          (is (= "text-changed-since" (why pron)) "a value on the typed word stays with it")
+          (is (some? (psc/fetch-by-id db :spans pron))))))))
+
+(deftest two-jobs-on-one-text-in-either-order
+  (let [two-jobs! (fn []
+                    (let [{:keys [proj doc text pos words] :as w} (world!)
+                          then (snapshot [doc])
+                          g1 (str (random-uuid))
+                          g2 (str (random-uuid))
+                          r1 (in-group admin-request g1)
+                          r2 (in-group admin-request g2)]
+                      (edit! r1 w text [(replace-op (at text "\"") "\"" nul)])
+                      (edit! r1 w text [(insert-op 0 (str nul " "))])
+                      (create-span r1 pos [(word-at words text 0 1)] "PRON")
+                      (let [n1 (id (create-span r1 pos [(word-of w text "tuna")] "N1"))
+                            mid (snapshot [doc])]
+                        (edit! r2 w text [(insert-op (at text "mo") (str nul " "))])
+                        (create-span r2 pos [(word-of w text "mo")] "N2")
+                        (create-span r2 pos [(word-of w text "kai")] "K2")
+                        (assoc w :then then :mid mid :n1 n1
+                               :j1 (job! proj [doc] [g1]) :j2 (job! proj [doc] [g2])))))]
+    (testing "the first job undone while the second stands: its text stays, its value on an old word goes"
+      (let [{:keys [doc j1 then n1]} (two-jobs!)]
+        (undo-checked! [doc] then #(undo-job admin-request j1 :dry-run %))
+        (is (nil? (psc/fetch-by-id db :spans n1)) "the first job's N1 on tuna is undone")))
+    (testing "the second job, then the first: each exact"
+      (let [{:keys [doc j1 j2 then mid]} (two-jobs!)]
+        (undo-checked! [doc] mid #(undo-job admin-request j2 :dry-run %))
+        (is (= mid (state [doc])) "the second job undone exactly")
+        (let [real (undo-checked! [doc] then #(undo-job admin-request j1 :dry-run %))]
+          (is (pos? (:total real))))))))
 
 ;; ============================================================
 ;; The neighbours: one row written more than once by the unit
@@ -391,7 +579,7 @@
           w0 (word-at words text 0 3)
           w1 (word-at words text 4 8)
           s (id (create-span admin-request pos [w0] "N"))
-          before (state [doc])
+          before (snapshot [doc])
           gloss (str (random-uuid))
           harmonize (str (random-uuid))
           _ (assert-ok (update-span (in-group admin-request gloss) s :value "V"))
@@ -409,7 +597,7 @@
       (exact-undo! [:job job] [doc] before)))
   (testing "a word split, then merged by the same unit with its other neighbour"
     (let [{:keys [doc text words] :as w} (world! ["kai pele tuna"])
-          before (state [doc])
+          before (snapshot [doc])
           g (str (random-uuid))
           r (in-group admin-request g)
           pele (word-at words text 4 8)
@@ -420,7 +608,7 @@
       (exact-undo! g [doc] before)))
   (testing "a text edited, the document restored, then edited again, by one unit"
     (let [{:keys [doc text] :as w} (world!)
-          before (state [doc])
+          before (snapshot [doc])
           t0 (latest-op-ts)
           g (str (random-uuid))
           r (in-group admin-request g)

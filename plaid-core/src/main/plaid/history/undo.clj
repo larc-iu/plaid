@@ -38,7 +38,7 @@
                         a token it made on a text whose body stays, so a
                         text and its tokens go back together or not at all.
                         A span, link or relation the entry wrote on a token
-                        left so stays with it. After the writes, every token
+                        it made that is left so stays with it. After the writes, every token
                         put back is read against the text it was made on, as
                         a last check,
     name-taken          a document's name, which another document holds now,
@@ -501,12 +501,15 @@
 
 (defn- on-held-tokens
   "`text-changed-since` when `i` is a span or a vocabulary link on a token
-  left for its text, or a relation on a span left so, else nil: what the
-  unit wrote on a word it typed or reshaped stays with that word when the
-  text does not go back, never undone against a text it no longer fits."
-  [i why]
+  the unit MADE that is left for its text, or a relation on a span left so,
+  else nil: what the unit wrote on a word it typed stays with that word when
+  the text does not go back. A value on an old word the unit's edit only
+  shifted does not depend on offsets, so it is undone as any value is
+  (REV-UT-1)."
+  [i why item-of]
   (let [{:keys [table before after]} i
-        held? (fn [t id] (= "text-changed-since" (:reason (why [t id]))))]
+        held? (fn [t id] (and (= "text-changed-since" (:reason (why [t id])))
+                              (or (= t "spans") (= :delete (:op (item-of [t id]))))))]
     (when (case table
             ("spans" "vocab_links") (some #(held? "tokens" %) (concat (:tokens before) (:tokens after)))
             "relations" (some #(held? "spans" %) (keep identity [(:source_span_id before) (:target_span_id before)
@@ -598,7 +601,7 @@
             ctx (assoc ctx :applied? applied? :on? on? :why #(get left %))
             more (into {} (keep (fn [i]
                                   (when (applied? i)
-                                    (when-let [r (or (check i ctx) (on-held-tokens i (:why ctx)))]
+                                    (when-let [r (or (check i ctx) (on-held-tokens i (:why ctx) item-of))]
                                       [(:k i) r]))))
                        items)]
         (if (empty? more)
