@@ -38,7 +38,7 @@ from .limits import (HARMONIZE_MAJORITY, JOB_CALL_DECIDE_AT_TOKENS, JOB_CORE_TRI
                      JOB_STRETCH_DECIDE_AT_ROUNDS,
                      JOB_STRETCH_MAX_ROUNDS, JOB_STRETCH_MAX_SENT_TOKENS, JOB_YIELD_POLL_S, JOB_YIELD_QUIET_S,
                      JOB_YIELD_STEADY_S)
-from .prompt import JOB_DECIDE_NOW
+from .prompt import JOB_DECIDE_NOW, job_cut_at_ceiling
 
 logger = logging.getLogger(__name__)
 
@@ -127,13 +127,21 @@ class Pace:
     is sent JOB_PLAN_NOW). ``before_call`` runs last, just before the call: the wait for people
     on the model key, which may raise to stop the job. One Pace spans every
     turn of a stretch: the budgets count the calls and tokens of all of
-    them."""
+    them.
+
+    ``output_tokens``: a piece's ceiling on what one call may write
+    (``JOB_PIECE_OUTPUT_TOKENS``), None for the model's own cap. Under it
+    the first call that reaches its cap is dropped and the context asked
+    again once (:meth:`cut`), the second ends the turn as a call at the
+    model's own cap does."""
 
     def __init__(self, model: str, before_call: Callable[[], None] = lambda: None,
                  count: Optional[Callable[[Any], int]] = None, decided: Callable[[], None] = lambda: None,
-                 line: str = JOB_DECIDE_NOW):
+                 line: str = JOB_DECIDE_NOW, output_tokens: Optional[int] = None):
         self.count = count or token_counter(model)
         self.line = line
+        self.output_tokens = output_tokens or None
+        self.cuts = 0
         self.before_call = before_call
         self.decided = decided
         self.told = False
@@ -159,6 +167,8 @@ class Pace:
         return None
 
     def sending(self, kwargs: Dict[str, Any]) -> None:
+        if self.output_tokens:
+            kwargs['max_tokens'] = min(kwargs.get('max_tokens') or self.output_tokens, self.output_tokens)
         n = self._prompt(kwargs)
         if n > JOB_CALL_MAX_PROMPT_TOKENS:
             raise StretchFailed(BUDGET, f'a prompt of {n} tokens')
@@ -168,6 +178,15 @@ class Pace:
         self.sent += n
         self.calls += 1
         self.largest = max(self.largest, n)
+
+    def cut(self, limit: Optional[int]) -> Optional[str]:
+        """After a call that reached its cap (``limit`` tokens): the line the
+        context is asked again with, once, under a ceiling, else None (the
+        turn ends as it did before there was a ceiling)."""
+        if not self.output_tokens or self.cuts:
+            return None
+        self.cuts += 1
+        return job_cut_at_ceiling(limit or self.output_tokens)
 
 
 def halve(sentences: List[Any], attempt: Callable[[List[Any]], None],

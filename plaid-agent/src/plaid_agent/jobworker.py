@@ -5,7 +5,8 @@ in the working folder, as the services read theirs), with the model of their
 choice (CONTRACT 11)::
 
     plaid-job-worker --url URL --model MODEL --api-base BASE --context-window N
-        --model-pool NAME [--timeout S] [--max-output-tokens N] [--trace-dir DIR] [--apps igt]
+        --model-pool NAME [--timeout S] [--max-output-tokens N] [--piece-output-tokens N]
+        [--trace-dir DIR] [--apps igt]
 
 It asks for a job every 30 seconds, runs one at a time (``core.job``) and
 writes as the person who started each, with the token core mints for them.
@@ -35,7 +36,7 @@ from plaid_client.workflows.llm import add_model_pool_argument, add_timeout_argu
 
 from .core.agent import ModelConfig, ModelTooSlow, output_cap, ping_model
 from .core.job import Worker, not_answering
-from .core.limits import JOB_IDLE_POLL_S, JOB_MODEL_RETRY_S
+from .core.limits import JOB_IDLE_POLL_S, JOB_MODEL_RETRY_S, JOB_PIECE_OUTPUT_TOKENS
 from .igt.job import runner_factory
 
 #: The apps a worker can run, and how it builds each one's runner.
@@ -115,6 +116,10 @@ def parser() -> argparse.ArgumentParser:
                    help='How many tokens the model can be sent')
     p.add_argument('--max-output-tokens', dest='max_tokens', type=int, default=None, metavar='N',
                    help='The most one model call may write, its reasoning included')
+    p.add_argument('--piece-output-tokens', type=int, default=JOB_PIECE_OUTPUT_TOKENS, metavar='N',
+                   help='The most one model call of a job\'s piece may write, its reasoning included (default '
+                        f'{JOB_PIECE_OUTPUT_TOKENS}, 0 for --max-output-tokens). A call that reaches it is asked '
+                        'again once')
     add_timeout_argument(p)
     add_model_pool_argument(p)
     p.add_argument('--reasoning-effort', default=None, metavar='LEVEL',
@@ -159,7 +164,8 @@ def main(argv=None) -> int:
     else:
         print('Model key: none given (--model-pool), so jobs wait for nobody using the model.')
     admin = BaseService.get_client(args.url)
-    runners = {app: APPS[app](cfg, trace_dir=args.trace_dir, count=count) for app in args.apps}
+    runners = {app: APPS[app](cfg, trace_dir=args.trace_dir, count=count,
+                              piece_output_tokens=args.piece_output_tokens) for app in args.apps}
     worker = Worker(admin, runners, cfg.model, client_for=lambda token: PlaidClient(args.url, token),
                     pool=args.model_pool, idle_s=JOB_IDLE_POLL_S)
     print(f'Worker {worker.worker_id} asking for jobs of {", ".join(args.apps)} every {JOB_IDLE_POLL_S} s.')

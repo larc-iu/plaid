@@ -234,6 +234,13 @@ JOB_CALL_DECIDE_AT_TOKENS = 48000
 JOB_STRETCH_MAX_SENT_TOKENS = 600000
 #: Seconds the worker waits before it asks a model that did not answer again.
 JOB_MODEL_RETRY_S = 300
+#: The most one model call of a job's PIECE may write, its reasoning
+#: included (the worker's --piece-output-tokens, 0 for none): the planning,
+#: the report's prose and a chat keep the model's own cap. A call that
+#: reaches it is dropped and the piece asked again once (BRIEF SP item 1):
+#: median reasoning near 5,000 tokens plus a round of batched writes near
+#: 2,000, with room to spare.
+JOB_PIECE_OUTPUT_TOKENS = 12000
 #: Seconds between asks while people use the model.
 JOB_YIELD_POLL_S = 10
 #: Seconds the model must have been quiet before the worker calls it.

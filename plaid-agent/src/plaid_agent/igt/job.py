@@ -54,7 +54,7 @@ from ..core.limits import (JOB_ANALYSIS_MAX_CHARS, JOB_CHANGE_VALUE_CHARS, JOB_C
                            JOB_DECISIONS_PER_CALL, JOB_DEFER_ROUNDS, JOB_DEFER_WAIT_S, JOB_GUIDELINES_MAX_CHARS,
                            JOB_LOCK_TRIES, JOB_LOCK_WAIT_S, JOB_PERSON_QUIET_S, JOB_PRECEDENT_CHARS,
                            JOB_EVIDENCE_CHARS, JOB_SENTENCE_MAX_CHARS, JOB_SENTENCE_MAX_WORDS,
-                           JOB_SKIPPED_PER_DOCUMENT, JOB_STRETCH_SENTENCES)
+                           JOB_PIECE_OUTPUT_TOKENS, JOB_SKIPPED_PER_DOCUMENT, JOB_STRETCH_SENTENCES)
 from ..core.plan import JOB_DETAIL_KEY, ONE_REQUEST, PlanError, TooBig, held_changes
 from ..core.prompt import (JOB_ANSWER_AGAIN, JOB_LEAVE_IT, JOB_PLAN_WRITTEN_CALL_NEXT, JOB_TEXT_THEN_FILL,
                            JOB_WRITTEN_CALL_NEXT)
@@ -2155,8 +2155,11 @@ class IgtRunner:
     NO_ENTRIES = entries_part([], [])
 
     def __init__(self, job, cfg: ModelConfig, trace_dir: Optional[str] = None, count=None,
-                 write_summary: bool = True):
+                 write_summary: bool = True, piece_output_tokens: Optional[int] = JOB_PIECE_OUTPUT_TOKENS):
         self.job = job
+        #: the most one call of a piece may write (the worker's
+        #: --piece-output-tokens, 0 or None for the model's own cap)
+        self.piece_output_tokens = piece_output_tokens
         #: whether the report's prose is written (the worker always does)
         self.write_summary = write_summary
         self.cfg = cfg
@@ -3473,7 +3476,7 @@ class IgtRunner:
 
         def decided():
             ws.decide_now = True
-        pace = self.pace(decided)
+        pace = self.pace(decided, piece=True)
         result = self.turn(ws, kit, system, transcript, pace=pace)
         job.check()
         if answered_nothing(ws, result.text):
@@ -3488,16 +3491,18 @@ class IgtRunner:
             return FINDINGS_NOTE
         return piece_note(result.text)
 
-    def pace(self, decided=lambda: None, line: Optional[str] = None) -> Pace:
+    def pace(self, decided=lambda: None, line: Optional[str] = None, piece: bool = False) -> Pace:
         """The budgets of one stretch, asked only while nobody waits for the
         model (``yield_to_people``). ``line``: its decide-now line, a
-        piece's unless given."""
+        piece's unless given. ``piece``: a piece's, whose calls write at most
+        ``piece_output_tokens`` each (BRIEF SP item 1)."""
         job = self.job
 
         def before_call():
             job.check()
             job.yield_to_people()
         return Pace(self.cfg.model, before_call=before_call, count=self.count, decided=decided,
+                    output_tokens=self.piece_output_tokens if piece else None,
                     **({'line': line} if line else {}))
 
     def counting(self, call_tool, where: str, read=None):
@@ -5946,6 +5951,8 @@ class IgtRunner:
 UNIT = {'Word': 'word', 'Morpheme': 'morpheme', 'Sentence': 'sentence'}
 
 
-def runner_factory(cfg: ModelConfig, trace_dir: Optional[str] = None, count=None):
+def runner_factory(cfg: ModelConfig, trace_dir: Optional[str] = None, count=None,
+                   piece_output_tokens: Optional[int] = JOB_PIECE_OUTPUT_TOKENS):
     """What the worker builds a claimed igt job's runner with."""
-    return lambda job: IgtRunner(job, cfg, trace_dir=trace_dir, count=count)
+    return lambda job: IgtRunner(job, cfg, trace_dir=trace_dir, count=count,
+                                 piece_output_tokens=piece_output_tokens)

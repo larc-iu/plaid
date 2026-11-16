@@ -1138,10 +1138,15 @@ def run_turn(cfg: ModelConfig, kit: Toolkit, ws: Any, system: str, transcript: L
         reply_round = None
         thought = (rnd.get('thinking') if rnd is not None and not rnd['calls'] else None) \
             or clean_reasoning(keeper.thinking if keeper is not None else None)
-        if keeper is not None and thought:
+        # A job's call that reached its cap: the trace says so (BRIEF SP).
+        cut_at = getattr(e, 'cut_at', None) if pace is not None and isinstance(e, TurnFailed) else None
+        if keeper is not None and (thought or cut_at):
             n = live['n']
             kept = new_round(n, cfg.model, _asked(_clean_transcript(transcript)) if n == 1 else None)
-            kept['thinking'] = thought
+            if cut_at:
+                kept['cut_at_tokens'] = cut_at
+            if thought:
+                kept['thinking'] = thought
             if partial:
                 kept['said'] = partial
             if keeper.store(kept):
@@ -1321,14 +1326,16 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
     def ask(kwargs: Dict[str, Any], messages: Callable[[], List[Dict[str, Any]]]):
         """One model call, ended with :class:`TurnFailed` when it reached
         its output cap (`unless_capped`)."""
-        return unless_capped(asked_once(kwargs, messages))
+        return unless_capped(asked_once(kwargs, messages), kwargs.get('max_tokens'))
 
-    def unless_capped(resp):
+    def unless_capped(resp, limit: Optional[int] = None):
         """``resp``, unless the model was still writing when the call
-        reached its output cap. What it wrote stays for the record: its text
-        as the turn's partial reply and its reasoning in a round of its own,
-        as a stop keeps them (`run_turn`). A call cut off mid tool call has
-        arguments no tool can read, so none of it is run."""
+        reached its output cap (``limit``, the call's ``max_tokens``). What
+        it wrote stays for the record: its text as the turn's partial reply
+        and its reasoning in a round of its own, as a stop keeps them
+        (`run_turn`). A call cut off mid tool call has arguments no tool can
+        read, so none of it is run. The failure carries the cap as
+        ``cut_at`` (a job's piece is asked again once, ``Pace.cut``)."""
         choices = getattr(resp, 'choices', None) or []
         if not choices or getattr(choices[0], 'finish_reason', None) != 'length':
             return resp
@@ -1340,14 +1347,16 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
         if thought:
             on_thinking(thought)
         usage = usage_of(resp)
-        written = (usage or {}).get('received') or cfg.max_tokens
+        limit = limit or cfg.max_tokens
+        written = (usage or {}).get('received') or limit
         print(f'{cfg.model}: a model call reached the output limit '
-              f'({written:,} tokens written, the limit is {cfg.max_tokens:,})' if cfg.max_tokens
+              f'({written:,} tokens written, the limit is {limit:,})' if limit
               else f'{cfg.model}: a model call reached the output limit')
         e = TurnFailed(cut_line(written))
         # What the provider counted for the call, which the turn's usage
         # adds when the turn goes on without it (`keep_the_plan`).
         e.usage = usage
+        e.cut_at = limit
         raise e
 
     def asked_once(kwargs: Dict[str, Any], messages: Callable[[], List[Dict[str, Any]]]):
@@ -1397,13 +1406,37 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
         except TurnCancelled:
             raise
         except Exception as e:  # noqa: BLE001 - a provider failure, a timeout, a cut reply
+            cut_at = getattr(e, 'cut_at', None) if isinstance(e, TurnFailed) else None
+            again = pace.cut(cut_at) if pace is not None and cut_at else None
+            if again is not None:
+                # A job's piece at its ceiling: the call is dropped, its round
+                # kept with what it wrote, and the context asked again once,
+                # what it staged still staged (BRIEF SP item 1).
+                thought = clean_reasoning(keeper.thinking) if keeper is not None else None
+                if getattr(e, 'usage', None) is not None:
+                    spend.add_usage(e.usage)
+                if keeper is not None:
+                    kept = new_round(rounds + 1, cfg.model)
+                    kept['cut_at_tokens'] = cut_at
+                    if thought:
+                        kept['thinking'] = thought
+                    if live['text']:
+                        kept['said'] = live['text']
+                    keeper.store(kept)
+                    keeper.thinking = ''
+                live['text'] = ''
+                new.append({'role': 'user', 'content': again})
+                rounds += 1
+                continue
             # What the failed call wrote and reasoned, which the reader saw
             # stream, is kept in a round of its own, as a failed turn's is.
             reply, thought = keep_the_plan(e, kwargs)
             partial = ended['partial']
             kept_round = None
-            if keeper is not None and (thought or partial):
+            if keeper is not None and (thought or partial or (pace is not None and cut_at)):
                 kept = new_round(rounds + 1, cfg.model)
+                if pace is not None and cut_at:
+                    kept['cut_at_tokens'] = cut_at
                 if thought:
                     kept['thinking'] = thought
                 if partial:

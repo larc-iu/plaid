@@ -454,6 +454,15 @@ JOB_TEXT_THEN_FILL = 'Stage only the text edit now: the words it adds are offere
 JOB_ANSWER_AGAIN = ('(system) Your answer staged nothing and said nothing. Stage what your piece needs now, '
                     'or reply in one line why it needs nothing.')
 
+def job_cut_at_ceiling(limit: int) -> str:
+    """The line a piece's model is sent once when a call of it reached the
+    most a piece's call may write (``JOB_PIECE_OUTPUT_TOKENS``): the call
+    was dropped whole, as a call at the model's own cap is."""
+    return (f'(system) Your last call reached {limit:,} tokens, the most one call may write here, its reasoning '
+            'included, before it finished. It was dropped, and none of its tool calls ran. What you staged before '
+            'it is kept. Stage in smaller steps: fewer values or links in a call, and less reasoning before each.')
+
+
 #: The planning context's contract: the first context of every job.
 JOB_PLAN_CONTRACT = '''You plan an unattended job on the project "{project_name}". A member of the project \
 started it with instructions and documents. Nobody reads your messages and nobody answers a question. The job's \
