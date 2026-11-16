@@ -845,32 +845,44 @@
         (is (= 20000 (:rows (:body resp))))
         (is (zero? (:skipped-count (:body resp))))))))
 
-(deftest the-tie-rule-costs-the-same-at-the-row-limit
-  ;; REV-UT2-1: a unit that made 19,000 words on one text (a job segmenting
-  ;; a long document), its undo's dry run with the rule and with the rule
-  ;; switched off. The rule read every token row of the text for every made
-  ;; token on every pass, 103 s against 16 s at this scale. It must cost a
-  ;; small fraction of the undo: a ratio, so a busy machine passes.
-  (let [n 19000
-        proj (create-test-project admin-request "Cost")
+(defn- shifted-text-undo-ms
+  "A text of `n` words and a unit that types a word at the start (every word
+  shifts, one chain of ties) and makes a token on another layer over each
+  word: the milliseconds of its undo's dry run (2n+1 rows), the best of
+  two."
+  [n]
+  (let [proj (create-test-project admin-request (str "Grow" n))
         d (create-test-document admin-request proj "D")
         tl (id (create-text-layer admin-request proj "Text"))
         text (id (create-text admin-request tl d (str/join " " (repeat n "ab"))))
         word (id (create-token-layer-opts admin-request tl "Words" {:overlap-mode "non-overlapping"}))
+        other (id (create-token-layer-opts admin-request tl "Other" {:overlap-mode "any"}))
+        _ (doseq [c (partition-all 1000 (range n))]
+            (assert-created (bulk-create-tokens admin-request (mapv (fn [i] {:token-layer-id word :text text :begin (* 3 i) :end (+ 2 (* 3 i))}) c))))
         g (str (random-uuid))
         r (in-group admin-request g)
+        _ (edit! r {:words word} text [(insert-op 0 "x ")])
         _ (doseq [c (partition-all 1000 (range n))]
-            (assert-created (bulk-create-tokens r (mapv (fn [i] {:token-layer-id word :text text :begin (* 3 i) :end (+ 2 (* 3 i))}) c))))
+            (assert-created (bulk-create-tokens r (mapv (fn [i] {:token-layer-id other :text text :begin (+ 2 (* 3 i)) :end (+ 4 (* 3 i))}) c))))
         timed (fn [] (let [t (System/nanoTime)
                            resp (undo-entry admin-request g :dry-run true)]
                        (is (= 200 (:status resp)))
-                       (is (= n (:total (:body resp))))
-                       (/ (- (System/nanoTime) t) 1e6)))
-        _ (timed)
-        without (with-redefs [plaid.history.undo/tie-groups (fn [& _] {})] (timed))
-        with (timed)]
-    (spit (str (System/getProperty "java.io.tmpdir") "/plaid-undo-tie-cost.txt") (pr-str {:with-ms with :without-ms without}))
-    (is (< with (* 1.5 (+ without 1000))) (str "with the rule " (long with) " ms, without " (long without) " ms"))))
+                       (is (zero? (:skipped-count (:body resp))))
+                       (/ (- (System/nanoTime) t) 1e6)))]
+    (min (timed) (timed))))
+
+(deftest an-undos-cost-grows-no-faster-than-its-rows
+  ;; REV-UT2-1, REV-UT2-7: the dry run of an undo of reshaped and made tokens
+  ;; on one text, at 1,900 and at 9,500 words (3,801 and 19,001 rows), the
+  ;; tie rule on. Five times the rows may cost at most ten times the time (a
+  ;; linear cost gives about five, a quadratic one twenty-five), with a floor
+  ;; on the small run so a fast machine's noise does not count. Quadratic
+  ;; anywhere (check, fixpoint, the lookup, a query) fails it.
+  (let [small (shifted-text-undo-ms 1900)
+        large (shifted-text-undo-ms 9500)]
+    (spit (str (System/getProperty "java.io.tmpdir") "/plaid-undo-growth.txt")
+          (pr-str {:small-ms small :large-ms large}))
+    (is (< large (* 10 (max small 250))) (str "1,900 words " (long small) " ms, 9,500 words " (long large) " ms"))))
 
 ;; ============================================================
 ;; The neighbours: one row written more than once by the unit
