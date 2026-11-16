@@ -27,7 +27,7 @@ def _first_piece_only(asked, n, kwargs):
         {'form': 'x', 'fields': {'Morph Gloss': 'g'}}]}) for s in mine for w in (1, 2, 3)])
 
 
-def test_pieces_that_staged_nothing_leave_their_words_listed(world, monkeypatch):
+def test_pieces_that_staged_nothing_count_their_words_untouched(world, monkeypatch):
     admin, writer, make = world
     s = make({'dA': document('dA', 'Alpha', SENTENCES)})
     use(monkeypatch, Model(_first_piece_only))
@@ -35,8 +35,9 @@ def test_pieces_that_staged_nothing_leave_their_words_listed(world, monkeypatch)
     finished = run_job(job, _runner(job))
     assert finished['state'] == 'done'
     (doc,) = finished['report']['documents']
-    assert doc['counts']['words'] == 15 and doc['counts']['left'] == WORDS - 15, doc['counts']
-    assert len(doc['left']) + doc['left_more'] == WORDS - 15
+    # Blank where the job wrote nothing: counted, never listed (RPF-A9).
+    assert doc['counts']['words'] == 15 and doc['counts']['left'] == 0, doc['counts']
+    assert doc['counts']['untouched'] == WORDS - 15 and doc['left'] == []
     adds_up(doc, WORDS)
     row = admin.jobs.get(job.id)['documents'][0]['counts']
     assert 'left' not in row and 'left_translations' not in row, 'the row says nothing of what is left'
