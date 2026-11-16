@@ -1614,17 +1614,36 @@ class Write:
                                   if w is not None))
 
     def fields_of(self, ops: List[Dict[str, Any]]) -> Dict[str, int]:
-        """The values ``ops`` set, by the field's id (its layer): each
+        """The values ``ops`` write, by the field's id (its layer): each
         ``set_span`` that writes a value (not one that clears it), on a word,
-        a morpheme or a sentence alike, whichever tool staged it. The values
-        a set_analysis op carries are its word's (:meth:`words_of`). A
-        translation is counted as one (``translations``, ``refreshed``),
-        never again here (REV-DAY-P-7)."""
+        a morpheme or a sentence alike, whichever tool staged it, and each
+        value a ``set_analysis`` carries (REV-RPF-W-5: a job that glossed 8
+        morphemes reads 8, 7 of them in analyses, :meth:`carried_of`). The
+        changes count an analysis once, its values part of it
+        (``changes_parts``), so this per-field count is never summed into
+        them. A translation is counted as one (``translations``,
+        ``refreshed``), never again here (REV-DAY-P-7)."""
         out: Counter = Counter()
         for o in ops:
             if o.get('kind') == 'set_span' and o.get('value') not in (None, '') and o.get('layer_id') != self.layer:
                 if self.st.project.field_by_layer(o.get('layer_id')) is not None:
                     out[o['layer_id']] += 1
+        out.update(self.carried_of(ops))
+        return dict(out)
+
+    def carried_of(self, ops: List[Dict[str, Any]]) -> Dict[str, int]:
+        """The values the ``set_analysis`` ops of ``ops`` carry, by the
+        field's id: each a morpheme of the analysis is given that is not
+        blank (REV-RPF-W-5)."""
+        out: Counter = Counter()
+        for o in ops:
+            if o.get('kind') != 'set_analysis':
+                continue
+            for m in o.get('morphemes') or []:
+                for fv in m.get('fields') or []:
+                    if fv.get('value') not in (None, '') and \
+                            self.st.project.field_by_layer(fv.get('layer_id')) is not None:
+                        out[fv['layer_id']] += 1
         return dict(out)
 
     def outside_of(self, ops: List[Dict[str, Any]]) -> Dict[str, int]:
@@ -1669,15 +1688,18 @@ class Write:
             out[tg.SEGMENTATION] += len(segmented)
         return dict(out)
 
-    def named(self, by_id: Dict[str, int]) -> List[Dict[str, Any]]:
+    def named(self, by_id: Dict[str, int], carried: Optional[Dict[str, int]] = None) -> List[Dict[str, Any]]:
         """Counts by target id as a writing row keeps them, ``[{field, id,
-        values}]``: ``field`` the name the job's setup line shows the target
-        by (``targets.shown_names``, REV-SUFIX-2), its id when the project
-        has no such target."""
+        values, in_analyses?}]``: ``field`` the name the job's setup line
+        shows the target by (``targets.shown_names``, REV-SUFIX-2), its id
+        when the project has no such target, ``in_analyses`` how many of the
+        values analyses carried (``carried``), when any did."""
         if self.names is None:
             every = tg.fillable(self.st.project)
             self.names = dict(zip((t.id for t in every), tg.shown_names(self.st.project, every)))
-        return [{'field': self.names.get(i) or i, 'id': i, 'values': n} for i, n in by_id.items()]
+        carried = carried or {}
+        return [{'field': self.names.get(i) or i, 'id': i, 'values': n,
+                 **({'in_analyses': carried[i]} if carried.get(i) else {})} for i, n in by_id.items()]
 
     def _others(self, sid: str, words: List[str]) -> List[str]:
         now = {s.id: s for s in (self.fresh.sentences if self.fresh is not None else [])}
@@ -1693,7 +1715,7 @@ class Write:
                     'ops': [self.describe(o, True) for o in ops]})
         fields = self.fields_of(ops)
         if fields:
-            row['fields'] = self.named(fields)
+            row['fields'] = self.named(fields, self.carried_of(ops))
         outside = self.outside_of(ops)
         if outside:
             row['outside'] = self.named(outside)

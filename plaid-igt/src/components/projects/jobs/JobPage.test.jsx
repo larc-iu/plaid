@@ -2011,6 +2011,20 @@ describe('the job page', () => {
 
   // REV-RPF-W-2: findings of many pieces not merged say how many pieces they
   // hold and how many did not fit.
+  // REV-RPF-W-5: the values an analysis carries count under their field, and
+  // the row says how many of them analyses carried.
+  it('says how many of a field’s values word analyses carried', async () => {
+    const fields = [
+      { field: 'Morph Gloss', id: 'mg', values: 8, inAnalyses: 7 },
+      { field: 'Gloss', id: 'g', values: 1 },
+    ];
+    const report = { ...REPORT, totals: { ...REPORT.totals, fields } };
+    const v = await mount(clientOf(jobOf({ state: 'done', report })));
+    expect(totals(v.container)['Morph Gloss']).toBe('8 values (7 in word analyses)');
+    expect(totals(v.container).Gloss).toBe('1 value');
+    await v.unmount();
+  });
+
   it('says how many pieces the findings hold and how many did not fit', async () => {
     const base = {
       ...REPORT,

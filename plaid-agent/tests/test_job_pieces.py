@@ -1105,8 +1105,10 @@ def test_the_summary_is_given_the_reports_own_sections(monkeypatch):
     finished = run_job(job, runner(job, write_summary=True))
     (asked,) = [c['asked'] for c in model.calls if _kind(c['asked']) == 'summary']
     # BRIEF PF: what the job wrote, as the worker counted it, comes first.
-    assert asked.startswith('This job wrote 3 changes in 2 of 2 sentences.\nIts 3 changes, by kind: 3 word analyses '
-                            '(segmentation) written or taken away.\n'), asked
+    # The values its analyses carried counted under their field (REV-RPF-W-5).
+    assert asked.startswith('This job wrote 3 changes in 2 of 2 sentences: Morph Gloss 3 values (3 in word '
+                            'analyses).\nIts 3 changes, by kind: 3 word analyses (segmentation) written or taken '
+                            'away.\n'), asked
     assert ('\nOf what it fills: segmentation left blank 0 words, Morph Gloss left blank 0 morphemes.\n\nThe job\'s '
             'instructions:\nSegment and gloss') in asked, asked
     assert 'Changes listed for a person, not written (project setup and the like): 0.' in asked

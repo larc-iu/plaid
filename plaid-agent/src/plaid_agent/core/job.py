@@ -766,7 +766,9 @@ def field_counts(rows, outside=()) -> List[Dict[str, Any]]:
     and the report's ``totals.fields`` hold them (BRIEF EW): ``rows`` (an
     app's, each ``{field, id, values}``: ``id`` the target's id, ``field``
     the name the app shows for it) summed by id, each ``{field, id,
-    values}``, in the order of their names. A list, never a map keyed by a
+    values}``, with ``in_analyses`` summed where a row has it (how many of
+    the values word analyses carried, REV-RPF-W-5), in the order of their
+    names. A list, never a map keyed by a
     name or an id, which the clients would re-case. Two targets that share a
     name stay two rows (REV-SUFIX-2). A row whose id is among ``outside``
     (the ids of what the app counted as written outside the job's setup) is
@@ -775,6 +777,8 @@ def field_counts(rows, outside=()) -> List[Dict[str, Any]]:
     for r in rows:
         s = by.setdefault(r.get('id'), {'field': r.get('field'), 'id': r.get('id'), 'values': 0})
         s['values'] += r.get('values') or 0
+        if r.get('in_analyses'):
+            s['in_analyses'] = s.get('in_analyses', 0) + r['in_analyses']
     outside = set(outside)
     return [{**s, **({'outside': True} if s['id'] in outside else {})}
             for s in sorted(by.values(), key=lambda s: (str(s['field']), str(s['id']))) if s['values']]
@@ -782,8 +786,9 @@ def field_counts(rows, outside=()) -> List[Dict[str, Any]]:
 
 def fields_text(fields) -> str:
     """Rows of :func:`field_counts` as a line says them: "<name> 1 value,
-    <name> 9 values"."""
+    <name> 9 values (7 in word analyses)"."""
     return ', '.join(f'{f.get("field")} {f.get("values") or 0:,} value{"" if f.get("values") == 1 else "s"}'
+                     + (f' ({f["in_analyses"]:,} in word analyses)' if f.get('in_analyses') else '')
                      for f in fields or [])
 
 

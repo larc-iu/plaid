@@ -179,6 +179,15 @@ export const findingsPiecesText = (pieces, cut) => {
     : `${head} The last ${cut.toLocaleString()} did not fit whole and are cut.`;
 };
 
+// How many values the job wrote in one target, as the report's rows and a
+// piece's line say it: "8 values (7 in word analyses)", the values word
+// analyses carried (the worker's `in_analyses`, REV-RPF-W-5) said, and one
+// written outside the setup said so.
+export const fieldValuesText = (f) =>
+  `${f.values.toLocaleString()} ${plural(f.values, 'value')}` +
+  (f.inAnalyses > 0 ? ` (${f.inAnalyses.toLocaleString()} in word analyses)` : '') +
+  (f.outside === true ? ', not in the setup' : '');
+
 // What one piece of a job wrote, in the report's words for its totals, in
 // their order: "Sentences written in: 2, Changes written: 6, Words analyzed: 4,
 // Gloss: 2 values." Each target's values as the report's rows say them, one
@@ -214,14 +223,13 @@ export const pieceWrittenText = (piece) => {
   // A target written outside the setup reads its outside row's count, as the
   // report's rows do, in the order of their names.
   const byId = new Map((piece?.fields || []).map((f) => [f.id, f]));
-  (piece?.outside || []).forEach((f) => byId.set(f.id, { ...f, outside: true }));
+  (piece?.outside || []).forEach((f) =>
+    byId.set(f.id, { ...f, inAnalyses: byId.get(f.id)?.inAnalyses, outside: true }),
+  );
   const fields = [...byId.values()]
     .filter((f) => f.values > 0)
     .sort((a, b) => (a.field < b.field ? -1 : a.field > b.field ? 1 : 0))
-    .map(
-      (f) =>
-        `${f.field}: ${f.values.toLocaleString()} ${plural(f.values, 'value')}${f.outside === true ? ', not in the setup' : ''}`,
-    );
+    .map((f) => `${f.field}: ${fieldValuesText(f)}`);
   const parts = [...said(PIECE_COUNTS_BEFORE), ...fields, ...said(PIECE_COUNTS_AFTER)];
   return parts.length ? `${parts.join(', ')}.` : 'Nothing written.';
 };

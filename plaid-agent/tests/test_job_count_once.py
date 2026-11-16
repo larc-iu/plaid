@@ -49,3 +49,34 @@ def test_a_translation_counts_once_as_a_translation():
     w = _write([TRANSLATE])
     assert w.counts_of([TRANSLATE])['translations'] == 1
     assert w.fields_of([TRANSLATE]) == {}
+
+
+ANALYSE = {'kind': 'set_analysis', 'word_id': 'd1-s1w2', 'morphemes': [
+    {'form': 'ka', 'fields': [{'layer_id': MGLOSS, 'value': 'go'}]},
+    {'form': 'ni', 'fields': [{'layer_id': MGLOSS, 'value': 'PST'}]},
+    {'form': 'x', 'fields': [{'layer_id': MGLOSS, 'value': ''}]}]}
+
+
+def test_the_values_an_analysis_carries_count_under_their_field_and_say_so():
+    """REV-RPF-W-5: a job that glossed 8 morphemes, 7 of them through an
+    analysis, read "Morph Gloss 1 value". Each value written counts under its
+    field, on its own or carried by an analysis, and the field's row says how
+    many of them an analysis carried (``in_analyses``). The changes still
+    count the analysis once, its values part of it, so nothing is counted
+    twice in the changes."""
+    w = _write([ANALYSE, SET_FIELD])
+    assert w.fields_of([ANALYSE, SET_FIELD]) == {MGLOSS: 3}
+    row = w._sentence_row('d1-s1', 'seed', [ANALYSE, SET_FIELD], None)
+    assert [(f['id'], f['values'], f.get('in_analyses')) for f in row['fields']] == [(MGLOSS, 3, 2)]
+    assert row['parts'] == {'analyses': 1, 'values': 1} and row['counts']['changes'] == 2
+
+
+def test_a_fields_line_says_how_many_of_its_values_analyses_carried():
+    from plaid_agent.core.job import field_counts, fields_text
+    rows = [{'field': 'Morph Gloss', 'id': MGLOSS, 'values': 3, 'in_analyses': 2},
+            {'field': 'Morph Gloss', 'id': MGLOSS, 'values': 5, 'in_analyses': 5},
+            {'field': 'Gloss', 'id': 'g', 'values': 1}]
+    summed = field_counts(rows)
+    assert summed == [{'field': 'Gloss', 'id': 'g', 'values': 1},
+                      {'field': 'Morph Gloss', 'id': MGLOSS, 'values': 8, 'in_analyses': 7}]
+    assert fields_text(summed) == 'Gloss 1 value, Morph Gloss 8 values (7 in word analyses)'

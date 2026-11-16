@@ -16,6 +16,7 @@ import {
   changesText,
   sumParts,
   durationText,
+  fieldValuesText,
   findingsPiecesText,
   noticeCounts,
   noticeText,
@@ -82,12 +83,13 @@ const blankSums = (report) => {
 // A count of what a target holds blank, in the unit Left blank lists.
 const unitCount = (n, unit) => `${n.toLocaleString()} ${plural(n, unit)}`;
 
-// Rows `{field, id, values, outside?}` summed by the target's id (each row
+// Rows `{field, id, values, inAnalyses?, outside?}` summed by the target's id (each row
 // carries it, REV-SUFIX-2), named as the first row names it.
 const sumById = (rows, into = new Map()) => {
   rows.forEach((f) => {
     const s = into.get(f.id) ?? { field: f.field, id: f.id, values: 0 };
     s.values += f.values ?? 0;
+    if (f.inAnalyses > 0) s.inAnalyses = (s.inAnalyses ?? 0) + f.inAnalyses;
     if (f.outside === true) s.outside = true;
     into.set(f.id, s);
   });
@@ -114,7 +116,9 @@ const fieldSums = (report) => {
   const sums = report.totals?.fields
     ? sumById(report.totals.fields)
     : sumById((report.documents || []).flatMap((d) => d.counts?.fields || []));
-  outsideRows(report).forEach((f) => sums.set(f.id, { ...f, outside: true }));
+  outsideRows(report).forEach((f) =>
+    sums.set(f.id, { ...f, inAnalyses: sums.get(f.id)?.inAnalyses, outside: true }),
+  );
   return [...sums.values()].sort((a, b) => (a.field < b.field ? -1 : a.field > b.field ? 1 : 0));
 };
 
@@ -136,7 +140,6 @@ const totalRows = (report) => {
   const t = report.totals || {};
   const rows = [['Documents done', t.documentsDone]];
   const optional = (label, n) => n > 0 && rows.push([label, n]);
-  const value = (n) => `${n.toLocaleString()} ${plural(n, 'value')}`;
   optional('Documents in use', t.documentsInUse);
   optional('Documents deleted', t.documentsGone);
   // A document the job did not finish reads "stopped partway" once it
@@ -162,14 +165,7 @@ const totalRows = (report) => {
   optional('Translations written', t.translations);
   optional('Translations replaced', t.refreshed);
   optional('Words analyzed', t.words);
-  fieldSums(report).forEach(
-    (f) =>
-      f.values > 0 &&
-      rows.push([
-        f.field,
-        f.outside === true ? `${value(f.values)}, not in the setup` : value(f.values),
-      ]),
-  );
+  fieldSums(report).forEach((f) => f.values > 0 && rows.push([f.field, fieldValuesText(f)]));
   optional('Values not in the setup', outsideSum(report));
   blankSums(report).forEach((b) => {
     // A target is named as everywhere on the page, "segmentation" too (N-1).
