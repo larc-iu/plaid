@@ -524,8 +524,20 @@ def job_owned(w: Word, job_id: str) -> bool:
 
 
 #: Why harmonize leaves a word the job wrote on, as its report lists it
-#: (CONTRACT, added by J-FIX-B and J-FIX-B2), and the word it never looks at.
-TOUCHED, COMMENTED, IN_MWE, NOT_THE_JOBS = 'touched', 'commented', 'in-mwe', 'not-the-jobs'
+#: (CONTRACT, added by J-FIX-B and J-FIX-B2, the codes made true by RPF-A1),
+#: and the word it never looks at. ``changed``: a word the job recorded it
+#: wrote whole reads otherwise now (a person, or anyone, changed it after the
+#: job wrote it). ``beside-others``: a word the job wrote on that held work
+#: not the job's when it wrote (a person's, another producer's), which
+#: harmonize never rewrites.
+CHANGED, BESIDE_OTHERS, COMMENTED, IN_MWE, NOT_THE_JOBS = 'changed', 'beside-others', 'commented', 'in-mwe', \
+    'not-the-jobs'
+#: Why a form the job's own words hold two or more ways was left, as its
+#: report lists it: the job's analyses differ, and people's analyses of the
+#: form differ too, or none of the job's holds two thirds of its words. The
+#: rule's own reasons (``core.job.harmonized``) by the report's codes.
+JOB_DIFFERS_PEOPLE_DIFFER, JOB_DIFFERS_NO_MAJORITY = 'job-differs-people-differ', 'job-differs-no-majority'
+LEFT_BY_RULE = {'people-differ': JOB_DIFFERS_PEOPLE_DIFFER, 'no-clear-majority': JOB_DIFFERS_NO_MAJORITY}
 #: A word the job wrote and could not vouch for: its sentence's record holds
 #: no key for it (REV-FIX3-2).
 UNVOUCHED = 'unvouched'
@@ -568,16 +580,21 @@ def harmonize_bar(w: Word, job_id: str, recorded: Dict[str, str], commented: set
     """THE rule for what harmonize may rewrite (SPEC 6.5 and 8.1, the owner's
     rulings on REV-J-B2 S3-1 and REV-J-B3), in one place, asked when
     harmonize collects the job's words and again under the document's lock.
-    None when the word is this job's to rewrite, else why it is left:
+    None when the word is this job's to rewrite, else why it is left, each
+    decided by provenance and the job's own record, so each is true
+    (RPF-A1):
 
     * ``NOT_THE_JOBS``: nothing on it is this job's, so it is no business of
       harmonize's and is not listed,
-    * ``touched``: something on it is not this job's own unverified work
-      (:func:`job_owned`), or it is not what the job recorded it wrote ON
-      THIS WORD (``recorded``, a word id to the :func:`word_key` its
-      sentence's record holds for it). So a piece a person deleted or
-      changed is never put back, even when the job wrote what is left of the
-      word elsewhere,
+    * ``changed``: the job recorded it wrote the word whole (``recorded``, a
+      word id to the :func:`word_key` its sentence's record holds for it),
+      and it now holds work that is not the job's or reads otherwise than
+      recorded: someone changed it after the job wrote it. So a piece a
+      person deleted or changed is never put back,
+    * ``beside-others``: something on it is not this job's own unverified
+      work (:func:`job_owned`) and the job never recorded the word as wholly
+      its own: it held a person's or another producer's work when the job
+      wrote on it,
     * ``unvouched``: the job could not vouch for its own write on the word
       (its sentence's record holds no key for it, REV-J-B3 B3-2), so it
       cannot tell whether anyone changed it, and leaves it,
@@ -589,16 +606,33 @@ def harmonize_bar(w: Word, job_id: str, recorded: Dict[str, str], commented: set
     if not any(job_piece(p, job_id) for p in pieces):
         return NOT_THE_JOBS
     if not job_owned(w, job_id):
-        return TOUCHED
+        return CHANGED if w.id in recorded else BESIDE_OTHERS
     if w.id not in recorded:
         return UNVOUCHED
     if recorded[w.id] != word_key(w):
-        return TOUCHED
+        return CHANGED
     if word_ids(w) & commented:
         return COMMENTED
     if any(not job_piece(link.metadata, job_id) for link in w.mwes):
         return IN_MWE
     return None
+
+
+def analysis_holds_jobs(w: Word, job_id: str) -> bool:
+    """Whether the analysis harmonize compares (:func:`harmonized_part`: the
+    morphemes, their values and links) holds anything the job wrote: a
+    morpheme it made, a value or a link on a morpheme. A word the job wrote
+    only word fields on (a Word class, a Case) holds people's analysis, and
+    harmonize lists nothing of it: its differences are not the job's
+    (RPF-A1)."""
+    for m in w.morphemes:
+        if not m.virtual and job_piece(m.metadata, job_id):
+            return True
+        if any(job_piece(sp.metadata, job_id) for sp in m.fields.values()):
+            return True
+        if m.link is not None and job_piece(m.link.metadata, job_id):
+            return True
+    return False
 
 
 # --- an analysis as the decisions and harmonize key it -----------------------------
@@ -3951,7 +3985,9 @@ class IgtRunner:
             for s in doc.sentences:
                 for w in s.words:
                     why = harmonize_bar(w, job.id, recorded, commented)
-                    if why == NOT_THE_JOBS:
+                    # A word left whose analysis holds nothing of the job's
+                    # (only word fields) is not the job's to list (RPF-A1).
+                    if why == NOT_THE_JOBS or (why is not None and not analysis_holds_jobs(w, job.id)):
                         continue
                     into = mine if why is None else held.setdefault(why, {})
                     full = word_analysis(w)
@@ -3984,7 +4020,7 @@ class IgtRunner:
             else:
                 target, by = next(iter(keys), None), None
             if by is not None and target is None:
-                left.append({'form': form, 'reason': by,
+                left.append({'form': form, 'reason': LEFT_BY_RULE.get(by, by),
                              'analyses': [{'analysis': rendering(v['analysis'], gloss), 'count': len(v['words'])}
                                           for v in keys.values()]})
             # The job's analyses of the form on words harmonize leaves whole
@@ -4084,8 +4120,8 @@ class IgtRunner:
         one History entry of its own, through the job's workspace and its
         guards, as a stretch stages (REV-J-B2 S3-2). ``{written: ids, left:
         {id: reason}}``: the words rewritten, and those not with why (found
-        changed under the lock, ``harmonize_bar``'s reason or ``touched``
-        for a word gone, or ``refused`` by staging). Nothing when the
+        changed under the lock, ``harmonize_bar``'s reason or ``changed``
+        for a word gone or no longer the job's, or ``refused`` by staging). Nothing when the
         document is gone (its row says so), None when it stayed in use."""
         job = self.job
         # A look, then JOB_DEFER_ROUNDS waits for people, as the walk waits.
@@ -4111,7 +4147,7 @@ class IgtRunner:
                     for wid, to in words:
                         hit = doc.find(wid)
                         why = harmonize_bar(hit[1], job.id, recorded, commented) \
-                            if hit and hit[1] is not None else TOUCHED
+                            if hit and hit[1] is not None else CHANGED
                         if why is None:
                             refusal = self.stage(ws, doc, hit[0], hit[1], to)
                             if refusal is not None:
@@ -4121,7 +4157,7 @@ class IgtRunner:
                         if why is None:
                             staged.add(wid)
                         else:
-                            held[wid] = TOUCHED if why == NOT_THE_JOBS else why
+                            held[wid] = CHANGED if why == NOT_THE_JOBS else why
                     if ws.ops:
                         seed_id = uuid7()
                         with client.operation(HARMONIZE_LABEL, kind='job',

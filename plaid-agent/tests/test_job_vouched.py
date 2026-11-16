@@ -118,7 +118,7 @@ def test_a_gloss_a_person_deleted_is_not_put_back_when_the_job_wrote_that_shape_
     client._holder('d1')['documents']['d1'] = document('d1', 'Story', after)
     out = runner(job).harmonize(job)
     assert _rewritten(staged) == ['d1-s1w7'], 'the job\'s own minority word is still made consistent'
-    assert {'form': 'sani', 'reason': 'touched', 'analyses': [{'analysis': 'sa-ni ‘go-_’', 'count': 1}]} \
+    assert {'form': 'sani', 'reason': 'changed', 'analyses': [{'analysis': 'sa-ni ‘go-_’', 'count': 1}]} \
         in out['left']
 
 
@@ -205,7 +205,7 @@ def test_harmonize_asks_the_word_again_under_the_lock(monkeypatch):
     client.on_lock['d1'] = document('d1', 'Story', [{'words': [sani('now')] * 6 + [sani(None), sani(None)]}])
     out = runner(job).harmonize(job)
     assert 'd1-s1w7' not in _rewritten(staged)
-    assert any(x['form'] == 'sani' and x['reason'] == 'touched' for x in out['left']), out
+    assert any(x['form'] == 'sani' and x['reason'] == 'changed' for x in out['left']), out
 
 
 # --- B3-2: a word is recorded only from the job's own write ----------------------------
@@ -247,10 +247,10 @@ def test_a_person_editing_under_the_lock_after_the_jobs_last_batch_is_not_record
         {'analysis': 'sa-ni ‘go-now’', 'count': 4}, {'analysis': 'sa-ni ‘go-_’', 'count': 1}]}]
 
 
-def test_a_word_the_job_vouched_for_and_a_person_changed_is_touched_beside_one_it_could_not_vouch_for(monkeypatch):
+def test_a_word_the_job_vouched_for_and_a_person_changed_is_changed_beside_one_it_could_not_vouch_for(monkeypatch):
     """Two sentences: s1's words recorded with their keys, s2's without
     (its write could not be vouched for). A person clears a gloss in each:
-    the s1 word is touched, the s2 words are unvouched, and the job's own
+    the s1 word is changed, the s2 words are unvouched, and the job's own
     s1 words, still as it wrote them, are made consistent."""
     staged = _staged(monkeypatch)
     before = [{'words': [sani('now')] * 3 + [sani('then')]}, {'words': [sani('now'), sani('then')]}]
@@ -268,7 +268,7 @@ def test_a_word_the_job_vouched_for_and_a_person_changed_is_touched_beside_one_i
     out = runner(job).harmonize(job)
     assert _rewritten(staged) == ['d1-s1w4']
     left = {x['reason']: x['analyses'] for x in out['left']}
-    assert left == {'touched': [{'analysis': 'sa-ni ‘go-_’', 'count': 1}],
+    assert left == {'changed': [{'analysis': 'sa-ni ‘go-_’', 'count': 1}],
                     'unvouched': [{'analysis': 'sa-ni ‘go-_’', 'count': 1}]}, out['left']
 
 

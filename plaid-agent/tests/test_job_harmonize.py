@@ -94,13 +94,13 @@ def test_people_who_differ_leave_the_form_with_its_analyses():
         'd1': [{'words': [w('ka', 'go'), w('ka', 'come'), w('ka', 'go', who='human'), w('ka', 'walk', who='human')]}],
     })
     assert out['changed'] == [] and tags == []
-    assert out['left'] == [{'form': 'ka', 'reason': 'people-differ',
+    assert out['left'] == [{'form': 'ka', 'reason': 'job-differs-people-differ',
                             'analyses': [{'analysis': 'ka ‘go’', 'count': 1}, {'analysis': 'ka ‘come’', 'count': 1}]}]
 
 
 def test_no_clear_majority_leaves_the_form():
     client, job, out, tags = _run({'d1': [{'words': [w('ka', 'go'), w('ka', 'come')]}]})
-    assert out['left'][0]['reason'] == 'no-clear-majority' and not tags
+    assert out['left'][0]['reason'] == 'job-differs-no-majority' and not tags
 
 
 def test_older_machine_drafts_and_touched_words_neither_vote_nor_change():
@@ -108,7 +108,7 @@ def test_older_machine_drafts_and_touched_words_neither_vote_nor_change():
         'd1': [{'words': [w('ka', 'go'), w('ka', 'come'), w('ka', 'come', who='machine'),
                           w('ka', 'come', who='J-earlier')]}],
     })
-    assert out['left'][0]['reason'] == 'no-clear-majority', 'only the job\'s own two words vote'
+    assert out['left'][0]['reason'] == 'job-differs-no-majority', 'only the job\'s own two words vote'
     assert out['left'][0]['analyses'] == [{'analysis': 'ka ‘go’', 'count': 1}, {'analysis': 'ka ‘come’', 'count': 1}]
 
 
@@ -147,7 +147,7 @@ def test_a_touched_word_is_listed_as_left_where_its_form_was_made_consistent(mon
                           _wg('come', 'walk', word_who='human')]}],
     })
     assert _analysed(staged) == ['d1-s1w3']
-    assert {'form': 'ka', 'reason': 'touched', 'analyses': [{'analysis': 'ka ‘come’', 'count': 1}]} in out['left']
+    assert {'form': 'ka', 'reason': 'beside-others', 'analyses': [{'analysis': 'ka ‘come’', 'count': 1}]} in out['left']
 
 
 def _analysed(staged):
@@ -191,7 +191,7 @@ def test_a_piece_a_person_deleted_is_never_put_back(monkeypatch):
                                   after={'d1': [{'words': [sani('now'), sani('now'), sani('now'), sani(None)]}]})
     assert staged == [] and tags == [], 'the word a person changed is not rewritten'
     assert out['changed'] == []
-    assert out['left'] == [{'form': 'sani', 'reason': 'touched', 'analyses': [{'analysis': 'sa-ni ‘go-_’', 'count': 1}]}]
+    assert out['left'] == [{'form': 'sani', 'reason': 'changed', 'analyses': [{'analysis': 'sa-ni ‘go-_’', 'count': 1}]}]
 
 
 def test_a_word_whose_analysis_the_job_never_recorded_is_left(monkeypatch):
@@ -201,7 +201,7 @@ def test_a_word_whose_analysis_the_job_never_recorded_is_left(monkeypatch):
     client, job, out, tags = _run({'d1': [{'words': [w('ka', 'go'), w('ka', 'go'), w('ka', 'come')]}]},
                                   after={'d1': [{'words': [w('ka', 'go'), w('ka', 'go'), w('ka', 'walk')]}]})
     assert staged == [] and out['changed'] == []
-    assert out['left'] == [{'form': 'ka', 'reason': 'touched', 'analyses': [{'analysis': 'ka ‘walk’', 'count': 1}]}]
+    assert out['left'] == [{'form': 'ka', 'reason': 'changed', 'analyses': [{'analysis': 'ka ‘walk’', 'count': 1}]}]
 
 
 @pytest.mark.parametrize('anchor', ['d1-s1w3', 'd1-s1w3m1', 'sp-d1-s1w3m1'])
@@ -445,7 +445,7 @@ def test_a_word_changed_before_the_lock_is_listed_with_why(monkeypatch):
     client.on_lock['d1'] = document('d1', 'A', [{'words': [w('ka', 'go'), w('ka', 'go'), w('ka', 'walk')]}])
     out = runner(job).harmonize(job)
     assert staged == [] and out['changed'] == []
-    assert out['left'] == [{'form': 'ka', 'reason': 'touched', 'analyses': [{'analysis': 'ka ‘come’', 'count': 1}]}]
+    assert out['left'] == [{'form': 'ka', 'reason': 'changed', 'analyses': [{'analysis': 'ka ‘come’', 'count': 1}]}]
 
 
 def test_a_document_gone_before_harmonize_writes_is_reported_gone():
@@ -490,3 +490,33 @@ def test_with_no_person_the_word_fields_are_the_jobs_majority_then_the_first():
     job[canonical({'Gloss': 'a'})] += 1
     assert chosen_word_fields(people, job) == {'Gloss': 'a'}, 'a tie goes to the first in order'
     assert chosen_word_fields(Counter({canonical({'Gloss': 'p'}): 1}), job) == {'Gloss': 'p'}, 'people\'s first'
+
+
+# --- RPF-A1: every reason true, and nothing listed the job did not write --------------
+
+def test_a_word_field_job_lists_none_of_peoples_differences():
+    """RP-1, RP-8, RP-9: a job that filled a word field on words people
+    segmented and glossed two ways lists nothing: the difference is
+    people's, it was there before the job, and the job wrote none of it."""
+    doa = lambda g: {'form': 'doa', 'morphs': [('doa', g)], 'who': 'human', 'gloss': ('noun', J)}  # noqa: E731
+    client, job, out, tags = _run({'d1': [{'words': [doa('child'), doa('child'), doa('person')]}]})
+    assert out == {'changed': [], 'left': []} and tags == []
+
+
+def test_a_value_a_person_changed_on_a_word_the_job_wrote_whole_is_changed():
+    """The job wrote ka 'come' whole and recorded it, and a person set the
+    gloss to "walk" (now a person's value): changed since the job wrote it,
+    never "beside others"."""
+    walked = {'form': 'ka', 'morphs': [('ka', 'walk')], 'who': {'token': J, 'span': 'human', 'link': J}}
+    client, job, out, tags = _run({'d1': [{'words': [w('ka', 'go'), w('ka', 'go'), w('ka', 'come')]}]},
+                                  after={'d1': [{'words': [w('ka', 'go'), w('ka', 'go'), walked]}]})
+    assert out['left'] == [{'form': 'ka', 'reason': 'changed', 'analyses': [{'analysis': 'ka ‘walk’', 'count': 1}]}]
+
+
+def test_values_the_job_wrote_on_a_persons_morphemes_are_beside_others():
+    """The job glossed morphemes another producer made: harmonize leaves the
+    word, and lists it as the job's work beside others'."""
+    mixed = lambda g: {'form': 'ka', 'morphs': [('ka', g)], 'who': {'token': 'machine', 'span': J, 'link': J}}  # noqa: E731
+    client, job, out, tags = _run({'d1': [{'words': [mixed('go'), mixed('come')]}]})
+    assert out['left'] == [{'form': 'ka', 'reason': 'beside-others',
+                            'analyses': [{'analysis': 'ka ‘go’', 'count': 1}, {'analysis': 'ka ‘come’', 'count': 1}]}]
