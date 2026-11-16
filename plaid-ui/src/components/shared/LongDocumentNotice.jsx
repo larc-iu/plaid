@@ -3,11 +3,12 @@ import { LONG_DOCUMENT_WORDS, isLongDocument } from '../../domain/longDocument.j
 
 /**
  * The notice an editor shows over a document long enough to be slow to edit,
- * or nothing. `words` is the document's word count.
+ * or nothing. `words` is the document's word count. Plain information: a long
+ * document is not a fault, and the warm tones are for what is broken.
  */
 export const LongDocumentNotice = ({ words, className }) =>
   isLongDocument(words) ? (
-    <Notice tone="warning" className={className} data-testid="long-document">
+    <Notice tone="info" className={className} data-testid="long-document">
       <p className="font-medium">Long document</p>
       <p className="text-xs">
         {words.toLocaleString()} words. Editing slows down past{' '}

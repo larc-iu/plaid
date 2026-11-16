@@ -18,4 +18,11 @@ describe('LongDocumentNotice', () => {
       await view.unmount();
     }
   });
+
+  it('says so as plain information, not as a warning', async () => {
+    const view = await renderComponent(<LongDocumentNotice words={21817} />);
+    const box = view.container.querySelector('[data-testid="long-document"]');
+    expect(box.getAttribute('data-tone')).toBe('info');
+    await view.unmount();
+  });
 });
