@@ -29,8 +29,9 @@ const WRITER = { id: 'w@x', isAdmin: false };
 const READER = { id: 'r@x', isAdmin: false };
 const PROJECT = { id: 'p1', writers: ['w@x'], readers: ['r@x'], maintainers: [] };
 
-const fakeClient = ({ create, seenAt = new Date().toISOString() } = {}) => ({
+const fakeClient = ({ create, seenAt = new Date().toISOString(), state = 'running' } = {}) => ({
   jobs: {
+    get: vi.fn(async (id) => ({ id, state })),
     worker: vi.fn(async () => ({
       seenAt,
       model: 'm',
@@ -302,6 +303,21 @@ describe('the job card', () => {
       expect(button(v, 'Start job')).toBeNull();
       expect(v.container.querySelector('textarea')).toBeNull();
       expect(client.jobs.worker).not.toHaveBeenCalled();
+    });
+
+    // REV-RPF-P-7: a job still waiting says so, in the job page's word.
+    it('started, its job still waiting: says Waiting, not Started', async () => {
+      const client = fakeClient({ state: 'waiting' });
+      const { v } = await draw({
+        card: card({ status: 'started', jobId: CARD_ID, sentBrief: 'x' }),
+        client,
+      });
+      await v.step(async () => {});
+      expect(client.jobs.get).toHaveBeenCalledWith(CARD_ID);
+      expect(v.container.querySelector('[data-testid="job-card-state"]').textContent).toBe(
+        'Waiting',
+      );
+      expect(text(v)).not.toContain('Started');
     });
 
     it('discarded and replaced: the state alone', async () => {

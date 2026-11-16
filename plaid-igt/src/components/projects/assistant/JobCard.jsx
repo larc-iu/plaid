@@ -6,6 +6,7 @@ import { Label } from '@ui/components/ui/label';
 import { Textarea } from '@ui/components/ui/textarea';
 import { AuthContext } from '@ui/contexts/useAuth.js';
 import { canStartJob } from '@ui/domain/permissions.js';
+import { JOB_POLL_MS, jobStateText } from '@ui/domain/jobs.js';
 import { humanizeError, statusOf } from '@ui/lib/errors.js';
 import { notifyError } from '@/utils/feedback';
 import { cn } from '@ui/lib/utils';
@@ -109,6 +110,10 @@ export const JobCard = ({
   const [worker, setWorker] = useState(null);
   const [brief, setBrief] = useState(card.brief || '');
   const [starting, setStarting] = useState(false);
+  // The started job's state while it waits in the queue: the badge says
+  // "Waiting", the job page's word, until it starts (REV-RPF-P-7).
+  const [waiting, setWaiting] = useState(false);
+  const jobId = card.status === 'started' ? card.jobId : null;
 
   useEffect(() => {
     if (!undecided || readOnly) return undefined;
@@ -126,10 +131,30 @@ export const JobCard = ({
     };
   }, [client, projectId, undecided, readOnly]);
 
+  useEffect(() => {
+    if (!jobId || readOnly) return undefined;
+    let live = true;
+    let timer = null;
+    const look = () =>
+      client.jobs
+        .get(jobId)
+        .then((j) => {
+          if (!live) return;
+          setWaiting(j?.state === 'waiting');
+          if (j?.state === 'waiting') timer = setTimeout(look, JOB_POLL_MS);
+        })
+        .catch(() => live && setWaiting(false));
+    look();
+    return () => {
+      live = false;
+      clearTimeout(timer);
+    };
+  }, [client, jobId, readOnly]);
+
   const briefMax = worker?.instructionsMaxChars ?? null;
   const briefOver = briefMax !== null && instructionsLength(brief) > briefMax;
   const mayStart = canStartJob(project, user);
-  const badge = BADGES[card.status];
+  const badge = waiting ? ['secondary', jobStateText('waiting')] : BADGES[card.status];
   const setup = jobSetupOf(card, conversationId);
 
   // Every press makes the job under the card's own id. A press after a reload,
@@ -186,7 +211,7 @@ export const JobCard = ({
           {card.status === 'started' ? 'Job' : 'Proposed job'}
         </span>
         {badge && (
-          <Badge variant={badge[0]} className="ml-auto shrink-0">
+          <Badge variant={badge[0]} className="ml-auto shrink-0" data-testid="job-card-state">
             {badge[1]}
           </Badge>
         )}
