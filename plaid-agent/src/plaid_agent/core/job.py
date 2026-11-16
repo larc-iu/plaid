@@ -988,7 +988,7 @@ def one_step_totals(documents: List[Dict[str, Any]]) -> Dict[str, int]:
     """The top line's counts of the documents an app's row says the
     whole-selection step ended (``counts.one_step``), of those it changed and
     of those it was not shown all of (``counts.not_all_read``). Empty when
-    there are none. Core's own report is counted the same way (read_job)."""
+    there are none. Core's own report is counted the same way by an app."""
     stepped = [d for d in documents if d.get('state') == 'done' and (d.get('counts') or {}).get('one_step') is True]
     if not stepped:
         return {}
