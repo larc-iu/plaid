@@ -955,7 +955,10 @@ def turn_ending(base: Dict[str, Any], asked: List[Dict[str, Any]], item: Dict[st
         kept = [d for d in after if not (isinstance(d, dict) and d.get('kind') == 'error')]
         earlier = replace_undecided(shown[:n]) if replaces else list(shown[:n])
         if replaces_card:
-            earlier = replace_undecided_cards(earlier)
+            # A card replaces every card still waiting, and every plan still
+            # waiting too: approving one beside the job it led to would write
+            # its changes a second time (RP-2, RPF-A2).
+            earlier = replace_undecided_cards(replace_undecided(earlier))
         held = stored['messages']
         notes = held[len(known):] if held[:len(known)] == known else []
         return fit({'messages': list(asked) + notes + list(added), 'display': earlier + kept + [item]})

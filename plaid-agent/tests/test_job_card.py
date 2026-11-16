@@ -647,3 +647,19 @@ def test_a_draft_whose_setup_would_be_over_cores_cap_is_refused_with_what_to_cha
     assert ws.job_card is None
     monkeypatch.setattr(limits, 'JOB_SETUP_MAX_CHARS', n)
     assert _draft(ws).startswith('Drafted')
+
+
+def test_a_reply_with_a_job_card_replaces_a_plan_still_waiting():
+    """RP-2: the conversation first staged a plan (with Approve buttons),
+    then drafted a job card: the plan stayed approvable beside the started
+    job. The turn whose reply carries a card marks every plan still waiting
+    replaced, as it does an older card, in the record."""
+    from plaid_agent.core.conversation import turn_ending
+    plan = {'kind': 'assistant', 'created_at': 't1', 'text': 'Planned.', 'status': None,
+            'plan': {'id': 'p1', 'items': []}}
+    question = {'kind': 'user', 'created_at': 't2', 'text': 'Make it a job.'}
+    base = {'messages': [], 'display': [plan, question]}
+    reply_ = {'kind': 'assistant', 'created_at': 't3', 'text': 'Drafted.', 'job': {'id': 'c', 'status': None}}
+    out = turn_ending(base, [], reply_, replaces_card=True)(base)
+    assert out['display'][0]['status'] == 'replaced' and out['display'][0]['settled_at'], out['display'][0]
+    assert out['display'][-1]['job']['status'] is None
