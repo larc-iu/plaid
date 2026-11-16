@@ -162,6 +162,8 @@ class BaseWorkspace:
         # The user the turn acts for, set by the service. None (a script, a
         # test) asks no question of who may do what: the server still does.
         self.requester_id: Optional[str] = None
+        #: the conversation the turn is in, when it is one (RPF3-C)
+        self.conversation_id: Optional[str] = None
         self._requester: Optional[Requester] = None
         self._requester_reviewed: Optional[bool] = None
         self._doc_list: Optional[List[dict]] = None

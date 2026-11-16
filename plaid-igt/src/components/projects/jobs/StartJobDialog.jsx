@@ -363,7 +363,14 @@ const StartJobDialog = ({ projectId, client, documents: given, documentId, onClo
 
           <NoWorkerLine worker={worker} />
 
-          {activeJob && <JobActiveLine projectId={projectId} jobId={activeJob} onOpen={onClose} />}
+          {activeJob && (
+            <JobActiveLine
+              projectId={projectId}
+              jobId={activeJob}
+              onOpen={onClose}
+              client={client}
+            />
+          )}
         </div>
 
         <DialogFooter>

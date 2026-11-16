@@ -131,6 +131,31 @@ def test_an_active_job_is_named_with_a_link_to_its_page():
     assert ws.job_card is None
 
 
+def test_the_blocking_job_is_said_with_its_facts_so_no_guess_is_needed(monkeypatch):
+    """RP2-3: the refusal named no starter, and the production model told the
+    user twice that their own discarded card was the blocker. It now says who
+    started the job, when, its state in the page's words, what it was set up
+    to fill, and whether it is a card of this conversation."""
+    client = FakeClient()
+    job = client.jobs.create('p1', 'igt', 'Fix one gloss.', setup={
+        'fills': [{'id': 'sl-mgloss', 'name': 'Morph Gloss'}], 'text': False, 'conversation': 'conv-other'})
+    client.jobs.rows[job['id']]['started_by_name'] = 'Ada'
+    client.jobs.rows[job['id']]['started_by'] = 'someone-else'
+    ws = fake_ws(client)
+    ws.conversation_id = 'conv-mine'
+    out = _draft(ws)
+    assert 'started by Ada' in out and job['created_at'][:10] in out, out
+    assert 'Its page reads "Waiting".' in out, out
+    assert 'set up to fill only "Morph Gloss"' in out, out
+    assert 'It is not a card of this conversation.' in out, out
+    client.jobs.rows[job['id']]['setup']['conversation'] = 'conv-mine'
+    from plaid_agent.igt import jobcard as card_module
+    monkeypatch.setattr(card_module, '_may_start', lambda ws: True)
+    client.jobs.rows[job['id']]['started_by'] = ws.requester_id = 'me'
+    out = _draft(ws)
+    assert 'started by you' in out and 'It is a card of this conversation.' in out, out
+
+
 def test_another_projects_workspace_drafts_nothing():
     ws = fake_ws(FakeClient())
     ws.writable = False

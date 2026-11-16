@@ -122,8 +122,36 @@ def _active_refusal(ws, job: Dict[str, Any]) -> str:
     reply can link it (the app's job page)."""
     state = _STATE_WORDS.get(job.get('state'), job.get('state') or 'active')
     page = f'#/projects/{ws.project.id}/jobs/{job.get("id")}'
-    return (f'This project already has a job, {state}, and a project runs one job at a time. Tell the user, '
-            f'with a link to its page: [the job]({page}). Draft this one once it has ended.')
+    return (f'This project already has a job, {state}, and a project runs one job at a time. '
+            f'{_active_facts(ws, job)} Tell the user, with a link to its page: [the job]({page}). Draft this one '
+            'once it has ended.')
+
+
+#: A job's state as its page words it (plaid-ui ``jobStateText``).
+_PAGE_STATE_WORDS = {'waiting': 'Waiting', 'running': 'Running', 'stopping': 'Stopping…'}
+
+
+def _active_facts(ws, job: Dict[str, Any]) -> str:
+    """What the refusal says of the job in the way, so the model need not
+    guess whose it is (RP2-3: it twice told the user their own discarded card
+    was the blocker): who started it ("you" for the requester), when, its
+    state in the page's words, what it was set up to fill, and whether it is
+    a card of this conversation."""
+    who = 'you' if ws.requester_id and job.get('started_by') == ws.requester_id \
+        else (job.get('started_by_name') or 'another person')
+    when = str(job.get('created_at') or '')[:16].replace('T', ' ')
+    said = [f'It was started by {who}' + (f' at {when} UTC' if when else '') + '.']
+    state = _PAGE_STATE_WORDS.get(job.get('state'))
+    if state:
+        said.append(f'Its page reads "{state}".')
+    setup = job.get('setup')
+    if tg.readable(setup):
+        said.append(tg.said_setup(setup) or '')
+        mine = setup.get('conversation') is not None and setup.get('conversation') == ws.conversation_id
+        said.append('It is a card of this conversation.' if mine else 'It is not a card of this conversation.')
+    else:
+        said.append('It was started from the Start job form, not from a card of this conversation.')
+    return ' '.join(x for x in said if x)
 
 
 #: A user who may not start a job (a reader): the card would be a dead end.

@@ -123,6 +123,7 @@ class Turn:
             with _held(response_helper):
                 ws = self.make_workspace(client, project, send)
                 ws.requester_id = store.user_id
+                ws.conversation_id = conv_id
                 # What the user attached to this conversation, and the note in front of
                 # the message it came on. The note is written BEFORE the place stamp,
                 # because that one has to stay at the very start of the message: it is

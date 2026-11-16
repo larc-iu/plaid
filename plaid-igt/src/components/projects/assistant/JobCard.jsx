@@ -270,7 +270,7 @@ export const JobCard = ({
       )}
       {card.status === 'failed' &&
         (card.activeJob ? (
-          <JobActiveLine projectId={projectId} jobId={card.activeJob} />
+          <JobActiveLine projectId={projectId} jobId={card.activeJob} client={client} />
         ) : (
           <p role="alert" className="text-destructive">
             {card.reason || 'The job did not start.'}
