@@ -238,7 +238,7 @@ JOB_MODEL_RETRY_S = 300
 #: included, below the model's own cap: none (0), the worker's
 #: --piece-output-tokens for an operator who wants one. The planning, the
 #: report's prose and a chat always keep the model's own cap. Measured
-#: 2026-11-16 (BRIEF SP): a ceiling of 12,000 made glossing slower, as long
+#: 2026-11-16 (BRIEF SP): a ceiling of 12,000 made jobs slower, as long
 #: calls were mostly useful work, cut and done again in more pieces.
 JOB_PIECE_OUTPUT_TOKENS = 0
 #: The most items one call of a piece's tool takes, where an app's tools take
