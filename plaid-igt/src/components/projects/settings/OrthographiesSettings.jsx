@@ -12,7 +12,6 @@ import {
   IGT_NAMESPACE,
   orthographyKey,
 } from '@/domain/igtConfig';
-import { TYPE } from '@ui/lib/typeScale.js';
 
 // The project is the page's, and a save or a refusal reads the page's project
 // again (onProjectUpdate), so every section shows the same one.
@@ -186,21 +185,12 @@ export const OrthographiesSettings = ({ project, client, onProjectUpdate }) => {
   }
 
   return (
-    <div>
-      <h2 className={TYPE.card}>Orthographies</h2>
-      <p className="mb-4 mt-1 text-sm text-muted-foreground">
-        The ways this project’s text is written. Baseline cannot be removed. Add others for IPA,
-        another writing system, or a normalized form.
-      </p>
-
-      <OrthographiesManager
-        key={reloads}
-        onLoadData={handleLoadData}
-        onSaveChanges={handleSaveChanges}
-        onError={handleError}
-        onCountOrthographyUsage={handleCountOrthographyUsage}
-        showTitle={false}
-      />
-    </div>
+    <OrthographiesManager
+      key={reloads}
+      onLoadData={handleLoadData}
+      onSaveChanges={handleSaveChanges}
+      onError={handleError}
+      onCountOrthographyUsage={handleCountOrthographyUsage}
+    />
   );
 };

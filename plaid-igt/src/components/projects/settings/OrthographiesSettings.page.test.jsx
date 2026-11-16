@@ -34,9 +34,10 @@ const project = (orthographies) => ({
 const settle = async () => {
   for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 0));
 };
-const rowNames = () => all(document.body, '.group span.text-sm').map((el) => el.textContent.trim());
+// The list's rows: the Baseline is drawn apart, never as one of them.
+const rowNames = () => all(document.body, '[data-orth-row]').map((el) => el.textContent.trim());
 const addRow = async (view, name) => {
-  const input = document.querySelector('input[placeholder="Enter orthography name"]');
+  const input = document.querySelector('[data-orth-block="additional"] input');
   const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
   await view.step(() => {
     setter.call(input, name);
@@ -82,7 +83,7 @@ describe("Settings > Orthographies, the page's project", () => {
       <Page client={client} initial={project(stored)} reads={reads} />,
     );
     await view.step(settle);
-    expect(rowNames()).toEqual(['Baseline', 'IPA']);
+    expect(rowNames()).toEqual(['IPA']);
     expect(client.projects.get).not.toHaveBeenCalled();
     await addRow(view, 'Latin');
     expect(client.tokenLayers.setConfig.mock.calls[0][3]).toEqual([
@@ -90,7 +91,7 @@ describe("Settings > Orthographies, the page's project", () => {
       { name: 'Latin' },
     ]);
     expect(reads).toHaveLength(1);
-    expect(rowNames()).toEqual(['Baseline', 'IPA', 'Latin']);
+    expect(rowNames()).toEqual(['IPA', 'Latin']);
     await view.unmount();
   });
 
@@ -113,7 +114,7 @@ describe("Settings > Orthographies, the page's project", () => {
     await addRow(view, 'Latin');
     await view.step(settle);
     expect(reads).toHaveLength(1);
-    expect(rowNames()).toEqual(['Baseline', 'IPA', 'Cyrillic']);
+    expect(rowNames()).toEqual(['IPA', 'Cyrillic']);
     await view.unmount();
   });
 });

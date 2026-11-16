@@ -194,25 +194,25 @@ export const ConfirmationStep = ({ setupData, isNewProject, projectId, client, o
     );
   };
 
+  // What the Orthographies step lists: the additional orthographies, never
+  // the Baseline as one of them.
   const OrthographiesReview = () => {
     const orthographiesData = setupData.orthographies;
     if (!orthographiesData?.orthographies?.length) return null;
+    const additional = orthographiesData.orthographies.filter((orth) => !orth.isBaseline);
 
     return (
       <div className="rounded-lg border bg-card p-4">
-        <p className="mb-2 font-medium">Orthographies</p>
-        <ul className="list-disc pl-5 text-sm">
-          {orthographiesData.orthographies.map((orth) => (
-            <li key={orth.name}>
-              {orth.name}{' '}
-              {/* Named Baseline already, it says so: "Baseline Baseline" said it twice. */}
-              {/* name-ok: display only */}
-              {orth.isBaseline && orth.name !== 'Baseline' && (
-                <Badge variant="secondary">Baseline</Badge>
-              )}
-            </li>
-          ))}
-        </ul>
+        <p className="mb-2 font-medium">Additional orthographies</p>
+        {additional.length === 0 ? (
+          <p className="text-sm text-muted-foreground">None</p>
+        ) : (
+          <ul className="list-disc pl-5 text-sm">
+            {additional.map((orth) => (
+              <li key={orth.name}>{orth.name}</li>
+            ))}
+          </ul>
+        )}
       </div>
     );
   };

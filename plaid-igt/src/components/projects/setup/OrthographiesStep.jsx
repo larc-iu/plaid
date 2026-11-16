@@ -6,37 +6,23 @@ export const OrthographiesStep = ({ data, onDataChange }) => {
     onDataChange(newData);
   };
 
+  // The Baseline and the list are drawn and worded as Settings draws them.
+  // A listed orthography is made, so the note says so: without it a listed
+  // IPA read as something that might or might not be switched on, and it
+  // arrived as an empty row in the Analyze grid and a checked-but-empty line
+  // in an export preset.
   return (
-    <div className="flex flex-col gap-8">
-      {/* Explanatory header */}
-      <div>
-        <p className="text-sm">
-          The <strong>Baseline</strong> is the text as you type it. Add other ways of writing each
-          word beside it, such as an IPA transcription, another script, or a normalized spelling.
-        </p>
-        {/* This list has no on/off column, because a row IS the orthography.
-            Without saying so, a listed IPA read as something that might or
-            might not be switched on, and it arrived as an empty row in the
-            Analyze grid and a checked-but-empty line in an export preset. */}
-        <p className="mt-2 text-sm text-muted-foreground">
-          Every orthography listed here is created. Remove the ones you do not want.
-        </p>
-      </div>
-
-      {/* Use the reusable manager component */}
-      <OrthographiesManager
-        initialData={data}
-        onSaveChanges={handleSaveChanges}
-        showTitle={true}
-        autoSaveDefaults={true}
-      />
-    </div>
+    <OrthographiesManager
+      initialData={data}
+      onSaveChanges={handleSaveChanges}
+      autoSaveDefaults={true}
+      note="Every orthography listed here is created. Remove the ones you do not want."
+    />
   );
 };
 
 // Validation function for this step
 OrthographiesStep.isValid = () => {
-  // Step is always valid - baseline orthography is always present
-  // Having additional orthographies is optional
+  // Always valid: additional orthographies are optional.
   return true;
 };
