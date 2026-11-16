@@ -230,21 +230,34 @@
         (p! (str "relation on a missing span " (:id r)))))
     (doseq [r (psc/q db ["SELECT lt.token_id FROM vocab_link_tokens lt JOIN vocab_links l ON l.id = lt.vocab_link_id WHERE l.document_id = ?" (str d)])]
       (when-not (tok-ids (:token_id r)) (p! (str "link on a missing token " (:token_id r)))))
+    (doseq [l (psc/q db {:select [:id :vocab_item_id] :from [:vocab_links] :where [:= :document_id (str d)]})]
+      (when-not (psc/fetch-by-id db :vocab_items (:vocab_item_id l)) (p! (str "link to a missing entry " (:id l)))))
     @out))
 
-(defn- bodies [docs]
-  (into {} (for [d docs t (psc/q db {:select [:id :body] :from [:texts] :where [:= :document_id (str d)]})]
-             [(:id t) (:body t)])))
+(defn- text-parts
+  "`{text-id {:body b :tokens #{[id layer begin end]}}}`: each text of
+  `docs` with the tokens on it now."
+  [docs]
+  (into {}
+        (for [d docs
+              t (psc/q db {:select [:id :body] :from [:texts] :where [:= :document_id (str d)]})]
+          [(:id t) {:body (:body t)
+                    :tokens (into #{} (map (juxt :id :token_layer_id :begin :end_))
+                                  (psc/q db {:select [:id :token_layer_id :begin :end_] :from [:tokens]
+                                             :where [:= :text_id (str (:id t))]}))}])))
 
 (defn- snapshot
   "The `state` of `docs`, carrying in its metadata which characters each
-  layer covers and each text's body, so an undo can be checked against the
-  state before the unit (`invariant!`). Equal to `state` under `=`."
+  layer covers and each text with its tokens, so an undo can be checked
+  against the state before the unit (`invariant!`). Equal to `state` under
+  `=`."
   [docs]
-  (with-meta (state docs) {:cover (coverage docs) :bodies (bodies docs)}))
+  (with-meta (state docs) {:cover (coverage docs) :parts (text-parts docs)}))
 
 (defn- invariant!
-  "What every undo must leave, whatever it undid, in the documents `docs`:
+  "What every undo must leave, whatever it undid, in the documents `docs`,
+  per text (`was` is a `snapshot` before the undo, `then` one before the
+  unit):
   1. every document is valid (`problems`: every token within its text in
      code points, every layer's rules, nothing naming a row not there);
   2. on every text whose body the undo did not change, every character a
@@ -252,42 +265,45 @@
      that layer, unless no token of that layer covered it before the unit
      either: an undo takes away only coverage the unit added, and never
      leaves characters bare that were covered before the unit and after it
-     (REV-RPF-P-2, REV-UT-2). `cover` is the `coverage` before the undo.
-     `then` is a `snapshot` before the unit (or nil, when only the state
-     before the undo is known: then nothing covered before the undo may be
-     uncovered);
-  3. each text and its tokens are as they were before the undo (`was`) or as
-     they were before the unit (`then`), never the text of one with the
-     tokens of the other: together or not at all."
-  [docs cover was then now]
+     (REV-RPF-P-2, REV-UT-2);
+  3. each text whose body the unit changed is, with its tokens, as it was
+     before the undo or as it was before the unit, never the body of one
+     with the tokens of the other: together or not at all. A text whose body
+     the unit did not change may have its tokens partly undone (parts 1 and
+     2 hold them)."
+  [docs was then]
   (doseq [d docs] (is (empty? (problems d)) (pr-str (problems d))))
-  (let [now-cover (coverage docs)
-        now-bodies (bodies docs)
-        {then-cover :cover then-bodies :bodies} (meta then)]
-    (doseq [[[text layer :as k] {:keys [body covered]}] cover
-            :when (= body (now-bodies text))
-            :let [needed (if (and then (= body (get then-bodies text)))
+  (let [{was-cover :cover was-parts :parts} (meta was)
+        {then-cover :cover then-parts :parts} (meta then)
+        now-cover (coverage docs)
+        now-parts (text-parts docs)]
+    (doseq [[[text layer :as k] {:keys [body covered]}] was-cover
+            :when (= body (:body (now-parts text)))
+            :let [needed (if (= body (:body (then-parts text)))
                            (filter (or (:covered (get then-cover k)) #{}) covered)
                            covered)]]
       (is (every? (or (:covered (get now-cover k)) #{}) needed)
-          (str "characters left bare on layer " layer " of " (pr-str body)))))
-  (let [part (fn [st] (into {} (filter (fn [[[kind] _]] (#{"text" "token"} kind))) st))]
-    (is (or (= (part now) (part was)) (and then (= (part now) (part then))))
-        "the text and its tokens are as the unit left them or as they were before it")))
+          (str "characters left bare on layer " layer " of " (pr-str body))))
+    (doseq [[text now-part] now-parts
+            :let [was-part (was-parts text)
+                  then-part (then-parts text)]
+            :when (and was-part then-part (not= (:body was-part) (:body then-part)))]
+      (is (or (= now-part was-part) (= now-part then-part))
+          (str "the text " (pr-str (:body now-part)) " and its tokens are as the unit left them or as they were before it")))))
 
 (defn- undo-checked!
   "Undo by `call` (a function of dry?), dry run first, over the documents
   `docs`: the dry run writes nothing and says what the real call does, and
-  the invariant holds after (`then` the state before the unit, or nil).
+  the invariant holds after (`then` a `snapshot` before the unit).
   Returns the real call's summary."
   [docs then call]
-  (let [was (state docs)
-        cover (coverage docs)
+  (assert then "a snapshot before the unit")
+  (let [was (snapshot docs)
         dry (body-of (call true))
         _ (is (= was (state docs)) "the dry run wrote nothing")
         real (body-of (call false))]
     (is (= (dissoc dry :dry-run) (dissoc real :dry-run :operation)) "the dry run said what the call did")
-    (invariant! docs cover was then (state docs))
+    (invariant! docs was then)
     real))
 
 ;; ============================================================
@@ -463,6 +479,7 @@
   two edits, `after` after the unit's last write."
   [{:keys [between after]}]
   (let [{:keys [proj doc text pos words] :as w} (world!)
+        then (snapshot [doc])
         g (str (random-uuid))
         r (in-group admin-request g)
         _ (edit! r w text [(replace-op (at text "\"") "\"" nul)])
@@ -477,7 +494,7 @@
         entry (id (create-vocab-item admin-request vocab "pro"))
         link (id (create-vocab-link r entry [(word-at words text (at text (str nul " mo")) (inc (at text (str nul " mo"))))]))
         _ (when after (after w))]
-    (assoc w :g g :pron pron :kai kai :rel rel :link link)))
+    (assoc w :g g :then then :pron pron :kai kai :rel rel :link link)))
 
 (defn- person-edit! [{:keys [text] :as w}]
   ;; a person adds a word at the end of s3, as the Baseline sends it
@@ -488,9 +505,9 @@
   (doseq [[what opts reason] [["between the unit's edits" {:between person-edit!} "changed-between"]
                               ["after the unit's last" {:after person-edit!} "changed-since"]]]
     (testing what
-      (let [{:keys [doc text g pron kai rel link]} (person-world! opts)
+      (let [{:keys [doc text g then pron kai rel link]} (person-world! opts)
             was (state [doc])
-            real (undo-checked! [doc] nil #(undo-entry admin-request g :dry-run %))
+            real (undo-checked! [doc] then #(undo-entry admin-request g :dry-run %))
             why (reasons real)
             now (state [doc])]
         (is (= reason (why text)) "the text is the person's to keep")
@@ -510,6 +527,7 @@
   ;; that word stays (built-on), so the text stays: the other new word must
   ;; stay with it, never be deleted from under its characters.
   (let [{:keys [doc text pos words] :as w} (world!)
+        then (snapshot [doc])
         g (str (random-uuid))
         r (in-group admin-request g)
         _ (edit! r w text [(insert-op 0 (str nul " " nul " "))])
@@ -517,7 +535,7 @@
         second-new (word-at words text 2 3)
         mine (id (create-span admin-request pos [first-new] "PRON"))
         was (state [doc])
-        real (undo-checked! [doc] nil #(undo-entry admin-request g :dry-run %))
+        real (undo-checked! [doc] then #(undo-entry admin-request g :dry-run %))
         why (reasons real)
         now (state [doc])]
     (is (= "built-on" (why first-new)))
