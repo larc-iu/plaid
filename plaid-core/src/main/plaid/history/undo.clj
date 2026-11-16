@@ -36,7 +36,9 @@
                         or reshaped on a text anyone else wrote since stays,
                         whether or not the entry changed that text, as does
                         a token it made on a text whose body stays, so a
-                        text and its tokens go back together or not at all.
+                        text and its tokens go back together or not at all,
+                        and a token it made beside a token of the same layer
+                        and text it reshaped whose extent stays.
                         A span, link or relation the entry wrote on a token
                         it made that is left so stays with it. After the writes, every token
                         put back is read against the text it was made on, as
@@ -539,6 +541,15 @@
                      (not (applied? (item-of ["texts" (:text_id (:after i))]))))
             ;; a token the entry made on a text whose body does not go
             ;; back: deleting it would leave its characters bare
+            {:reason "text-changed-since"})
+          (when (and (= table "tokens")
+                     (some #(and (not= k (:k %)) (= :update (:op %)) (moves-offsets? %) (not (applied? %))
+                                 (= (:token_layer_id (:after i)) (:token_layer_id (:before %))))
+                           (get tokens-on (:text_id (:after i)))))
+            ;; a token the entry made beside a token of its layer the entry
+            ;; reshaped (a split's halves, a shifted boundary) whose extent
+            ;; stays: deleting it would leave the characters it took bare
+            ;; (REV-UT-2)
             {:reason "text-changed-since"})
           (when (= table "documents")
             (cond

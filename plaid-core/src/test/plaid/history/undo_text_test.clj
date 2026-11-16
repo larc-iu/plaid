@@ -555,6 +555,28 @@
           (is (pos? (:total real))))))))
 
 ;; ============================================================
+;; REV-UT-2: a split on a text the unit does not edit
+;; ============================================================
+
+(deftest a-word-split-whose-left-half-a-person-wrote-since-keeps-its-right-half
+  (doseq [[what edits-text?] [["the text unchanged" false] ["the text also edited" true]]]
+    (testing what
+      (let [{:keys [doc text words] :as w} (world!)
+            then (snapshot [doc])
+            g (str (random-uuid))
+            r (in-group admin-request g)
+            pele (word-of w text "pele")
+            _ (when edits-text? (edit! r w text [(replace-op (at text "\"") "\"" nul)]))
+            _ (assert-done (split-token r pele (+ 2 (at text "pele"))))
+            right (word-of w text "le")
+            _ (assert-done (update-token-metadata user1-request pele {"seen" true}))
+            real (undo-checked! [doc] then #(undo-entry admin-request g :dry-run %))
+            why (reasons real)]
+        (is (= "changed-since" (why pele)) "the left half is the person's")
+        (is (= "text-changed-since" (why right)) "the right half stays with it")
+        (is (some? (psc/fetch-by-id db :tokens right)))))))
+
+;; ============================================================
 ;; The neighbours: one row written more than once by the unit
 ;; ============================================================
 
