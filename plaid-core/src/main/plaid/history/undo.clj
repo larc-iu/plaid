@@ -39,8 +39,8 @@
                         text and its tokens go back together or not at all.
                         Two token rows of the entry on one text, in one
                         layer or a parent and child layer, that traded
-                        characters go back together or stay together
-                        (`tie-groups`).
+                        characters (a child not inside its parent) go back
+                        together or stay together (`tie-groups`).
                         A span, link or relation the entry wrote on a token
                         it made that is left so stays with it. After the writes, every token
                         put back is read against the text it was made on, as
@@ -610,7 +610,9 @@
   token rows of the entry on one text, in one layer or a parent and child
   layer, each of whose undo moves offsets (a token the entry made counts),
   that traded characters (one's extent before the entry overlaps the other's
-  after it) go back together or stay together (REV-UT-2, REV-UT2-2). A split
+  after it, and for a parent and a child the child's does not lie inside the
+  parent's) go back together or stay together (REV-UT-2, REV-UT2-2,
+  REV-UT2-6). A split
   ties its halves, a merge its source to its survivor, a shift its two
   neighbours, a word the entry reshaped to the morphemes it deleted from it.
   Groups are the connected parts of that relation. Read once per attempt by
@@ -656,8 +658,15 @@
             :when begins
             n (range (lower-bound begins (- (long b) (long max-len))) (alength begins))
             :while (< (aget begins n) e)
-            :let [j (nth items n)]
-            :when (and (not= (:k i) (:k j)) (< (max b (:begin (:after j))) (min e (:end_ (:after j)))))]
+            :let [j (nth items n)
+                  {jb :begin je :end_} (:after j)
+                  inside? (fn [[x y] [px py]] (and (<= px x) (<= y py)))]
+            :when (and (not= (:k i) (:k j)) (< (max b jb) (min e je))
+                       ;; a parent and a child tie only when the child does
+                       ;; not lie inside the parent (REV-UT2-6)
+                       (cond (= l' l) true
+                             (= l' (layer-parent l)) (not (inside? [b e] [jb je]))
+                             :else (not (inside? [jb je] [b e]))))]
       (union! (:k i) (:k j)))
     (into {} (keep (fn [i] (when (.containsKey parent (:k i)) [(:k i) (root (:k i))]))) tok)))
 
