@@ -166,3 +166,42 @@ def test_a_jobs_retype_is_counted_in_its_report_and_its_notice(monkeypatch, _edi
 ])
 def test_the_notice_says_what_was_changed_of_peoples_work_and_the_text(totals, line):
     assert notice(totals) == line
+
+
+# --- REV-RPF-W-4: people's work a text edit took away -------------------------------------------
+
+def _human(form, gloss='go', word_gloss=None):
+    d = {'form': form, 'morphs': [(form, gloss)], 'who': 'human'}
+    if word_gloss:
+        d['gloss'] = (word_gloss, 'human')
+    return d
+
+
+@pytest.mark.parametrize('calls,people', [
+    # ta typed over whole: its token goes with the person's analysis on it.
+    ([('retype_sentence', {'document': 'Story', 'ref': 's1', 'text': 'ka bolo.'})], 1),
+    # ta deleted.
+    ([('delete_word', {'document': 'Story', 'refs': ['s1.w2']})], 1),
+    # ta respelled keeps its token and what is on it: nothing of people's lost.
+    ([('retype_sentence', {'document': 'Story', 'ref': 's1', 'text': 'ka tax.'})], 0),
+    # a word inserted beside it: nothing lost.
+    ([('retype_sentence', {'document': 'Story', 'ref': 's1', 'text': 'ka zu ta.'})], 0),
+])
+def test_peoples_work_on_a_word_a_text_edit_removes_is_counted_as_peoples(monkeypatch, _edits, calls, people):
+    """A person's analysis on a word the job deleted or typed over whole is
+    people's work the job removed (REV-RPF-W-4): one change to what people
+    wrote, by the provenance of what the text op removes in the document read
+    under the lock, so the notice says so beside the Text sentence."""
+    def answer(asked, n, kwargs):
+        if 'Instructions from' not in asked or n > 1:
+            return reply('Done.')
+        return reply(calls=[call(i + 1, t, a) for i, (t, a) in enumerate(calls)])
+    client = JobClient({'d1': document('d1', 'Story', [{'words': ['ka', _human('ta')]}])})
+    client.texts.edit = lambda *a, **kw: client.record('texts.edit', {'args': a, 'kwargs': kw})
+    job = start(client, 'Do as asked.', id=J, plan='document', edits_text=True)
+    use(monkeypatch, Model(answer))
+    run_job(job, runner(job))
+    report = _report(client)
+    assert report['totals']['peoples_values_changed'] == people, report['totals']
+    assert report['documents'][0]['counts'].get('peoples_values_changed', 0) == people
+    assert (report['notice'] or '').startswith("People's work: 1 value") == (people == 1), report['notice']

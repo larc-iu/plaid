@@ -862,6 +862,53 @@ def replaces_people(op: Dict[str, Any], doc, project: IgtProject) -> bool:
     return False
 
 
+def holds_peoples(w: Word) -> bool:
+    """Whether a word holds anything people wrote: an analysis with a
+    person's piece (``word_state`` protected, as :func:`replaces_people`
+    reads an analysis), or a word field or link whose provenance is not a
+    machine's."""
+    return word_state(w) == 'protected' or any(prov_state(sp.metadata) != 'machine' and sp.value not in (None, '')
+                                               for sp in w.fields.values()) or (
+        w.link is not None and prov_state(w.link.metadata) != 'machine')
+
+
+def removes_people(op: Dict[str, Any], doc) -> int:
+    """How much people wrote a text op takes away with the tokens it removes,
+    by provenance in ``doc`` (the document read under the lock before the
+    write), never by its words (REV-RPF-W-4): one for each word it removes
+    that holds people's work (:func:`holds_peoples`: its analysis, values
+    and link together, as replacing a person's analysis counts one), and one
+    for each sentence-level value people wrote on a sentence it removes. A
+    word a retype removes is one of the sentence's words that its planned
+    words do not keep (typed over whole, or deleted in the retype). A
+    respelled or split word keeps its token and what is on it, and a merge
+    of words keeps the first."""
+    kind = op.get('kind')
+    sentences = {s.id: s for s in doc.sentences}
+    words = {w.id: w for s in doc.sentences for w in s.words}
+    gone_words, gone_sentences = [], []
+    if kind == 'delete_word':
+        gone_words = [op.get('word_id')]
+    elif kind == 'merge_words':
+        gone_words = list(op.get('other_ids') or [])
+    elif kind == 'delete_sentence':
+        gone_sentences = [op.get('sentence_id')]
+    elif kind == 'merge_sentences':
+        gone_sentences = [op.get('other_id')]
+    elif kind == 'edit_text' and op.get('sentence_id') in sentences and op.get('planned_words') is not None:
+        kept = {p.get('word_id') for p in op['planned_words']}
+        gone_words = [w.id for w in sentences[op['sentence_id']].words if w.id not in kept]
+    n = 0
+    for sid in gone_sentences:
+        s = sentences.get(sid)
+        if s is None:
+            continue
+        if kind == 'delete_sentence':
+            gone_words += [w.id for w in s.words]
+        n += sum(1 for sp in s.fields.values() if sp.value not in (None, '') and prov_state(sp.metadata) != 'machine')
+    return n + sum(1 for wid in gone_words if wid in words and holds_peoples(words[wid]))
+
+
 def state_text(d: Dict[str, Any]) -> str:
     """A document's state as the final context reads it: one the job did
     not finish is "stopped partway, 6 of 8 sentences done" once it finished a
@@ -1544,12 +1591,15 @@ class Write:
     def of_people_and_text(self, ops: List[Dict[str, Any]]) -> Counter:
         """``peoples_values_changed``: the changes of ``ops`` that change or
         take away something people wrote, by its provenance in the document
-        as it was before the write (:func:`replaces_people`).
+        as it was before the write (:func:`replaces_people`), and what people
+        wrote on the words and sentences a text edit removes
+        (:func:`removes_people`, REV-RPF-W-4).
         ``text_changes``: those that change the text or its words and
         sentences (``jobapply.TEXT_KINDS``). From the worker's own ops,
         never from words (REV-DAY-S-3)."""
         doc = self.fresh if self.fresh is not None else self.st.doc
-        return Counter({'peoples_values_changed': sum(1 for o in ops if replaces_people(o, doc, self.st.project)),
+        return Counter({'peoples_values_changed': sum(1 for o in ops if replaces_people(o, doc, self.st.project))
+                        + sum(removes_people(o, doc) for o in ops if o.get('kind') in jobapply.TEXT_KINDS),
                         'text_changes': sum(1 for o in ops if o.get('kind') in jobapply.TEXT_KINDS)})
 
     def words_of(self, ops: List[Dict[str, Any]]) -> List[str]:
