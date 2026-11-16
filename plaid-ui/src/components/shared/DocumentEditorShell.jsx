@@ -175,7 +175,14 @@ const DocumentEditor = ({ app, documentClient }) => {
   );
   const tab = query ? queryTab : tabOf(pathname);
   const base = app.documentPath(projectId, documentId);
-  const tabHref = (value) => (query ? queryHref(base, value) : `${base}/${value}`);
+  // A tab in the path (ud, umr) keeps the History entry open, as a tab in the
+  // query does with the rest of the search: a past state holds across a tab
+  // switch.
+  const openEntry = searchParams.get('history');
+  const tabHref = (value) =>
+    query
+      ? queryHref(base, value)
+      : `${base}/${value}${openEntry ? `?${new URLSearchParams({ history: openEntry })}` : ''}`;
 
   // One comment store per document, shared by every tab through the outlet, so
   // the Comments tab and the editor's badges read the same instance rather than
