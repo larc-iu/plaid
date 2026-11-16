@@ -40,7 +40,7 @@ from plaid_client.provenance import PROV_CONFIRMED_KEY, PROV_DETAIL_KEY, project
 from plaid_client.service import locked_for_writes
 
 from ..core import job as core_job
-from ..core.agent import ModelConfig, Toolkit, TurnCancelled, TurnFailed, run_turn
+from ..core.agent import ModelConfig, Toolkit, TurnCancelled, run_turn
 from ..core.garble import seed
 from ..core.trace import plural
 from ..core.guidelines import manual_chars
@@ -2168,12 +2168,6 @@ class IgtRunner:
         #: a ceiling below the model's cap on what one call of a piece may
         #: write (the worker's --piece-output-tokens), 0 or None for none
         self.piece_output_tokens = piece_output_tokens
-        #: per document, the sentences a piece cut at its output limit wrote
-        #: (``kept_at_limit``): never worked again by the halves
-        self.kept_at_cut: Dict[str, set] = {}
-        #: per document, the cut piece's failure and its sentences with
-        #: nothing staged, which fail the stretch once its write is done
-        self.cut_rest: Dict[str, Tuple[BaseException, List[str]]] = {}
         #: whether the report's prose is written (the worker always does)
         self.write_summary = write_summary
         self.cfg = cfg
@@ -3264,11 +3258,6 @@ class IgtRunner:
         model's work is the stretch's (:class:`StretchFailed`, halved). The
         write, the row and the decisions come after the model has finished,
         and nothing that goes wrong there is told as the model's."""
-        # A sentence a piece cut at its output limit wrote is not worked
-        # again by the halves of its stretch (``kept_at_limit``).
-        sentence_ids = [i for i in sentence_ids if i not in self.kept_at_cut.get(document_id, ())]
-        if not sentence_ids:
-            return
         while True:
             try:
                 staged = self.model_work(project, document_id, sentence_ids)
@@ -3290,17 +3279,9 @@ class IgtRunner:
                 raise StretchFailed(kind, str(e)) from e
         if staged is not None:
             *staged, key = staged
-            cut = self.cut_rest.pop(document_id, None)
             self.write(project, document_id, *staged, summary=key)
             self.end_summary(key)
             self.after_text(project, document_id)
-            if cut is not None:
-                # The cut piece's own sentences are written: the rest fail
-                # the stretch, which is halved as before.
-                self.kept_at_cut.setdefault(document_id, set()).update(s.id for s in staged[2])
-                failure, rest = cut
-                if rest:
-                    raise StretchFailed(OUTPUT, str(failure))
 
     def after_text(self, project: IgtProject, document_id: str) -> None:
         """The piece after a text edit (RPF3-B): the sentences whose text the
@@ -3447,16 +3428,7 @@ class IgtRunner:
         # as the model read it.
         prints = {s.id: ws.sentence_print(doc, s) for s in doc.sentences}
         message = self.message(ws, project, doc, part, st, whole)
-        try:
-            note = self.run_piece(ws, project, message, document_id, sentences=self.in_sentences() and not whole)
-        except TurnFailed as e:
-            kept = None if whole else self.kept_at_limit(e, ws, doc, part)
-            if kept is None:
-                raise
-            # What it staged for its sentences is written, the rest fail
-            # the stretch after the write (``attempt``).
-            self.cut_rest[document_id] = (e, [s.id for s in part if s not in kept])
-            part, note = kept, ''
+        note = self.run_piece(ws, project, message, document_id, sentences=self.in_sentences() and not whole)
         piece = {'document': document_id, 'first': part[0].id if part else None, 'whole': whole}
         key = analysis_key(canonical(piece))
         self.begin_summary(key, document_id, doc.name, part, whole, note, self.refused_of(ws, document_id))
@@ -3479,20 +3451,6 @@ class IgtRunner:
         # is proposed there, never written: it is not under this document's
         # lock (the rule's ``place``).
         return ws, doc, part, prints, list(ws.ops), note, tag, key
-
-    @staticmethod
-    def kept_at_limit(e: BaseException, ws: JobWorkspace, doc, part: List[Sentence]) -> Optional[List[Sentence]]:
-        """The sentences of a stretch's piece whose staged changes are
-        written although the piece ended at its output limit a second time
-        (``e`` a cut call, ``cut_at``): those of ``part`` an op it staged
-        writes in, by the op's own sentence (:func:`jobapply.sentence_of`).
-        None when ``e`` is no such cut or nothing was staged for them: the
-        stretch fails whole, as before."""
-        if not isinstance(e, TurnFailed) or not getattr(e, 'cut_at', None) or not ws.ops:
-            return None
-        ids = {getattr(jobapply.sentence_of(op, doc), 'id', None) for op in ws.ops}
-        kept = [s for s in part if s.id in ids]
-        return kept or None
 
     def run_piece(self, ws: JobWorkspace, project: IgtProject, message: str, folder: str,
                   sentences: bool = False, text: bool = True) -> str:
