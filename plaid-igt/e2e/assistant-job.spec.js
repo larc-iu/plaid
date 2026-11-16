@@ -150,7 +150,9 @@ test('a job scoped in the chat is started from its card, and a second card is di
       `${EDITED.length} / 2,000`,
     );
     await card.getByRole('button', { name: 'Start job' }).click();
-    await expect(card).toContainText('Started');
+    // Started, and waiting in the queue until a worker claims it: the badge
+    // says what the job page says (REV-RPF-P-7, REV-RPF2-0).
+    await expect(card.getByTestId('job-card-state')).toHaveText('Waiting', { timeout: 30_000 });
     await expect(card.getByTestId('job-card-brief')).toHaveText(EDITED);
 
     // Core holds the job under the card's id, started by the person, with the
@@ -189,13 +191,16 @@ test('a job scoped in the chat is started from its card, and a second card is di
 
     // The same after a reload.
     await page.reload();
-    await expect(page.getByTestId('job-card')).toContainText('Started', { timeout: 30_000 });
+    const state = page.getByTestId('job-card').getByTestId('job-card-state');
+    await expect(state).toHaveText('Waiting', { timeout: 30_000 });
     await expect(page.getByTestId('job-card-brief')).toHaveText(EDITED);
 
-    // The worker takes it and ends it, and the report says what it left.
+    // The worker takes it and ends it, and the report says what it left. Once
+    // claimed, the card the page still shows reads Started.
     const worker = fakeJobWorker(client);
     const claimed = await worker.claim();
     expect(claimed.id).toBe(jobId);
+    await expect(state).toHaveText('Started', { timeout: 30_000 });
     await worker.finish(jobId, {
       state: 'done',
       report: {
@@ -259,7 +264,10 @@ test('a job scoped in the chat is started from its card, and a second card is di
     await expect(page.getByTestId('job-card').nth(1)).toContainText('Discarded', {
       timeout: 30_000,
     });
-    await expect(page.getByTestId('job-card').first()).toContainText('Started');
+    // Its job claimed and ended: Started.
+    await expect(page.getByTestId('job-card').first().getByTestId('job-card-state')).toHaveText(
+      'Started',
+    );
     expect((await client.jobs.list(projectId)).length).toBe(1);
   } finally {
     await test.info().attach('assistant service log', {
@@ -408,7 +416,8 @@ test('Set up job: facts, a question, a card that binds the job, and a planner he
     await expect(row('Fills')).toHaveText('Gloss');
     await expect(row('Text')).toHaveText('Unchanged');
     await card.getByRole('button', { name: 'Start job' }).click();
-    await expect(card).toContainText('Started', { timeout: 30_000 });
+    // No worker has claimed it yet (REV-RPF2-0).
+    await expect(card.getByTestId('job-card-state')).toHaveText('Waiting', { timeout: 30_000 });
 
     // The job carries the card's setup and the conversation's id.
     jobId = stored.id;
@@ -479,7 +488,10 @@ test('Set up job: facts, a question, a card that binds the job, and a planner he
     await expect(page).toHaveURL(
       new RegExp(`#/projects/${projectId}\\?tab=assistant&conversation=${convId}$`),
     );
-    await expect(page.getByTestId('job-card')).toContainText('Started', { timeout: 30_000 });
+    // The worker claimed and ended it: Started.
+    await expect(page.getByTestId('job-card').getByTestId('job-card-state')).toHaveText('Started', {
+      timeout: 30_000,
+    });
   } finally {
     if (worker) {
       await test.info().attach('job worker log', { body: worker.log, contentType: 'text/plain' });
