@@ -1434,13 +1434,14 @@
 }
 
 /* Homonym note under the popover's "+ Create" row: the form already exists in
-   this lexicon, so creating adds a separate sense rather than reusing it. */
+   this lexicon, so creating adds a separate sense rather than reusing it. A
+   plain fact, in the popover's hint colour, never the warm one of a fault. */
 .igt-vocab-pop__note {
   display: block;
   margin-top: 2px;
   font-size: 11px;
   font-style: italic;
-  color: var(--igt-warning);
+  color: var(--igt-hint);
 }
 
 /* ---- minimized rows ------------------------------------------------------
