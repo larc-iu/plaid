@@ -91,9 +91,10 @@ export const ProjectJobs = ({ projectId, client, startJob = null }) => {
       render: (j) => cell(j, j.startedByName),
       sort: (j) => j.startedByName,
     },
+    // When the job joined the queue: a waiting job has not started (RPF-P5).
     {
       key: 'createdAt',
-      label: 'Started',
+      label: 'Queued',
       render: (j) => when(j, j.createdAt),
       sort: (j) => j.createdAt,
     },

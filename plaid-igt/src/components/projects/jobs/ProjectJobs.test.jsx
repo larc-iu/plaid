@@ -61,7 +61,7 @@ describe('the Jobs tab', () => {
       'Instructions',
       'Documents',
       'Started by',
-      'Started',
+      'Queued',
       'Ended',
     ]);
     const links = all(v.container.querySelector('tbody tr'), 'td a');

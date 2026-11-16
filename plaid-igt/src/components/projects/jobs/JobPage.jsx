@@ -11,7 +11,6 @@ import { LoadError } from '@ui/components/shared/LoadError.jsx';
 import { Loading } from '@ui/components/shared/Loading.jsx';
 import { SectionHeader } from '@ui/components/shared/SectionHeader.jsx';
 import { TYPE } from '@ui/lib/typeScale.js';
-import { countOf } from '@ui/lib/plural.js';
 import { fullTimestamp, timeAgo } from '@ui/lib/formatTime.js';
 import { projectNotFound } from '@ui/lib/errors.js';
 import { canEditProject, canManageProject, canStopJob } from '@ui/domain/permissions.js';
@@ -41,6 +40,7 @@ import { JobHistoryLinks } from './JobHistoryLinks.jsx';
 import { JobActivity } from './JobActivity.jsx';
 import { FillsNames } from './jobLines.jsx';
 import {
+  aheadText,
   durationText,
   jobName,
   jobsTabPath,
@@ -323,7 +323,7 @@ const JobSetup = ({ job, projectId, user }) => {
 };
 
 // The state, what the worker is doing, its last line, and for a waiting job
-// how many are ahead of it. A failed job says why.
+// how many are ahead of it (core's `ahead`, every one another project's). A failed job says why.
 const JobStatus = ({ job }) => {
   const failed = job.state === 'failed';
   const running = job.state === 'running';
@@ -333,7 +333,7 @@ const JobStatus = ({ job }) => {
         <Badge variant={failed ? 'destructive' : 'secondary'}>{jobStateText(job.state)}</Badge>
         {running && job.phase && <span>{jobPhaseText(job.phase)}</span>}
         {job.state === 'waiting' && job.ahead > 0 && (
-          <span className="text-muted-foreground">{countOf(job.ahead, 'job')} ahead</span>
+          <span className="text-muted-foreground">{aheadText(job.ahead)}</span>
         )}
       </div>
       {jobSilentText(job) && <p>{jobSilentText(job)}</p>}
@@ -352,6 +352,17 @@ const Fact = ({ label, children }) => (
     <dd>{children}</dd>
   </div>
 );
+
+// How long a job that is no longer waiting waited for a worker: until one
+// took it, or until it ended untaken. Null while it waits, and for a wait of
+// under a minute.
+const waitedMs = (job) => {
+  if (job.state === 'waiting') return null;
+  const until = job.startedAt ?? job.finishedAt;
+  if (!until || !job.createdAt) return null;
+  const ms = new Date(until).getTime() - new Date(job.createdAt).getTime();
+  return ms >= 60000 ? ms : null;
+};
 
 const When = ({ at }) => <span title={fullTimestamp(at)}>{timeAgo(at)}</span>;
 
@@ -380,6 +391,7 @@ const cutText = (text, given) =>
 
 const JobFacts = ({ job, readAt }) => {
   const end = job.finishedAt ? new Date(job.finishedAt).getTime() : readAt;
+  const waited = waitedMs(job);
   return (
     <dl className="grid max-w-2xl grid-cols-[auto_1fr] gap-x-6 gap-y-1 text-sm">
       <Fact label="Instructions">
@@ -400,9 +412,20 @@ const JobFacts = ({ job, readAt }) => {
       )}
       <Fact label="Documents">{(job.documents || []).length.toLocaleString()}</Fact>
       <Fact label="Started by">{job.startedByName}</Fact>
-      <Fact label="Started">
-        <When at={job.createdAt} />
-      </Fact>
+      {/* A job waits from its start until a worker takes it: never
+          "Started" before then (RPF-P5). */}
+      {job.startedAt ? (
+        <Fact label="Started">
+          <When at={job.startedAt} />
+        </Fact>
+      ) : (
+        job.state === 'waiting' && (
+          <Fact label="Waiting since">
+            <When at={job.createdAt} />
+          </Fact>
+        )
+      )}
+      {waited !== null && <Fact label="Waited">{durationText(waited)}</Fact>}
       {job.finishedAt && (
         <Fact label="Ended">
           <When at={job.finishedAt} />

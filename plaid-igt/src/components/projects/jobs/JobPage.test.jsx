@@ -214,7 +214,7 @@ describe('the job page', () => {
     const cases = [
       [
         jobOf({ state: 'waiting', phase: null, message: null, ahead: 2 }),
-        ['Waiting', '2 jobs ahead'],
+        ['Waiting', '2 jobs of other projects ahead'],
       ],
       [jobOf(), ['Running', 'Working', 'Sentences 11 to 15 of 40.']],
       [jobOf({ state: 'stopping' }), ['Stopping…']],
@@ -243,6 +243,55 @@ describe('the job page', () => {
     const first = await mount(clientOf(jobOf({ state: 'waiting', ahead: 0 })));
     expect(text(first.container)).not.toContain('ahead');
     await first.unmount();
+  });
+
+  it('says a waiting job waits and since when, never that it started, and what is ahead of it', async () => {
+    // Core lets a project hold one active job, so every job ahead of a waiting
+    // one is another project's.
+    const waiting = (ahead) =>
+      jobOf({ state: 'waiting', phase: null, message: null, startedAt: null, ahead });
+    let v = await mount(clientOf(waiting(2)));
+    let facts = totals(v.container);
+    expect(facts['Waiting since']).toBeTruthy();
+    expect(facts.Started).toBeUndefined();
+    expect(facts.Elapsed).toBeUndefined();
+    expect(text(v.container.querySelector('[role="status"]'))).toContain(
+      'Waiting2 jobs of other projects ahead',
+    );
+    await v.unmount();
+    v = await mount(clientOf(waiting(1)));
+    expect(text(v.container.querySelector('[role="status"]'))).toContain(
+      '1 job of another project ahead',
+    );
+    await v.unmount();
+    // Once a worker took it: when it started, and how long it waited first.
+    v = await mount(
+      clientOf(jobOf({ createdAt: '2026-11-12T09:33:00Z', startedAt: '2026-11-12T10:01:00Z' })),
+    );
+    facts = totals(v.container);
+    expect(facts['Waiting since']).toBeUndefined();
+    expect(facts.Started).toBeTruthy();
+    expect(facts.Waited).toBe('28 min');
+    await v.unmount();
+    // Taken at once: no wait to speak of.
+    v = await mount(clientOf(jobOf({ startedAt: '2026-11-12T10:00:20Z' })));
+    expect(totals(v.container).Waited).toBeUndefined();
+    await v.unmount();
+    // Stopped before any worker took it: how long it waited.
+    v = await mount(
+      clientOf(
+        jobOf({
+          state: 'cancelled',
+          reason: 'cancelled',
+          startedAt: null,
+          finishedAt: '2026-11-12T10:40:00Z',
+        }),
+      ),
+    );
+    facts = totals(v.container);
+    expect(facts.Started).toBeUndefined();
+    expect(facts.Waited).toBe('40 min');
+    await v.unmount();
   });
 
   it('offers a document’s Changes only where the job wrote something there', async () => {

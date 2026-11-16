@@ -192,6 +192,11 @@ export const HARMONIZE_BY_TEXT = {
   majority: 'Majority',
 };
 
+// What is ahead of a waiting job in the queue, from core's `ahead`. Core lets a
+// project hold one active job, so each of them is another project's.
+export const aheadText = (n) =>
+  n === 1 ? '1 job of another project ahead' : `${n.toLocaleString()} jobs of other projects ahead`;
+
 // A stretch of time for a job, which runs for minutes or hours: "Under a
 // minute", "12 min", "2 h 5 min".
 export const durationText = (ms) => {
