@@ -2545,7 +2545,7 @@ class IgtRunner:
             ws.job_setup = self.job_setup(project)
             # Its counts tell plan_work a plan that would work no sentence.
             ws.job_documents = [{'id': f['id'], 'name': f['name'], 'sentences': f['sentences'],
-                                 'empty': f['empty']} for f in facts]
+                                 'empty': f['empty'], 'characters': f.get('characters')} for f in facts]
             system = build_plan_prompt(project)
             transcript = [{'role': 'user', 'content': self.plan_message(facts, project)}]
             seed(ws.seen, system, transcript, lambda tool, args: True)

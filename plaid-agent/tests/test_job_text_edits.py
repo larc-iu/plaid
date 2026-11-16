@@ -67,7 +67,7 @@ def test_plan_work_keeps_edits_text_only_when_true(pieces, given):
     args = {'pieces': pieces, 'fills': ['segmentation'], **({} if given is None else {'edits_text': given})}
     out = toolkit.job_plan_call(ws, 'plan_work', args)
     # A document plan's answer also says its size (RPF3 round 4).
-    assert out.startswith('The plan is kept.') and out.endswith('one-line reply.'), out
+    assert out.startswith('The plan is kept.') and out.endswith(toolkit.PLAN_END), out
     assert ws.plan_work.get('edits_text') is (True if given else None)
 
 

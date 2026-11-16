@@ -745,7 +745,10 @@ def t_plan_work(ws, pieces: str = None, piece_instructions: str = '', documents=
                    f'{JOB_PIECE_INSTRUCTIONS_MAX_CHARS:,}: they are {kept}. Pieces already have the guidelines and '
                    'the instructions.')
     worked = [d for d in known if order is None or d['id'] in order]
-    size = plan_size(pieces, worked, skip, matched)
+    nothing = skip and not matched and sum(d.get('sentences', 0) for d in worked) \
+        and not any((d.get('empty') or {}).get(t.id) for d in worked for t in chosen)
+    # No size beside "works no sentence": the two contradicted (REV-RPF3B-6).
+    size = None if nothing else plan_size(pieces, worked, skip, matched)
     if size:
         # A fixed fact from the planning's own counts, so the planner sees the
         # plan's size before it ends, and may call plan_work again (RPF3 round
@@ -756,13 +759,13 @@ def t_plan_work(ws, pieces: str = None, piece_instructions: str = '', documents=
         # Said in one line, as the plan is kept: a planner that meant the job
         # to fill something plans again (REV-DF-D-1).
         out.append(PLAN_FILLS_NOTHING + (' ' + PLAN_FILLS_NOTHING_SENTENCES if pieces == 'sentences' else ''))
-    if skip and sum(d.get('sentences', 0) for d in worked) \
-            and not any((d.get('empty') or {}).get(t.id) for d in worked for t in chosen):
+    if nothing:
         # A fixed rule on the planning context's own counts: the walk would
         # take no sentence of any document the plan works (BRIEF OE).
         out.append(PLAN_WORKS_NOTHING)
+    # The planner may act on what it is told, its size too (REV-RPF3B-6).
     out.append('Call plan_work again to change it, or end now with a one-line reply.' if len(out) > said
-               else 'End now with a one-line reply.')
+               else PLAN_END)
     return ' '.join(out)
 
 
@@ -774,9 +777,12 @@ def plan_size(pieces: str, worked: List[Dict[str, Any]], skip: bool,
     for a plan limited by a search from the sentences it matches: "This plan
     is 9 pieces over 24 documents: 33 sentences match." None for a
     selection, one piece, and where nothing is counted."""
-    from ..core.limits import JOB_STRETCH_SENTENCES
+    from ..core.limits import JOB_DOCUMENT_PIECE_MAX_CHARS, JOB_STRETCH_SENTENCES
     if pieces == 'document':
-        n = len(worked)
+        # A document longer than one piece takes is worked in stretches, as
+        # ``IgtRunner.whole_document`` decides (REV-RPF3B-6).
+        n = sum(1 if int(d.get('characters') or 0) <= JOB_DOCUMENT_PIECE_MAX_CHARS
+                else -(-int(d.get('sentences') or 0) // JOB_STRETCH_SENTENCES) for d in worked)
     elif pieces == 'sentences' and matched:
         n = sum(-(-len(ids) // JOB_STRETCH_SENTENCES) for ids in matched.values())
     elif pieces == 'sentences':
@@ -794,6 +800,9 @@ def plan_size(pieces: str, worked: List[Dict[str, Any]], skip: bool,
     return f'{said}: {found:,} sentence{"" if found == 1 else "s"} match{"es" if found == 1 else ""}.'
 
 
+#: The last sentence of plan_work's answer when it says nothing more than
+#: the plan's size: the planner may plan again on it (REV-RPF3B-6).
+PLAN_END = 'End now with a one-line reply, or call plan_work again if another plan fits better.'
 #: plan_work's answer to a search with pieces that are not "sentences".
 PLAN_SEARCH_SENTENCES_ONLY = 'search: only with pieces "sentences". Leave it out of this plan.'
 #: plan_work's answer to a search that matches no sentence of the documents

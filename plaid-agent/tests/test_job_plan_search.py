@@ -52,7 +52,7 @@ def test_a_search_in_a_morpheme_field_keeps_the_sentences_it_matches(stories):
     ws = _planning(client, ids)
     out = _plan(ws, search={'pattern': OLD, 'where': 'Morph Gloss'})
     assert out == ('The plan is kept. This plan is 3 pieces over 3 documents: 3 sentences match. '
-                   'End now with a one-line reply.'), out
+                   'End now with a one-line reply, or call plan_work again if another plan fits better.'), out
     plan = ws.plan_work
     assert plan['matched'] == {'d2': ['d2-s1'], 'd3': ['d3-s1'], 'd5': ['d5-s1']}
     assert plan['search'] == {'pattern': OLD, 'where': 'Morph Gloss', 'said': f'Morph Gloss "{OLD}"',

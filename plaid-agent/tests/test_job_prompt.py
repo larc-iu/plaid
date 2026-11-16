@@ -160,9 +160,10 @@ def test_plan_work_cuts_piece_instructions_past_their_cap_at_a_whole_sentence_an
     assert len(kept) <= cap and kept.endswith('noun.') and told.startswith(kept)
     assert len(kept) > cap - len(sentence) - 1, 'every whole sentence that fits'
     assert ws.plan_work['instructions_cut'] == len(told)
-    assert _unsized(out) == (f'The plan is kept. piece_instructions were {len(told):,} characters, past the most, 4,000: they '
+    assert out == (f'The plan is kept. piece_instructions were {len(told):,} characters, past the most, 4,000: they '
                    f'are kept up to their last whole sentence within it, {len(kept):,} characters. Pieces already '
-                   'have the guidelines and the instructions. End now with a one-line reply.'), out
+                   'have the guidelines and the instructions. This plan is 1 piece over 1 document. '
+                   + toolkit.PLAN_END), out
 
 
 def test_plan_work_cuts_one_long_sentence_at_the_cap():
@@ -180,9 +181,9 @@ def test_plan_work_says_when_it_cut_inside_a_sentence():
     ws = JobWorkspace(FakeClient(), _project(), mode=JobWorkspace.PLAN)
     ws.job_documents = []
     out = toolkit.job_plan_call(ws, 'plan_work', {'pieces': 'document', 'fills': ['segmentation'], 'piece_instructions': 'x' * (cap + 7)})
-    assert _unsized(out) == (f'The plan is kept. piece_instructions were {cap + 7:,} characters, past the most, 4,000: they '
+    assert out == (f'The plan is kept. piece_instructions were {cap + 7:,} characters, past the most, 4,000: they '
                    f'are cut at {cap:,} characters, inside a sentence. Pieces already have the guidelines and the '
-                   'instructions. End now with a one-line reply.'), out
+                   'instructions. ' + toolkit.PLAN_END), out
 
 
 @pytest.mark.parametrize('end', [chr(0x3002), chr(0x964) + ' ', chr(0x61F) + ' '], ids=['cjk', 'danda', 'arabic'])
@@ -233,7 +234,7 @@ def test_plan_work_at_the_cap_is_kept_whole_and_not_marked():
     ws = JobWorkspace(FakeClient(), _project(), mode=JobWorkspace.PLAN)
     ws.job_documents = []
     out = toolkit.job_plan_call(ws, 'plan_work', {'pieces': 'document', 'fills': ['segmentation'], 'piece_instructions': 'x' * cap})
-    assert out == 'The plan is kept. End now with a one-line reply.'
+    assert out == 'The plan is kept. ' + toolkit.PLAN_END
     assert ws.plan_work['piece_instructions'] == 'x' * cap and 'instructions_cut' not in ws.plan_work
 
 
@@ -427,10 +428,11 @@ def test_a_plan_that_skips_every_sentence_is_kept_and_says_so():
     so in one line, as a fixed rule on the planning context's counts, and
     the plan is kept, so the planner may call plan_work again."""
     ws, out = _planned([FULL], {'pieces': 'sentences', 'fills': ['segmentation'], 'skip_filled_sentences': True})
-    assert _unsized(out) == f'The plan is kept. {NOTHING} Call plan_work again to change it, or end now with a one-line reply.'
+    assert out == f'The plan is kept. {NOTHING} Call plan_work again to change it, or end now with a one-line reply.'
     assert ws.plan_work['only_empty'] is True and ws.plan_work['fills'] == ['segmentation']
-    assert _unsized(toolkit.job_plan_call(ws, 'plan_work', {'pieces': 'sentences', 'fills': ['segmentation']})) == \
-        'The plan is kept. End now with a one-line reply.'
+    # No size beside it (REV-RPF3B-6), and the size once it works something.
+    assert (toolkit.job_plan_call(ws, 'plan_work', {'pieces': 'sentences', 'fills': ['segmentation']})) == \
+        'The plan is kept. This plan is 1 piece over 1 document. ' + toolkit.PLAN_END
     assert 'only_empty' not in ws.plan_work and ws.plan_work['fills'] == ['segmentation']
 
 
@@ -456,8 +458,9 @@ def test_plan_work_refuses_a_plan_that_does_not_say_what_it_fills():
 
 
 @pytest.mark.parametrize('pieces, said', [
-    ('sentences', f'{FILLS_NOTHING} Its pieces are offered only set_field and reads.'),
-    ('document', FILLS_NOTHING),
+    ('sentences', f'This plan is 1 piece over 1 document. {FILLS_NOTHING} Its pieces are offered only set_field and '
+                  'reads.'),
+    ('document', f'This plan is 1 piece over 1 document. {FILLS_NOTHING}'),
     ('selection', FILLS_NOTHING),
 ])
 def test_a_plan_that_fills_nothing_is_kept_and_says_so(pieces, said):
@@ -465,7 +468,7 @@ def test_a_plan_that_fills_nothing_is_kept_and_says_so(pieces, said):
     summary): kept, with fills [], and its answer says so in one line, so a
     planner that meant the job to fill something may plan again."""
     ws, out = _planned([HALF], {'pieces': pieces, 'fills': []})
-    assert _unsized(out) == f'The plan is kept. {said} Call plan_work again to change it, or end now with a one-line reply.'
+    assert out == f'The plan is kept. {said} Call plan_work again to change it, or end now with a one-line reply.'
     assert ws.plan_work['fills'] == []
 
 
@@ -480,7 +483,7 @@ def test_a_plan_that_fills_nothing_is_kept_and_says_so(pieces, said):
 ], ids=['one-has-blanks', 'a-field-has-blanks', 'not-set', 'by-documents', 'no-sentences', 'planned-one-has-blanks'])
 def test_a_plan_that_works_some_sentence_says_nothing_of_it(docs, args):
     _, out = _planned(docs, args)
-    assert _unsized(out) == 'The plan is kept. End now with a one-line reply.'
+    assert out.startswith('The plan is kept.') and NOTHING not in out and out.endswith(toolkit.PLAN_END), out
 
 
 def test_the_documents_a_plan_names_are_the_ones_counted():
@@ -698,8 +701,3 @@ def test_no_description_a_document_piece_or_the_planner_reads_names_a_tool_it_is
     stray = sorted(set(re.findall(r'\b([a-z]+_[a-z0-9_]+)\b', json.dumps(tools))) & names - offered - arguments)
     assert not stray, stray
 
-
-def _unsized(out):
-    """plan_work's answer without its size line (RPF3 round 4)."""
-    import re
-    return re.sub(r' This plan is (at most )?[\d,]+ pieces? over [\d,]+ documents?\.', '', out)
