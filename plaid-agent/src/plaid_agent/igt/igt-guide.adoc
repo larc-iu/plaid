@@ -1353,8 +1353,14 @@ Codes work in the Analyze grid, the baseline, the transcript, lexicon entries, a
 They do not apply where a backslash has to mean itself, such as a regular expression in Search or Bulk Edit.
 
 Every code is the project's to change.
-Under **Special characters**, search for a code to see what it types, point it at a different character, remove it, or add a two-character code of your own.
-A change applies to everyone working on the project, and the reset button beside a changed code puts it back.
+Under **Special characters**, each code is a row with its **Code**, its **Character**, a **Note**, and when the project **Last modified** it.
+Search for a code to see what it types, and click a column heading to sort by it.
+Point a code at a different character, delete it, or add a two-character code of your own, then **Save**.
+A change applies to everyone working on the project.
+
+The reset button beside a changed code puts it back as it ships.
+A deleted code leaves the list and stops working.
+**Restore built-in codes** brings back every deleted one.
 
 == The zero morph
 
