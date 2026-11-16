@@ -54,6 +54,17 @@ describe('HistoryDrawer', () => {
     await view.unmount();
   });
 
+  // REV-RPF2-2: the count of an entry's actions says what it counts.
+  it('says what the count of an entry’s actions counts', async () => {
+    const view = await renderComponent(drawer(vi.fn()));
+    const badge = [...view.container.querySelectorAll('[data-testid="history-action-count"]')][0];
+    expect(badge.textContent).toBe('2 actions');
+    expect(badge.getAttribute('title')).toBe(
+      'The actions recorded in this entry, each listed when it is open',
+    );
+    await view.unmount();
+  });
+
   it('travels to the entry end when the entry is picked', async () => {
     const onSelectEntry = vi.fn();
     const view = await renderComponent(drawer(onSelectEntry));

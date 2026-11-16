@@ -68,7 +68,8 @@ def test_the_values_an_analysis_carries_count_under_their_field_and_say_so():
     assert w.fields_of([ANALYSE, SET_FIELD]) == {MGLOSS: 3}
     row = w._sentence_row('d1-s1', 'seed', [ANALYSE, SET_FIELD], None)
     assert [(f['id'], f['values'], f.get('in_analyses')) for f in row['fields']] == [(MGLOSS, 3, 2)]
-    assert row['parts'] == {'analyses': 1, 'values': 1} and row['counts']['changes'] == 2
+    assert row['parts'] == {'analyses': 1, 'values': 1, 'analyses_morphemes': 3, 'analyses_values': 2}
+    assert row['counts']['changes'] == 2
 
 
 def test_a_fields_line_says_how_many_of_its_values_analyses_carried():

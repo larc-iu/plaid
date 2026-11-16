@@ -298,11 +298,26 @@ def text_counts(ops: List[Dict[str, Any]]) -> Counter:
     return c
 
 
+#: What a writing row's ``parts`` say the analyses hold (REV-RPF2-2): the
+#: morphemes they write or take away, and the values they carry.
+ANALYSES_MORPHEMES, ANALYSES_VALUES = 'analyses_morphemes', 'analyses_values'
+
+
 def changes_parts(parts: Counter) -> List[Dict[str, Any]]:
     """Counts by change kind as the report holds them (RPF-A3): ``[{kind,
-    n}]`` in ``core.job.CHANGE_KINDS`` order, a kind at 0 left out. A
-    list, never a map, which the clients would re-case."""
-    return [{'kind': k, 'n': parts[k]} for k in core_job.CHANGE_KINDS if parts.get(k)]
+    n}]`` in ``core.job.CHANGE_KINDS`` order, a kind at 0 left out, the
+    analyses' entry with ``morphemes`` and ``values`` where it holds any
+    (REV-RPF2-2). A list, never a map, which the clients would re-case."""
+    out = []
+    for k in core_job.CHANGE_KINDS:
+        if not parts.get(k):
+            continue
+        entry = {'kind': k, 'n': parts[k]}
+        if k == 'analyses':
+            entry.update({key: parts[src] for key, src in (('morphemes', ANALYSES_MORPHEMES),
+                                                          ('values', ANALYSES_VALUES)) if parts.get(src)})
+        out.append(entry)
+    return out
 
 
 def written_sums(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
@@ -1647,8 +1662,25 @@ class Write:
     def parts_of(ops: List[Dict[str, Any]]) -> Dict[str, int]:
         """What ``ops`` are, as the report splits its changes
         (:func:`jobapply.change_kind`): ``{kind: n}``, the n summing to the
-        changes ``ops`` count (RPF-A3)."""
-        return dict(Counter(jobapply.change_kind(o) for o in ops))
+        changes ``ops`` count (RPF-A3), and what the analyses hold in the
+        Changes view's nouns (REV-RPF2-2): ``analyses_morphemes``, the
+        morphemes an analysis writes (each of a set_analysis, one a set
+        morpheme form or type), or takes away (a discard), and
+        ``analyses_values``, the values a set_analysis carries. Those two are
+        not changes of their own and never sum into the changes."""
+        out = Counter(jobapply.change_kind(o) for o in ops)
+        for o in ops:
+            kind = o.get('kind')
+            if kind == 'set_analysis':
+                ms = o.get('morphemes') or []
+                out[ANALYSES_MORPHEMES] += len(ms)
+                out[ANALYSES_VALUES] += sum(1 for m in ms for fv in m.get('fields') or []
+                                            if fv.get('value') not in (None, ''))
+            elif kind in ('set_morpheme_form', 'set_morph_type'):
+                out[ANALYSES_MORPHEMES] += 1
+            elif kind == 'discard_analysis':
+                out[ANALYSES_MORPHEMES] += len(o.get('morpheme_ids') or [])
+        return {k: n for k, n in out.items() if n}
 
     def of_people_and_text(self, ops: List[Dict[str, Any]]) -> Counter:
         """``peoples_values_changed``: the changes of ``ops`` that change or

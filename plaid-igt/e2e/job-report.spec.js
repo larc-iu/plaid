@@ -294,7 +294,9 @@ test('an analysis job: the report and the Changes view each say what they count,
   // The report: one value (pele's, in place) and three analyses written, and
   // the six glosses they hold, five of them carried by the analyses.
   const totals = await totalsOf(page);
-  expect(totals['Changes written']).toBe('4 (1 value and 3 analyses)');
+  expect(totals['Changes written']).toBe(
+    '4 (1 value on its own and 3 word analyses holding 5 morphemes and 5 values)',
+  );
   expect(totals.Gloss).toBe('6 values (5 in word analyses)');
   // The Changes view: the marks it draws, each with its noun.
   await page.getByRole('link', { name: 'Changes', exact: true }).first().click();

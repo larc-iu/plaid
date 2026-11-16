@@ -1916,7 +1916,47 @@ describe('the job page', () => {
       },
     };
     let v = await mount(clientOf(jobOf({ state: 'done', report })));
-    expect(totals(v.container)['Changes written']).toBe('253 (102 analyses and 151 links)');
+    expect(totals(v.container)['Changes written']).toBe('253 (102 word analyses and 151 links)');
+    await v.unmount();
+    // REV-RPF2-2: values set on their own said so beside analyses, and what
+    // the analyses hold in the Changes view's nouns, so 3 + 5 values and 5
+    // morphemes can be read off the report.
+    const held = {
+      ...REPORT,
+      totals: {
+        ...REPORT.totals,
+        changes: 6,
+        changesParts: [
+          { kind: 'values', n: 3 },
+          { kind: 'analyses', n: 3, morphemes: 5, values: 5 },
+        ],
+      },
+    };
+    v = await mount(clientOf(jobOf({ state: 'done', report: held })));
+    expect(totals(v.container)['Changes written']).toBe(
+      '6 (3 values on their own and 3 word analyses holding 5 morphemes and 5 values)',
+    );
+    await v.unmount();
+    // The same summed from the documents of core's own report.
+    const heldCore = {
+      ...REPORT,
+      totals: { ...REPORT.totals, changes: 6 },
+      documents: ['d1', 'd2'].map((documentId, i) => ({
+        documentId,
+        name: documentId,
+        skipped: [],
+        counts: {
+          changes: 3,
+          changesParts: i
+            ? [{ kind: 'values', n: 3 }]
+            : [{ kind: 'analyses', n: 3, morphemes: 5, values: 5 }],
+        },
+      })),
+    };
+    v = await mount(clientOf(jobOf({ state: 'done', report: heldCore })));
+    expect(totals(v.container)['Changes written']).toBe(
+      '6 (3 values on their own and 3 word analyses holding 5 morphemes and 5 values)',
+    );
     await v.unmount();
     // Core's own report keeps each document's counts: the parts are summed.
     const core = {
@@ -1960,7 +2000,7 @@ describe('the job page', () => {
     };
     v = await mount(clientOf(jobOf({ state: 'done', report: every })));
     expect(totals(v.container)['Changes written']).toBe(
-      '7 (1 value, 1 analysis, 1 link, 1 lexicon entry, 1 text edit and 1 other change)',
+      '7 (1 value on its own, 1 word analysis, 1 link, 1 lexicon entry, 1 text edit and 1 other change)',
     );
     await v.unmount();
   });

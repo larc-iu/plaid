@@ -62,36 +62,58 @@ export const planText = (plan) => {
 };
 
 // What each kind of change a job counts is called (the worker's
-// `changes_parts`, CONTRACT, added by RPF): the report's one definition of a
-// change, split.
+// `changes_parts`, CONTRACT, added by RPF), in the worker's order: the
+// report's one definition of a change, split. An analysis is a word's, and
+// beside one, a value is one set on its own (the analyses' values are theirs:
+// REV-RPF2-2).
 const CHANGE_PART_WORDS = {
   values: ['value', 'values'],
-  analyses: ['analysis', 'analyses'],
+  analyses: ['word analysis', 'word analyses'],
   links: ['link', 'links'],
   entries: ['lexicon entry', 'lexicon entries'],
   text: ['text edit', 'text edits'],
   other: ['other change', 'other changes'],
 };
+const PART_ORDER = Object.keys(CHANGE_PART_WORDS);
+const HELD = ['morphemes', 'values'];
 
-// Parts `[{kind, n}]` summed by kind, in the order first met.
+// Parts `[{kind, n, morphemes?, values?}]` summed by kind, in the worker's
+// order of kinds (an unknown kind last).
 export const sumParts = (lists) => {
   const sums = new Map();
   lists.forEach((parts) =>
-    (parts || []).forEach((p) => sums.set(p.kind, (sums.get(p.kind) ?? 0) + (p.n ?? 0))),
+    (parts || []).forEach((p) => {
+      const s = sums.get(p.kind) ?? { kind: p.kind, n: 0 };
+      s.n += p.n ?? 0;
+      HELD.forEach((k) => p[k] > 0 && (s[k] = (s[k] ?? 0) + p[k]));
+      sums.set(p.kind, s);
+    }),
   );
-  return [...sums].map(([kind, n]) => ({ kind, n }));
+  const at = (k) => (PART_ORDER.includes(k) ? PART_ORDER.indexOf(k) : PART_ORDER.length);
+  return [...sums.values()].sort((a, b) => at(a.kind) - at(b.kind));
 };
 
-// "253 (102 analyses and 151 links)": a count of changes with what they are,
-// or the bare count where the parts are not known.
+// "6 (3 values on their own and 3 word analyses holding 5 morphemes and 5
+// values)": a count of changes with what they are, an analysis with what it
+// holds in the Changes view's nouns where the worker says (REV-RPF2-2), or
+// the bare count where the parts are not known.
 export const changesText = (n, parts) => {
-  const said = (parts || [])
-    .filter((p) => p.n > 0)
-    .map((p) =>
-      CHANGE_PART_WORDS[p.kind]
-        ? countOf(p.n, ...CHANGE_PART_WORDS[p.kind])
-        : `${p.n.toLocaleString()} ${p.kind}`,
-    );
+  const shown = (parts || []).filter((p) => p.n > 0);
+  const analysed = shown.some((p) => p.kind === 'analyses');
+  const said = shown.map((p) => {
+    if (!CHANGE_PART_WORDS[p.kind]) return `${p.n.toLocaleString()} ${p.kind}`;
+    const base = countOf(p.n, ...CHANGE_PART_WORDS[p.kind]);
+    if (p.kind === 'values' && analysed)
+      return `${base} ${p.n === 1 ? 'on its own' : 'on their own'}`;
+    if (p.kind === 'analyses') {
+      const held = [
+        ...(p.morphemes > 0 ? [countOf(p.morphemes, 'morpheme')] : []),
+        ...(p.values > 0 ? [countOf(p.values, 'value')] : []),
+      ];
+      if (held.length) return `${base} holding ${held.join(' and ')}`;
+    }
+    return base;
+  });
   const count = (n ?? 0).toLocaleString();
   return said.length ? `${count} (${andList(said)})` : count;
 };

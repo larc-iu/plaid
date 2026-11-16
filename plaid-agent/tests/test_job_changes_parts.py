@@ -43,11 +43,13 @@ def test_changes_parts_split_the_changes_by_kind(monkeypatch):
     use(monkeypatch, Model(answer))
     assert run_job(job, runner(job))['state'] == 'done'
     report = _report(client)
-    parts = [{'kind': 'values', 'n': 1}, {'kind': 'analyses', 'n': 1}]
+    # The analysis says what it holds in the Changes view's nouns: its
+    # morphemes and the values they carry (REV-RPF2-2).
+    parts = [{'kind': 'values', 'n': 1}, {'kind': 'analyses', 'n': 1, 'morphemes': 1, 'values': 1}]
     assert report['totals']['changes'] == 2 and report['totals']['changes_parts'] == parts
     assert report['documents'][0]['counts']['changes_parts'] == parts
     rows = [p['piece'] for p in client.jobs.pieces(J) if 'document' in p['piece']]
-    assert [r['changes_parts'] for r in rows] == [[{'kind': 'values', 'n': 1}, {'kind': 'analyses', 'n': 1}]]
+    assert [r['changes_parts'] for r in rows] == [parts]
     assert report['notice'] is None, 'nothing people wrote and nothing of the text was changed'
 
 

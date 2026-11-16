@@ -25,7 +25,7 @@ import time
 import unicodedata
 import uuid
 from datetime import datetime, timezone
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import litellm
 from plaid_client import DocumentLockLost, PlaidAPIError
@@ -1000,6 +1000,7 @@ def build_report(job: Job, state: str, reason: Optional[str], documents: List[Di
     fields: List[Dict[str, Any]] = []
     outside: List[Dict[str, Any]] = []
     parts: Dict[str, int] = {}
+    held: Dict[Tuple[str, str], int] = {}
     for d in documents:
         key = {'done': 'documents_done', 'in-use': 'documents_in_use', 'gone': 'documents_gone'}.get(
             d.get('state'), 'documents_not_reached')
@@ -1014,6 +1015,10 @@ def build_report(job: Job, state: str, reason: Optional[str], documents: List[Di
             totals[k] += counts.get(k) or 0
         for p in counts.get('changes_parts') or []:
             parts[p.get('kind')] = parts.get(p.get('kind'), 0) + (p.get('n') or 0)
+            # What the analyses hold, morphemes and values (REV-RPF2-2).
+            for k in ('morphemes', 'values'):
+                if p.get(k):
+                    held[(p.get('kind'), k)] = held.get((p.get('kind'), k), 0) + p[k]
         for s in d.get('skipped') or []:
             k = f'skipped_{str(s.get("reason") or "").replace("-", "_")}'
             if k in totals:
@@ -1028,8 +1033,10 @@ def build_report(job: Job, state: str, reason: Optional[str], documents: List[Di
     if parts:
         # The changes by kind, summing to ``changes``, in CHANGE_KINDS'
         # order (an app's ``counts.changes_parts``, RPF-A3).
-        totals['changes_parts'] = [{'kind': k, 'n': parts[k]} for k in sorted(
-            parts, key=lambda k: (CHANGE_KINDS.index(k) if k in CHANGE_KINDS else len(CHANGE_KINDS), str(k)))
+        totals['changes_parts'] = [
+            {'kind': k, 'n': parts[k], **{x: held[(k, x)] for x in ('morphemes', 'values') if held.get((k, x))}}
+            for k in sorted(parts, key=lambda k: (CHANGE_KINDS.index(k) if k in CHANGE_KINDS else len(CHANGE_KINDS),
+                                                  str(k)))
             if parts[k]]
     blank = blank_sums(documents)
     if blank:

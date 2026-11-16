@@ -318,7 +318,11 @@ export const HistoryDrawer = ({
           >
             <span className="line-clamp-2 block text-sm font-medium leading-snug">
               {multi && (
-                <span className="mr-1.5 inline-block rounded bg-primary/10 px-1.5 py-px align-[1px] text-[11px] font-semibold text-primary">
+                <span
+                  className="mr-1.5 inline-block rounded bg-primary/10 px-1.5 py-px align-[1px] text-[11px] font-semibold text-primary"
+                  data-testid="history-action-count"
+                  title="The actions recorded in this entry, each listed when it is open"
+                >
                   {total.toLocaleString()} actions
                 </span>
               )}
