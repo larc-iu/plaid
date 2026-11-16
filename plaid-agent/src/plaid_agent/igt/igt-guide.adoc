@@ -956,7 +956,7 @@ Each piece is worked by the assistant with the project's guidelines and the inst
 A piece of a few sentences is told what is empty in it of what the job fills, how people in the project and the job itself filled the same forms, and, when what it fills is linked to a lexicon, the lexicon entries spelled inside them.
 Its tools are those for setting values and reading the lexicon and earlier analyses, those for analyzing words, linking them and creating entries when the job fills those, and those for retyping, splitting, merging and deleting sentences when its plan allows text edits.
 A piece of a whole document, or of all the documents, has the assistant's usual tools and how people in the project analyzed the same words.
-After a piece of all the documents, a document it did not read through is worked a few sentences at a time only when something the job fills is still empty there. Otherwise it is done, and its row reads **Not read through**, beside what the piece changed there.
+After a piece of all the documents, a document it did not read through is worked only where something the job fills is still empty, a few sentences at a time. Otherwise it is done, and its row reads **Not read through**, beside what the piece changed there. A job that fills nothing works each document the piece never read, as a piece of its own.
 
 A job writes every change it plans in its documents and in the project's lexicons, in the name of the person who started the job: values, analyses, links, comments, changes to entries, and deletions.
 It can change and delete what people wrote or confirmed.
