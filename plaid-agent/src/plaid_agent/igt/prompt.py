@@ -11,7 +11,7 @@ from typing import Optional
 from ..core import prompt as shared, sandbox, webtools
 from ..core.guidelines import section as guidelines_section
 from ..core.limits import OVERVIEW_DOCS
-from .project import TAGSET_LEAD, TAGSET_MORE, IgtProject, SCOPES, lexicon_label, tagset_lines
+from .project import ORTHOGRAPHIES_NOTE, TAGSET_LEAD, TAGSET_MORE, IgtProject, SCOPES, lexicon_label, tagset_lines
 
 # Values of one tagset shown in the system prompt. Project_overview lists the rest.
 PROMPT_TAGSET_VALUES = 120
@@ -247,6 +247,10 @@ def project_brief(project: IgtProject) -> str:
 
 def build_system_prompt(project: IgtProject, web: bool = False) -> str:
     lines = shape_lines(project)
+    # The chat says what the baseline and an orthography are, under the
+    # orthographies, for a person who asks why an orthography's row is empty.
+    at = next(i for i, line in enumerate(lines) if line.startswith('- Orthographies: '))
+    lines.insert(at + 1, '  ' + ORTHOGRAPHIES_NOTE)
     # Not str.format: field and layer names in the shape may contain braces.
     # The number the overview really shows, before the project's own text goes
     # in: written out as a word here, the prompt promised a hundred documents

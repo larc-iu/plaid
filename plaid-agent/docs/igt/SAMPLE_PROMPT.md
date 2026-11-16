@@ -33,6 +33,7 @@ Project shape:
     PL: plural
     ERG
 - Orthographies: IPA
+  The baseline is the text as typed on the Baseline tab. An orthography is an additional row under every word, with its own value for each word: it starts empty and is never filled from the baseline on its own. Orthographies are set in the project's Settings, under Text and vocab.
 - Lexicons: Lexicon
 
 The project's guidelines:
@@ -731,6 +732,7 @@ Tagsets: the user sees a value outside a field's list as invalid, so use the lis
     PL: plural
     ERG
 Orthographies: IPA
+The baseline is the text as typed on the Baseline tab. An orthography is an additional row under every word, with its own value for each word: it starts empty and is never filled from the baseline on its own. Orthographies are set in the project's Settings, under Text and vocab.
 Lexicons: Lexicon (entry fields: morphType, gloss (the gloss), pos (the part of speech))
 Document metadata fields: Date
 Documents (1):

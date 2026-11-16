@@ -1165,6 +1165,15 @@ def lexicon_label(v: dict) -> str:
     return v['name'] + (BORROWED_MARK if v.get('borrowed') else '')
 
 
+#: What the baseline and an orthography are, under the project's
+#: orthographies in the chat prompt and the overview: a person who added the
+#: name of their text's own orthography got a second row, empty on every word,
+#: and asked why their text was not in it.
+ORTHOGRAPHIES_NOTE = ('The baseline is the text as typed on the Baseline tab. An orthography is an additional row '
+                      'under every word, with its own value for each word: it starts empty and is never filled from '
+                      "the baseline on its own. Orthographies are set in the project's Settings, under Text and vocab.")
+
+
 def render_overview(project: IgtProject, documents: List[dict], fill: Optional[Dict[str, Any]] = None,
                     rights: Optional[str] = None) -> str:
     """The project at a glance. ``fill`` (:func:`.queries.q_field_fill`) adds
@@ -1183,6 +1192,7 @@ def render_overview(project: IgtProject, documents: List[dict], fill: Optional[D
         lines.append('Treated as the gloss where a tool takes no field= (' + ', '.join(defaults) + ')')
     lines.extend(tagset_lines(project))
     lines.append('Orthographies: ' + (', '.join(project.orthographies) or '(none)'))
+    lines.append(ORTHOGRAPHIES_NOTE)
     lines.append('Lexicons: ' + (', '.join(lexicon_label(v)
                                            + (f' (entry fields: {", ".join(vocab_field_summary(v))})' if v.get('fields') else '')
                                            for v in project.vocabs) or '(none)'))
