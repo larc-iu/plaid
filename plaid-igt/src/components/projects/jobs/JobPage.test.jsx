@@ -1508,6 +1508,47 @@ describe('the job page', () => {
     await w.unmount();
   });
 
+  // RPF3-A: a document a selection's piece changed and did not read through
+  // ends with no walk. Its row says it was not read through, beside what the
+  // piece changed there, and the totals count it apart from the done ones.
+  it('says a document ended after the step over all documents was not read through', async () => {
+    const docs = [
+      {
+        ...jobOf().documents[0],
+        state: 'done',
+        done: 20,
+        targets: 20,
+        counts: { changes: 1, notWalked: true },
+      },
+      {
+        ...jobOf().documents[0],
+        documentId: 'd2',
+        name: 'Story B',
+        state: 'done',
+        done: 3,
+        targets: 3,
+        counts: { changes: 0 },
+      },
+    ];
+    const job = jobOf({
+      state: 'done',
+      documents: docs,
+      report: {
+        ...REPORT,
+        totals: { ...REPORT.totals, documentsDone: 2, documentsGone: 0 },
+        documents: docs,
+      },
+    });
+    const v = await mount(clientOf(job));
+    const rows = all(v.container, 'tbody tr').map((r) => [...r.querySelectorAll('td')].map(text));
+    expect(rows.find((r) => r[0] === 'Story A').slice(1, 3)).toEqual(['Done', 'Not read through']);
+    expect(rows.find((r) => r[0] === 'Story B').slice(1, 3)).toEqual(['Done', '3 of 3']);
+    const sums = totals(v.container.querySelector('section[aria-label="Report"]'));
+    expect(sums['Documents done']).toBe('1');
+    expect(sums['Documents not read through']).toBe('1');
+    await v.unmount();
+  });
+
   it('counts the tables and notes a report too large for core could not hold', async () => {
     const report = { ...REPORT, tables: [], tablesMore: 3, notes: [], notesMore: 2 };
     const job = jobOf({ state: 'done', finishedAt: '2026-11-12T11:00:00Z', report });

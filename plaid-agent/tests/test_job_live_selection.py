@@ -54,3 +54,42 @@ def test_a_selection_that_read_one_sentence_of_a_text_leaves_the_rest_to_the_wal
     assert len(_morphs(admin, s, 'dA', 'dA-s1w1')) == 1 and len(_morphs(admin, s, 'dA', 'dA-s2w1')) == 1
     fallback = {f['document_id']: f['reason'] for f in finished['report']['plan']['fallback']}
     assert fallback == {s.ids['dA']: 'not-read', s.ids['dB']: 'not-read'}, fallback
+
+
+def _gloss_of(admin, s, d, word):
+    from fixtures import MGLOSS
+    raw = admin.documents.get(s.ids[d], include_body=True)
+    morphs = {t['id'] for t in _morphs(admin, s, d, word)}
+    return [sp['value'] for tl in raw['text_layers'] for tk in tl['token_layers'] for sl in tk.get('span_layers') or []
+            if sl['id'] == s.ids[MGLOSS] for sp in sl.get('spans') or [] if set(sp['tokens']) & morphs]
+
+
+def test_a_rename_by_the_step_over_all_documents_walks_nothing_after_it(world, monkeypatch):
+    """RPF3-A, the rename's shape on a real core: three texts, every word a
+    person's analysis. The selection renames nidr's gloss by reference in
+    Alpha and Gamma, reading nothing. No model call follows it, every text
+    ends done and not read through, and the two renamed hold the new gloss."""
+    admin, writer, make = world
+    texts = {'dA': 'Alpha', 'dB': 'Beta', 'dC': 'Gamma'}
+    s = make({d: document(d, name, [{'words': [('nidr', [('nidr', 'be.3ᴀᴜɢII' if d != 'dB' else 'be')], 'human'),
+                                               ('ka', [('ka', 'go')], 'human')]}])
+              for d, name in texts.items()})
+    asked = []
+
+    def answer(text, n, kwargs):
+        asked.append(n)
+        if n == 1:
+            return reply(calls=[call(i, 'set_field', {'document': name, 'refs': ['s1.w1.m1'], 'field': 'Morph Gloss',
+                                                      'value': 'be.3AUGII'})
+                                for i, name in enumerate(('Alpha', 'Gamma'), start=1)])
+        return reply('Renamed it in Alpha and Gamma.')
+    use(monkeypatch, Model(answer))
+    job = _job(admin, writer, s, 'selection')
+    finished = run_job(job, _runner(job))
+    assert finished['state'] == 'done', (finished.get('reason'), job.status.get('message'))
+    assert asked.count(1) == 1, 'the selection, and no piece after it'
+    docs = {d['name']: d for d in finished['report']['documents']}
+    assert all(d['state'] == 'done' and d['counts'].get('not_walked') is True for d in docs.values()), docs
+    assert {name: d['counts']['changes'] for name, d in docs.items()} == {'Alpha': 1, 'Beta': 0, 'Gamma': 1}
+    assert finished['report']['plan']['fallback'] == []
+    assert _gloss_of(admin, s, 'dA', 'dA-s1w1') == ['be.3AUGII'] == _gloss_of(admin, s, 'dC', 'dC-s1w1')

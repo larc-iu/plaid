@@ -301,9 +301,16 @@ const skippedCount = (d) => (d?.skipped?.length ?? 0) + (d?.counts?.skippedMore 
 export const allSkipped = (d) =>
   d.state === 'done' && (d.done ?? 0) > 0 && skippedCount(d) >= (d.done ?? 0);
 
+// A document of a selection that ended with no walk: the step over all the
+// documents did not read it through, and nothing the job fills was left empty
+// in it (the worker's `counts.not_walked`, CONTRACT, added by RPF3). Its
+// changes are what that step wrote there.
+export const notReadThrough = (d) => d?.state === 'done' && d.counts?.notWalked === true;
+
 // A document's sentences as the Documents table says them: those worked of
 // its sentences, and those skipped, "0 of 2, 2 skipped" (REV-RPF-P-9).
 export const documentSentencesText = (d) => {
+  if (notReadThrough(d)) return 'Not read through';
   if (d.targets === null || d.targets === undefined) return '';
   const skipped = Math.min(skippedCount(d), d.done ?? 0);
   const worked = `${((d.done ?? 0) - skipped).toLocaleString()} of ${d.targets.toLocaleString()}`;

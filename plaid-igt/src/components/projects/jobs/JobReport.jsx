@@ -21,6 +21,7 @@ import {
   findingsPiecesText,
   noticeCounts,
   noticeText,
+  notReadThrough,
   refusedText,
   skippedText,
   stoppedPartway,
@@ -142,8 +143,11 @@ const totalRows = (report) => {
   // A document done by skipping every sentence of it is counted as the
   // Documents table says it, skipped (REV-RPF-P-9, REV-RPF2-8).
   const skippedDocs = (report.documents || []).filter(allSkipped).length;
-  const rows = [['Documents done', Math.max(0, (t.documentsDone ?? 0) - skippedDocs)]];
+  // So is one the step over all documents did not read through (RPF3-A).
+  const unreadDocs = (report.documents || []).filter(notReadThrough).length;
+  const rows = [['Documents done', Math.max(0, (t.documentsDone ?? 0) - skippedDocs - unreadDocs)]];
   const optional = (label, n) => n > 0 && rows.push([label, n]);
+  optional('Documents not read through', unreadDocs);
   optional('Documents skipped', skippedDocs);
   optional('Documents in use', t.documentsInUse);
   optional('Documents deleted', t.documentsGone);
