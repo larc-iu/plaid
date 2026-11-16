@@ -108,6 +108,58 @@ def test_the_apply_rule_refuses_on_a_real_core_what_staging_let_through(monkeypa
         s.delete()
 
 
+def test_nothing_outside_the_setups_targets_is_written_on_what_the_job_did_not_add(monkeypatch):
+    """REV-RPF-W-1 on a real core (the reviewer's probes only-outside-translation
+    and only-outside-mgloss-analysis): a job set up with onlynew that fills
+    Gloss also stages a Translation on an existing sentence and an analysis
+    with Morph Glosses on two existing words. None of it is written, each is
+    listed as refused ``not-added``, and the inserted word's Gloss is."""
+    from plaid_client import PlaidClient
+    from fixtures import MGLOSS, MORPH_LAYER, SENT_LAYER, TRANS
+    admin = _admin()
+    _email, writer, s = _seeded(admin, 'only-new-outside', [{'words': ['sc', 'tqmc']}, {'words': ['pa', 'ro']}])
+    try:
+        def answer(asked, n, kwargs):
+            if 'Your piece: the whole document' not in asked or n > 1:
+                return reply('Done.')
+            return reply(calls=[
+                call(1, 'retype_sentence', {'document': 'Alpha', 'ref': 's1', 'text': 'sc ∅ tqmc.'}),
+                call(2, 'set_field', {'document': 'Alpha', 'refs': ['s1.w2 "∅"'], 'field': 'Gloss', 'value': 'he'}),
+                call(3, 'set_field', {'document': 'Alpha', 'refs': ['s2'], 'field': 'Translation',
+                                      'value': 'A translation.'}),
+                call(4, 'analyze_sentence', {'document': 'Alpha', 'sentences': [
+                    {'ref': 's2', 'words': ['pa go', 'ro come']}]})])
+        use(monkeypatch, Model(answer))
+        made = writer.jobs.create(s.project_id, 'igt', 'Insert a zero subject and gloss it "he".',
+                                  setup={'fills': [{'id': s.ids[GLOSS], 'name': 'Gloss'}], 'text': True,
+                                         'onlynew': True})
+        claimed = admin.jobs.claim(WORKER, 'fake/m', ['igt'])
+        assert claimed and claimed['job']['id'] == made['id']
+        admin.jobs.add_decisions(made['id'], WORKER, [plan_row('document', fills=(GLOSS,), ids=s.ids)])
+        offset = {'s': 3600.0}
+
+        def wait(sec):
+            offset['s'] += sec
+        job = Job(admin, claimed, WORKER, client_for=lambda token: PlaidClient(core_url(), token), model='fake/m',
+                  sleep=wait, now=lambda: time.time() + offset['s'])
+        finished = run_job(job, IgtRunner(job, ModelConfig(model='fake/m', stream=False, max_steps=1000),
+                                          count=count_chars, write_summary=False))
+        assert finished['state'] == 'done', (finished.get('reason'), job.status.get('message'))
+        assert _all_glosses(admin, s) == [('sc', None), ('∅', 'he'), ('tqmc', None), ('pa', None), ('ro', None)]
+        raw = admin.documents.get(s.ids['dA'], include_body=True)
+        layers = {tk['id']: tk for tk in raw['text_layers'][0]['token_layers']}
+        spans = [sp for lid in (SENT_LAYER, MORPH_LAYER) for sl in layers[s.ids[lid]].get('span_layers') or []
+                 if sl['id'] in (s.ids[TRANS], s.ids[MGLOSS]) for sp in sl.get('spans') or []]
+        assert spans == [], 'no Translation and no Morph Gloss written'
+        assert layers[s.ids[MORPH_LAYER]].get('tokens') in (None, []), 'no analysis written'
+        refused = finished['report']['documents'][0].get('refused') or []
+        assert refused and {(r['sentence'], r['code']) for r in refused} == {('s2', 'not-added')}, refused
+        totals = finished['report']['totals']
+        assert not totals.get('outside'), totals
+    finally:
+        s.delete()
+
+
 def _all_glosses(admin, s):
     """Every word of the document with its Gloss, in order."""
     from fixtures import WORD_LAYER

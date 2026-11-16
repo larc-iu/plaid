@@ -873,8 +873,8 @@ def state_text(d: Dict[str, Any]) -> str:
 
 #: What a piece of a job set up to fill only the words it adds is told
 #: (RPF-A7).
-ONLY_NEW_LINE = ('This job fills only the words it adds: fill the words your text edits add, and no other word. '
-                 'A value on any other word is refused.')
+ONLY_NEW_LINE = ('This job fills only the words it adds: fill the words your text edits add, and no other word or '
+                 'sentence. A value, an analysis or a link on any other word or sentence is refused.')
 
 
 #: What each change kind is called in the final context's message
@@ -1035,19 +1035,33 @@ class Stretch:
         return not self.words and not self.fields
 
 
-def not_added(op: Dict[str, Any], only_new: Optional[Tuple[set, set]], only_targets: set,
+#: The change kinds (:func:`jobapply.change_kind`) a job set up to fill only
+#: the words it adds may write only on what it added: a value (a field, a
+#: translation, an orthography), an analysis (segmentation, a morpheme's form
+#: or type) and a link (REV-RPF-W-1).
+ONLY_NEW_KINDS = frozenset({'values', 'analyses', 'links'})
+
+
+def not_added(op: Dict[str, Any], only_new: Optional[Tuple[set, set]],
               docs: Iterable[Any]) -> Optional[Tuple[Optional[str]]]:
     """THE rule of a job set up to fill only the words it adds (RPF-A7, the
-    owner's R3), asked where an op is staged (``JobWorkspace.guard_op``) and
-    again where the job's ops are applied (``IgtRunner.recheck``): ``(the
-    op's sentence id,)`` when ``op`` sets a setup target (``only_targets``,
-    :func:`targets.targets_of`) on a word, a morpheme of it or a sentence the
-    job did not add, else None. A word the job added is one its own text
-    edits made, by id (``only_new``: ``(words, sentences)``), or one a retype
-    of the same write makes (a planned word with no id yet), never by its
-    form. Text edits are not values, and pass. ``docs``: the documents the
-    op's token is looked up in."""
-    if only_new is None or not (tg.targets_of(op) & only_targets):
+    owner's R3, REV-RPF-W-1), asked where an op is staged
+    (``JobWorkspace.guard_op``, harmonize's staging included) and again where
+    the job's ops are applied (``IgtRunner.recheck``): ``(the op's sentence
+    id,)`` when ``op`` writes a value, an analysis or a link
+    (:data:`ONLY_NEW_KINDS`), whatever field it is for, set up or not, on a
+    word, a morpheme of it or a sentence the job did not add, else None. A
+    word the job added is one its own text edits made, by id (``only_new``:
+    ``(words, sentences)``), or one a retype of the same write makes (a
+    planned word with no id yet), never by its form. A sentence counts as
+    added only when the job made it (a new id): a retyped sentence keeps its
+    id, so its own fields (a translation) are not the job's to write even
+    when the retype gave it a new word. Every token an op names must be
+    added (a multi-word expression's words each). Text edits and lexicon
+    entries are not on a word, and pass. ``docs``: the documents the op's
+    tokens are looked up in."""
+    from . import jobapply
+    if only_new is None or jobapply.change_kind(op) not in ONLY_NEW_KINDS:
         return None
     from .jobapply import _found, token_of
     from .retyped import PLANNED
@@ -1056,16 +1070,18 @@ def not_added(op: Dict[str, Any], only_new: Optional[Tuple[set, set]], only_targ
     if planned is not None:
         if planned.get('word_id') is None:
             return None
-        sid, ok = planned.get('sentence_id'), planned.get('word_id') in words
-    else:
-        token = op.get('analysis_word_id') or op.get('word_id') or token_of(op)
+        return None if planned.get('word_id') in words else (planned.get('sentence_id'),)
+    tokens = [op.get('analysis_word_id') or op.get('word_id') or token_of(op)]
+    tokens += [t for t in op.get('token_ids') or [] if t not in tokens]
+    for token in tokens:
         hit = next((h for d in docs for h in [_found(d, token)] if h is not None), None)
         if hit is None:
-            return None
+            continue
         s, w, _m = hit
         sid = s.id if s is not None else None
-        ok = (w.id in words) if w is not None else (sid in sentences)
-    return None if ok else (sid,)
+        if not ((w.id in words) if w is not None else (sid in sentences)):
+            return (sid,)
+    return None
 
 
 def not_added_text(op: Dict[str, Any]) -> str:
@@ -1118,7 +1134,6 @@ class JobWorkspace(Workspace):
         #: the words and sentences its text edits added, ``(words,
         #: sentences)``, and the setup's target ids; None for any other job
         self.only_new: Optional[Tuple[set, set]] = None
-        self.only_targets: set = set()
 
     def leave_it(self, fact: str, sentence_id: Optional[str] = None, code: Optional[str] = None) -> str:
         """A refusal whose chat advice a job cannot follow (a later turn,
@@ -1148,13 +1163,13 @@ class JobWorkspace(Workspace):
 
     def refuse_not_added(self, op: Dict[str, Any]) -> None:
         """Under a setup that fills only the words the job adds (RPF-A7, the
-        owner's R3): a value of a setup target (:func:`targets.targets_of`)
-        on a word, a morpheme of it or a sentence the job did not add is
-        refused, whatever path staged it. A word the job added is one its
-        own text edits made, by id (``only_new``), or one the retype staged
-        in this piece makes (a planned word with no id yet), never by its
-        form. Text edits are not values, and pass."""
-        out = not_added(op, self.only_new, self.only_targets, self._docs.values())
+        owner's R3): a value, an analysis or a link (:func:`not_added`) on a
+        word, a morpheme of it or a sentence the job did not add is refused,
+        whatever field it is for and whatever path staged it. A word the job
+        added is one its own text edits made, by id (``only_new``), or one
+        the retype staged in this piece makes (a planned word with no id
+        yet), never by its form. Text edits are not values, and pass."""
+        out = not_added(op, self.only_new, self._docs.values())
         if out is not None:
             raise ToolError(not_added_text(op), kind='not-allowed', code=NOT_ADDED,
                             advice='Fill only the words this job adds.', sentence_id=out[0])
@@ -2787,7 +2802,6 @@ class IgtRunner:
         ws.fills = self.targets(project)
         # A setup that fills only the words the job adds (RPF-A7).
         ws.only_new = self.only_new(project)
-        ws.only_targets = set(self.job_setup(project).ids) if ws.only_new is not None else set()
         # A plan that fills nothing ends each piece with its findings (RPF-A5).
         system = build_job_prompt(project, sentences=sentences, edits_text=ws.edits_text, targets=ws.fills,
                                   findings=self.fills_nothing())
@@ -3749,7 +3763,6 @@ class IgtRunner:
                 changed.add(sid)
         live = []
         only = self.only_new(project)
-        only_targets = set(self.job_setup(project).ids) if only is not None else set()
         refused = []
         for op in ops:
             s = jobapply.sentence_of(op, st.doc) if st.doc is not None else None
@@ -3759,7 +3772,7 @@ class IgtRunner:
             # A job set up to fill only the words it adds: the rule holds
             # here too, whatever path staged the op (RPF-INT 4). Listed as
             # refused, never written.
-            out = not_added(op, only, only_targets, [fresh, *ws._docs.values()])
+            out = not_added(op, only, [fresh, *ws._docs.values()])
             if out is not None:
                 ws.leave_it(not_added_text(op), out[0], code=NOT_ADDED)
                 refused.append({'sentence_id': out[0], 'what': not_added_text(op), 'code': NOT_ADDED})
@@ -4519,6 +4532,8 @@ class IgtRunner:
                 staged, held = set(), {}
                 with locked_for_writes(client, document_id):
                     ws = JobWorkspace(client, project)
+                    # Harmonize asks the job's own rule too (REV-RPF-W-1).
+                    ws.only_new = self.only_new(project)
                     doc = self.read(project, document_id, client)
                     ws._docs[document_id] = doc
                     doc = ws.doc(document_id)

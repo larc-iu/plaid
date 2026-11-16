@@ -84,7 +84,6 @@ def _piece(added=(set(), set())):
     ws = JobWorkspace(client, load_project(client, 'p1'))
     ws.edits_text = True
     ws.only_new = (set(added[0]), set(added[1]))
-    ws.only_targets = {GLOSS}
     return ws
 
 
@@ -105,10 +104,40 @@ def test_a_value_on_a_word_the_job_added_is_staged():
     assert [o['kind'] for o in ws.ops] == ['set_span']
 
 
-def test_a_value_outside_the_setups_targets_is_not_its_business():
+@pytest.mark.parametrize('tool,args', [
+    # A field the setup does not name (the setup fills Gloss only).
+    ('set_field', {'refs': ['s1.w2.m1'], 'values': {'Morph Gloss': 'fish'}}),
+    # A sentence-level value on a sentence the job did not add.
+    ('set_field', {'refs': ['s2'], 'values': {'Translation': 'A fish.'}}),
+    ('set_analysis', {'ref': 's1.w2', 'morphemes': [{'form': 'ga'}, {'form': 'm', 'type': 'suffix'}]}),
+    ('analyze_sentence', {'sentences': [{'ref': 's2', 'words': ['Gam-ar fish-ERG']}]}),
+    ('set_morpheme', {'ref': 's2.w1.m2', 'type': 'suffix'}),
+    ('set_orthography', {'refs': ['s1.w2'], 'orthography': 'IPA', 'value': 'gam'}),
+    ('link_entry', {'refs': ['s1.w2'], 'entry_form': 'gam#2'}),
+    ('unlink_entry', {'refs': ['s1.w1']}),
+    ('link_phrase', {'refs': ['s1.w2', 's1.w3'], 'entry_form': 'gam#1'}),
+])
+def test_no_value_analysis_link_or_orthography_on_what_the_job_did_not_add_whatever_field(tool, args):
+    """REV-RPF-W-1: "Fills only the words this job adds" holds for every
+    value, analysis, segmentation, link and orthography, set up or not, on a
+    word, a morpheme of it or a sentence the job did not add. The setup's
+    targets do not decide it (the old rule asked only them, and a Translation
+    on an existing sentence and an analysis on two existing words were
+    written)."""
     ws = _piece()
-    ws.only_targets = {MGLOSS}
-    toolkit.call_tool(ws, 'set_field', {'document': 'Text 1', 'refs': ['s1.w1'], 'values': {'Gloss': 'x'}})
+    out = toolkit.call_tool(ws, tool, {'document': 'Text 1', **args})
+    assert [o for o in ws.ops if o.get('kind') != 'create_entry'] == [], (out, ws.ops)
+    assert 'this job fills only the words it adds' in str(out), out
+    # analyze_sentence says its refusals in its own answer, sentence by sentence.
+    assert {e['code'] for e in ws.left_by_refusal} <= {'not-added'}
+
+
+def test_a_value_on_a_sentence_the_job_added_is_staged():
+    """A sentence counts as added only when the job made it (a new id under
+    the lock): its sentence-level fields are the job's to write."""
+    ws = _piece()
+    ws.only_new = (set(), {'s-2'})
+    toolkit.call_tool(ws, 'set_field', {'document': 'Text 1', 'refs': ['s2'], 'values': {'Translation': 'A fish.'}})
     assert [o['kind'] for o in ws.ops] == ['set_span']
 
 
@@ -201,3 +230,21 @@ def test_left_blank_of_such_a_job_lists_only_the_words_it_added(monkeypatch):
     finished = run_job(job, runner(job))
     doc = finished['report']['documents'][0]
     assert doc.get('left', []) == [] and doc['counts']['blank'][0]['untouched'] == 0
+
+
+def test_harmonize_of_such_a_job_writes_nothing_on_a_word_the_job_did_not_add(monkeypatch):
+    """Harmonize stages through the job's workspace and asks the same rule
+    (REV-RPF-W-1): a rewrite on a word the job did not add is refused and the
+    word listed as left, never written."""
+    from job_fixtures import recorded
+    from test_job_harmonize import w
+    client = JobClient({'d1': document('d1', 'Story d1', [{'words': [w('ka', 'go', J), w('ka', 'go', J)]}]),
+                        'd2': document('d2', 'Story d2', [{'words': [w('ka', 'come', J), w('ta', 'x', J)]}])})
+    job = start(client, id=J, edits_text=True, fills=('segmentation', MGLOSS), setup=_setup(
+        fills=(('segmentation', 'segmentation'), (MGLOSS, 'Morph Gloss'))))
+    for d in ('d1', 'd2'):
+        job.update_row(d, state='done')
+    recorded(job)
+    out = runner(job).harmonize(job)
+    assert not [c for c in client.calls if c[0].startswith(('spans', 'tokens'))], 'nothing written'
+    assert [(x['form'], x['reason']) for x in out['left']] == [('ka', 'refused')], out
