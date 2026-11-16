@@ -40,8 +40,7 @@ def test_the_rules_say_what_a_sentences_plan_costs_and_what_a_selection_changes(
 def test_plan_work_says_how_many_pieces_a_sentences_or_document_plan_is():
     per = -(-20 // JOB_STRETCH_SENTENCES)
     out = toolkit.job_plan_call(_planning(DOCS), 'plan_work', {'pieces': 'sentences', 'fills': ['Morph Gloss']})
-    assert f'This plan is {45 * per:,} pieces over 45 documents.' in out, out
-    assert 'Call plan_work again to change it' in out
+    assert out == f'The plan is kept. This plan is {45 * per:,} pieces over 45 documents. End now with a one-line reply.'
     out = toolkit.job_plan_call(_planning(DOCS), 'plan_work', {'pieces': 'sentences', 'fills': ['Morph Gloss'],
                                                                'skip_filled_sentences': True,
                                                                'documents': ['Text 1', 'Text 2']})

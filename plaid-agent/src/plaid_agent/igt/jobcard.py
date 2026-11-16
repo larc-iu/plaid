@@ -67,7 +67,15 @@ def _help(facts: Dict[str, Any]) -> str:
         'annotated a form.',
         '- A turn holds a job card or a plan of changes, not both. Drafting again in the same turn replaces the '
         'card.',
+        # What a job can do to an entry that exists, from the toolkit's lists
+        # (RPF3 round 4, RP3-4: promised, and made a duplicate entry).
+        '- ' + _entry_facts(),
     ])
+
+
+def _entry_facts() -> str:
+    from .toolkit import job_entry_facts
+    return job_entry_facts()
 
 
 def _facts(ws) -> Dict[str, Any]:

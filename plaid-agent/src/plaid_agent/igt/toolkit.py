@@ -731,13 +731,13 @@ def t_plan_work(ws, pieces: str = None, piece_instructions: str = '', documents=
                    f'{JOB_PIECE_INSTRUCTIONS_MAX_CHARS:,}: they are {kept}. Pieces already have the guidelines and '
                    'the instructions.')
     worked = [d for d in known if order is None or d['id'] in order]
-    said = len(out)
     size = plan_size(pieces, worked, skip)
     if size:
         # A fixed fact from the planning's own counts, so the planner sees the
-        # plan's size before it ends (RPF3 round 4: 33 replacements planned in
-        # sentences over 45 documents).
+        # plan's size before it ends, and may call plan_work again (RPF3 round
+        # 4: 33 replacements planned in sentences over 45 documents).
         out.append(size)
+    said = len(out)
     if not chosen:
         # Said in one line, as the plan is kept: a planner that meant the job
         # to fill something plans again (REV-DF-D-1).
@@ -961,13 +961,45 @@ def _offered_only(tools: list) -> list:
 CHECK_FIRST = 'Check this before proposing an analysis, and follow the majority unless there is reason not to. '
 
 
+#: What a job's create_entry adds to its description (RPF3 round 4, RP3-4: a
+#: piece with no tool to edit an entry made a second entry of the form).
+JOB_NEW_ENTRY = ' In a job, only for a form with no entry: it never changes an existing entry\'s values.'
+
+
+def job_entry_facts() -> str:
+    """What a job can do to existing lexicon entries, from the toolkit's own
+    lists (RPF3 round 4): the entry tools a piece in sentences is offered
+    (:data:`SENTENCES_LEXICON`), those a piece of a document or of all the
+    documents is offered besides, and which of them a job writes and which
+    only when its starter maintains the project (``plan.lexicon_need``,
+    applied or proposed by igt/jobapply.py)."""
+    from .jobapply import _CHANGE_KIND
+    from .plan import lexicon_need
+    def and_list(xs):
+        xs = list(xs)
+        return xs[0] if len(xs) == 1 else ', '.join(xs[:-1]) + ' and ' + xs[-1]
+    names = [t['function']['name'] for t in TOOLS]
+    changing = [n for n in names if _CHANGE_KIND.get(n) == 'entries' and n not in SENTENCES_LEXICON]
+    maintainers = [n for n in changing if (lexicon_need({'kind': n}) or ('',))[0] == 'maintainer']
+    written = [n for n in changing if n not in maintainers]
+    return (f'Existing lexicon entries: a piece of a plan in sentences is offered only {and_list(SENTENCES_LEXICON)}, '
+            'when what the job fills is linked to a lexicon, so it cannot change an entry that exists. A piece of a '
+            f'document or of all the documents is also offered {and_list(changing)}: '
+            f'{and_list(written)} {"is" if len(written) == 1 else "are"} written, and {and_list(maintainers)} only '
+            'when the person who started the job maintains the project, else listed as proposed changes.')
+
+
 def _worded_for(ws, t: Dict[str, Any]) -> Dict[str, Any]:
     """``t`` with its next step worded by who reads it
     (``core.tools.next_step``): retype_sentence's, a later turn a job does
-    not have (REV-DF5-3)."""
+    not have (REV-DF5-3), and create_entry's, which in a job is said to be
+    for a form with no entry (:data:`JOB_NEW_ENTRY`)."""
+    from ..core.tools import next_step
+    if t['function']['name'] == 'create_entry':
+        said = t['function']['description'] + next_step(ws, '', JOB_NEW_ENTRY)
+        return {**t, 'function': {**t['function'], 'description': said}}
     if t['function']['name'] != 'retype_sentence':
         return t
-    from ..core.tools import next_step
     said = t['function']['description'].replace(RETYPE_CHAT_STEP, next_step(ws, RETYPE_CHAT_STEP, RETYPE_JOB_STEP))
     return {**t, 'function': {**t['function'], 'description': said}}
 
