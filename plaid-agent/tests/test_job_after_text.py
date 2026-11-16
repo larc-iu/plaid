@@ -118,3 +118,51 @@ def test_a_word_left_unsegmented_is_said_beside_the_morpheme_fields_blanks(monke
     assert (blank['segmentation']['left'], blank['Morph Gloss']['left']) == (1, 0), blank
     assert blank['Morph Gloss']['unsegmented'] == 1, blank
     assert 'Morph Gloss left blank 0 morphemes and 1 word not segmented' in blank_text(report['totals']['blank'])
+
+
+def test_a_change_to_a_filled_value_in_a_retyped_sentence_is_listed_and_promises_nothing(monkeypatch):
+    """REV-RPF3-1 (the reviewer's b1): the piece respells kvalaxar in s2 and
+    changes its morpheme ar's gloss from PL to PLURAL, a filled value, which
+    no piece after the text edit takes up. Refused as retyped, listed with its
+    sentence, and the model is not told a piece follows."""
+    from plaid_agent.core.prompt import JOB_LEAVE_IT, JOB_TEXT_THEN_FILL
+
+    def answer(asked, n, kwargs):
+        if 'Instructions from' not in asked:
+            return reply('Done.')
+        if igt_job.AFTER_TEXT_LINE in asked:
+            return reply('Nothing to fill.')
+        if n == 1:
+            return reply(calls=[call(1, 'retype_sentence', {'document': 'Story', 'ref': 's2', 'text': 'kIvalaxar.'}),
+                                call(2, 'set_analysis', {'document': 'Story', 'ref': 's2.w1', 'morphemes': [
+                                    {'form': 'kvalax', 'fields': {'Morph Gloss': 'work'}},
+                                    {'form': 'ar', 'fields': {'Morph Gloss': 'PLURAL'}}]})])
+        return reply('Respelled kvalaxar.')
+    _client, job, model, _sent = _job(monkeypatch, answer, after=[BEFORE[0], AFTER[1]])
+    finished = run_job(job, runner(job))
+    told = [m['content'] for c in model.calls for m in c['kwargs']['messages'] if m['role'] == 'tool']
+    refusal = next(t for t in told if t.startswith('Error'))
+    assert JOB_LEAVE_IT in refusal and JOB_TEXT_THEN_FILL not in refusal, refusal
+    (doc,) = finished['report']['documents']
+    assert [(r['code'], r['sentence']) for r in doc['refused']] == [('retyped', 's2')], doc.get('refused')
+
+
+def test_what_the_piece_after_the_text_edit_leaves_empty_is_in_left_blank(monkeypatch):
+    """The refusal of xosan's analysis is not listed, as the piece after the
+    text edit takes it up. That piece writes nothing: xosan is in Left blank
+    (REV-RPF3-1)."""
+    def answer(asked, n, kwargs):
+        if 'Instructions from' not in asked:
+            return reply('Done.')
+        if igt_job.AFTER_TEXT_LINE in asked:
+            return reply('Left it.')
+        if n == 1:
+            return reply(calls=[call(1, 'retype_sentence', {'document': 'Story', 'ref': 's1', 'text': 'sa xosan jut.'}),
+                                call(2, 'set_analysis', {'document': 'Story', 'ref': 's1.w2 "xosan"', 'morphemes': [
+                                    {'form': 'xosan', 'fields': {'Morph Gloss': 'good'}}]})])
+        return reply('Inserted xosan.')
+    _client, job, _model, _sent = _job(monkeypatch, answer, after=[AFTER[0], BEFORE[1]])
+    finished = run_job(job, runner(job))
+    (doc,) = finished['report']['documents']
+    assert not doc.get('refused'), doc.get('refused')
+    assert [e['form'] for e in doc['left']] == ['xosan'], doc['left']

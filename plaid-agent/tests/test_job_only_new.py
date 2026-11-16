@@ -258,11 +258,12 @@ def test_harmonize_of_such_a_job_writes_nothing_on_a_word_the_job_did_not_add(mo
     ([('analyze_sentence', {'document': 'Story', 'sentences': [{'ref': 's2', 'words': ['pa go', 'ro come']}]})],
      'not-added'),
     # added-word-analysis: a retype adds a word and the same reply analyses
-    # the sentence, refused as retyped in this plan, and not listed: the
-    # piece after the text edit fills the added word (RPF3-B).
+    # the whole sentence, words the job did not add among them: refused as
+    # retyped in this plan, and listed (REV-RPF3-1). The added word alone is
+    # analysed after the text edit (the next test).
     ([('retype_sentence', {'document': 'Story', 'ref': 's2', 'text': 'zz pa ro.'}),
       ('analyze_sentence', {'document': 'Story', 'sentences': [{'ref': 's2', 'words': ['pa go', 'ro come']}]})],
-     None),
+     'retyped'),
 ])
 def test_a_refusal_analyze_sentence_meets_is_listed_as_refused(monkeypatch, calls, code):
     """REV-RPF2-3: analyze_sentence says each sentence's refusal in its own
@@ -282,7 +283,45 @@ def test_a_refusal_analyze_sentence_meets_is_listed_as_refused(monkeypatch, call
     text_edits(monkeypatch)
     finished = run_job(job, runner(job))
     refused = finished['report']['documents'][0].get('refused') or []
-    if code is None:
-        assert refused == [], refused
-        return
     assert (code, 's2') in [(r['code'], r['sentence']) for r in refused], refused
+
+
+def test_an_analysis_of_the_added_word_alone_is_taken_up_after_the_text_edit(monkeypatch):
+    """added-word-analysis, the word alone: refused in the piece that
+    retypes, told the true next step and not listed, and the piece after the
+    text edit analyses the added word (RPF3-B, REV-RPF3-1)."""
+    from plaid_agent.core.prompt import JOB_TEXT_THEN_FILL
+    from job_fixtures import text_edits
+    text_edits(monkeypatch)
+    client = JobClient({'d1': document('d1', 'Story', [{'words': ['sc', 'tqmc']}, {'words': ['pa', 'ro']}])})
+    job = start(client, 'Insert zz and analyse it.', id=J, plan='document', edits_text=True,
+                fills=('segmentation', MGLOSS), setup=_setup(fills=(('segmentation', 'segmentation'),
+                                                                     (MGLOSS, 'Morph Gloss'))))
+    sent = []
+
+    def execute(c, ops, **kw):
+        sent.append(ops)
+        if any(o['kind'] == 'edit_text' for o in ops):
+            raw = document('d1', 'Story', [{'words': ['sc', 'tqmc']}, {'words': ['zz', 'pa', 'ro']}], version=2)
+            words = raw['text_layers'][0]['token_layers'][1]['tokens']
+            words[2]['id'], words[3]['id'], words[4]['id'] = 'd1-zz', 'd1-s2w1', 'd1-s2w2'
+            client._holder('d1')['documents']['d1'] = raw
+        return {}
+    monkeypatch.setattr(igt_job, 'execute_plan', execute)
+
+    def answer(asked, n, kwargs):
+        if 'Instructions from' not in asked or n > 1:
+            return reply('Done.')
+        if igt_job.AFTER_TEXT_LINE in asked:
+            return reply(calls=[call(5, 'set_analysis', {'document': 'Story', 'ref': 's2.w1 "zz"', 'morphemes': [
+                {'form': 'zz', 'fields': {'Morph Gloss': 'he'}}]})])
+        return reply(calls=[call(1, 'retype_sentence', {'document': 'Story', 'ref': 's2', 'text': 'zz pa ro.'}),
+                            call(2, 'set_analysis', {'document': 'Story', 'ref': 's2.w1 "zz"', 'morphemes': [
+                                {'form': 'zz', 'fields': {'Morph Gloss': 'he'}}]})])
+    model = use(monkeypatch, Model(answer))
+    finished = run_job(job, runner(job))
+    told = [m['content'] for c in model.calls for m in c['kwargs']['messages'] if m['role'] == 'tool']
+    assert any(JOB_TEXT_THEN_FILL in t for t in told), told
+    assert not finished['report']['documents'][0].get('refused')
+    analysed = [o for ops in sent for o in ops if o['kind'] == 'set_analysis']
+    assert [o['word_id'] for o in analysed] == ['d1-zz'], analysed

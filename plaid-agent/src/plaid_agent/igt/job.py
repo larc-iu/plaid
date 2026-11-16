@@ -138,6 +138,12 @@ NOT_ADDED = 'not-added'
 #: what was not done (REV-DF-S-4, REV-DF3-5).
 #: An analysis of a word in a sentence its own plan retypes (RPF3-B).
 RETYPED = 'retyped'
+#: The tools whose ``retyped`` refusal a piece after the text edit may take
+#: up: they fill a word's analysis or values (REV-RPF3-1).
+FILLING_TOOLS = frozenset({'set_analysis', 'analyze_sentence', 'set_field', 'set_morpheme'})
+#: A reference such a tool names: a sentence ``s4``, a word ``s4.w3`` with
+#: its form or not, a run ``s4.w3-w5``, a morpheme ``s4.w3.m1``.
+FILL_REF = re.compile(r'^s(\d+)(?:\.w(\d+)(?:-w?(\d+))?(?:\.m\d+)?)?(?:\s+"([^"]*)")?$')
 LEFT_CODES = ('text', 'shape', 'entry-new', 'entry-gone', 'expression', 'not-added', RETYPED)
 #: What a refusal the job could not follow left (``JobWorkspace.leave_it``).
 REFUSED_FORM = ' refused '
@@ -1315,15 +1321,73 @@ class JobWorkspace(Workspace):
         left is kept, for the report (``core.tools.advised``), with its
         ``code``, one of :data:`LEFT_CODES` or None."""
         fact = fact.rstrip(' ;,')
-        if code == RETYPED and self.edits_text:
-            # A piece that may edit the text is followed by one over the
-            # sentences its edit changed (RPF3-B): the analysis is staged
-            # there, so nothing is left by this refusal.
+        if code == RETYPED and self.edits_text and self.fills_what_follows(sentence_id):
+            # It refused filling only what the piece after the text edit is
+            # shown as empty and takes up (RPF3-B, REV-RPF3-1): nothing is
+            # left by it. Left blank lists what that piece leaves empty.
             return f'{fact}{"" if fact.endswith((".", "!", "?")) else "."} {JOB_TEXT_THEN_FILL}'
         entry = {'sentence_id': sentence_id, 'what': fact, 'code': code}
         if entry not in self.left_by_refusal:
             self.left_by_refusal.append(entry)
         return f'{fact}{"" if fact.endswith((".", "!", "?")) else "."} {JOB_LEAVE_IT}'
+
+    def fills_what_follows(self, sentence_id: Optional[str]) -> bool:
+        """Whether the tool call being refused (``calling``, set as each call
+        is made) only fills what the piece after this one's text edit will be
+        shown as empty of the plan's fills, in ``sentence_id``, a sentence the
+        plan retypes (REV-RPF3-1): an analysis or a value tool, naming only
+        words the retype adds or words empty of every word-level target the
+        plan fills (THE rule, :func:`targets.empty_in_word`), and under
+        ``onlynew`` only words the retype adds. Decided from the workspace,
+        never from the model's words. Anything else (a filled value, a link,
+        a rule, a sentence's value) is listed as refused."""
+        from .retyped import retype_of
+        name, args = getattr(self, 'calling', None) or (None, None)
+        if name not in FILLING_TOOLS or not isinstance(args, dict) or not sentence_id:
+            return False
+        level = tg.word_level(self.fills or ())
+        if not level:
+            return False
+        refs = []
+        if name == 'analyze_sentence':
+            refs = [x.get('ref') for x in args.get('sentences') or [] if isinstance(x, dict)]
+        elif name == 'set_field':
+            refs = list(args.get('refs') or [])
+        else:
+            refs = [args.get('ref')]
+        try:
+            doc = self.doc(args.get('document'))
+        except Exception:  # noqa: BLE001 - not known: listed
+            return False
+        edit = retype_of(self.ops, sentence_id)
+        planned = (edit or {}).get('planned_words')
+        s = next((x for x in doc.sentences if x.id == sentence_id), None)
+        if not refs or s is None or not planned:
+            return False
+        words = {w.id: w for w in s.words}
+        for ref in refs:
+            m = FILL_REF.match(str(ref or '').strip())
+            if m is None or int(m.group(1)) != s.index:
+                return False
+            first, last, form = m.group(2), m.group(3), m.group(4)
+            if first is None:
+                chosen = planned
+            elif form is not None and last is None:
+                chosen = [p for p in planned if p.get('surface') == form][:1]
+            else:
+                lo = int(first)
+                hi = int(last) if last else lo
+                chosen = planned[lo - 1:hi] if 1 <= lo <= hi <= len(planned) else []
+            if not chosen:
+                return False
+            for p in chosen:
+                if p.get('word_id') is None:
+                    continue
+                w = words.get(p['word_id'])
+                if self.only_new is not None or w is None or \
+                        {t.id for t in tg.empty_in_word(w, level)} != {t.id for t in level}:
+                    return False
+        return True
 
     def guard_op(self, op: Dict[str, Any], replacing: Optional[int] = None) -> None:
         if self.mode == self.PLAN:
@@ -3249,6 +3313,9 @@ class IgtRunner:
 
         def call(w, name, args):
             self.steps_now += 1
+            # The call being made, which a refusal is weighed by
+            # (JobWorkspace.fills_what_follows, REV-RPF3-1).
+            w.calling = (name, args)
             if said:
                 # ``read``: what the workspace has read so far, said after
                 # the line's own words (the planning's, RPF3-E).

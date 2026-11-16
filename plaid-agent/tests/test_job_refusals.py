@@ -96,13 +96,6 @@ def test_no_refusal_a_job_reads_advises_a_step_it_cannot_take(scenario):
     assert refused, said
     for x in said:
         assert not any(c in x for c in CHAT_ONLY), x
-    if scenario in AFTER_THE_TEXT_EDIT:
-        # A piece that may edit the text is followed by one over the
-        # sentences its edit changed: it is told so, and nothing is left
-        # (RPF3-B).
-        assert any(JOB_TEXT_THEN_FILL in x for x in refused), refused
-        assert not w.left_by_refusal, w.left_by_refusal
-        return
     closing = [x for x in refused if JOB_LEAVE_IT in x]
     assert closing, refused
     assert len(w.left_by_refusal) == len({(e['sentence_id'], e['what']) for e in w.left_by_refusal}) >= 1
@@ -215,12 +208,12 @@ def test_a_reference_to_an_entry_this_plan_creates_is_worded_by_who_reads_it(job
                    'reference.'), out
 
 
-#: The scenarios whose refusal is an analysis or a value on a word of a
-#: sentence the piece's own plan retypes (code ``retyped``): a piece that
-#: may edit the text is followed by one that fills them (RPF3-B).
-AFTER_THE_TEXT_EDIT = {'retype then analyse', 'retype then rule', 'unnumbered retype then a value'}
-
-CODES = {'new entry then rename': 'entry-new', 'deleted entry then rename': 'entry-gone',
+CODES = {
+         # A change on a word of a sentence its own plan retypes (RPF3-B):
+         # listed, as none of them fills only what the piece after the text
+         # edit is shown as empty (REV-RPF3-1).
+         'retype then analyse': 'retyped', 'retype then rule': 'retyped',
+         'unnumbered retype then a value': 'retyped','new entry then rename': 'entry-new', 'deleted entry then rename': 'entry-gone',
          'merge then delete what it keeps': 'entry-gone', 'entry numbers moved': 'entry-gone',
          'phrase then link a word in it': 'expression', 'analysis then retype': 'shape',
          'rule then retype': 'shape', 'comment then retype': 'shape', 'morpheme gloss then retype': 'shape',
@@ -233,9 +226,6 @@ def test_what_a_refusal_left_says_what_kind_of_refusal_it_was(scenario):
     set, which the job page labels: never its text."""
     from plaid_agent.igt.job import LEFT_CODES
     w, _ = _said(SCENARIOS[scenario])
-    if scenario in AFTER_THE_TEXT_EDIT:
-        assert not w.left_by_refusal, w.left_by_refusal
-        return
     assert w.left_by_refusal and {e['code'] for e in w.left_by_refusal} == {CODES.get(scenario, 'text')}, \
         w.left_by_refusal
     assert set(LEFT_CODES) == {'text', 'shape', 'entry-new', 'entry-gone', 'expression', 'not-added', 'retyped'}
