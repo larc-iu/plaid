@@ -1581,8 +1581,8 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
                         # A plan call that went through and left the plan as
                         # it was planned nothing, and its step says so: as
                         # already in the plan when it restated changes the
-                        # plan held (CC-A T5: a link analyze_sentence had
-                        # planned, linked again), else as nothing to change.
+                        # plan held (CC-A T5: a link a sentence's analysis
+                        # had planned, linked again), else as nothing to change.
                         nothing = unchanged
                         already = unchanged and getattr(ws, 'replaced', 0) > replaced_before
                         made[key] = told
