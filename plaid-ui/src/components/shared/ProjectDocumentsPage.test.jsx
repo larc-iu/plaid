@@ -206,12 +206,18 @@ describe('a project the app has no layers in', () => {
     expect(view.container.textContent).toContain('Nothing here');
     expect(view.container.textContent).toContain('Go elsewhere for p1.');
     expect(view.container.textContent).not.toContain('Set up for XY');
+    const box = view.container.querySelector('[data-tone]');
+    expect(box.textContent).toContain('Nothing here');
+    expect(box.getAttribute('data-tone')).toBe('info');
     await view.unmount();
   });
 
-  it('draws the notice in the warning tone', async () => {
+  // Not set up is a plain fact: a warm banner means something is broken.
+  it('draws the notice as plain information', async () => {
     const view = await mount(project('maintainer', false));
-    expect(view.container.querySelector('[data-tone="warning"]')).not.toBe(null);
+    const box = view.container.querySelector('[data-tone]');
+    expect(box.textContent).toContain('Not set up for XY');
+    expect(box.getAttribute('data-tone')).toBe('info');
     await view.unmount();
   });
 });

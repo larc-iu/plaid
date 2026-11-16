@@ -112,7 +112,7 @@ export const ProjectDocumentsPage = ({
           {blocked ? (
             <SetupBlocked blocked={blocked} className="max-w-lg gap-3 p-4" />
           ) : (
-            <Notice tone="warning" icon={Info} className="max-w-lg gap-3 p-4">
+            <Notice tone="info" icon={Info} className="max-w-lg gap-3 p-4">
               <div className="flex flex-col items-start gap-3">
                 <p className="font-medium">Not set up for {setup.app}</p>
                 {canManage ? (

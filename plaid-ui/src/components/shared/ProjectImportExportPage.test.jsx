@@ -370,11 +370,13 @@ describe('a zip the export made, imported again', () => {
 });
 
 describe('a project the app has no layers in', () => {
-  it('offers a maintainer the way to set it up, in the warning tone', async () => {
+  // Not set up is a plain fact, never drawn as if something were broken.
+  it('offers a maintainer the way to set it up, as plain information', async () => {
     const format = baseFormat();
     format.layerInfo = () => ({ isConfigured: false });
     const view = await mount(format);
-    const box = view.container.querySelector('[data-tone="warning"]');
+    expect(view.container.querySelector('[data-tone="warning"]')).toBe(null);
+    const box = view.container.querySelector('[data-tone="info"]');
     expect(box.textContent).toContain('This project is not set up for XY.');
     expect(box.querySelector('a').getAttribute('href')).toBe('/setup/p1');
     await view.unmount();
