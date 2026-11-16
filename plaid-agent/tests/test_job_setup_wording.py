@@ -109,3 +109,17 @@ def test_read_job_says_the_notice_the_findings_and_the_changes_by_kind():
     assert 'The report\'s top line, the worker\'s own: "Text: 1 word added."' in text
     assert 'The job\'s findings, its report: "## Found\n\nTwo forms."' in text
     assert 'changes by kind: values 1, text 1' in text
+
+
+def test_rp2_1_rp2_2_no_card_beside_a_question_no_field_unasked_and_only_new_when_asked():
+    """RP2-1: the assistant asked whether to add Word class and drafted the card
+    in the same turn. RP2-2: it added Case and Word class nobody asked for,
+    because a guideline derives them, and did not set only_new when told
+    "segment and gloss only the words that change" (RPF3-F)."""
+    note = _note()
+    assert ('Never assume: a field they did not name goes on the card only once they say yes to it, whatever a '
+            'guideline derives from what they asked for.') in note
+    assert 'A reply that asks a question drafts no card: wait for the answer.' in note
+    assert ('only_new true when they ask it to fill only the words it adds or changes, such as "gloss only the new '
+            'word".') in note
+    assert '"segment and gloss only the words that change"' in jobcard._help({})

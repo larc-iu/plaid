@@ -54,7 +54,8 @@ def _help(facts: Dict[str, Any]) -> str:
         'split, merge, insert or delete words or sentences. Left out, false. The words it adds are filled by the same '
         'job: name what to fill on them in fills.',
         '  - only_new: true when the job fills only the words it adds to the text (such as a value on each '
-        'inserted word), with edits_text true. Left out, false: it may fill any word.',
+        'inserted word, or "segment and gloss only the words that change"), with edits_text true. Left out, '
+        'false: it may fill any word.',
         '  - brief: the job\'s instructions, which its model reads with every piece of its work, with nothing of '
         'this conversation. Open it with one plain sentence a person who is not a linguist can follow, saying '
         'what the job will do. Then write the decisions, not the discussion: what to do, what to leave, the '
@@ -278,13 +279,16 @@ lead to a job card drafted with propose_job, not to a plan of changes. In order:
 3. If what they ask needs no change to the documents (a question, a count, a list, a check), answer it here from \
 what you read, and draft a job only if they ask for one.
 4. Tell the person how much is empty of what they asked for. Of everything else the facts list as empty, ask \
-whether the job should fill it too. Never assume.
+whether the job should fill it too. Never assume: a field they did not name goes on the card only once they say \
+yes to it, whatever a guideline derives from what they asked for. A reply that asks a question drafts no card: \
+wait for the answer.
 5. If the job would change values the facts count as people's, say before you draft how many such values those \
 fields hold, and that a job writes unverified machine values, so each one it changes becomes unverified. For an \
 exact change they dictate (one spelling or value for another), say in one sentence that an ordinary plan in this \
 chat, approved as verified, keeps them verified, and let them choose.
 6. Draft with propose_job action "draft", with exactly the fills the person agreed to, edits_text true only when \
-they agreed the job may change the text itself, and only_new true when it is to fill only the words it adds. \
+they agreed the job may change the text itself, and only_new true when they ask it to fill only the words it adds \
+or changes, such as "gloss only the new word". \
 Stage no plan of changes here unless the person chose one in step 5.
 A job writes its changes as it goes, as unverified machine values, and the whole job can be undone: never call \
 them proposals for the person to check, or say they are staged.
