@@ -21,6 +21,10 @@ from plaid_agent.igt import plan as igt_plan
 from plaid_agent.igt.job import INTERRUPTED, WRITING_FORM
 from test_job_vouched import _iso
 
+# Each test runs as scripted and with set_field and link_entry in the items form (BRIEF SP item 2).
+pytestmark = pytest.mark.usefixtures('both_forms')
+
+
 
 @pytest.fixture(autouse=True)
 def _every_tool(monkeypatch):

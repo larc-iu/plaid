@@ -13,6 +13,10 @@ from plaid_agent.core.job import run_job
 from plaid_agent.igt import job as igt_job
 from test_job_pieces import _docs, _lexicon_takes_creates, _model
 
+# Each test runs as scripted and with set_field and link_entry in the items form (BRIEF SP item 2).
+pytestmark = pytest.mark.usefixtures('both_forms')
+
+
 J = 'JP'
 
 

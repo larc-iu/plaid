@@ -241,6 +241,10 @@ JOB_MODEL_RETRY_S = 300
 #: median reasoning near 5,000 tokens plus a round of batched writes near
 #: 2,000, with room to spare.
 JOB_PIECE_OUTPUT_TOKENS = 12000
+#: The most items one call of a piece's tool takes, where an app's tools take
+#: many values or links at once (BRIEF SP item 2): the values of a field on
+#: every word of a piece of five long sentences, near 1,600 tokens.
+JOB_ITEMS_MAX = 100
 #: Seconds between asks while people use the model.
 JOB_YIELD_POLL_S = 10
 #: Seconds the model must have been quiet before the worker calls it.

@@ -58,11 +58,11 @@ def t_set_field(ws: Workspace, document: str, refs, field: Optional[str] = None,
             raise ToolError('values maps field names to values, e.g. {"Gloss": "conj", "POS": "conj"}.',
                             kind='invalid-argument')
         if field is not None or value is not None:
-            raise ToolError(ONE_SHAPE, kind='invalid-argument')
+            raise ToolError(one_shape(ws), kind='invalid-argument')
         pairs, named = [], {}
         for name, val in values.items():
             if read_ref(name, 'wm') is not None and not _is_field(ws, name):
-                raise ToolError(f'values: "{name}" is a reference, not a field. {ONE_SHAPE}',
+                raise ToolError(f'values: "{name}" is a reference, not a field. {one_shape(ws)}',
                                 kind='invalid-argument')
             f = _field_named(ws, name)
             if val is None:
@@ -206,6 +206,16 @@ def _stage_planned(ws: Workspace, doc, ref: str, f, val: str, planned, staged, d
 # told "No field named "s7.w13.m1"", and only then made one call per morpheme.
 ONE_SHAPE = ('values maps field names to the one value each takes on every ref, in place of field and value. A '
              'value of its own on each ref takes one call per ref, with field, refs and value.')
+#: The same for a job's piece, whose set_field takes items (BRIEF SP item 2).
+ONE_SHAPE_JOB = ('values maps field names to the one value each takes on every ref, in place of field and value. A '
+                 'value of its own on each ref goes in items, e.g. [{"ref": "s1.w2", "value": "dog"}], with field '
+                 'beside them.')
+
+
+def one_shape(ws) -> str:
+    """:data:`ONE_SHAPE` worded by who reads it (``core.tools.next_step``)."""
+    from ..core.tools import next_step
+    return next_step(ws, ONE_SHAPE, ONE_SHAPE_JOB)
 
 
 def _is_field(ws: Workspace, name: str) -> bool:

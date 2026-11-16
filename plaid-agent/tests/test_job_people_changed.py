@@ -14,6 +14,11 @@ from plaid_agent.core.job import run_job
 from plaid_agent.igt import job as igt_job
 from plaid_agent.igt.job import Stretch
 from plaid_agent.igt.project import load_project, parse_document
+import pytest
+
+# Each test runs as scripted and with set_field and link_entry in the items form (BRIEF SP item 2).
+pytestmark = pytest.mark.usefixtures('both_forms')
+
 
 J = 'JPC'
 # s1: a person's "gam" 'fish' and a machine's "ka" 'go', s2: blank "sa" with

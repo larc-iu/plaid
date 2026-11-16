@@ -23,6 +23,10 @@ from plaid_agent.igt.job import JobWorkspace, Stretch
 from plaid_agent.igt.plan import KIND, execute_plan
 from plaid_agent.igt.project import load_project
 
+# Each test runs as scripted and with set_field and link_entry in the items form (BRIEF SP item 2).
+pytestmark = pytest.mark.usefixtures('both_forms')
+
+
 
 @pytest.fixture(autouse=True)
 def _every_tool(monkeypatch):

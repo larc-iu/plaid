@@ -158,6 +158,9 @@ def render_job() -> str:
              'A plan that sets edits_text offers those tools too, and its pieces\' prompt reads as above but '
              'for: ' + '; '.join(f'"{said}" where it says "{instead}"' for said, instead in prompt.NO_TEXT_EDITS)
              + '.\n',
+             'In every piece, set_field and link_entry also take items (`src/plaid_agent/igt/items.py`), as '
+             'here:\n',
+             *[render_tool(t) for t in tools if t['function']['name'] in ('set_field', 'link_entry')],
              '\n## The final context\n', 'Its system prompt, with no tools:\n', '```text',
              prompt.build_summary_prompt(ws.project).rstrip(), '```\n']
     return '\n'.join(parts)

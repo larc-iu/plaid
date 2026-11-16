@@ -73,8 +73,24 @@ def release_code_workers(monkeypatch):
         session.close()
 
 
+@pytest.fixture(params=['single', 'items'])
+def both_forms(request, monkeypatch):
+    """A job test run twice: as scripted, and with every set_field and
+    link_entry call its model makes in the items form a job's piece takes
+    (``job_fixtures.as_items``, BRIEF SP item 2), so every guard the single
+    call meets is tried per item. A module opts in with
+    ``pytestmark = pytest.mark.usefixtures('both_forms')``. A test whose
+    assertions read the single call's own answer is marked ``single_form``
+    and runs once (``pytest_collection_modifyitems``)."""
+    if request.param == 'items':
+        from job_fixtures import as_items
+        as_items(monkeypatch)
+    yield request.param
+
+
 def pytest_configure(config):
     config.addinivalue_line('markers', 'isolates: keep the bidi isolates in plan lines (see plain_isolates)')
+    config.addinivalue_line('markers', 'single_form: a both_forms test run in the single form only')
     # A pool of two workers on every machine, as small as a CI runner's or
     # smaller, and a checkout that waits a minute at most, so a test that
     # keeps a worker fails where it is, here as on CI, rather than hanging
@@ -105,6 +121,12 @@ def pytest_collection_modifyitems(session, config, items):
                 seen[path] = False
         return seen[path]
     items.sort(key=reads_core)
+    # A test that reads a single call's own answer runs in that form only.
+    once = [i for i in items if i.get_closest_marker('single_form') is not None
+            and getattr(getattr(i, 'callspec', None), 'params', {}).get('both_forms') == 'items']
+    if once:
+        config.hook.pytest_deselected(items=once)
+        items[:] = [i for i in items if i not in once]
 
 
 def pytest_collection_finish(session):

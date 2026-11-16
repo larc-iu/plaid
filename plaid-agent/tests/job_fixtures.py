@@ -441,3 +441,72 @@ def with_values(raw, values):
         span_layer['spans'].append({'id': f'sp-{layer_id}-{token_id}', 'value': value, 'tokens': [token_id],
                                     'metadata': stamp(who)})
     return raw
+
+
+#: The arguments of link_entry that name its entry, which the items form
+#: gives in each item (BRIEF SP item 2).
+LINK_ENTRY_ARGS = ('entry_form', 'entry_id', 'entry_gloss', 'lexicon')
+
+
+def itemized(name, args):
+    """``args`` of a single set_field or link_entry call (one field and value,
+    or one entry, on ``refs``) as the items form a job's piece takes: one
+    item per reference, with its value or entry (``values`` of one field
+    too). Any other call, a set_field with ``values`` of several fields, and
+    a call already in the items form, as it is."""
+    from plaid_agent.core.tools import ToolError
+    from plaid_agent.igt.workspace import _refs
+    if name not in ('set_field', 'link_entry') or not isinstance(args, dict) or 'items' in args \
+            or 'refs' not in args:
+        return args
+    if 'values' in args:
+        # One field and its value on the refs: the field in each item.
+        values = args['values']
+        if name != 'set_field' or not isinstance(values, dict) or len(values) != 1 or 'field' in args \
+                or 'value' in args:
+            return args
+        ((field, value),) = values.items()
+        args = {**{k: v for k, v in args.items() if k != 'values'}, 'field': field, 'value': value}
+    try:
+        refs = _refs(args['refs'])
+    except ToolError:
+        return args
+    if name == 'set_field':
+        out = {k: v for k, v in args.items() if k not in ('refs', 'value')}
+        out['items'] = [{'ref': r, **({'value': args['value']} if 'value' in args else {})} for r in refs]
+        return out
+    out = {k: v for k, v in args.items() if k != 'refs' and k not in LINK_ENTRY_ARGS}
+    out['items'] = [{'ref': r, **{k: args[k] for k in LINK_ENTRY_ARGS if k in args}} for r in refs]
+    return out
+
+
+def as_items(monkeypatch):
+    """Every set_field and link_entry call a scripted model makes reaches the
+    job in the items form (:func:`itemized`), so a test of the single form
+    runs again through the items form. Returns the count of calls rewritten
+    (``n``)."""
+    from plaid_agent.core import agent
+    real = agent._complete
+    rewritten = {'n': 0}
+
+    def complete(cfg, kwargs, *a, **kw):
+        resp = real(cfg, kwargs, *a, **kw)
+        for c in (getattr(resp.choices[0].message, 'tool_calls', None) or []) if resp.choices else []:
+            args = json.loads(c.function.arguments or '{}')
+            items = itemized(c.function.name, args)
+            if items is not args:
+                rewritten['n'] += 1
+                c.function.arguments = json.dumps(items, ensure_ascii=False)
+        return resp
+    monkeypatch.setattr(agent, '_complete', complete)
+    # A test that calls a piece's tools itself, as the model would.
+    from plaid_agent.igt import toolkit
+    piece_call = toolkit.job_piece_call
+
+    def job_piece_call(ws, name, args):
+        items = itemized(name, args)
+        if items is not args:
+            rewritten['n'] += 1
+        return piece_call(ws, name, items)
+    monkeypatch.setattr(toolkit, 'job_piece_call', job_piece_call)
+    return rewritten

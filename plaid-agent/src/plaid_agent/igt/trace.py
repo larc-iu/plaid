@@ -129,6 +129,10 @@ def _own(name: str, a: Dict[str, Any]) -> Optional[str]:
 
     # --- plans: one place at a time ------------------------------------------
     if name == 'set_field':
+        if isinstance(a.get('items'), list):
+            # A job piece's many values (igt/items.py), whose answer's own
+            # line (``step_label``) says what it did when any was staged.
+            return f'Planned {plural(len(a["items"]), "value")}{in_doc(a)}'
         if isinstance(a.get('values'), dict) and a['values']:
             sets = ', '.join(f'{k} = {q(v)}' for k, v in a['values'].items())
             return f'Planned {sets} on {_counted(a)}{in_doc(a)}'
@@ -153,6 +157,9 @@ def _own(name: str, a: Dict[str, Any]) -> Optional[str]:
     if name == 'respell':
         return f'Planned respelling {a.get("ref")} → {q(a.get("new_text"))}{in_doc(a)}'
     if name == 'link_entry':
+        if isinstance(a.get('items'), list):
+            refs = [i.get('ref') for i in a['items'] if isinstance(i, dict)]
+            return f'Planned linking {_counted({"refs": refs})}{in_doc(a)}'
         return f'Planned linking {_counted(a)} to {_entry(a)}{in_doc(a)}'
     if name == 'unlink_entry':
         return f'Planned unlinking {_counted(a)}{in_doc(a)}'

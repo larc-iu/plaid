@@ -19,6 +19,10 @@ from job_fixtures import JobClient, Model, call, document, job_project, keep_pla
 from plaid_agent.core.job import run_job
 from plaid_agent.igt import job as igt_job
 
+# Each test runs as scripted and with set_field and link_entry in the items form (BRIEF SP item 2).
+pytestmark = pytest.mark.usefixtures('both_forms')
+
+
 J = 'JEW'
 ROLE, ROLE_NAME = 'sl-role', 'Thematic role'
 GUIDELINE = 'Thematic role: the first word of a sentence is "agent", every other word "patient".'

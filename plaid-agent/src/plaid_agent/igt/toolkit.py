@@ -39,6 +39,7 @@ from .guide import t_app_guide
 from .tagsets import t_tagsets
 from .jobcard import t_propose_job
 from .jobread import t_read_job
+from .items import stage_items, takes_items, with_items
 from .shape import (t_append_text, t_delete_sentence, t_delete_word, t_merge_sentences, t_merge_words,
                     t_retype_sentence, t_split_sentence, t_split_word)
 from .stats import (t_check_integrity, t_check_lexicon, t_corpus_stats, t_frequency_list,
@@ -1010,7 +1011,8 @@ def job_piece_tools(ws, plan_only: bool = False) -> list:
         allowed = sentences_piece_tools(getattr(ws, 'fills', ()), ws.project)
         tools = [_without_check_first(t) for t in tools if t['function']['name'] in allowed]
     # Every piece's descriptions name only tools it is offered (REV-DF-D-18).
-    tools = [_worded_for(ws, t) for t in _offered_only(tools)]
+    # set_field and link_entry take many items in one call (BRIEF SP item 2).
+    tools = [with_items(_worded_for(ws, t)) for t in _offered_only(tools)]
     if plan_only:
         tools = [t for t in tools if t['function']['name'] in WRITE_TOOLS]
     return tools
@@ -1023,7 +1025,7 @@ def job_piece_call(ws, name: str, args: Dict[str, Any]) -> str:
     from ..core.tools import refused
     if name not in {t['function']['name'] for t in job_piece_tools(ws, plan_only=ws.decide_now)}:
         return refused('that tool is not one of this job\'s: call one of those listed.', 'invalid-argument')
-    out = call_tool(ws, name, args)
+    out = stage_items(ws, name, args, call_tool) if takes_items(name, args) else call_tool(ws, name, args)
     if getattr(ws, 'in_sentences', False) and isinstance(out, str):
         offered = {t['function']['name'] for t in job_piece_tools(ws)}
         kept = _without_names(out, _TOOL_NAMES - offered, underscored=True)

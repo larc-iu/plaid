@@ -14,6 +14,10 @@ from job_fixtures import JobClient, Model, call, document, empty_words, reply, r
 from plaid_agent.core.job import run_job
 from plaid_agent.igt import evidence
 
+# Each test runs as scripted and with set_field and link_entry in the items form (BRIEF SP item 2).
+pytestmark = pytest.mark.usefixtures('both_forms')
+
+
 J = 'JE'
 
 

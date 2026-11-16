@@ -67,6 +67,7 @@ from .project import IgtProject, Sentence, Word, is_virtual, load_project, rende
 from .prompt import JOB_SYSTEM, build_job_prompt
 from .tools import trim_ignored_edges
 from .trace import TRACER
+from .items import STAGED_TAIL
 from .targets import Target, word_state  # noqa: F401 (word_state: tests)
 from .fit import entry_gloss as _entry_gloss, fitting_entry, surface_key  # noqa: F401 (fitting_entry: tests)
 from .vocab import ROLE_GLOSS, ROLE_STATUS
@@ -1551,8 +1552,15 @@ class JobWorkspace(Workspace):
 
     def planned_note(self, n: int, what: Optional[str] = None) -> str:
         held = self.staged_count()
-        return (f'Staged {what or _n(n, "change")}. {_n(held, "change")} staged in all, applied when you end.'
-                + self.superseded_note())
+        return (f'Staged {what or _n(n, "change")}. {_n(held, "change")}{STAGED_TAIL}' + self.superseded_note())
+
+    def garbled(self, args):
+        """The garble guard of a call (``core.garble``), less its
+        ``items``: each item is asked on its own as it is staged, so one
+        garbled item never refuses the rest (``items.stage_items``)."""
+        if isinstance(args, dict) and 'items' in args:
+            args = {k: v for k, v in args.items() if k != 'items'}
+        return super().garbled(args)
 
     def result_line(self) -> str:
         held = self.staged_count()

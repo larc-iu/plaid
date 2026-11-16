@@ -121,6 +121,7 @@ How to work:
 - DO WHAT THE INSTRUCTIONS ASK, in the fields and levels they name. Anything more you notice goes in your note, not in the plan.
 - WHAT THE INSTRUCTIONS STATE WINS. A value they give (a gloss, a form, a part of speech, a translation) is the value to stage, even where the corpus does it differently: say the difference in your note.
 - set_field changes one field value (a gloss, a part of speech, a translation) and leaves everything else alone. set_analysis (re)segments a word: given the word's morphemes as they are, only the values that differ are written, otherwise it replaces the whole chain, so change a single value with set_field.
+- set_field and link_entry take items: many values or many links in one call, each staged or refused on its own.
 - END THE PIECE with a short note for the person who reads the job's report, one or two plain sentences: what you did and what you left, and why. Say what you did as done: what you stage is written when you end. It is your last message, with no tool call, plain text with no Markdown, and not your working: no next step, no check you mean to make. Nobody answers it.
 - A WHOLE PIECE, FOR EXAMPLE. The message showed s4 and s5 as context and s6 and s7 as your piece, and the instructions said to segment and gloss the words nobody analysed. It showed that people analysed "leo" as le-o 'today-DEF' twice. It listed the entries na 'PRS' and ku 'INF'. You staged one analyze_sentence for s6 with w1 as na-ku-ja (prefix PRS, prefix INF, stem come) and w3 as le-o as people have it. You left w2 of s7, a name you could not place. Then you ended with the note:
 
@@ -176,6 +177,7 @@ How to work:
 - DO WHAT THE INSTRUCTIONS ASK, in the fields and levels they name. Anything more you notice goes in your note, not in the plan.
 - WHAT THE INSTRUCTIONS STATE WINS. A value they give (a gloss, a form, a part of speech, a translation) is the value to stage, even where the corpus does it differently: say the difference in your note.
 - set_field changes one field value (a gloss, a part of speech, a translation) and leaves everything else alone. set_analysis (re)segments a word: given the word's morphemes as they are, only the values that differ are written, otherwise it replaces the whole chain, so change a single value with set_field.
+- set_field and link_entry take items: many values or many links in one call, each staged or refused on its own.
 - END THE PIECE with a short note for the person who reads the job's report, one or two plain sentences: what you did and what you left, and why. Say what you did as done: what you stage is written when you end. It is your last message, with no tool call, plain text with no Markdown, and not your working: no next step, no check you mean to make. Nobody answers it.
 - A WHOLE PIECE, FOR EXAMPLE. The message showed s4 and s5 as context and s6 and s7 as your piece, and the instructions said to segment and gloss the words nobody analysed and to translate empty translations. It showed that people analysed "leo" as le-o 'today-DEF' twice. Nothing settled "na", so you read the concordance of "na" and saw it before verbs glossed PRS in four sentences. You staged one analyze_sentence for s6 with w1 as na-ku-ja (prefix PRS, prefix INF, stem come) and w3 as le-o as people have it, and set the translation of s7. You left w2 of s7, a name you could not place. Then you ended with the note:
 
@@ -193,6 +195,31 @@ Running code:
 Its 53 tools are the chat's, as `SAMPLE_PROMPT.md` shows them, less `propose_job`, `read_job` and, unless the plan sets edits_text, `append_text`, `retype_sentence`, `split_sentence`, `merge_sentences`, `delete_sentence`, `split_word`, `merge_words`, `delete_word`, `respell`, `respell_all`, `restore_document`: project_overview, list_documents, read_document, read_sentences, search, read_lexicon, set_field, set_field_for_form, replace_in_field, set_analysis, set_analysis_for_form, analyze_sentence, set_morpheme, set_orthography, copy_to_orthography, link_entry, unlink_entry, link_phrase, unlink_phrase, create_entry, set_entry_field, concordance, analyses_of, lexicon_entry, check_consistency, recent_changes, comments, add_comment, plan_status, set_document_metadata, create_document, discard_plan, confirm, discard_analysis, make_sense_of, senses, corpus_stats, frequency_list, worklist, check_lexicon, check_integrity, sequence_search, merge_entries, delete_entry, rename_entry, rename_document, query_help, query, tagsets, app_guide, guidelines, run_code, code_help.
 
 A plan that sets edits_text offers those tools too, and its pieces' prompt reads as above but for: "deletions and text edits included" where it says "deletions included"; "confirmations, document restores, corpus-wide rules" where it says "confirmations, corpus-wide rules"; "replace_in_field, respell_all, copy_to_orthography" where it says "replace_in_field, copy_to_orthography".
+
+In every piece, set_field and link_entry also take items (`src/plaid_agent/igt/items.py`), as here:
+
+### set_field
+
+PLAN: set a field's value on words, morphemes, or sentences (the references must match the field's scope). Empty value clears it. One value on every occurrence of a form, in one call: set_field_for_form. A substitution inside every value of a field: replace_in_field.
+
+- `document` (string, required): Document id or exact name (see project_overview).
+- `refs` (array of string): Positional references, e.g. ["s3.w2", "s3.w4"]. Words are sN.wN, morphemes sN.wN.mN, sentences sN.
+- `field` (string)
+- `value` (string)
+- `values` (object of string): Field name to value, in place of field and value, each set on the refs of its scope. A value of its own on each ref: items.
+- `items` (array of object {ref: string (required), field: string, value: string}): Many values in one call, in place of refs and value, e.g. [{"ref": "s1.w2", "field": "Gloss", "value": "dog"}]. A field given beside items is that of every item naming none. Each is staged or refused on its own. At most 100.
+
+### link_entry
+
+PLAN: link words or morphemes to a lexicon entry, by the entry's form ("ама", or "ама#2" for homograph 2), or entry_id (also the id returned by create_entry). Replaces the item's own link; a multi-word expression the word belongs to is separate and stays (link_phrase / unlink_phrase for those). For a word whose analysis this plan changes (set_analysis, set_analysis_for_form), sN.wN.mN is a morpheme of the PLANNED analysis, so segmenting a word and linking its new morphemes is one plan. If that analysis changes again, a link to a morpheme it no longer has at that place is dropped.
+
+- `document` (string, required): Document id or exact name (see project_overview).
+- `refs` (array of string): Positional references, e.g. ["s3.w2", "s3.w4"]. Words are sN.wN, morphemes sN.wN.mN, sentences sN.
+- `entry_form` (string)
+- `lexicon` (string)
+- `entry_id` (string)
+- `entry_gloss` (string): Singles out one of several entries with the same form: a value one of its fields has (e.g. its gloss).
+- `items` (array of object {ref: string (required), entry_form: string, entry_id: string, entry_gloss: string}): Many links in one call, in place of refs, e.g. [{"ref": "s1.w2.m1", "entry_form": "ka#2"}]: each item names its entry as a call does. Each is staged or refused on its own. At most 100.
 
 
 ## The final context

@@ -22,6 +22,10 @@ from plaid_agent.igt import job as igt_job, jobcard, targets as tg, toolkit
 from plaid_agent.igt.job import JobWorkspace
 from plaid_agent.igt.project import load_project
 
+# Each test runs as scripted and with set_field and link_entry in the items form (BRIEF SP item 2).
+pytestmark = pytest.mark.usefixtures('both_forms')
+
+
 J = 'JON'
 
 

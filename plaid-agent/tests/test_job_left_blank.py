@@ -13,6 +13,11 @@ from plaid_agent.core import job as core_job
 from plaid_agent.core.job import run_job
 from plaid_agent.core.limits import JOB_ANALYSIS_MAX_CHARS
 from plaid_agent.igt.job import RECORD_FORM
+import pytest
+
+# Each test runs as scripted and with set_field and link_entry in the items form (BRIEF SP item 2).
+pytestmark = pytest.mark.usefixtures('both_forms')
+
 
 J = 'JL'
 

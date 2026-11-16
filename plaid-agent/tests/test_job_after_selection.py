@@ -14,6 +14,11 @@ from job_fixtures import JobClient, Model, call, document, reply, runner, start,
 from fixtures import MGLOSS
 from plaid_agent.core.job import run_job
 from plaid_agent.igt import job as igt_job
+import pytest
+
+# Each test runs as scripted and with set_field and link_entry in the items form (BRIEF SP item 2).
+pytestmark = pytest.mark.usefixtures('both_forms')
+
 
 J = 'JAS'
 OLD, NEW = 'be.3ᴀᴜɢII', 'be.3AUGII'

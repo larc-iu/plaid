@@ -15,6 +15,10 @@ from plaid_agent.core.job import run_job
 from plaid_agent.core.prompt import JOB_PLAN_NOW
 from plaid_agent.igt import job as igt_job
 
+# Each test runs as scripted and with set_field and link_entry in the items form (BRIEF SP item 2).
+pytestmark = pytest.mark.usefixtures('both_forms')
+
+
 
 @pytest.fixture(autouse=True)
 def _every_tool(monkeypatch):

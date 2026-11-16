@@ -17,6 +17,10 @@ from plaid_agent.igt import job as igt_job, targets as tg
 from plaid_agent.igt.job import sentence_targets, translation_state, word_state
 from plaid_agent.igt.project import load_project, parse_document
 
+# Each test runs as scripted and with set_field and link_entry in the items form (BRIEF SP item 2).
+pytestmark = pytest.mark.usefixtures('both_forms')
+
+
 J = 'JTG'
 # s1: "ka" blank, "pata" a person's two morphemes (pa 'x', ta with no
 # gloss), "sa" with no analysis but a person's Role. s2: "mo" blank.

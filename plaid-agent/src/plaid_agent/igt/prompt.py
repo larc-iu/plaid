@@ -442,6 +442,24 @@ PLAN_CODE = shared.code_section(
     sees='documents(), load(document), query(q) and lexicon(), and stages nothing.')
 
 
+#: The line a job's piece is told that set_field and link_entry take many
+#: items in one call (BRIEF SP item 2), after its set_field line: with
+#: link_entry where the piece is offered it, else set_field's alone.
+JOB_ITEMS_LINE = ('- set_field and link_entry take items: many values or many links in one call, each staged or '
+                  'refused on its own.')
+JOB_ITEMS_VALUES_LINE = '- set_field takes items: many values in one call, each staged or refused on its own.'
+
+
+def with_items_line(out: str, project: IgtProject, sentences: bool, targets) -> str:
+    """``out`` with :data:`JOB_ITEMS_LINE` (or the values' alone, for a
+    piece in sentences not offered link_entry) after its set_field line."""
+    from .toolkit import sentences_piece_tools
+    linking = not sentences or 'link_entry' in sentences_piece_tools(targets, project)
+    line = JOB_ITEMS_LINE if linking else JOB_ITEMS_VALUES_LINE
+    said = next(x for x in (_ONE_VALUE, _ONE_VALUE_FIELDS) if x in out)
+    return out.replace(said, said + '\n' + line, 1)
+
+
 #: What a piece of a job whose plan does not edit the text is not told: the
 #: tools it is not offered (toolkit.TEXT_TOOLS) and what they would write.
 NO_TEXT_EDITS = (('deletions and text edits included', 'deletions included'),
@@ -482,6 +500,7 @@ def build_job_prompt(project: IgtProject, sentences: bool = False, edits_text: b
             # A piece in sentences is told of no project-wide tool at all.
             assert said in out or sentences, said
             out = out.replace(said, instead)
+    out = with_items_line(out, project, sentences, targets)
     # A piece in sentences is not offered run_code (toolkit.sentences_piece_tools).
     return out + JOB_CODE + JOB_TABLES if sandbox.available() is None and not sentences else out
 
