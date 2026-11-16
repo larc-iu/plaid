@@ -483,20 +483,41 @@ def itemized(name, args):
 def as_items(monkeypatch):
     """Every set_field and link_entry call a scripted model makes reaches the
     job in the items form (:func:`itemized`), so a test of the single form
-    runs again through the items form. Returns the count of calls rewritten
-    (``n``)."""
+    runs again through the items form, adjacent calls of one reply to the
+    same tool merged into one call of several items. Returns the counts of
+    calls rewritten (``n``) and merged into an earlier one (``merged``)."""
+    from plaid_agent.core.limits import JOB_ITEMS_MAX
     from plaid_agent.core import agent
     real = agent._complete
     rewritten = {'n': 0}
 
     def complete(cfg, kwargs, *a, **kw):
         resp = real(cfg, kwargs, *a, **kw)
-        for c in (getattr(resp.choices[0].message, 'tool_calls', None) or []) if resp.choices else []:
+        msg = resp.choices[0].message if resp.choices else None
+        calls = list(getattr(msg, 'tool_calls', None) or [])
+        merged = []
+        for c in calls:
             args = json.loads(c.function.arguments or '{}')
             items = itemized(c.function.name, args)
             if items is not args:
                 rewritten['n'] += 1
                 c.function.arguments = json.dumps(items, ensure_ascii=False)
+            # Adjacent calls of one reply to the same tool with the same
+            # other arguments go as ONE call of their items together, so
+            # items meet each other in a call (REV-SP-2).
+            last = merged[-1] if merged else None
+            if last is not None and 'items' in items and last.function.name == c.function.name:
+                held = json.loads(last.function.arguments)
+                same = {k: v for k, v in held.items() if k != 'items'} == {k: v for k, v in items.items()
+                                                                           if k != 'items'}
+                if same and 'items' in held and len(held['items']) + len(items['items']) <= JOB_ITEMS_MAX:
+                    held['items'] += items['items']
+                    last.function.arguments = json.dumps(held, ensure_ascii=False)
+                    rewritten['merged'] = rewritten.get('merged', 0) + 1
+                    continue
+            merged.append(c)
+        if msg is not None and len(merged) != len(calls):
+            msg.tool_calls = merged
         return resp
     monkeypatch.setattr(agent, '_complete', complete)
     # A test that calls a piece's tools itself, as the model would.
