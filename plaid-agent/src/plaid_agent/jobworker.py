@@ -105,6 +105,18 @@ def answered(cfg: ModelConfig, wait: bool = True) -> bool:
             time.sleep(JOB_MODEL_RETRY_S)
 
 
+def _ceiling(text: str) -> int:
+    """``--piece-output-tokens``: 0 (none) or a positive number (REV-SP-6)."""
+    try:
+        n = int(text)
+    except ValueError:
+        n = -1
+    if n < 0:
+        raise argparse.ArgumentTypeError(f'--piece-output-tokens takes 0 (none) or a positive number of tokens, '
+                                         f'not {text}')
+    return n
+
+
 def parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog='plaid-job-worker', description='Run the unattended assistant jobs of a '
                                                                      'Plaid server, one at a time.')
@@ -116,7 +128,7 @@ def parser() -> argparse.ArgumentParser:
                    help='How many tokens the model can be sent')
     p.add_argument('--max-output-tokens', dest='max_tokens', type=int, default=None, metavar='N',
                    help='The most one model call may write, its reasoning included')
-    p.add_argument('--piece-output-tokens', type=int, default=JOB_PIECE_OUTPUT_TOKENS, metavar='N',
+    p.add_argument('--piece-output-tokens', type=_ceiling, default=JOB_PIECE_OUTPUT_TOKENS, metavar='N',
                    help='A ceiling below --max-output-tokens on what one model call of a job\'s piece may write, '
                         'its reasoning included (default 0: none, the piece writes up to the model\'s own cap)')
     add_timeout_argument(p)

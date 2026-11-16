@@ -244,3 +244,11 @@ def test_a_piece_whose_first_call_is_cut_keeps_what_it_was_asked_in_its_trace(mo
         first = rounds[0]
         assert first['n'] == 1 and first.get('cut_at_tokens') == MODEL_CAP, (folder, first)
         assert 'Your piece: s' in (first.get('asked') or ''), (folder, first)
+
+
+def test_a_negative_ceiling_is_refused_at_startup(capsys):
+    """REV-SP-6: -1 was sent as max_tokens and every piece failed."""
+    import pytest
+    with pytest.raises(SystemExit):
+        jobworker.parser().parse_args(['--url', 'u', '--model', 'm', '--piece-output-tokens', '-1'])
+    assert '--piece-output-tokens takes 0 (none) or a positive number of tokens, not -1' in capsys.readouterr().err
