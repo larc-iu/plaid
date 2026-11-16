@@ -1369,7 +1369,10 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
         except Exception as e:
             if not too_long(e) or shrink is None:
                 raise
-            learn_window(cfg.model, e, _sent_tokens(cfg.model, kwargs, cfg.max_tokens), cfg.context_window)
+            # Measured with the limit the call was sent with: a job piece's
+            # ceiling, else the model's cap (REV-SP-7).
+            learn_window(cfg.model, e, _sent_tokens(cfg.model, kwargs, kwargs.get('max_tokens') or cfg.max_tokens),
+                         cfg.context_window)
             smaller = shrink(history, new)
             if smaller is None:
                 raise
@@ -1415,6 +1418,13 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
                 thought = clean_reasoning(keeper.thinking) if keeper is not None else None
                 if getattr(e, 'usage', None) is not None:
                     spend.add_usage(e.usage)
+                else:
+                    # Reported by no provider: the prompt by the tokenizer,
+                    # and the limit it reached as what it wrote (REV-SP-8).
+                    try:
+                        spend.add_counted(_sent_tokens(cfg.model, kwargs) or 0, cut_at)
+                    except Exception:  # noqa: BLE001 - a count is never a reason to lose the piece
+                        traceback.print_exc()
                 if keeper is not None:
                     kept = new_round(rounds + 1, cfg.model, asked if rounds == 0 else None)
                     kept['cut_at_tokens'] = cut_at

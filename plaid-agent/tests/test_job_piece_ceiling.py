@@ -252,3 +252,51 @@ def test_a_negative_ceiling_is_refused_at_startup(capsys):
     with pytest.raises(SystemExit):
         jobworker.parser().parse_args(['--url', 'u', '--model', 'm', '--piece-output-tokens', '-1'])
     assert '--piece-output-tokens takes 0 (none) or a positive number of tokens, not -1' in capsys.readouterr().err
+
+
+# --- what a piece's calls count (REV-SP-7, -8) -----------------------------------------------------
+
+def _piece_turn(monkeypatch, script, ceiling=None, ws=None):
+    from types import SimpleNamespace
+    from plaid_agent.core.job import Pace
+    monkeypatch.setattr(agent.litellm, 'completion', script)
+    tracer = Tracer(kind=lambda n: READ, describe=lambda n, a: 'Looked', progress=lambda n, a: 'Working…')
+    ws = ws or SimpleNamespace(ops=[{'kind': 'x'}])
+    pace = Pace('fake/m', count=lambda x: 1, output_tokens=ceiling, asks_again=True)
+    return run_turn(ModelConfig(model='fake/m', stream=False), Toolkit(tools_for=lambda w: [],
+                                                                       call_tool=lambda w, n, a: 'ok', tracer=tracer),
+                    ws, 'system', [{'role': 'user', 'content': 'Your piece: s1.'}], pace=pace)
+
+
+def test_a_cut_call_the_provider_reports_nothing_for_counts_the_limit_it_reached(monkeypatch):
+    """REV-SP-8: the ask-again path added the cut call's usage only when the
+    provider reported it. Now one it reports nothing for counts the prompt
+    by the tokenizer and the limit it reached as written."""
+    from types import SimpleNamespace
+    monkeypatch.setattr(agent, '_sent_tokens', lambda model, kwargs, max_tokens=None: 100 + (max_tokens or 0))
+    answers = iter([reply('...', finish='length'),
+                    SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content='Done.', tool_calls=None),
+                                                             finish_reason='stop')],
+                                    usage=SimpleNamespace(prompt_tokens=10, completion_tokens=5))])
+    result = _piece_turn(monkeypatch, lambda **kw: next(answers))
+    assert result.usage['total'] == {'sent': 110, 'received': MODEL_CAP + 5, 'calls': 2}
+
+
+def test_a_refusal_as_too_long_is_measured_with_the_limit_the_call_was_sent_with(monkeypatch):
+    """REV-SP-7: a piece's call under a ceiling was measured with the
+    model's own cap when the provider refused it as too long."""
+    import litellm
+    from types import SimpleNamespace
+    seen = []
+    monkeypatch.setattr(agent, '_sent_tokens', lambda model, kwargs, max_tokens=None: max_tokens)
+    monkeypatch.setattr(agent, 'learn_window', lambda model, e, sent=None, stated=None: seen.append(sent))
+    calls = {'n': 0}
+
+    def script(**kw):
+        calls['n'] += 1
+        if calls['n'] == 1:
+            raise litellm.ContextWindowExceededError('too long', model='fake/m', llm_provider='openai')
+        return reply('Done.')
+    ws = SimpleNamespace(ops=[{'kind': 'x'}], shrink=lambda history, new: list(history))
+    _piece_turn(monkeypatch, script, ceiling=CEILING, ws=ws)
+    assert seen == [CEILING]
