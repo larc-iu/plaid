@@ -36,7 +36,7 @@ CASES = [
     {'peoples_values_changed': 2, 'words_added': 1, 'tokens_changed': 1, 'text_changes': 1},
     {'peoples_values_changed': 5, 'text_changes': 2},
     {'peoples_values_changed': None, 'words_added': None, 'text_changes': None},
-    # Documents the job's first step did not open (RPF3 round 3).
+    # Documents the job's first step did not read through (RPF3 round 3).
     {'documents_not_read_through': 1},
     {'documents_not_read_through': 42, 'peoples_values_changed': 33},
 ]
@@ -44,10 +44,9 @@ CASES = [
 
 def test_the_top_line_says_the_documents_not_read_through():
     assert notice({'documents_not_read_through': 1}) == (
-        "1 document was not read through: the job's first step worked on the whole selection and did not open it.")
+        "1 document was not read through by the job's first step, which worked on the whole selection.")
     assert notice({'documents_not_read_through': 2}) == (
-        "2 documents were not read through: the job's first step worked on the whole selection and did not open "
-        'them.')
+        "2 documents were not read through by the job's first step, which worked on the whole selection.")
 
 
 @pytest.fixture(scope='module')

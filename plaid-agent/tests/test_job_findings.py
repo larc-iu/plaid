@@ -58,8 +58,8 @@ def test_rp4_a_selection_that_fills_nothing_works_once_and_keeps_its_whole_repor
     assert report['plan']['fallback'] == [], 'no document worked in smaller pieces'
     assert report.get('findings_pieces') in (None, 1)
     # The top line says the step over the whole selection opened neither.
-    assert report['notice'] == ("2 documents were not read through: the job's first step worked on the whole "
-                                'selection and did not open them.'), report['notice']
+    assert report['notice'] == ("2 documents were not read through by the job's first step, which worked on the "
+                                'whole selection.'), report['notice']
     assert report['summary'] is None or report['summary'] == 'The job wrote no change and proposed none.'
 
 

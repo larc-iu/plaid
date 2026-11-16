@@ -314,7 +314,7 @@ def summary(job: Dict[str, Any], note_chars: Optional[int] = JOB_SUMMARY_NOTE_CH
     if top:
         # The worker's own top line: what the job changed of people's work
         # and of the text (RPF-A4, the owner's R4), and the documents its
-        # first step did not open.
+        # first step did not read through.
         lines.append(f'The report\'s top line, the worker\'s own: "{top}"')
     planned = plan_line(report)
     if planned:

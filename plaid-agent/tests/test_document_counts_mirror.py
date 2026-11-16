@@ -79,8 +79,8 @@ def test_read_job_says_the_documents_not_read_through_in_the_top_line():
     from plaid_agent.igt.jobread import summary
     core_report = {**CASES[1], 'state': 'cancelled'}
     lines = summary({'id': 'j', 'state': 'cancelled', 'instructions': 'x', 'report': core_report})
-    assert any("2 documents were not read through: the job's first step worked on the whole selection and did "
-               'not open them.' in line for line in lines), lines
+    assert any("2 documents were not read through by the job's first step, which worked on the whole selection."
+               in line for line in lines), lines
 
 
 def test_documents_with_no_matching_sentence_are_counted_apart_from_done(page):

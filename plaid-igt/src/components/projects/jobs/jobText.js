@@ -182,13 +182,14 @@ export const noticeText = (totals) => {
   else if (t.textChanges) {
     out.push(`Text: ${countOf(t.textChanges, 'text edit')}, no word added, changed or removed.`);
   }
-  // Documents the job's first step did not open, which nothing walked after
-  // it (RPF3 round 3).
+  // Documents the job's first step did not read through, which nothing
+  // walked after it (RPF3 round 3). Never "did not open": the step may have
+  // read part of one, or written in it (REV-RPF3B-1).
   const unread = t.documentsNotReadThrough || 0;
   if (unread) {
     out.push(
-      `${countOf(unread, 'document was', 'documents were')} not read through: the job's first step ` +
-        `worked on the whole selection and did not open ${unread === 1 ? 'it' : 'them'}.`,
+      `${countOf(unread, 'document was', 'documents were')} not read through by the job's first ` +
+        'step, which worked on the whole selection.',
     );
   }
   return out.join(' ') || null;

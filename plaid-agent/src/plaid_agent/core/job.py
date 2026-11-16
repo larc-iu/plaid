@@ -975,11 +975,13 @@ def notice(totals: Dict[str, Any], nouns: Optional[Tuple[str, str]] = None) -> O
                    'removed.')
     unread = totals.get('documents_not_read_through') or 0
     if unread:
-        # Documents the job's step over the whole selection did not open, which
-        # nothing walked after it (RPF3 round 3): said where a person will
-        # not miss it, for every kind of plan.
-        out.append(f'{n(unread, "document was", "documents were")} not read through: the job\'s first step worked '
-                   f'on the whole selection and did not open {"it" if unread == 1 else "them"}.')
+        # Documents the job's step over the whole selection did not read
+        # through, which nothing walked after it (RPF3 round 3): said where a
+        # person will not miss it, for every kind of plan. Never "did not
+        # open": the step may have read part of one, or written in it
+        # (REV-RPF3B-1).
+        out.append(f'{n(unread, "document was", "documents were")} not read through by the job\'s first step, which '
+                   'worked on the whole selection.')
     return ' '.join(out) or None
 
 
