@@ -224,7 +224,7 @@ test('a job that edits the text and writes over a person: its line, its counts i
   const dialog = page.getByRole('dialog');
   await expect(dialog.getByText('Comparing…')).toHaveCount(0, { timeout: 20_000 });
   await expect(dialog.getByTestId('undo-line')).toHaveText(
-    '2 values removed, 1 value put back as it was and the text with its words and sentences',
+    '2 values removed, 1 value put back as it was and the text with its words and sentences put back as it was',
   );
   await dialog.getByRole('button', { name: 'Cancel' }).click();
   await expect(dialog).toHaveCount(0);
@@ -491,4 +491,63 @@ test('a job that fills nothing shows its findings first, with Copy, and offers n
   await expect(page.getByTestId('job-summary')).toHaveText(
     'The job wrote no change and proposed none.',
   );
+});
+
+// SF: a plan in sentences limited by a search. The planning's search for the
+// word kai matches s1 and s3 of Story S1 and nothing in Story S2: one piece,
+// given those two sentences; Story S2 ends with no model call and says so.
+test('a plan limited by a search says it on the Plan line, the documents and the work list', async ({
+  page,
+}) => {
+  test.setTimeout(240_000);
+  skipUnlessAgent(test);
+  const docA = await addDocument('Story S1', ['kai pele', 'lo mo', 'kai tuna']);
+  const docB = await addDocument('Story S2', ['pele lo']);
+  const job = await client.jobs.create(projectId, {
+    app: 'igt',
+    instructions: 'Gloss kai as go wherever it occurs.',
+    documents: [docA, docB],
+  });
+  const ran = await runScriptedJobWorker({
+    token: readToken().token,
+    script: [
+      {
+        calls: [
+          {
+            name: 'plan_work',
+            arguments: { pieces: 'sentences', fills: ['Gloss'], search: { pattern: 'kai' } },
+          },
+        ],
+      },
+      { content: 'Planned.' },
+      {
+        calls: [
+          set('Story S1', 's1.w1.m1', 'Gloss', 'go'),
+          set('Story S1', 's3.w1.m1', 'Gloss', 'go'),
+        ],
+      },
+      { content: 'Glossed kai twice.' },
+      { content: 'The job glossed kai.' },
+    ],
+  });
+  expect(ran.code, ran.log).toBe(0);
+  await seedAuth(page);
+  await openJob(page, job);
+  await expect(page.getByText(/^Worked in stretches of sentences, only the sentences/)).toHaveText(
+    'Worked in stretches of sentences, only the sentences matching word form "kai": ' +
+      '2 sentences in 1 document. Fills: Gloss.',
+  );
+  const rowA = page.getByRole('row', { name: /Story S1/ });
+  await expect(rowA).toContainText('Done');
+  await expect(rowA).toContainText('2 of 3, 1 not matching the plan’s search');
+  const rowB = page.getByRole('row', { name: /Story S2/ });
+  await expect(rowB).toContainText('No matching sentence');
+  await expect(rowB).toContainText('0 of 1, none match the plan’s search');
+  const totals = await totalsOf(page);
+  expect(totals['Documents done']).toBe('1');
+  expect(totals['Documents with no matching sentence']).toBe('1');
+  await expect(page.getByTestId('job-notice')).toHaveCount(0);
+  await expect(
+    page.getByRole('link', { name: 'Story S1 s1, s3, matching the plan’s search' }),
+  ).toBeVisible();
 });
