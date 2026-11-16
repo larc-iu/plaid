@@ -153,6 +153,29 @@ def test_a_job_refuses_a_value_on_an_existing_word_and_lists_it(monkeypatch):
     assert [r['code'] for r in refused] == ['not-added'] and refused[0]['sentence'] == 's1'
 
 
+def test_the_apply_rule_refuses_a_value_on_an_existing_word_that_staging_let_through(monkeypatch):
+    """The staging guard is one line of defence. Where a job's ops are
+    applied, under the document's lock, the same rule holds: a value of a
+    setup target on a word the job did not add is listed as refused
+    (``not-added``) and never written, whatever path staged it (RPF-INT 4)."""
+    client = JobClient({'d1': document('d1', 'Story', [{'words': ['sc', 'tqmc']}])})
+    job = start(client, 'Insert ∅ before each verb with no subject and give it the Gloss "he".', id=J,
+                plan='document', edits_text=True, fills=(GLOSS,), setup=_setup())
+    monkeypatch.setattr(JobWorkspace, 'refuse_not_added', lambda self, op: None)
+
+    def answer(asked, n, kwargs):
+        if 'Your piece' not in asked or n > 1:
+            return reply('Glossed tqmc.')
+        return reply(calls=[call(1, 'set_field', {'document': 'Story', 'refs': ['s1.w2'], 'values': {'Gloss': 'x'}})])
+    use(monkeypatch, Model(answer))
+    finished = run_job(job, runner(job))
+    assert finished['state'] == 'done', finished.get('reason')
+    assert not [c for c in client.calls if c[0].startswith('spans')], 'nothing written on an existing word'
+    refused = finished['report']['documents'][0]['refused']
+    assert [(r['code'], r['sentence']) for r in refused] == [('not-added', 's1')], refused
+    assert finished['report']['totals']['changes'] == 0
+
+
 def test_the_words_a_write_added_are_kept_and_a_later_piece_may_fill_them(monkeypatch):
     """What one write added (by id, under the lock) is kept among the job's
     rows, so a later worker reads it back."""

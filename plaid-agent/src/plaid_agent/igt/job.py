@@ -32,7 +32,7 @@ import unicodedata
 import uuid
 from collections import Counter
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from plaid_client import DocumentLockLost, PlaidAPIError
 from plaid_client.ids import uuid7
@@ -1035,6 +1035,45 @@ class Stretch:
         return not self.words and not self.fields
 
 
+def not_added(op: Dict[str, Any], only_new: Optional[Tuple[set, set]], only_targets: set,
+              docs: Iterable[Any]) -> Optional[Tuple[Optional[str]]]:
+    """THE rule of a job set up to fill only the words it adds (RPF-A7, the
+    owner's R3), asked where an op is staged (``JobWorkspace.guard_op``) and
+    again where the job's ops are applied (``IgtRunner.recheck``): ``(the
+    op's sentence id,)`` when ``op`` sets a setup target (``only_targets``,
+    :func:`targets.targets_of`) on a word, a morpheme of it or a sentence the
+    job did not add, else None. A word the job added is one its own text
+    edits made, by id (``only_new``: ``(words, sentences)``), or one a retype
+    of the same write makes (a planned word with no id yet), never by its
+    form. Text edits are not values, and pass. ``docs``: the documents the
+    op's token is looked up in."""
+    if only_new is None or not (tg.targets_of(op) & only_targets):
+        return None
+    from .jobapply import _found, token_of
+    from .retyped import PLANNED
+    words, sentences = only_new
+    planned = op.get(PLANNED)
+    if planned is not None:
+        if planned.get('word_id') is None:
+            return None
+        sid, ok = planned.get('sentence_id'), planned.get('word_id') in words
+    else:
+        token = op.get('analysis_word_id') or op.get('word_id') or token_of(op)
+        hit = next((h for d in docs for h in [_found(d, token)] if h is not None), None)
+        if hit is None:
+            return None
+        s, w, _m = hit
+        sid = s.id if s is not None else None
+        ok = (w.id in words) if w is not None else (sid in sentences)
+    return None if ok else (sid,)
+
+
+def not_added_text(op: Dict[str, Any]) -> str:
+    """What a value refused by :func:`not_added` says, to the piece and in
+    the report's refused list."""
+    return f'{op.get("label") or op.get("kind")}: this job fills only the words it adds, and this is not one of them.'
+
+
 class JobWorkspace(Workspace):
     """The igt workspace of a job's model. A piece of the job (``mode``
     ``piece``) stages as the assistant stages, with every guard of the
@@ -1115,29 +1154,10 @@ class JobWorkspace(Workspace):
         own text edits made, by id (``only_new``), or one the retype staged
         in this piece makes (a planned word with no id yet), never by its
         form. Text edits are not values, and pass."""
-        if self.only_new is None or not (tg.targets_of(op) & self.only_targets):
-            return
-        from .jobapply import _found, token_of
-        from .retyped import PLANNED
-        words, sentences = self.only_new
-        planned = op.get(PLANNED)
-        if planned is not None:
-            if planned.get('word_id') is None:
-                return
-            sid, unit = planned.get('sentence_id'), planned.get('word_id')
-            ok = unit in words
-        else:
-            token = op.get('analysis_word_id') or op.get('word_id') or token_of(op)
-            hit = next((h for d in self._docs.values() for h in [_found(d, token)] if h is not None), None)
-            if hit is None:
-                return
-            s, w, _m = hit
-            sid = s.id if s is not None else None
-            ok = (w.id in words) if w is not None else (sid in sentences)
-        if not ok:
-            raise ToolError(f'{op.get("label") or op.get("kind")}: this job fills only the words it adds, and this '
-                            'is not one of them.', kind='not-allowed', code=NOT_ADDED,
-                            advice='Fill only the words this job adds.', sentence_id=sid)
+        out = not_added(op, self.only_new, self.only_targets, self._docs.values())
+        if out is not None:
+            raise ToolError(not_added_text(op), kind='not-allowed', code=NOT_ADDED,
+                            advice='Fill only the words this job adds.', sentence_id=out[0])
 
     # What a staging tool says back, and the line every result ends with,
     # worded for a job: nothing waits for anyone, what is staged is applied
@@ -3728,12 +3748,25 @@ class IgtRunner:
             if s is None or ws.sentence_print(fresh, s) != p:
                 changed.add(sid)
         live = []
+        only = self.only_new(project)
+        only_targets = set(self.job_setup(project).ids) if only is not None else set()
+        refused = []
         for op in ops:
             s = jobapply.sentence_of(op, st.doc) if st.doc is not None else None
             if s is not None and s.id in changed:
                 counts['changed'] += 1
                 continue
+            # A job set up to fill only the words it adds: the rule holds
+            # here too, whatever path staged the op (RPF-INT 4). Listed as
+            # refused, never written.
+            out = not_added(op, only, only_targets, [fresh, *ws._docs.values()])
+            if out is not None:
+                ws.leave_it(not_added_text(op), out[0], code=NOT_ADDED)
+                refused.append({'sentence_id': out[0], 'what': not_added_text(op), 'code': NOT_ADDED})
+                continue
             live.append(op)
+        if refused:
+            self.record_refusals(ws, fresh.id, refused)
         rule = jobapply.Rule(fresh, project, maintainer=lambda: self.starter_maintains(ws, project),
                              edits_text=self.edits_text())
 
@@ -3942,13 +3975,14 @@ class IgtRunner:
             self.job.add_decisions(rows)
         kept.update(f'{key} {i:02d}' for i, _ in keep)
 
-    def record_refusals(self, ws: JobWorkspace, document_id: Optional[str]) -> None:
-        """Keep what the piece's refusals left (``ws.left_by_refusal``) among
-        the job's decisions, each once, by the document holding its sentence
-        (the piece's, when it names none), so the report lists it
-        (``refused``, REV-DAY-SURFACE point 2)."""
+    def record_refusals(self, ws: JobWorkspace, document_id: Optional[str],
+                        entries: Optional[List[Dict[str, Any]]] = None) -> None:
+        """Keep what the piece's refusals left (``ws.left_by_refusal``, or
+        ``entries`` of the same shape) among the job's decisions, each once,
+        by the document holding its sentence (the piece's, when it names
+        none), so the report lists it (``refused``, REV-DAY-SURFACE point 2)."""
         rows = []
-        for r in self.refused_of(ws, document_id):
+        for r in self.refused_of(ws, document_id, entries):
             text = canonical(r)
             key = analysis_key(text)
             rows.append({'form': REFUSED_FORM + key, 'key': key, 'analysis': text, 'count': 1,
@@ -3957,12 +3991,14 @@ class IgtRunner:
             self.job.add_decisions(rows)
 
     @staticmethod
-    def refused_of(ws: JobWorkspace, document_id: Optional[str]) -> List[Dict[str, Any]]:
-        """What the piece's refusals left, each ``{document, sentence_id,
-        sentence, what, code}``, by the document holding its sentence (the
-        piece's, when it names none)."""
+    def refused_of(ws: JobWorkspace, document_id: Optional[str],
+                   entries: Optional[List[Dict[str, Any]]] = None) -> List[Dict[str, Any]]:
+        """What the piece's refusals left (``entries``, else
+        ``ws.left_by_refusal``), each ``{document, sentence_id, sentence,
+        what, code}``, by the document holding its sentence (the piece's,
+        when it names none)."""
         out = []
-        for e in ws.left_by_refusal:
+        for e in (ws.left_by_refusal if entries is None else entries):
             d, where = document_id, None
             for doc in ws._docs.values():
                 s = doc.find(e['sentence_id']) if e.get('sentence_id') else None

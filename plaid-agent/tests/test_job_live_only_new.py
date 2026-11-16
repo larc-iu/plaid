@@ -65,6 +65,49 @@ def test_rp6_a_job_that_fills_only_the_words_it_adds_fills_the_inserted_word_alo
         s.delete()
 
 
+def test_the_apply_rule_refuses_on_a_real_core_what_staging_let_through(monkeypatch):
+    """RPF-INT 4: with the staging guard taken away (as a path that staged
+    without it would), the job's write under the document's lock still
+    refuses the Gloss on an existing word, lists it as ``not-added``, and
+    writes the inserted word's alone."""
+    from plaid_client import PlaidClient
+    from plaid_agent.igt.job import JobWorkspace
+    monkeypatch.setattr(JobWorkspace, 'refuse_not_added', lambda self, op: None)
+    admin = _admin()
+    _email, writer, s = _seeded(admin, 'only-new-apply', [{'words': ['sc', 'tqmc']}, {'words': ['kx', 'naope']}])
+    try:
+        def answer(asked, n, kwargs):
+            if 'Your piece: the whole document' not in asked or n > 1:
+                return reply('Inserted the zero subject and glossed it.')
+            return reply(calls=[
+                call(1, 'retype_sentence', {'document': 'Alpha', 'ref': 's1', 'text': 'sc ∅ tqmc.'}),
+                call(2, 'set_field', {'document': 'Alpha', 'refs': ['s1.w2 "∅"'], 'field': 'Gloss', 'value': 'he'}),
+                call(3, 'set_field', {'document': 'Alpha', 'refs': ['s2.w2'], 'field': 'Gloss', 'value': 'go'})])
+        use(monkeypatch, Model(answer))
+        made = writer.jobs.create(s.project_id, 'igt', 'Insert a zero subject before each verb with none, and give '
+                                  'it the Gloss "he".',
+                                  setup={'fills': [{'id': s.ids[GLOSS], 'name': 'Gloss'}], 'text': True,
+                                         'onlynew': True})
+        claimed = admin.jobs.claim(WORKER, 'fake/m', ['igt'])
+        assert claimed and claimed['job']['id'] == made['id']
+        admin.jobs.add_decisions(made['id'], WORKER, [plan_row('document', fills=(GLOSS,), ids=s.ids)])
+        offset = {'s': 3600.0}
+
+        def wait(sec):
+            offset['s'] += sec
+        job = Job(admin, claimed, WORKER, client_for=lambda token: PlaidClient(core_url(), token), model='fake/m',
+                  sleep=wait, now=lambda: time.time() + offset['s'])
+        finished = run_job(job, IgtRunner(job, ModelConfig(model='fake/m', stream=False, max_steps=1000),
+                                          count=count_chars, write_summary=False))
+        assert finished['state'] == 'done', (finished.get('reason'), job.status.get('message'))
+        words = _all_glosses(admin, s)
+        assert words == [('sc', None), ('∅', 'he'), ('tqmc', None), ('kx', None), ('naope', None)], words
+        refused = finished['report']['documents'][0].get('refused') or []
+        assert [(r['sentence'], r['code']) for r in refused] == [('s2', 'not-added')], refused
+    finally:
+        s.delete()
+
+
 def _all_glosses(admin, s):
     """Every word of the document with its Gloss, in order."""
     from fixtures import WORD_LAYER
