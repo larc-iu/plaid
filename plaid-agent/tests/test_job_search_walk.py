@@ -270,10 +270,17 @@ def test_a_matched_sentence_a_person_splits_has_both_halves_taken(monkeypatch):
     use(monkeypatch, Model(planned(_renaming, RENAME)))
     assert r.plan(job)['matched'] == {'d1': ['d1-s1', 'd1-s2']}
     client._holder('d1')['documents']['d1'] = split()
-    model = use(monkeypatch, Model(lambda a, k, kw: reply('Looked at it.')))
+    lines = []
+
+    def look(a, k, kw):
+        lines.append(job.status.get('message'))
+        return reply('Looked at it.')
+    model = use(monkeypatch, Model(look))
     finished = run_job(job, r)
     taken = [_your_piece(a).split('.')[0] for a in _pieces(model)]
     assert taken == ['Your piece: s1, s2, s3'], taken
+    # REV-SF2-3: the total is counted as the positions are, never past them.
+    assert lines[0] == 'Matching sentences 1 to 3 of 3.', lines
     row = finished['report']['documents'][0]
     assert (row['targets'], row['done'], row['sentences']) == (3, 3, 4), row
 

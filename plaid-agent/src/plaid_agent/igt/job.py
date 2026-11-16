@@ -3108,7 +3108,9 @@ class IgtRunner:
         takes = self.search_takes(doc.id)
         mine = [s.id for s in doc.sentences if takes is not None and takes(s)]
         at = [before + mine.index(s.id) + 1 for s in part if s.id in mine] or [before + 1]
-        total = sum(len(v) for v in searched.values())
+        # Counted as the positions are: this document's by what the walk takes
+        # now (a split takes more), the others' as matched (REV-SF2-3).
+        total = sum(len(v) for d, v in searched.items() if d != doc.id) + len(mine)
         said = f'matching sentence {at[0]:,}' if at[0] == at[-1] else f'matching sentences {at[0]:,} to {at[-1]:,}'
         line = f'{said} of {total:,}'
         return f'{doc.name}: {line}.' if len(self.job.order) > 1 else line[0].upper() + line[1:] + '.'
