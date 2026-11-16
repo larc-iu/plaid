@@ -65,6 +65,18 @@ def test_the_setup_reads_onlynew_and_the_planner_is_told():
     assert tg.setup_of(project, {**_setup(), 'onlynew': 'yes'}).unread, 'onlynew is a boolean or absent'
 
 
+def test_a_setup_with_no_onlynew_is_read_with_no_limit_as_the_page_reads_it():
+    """Every setup made before R3, and every card without the row, has no
+    ``onlynew``: readable, with no limit, as the job page's ``readableSetup``
+    reads it. ``onlynew`` present and null is unreadable on both sides."""
+    project = load_project(FakeClient(), 'p1')
+    for setup in (_setup(only=False), {**_setup(only=False), 'onlynew': False}):
+        read = tg.setup_of(project, setup)
+        assert not read.unread and read.only_new is False and tg.readable(setup)
+        assert read.line == 'This job was set up to fill only "Gloss". It may edit the text.'
+    assert tg.setup_of(project, {**_setup(), 'onlynew': None}).unread
+
+
 # --- the guard ------------------------------------------------------------------------------------
 
 def _piece(added=(set(), set())):

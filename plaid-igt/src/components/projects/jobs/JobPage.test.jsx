@@ -546,6 +546,24 @@ describe('the job page', () => {
       'Set up to fill Word class, only on the words it adds. Text may be edited.',
     );
     await v.unmount();
+
+    // A setup with no `onlynew` (every setup made before R3, and every card
+    // without the row) has no such limit and reads as the worker reads it.
+    // `onlynew: false` reads the same. Present and null is unreadable, as there.
+    for (const onlynew of [undefined, false]) {
+      const setup = { fills: [{ id: 'L2', name: 'Word class' }], text: true };
+      if (onlynew !== undefined) setup.onlynew = onlynew;
+      v = await mount(clientOf(jobOf({ setup })));
+      expect(line(v.container).textContent).toBe('Set up to fill Word class. Text may be edited.');
+      await v.unmount();
+    }
+    v = await mount(
+      clientOf(
+        jobOf({ setup: { fills: [{ id: 'L2', name: 'Word class' }], text: true, onlynew: null } }),
+      ),
+    );
+    expect(line(v.container)).toBeNull();
+    await v.unmount();
   });
 
   it('says when planning ended with no plan and nothing was written', async () => {
