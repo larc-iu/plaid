@@ -1523,6 +1523,9 @@ describe('the job page', () => {
       'job-differs-people-differ': 'The job’s analyses differ, and so do people’s',
       'job-differs-no-majority': 'The job’s analyses differ, none by two thirds',
       changed: 'Changed after the job wrote it',
+      // A word the job was to rewrite, found verified by a person under the
+      // lock (the worker review's W-9).
+      verified: 'A person verified it after the job wrote it',
       'beside-others': 'Also holds work that is not the job’s',
       unvouched: 'Not checked',
       commented: 'Has a comment',
@@ -1543,7 +1546,7 @@ describe('the job page', () => {
     const cells = all(table, 'td').map((td) => td.textContent);
     for (const [code, words] of Object.entries(reasons)) {
       expect(cells).toContain(words);
-      expect(t).not.toContain(` ${code} `);
+      expect(cells).not.toContain(code);
     }
     expect(t).not.toContain('Changed since the job wrote it');
     expect(t).not.toContain('People analyzed it in more than one way');

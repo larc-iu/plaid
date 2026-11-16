@@ -646,6 +646,11 @@ LEFT_BY_RULE = {'people-differ': JOB_DIFFERS_PEOPLE_DIFFER, 'no-clear-majority':
 #: A word the job wrote and could not vouch for: its sentence's record holds
 #: no key for it (REV-FIX3-2).
 UNVOUCHED = 'unvouched'
+#: A word the job wrote whole and recorded that reads as recorded, of which a
+#: person has since verified a piece and changed nothing (the worker review's
+#: W-9). Not an inconsistency for that alone: harmonize lists it only when it
+#: finds it so under the lock, as a word it was to rewrite.
+VERIFIED = 'verified'
 #: A rewrite the staging refused (a guard of the tools), so nothing of the
 #: word was written (REV-J-B2 S3-2).
 REFUSED = 'refused'
@@ -696,13 +701,17 @@ def harmonize_bar(w: Word, job_id: str, recorded: Dict[str, str], commented: set
       and it now holds work that is not the job's or reads otherwise than
       recorded: someone changed it after the job wrote it. So a piece a
       person deleted or changed is never put back,
+    * ``verified``: recorded, it reads as recorded, and a person only
+      verified a piece of it since (:func:`only_verified`, W-9),
     * ``beside-others``: something on it is not this job's own unverified
-      work (:func:`job_owned`) and the job never recorded the word as wholly
-      its own: it held a person's or another producer's work when the job
-      wrote on it,
+      work (:func:`job_owned`), the job never recorded the word as wholly
+      its own, and nothing says it was written after the job: it held a
+      person's or another producer's work when the job wrote on it,
     * ``unvouched``: the job could not vouch for its own write on the word
       (its sentence's record holds no key for it, REV-J-B3 B3-2), so it
-      cannot tell whether anyone changed it, and leaves it,
+      cannot tell whether anyone changed it, and leaves it: a word wholly
+      the job's, or one whose morphemes the job made that now carry a value
+      or a link not the job's (:func:`changed_on_jobs_morphemes`, W-9),
     * ``commented``: a comment hangs on the word or a piece of it
       (``commented``, the ids the document's comments are anchored to),
     * ``in-mwe``: the word is a member of a multi-word expression, which a
@@ -711,7 +720,9 @@ def harmonize_bar(w: Word, job_id: str, recorded: Dict[str, str], commented: set
     if not any(job_piece(p, job_id) for p in pieces):
         return NOT_THE_JOBS
     if not job_owned(w, job_id):
-        return CHANGED if w.id in recorded else BESIDE_OTHERS
+        if w.id in recorded:
+            return VERIFIED if only_verified(w, job_id, recorded) else CHANGED
+        return UNVOUCHED if changed_on_jobs_morphemes(w, job_id) else BESIDE_OTHERS
     if w.id not in recorded:
         return UNVOUCHED
     if recorded[w.id] != word_key(w):
@@ -721,6 +732,28 @@ def harmonize_bar(w: Word, job_id: str, recorded: Dict[str, str], commented: set
     if any(not job_piece(link.metadata, job_id) for link in w.mwes):
         return IN_MWE
     return None
+
+
+def only_verified(w: Word, job_id: str, recorded: Dict[str, str]) -> bool:
+    """Whether ``w`` reads as the job recorded it and every piece on it is
+    the job's, some verified by a person since: a person verified what the
+    job wrote and changed nothing (W-9)."""
+    pieces = word_pieces(w)
+    return (recorded.get(w.id) == word_key(w) and all(_job_of(p) == job_id for p in pieces)
+            and all(prov_state(p) in ('machine', 'verified') for p in pieces))
+
+
+def changed_on_jobs_morphemes(w: Word, job_id: str) -> bool:
+    """Whether the job made every stored morpheme of ``w`` and a value or a
+    link on one of them is not the job's own unverified work: written there
+    after the job made the morpheme, which did not exist before (W-9). A
+    word whose morphemes someone else made, or whose other work is a word
+    field (which may have been there first), is not."""
+    stored = [m for m in w.morphemes if not m.virtual]
+    if not stored or not all(_job_of(m.metadata) == job_id for m in stored):
+        return False
+    return any(not job_piece(p, job_id) for m in stored
+               for p in [sp.metadata for sp in m.fields.values()] + ([m.link.metadata] if m.link is not None else []))
 
 
 def analysis_holds_jobs(w: Word, job_id: str) -> bool:
@@ -4469,7 +4502,9 @@ class IgtRunner:
                     why = harmonize_bar(w, job.id, recorded, commented)
                     # A word left whose analysis holds nothing of the job's
                     # (only word fields) is not the job's to list (RPF-A1).
-                    if why == NOT_THE_JOBS or (why is not None and not analysis_holds_jobs(w, job.id)):
+                    # Nor is one a person only verified (W-9): no inconsistency
+                    # for that alone.
+                    if why in (NOT_THE_JOBS, VERIFIED) or (why is not None and not analysis_holds_jobs(w, job.id)):
                         continue
                     into = mine if why is None else held.setdefault(why, {})
                     full = word_analysis(w)

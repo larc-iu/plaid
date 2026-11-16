@@ -520,3 +520,49 @@ def test_values_the_job_wrote_on_a_persons_morphemes_are_beside_others():
     client, job, out, tags = _run({'d1': [{'words': [mixed('go'), mixed('come')]}]})
     assert out['left'] == [{'form': 'ka', 'reason': 'beside-others',
                             'analyses': [{'analysis': 'ka ‘go’', 'count': 1}, {'analysis': 'ka ‘come’', 'count': 1}]}]
+
+
+#: ka 'come' as the job wrote it, its gloss since verified by a person.
+VERIFIED_GLOSS = {'form': 'ka', 'morphs': [('ka', 'come')], 'who': {'token': J, 'span': f'confirmed:{J}', 'link': J}}
+
+
+def test_a_word_a_person_only_verified_after_the_job_wrote_it_is_not_listed(monkeypatch):
+    """The worker review's W-9: the job wrote ka 'come' whole and recorded it,
+    and a person then only verified its gloss. It reads as the job recorded
+    it, and a verified value is a person's, which harmonize never rewrites:
+    not an inconsistency for that alone, so it is not listed (it was, as
+    "changed")."""
+    staged = _staged(monkeypatch)
+    client, job, out, tags = _run({'d1': [{'words': [w('ka', 'go'), w('ka', 'go'), w('ka', 'come')]}]},
+                                  after={'d1': [{'words': [w('ka', 'go'), w('ka', 'go'), VERIFIED_GLOSS]}]})
+    assert staged == [] and out['changed'] == []
+    assert out['left'] == [], out['left']
+
+
+def test_harmonize_bar_says_verified_for_a_word_a_person_only_verified():
+    from job_fixtures import JobClient, document
+    from plaid_agent.igt import job as igt_job
+    from plaid_agent.igt.project import load_project, parse_document
+    client = JobClient({'d1': document('d1', 'Story', [{'words': [w('ka', 'come'), w('ka', 'come')]}])})
+    project = load_project(client, 'p1')
+    before = parse_document(client.documents.get('d1', include_body=True), project)
+    recorded = {x.id: igt_job.word_key(x) for x in before.sentences[0].words}
+    client._holder('d1')['documents']['d1'] = document('d1', 'Story', [
+        {'words': [VERIFIED_GLOSS, {**VERIFIED_GLOSS, 'morphs': [('ka', 'walk')]}]}])
+    after = parse_document(client.documents.get('d1', include_body=True), project)
+    verified, changed = after.sentences[0].words
+    assert igt_job.harmonize_bar(verified, J, recorded, set()) == 'verified'
+    assert igt_job.harmonize_bar(changed, J, recorded, set()) == 'changed', 'verified and changed: changed'
+
+
+def test_a_word_the_job_could_not_vouch_for_that_a_person_changed_reads_unvouched(monkeypatch):
+    """W-9: the job made ka's morpheme and could not vouch for it (its record
+    holds no key for the word), and a person's gloss now sits on the job's
+    morpheme, which did not exist before the job made it, so the person
+    wrote it after. It reads unvouched, not beside-others. A person's word
+    Gloss beside the job's analysis may have been there first, and stays
+    beside-others (test_a_touched_word_is_listed_as_left_where_its_form_was_made_consistent)."""
+    _staged(monkeypatch)
+    after_person = {'form': 'ka', 'morphs': [('ka', 'walk')], 'who': {'token': J, 'span': 'human', 'link': J}}
+    client, job, out, tags = _run({'d1': [{'words': [w('ka', 'go'), w('ka', 'go'), after_person]}]})
+    assert {'form': 'ka', 'reason': 'unvouched', 'analyses': [{'analysis': 'ka ‘walk’', 'count': 1}]} in out['left']

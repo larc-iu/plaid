@@ -344,6 +344,7 @@ export const HARMONIZE_LEFT_TEXT = {
   'job-differs-people-differ': 'The job’s analyses differ, and so do people’s',
   'job-differs-no-majority': 'The job’s analyses differ, none by two thirds',
   changed: 'Changed after the job wrote it',
+  verified: 'A person verified it after the job wrote it',
   'beside-others': 'Also holds work that is not the job’s',
   unvouched: 'Not checked',
   commented: 'Has a comment',
