@@ -46,7 +46,7 @@ export const SearchResults = ({
   return (
     <div className="flex flex-col gap-4">
       {warnings?.length > 0 && (
-        <Notice tone="warning" icon={Info}>
+        <Notice tone="info" icon={Info}>
           <div className="flex flex-col gap-0.5">
             {warnings.map((w, i) => (
               <span key={i}>{w}</span>

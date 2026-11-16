@@ -4,7 +4,8 @@ import { renderComponent, all } from '@ui/test/renderComponent.jsx';
 import { SearchResults } from './SearchResults.jsx';
 
 // A Grew hit is marked by the one search highlight every app shares
-// (plaid-ui's MarkedText), and the query's warnings wear the warning tone.
+// (plaid-ui's MarkedText). The query's caveats are plain information: a warm
+// banner means something is broken, and a limit of the search is not.
 
 describe('Grew search results', () => {
   it('marks each matched word by code point with the shared highlight', async () => {
@@ -35,7 +36,7 @@ describe('Grew search results', () => {
     const hit = all(view.container, 'a').find((a) => a.textContent === 'the 😀dog runs');
     expect(hit.querySelector('bdi')).not.toBe(null);
     const notice = view.container.querySelector('[data-tone]');
-    expect(notice.getAttribute('data-tone')).toBe('warning');
+    expect(notice.getAttribute('data-tone')).toBe('info');
     expect(notice.textContent).toBe('Enhanced relations are not searched.');
     await view.unmount();
   });
