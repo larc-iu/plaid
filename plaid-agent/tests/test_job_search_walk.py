@@ -78,8 +78,8 @@ def test_the_rename_shape_makes_pieces_only_for_the_matching_sentences(monkeypat
     for d in job.order:
         n = HITS.get(int(d[1:]), 0)
         if n:
-            said.append(f'Story {d[1:]}: ' + (f'sentence {at + 1}' if n == 1 else f'sentences {at + 1} to {at + n}')
-                        + ' of 33 matching.')
+            said.append(f'Story {d[1:]}: ' + (f'matching sentence {at + 1}' if n == 1
+                                               else f'matching sentences {at + 1} to {at + n}') + ' of 33.')
             at += n
     assert lines == said, (lines, said)
     report = finished['report']
@@ -92,7 +92,7 @@ def test_the_rename_shape_makes_pieces_only_for_the_matching_sentences(monkeypat
         assert d['counts']['changes'] == HITS.get(i, 0)
         assert igt_job.NOT_WALKED not in d['counts']
     assert report['totals']['changes'] == 33
-    assert igt_job.document_counts(report) == {'done': 24, 'not_read_through': 0, 'with_no_matching_sentence': 21,
+    assert igt_job.document_counts(report) == {'done': 24, 'not_read_through': 0, 'with_nothing_found_by_the_search': 21,
                                               'skipped': 0, 'stopped_partway': 0, 'not_reached': 0}
     # Read only for planning and where a match is: the 21 others never after.
     plan = report['plan']
@@ -188,8 +188,8 @@ def test_the_final_context_and_the_document_lines_say_the_search():
     message = igt_job.summary_message(report)
     assert 'How the work was cut: sentences, only the sentences matching Gloss "x": 3 sentences in 1 document.' \
         in message, message
-    assert '- "B": done, no sentence of it matches the plan\'s search: not worked' in message, message
-    assert 'documents with no matching sentence 1' in message.replace('_', ' '), message
+    assert '- "B": done, the plan\'s search found no sentence of it: not worked' in message, message
+    assert 'documents with nothing found by the search 1' in message.replace('_', ' '), message
 
 
 def test_read_job_says_the_search_where_the_plan_is_said():
@@ -207,7 +207,7 @@ def test_read_job_says_the_search_where_the_plan_is_said():
                             {'state': 'done', 'done': 0, 'targets': 0, 'counts': {'matched': 0}},
                             {'state': 'done', 'done': 0, 'targets': 0, 'counts': {'matched': 0}}]}
     said = jobread._totals(report)
-    assert 'documents done 1, documents with no matching sentence 2' in said, said
+    assert 'documents done 1, documents with nothing found by the search 2' in said, said
 
 
 def _planned_then(monkeypatch, changed):

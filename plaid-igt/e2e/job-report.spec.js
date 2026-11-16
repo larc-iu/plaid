@@ -539,13 +539,13 @@ test('a plan limited by a search says it on the Plan line, the documents and the
   );
   const rowA = page.getByRole('row', { name: /Story S1/ });
   await expect(rowA).toContainText('Done');
-  await expect(rowA).toContainText('2 of 3, 1 not matching the plan’s search');
+  await expect(rowA).toContainText('2 of 2 matching, 1 not found by the plan’s search');
   const rowB = page.getByRole('row', { name: /Story S2/ });
-  await expect(rowB).toContainText('No matching sentence');
-  await expect(rowB).toContainText('0 of 1, none match the plan’s search');
+  await expect(rowB).toContainText('Nothing found');
+  await expect(rowB).toContainText('0 of 1, none found by the plan’s search');
   const totals = await totalsOf(page);
   expect(totals['Documents done']).toBe('1');
-  expect(totals['Documents with no matching sentence']).toBe('1');
+  expect(totals['Documents with nothing found by the plan’s search']).toBe('1');
   await expect(page.getByTestId('job-notice')).toHaveCount(0);
   await expect(
     page.getByRole('link', { name: 'Story S1 s1, s3, matching the plan’s search' }),

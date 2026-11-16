@@ -54,7 +54,7 @@ import {
   wroteNothing,
   allSkipped,
   documentSentencesText,
-  noMatchingSentence,
+  nothingFound,
   walkedForEmpty,
 } from './jobText.js';
 
@@ -548,8 +548,8 @@ const JobDocuments = ({ job, projectId, plan }) => {
           ? 'Left out by the plan'
           : stoppedPartway(d)
             ? 'Stopped partway'
-            : noMatchingSentence(d)
-              ? 'No matching sentence'
+            : nothingFound(d)
+              ? 'Nothing found'
               : allSkipped(d)
                 ? 'Skipped'
                 : (jobDocumentStateText(d.state) ?? d.state),

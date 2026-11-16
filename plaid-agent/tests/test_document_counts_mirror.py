@@ -53,7 +53,7 @@ def page(tmp_path_factory):
 
 def test_read_job_counts_the_documents_as_the_page_does(page):
     camel = {'not_read_through': 'notReadThrough', 'stopped_partway': 'stoppedPartway', 'not_reached': 'notReached',
-             'with_no_matching_sentence': 'withNoMatchingSentence'}
+             'with_nothing_found_by_the_search': 'withNothingFoundByTheSearch'}
     assert len(page) == len(CASES)
     for report, said in zip(CASES, page):
         mine = document_counts(report)
@@ -87,8 +87,8 @@ def test_documents_with_no_matching_sentence_are_counted_apart_from_done(page):
     """SF: a document a plan limited by a search ended with no sentence of it
     matched is neither done nor unread, on the page and to the model."""
     said = page[-1]
-    assert (said['done'], said['withNoMatchingSentence'], said['notReached']) == (1, 2, 1), said
-    assert 'documents done 1, documents with no matching sentence 2' in _totals(CASES[-1]), _totals(CASES[-1])
+    assert (said['done'], said['withNothingFoundByTheSearch'], said['notReached']) == (1, 2, 1), said
+    assert 'documents done 1, documents with nothing found by the search 2' in _totals(CASES[-1]), _totals(CASES[-1])
 
 
 def test_read_job_says_the_documents_not_read_through_once():

@@ -745,8 +745,17 @@ def t_plan_work(ws, pieces: str = None, piece_instructions: str = '', documents=
                    f'{JOB_PIECE_INSTRUCTIONS_MAX_CHARS:,}: they are {kept}. Pieces already have the guidelines and '
                    'the instructions.')
     worked = [d for d in known if order is None or d['id'] in order]
-    nothing = skip and not matched and sum(d.get('sentences', 0) for d in worked) \
-        and not any((d.get('empty') or {}).get(t.id) for d in worked for t in chosen)
+    if matched:
+        # A search's matched sentences, each as the planning reads it
+        # (REV-SF-8): with skip_filled_sentences the walk takes none of them
+        # when nothing the plan fills is empty in any.
+        from . import targets as tg
+        nothing = skip and not any(
+            tg.count([s], t) for d, ids in matched.items() for s in ws.doc(d).sentences if s.id in ids
+            for t in chosen)
+    else:
+        nothing = skip and sum(d.get('sentences', 0) for d in worked) \
+            and not any((d.get('empty') or {}).get(t.id) for d in worked for t in chosen)
     # No size beside "works no sentence": the two contradicted (REV-RPF3B-6).
     size = None if nothing else plan_size(pieces, worked, skip, matched)
     if size:
@@ -865,7 +874,14 @@ def plan_search(ws, search, documents: List[str]) -> Tuple[Dict[str, Any], Dict[
             n, found = q_search_sentences(ws, pattern, 'field' if kind == 'field' else kind, fields, regex, case,
                                           limits.JOB_PLAN_SEARCH_MAX_SENTENCES)
     if not n:
-        raise ToolError(PLAN_SEARCH_NONE, kind='invalid-argument')
+        # With search's own hint for an empty result (REV-SF-8).
+        from .queries import q_empty_hint
+        why = []
+        if held:
+            with ws.corpus.among(held):
+                why = q_empty_hint(ws, pattern, 'field' if kind == 'field' else kind,
+                                   fields[0] if kind == 'field' else None, regex, case, False)
+        raise ToolError(' '.join([PLAN_SEARCH_NONE, *why]), kind='invalid-argument')
     if n > limits.JOB_PLAN_SEARCH_MAX_SENTENCES:
         raise ToolError(f'This search matches {n:,} sentences of the job\'s documents, past the most a plan takes, '
                         f'{limits.JOB_PLAN_SEARCH_MAX_SENTENCES:,}. Narrow the search, or plan without it.',

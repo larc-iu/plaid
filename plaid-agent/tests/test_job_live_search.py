@@ -97,7 +97,7 @@ def test_the_rename_shape_walks_only_the_matching_sentences_and_undo_is_exact(wo
         n = HITS.get(i, 0)
         assert (d['state'], d['targets'], d['done'], d['counts']['matched'], d['counts']['changes']) == \
             ('done', n, n, n, n), (i, d)
-    assert igt_job.document_counts(report)['with_no_matching_sentence'] == 21
+    assert igt_job.document_counts(report)['with_nothing_found_by_the_search'] == 21
     assert igt_job.document_counts(report)['done'] == 24
     # As core keeps the job: the rows and the plan as the page reads them.
     read = admin.jobs.get(job.id)

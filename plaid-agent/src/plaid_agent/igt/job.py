@@ -1039,7 +1039,7 @@ def document_counts(report: Dict[str, Any]) -> Dict[str, int]:
     were skipped (REV-RPF-P-9); one not reached that finished a sentence or
     holds the job's changes is ``stopped_partway`` (RPF3-D2). One a plan
     limited by a search ended with no sentence of it matched
-    (``counts.matched`` 0) is ``with_no_matching_sentence``, apart from done
+    (``counts.matched`` 0) is ``with_nothing_found_by_the_search``, apart from done
     (SF)."""
     docs = report.get('documents') or []
     totals = report.get('totals') or {}
@@ -1054,7 +1054,7 @@ def document_counts(report: Dict[str, Any]) -> Dict[str, int]:
     unfinished = [d for d in docs if d.get('state') == 'not-reached']
     partway = sum(1 for d in unfinished if (d.get('done') or 0) > 0 or (counts(d).get('changes') or 0) > 0)
     return {'done': max(0, (totals.get('documents_done') or 0) - skipped - unread - unmatched),
-            'not_read_through': unread, 'with_no_matching_sentence': unmatched,
+            'not_read_through': unread, 'with_nothing_found_by_the_search': unmatched,
             'skipped': skipped, 'stopped_partway': partway,
             'not_reached': len(unfinished) - partway if 'documents' in report
             else totals.get('documents_not_reached') or 0}
@@ -1088,7 +1088,7 @@ def state_text(d: Dict[str, Any]) -> str:
         # RPF3-A: ended after the step over all the documents.
         return 'done, not read through: what the step over all the documents changed here, nothing left empty'
     if no_match(d):
-        return 'done, no sentence of it matches the plan\'s search: not worked'
+        return 'done, the plan\'s search found no sentence of it: not worked'
     return str(d.get('state'))
 
 
@@ -2356,9 +2356,16 @@ class IgtRunner:
             # with no read and no model call, its row saying so (SF).
             def unmatched():
                 for d in order:
-                    if d not in searched and (job.rows.get(d) or {}).get('state') not in ROW_FINAL:
-                        job.update_row(d, state='done', targets=0,
-                                       **self.tally(d, (job.rows.get(d) or {}).get('skipped')))
+                    row = job.rows.get(d) or {}
+                    if row.get('state') in ROW_FINAL:
+                        continue
+                    if d not in searched:
+                        job.update_row(d, state='done', targets=0, **self.tally(d, row.get('skipped')))
+                    elif (row.get('counts') or {}).get(MATCHED) is None:
+                        # A matched document reads by its matched sentences
+                        # before the walk reaches it (REV-SF-7).
+                        job.update_row(d, targets=len(searched[d]),
+                                       counts={**(row.get('counts') or {}), MATCHED: len(searched[d])})
             core_job.through_core(job, unmatched)
         if plan['pieces'] == SELECTION and SELECTION not in core_job.through_core(job, self.fallen_back):
             self.selection(job, order)
@@ -3154,7 +3161,9 @@ class IgtRunner:
         """The heartbeat's line for a stretch of a plan limited by a search
         (SF): where its sentences stand among all the search matched, in the
         plan's order of documents, "Story B: sentences 4 to 6 of 33
-        matching.", "Sentence 3 of 33 matching." for a job of one document."""
+        matching.", now "Story B: matching sentences 4 to 6 of 33." and
+        "Matching sentence 3 of 33." for a job of one document (REV-SF-9: by
+        its count among the matched, said as such)."""
         searched = self.searched() or {}
         order = [d for d in self.planned_order(self.job, self.plan_made or {}) if d in searched]
         before = sum(len(searched[d]) for d in order[:order.index(doc.id)]) if doc.id in order else 0
@@ -3162,8 +3171,8 @@ class IgtRunner:
         mine = [s.id for s in doc.sentences if takes is not None and takes(s)]
         at = [before + mine.index(s.id) + 1 for s in part if s.id in mine] or [before + 1]
         total = sum(len(v) for v in searched.values())
-        said = f'sentence {at[0]:,}' if at[0] == at[-1] else f'sentences {at[0]:,} to {at[-1]:,}'
-        line = f'{said} of {total:,} matching'
+        said = f'matching sentence {at[0]:,}' if at[0] == at[-1] else f'matching sentences {at[0]:,} to {at[-1]:,}'
+        line = f'{said} of {total:,}'
         return f'{doc.name}: {line}.' if len(self.job.order) > 1 else line[0].upper() + line[1:] + '.'
 
     def searched(self) -> Optional[Dict[str, set]]:

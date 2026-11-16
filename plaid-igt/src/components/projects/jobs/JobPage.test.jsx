@@ -2575,17 +2575,33 @@ describe('the job page', () => {
       expect(rows[0].slice(0, 3)).toEqual([
         'Story A',
         'Done',
-        '3 of 20, 17 not matching the plan’s search',
+        '3 of 3 matching, 17 not found by the plan’s search',
       ]);
       expect(rows[1].slice(0, 3)).toEqual([
         'Story B',
-        'No matching sentence',
-        '0 of 20, none match the plan’s search',
+        'Nothing found',
+        '0 of 20, none found by the plan’s search',
       ]);
       const sums = totals(v.container.querySelector('section[aria-label="Report"]'));
       expect(sums['Documents done']).toBe('1');
-      expect(sums['Documents with no matching sentence']).toBe('1');
+      expect(sums['Documents with nothing found by the plan’s search']).toBe('1');
       expect(text(v.container)).not.toContain('not read through');
+      await v.unmount();
+    });
+
+    // REV-SF-7: a matched document not yet reached reads by its matched count.
+    it('says a matched document not yet reached by its matched sentences', async () => {
+      const docs = [{ ...searchDocs[0], state: 'waiting', done: 0, targets: 3 }];
+      const job = jobOf({ state: 'running', documents: docs });
+      const client = clientOf(job);
+      // While running, the plan is the plan row's, read with the work list.
+      client.jobs.piecesPage = vi.fn(async () => ({
+        entries: [{ seq: '000000', piece: { plan: planOf(), steps: 2 } }],
+        nextCursor: null,
+      }));
+      const v = await mount(client);
+      const rows = all(v.container, 'tbody tr').map((r) => [...r.querySelectorAll('td')].map(text));
+      expect(rows[0][2]).toBe('0 of 3 matching, 17 not found by the plan’s search');
       await v.unmount();
     });
 
@@ -2598,7 +2614,9 @@ describe('the job page', () => {
       });
       const v = await mount(clientOf(job));
       const rows = all(v.container, 'tbody tr').map((r) => [...r.querySelectorAll('td')].map(text));
-      expect(rows[0][2]).toBe('1 of 20, 19 not matching the plan’s search or with nothing to fill');
+      expect(rows[0][2]).toBe(
+        '1 of 1 matching, 19 not found by the plan’s search or with nothing to fill',
+      );
       await v.unmount();
     });
   });

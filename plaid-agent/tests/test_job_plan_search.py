@@ -153,8 +153,12 @@ def test_past_the_cap_the_plan_is_refused_naming_the_number(monkeypatch, stories
     assert JOB_PLAN_SEARCH_MAX_SENTENCES == 900
 
 
-def test_with_skip_filled_sentences_the_size_is_at_most(stories):
-    client, ids = stories
+def test_with_skip_filled_sentences_the_size_is_at_most():
+    # Each story's ka unglossed: every matched sentence holds an empty.
+    client = JobClient({f'd{i}': document(f'd{i}', f'Story {i}', [
+        {'words': [('nidr', [('nidr', 'be')], 'human'), ('ka', [('ka', None)], 'human')]} for _ in range(4)])
+        for i in range(1, 7)})
+    ids = [f'd{i}' for i in range(1, 7)]
     ws = _planning(client, ids)
     out = _plan(ws, search={'pattern': 'be', 'where': 'Morph Gloss'}, skip_filled_sentences=True)
     assert 'This plan is at most 6 pieces over 6 documents: 24 sentences match.' in out, out
@@ -171,3 +175,24 @@ def test_the_planner_is_told_when_to_give_a_search_and_the_selection_route_stays
     assert ('search: with "sentences", the search tool\'s arguments: only the sentences it matches are worked.'
             in said), said
     assert toolkit.PLAN_WORK['function']['parameters']['properties']['search'] == {'type': 'object'}
+
+
+def test_a_search_whose_matches_are_all_full_works_no_sentence_with_skip_filled(stories):
+    """REV-SF-8: every matched sentence holds a Morph Gloss: with
+    skip_filled_sentences the walk takes none, and plan_work says so."""
+    client, ids = stories
+    ws = _planning(client, ids)
+    out = _plan(ws, search={'pattern': OLD, 'where': 'Morph Gloss'}, skip_filled_sentences=True)
+    assert out == (f'The plan is kept. {toolkit.PLAN_WORKS_NOTHING} Call plan_work again to change it, or end now '
+                   'with a one-line reply.'), out
+
+
+def test_a_search_that_matches_nothing_keeps_the_hint_search_gives(stories):
+    """REV-SF-8: the search tool's own hint for an empty result is kept."""
+    client, ids = stories
+    ws = _planning(client, ids)
+    hinted = toolkit.call_tool(ws, 'search', {'pattern': '^be.3$', 'where': 'Morph Gloss'})
+    out = _plan(ws, search={'pattern': '^be.3$', 'where': 'Morph Gloss'})
+    hint = hinted.split('No hits in the Morph Gloss field.', 1)[1].strip()
+    assert hint and out.endswith(hint), (out, hinted)
+    assert "This search matches no sentence of the job's documents." in out

@@ -148,7 +148,7 @@ const totalRows = (report) => {
   const optional = (label, n) => n > 0 && rows.push([label, n]);
   optional('Documents not read through', docs.notReadThrough);
   // Ended by the plan's search with no model call, apart from done (SF).
-  optional('Documents with no matching sentence', docs.withNoMatchingSentence);
+  optional('Documents with nothing found by the plan’s search', docs.withNothingFoundByTheSearch);
   optional('Documents skipped', docs.skipped);
   optional('Documents in use', t.documentsInUse);
   optional('Documents deleted', t.documentsGone);

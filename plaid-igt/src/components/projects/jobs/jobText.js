@@ -346,9 +346,10 @@ export const allSkipped = (d) =>
 // changes are what that step wrote there.
 const notReadThrough = (d) => d?.state === 'done' && d.counts?.notWalked === true;
 
-// A document a plan limited by a search ended with no sentence of it matched,
-// and no model call (the worker's `counts.matched` 0, CONTRACT, added by SF).
-export const noMatchingSentence = (d) => d?.state === 'done' && d.counts?.matched === 0;
+// A document a plan limited by a search ended with no sentence of it found by
+// the search, and no model call (the worker's `counts.matched` 0, CONTRACT,
+// added by SF).
+export const nothingFound = (d) => d?.state === 'done' && d.counts?.matched === 0;
 
 // A document's sentences as the Documents table says them: those worked of
 // its sentences, and those skipped, "0 of 2, 2 skipped" (REV-RPF-P-9).
@@ -359,20 +360,24 @@ export const noMatchingSentence = (d) => d?.state === 'done' && d.counts?.matche
 export const documentSentencesText = (d, narrowed = false, plan = null) => {
   if (notReadThrough(d)) return 'Not read through';
   if (d.targets === null || d.targets === undefined) return '';
-  // Under a plan limited by a search, against all the document's sentences,
-  // those the walk did not take said as not matching (SF): "0 of 20, none
-  // match the plan's search", "3 of 20, 17 not matching the plan's search".
+  // Under a plan limited by a search, those worked of the sentences the walk
+  // takes, then the document's others as not found by the search (SF,
+  // REV-SF-5, true of a sentence added since the planning too, REV-SF-7: a
+  // document not yet reached reads by its matched count): "0 of 20, none
+  // found by the plan's search", "0 of 3 matching, 17 not found by the
+  // plan's search".
   if (plan?.pieces === 'sentences' && plan.search && typeof d.counts?.matched === 'number') {
     const all = Math.max(d.sentences ?? 0, d.targets);
-    if (d.counts.matched === 0) return `0 of ${all.toLocaleString()}, none match the plan’s search`;
+    if (d.counts.matched === 0)
+      return `0 of ${all.toLocaleString()}, none found by the plan’s search`;
     const skippedHere = Math.min(skippedCount(d), d.done ?? 0);
     const others = all - d.targets;
     return [
-      `${((d.done ?? 0) - skippedHere).toLocaleString()} of ${all.toLocaleString()}`,
+      `${((d.done ?? 0) - skippedHere).toLocaleString()} of ${d.targets.toLocaleString()} matching`,
       ...(skippedHere > 0 ? [`${skippedHere.toLocaleString()} skipped`] : []),
       ...(others > 0
         ? [
-            `${others.toLocaleString()} not matching the plan’s search` +
+            `${others.toLocaleString()} not found by the plan’s search` +
               (plan.onlyEmpty ? ' or with nothing to fill' : ''),
           ]
         : []),
@@ -408,14 +413,14 @@ export const documentCounts = (report) => {
   const docs = report?.documents || [];
   const t = report?.totals || {};
   const unread = docs.filter(notReadThrough).length;
-  const unmatched = docs.filter(noMatchingSentence).length;
+  const unmatched = docs.filter(nothingFound).length;
   const skipped = docs.filter(allSkipped).length;
   const unfinished = docs.filter((d) => d.state === 'not-reached');
   const partway = unfinished.filter(stoppedPartway).length;
   return {
     done: Math.max(0, (t.documentsDone ?? 0) - skipped - unread - unmatched),
     notReadThrough: unread,
-    withNoMatchingSentence: unmatched,
+    withNothingFoundByTheSearch: unmatched,
     skipped,
     stoppedPartway: partway,
     notReached: report?.documents ? unfinished.length - partway : (t.documentsNotReached ?? 0),
