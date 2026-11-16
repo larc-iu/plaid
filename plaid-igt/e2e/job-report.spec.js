@@ -224,7 +224,7 @@ test('a job that edits the text and writes over a person: its line, its counts i
   const dialog = page.getByRole('dialog');
   await expect(dialog.getByText('Comparing…')).toHaveCount(0, { timeout: 20_000 });
   await expect(dialog.getByTestId('undo-line')).toHaveText(
-    '3 values and the text with its words and sentences',
+    '2 values removed, 1 value put back as it was and the text with its words and sentences',
   );
   await dialog.getByRole('button', { name: 'Cancel' }).click();
   await expect(dialog).toHaveCount(0);

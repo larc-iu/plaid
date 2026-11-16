@@ -188,13 +188,17 @@ test('a job in two documents and the lexicon is undone whole from its page', asy
   await expect(dialog.getByText('Comparing…')).toHaveCount(0, { timeout: 20_000 });
   await expect(dialog.getByRole('heading', { name: 'Undo this job?' })).toBeVisible();
   await expect(dialog.getByTestId('undo-line')).toHaveText(
-    '4 values, 1 link and 1 lexicon entry removed',
+    '3 values removed, 1 value put back as it was, 1 link removed and 1 lexicon entry removed',
   );
   await expect(dialog.getByTestId('undo-left')).toHaveCount(0);
   await dialog.getByRole('button', { name: 'Undo', exact: true }).click();
   await expect(dialog).toHaveCount(0, { timeout: 20_000 });
 
-  await expect(page.getByText('4 values, 1 link and 1 lexicon entry removed.')).toBeVisible();
+  await expect(
+    page.getByText(
+      '3 values removed, 1 value put back as it was, 1 link removed and 1 lexicon entry removed.',
+    ),
+  ).toBeVisible();
   await expect(page.getByTestId('job-undone')).toContainText('Job undone');
   await expect(page.getByRole('button', { name: 'Undo job' })).toHaveCount(0);
   expect(await Promise.all(docs.map(glossesOf))).toEqual(before);
@@ -220,7 +224,7 @@ test('a job is undone but for what a person changed since, which is listed', asy
   const dialog = page.getByRole('dialog');
   await expect(dialog.getByText('Comparing…')).toHaveCount(0, { timeout: 20_000 });
   await expect(dialog.getByTestId('undo-line')).toHaveText(
-    '3 values, 1 link and 1 lexicon entry removed',
+    '2 values removed, 1 value put back as it was, 1 link removed and 1 lexicon entry removed',
   );
   const left = dialog.getByTestId('undo-left');
   await expect(left.locator('summary')).toHaveText(['Changed again later1']);
