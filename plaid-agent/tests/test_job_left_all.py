@@ -58,8 +58,8 @@ def adds_up(doc, words_to_work, skipped_words=0):
         == words_to_work, c
 
 
-# Not 'selection': after its piece nothing more is worked (SF round 2), so
-# the walk this counts never follows it.
+# A selection's case is its own test below: after its piece nothing more is
+# worked (SF round 2).
 @pytest.mark.parametrize('plan', ['sentences', 'document'])
 def test_a_piece_that_staged_nothing_counts_its_words_untouched_and_the_row_claims_no_left(monkeypatch, plan):
     """Pieces s3-s4 and s5-s6 answer "Done." with nothing staged: their
@@ -84,6 +84,29 @@ def test_a_piece_that_staged_nothing_counts_its_words_untouched_and_the_row_clai
     adds_up(doc, WORDS)
     row = client.jobs.get(J)['documents'][0]['counts']
     assert 'left' not in row and 'left_translations' not in row, row
+
+
+def test_a_selection_ended_in_one_step_counts_what_it_left_and_adds_up(monkeypatch):
+    """The case of a selection, with the one step's expectation (REV-SF2-9,
+    SF round 2): the piece analyses s1's two words and nothing more is
+    worked. What stays empty is in Left blank's counts as untouched, never
+    as left, and the totals add up to the document's words."""
+    client = JobClient({'d1': _doc(set())})
+    job = start(client, id=J, plan='selection')
+    _applying(monkeypatch, client)
+
+    def answer(asked, n, kwargs):
+        if 'Your piece: the whole selection above.' in asked and n == 1:
+            return reply(calls=[call(w, 'set_analysis', {'document': 'Story', 'ref': f's1.w{w}', 'morphemes': [
+                {'form': 'x', 'fields': {'Morph Gloss': 'g'}}]}) for w in (1, 2)])
+        return reply('Done.')
+    model = use(monkeypatch, Model(answer))
+    finished = run_job(job, runner(job))
+    assert len([c for c in model.calls if c['n'] == 1]) == 1, 'the selection, and no piece after it'
+    (doc,) = finished['report']['documents']
+    assert doc['counts'][igt_job.ONE_STEP] is True and doc['counts']['words'] == 2
+    assert doc['counts']['left'] == 0 and doc['left'] == [] and doc['counts']['untouched'] == WORDS - 2, doc['counts']
+    adds_up(doc, WORDS)
 
 
 def test_a_stopped_job_counts_the_sentences_it_did_not_reach_apart(monkeypatch):
