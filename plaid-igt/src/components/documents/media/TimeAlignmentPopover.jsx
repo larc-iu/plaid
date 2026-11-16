@@ -206,7 +206,7 @@ export const TimeAlignmentPopover = ({
           />
 
           {mode === 'align' && !canAlign() ? (
-            <Notice tone="warning" className="p-3">
+            <Notice tone="info" className="p-3">
               <p>
                 No unaligned text is available for this time range. Everything between the
                 neighboring segments already belongs to a segment.

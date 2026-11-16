@@ -38,6 +38,18 @@ const button = (name) =>
   [...document.querySelectorAll('button')].find((b) => b.textContent === name);
 
 describe('the timeline popover', () => {
+  // Nothing left to align is a plain fact: a warm banner means broken.
+  it('says there is no unaligned text as plain information', async () => {
+    const doc = fakeDocument({ dataVersion: 0 });
+    const r = await renderComponent(tree(doc, true));
+    await r.step(() => button('Existing text').click());
+    const line = [...document.querySelectorAll('[data-tone]')].find((n) =>
+      n.textContent.includes('No unaligned text is available'),
+    );
+    expect(line.getAttribute('data-tone')).toBe('info');
+    await r.unmount();
+  });
+
   it('opens again with text a save refused', async () => {
     const doc = fakeDocument({ createAlignment: vi.fn(async () => false), dataVersion: 0 });
     const r = await renderComponent(tree(doc, true));
