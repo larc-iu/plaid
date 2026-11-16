@@ -454,11 +454,11 @@ JOB_TEXT_THEN_FILL = 'Stage only the text edit now: the words it adds are offere
 JOB_ANSWER_AGAIN = ('(system) Your answer staged nothing and said nothing. Stage what your piece needs now, '
                     'or reply in one line why it needs nothing.')
 
-def job_cut_at_ceiling(limit: int) -> str:
-    """The line a piece's model is sent once when a call of it reached the
-    most a piece's call may write (``JOB_PIECE_OUTPUT_TOKENS``): the call
-    was dropped whole, as a call at the model's own cap is."""
-    return (f'(system) Your last call reached {limit:,} tokens, the most one call may write here, its reasoning '
+def job_cut_at_limit(limit: int) -> str:
+    """The line a piece's model is sent once when a call of it reached its
+    output limit (``limit``: the model's own cap, or an operator's ceiling,
+    ``--piece-output-tokens``): the call was dropped whole."""
+    return (f'(system) Your last call reached {limit:,} tokens, the most one call may write, its reasoning '
             'included, before it finished. It was dropped, and none of its tool calls ran. What you staged before '
             'it is kept. Stage in smaller steps: fewer values or links in a call, and less reasoning before each.')
 

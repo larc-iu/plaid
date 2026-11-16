@@ -1,19 +1,21 @@
-"""A job piece's model call may write at most a fixed number of tokens, its
-reasoning included (``JOB_PIECE_OUTPUT_TOKENS``, the worker's
-``--piece-output-tokens``), smaller than the model's own cap (BRIEF SP item
-1). The planning context, the report's prose and a chat keep the model's own
-cap. A piece call that reaches the ceiling is dropped as a call at the
-model's cap is (none of its tool calls run), and the piece is asked again
-once in the same context, its staged plan kept, with a line naming the
-ceiling. A second call at the ceiling ends the piece as today: the stretch
-fails ``output`` and is halved, one sentence skipped ``failed``. The trace's
-round of a cut call says so."""
+"""What a job's piece does when a model call reaches its output limit (BRIEF
+SP item 1, after the real-model measurement of 2026-11-16).
+
+By default a piece's calls write up to the model's own cap, as every other
+call does: a ceiling below it (``--piece-output-tokens``, 0 by default)
+made glossing slower, since long calls were mostly useful work. An operator
+may still set one, and only a piece's calls carry it.
+
+Whichever limit a piece's call reaches (the model's own or an operator's
+ceiling), the call is dropped (none of its tool calls run), what the piece
+staged before it is kept, and the piece is asked again once in the same
+context with a line naming that limit. The second call at the limit in the
+same piece ends the stretch as before (``output``, halved). The trace's
+round of a cut call says so. The planning context and the report's prose fail as before."""
 
 import glob
 import json
 import os
-
-import pytest
 
 from job_fixtures import JobClient, Model, call, document, planned, reply, runner, start, targets_named, use
 
@@ -22,13 +24,14 @@ from plaid_agent.core import agent
 from plaid_agent.core.agent import ModelConfig, Toolkit, run_turn
 from plaid_agent.core.job import run_job
 from plaid_agent.core.limits import JOB_PIECE_OUTPUT_TOKENS
-from plaid_agent.core.prompt import job_cut_at_ceiling
-from plaid_agent.core.trace import PLAN, READ, Tracer
+from plaid_agent.core.prompt import job_cut_at_limit
+from plaid_agent.core.trace import READ, Tracer
 from plaid_agent.igt import job as igt_job
 
 J = 'JPC'
 N = 4
 MODEL_CAP = 32768
+CEILING = 12000
 
 
 def _doc(analysed=frozenset(), version=1):
@@ -58,9 +61,13 @@ def _is_piece(asked):
     return 'Your piece: s' in str(asked)
 
 
-def _cut_note_sent(kwargs):
-    return any(m.get('role') == 'user' and m.get('content') == job_cut_at_ceiling(JOB_PIECE_OUTPUT_TOKENS)
-               for m in kwargs['messages'])
+def _cut_note(kwargs):
+    """The limit the line a piece was asked again with names, or None."""
+    for m in kwargs['messages']:
+        for limit in (MODEL_CAP, CEILING):
+            if m.get('role') == 'user' and m.get('content') == job_cut_at_limit(limit):
+                return limit
+    return None
 
 
 def _run(monkeypatch, answer, plan='sentences', trace_dir=None, **kw):
@@ -73,12 +80,18 @@ def _run(monkeypatch, answer, plan='sentences', trace_dir=None, **kw):
     return client, job, finished, model
 
 
-def test_the_ceiling_is_one_number_and_the_worker_flag_defaults_to_it():
+def _every_word(*sentences):
+    return {f'd1-s{i}w{k}' for i in sentences for k in (1, 2)}
+
+
+# --- the limit a piece's call writes under ------------------------------------------------------------
+
+def test_no_ceiling_by_default_and_the_flag_sets_one():
+    assert JOB_PIECE_OUTPUT_TOKENS == 0, 'none: a piece writes up to the model\'s own cap'
     args = jobworker.parser().parse_args(['--url', 'u', '--model', 'm'])
-    assert args.piece_output_tokens == JOB_PIECE_OUTPUT_TOKENS
+    assert args.piece_output_tokens == 0
     args = jobworker.parser().parse_args(['--url', 'u', '--model', 'm', '--piece-output-tokens', '9000'])
     assert args.piece_output_tokens == 9000
-    assert 0 < JOB_PIECE_OUTPUT_TOKENS < MODEL_CAP
 
 
 def test_the_worker_hands_the_flag_to_its_runners():
@@ -86,43 +99,44 @@ def test_the_worker_hands_the_flag_to_its_runners():
     job = start(client, id=J)
     made = jobworker.APPS['igt'](ModelConfig(model='fake/m'), piece_output_tokens=7000)(job)
     assert made.piece_output_tokens == 7000
-    assert igt_job.runner_factory(ModelConfig(model='fake/m'))(job).piece_output_tokens == JOB_PIECE_OUTPUT_TOKENS
+    assert not igt_job.runner_factory(ModelConfig(model='fake/m'))(job).piece_output_tokens
 
 
-def test_piece_calls_carry_the_ceiling_and_planning_and_the_report_do_not(monkeypatch):
-    def answer(asked, n, kwargs):
-        if not _is_piece(asked):
-            return reply('The job glossed the story.')
-        return reply(calls=[c for s in targets_named(asked) for c in _analyse(s)]) if n == 1 else reply('Done.')
-    client, job, finished, model = _run(monkeypatch, planned(answer), plan=None, write_summary=True)
-    assert finished is not None
+def _all(asked, n, kwargs):
+    if not _is_piece(asked):
+        return reply('The job glossed the story.')
+    return reply(calls=[c for s in targets_named(asked) for c in _analyse(s)]) if n == 1 else reply('Done.')
+
+
+def _limits(model):
     piece = [c for c in model.calls if _is_piece(c['asked'])]
     planning = [c for c in model.calls if str(c['asked']).rstrip().endswith('Plan the job and end with plan_work.')]
     other = [c for c in model.calls if c not in piece and c not in planning]
     assert piece and planning and other, 'a piece, the planning and the report each made a call'
-    assert {c['kwargs']['max_tokens'] for c in piece} == {JOB_PIECE_OUTPUT_TOKENS}
-    assert {c['kwargs']['max_tokens'] for c in planning} == {MODEL_CAP}
-    assert {c['kwargs']['max_tokens'] for c in other} == {MODEL_CAP}
+    return ({c['kwargs']['max_tokens'] for c in piece}, {c['kwargs']['max_tokens'] for c in planning},
+            {c['kwargs']['max_tokens'] for c in other})
+
+
+def test_by_default_every_call_of_a_job_writes_up_to_the_models_cap(monkeypatch):
+    client, job, finished, model = _run(monkeypatch, planned(_all), plan=None, write_summary=True)
+    assert _limits(model) == ({MODEL_CAP}, {MODEL_CAP}, {MODEL_CAP})
+
+
+def test_a_ceiling_an_operator_sets_goes_on_piece_calls_only(monkeypatch):
+    client, job, finished, model = _run(monkeypatch, planned(_all), plan=None, write_summary=True,
+                                        piece_output_tokens=CEILING)
+    assert _limits(model) == ({CEILING}, {MODEL_CAP}, {MODEL_CAP})
 
 
 def test_the_ceiling_is_never_above_the_models_own_cap(monkeypatch):
-    def answer(asked, n, kwargs):
-        return reply(calls=[c for s in targets_named(asked) for c in _analyse(s)]) if n == 1 else reply('Done.')
     monkeypatch.setattr(igt_job, 'JOB_STRETCH_SENTENCES', 2)
     client = JobClient({'d1': _doc()})
     job = start(client, id=J)
-    model = use(monkeypatch, Model(answer))
+    model = use(monkeypatch, Model(_all))
     r = igt_job.IgtRunner(job, ModelConfig(model='fake/m', stream=False, max_steps=1000, max_tokens=4000),
-                          count=lambda x: len(str(x)), write_summary=False)
+                          count=lambda x: len(str(x)), write_summary=False, piece_output_tokens=CEILING)
     run_job(job, r)
     assert {c['kwargs']['max_tokens'] for c in model.calls} == {4000}
-
-
-def test_no_ceiling_when_the_flag_is_zero(monkeypatch):
-    def answer(asked, n, kwargs):
-        return reply(calls=[c for s in targets_named(asked) for c in _analyse(s)]) if n == 1 else reply('Done.')
-    client, job, finished, model = _run(monkeypatch, answer, piece_output_tokens=0)
-    assert {c['kwargs']['max_tokens'] for c in model.calls} == {MODEL_CAP}
 
 
 def test_a_chat_turn_keeps_the_models_cap(monkeypatch):
@@ -142,57 +156,67 @@ def test_a_chat_turn_keeps_the_models_cap(monkeypatch):
     assert seen == [MODEL_CAP]
 
 
-def test_a_call_at_the_ceiling_keeps_what_was_staged_and_is_asked_again_once(monkeypatch):
-    """s1 is staged on the first call, the second reaches the ceiling (its
-    tool call for s2 never runs), and asked again the piece stages s2: both
-    are written, nothing is skipped, and the line names the ceiling."""
-    def answer(asked, n, kwargs):
-        if not _is_piece(asked):
-            return reply('Done.')
-        first, *rest = targets_named(asked)
-        if n == 1:
-            return reply(calls=_analyse(first))
-        if n == 2 and not _cut_note_sent(kwargs):
-            return reply('...', calls=[c for s in rest for c in _analyse(s, 1)], finish='length')
-        if n == 2:
-            return reply(calls=[c for s in rest for c in _analyse(s, 2)])
+# --- the first call at the limit: asked again --------------------------------------------------------
+
+def _once_cut(asked, n, kwargs):
+    """s(first) staged on the first call, the second reaches the limit (its
+    tool call for the rest never runs), and asked again the piece stages
+    the rest."""
+    if not _is_piece(asked):
         return reply('Done.')
-    client, job, finished, model = _run(monkeypatch, answer)
-    assert not job.rows['d1'].get('skipped')
-    assert job.rows['d1']['done'] == N
-    notes = [c for c in model.calls if _cut_note_sent(c['kwargs'])]
-    assert notes, 'the piece was asked again with the line naming the ceiling'
-    line = job_cut_at_ceiling(JOB_PIECE_OUTPUT_TOKENS)
-    assert f'{JOB_PIECE_OUTPUT_TOKENS:,}' in line and 'smaller steps' in line
-    # Every word was analysed: the first call's staging survived the cut
-    # call, and the call asked again staged the rest.
-    assert client.analysed == {f'd1-s{i}w{k}' for i in range(1, N + 1) for k in (1, 2)}
+    first, *rest = targets_named(asked)
+    if n == 1:
+        return reply(calls=_analyse(first))
+    if n == 2 and _cut_note(kwargs) is None:
+        return reply('...', calls=[c for s in rest for c in _analyse(s, 1)], finish='length')
+    if n == 2:
+        return reply(calls=[c for s in rest for c in _analyse(s, 2)])
+    return reply('Done.')
 
 
-def test_two_calls_at_the_ceiling_end_the_piece_as_today(monkeypatch):
-    """A stretch holding s2 reaches the ceiling twice: it is halved, and s2
-    alone, reaching it twice again, is skipped failed with the kind output,
-    as a call at the model's own cap was before."""
+def test_a_call_at_the_models_own_cap_keeps_what_was_staged_and_is_asked_again_once(monkeypatch):
+    """With no ceiling (the default), the recovery holds at the model's own
+    cap: before, the whole stretch failed and was halved, what it staged
+    lost."""
+    client, job, finished, model = _run(monkeypatch, _once_cut)
+    assert not job.rows['d1'].get('skipped') and job.rows['d1']['done'] == N
+    assert {_cut_note(c['kwargs']) for c in model.calls} - {None} == {MODEL_CAP}
+    assert client.analysed == _every_word(*range(1, N + 1))
+
+
+def test_a_call_at_an_operators_ceiling_is_asked_again_naming_the_ceiling(monkeypatch):
+    client, job, finished, model = _run(monkeypatch, _once_cut, piece_output_tokens=CEILING)
+    assert not job.rows['d1'].get('skipped') and job.rows['d1']['done'] == N
+    assert {_cut_note(c['kwargs']) for c in model.calls} - {None} == {CEILING}
+    assert client.analysed == _every_word(*range(1, N + 1))
+
+
+def test_the_line_names_the_limit_and_says_what_is_true():
+    line = job_cut_at_limit(MODEL_CAP)
+    assert line.startswith('(system) Your last call reached 32,768 tokens, ') and 'smaller steps' in line
+    assert 'none of its tool calls ran' in line and 'What you staged before it is kept' in line
+
+
+def test_two_calls_at_the_limit_with_nothing_staged_end_the_piece_as_before(monkeypatch):
     def answer(asked, n, kwargs):
         if 2 in targets_named(asked):
-            if n == 1 and not _cut_note_sent(kwargs):
-                return reply(calls=_analyse(targets_named(asked)[0]))
             return reply('...', finish='length')
         return reply(calls=[c for s in targets_named(asked) for c in _analyse(s)]) if n == 1 else reply('Done.')
     client, job, finished, model = _run(monkeypatch, answer)
     assert job.rows['d1']['skipped'] == [{'sentence': 's2', 'sentence_id': 'd1-s2', 'reason': 'failed',
                                           'kind': 'output'}]
-    asked_again = [c for c in model.calls if 2 in targets_named(c['asked']) and _cut_note_sent(c['kwargs'])]
+    asked_again = [c for c in model.calls if 2 in targets_named(c['asked']) and _cut_note(c['kwargs'])]
     assert len({str(c['asked']) for c in asked_again}) == 2, 'each stretch holding s2 was asked again once'
+    assert client.analysed == _every_word(1, 3, 4)
 
 
-def test_the_trace_says_a_call_reached_the_ceiling(monkeypatch, tmp_path):
+def test_the_trace_says_a_call_reached_the_limit(monkeypatch, tmp_path):
     def answer(asked, n, kwargs):
-        if not _cut_note_sent(kwargs):
+        if _cut_note(kwargs) is None:
             return reply('...', finish='length')
         return reply(calls=[c for s in targets_named(asked) for c in _analyse(s)]) if n == 1 else reply('Done.')
     _run(monkeypatch, answer, trace_dir=str(tmp_path))
     rounds = [json.load(open(p)) for p in glob.glob(os.path.join(str(tmp_path), '**', 'round-*.json'),
                                                        recursive=True)]
     cut = [r for r in rounds if r.get('cut_at_tokens')]
-    assert cut and {r['cut_at_tokens'] for r in cut} == {JOB_PIECE_OUTPUT_TOKENS}
+    assert cut and {r['cut_at_tokens'] for r in cut} == {MODEL_CAP}

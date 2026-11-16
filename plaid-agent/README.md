@@ -592,12 +592,13 @@ the model. Without it a job waits for nobody. `--trace-dir` keeps every model
 call of every stretch on the worker's disk, readable by the worker's account
 alone, as `<job>/run-<id>/<document>/stretch-NNNN/round-NN-<id>.json`, a
 `run-` folder for each time a worker takes the job. `--scripted-model PATH` answers
-from a file, for tests and rehearsals. `--piece-output-tokens N` caps what one
-model call of a piece may write, its reasoning included (default 12000, 0 for
-the `--max-output-tokens` cap, which the planning and the report keep). A
-piece's call that reaches it is dropped, the piece is asked again once with
-what it staged kept, and a second such call fails the stretch as a call at the
-model's own cap does. The job's prompt and tools are its own
+from a file, for tests and rehearsals. A piece's model call that reaches its
+output limit (`--max-output-tokens`, its reasoning included) is dropped, and
+the piece is asked again once with what it staged kept. A second such call
+fails the stretch, which is halved, and what the piece staged for its
+sentences is written first. `--piece-output-tokens N` sets a lower limit on a
+piece's calls alone (default 0, none: measured, a lower limit made jobs
+slower). The job's prompt and tools are its own
 (`docs/igt/SAMPLE_JOB_PROMPT.md`): `jobworker.py` (the command line),
 `core/job.py` (the loop, the heartbeat, the budgets and halving, yielding, the
 report) and `igt/job.py` (targets, the stretch's input, the job's guards, the

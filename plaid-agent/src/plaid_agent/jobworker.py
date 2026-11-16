@@ -117,9 +117,8 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument('--max-output-tokens', dest='max_tokens', type=int, default=None, metavar='N',
                    help='The most one model call may write, its reasoning included')
     p.add_argument('--piece-output-tokens', type=int, default=JOB_PIECE_OUTPUT_TOKENS, metavar='N',
-                   help='The most one model call of a job\'s piece may write, its reasoning included (default '
-                        f'{JOB_PIECE_OUTPUT_TOKENS}, 0 for --max-output-tokens). A call that reaches it is asked '
-                        'again once')
+                   help='A ceiling below --max-output-tokens on what one model call of a job\'s piece may write, '
+                        'its reasoning included (default 0: none, the piece writes up to the model\'s own cap)')
     add_timeout_argument(p)
     add_model_pool_argument(p)
     p.add_argument('--reasoning-effort', default=None, metavar='LEVEL',

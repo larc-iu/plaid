@@ -38,7 +38,7 @@ from .limits import (HARMONIZE_MAJORITY, JOB_CALL_DECIDE_AT_TOKENS, JOB_CORE_TRI
                      JOB_STRETCH_DECIDE_AT_ROUNDS,
                      JOB_STRETCH_MAX_ROUNDS, JOB_STRETCH_MAX_SENT_TOKENS, JOB_YIELD_POLL_S, JOB_YIELD_QUIET_S,
                      JOB_YIELD_STEADY_S)
-from .prompt import JOB_DECIDE_NOW, job_cut_at_ceiling
+from .prompt import JOB_DECIDE_NOW, job_cut_at_limit
 
 logger = logging.getLogger(__name__)
 
@@ -129,18 +129,19 @@ class Pace:
     turn of a stretch: the budgets count the calls and tokens of all of
     them.
 
-    ``output_tokens``: a piece's ceiling on what one call may write
-    (``JOB_PIECE_OUTPUT_TOKENS``), None for the model's own cap. Under it
-    the first call that reaches its cap is dropped and the context asked
-    again once (:meth:`cut`), the second ends the turn as a call at the
-    model's own cap does."""
+    ``output_tokens``: a ceiling on what one call may write, below the
+    model's own cap (an operator's ``--piece-output-tokens``), None for
+    none. ``asks_again`` (a piece's): the first call that reaches its
+    output limit, whichever it is, is dropped and the context asked again
+    once (:meth:`cut`), the second ends the turn as before."""
 
     def __init__(self, model: str, before_call: Callable[[], None] = lambda: None,
                  count: Optional[Callable[[Any], int]] = None, decided: Callable[[], None] = lambda: None,
-                 line: str = JOB_DECIDE_NOW, output_tokens: Optional[int] = None):
+                 line: str = JOB_DECIDE_NOW, output_tokens: Optional[int] = None, asks_again: bool = False):
         self.count = count or token_counter(model)
         self.line = line
         self.output_tokens = output_tokens or None
+        self.asks_again = asks_again
         self.cuts = 0
         self.before_call = before_call
         self.decided = decided
@@ -180,13 +181,13 @@ class Pace:
         self.largest = max(self.largest, n)
 
     def cut(self, limit: Optional[int]) -> Optional[str]:
-        """After a call that reached its cap (``limit`` tokens): the line the
-        context is asked again with, once, under a ceiling, else None (the
-        turn ends as it did before there was a ceiling)."""
-        if not self.output_tokens or self.cuts:
+        """After a call that reached its output limit (``limit`` tokens, the
+        model's own cap or the ceiling): the line the context is asked again
+        with, once, where the pace asks again, else None (the turn ends)."""
+        if not self.asks_again or self.cuts:
             return None
         self.cuts += 1
-        return job_cut_at_ceiling(limit or self.output_tokens)
+        return job_cut_at_limit(limit or self.output_tokens)
 
 
 def halve(sentences: List[Any], attempt: Callable[[List[Any]], None],

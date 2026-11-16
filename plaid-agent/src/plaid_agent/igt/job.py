@@ -2165,8 +2165,8 @@ class IgtRunner:
     def __init__(self, job, cfg: ModelConfig, trace_dir: Optional[str] = None, count=None,
                  write_summary: bool = True, piece_output_tokens: Optional[int] = JOB_PIECE_OUTPUT_TOKENS):
         self.job = job
-        #: the most one call of a piece may write (the worker's
-        #: --piece-output-tokens, 0 or None for the model's own cap)
+        #: a ceiling below the model's cap on what one call of a piece may
+        #: write (the worker's --piece-output-tokens), 0 or None for none
         self.piece_output_tokens = piece_output_tokens
         #: whether the report's prose is written (the worker always does)
         self.write_summary = write_summary
@@ -3502,15 +3502,16 @@ class IgtRunner:
     def pace(self, decided=lambda: None, line: Optional[str] = None, piece: bool = False) -> Pace:
         """The budgets of one stretch, asked only while nobody waits for the
         model (``yield_to_people``). ``line``: its decide-now line, a
-        piece's unless given. ``piece``: a piece's, whose calls write at most
-        ``piece_output_tokens`` each (BRIEF SP item 1)."""
+        piece's unless given. ``piece``: a piece's, whose first call at its
+        output limit is asked again (``Pace.cut``) and whose calls write at
+        most ``piece_output_tokens`` each when an operator set it."""
         job = self.job
 
         def before_call():
             job.check()
             job.yield_to_people()
         return Pace(self.cfg.model, before_call=before_call, count=self.count, decided=decided,
-                    output_tokens=self.piece_output_tokens if piece else None,
+                    output_tokens=self.piece_output_tokens if piece else None, asks_again=piece,
                     **({'line': line} if line else {}))
 
     def counting(self, call_tool, where: str, read=None):

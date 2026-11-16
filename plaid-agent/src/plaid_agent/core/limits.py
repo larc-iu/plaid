@@ -235,12 +235,12 @@ JOB_STRETCH_MAX_SENT_TOKENS = 600000
 #: Seconds the worker waits before it asks a model that did not answer again.
 JOB_MODEL_RETRY_S = 300
 #: The most one model call of a job's PIECE may write, its reasoning
-#: included (the worker's --piece-output-tokens, 0 for none): the planning,
-#: the report's prose and a chat keep the model's own cap. A call that
-#: reaches it is dropped and the piece asked again once (BRIEF SP item 1):
-#: median reasoning near 5,000 tokens plus a round of batched writes near
-#: 2,000, with room to spare.
-JOB_PIECE_OUTPUT_TOKENS = 12000
+#: included, below the model's own cap: none (0), the worker's
+#: --piece-output-tokens for an operator who wants one. The planning, the
+#: report's prose and a chat always keep the model's own cap. Measured
+#: 2026-11-16 (BRIEF SP): a ceiling of 12,000 made glossing slower, as long
+#: calls were mostly useful work, cut and done again in more pieces.
+JOB_PIECE_OUTPUT_TOKENS = 0
 #: The most items one call of a piece's tool takes, where an app's tools take
 #: many values or links at once (BRIEF SP item 2): the values of a field on
 #: every word of a piece of five long sentences, near 1,600 tokens.

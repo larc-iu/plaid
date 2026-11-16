@@ -1409,7 +1409,7 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
             cut_at = getattr(e, 'cut_at', None) if isinstance(e, TurnFailed) else None
             again = pace.cut(cut_at) if pace is not None and cut_at else None
             if again is not None:
-                # A job's piece at its ceiling: the call is dropped, its round
+                # A job's piece at its output limit: the call is dropped, its round
                 # kept with what it wrote, and the context asked again once,
                 # what it staged still staged (BRIEF SP item 1).
                 thought = clean_reasoning(keeper.thinking) if keeper is not None else None
