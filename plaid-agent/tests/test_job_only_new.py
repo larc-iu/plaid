@@ -248,3 +248,35 @@ def test_harmonize_of_such_a_job_writes_nothing_on_a_word_the_job_did_not_add(mo
     out = runner(job).harmonize(job)
     assert not [c for c in client.calls if c[0].startswith(('spans', 'tokens'))], 'nothing written'
     assert [(x['form'], x['reason']) for x in out['left']] == [('ka', 'refused')], out
+
+
+@pytest.mark.parametrize('calls,code', [
+    # The reviewer's only-outside-mgloss-analysis: an analysis of an existing
+    # sentence under onlynew.
+    ([('analyze_sentence', {'document': 'Story', 'sentences': [{'ref': 's2', 'words': ['pa go', 'ro come']}]})],
+     'not-added'),
+    # added-word-analysis: a retype adds a word and the same reply analyses
+    # the sentence, refused as retyped in this plan.
+    ([('retype_sentence', {'document': 'Story', 'ref': 's2', 'text': 'zz pa ro.'}),
+      ('analyze_sentence', {'document': 'Story', 'sentences': [{'ref': 's2', 'words': ['pa go', 'ro come']}]})],
+     'text'),
+])
+def test_a_refusal_analyze_sentence_meets_is_listed_as_refused(monkeypatch, calls, code):
+    """REV-RPF2-3: analyze_sentence says each sentence's refusal in its own
+    answer, and those refusals reached no screen: the report's Refused list
+    read none. Each coded refusal is now kept as the other tools' are."""
+    client = JobClient({'d1': document('d1', 'Story', [{'words': ['sc', 'tqmc']}, {'words': ['pa', 'ro']}])})
+    job = start(client, 'Insert and analyse.', id=J, plan='document', edits_text=True,
+                fills=('segmentation', MGLOSS), setup=_setup(fills=(('segmentation', 'segmentation'),
+                                                                     (MGLOSS, 'Morph Gloss'))))
+
+    def answer(asked, n, kwargs):
+        if 'Your piece' not in asked or n > 1:
+            return reply('Done.')
+        return reply(calls=[call(i + 1, t, a) for i, (t, a) in enumerate(calls)])
+    use(monkeypatch, Model(answer))
+    from job_fixtures import text_edits
+    text_edits(monkeypatch)
+    finished = run_job(job, runner(job))
+    refused = finished['report']['documents'][0].get('refused') or []
+    assert (code, 's2') in [(r['code'], r['sentence']) for r in refused], refused

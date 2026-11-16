@@ -126,11 +126,25 @@ def t_analyze_sentence(ws: Workspace, document: Optional[str] = None, sentences:
         except _Refused as e:
             said.append(str(e))
         except (ToolError, ValueError) as e:
-            said.append(f'{item.get("ref") or "A sentence"} not staged: {e}')
+            # A refusal with a next step a job cannot take is kept for the
+            # job's report, as run_tool keeps a whole call's (REV-RPF2-3).
+            if getattr(e, 'advice', None):
+                said.append(f'{item.get("ref") or "A sentence"} not staged: '
+                            + advised(ws, e.fact, e.advice, e.sentence_id or _sentence_id(doc, item),
+                                      getattr(e, 'code', None)))
+            else:
+                said.append(f'{item.get("ref") or "A sentence"} not staged: {e}')
     if not staged_any:
         raise ToolError('\n'.join(said), kind='invalid-argument')
     n = sum(1 for o in ws.ops if id(o) not in before)
     return _answer(ws, n, said, notes, listed, made)
+
+
+def _sentence_id(doc: IgtDoc, item: Dict[str, Any]) -> Optional[str]:
+    """The id of the sentence an item's ref names, or None."""
+    m = _REF.match(str(item.get('ref') or ''))
+    si = int(m.group(1)) if m else 0
+    return doc.sentences[si - 1].id if 1 <= si <= len(doc.sentences) else None
 
 
 def _words_of(ws: Workspace, doc: IgtDoc, ref: str):
