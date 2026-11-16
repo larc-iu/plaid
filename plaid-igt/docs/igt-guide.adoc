@@ -148,8 +148,10 @@ When someone else saved the baseline while you were editing it, **Save changes**
 If you both changed the same passage, the save is refused and your text stays in the box.
 **Cancel** then shows the saved text, and you make the edit again.
 
-A project may define additional **orthographies**, alternate representations of each word such as a phonetic transcription or a practical spelling.
-These appear as their own rows in the Analyze grid (see <<_text_and_vocab>>).
+A project may also have **additional orthographies**, such as IPA, another script, or a normalized form.
+Each is a row of its own under the **Baseline** row in the Analyze grid, with its own value for each word.
+Adding one does not fill it from the baseline: it starts empty, and is filled in by hand or by a tool.
+They are set under **Settings → Text and vocab** (see <<_text_and_vocab>>).
 
 == Media
 
@@ -667,7 +669,7 @@ Under **Project plaid**, **Show the project's plaid** draws the project's plaid 
 
 Three things live here:
 
-* The extra **orthographies** each word can carry beside the baseline form, such as a phonetic transcription or a practical spelling.
+* The **additional orthographies**, such as IPA, another script, or a normalized form. Each is a row of its own under every word in the Analyze grid, empty until filled in by hand or by a tool (see <<_baseline>>).
 * Which **vocabularies** the project draws on (see <<_vocabularies>>). The project's own are always linked, and **New vocabulary** makes another. A vocabulary of another project can be linked by a maintainer who is also a member of that project.
 * The project's **special characters**: the backslash codes that type characters your keyboard lacks (see <<_typing_special_characters>>).
 
