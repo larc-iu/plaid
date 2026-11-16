@@ -46,7 +46,7 @@ export const assistantPanelHarness = ({
     ...stub,
     ...assistantStub(app, {
       serviceId: `${app}:assist:other`,
-      serviceName: two[1].serviceName,
+      serviceName: `${app.toUpperCase()} Assistant (other)`,
       extras: { model: 'other/model', app, record: 3, tasks: ['assist'] },
     }),
   ];
