@@ -3609,15 +3609,18 @@ class IgtRunner:
     def message(self, ws: JobWorkspace, project: IgtProject, doc, part: List[Sentence], st: Stretch,
                 whole: bool = False) -> str:
         """What a piece of one document is handed (SPEC 3.4): the sentences
-        as read_sentences renders them (two before a stretch for context, or
-        the whole document), what is empty in them, how their blank forms
-        were analysed before, the job's instructions and the plan's."""
-        first = part[0].index if part else 1
+        as read_sentences renders them (the two before each sentence of the
+        piece for context, those of a run being the two before it, REV-SF-4:
+        a search's matched sentences are no run, or the whole document), what
+        is empty in them, how their blank forms were analysed before, the
+        job's instructions and the plan's."""
         if whole:
             context, shown = [], [s.index for s in doc.sentences]
         else:
-            context = [s for s in doc.sentences if first - JOB_CONTEXT_SENTENCES <= s.index < first]
-            shown = [s.index for s in context + part]
+            mine = {s.index for s in part}
+            near = {i for s in part for i in range(s.index - JOB_CONTEXT_SENTENCES, s.index)}
+            context = [s for s in doc.sentences if s.index in near and s.index not in mine]
+            shown = sorted(s.index for s in context + part)
         # Every sentence of the piece, past a read's cap of sentences: a
         # whole document is within JOB_DOCUMENT_PIECE_MAX_CHARS.
         rendered = ws.render(doc, indexes=shown, max_sentences=len(shown))

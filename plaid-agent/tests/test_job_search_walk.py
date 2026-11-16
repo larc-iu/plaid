@@ -310,3 +310,16 @@ def test_a_resumed_job_in_the_middle_of_the_walk_takes_each_matched_sentence_onc
                                    ('Story 23', 'Your piece: s3'), ('Story 18', 'Your piece: s1'),
                                    ('Story 18', 'Your piece: s2'), ('Story 2', 'Your piece: s1')]), (first, second)
     assert finished['report']['totals']['changes'] == 6
+
+
+def test_each_matched_sentence_of_a_piece_sees_the_two_before_it(monkeypatch):
+    """REV-SF-4: the planner is told a piece sees the two sentences before;
+    matched sentences that are no run each get theirs."""
+    client = JobClient({'d1': document('d1', 'Story 1', [
+        {'words': [('nidr', [('nidr', OLD if k in (2, 6) else 'be')], 'human')]} for k in range(1, 8)])})
+    job = start(client, 'Rename it.', id=J, plan=None)
+    model = use(monkeypatch, Model(planned(lambda a, k, kw: reply('Looked.'), RENAME)))
+    run_job(job, runner(job))
+    (asked,) = _pieces(model)
+    assert _your_piece(asked) == 'Your piece: s2, s6. s1, s4, s5 are context.', _your_piece(asked)
+    assert '[s3]' not in asked and '[s4]' in asked and '[s7]' not in asked, asked
