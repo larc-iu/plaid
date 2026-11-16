@@ -2307,7 +2307,7 @@ class IgtRunner:
         name = self.names.get(documents[0]) or (job.rows.get(documents[0]) or {}).get('name')
         where = (f'"{name}"' if name else 'a document') if len(documents) == 1 else f'{len(documents)} documents'
         minutes = round(JOB_DEFER_WAIT_S / 60)
-        said = job.status.get('message')
+        said = job.line
         job.set(current_document=None,
                 message=f'Waiting for people to finish in {where}. Trying again in {minutes} minutes.')
         try:
@@ -2419,9 +2419,19 @@ class IgtRunner:
                 job.update_row(document_id, targets=total)
             part = pending if whole else pending[:JOB_STRETCH_SENTENCES]
             last = done + len(part)
-            job.set(message=f'Sentences {done + 1} to {last} of {max(total, last)}.')
+            job.set(message=self.progress_line(doc.name, whole, done + 1, last, max(total, last)))
             halve([s.id for s in part], lambda ids: self.attempt(project, document_id, ids),
                   lambda sid, kind: self.failed_piece(document_id, doc, sid, kind))
+
+    def progress_line(self, name: str, whole: bool, first: int, last: int, total: int) -> str:
+        """The heartbeat's line for a piece of one document (RPF-A6): which
+        sentences, or the whole document as one piece, after the document's
+        name when the job has more than one, so the line never seems to go
+        back when the next document starts."""
+        said = 'the whole document as one piece' if whole else f'sentences {first} to {last} of {total}'
+        if len(self.job.order) > 1:
+            return f'{name}: {said}.'
+        return said[0].upper() + said[1:] + '.'
 
     def whole_document(self, project: IgtProject, doc) -> bool:
         """Whether this document is worked as one piece: the plan says
@@ -2666,7 +2676,7 @@ class IgtRunner:
         work. 2 steps." Set with :meth:`Job.say`, so the next heartbeat
         carries it and none is sent for it (BRIEF LV, REV-LV-4)."""
         job = self.job
-        said = job.status.get('message') or ''
+        said = job.line or ''
         if self.counted is not None and said == self.counted[1]:
             said = self.counted[0]
 

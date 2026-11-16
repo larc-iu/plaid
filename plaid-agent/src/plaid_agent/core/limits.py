@@ -238,6 +238,10 @@ JOB_MODEL_RETRY_S = 300
 JOB_YIELD_POLL_S = 10
 #: Seconds the model must have been quiet before the worker calls it.
 JOB_YIELD_QUIET_S = 60
+#: Seconds after a job's last pause for people that its line still says it
+#: takes turns with them, so a job yielding in bursts reads one steady line
+#: (RPF-A6).
+JOB_YIELD_STEADY_S = 600
 #: Seconds after a write by anyone else that a document counts as in use.
 JOB_PERSON_QUIET_S = 600
 #: Tries for a document's lock, and the seconds between them.

@@ -36,7 +36,8 @@ from .limits import (HARMONIZE_MAJORITY, JOB_CALL_DECIDE_AT_TOKENS, JOB_CORE_TRI
                      JOB_DECISIONS_PER_CALL, JOB_CALL_MAX_PROMPT_TOKENS,
                      JOB_HEARTBEAT_S, JOB_MODEL_RETRY_S, JOB_REPORT_BUDGET_BYTES, JOB_REPORT_LIST_MAX,
                      JOB_STRETCH_DECIDE_AT_ROUNDS,
-                     JOB_STRETCH_MAX_ROUNDS, JOB_STRETCH_MAX_SENT_TOKENS, JOB_YIELD_POLL_S, JOB_YIELD_QUIET_S)
+                     JOB_STRETCH_MAX_ROUNDS, JOB_STRETCH_MAX_SENT_TOKENS, JOB_YIELD_POLL_S, JOB_YIELD_QUIET_S,
+                     JOB_YIELD_STEADY_S)
 from .prompt import JOB_DECIDE_NOW
 
 logger = logging.getLogger(__name__)
@@ -44,8 +45,11 @@ logger = logging.getLogger(__name__)
 #: How a stretch fails (CONTRACT 5.2 ``kind``).
 BUDGET, CONTEXT, OUTPUT, REPEATING = 'budget', 'context', 'output', 'repeating'
 
-#: The job's message while it waits for people, and for a model that does not answer.
-PAUSED_FOR_PEOPLE = 'Paused while people use the model.'
+#: What the job's line ends with while it takes turns with people on the
+#: model (RPF-A6): from its first pause for them until JOB_YIELD_STEADY_S
+#: pass with no pause, so a job yielding in bursts keeps one steady line in
+#: place of a line that flips between its work and a pause every minute.
+TAKING_TURNS = 'Taking turns with people using the model.'
 
 
 def not_answering_line(seconds: float) -> str:
@@ -354,6 +358,10 @@ class Job:
         # What the heartbeat sends: the phase, the line, what it waits for, where it works.
         self.status: Dict[str, Any] = {'phase': self.job.get('phase'), 'message': self.job.get('message'),
                                        'waiting_for': None, 'current_document': None}
+        #: the job's line as its work says it, before :data:`TAKING_TURNS`
+        self.line: Optional[str] = self.job.get('message')
+        #: when the job last paused for people, or None (:meth:`shown`)
+        self.shared_at: Optional[float] = None
         self.lost: Optional[str] = None
         self.reason: Optional[str] = None
         self.paused = {'people': 0.0, 'model': 0.0}
@@ -426,9 +434,22 @@ class Job:
         self.reason = self.reason or 'starter-access'
         return JobStopped('failed')
 
+    def shown(self, line: Optional[str]) -> Optional[str]:
+        """The line as the heartbeat carries it: ``line``, and
+        :data:`TAKING_TURNS` after it while the job takes turns with people
+        (it paused for them within JOB_YIELD_STEADY_S), decided from the
+        worker's own state."""
+        if self.shared_at is None or self.now() - self.shared_at >= JOB_YIELD_STEADY_S:
+            return line
+        return f'{line} {TAKING_TURNS}' if line else TAKING_TURNS
+
     def set(self, **status) -> None:
         """Change what the heartbeat says (phase, message, waiting_for,
-        current_document) and send it now."""
+        current_document) and send it now. ``message`` is the job's
+        :attr:`line`, carried as :meth:`shown` says."""
+        if 'message' in status:
+            self.line = status['message']
+            status['message'] = self.shown(self.line)
         changed = any(self.status.get(k) != v for k, v in status.items())
         self.status.update(status)
         if changed:
@@ -438,7 +459,8 @@ class Job:
         """Change the heartbeat's line without sending it: the next heartbeat
         carries it. For a line that changes with every model call (BRIEF
         LV), which must never send heartbeats more often."""
-        self.status['message'] = message
+        self.line = message
+        self.status['message'] = self.shown(message)
 
     # --- checkpoints ---------------------------------------------------------
 
@@ -484,20 +506,24 @@ class Job:
                 last = _iso_seconds(load.get('last_finished_at'))
                 if not load.get('in_flight') and (last is None or self.now() - last >= JOB_YIELD_QUIET_S):
                     return
+                # The line keeps its words and says the job takes turns
+                # with people, steady while it yields in bursts (RPF-A6).
+                self.shared_at = self.now()
                 if waited is None:
-                    waited = (self.now(), self.status.get('message'))
-                    self.set(waiting_for='people', message=PAUSED_FOR_PEOPLE)
+                    waited = self.now()
+                    self.set(waiting_for='people', message=self.line)
                 self.sleep(JOB_YIELD_POLL_S)
         finally:
             if waited is not None:
-                self.paused['people'] += self.now() - waited[0]
+                self.paused['people'] += self.now() - waited
+                self.shared_at = self.now()
                 if not self.lost:
-                    self.set(waiting_for=None, message=waited[1])
+                    self.set(waiting_for=None, message=self.line)
 
     def wait_for_model(self) -> None:
         """The model did not answer: say so, wait :data:`JOB_MODEL_RETRY_S`
         and let the caller ask again (SPEC 3.7). A stop ends the wait."""
-        began, said = self.now(), self.status.get('message')
+        began, said = self.now(), self.line
         self.set(waiting_for='model', message=not_answering_line(JOB_MODEL_RETRY_S))
         try:
             self.sleep(JOB_MODEL_RETRY_S)

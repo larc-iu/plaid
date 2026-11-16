@@ -167,6 +167,39 @@ def test_the_heartbeat_line_counts_the_steps_of_the_piece_and_sends_no_heartbeat
     assert beats[0] == beats[1] and beats[2] == beats[3], 'a call sends no heartbeat'
 
 
+def test_the_line_names_the_document_when_the_job_has_more_than_one(monkeypatch):
+    """RP-8: "Sentences 11 to 15 of 17" then "1 to 5 of 17" read as going
+    back when the second document started."""
+    client = JobClient({'d1': _doc(), 'd2': document('d2', 'Story B', [{'words': ['ka', 'ta']}])})
+    job = start(client, id=J, plan='sentences')
+    _applying(monkeypatch, client)
+    lines = []
+
+    def answer(asked, n, kwargs=None):
+        lines.append(job.status.get('message'))
+        return _gloss(asked, n)
+    use(monkeypatch, Model(answer))
+    run_job(job, runner(job))
+    firsts = [m for m in lines if 'steps' not in m]
+    assert firsts == ['Story: sentences 1 to 4 of 4.', 'Story B: sentences 1 to 1 of 1.'], lines
+
+
+def test_a_whole_document_piece_says_so_on_its_line(monkeypatch):
+    """RP-4: a piece that is not a stretch of sentences read "Sentences 1 to
+    5 of 20"."""
+    client = JobClient({'d1': _doc()})
+    job = start(client, id=J, plan='document')
+    _applying(monkeypatch, client)
+    lines = []
+
+    def answer(asked, n, kwargs=None):
+        lines.append(job.status.get('message'))
+        return reply('Done.')
+    use(monkeypatch, Model(answer))
+    run_job(job, runner(job))
+    assert lines[0] == 'The whole document as one piece.', lines
+
+
 def test_planning_counts_its_steps_on_its_line(monkeypatch):
     client = JobClient({'d1': _doc()})
     job = start(client, id=J, plan=None)

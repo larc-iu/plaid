@@ -7,8 +7,8 @@ from datetime import datetime, timezone
 
 from job_fixtures import JobClient, Model, call, document, reply, runner, start, use
 
-from plaid_agent.core.job import PAUSED_FOR_PEOPLE
-from plaid_agent.core.limits import JOB_YIELD_QUIET_S
+from plaid_agent.core.job import TAKING_TURNS
+from plaid_agent.core.limits import JOB_YIELD_QUIET_S, JOB_YIELD_STEADY_S
 
 
 def _iso(t):
@@ -50,7 +50,8 @@ def test_requests_in_flight_pause_the_job_before_a_model_call(monkeypatch):
     runner(job).document('d1')
     assert seen[0][0] - start_t >= 30, 'no call while people used the model'
     beats = [c[1] for c in client.jobs.calls if c[0] == 'heartbeat']
-    assert any(b.get('waiting_for') == 'people' and b.get('message') == PAUSED_FOR_PEOPLE for b in beats)
+    assert any(b.get('waiting_for') == 'people' and b.get('message') == f'Sentences 1 to 1 of 1. {TAKING_TURNS}'
+               for b in beats), 'the line keeps its words and says the job takes turns with people'
     assert beats[-1].get('waiting_for') is None
     assert job.paused['people'] >= 30
 
@@ -72,3 +73,29 @@ def test_no_pool_means_no_pause(monkeypatch):
     runner(job).document('d1')
     assert seen[0][0] == t0
     assert not [c for c in client.jobs.calls if c[0] == 'model_busy']
+
+
+def test_the_line_stays_steady_while_the_job_takes_turns_with_people():
+    """RP-1: "Working" and "Paused while people use the model." flipped every
+    minute. The line keeps its words, and its suffix stays from the first
+    pause until JOB_YIELD_STEADY_S pass with none."""
+    client, job = _job('reallms')
+    t0 = job.now()
+    job.set(message='Sentences 1 to 5 of 20.')
+    client.jobs.model_load = {'reallms': {'in_flight': 1, 'last_finished_at': None}}
+    real_sleep = job._sleep
+
+    def sleep(s):
+        real_sleep(s)
+        if job.now() - t0 > 30:
+            client.jobs.model_load = {'reallms': {'in_flight': 0, 'last_finished_at': _iso(t0 - 600)}}
+    job._sleep = sleep
+    job.yield_to_people()
+    steady = f'Sentences 1 to 5 of 20. {TAKING_TURNS}'
+    assert job.status['message'] == steady and job.status['waiting_for'] is None, 'the pause over, the line stays'
+    job.say('Sentences 1 to 5 of 20. 2 steps in this piece.')
+    assert job.status['message'] == f'Sentences 1 to 5 of 20. 2 steps in this piece. {TAKING_TURNS}'
+    job._sleep(JOB_YIELD_STEADY_S)
+    job.set(message='Sentences 6 to 10 of 20.')
+    assert job.status['message'] == 'Sentences 6 to 10 of 20.', 'quiet for long enough: the plain line'
+    assert job.line == 'Sentences 6 to 10 of 20.'
