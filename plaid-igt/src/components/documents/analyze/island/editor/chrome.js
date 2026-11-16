@@ -425,6 +425,19 @@ export const chrome = {
     // non-editable "gap" column so it stays visible in its true position.
     // Whitespace-only gaps (ordinary inter-word spacing) are dropped.
     const cols = sentence.pieces.filter((p) => p.isToken || (p.content || '').trim() !== '');
+    // A word and the uncovered text after it wrap as one, so a sentence's
+    // full stop never wraps into a band of its own (RP-3). Text before the
+    // first word goes with that word.
+    const units = [];
+    let lead = [];
+    for (const p of cols) {
+      if (p.isToken) {
+        units.push({ token: p, before: lead, after: [] });
+        lead = [];
+      } else if (units.length) units.at(-1).after.push(p);
+      else lead.push(p);
+    }
+    if (lead.length) units.push({ token: null, before: lead, after: [] });
     // Multi-word expressions: the word band grows one line per lane of
     // brackets, and one more while words are being gathered in this sentence
     // (the pending bracket, drawn from the selection rather than the data).
@@ -467,9 +480,17 @@ export const chrome = {
           <div class="igt-tokens">
             ${this._labels(ctx)}
             ${repeat(
-              cols,
-              (p) => (p.isToken ? p.id : `gap:${p.begin}-${p.end}`),
-              (p) => (p.isToken ? this._tokenCol(p, ctx, sctx) : this._gapCol(p, sctx)),
+              units,
+              (u) => (u.token ? u.token.id : `gap:${u.before[0].begin}-${u.before[0].end}`),
+              (u) => {
+                const gaps = (list) => list.map((p) => this._gapCol(p, sctx));
+                if (!u.token) return gaps(u.before);
+                const col = this._tokenCol(u.token, ctx, sctx);
+                if (!u.before.length && !u.after.length) return col;
+                return html`<div class="igt-col-group">
+                  ${gaps(u.before)}${col}${gaps(u.after)}
+                </div>`;
+              },
             )}
           </div>
         </div>

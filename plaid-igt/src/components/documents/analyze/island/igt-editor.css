@@ -592,8 +592,17 @@
   width: max-content;
   border-inline-start: 1px solid var(--igt-hairline);
 }
-.igt-labels + .igt-gap-col {
+.igt-labels + .igt-gap-col,
+.igt-labels + .igt-col-group > :first-child {
   border-inline-start: none;
+}
+/* A word with the uncovered text beside it (punctuation): one item of the
+   wrap, so a full stop never wraps into a band of its own (RP-3). Its columns
+   keep their own look, and the gap columns still run the band's height. */
+.igt-col-group {
+  display: flex;
+  align-items: flex-start;
+  align-self: stretch;
 }
 .igt-gap-form {
   position: relative;
@@ -1830,41 +1839,41 @@
    morpheme rows are listed. The last row's room is inside the grid, so its
    scroll box clips no note. A minimized row stays as it is. */
 :is(
-  .igt-tokens:has(> .igt-token-col > [data-row]:nth-child(2) .igt-field-conflict)
-    > *
+  .igt-tokens:has(.igt-token-col > [data-row]:nth-child(2) .igt-field-conflict)
+    :is(.igt-labels, .igt-token-col)
     > [data-row]:nth-child(2),
-  .igt-tokens:has(> .igt-token-col > [data-row]:nth-child(3) .igt-field-conflict)
-    > *
+  .igt-tokens:has(.igt-token-col > [data-row]:nth-child(3) .igt-field-conflict)
+    :is(.igt-labels, .igt-token-col)
     > [data-row]:nth-child(3),
-  .igt-tokens:has(> .igt-token-col > [data-row]:nth-child(4) .igt-field-conflict)
-    > *
+  .igt-tokens:has(.igt-token-col > [data-row]:nth-child(4) .igt-field-conflict)
+    :is(.igt-labels, .igt-token-col)
     > [data-row]:nth-child(4),
-  .igt-tokens:has(> .igt-token-col > [data-row]:nth-child(5) .igt-field-conflict)
-    > *
+  .igt-tokens:has(.igt-token-col > [data-row]:nth-child(5) .igt-field-conflict)
+    :is(.igt-labels, .igt-token-col)
     > [data-row]:nth-child(5),
-  .igt-tokens:has(> .igt-token-col > [data-row]:nth-child(6) .igt-field-conflict)
-    > *
+  .igt-tokens:has(.igt-token-col > [data-row]:nth-child(6) .igt-field-conflict)
+    :is(.igt-labels, .igt-token-col)
     > [data-row]:nth-child(6),
-  .igt-tokens:has(> .igt-token-col > [data-row]:nth-child(7) .igt-field-conflict)
-    > *
+  .igt-tokens:has(.igt-token-col > [data-row]:nth-child(7) .igt-field-conflict)
+    :is(.igt-labels, .igt-token-col)
     > [data-row]:nth-child(7),
-  .igt-tokens:has(> .igt-token-col > [data-row]:nth-child(8) .igt-field-conflict)
-    > *
+  .igt-tokens:has(.igt-token-col > [data-row]:nth-child(8) .igt-field-conflict)
+    :is(.igt-labels, .igt-token-col)
     > [data-row]:nth-child(8),
-  .igt-tokens:has(> .igt-token-col > [data-row]:nth-child(9) .igt-field-conflict)
-    > *
+  .igt-tokens:has(.igt-token-col > [data-row]:nth-child(9) .igt-field-conflict)
+    :is(.igt-labels, .igt-token-col)
     > [data-row]:nth-child(9),
-  .igt-tokens:has(> .igt-token-col > [data-row]:nth-child(10) .igt-field-conflict)
-    > *
+  .igt-tokens:has(.igt-token-col > [data-row]:nth-child(10) .igt-field-conflict)
+    :is(.igt-labels, .igt-token-col)
     > [data-row]:nth-child(10),
-  .igt-tokens:has(> .igt-token-col > [data-row]:nth-child(11) .igt-field-conflict)
-    > *
+  .igt-tokens:has(.igt-token-col > [data-row]:nth-child(11) .igt-field-conflict)
+    :is(.igt-labels, .igt-token-col)
     > [data-row]:nth-child(11),
-  .igt-tokens:has(> .igt-token-col > [data-row]:nth-child(12) .igt-field-conflict)
-    > *
+  .igt-tokens:has(.igt-token-col > [data-row]:nth-child(12) .igt-field-conflict)
+    :is(.igt-labels, .igt-token-col)
     > [data-row]:nth-child(12),
-  .igt-tokens:has(> .igt-token-col > [data-row]:nth-child(13) .igt-field-conflict)
-    > *
+  .igt-tokens:has(.igt-token-col > [data-row]:nth-child(13) .igt-field-conflict)
+    :is(.igt-labels, .igt-token-col)
     > [data-row]:nth-child(13),
   .igt-tokens:has(.igt-morph-col > :nth-last-child(1) .igt-field-conflict)
     :is(.igt-labels, .igt-morph-col)
