@@ -386,9 +386,10 @@ const waitedMs = (job) => {
 const When = ({ at }) => <span title={fullTimestamp(at)}>{timeAgo(at)}</span>;
 
 // What the assistant told every piece when it planned the job, folded when
-// long.
+// long, the fold's label saying what it does (RP-9).
 const PLANNED_SHOWN_CHARS = 200;
 const PlannedInstructions = ({ text }) => {
+  const [open, setOpen] = useState(false);
   const body = (
     <span className="whitespace-pre-wrap" dir="auto">
       {text}
@@ -396,8 +397,8 @@ const PlannedInstructions = ({ text }) => {
   );
   if (text.length <= PLANNED_SHOWN_CHARS) return body;
   return (
-    <details>
-      <summary className="cursor-pointer text-muted-foreground">Show</summary>
+    <details onToggle={(e) => setOpen(e.currentTarget.open)}>
+      <summary className="cursor-pointer text-muted-foreground">{open ? 'Hide' : 'Show'}</summary>
       {body}
     </details>
   );

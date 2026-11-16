@@ -408,6 +408,12 @@ describe('the job page', () => {
     expect(folded.open).toBe(false);
     expect(folded.querySelector('summary').textContent).toBe('Show');
     expect(folded.textContent).toContain(told);
+    // Open, it says how to close it (RP-9).
+    await v.step(() => {
+      folded.open = true;
+      folded.dispatchEvent(new Event('toggle'));
+    });
+    expect(folded.querySelector('summary').textContent).toBe('Hide');
     expect(totals(v.container).Instructions).toBe('Gloss ka as GO.');
     await v.unmount();
   });
