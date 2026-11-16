@@ -326,7 +326,7 @@ export const MergePanel = ({ project, client }) => {
           others’ examples from documents, and the other entries are deleted.
         </p>
         {items && !canMerge && (
-          <Notice tone="warning">
+          <Notice tone="info">
             {home ? (
               <>
                 Only a maintainer of “<span dir="auto">{home.name}</span>” can merge its entries.

@@ -81,6 +81,11 @@ describe('MergePanel and who may merge', () => {
     expect(view.container.textContent).toContain(
       'Only a maintainer of “Story” can merge its entries.',
     );
+    // A permission is a plain fact, never drawn as if something were broken.
+    const line = all(view.container, '[data-tone]').find((n) =>
+      n.textContent.includes('can merge its entries'),
+    );
+    expect(line.getAttribute('data-tone')).toBe('info');
     await tick(view, 2);
     expect(previewButton(view)?.disabled).toBe(true);
     await view.unmount();
