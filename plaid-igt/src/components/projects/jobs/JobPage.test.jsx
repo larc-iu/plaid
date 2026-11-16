@@ -914,7 +914,6 @@ describe('the job page', () => {
       'Analyses made consistent',
       'Forms left inconsistent',
       'Proposed changes',
-      'Notes',
       'Tables',
       'Entries',
     ]) {
@@ -972,8 +971,9 @@ describe('the job page', () => {
     expect(table.querySelector('a').getAttribute('href')).toBe('/projects/p1/documents/d1');
     expect(t).toContain('And 2 more changes.');
     expect(sums['Changes proposed']).toBe('1');
-    // Each piece's note, and a table the job's code made, as data.
-    expect(t).toContain('Story A s1 to s5: Glossed s1 to s5.');
+    // A table the job's code made, as data. The notes are on the work list
+    // only (RPF3-E).
+    expect(t).not.toContain('Glossed s1 to s5.');
     expect(t).toContain('Glosses of ka');
     expect(t).toContain('come1');
     expect(byText(report, 'a', 'Machine drafts in Kukama lexicon').getAttribute('href')).toBe(
@@ -1335,7 +1335,10 @@ describe('the job page', () => {
     const headers = all(v.container, 'th').map((h) => h.textContent);
     expect(headers).toContain('People’s values, morphemes and links changed or removed');
     expect(headers).toContain('Changes to the text');
-    expect(headers).toContain('History');
+    // One name for the column and its links (RPF3-E, RP2-1 finding 8).
+    expect(headers).toContain('Changes');
+    expect(headers).toContain('Changes written');
+    expect(headers).not.toContain('History');
     await v.unmount();
   });
 
@@ -1679,10 +1682,8 @@ describe('the job page', () => {
     const section = v.container.querySelector('section[aria-label="Report"]');
     const headings = all(section, 'h3').map((h) => h.textContent);
     expect(headings).toContain('Tables');
-    expect(headings).toContain('Notes');
     const t = text(section);
     expect(t).toContain('And 3 more tables.');
-    expect(t).toContain('And 2 more notes.');
     await v.unmount();
   });
 
@@ -2067,7 +2068,9 @@ describe('the job page', () => {
     await none.unmount();
   });
 
-  it('renders each piece’s note as the chat renders the assistant’s text', async () => {
+  // RPF3-E (RP2-1 finding 5): each piece's note is on its row of the work
+  // list. The report no longer repeats them word for word.
+  it('shows each piece’s note once, on the work list, never again in the report', async () => {
     const report = {
       ...REPORT,
       notes: [
@@ -2076,8 +2079,8 @@ describe('the job page', () => {
     };
     const v = await mount(clientOf(jobOf({ state: 'done', report })));
     const section = v.container.querySelector('section[aria-label="Report"]');
-    expect(byText(section, 'strong', 's3')).toBeTruthy();
-    expect(text(section)).not.toContain('**');
+    expect(all(section, 'h3').map((h) => h.textContent)).not.toContain('Notes');
+    expect(text(section)).not.toContain('Left s3 blank.');
     await v.unmount();
   });
 

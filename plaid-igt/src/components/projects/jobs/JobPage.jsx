@@ -546,7 +546,9 @@ const JobDocuments = ({ job, projectId }) => {
   if (rows.some((d) => changesGroup(d) || d.harmonizeGroup)) {
     columns.push({
       key: 'history',
-      label: 'History',
+      // Its links are named "Changes": the column is too, and the count
+      // beside it "Changes written", as the report's totals say (RPF3-E).
+      label: 'Changes',
       render: (d) => (
         <JobHistoryLinks projectId={projectId} document={d} running={isJobActive(job)} />
       ),
@@ -556,7 +558,7 @@ const JobDocuments = ({ job, projectId }) => {
     ['words', 'Words'],
     ['links', 'Links'],
     ['entries', 'Entries'],
-    ['changes', 'Changes'],
+    ['changes', 'Changes written'],
     ['deletions', 'Deletions'],
     ['peoplesValuesChanged', 'People’s values, morphemes and links changed or removed'],
     ['textChanges', 'Changes to the text'],

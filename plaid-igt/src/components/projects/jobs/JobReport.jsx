@@ -464,29 +464,9 @@ const Written = ({ text, inline = false, ...rest }) => (
 );
 export { Written as JobWritten };
 
-// Each piece's note, as the model ended it.
-const PieceNotes = ({ report }) => {
-  const notes = report.notes || [];
-  if (!notes.length && !(report.notesMore > 0)) return null;
-  return (
-    <>
-      <Heading section="notes" />
-      <ul className="ml-4 list-disc text-sm">
-        {notes.map((n, i) => (
-          <li key={i}>
-            {(n.name || n.sentences) && (
-              <span className="text-muted-foreground">
-                {[n.name, n.sentences].filter(Boolean).join(' ')}:{' '}
-              </span>
-            )}
-            <Written text={n.note || ''} inline />
-          </li>
-        ))}
-      </ul>
-      <More n={report.notesMore || 0} noun="note" />
-    </>
-  );
-};
+// Each piece's note is on its row of the work list (JobActivity), and the
+// report does not repeat them (RPF3-E, RP2-1 finding 5). `report.notes`
+// stays for read_job and the final context.
 
 // What the job's code counted, as data, and how many tables the report could
 // not hold.
@@ -654,7 +634,6 @@ export const JobReport = ({ report, projectId, vocabs = [], undone = null, undon
 
       <LeftOut report={report} projectId={projectId} />
       <ProposedChanges report={report} projectId={projectId} />
-      <PieceNotes report={report} />
       <Tables tables={report.tables || []} more={report.tablesMore || 0} />
 
       <Respelled report={report} projectId={projectId} />
