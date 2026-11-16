@@ -264,11 +264,6 @@
   color: var(--igt-gray-700);
 }
 
-/* ---- empty states ---- */
-.igt-island__empty--warn {
-  color: var(--igt-warning);
-}
-
 /* ---- sentence block ----
    The unit that MIRRORS. `dir` is set on this element per document (see
    IgtEditor's `_sentence`), so the number, the row labels, the word columns,

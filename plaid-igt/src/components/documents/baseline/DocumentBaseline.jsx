@@ -144,13 +144,11 @@ export function DocumentBaseline() {
                 </div>
               </div>
 
+              {/* Not set up is a plain fact, never drawn as if broken. */}
               {!ops.primaryTextLayer && (
-                <div className="rounded-md border border-destructive/50 bg-destructive/5 p-3">
-                  <div className="flex items-start gap-2">
-                    <Info className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
-                    <p className="text-sm text-destructive">{NOT_SET_UP}</p>
-                  </div>
-                </div>
+                <Notice tone="info" icon={Info}>
+                  {NOT_SET_UP}
+                </Notice>
               )}
             </div>
           )}

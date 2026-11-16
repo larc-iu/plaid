@@ -59,8 +59,9 @@ export const chrome = {
   _template() {
     const doc = this.doc;
     const info = doc.layerInfo;
+    // Not set up is a plain fact: the muted empty state, never a warm one.
     if (!info.primaryTokenLayer) {
-      return html` <div class="igt-island__empty igt-island__empty--warn">
+      return html` <div class="igt-island__empty">
         <p>${NOT_SET_UP}</p>
       </div>`;
     }

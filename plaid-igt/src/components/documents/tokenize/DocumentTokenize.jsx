@@ -303,8 +303,9 @@ export function DocumentTokenize() {
           </div>
         </div>
 
+        {/* Not set up is a plain fact, never drawn as if broken. */}
         {!layers?.primaryTokenLayer && (
-          <Notice tone="error" icon={Info}>
+          <Notice tone="info" icon={Info}>
             This project is not set up for words. A project maintainer can finish setup.
           </Notice>
         )}
