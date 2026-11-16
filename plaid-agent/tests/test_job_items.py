@@ -403,3 +403,84 @@ def test_a_piece_is_told_a_value_of_its_own_on_each_ref_goes_in_items():
     chat = _ws(job=False)
     assert str(toolkit.call_tool(chat, 'set_field', wrong)) == f'Error: {ONE_SHAPE}'
     assert 'one call per ref' in _schema(toolkit.tools_for(chat), 'set_field')['properties']['values']['description']
+
+
+# --- several items in ONE call against the same items as single calls in order (REV-SP-2) ------------
+
+#: The reviewer's probe table (scratchpad/REV-SP/probe1.py): items that meet
+#: each other in one call. ``before``: calls made first, on both sides.
+TOGETHER = {
+    'a ref repeated with two values': ('set_field', {'field': 'Gloss'},
+                                       [{'ref': 's1.w2', 'value': 'fish'}, {'ref': 's1.w2', 'value': 'see'}], []),
+    'set then taken back in one call': ('set_field', {'field': 'Gloss'},
+                                        [{'ref': 's1.w2', 'value': 'fish'}, {'ref': 's1.w2', 'value': ''}], []),
+    'the same value twice': ('set_field', {'field': 'Gloss'},
+                             [{'ref': 's1.w2', 'value': 'fish'}, {'ref': 's1.w2', 'value': 'fish'}], []),
+    'a value on a morpheme of an analysis planned by an earlier item\'s call': (
+        'set_field', {'field': 'Morph Gloss'}, [{'ref': 's1.w3.m1', 'value': 'see'}, {'ref': 's1.w3.m2', 'value': 'PST'}],
+        [('set_analysis', {'ref': 's1.w3', 'morphemes': [{'form': 'aku'}, {'form': 'na', 'type': 'suffix'}]})]),
+    'a word and its morpheme linked': ('link_entry', {}, [{'ref': 's1.w2', 'entry_id': 'vi-gam'},
+                                                          {'ref': 's1.w2.m1', 'entry_form': 'gam#2'}], []),
+    'one morpheme linked to two entries': ('link_entry', {}, [{'ref': 's1.w2.m1', 'entry_form': 'gam#2'},
+                                                              {'ref': 's1.w2.m1', 'entry_id': 'vi-gam'}], []),
+    'a homonym by bare form beside a good item': ('link_entry', {}, [{'ref': 's1.w2.m1', 'entry_form': 'gam'},
+                                                                     {'ref': 's1.w3.m1', 'entry_form': 'gam#2'}], []),
+    'an entry form shared beside items': ('link_entry', {'entry_form': 'gam#2'},
+                                          [{'ref': 's1.w2.m1'}, {'ref': 's1.w3.m1'}], []),
+    'an entry made in the piece, linked twice': (
+        'link_entry', {}, [{'ref': 's1.w2.m1', 'entry_form': 'zork'}, {'ref': 's1.w3.m1', 'entry_form': 'zork'}],
+        [('create_entry', {'form': 'zork', 'fields': {'gloss': 'ZORK'}})]),
+    'a null value and none at all': ('set_field', {'field': 'Gloss'},
+                                     [{'ref': 's1.w2', 'value': None}, {'ref': 's1.w3'}], []),
+    'a ref by a form that does not match': ('set_field', {'field': 'Gloss'},
+                                            [{'ref': 's1.w2 "nope"', 'value': 'x'}, {'ref': 's1.w3', 'value': 'y'}],
+                                            []),
+}
+
+
+def _before(ws, before):
+    for tool, args in before:
+        toolkit.job_piece_call(ws, tool, args if tool == 'create_entry' else {'document': 'Text 1', **args})
+
+
+@pytest.mark.parametrize('scenario', list(TOGETHER))
+def test_items_that_meet_in_one_call_stage_what_the_single_calls_in_order_stage(scenario):
+    tool, shared, items, before = TOGETHER[scenario]
+    one, many = _ws(), _ws()
+    _before(one, before)
+    _before(many, before)
+    singles = []
+    for it in items:
+        args = {'document': 'Text 1', **shared, **{k: v for k, v in it.items() if k != 'ref'}, 'refs': [it['ref']]}
+        singles.append(toolkit.job_piece_call(one, tool, args))
+    out = toolkit.job_piece_call(many, tool, {'document': 'Text 1', **shared, 'items': items})
+    assert _ops(one) == _ops(many), (singles, out)
+    assert one.left_by_refusal == many.left_by_refusal
+    for i, s in enumerate(singles, start=1):
+        if isinstance(s, Refusal):
+            assert f'item {i} ' in str(out) and str(s)[len('Error: '):] in str(out), (s, out)
+
+
+def test_an_item_naming_more_than_one_reference_is_refused_alone():
+    """REV-SP-3: "s1.w2, s1.w3" in one item staged two changes and was
+    counted as one value."""
+    ws = _ws()
+    out = toolkit.job_piece_call(ws, 'set_field', {'document': 'Text 1', 'field': 'Gloss', 'items': [
+        {'ref': 's1.w2, s1.w3', 'value': 'x'}, {'ref': 's1.w1', 'value': 'y'}]})
+    assert out.splitlines()[1] == ('Refused: item 1 s1.w2, s1.w3: one reference per item: give s1.w2, s1.w3 each '
+                                   'as an item of its own.'), out
+    assert [o['token_id'] for o in ws.ops] == ['w-1']
+
+
+@pytest.mark.parametrize('items,label', [
+    ([{'ref': 's1.w2', 'value': 'fish'}, {'ref': 's1.w2', 'value': 'see'}], 'Set 1 value, 1 replaced in this call'),
+    ([{'ref': 's1.w2', 'value': 'fish'}, {'ref': 's1.w2', 'value': ''}],
+     'Set 0 values, 1 not staged, 1 replaced in this call'),
+    ([{'ref': 's1.w2', 'value': 'fish'}, {'ref': 's1.w3', 'value': 'see'}], 'Set 2 values'),
+])
+def test_the_step_line_counts_what_the_plan_holds_after_the_call(items, label):
+    """REV-SP-4: an item whose change a later item of the same call
+    superseded or took back is not counted as set."""
+    ws = _ws()
+    toolkit.job_piece_call(ws, 'set_field', {'document': 'Text 1', 'field': 'Gloss', 'items': items})
+    assert ws.step_label == label

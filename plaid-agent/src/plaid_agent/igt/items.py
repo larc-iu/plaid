@@ -19,6 +19,7 @@ from ..core.limits import JOB_ITEMS_MAX
 from ..core.refs import read_ref
 from ..core.tools import Refusal, refused
 from ..core.trace import plural
+from .workspace import _refs
 
 #: The end of a job's "Staged ..." answer (``JobWorkspace.planned_note``):
 #: what an item's answer says beyond it is kept in the batch's answer.
@@ -105,6 +106,9 @@ def stage_items(ws, name: str, args: Dict[str, Any], call: Callable[[Any, str, D
                        'invalid-argument')
     shared = {k: v for k, v in args.items() if k != 'items'}
     staged: List[str] = []
+    # Each staged item's new ops, held, to count at the end those the plan
+    # still holds (a later item may supersede or take one back).
+    made: List[List[Dict[str, Any]]] = []
     lines: List[str] = []
     refusals: List[Refusal] = []
     others = 0
@@ -124,6 +128,16 @@ def stage_items(ws, name: str, args: Dict[str, Any], call: Callable[[Any, str, D
                 lines.append(f'Refused: item {i} {_ref_text(ref)}: {_said(out)}')
                 refusals.append(out)
                 continue
+            try:
+                several = len(_refs([ref])) > 1
+            except Exception:  # noqa: BLE001 - a bad reference is the single call's to refuse
+                several = False
+            if several:
+                out = refused(f'one reference per item: give {ref.strip()} each as an item of its own.',
+                              'invalid-argument')
+                lines.append(f'Refused: item {i} {_ref_text(ref)}: {_said(out)}')
+                refusals.append(out)
+                continue
             one = {**shared, **{k: v for k, v in item.items() if k != 'ref'}, 'refs': [ref]}
             ws.calling = (name, one)
             before = {id(op) for op in ws.ops}
@@ -136,6 +150,7 @@ def stage_items(ws, name: str, args: Dict[str, Any], call: Callable[[Any, str, D
                 refusals.append(out)
             elif any(id(op) not in before for op in ws.ops):
                 staged.append(ref)
+                made.append([op for op in ws.ops if id(op) not in before])
                 more = _beyond_staged(str(out))
                 if more:
                     lines.append(f'Item {i} {_ref_text(ref)}: {more}')
@@ -148,7 +163,9 @@ def stage_items(ws, name: str, args: Dict[str, Any], call: Callable[[Any, str, D
     held = ws.staged_count() if hasattr(ws, 'staged_count') else None
     head = f'Staged {len(staged)} of {plural(len(items), what)}.' + (
         f' {plural(held, "change")}{STAGED_TAIL}' if held is not None else '')
-    ws.step_label = _label(name, staged, len(refusals), others)
+    now = {id(op) for op in ws.ops}
+    held_refs = [ref for ref, ops in zip(staged, made) if any(id(op) in now for op in ops)]
+    ws.step_label = _label(name, held_refs, len(refusals), others, len(staged) - len(held_refs))
     answer = '\n'.join([head] + lines)
     if not staged and refusals:
         out = refused(answer, refusals[0].kind)
@@ -191,9 +208,13 @@ def _places(refs: List[str]) -> str:
     return parts[0] if len(parts) == 1 else ', '.join(parts[:-1]) + ' and ' + parts[-1]
 
 
-def _label(name: str, staged: List[str], refused_n: int, others: int) -> Optional[str]:
-    """The step's line: what the call did, in the page's words, with its
-    refusals counted ("Set 14 values", "Linked 9 morphemes, 2 refused")."""
+def _label(name: str, staged: List[str], refused_n: int, others: int, replaced: int = 0) -> Optional[str]:
+    """The step's line: what the call did, in the page's words, counting
+    the items whose change the plan holds after the call, with its
+    refusals counted ("Set 14 values", "Linked 9 morphemes, 2 refused") and
+    the items a later item of the same call superseded or took back
+    (REV-SP-4)."""
     did = f'Set {plural(len(staged), "value")}' if name == 'set_field' else f'Linked {_places(staged)}'
-    tail = ''.join(f', {n} {w}' for n, w in ((refused_n, 'refused'), (others, 'not staged')) if n)
+    tail = ''.join(f', {n} {w}' for n, w in ((refused_n, 'refused'), (others, 'not staged'),
+                                             (replaced, 'replaced in this call')) if n)
     return did + tail
