@@ -644,6 +644,178 @@
         (is (some? (psc/fetch-by-id db :tokens right)))))))
 
 ;; ============================================================
+;; REV-UT2-2: token rows of the unit that traded characters go back together
+;; ============================================================
+
+(defn- reshaped!
+  "Undo group `g` of `w` (dry run first, the invariant after) once `person`
+  has run: the job's value on kai (`kai-v`), on a word no reshape touches,
+  is undone, and no row is left `does-not-fit`: what the person holds stays,
+  the rest of the document is undone. Returns the summary."
+  [{:keys [doc] :as w} then g kai-v person]
+  (person)
+  (let [real (undo-checked! [doc] then #(undo-entry admin-request g :dry-run %))]
+    (is (nil? (psc/fetch-by-id db :spans kai-v)) "the job's value on kai is undone")
+    (is (not-any? #{"does-not-fit"} (map :reason (:skipped real))) (pr-str (:skipped real)))
+    real))
+
+(defn- job-value-on-kai! [{:keys [pos text] :as w} r]
+  (id (create-span r pos [(word-of w text "kai")] "JOBV")))
+
+(deftest token-rows-that-traded-characters-go-back-together
+  (testing "a split, a person on the made right half (qA)"
+    (let [{:keys [doc text] :as w} (world!)
+          then (snapshot [doc])
+          g (str (random-uuid))
+          r (in-group admin-request g)
+          pele (word-of w text "pele")
+          _ (assert-done (split-token r pele (+ 2 (at text "pele"))))
+          right (word-of w text "le")
+          kai-v (job-value-on-kai! w r)
+          why (reasons (reshaped! w then g kai-v #(assert-done (update-token-metadata user1-request right {"seen" true}))))]
+      (is (= "changed-since" (why right)))
+      (is (= "text-changed-since" (why pele)) "the left half stays with it")))
+  (testing "two splits, a person on one left half: the other split is undone (qC)"
+    (let [{:keys [doc text words] :as w} (world!)
+          then (snapshot [doc])
+          g (str (random-uuid))
+          r (in-group admin-request g)
+          pele (word-of w text "pele")
+          tuna (word-of w text "tuna")
+          _ (assert-done (split-token r pele (+ 2 (at text "pele"))))
+          _ (assert-done (split-token r tuna (+ 2 (at text "tuna"))))
+          tuna-right (word-of w text "na")
+          kai-v (job-value-on-kai! w r)
+          why (reasons (reshaped! w then g kai-v #(assert-done (update-token-metadata user1-request tuna {"seen" true}))))]
+      (is (= "text-changed-since" (why tuna-right)))
+      (is (= 4 (- (:end_ (psc/fetch-by-id db :tokens pele)) (:begin (psc/fetch-by-id db :tokens pele))))
+          "pele is whole again")))
+  (testing "a merge, a person on the survivor (qD)"
+    (let [{:keys [doc text] :as w} (world!)
+          then (snapshot [doc])
+          g (str (random-uuid))
+          r (in-group admin-request g)
+          kai (word-of w text "kai")
+          pele (word-of w text "pele")
+          _ (assert-done (merge-tokens r kai pele))
+          lo-v (id (create-span r (:pos w) [(word-of w text "lo")] "JOBV"))
+          _ (assert-done (update-token-metadata user1-request kai {"seen" true}))
+          real (undo-checked! [doc] then #(undo-entry admin-request g :dry-run %))
+          why (reasons real)]
+      (is (= "changed-since" (why kai)))
+      (is (= "text-changed-since" (why pele)) "the merged source stays merged")
+      (is (nil? (psc/fetch-by-id db :spans lo-v)) "the job's value on lo is undone")
+      (is (not-any? #{"does-not-fit"} (vals why)))))
+  (testing "a merge whose source's metadata names a row deleted since (qE)"
+    (let [{:keys [doc text pos] :as w} (world!)
+          kai (word-of w text "kai")
+          pele (word-of w text "pele")
+          lo-s (id (create-span admin-request pos [(word-of w text "lo")] "REFD"))
+          _ (assert-ok (update-token-metadata admin-request pele {"see" (str lo-s)}))
+          then (snapshot [doc])
+          g (str (random-uuid))
+          r (in-group admin-request g)
+          _ (assert-done (merge-tokens r kai pele))
+          kai-v (id (create-span r pos [(word-of w text "tuna")] "JOBV"))
+          why (reasons (reshaped! w then g kai-v #(assert-done (api-call user1-request {:method :delete :path (str "/api/v1/spans/" lo-s)}))))]
+      (is (= "needs" (why pele)))
+      (is (= "text-changed-since" (why kai)) "the survivor keeps the source's characters")))
+  (testing "a split then a merge by the same unit, a person on each piece (qF)"
+    (doseq [who [:pe :le :nobody]]
+      (let [{:keys [doc text] :as w} (world! ["kai pele tuna" "lo"])
+            then (snapshot [doc])
+            g (str (random-uuid))
+            r (in-group admin-request g)
+            pele (word-of w text "pele")
+            tuna (word-of w text "tuna")
+            _ (assert-done (split-token r pele (+ 2 (at text "pele"))))
+            le (word-of w text "le")
+            _ (assert-done (merge-tokens r le tuna))
+            kai-v (job-value-on-kai! w r)
+            real (reshaped! w then g kai-v #(case who
+                                              :pe (assert-done (update-token-metadata user1-request pele {"seen" true}))
+                                              :le (assert-done (update-token-metadata user1-request le {"seen" true}))
+                                              nil))]
+        (when (= :nobody who) (is (zero? (:skipped-count real)) (pr-str (:skipped real)))))))
+  (testing "one word split in three, a person on each piece (qG)"
+    (doseq [who [:pe :le :mo]]
+      (let [{:keys [doc text words] :as w} (world! ["kai pelemo sa"])
+            then (snapshot [doc])
+            g (str (random-uuid))
+            r (in-group admin-request g)
+            pm (word-of w text "pelemo")
+            b (at text "pelemo")
+            _ (assert-done (split-token r pm (+ b 4)))
+            mo (word-at words text (+ b 4) (+ b 6))
+            _ (assert-done (split-token r pm (+ b 2)))
+            le (word-at words text (+ b 2) (+ b 4))
+            kai-v (job-value-on-kai! w r)]
+        (reshaped! w then g kai-v #(assert-done (update-token-metadata user1-request (case who :pe pm :le le :mo mo)
+                                                                       {"seen" true}))))))
+  (testing "igt's split_word: the word's stored morphemes deleted, then the word split (qN)"
+    (doseq [who [:nobody :word-left :morpheme-on-right]]
+      (let [{:keys [tl doc text words] :as w} (world!)
+            morphs (id (create-token-layer-opts admin-request tl "IgtMorphs" {:overlap-mode "any" :parent-token-layer-id words}))
+            b (at text "pele")
+            m1 (id (create-token admin-request morphs text b (+ b 4) 1))
+            m2 (id (create-token admin-request morphs text b (+ b 4) 2))
+            then (snapshot [doc])
+            pele (word-of w text "pele")
+            g (str (random-uuid))
+            r (in-group admin-request g)
+            _ (assert-done (bulk-delete-tokens r [m1 m2]))
+            _ (assert-done (split-token r pele (+ b 2)))
+            kai-v (job-value-on-kai! w r)
+            real (reshaped! w then g kai-v #(case who
+                                              :word-left (assert-done (update-token-metadata user1-request pele {"seen" true}))
+                                              :morpheme-on-right (assert-done (create-token user1-request morphs text (+ b 2) (+ b 4) 1))
+                                              nil))]
+        (when (= :nobody who) (is (= then (state [doc]))))
+        (when (not= :nobody who)
+          (is (= "text-changed-since" ((reasons real) m1)) "the morphemes stay with the split they were deleted for")))))
+  (testing "a word the job put on characters bare before it is undone (qJ)"
+    (let [{:keys [doc text words] :as w} (world!)
+          lo-b (at text "lo")
+          _ (assert-done (delete-token admin-request (word-of w text "lo")))
+          then (snapshot [doc])
+          g (str (random-uuid))
+          r (in-group admin-request g)
+          made (id (create-token r words text lo-b (+ lo-b 2)))
+          pele (word-of w text "pele")
+          _ (assert-done (split-token r pele (+ 2 (at text "pele"))))
+          kai-v (job-value-on-kai! w r)
+          why (reasons (reshaped! w then g kai-v #(assert-done (update-token-metadata user1-request pele {"seen" true}))))]
+      (is (nil? (why made)))
+      (is (nil? (psc/fetch-by-id db :tokens made)) "the word on bare characters goes"))))
+
+(deftest the-tie-rule-costs-the-same-at-the-row-limit
+  ;; REV-UT2-1: a unit that made 19,000 words on one text (a job segmenting
+  ;; a long document), its undo's dry run with the rule and with the rule
+  ;; switched off. The rule read every token row of the text for every made
+  ;; token on every pass, 103 s against 16 s at this scale. It must cost a
+  ;; small fraction of the undo: a ratio, so a busy machine passes.
+  (let [n 19000
+        proj (create-test-project admin-request "Cost")
+        d (create-test-document admin-request proj "D")
+        tl (id (create-text-layer admin-request proj "Text"))
+        text (id (create-text admin-request tl d (str/join " " (repeat n "ab"))))
+        word (id (create-token-layer-opts admin-request tl "Words" {:overlap-mode "non-overlapping"}))
+        g (str (random-uuid))
+        r (in-group admin-request g)
+        _ (doseq [c (partition-all 1000 (range n))]
+            (assert-created (bulk-create-tokens r (mapv (fn [i] {:token-layer-id word :text text :begin (* 3 i) :end (+ 2 (* 3 i))}) c))))
+        timed (fn [] (let [t (System/nanoTime)
+                           resp (undo-entry admin-request g :dry-run true)]
+                       (is (= 200 (:status resp)))
+                       (is (= n (:total (:body resp))))
+                       (/ (- (System/nanoTime) t) 1e6)))
+        _ (timed)
+        without (with-redefs [plaid.history.undo/tie-groups (fn [& _] {})] (timed))
+        with (timed)]
+    (spit (str (System/getProperty "java.io.tmpdir") "/plaid-undo-tie-cost.txt") (pr-str {:with-ms with :without-ms without}))
+    (is (< with (* 1.5 (+ without 1000))) (str "with the rule " (long with) " ms, without " (long without) " ms"))))
+
+;; ============================================================
 ;; The neighbours: one row written more than once by the unit
 ;; ============================================================
 

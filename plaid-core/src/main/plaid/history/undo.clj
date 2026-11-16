@@ -36,9 +36,11 @@
                         or reshaped on a text anyone else wrote since stays,
                         whether or not the entry changed that text, as does
                         a token it made on a text whose body stays, so a
-                        text and its tokens go back together or not at all,
-                        and a token it made beside a token of the same layer
-                        and text it reshaped whose extent stays.
+                        text and its tokens go back together or not at all.
+                        Two token rows of the entry on one text, in one
+                        layer or a parent and child layer, that traded
+                        characters go back together or stay together
+                        (`tie-groups`).
                         A span, link or relation the entry wrote on a token
                         it made that is left so stays with it. After the writes, every token
                         put back is read against the text it was made on, as
@@ -542,15 +544,6 @@
             ;; a token the entry made on a text whose body does not go
             ;; back: deleting it would leave its characters bare
             {:reason "text-changed-since"})
-          (when (and (= table "tokens")
-                     (some #(and (not= k (:k %)) (= :update (:op %)) (moves-offsets? %) (not (applied? %))
-                                 (= (:token_layer_id (:after i)) (:token_layer_id (:before %))))
-                           (get tokens-on (:text_id (:after i)))))
-            ;; a token the entry made beside a token of its layer the entry
-            ;; reshaped (a split's halves, a shifted boundary) whose extent
-            ;; stays: deleting it would leave the characters it took bare
-            ;; (REV-UT-2)
-            {:reason "text-changed-since"})
           (when (= table "documents")
             (cond
               (contains? foreign (:id i)) {:reason "built-on"}
@@ -592,6 +585,58 @@
                      (not (applied? (item-of ["texts" (:text_id before)]))))
             {:reason "text-changed-since"})))))
 
+(defn- lower-bound
+  "The first index of the sorted long array `xs` holding a value >= `x`."
+  ^long [^longs xs ^long x]
+  (loop [lo 0 hi (alength xs)]
+    (if (< lo hi)
+      (let [mid (quot (+ lo hi) 2)]
+        (if (< (aget xs mid) x) (recur (inc mid) hi) (recur lo mid)))
+      lo)))
+
+(defn- tie-groups
+  "`{key group}` for the token rows of the entry tied to one another: two
+  token rows of the entry on one text, in one layer or a parent and child
+  layer, each of whose undo moves offsets (a token the entry made counts),
+  that traded characters (one's extent before the entry overlaps the other's
+  after it) go back together or stay together (REV-UT-2, REV-UT2-2). A split
+  ties its halves, a merge its source to its survivor, a shift its two
+  neighbours, a word the entry reshaped to the morphemes it deleted from it.
+  Groups are the connected parts of that relation. Read once per attempt by
+  an index of the after-extents per text and layer, so the cost grows with
+  the rows times the log of the rows (REV-UT2-1). `layer-parent` gives a
+  token layer's parent layer."
+  [items layer-parent]
+  (let [tok (filterv #(and (= "tokens" (:table %)) (or (= :delete (:op %)) (moves-offsets? %))) items)
+        layer-of (fn [i] (:token_layer_id (or (:before i) (:after i))))
+        text-of (fn [i] (:text_id (or (:before i) (:after i))))
+        children (reduce (fn [m [l p]] (if p (update m p (fnil conj []) l) m)) {} layer-parent)
+        ;; [text layer] -> {:begins long[] :items [...] :max-len n}, the
+        ;; items with an after-extent there, sorted by its begin
+        index (into {}
+                    (for [[k is] (group-by (juxt text-of layer-of) (filter :after tok))
+                          :let [srt (vec (sort-by (comp :begin :after) is))]]
+                      [k {:begins (long-array (map (comp :begin :after) srt))
+                          :items srt
+                          :max-len (reduce max 0 (map #(- (:end_ (:after %)) (:begin (:after %))) srt))}]))
+        parent (java.util.HashMap.)
+        root (fn root [k] (let [p (.get parent k)] (if (or (nil? p) (= p k)) k (let [r (root p)] (.put parent k r) r))))
+        union! (fn [a b] (let [ra (root a) rb (root b)] (.put parent a ra) (.put parent b rb)
+                              (when (not= ra rb) (.put parent ra rb))))]
+    (doseq [i tok
+            :let [{b :begin e :end_ :as bf} (:before i)]
+            :when bf
+            :let [l (layer-of i)]
+            l' (cond-> (into [l] (get children l)) (layer-parent l) (conj (layer-parent l)))
+            :let [{:keys [^longs begins items max-len]} (get index [(text-of i) l'])]
+            :when begins
+            n (range (lower-bound begins (- (long b) (long max-len))) (alength begins))
+            :while (< (aget begins n) e)
+            :let [j (nth items n)]
+            :when (and (not= (:k i) (:k j)) (< (max b (:begin (:after j))) (min e (:end_ (:after j)))))]
+      (union! (:k i) (:k j)))
+    (into {} (keep (fn [i] (when (.containsKey parent (:k i)) [(:k i) (root (:k i))]))) tok)))
+
 (defn- fixpoint
   "`{[table id] reason}` for every row left: the base reasons, then each
   row's checks against what the others leave, until nothing more is left."
@@ -610,9 +655,14 @@
                            (not (when-let [doc-item (and d (:doc d) (item-of ["documents" (:doc d)]))]
                                   (and (applied? doc-item) (= :delete (:op doc-item)))))))))
             ctx (assoc ctx :applied? applied? :on? on? :why #(get left %))
+            ties (:ties ctx)
+            tied-left (into #{} (keep ties) (keys left))
             more (into {} (keep (fn [i]
                                   (when (applied? i)
-                                    (when-let [r (or (check i ctx) (on-held-tokens i (:why ctx) item-of))]
+                                    (when-let [r (or (check i ctx)
+                                                     (when (contains? tied-left (ties (:k i)))
+                                                       {:reason "text-changed-since"})
+                                                     (on-held-tokens i (:why ctx) item-of))]
                                       [(:k i) r]))))
                        items)]
         (if (empty? more)
@@ -940,6 +990,16 @@
             tokens-on (group-by (fn [i] (:text_id (or (:before i) (:after i))))
                                 (filter #(= "tokens" (:table %)) items))
             rows-in (group-by :doc (filter #(and (:doc %) (not= "documents" (:table %))) items))
+            token-layers (distinct (keep #(when (= "tokens" (:table %))
+                                            (:token_layer_id (or (:before %) (:after %))))
+                                         items))
+            layer-parent (into {} (map (juxt :id :parent_token_layer_id))
+                               (when (seq token-layers)
+                                 (psc/in-chunks #(psc/q tx {:select [:id :parent_token_layer_id] :from [:token_layers]
+                                                            :where [:or [:in :id (mapv str %)]
+                                                                    [:in :parent_token_layer_id (mapv str %)]]})
+                                                token-layers)))
+            ties (tie-groups items layer-parent)
             wanted (reduce (fn [m [t id]] (if id (update m t (fnil conj #{}) id) m))
                            {}
                            (concat (for [i items :when (#{:insert :update} (:op i)) p (parents-of (:table i) (:before i))] p)
@@ -961,7 +1021,7 @@
             ctx {:may-document? may-document? :may-vocab? may-vocab? :live live :locked locked
                  :excluded excluded :item-of item-of :exists exists :deps deps :refs refs
                  :foreign foreign :doc-commented (doc-comments tx made-docs) :moving moving
-                 :tokens-on tokens-on :rows-in rows-in :project-of project-of :vocab-of item-vocab
+                 :tokens-on tokens-on :rows-in rows-in :ties ties :project-of project-of :vocab-of item-vocab
                  :linked? (fn [p v] (contains? pv [p v]))
                  :texts-since (texts-written tx docs unit? start)
                  :slots (slot-holders tx docs)
