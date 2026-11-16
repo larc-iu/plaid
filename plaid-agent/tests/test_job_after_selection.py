@@ -178,11 +178,11 @@ def _sentences(n, blank_at=None):
                        'sa' if i == blank_at else ('ka', [('ka', 'go')], 'human')]} for i in range(1, n + 1)]
 
 
-def test_the_piece_after_a_selections_text_edit_runs_before_the_walk_is_decided(monkeypatch):
+def test_the_piece_after_a_selections_text_edit_runs_and_nothing_is_walked_after_it(monkeypatch):
     """REV-RPF3-3 (the reviewer's a3): onlynew, a selection whose piece reads
     s1 of a 12-sentence Story 1 and inserts xosan there. The piece after the
-    text edit glosses xosan before the documents not read through are
-    decided: nothing is empty after it, so nothing is walked."""
+    text edit glosses xosan, before the documents end in the one step:
+    nothing is walked after it."""
     from job_fixtures import text_edits
     text_edits(monkeypatch)
     sents = _sentences(12)
