@@ -20,9 +20,6 @@ import { readCompose } from './igtConfig.js';
 /** The codes as shipped, before a project changes anything. */
 export const BUILT_IN_TABLE = COMPOSE_TABLE;
 
-/** How many characters a code must be. */
-export { CODE_LENGTH };
-
 const isFilledString = (v) => typeof v === 'string' && v.length > 0;
 const isCode = (v) => typeof v === 'string' && [...v].length === CODE_LENGTH;
 
@@ -135,13 +132,13 @@ export function validateCode(row, others = []) {
   const code = row?.code ?? '';
   if (row?.origin === 'removed') return problems;
   if ([...code].length !== CODE_LENGTH) {
-    problems.push(`A code is exactly ${CODE_LENGTH} characters.`);
+    problems.push(`A code is ${CODE_LENGTH} characters.`);
   }
   if (/\s/.test(code)) problems.push('A code cannot contain a space.');
   if (code.includes('\\')) problems.push('A code cannot contain a backslash.');
-  if (!isFilledString(row?.char)) problems.push('Give the character this code types.');
+  if (!isFilledString(row?.char)) problems.push('Enter a character.');
   if (others.some((o) => o !== row && o.code === code && o.origin !== 'removed' && code !== '')) {
-    problems.push('Another code is already this.');
+    problems.push('This code already exists.');
   }
   return problems;
 }

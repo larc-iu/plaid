@@ -9,8 +9,6 @@ import { notifyError } from '@/utils/feedback';
 import { expectStored, isConfigConflict } from '@ui/domain/configCells.js';
 import { IGT_NAMESPACE, readCompose } from '@/domain/igtConfig';
 import {
-  BUILT_IN_TABLE,
-  CODE_LENGTH,
   builtInRow,
   composeRows,
   isBuiltInCode,
@@ -156,9 +154,7 @@ export const ComposeSettings = ({ project, projectId, client, onProjectUpdate })
     <div>
       <h2 className={TYPE.card}>Special characters</h2>
       <p className="mb-4 mt-1 max-w-3xl text-sm text-muted-foreground">
-        Type a backslash and a two-letter code in any field to enter a character your keyboard does
-        not have: <code>\sw</code> gives ə, <code>\00</code> gives ∅. Every code is listed here.
-        Change what one types, take one out, or add your own for this project.
+        Type a backslash and a code in any field: <code>\sw</code> for ə, <code>\00</code> for ∅.
       </p>
 
       <div className="flex max-w-4xl flex-col gap-3">
@@ -177,14 +173,14 @@ export const ComposeSettings = ({ project, projectId, client, onProjectUpdate })
             </span>
           )}
           <Button variant="outline" size="sm" className="ml-auto" onClick={addRow}>
-            <Plus className="h-4 w-4" /> Add a code
+            <Plus className="h-4 w-4" /> Add code
           </Button>
         </div>
 
         <div className="overflow-hidden rounded-md border">
           <div className="grid grid-cols-[7rem_6rem_1fr_5.5rem] items-center gap-2 border-b bg-muted/30 px-3 py-2 text-xs font-medium text-muted-foreground">
             <span>Code</span>
-            <span>Types</span>
+            <span>Character</span>
             <span>Note</span>
             <span />
           </div>
@@ -201,13 +197,11 @@ export const ComposeSettings = ({ project, projectId, client, onProjectUpdate })
                   {isBuiltInCode(row.code) ? (
                     <code
                       className={`text-sm ${gone ? 'text-muted-foreground line-through' : ''}`}
-                      title="A built-in code. Change what it types, or take it out."
                     >{`\\${row.code}`}</code>
                   ) : (
                     <Input
                       value={row.code}
                       onChange={(e) => editRow(row, { code: e.target.value })}
-                      placeholder="b'"
                       aria-label="Code"
                       className="h-8 font-mono"
                       spellCheck={false}
@@ -221,7 +215,7 @@ export const ComposeSettings = ({ project, projectId, client, onProjectUpdate })
                       compose
                       value={row.char}
                       onChange={(e) => editRow(row, { char: e.target.value })}
-                      aria-label={`What \\${row.code || 'this code'} types`}
+                      aria-label="Character"
                       className="h-8 text-base"
                       spellCheck={false}
                     />
@@ -232,7 +226,6 @@ export const ComposeSettings = ({ project, projectId, client, onProjectUpdate })
                     <Input
                       value={row.description || ''}
                       onChange={(e) => editRow(row, { description: e.target.value })}
-                      placeholder={isBuiltInCode(row.code) ? '' : 'implosive b'}
                       aria-label="Note"
                       className="h-8"
                     />
@@ -249,7 +242,7 @@ export const ComposeSettings = ({ project, projectId, client, onProjectUpdate })
                         variant="ghost"
                         className="h-7 w-7"
                         onClick={() => resetRow(row)}
-                        title="Put this code back the way it ships"
+                        title="Reset to built-in"
                         aria-label={`Reset code ${row.code}`}
                       >
                         <RotateCcw className="h-3.5 w-3.5" />
@@ -261,8 +254,8 @@ export const ComposeSettings = ({ project, projectId, client, onProjectUpdate })
                         variant="ghost"
                         className="h-7 w-7"
                         onClick={() => removeRow(row)}
-                        title="Take this code out of the project"
-                        aria-label={`Remove code ${row.code || 'new'}`}
+                        title="Delete"
+                        aria-label={row.code ? `Delete code ${row.code}` : 'Delete code'}
                       >
                         <Trash2 className="h-3.5 w-3.5" />
                       </Button>
@@ -279,12 +272,6 @@ export const ComposeSettings = ({ project, projectId, client, onProjectUpdate })
           })}
           <ListPager {...paged} onPage={paged.setPage} />
         </div>
-
-        <p className="text-xs text-muted-foreground">
-          A code is exactly {CODE_LENGTH} characters, and never a space or a backslash. There are{' '}
-          {Object.keys(BUILT_IN_TABLE).length} built-in codes, taken from Praat, so a code you
-          already know from there works here.
-        </p>
 
         <div>
           <Button onClick={save} disabled={!canSave}>

@@ -236,7 +236,7 @@ test('a code added in Settings works in the grid', async ({ page }) => {
   await page.waitForLoadState('networkidle');
   await page.locator('h2', { hasText: 'Special characters' }).waitFor({ state: 'visible' });
 
-  await page.getByRole('button', { name: 'Add a code' }).click();
+  await page.getByRole('button', { name: 'Add code' }).click();
   // Typed, never filled: `.fill()` sets the value in one shot and would not
   // notice the row losing focus after the first character.
   await page.locator('[data-code-row=""]').getByLabel('Code', { exact: true }).click();
@@ -249,7 +249,7 @@ test('a code added in Settings works in the grid', async ({ page }) => {
   await expect(codeField).toHaveValue("b'");
   await expect(codeField).toBeFocused();
 
-  const charField = row.locator('input').nth(1);
+  const charField = row.getByLabel('Character', { exact: true });
   await charField.click();
   await page.keyboard.type('ɓ');
   await expect(charField).toBeFocused();
@@ -271,7 +271,7 @@ test('a code added in Settings works in the grid', async ({ page }) => {
   await page.goto(`/#/projects/${projectId}/text-and-vocab`);
   await page.waitForLoadState('networkidle');
   await page.getByLabel('Search codes').fill("b'");
-  await page.getByRole('button', { name: "Remove code b'" }).click();
+  await page.getByRole('button', { name: "Delete code b'" }).click();
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeDisabled();
   await restoreForm(page, projectId, documentId);
@@ -289,7 +289,7 @@ test('a built-in code can be changed and reset', async ({ page }) => {
   await row.waitFor({ state: 'visible' });
   // Editing a built-in flips its origin to "changed", which used to remount the
   // row and drop focus on the first keystroke.
-  const charField = row.locator('input').first();
+  const charField = row.getByLabel('Character', { exact: true });
   await charField.click();
   await charField.press('Control+a');
   await page.keyboard.type('Ə');

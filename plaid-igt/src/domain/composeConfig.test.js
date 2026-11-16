@@ -108,16 +108,16 @@ describe('validateCode', () => {
   });
 
   it('refuses the wrong length, a space, a backslash, and an empty character', () => {
-    expect(validateCode({ code: 'b', char: 'ɓ' })[0]).toMatch(/exactly 2/);
+    expect(validateCode({ code: 'b', char: 'ɓ' })[0]).toBe('A code is 2 characters.');
     expect(validateCode({ code: 'b ', char: 'ɓ' }).some((p) => /space/.test(p))).toBe(true);
     expect(validateCode({ code: '\\b', char: 'ɓ' }).some((p) => /backslash/.test(p))).toBe(true);
-    expect(validateCode({ code: "b'", char: '' }).some((p) => /character/.test(p))).toBe(true);
+    expect(validateCode({ code: "b'", char: '' })).toEqual(['Enter a character.']);
   });
 
   it('refuses a duplicate within the project', () => {
     const a = { code: "b'", char: 'ɓ' };
     const b = { code: "b'", char: 'ɗ' };
-    expect(validateCode(b, [a, b]).some((p) => /Another code/.test(p))).toBe(true);
+    expect(validateCode(b, [a, b])).toEqual(['This code already exists.']);
     // Against itself alone it is fine.
     expect(ok(a, [a])).toBe(true);
   });
