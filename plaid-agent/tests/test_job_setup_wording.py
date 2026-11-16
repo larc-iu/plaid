@@ -120,6 +120,8 @@ def test_rp2_1_rp2_2_no_card_beside_a_question_no_field_unasked_and_only_new_whe
     assert ('Never assume: a field they did not name goes on the card only once they say yes to it, whatever a '
             'guideline derives from what they asked for.') in note
     assert 'A reply that asks a question drafts no card: wait for the answer.' in note
-    assert ('only_new true when they ask it to fill only the words it adds or changes, such as "gloss only the new '
-            'word".') in note
-    assert '"segment and gloss only the words that change"' in jobcard._help({})
+    # Only the words the job ADDS: a respelled word is not one (REV-RPF3-7).
+    assert ('only_new true when they ask it to fill only the words it adds, such as "gloss only the new word": a '
+            'respelled word is not an added word.') in note
+    assert 'or changes' not in note and 'words that change' not in jobcard._help({})
+    assert 'never for a respelled word, which is not an added word' in jobcard._help({})

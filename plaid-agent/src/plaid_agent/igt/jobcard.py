@@ -54,8 +54,8 @@ def _help(facts: Dict[str, Any]) -> str:
         'split, merge, insert or delete words or sentences. Left out, false. The words it adds are filled by the same '
         'job: name what to fill on them in fills.',
         '  - only_new: true when the job fills only the words it adds to the text (such as a value on each '
-        'inserted word, or "segment and gloss only the words that change"), with edits_text true. Left out, '
-        'false: it may fill any word.',
+        'inserted word, or "gloss only the word you insert"), with edits_text true, never for a respelled word, '
+        'which is not an added word. Left out, false: it may fill any word.',
         '  - brief: the job\'s instructions, which its model reads with every piece of its work, with nothing of '
         'this conversation. Open it with one plain sentence a person who is not a linguist can follow, saying '
         'what the job will do. Then write the decisions, not the discussion: what to do, what to leave, the '
@@ -151,7 +151,7 @@ def _active_facts(ws, job: Dict[str, Any]) -> str:
         mine = setup.get('conversation') is not None and setup.get('conversation') == ws.conversation_id
         said.append('It is a card of this conversation.' if mine else 'It is not a card of this conversation.')
     else:
-        said.append('It was started from the Start job form, not from a card of this conversation.')
+        said.append('It was started without a card.')
     return ' '.join(x for x in said if x)
 
 
@@ -287,8 +287,8 @@ fields hold, and that a job writes unverified machine values, so each one it cha
 exact change they dictate (one spelling or value for another), say in one sentence that an ordinary plan in this \
 chat, approved as verified, keeps them verified, and let them choose.
 6. Draft with propose_job action "draft", with exactly the fills the person agreed to, edits_text true only when \
-they agreed the job may change the text itself, and only_new true when they ask it to fill only the words it adds \
-or changes, such as "gloss only the new word". \
+they agreed the job may change the text itself, and only_new true when they ask it to fill only the words it adds, \
+such as "gloss only the new word": a respelled word is not an added word. \
 Stage no plan of changes here unless the person chose one in step 5.
 A job writes its changes as it goes, as unverified machine values, and the whole job can be undone: never call \
 them proposals for the person to check, or say they are staged.

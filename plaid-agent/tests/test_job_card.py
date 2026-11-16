@@ -156,6 +156,15 @@ def test_the_blocking_job_is_said_with_its_facts_so_no_guess_is_needed(monkeypat
     assert 'started by you' in out and 'It is a card of this conversation.' in out, out
 
 
+def test_a_blocking_job_with_no_setup_is_said_started_without_a_card():
+    """REV-RPF3 note: a job with no setup may have come through the API, not
+    the Start job form."""
+    client = FakeClient()
+    client.jobs.create('p1', 'igt', 'Gloss the words.')
+    out = _draft(fake_ws(client))
+    assert 'It was started without a card.' in out and 'Start job form' not in out, out
+
+
 def test_another_projects_workspace_drafts_nothing():
     ws = fake_ws(FakeClient())
     ws.writable = False
