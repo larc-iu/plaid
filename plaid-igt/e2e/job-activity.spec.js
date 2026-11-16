@@ -98,7 +98,7 @@ test('a running job lists each piece as it finishes, with its note and its Chang
     await link.click();
     await expect(page).toHaveURL(new RegExp(`documents/${documentId}\\?.*history=${group}`));
     await expect(page.getByTestId('change-count')).toHaveText(
-      '1 change, 0 replaced a person’s value',
+      '1 value changed, 0 replaced a person’s value',
       {
         timeout: 20_000,
       },

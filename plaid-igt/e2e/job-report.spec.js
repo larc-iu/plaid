@@ -229,14 +229,79 @@ test('a job that edits the text and writes over a person: its line, its counts i
   await dialog.getByRole('button', { name: 'Cancel' }).click();
   await expect(dialog).toHaveCount(0);
 
-  // The document's Changes view: the same count, and its parts in the same
-  // nouns (the word the retype added is the one word changed).
+  // The document's Changes view: what it changed in the same nouns (the word
+  // the retype added is the one word changed), never a bare count of changes.
   await page.getByRole('link', { name: 'Changes', exact: true }).first().click();
   await expect(page.getByTestId('change-count')).toHaveText(
-    '4 changes, 1 replaced a person’s value',
+    '3 values and 1 word changed, 1 replaced a person’s value',
     { timeout: 20_000 },
   );
-  await expect(page.getByTestId('change-kinds')).toHaveText('3 values and 1 word');
+});
+
+// REV-RPF-P-1 (the reviewer's job j6): an analysis job counted 4 changes in its
+// report and 11 in the Changes view, the same noun for counts of different
+// units. Each screen now says its parts with their nouns, and the report's
+// field line counts the values the analyses carried.
+test('an analysis job: the report and the Changes view each say what they count, no bare count of changes', async ({
+  page,
+}) => {
+  test.setTimeout(240_000);
+  skipUnlessAgent(test);
+  const DOC = 'Story J6';
+  const doc = await addDocument(DOC, ['kaii pele', 'kaii lo', 'tuna mo']);
+  const { tokens: morphemes } = await tokensOf(doc, ROLES.MORPHEME, glossLayerId);
+  await client.withOperation('Seed a gloss', async () => {
+    await client.spans.create(glossLayerId, [morphemes[1].id], 'fly');
+  });
+  const job = await client.jobs.create(projectId, {
+    app: 'igt',
+    instructions: 'Segment and gloss sentences 1 and 2.',
+    documents: [doc],
+  });
+  const ran = await runScriptedJobWorker({
+    token: readToken().token,
+    script: [
+      {
+        calls: [
+          {
+            name: 'plan_work',
+            arguments: { pieces: 'document', fills: ['segmentation', 'Gloss'] },
+          },
+        ],
+      },
+      { content: 'Planned.' },
+      {
+        calls: [
+          {
+            name: 'analyze_sentence',
+            arguments: {
+              document: DOC,
+              sentences: [
+                { ref: 's1', words: ['ka-ii go-PST', 'pele bird'] },
+                { ref: 's2', words: ['ka-ii go-PRS', 'lo here'] },
+              ],
+            },
+          },
+        ],
+      },
+      { content: 'Segmented kaii two ways.' },
+      { content: 'The job segmented **kaii**.' },
+    ],
+  });
+  expect(ran.code, ran.log).toBe(0);
+  await seedAuth(page);
+  await openJob(page, job);
+  // The report: one value (pele's, in place) and three analyses written, and
+  // the six glosses they hold, five of them carried by the analyses.
+  const totals = await totalsOf(page);
+  expect(totals['Changes written']).toBe('4 (1 value and 3 analyses)');
+  expect(totals.Gloss).toBe('6 values (5 in word analyses)');
+  // The Changes view: the marks it draws, each with its noun.
+  await page.getByRole('link', { name: 'Changes', exact: true }).first().click();
+  await expect(page.getByTestId('change-count')).toHaveText(
+    '6 values and 5 morphemes changed, 1 replaced a person’s value',
+    { timeout: 20_000 },
+  );
 });
 
 test('a job set up to fill only the words it adds is refused a value on a word it did not add', async ({

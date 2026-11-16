@@ -108,7 +108,7 @@ test('a person’s edit in the grid reads as the gloss it replaced', async ({ pa
     .click();
   await expect(changes(page)).toBeVisible({ timeout: 15_000 });
   await expect(page.getByText(/Changes made in this entry/)).toBeVisible();
-  await expect(count(page)).toHaveText('1 change, 1 replaced a person’s value');
+  await expect(count(page)).toHaveText('1 value changed, 1 replaced a person’s value');
   const replaced = changes(page).locator('[data-change="replaced"]');
   await expect(replaced).toHaveCount(1);
   await expect(replaced.locator('del')).toHaveText('go');
@@ -117,7 +117,7 @@ test('a person’s edit in the grid reads as the gloss it replaced', async ({ pa
   expect(page.url()).toContain('history=');
   await shot(page, '1-person-edit');
   await page.reload();
-  await expect(count(page)).toHaveText('1 change, 1 replaced a person’s value', {
+  await expect(count(page)).toHaveText('1 value changed, 1 replaced a person’s value', {
     timeout: 20_000,
   });
 });
@@ -137,7 +137,7 @@ test('an assistant plan reads as what it filled and what it replaced', async ({ 
   );
   await seedAuth(page);
   await page.goto(docPath(`?tab=analyze&history=${groupId}`));
-  await expect(count(page)).toHaveText('3 changes, 1 replaced a person’s value', {
+  await expect(count(page)).toHaveText('3 values changed, 1 replaced a person’s value', {
     timeout: 20_000,
   });
   await expect(changes(page).locator('[data-change="added"]')).toHaveCount(2);
@@ -267,9 +267,12 @@ test('a job made by hand reads as its work, reached from the job page', async ({
   await shot(page, '6-job-page');
   await link.click();
   await expect(page).toHaveURL(new RegExp(`documents/${documentId}\\?.*history=${groupId}`));
-  await expect(count(page)).toHaveText('4 changes, 1 replaced a person’s value', {
-    timeout: 20_000,
-  });
+  await expect(count(page)).toHaveText(
+    '2 values, 1 link and 1 lexicon entry changed, 1 replaced a person’s value',
+    {
+      timeout: 20_000,
+    },
+  );
   await expect(changes(page).locator(`[data-entry="${made.id}"]`)).toContainText('Added');
   await shot(page, '7-job-changes');
 
@@ -333,7 +336,7 @@ test('a machine gloss beside a person’s in one word is the machine’s alone, 
   await expect(changes(page).locator('[data-sentence]')).toHaveCount(0);
   await shot(page, '9-reading');
   release();
-  await expect(count(page)).toHaveText('2 changes, 0 replaced a person’s value', {
+  await expect(count(page)).toHaveText('2 values changed, 0 replaced a person’s value', {
     timeout: 20_000,
   });
   await page.unroute('**/audit/entries/*/changes?*');
@@ -351,26 +354,26 @@ test('a machine gloss beside a person’s in one word is the machine’s alone, 
   // One action of the plan, by its address: what it alone changed, again
   // after a reload, and Back and Forward between it and the whole entry.
   await page.goto(docPath(`?tab=analyze&history=${second.id}`));
-  await expect(count(page)).toHaveText('1 change, 0 replaced a person’s value', {
+  await expect(count(page)).toHaveText('1 value changed, 0 replaced a person’s value', {
     timeout: 20_000,
   });
   await expect(changes(page).locator('[data-sentence] del')).toHaveText('fish.PL');
   await page.reload();
-  await expect(count(page)).toHaveText('1 change, 0 replaced a person’s value', {
+  await expect(count(page)).toHaveText('1 value changed, 0 replaced a person’s value', {
     timeout: 20_000,
   });
   await expect(page.getByText('Failed to open that history entry')).toHaveCount(0);
   await page.goBack();
-  await expect(count(page)).toHaveText('2 changes, 0 replaced a person’s value', {
+  await expect(count(page)).toHaveText('2 values changed, 0 replaced a person’s value', {
     timeout: 20_000,
   });
   await page.goForward();
-  await expect(count(page)).toHaveText('1 change, 0 replaced a person’s value', {
+  await expect(count(page)).toHaveText('1 value changed, 0 replaced a person’s value', {
     timeout: 20_000,
   });
   // The other action: the gloss on ma alone.
   await page.goto(docPath(`?tab=analyze&history=${first.id}`));
-  await expect(count(page)).toHaveText('1 change, 0 replaced a person’s value', {
+  await expect(count(page)).toHaveText('1 value changed, 0 replaced a person’s value', {
     timeout: 20_000,
   });
   await expect(changes(page).locator('[data-sentence] [data-change]')).toHaveText(['DU']);
