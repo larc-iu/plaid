@@ -196,11 +196,12 @@ test('a job scoped in the chat is started from its card, and a second card is di
     await expect(page.getByTestId('job-card-brief')).toHaveText(EDITED);
 
     // The worker takes it and ends it, and the report says what it left. Once
-    // claimed, the card the page still shows reads Started.
+    // claimed, the card the page still shows reads its state as the job page
+    // does (RPF3-D3).
     const worker = fakeJobWorker(client);
     const claimed = await worker.claim();
     expect(claimed.id).toBe(jobId);
-    await expect(state).toHaveText('Started', { timeout: 30_000 });
+    await expect(state).toHaveText('Running', { timeout: 30_000 });
     await worker.finish(jobId, {
       state: 'done',
       report: {
@@ -264,9 +265,9 @@ test('a job scoped in the chat is started from its card, and a second card is di
     await expect(page.getByTestId('job-card').nth(1)).toContainText('Discarded', {
       timeout: 30_000,
     });
-    // Its job claimed and ended: Started.
+    // Its job claimed and ended: Done (RPF3-D3).
     await expect(page.getByTestId('job-card').first().getByTestId('job-card-state')).toHaveText(
-      'Started',
+      'Done',
     );
     expect((await client.jobs.list(projectId)).length).toBe(1);
   } finally {
@@ -488,8 +489,8 @@ test('Set up job: facts, a question, a card that binds the job, and a planner he
     await expect(page).toHaveURL(
       new RegExp(`#/projects/${projectId}\\?tab=assistant&conversation=${convId}$`),
     );
-    // The worker claimed and ended it: Started.
-    await expect(page.getByTestId('job-card').getByTestId('job-card-state')).toHaveText('Started', {
+    // The worker claimed and ended it: Done (RPF3-D3).
+    await expect(page.getByTestId('job-card').getByTestId('job-card-state')).toHaveText('Done', {
       timeout: 30_000,
     });
   } finally {
