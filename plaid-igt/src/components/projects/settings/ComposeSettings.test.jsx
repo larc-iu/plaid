@@ -142,6 +142,40 @@ describe('the labels', () => {
   });
 });
 
+describe('a new row given a built-in code', () => {
+  it('keeps its code field and focus, and says the code exists', async () => {
+    const { view } = await open();
+    await view.step(() => button(view.container, 'Add code').click());
+    const field = row(view.container, '').querySelector('input[aria-label="Code"]');
+    field.focus();
+    for (const typed of ['s', 'sw']) {
+      await view.step(() => type(field, typed));
+      expect(document.activeElement).toBe(field);
+    }
+    const fresh = field.closest('[data-code-row]');
+    expect(fresh.dataset.codeRow).toBe('sw');
+    expect(fresh.querySelector('input[aria-label="Code"]')).toBe(field);
+    expect(fresh.textContent).toContain('This code already exists.');
+    expect(fresh.querySelector('button[aria-label="Reset code sw"]')).toBeNull();
+    await view.unmount();
+  });
+
+  it('is dropped when deleted, leaving the built-in as it was', async () => {
+    const { view } = await open();
+    await view.step(() => button(view.container, 'Add code').click());
+    const field = row(view.container, '').querySelector('input[aria-label="Code"]');
+    await view.step(() => type(field, 'sw'));
+    await view.step(() =>
+      field.closest('[data-code-row]').querySelector('button[aria-label="Delete code sw"]').click(),
+    );
+    expect(button(view.container, 'Restore built-in codes')).toBeUndefined();
+    await search(view, 'sw');
+    expect(view.container.querySelectorAll('[data-code-row="sw"]')).toHaveLength(1);
+    expect(button(view.container, 'Save').disabled).toBe(true);
+    await view.unmount();
+  });
+});
+
 describe('sorting', () => {
   const dated = {
     codes: [

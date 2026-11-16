@@ -56,6 +56,11 @@ const SORT_KEYS = Object.keys(SORTS);
 const DEFAULT_SORT = { key: 'modified', dir: 'desc' };
 const sortKey = (r) => r.was.code;
 
+// A built-in code's row: one listed as a built-in when the list was read. A
+// new row stays the project's own, an editable code, even when what is typed
+// into it is a built-in code: the duplicate check says so.
+const isBuiltInRow = (r) => !!r.was && isBuiltInCode(r.was.code);
+
 const edited = (r) =>
   !r.was ||
   r.code !== r.was.code ||
@@ -155,7 +160,7 @@ export const ComposeSettings = ({ project, projectId, client, onProjectUpdate })
   };
 
   const removeRow = (row) => {
-    if (isBuiltInCode(row.code)) patch(row, { origin: 'removed' });
+    if (isBuiltInRow(row)) patch(row, { origin: 'removed' });
     else setDraft((rows) => rows.filter((r) => r !== row));
   };
 
@@ -271,7 +276,7 @@ export const ComposeSettings = ({ project, projectId, client, onProjectUpdate })
             )}
             {paged.pageItems.map((row) => {
               const problems = problemsByCode.get(row) || [];
-              const builtIn = isBuiltInCode(row.code);
+              const builtIn = isBuiltInRow(row);
               const stored = row.was?.modified;
               return (
                 <div
