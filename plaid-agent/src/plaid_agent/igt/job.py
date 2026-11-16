@@ -32,7 +32,7 @@ import unicodedata
 import uuid
 from collections import Counter
 from datetime import datetime, timezone
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
 
 from plaid_client import DocumentLockLost, PlaidAPIError
 from plaid_client.ids import uuid7
@@ -1058,6 +1058,16 @@ def document_counts(report: Dict[str, Any]) -> Dict[str, int]:
             'skipped': skipped, 'stopped_partway': partway,
             'not_reached': len(unfinished) - partway if 'documents' in report
             else totals.get('documents_not_reached') or 0}
+
+
+def word_ids_text(ids: List[str]) -> str:
+    """A matched sentence's word ids as its search row keeps them: JSON, as
+    many as fit under core's cap on a row (about 100 words of 36-character
+    ids, REV-SF-1). A longer sentence keeps its first words' ids."""
+    out = list(ids)
+    while out and len(canonical(out)) > JOB_ANALYSIS_MAX_CHARS:
+        out = out[:len(out) * 9 // 10]
+    return canonical(out)
 
 
 def no_match(d: Dict[str, Any]) -> bool:
@@ -2457,7 +2467,10 @@ class IgtRunner:
         # The sentences its search matched, a row each, sent first in the
         # same call (JOB_PLAN_SEARCH_MAX_SENTENCES keeps them in one), so
         # core holds them all with the plan or none of them (SF).
-        rows = [{'form': SEARCH_FORM, 'key': sid, 'analysis': '', 'count': 1, 'document_id': d, 'sentence_id': sid}
+        # Each row holds its sentence's word ids (REV-SF-1), as many as fit.
+        words = self.plan_pending.get('matched_words') or {}
+        rows = [{'form': SEARCH_FORM, 'key': sid, 'analysis': word_ids_text(words.get(sid) or []), 'count': 1,
+                 'document_id': d, 'sentence_id': sid}
                 for d, ids in (self.plan_pending.get('matched') or {}).items() for sid in ids] + rows
         job.add_decisions(rows)
         # The job works by its plan only once core holds it.
@@ -2485,7 +2498,7 @@ class IgtRunner:
         as their places in the job's order, so the plan of a job of the most
         documents, named in any order, fits one row (REV-JG-3), and its
         instructions in a row of their own (``PLAN_INSTRUCTIONS_FORM``)."""
-        plan = {k: v for k, v in plan.items() if k not in ('piece_instructions', 'matched')}
+        plan = {k: v for k, v in plan.items() if k not in ('piece_instructions', 'matched', 'matched_words')}
         named = plan.get('documents')
         if not named:
             return plan
@@ -2496,7 +2509,7 @@ class IgtRunner:
         """The plan among the job's decision ``rows``, or None when it has
         none: its row as :meth:`plan_kept` holds it, with its documents named
         by id again and its instructions read from their row."""
-        value, told, matched = None, '', {}
+        value, told, matched, words = None, '', {}, {}
         for r in rows:
             if r.get('form') == PLAN_FORM:
                 try:
@@ -2507,9 +2520,15 @@ class IgtRunner:
                 told = r.get('analysis') or ''
             elif r.get('form') == SEARCH_FORM and r.get('first_document'):
                 matched.setdefault(r['first_document'], []).append(r.get('key'))
+                try:
+                    held = json.loads(r.get('analysis') or '[]')
+                except ValueError:
+                    held = []
+                words[r.get('key')] = [w for w in held if isinstance(w, str)] if isinstance(held, list) else []
         if not isinstance(value, dict):
             return None
-        value = {**value, 'piece_instructions': told, **({'matched': matched} if value.get('search') else {})}
+        value = {**value, 'piece_instructions': told,
+                 **({'matched': matched, 'matched_words': words} if value.get('search') else {})}
         places = value.get('documents')
         if not places:
             return value
@@ -3139,7 +3158,8 @@ class IgtRunner:
         searched = self.searched() or {}
         order = [d for d in self.planned_order(self.job, self.plan_made or {}) if d in searched]
         before = sum(len(searched[d]) for d in order[:order.index(doc.id)]) if doc.id in order else 0
-        mine = [s.id for s in doc.sentences if s.id in searched.get(doc.id, ())]
+        takes = self.search_takes(doc.id)
+        mine = [s.id for s in doc.sentences if takes is not None and takes(s)]
         at = [before + mine.index(s.id) + 1 for s in part if s.id in mine] or [before + 1]
         total = sum(len(v) for v in searched.values())
         said = f'sentence {at[0]:,}' if at[0] == at[-1] else f'sentences {at[0]:,} to {at[-1]:,}'
@@ -3156,6 +3176,18 @@ class IgtRunner:
         if not plan.get('search'):
             return None
         return {d: set(ids) for d, ids in (plan.get('matched') or {}).items()}
+
+    def search_takes(self, document_id: str) -> Optional[Callable[[Sentence], bool]]:
+        """Whether a sentence of ``document_id`` is one the plan's search
+        matched at planning: its id was matched, or it holds a word of a
+        matched sentence (REV-SF-1: a split or a merge gives a sentence a new
+        id and keeps its words' ids). None for a plan with no search."""
+        searched = self.searched()
+        if searched is None:
+            return None
+        ids = searched.get(document_id, set())
+        words = {w for sid in ids for w in ((self.plan_made or {}).get('matched_words') or {}).get(sid) or ()}
+        return lambda s: s.id in ids or any(w.id in words for w in s.words)
 
     def whole_document(self, project: IgtProject, doc) -> bool:
         """Whether this document is worked as one piece: the plan says
@@ -3221,11 +3253,10 @@ class IgtRunner:
         # Under a plan limited by a search, only the sentences it matched
         # (SF), and with skip_filled_sentences only those of them with
         # something empty: the two rules by AND.
-        searched = self.searched()
-        matched = None if searched is None else searched.get(document_id, set())
+        takes = self.search_takes(document_id)
         out = []
         for s in doc.sentences[start:]:
-            if s.id in skipped or (matched is not None and s.id not in matched):
+            if s.id in skipped or (takes is not None and not takes(s)):
                 continue
             if every:
                 if not wrote_in(s, known):
@@ -5663,7 +5694,8 @@ class IgtRunner:
             # its row says so, REV-JG2-7).
             named = set(plan.get('documents') or job.order)
             # The sentences a search matched are the walk's, not the report's (SF).
-            plan = {**{k: v for k, v in plan.items() if k != 'matched'}, **self.fills_named(job, plan),
+            plan = {**{k: v for k, v in plan.items() if k not in ('matched', 'matched_words')},
+                    **self.fills_named(job, plan),
                     'fallback': fallback,
                     'left_out': [{'document_id': d, 'name': self.names.get(d) or (job.rows.get(d) or {}).get('name')}
                                  for d in job.order
@@ -5883,10 +5915,10 @@ class IgtRunner:
         # their blanks are not reached (REV-DF-S-3). A document the plan
         # left out is not the job's work.
         planned = (self.plan_made or {}).get('documents')
-        searched = self.searched()
         for d in job.order:
             worked, known, written = self.finished(d), self.known_words(d), self.written(d)
             wrote, wrote_known = self.wrote_in_sentences(d)
+            takes = self.search_takes(d)
             if planned and d not in planned and not worked:
                 continue
             skipped = self.excluded(d) - worked
@@ -5912,7 +5944,7 @@ class IgtRunner:
                     # Counted, never listed: the sentence is listed as
                     # skipped (REV-DF-D-9).
                     where = 'skipped'
-                elif searched is not None and s.id not in searched.get(d, ()):
+                elif takes is not None and not takes(s):
                     # Not matched by the plan's search: not the job's work (SF).
                     continue
                 else:

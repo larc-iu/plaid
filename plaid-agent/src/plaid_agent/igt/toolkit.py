@@ -725,17 +725,17 @@ def t_plan_work(ws, pieces: str = None, piece_instructions: str = '', documents=
         if refusal:
             raise ToolError(refusal, kind='invalid-argument')
     skip = skip_filled_sentences and pieces == 'sentences'
-    searched, matched = None, None
+    searched, matched, words = None, None, None
     if search is not None:
         if pieces != 'sentences':
             raise ToolError(PLAN_SEARCH_SENTENCES_ONLY, kind='invalid-argument')
-        searched, matched = plan_search(ws, search, order or [d['id'] for d in known])
+        searched, matched, words = plan_search(ws, search, order or [d['id'] for d in known])
     # Kept only when true: the plan's row holds the largest plan at its cap.
     ws.plan_work = {'pieces': pieces, 'piece_instructions': text, 'documents': order,
                     'fills': [t.id for t in chosen],
                     **({'only_empty': True} if skip else {}),
                     **({'edits_text': True} if edits_text else {}),
-                    **({'search': searched, 'matched': matched} if searched else {}),
+                    **({'search': searched, 'matched': matched, 'matched_words': words} if searched else {}),
                     **({'instructions_cut': given} if len(text) < given else {})}
     out = ['The plan is kept.']
     if len(text) < given:
@@ -814,14 +814,17 @@ PLAN_SEARCH_NONE = 'This search matches no sentence of the job\'s documents. Pla
 PLAN_SEARCH_KEPT = ('pattern', 'where', 'regex', 'case_sensitive')
 
 
-def plan_search(ws, search, documents: List[str]) -> Tuple[Dict[str, Any], Dict[str, List[str]]]:
+def plan_search(ws, search, documents: List[str]) -> Tuple[Dict[str, Any], Dict[str, List[str]],
+                                                             Dict[str, List[str]]]:
     """A plan's ``search``, the search tool's arguments, refused as search
     refuses them (:func:`reads.search_where`), and the sentences it matches
     now, in ``documents`` (those the plan works) and in the documents it
-    names itself: ``(kept, matched)``, ``kept`` its arguments with how the
+    names itself: ``(kept, matched, words)``, ``kept`` its arguments with how the
     page says it (``said``, :func:`search_said`) and how many sentences in
     how many documents it matches, ``matched`` document id -> sentence ids in
-    document order. Refused when it matches no sentence
+    document order, ``words`` each matched sentence's id -> its words' ids
+    (REV-SF-1: a split or a merge keeps them, so the walk follows them).
+    Refused when it matches no sentence
     (:data:`PLAN_SEARCH_NONE`) or more than JOB_PLAN_SEARCH_MAX_SENTENCES
     (SF). The lexicon holds no sentence: a search of it is refused."""
     from ..core import limits
@@ -868,14 +871,16 @@ def plan_search(ws, search, documents: List[str]) -> Tuple[Dict[str, Any], Dict[
                         f'{limits.JOB_PLAN_SEARCH_MAX_SENTENCES:,}. Narrow the search, or plan without it.',
                         kind='invalid-argument')
     # Each document's sentences in its order, the documents in the job's.
-    matched = {}
+    matched, words = {}, {}
     for d in held:
         if d in found:
-            order = {s.id: i for i, s in enumerate(ws.doc(d).sentences)}
+            doc = ws.doc(d)
+            order = {s.id: i for i, s in enumerate(doc.sentences)}
             matched[d] = sorted(found[d], key=lambda sid: order.get(sid, len(order)))
+            words.update({s.id: [w.id for w in s.words] for s in doc.sentences if s.id in found[d]})
     kept = {k: search[k] for k in PLAN_SEARCH_KEPT if search.get(k) not in (None, False, '')}
     return ({**kept, 'said': search_said(ws.project, kind, fields, pattern, regex, case),
-             'sentences': n, 'documents': len(matched)}, matched)
+             'sentences': n, 'documents': len(matched)}, matched, words)
 
 
 def search_said(project, kind: str, fields, pattern: str, regex: bool, case: bool) -> str:

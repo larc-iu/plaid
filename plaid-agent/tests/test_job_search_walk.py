@@ -208,3 +208,105 @@ def test_read_job_says_the_search_where_the_plan_is_said():
                             {'state': 'done', 'done': 0, 'targets': 0, 'counts': {'matched': 0}}]}
     said = jobread._totals(report)
     assert 'documents done 1, documents with no matching sentence 2' in said, said
+
+
+def _planned_then(monkeypatch, changed):
+    """Story 1: s1 OLD, s2 OLD, s3 be (one word each). The planning matches
+    s1 and s2, then a person reshapes the text (``changed``), then the walk."""
+    client = JobClient({'d1': document('d1', 'Story 1', [{'words': [('nidr', [('nidr', g)], 'human')]}
+                                                         for g in (OLD, OLD, 'be')])})
+    job = start(client, 'Rename it.', id=J, plan=None)
+    r = runner(job)
+    use(monkeypatch, Model(planned(_renaming, RENAME)))
+    assert r.plan(job)['matched'] == {'d1': ['d1-s1', 'd1-s2']}
+    client._holder('d1')['documents']['d1'] = changed()
+    model = use(monkeypatch, Model(lambda a, k, kw: reply('Looked at it.')))
+    finished = run_job(job, r)
+    return [_your_piece(a).split('.')[0] for a in _pieces(model)], finished['report']['documents'][0]
+
+
+def test_a_matched_sentence_a_person_merges_is_followed_by_its_words(monkeypatch):
+    """REV-SF-1: s1 and s2, both matched, are merged into one sentence of a
+    new id before the walk: the walk takes it, as it holds their words."""
+    from job_fixtures import document as doc_of
+
+    def merged():
+        raw = doc_of('d1', 'Story 1', [{'words': [('nidr', [('nidr', OLD)], 'human'), ('nidr', [('nidr', OLD)], 'human')]},
+                                       {'words': [('nidr', [('nidr', 'be')], 'human')]}], version=2)
+        layers = raw['text_layers'][0]['token_layers']
+        layers[0]['tokens'][0]['id'], layers[0]['tokens'][1]['id'] = 'd1-sM', 'd1-s3'
+        # The merge keeps each word's id: s1's and s2's words.
+        layers[1]['tokens'][0]['id'], layers[1]['tokens'][1]['id'] = 'd1-s1w1', 'd1-s2w1'
+        layers[1]['tokens'][2]['id'] = 'd1-s3w1'
+        return raw
+    taken, row = _planned_then(monkeypatch, merged)
+    assert taken == ['Your piece: s1'], taken
+    assert (row['targets'], row['done']) == (1, 1), row
+
+
+def test_a_matched_sentence_a_person_splits_has_both_halves_taken(monkeypatch):
+    from job_fixtures import document as doc_of
+
+    def split():
+        # s1 split in two: its first word stays in d1-s1, its second goes to
+        # a new sentence, each word keeping its id.
+        raw = doc_of('d1', 'Story 1', [{'words': [('nidr', [('nidr', OLD)], 'human')]},
+                                       {'words': [('nidr', [('nidr', OLD)], 'human')]},
+                                       {'words': [('nidr', [('nidr', OLD)], 'human')]},
+                                       {'words': [('nidr', [('nidr', 'be')], 'human')]}], version=2)
+        layers = raw['text_layers'][0]['token_layers']
+        for tok, sid in zip(layers[0]['tokens'], ('d1-s1', 'd1-sNEW', 'd1-s2', 'd1-s3')):
+            tok['id'] = sid
+        for tok, wid in zip(layers[1]['tokens'], ('d1-s1w1', 'd1-s1w2', 'd1-s2w1', 'd1-s3w1')):
+            tok['id'] = wid
+        return raw
+
+    # The planning reads s1 with two words, so both are its.
+    client = JobClient({'d1': document('d1', 'Story 1', [
+        {'words': [('nidr', [('nidr', OLD)], 'human'), ('nidr', [('nidr', OLD)], 'human')]},
+        {'words': [('nidr', [('nidr', OLD)], 'human')]}, {'words': [('nidr', [('nidr', 'be')], 'human')]}])})
+    job = start(client, 'Rename it.', id=J, plan=None)
+    r = runner(job)
+    use(monkeypatch, Model(planned(_renaming, RENAME)))
+    assert r.plan(job)['matched'] == {'d1': ['d1-s1', 'd1-s2']}
+    client._holder('d1')['documents']['d1'] = split()
+    model = use(monkeypatch, Model(lambda a, k, kw: reply('Looked at it.')))
+    finished = run_job(job, r)
+    taken = [_your_piece(a).split('.')[0] for a in _pieces(model)]
+    assert taken == ['Your piece: s1, s2, s3'], taken
+    row = finished['report']['documents'][0]
+    assert (row['targets'], row['done'], row['sentences']) == (3, 3, 4), row
+
+
+def test_a_resumed_job_in_the_middle_of_the_walk_takes_each_matched_sentence_once(monkeypatch):
+    """The worker dies after its second piece; a fresh one walks the rest,
+    each matched sentence once, its words included."""
+    import pytest
+
+    class Died(BaseException):
+        pass
+    monkeypatch.setattr(igt_job, 'JOB_STRETCH_SENTENCES', 1)
+    client = JobClient({'d23': _story(23, 6), 'd2': _story(2, 4), 'd18': _story(18, 5)})
+    job = start(client, 'Rename it.', id=J, plan=None)
+    n = {'k': 0}
+
+    def dying(asked, k, kw):
+        if k == 1:
+            n['k'] += 1
+            if n['k'] == 3:
+                raise Died('the worker dies')
+        return _renaming(asked, k, kw)
+    model = use(monkeypatch, Model(planned(dying, RENAME)))
+    with pytest.raises(Died):
+        run_job(job, runner(job))
+    first = [(a.split('"')[1], _your_piece(a).split('.')[0]) for a in _pieces(model)]
+    model.calls.clear()
+    model.answer = _renaming
+    finished = run_job(job, runner(job))
+    second = [(a.split('"')[1], _your_piece(a).split('.')[0]) for a in _pieces(model)]
+    done = first[:2] + second
+    # The third piece (Story 2 s1) died before its write: taken again, once.
+    assert sorted(done) == sorted([('Story 23', 'Your piece: s1'), ('Story 23', 'Your piece: s2'),
+                                   ('Story 23', 'Your piece: s3'), ('Story 18', 'Your piece: s1'),
+                                   ('Story 18', 'Your piece: s2'), ('Story 2', 'Your piece: s1')]), (first, second)
+    assert finished['report']['totals']['changes'] == 6
