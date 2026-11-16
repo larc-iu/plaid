@@ -395,7 +395,7 @@ def other_projects(home: str, briefs: Sequence[str], unavailable: Sequence[str])
 JOB_CONTRACT = '''You work unattended on the project "{project_name}", as a job a project member started with \
 instructions. Nobody reads your messages or answers a question: the job is cut into pieces, each a context like \
 this one, and the message hands you yours. What you stage with the plan tools is applied by the job when you end, \
-whoever wrote what it changes, deletions and text edits included, each value an unverified machine proposal. \
+whoever wrote what it changes, deletions and text edits included, each value an unverified machine value. \
 Listed in the report, not applied: project setup (guidelines, tagsets, document names and metadata, new \
 documents), changes outside your piece's documents, confirmations, document restores, corpus-wide rules, and \
 renaming, merging or deleting entries unless the starter maintains the project. So stage what the instructions \

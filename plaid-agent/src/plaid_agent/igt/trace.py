@@ -255,7 +255,8 @@ def _own(name: str, a: Dict[str, Any]) -> Optional[str]:
 
     # --- a job drafted for the user to start ------------------------------------
     if name == 'propose_job':
-        return 'Read how to draft a job' if _action(a) == 'help' else 'Drafted a job'
+        # facts reads, and never "Nothing to change: a job" (RP-5, RPF-A10).
+        return {'help': 'Read how to draft a job', 'facts': 'Read what a job can fill'}.get(_action(a), 'Drafted a job')
 
     # --- what a job did -------------------------------------------------------------
     if name == 'read_job':
@@ -299,7 +300,8 @@ _PROGRESS = {
     'check_integrity': lambda a: 'Checking data integrity…',
     'sequence_search': lambda a: 'Searching for the sequence…',
     'app_guide': lambda a: 'Reading the app guide…',
-    'propose_job': lambda a: 'Reading how to draft a job…' if _action(a) == 'help' else 'Drafting a job…',
+    'propose_job': lambda a: {'help': 'Reading how to draft a job…',
+                              'facts': 'Reading what a job can fill…'}.get(_action(a), 'Drafting a job…'),
     'read_job': lambda a: 'Reading a job…' if a.get('job') else 'Listing the jobs…',
 }
 
@@ -310,7 +312,7 @@ _READING = {'analyze_sentence': lambda a: META if a.get('help') else None,
             'tagsets': lambda a: {'help': META, 'check': READ}.get(_action(a)),
             'senses': lambda a: META if _action(a) == 'help' else None,
             'app_guide': lambda a: META,
-            'propose_job': lambda a: META if _action(a) == 'help' else PLAN,
+            'propose_job': lambda a: {'help': META, 'facts': READ}.get(_action(a), PLAN),
             # Its manual is bookkeeping, as a tool's help is.
             'read_job': lambda a: META if str(a.get('section') or '').strip().lower() == 'help' else None}
 

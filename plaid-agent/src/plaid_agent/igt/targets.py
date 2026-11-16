@@ -501,6 +501,35 @@ def count(sentences: Iterable[Sentence], t: Target) -> int:
     return n
 
 
+def people_count(sentences: Iterable[Sentence], t: Target) -> int:
+    """How many units of ``sentences`` hold a value of ``t`` people wrote or
+    verified (its provenance not a machine's: a person's, a contributor's or
+    confirmed), what a job that changes it makes an unverified machine value
+    (RPF-A2, the owner's R1): a word segmented by people (``word_state``
+    protected) for segmentation, a field's value by its span's provenance.
+    An orthography's values carry no provenance of their own: none."""
+    from plaid_client.provenance import prov_state
+
+    def held(holder) -> bool:
+        sp = holder.fields.get(t.field.name) if holder is not None else None
+        return sp is not None and sp.value not in (None, '') and prov_state(sp.metadata) != 'machine'
+    n = 0
+    for s in sentences:
+        if t.scope == 'Sentence':
+            n += held(s)
+            continue
+        for w in s.words:
+            if t.segments:
+                n += word_state(w) == 'protected'
+            elif t.orthography is not None:
+                continue
+            elif t.scope == 'Morpheme':
+                n += sum(1 for m in w.morphemes if held(m))
+            else:
+                n += held(w)
+    return n
+
+
 def document_fact(doc, project: IgtProject) -> Dict[str, object]:
     """What is said of one document where a job is planned or set up: its
     name, its sentences and words, its length as rendered, and how many units
@@ -510,6 +539,7 @@ def document_fact(doc, project: IgtProject) -> Dict[str, object]:
     return {'id': doc.id, 'name': doc.name, 'sentences': len(doc.sentences),
             'words': sum(len(s.words) for s in doc.sentences),
             'empty': {t.id: count(doc.sentences, t) for t in fillable(project)},
+            'people': {t.id: people_count(doc.sentences, t) for t in fillable(project)},
             'characters': sum(len(render_sentence(s, project)) + 1 for s in doc.sentences)}
 
 
@@ -517,21 +547,32 @@ def _n(n: int, word: str) -> str:
     return f'{n} {word}{"" if n == 1 else "s"}'
 
 
+#: The line before the documents in propose_job's facts, which say what
+#: people hold of each target (RPF-A2, the owner's R1).
+PEOPLE_SAID = ('"People\'s" counts the values a person wrote or verified. A job writes unverified machine values, so '
+               'each of those it changes becomes unverified.')
+
+
 def fill_lines(fill: List[Target], facts: List[Dict[str, object]], tool: str, heading: str,
-               setup: Optional[str] = None) -> List[str]:
+               setup: Optional[str] = None, people: bool = False) -> List[str]:
     """What a job can fill and how much of it is empty in each document, as
     the planning context is shown it and as propose_job's facts answer it
     (one text, BRIEF-SU): ``fill`` the targets listed, ``facts`` each
     document's :func:`document_fact`, ``tool`` the tool whose ``fills``
     names them, ``heading`` the documents' heading before their count, and
     ``setup`` a line said under the list. At most JOB_PLAN_DOCUMENT_LINES
-    document lines, each naming at most JOB_PLAN_EMPTY_TARGETS targets."""
+    document lines, each naming at most JOB_PLAN_EMPTY_TARGETS targets.
+    ``people``: each line also says how many values of each target people
+    wrote or verified (``facts``' ``people``), the most first, for
+    propose_job's facts (RPF-A2)."""
     from ..core.limits import JOB_PLAN_DOCUMENT_LINES, JOB_PLAN_EMPTY_TARGETS
     names = {t.id: t.name for t in fill}
     order = {t.id: k for k, t in enumerate(fill)}
     lines = [f'What a job can fill (name them in {tool}\'s fills):', *[f'- {t.label}' for t in fill]]
     if setup:
         lines.append(setup)
+    if people:
+        lines.append(PEOPLE_SAID)
     lines += ['', f'{heading} ({len(facts)}):']
     for f in facts[:JOB_PLAN_DOCUMENT_LINES]:
         # Only the targets with something empty, the most first (the
@@ -543,6 +584,13 @@ def fill_lines(fill: List[Target], facts: List[Dict[str, object]], tool: str, he
         if len(some) > JOB_PLAN_EMPTY_TARGETS:
             empties += f', and {len(some) - JOB_PLAN_EMPTY_TARGETS} more'
         said = f' Empty: {empties}.' if empties else (' Nothing empty.' if fill else '')
+        if people:
+            held = sorted(((i, n) for i, n in (f.get('people') or {}).items() if i in names and n),
+                          key=lambda x: (-x[1], order[x[0]]))
+            if held:
+                said += ' People\'s: ' + ', '.join(f'{names[i]} {n:,}' for i, n in held[:JOB_PLAN_EMPTY_TARGETS]) + (
+                    f', and {len(held) - JOB_PLAN_EMPTY_TARGETS} more' if len(held) > JOB_PLAN_EMPTY_TARGETS else '') \
+                    + '.'
         lines.append(f'- "{f["name"]}": {_n(f["sentences"], "sentence")}, {_n(f["words"], "word")}, '
                      f'{f["characters"]:,} characters.{said}')
     if len(facts) > JOB_PLAN_DOCUMENT_LINES:

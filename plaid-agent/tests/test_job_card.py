@@ -523,7 +523,10 @@ def test_facts_answers_the_planners_own_lines():
     planner = r.plan_message(r.document_facts(project, job), project)
     head, docs = out.split('\n\n')
     assert head.startswith("What a job can fill (name them in propose_job's fills):\n- segmentation (word level")
-    assert head.split('\n')[1:] == planner.split("What a job can fill (name them in plan_work's fills):\n")[1] \
+    # The planner's lines, and the line saying what "People's" counts (RPF-A2).
+    from plaid_agent.igt import targets as tg
+    assert head.split('\n')[-1] == tg.PEOPLE_SAID
+    assert head.split('\n')[1:-1] == planner.split("What a job can fill (name them in plan_work's fills):\n")[1] \
         .split('\n\n')[0].split('\n')
     assert docs.split('\n')[0] == 'The documents (2):'
     lines = docs.split('\n')[1:]
@@ -591,7 +594,7 @@ def test_a_job_setup_conversation_keeps_its_purpose_and_is_told_what_it_is_for_e
     note = setup_note(ws)
     assert len(systems) == 3 and all(s.endswith('\n\n' + note) for s in systems), systems[0][-3000:]
     assert note.startswith('This conversation sets up an assistant job. The person says what the job should do, '
-                           'and you draft the job card with propose_job. In order:\n'
+                           'and you lead to a job card drafted with propose_job, not to a plan of changes. In order:\n'
                            '1. Read what the person asks the job to do, and on which documents.\n'
                            '2. Call propose_job with action "facts" and those documents.\n')
     assert '\nHow propose_job works (no need to call help):\npropose_job drafts an unattended job' in note

@@ -589,8 +589,8 @@ COUNT_KEYS = ('translations', 'refreshed', 'words', 'links', 'entries', 'changed
               'tokens_changed')
 #: What one change a job wrote is, as the report splits its ``changes``
 #: (``totals.changes_parts``, an app's ``counts.changes_parts``, RPF-A3), in
-#: this order: a value set or cleared, a word's analysis, a link, a lexicon
-#: entry, a change of the text, anything else. The app sorts its changes.
+#: this order: a value set or cleared, a word's analysis, a link, an entry,
+#: a change of the text, anything else. The app sorts its changes.
 CHANGE_KINDS = ('values', 'analyses', 'links', 'entries', 'text', 'other')
 #: A row's count of the sentences skipped past the cap of its ``skipped``
 #: list (core's JOB_SKIPPED_PER_DOCUMENT), which are counted and not listed.

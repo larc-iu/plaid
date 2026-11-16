@@ -78,7 +78,7 @@ def test_no_paragraph_that_assumes_a_person_is_said():
     lowered = text.lower()
     for words in ('ask which', 'end your turn', 'plan card', 'stretch', 'propose_job', 'approve it'):
         assert words not in lowered, words
-    assert 'unverified machine proposal' in text and 'proposed change' in text
+    assert 'unverified machine value' in text and 'proposed change' in text
     assert 'GUIDELINE: Glossing' in text and 'Loanwords are **not** segmented' in text, 'every guideline, whole'
 
 
@@ -583,7 +583,7 @@ def test_the_contract_says_a_job_applies_what_it_plans_but_project_setup():
     text = _job_prompt()
     contract = shared.JOB_CONTRACT
     assert 'is applied by the job when you end, whoever wrote what it changes' in contract
-    assert 'deletions' in contract and 'unverified machine proposal' in contract
+    assert 'deletions' in contract and 'unverified machine value' in contract
     # REV-JH-5 and -7: everything listed and not applied, named.
     assert 'Listed in the report, not applied: project setup' in contract
     for listed in ("changes outside your piece's documents", 'confirmations', 'document restores',

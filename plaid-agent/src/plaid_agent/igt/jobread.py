@@ -176,6 +176,10 @@ def _totals(report: Dict[str, Any]) -> str:
                                for f in (d.get('counts') or {}).get('fields') or []])
     if fields:
         said.append(fields_text(fields))
+    # The changes by kind, as the page says what each screen counts (RPF-A3).
+    parts = totals.get('changes_parts')
+    if isinstance(parts, list) and parts:
+        said.append('changes by kind: ' + ', '.join(f'{p.get("kind")} {p.get("n") or 0:,}' for p in parts))
     # What it wrote outside its setup, as the worker marked it by id
     # (REV-SU-B-4), from the documents when the totals hold none.
     outside = totals.get('outside')
@@ -281,6 +285,10 @@ def summary(job: Dict[str, Any], note_chars: Optional[int] = JOB_SUMMARY_NOTE_CH
         lines.append('No report yet.' if job.get('state') in ('waiting', 'running', 'stopping')
                      else 'It has no report.')
         return lines
+    if report.get('notice'):
+        # The worker's own top line: what the job changed of people's work
+        # and of the text (RPF-A4, the owner's R4).
+        lines.append(f'The report\'s top line, the worker\'s own: "{report["notice"]}"')
     planned = plan_line(report)
     if planned:
         lines.append(planned)
@@ -289,6 +297,9 @@ def summary(job: Dict[str, Any], note_chars: Optional[int] = JOB_SUMMARY_NOTE_CH
         # The assistant's own words when it planned the job, never the
         # starter's instructions (the lead's ruling on REV-JG-14).
         lines.append(_quoted('What the assistant told every piece, as it planned the job', told, note_chars))
+    if report.get('findings'):
+        # The one report of a job that fills nothing (RPF-A5).
+        lines.append(_quoted('The job\'s findings, its report', report['findings'], note_chars))
     if report.get('summary') and report.get('summary_by') == 'worker':
         # The worker's fixed line for a job that wrote and proposed nothing.
         lines.append(f'The report says: "{report["summary"]}"')

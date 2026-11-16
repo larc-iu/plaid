@@ -39,11 +39,11 @@ def _help(facts: Dict[str, Any]) -> str:
     most = f', at most {docs_max:,}' if docs_max else ''
     return '\n'.join([
         'propose_job drafts an unattended job: the assistant works the documents in the background, with its '
-        'tools, by the brief alone. Every change it plans in the documents and the lexicons is written, deletions '
-        'included, each value an unverified machine proposal that people check in the grid. Project setup and a '
-        'few other kinds of change are listed in the job\'s report for a person to approve. The draft writes '
-        'nothing and starts nothing. The user reads the card, may edit the brief, and starts the job or '
-        'discards it. To change anything else on it, draft again.',
+        'tools, by the brief alone. Every change it plans in the documents and the lexicons is written as it goes, '
+        'deletions included, each value an unverified machine value, which people can verify or correct '
+        'afterwards, and the whole job can be undone. Project setup and a few other kinds of change are listed in '
+        'the job\'s report, not written. The draft writes nothing and starts nothing. The user reads the card, may '
+        'edit the brief, and starts the job or discards it. To change anything else on it, draft again.',
         '- action "facts", with documents: what a job can fill on this project, and how much of each is empty '
         'in each document.',
         '- action "draft" drafts the card from:',
@@ -55,10 +55,12 @@ def _help(facts: Dict[str, Any]) -> str:
         '  - only_new: true when the job fills only the words it adds to the text (such as a value on each '
         'inserted word), with edits_text true. Left out, false: it may fill any word.',
         '  - brief: the job\'s instructions, which its model reads with every piece of its work, with nothing of '
-        'this conversation. Write the decisions, not the discussion: what to do, what to leave, the conventions '
-        'settled, in plain imperative sentences that name forms and values exactly, such as "Gloss -da as '
-        'LOC after a noun and as 3SG after a verb.", "Give every word ending in -ka the Word class V." or '
-        f'"Leave the Russian loanwords unanalysed."{within}',
+        'this conversation. Open it with one plain sentence a person who is not a linguist can follow, saying '
+        'what the job will do. Then write the decisions, not the discussion: what to do, what to leave, the '
+        'conventions settled, in plain imperative sentences that name forms and values exactly, such as "Gloss '
+        '-da as LOC after a noun and as 3SG after a verb.", "Give every word ending in -ka the Word class V." or '
+        '"Leave the Russian loanwords unanalysed.". State as the project\'s convention only what you read in the '
+        f'facts, the guidelines or the documents.{within}',
         '- The job changes and deletes what people wrote where the brief asks it to, and follows how people '
         'annotated a form.',
         '- A turn holds a job card or a plan of changes, not both. Drafting again in the same turn replaces the '
@@ -179,7 +181,7 @@ def _facts_answer(ws, documents) -> str:
     facts = [tg.document_fact(ws.doc(i), ws.project) for i in ids[:JOB_PLAN_DOCUMENT_LINES]]
     # Those past the lines shown are counted, never read.
     facts += [{'id': i} for i in ids[JOB_PLAN_DOCUMENT_LINES:]]
-    return '\n'.join(tg.fill_lines(tg.fillable(ws.project), facts, 'propose_job', 'The documents'))
+    return '\n'.join(tg.fill_lines(tg.fillable(ws.project), facts, 'propose_job', 'The documents', people=True))
 
 
 #: propose_job's refusal of only_new on a job that may not edit the text.
@@ -228,7 +230,8 @@ def t_propose_job(ws, action: str, documents: Optional[Any] = None, brief: Optio
     card['summary'] = summary(card)
     ws.job_card = card
     return ('Drafted the job card' + (', in place of the one drafted earlier in this turn' if replaced else '')
-            + '. The user reads it, may edit the brief, and starts the job or discards it.')
+            + '. The user reads it, may edit the brief, and starts the job or discards it. Nothing has run yet: '
+            'say the card is drafted, never that anything is done.')
 
 
 # --- a conversation that sets up a job (BRIEF-SU) -------------------------------------------
@@ -240,13 +243,22 @@ JOB_SETUP_PURPOSE = 'job-setup'
 #: What the system prompt adds in such a conversation: what it is for, the
 #: steps, and propose_job's help inlined, so the model need not call help.
 JOB_SETUP_NOTE = '''This conversation sets up an assistant job. The person says what the job should do, and you \
-draft the job card with propose_job. In order:
+lead to a job card drafted with propose_job, not to a plan of changes. In order:
 1. Read what the person asks the job to do, and on which documents.
 2. Call propose_job with action "facts" and those documents.
-3. Tell the person how much is empty of what they asked for. Of everything else the facts list as empty, ask \
+3. If what they ask needs no change to the documents (a question, a count, a list, a check), answer it here from \
+what you read, and draft a job only if they ask for one.
+4. Tell the person how much is empty of what they asked for. Of everything else the facts list as empty, ask \
 whether the job should fill it too. Never assume.
-4. Draft with propose_job action "draft", with exactly the fills the person agreed to, and edits_text true only \
-when they agreed the job may change the text itself.
+5. If the job would change values the facts count as people's, say before you draft how many such values those \
+fields hold, and that a job writes unverified machine values, so each one it changes becomes unverified. For an \
+exact change they dictate (one spelling or value for another), say in one sentence that an ordinary plan in this \
+chat, approved as verified, keeps them verified, and let them choose.
+6. Draft with propose_job action "draft", with exactly the fills the person agreed to, edits_text true only when \
+they agreed the job may change the text itself, and only_new true when it is to fill only the words it adds. \
+Stage no plan of changes here unless the person chose one in step 5.
+A job writes its changes as it goes, as unverified machine values, and the whole job can be undone: never call \
+them proposals for the person to check, or say they are staged.
 
 How propose_job works (no need to call help):
 {help}'''
