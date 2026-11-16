@@ -292,8 +292,9 @@
 (defn- person-world!
   "The reviewer's text with the unit's work kept off s1: s2's mark retyped,
   `∅ ` typed before s3, PRON on each new word and N on the old word kai,
-  which no edit moves. `between` runs between the two edits, `after` after
-  the unit's last write."
+  which no edit moves, a relation between the two PRON values and a link
+  from the second new word to a lexicon entry. `between` runs between the
+  two edits, `after` after the unit's last write."
   [{:keys [between after]}]
   (let [{:keys [proj doc text pos words] :as w} (world!)
         _ (assert-done (add-project-writer admin-request proj "user1@example.com"))
@@ -306,8 +307,13 @@
         pron (vec (for [i (keep-indexed (fn [i c] (when (= nul (str c)) i)) b)]
                     (id (create-span r pos [(word-at words text i (inc i))] "PRON"))))
         kai (id (create-span r pos [(word-at words text 0 3)] "N"))
+        dep (id (create-relation-layer admin-request pos "Dependencies"))
+        rel (id (create-relation r dep (first pron) (second pron) "conj"))
+        vocab (id (create-vocab-layer admin-request proj "Lexicon"))
+        entry (id (create-vocab-item admin-request vocab "pro"))
+        link (id (create-vocab-link r entry [(word-at words text (at text (str nul " mo")) (inc (at text (str nul " mo"))))]))
         _ (when after (after w))]
-    (assoc w :g g :pron pron :kai kai)))
+    (assoc w :g g :pron pron :kai kai :rel rel :link link)))
 
 (defn- person-edit! [{:keys [text] :as w}]
   ;; a person adds a word at the end of s3, as the Baseline sends it
@@ -318,7 +324,7 @@
   (doseq [[what opts reason] [["between the unit's edits" {:between person-edit!} "changed-between"]
                               ["after the unit's last" {:after person-edit!} "changed-since"]]]
     (testing what
-      (let [{:keys [doc text g pron kai]} (person-world! opts)
+      (let [{:keys [doc text g pron kai rel link]} (person-world! opts)
             was (state [doc])
             dry (body-of (undo-entry admin-request g :dry-run true))
             _ (is (= was (state [doc])))
@@ -332,6 +338,10 @@
         (is (= (dissoc (text-part was) ["span" kai]) (text-part now))
             "the text, its tokens and the values on the new words are as they were")
         (doseq [s pron] (is (= "text-changed-since" (why s)) "a value on a new word stays with its word"))
+        (is (= "text-changed-since" (why rel)) "a relation on those values stays with them")
+        (is (= "text-changed-since" (why link)) "a link on a new word stays with it")
+        (is (some? (psc/fetch-by-id db :relations rel)))
+        (is (some? (psc/fetch-by-id db :vocab_links link)))
         (is (nil? (get now ["span" kai])) "a value on a word no edit moved is undone")
         (invariant! [doc] was nil now)))))
 
