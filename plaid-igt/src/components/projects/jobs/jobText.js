@@ -319,7 +319,7 @@ export const allSkipped = (d) =>
 // documents did not read it through, and nothing the job fills was left empty
 // in it (the worker's `counts.not_walked`, CONTRACT, added by RPF3). Its
 // changes are what that step wrote there.
-export const notReadThrough = (d) => d?.state === 'done' && d.counts?.notWalked === true;
+const notReadThrough = (d) => d?.state === 'done' && d.counts?.notWalked === true;
 
 // A document's sentences as the Documents table says them: those worked of
 // its sentences, and those skipped, "0 of 2, 2 skipped" (REV-RPF-P-9).
