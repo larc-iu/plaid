@@ -49,6 +49,7 @@ import {
   leftText,
   planText,
   readableSetup,
+  whoText,
   stoppedPartway,
   wroteNothing,
   allSkipped,
@@ -243,7 +244,7 @@ export const JobPage = ({ project, projectId, jobId, client }) => {
           )
         }
       />
-      <JobStatus job={job} />
+      <JobStatus job={job} user={user} />
       <JobSetup job={job} projectId={projectId} user={user} />
       {job.undone && (
         <p className="-mt-4 mb-6 text-sm" data-testid="job-undone">
@@ -295,7 +296,13 @@ export const JobPage = ({ project, projectId, jobId, client }) => {
         onPlan={setLivePlan}
       />
       {job.report && (
-        <JobReport report={job.report} projectId={projectId} vocabs={project.vocabs || []} />
+        <JobReport
+          report={job.report}
+          projectId={projectId}
+          vocabs={project.vocabs || []}
+          undone={job.undone ?? null}
+          undoneBy={job.undone ? whoText(job.undone.user, job, user) : null}
+        />
       )}
     </div>
   );
@@ -351,7 +358,7 @@ const JobSetup = ({ job, projectId, user }) => {
 
 // The state, what the worker is doing, its last line, and for a waiting job
 // how many are ahead of it (core's `ahead`, every one another project's). A failed job says why.
-const JobStatus = ({ job }) => {
+const JobStatus = ({ job, user }) => {
   const failed = job.state === 'failed';
   const running = job.state === 'running';
   return (
@@ -364,6 +371,13 @@ const JobStatus = ({ job }) => {
         )}
       </div>
       {jobSilentText(job) && <p>{jobSilentText(job)}</p>}
+      {/* Who stopped it and when, as core records the stop (RPF3-D2). */}
+      {job.state === 'cancelled' && job.cancelledBy && (
+        <p data-testid="job-stopped-by">
+          Stopped by {whoText(job.cancelledBy, job, user)}
+          {job.finishedAt ? `, ${fullTimestamp(job.finishedAt)}` : ''}.
+        </p>
+      )}
       {failed ? (
         <p>{jobReasonText(job)}</p>
       ) : (

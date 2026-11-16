@@ -288,8 +288,20 @@ export const piecesFallShort = (pieces, documents) =>
 export const changesGroup = (d) => ((d?.counts?.changes ?? 0) > 0 ? d.glossGroup : null);
 
 // A document of the job the worker did not finish: never reached, or
-// stopped partway once it finished a sentence (REV-DAY-P-13).
-export const stoppedPartway = (d) => d.state === 'not-reached' && (d.done ?? 0) > 0;
+// stopped partway once it finished a sentence (REV-DAY-P-13) or holds any of
+// the job's changes, which a step over all the documents may have written
+// before the walk reached it (RPF3-D2, RP2-4: "Not reached" beside "Changes 1").
+export const stoppedPartway = (d) =>
+  d.state === 'not-reached' && ((d.done ?? 0) > 0 || (d.counts?.changes ?? 0) > 0);
+
+// Who a job's own field names: "you" for the reader, the starter by name,
+// else the id core holds.
+export const whoText = (userId, job, user) =>
+  user?.id && userId === user.id
+    ? 'you'
+    : userId && userId === job?.startedBy
+      ? (job.startedByName ?? userId)
+      : (userId ?? 'someone');
 
 // How many of a document's sentences the job skipped (its rows' skipped list,
 // and those past the list's cap). Its `done` counts them with the sentences

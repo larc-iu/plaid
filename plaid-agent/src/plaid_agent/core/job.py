@@ -364,7 +364,10 @@ class Job:
         self.shared_at: Optional[float] = None
         self.lost: Optional[str] = None
         self.reason: Optional[str] = None
-        self.paused = {'people': 0.0, 'model': 0.0}
+        #: seconds the job took turns with people on the model, waited for
+        #: people to finish editing a document (an app's ``edits``, RPF3-D1)
+        #: and waited for a model not answering
+        self.paused = {'people': 0.0, 'model': 0.0, 'edits': 0.0}
         self.started_at = self.job.get('started_at')
         self._beat_lock = threading.Lock()
         self._stop = threading.Event()
@@ -1069,6 +1072,8 @@ def build_report(job: Job, state: str, reason: Optional[str], documents: List[Di
         'finished_at': datetime.fromtimestamp(job.now(), timezone.utc).isoformat(timespec='seconds')
         .replace('+00:00', 'Z'),
         'paused_for_people_s': int(job.paused['people']), 'paused_for_model_s': int(job.paused['model']),
+        # Apart from taking turns with people on the model (RPF3-D1).
+        'paused_for_edits_s': int(job.paused['edits']),
         'stopped': None, 'totals': totals, 'notice': notice(totals, nouns), 'documents': documents, 'summary': None,
         'summary_by': None,
         'summary_failed': False,

@@ -314,7 +314,11 @@ describe('the job card', () => {
         card: card({ status: 'started', jobId: CARD_ID, sentBrief: 'Gloss ka as come.' }),
         client,
       });
-      expect(text(v)).toContain('Started');
+      // Its job's state as the job page says it (RPF3-D3).
+      await v.step(async () => {});
+      expect(v.container.querySelector('[data-testid="job-card-state"]').textContent).toBe(
+        'Running',
+      );
       // No longer a proposal once its job started (RP-1).
       expect(text(v)).not.toContain('Proposed job');
       expect(v.container.querySelector('[data-testid="job-card-heading"]').textContent).toBe('Job');
@@ -355,6 +359,26 @@ describe('the job card', () => {
       await v.step(async () => {});
       expect(v.container.querySelector('[data-testid="job-card-state"]').textContent).toBe(
         'Stopped',
+      );
+    });
+
+    // RPF3-D3 (RP2-1 finding 9): "Started" after the job was done and undone.
+    it('started, its job ended: says its end, and Undone once undone', async () => {
+      const client = fakeClient({ state: 'done' });
+      const started = card({ status: 'started', jobId: CARD_ID, sentBrief: 'x' });
+      const { v } = await draw({ card: started, client });
+      await v.step(async () => {});
+      expect(v.container.querySelector('[data-testid="job-card-state"]').textContent).toBe('Done');
+      client.jobs.get = vi.fn(async (id) => ({
+        id,
+        state: 'done',
+        startedAt: 'x',
+        undone: { operation: 'op1', time: '2026-11-16T10:31:36Z', user: 'w@x' },
+      }));
+      const w = await draw({ card: started, client });
+      await w.v.step(async () => {});
+      expect(w.v.container.querySelector('[data-testid="job-card-state"]').textContent).toBe(
+        'Undone',
       );
     });
 

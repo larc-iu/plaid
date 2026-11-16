@@ -1018,7 +1018,9 @@ def state_text(d: Dict[str, Any]) -> str:
     """A document's state as the final context reads it: one the job did
     not finish is "stopped partway, 6 of 8 sentences done" once it finished a
     sentence, else "not reached" (REV-DAY-P-13)."""
-    if d.get('state') == 'not-reached' and (d.get('done') or 0) > 0:
+    if d.get('state') == 'not-reached' and ((d.get('done') or 0) > 0
+                                            or ((d.get('counts') or {}).get('changes') or 0) > 0):
+        # One that holds the job's changes is never "not reached" (RPF3-D2).
         return f'stopped partway, {d.get("done"):,} of {d.get("targets") or 0:,} sentences done'
     if d.get('state') == 'done' and (d.get('counts') or {}).get(NOT_WALKED) is True:
         # RPF3-A: ended after the step over all the documents.
@@ -2770,9 +2772,12 @@ class IgtRunner:
         said = job.line
         job.set(current_document=None,
                 message=f'Waiting for people to finish in {where}. Trying again in {minutes} minutes.')
+        began = job.now()
         try:
             job.sleep(JOB_DEFER_WAIT_S)
         finally:
+            # Counted apart from taking turns on the model (RPF3-D1).
+            job.paused['edits'] += job.now() - began
             if not job.lost:
                 job.set(message=said)
 

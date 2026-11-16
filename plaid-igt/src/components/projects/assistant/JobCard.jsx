@@ -6,7 +6,7 @@ import { Label } from '@ui/components/ui/label';
 import { Textarea } from '@ui/components/ui/textarea';
 import { AuthContext } from '@ui/contexts/useAuth.js';
 import { canStartJob } from '@ui/domain/permissions.js';
-import { JOB_POLL_MS, jobStateText } from '@ui/domain/jobs.js';
+import { JOB_POLL_MS, isJobActive, jobStateText } from '@ui/domain/jobs.js';
 import { humanizeError, statusOf } from '@ui/lib/errors.js';
 import { notifyError } from '@/utils/feedback';
 import { cn } from '@ui/lib/utils';
@@ -142,8 +142,10 @@ export const JobCard = ({
         .get(jobId)
         .then((j) => {
           if (!live) return;
-          setNotStarted(j && !j.startedAt ? (jobStateText(j.state) ?? null) : null);
-          if (j?.state === 'waiting') timer = setTimeout(look, JOB_POLL_MS);
+          // Its state as the job page says it, in every state, and
+          // "Undone" once undone (RPF3-D3, RP2-1 finding 9).
+          setNotStarted(j ? (j.undone ? 'Undone' : (jobStateText(j.state) ?? null)) : null);
+          if (isJobActive(j)) timer = setTimeout(look, JOB_POLL_MS);
         })
         .catch(() => live && setNotStarted(null));
     look();

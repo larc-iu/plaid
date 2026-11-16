@@ -933,8 +933,9 @@ describe('the job page', () => {
     expect(sums['Changes left out, sentence written before an interruption']).toBe('3');
     expect(sums['Translations written']).toBe('3');
     expect(sums['Translations replaced']).toBe('2');
-    expect(sums['Paused for people']).toBe('12 min');
-    expect(sums).not.toHaveProperty('Waiting for the model');
+    expect(sums['Taking turns with people using the model']).toBe('12 min');
+    expect(sums).not.toHaveProperty('The model not answering');
+    expect(sums).not.toHaveProperty('Waiting for people to finish editing');
     // A skipped sentence links to it on the grid, with why it was skipped.
     const s12 = byText(report, 'a', 's12');
     expect(s12.getAttribute('href')).toBe(
@@ -1584,6 +1585,90 @@ describe('the job page', () => {
     const headings = all(section, 'h3').map((h) => h.textContent);
     expect(headings).toContain('Respelled, analysis kept: check its morphemes');
     expect(text(section)).toContain('Story A s2.w3 kIvalaxar was kvalaxar, morphemes kvalax ar');
+    await v.unmount();
+  });
+
+  // RPF3-D1 (RP2-1 finding 4): taking turns with people on the model and
+  // waiting for their edits are two rows, named as the running page names
+  // them.
+  it('names each wait as the running page does', async () => {
+    const report = {
+      ...REPORT,
+      pausedForPeopleS: 1480,
+      pausedForEditsS: 600,
+      pausedForModelS: 300,
+    };
+    const job = jobOf({ state: 'done', finishedAt: '2026-11-12T11:00:00Z', report });
+    const v = await mount(clientOf(job));
+    const sums = totals(v.container.querySelector('section[aria-label="Report"]'));
+    expect(sums['Taking turns with people using the model']).toBe('24 min');
+    expect(sums['Waiting for people to finish editing']).toBe('10 min');
+    expect(sums['The model not answering']).toBe('5 min');
+    expect(sums).not.toHaveProperty('Paused for people');
+    await v.unmount();
+  });
+
+  // RPF3-D2 (RP2-4 findings 2, 7): a stopped job's documents that hold its
+  // changes are never "not reached", and the page says who stopped it.
+  it('says who stopped the job and never calls a changed document not reached', async () => {
+    const docs = [
+      {
+        ...jobOf().documents[0],
+        state: 'not-reached',
+        done: 0,
+        targets: 20,
+        counts: { changes: 1 },
+      },
+      {
+        ...jobOf().documents[0],
+        documentId: 'd2',
+        name: 'Story B',
+        state: 'not-reached',
+        done: 0,
+        targets: 3,
+        counts: { changes: 0 },
+      },
+    ];
+    const job = jobOf({
+      state: 'cancelled',
+      cancelledBy: 'w',
+      finishedAt: '2026-11-12T11:00:00Z',
+      documents: docs,
+      report: { ...REPORT, state: 'cancelled', documents: docs },
+    });
+    const v = await mount(clientOf(job));
+    expect(text(v.container.querySelector('[data-testid="job-stopped-by"]'))).toMatch(
+      /^Stopped by you, /,
+    );
+    const rows = all(v.container, 'tbody tr').map((r) => text(r));
+    expect(rows.find((r) => r.includes('Story A'))).toContain('Stopped partway');
+    expect(rows.find((r) => r.includes('Story B'))).toContain('Not reached');
+    const sums = totals(v.container.querySelector('section[aria-label="Report"]'));
+    expect(sums['Documents stopped partway']).toBe('1');
+    expect(sums['Documents not reached']).toBe('1');
+    await v.unmount();
+  });
+
+  // RPF3-D3 (RP2-4 finding 5): once undone, the notice leads with the undo
+  // and the counts are under a heading that they are what the job had written.
+  it('leads with the undo once the job is undone', async () => {
+    const report = {
+      ...REPORT,
+      notice:
+        'People’s work: 3 values were changed. What the job wrote in their place is unverified.',
+    };
+    const job = jobOf({
+      state: 'done',
+      finishedAt: '2026-11-12T11:00:00Z',
+      report,
+      undone: { operation: 'op9', time: '2026-11-12T12:00:00Z', user: 'w' },
+    });
+    const v = await mount(clientOf(job));
+    const section = v.container.querySelector('section[aria-label="Report"]');
+    const notice = text(section.querySelector('[data-testid="job-notice"]'));
+    expect(notice).toMatch(/^Undone by you, .*\. The counts below are what the job had written\.$/);
+    expect(notice).not.toContain('unverified');
+    expect(all(section, 'h3').map((h) => h.textContent)).toContain('What the job had written');
     await v.unmount();
   });
 

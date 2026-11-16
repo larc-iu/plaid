@@ -145,6 +145,9 @@ def test_a_document_put_off_three_times_ends_in_use_after_the_waits(monkeypatch)
     assert job.rows['d2']['state'] == 'done'
     assert sum(clock.slept) == 3 * JOB_DEFER_WAIT_S, 'three waits of the interval before it ends in-use (SPEC 5.3)'
     assert all('Story 1' not in c['asked'] for c in model.calls)
+    # Counted as waiting for people's edits, never as taking turns with
+    # people on the model (RPF3-D1, RP2-1 finding 4).
+    assert job.paused['edits'] == 3 * JOB_DEFER_WAIT_S and job.paused['people'] == 0
 
 
 # --- edits made before the job, and the wait before a pass (REV-J-B S3-5) ---------

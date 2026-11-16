@@ -6,6 +6,7 @@ import { AssistantMarkdown } from '@ui/components/assistant/AssistantMarkdown.js
 import { copyText } from '@ui/lib/download.js';
 import { TYPE } from '@ui/lib/typeScale.js';
 import { historyHref } from '@ui/hooks/useHistoryParam.js';
+import { fullTimestamp } from '@ui/lib/formatTime.js';
 import { plural } from '@ui/lib/plural.js';
 import { APP_ROUTES } from '@/appRoutes.js';
 import {
@@ -154,6 +155,7 @@ const totalRows = (report) => {
   optional('Documents deleted', t.documentsGone);
   // A document the job did not finish reads "stopped partway" once it
   // finished a sentence, by the report's own rows.
+  // One that holds the job's changes is never called not reached (RPF3-D2).
   const unfinished = (report.documents || []).filter((d) => d.state === 'not-reached');
   const partway = unfinished.filter(stoppedPartway).length;
   optional(
@@ -566,10 +568,13 @@ export const JobFindings = ({ findings, pieces = null, cut = null }) => {
   );
 };
 
-export const JobReport = ({ report, projectId, vocabs = [] }) => {
+export const JobReport = ({ report, projectId, vocabs = [], undone = null, undoneBy = null }) => {
+  // Each wait named as the running page names it (RPF3-D1, RP2-1): taking
+  // turns with people's chats on the model is not waiting for people.
   const paused = [
-    ['Paused for people', report.pausedForPeopleS],
-    ['Waiting for the model', report.pausedForModelS],
+    ['Taking turns with people using the model', report.pausedForPeopleS],
+    ['Waiting for people to finish editing', report.pausedForEditsS],
+    ['The model not answering', report.pausedForModelS],
   ].filter(([, s]) => s > 0);
   const skipped = (report.documents || []).filter((d) => d.skipped?.length);
   const blank = (report.documents || []).filter(
@@ -592,7 +597,13 @@ export const JobReport = ({ report, projectId, vocabs = [] }) => {
     ([, list = [], more = 0]) => list.length || more,
   );
   const unlinked = entries.unlinked || [];
-  const notice = report.notice !== undefined ? report.notice : noticeText(noticeCounts(report));
+  // Once the job is undone, its notice leads with the undo, and says no more
+  // that what it wrote stands unverified (RPF3-D3, RP2-4 finding 5).
+  const notice = undone
+    ? `Undone by ${undoneBy}, ${fullTimestamp(undone.time)}. The counts below are what the job had written.`
+    : report.notice !== undefined
+      ? report.notice
+      : noticeText(noticeCounts(report));
 
   return (
     <section aria-label="Report">
@@ -615,7 +626,7 @@ export const JobReport = ({ report, projectId, vocabs = [] }) => {
         </p>
       )}
 
-      <Heading>Totals</Heading>
+      <Heading>{undone ? 'What the job had written' : 'Totals'}</Heading>
       <dl className="grid max-w-xl grid-cols-[1fr_auto] gap-x-6 gap-y-1 text-sm">
         {[...totalRows(report), ...paused.map(([l, s]) => [l, durationText(s * 1000)])].map(
           ([label, value]) => (
