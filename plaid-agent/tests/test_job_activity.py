@@ -79,7 +79,9 @@ def test_each_piece_is_summed_up_once_its_write_landed_newest_first(monkeypatch)
         assert p['note'] == 'Glossed 1 piece.', 'the note as the model ended it'
         assert p['steps'] == 6, 'each tool call a step, as the chat counts them'
         assert p['counts'] == {'analyzed': 2, 'words': 4, 'changes': 6}, p['counts']
-        assert [(f['field'], f['values'], f.get('outside')) for f in p['fields']] == [('Gloss', 2, None)], p['fields']
+        # The values its analyses carried count under their field too (REV-RPF-W-5).
+        assert [(f['field'], f['values'], f.get('in_analyses'), f.get('outside')) for f in p['fields']] == [
+            ('Gloss', 2, None, None), ('Morph Gloss', 4, 4, None)], p['fields']
         assert p['ended_at'].endswith('Z')
         assert 'skipped' not in p and 'refused' not in p
     # The pieces' sums are the document's.
