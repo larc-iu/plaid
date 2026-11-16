@@ -973,7 +973,13 @@ def _findings(job: Job, runner, report: Dict[str, Any]) -> Dict[str, Any]:
             raise
         logger.warning('Job %s: its findings could not be made one report: %s', job.id, e)
         return {}
-    return {'findings': merged} if merged else {}
+    if not merged:
+        return {}
+    # The one report holds every piece's findings: no count of pieces cut
+    # (REV-RPF-W-2).
+    report.pop('findings_pieces', None)
+    report.pop('findings_cut', None)
+    return {'findings': merged}
 
 
 def build_report(job: Job, state: str, reason: Optional[str], documents: List[Dict[str, Any]],

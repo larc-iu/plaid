@@ -16,6 +16,7 @@ import {
   changesText,
   sumParts,
   durationText,
+  findingsPiecesText,
   refusedText,
   skippedText,
   stoppedPartway,
@@ -473,7 +474,8 @@ const Tables = ({ tables, more = 0 }) =>
 
 // The one report of a job that fills nothing (`findings`, Markdown, CONTRACT,
 // added by RPF), in full, with a way to copy it as written (RP-4).
-export const JobFindings = ({ findings }) => {
+export const JobFindings = ({ findings, pieces = null, cut = null }) => {
+  const piecesLine = findingsPiecesText(pieces, cut);
   const [copied, setCopied] = useState(false);
   useEffect(() => {
     if (!copied) return undefined;
@@ -494,6 +496,11 @@ export const JobFindings = ({ findings }) => {
           Copy
         </Button>
       </div>
+      {piecesLine && (
+        <p className="mb-2 text-sm text-muted-foreground" data-testid="job-findings-pieces">
+          {piecesLine}
+        </p>
+      )}
       <Written text={findings} />
     </section>
   );

@@ -1982,6 +1982,45 @@ describe('the job page', () => {
     await v.unmount();
   });
 
+  // REV-RPF-W-2: findings of many pieces not merged say how many pieces they
+  // hold and how many did not fit.
+  it('says how many pieces the findings hold and how many did not fit', async () => {
+    const base = {
+      ...REPORT,
+      summary: 'The job wrote no change and proposed none.',
+      summaryBy: 'worker',
+      totals: { ...REPORT.totals, changes: 0, proposed: 0 },
+    };
+    const line = (c) => c.querySelector('[data-testid="job-findings-pieces"]')?.textContent ?? null;
+    let v = await mount(
+      clientOf(
+        jobOf({
+          state: 'done',
+          report: { ...base, findings: '## Story 1\n\nA.', findingsPieces: 80, findingsCut: 21 },
+        }),
+      ),
+    );
+    expect(line(v.container)).toBe(
+      'Findings of 80 pieces, each under its heading. The last 21 did not fit whole and are cut.',
+    );
+    await v.unmount();
+    v = await mount(
+      clientOf(
+        jobOf({
+          state: 'done',
+          report: { ...base, findings: '## Story 1\n\nA.', findingsPieces: 2, findingsCut: 0 },
+        }),
+      ),
+    );
+    expect(line(v.container)).toBe('Findings of 2 pieces, each under its heading.');
+    await v.unmount();
+    v = await mount(
+      clientOf(jobOf({ state: 'done', report: { ...base, findings: 'One report.' } })),
+    );
+    expect(line(v.container)).toBeNull();
+    await v.unmount();
+  });
+
   it('says a plan of all the documents at once that was walked after it so', async () => {
     const plan = (fallback) => ({
       pieces: 'selection',

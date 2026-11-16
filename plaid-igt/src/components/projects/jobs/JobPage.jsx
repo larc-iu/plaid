@@ -257,7 +257,13 @@ export const JobPage = ({ project, projectId, jobId, client }) => {
         </p>
       )}
       {/* The one report of a job that fills nothing, first (RP-4). */}
-      {findings && <JobFindings findings={findings} />}
+      {findings && (
+        <JobFindings
+          findings={findings}
+          pieces={job.report.findingsPieces}
+          cut={job.report.findingsCut}
+        />
+      )}
       {undoable && (
         <UndoDialog
           open={undoOpen}

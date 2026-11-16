@@ -118,6 +118,19 @@ export const wroteNothing = (job) => {
   );
 };
 
+// How many pieces the findings of a job that fills nothing hold, each under
+// its heading, and how many of the last did not fit whole (the worker's
+// `findings_pieces` and `findings_cut`, REV-RPF-W-2). Null for one report
+// (a single piece's, or the final context's from them all).
+export const findingsPiecesText = (pieces, cut) => {
+  if (!(pieces > 1)) return null;
+  const head = `Findings of ${countOf(pieces, 'piece')}, each under its heading.`;
+  if (!(cut > 0)) return head;
+  return cut === 1
+    ? `${head} The last one did not fit whole and is cut.`
+    : `${head} The last ${cut.toLocaleString()} did not fit whole and are cut.`;
+};
+
 // What one piece of a job wrote, in the report's words for its totals, in
 // their order: "Sentences written in: 2, Changes written: 6, Words analyzed: 4,
 // Gloss: 2 values." Each target's values as the report's rows say them, one

@@ -84,6 +84,39 @@ def test_several_pieces_findings_without_a_final_context_are_each_under_its_head
     finished = run_job(job, runner(job))
     assert finished['report']['findings'] == ('## Story 1\n\nText Story 1 is short.\n\n'
                                               '## Story 2\n\nText Story 2 is short.')
+    assert (finished['report']['findings_pieces'], finished['report']['findings_cut']) == (2, 0)
+
+
+def test_findings_too_long_for_the_final_context_are_never_merged_and_say_what_did_not_fit(monkeypatch):
+    """REV-RPF-W-2: 80 pieces, each with 1,100 characters of findings, do not
+    fit whole in what the final context is handed (JOB_FINDINGS_MERGE_CHARS).
+    The final context is not asked (it would have silently dropped a quarter
+    of the documents): the report keeps each piece's findings under its
+    heading in document order, cut where the cap is reached with the cut
+    line, and says how many pieces it holds and how many did not fit."""
+    n = 80
+    client = JobClient(_docs(n))
+    job = start(client, 'List what is odd in each text.', id=J, plan='document', fills=())
+    model = use(monkeypatch, _model(lambda asked, k: reply(f'FINDING-{asked.split(chr(34))[1]}: ' + 'x' * 1100)))
+    report = run_job(job, runner(job, write_summary=True))['report']
+    assert not [c for c in model.calls if c['asked'].rstrip().endswith(MERGE)], 'no merge that cannot see them all'
+    findings = report['findings']
+    assert findings.endswith(igt_job.FINDINGS_CUT)
+    order = [d['name'] for d in report['documents']]
+    shown = [name for name in order if f'## {name}\n' in findings]
+    assert shown == order[:len(shown)] and len(shown) < n, 'in the job\'s order, cut at the end'
+    whole = [name for name in shown if f'FINDING-{name}: ' + 'x' * 1100 in findings]
+    assert report['findings_pieces'] == n
+    assert report['findings_cut'] == n - len(whole) > 0
+
+
+def test_findings_that_fit_are_merged_and_carry_no_cut_count(monkeypatch):
+    client = JobClient(_docs(2))
+    job = start(client, 'Summarize each text.', id=J, plan='document', fills=())
+    use(monkeypatch, _model(lambda asked, n: reply('Short.'), merged='Both texts are short.'))
+    report = run_job(job, runner(job, write_summary=True))['report']
+    assert report['findings'] == 'Both texts are short.'
+    assert 'findings_pieces' not in report and 'findings_cut' not in report
 
 
 def test_a_job_that_fills_something_has_no_findings(monkeypatch):

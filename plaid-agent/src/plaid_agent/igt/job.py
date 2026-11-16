@@ -4887,7 +4887,7 @@ class IgtRunner:
                 'proposed': listed, 'proposed_more': more + dropped, 'proposed_dropped': dropped,
                 'notes': shown_notes, 'notes_more': notes_more, 'tables': made[:JOB_TABLES_MAX],
                 'tables_more': max(0, len(made) - JOB_TABLES_MAX) + tables_dropped,
-                **({'findings': findings} if findings else {})}
+                **({'findings': findings, **getattr(self, 'findings_counts', {})} if findings else {})}
 
     def findings_of(self, plan: Optional[Dict[str, Any]], found: List[Dict[str, Any]],
                     order: Dict[str, int]) -> Optional[str]:
@@ -4909,11 +4909,24 @@ class IgtRunner:
         pieces.sort(key=lambda p: (order.get(p.get('document'), len(order)),
                                    [int(x) for x in re.findall(r'\d+', p.get('sentences') or '')[:1]]))
         self.findings_pieces = pieces
+        self.findings_counts = {}
         if not pieces:
             return None
         if len(pieces) == 1:
             return findings_text(pieces[0]['text'])
-        return findings_text('\n\n'.join(f'## {self.piece_heading(p)}\n\n{p["text"]}' for p in pieces))
+        sections = self.findings_sections(pieces)
+        out = findings_text('\n\n'.join(sections))
+        # How many pieces it holds and how many of them it does not hold
+        # whole: the cut is at the end, in document order (REV-RPF-W-2).
+        whole = 0
+        while whole < len(sections) and out.startswith('\n\n'.join(sections[:whole + 1])):
+            whole += 1
+        self.findings_counts = {'findings_pieces': len(pieces), 'findings_cut': len(pieces) - whole}
+        return out
+
+    def findings_sections(self, pieces: List[Dict[str, Any]]) -> List[str]:
+        """Each piece's findings whole under a heading naming its piece."""
+        return [f'## {self.piece_heading(p)}\n\n{p["text"]}' for p in pieces]
 
     @staticmethod
     def piece_heading(p: Dict[str, Any]) -> str:
@@ -4924,21 +4937,24 @@ class IgtRunner:
 
     def merge_findings(self, job, report: Dict[str, Any]) -> Optional[str]:
         """The one report of a job that fills nothing whose findings several
-        pieces kept: the final context, given each piece's findings (at most
-        JOB_FINDINGS_MERGE_CHARS of them, each cut alike), writes the job's
-        one report, with no tools. None when one piece or none kept
-        findings: the report keeps the pieces' findings under their
-        headings."""
+        pieces kept: the final context, given every piece's findings whole,
+        writes the job's one report, with no tools. None when one piece or
+        none kept findings, and None when the pieces' findings do not fit
+        whole in JOB_FINDINGS_MERGE_CHARS (REV-RPF-W-2): a merge that cannot
+        be handed them all would leave pieces out with nothing saying so, so
+        the report keeps the pieces' findings under their headings, cut
+        where the cap is reached, with the counts of what it holds."""
         from .prompt import build_findings_prompt
         pieces = getattr(self, 'findings_pieces', None) or []
         if len(pieces) < 2:
             return None
-        each = max(1000, JOB_FINDINGS_MERGE_CHARS // len(pieces))
-        parts = [f'## {self.piece_heading(p)}\n\n{_cut(p["text"], each)}' for p in pieces]
+        joined = '\n\n'.join(self.findings_sections(pieces))
+        if len(joined) > JOB_FINDINGS_MERGE_CHARS:
+            return None
         message = '\n'.join([
             'The job\'s instructions:', report.get('instructions') or '', '',
             f'The findings of each of its {len(pieces)} pieces, in the job\'s order:', '',
-            '\n\n'.join(parts)[:JOB_FINDINGS_MERGE_CHARS], '', 'Write the job\'s one report now.'])
+            joined, '', 'Write the job\'s one report now.'])
         project = self.project()
         while True:
             job.check()
