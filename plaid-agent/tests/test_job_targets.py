@@ -123,17 +123,17 @@ def test_set_field_takes_the_name_a_morpheme_field_unit_is_given(ref):
 JOBS = {
     # target id: (instructions, what the piece stages, the Empty line of s1, tools, Left blank refs)
     ROLE: ('Fill Role on every word.', ('set_field', {'refs': ['s1.w1'], 'field': 'Role', 'value': 'agent'}),
-           'Empty in s1: Role in w1 "ka", w2 "pata".', [], ['s1.w2', 's2.w1']),
+           'Empty in s1: Role in w1 "ka", w2 "pata".', [], ['s1.w2']),
     MPOS: ('Fill Morph POS on every morpheme.',
            ('set_field', {'refs': ['s1.w2.m1'], 'field': 'Morph POS', 'value': 'N'}),
            'Empty in s1: Morph POS in w1.m1 "ka", w2.m1 "pa", w2.m2 "ta", w3.m1 "sa".', [],
-           ['s1.w1.m1', 's1.w2.m2', 's1.w3.m1', 's2.w1.m1']),
+           ['s1.w1.m1', 's1.w2.m2', 's1.w3.m1']),
     NOTE: ('Write a Note on every sentence.', ('set_field', {'refs': ['s1'], 'field': 'Note', 'value': 'n.'}),
-           'Empty in s1: Note.', [], ['s2']),
+           'Empty in s1: Note.', [], []),
     'gloss': ('Segment and gloss the words nobody analysed.',
               ('set_analysis', {'ref': 's1.w1', 'morphemes': [{'form': 'ka', 'fields': {'Morph Gloss': 'g'}}]}),
               'Empty in s1: segmentation and Morph Gloss in w1 "ka", w3 "sa" | Morph Gloss in w2.m2 "ta".',
-              ['analyze_sentence', 'create_entry', 'link_entry', 'set_analysis'], ['s1.w2.m2', 's1.w3', 's2.w1']),
+              ['analyze_sentence', 'create_entry', 'link_entry', 'set_analysis'], ['s1.w2.m2', 's1.w3']),
 }
 
 
@@ -171,7 +171,7 @@ def test_a_job_on_any_field_is_told_offered_written_and_reported_by_its_targets(
     assert [e['ref'] for e in doc['left']] == left, doc['left']
     assert analysed or values, 'the piece wrote'
     names = {e['ref']: e['targets'] for e in doc['left']}
-    if job_on != 'gloss':
+    if job_on != 'gloss' and names:
         assert set(n for ts in names.values() for n in ts) == {tg.of_ids(client_project(client), [job_on])[0].name}
     # What is still blank, per target of the plan and only those: a job that
     # fills no translation says nothing of translations (REV-DAY-P-4, S-9).
@@ -184,14 +184,17 @@ def test_a_job_on_any_field_is_told_offered_written_and_reported_by_its_targets(
         assert doc['counts']['left'] == len(left)
 
 
-def _blank(target, left, unit='word'):
-    return {'target': target, 'unit': unit, 'left': left, 'not_reached': 0, 'skipped': 0}
+def _blank(target, left, unit='word', untouched=0):
+    return {'target': target, 'unit': unit, 'left': left, 'untouched': untouched, 'not_reached': 0, 'skipped': 0}
 
 
-BLANK = {ROLE: [_blank('Role', 2)], MPOS: [_blank('Morph POS', 4, 'morpheme')],
-         NOTE: [_blank('Note', 1, 'sentence')],
+#: s2, where the piece wrote nothing, is counted apart and never listed
+#: (RPF-A9), and a word with no morphemes the job also segments is counted
+#: once, under segmentation (RP-3).
+BLANK = {ROLE: [_blank('Role', 1, untouched=1)], MPOS: [_blank('Morph POS', 3, 'morpheme', untouched=1)],
+         NOTE: [_blank('Note', 0, 'sentence', untouched=1)],
          # A morpheme field in morphemes, so its values and blanks sum (REV-DF-S-6).
-         'gloss': [_blank('segmentation', 2), _blank('Morph Gloss', 3, 'morpheme')]}
+         'gloss': [_blank('segmentation', 1, untouched=1), _blank('Morph Gloss', 1, 'morpheme')]}
 
 
 def client_project(client):
@@ -367,8 +370,8 @@ def test_a_job_fills_an_orthography_through_the_same_code_as_a_word_field(monkey
     assert 'Fill what is empty with set_orthography.' in first['kwargs']['messages'][0]['content']
     assert set(written) == {'d1-s1w1', 'd1-s1w2'}
     (doc,) = finished['report']['documents']
-    assert [(e['ref'], e['targets']) for e in doc['left']] == [('s1.w3', ['IPA']), ('s2.w1', ['IPA'])]
-    assert doc['counts']['blank'] == [_blank('IPA', 2)]
+    assert [(e['ref'], e['targets']) for e in doc['left']] == [('s1.w3', ['IPA'])]
+    assert doc['counts']['blank'] == [_blank('IPA', 1, untouched=1)]
 
 
 def test_a_field_named_segmentation_is_never_taken_for_segmentation_by_its_bare_name():

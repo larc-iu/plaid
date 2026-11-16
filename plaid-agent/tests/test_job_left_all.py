@@ -50,17 +50,22 @@ def _first_piece_only(asked, n, kwargs):
 
 
 def adds_up(doc, words_to_work, skipped_words=0):
-    """THE totals check: analysed, left, skipped and not reached are the
-    words of the sentences the job was to work, each once."""
+    """THE totals check: analysed, left, untouched (in sentences it worked
+    and wrote nothing in, RPF-A9), skipped and not reached are the words of
+    the sentences the job was to work, each once."""
     c = doc['counts']
-    assert c['words'] + c['left'] + skipped_words + (c.get('not_reached') or 0) == words_to_work, c
+    assert c['words'] + c['left'] + (c.get('untouched') or 0) + skipped_words + (c.get('not_reached') or 0) \
+        == words_to_work, c
 
 
 @pytest.mark.parametrize('plan', ['sentences', 'document', 'selection'])
-def test_a_piece_that_staged_nothing_leaves_its_words_listed_and_the_row_claims_no_left(monkeypatch, plan):
+def test_a_piece_that_staged_nothing_counts_its_words_untouched_and_the_row_claims_no_left(monkeypatch, plan):
     """Pieces s3-s4 and s5-s6 answer "Done." with nothing staged: their
-    eight words are Left blank in the report. The document's row in core
-    carries no left (it was left 0, which said nothing was left)."""
+    eight words are counted as blank in sentences the job wrote nothing in,
+    never listed as Left blank, which lists only what is blank where the job
+    wrote (RPF-A9: the instructions may have told it to leave them). The
+    document's row in core carries no left (it was left 0, which said
+    nothing was left)."""
     monkeypatch.setattr(igt_job, 'JOB_STRETCH_SENTENCES', 2)
     monkeypatch.setattr(igt_job, 'JOB_DOCUMENT_PIECE_MAX_CHARS', 10)
     client = JobClient({'d1': _doc(set())})
@@ -70,8 +75,10 @@ def test_a_piece_that_staged_nothing_leaves_its_words_listed_and_the_row_claims_
     finished = run_job(job, runner(job))
     assert finished['state'] == 'done'
     (doc,) = finished['report']['documents']
-    assert doc['counts']['words'] == 4 and doc['counts']['left'] == WORDS - 4, doc['counts']
-    assert len(doc['left']) == WORDS - 4 and not doc['counts'].get('not_reached')
+    assert doc['counts']['words'] == 4 and doc['counts']['left'] == 0, doc['counts']
+    assert doc['counts']['untouched'] == WORDS - 4 and doc['left'] == [] and not doc['counts'].get('not_reached')
+    seg = next(b for b in doc['counts']['blank'] if b['target'] == 'segmentation')
+    assert seg['untouched'] == WORDS - 4 and seg['left'] == 0, seg
     adds_up(doc, WORDS)
     row = client.jobs.get(J)['documents'][0]['counts']
     assert 'left' not in row and 'left_translations' not in row, row
@@ -148,5 +155,5 @@ def test_a_skipped_sentence_is_neither_left_nor_not_reached(monkeypatch):
     (doc,) = finished['report']['documents']
     assert [s['sentence'] for s in doc['skipped']] == ['s3']
     assert not any(e['sentence_id'] == 'd1-s3' for e in doc['left'])
-    assert doc['counts']['left'] == WORDS - 4 - 2
+    assert doc['counts']['left'] == 0 and doc['counts']['untouched'] == WORDS - 4 - 2
     adds_up(doc, WORDS, skipped_words=2)

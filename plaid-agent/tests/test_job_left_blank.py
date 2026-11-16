@@ -63,10 +63,11 @@ def _translate_first(asked, n, kwargs):
                                               'value': 'One.'})])
 
 
-def test_a_translation_left_blank_is_listed_by_its_sentence(monkeypatch):
-    """The job translated s1 and left s2: s2's translation is listed. Its
-    plan fills the translation alone, so the blank words are not listed:
-    Left blank is what is empty of what the plan fills."""
+def test_a_translation_left_blank_is_counted_by_its_sentence(monkeypatch):
+    """The job translated s1 and wrote nothing in s2: s2's translation is
+    counted as blank in a sentence it wrote nothing in, not listed
+    (RPF-A9). Its plan fills the translation alone, so the blank words are
+    not counted: Left blank is what is empty of what the plan fills."""
     client = JobClient({'d1': document('d1', 'Story', [{'words': ['ka']}, {'words': ['ta']}])})
     client.after_write['d1'] = document('d1', 'Story', [{'words': ['ka'], 'translation': ('One.', J)},
                                                         {'words': ['ta']}], version=2)
@@ -74,8 +75,9 @@ def test_a_translation_left_blank_is_listed_by_its_sentence(monkeypatch):
     use(monkeypatch, Model(_translate_first))
     assert run_job(job, runner(job))['state'] == 'done'
     (doc,) = _report(client)['documents']
-    assert doc['left'] == [{'ref': 's2', 'begin': None, 'form': None, 'sentence_id': 'd1-s2', 'targets': ['Translation']}]
-    assert doc['left_more'] == 0
+    assert doc['left'] == [] and doc['left_more'] == 0
+    assert doc['counts']['blank'] == [{'target': 'Translation', 'unit': 'sentence', 'left': 0, 'untouched': 1,
+                                       'not_reached': 0, 'skipped': 0}]
 
 
 def test_a_job_whose_plan_fills_nothing_lists_nothing_left_blank(monkeypatch):
@@ -87,15 +89,16 @@ def test_a_job_whose_plan_fills_nothing_lists_nothing_left_blank(monkeypatch):
     assert 'left' not in doc and 'left_more' not in doc
 
 
-def test_a_glossing_job_that_wrote_nothing_lists_its_blank_word(monkeypatch):
-    """REV-DAY-P-4: a job whose pieces all answered "Done." lists every
-    word left empty of what its plan fills, never "nothing left"."""
+def test_a_glossing_job_that_wrote_nothing_counts_its_blank_word(monkeypatch):
+    """REV-DAY-P-4: a job whose pieces all answered "Done." counts every
+    word left empty of what its plan fills, never "nothing left": as blank
+    in sentences it wrote nothing in, not listed (RPF-A9)."""
     client = JobClient({'d1': document('d1', 'Story', [{'words': ['ka']}])})
     job = start(client, id=J)
     use(monkeypatch, Model(lambda asked, n, kwargs: reply('Done.')))
     assert run_job(job, runner(job))['state'] == 'done'
     (doc,) = _report(client)['documents']
-    assert [e['ref'] for e in doc['left']] == ['s1.w1'] and doc['counts']['left'] == 1
+    assert doc['left'] == [] and doc['counts']['left'] == 0 and doc['counts']['untouched'] == 1
 
 
 def test_the_list_is_cut_as_every_report_list_is_with_how_many_more(monkeypatch):
@@ -125,15 +128,14 @@ def test_a_sentence_of_many_blank_words_lists_them_all(monkeypatch):
     """Left blank is read from the document (BRIEF NW): no row has to hold
     a sentence's blanks."""
     words = [f'w{i:03}' + 'x' * 8 for i in range(100)]
-    client = JobClient({'d1': document('d1', 'Story', [{'words': words}, {'words': ['zz']}])})
-    client.after_write['d1'] = document('d1', 'Story', [{'words': words}, {'words': [('zz', [('zz', 'G')], J)]}],
-                                        version=2)
+    client = JobClient({'d1': document('d1', 'Story', [{'words': ['zz'] + words}])})
+    client.after_write['d1'] = document('d1', 'Story', [{'words': [('zz', [('zz', 'G')], J)] + words}], version=2)
     job = start(client, id=J)
 
     def last_word(asked, n, kwargs):
         if n > 1:
             return reply('Done.')
-        return reply(calls=[call(1, 'set_analysis', {'document': 'Story', 'ref': 's2.w1',
+        return reply(calls=[call(1, 'set_analysis', {'document': 'Story', 'ref': 's1.w1',
                                                      'morphemes': [{'form': 'zz', 'fields': {'Morph Gloss': 'G'}}]})])
     use(monkeypatch, Model(last_word))
     assert run_job(job, runner(job))['state'] == 'done'

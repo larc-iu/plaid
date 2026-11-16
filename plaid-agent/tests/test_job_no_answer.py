@@ -114,12 +114,15 @@ def test_the_blanks_of_skipped_sentences_are_counted_apart(monkeypatch, plan):
     report = finished['report']
     (doc,) = report['documents']
     words = 4 if plan == 'sentences' else 2 * N
-    rows = [{'target': 'segmentation', 'unit': 'word', 'left': 0, 'not_reached': 0, 'skipped': words},
-            {'target': 'Morph Gloss', 'unit': 'morpheme', 'left': 0, 'not_reached': 0, 'skipped': words}]
+    rows = [{'target': 'segmentation', 'unit': 'word', 'left': 0, 'untouched': 0, 'not_reached': 0, 'skipped': words},
+            {'target': 'Morph Gloss', 'unit': 'morpheme', 'left': 0, 'untouched': 0, 'not_reached': 0,
+             'skipped': 0}]
+    # Each blank word holds no morpheme: counted once, as a word, under
+    # segmentation, never again as a morpheme (RPF-A9, RP-3).
     assert doc['counts']['blank'] == rows and report['totals']['blank'] == rows
     message = igt_job.summary_message(report)
     assert (f'Of what it fills: segmentation left blank 0 words ({words} more in skipped sentences), Morph Gloss '
-            f'left blank 0 morphemes ({words} more in skipped sentences).') in message, message
+            f'left blank 0 morphemes.') in message, message
     assert f'segmentation left blank 0 words ({words} more in skipped sentences)' in jobread._totals(report)
 
 

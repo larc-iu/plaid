@@ -803,8 +803,10 @@ def blank_sums(documents: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 
 
 #: Where a ``blank`` row counts what is blank: in the sentences the job
-#: worked, in those it did not reach, and in those it skipped (REV-DF-D-9).
-BLANK_WHERE = ('left', 'not_reached', 'skipped')
+#: wrote in (Left blank lists those), in those it worked and wrote nothing in
+#: (RPF-A9: the instructions may have told it to leave them), in those it did
+#: not reach, and in those it skipped (REV-DF-D-9).
+BLANK_WHERE = ('left', 'untouched', 'not_reached', 'skipped')
 
 
 def blank_text(rows) -> str:
@@ -815,7 +817,8 @@ def blank_text(rows) -> str:
         return f'{k:,} {unit}{"" if k == 1 else "s"}'
 
     def more(b):
-        said = [f'{b[k]:,} more in {where}' for k, where in (('not_reached', 'sentences not reached'),
+        said = [f'{b[k]:,} more in {where}' for k, where in (('untouched', 'sentences it wrote nothing in'),
+                                                              ('not_reached', 'sentences not reached'),
                                                               ('skipped', 'skipped sentences')) if b.get(k)]
         return f' ({", ".join(said)})' if said else ''
     return ', '.join(f'{b.get("target")} left blank {n(b.get("left") or 0, b.get("unit") or "place")}{more(b)}'

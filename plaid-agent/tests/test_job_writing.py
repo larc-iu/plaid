@@ -705,10 +705,14 @@ def test_a_sentence_the_jobs_write_deleted_is_not_left_blank(monkeypatch):
     assert runner(job).document('d1') == 'done'
     assert _rows(client, 'd1-s4')[0]['counts'] == {'analyzed': 1, 'changes': 1, 'deletions': 1, 'text_changes': 1,
                                                       'tokens_changed': 1}
-    blank = runner(job).left_blank(job).get('d1', {}).get('left', [])
+    found = runner(job).left_blank(job).get('d1', {})
+    # s1 to s3 were worked and nothing was written in them: counted apart,
+    # never listed (RPF-A9).
+    blank = found.get('untouched', [])
+    assert found.get('left') == []
     assert sorted({e['sentence_id'] for e in blank}) == ['d1-s1', 'd1-s2', 'd1-s3'], 's1 to s3, not s4'
     counts = _report_counts(job)
-    assert counts['left'] == len(blank) and all(e['form'] is not None for e in blank)
+    assert counts['untouched'] == len(blank) and all(e['form'] is not None for e in blank)
 
 
 def test_a_sentence_deletion_that_never_landed_before_a_crash_is_made_on_the_resume(monkeypatch):

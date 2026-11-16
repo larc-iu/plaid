@@ -3161,6 +3161,20 @@ class IgtRunner:
                 out |= set(r.get('words') or ()) | set(r.get('others') or ())
         return frozenset(out)
 
+    def wrote_in_sentences(self, document_id: str) -> Tuple[set, frozenset]:
+        """The sentences a landed try of the job wrote something in, by id
+        and by the tags of their words (a split or a merge may move them),
+        as Left blank lists them (RPF-A9): a write's own rows of sentences
+        it wrote nothing in are not among them."""
+        rows, landed = self.view(document_id)
+        ids, tags = set(), set()
+        for r in rows:
+            if r.get('loose') or not r['try'] or not landed(r) or not (r.get('counts') or {}).get('changes'):
+                continue
+            ids.add(r['sentence'])
+            tags |= set(r.get('words') or ()) | set(r.get('others') or ())
+        return ids, frozenset(tags)
+
     def written(self, document_id: str) -> Written:
         """What any landed write of the job wrote in the document
         (:class:`Written`), its own sentences or not: the words its rows
@@ -4459,11 +4473,18 @@ class IgtRunner:
             found = blank.get(d) or {}
             listed = found.get('left') or []
             unreached = found.get('not_reached') or []
-            counts = {k: v for k, v in counts.items() if k not in ('left', 'not_reached', 'blank', 'left_units')}
+            untouched = found.get('untouched') or []
+            counts = {k: v for k, v in counts.items()
+                      if k not in ('left', 'untouched', 'not_reached', 'blank', 'left_units')}
             if found.get('blank'):
                 counts['blank'] = found['blank']
                 if any(b['unit'] != 'sentence' for b in found['blank']):
                     counts['left'] = sum(1 for e in listed if e.get('form') is not None)
+                    if untouched:
+                        # The words and morphemes blank in sentences it
+                        # worked and wrote nothing in: counted, never listed
+                        # (RPF-A9).
+                        counts['untouched'] = sum(1 for e in untouched if e.get('form') is not None)
                     if unreached:
                         counts['not_reached'] = sum(1 for e in unreached if e.get('form') is not None)
                 # How many places Left blank lists, by unit, the cut ones
@@ -4801,6 +4822,7 @@ class IgtRunner:
         planned = (self.plan_made or {}).get('documents')
         for d in job.order:
             worked, known, written = self.finished(d), self.known_words(d), self.written(d)
+            wrote, wrote_known = self.wrote_in_sentences(d)
             if planned and d not in planned and not worked:
                 continue
             skipped = self.excluded(d) - worked
@@ -4812,11 +4834,16 @@ class IgtRunner:
                 logger.warning('Job %s: %s could not be read for the words left blank: %s', job.id, d, e)
                 out[d] = None
                 continue
-            lists = out.setdefault(d, {'left': [], 'not_reached': [], 'blank': []})
+            lists = out.setdefault(d, {'left': [], 'untouched': [], 'not_reached': [], 'blank': []})
             tally = {t.id: {k: 0 for k in BLANK_WHERE} for t in fill}
             for s in doc.sentences:
-                if s.id in worked or wrote_in(s, known):
+                if s.id in wrote or wrote_in(s, wrote_known):
                     where = 'left'
+                elif s.id in worked or wrote_in(s, known):
+                    # Worked, and nothing written there: counted, never
+                    # listed, as the instructions may have said to leave it
+                    # (RPF-A9, RP-3's junk sentence, RP-6's last sentences).
+                    where = 'untouched'
                 elif s.id in skipped:
                     # Counted, never listed: the sentence is listed as
                     # skipped (REV-DF-D-9).
@@ -4833,7 +4860,11 @@ class IgtRunner:
                 # target it is empty for (REV-DF-S-6).
                 entries: Dict[str, Dict[str, Any]] = {}
                 for ref, form, t in tg.units(s, fill, words={w.id for w in words}, fields=fields):
-                    tally[t.id][where] += 1
+                    # A word with no morphemes, empty for segmentation too,
+                    # is one unit, a word, counted once under segmentation:
+                    # never again as a morpheme of a morpheme field (RP-3).
+                    if not (t.scope == 'Morpheme' and ref and '.m' not in ref):
+                        tally[t.id][where] += 1
                     if listed is None:
                         continue
                     e = entries.get(ref)
