@@ -190,10 +190,24 @@ export const noticeText = (totals) => {
   const one = t.documentsInOneStep || 0;
   if (one) {
     const k = t.documentsChangedInOneStep || 0;
-    const did =
-      one === 1
-        ? `The job worked on its one document in one step and ${k ? 'changed it' : 'did not change it'}.`
-        : `The job worked on all ${one.toLocaleString()} documents in one step and changed ${k ? k.toLocaleString() : 'none'} of them.`;
+    const of = t.documentsInJob || one;
+    // "All" and "its one" only when the step ended every document of the
+    // job (REV-SF2-2).
+    let did;
+    if (of > one) {
+      const what =
+        one === 1
+          ? k
+            ? 'changed it'
+            : 'did not change it'
+          : `changed ${k ? k.toLocaleString() : 'none'} of them`;
+      did = `The job worked on ${one.toLocaleString()} of its ${of.toLocaleString()} documents in one step and ${what}.`;
+    } else {
+      did =
+        one === 1
+          ? `The job worked on its one document in one step and ${k ? 'changed it' : 'did not change it'}.`
+          : `The job worked on all ${one.toLocaleString()} documents in one step and changed ${k ? k.toLocaleString() : 'none'} of them.`;
+    }
     out.push(did + (t.documentsNotAllRead ? ' It did not read every sentence.' : ''));
   }
   return out.join(' ') || null;
@@ -214,6 +228,7 @@ export const noticeCounts = (report) => {
     ...(t.documentsInOneStep !== undefined
       ? {
           documentsInOneStep: t.documentsInOneStep,
+          documentsInJob: t.documentsInJob,
           documentsChangedInOneStep: t.documentsChangedInOneStep,
           documentsNotAllRead: t.documentsNotAllRead,
         }
@@ -231,6 +246,7 @@ const oneStepCounts = (docs) => {
   const stepped = docs.filter(oneStep);
   return {
     documentsInOneStep: stepped.length,
+    documentsInJob: docs.length,
     documentsChangedInOneStep: stepped.filter((d) => (d.counts?.changes ?? 0) > 0).length,
     documentsNotAllRead: stepped.filter((d) => d.counts?.notAllRead === true).length,
   };

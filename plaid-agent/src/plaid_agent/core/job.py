@@ -979,7 +979,7 @@ def notice(totals: Dict[str, Any], nouns: Optional[Tuple[str, str]] = None) -> O
         # nothing more is worked (the lead's ruling after RP4-5): what the
         # step did, and that it did not read every sentence where it did not.
         k = totals.get('documents_changed_in_one_step') or 0
-        out.append(one_step_line(one, k) + (' It did not read every sentence.'
+        out.append(one_step_line(one, k, totals.get('documents_in_job') or one) + (' It did not read every sentence.'
                                             if totals.get('documents_not_all_read') else ''))
     return ' '.join(out) or None
 
@@ -992,16 +992,23 @@ def one_step_totals(documents: List[Dict[str, Any]]) -> Dict[str, int]:
     stepped = [d for d in documents if d.get('state') == 'done' and (d.get('counts') or {}).get('one_step') is True]
     if not stepped:
         return {}
-    return {'documents_in_one_step': len(stepped),
+    return {'documents_in_one_step': len(stepped), 'documents_in_job': len(documents),
             'documents_changed_in_one_step': sum(1 for d in stepped if (d['counts'].get('changes') or 0) > 0),
             'documents_not_all_read': sum(1 for d in stepped if d['counts'].get('not_all_read') is True)}
 
 
-def one_step_line(n: int, k: int) -> str:
+def one_step_line(n: int, k: int, of: Optional[int] = None) -> str:
     """How the top line says a whole-selection job's one step: "The job
     worked on all 45 documents in one step and changed 24 of them." ("...
     and changed none of them.", "The job worked on its one document in one
-    step and changed it." / "... and did not change it.")."""
+    step and changed it." / "... and did not change it."). "All" and "its
+    one" only when the step ended every document of the job (``of``):
+    else "The job worked on 2 of its 3 documents in one step and changed 1
+    of them." (REV-SF2-2: a write put off, a document deleted, a job stopped
+    between the ends)."""
+    if of is not None and of > n:
+        did = ('changed it' if k else 'did not change it') if n == 1 else f'changed {f"{k:,}" if k else "none"} of them'
+        return f'The job worked on {n:,} of its {of:,} documents in one step and {did}.'
     if n == 1:
         return f'The job worked on its one document in one step and {"changed it" if k else "did not change it"}.'
     return f'The job worked on all {n:,} documents in one step and changed {f"{k:,}" if k else "none"} of them.'

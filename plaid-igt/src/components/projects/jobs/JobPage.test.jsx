@@ -1549,8 +1549,9 @@ describe('the job page', () => {
       'Worked in the one step',
     ]);
     const sums = totals(v.container.querySelector('section[aria-label="Report"]'));
-    expect(sums.Documents).toBe('2, changed 1');
-    expect(sums['Documents done']).toBeUndefined();
+    // REV-SF2-7: "Documents done", as it counts the documents done.
+    expect(sums['Documents done']).toBe('2, changed 1');
+    expect(sums.Documents).toBeUndefined();
     expect(text(v.container)).not.toMatch(/not read through/i);
     expect(totals(v.container).Plan).toBe('Worked on all the documents at once. Fills: Gloss.');
     await v.unmount();

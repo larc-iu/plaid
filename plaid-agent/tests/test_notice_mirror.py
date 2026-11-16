@@ -43,6 +43,13 @@ CASES = [
      'peoples_values_changed': 33},
     {'documents_in_one_step': 2, 'documents_changed_in_one_step': 0, 'documents_not_all_read': 0},
     {'documents_in_one_step': 1234, 'documents_changed_in_one_step': 1001, 'documents_not_all_read': 3},
+    # REV-SF2-2: fewer than the job's documents ended in the step.
+    {'documents_in_one_step': 2, 'documents_in_job': 3, 'documents_changed_in_one_step': 1},
+    {'documents_in_one_step': 1, 'documents_in_job': 2, 'documents_changed_in_one_step': 1},
+    {'documents_in_one_step': 1, 'documents_in_job': 2, 'documents_changed_in_one_step': 0,
+     'documents_not_all_read': 1},
+    {'documents_in_one_step': 3, 'documents_in_job': 6, 'documents_changed_in_one_step': 0},
+    {'documents_in_one_step': 45, 'documents_in_job': 45, 'documents_changed_in_one_step': 24},
 ]
 
 
@@ -56,6 +63,19 @@ def test_the_top_line_says_what_the_one_step_did():
         'The job worked on its one document in one step and changed it.')
     assert notice({'documents_in_one_step': 1}) == 'The job worked on its one document in one step and did not change it.'
     assert 'not read through' not in str(CASES)
+
+
+def test_the_top_line_says_all_only_when_it_is_all():
+    """REV-SF2-2: a write put off, a document deleted or a job stopped
+    between the ends leaves fewer documents ended in the step."""
+    assert notice({'documents_in_one_step': 2, 'documents_in_job': 3, 'documents_changed_in_one_step': 1}) == (
+        'The job worked on 2 of its 3 documents in one step and changed 1 of them.')
+    assert notice({'documents_in_one_step': 1, 'documents_in_job': 2, 'documents_changed_in_one_step': 1}) == (
+        'The job worked on 1 of its 2 documents in one step and changed it.')
+    assert notice({'documents_in_one_step': 3, 'documents_in_job': 6}) == (
+        'The job worked on 3 of its 6 documents in one step and changed none of them.')
+    assert notice({'documents_in_one_step': 45, 'documents_in_job': 45, 'documents_changed_in_one_step': 24}) == (
+        'The job worked on all 45 documents in one step and changed 24 of them.')
 
 
 @pytest.fixture(scope='module')
@@ -72,3 +92,12 @@ def test_the_page_builds_the_workers_top_line_from_the_same_counts(page):
     assert len(page) == len(CASES)
     for totals, line in zip(CASES, page):
         assert notice(totals, IgtRunner.PEOPLE_NOUNS) == line, totals
+
+
+def test_the_counts_name_the_jobs_documents_beside_those_the_step_ended():
+    from plaid_agent.core.job import one_step_totals
+    docs = [{'state': 'done', 'counts': {'one_step': True, 'changes': 1}},
+            {'state': 'done', 'counts': {'one_step': True}},
+            {'state': 'gone', 'counts': {}}]
+    assert one_step_totals(docs) == {'documents_in_one_step': 2, 'documents_in_job': 3,
+                                     'documents_changed_in_one_step': 1, 'documents_not_all_read': 0}

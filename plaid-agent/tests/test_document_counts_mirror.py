@@ -82,7 +82,7 @@ def test_read_job_says_the_one_step_in_the_top_line():
     from plaid_agent.igt.jobread import summary
     core_report = {**CASES[1], 'state': 'cancelled'}
     lines = summary({'id': 'j', 'state': 'cancelled', 'instructions': 'x', 'report': core_report})
-    assert any('The job worked on all 2 documents in one step and changed 1 of them. It did not read every '
+    assert any('The job worked on 2 of its 3 documents in one step and changed 1 of them. It did not read every '
                'sentence.' in line for line in lines), lines
 
 
