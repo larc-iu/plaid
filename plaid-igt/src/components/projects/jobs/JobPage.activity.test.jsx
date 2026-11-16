@@ -260,6 +260,26 @@ describe('the job page’s list of its work', () => {
     await v.unmount();
   });
 
+  // SF: a piece of a plan limited by a search names its sentences, which are
+  // no run.
+  it('names the sentences of a piece of a plan limited by a search', async () => {
+    const piece = {
+      seq: '000009',
+      piece: {
+        ...FIRST.piece,
+        piece: 'k9',
+        first: 's3',
+        last: 's14',
+        matching: ['s3', 's8', 's14'],
+      },
+    };
+    const v = await mount(clientOf([jobOf()], [page([piece])]));
+    expect(text(rows(v.container)[0].querySelector('a'))).toBe(
+      'Story A s3, s8, s14, matching the plan’s search',
+    );
+    await v.unmount();
+  });
+
   // REV-RPF2-4: a fills-nothing piece's findings, on its own row, in full
   // when opened, rendered as the report's findings are.
   it('shows a piece’s own findings on its row when opened', async () => {

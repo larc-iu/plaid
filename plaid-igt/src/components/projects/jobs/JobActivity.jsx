@@ -137,8 +137,11 @@ const Where = ({ piece, projectId, names }) => {
   if (name === null || name === undefined) {
     return <span className="font-medium text-muted-foreground">Deleted document</span>;
   }
-  const range =
-    piece.first && (piece.first === piece.last ? piece.first : `${piece.first} to ${piece.last}`);
+  // A piece of a plan limited by a search names its sentences, which are no
+  // run (the worker's `matching`, CONTRACT, added by SF).
+  const range = piece.matching?.length
+    ? `${piece.matching.join(', ')}, matching the plan’s search`
+    : piece.first && (piece.first === piece.last ? piece.first : `${piece.first} to ${piece.last}`);
   const to = piece.firstId
     ? APP_ROUTES.sentence(projectId, piece.document, piece.firstId)
     : APP_ROUTES.document(projectId, piece.document);

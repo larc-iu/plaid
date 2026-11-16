@@ -2452,4 +2452,112 @@ describe('the job page', () => {
     expect(byText(v.container, 'a', 'All jobs').getAttribute('href')).toBe('/projects/p1?tab=jobs');
     await v.unmount();
   });
+
+  // SF: a plan in sentences limited by a search says so wherever the plan is
+  // said, and a document it matched nothing in is counted apart from done.
+  describe('a plan limited by a search', () => {
+    const SEARCH = { said: 'Gloss "be.3ᴀᴜɢII"', sentences: 33, documents: 24 };
+    const searchDocs = [
+      {
+        documentId: 'd1',
+        name: 'Story A',
+        position: 0,
+        state: 'done',
+        sentences: 20,
+        targets: 3,
+        done: 3,
+        counts: { matched: 3, changes: 3 },
+        skipped: [],
+      },
+      {
+        documentId: 'd2',
+        name: 'Story B',
+        position: 1,
+        state: 'done',
+        sentences: 20,
+        targets: 0,
+        done: 0,
+        counts: { matched: 0, changes: 0 },
+        skipped: [],
+      },
+    ];
+    const planOf = (over = {}) => ({
+      pieces: 'sentences',
+      by: 'model',
+      fills: ['L1'],
+      fillsNames: ['Gloss'],
+      fallback: [],
+      search: SEARCH,
+      ...over,
+    });
+
+    it('says the search on the Plan line', async () => {
+      const job = jobOf({
+        state: 'done',
+        documents: searchDocs,
+        report: { ...REPORT, plan: planOf(), documents: searchDocs },
+      });
+      const v = await mount(clientOf(job));
+      expect(totals(v.container).Plan).toBe(
+        'Worked in stretches of sentences, only the sentences matching Gloss "be.3ᴀᴜɢII": ' +
+          '33 sentences in 24 documents. Fills: Gloss.',
+      );
+      await v.unmount();
+      const both = jobOf({
+        state: 'done',
+        documents: searchDocs,
+        report: { ...REPORT, plan: planOf({ onlyEmpty: true }), documents: searchDocs },
+      });
+      const w = await mount(clientOf(both));
+      expect(totals(w.container).Plan).toBe(
+        'Worked in stretches of sentences, only the sentences matching Gloss "be.3ᴀᴜɢII": ' +
+          '33 sentences in 24 documents, of them only those with something empty. Fills: Gloss.',
+      );
+      await w.unmount();
+    });
+
+    it('says a document with no matching sentence as such, and counts it apart', async () => {
+      const job = jobOf({
+        state: 'done',
+        documents: searchDocs,
+        report: {
+          ...REPORT,
+          totals: { ...REPORT.totals, documentsDone: 2 },
+          notice: null,
+          plan: planOf(),
+          documents: searchDocs,
+        },
+      });
+      const v = await mount(clientOf(job));
+      const rows = all(v.container, 'tbody tr').map((r) => [...r.querySelectorAll('td')].map(text));
+      expect(rows[0].slice(0, 3)).toEqual([
+        'Story A',
+        'Done',
+        '3 of 20, 17 not matching the plan’s search',
+      ]);
+      expect(rows[1].slice(0, 3)).toEqual([
+        'Story B',
+        'No matching sentence',
+        '0 of 20, none match the plan’s search',
+      ]);
+      const sums = totals(v.container.querySelector('section[aria-label="Report"]'));
+      expect(sums['Documents done']).toBe('1');
+      expect(sums['Documents with no matching sentence']).toBe('1');
+      expect(text(v.container)).not.toContain('not read through');
+      await v.unmount();
+    });
+
+    it('says the sentences left out with skip filled too', async () => {
+      const docs = [{ ...searchDocs[0], targets: 1, done: 1 }];
+      const job = jobOf({
+        state: 'done',
+        documents: docs,
+        report: { ...REPORT, plan: planOf({ onlyEmpty: true }), documents: docs },
+      });
+      const v = await mount(clientOf(job));
+      const rows = all(v.container, 'tbody tr').map((r) => [...r.querySelectorAll('td')].map(text));
+      expect(rows[0][2]).toBe('1 of 20, 19 not matching the plan’s search or with nothing to fill');
+      await v.unmount();
+    });
+  });
 });

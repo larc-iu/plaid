@@ -54,6 +54,7 @@ import {
   wroteNothing,
   allSkipped,
   documentSentencesText,
+  noMatchingSentence,
   walkedForEmpty,
 } from './jobText.js';
 
@@ -291,7 +292,7 @@ export const JobPage = ({ project, projectId, jobId, client }) => {
       )}
       <JobFacts job={job} readAt={readAt} plan={job.report?.plan ?? livePlan} />
       <h3 className={`${TYPE.card} mb-2 mt-8`}>Documents</h3>
-      <JobDocuments job={job} projectId={projectId} />
+      <JobDocuments job={job} projectId={projectId} plan={job.report?.plan ?? livePlan} />
       <JobActivity
         client={client}
         job={job}
@@ -521,7 +522,8 @@ const count = (row, key) => (row.counts?.[key] ?? 0).toLocaleString();
 // A row per document of the job, in the job's order. Once the job has a
 // report, how many places each document's Left blank lists stands beside its
 // sentences, so "8 of 8" never reads as nothing left (REV-DAY-P-4).
-const JobDocuments = ({ job, projectId }) => {
+// `plan`: the report's, or while there is none the plan row's (`livePlan`).
+const JobDocuments = ({ job, projectId, plan }) => {
   const leftOut = new Set((job.report?.plan?.leftOut || []).map((d) => d.documentId));
   const reported = new Map((job.report?.documents || []).map((d) => [d.documentId, d]));
   const columns = [
@@ -545,16 +547,17 @@ const JobDocuments = ({ job, projectId }) => {
           ? 'Left out by the plan'
           : stoppedPartway(d)
             ? 'Stopped partway'
-            : allSkipped(d)
-              ? 'Skipped'
-              : (jobDocumentStateText(d.state) ?? d.state),
+            : noMatchingSentence(d)
+              ? 'No matching sentence'
+              : allSkipped(d)
+                ? 'Skipped'
+                : (jobDocumentStateText(d.state) ?? d.state),
     },
     {
       key: 'done',
       label: 'Sentences',
       align: 'right',
-      render: (d) =>
-        documentSentencesText(d, walkedForEmpty(job.report?.plan ?? null, d.documentId)),
+      render: (d) => documentSentencesText(d, walkedForEmpty(plan, d.documentId), plan),
     },
   ];
   if ([...reported.values()].some((d) => leftText(d) !== null)) {
