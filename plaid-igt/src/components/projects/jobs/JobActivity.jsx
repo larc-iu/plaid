@@ -154,6 +154,25 @@ const SentenceLink = ({ item, piece, projectId, names }) => {
   );
 };
 
+// A fills-nothing piece's own findings, on its row, rendered as the report's
+// are, opened on demand: the report holds only what fits its cap
+// (REV-RPF2-4).
+const PieceFindings = ({ findings }) => {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="mt-1">
+      <Button variant="outline" size="sm" onClick={() => setOpen((o) => !o)}>
+        {open ? 'Hide findings' : 'Show findings'}
+      </Button>
+      {open && (
+        <div className="mt-2" data-testid="piece-findings">
+          <JobWritten text={findings} />
+        </div>
+      )}
+    </div>
+  );
+};
+
 const PieceRow = ({ piece, projectId, names }) => {
   const skipped = piece.skipped || [];
   const refused = piece.refused || [];
@@ -205,6 +224,7 @@ const PieceRow = ({ piece, projectId, names }) => {
           <JobWritten text={piece.note} inline />
         </div>
       )}
+      {piece.findings && <PieceFindings findings={piece.findings} />}
       {/* A row the worker cut to fit core's cap (REV-LV-2). */}
       {piece.cut && <p className="text-muted-foreground">…</p>}
     </>

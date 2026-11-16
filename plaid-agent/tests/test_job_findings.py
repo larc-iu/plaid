@@ -108,9 +108,28 @@ def test_findings_too_long_for_the_final_context_are_never_merged_and_say_what_d
     order = [d['name'] for d in report['documents']]
     shown = [name for name in order if f'## {name}\n' in findings]
     assert shown == order[:len(shown)] and len(shown) < n, 'in the job\'s order, cut at the end'
-    whole = [name for name in shown if f'FINDING-{name}: ' + 'x' * 1100 in findings]
+    # Only whole pieces: no heading left with nothing under it (REV-RPF2-4).
+    assert all(f'FINDING-{name}: ' + 'x' * 1100 in findings for name in shown)
     assert report['findings_pieces'] == n
-    assert report['findings_cut'] == n - len(whole) > 0
+    assert report['findings_cut'] == n - len(shown) > 0
+    # Each piece's findings are on its own row of the work list, so none is
+    # out of reach (REV-RPF2-4).
+    rows = [p['piece'] for p in client.jobs.pieces(J) if p['piece'].get('document')]
+    assert len(rows) == n and all(r['findings'] == f'FINDING-{r["name"]}: ' + 'x' * 1100 for r in rows)
+
+
+def test_a_pieces_findings_on_its_row_are_cut_to_the_rows_cap_and_say_so():
+    """A piece's findings on its summary row are held to the row's cap
+    (JOB_ANALYSIS_MAX_CHARS, the whole row as JSON) and cut at a line or a
+    sentence end with a line of their own saying so."""
+    from plaid_agent.core.limits import JOB_ANALYSIS_MAX_CHARS
+    import json
+    value = {'piece': 'k', 'document': 'd1', 'name': 'Story', 'note': igt_job.FINDINGS_NOTE,
+             'findings': 'A finding on a line of its own.\n' * 400}
+    text = igt_job.summary_text(value)
+    assert len(text) <= JOB_ANALYSIS_MAX_CHARS
+    kept = json.loads(text)['findings']
+    assert kept.endswith('own.\n\n' + igt_job.PIECE_FINDINGS_CUT) and len(kept) > 2000
 
 
 def test_findings_that_fit_are_merged_and_carry_no_cut_count(monkeypatch):

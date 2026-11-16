@@ -242,6 +242,30 @@ describe('the job page’s list of its work', () => {
     await v.unmount();
   });
 
+  // REV-RPF2-4: a fills-nothing piece's findings, on its own row, in full
+  // when opened, rendered as the report's findings are.
+  it('shows a piece’s own findings on its row when opened', async () => {
+    const found = {
+      seq: '000006',
+      piece: {
+        ...FIRST.piece,
+        counts: {},
+        fields: [],
+        note: 'Its findings are in the report.',
+        findings: '## Odd\n\n- **ka** glossed two ways.',
+      },
+    };
+    const v = await mount(clientOf([jobOf()], [page([found])]));
+    const row = rows(v.container)[0];
+    expect(row.querySelector('[data-testid="piece-findings"]')).toBeNull();
+    await v.step(() => byText(row, 'button', 'Show findings').click());
+    const shown = row.querySelector('[data-testid="piece-findings"]');
+    expect(shown.querySelector('strong').textContent).toBe('ka');
+    expect(text(shown)).not.toContain('**');
+    expect(byText(row, 'button', 'Hide findings')).toBeTruthy();
+    await v.unmount();
+  });
+
   it('names a piece of a deleted document so, with no link', async () => {
     const gone = {
       seq: '000003',

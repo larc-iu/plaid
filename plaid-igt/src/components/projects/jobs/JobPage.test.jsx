@@ -2121,7 +2121,7 @@ describe('the job page', () => {
       ),
     );
     expect(line(v.container)).toBe(
-      'Findings of 80 pieces, each under its heading. The last 21 did not fit whole and are cut.',
+      'Findings of 59 of 80 pieces are shown here, each under its heading. 21 are left out: each piece’s findings are on its row of the work list.',
     );
     await v.unmount();
     v = await mount(

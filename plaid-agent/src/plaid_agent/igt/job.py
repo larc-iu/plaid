@@ -216,6 +216,9 @@ def piece_note(text) -> str:
 
 #: How the findings of a job that fills nothing say they were cut.
 FINDINGS_CUT = '(The rest of this report is cut.)'
+#: How a piece's findings on its summary row say they were cut to the row's
+#: cap (REV-RPF2-4).
+PIECE_FINDINGS_CUT = '(The rest of this piece’s findings is cut.)'
 #: The note of a piece of a job that fills nothing that kept findings: one
 #: sentence, never its findings flattened and cut, shown a second time under
 #: them (REV-RPF-P-10).
@@ -272,6 +275,21 @@ def summary_text(value: Dict[str, Any]) -> Optional[str]:
         text = canonical(transform_request(value))
         if len(text) <= JOB_ANALYSIS_MAX_CHARS:
             return text
+        findings = value.get('findings')
+        if isinstance(findings, str) and findings and not findings.endswith(PIECE_FINDINGS_CUT):
+            # A piece's findings go first, cut at a line or a sentence end
+            # within what the row leaves them, saying so (REV-RPF2-4).
+            room = max(0, len(findings) - (len(text) - JOB_ANALYSIS_MAX_CHARS) - len(PIECE_FINDINGS_CUT) - 16)
+            head = findings[:room]
+            at = max(head.rfind('\n'), *(head.rfind(c + ' ') + 1 for c in '.!?'))
+            value['findings'] = ((head[:at] if at > 0 else head).rstrip() + '\n\n' + PIECE_FINDINGS_CUT).lstrip()
+            continue
+        if isinstance(findings, str) and findings.endswith(PIECE_FINDINGS_CUT) and len(findings) > len(
+                PIECE_FINDINGS_CUT) + 2:
+            # Still over (escaped characters): shorter again.
+            body = findings[:-len(PIECE_FINDINGS_CUT)].rstrip()
+            value['findings'] = body[:len(body) * 3 // 4].rstrip() + '\n\n' + PIECE_FINDINGS_CUT
+            continue
         value['cut'] = True
         where = next(((d, k) for d, k in [(value, 'skipped'), (value, 'refused'), (value, 'outside'),
                                           (value, 'fields'), (plan, 'gone'), (plan, 'fills_names')]
@@ -4125,6 +4143,9 @@ class IgtRunner:
             where = f's{part[0].index}' + (f' to s{part[-1].index}' if len(part) > 1 else '')
         rows = []
         text = findings_text(findings) if findings else ''
+        if text and key in self.unsummed:
+            # Shown on the piece's own row of the work list (REV-RPF2-4).
+            self.unsummed[key]['findings'] = text
         if text:
             rows += findings_rows(key, {'document': piece.get('document'),
                                         'name': doc.name if doc is not None else None,
@@ -4300,7 +4321,8 @@ class IgtRunner:
         value = {'piece': key, **{k: p[k] for k in ('document', 'name', 'first', 'last', 'first_id', 'whole',
                                                     'note', 'steps')},
                  **written_sums(rows), 'ended_at': self.now_iso(),
-                 **({'skipped': skipped} if skipped else {}), **({'refused': p['refused']} if p['refused'] else {})}
+                 **({'skipped': skipped} if skipped else {}), **({'refused': p['refused']} if p['refused'] else {}),
+                 **({'findings': p['findings']} if p.get('findings') else {})}
         row = self.summary_row(p['seq'], value, p['document'], p['first_id'])
         if row is None:
             logger.warning('Job %s: the summary of a piece is too large to keep', self.job.id)
@@ -5093,14 +5115,25 @@ class IgtRunner:
         if len(pieces) == 1:
             return findings_text(pieces[0]['text'])
         sections = self.findings_sections(pieces)
-        out = findings_text('\n\n'.join(sections))
-        # How many pieces it holds and how many of them it does not hold
-        # whole: the cut is at the end, in document order (REV-RPF-W-2).
-        whole = 0
-        while whole < len(sections) and out.startswith('\n\n'.join(sections[:whole + 1])):
+        joined = '\n\n'.join(sections)
+        if len(joined) <= JOB_FINDINGS_MAX_CHARS:
+            self.findings_counts = {'findings_pieces': len(pieces), 'findings_cut': 0}
+            return joined
+        # Past the cap: the pieces that fit whole, in the job's order, then
+        # the cut line, never a heading with nothing under it. The rest are
+        # left out here and each is on its own row of the work list
+        # (REV-RPF-W-2, REV-RPF2-4). ``findings_cut``: how many are left out.
+        room = JOB_FINDINGS_MAX_CHARS - len(FINDINGS_CUT) - 2
+        whole, size = 0, 0
+        while whole < len(sections) and size + len(sections[whole]) + (2 if whole else 0) <= room:
+            size += len(sections[whole]) + (2 if whole else 0)
             whole += 1
+        if whole == 0:
+            # Not even the first piece fits: it is cut, and counted shown.
+            self.findings_counts = {'findings_pieces': len(pieces), 'findings_cut': len(pieces) - 1}
+            return findings_text(sections[0])
         self.findings_counts = {'findings_pieces': len(pieces), 'findings_cut': len(pieces) - whole}
-        return out
+        return '\n\n'.join(sections[:whole]) + '\n\n' + FINDINGS_CUT
 
     def findings_sections(self, pieces: List[Dict[str, Any]]) -> List[str]:
         """Each piece's findings whole under a heading naming its piece."""

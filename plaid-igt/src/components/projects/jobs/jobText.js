@@ -191,16 +191,18 @@ export const noticeCounts = (report) => {
 };
 
 // How many pieces the findings of a job that fills nothing hold, each under
-// its heading, and how many of the last did not fit whole (the worker's
-// `findings_pieces` and `findings_cut`, REV-RPF-W-2). Null for one report
-// (a single piece's, or the final context's from them all).
+// its heading, and how many are left out past the report's cap (the
+// worker's `findings_pieces` and `findings_cut`, REV-RPF-W-2): each piece's
+// findings are on its own row of the work list (REV-RPF2-4). Null for one
+// report (a single piece's, or the final context's from them all).
 export const findingsPiecesText = (pieces, cut) => {
   if (!(pieces > 1)) return null;
-  const head = `Findings of ${countOf(pieces, 'piece')}, each under its heading.`;
-  if (!(cut > 0)) return head;
-  return cut === 1
-    ? `${head} The last one did not fit whole and is cut.`
-    : `${head} The last ${cut.toLocaleString()} did not fit whole and are cut.`;
+  if (!(cut > 0)) return `Findings of ${countOf(pieces, 'piece')}, each under its heading.`;
+  return (
+    `Findings of ${(pieces - cut).toLocaleString()} of ${pieces.toLocaleString()} pieces are shown ` +
+    `here, each under its heading. ${cut.toLocaleString()} ${cut === 1 ? 'is' : 'are'} left out: ` +
+    'each piece’s findings are on its row of the work list.'
+  );
 };
 
 // How many values the job wrote in one target, as the report's rows and a
