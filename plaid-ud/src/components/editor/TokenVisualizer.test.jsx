@@ -73,6 +73,16 @@ describe('the Token Visualization', () => {
     expect(note?.getAttribute('dir')).toBe('ltr');
     await view.unmount();
   });
+
+  // Unsaved text is a plain fact, not a fault: a warm banner means broken.
+  it('says the positions are against the unsaved text as plain information', async () => {
+    const view = await mount({ text: 'xyz', originalText: TEXT });
+    const line = all(view.container, '[data-tone]').find((n) =>
+      n.textContent.includes('Token positions are shown against the unsaved text.'),
+    );
+    expect(line.getAttribute('data-tone')).toBe('info');
+    await view.unmount();
+  });
 });
 
 describe('a sentence whose final period no word holds', () => {

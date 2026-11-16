@@ -741,7 +741,7 @@ export const TokenVisualizer = ({
   return (
     <div>
       {isTextDirty && (
-        <Notice tone="warning" className="mb-2">
+        <Notice tone="info" className="mb-2">
           Token positions are shown against the unsaved text. Save the text to apply them.
         </Notice>
       )}
