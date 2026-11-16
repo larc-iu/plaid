@@ -58,7 +58,9 @@ def adds_up(doc, words_to_work, skipped_words=0):
         == words_to_work, c
 
 
-@pytest.mark.parametrize('plan', ['sentences', 'document', 'selection'])
+# Not 'selection': after its piece nothing more is worked (SF round 2), so
+# the walk this counts never follows it.
+@pytest.mark.parametrize('plan', ['sentences', 'document'])
 def test_a_piece_that_staged_nothing_counts_its_words_untouched_and_the_row_claims_no_left(monkeypatch, plan):
     """Pieces s3-s4 and s5-s6 answer "Done." with nothing staged: their
     eight words are counted as blank in sentences the job wrote nothing in,

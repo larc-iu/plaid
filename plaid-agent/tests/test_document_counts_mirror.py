@@ -1,8 +1,8 @@
 """The report's documents as read_job and the final context count them
 (``igt.job.document_counts``) against the job page's own (plaid-igt
 jobText.js ``documentCounts``), over one table of reports (REV-RPF3-4):
-read_job said "documents done 3" where the page said "Documents done 1,
-Documents not read through 2", and "not reached" where it said "Stopped
+read_job said "documents done 3" where the page said "Documents done 1",
+and "not reached" where it said "Stopped
 partway". It skips only where node cannot run."""
 
 import json
@@ -27,7 +27,8 @@ def _doc(state, done=0, counts=None, skipped=0):
 CASES = [
     {'totals': {'documents_done': 0}, 'documents': []},
     {'totals': {'documents_done': 3},
-     'documents': [_doc('done', 2), _doc('done', 20, {'not_walked': True}), _doc('done', 20, {'not_walked': True})]},
+     'documents': [_doc('done', 2), _doc('done', 20, {'one_step': True, 'changes': 2}),
+                   _doc('done', 20, {'one_step': True, 'not_all_read': True})]},
     {'totals': {'documents_done': 1, 'documents_not_reached': 3},
      'documents': [_doc('done', 4), _doc('not-reached', 5), _doc('not-reached', 0, {'changes': 1}),
                    _doc('not-reached', 0, {'changes': 0})]},
@@ -52,7 +53,7 @@ def page(tmp_path_factory):
 
 
 def test_read_job_counts_the_documents_as_the_page_does(page):
-    camel = {'not_read_through': 'notReadThrough', 'stopped_partway': 'stoppedPartway', 'not_reached': 'notReached',
+    camel = {'stopped_partway': 'stoppedPartway', 'not_reached': 'notReached',
              'with_nothing_found_by_the_search': 'withNothingFoundByTheSearch'}
     assert len(page) == len(CASES)
     for report, said in zip(CASES, page):
@@ -60,27 +61,29 @@ def test_read_job_counts_the_documents_as_the_page_does(page):
         assert {camel.get(k, k): v for k, v in mine.items()} == said, report
 
 
-def test_read_job_and_the_final_context_say_not_read_through_and_stopped_partway():
-    """The reviewer's a2 and a7, and no raw key reaches the model."""
+def test_read_job_and_the_final_context_count_the_one_step_and_stopped_partway():
+    """A whole-selection job's documents are done (RP4-4 finding 1:
+    "Documents done 0" beside 45 rows reading Done) and those it changed are
+    counted; no raw key reaches the model."""
     checked = CASES[1]
-    assert 'documents done 1, documents not read through 2' in _totals(checked), _totals(checked)
+    assert document_counts(checked)['done'] == 3 and document_counts(checked)['changed'] == 1
+    assert 'documents done 3, documents changed 1' in _totals(checked), _totals(checked)
     stopped = CASES[2]
     said = _totals(stopped)
     assert 'documents stopped partway 2' in said and 'documents not reached 1' in said, said
     message = summary_message(checked)
-    assert 'documents done 1' in message and 'documents not read through 2' in message
-    assert 'not_walked' not in message, message
+    assert 'documents done 3' in message and 'documents changed 1' in message
+    assert 'one_step' not in message and 'not read through' not in message, message
 
 
-def test_read_job_says_the_documents_not_read_through_in_the_top_line():
-    """RPF3 round 3: read_job says what the page's top line says, the
-    worker's line, or for core's own report (no notice) the same line from its
-    counts."""
+def test_read_job_says_the_one_step_in_the_top_line():
+    """read_job says what the page's top line says, the worker's line, or for
+    core's own report (no notice) the same line from its rows."""
     from plaid_agent.igt.jobread import summary
     core_report = {**CASES[1], 'state': 'cancelled'}
     lines = summary({'id': 'j', 'state': 'cancelled', 'instructions': 'x', 'report': core_report})
-    assert any("2 documents were not read through by the job's first step, which worked on the whole selection."
-               in line for line in lines), lines
+    assert any('The job worked on all 2 documents in one step and changed 1 of them. It did not read every '
+               'sentence.' in line for line in lines), lines
 
 
 def test_documents_with_no_matching_sentence_are_counted_apart_from_done(page):
@@ -89,11 +92,3 @@ def test_documents_with_no_matching_sentence_are_counted_apart_from_done(page):
     said = page[-1]
     assert (said['done'], said['withNothingFoundByTheSearch'], said['notReached']) == (1, 2, 1), said
     assert 'documents done 1, documents with nothing found by the search 2' in _totals(CASES[-1]), _totals(CASES[-1])
-
-
-def test_read_job_says_the_documents_not_read_through_once():
-    """REV-RPF3B-8: a worker's report holds documents_not_read_through in its
-    totals too, and read_job said it twice."""
-    report = {**CASES[1], 'totals': {**CASES[1]['totals'], 'documents_not_read_through': 2}}
-    said = _totals(report)
-    assert said.count('documents not read through') == 1, said

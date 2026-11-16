@@ -973,16 +973,38 @@ def notice(totals: Dict[str, Any], nouns: Optional[Tuple[str, str]] = None) -> O
     elif totals.get('text_changes'):
         out.append(f'Text: {n(totals["text_changes"], "text edit", "text edits")}, no word added, changed or '
                    'removed.')
-    unread = totals.get('documents_not_read_through') or 0
-    if unread:
-        # Documents the job's step over the whole selection did not read
-        # through, which nothing walked after it (RPF3 round 3): said where a
-        # person will not miss it, for every kind of plan. Never "did not
-        # open": the step may have read part of one, or written in it
-        # (REV-RPF3B-1).
-        out.append(f'{n(unread, "document was", "documents were")} not read through by the job\'s first step, which '
-                   'worked on the whole selection.')
+    one = totals.get('documents_in_one_step') or 0
+    if one:
+        # The documents the whole-selection piece covered, after which
+        # nothing more is worked (the lead's ruling after RP4-5): what the
+        # step did, and that it did not read every sentence where it did not.
+        k = totals.get('documents_changed_in_one_step') or 0
+        out.append(one_step_line(one, k) + (' It did not read every sentence.'
+                                            if totals.get('documents_not_all_read') else ''))
     return ' '.join(out) or None
+
+
+def one_step_totals(documents: List[Dict[str, Any]]) -> Dict[str, int]:
+    """The top line's counts of the documents an app's row says the
+    whole-selection step ended (``counts.one_step``), of those it changed and
+    of those it was not shown all of (``counts.not_all_read``). Empty when
+    there are none. Core's own report is counted the same way (read_job)."""
+    stepped = [d for d in documents if d.get('state') == 'done' and (d.get('counts') or {}).get('one_step') is True]
+    if not stepped:
+        return {}
+    return {'documents_in_one_step': len(stepped),
+            'documents_changed_in_one_step': sum(1 for d in stepped if (d['counts'].get('changes') or 0) > 0),
+            'documents_not_all_read': sum(1 for d in stepped if d['counts'].get('not_all_read') is True)}
+
+
+def one_step_line(n: int, k: int) -> str:
+    """How the top line says a whole-selection job's one step: "The job
+    worked on all 45 documents in one step and changed 24 of them." ("...
+    and changed none of them.", "The job worked on its one document in one
+    step and changed it." / "... and did not change it.")."""
+    if n == 1:
+        return f'The job worked on its one document in one step and {"changed it" if k else "did not change it"}.'
+    return f'The job worked on all {n:,} documents in one step and changed {f"{k:,}" if k else "none"} of them.'
 
 
 def _findings(job: Job, runner, report: Dict[str, Any]) -> Dict[str, Any]:
@@ -1067,11 +1089,10 @@ def build_report(job: Job, state: str, reason: Optional[str], documents: List[Di
     blank = blank_sums(documents)
     if blank:
         totals['blank'] = blank
-    # The documents an app's row says the job did not read through (an app's
-    # ``counts.not_walked``), for the top line (RPF3 round 3).
-    unread = sum(1 for d in documents if (d.get('counts') or {}).get('not_walked') is True)
-    if unread:
-        totals['documents_not_read_through'] = unread
+    # The documents an app's row says the whole-selection step ended (an
+    # app's ``counts.one_step``), those of them it changed, and those it was
+    # not shown all of (``counts.not_all_read``), for the top line.
+    totals.update(one_step_totals(documents))
     changed, changed_more = cut(harmonize.get('changed') or [])
     left, left_more = cut(harmonize.get('left') or [])
     lists = {}

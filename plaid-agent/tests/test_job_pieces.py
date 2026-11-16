@@ -817,72 +817,6 @@ def test_a_selections_second_document_links_an_entry_that_fits_and_creates_none(
     assert len(links) == 1 and 'e-made' in str(links), links
 
 
-def test_a_document_the_selection_never_read_is_worked_as_a_piece_of_its_own(monkeypatch):
-    """REV-JG2-5: the selection's model reads Story 1 and never Story 2 (its
-    budget ran out, say). Story 2 is not recorded as worked: the walk works
-    it as a piece of its own, and the report's plan says it was worked apart
-    from the selection (``not-read``)."""
-    client = JobClient(_docs(2))
-    job = start(client, 'Gloss every word nobody analysed.', id=J, plan='selection')
-    alone, written = [], []
-    real = igt_job.execute_plan
-
-    def execute(c, ops, **kw):
-        written.extend(o.get('word_id') for o in ops if o.get('kind') == 'set_analysis')
-        return real(c, ops, **kw)
-    monkeypatch.setattr(igt_job, 'execute_plan', execute)
-
-    def piece(asked, n):
-        if '"Story 1"' in asked and '"Story 2"' in asked:
-            if n == 1:
-                return reply(calls=[call(9, 'read_document', {'document': 'Story 1'})])
-            if n == 2:
-                return reply(calls=[call(1, 'set_analysis', {'document': 'Story 1', 'ref': 's1.w1', 'morphemes': [
-                    {'form': 'ka', 'fields': {'Morph Gloss': 'go'}}]})])
-            return reply('Glossed ka in Story 1, and ran out of time.')
-        if n == 1:
-            alone.append(asked.split('"')[1])
-        return _gloss_all(asked, n)
-    use(monkeypatch, _model(piece=piece))
-    finished = run_job(job, runner(job))
-    assert finished['state'] == 'done'
-    assert 'Story 2' in alone, 'Story 2 was never given to a model'
-    plan = finished['report']['plan']
-    assert {'document_id': 'd2', 'reason': 'not-read'} in plan['fallback'], plan
-    assert {'document_id': 'd1', 'reason': 'not-read'} not in plan['fallback']
-    assert sorted(w for w in written if w.startswith('d2')) == ['d2-s1w1', 'd2-s1w2', 'd2-s2w1'], written
-    assert [d['state'] for d in finished['report']['documents']] == ['done', 'done']
-
-
-def test_a_document_the_selection_read_in_part_is_worked_where_it_was_not_shown(monkeypatch):
-    """REV-JG3-1: what the selection read is what a read printed to the
-    model, never what a tool loaded. Its model reads s1 of Story 1 alone,
-    glosses ka there and runs out of time. Story 1's s2 was never shown: the
-    walk works it as a piece of its own, and the report's plan says Story 1
-    was worked apart in part (``not-read``)."""
-    client = JobClient(_docs(2))
-    job = start(client, 'Gloss every word nobody analysed.', id=J, plan='selection')
-    alone = []
-
-    def piece(asked, n):
-        if '"Story 1"' in asked and '"Story 2"' in asked:
-            if n == 1:
-                return reply(calls=[call(1, 'read_document', {'document': 'Story 1', 'from_sentence': 1,
-                                                              'to_sentence': 1})])
-            if n == 2:
-                return reply(calls=[call(2, 'set_analysis', {'document': 'Story 1', 'ref': 's1.w1', 'morphemes': [
-                    {'form': 'ka', 'fields': {'Morph Gloss': 'go'}}]})])
-            return reply('Glossed ka in Story 1 and ran out of time.')
-        if n == 1:
-            alone.append((asked.split('"')[1], re.search(r'Your piece: ([^.]*)\.', asked).group(1)))
-        return _gloss_all(asked, n)
-    use(monkeypatch, _model(piece=piece))
-    finished = run_job(job, runner(job))
-    assert finished['state'] == 'done'
-    assert ('Story 1', 's2') in alone, alone
-    assert {'document_id': 'd1', 'reason': 'not-read'} in finished['report']['plan']['fallback']
-
-
 def test_a_selection_that_was_shown_every_sentence_of_a_text_works_it_whole(monkeypatch):
     """The guard: a text whose every sentence a read printed is the
     selection's, and no piece of its own works it again."""
@@ -922,9 +856,10 @@ def test_a_document_piece_shows_every_sentence_of_its_document(monkeypatch):
     assert f'[s{n}] w{n}.' in first.splitlines(), 'the last sentence is shown'
 
 
-def test_a_document_the_selection_never_read_is_not_reached_when_the_job_stops_first(monkeypatch):
-    """The same, the job stopped once the selection is written: Story 2 ends
-    not reached, never done."""
+def test_a_document_the_selection_never_read_ends_with_its_one_step_when_the_job_stops_after_it(monkeypatch):
+    """The job stopped once the selection is written: Story 2, never read,
+    ended in the one step with the piece (nothing more is worked after it,
+    SF round 2), so it reads done."""
     client = JobClient(_docs(2))
     job = start(client, 'Gloss every word nobody analysed.', id=J, plan='selection')
     real = igt_job.IgtRunner.selection
@@ -944,7 +879,9 @@ def test_a_document_the_selection_never_read_is_not_reached_when_the_job_stops_f
     use(monkeypatch, _model(piece=piece))
     finished = run_job(job, runner(job))
     states = {d['document_id']: d['state'] for d in finished['report']['documents']}
-    assert states['d2'] == 'not-reached', states
+    assert states['d2'] == 'done', states
+    d2 = next(d for d in finished['report']['documents'] if d['document_id'] == 'd2')
+    assert d2['counts'].get(igt_job.ONE_STEP) is True and d2['counts'].get(igt_job.NOT_ALL_READ) is True
 
 
 def _fails_once(real):
@@ -968,11 +905,11 @@ def test_a_fallback_core_fails_once_is_kept_and_read_when_tried_again():
     job = start(client, id=J, plan='selection')
     r = runner(job)
     client.jobs.add_decisions = _fails_once(client.jobs.add_decisions)
-    through_core(job, lambda: r.fall_back('d1', 'not-read'))
+    through_core(job, lambda: r.fall_back('d1', 'in-use'))
     assert [f for (f, _k) in client.jobs.decision_rows[J] if f == ' fallback d1']
     again = runner(job)
     client.jobs.decisions = _fails_once(client.jobs.decisions)
-    assert through_core(job, again.fallen_back) == {'d1': 'not-read'}
+    assert through_core(job, again.fallen_back) == {'d1': 'in-use'}
 
 
 @pytest.mark.parametrize('pieces', ['sentences', 'document', 'selection'])

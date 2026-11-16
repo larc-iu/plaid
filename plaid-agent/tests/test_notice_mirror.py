@@ -36,17 +36,26 @@ CASES = [
     {'peoples_values_changed': 2, 'words_added': 1, 'tokens_changed': 1, 'text_changes': 1},
     {'peoples_values_changed': 5, 'text_changes': 2},
     {'peoples_values_changed': None, 'words_added': None, 'text_changes': None},
-    # Documents the job's first step did not read through (RPF3 round 3).
-    {'documents_not_read_through': 1},
-    {'documents_not_read_through': 42, 'peoples_values_changed': 33},
+    # The whole-selection step (the lead's ruling after RP4-5).
+    {'documents_in_one_step': 1, 'documents_changed_in_one_step': 1, 'documents_not_all_read': 1},
+    {'documents_in_one_step': 1, 'documents_changed_in_one_step': 0, 'documents_not_all_read': 0},
+    {'documents_in_one_step': 45, 'documents_changed_in_one_step': 24, 'documents_not_all_read': 45,
+     'peoples_values_changed': 33},
+    {'documents_in_one_step': 2, 'documents_changed_in_one_step': 0, 'documents_not_all_read': 0},
+    {'documents_in_one_step': 1234, 'documents_changed_in_one_step': 1001, 'documents_not_all_read': 3},
 ]
 
 
-def test_the_top_line_says_the_documents_not_read_through():
-    assert notice({'documents_not_read_through': 1}) == (
-        "1 document was not read through by the job's first step, which worked on the whole selection.")
-    assert notice({'documents_not_read_through': 2}) == (
-        "2 documents were not read through by the job's first step, which worked on the whole selection.")
+def test_the_top_line_says_what_the_one_step_did():
+    assert notice({'documents_in_one_step': 45, 'documents_changed_in_one_step': 24,
+                   'documents_not_all_read': 45}) == (
+        'The job worked on all 45 documents in one step and changed 24 of them. It did not read every sentence.')
+    assert notice({'documents_in_one_step': 2, 'documents_changed_in_one_step': 0}) == (
+        'The job worked on all 2 documents in one step and changed none of them.')
+    assert notice({'documents_in_one_step': 1, 'documents_changed_in_one_step': 1}) == (
+        'The job worked on its one document in one step and changed it.')
+    assert notice({'documents_in_one_step': 1}) == 'The job worked on its one document in one step and did not change it.'
+    assert 'not read through' not in str(CASES)
 
 
 @pytest.fixture(scope='module')

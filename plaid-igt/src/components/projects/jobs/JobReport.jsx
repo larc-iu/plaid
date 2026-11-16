@@ -141,12 +141,16 @@ const outsideSum = (report) => outsideRows(report).reduce((n, f) => n + f.values
 const totalRows = (report) => {
   const t = report.totals || {};
   // The documents as the table says them, one function with read_job's
-  // (REV-RPF3-4): skipped and not read through apart from done (RPF3-A,
+  // (REV-RPF3-4): skipped apart from done (
   // REV-RPF-P-9), stopped partway apart from not reached (RPF3-D2).
   const docs = documentCounts(report);
-  const rows = [['Documents done', docs.done]];
+  // A whole-selection job: its documents and how many it changed, in one row
+  // (RP4-4 finding 1), never a count of documents done beside one not read.
+  const oneStep = (report.documents || []).some((d) => d.state === 'done' && d.counts?.oneStep);
+  const rows = oneStep
+    ? [['Documents', `${docs.done.toLocaleString()}, changed ${docs.changed.toLocaleString()}`]]
+    : [['Documents done', docs.done]];
   const optional = (label, n) => n > 0 && rows.push([label, n]);
-  optional('Documents not read through', docs.notReadThrough);
   // Ended by the plan's search with no model call, apart from done (SF).
   optional('Documents with nothing found by the plan’s search', docs.withNothingFoundByTheSearch);
   optional('Documents skipped', docs.skipped);

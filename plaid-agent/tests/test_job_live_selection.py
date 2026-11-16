@@ -18,10 +18,10 @@ def _morphs(admin, s, d, word):
             for t in tk.get('tokens') or [] if t['begin'] == w['begin'] and t['end'] == w['end']]
 
 
-def test_a_selection_that_read_one_sentence_of_a_text_leaves_the_rest_to_the_walk(world, monkeypatch):
+def test_a_selection_that_read_one_sentence_of_a_text_is_followed_by_no_walk(world, monkeypatch):
     """The selection's model reads s1 of Alpha alone, glosses ka there and
-    runs out of time. Alpha's s2 was never shown to it: a piece of its own
-    works it, and Alpha ends done with sa glossed, never listed blank."""
+    runs out of time. Nothing more is worked after its piece (SF round 2):
+    both texts end done in the one step, sa and ta stay blank, counted."""
     admin, writer, make = world
     s = make({'dA': document('dA', 'Alpha', [{'words': ['ka']}, {'words': ['sa']}]),
               'dB': document('dB', 'Beta', [{'words': ['ta']}])})
@@ -48,12 +48,14 @@ def test_a_selection_that_read_one_sentence_of_a_text_leaves_the_rest_to_the_wal
     job = _job(admin, writer, s, 'selection')
     finished = run_job(job, _runner(job))
     assert finished['state'] == 'done', (finished.get('reason'), job.status.get('message'))
-    assert sorted(alone) == ['Alpha', 'Beta'], alone
-    alpha = next(d for d in finished['report']['documents'] if d['name'] == 'Alpha')
-    assert alpha['state'] == 'done' and not alpha['left'], alpha
-    assert len(_morphs(admin, s, 'dA', 'dA-s1w1')) == 1 and len(_morphs(admin, s, 'dA', 'dA-s2w1')) == 1
-    fallback = {f['document_id']: f['reason'] for f in finished['report']['plan']['fallback']}
-    assert fallback == {s.ids['dA']: 'not-read', s.ids['dB']: 'not-read'}, fallback
+    assert alone == [], alone
+    docs = {d['name']: d for d in finished['report']['documents']}
+    assert all(d['state'] == 'done' and d['counts'].get('one_step') is True and d['counts'].get('not_all_read')
+               for d in docs.values()), docs
+    assert len(_morphs(admin, s, 'dA', 'dA-s1w1')) == 1 and len(_morphs(admin, s, 'dA', 'dA-s2w1')) == 0
+    assert finished['report']['plan']['fallback'] == []
+    assert finished['report']['notice'] == ('The job worked on all 2 documents in one step and changed 1 of them. '
+                                            'It did not read every sentence.'), finished['report']['notice']
 
 
 def _gloss_of(admin, s, d, word):
@@ -68,7 +70,7 @@ def test_a_rename_by_the_step_over_all_documents_walks_nothing_after_it(world, m
     """RPF3-A, the rename's shape on a real core: three texts, every word a
     person's analysis. The selection renames nidr's gloss by reference in
     Alpha and Gamma, reading nothing. No model call follows it, every text
-    ends done and not read through, and the two renamed hold the new gloss."""
+    ends done in the one step, and the two renamed hold the new gloss."""
     admin, writer, make = world
     texts = {'dA': 'Alpha', 'dB': 'Beta', 'dC': 'Gamma'}
     s = make({d: document(d, name, [{'words': [('nidr', [('nidr', 'be.3ᴀᴜɢII' if d != 'dB' else 'be')], 'human'),
@@ -89,7 +91,7 @@ def test_a_rename_by_the_step_over_all_documents_walks_nothing_after_it(world, m
     assert finished['state'] == 'done', (finished.get('reason'), job.status.get('message'))
     assert asked.count(1) == 1, 'the selection, and no piece after it'
     docs = {d['name']: d for d in finished['report']['documents']}
-    assert all(d['state'] == 'done' and d['counts'].get('not_walked') is True for d in docs.values()), docs
+    assert all(d['state'] == 'done' and d['counts'].get('one_step') is True for d in docs.values()), docs
     assert {name: d['counts']['changes'] for name, d in docs.items()} == {'Alpha': 1, 'Beta': 0, 'Gamma': 1}
     assert finished['report']['plan']['fallback'] == []
     assert _gloss_of(admin, s, 'dA', 'dA-s1w1') == ['be.3AUGII'] == _gloss_of(admin, s, 'dC', 'dC-s1w1')

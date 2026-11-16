@@ -57,21 +57,10 @@ def test_rp4_a_selection_that_fills_nothing_works_once_and_keeps_its_whole_repor
     assert [(d['state'], d['done'], d['targets']) for d in report['documents']] == [('done', 2, 2), ('done', 2, 2)]
     assert report['plan']['fallback'] == [], 'no document worked in smaller pieces'
     assert report.get('findings_pieces') in (None, 1)
-    # The top line says the step over the whole selection opened neither.
-    assert report['notice'] == ("2 documents were not read through by the job's first step, which worked on the "
-                                'whole selection.'), report['notice']
+    # The top line says what the one step did.
+    assert report['notice'] == ('The job worked on all 2 documents in one step and changed none of them. It did not '
+                                'read every sentence.'), report['notice']
     assert report['summary'] is None or report['summary'] == 'The job wrote no change and proposed none.'
-
-
-def test_a_selection_that_fills_something_is_still_walked_where_it_was_not_shown(monkeypatch):
-    """NW's rule, unchanged: a sentence the selection was never shown is
-    worked by the walk, a stretch of its own."""
-    client = JobClient(_docs(1))
-    job = start(client, 'Gloss every word nobody analysed.', id=J, plan='selection')
-    model = use(monkeypatch, _model(lambda asked, n: reply('Nothing read.')))
-    finished = run_job(job, runner(job))
-    assert len([c for c in model.calls if c['n'] == 1]) > 1
-    assert 'findings' not in finished['report']
 
 
 def test_several_pieces_findings_are_one_report_by_the_final_context(monkeypatch):

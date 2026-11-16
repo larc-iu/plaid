@@ -1515,41 +1515,47 @@ describe('the job page', () => {
   // RPF3-A: a document a selection's piece changed and did not read through
   // ends with no walk. Its row says it was not read through, beside what the
   // piece changed there, and the totals count it apart from the done ones.
-  it('says a document ended after the step over all documents was not read through', async () => {
-    const docs = [
-      {
-        ...jobOf().documents[0],
-        state: 'done',
-        done: 20,
-        targets: 20,
-        counts: { changes: 1, notWalked: true },
-      },
-      {
-        ...jobOf().documents[0],
-        documentId: 'd2',
-        name: 'Story B',
-        state: 'done',
-        done: 3,
-        targets: 3,
-        counts: { changes: 0 },
-      },
-    ];
+  // SF round 2 (RP4-4 findings 1 and 2, RP4-5 F3): a whole-selection job's
+  // documents are Done and worked in the one step, counted with those it
+  // changed, never "Documents done 0" nor "Not read through".
+  it('says the documents of a whole-selection job as worked in the one step', async () => {
+    const step = (id, name, changes) => ({
+      ...jobOf().documents[0],
+      documentId: id,
+      name,
+      state: 'done',
+      sentences: 20,
+      done: 20,
+      targets: 20,
+      counts: { changes, oneStep: true, notAllRead: true },
+    });
+    const docs = [step('d1', 'Story A', 1), step('d2', 'Story B', 0)];
     const job = jobOf({
       state: 'done',
       documents: docs,
       report: {
         ...REPORT,
+        plan: { pieces: 'selection', by: 'model', fallback: [], fillsNames: ['Gloss'] },
+        notice: undefined,
         totals: { ...REPORT.totals, documentsDone: 2, documentsGone: 0 },
         documents: docs,
       },
     });
     const v = await mount(clientOf(job));
     const rows = all(v.container, 'tbody tr').map((r) => [...r.querySelectorAll('td')].map(text));
-    expect(rows.find((r) => r[0] === 'Story A').slice(1, 3)).toEqual(['Done', 'Not read through']);
-    expect(rows.find((r) => r[0] === 'Story B').slice(1, 3)).toEqual(['Done', '3 of 3']);
+    expect(rows.find((r) => r[0] === 'Story A').slice(1, 3)).toEqual([
+      'Done',
+      'Worked in the one step',
+    ]);
+    expect(rows.find((r) => r[0] === 'Story B').slice(1, 3)).toEqual([
+      'Done',
+      'Worked in the one step',
+    ]);
     const sums = totals(v.container.querySelector('section[aria-label="Report"]'));
-    expect(sums['Documents done']).toBe('1');
-    expect(sums['Documents not read through']).toBe('1');
+    expect(sums.Documents).toBe('2, changed 1');
+    expect(sums['Documents done']).toBeUndefined();
+    expect(text(v.container)).not.toMatch(/not read through/i);
+    expect(totals(v.container).Plan).toBe('Worked on all the documents at once. Fills: Gloss.');
     await v.unmount();
   });
 
@@ -1649,37 +1655,6 @@ describe('the job page', () => {
     const sums = totals(v.container.querySelector('section[aria-label="Report"]'));
     expect(sums['Documents stopped partway']).toBe('1');
     expect(sums['Documents not reached']).toBe('1');
-    await v.unmount();
-  });
-
-  // RPF3 round 3: a document walked after the selection's piece only for its
-  // one sentence with something empty reads against all its sentences.
-  it('counts a document walked only where it was empty against all its sentences', async () => {
-    const docs = [
-      {
-        ...jobOf().documents[0],
-        state: 'done',
-        sentences: 8,
-        done: 1,
-        targets: 1,
-        counts: { changes: 1 },
-      },
-    ];
-    const plan = {
-      pieces: 'selection',
-      by: 'model',
-      fills: ['L1'],
-      fillsNames: ['Gloss'],
-      fallback: [{ documentId: 'd1', reason: 'not-read' }],
-    };
-    const job = jobOf({
-      state: 'done',
-      documents: docs,
-      report: { ...REPORT, plan, documents: docs },
-    });
-    const v = await mount(clientOf(job));
-    const rows = all(v.container, 'tbody tr').map((r) => [...r.querySelectorAll('td')].map(text));
-    expect(rows[0].slice(1, 3)).toEqual(['Done', '1 of 8, 7 with nothing to fill']);
     await v.unmount();
   });
 

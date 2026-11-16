@@ -184,15 +184,17 @@ export const noticeText = (totals) => {
   else if (t.textChanges) {
     out.push(`Text: ${countOf(t.textChanges, 'text edit')}, no word added, changed or removed.`);
   }
-  // Documents the job's first step did not read through, which nothing
-  // walked after it (RPF3 round 3). Never "did not open": the step may have
-  // read part of one, or written in it (REV-RPF3B-1).
-  const unread = t.documentsNotReadThrough || 0;
-  if (unread) {
-    out.push(
-      `${countOf(unread, 'document was', 'documents were')} not read through by the job's first ` +
-        'step, which worked on the whole selection.',
-    );
+  // What the whole-selection step did, after which nothing more is worked
+  // (the lead's ruling after RP4-5), and that it did not read every sentence
+  // where it did not.
+  const one = t.documentsInOneStep || 0;
+  if (one) {
+    const k = t.documentsChangedInOneStep || 0;
+    const did =
+      one === 1
+        ? `The job worked on its one document in one step and ${k ? 'changed it' : 'did not change it'}.`
+        : `The job worked on all ${one.toLocaleString()} documents in one step and changed ${k ? k.toLocaleString() : 'none'} of them.`;
+    out.push(did + (t.documentsNotAllRead ? ' It did not read every sentence.' : ''));
   }
   return out.join(' ') || null;
 };
@@ -208,10 +210,29 @@ export const noticeCounts = (report) => {
     wordsAdded: sum('wordsAdded'),
     tokensChanged: sum('tokensChanged'),
     textChanges: sum('textChanges'),
-    documentsNotReadThrough:
-      t.documentsNotReadThrough ??
-      (report?.documents || []).filter((d) => d.state === 'done' && d.counts?.notWalked === true)
-        .length,
+    // Core's own report: the whole-selection step's documents from their rows.
+    ...(t.documentsInOneStep !== undefined
+      ? {
+          documentsInOneStep: t.documentsInOneStep,
+          documentsChangedInOneStep: t.documentsChangedInOneStep,
+          documentsNotAllRead: t.documentsNotAllRead,
+        }
+      : oneStepCounts(report?.documents || [])),
+  };
+};
+
+// A document the whole-selection piece covered and ended in its one step
+// (the worker's `counts.one_step`, CONTRACT, added by SF round 2).
+export const oneStep = (d) => d?.state === 'done' && d.counts?.oneStep === true;
+
+// The top line's counts of the one step's documents, from their rows
+// (plaid-agent's `core.job.one_step_totals`).
+const oneStepCounts = (docs) => {
+  const stepped = docs.filter(oneStep);
+  return {
+    documentsInOneStep: stepped.length,
+    documentsChangedInOneStep: stepped.filter((d) => (d.counts?.changes ?? 0) > 0).length,
+    documentsNotAllRead: stepped.filter((d) => d.counts?.notAllRead === true).length,
   };
 };
 
@@ -340,25 +361,17 @@ const skippedCount = (d) => (d?.skipped?.length ?? 0) + (d?.counts?.skippedMore 
 export const allSkipped = (d) =>
   d.state === 'done' && (d.done ?? 0) > 0 && skippedCount(d) >= (d.done ?? 0);
 
-// A document of a selection that ended with no walk: the step over all the
-// documents did not read it through, and nothing the job fills was left empty
-// in it (the worker's `counts.not_walked`, CONTRACT, added by RPF3). Its
-// changes are what that step wrote there.
-const notReadThrough = (d) => d?.state === 'done' && d.counts?.notWalked === true;
-
 // A document a plan limited by a search ended with no sentence of it found by
 // the search, and no model call (the worker's `counts.matched` 0, CONTRACT,
 // added by SF).
 export const nothingFound = (d) => d?.state === 'done' && d.counts?.matched === 0;
 
 // A document's sentences as the Documents table says them: those worked of
-// its sentences, and those skipped, "0 of 2, 2 skipped" (REV-RPF-P-9).
-// A document walked after a selection's piece only for its sentences with
-// something empty (`narrowed`, RPF3 round 3) counts against all its
-// sentences, the others said as having nothing to fill: "1 of 8, 7 with
-// nothing to fill", never "1 of 1".
-export const documentSentencesText = (d, narrowed = false, plan = null) => {
-  if (notReadThrough(d)) return 'Not read through';
+// its sentences, and those skipped, "0 of 2, 2 skipped" (REV-RPF-P-9). One
+// the whole-selection step ended reads "Worked in the one step", never a
+// count of sentences it may not have opened (RP4-4 finding 2, RP4-5 F3).
+export const documentSentencesText = (d, plan = null) => {
+  if (oneStep(d)) return 'Worked in the one step';
   if (d.targets === null || d.targets === undefined) return '';
   // Under a plan limited by a search, those worked of the sentences the walk
   // takes, then the document's others as not found by the search (SF,
@@ -384,42 +397,29 @@ export const documentSentencesText = (d, narrowed = false, plan = null) => {
     ].join(', ');
   }
   const skipped = Math.min(skippedCount(d), d.done ?? 0);
-  const all = narrowed && d.sentences > d.targets ? d.sentences : d.targets;
-  const worked = `${((d.done ?? 0) - skipped).toLocaleString()} of ${all.toLocaleString()}`;
-  const said = [
-    ...(skipped > 0 ? [`${skipped.toLocaleString()} skipped`] : []),
-    ...(all > d.targets ? [`${(all - d.targets).toLocaleString()} with nothing to fill`] : []),
-  ];
-  return [worked, ...said].join(', ');
+  const worked = `${((d.done ?? 0) - skipped).toLocaleString()} of ${d.targets.toLocaleString()}`;
+  return [worked, ...(skipped > 0 ? [`${skipped.toLocaleString()} skipped`] : [])].join(', ');
 };
 
-// Whether a document was walked after a selection's piece only for its
-// sentences with something empty: worked apart (not read or not shown) under
-// a plan of the whole selection that fills something.
-export const walkedForEmpty = (plan, documentId) =>
-  plan?.pieces === 'selection' &&
-  (plan.fills?.length ?? plan.fillsNames?.length ?? 0) > 0 &&
-  (plan.fallback || []).some(
-    (f) => f.documentId === documentId && (f.reason === 'not-read' || f.reason === 'not-shown'),
-  );
-
-// The report's documents counted as the page says them (REV-RPF3-4): done,
-// not read through, with no matching sentence (SF), skipped, stopped partway
-// and not reached, each document once. "Done" leaves out those not read
-// through, those with no matching sentence and those all skipped. The
+// The report's documents counted as the page says them (REV-RPF3-4): done
+// (those the whole-selection step ended among them: RP4-4 finding 1 counted
+// them out and read "Documents done 0"), those of them changed, with nothing
+// found by the plan's search (SF), skipped, stopped partway and not reached,
+// each document once. "Done" leaves out those with nothing found and those
+// all skipped. The
 // worker's read_job and final context say the same, by plaid-agent's
 // `document_counts`, pinned equal by its test_document_counts_mirror.
 export const documentCounts = (report) => {
   const docs = report?.documents || [];
   const t = report?.totals || {};
-  const unread = docs.filter(notReadThrough).length;
+  const changed = docs.filter((d) => d.state === 'done' && (d.counts?.changes ?? 0) > 0).length;
   const unmatched = docs.filter(nothingFound).length;
   const skipped = docs.filter(allSkipped).length;
   const unfinished = docs.filter((d) => d.state === 'not-reached');
   const partway = unfinished.filter(stoppedPartway).length;
   return {
-    done: Math.max(0, (t.documentsDone ?? 0) - skipped - unread - unmatched),
-    notReadThrough: unread,
+    done: Math.max(0, (t.documentsDone ?? 0) - skipped - unmatched),
+    changed,
     withNothingFoundByTheSearch: unmatched,
     skipped,
     stoppedPartway: partway,

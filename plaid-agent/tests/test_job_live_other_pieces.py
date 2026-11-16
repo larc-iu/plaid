@@ -146,18 +146,20 @@ def test_a_crash_between_the_bulk_write_and_the_next_piece(world, monkeypatch):
     _check(admin, s, finished)
 
 
-def test_a_selection_that_read_part_of_a_document_leaves_the_rest_to_the_walk(world, monkeypatch):
+def test_a_selection_that_read_part_of_a_document_is_followed_by_no_walk(world, monkeypatch):
     """The selection reads s1 and s2, glosses them and ka everywhere (s3.w1
-    too). s3 was never shown to it: the walk works s3 and s4 as a piece of
-    their own, s3.w1 already analysed."""
+    too). s3 was never shown to it, and nothing more is worked after its
+    piece (SF round 2): no piece follows, and the document ends done in the
+    one step, not all read."""
     admin, writer, make = world
     s = make({'dA': document('dA', 'Alpha', [{'words': w} for w in SENTENCES])})
     pieces = []
     use(monkeypatch, Model(_model(pieces)))
     job = _job(admin, writer, s, 'selection')
     finished = run_job(job, _runner(job))
-    assert pieces == [[3, 4]], pieces
-    _check(admin, s, finished)
+    assert pieces == [], pieces
+    (d,) = finished['documents']
+    assert d['state'] == 'done' and d['counts'].get('one_step') is True and d['counts'].get('not_all_read') is True
 
 
 def test_a_word_the_bulk_op_wrote_and_the_starter_cleared_is_not_written_again(world, monkeypatch):

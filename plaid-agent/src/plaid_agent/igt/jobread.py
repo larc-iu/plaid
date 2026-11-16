@@ -157,12 +157,13 @@ def _words(key: str) -> str:
 
 
 def _totals(report: Dict[str, Any]) -> str:
-    # Each count the documents' own say once (REV-RPF3B-8: the worker's
-    # totals hold documents_not_read_through too).
+    # Each count the documents' own say once (REV-RPF3B-8); the one step's
+    # are the top line's.
     totals = {k: v for k, v in (report.get('totals') or {}).items()
-              if k not in ('documents_done', 'documents_not_reached', 'documents_not_read_through')}
+              if k not in ('documents_done', 'documents_not_reached', 'documents_in_one_step',
+                           'documents_changed_in_one_step', 'documents_not_all_read')}
     # The documents as the page counts them (REV-RPF3-4, one function with
-    # its own): not read through and skipped apart from done, stopped partway
+    # its own): skipped apart from done, those changed, stopped partway
     # (a sentence finished, or the job's changes held) apart from not reached.
     from .job import document_counts
     said = [f'{_words("documents_" + k)} {v:,}' for k, v in document_counts(report).items() if v]
@@ -306,17 +307,16 @@ def summary(job: Dict[str, Any], note_chars: Optional[int] = JOB_SUMMARY_NOTE_CH
     top = report.get('notice')
     if 'notice' not in report:
         # Core's own report, of a job no worker finished, has none: the same
-        # line from its counts, as the page builds it (REV-RPF-W-3, RPF3
-        # round 3: the documents not read through too).
-        from ..core.job import notice
-        from .job import IgtRunner, document_counts
-        top = notice({**(report.get('totals') or {}),
-                      'documents_not_read_through': document_counts(report)['not_read_through']},
+        # line from its counts, as the page builds it (REV-RPF-W-3, and the
+        # whole-selection step's documents from their rows).
+        from ..core.job import notice, one_step_totals
+        from .job import IgtRunner
+        top = notice({**(report.get('totals') or {}), **one_step_totals(report.get('documents') or [])},
                      IgtRunner.PEOPLE_NOUNS)
     if top:
         # The worker's own top line: what the job changed of people's work
-        # and of the text (RPF-A4, the owner's R4), and the documents its
-        # first step did not read through.
+        # and of the text (RPF-A4, the owner's R4), and what its one step over
+        # all the documents did.
         lines.append(f'The report\'s top line, the worker\'s own: "{top}"')
     planned = plan_line(report)
     if planned:

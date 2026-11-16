@@ -55,7 +55,6 @@ import {
   allSkipped,
   documentSentencesText,
   nothingFound,
-  walkedForEmpty,
 } from './jobText.js';
 
 /**
@@ -399,7 +398,10 @@ const JobStatus = ({ job, user, names }) => {
   return (
     <div className="mb-6 flex flex-col gap-1 text-sm" role="status">
       <div className="flex flex-wrap items-center gap-2">
-        <Badge variant={failed ? 'destructive' : 'secondary'}>{jobStateText(job.state)}</Badge>
+        {/* Once undone, what the chat card says (RP4-4 finding 6). */}
+        <Badge variant={failed ? 'destructive' : 'secondary'}>
+          {job.undone ? 'Undone' : jobStateText(job.state)}
+        </Badge>
         {running && job.phase && <span>{jobPhaseText(job.phase)}</span>}
         {job.state === 'waiting' && job.ahead > 0 && (
           <span className="text-muted-foreground">{aheadText(job.ahead)}</span>
@@ -558,7 +560,7 @@ const JobDocuments = ({ job, projectId, plan }) => {
       key: 'done',
       label: 'Sentences',
       align: 'right',
-      render: (d) => documentSentencesText(d, walkedForEmpty(plan, d.documentId), plan),
+      render: (d) => documentSentencesText(d, plan),
     },
   ];
   if ([...reported.values()].some((d) => leftText(d) !== null)) {
