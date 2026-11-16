@@ -284,6 +284,30 @@ describe('the job page’s list of its work', () => {
     await v.unmount();
   });
 
+  // RPF3-E: the report's findings, shown first, hold the piece's whole: its
+  // row offers them no second time. Where the report cut some, rows keep
+  // theirs (REV-RPF2-4).
+  it('offers a piece’s findings on its row only where the report does not hold them whole', async () => {
+    const found = {
+      seq: '000006',
+      piece: { ...FIRST.piece, counts: {}, fields: [], findings: '## Odd\n\n- ka.' },
+    };
+    const ended = (report) =>
+      jobOf({
+        state: 'done',
+        finishedAt: '2026-11-12T11:00:00Z',
+        report: { totals: { documentsDone: 1, sentences: 0 }, documents: [], ...report },
+      });
+    let v = await mount(clientOf([ended({ findings: '## Odd\n\n- ka.' })], [page([found])]));
+    expect(byText(rows(v.container)[0], 'button', 'Show findings')).toBeNull();
+    await v.unmount();
+    v = await mount(
+      clientOf([ended({ findings: 'cut', findingsPieces: 80, findingsCut: 48 })], [page([found])]),
+    );
+    expect(byText(rows(v.container)[0], 'button', 'Show findings')).toBeTruthy();
+    await v.unmount();
+  });
+
   it('names a piece of a deleted document so, with no link', async () => {
     const gone = {
       seq: '000003',

@@ -74,7 +74,12 @@ export const JobActivity = ({ client, job, projectId, readAt, onPlan = () => {} 
       <ul className="max-w-3xl divide-y text-sm" data-testid="job-activity">
         {rows.map(({ seq, piece }) => (
           <li key={seq} className="py-2" data-seq={seq}>
-            <PieceRow piece={piece} projectId={projectId} names={names} />
+            <PieceRow
+              piece={piece}
+              projectId={projectId}
+              names={names}
+              findingsShown={reportHoldsFindings(job?.report)}
+            />
           </li>
         ))}
       </ul>
@@ -179,7 +184,13 @@ const PieceFindings = ({ findings }) => {
   );
 };
 
-const PieceRow = ({ piece, projectId, names }) => {
+// Whether the report's findings, shown first on the page, hold every piece's
+// whole: a piece's row then offers none of its own, which would be the same
+// text again (RPF3-E). Rows keep theirs where the report cut some.
+const reportHoldsFindings = (report) =>
+  typeof report?.findings === 'string' && report.findings !== '' && !(report.findingsCut > 0);
+
+const PieceRow = ({ piece, projectId, names, findingsShown = false }) => {
   const skipped = piece.skipped || [];
   const refused = piece.refused || [];
   return (
@@ -230,7 +241,7 @@ const PieceRow = ({ piece, projectId, names }) => {
           <JobWritten text={piece.note} inline />
         </div>
       )}
-      {piece.findings && <PieceFindings findings={piece.findings} />}
+      {piece.findings && !findingsShown && <PieceFindings findings={piece.findings} />}
       {/* A row the worker cut to fit core's cap (REV-LV-2). */}
       {piece.cut && <p className="text-muted-foreground">…</p>}
     </>
