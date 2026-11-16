@@ -151,6 +151,10 @@ SENTENCES, DOCUMENT, SELECTION = 'sentences', 'document', 'selection'
 #: Why a document of a selection is worked as a piece of its own: the
 #: selection's piece never read it (REV-JG2-5, CONTRACT, added by JG-FIX2).
 NOT_READ = 'not-read'
+#: Why a document of a selection is walked after it when the selection wrote
+#: in its sentences it was never shown, and read none of the rest: the walk
+#: works them, so the plan says it worked the document apart (REV-RPF-P-8).
+NOT_SHOWN = 'not-shown'
 PIECES = (SENTENCES, DOCUMENT, SELECTION)
 
 
@@ -2386,10 +2390,17 @@ class IgtRunner:
             out = self.excluded(d)
             rows, landed = self.view(d)
             wrote = {r['sentence'] for r in rows if not r.get('loose') and r['piece'] == SELECTION_TAG and landed(r)}
+            # A document whose only sentences never shown are ones it wrote in
+            # (by reference, unread) is walked too: the plan lists it as
+            # ``NOT_SHOWN``, so its line counts every document the walk works
+            # (REV-RPF-P-8).
+            unshown = [s.id for s in ws._docs[d].sentences if s.id not in shown and s.id not in out]
             if nothing:
                 core_job.through_core(job, lambda: self.done_unwalked(project, d))
-            elif any(s.id not in shown and s.id not in out and s.id not in wrote for s in ws._docs[d].sentences):
+            elif any(x not in wrote for x in unshown):
                 core_job.through_core(job, lambda: self.fall_back(d, NOT_READ))
+            elif unshown:
+                core_job.through_core(job, lambda: self.fall_back(d, NOT_SHOWN))
         if loose and read:
             # No write landed to carry them: listed for a person.
             from .jobapply import IGNORED_KINDS

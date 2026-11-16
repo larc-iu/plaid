@@ -273,12 +273,14 @@ def test_a_selection_taken_again_leaves_out_the_values_it_wrote_and_counts_them(
 def test_a_selection_that_never_read_its_sentences_has_them_walked_and_nothing_written_twice(monkeypatch):
     """A selection that sets the field without reading the document: its
     sentences are not its own (it was never shown them), so the walk works
-    them after it, as a piece of the document (NW). That second visit stages the same
-    values, which the field holds already: nothing is written twice."""
+    them after it, in stretches (NW), and the plan lists the document as
+    worked apart (``not-shown``, REV-RPF-P-8), so its Plan line counts it.
+    That second visit stages the same values, which the field holds already:
+    nothing is written twice."""
     client, job, model, written = _job(monkeypatch, 'selection', refs_of=lambda asked: (
         _every_word(asked) if 'whole selection' in asked else _piece_words(asked)))
     finished = run_job(job, runner(job))
-    assert _pieces(model) == ['Your piece: the whole selection above.',
-                              'Your piece: the whole document "Story", 3 sentences.']
+    assert _pieces(model) == ['Your piece: the whole selection above.', 'Your piece: s1, s2, s3.']
+    assert [f['reason'] for f in finished['report']['plan']['fallback']] == ['not-shown']
     _check_report(finished, written)
     assert not finished['report']['totals']['repeated']

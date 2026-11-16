@@ -337,7 +337,10 @@ def test_a_selection_that_read_part_of_a_document_and_wrote_in_the_rest_read_it(
     """REV-LNW-3: the selection reads s1 to s3 and glosses them, and s4.w1
     too (a sentence it was never shown). s4 is not its own, so the walk
     works it, but the plan does not say the selection did not read the
-    document. Had it written nothing in s4, it would."""
+    document. Had it written nothing in s4, it would. REV-RPF-P-8: the plan
+    still lists the document as worked apart, ``not-shown`` (it wrote in a
+    sentence it was never shown), so the Plan line counts every document the
+    walk works."""
     client = JobClient({'d1': _doc(set())})
     job = start(client, id=J, plan='selection')
     _applying(monkeypatch, client)
@@ -357,4 +360,4 @@ def test_a_selection_that_read_part_of_a_document_and_wrote_in_the_rest_read_it(
     finished = run_job(job, runner(job))
     assert finished['state'] == 'done'
     fallback = [f['reason'] for f in finished['report']['plan']['fallback'] if f['document_id'] == 'd1']
-    assert fallback == ([] if writes_s4 else ['not-read']), fallback
+    assert fallback == (['not-shown'] if writes_s4 else ['not-read']), fallback
