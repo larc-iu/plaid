@@ -41,12 +41,12 @@ export const assistantPanelHarness = ({
   // The OTHER app's assistant, online on this very project. UD and IGT share
   // projects, so that is the ordinary state of a shared one, not a contrivance.
   const foreign = assistantStub(OTHER[app], { serviceName: 'Assistant from the other app' });
-  // Two of this app's own, which is what turns the model's name into a picker.
+  // Two of this app's own, which is what turns the assistant's name into a picker.
   const two = [
     ...stub,
     ...assistantStub(app, {
       serviceId: `${app}:assist:other`,
-      serviceName: `${app.toUpperCase()} Assistant (other)`,
+      serviceName: two[1].serviceName,
       extras: { model: 'other/model', app, record: 3, tasks: ['assist'] },
     }),
   ];
@@ -221,12 +221,13 @@ export const assistantPanelTests = ({
       await toggle(page).click();
       await expect(panelOf(page)).toBeVisible();
 
-      // The model's name IS the picker while the conversation is new.
+      // The assistant's name IS the picker while the conversation is new: its
+      // name, never the raw model id (RP-5).
       const picker = panelOf(page).getByRole('combobox', { name: 'Assistant' });
-      await expect(picker).toHaveText('test/model');
+      await expect(picker).toHaveText(stub[0].serviceName);
       await picker.click();
-      await page.getByRole('option', { name: 'other/model' }).click();
-      await expect(picker).toHaveText('other/model');
+      await page.getByRole('option', { name: two[1].serviceName }).click();
+      await expect(picker).toHaveText(two[1].serviceName);
     });
 
     test('the panel names the one assistant rather than offering a choice of one', async ({
@@ -235,7 +236,7 @@ export const assistantPanelTests = ({
       await open(page);
       await toggle(page).click();
       await expect(panelOf(page)).toBeVisible();
-      await expect(panelOf(page).getByText('test/model')).toBeVisible();
+      await expect(panelOf(page).getByText(stub[0].serviceName)).toBeVisible();
       await expect(panelOf(page).getByRole('combobox', { name: 'Assistant' })).toHaveCount(0);
     });
 

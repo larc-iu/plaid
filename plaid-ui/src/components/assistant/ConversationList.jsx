@@ -271,10 +271,9 @@ export const ConversationHistory = ({ allProjects, onAllProjects, onPick, ...lis
 // Which assistant a new conversation talks to. Shown only where there is a
 // choice to make: more than one online, and a conversation not yet bound to
 // one of them.
-// `compact` is the docked panel's: it goes where the model name was, in a
-// header a third of a screen wide, so it drops its border and its minimum
-// width and names each assistant by its MODEL, which is what the reader was
-// already looking at there.
+// `compact` is the docked panel's: it goes where the assistant's name was, in
+// a header a third of a screen wide, so it drops its border and its minimum
+// width. Each assistant by its name, never the raw model id (RP-5).
 export const AssistantPicker = ({ assistants, value, onChange, disabled, compact = false }) => (
   <Select value={value} onValueChange={onChange} disabled={disabled}>
     <SelectTrigger
@@ -290,7 +289,7 @@ export const AssistantPicker = ({ assistants, value, onChange, disabled, compact
     <SelectContent>
       {assistants.map((s) => (
         <SelectItem key={s.serviceId} value={s.serviceId} hint={runByLine(s) || undefined}>
-          {compact ? s.extras?.model || s.serviceName : s.serviceName}
+          {s.serviceName}
         </SelectItem>
       ))}
     </SelectContent>

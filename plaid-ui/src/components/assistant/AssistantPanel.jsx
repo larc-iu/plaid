@@ -57,8 +57,9 @@ export const AssistantPanel = ({
         renderIdentity={({ choice, service, busy }) =>
           // Which assistant answers is settled at the start of a conversation
           // and then stays put, so the panel offers the choice exactly where it
-          // shows the answer: the model's name IS the picker while the thread
-          // is new, and plain text once it is not.
+          // shows the answer: the assistant's name IS the picker while the
+          // thread is new, and plain text once it is not. Its name, never the
+          // raw model id, which the title keeps (RP-5).
           choice.canChoose ? (
             <AssistantPicker
               assistants={choice.assistants}
@@ -70,9 +71,11 @@ export const AssistantPanel = ({
           ) : (
             <span
               className="min-w-0 truncate text-muted-foreground"
-              title={[service.serviceName, runByLine(service)].filter(Boolean).join(', ')}
+              title={[service.serviceName, choice.model, runByLine(service)]
+                .filter(Boolean)
+                .join(', ')}
             >
-              {choice.model || service.serviceName}
+              {service.serviceName}
             </span>
           )
         }

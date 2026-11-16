@@ -111,9 +111,12 @@ describe('AssistantPanel', () => {
     const client = fakeClient();
     const m = await mount(<AssistantPanel {...base(client)} projectName="A project" />);
     await flush(m);
-    // The conversation is bound to one assistant, so the panel shows its model
-    // rather than the picker.
-    expect(m.container.textContent).toContain('sonnet');
+    // The conversation is bound to one assistant, so the panel names it
+    // rather than offering the picker: by its name, never the raw model id
+    // (RP-5), which its title keeps.
+    expect(m.container.textContent).toContain('Assistant one');
+    expect(m.container.textContent).not.toContain('sonnet');
+    expect(m.container.querySelector('[title*="sonnet"]')).not.toBeNull();
     await m.unmount();
   });
 
