@@ -359,10 +359,59 @@
       ;; each retype in a group of its own, as a job's two passes
       (edit! r1 w text [(replace-op (at text "\"") "\"" nul)])
       (edit! r2 w text [(insert-op 0 (str nul " "))])
-      (let [{:keys [summary]} (undo/undo db [g1 g2] {:user "admin@example.com" :may-document? (constantly true)
-                                                     :may-vocab? (constantly true)})]
+      (let [opts {:user "admin@example.com" :may-document? (constantly true) :may-vocab? (constantly true)}
+            after (state [doc])
+            dry (:summary (undo/undo db [g1 g2] (assoc opts :dry-run? true)))
+            _ (is (= after (state [doc])) "the engine's dry run wrote nothing")
+            {:keys [summary]} (undo/undo db [g1 g2] opts)]
+        (is (= (dissoc dry :dry-run) (dissoc summary :dry-run :operation)) "the engine's dry run said what it did")
         (is (zero? (:skipped-count summary)) (pr-str (:skipped summary)))
-        (is (= before (snapshot [doc])))))))
+        (is (= before (state [doc])))))))
+
+(deftest the-reviewers-case-on-astral-and-right-to-left-text
+  (doseq [[what sents new-word]
+          [["an astral word typed into a text with astral letters and a combining mark"
+            [(str astral-zero "ai pq" (str (char 0x0301)) "le") "\" tuna lo" "mo sa"] astral-zero]
+           ["a pointed Hebrew text"
+            ["\u05e9\u05c1\u05b8\u05dc\u05d5\u05b9\u05dd \u05e2\u05d5\u05b9\u05dc\u05b8\u05dd"
+             "\" \u05d0\u05b6\u05d7\u05b8\u05d3" "\u05e9\u05c1\u05b0\u05e0\u05b7\u05d9\u05b4\u05dd"] nul]]
+          route [:entry :job]]
+    (testing (str what ", by the " (name route) " route")
+      (let [{:keys [proj doc text pos words] :as w} (world! sents)
+            before (snapshot [doc])
+            g (str (random-uuid))
+            r (in-group admin-request g)]
+        (edit! r w text [(replace-op (at text "\"") "\"" new-word)])
+        (edit! r w text [(insert-op 0 (str new-word " "))])
+        ;; the new words: the typed character alone under a word (the body's own
+        ;; astral letter begins a longer word)
+        (let [made (filter #(word-at words text % (inc %)) (indexes-of (body text) new-word))]
+          (is (= 2 (count made)))
+          (doseq [i made] (id (create-span r pos [(word-at words text i (inc i))] "PRON"))))
+        (exact-undo! (if (= route :job) [:job (job! proj [doc] [g])] g) [doc] before)))))
+
+(deftest the-reviewers-case-with-morphemes-under-the-words
+  (let [{:keys [doc text morphs gloss] :as w} (world! story {:morphs true})
+        ;; a person's morphemes and a gloss before the job: pe|le and tu|na
+        _ (doseq [s ["pele" "tuna"]
+                  :let [b (at text s)]
+                  [x y] [[b (+ b 2)] [(+ b 2) (+ b 4)]]]
+            (create-token admin-request morphs text x y))
+        _ (create-span admin-request gloss [(word-at morphs text (at text "pele") (+ 2 (at text "pele")))] "SG")
+        before (snapshot [doc])
+        g (str (random-uuid))]
+    (reviewers-case! w g)
+    (exact-undo! g [doc] before)))
+
+(deftest undo-then-redo-then-undo
+  (let [{:keys [doc] :as w} (world!)
+        before (snapshot [doc])
+        g (str (random-uuid))
+        _ (reviewers-case! w g)
+        after (snapshot [doc])
+        u1 (exact-undo! g [doc] before)
+        u2 (exact-undo! (str (:operation u1)) [doc] after)]
+    (exact-undo! (str (:operation u2)) [doc] before)))
 
 (deftest the-shapes-of-several-text-writes-by-one-unit
   ;; each edit is read against the body the edits before it left
