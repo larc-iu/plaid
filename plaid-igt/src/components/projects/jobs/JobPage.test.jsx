@@ -1491,6 +1491,21 @@ describe('the job page', () => {
     const b = rows.find((r) => r[0] === 'Story B');
     expect(b.slice(1, 3)).toEqual(['Done', '2 of 3, 1 skipped']);
     await v.unmount();
+    // REV-RPF2-8: the totals count it as the table says it, skipped, not done.
+    const ended = jobOf({
+      state: 'done',
+      documents: job.documents,
+      report: {
+        ...REPORT,
+        totals: { ...REPORT.totals, documentsDone: 2, documentsGone: 0 },
+        documents: job.documents,
+      },
+    });
+    const w = await mount(clientOf(ended));
+    const sums = totals(w.container.querySelector('section[aria-label="Report"]'));
+    expect(sums['Documents done']).toBe('1');
+    expect(sums['Documents skipped']).toBe('1');
+    await w.unmount();
   });
 
   it('counts the tables and notes a report too large for core could not hold', async () => {

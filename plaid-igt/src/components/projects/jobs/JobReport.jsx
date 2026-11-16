@@ -10,6 +10,7 @@ import { plural } from '@ui/lib/plural.js';
 import { APP_ROUTES } from '@/appRoutes.js';
 import {
   HARMONIZE_BY_TEXT,
+  allSkipped,
   HARMONIZE_LEFT_TEXT,
   changeReasonText,
   changesGroup,
@@ -138,8 +139,12 @@ const outsideSum = (report) => outsideRows(report).reduce((n, f) => n + f.values
 // those it did not reach ("Role left blank: 7 words"), so the rows sum.
 const totalRows = (report) => {
   const t = report.totals || {};
-  const rows = [['Documents done', t.documentsDone]];
+  // A document done by skipping every sentence of it is counted as the
+  // Documents table says it, skipped (REV-RPF-P-9, REV-RPF2-8).
+  const skippedDocs = (report.documents || []).filter(allSkipped).length;
+  const rows = [['Documents done', Math.max(0, (t.documentsDone ?? 0) - skippedDocs)]];
   const optional = (label, n) => n > 0 && rows.push([label, n]);
+  optional('Documents skipped', skippedDocs);
   optional('Documents in use', t.documentsInUse);
   optional('Documents deleted', t.documentsGone);
   // A document the job did not finish reads "stopped partway" once it
