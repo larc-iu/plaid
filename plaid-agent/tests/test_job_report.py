@@ -1,6 +1,8 @@
 """The report a job stores at its finish (SPEC 9, CONTRACT 5.3): lists, never
 a map keyed by an id, each cut at 500 with a count of the rest."""
 
+import pytest
+
 from job_fixtures import JobClient, Model, document, reply, runner, start, use
 
 from plaid_agent.core.job import build_report, run_job
@@ -354,10 +356,10 @@ def test_the_final_context_reads_whole_notes_and_what_left_counts():
               'notes': [{'name': 'Story', 'sentences': 's1 to s3', 'note': 'Fully staged. No translation asked.'}]}
     text = summary_message(report)
     assert '- Story s1 to s3: Fully staged. No translation asked.' in text
-    assert ('"left" counts the words and morphemes still blank at the end (the report\'s '
-            'Left blank), "not_reached" those in '
-            'sentences the job did not reach, and "left blank" what is still blank of each thing the job fills.') \
-        in text, text
+    assert ('"left" counts the words and morphemes still blank at the end in sentences the job wrote in (the '
+            'report\'s Left blank), "untouched" those in sentences it worked and wrote nothing in, which its '
+            'instructions may have told it to leave, "not_reached" those in sentences the job did not reach, and '
+            '"left blank" what is still blank of each thing the job fills.') in text, text
 
 
 def test_the_final_context_hears_what_is_still_blank_beside_what_was_written():
@@ -373,7 +375,11 @@ def test_the_final_context_hears_what_is_still_blank_beside_what_was_written():
     text = summary_message(report)
     lines = text.splitlines()
     assert lines[0] == 'This job wrote 5 changes in 2 of 3 sentences: Role 5 values.', lines[0]
-    assert lines[1] == 'Of what it fills: Role left blank 7 words (2 more in sentences not reached).', lines[1]
+    assert lines[1] == ('Changes to what people wrote (a value, analysis or link people wrote, changed or removed): '
+                        '0.'), lines[1]
+    assert lines[2] == ('Changes to the text: 0 text edits, 0 words added, 0 existing words or punctuation marks '
+                        'changed or removed.'), lines[2]
+    assert lines[3] == 'Of what it fills: Role left blank 7 words (2 more in sentences not reached).', lines[3]
     assert ('- "Story": stopped partway, 2 of 3 sentences done, changes 5, Role left blank 7 words (2 more '
             'in sentences not reached)') in text, text
 
@@ -416,3 +422,51 @@ def test_what_read_job_and_the_final_context_say_of_documents_stopped_partway_an
     text = summary_message(report)
     assert '- "Tale": not-reached\n' in text, text
     assert 'Still blank of what the job fills (totals.blank) 1' in jobread._sections_line(report)
+
+
+def test_the_final_context_reads_every_count_with_what_it_counts():
+    """RP-6: the summary read 179 values as values on existing words and the
+    14 text edits as 14 words inserted. Each count now says what it counts,
+    people's values and the text plainly, the worker's own line too."""
+    from plaid_agent.core.job import notice
+    from plaid_agent.igt.job import summary_message
+    totals = {'changes': 193, 'sentences': 18, 'text_changes': 14, 'words_added': 25, 'tokens_changed': 2,
+              'peoples_values_changed': 0, 'changes_parts': [{'kind': 'values', 'n': 179}, {'kind': 'text', 'n': 14}],
+              'fields': [{'field': 'Word class', 'id': 'L1', 'values': 179}]}
+    report = {'instructions': 'Insert ∅.', 'totals': totals, 'notice': notice(totals),
+              'plan': {'pieces': 'sentences', 'piece_instructions': 'Give each ∅ the Word class lexical.'},
+              'documents': [{'name': 'Story', 'state': 'done', 'targets': 20, 'counts': {'changes': 193}}]}
+    lines = summary_message(report).splitlines()
+    assert lines[:5] == [
+        'This job wrote 193 changes in 18 of 20 sentences: Word class 179 values.',
+        'Its 193 changes, by kind: 179 values set or cleared, 14 text edits.',
+        'Changes to what people wrote (a value, analysis or link people wrote, changed or removed): 0.',
+        'Changes to the text: 14 text edits, 25 words added, 2 existing words or punctuation marks changed or removed.',
+        'The report opens with the worker\'s own line: "Text: 25 words added, 2 existing words or punctuation marks '
+        'changed or removed."'], lines[:5]
+    text = '\n'.join(lines)
+    assert 'What the job decided, as every piece was told:\nGive each ∅ the Word class lexical.' in text
+    assert 'text edits 14' in text and 'words added by text edits 25' in text, 'the totals by what they count'
+    assert 'Changes listed for a person, not written (project setup and the like): 0.' in text
+
+
+def test_the_final_context_is_told_its_account_is_unchecked_and_how_to_word_it():
+    from plaid_agent.core.prompt import JOB_SUMMARY_CONTRACT
+    for said in ('as the assistant\'s own account, not checked against the counts',
+                 'never call them proposals or say they are staged', 'never present them as errors to fix',
+                 'Never ask the person to settle what the instructions or the job\'s own decisions settled'):
+        assert said in JOB_SUMMARY_CONTRACT.replace('\n', ' '), said
+
+
+@pytest.mark.parametrize('text,note', [
+    ('All 56 words staged. Let me do a final spot-check:\n- **s7.w2** `nzaglqngr`',
+     'All 56 words staged. Let me do a final spot-check: s7.w2 nzaglqngr'),
+    ('# Report\n\n---\n\nFilled **Case** on 8 words.', 'Report Filled Case on 8 words.'),
+    ('| form | gloss |\n|---|---|\n| ka | go |', 'form gloss ka go'),
+    ('Plain words, kept.', 'Plain words, kept.'),
+])
+def test_a_note_is_kept_as_plain_text(text, note):
+    """RP-1, RP-4: notes showed raw Markdown marks. A note is kept without
+    them, by its marks alone."""
+    from plaid_agent.igt.job import piece_note
+    assert piece_note(text) == note

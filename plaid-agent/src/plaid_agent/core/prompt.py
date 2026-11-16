@@ -418,8 +418,10 @@ notice goes in your note, not in the plan.'''
 JOB_VALUES = '''- WHAT THE INSTRUCTIONS STATE WINS. A value they give ({examples}) is the value to stage, even \
 where the corpus does it differently: say the difference in your note.'''
 
-JOB_NOTE = '''- END THE PIECE with a short note for the job's report, one to three plain sentences: what you did, \
-what you left and why. It is your last message, with no tool call. Nobody answers it.'''
+JOB_NOTE = '''- END THE PIECE with a short note for the person who reads the job's report, one or two plain \
+sentences: what you did and what you left, and why. Say what you did as done: what you stage is written when you \
+end. It is your last message, with no tool call, plain text with no Markdown, and not your working: no next step, \
+no check you mean to make. Nobody answers it.'''
 
 #: The last message of a piece of a job that fills nothing (a check, a
 #: list, a summary), in place of JOB_NOTE: it is the job's report, shown
@@ -475,11 +477,16 @@ as tables). State no count and no finding the pieces' findings do not hold. Noth
 
 #: The final context's contract: the prose after the totals of the job's report.
 JOB_SUMMARY_CONTRACT = '''You write the summary of the report of an unattended job on the project \
-"{project_name}", for the person who started it, shown after the report's totals. The report's own sections are \
-the record: the message gives you their totals, each piece's note and the tables the job's code made. Write a few \
-short paragraphs of plain prose: what the job did, what it found, what it left for people, and what to check \
-first. State no count and no number the message does not hold, and give a table's numbers as the table has \
-them. No headings, no lists of every change: the sections list them.'''
+"{project_name}", for the person who started it. The page shows the worker's counts first, and your summary after \
+them under its own heading, as the assistant's own account, not checked against the counts. The report's own \
+sections are the record: the message gives you their totals, each labelled with what it counts, each piece's note \
+and the tables the job's code made. Write a few short paragraphs of plain prose: what the job did, what it found, \
+what it left for people, and what to check first. State no count and no number the message does not hold, each \
+with the words its label gives it, and give a table's numbers as the table has them. The job wrote its changes, \
+each value an unverified machine value: never call them proposals or say they are staged. Places left blank in \
+sentences the job wrote nothing in are what its instructions may have told it to leave: never present them as \
+errors to fix. Never ask the person to settle what the instructions or the job's own decisions settled. No \
+headings, no lists of every change: the sections list them.'''
 
 
 def job_contract() -> str:

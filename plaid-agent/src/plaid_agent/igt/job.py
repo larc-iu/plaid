@@ -167,13 +167,37 @@ def _cut(text, limit: int):
 NOTE_CUT = ' (The rest of this note is cut.)'
 
 
+#: Markdown's marks a note is kept without (RPF-A4): emphasis and code
+#: marks, a heading's or a quote's or a list item's lead, a rule's line.
+_MD_RULE = re.compile(r'^\s*([-*_]\s*){3,}$')
+_MD_LEAD = re.compile(r'^\s*(#{1,6}\s+|>\s?|[-*+]\s+|\d+[.)]\s+)')
+_MD_MARKS = re.compile(r'(\*\*|__|`+|~~)')
+
+
+def plain(text) -> str:
+    """``text`` as plain text, one paragraph: Markdown's marks dropped
+    (emphasis, code, a heading's or a list item's lead, a rule, a table's
+    bars), its lines joined with spaces. By the marks alone, never by what
+    the words say."""
+    lines = []
+    for line in str(text or '').splitlines():
+        if _MD_RULE.match(line) or re.fullmatch(r'\s*\|?[\s:|-]*\|[\s:|-]*', line):
+            continue
+        line = _MD_MARKS.sub('', _MD_LEAD.sub('', line))
+        line = ' '.join(c.strip() for c in line.strip().strip('|').split('|')) if '|' in line else line
+        if line.strip():
+            lines.append(line.strip())
+    return ' '.join(lines)
+
+
 def piece_note(text) -> str:
-    """A piece's note as the job keeps it: whole when it is at most
-    JOB_NOTE_MAX_CHARS, else cut after its last whole sentence that fits
-    (after its last whole word when no sentence does) and saying so in
-    words (:data:`NOTE_CUT`). Never cut inside a word, never an ellipsis: a
-    reader takes a note's last words as written (pilot finding 4)."""
-    text = str(text or '').strip()
+    """A piece's note as the job keeps it, plain text (:func:`plain`, RPF-A4):
+    whole when it is at most JOB_NOTE_MAX_CHARS, else cut after its last
+    whole sentence that fits (after its last whole word when no sentence
+    does) and saying so in words (:data:`NOTE_CUT`). Never cut inside a
+    word, never an ellipsis: a reader takes a note's last words as written
+    (pilot finding 4)."""
+    text = plain(text).strip()
     if len(text) <= JOB_NOTE_MAX_CHARS:
         return text
     room = JOB_NOTE_MAX_CHARS - len(NOTE_CUT)
@@ -853,6 +877,23 @@ ONLY_NEW_LINE = ('This job fills only the words it adds: fill the words your tex
                  'A value on any other word is refused.')
 
 
+#: What each change kind is called in the final context's message
+#: (``core.job.CHANGE_KINDS``), one and many.
+CHANGE_NOUNS = {'values': ('value set or cleared', 'values set or cleared'),
+                'analyses': ('word analysis (segmentation) written or taken away',
+                             'word analyses (segmentation) written or taken away'),
+                'links': ('lexicon link made or taken away', 'lexicon links made or taken away'),
+                'entries': ('lexicon entry made or changed', 'lexicon entries made or changed'),
+                'text': ('text edit', 'text edits'), 'other': ('other change', 'other changes')}
+#: The totals' keys the final context reads by another name: what each counts.
+TOTAL_WORDS = {'changes': 'changes written', 'sentences': 'sentences written in', 'text_changes': 'text edits',
+               'peoples_values_changed': 'changes to what people wrote', 'words': 'words segmented',
+               'words_added': 'words added by text edits',
+               'tokens_changed': 'existing words or punctuation marks changed or removed by text edits'}
+#: How much of the plan's instructions for every piece the final context is handed.
+JOB_SUMMARY_PLAN_CHARS = 2000
+
+
 def summary_message(report: Dict[str, Any], setup: Optional[str] = None) -> str:
     """What the final context is handed: the report's sections as text, each
     bounded (JOB_SUMMARY_NOTES_CHARS for the notes, JOB_SUMMARY_TABLE_CHARS
@@ -864,6 +905,23 @@ def summary_message(report: Dict[str, Any], setup: Optional[str] = None) -> str:
     wrote = (f'This job wrote {_n_text(totals.get("changes") or 0, "change")} in {totals.get("sentences") or 0:,} '
              f'of {_n_text(targets, "sentence")}')
     lines = [wrote + (f': {fields_text(totals["fields"])}.' if totals.get('fields') else '.')]
+    # Every count labelled with what it counts, never a bare number to
+    # misread (RPF-A4, RP-6 read 179 values as values on existing words and
+    # 14 text edits as 14 words inserted).
+    parts = totals.get('changes_parts') or []
+    if parts:
+        said = []
+        for p in parts:
+            one, many = CHANGE_NOUNS.get(p['kind'], ('other change', 'other changes'))
+            said.append(f'{p["n"]:,} {one if p["n"] == 1 else many}')
+        lines.append(f'Its {_n_text(totals.get("changes") or 0, "change")}, by kind: ' + ', '.join(said) + '.')
+    lines.append(f'Changes to what people wrote (a value, analysis or link people wrote, changed or removed): '
+                 f'{totals.get("peoples_values_changed") or 0:,}.')
+    lines.append(f'Changes to the text: {totals.get("text_changes") or 0:,} text edits, '
+                 f'{_n_text(totals.get("words_added") or 0, "word")} added, '
+                 f'{totals.get("tokens_changed") or 0:,} existing words or punctuation marks changed or removed.')
+    if report.get('notice'):
+        lines.append(f'The report opens with the worker\'s own line: "{report["notice"]}"')
     if totals.get('outside'):
         # Values in fields its setup does not name (REV-SU-B-4).
         lines.append(f'Of those, outside what it was set up to fill: {fields_text(totals["outside"])}.')
@@ -875,11 +933,17 @@ def summary_message(report: Dict[str, Any], setup: Optional[str] = None) -> str:
               # What the job was set up to fill (BRIEF-SU), :func:`targets.said_setup`.
               *([setup] if setup else []), '',
               'The report\'s totals (the worker counted these):',
-              ', '.join([f'{k.replace("_", " ")} {v:,}' for k, v in sorted(totals.items()) if v and isinstance(v, int)]
+              ', '.join([f'{TOTAL_WORDS.get(k, k.replace("_", " "))} {v:,}' for k, v in sorted(totals.items())
+                         if v and isinstance(v, int)]
                         + ([fields_text(totals['fields'])] if totals.get('fields') else [])), '']
     plan = report.get('plan') or {}
     if plan:
         lines += [f'How the work was cut: {plan.get("pieces")}.', '']
+        told = str(plan.get('piece_instructions') or '').strip()
+        if told:
+            # The job's own decisions, which the summary does not ask the
+            # person to settle again (RP-9, RPF-A10).
+            lines += ['What the job decided, as every piece was told:', _cut(told, JOB_SUMMARY_PLAN_CHARS), '']
     lines.append('Documents:')
     for d in report.get('documents') or []:
         c = d.get('counts') or {}
@@ -890,11 +954,13 @@ def summary_message(report: Dict[str, Any], setup: Optional[str] = None) -> str:
                                  + ([blank_text(c['blank'])] if c.get('blank') else []))
                      + ('. Left blank could not be read: what is blank there is not known.'
                         if d.get('left_unread') else ''))
-    lines.append('In the documents, "left" counts the words and morphemes still blank at the end (the report\'s '
-                 'Left blank), "not_reached" those in sentences the job did not reach, and "left blank" what is still '
-                 'blank of each thing the job fills.')
+    lines.append('In the documents, "left" counts the words and morphemes still blank at the end in sentences the '
+                 'job wrote in (the report\'s Left blank), "untouched" those in sentences it worked and wrote nothing '
+                 'in, which its instructions may have told it to leave, "not_reached" those in sentences the job did '
+                 'not reach, and "left blank" what is still blank of each thing the job fills.')
     proposed = len(report.get('proposed') or []) + (report.get('proposed_more') or 0)
-    lines += ['', f'Changes proposed for a person to approve: {proposed:,}.', '', 'Each piece\'s note:']
+    lines += ['', f'Changes listed for a person, not written (project setup and the like): {proposed:,}.', '',
+              'Each piece\'s note:']
     size, left = 0, 0
     for n in report.get('notes') or []:
         line = f'- {n.get("name") or ""} {n.get("sentences") or ""}: {n.get("note")}'.replace('  ', ' ')
