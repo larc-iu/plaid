@@ -1929,6 +1929,10 @@ class Write:
 class IgtRunner:
     """One job over interlinear text, run by ``core.job.run_job``."""
 
+    #: What its count of people's work names (``core.job.notice``): each
+    #: value, morpheme and link, as the Changes view counts them (REV-RPF2-1).
+    PEOPLE_NOUNS = ('value, morpheme or link', 'values, morphemes or links')
+
     WORK_PHASE = WORK_PHASE
     #: The entries part of a job that never reached its entries.
     NO_ENTRIES = entries_part([], [])

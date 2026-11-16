@@ -16,6 +16,7 @@ import pytest
 
 from node_exe import node_or_skip
 from plaid_agent.core.job import notice
+from plaid_agent.igt.job import IgtRunner
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 RUNNER = os.path.join(HERE, 'notice_mirror.mjs')
@@ -51,4 +52,4 @@ def page(tmp_path_factory):
 def test_the_page_builds_the_workers_top_line_from_the_same_counts(page):
     assert len(page) == len(CASES)
     for totals, line in zip(CASES, page):
-        assert notice(totals) == line, totals
+        assert notice(totals, IgtRunner.PEOPLE_NOUNS) == line, totals

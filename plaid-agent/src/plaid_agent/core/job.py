@@ -732,7 +732,8 @@ def _finish(job: Job, state: str, runner, harmonize, entries, reason: Optional[s
     # The app's part with nothing in it (``runner.NO_ENTRIES``), for a job
     # that never reached its entries.
     entries = entries or dict(getattr(runner, 'NO_ENTRIES', {}))
-    report = build_report(job, state, reason, runner.document_reports(job), harmonize, entries)
+    report = build_report(job, state, reason, runner.document_reports(job), harmonize, entries,
+                          nouns=getattr(runner, 'PEOPLE_NOUNS', None))
     parts = getattr(runner, 'report_parts', None)
     if parts is not None:
         report.update(parts(job))
@@ -935,17 +936,23 @@ def _summary(job: Job, runner, report: Dict[str, Any]) -> Dict[str, Any]:
         return {'summary': None, 'summary_failed': True}
 
 
-def notice(totals: Dict[str, Any]) -> Optional[str]:
+#: What an app's count of people's work names, one and many, when it names
+#: nothing of its own (``runner.PEOPLE_NOUNS``).
+PEOPLE_NOUNS = ('value or link', 'values or links')
+
+
+def notice(totals: Dict[str, Any], nouns: Optional[Tuple[str, str]] = None) -> Optional[str]:
     """The worker's fixed top line of a report (the owner's R4 of
     2026-11-16), from its own counts, never a model's: what the job changed
-    of people's work, and of the text, each said only when there is some.
-    None when it changed neither."""
+    of people's work, in the app's nouns for what it counts (``nouns``, one
+    and many, ``runner.PEOPLE_NOUNS``), and of the text, each said only
+    when there is some. None when it changed neither."""
     def n(k: int, one: str, many: str) -> str:
         return f'{k:,} {one if k == 1 else many}'
     out = []
     people = totals.get('peoples_values_changed') or 0
     if people:
-        out.append(f'People\'s work: {n(people, "value, morpheme or link", "values, morphemes or links")} people '
+        out.append(f'People\'s work: {n(people, *(nouns or PEOPLE_NOUNS))} people '
                    f'wrote {"was" if people == 1 else "were"} changed or removed. What the job wrote in their place '
                    'is unverified.')
     added, changed = totals.get('words_added') or 0, totals.get('tokens_changed') or 0
@@ -988,7 +995,8 @@ def _findings(job: Job, runner, report: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def build_report(job: Job, state: str, reason: Optional[str], documents: List[Dict[str, Any]],
-                 harmonize: Dict[str, Any], entries: Dict[str, Any]) -> Dict[str, Any]:
+                 harmonize: Dict[str, Any], entries: Dict[str, Any],
+                 nouns: Optional[Tuple[str, str]] = None) -> Dict[str, Any]:
     """The report of CONTRACT 5.3: lists, never maps keyed by an id, each cut
     at :data:`JOB_REPORT_LIST_MAX` with its ``-more`` count. ``documents`` is
     one entry per document in the job's order, from the app."""
@@ -1055,7 +1063,7 @@ def build_report(job: Job, state: str, reason: Optional[str], documents: List[Di
         'finished_at': datetime.fromtimestamp(job.now(), timezone.utc).isoformat(timespec='seconds')
         .replace('+00:00', 'Z'),
         'paused_for_people_s': int(job.paused['people']), 'paused_for_model_s': int(job.paused['model']),
-        'stopped': None, 'totals': totals, 'notice': notice(totals), 'documents': documents, 'summary': None,
+        'stopped': None, 'totals': totals, 'notice': notice(totals, nouns), 'documents': documents, 'summary': None,
         'summary_by': None,
         'summary_failed': False,
         'harmonize': {'changed': changed, 'left': left, 'changed_more': changed_more, 'left_more': left_more},

@@ -167,7 +167,8 @@ def test_a_jobs_retype_is_counted_in_its_report_and_its_notice(monkeypatch, _edi
      "their place is unverified. Text: 1 existing word or punctuation mark changed or removed."),
 ])
 def test_the_notice_says_what_was_changed_of_peoples_work_and_the_text(totals, line):
-    assert notice(totals) == line
+    from plaid_agent.igt.job import IgtRunner
+    assert notice(totals, IgtRunner.PEOPLE_NOUNS) == line
 
 
 # --- REV-RPF-W-4: people's work a text edit took away -------------------------------------------

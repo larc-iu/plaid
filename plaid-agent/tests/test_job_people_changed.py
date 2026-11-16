@@ -52,7 +52,9 @@ def test_a_machine_value_changed_or_a_value_restated_does_not():
 def test_an_analysis_replaced_on_peoples_word_counts_and_on_a_blank_word_does_not():
     seg = {'kind': 'set_analysis', 'word_id': 'd1-s1w1', 'morphemes': [{'form': 'ga'}, {'form': 'm'}]}
     blank = {'kind': 'set_analysis', 'word_id': 'd1-s2w1', 'morphemes': [{'form': 'sa'}]}
-    assert _counted([seg]) == (1, 0)
+    # The person's morpheme and its gloss, each, as the Changes view counts
+    # them (REV-RPF2-1).
+    assert _counted([seg]) == (2, 0)
     assert _counted([blank]) == (0, 0)
 
 
