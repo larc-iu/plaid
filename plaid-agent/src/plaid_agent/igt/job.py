@@ -2356,8 +2356,15 @@ class IgtRunner:
             system = build_plan_prompt(project)
             transcript = [{'role': 'user', 'content': self.plan_message(facts, project)}]
             seed(ws.seen, system, transcript, lambda tool, args: True)
+            # The line says how many of the job's documents a read has
+            # printed to it so far, from its own workspace (RPF3-E, RP2-1).
+            ids = {f['id'] for f in facts}
+
+            def read(w):
+                n = sum(1 for d, shown in w.shown.items() if d in ids and shown)
+                return f' {n:,} of {_n(len(ids), "document")} read.' if n else ''
             kit = Toolkit(tools_for=lambda w: toolkit.job_plan_tools(w, plan_only=w.decide_now),
-                          call_tool=self.counting(toolkit.job_plan_call, ''), tracer=TRACER)
+                          call_tool=self.counting(toolkit.job_plan_call, '', read=read), tracer=TRACER)
             self.trace(ws, system, kit, 'plan')
 
             def decided():
@@ -3228,7 +3235,7 @@ class IgtRunner:
         return Pace(self.cfg.model, before_call=before_call, count=self.count, decided=decided,
                     **({'line': line} if line else {}))
 
-    def counting(self, call_tool, where: str):
+    def counting(self, call_tool, where: str, read=None):
         """``call_tool`` that counts each step (each tool call, as the chat
         counts a turn's steps, ``core.trace.plural``) in ``steps_now``, and
         puts the count on the heartbeat's line after its own words:
@@ -3243,7 +3250,9 @@ class IgtRunner:
         def call(w, name, args):
             self.steps_now += 1
             if said:
-                self.counted = (said, f'{said} {plural(self.steps_now, "step")}{where}.')
+                # ``read``: what the workspace has read so far, said after
+                # the line's own words (the planning's, RPF3-E).
+                self.counted = (said, f'{said}{read(w) if read else ""} {plural(self.steps_now, "step")}{where}.')
                 job.say(self.counted[1])
             return call_tool(w, name, args)
         return call
