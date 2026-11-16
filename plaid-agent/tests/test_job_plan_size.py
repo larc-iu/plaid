@@ -86,3 +86,10 @@ def test_the_rules_cost_sentence_holds_for_every_plan_in_sentences():
     """REV-RPF3B-9: true with skip_filled_sentences and with a search."""
     rules = JOB_PLAN_RULES.replace('\n', ' ')
     assert 'A plan in sentences makes at least one model call for each stretch the plan takes.' in rules, rules
+
+
+def test_the_rules_say_nothing_more_is_worked_after_a_selection():
+    """SF round 2: after a whole-selection piece nothing more is worked, so
+    the planner must not count on a walk to finish it."""
+    rules = JOB_PLAN_RULES.replace('\n', ' ')
+    assert 'Nothing more is worked after it: what it leaves empty stays empty.' in rules, rules

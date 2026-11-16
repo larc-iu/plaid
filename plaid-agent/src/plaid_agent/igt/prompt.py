@@ -499,7 +499,8 @@ a summary of each.
 - pieces "selection": one piece for all the documents, reading them with the tools and code. For work across \
 the documents, such as finding where they disagree, and for the same exact change wherever a known value occurs \
 (one value for another): it finds them with search or code and stages each change, which is written in its \
-document. Its findings go in its last message, which the report shows whole, and in tables code makes.
+document. Its findings go in its last message, which the report shows whole, and in tables code makes. Nothing \
+more is worked after it: what it leaves empty stays empty.
 - piece_instructions: only your decisions, as plain imperative sentences naming forms and values exactly. \
 Pieces already have the project's guidelines and the job's instructions. Read the documents to decide.
 - fills: what the instructions ask the job to fill or change, as listed under What a job can fill: the field \
