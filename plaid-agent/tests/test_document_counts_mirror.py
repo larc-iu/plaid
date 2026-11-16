@@ -89,3 +89,11 @@ def test_documents_with_no_matching_sentence_are_counted_apart_from_done(page):
     said = page[-1]
     assert (said['done'], said['withNoMatchingSentence'], said['notReached']) == (1, 2, 1), said
     assert 'documents done 1, documents with no matching sentence 2' in _totals(CASES[-1]), _totals(CASES[-1])
+
+
+def test_read_job_says_the_documents_not_read_through_once():
+    """REV-RPF3B-8: a worker's report holds documents_not_read_through in its
+    totals too, and read_job said it twice."""
+    report = {**CASES[1], 'totals': {**CASES[1]['totals'], 'documents_not_read_through': 2}}
+    said = _totals(report)
+    assert said.count('documents not read through') == 1, said

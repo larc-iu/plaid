@@ -157,8 +157,10 @@ def _words(key: str) -> str:
 
 
 def _totals(report: Dict[str, Any]) -> str:
+    # Each count the documents' own say once (REV-RPF3B-8: the worker's
+    # totals hold documents_not_read_through too).
     totals = {k: v for k, v in (report.get('totals') or {}).items()
-              if k not in ('documents_done', 'documents_not_reached')}
+              if k not in ('documents_done', 'documents_not_reached', 'documents_not_read_through')}
     # The documents as the page counts them (REV-RPF3-4, one function with
     # its own): not read through and skipped apart from done, stopped partway
     # (a sentence finished, or the job's changes held) apart from not reached.
