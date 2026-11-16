@@ -6,7 +6,7 @@
 import { planEndedText } from '@ui/domain/jobs.js';
 import { createOnce } from '@ui/lib/createOnce.js';
 import { statusOf } from '@ui/lib/errors.js';
-import { plural } from '@ui/lib/plural.js';
+import { andList, countOf, plural } from '@ui/lib/plural.js';
 
 // Instructions a job can start from, which fill the Start job dialog's box
 // and can be edited there. Plain text: nothing knows them once the job is
@@ -42,8 +42,15 @@ export const planText = (plan) => {
   if (plan.by === 'none') return `${planEndedText(plan)} Nothing was written.`;
   let text = PIECES_TEXT[plan.pieces] ?? plan.pieces;
   if (plan.pieces === 'sentences' && plan.onlyEmpty) text += ', only those with something empty';
+  // The documents worked apart: smaller than planned, or, after all of them
+  // at once, walked a few sentences at a time (RP-4).
   const smaller = (plan.fallback || []).length;
-  if (smaller) text += `, ${smaller.toLocaleString()} in smaller pieces`;
+  if (smaller) {
+    text +=
+      plan.pieces === 'selection'
+        ? `, then ${smaller.toLocaleString()} in stretches of sentences`
+        : `, ${smaller.toLocaleString()} in smaller pieces`;
+  }
   text += '.';
   // What the plan fills, by the names the report gives (REV-DF-D-1).
   if (Array.isArray(plan.fillsNames)) {
@@ -52,6 +59,63 @@ export const planText = (plan) => {
   // The plan says the instructions ask for the text itself to change
   // (plan_work's edits_text): only then may the job edit it.
   return plan.editsText ? `${text} Text may be edited.` : text;
+};
+
+// What each kind of change a job counts is called (the worker's
+// `changes_parts`, CONTRACT, added by RPF): the report's one definition of a
+// change, split.
+const CHANGE_PART_WORDS = {
+  values: ['value', 'values'],
+  analyses: ['analysis', 'analyses'],
+  links: ['link', 'links'],
+  entries: ['lexicon entry', 'lexicon entries'],
+  text: ['text edit', 'text edits'],
+  other: ['other change', 'other changes'],
+};
+
+// Parts `[{kind, n}]` summed by kind, in the order first met.
+export const sumParts = (lists) => {
+  const sums = new Map();
+  lists.forEach((parts) =>
+    (parts || []).forEach((p) => sums.set(p.kind, (sums.get(p.kind) ?? 0) + (p.n ?? 0))),
+  );
+  return [...sums].map(([kind, n]) => ({ kind, n }));
+};
+
+// "253 (102 analyses and 151 links)": a count of changes with what they are,
+// or the bare count where the parts are not known.
+export const changesText = (n, parts) => {
+  const said = (parts || [])
+    .filter((p) => p.n > 0)
+    .map((p) =>
+      CHANGE_PART_WORDS[p.kind]
+        ? countOf(p.n, ...CHANGE_PART_WORDS[p.kind])
+        : `${p.n.toLocaleString()} ${p.kind}`,
+    );
+  const count = (n ?? 0).toLocaleString();
+  return said.length ? `${count} (${andList(said)})` : count;
+};
+
+// Whether a job edited the text, by its report's counts or its documents'.
+export const jobEditedText = (job) =>
+  (job?.report?.totals?.textChanges ?? 0) > 0 ||
+  (job?.report?.totals?.changesParts || []).some((p) => p.kind === 'text' && p.n > 0) ||
+  (job?.documents || []).some((d) => (d.counts?.textChanges ?? 0) > 0);
+
+// Whether an ended job's report says it wrote nothing at all: no change in
+// its totals or any document, and nothing harmonize changed. Not known (false)
+// for a job with no report.
+export const wroteNothing = (job) => {
+  const report = job?.report;
+  if (!report) return false;
+  const harmonize = report.harmonize || {};
+  return !(
+    (report.totals?.changes ?? 0) > 0 ||
+    (report.documents || []).some((d) => (d.counts?.changes ?? 0) > 0) ||
+    (job.documents || []).some((d) => (d.counts?.changes ?? 0) > 0) ||
+    (harmonize.changed || []).length > 0 ||
+    (harmonize.changedMore ?? 0) > 0
+  );
 };
 
 // What one piece of a job wrote, in the report's words for its totals, in
@@ -79,7 +143,11 @@ export const pieceWrittenText = (piece) => {
   const said = (pairs) =>
     pairs
       .filter(([k]) => counts[k] > 0)
-      .map(([k, label]) => `${label}: ${counts[k].toLocaleString()}`);
+      .map(([k, label]) =>
+        k === 'changes'
+          ? `${label}: ${changesText(counts[k], piece.changesParts)}`
+          : `${label}: ${counts[k].toLocaleString()}`,
+      );
   // A target written outside the setup reads its outside row's count, as the
   // report's rows do, in the order of their names.
   const byId = new Map((piece?.fields || []).map((f) => [f.id, f]));
@@ -167,6 +235,8 @@ const REFUSED_TEXT = {
   'entry-new': 'Change that uses an entry the job made',
   'entry-gone': 'Change that uses an entry the job deleted or merged',
   expression: 'Link inside a multi-word expression the job made',
+  // A job set up to fill only the words it adds (R3).
+  'not-added': 'Value on a word or sentence the job did not add',
 };
 export const refusedText = (code) => REFUSED_TEXT[code] ?? 'Refused';
 
@@ -176,14 +246,17 @@ export const refusedText = (code) => REFUSED_TEXT[code] ?? 'Refused';
 export const changeReasonText = (reason) =>
   reason === 'interrupted' ? 'Not written, the write was interrupted' : reason;
 
+// Why a form the job wrote is left inconsistent, by the worker's code (a
+// closed set, each true of every analysis listed, CONTRACT, added by RPF).
 export const HARMONIZE_LEFT_TEXT = {
-  'people-differ': 'People analyzed it in more than one way',
-  'no-clear-majority': 'No two-thirds majority',
-  'in-use': 'Document in use',
-  touched: 'Changed since the job wrote it',
+  'job-differs-people-differ': 'The job’s analyses differ, and so do people’s',
+  'job-differs-no-majority': 'The job’s analyses differ, none by two thirds',
+  changed: 'Changed after the job wrote it',
+  'beside-others': 'Also holds work that is not the job’s',
   unvouched: 'Not checked',
   commented: 'Has a comment',
   'in-mwe': 'In a multi-word expression',
+  'in-use': 'Document in use',
   refused: 'Could not be written',
 };
 
@@ -240,25 +313,29 @@ export const startJob = (
 
 // The setup a job card gives the job it starts (CONTRACT, "Added by SU"):
 // the targets it may fill, by id and the name the card showed, whether it may
-// edit the text, and the conversation that set it up. Keys of one word, since
-// the client re-cases keys. A card with no `fills` (drafted before cards had
-// them) gives none, and its job has no limit.
+// edit the text, whether it fills only the words it adds (`onlynew`, sent
+// only when the card says so, R3), and the conversation that set it up. Keys
+// of one word, since the client re-cases keys. A card with no `fills`
+// (drafted before cards had them) gives none, and its job has no limit.
 export const jobSetupOf = (card, conversationId = null) => {
   if (!Array.isArray(card?.fills)) return null;
   return {
     fills: card.fills.map((f) => ({ id: f.id, name: f.name })),
     text: card.editsText === true,
+    ...(card.onlyNew === true ? { onlynew: true } : {}),
     ...(conversationId ? { conversation: conversationId } : {}),
   };
 };
 
 // Whether a job's `setup` has the card's shape (the worker's rule,
 // igt/targets.py `readable`): `fills` a list of maps each with a string `id`
-// and a string `name`, and `text` true or false. Core keeps any map, so the
-// page draws nothing of one that is not (REV-SU-F-1).
+// and a string `name`, `text` true or false, and `onlynew`, where there is
+// one, true or false. Core keeps any map, so the page draws nothing of one
+// that is not (REV-SU-F-1).
 export const readableSetup = (setup) =>
   Array.isArray(setup?.fills) &&
   typeof setup.text === 'boolean' &&
+  (setup.onlynew === undefined || typeof setup.onlynew === 'boolean') &&
   setup.fills.every(
     (f) =>
       f !== null &&

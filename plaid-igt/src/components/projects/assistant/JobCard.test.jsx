@@ -425,6 +425,37 @@ describe('the job card', () => {
       });
     });
 
+    // R3 (RP-6): a job that edits the text may fill only the words it adds.
+    // The card reads the record's `only_new` as `onlyNew`, and the setup
+    // says it in one word, `onlynew`, which no client re-cases.
+    it('says it fills only the words the job adds, and starts a job whose setup says so', async () => {
+      const client = fakeClient();
+      const { v } = await draw({
+        card: card({ fills: [{ id: 'L2', name: 'Word class' }], editsText: true, onlyNew: true }),
+        client,
+        conversationId: 'conv-1',
+      });
+      expect(row(v, 'Fills')).toBe('Word classFills only the words this job adds.');
+      await v.step(() => button(v, 'Start job').click());
+      await v.step(async () => {});
+      expect(client.jobs.create.mock.calls[0][1].setup).toEqual({
+        fills: [{ id: 'L2', name: 'Word class' }],
+        text: true,
+        onlynew: true,
+        conversation: 'conv-1',
+      });
+      // Not said, and not sent, where the card does not say it.
+      const other = fakeClient();
+      const plain = await draw({
+        card: card({ fills: [{ id: 'L2', name: 'Word class' }], editsText: true, onlyNew: false }),
+        client: other,
+      });
+      expect(row(plain.v, 'Fills')).toBe('Word class');
+      await plain.v.step(() => button(plain.v, 'Start job').click());
+      await plain.v.step(async () => {});
+      expect(other.jobs.create.mock.calls[0][1].setup).not.toHaveProperty('onlynew');
+    });
+
     it("an old conversation's card, with no fills, shows neither row and starts a job with no setup", async () => {
       const client = fakeClient();
       const { v } = await draw({ card: card(), client, conversationId: 'conv-1' });

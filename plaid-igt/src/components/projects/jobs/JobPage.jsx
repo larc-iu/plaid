@@ -35,13 +35,14 @@ import {
   jobStateText,
   jobStoppable,
 } from '@ui/domain/jobs.js';
-import { JobReport } from './JobReport.jsx';
+import { JobFindings, JobReport } from './JobReport.jsx';
 import { JobHistoryLinks } from './JobHistoryLinks.jsx';
 import { JobActivity } from './JobActivity.jsx';
 import { FillsNames } from './jobLines.jsx';
 import {
   aheadText,
   durationText,
+  jobEditedText,
   jobName,
   jobsTabPath,
   changesGroup,
@@ -49,6 +50,7 @@ import {
   planText,
   readableSetup,
   stoppedPartway,
+  wroteNothing,
 } from './jobText.js';
 
 /**
@@ -76,6 +78,10 @@ export const JobPage = ({ project, projectId, jobId, client }) => {
   // `undone`): its entry in the first of the job's documents whose History
   // has it, or null until found or where none does.
   const [undoneHref, setUndoneHref] = useState(null);
+  // The plan as its row in the work list gives it, while the report has none
+  // (JobActivity): the job's plan from the moment planning ends (RP-9).
+  const [livePlan, setLivePlan] = useState(null);
+  useEffect(() => setLivePlan(null), [jobId]);
   const undoneOp = job?.undone?.operation ?? null;
   const documentIds = (job?.documents || []).map((d) => d.documentId).join(',');
   useEffect(() => {
@@ -194,8 +200,11 @@ export const JobPage = ({ project, projectId, jobId, client }) => {
   const stoppable = jobStoppable(job) && canStopJob(job, project, user);
   const discussable = !isJobActive(job) && !!job.report;
   // A maintainer undoes an ended job whole, documents and lexicon together.
-  // Not while it stands undone: a redo, from History, offers it again.
-  const undoable = !isJobActive(job) && canManageProject(project, user) && !job.undone;
+  // Not while it stands undone: a redo, from History, offers it again. Not
+  // for a job that wrote nothing (RP-4).
+  const undoable =
+    !isJobActive(job) && canManageProject(project, user) && !job.undone && !wroteNothing(job);
+  const findings = typeof job.report?.findings === 'string' ? job.report.findings : '';
 
   // After an undo: the job read again, which says it stands undone.
   const afterUndo = async (res) => {
@@ -247,6 +256,8 @@ export const JobPage = ({ project, projectId, jobId, client }) => {
           )}
         </p>
       )}
+      {/* The one report of a job that fills nothing, first (RP-4). */}
+      {findings && <JobFindings findings={findings} />}
       {undoable && (
         <UndoDialog
           open={undoOpen}
@@ -255,6 +266,7 @@ export const JobPage = ({ project, projectId, jobId, client }) => {
           entry={{ id: jobId, label: jobName(job) }}
           noun="job"
           send={({ dryRun }) => client.jobs.undo(jobId, { dryRun })}
+          tokens={job.report ? (jobEditedText(job) ? 'with-text' : 'morphemes') : undefined}
           errorText={jobUndoError}
           place={jobPlacer({
             projectId,
@@ -264,10 +276,16 @@ export const JobPage = ({ project, projectId, jobId, client }) => {
           onUndone={afterUndo}
         />
       )}
-      <JobFacts job={job} readAt={readAt} />
+      <JobFacts job={job} readAt={readAt} plan={job.report?.plan ?? livePlan} />
       <h3 className={`${TYPE.card} mb-2 mt-8`}>Documents</h3>
       <JobDocuments job={job} projectId={projectId} />
-      <JobActivity client={client} job={job} projectId={projectId} readAt={readAt} />
+      <JobActivity
+        client={client}
+        job={job}
+        projectId={projectId}
+        readAt={readAt}
+        onPlan={setLivePlan}
+      />
       {job.report && (
         <JobReport report={job.report} projectId={projectId} vocabs={project.vocabs || []} />
       )}
@@ -305,7 +323,8 @@ const JobSetup = ({ job, projectId, user }) => {
   const gone = Array.isArray(planGone) ? planGone.map((g) => g?.id) : [];
   return (
     <p className="-mt-4 mb-6 text-sm" data-testid="job-setup">
-      Set up to fill <FillsNames fills={setup.fills} none="nothing" gone={gone} />.{' '}
+      Set up to fill <FillsNames fills={setup.fills} none="nothing" gone={gone} />
+      {setup.onlynew === true && ', only on the words it adds'}.{' '}
       {setup.text === true ? 'Text may be edited.' : 'Text unchanged.'}
       {conversation && (
         <>
@@ -389,7 +408,8 @@ const PlannedInstructions = ({ text }) => {
 const cutText = (text, given) =>
   `Cut to ${[...text].length.toLocaleString()} of ${given.toLocaleString()} characters.`;
 
-const JobFacts = ({ job, readAt }) => {
+// `plan`: the report's, or while there is none the plan row's (`livePlan`).
+const JobFacts = ({ job, readAt, plan }) => {
   const end = job.finishedAt ? new Date(job.finishedAt).getTime() : readAt;
   const waited = waitedMs(job);
   return (
@@ -397,7 +417,7 @@ const JobFacts = ({ job, readAt }) => {
       <Fact label="Instructions">
         <span className="whitespace-pre-wrap">{job.instructions}</span>
       </Fact>
-      {job.report?.plan && <Fact label="Plan">{planText(job.report.plan)}</Fact>}
+      {plan && <Fact label="Plan">{planText(plan)}</Fact>}
       {job.report?.plan?.pieceInstructions && (
         <Fact label="Assistant’s instructions">
           {job.report.plan.instructionsCut > 0 && (

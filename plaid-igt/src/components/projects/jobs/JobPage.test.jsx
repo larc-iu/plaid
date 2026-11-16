@@ -155,7 +155,7 @@ const REPORT = {
     left: [
       {
         form: 'tsa',
-        reason: 'no-clear-majority',
+        reason: 'job-differs-no-majority',
         analyses: [
           { analysis: 'tsa ‘that’', count: 2 },
           { analysis: 'ts-a ‘DEM-3’', count: 2 },
@@ -529,6 +529,17 @@ describe('the job page', () => {
     expect(line(v.container)).toBeNull();
     expect(text(v.container)).not.toContain('Set up to');
     await v.unmount();
+
+    // R3: only the words the job adds.
+    v = await mount(
+      clientOf(
+        jobOf({ setup: { fills: [{ id: 'L2', name: 'Word class' }], text: true, onlynew: true } }),
+      ),
+    );
+    expect(line(v.container).textContent).toBe(
+      'Set up to fill Word class, only on the words it adds. Text may be edited.',
+    );
+    await v.unmount();
   });
 
   it('says when planning ended with no plan and nothing was written', async () => {
@@ -602,6 +613,7 @@ describe('the job page', () => {
       { fills: [{ id: 'x' }], text: false },
       { fills: [{ name: 'Gloss' }], text: false },
       { fills: [{ id: 'x', name: 'Gloss' }], text: 'yes' },
+      { fills: [{ id: 'x', name: 'Gloss' }], text: true, onlynew: 'yes' },
     ]) {
       const v = await mount(clientOf(jobOf({ setup })));
       expect(text(v.container)).toContain('Instructions');
@@ -678,8 +690,10 @@ describe('the job page', () => {
     expect(headings.indexOf('Totals')).toBe(0);
     expect(headings.indexOf('Assistant’s summary')).toBe(1);
     const summary = report.querySelector('[data-testid="job-summary"]');
-    expect(summary.previousElementSibling.textContent).toBe('Assistant’s summary');
-    expect(text(summary)).toBe('The job glossed Story A and proposed one change.');
+    expect(summary.previousElementSibling.previousElementSibling.textContent).toBe(
+      'Assistant’s summary',
+    );
+    expect(text(summary).trim()).toBe('The job glossed Story A and proposed one change.');
     await v.unmount();
   });
 
@@ -699,8 +713,10 @@ describe('the job page', () => {
     expect(headings.slice(0, 2)).toEqual(['Totals', 'Assistant’s summary']);
     expect(headings).toContain('Tables');
     const summary = section.querySelector('[data-testid="job-summary"]');
-    expect(summary.previousElementSibling.textContent).toBe('Assistant’s summary');
-    expect(text(summary)).toBe('Ka is glossed go three times and come once.');
+    expect(summary.previousElementSibling.previousElementSibling.textContent).toBe(
+      'Assistant’s summary',
+    );
+    expect(text(summary).trim()).toBe('Ka is glossed go three times and come once.');
     await v.unmount();
   });
 
@@ -909,7 +925,7 @@ describe('the job page', () => {
     expect(t).toContain('ka ‘go’');
     expect(t).toContain('A person’s analysis');
     expect(t).toContain('ka ‘come’ ×2');
-    expect(t).toContain('No two-thirds majority');
+    expect(t).toContain('The job’s analyses differ, none by two thirds');
     expect(t).toContain('And 7 more forms.');
     // Entries, each list with its own cut, and the lexicon's machine drafts.
     expect(t).toContain('ka ‘go’');
@@ -921,7 +937,7 @@ describe('the job page', () => {
     expect(t).toContain('And 2 more entries.');
     expect(t).not.toContain('Deleted');
     // The prose the assistant wrote, after the totals.
-    expect(text(report.querySelector('[data-testid="job-summary"]'))).toBe(
+    expect(text(report.querySelector('[data-testid="job-summary"]')).trim()).toBe(
       'The job glossed Story A and proposed one change.',
     );
     // What the job proposed and did not apply: project setup, where, and what.
@@ -1443,15 +1459,19 @@ describe('the job page', () => {
     await v.unmount();
   });
 
+  // RP-1, RP-3, RP-8, RP-9: "Changed since the job wrote it" stood beside
+  // forms nobody changed. Each code the worker writes is a closed set (A1),
+  // each worded by what is true of it.
   it('words every reason a form is left inconsistent', async () => {
     const reasons = {
-      'people-differ': 'People analyzed it in more than one way',
-      'no-clear-majority': 'No two-thirds majority',
-      'in-use': 'Document in use',
-      touched: 'Changed since the job wrote it',
+      'job-differs-people-differ': 'The job’s analyses differ, and so do people’s',
+      'job-differs-no-majority': 'The job’s analyses differ, none by two thirds',
+      changed: 'Changed after the job wrote it',
+      'beside-others': 'Also holds work that is not the job’s',
       unvouched: 'Not checked',
       commented: 'Has a comment',
       'in-mwe': 'In a multi-word expression',
+      'in-use': 'Document in use',
       refused: 'Could not be written',
     };
     const left = Object.keys(reasons).map((reason) => ({
@@ -1462,12 +1482,15 @@ describe('the job page', () => {
     const report = { ...REPORT, harmonize: { ...REPORT.harmonize, left, leftMore: 0 } };
     const v = await mount(clientOf(jobOf({ state: 'done', report })));
     const section = v.container.querySelector('section[aria-label="Report"]');
-    const t = text(section);
-    const cells = all(section, 'td').map((td) => td.textContent);
+    const table = byText(section, 'th', 'Reason').closest('table');
+    const t = text(table);
+    const cells = all(table, 'td').map((td) => td.textContent);
     for (const [code, words] of Object.entries(reasons)) {
       expect(cells).toContain(words);
       expect(t).not.toContain(` ${code} `);
     }
+    expect(t).not.toContain('Changed since the job wrote it');
+    expect(t).not.toContain('People analyzed it in more than one way');
     await v.unmount();
   });
 
@@ -1741,6 +1764,218 @@ describe('the job page', () => {
     expect(text(tables[0])).not.toContain('gaam');
     expect(text(tables[1])).toContain('Rename entry gam to gaam');
     expect(text(tables[1].previousElementSibling)).toBe('Not written, the write was interrupted');
+    await v.unmount();
+  });
+
+  // R4 (RP-6, RP-2, RP-9): the counted facts first, the worker's own line
+  // when people's work or the text changed, then the assistant's account,
+  // marked as its own and unchecked, its Markdown rendered as the chat does.
+  it('puts the worker’s line first, then the counts, then the assistant’s account as its own', async () => {
+    const notice =
+      'People’s work: 33 values, analyses or links people wrote were changed or removed. What the job wrote in their place is unverified.';
+    const report = {
+      ...REPORT,
+      notice,
+      summary: 'Filled **Word class** on `doa`.\n\n- first check s3',
+      summaryBy: 'model',
+    };
+    const v = await mount(clientOf(jobOf({ state: 'done', report })));
+    const section = v.container.querySelector('section[aria-label="Report"]');
+    const line = section.querySelector('[data-testid="job-notice"]');
+    expect(text(line)).toBe(notice);
+    const order = [...section.querySelectorAll('[data-testid="job-notice"], h3')].map((el) =>
+      el.tagName === 'H3' ? el.textContent : 'notice',
+    );
+    expect(order.slice(0, 3)).toEqual(['notice', 'Totals', 'Assistant’s summary']);
+    const summary = section.querySelector('[data-testid="job-summary"]');
+    expect(text(summary.previousElementSibling)).toBe(
+      'Written by the assistant, not checked against the counts above.',
+    );
+    expect(summary.querySelector('strong').textContent).toBe('Word class');
+    expect(summary.querySelector('code').textContent).toBe('doa');
+    expect(summary.querySelector('li').textContent).toBe('first check s3');
+    expect(text(summary)).not.toContain('**');
+    await v.unmount();
+    // No line when the worker wrote none.
+    const plain = await mount(clientOf(jobOf({ state: 'done', report: REPORT })));
+    expect(plain.container.querySelector('[data-testid="job-notice"]')).toBeNull();
+    await plain.unmount();
+  });
+
+  it('renders each piece’s note as the chat renders the assistant’s text', async () => {
+    const report = {
+      ...REPORT,
+      notes: [
+        { document: 'd1', name: 'Story A', sentences: 's1 to s5', note: 'Left **s3** blank.' },
+      ],
+    };
+    const v = await mount(clientOf(jobOf({ state: 'done', report })));
+    const section = v.container.querySelector('section[aria-label="Report"]');
+    expect(byText(section, 'strong', 's3')).toBeTruthy();
+    expect(text(section)).not.toContain('**');
+    await v.unmount();
+  });
+
+  // A3 (RP-3, RP-6): one definition of changes, said in its parts.
+  it('says what the changes written are, in the parts the worker counts', async () => {
+    const report = {
+      ...REPORT,
+      totals: {
+        ...REPORT.totals,
+        changes: 253,
+        changesParts: [
+          { kind: 'analyses', n: 102 },
+          { kind: 'links', n: 151 },
+        ],
+      },
+    };
+    let v = await mount(clientOf(jobOf({ state: 'done', report })));
+    expect(totals(v.container)['Changes written']).toBe('253 (102 analyses and 151 links)');
+    await v.unmount();
+    // Core's own report keeps each document's counts: the parts are summed.
+    const core = {
+      ...REPORT,
+      totals: { ...REPORT.totals, changes: 193 },
+      documents: [
+        {
+          documentId: 'd1',
+          name: 'Story A',
+          skipped: [],
+          counts: {
+            changes: 190,
+            changesParts: [
+              { kind: 'values', n: 175 },
+              { kind: 'text', n: 14 },
+            ],
+          },
+        },
+        {
+          documentId: 'd2',
+          name: 'Story B',
+          skipped: [],
+          counts: { changes: 3, changesParts: [{ kind: 'values', n: 3 }] },
+        },
+      ],
+    };
+    v = await mount(clientOf(jobOf({ state: 'done', report: core })));
+    expect(totals(v.container)['Changes written']).toBe('193 (178 values and 14 text edits)');
+    await v.unmount();
+    // Every kind has its words.
+    const every = {
+      ...REPORT,
+      totals: {
+        ...REPORT.totals,
+        changes: 7,
+        changesParts: ['values', 'analyses', 'links', 'entries', 'text', 'other'].map((kind) => ({
+          kind,
+          n: 1,
+        })),
+      },
+    };
+    v = await mount(clientOf(jobOf({ state: 'done', report: every })));
+    expect(totals(v.container)['Changes written']).toBe(
+      '7 (1 value, 1 analysis, 1 link, 1 lexicon entry, 1 text edit and 1 other change)',
+    );
+    await v.unmount();
+  });
+
+  // A9: what is blank in sentences the job worked and changed nothing in is
+  // counted, never listed.
+  it('counts apart what is blank in sentences the job did not change', async () => {
+    const blank = [{ target: 'Word class', unit: 'word', left: 2, untouched: 45 }];
+    const report = {
+      ...REPORT,
+      totals: { ...REPORT.totals, blank },
+      documents: [
+        {
+          documentId: 'd1',
+          name: 'Story A',
+          skipped: [],
+          left: [
+            { ref: 's3.w2', sentenceId: 'sen3', begin: 4, form: 'ka', targets: ['Word class'] },
+          ],
+          leftMore: 1,
+          counts: { blank, leftUnits: [{ unit: 'word', left: 2 }] },
+        },
+      ],
+    };
+    const v = await mount(clientOf(jobOf({ state: 'done', report })));
+    const section = v.container.querySelector('section[aria-label="Report"]');
+    const sums = totals(section);
+    expect(sums['Word class left blank']).toBe('2 words');
+    expect(sums['Word class blank in sentences the job did not change']).toBe('45 words');
+    expect(text(section)).toContain(
+      'Blank in sentences the job did not change: Word class 45 words.',
+    );
+    await v.unmount();
+  });
+
+  // A7: a value refused on a word the job did not add.
+  it('words a value refused on a word the job did not add', async () => {
+    const report = {
+      ...REPORT,
+      documents: [
+        {
+          documentId: 'd1',
+          name: 'Story A',
+          skipped: [],
+          left: [],
+          leftMore: 0,
+          refused: [{ sentence: 's2', sentenceId: 'sen2', what: 'x', code: 'not-added' }],
+        },
+      ],
+    };
+    const v = await mount(clientOf(jobOf({ state: 'done', report })));
+    expect(text(v.container)).toContain('s2 Value on a word or sentence the job did not add');
+    await v.unmount();
+  });
+
+  // A5, RP-4: the one report of a job that fills nothing, in full, first.
+  it('shows the findings of a job that fills nothing first on the page, rendered, with Copy', async () => {
+    const findings = '## Part 1\n\n| form | glosses |\n|---|---|\n| на | AOR 78, AOC 22 |\n';
+    const report = {
+      ...REPORT,
+      findings,
+      summary: 'The job wrote no change and proposed none.',
+      summaryBy: 'worker',
+      plan: { pieces: 'selection', by: 'model', fallback: [], leftOut: [], fillsNames: [] },
+      totals: { ...REPORT.totals, changes: 0, proposed: 0 },
+    };
+    const writeText = vi.fn(async () => {});
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+    const v = await mount(clientOf(jobOf({ state: 'done', report })));
+    const block = v.container.querySelector('[data-testid="job-findings"]');
+    expect(block).not.toBeNull();
+    // Before the job's facts and the report.
+    const facts = v.container.querySelector('dl');
+    expect(block.compareDocumentPosition(facts) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(block.querySelector('h2, h3').textContent).toBe('Findings');
+    expect(block.querySelector('td').textContent).toBe('на');
+    expect(text(block)).not.toContain('|---|');
+    await v.step(() => byText(block, 'button', 'Copy').click());
+    await v.step(async () => {});
+    expect(writeText).toHaveBeenCalledWith(findings);
+    await v.unmount();
+  });
+
+  it('says a plan of all the documents at once that was walked after it so', async () => {
+    const plan = (fallback) => ({
+      pieces: 'selection',
+      by: 'model',
+      fallback,
+      leftOut: [],
+      fillsNames: ['Gloss'],
+    });
+    let v = await mount(clientOf(jobOf({ state: 'done', report: { ...REPORT, plan: plan([]) } })));
+    expect(totals(v.container).Plan).toBe('Worked on all the documents at once. Fills: Gloss.');
+    await v.unmount();
+    const fallback = [1, 2, 3, 4, 5].map((n) => ({ documentId: `d${n}`, reason: 'walk' }));
+    v = await mount(
+      clientOf(jobOf({ state: 'done', report: { ...REPORT, plan: plan(fallback) } })),
+    );
+    expect(totals(v.container).Plan).toBe(
+      'Worked on all the documents at once, then 5 in stretches of sentences. Fills: Gloss.',
+    );
     await v.unmount();
   });
 

@@ -194,5 +194,8 @@ describe('a job card in the Markdown export', () => {
     expect(md({ ...CARD, fills: [], editsText: true })).toContain(
       'Fills: Nothing. Text: May be edited.',
     );
+    expect(
+      md({ ...CARD, fills: [{ id: 'L2', name: 'Word class' }], editsText: true, onlyNew: true }),
+    ).toContain('Fills: Word class, only on the words the job adds. Text: May be edited.');
   });
 });

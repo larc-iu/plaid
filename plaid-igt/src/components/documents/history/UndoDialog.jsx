@@ -49,7 +49,8 @@ const UNKNOWN_UNDO =
  * every link to them: each vocabulary's History, at this entry.
  *
  * `send({dryRun})`, where it is not one entry's undo through `scope` (a job's
- * undo), and `noun`, what the title calls it ("job"). `errorText(err,
+ * undo), and `noun`, what the title calls it ("job"). `tokens`, with no
+ * `tokenRows`, says what the tokens are (undoneLine). `errorText(err,
  * fallback)` words a refusal, undoError by default. `onUndone(summary)` is
  * called after the undo, with core's answer, or with null when it is not
  * known whether the undo was made.
@@ -65,6 +66,7 @@ export const UndoDialog = ({
   errorText = undoError,
   place,
   tokenRows,
+  tokens,
   vocabularies = [],
   onUndone,
 }) => {
@@ -106,7 +108,7 @@ export const UndoDialog = ({
     };
   }, [open, entryId, client, documentId, vocabLayerId, reread]);
 
-  const line = preview ? undoneLine(preview, { tokenRows }) : '';
+  const line = preview ? undoneLine(preview, { tokenRows, tokens }) : '';
   const groups = preview ? leftGroups(preview, place) : [];
   // Core lists the first rows left only: past them, each group counts the
   // rows listed, and one line says how many more there are.
@@ -123,7 +125,7 @@ export const UndoDialog = ({
     setBusy(true);
     try {
       const res = await sendRef.current({ dryRun: false });
-      const { title, message, undid } = undoneToast(res, { tokenRows });
+      const { title, message, undid } = undoneToast(res, { tokenRows, tokens });
       (undid ? notifySuccess : notifyInfo)(message, title);
       onOpenChange(false);
       await onUndoneRef.current?.(res);

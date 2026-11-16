@@ -206,6 +206,7 @@ export const JobCard = ({
             <dt className="text-muted-foreground">Fills</dt>
             <dd className="min-w-0">
               <FillsNames fills={setup.fills} none="Nothing" />
+              {setup.onlynew === true && <p>Fills only the words this job adds.</p>}
             </dd>
             <dt className="text-muted-foreground">Text</dt>
             <dd>

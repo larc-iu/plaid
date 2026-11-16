@@ -4,10 +4,11 @@ import { renderComponent, byText, all } from '@ui/test/renderComponent.jsx';
 import { ConfirmProvider } from '@ui/components/shared/ConfirmProvider';
 
 // The job page's list of the job's work (BRIEF LV, "Work so far" while it runs, "Work, in order" once it has ended): a row per piece of the job's work as its
-// worker summed it up, newest first and the plan last, read again with each
-// read of the job, capped at the tall list's page with Show more, kept above
-// the report once the job has ended. And each document's Changes link while
-// the job runs says it is so far.
+// worker summed it up, newest first, read again with each read of the job,
+// capped at the tall list's page with Show more, kept above the report once
+// the job has ended. The plan's row is the page's Plan line above the list,
+// from the moment planning ends (RPF-P4). And each document's Changes link
+// while the job runs says it is so far.
 const auth = vi.hoisted(() => ({ user: { id: 'w', isAdmin: false } }));
 vi.mock('../../../contexts/AuthContext', () => ({ useAuth: () => auth }));
 vi.mock('@/utils/feedback', () => ({ notifyError: vi.fn() }));
@@ -122,6 +123,11 @@ const activity = (root) =>
   root.querySelector('section[aria-label="Work so far"], section[aria-label="Work, in order"]');
 const rows = (root) => all(activity(root), '[data-testid="job-activity"] > li');
 const text = (el) => el.textContent.replace(/\s+/g, ' ').trim();
+// The job's facts, label to value.
+const facts = (root) =>
+  Object.fromEntries(
+    all(root, 'dl dt').map((dt) => [dt.textContent, dt.nextElementSibling.textContent]),
+  );
 
 beforeEach(() => {
   auth.user = { id: 'w', isAdmin: false };
@@ -143,7 +149,7 @@ describe('the job page’s list of its work', () => {
     await v.unmount();
   });
 
-  it('fills in as pieces finish, newest first, the plan last, keeping the rows it shows', async () => {
+  it('fills in as pieces finish, newest first, the plan above the list, keeping the rows it shows', async () => {
     vi.useFakeTimers();
     const client = clientOf(
       [jobOf()],
@@ -151,16 +157,22 @@ describe('the job page’s list of its work', () => {
     );
     const v = await mount(client);
     expect(rows(v.container)).toHaveLength(0);
+    expect(facts(v.container).Plan).toBeUndefined();
     await v.step(() => vi.advanceTimersByTimeAsync(JOB_POLL_MS));
-    expect(rows(v.container).map(text)).toEqual([expect.stringContaining('Plan')]);
-    expect(text(rows(v.container)[0])).toContain('Worked in stretches of sentences. Fills: Gloss.');
-    expect(text(rows(v.container)[0])).toContain('3 steps');
+    // RP-9: the plan, the one statement of what a job from the form fills,
+    // while the job runs, above the list and not in it.
+    expect(rows(v.container)).toHaveLength(0);
+    expect(facts(v.container).Plan).toBe('Worked in stretches of sentences. Fills: Gloss.');
+    const plan = byText(v.container, 'dt', 'Plan');
+    expect(
+      plan.compareDocumentPosition(activity(v.container)) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
     await v.step(() => vi.advanceTimersByTimeAsync(JOB_POLL_MS));
-    const planRow = rows(v.container)[1];
-    expect(rows(v.container).map((li) => li.dataset.seq)).toEqual(['000001', '000000']);
+    const firstRow = rows(v.container)[0];
+    expect(rows(v.container).map((li) => li.dataset.seq)).toEqual(['000001']);
     await v.step(() => vi.advanceTimersByTimeAsync(JOB_POLL_MS));
-    expect(rows(v.container).map((li) => li.dataset.seq)).toEqual(['000002', '000001', '000000']);
-    expect(rows(v.container)[2]).toBe(planRow);
+    expect(rows(v.container).map((li) => li.dataset.seq)).toEqual(['000002', '000001']);
+    expect(rows(v.container)[1]).toBe(firstRow);
     const [second, first] = rows(v.container);
     // Where, as a link into the grid at its first sentence.
     expect(byText(first, 'a', 'Story A s1 to s2').getAttribute('href')).toBe(
@@ -170,10 +182,10 @@ describe('the job page’s list of its work', () => {
       'Sentences written in: 2, Changes written: 6, Words analyzed: 4, Gloss: 2 values.',
     );
     expect(text(first)).toContain('2 steps');
-    // The note in full, as written.
-    expect(first.querySelector('p[dir="auto"]').textContent).toBe(
-      'Glossed s1 and s2.\nLeft s2.w3: no precedent.',
-    );
+    // The note in full, as the chat renders the assistant's text.
+    const note = first.querySelector('[dir="auto"]');
+    expect(text(note)).toBe('Glossed s1 and s2.Left s2.w3: no precedent.');
+    expect(note.querySelector('br')).not.toBeNull();
     expect(byText(second, 'a', 'Story A s3')).toBeTruthy();
     expect(text(second)).toContain('Nothing written.');
     expect(all(second, 'p').map(text)).toEqual(
@@ -186,19 +198,26 @@ describe('the job page’s list of its work', () => {
     expect(byText(second, 'a', 's3').getAttribute('href')).toBe(
       '/projects/p1/documents/d1?tab=analyze&focusSentence=sen3',
     );
-    expect(second.querySelector('p[dir="auto"]')).toBe(null);
+    expect(second.querySelector('[dir="auto"]')).toBe(null);
     await v.unmount();
   });
 
-  it('shows the newest page and more on Show more', async () => {
-    const client = clientOf([jobOf()], [page([SECOND, FIRST], 'c'), page([SECOND, FIRST, PLAN])]);
+  it('shows the newest page and more on Show more, and reads the plan once past the first page', async () => {
+    const client = clientOf(
+      [jobOf()],
+      [page([SECOND, FIRST], 'c'), page([SECOND, FIRST, PLAN]), page([SECOND, FIRST, PLAN])],
+    );
     const v = await mount(client);
     expect(rows(v.container)).toHaveLength(2);
+    // The plan's row is the oldest: read once, at the route's cap.
+    expect(client.jobs.piecesPage).toHaveBeenNthCalledWith(2, 'j1', { limit: 1000 });
+    expect(facts(v.container).Plan).toBe('Worked in stretches of sentences. Fills: Gloss.');
     await v.step(() => byText(activity(v.container), 'button', 'Show more').click());
     expect(client.jobs.piecesPage).toHaveBeenLastCalledWith('j1', {
       limit: 2 * TALL_LIST_PAGE_SIZE,
     });
-    expect(rows(v.container)).toHaveLength(3);
+    expect(client.jobs.piecesPage).toHaveBeenCalledTimes(3);
+    expect(rows(v.container)).toHaveLength(2);
     expect(all(activity(v.container), 'button')).toHaveLength(0);
     await v.unmount();
   });
@@ -221,7 +240,7 @@ describe('the job page’s list of its work', () => {
       report: { totals: { documentsDone: 1, sentences: 2 }, documents: [] },
     });
     const v = await mount(clientOf([ended], [page([FIRST, PLAN])]));
-    expect(rows(v.container)).toHaveLength(2);
+    expect(rows(v.container)).toHaveLength(1);
     expect(activity(v.container).getAttribute('aria-label')).toBe('Work, in order');
     const report = v.container.querySelector('section[aria-label="Report"]');
     expect(

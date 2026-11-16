@@ -95,7 +95,9 @@ const jobCardToMarkdown = (card) => {
       ? []
       : [
           '',
-          markdownText(`Fills: ${fills}. Text: ${card.editsText ? 'May be edited' : 'Unchanged'}.`),
+          markdownText(
+            `Fills: ${fills}${card.onlyNew === true ? ', only on the words the job adds' : ''}. Text: ${card.editsText ? 'May be edited' : 'Unchanged'}.`,
+          ),
         ];
   return [
     // A proposal until its job started, as the card heads it.

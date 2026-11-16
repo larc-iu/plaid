@@ -66,17 +66,21 @@ test('a running job lists each piece as it finishes, with its note and its Chang
     await page.goto(`/#/projects/${projectId}/jobs/${job.id}`);
     const activity = page.getByRole('region', { name: 'Work so far' });
     const rows = activity.getByTestId('job-activity').locator(':scope > li');
-    await expect(rows).toHaveCount(2, { timeout: 90_000 });
+    await expect(rows).toHaveCount(1, { timeout: 90_000 });
     // Still running: no report yet.
     expect((await client.jobs.get(job.id)).state).toBe('running');
     await expect(page.getByRole('region', { name: 'Report' })).toHaveCount(0);
 
-    const [piece, plan] = [rows.nth(0), rows.nth(1)];
-    await expect(plan).toContainText('Plan');
-    await expect(plan).toContainText('Worked one document at a time. Fills: Gloss.');
+    // The plan is the page's Plan line while the job runs, above the list,
+    // not a row of it (RPF-P4).
+    const plan = page
+      .locator('dt', { hasText: /^Plan$/ })
+      .locator('xpath=following-sibling::dd[1]');
+    await expect(plan).toHaveText('Worked one document at a time. Fills: Gloss.');
+    const piece = rows.nth(0);
     await expect(piece).toContainText('Gloss: 1 value.');
     await expect(piece).toContainText('1 step');
-    await expect(piece.locator('p[dir="auto"]')).toHaveText(NOTE);
+    await expect(piece.locator('[dir="auto"]')).toHaveText(NOTE);
     const where = piece.getByRole('link', { name: DOC, exact: true });
     // A piece of the whole document links the document.
     await expect(where).toHaveAttribute('href', `#/projects/${projectId}/documents/${documentId}`);

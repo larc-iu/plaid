@@ -212,6 +212,85 @@ describe('Undo job', () => {
     await v.unmount();
   });
 
+  // RP-4: Undo job beside a job that wrote nothing.
+  it('is not offered for a job whose report says it wrote nothing', async () => {
+    const nothing = {
+      totals: { changes: 0 },
+      harmonize: { changed: [], left: [], changedMore: 0, leftMore: 0 },
+    };
+    let v = await mount(clientOf(jobOf({ report: nothing })));
+    expect(button(v.container, 'Undo job')).toBeNull();
+    await v.unmount();
+    // What harmonize changed is a write too.
+    v = await mount(
+      clientOf(
+        jobOf({
+          report: {
+            ...nothing,
+            harmonize: { ...nothing.harmonize, changed: [{ form: 'ka', to: 'x', from: [] }] },
+          },
+        }),
+      ),
+    );
+    expect(button(v.container, 'Undo job')).not.toBeNull();
+    await v.unmount();
+    v = await mount(clientOf(jobOf({ report: { totals: { changes: 3 } } })));
+    expect(button(v.container, 'Undo job')).not.toBeNull();
+    await v.unmount();
+  });
+
+  // RP-6: "179 values, 625 tokens and 1 text". A token is no word a person
+  // knows: a job that edited no text wrote tokens only as morphemes, and one
+  // that edited the text moved its words and sentences, which no count says.
+  it('names what it undoes in words a person reads, by what the job wrote', async () => {
+    const tokens = { inserted: 1, updated: 599, deleted: 25 };
+    const summary = {
+      ...SUMMARY,
+      undone: { spans: counts(179), tokens, texts: counts(1) },
+      skipped: [],
+      skippedCount: 0,
+    };
+    const line = async (report) => {
+      const v = await mount(
+        clientOf(
+          jobOf({ report }),
+          vi.fn(async () => summary),
+        ),
+      );
+      await press(v, button(v.container, 'Undo job'));
+      await settle(v);
+      const said = dialog().querySelector('[data-testid="undo-line"]').textContent;
+      await press(v, button(dialog(), 'Cancel'));
+      await v.unmount();
+      return said;
+    };
+    expect(
+      await line({
+        totals: { changes: 193, textChanges: 14, changesParts: [{ kind: 'text', n: 14 }] },
+      }),
+    ).toBe('179 values and the text with its words and sentences');
+    const glossed = {
+      ...summary,
+      undone: {
+        spans: counts(169),
+        tokens: counts(169, 'deleted'),
+        vocabLinks: counts(151, 'deleted'),
+      },
+    };
+    const v = await mount(
+      clientOf(
+        jobOf({ report: { totals: { changes: 253 } } }),
+        vi.fn(async () => glossed),
+      ),
+    );
+    await press(v, button(v.container, 'Undo job'));
+    await settle(v);
+    expect(dialog().querySelector('[data-testid="undo-line"]').textContent).toBe(
+      '169 values, 169 morphemes and 151 links',
+    );
+    await v.unmount();
+  });
+
   it('says how many changes a job too large made, and where it is undone instead', async () => {
     const big = Object.assign(new Error('HTTP 413 x at http://x/y'), {
       status: 413,

@@ -1,4 +1,9 @@
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { Check, Copy } from 'lucide-react';
+import { Button } from '@ui/components/ui/button';
+import { AssistantMarkdown } from '@ui/components/assistant/AssistantMarkdown.jsx';
+import { copyText } from '@ui/lib/download.js';
 import { TYPE } from '@ui/lib/typeScale.js';
 import { historyHref } from '@ui/hooks/useHistoryParam.js';
 import { plural } from '@ui/lib/plural.js';
@@ -8,6 +13,8 @@ import {
   HARMONIZE_LEFT_TEXT,
   changeReasonText,
   changesGroup,
+  changesText,
+  sumParts,
   durationText,
   refusedText,
   skippedText,
@@ -55,10 +62,12 @@ const blankSums = (report) => {
         target: b.target,
         unit: b.unit,
         left: 0,
+        untouched: 0,
         notReached: 0,
         skipped: 0,
       };
       s.left += b.left ?? 0;
+      s.untouched += b.untouched ?? 0;
       s.notReached += b.notReached ?? 0;
       s.skipped += b.skipped ?? 0;
       sums.set(b.target, s);
@@ -106,6 +115,12 @@ const fieldSums = (report) => {
   return [...sums.values()].sort((a, b) => (a.field < b.field ? -1 : a.field > b.field ? 1 : 0));
 };
 
+// What the job's changes are, by kind (the worker's `changes_parts`): the
+// totals', or, when they hold none (core's own report), the documents' summed.
+const changeParts = (report) =>
+  report.totals?.changesParts ??
+  sumParts((report.documents || []).map((d) => d.counts?.changesParts));
+
 // How many values the job wrote outside its setup: the sum of its rows.
 const outsideSum = (report) => outsideRows(report).reduce((n, f) => n + f.values, 0);
 
@@ -131,7 +146,8 @@ const totalRows = (report) => {
   );
   optional('Documents stopped partway', partway);
   rows.push(['Sentences written in', t.sentences]);
-  optional('Changes written', t.changes);
+  // One definition of a change, said in its parts (RP-3, RP-6).
+  if (t.changes > 0) rows.push(['Changes written', changesText(t.changes, changeParts(report))]);
   optional('Deletions', t.deletions);
   // What the job changed of what people wrote, by provenance, and of the
   // text: each document's History entry shows the changes (REV-DAY-S-3).
@@ -152,6 +168,14 @@ const totalRows = (report) => {
   blankSums(report).forEach((b) => {
     // A target is named as everywhere on the page, "segmentation" too (N-1).
     rows.push([`${b.target} left blank`, unitCount(b.left ?? 0, b.unit)]);
+    // Counted, never listed: blank in sentences the job worked and wrote
+    // nothing in (RP-3, RP-6).
+    if (b.untouched > 0) {
+      rows.push([
+        `${b.target} blank in sentences the job did not change`,
+        unitCount(b.untouched, b.unit),
+      ]);
+    }
     if (b.notReached > 0) {
       rows.push([`${b.target} blank in sentences not reached`, unitCount(b.notReached, b.unit)]);
     }
@@ -221,6 +245,7 @@ const blankParts = (counts, key) =>
     .map((b) => `${b.target} ${unitCount(b[key], b.unit)}`);
 
 const BLANK_ELSEWHERE = [
+  ['untouched', 'Blank in sentences the job did not change'],
   ['notReached', 'Blank in sentences not reached'],
   ['skipped', 'Blank in skipped sentences'],
 ];
@@ -366,6 +391,21 @@ const LeftOut = ({ report, projectId }) => {
   );
 };
 
+// What the assistant wrote, as the chat renders the assistant's text: never
+// raw Markdown marks (RP-1, RP-4). `inline` for a note in a list.
+const Written = ({ text, inline = false, ...rest }) => (
+  <div
+    dir="auto"
+    className={
+      inline ? 'min-w-0 [&_.prose>:first-child]:mt-0 [&_.prose>:last-child]:mb-0' : 'max-w-3xl'
+    }
+    {...rest}
+  >
+    <AssistantMarkdown>{text}</AssistantMarkdown>
+  </div>
+);
+export { Written as JobWritten };
+
 // Each piece's note, as the model ended it.
 const PieceNotes = ({ report }) => {
   const notes = report.notes || [];
@@ -375,13 +415,13 @@ const PieceNotes = ({ report }) => {
       <Heading section="notes" />
       <ul className="ml-4 list-disc text-sm">
         {notes.map((n, i) => (
-          <li key={i} dir="auto">
+          <li key={i}>
             {(n.name || n.sentences) && (
               <span className="text-muted-foreground">
                 {[n.name, n.sentences].filter(Boolean).join(' ')}:{' '}
               </span>
             )}
-            {n.note}
+            <Written text={n.note || ''} inline />
           </li>
         ))}
       </ul>
@@ -428,6 +468,34 @@ const Tables = ({ tables, more = 0 }) =>
     </>
   ) : null;
 
+// The one report of a job that fills nothing (`findings`, Markdown, CONTRACT,
+// added by RPF), in full, with a way to copy it as written (RP-4).
+export const JobFindings = ({ findings }) => {
+  const [copied, setCopied] = useState(false);
+  useEffect(() => {
+    if (!copied) return undefined;
+    const t = setTimeout(() => setCopied(false), 1500);
+    return () => clearTimeout(t);
+  }, [copied]);
+  return (
+    <section aria-label="Findings" className="mb-8" data-testid="job-findings">
+      <div className="mb-2 flex flex-wrap items-center gap-2">
+        <h2 className={TYPE.section}>Findings</h2>
+        <Button
+          variant="outline"
+          size="sm"
+          className="gap-1.5"
+          onClick={async () => setCopied(await copyText(findings, 'The findings were not copied.'))}
+        >
+          {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+          Copy
+        </Button>
+      </div>
+      <Written text={findings} />
+    </section>
+  );
+};
+
 export const JobReport = ({ report, projectId, vocabs = [] }) => {
   const paused = [
     ['Paused for people', report.pausedForPeopleS],
@@ -461,6 +529,13 @@ export const JobReport = ({ report, projectId, vocabs = [] }) => {
       {report.stopped === 'without-worker' && (
         <p className="mt-2 text-sm text-muted-foreground">Stopped with no worker running.</p>
       )}
+      {/* The worker's own line, from its counts, where the job changed
+          people's work or the text (R4). */}
+      {report.notice && (
+        <p className="mt-3 max-w-2xl text-sm font-medium" data-testid="job-notice">
+          {report.notice}
+        </p>
+      )}
       {report.summary && report.summaryBy === 'worker' && (
         <p className="mt-3 max-w-2xl text-sm" data-testid="job-summary">
           {report.summary}
@@ -482,10 +557,14 @@ export const JobReport = ({ report, projectId, vocabs = [] }) => {
       {((report.summary && report.summaryBy !== 'worker') || report.summaryFailed) && (
         <Heading>Assistant’s summary</Heading>
       )}
+      {/* The model's account, after the counts and marked as its own (R4). */}
       {report.summary && report.summaryBy !== 'worker' && (
-        <div className="max-w-2xl whitespace-pre-wrap text-sm" dir="auto" data-testid="job-summary">
-          {report.summary}
-        </div>
+        <>
+          <p className="mb-2 text-sm text-muted-foreground">
+            Written by the assistant, not checked against the counts above.
+          </p>
+          <Written text={report.summary} data-testid="job-summary" />
+        </>
       )}
       {report.summaryFailed && (
         <p className="text-sm text-muted-foreground">The summary could not be written.</p>

@@ -60,14 +60,26 @@ const tokensByRole = (summary, tokenRows) => {
   return n === total ? counts : null;
 };
 
+// The texts undone, said with the words and sentences of them a text edit
+// moved, added or removed, which no count a person reads says (RP-6).
+const textWithWords = (n) =>
+  n === 1
+    ? 'the text with its words and sentences'
+    : `${n.toLocaleString()} texts with their words and sentences`;
+
 /**
  * What `summary` undoes, as one line: "12 values, 3 morphemes, 2 lexicon
  * entries and 5 links". Empty when it undoes nothing. `tokenRows`, the
  * entry's token rows with the role of each one's layer, name the tokens by
- * role.
+ * role. Where there are none, `tokens` says what the tokens are, from what
+ * wrote them (a job's report): `morphemes` (a job that edited no text writes
+ * tokens only as morphemes), or `with-text` (a job that edited the text: the
+ * tokens are not counted, and the text is said with its words and
+ * sentences). Otherwise they are counted as tokens.
  */
-export const undoneLine = (summary, { tokenRows } = {}) => {
+export const undoneLine = (summary, { tokenRows, tokens } = {}) => {
   const parts = [];
+  const withText = tokens === 'with-text' && !tokenRows?.length;
   for (const [kind, words] of KIND_WORDS) {
     const n = sum(summary?.undone?.[kind]);
     if (!n) continue;
@@ -84,13 +96,26 @@ export const undoneLine = (summary, { tokenRows } = {}) => {
       );
       continue;
     }
+    if (kind === 'texts' && withText) {
+      parts.push(textWithWords(n));
+      continue;
+    }
     if (kind !== 'tokens') {
       parts.push(countOf(n, ...words));
       continue;
     }
     const roles = tokensByRole(summary, tokenRows);
     if (!roles) {
-      parts.push(countOf(n, ...TOKEN_WORDS));
+      if (withText) {
+        // Said with the text, or, with no text undone, as words.
+        if (!sum(summary?.undone?.texts)) parts.push(countOf(n, 'word', 'words'));
+        continue;
+      }
+      parts.push(
+        tokens === 'morphemes' && !tokenRows?.length
+          ? countOf(n, 'morpheme', 'morphemes')
+          : countOf(n, ...TOKEN_WORDS),
+      );
       continue;
     }
     for (const role of ROLE_ORDER) {

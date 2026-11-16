@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Button } from '@ui/components/ui/button';
 import { ListHint } from '@ui/components/shared/list-search.jsx';
@@ -7,33 +7,50 @@ import { fullTimestamp, timeAgo } from '@ui/lib/formatTime.js';
 import { TALL_LIST_PAGE_SIZE } from '@ui/hooks/usePagedList.js';
 import { isJobActive } from '@ui/domain/jobs.js';
 import { APP_ROUTES } from '@/appRoutes.js';
-import {
-  pieceWrittenText,
-  piecesFallShort,
-  planText,
-  refusedText,
-  skippedText,
-} from './jobText.js';
+import { JobWritten } from './JobReport.jsx';
+import { pieceWrittenText, piecesFallShort, refusedText, skippedText } from './jobText.js';
 
 /**
  * What a job has done so far (`jobs.piecesPage`, CONTRACT, added by LV): a row
  * per piece of its work as its worker summed it up once what the piece wrote
- * was known, newest first, and last its plan. Read again with each read of the
- * job (`readAt`), so it fills in while the job runs. The newest
- * TALL_LIST_PAGE_SIZE rows, and as many more as Show more asks for. A job
- * whose worker kept none, and has ended, shows nothing.
+ * was known, newest first. Read again with each read of the job (`readAt`), so
+ * it fills in while the job runs. The newest TALL_LIST_PAGE_SIZE rows, and as
+ * many more as Show more asks for. A job whose worker kept none, and has
+ * ended, shows nothing.
+ *
+ * The plan's row (the oldest) is not listed: it goes to the page (`onPlan`),
+ * whose Plan line, above the list, says it while the job runs (RP-9). Where
+ * the first page does not reach it, it is read once, at the route's cap.
  */
 // The most rows one read of the route answers (core's page cap).
 const PIECES_MAX = 1000;
 
-export const JobActivity = ({ client, job, projectId, readAt }) => {
+export const JobActivity = ({ client, job, projectId, readAt, onPlan = () => {} }) => {
   const [shown, setShown] = useState(TALL_LIST_PAGE_SIZE);
   const [page, setPage] = useState(null);
+  // The job whose plan row was found, or looked for past the first page.
+  const planFor = useRef(null);
+  const onPlanRef = useRef(onPlan);
+  onPlanRef.current = onPlan;
   useEffect(() => {
     let live = true;
+    const planOf = (entries) => (entries || []).find((r) => r.piece?.plan)?.piece.plan ?? null;
     client.jobs
       .piecesPage(job.id, { limit: shown })
-      .then((next) => live && setPage(next))
+      .then(async (next) => {
+        if (!live) return;
+        setPage(next);
+        if (planFor.current === job.id) return;
+        let plan = planOf(next?.entries);
+        if (!plan && next?.nextCursor) {
+          planFor.current = job.id;
+          plan = planOf((await client.jobs.piecesPage(job.id, { limit: PIECES_MAX }))?.entries);
+        }
+        if (plan && live) {
+          planFor.current = job.id;
+          onPlanRef.current(plan);
+        }
+      })
       // A read that fails keeps what the list shows: the next read of the job
       // asks again.
       .catch(() => {});
@@ -43,9 +60,7 @@ export const JobActivity = ({ client, job, projectId, readAt }) => {
   }, [client, job.id, shown, readAt]);
 
   const active = isJobActive(job);
-  // Once the job has ended the page's Plan line says the plan, from the
-  // report, with what was known only later: the list leaves its plan out.
-  const rows = (page?.entries || []).filter((r) => !(r.piece.plan && !active && job.report?.plan));
+  const rows = (page?.entries || []).filter((r) => !r.piece.plan);
   if (!rows.length && !active) return null;
   // Not "Activity": the project's tab of that name is on the same screen.
   const heading = active ? 'Work so far' : 'Work, in order';
@@ -59,11 +74,7 @@ export const JobActivity = ({ client, job, projectId, readAt }) => {
       <ul className="max-w-3xl divide-y text-sm" data-testid="job-activity">
         {rows.map(({ seq, piece }) => (
           <li key={seq} className="py-2" data-seq={seq}>
-            {piece.plan ? (
-              <PlanRow piece={piece} />
-            ) : (
-              <PieceRow piece={piece} projectId={projectId} names={names} />
-            )}
+            <PieceRow piece={piece} projectId={projectId} names={names} />
           </li>
         ))}
       </ul>
@@ -105,19 +116,6 @@ const Ended = ({ piece }) => (
     {piece.endedAt && <span title={fullTimestamp(piece.endedAt)}>{timeAgo(piece.endedAt)}</span>}
     {piece.steps > 0 && ` · ${piece.steps} ${piece.steps === 1 ? 'step' : 'steps'}`}
   </span>
-);
-
-const PlanRow = ({ piece }) => (
-  <>
-    <div className="flex flex-wrap justify-between gap-x-4">
-      <span className="font-medium">Plan</span>
-      <Ended piece={piece} />
-    </div>
-    <p>
-      {planText(piece.plan)}
-      {piece.cut && ' …'}
-    </p>
-  </>
 );
 
 // Where a piece worked: its document and sentences, a link into the grid at
@@ -203,9 +201,9 @@ const PieceRow = ({ piece, projectId, names }) => {
         </>
       )}
       {piece.note && (
-        <p className="mt-1 whitespace-pre-wrap" dir="auto">
-          {piece.note}
-        </p>
+        <div className="mt-1">
+          <JobWritten text={piece.note} inline />
+        </div>
       )}
       {/* A row the worker cut to fit core's cap (REV-LV-2). */}
       {piece.cut && <p className="text-muted-foreground">…</p>}
