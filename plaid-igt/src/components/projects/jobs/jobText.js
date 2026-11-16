@@ -118,6 +118,54 @@ export const wroteNothing = (job) => {
   );
 };
 
+// The worker's fixed top line of a report (plaid-agent's `core.job.notice`,
+// the owner's R4), from the same counts in the same words, for a report that
+// has none: core's own, of a job no worker finished (REV-RPF-W-3). Pinned
+// equal to the worker's by plaid-agent's test_notice_mirror, its straight
+// apostrophe included. Null when the job
+// changed nothing people wrote and nothing of the text.
+export const noticeText = (totals) => {
+  const t = totals || {};
+  const out = [];
+  const people = t.peoplesValuesChanged || 0;
+  if (people) {
+    out.push(
+      `People's work: ${countOf(people, 'value, analysis or link', 'values, analyses or links')} ` +
+        `people wrote ${people === 1 ? 'was' : 'were'} changed or removed. What the job wrote in ` +
+        'their place is unverified.',
+    );
+  }
+  const added = t.wordsAdded || 0;
+  const changed = t.tokensChanged || 0;
+  const said = [
+    ...(added ? [`${countOf(added, 'word')} added`] : []),
+    ...(changed
+      ? [
+          `${countOf(changed, 'existing word or punctuation mark', 'existing words or punctuation marks')} changed or removed`,
+        ]
+      : []),
+  ];
+  if (said.length) out.push(`Text: ${said.join(', ')}.`);
+  else if (t.textChanges) {
+    out.push(`Text: ${countOf(t.textChanges, 'text edit')}, no word added, changed or removed.`);
+  }
+  return out.join(' ') || null;
+};
+
+// The counts the top line is made of, for a report: its totals', and where
+// core's own report has no total of the text's words, its documents' summed.
+export const noticeCounts = (report) => {
+  const t = report?.totals || {};
+  const sum = (k) =>
+    t[k] ?? (report?.documents || []).reduce((n, d) => n + (d.counts?.[k] ?? 0), 0);
+  return {
+    peoplesValuesChanged: sum('peoplesValuesChanged'),
+    wordsAdded: sum('wordsAdded'),
+    tokensChanged: sum('tokensChanged'),
+    textChanges: sum('textChanges'),
+  };
+};
+
 // How many pieces the findings of a job that fills nothing hold, each under
 // its heading, and how many of the last did not fit whole (the worker's
 // `findings_pieces` and `findings_cut`, REV-RPF-W-2). Null for one report

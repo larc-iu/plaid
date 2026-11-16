@@ -1826,6 +1826,33 @@ describe('the job page', () => {
     await plain.unmount();
   });
 
+  // REV-RPF-W-3: core's own report (a job no worker finished) has no notice:
+  // the page builds the worker's line from the counts it has, its documents'
+  // where its totals have no count of the text's words.
+  it('builds the worker’s top line from the counts of core’s own report', async () => {
+    const report = {
+      ...REPORT,
+      state: 'cancelled',
+      stopped: 'without-worker',
+      summary: null,
+      totals: { ...REPORT.totals, peoplesValuesChanged: 2, textChanges: 1 },
+      documents: [
+        { documentId: 'd1', name: 'Story A', counts: { wordsAdded: 1, tokensChanged: 1 } },
+      ],
+    };
+    const v = await mount(clientOf(jobOf({ state: 'cancelled', report })));
+    expect(text(v.container.querySelector('[data-testid="job-notice"]'))).toBe(
+      "People's work: 2 values, analyses or links people wrote were changed or removed. What the job wrote in their place is unverified. Text: 1 word added, 1 existing word or punctuation mark changed or removed.",
+    );
+    await v.unmount();
+    // A worker's report that says it has no line keeps none.
+    const none = await mount(
+      clientOf(jobOf({ state: 'done', report: { ...report, state: 'done', notice: null } })),
+    );
+    expect(none.container.querySelector('[data-testid="job-notice"]')).toBeNull();
+    await none.unmount();
+  });
+
   it('renders each piece’s note as the chat renders the assistant’s text', async () => {
     const report = {
       ...REPORT,

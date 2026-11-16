@@ -17,6 +17,8 @@ import {
   sumParts,
   durationText,
   findingsPiecesText,
+  noticeCounts,
+  noticeText,
   refusedText,
   skippedText,
   stoppedPartway,
@@ -532,6 +534,7 @@ export const JobReport = ({ report, projectId, vocabs = [] }) => {
     ([, list = [], more = 0]) => list.length || more,
   );
   const unlinked = entries.unlinked || [];
+  const notice = report.notice !== undefined ? report.notice : noticeText(noticeCounts(report));
 
   return (
     <section aria-label="Report">
@@ -540,10 +543,12 @@ export const JobReport = ({ report, projectId, vocabs = [] }) => {
         <p className="mt-2 text-sm text-muted-foreground">Stopped with no worker running.</p>
       )}
       {/* The worker's own line, from its counts, where the job changed
-          people's work or the text (R4). */}
-      {report.notice && (
+          people's work or the text (R4). Core's own report, of a job no
+          worker finished, has none: the same line from its counts
+          (REV-RPF-W-3). */}
+      {notice && (
         <p className="mt-3 max-w-2xl text-sm font-medium" data-testid="job-notice">
-          {report.notice}
+          {notice}
         </p>
       )}
       {report.summary && report.summaryBy === 'worker' && (
