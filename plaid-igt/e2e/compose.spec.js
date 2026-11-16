@@ -287,15 +287,15 @@ test('a built-in code can be changed and reset', async ({ page }) => {
   await page.getByLabel('Search codes').fill('sw');
   const row = page.locator('[data-code-row="sw"]');
   await row.waitFor({ state: 'visible' });
-  // Editing a built-in flips its origin to "changed", which used to remount the
-  // row and drop focus on the first keystroke.
+  // Editing a built-in flips its origin to "changed" (it gains a Reset button),
+  // which used to remount the row and drop focus on the first keystroke.
   const charField = row.getByLabel('Character', { exact: true });
   await charField.click();
   await charField.press('Control+a');
   await page.keyboard.type('Ə');
   await expect(charField).toBeFocused();
   await expect(charField).toHaveValue('Ə');
-  await expect(row.getByText('Changed')).toBeVisible();
+  await expect(row.getByRole('button', { name: 'Reset code sw' })).toBeVisible();
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeDisabled();
 

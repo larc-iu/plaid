@@ -143,7 +143,7 @@ describe('every code as an editable entry', () => {
     });
   });
 
-  it('keeps a removed built-in in the list so it can be put back', () => {
+  it('marks a removed built-in as removed', () => {
     const rows = composeRows({ igt: { compose: { removed: ['ng'] } } });
     expect(rows).toHaveLength(BUILT_IN_COUNT);
     expect(rows.find((r) => r.code === 'ng')).toMatchObject({ origin: 'removed', char: 'ŋ' });
@@ -210,6 +210,50 @@ describe('what gets stored', () => {
     expect(reread.find((r) => r.code === 'ng')).toMatchObject({ origin: 'removed' });
     expect(reread.find((r) => r.code === "b'")).toMatchObject({ char: 'ɓ', origin: 'added' });
     expect(reread).toHaveLength(BUILT_IN_COUNT + 1);
+  });
+});
+
+describe('the time a code was last changed', () => {
+  const at = '2026-11-01T10:00:00.000Z';
+
+  it('is read with a changed or added code, and is blank on a built-in', () => {
+    const rows = composeRows(
+      withCodes([
+        { code: 'ng', char: 'X', modified: at },
+        { code: "b'", char: 'ɓ', modified: at },
+        { code: 'sw', char: 'Ə' },
+      ]),
+    );
+    expect(rows.find((r) => r.code === 'ng').modified).toBe(at);
+    expect(rows.find((r) => r.code === "b'").modified).toBe(at);
+    expect(rows.find((r) => r.code === 'sw').modified).toBeNull();
+    expect(rows.find((r) => r.code === ':f').modified).toBeNull();
+  });
+
+  it('is stored with the code it belongs to', () => {
+    const rows = composeRows({ igt: {} }).map((r) =>
+      r.code === 'sw' ? { ...r, char: 'Ə', modified: at } : r,
+    );
+    expect(rowsToConfig(rows).codes).toEqual([{ code: 'sw', char: 'Ə', modified: at }]);
+  });
+});
+
+describe('a code deleted and then added again', () => {
+  it('is stored as the new code only and listed as it', () => {
+    const rows = composeRows({ igt: {} })
+      .map((r) => (r.code === 'ng' ? { ...r, origin: 'removed' } : r))
+      .concat({ code: 'ng', char: 'X', description: '', origin: 'changed' });
+    const stored = rowsToConfig(rows);
+    expect(stored).toEqual({ codes: [{ code: 'ng', char: 'X' }], removed: [] });
+  });
+
+  it('is listed as the code that works when both were stored', () => {
+    const rows = composeRows({
+      igt: { compose: { removed: ['ng'], codes: [{ code: 'ng', char: 'X' }] } },
+    });
+    expect(rows.filter((r) => r.code === 'ng')).toEqual([
+      { code: 'ng', char: 'X', description: '', origin: 'changed', modified: null },
+    ]);
   });
 });
 

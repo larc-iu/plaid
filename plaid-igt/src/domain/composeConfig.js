@@ -66,26 +66,31 @@ export function resolveComposeTable(projectConfig) {
  *   changed   a built-in code this project points somewhere else
  *   removed   a built-in code this project took out
  *   added     a code that is not built in at all
+ *
+ * `modified` is when the project last changed the code, an ISO time, or null
+ * for a code as shipped and for one stored without a time.
  */
 export function composeRows(projectConfig) {
   const overrides = new Map(readProjectCodes(projectConfig).map((r) => [r.code, r]));
   const removed = new Set(readRemovedCodes(projectConfig));
+  const entry = (r, origin) => ({
+    code: r.code,
+    char: r.char,
+    description: r.description || '',
+    origin,
+    modified: r.modified ?? null,
+  });
   const rows = Object.entries(BUILT_IN_TABLE).map(([code, char]) => {
     const over = overrides.get(code);
-    if (removed.has(code)) return { code, char, description: '', origin: 'removed' };
-    if (over) {
-      return {
-        code,
-        char: over.char,
-        description: over.description || '',
-        origin: 'changed',
-      };
-    }
-    return { code, char, description: '', origin: 'built-in' };
+    // A binding wins over a removal of the same code, as in the table.
+    if (over) return entry(over, 'changed');
+    if (removed.has(code))
+      return { code, char, description: '', origin: 'removed', modified: null };
+    return { code, char, description: '', origin: 'built-in', modified: null };
   });
   for (const [code, r] of overrides) {
     if (isBuiltInCode(code)) continue;
-    rows.push({ code, char: r.char, description: r.description || '', origin: 'added' });
+    rows.push(entry(r, 'added'));
   }
   return rows;
 }
@@ -103,22 +108,23 @@ const isRowDirty = (row) => {
 
 /**
  * Turn the edited entry list back into the diff that gets stored. Rows equal
- * to what ships contribute nothing.
+ * to what ships contribute nothing, and a removal of a code another row uses
+ * again is dropped.
  */
 export function rowsToConfig(rows) {
   const codes = [];
   const removed = [];
+  const live = new Set(rows.filter((r) => r.origin !== 'removed').map((r) => r.code));
   for (const row of rows) {
     if (row.origin === 'removed') {
-      if (isBuiltInCode(row.code)) removed.push(row.code);
+      if (isBuiltInCode(row.code) && !live.has(row.code)) removed.push(row.code);
       continue;
     }
     if (!isRowDirty(row)) continue;
-    codes.push(
-      row.description
-        ? { code: row.code, char: row.char, description: row.description }
-        : { code: row.code, char: row.char },
-    );
+    const entry = { code: row.code, char: row.char };
+    if (row.description) entry.description = row.description;
+    if (row.modified) entry.modified = row.modified;
+    codes.push(entry);
   }
   return { codes, removed };
 }

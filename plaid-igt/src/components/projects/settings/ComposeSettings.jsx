@@ -2,8 +2,10 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Plus, RotateCcw, Trash2 } from 'lucide-react';
 import { Button } from '@ui/components/ui/button';
 import { Input } from '@ui/components/ui/input';
-import { Badge } from '@ui/components/ui/badge';
-import { SearchInput, ListCount, ListPager } from '@ui/components/shared/list-search';
+import { SearchInput, ListCount, ListPager, SortHeader } from '@ui/components/shared/list-search';
+import { listPrefKey, useStickySort } from '@ui/hooks/useStickyState.js';
+import { sortRows } from '@ui/lib/sortRows.js';
+import { timeAgo, fullTimestamp } from '@ui/lib/formatTime.js';
 import { usePagedList, TALL_LIST_PAGE_SIZE } from '@ui/hooks/usePagedList';
 import { notifyError } from '@/utils/feedback';
 import { expectStored, isConfigConflict } from '@ui/domain/configCells.js';
@@ -18,36 +20,62 @@ import {
 import { textIncludes } from '@ui/domain/collation.js';
 import { TYPE } from '@ui/lib/typeScale.js';
 
-const ORIGIN_LABEL = {
-  changed: 'Changed',
-  added: 'Added',
-  removed: 'Removed',
-};
-
 const byCode = (a, b) => a.code.toLowerCase().localeCompare(b.code.toLowerCase());
 
 // A row's identity for React, fixed when the row appears and never derived from
 // what is being typed into it. Deriving the key from the code (or from whether
 // the row counts as changed) remounts the row on the FIRST keystroke, which
 // takes focus out of the field the person is typing in.
+//
+// `was` is the row as stored, which is what the list sorts by: a row being
+// typed into keeps its place until the next save, and a row added since has
+// no `was` and stays at the top.
 let nextUid = 0;
-const withUid = (row) => ({ ...row, uid: `row-${nextUid++}` });
+const withUid = (row) => ({
+  ...row,
+  uid: `row-${nextUid++}`,
+  was: { code: row.code, char: row.char, description: row.description, modified: row.modified },
+});
 
 // What a list of rows says, without the row identities or the order rows
 // were added in, so two lists that would store the same thing compare equal.
-const rowsKey = (rows) => JSON.stringify(rows.map(({ uid: _uid, ...row }) => row).sort(byCode));
+// The time a row was changed is left out: a save sets it, so the list just
+// saved and the list read back after it still compare equal.
+const rowsKey = (rows) =>
+  JSON.stringify(
+    rows.map(({ uid: _uid, was: _was, modified: _modified, ...row }) => row).sort(byCode),
+  );
+
+const SORTS = {
+  code: { sort: (r) => r.was.code },
+  char: { sort: (r) => r.was.char },
+  description: { sort: (r) => r.was.description || null },
+  modified: { sort: (r) => r.was.modified },
+};
+const SORT_KEYS = Object.keys(SORTS);
+const DEFAULT_SORT = { key: 'modified', dir: 'desc' };
+const sortKey = (r) => r.was.code;
+
+const edited = (r) =>
+  !r.was ||
+  r.code !== r.was.code ||
+  r.char !== r.was.char ||
+  (r.description || '') !== (r.was.description || '');
+
+// The header and every row share these tracks, so the columns line up and the
+// buttons keep a cell of their own whatever a note holds.
+const GRID = 'grid grid-cols-[6rem_6rem_minmax(0,1fr)_8rem_4rem] items-center gap-2 px-3';
 
 /**
  * Settings → Text and vocab → Special characters. Every code is an entry here:
- * the built-in ones can be pointed somewhere else or taken out, and a project
+ * the built-in ones can be pointed somewhere else or deleted, and a project
  * can add its own. Only what a project actually changed is stored, so a code
- * nobody touched still picks up a correction later.
+ * nobody touched still picks up a correction later. A deleted built-in is
+ * stored as removed and not listed. Restore built-in codes brings them all
+ * back. Each stored code carries the time of the save that last changed it.
  */
 export const ComposeSettings = ({ project, projectId, client, onProjectUpdate }) => {
-  const saved = useMemo(
-    () => composeRows(project?.config).sort(byCode).map(withUid),
-    [project?.config],
-  );
+  const saved = useMemo(() => composeRows(project?.config).map(withUid), [project?.config]);
   const [draft, setDraft] = useState(saved);
   const [saving, setSaving] = useState(false);
   const [q, setQ] = useState('');
@@ -72,20 +100,45 @@ export const ComposeSettings = ({ project, projectId, client, onProjectUpdate })
   }, [draft]);
   const canSave = dirty && !saving && [...problemsByCode.values()].every((p) => p.length === 0);
 
-  const changedCount = draft.filter((r) => r.origin !== 'built-in').length;
+  const [sort, onSort] = useStickySort(
+    listPrefKey('sort', 'compose-codes', projectId),
+    DEFAULT_SORT,
+    SORT_KEYS,
+  );
+
+  // A deleted built-in code is stored as removed and shown nowhere.
+  const live = useMemo(() => draft.filter((r) => r.origin !== 'removed'), [draft]);
+  const anyRemoved = live.length < draft.length;
+  const changedCount = live.filter((r) => r.origin !== 'built-in').length;
 
   const matches = useMemo(() => {
     const needle = q.trim().toLowerCase();
-    if (!needle) return draft;
-    return draft.filter(
+    if (!needle) return live;
+    return live.filter(
       (r) =>
         textIncludes(r.code, needle) ||
         r.char === q.trim() ||
         textIncludes(r.description || '', needle),
     );
-  }, [draft, q]);
+  }, [live, q]);
 
-  const paged = usePagedList(matches, { pageSize: TALL_LIST_PAGE_SIZE, resetKey: q });
+  const ordered = useMemo(
+    () => [
+      ...matches.filter((r) => !r.was),
+      ...sortRows(
+        matches.filter((r) => r.was),
+        SORTS[sort.key],
+        sort.dir,
+        sortKey,
+      ),
+    ],
+    [matches, sort],
+  );
+
+  const paged = usePagedList(ordered, {
+    pageSize: TALL_LIST_PAGE_SIZE,
+    resetKey: `${q}:${sort.key}:${sort.dir}`,
+  });
 
   const patch = (row, next) =>
     setDraft((rows) => rows.map((r) => (r === row ? { ...r, ...next } : r)));
@@ -111,10 +164,22 @@ export const ComposeSettings = ({ project, projectId, client, onProjectUpdate })
     if (base) patch(row, { ...base, origin: 'built-in' });
   };
 
+  // Every deleted built-in code back as shipped. One whose code a row uses
+  // again is dropped instead, so no two rows share a code.
+  const restoreBuiltIns = () =>
+    setDraft((rows) => {
+      const used = new Set(rows.filter((r) => r.origin !== 'removed').map((r) => r.code));
+      return rows
+        .filter((r) => r.origin !== 'removed' || !used.has(r.code))
+        .map((r) =>
+          r.origin === 'removed' ? { ...r, ...builtInRow(r.code), origin: 'built-in' } : r,
+        );
+    });
+
   const addRow = () => {
     setQ('');
     setDraft((rows) => [
-      withUid({ code: '', char: '', description: '', origin: 'added' }),
+      { ...withUid({ code: '', char: '', description: '', origin: 'added' }), was: null },
       ...rows,
     ]);
     paged.setPage(0);
@@ -126,11 +191,16 @@ export const ComposeSettings = ({ project, projectId, client, onProjectUpdate })
     try {
       if (!client) throw new Error('Not authenticated');
       const existing = readCompose(project?.config) || {};
+      // A row changed in this save takes the time of the save.
+      const now = new Date().toISOString();
+      const stamped = draft.map((r) =>
+        r.origin !== 'removed' && edited(r) ? { ...r, modified: now } : r,
+      );
       await client.projects.setConfig(
         projectId,
         IGT_NAMESPACE,
         'compose',
-        { ...existing, ...rowsToConfig(draft) },
+        { ...existing, ...rowsToConfig(stamped) },
         undefined,
         expectStored(project, IGT_NAMESPACE, 'compose'),
       );
@@ -159,7 +229,7 @@ export const ComposeSettings = ({ project, projectId, client, onProjectUpdate })
 
       <div className="flex max-w-4xl flex-col gap-3">
         <div className="flex flex-wrap items-center gap-2">
-          <ListCount shown={matches.length} total={draft.length} noun="code" />
+          <ListCount shown={matches.length} total={live.length} noun="code" />
           <SearchInput
             className="w-full max-w-[20rem]"
             inputClassName="h-8"
@@ -172,83 +242,96 @@ export const ComposeSettings = ({ project, projectId, client, onProjectUpdate })
               · {changedCount} changed by this project
             </span>
           )}
-          <Button variant="outline" size="sm" className="ml-auto" onClick={addRow}>
-            <Plus className="h-4 w-4" /> Add code
-          </Button>
+          <div className="ml-auto flex items-center gap-2">
+            {anyRemoved && (
+              <Button variant="ghost" size="sm" onClick={restoreBuiltIns}>
+                Restore built-in codes
+              </Button>
+            )}
+            <Button variant="outline" size="sm" onClick={addRow}>
+              <Plus className="h-4 w-4" /> Add code
+            </Button>
+          </div>
         </div>
 
-        <div className="overflow-hidden rounded-md border">
-          <div className="grid grid-cols-[7rem_6rem_1fr_5.5rem] items-center gap-2 border-b bg-muted/30 px-3 py-2 text-xs font-medium text-muted-foreground">
-            <span>Code</span>
-            <span>Character</span>
-            <span>Note</span>
-            <span />
-          </div>
-          <ListPager {...paged} onPage={paged.setPage} position="top" />
-          {paged.pageItems.length === 0 && (
-            <p className="px-3 py-4 text-sm text-muted-foreground">No codes match “{q}”.</p>
-          )}
-          {paged.pageItems.map((row) => {
-            const problems = problemsByCode.get(row) || [];
-            const gone = row.origin === 'removed';
-            return (
-              <div key={row.uid} className="border-b last:border-b-0" data-code-row={row.code}>
-                <div className="grid grid-cols-[7rem_6rem_1fr_5.5rem] items-center gap-2 px-3 py-1.5">
-                  {isBuiltInCode(row.code) ? (
-                    <code
-                      className={`text-sm ${gone ? 'text-muted-foreground line-through' : ''}`}
-                    >{`\\${row.code}`}</code>
-                  ) : (
-                    <Input
-                      value={row.code}
-                      onChange={(e) => editRow(row, { code: e.target.value })}
-                      aria-label="Code"
-                      className="h-8 font-mono"
-                      spellCheck={false}
-                      aria-invalid={problems.length > 0 || undefined}
-                    />
-                  )}
-                  {gone ? (
-                    <span className="text-sm text-muted-foreground line-through">{row.char}</span>
-                  ) : (
-                    <Input
-                      compose
-                      value={row.char}
-                      onChange={(e) => editRow(row, { char: e.target.value })}
-                      aria-label="Character"
-                      className="h-8 text-base"
-                      spellCheck={false}
-                    />
-                  )}
-                  {gone ? (
-                    <span className="text-sm text-muted-foreground">Taken out of this project</span>
-                  ) : (
-                    <Input
-                      value={row.description || ''}
-                      onChange={(e) => editRow(row, { description: e.target.value })}
-                      aria-label="Note"
-                      className="h-8"
-                    />
-                  )}
-                  <div className="flex items-center justify-end gap-1">
-                    {ORIGIN_LABEL[row.origin] && (
-                      <Badge variant="secondary" className="hidden font-normal sm:inline-flex">
-                        {ORIGIN_LABEL[row.origin]}
-                      </Badge>
-                    )}
-                    {row.origin !== 'built-in' && isBuiltInCode(row.code) && (
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="h-7 w-7"
-                        onClick={() => resetRow(row)}
-                        title="Reset to built-in"
-                        aria-label={`Reset code ${row.code}`}
-                      >
-                        <RotateCcw className="h-3.5 w-3.5" />
-                      </Button>
-                    )}
-                    {!gone && (
+        <div className="overflow-x-auto rounded-md border">
+          <div className="min-w-[36rem]">
+            <div className="border-b bg-muted/30 py-2 text-xs">
+              <div className={GRID} data-compose-header>
+                <SortHeader field="code" label="Code" sort={sort} onSort={onSort} />
+                <SortHeader field="char" label="Character" sort={sort} onSort={onSort} />
+                <SortHeader field="description" label="Note" sort={sort} onSort={onSort} />
+                <SortHeader field="modified" label="Last modified" sort={sort} onSort={onSort} />
+                <span />
+              </div>
+            </div>
+            <ListPager {...paged} onPage={paged.setPage} position="top" />
+            {paged.pageItems.length === 0 && (
+              <p className="px-3 py-4 text-sm text-muted-foreground">No codes match “{q}”.</p>
+            )}
+            {paged.pageItems.map((row) => {
+              const problems = problemsByCode.get(row) || [];
+              const builtIn = isBuiltInCode(row.code);
+              const stored = row.was?.modified;
+              return (
+                <div
+                  key={row.uid}
+                  className="border-b py-1.5 last:border-b-0"
+                  data-code-row={row.code}
+                >
+                  <div className={GRID} data-compose-grid>
+                    <div className="min-w-0">
+                      {builtIn ? (
+                        <code className="text-sm">{`\\${row.code}`}</code>
+                      ) : (
+                        <Input
+                          value={row.code}
+                          onChange={(e) => editRow(row, { code: e.target.value })}
+                          aria-label="Code"
+                          className="h-8 font-mono"
+                          spellCheck={false}
+                          aria-invalid={problems.length > 0 || undefined}
+                        />
+                      )}
+                    </div>
+                    <div className="min-w-0">
+                      <Input
+                        compose
+                        value={row.char}
+                        onChange={(e) => editRow(row, { char: e.target.value })}
+                        aria-label="Character"
+                        className="h-8 text-base"
+                        spellCheck={false}
+                      />
+                    </div>
+                    <div className="min-w-0">
+                      <Input
+                        value={row.description || ''}
+                        onChange={(e) => editRow(row, { description: e.target.value })}
+                        aria-label="Note"
+                        className="h-8"
+                      />
+                    </div>
+                    <span
+                      className="min-w-0 truncate text-xs text-muted-foreground"
+                      title={fullTimestamp(stored) || undefined}
+                      data-modified
+                    >
+                      {timeAgo(stored)}
+                    </span>
+                    <div className="flex min-w-0 items-center justify-end gap-1">
+                      {row.origin !== 'built-in' && builtIn && (
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-7 w-7"
+                          onClick={() => resetRow(row)}
+                          title="Reset to built-in"
+                          aria-label={`Reset code ${row.code}`}
+                        >
+                          <RotateCcw className="h-3.5 w-3.5" />
+                        </Button>
+                      )}
                       <Button
                         size="icon"
                         variant="ghost"
@@ -259,18 +342,18 @@ export const ComposeSettings = ({ project, projectId, client, onProjectUpdate })
                       >
                         <Trash2 className="h-3.5 w-3.5" />
                       </Button>
-                    )}
+                    </div>
                   </div>
+                  {problems.map((p) => (
+                    <p key={p} className="px-3 pt-1 text-xs text-destructive">
+                      {p}
+                    </p>
+                  ))}
                 </div>
-                {problems.map((p) => (
-                  <p key={p} className="px-3 pb-1.5 text-xs text-destructive">
-                    {p}
-                  </p>
-                ))}
-              </div>
-            );
-          })}
-          <ListPager {...paged} onPage={paged.setPage} />
+              );
+            })}
+            <ListPager {...paged} onPage={paged.setPage} />
+          </div>
         </div>
 
         <div>

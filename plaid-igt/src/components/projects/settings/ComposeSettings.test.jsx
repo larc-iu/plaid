@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import { renderComponent } from '@ui/test/renderComponent.jsx';
 import { ComposeSettings } from './ComposeSettings.jsx';
+import { BUILT_IN_TABLE } from '@/domain/composeConfig';
 
 // Settings → Text and vocab → Special characters: the list of a project's
 // backslash codes, sortable by each column, with what was deleted gone.
@@ -12,6 +13,9 @@ vi.mock('@/utils/feedback', () => ({
   notifyInfo: vi.fn(),
   humanizeError: (e) => String(e),
 }));
+
+const BUILT_IN_CODES = Object.keys(BUILT_IN_TABLE);
+const byCode = (a, b) => a.localeCompare(b);
 
 const type = (input, value) => {
   const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
@@ -68,11 +72,31 @@ const button = (c, name) =>
   [...c.querySelectorAll('button')].find(
     (b) => b.textContent.trim() === name || b.getAttribute('aria-label') === name,
   );
+const header = (c, label) =>
+  [...c.querySelectorAll('[data-compose-header] button')].find(
+    (b) => b.textContent.trim() === label,
+  );
 const search = (view, text) =>
   view.step(() => type(view.container.querySelector('input[aria-label="Search codes"]'), text));
+const save = async (page) =>
+  page.view.step(async () => {
+    button(page.view.container, 'Save').click();
+    await settle();
+  });
+
 beforeEach(() => localStorage.clear());
 
 describe('the labels', () => {
+  it('heads the columns Code, Character, Note and Last modified', async () => {
+    const { view } = await open();
+    const heads = [...view.container.querySelectorAll('[data-compose-header] > *')].map((n) =>
+      n.textContent.trim(),
+    );
+    expect(heads).toEqual(['Code', 'Character', 'Note', 'Last modified', '']);
+    expect(view.container.textContent).not.toContain('Types');
+    await view.unmount();
+  });
+
   it('labels a row’s fields Code and Character', async () => {
     const { view } = await open();
     await view.step(() => button(view.container, 'Add code').click());
@@ -114,6 +138,186 @@ describe('the labels', () => {
     expect(text()).toContain('Enter a character.');
     await view.step(() => type(row(view.container, '').querySelector('input'), 'zq'));
     expect(row(view.container, 'zq').textContent).not.toContain('A code is 2 characters.');
+    await view.unmount();
+  });
+});
+
+describe('sorting', () => {
+  const dated = {
+    codes: [
+      { code: 'sw', char: 'ɚ', modified: '2026-11-01T10:00:00.000Z' },
+      { code: "b'", char: 'ɓ', description: 'mine', modified: '2026-11-03T10:00:00.000Z' },
+      { code: 'ng', char: 'ŋ̊', modified: '2026-11-02T10:00:00.000Z' },
+    ],
+    removed: [],
+  };
+
+  it('opens with the most recently modified first, then the rest by code', async () => {
+    const { view } = await open(dated);
+    const shown = codes(view.container);
+    expect(shown.slice(0, 3)).toEqual(["b'", 'ng', 'sw']);
+    const rest = BUILT_IN_CODES.filter((c) => c !== 'sw' && c !== 'ng').sort(byCode);
+    expect(shown.slice(3)).toEqual(rest.slice(0, shown.length - 3));
+    await view.unmount();
+  });
+
+  it('shows a modified time in relative form with the full time on hover, a built-in none', async () => {
+    const { view } = await open(dated);
+    const cell = row(view.container, "b'").querySelector('[data-modified]');
+    expect(cell.textContent).toMatch(/ago|yesterday|last|week|month|day/);
+    expect(cell.getAttribute('title')).toBe(new Date('2026-11-03T10:00:00.000Z').toLocaleString());
+    const untouched = codes(view.container)[3];
+    expect(row(view.container, untouched).querySelector('[data-modified]').textContent).toBe('');
+    await view.unmount();
+  });
+
+  it('puts the never-modified first when Last modified is ascending', async () => {
+    const { view } = await open(dated);
+    await view.step(() => header(view.container, 'Last modified').click());
+    const shown = codes(view.container);
+    const blanks = BUILT_IN_CODES.filter((c) => c !== 'sw' && c !== 'ng').sort(byCode);
+    expect(shown).toEqual(blanks.slice(0, shown.length));
+    await view.unmount();
+  });
+
+  it('sorts by code both ways', async () => {
+    const { view } = await open();
+    const all = [...BUILT_IN_CODES].sort(byCode);
+    await view.step(() => header(view.container, 'Code').click());
+    expect(codes(view.container)).toEqual(all.slice(0, 25));
+    await view.step(() => header(view.container, 'Code').click());
+    expect(codes(view.container)).toEqual([...all].reverse().slice(0, 25));
+    await view.unmount();
+  });
+
+  it('sorts by character', async () => {
+    const { view } = await open();
+    await view.step(() => header(view.container, 'Character').click());
+    const chars = codes(view.container).map(
+      (c) => row(view.container, c).querySelector('input[aria-label="Character"]').value,
+    );
+    expect(chars).toEqual([...chars].sort((a, b) => a.localeCompare(b)));
+    await view.unmount();
+  });
+
+  it('sorts by note, a blank note smallest', async () => {
+    const { view } = await open(dated);
+    await view.step(() => header(view.container, 'Note').click());
+    expect(codes(view.container)[0]).not.toBe("b'");
+    await view.step(() => header(view.container, 'Note').click());
+    expect(codes(view.container)[0]).toBe("b'");
+    await view.unmount();
+  });
+
+  it('keeps a row in place while it is edited', async () => {
+    const { view } = await open(dated);
+    await view.step(() => header(view.container, 'Character').click());
+    const before = codes(view.container);
+    const field = row(view.container, before[2]).querySelector('input[aria-label="Character"]');
+    await view.step(() => type(field, 'zzz'));
+    expect(codes(view.container)).toEqual(before);
+    await view.unmount();
+  });
+});
+
+describe('a deleted built-in code', () => {
+  it('leaves no row', async () => {
+    const { view } = await open({ codes: [], removed: ['sw'] });
+    await view.step(() => header(view.container, 'Code').click());
+    await search(view, 'sw');
+    expect(row(view.container, 'sw')).toBeNull();
+    expect(view.container.textContent).not.toContain('Taken out of this project');
+    expect(view.container.textContent).not.toContain('Removed');
+    await view.unmount();
+  });
+
+  it('goes at once, and stays gone once saved and read again', async () => {
+    const page = await open();
+    const c = () => page.view.container;
+    await search(page.view, 'sw');
+    expect(row(c(), 'sw')).not.toBeNull();
+    await page.view.step(() => button(c(), 'Delete code sw').click());
+    expect(row(c(), 'sw')).toBeNull();
+    await save(page);
+    expect(page.server.config.igt.compose.removed).toEqual(['sw']);
+    await page.reopen();
+    await search(page.view, 'sw');
+    expect(c().querySelector('[data-code-row]')).not.toBeNull();
+    expect(row(c(), 'sw')).toBeNull();
+    await page.view.unmount();
+  });
+
+  it('comes back with the others from Restore built-in codes', async () => {
+    const page = await open({ codes: [], removed: ['sw', 'ng'] });
+    const c = () => page.view.container;
+    await page.view.step(() => header(c(), 'Code').click());
+    await page.view.step(() => button(c(), 'Restore built-in codes').click());
+    expect(button(c(), 'Restore built-in codes')).toBeUndefined();
+    await save(page);
+    expect(page.server.config.igt.compose.removed).toEqual([]);
+    await search(page.view, 'sw');
+    expect(row(c(), 'sw')).not.toBeNull();
+    await page.view.unmount();
+  });
+
+  it('offers no restore when nothing was deleted', async () => {
+    const { view } = await open();
+    expect(button(view.container, 'Restore built-in codes')).toBeUndefined();
+    await view.unmount();
+  });
+});
+
+describe('the time a code was last changed', () => {
+  it('is stored with a changed code on save, and an untouched one stores nothing', async () => {
+    const page = await open({
+      codes: [{ code: 'ng', char: 'ŋ̊', modified: '2026-01-01T00:00:00.000Z' }],
+      removed: [],
+    });
+    const c = () => page.view.container;
+    await page.view.step(() => header(c(), 'Code').click());
+    const before = Date.now();
+    const code = codes(c())[0];
+    await page.view.step(() =>
+      type(row(c(), code).querySelector('input[aria-label="Character"]'), 'X'),
+    );
+    await save(page);
+    const stored = page.server.config.igt.compose.codes;
+    const first = stored.find((r) => r.code === code);
+    expect(Date.parse(first.modified)).toBeGreaterThanOrEqual(before);
+    // The list shows what was stored, time and all, with nothing left to save.
+    expect(button(c(), 'Save').disabled).toBe(true);
+    expect(row(c(), code).querySelector('[data-modified]').textContent).not.toBe('');
+    // A code nobody touched in this save keeps the time it had.
+    expect(stored.find((r) => r.code === 'ng').modified).toBe('2026-01-01T00:00:00.000Z');
+    expect(stored).toHaveLength(2);
+    await page.view.unmount();
+  });
+});
+
+describe('the row layout', () => {
+  // happy-dom draws nothing, so this pins the structure the layout rests on:
+  // every row and the header share one grid, each cell its own track, and the
+  // buttons sit in their own last cell, never beside or over the note field.
+  it('gives every row the header’s five cells, the buttons in the last', async () => {
+    const { view } = await open({
+      codes: [
+        { code: ':f', char: 'ː', description: 'IPA length', modified: '2026-11-01T00:00:00Z' },
+      ],
+      removed: [],
+    });
+    const head = view.container.querySelector('[data-compose-header]');
+    const grids = [...view.container.querySelectorAll('[data-code-row] > [data-compose-grid]')];
+    expect(grids.length).toBeGreaterThan(0);
+    for (const grid of grids) {
+      expect(grid.className).toBe(head.className);
+      expect(grid.children).toHaveLength(5);
+      const [, , note, , actions] = grid.children;
+      expect(note.querySelector('button')).toBeNull();
+      expect(actions.querySelector('input')).toBeNull();
+    }
+    const changed = row(view.container, ':f').querySelector('[data-compose-grid]');
+    expect(changed.children[4].querySelectorAll('button')).toHaveLength(2);
+    expect(view.container.textContent).not.toContain('Changed');
     await view.unmount();
   });
 });
