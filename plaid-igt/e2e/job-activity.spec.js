@@ -80,7 +80,7 @@ test('a running job lists each piece as it finishes, with its note and its Chang
     const piece = rows.nth(0);
     await expect(piece).toContainText('Gloss: 1 value.');
     await expect(piece).toContainText('1 step');
-    await expect(piece.locator('[dir="auto"]')).toHaveText(NOTE);
+    await expect(piece.locator('[dir="auto"]').first()).toHaveText(NOTE);
     const where = piece.getByRole('link', { name: DOC, exact: true });
     // A piece of the whole document links the document.
     await expect(where).toHaveAttribute('href', `#/projects/${projectId}/documents/${documentId}`);

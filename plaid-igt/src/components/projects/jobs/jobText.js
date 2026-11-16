@@ -102,15 +102,15 @@ export const jobEditedText = (job) =>
   (job?.report?.totals?.changesParts || []).some((p) => p.kind === 'text' && p.n > 0) ||
   (job?.documents || []).some((d) => (d.counts?.textChanges ?? 0) > 0);
 
-// Whether an ended job's report says it wrote nothing at all: no change in
-// its totals or any document, and nothing harmonize changed. Not known (false)
-// for a job with no report.
+// Whether an ended job's report says it wrote nothing at all: a count of no
+// change in its totals, none in any document, and nothing harmonize changed.
+// Not known (false) for a job with no report, or one whose totals count no
+// changes.
 export const wroteNothing = (job) => {
   const report = job?.report;
-  if (!report) return false;
+  if (report?.totals?.changes !== 0) return false;
   const harmonize = report.harmonize || {};
   return !(
-    (report.totals?.changes ?? 0) > 0 ||
     (report.documents || []).some((d) => (d.counts?.changes ?? 0) > 0) ||
     (job.documents || []).some((d) => (d.counts?.changes ?? 0) > 0) ||
     (harmonize.changed || []).length > 0 ||

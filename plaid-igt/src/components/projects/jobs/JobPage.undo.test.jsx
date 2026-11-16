@@ -237,6 +237,10 @@ describe('Undo job', () => {
     v = await mount(clientOf(jobOf({ report: { totals: { changes: 3 } } })));
     expect(button(v.container, 'Undo job')).not.toBeNull();
     await v.unmount();
+    // A report that counts no changes at all says nothing either way.
+    v = await mount(clientOf(jobOf({ report: { totals: { words: 2 } } })));
+    expect(button(v.container, 'Undo job')).not.toBeNull();
+    await v.unmount();
   });
 
   // RP-6: "179 values, 625 tokens and 1 text". A token is no word a person
