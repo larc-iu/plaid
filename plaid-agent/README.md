@@ -595,10 +595,10 @@ alone, as `<job>/run-<id>/<document>/stretch-NNNN/round-NN-<id>.json`, a
 from a file, for tests and rehearsals. A piece's model call that reaches its
 output limit (`--max-output-tokens`, its reasoning included) is dropped, and
 the piece is asked again once with what it staged kept. A second such call
-fails the stretch, which is halved, and what the piece staged for its
-sentences is written first. `--piece-output-tokens N` sets a lower limit on a
-piece's calls alone (default 0, none: measured, a lower limit made jobs
-slower). The job's prompt and tools are its own
+fails the stretch, which is halved, and nothing the piece staged is written:
+a stretch writes all of its sentences or none. `--piece-output-tokens N` sets
+a lower limit on a piece's calls alone (default 0, none: measured, a lower
+limit made jobs slower). The job's prompt and tools are its own
 (`docs/igt/SAMPLE_JOB_PROMPT.md`): `jobworker.py` (the command line),
 `core/job.py` (the loop, the heartbeat, the budgets and halving, yielding, the
 report) and `igt/job.py` (targets, the stretch's input, the job's guards, the

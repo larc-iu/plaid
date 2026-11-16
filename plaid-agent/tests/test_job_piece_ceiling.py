@@ -300,3 +300,51 @@ def test_a_refusal_as_too_long_is_measured_with_the_limit_the_call_was_sent_with
     ws = SimpleNamespace(ops=[{'kind': 'x'}], shrink=lambda history, new: list(history))
     _piece_turn(monkeypatch, script, ceiling=CEILING, ws=ws)
     assert seen == [CEILING]
+
+
+class _Crash(BaseException):
+    """The worker's process dies here."""
+
+
+def test_a_stretch_cut_twice_writes_none_of_its_sentences_so_the_cursor_never_passes_one_unworked(monkeypatch):
+    """REV-SP-10's guard (scratchpad/REV-SP/plug/test_revsp_cut3.py): a
+    stretch writes all of its sentences or none. Stretch s1, s2, the piece
+    stages s2 only and reaches the limit twice. Nothing is written, so when
+    the half holding s1 is taken the cursor has not passed s1. The process
+    dies there, and on resume s1 and s2 are both worked (or both listed as
+    skipped), never one lost."""
+    import pytest
+    monkeypatch.setattr(igt_job, 'JOB_STRETCH_SENTENCES', 2)
+    client = JobClient({'d1': _doc()})
+    job = start(client, id=J, plan='sentences')
+    client.analysed = _applying(monkeypatch, client)
+    seen = {}
+
+    def answer(asked, n, kwargs):
+        if not _is_piece(asked):
+            return reply('Done.')
+        named = targets_named(asked)
+        if named == [1, 2]:
+            if n == 1 and _cut_note(kwargs) is None:
+                return reply(calls=_analyse(2))
+            return reply('...', finish='length')
+        if named == [1]:
+            seen['cursor'] = job.rows['d1'].get('last_sentence')
+            raise _Crash()
+        return reply(calls=[c for s in named for c in _analyse(s)]) if n == 1 else reply('Done.')
+    use(monkeypatch, Model(answer))
+    with pytest.raises(_Crash):
+        runner(job).document('d1')
+    assert seen['cursor'] is None, 'nothing of the cut stretch was written'
+    assert client.analysed == set()
+
+    def again(asked, n, kwargs):
+        if not _is_piece(asked):
+            return reply('Done.')
+        return reply(calls=[c for s in targets_named(asked) for c in _analyse(s)]) if n == 1 else reply('Done.')
+    use(monkeypatch, Model(again))
+    assert runner(job).document('d1') == 'done'
+    skipped = {s['sentence'] for s in job.rows['d1'].get('skipped') or []}
+    worked = {s for s in ('s1', 's2') if _every_word(int(s[1:])) <= client.analysed}
+    assert worked | skipped >= {'s1', 's2'} and not (worked & skipped), (worked, skipped)
+    assert ({'s1', 's2'} <= worked) or ({'s1', 's2'} <= skipped)
