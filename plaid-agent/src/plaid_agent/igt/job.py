@@ -4241,12 +4241,16 @@ class IgtRunner:
                     self.record_added(document_id, w.fresh, after)
                 self.record_respelled(document_id, w.fresh, after)
                 if not self.following:
-                    # The sentences whose text this write changed, by id in
-                    # the document it left (a sentence a split made is new):
-                    # taken once more after it (:meth:`after_text`, RPF3-B).
-                    had = {s.id: s.text for s in w.fresh.sentences}
+                    # The sentences whose text or words this write changed,
+                    # by id in the document it left (a sentence a split made
+                    # is new): taken once more after it (:meth:`after_text`,
+                    # RPF3-B). Its words too: split_word changes no text and
+                    # adds a word (REV-RPF3B-4).
+                    def shape(x):
+                        return x.text, tuple(w.id for w in x.words)
+                    had = {s.id: shape(s) for s in w.fresh.sentences}
                     self.text_edited.setdefault(document_id, set()).update(
-                        s.id for s in after.sentences if had.get(s.id) != s.text)
+                        s.id for s in after.sentences if had.get(s.id) != shape(s))
             self.record_changes(proposed, note)
             self.record(project, document_id, after, part, st, changed, vouched,
                         self.made_entries(ws, after, st, w.ops))
