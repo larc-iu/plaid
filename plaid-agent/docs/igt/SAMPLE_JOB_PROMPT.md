@@ -49,7 +49,7 @@ Idiomatic English, not a word-by-word rendering.
 --- the project's guidelines end ---
 
 How to plan:
-- pieces "sentences": a few sentences per piece, seeing the two before, for work that needs each sentence read, with only the tools to set values (and to segment, link and add entries when the job fills those), no search or code. Every sentence, unless the job only fills what is empty: then skip_filled_sentences true. A plan in sentences makes at least one model call for each stretch of every document in the job.
+- pieces "sentences": a few sentences per piece, seeing the two before, for work that needs each sentence read, with only the tools to set values (and to segment, link and add entries when the job fills those), no search or code. Every sentence, unless the job only fills what is empty: then skip_filled_sentences true. For work that concerns only the sentences where something occurs, give search the search tool's arguments: only the sentences it matches are worked. A plan in sentences makes at least one model call for each stretch of the sentences it works in every document.
 - pieces "document": one piece per document, seeing the whole document. For work about a whole text, such as a summary of each.
 - pieces "selection": one piece for all the documents, reading them with the tools and code. For work across the documents, such as finding where they disagree, and for the same exact change wherever a known value occurs (one value for another): it finds them with search or code and stages each change, which is written in its document. Its findings go in its last message, which the report shows whole, and in tables code makes.
 - piece_instructions: only your decisions, as plain imperative sentences naming forms and values exactly. Pieces already have the project's guidelines and the job's instructions. Read the documents to decide.
@@ -66,11 +66,12 @@ Its 24 tools are the chat's reads and code, as `SAMPLE_PROMPT.md` shows them (an
 
 ### plan_work
 
-End the planning: how the job's work is cut into pieces, what every piece is told, and optionally which documents and in what order. pieces: "sentences" (stretches of a few sentences, each its own context), "document" (one context per document) or "selection" (one context for all the documents). fills: what the job fills, each named as the message lists it under What a job can fill (segmentation, a field, an orthography), or [] when it fills nothing, such as a check or a summary. Pieces are shown what of it is empty. skip_filled_sentences: with "sentences", true skips every sentence in which nothing the job fills is empty. edits_text: true when the instructions ask for the text itself to change: words or sentences retyped, respelled, split, merged, inserted or deleted. The sentences a piece's text edit changes are taken once more right after it, to fill what is empty there. piece_instructions: what every piece is told, as decisions, added to the instructions. documents: names or ids, a subset of the job's documents in the order to work them. Left out, all of them in the job's order.
+End the planning: how the job's work is cut into pieces, what every piece is told, and optionally which documents and in what order. pieces: "sentences" (stretches of a few sentences, each its own context), "document" (one context per document) or "selection" (one context for all the documents). fills: what the job fills, each named as the message lists it under What a job can fill (segmentation, a field, an orthography), or [] when it fills nothing, such as a check or a summary. Pieces are shown what of it is empty. skip_filled_sentences: with "sentences", true skips every sentence in which nothing the job fills is empty. search: with "sentences", the search tool's arguments: only the sentences it matches are worked. edits_text: true when the instructions ask for the text itself to change: words or sentences retyped, respelled, split, merged, inserted or deleted. The sentences a piece's text edit changes are taken once more right after it, to fill what is empty there. piece_instructions: what every piece is told, as decisions, added to the instructions. documents: names or ids, a subset of the job's documents in the order to work them. Left out, all of them in the job's order.
 
 - `pieces` (one of `sentences`, `document`, `selection`, required)
 - `fills` (array of string, required)
 - `skip_filled_sentences` (boolean)
+- `search` (object)
 - `edits_text` (boolean)
 - `piece_instructions` (string)
 - `documents` (array of string)

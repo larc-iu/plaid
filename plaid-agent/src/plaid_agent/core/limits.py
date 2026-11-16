@@ -274,6 +274,14 @@ JOB_SKIPPED_PER_DOCUMENT = 500
 #: The most decisions one call adds, and the most forms one lookup names
 #: (core's JOB_DECISIONS_PER_CALL).
 JOB_DECISIONS_PER_CALL = 1000
+#: The most sentences a plan limited by a search takes (SF). Each is a
+#: decision row of its own, sent in the one call that keeps the plan, its
+#: summary and its instructions, so core holds the plan with all of them or
+#: none: under JOB_DECISIONS_PER_CALL.
+JOB_PLAN_SEARCH_MAX_SENTENCES = 900
+#: The longest pattern a plan's search keeps: the plan's row holds it twice
+#: (as given and as the page says it) under JOB_ANALYSIS_MAX_CHARS.
+JOB_PLAN_SEARCH_PATTERN_MAX_CHARS = 200
 
 # A job is the assistant, unattended (the owner's rulings 11 to 14 of
 # 2026-11-13, fixer JG). Every part a model context is given has a budget.

@@ -228,6 +228,23 @@ def t_search(ws: Workspace, pattern: str = '', where: str = 'baseline', document
     return _finish(ws, out, total, limit, 'hits', 'match', morphs, empty=empty, shown=shown)
 
 
+def search_where(ws: Workspace, pattern: str, where: Optional[str], regex: bool, case_sensitive: bool):
+    """What :func:`t_search` reads its arguments as, refused as it refuses
+    them: ``(kind, fields)``, the kind "baseline", "morpheme", "lexicon" or
+    "field", and for a field the fields it searches (every field of a name
+    several share, as search answers for each). For a plan limited by a
+    search (SF)."""
+    if not pattern:
+        raise ToolError('Give a pattern (to list items LACKING a value, use worklist).', kind='invalid-argument')
+    _matcher(pattern, bool(regex), bool(case_sensitive))
+    where_name = _where(ws, where, 'baseline', ('baseline', 'morpheme', 'lexicon'))
+    where_l = where_name.lower()
+    if where_l in ('baseline', 'morpheme', 'lexicon'):
+        return where_l, [None]
+    alike = ws.project.fields_sharing_name(where_name)
+    return 'field', alike or [_field_or_where(ws, where_name, ('baseline', 'morpheme', 'lexicon'))]
+
+
 def _merge_notes(ws, start):
     """One note for the searches of a name several fields share, as the
     step is one search: their hits shown out of their hits found, added up."""

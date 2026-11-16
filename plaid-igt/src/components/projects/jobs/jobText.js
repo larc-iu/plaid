@@ -41,7 +41,16 @@ export const planText = (plan) => {
   // worded by why it ended (REV-DF4-2).
   if (plan.by === 'none') return `${planEndedText(plan)} Nothing was written.`;
   let text = PIECES_TEXT[plan.pieces] ?? plan.pieces;
-  if (plan.pieces === 'sentences' && plan.onlyEmpty) text += ', only those with something empty';
+  if (plan.pieces === 'sentences' && plan.search) {
+    // Only the sentences the plan's search matched, said by the worker's
+    // words for it (`search.said`, CONTRACT, added by SF), as read_job says it.
+    text +=
+      `, only the sentences matching ${plan.search.said}: ` +
+      `${countOf(plan.search.sentences ?? 0, 'sentence')} in ${countOf(plan.search.documents ?? 0, 'document')}`;
+    if (plan.onlyEmpty) text += ', of them only those with something empty';
+  } else if (plan.pieces === 'sentences' && plan.onlyEmpty) {
+    text += ', only those with something empty';
+  }
   // The documents worked apart: smaller than planned, or, after all of them
   // at once, walked a few sentences at a time (RP-4).
   const smaller = (plan.fallback || []).length;
@@ -334,15 +343,38 @@ export const allSkipped = (d) =>
 // changes are what that step wrote there.
 const notReadThrough = (d) => d?.state === 'done' && d.counts?.notWalked === true;
 
+// A document a plan limited by a search ended with no sentence of it matched,
+// and no model call (the worker's `counts.matched` 0, CONTRACT, added by SF).
+export const noMatchingSentence = (d) => d?.state === 'done' && d.counts?.matched === 0;
+
 // A document's sentences as the Documents table says them: those worked of
 // its sentences, and those skipped, "0 of 2, 2 skipped" (REV-RPF-P-9).
 // A document walked after a selection's piece only for its sentences with
 // something empty (`narrowed`, RPF3 round 3) counts against all its
 // sentences, the others said as having nothing to fill: "1 of 8, 7 with
 // nothing to fill", never "1 of 1".
-export const documentSentencesText = (d, narrowed = false) => {
+export const documentSentencesText = (d, narrowed = false, plan = null) => {
   if (notReadThrough(d)) return 'Not read through';
   if (d.targets === null || d.targets === undefined) return '';
+  // Under a plan limited by a search, against all the document's sentences,
+  // those the walk did not take said as not matching (SF): "0 of 20, none
+  // match the plan's search", "3 of 20, 17 not matching the plan's search".
+  if (plan?.pieces === 'sentences' && plan.search && typeof d.counts?.matched === 'number') {
+    const all = Math.max(d.sentences ?? 0, d.targets);
+    if (d.counts.matched === 0) return `0 of ${all.toLocaleString()}, none match the plan’s search`;
+    const skippedHere = Math.min(skippedCount(d), d.done ?? 0);
+    const others = all - d.targets;
+    return [
+      `${((d.done ?? 0) - skippedHere).toLocaleString()} of ${all.toLocaleString()}`,
+      ...(skippedHere > 0 ? [`${skippedHere.toLocaleString()} skipped`] : []),
+      ...(others > 0
+        ? [
+            `${others.toLocaleString()} not matching the plan’s search` +
+              (plan.onlyEmpty ? ' or with nothing to fill' : ''),
+          ]
+        : []),
+    ].join(', ');
+  }
   const skipped = Math.min(skippedCount(d), d.done ?? 0);
   const all = narrowed && d.sentences > d.targets ? d.sentences : d.targets;
   const worked = `${((d.done ?? 0) - skipped).toLocaleString()} of ${all.toLocaleString()}`;
@@ -364,20 +396,23 @@ export const walkedForEmpty = (plan, documentId) =>
   );
 
 // The report's documents counted as the page says them (REV-RPF3-4): done,
-// not read through, skipped, stopped partway and not reached, each document
-// once. "Done" leaves out those not read through and those all skipped. The
+// not read through, with no matching sentence (SF), skipped, stopped partway
+// and not reached, each document once. "Done" leaves out those not read
+// through, those with no matching sentence and those all skipped. The
 // worker's read_job and final context say the same, by plaid-agent's
 // `document_counts`, pinned equal by its test_document_counts_mirror.
 export const documentCounts = (report) => {
   const docs = report?.documents || [];
   const t = report?.totals || {};
   const unread = docs.filter(notReadThrough).length;
+  const unmatched = docs.filter(noMatchingSentence).length;
   const skipped = docs.filter(allSkipped).length;
   const unfinished = docs.filter((d) => d.state === 'not-reached');
   const partway = unfinished.filter(stoppedPartway).length;
   return {
-    done: Math.max(0, (t.documentsDone ?? 0) - skipped - unread),
+    done: Math.max(0, (t.documentsDone ?? 0) - skipped - unread - unmatched),
     notReadThrough: unread,
+    withNoMatchingSentence: unmatched,
     skipped,
     stoppedPartway: partway,
     notReached: report?.documents ? unfinished.length - partway : (t.documentsNotReached ?? 0),

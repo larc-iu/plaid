@@ -13,7 +13,7 @@ import copy
 import inspect
 import json
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from ..core import toolkit, webtools
 from ..core.limits import MAX_SCOPE_DOCS, MAX_SENTENCES_PER_READ, OVERVIEW_DOCS
@@ -617,6 +617,9 @@ TOOLS, WRITE_TOOLS, tools_for, call_tool = toolkit.build(
     web='this corpus and its lexicons', code='the texts and lexicons',
     code_functions=', lexicon(), recording()', rewrite=entry_form_named_form)
 
+#: The search tool as the chat offers it: a plan's ``search`` takes its arguments (SF).
+SEARCH_TOOL = next(t for t in TOOLS if t['function']['name'] == 'search')
+
 
 # --- the unattended job's tools -------------------------------------------------
 # A job is the assistant, unattended (the owner's rulings 12 and 14 of
@@ -642,6 +645,7 @@ PLAN_WORK = _fn(
     'field, an orthography), or [] when it fills nothing, such as a check or a summary. Pieces are shown what of '
     'it is empty. '
     'skip_filled_sentences: with "sentences", true skips every sentence in which nothing the job fills is empty. '
+    'search: with "sentences", the search tool\'s arguments: only the sentences it matches are worked. '
     'edits_text: true when the instructions ask for the text itself to change: words or sentences retyped, '
     'respelled, split, merged, inserted or deleted. The sentences a piece\'s text edit changes are taken once more '
     'right after it, to fill what is empty there. '
@@ -650,13 +654,14 @@ PLAN_WORK = _fn(
     {'pieces': {'type': 'string', 'enum': ['sentences', 'document', 'selection']},
      'fills': {'type': 'array', 'items': {'type': 'string'}},
      'skip_filled_sentences': {'type': 'boolean'},
+     'search': {'type': 'object'},
      'edits_text': {'type': 'boolean'},
      'piece_instructions': {'type': 'string'},
      'documents': {'type': 'array', 'items': {'type': 'string'}}}, ['pieces', 'fills'])
 
 
 def t_plan_work(ws, pieces: str = None, piece_instructions: str = '', documents=None, fills=None,
-                skip_filled_sentences: bool = False, edits_text: bool = False) -> str:
+                skip_filled_sentences: bool = False, edits_text: bool = False, search=None) -> str:
     """Check the planning context's plan and keep it on the workspace
     (``ws.plan_work``): a piece size of the menu, what the job fills
     (``fills``, required, names of :func:`targets.fillable`, kept as target
@@ -669,7 +674,10 @@ def t_plan_work(ws, pieces: str = None, piece_instructions: str = '', documents=
     ruling of 2026-11-15), instructions within their cap, a
     subset of the job's documents named once each. A plan that skips every
     sentence of the documents it works is kept, and its answer says so
-    (:data:`PLAN_WORKS_NOTHING`), so the planner may plan again."""
+    (:data:`PLAN_WORKS_NOTHING`), so the planner may plan again. A plan in
+    sentences may carry ``search``, the search tool's arguments
+    (:func:`plan_search`): the sentences it matches now, in the documents the
+    plan works, are kept (``matched``) and are all the walk takes (SF)."""
     from ..core.job import composed
     from ..core.limits import JOB_PIECE_INSTRUCTIONS_MAX_CHARS
     if pieces not in ('sentences', 'document', 'selection'):
@@ -717,11 +725,17 @@ def t_plan_work(ws, pieces: str = None, piece_instructions: str = '', documents=
         if refusal:
             raise ToolError(refusal, kind='invalid-argument')
     skip = skip_filled_sentences and pieces == 'sentences'
+    searched, matched = None, None
+    if search is not None:
+        if pieces != 'sentences':
+            raise ToolError(PLAN_SEARCH_SENTENCES_ONLY, kind='invalid-argument')
+        searched, matched = plan_search(ws, search, order or [d['id'] for d in known])
     # Kept only when true: the plan's row holds the largest plan at its cap.
     ws.plan_work = {'pieces': pieces, 'piece_instructions': text, 'documents': order,
                     'fills': [t.id for t in chosen],
                     **({'only_empty': True} if skip else {}),
                     **({'edits_text': True} if edits_text else {}),
+                    **({'search': searched, 'matched': matched} if searched else {}),
                     **({'instructions_cut': given} if len(text) < given else {})}
     out = ['The plan is kept.']
     if len(text) < given:
@@ -731,7 +745,7 @@ def t_plan_work(ws, pieces: str = None, piece_instructions: str = '', documents=
                    f'{JOB_PIECE_INSTRUCTIONS_MAX_CHARS:,}: they are {kept}. Pieces already have the guidelines and '
                    'the instructions.')
     worked = [d for d in known if order is None or d['id'] in order]
-    size = plan_size(pieces, worked, skip)
+    size = plan_size(pieces, worked, skip, matched)
     if size:
         # A fixed fact from the planning's own counts, so the planner sees the
         # plan's size before it ends, and may call plan_work again (RPF3 round
@@ -752,23 +766,128 @@ def t_plan_work(ws, pieces: str = None, piece_instructions: str = '', documents=
     return ' '.join(out)
 
 
-def plan_size(pieces: str, worked: List[Dict[str, Any]], skip: bool) -> Optional[str]:
+def plan_size(pieces: str, worked: List[Dict[str, Any]], skip: bool,
+              matched: Optional[Dict[str, List[str]]] = None) -> Optional[str]:
     """How many pieces a plan in sentences or by documents is, from the
     planning's counts of each document's sentences: "This plan is 187 pieces
-    over 45 documents." ("at most" for one that skips filled sentences). None
-    for a selection, one piece, and where nothing is counted."""
+    over 45 documents." ("at most" for one that skips filled sentences), and
+    for a plan limited by a search from the sentences it matches: "This plan
+    is 9 pieces over 24 documents: 33 sentences match." None for a
+    selection, one piece, and where nothing is counted."""
     from ..core.limits import JOB_STRETCH_SENTENCES
     if pieces == 'document':
         n = len(worked)
+    elif pieces == 'sentences' and matched:
+        n = sum(-(-len(ids) // JOB_STRETCH_SENTENCES) for ids in matched.values())
     elif pieces == 'sentences':
         n = sum(-(-int(d.get('sentences') or 0) // JOB_STRETCH_SENTENCES) for d in worked)
     else:
         return None
     if not n:
         return None
-    docs = len(worked)
-    return (f'This plan is {"at most " if skip else ""}{n:,} piece{"" if n == 1 else "s"} over {docs:,} '
-            f'document{"" if docs == 1 else "s"}.')
+    docs = len(matched) if matched else len(worked)
+    said = (f'This plan is {"at most " if skip else ""}{n:,} piece{"" if n == 1 else "s"} over {docs:,} '
+            f'document{"" if docs == 1 else "s"}')
+    if not matched:
+        return said + '.'
+    found = sum(len(ids) for ids in matched.values())
+    return f'{said}: {found:,} sentence{"" if found == 1 else "s"} match{"es" if found == 1 else ""}.'
+
+
+#: plan_work's answer to a search with pieces that are not "sentences".
+PLAN_SEARCH_SENTENCES_ONLY = 'search: only with pieces "sentences". Leave it out of this plan.'
+#: plan_work's answer to a search that matches no sentence of the documents
+#: the plan works: no plan is kept, so a job never ends having walked nothing
+#: without saying so.
+PLAN_SEARCH_NONE = 'This search matches no sentence of the job\'s documents. Plan again, with another search or none.'
+#: The arguments a plan's search keeps, as search takes them (``limit``,
+#: ``document`` and ``documents`` are read and not kept).
+PLAN_SEARCH_KEPT = ('pattern', 'where', 'regex', 'case_sensitive')
+
+
+def plan_search(ws, search, documents: List[str]) -> Tuple[Dict[str, Any], Dict[str, List[str]]]:
+    """A plan's ``search``, the search tool's arguments, refused as search
+    refuses them (:func:`reads.search_where`), and the sentences it matches
+    now, in ``documents`` (those the plan works) and in the documents it
+    names itself: ``(kept, matched)``, ``kept`` its arguments with how the
+    page says it (``said``, :func:`search_said`) and how many sentences in
+    how many documents it matches, ``matched`` document id -> sentence ids in
+    document order. Refused when it matches no sentence
+    (:data:`PLAN_SEARCH_NONE`) or more than JOB_PLAN_SEARCH_MAX_SENTENCES
+    (SF). The lexicon holds no sentence: a search of it is refused."""
+    from ..core import limits
+    from ..core.args import read_bool
+    from ..core.tools import mistyped
+    from .queries import q_search_sentences
+    from .reads import search_where
+    if not isinstance(search, dict):
+        raise ToolError('search is the search tool\'s arguments, such as {"pattern": "PL", "where": "Gloss"}.',
+                        kind='invalid-argument')
+    schema = SEARCH_TOOL['function']['parameters']
+    unknown = [k for k in search if k not in schema['properties']]
+    if unknown:
+        raise ToolError(f'search takes no {", ".join(unknown)}. It takes the search tool\'s arguments: '
+                        f'{", ".join(schema["properties"])}.', kind='invalid-argument')
+    wrong = mistyped(search, schema)
+    if wrong:
+        raise ToolError(f'search: {wrong}', kind='invalid-argument')
+    pattern = str(search.get('pattern') or '')
+    if len(pattern) > limits.JOB_PLAN_SEARCH_PATTERN_MAX_CHARS:
+        raise ToolError(f'search: a plan\'s pattern is at most {limits.JOB_PLAN_SEARCH_PATTERN_MAX_CHARS:,} '
+                        'characters.', kind='invalid-argument')
+    regex = read_bool(search.get('regex'), 'regex')
+    case = read_bool(search.get('case_sensitive'), 'case_sensitive')
+    kind, fields = search_where(ws, pattern, search.get('where'), regex, case)
+    if kind == 'lexicon':
+        raise ToolError('search: where "lexicon" finds entries, not sentences. Search the text or a field.',
+                        kind='invalid-argument')
+    held = list(documents)
+    named = ([search['document']] if search.get('document') else []) + list(search.get('documents') or [])
+    if named:
+        ids = {ws.resolve_document_id(str(n)) for n in named}
+        held = [d for d in held if d in ids]
+    found: Dict[str, List[str]] = {}
+    n = 0
+    if held:
+        with ws.corpus.among(held):
+            n, found = q_search_sentences(ws, pattern, 'field' if kind == 'field' else kind, fields, regex, case,
+                                          limits.JOB_PLAN_SEARCH_MAX_SENTENCES)
+    if not n:
+        raise ToolError(PLAN_SEARCH_NONE, kind='invalid-argument')
+    if n > limits.JOB_PLAN_SEARCH_MAX_SENTENCES:
+        raise ToolError(f'This search matches {n:,} sentences of the job\'s documents, past the most a plan takes, '
+                        f'{limits.JOB_PLAN_SEARCH_MAX_SENTENCES:,}. Narrow the search, or plan without it.',
+                        kind='invalid-argument')
+    # Each document's sentences in its order, the documents in the job's.
+    matched = {}
+    for d in held:
+        if d in found:
+            order = {s.id: i for i, s in enumerate(ws.doc(d).sentences)}
+            matched[d] = sorted(found[d], key=lambda sid: order.get(sid, len(order)))
+    kept = {k: search[k] for k in PLAN_SEARCH_KEPT if search.get(k) not in (None, False, '')}
+    return ({**kept, 'said': search_said(ws.project, kind, fields, pattern, regex, case),
+             'sentences': n, 'documents': len(matched)}, matched)
+
+
+def search_said(project, kind: str, fields, pattern: str, regex: bool, case: bool) -> str:
+    """A plan's search in a person's words, by one fixed mapping from its
+    arguments (SF): where it looks (word form, morpheme form, a field by the
+    name the plan's Fills line gives it, ``targets.shown_names``, several
+    joined by "or"), then the pattern in straight quotes exactly as given,
+    an inner quote and a line break escaped, then "(regular expression,
+    matching case)" as it applies: ``Gloss "be.3ᴀᴜɢII"``."""
+    from ..core.bidi import escape_name, visible
+    from . import targets as tg
+    if kind == 'field':
+        names = []
+        for f in fields:
+            shown = tg.shown_names(project, tg.of_ids(project, [f.layer_id]))
+            names.append(shown[0] if shown else f.name)
+        where = ' or '.join(names)
+    else:
+        where = 'morpheme form' if kind == 'morpheme' else 'word form'
+    how = [w for w, on in (('regular expression', regex), ('matching case', case)) if on]
+    return f'{where} "{escape_name(visible(pattern))}"' + (f' ({", ".join(how)})' if how else '')
 
 
 #: plan_work's answer to a plan whose walk takes no sentence: nothing it

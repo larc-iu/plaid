@@ -227,6 +227,23 @@ _PIECES = {'sentences': 'stretches of sentences', 'document': 'one piece per doc
            'selection': 'one piece for all the documents'}
 
 
+def search_part(plan: Dict[str, Any]) -> str:
+    """What the plan line says of the sentences a plan in sentences takes,
+    as the job page says it (plaid-igt jobText.js ``planText``): those its
+    search matched (SF), ", only the sentences matching Gloss "x": 33
+    sentences in 24 documents", and those with something empty."""
+    if plan.get('pieces') != 'sentences':
+        return ''
+    search = plan.get('search') if isinstance(plan.get('search'), dict) else None
+    empty = plan.get('only_empty') is True
+    if search is None:
+        return ', only those with something empty' if empty else ''
+    n, docs = search.get('sentences') or 0, search.get('documents') or 0
+    return (f', only the sentences matching {search.get("said")}: {n:,} sentence{"" if n == 1 else "s"} in '
+            f'{docs:,} document{"" if docs == 1 else "s"}' + (', of them only those with something empty'
+                                                                if empty else ''))
+
+
 def plan_line(report: Dict[str, Any]) -> Optional[str]:
     """How the job's work was cut, in one line, as the job page says it."""
     plan = report.get('plan')
@@ -246,6 +263,7 @@ def plan_line(report: Dict[str, Any]) -> Optional[str]:
             return "This job's setup could not be read. Nothing was written."
         return 'The assistant’s model failed during planning. Nothing was written.'
     line = f'Worked in {_PIECES.get(plan.get("pieces"), plan.get("pieces"))}'
+    line += search_part(plan)
     smaller = len(plan.get('fallback') or [])
     if smaller:
         line += f', {smaller:,} of them in smaller pieces'

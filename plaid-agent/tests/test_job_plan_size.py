@@ -30,8 +30,8 @@ DOCS = [{'id': f'd{i}', 'name': f'Text {i}', 'sentences': 20, 'empty': {}} for i
 
 def test_the_rules_say_what_a_sentences_plan_costs_and_what_a_selection_changes():
     rules = JOB_PLAN_RULES.replace('\n', ' ')
-    assert ('A plan in sentences makes at least one model call for each stretch of every document in the job.'
-            in rules), rules
+    assert ('A plan in sentences makes at least one model call for each stretch of the sentences it works in every '
+            'document.' in rules), rules
     assert ('and for the same exact change wherever a known value occurs (one value for another): it finds them with '
             'search or code and stages each change, which is written in its document.' in rules), rules
     assert 'for work that needs each sentence read' in rules

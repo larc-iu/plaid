@@ -491,8 +491,10 @@ count or a finding is given by code and not retyped.
 JOB_PLAN_RULES = '''How to plan:
 - pieces "sentences": a few sentences per piece, seeing the two before, for work that needs each sentence read, \
 with only the tools to set values (and to segment, link and add entries when the job fills those), no search or \
-code. Every sentence, unless the job only fills what is empty: then skip_filled_sentences true. A plan in \
-sentences makes at least one model call for each stretch of every document in the job.
+code. Every sentence, unless the job only fills what is empty: then skip_filled_sentences true. For work that \
+concerns only the sentences where something occurs, give search the search tool's arguments: only the sentences it \
+matches are worked. A plan in sentences makes at least one model call for each stretch of the sentences it works in \
+every document.
 - pieces "document": one piece per document, seeing the whole document. For work about a whole text, such as \
 a summary of each.
 - pieces "selection": one piece for all the documents, reading them with the tools and code. For work across \

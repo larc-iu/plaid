@@ -174,6 +174,15 @@ NOT_SHOWN = 'not-shown'
 #: held nothing the plan fills that is empty (RPF3-A). Its row is ``done``.
 NOT_WALKED = 'not_walked'
 PIECES = (SENTENCES, DOCUMENT, SELECTION)
+#: The sentences a plan's search matched at planning (SF), one row each,
+#: keyed by the sentence's id, its document the row's: what the walk of a
+#: plan limited by a search takes, a resumed job's too. The plan row holds
+#: the search itself (capped), never these.
+SEARCH_FORM = ' search'
+#: A document row's ``counts`` key under a plan limited by a search: how many
+#: of the document's sentences the search matched at planning. 0 for one the
+#: job ended with no model call (SF).
+MATCHED = 'matched'
 
 
 def _cut(text, limit: int):
@@ -1028,7 +1037,10 @@ def document_counts(report: Dict[str, Any]) -> Dict[str, int]:
     test_document_counts_mirror): ``done`` leaves out the documents not read
     through (``not_walked``, RPF3-A) and those all of whose finished sentences
     were skipped (REV-RPF-P-9); one not reached that finished a sentence or
-    holds the job's changes is ``stopped_partway`` (RPF3-D2)."""
+    holds the job's changes is ``stopped_partway`` (RPF3-D2). One a plan
+    limited by a search ended with no sentence of it matched
+    (``counts.matched`` 0) is ``with_no_matching_sentence``, apart from done
+    (SF)."""
     docs = report.get('documents') or []
     totals = report.get('totals') or {}
 
@@ -1036,14 +1048,22 @@ def document_counts(report: Dict[str, Any]) -> Dict[str, int]:
         return d.get('counts') or {}
 
     unread = sum(1 for d in docs if d.get('state') == 'done' and counts(d).get(NOT_WALKED) is True)
+    unmatched = sum(1 for d in docs if no_match(d))
     skipped = sum(1 for d in docs if d.get('state') == 'done' and (d.get('done') or 0) > 0
                   and len(d.get('skipped') or []) + (counts(d).get('skipped_more') or 0) >= (d.get('done') or 0))
     unfinished = [d for d in docs if d.get('state') == 'not-reached']
     partway = sum(1 for d in unfinished if (d.get('done') or 0) > 0 or (counts(d).get('changes') or 0) > 0)
-    return {'done': max(0, (totals.get('documents_done') or 0) - skipped - unread), 'not_read_through': unread,
+    return {'done': max(0, (totals.get('documents_done') or 0) - skipped - unread - unmatched),
+            'not_read_through': unread, 'with_no_matching_sentence': unmatched,
             'skipped': skipped, 'stopped_partway': partway,
             'not_reached': len(unfinished) - partway if 'documents' in report
             else totals.get('documents_not_reached') or 0}
+
+
+def no_match(d: Dict[str, Any]) -> bool:
+    """Whether a report's document is one a plan limited by a search ended
+    done with no sentence of it matched, and no model call (SF)."""
+    return d.get('state') == 'done' and (d.get('counts') or {}).get(MATCHED) == 0
 
 
 def state_text(d: Dict[str, Any]) -> str:
@@ -1057,6 +1077,8 @@ def state_text(d: Dict[str, Any]) -> str:
     if d.get('state') == 'done' and (d.get('counts') or {}).get(NOT_WALKED) is True:
         # RPF3-A: ended after the step over all the documents.
         return 'done, not read through: what the step over all the documents changed here, nothing left empty'
+    if no_match(d):
+        return 'done, no sentence of it matches the plan\'s search: not worked'
     return str(d.get('state'))
 
 
@@ -1147,7 +1169,11 @@ def summary_message(report: Dict[str, Any], setup: Optional[str] = None) -> str:
                         + ([fields_text(totals['fields'])] if totals.get('fields') else [])), '']
     plan = report.get('plan') or {}
     if plan:
-        lines += [f'How the work was cut: {plan.get("pieces")}.', '']
+        searched = plan.get('search') if isinstance(plan.get('search'), dict) else None
+        lines += [f'How the work was cut: {plan.get("pieces")}'
+                  + (f', only the sentences matching {searched.get("said")}: '
+                     f'{_n_text(searched.get("sentences") or 0, "sentence")} in '
+                     f'{_n_text(searched.get("documents") or 0, "document")}' if searched else '') + '.', '']
         told = str(plan.get('piece_instructions') or '').strip()
         if told:
             # The job's own decisions, which the summary does not ask the
@@ -2313,6 +2339,16 @@ class IgtRunner:
                 if d not in order and (job.rows.get(d) or {}).get('state') not in ROW_FINAL + ('not-reached',):
                     job.update_row(d, state='not-reached')
         core_job.through_core(job, left_out)
+        searched = self.searched()
+        if searched is not None:
+            # A document the plan's search matched no sentence of ends now,
+            # with no read and no model call, its row saying so (SF).
+            def unmatched():
+                for d in order:
+                    if d not in searched and (job.rows.get(d) or {}).get('state') not in ROW_FINAL:
+                        job.update_row(d, state='done', targets=0,
+                                       **self.tally(d, (job.rows.get(d) or {}).get('skipped')))
+            core_job.through_core(job, unmatched)
         if plan['pieces'] == SELECTION and SELECTION not in core_job.through_core(job, self.fallen_back):
             self.selection(job, order)
         if plan['pieces'] == SELECTION:
@@ -2403,7 +2439,8 @@ class IgtRunner:
             # as the page words it (CONTRACT, added by LV).
             self.plan_summary = self.summary_row(0, {
                 'plan': {**{k: self.plan_pending.get(k) for k in ('by', 'why', 'pieces', 'only_empty', 'edits_text',
-                                                                  'gone') if self.plan_pending.get(k) is not None},
+                                                                  'gone', 'search')
+                            if self.plan_pending.get(k) is not None},
                          **self.fills_named(job, self.plan_pending)},
                 'steps': self.steps_now, 'ended_at': self.now_iso()})
         text = canonical(self.plan_kept(self.plan_pending))
@@ -2416,6 +2453,11 @@ class IgtRunner:
             # In the same call as the plan, so core holds both or neither.
             rows.append({'form': PLAN_INSTRUCTIONS_FORM, 'key': analysis_key(told), 'analysis': told, 'count': 1,
                          'document_id': None, 'sentence_id': None})
+        # The sentences its search matched, a row each, sent first in the
+        # same call (JOB_PLAN_SEARCH_MAX_SENTENCES keeps them in one), so
+        # core holds them all with the plan or none of them (SF).
+        rows = [{'form': SEARCH_FORM, 'key': sid, 'analysis': '', 'count': 1, 'document_id': d, 'sentence_id': sid}
+                for d, ids in (self.plan_pending.get('matched') or {}).items() for sid in ids] + rows
         job.add_decisions(rows)
         # The job works by its plan only once core holds it.
         self.plan_made = self.plan_pending
@@ -2442,7 +2484,7 @@ class IgtRunner:
         as their places in the job's order, so the plan of a job of the most
         documents, named in any order, fits one row (REV-JG-3), and its
         instructions in a row of their own (``PLAN_INSTRUCTIONS_FORM``)."""
-        plan = {k: v for k, v in plan.items() if k != 'piece_instructions'}
+        plan = {k: v for k, v in plan.items() if k not in ('piece_instructions', 'matched')}
         named = plan.get('documents')
         if not named:
             return plan
@@ -2453,7 +2495,7 @@ class IgtRunner:
         """The plan among the job's decision ``rows``, or None when it has
         none: its row as :meth:`plan_kept` holds it, with its documents named
         by id again and its instructions read from their row."""
-        value, told = None, ''
+        value, told, matched = None, '', {}
         for r in rows:
             if r.get('form') == PLAN_FORM:
                 try:
@@ -2462,9 +2504,11 @@ class IgtRunner:
                     continue
             elif r.get('form') == PLAN_INSTRUCTIONS_FORM:
                 told = r.get('analysis') or ''
+            elif r.get('form') == SEARCH_FORM and r.get('first_document'):
+                matched.setdefault(r['first_document'], []).append(r.get('key'))
         if not isinstance(value, dict):
             return None
-        value = {**value, 'piece_instructions': told}
+        value = {**value, 'piece_instructions': told, **({'matched': matched} if value.get('search') else {})}
         places = value.get('documents')
         if not places:
             return value
@@ -3050,8 +3094,12 @@ class IgtRunner:
             if not pending:
                 # The row's counts whole: a record whose row update core
                 # failed is in core, and its counts reach the row here.
-                job.update_row(document_id, state='done',
-                               **self.tally(document_id, (job.rows.get(document_id) or {}).get('skipped')))
+                fields = self.tally(document_id, (job.rows.get(document_id) or {}).get('skipped'))
+                if self.searched() is not None:
+                    # What the walk took is all it finished: the checks
+                    # counted every sentence (SF).
+                    fields['targets'] = fields['done']
+                job.update_row(document_id, state='done', **fields)
                 return 'done'
             row = job.rows.get(document_id) or {}
             total, done = row.get('targets') or 0, row.get('done') or 0
@@ -3062,7 +3110,8 @@ class IgtRunner:
                 job.update_row(document_id, targets=total)
             part = pending if whole else pending[:JOB_STRETCH_SENTENCES]
             last = done + len(part)
-            job.set(message=self.progress_line(doc.name, whole, done + 1, last, max(total, last), document_id))
+            job.set(message=self.matching_line(doc, part) if self.searched() is not None else
+                    self.progress_line(doc.name, whole, done + 1, last, max(total, last), document_id))
             halve([s.id for s in part], lambda ids: self.attempt(project, document_id, ids),
                   lambda sid, kind: self.failed_piece(document_id, doc, sid, kind))
 
@@ -3080,6 +3129,32 @@ class IgtRunner:
         if document_id in left:
             return f'Checking {_n(len(left), "document")} the first step did not read. {line}'
         return line
+
+    def matching_line(self, doc, part: List[Sentence]) -> str:
+        """The heartbeat's line for a stretch of a plan limited by a search
+        (SF): where its sentences stand among all the search matched, in the
+        plan's order of documents, "Story B: sentences 4 to 6 of 33
+        matching.", "Sentence 3 of 33 matching." for a job of one document."""
+        searched = self.searched() or {}
+        order = [d for d in self.planned_order(self.job, self.plan_made or {}) if d in searched]
+        before = sum(len(searched[d]) for d in order[:order.index(doc.id)]) if doc.id in order else 0
+        mine = [s.id for s in doc.sentences if s.id in searched.get(doc.id, ())]
+        at = [before + mine.index(s.id) + 1 for s in part if s.id in mine] or [before + 1]
+        total = sum(len(v) for v in searched.values())
+        said = f'sentence {at[0]:,}' if at[0] == at[-1] else f'sentences {at[0]:,} to {at[-1]:,}'
+        line = f'{said} of {total:,} matching'
+        return f'{doc.name}: {line}.' if len(self.job.order) > 1 else line[0].upper() + line[1:] + '.'
+
+    def searched(self) -> Optional[Dict[str, set]]:
+        """The sentences the plan's search matched at planning, by document
+        (SF), or None for a plan with no search. Fixed for the job: the walk
+        never searches again, so a sentence a person changes afterwards is
+        taken by the walk's own rules, matching or not, and a sentence a
+        split or a merge gives a new id is not taken."""
+        plan = self.plan_made or {}
+        if not plan.get('search'):
+            return None
+        return {d: set(ids) for d, ids in (plan.get('matched') or {}).items()}
 
     def whole_document(self, project: IgtProject, doc) -> bool:
         """Whether this document is worked as one piece: the plan says
@@ -3142,9 +3217,14 @@ class IgtRunner:
         written = self.written(document_id)
         ids = [s.id for s in doc.sentences]
         start = ids.index(row['last_sentence']) + 1 if row.get('last_sentence') in ids else 0
+        # Under a plan limited by a search, only the sentences it matched
+        # (SF), and with skip_filled_sentences only those of them with
+        # something empty: the two rules by AND.
+        searched = self.searched()
+        matched = None if searched is None else searched.get(document_id, set())
         out = []
         for s in doc.sentences[start:]:
-            if s.id in skipped:
+            if s.id in skipped or (matched is not None and s.id not in matched):
                 continue
             if every:
                 if not wrote_in(s, known):
@@ -4602,7 +4682,10 @@ class IgtRunner:
         (``findings``, :func:`findings_rows`, RPF-A5)."""
         key = analysis_key(canonical(piece))
         where = None
-        if doc is not None and part:
+        if doc is not None and part and self.searched() is not None and not piece.get('after_text'):
+            # The sentences a search matched are no run (SF).
+            where = ', '.join(f's{s.index}' for s in part)
+        elif doc is not None and part:
             where = f's{part[0].index}' + (f' to s{part[-1].index}' if len(part) > 1 else '')
         rows = []
         text = findings_text(findings) if findings else ''
@@ -4730,6 +4813,10 @@ class IgtRunner:
             'document': document_id, 'name': name, 'whole': whole,
             'first': f's{part[0].index}' if ranged else None, 'last': f's{part[-1].index}' if ranged else None,
             'first_id': part[0].id if ranged else None,
+            # A stretch of a plan limited by a search names its sentences,
+            # which are not a run (SF).
+            **({'matching': [f's{s.index}' for s in part]}
+               if ranged and not after_text and self.searched() is not None else {}),
             'parts': {**(earlier.get('parts') or {}), **({document_id: {s.id for s in part}} if document_id else {})},
             'writes': set(earlier.get('writes') or ()), 'seq': earlier.get('seq'),
             'note': note, 'refused': refused, 'steps': (earlier.get('steps') or 0) + self.steps_now,
@@ -4790,7 +4877,8 @@ class IgtRunner:
                  **written_sums(rows), 'ended_at': self.now_iso(),
                  **({'skipped': skipped} if skipped else {}), **({'refused': p['refused']} if p['refused'] else {}),
                  **({'findings': p['findings']} if p.get('findings') else {}),
-                 **({'after_text': p['after_text']} if p.get('after_text') else {})}
+                 **({'after_text': p['after_text']} if p.get('after_text') else {}),
+                 **({'matching': p['matching']} if p.get('matching') else {})}
         row = self.summary_row(p['seq'], value, p['document'], p['first_id'])
         if row is None:
             logger.warning('Job %s: the summary of a piece is too large to keep', self.job.id)
@@ -4986,6 +5074,10 @@ class IgtRunner:
         if document_id in self.unwalked or (row.get('counts') or {}).get(NOT_WALKED) is True:
             # Ended after a selection that did not read it through (RPF3-A).
             counts[NOT_WALKED] = True
+        searched = self.searched()
+        if searched is not None:
+            # How many of its sentences the plan's search matched (SF).
+            counts[MATCHED] = len(searched.get(document_id, ()))
         failed = len(self.unlisted.get(document_id) or ())
         more = max((row.get('counts') or {}).get(SKIPPED_MORE) or 0,
                    failed + len(self.too_long.get(document_id) or ()))
@@ -5565,7 +5657,9 @@ class IgtRunner:
             # one already final when the plan was made (gone at the checks:
             # its row says so, REV-JG2-7).
             named = set(plan.get('documents') or job.order)
-            plan = {**plan, **self.fills_named(job, plan), 'fallback': fallback,
+            # The sentences a search matched are the walk's, not the report's (SF).
+            plan = {**{k: v for k, v in plan.items() if k != 'matched'}, **self.fills_named(job, plan),
+                    'fallback': fallback,
                     'left_out': [{'document_id': d, 'name': self.names.get(d) or (job.rows.get(d) or {}).get('name')}
                                  for d in job.order
                                  if d not in named and (job.rows.get(d) or {}).get('state') not in ROW_FINAL]}
@@ -5784,6 +5878,7 @@ class IgtRunner:
         # their blanks are not reached (REV-DF-S-3). A document the plan
         # left out is not the job's work.
         planned = (self.plan_made or {}).get('documents')
+        searched = self.searched()
         for d in job.order:
             worked, known, written = self.finished(d), self.known_words(d), self.written(d)
             wrote, wrote_known = self.wrote_in_sentences(d)
@@ -5812,6 +5907,9 @@ class IgtRunner:
                     # Counted, never listed: the sentence is listed as
                     # skipped (REV-DF-D-9).
                     where = 'skipped'
+                elif searched is not None and s.id not in searched.get(d, ()):
+                    # Not matched by the plan's search: not the job's work (SF).
+                    continue
                 else:
                     where = 'not_reached'
                 # THE rule over the plan's targets (:func:`sentence_targets`),

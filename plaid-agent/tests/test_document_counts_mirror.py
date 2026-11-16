@@ -33,6 +33,11 @@ CASES = [
                    _doc('not-reached', 0, {'changes': 0})]},
     {'totals': {'documents_done': 2}, 'documents': [_doc('done', 2, skipped=2), _doc('done', 3, skipped=1)]},
     {'totals': {'documents_done': 1, 'documents_not_reached': 4}},
+    # A plan limited by a search (SF): two documents it matched nothing in,
+    # one it matched and worked, one it matched and was not reached.
+    {'totals': {'documents_done': 3, 'documents_not_reached': 1},
+     'documents': [_doc('done', 0, {'matched': 0}), _doc('done', 0, {'matched': 0}), _doc('done', 2, {'matched': 2}),
+                   _doc('not-reached', 0, {'matched': 3})]},
 ]
 
 
@@ -47,7 +52,8 @@ def page(tmp_path_factory):
 
 
 def test_read_job_counts_the_documents_as_the_page_does(page):
-    camel = {'not_read_through': 'notReadThrough', 'stopped_partway': 'stoppedPartway', 'not_reached': 'notReached'}
+    camel = {'not_read_through': 'notReadThrough', 'stopped_partway': 'stoppedPartway', 'not_reached': 'notReached',
+             'with_no_matching_sentence': 'withNoMatchingSentence'}
     assert len(page) == len(CASES)
     for report, said in zip(CASES, page):
         mine = document_counts(report)
@@ -75,3 +81,11 @@ def test_read_job_says_the_documents_not_read_through_in_the_top_line():
     lines = summary({'id': 'j', 'state': 'cancelled', 'instructions': 'x', 'report': core_report})
     assert any("2 documents were not read through: the job's first step worked on the whole selection and did "
                'not open them.' in line for line in lines), lines
+
+
+def test_documents_with_no_matching_sentence_are_counted_apart_from_done(page):
+    """SF: a document a plan limited by a search ended with no sentence of it
+    matched is neither done nor unread, on the page and to the model."""
+    said = page[-1]
+    assert (said['done'], said['withNoMatchingSentence'], said['notReached']) == (1, 2, 1), said
+    assert 'documents done 1, documents with no matching sentence 2' in _totals(CASES[-1]), _totals(CASES[-1])

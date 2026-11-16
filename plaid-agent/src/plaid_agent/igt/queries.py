@@ -156,20 +156,16 @@ def q_search(ws: Workspace, pattern: str, where_l: str, field, regex: bool, limi
     and, apart, the morphemes that match (None for any other search)."""
     c = ws.corpus
     spec = rx(pattern, regex=regex, case_sensitive=case_sensitive)
+    where, _var = search_clauses(c, spec, where_l, field)
     if where_l == 'baseline':
-        where = [c.word('?t', value=spec)] + shown_word(c, '?t', ignored_values(c))
         total = c.word_count(where)
         rows, per_doc, docs = _spread_fetch(c, where, ['?t'], '?t', limit, 2)
         return (*_spread_note(_hit_lines(c, rows, 0, limit, per_doc=per_doc), docs), total, None)
     if where_l == 'morpheme':
-        where = c.morph_form_clauses('?m', spec) + c.in_word('?m', '?w')
         total = c.count(where, ['?w'])  # words
         rows, per_doc, docs = _spread_fetch(c, where, ['?m', '?w'], '?w', limit, 3)
         return (*_spread_note(_hit_lines(c, rows, 1, limit, per_doc=per_doc), docs), total, c.count(where, ['?m']))
-    layer = c.scope_layer(field.scope)
-    where = [c.span('?s', field.layer_id, value=spec), ['covers', '?s', '?t'], ['token', '?t', {'layer': layer}]]
     if field.scope == 'Morpheme':
-        where += c.in_word('?t', '?w')
         total = c.count(where, ['?w'])
         rows, per_doc, docs = _spread_fetch(c, where, ['?s', '?w'], '?w', limit, 3)
         return (*_spread_note(_hit_lines(c, rows, 1, limit, per_doc=per_doc), docs), total, c.count(where, ['?t']))
@@ -177,6 +173,48 @@ def q_search(ws: Workspace, pattern: str, where_l: str, field, regex: bool, limi
     rows, per_doc, docs = _spread_fetch(c, where, ['?s', '?t'], '?t', limit, 2)
     hits = _hit_lines(c, rows, 1, limit, field=field if field.scope == 'Sentence' else None, per_doc=per_doc)
     return (*_spread_note(hits, docs), total, None)
+
+
+def search_clauses(c: Corpus, spec: Dict[str, Any], where_l: str, field) -> Tuple[List[Any], str]:
+    """What search matches, as clauses, and the variable of the token each
+    hit is in: a word (``?t``) for word forms and word fields, the word
+    (``?w``) holding a morpheme for morpheme forms and morpheme fields, the
+    sentence (``?t``) for a sentence field. One home for :func:`q_search`
+    and :func:`q_search_sentences`, so a plan limited by a search takes the
+    sentences the search finds (SF)."""
+    if where_l == 'baseline':
+        return [c.word('?t', value=spec)] + shown_word(c, '?t', ignored_values(c)), '?t'
+    if where_l == 'morpheme':
+        return c.morph_form_clauses('?m', spec) + c.in_word('?m', '?w'), '?w'
+    layer = c.scope_layer(field.scope)
+    where = [c.span('?s', field.layer_id, value=spec), ['covers', '?s', '?t'], ['token', '?t', {'layer': layer}]]
+    if field.scope == 'Morpheme':
+        return where + c.in_word('?t', '?w'), '?w'
+    return where, '?t'
+
+
+def q_search_sentences(ws: Workspace, pattern: str, where_l: str, fields, regex: bool,
+                       case_sensitive: bool, most: int) -> Tuple[int, Dict[str, List[str]]]:
+    """The sentences a search matches, within the documents the corpus is
+    held to: ``(n, {document id: [sentence ids]})``, ``n`` the number of
+    sentences, the ids left out (empty) when ``n`` passes ``most``. ``fields``
+    are the fields of a field search, all of a name several share as search
+    answers for each (else ``[None]``)."""
+    c = ws.corpus
+    spec = rx(pattern, regex=regex, case_sensitive=case_sensitive)
+    found: Dict[str, set] = {}
+    for field in fields:
+        where, var = search_clauses(c, spec, where_l, field)
+        if field is not None and field.scope == 'Sentence':
+            sentence = var
+        else:
+            sentence = '?psent'
+            where = where + [c.sent(sentence), ['within', var, sentence]]
+        for doc, sid, _n in c.group(where, [f'{sentence}.doc', f'{sentence}.id']):
+            if doc and sid:
+                found.setdefault(doc, set()).add(sid)
+    n = sum(len(v) for v in found.values())
+    return n, ({} if n > most else {d: sorted(v) for d, v in found.items()})
 
 
 #: What a pattern typed for regex=true looks like: anchors, alternation, an
