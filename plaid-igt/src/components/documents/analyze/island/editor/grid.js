@@ -26,12 +26,14 @@ export const grid = {
     // is the hit target rather than a separate affordance: the column is narrow,
     // and a 6px minimized row has no room for an icon.
     const openMenu = (e) => this._openRowMenuFrom(e);
-    const lbl = (cls, name, scope, key) => {
+    // `kind` is what the title calls the row: an orthography's row is an
+    // additional one, beside the word forms (the Baseline row above it).
+    const lbl = (cls, name, scope, key, kind = scope) => {
       const collapsed = this._isCollapsed(key);
       return html` <div
         class="igt-row-label ${cls}${this._rowCls(key)}"
         data-row=${key}
-        title=${collapsed ? `${name} (${scope}), minimized` : `${name} (${scope})`}
+        title=${collapsed ? `${name} (${kind}), minimized` : `${name} (${kind})`}
         role="button"
         tabindex="0"
         aria-expanded=${collapsed ? 'false' : 'true'}
@@ -49,8 +51,12 @@ export const grid = {
     };
     return html`
       <div class="igt-labels">
-        <div class="igt-row-label igt-row-label--spacer"></div>
-        ${ctx.orthographies.map((n) => lbl('igt-row-label--orth', n, 'orthography', `orth:${n}`))}
+        <div class="igt-row-label igt-row-label--spacer" title="Baseline: the text as typed">
+          <span class="igt-row-label__text">Baseline</span>
+        </div>
+        ${ctx.orthographies.map((n) =>
+          lbl('igt-row-label--orth', n, 'orthography', `orth:${n}`, 'additional orthography'),
+        )}
         ${ctx.wordFields.map((n) => lbl('igt-row-label--word', n, 'word', `word:${n}`))}
         ${ctx.hasMorphemes
           ? lbl(

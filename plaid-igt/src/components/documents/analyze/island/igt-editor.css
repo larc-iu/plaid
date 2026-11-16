@@ -504,12 +504,17 @@
 }
 /* Header spacer cell — extend the word-header band across the label column so
    the gray header no longer "notches" around the labels. Tracks the word-form
-   row height. */
+   row height, and names it Baseline. It opens no menu. */
 .igt-row-label--spacer {
   height: var(--igt-form-h);
+  cursor: default;
   background: var(--igt-band);
   border-inline-start-color: transparent;
   border-start-start-radius: calc(var(--radius) - 2px);
+}
+.igt-row-label--spacer:hover {
+  background: var(--igt-band);
+  color: var(--igt-gray-700);
 }
 
 .igt-tokens {
