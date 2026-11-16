@@ -1462,7 +1462,7 @@ export const VocabularyDetail = () => {
               )}
             </p>
             {viewingPast && (
-              <Notice tone={showChanges ? 'info' : 'warning'} icon={Info}>
+              <Notice tone="info" icon={Info}>
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <span>
                     {showChanges

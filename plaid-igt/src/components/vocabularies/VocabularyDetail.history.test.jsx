@@ -143,6 +143,11 @@ describe('the vocabulary History', () => {
     expect(shown.props.past.vocabulary.items).toEqual([{ id: 'a', form: 'kai' }]);
     expect(shown.props.canRestore).toBe(true);
     expect(document.body.textContent).toContain('Read-only. This is the vocabulary as of');
+    // Plain information, as over a document: a warm banner means broken.
+    const line = all(document.body, '[data-tone]').find((n) =>
+      n.textContent.includes('Read-only. This is the vocabulary as of'),
+    );
+    expect(line.getAttribute('data-tone')).toBe('info');
     const settings = all(document.body, '[role="tab"]').find((t) =>
       t.textContent.includes('Settings'),
     );
