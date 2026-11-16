@@ -59,6 +59,12 @@ describe('ProjectSetupPage', () => {
   it('says what is missing and offers the button', async () => {
     const { view } = await mount([project()]);
     expect(view.container.textContent).toContain('Missing: Nodes');
+    // Not set up is a plain fact, never drawn in the warm tone of a fault.
+    const missing = [...view.container.querySelectorAll('p')].find((p) =>
+      p.textContent.startsWith('Missing:'),
+    );
+    expect(missing.className).toContain('text-muted-foreground');
+    expect(missing.className).not.toContain('warning');
     expect(byText(view.container, 'button', 'Set up for XY')).toBeTruthy();
     await view.unmount();
   });

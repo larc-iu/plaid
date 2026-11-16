@@ -98,7 +98,7 @@ export const ProjectSetupPage = ({ layerInfo, setup }) => {
           ) : info.isConfigured ? (
             <p className="text-sm text-success-foreground">{setup.allSet}</p>
           ) : (
-            missing && <p className="text-sm text-warning-foreground">Missing: {missing}</p>
+            missing && <p className="text-sm text-muted-foreground">Missing: {missing}</p>
           )}
         </div>
         <Button variant="outline" asChild>
