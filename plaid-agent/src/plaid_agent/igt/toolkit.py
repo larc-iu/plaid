@@ -13,7 +13,7 @@ import copy
 import inspect
 import json
 import re
-from typing import Any, Dict
+from typing import Any, Dict, List, Optional
 
 from ..core import toolkit, webtools
 from ..core.limits import MAX_SCOPE_DOCS, MAX_SENTENCES_PER_READ, OVERVIEW_DOCS
@@ -732,6 +732,12 @@ def t_plan_work(ws, pieces: str = None, piece_instructions: str = '', documents=
                    'the instructions.')
     worked = [d for d in known if order is None or d['id'] in order]
     said = len(out)
+    size = plan_size(pieces, worked, skip)
+    if size:
+        # A fixed fact from the planning's own counts, so the planner sees the
+        # plan's size before it ends (RPF3 round 4: 33 replacements planned in
+        # sentences over 45 documents).
+        out.append(size)
     if not chosen:
         # Said in one line, as the plan is kept: a planner that meant the job
         # to fill something plans again (REV-DF-D-1).
@@ -744,6 +750,25 @@ def t_plan_work(ws, pieces: str = None, piece_instructions: str = '', documents=
     out.append('Call plan_work again to change it, or end now with a one-line reply.' if len(out) > said
                else 'End now with a one-line reply.')
     return ' '.join(out)
+
+
+def plan_size(pieces: str, worked: List[Dict[str, Any]], skip: bool) -> Optional[str]:
+    """How many pieces a plan in sentences or by documents is, from the
+    planning's counts of each document's sentences: "This plan is 187 pieces
+    over 45 documents." ("at most" for one that skips filled sentences). None
+    for a selection, one piece, and where nothing is counted."""
+    from ..core.limits import JOB_STRETCH_SENTENCES
+    if pieces == 'document':
+        n = len(worked)
+    elif pieces == 'sentences':
+        n = sum(-(-int(d.get('sentences') or 0) // JOB_STRETCH_SENTENCES) for d in worked)
+    else:
+        return None
+    if not n:
+        return None
+    docs = len(worked)
+    return (f'This plan is {"at most " if skip else ""}{n:,} piece{"" if n == 1 else "s"} over {docs:,} '
+            f'document{"" if docs == 1 else "s"}.')
 
 
 #: plan_work's answer to a plan whose walk takes no sentence: nothing it

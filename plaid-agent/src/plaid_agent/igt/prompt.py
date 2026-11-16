@@ -489,14 +489,16 @@ count or a finding is given by code and not retyped.
 
 #: How the planning context cuts the work, in the app's words.
 JOB_PLAN_RULES = '''How to plan:
-- pieces "sentences": a few sentences per piece, seeing the two before, for sentence by sentence work, with \
-only the tools to set values (and to segment, link and add entries when the job fills those), no search or code. \
-Every sentence, unless the job only fills what is empty: then skip_filled_sentences true.
+- pieces "sentences": a few sentences per piece, seeing the two before, for work that needs each sentence read, \
+with only the tools to set values (and to segment, link and add entries when the job fills those), no search or \
+code. Every sentence, unless the job only fills what is empty: then skip_filled_sentences true. A plan in \
+sentences makes at least one model call for each stretch of every document in the job.
 - pieces "document": one piece per document, seeing the whole document. For work about a whole text, such as \
 a summary of each.
 - pieces "selection": one piece for all the documents, reading them with the tools and code. For work across \
-the documents, such as finding where they disagree. Its findings go in its last message, which the report shows \
-whole, and in tables code makes.
+the documents, such as finding where they disagree, and for the same exact change wherever a known value occurs \
+(one value for another): it finds them with search or code and stages each change, which is written in its \
+document. Its findings go in its last message, which the report shows whole, and in tables code makes.
 - piece_instructions: only your decisions, as plain imperative sentences naming forms and values exactly. \
 Pieces already have the project's guidelines and the job's instructions. Read the documents to decide.
 - fills: what the instructions ask the job to fill or change, as listed under What a job can fill: the field \
