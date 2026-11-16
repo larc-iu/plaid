@@ -86,6 +86,9 @@ export const JobPage = ({ project, projectId, jobId, client }) => {
   const [livePlan, setLivePlan] = useState(null);
   useEffect(() => setLivePlan(null), [jobId]);
   const undoneOp = job?.undone?.operation ?? null;
+  // The names of who stopped or undid the job, where the directory is open
+  // to the reader (REV-RPF3-6).
+  const names = usePeopleNames(client, [job?.cancelledBy, job?.undone?.user], job, user);
   const documentIds = (job?.documents || []).map((d) => d.documentId).join(',');
   useEffect(() => {
     setUndoneHref(null);
@@ -244,7 +247,7 @@ export const JobPage = ({ project, projectId, jobId, client }) => {
           )
         }
       />
-      <JobStatus job={job} user={user} />
+      <JobStatus job={job} user={user} names={names} />
       <JobSetup job={job} projectId={projectId} user={user} />
       {job.undone && (
         <p className="-mt-4 mb-6 text-sm" data-testid="job-undone">
@@ -301,11 +304,41 @@ export const JobPage = ({ project, projectId, jobId, client }) => {
           projectId={projectId}
           vocabs={project.vocabs || []}
           undone={job.undone ?? null}
-          undoneBy={job.undone ? whoText(job.undone.user, job, user) : null}
+          undoneBy={job.undone ? whoText(job.undone.user, job, user, names) : null}
         />
       )}
     </div>
   );
+};
+
+// The display names of `ids` (who stopped or undid a job) neither the reader
+// nor the job's starter, read once from the user directory, which only some
+// readers may read: none where it is refused (REV-RPF3-6).
+const usePeopleNames = (client, ids, job, user) => {
+  const [names, setNames] = useState({});
+  const wanted = ids
+    .filter((id) => id && id !== user?.id && id !== job?.startedBy)
+    .sort()
+    .join(',');
+  useEffect(() => {
+    if (!wanted) return undefined;
+    let live = true;
+    Promise.resolve()
+      .then(() => client.users.list())
+      .then((all) => {
+        if (!live) return;
+        setNames(
+          Object.fromEntries(
+            (all || []).filter((u) => u.displayName).map((u) => [u.id, u.displayName]),
+          ),
+        );
+      })
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [client, wanted]);
+  return names;
 };
 
 // A new conversation about the job, in the assistant panel, where an assistant
@@ -358,7 +391,7 @@ const JobSetup = ({ job, projectId, user }) => {
 
 // The state, what the worker is doing, its last line, and for a waiting job
 // how many are ahead of it (core's `ahead`, every one another project's). A failed job says why.
-const JobStatus = ({ job, user }) => {
+const JobStatus = ({ job, user, names }) => {
   const failed = job.state === 'failed';
   const running = job.state === 'running';
   return (
@@ -374,7 +407,7 @@ const JobStatus = ({ job, user }) => {
       {/* Who stopped it and when, as core records the stop (RPF3-D2). */}
       {job.state === 'cancelled' && job.cancelledBy && (
         <p data-testid="job-stopped-by">
-          Stopped by {whoText(job.cancelledBy, job, user)}
+          Stopped by {whoText(job.cancelledBy, job, user, names)}
           {job.finishedAt ? `, ${fullTimestamp(job.finishedAt)}` : ''}.
         </p>
       )}

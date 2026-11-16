@@ -295,13 +295,15 @@ export const stoppedPartway = (d) =>
   d.state === 'not-reached' && ((d.done ?? 0) > 0 || (d.counts?.changes ?? 0) > 0);
 
 // Who a job's own field names: "you" for the reader, the starter by name,
-// else the id core holds.
-export const whoText = (userId, job, user) =>
+// another person by the name the user directory gives (`names`, id to
+// display name, where the reader may read it), else "another user": never a
+// raw user id (REV-RPF3-6).
+export const whoText = (userId, job, user, names = {}) =>
   user?.id && userId === user.id
     ? 'you'
-    : userId && userId === job?.startedBy
-      ? (job.startedByName ?? userId)
-      : (userId ?? 'someone');
+    : userId && userId === job?.startedBy && job.startedByName
+      ? job.startedByName
+      : (names[userId] ?? 'another user');
 
 // How many of a document's sentences the job skipped (its rows' skipped list,
 // and those past the list's cap). Its `done` counts them with the sentences

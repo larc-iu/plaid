@@ -1652,6 +1652,38 @@ describe('the job page', () => {
     await v.unmount();
   });
 
+  // REV-RPF3-6: never a raw user id. Another person by the name the
+  // directory gives, else "another user".
+  it('names who stopped or undid the job, never by a raw id', async () => {
+    const job = jobOf({
+      state: 'cancelled',
+      cancelledBy: 'u-ada',
+      finishedAt: '2026-11-12T11:00:00Z',
+      report: { ...REPORT, state: 'cancelled' },
+      undone: { operation: 'op9', time: '2026-11-12T12:00:00Z', user: 'u-bo' },
+    });
+    const named = clientOf(job);
+    named.users = { list: vi.fn(async () => [{ id: 'u-ada', displayName: 'Ada' }]) };
+    let v = await mount(named);
+    await v.step(async () => {});
+    expect(text(v.container.querySelector('[data-testid="job-stopped-by"]'))).toMatch(
+      /^Stopped by Ada, /,
+    );
+    expect(text(v.container.querySelector('[data-testid="job-notice"]'))).toMatch(
+      /^Undone by another user, /,
+    );
+    await v.unmount();
+    const refused = clientOf(job);
+    refused.users = { list: vi.fn(async () => Promise.reject(new Error('HTTP 403'))) };
+    v = await mount(refused);
+    await v.step(async () => {});
+    expect(text(v.container.querySelector('[data-testid="job-stopped-by"]'))).toMatch(
+      /^Stopped by another user, /,
+    );
+    expect(v.container.textContent).not.toContain('u-ada');
+    await v.unmount();
+  });
+
   // RPF3-D3 (RP2-4 finding 5): once undone, the notice leads with the undo
   // and the counts are under a heading that they are what the job had written.
   it('leads with the undo once the job is undone', async () => {
