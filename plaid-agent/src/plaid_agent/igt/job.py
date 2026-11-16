@@ -2701,16 +2701,14 @@ class IgtRunner:
         through (:data:`NOT_WALKED`), its counts those of what the piece
         wrote there (RPF3-A: a rename across 45 documents walked every
         sentence of all of them to write nothing). A plan that fills nothing
-        (a check, whose work is reading) walks a document the piece ``never``
-        read and no other (round 2, item 4)."""
+        never walks one (round 3: ``never`` is no longer weighed)."""
         if self.fills_nothing():
-            # A check: reading is its work. A document the piece never read
-            # is worked as a piece of its own, one it read in part is done
-            # (REV-RPF3 round 2, item 4).
-            if never:
-                self.fall_back(document_id, reason)
-            else:
-                self.done_unwalked(project, document_id, unread=True)
+            # One rule for every plan (RPF3 round 3, REV-RPF3-9): nothing is
+            # empty of what a check fills, so a document its piece did not
+            # read through is never walked, whether the piece read it or not
+            # (RPF-A5: a piece that works by code reads nothing by the read
+            # tools). The report's top line counts them.
+            self.done_unwalked(project, document_id, unread=True)
             return
         try:
             doc = self.read(project, document_id)

@@ -123,25 +123,28 @@ def test_a_fill_by_selection_still_walks_a_document_it_never_read_that_holds_an_
     assert igt_job.NOT_WALKED not in docs['Story 2']['counts']
 
 
-def test_a_check_works_each_document_its_selection_never_read(monkeypatch):
-    """A plan that fills nothing (a check): reading is its work (round 2,
-    item 4). The selection's piece reads Story 1 only: Stories 2 and 3 are
-    each worked as a piece of their own, and the plan says so."""
+def test_a_check_walks_nothing_after_its_selection_whatever_it_read(monkeypatch):
+    """One rule for every plan (RPF3 round 3, REV-RPF3-9): a plan that fills
+    nothing never walks a document after its selection piece. Stories 2 and 3,
+    never read, end done and not read through, and the report's top line says
+    so."""
     client = JobClient({f'd{i}': _doc(i, OLD if i == 1 else 'be') for i in (1, 2, 3)})
     job = start(client, 'List the glosses in small capitals. Change nothing.', id=J, plan='selection', fills=())
 
     def answer(asked, k, kwargs):
-        if 'Your piece: the whole selection above.' in asked and k == 1:
+        if k == 1:
             return reply(calls=[call(1, 'read_document', {'document': 'Story 1'})])
-        return reply(f'One: {OLD}.' if 'Story 1' in asked else 'None.')
+        return reply(f'One: {OLD}.')
     model = use(monkeypatch, Model(answer))
     finished = run_job(job, runner(job))
-    pieces = _pieces(model)
-    assert len(pieces) == 3, pieces
-    assert sorted(p.split('"')[1] for p in pieces[1:]) == ['Story 2', 'Story 3']
-    assert sorted(f['document_id'] for f in finished['report']['plan']['fallback']) == ['d2', 'd3']
-    docs = {d['name']: d for d in finished['report']['documents']}
-    assert all(d['state'] == 'done' and igt_job.NOT_WALKED not in d['counts'] for d in docs.values())
+    assert len(_pieces(model)) == 1
+    report = finished['report']
+    assert report['plan']['fallback'] == []
+    docs = {d['name']: d for d in report['documents']}
+    assert igt_job.NOT_WALKED not in docs['Story 1']['counts']
+    assert all(docs[n]['counts'].get(igt_job.NOT_WALKED) is True for n in ('Story 2', 'Story 3'))
+    assert report['notice'] == ("2 documents were not read through: the job's first step worked on the whole "
+                                'selection and did not open them.')
 
 
 def test_a_check_whose_selection_read_every_document_ends_after_it(monkeypatch):

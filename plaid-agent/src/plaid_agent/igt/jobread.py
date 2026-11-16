@@ -283,10 +283,21 @@ def summary(job: Dict[str, Any], note_chars: Optional[int] = JOB_SUMMARY_NOTE_CH
         lines.append('No report yet.' if job.get('state') in ('waiting', 'running', 'stopping')
                      else 'It has no report.')
         return lines
-    if report.get('notice'):
+    top = report.get('notice')
+    if 'notice' not in report:
+        # Core's own report, of a job no worker finished, has none: the same
+        # line from its counts, as the page builds it (REV-RPF-W-3, RPF3
+        # round 3: the documents not read through too).
+        from ..core.job import notice
+        from .job import IgtRunner, document_counts
+        top = notice({**(report.get('totals') or {}),
+                      'documents_not_read_through': document_counts(report)['not_read_through']},
+                     IgtRunner.PEOPLE_NOUNS)
+    if top:
         # The worker's own top line: what the job changed of people's work
-        # and of the text (RPF-A4, the owner's R4).
-        lines.append(f'The report\'s top line, the worker\'s own: "{report["notice"]}"')
+        # and of the text (RPF-A4, the owner's R4), and the documents its
+        # first step did not open.
+        lines.append(f'The report\'s top line, the worker\'s own: "{top}"')
     planned = plan_line(report)
     if planned:
         lines.append(planned)

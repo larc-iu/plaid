@@ -64,3 +64,14 @@ def test_read_job_and_the_final_context_say_not_read_through_and_stopped_partway
     message = summary_message(checked)
     assert 'documents done 1' in message and 'documents not read through 2' in message
     assert 'not_walked' not in message, message
+
+
+def test_read_job_says_the_documents_not_read_through_in_the_top_line():
+    """RPF3 round 3: read_job says what the page's top line says, the
+    worker's line, or for core's own report (no notice) the same line from its
+    counts."""
+    from plaid_agent.igt.jobread import summary
+    core_report = {**CASES[1], 'state': 'cancelled'}
+    lines = summary({'id': 'j', 'state': 'cancelled', 'instructions': 'x', 'report': core_report})
+    assert any("2 documents were not read through: the job's first step worked on the whole selection and did "
+               'not open them.' in line for line in lines), lines

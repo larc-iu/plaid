@@ -43,11 +43,9 @@ def _model(piece, merged='One report.'):
 def test_rp4_a_selection_that_fills_nothing_works_once_and_keeps_its_whole_report(monkeypatch):
     client = JobClient(_docs(2))
     job = start(client, 'List the glosses that disagree. Change nothing.', id=J, plan='selection', fills=())
-    # The piece reads both documents, as RP-4's did: a check works by
-    # reading, and a document it never read would be worked apart (round 2).
-    model = use(monkeypatch, _model(lambda asked, n: reply(calls=[
-        call(1, 'read_document', {'document': 'Story 1'}), call(2, 'read_document', {'document': 'Story 2'})])
-        if n == 1 else reply(REPORT)))
+    # The piece reads nothing by the read tools, as RP-4's worked by code:
+    # still one piece, no walk after it (RPF3 round 3, REV-RPF3-9).
+    model = use(monkeypatch, _model(lambda asked, n: reply(REPORT)))
     finished = run_job(job, runner(job))
     report = finished['report']
     assert len([c for c in model.calls if c['n'] == 1]) == 1, 'the selection, and no stretch after it'
@@ -58,6 +56,10 @@ def test_rp4_a_selection_that_fills_nothing_works_once_and_keeps_its_whole_repor
     assert igt_job.FINDINGS_NOTE == 'Its findings are in the report.'
     assert [(d['state'], d['done'], d['targets']) for d in report['documents']] == [('done', 2, 2), ('done', 2, 2)]
     assert report['plan']['fallback'] == [], 'no document worked in smaller pieces'
+    assert report.get('findings_pieces') in (None, 1)
+    # The top line says the step over the whole selection opened neither.
+    assert report['notice'] == ("2 documents were not read through: the job's first step worked on the whole "
+                                'selection and did not open them.'), report['notice']
     assert report['summary'] is None or report['summary'] == 'The job wrote no change and proposed none.'
 
 

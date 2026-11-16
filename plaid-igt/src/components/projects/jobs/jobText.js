@@ -173,6 +173,15 @@ export const noticeText = (totals) => {
   else if (t.textChanges) {
     out.push(`Text: ${countOf(t.textChanges, 'text edit')}, no word added, changed or removed.`);
   }
+  // Documents the job's first step did not open, which nothing walked after
+  // it (RPF3 round 3).
+  const unread = t.documentsNotReadThrough || 0;
+  if (unread) {
+    out.push(
+      `${countOf(unread, 'document was', 'documents were')} not read through: the job's first step ` +
+        `worked on the whole selection and did not open ${unread === 1 ? 'it' : 'them'}.`,
+    );
+  }
   return out.join(' ') || null;
 };
 
@@ -187,6 +196,10 @@ export const noticeCounts = (report) => {
     wordsAdded: sum('wordsAdded'),
     tokensChanged: sum('tokensChanged'),
     textChanges: sum('textChanges'),
+    documentsNotReadThrough:
+      t.documentsNotReadThrough ??
+      (report?.documents || []).filter((d) => d.state === 'done' && d.counts?.notWalked === true)
+        .length,
   };
 };
 

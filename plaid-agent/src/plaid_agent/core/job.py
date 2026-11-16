@@ -973,6 +973,13 @@ def notice(totals: Dict[str, Any], nouns: Optional[Tuple[str, str]] = None) -> O
     elif totals.get('text_changes'):
         out.append(f'Text: {n(totals["text_changes"], "text edit", "text edits")}, no word added, changed or '
                    'removed.')
+    unread = totals.get('documents_not_read_through') or 0
+    if unread:
+        # Documents the job's step over the whole selection did not open, which
+        # nothing walked after it (RPF3 round 3): said where a person will
+        # not miss it, for every kind of plan.
+        out.append(f'{n(unread, "document was", "documents were")} not read through: the job\'s first step worked '
+                   f'on the whole selection and did not open {"it" if unread == 1 else "them"}.')
     return ' '.join(out) or None
 
 
@@ -1058,6 +1065,11 @@ def build_report(job: Job, state: str, reason: Optional[str], documents: List[Di
     blank = blank_sums(documents)
     if blank:
         totals['blank'] = blank
+    # The documents an app's row says the job did not read through (an app's
+    # ``counts.not_walked``), for the top line (RPF3 round 3).
+    unread = sum(1 for d in documents if (d.get('counts') or {}).get('not_walked') is True)
+    if unread:
+        totals['documents_not_read_through'] = unread
     changed, changed_more = cut(harmonize.get('changed') or [])
     left, left_more = cut(harmonize.get('left') or [])
     lists = {}
