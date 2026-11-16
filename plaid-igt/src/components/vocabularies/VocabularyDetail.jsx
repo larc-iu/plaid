@@ -109,6 +109,7 @@ import { Notice } from '@ui/components/shared/Notice.jsx';
 import { Breadcrumb } from '@ui/components/shared/Breadcrumb.jsx';
 import { DELETE_BUTTON_CLASS } from '@ui/lib/destructive.js';
 import { HistoryDrawer, HISTORY_DRAWER_WIDTH } from '@ui/components/shared/HistoryDrawer.jsx';
+import { changesMadeText } from '@ui/lib/auditText.js';
 import { fullTimestamp } from '@ui/lib/formatTime.js';
 import { sameName } from '@ui/lib/nameKey.js';
 import { useVocabHistory } from './useVocabHistory';
@@ -484,6 +485,7 @@ export const VocabularyDetail = () => {
         history.select({
           id: entry.id,
           time: entry.endTime || entry.time,
+          from: entry.time,
           label: entry.message || entry.ops?.[0]?.description || '',
           action: !!entry.partOf,
         });
@@ -1464,7 +1466,7 @@ export const VocabularyDetail = () => {
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <span>
                     {showChanges
-                      ? `Changes made in this ${history.selected.action ? 'action' : 'entry'}, ${fullTimestamp(history.selected.time)}.`
+                      ? changesMadeText(history.selected)
                       : history.loadingPast
                         ? `Loading the vocabulary as of ${fullTimestamp(history.selected.time)}…`
                         : `Read-only. This is the vocabulary as of ${fullTimestamp(history.past?.time ?? history.selected.time)}.`}

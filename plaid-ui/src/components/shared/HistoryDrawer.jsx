@@ -95,7 +95,12 @@ export const HistoryDrawer = ({
   // inside it reads as before the batch, and a restore from there would undo
   // the op. The server sends that time as the op's `endTime`.
   const selectUnit = (entry) =>
-    onSelectEntry({ id: entry.id, time: entry.endTime || entry.time, label: unitLabel(entry) });
+    onSelectEntry({
+      id: entry.id,
+      time: entry.endTime || entry.time,
+      from: entry.time,
+      label: unitLabel(entry),
+    });
   // `action` marks one change picked inside an entry.
   const selectOp = (op) =>
     onSelectEntry({

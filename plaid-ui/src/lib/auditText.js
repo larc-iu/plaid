@@ -35,6 +35,8 @@
 // quote (", ' or “ after a space) to the LAST matching closing quote of the
 // line, which also keeps "Copy "A" as "B"" in one piece, and the rules run
 // only on what is before and after it.
+import { fullTimestamp } from './formatTime.js';
+
 const ID = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\\b';
 const JOINED_ID = new RegExp(`\\s+(?:and|into)\\s+${ID}`, 'gi');
 const BRACKETED_ID = new RegExp(`\\s*\\(${ID}\\)`, 'gi');
@@ -79,3 +81,16 @@ const KIND_LABELS = {
 };
 
 export const operationKindLabel = (kind) => KIND_LABELS[kind] ?? null;
+
+// The line over a History entry's changes. Where the entry's first change
+// (`from`) was earlier than its end (`time`, what is read at), it says both,
+// so it never reads as another time than the rail's row, which says the
+// first (RP-3).
+export const changesMadeText = (entry) => {
+  const what = entry.action ? 'action' : 'entry';
+  const when =
+    entry.from && entry.from !== entry.time
+      ? `from ${fullTimestamp(entry.from)} to ${fullTimestamp(entry.time)}`
+      : fullTimestamp(entry.time);
+  return `Changes made in this ${what}, ${when}.`;
+};

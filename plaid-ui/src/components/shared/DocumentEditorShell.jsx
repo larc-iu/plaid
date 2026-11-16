@@ -380,6 +380,7 @@ const DocumentEditor = ({ app, documentClient }) => {
         await history.selectEntry({
           id: entry.id,
           time: entry.endTime || entry.time,
+          from: entry.time,
           label: entry.message || entry.ops?.[0]?.description || '',
           // An action inside an entry, read by its own id, names that entry.
           action: !!entry.partOf,

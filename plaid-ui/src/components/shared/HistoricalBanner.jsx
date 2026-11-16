@@ -1,5 +1,6 @@
 import { Info } from 'lucide-react';
 import { fullTimestamp } from '../../lib/formatTime.js';
+import { changesMadeText } from '../../lib/auditText.js';
 import { Notice } from './Notice.jsx';
 import { SegmentedControl } from './SegmentedControl.jsx';
 
@@ -24,7 +25,7 @@ export const HistoricalBanner = ({ entry, loading, view, onView, className = '' 
   const when = fullTimestamp(entry.time);
   const changes = onView && view === 'changes';
   const text = changes
-    ? `Changes made in this ${entry.action ? 'action' : 'entry'}, ${when}.`
+    ? changesMadeText(entry)
     : loading
       ? `Loading the document as of ${when}…`
       : `Read-only. This is the document as of ${when}.`;

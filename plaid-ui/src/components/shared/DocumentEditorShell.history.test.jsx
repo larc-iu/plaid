@@ -187,6 +187,11 @@ describe('a History entry in the address', () => {
     expect(changes().dataset.snapshot).toBe('Doc then');
     expect(body()).toBeNull();
     expect(view.container.textContent).toContain('Changes made in this entry');
+    // An entry that ran for a while says both its times, as the rail's row
+    // says the first (RP-3).
+    expect(view.container.textContent).toContain(
+      `Changes made in this entry, from ${new Date('2026-11-01T00:00:00Z').toLocaleString()} to ${new Date('2026-11-01T00:05:00Z').toLocaleString()}.`,
+    );
     await view.unmount();
   });
 
