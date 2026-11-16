@@ -251,7 +251,7 @@ function SentenceComparison({ sentence, row, left, right, otherName, thisHref, o
           <span className="text-xs text-muted-foreground">Not in the report</span>
         )}
         {changedSince(row, left, right) && (
-          <span className="text-xs text-warning-foreground" data-changed-since>
+          <span className="text-xs text-muted-foreground" data-changed-since>
             Changed since this comparison.
           </span>
         )}

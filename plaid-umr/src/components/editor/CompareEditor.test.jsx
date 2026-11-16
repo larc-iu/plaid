@@ -103,6 +103,10 @@ describe('CompareEditor', () => {
     expect(r.container.querySelector('[data-changed-since]')?.textContent).toBe(
       'Changed since this comparison.',
     );
+    // Stale scores are a plain fact, nothing is lost: never the warm tone.
+    const line = r.container.querySelector('[data-changed-since]');
+    expect(line.className).toContain('text-muted-foreground');
+    expect(line.className).not.toContain('warning');
   });
 
   it('marks a sentence the other document changed since', async () => {
