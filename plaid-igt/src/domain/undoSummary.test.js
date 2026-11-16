@@ -201,17 +201,40 @@ describe('undoneToast', () => {
       { kind: 'span', id: 'a', reason: 'changed-since' },
       { kind: 'span', id: 'b', reason: 'changed-since' },
     ]);
-    expect(undoneToast(left).message).toBe('3 values. 2 changes left as they were.');
-    // Core's count of what was left, past the rows it lists.
+    // What was left is counted in the nouns of what was undone (RPF-INT 5).
+    expect(undoneToast(left).message).toBe('3 values. 2 values left as they were.');
+    // Core's count of what was left, past the rows it lists, whose kinds are
+    // not known.
     expect(undoneToast({ ...left, skippedCount: 1200 }).message).toBe(
-      '3 values. 1,200 changes left as they were.',
+      '3 values. 2 values and 1,198 more left as they were.',
     );
+    const mixed = summary({ spans: counts(1) }, [
+      { kind: 'span', id: 'a', reason: 'changed-since' },
+      { kind: 'vocab-link', id: 'b', reason: 'changed-since' },
+      { kind: 'token', id: 'c', reason: 'built-on' },
+      { kind: 'text', id: 'd', reason: 'text-changed-since' },
+    ]);
+    expect(undoneToast(mixed).message).toBe(
+      '1 value. 1 value, 1 token, 1 link and 1 text left as they were.',
+    );
+    // Tokens named as the line of what is undone names them.
+    expect(undoneToast(mixed, { tokens: 'morphemes' }).message).toBe(
+      '1 value. 1 value, 1 morpheme, 1 link and 1 text left as they were.',
+    );
+    expect(
+      undoneToast(mixed, {
+        tokenRows: [
+          { id: 'c', role: ROLES.WORD },
+          { id: 'z', role: ROLES.WORD },
+        ],
+      }).message,
+    ).toBe('1 value. 1 value, 1 word, 1 link and 1 text left as they were.');
   });
 
   it('is not titled Undone when the call undid nothing', () => {
     expect(undoneToast(summary({}, [{ kind: 'span', id: 'a', reason: 'locked' }]))).toEqual({
       title: 'Nothing undone',
-      message: '1 change left as it was.',
+      message: '1 value left as it was.',
       undid: false,
     });
   });

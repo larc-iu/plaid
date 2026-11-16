@@ -189,8 +189,8 @@ describe('Undo job', () => {
       p.lastElementChild.textContent,
     ]);
     expect(places).toEqual([
-      ['Story one', '/projects/p1/documents/d1', '2 changes'],
-      ['Story two', '/projects/p1/documents/d2', '1 change'],
+      ['Story one', '/projects/p1/documents/d1', '1 value and 1 link'],
+      ['Story two', '/projects/p1/documents/d2', '1 value'],
     ]);
     // No lexicon note: the job's undo takes the lexicon part too.
     expect(dialog().querySelector('[data-testid="undo-entries-note"]')).toBeNull();
@@ -199,7 +199,7 @@ describe('Undo job', () => {
     await settle(v);
     expect(client.jobs.undo).toHaveBeenLastCalledWith('j1', { dryRun: false });
     expect(feedback.notifySuccess).toHaveBeenCalledWith(
-      '4 values, 2 links and 1 lexicon entry removed. 3 changes left as they were.',
+      '4 values, 2 links and 1 lexicon entry removed. 2 values and 1 link left as they were.',
       'Undone',
     );
     const line = v.container.querySelector('[data-testid="job-undone"]');
@@ -321,7 +321,7 @@ describe('Undo job', () => {
     await press(v, button(dialog(), 'Undo'));
     await settle(v);
     expect(feedback.notifyInfo).toHaveBeenCalledWith(
-      '3 changes left as they were.',
+      '2 values and 1 link left as they were.',
       'Nothing undone',
     );
     expect(v.container.querySelector('[data-testid="job-undone"]')).toBeNull();

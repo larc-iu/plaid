@@ -23,12 +23,12 @@ import {
 } from '@ui/components/ui/dialog';
 import { Loading } from '@ui/components/shared/Loading.jsx';
 import { historyHref } from '@ui/hooks/useHistoryParam.js';
-import { countOf } from '@ui/lib/plural.js';
 import { notifyError, notifyInfo, notifySuccess, notifyWarning } from '@/utils/feedback';
 import { isUnknownOutcome } from '@ui/lib/errors.js';
 import {
   leftCounts,
   leftGroups,
+  leftLine,
   notUndoneLines,
   undoError,
   undoneLine,
@@ -209,7 +209,12 @@ export const UndoDialog = ({
                               <span className="text-muted-foreground">{p.label}</span>
                             )}
                             <span className="ms-2 tabular-nums text-muted-foreground">
-                              {countOf(p.count, 'change')}
+                              {leftLine(
+                                (preview.skipped || []).filter(
+                                  (r) => r.reason === g.reason && (place(r)?.key ?? null) === p.key,
+                                ),
+                                { tokenRows, tokens },
+                              )}
                             </span>
                           </li>
                         ))}

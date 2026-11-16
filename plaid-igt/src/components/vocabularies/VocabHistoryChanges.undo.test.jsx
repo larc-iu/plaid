@@ -111,8 +111,8 @@ describe('Undo over a vocabulary History entry’s changes', () => {
       p.querySelector('a')?.getAttribute('href') ?? null,
     ]);
     expect(places).toEqual([
-      ['Story one1 change', '/projects/p1/documents/d1'],
-      ['kay1 change', '/vocabularies/v1?item=kay'],
+      ['Story one1 link', '/projects/p1/documents/d1'],
+      ['kay1 lexicon entry', '/vocabularies/v1?item=kay'],
     ]);
   });
 

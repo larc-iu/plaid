@@ -303,7 +303,7 @@ test('a job’s entry is undone but for the value a person wrote since, which is
   await expect(place).toHaveAttribute('href', /focusSentence=/);
   await shot(page, '2-dialog-left');
   await undoIn(dialog);
-  await expect(page.getByText('2 values and 1 link. 1 change left as it was.')).toBeVisible();
+  await expect(page.getByText('2 values and 1 link. 1 value left as it was.')).toBeVisible();
 
   // The person's value stays, the job's others are gone or back.
   expect(await glossOn(2)).toBe('fish.SG');

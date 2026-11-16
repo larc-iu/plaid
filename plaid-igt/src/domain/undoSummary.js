@@ -194,6 +194,62 @@ export const leftGroups = (summary, place = () => null) => {
     }));
 };
 
+// What each kind of row left is called, in the nouns of the line of what
+// is undone, in its order (core's `kind` of a row left).
+const ROW_WORDS = [
+  ['span', ['value', 'values']],
+  ['token', null],
+  ['vocab-link', ['link', 'links']],
+  ['vocab-item', ENTRY],
+  ['text', ['text', 'texts']],
+  ['document', ['document detail', 'document details']],
+  ['relation', ['other annotation', 'other annotations']],
+];
+
+/**
+ * Rows left (`rows`, core's `skipped` rows, `{kind, id}`), as one line in
+ * the nouns of the line of what is undone: "2 values, 1 morpheme and 1
+ * link". A token is named by its role where `tokenRows` says it, else by
+ * what wrote it (`tokens`, as undoneLine reads it). `more` rows whose kind
+ * is not known (core lists the first rows left only) close the line as "N
+ * more". A kind this table does not know is named by its code.
+ */
+export const leftLine = (rows, { tokenRows, tokens } = {}, more = 0) => {
+  const roles = new Map((tokenRows || []).map((r) => [r.id, r.role]));
+  const tokenWords = (id) =>
+    TOKEN_ROLE_WORDS[roles.get(id)] ??
+    (tokens === 'morphemes'
+      ? ['morpheme', 'morphemes']
+      : tokens === 'with-text'
+        ? ['word', 'words']
+        : TOKEN_WORDS);
+  const counts = new Map();
+  const add = (key, words) => {
+    const c = counts.get(key) ?? { n: 0, words };
+    c.n += 1;
+    counts.set(key, c);
+  };
+  for (const r of rows || []) {
+    if (r.kind === 'token') {
+      const words = tokenWords(r.id);
+      add(`token ${words[0]}`, words);
+    } else {
+      const words = ROW_WORDS.find(([k]) => k === r.kind)?.[1] ?? [String(r.kind), String(r.kind)];
+      add(r.kind, words);
+    }
+  }
+  const order = (key) => {
+    const kind = key.startsWith('token ') ? 'token' : key;
+    const i = ROW_WORDS.findIndex(([k]) => k === kind);
+    return i < 0 ? ROW_WORDS.length : i;
+  };
+  const parts = [...counts]
+    .sort(([a], [b]) => order(a) - order(b))
+    .map(([, c]) => countOf(c.n, ...c.words));
+  if (more > 0) parts.push(`${more.toLocaleString()} more`);
+  return andList(parts);
+};
+
 /**
  * How many rows `summary` leaves (`total`, core's count), how many of them it
  * lists (`listed`), and how many it does not (`unlisted`), whose reasons are
@@ -236,10 +292,13 @@ export const notUndoneLines = (summary) => {
  */
 export const undoneToast = (summary, opts) => {
   const line = undoneLine(summary, opts);
-  const left = leftCounts(summary).total;
+  const { total, unlisted } = leftCounts(summary);
+  const left = total ? leftLine(summary?.skipped, opts, unlisted) : '';
   const message = [
     line ? `${line[0].toUpperCase()}${line.slice(1)}.` : '',
-    left ? `${countOf(left, 'change')} left as ${left === 1 ? 'it was' : 'they were'}.` : '',
+    left
+      ? `${left[0].toUpperCase()}${left.slice(1)} left as ${total === 1 ? 'it was' : 'they were'}.`
+      : '',
   ]
     .filter(Boolean)
     .join(' ');

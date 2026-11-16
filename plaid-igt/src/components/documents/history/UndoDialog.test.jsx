@@ -171,7 +171,7 @@ describe('UndoDialog', () => {
       changed.querySelector('details').open = true;
     });
     const places = all(changed, '[data-place]');
-    expect(places.map((p) => p.textContent)).toEqual(['Sentence 21 change', 'Elsewhere1 change']);
+    expect(places.map((p) => p.textContent)).toEqual(['Sentence 21 value', 'Elsewhere1 value']);
     expect(places[0].querySelector('a').getAttribute('href')).toBe(
       '/projects/p1/documents/d1?tab=analyze&focusSentence=s-2',
     );
@@ -285,7 +285,7 @@ describe('UndoDialog', () => {
     });
     await settle();
     expect(feedback.notifySuccess).toHaveBeenCalledWith(
-      '3 values. 1 change left as it was.',
+      '3 values. 1 value left as it was.',
       'Undone',
     );
     expect(onOpenChange).toHaveBeenCalledWith(false);
@@ -322,7 +322,7 @@ describe('UndoDialog', () => {
     await press(button('Undo'));
     await settle();
     expect(feedback.notifySuccess).not.toHaveBeenCalled();
-    expect(feedback.notifyInfo).toHaveBeenCalledWith('1 change left as it was.', 'Nothing undone');
+    expect(feedback.notifyInfo).toHaveBeenCalledWith('1 value left as it was.', 'Nothing undone');
   });
 
   it('says an undo whose answer was lost may have been made, and goes back to now', async () => {
