@@ -48,7 +48,10 @@ def test_rp4_a_selection_that_fills_nothing_works_once_and_keeps_its_whole_repor
     report = finished['report']
     assert len([c for c in model.calls if c['n'] == 1]) == 1, 'the selection, and no stretch after it'
     assert report['findings'] == REPORT, 'the whole report, once'
-    assert len(REPORT) > JOB_NOTE_MAX_CHARS and len(report['notes'][0]['note']) <= JOB_NOTE_MAX_CHARS
+    assert len(REPORT) > JOB_NOTE_MAX_CHARS
+    # Its note is not the findings flattened and shown twice (REV-RPF-P-10).
+    assert [n['note'] for n in report['notes']] == [igt_job.FINDINGS_NOTE]
+    assert igt_job.FINDINGS_NOTE == 'Its findings are in the report.'
     assert [(d['state'], d['done'], d['targets']) for d in report['documents']] == [('done', 2, 2), ('done', 2, 2)]
     assert report['plan']['fallback'] == [], 'no document worked in smaller pieces'
     assert report['summary'] is None or report['summary'] == 'The job wrote no change and proposed none.'

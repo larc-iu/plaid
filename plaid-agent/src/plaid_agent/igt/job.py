@@ -216,6 +216,10 @@ def piece_note(text) -> str:
 
 #: How the findings of a job that fills nothing say they were cut.
 FINDINGS_CUT = '(The rest of this report is cut.)'
+#: The note of a piece of a job that fills nothing that kept findings: one
+#: sentence, never its findings flattened and cut, shown a second time under
+#: them (REV-RPF-P-10).
+FINDINGS_NOTE = 'Its findings are in the report.'
 
 
 def findings_text(text) -> str:
@@ -2905,8 +2909,11 @@ class IgtRunner:
             result = self.turn(ws, kit, system, more, pace=pace)
             job.check()
             ws.answered_nothing = answered_nothing(ws, result.text)
-        # The whole reply, the findings of a job that fills nothing (RPF-A5).
+        # The whole reply, the findings of a job that fills nothing (RPF-A5),
+        # whose note then only says where they are (REV-RPF-P-10).
         ws.reply = str(result.text or '')
+        if self.fills_nothing() and findings_text(ws.reply):
+            return FINDINGS_NOTE
         return piece_note(result.text)
 
     def pace(self, decided=lambda: None, line: Optional[str] = None) -> Pace:
