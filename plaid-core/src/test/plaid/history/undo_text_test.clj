@@ -590,7 +590,14 @@
         (is (nil? (why tuna)))
         (when (= "text-changed-since" (why (word-at (:words w) text 0 1)))
           (is (= "text-changed-since" (why pron)) "a value on the typed word stays with it")
-          (is (some? (psc/fetch-by-id db :spans pron))))))))
+          (is (some? (psc/fetch-by-id db :spans pron))))
+        (when (= "built-on" (why (word-at (:words w) text 0 1)))
+          ;; the person kept the typed word: the job's value on it is undone
+          ;; and counted among the values undone, with N and CONJ, while the
+          ;; word is listed as kept for what was built on it (REV-UT2-3)
+          (is (nil? (psc/fetch-by-id db :spans pron)))
+          (is (nil? (why pron)))
+          (is (= 3 (-> real :undone :spans :deleted)) "the job's three values are counted as undone"))))))
 
 (deftest two-jobs-on-one-text-in-either-order
   (let [two-jobs! (fn []
