@@ -127,11 +127,13 @@ describe('Undo over a document History entry’s changes', () => {
       documentId: 'doc-1',
       vocabLayerId: undefined,
     });
-    expect(dialog().querySelector('[data-testid="undo-line"]').textContent).toBe('1 value');
+    expect(dialog().querySelector('[data-testid="undo-line"]').textContent).toBe(
+      '1 value put back as it was',
+    );
     await press(all(dialog(), 'button').find((b) => b.textContent.trim() === 'Undo'));
     await settle();
     expect(undo).toHaveBeenLastCalledWith('g1', { documentId: 'doc-1', vocabLayerId: undefined });
-    expect(feedback.notifySuccess).toHaveBeenCalledWith('1 value.', 'Undone');
+    expect(feedback.notifySuccess).toHaveBeenCalledWith('1 value put back as it was.', 'Undone');
     expect(backToNow).toHaveBeenCalledTimes(1);
   });
 });

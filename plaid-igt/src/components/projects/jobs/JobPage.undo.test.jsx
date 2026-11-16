@@ -189,7 +189,7 @@ describe('Undo job', () => {
     expect(client.jobs.undo).toHaveBeenCalledWith('j1', { dryRun: true });
     expect(dialog().querySelector('h2').textContent).toBe('Undo this job?');
     expect(dialog().querySelector('[data-testid="undo-line"]').textContent).toBe(
-      '4 values, 2 links and 1 lexicon entry removed',
+      '4 values put back as they were, 2 links removed and 1 lexicon entry removed',
     );
     // Left rows by document, in the job's order.
     const places = all(dialog(), '[data-place]').map((p) => [
@@ -208,7 +208,7 @@ describe('Undo job', () => {
     await settle(v);
     expect(client.jobs.undo).toHaveBeenLastCalledWith('j1', { dryRun: false });
     expect(feedback.notifySuccess).toHaveBeenCalledWith(
-      '4 values, 2 links and 1 lexicon entry removed. 2 values and 1 link left as they were.',
+      '4 values put back as they were, 2 links removed and 1 lexicon entry removed. 2 values and 1 link left as they were.',
       'Undone',
     );
     const line = v.container.querySelector('[data-testid="job-undone"]');
@@ -281,7 +281,7 @@ describe('Undo job', () => {
       await line({
         totals: { changes: 193, textChanges: 14, changesParts: [{ kind: 'text', n: 14 }] },
       }),
-    ).toBe('179 values and the text with its words and sentences');
+    ).toBe('179 values put back as they were and the text with its words and sentences');
     const glossed = {
       ...summary,
       undone: {
@@ -299,7 +299,7 @@ describe('Undo job', () => {
     await press(v, button(v.container, 'Undo job'));
     await settle(v);
     expect(dialog().querySelector('[data-testid="undo-line"]').textContent).toBe(
-      '169 values, 169 morphemes and 151 links',
+      '169 values put back as they were, 169 morphemes and 151 links removed',
     );
     await v.unmount();
   });

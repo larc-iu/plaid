@@ -35,7 +35,9 @@ describe('undoneLine', () => {
       vocabLinks: counts(5),
       texts: counts(0),
     });
-    expect(undoneLine(s)).toBe('12 values, 5 links and 2 lexicon entries brought back');
+    expect(undoneLine(s)).toBe(
+      '12 values put back as they were, 5 links put back as they were and 2 lexicon entries brought back',
+    );
   });
 
   it('says whether an entry or a document comes back, goes, or is set back', () => {
@@ -44,7 +46,7 @@ describe('undoneLine', () => {
         summary({ vocabItems: { inserted: 1, deleted: 2, updated: 3 }, vocabLinks: counts(1) }),
       ),
     ).toBe(
-      '1 link, 1 lexicon entry brought back, 2 lexicon entries removed and 3 lexicon entries set back',
+      '1 link put back as it was, 1 lexicon entry brought back, 2 lexicon entries removed and 3 lexicon entries set back',
     );
     // A document's own row is its name and details, not the document.
     expect(undoneLine(summary({ documents: counts(1) }))).toBe('the document’s name or details');
@@ -75,7 +77,7 @@ describe('undoneLine', () => {
       { id: 'm2', role: ROLES.MORPHEME },
       { id: 'm4', role: ROLES.MORPHEME },
     ];
-    expect(undoneLine(s, { tokenRows })).toBe('1 value, 1 word and 2 morphemes');
+    expect(undoneLine(s, { tokenRows })).toBe('1 value put back as it was, 1 word and 2 morphemes');
   });
 
   it('counts tokens as one when the rows do not account for them all', () => {
@@ -194,7 +196,7 @@ describe('undoneToast', () => {
   it('says what was undone and how many were left', () => {
     expect(undoneToast(summary({ spans: counts(1) }))).toEqual({
       title: 'Undone',
-      message: '1 value.',
+      message: '1 value put back as it was.',
       undid: true,
     });
     const left = summary({ spans: counts(3) }, [
@@ -202,11 +204,13 @@ describe('undoneToast', () => {
       { kind: 'span', id: 'b', reason: 'changed-since' },
     ]);
     // What was left is counted in the nouns of what was undone (RPF-INT 5).
-    expect(undoneToast(left).message).toBe('3 values. 2 values left as they were.');
+    expect(undoneToast(left).message).toBe(
+      '3 values put back as they were. 2 values left as they were.',
+    );
     // Core's count of what was left, past the rows it lists, whose kinds are
     // not known.
     expect(undoneToast({ ...left, skippedCount: 1200 }).message).toBe(
-      '3 values. 2 values and 1,198 more left as they were.',
+      '3 values put back as they were. 2 values and 1,198 more left as they were.',
     );
     const mixed = summary({ spans: counts(1) }, [
       { kind: 'span', id: 'a', reason: 'changed-since' },
@@ -215,11 +219,11 @@ describe('undoneToast', () => {
       { kind: 'text', id: 'd', reason: 'text-changed-since' },
     ]);
     expect(undoneToast(mixed).message).toBe(
-      '1 value. 1 value, 1 token, 1 link and 1 text left as they were.',
+      '1 value put back as it was. 1 value, 1 token, 1 link and 1 text left as they were.',
     );
     // Tokens named as the line of what is undone names them.
     expect(undoneToast(mixed, { tokens: 'morphemes' }).message).toBe(
-      '1 value. 1 value, 1 morpheme, 1 link and 1 text left as they were.',
+      '1 value put back as it was. 1 value, 1 morpheme, 1 link and 1 text left as they were.',
     );
     expect(
       undoneToast(mixed, {
@@ -228,7 +232,7 @@ describe('undoneToast', () => {
           { id: 'z', role: ROLES.WORD },
         ],
       }).message,
-    ).toBe('1 value. 1 value, 1 word, 1 link and 1 text left as they were.');
+    ).toBe('1 value put back as it was. 1 value, 1 word, 1 link and 1 text left as they were.');
   });
 
   it('is not titled Undone when the call undid nothing', () => {

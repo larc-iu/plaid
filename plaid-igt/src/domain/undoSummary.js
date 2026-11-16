@@ -100,6 +100,20 @@ export const undoneLine = (summary, { tokenRows, tokens } = {}) => {
       parts.push(textWithWords(n));
       continue;
     }
+    if (kind === 'spans' || kind === 'vocabLinks' || kind === 'relations') {
+      // Each part says what happens to it: one the entry wrote over goes
+      // back to what it was, one it made goes, one it deleted comes back
+      // (RPF3 round 4, RP3-4: "10 values removed" read as deleting values
+      // that undo restores).
+      parts.push(
+        ...byWhatHappens(
+          c,
+          words,
+          (k) => `${countOf(k, ...words)} put back as ${k === 1 ? 'it was' : 'they were'}`,
+        ),
+      );
+      continue;
+    }
     if (kind !== 'tokens') {
       parts.push(countOf(n, ...words));
       continue;
