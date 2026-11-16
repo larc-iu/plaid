@@ -795,6 +795,56 @@
       (is (nil? (why made)))
       (is (nil? (psc/fetch-by-id db :tokens made)) "the word on bare characters goes"))))
 
+(deftest tie-groups-holds-long-chains-in-any-order
+  ;; REV-UT2-5: rows each tied to the next (a run of shifted boundaries), as
+  ;; many as the row limit and more, handed over in any order, on a thread
+  ;; with a small stack: one group, never a StackOverflowError.
+  (let [chain (fn [order]
+                (vec (for [k order]
+                       {:k ["tokens" k] :table "tokens" :op :update
+                        :before {:token_layer_id "L" :text_id "T" :begin (* 3 k) :end_ (+ 2 (* 3 k))}
+                        :after {:token_layer_id "L" :text_id "T" :begin (+ 1 (* 3 k)) :end_ (+ 4 (* 3 k))}})))
+        groups (fn [items]
+                 (let [p (promise)
+                       t (Thread. nil
+                                  (fn [] (deliver p (try (count (distinct (vals (#'plaid.history.undo/tie-groups items {}))))
+                                                         (catch StackOverflowError _ :overflow))))
+                                  "tie-groups" (* 256 1024))]
+                   (.start t)
+                   (deref p 120000 :timeout)))]
+    (doseq [n [20000 50000]
+            [what order] [["descending" (reverse (range n))] ["ascending" (range n)]
+                          ["random" (shuffle (range n))]]]
+      (is (= 1 (groups (chain order))) (str n " rows, " what)))))
+
+(deftest an-undo-at-the-row-limit-ties-a-chain-handed-over-in-descending-order
+  ;; REV-UT2-5 through the engine: a word typed at the start of a text of
+  ;; 19,998 words shifts each into the next one's old place, one chain of
+  ;; ties, 20,000 rows in all. The rows are handed to the engine in reverse
+  ;; order and the undo runs on a thread with a small stack.
+  (let [n 19998
+        proj (create-test-project admin-request "Chain")
+        d (create-test-document admin-request proj "D")
+        tl (id (create-text-layer admin-request proj "Text"))
+        text (id (create-text admin-request tl d (str/join " " (repeat n "ab"))))
+        word (id (create-token-layer-opts admin-request tl "Words" {:overlap-mode "non-overlapping"}))
+        _ (doseq [c (partition-all 1000 (range n))]
+            (assert-created (bulk-create-tokens admin-request (mapv (fn [i] {:token-layer-id word :text text :begin (* 3 i) :end (+ 2 (* 3 i))}) c))))
+        g (str (random-uuid))
+        _ (edit! (in-group admin-request g) {:words word} text [(insert-op 0 "x ")])
+        unit-rows plaid.history.changes/unit-rows
+        p (promise)]
+    (with-redefs [plaid.history.changes/unit-rows (fn [& args] (update (apply unit-rows args) :rows (comp vec reverse)))]
+      (.start (Thread. nil
+                       (bound-fn [] (deliver p (try (undo-entry admin-request g :dry-run true)
+                                                    (catch Throwable t (str t)))))
+                       "undo" (* 512 1024)))
+      (let [resp (deref p 300000 :timeout)]
+        (is (map? resp) (pr-str resp))
+        (is (= 200 (:status resp)) (pr-str (:body resp)))
+        (is (= 20000 (:rows (:body resp))))
+        (is (zero? (:skipped-count (:body resp))))))))
+
 (deftest the-tie-rule-costs-the-same-at-the-row-limit
   ;; REV-UT2-1: a unit that made 19,000 words on one text (a job segmenting
   ;; a long document), its undo's dry run with the rule and with the rule

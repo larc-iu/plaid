@@ -619,10 +619,23 @@
                       [k {:begins (long-array (map (comp :begin :after) srt))
                           :items srt
                           :max-len (reduce max 0 (map #(- (:end_ (:after %)) (:begin (:after %))) srt))}]))
+        ;; union-find, iterative, with path compression and the smaller
+        ;; tree linked under the larger, so no chain of ties, however long
+        ;; and in whatever order, grows the stack (REV-UT2-5)
         parent (java.util.HashMap.)
-        root (fn root [k] (let [p (.get parent k)] (if (or (nil? p) (= p k)) k (let [r (root p)] (.put parent k r) r))))
-        union! (fn [a b] (let [ra (root a) rb (root b)] (.put parent a ra) (.put parent b rb)
-                              (when (not= ra rb) (.put parent ra rb))))]
+        size (java.util.HashMap.)
+        root (fn [k]
+               (let [r (loop [x k] (let [p (.get parent x)] (if (or (nil? p) (= p x)) x (recur p))))]
+                 (loop [x k] (let [p (.get parent x)] (when (and p (not= p r)) (.put parent x r) (recur p))))
+                 r))
+        union! (fn [a b]
+                 (let [ra (root a) rb (root b)]
+                   (.put parent a ra) (.put parent b rb)
+                   (when (not= ra rb)
+                     (let [na (long (or (.get size ra) 1)) nb (long (or (.get size rb) 1))
+                           [small big] (if (< na nb) [ra rb] [rb ra])]
+                       (.put parent small big)
+                       (.put size big (+ na nb))))))]
     (doseq [i tok
             :let [{b :begin e :end_ :as bf} (:before i)]
             :when bf
