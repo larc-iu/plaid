@@ -25,8 +25,8 @@ from ..core.plan import labelled
 from ..core.tools import ToolError, next_step
 from .plan import reshaped_subjects, written_before_merge
 from .project import Link, Sentence, Span, Word, plain_ref, planned_word_count, resolve, split_sentences, word_ref
-from .retyped import (gone_words, listing, planned_words, refuse_retype_under_rule, renumbered, renumbered_cut,
-                      resolve_in, restage_on_retype, trimmed, word_gaps)
+from .retyped import (gone_words, listing, planned_words, reaches, refuse_retype_under_rule, renumbered,
+                      renumbered_cut, resolve_in, restage_on_retype, retype_effects, trimmed, word_gaps)
 from .tools import (reshape_guards, refuse_comment_and_text_edit, refuse_shape_and_analysis,
                     refuse_shape_and_respell, refuse_text_in_deleted_sentence)
 from .workspace import Workspace, _need, _refs
@@ -583,6 +583,7 @@ def t_append_text(ws: Workspace, document: str, text: str) -> str:
     words = planned_word_count(ws.project, text)
     ws.add_op({'kind': 'edit_text', 'document_id': doc.id, 'text_id': doc.text_id, 'sentence_id': None,
                'begin': at, 'end': at, 'old': '', 'new': sep + text, 'word_ids': [], 'morpheme_ids': [],
+               'words_added': words, 'tokens_changed': 0,
                **labelled(ws.doc_label(doc.id), f'append {len(sents)} sentence{"s" if len(sents) != 1 else ""} '
                           f'({words} words): {qv(text[:60] + ("…" if len(text) > 60 else ""))}')})
     return ws.planned_note(1)
@@ -617,9 +618,13 @@ def t_retype_sentence(ws: Workspace, document: str, ref: str, text: str) -> str:
     # now on in this plan (`retyped`).
     extents = _word_extents(ws, doc)
     planned = planned_words(ws.project, doc.body, s.words, b, old, text, extents)
+    # What it adds and what of the sentence's tokens it changes or removes,
+    # punctuation included, which a job's report counts (RPF-A8).
+    added, changed = retype_effects(ws.project, doc.body, s.words, b, old, text, extents, planned)
     op = {'kind': 'edit_text', 'document_id': doc.id, 'text_id': doc.text_id, 'sentence_id': s.id,
           'begin': b, 'end': e, 'old': old, 'new': text,
           'word_ids': word_ids, 'morpheme_ids': morpheme_ids, 'planned_words': planned,
+          'words_added': added, 'tokens_changed': changed,
           **labelled(f'{ws.doc_label(doc.id)} {plain_ref(doc, ref)}',
                      f'retype {qv(old[:40] + ("…" if len(old) > 40 else ""))} → '
                      f'{qv(text[:40] + ("…" if len(text) > 40 else ""))}' + (f' ({n} sentences)' if n > 1 else '')
@@ -662,24 +667,10 @@ def _retype_effects(ws: Workspace, s: Sentence, at: int, old: str, text: str, ex
 
     cfg = ws.project.ignored_cfg
 
-    def joins(c: str) -> bool:
-        # what a word takes typed against it: not whitespace, and not a
-        # character its layer's ignored-tokens rule leaves out of a word
-        return bool(c) and not c.isspace() and not is_kept_out(c, cfg)
-
     def reached(w) -> bool:
-        for gb, ge, value in gaps:
-            if gb < w.end and ge > w.begin:
-                return True
-            # Typed at an edge with no space or left-out character between:
-            # the word takes it.
-            if gb == ge == w.end and joins(value[:1]):
-                return True
-            if gb == ge == w.begin and joins(value[-1:]):
-                return True
-            if gb == ge and w.begin < gb < w.end:
-                return True
-        return False
+        # Typed at an edge with no space or left-out character between: the
+        # word takes it (``retyped.reaches``, the one rule).
+        return reaches(gaps, w.begin, w.end, cfg)
 
     def lost(w) -> bool:
         # every letter of it inside a stretch the edits delete or replace

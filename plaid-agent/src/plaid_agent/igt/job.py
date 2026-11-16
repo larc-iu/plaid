@@ -48,7 +48,8 @@ from ..core.job import (BUDGET, OUTPUT, REPEATING, ROW_FINAL, SKIPPED_MORE, JobS
                         field_counts, fields_text,
                         BLANK_WHERE, blank_text, empty_counts, failure_kind, halve, harmonized, not_answering)
 from ..core.limits import (JOB_ANALYSIS_MAX_CHARS, JOB_CHANGE_VALUE_CHARS, JOB_CHANGES_MAX, JOB_CONTEXT_SENTENCES,
-                           JOB_DOCUMENT_PIECE_MAX_CHARS, JOB_NOTE_MAX_CHARS, JOB_SUMMARY_MAX_CHARS,
+                           JOB_DOCUMENT_PIECE_MAX_CHARS, JOB_FINDINGS_MAX_CHARS, JOB_FINDINGS_MERGE_CHARS,
+                           JOB_NOTE_MAX_CHARS, JOB_SUMMARY_MAX_CHARS,
                            JOB_SUMMARY_NOTES_CHARS, JOB_SUMMARY_TABLE_CHARS, JOB_TABLES_MAX, JOB_TABLES_PER_PIECE,
                            JOB_DECISIONS_PER_CALL, JOB_DEFER_ROUNDS, JOB_DEFER_WAIT_S, JOB_GUIDELINES_MAX_CHARS,
                            JOB_LOCK_TRIES, JOB_LOCK_WAIT_S, JOB_PERSON_QUIET_S, JOB_PRECEDENT_CHARS,
@@ -110,6 +111,9 @@ FALLBACK_FORM = ' fallback '
 #: note, a table a piece's code made, and how many changes the cap dropped.
 CHANGE_FORM = ' change '
 NOTE_FORM = ' note '
+#: The whole last reply of a piece of a job that fills nothing, its findings,
+#: in rows of its own keyed by the piece and the part (RPF-A5).
+FINDINGS_FORM = ' findings '
 #: What a refusal a job cannot follow is about (``ToolError.code``, given
 #: where it is raised): ``text``, a change to words the same plan retypes,
 #: splits, merges or deletes; ``shape``, a retype, split, merge or delete of
@@ -173,6 +177,43 @@ def piece_note(text) -> str:
     return head.rstrip() + NOTE_CUT
 
 
+#: How the findings of a job that fills nothing say they were cut.
+FINDINGS_CUT = '(The rest of this report is cut.)'
+
+
+def findings_text(text) -> str:
+    """A piece's findings (or the job's one report) as the job keeps them:
+    whole when at most JOB_FINDINGS_MAX_CHARS, else cut after its last line
+    break or sentence end within the cap, saying so on a line of its own
+    (:data:`FINDINGS_CUT`)."""
+    text = str(text or '').strip()
+    if len(text) <= JOB_FINDINGS_MAX_CHARS:
+        return text
+    room = JOB_FINDINGS_MAX_CHARS - len(FINDINGS_CUT) - 2
+    head = text[:room]
+    at = max(head.rfind('\n'), *(head.rfind(c + ' ') + 1 for c in '.!?'))
+    return (head[:at] if at > 0 else head).rstrip() + '\n\n' + FINDINGS_CUT
+
+
+def findings_rows(key: str, value: Dict[str, Any], text: str) -> List[Dict[str, Any]]:
+    """A piece's findings as decision rows: ``value`` (its document, name and
+    sentences) with ``text`` split over as many rows as JOB_ANALYSIS_MAX_CHARS
+    needs, each saying which part of how many it is."""
+    chunks, rest = [], text
+    while rest:
+        n = min(len(rest), JOB_ANALYSIS_MAX_CHARS)
+        while n > 1 and len(canonical({**value, 'text': rest[:n], 'part': 999, 'of': 999})) > JOB_ANALYSIS_MAX_CHARS:
+            n = max(1, n * 3 // 4)
+        chunks.append(rest[:n])
+        rest = rest[n:]
+    out = []
+    for i, chunk in enumerate(chunks):
+        a = canonical({**value, 'text': chunk, 'part': i, 'of': len(chunks)})
+        out.append({'form': f'{FINDINGS_FORM}{key} {i:03d}', 'key': analysis_key(f'{key}/findings/{i}'),
+                    'analysis': a, 'count': 1, 'document_id': value.get('document'), 'sentence_id': None})
+    return out
+
+
 def summary_text(value: Dict[str, Any]) -> Optional[str]:
     """A piece's summary (or the plan's) as its decision row keeps it:
     canonical JSON, its keys kebab-cased as the clients send a report, so
@@ -205,19 +246,40 @@ def summary_text(value: Dict[str, Any]) -> Optional[str]:
         value[k] = value[k][:len(value[k]) // 2]
 
 
+def text_counts(ops: List[Dict[str, Any]]) -> Counter:
+    """``words_added`` and ``tokens_changed`` of ``ops``
+    (:func:`jobapply.text_effects`, RPF-A8)."""
+    c: Counter = Counter()
+    for o in ops:
+        added, changed = jobapply.text_effects(o)
+        c['words_added'] += added
+        c['tokens_changed'] += changed
+    return c
+
+
+def changes_parts(parts: Counter) -> List[Dict[str, Any]]:
+    """Counts by change kind as the report holds them (RPF-A3): ``[{kind,
+    n}]`` in ``core.job.CHANGE_KINDS`` order, a kind at 0 left out. A
+    list, never a map, which the clients would re-case."""
+    return [{'kind': k, 'n': parts[k]} for k in core_job.CHANGE_KINDS if parts.get(k)]
+
+
 def written_sums(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
     """What writing ``rows`` wrote, as a document row's counts say it:
     each count summed, ``analyzed`` each sentence written in once, ``words``
     each word analysed once, ``fields`` and ``outside`` by target
-    (:func:`core_job.field_counts`). Only the non-zero counts."""
+    (:func:`core_job.field_counts`), ``changes_parts`` the changes by kind
+    (:func:`changes_parts`). Only the non-zero counts."""
     counts: Counter = Counter()
     analyzed, words = set(), set()
     fields: List[Dict[str, Any]] = []
     outside: List[Dict[str, Any]] = []
+    parts: Counter = Counter()
     for r in rows:
         words |= set(r.get('words') or ())
         fields += r.get('fields') or []
         outside += r.get('outside') or []
+        parts.update(r.get('parts') or {})
         for k, n in (r.get('counts') or {}).items():
             if k == 'analyzed':
                 analyzed.add(r['sentence'])
@@ -225,6 +287,8 @@ def written_sums(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
                 counts[k] += n
     counts['analyzed'], counts['words'] = len(analyzed), len(words)
     out: Dict[str, Any] = {'counts': {k: n for k, n in counts.items() if n}}
+    if +parts:
+        out['changes_parts'] = changes_parts(parts)
     if fields:
         out['fields'] = field_counts(fields, {f['id'] for f in outside})
     if outside:
@@ -922,6 +986,8 @@ class JobWorkspace(Workspace):
         self.answered_nothing = False
         #: the planning context's plan_work, once valid
         self.plan_work: Optional[Dict[str, Any]] = None
+        #: the piece's whole last reply (``IgtRunner.run_piece``)
+        self.reply = ''
 
     def leave_it(self, fact: str, sentence_id: Optional[str] = None, code: Optional[str] = None) -> str:
         """A refusal whose chat advice a job cannot follow (a later turn,
@@ -1300,12 +1366,20 @@ class Write:
         c['deletions'] = sum(1 for o in ops if deletes(o))
         c['links'] = sum(1 for o in ops if o.get('kind') in ('link', 'link_phrase'))
         c.update(self.of_people_and_text(ops))
+        c.update(text_counts(ops))
         for o in ops:
             t = self.translation(o)
             if t:
                 c[t] = 1
         c['analyzed'] = 1
         return c
+
+    @staticmethod
+    def parts_of(ops: List[Dict[str, Any]]) -> Dict[str, int]:
+        """What ``ops`` are, as the report splits its changes
+        (:func:`jobapply.change_kind`): ``{kind: n}``, the n summing to the
+        changes ``ops`` count (RPF-A3)."""
+        return dict(Counter(jobapply.change_kind(o) for o in ops))
 
     def of_people_and_text(self, ops: List[Dict[str, Any]]) -> Counter:
         """``peoples_values_changed``: the changes of ``ops`` that change or
@@ -1405,7 +1479,7 @@ class Write:
         row = {'write': self.id, 'try': seed, 'piece': self.piece, 'own': sid in self.own}
         words = self.words_of(ops)
         row.update({'words': words, 'others': self._others(sid, words),
-                    'counts': {k: n for k, n in counts.items() if n},
+                    'counts': {k: n for k, n in counts.items() if n}, 'parts': self.parts_of(ops),
                     'ops': [self.describe(o, True) for o in ops]})
         fields = self.fields_of(ops)
         if fields:
@@ -1453,11 +1527,12 @@ class Write:
                 out.append(self.follow_up(seed, o))
         counts = Counter(drops or {}) + Counter({
             'changes': len(loose), 'deletions': sum(1 for o in loose if deletes(o)),
-            'entries': sum(1 for o in loose if o.get('kind') == 'create_entry')}) + self.of_people_and_text(loose)
+            'entries': sum(1 for o in loose if o.get('kind') == 'create_entry')}) + self.of_people_and_text(loose) \
+            + text_counts(loose)
         if loose or +counts:
             out.append((self.document_id, {
                 'write': self.id, 'try': seed, 'piece': self.piece, 'loose': True,
-                'counts': {k: n for k, n in counts.items() if n},
+                'counts': {k: n for k, n in counts.items() if n}, 'parts': self.parts_of(loose),
                 # A selection's change of no document is handed on to its
                 # next write when this one does not land (``LOOSE``): never
                 # listed here.
@@ -1974,6 +2049,10 @@ class IgtRunner:
         project, live = core_job.through_core(job, begin)
         if not live:
             return True
+        # A job that fills nothing walks nothing after its planned piece
+        # (RPF-A5): a document the piece did not show is done, never worked
+        # again in stretches that would each do the whole work once more.
+        nothing = self.fills_nothing()
         job.set(current_document=None, message=f'Working on {_n(len(live), "document")} as one piece.')
         while True:
             try:
@@ -2010,7 +2089,8 @@ class IgtRunner:
         # The piece's note and tables, tried again on their own: a passing
         # error on their row never runs the model context again (REV-JG3-9).
         core_job.through_core(job, lambda: self.record_piece(
-            project, {'document': None, 'first': None, 'whole': True}, note, ws.tables))
+            project, {'document': None, 'first': None, 'whole': True}, note, ws.tables,
+            findings=ws.reply if nothing else None))
         core_job.through_core(job, lambda: self.record_refusals(ws, None))
         by_doc = self.ops_by_document(ws, live)
         # Changes no document holds (a lexicon change, a guideline) go with
@@ -2037,8 +2117,10 @@ class IgtRunner:
             if d not in ws._docs or not (shown or by_doc.get(d) or carried):
                 # The piece never read it (its budget ran out, say): it is not
                 # recorded as worked. The walk works it as a piece of its own,
-                # and the report's plan says so (REV-JG2-5).
-                core_job.through_core(job, lambda: self.fall_back(d, NOT_READ))
+                # and the report's plan says so (REV-JG2-5). Unless the job
+                # fills nothing: its piece's work was over all of them.
+                core_job.through_core(job, lambda: self.done_unwalked(project, d) if nothing
+                                      else self.fall_back(d, NOT_READ))
                 continue
             job.set(current_document=d)
             self.unsummed[key]['parts'][d] = set(shown)
@@ -2068,7 +2150,9 @@ class IgtRunner:
             out = self.excluded(d)
             rows, landed = self.view(d)
             wrote = {r['sentence'] for r in rows if not r.get('loose') and r['piece'] == SELECTION_TAG and landed(r)}
-            if any(s.id not in shown and s.id not in out and s.id not in wrote for s in ws._docs[d].sentences):
+            if nothing:
+                core_job.through_core(job, lambda: self.done_unwalked(project, d))
+            elif any(s.id not in shown and s.id not in out and s.id not in wrote for s in ws._docs[d].sentences):
                 core_job.through_core(job, lambda: self.fall_back(d, NOT_READ))
         if loose and read:
             # No write landed to carry them: listed for a person.
@@ -2077,6 +2161,25 @@ class IgtRunner:
             core_job.through_core(job, lambda: self.record_changes(left, note))
         core_job.through_core(job, lambda: self.end_summary(key))
         return True
+
+    def done_unwalked(self, project: IgtProject, document_id: str) -> None:
+        """A document of a selection that fills nothing, ended done with no
+        walk (RPF-A5): every sentence of it not finished yet is recorded as
+        the selection piece's own, as a write that sends nothing records its
+        sentences, so it is finished for good, a resumed job's too, and its
+        counts are those of what the piece wrote there."""
+        try:
+            doc = self.read(project, document_id)
+        except Gone:
+            self.job.update_row(document_id, state='gone')
+            return
+        out = self.excluded(document_id)
+        part = [s for s in doc.sentences if s.id not in out]
+        if part:
+            st = Stretch(doc, project, part, self.job.id, targets=[])
+            self.manifest(Write(document_id, SELECTION_TAG, st, [s.id for s in part], [], Counter(), doc))
+        self.job.update_row(document_id, state='done',
+                            **self.tally(document_id, (self.job.rows.get(document_id) or {}).get('skipped')))
 
     def write_piece(self, project: IgtProject, document_id: str, ws: JobWorkspace, doc,
                     ops: List[Dict[str, Any]], note: str, shown=frozenset(), summary: Optional[str] = None) -> bool:
@@ -2489,7 +2592,8 @@ class IgtRunner:
                 self.skip(document_id, doc, s.id, NO_ANSWER, None)
             self.end_summary(key)
             return None
-        self.record_piece(project, piece, note, ws.tables, doc, part)
+        self.record_piece(project, piece, note, ws.tables, doc, part,
+                          findings=ws.reply if self.fills_nothing() else None)
         self.record_refusals(ws, document_id)
         # The piece as its writing rows name it: a whole document's is the
         # same whatever sentence it starts from, so the piece run again
@@ -2518,7 +2622,9 @@ class IgtRunner:
         job = self.job
         ws.edits_text = self.edits_text()
         ws.fills = self.targets(project)
-        system = build_job_prompt(project, sentences=sentences, edits_text=ws.edits_text, targets=ws.fills)
+        # A plan that fills nothing ends each piece with its findings (RPF-A5).
+        system = build_job_prompt(project, sentences=sentences, edits_text=ws.edits_text, targets=ws.fills,
+                                  findings=self.fills_nothing())
         transcript = [{'role': 'user', 'content': message}]
         seed(ws.seen, system, transcript, lambda tool, args: True)
         self.steps_now = 0
@@ -2536,6 +2642,8 @@ class IgtRunner:
             result = self.turn(ws, kit, system, more, pace=pace)
             job.check()
             ws.answered_nothing = answered_nothing(ws, result.text)
+        # The whole reply, the findings of a job that fills nothing (RPF-A5).
+        ws.reply = str(result.text or '')
         return piece_note(result.text)
 
     def pace(self, decided=lambda: None, line: Optional[str] = None) -> Pace:
@@ -2777,6 +2885,15 @@ class IgtRunner:
         """Whether the job's plan cuts the work in sentences (the default
         plan does)."""
         return (self.plan_made or {}).get('pieces', SENTENCES) == SENTENCES
+
+    def fills_nothing(self) -> bool:
+        """Whether the job's plan fills nothing (``fills`` empty): a check, a
+        list, a summary, whose pieces' last replies are its findings
+        (RPF-A5)."""
+        if self.plan_made is None:
+            self.plan_made = self.plan_stored(self.job.decisions())
+        plan = self.plan_made or {}
+        return plan.get('by') != NO_PLAN and not plan.get('fills')
 
     def edits_text(self) -> bool:
         """Whether the job's plan says its instructions ask for the text to
@@ -3558,15 +3675,22 @@ class IgtRunner:
             limit //= 2
 
     def record_piece(self, project: IgtProject, piece: Dict[str, Any], note: str, tables, doc=None,
-                     part=()) -> None:
+                     part=(), findings: Optional[str] = None) -> None:
         """Keep a piece's note and the tables its code made among the job's
         decisions, keyed by the piece (its document and first sentence), so a
-        piece done again after a put-off write keeps its first note."""
+        piece done again after a put-off write keeps its first note, and,
+        for a job that fills nothing, its whole reply, its findings
+        (``findings``, :func:`findings_rows`, RPF-A5)."""
         key = analysis_key(canonical(piece))
         where = None
         if doc is not None and part:
             where = f's{part[0].index}' + (f' to s{part[-1].index}' if len(part) > 1 else '')
         rows = []
+        text = findings_text(findings) if findings else ''
+        if text:
+            rows += findings_rows(key, {'document': piece.get('document'),
+                                        'name': doc.name if doc is not None else None,
+                                        'sentences': None if piece.get('whole') else where}, text)
         if note:
             text = canonical({'document': piece.get('document'), 'name': doc.name if doc is not None else None,
                               'sentences': None if piece.get('whole') else where, 'note': note})
@@ -3924,6 +4048,9 @@ class IgtRunner:
         if sums.get('outside'):
             # What it wrote outside its setup, the translation's too (REV-SU-B-4).
             counts['outside'] = sums['outside']
+        if sums.get('changes_parts'):
+            # Its changes by kind, summing to ``changes`` (RPF-A3).
+            counts['changes_parts'] = sums['changes_parts']
         row = self.job.rows.get(document_id) or {}
         failed = len(self.unlisted.get(document_id) or ())
         more = max((row.get('counts') or {}).get(SKIPPED_MORE) or 0,
@@ -4404,6 +4531,7 @@ class IgtRunner:
         plan, changes, notes, dropped, fallback, tables_dropped = self.plan_stored(rows), [], [], 0, [], 0
         keys: set = set()
         tables: Dict[str, Dict[str, Any]] = {}
+        found: Dict[str, Dict[str, Any]] = {}
         for r in rows:
             form = str(r.get('form') or '')
             if form == DROPPED_FORM:
@@ -4432,6 +4560,10 @@ class IgtRunner:
                 keys.add(r.get('key'))
             elif form.startswith(NOTE_FORM):
                 notes.append(value)
+            elif form.startswith(FINDINGS_FORM):
+                key = form[len(FINDINGS_FORM):].rsplit(' ', 1)[0]
+                slot = found.setdefault(key, {k: value.get(k) for k in ('document', 'name', 'sentences')})
+                slot.setdefault('parts', {})[value.get('part') or 0] = value.get('text') or ''
             elif form.startswith(TABLE_FORM):
                 key = form[len(TABLE_FORM):].rsplit(' ', 1)[0]
                 slot = tables.setdefault(key, {'title': value.get('title'), 'columns': value.get('columns'),
@@ -4466,6 +4598,7 @@ class IgtRunner:
             t = tables[key]
             rows = [row for _, part in sorted(t['parts'].items()) for row in part]
             made.append({'title': t['title'], 'columns': t['columns'], 'rows': rows, 'more': t['more']})
+        findings = self.findings_of(plan, list(found.values()), order)
         if plan is not None:
             # Each document the job holds that the plan left out, listed as
             # such on the job page and in read_job (the lead's ruling), but
@@ -4479,7 +4612,79 @@ class IgtRunner:
         return {'plan': plan,
                 'proposed': listed, 'proposed_more': more + dropped, 'proposed_dropped': dropped,
                 'notes': shown_notes, 'notes_more': notes_more, 'tables': made[:JOB_TABLES_MAX],
-                'tables_more': max(0, len(made) - JOB_TABLES_MAX) + tables_dropped}
+                'tables_more': max(0, len(made) - JOB_TABLES_MAX) + tables_dropped,
+                **({'findings': findings} if findings else {})}
+
+    def findings_of(self, plan: Optional[Dict[str, Any]], found: List[Dict[str, Any]],
+                    order: Dict[str, int]) -> Optional[str]:
+        """The one report of a job whose plan fills nothing (RPF-A5), from
+        the findings its pieces kept (``found``, each ``{document, name,
+        sentences, parts}``): the one piece's whole, or, when several pieces
+        kept some, each under a heading naming its piece, in the job's
+        order, which the final context makes one report of when the job
+        ends done (:meth:`merge_findings`). None for a job that fills
+        something, or whose pieces kept none."""
+        self.findings_pieces = []
+        if plan is None or plan.get('by') == NO_PLAN or plan.get('fills'):
+            return None
+        pieces = []
+        for f in found:
+            text = ''.join(t for _, t in sorted(f.get('parts', {}).items())).strip()
+            if text:
+                pieces.append({**{k: f.get(k) for k in ('document', 'name', 'sentences')}, 'text': text})
+        pieces.sort(key=lambda p: (order.get(p.get('document'), len(order)),
+                                   [int(x) for x in re.findall(r'\d+', p.get('sentences') or '')[:1]]))
+        self.findings_pieces = pieces
+        if not pieces:
+            return None
+        if len(pieces) == 1:
+            return findings_text(pieces[0]['text'])
+        return findings_text('\n\n'.join(f'## {self.piece_heading(p)}\n\n{p["text"]}' for p in pieces))
+
+    @staticmethod
+    def piece_heading(p: Dict[str, Any]) -> str:
+        """A piece as a heading names it: its document and sentences, "All
+        the documents" for a selection."""
+        name = p.get('name') or ('All the documents' if p.get('document') is None else 'A document')
+        return f'{name}, {p["sentences"]}' if p.get('sentences') else name
+
+    def merge_findings(self, job, report: Dict[str, Any]) -> Optional[str]:
+        """The one report of a job that fills nothing whose findings several
+        pieces kept: the final context, given each piece's findings (at most
+        JOB_FINDINGS_MERGE_CHARS of them, each cut alike), writes the job's
+        one report, with no tools. None when one piece or none kept
+        findings: the report keeps the pieces' findings under their
+        headings."""
+        from .prompt import build_findings_prompt
+        pieces = getattr(self, 'findings_pieces', None) or []
+        if len(pieces) < 2:
+            return None
+        each = max(1000, JOB_FINDINGS_MERGE_CHARS // len(pieces))
+        parts = [f'## {self.piece_heading(p)}\n\n{_cut(p["text"], each)}' for p in pieces]
+        message = '\n'.join([
+            'The job\'s instructions:', report.get('instructions') or '', '',
+            f'The findings of each of its {len(pieces)} pieces, in the job\'s order:', '',
+            '\n\n'.join(parts)[:JOB_FINDINGS_MERGE_CHARS], '', 'Write the job\'s one report now.'])
+        project = self.project()
+        while True:
+            job.check()
+            ws = JobWorkspace(job.client(), project, mode=JobWorkspace.PLAN)
+            system = build_findings_prompt(project)
+            kit = Toolkit(tools_for=lambda w: [], call_tool=lambda w, name, args: '', tracer=TRACER)
+            self.trace(ws, system, kit, 'findings')
+            try:
+                result = self.turn(ws, kit, system, [{'role': 'user', 'content': message}])
+                return findings_text(result.text) or None
+            except TurnCancelled:
+                job.check()
+                raise JobStopped('cancelled')
+            except (StretchFailed, JobStopped):
+                raise
+            except Exception as e:  # noqa: BLE001 - a model that does not answer is waited for
+                if core_job.core_fault(e) is None and not_answering(e):
+                    job.wait_for_model()
+                    continue
+                raise
 
     def fills_named(self, job, plan: Dict[str, Any]) -> Dict[str, Any]:
         """``fills_names``: what the plan fills by the targets' names as the

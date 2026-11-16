@@ -421,6 +421,13 @@ where the corpus does it differently: say the difference in your note.'''
 JOB_NOTE = '''- END THE PIECE with a short note for the job's report, one to three plain sentences: what you did, \
 what you left and why. It is your last message, with no tool call. Nobody answers it.'''
 
+#: The last message of a piece of a job that fills nothing (a check, a
+#: list, a summary), in place of JOB_NOTE: it is the job's report, shown
+#: whole (``report.findings``, RPF-A5).
+JOB_FINDINGS_NOTE = '''- END THE PIECE with your findings, the job's report: everything the instructions ask you to find, \
+list or say, whole, in Markdown (tables and lists where they help), and what you changed, if anything. It is your \
+last message, with no tool call, and the person reads it as you wrote it. Nobody answers it.'''
+
 JOB_EXAMPLE = '''- A WHOLE PIECE, FOR EXAMPLE. {did} Then you ended with the note:\n\n{note}'''
 
 #: The line a piece's model is sent once it has used most of its calls or
@@ -457,6 +464,14 @@ JOB_PLAN_WRITTEN_CALL_NEXT = 'Call the tool itself now, or end with plan_work.'
 #: Sent once to a planning context that ended without plan_work, and as the
 #: planning context's decide-now line (its budget's, ``core.job.Pace``).
 JOB_PLAN_NOW = '(system) End the planning now: call plan_work.'
+
+#: The final context's contract when several pieces of a job that fills
+#: nothing each wrote findings: one report of them (RPF-A5).
+JOB_FINDINGS_CONTRACT = '''You write the report of an unattended job on the project "{project_name}" that was asked to \
+find, list or check something, for the person who started it. The job was done in pieces, and each piece wrote its \
+findings. Write the job's one report from them, in Markdown: everything the instructions asked for, each finding \
+once, in one order (merge the same finding found in several pieces, keep every one that differs, and keep tables \
+as tables). State no count and no finding the pieces' findings do not hold. Nothing more: no preamble.'''
 
 #: The final context's contract: the prose after the totals of the job's report.
 JOB_SUMMARY_CONTRACT = '''You write the summary of the report of an unattended job on the project \

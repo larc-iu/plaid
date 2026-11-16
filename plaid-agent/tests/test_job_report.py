@@ -7,7 +7,7 @@ from plaid_agent.core.job import build_report, run_job
 from plaid_agent.core.limits import JOB_REPORT_LIST_MAX
 from plaid_agent.igt.job import entries_part
 
-KEYS = {'state', 'reason', 'instructions', 'started_by', 'model', 'started_at', 'finished_at',
+KEYS = {'state', 'reason', 'instructions', 'started_by', 'model', 'notice', 'started_at', 'finished_at',
         'paused_for_people_s', 'paused_for_model_s', 'stopped', 'totals', 'documents', 'harmonize', 'entries',
         'summary', 'summary_by', 'summary_failed'}
 

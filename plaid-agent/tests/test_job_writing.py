@@ -691,7 +691,8 @@ def test_a_sentence_deletion_that_landed_before_a_crash_is_never_made_again(monk
     assert _resume(client, job).document('d1') == 'done'
     assert [o['kind'] for o in staged] == ['delete_sentence'], 'one deletion, never a second'
     assert len([c for c in model.calls if c['n'] == 1]) == 1, 'the model is not asked again'
-    assert _rows(client, 'd1-s4')[0]['counts'] == {'analyzed': 1, 'changes': 1, 'deletions': 1, 'text_changes': 1}
+    assert _rows(client, 'd1-s4')[0]['counts'] == {'analyzed': 1, 'changes': 1, 'deletions': 1, 'text_changes': 1,
+                                                      'tokens_changed': 1}
     assert not _skipped(job) and job.rows['d1']['done'] == 4
 
 
@@ -702,7 +703,8 @@ def test_a_sentence_the_jobs_write_deleted_is_not_left_blank(monkeypatch):
     client, job, clock, model = _job(monkeypatch, 'Delete a sentence that repeats the one before it.', _REPEATED,
                                      _REPEATED[:3], _unrepeat)
     assert runner(job).document('d1') == 'done'
-    assert _rows(client, 'd1-s4')[0]['counts'] == {'analyzed': 1, 'changes': 1, 'deletions': 1, 'text_changes': 1}
+    assert _rows(client, 'd1-s4')[0]['counts'] == {'analyzed': 1, 'changes': 1, 'deletions': 1, 'text_changes': 1,
+                                                      'tokens_changed': 1}
     blank = runner(job).left_blank(job).get('d1', {}).get('left', [])
     assert sorted({e['sentence_id'] for e in blank}) == ['d1-s1', 'd1-s2', 'd1-s3'], 's1 to s3, not s4'
     counts = _report_counts(job)

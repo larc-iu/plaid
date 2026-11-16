@@ -300,6 +300,12 @@ JOB_SETUP_MAX_CHARS = 4000
 JOB_PIECE_INSTRUCTIONS_MAX_CHARS = JOB_ANALYSIS_MAX_CHARS
 #: A piece's note for the report (its last reply), cut at this length.
 JOB_NOTE_MAX_CHARS = 400
+#: The one report of a job that fills nothing (``report.findings``, RPF-A5):
+#: the last reply of the piece that did the work, or the final context's
+#: report from several pieces' replies, cut at this length. The final
+#: context is handed at most JOB_FINDINGS_MERGE_CHARS of the pieces' replies.
+JOB_FINDINGS_MAX_CHARS = 30000
+JOB_FINDINGS_MERGE_CHARS = 60000
 #: The most changes the job keeps as proposed (the report's list cap). Past
 #: it a change is only counted, and the report says how many.
 JOB_CHANGES_MAX = JOB_REPORT_LIST_MAX

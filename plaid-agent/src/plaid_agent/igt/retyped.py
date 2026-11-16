@@ -217,6 +217,51 @@ def trimmed(body: str, gaps: List[Dict[str, Any]], words) -> List[Dict[str, Any]
     return out
 
 
+def reaches(gaps, b: int, e: int, cfg=None) -> bool:
+    """Whether edits ``gaps`` (``(start, end, value)``, as core reads them:
+    :func:`trimmed`) change the token at ``(b, e)``: one deletes or replaces
+    a character of it, types inside it, or types text at its edge with no
+    whitespace or character its layer keeps out of words between, which the
+    token takes (the server's plain rule)."""
+    def joins(c: str) -> bool:
+        return bool(c) and not c.isspace() and not is_kept_out(c, cfg)
+    for gb, ge, value in gaps:
+        if gb < e and ge > b:
+            return True
+        if gb == ge == e and joins(value[:1]):
+            return True
+        if gb == ge == b and joins(value[-1:]):
+            return True
+        if gb == ge and b < gb < e:
+            return True
+    return False
+
+
+def retype_effects(project, body: str, words, begin: int, old: str, text: str, extents=(),
+                   planned: Optional[List[Dict[str, Any]]] = None) -> Tuple[int, int]:
+    """``(words added, existing tokens changed or removed)`` by a retype of
+    ``old`` (a sentence's text at ``begin`` in ``body``) as ``text`` (RPF-A8):
+    its edits as the executor sends them and core reads them, word by word
+    (:func:`word_gaps`, :func:`trimmed`). A token of the sentence, a word or
+    a punctuation token (``extents``, the word layer's tokens), is changed or
+    removed when the edits reach it (:func:`reaches`). The words added are
+    the new words of ``planned`` (:func:`planned_words`), or, where those
+    cannot be numbered, the words of ``text`` less the old words a letter of
+    which is left."""
+    cfg = project.ignored_cfg
+    spans = list(extents) or [(w.begin, w.end) for w in words]
+    gaps = [(g['start'], g['end'], g['value']) for g in trimmed(body, word_gaps(old, text, begin, cfg), spans)]
+    end = begin + len(old)
+    mine = [(b, e) for b, e in spans if begin <= b and e <= end and b < e]
+    changed = sum(1 for b, e in mine if reaches(gaps, b, e, cfg))
+    if planned is not None:
+        return sum(1 for p in planned if p.get('word_id') is None), changed
+    kept = sum(1 for w in words if not all(any(gb <= i < ge for gb, ge, _ in gaps)
+                                           for i in range(w.begin, w.end) if not body[i].isspace()))
+    new = sum(1 for b, e in word_runs(text, cfg) if not is_token_ignored(text[b:e], cfg))
+    return max(0, new - kept), changed
+
+
 def planned_words(project, body: str, words, begin: int, old: str, text: str,
                   extents=()) -> Optional[List[Dict[str, Any]]]:
     """The words a sentence holds once ``old`` (its text, at ``begin`` in

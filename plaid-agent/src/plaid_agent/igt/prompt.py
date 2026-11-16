@@ -444,7 +444,8 @@ NO_TEXT_EDITS = (('deletions and text edits included', 'deletions included'),
                  ('replace_in_field, respell_all, copy_to_orthography', 'replace_in_field, copy_to_orthography'))
 
 
-def build_job_prompt(project: IgtProject, sentences: bool = False, edits_text: bool = False, targets=None) -> str:
+def build_job_prompt(project: IgtProject, sentences: bool = False, edits_text: bool = False, targets=None,
+                     findings: bool = False) -> str:
     """The system prompt of every piece of a job on ``project``: the chat's
     prompt with the job's paragraphs, the project's shape and its guidelines
     whole, and the code section where the sandbox is. A piece of a plan in
@@ -452,7 +453,9 @@ def build_job_prompt(project: IgtProject, sentences: bool = False, edits_text: b
     from it, by what the plan fills (``targets``, igt/targets.py): with
     segmentation, the analyses; fields only, set_field; nothing, neither. A
     piece of a plan that does not edit the text (``edits_text`` False) is
-    told nothing of the tools it is not offered (:data:`NO_TEXT_EDITS`)."""
+    told nothing of the tools it is not offered (:data:`NO_TEXT_EDITS`). A
+    piece of a plan that fills nothing (``findings``) ends with its findings,
+    the job's report, in place of a short note (RPF-A5)."""
     targets = list(targets or ())
     if not sentences:
         template = JOB_SYSTEM
@@ -466,6 +469,9 @@ def build_job_prompt(project: IgtProject, sentences: bool = False, edits_text: b
     if template is not JOB_ORTHOGRAPHY_SYSTEM and sentences and any(t.orthography is not None for t in targets):
         # The tool such a piece fills an orthography with (REV-DF-D-6).
         out = out.replace(ORTHOGRAPHY_SAID, ORTHOGRAPHY_INSTEAD)
+    if findings:
+        assert shared.JOB_NOTE in out
+        out = out.replace(shared.JOB_NOTE, shared.JOB_FINDINGS_NOTE)
     if not edits_text:
         for said, instead in NO_TEXT_EDITS:
             # A piece in sentences is told of no project-wide tool at all.
@@ -488,7 +494,8 @@ Every sentence, unless the job only fills what is empty: then skip_filled_senten
 - pieces "document": one piece per document, seeing the whole document. For work about a whole text, such as \
 a summary of each.
 - pieces "selection": one piece for all the documents, reading them with the tools and code. For work across \
-the documents, such as finding where they disagree. Its findings go in tables code makes and in its note.
+the documents, such as finding where they disagree. Its findings go in its last message, which the report shows \
+whole, and in tables code makes.
 - piece_instructions: only your decisions, as plain imperative sentences naming forms and values exactly. \
 Pieces already have the project's guidelines and the job's instructions. Read the documents to decide.
 - fills: what the instructions ask the job to fill or change, as listed under What a job can fill: the field \
@@ -529,6 +536,20 @@ _SUMMARY_SYSTEM = '''{summary_contract}
 
 SUMMARY_SYSTEM = shared.filled(_SUMMARY_SYSTEM, {'summary_contract': shared.JOB_SUMMARY_CONTRACT,
                                                  'project_shape': shared.project_shape()})
+
+
+_FINDINGS_SYSTEM = '''{findings_contract}
+
+{project_shape}'''
+
+FINDINGS_SYSTEM = shared.filled(_FINDINGS_SYSTEM, {'findings_contract': shared.JOB_FINDINGS_CONTRACT,
+                                                   'project_shape': shared.project_shape()})
+
+
+def build_findings_prompt(project: IgtProject) -> str:
+    """The system prompt of the context that makes one report of the
+    findings of several pieces of a job that fills nothing (RPF-A5)."""
+    return _filled(FINDINGS_SYSTEM, project)
 
 
 def build_summary_prompt(project: IgtProject) -> str:

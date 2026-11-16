@@ -555,8 +555,17 @@ ROW_FINAL = ('done', 'in-use', 'gone')
 #: ``peoples_values_changed`` counts the changes that changed or took away
 #: something people wrote, by its provenance, and ``text_changes`` those that
 #: changed the text or its words and sentences (DF2, REV-DAY-S-3).
+#: ``words_added`` and ``tokens_changed`` count the words the job's text
+#: edits made and the existing tokens (words and punctuation) they changed
+#: or removed (RPF-A8).
 COUNT_KEYS = ('translations', 'refreshed', 'words', 'links', 'entries', 'changed', 'proposed', 'analyzed',
-              'changes', 'deletions', 'repeated', 'peoples_values_changed', 'text_changes')
+              'changes', 'deletions', 'repeated', 'peoples_values_changed', 'text_changes', 'words_added',
+              'tokens_changed')
+#: What one change a job wrote is, as the report splits its ``changes``
+#: (``totals.changes_parts``, an app's ``counts.changes_parts``, RPF-A3), in
+#: this order: a value set or cleared, a word's analysis, a link, a lexicon
+#: entry, a change of the text, anything else. The app sorts its changes.
+CHANGE_KINDS = ('values', 'analyses', 'links', 'entries', 'text', 'other')
 #: A row's count of the sentences skipped past the cap of its ``skipped``
 #: list (core's JOB_SKIPPED_PER_DOCUMENT), which are counted and not listed.
 SKIPPED_MORE = 'skipped_more'
@@ -708,6 +717,7 @@ def _finish(job: Job, state: str, runner, harmonize, entries, reason: Optional[s
     fit_report(report)
     if state == 'done' and getattr(runner, 'write_summary', False):
         report.update(_summary(job, runner, report))
+        report.update(_findings(job, runner, report))
         fit_report(report)
     try:
         return job.admin.jobs.finish(job.id, job.worker_id, state, report, reason=reason)
@@ -891,6 +901,52 @@ def _summary(job: Job, runner, report: Dict[str, Any]) -> Dict[str, Any]:
         return {'summary': None, 'summary_failed': True}
 
 
+def notice(totals: Dict[str, Any]) -> Optional[str]:
+    """The worker's fixed top line of a report (the owner's R4 of
+    2026-11-16), from its own counts, never a model's: what the job changed
+    of people's work, and of the text, each said only when there is some.
+    None when it changed neither."""
+    def n(k: int, one: str, many: str) -> str:
+        return f'{k:,} {one if k == 1 else many}'
+    out = []
+    people = totals.get('peoples_values_changed') or 0
+    if people:
+        out.append(f'People\'s work: {n(people, "value, analysis or link", "values, analyses or links")} people '
+                   f'wrote {"was" if people == 1 else "were"} changed or removed. What the job wrote in their place '
+                   'is unverified.')
+    added, changed = totals.get('words_added') or 0, totals.get('tokens_changed') or 0
+    said = ([n(added, 'word', 'words') + ' added'] if added else []) + (
+        [f'{n(changed, "existing word or punctuation mark", "existing words or punctuation marks")} changed or '
+         'removed'] if changed else [])
+    if said:
+        out.append('Text: ' + ', '.join(said) + '.')
+    elif totals.get('text_changes'):
+        out.append(f'Text: {n(totals["text_changes"], "text edit", "text edits")}, no word added, changed or '
+                   'removed.')
+    return ' '.join(out) or None
+
+
+def _findings(job: Job, runner, report: Dict[str, Any]) -> Dict[str, Any]:
+    """The one report of a job that fills nothing, written by the final
+    context from its pieces' findings when several pieces kept some
+    (``runner.merge_findings``, RPF-A5). Nothing changes when the runner has
+    none to merge, when a stop comes, or when it cannot be written: the
+    report keeps the pieces' findings as they were."""
+    merge = getattr(runner, 'merge_findings', None)
+    if merge is None or not report.get('findings'):
+        return {}
+    try:
+        merged = through_core(job, lambda: merge(job, report))
+    except JobStopped:
+        return {}
+    except Exception as e:  # noqa: BLE001 - the pieces' findings rather than none
+        if no_longer_mine(e):
+            raise
+        logger.warning('Job %s: its findings could not be made one report: %s', job.id, e)
+        return {}
+    return {'findings': merged} if merged else {}
+
+
 def build_report(job: Job, state: str, reason: Optional[str], documents: List[Dict[str, Any]],
                  harmonize: Dict[str, Any], entries: Dict[str, Any]) -> Dict[str, Any]:
     """The report of CONTRACT 5.3: lists, never maps keyed by an id, each cut
@@ -900,9 +956,10 @@ def build_report(job: Job, state: str, reason: Optional[str], documents: List[Di
               'sentences': 0, 'translations': 0, 'refreshed': 0, 'words': 0, 'links': 0, 'entries': 0,
               'skipped_too_long': 0, 'skipped_failed': 0, 'skipped_changed': 0, 'skipped_interrupted': 0,
               'skipped_no_answer': 0, 'skipped_more': 0, 'changed': 0, 'proposed': 0, 'changes': 0, 'deletions': 0,
-              'repeated': 0, 'peoples_values_changed': 0, 'text_changes': 0}
+              'repeated': 0, 'peoples_values_changed': 0, 'text_changes': 0, 'words_added': 0, 'tokens_changed': 0}
     fields: List[Dict[str, Any]] = []
     outside: List[Dict[str, Any]] = []
+    parts: Dict[str, int] = {}
     for d in documents:
         key = {'done': 'documents_done', 'in-use': 'documents_in_use', 'gone': 'documents_gone'}.get(
             d.get('state'), 'documents_not_reached')
@@ -912,8 +969,11 @@ def build_report(job: Job, state: str, reason: Optional[str], documents: List[Di
         # written, skipped or failed (REV-J-B2 S3-5): ``done`` counts those.
         totals['sentences'] += counts.get('analyzed') or 0
         for k in ('translations', 'refreshed', 'words', 'links', 'entries', 'changed', 'proposed', 'skipped_more',
-                  'changes', 'deletions', 'repeated', 'peoples_values_changed', 'text_changes'):
+                  'changes', 'deletions', 'repeated', 'peoples_values_changed', 'text_changes', 'words_added',
+                  'tokens_changed'):
             totals[k] += counts.get(k) or 0
+        for p in counts.get('changes_parts') or []:
+            parts[p.get('kind')] = parts.get(p.get('kind'), 0) + (p.get('n') or 0)
         for s in d.get('skipped') or []:
             k = f'skipped_{str(s.get("reason") or "").replace("-", "_")}'
             if k in totals:
@@ -925,6 +985,12 @@ def build_report(job: Job, state: str, reason: Optional[str], documents: List[Di
     if outside:
         # What the job wrote outside its setup (an app's ``counts.outside``).
         totals['outside'] = field_counts(outside)
+    if parts:
+        # The changes by kind, summing to ``changes``, in CHANGE_KINDS'
+        # order (an app's ``counts.changes_parts``, RPF-A3).
+        totals['changes_parts'] = [{'kind': k, 'n': parts[k]} for k in sorted(
+            parts, key=lambda k: (CHANGE_KINDS.index(k) if k in CHANGE_KINDS else len(CHANGE_KINDS), str(k)))
+            if parts[k]]
     blank = blank_sums(documents)
     if blank:
         totals['blank'] = blank
@@ -942,7 +1008,8 @@ def build_report(job: Job, state: str, reason: Optional[str], documents: List[Di
         'finished_at': datetime.fromtimestamp(job.now(), timezone.utc).isoformat(timespec='seconds')
         .replace('+00:00', 'Z'),
         'paused_for_people_s': int(job.paused['people']), 'paused_for_model_s': int(job.paused['model']),
-        'stopped': None, 'totals': totals, 'documents': documents, 'summary': None, 'summary_by': None,
+        'stopped': None, 'totals': totals, 'notice': notice(totals), 'documents': documents, 'summary': None,
+        'summary_by': None,
         'summary_failed': False,
         'harmonize': {'changed': changed, 'left': left, 'changed_more': changed_more, 'left_more': left_more},
         'entries': lists,

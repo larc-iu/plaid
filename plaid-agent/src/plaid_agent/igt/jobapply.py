@@ -73,6 +73,48 @@ TEXT_KINDS = frozenset(shaped(KIND, WORD_SHAPE, SENTENCE_SHAPE, TEXT_SHAPE, EXCL
 #: Corpus-wide rules that change the text, by the tool a rule op names.
 TEXT_RULE_TOOLS = frozenset({'respell_all'})
 
+#: What one change a job wrote is, by its op's kind (RPF-A3): the report's
+#: ``changes`` split into ``core.job.CHANGE_KINDS``, and every applied op is
+#: exactly one of them. ``values``: a value set or cleared (a field, a
+#: translation, an orthography); ``analyses``: a word's morphemes written or
+#: taken away, the values an analysis carries part of it; ``links``: a link
+#: made or taken away; ``entries``: a lexicon entry made or changed;
+#: ``text``: a change of the text or of its words and sentences
+#: (:data:`TEXT_KINDS`); ``other``: anything else (a comment).
+_CHANGE_KIND = {'set_span': 'values', 'set_orthography': 'values',
+                'set_analysis': 'analyses', 'discard_analysis': 'analyses', 'set_morpheme_form': 'analyses',
+                'set_morph_type': 'analyses',
+                'link': 'links', 'link_phrase': 'links', 'unlink': 'links',
+                'create_entry': 'entries', 'set_entry_field': 'entries', 'set_entry_metadata': 'entries',
+                'merge_entries': 'entries', 'delete_entry': 'entries', 'rename_entry': 'entries'}
+
+
+def change_kind(op: Dict[str, Any]) -> str:
+    """The ``core.job.CHANGE_KINDS`` kind of one change, by its op's kind alone."""
+    kind = op.get('kind')
+    return 'text' if kind in TEXT_KINDS else _CHANGE_KIND.get(kind, 'other')
+
+
+def text_effects(op: Dict[str, Any]) -> Tuple[int, int]:
+    """``(words added, existing tokens changed or removed)`` by one change of
+    the text (RPF-A8), from the op as it was staged, never from words: a
+    retype or appended text by the counts its tool put on it (``retyped
+    .retype_effects``), a respelled word one token changed, a split word one
+    changed and one added, each word of a merge, a deleted word, each word
+    of a deleted sentence. Nothing for any other op."""
+    kind = op.get('kind')
+    if kind == 'edit_text':
+        return int(op.get('words_added') or 0), int(op.get('tokens_changed') or 0)
+    if kind == 'respell' or kind == 'delete_word':
+        return 0, 1
+    if kind == 'split_word':
+        return 1, 1
+    if kind == 'merge_words':
+        return 0, 1 + len(op.get('other_ids') or [])
+    if kind == 'delete_sentence':
+        return 0, len(op.get('word_ids') or [])
+    return 0, 0
+
 
 def edits_text(op: Dict[str, Any]) -> bool:
     """Whether ``op`` changes the text or its words and sentences

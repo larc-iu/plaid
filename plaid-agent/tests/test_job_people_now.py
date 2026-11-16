@@ -2,7 +2,7 @@
 harmonize reads them afresh when it begins, and each document the walk takes
 up sees what people wrote since the job started. A person's correction made
 while the job runs is never voted against, and a second analysis a person
-adds meanwhile leaves the form ``people-differ``."""
+adds meanwhile leaves the form ``job-differs-people-differ``."""
 
 import copy
 
@@ -81,7 +81,7 @@ def test_a_second_analysis_a_person_adds_during_the_job_leaves_the_form(monkeypa
     finished, model, client = _job_over_a_then_b(monkeypatch, edit)
     assert finished['report']['harmonize']['changed'] == []
     assert [x['reason'] for x in finished['report']['harmonize']['left']
-            if x['form'] == 'ka'][:1] == ['people-differ'], finished['report']['harmonize']
+            if x['form'] == 'ka'][:1] == ['job-differs-people-differ'], finished['report']['harmonize']
 
 
 def test_a_later_document_is_told_of_a_correction_a_person_made_during_the_job(monkeypatch):
