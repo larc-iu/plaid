@@ -162,6 +162,15 @@ describe('Undo job', () => {
     }
   });
 
+  // REV-RPF-P-3: a job stopped while it waited never started and wrote
+  // nothing: no Undo job.
+  it('is not offered for a job stopped before it started', async () => {
+    auth.user = { id: 'm', isAdmin: false };
+    const v = await mount(clientOf(jobOf({ state: 'cancelled', startedAt: null, report: null })));
+    expect(button(v.container, 'Undo job')).toBeNull();
+    await v.unmount();
+  });
+
   it('shows the dry run over every document, then the lexicon, and undoes the job', async () => {
     const undo = vi
       .fn()

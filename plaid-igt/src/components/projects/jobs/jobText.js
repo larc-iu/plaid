@@ -3,7 +3,7 @@
 // job's codes (its state, phase, reason, a document's state) are plaid-ui's
 // (domain/jobs.js), since every app says them. Also how a job is started,
 // shared by the Start job dialog and the assistant's job card.
-import { planEndedText } from '@ui/domain/jobs.js';
+import { isJobActive, planEndedText } from '@ui/domain/jobs.js';
 import { createOnce } from '@ui/lib/createOnce.js';
 import { statusOf } from '@ui/lib/errors.js';
 import { andList, countOf, plural } from '@ui/lib/plural.js';
@@ -102,11 +102,13 @@ export const jobEditedText = (job) =>
   (job?.report?.totals?.changesParts || []).some((p) => p.kind === 'text' && p.n > 0) ||
   (job?.documents || []).some((d) => (d.counts?.textChanges ?? 0) > 0);
 
-// Whether an ended job's report says it wrote nothing at all: a count of no
+// Whether an ended job wrote nothing at all: one that never started (stopped
+// while it waited, REV-RPF-P-3), or one whose report says so: a count of no
 // change in its totals, none in any document, and nothing harmonize changed.
-// Not known (false) for a job with no report, or one whose totals count no
-// changes.
+// Not known (false) for a started job with no report, or one whose totals
+// count no changes.
 export const wroteNothing = (job) => {
+  if (job && !job.startedAt && !isJobActive(job)) return true;
   const report = job?.report;
   if (report?.totals?.changes !== 0) return false;
   const harmonize = report.harmonize || {};
