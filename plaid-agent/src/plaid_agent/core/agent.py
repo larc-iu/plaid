@@ -1416,7 +1416,7 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
                 if getattr(e, 'usage', None) is not None:
                     spend.add_usage(e.usage)
                 if keeper is not None:
-                    kept = new_round(rounds + 1, cfg.model)
+                    kept = new_round(rounds + 1, cfg.model, asked if rounds == 0 else None)
                     kept['cut_at_tokens'] = cut_at
                     if thought:
                         kept['thinking'] = thought
@@ -1434,7 +1434,7 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
             partial = ended['partial']
             kept_round = None
             if keeper is not None and (thought or partial or (pace is not None and cut_at)):
-                kept = new_round(rounds + 1, cfg.model)
+                kept = new_round(rounds + 1, cfg.model, asked if rounds == 0 else None)
                 if pace is not None and cut_at:
                     kept['cut_at_tokens'] = cut_at
                 if thought:

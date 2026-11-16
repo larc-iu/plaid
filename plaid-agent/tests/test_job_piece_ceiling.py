@@ -220,3 +220,27 @@ def test_the_trace_says_a_call_reached_the_limit(monkeypatch, tmp_path):
                                                        recursive=True)]
     cut = [r for r in rounds if r.get('cut_at_tokens')]
     assert cut and {r['cut_at_tokens'] for r in cut} == {MODEL_CAP}
+
+
+def _rounds(tmp_path):
+    out = {}
+    for p in glob.glob(os.path.join(str(tmp_path), '**', 'round-*.json'), recursive=True):
+        out.setdefault(os.path.dirname(p), []).append(json.load(open(p)))
+    return {k: sorted(v, key=lambda r: r['n']) for k, v in out.items()}
+
+
+def test_a_piece_whose_first_call_is_cut_keeps_what_it_was_asked_in_its_trace(monkeypatch, tmp_path):
+    """REV-SP-1: the round of a first call cut at the limit holds the
+    piece's message as received, as round 1 of any piece does, whether the
+    piece is then asked again or (cut twice, nothing staged) fails."""
+    def answer(asked, n, kwargs):
+        if 2 in targets_named(asked) or _cut_note(kwargs) is None:
+            return reply('...', finish='length')
+        return reply(calls=[c for s in targets_named(asked) for c in _analyse(s)]) if n == 1 else reply('Done.')
+    _run(monkeypatch, answer, trace_dir=str(tmp_path))
+    pieces = _rounds(tmp_path)
+    assert pieces
+    for folder, rounds in pieces.items():
+        first = rounds[0]
+        assert first['n'] == 1 and first.get('cut_at_tokens') == MODEL_CAP, (folder, first)
+        assert 'Your piece: s' in (first.get('asked') or ''), (folder, first)
