@@ -551,12 +551,13 @@ test('a plan staged before a job card is drafted is replaced once the card appea
         content: '',
         calls: [
           {
+            // A value no earlier test writes: their jobs gloss kai "go".
             name: 'set_field',
-            arguments: { document: DOC, refs: ['s1.w1.m1'], field: 'Gloss', value: 'go' },
+            arguments: { document: DOC, refs: ['s1.w1.m1'], field: 'Gloss', value: 'walk' },
           },
         ],
       },
-      { content: 'Here is kai glossed in sentence 1.' },
+      { content: 'Here is kai glossed "walk" in sentence 1.' },
       ...draft(BRIEF),
     ],
   });
@@ -567,7 +568,7 @@ test('a plan staged before a job card is drafted is replaced once the card appea
     const panel = page.getByRole('complementary');
     await expect(panel.getByText('Say what the job should do.', { exact: true })).toBeVisible();
 
-    await send(page, 'Gloss kai as "go".');
+    await send(page, 'Gloss kai as "walk".');
     const plan = panel.getByText('Proposed changes', { exact: true }).locator('xpath=../..');
     await expect(plan).toBeVisible({ timeout: 60_000 });
     await expect(plan.getByRole('button', { name: 'Approve as unverified' })).toBeVisible();
