@@ -2001,6 +2001,10 @@ describe('the job page', () => {
     const facts = v.container.querySelector('dl');
     expect(block.compareDocumentPosition(facts) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(block.querySelector('h2, h3').textContent).toBe('Findings');
+    // The model's own text, marked as the summary is (REV-RPF-P-4).
+    expect(text(block.querySelector('[data-testid="job-findings-by"]'))).toBe(
+      'Written by the assistant, not checked against the counts below.',
+    );
     expect(block.querySelector('td').textContent).toBe('на');
     expect(text(block)).not.toContain('|---|');
     await v.step(() => byText(block, 'button', 'Copy').click());

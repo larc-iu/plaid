@@ -470,6 +470,11 @@ const Tables = ({ tables, more = 0 }) =>
     </>
   ) : null;
 
+// The line under the model's own text on the page, the summary's and the
+// findings' alike (R4, REV-RPF-P-4): where the worker's counts stand from it.
+const byTheAssistant = (where) =>
+  `Written by the assistant, not checked against the counts ${where}.`;
+
 // The one report of a job that fills nothing (`findings`, Markdown, CONTRACT,
 // added by RPF), in full, with a way to copy it as written (RP-4).
 export const JobFindings = ({ findings, pieces = null, cut = null }) => {
@@ -494,6 +499,9 @@ export const JobFindings = ({ findings, pieces = null, cut = null }) => {
           Copy
         </Button>
       </div>
+      <p className="mb-2 text-sm text-muted-foreground" data-testid="job-findings-by">
+        {byTheAssistant('below')}
+      </p>
       {piecesLine && (
         <p className="mb-2 text-sm text-muted-foreground" data-testid="job-findings-pieces">
           {piecesLine}
@@ -571,9 +579,7 @@ export const JobReport = ({ report, projectId, vocabs = [] }) => {
       {/* The model's account, after the counts and marked as its own (R4). */}
       {report.summary && report.summaryBy !== 'worker' && (
         <>
-          <p className="mb-2 text-sm text-muted-foreground">
-            Written by the assistant, not checked against the counts above.
-          </p>
+          <p className="mb-2 text-sm text-muted-foreground">{byTheAssistant('above')}</p>
           <Written text={report.summary} data-testid="job-summary" />
         </>
       )}
