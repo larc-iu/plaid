@@ -43,7 +43,11 @@ def _model(piece, merged='One report.'):
 def test_rp4_a_selection_that_fills_nothing_works_once_and_keeps_its_whole_report(monkeypatch):
     client = JobClient(_docs(2))
     job = start(client, 'List the glosses that disagree. Change nothing.', id=J, plan='selection', fills=())
-    model = use(monkeypatch, _model(lambda asked, n: reply(REPORT)))
+    # The piece reads both documents, as RP-4's did: a check works by
+    # reading, and a document it never read would be worked apart (round 2).
+    model = use(monkeypatch, _model(lambda asked, n: reply(calls=[
+        call(1, 'read_document', {'document': 'Story 1'}), call(2, 'read_document', {'document': 'Story 2'})])
+        if n == 1 else reply(REPORT)))
     finished = run_job(job, runner(job))
     report = finished['report']
     assert len([c for c in model.calls if c['n'] == 1]) == 1, 'the selection, and no stretch after it'

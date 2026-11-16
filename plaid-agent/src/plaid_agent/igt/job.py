@@ -2587,6 +2587,10 @@ class IgtRunner:
         if not read:
             outside += [self.describe_loose(op) for op in loose if op.get('kind') not in IGNORED_KINDS]
         core_job.through_core(job, lambda: self.record_changes(outside, note))
+        # What each document the piece did not read through is decided once
+        # the pieces after its text edits have run (REV-RPF3-3): a word such
+        # a piece fills never sends its document to the walk.
+        undecided: List[Tuple[str, str, bool]] = []
         for d in live:
             job.check()
             shown = ws.shown.get(d) or set()
@@ -2595,8 +2599,9 @@ class IgtRunner:
                 # The piece never read it (its budget ran out, say): it is not
                 # recorded as worked. The walk works it as a piece of its own,
                 # and the report's plan says so (REV-JG2-5), only when it
-                # holds something the plan fills that is empty (RPF3-A).
-                core_job.through_core(job, lambda: self.after_selection(project, d, NOT_READ))
+                # holds something the plan fills that is empty (RPF3-A), or
+                # the plan fills nothing: reading is a check's work.
+                undecided.append((d, NOT_READ, True))
                 continue
             job.set(current_document=d)
             self.unsummed[key]['parts'][d] = set(shown)
@@ -2632,9 +2637,9 @@ class IgtRunner:
             # (REV-RPF-P-8).
             unshown = [s.id for s in ws._docs[d].sentences if s.id not in shown and s.id not in out]
             if any(x not in wrote for x in unshown):
-                core_job.through_core(job, lambda: self.after_selection(project, d, NOT_READ))
+                undecided.append((d, NOT_READ, not shown))
             elif unshown:
-                core_job.through_core(job, lambda: self.after_selection(project, d, NOT_SHOWN))
+                undecided.append((d, NOT_SHOWN, False))
             elif nothing:
                 core_job.through_core(job, lambda: self.done_unwalked(project, d))
         if loose and read:
@@ -2644,15 +2649,19 @@ class IgtRunner:
             core_job.through_core(job, lambda: self.record_changes(left, note))
         core_job.through_core(job, lambda: self.end_summary(key))
         # The sentences whose text it changed, once more, a piece of each
-        # document (RPF3-B). One put off or gone keeps what is there.
+        # document (RPF3-B). One put off goes back to be taken at the start of
+        # its walk (:meth:`walk`, REV-RPF3-5).
         for d in [d for d in live if d in self.text_edited]:
             try:
                 self.after_text(project, d)
             except (Deferred, Gone):
                 continue
+        for d, reason, never in undecided:
+            job.check()
+            core_job.through_core(job, lambda: self.after_selection(project, d, reason, never))
         return True
 
-    def after_selection(self, project: IgtProject, document_id: str, reason: str) -> None:
+    def after_selection(self, project: IgtProject, document_id: str, reason: str, never: bool = False) -> None:
         """A document of a selection whose piece did not read it through
         (``reason``, :data:`NOT_READ` or :data:`NOT_SHOWN`): worked as pieces
         of its own only when it still holds something the plan fills that is
@@ -2661,7 +2670,17 @@ class IgtRunner:
         through (:data:`NOT_WALKED`), its counts those of what the piece
         wrote there (RPF3-A: a rename across 45 documents walked every
         sentence of all of them to write nothing). A plan that fills nothing
-        never walks one."""
+        (a check, whose work is reading) walks a document the piece ``never``
+        read and no other (round 2, item 4)."""
+        if self.fills_nothing():
+            # A check: reading is its work. A document the piece never read
+            # is worked as a piece of its own, one it read in part is done
+            # (REV-RPF3 round 2, item 4).
+            if never:
+                self.fall_back(document_id, reason)
+            else:
+                self.done_unwalked(project, document_id, unread=True)
+            return
         try:
             doc = self.read(project, document_id)
         except Gone:
@@ -2939,7 +2958,8 @@ class IgtRunner:
                 return self.defer(document_id)
             self.settle(project, document_id, doc)
             whole = self.whole_document(project, doc)
-            pending = self.pending(doc, project, document_id, every=self.every_sentence())
+            pending = self.pending(doc, project, document_id,
+                                   every=self.every_sentence() and not self.narrowed(document_id))
             if not pending:
                 # The row's counts whole: a record whose row update core
                 # failed is in core, and its counts reach the row here.
@@ -2985,11 +3005,21 @@ class IgtRunner:
             return False
         if doc.id in self.fallen_back():
             return False
+        if self.narrowed(doc.id):
+            return False
         size = sum(len(render_sentence(s, project)) + 1 for s in doc.sentences)
         if size <= JOB_DOCUMENT_PIECE_MAX_CHARS:
             return True
         self.fall_back(doc.id, 'too-long')
         return False
+
+    def narrowed(self, document_id: str) -> bool:
+        """Whether the walk of a document takes only its sentences that hold
+        something empty of the plan's fills: one a selection's piece did not
+        read through, walked because something is empty there (RPF3-A), in
+        stretches of those sentences alone (REV-RPF3-2). Not for a plan that
+        fills nothing, whose walk reads every sentence."""
+        return document_id in self.after_walk and not self.fills_nothing()
 
     def every_sentence(self) -> bool:
         """Whether the walk takes every sentence of a document, empty or

@@ -123,20 +123,128 @@ def test_a_fill_by_selection_still_walks_a_document_it_never_read_that_holds_an_
     assert igt_job.NOT_WALKED not in docs['Story 2']['counts']
 
 
-def test_a_report_only_selection_walks_nothing_and_says_what_it_did_not_read(monkeypatch):
-    """A job that fills nothing: one model call, every document done, those
-    its piece did not read through said so."""
+def test_a_check_works_each_document_its_selection_never_read(monkeypatch):
+    """A plan that fills nothing (a check): reading is its work (round 2,
+    item 4). The selection's piece reads Story 1 only: Stories 2 and 3 are
+    each worked as a piece of their own, and the plan says so."""
+    client = JobClient({f'd{i}': _doc(i, OLD if i == 1 else 'be') for i in (1, 2, 3)})
+    job = start(client, 'List the glosses in small capitals. Change nothing.', id=J, plan='selection', fills=())
+
+    def answer(asked, k, kwargs):
+        if 'Your piece: the whole selection above.' in asked and k == 1:
+            return reply(calls=[call(1, 'read_document', {'document': 'Story 1'})])
+        return reply(f'One: {OLD}.' if 'Story 1' in asked else 'None.')
+    model = use(monkeypatch, Model(answer))
+    finished = run_job(job, runner(job))
+    pieces = _pieces(model)
+    assert len(pieces) == 3, pieces
+    assert sorted(p.split('"')[1] for p in pieces[1:]) == ['Story 2', 'Story 3']
+    assert sorted(f['document_id'] for f in finished['report']['plan']['fallback']) == ['d2', 'd3']
+    docs = {d['name']: d for d in finished['report']['documents']}
+    assert all(d['state'] == 'done' and igt_job.NOT_WALKED not in d['counts'] for d in docs.values())
+
+
+def test_a_check_whose_selection_read_every_document_ends_after_it(monkeypatch):
+    """RP2-3's shape: one piece that read every document. Nothing is walked."""
     client = JobClient({'d1': _doc(1, OLD), 'd2': document('d2', 'Story 2', [{'words': ['sa']}])})
     job = start(client, 'List the glosses in small capitals. Change nothing.', id=J, plan='selection', fills=())
 
     def answer(asked, k, kwargs):
         if k == 1:
-            return reply(calls=[call(1, 'read_document', {'document': 'Story 1'})])
+            return reply(calls=[call(1, 'read_document', {'document': 'Story 1'}),
+                                call(2, 'read_document', {'document': 'Story 2'})])
         return reply(f'One: {OLD} in Story 1.')
     model = use(monkeypatch, Model(answer))
     finished = run_job(job, runner(job))
     assert len(_pieces(model)) == 1
-    docs = {d['name']: d for d in finished['report']['documents']}
-    assert [d['state'] for d in docs.values()] == ['done', 'done']
-    assert igt_job.NOT_WALKED not in docs['Story 1']['counts']
-    assert docs['Story 2']['counts'].get(igt_job.NOT_WALKED) is True
+    assert [d['state'] for d in finished['report']['documents']] == ['done', 'done']
+    assert finished['report']['plan']['fallback'] == []
+
+
+def _sentences(n, blank_at=None):
+    return [{'words': [('nidr', [('nidr', 'be')], 'human'),
+                       'sa' if i == blank_at else ('ka', [('ka', 'go')], 'human')]} for i in range(1, n + 1)]
+
+
+def test_a_never_read_document_with_one_empty_is_walked_only_where_it_is_empty(monkeypatch):
+    """REV-RPF3-2 (the reviewer's a1): the rename's shape, Story 3 of 20
+    sentences, never read, holds one unglossed word in s10. Its walk takes s10
+    alone: one stretch, one model call."""
+    client = JobClient({'d1': _doc(1, OLD), 'd2': _doc(2, OLD),
+                        'd3': document('d3', 'Story 3', _sentences(20, blank_at=10))})
+    _applying(monkeypatch, client)
+    job = start(client, f'Change the gloss {OLD} to {NEW} everywhere.', id=J, plan='selection', fills=(MGLOSS,))
+
+    def answer(asked, k, kwargs):
+        if 'Your piece: the whole selection above.' not in asked:
+            return reply('Nothing to do here.')
+        if k == 1:
+            return reply(calls=[call(i, 'set_field', {'document': f'Story {i}', 'refs': ['s1.w1.m1'],
+                                                      'field': 'Morph Gloss', 'value': NEW}) for i in (1, 2)])
+        return reply('Renamed.')
+    model = use(monkeypatch, Model(answer))
+    run_job(job, runner(job))
+    walked = _pieces(model)[1:]
+    assert len(walked) == 1 and walked[0].rstrip().endswith('Your piece: s10. s8, s9 are context.'), walked
+
+
+def test_the_piece_after_a_selections_text_edit_runs_before_the_walk_is_decided(monkeypatch):
+    """REV-RPF3-3 (the reviewer's a3): onlynew, a selection whose piece reads
+    s1 of a 12-sentence Story 1 and inserts xosan there. The piece after the
+    text edit glosses xosan before the documents not read through are
+    decided: nothing is empty after it, so nothing is walked."""
+    from job_fixtures import text_edits
+    text_edits(monkeypatch)
+    sents = _sentences(12)
+    client = JobClient({'d1': document('d1', 'Story 1', sents), 'd2': _doc(2, 'be')})
+    after = [{'words': [('nidr', [('nidr', 'be')], 'human'), 'xosan', ('ka', [('ka', 'go')], 'human')]}] + sents[1:]
+    real = igt_job.execute_plan
+
+    def execute(c, ops, **kw):
+        if any(o['kind'] == 'edit_text' for o in ops):
+            raw = document('d1', 'Story 1', after, version=5)
+            words = raw['text_layers'][0]['token_layers'][1]['tokens']
+            words[1]['id'], words[2]['id'] = 'd1-new', 'd1-s1w2'
+            for m in raw['text_layers'][0]['token_layers'][2]['tokens']:
+                m['id'] = m['id'].replace('d1-s1w3', 'd1-s1w2')
+            client._holder('d1')['documents']['d1'] = raw
+            return {}
+        if any(o['kind'] == 'set_analysis' for o in ops):
+            raw = document('d1', 'Story 1', [{'words': [('nidr', [('nidr', 'be')], 'human'),
+                                                        ('xosan', [('xosan', 'good')], J),
+                                                        ('ka', [('ka', 'go')], 'human')]}] + sents[1:], version=6)
+            words = raw['text_layers'][0]['token_layers'][1]['tokens']
+            words[1]['id'], words[2]['id'] = 'd1-new', 'd1-s1w2'
+            for m in raw['text_layers'][0]['token_layers'][2]['tokens']:
+                m['id'] = m['id'].replace('d1-s1w2m', 'd1-newm').replace('d1-s1w3', 'd1-s1w2')
+            client._holder('d1')['documents']['d1'] = raw
+            return {}
+        return real(c, ops, **kw)
+    monkeypatch.setattr(igt_job, 'execute_plan', execute)
+    setup = {'fills': [{'id': 'segmentation', 'name': 'segmentation'}, {'id': MGLOSS, 'name': 'Morph Gloss'}],
+             'text': True, 'conversation': 'c1', 'onlynew': True}
+    job = start(client, 'Insert xosan after nidr in Story 1 s1 and gloss it.', id=J, plan='selection',
+                fills=('segmentation', MGLOSS), setup=setup)
+    kinds = []
+
+    def answer(asked, k, kwargs):
+        if 'Instructions from' not in asked:
+            return reply('Done.')
+        kind = ('sel' if 'Your piece: the whole selection above.' in asked
+                else 'after' if igt_job.AFTER_TEXT_LINE in asked else 'walk')
+        if k == 1:
+            kinds.append(kind)
+        if kind == 'sel':
+            if k == 1:
+                return reply(calls=[call(1, 'read_sentences', {'document': 'Story 1', 'refs': ['s1']}),
+                                    call(2, 'retype_sentence', {'document': 'Story 1', 'ref': 's1',
+                                                                'text': 'nidr xosan ka.'})])
+            return reply('Inserted.')
+        if kind == 'after' and k == 1:
+            return reply(calls=[call(9, 'set_analysis', {'document': 'Story 1', 'ref': 's1.w2 "xosan"', 'morphemes': [
+                {'form': 'xosan', 'fields': {'Morph Gloss': 'good'}}]})])
+        return reply('Nothing.')
+    use(monkeypatch, Model(answer))
+    finished = run_job(job, runner(job))
+    assert kinds == ['sel', 'after'], kinds
+    assert finished['report']['plan']['fallback'] == []
