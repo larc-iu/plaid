@@ -35,3 +35,13 @@ def test_a_jobs_create_entry_is_for_a_form_with_no_entry_and_the_chats_unchanged
     assert described(job).endswith(toolkit.JOB_NEW_ENTRY.strip())
     chat = Workspace(c, load_project(c, 'p1'))
     assert toolkit.JOB_NEW_ENTRY.strip() not in str([t['function']['description'] for t in toolkit.tools_for(chat)])
+
+
+def test_a_jobs_create_entry_allows_a_homonym_and_never_corrects():
+    """REV-RPF3B-3: the guard refuses only an entry of the same form and
+    gloss, so a second meaning of a form is made; the description must not
+    forbid it, and must say a second entry is never a correction."""
+    said = toolkit.JOB_NEW_ENTRY.strip()
+    assert said == ('In a job it never changes an existing entry: a second entry of a form is for another meaning, '
+                    'never a correction of the first.'), said
+    assert 'only for a form with no entry' not in said

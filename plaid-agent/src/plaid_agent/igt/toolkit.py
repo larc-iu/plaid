@@ -1081,8 +1081,10 @@ CHECK_FIRST = 'Check this before proposing an analysis, and follow the majority 
 
 
 #: What a job's create_entry adds to its description (RPF3 round 4, RP3-4: a
-#: piece with no tool to edit an entry made a second entry of the form).
-JOB_NEW_ENTRY = ' In a job, only for a form with no entry: it never changes an existing entry\'s values.'
+#: piece with no tool to edit an entry made a second entry of the form). A
+#: homonym stays allowed, as the guard allows it (REV-RPF3B-3).
+JOB_NEW_ENTRY = (' In a job it never changes an existing entry: a second entry of a form is for another meaning, never '
+                 'a correction of the first.')
 
 
 def job_entry_facts() -> str:
@@ -1112,7 +1114,7 @@ def _worded_for(ws, t: Dict[str, Any]) -> Dict[str, Any]:
     """``t`` with its next step worded by who reads it
     (``core.tools.next_step``): retype_sentence's, a later turn a job does
     not have (REV-DF5-3), and create_entry's, which in a job is said to be
-    for a form with no entry (:data:`JOB_NEW_ENTRY`)."""
+    never to correct an existing entry (:data:`JOB_NEW_ENTRY`)."""
     from ..core.tools import next_step
     if t['function']['name'] == 'create_entry':
         said = t['function']['description'] + next_step(ws, '', JOB_NEW_ENTRY)
