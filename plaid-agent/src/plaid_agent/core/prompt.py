@@ -442,6 +442,12 @@ JOB_DECIDE_NOW = '(system) Decide now with what you have: stage your work on the
 #: (``tools.advised``).
 JOB_LEAVE_IT = 'A job cannot do this in its piece: leave it and say so in your note.'
 
+#: What a piece that may edit the text is told in place of JOB_LEAVE_IT when
+#: it stages an analysis of a word its own plan retypes, splits, merges or
+#: deletes: the sentences its edit changes are taken again straight after
+#: (RPF3-B).
+JOB_TEXT_THEN_FILL = 'Stage only the text edit now: the words it adds are offered for filling straight after.'
+
 #: The line a piece's model is sent once when its answer staged nothing and
 #: said nothing (no change, no text: reasoning only, or empty). Decided by
 #: what the answer holds, never by its words.

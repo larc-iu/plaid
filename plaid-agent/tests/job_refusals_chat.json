@@ -89,7 +89,7 @@
  ],
  "split_word then analyse": [
   "Planned 1 change (nothing is written until the user approves; the plan now holds 1 change). Describe the plan to the user in your reply.",
-  "Error: s1.w2 is split, merged, deleted or retyped in this plan, so its analysis cannot also change: a boundary change deletes the word's morphemes. discard_plan to start over, or plan the two in separate turns."
+  "Error: s1.w2 is split, merged or deleted in this plan, so its analysis cannot also change: a boundary change deletes the word's morphemes. discard_plan to start over, or plan the two in separate turns."
  ],
  "unnumbered retype then a value": [
   "Planned 1 change (nothing is written until the user approves; the plan now holds 1 change). Describe the plan to the user in your reply. Its words cannot be numbered before it is applied: plan values on them once the retype is applied.",

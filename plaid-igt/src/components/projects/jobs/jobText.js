@@ -360,6 +360,8 @@ const REFUSED_TEXT = {
   expression: 'Link inside a multi-word expression the job made',
   // A job set up to fill only the words it adds (R3).
   'not-added': 'Value on a word or sentence the job did not add',
+  // An analysis of a word in a sentence the piece's own plan retyped (RPF3-B).
+  retyped: 'Analysis of a word in a sentence the job retyped',
 };
 export const refusedText = (code) => REFUSED_TEXT[code] ?? 'Refused';
 

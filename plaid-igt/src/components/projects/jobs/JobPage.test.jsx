@@ -1549,6 +1549,44 @@ describe('the job page', () => {
     await v.unmount();
   });
 
+  // RPF3-B (RP2-2): "Gloss left blank 0 morphemes" beside a word listed blank
+  // for Gloss. The word not segmented is said beside the morphemes. A word
+  // the job respelled and left its analysis on is listed for a person.
+  it('says a word not segmented beside a morpheme field and lists the respelled words', async () => {
+    const report = {
+      ...REPORT,
+      totals: {
+        ...REPORT.totals,
+        blank: [
+          { target: 'segmentation', unit: 'word', left: 1 },
+          { target: 'Gloss', unit: 'morpheme', left: 0, unsegmented: 1 },
+        ],
+      },
+      respelled: [
+        {
+          documentId: 'd1',
+          name: 'Story A',
+          sentenceId: 'sen2',
+          sentence: 's2',
+          ref: 's2.w3',
+          form: 'kIvalaxar',
+          old: 'kvalaxar',
+          morphemes: ['kvalax', 'ar'],
+        },
+      ],
+    };
+    const job = jobOf({ state: 'done', finishedAt: '2026-11-12T11:00:00Z', report });
+    const v = await mount(clientOf(job));
+    const section = v.container.querySelector('section[aria-label="Report"]');
+    const sums = totals(section);
+    expect(sums['segmentation left blank']).toBe('1 word');
+    expect(sums['Gloss left blank']).toBe('0 morphemes and 1 word not segmented');
+    const headings = all(section, 'h3').map((h) => h.textContent);
+    expect(headings).toContain('Respelled, analysis kept: check its morphemes');
+    expect(text(section)).toContain('Story A s2.w3 kIvalaxar was kvalaxar, morphemes kvalax ar');
+    await v.unmount();
+  });
+
   it('counts the tables and notes a report too large for core could not hold', async () => {
     const report = { ...REPORT, tables: [], tablesMore: 3, notes: [], notesMore: 2 };
     const job = jobOf({ state: 'done', finishedAt: '2026-11-12T11:00:00Z', report });

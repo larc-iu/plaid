@@ -73,6 +73,7 @@ const blankSums = (report) => {
         skipped: 0,
       };
       s.left += b.left ?? 0;
+      s.unsegmented = (s.unsegmented ?? 0) + (b.unsegmented ?? 0);
       s.untouched += b.untouched ?? 0;
       s.notReached += b.notReached ?? 0;
       s.skipped += b.skipped ?? 0;
@@ -178,7 +179,14 @@ const totalRows = (report) => {
   optional('Values not in the setup', outsideSum(report));
   blankSums(report).forEach((b) => {
     // A target is named as everywhere on the page, "segmentation" too (N-1).
-    rows.push([`${b.target} left blank`, unitCount(b.left ?? 0, b.unit)]);
+    // A word listed blank for a morpheme field because it has no morphemes
+    // is said beside the field's morphemes, so the row adds up with the
+    // list (RPF3-B).
+    rows.push([
+      `${b.target} left blank`,
+      unitCount(b.left ?? 0, b.unit) +
+        (b.unsegmented > 0 ? ` and ${unitCount(b.unsegmented, 'word')} not segmented` : ''),
+    ]);
     // Counted, never listed: blank in sentences the job worked and wrote
     // nothing in (RP-3, RP-6).
     if (b.untouched > 0) {
@@ -303,6 +311,43 @@ const Refused = ({ projectId, d }) => {
           And {d.refusedMore.toLocaleString()} more refused.
         </p>
       )}
+    </>
+  );
+};
+
+// The words the job's text edits respelled and left their analysis on: their
+// morpheme forms still spell the old word (the worker's `respelled`, CONTRACT,
+// added by RPF3), each linked into the grid at its sentence.
+const Respelled = ({ report, projectId }) => {
+  const list = report.respelled || [];
+  const more = report.respelledMore || 0;
+  if (!list.length && !more) return null;
+  return (
+    <>
+      <Heading section="respelled" />
+      <ul className="ml-4 list-disc text-sm">
+        {list.map((r) => (
+          <li key={`${r.sentenceId} ${r.ref}`}>
+            {r.name ?? 'Deleted document'}{' '}
+            {r.name && r.sentenceId ? (
+              <Link
+                className="underline"
+                to={APP_ROUTES.sentence(projectId, r.documentId, r.sentenceId)}
+              >
+                {r.ref}
+              </Link>
+            ) : (
+              r.ref
+            )}{' '}
+            <span dir="auto">{r.form}</span>{' '}
+            <span className="text-muted-foreground">
+              was <span dir="auto">{r.old}</span>, morphemes{' '}
+              <span dir="auto">{(r.morphemes || []).join(' ')}</span>
+            </span>
+          </li>
+        ))}
+      </ul>
+      <More n={more} noun="word" />
     </>
   );
 };
@@ -600,6 +645,8 @@ export const JobReport = ({ report, projectId, vocabs = [] }) => {
       <ProposedChanges report={report} projectId={projectId} />
       <PieceNotes report={report} />
       <Tables tables={report.tables || []} more={report.tablesMore || 0} />
+
+      <Respelled report={report} projectId={projectId} />
 
       {skipped.length > 0 && (
         <>

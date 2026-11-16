@@ -194,7 +194,10 @@ def _blank(target, left, unit='word', untouched=0):
 BLANK = {ROLE: [_blank('Role', 1, untouched=1)], MPOS: [_blank('Morph POS', 3, 'morpheme', untouched=1)],
          NOTE: [_blank('Note', 0, 'sentence', untouched=1)],
          # A morpheme field in morphemes, so its values and blanks sum (REV-DF-S-6).
-         'gloss': [_blank('segmentation', 1, untouched=1), _blank('Morph Gloss', 1, 'morpheme')]}
+         # The word left with no morphemes is said beside the gloss's
+         # morphemes (RPF3-B).
+         'gloss': [_blank('segmentation', 1, untouched=1),
+                   {**_blank('Morph Gloss', 1, 'morpheme'), 'unsegmented': 1}]}
 
 
 def client_project(client):

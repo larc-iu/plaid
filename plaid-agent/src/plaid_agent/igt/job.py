@@ -56,7 +56,8 @@ from ..core.limits import (JOB_ANALYSIS_MAX_CHARS, JOB_CHANGE_VALUE_CHARS, JOB_C
                            JOB_EVIDENCE_CHARS, JOB_SENTENCE_MAX_CHARS, JOB_SENTENCE_MAX_WORDS,
                            JOB_SKIPPED_PER_DOCUMENT, JOB_STRETCH_SENTENCES)
 from ..core.plan import JOB_DETAIL_KEY, ONE_REQUEST, PlanError, TooBig, held_changes
-from ..core.prompt import JOB_ANSWER_AGAIN, JOB_LEAVE_IT, JOB_PLAN_WRITTEN_CALL_NEXT, JOB_WRITTEN_CALL_NEXT
+from ..core.prompt import (JOB_ANSWER_AGAIN, JOB_LEAVE_IT, JOB_PLAN_WRITTEN_CALL_NEXT, JOB_TEXT_THEN_FILL,
+                           JOB_WRITTEN_CALL_NEXT)
 from ..core.provenance import Requester
 from ..core.tools import Refusal, ToolError
 from ..core.version import agent_version
@@ -118,6 +119,9 @@ FINDINGS_FORM = ' findings '
 #: document's lock before and after the write, in rows of their own: what a
 #: job set up to fill only the words it adds may fill (RPF-A7).
 ADDED_FORM = ' added '
+#: The form of the rows of the words a write respelled and kept the analysis
+#: of, whose morpheme forms still spell the old word (RPF3-B), one per word.
+RESPELLED_FORM = ' respelled '
 #: The refused code of a value staged on a word, a morpheme of it or a
 #: sentence the job did not add, under such a setup.
 NOT_ADDED = 'not-added'
@@ -132,7 +136,9 @@ NOT_ADDED = 'not-added'
 #: word or sentence the job did not add, under a setup that fills only the
 #: words it adds (RPF-A7). The job page labels each by
 #: what was not done (REV-DF-S-4, REV-DF3-5).
-LEFT_CODES = ('text', 'shape', 'entry-new', 'entry-gone', 'expression', 'not-added')
+#: An analysis of a word in a sentence its own plan retypes (RPF3-B).
+RETYPED = 'retyped'
+LEFT_CODES = ('text', 'shape', 'entry-new', 'entry-gone', 'expression', 'not-added', RETYPED)
 #: What a refusal the job could not follow left (``JobWorkspace.leave_it``).
 REFUSED_FORM = ' refused '
 TABLE_FORM = ' table '
@@ -1020,10 +1026,18 @@ def state_text(d: Dict[str, Any]) -> str:
     return str(d.get('state'))
 
 
+#: What a piece after a text edit is told, before its piece line (RPF3-B).
+AFTER_TEXT_LINE = ('The text edit is written: these sentences are as it left them. Fill what is empty in them of '
+                   'what this job fills. The text is not edited in this piece.')
+
 #: What a piece of a job set up to fill only the words it adds is told
-#: (RPF-A7).
+#: (RPF-A7): the piece after a text edit, and a piece that may edit the text
+#: (RPF3-B), whose words it adds are filled in the piece after it.
 ONLY_NEW_LINE = ('This job fills only the words it adds: fill the words your text edits add, and no other word or '
                  'sentence. A value, an analysis or a link on any other word or sentence is refused.')
+ONLY_NEW_TEXT_LINE = ('This job fills only the words it adds. Stage the text edits now: the words they add are offered '
+                      'for filling straight after, in a piece of their own. A value, an analysis or a link on any '
+                      'other word or sentence is refused.')
 
 
 #: What each change kind is called in the final context's message
@@ -1071,6 +1085,14 @@ def summary_message(report: Dict[str, Any], setup: Optional[str] = None) -> str:
                  f'{totals.get("tokens_changed") or 0:,} existing words or punctuation marks changed or removed.')
     if report.get('notice'):
         lines.append(f'The report opens with the worker\'s own line: "{report["notice"]}"')
+    spelled = report.get('respelled') or []
+    if spelled:
+        # RPF3-B: a respelled word keeps its morphemes, whose forms still
+        # spell the old word. The report lists them for a person to check.
+        lines.append('Words its text edits respelled, each keeping its analysis, whose morpheme forms still spell the '
+                     'old word (listed in the report for a person to check): '
+                     + '; '.join(f'"{r.get("name")}" {r.get("ref")} {r.get("old")} to {r.get("form")}' for r in spelled)
+                     + (f' and {report["respelled_more"]:,} more' if report.get('respelled_more') else '') + '.')
     if totals.get('outside'):
         # Values in fields its setup does not name (REV-SU-B-4).
         lines.append(f'Of those, outside what it was set up to fill: {fields_text(totals["outside"])}.')
@@ -1291,6 +1313,11 @@ class JobWorkspace(Workspace):
         left is kept, for the report (``core.tools.advised``), with its
         ``code``, one of :data:`LEFT_CODES` or None."""
         fact = fact.rstrip(' ;,')
+        if code == RETYPED and self.edits_text:
+            # A piece that may edit the text is followed by one over the
+            # sentences its edit changed (RPF3-B): the analysis is staged
+            # there, so nothing is left by this refusal.
+            return f'{fact}{"" if fact.endswith((".", "!", "?")) else "."} {JOB_TEXT_THEN_FILL}'
         entry = {'sentence_id': sentence_id, 'what': fact, 'code': code}
         if entry not in self.left_by_refusal:
             self.left_by_refusal.append(entry)
@@ -2031,6 +2058,11 @@ class IgtRunner:
         #: read them through and they hold something empty: the heartbeat's
         #: line says so while they are walked (RPF3-A)
         self.after_walk: set = set()
+        #: document id -> the sentences a piece's landed write changed the
+        #: text of, waiting for their piece after the text edit, and whether
+        #: such a piece is the one in hand (:meth:`after_text`, RPF3-B)
+        self.text_edited: Dict[str, set] = {}
+        self.following = False
 
     # --- reading ---------------------------------------------------------------
 
@@ -2538,6 +2570,13 @@ class IgtRunner:
             left = [self.describe_loose(op) for op in loose if op.get('kind') not in IGNORED_KINDS]
             core_job.through_core(job, lambda: self.record_changes(left, note))
         core_job.through_core(job, lambda: self.end_summary(key))
+        # The sentences whose text it changed, once more, a piece of each
+        # document (RPF3-B). One put off or gone keeps what is there.
+        for d in [d for d in live if d in self.text_edited]:
+            try:
+                self.after_text(project, d)
+            except (Deferred, Gone):
+                continue
         return True
 
     def after_selection(self, project: IgtProject, document_id: str, reason: str) -> None:
@@ -2987,6 +3026,86 @@ class IgtRunner:
             *staged, key = staged
             self.write(project, document_id, *staged, summary=key)
             self.end_summary(key)
+            self.after_text(project, document_id)
+
+    def after_text(self, project: IgtProject, document_id: str) -> None:
+        """The piece after a text edit (RPF3-B): the sentences whose text the
+        piece's landed write changed (:attr:`text_edited`) taken ONCE more,
+        as they are now, with what is empty of what the job fills there
+        (under ``onlynew`` only on the words the job added), the text tools
+        not offered. A word a piece adds can be analysed in one job, which
+        its own plan could not do: an analysis of a word the plan retypes is
+        refused. Never a loop: a piece after a text edit is followed by none.
+        No model call when nothing is empty there. A failure of its model is
+        its own: its sentences are left as they are, and Left blank lists
+        what is empty there."""
+        ids = self.text_edited.pop(document_id, None)
+        if not ids:
+            return
+        job = self.job
+        job.check()
+        client = job.client()
+        ws = JobWorkspace(client, project)
+        try:
+            doc = self.read(project, document_id, client)
+        except Gone:
+            return
+        ws._docs[document_id] = doc
+        doc = ws.doc(document_id)
+        part = [s for s in doc.sentences if s.id in ids]
+        st = Stretch(doc, project, part, job.id, frozenset(), self.written(document_id), self.targets(project),
+                     only=self.only_new(project))
+        if not part or st.empty():
+            return
+        ws.stretch = st
+        ws.in_sentences = self.in_sentences()
+        prints = {s.id: ws.sentence_print(doc, s) for s in doc.sentences}
+        lines = self.message(ws, project, doc, part, st).splitlines()
+        lines.insert(len(lines) - 1, AFTER_TEXT_LINE)
+        piece = {'document': document_id, 'first': part[0].id, 'whole': False, 'after_text': True}
+        key = analysis_key(canonical(piece))
+        first, last = part[0].index, part[-1].index
+        said = f'sentences {first} to {last}' if first != last else f'sentence {first}'
+        job.set(current_document=document_id, message=f'{doc.name}: {said}, {self.after_text_label()}.')
+        self.following = True
+        try:
+            while True:
+                try:
+                    note = self.run_piece(ws, project, '\n'.join(lines), document_id, sentences=ws.in_sentences,
+                                          text=False)
+                    break
+                except (JobStopped, Deferred, Gone):
+                    raise
+                except TurnCancelled:
+                    job.check()
+                    raise JobStopped('cancelled')
+                except StretchFailed:
+                    return
+                except Exception as e:  # noqa: BLE001 - sorted as a piece's are
+                    if core_job.core_fault(e) is not None:
+                        raise
+                    if not_answering(e):
+                        job.wait_for_model()
+                        continue
+                    if failure_kind(e) is None:
+                        raise
+                    return
+            self.begin_summary(key, document_id, doc.name, part, False, note, self.refused_of(ws, document_id),
+                               after_text='added' if self.only_new() is not None else 'edited')
+            self.record_piece(project, piece, note, ws.tables, doc, part)
+            self.record_refusals(ws, document_id)
+            if ws.ops:
+                self.write(project, document_id, ws, doc, part, prints, list(ws.ops), note, piece_tag(piece),
+                           summary=key)
+            self.end_summary(key)
+        finally:
+            self.following = False
+
+    def after_text_label(self) -> str:
+        """How the work list names a piece after a text edit: the words the
+        job added, for a job that fills only those, else the sentences after
+        the edit (RPF3-B)."""
+        return 'the words added' if self.only_new() is not None else 'after the text edit'
 
     def model_work(self, project: IgtProject, document_id: str, sentence_ids: List[str]):
         """The model's part of a piece of one document (a stretch, or the
@@ -3046,7 +3165,7 @@ class IgtRunner:
         return ws, doc, part, prints, list(ws.ops), note, tag, key
 
     def run_piece(self, ws: JobWorkspace, project: IgtProject, message: str, folder: str,
-                  sentences: bool = False) -> str:
+                  sentences: bool = False, text: bool = True) -> str:
         """One piece's model context: the job's prompt, the interactive
         assistant's tools (:func:`toolkit.job_piece_tools`), the piece's
         message, the stretch budgets (:class:`Pace`), its rounds to the trace
@@ -3060,7 +3179,8 @@ class IgtRunner:
         is set, and the caller lists the piece's sentences as skipped
         (``no-answer``, REV-DAY-S-16)."""
         job = self.job
-        ws.edits_text = self.edits_text()
+        # A piece after a text edit is offered no text tool (``text``, RPF3-B).
+        ws.edits_text = self.edits_text() and text
         ws.fills = self.targets(project)
         # A setup that fills only the words the job adds (RPF-A7).
         ws.only_new = self.only_new(project)
@@ -3174,7 +3294,7 @@ class IgtRunner:
             # is walked unless the plan skips filled ones) says so (BRIEF EW).
             lines.append(f'Nothing empty in {", ".join(full)} of what this job fills.')
         if self.only_new(project) is not None:
-            lines.append(ONLY_NEW_LINE)
+            lines.append(ONLY_NEW_TEXT_LINE if self.edits_text() and not self.following else ONLY_NEW_LINE)
         # A piece of a plan in sentences is handed the evidence its model
         # would otherwise look up (igt/evidence.py), a document's or a
         # selection's the precedent alone.
@@ -3393,6 +3513,31 @@ class IgtRunner:
         held = self.added()
         held[0].update(words)
         held[1].update(sentences)
+
+    def record_respelled(self, document_id: str, before, after) -> None:
+        """Keep each word a write respelled and left its analysis on (RPF3-B):
+        a word of the same id in ``before`` and ``after`` (both read under
+        the lock), whose letters changed, holding stored morphemes. Core
+        keeps a respelled word's morpheme tokens and their forms as they
+        were, for a person's edit in the editor too (one rule for every
+        token layer, plaid_text_edit_token_rules): the forms still spell the
+        old word, which the report lists for a person to check. Nothing is
+        re-segmented."""
+        had = {w.id: w for s in before.sentences for w in s.words}
+        rows = []
+        for s in after.sentences:
+            for w in s.words:
+                old = had.get(w.id)
+                stored = [m for m in w.morphemes if not m.virtual]
+                if old is None or old.surface == w.surface or not stored:
+                    continue
+                text = canonical({'document': document_id, 'sentence_id': s.id, 'sentence': f's{s.index}',
+                                  'ref': f's{s.index}.w{w.index}', 'form': w.surface, 'old': old.surface,
+                                  'morphemes': [m.form for m in stored]})
+                rows.append({'form': RESPELLED_FORM + w.id, 'key': analysis_key(text), 'analysis': text, 'count': 1,
+                             'document_id': document_id, 'sentence_id': s.id})
+        if rows:
+            self.job.add_decisions(rows)
 
     def edits_text(self) -> bool:
         """Whether the job's plan says its instructions ask for the text to
@@ -3779,8 +3924,17 @@ class IgtRunner:
         # fails here leaves the document to be settled again, which keeps
         # them from the write's rows (REV-JG3-2).
         try:
-            if self.only_new(project) is not None and any(jobapply.edits_text(o) for o in w.ops):
-                self.record_added(document_id, w.fresh, after)
+            if any(jobapply.edits_text(o) for o in w.ops):
+                if self.only_new(project) is not None:
+                    self.record_added(document_id, w.fresh, after)
+                self.record_respelled(document_id, w.fresh, after)
+                if not self.following:
+                    # The sentences whose text this write changed, by id in
+                    # the document it left (a sentence a split made is new):
+                    # taken once more after it (:meth:`after_text`, RPF3-B).
+                    had = {s.id: s.text for s in w.fresh.sentences}
+                    self.text_edited.setdefault(document_id, set()).update(
+                        s.id for s in after.sentences if had.get(s.id) != s.text)
             self.record_changes(proposed, note)
             self.record(project, document_id, after, part, st, changed, vouched,
                         self.made_entries(ws, after, st, w.ops))
@@ -4325,7 +4479,8 @@ class IgtRunner:
         self.summarized, self.piece_seq = found, max(self.piece_seq, seq)
 
     def begin_summary(self, key: str, document_id: Optional[str], name: Optional[str], part: List[Sentence],
-                      whole: bool, note: str, refused: List[Dict[str, Any]]) -> None:
+                      whole: bool, note: str, refused: List[Dict[str, Any]],
+                      after_text: Optional[str] = None) -> None:
         """A piece whose model context has ended, summed up once what it
         wrote is known (:meth:`end_summary`). The same piece taken up again
         (after a write put off, a document gone for a while) keeps the
@@ -4339,7 +4494,10 @@ class IgtRunner:
             'first_id': part[0].id if ranged else None,
             'parts': {**(earlier.get('parts') or {}), **({document_id: {s.id for s in part}} if document_id else {})},
             'writes': set(earlier.get('writes') or ()), 'seq': earlier.get('seq'),
-            'note': note, 'refused': refused, 'steps': (earlier.get('steps') or 0) + self.steps_now}
+            'note': note, 'refused': refused, 'steps': (earlier.get('steps') or 0) + self.steps_now,
+            # A piece after a text edit (RPF3-B): ``added`` under onlynew,
+            # else ``edited``, which the work list words.
+            **({'after_text': after_text} if after_text else {})}
 
     def end_summary(self, key: str) -> None:
         """Keep the summary of piece ``key`` among the job's decisions, once
@@ -4393,7 +4551,8 @@ class IgtRunner:
                                                     'note', 'steps')},
                  **written_sums(rows), 'ended_at': self.now_iso(),
                  **({'skipped': skipped} if skipped else {}), **({'refused': p['refused']} if p['refused'] else {}),
-                 **({'findings': p['findings']} if p.get('findings') else {})}
+                 **({'findings': p['findings']} if p.get('findings') else {}),
+                 **({'after_text': p['after_text']} if p.get('after_text') else {})}
         row = self.summary_row(p['seq'], value, p['document'], p['first_id'])
         if row is None:
             logger.warning('Job %s: the summary of a piece is too large to keep', self.job.id)
@@ -5078,6 +5237,8 @@ class IgtRunner:
             rows = []
         plan, changes, notes, dropped, fallback, tables_dropped = self.plan_stored(rows), [], [], 0, [], 0
         keys: set = set()
+        #: a word's last row, by its form (RPF3-B)
+        respelled: Dict[str, Dict[str, Any]] = {}
         tables: Dict[str, Dict[str, Any]] = {}
         found: Dict[str, Dict[str, Any]] = {}
         for r in rows:
@@ -5108,6 +5269,10 @@ class IgtRunner:
                 keys.add(r.get('key'))
             elif form.startswith(NOTE_FORM):
                 notes.append(value)
+            elif form.startswith(RESPELLED_FORM):
+                respelled[form] = {**value, 'document_id': value.get('document'),
+                                   'name': self.names.get(value.get('document'))
+                                   or (job.rows.get(value.get('document')) or {}).get('name')}
             elif form.startswith(FINDINGS_FORM):
                 key = form[len(FINDINGS_FORM):].rsplit(' ', 1)[0]
                 slot = found.setdefault(key, {k: value.get(k) for k in ('document', 'name', 'sentences')})
@@ -5157,7 +5322,13 @@ class IgtRunner:
                     'left_out': [{'document_id': d, 'name': self.names.get(d) or (job.rows.get(d) or {}).get('name')}
                                  for d in job.order
                                  if d not in named and (job.rows.get(d) or {}).get('state') not in ROW_FINAL]}
+        order_of = {d: i for i, d in enumerate(job.order)}
+        spelled = sorted(({k: v for k, v in r.items() if k != 'document'} for r in respelled.values()),
+                         key=lambda r: (order_of.get(r['document_id'], len(order_of)),
+                                        [int(x) for x in re.findall(r'\d+', r.get('ref') or '')]))
+        spelled_listed, spelled_more = core_job.cut(spelled)
         return {'plan': plan,
+                **({'respelled': spelled_listed, 'respelled_more': spelled_more} if spelled else {}),
                 'proposed': listed, 'proposed_more': more + dropped, 'proposed_dropped': dropped,
                 'notes': shown_notes, 'notes_more': notes_more, 'tables': made[:JOB_TABLES_MAX],
                 'tables_more': max(0, len(made) - JOB_TABLES_MAX) + tables_dropped,
@@ -5414,6 +5585,13 @@ class IgtRunner:
                     # never again as a morpheme of a morpheme field (RP-3).
                     if not (t.scope == 'Morpheme' and ref and '.m' not in ref):
                         tally[t.id][where] += 1
+                    elif where == 'left':
+                        # Such a word, listed blank for the morpheme field
+                        # too, is counted as a word not segmented beside the
+                        # field's morphemes, so the totals add up with the
+                        # list (RPF3-B, RP2-2: "Gloss left blank 0
+                        # morphemes" beside a word listed blank for Gloss).
+                        tally[t.id]['unsegmented'] = tally[t.id].get('unsegmented', 0) + 1
                     if listed is None:
                         continue
                     e = entries.get(ref)

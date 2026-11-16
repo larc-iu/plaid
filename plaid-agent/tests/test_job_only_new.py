@@ -173,7 +173,9 @@ def test_a_job_refuses_a_value_on_an_existing_word_and_lists_it(monkeypatch):
     def answer(asked, n, kwargs):
         if 'Your piece' not in asked or n > 1:
             return reply('Refused on tqmc.')
-        assert igt_job.ONLY_NEW_LINE in asked
+        # A piece that may edit the text: the words it adds are filled in
+        # the piece after its text edit (RPF3-B).
+        assert igt_job.ONLY_NEW_TEXT_LINE in asked
         return reply(calls=[call(1, 'set_field', {'document': 'Story', 'refs': ['s1.w2'], 'values': {'Gloss': 'x'}})])
     use(monkeypatch, Model(answer))
     finished = run_job(job, runner(job))
@@ -256,10 +258,11 @@ def test_harmonize_of_such_a_job_writes_nothing_on_a_word_the_job_did_not_add(mo
     ([('analyze_sentence', {'document': 'Story', 'sentences': [{'ref': 's2', 'words': ['pa go', 'ro come']}]})],
      'not-added'),
     # added-word-analysis: a retype adds a word and the same reply analyses
-    # the sentence, refused as retyped in this plan.
+    # the sentence, refused as retyped in this plan, and not listed: the
+    # piece after the text edit fills the added word (RPF3-B).
     ([('retype_sentence', {'document': 'Story', 'ref': 's2', 'text': 'zz pa ro.'}),
       ('analyze_sentence', {'document': 'Story', 'sentences': [{'ref': 's2', 'words': ['pa go', 'ro come']}]})],
-     'text'),
+     None),
 ])
 def test_a_refusal_analyze_sentence_meets_is_listed_as_refused(monkeypatch, calls, code):
     """REV-RPF2-3: analyze_sentence says each sentence's refusal in its own
@@ -279,4 +282,7 @@ def test_a_refusal_analyze_sentence_meets_is_listed_as_refused(monkeypatch, call
     text_edits(monkeypatch)
     finished = run_job(job, runner(job))
     refused = finished['report']['documents'][0].get('refused') or []
+    if code is None:
+        assert refused == [], refused
+        return
     assert (code, 's2') in [(r['code'], r['sentence']) for r in refused], refused

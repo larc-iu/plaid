@@ -118,6 +118,11 @@ const Ended = ({ piece }) => (
   </span>
 );
 
+// A piece after a text edit, which takes the sentences the edit changed once
+// more (the worker's `after_text`, CONTRACT, added by RPF3): the words the job
+// added, for a job that fills only those, else the sentences after the edit.
+const AFTER_TEXT_WORDS = { added: 'the words added', edited: 'after the text edit' };
+
 // Where a piece worked: its document and sentences, a link into the grid at
 // its first sentence, or the document for a piece of the whole document. The
 // document's name as it is now: a document deleted since reads so.
@@ -136,6 +141,7 @@ const Where = ({ piece, projectId, names }) => {
     <Link className="font-medium underline" to={to}>
       <bdi>{name}</bdi>
       {range && ` ${range}`}
+      {AFTER_TEXT_WORDS[piece.afterText] && `, ${AFTER_TEXT_WORDS[piece.afterText]}`}
     </Link>
   );
 };

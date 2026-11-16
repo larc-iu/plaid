@@ -51,11 +51,11 @@ def renumbered_refusal(where: str, s) -> ToolError:
     """RENUMBERED for sentence ``s``, its advice a chat's alone
     (``core.tools.advised``)."""
     return ToolError(RENUMBERED.format(where=where, n=s.index, advice='{advice}'), kind='conflict',
-                     code='text', advice=RENUMBERED_ADVICE, sentence_id=s.id)
+                     code='retyped', advice=RENUMBERED_ADVICE, sentence_id=s.id)
 
 
 def unnumbered_refusal(where: str, s) -> ToolError:
-    return ToolError(UNNUMBERED.format(where=where, n=s.index), kind='conflict', code='text', advice=UNNUMBERED_ADVICE,
+    return ToolError(UNNUMBERED.format(where=where, n=s.index), kind='conflict', code='retyped', advice=UNNUMBERED_ADVICE,
                      sentence_id=s.id)
 
 
@@ -485,7 +485,7 @@ def refuse_rule_on_retyped(ws, tool: str, found, ops) -> None:
     what = f' s{s.index}.w{w.index} {qv(w.surface)}' if w is not None else ''
     raise ToolError(f'{tool} would change{what} in {ws.doc_label(doc.id)} s{s.index}, a sentence this plan '
                     'retypes.', kind='conflict',
-                    code='text', advice='Plan it once the retype is applied.', sentence_id=s.id)
+                    code='retyped', advice='Plan it once the retype is applied.', sentence_id=s.id)
 
 
 def refuse_retype_under_rule(ws, edit: Dict[str, Any], where: str, n: int) -> None:

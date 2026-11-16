@@ -659,7 +659,10 @@ def test_a_deletion_that_never_landed_before_a_crash_is_made_on_the_resume(monke
         return real(c, ops, **kw)
     monkeypatch.setattr(igt_job, 'execute_plan', execute)
     assert _resume(client, job).document('d1') == 'done'
-    assert len([c for c in model.calls if c['n'] == 1]) == 2, 'asked again, as nothing landed'
+    # Then once more the sentence its deletion changed, where words are
+    # still blank (RPF3-B).
+    assert len([c for c in model.calls if c['n'] == 1 and igt_job.AFTER_TEXT_LINE not in c['asked']]) == 2, \
+        'asked again, as nothing landed'
     assert not _skipped(job)
 
 

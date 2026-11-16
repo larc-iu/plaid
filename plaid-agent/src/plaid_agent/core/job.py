@@ -805,6 +805,11 @@ def blank_sums(documents: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
                                                    **{k: 0 for k in BLANK_WHERE}})
             for k in BLANK_WHERE:
                 row[k] += b.get(k) or 0
+            # Any other count an app's row holds is summed the same way
+            # (an app's own, such as ``unsegmented``, RPF3-B).
+            for k, v in b.items():
+                if k not in BLANK_WHERE and isinstance(v, int) and not isinstance(v, bool):
+                    row[k] = row.get(k, 0) + v
     return list(out.values())
 
 
@@ -827,8 +832,9 @@ def blank_text(rows) -> str:
                                                               ('not_reached', 'sentences not reached'),
                                                               ('skipped', 'skipped sentences')) if b.get(k)]
         return f' ({", ".join(said)})' if said else ''
-    return ', '.join(f'{b.get("target")} left blank {n(b.get("left") or 0, b.get("unit") or "place")}{more(b)}'
-                     for b in rows or [])
+    return ', '.join(f'{b.get("target")} left blank {n(b.get("left") or 0, b.get("unit") or "place")}'
+                     + (f' and {n(b["unsegmented"], "word")} not segmented' if b.get('unsegmented') else '')
+                     + more(b) for b in rows or [])
 
 
 def report_bytes(value: Any) -> int:

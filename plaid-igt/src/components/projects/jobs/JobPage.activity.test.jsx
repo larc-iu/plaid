@@ -242,6 +242,24 @@ describe('the job page’s list of its work', () => {
     await v.unmount();
   });
 
+  // RPF3-B: the piece after a text edit is a row of its own, named by what it
+  // took.
+  it('names a piece after a text edit by what it took', async () => {
+    const after = (seq, afterText) => ({
+      seq,
+      piece: { ...FIRST.piece, piece: `k${seq}`, last: 's5', afterText },
+    });
+    const v = await mount(
+      clientOf([jobOf()], [page([after('000007', 'added'), after('000008', 'edited')])]),
+    );
+    const where = rows(v.container).map((r) => text(r.querySelector('a')));
+    expect(where).toEqual([
+      'Story A s1 to s5, the words added',
+      'Story A s1 to s5, after the text edit',
+    ]);
+    await v.unmount();
+  });
+
   // REV-RPF2-4: a fills-nothing piece's findings, on its own row, in full
   // when opened, rendered as the report's findings are.
   it('shows a piece’s own findings on its row when opened', async () => {

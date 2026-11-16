@@ -51,7 +51,8 @@ def _help(facts: Dict[str, Any]) -> str:
         '  - fills: what the job may fill, each named as facts lists it under What a job can fill, [] for a job '
         'that fills nothing, such as a check or a summary. The job is planned to fill only these.',
         '  - edits_text: true only when the user agreed the job may change the text itself: retype, respell, '
-        'split, merge, insert or delete words or sentences. Left out, false.',
+        'split, merge, insert or delete words or sentences. Left out, false. The words it adds are filled by the same '
+        'job: name what to fill on them in fills.',
         '  - only_new: true when the job fills only the words it adds to the text (such as a value on each '
         'inserted word), with edits_text true. Left out, false: it may fill any word.',
         '  - brief: the job\'s instructions, which its model reads with every piece of its work, with nothing of '

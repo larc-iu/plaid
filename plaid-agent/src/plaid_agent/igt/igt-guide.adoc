@@ -961,6 +961,7 @@ After a piece of all the documents, a document it did not read through is worked
 A job writes every change it plans in its documents and in the project's lexicons, in the name of the person who started the job: values, analyses, links, comments, changes to entries, and deletions.
 It can change and delete what people wrote or confirmed.
 It edits the text, retyping, splitting, merging or deleting words and sentences, only when its plan says the instructions ask for that, and its page then reads **Text may be edited**.
+The sentences a piece's text edit changed are then taken once more, as the edit left them, to fill what is empty there of what the job fills, the words it added among them. On its work list that piece reads **after the text edit**, or **the words added** for a job that fills only those.
 Each value it writes is a machine proposal (see <<_provenance>>), also where it replaces a value a person wrote or confirmed.
 An analysis that keeps a word's morphemes, as many and with the same forms, writes only the values that differ: every other value and link stays as it was, with who wrote it.
 An analysis of another shape replaces the word's analysis.

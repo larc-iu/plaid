@@ -12,5 +12,6 @@
   "entries.unlinked": "Entries with no links",
   "refused": "Not done, refused",
   "totals.fields": "Values set in each field",
-  "totals.blank": "Still blank of what the job fills"
+  "totals.blank": "Still blank of what the job fills",
+  "respelled": "Respelled, analysis kept: check its morphemes"
 }

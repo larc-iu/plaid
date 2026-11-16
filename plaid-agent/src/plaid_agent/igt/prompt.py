@@ -503,6 +503,7 @@ Pieces already have the project's guidelines and the job's instructions. Read th
 of each kind of value they ask for, a word, morpheme or sentence field, and segmentation when words are to be cut \
 into morphemes. [] for a check or a summary.
 - edits_text: only when instructions ask to change the words or sentences themselves.
+- A piece that edits the text is followed by one that fills what is empty in the sentences it changed.
 - documents: leave it out for every document in the job's order.'''
 
 #: The planning context's prompt: who it is, the project, and how to plan.

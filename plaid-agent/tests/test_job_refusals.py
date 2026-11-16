@@ -14,7 +14,7 @@ from job_fixtures import JobClient, Model, call, document, reply, runner, start,
 from test_retype_word_refs import machine_raw
 
 from plaid_agent.core.job import run_job
-from plaid_agent.core.prompt import JOB_LEAVE_IT
+from plaid_agent.core.prompt import JOB_LEAVE_IT, JOB_TEXT_THEN_FILL
 from plaid_agent.igt import toolkit
 from plaid_agent.igt.job import JobWorkspace
 from plaid_agent.igt.project import load_project
@@ -96,6 +96,13 @@ def test_no_refusal_a_job_reads_advises_a_step_it_cannot_take(scenario):
     assert refused, said
     for x in said:
         assert not any(c in x for c in CHAT_ONLY), x
+    if scenario in AFTER_THE_TEXT_EDIT:
+        # A piece that may edit the text is followed by one over the
+        # sentences its edit changed: it is told so, and nothing is left
+        # (RPF3-B).
+        assert any(JOB_TEXT_THEN_FILL in x for x in refused), refused
+        assert not w.left_by_refusal, w.left_by_refusal
+        return
     closing = [x for x in refused if JOB_LEAVE_IT in x]
     assert closing, refused
     assert len(w.left_by_refusal) == len({(e['sentence_id'], e['what']) for e in w.left_by_refusal}) >= 1
@@ -124,7 +131,7 @@ def test_the_retype_whose_words_cannot_be_numbered_gives_a_job_its_own_next_step
     steps = SCENARIOS['unnumbered retype then a value'][:1]
     _, (job,) = _said(steps)
     assert job.endswith('Its words cannot be numbered before it is applied: no value can be planned on them in '
-                        'this job.'), job
+                        'this piece: they are offered for filling straight after.'), job
     _, (chat,) = _said(steps, job=False)
     assert chat.endswith('Its words cannot be numbered before it is applied: plan values on them once the retype '
                          'is applied.'), chat
@@ -139,39 +146,52 @@ def test_the_chat_reads_the_same_refusals_as_before():
     assert any('Retype it once the split is applied.' in x for x in said), said
 
 
-def test_a_job_asked_to_insert_a_zero_element_and_gloss_it_lists_what_the_refusal_left(monkeypatch):
-    """The whole job: the piece retypes s1 with "∅", glosses it by form
-    (refused: its morphemes do not exist until the retype is written),
-    and ends. The retype and the word value are written, the report lists
-    s1 under what a refusal left, with what was refused."""
+def test_a_job_asked_to_insert_a_zero_element_and_gloss_it_glosses_it_after_the_text_edit(monkeypatch):
+    """The whole job: the piece retypes s1 with "∅" and glosses it by form,
+    refused (its morphemes do not exist until the retype is written) with
+    the true next step. The retype is written, then s1 is taken once more as
+    the edit left it, by a piece offered no text tool, which glosses "∅"
+    (RPF3-B, RP2-2: before, the gloss was left, listed as refused). Nothing
+    is listed as refused."""
+    from plaid_agent.igt import job as igt_job
     text_edits(monkeypatch)
     client = JobClient({'d1': document('d1', 'Story', [{'words': ['ka', 'ta']}])})
     job = start(client, 'Insert a zero element before ta in s1 and gloss it 3SG.', id='JRF', plan='document')
+    after = []
 
     def answer(asked, n, kwargs):
+        if igt_job.AFTER_TEXT_LINE in asked:
+            if n == 1:
+                after.append({t['function']['name'] for t in kwargs.get('tools') or []})
+                return reply(calls=[call(4, 'set_analysis', {'document': 'Story', 'ref': 's1.w2 "∅"', 'morphemes': [
+                    {'form': '∅', 'fields': {'Morph Gloss': '3SG'}}]})])
+            return reply('Glossed the zero element.')
         if n > 1:
-            return reply('Inserted the zero element. Its gloss was refused.')
+            return reply('Inserted the zero element.')
         return reply(calls=[
             call(1, 'retype_sentence', {'document': 'Story', 'ref': 's1', 'text': 'ka ∅ ta.'}),
             call(2, 'set_field', {'document': 'Story', 'refs': ['s1.w2 "∅"'], 'field': 'Gloss', 'value': 'he'}),
             call(3, 'set_analysis', {'document': 'Story', 'ref': 's1.w2 "∅"', 'morphemes': [
                 {'form': '∅', 'fields': {'Morph Gloss': '3SG'}}]})])
     model = use(monkeypatch, Model(answer))
-    from plaid_agent.igt import job as igt_job
+    sent = []
 
     def execute(c, ops, **kw):
         # The fake has no text server: the retype is taken as written.
-        client.after_write['d1'] = document('d1', 'Story', [{'words': ['ka', '∅', 'ta']}], version=2)
+        sent.append([o['kind'] for o in ops])
+        client._holder('d1')['documents']['d1'] = document('d1', 'Story', [{'words': ['ka', '∅', 'ta']}],
+                                                           version=len(sent) + 1)
         return {}
     monkeypatch.setattr(igt_job, 'execute_plan', execute)
     finished = run_job(job, runner(job))
     assert finished['state'] == 'done', finished.get('reason')
     answers = [m['content'] for c in model.calls for m in c['kwargs']['messages'] if m['role'] == 'tool']
     refused = [a for a in answers if a.startswith('Error')]
-    assert refused and JOB_LEAVE_IT in refused[-1] and 'once the retype is applied' not in refused[-1], answers
+    assert refused and JOB_TEXT_THEN_FILL in refused[0] and JOB_LEAVE_IT not in refused[0], answers
+    assert len(after) == 1 and 'retype_sentence' not in after[0], 'once, with no text tool'
+    assert any('set_analysis' in kinds for kinds in sent[1:]), sent
     (doc,) = finished['report']['documents']
-    assert [(r['sentence'], r['sentence_id']) for r in doc['refused']] == [('s1', 'd1-s1')], doc
-    assert 's1 is retyped in this plan' in doc['refused'][0]['what'] and doc['refused'][0]['code'] == 'text'
+    assert not doc.get('refused'), doc
 
 
 @pytest.mark.parametrize('job', [True, False], ids=['job', 'chat'])
@@ -195,6 +215,11 @@ def test_a_reference_to_an_entry_this_plan_creates_is_worded_by_who_reads_it(job
                    'reference.'), out
 
 
+#: The scenarios whose refusal is an analysis or a value on a word of a
+#: sentence the piece's own plan retypes (code ``retyped``): a piece that
+#: may edit the text is followed by one that fills them (RPF3-B).
+AFTER_THE_TEXT_EDIT = {'retype then analyse', 'retype then rule', 'unnumbered retype then a value'}
+
 CODES = {'new entry then rename': 'entry-new', 'deleted entry then rename': 'entry-gone',
          'merge then delete what it keeps': 'entry-gone', 'entry numbers moved': 'entry-gone',
          'phrase then link a word in it': 'expression', 'analysis then retype': 'shape',
@@ -208,9 +233,12 @@ def test_what_a_refusal_left_says_what_kind_of_refusal_it_was(scenario):
     set, which the job page labels: never its text."""
     from plaid_agent.igt.job import LEFT_CODES
     w, _ = _said(SCENARIOS[scenario])
+    if scenario in AFTER_THE_TEXT_EDIT:
+        assert not w.left_by_refusal, w.left_by_refusal
+        return
     assert w.left_by_refusal and {e['code'] for e in w.left_by_refusal} == {CODES.get(scenario, 'text')}, \
         w.left_by_refusal
-    assert set(LEFT_CODES) == {'text', 'shape', 'entry-new', 'entry-gone', 'expression', 'not-added'}
+    assert set(LEFT_CODES) == {'text', 'shape', 'entry-new', 'entry-gone', 'expression', 'not-added', 'retyped'}
 
 
 def test_leave_it_keeps_its_docstring_and_takes_any_code():

@@ -639,7 +639,8 @@ def t_retype_sentence(ws: Workspace, document: str, ref: str, text: str) -> str:
     if planned is not None:
         return f'{note}{gone_words(s, planned)} {listing(s.index, planned)}'
     return f'{note} Its words cannot be numbered before it is applied: ' + next_step(
-        ws, 'plan values on them once the retype is applied.', 'no value can be planned on them in this job.')
+        ws, 'plan values on them once the retype is applied.',
+        'no value can be planned on them in this piece: they are offered for filling straight after.')
 
 
 def _word_extents(ws: Workspace, doc) -> List[tuple]:

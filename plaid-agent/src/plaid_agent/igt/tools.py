@@ -479,6 +479,16 @@ def _reshaped_words(ws: Workspace) -> set:
     return reshaped_subjects(ws.ops, WORD_SHAPE) | _text_edit_names(ws)
 
 
+def _sentence_of_word(ws: Workspace, ids: set) -> Optional[str]:
+    """The id of the sentence that holds one of the words ``ids``, among the
+    documents the workspace read, or None."""
+    for doc in (getattr(ws, '_docs', None) or {}).values():
+        for s in getattr(doc, 'sentences', ()):
+            if any(w.id in ids for w in s.words):
+                return s.id
+    return None
+
+
 def refuse_shape_and_analysis(ws: Workspace, word_id, ref: str, *, analysing: bool) -> None:
     """A word's boundaries and its morpheme chain cannot both change in one plan.
 
@@ -492,10 +502,17 @@ def refuse_shape_and_analysis(ws: Workspace, word_id, ref: str, *, analysing: bo
     """
     ids = {word_id} if isinstance(word_id, str) else set(word_id or ())
     if analysing:
-        if ids & _reshaped_words(ws):
-            raise ToolError(f'{ref} is split, merged, deleted or retyped in this plan, so its analysis cannot '
-                            'also change: a boundary change deletes the word\'s morphemes.', kind='conflict',
-                            code='text', advice='discard_plan to start over, or plan the two in separate turns.')
+        advice = 'discard_plan to start over, or plan the two in separate turns.'
+        if ids & reshaped_subjects(ws.ops, WORD_SHAPE):
+            raise ToolError(f'{ref} is split, merged or deleted in this plan, so its analysis cannot also change: '
+                            'a boundary change deletes the word\'s morphemes.', kind='conflict',
+                            code='text', advice=advice, sentence_id=_sentence_of_word(ws, ids))
+        if ids & _text_edit_names(ws):
+            # A retype names every word of its sentence as gone, a guess
+            # until it runs: a word it keeps keeps its morphemes (RPF3-B).
+            raise ToolError(f'{ref} is in a sentence retyped in this plan, so its analysis cannot also change in '
+                            'this plan.', kind='conflict', code='retyped', advice=advice,
+                            sentence_id=_sentence_of_word(ws, ids))
     elif any(op.get('kind') in _ANALYSIS_KINDS and op.get('word_id') in ids for op in ws.ops):
         raise ToolError(f'{ref} has an analysis change in this plan, so its boundaries cannot also change: a '
                         'boundary change deletes the morphemes that analysis writes.', kind='conflict',

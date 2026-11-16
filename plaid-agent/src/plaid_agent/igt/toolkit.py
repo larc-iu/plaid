@@ -643,7 +643,8 @@ PLAN_WORK = _fn(
     'it is empty. '
     'skip_filled_sentences: with "sentences", true skips every sentence in which nothing the job fills is empty. '
     'edits_text: true when the instructions ask for the text itself to change: words or sentences retyped, '
-    'respelled, split, merged, inserted or deleted. '
+    'respelled, split, merged, inserted or deleted. The sentences a piece\'s text edit changes are taken once more '
+    'right after it, to fill what is empty there. '
     'piece_instructions: what every piece is told, as decisions, added to the instructions. documents: names or '
     'ids, a subset of the job\'s documents in the order to work them. Left out, all of them in the job\'s order.',
     {'pieces': {'type': 'string', 'enum': ['sentences', 'document', 'selection']},
