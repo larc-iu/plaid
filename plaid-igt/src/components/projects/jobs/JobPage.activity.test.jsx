@@ -260,6 +260,19 @@ describe('the job page’s list of its work', () => {
     await v.unmount();
   });
 
+  // SF round 2 (RP4-4 finding 3): a piece's note is the model's text, labelled
+  // once above the list as the page labels the summary.
+  it('labels the pieces’ notes as the assistant’s, not checked', async () => {
+    const v = await mount(clientOf([jobOf()], [page([FIRST])]));
+    const section = v.container.querySelector(
+      'section[aria-label="Work so far"], section[aria-label="Work, in order"]',
+    );
+    expect(text(section)).toContain(
+      'Notes written by the assistant, not checked against the counts.',
+    );
+    await v.unmount();
+  });
+
   // SF: a piece of a plan limited by a search names its sentences, which are
   // no run.
   it('names the sentences of a piece of a plan limited by a search', async () => {

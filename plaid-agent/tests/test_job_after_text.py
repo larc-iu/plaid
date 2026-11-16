@@ -245,3 +245,23 @@ def test_a_piece_after_a_text_edit_waits_while_a_person_edits_the_document(monke
     assert len(after) == 1, 'run once, after the wait'
     assert finished['report']['documents'][0]['left'] == []
 
+
+
+def test_the_progress_line_numbers_a_piece_as_the_work_list_does(monkeypatch):
+    """RP4-5 F4: the line said "sentences 1 to 5 of 15" for the piece the work
+    list named "s3 to s7". One numbering: the sentences' own, of the
+    document's sentences."""
+    from job_fixtures import Model, document, reply, runner, start, use, JobClient
+    from plaid_agent.core.job import run_job
+    sents = [{'words': [('ka', [('ka', 'go')], 'human')]}] * 2 + [{'words': ['sa']}] * 5
+    client = JobClient({'d1': document('d1', 'Story', sents), 'd2': document('d2', 'Other', [{'words': ['ta']}])})
+    job = start(client, 'Gloss what is empty.', id='JPN', only_empty=True)
+    lines = []
+
+    def answer(asked, n, kwargs):
+        if n == 1 and '"Story"' in asked:
+            lines.append(job.status.get('message'))
+        return reply('Nothing.')
+    use(monkeypatch, Model(answer))
+    run_job(job, runner(job))
+    assert lines == ['Story: sentences 3 to 7 of 7.'], lines

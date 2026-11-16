@@ -124,6 +124,8 @@ describe('a job that stands undone', () => {
       '/projects/p1/documents/d2?history=b1',
     );
     expect(button(v.container, 'Undo job')).toBeNull();
+    // RP4-4 finding 6: the state chip says what the chat card says.
+    expect(v.container.querySelector('[role="status"]').textContent).toMatch(/^Undone/);
     await v.unmount();
   });
 

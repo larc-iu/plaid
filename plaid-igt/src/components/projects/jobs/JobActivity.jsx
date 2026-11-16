@@ -71,6 +71,13 @@ export const JobActivity = ({ client, job, projectId, readAt, onPlan = () => {} 
       {page && !rows.length && (
         <p className="text-sm text-muted-foreground">Nothing finished yet.</p>
       )}
+      {/* Each piece's note is the model's own text, as the summary is
+          (RP4-4 finding 3): said once above the list. */}
+      {rows.some((r) => r.piece.note) && (
+        <p className="mb-1 text-sm text-muted-foreground">
+          Notes written by the assistant, not checked against the counts.
+        </p>
+      )}
       <ul className="max-w-3xl divide-y text-sm" data-testid="job-activity">
         {rows.map(({ seq, piece }) => (
           <li key={seq} className="py-2" data-seq={seq}>
