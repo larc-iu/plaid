@@ -244,3 +244,4 @@ def test_a_piece_after_a_text_edit_waits_while_a_person_edits_the_document(monke
     after = [c for c in model.calls if igt_job.AFTER_TEXT_LINE in c['asked'] and c['n'] == 1]
     assert len(after) == 1, 'run once, after the wait'
     assert finished['report']['documents'][0]['left'] == []
+

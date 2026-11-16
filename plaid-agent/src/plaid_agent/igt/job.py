@@ -144,7 +144,9 @@ FILLING_TOOLS = frozenset({'set_analysis', 'analyze_sentence', 'set_field', 'set
 #: A reference such a tool names: a sentence ``s4``, a word ``s4.w3`` with
 #: its form or not, a run ``s4.w3-w5``, a morpheme ``s4.w3.m1``.
 FILL_REF = re.compile(r'^s(\d+)(?:\.w(\d+)(?:-w?(\d+))?(?:\.m\d+)?)?(?:\s+"([^"]*)")?$')
-LEFT_CODES = ('text', 'shape', 'entry-new', 'entry-gone', 'expression', 'not-added', RETYPED)
+#: A value, an analysis or a link outside the piece's own sentences (RP3-2).
+OUTSIDE = 'outside'
+LEFT_CODES = ('text', 'shape', 'entry-new', 'entry-gone', 'expression', 'not-added', RETYPED, OUTSIDE)
 #: What a refusal the job could not follow left (``JobWorkspace.leave_it``).
 REFUSED_FORM = ' refused '
 TABLE_FORM = ' table '
@@ -1291,6 +1293,43 @@ def not_added(op: Dict[str, Any], only_new: Optional[Tuple[set, set]],
     return None
 
 
+def outside_piece(op: Dict[str, Any], stretch: Optional['Stretch'], docs: Iterable[Any]) -> Optional[Tuple[str]]:
+    """``(the sentence id,)`` when ``op`` writes a value, an analysis or a
+    link (:data:`ONLY_NEW_KINDS`) on a word, a morpheme or a sentence that is
+    not one of the piece's own sentences (``stretch``: a stretch's, a whole
+    document's, the sentences a piece after a text edit was given), else None
+    (RP3-2: under onlynew a later piece linked a word an earlier piece
+    added). onlynew narrows what a piece writes, never widens it. None for a
+    piece with no stretch (a selection's, harmonize), whose writes go by the
+    apply rule. A planned value on a retyped sentence's word is that
+    sentence's."""
+    from . import jobapply
+    if stretch is None or jobapply.change_kind(op) not in ONLY_NEW_KINDS:
+        return None
+    from .jobapply import _found, token_of
+    from .retyped import PLANNED
+    own = stretch.sentence_ids
+    planned = op.get(PLANNED)
+    if planned is not None:
+        sid = planned.get('sentence_id')
+        return None if sid is None or sid in own else (sid,)
+    tokens = [op.get('analysis_word_id') or op.get('word_id') or token_of(op)]
+    tokens += [t for t in op.get('token_ids') or [] if t not in tokens]
+    for token in tokens:
+        hit = next((h for d in docs for h in [_found(d, token)] if h is not None), None)
+        if hit is None or hit[0] is None:
+            continue
+        if hit[0].id not in own:
+            return (hit[0].id,)
+    return None
+
+
+def outside_piece_text(op: Dict[str, Any]) -> str:
+    """What a change refused by :func:`outside_piece` says, to the piece
+    and in the report's refused list."""
+    return f'{op.get("label") or op.get("kind")}: this sentence is not one of your piece\'s: a piece writes only in its own.'
+
+
 def not_added_text(op: Dict[str, Any]) -> str:
     """What a value refused by :func:`not_added` says, to the piece and in
     the report's refused list."""
@@ -1428,8 +1467,22 @@ class JobWorkspace(Workspace):
                             kind='not-allowed')
         if op.get('kind') == 'create_entry':
             self.fit_guard(op)
+        self.refuse_outside(op)
         self.refuse_not_added(op)
         super().guard_op(op, replacing=replacing)
+
+    def refuse_outside(self, op: Dict[str, Any]) -> None:
+        """Under a setup that fills only the words the job adds: a value, an
+        analysis or a link on a sentence that is not one of the piece's own is
+        refused, whatever path staged it (:func:`outside_piece`, RP3-2: a
+        later piece linked a word an earlier piece added). Any other job's
+        piece may write elsewhere in its document, as before (BRIEF NW)."""
+        if self.only_new is None:
+            return
+        out = outside_piece(op, self.stretch, self._docs.values())
+        if out is not None:
+            raise ToolError(outside_piece_text(op), kind='not-allowed', code=OUTSIDE,
+                            advice='Write only in your own sentences.', sentence_id=out[0])
 
     def refuse_not_added(self, op: Dict[str, Any]) -> None:
         """Under a setup that fills only the words the job adds (RPF-A7, the
@@ -4373,6 +4426,13 @@ class IgtRunner:
             if out is not None:
                 ws.leave_it(not_added_text(op), out[0], code=NOT_ADDED)
                 refused.append({'sentence_id': out[0], 'what': not_added_text(op), 'code': NOT_ADDED})
+                continue
+            # Nor outside the piece's own sentences, whatever path staged it
+            # (RP3-2): the workspace's stretch, none for a selection's.
+            out = outside_piece(op, ws.stretch, [fresh, *ws._docs.values()]) if only is not None else None
+            if out is not None:
+                ws.leave_it(outside_piece_text(op), out[0], code=OUTSIDE)
+                refused.append({'sentence_id': out[0], 'what': outside_piece_text(op), 'code': OUTSIDE})
                 continue
             live.append(op)
         if refused:

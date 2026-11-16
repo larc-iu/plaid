@@ -325,3 +325,107 @@ def test_an_analysis_of_the_added_word_alone_is_taken_up_after_the_text_edit(mon
     assert not finished['report']['documents'][0].get('refused')
     analysed = [o for ops in sent for o in ops if o['kind'] == 'set_analysis']
     assert [o['word_id'] for o in analysed] == ['d1-zz'], analysed
+
+
+def _outside_job(monkeypatch, staged):
+    """An onlynew job in stretches of one sentence: the piece of s1 inserts
+    zz, the piece after its text edit leaves it, and the piece of s2 stages
+    ``staged`` on s1's zz (RP3-2 finding 1)."""
+    from job_fixtures import text_edits
+    text_edits(monkeypatch)
+    monkeypatch.setattr(igt_job, 'JOB_STRETCH_SENTENCES', 1)
+    client = JobClient({'d1': document('d1', 'Story', [{'words': ['sc', 'tqmc']}, {'words': ['pa', 'ro']}])})
+    job = start(client, 'Insert zz and gloss it.', id=J, plan='sentences', edits_text=True,
+                fills=('segmentation', MGLOSS), setup=_setup(fills=(('segmentation', 'segmentation'),
+                                                                     (MGLOSS, 'Morph Gloss'))))
+    sent = []
+
+    def execute(c, ops, **kw):
+        sent.append(ops)
+        if any(o['kind'] == 'edit_text' for o in ops):
+            raw = document('d1', 'Story', [{'words': ['zz', 'sc', 'tqmc']}, {'words': ['pa', 'ro']}], version=2)
+            words = raw['text_layers'][0]['token_layers'][1]['tokens']
+            words[0]['id'], words[1]['id'], words[2]['id'] = 'd1-zz', 'd1-s1w1', 'd1-s1w2'
+            client._holder('d1')['documents']['d1'] = raw
+        return {}
+    monkeypatch.setattr(igt_job, 'execute_plan', execute)
+
+    def answer(asked, n, kwargs):
+        if 'Instructions from' not in asked or n > 1 or igt_job.AFTER_TEXT_LINE in asked:
+            return reply('Done.')
+        if 'Your piece: s1.' in asked:
+            return reply(calls=[call(1, 'retype_sentence', {'document': 'Story', 'ref': 's1', 'text': 'zz sc tqmc.'})])
+        return reply(calls=[call(2, *staged)])
+    model = use(monkeypatch, Model(answer))
+    return client, job, model, sent
+
+
+@pytest.mark.parametrize('staged', [
+    ('set_field', {'document': 'Story', 'refs': ['s1.w1 "zz"'], 'field': 'Gloss', 'value': 'he'}),
+    ('set_analysis', {'document': 'Story', 'ref': 's1.w1 "zz"', 'morphemes': [{'form': 'zz',
+                                                                                'fields': {'Morph Gloss': 'he'}}]}),
+    ('link_entry', {'document': 'Story', 'refs': ['s1.w1 "zz"'], 'entry_id': 'vi-ali'}),
+], ids=['set_field', 'set_analysis', 'link_entry'])
+def test_a_piece_writes_only_in_its_own_sentences_even_on_a_word_the_job_added(monkeypatch, staged):
+    """RP3-2 finding 1: under onlynew the guard let a later piece write on any
+    word the job added, outside its own sentences. A piece writes only in its
+    own sentences: onlynew narrows that, never widens it. Refused at staging,
+    listed, never written."""
+    client, job, model, sent = _outside_job(monkeypatch, staged)
+    finished = run_job(job, runner(job))
+    told = [m['content'] for c in model.calls if 'Your piece: s2.' in c['asked']
+            for m in c['kwargs']['messages'] if m['role'] == 'tool']
+    assert told and told[-1].startswith('Error') and 'not one of your piece' in told[-1], told
+    written = [o for ops in sent for o in ops if o['kind'] not in ('edit_text',)]
+    assert not written, written
+    refused = finished['report']['documents'][0].get('refused') or []
+    assert ('outside', 's1') in [(r['code'], r['sentence']) for r in refused], refused
+
+
+def test_the_piece_after_a_text_edit_writes_only_in_the_sentences_it_was_given(monkeypatch):
+    """RP3-2 finding 1, the piece after a text edit ("the words added"): the
+    piece of s2 retypes s2 too; the piece after it, given s2, stages a value
+    on s1's added zz. Refused and listed."""
+    from job_fixtures import text_edits
+    text_edits(monkeypatch)
+    monkeypatch.setattr(igt_job, 'JOB_STRETCH_SENTENCES', 1)
+    client = JobClient({'d1': document('d1', 'Story', [{'words': ['sc', 'tqmc']}, {'words': ['pa', 'ro']}])})
+    job = start(client, 'Insert zz and yy and gloss them.', id=J, plan='sentences', edits_text=True,
+                fills=('segmentation', MGLOSS), setup=_setup(fills=(('segmentation', 'segmentation'),
+                                                                     (MGLOSS, 'Morph Gloss'))))
+    sent = []
+    state = {'s1': False, 's2': False}
+
+    def execute(c, ops, **kw):
+        sent.append(ops)
+        for o in ops:
+            if o['kind'] == 'edit_text':
+                state['s1' if o.get('sentence_id') == 'd1-s1' else 's2'] = True
+        s1 = ['zz', 'sc', 'tqmc'] if state['s1'] else ['sc', 'tqmc']
+        s2 = ['yy', 'pa', 'ro'] if state['s2'] else ['pa', 'ro']
+        raw = document('d1', 'Story', [{'words': s1}, {'words': s2}], version=len(sent) + 1)
+        words = raw['text_layers'][0]['token_layers'][1]['tokens']
+        ids = (['d1-zz', 'd1-s1w1', 'd1-s1w2'] if state['s1'] else ['d1-s1w1', 'd1-s1w2']) + \
+              (['d1-yy', 'd1-s2w1', 'd1-s2w2'] if state['s2'] else ['d1-s2w1', 'd1-s2w2'])
+        for w, i in zip(words, ids):
+            w['id'] = i
+        client._holder('d1')['documents']['d1'] = raw
+        return {}
+    monkeypatch.setattr(igt_job, 'execute_plan', execute)
+
+    def answer(asked, n, kwargs):
+        if 'Instructions from' not in asked or n > 1:
+            return reply('Done.')
+        if igt_job.AFTER_TEXT_LINE in asked:
+            if 'Your piece: s2.' in asked:
+                return reply(calls=[call(3, 'set_field', {'document': 'Story', 'refs': ['s1.w1 "zz"'],
+                                                          'field': 'Gloss', 'value': 'he'})])
+            return reply('Done.')
+        if 'Your piece: s1.' in asked:
+            return reply(calls=[call(1, 'retype_sentence', {'document': 'Story', 'ref': 's1', 'text': 'zz sc tqmc.'})])
+        return reply(calls=[call(2, 'retype_sentence', {'document': 'Story', 'ref': 's2', 'text': 'yy pa ro.'})])
+    use(monkeypatch, Model(answer))
+    finished = run_job(job, runner(job))
+    assert not [o for ops in sent for o in ops if o['kind'] == 'set_span'], sent
+    refused = finished['report']['documents'][0].get('refused') or []
+    assert ('outside', 's1') in [(r['code'], r['sentence']) for r in refused], refused
