@@ -329,6 +329,27 @@ export const documentSentencesText = (d) => {
   return skipped > 0 ? `${worked}, ${skipped.toLocaleString()} skipped` : worked;
 };
 
+// The report's documents counted as the page says them (REV-RPF3-4): done,
+// not read through, skipped, stopped partway and not reached, each document
+// once. "Done" leaves out those not read through and those all skipped. The
+// worker's read_job and final context say the same, by plaid-agent's
+// `document_counts`, pinned equal by its test_document_counts_mirror.
+export const documentCounts = (report) => {
+  const docs = report?.documents || [];
+  const t = report?.totals || {};
+  const unread = docs.filter(notReadThrough).length;
+  const skipped = docs.filter(allSkipped).length;
+  const unfinished = docs.filter((d) => d.state === 'not-reached');
+  const partway = unfinished.filter(stoppedPartway).length;
+  return {
+    done: Math.max(0, (t.documentsDone ?? 0) - skipped - unread),
+    notReadThrough: unread,
+    skipped,
+    stoppedPartway: partway,
+    notReached: report?.documents ? unfinished.length - partway : (t.documentsNotReached ?? 0),
+  };
+};
+
 // How many places a document's Left blank lists, by unit, those cut from the
 // list included ("4 words, 1 sentence", REV-DF-S N-2), or null when nothing
 // was counted there: a job that fills nothing, a document deleted, one that

@@ -1020,6 +1020,30 @@ def removes_people(op: Dict[str, Any], doc) -> int:
     return n + sum(peoples_on_word(words[wid]) for wid in gone_words if wid in words)
 
 
+def document_counts(report: Dict[str, Any]) -> Dict[str, int]:
+    """The report's documents counted as the job page says them (REV-RPF3-4,
+    plaid-igt jobText.js ``documentCounts``, pinned equal by
+    test_document_counts_mirror): ``done`` leaves out the documents not read
+    through (``not_walked``, RPF3-A) and those all of whose finished sentences
+    were skipped (REV-RPF-P-9); one not reached that finished a sentence or
+    holds the job's changes is ``stopped_partway`` (RPF3-D2)."""
+    docs = report.get('documents') or []
+    totals = report.get('totals') or {}
+
+    def counts(d):
+        return d.get('counts') or {}
+
+    unread = sum(1 for d in docs if d.get('state') == 'done' and counts(d).get(NOT_WALKED) is True)
+    skipped = sum(1 for d in docs if d.get('state') == 'done' and (d.get('done') or 0) > 0
+                  and len(d.get('skipped') or []) + (counts(d).get('skipped_more') or 0) >= (d.get('done') or 0))
+    unfinished = [d for d in docs if d.get('state') == 'not-reached']
+    partway = sum(1 for d in unfinished if (d.get('done') or 0) > 0 or (counts(d).get('changes') or 0) > 0)
+    return {'done': max(0, (totals.get('documents_done') or 0) - skipped - unread), 'not_read_through': unread,
+            'skipped': skipped, 'stopped_partway': partway,
+            'not_reached': len(unfinished) - partway if 'documents' in report
+            else totals.get('documents_not_reached') or 0}
+
+
 def state_text(d: Dict[str, Any]) -> str:
     """A document's state as the final context reads it: one the job did
     not finish is "stopped partway, 6 of 8 sentences done" once it finished a
@@ -1112,8 +1136,12 @@ def summary_message(report: Dict[str, Any], setup: Optional[str] = None) -> str:
               # What the job was set up to fill (BRIEF-SU), :func:`targets.said_setup`.
               *([setup] if setup else []), '',
               'The report\'s totals (the worker counted these):',
-              ', '.join([f'{TOTAL_WORDS.get(k, k.replace("_", " "))} {v:,}' for k, v in sorted(totals.items())
-                         if v and isinstance(v, int)]
+              ', '.join([f'{TOTAL_WORDS.get(k, k.replace("_", " "))} {v:,}'
+                         for k, v in sorted({**{k: v for k, v in totals.items()
+                                               if k not in ('documents_done', 'documents_not_reached')},
+                                             **{f'documents_{k}': v for k, v in document_counts(report).items()}}
+                                            .items())
+                         if v and isinstance(v, int) and not isinstance(v, bool)]
                         + ([fields_text(totals['fields'])] if totals.get('fields') else [])), '']
     plan = report.get('plan') or {}
     if plan:
@@ -1128,7 +1156,7 @@ def summary_message(report: Dict[str, Any], setup: Optional[str] = None) -> str:
         c = d.get('counts') or {}
         lines.append(f'- "{d.get("name")}": '
                      + ', '.join([state_text(d)] + [f'{k} {v:,}' for k, v in sorted(c.items())
-                                                    if v and isinstance(v, int)]
+                                                    if v and isinstance(v, int) and not isinstance(v, bool)]
                                  + ([fields_text(c['fields'])] if c.get('fields') else [])
                                  + ([blank_text(c['blank'])] if c.get('blank') else []))
                      + ('. Left blank could not be read: what is blank there is not known.'

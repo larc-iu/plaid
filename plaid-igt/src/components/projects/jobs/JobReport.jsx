@@ -11,21 +11,19 @@ import { plural } from '@ui/lib/plural.js';
 import { APP_ROUTES } from '@/appRoutes.js';
 import {
   HARMONIZE_BY_TEXT,
-  allSkipped,
   HARMONIZE_LEFT_TEXT,
   changeReasonText,
   changesGroup,
   changesText,
+  documentCounts,
   sumParts,
   durationText,
   fieldValuesText,
   findingsPiecesText,
   noticeCounts,
   noticeText,
-  notReadThrough,
   refusedText,
   skippedText,
-  stoppedPartway,
 } from './jobText.js';
 import SECTIONS from './jobSections.json';
 
@@ -142,27 +140,18 @@ const outsideSum = (report) => outsideRows(report).reduce((n, f) => n + f.values
 // those it did not reach ("Role left blank: 7 words"), so the rows sum.
 const totalRows = (report) => {
   const t = report.totals || {};
-  // A document done by skipping every sentence of it is counted as the
-  // Documents table says it, skipped (REV-RPF-P-9, REV-RPF2-8).
-  const skippedDocs = (report.documents || []).filter(allSkipped).length;
-  // So is one the step over all documents did not read through (RPF3-A).
-  const unreadDocs = (report.documents || []).filter(notReadThrough).length;
-  const rows = [['Documents done', Math.max(0, (t.documentsDone ?? 0) - skippedDocs - unreadDocs)]];
+  // The documents as the table says them, one function with read_job's
+  // (REV-RPF3-4): skipped and not read through apart from done (RPF3-A,
+  // REV-RPF-P-9), stopped partway apart from not reached (RPF3-D2).
+  const docs = documentCounts(report);
+  const rows = [['Documents done', docs.done]];
   const optional = (label, n) => n > 0 && rows.push([label, n]);
-  optional('Documents not read through', unreadDocs);
-  optional('Documents skipped', skippedDocs);
+  optional('Documents not read through', docs.notReadThrough);
+  optional('Documents skipped', docs.skipped);
   optional('Documents in use', t.documentsInUse);
   optional('Documents deleted', t.documentsGone);
-  // A document the job did not finish reads "stopped partway" once it
-  // finished a sentence, by the report's own rows.
-  // One that holds the job's changes is never called not reached (RPF3-D2).
-  const unfinished = (report.documents || []).filter((d) => d.state === 'not-reached');
-  const partway = unfinished.filter(stoppedPartway).length;
-  optional(
-    'Documents not reached',
-    report.documents ? unfinished.length - partway : t.documentsNotReached,
-  );
-  optional('Documents stopped partway', partway);
+  optional('Documents not reached', docs.notReached);
+  optional('Documents stopped partway', docs.stoppedPartway);
   rows.push(['Sentences written in', t.sentences]);
   // One definition of a change, said in its parts (RP-3, RP-6).
   if (t.changes > 0) rows.push(['Changes written', changesText(t.changes, changeParts(report))]);
