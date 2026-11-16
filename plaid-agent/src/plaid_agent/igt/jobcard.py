@@ -52,6 +52,8 @@ def _help(facts: Dict[str, Any]) -> str:
         'that fills nothing, such as a check or a summary. The job is planned to fill only these.',
         '  - edits_text: true only when the user agreed the job may change the text itself: retype, respell, '
         'split, merge, insert or delete words or sentences. Left out, false.',
+        '  - only_new: true when the job fills only the words it adds to the text (such as a value on each '
+        'inserted word), with edits_text true. Left out, false: it may fill any word.',
         '  - brief: the job\'s instructions, which its model reads with every piece of its work, with nothing of '
         'this conversation. Write the decisions, not the discussion: what to do, what to leave, the conventions '
         'settled, in plain imperative sentences that name forms and values exactly, such as "Gloss -da as '
@@ -146,14 +148,15 @@ def summary(card: Dict[str, Any]) -> str:
 _CONVERSATION_ID = 'x' * 36
 
 
-def _setup_fits(fills: List[Dict[str, str]], edits_text: bool) -> None:
+def _setup_fits(fills: List[Dict[str, str]], edits_text: bool, only_new: bool = False) -> None:
     """Refuse fills whose setup, as the page builds it from the card
     (``{fills, text, conversation}``, plaid-igt ``jobSetupOf``), core would
     refuse: over JOB_SETUP_MAX_CHARS characters of compact JSON, as core
     counts them (REV-SU-B-7)."""
     import json
     from ..core.limits import JOB_SETUP_MAX_CHARS
-    setup = {'fills': fills, 'text': edits_text, 'conversation': _CONVERSATION_ID}
+    setup = {'fills': fills, 'text': edits_text, 'conversation': _CONVERSATION_ID,
+             **({'onlynew': True} if only_new else {})}
     n = len(json.dumps(setup, ensure_ascii=False, separators=(',', ':')))
     if n > JOB_SETUP_MAX_CHARS:
         raise ToolError(f'fills: the {len(fills):,} named come to a setup of {n:,} characters, and a job\'s setup is '
@@ -179,8 +182,13 @@ def _facts_answer(ws, documents) -> str:
     return '\n'.join(tg.fill_lines(tg.fillable(ws.project), facts, 'propose_job', 'The documents'))
 
 
+#: propose_job's refusal of only_new on a job that may not edit the text.
+ONLY_NEW_REFUSAL = ('only_new: a job fills only the words it adds when it may add words: give edits_text true, or '
+                    'leave only_new out.')
+
+
 def t_propose_job(ws, action: str, documents: Optional[Any] = None, brief: Optional[str] = None,
-                  fills: Optional[Any] = None, edits_text: Any = False) -> str:
+                  fills: Optional[Any] = None, edits_text: Any = False, only_new: Any = False) -> str:
     """Draft a job for the user to start (see the module's note), or say
     what a job can fill and how much of it is empty (``facts``)."""
     act = (action or '').strip().lower() if isinstance(action, str) else ''
@@ -203,6 +211,9 @@ def t_propose_job(ws, action: str, documents: Optional[Any] = None, brief: Optio
     card: Dict[str, Any] = _documents(ws, documents, facts)
     chosen = tg.resolve_fills(ws.project, fills)
     edits_text = read_bool(edits_text, 'edits_text')
+    only_new = read_bool(only_new, 'only_new')
+    if only_new and not edits_text:
+        raise ToolError(ONLY_NEW_REFUSAL, kind='invalid-argument')
     text = _brief(brief, facts)
     active = ws.client.jobs.active(ws.project.id)
     if active:
@@ -212,8 +223,8 @@ def t_propose_job(ws, action: str, documents: Optional[Any] = None, brief: Optio
     # them in the job's setup, which binds its planning (BRIEF-SU).
     # Each named as the person is shown it, two sharing a name told apart.
     fills = [{'id': t.id, 'name': n} for t, n in zip(chosen, tg.shown_names(ws.project, chosen))]
-    _setup_fits(fills, edits_text)
-    card.update({'id': str(uuid7()), 'brief': text, 'fills': fills, 'edits_text': edits_text})
+    _setup_fits(fills, edits_text, only_new)
+    card.update({'id': str(uuid7()), 'brief': text, 'fills': fills, 'edits_text': edits_text, 'only_new': only_new})
     card['summary'] = summary(card)
     ws.job_card = card
     return ('Drafted the job card' + (', in place of the one drafted earlier in this turn' if replaced else '')

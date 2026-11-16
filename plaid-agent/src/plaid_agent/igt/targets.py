@@ -244,6 +244,10 @@ class Setup:
     gone: Tuple[Dict[str, str], ...] = ()
     names: Tuple[str, ...] = ()
     unread: bool = False
+    #: the card's "Fills only the words this job adds" (``onlynew``, the
+    #: owner's R3): its targets are filled only on words, and sentences, the
+    #: job's own text edits added (RPF-A7)
+    only_new: bool = False
 
     @property
     def ids(self) -> Tuple[str, ...]:
@@ -257,7 +261,7 @@ class Setup:
     @property
     def line(self) -> str:
         """:func:`setup_line` of the targets the project still has."""
-        return setup_line(self.names, self.text)
+        return setup_line(self.names, self.text, only_new=self.only_new)
 
 
 def readable(setup) -> bool:
@@ -266,6 +270,7 @@ def readable(setup) -> bool:
     or false. The job page draws its line by the same rule."""
     fills = setup.get('fills') if isinstance(setup, dict) else None
     return (isinstance(fills, list) and isinstance(setup.get('text'), bool)
+            and isinstance(setup.get('onlynew', False), bool)
             and all(isinstance(f, dict) and isinstance(f.get('id'), str) and f['id'] and isinstance(f.get('name'), str)
                     for f in fills))
 
@@ -281,7 +286,8 @@ def setup_of(project: IgtProject, setup) -> Optional[Setup]:
     targets = of_ids(project, [f['id'] for f in fills])
     have = {t.id for t in targets}
     gone = tuple({'id': f['id'], 'name': f['name']} for f in fills if f['id'] not in have)
-    return Setup(tuple(targets), setup.get('text') is True, gone, tuple(shown_names(project, targets)))
+    return Setup(tuple(targets), setup.get('text') is True, gone, tuple(shown_names(project, targets)),
+                 only_new=setup.get('onlynew') is True)
 
 
 def _names(names: Iterable[str], deleted: Iterable[int] = ()) -> str:
@@ -290,21 +296,24 @@ def _names(names: Iterable[str], deleted: Iterable[int] = ()) -> str:
     return quoted[0] if len(quoted) == 1 else ', '.join(quoted[:-1]) + ' and ' + quoted[-1]
 
 
-def setup_fills(names: List[str], deleted: Iterable[int] = ()) -> str:
+def setup_fills(names: List[str], deleted: Iterable[int] = (), only_new: bool = False) -> str:
     """What a job was set up to fill, as a clause: ``fill only "Case"``,
     ``fill nothing``, those at the places ``deleted`` marked ``"Case"
-    (deleted)``."""
-    return f'fill only {_names(names, deleted)}' if names else 'fill nothing'
+    (deleted)``, ``fill only "Word class", only on the words it adds`` for
+    a setup of the card's "Fills only the words this job adds"."""
+    if not names:
+        return 'fill nothing'
+    return f'fill only {_names(names, deleted)}' + (', only on the words it adds' if only_new else '')
 
 
-def setup_line(names: List[str], text: bool, deleted: Iterable[int] = ()) -> str:
+def setup_line(names: List[str], text: bool, deleted: Iterable[int] = (), only_new: bool = False) -> str:
     """The one fixed line said of a job's setup, ``names`` the targets it
     may fill and ``text`` whether it may edit the text: to the planning
     context (the targets the project still has), in read_job and to the
     final context (the names the person saw on the card, each the plan
     found gone marked, ``deleted`` their places)."""
-    return f'This job was set up to {setup_fills(names, deleted)}. ' + ('It may edit the text.' if text
-                                                                        else 'It may not edit the text.')
+    return f'This job was set up to {setup_fills(names, deleted, only_new)}. ' + (
+        'It may edit the text.' if text else 'It may not edit the text.')
 
 
 def gone_ids(plan) -> List[str]:
@@ -326,7 +335,7 @@ def said_setup(setup, gone: Iterable[str] = ()) -> Optional[str]:
     fills = setup['fills']
     # An empty name (an API caller's) reads as the id, as on the page (REV-SUFIX-5).
     return setup_line([f['name'] or f['id'] for f in fills], setup['text'],
-                      [i for i, f in enumerate(fills) if f['id'] in gone])
+                      [i for i, f in enumerate(fills) if f['id'] in gone], only_new=setup.get('onlynew') is True)
 
 
 #: What read_job and the final context say of a setup :func:`readable` refuses.
@@ -353,6 +362,26 @@ def outside_setup(project: IgtProject, setup: Setup, chosen: Iterable[Target], e
     if edits_text and not setup.text:
         out.append('edits_text: this job was set up not to edit the text. Give false.')
     return ' '.join(out) or None
+
+
+def targets_of(op: Dict[str, object]) -> set:
+    """The target ids a plan op writes or clears (a field's layer id,
+    ``segmentation``, ``orthography:<name>``), by the op's kind and its
+    ids, never a name: a value set or cleared under its layer, an
+    orthography's under its key, an analysis under segmentation and each
+    value it carries under its field's layer, a morpheme's form, type or a
+    discarded analysis under segmentation. None for any other op."""
+    from plaid_client.workflows.igt.config import is_orthography_key, orthography_name
+    kind = op.get('kind')
+    if kind == 'set_span':
+        return {op.get('layer_id')}
+    if kind == 'set_orthography':
+        return {f'{ORTHOGRAPHY}:{orthography_name(op["key"])}'} if is_orthography_key(op.get('key')) else set()
+    if kind == 'set_analysis':
+        return {SEGMENTATION} | {fv.get('layer_id') for m in op.get('morphemes') or [] for fv in m.get('fields') or []}
+    if kind in ('set_morpheme_form', 'set_morph_type', 'discard_analysis'):
+        return {SEGMENTATION}
+    return set()
 
 
 def holds_nothing(metadata: Optional[dict], values, link) -> bool:

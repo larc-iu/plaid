@@ -51,7 +51,7 @@ Idiomatic English, not a word-by-word rendering.
 How to plan:
 - pieces "sentences": a few sentences per piece, seeing the two before, for sentence by sentence work, with only the tools to set values (and to segment, link and add entries when the job fills those), no search or code. Every sentence, unless the job only fills what is empty: then skip_filled_sentences true.
 - pieces "document": one piece per document, seeing the whole document. For work about a whole text, such as a summary of each.
-- pieces "selection": one piece for all the documents, reading them with the tools and code. For work across the documents, such as finding where they disagree. Its findings go in tables code makes and in its note.
+- pieces "selection": one piece for all the documents, reading them with the tools and code. For work across the documents, such as finding where they disagree. Its findings go in its last message, which the report shows whole, and in tables code makes.
 - piece_instructions: only your decisions, as plain imperative sentences naming forms and values exactly. Pieces already have the project's guidelines and the job's instructions. Read the documents to decide.
 - fills: what the instructions ask the job to fill or change, as listed under What a job can fill: the field of each kind of value they ask for, a word, morpheme or sentence field, and segmentation when words are to be cut into morphemes. [] for a check or a summary.
 - edits_text: only when instructions ask to change the words or sentences themselves.

@@ -114,6 +114,13 @@ NOTE_FORM = ' note '
 #: The whole last reply of a piece of a job that fills nothing, its findings,
 #: in rows of its own keyed by the piece and the part (RPF-A5).
 FINDINGS_FORM = ' findings '
+#: The words and sentences a job's text edits added, by id, read under the
+#: document's lock before and after the write, in rows of their own: what a
+#: job set up to fill only the words it adds may fill (RPF-A7).
+ADDED_FORM = ' added '
+#: The refused code of a value staged on a word, a morpheme of it or a
+#: sentence the job did not add, under such a setup.
+NOT_ADDED = 'not-added'
 #: What a refusal a job cannot follow is about (``ToolError.code``, given
 #: where it is raised): ``text``, a change to words the same plan retypes,
 #: splits, merges or deletes; ``shape``, a retype, split, merge or delete of
@@ -121,9 +128,11 @@ FINDINGS_FORM = ' findings '
 #: a comment); ``entry-new``, a change naming an entry the same plan creates;
 #: ``entry-gone``, one naming an entry the same plan deletes or merges (or
 #: an entry number that plan moves); ``expression``, a link inside a
-#: multi-word expression the same plan makes. The job page labels each by
+#: multi-word expression the same plan makes; ``not-added``, a value on a
+#: word or sentence the job did not add, under a setup that fills only the
+#: words it adds (RPF-A7). The job page labels each by
 #: what was not done (REV-DF-S-4, REV-DF3-5).
-LEFT_CODES = ('text', 'shape', 'entry-new', 'entry-gone', 'expression')
+LEFT_CODES = ('text', 'shape', 'entry-new', 'entry-gone', 'expression', 'not-added')
 #: What a refusal the job could not follow left (``JobWorkspace.leave_it``).
 REFUSED_FORM = ' refused '
 TABLE_FORM = ' table '
@@ -838,6 +847,12 @@ def state_text(d: Dict[str, Any]) -> str:
     return str(d.get('state'))
 
 
+#: What a piece of a job set up to fill only the words it adds is told
+#: (RPF-A7).
+ONLY_NEW_LINE = ('This job fills only the words it adds: fill the words your text edits add, and no other word. '
+                 'A value on any other word is refused.')
+
+
 def summary_message(report: Dict[str, Any], setup: Optional[str] = None) -> str:
     """What the final context is handed: the report's sections as text, each
     bounded (JOB_SUMMARY_NOTES_CHARS for the notes, JOB_SUMMARY_TABLE_CHARS
@@ -914,7 +929,8 @@ class Stretch:
     the document sits."""
 
     def __init__(self, doc, project: IgtProject, sentences: List[Sentence], job_id: str, known=frozenset(),
-                 written: Optional['Written'] = None, targets: List[Target] = ()):
+                 written: Optional['Written'] = None, targets: List[Target] = (),
+                 only: Optional[Tuple[set, set]] = None):
         self.doc = doc
         self.project = project
         self.targets = list(targets)
@@ -932,6 +948,11 @@ class Stretch:
         self.word_of: Dict[str, str] = {}
         for s in sentences:
             words, fields = sentence_targets(s, project, job_id, known, written, self.targets)
+            if only is not None:
+                # A job that fills only the words it adds: nothing else is
+                # empty of what it fills (RPF-A7).
+                words = [w for w in words if w.id in only[0]]
+                fields = fields if s.id in only[1] else []
             for w in words:
                 self.words[w.id] = w
                 for m in w.morphemes:
@@ -988,6 +1009,11 @@ class JobWorkspace(Workspace):
         self.plan_work: Optional[Dict[str, Any]] = None
         #: the piece's whole last reply (``IgtRunner.run_piece``)
         self.reply = ''
+        #: a job set up to fill only the words it adds (RPF-A7): the ids of
+        #: the words and sentences its text edits added, ``(words,
+        #: sentences)``, and the setup's target ids; None for any other job
+        self.only_new: Optional[Tuple[set, set]] = None
+        self.only_targets: set = set()
 
     def leave_it(self, fact: str, sentence_id: Optional[str] = None, code: Optional[str] = None) -> str:
         """A refusal whose chat advice a job cannot follow (a later turn,
@@ -1012,7 +1038,40 @@ class JobWorkspace(Workspace):
                             kind='not-allowed')
         if op.get('kind') == 'create_entry':
             self.fit_guard(op)
+        self.refuse_not_added(op)
         super().guard_op(op, replacing=replacing)
+
+    def refuse_not_added(self, op: Dict[str, Any]) -> None:
+        """Under a setup that fills only the words the job adds (RPF-A7, the
+        owner's R3): a value of a setup target (:func:`targets.targets_of`)
+        on a word, a morpheme of it or a sentence the job did not add is
+        refused, whatever path staged it. A word the job added is one its
+        own text edits made, by id (``only_new``), or one the retype staged
+        in this piece makes (a planned word with no id yet), never by its
+        form. Text edits are not values, and pass."""
+        if self.only_new is None or not (tg.targets_of(op) & self.only_targets):
+            return
+        from .jobapply import _found, token_of
+        from .retyped import PLANNED
+        words, sentences = self.only_new
+        planned = op.get(PLANNED)
+        if planned is not None:
+            if planned.get('word_id') is None:
+                return
+            sid, unit = planned.get('sentence_id'), planned.get('word_id')
+            ok = unit in words
+        else:
+            token = op.get('analysis_word_id') or op.get('word_id') or token_of(op)
+            hit = next((h for d in self._docs.values() for h in [_found(d, token)] if h is not None), None)
+            if hit is None:
+                return
+            s, w, _m = hit
+            sid = s.id if s is not None else None
+            ok = (w.id in words) if w is not None else (sid in sentences)
+        if not ok:
+            raise ToolError(f'{op.get("label") or op.get("kind")}: this job fills only the words it adds, and this '
+                            'is not one of them.', kind='not-allowed', code=NOT_ADDED,
+                            advice='Fill only the words this job adds.', sentence_id=sid)
 
     # What a staging tool says back, and the line every result ends with,
     # worded for a job: nothing waits for anyone, what is staged is applied
@@ -1665,6 +1724,10 @@ class IgtRunner:
         self.counted: Optional[Tuple[str, str]] = None
         #: the plan's summary row, made with the plan and kept in its call
         self.plan_summary: Optional[Dict[str, Any]] = None
+        #: the ids of the words and sentences the job's text edits added
+        #: (:meth:`added`), read once per worker, for a setup that fills only
+        #: those (RPF-A7)
+        self.added_ids: Optional[Tuple[set, set]] = None
 
     # --- reading ---------------------------------------------------------------
 
@@ -2462,6 +2525,10 @@ class IgtRunner:
         is still worked whole: the fallback changes the size of the pieces,
         never what is worked (REV-JG-7)."""
         plan = self.plan_made or {}
+        if self.only_new() is not None:
+            # Nothing is empty of what it fills until its own edits add
+            # words: every sentence (RPF-A7).
+            return True
         return not (plan.get('pieces', SENTENCES) == SENTENCES and plan.get('only_empty') is True)
 
     def pending(self, doc, project: IgtProject, document_id: str, every: bool = False) -> List[Sentence]:
@@ -2571,7 +2638,7 @@ class IgtRunner:
         doc = ws.doc(document_id)
         part = [s for s in doc.sentences if s.id in sentence_ids]
         st = Stretch(doc, project, part, job.id, self.known_words(document_id), self.written(document_id),
-                     self.targets(project))
+                     self.targets(project), only=self.only_new(project))
         whole = self.whole_document(project, doc)
         # People's work as it is when the piece starts (REV-DAY-S-10): one
         # listing of the documents, and a read of those whose version moved
@@ -2632,6 +2699,9 @@ class IgtRunner:
         job = self.job
         ws.edits_text = self.edits_text()
         ws.fills = self.targets(project)
+        # A setup that fills only the words the job adds (RPF-A7).
+        ws.only_new = self.only_new(project)
+        ws.only_targets = set(self.job_setup(project).ids) if ws.only_new is not None else set()
         # A plan that fills nothing ends each piece with its findings (RPF-A5).
         system = build_job_prompt(project, sentences=sentences, edits_text=ws.edits_text, targets=ws.fills,
                                   findings=self.fills_nothing())
@@ -2738,6 +2808,8 @@ class IgtRunner:
             # A sentence the walk takes with nothing empty (every sentence
             # is walked unless the plan skips filled ones) says so (BRIEF EW).
             lines.append(f'Nothing empty in {", ".join(full)} of what this job fills.')
+        if self.only_new(project) is not None:
+            lines.append(ONLY_NEW_LINE)
         # A piece of a plan in sentences is handed the evidence its model
         # would otherwise look up (igt/evidence.py), a document's or a
         # selection's the precedent alone.
@@ -2904,6 +2976,58 @@ class IgtRunner:
             self.plan_made = self.plan_stored(self.job.decisions())
         plan = self.plan_made or {}
         return plan.get('by') != NO_PLAN and not plan.get('fills')
+
+    def only_new(self, project: Optional[IgtProject] = None) -> Optional[Tuple[set, set]]:
+        """For a job set up to fill only the words it adds (the setup's
+        ``onlynew``, RPF-A7, read as :func:`targets.readable` reads a setup):
+        the ids of the words and sentences its text edits added so far
+        (:meth:`added`). None for any other job."""
+        setup = getattr(self.job, 'setup', None)
+        if not (tg.readable(setup) and setup.get('onlynew') is True):
+            return None
+        return self.added()
+
+    def added(self) -> Tuple[set, set]:
+        """The ids of the words and sentences the job's text edits added, as
+        its rows hold them (:meth:`record_added`), read once per worker."""
+        if self.added_ids is None:
+            words, sentences = set(), set()
+            for r in self.rows_of(ADDED_FORM):
+                v = r['value'] if isinstance(r['value'], dict) else {}
+                words |= set(v.get('words') or ())
+                sentences |= set(v.get('sentences') or ())
+            self.added_ids = (words, sentences)
+        return self.added_ids
+
+    def record_added(self, document_id: str, before, after) -> None:
+        """Keep the words and sentences a write added, by id: those ``after``
+        (the document read under the lock after the write) holds and
+        ``before`` (read under the lock before it) did not. Under the lock
+        nobody but the starter's own browser writes besides the job. In rows
+        of their own, as many as their ids need (RPF-A7)."""
+        had_w = {w.id for s in before.sentences for w in s.words}
+        had_s = {s.id for s in before.sentences}
+        words = sorted(w.id for s in after.sentences for w in s.words if w.id not in had_w)
+        sentences = sorted(s.id for s in after.sentences if s.id not in had_s)
+        rows, chunk = [], {'words': [], 'sentences': []}
+
+        def flush():
+            if chunk['words'] or chunk['sentences']:
+                text = canonical({'document': document_id, **chunk})
+                rows.append({'form': ADDED_FORM + document_id, 'key': analysis_key(text), 'analysis': text,
+                             'count': 1, 'document_id': document_id, 'sentence_id': None})
+        for k, ids in (('words', words), ('sentences', sentences)):
+            for i in ids:
+                chunk[k].append(i)
+                if len(canonical({'document': document_id, **chunk})) > JOB_ANALYSIS_MAX_CHARS - 100:
+                    flush()
+                    chunk = {'words': [], 'sentences': []}
+        flush()
+        if rows:
+            self.job.add_decisions(rows)
+        held = self.added()
+        held[0].update(words)
+        held[1].update(sentences)
 
     def edits_text(self) -> bool:
         """Whether the job's plan says its instructions ask for the text to
@@ -3237,7 +3361,7 @@ class IgtRunner:
         out = self.excluded(document_id)
         part = [s for s in part if s.id not in out]
         st = Stretch(doc, project, part, job.id, self.known_words(document_id), self.written(document_id),
-                     self.targets(project))
+                     self.targets(project), only=self.only_new(project))
         row = job.rows.get(document_id) or {}
         group = row.get('gloss_group')
         if not group:
@@ -3290,6 +3414,8 @@ class IgtRunner:
         # fails here leaves the document to be settled again, which keeps
         # them from the write's rows (REV-JG3-2).
         try:
+            if self.only_new(project) is not None and any(jobapply.edits_text(o) for o in w.ops):
+                self.record_added(document_id, w.fresh, after)
             self.record_changes(proposed, note)
             self.record(project, document_id, after, part, st, changed, vouched,
                         self.made_entries(ws, after, st, w.ops))
@@ -4816,6 +4942,8 @@ class IgtRunner:
             return {d: None for d in job.order}
         out: Dict[str, Optional[Dict[str, List[Dict[str, Any]]]]] = {}
         fill = self.targets(project)
+        # A job that fills only the words it adds leaves nothing else blank (RPF-A7).
+        only = self.only_new(project)
         # Every document the plan works is read, those it never reached too:
         # their blanks are not reached (REV-DF-S-3). A document the plan
         # left out is not the job's work.
@@ -4853,6 +4981,9 @@ class IgtRunner:
                 # THE rule over the plan's targets (:func:`sentence_targets`),
                 # each entry naming the targets it is empty for.
                 words, fields = sentence_targets(s, project, job.id, written=written, targets=fill)
+                if only is not None:
+                    words = [w for w in words if w.id in only[0]]
+                    fields = fields if s.id in only[1] else []
                 listed = lists.get(where)
                 begins = {f'w{w.index}': w.begin for w in s.words}
                 # One entry per unit as the Empty line names it (targets.units:

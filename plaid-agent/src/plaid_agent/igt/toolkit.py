@@ -582,6 +582,7 @@ TOOLS += [_fn('propose_job',
                              'description': 'Names or ids, or ["all"].'},
                'fills': {'type': 'array', 'items': {'type': 'string'}},
                'edits_text': {'type': 'boolean'},
+               'only_new': {'type': 'boolean'},
                'brief': {'type': 'string'}}, ['action'])]
 _IMPL['propose_job'] = t_propose_job
 

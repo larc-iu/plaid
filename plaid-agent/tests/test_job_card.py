@@ -115,7 +115,7 @@ def test_a_card_has_no_task_types():
     argument is not one propose_job takes."""
     ws = fake_ws(FakeClient())
     out = _draft(ws, tasks=['gloss'])
-    assert out.startswith('Error') and 'It takes: action, documents, brief, fills, edits_text.' in out, out
+    assert out.startswith('Error') and 'It takes: action, documents, brief, fills, edits_text, only_new.' in out, out
     from plaid_agent.igt.toolkit import TOOLS
     schema = next(t for t in TOOLS if t['function']['name'] == 'propose_job')
     assert 'tasks' not in schema['function']['parameters']['properties']

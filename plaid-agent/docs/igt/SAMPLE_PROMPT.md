@@ -656,6 +656,7 @@ Draft an unattended job for the user to start: the documents, what it fills and 
 - `documents` (array of string): Names or ids, or ["all"].
 - `fills` (array of string)
 - `edits_text` (boolean)
+- `only_new` (boolean)
 - `brief` (string)
 
 ### read_job
@@ -769,6 +770,7 @@ propose_job drafts an unattended job: the assistant works the documents in the b
   - documents: names or ids, at most 500, or ["all"] for every document of the project.
   - fills: what the job may fill, each named as facts lists it under What a job can fill, [] for a job that fills nothing, such as a check or a summary. The job is planned to fill only these.
   - edits_text: true only when the user agreed the job may change the text itself: retype, respell, split, merge, insert or delete words or sentences. Left out, false.
+  - only_new: true when the job fills only the words it adds to the text (such as a value on each inserted word), with edits_text true. Left out, false: it may fill any word.
   - brief: the job's instructions, which its model reads with every piece of its work, with nothing of this conversation. Write the decisions, not the discussion: what to do, what to leave, the conventions settled, in plain imperative sentences that name forms and values exactly, such as "Gloss -da as LOC after a noun and as 3SG after a verb.", "Give every word ending in -ka the Word class V." or "Leave the Russian loanwords unanalysed." At most 2,000 characters.
 - The job changes and deletes what people wrote where the brief asks it to, and follows how people annotated a form.
 - A turn holds a job card or a plan of changes, not both. Drafting again in the same turn replaces the card.
