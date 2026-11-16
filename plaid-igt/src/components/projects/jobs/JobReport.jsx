@@ -16,6 +16,7 @@ import {
   changesGroup,
   changesText,
   documentCounts,
+  oneStep,
   sumParts,
   durationText,
   fieldValuesText,
@@ -146,8 +147,8 @@ const totalRows = (report) => {
   const docs = documentCounts(report);
   // A whole-selection job: its documents and how many it changed, in one row
   // (RP4-4 finding 1), never a count of documents done beside one not read.
-  const oneStep = (report.documents || []).some((d) => d.state === 'done' && d.counts?.oneStep);
-  const rows = oneStep
+  const stepped = (report.documents || []).some(oneStep);
+  const rows = stepped
     ? [['Documents', `${docs.done.toLocaleString()}, changed ${docs.changed.toLocaleString()}`]]
     : [['Documents done', docs.done]];
   const optional = (label, n) => n > 0 && rows.push([label, n]);
