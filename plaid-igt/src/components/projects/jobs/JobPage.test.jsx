@@ -1985,6 +1985,19 @@ describe('the job page', () => {
     await v.unmount();
   });
 
+  // A8 (RP-6): what a job's text edits did to the words, counted by the worker.
+  it('counts the words a job added and the existing ones its text edits changed or removed', async () => {
+    const report = {
+      ...REPORT,
+      totals: { ...REPORT.totals, textChanges: 14, wordsAdded: 25, tokensChanged: 2 },
+    };
+    const v = await mount(clientOf(jobOf({ state: 'done', report })));
+    const sums = totals(v.container.querySelector('section[aria-label="Report"]'));
+    expect(sums['Words added']).toBe('25');
+    expect(sums['Existing words or punctuation marks changed or removed']).toBe('2');
+    await v.unmount();
+  });
+
   it('says a job it cannot read is not found', async () => {
     const client = {
       jobs: {

@@ -153,6 +153,9 @@ const totalRows = (report) => {
   // text: each document's History entry shows the changes (REV-DAY-S-3).
   optional('Changes to values people wrote', t.peoplesValuesChanged);
   optional('Changes to the text', t.textChanges);
+  // What the text edits did to the words (RP-6).
+  optional('Words added', t.wordsAdded);
+  optional('Existing words or punctuation marks changed or removed', t.tokensChanged);
   optional('Translations written', t.translations);
   optional('Translations replaced', t.refreshed);
   optional('Words analyzed', t.words);

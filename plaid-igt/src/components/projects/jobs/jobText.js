@@ -128,6 +128,8 @@ const PIECE_COUNTS_BEFORE = [
   ['deletions', 'Deletions'],
   ['peoplesValuesChanged', 'Changes to values people wrote'],
   ['textChanges', 'Changes to the text'],
+  ['wordsAdded', 'Words added'],
+  ['tokensChanged', 'Existing words or punctuation marks changed or removed'],
   ['translations', 'Translations written'],
   ['refreshed', 'Translations replaced'],
   ['words', 'Words analyzed'],

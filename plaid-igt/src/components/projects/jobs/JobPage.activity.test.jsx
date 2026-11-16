@@ -222,6 +222,26 @@ describe('the job page’s list of its work', () => {
     await v.unmount();
   });
 
+  it('says what a piece’s text edits did to the words', async () => {
+    const edited = {
+      seq: '000005',
+      piece: {
+        ...FIRST.piece,
+        counts: { analyzed: 1, changes: 3, textChanges: 1, wordsAdded: 2, tokensChanged: 1 },
+        changesParts: [
+          { kind: 'values', n: 2 },
+          { kind: 'text', n: 1 },
+        ],
+        fields: [],
+      },
+    };
+    const v = await mount(clientOf([jobOf()], [page([edited])]));
+    expect(text(rows(v.container)[0])).toContain(
+      'Sentences written in: 1, Changes written: 3 (2 values and 1 text edit), Changes to the text: 1, Words added: 2, Existing words or punctuation marks changed or removed: 1.',
+    );
+    await v.unmount();
+  });
+
   it('names a piece of a deleted document so, with no link', async () => {
     const gone = {
       seq: '000003',
