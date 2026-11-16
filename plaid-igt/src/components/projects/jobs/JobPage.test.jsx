@@ -1512,9 +1512,6 @@ describe('the job page', () => {
     await w.unmount();
   });
 
-  // RPF3-A: a document a selection's piece changed and did not read through
-  // ends with no walk. Its row says it was not read through, beside what the
-  // piece changed there, and the totals count it apart from the done ones.
   // SF round 2 (RP4-4 findings 1 and 2, RP4-5 F3): a whole-selection job's
   // documents are Done and worked in the one step, counted with those it
   // changed, never "Documents done 0" nor "Not read through".
