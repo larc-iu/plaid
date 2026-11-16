@@ -34,9 +34,13 @@
                         since the entry began, or a token of the entry on the
                         text is left. And a token the entry put on, took off
                         or reshaped on a text anyone else wrote since stays,
-                        whether or not the entry changed that text. After
-                        the writes, every token put back is read against the
-                        text it was made on, as a last check,
+                        whether or not the entry changed that text, as does
+                        a token it made on a text whose body stays, so a
+                        text and its tokens go back together or not at all.
+                        A span, link or relation the entry wrote on a token
+                        left so stays with it. After the writes, every token
+                        put back is read against the text it was made on, as
+                        a last check,
     name-taken          a document's name, which another document holds now,
     place-taken         a text, where its layer holds another text of the
                         document now,
@@ -495,6 +499,21 @@
       (and (:doc i) (contains? locked (:doc i))) {:reason "locked"}
       :else nil)))
 
+(defn- on-held-tokens
+  "`text-changed-since` when `i` is a span or a vocabulary link on a token
+  left for its text, or a relation on a span left so, else nil: what the
+  unit wrote on a word it typed or reshaped stays with that word when the
+  text does not go back, never undone against a text it no longer fits."
+  [i why]
+  (let [{:keys [table before after]} i
+        held? (fn [t id] (= "text-changed-since" (:reason (why [t id]))))]
+    (when (case table
+            ("spans" "vocab_links") (some #(held? "tokens" %) (concat (:tokens before) (:tokens after)))
+            "relations" (some #(held? "spans" %) (keep identity [(:source_span_id before) (:target_span_id before)
+                                                                 (:source_span_id after) (:target_span_id after)]))
+            false)
+      {:reason "text-changed-since"})))
+
 (defn- check
   "Why `i` cannot be undone in the state the applied rows leave, or nil.
   `on?` says whether a row is there in that state."
@@ -512,6 +531,11 @@
       (or (when (and (= table "tokens") (contains? texts-since (:text_id (:after i))))
             ;; a token the entry made, on a text written since: it goes
             ;; with the rest of the entry's tokens there or not at all
+            {:reason "text-changed-since"})
+          (when (and (= table "tokens") (contains? moving (:text_id (:after i)))
+                     (not (applied? (item-of ["texts" (:text_id (:after i))]))))
+            ;; a token the entry made on a text whose body does not go
+            ;; back: deleting it would leave its characters bare
             {:reason "text-changed-since"})
           (when (= table "documents")
             (cond
@@ -571,10 +595,11 @@
                            ;; a row of a document deleted whole goes with it
                            (not (when-let [doc-item (and d (:doc d) (item-of ["documents" (:doc d)]))]
                                   (and (applied? doc-item) (= :delete (:op doc-item)))))))))
-            ctx (assoc ctx :applied? applied? :on? on?)
+            ctx (assoc ctx :applied? applied? :on? on? :why #(get left %))
             more (into {} (keep (fn [i]
                                   (when (applied? i)
-                                    (when-let [r (check i ctx)] [(:k i) r]))))
+                                    (when-let [r (or (check i ctx) (on-held-tokens i (:why ctx)))]
+                                      [(:k i) r]))))
                        items)]
         (if (empty? more)
           left
@@ -739,18 +764,27 @@
 
 (defn- offsets-misread
   "`{key reason}` for each token the undo put offsets back on that does not
-  read now what it read when the entry first wrote it: the text it is on
+  read now what it read before the entry wrote it: the text it is on
   changed under it (REV-UN-1). The check of last resort behind the
-  `text-changed-since` rule. Reads each such text's history once."
+  `text-changed-since` rule. Reads each such text's history once.
+
+  \"Before the entry\" is before the entry's first write to the token or to
+  its text, whichever came first: an earlier edit of the same entry may
+  have changed characters inside the token without moving its edges (so
+  without writing it), and the undo puts that edit back too (REV-RPF-P-2)."
   [tx applied]
   (let [written (filter #(and (= "tokens" (:table %)) (moves-offsets? %) (:before-pos %)) applied)
+        text-from (into {} (keep (fn [i] (when (and (= "texts" (:table i)) (:before-pos i))
+                                           [(:id i) (first (:before-pos i))])))
+                        applied)
         bodies (memoize (fn [text-id ts] (body-before tx text-id ts)))]
     (into {}
           (keep (fn [i]
                   (let [b (:before i)
                         now (psc/fetch-by-id tx :tokens (:id i))
                         live-body (:body (psc/fetch-by-id tx :texts (:text_id b)))
-                        then (cp-slice (bodies (:text_id b) (first (:before-pos i))) (:begin b) (:end_ b))]
+                        from (first (sort (keep identity [(first (:before-pos i)) (text-from (:text_id b))])))
+                        then (cp-slice (bodies (:text_id b) from) (:begin b) (:end_ b))]
                     (when (or (nil? now) (not= then (cp-slice live-body (:begin now) (:end_ now))))
                       [(:k i) {:reason "text-changed-since"}]))))
           written)))

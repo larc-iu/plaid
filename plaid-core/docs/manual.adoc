@@ -360,6 +360,8 @@ What people did since is left alone.
 A row is left as it is, and listed under `skipped` with its reason, when someone wrote it since (`changed-since`), or between the entry's own writes (`changed-between`), when the entry made it and something that stays is built on it, such as an annotation on a token or a link to an entry (`built-on`), or when it needs something that will not be there (`needs`).
 A text goes back only when nothing in its document wrote a text or a token since the entry began (`text-changed-since`).
 A token goes back onto its offsets only when nothing outside the entry wrote its text since the entry began (`text-changed-since`), and a text goes back only into a layer that holds no other text of the document now (`place-taken`).
+The entry's own later writes are never "since": a text it edited several times goes back to its body before the first.
+A text and the tokens the entry wrote on it go back together or not at all: when the text stays, the tokens the entry made or reshaped on it stay too, and so do the annotations and links the entry wrote on those tokens, each listed as `text-changed-since`.
 A row is never set back to name, in its metadata, a row that will not be there afterwards (`needs`).
 When a document's layers would no longer hold with the entry's rows put back, that document's rows are all left (`does-not-fit`).
 An undo is held to each layer's closed list as it is now, unlike a restore, since it puts single values back into today's document: a value the list no longer allows is left (`value-not-allowed`).
