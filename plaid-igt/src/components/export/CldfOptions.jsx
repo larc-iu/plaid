@@ -114,7 +114,7 @@ export const CldfOptions = ({ options, layers, languages, projectId, onChange })
   return (
     <div className="flex flex-col gap-4">
       {!languagesSet && (
-        <Notice tone="warning" className="p-3">
+        <Notice tone="info" className="p-3">
           <div>
             <p className="font-medium">This project has no language identity yet</p>
             <p className="text-xs">

@@ -32,6 +32,8 @@ describe('CldfOptions', () => {
       a.textContent.includes('Set the languages in Settings'),
     );
     expect(link?.getAttribute('href')).toBe('/projects/p1/general');
+    // Not set yet is a plain fact: the export works, nothing is broken.
+    expect(link.closest('[data-tone]').getAttribute('data-tone')).toBe('info');
     await view.unmount();
   });
 });
