@@ -270,7 +270,7 @@ export const stoppedPartway = (d) => d.state === 'not-reached' && (d.done ?? 0) 
 // How many of a document's sentences the job skipped (its rows' skipped list,
 // and those past the list's cap). Its `done` counts them with the sentences
 // it worked.
-export const skippedCount = (d) => (d?.skipped?.length ?? 0) + (d?.counts?.skippedMore ?? 0);
+const skippedCount = (d) => (d?.skipped?.length ?? 0) + (d?.counts?.skippedMore ?? 0);
 
 // Whether the job finished a document by skipping every sentence of it:
 // nothing in it was worked, so it never reads "Done" (REV-RPF-P-9).
