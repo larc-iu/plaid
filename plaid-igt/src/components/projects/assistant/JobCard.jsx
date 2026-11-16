@@ -110,9 +110,11 @@ export const JobCard = ({
   const [worker, setWorker] = useState(null);
   const [brief, setBrief] = useState(card.brief || '');
   const [starting, setStarting] = useState(false);
-  // The started job's state while it waits in the queue: the badge says
-  // "Waiting", the job page's word, until it starts (REV-RPF-P-7).
-  const [waiting, setWaiting] = useState(false);
+  // The started job's state in the job page's words where "Started" would not
+  // be true: "Waiting" while it waits in the queue (REV-RPF-P-7), and its end
+  // ("Stopped") when it ended before it ever started (REV-RPF2-7). Null once
+  // it started.
+  const [notStarted, setNotStarted] = useState(null);
   const jobId = card.status === 'started' ? card.jobId : null;
 
   useEffect(() => {
@@ -140,10 +142,10 @@ export const JobCard = ({
         .get(jobId)
         .then((j) => {
           if (!live) return;
-          setWaiting(j?.state === 'waiting');
+          setNotStarted(j && !j.startedAt ? (jobStateText(j.state) ?? null) : null);
           if (j?.state === 'waiting') timer = setTimeout(look, JOB_POLL_MS);
         })
-        .catch(() => live && setWaiting(false));
+        .catch(() => live && setNotStarted(null));
     look();
     return () => {
       live = false;
@@ -154,7 +156,7 @@ export const JobCard = ({
   const briefMax = worker?.instructionsMaxChars ?? null;
   const briefOver = briefMax !== null && instructionsLength(brief) > briefMax;
   const mayStart = canStartJob(project, user);
-  const badge = waiting ? ['secondary', jobStateText('waiting')] : BADGES[card.status];
+  const badge = notStarted ? ['secondary', notStarted] : BADGES[card.status];
   const setup = jobSetupOf(card, conversationId);
 
   // Every press makes the job under the card's own id. A press after a reload,
