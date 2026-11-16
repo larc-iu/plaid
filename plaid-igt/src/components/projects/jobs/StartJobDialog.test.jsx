@@ -56,7 +56,7 @@ const LIMIT = 'A job takes at most 2 documents.';
 const startButton = () =>
   all(document.body, 'button').find((b) => b.textContent.trim() === 'Start');
 
-const open = async (client, props = {}) => {
+const open = async (client, { all: chooseAll = false, ...props } = {}) => {
   let at = null;
   const v = await renderComponent(
     <MemoryRouter initialEntries={['/projects/p1']}>
@@ -76,6 +76,9 @@ const open = async (client, props = {}) => {
   await v.step(async () => {});
   await v.step(() => byText(v.container, 'button', 'Set up job').click());
   await v.step(async () => {});
+  // Nothing is chosen when the form opens (RPF-P7): `all` chooses every
+  // document first.
+  if (chooseAll) await v.step(() => box('All documents').click());
   if (props.instructions !== null) {
     await v.step(() => typeInstructions(props.instructions ?? 'Gloss the words.'));
   }
@@ -90,7 +93,7 @@ beforeEach(() => {
 describe('Start job', () => {
   it('offers three starter texts that fill the instructions, which stay editable', async () => {
     const client = fakeClient();
-    const { v } = await open(client, { documents: DOCS, instructions: null });
+    const { v } = await open(client, { documents: DOCS, instructions: null, all: true });
     const area = () => document.body.querySelector('#job-instructions');
     expect(area().value).toBe('');
     expect(startButton().disabled).toBe(true);
@@ -118,7 +121,7 @@ describe('Start job', () => {
   });
 
   it('refuses to start with no instructions', async () => {
-    const { v } = await open(fakeClient(), { documents: DOCS, instructions: '   ' });
+    const { v } = await open(fakeClient(), { documents: DOCS, instructions: '   ', all: true });
     expect(startButton().disabled).toBe(true);
     await v.step(() => typeInstructions('Gloss ka.'));
     expect(startButton().disabled).toBe(false);
@@ -126,7 +129,7 @@ describe('Start job', () => {
   });
 
   it('counts the instructions against the limit core gives, and refuses them over it', async () => {
-    const { v } = await open(fakeClient(), { documents: DOCS, instructions: null });
+    const { v } = await open(fakeClient(), { documents: DOCS, instructions: null, all: true });
     const count = () =>
       document.body.querySelector('[data-testid="job-instructions-count"]').textContent;
     expect(count()).toBe('0 / 400');
@@ -158,7 +161,7 @@ describe('Start job', () => {
 
   it('sends every document by leaving them out, and opens the job made', async () => {
     const client = fakeClient();
-    const { v, at } = await open(client, { documents: DOCS });
+    const { v, at } = await open(client, { documents: DOCS, all: true });
     expect(byText(document.body, 'label', 'All documents').textContent).toContain(
       'All documents (3)',
     );
@@ -178,10 +181,34 @@ describe('Start job', () => {
     await v.unmount();
   });
 
+  // RP-9: the form chose all 41 documents before anyone looked, listed them
+  // as text sorts ("Lezgi text 1, Lezgi text 10, ..., Lezgi text 2") and said
+  // nothing of what the job fills.
+  it('opens with no document chosen, lists them in natural order, and says the job decides what to fill', async () => {
+    const client = fakeClient({ documentsMax: 500 });
+    const NUMBERED = ['Text 10', 'Text 2', 'Text 1', 'text 3'].map((name, i) => ({
+      id: `n${i}`,
+      name,
+    }));
+    const { v } = await open(client, { documents: NUMBERED });
+    expect(box('All documents').checked).toBe(false);
+    expect(box('Selected documents').checked).toBe(true);
+    expect(listed()).toEqual(['Text 1', 'Text 2', 'text 3', 'Text 10']);
+    expect(listed().map((n) => box(n).checked)).toEqual([false, false, false, false]);
+    expect(document.body.textContent).toContain('0 selected');
+    // Instructions are typed: still no start with no document.
+    expect(startButton().disabled).toBe(true);
+    expect(document.body.textContent).toContain(
+      'The job decides from the instructions what to fill. Its plan shows on the job’s page.',
+    );
+    await v.step(() => box('Text 2').click());
+    expect(startButton().disabled).toBe(false);
+    await v.unmount();
+  });
+
   it('sends the documents checked, in name order', async () => {
     const client = fakeClient();
     const { v } = await open(client, { documents: DOCS });
-    await v.step(() => box('Selected documents').click());
     expect(startButton().disabled).toBe(true);
     await v.step(() => box('Story C').click());
     await v.step(() => box('Story A').click());
@@ -235,7 +262,9 @@ describe('Start job', () => {
     const { v } = await open(fakeClient({ documentsMax: 3 }), { documents: DOCS });
     expect(document.body.textContent).not.toContain('A job takes at most');
     expect(box('All documents').disabled).toBe(false);
+    await v.step(() => box('All documents').click());
     expect(box('All documents').checked).toBe(true);
+    expect(startButton().disabled).toBe(false);
     await v.unmount();
   });
 
@@ -275,7 +304,7 @@ describe('Start job', () => {
         });
       },
     });
-    const { v, at } = await open(client, { documents: DOCS });
+    const { v, at } = await open(client, { documents: DOCS, all: true });
     await v.step(() => startButton().click());
     await v.step(async () => {});
     const alert = document.body.querySelector('[role="alert"]');
@@ -295,7 +324,7 @@ describe('Start job', () => {
         return { id: body.id };
       },
     });
-    const { v } = await open(client, { documents: DOCS });
+    const { v } = await open(client, { documents: DOCS, all: true });
     await v.step(() => startButton().click());
     await v.step(async () => {});
     expect(feedback.notifyError).toHaveBeenCalledTimes(1);

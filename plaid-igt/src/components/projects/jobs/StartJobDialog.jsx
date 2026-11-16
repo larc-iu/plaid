@@ -29,7 +29,10 @@ import { IGT_ASSISTANT } from '../assistant/adapter.js';
 import { STARTER_TEXTS, activeJobOf, instructionsLength, jobPath, startJob } from './jobText.js';
 import { InstructionsCount, JobActiveLine, NoWorkerLine } from './jobLines.jsx';
 
-const byName = (a, b) => (a.name || '').localeCompare(b.name || '') || a.id.localeCompare(b.id);
+// Natural order, so "Text 2" comes before "Text 10" (RP-9).
+const byName = (a, b) =>
+  (a.name || '').localeCompare(b.name || '', undefined, { numeric: true }) ||
+  a.id.localeCompare(b.id);
 
 // Where the full Assistant tab opens on a new job setup conversation, whose
 // turns are asked from the document when one is named (AssistantTab).
@@ -147,7 +150,10 @@ const StartJobDialog = ({ projectId, client, documents: given, documentId, onClo
   const navigate = useNavigate();
   const [listed, setListed] = useState(given);
   const [worker, setWorker] = useState(null);
-  const [all, setAll] = useState(!documentId);
+  // Nothing is chosen until the person chooses (RP-9: every document was, and
+  // a Start pressed unread ran the job on the whole project). From a
+  // document, that document.
+  const [all, setAll] = useState(false);
   const [chosen, setChosen] = useState(() => new Set(documentId ? [documentId] : []));
   const [query, setQuery] = useState('');
   const [instructions, setInstructions] = useState('');
@@ -350,6 +356,9 @@ const StartJobDialog = ({ projectId, client, documents: given, documentId, onClo
               aria-invalid={instructionsOver ? true : undefined}
             />
             <InstructionsCount text={instructions} max={instructionsMax} />
+            <p className="text-sm text-muted-foreground">
+              The job decides from the instructions what to fill. Its plan shows on the job’s page.
+            </p>
           </div>
 
           <NoWorkerLine worker={worker} />

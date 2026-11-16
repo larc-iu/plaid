@@ -97,6 +97,9 @@ test('Set up job on the Documents tab, with no assistant online, opens the form,
   await expect(dialog).toContainText('No job worker is running. The job waits until one starts.');
   await expect(dialog.getByRole('button', { name: 'Start', exact: true })).toBeDisabled();
   await dialog.getByRole('button', { name: 'Segment, gloss and link' }).click();
+  // Nothing is chosen until the person chooses.
+  await expect(dialog.getByRole('button', { name: 'Start', exact: true })).toBeDisabled();
+  await dialog.getByRole('radio', { name: /All documents/ }).check();
   await dialog.getByRole('button', { name: 'Start', exact: true }).click();
   await expect(page).toHaveURL(jobUrl());
   jobId = page.url().split('/jobs/')[1];
@@ -118,6 +121,7 @@ test('a second job is refused with a link to the first', async ({ page }) => {
   await page.getByRole('menuitem', { name: 'Start without the assistant' }).click();
   const dialog = page.getByRole('dialog');
   await dialog.getByRole('button', { name: 'Translate', exact: true }).click();
+  await dialog.getByRole('radio', { name: /All documents/ }).check();
   await dialog.getByRole('button', { name: 'Start', exact: true }).click();
   const alert = dialog.getByRole('alert');
   await expect(alert).toContainText('This project already has a job.');
