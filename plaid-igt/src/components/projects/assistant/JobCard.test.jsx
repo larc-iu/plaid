@@ -290,6 +290,9 @@ describe('the job card', () => {
         client,
       });
       expect(text(v)).toContain('Started');
+      // No longer a proposal once its job started (RP-1).
+      expect(text(v)).not.toContain('Proposed job');
+      expect(v.container.querySelector('[data-testid="job-card-heading"]').textContent).toBe('Job');
       expect(
         byText(v.container, '[data-testid="job-card-brief"]', 'Gloss ka as come.'),
       ).toBeTruthy();
@@ -356,10 +359,23 @@ describe('the job card', () => {
       expect(all(v.container, 'input')).toHaveLength(0);
     });
 
-    it('says Nothing for a job that fills nothing, and May be edited', async () => {
+    it('says Nothing for a job that fills nothing, and May be edited as a caution with what it allows', async () => {
       const { v } = await draw({ card: card({ fills: [], editsText: true }) });
       expect(row(v, 'Fills')).toBe('Nothing');
-      expect(row(v, 'Text')).toBe('May be edited');
+      expect(row(v, 'Text')).toBe(
+        'May be editedThis job may retype, split, merge or delete words and sentences.',
+      );
+      // The app's caution: the warning tone and an icon, never red.
+      const edit = v.container.querySelector('[data-testid="job-card-text-edits"]');
+      expect(edit.className).toContain('text-warning-foreground');
+      expect(edit.className).not.toContain('destructive');
+      expect(edit.querySelector('svg')).not.toBeNull();
+    });
+
+    it('says Unchanged plainly', async () => {
+      const { v } = await draw({ card: card({ fills: [], editsText: false }) });
+      expect(v.container.querySelector('[data-testid="job-card-text-edits"]')).toBeNull();
+      expect(text(v)).not.toContain('retype');
     });
 
     it('shows them on a settled card too', async () => {

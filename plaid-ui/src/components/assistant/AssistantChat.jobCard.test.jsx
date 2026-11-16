@@ -118,6 +118,39 @@ describe('a job card in the chat', () => {
     expect(all(m.container, 'button').find((b) => b.textContent === 'Start')).toBeUndefined();
   });
 
+  // RP-2: a plan drafted early in a job setup stayed undecided above the card
+  // whose job was then started, and the box still asked for a decision on it.
+  it('no longer asks for a decision on a plan once a job card follows it', async () => {
+    const PLAN = {
+      kind: 'assistant',
+      text: 'A plan.',
+      plan: { id: 'plan-1', summary: '1 change', labels: ['Set a gloss'] },
+      status: null,
+    };
+    const placeholder = async (display) => {
+      const m = await mountChat(
+        chatClient({ meta: META, conv: { ...CONV, display }, answer: 'Answered.' }),
+        { adapter: { ...ADAPTER, JobCard } },
+      );
+      await flush(m);
+      const said = m.container.querySelector('textarea').getAttribute('placeholder');
+      await m.unmount();
+      return said;
+    };
+    expect(await placeholder([CONV.display[0], PLAN])).toContain(
+      'Approve or discard the plan above',
+    );
+    for (const status of ['started', null]) {
+      const said = await placeholder([
+        CONV.display[0],
+        PLAN,
+        { kind: 'user', text: 'make it a job' },
+        { kind: 'assistant', text: 'Here is the job.', job: { ...CARD, status } },
+      ]);
+      expect(said).not.toContain('Approve or discard');
+    }
+  });
+
   it('draws nothing for an app with no job card', async () => {
     const m = await mountChat(fakeClient());
     await flush(m);
@@ -144,7 +177,7 @@ describe('a job card in the Markdown export', () => {
     expect(md(CARD)).toContain('**Proposed job:** Text 1. (Not yet started.)');
     expect(md(CARD)).toContain('Gloss ka as go.');
     const started = md({ ...CARD, status: 'started', sentBrief: 'Gloss ka as come.' });
-    expect(started).toContain('(Started.)');
+    expect(started).toContain('**Job:** Text 1. (Started.)');
     expect(started).toContain('Gloss ka as come.');
     const names = Array.from({ length: 5 }, (_, i) => ({ id: `d${i}`, name: `Text ${i + 1}` }));
     expect(md({ ...CARD, documents: names, count: 12, status: 'discarded' })).toContain(

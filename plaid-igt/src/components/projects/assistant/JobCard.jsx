@@ -1,5 +1,5 @@
 import { useContext, useEffect, useState } from 'react';
-import { Play, X } from 'lucide-react';
+import { PenLine, Play, X } from 'lucide-react';
 import { Badge } from '@ui/components/ui/badge';
 import { Button } from '@ui/components/ui/button';
 import { Label } from '@ui/components/ui/label';
@@ -72,6 +72,27 @@ const Documents = ({ card, projectId }) => {
     </>
   );
 };
+
+// The one row that lets a job rewrite the text: a caution, in the tone and
+// with the icon a plan card gives a change that rewrites the text (never red,
+// which means broken), and what it allows (RP-6).
+const TextRow = ({ edits }) =>
+  edits ? (
+    <>
+      <span
+        className="inline-flex items-center gap-1.5 font-medium text-warning-foreground"
+        data-testid="job-card-text-edits"
+      >
+        <PenLine className="h-3.5 w-3.5 shrink-0" />
+        {setupTextText(true)}
+      </span>
+      <p className="text-xs text-warning-foreground">
+        This job may retype, split, merge or delete words and sentences.
+      </p>
+    </>
+  ) : (
+    setupTextText(false)
+  );
 
 export const JobCard = ({
   card,
@@ -160,7 +181,10 @@ export const JobCard = ({
       )}
     >
       <div className="flex items-start gap-2">
-        <span className="font-medium">Proposed job</span>
+        {/* A proposal until its job started (RP-1). */}
+        <span className="font-medium" data-testid="job-card-heading">
+          {card.status === 'started' ? 'Job' : 'Proposed job'}
+        </span>
         {badge && (
           <Badge variant={badge[0]} className="ml-auto shrink-0">
             {badge[1]}
@@ -184,7 +208,9 @@ export const JobCard = ({
               <FillsNames fills={setup.fills} none="Nothing" />
             </dd>
             <dt className="text-muted-foreground">Text</dt>
-            <dd>{setupTextText(setup.text)}</dd>
+            <dd>
+              <TextRow edits={setup.text} />
+            </dd>
           </>
         )}
       </dl>

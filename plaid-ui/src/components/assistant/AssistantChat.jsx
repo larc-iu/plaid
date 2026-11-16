@@ -1081,8 +1081,11 @@ export const AssistantChat = ({
     // the one answering here for a row of this project.
     onRename: service ? (m, title) => list.rename(m, title, { service, tab: held.tab }) : null,
   };
-  // What the composer invites while a plan waits: a decision.
-  const pendingPlan = display.some((d) => d.plan && d.status === null);
+  // What the composer invites while a plan waits: a decision. Not on a plan a
+  // later reply's job card stands after: the conversation moved on to the job
+  // (RP-2).
+  const lastCard = display.findLastIndex((d) => d.job);
+  const pendingPlan = display.some((d, i) => d.plan && d.status === null && i > lastCard);
   // Nothing is running for this conversation, so anything left mid-flight in
   // it was lost rather than in progress.
   const idle = !busy && !jobFor(active?.id);
