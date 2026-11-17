@@ -85,7 +85,7 @@ def test_a_provider_failure_after_a_plan_says_what_it_says_with_nothing_planned(
         raise Down('upstream 500')
     turn, ws = _planned_then(monkeypatch, second)
     assert len(ws.ops) == 1
-    assert turn.text == '(The model could not answer.)'
+    assert turn.text == '(The model service could not answer.)'
     assert turn.partial is None
     assert turn.usage['total']['calls'] == 1, 'nothing streamed, nothing counted'
 
@@ -109,8 +109,8 @@ def test_the_stored_reply_says_what_happened_and_keeps_the_text_clipped(monkeypa
     conv, _meta = store.load('c1')
     item = conv['display'][-1]
     assert item['kind'] == 'assistant' and item['failed'] is True
-    assert item['text'] == '(The model wrote 32,768 tokens without finishing, so this turn was stopped. ' \
-                           'Ask again, perhaps more narrowly.)'
+    assert item['text'] == '(The model wrote 32,768 tokens without finishing, so this turn stopped. ' \
+                           'Ask about less at a time, for example sentences 1 to 10.)'
     kept = item['partial']
     assert kept.startswith('Staged 47 changes.') and kept.endswith(LOOP)
     assert f'[{len(looped) - PARTIAL_MAX_CHARS} characters cut to fit the store]' in kept

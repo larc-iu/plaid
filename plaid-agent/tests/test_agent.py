@@ -303,7 +303,8 @@ def test_the_operators_timeout_is_the_model_services_flag_and_reaches_the_model(
     svc.setup(service_args(timeout=45.0))
     assert svc.cfg.timeout == 45.0
     assert svc.turn_failure_line(agent.litellm.Timeout('slow', model='x', llm_provider='openai')) \
-        == 'The model did not answer within 45 seconds.'
+        == ('The model service did not answer within 45 seconds. Nothing was changed. '
+            'Retry to send the same message.')
 
 
 def test_a_turns_step_line_counts_the_changes_its_plan_holds(monkeypatch):

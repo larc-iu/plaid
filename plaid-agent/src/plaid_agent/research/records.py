@@ -48,7 +48,7 @@ STEP_LIMIT = re.compile(re.escape(agent.STEP_LIMIT_STOP) + r'\s*$')
 CUT_AT_LENGTH = re.compile(r"\*\(The reply was cut off at the model's output limit\.\)\*\s*$")
 # The error a turn ends with when a model call reached its output cap
 # (agent.cut_line), which replaced the note above.
-CUT_AT_CAP = re.compile(r'^The model wrote (\S+ tokens )?without finishing, so this turn was stopped\.')
+CUT_AT_CAP = re.compile(r'^The model wrote (\S+ tokens )?without finishing, so this turn (was )?stopped\.')
 EMPTY_REPLY = f'({agent.EMPTY_REPLY})'
 # The reply of a turn whose call for words after its plan failed
 # (agent.NO_ANSWER): the plan was kept.

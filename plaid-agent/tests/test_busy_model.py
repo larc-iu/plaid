@@ -172,9 +172,9 @@ def test_the_other_passing_failures_keep_the_short_schedule(monkeypatch, clock):
     with pytest.raises(agent.litellm.InternalServerError) as e:
         _run()
     assert len(calls) == agent.RETRIES + 1
-    assert model_failure_line(e.value) == 'The model could not answer.'
+    assert model_failure_line(e.value) == 'The model service did not answer.'
     conn = agent.litellm.APIConnectionError('reset', model='x', llm_provider='openai')
-    assert model_failure_line(conn) == 'The model could not answer.'
+    assert model_failure_line(conn) == 'The model service did not answer.'
     assert not llm.is_busy(conn, agent.litellm) and llm.is_busy(busy(), agent.litellm)
     # The openai SDK's own 429, raised as it is, is a busy refusal too.
     import httpx
@@ -217,11 +217,11 @@ def test_the_service_shows_the_wait_and_records_the_busy_line(monkeypatch, clock
     _script(monkeypatch, *[busy()] * 50)
     helper = Helper()
     _service().process_request(_request(client), helper)
-    assert helper.errors == ['The model is busy. Try again in a minute.']
+    assert helper.errors == ['The model is busy. Try again in a minute. Nothing was changed.']
     assert any(m == 'The model is busy. Waiting for a free slot…' for _, m in helper.progress_log)
     conv, meta = store.load('c1')
     item = conv['display'][-1]
-    assert item['kind'] == 'error' and item['text'] == 'The model is busy. Try again in a minute.'
+    assert item['kind'] == 'error' and item['text'] == 'The model is busy. Try again in a minute. Nothing was changed.'
     assert meta['pending'] is None
     assert turn_end(item) == 'busy'
     assert turn_end({**item, 'lost': True}) == 'busy'

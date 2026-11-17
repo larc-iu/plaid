@@ -18,8 +18,8 @@ from . import prompt as shared_prompt
 from .guidelines import in_reading_order
 from .limits import TRANSCRIPT_WINDOW_SHARE
 from .reach import Reach
-from .agent import (TurnCancelled, TurnFailed, turn_reply_round, turn_trace, context_window, model_failure_line,
-                    run_turn, token_counter)
+from .agent import (TurnCancelled, TurnFailed, turn_reply_round, turn_trace, context_window, ended_line,
+                    failed_turn_messages, model_failure_line, run_turn, token_counter)
 from .files import Attachments, FileKeeper
 from .garble import seed
 from .guidelines import in_context as guidelines_in_context
@@ -243,13 +243,17 @@ class Turn:
             line = self.turn_failure_line(e)
             steps, partial = turn_trace(e)
             # The user's message stays in the model transcript whatever the
-            # model call did, as on a stop.
+            # model call did, as on a stop, and so do the calls the turn made
+            # and their results, with a note that no reply followed: the next
+            # message ("continue") is read with what the turn already did
+            # (survey 2026-11-17 item 1). Retry takes them off with the
+            # question (`rewind_for_retry`).
             self._write(store, conv_id,
                         turn_ending(conv, transcript,
                                     error_item(line, model=model, version=self.version,
                                                service=self.service_id, steps=steps, partial=partial,
                                                reply_round=turn_reply_round(e)),
-                                    fit=fit),
+                                    failed_turn_messages(e), fit=fit),
                         request_id, model)
             response_helper.error(line)
             return
@@ -275,7 +279,7 @@ class Turn:
         if failure is not None:
             # The turn's last model call failed and its plan was kept: the
             # reply is the line the turn would have failed with.
-            text = f'({self.turn_failure_line(failure)})'
+            text = f'({self.turn_failure_line(failure, ended=False)})'
         item = assistant_item(text, plan, self.citations(ws, text),
                               turn.steps, turn.summary, model, usage,
                               guidelines_in_context(getattr(project, 'guidelines', None) or []),
@@ -356,16 +360,19 @@ class Turn:
         measure = token_counter(model)
         return int(window * TRANSCRIPT_WINDOW_SHARE) - measure(overhead), measure
 
-    def turn_failure_line(self, e: BaseException) -> str:
+    def turn_failure_line(self, e: BaseException, ended: bool = True) -> str:
         """What the reader is told when a turn fails: one plain line. The
         exception itself went to the operator's log. A provider's error is
         never quoted (it names the library and can carry the endpoint, the
         request and the key), and anything else passes through
-        ``requester_message``, which strips URLs and secrets."""
+        ``requester_message``, which strips URLs and secrets. ``ended``: the
+        turn has no answer, so a provider's failure says too that nothing was
+        changed and what Retry does (`agent.ended_line`). Beside a kept plan
+        the line is the fact alone, as the card is the turn's answer."""
         if isinstance(e, TurnFailed):
             return str(e)
-        return (model_failure_line(e, self.cfg.timeout)
-                or f'The assistant could not answer: {requester_message(e, secrets=self.REQUEST_SECRETS)}')
+        line = ended_line(e, self.cfg.timeout) if ended else model_failure_line(e, self.cfg.timeout)
+        return line or f'The assistant could not answer: {requester_message(e, secrets=self.REQUEST_SECRETS)}'
 
 
 def _held(response_helper):

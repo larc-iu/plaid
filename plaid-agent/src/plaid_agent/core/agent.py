@@ -29,7 +29,7 @@ from plaid_client.workflows.llm import (BUSY_LINE, BUSY_WAITING, RETRIES, TIMEOU
                                         close_stream, is_busy, is_timeout, retrying, transient_errors)
 
 from .bidi import for_model
-from .conversation import DROPPED
+from .conversation import DROPPED, FAILED_TURN
 from .filetools import vouches
 from .limits import cuts
 from .rounds import call_record, new_round
@@ -135,12 +135,16 @@ def output_cap(model: str, stated: Optional[int] = None) -> int:
     return DEFAULT_MAX_OUTPUT_TOKENS
 
 
+#: What the cap line asks the reader for: one concrete narrower ask, in the
+#: words the page uses for the text (survey 2026-11-17 item 1).
+CUT_NEXT = 'Ask about less at a time, for example sentences 1 to 10.'
+
+
 def cut_line(written: Optional[int]) -> str:
     """What the reader is told when a model call reached its output cap."""
     if not written:
-        return 'The model wrote without finishing, so this turn was stopped. Ask again, perhaps more narrowly.'
-    return (f'The model wrote {written:,} tokens without finishing, so this turn was stopped. '
-            'Ask again, perhaps more narrowly.')
+        return f'The model wrote without finishing, so this turn stopped. {CUT_NEXT}'
+    return f'The model wrote {written:,} tokens without finishing, so this turn stopped. {CUT_NEXT}'
 
 
 PING_TIMEOUT_S = 30
@@ -802,6 +806,57 @@ def _plan_snapshot(ws: Any) -> List[str]:
         ([json.dumps(card, sort_keys=True, default=str)] if card is not None else [])
 
 
+def _down_errors() -> tuple:
+    """The provider failures that say the model service did not answer this
+    time, by class: a rate limit, a provider briefly down or unreachable (the
+    ones every model call is tried again for, `transient_errors`), a 502 from
+    a gateway in front of it, and litellm's own class for a provider error it
+    could not map (``litellm.APIError``, which no other litellm class
+    derives from). A stream that went silent is a timeout (`is_timeout`)."""
+    extra = tuple(c for c in (getattr(litellm, 'BadGatewayError', None), getattr(litellm, 'APIError', None))
+                  if isinstance(c, type) and issubclass(c, Exception))
+    return transient_errors(litellm) + extra
+
+
+def passes_again(e: BaseException) -> bool:
+    """Whether a chat's model call that failed with ``e`` after tools ran in
+    its turn is tried once more (`_run_turn`'s ``ask``). A fixed list by
+    class, never by the error's text: the model service did not answer
+    (:func:`_down_errors`, :func:`is_busy`, :func:`is_timeout`). Never a stop
+    (:class:`TurnCancelled`), never the product's own ending of a call
+    (:class:`TurnFailed`: the output limit, the repeat guard, an empty reply),
+    and never a request the provider refused as such (a bad request, a
+    transcript too long, a refused key or content), which would be refused
+    the same way again."""
+    if isinstance(e, (TurnCancelled, TurnFailed)) or too_long(e):
+        return False
+    return is_busy(e, litellm) or is_timeout(e, litellm) or isinstance(e, _down_errors())
+
+
+#: The trace's step for a model call tried once more (`passes_again`).
+RETRY_STEP = 'model_retry'
+RETRY_LABEL = 'Asked the model again: the model service did not answer'
+RETRY_PROGRESS = 'Asking the model again…'
+
+#: The line of a model service that did not answer.
+SERVICE_DOWN_LINE = 'The model service did not answer.'
+#: The line of a provider that refused the request itself (`_REFUSALS`).
+SERVICE_REFUSED_LINE = 'The model service refused the request.'
+#: The line of any other provider error.
+SERVICE_FAILED_LINE = 'The model service could not answer.'
+
+try:  # the provider's refusals of a request as such, by HTTP status (4xx); litellm's derive from these
+    from openai import (AuthenticationError as _Auth, BadRequestError as _Bad, ConflictError as _Conflict,
+                        NotFoundError as _NotFound, PermissionDeniedError as _Denied,
+                        UnprocessableEntityError as _Unprocessable)
+    _REFUSALS: tuple = (_Bad, _Auth, _Denied, _NotFound, _Conflict, _Unprocessable)
+except ImportError:  # pragma: no cover - litellm depends on openai
+    _REFUSALS = ()
+#: What an ended turn's line adds: what the turn left, and what Retry does.
+NOTHING_CHANGED = 'Nothing was changed.'
+SEND_AGAIN = 'Retry to send the same message.'
+
+
 def model_failure_line(e: BaseException, timeout: Optional[float] = None) -> Optional[str]:
     """One plain line for a failure of the model provider, or None when the
     failure is not the provider's.
@@ -815,13 +870,29 @@ def model_failure_line(e: BaseException, timeout: Optional[float] = None) -> Opt
     if is_busy(e, litellm):
         return BUSY_LINE
     if is_timeout(e, litellm):
-        return f'The model did not answer within {timeout:g} seconds.' if timeout \
-            else 'The model did not answer in time.'
+        return f'The model service did not answer within {timeout:g} seconds.' if timeout \
+            else 'The model service did not answer in time.'
     if _ProviderError and isinstance(e, _ProviderError):
         if too_long(e):
             return TOO_LONG_LINE
-        return 'The model could not answer.'
+        if passes_again(e):
+            return SERVICE_DOWN_LINE
+        return SERVICE_REFUSED_LINE if isinstance(e, _REFUSALS) else SERVICE_FAILED_LINE
     return None
+
+
+def ended_line(e: BaseException, timeout: Optional[float] = None) -> Optional[str]:
+    """The line of a turn that ``e`` ended with no answer, when the provider
+    failed: :func:`model_failure_line`, that nothing was changed, and that
+    Retry sends the same message where the model service did not answer (a
+    busy one says when itself, a refused request would be refused again).
+    None when the failure is not the provider's."""
+    line = model_failure_line(e, timeout)
+    if line is None or line == TOO_LONG_LINE:
+        return line
+    if passes_again(e) and not is_busy(e, litellm):
+        return f'{line} {NOTHING_CHANGED} {SEND_AGAIN}'
+    return f'{line} {NOTHING_CHANGED}'
 
 
 #: What the reader is told when a turn does not fit the model even after the
@@ -1062,6 +1133,49 @@ def turn_trace(e: BaseException):
     return list(getattr(e, 'turn_steps', None) or []), getattr(e, 'turn_partial', None) or ''
 
 
+def turn_messages(e: BaseException) -> List[Dict[str, Any]]:
+    """The messages a turn that ended with ``e`` added to the transcript, as
+    :func:`run_turn` left them on the exception: its calls and their results,
+    up to the last call answered whole (:func:`answered_whole`). Empty for an
+    exception raised anywhere else."""
+    return list(getattr(e, 'turn_messages', None) or [])
+
+
+def failed_turn_messages(e: BaseException) -> List[Dict[str, Any]]:
+    """What a chat turn that failed with ``e`` leaves in the model
+    transcript after its question: the calls it made and their results
+    (:func:`turn_messages`) and a note that no reply followed, saying why
+    when the reason is one the model can act on, each marked
+    :data:`FAILED_TURN`. Nothing when the turn made no call."""
+    kept = turn_messages(e)
+    if not kept:
+        return []
+    if isinstance(e, TurnFailed) and getattr(e, 'cut_at', None):
+        why = ': the model reached its output limit.'
+    elif passes_again(e):
+        why = ': the model service did not answer.'
+    else:
+        why = '.'
+    note = {'role': 'user', 'content': f'(note) Your turn ended here without a reply{why}'}
+    return [{**m, FAILED_TURN: True} for m in kept + [note]]
+
+
+def answered_whole(new: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """``new`` up to the end of its last model message whose tool calls all
+    have their results: a call with no result after it is refused by a
+    provider on every later request."""
+    waiting: set = set()
+    whole = 0
+    for i, m in enumerate(new):
+        if m.get('role') == 'assistant':
+            waiting = {c.get('id') for c in m.get('tool_calls') or []}
+        elif m.get('role') == 'tool':
+            waiting.discard(m.get('tool_call_id'))
+        if not waiting:
+            whole = i + 1
+    return new[:whole]
+
+
 def turn_reply_round(e: BaseException) -> Optional[str]:
     """The round a turn that ended with ``e`` stored for the reasoning of the
     model call under way (the reader watched it stream), or None."""
@@ -1153,6 +1267,7 @@ def run_turn(cfg: ModelConfig, kit: Toolkit, ws: Any, system: str, transcript: L
                 reply_round = kept['id']
         try:
             e.turn_steps, e.turn_partial, e.turn_reply_round = trace, partial, reply_round
+            e.turn_messages = answered_whole(live.get('new') or [])
         except AttributeError:  # an exception type that takes no attributes keeps none
             pass
         raise
@@ -1181,6 +1296,8 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
               shrink: Optional[Shrink] = None, pace: Optional[Any] = None) -> TurnResult:
     history = _clean_transcript(transcript)
     new: List[Dict[str, Any]] = []
+    # What the turn added, for a turn that ends with an exception (`turn_messages`).
+    live['new'] = new
     # The reasoning of this turn's own calls, by the message it came with.
     # Never part of ``new``, which is the transcript kept and sent on later
     # turns (ruling D1): only with ``cfg.keep_reasoning`` is it sent back, and
@@ -1325,8 +1442,30 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
 
     def ask(kwargs: Dict[str, Any], messages: Callable[[], List[Dict[str, Any]]]):
         """One model call, ended with :class:`TurnFailed` when it reached
-        its output cap (`unless_capped`)."""
-        return unless_capped(asked_once(kwargs, messages), kwargs.get('max_tokens'))
+        its output cap (`unless_capped`).
+
+        In a chat, a call that fails after tools have run in this turn, in a
+        way :func:`passes_again` lists, is asked once more on the turn as it
+        stands, so the steps already taken are not thrown away with it
+        (survey 2026-11-17 item 1). The trace says so with a step of its own
+        (:data:`RETRY_LABEL`), and the provider's own words go to the
+        operator's log only. A second failure ends the turn as before. A
+        job's calls are not asked again here: its pieces and planning have
+        their own rules (`core.job.Pace`)."""
+        try:
+            return unless_capped(asked_once(kwargs, messages), kwargs.get('max_tokens'))
+        except TurnCancelled:
+            raise
+        except Exception as e:
+            if pace is not None or not any(m.get('role') == 'tool' for m in new) or not passes_again(e):
+                raise
+            print(f'{cfg.model}: a model call failed after tools ran in the turn; asking once more')
+            traceback.print_exception(e)
+            trace.append({'id': f'{RETRY_STEP}-{len(trace) + 1}', 'name': RETRY_STEP, 'kind': META,
+                          'label': RETRY_LABEL})
+            on_progress(shown['pct'], RETRY_PROGRESS)
+            return unless_capped(asked_once({**kwargs, 'messages': messages()}, messages),
+                                 kwargs.get('max_tokens'))
 
     def unless_capped(resp, limit: Optional[int] = None):
         """``resp``, unless the model was still writing when the call

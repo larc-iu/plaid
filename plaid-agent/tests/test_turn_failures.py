@@ -215,8 +215,8 @@ def test_a_call_that_reaches_the_cap_ends_the_turn_and_keeps_what_it_wrote(monke
     tools = []
     with pytest.raises(TurnFailed) as e:
         _turn(monkeypatch, Script(resp), lambda ws, n, a: tools.append(n) or 'ok')
-    assert str(e.value) == ('The model wrote 32,768 tokens without finishing, so this turn was stopped. '
-                            'Ask again, perhaps more narrowly.')
+    assert str(e.value) == ('The model wrote 32,768 tokens without finishing, so this turn stopped. '
+                            'Ask about less at a time, for example sentences 1 to 10.')
     assert tools == [], 'a call cut off mid tool call runs no tool'
     steps, partial = agent.turn_trace(e.value)
     assert partial == 'Half a'
@@ -420,9 +420,9 @@ def _provider_errors():
 
 def test_a_provider_failure_is_one_plain_line():
     errors = _provider_errors()
-    assert model_failure_line(errors['timeout']) == 'The model did not answer in time.'
-    assert model_failure_line(errors['server']) == 'The model could not answer.'
-    assert model_failure_line(errors['connection']) == 'The model could not answer.'
+    assert model_failure_line(errors['timeout']) == 'The model service did not answer in time.'
+    assert model_failure_line(errors['server']) == 'The model service did not answer.'
+    assert model_failure_line(errors['connection']) == 'The model service did not answer.'
     assert model_failure_line(errors['window']) == 'This conversation is too long for the model. Start a new conversation.'
     assert model_failure_line(RuntimeError('a bug')) is None
 

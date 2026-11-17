@@ -151,10 +151,16 @@ then arrives whole. Each model call has a deadline, `--timeout` seconds
 (default 120, the same flag the model services take). A call that does not
 answer in that time is tried once more, and then the turn fails and the reader
 can retry it. The deadline counts silence, so a model that keeps writing is
-not stopped by it. `--max-output-tokens N` caps what one model call may write,
+not stopped by it. In a chat, a model call that still fails after tools have
+run in its turn (the model service did not answer: a rate limit, a timeout, a
+provider down, unreachable or behind a failing gateway, by error class) is
+asked once more on the turn as it stands, and the trace shows a step for it.
+A second failure ends the turn. A failed turn's calls and results stay in the
+model transcript with a note that no reply followed, so the next message reads
+what it did, and Retry takes them off with the question. `--max-output-tokens N` caps what one model call may write,
 its reasoning included (default 32768, or less for a model litellm knows to
 write less). A call that reaches the cap ends the turn with a message asking
-the user to try again more narrowly, and what the model wrote stays on the
+the user to ask about less at a time, and what the model wrote stays on the
 turn as a stop's does. `--max-steps` caps the tool-call rounds of one turn
 (default 50), and `--temperature` is passed to the model as it is.
 `--reasoning-effort LEVEL` is sent with every model call as `reasoning_effort`,
