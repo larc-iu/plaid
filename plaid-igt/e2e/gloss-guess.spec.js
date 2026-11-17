@@ -63,9 +63,6 @@ test.beforeAll(async () => {
 });
 
 // Extra throwaway documents for the tie / Shift+Enter / machine-source rows.
-// Each test's documents spell the word their own way (`los…x1`, `los…x2`): a
-// morpheme's gloss counts across documents, so one test's glosses would be
-// another's precedent.
 const extraDocs = [];
 async function mkdoc(body) {
   const full = await client.projects.get(projectId);
@@ -217,7 +214,7 @@ test('A1-10: word-scope fields guess the same way', async ({ page }) => {
 test('A1-06/09: Escape leaves a guessed cell empty; Shift+Enter moves back and adopts nothing', async ({
   page,
 }) => {
-  const d = await mkdoc(`${LOS}x1 ${LOS}x1 ${LOS}x1`);
+  const d = await mkdoc(`${LOS} ${LOS} ${LOS}`);
   await client.spans.create(ids.gloss, [d.m[0]], 'DET.PL');
   await seedAuth(page);
   await page.goto(`/#/projects/${projectId}/documents/${d.id}?tab=analyze`);
@@ -244,7 +241,7 @@ test('A1-06/09: Escape leaves a guessed cell empty; Shift+Enter moves back and a
 });
 
 test('A1-07: a tie yields no guess; breaking the tie brings it back', async ({ page }) => {
-  const d = await mkdoc(`${LOS}x2 ${LOS}x2 ${LOS}x2 ${LOS}x2`);
+  const d = await mkdoc(`${LOS} ${LOS} ${LOS} ${LOS}`);
   await client.spans.create(ids.gloss, [d.m[0]], 'DET.PL');
   await client.spans.create(ids.gloss, [d.m[1]], 'the.PL');
   await seedAuth(page);
@@ -276,7 +273,7 @@ test('A1-11: a guess is offered even when its only source is machine-unverified'
 });
 
 test('A1-13: the list holds the arrows, and Escape hands the grid back', async ({ page }) => {
-  const d = await mkdoc(`${LOS}x3 ${LOS}x3 ${LOS}x3 ${LOS}x3`);
+  const d = await mkdoc(`${LOS} ${LOS} ${LOS} ${LOS}`);
   await client.spans.create(ids.gloss, [d.m[0]], 'DET.PL');
   await client.spans.create(ids.gloss, [d.m[1]], 'DET.PL');
   await client.spans.create(ids.gloss, [d.m[2]], 'the.PL');
@@ -307,7 +304,7 @@ test('A1-13: the list holds the arrows, and Escape hands the grid back', async (
 test('A1-12: Alt+Down lists the values seen for the form, ranked with counts; picking writes it verified', async ({
   page,
 }) => {
-  const d = await mkdoc(`${LOS}x4 ${LOS}x4 ${LOS}x4 ${LOS}x4`);
+  const d = await mkdoc(`${LOS} ${LOS} ${LOS} ${LOS}`);
   await client.spans.create(ids.gloss, [d.m[0]], 'DET.PL');
   await client.spans.create(ids.gloss, [d.m[1]], 'DET.PL');
   await client.spans.create(ids.gloss, [d.m[2]], 'the.PL');
