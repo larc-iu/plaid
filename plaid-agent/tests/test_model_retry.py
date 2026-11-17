@@ -368,3 +368,15 @@ def test_a_busy_or_down_provider_keeps_its_ladder_on_the_one_more_try(monkeypatc
     monkeypatch.setattr(agent, '_complete', complete)
     run_turn(ModelConfig(model='fake/m', stream=False), _kit(), Ws(), 'system', [{'role': 'user', 'content': 'hi'}])
     assert seen == [agent.TIMEOUT_RETRIES, agent.TIMEOUT_RETRIES, 0]
+
+
+def test_litellms_unmapped_error_passes_only_for_a_server_status_or_none():
+    """litellm raises APIError with the provider's own status for one it does
+    not map, 4xx included (REV-SVA-7)."""
+    kw = dict(model='x', llm_provider='openai')
+    assert passes_again(litellm.APIError(503, 'down', **kw))
+    assert not passes_again(litellm.APIError(402, 'payment required', **kw))
+    none = litellm.APIError(500, 'no status', **kw)
+    none.status_code = None
+    assert passes_again(none)
+    assert model_failure_line(litellm.APIError(402, 'payment required', **kw)) == 'The model service could not answer.'

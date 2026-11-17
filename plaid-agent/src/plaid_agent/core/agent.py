@@ -839,6 +839,12 @@ def passes_again(e: BaseException) -> bool:
     the same way again."""
     if isinstance(e, (TurnCancelled, TurnFailed)) or too_long(e):
         return False
+    unmapped = getattr(litellm, 'APIError', None)
+    if isinstance(unmapped, type) and type(e) is unmapped:
+        # litellm's class for a status it does not map carries that status,
+        # a 4xx refusal included: it passes only as a server's failure.
+        status = getattr(e, 'status_code', None)
+        return not isinstance(status, int) or status >= 500
     return is_busy(e, litellm) or is_timeout(e, litellm) or isinstance(e, _down_errors())
 
 
