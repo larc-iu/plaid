@@ -106,13 +106,14 @@ export const refuse = (file) => {
   return null;
 };
 
-// What the SERVER counts for a stored string, not what JavaScript would.
+// Never less than what the SERVER counts for a stored string.
 //
-// The store measures its own JSON, which escapes every non-ASCII character as
-// \uXXXX and every "/" as \/, so a Cyrillic table weighs six times what its
-// characters suggest. Counted the easy way a file sat comfortably under the cap
-// and the write came back 413. (plaid_agent/core/conversation.py says the same
-// thing from the other side, for the same reason.)
+// The store counts the UTF-8 bytes of its JSON. Servers before H20-2 counted
+// that JSON with every non-ASCII character escaped as \uXXXX and every "/" as
+// \/, so a Cyrillic table weighed six times what its characters suggest. This
+// counts the old way, which is never less than the new, so a part cut here fits
+// either server. (plaid_agent/core/files.py and conversation.py count the same
+// way, for the same reason.)
 const costOf = (code) => {
   if (code > 0x7e) return 6; // \uXXXX, and a surrogate pair is two of them
   if (code === 0x22 || code === 0x5c || code === 0x2f) return 2; // " \ /

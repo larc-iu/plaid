@@ -17,9 +17,10 @@ import {
 // send; the parts have to join back to exactly the text; and the sweep must
 // never take a file that belongs to a conversation it simply failed to see.
 
-// The server's own count: clojure.data.json escapes non-ASCII as \uXXXX and
-// "/" as \/. This is the same arithmetic plaid_agent/core/conversation.py
-// `_bytes` does, written out the long way so the two can be checked against it.
+// The count servers before H20-2 made: clojure.data.json escaping non-ASCII as
+// \uXXXX and "/" as \/. The measure keeps it as an upper bound of today's UTF-8
+// count. This is the same arithmetic plaid_agent/core/conversation.py `_bytes`
+// does, written out the long way so the two can be checked against it.
 // A picked file, as the browser hands one over: bytes, not a string. The
 // decode is the reader's, which is the point of the test below.
 const fileOf = (name, text) => ({

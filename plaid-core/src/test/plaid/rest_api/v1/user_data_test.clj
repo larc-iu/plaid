@@ -183,6 +183,31 @@
           (is (= (str "Value exceeds " cap " bytes") (:error body))))
         (is (= 404 (:status (api-call user1-request {:method :get :path (path u1 "over")}))))))))
 
+(deftest the-cap-counts-the-values-utf-8-bytes
+  ;; H20-2: the cap was measured on JSON with every non-ASCII character
+  ;; escaped as \uXXXX (6 bytes, an astral one 12), so a non-Latin value got
+  ;; about a third of the cap a Latin one got. It counts the UTF-8 bytes of
+  ;; the JSON as stored, as the manual and the 413 say.
+  (with-redefs [config/config (assoc-in (if (map? config/config) config/config {}) [:plaid.sql.user-data/config :max-value-mb] 1)]
+    (let [cap (* 1024 1024)
+          beh (str (char 0x0628))
+          ;; U+1F600, four bytes in UTF-8
+          emoji (String. (Character/toChars 0x1F600))]
+      (testing "a two-byte letter: a value at the cap is stored, one over is refused"
+        (is (= 200 (:status (api-call user1-request {:method :put :path (path u1 "beh")
+                                                     :body (apply str (repeat (quot (- cap 2) 2) beh))}))))
+        (is (= 413 (:status (api-call user1-request {:method :put :path (path u1 "beh2")
+                                                     :body (str (apply str (repeat (quot (- cap 2) 2) beh)) "a")})))))
+      (testing "an astral character counts four bytes"
+        (is (= 200 (:status (api-call user1-request {:method :put :path (path u1 "emoji")
+                                                     :body (apply str (repeat (quot (- cap 2) 4) emoji))})))))
+      (testing "a slash counts one byte"
+        (is (= 200 (:status (api-call user1-request {:method :put :path (path u1 "slash")
+                                                     :body (apply str (repeat (- cap 2) "/"))})))))
+      (testing "the stored value reads back as written"
+        (is (= (apply str (repeat 3 beh)) (do (api-call user1-request {:method :put :path (path u1 "few") :body (apply str (repeat 3 beh))})
+                                              (:value (:body (api-call user1-request {:method :get :path (path u1 "few")}))))))))))
+
 (deftest a-prefix-holding-an-astral-character-still-matches
   ;; The prefix is compared with SQLite's `substr`, which counts code points,
   ;; against a length taken with Clojure's `count`, which counts UTF-16 units.

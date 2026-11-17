@@ -412,10 +412,11 @@ class Attachments:
 # --- storing a file a turn fetched ------------------------------------------------
 
 def _cost(ch: str) -> int:
-    """What the store counts for one character of a stored string. The same
-    measure as ``storedBytes`` in plaid-ui's attachments.js: the store escapes
-    every non-ASCII character as \\uXXXX (two of them past the BMP), and ``"``,
-    ``\\`` and ``/`` with a backslash."""
+    """Never less than what the store counts for one character of a stored
+    string. The same measure as ``storedBytes`` in plaid-ui's attachments.js:
+    the store counts UTF-8 bytes, and servers before H20-2 counted every
+    non-ASCII character as \\uXXXX (two of them past the BMP), and ``"``,
+    ``\\`` and ``/`` with a backslash. Counting the old way fits either."""
     o = ord(ch)
     if o > 0xffff:
         return 12

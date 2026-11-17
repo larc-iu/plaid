@@ -106,7 +106,7 @@ Only the owner and admins can read or write it, and nothing in it is audited.
 It is not a place for annotation data, which belongs in layers where it is shared and queryable.
 
 A key is any string, and apps namespace theirs (`igt:assistant:<project>:...`).
-A value is any JSON document up to `[user_data] max_value_mb` (5 MB by default).
+A value is any JSON document up to `[user_data] max_value_mb` (5 MB by default), counted in UTF-8 bytes.
 The store can be listed by key prefix or by a glob over the whole key (`igt:assistant:*:meta:*`), with or without values.
 
 Every entry has a `version` that each write raises by one.

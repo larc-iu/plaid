@@ -46,10 +46,11 @@ def test_prune_never_counts_an_already_dropped_result_twice():
 
 
 def test_a_record_is_measured_the_way_the_server_measures_it():
-    """The store counts clojure.data.json's output, which escapes every
-    non-ASCII character as \\uXXXX. Counted as UTF-8 a Cyrillic conversation
-    weighed a third of what the server saw: it sat under its budget, prune
-    never fired, and the save came back 413."""
+    """Servers before H20-2 counted clojure.data.json's output, which escapes
+    every non-ASCII character as \\uXXXX. Counted as UTF-8 a Cyrillic
+    conversation weighed a third of what such a server saw: it sat under its
+    budget, prune never fired, and the save came back 413. The measure keeps
+    that count, never less than today's UTF-8 one."""
     cyrillic = 'предложение' * 20_000   # 2 bytes per character as UTF-8, 6 escaped
     conv = _conv(messages=[{'role': 'tool', 'tool_call_id': 'c1', 'content': cyrillic}])
     n = conversation_bytes(conv)

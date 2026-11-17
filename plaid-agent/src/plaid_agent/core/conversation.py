@@ -1095,14 +1095,13 @@ PARTIAL_LISTED = 20
 # --- size ---------------------------------------------------------------------
 
 def _bytes(value: Any) -> int:
-    """The bytes the SERVER will count for this value, not the bytes Python
-    would write.
+    """Never less than the bytes the SERVER will count for this value.
 
-    The store measures `clojure.data.json`'s output, which escapes every
-    non-ASCII character as ``\\uXXXX`` and every ``/`` as ``\\/``, and writes
-    no space after a comma or a colon. Counted the Python way a Cyrillic
-    conversation weighed a third of what the server saw: it sat under its
-    budget, prune never fired, and the save came back 413.
+    The store counts the UTF-8 bytes of its JSON, written with no space after
+    a comma or a colon. Servers before H20-2 counted it with every non-ASCII
+    character escaped as ``\\uXXXX`` and every ``/`` as ``\\/``, a Cyrillic
+    conversation three times its UTF-8 size. This counts the old way, which is
+    never less than the new, so a record under its budget fits either server.
     """
     text = json.dumps(value, ensure_ascii=True, separators=(',', ':'))
     return len(text.encode('utf-8')) + text.count('/')

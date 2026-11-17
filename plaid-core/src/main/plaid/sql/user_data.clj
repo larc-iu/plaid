@@ -113,7 +113,8 @@
 (defn put!
   "Upsert `value` (any JSON-able Clojure data) under `key`. Returns
   {:key :updated-at :version}, or {:error :too-large} when the JSON exceeds
-  `max-value-bytes`.
+  `max-value-bytes` in UTF-8, written with no `\\u` escape for a letter outside
+  ASCII and none for `/`.
 
   Every write bumps the entry's `version` (a new entry is 1). With
   `expected-version` the write lands only when the entry is at that version
@@ -122,7 +123,9 @@
   :updated-at}}: the version as it is stored, 0 when there is no entry."
   ([db user-id key value] (put! db user-id key value nil))
   ([db user-id key value expected-version]
-   (let [text (json/write-str value)]
+   ;; the JSON as every JSON column stores it, each character written as
+   ;; itself, so the cap counts the bytes the manual promises (H20-2)
+   (let [text (psc/write-json value)]
      (if (> (count (.getBytes ^String text "UTF-8")) (max-value-bytes))
        {:error :too-large}
        (let [now (psc/now-iso)
