@@ -818,11 +818,13 @@ class Tally:
         a parse of an attached file read "Read across the corpus"): the
         corpus when it loaded a document, queried or used one of the app's
         reads, the attached files it opened by name (or listed), and a
-        calculation when it read neither. A run that staged through plan()
-        keeps the line the plan tool gave (``inner``), and without one says
-        it planned changes (REV-SVA-5)."""
+        calculation when it read neither. A run that staged through ONE
+        plan() call keeps the line the plan tool gave (``inner``). Any other
+        that staged says it planned changes (REV-SVA-5): with several calls
+        the line left is the last call's alone (REV-SVA-R2-1), and the step's
+        own count says how many changes the run staged."""
         from .trace import plural, q
-        if self.plans and inner:
+        if self.plans == 1 and inner:
             return inner
         corpus = bool(self.documents or self.queries or self.read or self.documents_listed or self.read_other)
         files = list(self.files)

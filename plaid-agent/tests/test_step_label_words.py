@@ -121,3 +121,13 @@ def test_code_that_stages_keeps_the_inner_line_and_every_read_counts(calls, inne
     recording() and files() counted as no read."""
     assert _tally_label(calls, inner) == label
 
+
+
+@pytest.mark.parametrize('calls, label', [
+    (['plan', 'plan'], 'Planned changes'),
+    (['load'] + ['plan'] * 40, 'Read across the corpus and planned changes'),
+])
+def test_code_that_staged_through_several_plan_calls_never_takes_one_calls_line(calls, label):
+    """REV-SVA-R2-1: the inner line was whichever plan() call set one last,
+    "Planned 1 change. Kept s3.w2" for a run that staged forty."""
+    assert _tally_label(calls, 'Planned 1 change. Kept s3.w2') == label
