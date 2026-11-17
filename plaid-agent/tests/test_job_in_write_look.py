@@ -194,3 +194,24 @@ def test_a_unit_with_no_end_time_counts_as_someone_there(monkeypatch):
     assert r.in_use(r.newest_change(client, 'd1'), r.own_ref)
 
 
+
+
+def test_every_look_reads_one_operation_of_each_unit(monkeypatch):
+    """REV-HFA-5: core takes a unit's end_time from all of its operations,
+    so the look asks for one (the job's own unit holds thousands)."""
+    client = JobClient({'d1': _doc('d1', 'Story 1', 1)})
+    job = _job(client)
+    r = runner(job)
+    asked = []
+    real = client.documents.audit_page
+
+    def page(document_id, **kw):
+        asked.append(kw.get('ops_limit'))
+        return real(document_id, **kw)
+    client.documents.audit_page = page
+    _person(client, job, 'd1', 1, 'PERSON')
+    r.newest_change(client, 'd1')
+    r.someone_since_mark(client, 'd1')
+    assert asked and set(asked) == {1}
+
+

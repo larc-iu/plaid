@@ -3036,7 +3036,8 @@ class IgtRunner:
         cursor = None
         while True:
             try:
-                page = client.documents.audit_page(document_id, order='desc', limit=20, cursor=cursor) or {}
+                page = client.documents.audit_page(document_id, order='desc', limit=20, cursor=cursor,
+                                                   ops_limit=1) or {}
             except PlaidAPIError as e:
                 raise self.refused(e, document_id) from e
             entries = page.get('entries') if isinstance(page, dict) else page
