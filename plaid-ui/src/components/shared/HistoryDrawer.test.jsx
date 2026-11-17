@@ -54,6 +54,27 @@ describe('HistoryDrawer', () => {
     await view.unmount();
   });
 
+  // REV-HFT-7: the label is stored as written, and each side of its arrow is
+  // isolated where it is shown.
+  it("shows each side of a label's arrow isolated", async () => {
+    const respelled = { ...entry, message: 'Respell \u05e9\u05b8\u05dc → \u05e9\u05dc' };
+    const view = await renderComponent(
+      <HistoryDrawer
+        isOpen
+        onClose={() => {}}
+        auditEntries={[respelled]}
+        loading={false}
+        error={null}
+        onSelectEntry={() => {}}
+        selectedEntry={null}
+      />,
+    );
+    expect(view.container.textContent).toContain(
+      '\u2068Respell \u05e9\u05b8\u05dc\u2069 → \u2068\u05e9\u05dc\u2069',
+    );
+    await view.unmount();
+  });
+
   // REV-RPF2-2: the count of an entry's actions says what it counts.
   it('says what the count of an entry’s actions counts', async () => {
     const view = await renderComponent(drawer(vi.fn()));

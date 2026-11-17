@@ -94,9 +94,7 @@ describe('the respell box', () => {
     const writes = textWrites(client);
     expect(writes).toHaveLength(1);
     expect(writes[0].args[1]).toEqual([{ type: 'replace', index: 4, length: 3, value: 'cat' }]);
-    expect(client.operations.map((o) => o.message)).toContain(
-      'Respell \u2068kat\u2069 → \u2068cat\u2069',
-    );
+    expect(client.operations.map((o) => o.message)).toContain('Respell kat → cat');
   });
 
   it('cancels on Escape and on leaving the box, sending nothing', async () => {

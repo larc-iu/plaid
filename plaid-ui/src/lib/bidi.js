@@ -57,3 +57,12 @@ export const arrowStep = (visualRight, gridRtl) => (visualRight === !!gridRtl ? 
 // joining two right-to-left values into one run that reads backwards. A line
 // drawn from parts puts each value in a `<bdi>` instead.
 export const isolate = (value) => `\u2068${value ?? ''}\u2069`;
+
+// A stored label shown in a list (History, Activity): each side of its arrows
+// isolated, so `Respell كَتَبَ → كتب` reads old to new. Isolated where it is
+// shown, never in what is stored (REV-HFT-7). A label with no arrow, or no
+// label, is given back as it is.
+export const isolateArrowSides = (label) =>
+  typeof label === 'string' && label.includes(' → ')
+    ? label.split(' → ').map(isolate).join(' → ')
+    : label;

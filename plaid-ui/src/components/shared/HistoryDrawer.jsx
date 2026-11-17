@@ -5,6 +5,7 @@ import { Badge } from '../ui/badge.jsx';
 import { cn } from '../../lib/utils.js';
 import { fullTimestamp } from '../../lib/formatTime.js';
 import { readableDescription, operationKindLabel } from '../../lib/auditText.js';
+import { isolateArrowSides } from '../../lib/bidi.js';
 import { Loading } from './Loading.jsx';
 import { Notice } from './Notice.jsx';
 import { useSlide, SLIDE_CLASSES } from '../../hooks/useSlide.js';
@@ -331,7 +332,7 @@ export const HistoryDrawer = ({
                 </span>
               )}
               <KindChip kind={entry.kind} />
-              {unitLabel(entry)}
+              {isolateArrowSides(unitLabel(entry))}
             </span>
             <span className="mt-0.5 block text-xs text-muted-foreground" title={range}>
               {fullTimestamp(entry.time)}

@@ -3,7 +3,7 @@
 // jsdom, not the suite's default happy-dom: `isRtlBox` asks for a resolved
 // `direction`, which is a question only a real layout engine answers.
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { isRtlBox, caretAtArrowEdge, arrowStep, isolate } from './bidi.js';
+import { isRtlBox, caretAtArrowEdge, arrowStep, isolate, isolateArrowSides } from './bidi.js';
 
 let host;
 beforeEach(() => {
@@ -92,5 +92,18 @@ describe('isolate', () => {
   it('puts a value between FSI and PDI, and nothing in an empty one', () => {
     expect(isolate('كتاب')).toBe('\u2068كتاب\u2069');
     expect(isolate(undefined)).toBe('\u2068\u2069');
+  });
+});
+
+// REV-HFT-7: a History label is stored as typed, and its two sides of an
+// arrow are isolated where it is shown, so two right-to-left spellings do not
+// join into one run that reads backwards.
+describe('isolateArrowSides', () => {
+  it('isolates each side of an arrow, and leaves a label with none as it is', () => {
+    expect(isolateArrowSides('Respell \u0643\u062a\u0628 → \u0643\u062a')).toBe(
+      '\u2068Respell \u0643\u062a\u0628\u2069 → \u2068\u0643\u062a\u2069',
+    );
+    expect(isolateArrowSides('Confirm word analysis')).toBe('Confirm word analysis');
+    expect(isolateArrowSides(null)).toBe(null);
   });
 });

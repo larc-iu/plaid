@@ -63,7 +63,6 @@ import { applyReshape } from '@ui/domain/textReshape.js';
 import { reshapeVocabLinks } from './document.js';
 import { pendingId, settledId } from '@ui/domain/pendingIds.js';
 import { notSetUp } from '@ui/domain/setupGuard.js';
-import { isolate } from '@ui/lib/bidi.js';
 import { builtinRun } from '../builtinVersion.js';
 import { isTokenIgnored, orthographyKey, readIgnoredTokens } from '../igtConfig.js';
 import { cpSlice } from '@larc-iu/plaid-client';
@@ -236,9 +235,10 @@ export const tokenMutations = {
         reshapeVocabLinks(vocabs, answer.reshape);
       });
     };
-    // Each spelling isolated, so a right-to-left word does not turn the
-    // arrow around (H16-1).
-    return this._queueWrite(label, write, `Respell ${isolate(old)} → ${isolate(value)}`);
+    // Stored as written. History and Activity isolate each side of the arrow
+    // where they show it (plaid-ui isolateArrowSides), so a right-to-left
+    // respell reads old to new (H16-1, REV-HFT-7).
+    return this._queueWrite(label, write, `Respell ${old} → ${value}`);
   },
 
   // Split a word token at `splitOffset` (relative to token.begin). Wipes any
