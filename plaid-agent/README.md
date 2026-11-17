@@ -580,30 +580,66 @@ The modules below are `igt/` unless they say otherwise.
 `plaid-job-worker` runs the jobs a project's writers start in the app (the core
 manual, "Assistant jobs"): one at a time across the server, under an
 administrator's API token in `.token`, writing as the person who started each.
+One worker serves the whole server. It asks for a job every 30 seconds.
 
 ```sh
 plaid-job-worker --url http://localhost:8080 --model openai/<name> --api-base <base> \
-  --context-window 196608 --model-pool <key name> [--trace-dir DIR]
+  --context-window 196608 --model-pool <key name> --reasoning-effort low [--trace-dir DIR]
 ```
 
-`--model-pool` names the model key it shares with the assistants and the model
-services (give them the same `--model-pool`), so a job waits while people use
-the model. Without it a job waits for nobody. `--trace-dir` keeps every model
-call of every stretch on the worker's disk, readable by the worker's account
-alone, as `<job>/run-<id>/<document>/stretch-NNNN/round-NN-<id>.json`, a
-`run-` folder for each time a worker takes the job. `--scripted-model PATH` answers
-from a file, for tests and rehearsals. A piece's model call that reaches its
-output limit (`--max-output-tokens`, its reasoning included) is dropped, and
-the piece is asked again once with what it staged kept. A second such call
-fails the stretch, which is halved, and nothing the piece staged is written:
-a stretch writes all of its sentences or none. `--piece-output-tokens N` sets
-a lower limit on a piece's calls alone (default 0, none: measured, a lower
-limit made jobs slower). The job's prompt and tools are its own
-(`docs/igt/SAMPLE_JOB_PROMPT.md`): `jobworker.py` (the command line),
-`core/job.py` (the loop, the heartbeat, the budgets and halving, yielding, the
-report) and `igt/job.py` (targets, the stretch's input, the job's guards, the
-write under the lock, harmonize, the entries pass). Its writes are machine
-proposals (`core/plan.py`, stamp mode `machine`), never verified work.
+Its flags, as `plaid-job-worker --help` gives them:
+
+- `--url URL` (required): the Plaid server.
+- `--model MODEL` (required): a litellm model string, such as `openai/<name>`
+  with `--api-base`. `--api-base` and `--api-key` as for the assistants.
+- `--context-window TOKENS`: how many tokens the model can be sent, used in
+  place of litellm's figure.
+- `--max-output-tokens N`: the most one model call may write, its reasoning
+  included (default 32768, or less for a model litellm knows to write less).
+- `--piece-output-tokens N`: a lower limit for the calls of a job's pieces
+  alone (default 0: none, the model's own cap). Measured, a lower limit made
+  jobs slower. A negative number is refused at startup.
+- `--timeout S`: seconds the model may send nothing before a call is given
+  up, tried once more after a timeout (default 120).
+- `--model-pool NAME`: the model key the worker shares with the assistants
+  and the model services. Give them all the same name, and a job waits while
+  any of them is answering someone, until none has for a minute. Without it a
+  job waits for nobody, and the worker says so at startup.
+- `--reasoning-effort LEVEL`: sent with every model call, in the provider's
+  own word for it (for example `low` or `high`).
+- `--trace-dir DIR`: keep every model call on the worker's disk (below).
+- `--apps igt`: the apps whose jobs it takes (default: every one it can run).
+- `--scripted-model PATH`: answer every model call from a JSON file instead of
+  a model, for tests and rehearsals. Refused together with `--api-base`.
+- `--once`: take one job if one waits, run it, and exit.
+
+At startup the worker asks the model one question. A failure that passes (a
+rate limit, a provider at capacity or down, a timeout, no connection) is
+logged in one line and asked again every five minutes, so a worker started
+while the endpoint is full is there once it is not. Any other failure (a
+refused key, an unknown model) prints the provider's complaint and exits 1.
+Under `--once` the question is asked once and any failure exits 1.
+
+A piece's model call that reaches its output limit (`--max-output-tokens`,
+or `--piece-output-tokens` when set) is dropped, and the piece is asked again
+once, with what it staged kept. A second such call fails the stretch, which
+is halved, and nothing the piece staged is written: a stretch writes all of
+its sentences or none. A call of the planning or of the report's prose that
+reaches the model's cap fails and is not asked again.
+
+`--trace-dir` keeps every model call of a job on the worker's disk, in folders
+readable by the worker's account alone, as
+`<job>/run-<id>/<folder>/piece-NNNN/round-NN-<id>.json`: one `run-` folder for
+each time a worker takes the job, and `<folder>` the document the piece
+worked, or `plan`, `selection`, `summary` or `findings`. Nothing else keeps a
+job's transcripts.
+
+The job's prompt and tools are its own (`docs/igt/SAMPLE_JOB_PROMPT.md`):
+`jobworker.py` (the command line), `core/job.py` (the loop, the heartbeat,
+the budgets and halving, yielding, the report) and `igt/job.py` (targets, the
+stretch's input, the job's guards, the write under the lock, harmonize, the
+entries read). Its writes are machine proposals (`core/plan.py`, stamp mode
+`machine`), never verified work.
 
 ## Research dataset
 
