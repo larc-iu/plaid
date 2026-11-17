@@ -3058,13 +3058,15 @@ class IgtRunner:
             if not cursor:
                 return None, top
 
-    def newest_change(self, client, document_id: str) -> Optional[Dict[str, Any]]:
+    def newest_change(self, client, document_id: str, keep: bool = False) -> Optional[Dict[str, Any]]:
         """The look before a piece (SPEC 5.2): the newest unit of the
         document's History by anyone else that ended after the job was made
         and within the quiet window, or None. It also sets the document's
         mark (:attr:`seen_marks`) for the piece that follows: the newest unit's
         end time, core's own stamp, or the job's making for a document a
-        stopped worker was working in."""
+        stopped worker was working in. ``keep``: an older mark stays (the
+        piece after a text edit, inside a stretch whose later halves write
+        against the stretch's mark, REV-HFA-R2-1)."""
         created = self.created()
         since = max(created, self.job.now() - JOB_PERSON_QUIET_S)
         unit, top = self.someone_after(client, document_id, since)
@@ -3072,7 +3074,9 @@ class IgtRunner:
             self.in_flight.discard(document_id)
             self.seen_marks[document_id] = created
         else:
-            self.seen_marks[document_id] = top if top is not None else created
+            now = top if top is not None else created
+            old = self.seen_marks.get(document_id) if keep else None
+            self.seen_marks[document_id] = now if old is None else min(old, now)
         return unit
 
     def mark(self, client, document_id: str) -> None:
@@ -3392,7 +3396,7 @@ class IgtRunner:
                 self.after_text_put_off.add(document_id)
                 self.text_edited[document_id] = set(ids)
             raise Deferred(document_id)
-        if self.in_use(self.newest_change(client, document_id), self.own_ref):
+        if self.in_use(self.newest_change(client, document_id, keep=True), self.own_ref):
             put_off()
         ws = JobWorkspace(client, project)
         try:

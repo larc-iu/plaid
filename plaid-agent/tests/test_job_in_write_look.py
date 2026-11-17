@@ -215,3 +215,22 @@ def test_every_look_reads_one_operation_of_each_unit(monkeypatch):
     assert asked and set(asked) == {1}
 
 
+
+
+def test_the_look_of_the_piece_after_a_text_edit_never_moves_a_mark_forward(monkeypatch):
+    """REV-HFA-R2-1: the piece after a text edit runs inside a stretch whose
+    later halves still write against the stretch's mark. Its look keeps the
+    older mark, so it cannot hide a person who wrote after the stretch's
+    look. The walk's look still marks afresh for each new piece."""
+    client = JobClient({'d1': _doc('d1', 'Story 1', 1)})
+    job = _job(client)
+    r = runner(job)
+    assert not r.in_use(r.newest_change(client, 'd1'), r.own_ref)
+    mark = r.seen_marks['d1']
+    _person(client, job, 'd1', 1, 'PERSON')
+    job.now = (lambda base: (lambda: base + 3000))(job.now())
+    assert not r.in_use(r.newest_change(client, 'd1', keep=True), r.own_ref), 'quiet by the window'
+    assert r.seen_marks['d1'] == mark, 'the older mark kept'
+    assert r.someone_since_mark(client, 'd1')
+    r.newest_change(client, 'd1')
+    assert r.seen_marks['d1'] != mark, 'the walk marks afresh'

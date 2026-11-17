@@ -402,11 +402,11 @@ def test_a_merge_between_the_walks_read_and_the_stretchs_puts_the_sentence_out_o
     real = r.newest_change
     looks = []
 
-    def newest_change(client_, document_id):
+    def newest_change(client_, document_id, **kw):
         looks.append(document_id)
         if len(looks) == 2:
             _person_leaves(client, merged, clock)
-        return real(client_, document_id)
+        return real(client_, document_id, **kw)
     monkeypatch.setattr(r, 'newest_change', newest_change)
     seen = _written(monkeypatch)
     assert r.document('d1') == 'done'
