@@ -133,7 +133,7 @@ test('a second job is refused with a link to the first', async ({ page }) => {
   await dialog.getByRole('radio', { name: /All documents/ }).check();
   await dialog.getByRole('button', { name: 'Start', exact: true }).click();
   const alert = dialog.getByRole('alert');
-  await expect(alert).toContainText('This project already has a job.');
+  await expect(alert).toContainText('This project already has a job');
   await alert.getByRole('link', { name: 'Open it' }).click();
   await expect(page).toHaveURL(jobUrl(jobId));
 });
