@@ -70,11 +70,14 @@ def shared_schemas(*, ref: str, comment_field: bool = False, restore: bool = Fal
     }
 
 
-def _asks_help(args) -> bool:
-    """Whether a plan tool's call only asks for its help text: action
-    "help", or help true."""
-    return isinstance(args, dict) and (str(args.get('action') or '').strip().lower() == 'help'
-                                       or args.get('help') is True)
+def _only_reads(name: str, args, read_actions: Dict[str, tuple]) -> bool:
+    """Whether a plan tool's call only reads: action "help", help true, or
+    one of the tool's own read actions (``build``'s ``read_actions``).
+    guidelines' are core's own (``reading`` in ``call_tool``)."""
+    if not isinstance(args, dict):
+        return False
+    act = str(args.get('action') or '').strip().lower()
+    return act == 'help' or args.get('help') is True or act in read_actions.get(name, ())
 
 
 class Kit(NamedTuple):
@@ -101,7 +104,8 @@ def follow(tools: List[Dict[str, Any]], after: Dict[str, str]) -> List[Dict[str,
 
 def build(tools: List[Dict[str, Any]], impl: Dict[str, Callable], *, manual: str, web: str, code: str,
           code_functions: str = '',
-          rewrite: Optional[Callable[[Callable, Dict[str, Any]], Dict[str, Any]]] = None) -> Kit:
+          rewrite: Optional[Callable[[Callable, Dict[str, Any]], Dict[str, Any]]] = None,
+          read_actions: Optional[Dict[str, tuple]] = None) -> Kit:
     """An app's whole tool table and the dispatch behind it, from the tools it
     declares. Core's own tools are added in one order for every app:
     the guidelines (``manual`` says what they are about), the web (``web`` what
@@ -139,7 +143,8 @@ def build(tools: List[Dict[str, Any]], impl: Dict[str, Callable], *, manual: str
             # A Reader is refused before the tool reads anything: before a
             # corpus-wide change queries the corpus and before any other
             # refusal (REV-SVB-10). add_op refuses again, as the backstop.
-            if name in write and not reading and not _asks_help(args) and hasattr(ws, 'refuse_reader'):
+            if (name in write and not reading and not _only_reads(name, args, read_actions or {})
+                    and hasattr(ws, 'refuse_reader')):
                 ws.refuse_reader()
         except ToolError as e:
             return refused_for(e)

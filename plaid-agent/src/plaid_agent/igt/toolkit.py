@@ -616,7 +616,9 @@ TOOLS = toolkit.follow(TOOLS, {'set_field_for_form': 'set_field', 'replace_in_fi
 TOOLS, WRITE_TOOLS, tools_for, call_tool = toolkit.build(
     TOOLS, _IMPL, manual='interlinear text: how this project glosses, segments and translates',
     web='this corpus and its lexicons', code='the texts and lexicons',
-    code_functions=', lexicon(), recording()', rewrite=entry_form_named_form)
+    code_functions=', lexicon(), recording()', rewrite=entry_form_named_form,
+    # A plan tool's actions that only read, open to a Reader (REV-SVB-R2-2).
+    read_actions={'tagsets': ('check',)})
 
 #: The search tool as the chat offers it: a plan's ``search`` takes its arguments (SF).
 SEARCH_TOOL = next(t for t in TOOLS if t['function']['name'] == 'search')

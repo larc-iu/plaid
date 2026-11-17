@@ -86,3 +86,17 @@ def test_the_reader_refusal_comes_first_and_before_a_corpus_wide_scan():
     assert out == f'Error: {READER}', out
     assert not [k for k, _ in w.client.calls if k in ('query', 'read')], w.client.calls
     assert not call_tool(w, 'senses', {'action': 'help'}).startswith('Error')
+
+
+@pytest.mark.parametrize('name,args', [
+    ('tagsets', {'action': 'help'}),
+    ('tagsets', {'action': 'check', 'tagset': 'Leipzig'}),
+    ('senses', {'action': 'help'}),
+    ('guidelines', {'action': 'help'}),
+    ('guidelines', {'action': 'read'}),
+    ('analyze_sentence', {'help': True}),
+], ids=lambda v: v if isinstance(v, str) else str(v.get('action', v.get('help'))))
+def test_a_plan_tools_read_actions_are_open_to_a_reader(name, args):
+    """REV-SVB-R2-2: every action of a plan tool that only reads."""
+    out = call_tool(_ws('readers'), name, args)
+    assert 'is a Reader' not in out, out
