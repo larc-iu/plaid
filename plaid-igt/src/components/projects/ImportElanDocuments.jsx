@@ -100,6 +100,9 @@ export const ImportElanDocuments = () => {
   // Documents a failed run here made and could not remove. A retry redoes
   // them rather than keep them, since no one has worked on them.
   const [leftovers, setLeftovers] = useState([]);
+  // The files a failed run here finished. A retry keeps their documents, so
+  // Add copies does not copy them twice.
+  const [finished, setFinished] = useState([]);
   const stopRef = useRef(false);
   // Adding documents here may add fields, which is a maintainer's to do. The
   // screen waits for the project, so a reader who came by address never sees
@@ -233,6 +236,7 @@ export const ImportElanDocuments = () => {
         mixQuality,
         prior: retrying ? null : prior,
         redo: leftovers,
+        done: finished,
         priorMode,
         shouldStop: () => stopRef.current,
         onWarning: (text, { document }) => setLog((l) => [...l, { text, document }]),
@@ -262,7 +266,9 @@ export const ImportElanDocuments = () => {
         message: humanizeError(e),
         unfinishedRemoved: e.unfinishedRemoved === true,
         unfinishedLeft: e.unfinishedLeft ?? null,
+        replacedGone: e.replacedGone ?? null,
       });
+      if (e.finishedSources?.length) setFinished((ids) => [...ids, ...e.finishedSources]);
       if (e.unfinishedLeft) setLeftovers((ids) => [...ids, e.unfinishedLeft.id]);
       setStage('review');
       // What the run made before it stopped is in the project now, and a
@@ -484,6 +490,12 @@ export const ImportElanDocuments = () => {
                     <p className="mt-1 text-xs">{runError.message}</p>
                     {runError.unfinishedRemoved && (
                       <p className="mt-1 text-xs">The unfinished document was removed.</p>
+                    )}
+                    {runError.replacedGone && (
+                      <p className="mt-1 text-xs">
+                        “{runError.replacedGone.name}”, which it replaces, was already deleted.
+                        Retrying makes it again.
+                      </p>
                     )}
                     {runError.unfinishedLeft && (
                       <p className="mt-1 text-xs">

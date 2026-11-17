@@ -626,6 +626,91 @@ describe('runElanImport', () => {
     });
   });
 
+  // H8-2, H8-3: a run that fails in its second document, after the first was
+  // finished.
+  describe('a run that fails partway', () => {
+    const TWO = {
+      ...BUILD,
+      documents: [BUILD.documents[0], { ...BUILD.documents[0], id: 'b.eaf', name: 'Other' }],
+    };
+    const both = {
+      documents: [
+        { id: 'oldA', name: 'Story' },
+        { id: 'oldB', name: 'Other' },
+      ],
+      docMetadata: {
+        oldA: { importSource: 'oldA:a.eaf' },
+        oldB: { importSource: 'oldB:b.eaf' },
+      },
+    };
+    // The spans of the second document fail.
+    const failingSecond = (client) => {
+      let n = 0;
+      const spans = client.spans.bulkCreate;
+      client.spans.bulkCreate = async (specs) => {
+        if (client.calls.filter(([m]) => m === 'documents.create').length === 2 && n++ === 0) {
+          throw new Error('server error');
+        }
+        return spans(specs);
+      };
+      return client;
+    };
+
+    it('names the files it finished, and a retry under Add copies copies only the rest', async () => {
+      const client = failingSecond(stubClient(both));
+      const err = await runElanImport({
+        client,
+        projectId: 'p1',
+        build: TWO,
+        priorMode: 'copy',
+      }).catch((e) => e);
+      expect(err.message).toBe('server error');
+      expect(err.finishedSources).toEqual(['a.eaf']);
+
+      // The copy of a.eaf carries no mark, so the retry finds only the
+      // originals, and is told what the failed run finished.
+      const retry = stubClient(both);
+      const res = await runElanImport({
+        client: retry,
+        projectId: 'p1',
+        build: TWO,
+        priorMode: 'copy',
+        done: err.finishedSources,
+      });
+      expect(res).toMatchObject({ copied: 1, skipped: 1 });
+      const made = retry.calls.filter(([m]) => m === 'documents.create').map(([, name]) => name);
+      expect(made).toEqual(['Other']);
+    });
+
+    it('under Replace, says which document it had already deleted', async () => {
+      const client = failingSecond(stubClient(both));
+      const err = await runElanImport({
+        client,
+        projectId: 'p1',
+        build: TWO,
+        priorMode: 'replace',
+      }).catch((e) => e);
+      expect(client.calls).toContainEqual(['documents.delete', 'oldB']);
+      expect(err.unfinishedRemoved).toBe(true);
+      expect(err.replacedGone).toEqual({ name: 'Other' });
+    });
+
+    it('under Replace, says nothing of a delete when the failure came before it', async () => {
+      const client = stubClient(both);
+      client.documents.delete = async () => {
+        throw new Error('offline');
+      };
+      const err = await runElanImport({
+        client,
+        projectId: 'p1',
+        build: TWO,
+        priorMode: 'replace',
+      }).catch((e) => e);
+      expect(err.message).toBe('offline');
+      expect(err.replacedGone).toBeUndefined();
+    });
+  });
+
   it('stops when asked', async () => {
     const client = stubClient();
     await expect(

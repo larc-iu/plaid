@@ -226,6 +226,10 @@ async function runElanImportImpl({
   // Documents a failed run of this screen made and could not remove: no one
   // has worked on them, so they are redone whatever priorMode says.
   redo = [],
+  // Source ids an earlier failed run of this screen finished
+  // (`err.finishedSources`): their documents are in the project, and a retry
+  // keeps them whatever priorMode says, so Add copies does not copy them twice.
+  done = [],
   // Several recordings on one document are mixed into one by `mix`
   // (domain/media/mixRecordings.js mixFiles) at `mixQuality`. Without a
   // mixer a document with several recordings gets none.
@@ -269,62 +273,77 @@ async function runElanImportImpl({
     recordingsAdded: 0,
     recordingsUnused: 0,
   };
-  for (let i = 0; i < build.documents.length; i += 1) {
-    if (shouldStop?.()) throw new ImportCancelled();
-    const doc = build.documents[i];
-    // Every report from inside a document says which one it is. Only the
-    // first used to, so the screens read the rest as the first document.
-    const docProgress = (p) => onProgress?.({ ...p, index: i, total: build.documents.length });
-    docProgress({ phase: 'document', doc: doc.name, step: 'Starting' });
-    const warn = (text) => note(text, doc.name);
-    const existing = prior.find(doc.id);
-    const leftover = !!existing && redo.includes(existing.id);
-    // Core names the copy "Name (2)" (createDocumentShell's freeName).
-    const copyName = priorMode === 'copy' && existing && !leftover ? doc.name : null;
-    if (!copyName) {
-      const proceed = await settlePrior(client, prior, doc.id, results, {
-        replace: priorMode === 'replace' || leftover,
-      });
-      if (!proceed) {
-        await addRecordingToExisting({
-          client,
-          existing,
-          doc,
-          results,
-          onProgress: docProgress,
-          warn,
-          mix,
-          mixQuality,
-        });
+  // The source ids this run finished, told to the screen when it fails.
+  const finished = [];
+  try {
+    for (let i = 0; i < build.documents.length; i += 1) {
+      if (shouldStop?.()) throw new ImportCancelled();
+      const doc = build.documents[i];
+      if (done.includes(doc.id)) {
+        results.skipped += 1;
         continue;
       }
+      // Every report from inside a document says which one it is. Only the
+      // first used to, so the screens read the rest as the first document.
+      const docProgress = (p) => onProgress?.({ ...p, index: i, total: build.documents.length });
+      docProgress({ phase: 'document', doc: doc.name, step: 'Starting' });
+      const warn = (text) => note(text, doc.name);
+      const existing = prior.find(doc.id);
+      const leftover = !!existing && redo.includes(existing.id);
+      // Core names the copy "Name (2)" (createDocumentShell's freeName).
+      const copyName = priorMode === 'copy' && existing && !leftover ? doc.name : null;
+      // The document this one replaces, once it is deleted.
+      let replaced = null;
+      if (!copyName) {
+        const replace = priorMode === 'replace' || leftover;
+        const proceed = await settlePrior(client, prior, doc.id, results, { replace });
+        if (proceed && replace && existing && !leftover) replaced = existing;
+        if (!proceed) {
+          await addRecordingToExisting({
+            client,
+            existing,
+            doc,
+            results,
+            onProgress: docProgress,
+            warn,
+            mix,
+            mixQuality,
+          });
+          continue;
+        }
+      }
+      let making = null;
+      try {
+        await importDocument({
+          client,
+          projectId,
+          targets,
+          doc,
+          onProgress: docProgress,
+          shouldStop,
+          copyName,
+          onDocument: (id) => {
+            making = id;
+          },
+          mix,
+          mixQuality,
+          // A push-alike, so a warning raised while writing is logged the moment it
+          // happens like any other.
+          warnings: { push: (...w) => w.forEach(warn) },
+        });
+      } catch (err) {
+        if (making) await removeUnfinished(client, making, doc.name, err);
+        if (replaced) err.replacedGone = { name: replaced.name ?? doc.name };
+        throw err;
+      }
+      for (const w of doc.warnings) warn(w);
+      if (copyName) results.copied += 1;
+      else results.imported += 1;
+      finished.push(doc.id);
     }
-    let making = null;
-    try {
-      await importDocument({
-        client,
-        projectId,
-        targets,
-        doc,
-        onProgress: docProgress,
-        shouldStop,
-        copyName,
-        onDocument: (id) => {
-          making = id;
-        },
-        mix,
-        mixQuality,
-        // A push-alike, so a warning raised while writing is logged the moment it
-        // happens like any other.
-        warnings: { push: (...w) => w.forEach(warn) },
-      });
-    } catch (err) {
-      if (making) await removeUnfinished(client, making, doc.name, err);
-      throw err;
-    }
-    for (const w of doc.warnings) warn(w);
-    if (copyName) results.copied += 1;
-    else results.imported += 1;
+  } catch (err) {
+    err.finishedSources = finished;
+    throw err;
   }
   onProgress?.({ phase: 'done', ...results });
   return { ...results, warnings };
