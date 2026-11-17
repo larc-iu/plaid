@@ -54,6 +54,7 @@ import { tokenizeText } from '../../utils/tokenizationUtils.js';
 import { cpLength, cpSlice } from '@larc-iu/plaid-client';
 import { keepTimeRule } from '../../domain/alignmentTimes.js';
 import { nameKey, sameName } from '@ui/lib/nameKey.js';
+import { isolate } from '@ui/lib/bidi.js';
 import { countOf } from '../../../../plaid-ui/src/lib/plural.js';
 
 // A value that is only punctuation (or symbols), as FLEx's punctuation is.
@@ -974,7 +975,7 @@ function buildGroup(files, nodes, roles, options = {}) {
             const inText = body.slice(span.beginU16, span.endU16);
             const onTier = forms[wi];
             if (onTier && inText && !sameName(inText, onTier)) {
-              respelled.push(`${nameKey(onTier)} → ${nameKey(inText)}`);
+              respelled.push(`${isolate(nameKey(onTier))} → ${isolate(nameKey(inText))}`);
             }
           });
           if (respelled.length) {

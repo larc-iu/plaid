@@ -149,7 +149,19 @@ describe('respellWord', () => {
     expect(textId).toBe('text-1');
     expect(ops).toEqual([{ type: 'replace', index: 4, length: 3, value: 'cat' }]);
     expect(options.base).toBe(DIGEST);
-    expect(client.operations.map((o) => o.message)).toEqual(['Respell kat → cat']);
+    expect(client.operations.map((o) => o.message)).toEqual([
+      'Respell \u2068kat\u2069 → \u2068cat\u2069',
+    ]);
+  });
+
+  it('isolates each spelling in the label, so a right-to-left word reads old to new (H16-1)', async () => {
+    const client = makeFakeClient();
+    const raw = rawWith({ body: 'the \u05e9\u05b8\u05dc' });
+    const doc = makeIgtDoc({ raw, client });
+    expect(await doc.respellWord('w-2', '\u05e9\u05dc')).toBe(true);
+    expect(client.operations.map((o) => o.message)).toEqual([
+      'Respell \u2068\u05e9\u05b8\u05dc\u2069 → \u2068\u05e9\u05dc\u2069',
+    ]);
   });
 
   it('shows the new spelling before the server answers, on the same token', async () => {
