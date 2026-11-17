@@ -240,6 +240,8 @@ class Corpus(BaseCorpus):
         hit = doc.find(entity_id)
         if hit is None:
             return doc, None, None, None
+        # Every corpus tool prints a hit by the numbers it holds here.
+        self.ws.note_numbered(doc, [hit[0].index])
         return (doc,) + hit
 
     def label_ref(self, doc_id: str, token_id: str, budget: Optional[set] = None) -> str:

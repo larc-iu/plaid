@@ -207,11 +207,8 @@ class BaseWorkspace:
         #: number as text -> the print of its words. Set by the service. Empty
         #: outside a conversation (a job's piece, a script).
         self.read_before: Dict[str, Dict[str, str]] = {}
-        #: The same for this turn (:meth:`note_shown`), kept on its reply.
+        #: The same for this turn (:meth:`note_numbered`), kept on its reply.
         self.read_now: Dict[str, Dict[int, str]] = {}
-        #: The documents run_code's load() read this turn: code that plans by
-        #: the numbers it loaded plans by the text as it is.
-        self.code_read: set = set()
         #: Whether the tool call under way stages (a plan tool), set by the
         #: toolkit around each call.
         self.planning = False
@@ -507,9 +504,24 @@ class BaseWorkspace:
         for i in positions:
             if 1 <= i <= len(doc.sentences):
                 held.add(doc.sentences[i - 1].id)
+        self.note_numbered(doc, positions)
+
+    def note_numbered(self, doc, positions) -> None:
+        """Keep the print of each sentence of ``doc`` at ``positions``
+        (1-based) as this turn showed its word numbers to the model: the one
+        helper every read that prints a sentence's word or morpheme numbers
+        calls (read_document, read_sentences, run_code's load(), the hits of
+        the corpus tools, the query tool, an entry's usage examples, the
+        checks of validate). A staging call by those numbers is then held to
+        the sentence as shown (:meth:`refuse_moved_sentence`). Unlike
+        :meth:`note_shown` it says nothing of what a job counts as read."""
+        held = self.read_now.setdefault(doc.id, {})
+        for i in positions:
+            if 1 <= i <= len(doc.sentences) and i not in held:
                 printed = self.words_print(doc.sentences[i - 1])
-                if printed is not None:
-                    self.read_now.setdefault(doc.id, {})[i] = printed
+                if printed is None:
+                    return
+                held[i] = printed
 
     # --- numbers read in an earlier turn ------------------------------------
 
@@ -539,10 +551,10 @@ class BaseWorkspace:
         ``doc`` by its number, ``ref`` as given, when the sentence's words are
         not as this conversation last read them: a number read then may name
         another word now (2026-11-17 survey). A sentence read again in this
-        turn, a document run_code loaded in it, and a sentence never read are
-        not asked. The refusal names every sentence of the document that has
+        turn (:meth:`note_numbered`) and a sentence never read are not
+        asked. The refusal names every sentence of the document that has
         changed since it was read, so one read puts them all right."""
-        if not self.planning or doc.id in self.code_read:
+        if not self.planning:
             return
         before = self.read_before.get(doc.id) or {}
         now = self.read_now.get(doc.id) or {}

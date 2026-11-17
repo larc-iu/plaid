@@ -101,6 +101,8 @@ def _ref_index(ws: Workspace, doc_ids: List[str]) -> Dict[str, str]:
         except Exception:  # noqa: BLE001 - a document we cannot load simply has no refs
             continue
         tag = f'{plain_quote(ws.corpus.ref_name(did))} '
+        # A row is printed by these numbers, whichever sentences it names.
+        ws.note_numbered(doc, range(1, len(doc.sentences) + 1))
         for s in doc.sentences:
             refs[s.id] = f'{tag}s{s.index}'
             for f, sp in s.fields.items():

@@ -684,6 +684,7 @@ def _example_line(ws: Workspace, e: dict) -> str:
     for sent in doc.sentences:
         for w in sent.words:
             if w.id == e['token']:
+                ws.note_numbered(doc, [sent.index])
                 return f'{ws.doc_tag(doc)}{word_ref(sent, w)} {w.surface} || {sent.text}'
     return f'{ws.doc_tag(doc)}a word that is gone ({e["token"]})'
 

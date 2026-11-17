@@ -565,11 +565,10 @@ def load_proxy(ws, view: Callable[[Any], Any]) -> Callable[[str], Any]:
             doc = view(loaded)
         except ToolError as e:
             raise ValueError(str(e))
-        # The code read every sentence as it is now, so it plans by numbers
-        # it read in this turn (`BaseWorkspace.refuse_moved_sentence`).
-        code_read = getattr(ws, 'code_read', None)
-        if code_read is not None:
-            code_read.add(loaded.id)
+        # The code reads every sentence's word numbers as they are now
+        # (`BaseWorkspace.note_numbered`).
+        if hasattr(ws, 'note_numbered'):
+            ws.note_numbered(loaded, range(1, len(getattr(loaded, 'sentences', ())) + 1))
         if ws.reader.walking():
             ws.read_ahead(ws.documents(), once=True)
         return doc

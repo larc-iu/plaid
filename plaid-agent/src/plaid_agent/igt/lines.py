@@ -161,6 +161,8 @@ def _words_of(ws: Workspace, doc: IgtDoc, ref: str):
     si = int(m.group(1))
     if not 1 <= si <= len(doc.sentences):
         raise _Refused(f's{si} not staged: document {doc.quoted} has {len(doc.sentences)} sentences.')
+    # The words go by their numbers in the sentence as read.
+    ws.refuse_moved_sentence(doc, si, str(ref).strip())
     s = doc.sentences[si - 1]
     if m.group(2) is None:
         return f's{si}', s, list(s.words)

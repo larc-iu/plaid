@@ -247,3 +247,43 @@ def test_a_value_on_a_morpheme_does_not_move_the_print(monkeypatch):
     c.edit(glossed)
     out, = c.turn(('set_field', {'document': 'Text 1', 'refs': ['s1.w1.m2'], 'field': 'Morph Gloss', 'value': 'ERG'}))
     assert out.startswith('Planned'), out
+
+
+CODE_REFS = ('run_code', {'code': 'd = load("Text 1")\n'
+                                  'print([(w["ref"], w["surface"]) for w in d["sentences"][0]["words"]])'})
+
+
+def test_numbers_code_printed_in_an_earlier_turn_are_held_to_the_sentence_as_loaded(monkeypatch):
+    """REV-SVB-1: run_code's load() records what the code read."""
+    c = Conversation(monkeypatch)
+    out, = c.turn(CODE_REFS)
+    assert "('s1.w2', 'gam')" in out, out
+    assert set(c.last_item()['read']['d1']) == {'1', '2'}
+    c.edit(_insert_word)
+    out, = c.turn(_gloss('s1.w2'))
+    assert out == f'Error: {MOVED}'
+
+
+CONCORDANCE = ('concordance', {'pattern': 'gam', 'where': 'baseline'})
+
+
+def test_numbers_a_concordance_just_showed_are_planned_by(monkeypatch):
+    """REV-SVB-4: a corpus tool's hits record their sentences, so staging by
+    the number it just printed is no false refusal..."""
+    c = Conversation(monkeypatch)
+    c.turn(READ_S1)
+    c.edit(_insert_word)
+    hits, out = c.turn(CONCORDANCE, _gloss('s1.w3'))
+    assert 's1.w3' in hits, hits
+    assert out.startswith('Planned') and c.planned_on() == ['w-2'], out
+
+
+def test_numbers_a_concordance_showed_in_an_earlier_turn_are_held_to_that(monkeypatch):
+    """...and one it printed in an earlier turn is held to the sentence as it
+    printed it."""
+    c = Conversation(monkeypatch)
+    hits, = c.turn(CONCORDANCE)
+    assert 's1.w2' in hits, hits
+    c.edit(_insert_word)
+    out, = c.turn(_gloss('s1.w2'))
+    assert out == f'Error: {MOVED}'
