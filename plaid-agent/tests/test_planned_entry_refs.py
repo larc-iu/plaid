@@ -81,3 +81,26 @@ def test_a_plan_naming_an_entry_no_create_of_it_makes_is_refused():
             'label': ''}]
     with pytest.raises(Exception, match='names an entry this plan does not create'):
         validate_ops(ops)
+
+
+def test_only_a_planned_entrys_own_key_is_read_as_one():
+    """REV-SVB-7: a text value that begins with "new:" is text."""
+    ops = [{'kind': 'set_entry_field', 'item_id': 'd-nyumba', 'field': 'etymology', 'value': 'new: from Swahili',
+            'label': ''},
+           {'kind': 'create_entry', 'vocab_id': 'v1', 'form': 'x', 'key': 'new:v1:x#1',
+            'metadata': {'gloss': 'new:v1:lalo#1 is not here'}, 'label': ''}]
+    validate_ops(ops)
+
+
+def test_taking_back_a_link_keeps_an_entry_another_planned_entry_names():
+    """REV-SVB-8: a planned entry named by another planned entry's reference
+    stays when the link that used it is taken back."""
+    from plaid_agent.igt.tools import take_back
+    w = dict_ws()
+    lalu = _key(call_tool(w, 'create_entry', {'form': 'lalu', 'fields': {'gloss': 'cook'}}))
+    lalo = _key(call_tool(w, 'create_entry', {'form': 'lalo', 'fields': {'gloss': 'cook'}}))
+    call_tool(w, 'set_entry_field', {'entry_id': lalo, 'field': 'variantOf', 'value': lalu})
+    link = {'kind': 'link', 'token_id': 'w-x', 'new_entry_key': lalu, 'document_id': 'd1', 'label': 'link'}
+    w.ops.append(link)
+    assert take_back(w, [link]) == []
+    validate_ops(w.ops)

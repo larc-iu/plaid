@@ -375,9 +375,10 @@ def take_back(ws: Workspace, ops: List[Dict[str, Any]]) -> List[str]:
     linked = {o.get('new_entry_key') for o in ws.ops if o.get('kind') in ('link', 'link_phrase')} - {None}
     ws.take_back(ops)
     ws.unlink_orphans()
-    rest = [json.dumps(o, default=str) for o in ws.ops if o.get('kind') != 'create_entry']
+    # Every other op, another planned entry's create included: its reference
+    # field may name this one (REV-SVB-8).
     gone = [o for o in ws.ops if o.get('kind') == 'create_entry' and o.get('key') in linked
-            and not any(json.dumps(o['key']) in r for r in rest)]
+            and not any(json.dumps(o['key']) in json.dumps(r, default=str) for r in ws.ops if r is not o)]
     ws.take_back(gone)
     for o in gone:
         ws.new_entries.pop(o['key'], None)
