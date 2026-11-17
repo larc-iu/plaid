@@ -73,13 +73,14 @@ const DOCUMENT_STATE_WORDS = {
   'not-reached': 'Not reached',
 };
 
-// A stopped job says so by its state, so `cancelled` has no words here.
+// A stopped job says so by its state, so `cancelled` has no words here. Each
+// says what happened, never what to do about it.
 const REASON_WORDS = {
   'starter-access': 'The person who started it can no longer write in this project.',
   'guidelines-too-long': 'The guidelines are too long for a job.',
   'no-documents': 'None of its documents are left.',
   'no-plan': 'Planning ended with no plan.',
-  'planning-failed': 'The assistant’s model failed during planning. Start the job again.',
+  'planning-failed': 'The assistant’s model failed during planning.',
   'setup-gone': 'The fields this job was set up to fill are gone.',
   'setup-unreadable': 'This job’s setup could not be read.',
 };

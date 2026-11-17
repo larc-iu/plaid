@@ -203,7 +203,7 @@ describe('the words', () => {
       'The guidelines are too long for a job.',
       'None of its documents are left.',
       'Planning ended with no plan.',
-      'The assistant’s model failed during planning. Start the job again.',
+      'The assistant’s model failed during planning.',
       'The fields this job was set up to fill are gone.',
       'This job’s setup could not be read.',
     ]);

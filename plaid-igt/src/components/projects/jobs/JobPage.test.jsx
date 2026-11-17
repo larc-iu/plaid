@@ -702,7 +702,9 @@ describe('the job page', () => {
       'The assistant’s model failed during planning. Nothing was written.',
     );
     const status = text(v.container.querySelector('[role="status"]'));
-    expect(status).toContain('The assistant’s model failed during planning. Start the job again.');
+    expect(status).toContain('The assistant’s model failed during planning.');
+    // A reason says what happened, never advice.
+    expect(status).not.toContain('again');
     expect(status).not.toContain('Planning ended with no plan.');
     await v.unmount();
   });
