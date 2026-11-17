@@ -5,6 +5,7 @@ import { cn } from '../../lib/utils.js';
 import { AssistantMarkdown } from './AssistantMarkdown.jsx';
 import { useExport } from './exportContext.js';
 import { callInput, callOf, foldReads, runLabel } from './rounds.js';
+import { thinkingFor } from './roundClock.js';
 
 // What the assistant did for one turn, in the order it happened: the text it
 // wrote between its tool calls, and each call, which opens to what it was
@@ -22,6 +23,9 @@ import { callInput, callOf, foldReads, runLabel } from './rounds.js';
 // stands before the round's text: on the round's first step (`thought`),
 // and for the reply (`replyRound`). Live, the reasoning of the call under
 // way (`thinking`, its last 2,000 characters) shows open as it streams.
+// While the model works on a round with no step and no text yet
+// (`roundSince`, when the page saw the round begin), the trace's last row
+// says so and for how long, where the round's steps will land.
 
 const MUTED = 'text-xs text-muted-foreground';
 // Lines are kept whole, as the tool wrote them (CoNLL-U columns, word
@@ -326,12 +330,31 @@ const Thinking = ({ id, rounds, live, gone, exported, stored = true, unstored = 
   );
 };
 
-// The reasoning of the model call under way, open while it streams.
-const LiveThinking = ({ text }) => (
-  <Disclosure label="Thinking" open>
-    <ThinkingText text={text} follow />
-  </Disclosure>
-);
+// "Thinking, 45 s" since `since` (ms), counted each second.
+const useThinkingFor = (since) => {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (since == null) return undefined;
+    setNow(Date.now());
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [since]);
+  return since == null ? null : thinkingFor(now - since);
+};
+
+// The reasoning of the model call under way, open while it streams, its
+// label counting while the round runs.
+const LiveThinking = ({ text, since }) => {
+  const label = useThinkingFor(since);
+  return (
+    <Disclosure label={label ?? 'Thinking'} open>
+      <ThinkingText text={text} follow />
+    </Disclosure>
+  );
+};
+
+// A round under way that streams no reasoning.
+const RoundClock = ({ since }) => <div className="px-1 py-0.5 pl-5">{useThinkingFor(since)}</div>;
 
 // The text the model wrote between calls, in muted type above the steps it
 // preceded.
@@ -402,6 +425,7 @@ export const TraceSteps = ({
   steps,
   partial,
   thinking,
+  roundSince = null,
   rounds,
   live = false,
   gone = false,
@@ -480,7 +504,12 @@ export const TraceSteps = ({
       )}
       {thinking && (
         <li>
-          <LiveThinking text={thinking} />
+          <LiveThinking text={thinking} since={roundSince} />
+        </li>
+      )}
+      {live && !thinking && roundSince != null && (
+        <li>
+          <RoundClock since={roundSince} />
         </li>
       )}
       {partial && (

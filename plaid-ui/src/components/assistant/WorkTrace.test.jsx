@@ -461,3 +461,56 @@ describe('what a step shows, round 13', () => {
     await view.unmount();
   });
 });
+
+// While a round runs with no step and no text yet, the trace says the model is
+// working on it and for how long, where the next step will appear (survey
+// 2026-11-17, item 3).
+describe('the round under way', () => {
+  it('counts the seconds since the round began, in the trace after its steps', async () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(100_000);
+      const view = await renderComponent(
+        <TraceSteps steps={STEPS} rounds={null} live roundSince={100_000} />,
+      );
+      const items = () => all(view.container, 'li').map((n) => n.textContent);
+      expect(items().at(-1)).toBe('Thinking, 0 s');
+      await view.step(async () => {
+        await vi.advanceTimersByTimeAsync(45_000);
+      });
+      expect(items().at(-1)).toBe('Thinking, 45 s');
+      await view.step(async () => {
+        await vi.advanceTimersByTimeAsync(80_000);
+      });
+      expect(items().at(-1)).toBe('Thinking, 2 min 5 s');
+      // The step replaces it: the next round has not begun.
+      await view.rerender(<TraceSteps steps={STEPS} rounds={null} live roundSince={null} />);
+      expect(view.container.textContent).not.toContain('Thinking');
+      await view.unmount();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('is the label of the reasoning that streams in the round', async () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(10_000);
+      const view = await renderComponent(
+        <TraceSteps steps={[]} rounds={null} live thinking="Which verbs?" roundSince={1_000} />,
+      );
+      const rows = all(view.container, 'button[aria-expanded]').map((b) => b.textContent);
+      expect(rows).toEqual(['Thinking, 9 s']);
+      expect(view.container.textContent).toContain('Which verbs?');
+      await view.unmount();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('is not drawn outside a live turn', async () => {
+    const view = await renderComponent(<TraceSteps steps={STEPS} rounds={null} />);
+    expect(view.container.textContent).not.toContain('Thinking');
+    await view.unmount();
+  });
+});

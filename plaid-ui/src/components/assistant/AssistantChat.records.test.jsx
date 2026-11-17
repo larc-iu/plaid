@@ -197,6 +197,53 @@ describe('a turn as it runs', () => {
   });
 });
 
+describe('the round under way', () => {
+  // A round that thinks for minutes with no step and no text looked stalled,
+  // and people stopped turns that were nearly done (survey 2026-11-17, item 3).
+  const STEP = {
+    id: 'c1',
+    name: 'search',
+    kind: 'read',
+    label: 'Searched for “kai”: 3 matches',
+    round: 'r1',
+    stored: true,
+  };
+  const thinkingLine = (m) =>
+    all(m.container, 'li').find((li) => /^Thinking, \d+ s$/.test(li.textContent)) ?? null;
+
+  it('says the model is working on it, until a tool, a step or the text takes its place', async () => {
+    const client = fakeClient();
+    const emitted = [];
+    let emitNow;
+    client.assistant.during = async (emit) => {
+      emitNow = emit;
+      emit({ message: 'Thinking…', text: '', trace: [] });
+      await new Promise(() => {});
+    };
+    const m = await mount(client);
+    await flush(m);
+    await typeAndSend(m, 'Find kai.');
+    await flush(m);
+    expect(thinkingLine(m)?.textContent).toBe('Thinking, 0 s');
+    // The line under the conversation does not say it twice.
+    expect(m.container.querySelector('[role="status"].animate-pulse')?.textContent).toBe('');
+    const say = async (p) => {
+      emitted.push(p);
+      await m.step(() => emitNow(p));
+      await flush(m);
+    };
+    await say({ message: 'Searching…', text: '', trace: [] });
+    expect(thinkingLine(m)).toBeNull();
+    await say({ message: 'Thinking more…', text: '', trace: [STEP] });
+    expect(m.container.textContent).toContain('Searched for “kai”: 3 matches');
+    expect(thinkingLine(m)?.textContent).toBe('Thinking, 0 s');
+    await say({ message: 'Writing…', text: 'Three matches.', trace: [STEP] });
+    expect(thinkingLine(m)).toBeNull();
+    expect(m.container.textContent).toContain('Three matches.');
+    await m.unmount();
+  });
+});
+
 describe('a message', () => {
   it('is shown at once, sent as a request, and the service writes it', async () => {
     const client = fakeClient();

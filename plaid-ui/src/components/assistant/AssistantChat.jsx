@@ -333,6 +333,9 @@ export const AssistantChat = ({
   const [liveTrace, setLiveTrace] = useState([]); // a turn's steps so far
   const [partial, setPartial] = useState(''); // the reply so far, while it is written
   const [liveThinking, setLiveThinking] = useState(''); // the end of the model's reasoning, as it streams
+  // When the model call under way began, while the model works on it with no
+  // step and no text yet (roundClock.js), else null.
+  const [roundSince, setRoundSince] = useState(null);
   const [stopping, setStopping] = useState(false);
   // The turn the reader stopped by hand, as {convId}: the banner that follows
   // says so rather than reporting a failure that did not happen. What the
@@ -375,6 +378,7 @@ export const AssistantChat = ({
     setLiveTrace(j.trace || []);
     setPartial(j.partial || '');
     setLiveThinking(j.thinking || '');
+    setRoundSince(j.kind === 'turn' && j.round?.shown && !j.stopping ? j.round.at : null);
     setStopping(!!j.stopping);
   };
   const clearJob = () => {
@@ -385,6 +389,7 @@ export const AssistantChat = ({
     setLiveTrace([]);
     setPartial('');
     setLiveThinking('');
+    setRoundSince(null);
     setStopping(false);
   };
 
@@ -545,7 +550,14 @@ export const AssistantChat = ({
   // --- turns -----------------------------------------------------------------
   // The thread keeps to its newest text only while the reader is at the end
   // of it, and scrolls only itself, never the page.
-  const thread = useFollowEnd([active?.display.length, busy, progress, partial, liveThinking]);
+  const thread = useFollowEnd([
+    active?.display.length,
+    busy,
+    progress,
+    partial,
+    liveThinking,
+    roundSince,
+  ]);
   useLayoutEffect(() => {
     thread.toEnd();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1230,13 +1242,14 @@ export const AssistantChat = ({
                 happened in, so the text lands under the steps it followed. */}
             {busy && (
               <div className="flex flex-col gap-3">
-                {busy === 'turn' && (liveTrace.length > 0 || liveThinking) && (
+                {busy === 'turn' && (liveTrace.length > 0 || liveThinking || roundSince) && (
                   <div className="flex gap-3">
                     <AssistantMark ring className="mt-1 h-7 w-7 shrink-0" />
                     <div className="min-w-0 flex-1 text-xs text-muted-foreground">
                       <TraceSteps
                         steps={liveTrace}
                         thinking={liveThinking}
+                        roundSince={roundSince}
                         rounds={rounds}
                         live
                         firstRound={liveTrace[0]?.round}
@@ -1263,8 +1276,12 @@ export const AssistantChat = ({
                 )}
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
                   <Loader2 className="h-4 w-4 animate-spin" />
+                  {/* While the trace says the model is thinking, and for how
+                      long, this line does not say it again. */}
                   <span role="status" className="animate-pulse">
-                    {progress || (busy === 'apply' ? 'Applying changes…' : 'Thinking…')}
+                    {roundSince
+                      ? ''
+                      : progress || (busy === 'apply' ? 'Applying changes…' : 'Thinking…')}
                   </span>
                   {/* The only moving part when the service goes quiet, and the
                     difference between "this is slow" and "this is dead". */}

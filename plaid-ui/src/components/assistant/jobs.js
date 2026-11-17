@@ -11,6 +11,7 @@ import { itemTime } from './itemTime.js';
 import { assistantsAmong } from './useAssistantAvailable.js';
 import { uuidv4 } from '../../../../plaid-client-js/src/ids.js';
 import { signalTurnEnded, turnEnding } from './turnSignal.js';
+import { roundAfter } from './roundClock.js';
 
 // The assistant's conversations and the runs behind them: what is stored
 // where, the page-independent job registry, and asking the service for
@@ -257,7 +258,8 @@ export const followable = (p) => (p?.requestId && p.kind !== 'discard' ? p : nul
 // A turn's progress event carries the turn so far, whole each time: its steps
 // as they will be stored (`trace`, with `stored` on those whose round is
 // written), the text of the model call under way (`text`) and the end of its
-// reasoning (`thinking`). An approval's
+// reasoning (`thinking`), and the page keeps when the model call under way
+// began (`round`). An approval's
 // carries only its message, which the step list keeps.
 // `recorded` says the service has the message in the record.
 const progressOf = (j) => (p) => {
@@ -266,6 +268,8 @@ const progressOf = (j) => (p) => {
   if (typeof p?.text === 'string') j.partial = p.text;
   if (Array.isArray(p?.trace)) j.trace = p.trace;
   if (typeof p?.thinking === 'string') j.thinking = p.thinking;
+  // The model call under way, and since when (roundClock.js).
+  if (j.kind === 'turn') j.round = roundAfter(j.round, msg, (j.trace || []).length, Date.now());
   if (p?.recorded) {
     j.recorded = true;
     j.unsent = null;
