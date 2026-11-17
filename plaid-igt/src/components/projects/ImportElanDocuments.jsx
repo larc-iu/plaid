@@ -42,7 +42,7 @@ import { useClientApart } from '@/hooks/useClientApart';
 import { notifyError, notifySuccess, notifyWarning, humanizeError } from '@/utils/feedback';
 import { doneForRetry, runElanImport } from '../../import/elan/importEngine';
 import { ImportCancelled, priorImports } from '../../import/stamps';
-import { elanTally } from '../../import/elan/tally';
+import { elanTally, replacedGoneLine } from '../../import/elan/tally';
 import { missingFields, similarField } from '../../import/elan/fieldTargets';
 import { existingFields } from '../../domain/fieldInventory';
 import { addOrthographies, createFields, missingOrthographies } from '../../import/project';
@@ -503,10 +503,7 @@ export const ImportElanDocuments = () => {
                       <p className="mt-1 text-xs">The unfinished document was removed.</p>
                     )}
                     {runError.replacedGone && (
-                      <p className="mt-1 text-xs">
-                        “{runError.replacedGone.name}”, which it replaces, was already deleted.
-                        Retrying makes it again.
-                      </p>
+                      <p className="mt-1 text-xs">{replacedGoneLine(runError.replacedGone.name)}</p>
                     )}
                     {runError.unfinishedLeft && (
                       <p className="mt-1 text-xs">

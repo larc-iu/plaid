@@ -22,3 +22,10 @@ export function elanTally(results) {
   }
   return `${parts.join(', ')}.`;
 }
+
+/**
+ * The failure panel's line under Replace them, when the run had deleted the
+ * document it was replacing before the failure.
+ */
+export const replacedGoneLine = (name) =>
+  `“${name}” was deleted before its replacement was written. Retry import makes it again.`;

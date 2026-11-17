@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { elanTally } from './tally.js';
+import { elanTally, replacedGoneLine } from './tally.js';
 
 const zero = {
   imported: 0,
@@ -41,6 +41,16 @@ describe('elanTally', () => {
       }),
     ).toBe(
       '2 added, 2 added as copies, 1 kept, 1 replaced, 2 recordings added to existing documents, a recording not used.',
+    );
+  });
+});
+
+// REV-HFM-7: under Replace them, a run that fails after deleting the document
+// it replaces says so plainly.
+describe('replacedGoneLine', () => {
+  it('names the deleted document and what Retry import does', () => {
+    expect(replacedGoneLine('story-d')).toBe(
+      '“story-d” was deleted before its replacement was written. Retry import makes it again.',
     );
   });
 });
