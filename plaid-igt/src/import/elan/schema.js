@@ -214,7 +214,7 @@ function nearMisses(nodes) {
     if (!byFolded.has(folded)) byFolded.set(folded, []);
     byFolded.get(folded).push(node);
   }
-  return [...byFolded.values()]
+  const groups = [...byFolded.values()]
     .filter((group) => new Set(group.map((n) => n.baseName)).size > 1)
     .map((group) => {
       const names = [...new Set(group.map(nodeLabel))].sort();
@@ -233,8 +233,24 @@ function nearMisses(nodes) {
         // Set only when the parents are what keeps them apart, which a merge
         // of the parents can change (nearMissesUnder).
         ...(sameType && !mergeable ? { parentsDiffer: true } : {}),
+        depth: Math.min(...group.map((n) => n.depth ?? 0)),
+        parents: [...new Set(group.map((n) => n.parentKey).filter(Boolean))],
       };
     });
+  // A pair kept apart by parents that are themselves a pair that can be
+  // merged, now or once theirs are, says to merge those first. Parents come
+  // before their children, so theirs is known when a child is read.
+  const byKey = new Map(nodes.map((n) => [n.key, n]));
+  const byFold = new Map(groups.map((g) => [g.fold, g]));
+  for (const g of [...groups].sort((a, b) => a.depth - b.depth)) {
+    if (!g.parentsDiffer) continue;
+    const parents = g.parents.map((k) => byKey.get(k)).filter(Boolean);
+    const folds = new Set(parents.map((n) => foldName(n.baseName)));
+    const names = new Set(parents.map((n) => n.baseName));
+    const pair = folds.size === 1 && names.size > 1 ? byFold.get([...folds][0]) : null;
+    if (pair && (pair.mergeable || pair.mergeFirst)) g.mergeFirst = true;
+  }
+  return groups.map(({ depth: _d, parents: _p, ...g }) => g);
 }
 
 /**
@@ -264,7 +280,14 @@ export function nearMissesUnder(files, groups, choices) {
       const found = compareSchemas(files, canonicalOf(others)).nearMisses.find(
         (x) => x.fold === g.fold,
       );
-      return found ? { ...g, mergeable: found.mergeable, parentsDiffer: found.parentsDiffer } : g;
+      return found
+        ? {
+            ...g,
+            mergeable: found.mergeable,
+            parentsDiffer: found.parentsDiffer,
+            mergeFirst: found.mergeFirst,
+          }
+        : g;
     });
     const lost = now.filter((g) => !g.mergeable && kept[g.fold] && kept[g.fold] !== 'separate');
     if (!lost.length) return { groups: now, choices: kept };

@@ -1251,7 +1251,17 @@ describe('tier names differing only in case', () => {
 
     it('says the parents differ, not the types', () => {
       const pair = compareSchemas(files()).nearMisses.find((g) => g.fold === 'translation');
+      expect(pair).toMatchObject({ mergeable: false, parentsDiffer: true, mergeFirst: true });
+    });
+
+    it('says nothing of merging parents that do not read alike (REV-HFM-8)', () => {
+      const parsed = [
+        readEaf(story('Phrase', 'Translation'), 'g1.eaf'),
+        readEaf(story('Line', 'translation'), 'g2.eaf'),
+      ];
+      const pair = compareSchemas(parsed).nearMisses.find((g) => g.fold === 'translation');
       expect(pair).toMatchObject({ mergeable: false, parentsDiffer: true });
+      expect(pair.mergeFirst).toBeUndefined();
     });
 
     it('can be merged once its parents are, and the merge goes when they part again', () => {

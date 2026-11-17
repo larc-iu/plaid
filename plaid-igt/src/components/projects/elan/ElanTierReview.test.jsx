@@ -76,6 +76,20 @@ describe('a pair that cannot be merged', () => {
     );
     expect(view.container.textContent).toContain('ELAN gives them different types');
   });
+
+  it('says to merge the parents first when they are a pair that can be (REV-HFM-8)', async () => {
+    const first = { ...PAIR, mergeable: false, parentsDiffer: true, mergeFirst: true };
+    view = await renderComponent(
+      <ElanTierReview
+        batch={batchWith({ nearMissGroups: [first], undecidedNearMisses: [first] })}
+        editable
+      />,
+    );
+    expect(view.container.textContent).toContain(
+      'differ only in case, but their parent tiers differ. Merge those first.',
+    );
+    expect(view.container.textContent).not.toContain('cannot be merged');
+  });
 });
 
 describe('a batch whose files fall into several tier trees', () => {
