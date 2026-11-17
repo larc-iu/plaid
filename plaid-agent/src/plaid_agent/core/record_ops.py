@@ -8,6 +8,7 @@ import threading
 import re
 import time
 import traceback
+from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
 from plaid_client import ServiceCancelled
@@ -21,13 +22,35 @@ from .outcome import recorded_as
 from .ops import CONVERSATION_FULL, MESSAGE_TOO_LONG, about_of, busy_why, hold_free, refused
 
 
+#: How long after a service's channel closed its requests may still be under
+#: way: core holds them 20 s for the service to come back (message.clj
+#: `reconnect-grace-ms`), and a little more for the clocks.
+HELD_S = 30
+
+
+def _left_within(client, seen_at, seconds: float) -> bool:
+    """Whether a service last seen at ``seen_at`` (ISO, the server's clock)
+    left less than ``seconds`` ago."""
+    try:
+        seen = datetime.fromisoformat(str(seen_at).replace('Z', '+00:00'))
+    except ValueError:
+        return False
+    if seen.tzinfo is None:
+        seen = seen.replace(tzinfo=timezone.utc)
+    now_of = getattr(client, 'server_now', None)
+    now = now_of() if callable(now_of) else datetime.now(timezone.utc)
+    return (now - seen).total_seconds() < seconds
+
+
 class RecordOps:
     """The record ops of `BaseAssistantService`."""
 
     def _alive(self, ctx, pending: Dict[str, Any]) -> bool:
         """Whether the request a marker names is still under way: this
         process runs it, or another assistant process that is online on the
-        project does. A marker naming no service (an old page's) has nothing
+        project does, or went offline less than `HELD_S` ago (core holds a
+        dropped service's requests while it reconnects, and the turn will
+        answer). A marker naming no service (an old page's) has nothing
         behind it."""
         rid = pending.get('request_id')
         sid = pending.get('service_id')
@@ -41,7 +64,8 @@ class RecordOps:
             found = ctx.client.messages.discover_services(ctx.store.project_id) or []
         except Exception:  # noqa: BLE001 - an unanswered lookup keeps the other's work
             return True
-        return any(isinstance(s, dict) and s.get('service_id') == sid and s.get('online') is not False
+        return any(isinstance(s, dict) and s.get('service_id') == sid
+                   and (s.get('online') is not False or _left_within(ctx.client, s.get('last_seen_at'), HELD_S))
                    for s in found)
 
     def _prepare(self, ctx):

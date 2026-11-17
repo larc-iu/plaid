@@ -609,3 +609,21 @@ def test_a_size_is_written_with_every_transcript_write(monkeypatch):
     stored = client.user_data.get('u@x', conv_key('igt', 'p1', 'c1'))['value']
     meta = client.user_data.get('u@x', meta_key('igt', 'p1', 'c1'))['value']
     assert meta['size']['bytes'] == conversation_bytes(stored)
+
+
+def test_another_assistants_marker_stands_while_core_holds_its_request_after_a_drop(monkeypatch):
+    # REV-SD-4: its channel dropped a few seconds ago, so discovery says
+    # offline, but core holds the request for the grace period and the turn
+    # will answer: its marker is not settled. Once the grace is long past, it is.
+    client = FakeClient()
+    _answering(monkeypatch)
+    svc = _service()
+    _send(svc, client)
+    other = {'kind': 'turn', 'request_id': 'r-other', 'service_id': 'igt:assist:other'}
+    _set_meta(client, pending=other)
+    client.services['p1'] = [{'service_id': 'igt:assist:other', 'online': False, 'last_seen_at': _ago(5)}]
+    helper = _send(svc, client, text='next', rid='r2', create=False)
+    assert helper.done[0]['why'] == 'busy'
+    client.services['p1'] = [{'service_id': 'igt:assist:other', 'online': False, 'last_seen_at': _ago(120)}]
+    helper = _send(svc, client, text='next', rid='r3', create=False)
+    assert helper.done[0]['kind'] == 'turn'
