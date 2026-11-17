@@ -82,10 +82,9 @@ import { useAssistantAvailable } from '@ui/components/assistant/useAssistantAvai
 import { useAskAssistant, useAssistantSubject } from '@ui/components/assistant/subject.js';
 import { useWideEnoughToDock } from '@ui/components/assistant/useDock.js';
 import { AssistantMark } from '@ui/components/assistant/PlaidMarks.jsx';
-import { IGT_ASSISTANT } from '../projects/assistant/adapter.js';
+import { IGT_ASSISTANT, assistantTabPath } from '../projects/assistant/adapter.js';
 import { Loading } from '@ui/components/shared/Loading.jsx';
 import { EntryRestoreDialog } from './EntryRestoreDialog';
-import { assistantTabPath } from '../projects/assistant/adapter.js';
 
 // The params that ride with one open entry (useDetailParam's `companions`).
 const ITEM_COMPANIONS = ['parent'];
@@ -1102,14 +1101,18 @@ export const VocabularyItems = ({
                 )}
                 {/* No panel on a window this narrow, so no Ask: the project's
                     Assistant tab in its place, the one way to the assistant here. */}
-                {!past && assistantAvailable && selectedItem && !wideEnoughForAssistant && (
-                  <Button variant="ghost" size="sm" className="shrink-0 gap-1.5" asChild>
-                    <Link to={assistantTabPath(assistantProject.id)}>
-                      <AssistantMark className="h-3.5 w-3.5" />
-                      Assistant
-                    </Link>
-                  </Button>
-                )}
+                {!past &&
+                  assistantProject &&
+                  assistantAvailable &&
+                  selectedItem &&
+                  !wideEnoughForAssistant && (
+                    <Button variant="ghost" size="sm" className="shrink-0 gap-1.5" asChild>
+                      <Link to={assistantTabPath(assistantProject.id)}>
+                        <AssistantMark className="h-3.5 w-3.5" />
+                        Assistant
+                      </Link>
+                    </Button>
+                  )}
               </div>
             </div>
 

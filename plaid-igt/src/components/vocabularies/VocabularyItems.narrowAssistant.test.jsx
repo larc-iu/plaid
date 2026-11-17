@@ -16,8 +16,11 @@ vi.mock('@/utils/feedback', () => ({
 }));
 vi.mock('@ui/components/shared/ConfirmProvider', () => ({ useConfirm: () => async () => true }));
 vi.mock('@ui/domain/useCommentStore', () => ({ useCommentStore: () => 0 }));
+// `stuck`: the hook's answer for a project the screen has since lost, as it
+// keeps its last answer when asked about none (REV-SVU-9).
+const available = vi.hoisted(() => ({ stuck: false }));
 vi.mock('@ui/components/assistant/useAssistantAvailable.js', () => ({
-  useAssistantAvailable: (_client, projectId) => (projectId ? true : null),
+  useAssistantAvailable: (_client, projectId) => (projectId || available.stuck ? true : null),
 }));
 vi.mock('@ui/components/assistant/subject.js', () => ({
   useAskAssistant: () => () => {},
@@ -33,11 +36,11 @@ const { WriteQueue } = await import('@ui/domain/WriteQueue.js');
 
 const PROJECT = { id: 'home', name: 'Home', vocabs: [{ id: 'v1' }], readers: [], writers: ['u'] };
 
-const mount = async () => {
+const mount = async (projects = [PROJECT]) => {
   const client = {
     withOperation: (_label, fn) => fn(() => {}),
     query: async () => ({ results: [[0]] }),
-    projects: { list: async () => [PROJECT] },
+    projects: { list: async () => projects },
     vocabLayers: {
       get: async (id, withItems) => ({
         id,
@@ -77,6 +80,22 @@ describe("an entry's way to the assistant", () => {
     expect(ask(view.container)).not.toBeNull();
     expect(tabLink(view.container)).toBeNull();
     await view.unmount();
+  });
+
+  it('is nothing, and no failure, where the vocabulary has no project to ask in', async () => {
+    dock.wide = false;
+    available.stuck = true;
+    try {
+      const view = await mount([]);
+      expect(view.container.textContent).toContain('kay');
+      expect(ask(view.container)).toBeNull();
+      expect(all(view.container, 'a').some((a) => a.textContent.trim() === 'Assistant')).toBe(
+        false,
+      );
+      await view.unmount();
+    } finally {
+      available.stuck = false;
+    }
   });
 
   it('is a link to the Assistant tab on a narrow window', async () => {
