@@ -48,4 +48,28 @@ describe('UserDetail', () => {
     expect(names).toEqual(['(1) One', '(2) Two', '(10) Ten']);
     await view.unmount();
   });
+
+  // H12-3: a revoked token was listed as live, with a Revoke button.
+  it('lists only the tokens that still work', async () => {
+    localStorage.clear();
+    const c = client([]);
+    c.apiTokens.list = vi.fn(async () => [
+      {
+        id: 't1',
+        name: 'Parser 1',
+        createdAt: '2026-11-01T00:00:00Z',
+        revokedAt: '2026-11-02T00:00:00Z',
+      },
+      { id: 't2', name: 'Glosser', createdAt: '2026-11-03T00:00:00Z', revokedAt: null },
+    ]);
+    const view = await renderComponent(
+      <MemoryRouter>
+        <UserDetail client={c} userId="u@x.com" backTo="/admin/users" onEdit={() => {}} />
+      </MemoryRouter>,
+    );
+    await view.step(async () => {});
+    expect(view.container.textContent).toContain('Glosser');
+    expect(view.container.textContent).not.toContain('Parser 1');
+    await view.unmount();
+  });
 });

@@ -55,7 +55,8 @@ export const UserDetail = ({ client, userId, backTo, onEdit, dialogs }) => {
           })
           .filter((p) => p.role),
       );
-      setTokens(tokenList || []);
+      // A revoked token is kept for the audit log but no longer works.
+      setTokens((tokenList || []).filter((t) => !t.revokedAt));
       setTally((tallyRows || []).find((r) => r.user?.id === userId) || null);
     } catch (err) {
       if (!isCurrent()) return;
