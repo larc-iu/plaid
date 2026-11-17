@@ -5,7 +5,7 @@ import { assistantOffered } from '@ui/components/assistant/assistantGate.js';
 import { useOpenAssistant } from '@ui/components/assistant/subject.js';
 import { useAssistantAvailable } from '@ui/components/assistant/useAssistantAvailable.js';
 import { useWideEnoughToDock } from '@ui/components/assistant/useDock.js';
-import { IGT_ASSISTANT } from './adapter.js';
+import { IGT_ASSISTANT, assistantTabPath } from './adapter.js';
 
 /**
  * The Assistant button of a project's Documents and Jobs tabs, the header
@@ -13,13 +13,15 @@ import { IGT_ASSISTANT } from './adapter.js';
  * panel as the chip does, on whatever conversation the panel holds. Where it
  * has not (the chip is hidden there) it is a link to the project's Assistant
  * tab. Offered on the chip's own rule (`assistantOffered`): only once an
- * assistant is known to be online for the project.
+ * assistant is known to be online for the project. `narrowOnly`: drawn only
+ * where the window has no room for the panel, where the chip and the edge
+ * rail are not drawn (a document's header).
  */
-export const AssistantButton = ({ projectId, client }) => {
+export const AssistantButton = ({ projectId, client, narrowOnly = false, size = 'default' }) => {
   const available = useAssistantAvailable(client, projectId, IGT_ASSISTANT.app);
   const wide = useWideEnoughToDock();
   const open = useOpenAssistant();
-  if (!assistantOffered(projectId, available)) return null;
+  if (!assistantOffered(projectId, available) || (narrowOnly && wide)) return null;
   const inside = (
     <>
       <AssistantMark className="h-4 w-4" />
@@ -27,12 +29,12 @@ export const AssistantButton = ({ projectId, client }) => {
     </>
   );
   return wide ? (
-    <Button type="button" variant="outline" className="gap-1.5" onClick={() => open()}>
+    <Button type="button" variant="outline" size={size} className="gap-1.5" onClick={() => open()}>
       {inside}
     </Button>
   ) : (
-    <Button variant="outline" className="gap-1.5" asChild>
-      <Link to={`/projects/${projectId}?tab=assistant`}>{inside}</Link>
+    <Button variant="outline" size={size} className="gap-1.5" asChild>
+      <Link to={assistantTabPath(projectId)}>{inside}</Link>
     </Button>
   );
 };

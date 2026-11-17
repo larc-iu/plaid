@@ -105,6 +105,9 @@ export const parseCitationHref = (href) => {
   return link && { documentId: link.documentId, focus: link.sentenceId, begin: link.word };
 };
 
+// The project's Assistant tab, on a new conversation.
+export const assistantTabPath = (projectId) => `/projects/${projectId}?tab=assistant`;
+
 export const IGT_ASSISTANT = {
   app: 'igt',
   command: 'plaid-igt-agent',

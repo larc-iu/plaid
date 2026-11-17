@@ -37,6 +37,7 @@ import {
 } from '@ui/domain/jobs.js';
 import { JobFindings, JobReport } from './JobReport.jsx';
 import { JobHistoryLinks } from './JobHistoryLinks.jsx';
+import { assistantTabPath } from '../assistant/adapter.js';
 import { JobActivity } from './JobActivity.jsx';
 import { FillsNames } from './jobLines.jsx';
 import {
@@ -342,17 +343,27 @@ const usePeopleNames = (client, ids, job, user) => {
   return names;
 };
 
-// A new conversation about the job, in the assistant panel, where an assistant
-// is online and the window has room for the panel (it opens beside the page).
+// A new conversation about the job where an assistant is online: in the
+// assistant panel where the window has room for it (it opens beside the
+// page), else a link to the project's Assistant tab, on a new conversation.
 const Discuss = ({ client, projectId }) => {
   const available = useAssistantAvailable(client, projectId, IGT_ASSISTANT.app);
   const wide = useWideEnoughToDock();
   const discuss = useStartConversation();
-  if (available !== true || !wide) return null;
-  return (
-    <Button variant="outline" className="gap-1.5" onClick={() => discuss()}>
+  if (available !== true) return null;
+  const inside = (
+    <>
       <AssistantMark className="h-4 w-4" />
       Discuss with the assistant
+    </>
+  );
+  return wide ? (
+    <Button variant="outline" className="gap-1.5" onClick={() => discuss()}>
+      {inside}
+    </Button>
+  ) : (
+    <Button variant="outline" className="gap-1.5" asChild>
+      <Link to={assistantTabPath(projectId)}>{inside}</Link>
     </Button>
   );
 };

@@ -129,7 +129,21 @@ describe('the job page and the assistant', () => {
     }
   });
 
-  it('offers none for a job under way, one with no report, or where no panel can open', async () => {
+  // A window too narrow for the panel links the Assistant tab, where a new
+  // conversation opens (DOC found 8).
+  it('links the Assistant tab where the window has no room for the panel', async () => {
+    window.innerWidth = 800;
+    window.dispatchEvent(new Event('resize'));
+    const m = await mount(clientOf(jobOf()));
+    expect(discuss(m.container)).toBeNull();
+    const link = all(m.container, 'a').find(
+      (a) => a.textContent.trim() === 'Discuss with the assistant',
+    );
+    expect(link?.getAttribute('href')).toBe('/projects/p1?tab=assistant');
+    await m.unmount();
+  });
+
+  it('offers none for a job under way, one with no report, or with no assistant online', async () => {
     const cases = [
       clientOf(jobOf({ state: 'running', finishedAt: null, report: null })),
       clientOf(jobOf({ state: 'waiting', finishedAt: null, startedAt: null, report: null })),
@@ -140,12 +154,8 @@ describe('the job page and the assistant', () => {
       serviceCache.clear();
       const m = await mount(client);
       expect(discuss(m.container)).toBeNull();
+      expect(m.container.textContent).not.toContain('Discuss with the assistant');
       await m.unmount();
     }
-    window.innerWidth = 800;
-    window.dispatchEvent(new Event('resize'));
-    const m = await mount(clientOf(jobOf()));
-    expect(discuss(m.container)).toBeNull();
-    await m.unmount();
   });
 });

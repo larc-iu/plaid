@@ -29,6 +29,7 @@ import { readOnlyReason } from '@ui/domain/permissions.js';
 import { useSentenceFocus } from './hooks/useSentenceFocus.js';
 import { useComposeProject } from '@/hooks/useCompose';
 import { IGT_ASSISTANT } from '../projects/assistant/adapter.js';
+import { AssistantButton } from '../projects/assistant/AssistantButton.jsx';
 import { DocumentHistoryChanges } from './history/DocumentHistoryChanges.jsx';
 
 // The Media tab (the timeline, waveform, speech detection, and recording
@@ -120,6 +121,11 @@ const IGT_SHELL = {
   // shows the shell's status.
   ownSaveStatus: ['analyze'],
   roleWords: TOKEN_ROLE_WORDS,
+  // Beside History, only on a window too narrow for the panel: a link to the
+  // project's Assistant tab, the one way to the assistant there.
+  headerActions: ({ projectId, client }) => (
+    <AssistantButton projectId={projectId} client={client} narrowOnly size="sm" />
+  ),
   // A History entry opens on what it changed, keyed by the entry so the
   // filter and the sentences shown start over on the next.
   historyChanges: (context) => <HistoryChanges key={context.pastEntry.id} context={context} />,
