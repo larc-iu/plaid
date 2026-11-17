@@ -360,3 +360,26 @@ test('A1-12: Alt+Down lists the values seen for the form, ranked with counts; pi
   expect(span?.metadata?.provConfirmed).toBe(true);
   expect(span?.metadata?.provDetail?.value).toBe('the.PL');
 });
+
+// H2-1: a gloss on an unsegmented word (its morpheme stored with no form of
+// its own, as mkdoc makes them) is a guess and an Alt+Down choice in another
+// document. A form of its own, so no other test's glosses count.
+test('H2-1: a gloss on an unsegmented word is a guess in another document', async ({ page }) => {
+  const a = await mkdoc(`${LOS}x5`);
+  await client.spans.create(ids.gloss, [a.m[0]], 'DET.PL');
+  const b = await mkdoc(`${LOS}x5 ${LOS}x5`);
+  await seedAuth(page);
+  await page.goto(`/#/projects/${projectId}/documents/${b.id}?tab=analyze`);
+  await page.locator('.igt-island .igt-token-col').first().waitFor({ state: 'visible' });
+  await page.waitForLoadState('networkidle');
+  const cell = page.locator(`.igt-field[data-cell-key="ma:${b.m[0]}:Gloss"]`);
+  await expect(cell).toHaveClass(/igt-field--guess/);
+  await expect(cell).toHaveAttribute('data-guess-value', 'DET.PL');
+  await cell.click();
+  await page.keyboard.press('Alt+ArrowDown');
+  const rows = page.locator('.igt-alts__item');
+  await expect(rows).toHaveCount(1);
+  await expect(rows.nth(0)).toContainText('DET.PL');
+  await expect(rows.nth(0)).toContainText('×1');
+  await page.keyboard.press('Escape');
+});
