@@ -350,6 +350,7 @@ export const AssistantChat = ({
   // shows how long it has really been going.
   const [startedAt, setStartedAt] = useState(null);
   const inputRef = useRef(null);
+  const sectionRef = useRef(null);
   // The listener below is mounted once, so the project it compares against
   // travels by ref.
   const projectIdRef = useRef(projectId);
@@ -503,7 +504,12 @@ export const AssistantChat = ({
           // next send.
           if (j.unsentFiles?.length) setAttachments((now) => (now.length ? now : j.unsentFiles));
         }
-        inputRef.current?.focus();
+        // Back to the composer only from the panel or from nowhere: an
+        // answer or an applied plan never takes the keys from where the
+        // reader is typing (H13-1).
+        const at = document.activeElement;
+        if (!at || at === document.body || sectionRef.current?.contains(at))
+          inputRef.current?.focus();
       } else {
         // The message went after what had landed meanwhile (`startTurn`).
         if (j.rebased && activeRef.current !== j.conv) {
@@ -1116,6 +1122,7 @@ export const AssistantChat = ({
     <>
       {renderSidebar?.(chrome)}
       <section
+        ref={sectionRef}
         className={cn(
           'flex min-h-0 min-w-0 flex-1 flex-col bg-card',
           !compact && 'rounded-lg border',
