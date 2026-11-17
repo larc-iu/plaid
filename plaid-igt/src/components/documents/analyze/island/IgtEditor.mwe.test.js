@@ -145,6 +145,50 @@ describe('a linked multi-word expression', () => {
     expect(label('mwe:lk-1').classList.contains('igt-mwe__label--verified')).toBe(true);
   });
 
+  // H3-1: the word keys cover a machine expression the word is in, on every
+  // member, as they cover the word's own link.
+  describe('the word keys on a member of an auto-linked one', () => {
+    const machine = () =>
+      mount({
+        links: [
+          linkOver('lk-1', ['w-3', 'w-4'], undefined, { prov: 'inferred', provSource: 'rule' }),
+        ],
+      });
+    const firstCell = (wordId) =>
+      host.querySelector(`[data-word-col="${wordId}"] .igt-field[data-confirm-word]`);
+
+    it('Ctrl+Enter accepts it', async () => {
+      const feedback = await import('@/utils/feedback');
+      feedback.notifyInfo.mockClear();
+      const { doc, client } = machine();
+      const c = firstCell('w-4');
+      c.focus();
+      key(c, 'Enter', { ctrlKey: true });
+      await settle(4);
+      expect(feedback.notifyInfo).not.toHaveBeenCalled();
+      expect(client.calls.some((x) => x.kind === 'vocabLinks.patchMetadata')).toBe(true);
+      expect(doc.sentences[0].mwes[0].prov).toBe('verified');
+    });
+
+    it('Ctrl+Backspace discards it', async () => {
+      const { doc, client } = machine();
+      const c = firstCell('w-3');
+      c.focus();
+      key(c, 'Backspace', { ctrlKey: true });
+      await settle(4);
+      expect(client.calls.map((x) => x.kind)).toContain('vocabLinks.delete');
+      expect(doc.sentences[0].mwes).toEqual([]);
+    });
+
+    it('the review sweep stops on it', () => {
+      machine();
+      const c = firstCell('w-1');
+      c.focus();
+      key(c, 'ArrowDown', { ctrlKey: true, shiftKey: true });
+      expect(document.activeElement.closest('[data-word-col]')?.dataset.wordCol).toBe('w-3');
+    });
+  });
+
   it('opens from its label with the entry marked linked, and unlink removes it', async () => {
     const { doc, client } = mount({ links: [linkOver('lk-1', ['w-3', 'w-4'])] });
     click(label('mwe:lk-1'));

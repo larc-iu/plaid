@@ -197,9 +197,17 @@ export const review = {
 
   // The selector for material this writer reviews in a word column — the
   // review sweep's stops and what Ctrl+Enter / Ctrl+Backspace act on.
+  // A multi-word expression counts on every member's column: its line there
+  // (never the dotted pass-through under a skipped word) and its label.
   _reviewColSelector() {
     return reviewSelector(
-      ['.igt-field', '.igt-token-form', (s) => `button.igt-vocab__hint--${s}:not([disabled])`],
+      [
+        '.igt-field',
+        '.igt-token-form',
+        (s) => `button.igt-vocab__hint--${s}:not([disabled])`,
+        (s) => `.igt-mwe.igt-mwe--${s}:not(.igt-mwe--pass)`,
+        (s) => `button.igt-mwe__label--${s}:not([disabled])`,
+      ],
       this.doc.isContributor,
     );
   },
@@ -278,13 +286,16 @@ export const review = {
       // Prefer a marked CELL in the column (where Ctrl+Enter / Ctrl+Backspace
       // act on the word); a column whose only marked material is a link
       // lands on the chip.
+      // A column whose only marked material is an expression's line lands
+      // on the word's first cell, where the word keys act on it.
       const target =
         col.querySelector(reviewSelector(['.igt-field'], contributor)) ||
         (el.matches('input, button')
           ? el
           : col.querySelector(
               reviewSelector([(s) => `button.igt-vocab__hint--${s}`], contributor),
-            ));
+            )) ||
+        col.querySelector('.igt-field[data-confirm-word]');
       if (target) anchors.push({ wordId, el: target });
     }
     // Proposed sentence values (a translation) are stops too, keyed by their

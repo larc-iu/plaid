@@ -708,6 +708,7 @@ export const analysisCopyMutations = {
       }
     };
     collectAttached(token);
+    linkIds.push(...this._reviewableMweLinkIdsOf(token));
     const morphs = [...(token.morphemes || [])].sort(
       (a, b) => (a.precedence ?? 0) - (b.precedence ?? 0),
     );
@@ -798,6 +799,15 @@ export const analysisCopyMutations = {
   // the annotation spans and the tokens that are somebody else's unconfirmed
   // work. Morpheme tokens (a copied segmentation) AND the word token itself
   // (a tokenizer service stamps prov on word tokens) confirm together.
+  // The multi-word expressions `word` is a member of (drawn in its sentence)
+  // whose link this writer reviews: a word's review keys cover them as they
+  // cover the word's own link.
+  _reviewableMweLinkIdsOf(word) {
+    return (word?.mwePieces || [])
+      .filter((p) => p && p.piece !== 'pass' && this.reviewableState(p.mwe?.prov))
+      .map((p) => p.mwe.linkId);
+  },
+
   _reviewableIdsOf(words) {
     const spanIds = [];
     const tokenIds = [];
@@ -812,9 +822,10 @@ export const analysisCopyMutations = {
     for (const token of words) {
       if (!token) continue;
       collect(token);
+      linkIds.push(...this._reviewableMweLinkIdsOf(token));
       for (const m of token.morphemes || []) collect(m);
     }
-    return { spanIds, tokenIds, linkIds };
+    return { spanIds, tokenIds, linkIds: [...new Set(linkIds)] };
   },
 
   // Confirm what `wordTokenIds` carry of somebody else's unconfirmed work,
