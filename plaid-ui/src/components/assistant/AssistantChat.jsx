@@ -1277,11 +1277,14 @@ export const AssistantChat = ({
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
                   <Loader2 className="h-4 w-4 animate-spin" />
                   {/* While the trace says the model is thinking, and for how
-                      long, this line does not say it again. */}
+                      long, this line does not show it again, but still says it
+                      to a screen reader (the counting row is no live region). */}
                   <span role="status" className="animate-pulse">
-                    {roundSince
-                      ? ''
-                      : progress || (busy === 'apply' ? 'Applying changes…' : 'Thinking…')}
+                    {roundSince ? (
+                      <span className="sr-only">Thinking</span>
+                    ) : (
+                      progress || (busy === 'apply' ? 'Applying changes…' : 'Thinking…')
+                    )}
                   </span>
                   {/* The only moving part when the service goes quiet, and the
                     difference between "this is slow" and "this is dead". */}

@@ -225,8 +225,11 @@ describe('the round under way', () => {
     await typeAndSend(m, 'Find kai.');
     await flush(m);
     expect(thinkingLine(m)?.textContent).toBe('Thinking, 0 s');
-    // The line under the conversation does not say it twice.
-    expect(m.container.querySelector('[role="status"].animate-pulse')?.textContent).toBe('');
+    // The line under the conversation does not show it twice, and still
+    // tells a screen reader (REV-SVU-4).
+    const status = m.container.querySelector('[role="status"].animate-pulse');
+    expect(status?.textContent).toBe('Thinking');
+    expect(status?.querySelector('.sr-only')?.textContent).toBe('Thinking');
     const say = async (p) => {
       emitted.push(p);
       await m.step(() => emitNow(p));
