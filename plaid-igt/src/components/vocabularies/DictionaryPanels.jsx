@@ -16,7 +16,7 @@ import { loadConcordanceGroups, sentenceTo } from './vocabConcordance';
 import { ItemPicker } from './ItemPicker';
 import { FormLabel } from './FormLabel';
 import { MarkedText } from '@ui/components/shared/MarkedText.jsx';
-import { detectDirection } from '@ui/domain/textDirection.js';
+import { StackedSentence } from './StackedSentence';
 
 // The dictionary panels of an entry: where it sits in its sense tree, what
 // refers to it, and its examples.
@@ -524,47 +524,18 @@ export const ReferencedByPanel = ({ item, items, fields, numbers, itemTo }) => {
   );
 };
 
-/**
- * A hit word's morphemes as the Analyze grid joins them, the hit ones in the
- * stronger highlight a morpheme gets inside its word (withMorphemeHits). For
- * a word whose morpheme forms do not spell it.
- */
-const Segmentations = ({ words }) => (
-  <p data-segmentation className="mt-0.5 font-text text-xs text-muted-foreground">
-    {words.map((parts, i) => {
-      const text = parts.map((p) => (p.joiner ?? '') + p.form).join('');
-      return (
-        <span key={i}>
-          {i > 0 && ' · '}
-          <bdi dir={detectDirection(text)}>
-            {parts.map((p, j) => (
-              <span key={j}>
-                {p.joiner}
-                {p.hit ? (
-                  <span className="rounded-[2px] bg-highlight-strong font-semibold text-foreground">
-                    {p.form}
-                  </span>
-                ) : (
-                  p.form
-                )}
-              </span>
-            ))}
-          </bdi>
-        </span>
-      );
-    })}
-  </p>
-);
-
 /** One sentence of context, as the concordance and the examples draw it. */
 export const ContextRow = ({ row, to }) => {
   const body = (
     <>
       <p className="text-sm text-foreground">
         <span className="mr-2 text-xs text-muted-foreground">#{row.sentenceIndex + 1}</span>
-        <MarkedText text={row.text} marks={row.marks} />
+        {row.stacks?.length ? (
+          <StackedSentence text={row.text} marks={row.marks} stacks={row.stacks} />
+        ) : (
+          <MarkedText text={row.text} marks={row.marks} />
+        )}
       </p>
-      {row.segmentations?.length > 0 && <Segmentations words={row.segmentations} />}
       {row.notes?.length > 0 && (
         <p className="mt-0.5 text-xs text-muted-foreground">
           {[...new Set(row.notes)].join(' · ')}
@@ -628,7 +599,9 @@ export const ExamplesPanel = ({ item, client, linkedTokenIds, canEdit, onRemove 
       await Promise.all(
         [...byDoc.entries()].map(async ([docId, n]) => {
           try {
-            const [g] = await loadConcordanceGroups(client, tokenIds, [[docId, n]]);
+            const [g] = await loadConcordanceGroups(client, tokenIds, [[docId, n]], {
+              morphemes: true,
+            });
             for (const row of g.rows) {
               for (const t of row.tokenIds || []) {
                 if (tokenIds.has(t))

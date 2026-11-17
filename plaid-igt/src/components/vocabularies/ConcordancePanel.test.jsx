@@ -4,6 +4,7 @@ import { renderComponent } from '@ui/test/renderComponent.jsx';
 import { buildContextRows } from '@/components/projects/search/searchRunner.js';
 import { withMorphemeHits } from './vocabConcordance';
 import { ConcordancePanel } from './ConcordancePanel.jsx';
+import { MarkedText } from '@ui/components/shared/MarkedText.jsx';
 
 // GH #68: an entry linked at morpheme level is picked out inside its word in
 // the concordance. Where the word's morpheme forms spell the written word,
@@ -96,22 +97,57 @@ const mount = (rows) =>
 
 const rowLinks = (view) => [...view.container.querySelectorAll('a')];
 
+// One sentence, split on spaces. `analyses` maps a word to its forms, the
+// form marked with a leading "!" being the hit.
+const oneSentence = (text, analyses) => {
+  const tokens = [];
+  const hits = new Set();
+  let pos = 0;
+  for (const piece of text.split(' ')) {
+    const begin = pos;
+    const end = pos + [...piece].length;
+    pos = end + 1;
+    const forms = analyses[piece] || [];
+    tokens.push({
+      id: `w${begin}`,
+      begin,
+      end,
+      content: piece,
+      morphemes: forms.map((f, i) => {
+        const id = `w${begin}m${i}`;
+        if (f.startsWith('!')) hits.add(id);
+        return { id, begin, end, metadata: { form: f.replace(/^!/, '') } };
+      }),
+    });
+  }
+  const d = {
+    body: text,
+    layerInfo: { spanLayers: { sentence: [] } },
+    sentences: [{ id: 's', begin: 0, end: [...text].length, annotations: {}, tokens }],
+  };
+  return withMorphemeHits(d, buildContextRows(d, { kind: 'lexicon' }, hits), hits);
+};
+
 describe('withMorphemeHits', () => {
   it('adds the morpheme’s range inside its word when the forms spell the word', () => {
     const [, spelled] = rowsOf();
     expect(spelled.marks).toEqual([{ begin: 6, end: 13, inner: [{ begin: 8, end: 11 }] }]);
-    expect(spelled.segmentations).toBeUndefined();
+    expect(spelled.stacks).toBeUndefined();
   });
 
-  it('adds the segmentation, and no range, when they do not', () => {
+  it('adds the word’s segmentation at the word, and no range, when they do not', () => {
     const [underlying] = rowsOf();
     expect(underlying.marks).toEqual([{ begin: 0, end: 8 }]);
-    expect(underlying.segmentations).toEqual([
-      [
-        { joiner: null, form: 'uku', hit: false },
-        { joiner: '-', form: 'nge', hit: true },
-        { joiner: '-', form: 'ut', hit: false },
-      ],
+    expect(underlying.stacks).toEqual([
+      {
+        begin: 0,
+        end: 8,
+        parts: [
+          { joiner: null, form: 'uku', hit: false },
+          { joiner: '-', form: 'nge', hit: true },
+          { joiner: '-', form: 'ut', hit: false },
+        ],
+      },
     ]);
   });
 
@@ -124,80 +160,53 @@ describe('withMorphemeHits', () => {
     // The concordance adds its detail on top. Search's rows carry none.
     for (const row of buildContextRows(doc, { kind: 'lexicon' }, HITS)) {
       expect(row.marks.every((mk) => !('inner' in mk))).toBe(true);
-      expect(row.segmentations).toBeUndefined();
+      expect(row.stacks).toBeUndefined();
     }
   });
 
   it('handles each hit in a row on its own', () => {
-    const body = 'pinguuq Ukunguut';
-    const two = {
-      body,
-      layerInfo: { spanLayers: { sentence: [] } },
-      sentences: [
-        {
-          id: 's',
-          begin: 0,
-          end: 16,
-          annotations: {},
-          tokens: [
-            {
-              id: 'a',
-              begin: 0,
-              end: 7,
-              content: 'pinguuq',
-              morphemes: [
-                { id: 'a1', metadata: { form: 'pi' } },
-                { id: 'a2', metadata: { form: 'ngu' } },
-                { id: 'a3', metadata: { form: 'uq' } },
-              ],
-            },
-            {
-              id: 'b',
-              begin: 8,
-              end: 16,
-              content: 'Ukunguut',
-              morphemes: [
-                { id: 'b1', metadata: { form: 'uku' } },
-                { id: 'b2', metadata: { form: 'nge' } },
-                { id: 'b3', metadata: { form: 'ut' } },
-              ],
-            },
-          ],
-        },
-      ],
-    };
-    const hits = new Set(['a2', 'b2']);
-    const [row] = withMorphemeHits(two, buildContextRows(two, { kind: 'lexicon' }, hits), hits);
+    const [row] = oneSentence('pinguuq Ukunguut', {
+      pinguuq: ['pi', '!ngu', 'uq'],
+      Ukunguut: ['uku', '!nge', 'ut'],
+    });
     expect(row.marks).toEqual([
       { begin: 0, end: 7, inner: [{ begin: 2, end: 5 }] },
       { begin: 8, end: 16 },
     ]);
-    expect(row.segmentations.map((parts) => parts.map((p) => p.form).join('-'))).toEqual([
-      'uku-nge-ut',
-    ]);
+    expect(row.stacks.map((st) => [st.begin, st.end])).toEqual([[8, 16]]);
   });
 });
 
+const stacksIn = (row) => [...row.querySelectorAll('[data-stack]')];
+const mountRow = (rows) => mount(rows).then((view) => [view, rowLinks(view)[0]]);
+
 describe('ConcordancePanel, a morpheme in its word', () => {
-  it('marks the morpheme’s letters inside the word’s highlight', async () => {
+  it('marks the morpheme’s letters inside the word’s highlight, on one line', async () => {
     const view = await mount(rowsOf());
     const row = rowLinks(view)[1];
     const mark = row.querySelector('mark');
     expect(mark.textContent).toBe('pinguuq');
     expect(mark.querySelector('span').textContent).toBe('ngu');
+    expect(stacksIn(row)).toEqual([]);
     expect(row.textContent).not.toContain('pi-ngu-uq');
     await view.unmount();
   });
 
-  it('shows the segmentation beside the sentence, the morpheme picked out', async () => {
+  it('sets the segmentation under its word, in one group with it', async () => {
     const view = await mount(rowsOf());
     const row = rowLinks(view)[0];
-    const mark = row.querySelector('mark');
+    const [stack] = stacksIn(row);
+    expect(stacksIn(row)).toHaveLength(1);
+    const mark = stack.querySelector('mark');
     expect(mark.textContent).toBe('Ukunguut');
     expect(mark.querySelector('span')).toBeNull();
-    const note = row.querySelector('[data-segmentation]');
-    expect(note.textContent).toBe('uku-nge-ut');
-    expect(note.querySelector('.bg-highlight-strong').textContent).toBe('nge');
+    const seg = stack.querySelector('[data-segmentation]');
+    expect(seg.parentElement).toBe(stack);
+    expect(stack.firstElementChild).toBe(mark);
+    expect(seg.textContent).toBe('uku-nge-ut');
+    expect(seg.querySelector('.bg-highlight-strong').textContent).toBe('nge');
+    // The rest of the sentence is on the first line, outside any stack.
+    expect(row.querySelector('bdi').textContent).toBe('Ukunguutuku-nge-ut nengllugutet.');
     await view.unmount();
   });
 
@@ -206,7 +215,66 @@ describe('ConcordancePanel, a morpheme in its word', () => {
     const row = rowLinks(view)[2];
     expect(row.querySelector('mark').textContent).toBe('Messiahnguuq');
     expect(row.querySelector('mark span')).toBeNull();
+    expect(stacksIn(row)).toEqual([]);
     expect(row.querySelector('[data-segmentation]')).toBeNull();
+    await view.unmount();
+  });
+
+  it('draws a row with no segmented hit exactly as MarkedText does', async () => {
+    const view = await mount(rowsOf());
+    const row = rowLinks(view)[1];
+    const alone = await renderComponent(
+      <MarkedText text={rowsOf()[1].text} marks={rowsOf()[1].marks} />,
+    );
+    expect(row.querySelector('bdi').outerHTML).toBe(alone.container.innerHTML);
+    await alone.unmount();
+    await view.unmount();
+  });
+
+  it('stacks two neighbouring words each under its own', async () => {
+    const [view, row] = await mountRow(
+      oneSentence('Ukunguut angayuqaungurtut .', {
+        Ukunguut: ['uku', '!nge', 'ut'],
+        angayuqaungurtut: ['angayuqaq', '!ngu', 'rte', 'ut'],
+      }),
+    );
+    const stacks = stacksIn(row);
+    expect(stacks.map((st) => st.querySelector('mark').textContent)).toEqual([
+      'Ukunguut',
+      'angayuqaungurtut',
+    ]);
+    expect(stacks.map((st) => st.querySelector('[data-segmentation]').textContent)).toEqual([
+      'uku-nge-ut',
+      'angayuqaq-ngu-rte-ut',
+    ]);
+    await view.unmount();
+  });
+
+  it('stacks only the segmented hit in a row that mixes both', async () => {
+    const [view, row] = await mountRow(
+      oneSentence('pinguuq Ukunguut .', {
+        pinguuq: ['pi', '!ngu', 'uq'],
+        Ukunguut: ['uku', '!nge', 'ut'],
+      }),
+    );
+    const marks = [...row.querySelectorAll('mark')];
+    expect(marks.map((mk) => mk.textContent)).toEqual(['pinguuq', 'Ukunguut']);
+    expect(marks[0].closest('[data-stack]')).toBeNull();
+    expect(marks[0].querySelector('span').textContent).toBe('ngu');
+    expect(marks[1].closest('[data-stack]')).not.toBeNull();
+    await view.unmount();
+  });
+
+  it('stacks in a right-to-left sentence, the stack following its direction', async () => {
+    const [view, row] = await mountRow(
+      oneSentence('قرأ الولد الكتاب .', { الكتاب: ['!ال', 'كتب'] }),
+    );
+    const bdi = row.querySelector('bdi');
+    expect(bdi.getAttribute('dir')).toBe('rtl');
+    const [stack] = stacksIn(row);
+    expect(stack.querySelector('mark').textContent).toBe('الكتاب');
+    expect(stack.querySelector('[data-segmentation]').textContent).toBe('ال-كتب');
+    expect(stack.className).toContain('text-start');
     await view.unmount();
   });
 });

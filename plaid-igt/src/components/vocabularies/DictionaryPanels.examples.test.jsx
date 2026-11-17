@@ -9,10 +9,11 @@ import { renderComponent, all } from '@ui/test/renderComponent.jsx';
 // 403 with `unresolved` (anyone else), and the example reads as gone, with
 // Remove for a maintainer.
 
-const load = vi.hoisted(() => ({ byDoc: {} }));
+const load = vi.hoisted(() => ({ byDoc: {}, options: [] }));
 vi.mock('./vocabConcordance', () => ({
   sentenceTo: (projectId, docId, sentenceId) => `/projects/${projectId}/${docId}/${sentenceId}`,
-  loadConcordanceGroups: async (client, tokenIds, [[docId]]) => {
+  loadConcordanceGroups: async (client, tokenIds, [[docId]], options) => {
+    load.options.push(options);
     const answer = load.byDoc[docId];
     if (answer instanceof Error) throw answer;
     return [answer];
@@ -83,6 +84,52 @@ describe('ExamplesPanel, an example the viewer cannot open', () => {
     expect(deleted.querySelector('[aria-label="Remove example"]')).not.toBeNull();
     expect(adminGone.textContent).toContain(GONE_TEXT);
     expect(adminGone.querySelector('[aria-label="Remove example"]')).not.toBeNull();
+    await view.unmount();
+  });
+});
+
+// GH #68: an example of a morpheme entry picks the morpheme out in its word,
+// as the Concordance tab on the same page does.
+describe('ExamplesPanel, a morpheme example', () => {
+  it('asks for the morpheme detail and stacks a segmented word', async () => {
+    load.byDoc['d-morph'] = {
+      projectId: 'p1',
+      docName: 'Matthew 1',
+      rows: [
+        {
+          sentenceId: 's1',
+          sentenceIndex: 0,
+          text: 'Ukunguut nengllugutet .',
+          marks: [{ begin: 0, end: 8 }],
+          stacks: [
+            {
+              begin: 0,
+              end: 8,
+              parts: [
+                { joiner: null, form: 'uku', hit: false },
+                { joiner: '-', form: 'nge', hit: true },
+                { joiner: '-', form: 'ut', hit: false },
+              ],
+            },
+          ],
+          tokenIds: ['t-m'],
+        },
+      ],
+    };
+    load.options.length = 0;
+    const view = await mount({
+      item: {
+        id: 'e2',
+        form: 'ngu',
+        metadata: { examples: [{ document: 'd-morph', token: 't-m' }] },
+      },
+      linkedTokenIds: new Set(['t-m']),
+    });
+    await view.step(() => new Promise((r) => setTimeout(r, 0)));
+    expect(load.options).toEqual([{ morphemes: true }]);
+    const stack = view.container.querySelector('[data-stack]');
+    expect(stack.querySelector('mark').textContent).toBe('Ukunguut');
+    expect(stack.querySelector('[data-segmentation]').textContent).toBe('uku-nge-ut');
     await view.unmount();
   });
 });

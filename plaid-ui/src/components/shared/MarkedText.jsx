@@ -1,25 +1,5 @@
 import { detectDirection } from '../../domain/textDirection.js';
-
-// The text of a mark from `b` to `e`, its inner stretches clamped to it and
-// set in their own spans.
-const innerParts = (chars, b, e, inner) => {
-  const out = [];
-  let pos = b;
-  inner.forEach((r, i) => {
-    const ib = Math.max(pos, Math.min(r.begin, e));
-    const ie = Math.max(ib, Math.min(r.end, e));
-    if (ie === ib) return;
-    if (ib > pos) out.push(chars.slice(pos, ib).join(''));
-    out.push(
-      <span key={i} className="rounded-[2px] bg-highlight-strong font-semibold">
-        {chars.slice(ib, ie).join('')}
-      </span>,
-    );
-    pos = ie;
-  });
-  if (pos < e) out.push(chars.slice(pos, e).join(''));
-  return out;
-};
+import { MARK_CLASS, markContent } from './markParts.jsx';
 
 /**
  * A sentence with its search hits marked, one look in every app (Search, Bulk
@@ -58,8 +38,8 @@ export const MarkedText = ({ text, marks }) => {
     const e = Math.max(b, Math.min(m.end, chars.length));
     if (b > pos) out.push(chars.slice(pos, b).join(''));
     out.push(
-      <mark key={i} className="rounded-sm bg-highlight px-0.5 text-foreground">
-        {m.inner?.length ? innerParts(chars, b, e, m.inner) : chars.slice(b, e).join('')}
+      <mark key={i} className={MARK_CLASS}>
+        {markContent(chars, b, e, m.inner)}
       </mark>,
     );
     pos = e;

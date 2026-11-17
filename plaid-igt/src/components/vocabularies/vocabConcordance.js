@@ -72,8 +72,8 @@ export async function planItemConcordance(client, vocabLayerId, itemId) {
 // locating the hits inside each. `docEntries` is a slice of plan.docs, and
 // `hits` is either a Set of token ids the caller already has or a function of
 // a document id returning that document's own set (plan.idsFor). `morphemes`
-// picks a morpheme hit out inside its word (withMorphemeHits), which only the
-// Concordance tab asks for.
+// picks a morpheme hit out inside its word (withMorphemeHits), which the
+// entry page's Concordance and Examples ask for, and Search does not.
 export async function loadConcordanceGroups(client, hits, docEntries, { morphemes = false } = {}) {
   const domain = { kind: 'lexicon' }; // marks both word- and morpheme-level link hits
   const idsFor = typeof hits === 'function' ? hits : () => hits;
@@ -103,8 +103,9 @@ export async function loadConcordanceGroups(client, hits, docEntries, { morpheme
  * #68), on top of what buildContextRows gives Search. Where the word's forms
  * spell it (morphemeRangeInWord), the word's mark gains `inner`, the
  * morpheme's letters in sentence offsets. Where they do not, the row gains
- * `segmentations`, one list of segmentationParts per such word, and the word
- * keeps its plain mark. A row with no morpheme hit comes back as it was.
+ * `stacks`, one `{ begin, end, parts }` per such word (its extent in the
+ * sentence and its segmentationParts), to be set under the word, which keeps
+ * its plain mark. A row with no morpheme hit comes back as it was.
  */
 export function withMorphemeHits(doc, rows, hitIds) {
   const sentences = new Map((doc.sentences || []).map((s) => [s.id, s]));
@@ -112,7 +113,7 @@ export function withMorphemeHits(doc, rows, hitIds) {
     const sentence = sentences.get(row.sentenceId);
     if (!sentence) return row;
     const inner = new Map(); // word begin in the sentence -> [{begin, end}]
-    const segmentations = [];
+    const stacks = [];
     for (const word of sentence.tokens || []) {
       const hits = (word.morphemes || []).filter((m) => hitIds.has(m.id));
       if (!hits.length) continue;
@@ -127,15 +128,20 @@ export function withMorphemeHits(doc, rows, hitIds) {
         if (!inner.has(at)) inner.set(at, []);
         inner.get(at).push({ begin: at + range.begin, end: at + range.end });
       }
-      if (unplaced) segmentations.push(segmentationParts(word, hitIds));
+      if (unplaced)
+        stacks.push({
+          begin: at,
+          end: word.end - sentence.begin,
+          parts: segmentationParts(word, hitIds),
+        });
     }
-    if (!inner.size && !segmentations.length) return row;
+    if (!inner.size && !stacks.length) return row;
     return {
       ...row,
       marks: row.marks.map((mk) =>
         inner.has(mk.begin) ? { ...mk, inner: inner.get(mk.begin) } : mk,
       ),
-      ...(segmentations.length ? { segmentations } : {}),
+      ...(stacks.length ? { stacks } : {}),
     };
   });
 }
