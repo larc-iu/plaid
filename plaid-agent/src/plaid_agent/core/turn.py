@@ -255,12 +255,15 @@ class Turn:
             # message ("continue") is read with what the turn already did
             # (survey 2026-11-17 item 1). Retry takes them off with the
             # question (`rewind_for_retry`).
-            self._write(store, conv_id,
-                        turn_ending(conv, transcript,
-                                    error_item(line, model=model, version=self.version,
-                                               service=self.service_id, steps=steps, partial=partial,
-                                               reply_round=turn_reply_round(e)),
-                                    failed_turn_messages(e), fit=fit),
+            item = error_item(line, model=model, version=self.version, service=self.service_id, steps=steps,
+                              partial=partial, reply_round=turn_reply_round(e))
+            # Its tool results stay for the next message, so what it read of
+            # each sentence stays too, for the numbers read there to be held
+            # to it (REV-SVB-13, `earlier_reads`).
+            read = ws.reads_kept()
+            if read:
+                item['read'] = read
+            self._write(store, conv_id, turn_ending(conv, transcript, item, failed_turn_messages(e), fit=fit),
                         request_id, model)
             response_helper.error(line)
             return

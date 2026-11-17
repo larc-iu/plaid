@@ -532,14 +532,15 @@ def assistant_item(text: str, plan: Optional[Dict[str, Any]], citations: List[Di
 
 
 def earlier_reads(display: List[Dict[str, Any]]) -> Dict[str, Dict[str, str]]:
-    """What the conversation's replies showed the model of each sentence,
+    """What the conversation's turns showed the model of each sentence,
     the newest read of each: document id -> sentence number (as text) -> the
-    print of its words (``read`` on a reply, ``BaseWorkspace.reads_kept``).
-    Only a reply's: a turn that failed or was stopped leaves its tool results
-    out of the model transcript, so what it read is not what the model holds."""
+    print of its words (``read`` on an item, ``BaseWorkspace.reads_kept``).
+    A reply's, and a failed turn's, whose tool results stay in the model
+    transcript (`agent.failed_turn_messages`). A stopped turn leaves its tool
+    results out, and its item carries no ``read``."""
     out: Dict[str, Dict[str, str]] = {}
     for d in display or []:
-        if isinstance(d, dict) and d.get('kind') == 'assistant' and isinstance(d.get('read'), dict):
+        if isinstance(d, dict) and isinstance(d.get('read'), dict):
             for doc_id, prints in d['read'].items():
                 if isinstance(prints, dict):
                     out.setdefault(doc_id, {}).update(prints)
