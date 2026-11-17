@@ -160,7 +160,6 @@ describe('queries', () => {
     expect(qs.map((q) => [q.kind, q.field])).toEqual([
       ['word', 'POS'],
       ['morpheme', 'Gloss'],
-      ['morpheme', 'Gloss'],
     ]);
     expect(qs[0].query.where).toEqual([
       ['span', '?s', { layer: 'posL', doc: 'doc-1' }],
@@ -175,50 +174,21 @@ describe('queries', () => {
     expect(qs[0].query.return.group[0]).toBe('?t.value');
     expect(qs[1].query.return.group).toEqual([
       '?t.metadata.form',
+      '?t.value',
       '?s.value',
       '?s.metadata.prov',
       '?s.metadata.provConfirmed',
     ]);
     expect(valuePrecedentQueries({ spanLayers: { word: [{ id: 'x', name: 'X' }] } })).toEqual([]);
   });
-
-  // H2-1, REV-HFV-6: the first gloss on an unsegmented word stores a morpheme
-  // with no form of its own, so the form query never counts it. One more
-  // query per morpheme field counts those (alone in their word, as Search
-  // finds them) by the word's text, in the same row shape, and the form query
-  // stays as it was.
-  it('value queries: a morpheme field also counts its formless morphemes by their text', () => {
-    const layerInfo = {
-      primaryTokenLayer: { id: 'wordL' },
-      morphemeTokenLayer: { id: 'morphL' },
-      spanLayers: { morpheme: [{ id: 'glossL', name: 'Gloss' }] },
-    };
-    const [form, formless] = valuePrecedentQueries(layerInfo, { docId: 'doc-1' });
-    expect(form.query.return.group[0]).toBe('?t.metadata.form');
-    expect(formless.query.return.group).toEqual([
-      '?t.value',
-      '?s.value',
-      '?s.metadata.prov',
-      '?s.metadata.provConfirmed',
-    ]);
-    expect(formless.query.where[0]).toEqual(['span', '?s', { layer: 'glossL', doc: 'doc-1' }]);
-    expect(formless.query.where).toContainEqual([
-      'not',
-      ['token', '?t', { metadata: { form: { regex: '.' } } }],
-    ]);
-    const t = foldValueRows(createTally(), KINDS.MORPHEME, 'Gloss', [
-      ['nanoq', 'bear', null, null, 1],
-    ]);
-    expect(precedentCounts(t, 'morpheme', 'nanoq', 'Gloss')).toEqual(new Map([['bear', 1]]));
-  });
 });
 
 describe('value precedent', () => {
   it('folds project rows with their provenance state; excludeMachine drops unverified machine values', () => {
     const t = foldValueRows(createTally(), KINDS.MORPHEME, 'Gloss', [
-      ['s', 'PL', null, null, 3], // human
-      ['s', 'PL', 'inferred', true, 1], // verified
-      ['s', '3SG', 'inferred', null, 5], // machine, unverified
+      ['s', 'x', 'PL', null, null, 3], // human
+      ['s', 'x', 'PL', 'inferred', true, 1], // verified
+      ['s', 'x', '3SG', 'inferred', null, 5], // machine, unverified
     ]);
     expect(precedentCounts(t, 'morpheme', 's', 'Gloss')).toEqual(
       new Map([
@@ -238,10 +208,22 @@ describe('value precedent', () => {
     const t = createTally();
     foldValueRows(t, KINDS.WORD, 'POS', [['perros.', 'N', null, null, 2]], ignored);
     foldValueRows(t, KINDS.WORD, 'POS', [['perros', 'N', null, null, 1]], ignored);
-    foldValueRows(t, KINDS.MORPHEME, 'POS', [['perros', 'X', null, null, 1]], ignored);
+    foldValueRows(t, KINDS.MORPHEME, 'POS', [['perros', 'perros.', 'X', null, null, 1]], ignored);
     expect(precedentCounts(t, 'word', 'perros', 'POS')).toEqual(new Map([['N', 3]]));
     expect(precedentCounts(t, 'word', 'perros', 'Gloss')).toBeNull();
     expect(precedentCounts(t, 'morpheme', 'perros', 'POS')).toEqual(new Map([['X', 1]]));
+  });
+
+  // H2-1: the first gloss on an unsegmented word stores a morpheme with no
+  // form of its own. Its row counts under the token's text, as the open
+  // document counts it (morphFormOf), and a form stored empty stays empty.
+  it('a morpheme row with no form counts under its text', () => {
+    const t = foldValueRows(createTally(), KINDS.MORPHEME, 'Gloss', [
+      [null, 'nanoq', 'bear', null, null, 1],
+      ['', 'kamik', 'boot', null, null, 1],
+    ]);
+    expect(precedentCounts(t, 'morpheme', 'nanoq', 'Gloss')).toEqual(new Map([['bear', 1]]));
+    expect(precedentCounts(t, 'morpheme', 'kamik', 'Gloss')).toBeNull();
   });
 
   it('foldProject takes the editor fetch shape', () => {

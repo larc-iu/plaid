@@ -154,15 +154,6 @@ async function fetchRows(doc, docId = null) {
       ),
     ),
   ]);
-  // Core cuts a grouped answer at its row limit. The cut drops whole (form,
-  // value) rows, so every count kept is exact and only some values are
-  // missing, which nothing on screen claims otherwise: the counts are used,
-  // and the cut is said here.
-  if ([...links, ...values.map((v) => v.results)].some((r) => r?.truncated)) {
-    console.warn(
-      "Suggestion counts were cut at the server's row limit: some values seen before are not offered.",
-    );
-  }
   return { links, values };
 }
 
