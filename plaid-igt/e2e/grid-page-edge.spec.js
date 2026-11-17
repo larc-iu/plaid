@@ -1,0 +1,118 @@
+import PlaidClient, { ROLES } from '@larc-iu/plaid-client';
+import { test, expect, seedAuth, readToken, CORE } from './fixtures.js';
+import { getFixture, roleOf } from './fixtureProject.js';
+
+// H2-2: Enter and Tab from the last cell of a row on an Analyze page go on to
+// that row on the next page, and Shift+Tab back, instead of dropping focus.
+// Throwaway document of 26 one-line sentences in "E2E IGT Fixture" (a page is
+// 25), deleted afterwards.
+
+let client;
+let projectId;
+let documentId;
+let sentenceIds = [];
+
+test.beforeAll(async () => {
+  client = new PlaidClient(CORE, readToken().token);
+  ({ projectId } = await getFixture());
+  const full = await client.projects.get(projectId);
+  const textLayer = full.textLayers.find((l) => roleOf(l) === ROLES.BASELINE);
+  const layer = (role) => textLayer.tokenLayers.find((l) => roleOf(l) === role);
+  const created = await client.documents.create(projectId, `page-edge ${Date.now()}`);
+  documentId = created.id;
+  const lines = Array.from({ length: 26 }, (_, i) => `pe${i + 1}a pe${i + 1}b`);
+  const body = lines.join('\n');
+  await client.texts.create(textLayer.id, documentId, body);
+  const raw = await client.documents.get(documentId, true);
+  const TEXT = raw.textLayers.find((l) => roleOf(l) === ROLES.BASELINE).text.id;
+  const sentences = [];
+  const words = [];
+  let at = 0;
+  lines.forEach((line, i) => {
+    const end = at + line.length + (i < lines.length - 1 ? 1 : 0);
+    sentences.push({ begin: at, end });
+    for (const m of line.matchAll(/\S+/g)) {
+      words.push({ begin: at + m.index, end: at + m.index + m[0].length });
+    }
+    at = end;
+  });
+  await client.tokens.bulkCreate(
+    sentences.map((s) => ({ tokenLayerId: layer(ROLES.SENTENCE).id, text: TEXT, ...s })),
+  );
+  await client.tokens.bulkCreate(
+    words.map((w) => ({ tokenLayerId: layer(ROLES.WORD).id, text: TEXT, ...w })),
+  );
+  await client.tokens.bulkCreate(
+    words.map((w) => ({ tokenLayerId: layer(ROLES.MORPHEME).id, text: TEXT, ...w, precedence: 1 })),
+  );
+  const seeded = await client.documents.get(documentId, true);
+  const sl = seeded.textLayers
+    .find((l) => roleOf(l) === ROLES.BASELINE)
+    .tokenLayers.find((l) => roleOf(l) === ROLES.SENTENCE);
+  sentenceIds = [...sl.tokens].sort((a, b) => a.begin - b.begin).map((t) => t.id);
+});
+
+test.afterAll(async () => {
+  if (documentId) await client.documents.delete(documentId).catch(() => {});
+});
+
+async function openAnalyze(page) {
+  await seedAuth(page);
+  await page.goto(`/#/projects/${projectId}/documents/${documentId}?tab=analyze`);
+  await page.locator('.igt-island .igt-token-col').first().waitFor({ state: 'visible' });
+  await page.waitForLoadState('networkidle');
+}
+
+const inSentence = (page, n, tier) =>
+  page.locator(`[data-sentence-id="${sentenceIds[n - 1]}"] .igt-field[data-tier^="${tier}"]`);
+const focused = (page) =>
+  page.evaluate(() => {
+    const el = document.activeElement;
+    return {
+      tag: el?.tagName,
+      tier: el?.dataset?.tier ?? null,
+      sentence: el?.closest?.('[data-sentence-id]')?.dataset.sentenceId ?? null,
+    };
+  });
+
+test('Tab from the last sentence field of a page goes to the next page, Shift+Tab back', async ({
+  page,
+}) => {
+  await openAnalyze(page);
+  const field = inSentence(page, 25, 'sa:').first();
+  const tier = await field.getAttribute('data-tier');
+  await field.click();
+  await page.keyboard.press('Tab');
+  await expect
+    .poll(() => focused(page))
+    .toEqual({
+      tag: expect.any(String),
+      tier,
+      sentence: sentenceIds[25],
+    });
+  await expect(page.locator('.igt-pager__label').first()).toHaveText('26–26 of 26');
+  await page.keyboard.press('Shift+Tab');
+  await expect
+    .poll(() => focused(page))
+    .toEqual({
+      tag: expect.any(String),
+      tier,
+      sentence: sentenceIds[24],
+    });
+});
+
+test('Enter in the last word cell of a page goes on to the next page', async ({ page }) => {
+  await openAnalyze(page);
+  const cells = inSentence(page, 25, 'wa:');
+  const last = cells.last();
+  const tier = await last.getAttribute('data-tier');
+  await last.click();
+  await page.keyboard.press('Enter');
+  await expect
+    .poll(() => focused(page))
+    .toEqual({
+      tag: 'INPUT',
+      tier,
+      sentence: sentenceIds[25],
+    });
+});
