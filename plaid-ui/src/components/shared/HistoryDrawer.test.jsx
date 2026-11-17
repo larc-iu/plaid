@@ -75,6 +75,28 @@ describe('HistoryDrawer', () => {
     await view.unmount();
   });
 
+  it('shows the selected entry’s right-to-left label old to new', async () => {
+    const view = await renderComponent(
+      <HistoryDrawer
+        isOpen
+        onClose={() => {}}
+        auditEntries={[entry]}
+        loading={false}
+        error={null}
+        onSelectEntry={() => {}}
+        selectedEntry={{
+          id: 'batch-1',
+          time: entry.time,
+          label: 'Respell \u05e9\u05b8\u05dc → \u05e9\u05dc',
+        }}
+      />,
+    );
+    expect(view.container.textContent).toContain(
+      '\u2068Respell \u05e9\u05b8\u05dc\u2069 → \u2068\u05e9\u05dc\u2069',
+    );
+    await view.unmount();
+  });
+
   // REV-RPF2-2: the count of an entry's actions says what it counts.
   it('says what the count of an entry’s actions counts', async () => {
     const view = await renderComponent(drawer(vi.fn()));

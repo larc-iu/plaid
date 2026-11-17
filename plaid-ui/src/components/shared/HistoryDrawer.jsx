@@ -427,7 +427,7 @@ export const HistoryDrawer = ({
             </Badge>
             {selectedEntry.label && (
               <p dir="auto" className="line-clamp-2 text-xs font-medium">
-                {selectedEntry.label}
+                {isolateArrowSides(selectedEntry.label)}
               </p>
             )}
             <p className="text-xs text-muted-foreground">{fullTimestamp(selectedEntry.time)}</p>

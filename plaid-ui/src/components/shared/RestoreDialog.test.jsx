@@ -11,7 +11,7 @@ const conflict = () => new Error('HTTP 409 Document version mismatch at http://x
 const summary = { name: true };
 const entry = { time: '2026-09-01T00:00:00.000000001Z', label: 'Set a span' };
 
-const mount = (client, onRestored, raw = {}) =>
+const mount = (client, onRestored, raw = {}, shown = entry) =>
   renderComponent(
     <RestoreDialog
       open
@@ -20,7 +20,7 @@ const mount = (client, onRestored, raw = {}) =>
       documentId="d1"
       raw={raw}
       roleWords={{}}
-      entry={entry}
+      entry={shown}
       onRestored={onRestored}
     />,
   );
@@ -36,6 +36,21 @@ afterEach(async () => {
 });
 
 describe('RestoreDialog', () => {
+  // REV-HFT-R2-2: a stored label is shown with each side of its arrow
+  // isolated, so a right-to-left respell reads old to new.
+  it('shows a right-to-left respell label old to new', async () => {
+    const restore = vi.fn(() => new Promise(() => {}));
+    view = await mount(
+      { documents: { restore } },
+      vi.fn(),
+      {},
+      { ...entry, label: 'Respell \u05e9\u05b8\u05dc → \u05e9\u05dc' },
+    );
+    expect(document.body.textContent).toContain(
+      '\u2068Respell \u05e9\u05b8\u05dc\u2069 → \u2068\u05e9\u05dc\u2069',
+    );
+  });
+
   it('reloads and runs the dry run again when the page is stale', async () => {
     const restore = vi.fn().mockRejectedValueOnce(conflict()).mockResolvedValueOnce(summary);
     const onRestored = vi.fn().mockResolvedValue(undefined);

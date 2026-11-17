@@ -130,6 +130,18 @@ describe('UndoDialog', () => {
     expect(button('Undo').disabled).toBe(false);
   });
 
+  // REV-HFT-R2-2: a stored label is shown with each side of its arrow
+  // isolated, so a right-to-left respell reads old to new.
+  it('shows a right-to-left respell label old to new', async () => {
+    await mount(
+      vi.fn(() => new Promise(() => {})),
+      {
+        entry: { id: 'e1', label: 'Respell \u05e9\u05b8\u05dc → \u05e9\u05dc', time: 't' },
+      },
+    );
+    expect(text()).toContain('\u2068Respell \u05e9\u05b8\u05dc\u2069 → \u2068\u05e9\u05dc\u2069');
+  });
+
   it('says it is comparing until the dry run answers', async () => {
     await mount(vi.fn(() => new Promise(() => {})));
     expect(text()).toContain('Comparing…');
