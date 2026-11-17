@@ -646,6 +646,13 @@ export function planImport(parsedSentences, warnings = [], { existing = null } =
         if (v === ps.graph.root) meta.root = true;
         addNode(key, node.concept, meta, pieceIndexes, null, unaligned ? index : null, aligned);
       });
+      // An alignment line for a variable the graph does not have aligns
+      // nothing and is not kept, so the report says so (H19-3).
+      for (const v of ps.alignment?.keys() || []) {
+        if (!ps.graph.nodes.has(v)) {
+          warnings.push(`Sentence ${shown(index)}: the alignment of ${v} dropped, no node ${v}.`);
+        }
+      }
     }
 
     if (ps.docGraph) pendingTriples.push({ index, dg: ps.docGraph });

@@ -110,6 +110,21 @@ describe('a document-level triple with an end no node has', () => {
   });
 });
 
+// H19-3: an alignment line for a variable no node has went without a word.
+describe('an alignment line for a variable no node has', () => {
+  test('the report names it, as dropped', () => {
+    const warnings = [];
+    planImport(
+      parseUmrFile(file({ ...CAT, alignment: `${CAT.alignment}\ns1z: 1-1` })).sentences,
+      warnings,
+    );
+    assert.deepEqual(
+      warnings.filter((w) => /s1z/.test(w)),
+      ['Sentence 1: the alignment of s1z dropped, no node s1z.'],
+    );
+  });
+});
+
 describe('the reader’s notes in the import report', () => {
   test('each names its sentence, and one made in many sentences is one counted line', () => {
     const obsolete = { ...CAT, header: 'tr: a translation' };
