@@ -51,7 +51,13 @@ import {
 import { reparentSpans, reparentVocabLinks } from './reparent.js';
 import { applyMergeRules } from '../igtConstraints.js';
 import { applyTextEditsLocally, removeTokensLocally } from '../textEdits.js';
-import { RESPELL_UNCHANGED, respellOps, respellRefusal, respelling } from '../respell.js';
+import {
+  RESPELL_UNCHANGED,
+  respellIgnoredRule,
+  respellOps,
+  respellRefusal,
+  respelling,
+} from '../respell.js';
 import { soleForms } from '../soleMorphemeForms.js';
 import { applyReshape } from '@ui/domain/textReshape.js';
 import { reshapeVocabLinks } from './document.js';
@@ -145,7 +151,7 @@ export const tokenMutations = {
     const word = (info.primaryTokenLayer?.tokens || []).find((t) => t.id === tokenId);
     if (!textId || !word) return this.refuse('Word not found');
     const old = cpSlice(this.body, word.begin, word.end);
-    const refusal = respellRefusal(old, typed);
+    const refusal = respellRefusal(old, typed, respellIgnoredRule(info));
     if (refusal === RESPELL_UNCHANGED) return true;
     if (refusal) return this.refuse(refusal);
     const value = respelling(typed);

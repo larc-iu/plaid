@@ -2,6 +2,8 @@
 // (components/projects/bulk), and the rules the Analyze grid's Respell box
 // holds a new spelling to (R51, Luke 2026-10-26). Offsets are code points.
 
+import { isTokenIgnored, readIgnoredTokens } from './igtConfig.js';
+
 // Text edit directives for one text's respell rows ({ begin, end, new }).
 // Applied in order server-side, so later (higher-offset) replacements go
 // first: each op's indices then refer to text no earlier op has shifted.
@@ -20,10 +22,15 @@ export const RESPELL_UNCHANGED = 'unchanged';
 export const RESPELL_EMPTY = 'Type at least one character.';
 export const RESPELL_SPACE = 'No spaces or line breaks. Use Tokenize to split a word.';
 export const RESPELL_MARK = 'Start with a letter, not a combining mark.';
+export const RESPELL_IGNORED = 'Ignored token, not a word.';
 
 // Whitespace and line breaks, NEL and the Unicode separators included (JS \s
 // leaves out U+0085).
 const SPACE = /[\s\u0085]/u;
+
+/** The ignored-tokens rule of a document's word layer, for `respellRefusal`. */
+export const respellIgnoredRule = (layerInfo) =>
+  readIgnoredTokens(layerInfo?.primaryTokenLayer?.config);
 
 /** The spelling a respell sends for `typed`: composed (NFC), as text is stored. */
 export const respelling = (typed) => String(typed ?? '').normalize('NFC');
@@ -33,13 +40,16 @@ export const respelling = (typed) => String(typed ?? '').normalize('NFC');
  * `RESPELL_UNCHANGED` when it spells the word as it is (canonically
  * equivalent text is the same spelling, and nothing is sent), or null when it
  * may be sent. A spelling starting with a combining mark is refused: the
- * server gives those marks to the letter before the word, outside it.
+ * server gives those marks to the letter before the word, outside it. So is
+ * one the word layer's ignored-tokens rule (`ignored`, readIgnoredTokens'
+ * shape) reads as no word: the word would leave the grid with its analysis.
  */
-export function respellRefusal(old, typed) {
+export function respellRefusal(old, typed, ignored = null) {
   const value = respelling(typed);
   if (value === '') return RESPELL_EMPTY;
   if (SPACE.test(value)) return RESPELL_SPACE;
   if (/^\p{M}/u.test(value)) return RESPELL_MARK;
+  if (isTokenIgnored(value, ignored)) return RESPELL_IGNORED;
   if (value === respelling(old)) return RESPELL_UNCHANGED;
   return null;
 }

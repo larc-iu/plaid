@@ -1,7 +1,9 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { refusal } from '../../../plaid-client-js/src/testing.js';
+import { DEFAULT_IGNORED_TOKENS } from './igtConfig.js';
 import {
   RESPELL_EMPTY,
+  RESPELL_IGNORED,
   RESPELL_MARK,
   RESPELL_SPACE,
   RESPELL_UNCHANGED,
@@ -39,6 +41,20 @@ describe('respellRefusal', () => {
   it('reads the word as spelled, canonically equivalent text included, as unchanged', () => {
     expect(respellRefusal('kat', 'kat')).toBe(RESPELL_UNCHANGED);
     expect(respellRefusal('café', 'café')).toBe(RESPELL_UNCHANGED);
+  });
+
+  it('refuses a spelling the ignored-tokens rule reads as no word (H1-2)', () => {
+    for (const typed of ['\u2014', '...', '?!']) {
+      expect(respellRefusal('fox', typed, DEFAULT_IGNORED_TOKENS)).toBe(RESPELL_IGNORED);
+    }
+    expect(respellRefusal('fox', 'fo-x', DEFAULT_IGNORED_TOKENS)).toBeNull();
+    // A character the project lists as a letter makes a word.
+    const apostrophe = { ...DEFAULT_IGNORED_TOKENS, whitelist: ["'"] };
+    expect(respellRefusal('fox', "'", apostrophe)).toBeNull();
+    // A listed word, in the blacklist mode.
+    const listed = { type: 'blacklist', whitelist: [], blacklist: ['uh'] };
+    expect(respellRefusal('fox', 'uh', listed)).toBe(RESPELL_IGNORED);
+    expect(respellRefusal('fox', '\u2014', listed)).toBeNull();
   });
 
   it('counts astral letters as letters', () => {
@@ -174,6 +190,19 @@ describe('respellWord', () => {
     expect(writeCalls(client)).toEqual([]);
     expect(doc.body).toBe('the kat');
     expect(onError).toHaveBeenCalledWith(RESPELL_SPACE);
+  });
+
+  it('refuses a spelling the word layer ignores, sending nothing (H1-2)', async () => {
+    const client = makeFakeClient();
+    const raw = rawWith();
+    wordL(raw).config.plaid.ignoredTokens = DEFAULT_IGNORED_TOKENS;
+    const doc = makeIgtDoc({ raw, client });
+    const onError = vi.fn();
+    doc.onError = onError;
+    expect(await doc.respellWord('w-2', '\u2014')).toBe(false);
+    expect(writeCalls(client)).toEqual([]);
+    expect(doc.body).toBe('the kat');
+    expect(onError).toHaveBeenCalledWith(RESPELL_IGNORED);
   });
 
   it('writes nothing through a past state of the document', async () => {

@@ -1,5 +1,5 @@
 import { html, nothing } from 'lit-html';
-import { RESPELL_UNCHANGED, respellRefusal } from '@/domain/respell.js';
+import { RESPELL_UNCHANGED, respellIgnoredRule, respellRefusal } from '@/domain/respell.js';
 import { keys } from '@/lib/keymap.js';
 import { isEnter, isImeKey } from '@ui/lib/chords.js';
 
@@ -76,7 +76,7 @@ export const respell = {
     const box = this._respellBox();
     if (!open || !box) return;
     const typed = box.value;
-    const refusal = respellRefusal(open.old, typed);
+    const refusal = respellRefusal(open.old, typed, respellIgnoredRule(this.doc.layerInfo));
     if (refusal && refusal !== RESPELL_UNCHANGED) {
       open.error = refusal;
       this._render(true);
