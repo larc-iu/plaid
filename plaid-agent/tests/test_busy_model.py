@@ -217,11 +217,11 @@ def test_the_service_shows_the_wait_and_records_the_busy_line(monkeypatch, clock
     _script(monkeypatch, *[busy()] * 50)
     helper = Helper()
     _service().process_request(_request(client), helper)
-    assert helper.errors == ['The model is busy. Try again in a minute. Nothing was changed.']
+    assert helper.errors == ['The model is busy. Nothing was changed. Try again in a minute.']
     assert any(m == 'The model is busy. Waiting for a free slot…' for _, m in helper.progress_log)
     conv, meta = store.load('c1')
     item = conv['display'][-1]
-    assert item['kind'] == 'error' and item['text'] == 'The model is busy. Try again in a minute. Nothing was changed.'
+    assert item['kind'] == 'error' and item['text'] == 'The model is busy. Nothing was changed. Try again in a minute.'
     assert meta['pending'] is None
     assert turn_end(item) == 'busy'
     assert turn_end({**item, 'lost': True}) == 'busy'

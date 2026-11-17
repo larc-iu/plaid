@@ -188,7 +188,7 @@ def test_an_ended_turns_line_says_nothing_changed_and_the_message_can_be_sent_ag
         'The model service did not answer. Nothing was changed. Retry to send the same message.'
     assert svc.turn_failure_line(errors['timeout']) == \
         'The model service did not answer within 120 seconds. Nothing was changed. Retry to send the same message.'
-    assert svc.turn_failure_line(errors['busy']) == 'The model is busy. Try again in a minute. Nothing was changed.'
+    assert svc.turn_failure_line(errors['busy']) == 'The model is busy. Nothing was changed. Try again in a minute.'
     assert svc.turn_failure_line(_refusals()['bad request']) == \
         'The model service refused the request. Nothing was changed.'
     # Beside a kept plan the fact alone: the card is the turn's answer.

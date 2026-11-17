@@ -905,7 +905,12 @@ def ended_line(e: BaseException, timeout: Optional[float] = None) -> Optional[st
     line = model_failure_line(e, timeout)
     if line is None or line == TOO_LONG_LINE:
         return line
-    if passes_again(e) and not is_busy(e, litellm):
+    if is_busy(e, litellm):
+        # The fact before the advice: BUSY_LINE's own "Try again in a minute."
+        # goes last (REV-SVA-11).
+        fact, _, advice = line.partition('. ')
+        return f'{fact}. {NOTHING_CHANGED} {advice}'
+    if passes_again(e):
         return f'{line} {NOTHING_CHANGED} {SEND_AGAIN}'
     return f'{line} {NOTHING_CHANGED}'
 

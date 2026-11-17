@@ -56,8 +56,9 @@ NO_ANSWER = f'({agent.NO_ANSWER})'
 # The line of a call the repeat guard ended (agent.REPEATING_LINE).
 REPEATING = re.compile(r'^\(?' + re.escape(agent.REPEATING_LINE))
 # The line of a call the provider still refused as busy after the wait for a
-# free slot (agent.BUSY_LINE).
-BUSY = re.compile(r'^\(?' + re.escape(agent.BUSY_LINE))
+# free slot (agent.BUSY_LINE), by its first sentence: an ended turn's line
+# puts "Nothing was changed." before the rest (agent.ended_line).
+BUSY = re.compile(r'^\(?' + re.escape(agent.BUSY_LINE.partition('. ')[0] + '.'))
 
 # A tool's refusal, by what it says, for a step written before steps stored
 # their refusal's kind (``error_kind``, core.tools.REFUSAL_KINDS, 2026-10-24).
