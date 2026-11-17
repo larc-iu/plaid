@@ -411,10 +411,35 @@ export const cells = {
     }
     if (!best && vertical) best = pickRow(false);
 
+    // Off the page's last or first cell of the row: the next or previous
+    // page, on the same row's first or last cell (H2-2).
+    if (!best && !vertical) return this._navAcrossPage(tier, dir);
     if (!best) return false;
     this._navAnchor = vertical ? { el: best, x: ax } : null;
     best.focus();
     try {
+      best.select();
+    } catch {
+      /* not selectable */
+    }
+    return true;
+  },
+
+  // Turn to the next ('next') or previous page, when there is one, and focus
+  // the first or last cell there of `tier`. Turning the page takes the focus
+  // off the cell being left first, which commits it (_setPage).
+  _navAcrossPage(tier, dir) {
+    const pageCount = Math.ceil((this.doc.sentences || []).length / this.constructor.PAGE_SIZE);
+    const target = this._page + (dir === 'next' ? 1 : -1);
+    if (target < 0 || target >= pageCount) return false;
+    this._setPage(target);
+    const same = this._navFields().filter((el) => this._tierOf(el) === tier);
+    const best = dir === 'next' ? same[0] : same[same.length - 1];
+    if (!best) return false;
+    this._navAnchor = null;
+    best.focus();
+    try {
+      best.scrollIntoView({ block: 'nearest' });
       best.select();
     } catch {
       /* not selectable */
