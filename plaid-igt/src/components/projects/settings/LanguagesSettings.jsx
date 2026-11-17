@@ -8,6 +8,7 @@ import { expectStored, isConfigConflict } from '@ui/domain/configCells.js';
 import { readLanguages, IGT_NAMESPACE } from '@/domain/igtConfig';
 import { isLangTag } from '@/domain/fieldNames';
 import { TYPE } from '@ui/lib/typeScale.js';
+import { useUnsavedDraft } from '@ui/hooks/useUnsavedDraft.js';
 
 // Advisory only: a wrong-looking code still saves, since a project may be
 // documenting something Glottolog has no entry for.
@@ -124,6 +125,8 @@ export const LanguagesSettings = ({ project, projectId, client, onProjectUpdate 
   }, [saved]);
 
   const dirty = JSON.stringify(draft) !== JSON.stringify(saved);
+  // Leaving the section, or the page, with an edit not saved asks first.
+  useUnsavedDraft(dirty ? 'The languages you have typed' : null);
 
   const save = async () => {
     if (!dirty || saving) return;

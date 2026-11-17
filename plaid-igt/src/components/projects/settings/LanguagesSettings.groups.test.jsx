@@ -35,4 +35,24 @@ describe('LanguagesSettings', () => {
     for (const e of examples) expect(e).toMatch(/^e\.g\. /);
     await view.unmount();
   });
+
+  // H11-2: an edit not saved yet is asked about before the section is left.
+  it('stands as unsaved until it is saved', async () => {
+    const { hasUnsavedDraft } = await import('@ui/hooks/useUnsavedDraft.js');
+    const project = { id: 'p-1', textLayers: [], config: { igt: {} } };
+    const view = await renderComponent(
+      <MemoryRouter>
+        <LanguagesSettings project={project} projectId="p-1" client={{}} />
+      </MemoryRouter>,
+    );
+    const input = view.container.querySelector('[role=group] input');
+    expect(hasUnsavedDraft()).toBeNull();
+    await view.step(() => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, 'Lezgi');
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    expect(hasUnsavedDraft()).toBe('The languages you have typed');
+    await view.unmount();
+    expect(hasUnsavedDraft()).toBeNull();
+  });
 });

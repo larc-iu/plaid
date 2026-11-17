@@ -20,6 +20,7 @@ import {
 } from '@/domain/composeConfig';
 import { textIncludes } from '@ui/domain/collation.js';
 import { TYPE } from '@ui/lib/typeScale.js';
+import { useUnsavedDraft } from '@ui/hooks/useUnsavedDraft.js';
 
 const byCode = (a, b) => a.code.toLowerCase().localeCompare(b.code.toLowerCase());
 
@@ -111,6 +112,8 @@ export const ComposeSettings = ({ project, projectId, client, onProjectUpdate })
   }, [saved]);
 
   const dirty = rowsKey(draft) !== rowsKey(saved);
+  // Leaving the section, or the page, with an edit not saved asks first.
+  useUnsavedDraft(dirty ? 'The special characters you have changed' : null);
   const problemsByCode = useMemo(() => {
     const m = new Map();
     for (const row of draft) m.set(row, validateCode(row, draft));

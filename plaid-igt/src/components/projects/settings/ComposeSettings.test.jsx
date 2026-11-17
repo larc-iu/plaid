@@ -458,3 +458,20 @@ describe('search', () => {
     await view.unmount();
   });
 });
+
+// H11-2: an edit not saved yet is asked about before the section is left.
+describe('an edit not saved yet', () => {
+  it('stands as unsaved until it is saved', async () => {
+    const { hasUnsavedDraft } = await import('@ui/hooks/useUnsavedDraft.js');
+    const page = await open();
+    const { view } = page;
+    await search(view, 'sw');
+    const char = row(view.container, 'sw').querySelector('input[aria-label="Character"]');
+    expect(hasUnsavedDraft()).toBeNull();
+    await view.step(() => type(char, 'Ə'));
+    expect(hasUnsavedDraft()).toBe('The special characters you have changed');
+    await save(page);
+    expect(hasUnsavedDraft()).toBeNull();
+    await view.unmount();
+  });
+});
