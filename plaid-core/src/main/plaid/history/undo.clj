@@ -1222,15 +1222,19 @@
       (str entry-id)))
 
 (defn- name-document!
-  "An undo whose rows are in one document is that document's edit, as a
-  restore is: the operation row names it, so the undoer's last edit and the
-  log's documents count it. One that wrote rows of several documents, or
-  only vocabulary entries, names none. Set after the rows are written, so the
-  operation's lock check and version bump stay as they were (`apply!` bumps
-  each document it wrote)."
-  [tx]
-  (let [docs @(:affected-documents psaw/*op*)]
-    (when (= 1 (count docs))
+  "An undo whose written rows are all rows of one document is that
+  document's edit, as a restore is: the operation row names it, so the
+  undoer's last edit and the log's documents count it. An undo that wrote a
+  vocabulary row (an entry, or the vocabulary) names none, even when every
+  link it touched lies in one document: the vocabulary's History is read by
+  every project that borrows it, and the documents it bumps are not what it
+  wrote. Nor does one that wrote rows of several documents. Read from
+  `applied`, the rows written, never from the documents bumped. Set after the
+  rows are written, so the operation's lock check and version bump stay as
+  they were."
+  [tx applied]
+  (let [docs (distinct (map :doc applied))]
+    (when (and (seq applied) (every? :doc applied) (not-any? :vocab applied) (= 1 (count docs)))
       (psc/execute! tx {:update :operations
                         :set {:document_id (str (first docs))}
                         :where [:= :id (str (:id psaw/*op*))]}))))
@@ -1309,7 +1313,7 @@
                                       (seq bad) (throw (ex-info "misfit" {:code 409 ::retry true}))
                                       dry-run? (throw (ex-info "dry run" {:code 409 ::dry-run true}))
                                       :else (when (seq applied)
-                                              (name-document! tx)
+                                              (name-document! tx applied)
                                               (:id psaw/*op*))))))))))
                 {:keys [too-many items left bad]} @out]
             (cond

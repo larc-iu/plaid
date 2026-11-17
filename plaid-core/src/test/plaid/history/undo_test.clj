@@ -562,6 +562,46 @@
         (is (pos? (:total two)))
         (is (nil? (undo-doc (:operation two))))))))
 
+;; REV-HFV-3: an undo that wrote a vocabulary row names no document, even
+;; when every link it touched is in one: the vocabulary's History is open to
+;; the readers of every project borrowing it, who must not see the name of a
+;; document of a project they cannot read.
+(deftest an-undo-of-an-entry-names-no-document
+  (let [home (create-test-project admin-request "Home")
+        vocab (id (create-vocab-layer admin-request home "Lexicon"))
+        tl (id (create-text-layer admin-request home "Text"))
+        tkl (id (create-token-layer admin-request tl "Words"))
+        _ (assert-no-content (link-vocab-to-project admin-request home vocab))
+        doc (create-test-document admin-request home "Interview 3")
+        text (id (create-text admin-request tl doc "kai eats"))
+        tok (id (create-token admin-request tkl text 0 3))
+        kai (id (create-vocab-item admin-request vocab "kai"))
+        _ (id (create-vocab-link admin-request kai [tok]))
+        borrower (create-test-project admin-request "Borrower")
+        _ (assert-no-content (link-vocab-to-project admin-request borrower vocab))
+        _ (assert-no-content (add-project-writer admin-request borrower "user1@example.com"))
+        undo-doc (fn [op] (:document_id (psc/q1 db {:select [:document_id] :from [:operations]
+                                                    :where [:= :id (str op)]})))
+        newest-op (fn [] (:id (psc/q1 db {:select [:id] :from [:operations]
+                                          :order-by [[:ts :desc]] :limit 1})))
+        history (fn [] (api-call user1-request {:method :get
+                                                :path (str "/api/v1/vocab-layers/" vocab "/audit")}))]
+    (testing "a form change"
+      (assert-ok (update-vocab-item admin-request kai "kay"))
+      (let [summary (undone! admin-request (newest-op))]
+        (is (pos? (:total summary)))
+        (is (nil? (undo-doc (:operation summary))))))
+    (testing "a delete with its link"
+      (assert-no-content (delete-vocab-item admin-request kai))
+      (let [summary (undone! admin-request (newest-op))]
+        (is (pos? (:total summary)))
+        (is (nil? (undo-doc (:operation summary))))))
+    (testing "a borrower's reader sees no document of the home project"
+      (let [resp (history)]
+        (assert-ok resp)
+        (is (not (str/includes? (pr-str (:body resp)) "Interview 3")))
+        (is (not (str/includes? (pr-str (:body resp)) (str doc))))))))
+
 (deftest undoing-a-bulk-delete-of-entries-with-links-in-two-documents
   (let [{:keys [proj doc vocab fox jump toks word tl]} (setup!)
         d2 (create-test-document admin-request proj "Doc2")
