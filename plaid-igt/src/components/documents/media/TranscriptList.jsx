@@ -1143,16 +1143,22 @@ export function TranscriptList({
         // row's trash asks only then.
         const { stretches, loss } = doc.segmentEditLoss(id, { text, edits });
         const loses = hasLoss(loss) ? baselineLossSentence(doc, stretches) : '';
-        if (
-          loses &&
-          !(await confirm({
+        if (loses) {
+          const times = { timeBegin: timeBeginOf(token), timeEnd: timeEndOf(token) };
+          const yes = await confirm({
             title: 'Save segment text?',
             description: loses,
             confirmLabel: 'Save anyway',
             destructive: true,
-          }))
-        ) {
-          return false;
+          });
+          if (!yes) {
+            // A row no longer on screen (the person left the tab, or another
+            // question answered this one) keeps its typing under Not saved.
+            if (!textRefs.current.get(id)?.isConnected) {
+              doc.keepUnsavedRow({ typed: text, ...times });
+            }
+            return false;
+          }
         }
         const before = doc.dataVersion;
         const outcome = doc.cellWrite(

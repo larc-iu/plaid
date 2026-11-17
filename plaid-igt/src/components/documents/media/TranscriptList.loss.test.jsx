@@ -6,7 +6,8 @@
 // keeps what it stores (test/segmentServer.js).
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderComponent } from '@ui/test/renderComponent.jsx';
-import { ConfirmProvider } from '@ui/components/shared/ConfirmProvider';
+import { ConfirmProvider, useConfirm } from '@ui/components/shared/ConfirmProvider';
+import { useState } from 'react';
 import { DocumentProvider } from '../contexts/DocumentContext.jsx';
 import { TranscriptList } from './TranscriptList.jsx';
 import { buildRawDoc, resetIds, makeIgtDoc, settle } from '@/domain/test-helpers.js';
@@ -89,6 +90,24 @@ const makeOps = () => ({
   handlePlaybackRateChange: vi.fn(),
 });
 
+// The transcript, which `show(false)` takes away as a click on another tab
+// does, and a button that asks a question of its own, as another part of the
+// page may while the row's question is open.
+const host = {};
+function Host({ doc }) {
+  const [shown, setShown] = useState(true);
+  host.show = setShown;
+  const confirm = useConfirm();
+  return (
+    <DocumentProvider value={{ doc, readOnly: false }}>
+      <button type="button" onClick={() => confirm({ title: 'Other question?' })}>
+        Other
+      </button>
+      {shown && <TranscriptList mediaOps={makeOps()} />}
+    </DocumentProvider>
+  );
+}
+
 async function mount(raw) {
   const server = segmentServer(raw);
   const doc = makeIgtDoc({
@@ -98,9 +117,7 @@ async function mount(raw) {
   });
   const r = await renderComponent(
     <ConfirmProvider>
-      <DocumentProvider value={{ doc, readOnly: false }}>
-        <TranscriptList mediaOps={makeOps()} />
-      </DocumentProvider>
+      <Host doc={doc} />
     </ConfirmProvider>,
   );
   const drain = () =>
@@ -116,6 +133,21 @@ const retype = async (r, n, value) => {
   await r.step(() => setValue(row(r.container, n), value));
   await r.step(async () => {
     press(row(r.container, n), 'Enter');
+    await settle();
+  });
+};
+
+const blur = (el) => el.dispatchEvent(new FocusEvent('focusout', { bubbles: true }));
+const click = (el) => el.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+const notSaved = (root) =>
+  [...root.querySelectorAll('ul[aria-label="Not saved"] li')].map((li) => li.textContent);
+
+// Type `value` over row `n` and leave the row by blur, as a click elsewhere.
+const retypeAndBlur = async (r, n, value) => {
+  await r.step(() => row(r.container, n).focus());
+  await r.step(() => setValue(row(r.container, n), value));
+  await r.step(async () => {
+    blur(row(r.container, n));
     await settle();
   });
 };
@@ -189,5 +221,69 @@ describe('a transcript row retyped over glossed words (H10-3)', () => {
     expect(dialog()).toBeNull();
     expect(plain.server.body).toBe('uno dos tres\nnueve diez once');
     await plain.r.unmount();
+  });
+});
+
+// REV-HFM-1, -3, -4: the question asked on every way a row is saved, typing
+// never dropped, and the segment written as it is when the answer comes.
+describe("a row's question, however the row is left", () => {
+  it('asks on blur as on Enter', async () => {
+    const { server, r, drain } = await mount(RAW());
+    await retypeAndBlur(r, 2, 'nueve diez once');
+    await drain();
+    expect(dialog()?.textContent).toContain('Deletes 3 words and 3 annotations.');
+    await r.step(async () => {
+      button('Save anyway').click();
+      await settle();
+    });
+    await drain();
+    expect(server.body).toBe('uno dos tres\nnueve diez once');
+    await r.unmount();
+  });
+
+  it('keeps the typing under Not saved when Cancel comes after the tab was left', async () => {
+    const { server, doc, r, drain } = await mount(RAW());
+    await retypeAndBlur(r, 2, 'nueve diez once');
+    await drain();
+    expect(dialog()).not.toBeNull();
+    // A click on another tab: the transcript goes while the question is open.
+    await r.step(() => host.show(false));
+    await drain();
+    await r.step(async () => {
+      button('Cancel').click();
+      await settle();
+    });
+    await drain();
+    expect(server.body).toBe(BODY);
+    expect(doc.unsavedRows).toMatchObject([{ typed: 'nueve diez once', timeBegin: 4, timeEnd: 6 }]);
+    await r.step(() => host.show(true));
+    expect(notSaved(r.container).join(' ')).toContain('nueve diez once');
+    await r.unmount();
+  });
+
+  it('keeps it too when a second question answers the first as Cancel', async () => {
+    const { server, doc, r, drain } = await mount(RAW());
+    await retype(r, 2, 'nueve diez once');
+    await drain();
+    // The transcript goes, saving on leaving and asking again, and another
+    // question then replaces this one.
+    await r.step(() => host.show(false));
+    await drain();
+    const other = [...r.container.querySelectorAll('button')].find(
+      (b) => b.textContent === 'Other',
+    );
+    await r.step(async () => {
+      click(other);
+      await settle();
+    });
+    await drain();
+    expect(dialog()?.textContent).toContain('Other question?');
+    expect(server.body).toBe(BODY);
+    expect(doc.unsavedRows).toMatchObject([{ typed: 'nueve diez once' }]);
+    await r.step(async () => {
+      button('Cancel').click();
+      await settle();
+    });
+    await r.unmount();
   });
 });
