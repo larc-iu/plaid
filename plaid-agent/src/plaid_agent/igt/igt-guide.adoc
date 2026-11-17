@@ -951,7 +951,7 @@ Starting another while one has not ended is refused, with a line such as **This 
 
 **Start without the assistant**, in the **⋯** menu on the **Jobs** tab, opens the **Start job** form, which starts a job with no conversation.
 It asks for the documents, **All documents** or **Selected documents**, none chosen until you choose, and the **Instructions**.
-**Translate**, **Segment and gloss** and **Segment, gloss and link** fill the instructions with a starting text to edit.
+**Translate**, **Fill a field** and **Check** fill the instructions with a starting text to edit.
 The job decides from the instructions what it fills and whether it edits the text, and its plan shows on its page.
 A job takes at most 500 documents, so a larger project starts one on a selection: **Select shown** selects every document the search above the list shows.
 

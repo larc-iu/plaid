@@ -105,7 +105,7 @@ test('with no assistant online, the Jobs tab menu opens the form, which makes a 
   await expect(dialog).toContainText('All documents (2)');
   await expect(dialog).toContainText('No job worker is running. The job waits until one starts.');
   await expect(dialog.getByRole('button', { name: 'Start', exact: true })).toBeDisabled();
-  await dialog.getByRole('button', { name: 'Segment, gloss and link' }).click();
+  await dialog.getByRole('button', { name: 'Translate' }).click();
   // Nothing is chosen until the person chooses.
   await expect(dialog.getByRole('button', { name: 'Start', exact: true })).toBeDisabled();
   await dialog.getByRole('radio', { name: /All documents/ }).check();
@@ -113,10 +113,12 @@ test('with no assistant online, the Jobs tab menu opens the form, which makes a 
   await expect(page).toHaveURL(jobUrl());
   jobId = page.url().split('/jobs/')[1];
   await expect(jobState(page)).toContainText('Waiting');
-  await expect(page.getByText('link each morpheme to its lexicon entry')).toBeVisible();
+  await expect(page.getByText('Write a free translation of every sentence')).toBeVisible();
   const job = await client.jobs.get(jobId);
   expect(job.state).toBe('waiting');
-  expect(job.instructions).toMatch(/^Segment and gloss every word nobody has analyzed, and link/);
+  expect(job.instructions).toBe(
+    'Write a free translation of every sentence whose translation is empty.',
+  );
   expect(job.documents.map((d) => d.documentId).sort()).toEqual([docA, docB].sort());
   // A job from the form has no setup, and its page no line for one.
   expect(job).not.toHaveProperty('setup');

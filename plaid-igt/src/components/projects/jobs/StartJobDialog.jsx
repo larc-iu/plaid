@@ -152,10 +152,7 @@ const StartJobDialog = ({ projectId, client, documents: given, onClose }) => {
         <DialogHeader>
           <DialogTitle>Start job</DialogTitle>
           <DialogDescription>
-            The assistant works through the chosen documents by the instructions. It writes every
-            change it decides on, deletions included. Its report lists the rest: project setup,
-            changes outside the documents in hand, confirmations, document restores, corpus-wide
-            changes, and entry renames, merges and deletions unless started by a maintainer.
+            The assistant works through the chosen documents and writes its changes as it goes.
           </DialogDescription>
         </DialogHeader>
 

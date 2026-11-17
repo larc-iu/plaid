@@ -100,7 +100,18 @@ beforeEach(() => {
 });
 
 describe('Start job', () => {
-  it('offers three starter texts that fill the instructions, which stay editable', async () => {
+  it('says in one line what a job does', async () => {
+    const { v } = await open(fakeClient(), { documents: DOCS, instructions: null, all: true });
+    const description = document.body.querySelector('[role="dialog"] p');
+    expect(description.textContent).toBe(
+      'The assistant works through the chosen documents and writes its changes as it goes.',
+    );
+    await v.unmount();
+  });
+
+  // Jobs are not glossing alone (memory feedback_jobs_not_glossing_specific):
+  // a translation, a field filled by a stated rule, a check that writes nothing.
+  it('offers three starter texts of three kinds of work, which stay editable', async () => {
     const client = fakeClient();
     const { v } = await open(client, { documents: DOCS, instructions: null, all: true });
     const area = () => document.body.querySelector('#job-instructions');
@@ -110,10 +121,12 @@ describe('Start job', () => {
       all(document.body, '[role="group"][aria-label="Start from"] button').map(
         (b) => b.textContent,
       ),
-    ).toEqual(['Translate', 'Segment and gloss', 'Segment, gloss and link']);
-    await v.step(() => button('Segment, gloss and link').click());
+    ).toEqual(['Translate', 'Fill a field', 'Check']);
+    await v.step(() => button('Fill a field').click());
+    expect(area().value).toBe('Fill [field] on every word where it is empty, by this rule: [rule]');
+    await v.step(() => button('Check').click());
     expect(area().value).toBe(
-      'Segment and gloss every word nobody has analyzed, and link each morpheme to its lexicon entry, making an entry where none fits. Follow how people in the project analyzed the same forms.',
+      'List every value that does not follow the guidelines. Change nothing.',
     );
     await v.step(() => button('Translate').click());
     expect(area().value).toBe(
