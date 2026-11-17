@@ -41,8 +41,33 @@ describe('TimecodeField', () => {
     await r.step(() => setValue(s, '7')); // seconds cannot be 7x, so this is 07
     expect(s.value).toBe('07');
     expect(document.activeElement).toBe(box(r.container, 'milliseconds'));
+    // A partial box reads as the decimal it shows: ".5" is half a second.
     await r.step(() => setValue(box(r.container, 'milliseconds'), '5'));
-    expect(shown(r.container)).toBe('0:07.005'); // a partial box counts as typed so far
+    expect(shown(r.container)).toBe('0:07.500');
+    await r.unmount();
+  });
+
+  it('after Backspace the next digits replace the zeros (H10-2)', async () => {
+    // Backspace zeroed the seconds box without selecting it, so a typed 0
+    // made it "000", which counted as full and sent the 2 into milliseconds:
+    // 0:00.002 was saved for a person who meant 0:02.
+    const onCommit = vi.fn(async () => true);
+    const r = await renderComponent(<TimecodeField value={1} label="Time" onCommit={onCommit} />);
+    const s = box(r.container, 'seconds');
+    await r.step(() => s.focus());
+    await r.step(() => press(s, 'Backspace'));
+    expect(s.value).toBe('00');
+    expect([s.selectionStart, s.selectionEnd]).toEqual([0, 2]);
+    // What the browser makes of a digit typed over the selection.
+    await r.step(() => setValue(s, '0'));
+    expect(document.activeElement).toBe(s);
+    await r.step(() => setValue(s, '02'));
+    expect(shown(r.container)).toBe('0:02.000');
+    await r.step(async () => {
+      press(box(r.container, 'milliseconds'), 'Enter');
+      await new Promise((res) => setTimeout(res, 0));
+    });
+    expect(onCommit).toHaveBeenCalledWith(2);
     await r.unmount();
   });
 

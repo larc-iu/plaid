@@ -1,4 +1,4 @@
-import React, { memo, useEffect, useRef, useState } from 'react';
+import React, { memo, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useSavedOnLeave } from './useSavedOnLeave.js';
 import { cn } from '@ui/lib/utils';
 import { formatTime, parseTime } from './formatTime.js';
@@ -53,12 +53,14 @@ const split = (seconds, withHours) => {
   };
 };
 
+// The milliseconds box reads as the decimal it shows after the point: a
+// partly typed "5" is .5, half a second, not 5 ms.
 const join = (parts, withHours) =>
   Math.round(
     ((withHours ? Number(parts.h) * 3600 : 0) +
       Number(parts.m) * 60 +
       Number(parts.s) +
-      Number(parts.ms) / 1000) *
+      Number(parts.ms.padEnd(3, '0')) / 1000) *
       1000,
   ) / 1000;
 
@@ -79,6 +81,14 @@ export const TimecodeField = memo(function TimecodeField({
   // Which box the group's single tab stop is on. It follows the last box that
   // was focused, so tabbing away and back returns to where the caret was.
   const [tabKey, setTabKey] = useState('ms');
+  // A box Backspace zeroed is selected once the zeros are on screen, so the
+  // next digit replaces them rather than adding to them.
+  const selectAfterRender = useRef(null);
+  useLayoutEffect(() => {
+    const key = selectAfterRender.current;
+    selectAfterRender.current = null;
+    if (key && document.activeElement === inputs.current[key]) inputs.current[key].select();
+  });
   const setParts = (next) => {
     partsRef.current = next;
     setPartsState(next);
@@ -208,6 +218,7 @@ export const TimecodeField = memo(function TimecodeField({
     } else if (e.key === 'Backspace' || e.key === 'Delete') {
       e.preventDefault();
       dirtyRef.current = true;
+      selectAfterRender.current = key;
       setParts({
         ...partsRef.current,
         [key]: pad(0, key === 'm' && !withHours ? 1 : SEGMENTS[key].width),
