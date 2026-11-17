@@ -267,11 +267,12 @@ describe('DataTable', () => {
   });
 
   // H16-3: a long unbroken title ran out of its card and scrolled the page.
-  it('lets a long title break anywhere inside its toolbar', async () => {
+  it('wraps a long title inside its toolbar', async () => {
     const { container, unmount } = await table({ title: 'Project_' + 'x'.repeat(200) });
     const h3 = container.querySelector('h3');
     expect(h3.className).toContain('min-w-0');
-    expect(h3.className).toContain('[overflow-wrap:anywhere]');
+    expect(h3.className).toContain('break-words');
+    expect(h3.className).not.toContain('[overflow-wrap:anywhere]');
     await unmount();
   });
 

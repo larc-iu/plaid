@@ -55,11 +55,14 @@ describe('DocumentTable', () => {
 
   // H16-2: overflow-wrap: break-word leaves a cell's min-content width at the
   // longest unbroken run, so one long name widened the column past the window.
-  it('lets a name break anywhere, so one unbroken name cannot widen the column', async () => {
+  // REV-HFT-8: anywhere let ordinary names break mid-word at narrow widths.
+  // A name breaks between words, and inside a word only past a capped width.
+  it('caps a name’s width, so one unbroken name cannot widen the column', async () => {
     const { container, unmount } = await mount();
     const name = container.querySelector('tbody tr td:first-child .font-text');
-    expect(name.className).toContain('[overflow-wrap:anywhere]');
-    expect(name.className).not.toContain('break-words');
+    expect(name.className).toContain('break-words');
+    expect(name.className).toContain('max-w-[min(32rem,60vw)]');
+    expect(name.className).not.toContain('[overflow-wrap:anywhere]');
     await unmount();
   });
 

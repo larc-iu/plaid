@@ -128,9 +128,7 @@ export const DataTable = ({
     <div className={cn('rounded-md border', className)}>
       {showToolbar && (
         <div className="flex flex-wrap items-center gap-2 border-b px-3 py-2">
-          {title && (
-            <h3 className="min-w-0 text-sm font-semibold [overflow-wrap:anywhere]">{title}</h3>
-          )}
+          {title && <h3 className="min-w-0 break-words text-sm font-semibold">{title}</h3>}
           {search && (
             <SearchInput
               value={query}
