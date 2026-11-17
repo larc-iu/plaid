@@ -202,6 +202,15 @@ async function removeUnfinished(client, documentId, name, err) {
 }
 
 /**
+ * The files a failed run finished, `{ mapping, sources }`, as the `done` of a
+ * retry: only while the retry runs with the same mapping (roles, field names,
+ * files) and the same choice for files imported before, since a changed one
+ * would make those documents differently.
+ */
+export const doneForRetry = (finished, mapping) =>
+  finished && JSON.stringify(finished.mapping) === JSON.stringify(mapping) ? finished.sources : [];
+
+/**
  * Run a full import against a set-up project. The whole import is ONE logical
  * operation in the audit log; each write keeps its own description underneath.
  */
@@ -270,6 +279,8 @@ async function runElanImportImpl({
     skipped: 0,
     redone: 0,
     copied: 0,
+    // Documents a failed run of this screen had already imported (`done`).
+    done: 0,
     recordingsAdded: 0,
     recordingsUnused: 0,
   };
@@ -280,7 +291,7 @@ async function runElanImportImpl({
       if (shouldStop?.()) throw new ImportCancelled();
       const doc = build.documents[i];
       if (done.includes(doc.id)) {
-        results.skipped += 1;
+        results.done += 1;
         continue;
       }
       // Every report from inside a document says which one it is. Only the

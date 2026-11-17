@@ -1222,7 +1222,7 @@ ELAN files can also be imported into a project you already have, with **New docu
 Each tier is written into a field the project already has, or into a new field of its own.
 A file imported before says so on its row, and you choose whether to keep that document, replace it, or add a copy beside it.
 Replacing deletes the document before its replacement is written, so a run that fails partway may leave a file with neither, and says so.
-The documents a failed run finished stay, and **Retry import** leaves them as they are and makes the rest.
+The documents a failed run finished stay, and **Retry import** with the same choices leaves them as they are, counted as already imported, and makes the rest.
 
 An import that stops before it finishes, whether you stop it, it fails, or the tab is closed, leaves a project that does not open.
 Wherever it would open, it reads **This import did not finish. Delete it and import again.**, with **Delete** for a project maintainer.

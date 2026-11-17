@@ -5,6 +5,7 @@ import {
   importDocument,
   runElanImport,
   ImportCancelled,
+  doneForRetry,
 } from './importEngine.js';
 import {
   DEFAULT_IGNORED_TOKENS,
@@ -677,9 +678,29 @@ describe('runElanImport', () => {
         priorMode: 'copy',
         done: err.finishedSources,
       });
-      expect(res).toMatchObject({ copied: 1, skipped: 1 });
+      expect(res).toMatchObject({ copied: 1, skipped: 0, done: 1 });
       const made = retry.calls.filter(([m]) => m === 'documents.create').map(([, name]) => name);
       expect(made).toEqual(['Other']);
+    });
+
+    // REV-HFM-6: what the failed run finished holds only for the mapping and
+    // the choice it ran with.
+    it('keeps the finished files for a retry only while the mapping and the choice stay', () => {
+      const mapping = {
+        roles: { a: 'utterance' },
+        fieldNames: { b: 'Translation' },
+        files: ['a.eaf', 'b.eaf'],
+        priorMode: 'copy',
+      };
+      const finished = { mapping, sources: ['a.eaf'] };
+      expect(doneForRetry(finished, { ...mapping, roles: { a: 'utterance' } })).toEqual(['a.eaf']);
+      expect(doneForRetry(finished, { ...mapping, priorMode: 'replace' })).toEqual([]);
+      expect(doneForRetry(finished, { ...mapping, roles: { a: 'utterance', c: 'word' } })).toEqual(
+        [],
+      );
+      expect(doneForRetry(finished, { ...mapping, fieldNames: { b: 'Free' } })).toEqual([]);
+      expect(doneForRetry(finished, { ...mapping, files: ['a.eaf'] })).toEqual([]);
+      expect(doneForRetry(null, mapping)).toEqual([]);
     });
 
     it('under Replace, says which document it had already deleted', async () => {

@@ -40,7 +40,7 @@ import {
 import { useAuth } from '../../contexts/AuthContext';
 import { useClientApart } from '@/hooks/useClientApart';
 import { notifyError, notifySuccess, notifyWarning, humanizeError } from '@/utils/feedback';
-import { runElanImport } from '../../import/elan/importEngine';
+import { doneForRetry, runElanImport } from '../../import/elan/importEngine';
 import { ImportCancelled, priorImports } from '../../import/stamps';
 import { elanTally } from '../../import/elan/tally';
 import { missingFields, similarField } from '../../import/elan/fieldTargets';
@@ -100,9 +100,10 @@ export const ImportElanDocuments = () => {
   // Documents a failed run here made and could not remove. A retry redoes
   // them rather than keep them, since no one has worked on them.
   const [leftovers, setLeftovers] = useState([]);
-  // The files a failed run here finished. A retry keeps their documents, so
-  // Add copies does not copy them twice.
-  const [finished, setFinished] = useState([]);
+  // The files a failed run here finished, with the mapping it ran with. A
+  // retry with the same mapping keeps their documents, so Add copies does not
+  // copy them twice (doneForRetry).
+  const [finished, setFinished] = useState(null);
   const stopRef = useRef(false);
   // Adding documents here may add fields, which is a maintainer's to do. The
   // screen waits for the project, so a reader who came by address never sees
@@ -212,6 +213,13 @@ export const ImportElanDocuments = () => {
     : [];
 
   const startImport = async () => {
+    // What a failed run's finished files hold for (doneForRetry).
+    const mapping = {
+      roles: batch.roles,
+      fieldNames: batch.fieldNames,
+      files: (batch.files || []).map((f) => f.fileName),
+      priorMode,
+    };
     // A retry reads the project afresh: the screen's listing may not have
     // caught up with what the stopped run made.
     const retrying = !!runError;
@@ -236,7 +244,7 @@ export const ImportElanDocuments = () => {
         mixQuality,
         prior: retrying ? null : prior,
         redo: leftovers,
-        done: finished,
+        done: doneForRetry(finished, mapping),
         priorMode,
         shouldStop: () => stopRef.current,
         onWarning: (text, { document }) => setLog((l) => [...l, { text, document }]),
@@ -268,7 +276,10 @@ export const ImportElanDocuments = () => {
         unfinishedLeft: e.unfinishedLeft ?? null,
         replacedGone: e.replacedGone ?? null,
       });
-      if (e.finishedSources?.length) setFinished((ids) => [...ids, ...e.finishedSources]);
+      if (e.finishedSources?.length) {
+        const before = doneForRetry(finished, mapping);
+        setFinished({ mapping, sources: [...before, ...e.finishedSources] });
+      }
       if (e.unfinishedLeft) setLeftovers((ids) => [...ids, e.unfinishedLeft.id]);
       setStage('review');
       // What the run made before it stopped is in the project now, and a

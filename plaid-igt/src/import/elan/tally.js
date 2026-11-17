@@ -9,6 +9,7 @@ export function elanTally(results) {
     parts.push(`${results.copied} added as ${results.copied === 1 ? 'a copy' : 'copies'}`);
   if (results.skipped) parts.push(`${results.skipped} kept`);
   if (results.redone) parts.push(`${results.redone} replaced`);
+  if (results.done) parts.push(`${results.done} already imported`);
   if (results.recordingsAdded) {
     parts.push(
       `${many(results.recordingsAdded, 'a recording', 'recordings')} added to ${

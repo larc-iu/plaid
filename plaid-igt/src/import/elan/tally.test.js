@@ -23,6 +23,12 @@ describe('elanTally', () => {
     );
   });
 
+  it('names the documents a failed run had already imported (REV-HFM-6)', () => {
+    expect(elanTally({ ...zero, copied: 1, done: 1 })).toBe(
+      '0 added, 1 added as a copy, 1 already imported.',
+    );
+  });
+
   it('lists every kind of result in order', () => {
     expect(
       elanTally({
