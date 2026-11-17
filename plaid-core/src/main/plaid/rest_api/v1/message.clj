@@ -290,7 +290,10 @@
           (when (pos? wait)
             (async/<! (async/timeout wait)))
           ;; Only if no channel came back since, and no later close took over.
-          (when (= token (get @orphaned k))
+          ;; A channel registered but not yet through `service-channel-opened!`
+          ;; is left to it.
+          (when (and (= token (get @orphaned k))
+                     (nil? (events/get-service-channel project-id service-id)))
             (swap! orphaned (fn [m] (if (= token (get m k)) (dissoc m k) m)))
             (end-service-requests! project-id service-id (constantly true))))))))
 

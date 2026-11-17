@@ -158,3 +158,20 @@
       (is (nil? (ended "r1")))
       (settle 300)
       (is (= "Service disconnected" (ended "r1"))))))
+
+(deftest a-channel-back-but-not-yet-opened-when-the-grace-ends-is-left-to-adopt
+  (events/reset-state!)
+  (with-grace 200
+    (let [pid (create-project!)
+          old (Object.)
+          new (Object.)]
+      (open! pid old runner)
+      (events/track-request! "r1" nil pid "svc" "user1@example.com" runner)
+      (report! pid "r1")
+      (close! pid old)
+      ;; Registered, its standing check and greeting still under way.
+      (events/register-service-channel! pid "svc" new {:service-name "S"} runner)
+      (settle 200)
+      (is (nil? (ended "r1")))
+      (message/service-channel-opened! pid "svc" runner new)
+      (is (nil? (ended "r1"))))))
