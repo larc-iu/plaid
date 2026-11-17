@@ -2219,6 +2219,9 @@ class IgtRunner:
         self.changes_dropped = 0
         #: documents the job has waited for once at least: their defers count
         self.waited: set = set()
+        #: document id -> when the job last looked for someone else in it
+        #: (:meth:`newest_change`)
+        self.looked_at: Dict[str, float] = {}
         #: document id -> sentences skipped past the cap of the row's list:
         #: failed or changed, and too long for a stretch
         self.unlisted: Dict[str, set] = {}
@@ -2991,34 +2994,48 @@ class IgtRunner:
         return 'deferred'
 
     def newest_change(self, client, document_id: str) -> Optional[Dict[str, Any]]:
-        """The newest unit of the document's History, or None. Core places a
-        unit by its newest operation, so this is whoever wrote last, at its
-        ``end_time`` (its ``time`` is its first operation's, REV-B4-4)."""
-        try:
-            page = client.documents.audit_page(document_id, order='desc', limit=1) or {}
-        except PlaidAPIError as e:
-            raise self.refused(e, document_id) from e
-        entries = page.get('entries') if isinstance(page, dict) else page
-        return entries[0] if entries else None
+        """The newest unit of the document's History that is not this job's
+        and that tells the job someone is in the document, or None: one that
+        ended after the job was made and either within the quiet window or
+        since the job last looked (a stretch can take longer than the
+        window). Whoever wrote last: the job's own units are read past, so a
+        person who wrote while a stretch was in flight is still seen once
+        that stretch's write lands on top (H14-1). The read stops at the
+        first unit that ended before that, which nothing older can change.
+        Core places a unit by its newest operation, at its ``end_time`` (its
+        ``time`` is its first operation's, REV-B4-4)."""
+        mine = f'job:{self.job.id}/'
+        now = self.job.now()
+        cutoff = min(now - JOB_PERSON_QUIET_S, self.looked_at.get(document_id, now))
+        self.looked_at[document_id] = now
+        created = core_job._iso_seconds(self.job.job.get('created_at'))
+        if created is not None:
+            cutoff = max(cutoff, created)
+        cursor = None
+        while True:
+            try:
+                page = client.documents.audit_page(document_id, order='desc', limit=20, cursor=cursor) or {}
+            except PlaidAPIError as e:
+                raise self.refused(e, document_id) from e
+            entries = page.get('entries') if isinstance(page, dict) else page
+            for unit in entries or []:
+                when = core_job._iso_seconds(unit.get('end_time'))
+                if when is None or when <= cutoff:
+                    return None
+                if not str(unit.get('ref') or '').startswith(mine):
+                    return unit
+            cursor = page.get('next_cursor') if isinstance(page, dict) else None
+            if not cursor:
+                return None
 
     def in_use(self, last: Optional[Dict[str, Any]], job_ref: str) -> bool:
-        """Someone else wrote in the document within the quiet window, since
-        the job was made: a person, a service run, another job (SPEC 5.2).
-        ``last`` is the document's :meth:`newest_change`."""
-        if not last:
-            return False
-        if str(last.get('ref') or '').startswith(job_ref):
-            return False
-        when = core_job._iso_seconds(last.get('end_time'))
-        if when is None:
-            return False
-        # Only what was written after the job was made counts: the edit its
-        # starter made just before pressing Start is not a person in the
-        # document (both times are core's, REV-J-B S3-5).
-        created = core_job._iso_seconds(self.job.job.get('created_at'))
-        if created is not None and when <= created:
-            return False
-        return self.job.now() - when < JOB_PERSON_QUIET_S
+        """Someone else is in the document: a person, a service run, another
+        job (SPEC 5.2), whether or not the job wrote after them. ``last`` is
+        the document's :meth:`newest_change`, which holds the rule: what was
+        written after the job was made (the edit its starter made just before
+        pressing Start is not a person in the document, REV-J-B S3-5), within
+        the quiet window or since the job last looked."""
+        return bool(last) and not str(last.get('ref') or '').startswith(job_ref)
 
     def document(self, document_id: str) -> str:
         """Work one document from its cursor: ``done``, ``deferred`` or

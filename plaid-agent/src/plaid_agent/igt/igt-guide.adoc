@@ -982,7 +982,7 @@ These changes are not written but listed in its report under **Proposed changes*
 * renaming, merging or deleting an entry when the person who started the job is not a maintainer of the project.
 
 Editing stays open while a job works in a document.
-When someone changes a sentence while the job works on it, the job does not write over the change: it takes the sentence again, and skips it as **Changed during the job** when it changes once more.
+When someone changes a sentence while the job works on it, the job does not write over the change: it puts the document off and later takes the sentence again as it then reads, and skips it as **Changed during the job** when it changes once more.
 
 When it finishes, the job makes its own analyses consistent.
 A form it analyzed in more than one way takes the analysis people gave that form, when they all gave the same one, or else the analysis the job gave it at least two times in three.
@@ -1039,7 +1039,7 @@ The table of documents gives each document's state and how many of its sentences
 Columns of counts, such as **Changes written**, appear as the job writes.
 Besides **Waiting**, **Working** and **Done**, a document can read:
 
-* **Deferred**: someone wrote in it in the last ten minutes, so the job put it off. A document still in use after three tries ends **In use**.
+* **Deferred**: someone wrote in it while the job worked on it or in the last ten minutes, so the job put it off. A document still in use after three tries ends **In use**.
 * **Stopped partway**: the job ended after doing some of it.
 * **Not reached**: the job ended before it.
 * **Skipped**: every sentence the job took was skipped.

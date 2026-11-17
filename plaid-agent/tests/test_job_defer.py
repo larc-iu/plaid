@@ -181,3 +181,71 @@ def test_every_pass_over_put_off_documents_waits_first_and_says_for_what(monkeyp
     assert waiting == ['Waiting for people to finish in "Story 1". Trying again in 10 minutes.']
     told = next(b for b in beats if (b.get('message') or '').startswith('Waiting for'))
     assert told.get('current_document', 'unset') is None, 'not shown working in the document it waits on'
+
+
+# --- whoever wrote last (H14-1) ---------------------------------------------------
+
+def test_a_persons_edit_under_the_jobs_own_newer_entry_still_defers(monkeypatch):
+    """H14-1: the person typed while a stretch was in flight, and the
+    stretch's write then landed on top. The newest History unit is the job's,
+    but a person is in the document."""
+    client, job, clock = _job()
+    _model(monkeypatch)
+    _edit(client, 'd1', NOW - 20)
+    _edit(client, 'd1', NOW - 5, ref=f'job:{job.id}/doc:d1/pass:gloss')
+    assert runner(job).document('d1') == 'deferred'
+
+
+def test_a_persons_edit_older_than_the_window_under_the_jobs_own_does_not_defer(monkeypatch):
+    client, job, clock = _job()
+    _model(monkeypatch)
+    _edit(client, 'd1', NOW - JOB_PERSON_QUIET_S - 1)
+    for t in (300, 200, 100):
+        _edit(client, 'd1', NOW - t, ref=f'job:{job.id}/doc:d1/pass:gloss')
+    assert runner(job).document('d1') == 'done'
+
+
+def test_a_persons_edit_since_the_job_last_looked_counts_past_the_window(monkeypatch):
+    """A stretch can take longer than the quiet window: what a person wrote
+    after the job last looked counts, however long ago, and only once."""
+    client, job, clock = _job()
+    r = runner(job)
+    r.looked_at['d1'] = NOW - 2 * JOB_PERSON_QUIET_S
+    _edit(client, 'd1', NOW - JOB_PERSON_QUIET_S - 100)
+    _edit(client, 'd1', NOW - 10, ref=f'job:{job.id}/doc:d1/pass:gloss')
+    assert r.in_use(r.newest_change(client, 'd1'), f'job:{job.id}/')
+    assert not r.in_use(r.newest_change(client, 'd1'), f'job:{job.id}/'), 'seen once the job has looked'
+
+
+def test_a_person_typing_during_a_stretch_puts_the_document_off_before_its_next_stretch(monkeypatch):
+    """H14-1, the hunter's sequence: a person types in a sentence the next
+    stretch will take while the first stretch is in flight, and the first
+    stretch's write lands after it. The document is put off, the other
+    document is worked first, and the first is taken up again after the
+    wait."""
+    from plaid_agent.core.job import run_job
+    long = document('d1', 'Story 1', [{'words': ['blank']}] * 7)
+    client = JobClient({'d1': long, 'd2': document('d2', 'Story 2', [{'words': ['blank']}])})
+    clock = Clock()
+    job = start(client, now=clock.now)
+    job._sleep = clock.sleep
+    job.job['created_at'] = _iso(NOW - 3600)
+    order = []
+
+    def answer(asked, n, kwargs):
+        name = asked.split('"')[1]
+        if n == 1:
+            order.append(name)
+            if len(order) == 1:
+                # The person types as the stretch runs, then its write lands.
+                _edit(client, 'd1', clock.now() - 2)
+                _edit(client, 'd1', clock.now() - 1, ref=f'job:{job.id}/doc:d1/pass:gloss')
+            return reply(calls=[call(1, 'set_analysis', {'document': name, 'ref': 's1.w1',
+                                                         'morphemes': [{'form': 'blank'}]})])
+        return reply('Done.')
+    use(monkeypatch, Model(answer))
+    finished = run_job(job, runner(job))
+    assert finished['state'] == 'done', finished.get('reason')
+    assert order[:2] == ['Story 1', 'Story 2'], order
+    assert sum(clock.slept) >= JOB_DEFER_WAIT_S, 'Story 1 was taken again after the wait'
+    assert 'Story 1' in order[2:], order
