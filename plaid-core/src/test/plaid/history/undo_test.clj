@@ -540,6 +540,28 @@
             "the other spans went")
         (is (= [(nth toks 0)] (map :id (psc/q db {:select [:id] :from [:tokens] :where [:= :document_id (str d)]}))))))))
 
+;; H7-1: an undo is the undoer's edit to the document it wrote, as a restore
+;; is, so their last edit and Activity's Where name it. One that wrote rows in
+;; two documents names none.
+(deftest an-undo-names-the-one-document-it-wrote
+  (let [{:keys [proj doc spans tl word fox]} (setup!)
+        _ (assert-ok (update-span admin-request (nth spans 1) :value "ADJ2"))
+        entry (last-op-id "span/update-attributes")
+        summary (undone! admin-request entry)
+        undo-doc (fn [op] (:document_id (psc/q1 db {:select [:document_id] :from [:operations]
+                                                    :where [:= :id (str op)]})))]
+    (is (= 1 (:total summary)))
+    (is (= (str doc) (str (undo-doc (:operation summary)))))
+    (testing "an undo of rows in two documents names none"
+      (let [d2 (create-test-document admin-request proj "Doc2")
+            t2 (id (create-text admin-request tl d2 "fox"))
+            k2 (id (create-token admin-request word t2 0 3))
+            _ (id (create-vocab-link admin-request fox [k2]))
+            _ (assert-done (bulk-delete-vocab-items admin-request [fox]))
+            two (undone! admin-request (last-op-id "vocab-item/bulk-delete"))]
+        (is (pos? (:total two)))
+        (is (nil? (undo-doc (:operation two))))))))
+
 (deftest undoing-a-bulk-delete-of-entries-with-links-in-two-documents
   (let [{:keys [proj doc vocab fox jump toks word tl]} (setup!)
         d2 (create-test-document admin-request proj "Doc2")

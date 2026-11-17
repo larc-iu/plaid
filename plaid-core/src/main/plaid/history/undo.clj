@@ -1221,6 +1221,20 @@
                                 :where [:= :id (str (:id (first ops)))]}))
       (str entry-id)))
 
+(defn- name-document!
+  "An undo whose rows are in one document is that document's edit, as a
+  restore is: the operation row names it, so the undoer's last edit and the
+  log's documents count it. One that wrote rows of several documents, or
+  only vocabulary entries, names none. Set after the rows are written, so the
+  operation's lock check and version bump stay as they were (`apply!` bumps
+  each document it wrote)."
+  [tx]
+  (let [docs @(:affected-documents psaw/*op*)]
+    (when (= 1 (count docs))
+      (psc/execute! tx {:update :operations
+                        :set {:document_id (str (first docs))}
+                        :where [:= :id (str (:id psaw/*op*))]}))))
+
 (defn undo
   "Undo entry `entry-id` as one operation of type `audit-entry/undo`, or with
   `:dry-run?` say what that would do without writing. nil when no entry has
@@ -1294,7 +1308,9 @@
                                     (cond
                                       (seq bad) (throw (ex-info "misfit" {:code 409 ::retry true}))
                                       dry-run? (throw (ex-info "dry run" {:code 409 ::dry-run true}))
-                                      :else (when (seq applied) (:id psaw/*op*))))))))))
+                                      :else (when (seq applied)
+                                              (name-document! tx)
+                                              (:id psaw/*op*))))))))))
                 {:keys [too-many items left bad]} @out]
             (cond
               too-many
