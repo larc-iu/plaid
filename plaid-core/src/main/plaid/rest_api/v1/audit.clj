@@ -275,7 +275,7 @@
        "text, in one layer or a parent and child layer (a child not inside its parent), that traded characters go "
        "back together or stay together), the token rows of the entry with one extent in a layer with a parent token "
        "layer, where the entry made or deleted one (a word analysed again), go back together or stay together with what "
-       "the entry wrote on them (built-on), "
+       "the entry wrote on them (needs), "
        "a document's name another document holds now (name-taken), its "
        "document's layers would not hold, so all that document's rows are left (does-not-fit), or a closed list no "
        "longer allows its value (value-not-allowed), or its place is taken: a text where its layer holds another text "

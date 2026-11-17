@@ -28,7 +28,8 @@
                         and for a document anything written in it since.
                         The morphemes of one word the entry re-analysed
                         and what the entry wrote on them go back together
-                        or stay together (`sibling-groups`), listed so,
+                        or stay together (`sibling-groups`), each listed
+                        `needs` naming the row that stays,
     needs               it needs a row that will not be there (`needs`): its
                         parent, gone since, a row of this undo that is left,
                         or a row its metadata would name again,
@@ -709,15 +710,16 @@
       (into {} (filter (fn [[_ r]] (contains? reanalysed r))) roots))))
 
 (defn- sibling-held
-  "`built-on` when `i` stays with the morphemes of its word (`sibling-groups`):
+  "`needs` when `i` stays with the morphemes of its word (`sibling-groups`):
   a token of a group of which a row is left, a token the entry changed that
   a value stays on (the entry's own left, or one someone else wrote since,
   `:sib-since`), or a span or link the entry wrote on a token of a group of
-  which a row is left. Else nil. `sib-holder` gives the row left in a token's
-  group."
+  which a row is left. Else nil. `needs` names the row that stays, which
+  undoing `i` would need gone (REV-HFC-4). `sib-holder` gives the row left
+  in a token's group."
   [i {:keys [sibs sib-deps sib-since item-of]} applied? sib-holder]
   (let [{:keys [table op k before after]} i
-        by (fn [rk] {:reason "built-on" :by (row-ref rk (place-of i))})]
+        by (fn [rk] {:reason "needs" :needs (row-ref rk (place-of i))})]
     (case table
       "tokens" (when (sibs k)
                  (or (when-let [h (sib-holder k)] (by h))

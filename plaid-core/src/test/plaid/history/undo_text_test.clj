@@ -1071,7 +1071,14 @@
               (is (= 2 (count now)))
               (is (every? #(some? (psc/fetch-by-id db :spans %)) [g1 g2]) "both glosses stay with their morphemes")
               (is (every? (comp #{"built-on" "changed-since" "needs"} (reasons real)) [m1 m2])
-                  (pr-str (:skipped real))))
+                  (pr-str (:skipped real)))
+              (when (= what "a person retypes the gloss of the made morpheme")
+                ;; REV-HFC-4: the rows kept only for their word are listed as
+                ;; needing the row that stays, never as built on
+                (let [row (into {} (map (juxt :id identity)) (:skipped real))]
+                  (doseq [k [m1 g1]]
+                    (is (= "needs" (:reason (row k))) (pr-str (row k)))
+                    (is (some? (:needs (row k))))))))
           (do (is (= before now) "nobody touched it: the word as before the job")
               (is (not= job-left now))
               (is (zero? (:skipped-count real)) (pr-str (:skipped real)))))))))
