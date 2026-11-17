@@ -400,3 +400,14 @@ def test_a_sentence_whose_words_changed_is_still_the_same_sentence(monkeypatch):
     c.edit(_insert_word)
     out, = c.turn(('set_field', {'document': 'Text 1', 'refs': ['s1'], 'field': 'Translation', 'value': 'Ali.'}))
     assert out.startswith('Planned'), out
+
+
+def test_a_load_lets_the_codes_own_plan_calls_through_and_no_direct_call(monkeypatch):
+    """REV-SVB-R2-6: what run_code's load() read holds for that code's own
+    plan() calls in the turn and for later turns (the code had every number),
+    never for a direct tool call in the same turn by a remembered number."""
+    c = Conversation(monkeypatch)
+    c.turn(READ_S1)
+    c.edit(_insert_word)
+    _code, out = c.turn(('run_code', {'code': 'd = load("Text 1")\nprint(len(d["sentences"]))'}), _gloss('s1.w2'))
+    assert out == f'Error: {MOVED}', out

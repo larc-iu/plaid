@@ -543,7 +543,12 @@ def plan_proxy(ws, call_tool, write_tools) -> Callable[..., str]:
         why = ws.garbled(args) if hasattr(ws, 'garbled') else None
         if why:
             return f'Error: {why}'
-        return call_tool(ws, tool, args)
+        # The code's own call: what its load() read holds for it.
+        was, ws.in_code = getattr(ws, 'in_code', False), True
+        try:
+            return call_tool(ws, tool, args)
+        finally:
+            ws.in_code = was
     return plan
 
 
@@ -568,7 +573,7 @@ def load_proxy(ws, view: Callable[[Any], Any]) -> Callable[[str], Any]:
         # The code reads every sentence's word numbers as they are now
         # (`BaseWorkspace.note_numbered`).
         if hasattr(ws, 'note_numbered'):
-            ws.note_numbered(loaded, range(1, len(getattr(loaded, 'sentences', ())) + 1))
+            ws.note_numbered(loaded, range(1, len(getattr(loaded, 'sentences', ())) + 1), code=True)
         if ws.reader.walking():
             ws.read_ahead(ws.documents(), once=True)
         return doc

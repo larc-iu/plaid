@@ -209,6 +209,12 @@ class BaseWorkspace:
         self.read_before: Dict[str, Dict[str, str]] = {}
         #: The same for this turn (:meth:`note_numbered`), kept on its reply.
         self.read_now: Dict[str, Dict[int, str]] = {}
+        #: What run_code's load() read this turn, the same way: it holds for
+        #: the code's own plan() calls (``in_code``) and is kept on the reply,
+        #: but a direct tool call in the turn is held to the earlier reads
+        #: (REV-SVB-R2-6).
+        self.code_now: Dict[str, Dict[int, str]] = {}
+        self.in_code = False
         #: Whether the tool call under way stages (a plan tool), set by the
         #: toolkit around each call.
         self.planning = False
@@ -506,7 +512,7 @@ class BaseWorkspace:
                 held.add(doc.sentences[i - 1].id)
         self.note_numbered(doc, positions)
 
-    def note_numbered(self, doc, positions) -> None:
+    def note_numbered(self, doc, positions, code: bool = False) -> None:
         """Keep the print of each sentence of ``doc`` at ``positions``
         (1-based) as this turn showed it to the model, every word number of
         it (REV-SVB-R2-1): only a read that prints all of them calls this
@@ -517,7 +523,7 @@ class BaseWorkspace:
         staging call by the numbers is then held to the sentence as shown
         (:meth:`refuse_moved_sentence`). Unlike :meth:`note_shown` it says
         nothing of what a job counts as read."""
-        held = self.read_now.setdefault(doc.id, {})
+        held = (self.code_now if code else self.read_now).setdefault(doc.id, {})
         for i in positions:
             if 1 <= i <= len(doc.sentences) and i not in held:
                 printed = self.words_print(doc.sentences[i - 1])
@@ -544,15 +550,18 @@ class BaseWorkspace:
         sentences, this turn's first: a sentence past it keeps no print at
         all and is not checked, never against an older one (REV-SVB-5)."""
         merged: Dict[str, Dict[str, str]] = {d: dict(p) for d, p in self.read_before.items() if p}
-        for doc_id, prints in self.read_now.items():
-            for n, printed in prints.items():
-                merged.setdefault(doc_id, {})[str(n)] = printed
+        turn = [self.code_now, self.read_now]
+        for read in turn:
+            for doc_id, prints in read.items():
+                for n, printed in prints.items():
+                    merged.setdefault(doc_id, {})[str(n)] = printed
         if not merged:
             return {}
         listed = {d.get('id') for d in self.documents()}
         out: Dict[str, Dict[str, str]] = {}
         left = READ_PRINTS_MAX
-        order = [(d, str(n)) for d, prints in self.read_now.items() for n in prints]
+        order = list(dict.fromkeys((d, str(n)) for read in turn[::-1] for d, prints in read.items()
+                                   for n in prints))
         now = set(order)
         order += [(d, n) for d, prints in merged.items() for n in prints if (d, n) not in now]
         for doc_id, n in order:
@@ -578,7 +587,7 @@ class BaseWorkspace:
         if not self.planning or getattr(self, 'restaging', False):
             return
         before = self.read_before.get(doc.id) or {}
-        now = self.read_now.get(doc.id) or {}
+        now = {**((self.code_now.get(doc.id) or {}) if self.in_code else {}), **(self.read_now.get(doc.id) or {})}
         if str(n) not in before or n in now:
             return
 
