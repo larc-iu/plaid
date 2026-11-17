@@ -39,12 +39,14 @@ export const JobActiveLine = ({ projectId, jobId, onOpen, client = null }) => {
     };
   }, [client, jobId]);
   const who = job && (user?.id && job.startedBy === user.id ? 'you' : job.startedByName);
+  // The state in the job page's own words, in brackets, so its ellipsis
+  // ("Stopping…") is never followed by the sentence's full stop.
   const state = job && jobStateText(job.state);
   return (
     <p role="alert" className="text-sm text-destructive">
       This project already has a job
-      {who ? `, started by ${who}` : ''}
-      {state ? `, ${state.toLowerCase()}` : ''}.{' '}
+      {state ? ` (${state})` : ''}
+      {who ? `, started by ${who}` : ''}.{' '}
       <AppLink className="underline" to={jobPath(projectId, jobId)} onClick={onOpen}>
         Open it
       </AppLink>

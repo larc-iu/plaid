@@ -945,7 +945,7 @@ Its page says so from the start, such as **Set up to fill Word class. Text uncha
 A value written outside what the card names is not refused, and the report marks it **not in the setup**.
 
 A project has one job at a time.
-Starting another while one has not ended is refused, with a line such as **This project already has a job, started by Ada, waiting.** and **Open it**.
+Starting another while one has not ended is refused, with a line such as **This project already has a job (Waiting), started by Ada.** and **Open it**.
 
 == Starting without the assistant
 

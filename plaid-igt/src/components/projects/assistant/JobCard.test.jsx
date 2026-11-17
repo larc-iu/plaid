@@ -251,11 +251,25 @@ describe('the job card', () => {
     const failed = card({ status: 'failed', activeJob: 'j9', reason: 'x' });
     const { v } = await draw({ card: failed, client });
     await v.step(async () => {});
-    expect(text(v)).toContain('This project already has a job, started by Ada, waiting. Open it');
+    expect(text(v)).toContain('This project already has a job (Waiting), started by Ada. Open it');
     client.jobs.get = vi.fn(async (id) => ({ id, state: 'running', startedBy: WRITER.id }));
     const w = await draw({ card: failed, client });
     await w.v.step(async () => {});
-    expect(text(w.v)).toContain('This project already has a job, started by you, running.');
+    expect(text(w.v)).toContain('This project already has a job (Running), started by you.');
+  });
+
+  // The state in the job page's words, an ellipsis never followed by a full
+  // stop.
+  it('says a stopping job is Stopping…, as its page does', async () => {
+    const client = fakeClient({ state: 'stopping' });
+    client.jobs.get = vi.fn(async (id) => ({ id, state: 'stopping', startedBy: WRITER.id }));
+    const failed = card({ status: 'failed', activeJob: 'j9', reason: 'x' });
+    const { v } = await draw({ card: failed, client });
+    await v.step(async () => {});
+    expect(text(v)).toContain(
+      'This project already has a job (Stopping…), started by you. Open it',
+    );
+    expect(text(v)).not.toContain('….');
   });
 
   it("ends as not started with core's own sentence when core refuses the start", async () => {
@@ -439,7 +453,7 @@ describe('the job card', () => {
       expect(text(v)).toContain('Not started');
       expect(text(v)).toContain('instructions: say what the job is to do.');
       ({ v } = await draw({ card: card({ status: 'failed', reason: 'x', activeJob: 'j9' }) }));
-      expect(text(v)).toContain('This project already has a job, running.');
+      expect(text(v)).toContain('This project already has a job (Running). Open it');
       expect(byText(v.container, 'a', 'Open it').getAttribute('href')).toBe('/projects/p1/jobs/j9');
     });
   });
