@@ -90,6 +90,8 @@ export function vocabEntryGuessSource({ trusted = null } = {}) {
             value: s,
             source: VOCAB_ENTRY_SOURCE,
             entryForm: item.form ?? null,
+            // Which entry, so its title can carry its number (kai 1.2).
+            ...(item.id && item.vocabId ? { entryId: item.id, vocabId: item.vocabId } : {}),
             trusted: isTrusted,
           }
         : null;

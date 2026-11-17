@@ -298,7 +298,10 @@ export const chrome = {
   // often the project has already said this for the same form.
   _guessBasis(g) {
     if (g.source === VOCAB_ENTRY_SOURCE) {
-      const entry = g.entryForm ? `the entry “${g.entryForm}”` : 'the linked entry';
+      const name = g.entryId
+        ? this._entryLabel({ id: g.entryId, form: g.entryForm }, g.vocabId)
+        : g.entryForm;
+      const entry = name ? `the entry “${name}”` : 'the linked entry';
       return g.trusted ? `from ${entry}` : `from ${entry}, unconfirmed link`;
     }
     if (g.source === PRECEDENT_SOURCE && g.count)

@@ -123,6 +123,13 @@ export const vocabPopover = {
     return precedentForm(formText, kind, this._ignoredCfg);
   },
 
+  // An entry as plain text, with the number that tells it from the entries
+  // spelled alike (itemLabel): 'kai 1.2'. `vocabId` defaults to the item's.
+  _entryLabel(item, vocabId = item?.vocabId) {
+    if (!item) return '';
+    return vocabId ? itemLabel(item, this._itemNumbersFor(vocabId)) : (item.form ?? '');
+  },
+
   _itemNumber(vocabItem) {
     if (!vocabItem?.vocabId) return null;
     return this._itemNumbersFor(vocabItem.vocabId).get(vocabItem.id) ?? null;

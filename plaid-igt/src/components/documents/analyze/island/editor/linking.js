@@ -44,7 +44,7 @@ export const linking = {
     ).then((ok) => {
       if (ok) {
         notifyInfo(
-          `Linked ${ids.length} more “${formText}” to ${currentItem.form}`,
+          `Linked ${ids.length} more “${formText}” to ${this._entryLabel(currentItem)}`,
           'Linked in this text',
         );
       }
@@ -62,7 +62,10 @@ export const linking = {
       this.doc.linkVocabMany([tokenId, ...others], item.id),
     ).then((ok) => {
       if (ok) {
-        notifyInfo(`Linked ${count} “${formText}” to ${item.form}`, 'Linked in this text');
+        notifyInfo(
+          `Linked ${count} “${formText}” to ${this._entryLabel(item)}`,
+          'Linked in this text',
+        );
       }
     });
   },
@@ -121,7 +124,10 @@ export const linking = {
       this.doc.linkVocabMany(others, row.itemId).then((linked) => {
         if (linked) {
           const n = others.length + (row.linkChange ? 1 : 0);
-          notifyInfo(`Linked ${n} “${formText}” to ${row.item?.form ?? ''}`, 'Linked in this text');
+          notifyInfo(
+            `Linked ${n} “${formText}” to ${this._entryLabel(row.item, row.vocabId)}`,
+            'Linked in this text',
+          );
         }
       });
     });
