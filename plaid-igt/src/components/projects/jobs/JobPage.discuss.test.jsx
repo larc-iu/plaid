@@ -130,15 +130,15 @@ describe('the job page and the assistant', () => {
   });
 
   // A window too narrow for the panel links the Assistant tab, where a new
-  // conversation opens (DOC found 8).
+  // conversation opens that knows nothing of the job, so it is called what
+  // the other narrow links are called, not Discuss (DOC found 8, REV-SVU-6).
   it('links the Assistant tab where the window has no room for the panel', async () => {
     window.innerWidth = 800;
     window.dispatchEvent(new Event('resize'));
     const m = await mount(clientOf(jobOf()));
     expect(discuss(m.container)).toBeNull();
-    const link = all(m.container, 'a').find(
-      (a) => a.textContent.trim() === 'Discuss with the assistant',
-    );
+    expect(m.container.textContent).not.toContain('Discuss with the assistant');
+    const link = all(m.container, 'a').find((a) => a.textContent.trim() === 'Assistant');
     expect(link?.getAttribute('href')).toBe('/projects/p1?tab=assistant');
     await m.unmount();
   });

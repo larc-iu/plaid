@@ -884,7 +884,7 @@ Where the assistant can look things up on the web, it also reads a PDF from a li
 == The panel
 
 The **Assistant** button in the header opens the same assistant in a panel beside whatever you are looking at, as does the handle on the right edge of the window.
-On a window too narrow for the panel, a document's header and an open lexicon entry have an **Assistant** link to the **Assistant** tab instead.
+On a window too narrow for the panel, a document's header, a job's page and an open lexicon entry have an **Assistant** link to the **Assistant** tab instead.
 The panel stays open as you move around, and it can be dragged wider or narrower.
 It picks up the last conversation you had in the project you are in and keeps it as you move from document to document.
 The panel's history lists your other conversations, and **Open in Assistant** moves the open one to the **Assistant** tab.
@@ -1122,8 +1122,7 @@ Restoring a document to the moment before the job (see <<_history>>) also takes 
 
 == Discussing a job with the assistant
 
-**Discuss with the assistant**, on the page of a job that has ended, where an assistant is online, opens the assistant panel on a new conversation about that job.
-On a window too narrow for the panel, it opens a new conversation on the **Assistant** tab, which is not told which job it is about.
+**Discuss with the assistant**, on the page of a job that has ended, where an assistant is online and the window has room for the panel, opens the assistant panel on a new conversation about that job.
 The assistant reads the job's report and tells you what the job did.
 A job's record holds what it did, the model's note on each piece of its work, and nothing more of why.
 The report is as the job ended, so the assistant reads the documents as they are now before it plans a change, and you approve the change as any other plan.

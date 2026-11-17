@@ -343,27 +343,26 @@ const usePeopleNames = (client, ids, job, user) => {
   return names;
 };
 
-// A new conversation about the job where an assistant is online: in the
-// assistant panel where the window has room for it (it opens beside the
-// page), else a link to the project's Assistant tab, on a new conversation.
+// A new conversation about the job, in the assistant panel, where an
+// assistant is online and the window has room for the panel (it opens beside
+// the page). On a narrower window, the link every narrow place draws: the
+// project's Assistant tab, which is not told about the job.
 const Discuss = ({ client, projectId }) => {
   const available = useAssistantAvailable(client, projectId, IGT_ASSISTANT.app);
   const wide = useWideEnoughToDock();
   const discuss = useStartConversation();
   if (available !== true) return null;
-  const inside = (
-    <>
-      <AssistantMark className="h-4 w-4" />
-      Discuss with the assistant
-    </>
-  );
   return wide ? (
     <Button variant="outline" className="gap-1.5" onClick={() => discuss()}>
-      {inside}
+      <AssistantMark className="h-4 w-4" />
+      Discuss with the assistant
     </Button>
   ) : (
     <Button variant="outline" className="gap-1.5" asChild>
-      <Link to={assistantTabPath(projectId)}>{inside}</Link>
+      <Link to={assistantTabPath(projectId)}>
+        <AssistantMark className="h-4 w-4" />
+        Assistant
+      </Link>
     </Button>
   );
 };
