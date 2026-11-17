@@ -62,7 +62,6 @@ export const ProjectAccessScreen = ({
   const grant = (userId, newRole) =>
     setProjectRoleReporting({
       client,
-      project,
       projectId,
       userId,
       newRole,

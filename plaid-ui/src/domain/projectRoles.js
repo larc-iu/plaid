@@ -63,27 +63,30 @@ export const aclMemberIds = (project) => [
  * but the search-to-add menu is another way in and a guard belongs where every
  * path reaches it.
  *
- * `current` is the role the screen shows for the user, when it knows better
- * than `project`: after a change that landed and a refetch that failed, the
- * project read is stale, and removing the role it names would leave the user
- * holding two.
+ * The role removed is the one the server holds now, read just before. The
+ * page's own read can be stale (another maintainer changed the role since, or
+ * a refetch failed), and removing a role the user no longer holds is a no-op
+ * on the server, which left them their real role under a page that said "No
+ * access".
  *
  * Answers `{ changed }`, with `refused` saying why when it would not try.
  */
 export const setProjectRole = async ({
   client,
-  project,
   projectId,
   userId,
   newRole,
   currentUserId,
   onDataUpdate,
-  current = roleOf(project, userId),
 }) => {
   if (userId === currentUserId) {
     return { changed: false, refused: 'You cannot change your own role.' };
   }
-  if (current === newRole) return { changed: false };
+  const current = roleOf(await client.projects.get(projectId), userId);
+  if (current === newRole) {
+    await onDataUpdate();
+    return { changed: false };
+  }
 
   const label =
     newRole === 'none' ? `Remove ${userId} from the project` : `Make ${userId} a ${newRole}`;

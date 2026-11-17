@@ -30,19 +30,36 @@ const USERS = {
   'ada@example.com': { id: 'ada@example.com', displayName: 'Ada', isAdmin: false },
 };
 
-const makeClient = () => ({
-  withOperation: async (_label, fn) => fn(() => {}),
-  users: { get: async (id) => USERS[id], avatarUrl: () => null },
-  projects: {
-    removeWriter: vi.fn(async () => {}),
-    removeReader: vi.fn(async () => {}),
-    removeMaintainer: vi.fn(async () => {}),
-    addWriter: vi.fn(async () => {}),
-    addReader: vi.fn(async () => {}),
-    addMaintainer: vi.fn(async () => {}),
-    setConfig: vi.fn(async () => {}),
-  },
-});
+// The project's roles as the server holds them: each role write changes them,
+// and `get` reads them, so a test can change a role behind the page's back.
+const makeClient = () => {
+  const server = structuredClone(PROJECT);
+  const lists = ['maintainers', 'writers', 'readers'];
+  const remove = (list) =>
+    vi.fn(async (_p, id) => {
+      server[list] = server[list].filter((u) => u !== id);
+    });
+  const add = (list) =>
+    vi.fn(async (_p, id) => {
+      for (const l of lists) server[l] = server[l].filter((u) => u !== id);
+      server[list] = [...server[list], id];
+    });
+  return {
+    server,
+    withOperation: async (_label, fn) => fn(() => {}),
+    users: { get: async (id) => USERS[id], avatarUrl: () => null },
+    projects: {
+      get: vi.fn(async () => structuredClone(server)),
+      removeWriter: remove('writers'),
+      removeReader: remove('readers'),
+      removeMaintainer: remove('maintainers'),
+      addWriter: add('writers'),
+      addReader: add('readers'),
+      addMaintainer: add('maintainers'),
+      setConfig: vi.fn(async () => {}),
+    },
+  };
+};
 
 const mount = (props = {}) => {
   const client = props.client || makeClient();
@@ -211,6 +228,74 @@ describe('ProjectMembers', () => {
     expect(client.projects.removeReader).toHaveBeenCalledTimes(1);
     expect(client.projects.removeWriter).toHaveBeenCalledTimes(1);
     expect(client.projects.addMaintainer).toHaveBeenCalledTimes(1);
+    await unmount();
+  });
+
+  // H12-1: another maintainer made Ada a maintainer after this page read the
+  // project. Picking No access here removed the Writer role she no longer
+  // held, said "Permissions updated", and showed No access for good.
+  it('takes away the role held now when the page is stale, and shows what the server holds', async () => {
+    const client = makeClient();
+    const Host = () => {
+      const [project, set] = useState(PROJECT);
+      return (
+        <ProjectMembers
+          project={project}
+          projectId="p1"
+          currentUser={{ id: 'me@example.com', isAdmin: true }}
+          onDataUpdate={async () => set(await client.projects.get('p1'))}
+          roleOptions={ROLE_OPTIONS}
+          client={client}
+        />
+      );
+    };
+    const { container, step, unmount } = await renderComponent(
+      <MemoryRouter>
+        <Host />
+      </MemoryRouter>,
+    );
+    client.server.writers = [];
+    client.server.maintainers = ['me@example.com', 'ada@example.com'];
+    await pickRole(step, container, 'Ada', 'No access');
+    expect(client.server.maintainers).toEqual(['me@example.com']);
+    expect(client.projects.removeWriter).not.toHaveBeenCalled();
+    expect(roleTriggers(container)).toEqual(['Me project role']);
+    await unmount();
+  });
+
+  // A change that landed shows what the server holds once the project is read
+  // again, even when someone changed the role in between.
+  it('shows the role the reread project holds, not the one picked', async () => {
+    const client = makeClient();
+    const Host = () => {
+      const [project, set] = useState(PROJECT);
+      return (
+        <ProjectMembers
+          project={project}
+          projectId="p1"
+          currentUser={{ id: 'me@example.com', isAdmin: true }}
+          onDataUpdate={async () => {
+            // Another maintainer makes Ada a reader just after this change.
+            client.server.maintainers = ['me@example.com'];
+            client.server.readers = ['ada@example.com'];
+            set(await client.projects.get('p1'));
+          }}
+          roleOptions={ROLE_OPTIONS}
+          client={client}
+        />
+      );
+    };
+    const { container, step, unmount } = await renderComponent(
+      <MemoryRouter>
+        <Host />
+      </MemoryRouter>,
+    );
+    await pickRole(step, container, 'Ada', 'Maintainer');
+    await step(async () => {
+      for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 0));
+    });
+    const trigger = container.querySelector('button[aria-label="Ada project role"]');
+    expect(trigger.textContent).toContain('Reader');
     await unmount();
   });
 

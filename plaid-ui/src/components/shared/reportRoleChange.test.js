@@ -10,6 +10,7 @@ const project = { id: 'p', maintainers: ['me@x.com'], writers: [], readers: ['r@
 const client = () => ({
   withOperation: async (_label, fn) => fn(() => {}),
   projects: {
+    get: async () => project,
     removeReader: vi.fn(async () => {}),
     addWriter: vi.fn(async () => {}),
   },

@@ -4,7 +4,9 @@ import { setProjectRole } from './projectRoles.js';
 const project = { id: 'p', maintainers: ['me@x.com'], writers: [], readers: ['r@x.com'] };
 
 // Records each write, and the label of the operation it ran under.
-const client = () => {
+// `stored` is the project as the server holds it, which a page that has not
+// reloaded may no longer show.
+const client = (stored = project) => {
   const calls = [];
   let open = null;
   const write = (name) =>
@@ -22,7 +24,9 @@ const client = () => {
       }
     }),
     projects: {
+      get: vi.fn(async () => stored),
       removeReader: write('removeReader'),
+      removeMaintainer: write('removeMaintainer'),
       addWriter: write('addWriter'),
       removeWriter: write('removeWriter'),
       addMaintainer: write('addMaintainer'),
@@ -58,6 +62,13 @@ describe('setProjectRole', () => {
     await setProjectRole(args(c, { newRole: 'none' }));
     expect(c.withOperation.mock.calls[0][0]).toBe('Remove r@x.com from the project');
     expect(c.calls.map((w) => w.name)).toEqual(['removeReader']);
+  });
+
+  it('takes away the role someone holds now, not the one the page last read', async () => {
+    // Another maintainer made r a maintainer after this page read the project.
+    const c = client({ ...project, maintainers: ['me@x.com', 'r@x.com'], readers: [] });
+    expect(await setProjectRole(args(c, { newRole: 'none' }))).toEqual({ changed: true });
+    expect(c.calls.map((w) => w.name)).toEqual(['removeMaintainer']);
   });
 
   it('refuses the caller their own role, saying so to the screen rather than toasting', async () => {

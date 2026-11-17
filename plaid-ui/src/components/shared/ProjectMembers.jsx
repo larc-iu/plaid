@@ -44,7 +44,8 @@ export const ProjectMembers = ({
   const [membersLoading, setMembersLoading] = useState(true);
   // Role and review changes show at once, before the server has them. Each map
   // holds what a row was changed to (user id -> role, or -> reviewed) until
-  // the project, refetched, says the same. A refused change is taken out
+  // the project, refetched, says the same (a role: until the project is read
+  // again after the change, whatever it says). A refused change is taken out
   // again. `sendingRole` is the rows whose role change is on its way: a second
   // change to the same row waits for it, since each is a remove then an add.
   const [shownRole, setShownRole] = useState(() => new Map());
@@ -141,20 +142,27 @@ export const ProjectMembers = ({
 
   const setRole = async (userId, newRole) => {
     if (userId === currentUser?.id || sendingRole.has(userId)) return;
-    const current = rows.find((r) => r.id === userId)?.role ?? roleOf(project, userId);
     setShownRole((m) => withEntry(m, userId, newRole));
     setSendingRole((s) => new Set(s).add(userId));
+    // Once the project is read again after the change, it is what the row
+    // shows, even when it does not say `newRole` (someone else changed the
+    // role meanwhile). Until then the row shows what was picked.
+    let reread = false;
     try {
       await setProjectRoleNotifying({
         client,
-        project,
         projectId,
         userId,
         newRole,
         currentUserId: currentUser?.id,
-        onDataUpdate: refetch,
-        current,
+        onDataUpdate: async () => {
+          await onDataUpdate().then(
+            () => (reread = true),
+            (err) => console.error('Error refreshing the project:', err),
+          );
+        },
       });
+      if (reread) setShownRole((m) => withEntry(m, userId, undefined));
     } catch (err) {
       console.error('Error updating role:', err);
       setShownRole((m) => withEntry(m, userId, undefined));
