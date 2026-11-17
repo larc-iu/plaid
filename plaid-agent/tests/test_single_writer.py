@@ -566,7 +566,7 @@ def test_an_answer_a_full_record_refuses_leaves_a_stand_in_line_and_clears_the_m
     client.user_data.put = put
     _answering(monkeypatch, text='answer two')
     helper = _send(svc, client, text='q2', rid='r2', create=False)
-    assert helper.done[0]['warning'] == 'This answer was not saved. This conversation is full.'
+    assert helper.done[0]['warning'] == 'This answer was too large to save.'
     assert helper.done[0]['item']['text'] == 'answer two'
     conv, meta = _store(client).load('c1')
     assert conv['display'][-1]['kind'] == 'error' and conv['display'][-1]['text'] == helper.done[0]['warning']

@@ -327,9 +327,10 @@ class Turn:
             # that item names it.
             traceback.print_exc()
             if _too_large(e):
-                # The record is full: a short line stands in for the answer
+                # No room for this answer: a short line stands in for it
                 # after the question, so the record does not read as a
-                # question ignored, and the marker is cleared.
+                # question ignored, and the marker is cleared. Not "full": a
+                # shorter answer may still fit (H13-2).
                 said = (STANDIN_PLAN if item.get('plan') else STANDIN)
                 try:
                     self._write(store, conv_id,
@@ -396,9 +397,9 @@ def _held(response_helper):
     return hold() if callable(hold) else contextlib.nullcontext()
 
 
-#: The line that stands in for an answer a full record could not take.
-STANDIN = 'This answer was not saved. This conversation is full.'
-STANDIN_PLAN = 'This answer and its proposed changes were not saved. This conversation is full.'
+#: The line that stands in for an answer the record had no room for.
+STANDIN = 'This answer was too large to save.'
+STANDIN_PLAN = 'This answer and its proposed changes were too large to save.'
 
 #: How much of the reasoning of the model call under way a progress event
 #: carries, from its end. Every event carries the turn whole, and the round

@@ -254,7 +254,7 @@ def test_a_save_that_failed_says_so_with_one_period(monkeypatch):
     _service().process_request(_request(client), helper)
     [done] = helper.done
     assert '..' not in done['warning']
-    assert done['warning'] == 'This answer was not saved. This conversation is full.'
+    assert done['warning'] == 'This answer was too large to save.'
     assert done['item']['text'] == 'Two words.', 'the answer goes out whole, shown once'
 
     monkeypatch.setattr(ConversationStore, 'write', lambda self, *a, **k: (_ for _ in ()).throw(
