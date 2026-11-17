@@ -76,6 +76,7 @@ import { notifySuccess, notifyError } from '@/utils/feedback';
 import { storedConfig } from '@ui/domain/configCells.js';
 import {
   queueLexiconFieldsSave,
+  lexiconFieldsAfterTagsetsSave,
   queueLexiconTagsetsSave,
   tagsetsChangedError,
 } from '@/domain/tagsetsSave';
@@ -1003,16 +1004,14 @@ export const VocabularyDetail = () => {
 
   // Fields reference a tagset by name, so a rename repoints every field that
   // used the old name in the same batch as the tagsets write, or they would
-  // quietly fall back to free. Same contract as the project's TagsetsSettings:
+  // quietly fall back to free, and a delete frees them, or a new tagset given
+  // the name would govern them again. Same contract as the project's TagsetsSettings:
   // a rename or delete that repoints nothing states the fields as read, and
   // a refusal for tagsets changed elsewhere says so. A refused save throws,
   // which is how TagsetsManager learns to roll back.
   const handleSaveTagsets = async (next, meta) => {
     const renamed = meta?.renamed;
-    const repointed =
-      renamed && fields.some((f) => f.tagset === renamed.from)
-        ? fields.map((f) => (f.tagset === renamed.from ? { ...f, tagset: renamed.to } : f))
-        : null;
+    const repointed = lexiconFieldsAfterTagsetsSave(fields, tagsets, next, renamed);
     // The reserved Status values: no save renames or removes one.
     const dropped = dropsReservedStatus({
       fieldsBefore: fields,

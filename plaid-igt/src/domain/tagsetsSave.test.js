@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   TAGSETS_CHANGED,
+  lexiconFieldsAfterTagsetsSave,
   queueLexiconFieldsSave,
   queueLexiconTagsetsSave,
   queueStated,
@@ -48,7 +49,7 @@ const recorder = () => {
 };
 
 describe('a Tagsets save states what it leaves', () => {
-  it('states every other field and the metadata fields when it deletes a tagset', () => {
+  it('states every other field and the metadata fields when it deletes a tagset, and frees its own (H6-3)', () => {
     const live = projectWith();
     const next = { POS: live.config.igt.tagsets.POS };
     const { fields, after } = tagsetsSaveFields(live, next, null);
@@ -56,17 +57,16 @@ describe('a Tagsets save states what it leaves', () => {
     queueTagsetsSave(b, 'p', live, next, { expected: live.config.igt.tagsets, fields, after });
     const refs = calls.filter(([res, , , , key]) => res === 'spanLayers' && key === 'tagset');
     expect(refs.length).toBe(fields.length);
-    const leipzig = fields.find((f) => f.config?.igt?.tagset === 'Leipzig');
+    const leipzig = fields.find((f) => f.configBefore?.igt?.tagset === 'Leipzig');
     for (const r of refs) {
       expect(r).toEqual(
         r[2] === leipzig.id
           ? [
               'spanLayers',
-              'setConfig',
+              'deleteConfig',
               r[2],
               'igt',
               'tagset',
-              'Leipzig',
               undefined,
               { expected: 'Leipzig' },
             ]
@@ -81,6 +81,29 @@ describe('a Tagsets save states what it leaves', () => {
       'documentMetadata',
       undefined,
       { expected: null },
+    ]);
+  });
+
+  it("frees a deleted tagset's fields, so a new tagset of that name governs none (H6-3)", () => {
+    const live = projectWith();
+    live.config.igt.documentMetadata = [
+      { name: 'Genre', tagset: 'Leipzig' },
+      { name: 'Speaker', tagset: 'POS' },
+    ];
+    const next = { POS: live.config.igt.tagsets.POS };
+    const { fields, after } = tagsetsSaveFields(live, next, null);
+    expect(fields.filter((f) => f.config?.igt?.tagset === 'Leipzig')).toEqual([]);
+    const { calls, b } = recorder();
+    queueTagsetsSave(b, 'p', live, next, { expected: live.config.igt.tagsets, fields, after });
+    expect(calls).toContainEqual([
+      'projects',
+      'setConfig',
+      'p',
+      'igt',
+      'documentMetadata',
+      [{ name: 'Genre' }, { name: 'Speaker', tagset: 'POS' }],
+      undefined,
+      { expected: live.config.igt.documentMetadata },
     ]);
   });
 
@@ -203,5 +226,46 @@ describe("a lexicon's settings saves", () => {
     const next = { LX: { ...LX.LX, mode: 'suggest' } };
     queueLexiconTagsetsSave(b, 'v', next, { tagsetsRead: LX, fields: null, fieldsRead: FIELDS });
     expect(calls.map((c) => c[4])).toEqual(['tagsets']);
+  });
+});
+
+describe("a lexicon's Tagsets save carries its fields along", () => {
+  const before = { POS: LEIPZIG, Gloss: LEIPZIG };
+  const fields = [
+    { name: 'pos', tagset: 'POS' },
+    { name: 'gloss', tagset: 'Gloss' },
+    { name: 'note', tagset: '' },
+  ];
+
+  it('a delete frees the fields that named the tagset (H6-3)', () => {
+    expect(lexiconFieldsAfterTagsetsSave(fields, before, { Gloss: LEIPZIG }, null)).toEqual([
+      { name: 'pos', tagset: '' },
+      { name: 'gloss', tagset: 'Gloss' },
+      { name: 'note', tagset: '' },
+    ]);
+  });
+
+  it('a rename repoints them', () => {
+    expect(
+      lexiconFieldsAfterTagsetsSave(
+        fields,
+        before,
+        { Tags: LEIPZIG, Gloss: LEIPZIG },
+        {
+          from: 'POS',
+          to: 'Tags',
+        },
+      ),
+    ).toEqual([
+      { name: 'pos', tagset: 'Tags' },
+      { name: 'gloss', tagset: 'Gloss' },
+      { name: 'note', tagset: '' },
+    ]);
+  });
+
+  it('a save that touches no field changes none', () => {
+    expect(lexiconFieldsAfterTagsetsSave(fields, before, { ...before, X: LEIPZIG }, null)).toBe(
+      null,
+    );
   });
 });

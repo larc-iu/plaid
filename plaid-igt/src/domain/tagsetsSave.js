@@ -48,6 +48,17 @@ export const tagsetsChangedError = async (error, read, readNow) => {
 };
 
 /**
+ * The names of the tagsets `live` holds that a save of `next` deletes (a
+ * rename's old name is not deleted: its fields follow it).
+ */
+const removedTagsets = (live, next, renamed) =>
+  new Set(
+    Object.keys(storedConfig(live, IGT_NAMESPACE, 'tagsets') || {}).filter(
+      (name) => !Object.hasOwn(next || {}, name) && name !== renamed?.from,
+    ),
+  );
+
+/**
  * What a Tagsets save of `next` over `live` (the project as the save read
  * it) does to the fields: `fields`, every IGT field as it will be after the
  * save (a field naming the renamed tagset read under its new name, with
@@ -55,14 +66,23 @@ export const tagsetsChangedError = async (error, read, readNow) => {
  * `{from, to}` or null. What `refusedBySave` and `queueTagsetsSave` take.
  */
 export const tagsetsSaveFields = (live, next, renamed = null) => {
-  const fields = igtFields(getIgtLayerInfo(live)).map((sl) =>
-    renamed && readTagsetName(sl.config) === renamed.from
-      ? {
-          ...withStoredConfig(sl, IGT_NAMESPACE, 'tagset', renamed.to),
-          configBefore: sl.config,
-        }
-      : sl,
-  );
+  const removed = removedTagsets(live, next, renamed);
+  const fields = igtFields(getIgtLayerInfo(live)).map((sl) => {
+    const name = readTagsetName(sl.config);
+    if (renamed && name === renamed.from) {
+      return {
+        ...withStoredConfig(sl, IGT_NAMESPACE, 'tagset', renamed.to),
+        configBefore: sl.config,
+      };
+    }
+    if (removed.has(name)) {
+      return {
+        ...withStoredConfig(sl, IGT_NAMESPACE, 'tagset', undefined),
+        configBefore: sl.config,
+      };
+    }
+    return sl;
+  });
   const after = withStoredConfig(live, IGT_NAMESPACE, 'tagsets', next).config;
   return { fields, after };
 };
@@ -88,14 +108,21 @@ export const queueTagsetsSave = (
   { renamed = null, expected, fields, after },
 ) => {
   b.projects.setConfig(projectId, IGT_NAMESPACE, 'tagsets', next, undefined, { expected });
-  let repointed = 0;
   const layers = igtFields(getIgtLayerInfo(live));
   const named = renamed
     ? governedFields(getIgtLayerInfo(live), live?.config).filter(
         (g) => g.tagsetName === renamed.from,
       )
     : [];
-  const repointedIds = new Set(named.filter((g) => g.kind === 'span').map((g) => g.layerId));
+  // A deleted tagset's fields go back to free in the same batch: left naming
+  // it, they came back under the next tagset given that name (H6-3).
+  const removed = removedTagsets(live, next, renamed);
+  const freed = governedFields(getIgtLayerInfo(live), live?.config).filter((g) =>
+    removed.has(g.tagsetName),
+  );
+  const repointedIds = new Set(
+    [...named, ...freed].filter((g) => g.kind === 'span').map((g) => g.layerId),
+  );
   const removesName = Object.keys(storedConfig(live, IGT_NAMESPACE, 'tagsets') || {}).some(
     (name) => !Object.hasOwn(next || {}, name),
   );
@@ -105,7 +132,7 @@ export const queueTagsetsSave = (
         queueStated(b.spanLayers, sl.id, 'tagset', storedConfig(sl, IGT_NAMESPACE, 'tagset'));
       }
     }
-    if (!named.some((g) => g.kind === 'metadata')) {
+    if (![...named, ...freed].some((g) => g.kind === 'metadata')) {
       queueStated(
         b.projects,
         projectId,
@@ -114,31 +141,41 @@ export const queueTagsetsSave = (
       );
     }
   }
+  const byId = new Map(layers.map((sl) => [sl.id, sl]));
+  for (const g of freed) {
+    if (g.kind !== 'span') continue;
+    b.spanLayers.deleteConfig(g.layerId, IGT_NAMESPACE, 'tagset', undefined, {
+      expected: byId.get(g.layerId)?.config?.[IGT_NAMESPACE]?.tagset ?? g.tagsetName,
+    });
+  }
   if (renamed) {
-    const byId = new Map(layers.map((sl) => [sl.id, sl]));
     for (const g of named) {
       if (g.kind !== 'span') continue;
       b.spanLayers.setConfig(g.layerId, IGT_NAMESPACE, 'tagset', renamed.to, undefined, {
         expected: byId.get(g.layerId)?.config?.[IGT_NAMESPACE]?.tagset ?? renamed.from,
       });
     }
-    if (named.some((g) => g.kind === 'metadata')) {
-      const meta = (readDocumentMetadata(live?.config) || []).map((f) =>
-        f.tagset === renamed.from ? { ...f, tagset: renamed.to } : f,
-      );
-      b.projects.setConfig(
-        projectId,
-        IGT_NAMESPACE,
-        'documentMetadata',
-        meta,
-        undefined,
-        expectStored(live, IGT_NAMESPACE, 'documentMetadata'),
-      );
-    }
-    repointed = named.length;
+  }
+  if ([...named, ...freed].some((g) => g.kind === 'metadata')) {
+    const meta = (readDocumentMetadata(live?.config) || []).map((f) => {
+      if (renamed && f.tagset === renamed.from) return { ...f, tagset: renamed.to };
+      if (removed.has(f.tagset)) {
+        const { tagset: _gone, ...rest } = f;
+        return rest;
+      }
+      return f;
+    });
+    b.projects.setConfig(
+      projectId,
+      IGT_NAMESPACE,
+      'documentMetadata',
+      meta,
+      undefined,
+      expectStored(live, IGT_NAMESPACE, 'documentMetadata'),
+    );
   }
   queueFieldDeclarations(b, fields, after, live?.config);
-  return repointed;
+  return named.length;
 };
 
 /**
@@ -196,6 +233,28 @@ export const queueLexiconFieldsSave = (
   if (statesTagsets) queueStated(b.vocabLayers, vocabId, 'tagsets', tagsetsRead);
   b.vocabLayers.setConfig(vocabId, IGT_NAMESPACE, 'fields', fields, undefined, {
     expected: fieldsRead,
+  });
+};
+
+/**
+ * A lexicon's entry fields (`fields`, a list of `{name, tagset, ...}`) after
+ * a Tagsets save of `next` over `tagsetsBefore`: a field naming the renamed
+ * tagset (`renamed`, `{from, to}` or null) names its new name, and one naming
+ * a deleted tagset names none, so a new tagset given that name governs no
+ * field (H6-3). null when no field changes.
+ */
+export const lexiconFieldsAfterTagsetsSave = (fields, tagsetsBefore, next, renamed = null) => {
+  const removed = new Set(
+    Object.keys(tagsetsBefore && typeof tagsetsBefore === 'object' ? tagsetsBefore : {}).filter(
+      (name) => !Object.hasOwn(next || {}, name) && name !== renamed?.from,
+    ),
+  );
+  const changes = (f) => (renamed && f.tagset === renamed.from) || removed.has(f.tagset);
+  if (!fields.some(changes)) return null;
+  return fields.map((f) => {
+    if (renamed && f.tagset === renamed.from) return { ...f, tagset: renamed.to };
+    if (removed.has(f.tagset)) return { ...f, tagset: '' };
+    return f;
   });
 };
 
