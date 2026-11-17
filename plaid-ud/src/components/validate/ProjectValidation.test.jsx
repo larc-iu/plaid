@@ -237,3 +237,46 @@ describe('UD Validation, Add', () => {
     expect(view.container.textContent).toContain('Everything stored is on the list.');
   });
 });
+
+// H17-2: the dependency relation list governs the enhanced graph too, so a
+// label stored there off the list is named with the tree's, and where it is
+// is looked up in both layers.
+describe('UD Validation, enhanced relations', () => {
+  it('names an off-list label stored only in the enhanced graph, and finds it there', async () => {
+    info.current = {
+      ...infoWith(['NOUN']),
+      sentenceTokenLayer: { id: 'sent' },
+      relationLayer: { id: 'rel', config: { ud: {} } },
+      enhancedRelationLayer: { id: 'erel', config: { ud: {} } },
+      vocab: { ...infoWith(['NOUN']).vocab, deprel: ['nsubj'] },
+    };
+    const byLayer = { rel: [['nsubj', 2]], erel: [['bogus', 1]], upos: [], feats: [] };
+    client.current.query = vi.fn(async (q) => {
+      const layerId = JSON.stringify(q)
+        .match(/"layer":"(\w+)"/g)
+        .at(-1)
+        .slice(9, -1);
+      if (JSON.stringify(q).includes('"group":["?d","?S"]'))
+        return { results: layerId === 'erel' ? [['d1', 's1']] : [] };
+      return { results: byLayer[layerId] || [] };
+    });
+    client.current.projects.listDocuments = vi.fn(async () => [{ id: 'd1', name: 'Doc one' }]);
+    view = await renderComponent(
+      <MemoryRouter>
+        <ProjectValidation />
+      </MemoryRouter>,
+    );
+    await view.step(settle);
+    const text = view.container.textContent;
+    expect(text).toContain('bogus');
+    expect(text).not.toContain('nsubj');
+    const row = [...view.container.querySelectorAll('button')].find((b) =>
+      b.textContent.includes('bogus'),
+    );
+    await view.step(async () => {
+      row.click();
+      await settle();
+    });
+    expect(view.container.textContent).toContain('Doc one');
+  });
+});

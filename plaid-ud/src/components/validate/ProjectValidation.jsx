@@ -40,12 +40,32 @@ import { countOf } from '@ui/lib/plural.js';
 // value inventory as [value, count] and the diff against the list happens here,
 // so nothing loads a document until you click a value and ask where it is.
 
+// The dependency relation list governs the tree and the enhanced graph alike,
+// so its row reads the enhanced layer too (`also`, H17-2). A suppressor has no
+// value, and the queries ask only for values. `layer` holds the list.
 const FIELDS = [
   { key: 'upos', label: 'UPOS', layer: 'uposLayer', kind: 'span' },
   { key: 'xpos', label: 'XPOS', layer: 'xposLayer', kind: 'span' },
-  { key: 'deprel', label: 'Dependency relations', layer: 'relationLayer', kind: 'relation' },
+  {
+    key: 'deprel',
+    label: 'Dependency relations',
+    layer: 'relationLayer',
+    also: 'enhancedRelationLayer',
+    kind: 'relation',
+  },
   { key: 'feats', label: 'Features', layer: 'featuresLayer', kind: 'feats' },
 ];
+
+// [value, count] pairs summed over several layers' answers.
+const summed = (answers) => {
+  const total = new Map();
+  for (const counts of answers) {
+    for (const [value, count] of counts) {
+      total.set(value, (total.get(value) || 0) + (Number(count) || 0));
+    }
+  }
+  return [...total.entries()];
+};
 
 // Where an off-list value is, once someone has opened it: the documents it is
 // in, and a link into each sentence. The links are numbered by the order the
@@ -104,19 +124,25 @@ export const ProjectValidation = () => {
     try {
       const out = [];
       for (const field of FIELDS) {
-        const layer = layerInfo[field.layer];
-        if (!layer) continue;
-        const query =
-          field.kind === 'relation'
-            ? relationValueCounts(projectId, layer.id)
-            : spanValueCounts(projectId, layer.id);
-        const res = await client.query(query);
-        const counts = res?.results || [];
+        if (!layerInfo[field.layer]) continue;
+        const layerIds = [field.layer, field.also]
+          .map((name) => layerInfo[name]?.id)
+          .filter(Boolean);
+        const answers = [];
+        for (const layerId of layerIds) {
+          const query =
+            field.kind === 'relation'
+              ? relationValueCounts(projectId, layerId)
+              : spanValueCounts(projectId, layerId);
+          const res = await client.query(query);
+          answers.push(res?.results || []);
+        }
+        const counts = summed(answers);
         const enforced = layerInfo.modes[field.key] === MODES.CLOSED;
         if (field.kind === 'feats') {
           out.push({
             ...field,
-            layerId: layer.id,
+            layerIds,
             enforced,
             features: featureSeedCandidates(counts, layerInfo.vocab.featureInventory.map),
             values: [],
@@ -124,7 +150,7 @@ export const ProjectValidation = () => {
         } else {
           out.push({
             ...field,
-            layerId: layer.id,
+            layerIds,
             enforced,
             values: seedCandidates(
               counts,
@@ -156,16 +182,19 @@ export const ProjectValidation = () => {
       if (where[key]) return;
       try {
         const sentenceLayerId = layerInfo.sentenceTokenLayer.id;
-        const query =
-          field.kind === 'relation'
-            ? relationValueSentences(projectId, sentenceLayerId, field.layerId, value)
-            : spanValueSentences(projectId, sentenceLayerId, field.layerId, value);
-        const res = await client.query(query);
         const byDoc = new Map();
-        for (const [docId, sentId] of res?.results || []) {
-          const id = String(docId);
-          if (!byDoc.has(id)) byDoc.set(id, []);
-          byDoc.get(id).push(String(sentId));
+        for (const layerId of field.layerIds) {
+          const query =
+            field.kind === 'relation'
+              ? relationValueSentences(projectId, sentenceLayerId, layerId, value)
+              : spanValueSentences(projectId, sentenceLayerId, layerId, value);
+          const res = await client.query(query);
+          for (const [docId, sentId] of res?.results || []) {
+            const id = String(docId);
+            if (!byDoc.has(id)) byDoc.set(id, []);
+            const sentences = byDoc.get(id);
+            if (!sentences.includes(String(sentId))) sentences.push(String(sentId));
+          }
         }
         const docs = await client.projects.listDocuments(projectId);
         const nameOf = new Map((docs || []).map((d) => [d.id, d.name]));

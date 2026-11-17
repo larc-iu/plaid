@@ -48,3 +48,19 @@ test('a count is written for the reader, as every count in Plaid is', () => {
     '1,204 UPOS values not on the list: ADJECTIVE.',
   ]);
 });
+
+// H17-2: the DEPS column's labels are held to the same list as DEPREL, so a
+// closed list names the ones the file writes outside it.
+test('a closed relation list names DEPS labels outside it', () => {
+  const file = [
+    '# text = She came and left',
+    '1\tShe\tshe\tPRON\t_\t_\t2\tnsubj\t2:nsubj|4:wrongenh\t_',
+    '2\tcame\tcome\tVERB\t_\t_\t0\troot\t0:root\t_',
+    '3\tand\tand\tCCONJ\t_\t_\t4\tcc\t4:cc\t_',
+    '4\tleft\tleave\tVERB\t_\t_\t2\twrongbasic\t2:conj:and\t_',
+  ].join('\n');
+  assert.deepEqual(offListWarnings(parseCoNLLU(file), info({ deprel: MODES.CLOSED })), [
+    '1 DEPREL value not on the list: wrongbasic.',
+    '1 DEPS value not on the list: wrongenh.',
+  ]);
+});
