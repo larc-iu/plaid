@@ -10,17 +10,13 @@ import { andList, countOf, plural } from '@ui/lib/plural.js';
 
 // Instructions a job can start from, which fill the Start job dialog's box
 // and can be edited there. Plain text: nothing knows them once the job is
-// started. Three kinds of work, since a job is not glossing alone: a
-// translation, a field filled by a rule the person states, and a check that
-// writes nothing.
+// started. Two kinds of work, since a job is not glossing alone: a
+// translation and a check that writes nothing. None holds a blank to fill
+// in: Start takes whatever the box holds.
 export const STARTER_TEXTS = [
   {
     label: 'Translate',
     text: 'Write a free translation of every sentence whose translation is empty.',
-  },
-  {
-    label: 'Fill a field',
-    text: 'Fill [field] on every word where it is empty, by this rule: [rule]',
   },
   {
     label: 'Check',

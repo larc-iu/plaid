@@ -110,8 +110,9 @@ describe('Start job', () => {
   });
 
   // Jobs are not glossing alone (memory feedback_jobs_not_glossing_specific):
-  // a translation, a field filled by a stated rule, a check that writes nothing.
-  it('offers three starter texts of three kinds of work, which stay editable', async () => {
+  // a translation, and a check that writes nothing. No starter holds a blank
+  // to fill in, since Start takes whatever the box holds (REV-SVU-1).
+  it('offers two starter texts of two kinds of work, which stay editable', async () => {
     const client = fakeClient();
     const { v } = await open(client, { documents: DOCS, instructions: null, all: true });
     const area = () => document.body.querySelector('#job-instructions');
@@ -121,9 +122,7 @@ describe('Start job', () => {
       all(document.body, '[role="group"][aria-label="Start from"] button').map(
         (b) => b.textContent,
       ),
-    ).toEqual(['Translate', 'Fill a field', 'Check']);
-    await v.step(() => button('Fill a field').click());
-    expect(area().value).toBe('Fill [field] on every word where it is empty, by this rule: [rule]');
+    ).toEqual(['Translate', 'Check']);
     await v.step(() => button('Check').click());
     expect(area().value).toBe(
       'List every value that does not follow the guidelines. Change nothing.',
