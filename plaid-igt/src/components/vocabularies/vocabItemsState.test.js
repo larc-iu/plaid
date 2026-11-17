@@ -27,6 +27,7 @@ describe('the draft', () => {
       seedForm: 'kai',
       form: 'kaii',
       fields: { gloss: 'sun' },
+      base: { form: 'kai', fields: { gloss: 'sun' } },
     });
   });
 
@@ -37,7 +38,28 @@ describe('the draft', () => {
       { type: 'draft/reset', form: 'kai', fields: {} },
     );
     // A reset counts as a seed for a part of the form holding its own draft.
-    expect(s.draft).toEqual({ seedKey: 'e1', seeds: 2, seedForm: 'kai', form: 'kai', fields: {} });
+    expect(s.draft).toEqual({
+      seedKey: 'e1',
+      seeds: 2,
+      seedForm: 'kai',
+      form: 'kai',
+      fields: {},
+      base: { form: 'kai', fields: {} },
+    });
+  });
+
+  // REV-HFV-R2-1: a save sends only what the draft changed of what it was
+  // built from.
+  it('says what it changed of what it was built from, and lays that over another entry', async () => {
+    const { draftChanges, overlayChanges } = await import('./vocabItemsState.js');
+    const draft = { form: 'uno', fields: { gloss: 'ONE', note: 'old' } };
+    const base = { form: 'uno', fields: { gloss: 'one', note: 'old', pos: 'n' } };
+    const changes = draftChanges(draft, base);
+    expect(changes).toEqual({ keys: ['gloss', 'pos'], form: false });
+    expect(overlayChanges({ gloss: 'ONE-B', note: 'NEW-B', pos: 'n' }, draft, changes)).toEqual({
+      gloss: 'ONE',
+      note: 'NEW-B',
+    });
   });
 
   it('unseeds so the next sync fills it again', () => {

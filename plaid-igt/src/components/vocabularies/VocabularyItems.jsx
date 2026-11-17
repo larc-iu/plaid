@@ -59,8 +59,10 @@ import { anchorCaption } from '@/domain/commentAnchors';
 import { saveBlob, sanitizeFilename } from '@ui/lib/download.js';
 import {
   NEW_ID,
+  draftChanges,
   entryToSave,
   emptyFieldOf,
+  overlayChanges,
   initialState,
   isDirty,
   hasTyped,
@@ -702,6 +704,9 @@ export const VocabularyItems = ({
       },
     );
 
+  // What a refused edit keeps for the read that follows it (see handleSave).
+  const keptRef = useRef(null);
+
   const handleSave = async () => {
     if (!draft.form.trim()) {
       notifyError('The form cannot be empty', 'Invalid form');
@@ -724,7 +729,19 @@ export const VocabularyItems = ({
     // or an example added while the form was open is not written back over
     // by this save. Read as the form reads it, so a parent that is gone is
     // stored as none.
-    const toSave = entryToSave(draft.form, draft.fields);
+    // An edit writes only what the person changed of what the form was built
+    // from (`draft.base`), laid over the entry as stored now: a field someone
+    // else saved meanwhile, which this person never touched, is neither sent
+    // back nor checked.
+    const stored = isNew ? null : editableMetadata(selectedAsRead?.metadata);
+    const base = draft.base ?? { form: selectedItem?.form ?? '', fields: stored };
+    const changes = isNew ? null : draftChanges(draft, base);
+    const toSave = isNew
+      ? entryToSave(draft.form, draft.fields)
+      : entryToSave(
+          changes.form ? draft.form : selectedItem.form,
+          overlayChanges(stored, draft, changes),
+        );
     const metadata = {
       ...(isNew ? {} : reservedMetadata(selectedAsRead?.metadata)),
       ...toSave.metadata,
@@ -820,8 +837,16 @@ export const VocabularyItems = ({
       return;
     }
     const item = selectedItem;
-    // What the person typed, put back if the save is refused.
-    const typed = { form: draft.form, fields: draft.fields };
+    // Once sent, what was saved is what the next save is measured from.
+    dispatch({ type: 'draft/base', base: { form, fields: editableMetadata(metadata) } });
+    // What the person typed and changed, laid back over the entry as stored
+    // if the save is refused.
+    const asTyped = { form: draft.form, fields: draft.fields };
+    const fromBase = entryToSave(base.form, base.fields);
+    const loaded = {
+      form: fromBase.form,
+      metadata: { ...reservedMetadata(selectedAsRead?.metadata), ...fromBase.metadata },
+    };
     setItems((prev) => prev.map((i) => (i.id === item.id ? saved(item.id) : i)));
     showSaved();
     // Only the keys the save changes are sent, so one written elsewhere
@@ -839,12 +864,7 @@ export const VocabularyItems = ({
           throw err;
         });
         const clash =
-          now &&
-          changedUnderSave(
-            followIds({ form: item.form, metadata: item.metadata }),
-            followIds({ form, metadata }),
-            now,
-          );
+          now && changedUnderSave(followIds(loaded), followIds({ form, metadata }), now);
         if (clash) {
           throw Object.assign(new Error(changedElsewhereText(clash)), {
             status: 409,
@@ -860,14 +880,32 @@ export const VocabularyItems = ({
       },
       'Failed to save the entry',
       {
-        // A refusal says why, and puts back everything typed (the form, every
-        // field), so a second Save writes it on purpose. An entry that is
-        // gone takes the form away instead.
+        // A refusal says why. The entries are read again, and the form is
+        // the entry as now stored with what the person changed (the form box
+        // included) laid over it, so a second Save writes those changes on
+        // purpose and nothing else. An entry that is gone takes the form away.
         answered: (err) => !!err?.changedElsewhere,
         refused: (err) => {
           if (err?.changedElsewhere) notifyError(err.message, 'Failed to save the entry');
           if (isGone(err) || selectedIdRef.current !== item.id) return unseedUnlessTyped();
-          dispatch({ type: 'draft/reset', form: typed.form, fields: typed.fields });
+          if (err?.changedElsewhere) keptRef.current = { id: item.id, typed: asTyped, changes };
+          else dispatch({ type: 'draft/reset', form: asTyped.form, fields: asTyped.fields, base });
+        },
+        resync: async () => {
+          const list = await fetchItems({ quiet: true, inTurn: true });
+          const kept = keptRef.current;
+          keptRef.current = null;
+          if (!kept || selectedIdRef.current !== kept.id) return list;
+          const now = (list || []).find((i) => i.id === kept.id);
+          if (!now) return list;
+          const nowFields = editableMetadata(now.metadata);
+          dispatch({
+            type: 'draft/reset',
+            form: kept.changes.form ? kept.typed.form : now.form,
+            fields: overlayChanges(nowFields, kept.typed, kept.changes),
+            base: { form: now.form, fields: nowFields },
+          });
+          return list;
         },
       },
     );

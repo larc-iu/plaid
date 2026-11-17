@@ -45,7 +45,7 @@ export const entryToSave = (typedForm, fields) => {
 // with its keys in a fixed order. An entry's `umr` object is not a string, and
 // `String({...})` is "[object Object]" whatever is inside, so comparing by
 // text alone would call the draft clean after an edit to the roleset.
-const sameAs = (v) => {
+export const sameAs = (v) => {
   if (v === null || typeof v !== 'object') return String(v);
   if (Array.isArray(v)) return JSON.stringify(v.map(sameAs));
   return JSON.stringify(
@@ -53,6 +53,35 @@ const sameAs = (v) => {
       .sort()
       .map((k) => [k, sameAs(v[k])]),
   );
+};
+
+/**
+ * What a draft changed of what it was built from (`base`): the field keys
+ * whose value differs, and whether the form does.
+ */
+export const draftChanges = (draft, base) => {
+  const was = cleanMeta(base?.fields);
+  const is = cleanMeta(draft?.fields);
+  const keys = [...new Set([...Object.keys(was), ...Object.keys(is)])].filter(
+    (k) => (was[k] === undefined) !== (is[k] === undefined) || sameAs(was[k]) !== sameAs(is[k]),
+  );
+  const form = String(draft?.form ?? '').trim() !== String(base?.form ?? '').trim();
+  return { keys, form };
+};
+
+/**
+ * `fields` (the entry as stored, as the form reads it) with the `changes`
+ * of `draft` laid over it: what a save of only those changes writes, and
+ * what the form shows after a refusal.
+ */
+export const overlayChanges = (fields, draft, { keys }) => {
+  const out = { ...cleanMeta(fields) };
+  const typed = cleanMeta(draft?.fields);
+  for (const k of keys) {
+    if (typed[k] === undefined) delete out[k];
+    else out[k] = typed[k];
+  }
+  return out;
 };
 
 export const metaEqual = (a, b) => {
@@ -110,6 +139,8 @@ export function reducer(state, action) {
           seedForm: action.form,
           form: action.form,
           fields: action.fields,
+          // What the draft was built from: a save sends only what differs.
+          base: { form: action.form, fields: action.fields },
         },
       };
     case 'draft/form':
@@ -126,8 +157,13 @@ export function reducer(state, action) {
           seeds: state.draft.seeds + 1,
           form: action.form,
           fields: action.fields,
+          base: action.base ?? { form: action.form, fields: action.fields },
         },
       };
+    // What a save measures the draft against, from now on, with nothing on
+    // screen changed (after a save is sent).
+    case 'draft/base':
+      return { ...state, draft: { ...state.draft, base: action.base } };
     // Forget what the draft was filled from, so the next sync re-seeds it
     // (after a save, an import, a repair that touched the open entry).
     case 'draft/unseed':

@@ -273,6 +273,79 @@ describe('the entry form', () => {
     await view.unmount();
   });
 
+  // REV-HFV-R2-1: after a refusal the form is the entry as now stored with
+  // only what this person changed laid over it, so a second Save sends their
+  // keys alone and never reverts what someone else saved.
+  describe('a second Save after a refusal', () => {
+    const TWO = [
+      { name: 'gloss', type: 'text' },
+      { name: 'note', type: 'text' },
+    ];
+    const noteInput = () => document.querySelector('input[id$="-field-1"]');
+    const refusedOnce = async () => {
+      const server = stub([{ id: 'a', form: 'uno', metadata: { gloss: 'one', note: 'old' } }]);
+      const view = await mount(server.client, '/vocabularies/v1?item=a', new WriteQueue(), TWO);
+      // Someone else saves the gloss and the note after this form was read.
+      server.items[0].metadata = { gloss: 'ONE-B', note: 'NEW-B' };
+      feedback.notifyError.mockClear();
+      await view.step(() => setValue(glossInput(), 'ONE'));
+      await view.step(async () => {
+        button('Save').click();
+        await settle(5);
+      });
+      expect(feedback.notifyError.mock.calls.map((c) => c[0])).toEqual([
+        'gloss was changed elsewhere to “ONE-B”. Save again to keep yours.',
+      ]);
+      expect(glossInput().value).toBe('ONE');
+      expect(noteInput().value).toBe('NEW-B');
+      expect(formInput().value).toBe('uno');
+      feedback.notifyError.mockClear();
+      return { ...server, view };
+    };
+    const saveAgain = (view) =>
+      view.step(async () => {
+        button('Save').click();
+        await settle(5);
+      });
+    const sent = (calls) => calls.filter(([kind]) => kind === 'bulkUpdate');
+
+    it('writes only the field the person changed', async () => {
+      const { view, calls, items } = await refusedOnce();
+      await saveAgain(view);
+      expect(sent(calls)).toEqual([
+        ['bulkUpdate', [{ id: 'a', metadata: [{ op: 'set', path: ['gloss'], value: 'ONE' }] }]],
+      ]);
+      expect(items[0].metadata).toEqual({ gloss: 'ONE', note: 'NEW-B' });
+      expect(feedback.notifyError).not.toHaveBeenCalled();
+      await view.unmount();
+    });
+
+    it('is refused again, naming the newest value, when the field changed once more', async () => {
+      const { view, calls, items } = await refusedOnce();
+      items[0].metadata = { ...items[0].metadata, gloss: 'ONE-C' };
+      await saveAgain(view);
+      expect(sent(calls)).toEqual([]);
+      expect(feedback.notifyError.mock.calls.map((c) => c[0])).toEqual([
+        'gloss was changed elsewhere to “ONE-C”. Save again to keep yours.',
+      ]);
+      expect(glossInput().value).toBe('ONE');
+      await view.unmount();
+    });
+
+    it('keeps a change made since to a field the person did not touch', async () => {
+      const { view, calls, items } = await refusedOnce();
+      items[0].metadata = { ...items[0].metadata, note: 'NEW-C' };
+      items[0].form = 'uno-c';
+      await saveAgain(view);
+      expect(sent(calls)).toEqual([
+        ['bulkUpdate', [{ id: 'a', metadata: [{ op: 'set', path: ['gloss'], value: 'ONE' }] }]],
+      ]);
+      expect(items[0]).toMatchObject({ form: 'uno-c', metadata: { gloss: 'ONE', note: 'NEW-C' } });
+      expect(feedback.notifyError).not.toHaveBeenCalled();
+      await view.unmount();
+    });
+  });
+
   it('sends a save of a field when someone else saved another one', async () => {
     const { client, calls, items } = stub([
       { id: 'a', form: 'uno', metadata: { gloss: 'one', note: 'kept' } },
