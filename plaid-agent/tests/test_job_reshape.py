@@ -387,23 +387,27 @@ def test_a_merged_sentence_whose_joined_translation_a_person_cleared_is_not_tran
 def test_a_merge_between_the_walks_read_and_the_stretchs_puts_the_sentence_out_of_reach(monkeypatch):
     """The guard sits where a stretch's targets are decided (``Stretch``),
     which the stretch's own read and the check under the lock both ask: the
-    walk picks s2, and before the stretch reads the document the starter
+    walk picks s2, and between the walk's read and the stretch's the starter
     merges s1 (which the job wrote, its proposal on ta cleared) into s2, s2's
     id surviving. s2 now holds words of a sentence the job wrote in, so the
-    stretch has nothing to write."""
+    stretch has nothing to write. The merge lands as the walk looks for
+    someone in the document: before the look's mark, so the write is not put
+    off for it (an edit after the mark is, REV-HFA-7)."""
     client, job, clock = _job(monkeypatch, [{'words': ['ka', 'ta']}, {'words': ['sa']}])
     client.after_write['d1'] = document('d1', 'Story', [{'words': [mine('ka'), mine('ta')]}, {'words': ['sa']}],
                                         version=2)
     merged = reshaped(document('d1', 'Story', [{'words': [mine('ka'), 'ta', 'sa']}], version=3),
                       {'d1-s1': 'd1-s2', 'd1-s1w3': 'd1-s2w1'})
     r = runner(job)
-    real = r.model_work
+    real = r.newest_change
+    looks = []
 
-    def model_work(project, document_id, sentence_ids):
-        if sentence_ids == ['d1-s2']:
+    def newest_change(client_, document_id):
+        looks.append(document_id)
+        if len(looks) == 2:
             _person_leaves(client, merged, clock)
-        return real(project, document_id, sentence_ids)
-    monkeypatch.setattr(r, 'model_work', model_work)
+        return real(client_, document_id)
+    monkeypatch.setattr(r, 'newest_change', newest_change)
     seen = _written(monkeypatch)
     assert r.document('d1') == 'done'
     assert seen == [['d1-s1w1', 'd1-s1w2']], seen
