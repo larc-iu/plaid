@@ -214,12 +214,12 @@ def test_a_persons_edit_after_the_mark_counts_at_the_write_whatever_the_clock(mo
     r = runner(job)
     _edit(client, 'd1', NOW - 5000, ref=f'job:{job.id}/doc:d1/pass:gloss')
     assert not r.in_use(r.newest_change(client, 'd1'), r.own_ref)
-    assert r.seen_marks['d1'] == NOW - 5000
+    assert r.seen_marks['d1'] == igt_job.seconds_ns(NOW - 5000)
     assert not r.someone_since_mark(client, 'd1')
     _edit(client, 'd1', NOW - 4000)
     _edit(client, 'd1', NOW - 3000, ref=f'job:{job.id}/doc:d1/pass:gloss')
     assert not r.in_use(r.newest_change(client, 'd1'), r.own_ref), 'quiet by the window'
-    r.seen_marks['d1'] = NOW - 5000
+    r.seen_marks['d1'] = igt_job.seconds_ns(NOW - 5000)
     assert r.someone_since_mark(client, 'd1'), 'stamped after the mark'
 
 
@@ -292,7 +292,7 @@ def test_after_a_defer_an_edit_older_than_the_window_does_not_count_again(monkey
     client, job, clock = _job()
     _model(monkeypatch)
     r = runner(job)
-    r.seen_marks['d1'] = NOW - 7200
+    r.seen_marks['d1'] = igt_job.seconds_ns(NOW - 7200)
     _edit(client, 'd1', NOW - 3600)
     r.defer('d1')
     assert 'd1' not in r.seen_marks

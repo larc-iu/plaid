@@ -24,6 +24,7 @@ The worker's loop, the heartbeat, the budgets and the halving are
 * harmonize and the entries pass, and the app's parts of the report.
 """
 
+import calendar
 import json
 import logging
 import os
@@ -2151,6 +2152,30 @@ class Write:
                                    'of': seed})
 
 
+
+def core_ns(text: Optional[str]) -> Optional[int]:
+    """Core's ISO time as whole nanoseconds since the epoch, exactly: core
+    stamps operations strictly increasing by one nanosecond, which a float of
+    seconds cannot tell apart (REV-HFA-R2-2). None when it cannot be read."""
+    if not text:
+        return None
+    m = re.fullmatch(r'(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d)(?:\.(\d+))?(Z|[+-]\d\d:\d\d)?', str(text).strip())
+    if not m:
+        return None
+    try:
+        whole = datetime.fromisoformat(m.group(1) + (m.group(3) or 'Z').replace('Z', '+00:00'))
+    except ValueError:
+        return None
+    if whole.tzinfo is None:
+        whole = whole.replace(tzinfo=timezone.utc)
+    seconds = calendar.timegm(whole.utctimetuple())
+    return seconds * 1_000_000_000 + int(((m.group(2) or '') + '000000000')[:9])
+
+
+def seconds_ns(t: float) -> int:
+    """A worker's time in seconds as nanoseconds, for the quiet window."""
+    return int(round(t * 1_000_000_000))
+
 class IgtRunner:
     """One job over interlinear text, run by ``core.job.run_job``."""
 
@@ -2223,7 +2248,7 @@ class IgtRunner:
         #: unit there at the look before a piece read the document: the
         #: piece's write is put off when anyone else wrote after it
         #: (:meth:`someone_since_mark`, REV-HFA-1, -2, -6)
-        self.seen_marks: Dict[str, float] = {}
+        self.seen_marks: Dict[str, int] = {}
         #: documents a worker before this one was working in when it stopped:
         #: their first look marks the job's making (REV-HFA-6, fail safe)
         self.in_flight: set = set()
@@ -3014,11 +3039,11 @@ class IgtRunner:
         job's: it is someone in the document (REV-HFA-3)."""
         return f'job:{self.job.id}/doc:'
 
-    def created(self) -> float:
-        when = core_job._iso_seconds(self.job.job.get('created_at'))
-        return when if when is not None else 0.0
+    def created(self) -> int:
+        when = core_ns(self.job.job.get('created_at'))
+        return when if when is not None else 0
 
-    def someone_after(self, client, document_id: str, since: float):
+    def someone_after(self, client, document_id: str, since: int):
         """``(unit, top)``: the newest unit of the document's History not the
         job's own that ended after ``since`` (or has no end time, which
         counts, REV-HFA-4), or None, and the end time of the newest unit of
@@ -3042,7 +3067,7 @@ class IgtRunner:
                 raise self.refused(e, document_id) from e
             entries = page.get('entries') if isinstance(page, dict) else page
             for unit in entries or []:
-                when = core_job._iso_seconds(unit.get('end_time'))
+                when = core_ns(unit.get('end_time'))
                 if first:
                     top, first = when, False
                 theirs = not str(unit.get('ref') or '').startswith(mine)
@@ -3068,7 +3093,7 @@ class IgtRunner:
         piece after a text edit, inside a stretch whose later halves write
         against the stretch's mark, REV-HFA-R2-1)."""
         created = self.created()
-        since = max(created, self.job.now() - JOB_PERSON_QUIET_S)
+        since = max(created, seconds_ns(self.job.now() - JOB_PERSON_QUIET_S))
         unit, top = self.someone_after(client, document_id, since)
         if document_id in self.in_flight:
             self.in_flight.discard(document_id)
@@ -3086,7 +3111,7 @@ class IgtRunner:
             self.in_flight.discard(document_id)
             self.seen_marks[document_id] = self.created()
             return
-        _unit, top = self.someone_after(client, document_id, float('inf'))
+        _unit, top = self.someone_after(client, document_id, 1 << 80)
         self.seen_marks[document_id] = top if top is not None else self.created()
 
     def someone_since_mark(self, client, document_id: str) -> bool:

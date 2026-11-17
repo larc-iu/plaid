@@ -189,7 +189,7 @@ def test_a_unit_with_no_end_time_counts_as_someone_there(monkeypatch):
         return {**out, 'entries': [{**e, 'end_time': None} for e in out['entries']]}
     client.documents.audit_page = page
     _person(client, job, 'd1', 1, 'PERSON')
-    r.seen_marks['d1'] = job.now() + 100
+    r.seen_marks['d1'] = igt_job.seconds_ns(job.now() + 100)
     assert r.someone_since_mark(client, 'd1')
     assert r.in_use(r.newest_change(client, 'd1'), r.own_ref)
 
@@ -234,3 +234,29 @@ def test_the_look_of_the_piece_after_a_text_edit_never_moves_a_mark_forward(monk
     assert r.someone_since_mark(client, 'd1')
     r.newest_change(client, 'd1')
     assert r.seen_marks['d1'] != mark, 'the walk marks afresh'
+
+
+def test_core_stamps_are_compared_to_the_nanosecond(monkeypatch):
+    """REV-HFA-R2-2: core stamps operations strictly increasing by one
+    nanosecond. A unit that ended one nanosecond after the mark is after it."""
+    client = JobClient({'d1': _doc('d1', 'Story 1', 1)})
+    job = _job(client)
+    r = runner(job)
+    audit = client._holder('d1')['audit']
+    at = '2026-11-17T19:28:15.123456789Z'
+    audit.append({'id': 'job-0', 'time': at, 'end_time': at, 'ref': f'job:{job.id}/doc:d1/pass:gloss',
+                  'kind': None, 'documents': [{'id': 'd1'}], 'ops': []})
+    r.mark(client, 'd1')
+    later = '2026-11-17T19:28:15.123456790Z'
+    audit.append({'id': 'person-1', 'time': later, 'end_time': later, 'ref': None, 'kind': None,
+                  'documents': [{'id': 'd1'}], 'ops': []})
+    assert r.someone_since_mark(client, 'd1')
+
+
+def test_core_ns_reads_the_forms_core_and_the_fake_write():
+    ns = igt_job.core_ns
+    assert ns('1970-01-01T00:00:01Z') == 1_000_000_000
+    assert ns('1970-01-01T00:00:01.5Z') == 1_500_000_000
+    assert ns('1970-01-01T00:00:01.000000001Z') == 1_000_000_001
+    assert ns('1970-01-01T01:00:01.25+01:00') == 1_250_000_000
+    assert ns('not a time') is None and ns(None) is None
