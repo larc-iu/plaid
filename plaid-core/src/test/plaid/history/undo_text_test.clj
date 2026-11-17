@@ -1027,8 +1027,90 @@
           (do (is (= person-left now) "the word's analysis stays whole, as the person left it")
               (is (= 2 (count now)))
               (is (every? #(some? (psc/fetch-by-id db :spans %)) [g1 g2]) "both glosses stay with their morphemes")
-              (is (every? (comp #{"built-on" "changed-since"} (reasons real)) [m1 m2])
+              (is (every? (comp #{"built-on" "changed-since" "needs"} (reasons real)) [m1 m2])
                   (pr-str (:skipped real))))
           (do (is (= before now) "nobody touched it: the word as before the job")
               (is (not= job-left now))
               (is (zero? (:skipped-count real)) (pr-str (:skipped real)))))))))
+
+;; ============================================================
+;; REV-HFC-1, REV-HFC-2: the tie is only a re-analysis of one word
+;; ============================================================
+
+(defn- two-morpheme-world!
+  "kaii with two stored morphemes (ka, ii) under the word in sentence 2, a
+  gloss on ka. `layer-name` names the morpheme layer (igt's morphemes, or a
+  UD syntactic word under its multi-word token)."
+  [layer-name]
+  (let [{:keys [tl text words] :as w} (world! ["kaii pele" "kaii lo"])
+        morphs (id (create-token-layer-opts admin-request tl layer-name {:overlap-mode "any" :parent-token-layer-id words}))
+        gloss (id (create-span-layer admin-request morphs "Gloss"))
+        b (at text "kaii lo")
+        m1 (id (create-token admin-request morphs text b (+ b 4) 1 {"form" "ka"}))
+        m2 (id (create-token admin-request morphs text b (+ b 4) 2 {"form" "ii"}))
+        g1 (id (create-span admin-request gloss [m1] "go"))]
+    (assoc w :morphs morphs :gloss gloss :m1 m1 :m2 m2 :g1 g1)))
+
+(deftest a-text-edit-is-undone-whatever-is-glossed-after-it
+  ;; REV-HFC-1: the text edit shifts both morphemes of a later word and
+  ;; re-analyses nothing, so a gloss written since on one of them holds
+  ;; nothing: total 9, nothing left, the text as before, as on the base.
+  (doseq [layer-name ["IgtMorphs" "Syntactic words"]
+          [what later] [["a new gloss" (fn [{:keys [gloss m2]}] (create-span user1-request gloss [m2] "PST"))]
+                        ["a retyped gloss" (fn [{:keys [g1]}] (update-span user1-request g1 :value "come"))]]]
+    (testing (str layer-name ", " what)
+      (let [{:keys [doc text] :as w} (two-morpheme-world! layer-name)
+            then (snapshot [doc])
+            g (str (random-uuid))
+            _ (edit! (in-group user1-request g) w text [(insert-op 0 "x")])
+            _ (assert-done (later w))
+            real (undo-checked! [doc] then #(undo-entry admin-request g :dry-run %))]
+        (is (= "kaii pele kaii lo" (body text)) "the text edit is undone")
+        (is (= 9 (:total real)))
+        (is (zero? (:skipped-count real)) (pr-str (:skipped real)))))))
+
+(deftest a-metadata-only-entry-on-a-words-morphemes-is-undone-after-a-gloss
+  ;; REV-HFC-1: a form or type cache written on both morphemes (a Bulk Edit,
+  ;; a link's morphType) re-analyses nothing: a gloss since holds nothing.
+  (doseq [layer-name ["IgtMorphs" "Syntactic words"]]
+    (testing layer-name
+      (let [{:keys [doc gloss m1 m2] :as w} (two-morpheme-world! layer-name)
+            then (snapshot [doc])
+            g (str (random-uuid))
+            r (in-group admin-request g)
+            _ (assert-ok (patch-token-metadata r m1 [{:op "set" :path ["morphType"] :value "root"}]))
+            _ (assert-ok (patch-token-metadata r m2 [{:op "set" :path ["morphType"] :value "suffix"}]))
+            _ (assert-done (create-span user1-request gloss [m2] "PST"))
+            real (undo-checked! [doc] then #(undo-entry admin-request g :dry-run %))]
+        (is (some? w))
+        (is (= 2 (:total real)))
+        (is (zero? (:skipped-count real)) (pr-str (:skipped real)))))))
+
+(deftest umr-nodes-on-one-sentence-are-not-tied
+  ;; REV-HFC-2: UMR anchors each unaligned node on a root layer that allows
+  ;; overlap, over its whole sentence. One entry makes three nodes and two
+  ;; edges, a person retypes one node: only that node stays, the rest of the
+  ;; entry is undone, no node is left without its edges.
+  (let [{:keys [tl doc text] :as w} (world! ["kaii pele" "kaii lo"])
+        anchors (id (create-token-layer-opts admin-request tl "UmrAnchors" {:overlap-mode "any"}))
+        nodes (id (create-span-layer admin-request anchors "Nodes"))
+        edges (id (create-relation-layer admin-request nodes "Edges"))
+        b (at text "kaii lo")
+        e (+ b 7)
+        then (snapshot [doc])
+        g (str (random-uuid))
+        r (in-group admin-request g)
+        [t1 t2 t3] (repeatedly 3 #(id (create-token r anchors text b e)))
+        n1 (id (create-span r nodes [t1] "go-01"))
+        n2 (id (create-span r nodes [t2] "bird"))
+        n3 (id (create-span r nodes [t3] "here"))
+        r1 (id (create-relation r edges n1 n2 ":ARG0"))
+        r2 (id (create-relation r edges n1 n3 ":place"))
+        _ (assert-done (update-span user1-request n1 :value "come-01"))
+        real (undo-checked! [doc] then #(undo-entry admin-request g :dry-run %))
+        live (fn [t i] (some? (psc/fetch-by-id db t i)))]
+    (is (some? w))
+    (is (= 6 (:total real)))
+    (is (= 2 (:skipped-count real)) (pr-str (:skipped real)))
+    (is (= [true false false] (mapv #(live :spans %) [n1 n2 n3])))
+    (is (= [false false] (mapv #(live :relations %) [r1 r2])))))

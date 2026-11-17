@@ -26,11 +26,9 @@
                         token on a text, a relation on a span, a link to an
                         entry or a reference to it in metadata, a comment,
                         and for a document anything written in it since.
-                        The token rows of the entry in one layer on one
-                        text whose extents overlap (the morphemes of one
-                        word) and what the entry wrote on them go back
-                        together or stay together (`sibling-groups`),
-                        listed so,
+                        The morphemes of one word the entry re-analysed
+                        and what the entry wrote on them go back together
+                        or stay together (`sibling-groups`), listed so,
     needs               it needs a row that will not be there (`needs`): its
                         parent, gone since, a row of this undo that is left,
                         or a row its metadata would name again,
@@ -610,6 +608,29 @@
         (if (< (aget xs mid) x) (recur (inc mid) hi) (recur lo mid)))
       lo)))
 
+(defn- union-find
+  "`[root union!]` over a fresh forest of keys: iterative, with path
+  compression and the smaller tree linked under the larger, so no chain of
+  ties, however long and in whatever order, grows the stack or makes a
+  lookup linear (REV-UT2-5). `root` of a key never joined is the key, and
+  `(joined? k)` says whether `union!` ever saw it."
+  []
+  (let [parent (java.util.HashMap.)
+        size (java.util.HashMap.)
+        root (fn [k]
+               (let [r (loop [x k] (let [p (.get parent x)] (if (or (nil? p) (= p x)) x (recur p))))]
+                 (loop [x k] (let [p (.get parent x)] (when (and p (not= p r)) (.put parent x r) (recur p))))
+                 r))
+        union! (fn [a b]
+                 (let [ra (root a) rb (root b)]
+                   (.put parent a ra) (.put parent b rb)
+                   (when (not= ra rb)
+                     (let [na (long (or (.get size ra) 1)) nb (long (or (.get size rb) 1))
+                           [small big] (if (< na nb) [ra rb] [rb ra])]
+                       (.put parent small big)
+                       (.put size big (+ na nb))))))]
+    [root union! (fn [k] (.containsKey parent k))]))
+
 (defn- tie-groups
   "`{key group}` for the token rows of the entry tied to one another: two
   token rows of the entry on one text, in one layer or a parent and child
@@ -637,23 +658,7 @@
                       [k {:begins (long-array (map (comp :begin :after) srt))
                           :items srt
                           :max-len (reduce max 0 (map #(- (:end_ (:after %)) (:begin (:after %))) srt))}]))
-        ;; union-find, iterative, with path compression and the smaller
-        ;; tree linked under the larger, so no chain of ties, however long
-        ;; and in whatever order, grows the stack (REV-UT2-5)
-        parent (java.util.HashMap.)
-        size (java.util.HashMap.)
-        root (fn [k]
-               (let [r (loop [x k] (let [p (.get parent x)] (if (or (nil? p) (= p x)) x (recur p))))]
-                 (loop [x k] (let [p (.get parent x)] (when (and p (not= p r)) (.put parent x r) (recur p))))
-                 r))
-        union! (fn [a b]
-                 (let [ra (root a) rb (root b)]
-                   (.put parent a ra) (.put parent b rb)
-                   (when (not= ra rb)
-                     (let [na (long (or (.get size ra) 1)) nb (long (or (.get size rb) 1))
-                           [small big] (if (< na nb) [ra rb] [rb ra])]
-                       (.put parent small big)
-                       (.put size big (+ na nb))))))]
+        [root union! joined?] (union-find)]
     (doseq [i tok
             :let [{b :begin e :end_ :as bf} (:before i)]
             :when bf
@@ -673,44 +678,35 @@
                              (= l' (layer-parent l)) (not (inside? [b e] [jb je]))
                              :else (not (inside? [jb je] [b e]))))]
       (union! (:k i) (:k j)))
-    (into {} (keep (fn [i] (when (.containsKey parent (:k i)) [(:k i) (root (:k i))]))) tok)))
+    (into {} (keep (fn [i] (when (joined? (:k i)) [(:k i) (root (:k i))]))) tok)))
 
 (defn- sibling-groups
-  "`{key group}` for the token rows of the entry that lie over the same
-  characters of one text in one layer: two rows whose extents before the
-  entry, or whose extents after it, overlap or are the same. These are the
-  morphemes of one word (igt keeps every morpheme on its word's extent,
-  ordered by precedence, its form in metadata), so a segmentation changes
-  no offsets and `tie-groups` never sees it. They go back together or stay
-  together, so no word is left with some morphemes of each analysis
-  (H14-2). Only groups of two or more rows. Extents before and after are
-  never compared with each other (a text edit shifts every token after it),
-  so a layer whose tokens never overlap has no such group."
-  [items]
-  (let [tok (filter #(= "tokens" (:table %)) items)
-        parent (java.util.HashMap.)
-        root (fn [k] (loop [x k] (let [p (.get parent x)] (if (or (nil? p) (= p x)) x (recur p)))))
-        union! (fn [a b] (let [ra (root a) rb (root b)]
-                           (.put parent a ra)
-                           (when (not= ra rb) (.put parent rb ra) (.put parent b ra))))]
-    (doseq [[_ is] (group-by (fn [i] (let [r (or (:before i) (:after i))] [(:text_id r) (:token_layer_id r)])) tok)
-            frame [:before :after]
-            :let [xs (sort-by (fn [[b e]] [b e])
-                              (for [i is :let [r (frame i)] :when r] [(:begin r) (:end_ r) (:k i)]))]]
-      ;; the same extent ties, a zero-width one too
-      (doseq [[_ same] (group-by (fn [[b e]] [b e]) xs)
-              [[_ _ a] [_ _ c]] (partition 2 1 same)]
-        (union! a c))
-      ;; overlapping extents: sorted by begin, each ties to the run before it
-      ;; while it begins before the run's furthest end
-      (loop [[[b e k] & more] xs run-end nil run-key nil]
-        (when k
-          (if (and run-end (< b run-end) (< b e))
-            (do (union! run-key k) (recur more (max run-end e) run-key))
-            (recur more (when (< b e) e) (when (< b e) k))))))
-    (let [roots (into {} (keep (fn [i] (when (.containsKey parent (:k i)) [(:k i) (root (:k i))]))) tok)
-          sizes (frequencies (vals roots))]
-      (into {} (filter (fn [[_ r]] (< 1 (sizes r)))) roots))))
+  "`{key group}` for the morphemes of one word the entry re-analysed: token
+  rows of the entry in a layer with a parent token layer, on one text, whose
+  extents before the entry, or after it, are the SAME (igt keeps every
+  morpheme on its word's extent, ordered by precedence, its form in
+  metadata, and plaid-ud the syntactic words of one token on the token's),
+  in a group where the entry made or deleted a row. A segmentation changes
+  no offsets, so `tie-groups` never sees it. Such rows go back together or
+  stay together, so no word is left with some morphemes of each analysis
+  (H14-2). An entry that only shifted or rewrote metadata on a word's
+  morphemes re-analysed nothing and ties nothing (REV-HFC-1), and a root
+  layer (UMR's anchors) ties nothing (REV-HFC-2). Extents before and after
+  are never compared with each other: a text edit shifts every token after
+  it. `layer-parent` gives a token layer's parent layer."
+  [items layer-parent]
+  (let [tok (filter #(and (= "tokens" (:table %))
+                          (layer-parent (:token_layer_id (or (:before %) (:after %)))))
+                    items)
+        [root union! joined?] (union-find)]
+    (doseq [frame [:before :after]
+            [_ same] (group-by (fn [i] (let [r (frame i)] [(:text_id r) (:token_layer_id r) (:begin r) (:end_ r)]))
+                               (filter frame tok))
+            [a c] (partition 2 1 same)]
+      (union! (:k a) (:k c)))
+    (let [roots (into {} (keep (fn [i] (when (joined? (:k i)) [(:k i) (root (:k i))]))) tok)
+          reanalysed (into #{} (keep (fn [i] (when (#{:insert :delete} (:op i)) (roots (:k i))))) tok)]
+      (into {} (filter (fn [[_ r]] (contains? reanalysed r))) roots))))
 
 (defn- sibling-held
   "`built-on` when `i` stays with the morphemes of its word (`sibling-groups`):
@@ -1103,7 +1099,7 @@
                                                                     [:in :parent_token_layer_id (mapv str %)]]})
                                                 token-layers)))
             ties (tie-groups items layer-parent)
-            sibs (sibling-groups items)
+            sibs (sibling-groups items layer-parent)
             ;; the values on each token the entry changed in a sibling group,
             ;; and which of them someone else wrote since the entry began
             sib-updated (into [] (keep #(when (and (= :update (:op %)) (sibs (:k %))) (:id %))) items)
