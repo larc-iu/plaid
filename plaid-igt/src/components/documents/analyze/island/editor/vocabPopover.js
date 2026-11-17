@@ -18,7 +18,7 @@ import { leavePrecedent, openPrecedent, precedentBase } from '@/domain/precedent
 import { sameFormUnlinked, sameFormUnanalyzed } from '@/domain/linkEverywhere.js';
 import { numHtml } from './shared.js';
 import { keys } from '@/lib/keymap.js';
-import { isImeKey } from '@ui/lib/chords.js';
+import { isEnter, isImeKey } from '@ui/lib/chords.js';
 import { countOf } from '@ui/lib/plural.js';
 
 // The vocab popover: the ranked entries for a form, the precedent tally that
@@ -482,8 +482,7 @@ export const vocabPopover = {
       } else if (!bound && e.key === 'ArrowUp') {
         e.preventDefault();
         this._movePopoverActive(-1, total);
-      } else if (e.key === 'Enter' || bound) {
-        // enter-ok: the handler returned on isImeKey above
+      } else if (isEnter(e) || bound) {
         e.preventDefault();
         // One chord asks for both at once, and it is a row in the table like
         // the other two rather than a Ctrl-and-Shift test made here.

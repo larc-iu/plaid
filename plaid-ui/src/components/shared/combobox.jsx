@@ -2,7 +2,7 @@ import * as React from 'react';
 import * as PopoverPrimitive from '@radix-ui/react-popover';
 import { cn } from '../../lib/utils.js';
 import { scrollThroughLock } from '../../lib/scrollThroughLock.js';
-import { isImeKey } from '../../lib/chords.js';
+import { isEnter, isImeKey } from '../../lib/chords.js';
 import { normalizeOptions, flattenOptions, defaultFilter } from './comboboxOptions.js';
 
 // A text input with a list of suggestions under it, and no opinion about what
@@ -135,8 +135,7 @@ export const Combobox = React.forwardRef(function Combobox(
       event.preventDefault();
       if (isOpen) move(event.key === 'ArrowDown' ? 1 : -1);
       else setOpen(true);
-    } else if (event.key === 'Enter' && activeOption) {
-      // enter-ok: the handler returned on isImeKey above
+    } else if (isEnter(event) && activeOption) {
       event.preventDefault();
       submit(activeOption);
     } else if (event.key === 'Escape' && isOpen) {

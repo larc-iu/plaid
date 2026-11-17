@@ -28,7 +28,7 @@ import { useEditLog } from '@ui/hooks/useEditLog.js';
 import { shownOrRefused } from './shownOrRefused.js';
 import { caretInRow } from './segmentCaret.js';
 import { useSavedOnLeave } from './useSavedOnLeave.js';
-import { isImeKey } from '@ui/lib/chords.js';
+import { isEnter, isImeKey } from '@ui/lib/chords.js';
 
 // The transcript: every time-aligned segment as a row you can type into, in
 // time order, with the recording following your focus. This is the pass a
@@ -323,8 +323,7 @@ const SegmentRow = memo(function SegmentRow({
     } else if (which) {
       e.preventDefault();
       reshape(which, which === 'media.split' ? caretInRow(e.target) : null);
-    } else if (e.key === 'Enter') {
-      // enter-ok: the handler returned on isImeKey above
+    } else if (isEnter(e)) {
       e.preventDefault();
       // Enter on a row whose edit lost, with nothing typed since, sends that
       // edit over the stored text.
@@ -359,8 +358,7 @@ const SegmentRow = memo(function SegmentRow({
     } else if (which) {
       e.preventDefault();
       reshape(which);
-    } else if (e.key === 'Enter') {
-      // enter-ok: the handler returned on isImeKey above
+    } else if (isEnter(e)) {
       e.preventDefault();
       if (await commit()) textRef.current?.focus({ preventScroll: true });
     } else if (step) {
@@ -676,8 +674,7 @@ const ProposalRow = memo(function ProposalRow({
     if (isPlayChord(e)) {
       e.preventDefault();
       onPlayToggle(proposal);
-    } else if (e.key === 'Enter') {
-      // enter-ok: the handler returned on isImeKey above
+    } else if (isEnter(e)) {
       e.preventDefault();
       // This row is about to unmount, so focus has to move before it does,
       // exactly as it does after a segment-text commit.
@@ -851,8 +848,7 @@ const NewSegmentRow = memo(function NewSegmentRow({
     if (isPlayChord(e)) {
       e.preventDefault();
       onToggle();
-    } else if (e.key === 'Enter') {
-      // enter-ok: the handler returned on isImeKey above
+    } else if (isEnter(e)) {
       e.preventDefault();
       submit();
     } else if (
