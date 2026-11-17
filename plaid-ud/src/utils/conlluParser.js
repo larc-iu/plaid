@@ -338,6 +338,9 @@ export function buildConlluHierarchy(parsedData) {
     let fromCp = 0;
     let chars = null;
     let warnedSyntheticOffsets = false;
+    // Text other than spaces passed over to reach a form, or left after the
+    // last one: the rows do not spell it, and it lands in no token (H18-1).
+    let skippedText = false;
     for (const unit of units) {
       const form = unit.surfaceForm || '';
       const at16 = form ? sentenceText.indexOf(form, from16) : -1;
@@ -359,6 +362,7 @@ export function buildConlluHierarchy(parsedData) {
         fromCp = end;
         from16 = end > chars.length ? sentenceText.length + 1 : chars.slice(0, end).join('').length;
       } else {
+        if (/\S/u.test(sentenceText.slice(from16, at16))) skippedText = true;
         const begin = fromCp + cpLength(sentenceText.slice(from16, at16));
         const end = begin + cpLength(form);
         positions.push({ begin, end });
@@ -369,7 +373,8 @@ export function buildConlluHierarchy(parsedData) {
     // `warnedSyntheticOffsets` is set the first (and only) time a unit needs a
     // synthetic placement, so it doubles as "this sentence used synthetic
     // offsets", surfaced to the caller so the lossy event is not silent.
-    return { positions, usedSynthetic: warnedSyntheticOffsets };
+    if (/\S/u.test(sentenceText.slice(from16))) skippedText = true;
+    return { positions, usedSynthetic: warnedSyntheticOffsets, skippedText };
   };
 
   let text = '';
@@ -379,6 +384,8 @@ export function buildConlluHierarchy(parsedData) {
   // (its form couldn't be located in the sentence text). Surfaced via `dropped`
   // so the import UI can warn the user that offsets won't match the original.
   let syntheticOffsetSentences = 0;
+  // Sentences with text no row spells, left in no token.
+  let skippedTextSentences = 0;
 
   parsedData.sentences.forEach((sentence, sentIdx) => {
     const units = surfaceUnitsForSentence(sentence);
@@ -399,8 +406,13 @@ export function buildConlluHierarchy(parsedData) {
       ? units.map((u) => ({ ...u, surfaceForm: (u.surfaceForm || '').normalize('NFD') }))
       : units;
 
-    const { positions: unitPositions, usedSynthetic } = locateUnits(rawSentenceText, located);
+    const {
+      positions: unitPositions,
+      usedSynthetic,
+      skippedText,
+    } = locateUnits(rawSentenceText, located);
     if (usedSynthetic) syntheticOffsetSentences += 1;
+    if (skippedText) skippedTextSentences += 1;
     // The synthetic-offset fallback can place a unit past
     // `rawSentenceText.length` when cumulative form lengths exceed the
     // metadata text. Pad the body with spaces so the words still tile inside
@@ -456,7 +468,11 @@ export function buildConlluHierarchy(parsedData) {
     });
   });
 
-  return composedHierarchy({ text, sentences, dropped: { syntheticOffsetSentences } });
+  return composedHierarchy({
+    text,
+    sentences,
+    dropped: { syntheticOffsetSentences, skippedTextSentences },
+  });
 }
 
 // The hierarchy over its text as the server stores it, composed (NFC), with

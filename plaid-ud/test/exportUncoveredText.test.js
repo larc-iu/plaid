@@ -54,3 +54,38 @@ test('a sentence whose tokens cover its text says nothing', () => {
   const doc = new ConlluDocument({ raw: rawDocFromConllu(INPUT, 'd1') });
   assert.deepEqual(doc.conlluLosses(), []);
 });
+
+// H18-1: a rewrite that deletes one word of a two-word token leaves a token
+// of one word whose form ("a") is not its text ("al"). A one-word token has
+// no range line, so the row writes the form and the file's own # text says
+// otherwise. The Export tab says so.
+test('a lone word whose form is not its token text is named on the Export tab', () => {
+  const raw = rawDocFromConllu(
+    [
+      '# text = Voy al mar',
+      '1\tVoy\tir\tVERB\t_\t_\t0\troot\t_\t_',
+      '2-3\tal\t_\t_\t_\t_\t_\t_\t_\t_',
+      '2\ta\ta\tADP\t_\t_\t4\tcase\t_\t_',
+      '3\tel\tel\tDET\t_\t_\t4\tdet\t_\t_',
+      '4\tmar\tmar\tNOUN\t_\t_\t1\tobl\t_\t_',
+    ].join('\n'),
+    'd1',
+  );
+  const layers = raw.textLayers[0].tokenLayers;
+  const words = layers.find((l) => l.config?.plaid?.role === 'syntactic-word');
+  const formLayer = words.spanLayers.find((l) => l.config?.ud?.form);
+  const el = formLayer.spans.find((s) => s.value === 'el');
+  words.tokens = words.tokens.filter((t) => t.id !== el.tokens[0]);
+  for (const sl of words.spanLayers) {
+    const gone = new Set(sl.spans.filter((s) => s.tokens.includes(el.tokens[0])).map((s) => s.id));
+    sl.spans = sl.spans.filter((s) => !gone.has(s.id));
+    for (const rl of sl.relationLayers || []) {
+      rl.relations = rl.relations.filter((r) => !gone.has(r.source) && !gone.has(r.target));
+    }
+  }
+  const doc = new ConlluDocument({ raw });
+  assert.deepEqual(doc.conlluLosses(), [
+    'Sentence 1 has a word whose form is not its token’s text (“a” for “al”), ' +
+      'so its # text line does not match its rows.',
+  ]);
+});

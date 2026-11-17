@@ -223,7 +223,13 @@ async function importDocument(client, projectId, name, conlluText, precomputedLa
     // hierarchy builder places it gap-free, so its offsets won't match the
     // original. Surface that fidelity loss like the other dropped categories
     // instead of leaving it a silent console.warn.
-    const { syntheticOffsetSentences = 0 } = hierarchy.dropped || {};
+    const { syntheticOffsetSentences = 0, skippedTextSentences = 0 } = hierarchy.dropped || {};
+    if (skippedTextSentences > 0) {
+      importWarnings.push(
+        `${countOf(skippedTextSentences, 'sentence')} ${skippedTextSentences === 1 ? 'has' : 'have'} ` +
+          'text its rows do not spell, left in no token.',
+      );
+    }
     if (syntheticOffsetSentences > 0) {
       importWarnings.push(
         `${countOf(syntheticOffsetSentences, 'sentence')} used synthetic offsets ` +

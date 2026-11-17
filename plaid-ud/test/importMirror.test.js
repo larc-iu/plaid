@@ -267,3 +267,29 @@ test('an enhanced dependency whose head is no row of the sentence is dropped alo
     '1 enhanced dependency dropped: the head is not a row of the sentence.',
   ]);
 });
+
+// H18-1: a row whose FORM is part of a longer word in `# text` (a two-word
+// token after a rewrite deleted one of its words, exported) is placed inside
+// that word, and the rest of the word went into no token without a word.
+test('text the rows do not spell is reported, not left in no token silently', async () => {
+  const input = conllu([
+    '# text = Voy al mar',
+    '1\tVoy\tir\tVERB\t_\t_\t0\troot\t_\t_',
+    '2\ta\ta\tADP\t_\t_\t3\tcase\t_\t_',
+    '3\tmar\tmar\tNOUN\t_\t_\t1\tobl\t_\t_',
+  ]);
+  const info = getUdLayerInfo(rawDocFromConllu(input, 'm'));
+  const out = await ConlluDocument.importFromConllu(recordingClient(), 'p1', 'm', input, info);
+  assert.deepEqual(out.importWarnings, [
+    '1 sentence has text its rows do not spell, left in no token.',
+  ]);
+  // Every row matching its text exactly says nothing.
+  const clean = conllu([
+    '# text = Voy a mar',
+    '1\tVoy\tir\tVERB\t_\t_\t0\troot\t_\t_',
+    '2\ta\ta\tADP\t_\t_\t3\tcase\t_\t_',
+    '3\tmar\tmar\tNOUN\t_\t_\t1\tobl\t_\t_',
+  ]);
+  const quiet = await ConlluDocument.importFromConllu(recordingClient(), 'p1', 'm', clean, info);
+  assert.deepEqual(quiet.importWarnings, []);
+});

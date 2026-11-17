@@ -52,6 +52,24 @@ const uncoveredText = (sentence) => {
   return out;
 };
 
+// The words that are the only word of their token and have a form other than
+// the token's text, as [form, text] pairs. A token of one word has no range
+// line, so its row's FORM is all the file says of it, and the `# text` line
+// says the token's text (H18-1: a rewrite's del_node on one word of `al`, or
+// one that sets a form).
+const respelledLoneWords = (sentence) => {
+  const rows = sentence.tokens || [];
+  const out = [];
+  rows.forEach((m, k) => {
+    const id = m.word?.id;
+    if (!id || rows[k - 1]?.word?.id === id || rows[k + 1]?.word?.id === id) return;
+    if (m.tokenForm && m.wordForm != null && m.tokenForm !== m.wordForm) {
+      out.push([m.tokenForm, m.wordForm]);
+    }
+  });
+  return out;
+};
+
 export function conlluLosses({ sentences, sentenceTokens } = {}) {
   const out = [];
   // A sentence that holds no tokens has no rows, so the file has no lines
@@ -72,6 +90,14 @@ export function conlluLosses({ sentences, sentenceTokens } = {}) {
         `Sentence ${i + 1} has text in no token (${gaps.map((c) => `“${c}”`).join(', ')}), ` +
           'so its # text line does not match its rows. Tokenize in the Text Editor to give ' +
           'that text tokens.',
+      );
+    }
+    const respelled = respelledLoneWords(sentence);
+    if (respelled.length) {
+      out.push(
+        `Sentence ${i + 1} has a word whose form is not its token’s text ` +
+          `(${respelled.map(([form, text]) => `“${form}” for “${text}”`).join(', ')}), ` +
+          'so its # text line does not match its rows.',
       );
     }
     const rows = sentence.enhancedRelations || [];
