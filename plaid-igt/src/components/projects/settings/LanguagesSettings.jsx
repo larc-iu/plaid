@@ -15,6 +15,33 @@ import { useUnsavedDraft } from '@ui/hooks/useUnsavedDraft.js';
 const GLOTTOCODE_RE = /^[a-z0-9]{4}[0-9]{4}$/;
 const ISO_RE = /^[a-z]{3}$/;
 
+// A coordinate is empty, or a number from -limit to limit. As typed it is
+// text, stored it is a number.
+const coordinateOk = (v, limit) => {
+  if (v === null || v === undefined || String(v).trim() === '') return true;
+  const n = Number(v);
+  return Number.isFinite(n) && Math.abs(n) <= limit;
+};
+const coordinate = (v) =>
+  v === null || v === undefined || String(v).trim() === '' ? null : Number(v);
+const LIMITS = { latitude: 90, longitude: 180 };
+const coordinatesOk = (lang) =>
+  Object.entries(LIMITS).every(([k, limit]) => coordinateOk(lang[k], limit));
+// The draft as it is stored: coordinates in range as numbers, any other text
+// left as typed, so it never reads as saved.
+const asStored = (draft) => {
+  const one = (lang) => ({
+    ...lang,
+    ...Object.fromEntries(
+      Object.entries(LIMITS).map(([k, limit]) => [
+        k,
+        coordinateOk(lang[k], limit) ? coordinate(lang[k]) : lang[k],
+      ]),
+    ),
+  });
+  return { object: one(draft.object), meta: one(draft.meta) };
+};
+
 const Field = ({ id, label, value, onChange, placeholder, hint, invalid }) => (
   <div className="flex flex-col gap-1.5">
     <Label htmlFor={id} className="text-xs font-normal text-muted-foreground">
@@ -89,6 +116,8 @@ const LanguageGroup = ({ prefix, title, description, lang, onChange, coordinates
             label="Latitude"
             value={lang.latitude ?? ''}
             placeholder="e.g. 41.5"
+            hint="Latitude is a number from -90 to 90."
+            invalid={!coordinateOk(lang.latitude, LIMITS.latitude)}
             onChange={(v) => set({ latitude: v })}
           />
           <Field
@@ -96,6 +125,8 @@ const LanguageGroup = ({ prefix, title, description, lang, onChange, coordinates
             label="Longitude"
             value={lang.longitude ?? ''}
             placeholder="e.g. 48.0"
+            hint="Longitude is a number from -180 to 180."
+            invalid={!coordinateOk(lang.longitude, LIMITS.longitude)}
             onChange={(v) => set({ longitude: v })}
           />
         </div>
@@ -121,15 +152,17 @@ export const LanguagesSettings = ({ project, projectId, client, onProjectUpdate 
   useEffect(() => {
     const prev = JSON.stringify(prevSaved.current);
     prevSaved.current = saved;
-    setDraft((d) => (JSON.stringify(d) === prev ? saved : d));
+    setDraft((d) => (JSON.stringify(asStored(d)) === prev ? saved : d));
   }, [saved]);
 
-  const dirty = JSON.stringify(draft) !== JSON.stringify(saved);
+  const stored = asStored(draft);
+  const dirty = JSON.stringify(stored) !== JSON.stringify(saved);
+  const valid = coordinatesOk(draft.object) && coordinatesOk(draft.meta);
   // Leaving the section, or the page, with an edit not saved asks first.
   useUnsavedDraft(dirty ? 'What you have typed here' : null);
 
   const save = async () => {
-    if (!dirty || saving) return;
+    if (!dirty || !valid || saving) return;
     setSaving(true);
     try {
       if (!client) throw new Error('Not authenticated');
@@ -137,7 +170,7 @@ export const LanguagesSettings = ({ project, projectId, client, onProjectUpdate 
         projectId,
         IGT_NAMESPACE,
         'languages',
-        draft,
+        stored,
         undefined,
         expectStored(project, IGT_NAMESPACE, 'languages'),
       );
@@ -192,7 +225,7 @@ export const LanguagesSettings = ({ project, projectId, client, onProjectUpdate 
             onChange={(meta) => setDraft((d) => ({ ...d, meta }))}
           />
         </div>
-        <Button className="self-start" onClick={save} disabled={!dirty || saving}>
+        <Button className="self-start" onClick={save} disabled={!dirty || !valid || saving}>
           {saving ? 'Saving…' : 'Save'}
         </Button>
       </div>

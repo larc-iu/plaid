@@ -55,4 +55,53 @@ describe('LanguagesSettings', () => {
     await view.unmount();
     expect(hasUnsavedDraft()).toBeNull();
   });
+
+  // H11-4: coordinates are numbers in range. Anything else is flagged and
+  // not saved, and a saved coordinate leaves nothing unsaved behind.
+  it('saves coordinates as numbers in range, and refuses anything else', async () => {
+    const { hasUnsavedDraft } = await import('@ui/hooks/useUnsavedDraft.js');
+    const server = { id: 'p-1', textLayers: [], config: { igt: {} } };
+    const setConfig = vi.fn(async (_id, ns, key, value) => {
+      server.config[ns] = { ...server.config[ns], [key]: structuredClone(value) };
+    });
+    const client = { projects: { setConfig } };
+    let view;
+    const page = () => (
+      <MemoryRouter>
+        <LanguagesSettings
+          project={structuredClone(server)}
+          projectId="p-1"
+          client={client}
+          onProjectUpdate={() => view.rerender(page())}
+        />
+      </MemoryRouter>
+    );
+    view = await renderComponent(page());
+    const field = (id) => view.container.querySelector(`#obj-lang-${id}`);
+    const put = (id, v) =>
+      view.step(() => {
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(field(id), v);
+        field(id).dispatchEvent(new Event('input', { bubbles: true }));
+      });
+    const saveButton = () =>
+      [...view.container.querySelectorAll('button')].find((b) => b.textContent === 'Save');
+    await put('lat', 'north');
+    expect(field('lat').getAttribute('aria-invalid')).toBe('true');
+    expect(view.container.textContent).toContain('Latitude is a number from -90 to 90.');
+    expect(saveButton().disabled).toBe(true);
+    await put('lat', '41.5');
+    await put('lon', '999');
+    expect(view.container.textContent).toContain('Longitude is a number from -180 to 180.');
+    expect(saveButton().disabled).toBe(true);
+    await put('lon', '48');
+    expect(saveButton().disabled).toBe(false);
+    await view.step(async () => {
+      saveButton().click();
+      for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 0));
+    });
+    expect(setConfig.mock.calls[0][3].object).toMatchObject({ latitude: 41.5, longitude: 48 });
+    expect(saveButton().disabled).toBe(true);
+    expect(hasUnsavedDraft()).toBeNull();
+    await view.unmount();
+  });
 });
