@@ -51,7 +51,7 @@ import {
 } from '@larc-iu/plaid-client';
 import { pendingId, settledId } from '@ui/domain/pendingIds.js';
 import { isChangedElsewhere, isKeyReused, isUnknownOutcome } from '@ui/lib/errors.js';
-import { inferEdit } from '@ui/lib/editLog.js';
+import { inferEdit, removedStretches } from '@ui/lib/editLog.js';
 import { applyReshape } from '@ui/domain/textReshape.js';
 import { applyGapsLocally, applyTextEditsLocally, removeTokensLocally } from '../textEdits.js';
 import { reshapeVocabLinks, tokenizeLayerOf } from './document.js';
@@ -735,6 +735,41 @@ export const alignmentMutations = {
       vocabLinks: Object.values(this.vocabularies || {}).flatMap((v) => v?.vocabLinks || []),
     });
     return { annotations: loss.annotations, links: loss.links, shortened: loss.shortened };
+  },
+
+  // What a row edit takes away, for the question before it is saved: `text`
+  // and `edits` as `editAlignment` takes them. `stretches`, the stretches of
+  // the body it removes as the Baseline tab's save reads them (plaid-ui
+  // removedStretches), and `loss`, what is on the tokens wholly inside them,
+  // as for a segment deleted with its text (`segmentDeleteLoss`). The segment
+  // keeps its id and is not counted.
+  segmentEditLoss(alignmentId, { text, edits = null }) {
+    const none = { annotations: 0, links: 0, shortened: { annotations: 0, links: 0 } };
+    const info = this.layerInfo;
+    const segment = (info.alignmentTokenLayer?.tokens || []).find((t) => t.id === alignmentId);
+    const trimmed = composeText((text || '').trim()).text;
+    if (!segment || !trimmed) return { stretches: [], loss: none };
+    const over = cpSlice(this.body, segment.begin, segment.end);
+    const gaps = rowGaps(over, rowText(over, trimmed), edits).map((g) => ({
+      ...g,
+      start: g.start + segment.begin,
+      end: g.end + segment.begin,
+    }));
+    const words = (info.primaryTokenLayer?.tokens || []).map((t) => [t.begin, t.end]);
+    const stretches = removedStretches(this.body, gaps, words);
+    if (!stretches.length) return { stretches, loss: none };
+    const loss = countTextDeleteLoss(
+      info.primaryTextLayer?.tokenLayers || [],
+      stretches.map(([b, e]) => [b, e]),
+      {
+        except: [segment.id],
+        vocabLinks: Object.values(this.vocabularies || {}).flatMap((v) => v?.vocabLinks || []),
+      },
+    );
+    return {
+      stretches,
+      loss: { annotations: loss.annotations, links: loss.links, shortened: loss.shortened },
+    };
   },
 
   // Delete a segment. By default only the segment goes and its text stays in

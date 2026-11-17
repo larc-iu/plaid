@@ -30,6 +30,11 @@ function makeDoc({ body, tokens }) {
           : { landed: true, value },
       ),
     editAlignment: vi.fn(async () => true),
+    // What a row edit takes (IgtDocument.segmentEditLoss): nothing here.
+    segmentEditLoss: vi.fn(() => ({
+      stretches: [],
+      loss: { annotations: 0, links: 0, shortened: { annotations: 0, links: 0 } },
+    })),
     updateAlignmentSpeaker: vi.fn(async () => true),
     updateAlignmentBounds: vi.fn(async () => true),
     createAlignment: vi.fn(async () => true),

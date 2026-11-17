@@ -29,6 +29,8 @@ import { shownOrRefused } from './shownOrRefused.js';
 import { caretInRow } from './segmentCaret.js';
 import { useSavedOnLeave } from './useSavedOnLeave.js';
 import { isEnter, isImeKey } from '@ui/lib/chords.js';
+import { useConfirm } from '@ui/components/shared/ConfirmProvider';
+import { baselineLossSentence } from '../baseline/useBaselineOperations.js';
 
 // The transcript: every time-aligned segment as a row you can type into, in
 // time order, with the recording following your focus. This is the pass a
@@ -1126,6 +1128,7 @@ export function TranscriptList({
       : null,
   );
 
+  const confirm = useConfirm();
   const handleCommit = useCallback(
     async (id, { text, speaker, edits, saved, what }) => {
       const token = doc.alignmentTokens.find((t) => t.id === id);
@@ -1135,6 +1138,22 @@ export function TranscriptList({
       // The row moves on once the edit shows, not when the server has it.
       // What becomes of it if the server refuses it is the cell engine's.
       if (text !== storedText) {
+        // A row's text is saved as the Baseline tab saves it, and asks in the
+        // Baseline tab's words when it deletes annotations or links, as the
+        // row's trash asks only then.
+        const { stretches, loss } = doc.segmentEditLoss(id, { text, edits });
+        const loses = hasLoss(loss) ? baselineLossSentence(doc, stretches) : '';
+        if (
+          loses &&
+          !(await confirm({
+            title: 'Save segment text?',
+            description: loses,
+            confirmLabel: 'Save anyway',
+            destructive: true,
+          }))
+        ) {
+          return false;
+        }
         const before = doc.dataVersion;
         const outcome = doc.cellWrite(
           () =>
@@ -1171,7 +1190,7 @@ export function TranscriptList({
       }
       return true;
     },
-    [doc, cells],
+    [doc, cells, confirm],
   );
 
   // A typed or nudged boundary. Legal when the segment keeps a positive length,
