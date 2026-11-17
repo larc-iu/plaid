@@ -174,7 +174,7 @@ export const getUdLayerInfo = (document) => {
     relationLayer,
     enhancedRelationLayer,
     // Controlled vocabularies + color maps, parsed from each layer's `.config`.
-    // UPOS is the fixed universal set; DEPREL falls back to the universal 37.
+    // UPOS is the fixed universal set; DEPREL falls back to the universal 38.
     // Rides the per-version layerInfo cache, so identity is stable across renders.
     vocab: {
       // UPOS defaults to the universal 17 but is project-configurable like the rest.

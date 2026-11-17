@@ -44,7 +44,7 @@ def test_a_project_missing_a_layer_says_which(caplog):
 def test_upos_is_closed_and_xpos_is_the_projects_own(project):
     assert 'VERB' in project.vocab['upos'] and project.modes['upos'] == 'closed'
     assert project.vocab['xpos'] == ['vmip1p0', 'ncms000']
-    # Nobody set a deprel vocabulary, so the universal 37 stand, as a hint.
+    # Nobody set a deprel vocabulary, so the default 38 stand, as a hint.
     assert 'nsubj' in project.vocab['deprel'] and project.modes['deprel'] == 'open'
     assert project.vocab['feats']['Number'] == ['Sing', 'Plur']
 
@@ -210,3 +210,15 @@ def test_a_word_with_no_precedence_reads_after_the_stored_ones():
     doc = parse_document(raw, load_project(ud_client(), PID))
     [token] = [t for s in doc.sentences for t in s.tokens if len(t.words) == 2]
     assert [w.id for w in token.words] == ['uw-2b', 'uw-2a']
+
+
+def test_the_default_relations_are_plaid_uds():
+    """The assistant's fallback relation list is plaid-ud's UNIVERSAL_DEPRELS
+    (src/utils/udVocab.js), `ref` included (REV-HFU-2)."""
+    import re
+    from pathlib import Path
+    from plaid_agent.ud.project import UNIVERSAL_DEPRELS
+    src = (Path(__file__).resolve().parents[2] / 'plaid-ud' / 'src' / 'utils' / 'udVocab.js').read_text()
+    body = re.search(r'UNIVERSAL_DEPRELS = Object\.freeze\(\[(.*?)\]\)', src, re.S).group(1)
+    assert list(UNIVERSAL_DEPRELS) == re.findall(r"'([^']+)'", body)
+    assert 'ref' in UNIVERSAL_DEPRELS and len(UNIVERSAL_DEPRELS) == 38

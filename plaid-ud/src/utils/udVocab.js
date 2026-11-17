@@ -36,8 +36,8 @@ export const UPOS_TAGS = Object.freeze([
   'X',
 ]);
 
-// The 37 universal dependency relations — the seed baseline for the DEPREL
-// vocabulary. Projects may add language-specific `:subtype` forms on top.
+// The 37 universal dependency relations and the enhanced relation `ref`
+// (REV-HFU-2), in alphabetical order. They seed the DEPREL vocabulary. Projects may add language-specific `:subtype` forms on top.
 export const UNIVERSAL_DEPRELS = Object.freeze([
   'acl',
   'advcl',
@@ -72,6 +72,7 @@ export const UNIVERSAL_DEPRELS = Object.freeze([
   'orphan',
   'parataxis',
   'punct',
+  'ref',
   'reparandum',
   'root',
   'vocative',

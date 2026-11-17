@@ -28,7 +28,7 @@ Project shape:
 - Language: es
 - upos (a RULE): ADJ, ADP, ADV, AUX, CCONJ, DET, INTJ, NOUN, NUM, PART, PRON, PROPN, PUNCT, SCONJ, SYM, VERB, X
 - xpos (a suggestion): vmip1p0, ncms000
-- deprel (a suggestion): acl, advcl, advmod, amod, appos, aux, case, cc, ccomp, clf, compound, conj, cop, csubj, dep, det, discourse, dislocated, expl, fixed, flat, goeswith, iobj, list, mark, nmod, nsubj, nummod, obj, obl, orphan, parataxis, punct, reparandum, root, vocative, xcomp
+- deprel (a suggestion): acl, advcl, advmod, amod, appos, aux, case, cc, ccomp, clf, compound, conj, cop, csubj, dep, det, discourse, dislocated, expl, fixed, flat, goeswith, iobj, list, mark, nmod, nsubj, nummod, obj, obl, orphan, parataxis, punct, ref, reparandum, root, vocative, xcomp
 - features (a suggestion): Gender=Masc/Fem, Number=Sing/Plur
 
 The project's guidelines:
@@ -399,7 +399,7 @@ Every annotation sits on a WORD (a CoNLL-U word). A word is addressed by its pos
 Vocabularies:
   upos: ONLY these values are allowed: ADJ, ADP, ADV, AUX, CCONJ, DET, INTJ, NOUN, NUM, PART, PRON, PROPN, PUNCT, SCONJ, SYM, VERB, X
   xpos: these are the expected values, others are allowed: vmip1p0, ncms000
-  deprel: these are the expected values, others are allowed: acl, advcl, advmod, amod, appos, aux, case, cc, ccomp, clf, compound, conj, cop, csubj, dep, det, discourse, dislocated, expl, fixed, flat, goeswith, iobj, list, mark, nmod, nsubj, nummod, obj, obl, orphan, parataxis, punct, reparandum, root, vocative, xcomp
+  deprel: these are the expected values, others are allowed: acl, advcl, advmod, amod, appos, aux, case, cc, ccomp, clf, compound, conj, cop, csubj, dep, det, discourse, dislocated, expl, fixed, flat, goeswith, iobj, list, mark, nmod, nsubj, nummod, obj, obl, orphan, parataxis, punct, ref, reparandum, root, vocative, xcomp
   features: Gender=Masc/Fem, Number=Sing/Plur
 
 Documents (1):

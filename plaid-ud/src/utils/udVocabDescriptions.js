@@ -28,7 +28,7 @@ export const UPOS_DESCRIPTIONS = Object.freeze({
   X: 'Other. The word cannot be assigned a part of speech.',
 });
 
-/** The 37 universal dependency relations. */
+/** The 37 universal dependency relations and the enhanced relation ref. */
 export const DEPREL_DESCRIPTIONS = Object.freeze({
   acl: 'Clause modifying a noun, such as a relative clause.',
   advcl: 'Clause modifying a verb, adjective or other predicate.',
@@ -63,6 +63,7 @@ export const DEPREL_DESCRIPTIONS = Object.freeze({
   orphan: 'Promoted dependent of an elided head, in a gapped coordination.',
   parataxis: 'Clause juxtaposed without a conjunction or subordination.',
   punct: 'Punctuation, attached to the head of the phrase it belongs with.',
+  ref: 'Referent. Enhanced graph only: attaches a relative pronoun to the noun it stands for.',
   reparandum: 'Disfluency the speaker replaced, attached to what replaced it.',
   root: 'Head of the sentence. Exactly one per sentence.',
   vocative: 'Addressee named in the sentence.',

@@ -92,6 +92,14 @@ test('cleanDescriptions stores only what is worth storing', () => {
   assert.deepEqual(cleanDescriptions(null), {});
 });
 
+// REV-HFU-2 (owner ruling 2026-11-17): the enhanced relation `ref` is in the
+// default list, so a new project gets 38, in alphabetical order.
+test('the default relation list is the 37 basic relations and ref, in order', () => {
+  assert.equal(UNIVERSAL_DEPRELS.length, 38);
+  assert.ok(UNIVERSAL_DEPRELS.includes('ref'));
+  assert.deepEqual([...UNIVERSAL_DEPRELS], [...UNIVERSAL_DEPRELS].sort());
+});
+
 test('every universal tag ships with a definition', () => {
   // The seed is only useful if it is complete: a picker showing a definition
   // for sixteen of seventeen tags reads as a bug on the seventeenth.

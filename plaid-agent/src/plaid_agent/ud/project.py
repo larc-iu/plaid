@@ -74,7 +74,7 @@ UNIVERSAL_DEPRELS = (
     'acl', 'advcl', 'advmod', 'amod', 'appos', 'aux', 'case', 'cc', 'ccomp', 'clf', 'compound',
     'conj', 'cop', 'csubj', 'dep', 'det', 'discourse', 'dislocated', 'expl', 'fixed', 'flat',
     'goeswith', 'iobj', 'list', 'mark', 'nmod', 'nsubj', 'nummod', 'obj', 'obl', 'orphan',
-    'parataxis', 'punct', 'reparandum', 'root', 'vocative', 'xcomp')
+    'parataxis', 'punct', 'ref', 'reparandum', 'root', 'vocative', 'xcomp')
 
 OPEN, CLOSED = 'open', 'closed'
 

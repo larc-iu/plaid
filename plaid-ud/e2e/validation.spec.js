@@ -71,7 +71,7 @@ test('a DEPREL subtype of a listed relation is not reported', async ({ page }) =
   await openValidation(page);
   await expect(page.getByText('zzz')).toBeVisible({ timeout: 15000 });
 
-  // `nsubj` is in the universal 37, so `nsubj:pass` is already legal and
+  // `nsubj` is in the universal 38, so `nsubj:pass` is already legal and
   // offering to add it would start re-listing the language.
   await expect(page.getByText('nsubj:pass')).toHaveCount(0);
 });

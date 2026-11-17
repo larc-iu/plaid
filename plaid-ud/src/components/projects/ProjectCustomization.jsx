@@ -398,7 +398,7 @@ export const ProjectCustomization = () => {
       <Card>
         <CardHeader className="flex-row items-center justify-between space-y-0">
           <CardTitle>Dependency relations</CardTitle>
-          {resetButton(() => setDeprelVocab([...UNIVERSAL_DEPRELS]), 'Reset to universal 37')}
+          {resetButton(() => setDeprelVocab([...UNIVERSAL_DEPRELS]), 'Reset to universal 38')}
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
           <p className="text-sm text-muted-foreground">

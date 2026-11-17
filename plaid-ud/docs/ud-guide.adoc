@@ -571,7 +571,7 @@ The message names one such value. Change those values first, or add them to the 
 === Value Definitions
 
 Each value can carry a one-line definition, shown beside it while you pick one.
-The 17 UPOS tags and the 37 universal relations come with theirs, and you can edit them or describe your own values under the list.
+The 17 UPOS tags and the 38 universal relations, the 37 basic ones and the enhanced `ref`, come with theirs, and you can edit them or describe your own values under the list.
 Features are described as whole pairs, such as `Number=Plur`.
 
 == Comments
