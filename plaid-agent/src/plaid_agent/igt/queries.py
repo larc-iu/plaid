@@ -15,6 +15,7 @@ reference, are in ``corpus.py``.
 """
 
 import re
+import unicodedata
 from collections import Counter, defaultdict
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -27,7 +28,7 @@ from ..core.limits import RENDER_BUDGET, ROW_LIMIT
 from ..core.plan import labelled
 from ..core.tools import ToolError
 from .corpus import Corpus, RENDER_DOC_BUDGET, Unanalyzed, review_stamps
-from .project import virtual_morpheme_id
+from .project import is_token_ignored, virtual_morpheme_id
 from .workspace import Workspace
 
 MORE_DOCS_NOTE = '  … more hits in other documents (name a document, or narrow the pattern)'
@@ -1589,6 +1590,25 @@ def respell_guard(ws: Workspace, words: List[Dict[str, Any]], earlier_words: Dic
                                 'text. Apply one, then plan the other.', kind='conflict')
 
 
+_RESPELL_SPACE = re.compile(r'[\s\u0085]')
+
+
+def respell_refusal(new: str, ignored_cfg: Optional[dict]) -> Optional[str]:
+    """Why ``new`` cannot be a word's new spelling, as igt's Respell box and
+    Bulk Edit refuse it (plaid-igt domain/respell.js respellRefusal), or None.
+    An empty spelling is refused by each caller in its own words."""
+    if _RESPELL_SPACE.search(new):
+        return (f'{qv(new)} has a space or a line break, so it is not one word. Split a word with split_word, '
+                'or change the text with retype_sentence')
+    if new and unicodedata.category(new[0]).startswith('M'):
+        return (f'{qv(new)} starts with a combining mark, which would join the letter before the word. '
+                'Start the spelling with a letter')
+    if is_token_ignored(new, ignored_cfg):
+        return (f'{qv(new)} is an ignored token under this project\'s rule, so the word and its analysis would '
+                'leave the grid. Give the spelling at least one letter')
+    return None
+
+
 def q_respell_all(ws: Workspace, rep, spec: Dict[str, Any], morpheme_forms: bool, cap: int, earlier=()):
     """(word respell and morpheme form ops in text order, words, morpheme
     forms) for every word the pattern hits, read through what the plan's
@@ -1630,6 +1650,9 @@ def q_respell_all(ws: Workspace, rep, spec: Dict[str, Any], morpheme_forms: bool
         if not new.strip():
             raise ToolError(f'{head}: "{old}" would become empty; there is no delete-word tool',
                             kind='invalid-argument')
+        refused = respell_refusal(new, ws.project.ignored_cfg)
+        if refused:
+            raise ToolError(f'{head}: respelling {qv(old)}: {refused}.', kind='invalid-argument')
         respelled.add(wid)
         words.append({'kind': 'respell', 'text_id': text_id, 'begin': begin, 'end': end, 'value': new,
                       'doc': doc, **labelled(head, f'respell {qv(stored)} → {qv(new)}'),

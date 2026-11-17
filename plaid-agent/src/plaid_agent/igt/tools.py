@@ -798,6 +798,10 @@ def t_respell(ws: Workspace, document: str, ref: str, new_text: str, morpheme_fo
                         'delete_word removes only the token)', kind='invalid-argument')
     if new_text == w.surface:
         return ws.planned_note(0)
+    from .queries import respell_refusal
+    refused = respell_refusal(new_text, ws.project.ignored_cfg)
+    if refused:
+        raise ToolError(f'{ref}: {refused}.', kind='invalid-argument')
     check_respell_overlap(ws, w.text_id, w.begin, w.end, f'{ws.doc_label(doc.id)} {ref}')
     staged = [{'kind': 'respell', 'text_id': w.text_id, 'begin': w.begin, 'end': w.end, 'value': new_text,
                'doc': doc.id, **labelled(f'{ws.doc_label(doc.id)} {plain_ref(doc, ref)}', f'respell {qv(w.surface)} → {qv(new_text)}')}]
