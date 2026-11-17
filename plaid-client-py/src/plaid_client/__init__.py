@@ -6,7 +6,7 @@ from plaid_client.document_lock import (
 from plaid_client.http import PlaidAPIError, UploadAborted
 from plaid_client.service import BaseService
 from plaid_client.services import (
-    ServiceRegistrationError, ServiceCancelled, CancelScope, UNKNOWN_OUTCOME, UNREACHABLE,
+    ServiceRegistrationError, ServiceCancelled, ServiceRequestGone, CancelScope, UNKNOWN_OUTCOME, UNREACHABLE,
 )
 from plaid_client.sse import StreamClosed
 from plaid_client.service_schema import (
@@ -93,6 +93,7 @@ __all__ = [
     "BaseService",
     "ServiceRegistrationError",
     "ServiceCancelled",
+    "ServiceRequestGone",
     "CancelScope",
     "UNKNOWN_OUTCOME",
     "UNREACHABLE",

@@ -151,7 +151,7 @@ export {
 // checkpoint that throws ServiceCancelled once the requester stops the
 // request, and `critical()` holds that off around writes. See ./services.js
 // and the manual, "Stopping a request".
-export { ServiceCancelled, createCancelScope } from "./services.js";
+export { ServiceCancelled, ServiceRequestGone, createCancelScope } from "./services.js";
 // The two messages a write that got no answer is reported with: one the
 // server may have saved, one never sent. See ./services.js.
 export { UNKNOWN_OUTCOME, UNREACHABLE } from "./services.js";

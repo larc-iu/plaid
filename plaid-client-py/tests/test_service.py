@@ -749,6 +749,135 @@ def test_a_request_the_server_no_longer_knows_is_stopped():
         reg.stop()
 
 
+def _refusing(statuses):
+    """A stand-in for ``_report_event`` answering each request id with the
+    status given, and recording what was sent for the others."""
+    from plaid_client.http import PlaidAPIError
+    sent = []
+
+    def report(client, project_id, req_id, body):
+        sent.append((req_id, body))
+        status = statuses.get(req_id)
+        if status:
+            raise PlaidAPIError(f'HTTP {status}', status=status)
+    return report, sent
+
+
+def test_a_request_the_server_lost_ends_as_gone_not_as_a_stop(monkeypatch):
+    # The server answering 404 on a progress report no longer knows the
+    # request (its service channel dropped and core ended it). Nobody stopped
+    # it: it ends at the next checkpoint as gone, its own condition, which is
+    # still a ServiceCancelled for a service that only catches that.
+    import plaid_client.services as svc_mod
+    from plaid_client.services import ServiceCancelled, ServiceRequestGone
+    seen = []
+    on_event, _reported, reg = _serve_with_capture(lambda data, helper: seen.append(helper))
+    try:
+        on_event('service_request', {'request_id': 'lost', 'data': {}})
+        on_event('service_request', {'request_id': 'asked', 'data': {}})
+        lost, asked = seen
+        report, _sent = _refusing({'lost': 404})
+        monkeypatch.setattr(svc_mod, '_report_event', report)
+        lost.progress(10, 'Writing')
+        on_event('service_cancel', {'request_id': 'asked'})
+        assert lost.gone is True and lost.cancelled is True
+        assert asked.gone is False and asked.cancelled is True
+        try:
+            lost.progress(20, 'More')
+        except ServiceRequestGone as e:
+            assert isinstance(e, ServiceCancelled)
+        else:
+            raise AssertionError('the next checkpoint raises ServiceRequestGone')
+        try:
+            asked.raise_if_cancelled()
+        except ServiceRequestGone:
+            raise AssertionError('a stop the requester asked for is not a lost request')
+        except ServiceCancelled:
+            pass
+        else:
+            raise AssertionError('a stop raises ServiceCancelled')
+    finally:
+        reg.stop()
+
+
+def test_a_lost_request_is_not_reported_as_stopped(monkeypatch):
+    # serve's own fallback: a handler that ends on a lost request reports
+    # nothing (the server would answer 404 again), while a stop the requester
+    # asked for is still reported as stopped.
+    import plaid_client.services as svc_mod
+    report, sent = _refusing({'lost': 404})
+    monkeypatch.setattr(svc_mod, '_report_event', report)
+
+    def handler(data, helper):
+        helper.progress(10, 'Working')
+        helper.progress(20, 'Working')
+
+    on_event, _reported, reg = _serve_with_capture(handler)
+    try:
+        on_event('service_request', {'request_id': 'lost', 'data': {}})
+        assert [b['status'] for r, b in sent if r == 'lost'] == ['progress'], \
+            'one progress refused 404, then nothing: no stop is claimed'
+    finally:
+        reg.stop()
+
+
+def test_a_stop_asked_for_is_still_reported_as_stopped(monkeypatch):
+    import plaid_client.services as svc_mod
+    report, sent = _refusing({})
+    monkeypatch.setattr(svc_mod, '_report_event', report)
+    box = {}
+
+    def handler(data, helper):
+        box['on_event']('service_cancel', {'request_id': 'asked'})
+        helper.progress(10, 'Working')
+
+    on_event, _reported, reg = _serve_with_capture(handler)
+    box['on_event'] = on_event
+    try:
+        on_event('service_request', {'request_id': 'asked', 'data': {}})
+        assert sent == [('asked', {'status': 'completed', 'data': {'stopped': True}})]
+    finally:
+        reg.stop()
+
+
+def test_base_service_says_a_lost_request_is_not_a_stop(monkeypatch, capsys):
+    from plaid_client.service import BaseService
+    from plaid_client.services import ServiceRequestGone, ServiceCancelled
+
+    class Svc(BaseService):
+        def __init__(self, error):
+            self.service_name = 'S'
+            self.delegation = False
+            self.client = None
+            self.error = error
+
+        def coerce_parameters(self, data):
+            return {}
+
+        def process_request(self, data, helper):
+            raise self.error
+
+    class Helper:
+        def __init__(self):
+            self.calls = []
+
+        def stopped(self, data=None):
+            self.calls.append('stopped')
+
+        def error(self, e):
+            self.calls.append('error')
+
+        def complete(self, data=None):
+            self.calls.append('complete')
+
+    lost, asked = Helper(), Helper()
+    Svc(ServiceRequestGone('gone'))._handle_request({}, lost)
+    Svc(ServiceCancelled('stop'))._handle_request({}, asked)
+    out = capsys.readouterr().out
+    assert lost.calls == [] and asked.calls == ['stopped']
+    assert 'no longer knows' in out and 'stopped by the requester' in out
+
+
 def test_served_request_sees_the_projects_its_token_reaches():
     seen = []
     on_event, _, reg = _serve_with_capture(lambda data, helper: seen.append(data))

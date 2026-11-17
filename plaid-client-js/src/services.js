@@ -351,6 +351,10 @@ export function serve(client, projectId, serviceInfo, onServiceRequest, extras =
   // whether to stop is the handler's decision (a write under way should
   // finish), and the request still ends with whatever it reports.
   const cancelled = new Map();
+  // The requests the server answered 404 for: it no longer knows them (this
+  // channel dropped and the server ended them, or it restarted), so nobody
+  // waits for the work and nobody asked it to stop.
+  const gone = new Set();
 
   // Beyond `connected` (ignored), the channel carries `service_request` and
   // `service_cancel` events.
@@ -366,6 +370,16 @@ export function serve(client, projectId, serviceInfo, onServiceRequest, extras =
     if (!requestId) return;
     cancelled.set(requestId, false);
     const finished = () => cancelled.delete(requestId);
+    // The request's last word, unless the server no longer knows the request:
+    // it would answer 404 again.
+    const sendLast = (body) => {
+      finished();
+      if (gone.has(requestId)) {
+        gone.delete(requestId);
+        return Promise.resolve();
+      }
+      return reportEvent(requestId, body);
+    };
 
     // Every service is told who asked (`requesterId`), beside the payload
     // when that is a plain object, and on the helper regardless. A delegating
@@ -387,15 +401,25 @@ export function serve(client, projectId, serviceInfo, onServiceRequest, extras =
         ? { ...payload.data, ...extra }
         : payload.data;
 
-    const scope = createCancelScope(() => cancelled.get(requestId) === true);
+    const scope = createCancelScope(
+      () => cancelled.get(requestId) === true,
+      () => gone.has(requestId),
+    );
     const responseHelper = {
       requestId,
       requesterId,
       // The project of the channel the request came through, the only one it may act in.
       projectId,
-      // True once the requester asked for the request to stop.
+      // True once the requester asked for the request to stop, or the server
+      // no longer knows it (`gone`).
       get cancelled() {
         return scope.cancelled;
+      },
+      // True once the server answered a report on the request with 404: it no
+      // longer knows the request, so nobody waits for the work. Not a stop
+      // anyone asked for.
+      get gone() {
+        return gone.has(requestId);
       },
       raiseIfCancelled: () => scope.raiseIfCancelled(),
       critical: (fn) => scope.critical(fn),
@@ -409,8 +433,9 @@ export function serve(client, projectId, serviceInfo, onServiceRequest, extras =
       //
       // A request the server answers 404 for is one it no longer knows (it
       // ended, or the server restarted and forgot it), so nobody is waiting
-      // for the work: it counts as a stop, and the next checkpoint throws.
-      // Any other failure to send is only logged.
+      // for the work: the next checkpoint throws ServiceRequestGone, a
+      // ServiceCancelled that says nobody asked for the stop (`gone`). Any
+      // other failure to send is only logged.
       progress: (percent, msg, extra) => {
         scope.raiseIfCancelled();
         return reportRequestEvent(client, projectId, requestId, {
@@ -418,46 +443,37 @@ export function serve(client, projectId, serviceInfo, onServiceRequest, extras =
           progress: { percent, message: msg, ...extra },
         }).catch((error) => {
           if (error?.status === 404) {
-            if (cancelled.get(requestId) === false) {
-              console.warn(`The server no longer knows request ${requestId}, so it is stopped`);
-              cancelled.set(requestId, true);
+            if (cancelled.has(requestId) && !gone.has(requestId)) {
+              console.warn(`The server no longer knows request ${requestId}, so its work ends`);
+              gone.add(requestId);
             }
             return;
           }
           console.warn('Failed to report request event:', error.message || error);
         });
       },
-      complete: (data) => {
-        finished();
-        return reportEvent(requestId, { status: 'completed', data });
-      },
+      complete: (data) => sendLast({ status: 'completed', data }),
       // Asked to stop, and it did. Reported as a result carrying
       // `stopped: true`, so a client can tell "you stopped it" from "it broke".
-      stopped: (data) => {
-        finished();
-        return reportEvent(requestId, {
-          status: 'completed',
-          data: { ...(data || {}), stopped: true },
-        });
-      },
+      stopped: (data) => sendLast({ status: 'completed', data: { ...(data || {}), stopped: true } }),
       // Every failure a requester is shown goes out through here, whoever
       // reports it, so the scrub lives here rather than only in `settle`: a
       // service that catches its own error and calls `helper.error(err)`
       // would otherwise put the endpoint the client called on the requester's
       // screen. Already-sanitized text passes through unchanged.
-      error: (error) => {
-        finished();
-        return reportEvent(requestId, {
-          status: 'error',
-          data: { error: requesterMessage(error) },
-        });
-      },
+      error: (error) => sendLast({ status: 'error', data: { error: requesterMessage(error) } }),
     };
 
     // A handler may be async, so a rejected promise has to be caught too, or a
     // cancelled async service would report a failure instead of a stop.
     const settle = (error) => {
-      if (error instanceof ServiceCancelled || error?.name === 'ServiceCancelled') {
+      if (error instanceof ServiceRequestGone || error?.name === 'ServiceRequestGone') {
+        // The server no longer knows the request: nobody waits for an answer,
+        // and nobody asked it to stop.
+        console.warn(`Service ${serviceId}: request ${requestId} ended, the server no longer knows it`);
+        finished();
+        gone.delete(requestId);
+      } else if (error instanceof ServiceCancelled || error?.name === 'ServiceCancelled') {
         responseHelper.stopped();
       } else {
         // What reaches the requester is the sanitized half: the raw message
@@ -673,23 +689,45 @@ export class ServiceCancelled extends Error {
 }
 
 /**
+ * Thrown at a checkpoint when the server no longer knows the request: it
+ * answered 404 to a progress report, because the service's channel dropped and
+ * the server ended the request, or the server restarted. Nobody waits for the
+ * work, and nobody asked it to stop. A ServiceCancelled, so a service that
+ * catches only that still ends its work at the checkpoint as before. `serve`
+ * reports nothing for it, since the server would answer 404. Mirrors
+ * `ServiceRequestGone` in the Python client.
+ */
+export class ServiceRequestGone extends ServiceCancelled {
+  constructor(message = 'The server no longer knows this request') {
+    super(message);
+    this.name = 'ServiceRequestGone';
+  }
+}
+
+/**
  * The cancellation half of a responseHelper: a flag, a depth counter, and one
  * rule about when a checkpoint may raise. Split from the transport so it can
  * be reasoned about on its own. Mirrors `CancelScope` in the Python client.
  * @param {() => boolean} isCancelled
+ * @param {() => boolean} [isGone] The server no longer knows the request.
  * @returns {CancelScope}
  */
-export function createCancelScope(isCancelled) {
+export function createCancelScope(isCancelled, isGone = () => false) {
   // Depth of nested `critical()` blocks; while non-zero, a checkpoint will
   // not throw.
   let criticalDepth = 0;
   return {
     get cancelled() {
-      return !!isCancelled();
+      return !!isCancelled() || !!isGone();
     },
-    /** Stop here if the requester has asked the request to stop. */
+    /**
+     * Stop here if the requester has asked the request to stop
+     * (ServiceCancelled), or the server no longer knows it (ServiceRequestGone).
+     */
     raiseIfCancelled() {
-      if (isCancelled() && criticalDepth === 0) throw new ServiceCancelled();
+      if (criticalDepth !== 0) return;
+      if (isGone()) throw new ServiceRequestGone();
+      if (isCancelled()) throw new ServiceCancelled();
     },
     /**
      * Run `fn` as a stretch that must finish once begun, usually the writes.

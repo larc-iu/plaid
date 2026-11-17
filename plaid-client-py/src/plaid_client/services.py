@@ -520,6 +520,9 @@ def serve(client, project_id, service_info, on_service_request, extras=None,
                         **({'requester_id': requester} if requester else {}),
                         'project_id': project_id}
         cancel_flag = threading.Event()
+        # Set when the server answers 404 for this request: it no longer
+        # knows it, so nobody waits for the work and nobody asked it to stop.
+        gone_flag = threading.Event()
         with cancels_lock:
             cancels[req_id] = cancel_flag
         channel_project_id = project_id
@@ -533,15 +536,22 @@ def serve(client, project_id, service_info, on_service_request, extras=None,
                 project_id: The project of the channel it came through,
                     the only one the request may act in.
                 cancelled: True once the requester asked for the request to
-                    stop. A long-running handler polls this between steps.
+                    stop, or the server no longer knows it (``gone``). A
+                    long-running handler polls this between steps.
+                gone: True once the server answered a report on the request
+                    with 404: it no longer knows the request (its service
+                    channel dropped and the server ended it, or the server
+                    restarted), so nobody waits for the work. Not a stop
+                    anyone asked for.
             """
             request_id = req_id
             requester_id = requester
             project_id = channel_project_id
 
-            _scope = CancelScope(cancel_flag.is_set)
+            _scope = CancelScope(cancel_flag.is_set, gone_flag.is_set)
 
             cancelled = property(lambda self: self._scope.cancelled)
+            gone = property(lambda self: gone_flag.is_set())
             stopping = property(lambda self: self._scope.stopping)
             raise_if_cancelled = lambda self: self._scope.raise_if_cancelled()  # noqa: E731
             critical = lambda self: self._scope.critical()  # noqa: E731
@@ -563,9 +573,10 @@ def serve(client, project_id, service_info, on_service_request, extras=None,
 
                 A request the server answers 404 for is one it no longer
                 knows (it ended, or the server restarted and forgot it), so
-                nobody is waiting for the work: it counts as a stop, and the
-                next checkpoint raises. Any other failure to send is only
-                logged.
+                nobody is waiting for the work: the next checkpoint raises
+                :class:`ServiceRequestGone`, a :class:`ServiceCancelled` that
+                says nobody asked for the stop (``gone``). Any other failure
+                to send is only logged.
                 """
                 self.raise_if_cancelled()
                 try:
@@ -574,20 +585,26 @@ def serve(client, project_id, service_info, on_service_request, extras=None,
                                    'progress': {'percent': percent, 'message': msg, **extra}})
                 except Exception as e:
                     if getattr(e, 'status', None) == 404:
-                        if not cancel_flag.is_set():
-                            logger.warning('The server no longer knows request %s, so it is stopped', req_id)
-                        cancel_flag.set()
+                        if not gone_flag.is_set():
+                            logger.warning('The server no longer knows request %s, so its work ends', req_id)
+                        gone_flag.set()
                     else:
                         logger.warning('Failed to send progress update')
 
+            def _send_last(self, body, what):
+                """Send the request's last word, unless the server no longer
+                knows the request: it would answer 404 again."""
+                self._finished()
+                if gone_flag.is_set():
+                    return
+                try:
+                    _report_event(client, project_id, req_id, body)
+                except Exception:
+                    logger.warning('Failed to send %s message', what)
+
             def complete(self, data=None):
                 """Send the final successful result for the request."""
-                self._finished()
-                try:
-                    _report_event(client, project_id, req_id,
-                                  {'status': 'completed', 'data': data})
-                except Exception:
-                    logger.warning('Failed to send completion message')
+                self._send_last({'status': 'completed', 'data': data}, 'completion')
 
             def stopped(self, data=None):
                 """End the request because it was asked to stop.
@@ -595,13 +612,7 @@ def serve(client, project_id, service_info, on_service_request, extras=None,
                 Reported as a normal result carrying ``stopped: True``, so a
                 client can tell "you stopped it" from "it broke".
                 """
-                self._finished()
-                try:
-                    _report_event(client, project_id, req_id,
-                                  {'status': 'completed',
-                                   'data': {**(data or {}), 'stopped': True}})
-                except Exception:
-                    logger.warning('Failed to send stop message')
+                self._send_last({'status': 'completed', 'data': {**(data or {}), 'stopped': True}}, 'stop')
 
             def error(self, error):
                 """Send an error response for the request.
@@ -614,17 +625,16 @@ def serve(client, project_id, service_info, on_service_request, extras=None,
                 requester's screen. Already-sanitized text passes through
                 unchanged.
                 """
-                self._finished()
-                try:
-                    _report_event(client, project_id, req_id,
-                                  {'status': 'error',
-                                   'data': {'error': requester_message(error)}})
-                except Exception:
-                    logger.warning('Failed to send error message')
+                self._send_last({'status': 'error', 'data': {'error': requester_message(error)}}, 'error')
 
         helper = ResponseHelper()
         try:
             on_service_request(req_data, helper)
+        except ServiceRequestGone:
+            # The server no longer knows the request: nobody waits for an
+            # answer, and nobody asked it to stop.
+            logger.info('Service %s: request %s ended, the server no longer knows it', service_id, req_id)
+            helper._finished()
         except ServiceCancelled:
             # Asked to stop, and it did. Not a failure: the requester already
             # knows, and whatever was written before the checkpoint stands.
@@ -680,16 +690,19 @@ class CancelScope:
     checkpoint is allowed to raise.
     """
 
-    def __init__(self, is_cancelled):
+    def __init__(self, is_cancelled, is_gone=None):
         self._is_cancelled = is_cancelled
+        # The server no longer knows the request (see ``ResponseHelper.gone``).
+        self._is_gone = is_gone or (lambda: False)
         # Depth of nested `critical()` blocks; while non-zero, a checkpoint
         # will not raise.
         self._critical_depth = 0
 
     @property
     def cancelled(self):
-        """True once the requester has asked the request to stop."""
-        return bool(self._is_cancelled())
+        """True once the requester has asked the request to stop, or the
+        server no longer knows it."""
+        return bool(self._is_cancelled()) or bool(self._is_gone())
 
     @property
     def stopping(self):
@@ -700,11 +713,14 @@ class CancelScope:
     def raise_if_cancelled(self):
         """Stop here if the requester has asked the request to stop.
 
-        Raises :class:`ServiceCancelled`. A no-op inside ``critical()``. Call
-        it in a long loop that reports no progress; a loop that does report
-        progress is already checked.
+        Raises :class:`ServiceCancelled`, or :class:`ServiceRequestGone`
+        when the server no longer knows the request. A no-op inside
+        ``critical()``. Call it in a long loop that reports no progress; a
+        loop that does report progress is already checked.
         """
         if self.stopping:
+            if self._is_gone():
+                raise ServiceRequestGone('The server no longer knows this request')
             raise ServiceCancelled('The requester stopped this request')
 
     @contextlib.contextmanager
@@ -737,6 +753,19 @@ class ServiceCancelled(BaseException):
     swallow the stop and report it as an error, and a stop caught inside a
     per-item loop would be shrugged off and the loop would carry on. A
     ``finally`` still runs, so cleanup is unaffected.
+    """
+
+
+class ServiceRequestGone(ServiceCancelled):
+    """Raised at a checkpoint when the server no longer knows the request: it
+    answered 404 to a progress report, because the service's channel dropped
+    and the server ended the request, or the server restarted. Nobody waits
+    for the work, and nobody asked it to stop.
+
+    A subclass of :class:`ServiceCancelled`, so a service that catches only
+    that still ends its work at the checkpoint as before. One that tells the
+    two apart (an assistant recording how a turn ended) catches this first.
+    ``serve`` reports nothing for it, since the server would answer 404.
     """
 
 

@@ -37,7 +37,7 @@ from plaid_client.service_schema import build_extras, coerce
 # this module imports that one, not the other way round. Re-exported here
 # because this is where services import them from.
 from plaid_client.services import (  # noqa: F401  (Refusal, UNKNOWN_FAILURE, requester_message re-exported)
-    Refusal, ServiceRegistrationError, ServiceCancelled,
+    Refusal, ServiceRegistrationError, ServiceCancelled, ServiceRequestGone,
     UNKNOWN_FAILURE, requester_message, service_error_message,
 )
 
@@ -663,6 +663,12 @@ class BaseService(ABC):
             request_data.update(self.coerce_parameters(request_data))
         try:
             self.process_request(request_data, response_helper)
+        except ServiceRequestGone:
+            # Nobody stopped it: the server no longer knows the request (this
+            # service's channel dropped and the server ended it, or the
+            # server restarted), so nobody waits for an answer, and a report
+            # would be refused.
+            print(f"{self.service_name}: the server no longer knows this request, so its work ended")
         except ServiceCancelled:
             # Asked to stop, and it did. Not a failure: the requester already
             # knows, and whatever was written before the checkpoint stands.
