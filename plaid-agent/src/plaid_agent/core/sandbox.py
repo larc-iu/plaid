@@ -632,6 +632,11 @@ def api(ws, view: Callable[[Any], Any], call_tool, write_tools,
             **filetools.api(ws), **filetools.save_api(ws)}
 
 
+#: The line of a run that read the project (`Tally.label`), as the shared
+#: describer words run_code (core.trace.SHARED_DESCRIBE).
+CODE_LABEL = 'Read across the corpus'
+
+
 def cut_refusal(rows: int) -> str:
     """What query() in code raises on an answer the engine cut at ``rows``.
     The language has no paging, so the ways on are a count or the where
@@ -688,7 +693,10 @@ class Tally:
         self.queries = 0
         self.rows = 0
         self.printed = 0
+        # The attached files the code read, by the name it gave.
+        self.files: Dict[str, None] = {}
         self.plans = 0
+        self.documents_listed = False
         self.refused = 0
         self.first_refusal = ''
         # plan() calls that staged with a warning (``Workspace.warned``).
@@ -704,13 +712,17 @@ class Tally:
                 warnings = getattr(self.ws, 'warnings', None)
                 before = len(warnings) if isinstance(warnings, list) else 0
                 answer = f(*args, **kwargs)
+                if name == 'documents':
+                    self.documents_listed = True
                 if name == 'load':
                     key = answer.get('id') if isinstance(answer, dict) and answer.get('id') else repr(args)
                     self.documents.add((kwargs.get('project'), key))
                 elif name == 'query':
                     self.queries += 1
-                elif name == 'file_rows':
-                    self.rows += len(answer or ())
+                elif name in ('file_rows', 'file_text'):
+                    if name == 'file_rows':
+                        self.rows += len(answer or ())
+                    self.files.setdefault(str(args[0] if args else kwargs.get('name')), None)
                 elif name in self.counted:
                     unit = self.counted[name]
                     self.read[unit] = self.read.get(unit, 0) + len(answer or ())
@@ -726,7 +738,8 @@ class Tally:
                             self.first_warning = self.first_warning or warnings[before]
                 return answer
             return call
-        return {name: counted(name, f) if name in ('load', 'query', 'file_rows', 'plan') or name in self.counted
+        return {name: counted(name, f) if name in ('documents', 'load', 'query', 'file_rows', 'file_text', 'plan')
+                or name in self.counted
                 else f
                 for name, f in api.items()}
 
@@ -765,6 +778,23 @@ class Tally:
                     + keep_waiting())
         return out
 
+    def label(self) -> str:
+        """The step's line for the run, by what it read (survey 2026-11-17:
+        a parse of an attached file read "Read across the corpus"): the
+        corpus when it loaded a document, queried or used one of the app's
+        reads, the attached files it opened by name, and a calculation when
+        it read neither."""
+        from .trace import plural, q
+        corpus = bool(self.documents or self.queries or self.read or self.documents_listed)
+        files = list(self.files)
+        attached = (f'the attached file {q(files[0])}' if len(files) == 1
+                    else plural(len(files), 'attached file') if files else '')
+        if corpus:
+            return CODE_LABEL + (f' and {attached}' if attached else '')
+        if attached:
+            return f'Read {attached}'
+        return 'Ran a calculation'
+
     def note(self, ws) -> None:
         """The run's notes, in place of whatever the reads it made noted on
         their own: a tool the code called through plan() is part of the run,
@@ -800,4 +830,5 @@ def run_tool(ws, code: Optional[str], api: Callable[[Any], Dict[str, Callable]],
     except CodeError as e:
         raise ToolError(str(e) + tally.plan_note(ws), kind=kind_of(e, 'code-failed'))
     tally.note(ws)
+    ws.step_label = tally.label()
     return out + tally.plan_note(ws)

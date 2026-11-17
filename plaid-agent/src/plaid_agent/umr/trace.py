@@ -13,6 +13,10 @@ from ..core.args import sentence_number
 from ..core.trace import in_doc, q, tracer_for
 from .toolkit import WEB_TOOLS, WRITE_TOOLS
 
+#: What frequency_list ranks (corpus.COUNTABLE), in the plural.
+_RANKED = {'concept': 'concepts', 'role': 'roles', 'attribute': 'attributes',
+           'document-relation': 'document-level relations'}
+
 
 def _sentence(raw: Any) -> str:
     """A sentence as the reader writes it, "s7", whether the model passed 7,
@@ -39,7 +43,8 @@ def _own(name: str, a: Dict[str, Any]) -> Optional[str]:
     if name == 'worklist':
         return f'Looked at what is unfinished{in_doc(a)}'
     if name == 'frequency_list':
-        return f'Ranked {a.get("what") or "concept"}s by frequency{in_doc(a)}'
+        what = a.get('what') or 'concept'
+        return f'Ranked {_RANKED.get(what, f"the values of {what}")} by frequency{in_doc(a)}'
 
     # --- plans ------------------------------------------------------------------
     if name == 'apply_penman':

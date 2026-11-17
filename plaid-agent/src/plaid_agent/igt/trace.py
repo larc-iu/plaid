@@ -13,6 +13,7 @@ from ..core.refs import read_ref
 from ..core.scope import is_all
 from ..core.tools import ToolError
 from ..core.trace import META, PLAN, READ, count, in_doc as _in_one_doc, plural, q, tracer_for
+from .reads import WHERE_WORDS
 from .toolkit import WEB_TOOLS, WRITE_TOOLS
 from .workspace import _refs
 
@@ -58,6 +59,31 @@ def _held(a: Dict[str, Any]) -> str:
     return ' where ' + ' and '.join(f'{k} is {q(v)}' for k, v in w.items())
 
 
+#: Where a search looks, as the tool reads its ``where`` (reads.WHERE_WORDS)
+#: and as the label says it. Anything else is a field, named as given.
+_SEARCHED = {'baseline': 'the baseline', 'morpheme': 'morpheme forms', 'lexicon': 'the lexicon'}
+
+
+def _searched(where: Any) -> str:
+    """Where a search looked: the kind its ``where`` names in any of the
+    tool's words for it ("words" is the baseline), else the field, its name as
+    the call gave it."""
+    name = str(where or '').strip()
+    low = name.lower() or 'baseline'
+    return next((_SEARCHED[k] for k, words in WHERE_WORDS.items() if low in words), name)
+
+
+#: What frequency_list ranks when ``what`` names no field, in the plural.
+_RANKED = {'wordform': 'wordforms', 'word': 'wordforms', 'morpheme': 'morphemes'}
+
+
+def _ranked(what: Any) -> str:
+    """What a frequency_list call ranked: wordforms or morphemes, or the
+    values of a field, whose name a person chose and is never inflected."""
+    name = str(what or '').strip() or 'wordform'
+    return _RANKED.get(name.lower(), f'the values of {name}')
+
+
 #: What a reference names, by how deep it goes, singular and plural.
 _PLACES = (('sentence', 'sentences'), ('word', 'words'), ('morpheme', 'morphemes'))
 
@@ -92,8 +118,7 @@ def _own(name: str, a: Dict[str, Any]) -> Optional[str]:
     None for a shared one (:data:`core.trace.SHARED_DESCRIBE`)."""
     # --- reads ---------------------------------------------------------------
     if name == 'search':
-        where = a.get('where') if a.get('where') and a['where'] != 'baseline' else 'the baseline'
-        return f'Searched {where} for {q(a.get("pattern"))}{in_doc(a)}'
+        return f'Searched {_searched(a.get("where"))} for {q(a.get("pattern"))}{in_doc(a)}'
     if name == 'read_sentences':
         return f'Read sentences of {plural(count(a, "items"), "document")}'
     if name == 'read_lexicon':
@@ -115,7 +140,7 @@ def _own(name: str, a: Dict[str, Any]) -> Optional[str]:
     if name == 'frequency_list':
         n = a.get('ngram') if isinstance(a.get('ngram'), int) and a.get('ngram') > 1 else None
         unit = f'{a.get("what") or "wordform"} {"bigrams" if n == 2 else f"{n}-grams"}' if n else \
-            f'{a.get("what") or "wordform"}s'
+            _ranked(a.get('what'))
         return f'Ranked {unit} by frequency{_held(a)}{in_doc(a)}'
     if name == 'worklist':
         field = f'{a["field"]} ' if a.get('field') else ''
