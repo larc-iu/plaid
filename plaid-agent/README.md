@@ -155,14 +155,17 @@ not stopped by it. In a chat, a model call that still fails after tools have
 run in its turn (the model service did not answer: a rate limit, a timeout, a
 provider down, unreachable or behind a failing gateway, by error class) is
 asked once more on the turn as it stands, and the trace shows a step for it.
-A second failure ends the turn. A failed turn's calls and results stay in the
-model transcript with a note that no reply followed, so the next message reads
-what it did, and Retry takes them off with the question. `--max-output-tokens N` caps what one model call may write,
-its reasoning included (default 32768, or less for a model litellm knows to
-write less). A call that reaches the cap ends the turn with a message asking
-the user to ask about less at a time, and what the model wrote stays on the
-turn as a stop's does. `--max-steps` caps the tool-call rounds of one turn
-(default 50), and `--temperature` is passed to the model as it is.
+That try is one more deadline for a timeout, not two, and keeps the waits for
+a busy or down provider. A second failure ends the turn. A failed turn's calls
+and results stay in the model transcript with a note that no reply followed and
+nothing it staged, drafted or saved was kept, so the next message reads what it
+did, and Retry takes them off with the question. `--max-output-tokens N` caps
+what one model call may write, its reasoning included (default 32768, or less
+for a model litellm knows to write less). A call that reaches the cap ends the
+turn with a message asking the user to ask about less at a time, and what the
+model wrote stays on the turn as a stop's does. `--max-steps` caps the
+tool-call rounds of one turn (default 50), and `--temperature` is passed to the
+model as it is.
 `--reasoning-effort LEVEL` is sent with every model call as `reasoning_effort`,
 in the provider's own word for it (for example `low` or `high`). Without it
 the provider's default holds. The job worker takes the same flag.

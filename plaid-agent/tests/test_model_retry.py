@@ -71,7 +71,7 @@ class Model:
         self.script = list(script)
         self.calls = 0
 
-    def __call__(self, cfg, kwargs, on_text, cancelled=None, on_thinking=None, on_busy=None):
+    def __call__(self, cfg, kwargs, on_text, cancelled=None, on_thinking=None, on_busy=None, **ladder):
         self.calls += 1
         out = self.script[min(self.calls, len(self.script)) - 1]
         if isinstance(out, BaseException):
@@ -334,3 +334,37 @@ def test_a_second_different_failure_reads_as_itself(monkeypatch, second, line):
     assert e.value.__context__ is None
     assert model_failure_line(e.value, 120) == line
     assert failed_turn_messages(e.value)[-1]['content'].startswith('(note) Your turn ended here without a reply. ')
+
+
+def test_a_timeout_is_asked_again_once_with_no_second_ladder(monkeypatch):
+    """The ladder already gave a timed-out call two windows: the turn's one
+    more try is one more window, not two (REV-SVA-3). 2 + 2 windows of
+    silence became 2 + 1: at the default 120 s, 360 s and not 480 s."""
+    calls = []
+
+    def completion(**kwargs):
+        calls.append(kwargs)
+        if len(calls) == 1:
+            return _resp(calls=[_call(1, 'read_a')])
+        raise litellm.Timeout('Request timed out.', model='x', llm_provider='openai')
+
+    monkeypatch.setattr(litellm, 'completion', completion)
+    with pytest.raises(litellm.Timeout):
+        run_turn(ModelConfig(model='fake/m', stream=False, timeout=120), _kit(), Ws(), 'system',
+                 [{'role': 'user', 'content': 'hi'}])
+    assert len(calls) == 1 + 2 + 1
+
+
+def test_a_busy_or_down_provider_keeps_its_ladder_on_the_one_more_try(monkeypatch):
+    seen = []
+
+    def complete(cfg, kwargs, on_text, cancelled=None, on_thinking=None, on_busy=None, **kw):
+        seen.append(kw.get('timeout_retries', agent.TIMEOUT_RETRIES))
+        if len(seen) == 1:
+            return READ_ONCE
+        if len(seen) == 2:
+            raise _errors()['busy']
+        return _resp('Done.')
+    monkeypatch.setattr(agent, '_complete', complete)
+    run_turn(ModelConfig(model='fake/m', stream=False), _kit(), Ws(), 'system', [{'role': 'user', 'content': 'hi'}])
+    assert seen == [agent.TIMEOUT_RETRIES, agent.TIMEOUT_RETRIES, 0]

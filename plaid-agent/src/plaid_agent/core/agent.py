@@ -300,7 +300,7 @@ def ping_model(cfg: ModelConfig, timeout: float = PING_TIMEOUT_S) -> None:
 def _complete(cfg: ModelConfig, kwargs: Dict[str, Any], on_text: Callable[[str], None],
               cancelled: Callable[[], bool] = lambda: False,
               on_thinking: Callable[[str], None] = lambda t: None,
-              on_busy: Callable[[bool], None] = lambda waiting: None):
+              on_busy: Callable[[bool], None] = lambda waiting: None, timeout_retries: int = TIMEOUT_RETRIES):
     """One model call, tried again as the model services try theirs
     (``plaid_client.workflows.llm.retrying``).
 
@@ -330,7 +330,8 @@ def _complete(cfg: ModelConfig, kwargs: Dict[str, Any], on_text: Callable[[str],
         on_thinking('')
 
     return retrying(lambda: _watched(cfg, kwargs, on_text, cancelled, on_thinking), model=cfg.model,
-                    timeout=cfg.timeout, sleep=wait, on_retry=again, litellm=litellm, on_busy=on_busy)
+                    timeout=cfg.timeout, sleep=wait, on_retry=again, litellm=litellm, on_busy=on_busy,
+                    timeout_retries=timeout_retries)
 
 
 #: How often a waiting model call looks for a stop, in seconds.
@@ -1481,11 +1482,14 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
         # Asked again outside the first failure's except block, so a second
         # failure carries no context of the first and reads as itself: a
         # timeout's context made a refused key after it read as a timeout
-        # (REV-SVA-4).
+        # (REV-SVA-4). A timeout has had its two windows: this try is one
+        # window more, not a second ladder of two (REV-SVA-3). A busy or
+        # down provider keeps its waits, as slots free when others' calls end.
         trace.append({'id': f'{RETRY_STEP}-{len(trace) + 1}', 'name': RETRY_STEP, 'kind': META,
                       'label': RETRY_LABEL})
         on_progress(shown['pct'], RETRY_PROGRESS)
-        return unless_capped(asked_once({**kwargs, 'messages': messages()}, messages), kwargs.get('max_tokens'))
+        return unless_capped(asked_once({**kwargs, 'messages': messages()}, messages, timeout_retries=0),
+                             kwargs.get('max_tokens'))
 
     def unless_capped(resp, limit: Optional[int] = None):
         """``resp``, unless the model was still writing when the call
@@ -1518,13 +1522,14 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
         e.cut_at = limit
         raise e
 
-    def asked_once(kwargs: Dict[str, Any], messages: Callable[[], List[Dict[str, Any]]]):
+    def asked_once(kwargs: Dict[str, Any], messages: Callable[[], List[Dict[str, Any]]], **ladder):
         """One model call. Refused as too long, it is asked once more on a
-        transcript `shrink` cut to the window the refusal named."""
+        transcript `shrink` cut to the window the refusal named. ``ladder``
+        goes to :func:`_complete` (``timeout_retries``)."""
         text_seen('')
         on_thinking('')
         try:
-            return _complete(cfg, kwargs, text_seen, cancelled, on_thinking, on_busy)
+            return _complete(cfg, kwargs, text_seen, cancelled, on_thinking, on_busy, **ladder)
         except Exception as e:
             if not too_long(e) or shrink is None:
                 raise
@@ -1539,7 +1544,8 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
             history[:] = smaller
             text_seen('')
             on_thinking('')
-            return _complete(cfg, {**kwargs, 'messages': messages()}, text_seen, cancelled, on_thinking, on_busy)
+            return _complete(cfg, {**kwargs, 'messages': messages()}, text_seen, cancelled, on_thinking, on_busy,
+                             **ladder)
 
     while True:
         if cancelled():
