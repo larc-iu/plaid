@@ -22,7 +22,8 @@ import pytest
 from plaid_agent.core import agent
 from plaid_agent.core import turn as turn_mod
 from plaid_agent.core.agent import (META, ModelConfig, RETRY_LABEL, Toolkit, TurnCancelled, TurnFailed, cut_line,
-                                    model_failure_line, passes_again, run_turn, turn_messages, turn_trace)
+                                    failed_turn_messages, model_failure_line, passes_again, run_turn, turn_messages,
+                                    turn_trace)
 from plaid_agent.core.conversation import rewind_for_retry
 from plaid_agent.core.trace import PLAN, READ, Tracer
 
@@ -318,3 +319,18 @@ def test_a_drafted_job_card_is_kept_when_the_model_then_fails(monkeypatch):
     ws.job_card = None
     turn = run_turn(ModelConfig(model='fake/m', stream=False), kit, ws, 'system', [{'role': 'user', 'content': 'hi'}])
     assert turn.text == f'({agent.EMPTY_REPLY})'
+
+
+@pytest.mark.parametrize('second, line', [
+    (litellm.AuthenticationError('bad key', model='x', llm_provider='openai'), 'The model service refused the request.'),
+    (RuntimeError('a bug'), None)])
+def test_a_second_different_failure_reads_as_itself(monkeypatch, second, line):
+    """The retry was made inside the first failure's except block, so a
+    second failure carried the first as its context and a timeout read
+    through it (REV-SVA-4)."""
+    model = Model(READ_ONCE, _errors()['timeout'], second)
+    with pytest.raises(type(second)) as e:
+        _turn(monkeypatch, model, timeout=120)
+    assert e.value.__context__ is None
+    assert model_failure_line(e.value, 120) == line
+    assert failed_turn_messages(e.value)[-1]['content'].startswith('(note) Your turn ended here without a reply. ')

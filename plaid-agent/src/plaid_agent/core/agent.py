@@ -1478,11 +1478,14 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
                 raise
             print(f'{cfg.model}: a model call failed after tools ran in the turn; asking once more')
             traceback.print_exception(e)
-            trace.append({'id': f'{RETRY_STEP}-{len(trace) + 1}', 'name': RETRY_STEP, 'kind': META,
-                          'label': RETRY_LABEL})
-            on_progress(shown['pct'], RETRY_PROGRESS)
-            return unless_capped(asked_once({**kwargs, 'messages': messages()}, messages),
-                                 kwargs.get('max_tokens'))
+        # Asked again outside the first failure's except block, so a second
+        # failure carries no context of the first and reads as itself: a
+        # timeout's context made a refused key after it read as a timeout
+        # (REV-SVA-4).
+        trace.append({'id': f'{RETRY_STEP}-{len(trace) + 1}', 'name': RETRY_STEP, 'kind': META,
+                      'label': RETRY_LABEL})
+        on_progress(shown['pct'], RETRY_PROGRESS)
+        return unless_capped(asked_once({**kwargs, 'messages': messages()}, messages), kwargs.get('max_tokens'))
 
     def unless_capped(resp, limit: Optional[int] = None):
         """``resp``, unless the model was still writing when the call
