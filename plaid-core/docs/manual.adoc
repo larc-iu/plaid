@@ -300,8 +300,8 @@ with c.operation("Import ELAN corpus", kind="import", ref="format:elan"):
 |none
 
 |`job`
-|An assistant job's work in one document, or its removal of the unlinked entries it made (see <<Assistant jobs>>).
-|`job:<job>/doc:<document>/pass:gloss`, `job:<job>/doc:<document>/pass:harmonize`, or `job:<job>/pass:entries`
+|An assistant job's work in one document, or its pass that makes its analyses there consistent (see <<Assistant jobs>>).
+|`job:<job>/doc:<document>/pass:gloss` or `job:<job>/doc:<document>/pass:harmonize`
 |===
 
 === Custom messages for single writes
@@ -824,37 +824,79 @@ Whoever runs an assistant can state where its model runs and where users' messag
 
 == Assistant jobs
 
-An **assistant job** is unattended work by an assistant over many documents of a project, such as glossing every blank word.
-A writer of the project starts one, naming the app, the documents in order (all of them if left out) and instructions for the model, at most 2,000 characters.
-A job may also carry a **setup**, a JSON object of at most 4,000 characters that the app sends when the job starts.
-The server keeps it as sent, returns it on every read of the job and never changes it, and reads none of its keys.
-Each app decides what goes in it, such as what the job may fill.
-Both clients re-case the keys inside it as they re-case every key, so a key of one lowercase word is the only kind that reads the same in every language.
-A separate program, the **job worker**, does the work, one job at a time across the server, in the order the jobs were started.
+An **assistant job** is unattended work by an assistant over many documents of a project, such as filling a field or glossing every blank word.
+A writer of the project starts one, and a separate program, the **job worker**, does the work, one job at a time across the server.
 Its edits are recorded under the name of the person who started the job, with the operation kind `job`.
+Jobs themselves are not recorded in the audit log.
+
+A job is started with `jobs.create` (`POST /api/v1/projects/{id}/jobs`) and this body:
+
+* `app`: the app whose worker runs it, `igt`.
+* `instructions`: what the job is to do, required, at most 2,000 characters.
+* `documents`: the document ids, in the order to work them, at most 500. Left out, every document of the project, by name with a run of digits read as its number (Text 2 before Text 10), then by id.
+* `setup`: optional, a JSON object of at most 4,000 characters, which the app sends when the job starts. The server keeps it as sent, returns it on every read of the job as `setup`, never changes it, and reads none of its keys. Each app decides what goes in it, such as what the job may fill. Both clients re-case the keys inside it as they re-case every key, so a key of one lowercase word is the only kind that reads the same in every language.
+* `id`: optional, an id the client minted (see <<Ids you mint>>).
+
+The answer is the job, 201.
+A body that breaks a rule is refused with 400 and a sentence that says which.
+A project has at most one job that has not ended, and starting a second is refused with 409, `job-active`, and the other job's id in `job`.
+
+[,python]
+----
+job = c.jobs.create(project_id, "igt", "Fill Word class on every word that has none.", [doc_id])
+c.jobs.cancel(job["id"])
+----
+
+=== The job and its states
 
 A job is `waiting` until the worker takes it, then `running`, and ends `done`, `cancelled` or `failed`.
-A project has at most one job that has not ended, and starting a second is refused with 409 and `job-active`.
-Stopping a job that is running makes it `stopping`, and the worker ends it after the work in hand.
-Jobs themselves are not recorded in the audit log.
+Stopping a waiting job (`jobs.cancel`) cancels it at once.
+Stopping a running one makes it `stopping`, and the worker ends it after the work in hand.
+A job that ended `cancelled` or `failed` has a `reason`.
+The server sets `cancelled` and `starter-access` (the person who started it can no longer write in the project).
+The igt worker sets `no-plan`, `planning-failed`, `setup-gone`, `setup-unreadable`, `guidelines-too-long`, `no-documents` and `worker-error`, and may say why in `message`.
+
+A job read carries its `instructions`, `app`, `started-by` and `started-by-name`, `state`, `reason`, `model`, `cancelled-by`, and `created-at`, `started-at`, `heartbeat-at` and `finished-at`.
+While it runs, `phase` is `checking`, `planning`, `working`, `harmonizing` or `reporting`, `message` is the worker's line on what it is doing, `current-document` the document in hand, and `waiting-for` is `people` or `model` while it waits on the model.
+A waiting job's `ahead` counts the jobs that have not ended and were started before it, across the server.
+`lapsed` is true while a running or stopping job's worker has sent nothing for two minutes.
+`undone` names the operation, time and user of an undo that stands (see <<Undo of one entry>>).
+
+`documents` lists a row per document of the job, in its order, with the document's `name` (null once it is deleted) and the worker's `state` for it: `waiting`, `working`, `deferred`, `done`, `in-use`, `gone` or `not-reached`.
+`sentences`, `targets` and `done` count its sentences, those the job takes, and those finished, and `counts`, `skipped` (at most 500), `gloss-group` and `harmonize-group` are the worker's.
+When a job ends, every row not finished is `not-reached`.
+The `report` is the worker's JSON, at most 1,000,000 bytes.
+When a job ends without its worker (stopped while no worker reports, or failed for `starter-access`), the server writes the report from the rows, with `stopped` set to `without-worker` when it was stopped.
 
 [cols="2,3"]
 |===
-|Route |Who may
+|Route |Who may, and what it answers
 
 |`POST /api/v1/projects/{id}/jobs` (start)
-|a writer or maintainer of the project
+|a writer or maintainer of the project: the job, 201
 
-|`GET /api/v1/projects/{id}/jobs`, `.../jobs/active`, `GET /api/v1/jobs/{id}`, `GET /api/v1/jobs/{id}/pieces`
-|a reader of the project
+|`GET /api/v1/projects/{id}/jobs`
+|a reader of the project: the project's jobs, newest first, in pages of `{entries, next-cursor}`, each with `document-count` and without its documents and report
+
+|`GET /api/v1/projects/{id}/jobs/active`
+|a reader of the project: the job that has not ended, with its documents, or 204
+
+|`GET /api/v1/jobs/{id}`
+|a reader of the job's project: the job, with its documents and report
+
+|`GET /api/v1/jobs/{id}/pieces`
+|a reader of the job's project: what the job has done so far, in pages (below)
 
 |`POST /api/v1/jobs/{id}/cancel` (stop)
-|the person who started the job while they write the project, a maintainer, an admin
+|the person who started the job while they write the project, a maintainer, an admin: the job. 409 with `job-finished` once it has ended
+
+|`POST /api/v1/jobs/{id}/undo`
+|as an undo of one entry (see <<Undo of one entry>>). 409 until the job has ended
 
 |`GET /api/v1/jobs/worker`
-|anyone signed in
+|anyone signed in: `seen-at`, when a worker last asked for work or reported since the server started, its `model`, and the limits `instructions-max-chars` and `documents-max`
 
-|`POST /api/v1/jobs/claim`, `GET /api/v1/jobs/model-busy`, and a job's `heartbeat`, `documents/{id}`, `decisions` and `finish`
+|`POST /api/v1/jobs/claim`, `GET /api/v1/jobs/model-busy`, and a job's `heartbeat`, `documents/{id}`, `decisions`, `decisions/lookup` and `finish`
 |an admin
 
 |a job's `landed`
@@ -869,10 +911,12 @@ The worker keeps one decision of the form `" piece"` for its plan and for each p
 === The job worker
 
 The worker runs under an administrator's named API token.
-It asks for work with `jobs.claim`, which answers the next job or nothing, and a token for the person who started the job.
-While it works it sends `jobs.heartbeat` every 30 seconds, which answers the job's state and a fresh token.
-A job whose worker has sent nothing for two minutes is taken by the next worker that asks, and the old worker's next call is refused with `job-taken`.
-Once a job has ended, its document rows and decisions are refused with 409 and `job-finished`, except for a job core failed whose report the worker has not yet sent.
+It asks for work with `jobs.claim`, which answers the next job, a token for the person who started it and the heartbeat interval, or 204.
+While any job is running the server gives out no other: a worker that asks first gets a running or stopping job whose worker has lapsed, oldest first, then the oldest waiting job of an app it runs.
+A job whose starter can no longer write the project is failed with `starter-access` instead of being given out.
+While it works the worker sends `jobs.heartbeat` every 30 seconds, which answers the job's state and a fresh token.
+A job whose worker has sent nothing for two minutes is taken by the next worker that asks, which goes on from where the job was, and the old worker's next call is refused with `job-taken`.
+Once a job has ended, its document rows and decisions are refused with 409 and `job-finished`, except for a job the server failed whose report the worker has not yet sent.
 
 The worker writes into documents only with the token of the person who started the job.
 That token reaches only the job's project and does only what that person may there.
@@ -884,6 +928,10 @@ The worker sends each write of a job under Idempotency-Keys of a seed of its own
 When an answer is lost, or the worker stopped while a write was on its way, `POST /api/v1/jobs/{id}/landed` with `refs`, the seeds, answers `keys`, the keys of every write the job's starter made in its project under them.
 The server keeps each operation's key in the audit log, so for a write it records in History the answer holds at any time.
 A write it does not record there, such as a comment, is answered for the 24 hours it keeps the answer for replay, in whatever project it was made.
+
+A job's writes in each document are grouped under one History entry for its work there and one for making its analyses consistent, with the refs `job:<job>/doc:<document>/pass:gloss` and `job:<job>/doc:<document>/pass:harmonize`.
+The document's row gives their ids as `gloss-group` and `harmonize-group`.
+`jobs.undo` undoes them all together.
 
 === Model pools
 
