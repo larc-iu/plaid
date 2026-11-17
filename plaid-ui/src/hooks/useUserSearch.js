@@ -5,7 +5,8 @@ export const USER_SEARCH_LIMIT = 25;
 // Search-to-add over the user directory (server-side ?q=), for the Access tab.
 // The full roster is never fetched: it does not scale, and GET /users is admin-or-maintainer-gated. The search runs once
 // the box is touched, an empty box browses the first page, and the ids in
-// `excludeIds` (the people already on the list) are dropped. A caller who may
+// `excludeIds` (the people already on the list) and deactivated accounts,
+// which core refuses a role, are dropped. A caller who may
 // not browse the directory (403) gets `denied` rather than an error.
 // `added()` after someone is added empties the box and puts focus back in it,
 // where the control that added them, now gone from the results, had it.
@@ -40,7 +41,7 @@ export function useUserSearch({ client, excludeIds }) {
         const entries = page.entries || [];
         const known = new Set(excludeKey ? excludeKey.split('\n') : []);
         if (!cancelled) {
-          setResults(entries.filter((u) => !known.has(u.id)));
+          setResults(entries.filter((u) => !known.has(u.id) && !u.deactivatedAt));
           setDenied(false);
           // A cursor back means the directory had more than the cap allowed.
           // Read it rather than counting the entries: the known ids are

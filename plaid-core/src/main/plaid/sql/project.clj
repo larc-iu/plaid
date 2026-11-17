@@ -960,6 +960,12 @@
   leave the account existing without its grant if that second op failed."
   [tx project-id user-id role]
   (assert-user-and-project! tx project-id user-id)
+  ;; Deactivation takes every project role away and reactivation restores
+  ;; sign-in only, so a grant to a deactivated account would come back with
+  ;; it. Here rather than at the route, since invites and a vocabulary's move
+  ;; grant through this function too.
+  (when (some? (:deactivated_at (psc/fetch-by-id tx :users user-id)))
+    (throw (ex-info "That account has been deactivated." {:code 400 :id user-id})))
   (assert-maintainer-remains! tx project-id user-id role)
   ;; Snapshot the role-set BEFORE we mutate so the synthetic audit row
   ;; carries an accurate pre-image (e.g. user was a reader, now they're

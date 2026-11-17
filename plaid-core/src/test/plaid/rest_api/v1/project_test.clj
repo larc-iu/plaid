@@ -175,6 +175,23 @@
       (is (= #{"user2@example.com"} (maintainers)))
       (is (contains? (set (:project/readers (prj/get fix/db pid))) "user1@example.com")))))
 
+(deftest a-deactivated-account-is-granted-no-role
+  ;; H12-2: Add a user offered a deactivated account, and the grant landed,
+  ;; so reactivating it gave back a project role although deactivation had
+  ;; taken every role away and reactivation restores sign-in only.
+  (let [pid (-> (create-project admin-request {:name "Deactivated grant"}) :body :id)
+        members #(let [p (prj/get fix/db pid)]
+                   (set (concat (:project/readers p) (:project/writers p) (:project/maintainers p))))]
+    (assert-created (api-call admin-request {:method :post :path "/api/v1/users"
+                                             :body {:email "gone@example.com" :password "hunter22"
+                                                    :is-admin false}}))
+    (assert-no-content (api-call admin-request {:method :delete :path "/api/v1/users/gone@example.com"}))
+    (doseq [add [add-reader add-writer add-maintainer]]
+      (let [resp (add admin-request pid "gone@example.com")]
+        (assert-bad-request resp)
+        (is (= "That account has been deactivated." (-> resp :body :error)))))
+    (is (not (contains? (members) "gone@example.com")))))
+
 (deftest project-crud-operations
   (testing "Project creation and retrieval"
     (testing "Create project succeeds"
