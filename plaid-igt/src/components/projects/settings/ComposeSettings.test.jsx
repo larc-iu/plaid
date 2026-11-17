@@ -444,3 +444,17 @@ describe('the row layout', () => {
     await view.unmount();
   });
 });
+
+// H11-3: the list, the clash message and the guide write a code with its
+// backslash, so a search typed that way finds it.
+describe('search', () => {
+  it('finds a code typed with its backslash, as without', async () => {
+    const { view } = await open();
+    await search(view, '\\sw');
+    const withSlash = codes(view.container);
+    expect(withSlash).toContain('sw');
+    await search(view, 'sw');
+    expect(codes(view.container)).toEqual(withSlash);
+    await view.unmount();
+  });
+});

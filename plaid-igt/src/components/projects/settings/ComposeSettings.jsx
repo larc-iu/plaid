@@ -132,9 +132,11 @@ export const ComposeSettings = ({ project, projectId, client, onProjectUpdate })
   const matches = useMemo(() => {
     const needle = q.trim().toLowerCase();
     if (!needle) return live;
+    // A code is shown with its backslash and stored without one.
+    const code = needle.replace(/^\\/, '');
     return live.filter(
       (r) =>
-        textIncludes(r.code, needle) ||
+        textIncludes(r.code, code) ||
         r.char === q.trim() ||
         textIncludes(r.description || '', needle),
     );
