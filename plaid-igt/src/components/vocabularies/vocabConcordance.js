@@ -13,6 +13,7 @@ import { IgtDocument } from '@/domain/IgtDocument';
 import { APP_ROUTES } from '@/appRoutes';
 import { documentVocabularies } from '@/domain/documentVocabularies';
 import { buildContextRows } from '@/components/projects/search/searchRunner.js';
+import { morphemeRangeInWord, segmentationParts } from '@/domain/morphemeInWord';
 
 const HIT_LIMIT = 1000;
 
@@ -70,8 +71,10 @@ export async function planItemConcordance(client, vocabLayerId, itemId) {
 // Load + derive a batch of documents into concordance groups (one per document),
 // locating the hits inside each. `docEntries` is a slice of plan.docs, and
 // `hits` is either a Set of token ids the caller already has or a function of
-// a document id returning that document's own set (plan.idsFor).
-export async function loadConcordanceGroups(client, hits, docEntries) {
+// a document id returning that document's own set (plan.idsFor). `morphemes`
+// picks a morpheme hit out inside its word (withMorphemeHits), which only the
+// Concordance tab asks for.
+export async function loadConcordanceGroups(client, hits, docEntries, { morphemes = false } = {}) {
   const domain = { kind: 'lexicon' }; // marks both word- and morpheme-level link hits
   const idsFor = typeof hits === 'function' ? hits : () => hits;
   return Promise.all(
@@ -87,10 +90,54 @@ export async function loadConcordanceGroups(client, hits, docEntries) {
         projectId: doc.raw?.project,
         docName: doc.document?.name || '(untitled)',
         docHits: count,
-        rows: buildContextRows(doc, domain, hitIds),
+        rows: morphemes
+          ? withMorphemeHits(doc, buildContextRows(doc, domain, hitIds), hitIds)
+          : buildContextRows(doc, domain, hitIds),
       };
     }),
   );
+}
+
+/**
+ * The concordance's rows with each morpheme hit picked out in its word (GH
+ * #68), on top of what buildContextRows gives Search. Where the word's forms
+ * spell it (morphemeRangeInWord), the word's mark gains `inner`, the
+ * morpheme's letters in sentence offsets. Where they do not, the row gains
+ * `segmentations`, one list of segmentationParts per such word, and the word
+ * keeps its plain mark. A row with no morpheme hit comes back as it was.
+ */
+export function withMorphemeHits(doc, rows, hitIds) {
+  const sentences = new Map((doc.sentences || []).map((s) => [s.id, s]));
+  return rows.map((row) => {
+    const sentence = sentences.get(row.sentenceId);
+    if (!sentence) return row;
+    const inner = new Map(); // word begin in the sentence -> [{begin, end}]
+    const segmentations = [];
+    for (const word of sentence.tokens || []) {
+      const hits = (word.morphemes || []).filter((m) => hitIds.has(m.id));
+      if (!hits.length) continue;
+      const at = word.begin - sentence.begin;
+      let unplaced = false;
+      for (const hit of hits) {
+        const range = morphemeRangeInWord(word, hit);
+        if (!range) {
+          unplaced = true;
+          continue;
+        }
+        if (!inner.has(at)) inner.set(at, []);
+        inner.get(at).push({ begin: at + range.begin, end: at + range.end });
+      }
+      if (unplaced) segmentations.push(segmentationParts(word, hitIds));
+    }
+    if (!inner.size && !segmentations.length) return row;
+    return {
+      ...row,
+      marks: row.marks.map((mk) =>
+        inner.has(mk.begin) ? { ...mk, inner: inner.get(mk.begin) } : mk,
+      ),
+      ...(segmentations.length ? { segmentations } : {}),
+    };
+  });
 }
 
 // The Analyze-tab link for one sentence of a document, or null when the

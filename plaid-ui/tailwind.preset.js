@@ -78,6 +78,8 @@ export default {
         card: { DEFAULT: 'hsl(var(--card))', foreground: 'hsl(var(--card-foreground))' },
         // The one mark for "this matched": a search hit, a cited word.
         highlight: 'hsl(var(--plaid-highlight))',
+        // Inside it, the part that matched (a morpheme in its word).
+        'highlight-strong': 'hsl(var(--plaid-highlight-strong))',
         // The cloth's dyes by name (`text-dye-madder`, `bg-dye-indigo/10`), as
         // hex so an opacity modifier works.
         dye: { ...DYES },

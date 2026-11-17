@@ -56,7 +56,7 @@ export function useItemConcordance({ client, vocabularyId, selectedId, skipId, l
         if (concReq.current !== my) return;
         setConcPlan(plan);
         const first = plan.docs.slice(0, CONC_BATCH);
-        const groups = await loadConcordanceGroups(client, plan.idsFor, first);
+        const groups = await loadConcordanceGroups(client, plan.idsFor, first, { morphemes: true });
         if (concReq.current !== my) return;
         setConcGroups(groups);
         setConcLoaded(first.length);
@@ -82,7 +82,9 @@ export function useItemConcordance({ client, vocabularyId, selectedId, skipId, l
     setConcLoadingMore(true);
     try {
       const next = concPlan.docs.slice(concLoaded, concLoaded + CONC_BATCH);
-      const groups = await loadConcordanceGroups(client, concPlan.idsFor, next);
+      const groups = await loadConcordanceGroups(client, concPlan.idsFor, next, {
+        morphemes: true,
+      });
       if (concReq.current !== my) return;
       setConcGroups((prev) => [...prev, ...groups]);
       setConcLoaded((prev) => prev + next.length);

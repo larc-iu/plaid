@@ -65,6 +65,7 @@ describe.each(APPS)('%s tailwind config', (_name, config) => {
 
   it('answers to the one highlight for a match', () => {
     expect(resolved.theme.colors.highlight).toBe('hsl(var(--plaid-highlight))');
+    expect(resolved.theme.colors['highlight-strong']).toBe('hsl(var(--plaid-highlight-strong))');
   });
 
   it('switches theme by class, so the three apps agree on what dark means', () => {
@@ -85,6 +86,7 @@ describe("the package's stylesheet", () => {
     '--success-foreground',
     '--destructive-strong',
     '--plaid-highlight',
+    '--plaid-highlight-strong',
   ])('defines %s', (name) => {
     expect(css).toMatch(new RegExp(`${name}:\\s*\\d`));
   });

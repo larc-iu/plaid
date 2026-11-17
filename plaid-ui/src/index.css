@@ -178,6 +178,9 @@
   /* A match: a search hit, the word a citation points at. A soft yellow, the
      highlighter's, which reads on Charis and is not amber. */
   --plaid-highlight: 53 96% 82%;
+  /* The part of a match that matched, inside it: a morpheme in its word. The
+     same yellow one step stronger. */
+  --plaid-highlight-strong: 50 98% 66%;
 
   /* The mark's four colours, for the brand's own surfaces. */
   --plaid-slate: #1e293b;
@@ -263,6 +266,8 @@ body {
   --success: 142 69% 45%;
   --success-foreground: 141 84% 93%;
   --destructive-strong: 0 94% 82%;
+  --plaid-highlight: 50 35% 22%;
+  --plaid-highlight-strong: 46 85% 27%;
 }
 
 /* A value a machine proposed and no person has confirmed: violet italic with
