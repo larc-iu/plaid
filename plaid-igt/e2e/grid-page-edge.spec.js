@@ -116,3 +116,20 @@ test('Enter in the last word cell of a page goes on to the next page', async ({ 
       sentence: sentenceIds[25],
     });
 });
+
+// REV-HFT-R2-1: Tab and at once Shift+Tab, before the first turn's URL has
+// come back, keep focus on the field (the late echo used to turn the page).
+test('Tab then Shift+Tab at once comes back to the field, and focus stays', async ({ page }) => {
+  await openAnalyze(page);
+  const field = inSentence(page, 25, 'sa:').first();
+  const tier = await field.getAttribute('data-tier');
+  await field.click();
+  await page.keyboard.press('Tab');
+  await page.keyboard.press('Shift+Tab');
+  await expect
+    .poll(() => focused(page))
+    .toEqual({ tag: expect.any(String), tier, sentence: sentenceIds[24] });
+  await expect(page.locator('.igt-pager__label').first()).toHaveText('1–25 of 26');
+  await page.keyboard.type('stays');
+  await expect(inSentence(page, 25, 'sa:').first()).toHaveValue(/stays$/);
+});

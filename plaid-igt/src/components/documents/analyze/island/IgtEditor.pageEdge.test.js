@@ -25,7 +25,7 @@ afterEach(() => {
 
 const LEIPZIG = { delimiters: '.', mode: 'closed', values: [{ value: 'PL' }] };
 
-function mount({ closed = false, wordless = false } = {}) {
+function mount({ closed = false, wordless = false, told = null } = {}) {
   const raw = buildRawDoc({
     body: 'the cat sat down',
     words: [
@@ -63,7 +63,7 @@ function mount({ closed = false, wordless = false } = {}) {
         }
       : {}),
   });
-  ({ host, editor } = mountIsland(doc));
+  ({ host, editor } = mountIsland(doc, told ? { onPageChange: (p) => told.push(p) } : {}));
 }
 
 const key = (el, init) => {
@@ -166,5 +166,42 @@ describe('Enter and Tab at the edge of a page', () => {
     const at = document.activeElement;
     expect(at.classList.contains('igt-field')).toBe(true);
     expect(at.closest('[data-sentence-id]').dataset.sentenceId).toBe('s-2');
+  });
+
+  // REV-HFT-R2-1: each turn tells the page its URL, and the page echoes it
+  // back (editor.setPage) a moment later. Two quick turns got the first echo
+  // after the second turn, which turned the page again and dropped focus.
+  it('takes the late echoes of two quick turns as echoes, and focus stays', () => {
+    IgtEditor.PAGE_SIZE = 1;
+    const told = [];
+    mount({ told });
+    pos('cat').focus();
+    key(pos('cat'), { key: 'Tab' });
+    key(pos('sat'), { key: 'Tab', shiftKey: true });
+    expect(told).toEqual([1, 0]);
+    expect(document.activeElement).toBe(pos('cat'));
+    editor.setPage(1);
+    editor.setPage(0);
+    expect(editor._page).toBe(0);
+    expect(document.activeElement).toBe(pos('cat'));
+  });
+
+  it('still turns for a change from outside while an echo is due', () => {
+    IgtEditor.PAGE_SIZE = 1;
+    const told = [];
+    mount({ told });
+    pos('cat').focus();
+    key(pos('cat'), { key: 'Tab' });
+    expect(told).toEqual([1]);
+    // Back, before the echo: a different page turns, and the list is let go.
+    editor.setPage(0);
+    expect(editor._page).toBe(0);
+    editor.setPage(1);
+    expect(editor._page).toBe(1);
+    // Back to the very page an echo is due for turns too.
+    editor.setPage(0);
+    key(pos('cat'), { key: 'Tab' });
+    editor.setPage(0, { pop: true });
+    expect(editor._page).toBe(0);
   });
 });

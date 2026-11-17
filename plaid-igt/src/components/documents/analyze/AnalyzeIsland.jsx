@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useNavigationType, useSearchParams } from 'react-router-dom';
 import { useConfirm } from '@ui/components/shared/ConfirmProvider';
 import { heldBy } from '@ui/components/services/runHeld.js';
 import { IgtEditor } from './island/IgtEditor.js';
@@ -62,8 +62,13 @@ export const AnalyzeIsland = () => {
   urlPageRef.current = urlPage;
   const setParamsRef = useRef(setParams);
   setParamsRef.current = setParams;
+  // The island tells it each page it turns to, and takes the echo of that
+  // as no turn. Back and Forward are always one.
+  const navigationType = useNavigationType();
+  const navigationTypeRef = useRef(navigationType);
+  navigationTypeRef.current = navigationType;
   useEffect(() => {
-    editorRef.current?.setPage(urlPage);
+    editorRef.current?.setPage(urlPage, { pop: navigationTypeRef.current === 'POP' });
   }, [urlPage]);
 
   // A citation in the panel into this document, while the grid is up.

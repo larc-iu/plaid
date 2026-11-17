@@ -133,7 +133,7 @@ export const chrome = {
     // last, and the URL is told so in place: it never names a page not shown.
     if (clamped !== this._page) {
       this._page = clamped;
-      this.onPageChange?.(clamped, { replace: true });
+      this._tell(clamped, { replace: true });
     }
     const pageStart = this._page * this.constructor.PAGE_SIZE;
     const pageSentences = sentences.slice(pageStart, pageStart + this.constructor.PAGE_SIZE);
@@ -167,7 +167,7 @@ export const chrome = {
     const el = document.activeElement;
     if (el && el !== document.body && this.container.contains(el)) el.blur();
     this._page = page;
-    if (tell) this.onPageChange?.(page, { replace });
+    if (tell) this._tell(page, { replace });
     this._render(true);
     if (scrollToTop) {
       try {
@@ -176,6 +176,14 @@ export const chrome = {
         /* noop */
       }
     }
+  },
+
+  // Tell the page around the island the page shown, kept until its echo
+  // comes back (setPage).
+  _tell(page, opts) {
+    if (!this.onPageChange) return;
+    this._told.push(page);
+    this.onPageChange(page, opts);
   },
 
   // plaid-ui's RunBarPager in lit-html: in the run row at the top, and the

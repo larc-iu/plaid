@@ -116,6 +116,8 @@ export class IgtEditor {
     // Told `(page, { replace })`, replace for a turn the reader did not make
     // with the pager (a citation landing on another page).
     this.onPageChange = onPageChange;
+    // The pages told the URL and not yet echoed back (setPage).
+    this._told = [];
     // And whether the window has room for the panel that Ask opens. Read once
     // here so the first paint is right, and kept current by a resize listener
     // below, which is the only thing that repaints this island for the window.
@@ -423,7 +425,19 @@ export class IgtEditor {
   }
 
   // The page the URL names, after Back or a link: shown, and not told back.
-  setPage(page) {
+  // The page the URL names, from the page around the island. Each turn the
+  // island makes tells the URL (onPageChange, `_told`), and the URL comes
+  // back here a moment later. That echo is not a turn: two quick turns got
+  // the first one's echo after the second, which turned the page back under
+  // the cell just focused (REV-HFT-R2-1). So a page that is the first one
+  // told and not yet echoed is dropped, and any other page lets the list go
+  // and turns. `pop` (Back or Forward) is never an echo.
+  setPage(page, { pop = false } = {}) {
+    if (!pop && this._told.length && page === this._told[0]) {
+      this._told.shift();
+      return;
+    }
+    this._told = [];
     this._setPage(page, false, { tell: false });
   }
 
