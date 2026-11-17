@@ -205,9 +205,10 @@ def test_a_persons_edit_older_than_the_window_under_the_jobs_own_does_not_defer(
     assert runner(job).document('d1') == 'done'
 
 
-def test_a_persons_edit_since_the_job_last_looked_counts_past_the_window(monkeypatch):
+def test_a_persons_edit_during_a_long_stretch_counts_past_the_window_once(monkeypatch):
     """A stretch can take longer than the quiet window: what a person wrote
-    after the job last looked counts, however long ago, and only once."""
+    since it began counts at the look after it, however long ago, and only
+    at that look."""
     client, job, clock = _job()
     r = runner(job)
     r.looked_at['d1'] = NOW - 2 * JOB_PERSON_QUIET_S
@@ -249,3 +250,44 @@ def test_a_person_typing_during_a_stretch_puts_the_document_off_before_its_next_
     assert order[:2] == ['Story 1', 'Story 2'], order
     assert sum(clock.slept) >= JOB_DEFER_WAIT_S, 'Story 1 was taken again after the wait'
     assert 'Story 1' in order[2:], order
+
+
+def test_a_long_stretch_with_a_person_typing_early_in_it_is_followed_by_a_wait(monkeypatch):
+    """The walk itself: a stretch longer than the quiet window, a person
+    typing at its start. The look after it puts the document off."""
+    from plaid_agent.core.job import run_job
+    long = document('d1', 'Story 1', [{'words': ['blank']}] * 7)
+    client = JobClient({'d1': long, 'd2': document('d2', 'Story 2', [{'words': ['blank']}])})
+    clock = Clock()
+    job = start(client, now=clock.now)
+    job._sleep = clock.sleep
+    job.job['created_at'] = _iso(NOW - 3600)
+    order = []
+
+    def answer(asked, n, kwargs):
+        name = asked.split('"')[1]
+        if n == 1:
+            order.append(name)
+            if len(order) == 1:
+                _edit(client, 'd1', clock.now() + 1)
+                clock.t += JOB_PERSON_QUIET_S + 100
+            return reply(calls=[call(1, 'set_analysis', {'document': name, 'ref': 's1.w1',
+                                                         'morphemes': [{'form': 'blank'}]})])
+        return reply('Done.')
+    use(monkeypatch, Model(answer))
+    finished = run_job(job, runner(job))
+    assert finished['state'] == 'done', finished.get('reason')
+    assert order[:2] == ['Story 1', 'Story 2'], order
+
+
+def test_after_a_defer_an_edit_older_than_the_window_does_not_count_again(monkeypatch):
+    """Reviewed H14-1: the start of a stretch is forgotten when the document
+    is put off, so an edit made during it and long gone by the time the job
+    comes back (or by harmonize at the end) does not put it off again."""
+    client, job, clock = _job()
+    _model(monkeypatch)
+    r = runner(job)
+    r.looked_at['d1'] = NOW - 7200
+    _edit(client, 'd1', NOW - 3600)
+    r.defer('d1')
+    assert r.document('d1') == 'done'

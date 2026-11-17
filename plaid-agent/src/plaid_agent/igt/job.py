@@ -2219,8 +2219,8 @@ class IgtRunner:
         self.changes_dropped = 0
         #: documents the job has waited for once at least: their defers count
         self.waited: set = set()
-        #: document id -> when the job last looked for someone else in it
-        #: (:meth:`newest_change`)
+        #: document id -> when the stretch in flight there began: the look
+        #: after it counts what anyone else wrote since (:meth:`newest_change`)
         self.looked_at: Dict[str, float] = {}
         #: document id -> sentences skipped past the cap of the row's list:
         #: failed or changed, and too long for a stretch
@@ -2987,6 +2987,8 @@ class IgtRunner:
         for it (:meth:`wait_for_people`): a document in use is waited for
         JOB_DEFER_ROUNDS times before it ends ``in-use`` (SPEC 5.3), never
         counted twice within a second by passes with no wait between."""
+        # Taken up again later, it is looked at afresh.
+        self.looked_at.pop(document_id, None)
         row = self.job.rows.get(document_id) or {}
         defers = (row.get('defers') or 0) + (1 if document_id in self.waited else 0)
         self.job.update_row(document_id, defers=defers,
@@ -2997,8 +2999,9 @@ class IgtRunner:
         """The newest unit of the document's History that is not this job's
         and that tells the job someone is in the document, or None: one that
         ended after the job was made and either within the quiet window or
-        since the job last looked (a stretch can take longer than the
-        window). Whoever wrote last: the job's own units are read past, so a
+        since the stretch just worked began (one can take longer than the
+        window: :attr:`looked_at`, set by the walk before a stretch and
+        taken by the next look only). Whoever wrote last: the job's own units are read past, so a
         person who wrote while a stretch was in flight is still seen once
         that stretch's write lands on top (H14-1). The read stops at the
         first unit that ended before that, which nothing older can change.
@@ -3006,8 +3009,7 @@ class IgtRunner:
         ``time`` is its first operation's, REV-B4-4)."""
         mine = f'job:{self.job.id}/'
         now = self.job.now()
-        cutoff = min(now - JOB_PERSON_QUIET_S, self.looked_at.get(document_id, now))
-        self.looked_at[document_id] = now
+        cutoff = min(now - JOB_PERSON_QUIET_S, self.looked_at.pop(document_id, now))
         created = core_job._iso_seconds(self.job.job.get('created_at'))
         if created is not None:
             cutoff = max(cutoff, created)
@@ -3110,6 +3112,7 @@ class IgtRunner:
             part = pending if whole else pending[:JOB_STRETCH_SENTENCES]
             job.set(message=self.matching_line(doc, part) if self.searched() is not None else
                     self.progress_line(doc.name, whole, part[0].index, part[-1].index, len(doc.sentences)))
+            self.looked_at[document_id] = job.now()
             halve([s.id for s in part], lambda ids: self.attempt(project, document_id, ids),
                   lambda sid, kind: self.failed_piece(document_id, doc, sid, kind))
 
