@@ -509,19 +509,24 @@ export const groupValues = (group, values) =>
  */
 export function validateBatch(comparison, roles) {
   const problems = new Set();
-  // Each group's sentence tier names, compared between groups: one file may
-  // hold a sentence tier per speaker (W-Spch and K-Spch), which is no
-  // difference between files.
-  const sentenceNames = new Set();
+  // The names of the sentence tiers each mapping row joins. A row joins the
+  // tiers of every file that take its place, so one row holding two names is
+  // a sentence tier named differently in different files. Two rows are two
+  // tiers, one file's speakers (W-Spch and K-Spch) among them.
+  const namesByRow = new Map();
   let fromWords = true;
   for (const group of comparison.groups) {
     const own = groupRoles(group, roles);
     for (const p of validateRoles(group.nodes, own)) problems.add(p);
-    const names = group.nodes.filter((n) => own[n.key] === ROLES.UTTERANCE).map(nodeLabel);
-    if (names.length) sentenceNames.add(JSON.stringify([...new Set(names)].sort()));
+    for (const n of group.nodes) {
+      if (own[n.key] !== ROLES.UTTERANCE) continue;
+      const row = group.rowOf.get(n.key);
+      if (!namesByRow.has(row)) namesByRow.set(row, new Set());
+      namesByRow.get(row).add(nodeLabel(n));
+    }
     fromWords = fromWords && writtenFromWords(group, own);
   }
-  if (sentenceNames.size > 1 && !fromWords) {
+  if ([...namesByRow.values()].some((names) => names.size > 1) && !fromWords) {
     problems.add(
       'The sentence tier has a different name in some files, so the sentences are written from the words. Choose a tier for Words.',
     );

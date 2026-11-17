@@ -1005,6 +1005,28 @@ describe('several tier trees in one file', () => {
     expect(buildElanBatch(result, roles).documents[0].body).toBe('primero\nsegundo\ntercero');
   });
 
+  it('passes the batch gate beside a file with one of the two speakers (REV-HFM-5)', () => {
+    const oneTree = eafXml({
+      types: { u: null, ft: 'Symbolic_Association' },
+      tiers: [
+        { id: 'W-Spch', type: 'u', anns: [['w1', 'cuarto', 0, 1000]] },
+        { id: 'W-ft', type: 'ft', parent: 'W-Spch', anns: [['wf1', 'fourth', 'w1', null]] },
+      ],
+    });
+    const result = compareSchemas([readEaf(twoTrees(), 'x.eaf'), readEaf(oneTree, 'y.eaf')]);
+    const key = (name) => result.nodes.find((n) => n.baseName === name).key;
+    const roles = {
+      ...result.suggested,
+      [key('K-Spch')]: ROLES.UTTERANCE,
+      [key('K-ft')]: ROLES.SENTENCE_FIELD,
+    };
+    expect(validateBatch(result, roles)).toEqual([]);
+    expect(buildElanBatch(result, roles).documents.map((d) => d.body)).toEqual([
+      'primero\nsegundo\ntercero',
+      'cuarto',
+    ]);
+  });
+
   it('lets two tiers be renamed onto one field, and asks for that layer once', () => {
     const parsed = [readEaf(twoTrees(), 'x.eaf')];
     const { nodes } = compareSchemas(parsed);
