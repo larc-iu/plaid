@@ -428,6 +428,18 @@ test('plan: an off-list value the rule DOES write still refuses the row', async 
   assert.match(row.error, /GADGET/);
 });
 
+// H17-1: a feature value holding `|` is several FEATS pairs filed as one,
+// refused under an open list as the cell refuses it.
+test('plan: a rule that writes a FEATS bundle as one value refuses the row', async () => {
+  const { client, project, layerInfo } = closedUposSetup();
+  const grs = parseGrs(
+    'pattern { X [upos=DET] } without { X [Case] } commands { X.Case = "Nom|Gender=Masc" }',
+  );
+  const plan = await planRewrite(client, { project, user: null, layerInfo, grs });
+  const [row] = plan.rows;
+  assert.match(row.error, /cannot contain \|/);
+});
+
 test('plan: a rule that applies and leaves nothing to write yields no row', async () => {
   const raw = rawDocFromConllu(CONLLU, 'doc1', { enhanced: true });
   const client = stubClient(raw);

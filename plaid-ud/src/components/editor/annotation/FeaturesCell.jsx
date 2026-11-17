@@ -83,9 +83,9 @@ export const FeaturesCell = React.memo(
       // The typed text is KEPT on a refusal, unlike in a cell: a chip is added
       // rather than replacing something, so there is nothing to restore and the
       // annotator can correct what they typed.
-      const spaced = featureRefusal(feature.pair);
-      if (spaced) {
-        notifyWarning(spaced, 'Spaces in a feature');
+      const unspellable = featureRefusal(feature.pair);
+      if (unspellable) {
+        notifyWarning(unspellable);
         return 'refused';
       }
       // A CLOSED inventory governs both halves: the key must be in it and the

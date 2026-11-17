@@ -49,3 +49,11 @@ test('a space inside a half is refused, and a clean pair is not', () => {
   assert.match(featureRefusal('Gender=Fem Masc'), /spaces/);
   assert.match(featureRefusal('Noun Type=Prop'), /spaces/);
 });
+
+// H17-1: a FEATS column copied out of a file is several pairs joined by `|`.
+// Read as one pair it filed `Gender=Masc` inside Case's value, where the
+// one-value-per-name rule and the export could not see it.
+test('a pair holding a | is refused', () => {
+  assert.match(featureRefusal(normalizeFeature('Case=Nom|Gender=Masc').pair), /\|/);
+  assert.match(featureRefusal('Case|Gender=Nom'), /\|/);
+});

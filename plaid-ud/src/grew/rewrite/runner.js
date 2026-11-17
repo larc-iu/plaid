@@ -20,6 +20,7 @@ import { diffGraphs } from './diff.js';
 import { bareLabel } from '../edgeLabel.js';
 import { countOf } from '../../../../plaid-ui/src/lib/plural.js';
 import { makeValidators } from '../../utils/udVocabMode.js';
+import { featureRefusal } from '../../utils/feats.js';
 import { atVersion } from '../../../../plaid-ui/src/domain/atVersion.js';
 import { isUnknownOutcome } from '../../../../plaid-client-js/src/http.js';
 
@@ -165,9 +166,9 @@ export async function planRewrite(client, { project, user, layerInfo, grs }, onP
   return { rows, docs, documentsVisited: docIds.length };
 }
 
-// The first value THIS RULE WRITES that a closed vocabulary refuses, as the
-// message the preview shows on that row, or null when everything it writes is
-// legal. Reports ONE: a rule that produces an illegal tag usually produces it
+// The first value THIS RULE WRITES that a closed vocabulary refuses, or that
+// CoNLL-U cannot spell, as the message the preview shows on that row, or null
+// when everything it writes is legal. Reports ONE: a rule that produces an illegal tag usually produces it
 // everywhere, and a row listing forty of them says nothing the first does not.
 //
 // Only what changed. Walking the whole rewritten sentence meant that one
@@ -193,7 +194,8 @@ function offVocabulary(before, after, validators) {
     for (const [key, value] of node.feats || []) {
       const pair = `${key}=${value}`;
       if (had.has(pair)) continue;
-      const refusal = validators.feats(pair);
+      // A pair the FEATS column cannot spell, under any list (utils/feats.js).
+      const refusal = featureRefusal(pair) || validators.feats(pair);
       if (refusal) return `${node.form}: ${refusal}`;
     }
   }

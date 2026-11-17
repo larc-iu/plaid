@@ -31,11 +31,18 @@ export const normalizeFeature = (raw) => {
 
 /**
  * What is wrong with a normalized pair, or null when nothing is. A space inside
- * either half is the one case, and it is fatal rather than fixable here: only
- * the person typing knows whether `Fem Masc` was two features or a typo.
+ * either half is fatal rather than fixable here: only the person typing knows
+ * whether `Fem Masc` was two features or a typo. So is a `|`, the FEATS
+ * column's own separator: `Case=Nom|Gender=Masc` read as one pair files
+ * Gender inside Case's value, where the one-value-per-name rule never sees it
+ * and the export writes a second Gender beside it (H17-1).
  *
  * @param {string} pair a pair from normalizeFeature
  * @returns {string|null}
  */
 export const featureRefusal = (pair) =>
-  /\s/.test(pair) ? 'A feature name and value cannot contain spaces.' : null;
+  /\s/.test(pair)
+    ? 'A feature name and value cannot contain spaces.'
+    : pair.includes('|')
+      ? 'A feature name and value cannot contain |.'
+      : null;

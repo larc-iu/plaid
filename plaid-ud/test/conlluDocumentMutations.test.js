@@ -250,6 +250,24 @@ test('a feature the CoNLL-U column could not spell is not written', async () => 
   assert.equal(doc.layerInfo.featuresLayer.spans.length, before);
 });
 
+// H17-1: several pairs joined by `|` are refused at the write, so none is
+// stored inside another's value.
+test('a FEATS bundle is not written as one feature', async () => {
+  const raw = rawDocFromConllu(INPUT, 'mut-doc');
+  const client = provClient();
+  const doc = new ConlluDocument({ raw, client: withOps(client) });
+
+  const feat = doc.layerInfo.featuresLayer.spans.find((s) => s.value === 'Gender=Masc');
+  const before = doc.layerInfo.featuresLayer.spans.length;
+  assert.equal(
+    await doc.updateAnnotation(feat.tokens[0], 'features', 'Case=Nom|Gender=Fem'),
+    false,
+  );
+  assert.match(doc.error, /\|/);
+  assert.deepEqual(client.calls, []);
+  assert.equal(doc.layerInfo.featuresLayer.spans.length, before);
+});
+
 test('typing a feature the word does not have creates a span and confirms nothing', async () => {
   const raw = rawDocFromConllu(INPUT, 'mut-doc');
   const client = provClient();
