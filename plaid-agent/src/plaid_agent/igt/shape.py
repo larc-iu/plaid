@@ -419,6 +419,8 @@ def t_split_sentence(ws: Workspace, document: str, ref: str, before_word: int) -
     doc = ws.doc(document)
     reshape_guards(ws, doc)
     s = _need(resolve(doc, ref), Sentence, ref)
+    # before_word is a word number, read when the sentence was.
+    ws.refuse_moved_sentence(doc, s.index, ref)
     _guard(ws, s, ref)
     try:
         n = whole(before_word, 'before_word')

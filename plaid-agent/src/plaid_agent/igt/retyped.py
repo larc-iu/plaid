@@ -726,7 +726,7 @@ def resolve_in(ws, doc, ref: str, renumber: bool = True):
     read."""
     r = read_ref(ref, 'wm')
     if (r is not None and not r.by_form and r.parts[0] is not None and (not r.form or r.parts[1] is not None)
-            and 1 <= r.sentence <= len(doc.sentences) and not getattr(ws, 'restaging', False)):
+            and 1 <= r.sentence <= len(doc.sentences)):
         ws.refuse_moved_sentence(doc, r.sentence, ref)
     try:
         obj = resolve(doc, ref)

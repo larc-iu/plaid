@@ -554,7 +554,7 @@ class BaseWorkspace:
         turn (:meth:`note_numbered`) and a sentence never read are not
         asked. The refusal names every sentence of the document that has
         changed since it was read, so one read puts them all right."""
-        if not self.planning:
+        if not self.planning or getattr(self, 'restaging', False):
             return
         before = self.read_before.get(doc.id) or {}
         now = self.read_now.get(doc.id) or {}

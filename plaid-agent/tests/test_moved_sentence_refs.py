@@ -287,3 +287,22 @@ def test_numbers_a_concordance_showed_in_an_earlier_turn_are_held_to_that(monkey
     c.edit(_insert_word)
     out, = c.turn(_gloss('s1.w2'))
     assert out == f'Error: {MOVED}'
+
+
+def test_a_split_before_a_remembered_word_number_is_refused(monkeypatch):
+    """REV-SVB-2: before_word is a word number read earlier."""
+    c = Conversation(monkeypatch)
+    c.turn(READ_S1)
+    c.edit(_insert_word)
+    out, = c.turn(('split_sentence', {'document': 'Text 1', 'ref': 's1', 'before_word': 3}))
+    assert out == ('Error: "Text 1" s1: the words of s1 have changed since this conversation read them. Read s1 '
+                   'again with read_document and name its words by the numbers it shows now.'), out
+
+
+def test_analyze_sentence_names_words_by_their_order_and_is_held_to_the_read(monkeypatch):
+    c = Conversation(monkeypatch)
+    c.turn(READ_S1)
+    c.edit(_insert_word)
+    out, = c.turn(('analyze_sentence', {'document': 'Text 1', 'sentences': [
+        {'ref': 's1', 'words': ['Ali-di Ali-ERG', 'gam fish', 'akuna see']}]}))
+    assert 'the words of s1 have changed since this conversation read them' in out, out
