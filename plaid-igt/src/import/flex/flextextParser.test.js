@@ -339,9 +339,10 @@ describe('parseFlextextFiles', () => {
       { name: 'c.flextext', xml: bare },
     ]);
     expect(many.texts.map((t) => t.guid)).toEqual(['t-1', 'c.flextext#1', 'c.flextext#1 (2)']);
-    expect(many.warnings).toContain('“A dog” is in both a.flextext and b.flextext. Read once.');
     const names = buildDocuments(many).documents.map((d) => d.name);
     expect(names).toEqual(['c', 'c', 'Kici']);
+    // Named as its document is, not by the first title in the file (H8-6).
+    expect(many.warnings).toContain('“Kici” is in both a.flextext and b.flextext. Read once.');
   });
 
   it('keeps two untitled texts of one file apart', () => {

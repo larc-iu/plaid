@@ -26,6 +26,7 @@
 
 import { SaxesParser } from 'saxes';
 import { readAffixMarkers } from '../../domain/affixMarkers.js';
+import { pickEn } from './fwdataParser.js';
 import { countOf } from '../../../../plaid-ui/src/lib/plural.js';
 
 const nfc = (s) => String(s ?? '').normalize('NFC');
@@ -543,6 +544,9 @@ export function parseFlextextFiles(files) {
   const declared = new Map(); // lang → vernacular?
   const texts = [];
   const seen = new Map(); // guid → file it was first read from
+  // Texts read twice, said once the baseline is known, so each is named as
+  // its document will be.
+  const twice = [];
   const sorted = [...files].sort((a, b) =>
     a.name.localeCompare(b.name, undefined, { numeric: true }),
   );
@@ -562,8 +566,7 @@ export function parseFlextextFiles(files) {
         parsed.texts.length > 1 ? `${stemOf(file.name)} ${i + 1}` : stemOf(file.name);
       if (t.guid) {
         if (seen.has(t.guid)) {
-          const name = Object.values(t.names ?? {})[0] ?? fallbackName;
-          warnings.push(`“${name}” is in both ${seen.get(t.guid)} and ${file.name}. Read once.`);
+          twice.push({ names: t.names, fallbackName, files: [seen.get(t.guid), file.name] });
           return;
         }
         seen.set(t.guid, file.name);
@@ -588,6 +591,11 @@ export function parseFlextextFiles(files) {
       ...[...declared].filter(([, v]) => v).map(([l]) => l),
     ]),
   ];
+  // As buildDocuments names the document: the baseline's title, then English.
+  for (const { names, fallbackName, files } of twice) {
+    const name = names?.[vernacular[0]] ?? pickEn(names) ?? fallbackName;
+    warnings.push(`“${name}” is in both ${files[0]} and ${files[1]}. Read once.`);
+  }
   // Analysis writing systems, the most used first: the first is the one a
   // project's glosses are taken to be in when there is only one.
   const analysisUse = new Map();
