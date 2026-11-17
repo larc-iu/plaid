@@ -928,7 +928,7 @@ The assistant then drafts the job as a card in the conversation, headed **Propos
 * **Documents**: the documents the job works, or **All documents** with their number.
 * **Fills**: what the job may fill, such as segmentation, a field or an orthography, or **Nothing** for a job that only checks or counts.
 * **Text**: **Unchanged**, or **May be edited** when the job may retype, split, merge or delete words and sentences.
-* **Instructions**: what the job's model reads with every piece of its work, at most 2,000 characters. You can edit them on the card.
+* **Instructions**: what the job's model reads with every part of its work, at most 2,000 characters. You can edit them on the card.
 
 A job that may edit the text can be held to fill only the words it adds, and its card then says **Fills only the words this job adds**.
 A word the job types over whole counts as a word it adds, and so does the second half of a word it splits, but a respelled word does not.
@@ -1005,7 +1005,7 @@ A job first plans how to cut the work, and the **Plan** line on its page says ho
 
 The line then names what the job fills, such as **Fills: segmentation, Morph Gloss.** or **Fills nothing.**, and ends **Text may be edited.** when the job may edit the text.
 A word, a morpheme or a sentence is empty for a field when the field holds no value on it, and a word is empty for segmentation when it has no morpheme analysis.
-Each piece of the work is done by the assistant with the project's guidelines, the instructions, and what the planning added to them, which the page shows as **Assistant's instructions**.
+Each part of the work is done by the assistant with the project's guidelines, the instructions, and what the planning added to them, which the page shows as **Assistant's instructions**.
 
 A plan in stretches of sentences can be limited to the sentences matching a search, such as every sentence with a given gloss.
 The Plan line then names the search and counts what it matched, such as **Worked in stretches of sentences, only the sentences matching Gloss "be.3SG": 33 sentences in 24 documents.**
@@ -1028,7 +1028,7 @@ Each opens to the job's page.
 
 A new job is **Waiting** until the job worker takes it, and its page shows **Waiting since** and how many jobs are ahead of it, such as **2 jobs of other projects ahead**.
 A job that runs is **Running**, with what it is doing beside it: **Checking**, **Planning**, **Working**, **Making analyses consistent** or **Writing the report**.
-A line under it says where it is, such as **Story B: sentences 1 to 5 of 17. 3 steps in this piece.**
+A line under it says where it is, such as **Story B: sentences 1 to 5 of 17. 3 steps in this part.**
 The page also gives the instructions, the plan, who started the job, when, how long it has run and the AI model.
 When the worker has not reported for two minutes, the page says **No worker has reported since** and the time, and the job goes on once a worker runs again.
 
@@ -1043,11 +1043,11 @@ Besides **Waiting**, **Working** and **Done**, a document can read:
 * **Nothing found** and **Left out by the plan**: the plan did not work it.
 * **Deleted**: the document was deleted.
 
-Under the table, **Work so far**, or **Work, in order** once the job has ended, lists each piece of the work as it finishes, newest first.
+Under the table, **Work so far**, or **Work, in order** once the job has ended, lists each part of the work as it finishes, newest first.
 A row gives its document and sentences, linked into the editor, or **All documents**, when it ended and how many steps it took, what it wrote, the sentences it skipped (**Skipped:**) and the changes refused (**Not done, refused:**), and the assistant's note on it.
 The notes are the assistant's own words, not checked against the counts.
-A piece after a text edit reads **after the text edit**, or **the words added** for a job that fills only those.
-For a job that fills nothing, **Show findings** on a row shows what that piece found.
+A part after a text edit reads **after the text edit**, or **the words added** for a job that fills only those.
+For a job that fills nothing, **Show findings** on a row shows what that part found.
 
 While the job runs, each document's **Changes so far** opens what the job has written there until now.
 A document the job is working in shows a banner, **Assistant job**, with its progress.
@@ -1095,12 +1095,12 @@ Then come, where there are any:
 
 Under a document in **Left blank**, **Not done, refused:** lists the changes the job could not make, which wrote nothing:
 
-* **Change to words the job retyped, split, merged or deleted** and **Retype, split, merge or delete of words the job also changed**: one piece both reshaped words and changed them.
-* **Change that uses an entry the job made** and **Change that uses an entry the job deleted or merged**: the change needed an entry that the same piece created, deleted or merged.
+* **Change to words the job retyped, split, merged or deleted** and **Retype, split, merge or delete of words the job also changed**: one part both reshaped words and changed them.
+* **Change that uses an entry the job made** and **Change that uses an entry the job deleted or merged**: the change needed an entry that the same part created, deleted or merged.
 * **Link inside a multi-word expression the job made**.
 * **Analysis of a word in a sentence the job retyped**.
 * **Value on a word or sentence the job did not add**: the job fills only the words it adds.
-* **Outside the piece's own sentences**: the change was in a sentence the piece was not given.
+* **Outside the part's own sentences**: the change was in a sentence the part was not given.
 
 A job that fills nothing, such as a check, shows its **Findings** first on its page, in full, with **Copy** and **Written by the assistant, not checked against the counts below.**
 A job that is undone says so at the top of its report, and its totals read **What the job had written**.
@@ -1123,7 +1123,7 @@ Restoring a document to the moment before the job (see <<_history>>) also takes 
 
 **Discuss with the assistant**, on the page of a job that has ended, where an assistant is online and the window has room for the panel, opens the assistant panel on a new conversation about that job.
 The assistant reads the job's report and tells you what the job did.
-A job's record holds what it did, the model's note on each piece of its work, and nothing more of why.
+A job's record holds what it did, the model's note on each part of its work, and nothing more of why.
 The report is as the job ended, so the assistant reads the documents as they are now before it plans a change, and you approve the change as any other plan.
 This is how a job's proposed changes are made: ask the assistant for the ones you want.
 From any page, the assistant can also list the project's jobs and read their reports.

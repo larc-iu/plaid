@@ -2329,7 +2329,7 @@ describe('the job page', () => {
       ],
     };
     const v = await mount(clientOf(jobOf({ state: 'done', report })));
-    expect(text(v.container)).toContain('s1 Outside the piece’s own sentences');
+    expect(text(v.container)).toContain('s1 Outside the part’s own sentences');
     await v.unmount();
   });
 
@@ -2398,7 +2398,7 @@ describe('the job page', () => {
       ),
     );
     expect(line(v.container)).toBe(
-      'Findings of 59 of 80 pieces are shown here, each under its heading. 21 are left out: each piece’s findings are on its row of the work list.',
+      'Findings of 59 of 80 parts are shown here, each under its heading. 21 are left out: each part’s findings are on its row of the work list.',
     );
     await v.unmount();
     v = await mount(
@@ -2409,7 +2409,7 @@ describe('the job page', () => {
         }),
       ),
     );
-    expect(line(v.container)).toBe('Findings of 2 pieces, each under its heading.');
+    expect(line(v.container)).toBe('Findings of 2 parts, each under its heading.');
     await v.unmount();
     v = await mount(
       clientOf(jobOf({ state: 'done', report: { ...base, findings: 'One report.' } })),

@@ -27,7 +27,7 @@ const jobOf = (over = {}) => ({
   startedByName: 'Wren',
   state: 'running',
   phase: 'working',
-  message: 'Sentences 3 to 4 of 4. 2 steps in this piece.',
+  message: 'Sentences 3 to 4 of 4. 2 steps in this part.',
   createdAt: '2026-11-12T10:00:00Z',
   startedAt: '2026-11-12T10:01:00Z',
   finishedAt: null,

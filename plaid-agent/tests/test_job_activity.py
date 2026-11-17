@@ -162,9 +162,9 @@ def test_the_heartbeat_line_counts_the_steps_of_the_piece_and_sends_no_heartbeat
     assert run_job(job, runner(job))['state'] == 'done'
     said = [m for m, _ in lines]
     assert said == ['Sentences 1 to 2 of 4.',
-                    'Sentences 1 to 2 of 4. 6 steps in this piece.',
+                    'Sentences 1 to 2 of 4. 6 steps in this part.',
                     'Sentences 3 to 4 of 4.',
-                    'Sentences 3 to 4 of 4. 6 steps in this piece.'], said
+                    'Sentences 3 to 4 of 4. 6 steps in this part.'], said
     beats = [b for _, b in lines]
     assert beats[0] == beats[1] and beats[2] == beats[3], 'a call sends no heartbeat'
 
@@ -199,7 +199,7 @@ def test_a_whole_document_piece_says_so_on_its_line(monkeypatch):
         return reply('Done.')
     use(monkeypatch, Model(answer))
     run_job(job, runner(job))
-    assert lines[0] == 'The whole document as one piece.', lines
+    assert lines[0] == 'The whole document as one part.', lines
 
 
 def test_planning_counts_its_steps_on_its_line(monkeypatch):

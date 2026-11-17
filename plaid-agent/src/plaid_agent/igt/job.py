@@ -243,7 +243,7 @@ def piece_note(text) -> str:
 FINDINGS_CUT = '(The rest of this report is cut.)'
 #: How a piece's findings on its summary row say they were cut to the row's
 #: cap (REV-RPF2-4).
-PIECE_FINDINGS_CUT = '(The rest of this piece’s findings is cut.)'
+PIECE_FINDINGS_CUT = '(The rest of this part’s findings is cut.)'
 #: The note of a piece of a job that fills nothing that kept findings: one
 #: sentence, never its findings flattened and cut, shown a second time under
 #: them (REV-RPF-P-10).
@@ -2689,7 +2689,7 @@ class IgtRunner:
         # (RPF-A5): a document the piece did not show is done, never worked
         # again in stretches that would each do the whole work once more.
         nothing = self.fills_nothing()
-        job.set(current_document=None, message=f'Working on {_n(len(live), "document")} as one piece.')
+        job.set(current_document=None, message=f'Working on {_n(len(live), "document")} as one part.')
         while True:
             try:
                 staged = core_job.through_core(job, lambda: self.selection_work(project, live),
@@ -3103,7 +3103,7 @@ class IgtRunner:
         back when the next document starts. ``first`` and ``last`` are the
         sentences' own numbers and ``total`` the document's sentences, as the
         work list names a piece "s3 to s7" (RP4-5 F4: one numbering)."""
-        said = 'the whole document as one piece' if whole else f'sentences {first} to {last} of {total}'
+        said = 'the whole document as one part' if whole else f'sentences {first} to {last} of {total}'
         return f'{name}: {said}.' if len(self.job.order) > 1 else said[0].upper() + said[1:] + '.'
 
     def matching_line(self, doc, part: List[Sentence]) -> str:
@@ -3479,7 +3479,7 @@ class IgtRunner:
         seed(ws.seen, system, transcript, lambda tool, args: True)
         self.steps_now = 0
         kit = Toolkit(tools_for=lambda w: toolkit.job_piece_tools(w, plan_only=w.decide_now),
-                      call_tool=self.counting(toolkit.job_piece_call, ' in this piece'), tracer=TRACER)
+                      call_tool=self.counting(toolkit.job_piece_call, ' in this part'), tracer=TRACER)
         self.trace(ws, system, kit, folder)
 
         def decided():
@@ -3518,7 +3518,7 @@ class IgtRunner:
         """``call_tool`` that counts each step (each tool call, as the chat
         counts a turn's steps, ``core.trace.plural``) in ``steps_now``, and
         puts the count on the heartbeat's line after its own words:
-        "Sentences 26 to 30 of 41. 3 steps in this piece.", "Planning the
+        "Sentences 26 to 30 of 41. 3 steps in this part.", "Planning the
         work. 2 steps." Set with :meth:`Job.say`, so the next heartbeat
         carries it and none is sent for it (BRIEF LV, REV-LV-4)."""
         job = self.job

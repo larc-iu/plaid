@@ -30,7 +30,7 @@ export const STARTER_TEXTS = [
 
 // How a job's work was cut, in one line, from its plan (CONTRACT, added by
 // JG, JH and EW): "Worked in stretches of sentences, only those with something
-// empty, 2 in smaller pieces."
+// empty, 2 in smaller parts."
 const PIECES_TEXT = {
   sentences: 'Worked in stretches of sentences',
   document: 'Worked one document at a time',
@@ -71,7 +71,7 @@ export const planText = (plan) => {
       text += `, ${tooLong.toLocaleString()} ${failed || apart ? 'of them ' : ''}in stretches of sentences`;
     }
   } else if (fallback.length) {
-    text += `, ${fallback.length.toLocaleString()} in smaller pieces`;
+    text += `, ${fallback.length.toLocaleString()} in smaller parts`;
   }
   text += '.';
   // What the plan fills, by the names the report gives (REV-DF-D-1).
@@ -270,11 +270,11 @@ const oneStepCounts = (docs) => {
 // report (a single piece's, or the final context's from them all).
 export const findingsPiecesText = (pieces, cut) => {
   if (!(pieces > 1)) return null;
-  if (!(cut > 0)) return `Findings of ${countOf(pieces, 'piece')}, each under its heading.`;
+  if (!(cut > 0)) return `Findings of ${countOf(pieces, 'part')}, each under its heading.`;
   return (
-    `Findings of ${(pieces - cut).toLocaleString()} of ${pieces.toLocaleString()} pieces are shown ` +
+    `Findings of ${(pieces - cut).toLocaleString()} of ${pieces.toLocaleString()} parts are shown ` +
     `here, each under its heading. ${cut.toLocaleString()} ${cut === 1 ? 'is' : 'are'} left out: ` +
-    'each piece’s findings are on its row of the work list.'
+    'each part’s findings are on its row of the work list.'
   );
 };
 
@@ -502,7 +502,7 @@ const REFUSED_TEXT = {
   // A change outside the piece's own sentences (RP3-2), a text edit too
   // under onlynew (REV-RPF3B-5). Named by where, as it was never made
   // (REV-RPF3B-10).
-  outside: 'Outside the piece’s own sentences',
+  outside: 'Outside the part’s own sentences',
 };
 export const refusedText = (code) => REFUSED_TEXT[code] ?? 'Refused';
 

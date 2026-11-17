@@ -93,8 +93,8 @@ def test_the_line_stays_steady_while_the_job_takes_turns_with_people():
     job.yield_to_people()
     steady = f'Sentences 1 to 5 of 20. {TAKING_TURNS}'
     assert job.status['message'] == steady and job.status['waiting_for'] is None, 'the pause over, the line stays'
-    job.say('Sentences 1 to 5 of 20. 2 steps in this piece.')
-    assert job.status['message'] == f'Sentences 1 to 5 of 20. 2 steps in this piece. {TAKING_TURNS}'
+    job.say('Sentences 1 to 5 of 20. 2 steps in this part.')
+    assert job.status['message'] == f'Sentences 1 to 5 of 20. 2 steps in this part. {TAKING_TURNS}'
     job._sleep(JOB_YIELD_STEADY_S)
     job.set(message='Sentences 6 to 10 of 20.')
     assert job.status['message'] == 'Sentences 6 to 10 of 20.', 'quiet for long enough: the plain line'
