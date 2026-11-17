@@ -32,6 +32,7 @@ import { MarkedText } from '@ui/components/shared/MarkedText.jsx';
 import { hitTo, rememberCaret } from '../search/hitLinks.js';
 import { groupByDoc } from './bulkPlan.js';
 import { countOf } from './bulkShared.js';
+import { isEnter } from '@ui/lib/chords.js';
 
 // The chrome every Bulk Edit panel is built from: the tick box, the grouped
 // match list, the selection summary, the apply bar, the find/replace fields,
@@ -255,7 +256,7 @@ export const SubstitutionFields = ({
         dir={matchType === 'regex' ? 'ltr' : 'auto'}
         value={find}
         onChange={(e) => setFind(e.target.value)}
-        onKeyDown={(e) => e.key === 'Enter' && onEnter()}
+        onKeyDown={(e) => isEnter(e) && onEnter()}
         placeholder={matchType === 'regex' ? 'pattern, e.g. ([aeiou])h' : 'text'}
         spellCheck={false}
       />
@@ -283,7 +284,7 @@ export const SubstitutionFields = ({
         dir={matchType === 'regex' ? 'ltr' : 'auto'}
         value={repl}
         onChange={(e) => setRepl(e.target.value)}
-        onKeyDown={(e) => e.key === 'Enter' && onEnter()}
+        onKeyDown={(e) => isEnter(e) && onEnter()}
         placeholder={matchType === 'regex' ? 'replacement, $1 for groups' : 'replacement'}
         spellCheck={false}
       />

@@ -161,6 +161,13 @@ export const isModifierKeydown = (e) => BARE_MODIFIERS.has(e?.key);
 export const isImeKey = (e) => !!(e?.nativeEvent ?? e)?.isComposing || e?.keyCode === 229;
 
 /**
+ * An Enter that is the person's own: never the one an input method takes to
+ * confirm a candidate (see `isImeKey`). Every Enter that sends or commits
+ * typed text asks this, or returns early on `isImeKey` for every key.
+ */
+export const isEnter = (e) => e?.key === 'Enter' && !isImeKey(e);
+
+/**
  * Would this chord type into a text box? True for a bare character or Space,
  * with or without Shift. Such a chord can only belong to an action that fires
  * outside text boxes.

@@ -23,6 +23,7 @@ import { Label } from '../ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../ui/dialog';
 import { TextDirectionField } from './TextDirectionField.jsx';
+import { isEnter } from '../../lib/chords.js';
 
 /**
  * The document's own tab: what it is called, which way it reads, a copy of it,
@@ -200,7 +201,7 @@ export const DocumentDetailsPage = ({
                 id="document-name"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleRename()}
+                onKeyDown={(e) => isEnter(e) && handleRename()}
                 disabled={readOnly || doc.isSaving}
               />
               {!readOnly && (
@@ -283,7 +284,7 @@ export const DocumentDetailsPage = ({
               value={copyName}
               placeholder={doc.name}
               onChange={(e) => typeCopyName(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && !copying && handleCopy()}
+              onKeyDown={(e) => isEnter(e) && !copying && handleCopy()}
               aria-invalid={copyTaken ? true : undefined}
               aria-describedby={copyTaken ? 'copy-name-taken' : undefined}
               autoFocus

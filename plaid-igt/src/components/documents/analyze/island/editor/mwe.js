@@ -195,6 +195,7 @@ export const mwe = {
     e.igtMweSeen = true;
     if (!this._canLinkMwe()) return false;
     const sel = this._mweSel;
+    // enter-ok: cells return on isImeKey first, chips take no typed text
     if (e.key === 'Enter' && sel && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey) {
       e.preventDefault();
       e.stopPropagation();

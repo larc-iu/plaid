@@ -5,6 +5,7 @@ import { nameKey } from '../../lib/nameKey.js';
 import { ConfirmDeleteDialog } from './ConfirmDeleteDialog.jsx';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
+import { isEnter } from '../../lib/chords.js';
 
 // How many other projects stand in the way of the delete, from core's 409
 // (`other-projects`), or null for any other answer.
@@ -159,7 +160,7 @@ export const DeleteProjectDialog = ({
             value={typed}
             onChange={(e) => setTyped(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.nativeEvent.isComposing) handleDelete(e);
+              if (isEnter(e)) handleDelete(e);
             }}
             disabled={deleting}
             autoFocus

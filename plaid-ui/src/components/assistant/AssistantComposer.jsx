@@ -3,6 +3,7 @@ import { Paperclip, Send, X } from 'lucide-react';
 import { Button } from '../ui/button.jsx';
 import { Textarea } from '../ui/textarea.jsx';
 import { cn } from '../../lib/utils.js';
+import { isImeKey } from '../../lib/chords.js';
 import { ACCEPT } from './attachments.js';
 import { AttachmentChip } from './AttachmentChip.jsx';
 import { AddProject, ProjectChip } from './ProjectChips.jsx';
@@ -94,7 +95,11 @@ export const AssistantComposer = ({
   const full = g.full;
 
   const onKeyDown = (e) => {
+    // A key pressed while an input method composes is the input method's:
+    // its Enter confirms a candidate and neither sends nor picks a row.
+    if (isImeKey(e)) return;
     if (mentions.handleKeyDown(e)) return;
+    // enter-ok: the handler returned on isImeKey above
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       if (!full && !offerNew && !held) onSend();

@@ -72,6 +72,7 @@ export const conflicts = {
       e.igtNoteDismissed = true;
       return;
     }
+    // enter-ok: the cell's keydown returned on isImeKey first
     if (e.key !== 'Enter' || e.shiftKey || e.ctrlKey || e.metaKey || e.altKey) return;
     if (el.value !== (el.dataset.orig ?? '')) return;
     // After a split or merge only the stored value is kept: Enter goes on as

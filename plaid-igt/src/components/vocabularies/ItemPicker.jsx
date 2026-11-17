@@ -4,6 +4,7 @@ import { Popover, PopoverAnchor, PopoverContent } from '@ui/components/ui/popove
 import { cn } from '@ui/lib/utils';
 import { collationKey } from '@ui/domain/collation';
 import { FormLabel } from './FormLabel';
+import { isImeKey } from '@ui/lib/chords.js';
 
 // Find one entry of a vocabulary by typing part of its form or gloss, and
 // pick it. Used wherever an entry is chosen as a value: a reference field,
@@ -60,6 +61,8 @@ export const ItemPicker = ({
   };
 
   const onKeyDown = (e) => {
+    // A key pressed while an input method composes is the input method's.
+    if (isImeKey(e)) return;
     if (!open || !matches.length) {
       if (e.key === 'Escape') setOpen(false);
       return;
@@ -71,6 +74,7 @@ export const ItemPicker = ({
       e.preventDefault();
       setActive((a) => Math.max(a - 1, 0));
     } else if (e.key === 'Enter') {
+      // enter-ok: the handler returned on isImeKey above
       e.preventDefault();
       if (matches[active]) pick(matches[active]);
     } else if (e.key === 'Escape') {

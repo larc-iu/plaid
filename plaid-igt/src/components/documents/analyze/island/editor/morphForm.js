@@ -23,6 +23,7 @@ export const morphForm = {
         // A backslash code half-typed into the buffer: `-` and `=` belong to
         // the code (`\i-` is ɨ, `\-5` is ˥), not to a new boundary.
         const midCode = composePending(st.buffer, st.buffer.length, { escapedAt: st.escapedAt });
+        // enter-ok: the cell's keydown returned on isImeKey first
         if (e.key === 'Enter' || e.key === 'Tab') st.commitKey = e.key;
         else if (e.key === 'Backspace') {
           // Takes back whatever was typed last: a boundary if one sits at the
@@ -62,6 +63,7 @@ export const morphForm = {
       // The review sweep's chords belong to the container listener.
       if (this._isSweepChord(e)) return;
       if (this._maybeArrowOutOfCell(e)) return;
+      // enter-ok: the cell's keydown returned on isImeKey first
       if (e.key === 'Enter') {
         e.preventDefault();
         if (!this._navMove(e.target, e.shiftKey ? 'prev' : 'next')) e.target.blur();

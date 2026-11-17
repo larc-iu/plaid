@@ -111,6 +111,7 @@ export const alternatives = {
     // never takes it.
     // Any Ctrl/Cmd+Enter as well, whatever it is bound to now: with a modifier
     // held it is never "take the highlighted row".
+    // enter-ok: the cell's keydown returned on isImeKey first
     if (keys.is('analyze.accept', e) || (e.key === 'Enter' && (e.ctrlKey || e.metaKey))) {
       this._closeAlts();
       return false;
@@ -130,6 +131,7 @@ export const alternatives = {
       }
       return true;
     }
+    // enter-ok: the cell's keydown returned on isImeKey first
     if (e.key === 'Enter') {
       // Whose key is this, the list's or the cell's? A list the person asked
       // for (Alt+Down, or moved in) takes Enter on its highlighted row,

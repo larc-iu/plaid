@@ -27,6 +27,7 @@ import { textIncludes } from '@ui/domain/collation.js';
 import { sameConfig } from '@ui/domain/configCells.js';
 import { nameKey } from '@ui/lib/nameKey.js';
 import { countOf, plural } from '@ui/lib/plural.js';
+import { isEnter } from '@ui/lib/chords.js';
 
 // The editor for a project's tagsets. Owns a draft of the whole map and hands
 // the whole map back on every discrete change (add/delete/toggle) or on blur
@@ -591,7 +592,7 @@ export const TagsetsManager = ({
                       value={newValue}
                       onChange={(e) => setNewValue(e.currentTarget.value)}
                       onKeyDown={async (e) => {
-                        if (e.key !== 'Enter') return;
+                        if (!isEnter(e)) return;
                         const v = newValue.trim();
                         if (!v) return;
                         await handleAddValues(name, [{ value: v }]);
@@ -702,7 +703,7 @@ export const TagsetsManager = ({
           placeholder="New tagset name (e.g. Leipzig)"
           value={newTagsetName}
           onChange={(e) => setNewTagsetName(e.currentTarget.value)}
-          onKeyDown={(e) => e.key === 'Enter' && handleAddTagset()}
+          onKeyDown={(e) => isEnter(e) && handleAddTagset()}
         />
         <Button onClick={handleAddTagset} disabled={!newTagsetName.trim()}>
           <Plus className="h-4 w-4" /> Add tagset
@@ -854,7 +855,7 @@ const ValueRow = ({
                 placeholder="value"
                 value={newVal}
                 onChange={(e) => setNewVal(e.currentTarget.value)}
-                onKeyDown={(e) => e.key === 'Enter' && addExtra()}
+                onKeyDown={(e) => isEnter(e) && addExtra()}
               />
               <Button size="sm" variant="outline" disabled={!newKey.trim()} onClick={addExtra}>
                 <Plus className="h-3.5 w-3.5" /> Add

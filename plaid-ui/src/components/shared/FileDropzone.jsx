@@ -48,6 +48,7 @@ export const FileDropzone = ({
         clickable
           ? (e) => {
               if (disabled || e.target !== e.currentTarget) return;
+              // enter-ok: a drop zone, it takes no typed text
               if (e.key === 'Enter' || e.key === ' ') {
                 e.preventDefault();
                 open();

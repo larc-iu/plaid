@@ -14,6 +14,7 @@ import { loadEntryCounts } from '@/domain/vocabEntryCounts.js';
 import { countOf } from '@ui/lib/plural.js';
 import { sameNameIgnoringCase } from '@/domain/nameMatch';
 import { RowControls } from '@/components/shared/RowControls';
+import { isEnter } from '@ui/lib/chords.js';
 
 // A row the user may not change: a vocabulary of this project (`own`, linked
 // for good), or an unlinked vocabulary whose row says so (`canLink: false`,
@@ -237,7 +238,7 @@ export const VocabularyManager = ({
   };
 
   const handleKeyPress = (event) => {
-    if (event.key === 'Enter') {
+    if (isEnter(event)) {
       handleAddCustomVocab();
     }
   };

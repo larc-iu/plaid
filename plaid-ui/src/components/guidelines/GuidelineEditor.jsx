@@ -21,6 +21,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover.jsx';
 import { cn } from '../../lib/utils.js';
 import { GUIDELINE_EXTENSIONS, serializeMarkdown } from './guidelineMarkdown.js';
 import './guidelines.css';
+import { isEnter } from '../../lib/chords.js';
 
 // The body editor. Rich text by default, with the Markdown underneath one
 // click away.
@@ -102,7 +103,7 @@ const LinkButton = ({ editor }) => {
               aria-label="Address"
               onChange={(e) => setHref(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === 'Enter') {
+                if (isEnter(e)) {
                   e.preventDefault();
                   apply();
                 }

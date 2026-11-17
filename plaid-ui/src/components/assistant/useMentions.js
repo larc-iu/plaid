@@ -114,6 +114,7 @@ export const useMentions = ({ client, projectId, enabled, text, setText, inputRe
       setActiveId(items[at].id);
       return true;
     }
+    // enter-ok: the composer returns on isImeKey before it asks this hook
     if (e.key === 'Enter' || e.key === 'Tab') {
       const picked = items.find((m) => m.id === activeId) || items[0];
       e.preventDefault();

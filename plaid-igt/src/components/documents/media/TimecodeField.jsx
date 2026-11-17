@@ -3,6 +3,7 @@ import { useSavedOnLeave } from './useSavedOnLeave.js';
 import { cn } from '@ui/lib/utils';
 import { formatTime, parseTime } from './formatTime.js';
 import { keys as keymap } from '@/lib/keymap.js';
+import { isEnter } from '@ui/lib/chords.js';
 
 // A duration as a row of numbers, `m:ss.mmm` (with hours once a recording is
 // that long): one small box per number, digits only. Typing fills the number
@@ -195,7 +196,7 @@ export const TimecodeField = memo(function TimecodeField({
       e.preventDefault();
       const nextKey = neighbour(key, e.key === 'ArrowLeft' ? -1 : 1);
       if (nextKey) focusSegment(nextKey);
-    } else if (e.key === 'Enter') {
+    } else if (isEnter(e)) {
       e.preventDefault();
       commit();
     } else if (e.key === 'Escape') {

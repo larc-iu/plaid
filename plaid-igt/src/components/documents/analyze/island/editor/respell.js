@@ -1,6 +1,7 @@
 import { html, nothing } from 'lit-html';
 import { RESPELL_UNCHANGED, respellRefusal } from '@/domain/respell.js';
 import { keys } from '@/lib/keymap.js';
+import { isImeKey } from '@ui/lib/chords.js';
 
 // Respell one word in place (R51): the word's popover's Respell row, or the
 // respell key on any of the word's cells and chips, opens a small box over the
@@ -89,7 +90,8 @@ export const respell = {
   _respellKeydown(e) {
     // The grid's own keys stay out of the box.
     e.stopPropagation();
-    if (e.isComposing || e.keyCode === 229) return;
+    if (isImeKey(e)) return;
+    // enter-ok: the handler returned on isImeKey above
     if (e.key === 'Enter') {
       e.preventDefault();
       this._commitRespell();

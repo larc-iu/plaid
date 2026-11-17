@@ -504,6 +504,7 @@ export const review = {
       this.doc.discardWordAnalysis(wordId);
       return;
     }
+    // enter-ok: a chip, it takes no typed text
     if (e.key === 'Enter') {
       e.preventDefault();
       // One link, so the pulse is on that link, and focus hops to the next

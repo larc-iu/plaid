@@ -6,6 +6,7 @@ import {
   isReservedChord,
   chordCaps,
   chordText,
+  isEnter,
 } from './chords.js';
 
 const ev = (key, init = {}) => ({ key, code: '', ...init });
@@ -125,5 +126,20 @@ describe('chordCaps', () => {
     expect(chordText('Alt+k', { mac: true })).toBe('⌥+K');
     expect(chordText('Mod+Shift+Enter', { mac: false, words: true })).toBe('Ctrl+Shift+Enter');
     expect(chordText('Alt+ArrowDown', { mac: true, words: true })).toBe('Option+↓');
+  });
+});
+
+describe('isEnter', () => {
+  it('is an Enter that no input method is composing with', () => {
+    expect(isEnter({ key: 'Enter' })).toBe(true);
+    expect(isEnter({ key: 'Enter', shiftKey: true })).toBe(true);
+    expect(isEnter({ key: 'a' })).toBe(false);
+  });
+
+  it('is never the Enter that confirms a candidate', () => {
+    expect(isEnter({ key: 'Enter', isComposing: true })).toBe(false);
+    expect(isEnter({ key: 'Enter', keyCode: 229 })).toBe(false);
+    // A React event carries the flag on its native event.
+    expect(isEnter({ key: 'Enter', nativeEvent: { isComposing: true } })).toBe(false);
   });
 });

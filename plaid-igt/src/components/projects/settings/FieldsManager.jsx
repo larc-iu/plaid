@@ -33,6 +33,7 @@ import { sameNameIgnoringCase } from '@/domain/nameMatch';
 import { RowControls } from '@/components/shared/RowControls';
 import { moveItem } from './useListManager';
 import { TYPE } from '@ui/lib/typeScale.js';
+import { isEnter } from '@ui/lib/chords.js';
 
 // A field's identity is its (scope, name) pair: the same name can exist at
 // two scopes (a FieldWorks import gives "Gloss" and "POS" at both Word and
@@ -516,7 +517,7 @@ export const FieldsManager = ({
   };
 
   const handleKeyPress = (event) => {
-    if (event.key === 'Enter') {
+    if (isEnter(event)) {
       handleAddField();
     }
   };
@@ -717,7 +718,7 @@ export const FieldsManager = ({
                       }
                       onBlur={() => handleSetLang(record.key)}
                       onKeyDown={(e) => {
-                        if (e.key === 'Enter') e.currentTarget.blur();
+                        if (isEnter(e)) e.currentTarget.blur();
                       }}
                     />
                   </td>

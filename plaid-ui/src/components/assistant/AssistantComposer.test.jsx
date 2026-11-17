@@ -116,6 +116,34 @@ describe('AssistantComposer', () => {
     await m.unmount();
   });
 
+  // The Enter that confirms an input method's candidate (Chinese, Japanese)
+  // is the input method's: Chrome flags it `isComposing`, Safari reports it
+  // as keyCode 229.
+  it('never sends on the Enter that ends an input-method composition', async () => {
+    const m = await mount();
+    await m.type('请帮我');
+    await m.press('Enter', { isComposing: true });
+    await m.step(() => {
+      const e = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true });
+      Object.defineProperty(e, 'keyCode', { value: 229 });
+      m.box.dispatchEvent(e);
+    });
+    expect(m.onSend).not.toHaveBeenCalled();
+    await m.press('Enter');
+    expect(m.onSend).toHaveBeenCalledTimes(1);
+    await m.unmount();
+  });
+
+  it('leaves the `@` list alone on the Enter of a composition', async () => {
+    const m = await mount({ offer: SENTENCES });
+    await m.type('about @libres');
+    await m.press('Enter', { isComposing: true });
+    expect(m.box.value).toBe('about @libres');
+    expect(m.rows()).toEqual(['s2nacen libres']);
+    expect(m.onSend).not.toHaveBeenCalled();
+    await m.unmount();
+  });
+
   it('takes Enter for the `@` list instead of sending', async () => {
     // The one real risk in the gesture: this composer sends on Enter, so the
     // list has to be asked first.

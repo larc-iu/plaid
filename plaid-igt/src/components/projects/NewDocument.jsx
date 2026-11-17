@@ -16,6 +16,7 @@ import {
 import { findBaselineTextLayer } from '@/domain/igtConfig';
 import { nameTakenMessage } from '@ui/lib/documentNames.js';
 import { createOnce } from '@ui/lib/createOnce.js';
+import { isEnter } from '@ui/lib/chords.js';
 
 // The Documents tab's way to a new document, beside its heading, for a writer.
 export const NewDocument = ({ projectId, client, canManage }) => {
@@ -155,8 +156,7 @@ export const NewDocument = ({ projectId, client, canManage }) => {
                     setDocumentName(e.target.value);
                   }}
                   onKeyDown={(e) => {
-                    if (e.key === 'Enter' && documentName.trim() && !isCreating)
-                      handleCreateDocument();
+                    if (isEnter(e) && documentName.trim() && !isCreating) handleCreateDocument();
                   }}
                   aria-invalid={nameTaken ? true : undefined}
                   aria-describedby={nameTaken ? 'doc-name-taken' : undefined}

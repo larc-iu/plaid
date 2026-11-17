@@ -40,6 +40,7 @@ export const grid = {
         @click=${openMenu}
         @keydown=${(e) => {
           // preventDefault: Space on a div scrolls the page.
+          // enter-ok: a button or chip, it takes no typed text
           if (e.key === 'Enter' || e.key === ' ') {
             e.preventDefault();
             openMenu(e);
@@ -475,6 +476,7 @@ export const grid = {
                 aria-expanded=${collapsed ? 'false' : 'true'}
                 @click=${(e) => this._openRowMenuFrom(e)}
                 @keydown=${(e) => {
+                  // enter-ok: a button or chip, it takes no typed text
                   if (e.key === 'Enter' || e.key === ' ') {
                     e.preventDefault();
                     this._openRowMenuFrom(e);

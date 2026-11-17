@@ -11,6 +11,7 @@ import { AnalysisCard } from './AnalysisCard.jsx';
 import { countOf, skippedNote, useRun } from './bulkShared.js';
 import { ApplyBar, MatchGroups, Progress, SelectionSummary } from './parts.jsx';
 import { usePreviewFocus } from './usePreviewFocus.js';
+import { isEnter } from '@ui/lib/chords.js';
 
 // Re-analyze: replace one analysis of a word form with another everywhere.
 export const ReanalyzePanel = ({ project, projectId, client, layerInfo }) => {
@@ -110,7 +111,7 @@ export const ReanalyzePanel = ({ project, projectId, client, layerInfo }) => {
               compose
               value={form}
               onChange={(e) => setForm(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && preview()}
+              onKeyDown={(e) => isEnter(e) && preview()}
               placeholder="exactly as it appears in the baseline"
             />
           </div>

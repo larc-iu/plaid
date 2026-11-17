@@ -20,6 +20,7 @@ import { initials } from '@ui/lib/initials.js';
 import { personDye } from '@ui/domain/projectTartan.js';
 import { renderCommentBody } from './renderCommentBody.js';
 import './comments.css';
+import { isEnter } from '@ui/lib/chords.js';
 
 // Keep a composer's submit button in step with what is typed.
 //
@@ -67,7 +68,7 @@ const TRASH = icon(svg`<path d="M3 6h18" /><path d="M8 6V4h8v2" /><path d="M19 6
 const submitOnMetaEnter = (fn) => (e) => {
   // Enter alone inserts a newline: a comment is prose, and losing a paragraph
   // break to an accidental submit is worse than reaching for a modifier.
-  if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+  if (isEnter(e) && (e.metaKey || e.ctrlKey)) {
     e.preventDefault();
     fn();
   }

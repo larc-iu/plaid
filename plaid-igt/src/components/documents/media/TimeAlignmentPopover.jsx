@@ -13,6 +13,7 @@ import { useAlignmentEditor } from './useAlignmentEditor.js';
 import { formatTime } from './formatTime.js';
 import { getStickySpeaker, setStickySpeaker } from './stickySpeaker.js';
 import { snapToWords } from './selectWords.js';
+import { isEnter } from '@ui/lib/chords.js';
 
 // The popover for a stretch dragged out on the timeline: make a segment from
 // new text, or from text already in the baseline. That is all it does. An
@@ -145,7 +146,7 @@ export const TimeAlignmentPopover = ({
     if (e.key === 'Escape') {
       e.preventDefault();
       handleCancel();
-    } else if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+    } else if (isEnter(e) && (e.ctrlKey || e.metaKey)) {
       e.preventDefault();
       handleSave();
     }

@@ -235,6 +235,7 @@ export const cells = {
     // nobody backing out of a cell means to commit what it shows; in FLEx the
     // same chord is "move on without approving", so a hand trained there was
     // writing guesses it meant to skip.
+    // enter-ok: the cell's keydown returned on isImeKey first
     if (e.key === 'Enter' && !e.shiftKey) this._maybeConfirmGuess(e.target);
     if (e.key === 'Enter') {
       // Commit and advance to the next cell in the same tier (the "fill a row
@@ -777,6 +778,7 @@ export const cells = {
       });
       return;
     }
+    // enter-ok: the cell's keydown returned on isImeKey first
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       e.target.blur();

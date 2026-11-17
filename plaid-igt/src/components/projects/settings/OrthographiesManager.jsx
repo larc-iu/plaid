@@ -11,6 +11,7 @@ import { RowControls } from '@/components/shared/RowControls';
 import { useListManager } from './useListManager';
 import { countOf } from '@ui/lib/plural.js';
 import { TYPE } from '@ui/lib/typeScale.js';
+import { isEnter } from '@ui/lib/chords.js';
 
 // The Baseline is first, and cannot be moved or removed. Its row is marked by
 // `isBaseline`, never by its name: an orthography may be called Baseline too.
@@ -110,7 +111,7 @@ export const OrthographiesManager = ({
   };
 
   const handleKeyPress = (event) => {
-    if (event.key === 'Enter') {
+    if (isEnter(event)) {
       handleAddCustomOrthography();
     }
   };

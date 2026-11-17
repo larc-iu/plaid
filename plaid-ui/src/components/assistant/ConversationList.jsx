@@ -35,6 +35,7 @@ import { conversationToMarkdown, markdownFilename } from './exportMarkdown.js';
 import { followable, jobFor } from './jobs.js';
 import { runByLine } from './useAssistantAvailable.js';
 import { useConfirm } from '../shared/ConfirmProvider.jsx';
+import { isEnter } from '../../lib/chords.js';
 
 // The conversation rail: one row per conversation, the assistant picker, and
 // the export menu.
@@ -217,7 +218,7 @@ const RenameBox = ({ title, onDone }) => {
       maxLength={200}
       onChange={(e) => setValue(e.target.value)}
       onKeyDown={(e) => {
-        if (e.key === 'Enter') {
+        if (isEnter(e)) {
           e.preventDefault();
           onDone(value);
         } else if (e.key === 'Escape') {

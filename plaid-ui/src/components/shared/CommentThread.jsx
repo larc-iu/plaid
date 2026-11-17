@@ -10,6 +10,7 @@ import { personDye } from '../../domain/projectTartan.js';
 import { isPending, withReturnedDraft } from '../../domain/CommentStore.js';
 import { useUnsavedDraft } from '../../hooks/useUnsavedDraft.js';
 import { useSavingGuard } from '../../hooks/useSavingGuard.js';
+import { isEnter } from '../../lib/chords.js';
 
 // One thread: its comments oldest first, and a box to add to it.
 //
@@ -21,7 +22,7 @@ import { useSavingGuard } from '../../hooks/useSavingGuard.js';
 // rather than deciding for themselves.
 
 const onMetaEnter = (fn) => (event) => {
-  if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
+  if (isEnter(event) && (event.metaKey || event.ctrlKey)) {
     event.preventDefault();
     fn();
   }

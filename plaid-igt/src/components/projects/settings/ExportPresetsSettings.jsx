@@ -41,6 +41,7 @@ import {
   suggestPresetName,
   EXPORT_FORMATS,
 } from '@/export/presets';
+import { isEnter } from '@ui/lib/chords.js';
 
 const formatLabel = (id) => EXPORT_FORMATS.find((f) => f.id === id)?.label ?? id;
 
@@ -233,7 +234,7 @@ export const ExportPresetsSettings = ({ projectId, client, onProjectUpdate }) =>
                   setNameTouched(true);
                 }}
                 onKeyDown={(e) => {
-                  if (e.key === 'Enter') create();
+                  if (isEnter(e)) create();
                 }}
                 autoFocus
               />

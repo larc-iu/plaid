@@ -59,6 +59,7 @@ import {
   serializeImportReport,
 } from '@/import/vocabBulk';
 import { countOf } from '@ui/lib/plural.js';
+import { isEnter } from '@ui/lib/chords.js';
 
 // What a plan writes, as the server gets it: pending ids named by the ids the
 // server gave them. Two plans that write the same are the same import.
@@ -798,7 +799,7 @@ export const BulkAddDialog = ({
               }}
               onBlur={applyStart}
               onKeyDown={(e) => {
-                if (e.key === 'Enter') e.currentTarget.blur();
+                if (isEnter(e)) e.currentTarget.blur();
                 if (e.key === 'Escape') {
                   startCancelled.current = true;
                   e.currentTarget.blur();

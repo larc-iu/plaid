@@ -28,6 +28,7 @@ import { useEditLog } from '@ui/hooks/useEditLog.js';
 import { shownOrRefused } from './shownOrRefused.js';
 import { caretInRow } from './segmentCaret.js';
 import { useSavedOnLeave } from './useSavedOnLeave.js';
+import { isImeKey } from '@ui/lib/chords.js';
 
 // The transcript: every time-aligned segment as a row you can type into, in
 // time order, with the recording following your focus. This is the pass a
@@ -312,6 +313,8 @@ const SegmentRow = memo(function SegmentRow({
   };
 
   const onTextKeyDown = async (e) => {
+    // A key pressed while an input method composes is the input method's.
+    if (isImeKey(e)) return;
     const step = leavingBy(e) || unitStepOf(e);
     const which = reshapeOf(e);
     if (isPlayChord(e)) {
@@ -321,6 +324,7 @@ const SegmentRow = memo(function SegmentRow({
       e.preventDefault();
       reshape(which, which === 'media.split' ? caretInRow(e.target) : null);
     } else if (e.key === 'Enter') {
+      // enter-ok: the handler returned on isImeKey above
       e.preventDefault();
       // Enter on a row whose edit lost, with nothing typed since, sends that
       // edit over the stored text.
@@ -345,6 +349,8 @@ const SegmentRow = memo(function SegmentRow({
   };
 
   const onSpeakerKeyDown = async (e) => {
+    // A key pressed while an input method composes is the input method's.
+    if (isImeKey(e)) return;
     const step = unitStepOf(e);
     const which = reshapeOf(e);
     if (isPlayChord(e)) {
@@ -354,6 +360,7 @@ const SegmentRow = memo(function SegmentRow({
       e.preventDefault();
       reshape(which);
     } else if (e.key === 'Enter') {
+      // enter-ok: the handler returned on isImeKey above
       e.preventDefault();
       if (await commit()) textRef.current?.focus({ preventScroll: true });
     } else if (step) {
@@ -663,11 +670,14 @@ const ProposalRow = memo(function ProposalRow({
   useSavedOnLeave(() => !acceptedRef.current && draftRef.current.trim() !== '', commit);
 
   const onKeyDown = (e) => {
+    // A key pressed while an input method composes is the input method's.
+    if (isImeKey(e)) return;
     const step = leavingBy(e) || unitStepOf(e);
     if (isPlayChord(e)) {
       e.preventDefault();
       onPlayToggle(proposal);
     } else if (e.key === 'Enter') {
+      // enter-ok: the handler returned on isImeKey above
       e.preventDefault();
       // This row is about to unmount, so focus has to move before it does,
       // exactly as it does after a segment-text commit.
@@ -836,10 +846,13 @@ const NewSegmentRow = memo(function NewSegmentRow({
   };
 
   const onKeyDown = (e) => {
+    // A key pressed while an input method composes is the input method's.
+    if (isImeKey(e)) return;
     if (isPlayChord(e)) {
       e.preventDefault();
       onToggle();
     } else if (e.key === 'Enter') {
+      // enter-ok: the handler returned on isImeKey above
       e.preventDefault();
       submit();
     } else if (
@@ -1473,7 +1486,7 @@ export function TranscriptList({
         // The row move is the same, for the boxes whose own handler did not
         // claim it (a text box commits first, so it claims its own).
         onKeyDown={(e) => {
-          if (e.defaultPrevented) return;
+          if (e.defaultPrevented || isImeKey(e)) return;
           const unit = unitStepOf(e);
           if (unit) {
             const row = e.target.closest?.('[data-row-time]');

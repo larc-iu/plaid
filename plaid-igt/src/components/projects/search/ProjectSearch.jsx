@@ -23,6 +23,7 @@ import { SegmentedControl } from '@ui/components/shared/SegmentedControl.jsx';
 import { MarkedText } from '@ui/components/shared/MarkedText.jsx';
 import { hitTo, rememberCaret } from './hitLinks.js';
 import { countOf } from '@ui/lib/plural.js';
+import { isEnter } from '@ui/lib/chords.js';
 
 export const ProjectSearch = ({ project, projectId, client }) => {
   const layerInfo = useMemo(() => getIgtLayerInfo(project), [project]);
@@ -160,7 +161,7 @@ export const ProjectSearch = ({ project, projectId, client }) => {
             value={queryText}
             onChange={setQueryText}
             onKeyDown={(e) => {
-              if (e.key === 'Enter') runSearch();
+              if (isEnter(e)) runSearch();
             }}
           />
           <Select value={matchType} onValueChange={setMatchType}>

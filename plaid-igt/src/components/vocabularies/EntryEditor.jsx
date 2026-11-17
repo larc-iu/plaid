@@ -10,6 +10,7 @@ import { ItemRefField, EntryPlace, HomographNumber } from './DictionaryPanels';
 import { RolesetBand } from './RolesetBand';
 import { FormLabel } from './FormLabel';
 import { countOf } from '@ui/lib/plural.js';
+import { isEnter } from '@ui/lib/chords.js';
 
 // A titled band of the entry form. The grid is three across when the pane is
 // wide, so a lexicon's dozen fields fit on one screen. Module-level, so a
@@ -157,7 +158,7 @@ export const EntryEditor = ({
   // itself marks the key handled, and a key that finishes an IME composition
   // is the composition's.
   const onFormKeyDown = (e) => {
-    if (e.key !== 'Enter' || e.defaultPrevented || e.nativeEvent.isComposing) return;
+    if (!isEnter(e) || e.defaultPrevented) return;
     if (e.shiftKey || e.altKey) return;
     const mod = e.ctrlKey || e.metaKey;
     const t = e.target;

@@ -18,6 +18,7 @@ import { leavePrecedent, openPrecedent, precedentBase } from '@/domain/precedent
 import { sameFormUnlinked, sameFormUnanalyzed } from '@/domain/linkEverywhere.js';
 import { numHtml } from './shared.js';
 import { keys } from '@/lib/keymap.js';
+import { isImeKey } from '@ui/lib/chords.js';
 import { countOf } from '@ui/lib/plural.js';
 
 // The vocab popover: the ranked entries for a form, the precedent tally that
@@ -413,9 +414,12 @@ export const vocabPopover = {
     // to the search box, Tab stays trapped in the dialog.
     const onCreateEditKey = (e) => {
       e.stopPropagation();
+      // A key pressed while an input method composes is the input method's.
+      if (isImeKey(e)) return;
       // Creating is what this box is for, so only the "and link them all"
       // half of either chord says anything here.
       const takeAll = keys.which(['popover.createAndLinkAll', 'popover.linkAll'], e);
+      // enter-ok: the handler returned on isImeKey above
       if (e.key === 'Enter' || takeAll) {
         e.preventDefault();
         const v = (e.target.value || '').trim();
@@ -461,6 +465,7 @@ export const vocabPopover = {
       // keydown would then be read as "Enter on a focused chip" (a stray
       // confirm + focus hop to the next suggestion).
       e.stopPropagation();
+      if (isImeKey(e)) return;
       // A bound chord is asked about BEFORE the arrows and Enter this panel
       // reads by position: rebinding one of these actions to Alt+Down left it
       // dead, because the row cursor took the key first.
@@ -478,6 +483,7 @@ export const vocabPopover = {
         e.preventDefault();
         this._movePopoverActive(-1, total);
       } else if (e.key === 'Enter' || bound) {
+        // enter-ok: the handler returned on isImeKey above
         e.preventDefault();
         // One chord asks for both at once, and it is a row in the table like
         // the other two rather than a Ctrl-and-Shift test made here.

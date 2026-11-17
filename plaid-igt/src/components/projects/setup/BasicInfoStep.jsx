@@ -1,5 +1,6 @@
 import { Input } from '@ui/components/ui/input';
 import { Label } from '@ui/components/ui/label';
+import { isEnter } from '@ui/lib/chords.js';
 
 export const BasicInfoStep = ({ data, onDataChange, onNext }) => {
   const handleProjectNameChange = (event) => {
@@ -24,7 +25,7 @@ export const BasicInfoStep = ({ data, onDataChange, onNext }) => {
           value={data?.projectName || ''}
           onChange={handleProjectNameChange}
           onKeyDown={(e) => {
-            if (e.key !== 'Enter' || e.nativeEvent.isComposing) return;
+            if (!isEnter(e)) return;
             e.preventDefault();
             onNext?.();
           }}

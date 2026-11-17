@@ -136,6 +136,7 @@ export const Combobox = React.forwardRef(function Combobox(
       if (isOpen) move(event.key === 'ArrowDown' ? 1 : -1);
       else setOpen(true);
     } else if (event.key === 'Enter' && activeOption) {
+      // enter-ok: the handler returned on isImeKey above
       event.preventDefault();
       submit(activeOption);
     } else if (event.key === 'Escape' && isOpen) {

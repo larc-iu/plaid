@@ -4,6 +4,7 @@ import { Input } from '@ui/components/ui/input';
 import { cn } from '@ui/lib/utils';
 import { channelLabel } from '@/domain/media/channelSpeakers';
 import { speakerHue } from '@/domain/speakerHue.js';
+import { isEnter } from '@ui/lib/chords.js';
 
 // The channels of a multichannel recording, one row each: a swatch in the
 // speaker's colour, the speaker (editable, written to the document as
@@ -32,7 +33,7 @@ const SpeakerField = ({ value, label, disabled, onCommit }) => {
       onChange={(e) => setDraft(e.target.value)}
       onBlur={commit}
       onKeyDown={(e) => {
-        if (e.key === 'Enter') {
+        if (isEnter(e)) {
           e.preventDefault();
           commit();
         } else if (e.key === 'Escape') {

@@ -17,6 +17,7 @@ import {
   SelectItem,
 } from '@ui/components/ui/select';
 import { notifySuccess, notifyError, notifyInfo } from '@/utils/feedback';
+import { isEnter } from '@ui/lib/chords.js';
 
 // Radix Select has no empty-string item value, so "no tagset" needs a sentinel.
 const NO_TAGSET = '__none__';
@@ -115,7 +116,7 @@ export const DocumentMetadataManager = ({
   };
 
   const handleKeyPress = (event) => {
-    if (event.key === 'Enter') {
+    if (isEnter(event)) {
       handleAddCustomField();
     }
   };

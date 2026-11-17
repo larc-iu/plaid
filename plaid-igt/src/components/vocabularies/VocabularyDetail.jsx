@@ -119,6 +119,7 @@ import { useHistoryParam } from '@ui/hooks/useHistoryParam.js';
 import { SegmentedControl } from '@ui/components/shared/SegmentedControl.jsx';
 import { TYPE } from '@ui/lib/typeScale.js';
 import { cn } from '@ui/lib/utils';
+import { isEnter } from '@ui/lib/chords.js';
 
 // A tab the past state does not reach. The trigger is an anchor, which the
 // `disabled:` variant does not match, so it keys on Radix's data attribute.
@@ -1240,7 +1241,7 @@ export const VocabularyDetail = () => {
                           }
                           onBlur={() => handleSetLang(field.name)}
                           onKeyDown={(e) => {
-                            if (e.key === 'Enter') e.currentTarget.blur();
+                            if (isEnter(e)) e.currentTarget.blur();
                           }}
                         />
                       )}
@@ -1342,7 +1343,7 @@ export const VocabularyDetail = () => {
           onChange={(event) => setNewFieldName(event.target.value)}
           className="max-w-md flex-1"
           onKeyDown={(event) => {
-            if (event.key === 'Enter') {
+            if (isEnter(event)) {
               handleAddField();
             }
           }}
