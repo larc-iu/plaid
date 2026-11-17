@@ -113,7 +113,7 @@ export const ComposeSettings = ({ project, projectId, client, onProjectUpdate })
 
   const dirty = rowsKey(draft) !== rowsKey(saved);
   // Leaving the section, or the page, with an edit not saved asks first.
-  useUnsavedDraft(dirty ? 'The special characters you have changed' : null);
+  useUnsavedDraft(dirty ? 'The change to special characters' : null);
   const problemsByCode = useMemo(() => {
     const m = new Map();
     for (const row of draft) m.set(row, validateCode(row, draft));

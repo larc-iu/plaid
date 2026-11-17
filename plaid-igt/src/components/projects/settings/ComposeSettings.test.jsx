@@ -469,7 +469,7 @@ describe('an edit not saved yet', () => {
     const char = row(view.container, 'sw').querySelector('input[aria-label="Character"]');
     expect(hasUnsavedDraft()).toBeNull();
     await view.step(() => type(char, 'Ə'));
-    expect(hasUnsavedDraft()).toBe('The special characters you have changed');
+    expect(hasUnsavedDraft()).toBe('The change to special characters');
     await save(page);
     expect(hasUnsavedDraft()).toBeNull();
     await view.unmount();

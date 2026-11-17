@@ -126,7 +126,7 @@ export const LanguagesSettings = ({ project, projectId, client, onProjectUpdate 
 
   const dirty = JSON.stringify(draft) !== JSON.stringify(saved);
   // Leaving the section, or the page, with an edit not saved asks first.
-  useUnsavedDraft(dirty ? 'The languages you have typed' : null);
+  useUnsavedDraft(dirty ? 'What you have typed here' : null);
 
   const save = async () => {
     if (!dirty || saving) return;

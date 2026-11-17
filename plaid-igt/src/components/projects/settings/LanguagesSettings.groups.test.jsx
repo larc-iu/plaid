@@ -51,7 +51,7 @@ describe('LanguagesSettings', () => {
       Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, 'Lezgi');
       input.dispatchEvent(new Event('input', { bubbles: true }));
     });
-    expect(hasUnsavedDraft()).toBe('The languages you have typed');
+    expect(hasUnsavedDraft()).toBe('What you have typed here');
     await view.unmount();
     expect(hasUnsavedDraft()).toBeNull();
   });
