@@ -53,6 +53,16 @@ describe('DocumentTable', () => {
     await unmount();
   });
 
+  // H16-2: overflow-wrap: break-word leaves a cell's min-content width at the
+  // longest unbroken run, so one long name widened the column past the window.
+  it('lets a name break anywhere, so one unbroken name cannot widen the column', async () => {
+    const { container, unmount } = await mount();
+    const name = container.querySelector('tbody tr td:first-child .font-text');
+    expect(name.className).toContain('[overflow-wrap:anywhere]');
+    expect(name.className).not.toContain('break-words');
+    await unmount();
+  });
+
   it('counts a word value spec with core token count, not the query', async () => {
     const spec = { regex: '[^\\p{P}]' };
     const query = vi.fn(async () => ({ results: [['d1', 42]] }));

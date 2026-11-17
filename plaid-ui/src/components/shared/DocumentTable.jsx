@@ -180,9 +180,10 @@ export const DocumentTable = ({
           <div className="min-w-0">
             {/* Wrap rather than truncate: a long title is the only thing
                 distinguishing two recordings, so hiding its tail is worse
-                than a taller row. break-words so a single very long token
-                still cannot force the column wider. */}
-            <div className="break-words font-text font-medium">{d.name}</div>
+                than a taller row. overflow-wrap: anywhere so a single very
+                long token still cannot force the column wider (break-word
+                leaves a table cell's min-content width at the whole token). */}
+            <div className="font-text font-medium [overflow-wrap:anywhere]">{d.name}</div>
           </div>,
         ),
     },
