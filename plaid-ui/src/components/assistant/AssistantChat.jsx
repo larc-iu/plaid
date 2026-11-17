@@ -504,12 +504,10 @@ export const AssistantChat = ({
           // next send.
           if (j.unsentFiles?.length) setAttachments((now) => (now.length ? now : j.unsentFiles));
         }
-        // Back to the composer only from the panel or from nowhere: an
-        // answer or an applied plan never takes the keys from where the
-        // reader is typing (H13-1).
-        const at = document.activeElement;
-        if (!at || at === document.body || sectionRef.current?.contains(at))
-          inputRef.current?.focus();
+        // Back to the composer only from inside the panel: an answer or an
+        // applied plan never takes the keys from the page, where the reader
+        // may be typing or using the page's own keys (H13-1, REV-HFA-10).
+        if (sectionRef.current?.contains(document.activeElement)) inputRef.current?.focus();
       } else {
         // The message went after what had landed meanwhile (`startTurn`).
         if (j.rebased && activeRef.current !== j.conv) {
@@ -660,6 +658,10 @@ export const AssistantChat = ({
     const typed = (textOverride ?? input).trim();
     if (!typed || !canSend || sendingRef.current) return;
     sendingRef.current = true;
+    // Sent from the panel (Enter, the Send button, an example): the
+    // composer has the keys for the answer, where the button would drop
+    // them to the page as it disables itself.
+    inputRef.current?.focus();
     primeTurnSignals();
     thread.toEnd();
     try {
