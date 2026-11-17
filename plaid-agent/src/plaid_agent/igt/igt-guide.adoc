@@ -132,7 +132,8 @@ A script written without spaces between words, such as Chinese, Japanese, or Tha
 
 You can edit the baseline later too, and the sentences, words, and annotations already there are kept.
 A word you change keeps its analysis as long as one of its letters is left.
-A word all of whose letters you replace, by selecting it and typing or by pasting over it, is deleted with its annotations, even when you type the same word again, and what you typed is new text.
+A word you select whole and type or paste over keeps the letters the new word shares with it at either end, and so keeps its analysis when the two start or end alike: _cat_ typed over as _cut_ keeps the glosses of _cat_, and the same word typed again changes nothing.
+A word that shares no letter at either end, such as _cat_ typed over as _dog_, is deleted with its annotations, and what you typed is new text.
 When you select two or more words and type or paste over them, letters you type again at either end are kept only as whole words: select _cat sat_ and paste _c_, and both words go.
 A word whose text you delete is deleted with its annotations too.
 A sentence whose exact text you replace keeps its translation and its other fields, and a segment its times.
@@ -222,6 +223,7 @@ Every segment is a row you can edit:
 * **Alt+Enter** splits the segment at playback, its text between the words at the caret, and **Alt+M** merges it with the next segment. The words, their annotations and the sentences are unchanged, so two segments in different sentences do not merge.
 
 A change to a row's text is saved as it is on the Baseline tab, and the words in it keep their analysis unless all of a word's letters are replaced.
+A change that deletes annotations this way asks first, with counts.
 A segment whose exact text you replace keeps its times.
 When someone else changed the same segment's text while you were editing it, the row shows their text with yours under it.
 **Enter** keeps yours, and **Esc** lets it go.
@@ -288,7 +290,7 @@ Nothing is annotated here. That happens on the Analyze tab.
 To tokenize by hand:
 
 * **Drag** across plain text to make a word of it, or across several words to merge them.
-* **Click** a word to split it at a character. **Esc** closes the split points.
+* **Click** a word to split it at a character. **Esc** closes the split points. A letter is never split from its combining marks, and an emoji joined with U+200D stays whole.
 * **Right-click** a word to delete it.
 * **Ctrl/Cmd+click** a word to split its sentence there, making that word the first of a new one.
 * **Alt+click** a word to open it on the Analyze tab.
@@ -321,7 +323,7 @@ What you do here:
 * **Segment morphemes**. Break each word into morphemes and edit their forms. Type `-` in a morpheme to split it at the cursor, or `=` to split at a clitic boundary (see <<_morpheme_types>>). Backspace at the start of a morpheme merges it into the previous one. **Alt+0** types the zero morph ∅ (see <<_typing_special_characters>>).
 * **Gloss and annotate**. Fill the gloss and any other word- or morpheme-scope fields your project defines. The editor offers faint **guesses**, such as a gloss it has seen before for the same form, which you accept with Enter or type over.
 * **Pick from what the project already uses**. On a cell, **Alt+↓** lists every value the project has given that form, with counts. On a morpheme field with a lexicon field, such as Gloss, each row pairs a value with the lexicon sense it goes with, and taking one sets both. A field held to a tagset opens its list on its own and narrows it as you type.
-* **Respell a word**. **Respell** in a word's popover, or **F2** on any of its cells, opens a box over the word with its text selected. **Enter** saves the new spelling, and **Esc** or clicking elsewhere cancels. The word keeps its morphemes, glosses, lexicon links, multi-word expressions, and comments. A word with one morpheme spelled as the word gets the new spelling there too, and a word split into morphemes keeps their forms as they are. A spelling must have at least one character and no space: split a word on the Tokenize tab, and make larger changes on the Baseline tab.
+* **Respell a word**. **Respell** in a word's popover, or **F2** on any of its cells, opens a box over the word with its text selected. **Enter** saves the new spelling, and **Esc** or clicking elsewhere cancels. The word keeps its morphemes, glosses, lexicon links, multi-word expressions, and comments. A word with one morpheme spelled as the word gets the new spelling there too, and a word split into morphemes keeps their forms as they are. A spelling must have at least one character, no space, must not start with a combining mark, and must not be an ignored token (see <<_tokenize>>): split a word on the Tokenize tab, and make larger changes on the Baseline tab.
 * **Link vocabulary**. Connect a word or morpheme to an entry in a lexicon the project links (see <<_vocabularies>>). When the same form occurs unlinked elsewhere in the text, **all ×N** in the popover links every one of them at once.
 * **Reuse an analysis**. Once you have analyzed a word, its popover offers **Analyze every "…" in this text like this**, which copies the analysis onto the unanalyzed words spelled the same. To draw on the rest of the project, use Auto-analyze (see <<_copying_previous_analyses>>).
 * **Auto-analyze**. Let the machine make a first pass over the whole document: translations, analyses copied from earlier work, a model's segmentation and glosses, and lexicon links (see <<_auto_analyze>>).
@@ -794,7 +796,7 @@ The **Bulk Edit** tab (maintainers) changes many places at once, the way FieldWo
 You describe the change, preview every place it would touch, tick the ones you mean, and apply them as one action in the history.
 There are four operations:
 
-* **Respell words**: change the spelling of a word everywhere it occurs, keeping its morphemes, glosses, links, and other annotations. Optionally respell the same string inside morpheme forms and lexicon entry forms too.
+* **Respell words**: change the spelling of a word everywhere it occurs, keeping its morphemes, glosses, links, and other annotations. Optionally respell the same string inside morpheme forms and lexicon entry forms too. A word whose new spelling the **Respell** box in Analyze would refuse is skipped.
 * **Replace in a field**: find and replace across one field's values, as plain text or a regular expression, or across morpheme forms.
 * **Re-analyze a word**: give every occurrence of a word the same analysis, chosen from the analyses it already has in the project.
 * **Merge lexicon entries**: fold duplicate entries into one, moving every link and reference to the survivor.
@@ -1220,6 +1222,8 @@ When several tiers hold the sentences, a tier that names no participant takes it
 ELAN files can also be imported into a project you already have, with **New document → Import from ELAN** on its Documents tab.
 Each tier is written into a field the project already has, or into a new field of its own.
 A file imported before says so on its row, and you choose whether to keep that document, replace it, or add a copy beside it.
+Replacing deletes the document before its replacement is written, so a run that fails partway may leave a file with neither, and says so.
+The documents a failed run finished stay, and **Retry import** with the same choices leaves them as they are, counted as already imported, and makes the rest.
 
 An import that stops before it finishes, whether you stop it, it fails, or the tab is closed, leaves a project that does not open.
 Wherever it would open, it reads **This import did not finish. Delete it and import again.**, with **Delete** for a project maintainer.
@@ -1536,6 +1540,9 @@ Enter and Tab, each with or without Shift, the arrow keys, Escape, Backspace, De
 | **↑** / **↓** (entry popover) | Move through the entries. **Enter** links the highlighted one, on a morpheme together with its gloss, accepts a proposed link, and on a word unlinks the linked entry, **Shift+Enter** links it to every unlinked occurrence of the form in the text, on the create row **Ctrl/Cmd+Enter** creates the entry as typed, **Ctrl/Cmd+Shift+Enter** does both, **Esc** closes the popover.
 | **Ctrl/Cmd+Enter** (comment popover) | Post the comment. **Esc** closes the popover.
 |===
+
+A key that moves along the row from the last or first cell of a page goes on to the next or previous page, to the same row there, or to its first or last cell when it has none of that row.
+A value the cell refuses keeps the page.
 
 == Tokenize tab
 
