@@ -160,6 +160,14 @@ LEXICON = 'lexicon'
 #: How the key of an entry a plan creates begins: the entry_id every later
 #: change of the plan names it by, until approval makes it under an id.
 NEW_ENTRY = 'new:'
+# The whole key as create_entry writes it: new:<lexicon id>:<form, spaces as _>#<n>.
+_NEW_ENTRY_KEY = re.compile(r'new:[^:\s]+:\S+#\d+')
+
+
+def is_new_key(value) -> bool:
+    """Whether ``value`` is a planned entry's key in its own shape, never
+    any text that begins with "new:" (REV-SVB-7)."""
+    return isinstance(value, str) and _NEW_ENTRY_KEY.fullmatch(value) is not None
 #: The key on a change to an entry's fields or structure (a kind declaring
 #: ``extra['pins_entry']``) holding the entry as the plan read it
 #: (:func:`entry_stamp`). Such a change is written over what was read (a
@@ -1801,7 +1809,7 @@ def validate_ops(ops: List[Dict[str, Any]]) -> None:
         if kind in ('set_entry_field', 'create_entry'):
             values = [op.get('item_id'), op.get('value'), *(op.get('metadata') or {}).values()]
             named = [v for x in values for v in (x if isinstance(x, list) else [x])
-                     if isinstance(v, str) and v.startswith(NEW_ENTRY)]
+                     if is_new_key(v)]
             if any(v not in new_keys for v in named):
                 raise ValueRefusal(f'op {i + 1} ({kind}): names an entry this plan does not create',
                                    kind='not-found')

@@ -35,7 +35,7 @@ from ..core.tools import ADVICE, ToolError
 from ..core.workspace import BaseWorkspace
 
 from . import fit
-from .plan import (ANALYSIS, ENTRY_READ, KIND, LEXICON_MAINTAINER, LEXICON_WRITER, MORPHEME_KEY, NEW_ENTRY,
+from .plan import (ANALYSIS, ENTRY_READ, KIND, LEXICON_MAINTAINER, LEXICON_WRITER, MORPHEME_KEY, is_new_key,
                    MORPHEME_WRITERS, SETTINGS_KINDS, TEXT_SHAPE, _found, analysed_morphemes, entry_stamp,
                    lexicon_need, pinned_entry, planned_morpheme, removed_entries, settle_merges)
 
@@ -595,7 +595,7 @@ class Workspace(BaseWorkspace):
                 for it in self.lexicon(v):
                     if it['id'] == entry_id:
                         return 'existing', it
-            if entry_id.startswith(NEW_ENTRY):
+            if is_new_key(entry_id):
                 # A model passed the id an earlier message's plan gave a new
                 # entry (2026-10-12 survey).
                 raise ToolError(self.unknown_new_entry(entry_id), kind='not-found')
