@@ -514,14 +514,6 @@
                  reqs)))
       before)))
 
-(defn note-cancel-sent!
-  "A stop asked for `request-id` was written to a live channel of its
-  service, so a channel that comes back after a drop is not told again."
-  [request-id]
-  (swap! inflight-requests
-         (fn [reqs] (if (get reqs request-id) (assoc-in reqs [request-id :cancel-sent] true) reqs)))
-  nil)
-
 (defn cancel-request!
   "Mark an unfinished request cancelled. Returns its entry, or nil if unknown
   or finished. Whether the service stops is the service's business; the

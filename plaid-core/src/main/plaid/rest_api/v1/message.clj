@@ -265,8 +265,11 @@
 ;; that left requests waiting: `{:token :ids :entry}`, its own token, the ids
 ;; it holds, and the channel entry that closed. One owner per mark:
 ;; - Only `service-channel-closed!` CREATES a mark, when no channel of the
-;;   service is registered after its own channel left. A later close replaces
-;;   the mark with its own (the earlier one's ids folded in) and its own grace.
+;;   service is registered after its own channel left. A later close of a
+;;   channel that was registered replaces the mark with its own (the earlier
+;;   one's ids folded in) and its own grace. A close of a channel that never
+;;   registered (a reconnect attempt that died before its open) leaves a
+;;   standing mark alone: no new grace, the closed entry kept.
 ;; - A mark is TAKEN (removed, its ids settled) only by compare-and-set on the
 ;;   mark as read: by the timer its close started, or by
 ;;   `service-channel-opened!` of a channel that is still the registered one.
@@ -339,10 +342,19 @@
         (end-requests! (map first unnamed))
         (when (seq named)
           (let [k [project-id service-id]
-                mark {:token (Object.) :ids (set (map first named)) :entry closing}
-                wait reconnect-grace-ms]
-            (let [[_ after] (swap-vals! held (fn [m] (assoc m k (update mark :ids into (:ids (get m k))))))
-                  mark (get after k)]
+                token (Object.)
+                wait reconnect-grace-ms
+                [_ after] (swap-vals! held
+                                      (fn [m]
+                                        (let [old (get m k)]
+                                          (if (and old (nil? closing))
+                                            m
+                                            (assoc m k {:token token
+                                                        :ids (into (set (map first named)) (:ids old))
+                                                        :entry (or closing (:entry old))})))))
+                mark (get after k)]
+            ;; Only a mark this close made gets a timer.
+            (when (identical? token (:token mark))
               (async/go
                 (when (pos? wait)
                   (async/<! (async/timeout wait)))
@@ -354,8 +366,11 @@
   client names none), and still the registered one: the requests of the
   service sent to any other process end now, since nobody can finish them,
   and it takes the mark a close left (`service-channel-closed!`), adopting
-  the held requests of its own process that it has reported on and hearing
-  again of each stop asked for while no channel was there to take it."
+  the held requests of its own process that it has reported on. It hears
+  again of every stop asked for a request of its own process, whoever took
+  the mark: a stop written to a stream that was already silent before the
+  drop was queued, not delivered, and a stop asked in the gap had no channel.
+  A repeat is harmless, since both clients only set a flag."
   [project-id service-id user-id instance channel]
   (let [live (events/get-service-entry project-id service-id)]
     (when (and (identical? channel (:channel live)) (= user-id (:user-id live)))
@@ -365,12 +380,11 @@
       (let [k [project-id service-id]
             mark (get @held k)]
         (when (and mark (take-mark! k mark))
-          (doseq [id (settle-held! (:ids mark) live)
-                  :let [e (events/get-request id)]
-                  :when (and (:cancelled e) (not (:cancel-sent e)))]
-            (try (when (http-kit/send! channel (sse-event "service_cancel" {:request-id id}) false)
-                   (events/note-cancel-sent! id))
-                 (catch Exception _))))))))
+          (settle-held! (:ids mark) live))
+        (doseq [[id e] (events/requests-for-service project-id service-id)
+                :when (and (:cancelled e) (= instance (:instance e)))]
+          (try (http-kit/send! channel (sse-event "service_cancel" {:request-id id}) false)
+               (catch Exception _)))))))
 
 (defn end-lapsed-held-requests!
   "End at once the held requests whose service's account no longer has the
@@ -893,8 +907,7 @@
       :else
       (do (events/cancel-request! request-id)
           (when-let [service-ch (events/get-service-channel id (:service-id entry))]
-            (try (when (http-kit/send! service-ch (sse-event "service_cancel" {:request-id request-id}) false)
-                   (events/note-cancel-sent! request-id))
+            (try (http-kit/send! service-ch (sse-event "service_cancel" {:request-id request-id}) false)
                  (catch Exception _)))
           {:status 204}))))
 

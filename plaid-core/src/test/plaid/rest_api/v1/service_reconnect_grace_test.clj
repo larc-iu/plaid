@@ -159,9 +159,11 @@
       (open! pid (Object.) "user2@example.com" "i1")
       (is (= "Service disconnected" (ended "r1"))))))
 
-(deftest a-stop-reaches-the-service-once
-  ;; REV-SD-5: a stop asked in the gap is sent on the new channel, one already
-  ;; sent before the drop is not sent again.
+;; REV-SD-R2-1: a stop written into a stream that was already silent (the
+;; incident's minute before its drop) is queued, not delivered. Every stop of
+;; an adopted request is sent again on the channel that adopts it, whenever it
+;; was asked. A repeat is harmless: both clients only set a flag.
+(deftest every-stop-of-an-adopted-request-is-sent-again
   (fresh!)
   (with-grace 5000
     (let [pid (create-project!) old (Object.) new (Object.) sent (atom [])]
@@ -175,11 +177,30 @@
         (close! pid old)
         (api-call admin-request {:method :delete :path (str "/api/v1/projects/" pid "/service-requests/during")})
         (open! pid new))
-      (is (= [[:old "before"] [:new "during"]]
-             (for [[ch data] @sent
-                   :let [[_ id] (re-find #"service_cancel\ndata: \{\"request-id\":\"([^\"]+)\"" data)]
-                   :when id]
-               [ch id]))))))
+      (is (= #{[:old "before"] [:new "before"] [:new "during"]}
+             (set (for [[ch data] @sent
+                        :let [[_ id] (re-find #"service_cancel\ndata: \{\"request-id\":\"([^\"]+)\"" data)]
+                        :when id]
+                    [ch id])))))))
+
+(deftest a-stop-reaches-the-new-channel-when-the-timer-took-the-mark-first
+  ;; REV-SD-R2-3: the open reads the mark, the grace's timer takes it first and
+  ;; settles it against the open channel, the open's compare fails.
+  (fresh!)
+  (with-grace 5000
+    (let [pid (create-project!) a (Object.) b (Object.) sent (atom [])]
+      (open! pid a) (track! "r1" pid) (report! pid "r1") (close! pid a)
+      (api-call admin-request {:method :delete :path (str "/api/v1/projects/" pid "/service-requests/r1")})
+      (let [take @#'message/take-mark!
+            settle @#'message/settle-held!]
+        (with-redefs [message/take-mark! (fn [k mark]
+                                           (when (take k mark)
+                                             (settle (:ids mark) (events/get-service-entry pid "svc")))
+                                           false)
+                      http-kit/send! (fn [_ data _] (swap! sent conj data) true)]
+          (open! pid b)))
+      (is (nil? (ended "r1")))
+      (is (= 1 (count (filter #(re-find #"service_cancel" %) @sent)))))))
 
 (deftest the-model-pool-still-counts-a-held-request
   ;; REV-SD-3: a person's turn held in the gap still loads the pool.
@@ -249,6 +270,40 @@
       (settle 300)
       (is (identical? b (events/get-service-channel pid "svc")))
       (is (nil? (ended "r1")))
+      (is (= {} (held))))))
+
+;; REV-SD-R2-2: a close with no registered channel of its own (a reconnect
+;; attempt that died before its open registered it) leaves the mark alone.
+(deftest a-close-of-a-channel-never-registered-leaves-the-mark-alone
+  (fresh!)
+  (with-grace 600
+    (let [pid (create-project!) a (Object.)]
+      (open! pid a)
+      (track! "r1" pid)
+      (report! pid "r1")
+      (close! pid a)
+      (let [before (get (held) [pid "svc"])]
+        (Thread/sleep 300)
+        (close! pid (Object.))
+        (is (identical? before (get (held) [pid "svc"])) "not replaced"))
+      (testing "its entry is kept, so a standing lapse still ends the request"
+        (message/end-lapsed-held-requests! (constantly false))
+        (is (= "Service disconnected" (ended "r1")))))))
+
+(deftest failed-reconnects-do-not-extend-the-hold
+  (fresh!)
+  (with-grace 600
+    (let [pid (create-project!) a (Object.)]
+      (open! pid a)
+      (track! "r1" pid)
+      (report! pid "r1")
+      (close! pid a)
+      (dotimes [_ 3]
+        (Thread/sleep 150)
+        (close! pid (Object.)))
+      ;; 450 ms in: 300 ms more ends the first close's grace.
+      (settle 150)
+      (is (= "Service disconnected" (ended "r1")) "600 ms from the first close, not from the last attempt")
       (is (= {} (held))))))
 
 (deftest a-second-drop-gets-a-grace-of-its-own
