@@ -72,4 +72,27 @@ describe('UserDetail', () => {
     expect(view.container.textContent).not.toContain('Parser 1');
     await view.unmount();
   });
+
+  // REV-HFP-6: with only revoked tokens the page said "No tokens.", where
+  // Profile says "No active tokens".
+  it('says there are no active tokens when every one was revoked', async () => {
+    localStorage.clear();
+    const c = client([]);
+    c.apiTokens.list = vi.fn(async () => [
+      {
+        id: 't1',
+        name: 'Parser 1',
+        createdAt: '2026-11-01T00:00:00Z',
+        revokedAt: '2026-11-02T00:00:00Z',
+      },
+    ]);
+    const view = await renderComponent(
+      <MemoryRouter>
+        <UserDetail client={c} userId="u@x.com" backTo="/admin/users" onEdit={() => {}} />
+      </MemoryRouter>,
+    );
+    await view.step(async () => {});
+    expect(view.container.textContent).toContain('No active tokens.');
+    await view.unmount();
+  });
 });

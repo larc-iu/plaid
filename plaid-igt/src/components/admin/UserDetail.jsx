@@ -219,7 +219,7 @@ export const UserDetail = ({ client, userId, backTo, onEdit, dialogs }) => {
             id="user-tokens"
             defaultSort={{ key: 'created', dir: 'desc' }}
             noun="token"
-            empty="No tokens."
+            empty="No active tokens."
           />
 
           <AuditFeed
