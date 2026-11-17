@@ -165,6 +165,36 @@ describe('countDeleteLoss, shortening and content', () => {
     expect(hasLoss(countDeleteLoss(layers, ['w2'], { skip: ['tl-syn'] }))).toBe(true);
   });
 
+  // H1-4: core's single-link remedy keeps the survivor's own link and
+  // deletes the expression's link cut down to it.
+  it('a link cut down to a word with its own link, under single-link, is deleted', () => {
+    const layers = make();
+    layers[1].constraints = { igt: [{ type: 'single-link' }] };
+    layers[1].vocabs[0].vocabLinks.push({ id: 'own', tokens: ['w2'] });
+    const loss = countDeleteLoss(layers, ['w1'], { skip: ['tl-syn'] });
+    expect(loss.shortened.links).toBe(0);
+    expect(loss.links).toBe(2); // k1 and mwe
+    expect(loss.byLayer.get('v1')).toBe(1);
+    // With no own link on the word left, the expression's link is shortened.
+    const bare = make();
+    bare[1].constraints = { igt: [{ type: 'single-link' }] };
+    expect(countDeleteLoss(bare, ['w1'], { skip: ['tl-syn'] }).shortened.links).toBe(1);
+    // Without the rule, both stay.
+    const free = make();
+    free[1].vocabs[0].vocabLinks.push({ id: 'own', tokens: ['w2'] });
+    expect(countDeleteLoss(free, ['w1'], { skip: ['tl-syn'] }).shortened.links).toBe(1);
+  });
+
+  it('two links cut down to one word under single-link keep the first by id', () => {
+    const layers = make();
+    layers[1].constraints = { igt: [{ type: 'single-link' }] };
+    layers[1].tokens.push({ id: 'w0', begin: 0, end: 0 });
+    layers[1].vocabs[0].vocabLinks.push({ id: 'a-mwe', tokens: ['w1', 'w2'] });
+    const loss = countDeleteLoss(layers, ['w1'], { skip: ['tl-syn'] });
+    expect(loss.shortened.links).toBe(1);
+    expect(loss.links).toBe(2); // k1 and the second expression
+  });
+
   it('hands a content predicate the token and its layer', () => {
     const layers = make();
     layers[2].tokens[0].metadata = { form: 'Va' };

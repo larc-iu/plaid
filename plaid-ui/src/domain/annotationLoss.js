@@ -106,6 +106,12 @@ const dyingTokens = (layers, ids, under = false) => {
   return dying;
 };
 
+// Whether a layer declares a rule of `type`, under any app's namespace.
+const declares = (layer, type) =>
+  Object.values(layer?.constraints || {}).some(
+    (list) => Array.isArray(list) && list.some((c) => c?.type === type),
+  );
+
 // Whether a relation layer declares `same-ancestor` over `layerId`, under any
 // app's namespace.
 const keepsWithin = (rl, layerId) =>
@@ -220,18 +226,58 @@ export const countDeleteLoss = (tokenLayers, tokenIds, options = {}) => {
           (tl.vocabs || []).map((v) => ({ vocabId: v.id, links: v.vocabLinks || [] })),
         );
   const seen = new Set();
+  // The links cut down to one token of a layer that declares `single-link`,
+  // by that token, and the links already on it alone (H1-4).
+  const singleLayer = new Map();
+  for (const tl of layers) {
+    if (!declares(tl, 'single-link')) continue;
+    for (const t of tl.tokens || []) singleLayer.set(t.id, tl.id);
+  }
+  const alone = new Map();
+  const onAlone = (tok, entry) => {
+    if (!alone.has(tok)) alone.set(tok, []);
+    alone.get(tok).push(entry);
+  };
   for (const { vocabId, links } of linkSources) {
     for (const link of links) {
-      if (seen.has(link.id ?? link)) continue;
       const toks = Array.isArray(link.tokens) ? link.tokens : [];
-      if (!toks.some((t) => dying.has(t))) continue;
+      if (!toks.some((t) => dying.has(t))) {
+        if (toks.length === 1 && singleLayer.has(toks[0]) && !seen.has(link.id ?? link)) {
+          onAlone(toks[0], { id: link.id, untouched: true });
+        }
+        continue;
+      }
+      if (seen.has(link.id ?? link)) continue;
       seen.add(link.id ?? link);
       if (!toks.every((t) => dying.has(t))) {
-        result.shortened.links += 1;
+        const left = toks.filter((t) => !dying.has(t));
+        if (left.length === 1 && singleLayer.has(left[0])) {
+          onAlone(left[0], { id: link.id, untouched: false, vocabId });
+        } else {
+          result.shortened.links += 1;
+        }
         continue;
       }
       result.links += 1;
       if (vocabId) bump(result.byLayer, vocabId);
+    }
+  }
+  // Core's single-link remedy: a token left the only token of two links
+  // keeps one, a link that was on it alone before when there is one, else
+  // the first by id, and the others are deleted.
+  for (const entries of alone.values()) {
+    const cut = entries.filter((e) => !e.untouched);
+    if (!cut.length) continue;
+    const kept = entries.some((e) => e.untouched)
+      ? null
+      : [...cut].sort((a, b) => (String(a.id) < String(b.id) ? -1 : 1))[0];
+    for (const e of cut) {
+      if (e === kept) {
+        result.shortened.links += 1;
+        continue;
+      }
+      result.links += 1;
+      if (e.vocabId) bump(result.byLayer, e.vocabId);
     }
   }
 
