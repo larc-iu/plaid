@@ -97,6 +97,15 @@ describe('ProjectBulkEdit, a link that fills in the field replace', () => {
     await unmount();
   });
 
+  // H6-1: Validation lists no blank cells, so the hint does not send people
+  // there.
+  it('says it replaces values already there, and points nowhere for blanks', async () => {
+    const { container, unmount } = await open('/projects/p1?tab=bulk&op=field');
+    expect(container.textContent).toContain('Replaces values that are already there.');
+    expect(container.textContent).not.toContain('Validation');
+    await unmount();
+  });
+
   it('opens empty without them', async () => {
     const { container, unmount } = await open('/projects/p1?tab=bulk&op=field');
     expect(container.textContent).toContain('Gloss (word)');
