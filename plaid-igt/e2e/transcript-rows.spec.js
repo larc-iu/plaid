@@ -173,10 +173,11 @@ test("two users edit the same row: each edit keeps the segment and the word's gl
     expect((await segments())[1][1]).toBe('dos!');
 
     // Enter in it keeps B's text, over A's, on the same segment.
+    // Answered once already: no second question (REV-HFM-4).
     await row.click();
     await row.press('Enter');
-    await saveAnyway(B.page);
     await expect.poll(async () => (await segments())[1][1]).toBe('DOS');
+    await expect(B.page.getByRole('alertdialog')).toHaveCount(0);
     await expect(B.page.getByText('Enter to keep yours')).toHaveCount(0);
     expect((await segments()).map(([id]) => id)).toEqual(before.map(([id]) => id));
     // A sees it too once the page reads the document again.

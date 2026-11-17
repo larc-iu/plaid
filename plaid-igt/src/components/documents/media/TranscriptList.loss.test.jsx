@@ -308,4 +308,30 @@ describe("a row's question, however the row is left", () => {
     expect(server.segments().find((t) => t.id === 'a-2').metadata.timeBegin).toBe(4.5);
     await r.unmount();
   });
+
+  it('asks once for a save the server refused for a change elsewhere, sent again by Enter', async () => {
+    const { server, r, drain } = await mount(RAW());
+    // Another user changed this very segment's text meanwhile.
+    server.otherRetypes('a-2', 'cuatro cinco seis!');
+    await retype(r, 2, 'nueve diez once');
+    await drain();
+    expect(dialog()).not.toBeNull();
+    await r.step(async () => {
+      button('Save anyway').click();
+      await settle();
+    });
+    await drain();
+    // Refused: the row shows their text with this one under it, and Enter
+    // keeps this one, with no second question.
+    expect(row(r.container, 2).value).toBe('cuatro cinco seis!');
+    await r.step(() => row(r.container, 2).focus());
+    await r.step(async () => {
+      press(row(r.container, 2), 'Enter');
+      await settle();
+    });
+    await drain();
+    expect(dialog()).toBeNull();
+    expect(server.body).toBe('uno dos tres\nnueve diez once');
+    await r.unmount();
+  });
 });

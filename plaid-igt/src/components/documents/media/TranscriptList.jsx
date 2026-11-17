@@ -1129,6 +1129,10 @@ export function TranscriptList({
   );
 
   const confirm = useConfirm();
+  // The typed text each segment's question was answered Save anyway for, so
+  // a save the server refused for a change elsewhere, sent again by Enter,
+  // asks once and not twice.
+  const answered = useRef(new Map());
   const handleCommit = useCallback(
     async (id, { text, speaker, edits, saved, what }) => {
       let token = doc.alignmentTokens.find((t) => t.id === id);
@@ -1142,7 +1146,10 @@ export function TranscriptList({
         // Baseline tab's words when it deletes annotations or links, as the
         // row's trash asks only then.
         const { stretches, loss } = doc.segmentEditLoss(id, { text, edits });
-        const loses = hasLoss(loss) ? baselineLossSentence(doc, stretches) : '';
+        const loses =
+          hasLoss(loss) && answered.current.get(id) !== text
+            ? baselineLossSentence(doc, stretches)
+            : '';
         if (loses) {
           const times = { timeBegin: timeBeginOf(token), timeEnd: timeEndOf(token) };
           const yes = await confirm({
@@ -1165,6 +1172,7 @@ export function TranscriptList({
             }
             return false;
           }
+          answered.current.set(id, text);
           storedText = cpSlice(doc.body || '', token.begin, token.end);
         }
         const before = doc.dataVersion;
@@ -1190,6 +1198,7 @@ export function TranscriptList({
         });
         const times = { timeBegin: timeBeginOf(token), timeEnd: timeEndOf(token) };
         outcome.then((o) => {
+          if (o.landed) answered.current.delete(id);
           // Refused, and its segment is gone: the text stays on screen until
           // dismissed.
           if (cells.settle(ticket, o).kind === 'gone') {
