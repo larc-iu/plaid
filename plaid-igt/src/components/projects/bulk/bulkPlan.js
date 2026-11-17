@@ -255,9 +255,19 @@ export function collectFieldRows(doc, target, apply) {
       for (const m of t.morphemes || []) {
         if (target.kind === 'morpheme') {
           // Only a morpheme's own form can be rewritten; a derived one is the
-          // word's surface and belongs to the respell operation.
-          if (!hasOwnForm(m)) continue;
-          push(s, idx, m, m.metadata.form, mark, { kind: 'morphForm', word: t.content }, true);
+          // word's surface and belongs to the respell operation. A stored one
+          // alone in its word shows that surface, and Search finds it by it,
+          // so it is listed and barred (`invalid: 'formless'`). A virtual one
+          // is not stored, and Search does not find it.
+          if (hasOwnForm(m)) {
+            push(s, idx, m, m.metadata.form, mark, { kind: 'morphForm', word: t.content }, true);
+          } else if (!m.virtual && t.morphemes.length === 1) {
+            push(s, idx, m, morphFormOf(m), mark, {
+              kind: 'morphForm',
+              word: t.content,
+              invalid: 'formless',
+            });
+          }
         } else if (target.kind === 'span' && target.scope === 'morpheme') {
           const span = m.annotations?.[target.field];
           if (span?.id) {

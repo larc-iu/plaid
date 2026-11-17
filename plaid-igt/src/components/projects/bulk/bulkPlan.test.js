@@ -262,13 +262,26 @@ describe('collectFieldRows', () => {
     expect(rows[0].marks).toEqual([]);
   });
 
-  it('morpheme forms: only own forms', () => {
+  // H5-3: Search finds a stored morpheme with no form of its own by its
+  // word's spelling, so the preview lists it too, barred: its spelling is the
+  // word's and changes through Respell words.
+  it('morpheme forms: own forms are written, one spelled as its word is listed and barred', () => {
     const { apply } = buildReplacer('t', 'contains', 'd');
     const rows = collectFieldRows(doc, { kind: 'morpheme' }, apply);
-    // m-1 (under "the") has no own form and is skipped even though "the" has a t.
-    expect(rows.map((r) => [r.id, r.kind, r.old, r.new])).toEqual([
-      ['m-2', 'morphForm', 'cat', 'cad'],
+    // m-1 (under "the") has no own form: it shows its word's spelling.
+    expect(rows.map((r) => [r.id, r.kind, r.old, r.new, r.invalid ?? null])).toEqual([
+      ['m-1', 'morphForm', 'the', 'dhe', 'formless'],
+      ['m-2', 'morphForm', 'cat', 'cad', null],
     ]);
+  });
+
+  it('morpheme forms: a word nobody segmented has no morpheme to list', () => {
+    const raw = buildRawDoc({ body: 'the' });
+    raw.textLayers[0].tokenLayers[2].tokens = [];
+    const bare = new IgtDocument({ raw, client: makeFakeClient() });
+    expect(bare.sentences[0].tokens[0].morphemes.map((m) => !!m.virtual)).toEqual([true]);
+    const { apply } = buildReplacer('t', 'contains', 'd');
+    expect(collectFieldRows(bare, { kind: 'morpheme' }, apply)).toEqual([]);
   });
 });
 

@@ -83,6 +83,11 @@ const FieldChange = ({ row, target }) => {
       {row.invalid === 'empty' && (
         <p className="mt-1 text-xs text-destructive">Empty form, so it will be skipped.</p>
       )}
+      {row.invalid === 'formless' && (
+        <p className="mt-1 text-xs text-destructive">
+          Spelled as its word, so it will be skipped. Respell the word to change it.
+        </p>
+      )}
       {!row.invalid && row.kind === 'span' && blank(row.new) && (
         <p className="mt-1 text-xs text-muted-foreground">Clears the value.</p>
       )}
