@@ -117,6 +117,25 @@ def feature_refusal(pair: str) -> Optional[str]:
     return 'A feature name and value cannot contain spaces.' if re.search(r'\s', pair) else None
 
 
+#: The fields CoNLL-U spells with no space that a plan writes besides FEATS,
+#: as plaid-ud's ``spaceRefusal`` names them, each with a spelling that works.
+_SPACE_FREE = {
+    'upos': ('A UPOS value', 'Give one tag, e.g. PROPN.'),
+    'xpos': ('An XPOS value', 'Give one tag with no space in it, e.g. VBD.'),
+    'deprel': ('A dependency relation', 'Join a subtype with a colon, e.g. nsubj:pass.'),
+}
+
+
+def space_refusal(field: str, value) -> Optional[str]:
+    """The refusal for a UPOS, XPOS or deprel value with a space in it, with
+    the next step, or None. plaid-ud's ``spaceRefusal`` (REV-HFU-3): a lemma
+    or a form may hold a space, and no other field is refused here."""
+    named = _SPACE_FREE.get(field)
+    if not named or not isinstance(value, str) or not re.search(r'\s', value):
+        return None
+    return f'"{value}": {named[0]} cannot contain spaces. {named[1]}'
+
+
 
 
 def _ud(cfg, key):

@@ -46,7 +46,7 @@ from plaid_client.provenance import PROVENANCE_KEYS
 from ..core.bidi import qv
 from ..core.loss import _token_layers, other_layers_crossing
 from ..core.refs import clip
-from .project import Sentence, UdDoc, Word, resolve, word_ref
+from .project import Sentence, UdDoc, Word, resolve, space_refusal, word_ref
 from .tools import ToolError, Workspace, resolve_in
 
 
@@ -291,6 +291,9 @@ def _merged_root_op(ws: Workspace, doc, before, sentence, root_head, root_deprel
     if not deprel or deprel == 'root':
         raise ToolError('Give root_deprel: the relation the demoted root takes to root_head (not "root").',
                         kind='invalid-argument')
+    spaced = space_refusal('deprel', deprel)
+    if spaced:
+        raise ToolError(spaced, kind='invalid-argument')
     head = resolve(doc, str(root_head))
     if not isinstance(head, Word):
         raise ToolError(f'{root_head} is not a word. Name the word the other root attaches to, like '

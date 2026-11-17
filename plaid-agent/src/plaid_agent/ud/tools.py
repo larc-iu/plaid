@@ -27,7 +27,8 @@ from ..core.tools import ToolError, overview_documents, server_refused
 from .plan import (RESHAPES_DOCUMENT, RESHAPES_TOKEN, REWRITES_DOCUMENT, contributed_work, docs_of_op,
                    scope_taking)
 from .project import (FEATURES, Sentence, Token, UdDoc, Word, feats_order, feature_key,
-                      feature_refusal, normalize_feature, resolve, word_ref, words_listing)
+                      feature_refusal, normalize_feature, resolve, space_refusal, word_ref,
+                      words_listing)
 from .review import (REVIEW_FIELDS, all_words, confirm_targets, counts_phrase, discard_targets,
                      left_phrase, per_field)
 # The workspace lives in its own module, as igt's does. SPLITS_KEEP_WORDS is
@@ -300,6 +301,10 @@ def t_set_field(ws: Workspace, document: str = None, refs=None, field: str = Non
             continue
         if _planned_value(ws, layer_id, w, field) == value:
             continue
+        # Only a value being changed: one the word holds is left alone above.
+        spaced = space_refusal(field, value)
+        if spaced:
+            raise ToolError(spaced, kind='invalid-argument')
         changed.append(w)
         # The value it replaces, as igt's card says it: lemma "run" → "ran".
         label = (f'{field} {qv(old)} → {qv(value)}' if old and value else f'{field} = {qv(value)}' if value
@@ -706,6 +711,11 @@ def _stage_head(ws: Workspace, doc: UdDoc, word: Word, sentence: Sentence, head,
                         kind='invalid-argument')
     if head != 0 and deprel == 'root':
         raise ToolError('The deprel "root" belongs to head 0. Give the head word\'s id.', kind='invalid-argument')
+    # A label the word keeps (a new head, the same relation) is the stored
+    # one, and is not refused for a space it already had (REV-HFU-5).
+    spaced = deprel != word.deprel and space_refusal('deprel', deprel)
+    if spaced:
+        raise ToolError(spaced, kind='invalid-argument')
     head_word = sentence.word(head) if head else word
     lemma, head_lemma = word.fields.get('lemma'), head_word.fields.get('lemma')
     # The suppressors this write leaves stranded: the one over the relation it

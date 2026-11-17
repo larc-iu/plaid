@@ -233,6 +233,24 @@ def test_a_closed_list_refuses_a_value_it_does_not_list():
     assert '"foo" is not on the list deprel is held to' in out and len(ws.ops) == 1
 
 
+def test_a_space_inside_upos_xpos_or_a_relation_is_refused(ws):
+    """REV-HFU-3 (H17-3): CoNLL-U spells no space in UPOS, XPOS or DEPREL, as
+    plaid-ud's ``spaceRefusal`` says, on every path the assistant stages one.
+    A value the word already holds is left alone, as it is in the editor."""
+    out = run(ws, 'set_field', document='Viaje', refs=['s2.w1'], field='upos', value='PROP N')
+    assert 'A UPOS value cannot contain spaces.' in out and 'PROPN' in out and not ws.ops
+    out = run(ws, 'set_field', document='Viaje', refs=['s2.w1'], field='xpos', value='VB D')
+    assert 'An XPOS value cannot contain spaces.' in out and not ws.ops
+    out = run(ws, 'set_head', document='Viaje', ref='s1.w2', head=1, deprel='nsubj pass')
+    assert 'A dependency relation cannot contain spaces.' in out and 'nsubj:pass' in out and not ws.ops
+    # A lemma may hold one.
+    assert run(ws, 'set_field', document='Viaje', refs=['s2.w1'], field='lemma',
+               value='el perro').startswith('Planned')
+    _engine_rows(ws, [('r-3', 'obl', 'ud1', 'uw-4')])
+    out = run(ws, 'replace_in_field', field='deprel', pattern='obl', replacement='obl x')
+    assert 'A dependency relation cannot contain spaces.' in out and len(ws.ops) == 1
+
+
 def test_a_head_that_would_close_a_cycle_is_refused():
     """R1-DEBT-CORE-4: a basic tree holds no cycle (plaid-ud declares it on
     the layer), and an approved plan with one failed whole."""

@@ -28,7 +28,8 @@ from .corpus import Corpus, rx
 from .grew import escape_regex
 from .plan import DOCUMENT_SHAPE, KIND, SENTENCE_SHAPE, WORD_SHAPE, matched
 from .settle import replace_label
-from .project import FEATURES, UdProject, feature_key, feature_refusal, normalize_feature
+from .project import (FEATURES, UdProject, feature_key, feature_refusal, normalize_feature,
+                      space_refusal)
 from .tools import FIELDS, ToolError, Workspace, _check_feature
 
 REPLACE_FIELDS = FIELDS + ('deprel',)
@@ -181,6 +182,12 @@ def t_replace_in_field(ws: Workspace, field: str = None, pattern: str = None, re
         _check_features(ws, c, found, document_id)
     elif field == 'deprel' and root_rule(found):
         raise ToolError(root_rule(found), kind='invalid-argument')
+    # Every change found changes its value, so a space in a replacement is
+    # one being written (plaid-ud's spaceRefusal, REV-HFU-3).
+    for value in sorted({ch['new'] for ch in found if ch['new']}):
+        spaced = space_refusal(field, value)
+        if spaced:
+            raise ToolError(spaced, kind='invalid-argument')
     if field != FEATURES:
         # A value-set rule refuses what it does not list, whatever the pattern
         # turned the value into. The change is staged as one scope, found

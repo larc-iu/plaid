@@ -101,6 +101,9 @@ def test_a_merge_of_two_rooted_sentences_is_refused_unless_one_root_is_placed(ws
     out = run(w2, 'merge_sentences', document='Viaje', ref='s2')
     assert 'each have a root ("Vamos" and "Corre")' in out and 'root_head' in out, out
     assert w2.ops == []
+    # REV-HFU-3: the demoted root's label is held to CoNLL-U's no-space rule.
+    out = run(w2, 'merge_sentences', document='Viaje', ref='s2', root_head='s1.w1', root_deprel='para taxis')
+    assert 'A dependency relation cannot contain spaces.' in out and w2.ops == [], out
     out = run(w2, 'merge_sentences', document='Viaje', ref='s2', root_head='s1.w1', root_deprel='parataxis')
     assert out.startswith('Planned: s1 and s2 become one sentence, and s2.w1 ("Corre") parataxis of s1.w1'), out
     assert [op['kind'] for op in w2.ops] == ['merge_sentences', 'set_head']
