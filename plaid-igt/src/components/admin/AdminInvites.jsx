@@ -83,6 +83,8 @@ export const AdminInvites = ({ client }) => {
   const [invites, setInvites] = useState([]);
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
+  // A list that could not be read is not an empty one.
+  const [loadFailed, setLoadFailed] = useState(false);
   const [status, setStatus] = useState('all');
   const [batchOpen, setBatchOpen] = useState(false);
   const [batch, setBatch] = useState(EMPTY_BATCH);
@@ -98,8 +100,10 @@ export const AdminInvites = ({ client }) => {
       ]);
       setInvites(rows || []);
       setProjects(projectList || []);
+      setLoadFailed(false);
     } catch (err) {
       console.error('Error loading invites:', err);
+      setLoadFailed(true);
       notifyError(humanizeError(err), 'Failed to load the invitations');
     } finally {
       setLoading(false);
@@ -268,7 +272,8 @@ export const AdminInvites = ({ client }) => {
             textIncludes(projectName(i.projectId), q),
         }}
         noun="invite"
-        empty="No invites."
+        showCount={!loadFailed}
+        empty={loadFailed ? 'Not loaded.' : 'No invites.'}
         loading={loading}
         actions={
           <>

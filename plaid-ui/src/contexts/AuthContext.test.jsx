@@ -108,4 +108,26 @@ describe('AuthProvider', () => {
     });
     expect(result).toEqual({ success: true, projectId: 'p1' });
   });
+
+  // H12-4: an admin whose Admin switch was turned off kept the Admin link and
+  // screens after a reload, because isAdmin was read from what sign-in cached.
+  it('reads the account again on load, so a removed Admin switch takes effect', async () => {
+    authService.getCurrentUser.mockReturnValue({
+      id: 'bea@example.com',
+      displayName: 'Bea',
+      isAdmin: true,
+    });
+    const client = {
+      users: { get: vi.fn(async () => ({ id: 'bea@example.com', isAdmin: false })) },
+    };
+    authService.getClient.mockReturnValue(client);
+    localStorage.setItem('isAdmin', 'true');
+    const { step } = await mount();
+    await step(async () => {
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    expect(client.users.get).toHaveBeenCalledWith('bea@example.com');
+    expect(seen.user.isAdmin).toBe(false);
+    expect(localStorage.getItem('isAdmin')).toBe('false');
+  });
 });

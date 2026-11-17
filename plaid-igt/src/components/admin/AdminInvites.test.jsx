@@ -38,3 +38,26 @@ describe('Create links', () => {
     await unmount();
   });
 });
+
+describe('the invite list', () => {
+  // H12-4: a list that could not be read said "0 invites" and "No invites."
+  it('does not say there are none when it could not read them', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const client = fakeClient();
+    client.invites.list = vi.fn(async () => {
+      throw Object.assign(new Error('HTTP 403'), { status: 403 });
+    });
+    const { container, step, unmount } = await renderComponent(
+      <MemoryRouter initialEntries={['/admin?tab=invites']}>
+        <ConfirmProvider>
+          <AdminInvites client={client} />
+        </ConfirmProvider>
+      </MemoryRouter>,
+    );
+    await step(async () => {});
+    expect(container.textContent).not.toContain('No invites.');
+    expect(container.textContent).not.toMatch(/0 invites/);
+    expect(container.textContent).toContain('Not loaded.');
+    await unmount();
+  });
+});

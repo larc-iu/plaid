@@ -12,6 +12,16 @@ export const AuthProvider = ({ children }) => {
     const currentUser = authService.getCurrentUser();
     if (currentUser) {
       setUser(currentUser);
+      // isAdmin was cached at sign-in. An admin switched off since must lose
+      // the admin screens on the next load, not at the next sign-in. A read
+      // that fails keeps the cached value: the server refuses what it must.
+      (async () => {
+        const account = await authService.getClient().users.get(currentUser.id);
+        const isAdmin = !!account?.isAdmin;
+        if (isAdmin === !!currentUser.isAdmin) return;
+        localStorage.setItem('isAdmin', isAdmin.toString());
+        setUser((u) => (u?.id === currentUser.id ? { ...u, isAdmin } : u));
+      })().catch((err) => console.warn('Could not read the account again:', err));
     }
     setLoading(false);
   }, []);
