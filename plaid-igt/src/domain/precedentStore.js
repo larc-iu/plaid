@@ -15,8 +15,9 @@ const STORE = 'projects';
 // Raised whenever what is kept stops being what the app would count, and the
 // store is then emptied on the first open. 2: the counts cover the open
 // project only, where 1 counted the links of every project sharing its
-// vocabulary.
-const DB_VERSION = 2;
+// vocabulary. 3: the morpheme counts take in a morpheme with no form of its
+// own under its word's text (H2-1), which version 2's rows left out.
+const DB_VERSION = 3;
 
 let dbPromise = null;
 

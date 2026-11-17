@@ -124,4 +124,23 @@ describe('precedentStore after an upgrade', () => {
     await fresh.writeStored('k', { login: 'a', results: 1 });
     expect(await fresh.readStored('k', 'a')).toEqual({ login: 'a', results: 1 });
   });
+
+  // REV-HFV-1: version 2 kept morpheme rows counted without the morphemes that
+  // have no form of their own (H2-1). Kept, they would hide those counts
+  // until a document elsewhere changed, so they go and the counts are taken
+  // again.
+  it('hands back nothing version 2 kept: those counts left out formless morphemes', async () => {
+    const rows = [['s', 'PL', null, null, 3]];
+    const old = fakeOldIndexedDb(2, [
+      [
+        'k',
+        { login: 'a', results: { values: [{ kind: 'morpheme', field: 'Gloss', results: rows }] } },
+      ],
+    ]);
+    globalThis.indexedDB = old;
+    vi.resetModules();
+    const fresh = await import('./precedentStore.js');
+    expect(await fresh.readStored('k', 'a')).toBe(null);
+    expect(old.stores.get('projects').size).toBe(0);
+  });
 });
