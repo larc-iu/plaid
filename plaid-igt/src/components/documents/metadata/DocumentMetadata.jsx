@@ -20,7 +20,9 @@ export function DocumentMetadata({ doc, readOnly }) {
       <CardContent className="flex flex-col gap-4">
         {ops.metadataFields.map((field) => (
           <div key={field.name} className="flex flex-col gap-1.5">
-            <Label htmlFor={`document-field-${field.name}`}>{field.name}</Label>
+            <Label htmlFor={`document-field-${field.name}`} className="[overflow-wrap:anywhere]">
+              {field.name}
+            </Label>
             <TagsetField
               id={`document-field-${field.name}`}
               field={field}
