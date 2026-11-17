@@ -590,6 +590,17 @@
               (subs param (count "document-version="))))
           (str/split qs #"&"))))
 
+(defn- claimed-document
+  "The document a strict-mode client's claim is about, the
+  `document-version-of` of the query string as a UUID, or nil when the
+  request names none (H20-1)."
+  [request]
+  (when-let [qs (:query-string request)]
+    (some (fn [param]
+            (when (str/starts-with? param "document-version-of=")
+              (parse-uuid (subs param (count "document-version-of=")))))
+          (str/split qs #"&"))))
+
 (defn- names-ids?
   "Does the request name any entity by id, in its path or anywhere in its
   body? A versioned write whose ids resolve to no document names things that
@@ -613,7 +624,13 @@
   A pre-flight read still happens here as a fast-fail (avoids opening a
   tx when the version is already known to be stale from a stable read);
   the in-tx check inside `submit-operation*` is the authoritative one
-  for racing writers."
+  for racing writers.
+
+  `document-version-of=<document id>` beside it names the document the
+  version is claimed for (a client in strict mode on that document stamps
+  every write). A write whose route resolves to another document goes
+  unchecked, as it would with no claim, unless it also writes that one
+  (H20-1)."
   [handler ->document-id]
   (fn [request]
     (let [method (:request-method request)
@@ -638,36 +655,45 @@
 
         (and parsed-version (not= parsed-version ::parse-error) (not= method :get))
         (if-let [doc-id (->document-id request)]
-          (let [validated-versions psaw/*batch-validated-document-versions*
-                already-validated (if validated-versions
-                                    (get @validated-versions doc-id ::not-validated)
-                                    ::not-validated)
-                latest-version (psc/document-version (:db request) doc-id)]
+          (if (when-let [of (claimed-document request)] (not= (str of) (str doc-id)))
+            ;; the claim is about another document: no pre-flight here, and
+            ;; the in-tx check passes over every document but that one, so
+            ;; a write that also reaches it is still checked (or, for a bulk
+            ;; update over several documents, refused)
+            (binding [psaw/*expected-document-version* parsed-version
+                      psaw/*expected-document-version-of* (claimed-document request)]
+              (handler request))
+            (let [validated-versions psaw/*batch-validated-document-versions*
+                  already-validated (if validated-versions
+                                      (get @validated-versions doc-id ::not-validated)
+                                      ::not-validated)
+                  latest-version (psc/document-version (:db request) doc-id)]
             ;; Fast-fail pre-flight: bail with 409 if the visible version
             ;; is ALREADY ahead of the client. Not authoritative — a
             ;; racing writer can bump between this read and the in-tx
             ;; check — but it cheaply rejects obviously-stale requests
             ;; without opening a transaction. The authoritative check
             ;; runs in `submit-operation*` against the in-tx snapshot.
-            (cond
-              (and (not= already-validated ::not-validated)
-                   (not= already-validated parsed-version))
-              {:status 409
-               :body {:error "Inconsistent document versions were supplied for the same document in one batch."}}
+              (cond
+                (and (not= already-validated ::not-validated)
+                     (not= already-validated parsed-version))
+                {:status 409
+                 :body {:error "Inconsistent document versions were supplied for the same document in one batch."}}
 
-              (= already-validated parsed-version)
-              (binding [psaw/*expected-document-version* nil]
-                (handler request))
+                (= already-validated parsed-version)
+                (binding [psaw/*expected-document-version* nil]
+                  (handler request))
 
-              (and latest-version (not= latest-version parsed-version))
-              {:status 409
-               :body {:error psaw/version-mismatch}}
-              :else
-              (do
-                (when validated-versions
-                  (swap! validated-versions assoc doc-id parsed-version))
-                (binding [psaw/*expected-document-version* parsed-version]
-                  (handler request)))))
+                (and latest-version (not= latest-version parsed-version))
+                {:status 409
+                 :body {:error psaw/version-mismatch}}
+                :else
+                (do
+                  (when validated-versions
+                    (swap! validated-versions assoc doc-id parsed-version))
+                  (binding [psaw/*expected-document-version* parsed-version
+                            psaw/*expected-document-version-of* (claimed-document request)]
+                    (handler request))))))
           ;; The resolver found no document at all. When the request names
           ;; ids, they are gone: another user deleted the token or span this
           ;; write hangs on after the client read the document. That is the

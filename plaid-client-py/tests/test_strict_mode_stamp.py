@@ -89,3 +89,18 @@ def test_an_out_of_band_signal_carries_no_stamp():
     client.documents.renew_lock('d1', 'L1')
     client.spans.update('s0', 'ADJ')
     assert [_version_of(r['url']) for r in sent] == [None, None, '7']
+
+
+def test_the_stamp_names_its_document():
+    # H20-1: the claim names the document it is about, so the server does not
+    # check a write in another document against it.
+    client = _strict_client()
+    sent = _stub_session(client)
+    client.spans.update('s1', 'NOUN')
+    b = client.batch()
+    b.spans.update('s2', 'VERB')
+    queued = list(b.operations)
+    b.abort()
+    of = lambda url: (parse_qs(urlparse(url).query).get('document-version-of') or [None])[0]
+    assert [of(r['url']) for r in sent] == ['d1']
+    assert [of(op['path']) for op in queued] == ['d1']

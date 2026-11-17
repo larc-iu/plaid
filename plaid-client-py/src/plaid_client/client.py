@@ -4243,6 +4243,9 @@ class PlaidClient(_Operations):
         """Enter strict mode for a specific document.
 
         Enables strict mode, requiring document version headers on writes.
+        Every write carries the document's version and id, and the server
+        checks only writes in that document: a write in another document goes
+        as it would outside strict mode.
 
         Args:
             document_id: The ID of the document to track versions for

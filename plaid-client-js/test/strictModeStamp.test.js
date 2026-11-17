@@ -120,3 +120,24 @@ test("an out-of-band signal carries no stamp", async () => {
     [null, null, null, null, "7"],
   );
 });
+
+test("the stamp names its document", async () => {
+  // H20-1: the claim names the document it is about, so the server does not
+  // check a write in another document against it.
+  const client = strictClient();
+  const sent = [];
+  const realFetch = globalThis.fetch;
+  stubFetch(sent);
+  try {
+    await client.spans.update("s1", "NOUN");
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+  const b = client.batch();
+  await b.spans.update("s2", "VERB");
+  const of = (path) =>
+    new URL(path, "http://x").searchParams.get("document-version-of");
+  assert.deepEqual(sent.map((req) => of(req.url)), ["d1"]);
+  assert.deepEqual(b.operations.map((op) => of(op.path)), ["d1"]);
+  b.abort();
+});

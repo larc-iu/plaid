@@ -558,7 +558,9 @@ export function prepareRequest(client, method, path, options = {}) {
         : client.documentVersions[docId];
     if (docVersion) {
       const separator = url.includes("?") ? "&" : "?";
-      url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
+      // `document-version-of` names the document the claim is about, so a
+      // write in another document is not checked against it (H20-1).
+      url += `${separator}document-version=${encodeURIComponent(docVersion)}&document-version-of=${encodeURIComponent(docId)}`;
       stampedDocument = docId;
       stampedVersion = docVersion;
     }

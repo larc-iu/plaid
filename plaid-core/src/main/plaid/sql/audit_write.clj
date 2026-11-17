@@ -57,6 +57,14 @@
   directly)."
   nil)
 
+(def ^:dynamic *expected-document-version-of*
+  "The document `*expected-document-version*` is claimed for, from
+  `?document-version-of=`, or nil when the request names none and the claim
+  is about whatever document the write is in. A client in strict mode on one
+  document stamps every write with that document's version, so a write in
+  another document is not checked against it (H20-1)."
+  nil)
+
 (def ^:dynamic *batch-validated-document-versions*
   "Per-atomic-batch map of document id to the client version already
   validated for that document. Batch sub-requests run sequentially in one
@@ -162,7 +170,8 @@
   version."
   [tx doc-id missing]
   (when-let [expected *expected-document-version*]
-    (when doc-id
+    (when (and doc-id (or (nil? *expected-document-version-of*)
+                          (= (str *expected-document-version-of*) (str doc-id))))
       (let [cur (psc/fetch-by-id tx :documents doc-id)]
         (when (and (or cur (= :conflict missing)) (not= expected (:version cur)))
           (throw (ex-info version-mismatch

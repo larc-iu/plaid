@@ -562,7 +562,10 @@ def prepare_request(client, method, path, *, body=None, raw_body=None, form_data
                        else client.document_versions.get(doc_id))
         if doc_version:
             separator = '&' if '?' in url else '?'
-            url += f'{separator}document-version={quote(str(doc_version), safe="")}'
+            # ``document-version-of`` names the document the claim is about,
+            # so a write in another document is not checked against it (H20-1).
+            url += (f'{separator}document-version={quote(str(doc_version), safe="")}'
+                    f'&document-version-of={quote(str(doc_id), safe="")}')
             stamped_document = doc_id
             stamped_version = doc_version
 

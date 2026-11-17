@@ -550,3 +550,60 @@
       (is (= ["01890000-0000-7000-8000-000000000001"] (:tokens redacted)))
       (is (= "L" (:token-layer redacted)))
       (is (= 404 (:status-code redacted))))))
+
+(deftest a-strict-claim-on-one-document-does-not-check-another
+  ;; H20-1: both clients stamp a client in strict mode on document A with A's
+  ;; version on every write. A write to document B was checked against B's
+  ;; version and refused with "modified since you last fetched it", however
+  ;; often B was fetched. `document-version-of` names the document the claim
+  ;; is about: a write that resolves to another document goes unchecked, as it
+  ;; would without strict mode.
+  (let [proj (create-test-project admin-request "StrictOtherProj")
+        tl (-> (create-text-layer admin-request proj "TL") :body :id)
+        tokl (-> (create-token-layer admin-request tl "Words") :body :id)
+        sl (-> (create-span-layer admin-request tokl "POS") :body :id)
+        doc! (fn [n]
+               (let [d (create-test-document admin-request proj n)
+                     t (-> (create-text admin-request tl d "one two") :body :id)
+                     k (-> (create-token admin-request tokl t 0 3) :body :id)]
+                 {:doc d :span (-> (create-span admin-request sl [k] "X") :body :id)}))
+        a (doc! "Doc A")
+        b (doc! "Doc B")
+        _ (assert-ok (update-span admin-request (:span b) :value "Y"))
+        va (psc/document-version fix/db (:doc a))
+        vb (psc/document-version fix/db (:doc b))
+        patch (fn [span q] (api-call admin-request {:method :patch :path (str "/api/v1/spans/" span "?" q)
+                                                    :body {:value "Z"}}))]
+    (is (not= va vb) "B is ahead of A")
+    (testing "a claim on A does not check a write to B"
+      (is (= 200 (:status (patch (:span b) (str "document-version=" va "&document-version-of=" (:doc a)))))))
+    (testing "a claim on A still checks a write to A"
+      (is (= 409 (:status (patch (:span a) (str "document-version=" (dec va) "&document-version-of=" (:doc a))))))
+      (is (= 200 (:status (patch (:span a) (str "document-version=" va "&document-version-of=" (:doc a)))))))
+    (testing "a claim that names no document is checked against the write's document, as before"
+      (is (= 409 (:status (patch (:span b) (str "document-version=" va))))))
+    (testing "a bulk update over two other documents gets the bulk route's own refusal"
+      (let [r (api-call admin-request {:method :patch
+                                       :path (str "/api/v1/spans/bulk?document-version="
+                                                  (psc/document-version fix/db (:doc a))
+                                                  "&document-version-of=" (random-uuid))
+                                       :body [{:id (:span a) :value "Q"} {:id (:span b) :value "Q"}]})]
+        (is (= 400 (:status r)) (pr-str (:body r)))))
+    (testing "a bulk update that reaches A through B's entry first is still refused"
+      (let [r (api-call admin-request {:method :patch
+                                       :path (str "/api/v1/spans/bulk?document-version="
+                                                  (psc/document-version fix/db (:doc a))
+                                                  "&document-version-of=" (:doc a))
+                                       :body [{:id (:span b) :value "Q"} {:id (:span a) :value "Q"}]})]
+        (is (= 400 (:status r)) (pr-str (:body r)))))
+    (testing "a single write to B with a stale claim on A goes through, one to A with it does not"
+      (is (= 200 (:status (patch (:span b) (str "document-version=1&document-version-of=" (:doc a)))))))
+    (testing "in a batch, the claim on A checks A's write and not B's"
+      (let [_ (assert-ok (update-span admin-request (:span b) :value "W"))
+            v (psc/document-version fix/db (:doc a))
+            _ (is (not= v (psc/document-version fix/db (:doc b))) "B is not at A's version")
+            q (str "?document-version=" v "&document-version-of=" (:doc a))
+            r (api-call admin-request {:method :post :path "/api/v1/batch"
+                                       :body [{:path (str "/api/v1/spans/" (:span a) q) :method "patch" :body {:value "P"}}
+                                              {:path (str "/api/v1/spans/" (:span b) q) :method "patch" :body {:value "P"}}]})]
+        (assert-ok r)))))

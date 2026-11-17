@@ -435,7 +435,10 @@ class PlaidClient {
 
   /**
    * Enter strict mode for a specific document, requiring document version
-   * headers so that conflicting concurrent writes are rejected.
+   * headers so that conflicting concurrent writes are rejected. Every write
+   * carries the document's version and id, and the server checks only writes
+   * in that document: a write in another document goes as it would outside
+   * strict mode.
    * @param {string} documentId - The ID of the document to track versions for
    */
   enterStrictMode(documentId) {
