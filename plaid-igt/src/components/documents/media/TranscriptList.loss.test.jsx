@@ -286,4 +286,26 @@ describe("a row's question, however the row is left", () => {
     });
     await r.unmount();
   });
+
+  it('writes the times the segment has when the answer comes, not the ones it had', async () => {
+    const { server, doc, r, drain } = await mount(RAW());
+    await retype(r, 2, 'nueve diez once');
+    await drain();
+    // Another writer moves the segment's start while the question is open,
+    // and this page has read it.
+    server.otherRelabels('a-2', { timeBegin: 4.5 });
+    await r.step(async () => {
+      await doc.reload();
+      await settle();
+    });
+    expect(doc.alignmentTokens.find((t) => t.id === 'a-2').metadata.timeBegin).toBe(4.5);
+    await r.step(async () => {
+      button('Save anyway').click();
+      await settle();
+    });
+    await drain();
+    expect(server.body).toBe('uno dos tres\nnueve diez once');
+    expect(server.segments().find((t) => t.id === 'a-2').metadata.timeBegin).toBe(4.5);
+    await r.unmount();
+  });
 });

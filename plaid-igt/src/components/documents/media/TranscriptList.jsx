@@ -1131,9 +1131,9 @@ export function TranscriptList({
   const confirm = useConfirm();
   const handleCommit = useCallback(
     async (id, { text, speaker, edits, saved, what }) => {
-      const token = doc.alignmentTokens.find((t) => t.id === id);
+      let token = doc.alignmentTokens.find((t) => t.id === id);
       if (!token) return false;
-      const storedText = cpSlice(doc.body || '', token.begin, token.end);
+      let storedText = cpSlice(doc.body || '', token.begin, token.end);
       const storedSpeaker = token.metadata?.speaker || '';
       // The row moves on once the edit shows, not when the server has it.
       // What becomes of it if the server refuses it is the cell engine's.
@@ -1151,14 +1151,21 @@ export function TranscriptList({
             confirmLabel: 'Save anyway',
             destructive: true,
           });
-          if (!yes) {
+          // The segment as it is now: a time or text changed while the
+          // question was open is not written back.
+          token = doc.alignmentTokens.find((t) => t.id === id);
+          if (!yes || !token) {
             // A row no longer on screen (the person left the tab, or another
             // question answered this one) keeps its typing under Not saved.
             if (!textRefs.current.get(id)?.isConnected) {
-              doc.keepUnsavedRow({ typed: text, ...times });
+              doc.keepUnsavedRow({
+                typed: text,
+                ...(token ? { timeBegin: timeBeginOf(token), timeEnd: timeEndOf(token) } : times),
+              });
             }
             return false;
           }
+          storedText = cpSlice(doc.body || '', token.begin, token.end);
         }
         const before = doc.dataVersion;
         const outcome = doc.cellWrite(
