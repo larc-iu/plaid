@@ -21,12 +21,22 @@ export const ExportProblems = ({ problems }) => (
   </Notice>
 );
 
-/** What the file leaves out: each part of a sentence no root reaches. */
+/**
+ * What the file leaves out: each part of a sentence no root reaches, and each
+ * document-level relation naming a node in one (`relation`).
+ */
 export const LeftOutOfExport = ({ parts }) => {
   const nodes = parts.reduce((sum, p) => sum + p.nodes, 0);
+  const relations = parts.filter((p) => p.relation).length;
+  const counted = [
+    nodes ? countOf(nodes, 'node') : null,
+    relations ? countOf(relations, 'document-level relation') : null,
+  ]
+    .filter(Boolean)
+    .join(' and ');
   return (
     <Notice tone="warning">
-      <p className="font-medium">{countOf(nodes, 'node')} left out of the file:</p>
+      <p className="font-medium">{counted} left out of the file:</p>
       <ul className="mt-1 list-disc ps-5">
         {parts.slice(0, SHOWN).map((p, i) => (
           <li key={i}>

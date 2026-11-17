@@ -79,6 +79,42 @@ describe('ExportEditor', () => {
     state.project = { name: 'P' };
   });
 
+  // H19-1: the document-level relations that go with a node left out.
+  it('counts and names the relations left out with the nodes', async () => {
+    state.doc = {
+      name: 'Two',
+      exportProblems: [],
+      leftOutOfExport: [
+        {
+          sentence: 1,
+          var: 's1b',
+          nodes: 2,
+          message:
+            's1b and 1 node under it are not reached from the root s1s, and the export leaves them out.',
+        },
+        {
+          sentence: 2,
+          nodes: 0,
+          relation: true,
+          message: '(s1b :after s2m) names a node left out.',
+        },
+        {
+          sentence: 2,
+          nodes: 0,
+          relation: true,
+          message: '(s2t :same-entity s1p) names a node left out.',
+        },
+      ],
+      toUmr: () => '(s1s / say-01)',
+    };
+    const r = await renderComponent(<ExportEditor />);
+    const notice = r.container.querySelector('[data-tone="warning"]');
+    expect(notice.textContent).toContain(
+      '2 nodes and 2 document-level relations left out of the file:',
+    );
+    expect(notice.textContent).toContain('Sentence 2: (s1b :after s2m) names a node left out.');
+  });
+
   it('names the nodes no root reaches beside the file', async () => {
     state.doc = {
       name: 'Lunch',

@@ -93,6 +93,30 @@ test('the export writes only what the root reaches, with its alignment and tripl
   assert.match(out, /\(author :full-affirmative s1l\)/);
 });
 
+// H19-1: a document-level relation naming a node the file leaves out is left
+// out with it, and the Export tab says so beside the nodes.
+test('the export lists each document-level relation it leaves out with its node', () => {
+  const doc = loadEdited(
+    file(
+      LUNCH,
+      LUNCH_ALIGNED,
+      '(s1s0 / sentence :modal ((author :full-affirmative s1e) (author :full-affirmative s1l)))',
+    ),
+    cutPurpose,
+  );
+  assert.deepEqual(
+    doc.leftOutOfExport.map((p) => [p.sentence, p.nodes, p.message]),
+    [
+      [
+        1,
+        2,
+        's1e and 1 node under it are not reached from the root s1l, and the export leaves them out.',
+      ],
+      [1, 0, '(author :full-affirmative s1e) names a node left out.'],
+    ],
+  );
+});
+
 // Made the root, a quoted clause reaches the old root through :quote: the
 // old root is not a second one.
 test('the old root a :quote reaches is no second root', () => {

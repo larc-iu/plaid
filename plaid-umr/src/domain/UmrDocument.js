@@ -27,6 +27,7 @@ import {
   nextVariable,
   crossSentenceEdges,
   unreachedByRoot,
+  relationsLeftOut,
   groupOf,
   variablesSharedInSentence,
   keepUnchangedSentences,
@@ -413,7 +414,7 @@ export class UmrDocument extends DocumentModel {
   // (`unreachedByRoot`), each by the number its sentence goes by.
   get leftOutOfExport() {
     return this._derived('leftOutOfExport', () =>
-      unreachedByRoot(this.graph).map((p) => ({
+      [...unreachedByRoot(this.graph), ...relationsLeftOut(this.graph)].map((p) => ({
         ...p,
         sentence: this.sentence(p.sentence)?.number ?? p.sentence,
       })),

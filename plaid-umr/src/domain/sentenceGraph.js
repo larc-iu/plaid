@@ -997,22 +997,59 @@ export const groupOf = (rel) => {
  * not reach (a second fragment) are not written: the file has one graph per
  * sentence, and the canvas and validation show the fragment.
  */
-export function toUmrSentences(graph) {
+// What the file will hold, across the document: the nodes it writes, whether
+// a triple's end is one of them (a triple naming a node the export leaves out
+// is left out with it, as its alignment line is), and the names a held
+// relation may use (see buildDocumentGraph): a written node's, a constant's,
+// and a variable a graph kept as text defines while that text is what the
+// file writes.
+function fileNames(graph) {
   const { sentences, nodesById } = graph;
-  // What the file will hold, across the document: a triple naming a node the
-  // export leaves out is left out with it, as its alignment line is.
   const written = new Set();
   sentences.forEach((s) => writtenIds(s, nodesById).forEach((id) => written.add(id)));
   const inFile = (id) => nodesById.get(id)?.constant || written.has(id);
-  // The names a held relation may use (see buildDocumentGraph): a written
-  // node's, a constant's, and a variable a graph kept as text defines while
-  // that text is what the file writes.
   const named = new Set(DOC_CONSTANTS);
   written.forEach((id) => named.add(nodesById.get(id)?.var));
   sentences.forEach((s) => {
     if (s.nodes.length || typeof s.rawGraph !== 'string') return;
     for (const m of s.rawGraph.matchAll(KEPT_VARIABLE)) named.add(m[1]);
   });
+  return { written, inFile, named };
+}
+
+/**
+ * The document-level relations the export leaves out because a node they
+ * name is not in the file, by the sentence whose block holds them (H19-1).
+ * `toUmrSentences` writes the rest.
+ */
+export const relationsLeftOut = (graph) => {
+  const { inFile, named } = fileNames(graph);
+  const nameOf = (id) => graph.nodesById.get(id)?.var;
+  const out = [];
+  graph.sentences.forEach((s) => {
+    const left = [
+      ...s.triples
+        .filter((t) => !(inFile(t.source) && inFile(t.target)))
+        .map((t) => [nameOf(t.source), t.rel, nameOf(t.target)]),
+      ...s.held
+        .filter((h) => !(named.has(h.source) && named.has(h.target)))
+        .map((h) => [h.source, h.rel, h.target]),
+    ];
+    left.forEach(([a, rel, b]) =>
+      out.push({
+        sentence: s.index,
+        nodes: 0,
+        relation: true,
+        message: `(${a} ${rel} ${b}) names a node left out.`,
+      }),
+    );
+  });
+  return out;
+};
+
+export function toUmrSentences(graph) {
+  const { sentences, nodesById } = graph;
+  const { written, inFile, named } = fileNames(graph);
   const sntOf = fileNumbers(sentences);
 
   return sentences.map((s) => {
