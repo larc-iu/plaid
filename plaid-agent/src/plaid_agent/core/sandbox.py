@@ -25,7 +25,7 @@ import re
 import threading
 from typing import Any, Callable, Dict, List, Optional
 
-from .limits import MAX_RESULT_CHARS, QUERY_ROWS, cuts, forget_cuts, note_cut
+from .limits import GROUP_LIMIT, MAX_RESULT_CHARS, QUERY_ROWS, cuts, forget_cuts, note_cut
 from .tools import ToolError, kind_of
 
 # Characters of output handed back. Literally every tool result's budget, not
@@ -461,9 +461,10 @@ The project reaches the code through the functions here and any named further do
                                  is a LIST, one item per find variable: [entity dict] for "entities"
                                  (the default), [id] for "ids". An aggregate's row is its group values
                                  then its aggregates, e.g. ["NOUN", 412]. "count" gives {{"count": n}}
-                                 and no rows. An answer the engine cut ("ids" and "entities" stop at
-                                 {query_rows} rows) raises, unless query(q, partial=True): count with an
-                                 aggregate return, or split the where and query once per part.
+                                 and no rows. "ids" and "entities" stop at {query_rows} rows, an aggregate
+                                 at {group_rows} groups. An answer cut there raises, and so does an aggregate cut
+                                 at its own "limit" (groups come in no order): count with an aggregate
+                                 return, or split the where and query once per part.
   plan(tool, **args)          -> stage a proposal through a plan tool by name, with the same arguments
                                  the tool takes; returns the tool's own reply as text. Nothing is written:
                                  the user approves the plan afterwards, exactly as with the tools.
@@ -495,7 +496,7 @@ def help_text(app_half: str, extra: str = '', ws=None, shape: str = '') -> str:
     projects the turn may read, when there are any."""
     from . import filetools
     out = (HELP.format(modules=', '.join(MODULES), output_max=OUTPUT_MAX, turn_seconds=TURN_EXEC_SECONDS,
-                       query_rows=QUERY_ROWS,
+                       query_rows=QUERY_ROWS, group_rows=GROUP_LIMIT,
                        shape='{shape}').replace('{shape}\n', shape.strip('\n') + '\n\n' if shape else '')
            + app_half + extra + filetools.save_help(ws))
     reach = getattr(ws, 'reach', None)
@@ -587,7 +588,7 @@ def api(ws, view: Callable[[Any], Any], call_tool, write_tools,
     it on to the plan tool, which refuses it (see core/reach.py).
     """
     from . import filetools
-    from .query import QueryRefused, parse_query, rewrite, run as run_query
+    from .query import QueryRefused, own_limit, parse_query, rewrite, run as run_query
     from .reach import target
     loads: Dict[int, Callable[[str], Any]] = {}
 
@@ -614,6 +615,7 @@ def api(ws, view: Callable[[Any], Any], call_tool, write_tools,
         w = workspace(project)
         try:
             parsed = parse_query(q)
+            own = own_limit(parsed)
             idx = layer_index(w)
             docs = {(d.get('name') or '').casefold(): d['id'] for d in w.documents()}
             res = run_query(w.client, rewrite(parsed, idx, display(idx), docs), w.project.id)
@@ -622,9 +624,10 @@ def api(ws, view: Callable[[Any], Any], call_tool, write_tools,
         # A cut answer is refused unless the code asks for one: code that
         # never read "truncated" built a project-wide plan from 500 of 1,768
         # values (survey 2026-11-17 item 4). A printed line is as easily
-        # missed as the key, so the code stops here.
-        if isinstance(res, dict) and res.get('truncated') and partial is not True:
-            raise ValueError(cut_refusal(len(res.get('results') or ())))
+        # missed as the key, so the code stops here (`cut_refusal`).
+        why = None if partial is True else cut_refusal(res, own)
+        if why:
+            raise ValueError(why)
         return res
 
     return {'documents': documents, 'load': load, 'query': query,
@@ -637,13 +640,35 @@ def api(ws, view: Callable[[Any], Any], call_tool, write_tools,
 CODE_LABEL = 'Read across the corpus'
 
 
-def cut_refusal(rows: int) -> str:
-    """What query() in code raises on an answer the engine cut at ``rows``.
-    The language has no paging, so the ways on are a count or the where
-    split, or the part taken knowingly."""
-    return (f'The query answer was cut at {rows} rows, so it is not the whole answer. Count with a "count" or '
-            f'aggregate return, or split the where (one document at a time) and query each part. '
-            f'query(q, partial=True) returns the cut answer.')
+def cut_refusal(res: Any, own: Optional[int]) -> Optional[str]:
+    """What query() in code raises on a cut answer, or None when it may pass.
+
+    The fixed rule (core.query.cut_by): rows that stopped at the query's own
+    "limit" are the sample the code asked for, and pass. Groups that stopped
+    there do not: the engine returns groups in no order, so a "limit" on an
+    aggregate keeps an arbitrary part (the survey's 500 of 1,768), and the
+    way on is to leave it out (an aggregate then returns GROUP_LIMIT groups at most).
+    Rows or groups cut at the cap, and a count stopped at it, raise with how
+    to go on: the language has no paging, so a count, or the where split, or
+    the part taken knowingly."""
+    from .query import cut_by
+    by = cut_by(res, own)
+    if by is None or (by == 'own' and res.get('return') != 'aggregate'):
+        return None
+    if by == 'count':
+        return (f'The count stopped at the engine\'s cap: there are at least {res.get("count")}. Split the where '
+                f'(one document at a time) and count each part, or query(q, partial=True) for the capped count.')
+    n = len(res.get('results') or ())
+    if by == 'own':
+        return (f'The query answer was cut at its own "limit" of {n} groups, and groups come in no order, so it is '
+                f'an arbitrary part. Leave "limit" out for the whole answer.')
+    if res.get('return') == 'aggregate':
+        return (f'The query answer was cut at {n} groups, the most the engine returns, so it is not the whole '
+                f'answer. Split the where (one document at a time) and query each part. query(q, partial=True) '
+                f'returns the cut answer.')
+    return (f'The query answer was cut at {n} rows, the most the engine returns, so it is not the whole answer. '
+            f'Count with a "count" or aggregate return, or split the where (one document at a time) and query '
+            f'each part. query(q, partial=True) returns the cut answer.')
 
 
 # The host functions whose answers stage or store something rather than read

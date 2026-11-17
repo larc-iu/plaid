@@ -294,6 +294,36 @@ def run(client, q: Dict[str, Any], project_id: str) -> Dict[str, Any]:
         raise QueryRefused('Query rejected: ' + (m.group(1) if m else msg[:400]), kind=engine_refusal_kind(e))
 
 
+def own_limit(q: Any) -> Optional[int]:
+    """The "limit" a query was written with, before :func:`run` holds it to
+    its cap, or None when it gives none."""
+    lim = q.get('limit') if isinstance(q, dict) else None
+    return lim if isinstance(lim, int) and not isinstance(lim, bool) and lim > 0 else None
+
+
+def cut_by(res: Any, own: Optional[int]) -> Optional[str]:
+    """What cut an answer, by a fixed rule: ``'own'`` when it stopped at the
+    query's own "limit" (``own``, the answer holding exactly that many rows or
+    groups), ``'cap'`` when it stopped at the engine's cap or the agent's
+    (``QUERY_ROWS``), ``'count'`` for a count the engine stopped counting,
+    None when it is whole."""
+    if not isinstance(res, dict) or not res.get('truncated'):
+        return None
+    if res.get('return') == 'count':
+        return 'count'
+    if own is not None and len(res.get('results') or ()) == own:
+        return 'own'
+    return 'cap'
+
+
+def cut_note(res: Any, own: Optional[int]) -> str:
+    """The words a rendered answer adds when it was cut (:func:`cut_by`)."""
+    by = cut_by(res, own)
+    if by == 'own':
+        return f' (cut at the query\'s own "limit" of {own})'
+    return ' (truncated by the engine limit)' if by else ''
+
+
 def cell(entity: Any, refs: Dict[str, str], layer_names: Dict[str, str]) -> str:
     """One result value, as a line of text: a positional reference where the
     app could give one, and enough of the raw entity where it could not."""
@@ -319,9 +349,10 @@ def cell(entity: Any, refs: Dict[str, str], layer_names: Dict[str, str]) -> str:
 
 
 def render(res: Any, q: Dict[str, Any], limit: int, refs: Dict[str, str],
-           layer_names: Dict[str, str], doc_names: Dict[str, str]) -> str:
+           layer_names: Dict[str, str], doc_names: Dict[str, str], own_limit: Optional[int] = None) -> str:
     """The engine's answer as text. Counts and groups read plainly; rows are
-    rendered through ``cell``."""
+    rendered through ``cell``. ``own_limit`` is the "limit" the query was
+    written with, which a cut answer names when it stopped there."""
     if not isinstance(res, dict):
         return json.dumps(res, ensure_ascii=False)[:4000]
     if res.get('return') == 'count':
@@ -332,8 +363,8 @@ def render(res: Any, q: Dict[str, Any], limit: int, refs: Dict[str, str],
     if res.get('return') == 'aggregate':
         # Cut as a row answer is, and said as one is: a grouped answer read as
         # whole was the survey's partial plan (2026-11-17 item 4).
-        lines = [f'{len(rows)} group{"s" if len(rows) != 1 else ""}'
-                 + (' (truncated by the engine limit)' if res.get('truncated') else '') + ': ' + '\t'.join(cols)]
+        lines = [f'{len(rows)} group{"s" if len(rows) != 1 else ""}' + cut_note(res, own_limit)
+                 + ': ' + '\t'.join(cols)]
         for r in rows[:limit]:
             lines.append('  ' + '\t'.join(
                 str(doc_names.get(c, c)) if isinstance(c, str) else str(c) for c in r))
@@ -342,7 +373,7 @@ def render(res: Any, q: Dict[str, Any], limit: int, refs: Dict[str, str],
         return '\n'.join(lines)
     total = res.get('count', len(rows))
     header = f'{total} row{"s" if total != 1 else ""}' \
-        + (' (truncated by the engine limit)' if res.get('truncated') else '') \
+        + cut_note(res, own_limit) \
         + (f', showing {limit} ({MORE})' if len(rows) > limit else '') + ': ' + '\t'.join(cols)
     if q.get('return') == 'ids':
         return '\n'.join([header] + ['  ' + '\t'.join(str(c) for c in r) for r in rows[:limit]])
@@ -414,6 +445,7 @@ def query_tool(ws, query: Any, limit: Any, layer_index: Callable, display: Calla
     """
     try:
         q = parse_query(query)
+        own = own_limit(q)
         if limit in (None, '') and isinstance(q.get('limit'), int) and not isinstance(q.get('limit'), bool):
             limit = q['limit']
         limit = clamp_limit(limit, *READ_LIMITS['query'])
@@ -436,7 +468,7 @@ def query_tool(ws, query: Any, limit: Any, layer_index: Callable, display: Calla
             refs.update(entry_refs(ws, entries))
     layer_names = {h[1]: h[2] for hs in idx.values() for h in hs}
     note_rows(ws, res, limit)
-    return truncate(render(res, q, limit, refs, layer_names, doc_names))
+    return truncate(render(res, q, limit, refs, layer_names, doc_names, own))
 
 
 def note_rows(ws, res: Any, limit: int) -> None:
