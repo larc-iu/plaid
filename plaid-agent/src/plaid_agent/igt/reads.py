@@ -187,6 +187,10 @@ def t_search(ws: Workspace, pattern: str = '', where: str = 'baseline', document
     where_l = where_name.lower()
     out: List[str] = []
     total = 0
+    # The step says where this search looked, as resolved here (REV-SVA-6).
+    label = _search_label(ws, pattern, document, where_l if where_l in ('baseline', 'morpheme', 'lexicon')
+                          else None, where_name)
+    ws.step_label = label
 
     if where_l == 'lexicon':
         for v in ws.project.vocabs:
@@ -218,6 +222,7 @@ def t_search(ws: Workspace, pattern: str = '', where: str = 'baseline', document
             text = '\n\n'.join(f'{f.name}: ' + t_search(ws, pattern, f.name, document, regex, limit, case_sensitive)
                                  for f in alike)
             _merge_notes(ws, start)
+            ws.step_label = label
             return text
         field = _field_or_where(ws, where_name, ('baseline', 'morpheme', 'lexicon'))
     from .queries import q_empty_hint, q_search, where_label
@@ -243,6 +248,16 @@ def search_where(ws: Workspace, pattern: str, where: Optional[str], regex: bool,
         return where_l, [None]
     alike = ws.project.fields_sharing_name(where_name)
     return 'field', alike or [_field_or_where(ws, where_name, ('baseline', 'morpheme', 'lexicon'))]
+
+
+def _search_label(ws: Workspace, pattern: str, document: Optional[str], kind: Optional[str], field: str) -> str:
+    """The search's step line (`trace.search_label`), held to the documents
+    the call named, by name."""
+    from ..core.agent import named_args
+    from .trace import search_label
+    docs = getattr(ws, 'scoped_documents', None)
+    held = {'documents': list(docs)} if docs and len(docs) > 1 else named_args(ws, {'document': document})
+    return search_label(kind, field, {'pattern': pattern, **held})
 
 
 def _merge_notes(ws, start):

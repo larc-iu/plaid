@@ -65,12 +65,23 @@ _SEARCHED = {'baseline': 'the baseline', 'morpheme': 'morpheme forms', 'lexicon'
 
 
 def _searched(where: Any) -> str:
-    """Where a search looked: the kind its ``where`` names in any of the
-    tool's words for it ("words" is the baseline), else the field, its name as
-    the call gave it."""
+    """Where a search looked, for a call the tool refused, which never
+    resolved its ``where``: the kind it names in any of the tool's words for
+    it ("words" is the baseline), else the field, its name as the call gave
+    it. A call that ran is labelled by what it resolved (:func:`search_label`)."""
     name = str(where or '').strip()
+    if name.lower().startswith('field:'):
+        return name[6:].strip()
     low = name.lower() or 'baseline'
     return next((_SEARCHED[k] for k, words in WHERE_WORDS.items() if low in words), name)
+
+
+def search_label(kind: Optional[str], field: str, a: Dict[str, Any]) -> str:
+    """The line of a search that ran, from what the tool resolved its
+    ``where`` to (REV-SVA-6): ``kind`` is "baseline", "morpheme" or
+    "lexicon" when it searched one of those, else ``field``, the field's name.
+    ``a`` holds the pattern and the documents it was held to."""
+    return f'Searched {_SEARCHED[kind] if kind else field} for {q(a.get("pattern"))}{in_doc(a)}'
 
 
 #: What frequency_list ranks when ``what`` names no field, in the plural.
