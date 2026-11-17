@@ -110,6 +110,14 @@ async function openAs(browser, auth = undefined) {
   return tab;
 }
 
+// A row edit that types over a glossed word asks first (H10-3): save it.
+async function saveAnyway(page) {
+  const ask = page.getByRole('alertdialog');
+  await expect(ask).toContainText('Deletes 1 word and 1 annotation.');
+  await ask.getByRole('button', { name: 'Save anyway' }).click();
+  await expect(ask).toHaveCount(0);
+}
+
 test("two users edit the same row: each edit keeps the segment and the word's gloss, and the later one shows the stored text with its own under it", async ({
   browser,
 }) => {
@@ -146,6 +154,7 @@ test("two users edit the same row: each edit keeps the segment and the word's gl
     await row.press('ControlOrMeta+a');
     await B.page.keyboard.type('DOS');
     await row.press('Enter');
+    await saveAnyway(B.page);
     await expect(row).toHaveValue('dos!', { timeout: 15000 });
     await expect(B.page.getByText('Yours: DOS · Enter to keep yours')).toBeVisible();
     await expect(B.page.getByRole('list', { name: 'Not saved' })).toHaveCount(0);
@@ -166,6 +175,7 @@ test("two users edit the same row: each edit keeps the segment and the word's gl
     // Enter in it keeps B's text, over A's, on the same segment.
     await row.click();
     await row.press('Enter');
+    await saveAnyway(B.page);
     await expect.poll(async () => (await segments())[1][1]).toBe('DOS');
     await expect(B.page.getByText('Enter to keep yours')).toHaveCount(0);
     expect((await segments()).map(([id]) => id)).toEqual(before.map(([id]) => id));
