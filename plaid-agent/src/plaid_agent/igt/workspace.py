@@ -54,7 +54,8 @@ MAINTAINER_ACTS = ('Only a Maintainer of {project} can rename, merge, delete or 
                    '{lexicon}, and the person you are acting for is not one. Nothing was planned. Tell them a '
                    'Maintainer of that project has to make this change.')
 WRITER_ACTS = ('Only a Writer or Maintainer of {project} can change the lexicon {lexicon}, and the person you '
-               'are acting for is {role}. Nothing was planned.')
+               'are acting for is {role}. Nothing was planned. Tell them a Writer or Maintainer of that project has to '
+               'make this change.')
 BORROWED = ('The lexicon {lexicon} belongs to another project and is read only here: words link to its entries, '
             'and no entry is added or changed. Nothing was planned. Tell the user its entries are changed in its '
             'own project, by a Writer or Maintainer of that project.')

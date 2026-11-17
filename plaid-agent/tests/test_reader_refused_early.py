@@ -15,7 +15,7 @@ from plaid_agent.igt.toolkit import call_tool
 
 USER = 'u@x.org'
 READER = ('Only a Writer or Maintainer of "Demo" can change anything in it, and the person you are acting for is '
-          'a Reader. Nothing was planned.')
+          'a Reader. Nothing was planned. Tell them a Writer or Maintainer of that project has to make this change.')
 
 IGT_CALLS = [
     ('set_field', {'document': 'Text 1', 'refs': ['s1.w2'], 'field': 'Gloss', 'value': 'fish'}),
@@ -66,7 +66,23 @@ def test_a_reader_in_ud_is_refused_too():
         out = ud_call(w, 'set_field', {'document': 'Viaje', 'refs': ['s1.w1'], 'field': 'upos', 'value': 'NOUN'})
         if refused:
             assert out == ('Error: Only a Writer or Maintainer of "Spanish" can change anything in it, and the '
-                           'person you are acting for is a Reader. Nothing was planned.'), out
+                           'person you are acting for is a Reader. Nothing was planned. Tell them a Writer or '
+                           'Maintainer of that project has to make this change.'), out
             assert w.ops == []
         else:
             assert 'Planned' in out, out
+
+
+def test_the_reader_refusal_comes_first_and_before_a_corpus_wide_scan():
+    """REV-SVB-10: refused where a plan tool is dispatched, before the tool
+    reads anything: before a sentence's changed numbers are asked about, and
+    before a corpus-wide change queries the corpus. Help still answers."""
+    w = _ws('readers')
+    w.read_before = {'d1': {'1': 'changed'}}
+    out = call_tool(w, 'set_field', {'document': 'Text 1', 'refs': ['s1.w2'], 'field': 'Gloss', 'value': 'x'})
+    assert out == f'Error: {READER}', out
+    w.client.calls.clear()
+    out = call_tool(w, 'replace_in_field', {'field': 'Gloss', 'pattern': 'Ali', 'replacement': 'Aly'})
+    assert out == f'Error: {READER}', out
+    assert not [k for k, _ in w.client.calls if k in ('query', 'read')], w.client.calls
+    assert not call_tool(w, 'senses', {'action': 'help'}).startswith('Error')

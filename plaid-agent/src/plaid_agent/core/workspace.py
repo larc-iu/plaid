@@ -54,7 +54,8 @@ READ_ONLY_REFUSAL = (
 # write, so a plan for them is refused at its first change, not at approval
 # (2026-11-17 survey). The role names are the page's.
 READER_REFUSAL = ('Only a Writer or Maintainer of {project} can change anything in it, and the person you are acting '
-                  'for is a Reader. Nothing was planned.')
+                  'for is a Reader. Nothing was planned. Tell them a Writer or Maintainer of that project has to make '
+                  'this change.')
 
 # A turn holds a plan of changes or a job card, never both (the job card,
 # `job_card` below): whichever is staged first stands, and the other is

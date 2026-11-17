@@ -70,6 +70,13 @@ def shared_schemas(*, ref: str, comment_field: bool = False, restore: bool = Fal
     }
 
 
+def _asks_help(args) -> bool:
+    """Whether a plan tool's call only asks for its help text: action
+    "help", or help true (analyze_sentence)."""
+    return isinstance(args, dict) and (str(args.get('action') or '').strip().lower() == 'help'
+                                       or args.get('help') is True)
+
+
 class Kit(NamedTuple):
     tools: List[Dict[str, Any]]
     write_tools: frozenset
@@ -129,6 +136,11 @@ def build(tools: List[Dict[str, Any]], impl: Dict[str, Callable], *, manual: str
                    and str(args.get('action') or '').strip().lower() in guidelines.READ_ACTIONS)
         try:
             ws, args = route(ws, name, args, reading=reading)
+            # A Reader is refused before the tool reads anything: before a
+            # corpus-wide change queries the corpus and before any other
+            # refusal (REV-SVB-10). add_op refuses again, as the backstop.
+            if name in write and not reading and not _asks_help(args) and hasattr(ws, 'refuse_reader'):
+                ws.refuse_reader()
         except ToolError as e:
             return refused_for(e)
         # A change this turn planned over one an earlier call planned is worth
