@@ -13,9 +13,12 @@
 (use-fixtures :each with-clean-db)
 
 ;; plaid-igt's word pattern: a token holding something other than punctuation,
-;; a pictograph or ∅ (igtConfig.js wordValueSpec).
+;; a pictograph, a tone letter or a skin-tone modifier, or ∅ (igtConfig.js
+;; wordValueSpec).
 (def ^:private word-pattern
-  {:regex "[^\\p{P}\\p{S}]|[\\p{IsExtended_Pictographic}\\x{2205}]"})
+  {:regex (str "[^\\p{P}\\p{S}]|[\\p{IsExtended_Pictographic}"
+               "\\x{2e5}-\\x{2eb}\\x{2f9}-\\x{2fc}\\x{a700}-\\x{a716}\\x{a720}-\\x{a721}\\x{1f3fb}-\\x{1f3ff}"
+               "\\x{2205}]")})
 
 (defn- corpus! [pname body]
   (let [pid (h/create-test-project admin-request pname)
@@ -56,6 +59,14 @@
     (testing "a flag and a document with no match"
       (is (= [[tokl doc 1]] (-> (counts admin-request [tokl] {:regex "^ana$" :flags "i"}) :body :results)))
       (is (= [[tokl doc 0]] (-> (counts admin-request [tokl] {:regex "zzz"}) :body :results))))))
+
+(deftest counts-a-tone-letter-or-a-skin-tone-as-a-word
+  ;; H16-7: a tone letter or a skin-tone modifier on its own is a word to igt,
+  ;; and a spacing accent is not
+  (let [{:keys [tokl doc tokens]} (corpus! "P2" "ma \u02E5\u02E9 \uA712 \uD83C\uDFFD ^ \u02C4 .")]
+    (is (= 7 tokens))
+    (is (= [[tokl doc 4]] (-> (counts admin-request [tokl] word-pattern) :body :results)))
+    (is (= 4 (ql-count tokl word-pattern)))))
 
 (deftest counts-canonical-spellings-as-the-query-language-does
   ;; The same word stored composed (á) and decomposed (a and U+0301), and a

@@ -64,7 +64,7 @@ export function isUnicodePunctuation(char) {
  *
  * The one thing that does differ is WHICH characters are punctuation to begin
  * with: this file's `isUnicodePunctuation` is the curated break class, while
- * igtConfig's is `[\p{P}\p{S}]` minus pictographs. A character in neither list
+ * igtConfig's is `[\p{P}\p{S}]` minus pictographs and the tone letters. A character in neither list
  * never breaks and is never trimmed, which is the behavior a letter wants
  * anyway.
  *
@@ -96,7 +96,9 @@ export function shouldTokenizeCharacter(char, config) {
 // annotation cells. ∅ is Sm, so it falls under \p{S} on the letter of the rule
 // while being the most meaning-bearing character in IGT: without this it
 // would lose its annotation cells the same way, and trimIgnoredEdges would eat
-// the zero off a form like `ta∅`.
+// the zero off a form like `ta∅`. The tone letters (˥˩, ꜒) and the skin-tone
+// modifiers (🏽) are symbols that are letters, and the generated table leaves
+// them out of PUNCT_OR_SYMBOL for every project (LETTER_SYMBOLS, H16-7).
 //
 // Both classes come from one generated table (punctuationClasses.js), never
 // the runtime's `\p{}`: those move with the browser's Unicode version (★ is a

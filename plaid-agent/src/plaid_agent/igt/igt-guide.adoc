@@ -691,7 +691,8 @@ A new sentence field named `Translation`, `Literal Translation` or `Note` is giv
 **Tokenize new text**, on by default, splits the text added on the Baseline and Media tabs, and by the assistant, into words.
 
 The **ignored tokens** rule says which tokens carry no word-level annotation and host no morphemes, usually punctuation.
-**Unicode punctuation** takes every punctuation mark and symbol except ∅ and pictographs such as ★.
+**Unicode punctuation** takes every punctuation mark and symbol except ∅, pictographs such as ★, the tone letters such as ˥ and ˩ and the emoji skin-tone modifiers.
+Tone letters and skin-tone modifiers are letters in every project, so `ma˥˩` keeps its tone on its form in the lexicon.
 Its exceptions are the **characters that behave as letters**, such as the apostrophe of an orthography that writes a glottal stop with one.
 Each listed character joins the word around it instead of splitting it, and stays on the word's form in the lexicon.
 **Explicit list** instead takes only the tokens you list, separated by commas.

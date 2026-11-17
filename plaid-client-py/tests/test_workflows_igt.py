@@ -147,6 +147,33 @@ def test_is_token_ignored():
     assert not is_token_ignored('.', None)
 
 
+def test_tone_letters_and_skin_tones_are_letters():
+    """H16-7 (owner ruling 2026-11-17): the modifier tone letters and the emoji
+    skin-tone modifiers are letters to the ignore rule, for every project."""
+    from plaid_client.workflows.igt.punctuation_classes import LETTER_SYMBOLS
+    assert LETTER_SYMBOLS == ((0x02E5, 0x02EB), (0x02F9, 0x02FC), (0xA700, 0xA716),
+                              (0xA720, 0xA721), (0x1F3FB, 0x1F3FF))
+    cfg = {'type': 'unicodePunctuation', 'whitelist': []}
+    for t in ('˥˩', '˧', '꜒', '꜠', '˹', '🏽', '˥.'):
+        assert not is_token_ignored(t, cfg), t
+    for t in ('^', '`', '˄', '˭', '˸', '˽', '꞉'):
+        assert is_token_ignored(t, cfg), t
+    # A project's letter-like list still works beside them.
+    glottal = {'type': 'unicodePunctuation', 'whitelist': ["'"]}
+    assert not is_token_ignored("'˥", glottal) and is_token_ignored('.', glottal)
+
+
+def test_tone_letters_are_every_symbol_named_tone():
+    """The fixed rule behind LETTER_SYMBOLS: the modifier symbols (Sk) whose
+    Unicode name says TONE, and the emoji skin-tone modifiers."""
+    import unicodedata
+    from plaid_client.workflows.igt.punctuation_classes import LETTER_SYMBOLS
+    named = [cp for cp in range(0x110000)
+             if unicodedata.category(chr(cp)) == 'Sk' and 'TONE' in unicodedata.name(chr(cp), '').split()]
+    held = [cp for a, b in LETTER_SYMBOLS for cp in range(a, b + 1) if not 0x1F3FB <= cp <= 0x1F3FF]
+    assert held == named
+
+
 def words_of(doc):
     sentences, _ = derive(doc, 'wordL', 'morphL', 'sentL', gloss_field='Gloss')
     return sentences

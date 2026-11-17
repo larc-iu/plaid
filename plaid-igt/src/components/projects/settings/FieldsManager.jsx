@@ -901,7 +901,8 @@ export const FieldsManager = ({
             <span>
               <span className="text-sm font-medium">Unicode punctuation (recommended)</span>
               <span className="block text-xs text-muted-foreground">
-                Ignore punctuation and symbols, except ∅ and pictographs such as ★
+                Ignore punctuation and symbols, except ∅, tone letters such as ˥ and pictographs
+                such as ★
               </span>
             </span>
           </label>

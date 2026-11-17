@@ -149,6 +149,20 @@ describe('ignored-tokens rule', () => {
     expect(isTokenIgnored('kʼ', cfg)).toBe(false);
     expect(isTokenIgnored('ʼ', cfg)).toBe(false);
   });
+  // H16-7 (owner ruling 2026-11-17): the modifier tone letters and the
+  // skin-tone modifiers are letters for every project, listed or not.
+  it('reads tone letters and skin-tone modifiers as letters', () => {
+    expect(isTokenIgnored('˥˩', cfg)).toBe(false);
+    expect(isTokenIgnored('˧', cfg)).toBe(false);
+    expect(isTokenIgnored('꜒', cfg)).toBe(false);
+    expect(isTokenIgnored('🏽', cfg)).toBe(false);
+    expect(isTokenIgnored('˥.', cfg)).toBe(false);
+    // A project's own letter-like list still works beside them.
+    const glottal = { type: 'unicodePunctuation', whitelist: ["'"] };
+    expect(isTokenIgnored("'˥", glottal)).toBe(false);
+    expect(isTokenIgnored("'", glottal)).toBe(false);
+    expect(isTokenIgnored('.', glottal)).toBe(true);
+  });
   it('ignores an entry that is more than one character', () => {
     // A real project had ["-ab"]. Nothing compares a whole string to a
     // character, so it does nothing rather than quietly meaning something.
@@ -171,6 +185,16 @@ describe('trimIgnoredEdges', () => {
     expect(trimIgnoredEdges('...', cfg)).toBe('...');
     expect(trimIgnoredEdges('😀!', cfg)).toBe('😀');
     expect(trimIgnoredEdges('', cfg)).toBe('');
+  });
+  it('keeps tone letters and a skin-tone modifier, the form + Create proposes', () => {
+    expect(trimIgnoredEdges('ma˥˩', cfg)).toBe('ma˥˩');
+    expect(trimIgnoredEdges('ma˥˩.', cfg)).toBe('ma˥˩');
+    expect(trimIgnoredEdges('˧ma', cfg)).toBe('˧ma');
+    expect(trimIgnoredEdges('pa꜒꜖,', cfg)).toBe('pa꜒꜖');
+    expect(trimIgnoredEdges('👍🏽', cfg)).toBe('👍🏽');
+    expect(trimIgnoredEdges('«👍🏽»', cfg)).toBe('👍🏽');
+    const glottal = { type: 'unicodePunctuation', whitelist: ["'"] };
+    expect(trimIgnoredEdges("'ma˥'.", glottal)).toBe("'ma˥'");
   });
   it('is a no-op without a unicodePunctuation config', () => {
     expect(trimIgnoredEdges('derechos.', null)).toBe('derechos.');
@@ -557,6 +581,17 @@ describe('wordValueSpec', () => {
     '*',
     '%',
     '§',
+    // The symbols that are letters (H16-7), and Sk symbols that are not.
+    '˥˩',
+    'ma˥˩',
+    '˹',
+    '꜒',
+    '꜠',
+    '🏽',
+    '👍🏽',
+    '^',
+    '˄',
+    '꞉',
   ];
   for (const cfg of [
     { type: 'unicodePunctuation', whitelist: [] },

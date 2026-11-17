@@ -45,7 +45,8 @@
   [c]
   (contains? #{0x0A 0x0D 0x85 0x2028 0x2029} (int c)))
 
-;; Punctuation and symbols (Unicode P and S), pictographs and the built-in
+;; Punctuation and symbols (Unicode P and S less the tone letters and the
+;; skin-tone modifiers, which are letters), pictographs and the built-in
 ;; tokenizer's break class, read from the table igt and plaid-client-py read
 ;; (`resources/punctuation_classes.txt`, written by plaid-igt's
 ;; `tools/punctuationClasses.mjs` with plaid-ui's `punctuationClasses.js`),
@@ -54,7 +55,7 @@
 ;; tables, which are a version behind igt's (Java 21 has Unicode 15, the
 ;; tables 16).
 (def punct-classes
-  "`{\"punct\" ranges \"picto\" ranges \"break\" ranges \"spaceless\" ranges}`,
+  "`{\"punct\" ranges \"picto\" ranges \"break\" ranges \"letters\" ranges \"spaceless\" ranges}`,
   each an int array of inclusive `[first last]` code-point pairs in order."
   (into {}
         (for [file ["punctuation_classes.txt" "spaceless_scripts.txt"]
@@ -82,9 +83,10 @@
 (defn punct?
   "Whether code point `c` is punctuation to the text rules: a character
   the ignore rule skips (plaid-ui `isIgnoredCharacter`), Unicode
-  punctuation or a symbol, but not a pictograph, not U+2205, the zero
-  morph, and not one `letter-like` holds, the code points the project's
-  rule calls letters (see `ignored-rule`). Typed right after it,
+  punctuation or a symbol, but not a tone letter or a skin-tone modifier
+  (the table's `letters`, left out of its `punct`), not a pictograph, not
+  U+2205, the zero morph, and not one `letter-like` holds, the code points
+  the project's rule calls letters (see `ignored-rule`). Typed right after it,
   with no whitespace, text goes to the sentence after (see
   `typed-to-next?`), and a word token made only of it takes no text typed
   against it (see `apply-plain-gaps`)."

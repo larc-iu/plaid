@@ -1086,6 +1086,32 @@
     (is (= [[0 2] [3 4] [6 8]]
            (sort (keep #(when (= :w (:token/layer %)) [(:token/begin %) (:token/end %)]) (:tokens r)))))))
 
+(deftest a-tone-letter-is-a-letter-to-the-punctuation-rule
+  ;; H16-7 (owner ruling 2026-11-17): a word of only tone letters, or of a
+  ;; skin-tone modifier, takes a letter typed against it as a word of letters
+  ;; does, listed or not, and a letter typed after one ending a sentence stays
+  ;; in that sentence. A spacing accent stays punctuation.
+  (doseq [[body op expect]
+          [["ab \u02E5\u02E9 cd" (ins 5 "x") ["ab" "\u02E5\u02E9x" "cd"]]
+           ["ab \uA712 cd" (ins 3 "x") ["ab" "x\uA712" "cd"]]
+           ["ab \uD83C\uDFFD cd" (ins 4 "x") ["ab" "\uD83C\uDFFDx" "cd"]]
+           ["ab ^ cd" (ins 4 "x") ["ab" "^" "cd"]]]
+          :let [n (cp/cp-count body)
+                spans (let [m (re-matcher #"\S+" body)]
+                        (loop [out []] (if (.find m)
+                                         (recur (conj out [(.codePointCount body 0 (.start m)) (.codePointCount body 0 (.end m))]))
+                                         out)))
+                tokens (into [{:token/id [:s 0] :token/layer :s :token/begin 0 :token/end n}]
+                             (map-indexed (fn [i [b e]] {:token/id [:w i] :token/layer :w :token/begin b :token/end e}) spans))
+                new (ta/edit-ops-body [op] body)]
+          [path r] [[:edits (th/plain-edits body tokens [op] #{:s} #{:w})]
+                    [:body (th/plain-body body new tokens #{:s} #{:w})]]]
+    (let [b (:text/body (:text r))
+          words (vec (sort-by first (keep (fn [{:token/keys [layer begin end]}]
+                                            (when (= :w layer) [begin (cp/cp-subs b begin end)]))
+                                          (:tokens r))))]
+      (is (= expect (mapv second words)) (str body " " path)))))
+
 (deftest a-layer-config-names-its-letter-like-characters
   (is (= #{(int \') 0x2019} (:letter-like (ta/ignored-rule {"plaid" {"ignoredTokens" {"type" "unicodePunctuation"
                                                                                       "whitelist" ["'" "\u2019" "ab" ""]}}}))))

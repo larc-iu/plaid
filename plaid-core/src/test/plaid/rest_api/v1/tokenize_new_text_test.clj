@@ -75,6 +75,15 @@
     ;; `★` is a pictograph, a word to igt; `don't` holds a letter-like `'`
     (is (= [[0 2] [7 8] [13 18]] (words-of words)))))
 
+(deftest a-tone-letter-or-a-skin-tone-standing-alone-is-a-word
+  ;; H16-7 (owner ruling 2026-11-17): the modifier tone letters and the emoji
+  ;; skin-tone modifiers are letters, so typed between spaces each is a word,
+  ;; and on a syllable it stays in the syllable's word
+  (let [{:keys [text words]} (setup "hh" :ignored {"type" "unicodePunctuation" "whitelist" []})]
+    (assert-ok (patch text {:edits [(ins 2 " ma \u02E5\u02E9 pa\uA712. \uD83D\uDC4D\uD83C\uDFFD \uD83C\uDFFD")]
+                            :tokenize-layer words}))
+    (is (= [[0 2] [3 5] [6 8] [9 12] [14 16] [17 18]] (words-of words)))))
+
 (deftest a-new-word-never-crosses-a-sentence
   (is (= [{:token/layer :w :token/begin 0 :token/end 3} {:token/layer :w :token/begin 3 :token/end 6}]
          (ta/new-words "abcdef" [[0 6]] [{:token/layer :s :token/begin 0 :token/end 3}
@@ -93,7 +102,13 @@
     (is (not (break? (cp "'"))))
     (is (ignored-word? (word "...")))
     (is (not (ignored-word? (word "'"))))
-    (is (not (ignored-word? (word "\u2205")))))
+    (is (not (ignored-word? (word "\u2205"))))
+    (testing "a tone letter or a skin-tone modifier is no punctuation and breaks no word (H16-7)"
+      (doseq [s ["\u02E5\u02E9" "\u02E7" "\u02F9" "\uA712" "\uA720" "\uD83C\uDFFD"]]
+        (is (not (ignored-word? (word s))) s)
+        (is (not (break? (cp s))) s))
+      (doseq [s ["^" "`" "\u02C4" "\u02ED" "\u02F8" "\uA789"]]
+        (is (ignored-word? (word s)) s))))
   (let [cp (fn [s] (.codePointAt ^String s 0))
         word (fn [s] (vec (.toArray (.codePoints ^String s))))
         {:keys [break? ignored-word?]} (ta/ignored-rule {"plaid" {"ignoredTokens" {"type" "blacklist"

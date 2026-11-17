@@ -55,6 +55,27 @@ describe('tokenizeText punctuation handling', () => {
     ]);
   });
 
+  // H16-7 (owner ruling 2026-11-17): tone letters and skin-tone modifiers
+  // are letters. None of them breaks a word, so a tone letter standing alone
+  // between spaces is a word of its own, and one written against a syllable
+  // stays in it.
+  it('makes a word of a tone letter and keeps one on its syllable', () => {
+    expect(tokenize('ma ˥˩ pa', punctCfg)).toEqual([
+      { text: 'ma', begin: 0, end: 2 },
+      { text: '˥˩', begin: 3, end: 5 },
+      { text: 'pa', begin: 6, end: 8 },
+    ]);
+    expect(tokenize('ma˥˩ pa꜒.', punctCfg)).toEqual([
+      { text: 'ma˥˩', begin: 0, end: 4 },
+      { text: 'pa꜒', begin: 5, end: 8 },
+    ]);
+    expect(tokenize('👍🏽 ok 🏽', punctCfg)).toEqual([
+      { text: '👍🏽', begin: 0, end: 2 },
+      { text: 'ok', begin: 3, end: 5 },
+      { text: '🏽', begin: 6, end: 7 },
+    ]);
+  });
+
   it('blacklist mode skips blacklisted break chars too', () => {
     const cfg = { type: 'blacklist', blacklist: ['|'] };
     expect(tokenize('a|b', cfg)).toEqual([

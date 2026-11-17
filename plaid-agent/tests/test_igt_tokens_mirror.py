@@ -21,7 +21,7 @@ from node_exe import node_or_skip
 from plaid_agent.igt.project import split_words
 from plaid_client.workflows.igt.word_breaks import split_words as client_split_words
 from plaid_client.workflows.igt import is_token_ignored
-from plaid_client.workflows.igt.punctuation_classes import PICTOGRAPHIC, PUNCT_OR_SYMBOL
+from plaid_client.workflows.igt.punctuation_classes import LETTER_SYMBOLS, PICTOGRAPHIC, PUNCT_OR_SYMBOL
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 RUNNER = os.path.join(HERE, 'igt_tokens_mirror.mjs')
@@ -48,6 +48,9 @@ TOKENS = [
     # unicodedata (15.0) does not (REV-AGENT F2): Garay hyphen, a
     # legacy-computing symbol, a control picture.
     '\U00010d6e', '\U0001cc00', '\u2427', 'ab\U00010d6e',
+    # Tone letters and skin-tone modifiers, letters since H16-7, and Sk
+    # symbols that stay symbols.
+    '˥˩', 'ma˥˩', 'ma˥˩.', '˧ma', '꜒꜖', '꜠', '˹', '🏽', '🏻🏿', '˄', '˭', '˸', '꞉',
 ]
 TEXTS = [
     "Ali-di gam akuna.", "k'a b'ok?", "¿Qué tal? Bien.", "ab`cd ef", "a∅b ∅ c",
@@ -55,6 +58,7 @@ TEXTS = [
     "👍🏽 ok", "a→b c", "na=ka ta", "co-op", "a\tb c", "水。火、土", "𝑥y z",
     # Whitespace to JavaScript's \s and not to Python's isspace, and back.
     "a﻿b c", "a\x85b c", "a\x1cb c", "a　b c",
+    "ma ˥˩ pa", "ma˥˩ pa꜒. 👍🏽 🏽",
 ]
 
 @pytest.fixture(scope='module')
@@ -73,6 +77,7 @@ def test_both_read_the_same_character_table(app):
     pictograph where the table, and node 24.1, read it as one."""
     assert [list(r) for r in PUNCT_OR_SYMBOL] == app['tables']['punctOrSymbol']
     assert [list(r) for r in PICTOGRAPHIC] == app['tables']['pictographic']
+    assert [list(r) for r in LETTER_SYMBOLS] == app['tables']['letterSymbols']
 
 
 def test_is_token_ignored_answers_as_the_app_does(app):

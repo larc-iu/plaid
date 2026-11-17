@@ -21,6 +21,7 @@ import { ZERO_MORPH } from './zeroMorph.js';
 // app's Tokenize makes a token only of what it ignores. By the real path, as
 // plain node (the Python mirrors) loads this file too.
 import { isIgnoredCharacter, isTokenIgnored } from '../../../plaid-ui/src/domain/igtWordBreaks.js';
+import { LETTER_SYMBOLS } from '../../../plaid-ui/src/domain/punctuationClasses.js';
 
 export { isTokenIgnored };
 
@@ -194,14 +195,17 @@ export const defaultIgnoredTokensSetup = () => ignoredTokensSetup(DEFAULT_IGNORE
  * A query value spec (`{regex}`) that a word token's surface matches and an
  * ignored token's does not (`isTokenIgnored`), for core's queries, or null when
  * the rule ignores nothing. Core compiles it with Java's Unicode tables, which
- * can trail the generated one here by a version for characters new in it.
+ * can trail the generated one here by a version for characters new in it. The
+ * tone letters and skin-tone modifiers (LETTER_SYMBOLS) are letters, as there.
  */
 export const wordValueSpec = (cfg) => {
-  const cp = (c) => `\\x{${c.codePointAt(0).toString(16)}}`;
+  const hex = (n) => `\\x{${n.toString(16)}}`;
+  const cp = (c) => hex(c.codePointAt(0));
   if (cfg?.type === 'unicodePunctuation') {
     const letters = [ZERO_MORPH, ...(cfg.whitelist || [])].filter((c) => [...c].length === 1);
+    const symbols = LETTER_SYMBOLS.map(([a, b]) => `${hex(a)}-${hex(b)}`).join('');
     return {
-      regex: `[^\\p{P}\\p{S}]|[\\p{IsExtended_Pictographic}${letters.map(cp).join('')}]`,
+      regex: `[^\\p{P}\\p{S}]|[\\p{IsExtended_Pictographic}${symbols}${letters.map(cp).join('')}]`,
     };
   }
   if (cfg?.type === 'blacklist' && (cfg.blacklist || []).length) {

@@ -5,6 +5,7 @@ import { unpackRanges } from '../lib/unicodeRanges.js';
 import { repoRoot } from '../test/apps.js';
 import { isTokenIgnored } from './igtWordBreaks.js';
 import {
+  LETTER_SYMBOLS,
   PICTOGRAPHIC,
   PUNCT_OR_SYMBOL,
   isPictograph,
@@ -12,6 +13,20 @@ import {
 } from './punctuationClasses.js';
 
 const PUNCT = { type: 'unicodePunctuation', whitelist: [] };
+
+// The ranges `rs` holds less the code points `minus` holds.
+const without = (rs, minus) => {
+  const out = [];
+  for (const [a, b] of rs) {
+    for (let cp = a; cp <= b; cp++) {
+      if (minus.some(([x, y]) => x <= cp && cp <= y)) continue;
+      const last = out[out.length - 1];
+      if (last && last[1] === cp - 1) last[1] = cp;
+      else out.push([cp, cp]);
+    }
+  }
+  return out;
+};
 
 const runtimeRanges = (re) => {
   const out = [];
@@ -41,7 +56,7 @@ describe('the ignored-token character classes', () => {
   it.runIf(process.versions.unicode === '16.0')(
     'are what tools/punctuationClasses.mjs writes from a Unicode 16 runtime',
     () => {
-      expect(PUNCT_OR_SYMBOL).toEqual(runtimeRanges(/[\p{P}\p{S}]/u));
+      expect(PUNCT_OR_SYMBOL).toEqual(without(runtimeRanges(/[\p{P}\p{S}]/u), LETTER_SYMBOLS));
       expect(PICTOGRAPHIC).toEqual(runtimeRanges(/\p{Extended_Pictographic}/u));
     },
   );
@@ -60,5 +75,33 @@ describe('the ignored-token character classes', () => {
     );
     expect(rows.punct).toEqual(PUNCT_OR_SYMBOL);
     expect(rows.picto).toEqual(PICTOGRAPHIC);
+    expect(rows.letters).toEqual(LETTER_SYMBOLS);
+  });
+
+  // Owner ruling 2026-11-17 (H16-7): the modifier tone letters and the emoji
+  // skin-tone modifiers are Unicode symbols (Sk) that a word is written with,
+  // so they are letters to the ignore rule, and no other symbol is.
+  it('read the tone letters and the skin-tone modifiers as letters', () => {
+    expect(LETTER_SYMBOLS).toEqual([
+      [0x2e5, 0x2eb],
+      [0x2f9, 0x2fc],
+      [0xa700, 0xa716],
+      [0xa720, 0xa721],
+      [0x1f3fb, 0x1f3ff],
+    ]);
+    for (const [a, b] of LETTER_SYMBOLS) {
+      for (let cp = a; cp <= b; cp++) {
+        expect(isPunctOrSymbol(String.fromCodePoint(cp))).toBe(false);
+      }
+    }
+    for (const t of ['˥˩', '˧', '˥', '꜒꜖', '꜠', '˹', '🏽', '🏻🏿']) {
+      expect(isTokenIgnored(t, PUNCT)).toBe(false);
+    }
+    // Every other Sk stays a symbol: spacing accents, arrowheads, the
+    // unaspirated mark, the raised colon, the shelf, the modifier colon.
+    for (const c of ['^', '`', '˄', '˭', '˸', '˽', '꞉']) {
+      expect(isPunctOrSymbol(c)).toBe(true);
+      expect(isTokenIgnored(c, PUNCT)).toBe(true);
+    }
   });
 });

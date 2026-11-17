@@ -60,6 +60,7 @@ process.stdout.write(
     tables: {
       punctOrSymbol: classes.PUNCT_OR_SYMBOL,
       pictographic: classes.PICTOGRAPHIC,
+      letterSymbols: classes.LETTER_SYMBOLS,
       breaks: rangesOf(tokenization.isUnicodePunctuation),
     },
     ignored: cases.configs.map((cfg) =>

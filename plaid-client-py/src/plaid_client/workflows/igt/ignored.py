@@ -10,7 +10,8 @@ of two rules:
 
 * ``unicodePunctuation``: a token made only of punctuation is ignored.
   Punctuation is Unicode P or S, except pictographs (an emoji may be a word a
-  linguist glosses) and the zero morph, and except the characters the project
+  linguist glosses), the zero morph, the tone letters and skin-tone modifiers
+  (``LETTER_SYMBOLS``, letters in every project), and except the characters the project
   lists as letter-like (``whitelist``, single characters, each one a letter
   wherever it stands).
 * ``blacklist``: a token spelled exactly as one listed is ignored.

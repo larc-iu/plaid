@@ -311,6 +311,18 @@ describe('pickMajority + precedentForm + addPrecedent', () => {
     expect(precedentForm('s.', KINDS.MORPHEME, ignored)).toBe('s.');
     expect(precedentForm(null, KINDS.WORD, ignored)).toBe('');
   });
+
+  // H16-7: two words that differ only in tone are two precedent keys.
+  it('precedentForm keeps tone letters, so tonal forms do not share guesses', () => {
+    expect(precedentForm('ma˥˩.', KINDS.WORD, ignored)).toBe('ma˥˩');
+    expect(precedentForm('ma˧', KINDS.WORD, ignored)).toBe('ma˧');
+    const key = (w) => precedentForm(w, KINDS.WORD, ignored);
+    const t = createTally();
+    addPrecedent(t, KINDS.WORD, key('ma˥˩'), 'POS', 'V');
+    addPrecedent(t, KINDS.WORD, key('ma˧'), 'POS', 'N');
+    expect(pickMajority(precedentCounts(t, KINDS.WORD, key('ma˥˩,'), 'POS'))).toBe('V');
+    expect(pickMajority(precedentCounts(t, KINDS.WORD, key('ma˧'), 'POS'))).toBe('N');
+  });
 });
 
 describe('multi-word expression links in project rows', () => {
