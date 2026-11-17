@@ -926,6 +926,29 @@ describe('buildCldfDocuments — per-example media', () => {
     expect(without.mediaBytes).toBeNull();
   });
 
+  it('finds a file whose relative URL is percent-encoded, and warns of a malformed one (H8-4)', () => {
+    const encoded = (url, file) =>
+      dataset(
+        'ID,Primary_Text,Analyzed_Word,Gloss,Audio\r\nex1,hola,hola,hi,m1\r\n',
+        [...BASIC_COLUMNS, col('Audio', 'mediaReference')],
+        [mediaTable],
+        {
+          'media.csv': `ID,Media_Type,Download_URL\r\nm1,audio/mpeg,${url}\r\n`,
+          [file]: 'ID3fake',
+        },
+      );
+    const [doc] = buildCldfDocuments(
+      encoded('Examples/Story%20one.mp3', 'Examples/Story one.mp3'),
+    ).documents;
+    expect(doc.mediaName).toBe('Story one.mp3');
+    expect(new TextDecoder().decode(doc.mediaBytes)).toBe('ID3fake');
+    expect(doc.warnings.join(' ')).not.toMatch(/not in the archive/);
+    // A bad escape is a file that is not there, not a crash.
+    const [bad] = buildCldfDocuments(encoded('Examples/100%.mp3', 'Examples/other.mp3')).documents;
+    expect(bad.mediaBytes).toBeNull();
+    expect(bad.warnings.join(' ')).toMatch(/"Examples\/100%.mp3" is not in the archive/);
+  });
+
   it('says nothing about media once each example is its own document', () => {
     expect(buildCldfDocuments(ds()).warnings.join(' ')).not.toMatch(/media file/);
   });

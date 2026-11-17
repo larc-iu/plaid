@@ -320,6 +320,15 @@ function makeMediaIndex(dataset) {
   return { table, byId, byContribution };
 }
 
+// A relative URL decoded, or null when an escape in it is malformed.
+const decodedUrl = (url) => {
+  try {
+    return decodeURIComponent(url);
+  } catch {
+    return null;
+  }
+};
+
 function resolveMedia(dataset, index, { contributionId, mediaId }, warnings) {
   const table = index.table;
   if (!table) return null;
@@ -334,12 +343,16 @@ function resolveMedia(dataset, index, { contributionId, mediaId }, warnings) {
   }
   const path = inZip || url;
   if (!path) return null;
-  const bytes = dataset.entries?.[`${dataset.baseDir}${path}`] ?? dataset.entries?.[path];
-  if (!bytes) {
+  const entry = (p) => dataset.entries?.[`${dataset.baseDir}${p}`] ?? dataset.entries?.[p];
+  // A relative URL is percent-encoded ("Story%20one.wav"), the archive's
+  // entry is not.
+  const decoded = inZip ? path : decodedUrl(path);
+  const found = entry(path) ? path : decoded && entry(decoded) ? decoded : null;
+  if (!found) {
     warnings.push(`Media file "${path}" is not in the archive`);
     return null;
   }
-  return { bytes, name: path.split('/').at(-1) };
+  return { bytes: entry(found), name: found.split('/').at(-1) };
 }
 
 // ---- the build ---------------------------------------------------------------
