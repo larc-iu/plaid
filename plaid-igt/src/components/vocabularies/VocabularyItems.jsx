@@ -966,7 +966,10 @@ export const VocabularyItems = ({
       onMoveUnder={handleMoveUnder}
       onRaiseHeadword={handleRaiseHeadword}
       onSenseDrop={handleSenseDrop}
-      onOpenHomographs={() => dispatch({ type: 'dialog/open', kind: 'homograph' })}
+      // Reordering writes the entries, so for a reader the number is only a number.
+      onOpenHomographs={
+        canEdit ? () => dispatch({ type: 'dialog/open', kind: 'homograph' }) : undefined
+      }
     />
   );
 
