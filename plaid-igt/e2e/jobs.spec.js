@@ -94,9 +94,11 @@ test('with no assistant online, the Jobs tab menu opens the form, which makes a 
   await expect(page.getByRole('button', { name: 'New document' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Assistant' })).toHaveCount(0);
   await expect(page.getByText(/set up job/i)).toHaveCount(0);
-  // The Jobs tab says once how a job is set up, and its menu opens the form.
+  // The Jobs tab says no assistant is online, not how to ask one, and its
+  // menu opens the form.
   await page.goto(`/#/projects/${projectId}?tab=jobs`);
-  await expect(page.getByText('A job is set up by asking the assistant.')).toHaveCount(1);
+  await expect(page.getByText('No assistant is online.')).toHaveCount(1);
+  await expect(page.getByText('A job is set up by asking the assistant.')).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Assistant' })).toHaveCount(0);
   await page.getByRole('button', { name: 'More job actions' }).click();
   await page.getByRole('menuitem', { name: 'Start without the assistant' }).click();

@@ -20,10 +20,10 @@ const job = (id, over = {}) => ({
   ...over,
 });
 
-const mount = (client, actions = null) =>
+const mount = (client, actions = null, assistant = true) =>
   renderComponent(
     <MemoryRouter>
-      <ProjectJobs projectId="p1" client={client} actions={actions} />
+      <ProjectJobs projectId="p1" client={client} actions={actions} assistant={assistant} />
     </MemoryRouter>,
   );
 
@@ -120,6 +120,21 @@ describe('the Jobs tab', () => {
     const reader = await mount(empty);
     expect(reader.container.textContent).not.toContain(LINE);
     await reader.unmount();
+  });
+
+  // The line holds only where an assistant can be asked (DOC found 4).
+  it('says no assistant is online where none is, and nothing before it is known', async () => {
+    const empty = { jobs: { list: vi.fn(async () => []) } };
+    const none = await mount(empty, <button type="button">More</button>, false);
+    expect(none.container.textContent).not.toContain(LINE);
+    expect(none.container.querySelector('h2').parentElement.textContent).toContain(
+      'No assistant is online.',
+    );
+    await none.unmount();
+    const unknown = await mount(empty, <button type="button">More</button>, null);
+    expect(unknown.container.textContent).not.toContain(LINE);
+    expect(unknown.container.textContent).not.toContain('No assistant is online.');
+    await unknown.unmount();
   });
 
   it('reads the list again while a job is active, and stops once none is', async () => {

@@ -179,6 +179,8 @@ const ProjectBody = ({ project, projectId, client, documents, reload }) => {
   // The Jobs tab's actions, for whoever may start a job: the Assistant button,
   // and a "⋯" menu with the Start job form, the way to start one with no
   // assistant.
+  // Whether an assistant can be asked here, which the Jobs tab's line says.
+  const assistantAvailable = useAssistantAvailable(client, projectId, IGT_ASSISTANT.app);
   const jobsActions = canStartJob(project, user) && (
     <div className="flex items-center gap-2">
       <AssistantButton projectId={projectId} client={client} />
@@ -277,7 +279,12 @@ const ProjectBody = ({ project, projectId, client, documents, reload }) => {
     body = jobId ? (
       <JobPage project={project} projectId={projectId} jobId={jobId} client={client} />
     ) : (
-      <ProjectJobs projectId={projectId} client={client} actions={jobsActions || null} />
+      <ProjectJobs
+        projectId={projectId}
+        client={client}
+        actions={jobsActions || null}
+        assistant={assistantAvailable}
+      />
     );
   } else if (active === 'search') {
     body = (

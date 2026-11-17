@@ -12,9 +12,18 @@ import { jobPath } from './jobText.js';
  * link to the job's page. Read again every JOB_POLL_MS while one of them is
  * active, so a job's row moves as its worker does. `actions` are the
  * Assistant button and the "⋯" menu with Start without the assistant, for a
- * writer, who is also told how a job is set up.
+ * writer, who is also told how a job is set up where an assistant can be
+ * asked (`assistant`, `useAssistantAvailable`'s answer), and that none is
+ * online where none is.
  */
-export const ProjectJobs = ({ projectId, client, actions = null }) => {
+const setUpLine = (assistant) =>
+  assistant === true
+    ? 'A job is set up by asking the assistant.'
+    : assistant === false
+      ? 'No assistant is online.'
+      : null;
+
+export const ProjectJobs = ({ projectId, client, actions = null, assistant = null }) => {
   const [jobs, setJobs] = useState(null);
   const [error, setError] = useState(null);
   const [attempt, setAttempt] = useState(0);
@@ -111,7 +120,7 @@ export const ProjectJobs = ({ projectId, client, actions = null }) => {
     <div>
       <SectionHeader
         title="Jobs"
-        description={actions ? 'A job is set up by asking the assistant.' : null}
+        description={actions ? setUpLine(assistant) : null}
         actions={actions}
       />
       {error ? (
