@@ -49,11 +49,13 @@ export function metadataUpdates(plans, metaById) {
 const same = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
 
 /**
- * Whether someone else changed what a save is about to write. `loaded` is the
- * entry (`{form, metadata}`) as the form read it, `next` what the save writes,
- * `now` the entry as the server holds it. A key the save changes counts only
- * when the server holds neither the value read nor the value saved (a resend of
- * this very save finds its own value). Keys the save leaves alone never count.
+ * What someone else changed of what a save is about to write, or null.
+ * `loaded` is the entry (`{form, metadata}`) as the form read it, `next` what
+ * the save writes, `now` the entry as the server holds it. A key the save
+ * changes counts only when the server holds neither the value read nor the
+ * value saved (a resend of this very save finds its own value). Keys the save
+ * leaves alone never count. Answers the first such `{ key, value }`, the value
+ * as the server holds it now, with `key` 'form' for the form.
  */
 export const changedUnderSave = (loaded, next, now) => {
   const was = loaded?.metadata || {};
@@ -62,9 +64,24 @@ export const changedUnderSave = (loaded, next, now) => {
   const keys = new Set([...Object.keys(was), ...Object.keys(will)]);
   for (const k of keys) {
     if (same(was[k], will[k])) continue;
-    if (!same(is[k], was[k]) && !same(is[k], will[k])) return true;
+    if (!same(is[k], was[k]) && !same(is[k], will[k])) return { key: k, value: is[k] };
   }
   if (loaded?.form !== next?.form && now?.form !== loaded?.form && now?.form !== next?.form)
-    return true;
-  return false;
+    return { key: 'form', value: now?.form };
+  return null;
+};
+
+/**
+ * The words for a save refused because `key` was changed elsewhere to
+ * `value` (changedUnderSave).
+ */
+export const changedElsewhereText = ({ key, value }) => {
+  const name = key === 'form' ? 'Form' : key;
+  const what =
+    value === undefined || value === null || value === ''
+      ? 'was removed elsewhere'
+      : typeof value === 'string' || typeof value === 'number'
+        ? `was changed elsewhere to “${value}”`
+        : 'was changed elsewhere';
+  return `${name} ${what}. Save again to keep yours.`;
 };

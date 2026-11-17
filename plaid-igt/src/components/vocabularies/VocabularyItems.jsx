@@ -11,7 +11,7 @@ import { Link, useLocation, useSearchParams } from 'react-router-dom';
 import { useDetailParam } from '@ui/hooks/useDetailParam.js';
 import { createdId, isReviewed } from '@larc-iu/plaid-client';
 import { useAuth } from '@/contexts/AuthContext';
-import { statusOf } from '@ui/lib/errors.js';
+import { isGone, statusOf } from '@ui/lib/errors.js';
 import { canEditProject } from '@ui/domain/permissions.js';
 import { AlertTriangle, History } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@ui/components/ui/tabs';
@@ -43,7 +43,7 @@ import {
   MACHINE_STATUS,
 } from '@/domain/vocabDictionary';
 import { dropPrecedent } from '@/domain/precedentCache';
-import { changedUnderSave, metadataPatchTo } from '@/domain/metadataPatch';
+import { changedElsewhereText, changedUnderSave, metadataPatchTo } from '@/domain/metadataPatch';
 import { dropUnsavedDrafts, useUnsavedDraft } from '@ui/hooks/useUnsavedDraft.js';
 import { followIds, pendingId, settledId, stableKey } from '@ui/domain/pendingIds.js';
 import { HomographDialog, ReferencedByPanel, ExamplesPanel } from './DictionaryPanels';
@@ -686,17 +686,19 @@ export const VocabularyItems = ({
     },
   });
 
-  // Throws the refusal a write to a deleted entry gets when `id` is gone.
-  const entryStillThere = (id) =>
+  // Throws the refusal a write to a deleted entry gets when `id` is gone,
+  // saying which, by its `form`.
+  const entryStillThere = (id, form) =>
     client.vocabItems.get(id).then(
       () => {},
       (err) => {
         if (![403, 404].includes(statusOf(err))) throw err;
-        throw Object.assign(new Error('Changed or removed by someone else.'), {
-          status: 403,
-          method: 'POST',
-          responseData: { unresolved: true },
-        });
+        throw Object.assign(
+          new Error(
+            `“${form}” was deleted elsewhere. Create again to add this as an entry of its own.`,
+          ),
+          { status: 403, method: 'POST', responseData: { unresolved: true }, parentGone: true },
+        );
       },
     );
 
@@ -785,7 +787,7 @@ export const VocabularyItems = ({
           // A sense under a headword someone else deleted since the tree was
           // read is refused as gone, and goes back to the form with what is
           // typed, rather than stored under a parent that names nothing.
-          if (parent) await entryStillThere(settledId(parent));
+          if (parent) await entryStillThere(settledId(parent), parentForm);
           const meta = followIds(withPlace);
           const created = await client.vocabItems.create(
             vocabularyId,
@@ -799,9 +801,12 @@ export const VocabularyItems = ({
         'Failed to save the entry',
         {
           minted: [id],
+          // A headword gone since says so by name (entryStillThere).
+          answered: (err) => !!err?.parentGone,
           // The pending id names nothing now. Still open, it goes back to the
           // new-entry form.
-          refused: () => {
+          refused: (err) => {
+            if (err?.parentGone) notifyError(err.message, 'Failed to save the entry');
             const stillOpen = selectedIdRef.current === id || creatingRef.current === id;
             if (creatingRef.current === id) creatingRef.current = null;
             if (!stillOpen) {
@@ -815,6 +820,8 @@ export const VocabularyItems = ({
       return;
     }
     const item = selectedItem;
+    // What the person typed, put back if the save is refused.
+    const typed = { form: draft.form, fields: draft.fields };
     setItems((prev) => prev.map((i) => (i.id === item.id ? saved(item.id) : i)));
     showSaved();
     // Only the keys the save changes are sent, so one written elsewhere
@@ -831,15 +838,18 @@ export const VocabularyItems = ({
           if ([403, 404].includes(statusOf(err))) return null;
           throw err;
         });
-        if (
+        const clash =
           now &&
           changedUnderSave(
             followIds({ form: item.form, metadata: item.metadata }),
             followIds({ form, metadata }),
             now,
-          )
-        ) {
-          throw Object.assign(new Error('Changed elsewhere'), { status: 409 });
+          );
+        if (clash) {
+          throw Object.assign(new Error(changedElsewhereText(clash)), {
+            status: 409,
+            changedElsewhere: true,
+          });
         }
         const update = {
           id: settledId(item.id),
@@ -849,6 +859,17 @@ export const VocabularyItems = ({
         if (Object.keys(update).length > 1) await client.vocabItems.bulkUpdate([update]);
       },
       'Failed to save the entry',
+      {
+        // A refusal says why, and puts back everything typed (the form, every
+        // field), so a second Save writes it on purpose. An entry that is
+        // gone takes the form away instead.
+        answered: (err) => !!err?.changedElsewhere,
+        refused: (err) => {
+          if (err?.changedElsewhere) notifyError(err.message, 'Failed to save the entry');
+          if (isGone(err) || selectedIdRef.current !== item.id) return unseedUnlessTyped();
+          dispatch({ type: 'draft/reset', form: typed.form, fields: typed.fields });
+        },
+      },
     );
   };
 

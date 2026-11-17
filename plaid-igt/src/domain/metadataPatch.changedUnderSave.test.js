@@ -9,18 +9,18 @@ describe('changedUnderSave', () => {
   it('is true when another save changed a field this save changes', () => {
     const next = { form: 'perro', metadata: { gloss: 'canine', pos: 'n' } };
     const now = { form: 'perro', metadata: { gloss: 'hound', pos: 'n' } };
-    expect(changedUnderSave(loaded, next, now)).toBe(true);
+    expect(changedUnderSave(loaded, next, now)).toEqual({ key: 'gloss', value: 'hound' });
   });
 
   it('is false when the other save changed another field', () => {
     const next = { form: 'perro', metadata: { gloss: 'canine', pos: 'n' } };
     const now = { form: 'perro', metadata: { gloss: 'dog', pos: 'v' } };
-    expect(changedUnderSave(loaded, next, now)).toBe(false);
+    expect(changedUnderSave(loaded, next, now)).toBeNull();
   });
 
   it('is false when the server already holds what this save writes (a resend)', () => {
     const next = { form: 'perro', metadata: { gloss: 'canine', pos: 'n' } };
-    expect(changedUnderSave(loaded, next, next)).toBe(false);
+    expect(changedUnderSave(loaded, next, next)).toBeNull();
   });
 
   it('counts a removed key and the form', () => {
@@ -30,27 +30,27 @@ describe('changedUnderSave', () => {
         { form: 'perro', metadata: { pos: 'n' } },
         { form: 'perro', metadata: { gloss: 'hound', pos: 'n' } },
       ),
-    ).toBe(true);
+    ).toEqual({ key: 'gloss', value: 'hound' });
     expect(
       changedUnderSave(
         loaded,
         { form: 'perra', metadata: loaded.metadata },
         { form: 'perrito', metadata: loaded.metadata },
       ),
-    ).toBe(true);
+    ).toEqual({ key: 'form', value: 'perrito' });
     expect(
       changedUnderSave(
         loaded,
         { form: 'perro', metadata: { gloss: 'dog', pos: 'n' } },
         { form: 'perrito', metadata: loaded.metadata },
       ),
-    ).toBe(false);
+    ).toBeNull();
   });
 
   it('compares lists by value', () => {
     const l = { form: 'a', metadata: { seeAlso: ['x', 'y'] } };
     expect(
       changedUnderSave(l, { form: 'a', metadata: { seeAlso: ['x'] } }, structuredClone(l)),
-    ).toBe(false);
+    ).toBeNull();
   });
 });

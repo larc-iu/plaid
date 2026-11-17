@@ -234,7 +234,10 @@ describe('the entry form', () => {
     await view.unmount();
   });
 
-  it('refuses a save of a field someone else saved since the form was read (H15-1)', async () => {
+  // H15-1, REV-HFV-4: a save over a field someone else saved since the form
+  // was read is refused, says which field and what it holds now, and keeps
+  // everything typed, so a second Save writes it on purpose.
+  it('refuses a save of a field someone else saved since the form was read, and keeps what is typed', async () => {
     const { client, calls, items } = stub([
       { id: 'a', form: 'uno', metadata: { gloss: 'one', note: 'kept' } },
     ]);
@@ -243,14 +246,30 @@ describe('the entry form', () => {
     items[0].metadata = { gloss: 'ONE-B', note: 'kept' };
     feedback.notifyError.mockClear();
     await view.step(() => setValue(glossInput(), 'ONE'));
+    await view.step(() => setValue(formInput(), 'uno2'));
     await view.step(async () => {
       button('Save').click();
-      for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 0));
+      await settle(5);
     });
     expect(calls.filter(([kind]) => kind === 'bulkUpdate')).toEqual([]);
     expect(feedback.notifyError).toHaveBeenCalledTimes(1);
-    expect(String(feedback.notifyError.mock.calls[0][0])).toContain('Changed elsewhere');
-    expect(glossInput().value).toBe('ONE-B');
+    expect(feedback.notifyError.mock.calls[0]).toEqual([
+      'gloss was changed elsewhere to “ONE-B”. Save again to keep yours.',
+      'Failed to save the entry',
+    ]);
+    expect(glossInput().value).toBe('ONE');
+    expect(formInput().value).toBe('uno2');
+    expect(hasUnsavedDraft()).toBe('The entry you have typed');
+    await view.step(async () => {
+      button('Save').click();
+      await settle(5);
+    });
+    expect(calls.filter(([kind]) => kind === 'bulkUpdate')).toEqual([
+      [
+        'bulkUpdate',
+        [{ id: 'a', form: 'uno2', metadata: [{ op: 'set', path: ['gloss'], value: 'ONE' }] }],
+      ],
+    ]);
     await view.unmount();
   });
 
@@ -543,8 +562,20 @@ describe('the entry form', () => {
       await settle(5);
     });
     expect(calls.map(([kind]) => kind)).toEqual([]);
-    expect(feedback.notifyError).toHaveBeenCalledTimes(1);
+    expect(feedback.notifyError.mock.calls).toEqual([
+      [
+        '“uno” was deleted elsewhere. Create again to add this as an entry of its own.',
+        'Failed to save the entry',
+      ],
+    ]);
     expect(glossInput().value).toBe('puppy');
+    await view.step(async () => {
+      button('Create').click();
+      await settle(5);
+    });
+    const created = calls.filter(([kind]) => kind === 'create');
+    expect(created).toHaveLength(1);
+    expect(created[0][3]?.parent).toBeUndefined();
     await view.unmount();
   });
 
