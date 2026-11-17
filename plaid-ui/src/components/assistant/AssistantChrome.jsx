@@ -6,7 +6,7 @@ import { AssistantRail } from './AssistantRail.jsx';
 import { AssistantMark } from './PlaidMarks.jsx';
 import { ProjectPicker } from './ProjectPicker.jsx';
 import { readDockOpen, saveDockOpen } from './panelWidth.js';
-import { useAssistantFocus, useAssistantFresh } from './subject.js';
+import { useAssistantFocus, useAssistantFresh, useAssistantOpenRequest } from './subject.js';
 import { useAssistantAvailable } from './useAssistantAvailable.js';
 import { useDockWidth } from './useDock.js';
 import { useSlide, SLIDE_CLASSES } from '../../hooks/useSlide.js';
@@ -125,6 +125,11 @@ export const AssistantChrome = ({
   useEffect(() => {
     if (fresh) setDockOpen(true);
   }, [fresh, setDockOpen]);
+  // A screen's own Assistant button: the panel opens as the chip opens it.
+  const opened = useAssistantOpenRequest();
+  useEffect(() => {
+    if (opened) setDockOpen(true);
+  }, [opened, setDockOpen]);
 
   // Published for anything painted outside this tree that must not sit under
   // the dock. The toaster is mounted at the root, above the router, so it

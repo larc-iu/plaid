@@ -19,9 +19,14 @@ vi.mock('@/domain/layerInfo', () => ({
   getIgtLayerInfo: (project) => ({ primaryTokenLayer: { id: project?.id } }),
 }));
 vi.mock('@ui/components/shared/ProjectDocumentsList.jsx', () => ({
-  ProjectDocumentsList: ({ documents, projectId, wordLayerId }) => {
+  ProjectDocumentsList: ({ documents, projectId, wordLayerId, actions }) => {
     listed.push({ projectId, of: wordLayerId, ids: documents.map((d) => d.id).join(',') });
-    return <div data-testid="docs">{documents.map((d) => d.id).join(',')}</div>;
+    return (
+      <>
+        <div data-testid="docs">{documents.map((d) => d.id).join(',')}</div>
+        <div data-testid="docs-actions">{actions}</div>
+      </>
+    );
   },
 }));
 vi.mock('./search/ProjectSearch.jsx', () => ({ ProjectSearch: () => null }));
@@ -34,12 +39,16 @@ vi.mock('./ProjectSettingsPanel', () => ({
   },
 }));
 vi.mock('@/hooks/useCompose', () => ({ useComposeProject: () => {} }));
+// Whether an assistant is online for the project, as discovery answers.
+const assistant = vi.hoisted(() => ({ available: false, opened: 0 }));
 vi.mock('@ui/components/assistant/useAssistantAvailable.js', () => ({
-  useAssistantAvailable: () => false,
+  useAssistantAvailable: () => assistant.available,
 }));
 vi.mock('@ui/components/assistant/subject.js', () => ({
   useAssistantSubject: () => {},
   useAskAssistant: () => () => {},
+  useOpenAssistant: () => () => assistant.opened++,
+  useStartConversation: () => () => {},
 }));
 vi.mock('./assistant/adapter.js', () => ({ IGT_ASSISTANT: { app: 'plaid-igt-agent' } }));
 // The job screens are stand-ins that say what they were handed.
@@ -253,6 +262,36 @@ describe('the project page header', () => {
     expect(tabs(page.container).find((t) => t.active).name).toBe('Jobs');
     expect(page.container.querySelector('[data-testid="job-page"]').textContent).toBe('j1');
     await page.unmount();
+  });
+
+  // The button beside New document is the assistant's, as the header chip is:
+  // no button there sets up a job (the owner, 2026-11-17).
+  it('offers the Assistant button beside New document when an assistant is online', async () => {
+    const actions = (view) =>
+      view.container.querySelector('[data-testid="docs-actions"]')?.textContent ?? null;
+    const d = deferred();
+    auth.client = d.client;
+    assistant.available = true;
+    assistant.opened = 0;
+    try {
+      const view = await renderComponent(at('/projects/A'));
+      await view.step(async () => d.settle('A'));
+      await view.step(async () => {});
+      expect(actions(view)).toBe('Assistant');
+      const button = view.container.querySelector('[data-testid="docs-actions"] button');
+      await view.step(() => button.click());
+      expect(assistant.opened).toBe(1);
+      await view.unmount();
+
+      assistant.available = false;
+      const none = await renderComponent(at('/projects/A'));
+      await none.step(async () => d.settle('A'));
+      await none.step(async () => {});
+      expect(actions(none)).toBe('');
+      await none.unmount();
+    } finally {
+      assistant.available = false;
+    }
   });
 
   it('offers Start job on the Jobs tab to a writer only', async () => {

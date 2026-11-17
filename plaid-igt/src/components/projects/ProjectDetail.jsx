@@ -29,6 +29,7 @@ import { useAssistantAvailable } from '@ui/components/assistant/useAssistantAvai
 import { IGT_ASSISTANT } from './assistant/adapter.js';
 import { UnfinishedImport } from './UnfinishedImport.jsx';
 import { SetUpJob, StartWithoutAssistant } from './jobs/StartJobDialog.jsx';
+import { AssistantButton } from './assistant/AssistantButton.jsx';
 
 // The tabs a visit rarely opens ride in their own chunks: Bulk Edit,
 // Validation, Activity, the Assistant (and its markdown), and Export (and the
@@ -175,8 +176,8 @@ const ProjectBody = ({ project, projectId, client, documents, reload }) => {
   // (settings/access) does not. Gate document-create on this so a reader isn't
   // shown a button that 403s on submit.
   const canWrite = canEditProject(project, user);
-  // Set up job, for whoever may start one: beside New document, and on Jobs,
-  // where a "⋯" menu also offers the Start job form with no assistant.
+  // Set up job, for whoever may start one, on Jobs, where a "⋯" menu also
+  // offers the Start job form with no assistant.
   const mayStartJob = canStartJob(project, user);
   const setUpJob = mayStartJob && (
     <SetUpJob projectId={projectId} client={client} documents={documents} />
@@ -271,7 +272,8 @@ const ProjectBody = ({ project, projectId, client, documents, reload }) => {
           readIgnoredTokens(getIgtLayerInfo(project).primaryTokenLayer?.config),
         )}
         href={(documentId) => `/projects/${projectId}/documents/${documentId}`}
-        actions={setUpJob}
+        // Beside New document: the Assistant button, the header chip's twin.
+        actions={<AssistantButton projectId={projectId} client={client} />}
       />
     );
   } else if (active === 'jobs') {

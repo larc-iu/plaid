@@ -21,6 +21,10 @@ export const AssistantSubjectProvider = ({ children }) => {
     setFresh((was) => ({ seq: (was?.seq || 0) + 1, purpose }));
   }, []);
   const clearFresh = useCallback(() => setFresh(null), []);
+  // A screen's own Assistant button, pressed: a number new for each press, so
+  // the shell opens the dock again after the reader shut it.
+  const [opened, setOpened] = useState(0);
+  const openAssistant = useCallback(() => setOpened((n) => n + 1), []);
 
   // A reference into a document the reader has since left means nothing, so it
   // does not travel with them.
@@ -30,8 +34,19 @@ export const AssistantSubjectProvider = ({ children }) => {
   }, [subjectId]);
 
   const value = useMemo(
-    () => ({ subject, setSubject, focus, ask, clearFocus, fresh, startConversation, clearFresh }),
-    [subject, focus, ask, clearFocus, fresh, startConversation, clearFresh],
+    () => ({
+      subject,
+      setSubject,
+      focus,
+      ask,
+      clearFocus,
+      fresh,
+      startConversation,
+      clearFresh,
+      opened,
+      openAssistant,
+    }),
+    [subject, focus, ask, clearFocus, fresh, startConversation, clearFresh, opened, openAssistant],
   );
   return <SubjectContext.Provider value={value}>{children}</SubjectContext.Provider>;
 };

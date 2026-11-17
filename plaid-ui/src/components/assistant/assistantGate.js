@@ -26,6 +26,11 @@
 //     live turn a second time, each copy with its own step list, Stop button
 //     and composer, and nothing saying which one was the live one.
 
+// Whether a project offers a way in: only once discovery says an assistant is
+// online there. The chip below and a screen's own Assistant button (plaid-igt's
+// Documents and Jobs tabs) both ask this.
+export const assistantOffered = (projectId, available) => !!(projectId && available === true);
+
 export const assistantGate = ({
   wide = false,
   open = false,
@@ -57,7 +62,7 @@ export const assistantGate = ({
     wide &&
     !assistantRoute &&
     !showDock &&
-    (offerPicker || (projectId && available === true))
+    (offerPicker || assistantOffered(projectId, available))
   );
   const showPicker = showDock && offerPicker;
   return {

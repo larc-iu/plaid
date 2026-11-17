@@ -80,6 +80,14 @@ export const useAssistantFresh = () => {
   return { fresh: ctx?.fresh ?? null, clearFresh: ctx?.clearFresh ?? noAsk };
 };
 
+// A screen's own Assistant button: the panel opens as the header chip opens it,
+// on whatever conversation it holds. Outside a provider it is a no-op.
+export const useOpenAssistant = () => useContext(SubjectContext)?.openAssistant ?? noAsk;
+
+// The panel's side of the same: a number new for each press, 0 before the
+// first. The shell opens the dock when it changes.
+export const useAssistantOpenRequest = () => useContext(SubjectContext)?.opened ?? 0;
+
 // A screen's side. Publishes while mounted, clears on unmount.
 export const useAssistantSubject = ({
   projectId,
