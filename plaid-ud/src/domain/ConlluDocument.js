@@ -62,7 +62,7 @@ import {
 } from './sentenceRows.js';
 import { buildConllu, conlluLosses } from './conlluSerialize.js';
 import { gapTokenize, newlineSentenceRanges } from '../utils/basicTokenize.js';
-import { normalizeFeature, featureRefusal } from '../utils/feats.js';
+import { normalizeFeature, featureRefusal, spaceRefusal } from '../utils/feats.js';
 import { fieldName } from '../utils/fieldNames.js';
 import { isProvKey } from '../utils/provenanceUi.js';
 
@@ -1246,6 +1246,10 @@ export class ConlluDocument extends DocumentModel {
       return false;
     }
 
+    // UPOS and XPOS hold no space in CoNLL-U, so neither is stored with one.
+    const spaced = spaceRefusal(field, value);
+    if (spaced) return this.refuse(spaced);
+
     // FEATS is the one field whose value has structure, and every write of one
     // lands here, so the pair is read once for all of them (src/utils/feats.js).
     let feature = null;
@@ -1648,6 +1652,8 @@ export class ConlluDocument extends DocumentModel {
   async createRelation(sourceSpanId, targetSpanId, deprel) {
     const made = this._making;
     const info = this.layerInfo;
+    const spaced = spaceRefusal('deprel', deprel);
+    if (spaced) return this.refuse(spaced);
     if (!info.relationLayer) {
       this.refuse(notSetUp('UD relation layer missing'));
       return false;
@@ -1780,6 +1786,8 @@ export class ConlluDocument extends DocumentModel {
   async createEnhancedRelation(sourceSpanId, targetSpanId, deprel) {
     const made = this._making;
     const info = this.layerInfo;
+    const spaced = spaceRefusal('deprel', deprel);
+    if (spaced) return this.refuse(spaced);
     if (!info.enhancedRelationLayer) {
       this.refuse(notSetUp('UD enhanced relation layer missing'));
       return false;
@@ -1930,6 +1938,8 @@ export class ConlluDocument extends DocumentModel {
 
   // A relation's label, in the tree or in the enhanced layer: the id says which.
   async updateRelation(rawRelationId, deprel) {
+    const spaced = spaceRefusal('deprel', deprel);
+    if (spaced) return this.refuse(spaced);
     const relationId = settledId(rawRelationId);
     const label = 'Failed to update relation';
     if (!this._canWrite(label)) return false;

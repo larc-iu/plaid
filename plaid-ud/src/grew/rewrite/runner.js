@@ -20,7 +20,7 @@ import { diffGraphs } from './diff.js';
 import { bareLabel } from '../edgeLabel.js';
 import { countOf } from '../../../../plaid-ui/src/lib/plural.js';
 import { makeValidators } from '../../utils/udVocabMode.js';
-import { featureRefusal } from '../../utils/feats.js';
+import { featureRefusal, spaceRefusal } from '../../utils/feats.js';
 import { atVersion } from '../../../../plaid-ui/src/domain/atVersion.js';
 import { isUnknownOutcome } from '../../../../plaid-client-js/src/http.js';
 
@@ -185,7 +185,7 @@ function offVocabulary(before, after, validators) {
       ['xpos', validators.xpos],
     ]) {
       if (node[col] == null || (was && was[col] === node[col])) continue;
-      const refusal = check(node[col]);
+      const refusal = spaceRefusal(col, node[col]) || check(node[col]);
       if (refusal) return `${node.form}: ${refusal}`;
     }
     // `feats` is a Map on a real node, so iterate rather than mapping it.
@@ -202,7 +202,8 @@ function offVocabulary(before, after, validators) {
   // `edges` is a Map keyed by relation id.
   for (const [id, edge] of after.edges?.entries() || []) {
     if (edge.label == null || before.edges?.get(id)?.label === edge.label) continue;
-    const refusal = validators.deprel(bareLabel(edge.label));
+    const bare = bareLabel(edge.label);
+    const refusal = spaceRefusal('deprel', bare) || validators.deprel(bare);
     if (refusal) return refusal;
   }
   return null;

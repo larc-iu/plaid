@@ -268,6 +268,41 @@ test('a FEATS bundle is not written as one feature', async () => {
   assert.equal(doc.layerInfo.featuresLayer.spans.length, before);
 });
 
+// H17-3: CoNLL-U spells no space in UPOS, XPOS or DEPREL, so every write of
+// one is refused before anything is sent, as a spaced feature is.
+test('a UPOS, XPOS or relation with a space inside is not written', async () => {
+  const raw = rawDocFromConllu(INPUT, 'mut-doc');
+  const client = provClient();
+  const doc = new ConlluDocument({ raw, client: withOps(client) });
+  const perro = doc.layerInfo.uposLayer.spans.find((s) => s.value === 'NOUN').tokens[0];
+  const lemmaOf = (v) => doc.layerInfo.lemmaLayer.spans.find((s) => s.value === v).id;
+  const rel = doc.layerInfo.relationLayer.relations.find((r) => r.value === 'det');
+  const refusals = [
+    [() => doc.updateAnnotation(perro, 'upos', 'PROP N'), /UPOS value cannot contain spaces/],
+    [() => doc.updateAnnotation(perro, 'xpos', 'VB D'), /XPOS value cannot contain spaces/],
+    [() => doc.updateRelation(rel.id, 'nsubj pass'), /relation cannot contain spaces/],
+    [
+      () => doc.createRelation(lemmaOf('perro'), lemmaOf('de'), 'nsubj pass'),
+      /relation cannot contain spaces/,
+    ],
+    [
+      () => doc.createEnhancedRelation(lemmaOf('perro'), lemmaOf('de'), 'nsubj pass'),
+      /relation cannot contain spaces/,
+    ],
+  ];
+  for (const [write, message] of refusals) {
+    doc.clearError();
+    assert.equal(await write(), false);
+    assert.match(doc.error, message);
+  }
+  assert.deepEqual(client.calls, []);
+  assert.equal(doc.layerInfo.uposLayer.spans.find((s) => s.tokens[0] === perro).value, 'NOUN');
+  assert.equal(rel.value, 'det');
+  // A lemma or a form may hold a space.
+  doc.clearError();
+  assert.equal(await doc.updateAnnotation(perro, 'lemma', 'el perro'), true);
+});
+
 test('typing a feature the word does not have creates a span and confirms nothing', async () => {
   const raw = rawDocFromConllu(INPUT, 'mut-doc');
   const client = provClient();

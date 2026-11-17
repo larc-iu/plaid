@@ -383,7 +383,7 @@ test('apply as a reviewed contributor: creates and edits are marked contributed'
 // already holds. Checking the whole rewritten graph meant one parser-written
 // off-list tag anywhere in a sentence blocked a rule that never touched that
 // column, and deselected the row.
-const closedUposSetup = () => {
+const closedUposSetup = ({ closed = true } = {}) => {
   const raw = rawDocFromConllu(
     [
       '# text = the dog saw a cat',
@@ -396,7 +396,7 @@ const closedUposSetup = () => {
     'doc1',
   );
   const upos = raw.textLayers[0].tokenLayers[2].spanLayers.find((l) => l.config.ud.upos);
-  upos.config.ud.vocabMode = 'closed';
+  if (closed) upos.config.ud.vocabMode = 'closed';
   const client = stubClient(raw);
   const project = {
     id: 'p1',
@@ -431,13 +431,32 @@ test('plan: an off-list value the rule DOES write still refuses the row', async 
 // H17-1: a feature value holding `|` is several FEATS pairs filed as one,
 // refused under an open list as the cell refuses it.
 test('plan: a rule that writes a FEATS bundle as one value refuses the row', async () => {
-  const { client, project, layerInfo } = closedUposSetup();
+  const { client, project, layerInfo } = closedUposSetup({ closed: false });
   const grs = parseGrs(
     'pattern { X [upos=DET] } without { X [Case] } commands { X.Case = "Nom|Gender=Masc" }',
   );
   const plan = await planRewrite(client, { project, user: null, layerInfo, grs });
   const [row] = plan.rows;
   assert.match(row.error, /cannot contain \|/);
+});
+
+// H17-3: a value CoNLL-U cannot spell is refused whatever the list.
+test('plan: a rule that writes a space into UPOS, XPOS or a relation refuses the row', async () => {
+  for (const [rule, message] of [
+    ['pattern { X [upos=DET] } commands { X.upos = "PROP N" }', /UPOS value cannot contain spaces/],
+    [
+      'pattern { X [upos=DET] } without { X [xpos] } commands { X.xpos = "VB D" }',
+      /XPOS value cannot contain spaces/,
+    ],
+    [
+      'pattern { N -[det]-> D } commands { del_edge N -[det]-> D; add_edge N -["det x"]-> D }',
+      /relation cannot contain spaces/,
+    ],
+  ]) {
+    const { client, project, layerInfo } = closedUposSetup({ closed: false });
+    const plan = await planRewrite(client, { project, user: null, layerInfo, grs: parseGrs(rule) });
+    assert.match(plan.rows[0]?.error || '', message, rule);
+  }
 });
 
 test('plan: a rule that applies and leaves nothing to write yields no row', async () => {

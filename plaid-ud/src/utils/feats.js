@@ -46,3 +46,24 @@ export const featureRefusal = (pair) =>
     : pair.includes('|')
       ? 'A feature name and value cannot contain |.'
       : null;
+
+// The same CoNLL-U rule for the other columns a person types into. Only the
+// fields it covers: a lemma or a form may hold a space (H17-3).
+const SPACE_FREE = {
+  upos: 'A UPOS value',
+  xpos: 'An XPOS value',
+  deprel: 'A dependency relation',
+};
+
+/**
+ * The refusal for a UPOS, XPOS or dependency relation value with a space in
+ * it, or null. Any other field, or no value, is never refused here.
+ *
+ * @param {string} field upos, xpos or deprel
+ * @param {*} value the value about to be written
+ * @returns {string|null}
+ */
+export const spaceRefusal = (field, value) =>
+  SPACE_FREE[field] && typeof value === 'string' && /\s/.test(value)
+    ? `${SPACE_FREE[field]} cannot contain spaces.`
+    : null;
