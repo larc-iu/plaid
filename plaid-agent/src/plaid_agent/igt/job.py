@@ -3012,7 +3012,7 @@ class IgtRunner:
         """The ref prefix of the job's own passes in a document. A person's
         Undo or Redo of the job's entry (``job:<id>/undo``) is not the
         job's: it is someone in the document (REV-HFA-3)."""
-        return f'job:{self.job.id}/'
+        return f'job:{self.job.id}/doc:'
 
     def created(self) -> float:
         when = core_job._iso_seconds(self.job.job.get('created_at'))

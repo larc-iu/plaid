@@ -163,3 +163,15 @@ def test_every_look_marks_and_the_write_asks_against_that_mark(monkeypatch):
     mark = r.seen_marks['d1']
     _person(client, job, 'd1', 1, 'PERSON')
     assert r.seen_marks['d1'] == mark and r.someone_since_mark(client, 'd1')
+
+
+def test_a_persons_undo_of_the_jobs_entry_is_someone_in_the_document(monkeypatch):
+    """REV-HFA-3: core gives a whole Undo of the job's entry the ref
+    ``job:<id>/undo``. Only ``job:<id>/doc:`` is the job's own."""
+    client = JobClient({'d1': _doc('d1', 'Story 1', 1)})
+    job = _job(client)
+    r = runner(job)
+    _person(client, job, 'd1', 1, 'nidr-be', ref=f'job:{job.id}/undo')
+    assert r.in_use(r.newest_change(client, 'd1'), r.own_ref)
+
+
