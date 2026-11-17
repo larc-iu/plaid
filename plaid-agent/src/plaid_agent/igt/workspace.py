@@ -360,12 +360,16 @@ class Workspace(BaseWorkspace):
         return found
 
     def words_print(self, sentence) -> Optional[str]:
-        """The sentence's id and its words in order, each its token and its
-        text: a word typed in, deleted, joined, split or retyped, or another
-        sentence in its place, changes it, and a value on a word does not
-        (``BaseWorkspace.refuse_moved_sentence``). Eight hex digits: it tells
-        an edit from none, and one is kept per sentence read."""
-        return fingerprint([sentence.id, [[w.id, w.surface] for w in sentence.words]])[:8]
+        """The sentence's id and its words in order, each its token, its
+        text and its morphemes' tokens in order: a word typed in, deleted,
+        joined, split, retyped or segmented again, or another sentence in its
+        place, changes it, and a value on a word or a morpheme does not
+        (``BaseWorkspace.refuse_moved_sentence``). An unsegmented word's
+        morpheme is named from its word, so it moves nothing. Eight hex
+        digits: it tells an edit from none, and one is kept per sentence
+        read."""
+        return fingerprint([sentence.id, [[w.id, w.surface, [m.id for m in w.morphemes]]
+                                          for w in sentence.words]])[:8]
 
     def doc_tag(self, doc, show: bool = True) -> str:
         """The ``"<document>" `` prefix on a printed reference: the document's

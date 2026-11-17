@@ -215,3 +215,35 @@ def test_earlier_reads_take_the_newest_turn_and_the_record_is_capped():
     ws.read_now = {'d1': {i: 'p' for i in range(1, READ_PRINTS_MAX + 50)}}
     kept = ws.reads_kept()
     assert len(kept['d1']) == READ_PRINTS_MAX and kept['d1']['1'] == 'p'
+
+
+def _segmented_again(raw):
+    """A person gives s1.w1 a prefix: its morphemes renumber (m2 is "Ali" now)."""
+    raw = copy.deepcopy(raw)
+    raw['text_layers'][0]['token_layers'][2]['tokens'].append(
+        {'id': 'm-1z', 'begin': 0, 'end': 6, 'precedence': 0, 'metadata': {'form': 'a', 'morphType': 'prefix'}})
+    raw['version'] += 1
+    return raw
+
+
+def test_a_morpheme_named_by_number_after_a_person_resegments_its_word_is_refused(monkeypatch):
+    """REV-SVB-3: the print holds each word's morphemes."""
+    c = Conversation(monkeypatch)
+    c.turn(READ_S1)
+    c.edit(_segmented_again)
+    out, = c.turn(('set_field', {'document': 'Text 1', 'refs': ['s1.w1.m2'], 'field': 'Morph Gloss', 'value': 'ERG'}))
+    assert out.startswith('Error: "Text 1" s1.w1.m2: '), out
+
+
+def test_a_value_on_a_morpheme_does_not_move_the_print(monkeypatch):
+    c = Conversation(monkeypatch)
+    c.turn(READ_S1)
+
+    def glossed(raw):
+        raw = copy.deepcopy(raw)
+        raw['text_layers'][0]['token_layers'][2]['span_layers'][0]['spans'][1]['value'] = 'PL'
+        raw['version'] += 1
+        return raw
+    c.edit(glossed)
+    out, = c.turn(('set_field', {'document': 'Text 1', 'refs': ['s1.w1.m2'], 'field': 'Morph Gloss', 'value': 'ERG'}))
+    assert out.startswith('Planned'), out
