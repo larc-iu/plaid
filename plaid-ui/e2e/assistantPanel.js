@@ -63,7 +63,10 @@ export const assistantPanelHarness = ({
     );
 
   const panelOf = (page) => page.locator('aside.border-l');
-  const toggle = (page) => page.getByRole('button', { name: 'Assistant', exact: true });
+  // The header's chip. Scoped to the banner: plaid-igt's Documents and Jobs
+  // tabs carry an Assistant button of their own with the same name.
+  const toggle = (page) =>
+    page.getByRole('banner').getByRole('button', { name: 'Assistant', exact: true });
 
   const openDocument = async (page) => {
     await page.goto(documentPath());

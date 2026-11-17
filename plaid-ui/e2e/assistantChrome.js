@@ -112,7 +112,10 @@ export const assistantHarness = ({
   // purpose, since two controls with one name is ambiguous for a screen reader
   // and for a locator.
   const panelOf = (page) => page.locator('aside.border-l');
-  const toggle = (page) => page.getByRole('button', { name: 'Assistant', exact: true });
+  // The header's chip. Scoped to the banner: plaid-igt's Documents and Jobs
+  // tabs carry an Assistant button of their own with the same name.
+  const toggle = (page) =>
+    page.getByRole('banner').getByRole('button', { name: 'Assistant', exact: true });
   const rail = (page) => page.getByRole('button', { name: 'Open the assistant' });
 
   const openDock = async (page) => {
