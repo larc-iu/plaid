@@ -25,6 +25,7 @@ import { cpSlice, entryForm } from '@larc-iu/plaid-client';
 import { extractAnalysis, analysisSignature } from '../../../domain/analysisMemory.js';
 import { equalsBefore, morphemeJoiner } from '../../../domain/affixMarkers.js';
 import { morphemeGlossReading } from '../../../domain/tagsets.js';
+import { RESPELL_UNCHANGED, respellIgnoredRule, respellRefusal } from '../../../domain/respell.js';
 
 export const OPERATIONS = [
   {
@@ -90,13 +91,21 @@ const sentenceContext = (doc, s, idx, marks) => ({
 // chain IS the word): [{ joiner, own, old, new }], where a derived morpheme
 // follows the baseline (its `new` is the word's) and an own form gets its own
 // rewrite or stays put. A row whose word the substitution empties is
-// `invalid: 'empty'`, and one that empties an own morpheme form carries
-// `emptiesForm`, which bars it only while morpheme forms are respelled too
-// (respellBarred).
+// `invalid: 'empty'`, one whose new spelling the Analyze grid's Respell box
+// refuses (a space, a leading combining mark, an ignored token:
+// respellRefusal) is `invalid: 'refused'` with that `refusal`, and one that
+// empties an own morpheme form carries `emptiesForm`, which bars it only while
+// morpheme forms are respelled too (respellBarred).
 export function collectRespellRows(doc, apply) {
   const rows = [];
   const textId = doc.layerInfo.primaryTextLayer?.text?.id;
   if (!textId) return rows;
+  const ignored = respellIgnoredRule(doc.layerInfo);
+  const barred = (old, next) => {
+    if (blank(next)) return { invalid: 'empty' };
+    const refusal = respellRefusal(old, next, ignored);
+    return refusal && refusal !== RESPELL_UNCHANGED ? { invalid: 'refused', refusal } : {};
+  };
   (doc.sentences || []).forEach((s, idx) => {
     for (const t of s.tokens || []) {
       const next = apply(t.content);
@@ -126,7 +135,7 @@ export function collectRespellRows(doc, apply) {
         new: next,
         morphemes,
         chain: chain.length > 1 || chain.some((c) => c.own) ? chain : null,
-        ...(blank(next) ? { invalid: 'empty' } : {}),
+        ...barred(t.content, next),
         ...(morphemes.some((m) => blank(m.new)) ? { emptiesForm: true } : {}),
         ...sentenceContext(doc, s, idx, [{ begin: t.begin, end: t.end }]),
       });

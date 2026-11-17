@@ -4,6 +4,7 @@ import { buildRawDoc, makeFakeClient } from '../../../domain/test-helpers.js';
 import {
   buildReplacer,
   collectRespellRows,
+  respellBarred,
   collectLexiconRows,
   chainText,
   respellOps,
@@ -14,6 +15,8 @@ import {
   groupByDoc,
 } from './bulkPlan.js';
 import { isValueAllowed, readingTagset } from '../../../domain/tagsets.js';
+import { DEFAULT_IGNORED_TOKENS } from '../../../domain/igtConfig.js';
+import { RESPELL_IGNORED, RESPELL_MARK, RESPELL_SPACE } from '../../../domain/respell.js';
 
 const docOf = (opts) => new IgtDocument({ raw: buildRawDoc(opts), client: makeFakeClient() });
 
@@ -120,6 +123,34 @@ describe('collectRespellRows / respellOps', () => {
     const rows = collectRespellRows(doc, buildReplacer('t', 'contains', 'd').apply);
     expect(rows[0].morphemes).toEqual([{ id: 'm-2', old: 't', new: 'd', metadata: { form: 't' } }]);
     expect(chainText(rows[0].chain, true)).toEqual({ old: 'ka-t', new: 'ka-d' });
+  });
+
+  it('bars a spelling the grid refuses: a space, a leading mark, an ignored token (H5-1)', () => {
+    const raw = buildRawDoc({
+      body: 'ka bo KALA',
+      words: [
+        { id: 'w-1', begin: 0, end: 2 },
+        { id: 'w-2', begin: 3, end: 5 },
+        { id: 'w-3', begin: 6, end: 10 },
+      ],
+    });
+    raw.textLayers[0].tokenLayers.find((l) => l.id === 'wordL').config.plaid.ignoredTokens =
+      DEFAULT_IGNORED_TOKENS;
+    const doc = new IgtDocument({ raw, client: makeFakeClient() });
+    const row = (find, repl) =>
+      collectRespellRows(doc, buildReplacer(find, 'exact', repl).apply)[0];
+    const space = row('bo', 'b o');
+    expect(space).toMatchObject({ invalid: 'refused', refusal: RESPELL_SPACE });
+    expect(respellBarred(space, false)).toBe(true);
+    const mark = row('KALA', '\u0300KALA');
+    expect(mark).toMatchObject({ invalid: 'refused', refusal: RESPELL_MARK });
+    expect(respellBarred(mark, true)).toBe(true);
+    expect(row('ka', '\u2014')).toMatchObject({ invalid: 'refused', refusal: RESPELL_IGNORED });
+    // An empty word keeps its own reason, and a good spelling is not barred.
+    expect(row('ka', '')).toMatchObject({ invalid: 'empty' });
+    const good = row('ka', 'kà');
+    expect(good.invalid).toBeUndefined();
+    expect(respellBarred(good, true)).toBe(false);
   });
 
   it('words that do not change produce no row', () => {

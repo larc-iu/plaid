@@ -45,6 +45,9 @@ const RespellChange = ({ row, includeMorphemes }) => {
       {row.invalid === 'empty' && (
         <p className="mt-1 text-xs text-destructive">Empty word, so it will be skipped.</p>
       )}
+      {row.invalid === 'refused' && (
+        <p className="mt-1 text-xs text-destructive">Will be skipped. {row.refusal}</p>
+      )}
       {!row.invalid && includeMorphemes && row.emptiesForm && (
         <p className="mt-1 text-xs text-destructive">Empty morpheme form, so it will be skipped.</p>
       )}
