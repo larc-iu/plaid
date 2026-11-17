@@ -15,6 +15,7 @@ from ..core.args import whole
 from ..core.plan import change_of, labelled
 from ..core.tools import ADVICE, ToolError
 
+from .plan import NEW_ENTRY
 from .project import word_ref
 from .reads import _example_line
 from .lexview import entry_line, morph_type
@@ -72,7 +73,7 @@ def _create_entry(ws: Workspace, v: dict, form: str, fields: Optional[dict],
     slug = re.sub(r'\s+', '_', form)
     # Numbered by the entries this turn made, so a key is never given twice.
     ws.entry_no += 1
-    key = f'new:{v["id"]}:{slug}#{ws.entry_no}'
+    key = f'{NEW_ENTRY}{v["id"]}:{slug}#{ws.entry_no}'
     # The entry every later tool in the turn resolves against and the op that
     # creates it are one change or none. Written first and staged after, a
     # refused op left a phantom entry in the turn's lexicon: the model linked
@@ -132,10 +133,10 @@ def _resolve_ref(ws: Workspace, vocab: dict, field: dict, value: str, own_id: Op
     view = ws.view(vocab)
     if value in view.tree.by_id:
         target = value
-    elif value in ws.new_entries:
-        raise ToolError(f'"{field["name"]}" must name an entry that already exists. "{value}" is created by this '
-                        f'same plan and has no id until it is approved{ADVICE}', kind='conflict',
-                        code='entry-new', advice=': approve the plan, then set the reference.')
+    elif value in ws.new_entries and ws.new_entries[value]['vocab_id'] == vocab['id']:
+        # An entry this plan creates, by the entry_id create_entry answered:
+        # approval writes the id it is made under (`plan.planned_ids`).
+        target = value
     else:
         form, suffix = value, None
         if '#' in value:
@@ -190,7 +191,7 @@ def t_set_entry_field(ws: Workspace, field: str, value: str, entry_form: Optiona
         e = ws.new_entries[target]
         if vocab and f['scope'] == SCOPE_ENTRY and parent_of(e):
             raise ToolError(f'"{f["name"]}" belongs to a headword rather than to each sense.', kind='invalid-argument')
-        meta = _entry_field_write(ws, vocab, f, value, e['metadata'], None)
+        meta = _entry_field_write(ws, vocab, f, value, e['metadata'], target)
         # Written onto the create in place, past add_op: held to the field's
         # list here.
         ws.refuse_off_list({'kind': 'create_entry', 'vocab_id': e.get('vocab_id'), 'metadata': meta})

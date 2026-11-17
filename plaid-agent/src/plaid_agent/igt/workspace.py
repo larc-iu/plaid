@@ -35,7 +35,7 @@ from ..core.tools import ADVICE, ToolError
 from ..core.workspace import BaseWorkspace
 
 from . import fit
-from .plan import (ANALYSIS, ENTRY_READ, KIND, LEXICON_MAINTAINER, LEXICON_WRITER, MORPHEME_KEY,
+from .plan import (ANALYSIS, ENTRY_READ, KIND, LEXICON_MAINTAINER, LEXICON_WRITER, MORPHEME_KEY, NEW_ENTRY,
                    MORPHEME_WRITERS, SETTINGS_KINDS, TEXT_SHAPE, _found, analysed_morphemes, entry_stamp,
                    lexicon_need, pinned_entry, planned_morpheme, removed_entries, settle_merges)
 
@@ -542,12 +542,18 @@ class Workspace(BaseWorkspace):
         gone = frozenset() if removed else self.doomed_entries()
         got = self._views.get(key)
         if got and got[0] is items and got[1] == (self._patch_version, gone):
-            return got[2]
+            return self._with_new(got[2])
         planned = [{**it, 'metadata': self.item_patches[it['id']]}
                    if it['id'] in self.item_patches else it
                    for it in items if it['id'] not in gone]
         view = LexView(vocab, planned)
         self._views[key] = (items, (self._patch_version, gone), view)
+        return self._with_new(view)
+
+    def _with_new(self, view: 'LexView') -> 'LexView':
+        """``view`` naming the entries this plan creates in its lexicon by
+        their forms, so a reference to one reads as the entry it names."""
+        view.planned = {k: e['form'] for k, e in self.new_entries.items() if e.get('vocab_id') == view.vocab['id']}
         return view
 
     def view_of_item(self, item_id: str, removed: bool = False) -> Optional['LexView']:
@@ -589,7 +595,7 @@ class Workspace(BaseWorkspace):
                 for it in self.lexicon(v):
                     if it['id'] == entry_id:
                         return 'existing', it
-            if entry_id.startswith('new:'):
+            if entry_id.startswith(NEW_ENTRY):
                 # A model passed the id an earlier message's plan gave a new
                 # entry (2026-10-12 survey).
                 raise ToolError(self.unknown_new_entry(entry_id), kind='not-found')

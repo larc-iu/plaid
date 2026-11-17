@@ -17,7 +17,7 @@ from ..core.tools import ToolError
 from .lexview import LexView
 from .project import IgtDoc, word_ref
 from .targets import unsegmented
-from .vocab import RESERVED_ITEM_KEYS, item_ref_fields, morph_type_of, ref_ids
+from .vocab import PARENT_KEY, RESERVED_ITEM_KEYS, item_ref_fields, morph_type_of, ref_ids
 from .workspace import Workspace
 
 IGT_SHAPE = '''\
@@ -49,7 +49,8 @@ def _shape(ws: Workspace) -> str:
 # as a dict (twice on the bench: lexicon()["entries"]).
 LEXICON_RETURNS = '''\
   [{"id", "lexicon", "form", "address", "type", "fields": {"<entry field>": ...}, "parent": "<id>" or None,
-    "senses": ["<id>", ...], "links": n}, ...]'''
+    "senses": ["<id>", ...], "links": n, "staged": false}, ...]
+  An entry this plan creates is listed with "staged": true, its "id" the entry_id create_entry answered.'''
 
 IGT_HELP = '''
 THE SHAPE load(document) RETURNS:
@@ -167,8 +168,25 @@ def entry(view: LexView, it: dict, links: int) -> Dict[str, Any]:
     entry form shows on it, then any other key it holds, as read_lexicon
     lists them, so a field read by name is never a KeyError for an entry
     that leaves it empty."""
+    iid = it['id']
+    return {'id': iid, 'lexicon': view.vocab['name'], 'form': it.get('form') or '',
+            'address': view.address(iid), 'type': morph_type_of(view.tree, iid),
+            'fields': _fields(view, it, view.hidden_fields(it)), 'parent': view.tree.parent_of.get(iid) or None,
+            'senses': [s['id'] for s in view.tree.senses_of(iid)], 'links': links, 'staged': False}
+
+
+def staged_entry(view: LexView, key: str, e: dict) -> Dict[str, Any]:
+    """An entry this plan creates, as :func:`entry` gives one, under the
+    entry_id create_entry answered: a later plan() call names it by that."""
+    meta = e.get('metadata') or {}
+    it = {'id': key, 'form': e['form'], 'metadata': meta}
+    return {'id': key, 'lexicon': view.vocab['name'], 'form': e['form'], 'address': e['form'],
+            'type': meta.get('morphType'), 'fields': _fields(view, it, set()),
+            'parent': meta.get(PARENT_KEY) or None, 'senses': [], 'links': 0, 'staged': True}
+
+
+def _fields(view: LexView, it: dict, hidden) -> Dict[str, Any]:
     meta = it.get('metadata') or {}
-    hidden = view.hidden_fields(it)
     refs = {f['name']: f for f in item_ref_fields(view.fields)}
     fields = {}
     for f in view.fields:
@@ -180,11 +198,7 @@ def entry(view: LexView, it: dict, links: int) -> Dict[str, Any]:
         if k not in fields and k not in RESERVED_ITEM_KEYS and k != 'morphType' and k not in hidden \
                 and k not in PROVENANCE_KEYS and v not in (None, '', [], {}):
             fields[k] = _plain(v)
-    iid = it['id']
-    return {'id': iid, 'lexicon': view.vocab['name'], 'form': it.get('form') or '',
-            'address': view.address(iid), 'type': morph_type_of(view.tree, iid),
-            'fields': fields, 'parent': view.tree.parent_of.get(iid) or None,
-            'senses': [s['id'] for s in view.tree.senses_of(iid)], 'links': links}
+    return fields
 
 
 def _plain(v) -> Any:
@@ -230,6 +244,7 @@ def lexicon_api(ws: Workspace) -> Callable:
                 counts[key] = link_counts(w, v)
             view = w.view(v)
             out.extend(entry(view, it, counts[key][it['id']]) for it in view.items)
+            out.extend(staged_entry(view, k, e) for k, e in w.new_entries.items() if e.get('vocab_id') == v['id'])
         return out
     return lexicon
 

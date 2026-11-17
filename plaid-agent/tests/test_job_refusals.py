@@ -188,24 +188,20 @@ def test_a_job_asked_to_insert_a_zero_element_and_gloss_it_glosses_it_after_the_
 
 
 @pytest.mark.parametrize('job', [True, False], ids=['job', 'chat'])
-def test_a_reference_to_an_entry_this_plan_creates_is_worded_by_who_reads_it(job):
-    """REV-DF-D-5, lexicon.py's reference refusal (no lexicon of the fixture
-    declares a reference field, so its helper is asked directly): the chat is
-    told to approve first, a job reads the fact and its closing line."""
+def test_a_reference_to_an_entry_this_plan_creates_is_taken_by_its_entry_id(job):
+    """A reference field may name an entry the same plan creates, by the
+    entry_id create_entry answered, in a chat and in a job alike (SVB B2;
+    it was refused, REV-DF-D-5). Approval writes the id it is made under
+    (test_planned_entry_refs.py). No lexicon of the fixture declares a
+    reference field, so lexicon.py's helper is asked directly."""
     from types import SimpleNamespace
-    from plaid_agent.core.tools import run_tool
     from plaid_agent.igt import lexicon
     c = FakeClient(documents={'d1': machine_raw()})
     project = load_project(c, 'p1')
     w = JobWorkspace(c, project) if job else Workspace(c, project)
-    w.new_entries['new:v1:zork#1'] = {'form': 'zork'}
+    w.new_entries['new:v1:zork#1'] = {'form': 'zork', 'vocab_id': 'v1'}
     w.view = lambda vocab: SimpleNamespace(tree=SimpleNamespace(by_id={}))
-    out = run_tool(w, 'set_entry_field', lambda ws: lexicon._resolve_ref(ws, {}, {'name': 'See'}, 'new:v1:zork#1',
-                                                                          None), {})
-    fact = '"See" must name an entry that already exists. "new:v1:zork#1" is created by this same plan and has no ' \
-           'id until it is approved'
-    assert out == (f'Error: {fact}. {JOB_LEAVE_IT}' if job else f'Error: {fact}: approve the plan, then set the '
-                   'reference.'), out
+    assert lexicon._resolve_ref(w, {'id': 'v1'}, {'name': 'See'}, 'new:v1:zork#1', None) == 'new:v1:zork#1'
 
 
 CODES = {

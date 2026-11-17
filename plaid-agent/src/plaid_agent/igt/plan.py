@@ -157,6 +157,9 @@ APP = 'app'
 # entry (a rename, a merge, a delete, and the repairs a delete or a merge
 # carries), after every document write (`_write_lexicon`).
 LEXICON = 'lexicon'
+#: How the key of an entry a plan creates begins: the entry_id every later
+#: change of the plan names it by, until approval makes it under an id.
+NEW_ENTRY = 'new:'
 #: The key on a change to an entry's fields or structure (a kind declaring
 #: ``extra['pins_entry']``) holding the entry as the plan read it
 #: (:func:`entry_stamp`). Such a change is written over what was read (a
@@ -211,8 +214,15 @@ class Context:
         # the plan creates is written from it.
         self.chains: Dict[str, List[str]] = {}
         self.planned_links: List[Dict[str, Any]] = []
-        # The id of each entry the plan creates, by its key.
+        # The id of each entry the plan creates, by its key, once its create
+        # is queued (a link to it waits for that).
         self.entry_ids: Dict[str, str] = {}
+        # The id each entry the plan creates is made under, by its key: drawn
+        # at its create, or at a reference field naming it before then
+        # (`planned_ids`), so the reference writes the id wherever the create
+        # stands in the plan. ``new_keys`` are the keys the plan creates.
+        self.made_under: Dict[str, str] = {}
+        self.new_keys: frozenset = frozenset()
         self.respells: Dict[str, List[tuple]] = {}
         # The lexicon's last batch (`_write_lexicon`): what moves the version
         # of every document linking an entry, after every document write.
@@ -261,6 +271,12 @@ class Context:
         # each by what it holds (HUNT-model M1), and the approval confirms
         # one left machine-made once the merges stand.
         self.merged_spans: List[tuple] = []
+
+    def made_id(self, key: str) -> str:
+        """The id the entry the plan creates under ``key`` is made under."""
+        if key not in self.made_under:
+            self.made_under[key] = self.b.new_id()
+        return self.made_under[key]
 
     def defer(self, op, when: str = 'second') -> None:
         self.later.setdefault(when, []).append(op)
@@ -590,16 +606,25 @@ def _apply_set_morph_type(ctx: Context, op) -> int:
     return 1
 
 
+def planned_ids(ctx: Context, value):
+    """``value`` (a reference field's id, or a list of them) with each key
+    of an entry the plan creates replaced by the id it is made under."""
+    if isinstance(value, list):
+        return [planned_ids(ctx, v) for v in value]
+    return ctx.made_id(value) if isinstance(value, str) and value in ctx.new_keys else value
+
+
 def _apply_create_entry(ctx: Context, op) -> int:
-    made = ctx.entry_ids[op['key']] = ctx.b.new_id()
-    ctx.b.add(lambda batch, o=op, i=made: batch.vocab_items.create(
-        o['vocab_id'], o['form'], {**(o.get('metadata') or {}), **ctx.stamp()}, id=i))
+    made = ctx.entry_ids[op['key']] = ctx.made_id(op['key'])
+    metadata = {k: planned_ids(ctx, v) for k, v in (op.get('metadata') or {}).items()}
+    ctx.b.add(lambda batch, o=op, i=made, m=metadata: batch.vocab_items.create(
+        o['vocab_id'], o['form'], {**m, **ctx.stamp()}, id=i))
     return 1
 
 
 def _apply_set_entry_field(ctx: Context, op) -> int:
     ctx.b.add(lambda batch, o=op: batch.vocab_items.patch_metadata(
-        o['item_id'], metadata_ops({o['field']: o.get('value') or None})))
+        planned_ids(ctx, o['item_id']), metadata_ops({o['field']: planned_ids(ctx, o.get('value')) or None})))
     return 1
 
 
@@ -1773,6 +1798,13 @@ def validate_ops(ops: List[Dict[str, Any]]) -> None:
             raise ValueError(f'op {i + 1} ({kind}): needs item_id or new_entry_key')
         if kind in ('link', 'link_phrase') and not op.get('item_id') and op.get('new_entry_key') not in new_keys:
             raise ValueRefusal(f'op {i + 1} ({kind}): links to an entry this plan does not create', kind='not-found')
+        if kind in ('set_entry_field', 'create_entry'):
+            values = [op.get('item_id'), op.get('value'), *(op.get('metadata') or {}).values()]
+            named = [v for x in values for v in (x if isinstance(x, list) else [x])
+                     if isinstance(v, str) and v.startswith(NEW_ENTRY)]
+            if any(v not in new_keys for v in named):
+                raise ValueRefusal(f'op {i + 1} ({kind}): names an entry this plan does not create',
+                                   kind='not-found')
         if kind == 'link_phrase' and (not isinstance(op['token_ids'], list) or len(op['token_ids']) < 2):
             raise ValueError(f'op {i + 1} (link_phrase): token_ids must list two or more words')
         if kind == 'confirm' and not any(op.get(k) for k in ('span_ids', 'token_ids', 'link_ids')):
@@ -2056,6 +2088,7 @@ def _execute(client, ops, *, label, project, counts, notes, stamps: Stamps, trac
     # applied.
     with executing(KIND, client, ops, STAGES, label, tracker=tracker, ids=ids) as b:
         ctx = Context(client, project, stamps, counts, notes, b)
+        ctx.new_keys = frozenset(op['key'] for op in ops if op['kind'] == 'create_entry')
         # Seeded with what goes without a delete call of its own, so a single
         # delete naming the same id is never issued beside it.
         for _tid in _bulk_gone(ops):

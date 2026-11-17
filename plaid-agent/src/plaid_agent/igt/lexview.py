@@ -8,7 +8,7 @@ behind, plus the one line an entry is printed as.
 
 import json
 from collections import Counter
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 from plaid_client.provenance import PROVENANCE_KEYS
 
@@ -35,11 +35,14 @@ def morph_type(t: str) -> str:
 class LexView:
     """A lexicon's items and the sense tree over them."""
 
-    __slots__ = ('vocab', 'items', 'tree', 'fields', 'ref_fields', 'numbers', 'shared')
+    __slots__ = ('vocab', 'items', 'planned', 'tree', 'fields', 'ref_fields', 'numbers', 'shared')
 
     def __init__(self, vocab: dict, items: List[dict]):
         self.vocab = vocab
         self.items = items
+        #: The entries a plan creates in this lexicon, key -> form, which a
+        #: reference may name (``Workspace.view``).
+        self.planned: Dict[str, str] = {}
         self.fields = vocab.get('fields') or []
         self.ref_fields = item_ref_fields(self.fields)
         self.tree = build_sense_tree(items)
@@ -93,6 +96,8 @@ class LexView:
         it would carry is always 1 and says nothing.
         """
         it = self.tree.by_id.get(item_id)
+        if it is None and item_id in self.planned:
+            return f'"{self.planned[item_id]}" (new)'
         if it is None:
             return f'a deleted entry ({item_id})'
         if self.is_sense(item_id):
