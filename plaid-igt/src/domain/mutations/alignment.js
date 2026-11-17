@@ -59,7 +59,12 @@ import { getIgtLayerInfo } from '../layerInfo.js';
 import { isTokenIgnored, readIgnoredTokens } from '../igtConfig.js';
 import { MIN_SEGMENT, overlapProblem, rangeProblem } from '../alignmentTimes.js';
 import { notSetUp } from '@ui/domain/setupGuard.js';
-import { countSplitLoss, countTextDeleteLoss, dropRelations } from '@ui/domain/annotationLoss.js';
+import {
+  countSplitLoss,
+  countTextDeleteLoss,
+  dropRelations,
+  holdsPersonsWork,
+} from '@ui/domain/annotationLoss.js';
 import {
   newHalfMetadata,
   newHalfOps,
@@ -68,6 +73,14 @@ import {
 } from '../tokenReshape.js';
 import { soleForms } from '../soleMorphemeForms.js';
 import { reparentSpans, reparentVocabLinks } from './reparent.js';
+
+// What the Baseline tab's question counts as a token's own content
+// (baselineLossSentence): a person's work on any token but a sentence or a
+// segment, which are named apart.
+const personsWorkOn = (info) => {
+  const held = new Set([info.sentenceTokenLayer?.id, info.alignmentTokenLayer?.id].filter(Boolean));
+  return (t, layerId) => !held.has(layerId) && holdsPersonsWork(t);
+};
 
 // Two ranges [a, b) and [c, d) overlap iff a < d && b > c.
 const findOverlappingAlignment = (tokens, begin, end, excludeId = null) =>
@@ -733,6 +746,7 @@ export const alignmentMutations = {
     const loss = countTextDeleteLoss(info.primaryTextLayer?.tokenLayers || [], ranges, {
       except: [segment.id],
       vocabLinks: Object.values(this.vocabularies || {}).flatMap((v) => v?.vocabLinks || []),
+      content: personsWorkOn(info),
     });
     return { annotations: loss.annotations, links: loss.links, shortened: loss.shortened };
   },
@@ -764,6 +778,7 @@ export const alignmentMutations = {
       {
         except: [segment.id],
         vocabLinks: Object.values(this.vocabularies || {}).flatMap((v) => v?.vocabLinks || []),
+        content: personsWorkOn(info),
       },
     );
     return {

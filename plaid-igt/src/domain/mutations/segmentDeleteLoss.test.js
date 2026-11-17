@@ -85,6 +85,16 @@ describe("a segment's trash with its text", () => {
     expect(loss(fake({ translation: false }))).toMatchObject({ annotations: 3 });
   });
 
+  // REV-HFM-2: as the Baseline tab counts it, a word that holds a person's
+  // work of its own (a confirmed stamp) counts, and a machine one does not.
+  it("counts a word that holds a person's work, as the Baseline tab does", () => {
+    const doc = fake({ nodes: false, translation: false });
+    const words = doc.layerInfo.primaryTextLayer.tokenLayers[1];
+    words.tokens[0].metadata = { prov: 'inferred', provConfirmed: true };
+    words.tokens[1].metadata = { prov: 'inferred' };
+    expect(loss(doc)).toMatchObject({ annotations: 1 });
+  });
+
   it('is zero over bare words', () => {
     expect(loss(fake({ nodes: false, translation: false }))).toMatchObject({
       annotations: 0,

@@ -160,6 +160,21 @@ describe('a transcript row retyped over glossed words (H10-3)', () => {
     await r.unmount();
   });
 
+  // REV-HFM-2: the row counts what the Baseline tab counts, a person's
+  // confirmed segmentation included.
+  it("asks over morphemes that hold a person's work and no gloss", async () => {
+    const raw = RAW(false);
+    const morphs = raw.textLayers[0].tokenLayers.find((l) => l.id === 'morphL');
+    for (const m of morphs.tokens.filter((t) => t.begin >= 13)) {
+      m.metadata = { prov: 'inferred', provConfirmed: true };
+    }
+    const { r, drain } = await mount(raw);
+    await retype(r, 2, 'nueve diez once');
+    await drain();
+    expect(dialog()?.textContent).toContain('Deletes 3 words and 3 annotations.');
+    await r.unmount();
+  });
+
   it('asks nothing when no annotation goes: a word corrected, or unglossed words retyped', async () => {
     const glossed = await mount(RAW());
     await retype(glossed.r, 2, 'cuatro cinko seis');
