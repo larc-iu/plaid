@@ -141,16 +141,13 @@ export function linkPrecedentQueries(vocabIds, { projectId, docId = null } = {})
 // One grouped query per word- and morpheme-scope annotation layer: how often
 // each (form, value) pairing was written, split by provenance state. Row
 // shape: [form, value, prov, provConfirmed, count] (prov keys null when
-// absent), and for a morpheme [form, text, value, prov, provConfirmed, count]:
-// a morpheme with no form of its own (the first gloss on an unsegmented word
-// makes one) counts under its token's text, as morphFormOf counts it in the
-// open document. Returns [{ kind, field, query }]. With `docId`, the same counts
+// absent). Returns [{ kind, field, query }]. With `docId`, the same counts
 // for that one document alone. The layers are this project's, so the counts
 // are too.
 export function valuePrecedentQueries(layerInfo, { docId = null } = {}) {
   const inDoc = docId ? { doc: docId } : {};
   const out = [];
-  const add = (kind, tokenLayerId, layers, formPaths) => {
+  const add = (kind, tokenLayerId, layers, formPath) => {
     if (!tokenLayerId) return;
     for (const l of layers || []) {
       out.push({
@@ -163,18 +160,20 @@ export function valuePrecedentQueries(layerInfo, { docId = null } = {}) {
             ['covers', '?s', '?t'],
           ],
           return: {
-            group: [...formPaths, '?s.value', '?s.metadata.prov', '?s.metadata.provConfirmed'],
+            group: [formPath, '?s.value', '?s.metadata.prov', '?s.metadata.provConfirmed'],
             aggregates: [['count']],
           },
         },
       });
     }
   };
-  add(KINDS.WORD, layerInfo?.primaryTokenLayer?.id, layerInfo?.spanLayers?.word, ['?t.value']);
-  add(KINDS.MORPHEME, layerInfo?.morphemeTokenLayer?.id, layerInfo?.spanLayers?.morpheme, [
+  add(KINDS.WORD, layerInfo?.primaryTokenLayer?.id, layerInfo?.spanLayers?.word, '?t.value');
+  add(
+    KINDS.MORPHEME,
+    layerInfo?.morphemeTokenLayer?.id,
+    layerInfo?.spanLayers?.morpheme,
     '?t.metadata.form',
-    '?t.value',
-  ]);
+  );
   return out;
 }
 
@@ -224,9 +223,7 @@ export function foldLinkRows(tally, resultsPerVocab, ignoredCfg = null) {
 
 /** Fold one valuePrecedentQueries result (rows for one kind + field). */
 export function foldValueRows(tally, kind, field, rows, ignoredCfg = null) {
-  for (const row of rows || []) {
-    const [form, value, prov, confirmed, n] =
-      kind === KINDS.MORPHEME ? [row[0] ?? row[1], ...row.slice(2)] : row;
+  for (const [form, value, prov, confirmed, n] of rows || []) {
     addPrecedent(
       tally,
       kind,
