@@ -16,7 +16,11 @@
 import { cpLength, cpSlice } from '@larc-iu/plaid-client';
 // By path, not the @ui alias: the agent's text edges mirror runs this file
 // under plain node.
-import { applyTokenDelete } from '../../../plaid-ui/src/domain/annotationLoss.js';
+import {
+  applyTokenDelete,
+  singleLinkDrops,
+  singleLinkTokens,
+} from '../../../plaid-ui/src/domain/annotationLoss.js';
 
 /**
  * Token extents after inserting `count` code points at `index`, the first
@@ -264,21 +268,13 @@ function sweepDeadTokens(tokenLayers, deletedIds, vocabs = null) {
   settleSingleLinks(tokenLayers, vocabs, trimmedLinks);
 }
 
-/** Whether a token layer carries the single-link rule, in any app's namespace. */
-const hasSingleLink = (layer) =>
-  Object.values(layer?.constraints || {}).some(
-    (cs) => Array.isArray(cs) && cs.some((c) => c?.type === 'single-link'),
-  );
-
 /**
- * The single-link rule's remedy (plaid-core `remedy-single-link!`) over the
- * links `touched` made the only link of one token.
+ * The single-link rule's remedy (plaid-core `remedy-single-link!`, plaid-ui
+ * singleLinkDrops) over the links `touched` made the only link of one token.
  */
 function settleSingleLinks(tokenLayers, vocabs, touched) {
   if (touched.size === 0) return;
-  const ruled = new Set(
-    tokenLayers.filter(hasSingleLink).flatMap((l) => (l.tokens || []).map((t) => t.id)),
-  );
+  const ruled = singleLinkTokens(tokenLayers);
   if (ruled.size === 0) return;
   const byToken = new Map();
   for (const vocab of Object.values(vocabs || {})) {
@@ -289,13 +285,7 @@ function settleSingleLinks(tokenLayers, vocabs, touched) {
       byToken.get(only).push(link.id);
     }
   }
-  const drop = new Set();
-  for (const ids of byToken.values()) {
-    if (ids.length < 2 || !ids.some((id) => touched.has(id))) continue;
-    const sorted = ids.slice().sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
-    const keep = sorted.find((id) => !touched.has(id)) ?? sorted[0];
-    for (const id of sorted) if (id !== keep) drop.add(id);
-  }
+  const drop = singleLinkDrops(byToken, touched);
   if (drop.size === 0) return;
   for (const vocab of Object.values(vocabs || {})) {
     if (Array.isArray(vocab?.vocabLinks)) {

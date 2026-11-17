@@ -8,6 +8,8 @@ import {
   dropRelations,
   hasLoss,
   lossPhrase,
+  singleLinkDrops,
+  singleLinkTokens,
 } from './annotationLoss.js';
 
 // One text as a document read holds it: sentences, words under them, and two
@@ -393,5 +395,27 @@ describe('lossPhrase', () => {
     expect(lossPhrase({ annotations: 3, links: 2 })).toBe('3 annotations and 2 vocabulary links');
     expect(lossPhrase({ annotations: 0, links: 1 })).toBe('1 vocabulary link');
     expect(lossPhrase({})).toBe('');
+  });
+});
+
+// REV-HFT-4: core's single-link remedy, one copy on the client for the loss
+// count and igt's local mirror of a delete.
+describe('singleLinkDrops', () => {
+  it('keeps the link a token held alone before, else the smallest id', () => {
+    const byToken = new Map([
+      ['w1', ['b', 'own', 'a']],
+      ['w2', ['z', 'y']],
+      ['w3', ['c', 'd']],
+    ]);
+    const drops = singleLinkDrops(byToken, new Set(['a', 'b', 'z', 'y']));
+    expect([...drops].sort()).toEqual(['a', 'b', 'z']);
+  });
+
+  it('reads the tokens of the layers that declare the rule, in any namespace', () => {
+    const layers = [
+      { id: 'l1', constraints: { igt: [{ type: 'single-link' }] }, tokens: [{ id: 't1' }] },
+      { id: 'l2', constraints: { ud: [{ type: 'coextensive' }] }, tokens: [{ id: 't2' }] },
+    ];
+    expect([...singleLinkTokens(layers)]).toEqual(['t1']);
   });
 });

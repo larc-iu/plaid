@@ -112,6 +112,33 @@ const declares = (layer, type) =>
     (list) => Array.isArray(list) && list.some((c) => c?.type === type),
   );
 
+/** The ids of the tokens on layers that declare `single-link`, in any namespace. */
+export const singleLinkTokens = (tokenLayers) =>
+  new Set(
+    (tokenLayers || [])
+      .filter((l) => declares(l, 'single-link'))
+      .flatMap((l) => (l.tokens || []).map((t) => t.id)),
+  );
+
+/**
+ * Core's single-link remedy (plaid-core `remedy-single-link!`), the one copy
+ * on the client: `byToken` maps a token to the ids of the links it is the
+ * only token of after a write, and `touched` holds the links the write cut
+ * down. A token with two or more such links, one of them touched, keeps the
+ * one it held alone before (untouched), else the smallest id. Answers the ids
+ * of the links that go.
+ */
+export const singleLinkDrops = (byToken, touched) => {
+  const drop = new Set();
+  for (const ids of byToken.values()) {
+    if (ids.length < 2 || !ids.some((id) => touched.has(id))) continue;
+    const sorted = ids.slice().sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+    const keep = sorted.find((id) => !touched.has(id)) ?? sorted[0];
+    for (const id of sorted) if (id !== keep) drop.add(id);
+  }
+  return drop;
+};
+
 // Whether a relation layer declares `same-ancestor` over `layerId`, under any
 // app's namespace.
 const keepsWithin = (rl, layerId) =>
@@ -226,33 +253,30 @@ export const countDeleteLoss = (tokenLayers, tokenIds, options = {}) => {
           (tl.vocabs || []).map((v) => ({ vocabId: v.id, links: v.vocabLinks || [] })),
         );
   const seen = new Set();
-  // The links cut down to one token of a layer that declares `single-link`,
-  // by that token, and the links already on it alone (H1-4).
-  const singleLayer = new Map();
-  for (const tl of layers) {
-    if (!declares(tl, 'single-link')) continue;
-    for (const t of tl.tokens || []) singleLayer.set(t.id, tl.id);
-  }
-  const alone = new Map();
-  const onAlone = (tok, entry) => {
-    if (!alone.has(tok)) alone.set(tok, []);
-    alone.get(tok).push(entry);
+  // The links left the only token of a layer that declares `single-link`,
+  // by that token: those on it alone already and those cut down to it, which
+  // core's remedy then settles (H1-4, singleLinkDrops).
+  const ruled = singleLinkTokens(layers);
+  const byToken = new Map();
+  const onlyOn = (tok, id) => {
+    if (!byToken.has(tok)) byToken.set(tok, []);
+    if (!byToken.get(tok).includes(id)) byToken.get(tok).push(id);
   };
+  const cut = new Map();
   for (const { vocabId, links } of linkSources) {
     for (const link of links) {
       const toks = Array.isArray(link.tokens) ? link.tokens : [];
       if (!toks.some((t) => dying.has(t))) {
-        if (toks.length === 1 && singleLayer.has(toks[0]) && !seen.has(link.id ?? link)) {
-          onAlone(toks[0], { id: link.id, untouched: true });
-        }
+        if (toks.length === 1 && ruled.has(toks[0])) onlyOn(toks[0], link.id);
         continue;
       }
       if (seen.has(link.id ?? link)) continue;
       seen.add(link.id ?? link);
       if (!toks.every((t) => dying.has(t))) {
         const left = toks.filter((t) => !dying.has(t));
-        if (left.length === 1 && singleLayer.has(left[0])) {
-          onAlone(left[0], { id: link.id, untouched: false, vocabId });
+        if (left.length === 1 && ruled.has(left[0])) {
+          onlyOn(left[0], link.id);
+          cut.set(link.id, vocabId);
         } else {
           result.shortened.links += 1;
         }
@@ -262,23 +286,14 @@ export const countDeleteLoss = (tokenLayers, tokenIds, options = {}) => {
       if (vocabId) bump(result.byLayer, vocabId);
     }
   }
-  // Core's single-link remedy: a token left the only token of two links
-  // keeps one, a link that was on it alone before when there is one, else
-  // the first by id, and the others are deleted.
-  for (const entries of alone.values()) {
-    const cut = entries.filter((e) => !e.untouched);
-    if (!cut.length) continue;
-    const kept = entries.some((e) => e.untouched)
-      ? null
-      : [...cut].sort((a, b) => (String(a.id) < String(b.id) ? -1 : 1))[0];
-    for (const e of cut) {
-      if (e === kept) {
-        result.shortened.links += 1;
-        continue;
-      }
-      result.links += 1;
-      if (e.vocabId) bump(result.byLayer, e.vocabId);
+  const drops = singleLinkDrops(byToken, new Set(cut.keys()));
+  for (const [id, vocabId] of cut) {
+    if (!drops.has(id)) {
+      result.shortened.links += 1;
+      continue;
     }
+    result.links += 1;
+    if (vocabId) bump(result.byLayer, vocabId);
   }
 
   result.annotations = result.spans + result.relations + result.content;
