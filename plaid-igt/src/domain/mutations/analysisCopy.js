@@ -800,8 +800,10 @@ export const analysisCopyMutations = {
   // work. Morpheme tokens (a copied segmentation) AND the word token itself
   // (a tokenizer service stamps prov on word tokens) confirm together.
   // The multi-word expressions `word` is a member of (drawn in its sentence)
-  // whose link this writer reviews: a word's review keys cover them as they
-  // cover the word's own link.
+  // whose link this writer reviews: a word's review keys (accept and discard)
+  // cover them as they cover the word's own link. Nothing else that confirms
+  // a word does: an expression is no part of the word's analysis, so
+  // spreading that analysis vouches for none (REV-HFV-2).
   _reviewableMweLinkIdsOf(word) {
     return (word?.mwePieces || [])
       .filter((p) => p && p.piece !== 'pass' && this.reviewableState(p.mwe?.prov))
@@ -822,10 +824,9 @@ export const analysisCopyMutations = {
     for (const token of words) {
       if (!token) continue;
       collect(token);
-      linkIds.push(...this._reviewableMweLinkIdsOf(token));
       for (const m of token.morphemes || []) collect(m);
     }
-    return { spanIds, tokenIds, linkIds: [...new Set(linkIds)] };
+    return { spanIds, tokenIds, linkIds };
   },
 
   // Confirm what `wordTokenIds` carry of somebody else's unconfirmed work,
@@ -923,7 +924,8 @@ export const analysisCopyMutations = {
     // One writer, one stamp: what it merges does not depend on the entity.
     const confirm = this.writer.confirmFragment();
     const confirmOps = metadataOps(confirm);
-    const { spanIds, tokenIds, linkIds } = this._reviewableIdsOf([token]);
+    const { spanIds, tokenIds, linkIds: own } = this._reviewableIdsOf([token]);
+    const linkIds = [...new Set([...own, ...this._reviewableMweLinkIdsOf(token)])];
 
     const writes = this._wordAdoptionWrites(token, adoptions);
 
