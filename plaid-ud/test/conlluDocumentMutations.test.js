@@ -318,12 +318,10 @@ test('a stored value with a space is not refused when it is not being changed', 
     'mut-doc',
   );
   const calls = [];
-  const record =
-    (name) =>
-    (...args) => {
-      calls.push(name);
-      return { id: `new-${calls.length}` };
-    };
+  const record = (name) => () => {
+    calls.push(name);
+    return { id: `new-${calls.length}` };
+  };
   const client = {
     spans: { update: record('spans.update'), patchMetadata: record('spans.patchMetadata') },
     relations: {
