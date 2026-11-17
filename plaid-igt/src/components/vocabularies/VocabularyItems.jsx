@@ -11,6 +11,7 @@ import { Link, useLocation, useSearchParams } from 'react-router-dom';
 import { useDetailParam } from '@ui/hooks/useDetailParam.js';
 import { createdId, isReviewed } from '@larc-iu/plaid-client';
 import { useAuth } from '@/contexts/AuthContext';
+import { statusOf } from '@ui/lib/errors.js';
 import { canEditProject } from '@ui/domain/permissions.js';
 import { AlertTriangle, History } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@ui/components/ui/tabs';
@@ -42,7 +43,7 @@ import {
   MACHINE_STATUS,
 } from '@/domain/vocabDictionary';
 import { dropPrecedent } from '@/domain/precedentCache';
-import { metadataPatchTo } from '@/domain/metadataPatch';
+import { changedUnderSave, metadataPatchTo } from '@/domain/metadataPatch';
 import { dropUnsavedDrafts, useUnsavedDraft } from '@ui/hooks/useUnsavedDraft.js';
 import { followIds, pendingId, settledId, stableKey } from '@ui/domain/pendingIds.js';
 import { HomographDialog, ReferencedByPanel, ExamplesPanel } from './DictionaryPanels';
@@ -804,6 +805,24 @@ export const VocabularyItems = ({
     sendInTurn(
       `Edit entry "${form}"`,
       async () => {
+        // A field this save changes that someone else saved since the form
+        // was read is not written over: the save is refused as a conflict and
+        // the entry is read again. An entry that is gone is left to the write
+        // to refuse.
+        const now = await client.vocabItems.get(settledId(item.id)).catch((err) => {
+          if ([403, 404].includes(statusOf(err))) return null;
+          throw err;
+        });
+        if (
+          now &&
+          changedUnderSave(
+            followIds({ form: item.form, metadata: item.metadata }),
+            followIds({ form, metadata }),
+            now,
+          )
+        ) {
+          throw Object.assign(new Error('Changed elsewhere'), { status: 409 });
+        }
         const update = {
           id: settledId(item.id),
           ...(form !== item.form ? { form } : {}),

@@ -106,6 +106,8 @@ const stub = ({ links = 40 } = {}) => {
     projects: { list: async () => [{ id: 'P', vocabs: [{ id: 'v1' }] }] },
     tokenLayers: { get: async () => ({}) },
     vocabItems: {
+      // The entry as the server holds it, read before an edit is sent.
+      get: async (id) => structuredClone(items.find((i) => i.id === id)),
       bulkUpdate: async (updates) => {
         calls.push(['bulkUpdate', updates]);
         apply(updates);

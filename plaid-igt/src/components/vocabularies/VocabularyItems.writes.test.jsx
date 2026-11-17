@@ -2,6 +2,7 @@ import { afterEach, describe, it, expect, vi } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import { renderComponent, all } from '@ui/test/renderComponent.jsx';
 import { settle } from '@/domain/test-helpers.js';
+import { applyMetadataOps } from '@larc-iu/plaid-client';
 
 // The entry form's saves: each shows at once and is sent in its turn. What the
 // list shows afterwards must be what the server holds, a new entry's form must
@@ -59,6 +60,7 @@ const stub = (initial) => {
     for (const u of updates || []) {
       const it = items.find((i) => i.id === u.id);
       if (it && 'form' in u) it.form = u.form;
+      if (it && Array.isArray(u.metadata)) it.metadata = applyMetadataOps(it.metadata, u.metadata);
     }
     return {};
   };
@@ -73,6 +75,7 @@ const stub = (initial) => {
   return {
     calls,
     holds,
+    items,
     client: {
       withOperation: (_label, fn) => fn(() => {}),
       // A batch's writes go out as the client's own here.
@@ -91,6 +94,12 @@ const stub = (initial) => {
           return { id: 'server-1' };
         }),
         update: write('update', () => ({})),
+        // The entry as the server holds it, read before an edit is sent.
+        get: async (id) => {
+          const it = items.find((i) => i.id === id);
+          if (!it) throw Object.assign(new Error('Not found'), { status: 404 });
+          return structuredClone(it);
+        },
         bulkCreate: write('bulkCreate', (specs) => ({ ids: specs.map((_, i) => `bulk-${i}`) })),
         bulkUpdate: write('bulkUpdate', setForms),
         patchMetadata: write('patchMetadata', () => ({})),
@@ -218,6 +227,43 @@ describe('the entry form', () => {
     await view.step(async () => {
       button('Save').click();
       await new Promise((r) => setTimeout(r, 0));
+    });
+    expect(calls).toEqual([
+      ['bulkUpdate', [{ id: 'a', metadata: [{ op: 'set', path: ['gloss'], value: 'ONE' }] }]],
+    ]);
+    await view.unmount();
+  });
+
+  it('refuses a save of a field someone else saved since the form was read (H15-1)', async () => {
+    const { client, calls, items } = stub([
+      { id: 'a', form: 'uno', metadata: { gloss: 'one', note: 'kept' } },
+    ]);
+    const view = await mount(client, '/vocabularies/v1?item=a');
+    // Another person saves the gloss after this form was read.
+    items[0].metadata = { gloss: 'ONE-B', note: 'kept' };
+    feedback.notifyError.mockClear();
+    await view.step(() => setValue(glossInput(), 'ONE'));
+    await view.step(async () => {
+      button('Save').click();
+      for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 0));
+    });
+    expect(calls.filter(([kind]) => kind === 'bulkUpdate')).toEqual([]);
+    expect(feedback.notifyError).toHaveBeenCalledTimes(1);
+    expect(String(feedback.notifyError.mock.calls[0][0])).toContain('Changed elsewhere');
+    expect(glossInput().value).toBe('ONE-B');
+    await view.unmount();
+  });
+
+  it('sends a save of a field when someone else saved another one', async () => {
+    const { client, calls, items } = stub([
+      { id: 'a', form: 'uno', metadata: { gloss: 'one', note: 'kept' } },
+    ]);
+    const view = await mount(client, '/vocabularies/v1?item=a');
+    items[0].metadata = { gloss: 'one', note: 'changed' };
+    await view.step(() => setValue(glossInput(), 'ONE'));
+    await view.step(async () => {
+      button('Save').click();
+      for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 0));
     });
     expect(calls).toEqual([
       ['bulkUpdate', [{ id: 'a', metadata: [{ op: 'set', path: ['gloss'], value: 'ONE' }] }]],

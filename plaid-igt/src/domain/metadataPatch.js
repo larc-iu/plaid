@@ -45,3 +45,26 @@ export function metadataUpdates(plans, metaById) {
   }
   return out;
 }
+
+const same = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+
+/**
+ * Whether someone else changed what a save is about to write. `loaded` is the
+ * entry (`{form, metadata}`) as the form read it, `next` what the save writes,
+ * `now` the entry as the server holds it. A key the save changes counts only
+ * when the server holds neither the value read nor the value saved (a resend of
+ * this very save finds its own value). Keys the save leaves alone never count.
+ */
+export const changedUnderSave = (loaded, next, now) => {
+  const was = loaded?.metadata || {};
+  const will = next?.metadata || {};
+  const is = now?.metadata || {};
+  const keys = new Set([...Object.keys(was), ...Object.keys(will)]);
+  for (const k of keys) {
+    if (same(was[k], will[k])) continue;
+    if (!same(is[k], was[k]) && !same(is[k], will[k])) return true;
+  }
+  if (loaded?.form !== next?.form && now?.form !== loaded?.form && now?.form !== next?.form)
+    return true;
+  return false;
+};
