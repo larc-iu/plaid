@@ -215,10 +215,12 @@ describe('ProjectMembers', () => {
     await unmount();
   });
 
+  // A failed reread does not throw in the real wiring: useProject's reload
+  // answers null and keeps the project it had (ProjectAccessSettings' changed).
+  const failedReread = () => vi.fn(async () => null);
+
   it('changes a role from the one shown after a refetch failed, not the stale read', async () => {
-    const onDataUpdate = vi.fn(async () => {
-      throw new Error('Network error: Failed to fetch');
-    });
+    const onDataUpdate = failedReread();
     const { container, step, client, unmount } = await mount({ onDataUpdate });
     await pickRole(step, container, 'Ada', 'Reader');
     expect(client.projects.removeWriter).toHaveBeenCalledTimes(1);
@@ -228,6 +230,21 @@ describe('ProjectMembers', () => {
     expect(client.projects.removeReader).toHaveBeenCalledTimes(1);
     expect(client.projects.removeWriter).toHaveBeenCalledTimes(1);
     expect(client.projects.addMaintainer).toHaveBeenCalledTimes(1);
+    await unmount();
+  });
+
+  // REV-HFP-1: a change landed, then the reread failed. The row went back to
+  // the stale project's role, Writer, while the server held Reader.
+  it('keeps showing a role that landed when the reread after it fails', async () => {
+    const { container, step, client, unmount } = await mount({ onDataUpdate: failedReread() });
+    await pickRole(step, container, 'Ada', 'Reader');
+    await step(async () => {
+      for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 0));
+    });
+    expect(client.server.readers).toEqual(['ada@example.com']);
+    expect(toast.success).toHaveBeenCalled();
+    const trigger = container.querySelector('button[aria-label="Ada project role"]');
+    expect(trigger.textContent).toContain('Reader');
     await unmount();
   });
 

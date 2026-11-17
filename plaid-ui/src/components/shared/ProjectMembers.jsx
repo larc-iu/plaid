@@ -29,6 +29,10 @@ import { TYPE } from '../../lib/typeScale.js';
  * `roleOptions` is the app's, because two of the four hints are written in the
  * app's own vocabulary. `headerAction` and `renderActions` are the app's
  * account administration, which differs between them.
+ *
+ * `onDataUpdate` reads the project again and answers it, or null when the read
+ * failed (useProject's reload, through ProjectAccessSettings' `changed`, never
+ * rejects: it keeps the project it had).
  */
 export const ProjectMembers = ({
   project,
@@ -146,7 +150,9 @@ export const ProjectMembers = ({
     setSendingRole((s) => new Set(s).add(userId));
     // Once the project is read again after the change, it is what the row
     // shows, even when it does not say `newRole` (someone else changed the
-    // role meanwhile). Until then the row shows what was picked.
+    // role meanwhile). Until then the row shows what was picked. A failed
+    // reread answers null (or throws) and leaves the stale project, so it
+    // does not count.
     let reread = false;
     try {
       await setProjectRoleNotifying({
@@ -156,10 +162,11 @@ export const ProjectMembers = ({
         newRole,
         currentUserId: currentUser?.id,
         onDataUpdate: async () => {
-          await onDataUpdate().then(
-            () => (reread = true),
-            (err) => console.error('Error refreshing the project:', err),
-          );
+          try {
+            reread = (await onDataUpdate()) !== null;
+          } catch (err) {
+            console.error('Error refreshing the project:', err);
+          }
         },
       });
       if (reread) setShownRole((m) => withEntry(m, userId, undefined));
