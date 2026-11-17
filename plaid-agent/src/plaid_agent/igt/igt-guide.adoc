@@ -904,7 +904,7 @@ A full conversation sends nothing more, and **New conversation** beside the mess
 == Assistant availability
 
 The assistant is a service that your server's operator runs and picks the model for.
-In a project with none connected, the tab, the button, the handle and **Ask** are not shown.
+In a project with none connected, the tab, the **Assistant** buttons, the handle and **Ask** are not shown.
 On the project list the button is shown whether or not an assistant is connected, and the panel says so when the project you pick has none.
 Conversations already saved still open from their own links.
 
@@ -914,12 +914,12 @@ An **assistant job** has the assistant work through documents on its own, by wri
 It writes the changes it decides on, and lists changes to the project's setup for a person to make.
 A job can take hours, and it goes on after you close the browser.
 
-**Set up job**, beside **New document** on the **Documents** tab, on the **Jobs** tab and in a document's header, needs Writer access.
-It opens the assistant on a new conversation for setting the job up (see <<_setting_up_a_job>>), on the **Assistant** tab when the window is too narrow for the panel.
-In a project with no assistant connected it opens the **Start job** form instead.
+A job is set up by asking the assistant, in any conversation (see <<_setting_up_a_job>>).
+Starting one needs Writer access.
+The **Assistant** button beside **New document** on the **Documents** tab, and on the **Jobs** tab, opens the assistant as the button in the header does, on the **Assistant** tab when the window is too narrow for the panel.
 
-The form is also on the **Jobs** tab's **⋯** menu, as **Start without the assistant**.
-It asks for the documents (all of them, or a selection, none chosen until you choose but the open document when started from one) and the **Instructions**, which the job needs.
+The **Start job** form starts a job without the assistant, from the **Jobs** tab's **⋯** menu as **Start without the assistant**.
+It asks for the documents (all of them, or a selection, none chosen until you choose) and the **Instructions**, which the job needs.
 The job decides from the instructions what it fills, and its plan shows on its page.
 **Translate**, **Segment and gloss** and **Segment, gloss and link** fill the instructions with a starting text to edit.
 A job takes at most 500 documents, so a larger project starts one on a selection: **Select shown** selects every document the search above the list shows.
@@ -929,7 +929,7 @@ Jobs run one after another across the server, and a waiting job's page says sinc
 
 == Setting up a job
 
-In the conversation **Set up job** opens, say what the job should do, such as glossing a set of texts overnight.
+Ask the assistant for a job and say what it should do, such as glossing a set of texts overnight.
 The assistant reads the documents, says what is empty in them, and asks about what it finds there, such as a word people analyzed in two ways.
 It can also analyze the first few sentences as an ordinary plan for you to correct first.
 
