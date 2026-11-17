@@ -175,3 +175,22 @@ def test_a_persons_undo_of_the_jobs_entry_is_someone_in_the_document(monkeypatch
     assert r.in_use(r.newest_change(client, 'd1'), r.own_ref)
 
 
+
+
+def test_a_unit_with_no_end_time_counts_as_someone_there(monkeypatch):
+    """REV-HFA-4: in doubt, the document is put off."""
+    client = JobClient({'d1': _doc('d1', 'Story 1', 1)})
+    job = _job(client)
+    r = runner(job)
+    real = client.documents.audit_page
+
+    def page(document_id, **kw):
+        out = real(document_id, **kw)
+        return {**out, 'entries': [{**e, 'end_time': None} for e in out['entries']]}
+    client.documents.audit_page = page
+    _person(client, job, 'd1', 1, 'PERSON')
+    r.seen_marks['d1'] = job.now() + 100
+    assert r.someone_since_mark(client, 'd1')
+    assert r.in_use(r.newest_change(client, 'd1'), r.own_ref)
+
+

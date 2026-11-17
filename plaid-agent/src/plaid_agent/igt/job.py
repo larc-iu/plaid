@@ -3045,7 +3045,11 @@ class IgtRunner:
                 if first:
                     top, first = when, False
                 theirs = not str(unit.get('ref') or '').startswith(mine)
-                if when is None or when <= since:
+                if when is None:
+                    if theirs:
+                        return unit, top
+                    continue
+                if when <= since:
                     return None, top
                 if theirs:
                     return unit, top
