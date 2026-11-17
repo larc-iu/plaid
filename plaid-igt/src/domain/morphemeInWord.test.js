@@ -44,11 +44,77 @@ describe('morphemeRangeInWord', () => {
     expect(morphemeRangeInWord(word('kitab', ms), ms[1])).toBeNull();
   });
 
-  it('is exact about case: a capital in the word and not the form gives none', () => {
+  it('lets a letter differ from the written one in case only', () => {
     const ms = [morph('m1', 'uku'), morph('m2', 'ngu'), morph('m3', 'ut')];
-    expect(morphemeRangeInWord(word('Ukunguut', ms), ms[1])).toBeNull();
+    expect(morphemeRangeInWord(word('Ukunguut', ms), ms[0])).toEqual({ begin: 0, end: 3 });
+    expect(morphemeRangeInWord(word('Ukunguut', ms), ms[1])).toEqual({ begin: 3, end: 6 });
+    expect(morphemeRangeInWord(word('UKUNGUUT', ms), ms[1])).toEqual({ begin: 3, end: 6 });
   });
 
+  it('counts a letter whose lower case is longer as a mismatch', () => {
+    // İ lowers to i and a combining dot: two code points, so not a case pair.
+    const ms = [morph('m1', 'i'), morph('m2', 'ki')];
+    expect(morphemeRangeInWord(word('İki', ms), ms[1])).toBeNull();
+  });
+
+  it('still gives none for different letters, whatever the case', () => {
+    const ms = [morph('m1', 'uku'), morph('m2', 'nge'), morph('m3', 'ut')];
+    expect(morphemeRangeInWord(word('Ukunguut', ms), ms[1])).toBeNull();
+  });
+});
+
+describe('morphemeRangeInWord, a joint written in the text', () => {
+  it('skips one hyphen written between two morphemes, in neither range', () => {
+    const ms = [morph('m1', 'Messiah'), morph('m2', 'ngu'), morph('m3', 'uq')];
+    const w = word('Messiah-nguuq', ms);
+    expect(morphemeRangeInWord(w, ms[0])).toEqual({ begin: 0, end: 7 });
+    expect(morphemeRangeInWord(w, ms[1])).toEqual({ begin: 8, end: 11 });
+    expect(morphemeRangeInWord(w, ms[2])).toEqual({ begin: 11, end: 13 });
+  });
+
+  it('skips a clitic "=" the same way', () => {
+    const ms = [morph('m1', 'Jesus'), morph('m2', 'am', { morphType: 'enclitic' })];
+    expect(morphemeRangeInWord(word('Jesus=am', ms), ms[1])).toEqual({ begin: 6, end: 8 });
+  });
+
+  it('lets a form that carries the hyphen own it', () => {
+    const ms = [morph('m1', '14-'), morph('m2', 'ngu'), morph('m3', 'kaagut')];
+    const w = word('14-ngukaagut', ms);
+    expect(morphemeRangeInWord(w, ms[0])).toEqual({ begin: 0, end: 3 });
+    expect(morphemeRangeInWord(w, ms[1])).toEqual({ begin: 3, end: 6 });
+  });
+
+  it('gives none for two joints in a row', () => {
+    const ms = [morph('m1', 'Messiah'), morph('m2', 'ngu'), morph('m3', 'uq')];
+    expect(morphemeRangeInWord(word('Messiah--nguuq', ms), ms[1])).toBeNull();
+  });
+
+  it('gives none for a joint at the start or the end of the word', () => {
+    const ms = [morph('m1', 'ngu'), morph('m2', 'uq')];
+    expect(morphemeRangeInWord(word('-nguuq', ms), ms[0])).toBeNull();
+    expect(morphemeRangeInWord(word('nguuq-', ms), ms[0])).toBeNull();
+  });
+
+  it('gives none for a joint inside a form', () => {
+    const ms = [morph('m1', 'Messiah'), morph('m2', 'nguuq')];
+    expect(morphemeRangeInWord(word('Messiahng-uuq', ms), ms[1])).toBeNull();
+  });
+
+  it('takes a case difference and a joint together', () => {
+    const ms = [morph('m1', 'messiah'), morph('m2', 'ngu'), morph('m3', 'uq')];
+    expect(morphemeRangeInWord(word('Messiah-NGUuq', ms), ms[1])).toEqual({ begin: 8, end: 11 });
+  });
+
+  it('skips only "-" and "=", the joints the app draws', () => {
+    const ms = [morph('m1', 'Messiah'), morph('m2', 'ngu')];
+    expect(
+      morphemeRangeInWord(word('Messiah' + String.fromCodePoint(0x2010) + 'ngu', ms), ms[1]),
+    ).toBeNull();
+    expect(morphemeRangeInWord(word('Messiah ngu', ms), ms[1])).toBeNull();
+  });
+});
+
+describe('morphemeRangeInWord, more', () => {
   it('reads a clitic like any other morpheme: the joint is not written', () => {
     const ms = [
       morph('m1', 'Jesus'),
