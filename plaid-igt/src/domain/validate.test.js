@@ -86,4 +86,19 @@ describe('multi-word expressions', () => {
     ]);
     expect(findings.every((f) => f.severity === 'warning')).toBe(true);
   });
+
+  // H6-2: an expression is drawn in the sentence of its first word, and the
+  // vocabulary page has no control that removes one link, so the message says
+  // that rule and a way out that exists.
+  it('says why one is not drawn and how to bring it back', async () => {
+    const { deriveSentences } = await import('./derive.js');
+    const raw = twoSentences();
+    const vocabularies = vocabs([{ id: 'lk-split', tokens: ['w-2', 'w-3'], vocabItem: item }]);
+    const layerInfo = getIgtLayerInfo(raw);
+    const { sentences } = deriveSentences(raw, layerInfo, vocabularies);
+    const [finding] = validateIgtDocument(layerInfo, [], { sentences, vocabularies });
+    expect(finding.message).toBe(
+      'The multi-word expression "the cat sat" has fewer than two words in the sentence of its first word, so it is not shown. Merge the sentences back to show it.',
+    );
+  });
 });

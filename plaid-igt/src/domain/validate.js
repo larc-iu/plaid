@@ -59,7 +59,7 @@ export function validateIgtDocument(
       add(
         SEVERITY.WARNING,
         'mwe-undrawn',
-        `The multi-word expression "${m.item?.form ?? ''}" has no two words left in one sentence, so it is not shown. Open the entry in its vocabulary to see or remove the link.`,
+        `The multi-word expression "${m.item?.form ?? ''}" has fewer than two words in the sentence of its first word, so it is not shown. Merge the sentences back to show it.`,
         { linkId: m.linkId, tokens: m.tokenIds },
       );
     }
