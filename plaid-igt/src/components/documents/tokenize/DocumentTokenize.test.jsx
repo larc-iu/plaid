@@ -84,7 +84,9 @@ describe('the splitter', () => {
 
 // H1-5, H16-4: the split points sat between code points, so a letter and
 // its combining marks could be cut apart, leaving a word that starts with a
-// lone mark. They sit between the letters a reader sees (grapheme clusters).
+// lone mark. REV-HFT-2: a fixed rule over code points, not grapheme
+// clusters (which keep a whole Indic conjunct as one): no split before a
+// combining mark, U+200D or a variation selector, and none after U+200D.
 describe('the split points', () => {
   const lettersOf = async (content, splitToken = vi.fn()) => {
     const word = { id: 'w2', begin: 10, end: 10 + [...content].length, content, isToken: true };
@@ -123,6 +125,30 @@ describe('the split points', () => {
     // splitToken takes the offset of the last code point of the left half.
     expect(splitToken).toHaveBeenCalledWith('w2', 1);
     await view.unmount();
+  });
+
+  it('splits a Devanagari compound at a conjunct, after the virama', async () => {
+    const splitToken = vi.fn();
+    // vāg|devī, written as one word with the conjunct g+d.
+    const { view, letters, points } = await lettersOf(
+      '\u0935\u093e\u0917\u094d\u0926\u0947\u0935\u0940',
+      splitToken,
+    );
+    expect(letters).toEqual(['\u0935\u093e', '\u0917\u094d', '\u0926\u0947', '\u0935\u0940']);
+    await view.step(() => click(points[1]));
+    expect(splitToken).toHaveBeenCalledWith('w2', 3);
+    await view.unmount();
+  });
+
+  it('keeps a ZWJ emoji and a variation selector whole, and splits a flag pair and a skin tone', async () => {
+    const zwj = await lettersOf('a\u{1F469}\u200d\u{1F4BB}\u2764\ufe0f');
+    expect(zwj.letters).toEqual(['a', '\u{1F469}\u200d\u{1F4BB}', '\u2764\ufe0f']);
+    await zwj.view.unmount();
+    // A flag is two regional indicators and a skin tone is a modifier letter
+    // of its own, neither a mark: the fixed rule offers a point between them.
+    const flag = await lettersOf('\u{1F1EB}\u{1F1F7}\u{1F44D}\u{1F3FD}');
+    expect(flag.letters).toEqual(['\u{1F1EB}', '\u{1F1F7}', '\u{1F44D}', '\u{1F3FD}']);
+    await flag.view.unmount();
   });
 
   it('does not open on a word of one letter with a mark', async () => {

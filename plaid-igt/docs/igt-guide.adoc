@@ -290,7 +290,7 @@ Nothing is annotated here. That happens on the Analyze tab.
 To tokenize by hand:
 
 * **Drag** across plain text to make a word of it, or across several words to merge them.
-* **Click** a word to split it at a character. **Esc** closes the split points.
+* **Click** a word to split it at a character. **Esc** closes the split points. A letter is never split from its combining marks, and an emoji joined with U+200D stays whole.
 * **Right-click** a word to delete it.
 * **Ctrl/Cmd+click** a word to split its sentence there, making that word the first of a new one.
 * **Alt+click** a word to open it on the Analyze tab.

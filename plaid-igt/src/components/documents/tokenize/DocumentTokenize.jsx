@@ -677,16 +677,29 @@ export function TokenComponent({
   );
 }
 
-// The letters a reader sees in a word (grapheme clusters), so a letter keeps
-// its combining marks, each with the code-point offset of its last code point
-// in the word, which is what splitToken takes for a split after it.
-const GRAPHEMES = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
+// The letters of a word the splitter offers points between, by a fixed rule
+// over code points (REV-HFT-2): no point before a combining mark, U+200D
+// (ZWJ) or a variation selector, and none after U+200D. So a letter keeps
+// its marks and an emoji sequence stays whole, while an Indic compound can
+// still be split after a virama. A flag's two regional indicators and a
+// skin-tone modifier are neither, so a point is offered between them. Each
+// letter carries the code-point offset of its last code point in the word,
+// which is what splitToken takes for a split after it.
+const JOINS_BEFORE = /^[\p{M}\u200d\ufe00-\ufe0f\u{e0100}-\u{e01ef}]$/u;
 const lettersOf = (content) => {
-  let end = 0;
-  return Array.from(GRAPHEMES.segment(content || ''), ({ segment }) => {
-    end += [...segment].length;
-    return { text: segment, last: end - 1 };
+  const letters = [];
+  let prev = null;
+  Array.from(content || '').forEach((cp, i) => {
+    if (letters.length && (JOINS_BEFORE.test(cp) || prev === '\u200d')) {
+      const last = letters[letters.length - 1];
+      last.text += cp;
+      last.last = i;
+    } else {
+      letters.push({ text: cp, last: i });
+    }
+    prev = cp;
   });
+  return letters;
 };
 
 // Token splitter: click between two letters to split the word there.
