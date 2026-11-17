@@ -805,9 +805,11 @@ Deactivating the account releases every id it holds.
 The project's services listing (`GET /api/v1/projects/{id}/services`) gives the display name of whoever holds each id in `claimed-by-name`, absent when no account holds it.
 An administrator also gets the account in `claimed-by`, and an entry with `seen` false for each held id whose registration was forgotten, so it can still be released.
 Both clients reconnect a service whenever its connection drops, so restarting the Plaid server does not mean restarting its services.
-A request in flight when a service's connection drops is held for 20 seconds.
-If the same account connects the service again within that time, the requests the service had reported progress on go on, its reports are taken meanwhile, and a stop asked for in between reaches it on the new connection.
-The others, and all of them when the service does not come back, end with the error `Service disconnected`.
+A request in flight when a service's connection drops is held for 20 seconds, and the service's reports on it are taken meanwhile.
+Each client names its process when it connects (`instance-id` on the request channel, minted once per process).
+If the same process connects the service again within that time, the requests it had reported progress on go on, and a stop asked for in between reaches it on the new connection.
+The others end with the error `Service disconnected`: at once when another process of the service connects, or when the account that runs it loses its right to, and after the 20 seconds when nothing connects.
+A client that names no process has its requests ended when its connection drops.
 `registration.is_connected()` / `isConnected()` tells whether the server sees the service as online right now.
 
 NOTE: Service requests are not recorded in the audit log, but the writes a service makes are, under the token it runs with. Giving a service its own named API token makes its edits easy to pick out.

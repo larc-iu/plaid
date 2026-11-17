@@ -223,7 +223,7 @@
   {:service-name :description :extras} plus the credential the channel was
   opened with, kept whole under `:opener`. Returns nil."
   [project-id service-id channel info user-id]
-  (let [entry (merge (select-keys info [:service-name :description :extras :opener])
+  (let [entry (merge (select-keys info [:service-name :description :extras :opener :instance])
                      {:channel    channel
                       :service-id service-id
                       :user-id    user-id})]
@@ -376,10 +376,15 @@
   "Record a new RPC request, with the channel that submitted it as its first
   requester, so the service's reply events can be routed back.
   `service-user-id` is the account holding the service channel the request
-  is sent down: only that account may report its progress or result."
+  is sent down: only that account may report its progress or result. `sent`
+  says what else of that channel the request keeps: `:instance`, the service
+  process it went to (see `plaid.rest-api.v1.message/service-channel-opened!`),
+  and `:model-pool`, the pool it loads (`model-pool-load`)."
   ([request-id requester-channel project-id service-id user-id]
    (track-request! request-id requester-channel project-id service-id user-id nil))
   ([request-id requester-channel project-id service-id user-id service-user-id]
+   (track-request! request-id requester-channel project-id service-id user-id service-user-id nil))
+  ([request-id requester-channel project-id service-id user-id service-user-id sent]
    (swap! inflight-requests
           (fn [reqs]
             (assoc (sweep-finished reqs (System/currentTimeMillis)) request-id
@@ -391,7 +396,9 @@
                     :last-progress nil
                     :result nil
                     :finished-at nil
-                    :cancelled false})))
+                    :cancelled false
+                    :instance (:instance sent)
+                    :model-pool (:model-pool sent)})))
    nil))
 
 (defn grant-group!
@@ -507,6 +514,14 @@
                  reqs)))
       before)))
 
+(defn note-cancel-sent!
+  "A stop asked for `request-id` was written to a live channel of its
+  service, so a channel that comes back after a drop is not told again."
+  [request-id]
+  (swap! inflight-requests
+         (fn [reqs] (if (get reqs request-id) (assoc-in reqs [request-id :cancel-sent] true) reqs)))
+  nil)
+
 (defn cancel-request!
   "Mark an unfinished request cancelled. Returns its entry, or nil if unknown
   or finished. Whether the service stops is the service's business; the
@@ -563,18 +578,20 @@
 (defn model-pool-load
   "The load on model pool `pool`: `{:in-flight n :last-finished-at <ms or
   nil>}`. Counted over the requests in the registry (unfinished, and those
-  finished within `finished-request-ttl-ms`) whose service, connected on the
-  request's project now, declares `model-pool` equal to `pool` in its extras.
-  A service that declares no pool is not counted. Zero and nil when the
-  registries are not running."
+  finished within `finished-request-ttl-ms`) sent down a channel whose extras
+  declare `model-pool` equal to `pool`, as the request keeps it, so one held
+  while its service reconnects still counts, or else as the service connected
+  on the request's project now declares it. A service that declares no pool is
+  not counted. Zero and nil when the registries are not running."
   [pool]
   (let [state inflight-requests
         reqs (when (instance? clojure.lang.IDeref state) @state)
         services service-channels
         live (when (instance? clojure.lang.IDeref services) @services)
         in-pool (if (and (map? reqs) (map? live))
-                  (filter (fn [{:keys [project-id service-id]}]
-                            (= pool (get-in live [project-id service-id :extras :model-pool])))
+                  (filter (fn [{:keys [project-id service-id model-pool]}]
+                            (= pool (or model-pool
+                                        (get-in live [project-id service-id :extras :model-pool]))))
                           (vals reqs))
                   [])]
     {:in-flight (count (remove :result in-pool))

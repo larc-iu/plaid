@@ -244,73 +244,145 @@
 ;; network, a read timeout on the service's side) while the work it was sent
 ;; goes on in the service's process and the requester still waits. So when the
 ;; last channel of a service closes with requests in flight, they are held for
-;; `reconnect-grace-ms`. The service's reports on them are taken meanwhile
-;; (`reply-handler` asks only who reports). A channel the same account opens
-;; for the service id within that time adopts each request the service has
-;; reported on, which it surely received, and ends the others, which may have
-;; been lost on the dead connection. When the time is up with no channel
-;; back, every one ends "Service disconnected", as it did at once before. A
-;; channel closed because its credential no longer admits it
-;; (`drop-service-channel!`) ends them at once: their work must not go on.
+;; `reconnect-grace-ms`, and the service's reports on them are taken meanwhile
+;; (`reply-handler` asks only who reports).
+;;
+;; Only the same PROCESS can finish them, so each client names its process
+;; with an instance id it mints once (`?instance-id=` on the channel, kept as
+;; the entry's `:instance` and on each request sent down it). A channel of the
+;; same instance and account that comes back in time adopts each held request
+;; the service has reported on (`:heard`: it surely received it), and the
+;; others end then, since they may have been lost on the dead connection. A
+;; channel of any other instance (a restarted process, a second one) can
+;; never finish them: they end the moment it opens. No channel back in time:
+;; they end at the grace, "Service disconnected" as before. A client that
+;; names no instance has its requests ended at the close, as before this was
+;; built. A channel closed because its credential no longer admits it
+;; (`drop-service-channel!`), and a held request whose service account loses
+;; its standing in the gap (`end-lapsed-held-requests!`), end at once.
+;;
+;; The marks. `held` maps [project-id service-id] to the mark of the close
+;; that left requests waiting: `{:token :ids :entry}`, its own token, the ids
+;; it holds, and the channel entry that closed. One owner per mark:
+;; - Only `service-channel-closed!` CREATES a mark, when no channel of the
+;;   service is registered after its own channel left. A later close replaces
+;;   the mark with its own (the earlier one's ids folded in) and its own grace.
+;; - A mark is TAKEN (removed, its ids settled) only by compare-and-set on the
+;;   mark as read: by the timer its close started, or by
+;;   `service-channel-opened!` of a channel that is still the registered one.
+;;   Whoever loses the compare does nothing to the ids, so a mark is never
+;;   settled twice, and none is removed by anyone but its taker.
+;; - The timer takes its own mark whatever it finds, so no mark outlives its
+;;   grace, a live channel beside it or not: with a live channel it settles
+;;   the ids as that channel's open would have.
 
 (def reconnect-grace-ms
   "How long a service's in-flight requests wait for its channel to come back."
   20000)
 
-(defonce ^:private orphaned
-  ;; [project-id service-id] -> a token for the close that left the service's
-  ;; requests waiting for it, while no channel has come back.
+(defonce ^:private held
+  ;; [project-id service-id] -> {:token :ids :entry}, see above.
   (atom {}))
 
-(defn- end-service-requests!
-  "End every unfinished request of service `service-id` on `project-id` for
-  which `end?` is true of its entry, as disconnected."
-  [project-id service-id end?]
-  (doseq [[request-id entry] (events/requests-for-service project-id service-id)
-          :when (end? entry)]
-    (finish-request! request-id "error" {:error "Service disconnected"})))
+(defn- take-mark!
+  "Remove the mark of `k` if it is still `mark` (compare-and-set). True when
+  this caller took it."
+  [k mark]
+  (let [[before _] (swap-vals! held (fn [m] (if (identical? (get m k) mark) (dissoc m k) m)))]
+    (and (some? mark) (identical? (get before k) mark))))
+
+(defn- end-requests!
+  "End the unfinished requests among `ids` as disconnected."
+  [ids]
+  (doseq [id ids
+          :let [entry (events/get-request id)]
+          :when (and entry (nil? (:result entry)))]
+    (finish-request! id "error" {:error "Service disconnected"})))
+
+(defn- adopts?
+  "Whether channel entry `live` may go on serving the held request `req`:
+  the same process (a named instance) and account, and a request it has
+  reported on."
+  [live req]
+  (boolean (and live (:heard req) (some? (:instance req))
+                (= (:instance req) (:instance live))
+                (= (:service-user-id req) (:user-id live)))))
+
+(defn- settle-held!
+  "Settle the ids of a taken mark against `live`, the channel entry now
+  registered for the service or nil: end those it does not adopt. Returns the
+  ids it adopts."
+  [ids live]
+  (let [reqs (keep (fn [id] (when-let [e (events/get-request id)]
+                              (when (nil? (:result e)) [id e])))
+                   ids)
+        {adopted true ended false} (group-by (fn [[_ e]] (adopts? live e)) reqs)]
+    (end-requests! (map first ended))
+    (map first adopted)))
 
 (defn service-channel-closed!
   "The `:on-close` of a service channel: deregister it, and when no channel of
   the service is left, stamp it last seen and hold its in-flight requests for
-  `reconnect-grace-ms`, then end those no channel adopted."
+  `reconnect-grace-ms` (the marks above)."
   [db project-id service-id channel]
-  (events/unregister-service-channel! project-id service-id channel)
-  ;; A superseded or losing channel closing does nothing more: a live
-  ;; takeover is serving the requests.
-  (when-not (events/get-service-channel project-id service-id)
-    (try (service-registry/touch-last-seen! db project-id service-id)
-         (catch Exception _))
-    (when (seq (events/requests-for-service project-id service-id))
-      (let [k [project-id service-id]
-            token (Object.)
-            wait reconnect-grace-ms]
-        (swap! orphaned assoc k token)
-        (async/go
-          (when (pos? wait)
-            (async/<! (async/timeout wait)))
-          ;; Only if no channel came back since, and no later close took over.
-          ;; A channel registered but not yet through `service-channel-opened!`
-          ;; is left to it.
-          (when (and (= token (get @orphaned k))
-                     (nil? (events/get-service-channel project-id service-id)))
-            (swap! orphaned (fn [m] (if (= token (get m k)) (dissoc m k) m)))
-            (end-service-requests! project-id service-id (constantly true))))))))
+  (let [entry (events/get-service-entry project-id service-id)
+        closing (when (identical? channel (:channel entry)) entry)]
+    (events/unregister-service-channel! project-id service-id channel)
+    ;; A superseded or losing channel closing does nothing more: a live
+    ;; takeover is serving the requests.
+    (when-not (events/get-service-channel project-id service-id)
+      (try (service-registry/touch-last-seen! db project-id service-id)
+           (catch Exception _))
+      (let [inflight (events/requests-for-service project-id service-id)
+            {named true unnamed false} (group-by (fn [[_ e]] (some? (:instance e))) inflight)]
+        ;; A client that names no process: as before, at once.
+        (end-requests! (map first unnamed))
+        (when (seq named)
+          (let [k [project-id service-id]
+                mark {:token (Object.) :ids (set (map first named)) :entry closing}
+                wait reconnect-grace-ms]
+            (let [[_ after] (swap-vals! held (fn [m] (assoc m k (update mark :ids into (:ids (get m k))))))
+                  mark (get after k)]
+              (async/go
+                (when (pos? wait)
+                  (async/<! (async/timeout wait)))
+                (when (take-mark! k mark)
+                  (settle-held! (:ids mark) (events/get-service-entry project-id service-id)))))))))))
 
 (defn service-channel-opened!
-  "A service channel registered by `user-id`: it adopts the requests the
-  service left waiting when its last channel closed (`service-channel-closed!`)
-  that were sent to this account and that the service has reported on, and
-  hears again of each one stopped meanwhile. The rest end now."
-  [project-id service-id user-id channel]
-  (when (get @orphaned [project-id service-id])
-    (swap! orphaned dissoc [project-id service-id])
-    (let [adopt? (fn [{:keys [service-user-id heard]}] (and heard (= service-user-id user-id)))]
-      (end-service-requests! project-id service-id (complement adopt?))
-      (doseq [[request-id entry] (events/requests-for-service project-id service-id)
-              :when (and (adopt? entry) (:cancelled entry))]
-        (try (http-kit/send! channel (sse-event "service_cancel" {:request-id request-id}) false)
-             (catch Exception _))))))
+  "A service channel registered by `user-id` with `instance` (nil when its
+  client names none), and still the registered one: the requests of the
+  service sent to any other process end now, since nobody can finish them,
+  and it takes the mark a close left (`service-channel-closed!`), adopting
+  the held requests of its own process that it has reported on and hearing
+  again of each stop asked for while no channel was there to take it."
+  [project-id service-id user-id instance channel]
+  (let [live (events/get-service-entry project-id service-id)]
+    (when (and (identical? channel (:channel live)) (= user-id (:user-id live)))
+      (end-requests! (for [[id e] (events/requests-for-service project-id service-id)
+                           :when (not= (:instance e) instance)]
+                       id))
+      (let [k [project-id service-id]
+            mark (get @held k)]
+        (when (and mark (take-mark! k mark))
+          (doseq [id (settle-held! (:ids mark) live)
+                  :let [e (events/get-request id)]
+                  :when (and (:cancelled e) (not (:cancel-sent e)))]
+            (try (when (http-kit/send! channel (sse-event "service_cancel" {:request-id id}) false)
+                   (events/note-cancel-sent! id))
+                 (catch Exception _))))))))
+
+(defn end-lapsed-held-requests!
+  "End at once the held requests whose service's account no longer has the
+  standing to report on them (`standing-ok?` of the closed channel's entry
+  answers false), and take their marks."
+  [standing-ok?]
+  (doseq [[[project-id service-id :as k] mark] @held
+          :when (and (:entry mark)
+                     (not (standing-ok? (assoc (:entry mark) :project-id project-id
+                                               :service-id service-id))))]
+    (when (take-mark! k mark)
+      (end-requests! (:ids mark)))))
 
 (defn- drop-service-channel!
   "Deregister a service channel whose holder lost the right to it, fail the
@@ -350,7 +422,8 @@
   []
   (doseq [entry (events/live-service-entries)]
     (when-not (standing-holds? entry :project/writers)
-      (drop-service-channel! entry))))
+      (drop-service-channel! entry)))
+  (end-lapsed-held-requests! #(standing-holds? % :project/writers)))
 
 (defn close-lapsed-listen-streams!
   "Close every open /listen stream whose opener could no longer open it, as
@@ -438,7 +511,7 @@
   upserts the persistent seen_services row so discovery can show the service
   offline later."
   [{{{:keys [id service-id]} :path
-     {:keys [service-name description extras]} :query} :parameters
+     {:keys [service-name description extras instance-id]} :query} :parameters
     user-id :user/id db :db :as req}]
   (let [;; Claims the id when nobody holds it. Forced only past the
         ;; delegated-token refusal, so that token claims nothing.
@@ -450,7 +523,9 @@
                              (catch Exception _ nil)))
               ;; What opened the channel, so the channel can be closed the
               ;; moment that credential or its user's role no longer would.
-              :opener (opener-of req)}]
+              :opener (opener-of req)
+              ;; The service process, as its client names it (see the marks).
+              :instance (when-not (str/blank? instance-id) instance-id)}]
     ;; Conflict pre-check must happen BEFORE as-channel — SSE headers go out
     ;; in :on-open, after which a plain 409 response is no longer possible.
     (cond
@@ -511,7 +586,7 @@
                   (catch Exception e
                     (log/warn e "Failed to record seen-service row for" service-id "on project" id)))
                 (log/debug "Service channel opened for" service-id "on project" id)
-                (service-channel-opened! id service-id user-id channel)
+                (service-channel-opened! id service-id user-id (:instance info) channel)
                 (start-keepalive! channel)
                 (close-at-expiry! (assoc info :project-id id :service-id service-id
                                          :user-id user-id :channel channel))))))
@@ -757,13 +832,16 @@
             ;; Re-fetch the channel at push time — it may have dropped since the
             ;; pre-check above. The account holding it is the one that may
             ;; answer the request.
-            (let [{service-ch :channel service-user-id :user-id} (events/get-service-entry id service-id)
+            (let [{service-ch :channel service-user-id :user-id :as service-entry}
+                  (events/get-service-entry id service-id)
                   ;; The token names the runner checked above. A channel
                   ;; another account opened since (the first one dropped and
                   ;; its service id was taken) is not handed it.
                   service-ch (when (or (nil? delegated-token) (= service-user-id (:user-id entry)))
                                service-ch)]
-              (events/track-request! request-id requester id service-id user-id service-user-id)
+              (events/track-request! request-id requester id service-id user-id service-user-id
+                                     {:instance (:instance service-entry)
+                                      :model-pool (get-in service-entry [:extras :model-pool])})
               ;; While the request runs, the service may write into the group
               ;; it was handed, as the requester (`events/grant-group!`).
               (when group-id
@@ -815,7 +893,8 @@
       :else
       (do (events/cancel-request! request-id)
           (when-let [service-ch (events/get-service-channel id (:service-id entry))]
-            (try (http-kit/send! service-ch (sse-event "service_cancel" {:request-id request-id}) false)
+            (try (when (http-kit/send! service-ch (sse-event "service_cancel" {:request-id request-id}) false)
+                   (events/note-cancel-sent! request-id))
                  (catch Exception _)))
           {:status 204}))))
 
@@ -991,7 +1070,8 @@
            :parameters {:query [:map
                                 [:service-name {:optional true} :string]
                                 [:description {:optional true} :string]
-                                [:extras {:optional true} :string]]}
+                                [:extras {:optional true} :string]
+                                [:instance-id {:optional true} :string]]}
            :handler service-channel-handler}
      :post {:summary (str "Client: submit work to a service; streams progress + result (SSE). "
                           "Writer required, or reader when the service delegates (acts on the "
