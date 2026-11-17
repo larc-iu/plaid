@@ -25,6 +25,14 @@ import { hitTo, rememberCaret } from './hitLinks.js';
 import { countOf } from '@ui/lib/plural.js';
 import { isEnter } from '@ui/lib/chords.js';
 
+// A query as it was searched, in quotes: its spaces kept and shown, and its
+// own direction kept inside a line in the page's.
+const Searched = ({ query }) => (
+  <>
+    “<bdi className="whitespace-pre-wrap">{query}</bdi>”
+  </>
+);
+
 export const ProjectSearch = ({ project, projectId, client }) => {
   const layerInfo = useMemo(() => getIgtLayerInfo(project), [project]);
   const domains = useMemo(
@@ -98,7 +106,9 @@ export const ProjectSearch = ({ project, projectId, client }) => {
         nextMode === 'freq'
           ? await runFreqSearch(client, domain, queryText, matchType)
           : await runHitsSearch(client, project, layerInfo, domain, queryText, matchType);
-      setResult(r);
+      // The query it was for, as searched, for the line that says it found
+      // nothing (a stray space then shows).
+      setResult({ ...r, query: queryText });
     } catch (err) {
       // The box and the URL now say this query, so the last one's hits go.
       setResult(null);
@@ -278,7 +288,9 @@ export const ProjectSearch = ({ project, projectId, client }) => {
             </ListHint>
           )}
           {result.totalHits === 0 && (
-            <p className="py-6 text-center text-sm text-muted-foreground">No hits.</p>
+            <p className="break-words py-6 text-center text-sm text-muted-foreground">
+              No hits for <Searched query={result.query} />.
+            </p>
           )}
         </div>
       )}
@@ -290,7 +302,9 @@ export const ProjectSearch = ({ project, projectId, client }) => {
             {countOf(result.totalHits, 'total occurrence')}
           </p>
           {result.rows.length === 0 ? (
-            <p className="py-6 text-center text-sm text-muted-foreground">No matches.</p>
+            <p className="break-words py-6 text-center text-sm text-muted-foreground">
+              No matches for <Searched query={result.query} />.
+            </p>
           ) : (
             <DataTable
               rows={result.rows}

@@ -77,4 +77,30 @@ describe('ProjectSearch', () => {
     expect(runHitsSearch.mock.calls.at(-1)[4]).toBe(' the ');
     await view.unmount();
   });
+
+  // REV-HFV-5: a query is searched as typed, so a stray space finds nothing.
+  // The line says what was searched, the space visible, in its own direction.
+  it('says what found nothing, exactly as searched', async () => {
+    runHitsSearch.mockResolvedValue({
+      mode: 'hits',
+      totalHits: 0,
+      totalDocs: 0,
+      remainingDocs: 0,
+      groups: [],
+    });
+    const view = await renderComponent(
+      <MemoryRouter>
+        <ProjectSearch project={{ id: 'p1', vocabs: [] }} projectId="p1" client={{}} />
+      </MemoryRouter>,
+    );
+    await search(view, 'kala ');
+    const line = [...view.container.querySelectorAll('p')].find((p) =>
+      p.textContent.startsWith('No hits'),
+    );
+    expect(line.textContent).toBe('No hits for “kala ”.');
+    const q = line.querySelector('bdi');
+    expect(q.textContent).toBe('kala ');
+    expect(q.className).toContain('whitespace-pre-wrap');
+    await view.unmount();
+  });
 });
