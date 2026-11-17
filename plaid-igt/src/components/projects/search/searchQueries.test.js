@@ -98,7 +98,19 @@ describe('query shapes', () => {
     // vocab-link takes no constraints, so the lexicon pins its token instead.
     const [q] = hitsQueries(lex, 'x', 'd1');
     expect(q.where.map((c) => c[0])).toEqual(['vocab', 'vocab-link', 'token']);
-    expect(q.where[2][2]).toEqual({ doc: 'd1' });
+    expect(q.where[2][2]).toEqual({ layer: 'wordL', doc: 'd1' });
+  });
+
+  // H5-2: a vocabulary can be shared between projects, so its links reach
+  // other projects' documents. Each lexicon query pins the linked token to
+  // one of this project's word and morpheme layers.
+  it("lexicon queries reach only this project's word and morpheme tokens", () => {
+    const layersOf = (qs) =>
+      qs.map((q) => q.where.find((c) => c[0] === 'token' && c[1] === '?t')?.[2]?.layer);
+    const both = ['wordL', 'morphL', 'wordL', 'morphL'];
+    expect(layersOf(hitsQueries(lex, 'x', 'd1'))).toEqual(both);
+    expect(layersOf(hitsByDocQueries(lex, 'x'))).toEqual(both);
+    expect(layersOf(freqQueries(lex, 'x'))).toEqual(both);
   });
 
   it('morpheme frequencies group by the metadata dot path', () => {
@@ -107,7 +119,7 @@ describe('query shapes', () => {
   });
 
   it('lexicon emits one query per vocab and joins through vocab-link', () => {
-    expect(hitsQueries(lex, 'all')).toHaveLength(2);
+    expect(hitsQueries(lex, 'all')).toHaveLength(4);
     const [q] = hitsByDocQueries(lex, 'all');
     expect(q.where.map((c) => c[0])).toEqual(['vocab', 'vocab-link', 'token']);
   });

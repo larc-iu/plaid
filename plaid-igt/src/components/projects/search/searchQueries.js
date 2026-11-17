@@ -5,8 +5,9 @@
 //   hitsByDoc — [docId, n] so we know which documents to load
 //   freq      — [value, n] frequency rows
 // All layer references are ids, so every query is inherently scoped to the
-// project that owns those layers (lexicon queries are scoped by the
-// project's linked vocab ids).
+// project that owns those layers. A vocabulary can be shared between
+// projects, so a lexicon query also pins the linked token to one of this
+// project's word and morpheme layers (one query per vocabulary and layer).
 //
 // Match semantics: exact = literal equality (case-sensitive, canonically
 // equivalent text equal: core's equality reads a text with another spelling
@@ -91,6 +92,9 @@ export function searchDomains(layerInfo, vocabs) {
       label: 'Lexicon (linked entries)',
       kind: 'lexicon',
       vocabIds: vocabs.map((v) => v.id),
+      tokenLayerIds: [layerInfo.primaryTokenLayer?.id, layerInfo.morphemeTokenLayer?.id].filter(
+        Boolean,
+      ),
     });
   }
   return domains;
@@ -118,6 +122,20 @@ const wordsOnly = (domain) =>
   domain.wordValue ? [['token', '?t', { value: domain.wordValue }]] : [];
 
 const HIT_LIMIT = 500;
+
+// One query per (vocabulary, token layer) of a lexicon domain, the linked
+// token held to that layer. `token` is the token clause's other constraints.
+const lexiconQueries = (domain, spec, token, rest) =>
+  domain.vocabIds.flatMap((vid) =>
+    domain.tokenLayerIds.map((layer) => ({
+      where: [
+        ['vocab', '?v', { layer: vid, form: spec }],
+        ['vocab-link', '?t', '?v'],
+        ['token', '?t', { layer, ...token }],
+      ],
+      ...rest,
+    })),
+  );
 
 // Hit-id queries FOR ONE DOCUMENT. Lexicon returns ONE QUERY PER VOCAB (merge
 // results).
@@ -172,15 +190,7 @@ export function hitsQueries(domain, spec, docId) {
   }
   // lexicon: tokens linked to matching items. `vocab-link` takes no
   // constraints of its own, so the document is pinned on the token.
-  return domain.vocabIds.map((vid) => ({
-    find: ['?t'],
-    where: [
-      ['vocab', '?v', { layer: vid, form: spec }],
-      ['vocab-link', '?t', '?v'],
-      ['token', '?t', { doc: docId }],
-    ],
-    limit: HIT_LIMIT,
-  }));
+  return lexiconQueries(domain, spec, { doc: docId }, { find: ['?t'], limit: HIT_LIMIT });
 }
 
 export function hitsByDocQueries(domain, spec) {
@@ -219,14 +229,7 @@ export function hitsByDocQueries(domain, spec) {
       },
     ];
   }
-  return domain.vocabIds.map((vid) => ({
-    where: [
-      ['vocab', '?v', { layer: vid, form: spec }],
-      ['vocab-link', '?t', '?v'],
-      ['token', '?t', { doc: { var: '?d' } }],
-    ],
-    return: agg,
-  }));
+  return lexiconQueries(domain, spec, { doc: { var: '?d' } }, { return: agg });
 }
 
 // Frequency queries: [groupValue, count] rows.
@@ -278,13 +281,7 @@ export function freqQueries(domain, spec, { formless = false } = {}) {
       },
     ];
   }
-  return domain.vocabIds.map((vid) => ({
-    where: [
-      ['vocab', '?v', { layer: vid, form: spec }],
-      ['vocab-link', '?t', '?v'],
-    ],
-    return: { ...agg, group: ['?v'] },
-  }));
+  return lexiconQueries(domain, spec, {}, { return: { ...agg, group: ['?v'] } });
 }
 
 // ---- a governed field's value inventory -----------------------------------
