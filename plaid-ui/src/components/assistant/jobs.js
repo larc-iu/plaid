@@ -268,7 +268,14 @@ const progressOf = (j) => (p) => {
   if (Array.isArray(p?.trace)) j.trace = p.trace;
   if (typeof p?.thinking === 'string') j.thinking = p.thinking;
   // The model call under way and when it began, or null (roundClock.js).
-  if (j.kind === 'turn') j.round = p?.round ?? null;
+  if (j.kind === 'turn') {
+    j.round = p?.round ?? null;
+    // When this page first heard of the round, which bounds its start
+    // (roundClock.js `roundSince`).
+    const r = j.round;
+    if (r && !(j.roundSeen?.n === r.n && j.roundSeen?.began === r.began))
+      j.roundSeen = { n: r.n, began: r.began, at: Date.now() };
+  }
   if (p?.recorded) {
     j.recorded = true;
     j.unsent = null;

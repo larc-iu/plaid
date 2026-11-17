@@ -267,10 +267,31 @@ describe('the round under way', () => {
   });
 
   it('counts from when the round began, not from when this page first heard of it', async () => {
-    // A reload or a second tab joins a round three minutes in.
+    // A reload joins a turn started five minutes ago, three minutes into a
+    // round: core replays the last progress event.
+    const pending = {
+      kind: 'turn',
+      requestId: 'r-live',
+      serviceId: SERVICE.serviceId,
+      startedAt: ago(300_000),
+    };
+    const client = fakeClient({ meta: { ...META, pending } });
     const round = { n: 4, began: ago(180_000), waiting: false };
-    const { m } = await turnOf({ message: 'Thinking more…', text: '', trace: [STEP], round });
+    client.messages.attachServiceRequest.mockImplementation((_p, _r, _t, onProgress) => {
+      onProgress({ message: 'Thinking more…', text: '', trace: [STEP], round });
+      return new Promise(() => {});
+    });
+    const m = await mount(client);
+    await flush(m, 12);
     expect(thinkingLine(m)?.textContent).toMatch(/^Thinking, 3 min \d+ s$/);
+    await m.unmount();
+  });
+
+  it('never counts longer than the turn, whatever the service’s clock says', async () => {
+    // A service clock two hours behind the browser's (REV-SVU-R2-1).
+    const round = { n: 1, began: ago(7_200_000), waiting: false };
+    const { m } = await turnOf({ message: 'Thinking…', text: '', trace: [], round });
+    expect(thinkingLine(m)?.textContent).toBe('Thinking, 0 s');
     await m.unmount();
   });
 

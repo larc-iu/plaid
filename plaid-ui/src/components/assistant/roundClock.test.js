@@ -24,6 +24,33 @@ describe('roundSince', () => {
   });
 });
 
+// The service's clock and the browser's may disagree (REV-SVU-R2-1): the start
+// is held between the turn's start and when the page first heard of the round.
+describe('roundSince across clocks that disagree', () => {
+  const STARTED = Date.parse('2026-11-17T09:59:00.000Z');
+  const SEEN = Date.parse('2026-11-17T10:00:00.000Z');
+  const at = (began) =>
+    roundSince(
+      turn({
+        startedAt: STARTED,
+        round: { ...ROUND, began: new Date(began).toISOString() },
+        roundSeen: { n: ROUND.n, began: new Date(began).toISOString(), at: SEEN },
+      }),
+    );
+
+  it('never starts later than the page first heard of the round (the service clock ahead)', () => {
+    expect(at(SEEN + 90_000)).toBe(SEEN);
+  });
+
+  it('never starts before the turn did (the service clock behind)', () => {
+    expect(at(STARTED - 120_000)).toBe(STARTED);
+  });
+
+  it('is the service’s start where the two agree', () => {
+    expect(at(SEEN - 20_000)).toBe(SEEN - 20_000);
+  });
+});
+
 describe('thinkingFor', () => {
   it('says seconds, then minutes and seconds', () => {
     expect(thinkingFor(0)).toBe('Thinking, 0 s');

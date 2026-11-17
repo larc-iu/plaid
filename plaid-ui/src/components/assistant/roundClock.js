@@ -11,11 +11,21 @@
 // When the model call under way began (ms), while the model works on it with
 // no text yet, else null. Null too where the service says nothing of the
 // round (another assistant, an older service): no count is shown.
+//
+// `began` is the service's clock and the count runs on the browser's, which
+// may disagree (REV-SVU-R2-1). So the start is held between the turn's start
+// (`startedAt`) and when this page first heard of the round
+// (`roundSeen.at`): a service clock ahead never freezes the count at 0 s, and
+// one behind never counts longer than the turn.
 export const roundSince = (job) => {
   const round = job?.round;
   if (job?.kind !== 'turn' || !round || round.waiting || job.partial || job.stopping) return null;
-  const at = typeof round.began === 'string' ? Date.parse(round.began) : NaN;
-  return Number.isFinite(at) ? at : null;
+  const began = typeof round.began === 'string' ? Date.parse(round.began) : NaN;
+  if (!Number.isFinite(began)) return null;
+  const seen = job.roundSeen;
+  const heard = seen?.n === round.n && seen?.began === round.began ? seen.at : null;
+  const latest = Number.isFinite(heard) ? Math.min(began, heard) : began;
+  return Number.isFinite(job.startedAt) ? Math.max(job.startedAt, latest) : latest;
 };
 
 // "Thinking, 45 s", or "Thinking, 2 min 5 s" from a minute on.
