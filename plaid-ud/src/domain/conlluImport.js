@@ -38,8 +38,17 @@ const OFF_LIST_FIELDS = [
   ['xpos', 'XPOS', (t) => [t.xpos]],
   ['feats', 'FEATS', (t) => t.feats || []],
   ['deprel', 'DEPREL', (t) => [t.deprel]],
-  // The enhanced graph's labels, held to the same list (H17-2).
-  ['deprel', 'DEPS', (t) => (t.deps?.edges || []).map((e) => e.deprel)],
+  // The enhanced graph's labels, held to the same list (H17-2). An edge that
+  // repeats the row's own HEAD and DEPREL is the tree's, counted above and not
+  // stored again, so it is not counted twice (REV-HFU-7).
+  [
+    'deprel',
+    'DEPS',
+    (t) =>
+      (t.deps?.edges || [])
+        .filter((e) => !(String(e.head) === String(t.head) && e.deprel === t.deprel))
+        .map((e) => e.deprel),
+  ],
 ];
 
 // One line per closed list the file writes values outside of. An import is

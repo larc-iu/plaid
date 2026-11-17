@@ -64,3 +64,17 @@ test('a closed relation list names DEPS labels outside it', () => {
     '1 DEPS value not on the list: wrongenh.',
   ]);
 });
+
+// REV-HFU-7: DEPS repeats each basic edge, which the enhanced layer does not
+// store again, so a DEPREL label off the list is counted once, as Validation
+// counts it.
+test('a DEPS edge repeating its row’s own head and relation is not counted again', () => {
+  const file = [
+    '# text = She left',
+    '1\tShe\tshe\tPRON\t_\t_\t2\tfoo\t2:foo\t_',
+    '2\tleft\tleave\tVERB\t_\t_\t0\troot\t0:root\t_',
+  ].join('\n');
+  assert.deepEqual(offListWarnings(parseCoNLLU(file), info({ deprel: MODES.CLOSED })), [
+    '1 DEPREL value not on the list: foo.',
+  ]);
+});
