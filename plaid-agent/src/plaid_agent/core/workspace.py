@@ -545,8 +545,9 @@ class BaseWorkspace:
         """The conversation's one map of what it read (``read``), for the
         newest reply to keep: the earlier replies' map with this turn's reads
         over it, document id -> sentence number as text -> print (REV-SVB-6).
-        A document no longer listed goes, and so does a number past the end
-        of a document this turn loaded. At most :data:`READ_PRINTS_MAX`
+        A document no longer listed goes (all are kept when the list cannot
+        be read), and so does a number past the end of a document this turn
+        loaded. At most :data:`READ_PRINTS_MAX`
         sentences, this turn's first: a sentence past it keeps no print at
         all and is not checked, never against an older one (REV-SVB-5)."""
         merged: Dict[str, Dict[str, str]] = {d: dict(p) for d, p in self.read_before.items() if p}
@@ -557,7 +558,10 @@ class BaseWorkspace:
                     merged.setdefault(doc_id, {})[str(n)] = printed
         if not merged:
             return {}
-        listed = {d.get('id') for d in self.documents()}
+        try:
+            listed = {d.get('id') for d in self.documents()}
+        except Exception:  # noqa: BLE001 - the reply must not be lost for a pruning (REV-SVB-R2-5)
+            listed = None
         out: Dict[str, Dict[str, str]] = {}
         left = READ_PRINTS_MAX
         order = list(dict.fromkeys((d, str(n)) for read in turn[::-1] for d, prints in read.items()
@@ -566,7 +570,8 @@ class BaseWorkspace:
         order += [(d, n) for d, prints in merged.items() for n in prints if (d, n) not in now]
         for doc_id, n in order:
             doc = self._docs.get(doc_id)
-            if doc_id not in listed or (doc is not None and not 1 <= int(n) <= len(doc.sentences)):
+            if ((listed is not None and doc_id not in listed)
+                    or (doc is not None and not 1 <= int(n) <= len(doc.sentences))):
                 continue
             if left <= 0:
                 break

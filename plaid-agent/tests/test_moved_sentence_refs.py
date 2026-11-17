@@ -411,3 +411,19 @@ def test_a_load_lets_the_codes_own_plan_calls_through_and_no_direct_call(monkeyp
     c.edit(_insert_word)
     _code, out = c.turn(('run_code', {'code': 'd = load("Text 1")\nprint(len(d["sentences"]))'}), _gloss('s1.w2'))
     assert out == f'Error: {MOVED}', out
+
+
+def test_a_failed_document_list_at_the_turns_end_never_loses_the_reply(monkeypatch):
+    """REV-SVB-R2-5: the map is kept as it was, unpruned, and the reply is
+    written."""
+    from plaid_agent.core.workspace import BaseWorkspace
+    c = Conversation(monkeypatch)
+    c.turn(READ_S1)
+    kept = c.last_item()['read']
+
+    def refused(self):
+        raise RuntimeError('the server did not answer')
+    monkeypatch.setattr(BaseWorkspace, 'documents', refused)
+    assert c.turn() == []
+    item = c.last_item()
+    assert item['kind'] == 'assistant' and item['text'] == 'Done.' and item['read'] == kept
