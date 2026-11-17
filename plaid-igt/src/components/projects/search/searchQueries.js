@@ -20,6 +20,7 @@
 
 import { PatternError, translatePattern } from '@ui/domain/javaRegex.js';
 import { readIgnoredTokens, wordValueSpec } from '@/domain/igtConfig.js';
+import { formlessAlone } from '@/domain/precedent.js';
 
 // The case behaviour differs between these and it changes what comes back, so
 // the label says it rather than leaving it to be discovered: `contains` folds
@@ -99,23 +100,6 @@ export function searchDomains(layerInfo, vocabs) {
   }
   return domains;
 }
-
-// A stored morpheme with no form of its own shows its word's surface when it
-// is alone in its word (beside others it is a gap, shown as ?), so a
-// Morphemes search matches it by that surface, as the assistant does
-// (plaid-agent Corpus.shown_morph). `doc` is the document: an id, or a var.
-const formlessAlone = (layer, spec, doc) => {
-  const at = (v, extra = {}) => [
-    'token',
-    v,
-    { layer, doc, begin: { var: '?fb' }, end: { var: '?fe' }, ...extra },
-  ];
-  return [
-    at('?t', { value: spec }),
-    ['not', ['token', '?t', { metadata: { form: { regex: '.' } } }]],
-    ['not', at('?fa'), at('?fz'), ['precedes', '?fa', '?fz']],
-  ];
-};
 
 // The clause that keeps a word search to words, or none.
 const wordsOnly = (domain) =>

@@ -103,6 +103,22 @@ describe('precedentCache', () => {
     expect(openPrecedent(docOf(again, 'a'))).not.toBeNull();
   });
 
+  // REV-HFV-6: core cuts a grouped answer at its row limit and says so. A cut
+  // drops whole (form, value) rows, so each count kept is exact and only a
+  // value may be missing: the counts are used, and the cut is said in the
+  // console, never hidden.
+  it('says in the console when the server cut a count', async () => {
+    const client = fakeClient({ a: [['kai', 'go']], b: [['kai', 'eat']] });
+    const query = client.query.getMockImplementation();
+    client.query.mockImplementation(async (q) => ({ ...(await query(q)), truncated: true }));
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const a = docOf(client, 'a');
+    await openPrecedent(a);
+    expect(gloss(precedentBase(a))).toEqual(new Map([['eat', 1]]));
+    expect(warn).toHaveBeenCalledWith(expect.stringMatching(/cut at the server's row limit/));
+    warn.mockRestore();
+  });
+
   it('a document edited and left counts as it was left in the next one', async () => {
     const client = fakeClient({ a: [['kai', 'go']], b: [] });
     const a = docOf(client, 'a', [['kai', 'go']]);

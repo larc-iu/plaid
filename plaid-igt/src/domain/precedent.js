@@ -138,19 +138,35 @@ export function linkPrecedentQueries(vocabIds, { projectId, docId = null } = {})
   }));
 }
 
+// The query clauses for a stored morpheme with no form of its own, alone in
+// its word. It shows its word's surface (beside others it is a gap, shown as
+// ?), so Search matches it by that surface, as the assistant does
+// (plaid-agent Corpus.shown_morph), and precedent counts its values under it.
+// `layer` is the morpheme token layer, `doc` the document (an id, or a var),
+// `value` an optional constraint on the token's text.
+export const formlessAlone = (layer, value, doc) => {
+  const at = (v, extra = {}) => [
+    'token',
+    v,
+    { layer, doc, begin: { var: '?fb' }, end: { var: '?fe' }, ...extra },
+  ];
+  return [
+    at('?t', value === undefined ? {} : { value }),
+    ['not', ['token', '?t', { metadata: { form: { regex: '.' } } }]],
+    ['not', at('?fa'), at('?fz'), ['precedes', '?fa', '?fz']],
+  ];
+};
+
 // One grouped query per word- and morpheme-scope annotation layer: how often
 // each (form, value) pairing was written, split by provenance state. Row
 // shape: [form, value, prov, provConfirmed, count] (prov keys null when
-// absent), and for a morpheme [form, text, value, prov, provConfirmed, count]:
-// a morpheme with no form of its own (the first gloss on an unsegmented word
-// makes one) counts under its token's text, as morphFormOf counts it in the
-// open document. Returns [{ kind, field, query }]. With `docId`, the same counts
+// absent). Returns [{ kind, field, query }]. With `docId`, the same counts
 // for that one document alone. The layers are this project's, so the counts
 // are too.
 export function valuePrecedentQueries(layerInfo, { docId = null } = {}) {
   const inDoc = docId ? { doc: docId } : {};
   const out = [];
-  const add = (kind, tokenLayerId, layers, formPaths) => {
+  const add = (kind, tokenLayerId, layers, formPath) => {
     if (!tokenLayerId) return;
     for (const l of layers || []) {
       out.push({
@@ -163,18 +179,43 @@ export function valuePrecedentQueries(layerInfo, { docId = null } = {}) {
             ['covers', '?s', '?t'],
           ],
           return: {
-            group: [...formPaths, '?s.value', '?s.metadata.prov', '?s.metadata.provConfirmed'],
+            group: [formPath, '?s.value', '?s.metadata.prov', '?s.metadata.provConfirmed'],
             aggregates: [['count']],
           },
         },
       });
     }
   };
-  add(KINDS.WORD, layerInfo?.primaryTokenLayer?.id, layerInfo?.spanLayers?.word, ['?t.value']);
-  add(KINDS.MORPHEME, layerInfo?.morphemeTokenLayer?.id, layerInfo?.spanLayers?.morpheme, [
+  add(KINDS.WORD, layerInfo?.primaryTokenLayer?.id, layerInfo?.spanLayers?.word, '?t.value');
+  add(
+    KINDS.MORPHEME,
+    layerInfo?.morphemeTokenLayer?.id,
+    layerInfo?.spanLayers?.morpheme,
     '?t.metadata.form',
-    '?t.value',
-  ]);
+  );
+  // A morpheme with no form of its own (the first gloss on an unsegmented
+  // word makes one) has no row above. One more query per morpheme field
+  // counts those alone in their word under the word's text, in the same row
+  // shape, as morphFormOf counts them in the open document and Search finds
+  // them. A query of its own, so the form query stays as small as it was.
+  const morphL = layerInfo?.morphemeTokenLayer?.id;
+  for (const l of morphL ? layerInfo?.spanLayers?.morpheme || [] : []) {
+    out.push({
+      kind: KINDS.MORPHEME,
+      field: l.name,
+      query: {
+        where: [
+          ['span', '?s', { layer: l.id, ...inDoc }],
+          ...formlessAlone(morphL, undefined, docId ?? { var: '?fd' }),
+          ['covers', '?s', '?t'],
+        ],
+        return: {
+          group: ['?t.value', '?s.value', '?s.metadata.prov', '?s.metadata.provConfirmed'],
+          aggregates: [['count']],
+        },
+      },
+    });
+  }
   return out;
 }
 
@@ -224,9 +265,7 @@ export function foldLinkRows(tally, resultsPerVocab, ignoredCfg = null) {
 
 /** Fold one valuePrecedentQueries result (rows for one kind + field). */
 export function foldValueRows(tally, kind, field, rows, ignoredCfg = null) {
-  for (const row of rows || []) {
-    const [form, value, prov, confirmed, n] =
-      kind === KINDS.MORPHEME ? [row[0] ?? row[1], ...row.slice(2)] : row;
+  for (const [form, value, prov, confirmed, n] of rows || []) {
     addPrecedent(
       tally,
       kind,
