@@ -7,7 +7,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { serve, ServiceCancelled, ServiceRequestGone } from '../src/services.js';
+import { serve, ServiceCancelled, ServiceRequestGone, INSTANCE_ID } from '../src/services.js';
 
 const INFO = { serviceId: 'test:echo', serviceName: 'Echo', description: 'x' };
 
@@ -80,6 +80,48 @@ test('a handler ending on a lost request reports nothing, a stop asked for is re
     assert.deepEqual(
       sent.filter((s) => s.id === 'asked'),
       [{ id: 'asked', status: 'completed', data: { stopped: true } }],
+    );
+  } finally {
+    reg.stop();
+  }
+});
+
+test('a channel names its process, the same on every project', () => {
+  const paths = [];
+  const client = {
+    baseUrl: 'http://plaid.test',
+    messages: {
+      listen: (_p, _on, path) => {
+        paths.push(path);
+        return { readyState: 1, close() {} };
+      },
+    },
+  };
+  const regs = ['p1', 'p2'].map((p) => serve(client, p, INFO, () => {}));
+  try {
+    const ids = paths.map((p) => new URL(p, 'http://x').searchParams.get('instance-id'));
+    assert.deepEqual(ids, [INSTANCE_ID, INSTANCE_ID]);
+    assert.ok(INSTANCE_ID.length >= 32);
+  } finally {
+    regs.forEach((r) => r.stop());
+  }
+});
+
+test('a stop asked for wins over a lost request', async () => {
+  const sent = [];
+  const holder = {};
+  const helpers = {};
+  const reg = serve(fakeClient(sent, holder), 'p1', INFO, (_data, helper) => {
+    helpers[helper.requestId] = helper;
+  });
+  try {
+    holder.onEvent('service_request', { requestId: 'lost', data: {} });
+    holder.onEvent('service_cancel', { requestId: 'lost' });
+    await helpers.lost.critical(() => helpers.lost.progress(10, 'Writing'));
+    assert.equal(helpers.lost.gone, false);
+    assert.throws(
+      () => helpers.lost.raiseIfCancelled(),
+      (e) => e instanceof ServiceCancelled && !(e instanceof ServiceRequestGone),
     );
   } finally {
     reg.stop();

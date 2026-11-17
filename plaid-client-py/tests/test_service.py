@@ -1801,3 +1801,55 @@ def test_a_request_reaches_the_service_coerced_against_its_parameters():
     assert helper.errors == []
     assert seen == {'document_id': 'd1', 'examples': 0, 'context': 5, 'metalanguage': 'English',
                     'note': '', 'scope': 'doc', 'overwrite': False}
+
+
+def test_a_channel_names_its_process_the_same_on_every_project():
+    # Core adopts a request held over a drop only for the same process (its
+    # instance id), so a restarted process starts with none of the old ones.
+    import urllib.parse
+    from plaid_client import services as svc_mod
+    paths = []
+
+    class FakeMessages:
+        def listen(self, project_id, on_event, path=None):
+            paths.append(path)
+            return _OpenConnection()
+
+    class FakeClient:
+        messages = FakeMessages()
+
+    regs = [svc_mod.serve(FakeClient(), p, {'service_id': 's1', 'service_name': 'S'}, lambda d, h: None)
+            for p in ('p1', 'p2')]
+    try:
+        ids = [urllib.parse.parse_qs(urllib.parse.urlparse(p).query)['instance-id'] for p in paths]
+        assert ids == [[svc_mod.INSTANCE_ID], [svc_mod.INSTANCE_ID]]
+        assert len(svc_mod.INSTANCE_ID) >= 32
+    finally:
+        for r in regs:
+            r.stop()
+
+
+def test_a_stop_asked_for_wins_over_a_lost_request(monkeypatch):
+    # REV-SD-7: the reader pressed Stop, then the server lost the request:
+    # the reader's stop is what happened.
+    import plaid_client.services as svc_mod
+    from plaid_client.services import ServiceCancelled, ServiceRequestGone
+    seen = []
+    on_event, _reported, reg = _serve_with_capture(lambda data, helper: seen.append(helper))
+    try:
+        on_event('service_request', {'request_id': 'r1', 'data': {}})
+        helper, = seen
+        on_event('service_cancel', {'request_id': 'r1'})
+        report, _sent = _refusing({'r1': 404})
+        monkeypatch.setattr(svc_mod, '_report_event', report)
+        with helper.critical():
+            helper.progress(10, 'Writing')
+        assert helper.gone is False and helper.cancelled is True
+        try:
+            helper.raise_if_cancelled()
+        except ServiceRequestGone:
+            raise AssertionError('a stop asked for is a stop')
+        except ServiceCancelled:
+            pass
+    finally:
+        reg.stop()

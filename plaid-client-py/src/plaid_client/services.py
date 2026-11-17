@@ -14,6 +14,7 @@ import re
 import threading
 import time
 import urllib.parse
+import uuid
 
 import requests
 import urllib3.exceptions as urllib3_exceptions
@@ -158,6 +159,14 @@ _OPEN_SETTLE_TIMEOUT_S = SSE_CONNECT_TIMEOUT_S + 5.0
 # an instance that has not let go yet) is transient, and the registration
 # keeps retrying. The JS client's serve() uses the same set.
 _PERMANENT_STATUSES = frozenset({400, 401, 403, 404, 405, 422})
+
+
+#: This process, as its service channels name it to the server
+#: (``instance-id``), minted once. The server lets a channel that comes back
+#: after a drop go on with the requests the dropped one was serving only when
+#: it names the same process, so a restarted or second process of a service
+#: never inherits work it does not have. The JS twin is ``INSTANCE_ID``.
+INSTANCE_ID = str(uuid.uuid4())
 
 
 class ServiceRegistrationError(RuntimeError):
@@ -462,7 +471,7 @@ def serve(client, project_id, service_info, on_service_request, extras=None,
     # Discovery metadata rides the channel's query string — opening the channel
     # is the registration. Keep wire keys kebab-case (transform extras too) so
     # they round-trip like the rest of the API.
-    params = {'service-name': service_name, 'description': description}
+    params = {'service-name': service_name, 'description': description, 'instance-id': INSTANCE_ID}
     if extras:
         params['extras'] = json.dumps(transform_request(extras))
     query = urllib.parse.urlencode({k: v for k, v in params.items() if v})
@@ -541,8 +550,8 @@ def serve(client, project_id, service_info, on_service_request, extras=None,
                 gone: True once the server answered a report on the request
                     with 404: it no longer knows the request (its service
                     channel dropped and the server ended it, or the server
-                    restarted), so nobody waits for the work. Not a stop
-                    anyone asked for.
+                    restarted), so nobody waits for the work, and nobody
+                    asked it to stop (a stop the requester asked for wins).
             """
             request_id = req_id
             requester_id = requester
@@ -551,7 +560,7 @@ def serve(client, project_id, service_info, on_service_request, extras=None,
             _scope = CancelScope(cancel_flag.is_set, gone_flag.is_set)
 
             cancelled = property(lambda self: self._scope.cancelled)
-            gone = property(lambda self: gone_flag.is_set())
+            gone = property(lambda self: gone_flag.is_set() and not cancel_flag.is_set())
             stopping = property(lambda self: self._scope.stopping)
             raise_if_cancelled = lambda self: self._scope.raise_if_cancelled()  # noqa: E731
             critical = lambda self: self._scope.critical()  # noqa: E731
@@ -719,7 +728,7 @@ class CancelScope:
         loop that does report progress is already checked.
         """
         if self.stopping:
-            if self._is_gone():
+            if self._is_gone() and not self._is_cancelled():
                 raise ServiceRequestGone('The server no longer knows this request')
             raise ServiceCancelled('The requester stopped this request')
 

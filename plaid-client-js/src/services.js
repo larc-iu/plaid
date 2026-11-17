@@ -9,6 +9,16 @@
  * server relays to the one waiting requester.
  */
 import { transformRequest, transformResponse } from './transforms.js';
+import { uuidv4 } from './ids.js';
+
+/**
+ * This page or process, as its service channels name it to the server
+ * (`instance-id`), minted once. The server lets a channel that comes back after
+ * a drop go on with the requests the dropped one was serving only when it
+ * names the same process, so a restarted or second process of a service never
+ * inherits work it does not have. The Python twin is `INSTANCE_ID`.
+ */
+export const INSTANCE_ID = uuidv4();
 
 // An absolute URL anywhere in an error message, with the phrase that introduces
 // it (`... at http://host/api/v1/spans`). Client and transport errors name the
@@ -343,6 +353,7 @@ export function serve(client, projectId, serviceInfo, onServiceRequest, extras =
   if (serviceName) params.set('service-name', serviceName);
   if (description) params.set('description', description);
   if (extras && Object.keys(extras).length) params.set('extras', JSON.stringify(transformRequest(extras)));
+  params.set('instance-id', INSTANCE_ID);
   const qs = params.toString();
   const channelPath = `/api/v1/projects/${projectId}/services/${encodeURIComponent(serviceId)}/requests${qs ? `?${qs}` : ''}`;
 
@@ -416,10 +427,10 @@ export function serve(client, projectId, serviceInfo, onServiceRequest, extras =
         return scope.cancelled;
       },
       // True once the server answered a report on the request with 404: it no
-      // longer knows the request, so nobody waits for the work. Not a stop
-      // anyone asked for.
+      // longer knows the request, so nobody waits for the work, and nobody
+      // asked it to stop (a stop the requester asked for wins).
       get gone() {
-        return gone.has(requestId);
+        return gone.has(requestId) && cancelled.get(requestId) !== true;
       },
       raiseIfCancelled: () => scope.raiseIfCancelled(),
       critical: (fn) => scope.critical(fn),
@@ -726,8 +737,8 @@ export function createCancelScope(isCancelled, isGone = () => false) {
      */
     raiseIfCancelled() {
       if (criticalDepth !== 0) return;
-      if (isGone()) throw new ServiceRequestGone();
-      if (isCancelled()) throw new ServiceCancelled();
+      if (isGone() && !isCancelled()) throw new ServiceRequestGone();
+      if (isCancelled() || isGone()) throw new ServiceCancelled();
     },
     /**
      * Run `fn` as a stretch that must finish once begun, usually the writes.
