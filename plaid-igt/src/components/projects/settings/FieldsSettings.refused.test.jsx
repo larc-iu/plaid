@@ -121,6 +121,30 @@ describe('Settings > Fields, a closed tagset assigned', () => {
     await unmount();
   });
 
+  // H11-1: the notice names values not in the list. Once the list changes
+  // (V added to it) that is no longer known to be true, so it goes.
+  it('takes the notice away when the tagsets change', async () => {
+    const client = fakeClient({
+      count: 4,
+      valueCount: 1,
+      values: [{ value: 'V', parts: ['V'], count: 4 }],
+    });
+    const view = await save(client);
+    expect(view.container.querySelector('[data-testid="tagset-refused"]')).not.toBeNull();
+    const same = project();
+    await view.rerender(
+      <FieldsSettings project={same} projectId="p1" client={client} onProjectUpdate={vi.fn()} />,
+    );
+    expect(view.container.querySelector('[data-testid="tagset-refused"]')).not.toBeNull();
+    const added = project();
+    added.config.igt.tagsets.POS.values.push({ value: 'V' });
+    await view.rerender(
+      <FieldsSettings project={added} projectId="p1" client={client} onProjectUpdate={vi.fn()} />,
+    );
+    expect(view.container.querySelector('[data-testid="tagset-refused"]')).toBeNull();
+    await view.unmount();
+  });
+
   it('saves when nothing is in the way', async () => {
     const client = fakeClient({ count: 0, valueCount: 0, values: [] });
     const { container, error, unmount } = await save(client);

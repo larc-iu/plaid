@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { IGNORED_TOKENS_KEY, PLAID_NAMESPACE, uuidv7 } from '@larc-iu/plaid-client';
 import { FieldsManager } from './FieldsManager';
 import { fieldKey } from '@/domain/fieldNames';
@@ -148,6 +148,16 @@ export const FieldsSettings = ({
   // The values in use a closed list would refuse, from the last save not
   // made for them (`refusedBySave`), or null.
   const [refused, setRefused] = useState(null);
+  // The notice says which values are not in a list. Once the tagsets change
+  // (a value added to one) that is no longer known, so it goes, and the field
+  // still shows the tagset it has.
+  const tagsetsKey = JSON.stringify(project?.config?.igt?.tagsets ?? null);
+  const tagsetsSeen = useRef(tagsetsKey);
+  useEffect(() => {
+    if (tagsetsSeen.current === tagsetsKey) return;
+    tagsetsSeen.current = tagsetsKey;
+    setRefused(null);
+  }, [tagsetsKey]);
   const inTurn = (fn) => {
     const run = turnRef.current.then(fn, fn);
     turnRef.current = run.catch(() => {});
