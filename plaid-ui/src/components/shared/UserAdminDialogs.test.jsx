@@ -52,6 +52,31 @@ describe('the edit dialog', () => {
   });
 });
 
+// H12-6: Deactivate was offered on an account already deactivated, and failed.
+describe('the edit dialog on a deactivated account', () => {
+  const deactivate = () =>
+    [...document.body.querySelectorAll('button')].find((b) => b.textContent === 'Deactivate');
+
+  it('offers Deactivate only on an active account', async () => {
+    const active = await renderComponent(
+      <UserAdminDialogs controller={controllerFor({ id: 'u@x.org', displayName: 'U' })} />,
+    );
+    expect(deactivate()).toBeTruthy();
+    await active.unmount();
+    const gone = await renderComponent(
+      <UserAdminDialogs
+        controller={controllerFor({
+          id: 'u@x.org',
+          displayName: 'U',
+          deactivatedAt: '2026-11-17T10:00:00Z',
+        })}
+      />,
+    );
+    expect(deactivate()).toBeUndefined();
+    await gone.unmount();
+  });
+});
+
 describe('the create dialog', () => {
   const open = (projectId) => {
     const c = controllerFor({ id: 'u@x.org', displayName: 'U' });

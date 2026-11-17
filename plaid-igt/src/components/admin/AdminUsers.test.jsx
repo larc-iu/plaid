@@ -77,3 +77,27 @@ describe('an account has an address', () => {
     await unmount();
   });
 });
+
+// H12-6: a deactivated account's menu offered a password reset link, which the
+// server refuses until the account is reactivated.
+describe('a deactivated account', () => {
+  it('is offered Reactivate and no password reset link', async () => {
+    const client = fakeClient();
+    client.users.list = vi.fn(async () => [
+      { id: 'gone@example.com', displayName: 'Gone', deactivatedAt: '2026-11-17T10:00:00Z' },
+    ]);
+    const { container, step, unmount } = await at('/admin?tab=users', client);
+    await step(async () => {});
+    const trigger = container.querySelector('button[aria-label="Account actions"]');
+    await step(() => {
+      trigger.focus();
+      trigger.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    });
+    const items = [...document.querySelectorAll('[role="menuitem"]')].map((i) =>
+      i.textContent.trim(),
+    );
+    expect(items).toContain('Reactivate');
+    expect(items).not.toContain('Create password reset link');
+    await unmount();
+  });
+});

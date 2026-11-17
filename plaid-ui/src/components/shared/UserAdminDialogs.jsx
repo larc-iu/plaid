@@ -207,14 +207,18 @@ export const UserAdminDialogs = ({ controller }) => {
                 </div>
               </div>
               <DialogFooter className="sm:justify-between">
-                <Button
-                  variant="outline"
-                  className={DELETE_BUTTON_CLASS}
-                  onClick={() => setDeactivateTarget(editingUser)}
-                  disabled={editingUser.id === currentUser?.id || savingEdit}
-                >
-                  Deactivate
-                </Button>
+                {editingUser.deactivatedAt ? (
+                  <span />
+                ) : (
+                  <Button
+                    variant="outline"
+                    className={DELETE_BUTTON_CLASS}
+                    onClick={() => setDeactivateTarget(editingUser)}
+                    disabled={editingUser.id === currentUser?.id || savingEdit}
+                  >
+                    Deactivate
+                  </Button>
+                )}
                 <div className="flex gap-2">
                   <Button
                     variant="outline"

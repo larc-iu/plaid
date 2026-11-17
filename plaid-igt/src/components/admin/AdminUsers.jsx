@@ -127,12 +127,14 @@ export const AdminUsers = ({ client, currentUser }) => {
               <Link to={withUser(u.id)}>Open</Link>
             </DropdownMenuItem>
             <DropdownMenuItem onSelect={() => userAdmin.startEdit(u)}>Edit user</DropdownMenuItem>
-            <DropdownMenuItem
-              disabled={userAdmin.resetting}
-              onSelect={() => userAdmin.createResetLink(u)}
-            >
-              Create password reset link
-            </DropdownMenuItem>
+            {!u.deactivatedAt && (
+              <DropdownMenuItem
+                disabled={userAdmin.resetting}
+                onSelect={() => userAdmin.createResetLink(u)}
+              >
+                Create password reset link
+              </DropdownMenuItem>
+            )}
             {u.deactivatedAt && (
               <DropdownMenuItem onSelect={() => userAdmin.activateUser(u)}>
                 Reactivate
