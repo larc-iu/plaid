@@ -41,7 +41,10 @@ const scopeRank = (entry) => {
   return SCOPE_RANK[h.scope] ?? 3;
 };
 
-const sortIlg = (mapping) =>
+/** Whether two mapping lines are in the same scope, so may trade places. */
+export const sameScope = (a, b) => scopeRank(a) === scopeRank(b);
+
+export const sortIlg = (mapping) =>
   (mapping || [])
     .map((entry, i) => [entry, i])
     .sort(([a, ai], [b, bi]) => scopeRank(a) - scopeRank(b) || ai - bi)

@@ -75,4 +75,24 @@ describe('UmrSettings', () => {
     expect(save().disabled).toBe(false);
     await r.unmount();
   });
+
+  // H19-2: every reader keeps the lines in order of scope, so an arrow that
+  // moved a line past one of another scope showed an order Save then threw
+  // away. The arrows move a line only among the lines of its scope.
+  it('moves a line only among the lines of its own scope', async () => {
+    const r = await renderComponent(
+      <MemoryRouter initialEntries={['/projects/p1']}>
+        <Routes>
+          <Route path="/projects/:projectId" element={<UmrSettings />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    await r.step(async () => {});
+    const arrows = (label) =>
+      [...r.container.querySelectorAll(`button[aria-label="${label}"]`)].map((b) => b.disabled);
+    // Morphemes and Morpheme Gloss share a scope, Sentence Gloss has its own.
+    expect(arrows('Move up')).toEqual([true, false, true]);
+    expect(arrows('Move down')).toEqual([false, true, true]);
+    await r.unmount();
+  });
 });

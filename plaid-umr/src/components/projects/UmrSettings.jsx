@@ -5,7 +5,14 @@ import { useAuth } from '../../contexts/AuthContext.jsx';
 import { useManagedProject } from '@ui/hooks/useManagedProject.js';
 import { expectStored, isConfigConflict } from '@ui/domain/configCells.js';
 import { getUmrLayerInfo, readIlgConfig, UMR_NAMESPACE } from '../../utils/umrLayerUtils.js';
-import { HEADERS, layerGone, proposeIlg, resolveIlg } from '../../domain/ilg.js';
+import {
+  HEADERS,
+  layerGone,
+  proposeIlg,
+  resolveIlg,
+  sameScope,
+  sortIlg,
+} from '../../domain/ilg.js';
 import { notifySuccess, notifyError } from '../../utils/feedback.jsx';
 import { Button } from '@ui/components/ui/button';
 import { Input } from '@ui/components/ui/input';
@@ -67,38 +74,43 @@ export const UmrSettings = () => {
   }, [layerInfo, rows]);
 
   // A row that stops being "stored" needs a header; the first that fits its
-  // source's scope is a start.
+  // source's scope is a start. The rows stay in order of scope, as every
+  // reader keeps them (ilg.js), so a row given a header of another scope
+  // moves to its lines (H19-2).
   const update = (i, patch) =>
     setRows((r) =>
-      r.map((row, k) => {
-        if (k !== i) return row;
-        const next = { ...row, ...patch };
-        if (next.source !== STORED && !next.header) {
-          const scope =
-            next.source === 'morphemes'
-              ? 'morpheme'
-              : layerInfo.glossLayers.find((g) => `layer:${g.layer.id}` === next.source)?.scope;
-          next.header = (HEADERS.find((h) => h.scope === scope) || HEADERS[3]).key;
-        }
-        return next;
-      }),
+      sortIlg(
+        r.map((row, k) => {
+          if (k !== i) return row;
+          const next = { ...row, ...patch };
+          if (next.source !== STORED && !next.header) {
+            const scope =
+              next.source === 'morphemes'
+                ? 'morpheme'
+                : layerInfo.glossLayers.find((g) => `layer:${g.layer.id}` === next.source)?.scope;
+            next.header = (HEADERS.find((h) => h.scope === scope) || HEADERS[3]).key;
+          }
+          return next;
+        }),
+      ),
     );
   const incomplete = rows.some((r) => r.source !== STORED && !r.header);
   const changed = JSON.stringify(rows) !== JSON.stringify(seeded);
+  // Only among the lines of one scope: past another, Save would put it back.
+  const canMove = (i, d) => i + d >= 0 && i + d < rows.length && sameScope(rows[i], rows[i + d]);
   const move = (i, d) =>
     setRows((r) => {
       const j = i + d;
-      if (j < 0 || j >= r.length) return r;
+      if (j < 0 || j >= r.length || !sameScope(r[i], r[j])) return r;
       const next = [...r];
       [next[i], next[j]] = [next[j], next[i]];
       return next;
     });
   const remove = (i) => setRows((r) => r.filter((_, k) => k !== i));
   const add = () =>
-    setRows((r) => [
-      ...r,
-      { header: 'word-gloss', lang: 'und', source: sources[0]?.value || STORED },
-    ]);
+    setRows((r) =>
+      sortIlg([...r, { header: 'word-gloss', lang: 'und', source: sources[0]?.value || STORED }]),
+    );
 
   const save = async () => {
     setSaving(true);
@@ -208,7 +220,7 @@ export const UmrSettings = () => {
                   size="icon"
                   aria-label="Move up"
                   onClick={() => move(i, -1)}
-                  disabled={i === 0}
+                  disabled={!canMove(i, -1)}
                 >
                   <ArrowUp className="h-4 w-4" />
                 </Button>
@@ -218,7 +230,7 @@ export const UmrSettings = () => {
                   size="icon"
                   aria-label="Move down"
                   onClick={() => move(i, 1)}
-                  disabled={i === rows.length - 1}
+                  disabled={!canMove(i, 1)}
                 >
                   <ArrowDown className="h-4 w-4" />
                 </Button>
