@@ -127,4 +127,21 @@ describe('UD customization', () => {
     expect(managed.current.fetchProject).not.toHaveBeenCalled();
     await view.unmount();
   });
+
+  // REV-HFU-4: a colour whose tag is no longer listed has no box to correct
+  // it in, so it does not hold Save back.
+  it('saves past a bad colour on a tag no longer listed', async () => {
+    feedback.notifyError.mockClear();
+    const view = await mount();
+    await view.step(() => type(view.container.querySelector('[aria-label="NOUN hex"]'), '#12'));
+    await view.step(() => view.container.querySelector('[aria-label="Remove NOUN"]').click());
+    expect(view.container.querySelector('[aria-label="NOUN hex"]')).toBeNull();
+    await view.step(async () => {
+      button(view.container, 'Save').click();
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    const messages = feedback.notifyError.mock.calls.map((c) => String(c[0]));
+    expect(messages.some((m) => m.includes('is not a color'))).toBe(false);
+    await view.unmount();
+  });
 });

@@ -250,10 +250,14 @@ export const ProjectCustomization = () => {
   // keeps every change whose setting did not change there.
   const handleSave = async () => {
     // A hex box holding something that is not a color is refused here, by
-    // name: saved, it left the label uncolored with nothing to say why.
-    const notColor = [...Object.entries(uposColors), ...Object.entries(deprelColors)].find(
-      ([, color]) => color && !isHexColor(color),
-    );
+    // name: saved, it left the label uncolored with nothing to say why. Only
+    // the boxes on the page: a tag no longer listed has none to correct it in,
+    // and its color is drawn nowhere (REV-HFU-4).
+    const drawn = [
+      ...[...new Set(uposVocab)].map((tag) => [tag, uposColors[tag]]),
+      ...[...new Set(deprelVocab.map(baseRel))].map((rel) => [rel, deprelColors[rel]]),
+    ];
+    const notColor = drawn.find(([, color]) => color && !isHexColor(color));
     if (notColor) {
       notifyError(
         `${notColor[0]}: "${notColor[1]}" is not a color of the form #RRGGBB.`,
