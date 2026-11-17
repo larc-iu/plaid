@@ -450,6 +450,26 @@
       (assert-status 422 r)
       (is (= ["det"] (-> r :body :violations first :parts))))))
 
+(deftest value-set-on-a-second-relation-layer-lets-a-null-suppressor-through
+  ;; H17-2, core's half: plaid-ud's enhanced graph is a second relation layer
+  ;; on Lemma holding extra edges and suppressors (value null, metadata
+  ;; suppress true, over a pair the tree joins). A closed list declared on it
+  ;; refuses a script's off-list label and lets every suppressor through.
+  (let [{:keys [lemma span] :as s} (setup!)
+        enhanced (id (create-relation-layer admin-request lemma "Enhanced"))
+        _ (assert-status 201 (rel! s "cat" "sat" "nsubj"))
+        rel (fn [src tgt value & [meta]]
+              (call :post "/api/v1/relations" (cond-> {:relation-layer-id enhanced :source (span src)
+                                                       :target (span tgt) :value value}
+                                                meta (assoc :metadata meta))))]
+    (assert-status 200 (declare! "relation" enhanced "ud" [{:type "value-set" :values ["nsubj" "obj" "conj"]
+                                                            :delimiters ":" :parts "first"}]))
+    (let [r (rel "Dogs" "sat" "bogus")]
+      (assert-status 422 r)
+      (is (= ["bogus"] (-> r :body :violations first :parts))))
+    (assert-status 201 (rel "cat" "sat" nil {"suppress" true}))
+    (assert-status 201 (rel "Dogs" "ran" "conj:and"))))
+
 (deftest an-import-keeps-unlisted-values
   (let [{:keys [lemma] :as s} (setup!)
         sid ((:span s) "cat")
