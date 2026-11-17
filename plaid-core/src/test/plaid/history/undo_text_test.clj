@@ -905,6 +905,49 @@
           (pr-str {:small-ms small :large-ms large}))
     (is (< large (* 10 (max small 250))) (str "1,900 words " (long small) " ms, 9,500 words " (long large) " ms"))))
 
+(defn- segmented-undo-ms
+  "A text of `n` words, each with one stored morpheme under it, and a unit
+  that analyses every word again (the stored morpheme takes a form, a second
+  morpheme is made over the word): the milliseconds of its undo's dry run
+  (2n rows, n morpheme ties), the best of two."
+  [n]
+  (let [proj (create-test-project admin-request (str "Seg" n))
+        d (create-test-document admin-request proj "D")
+        tl (id (create-text-layer admin-request proj "Text"))
+        text (id (create-text admin-request tl d (str/join " " (repeat n "ab"))))
+        word (id (create-token-layer-opts admin-request tl "Words" {:overlap-mode "non-overlapping"}))
+        morph (id (create-token-layer-opts admin-request tl "Morphs" {:overlap-mode "any" :parent-token-layer-id word}))
+        span (fn [i] {:text text :begin (* 3 i) :end (+ 2 (* 3 i))})
+        _ (doseq [c (partition-all 1000 (range n))]
+            (assert-created (bulk-create-tokens admin-request (mapv #(assoc (span %) :token-layer-id word) c))))
+        stored (vec (mapcat (fn [c] (let [res (bulk-create-tokens admin-request (mapv #(assoc (span %) :token-layer-id morph :precedence 1) c))]
+                                      (assert-created res)
+                                      (:ids (:body res))))
+                            (partition-all 1000 (range n))))
+        _ (is (= n (count stored)) "every stored morpheme made")
+        g (str (random-uuid))
+        r (in-group admin-request g)
+        _ (doseq [c (partition-all 1000 stored)]
+            (assert-ok (bulk-update-tokens r (mapv (fn [m] {:id m :metadata [{:op "set" :path ["form"] :value "a"}]}) c))))
+        _ (doseq [c (partition-all 1000 (range n))]
+            (assert-created (bulk-create-tokens r (mapv #(assoc (span %) :token-layer-id morph :precedence 2 :metadata {"form" "b"}) c))))
+        timed (fn [] (let [t (System/nanoTime)
+                           resp (undo-entry admin-request g :dry-run true)]
+                       (is (= 200 (:status resp)))
+                       (is (= (* 2 n) (:rows (:body resp))))
+                       (is (zero? (:skipped-count (:body resp))))
+                       (/ (- (System/nanoTime) t) 1e6)))]
+    (min (timed) (timed))))
+
+(deftest the-morpheme-tie-costs-no-more-than-its-rows
+  ;; REV-HFC-3: a unit that analyses 1,900 and 9,500 words again (3,800 and
+  ;; 19,000 rows, one tie per word). Five times the rows may cost at most ten
+  ;; times the time, as an-undos-cost-grows-no-faster-than-its-rows bounds the
+  ;; offset ties.
+  (let [small (segmented-undo-ms 1900)
+        large (segmented-undo-ms 9500)]
+    (is (< large (* 10 (max small 250))) (str "1,900 words " (long small) " ms, 9,500 words " (long large) " ms"))))
+
 ;; ============================================================
 ;; The neighbours: one row written more than once by the unit
 ;; ============================================================
