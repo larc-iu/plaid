@@ -63,4 +63,18 @@ describe('ProjectSearch', () => {
     expect(view.container.textContent).not.toContain('Story');
     await view.unmount();
   });
+
+  // H5-4: Bulk Edit matches the text as typed, spaces included, and the
+  // guide says it matches the way Search does.
+  it('searches for the text as typed, its spaces included', async () => {
+    runHitsSearch.mockResolvedValue(HITS);
+    const view = await renderComponent(
+      <MemoryRouter>
+        <ProjectSearch project={{ id: 'p1', vocabs: [] }} projectId="p1" client={{}} />
+      </MemoryRouter>,
+    );
+    await search(view, ' the ');
+    expect(runHitsSearch.mock.calls.at(-1)[4]).toBe(' the ');
+    await view.unmount();
+  });
 });

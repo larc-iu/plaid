@@ -92,12 +92,12 @@ export const ProjectSearch = ({ project, projectId, client }) => {
   const runSearch = async (nextMode = mode) => {
     if (!queryText.trim() || !domain || busy) return;
     setBusy(true);
-    remember(queryText.trim(), matchType, domainId, nextMode);
+    remember(queryText, matchType, domainId, nextMode);
     try {
       const r =
         nextMode === 'freq'
-          ? await runFreqSearch(client, domain, queryText.trim(), matchType)
-          : await runHitsSearch(client, project, layerInfo, domain, queryText.trim(), matchType);
+          ? await runFreqSearch(client, domain, queryText, matchType)
+          : await runHitsSearch(client, project, layerInfo, domain, queryText, matchType);
       setResult(r);
     } catch (err) {
       // The box and the URL now say this query, so the last one's hits go.
