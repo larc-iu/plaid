@@ -104,14 +104,18 @@ export const DocumentMetadataManager = ({
       return;
     }
 
-    await saveChanges([...enabledFields, { name: trimmedName, enabled: true, isCustom: true }]);
+    const saved = await saveChanges([
+      ...enabledFields,
+      { name: trimmedName, enabled: true, isCustom: true },
+    ]);
+    if (!saved) return;
 
     setNewFieldName('');
     notifySuccess(`Field “${trimmedName}” added`);
   };
 
   const handleDeleteCustomField = async (fieldName) => {
-    await saveChanges(enabledFields.filter((field) => field.name !== fieldName));
+    if (!(await saveChanges(enabledFields.filter((field) => field.name !== fieldName)))) return;
     notifyInfo(`Field “${fieldName}” removed`);
   };
 

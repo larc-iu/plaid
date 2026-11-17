@@ -67,7 +67,7 @@ export const OrthographiesManager = ({
       return;
     }
 
-    await saveChanges([...orthographies, { name: trimmedName, isBaseline: false }]);
+    if (!(await saveChanges([...orthographies, { name: trimmedName, isBaseline: false }]))) return;
 
     setNewOrthographyName('');
     notifySuccess(`Orthography “${trimmedName}” added`);
@@ -76,9 +76,10 @@ export const OrthographiesManager = ({
   // Orthographies (never the Baseline row) are found by name: two cannot
   // share one.
   const handleDeleteOrthography = async (orthographyName) => {
-    await saveChanges(
+    const saved = await saveChanges(
       orthographies.filter((orth) => orth.isBaseline || orth.name !== orthographyName),
     );
+    if (!saved) return;
 
     notifyInfo(`Orthography “${orthographyName}” removed`);
   };

@@ -55,13 +55,17 @@ export const useListManager = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialData]);
 
+  // Answers whether the list was saved. A refusal is reported here, so a
+  // caller only has to skip what it would say or clear on success.
   const save = async (next) => {
     try {
       if (onSaveChanges) await onSaveChanges({ [listKey]: next });
       setItems(next);
+      return true;
     } catch (error) {
       console.error(`Failed to save the ${noun}:`, error);
       report(error, `Failed to save the ${noun}`);
+      return false;
     }
   };
 
