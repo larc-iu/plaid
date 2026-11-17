@@ -132,6 +132,12 @@ export const AdminInvites = ({ client }) => {
       notifyError('Between 1 and 200.', 'Check the number of links');
       return;
     }
+    // Blank or 0 must not fall through to the server's default.
+    const ttlDays = Number(batch.ttlDays);
+    if (batch.ttlDays === '' || !Number.isInteger(ttlDays) || ttlDays < 1 || ttlDays > 365) {
+      notifyError('Between 1 and 365.', 'Check the expiry');
+      return;
+    }
     if (!batch.projectId) {
       notifyError('Choose a project, or No project.', 'Project required');
       return;
@@ -147,7 +153,7 @@ export const AdminInvites = ({ client }) => {
         // notes let a person be matched to the link they were handed.
         const inv = await client.invites.create({
           ...grant,
-          ttlDays: Number(batch.ttlDays) || undefined,
+          ttlDays,
           note,
         });
         links.push({ note, code: inv.code });

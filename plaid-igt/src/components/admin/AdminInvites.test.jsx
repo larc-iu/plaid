@@ -3,6 +3,16 @@ import { describe, it, expect, vi } from 'vitest';
 import { renderComponent, all, byText } from '@ui/test/renderComponent.jsx';
 import { ConfirmProvider } from '@ui/components/shared/ConfirmProvider';
 import { AdminInvites } from './AdminInvites';
+import { notifyError } from '@ui/lib/notify.js';
+
+vi.mock('@ui/lib/notify.js', () => ({ notifyError: vi.fn(), notifySuccess: vi.fn() }));
+
+// A controlled input takes a value through the native setter, or React
+// never sees the change.
+const typeInto = (el, value) => {
+  Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(el, value);
+  el.dispatchEvent(new Event('input', { bubbles: true }));
+};
 
 const fakeClient = () => ({
   invites: { list: vi.fn(async () => []) },
@@ -58,6 +68,30 @@ describe('the invite list', () => {
     expect(container.textContent).not.toContain('No invites.');
     expect(container.textContent).not.toMatch(/0 invites/);
     expect(container.textContent).toContain('Not loaded.');
+    await unmount();
+  });
+});
+
+describe('Create links expiry', () => {
+  // H12-5: 0 or a blank expiry quietly made links that last the server's
+  // default of 14 days.
+  it.each(['0', '', '366'])('refuses an expiry of "%s" days', async (ttl) => {
+    vi.mocked(notifyError).mockClear();
+    const client = fakeClient();
+    client.invites.create = vi.fn(async () => ({ code: 'c' }));
+    const { container, step, unmount } = await renderComponent(
+      <MemoryRouter initialEntries={['/admin?tab=invites']}>
+        <ConfirmProvider>
+          <AdminInvites client={client} />
+        </ConfirmProvider>
+      </MemoryRouter>,
+    );
+    await step(async () => byText(container, 'button', 'Create links').click());
+    await step(async () => typeInto(document.getElementById('invite-ttl'), ttl));
+    const dialog = document.querySelector('[role="dialog"]');
+    await step(async () => byText(dialog, 'button', 'Create').click());
+    expect(client.invites.create).not.toHaveBeenCalled();
+    expect(notifyError).toHaveBeenCalledWith('Between 1 and 365.', 'Check the expiry');
     await unmount();
   });
 });
