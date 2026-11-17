@@ -70,7 +70,7 @@ export const chrome = {
     if (!hasTokens) {
       // One muted line and the app's own outline button, as every other empty
       // state draws it. A document with no text is sent to Baseline (H16-6).
-      const [line, tab, label] = doc.body
+      const [line, tab, label] = /[^\s\u0085]/u.test(doc.body ?? '')
         ? ['No sentences. Split the text on the Tokenize tab.', 'tokenize', 'Go to Tokenize']
         : ['No text. Add it on the Baseline tab.', 'baseline', 'Go to Baseline'];
       return html` <div class="igt-island__empty">
