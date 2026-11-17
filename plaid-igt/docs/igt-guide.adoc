@@ -884,7 +884,7 @@ Where the assistant can look things up on the web, it also reads a PDF from a li
 == The panel
 
 The **Assistant** button in the header opens the same assistant in a panel beside whatever you are looking at, as does the handle on the right edge of the window.
-On a window too narrow for the panel, a document's header, a job's page and an open lexicon entry have an **Assistant** link to the **Assistant** tab instead.
+On a window too narrow for the panel, a job's page and an open lexicon entry have an **Assistant** link to the **Assistant** tab instead, and a document's header the assistant's mark beside **History**.
 The panel stays open as you move around, and it can be dragged wider or narrower.
 It picks up the last conversation you had in the project you are in and keeps it as you move from document to document.
 The panel's history lists your other conversations, and **Open in Assistant** moves the open one to the **Assistant** tab.

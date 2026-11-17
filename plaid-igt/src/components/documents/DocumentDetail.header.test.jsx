@@ -53,10 +53,17 @@ describe("a document's header", () => {
 
   it('links the Assistant tab on a narrow window, while an assistant is online', async () => {
     const v = await actions(800);
+    // The mark alone, named Assistant: the word beside History pushed the
+    // two onto a second line of the sticky strip at 768 px (REV-SVU-10).
     const links = all(v.container, 'a');
-    expect(links.map((a) => [a.textContent.trim(), a.getAttribute('href')])).toEqual([
-      ['Assistant', '/projects/p1?tab=assistant'],
-    ]);
+    expect(
+      links.map((a) => [
+        a.getAttribute('aria-label'),
+        a.textContent.trim(),
+        a.getAttribute('href'),
+      ]),
+    ).toEqual([['Assistant', '', '/projects/p1?tab=assistant']]);
+    expect(links[0].getAttribute('title')).toBe('Assistant');
     expect(v.container.textContent).not.toMatch(/job/i);
     await v.unmount();
     const none = await actions(800, []);
