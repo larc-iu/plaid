@@ -1050,9 +1050,11 @@ export const alignmentMutations = {
       ? at
       : segment.begin +
         ((segment.end - segment.begin) * (time - timeBegin)) / (timeEnd - timeBegin);
-    const cut = cuts.reduce((best, c) =>
-      Math.abs(c.at - wanted) < Math.abs(best.at - wanted) ? c : best,
-    );
+    // How far `wanted` is from a cut's gap, from the end of the word before
+    // it to the start of the next: none inside it (H10-1, a caret right after
+    // a one-letter word is in the gap after it).
+    const off = (c) => Math.max(0, c.leftEnd - wanted, wanted - c.at);
+    const cut = cuts.reduce((best, c) => (off(c) < off(best) ? c : best));
     // The second half starts at `time` and keeps the time-order rule like any
     // other new segment: cross-talk that starts earlier with its text after
     // this one would leave both segments' times unchangeable.

@@ -121,6 +121,16 @@ describe('splitting a segment', () => {
     ).toEqual([3, 7, 9, 14, 18, 21]);
   });
 
+  // H10-1: a caret right after a one-letter word was 1 from the cut before
+  // the word and 1 from the cut after it, and the earlier won the tie.
+  it('takes the gap the caret is in, after a one-letter word too', () => {
+    const doc = makeIgtDoc({ raw: annotated() });
+    // "he saw a| fish": the caret at 8, in the gap after "a".
+    expect(doc.segmentSplitPlan('seg-1', { time: 4, at: 8 })).toMatchObject({ at: 9 });
+    // "he saw |a fish": the caret at 7, in the gap before it.
+    expect(doc.segmentSplitPlan('seg-1', { time: 4, at: 7 })).toMatchObject({ at: 7 });
+  });
+
   it('cuts between words written without spaces', () => {
     const body = '我们走了';
     const words = [
