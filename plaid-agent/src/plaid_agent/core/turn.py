@@ -8,7 +8,7 @@ import time
 import traceback
 from typing import Any, Dict, List, Optional
 
-from plaid_client import ServiceCancelled
+from plaid_client import ServiceCancelled, ServiceRequestGone
 from plaid_client.http import PlaidAPIError
 from plaid_client.service import requester_message
 
@@ -23,8 +23,8 @@ from .agent import (TurnCancelled, TurnFailed, turn_reply_round, turn_trace, con
 from .files import Attachments, FileKeeper
 from .garble import seed
 from .guidelines import in_context as guidelines_in_context
-from .conversation import (assistant_item, error_item, held_transcript, proposed_changes, prune, record_budget,
-                           turn_ending)
+from .conversation import (CONNECTION_LOST_LINE, assistant_item, error_item, held_transcript, proposed_changes, prune,
+                           record_budget, turn_ending)
 from .rounds import RoundKeeper
 from .plan import outcome_unknown, waiting_plan
 from .web import session_for
@@ -220,14 +220,21 @@ class Turn:
             # sending it again (`rewind_for_retry`). What the turn did before it
             # stopped stays on the item, for the record.
             steps, partial = turn_trace(e)
+            # The server answered 404 for the request (`gone`): its connection
+            # to this assistant dropped and it ended the request. Nobody pressed
+            # Stop, so it is an error the reader sends again with Retry, and
+            # the request is not answered (the server would refuse it).
+            gone = isinstance(e, ServiceRequestGone) or getattr(response_helper, 'gone', False) is True
             self._write(store, conv_id,
                         turn_ending(conv, transcript,
-                                    error_item('Stopped.', stopped=True, model=model, version=self.version,
+                                    error_item(CONNECTION_LOST_LINE if gone else 'Stopped.', stopped=not gone,
+                                               model=model, version=self.version,
                                                service=self.service_id, steps=steps, partial=partial,
                                                reply_round=turn_reply_round(e)),
                                     fit=fit),
                         request_id, model)
-            response_helper.complete({'kind': 'stopped'})
+            if not gone:
+                response_helper.complete({'kind': 'stopped'})
             return
         except Exception as e:  # noqa: BLE001 - whatever failed, the record must say so
             self._release(ws)

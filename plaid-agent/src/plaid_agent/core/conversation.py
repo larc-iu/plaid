@@ -1211,6 +1211,11 @@ def _is_message(m: Any, text: str) -> bool:
 
 LOST_LINE = 'No answer came back for this message.'
 
+#: A turn whose request the server no longer knew (the assistant's connection
+#: to it dropped and the server ended the request): an error the reader sends
+#: again with Retry, never a stop. A turn writes nothing in the project.
+CONNECTION_LOST_LINE = 'The connection to the assistant was lost before it finished. Nothing was changed.'
+
 
 def rewind_for_retry(conv: Dict[str, Any]) -> Optional[Tuple[Dict[str, Any], Dict[str, Any]]]:
     """What sending the user's last message again starts from, as

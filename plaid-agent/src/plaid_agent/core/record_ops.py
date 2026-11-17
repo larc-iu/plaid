@@ -327,7 +327,9 @@ class RecordOps:
             try:
                 ctx.helper.progress(2, 'Thinking…', recorded=True)
             except ServiceCancelled:
-                ctx.helper.cancelled = True
+                # Stopped (or gone) before the turn began: the helper still
+                # says so, and the turn records it at its first check.
+                pass
             try:
                 project = self.load_project(ctx.client, ctx.store.project_id)
             except ValueError as e:
