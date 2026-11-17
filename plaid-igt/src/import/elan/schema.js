@@ -471,13 +471,16 @@ export const groupValues = (group, values) =>
  */
 export function validateBatch(comparison, roles) {
   const problems = new Set();
+  // Each group's sentence tier names, compared between groups: one file may
+  // hold a sentence tier per speaker (W-Spch and K-Spch), which is no
+  // difference between files.
   const sentenceNames = new Set();
   let fromWords = true;
   for (const group of comparison.groups) {
     const own = groupRoles(group, roles);
     for (const p of validateRoles(group.nodes, own)) problems.add(p);
-    for (const n of group.nodes)
-      if (own[n.key] === ROLES.UTTERANCE) sentenceNames.add(nodeLabel(n));
+    const names = group.nodes.filter((n) => own[n.key] === ROLES.UTTERANCE).map(nodeLabel);
+    if (names.length) sentenceNames.add(JSON.stringify([...new Set(names)].sort()));
     fromWords = fromWords && writtenFromWords(group, own);
   }
   if (sentenceNames.size > 1 && !fromWords) {

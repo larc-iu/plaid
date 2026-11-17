@@ -990,6 +990,20 @@ describe('several tier trees in one file', () => {
     ]);
   });
 
+  it('passes the batch gate with both trees mapped, in a file of its own (H8-1)', () => {
+    // Two sentence tiers in ONE file read as "a different name in some files",
+    // and the import stayed off with no word tier to choose.
+    const result = compareSchemas([readEaf(twoTrees(), 'x.eaf')]);
+    const key = (name) => result.nodes.find((n) => n.baseName === name).key;
+    const roles = {
+      ...result.suggested,
+      [key('K-Spch')]: ROLES.UTTERANCE,
+      [key('K-ft')]: ROLES.SENTENCE_FIELD,
+    };
+    expect(validateBatch(result, roles)).toEqual([]);
+    expect(buildElanBatch(result, roles).documents[0].body).toBe('primero\nsegundo\ntercero');
+  });
+
   it('lets two tiers be renamed onto one field, and asks for that layer once', () => {
     const parsed = [readEaf(twoTrees(), 'x.eaf')];
     const { nodes } = compareSchemas(parsed);
