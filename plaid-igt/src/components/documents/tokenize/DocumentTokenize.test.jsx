@@ -82,6 +82,56 @@ describe('the splitter', () => {
   });
 });
 
+// H1-5, H16-4: the split points sat between code points, so a letter and
+// its combining marks could be cut apart, leaving a word that starts with a
+// lone mark. They sit between the letters a reader sees (grapheme clusters).
+describe('the split points', () => {
+  const lettersOf = async (content, splitToken = vi.fn()) => {
+    const word = { id: 'w2', begin: 10, end: 10 + [...content].length, content, isToken: true };
+    const view = await mount(
+      {},
+      { piece: word, sentence: { id: 's1', pieces: [word] }, ops: { splitToken } },
+    );
+    await view.step(() => click(view.container.querySelector('.token')));
+    const letters = [...view.container.querySelectorAll('.splitter-char')].map(
+      (e) => e.textContent,
+    );
+    const points = view.container.querySelectorAll('.splitter-split-point');
+    return { view, letters, points };
+  };
+
+  it('keeps a letter with its combining marks', async () => {
+    const a = await lettersOf('q\u0313\u02b7ala');
+    expect(a.letters).toEqual(['q\u0313', '\u02b7', 'a', 'l', 'a']);
+    await a.view.unmount();
+    const b = await lettersOf('\u0627\u0644\u062f\u064e\u0651\u0631\u0652\u0633\u064e');
+    expect(b.letters).toEqual([
+      '\u0627',
+      '\u0644',
+      '\u062f\u064e\u0651',
+      '\u0631\u0652',
+      '\u0633\u064e',
+    ]);
+    await b.view.unmount();
+  });
+
+  it('splits after the whole letter, in code points', async () => {
+    const splitToken = vi.fn();
+    const { view, points } = await lettersOf('x\u0331ach', splitToken);
+    expect(points.length).toBe(3);
+    await view.step(() => click(points[0]));
+    // splitToken takes the offset of the last code point of the left half.
+    expect(splitToken).toHaveBeenCalledWith('w2', 1);
+    await view.unmount();
+  });
+
+  it('does not open on a word of one letter with a mark', async () => {
+    const { view } = await lettersOf('x\u0331');
+    expect(view.container.querySelector('.splitter-box')).toBeNull();
+    await view.unmount();
+  });
+});
+
 // The splitter closed only when the pointer left the word, so a pointer
 // resting on it kept the scissors up and a Ctrl+click there landed on a letter.
 describe('Escape on the splitter', () => {

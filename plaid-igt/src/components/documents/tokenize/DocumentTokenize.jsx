@@ -609,7 +609,7 @@ export function TokenComponent({
       return;
     }
 
-    if (piece.content.length > 1) {
+    if (lettersOf(piece.content).length > 1) {
       setIsSplitting(true);
     }
   };
@@ -677,7 +677,19 @@ export function TokenComponent({
   );
 }
 
-// Token splitter: click between two chars to split the word at that offset.
+// The letters a reader sees in a word (grapheme clusters), so a letter keeps
+// its combining marks, each with the code-point offset of its last code point
+// in the word, which is what splitToken takes for a split after it.
+const GRAPHEMES = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
+const lettersOf = (content) => {
+  let end = 0;
+  return Array.from(GRAPHEMES.segment(content || ''), ({ segment }) => {
+    end += [...segment].length;
+    return { text: segment, last: end - 1 };
+  });
+};
+
+// Token splitter: click between two letters to split the word there.
 function TokenSplitter({ ops, token, close }) {
   async function handleTokenSplit(e, wordOffset) {
     e.stopPropagation();
@@ -698,14 +710,14 @@ function TokenSplitter({ ops, token, close }) {
   // The letters are boxes in a flex row, which orders them by its direction,
   // so the box takes the word's own: a Latin word or a number in an Arabic
   // sentence reads left to right, as it does in the row around it.
-  const chars = Array.from(token.content);
+  const letters = lettersOf(token.content);
   return (
     <span className="splitter-box" dir="auto" onMouseLeave={close}>
-      {chars.map((char, index) => (
-        <div key={token.begin + index} className="splitter-char-container">
-          <span className="splitter-char">{char}</span>
-          {index < chars.length - 1 && (
-            <div className="splitter-split-point" onClick={(e) => handleTokenSplit(e, index)}>
+      {letters.map((letter, index) => (
+        <div key={token.begin + letter.last} className="splitter-char-container">
+          <span className="splitter-char">{letter.text}</span>
+          {index < letters.length - 1 && (
+            <div className="splitter-split-point" onClick={(e) => handleTokenSplit(e, letter.last)}>
               <Scissors className="splitter-icon" size={12} />
             </div>
           )}
