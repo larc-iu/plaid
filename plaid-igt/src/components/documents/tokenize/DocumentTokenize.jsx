@@ -685,12 +685,20 @@ export function TokenComponent({
 // skin-tone modifier are neither, so a point is offered between them. Each
 // letter carries the code-point offset of its last code point in the word,
 // which is what splitToken takes for a split after it.
-const JOINS_BEFORE = /^[\p{M}\u200d\ufe00-\ufe0f\u{e0100}-\u{e01ef}]$/u;
+const joinsBefore = (cp) => {
+  const n = cp.codePointAt(0);
+  return (
+    /\p{M}/u.test(cp) ||
+    n === 0x200d ||
+    (n >= 0xfe00 && n <= 0xfe0f) ||
+    (n >= 0xe0100 && n <= 0xe01ef)
+  );
+};
 const lettersOf = (content) => {
   const letters = [];
   let prev = null;
   Array.from(content || '').forEach((cp, i) => {
-    if (letters.length && (JOINS_BEFORE.test(cp) || prev === '\u200d')) {
+    if (letters.length && (joinsBefore(cp) || prev === '\u200d')) {
       const last = letters[letters.length - 1];
       last.text += cp;
       last.last = i;
