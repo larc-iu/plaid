@@ -9,7 +9,14 @@
 import { useMemo, useState } from 'react';
 import { readEaf } from '@/import/elan/readEaf';
 import { readTextFile } from '@ui/lib/textFile.js';
-import { compareSchemas, validateBatch, ROLES, SCOPE_OF_ROLE } from '@/import/elan/schema';
+import {
+  canonicalOf,
+  compareSchemas,
+  nearMissesUnder,
+  validateBatch,
+  ROLES,
+  SCOPE_OF_ROLE,
+} from '@/import/elan/schema';
 import { buildElanBatch, defaultFieldName, matchMediaFiles } from '@/import/elan/buildDocuments';
 import { fieldWorksFieldNames } from '@/import/elan/tierNaming';
 import { readyRecordings } from '@/utils/readyRecordings';
@@ -119,15 +126,6 @@ export function useElanBatch({
     );
   };
 
-  // The tiers a set of merge decisions folds together, as compareSchemas takes
-  // them: null when nothing has been decided.
-  const canonicalOf = (choices) => {
-    const merged = new Map(
-      Object.entries(choices || {}).filter(([, v]) => v !== 'separate' && v !== undefined),
-    );
-    return merged.size ? merged : null;
-  };
-
   // Take a parsed batch. Its near misses are what it reads like before any
   // of them is decided.
   const adoptBatch = (parsed) => {
@@ -139,10 +137,13 @@ export function useElanBatch({
   };
 
   /** Re-read the batch under a new set of merge decisions. */
+  // A pair under parents that read alike can be merged once the parents are
+  // (nearMissesUnder), and a merge that no longer can be is undecided again.
   const chooseNearMiss = (fold, choice) => {
-    const choices = { ...nearMissChoices, [fold]: choice };
-    setNearMissChoices(choices);
-    applySchema(compareSchemas(files, canonicalOf(choices)));
+    const under = nearMissesUnder(files, nearMissGroups, { ...nearMissChoices, [fold]: choice });
+    setNearMissGroups(under.groups);
+    setNearMissChoices(under.choices);
+    applySchema(compareSchemas(files, canonicalOf(under.choices)));
   };
 
   /**
@@ -197,13 +198,15 @@ export function useElanBatch({
     // The merge decisions stand for every pair the batch still has: dropping
     // them would un-fold the tiers the mapping is filed under.
     const folds = new Set(result.nearMisses.map((g) => g.fold));
-    const choices = Object.fromEntries(
-      Object.entries(nearMissChoices).filter(([fold]) => folds.has(fold)),
+    const under = nearMissesUnder(
+      kept,
+      result.nearMisses,
+      Object.fromEntries(Object.entries(nearMissChoices).filter(([fold]) => folds.has(fold))),
     );
-    const canonical = canonicalOf(choices);
+    const canonical = canonicalOf(under.choices);
     setFiles(kept);
-    setNearMissGroups(result.nearMisses);
-    setNearMissChoices(choices);
+    setNearMissGroups(under.groups);
+    setNearMissChoices(under.choices);
     applySchema(canonical ? compareSchemas(kept, canonical) : result);
   };
 

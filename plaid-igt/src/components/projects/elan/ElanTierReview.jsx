@@ -106,7 +106,10 @@ const NearMisses = ({ groups, choices, undecided, editable, onChoose }) => (
           <span className="font-medium">{g.names.join(' / ')}</span>
           <span className="text-muted-foreground">
             differ only in {g.differsBy}
-            {!g.mergeable && ', but ELAN gives them different types, so they cannot be merged'}
+            {!g.mergeable &&
+              (g.parentsDiffer
+                ? ', but their parent tiers differ, so they cannot be merged'
+                : ', but ELAN gives them different types, so they cannot be merged')}
           </span>
           <Select
             value={choices[g.fold] ?? ''}

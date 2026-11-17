@@ -223,15 +223,53 @@ function nearMisses(nodes) {
       // places in the tree, stay separate however they are spelled, and
       // offering to merge them would silently do nothing and leave two rows
       // reading alike, which is the thing this whole check exists to prevent.
-      const mergeable =
-        new Set(group.map((n) => `${n.typeRef}\u0000${n.parentKey ?? ''}`)).size === 1;
+      const sameType = new Set(group.map((n) => n.typeRef)).size === 1;
+      const mergeable = sameType && new Set(group.map((n) => n.parentKey ?? '')).size === 1;
       return {
         fold: foldName(names[0]),
         names,
         differsBy: differenceKind(names[0], names[1]),
         mergeable,
+        // Set only when the parents are what keeps them apart, which a merge
+        // of the parents can change (nearMissesUnder).
+        ...(sameType && !mergeable ? { parentsDiffer: true } : {}),
       };
     });
+}
+
+/**
+ * The tiers a set of merge decisions folds together, as compareSchemas takes
+ * them: null when nothing is merged.
+ */
+export const canonicalOf = (choices) => {
+  const merged = new Map(
+    Object.entries(choices || {}).filter(([, v]) => v !== 'separate' && v !== undefined),
+  );
+  return merged.size ? merged : null;
+};
+
+/**
+ * The near-miss `groups` a batch was read with, each with whether it can be
+ * merged under the other groups' `choices`: a pair whose parents read alike
+ * can be once its parents are merged. A merge chosen for a pair that no
+ * longer can be is dropped, so the pair is undecided again.
+ *
+ * @returns {{groups, choices}}
+ */
+export function nearMissesUnder(files, groups, choices) {
+  const kept = { ...choices };
+  for (;;) {
+    const now = groups.map((g) => {
+      const others = Object.fromEntries(Object.entries(kept).filter(([f]) => f !== g.fold));
+      const found = compareSchemas(files, canonicalOf(others)).nearMisses.find(
+        (x) => x.fold === g.fold,
+      );
+      return found ? { ...g, mergeable: found.mergeable, parentsDiffer: found.parentsDiffer } : g;
+    });
+    const lost = now.filter((g) => !g.mergeable && kept[g.fold] && kept[g.fold] !== 'separate');
+    if (!lost.length) return { groups: now, choices: kept };
+    for (const g of lost) delete kept[g.fold];
+  }
 }
 
 /** A stable string identifying a schema, for grouping files. */

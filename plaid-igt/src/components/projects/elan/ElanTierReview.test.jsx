@@ -53,6 +53,31 @@ describe('ElanTierReview while a run goes', () => {
   });
 });
 
+describe('a pair that cannot be merged', () => {
+  it('says what keeps it apart: the parents or the types (H8-5)', async () => {
+    const parents = { ...PAIR, mergeable: false, parentsDiffer: true };
+    view = await renderComponent(
+      <ElanTierReview
+        batch={batchWith({ nearMissGroups: [parents], undecidedNearMisses: [parents] })}
+        editable
+      />,
+    );
+    expect(view.container.textContent).toContain(
+      'differ only in case, but their parent tiers differ, so they cannot be merged',
+    );
+    expect(view.container.textContent).not.toContain('different types');
+    await view.unmount();
+    const types = { ...PAIR, mergeable: false };
+    view = await renderComponent(
+      <ElanTierReview
+        batch={batchWith({ nearMissGroups: [types], undecidedNearMisses: [types] })}
+        editable
+      />,
+    );
+    expect(view.container.textContent).toContain('ELAN gives them different types');
+  });
+});
+
 describe('a batch whose files fall into several tier trees', () => {
   it('names the other spellings of a row and the files it is in', async () => {
     const sentences = { ...NODE, aliases: ['A_phrase-segnum-en'], fileCount: 3 };

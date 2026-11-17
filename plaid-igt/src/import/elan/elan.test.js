@@ -7,6 +7,7 @@ import {
   suggestRoles,
   validateRoles,
   validateBatch,
+  nearMissesUnder,
   nodeLabel,
   ROLES,
 } from './schema.js';
@@ -1208,6 +1209,43 @@ describe('tier names differing only in case', () => {
         mergeable: false,
       },
     ]);
+  });
+
+  // H8-5: a child pair under a near-miss parent pair could never be merged,
+  // and read "ELAN gives them different types" though the types were one.
+  describe('a pair under a pair of parents that read alike', () => {
+    const story = (phrase, translation) =>
+      eafXml({
+        types: { utt: null, assoc: 'Symbolic_Association' },
+        tiers: [
+          { id: phrase, type: 'utt', anns: [['a1', 'hola', 0, 100]] },
+          { id: translation, type: 'assoc', parent: phrase, anns: [['t1', 'hi', 'a1', null]] },
+        ],
+      });
+    const files = () => [
+      readEaf(story('Phrase', 'Translation'), 'g1.eaf'),
+      readEaf(story('phrase', 'translation'), 'g2.eaf'),
+    ];
+
+    it('says the parents differ, not the types', () => {
+      const pair = compareSchemas(files()).nearMisses.find((g) => g.fold === 'translation');
+      expect(pair).toMatchObject({ mergeable: false, parentsDiffer: true });
+    });
+
+    it('can be merged once its parents are, and the merge goes when they part again', () => {
+      const groups = compareSchemas(files()).nearMisses;
+      const merged = nearMissesUnder(files(), groups, { phrase: 'Phrase' });
+      expect(merged.groups.find((g) => g.fold === 'translation').mergeable).toBe(true);
+
+      const both = { phrase: 'Phrase', translation: 'Translation' };
+      const built = compareSchemas(files(), new Map(Object.entries(both)));
+      expect(built.consistent).toBe(true);
+      expect(built.nodes.map((n) => n.baseName).sort()).toEqual(['Phrase', 'Translation']);
+
+      const parted = nearMissesUnder(files(), groups, { ...both, phrase: 'separate' });
+      expect(parted.groups.find((g) => g.fold === 'translation').mergeable).toBe(false);
+      expect(parted.choices).toEqual({ phrase: 'separate' });
+    });
   });
 
   it('catches near misses that are not about case at all', () => {
