@@ -647,9 +647,11 @@ export function planImport(parsedSentences, warnings = [], { existing = null } =
         addNode(key, node.concept, meta, pieceIndexes, null, unaligned ? index : null, aligned);
       });
       // An alignment line for a variable the graph does not have aligns
-      // nothing and is not kept, so the report says so (H19-3).
-      for (const v of ps.alignment?.keys() || []) {
-        if (!ps.graph.nodes.has(v)) {
+      // nothing and is not kept, so the report says so (H19-3). A `0-0` line
+      // aligns nothing in any case, and is not named (REV-HFU-6).
+      for (const [v, ranges] of ps.alignment || []) {
+        const real = (ranges || []).some(([a, b]) => a !== 0 || b !== 0);
+        if (real && !ps.graph.nodes.has(v)) {
           warnings.push(`Sentence ${shown(index)}: the alignment of ${v} dropped, no node ${v}.`);
         }
       }

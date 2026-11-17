@@ -115,11 +115,12 @@ describe('an alignment line for a variable no node has', () => {
   test('the report names it, as dropped', () => {
     const warnings = [];
     planImport(
-      parseUmrFile(file({ ...CAT, alignment: `${CAT.alignment}\ns1z: 1-1` })).sentences,
+      parseUmrFile(file({ ...CAT, alignment: `${CAT.alignment}\ns1z: 1-1\ns1y: 0-0` })).sentences,
       warnings,
     );
+    // REV-HFU-6: a `0-0` line aligns nothing, so nothing is dropped.
     assert.deepEqual(
-      warnings.filter((w) => /s1z/.test(w)),
+      warnings.filter((w) => /s1z|s1y/.test(w)),
       ['Sentence 1: the alignment of s1z dropped, no node s1z.'],
     );
   });
