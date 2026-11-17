@@ -10,6 +10,7 @@ waiting requester.
 import contextlib
 import json
 import logging
+import os
 import re
 import threading
 import time
@@ -167,6 +168,16 @@ _PERMANENT_STATUSES = frozenset({400, 401, 403, 404, 405, 422})
 #: it names the same process, so a restarted or second process of a service
 #: never inherits work it does not have. The JS twin is ``INSTANCE_ID``.
 INSTANCE_ID = str(uuid.uuid4())
+
+
+def _new_instance_id():
+    """A forked child is another process, so another instance."""
+    global INSTANCE_ID
+    INSTANCE_ID = str(uuid.uuid4())
+
+
+if hasattr(os, 'register_at_fork'):
+    os.register_at_fork(after_in_child=_new_instance_id)
 
 
 class ServiceRegistrationError(RuntimeError):

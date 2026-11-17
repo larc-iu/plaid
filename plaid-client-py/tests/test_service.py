@@ -1853,3 +1853,30 @@ def test_a_stop_asked_for_wins_over_a_lost_request(monkeypatch):
             pass
     finally:
         reg.stop()
+
+
+def test_a_forked_child_names_a_process_of_its_own():
+    # REV-SD-R2-4: a child of fork() is another process, so another instance.
+    import os
+    import pytest
+    from plaid_client import services as svc_mod
+    if not hasattr(os, 'fork'):
+        pytest.skip('no fork here')
+    parent = svc_mod.INSTANCE_ID
+    import warnings
+    read, write = os.pipe()
+    with warnings.catch_warnings():
+        # Other tests leave threads behind. The child only writes and exits.
+        warnings.simplefilter('ignore', DeprecationWarning)
+        child = os.fork()
+    if child == 0:
+        try:
+            os.write(write, svc_mod.INSTANCE_ID.encode())
+        finally:
+            os._exit(0)
+    os.close(write)
+    seen = os.read(read, 100).decode()
+    os.close(read)
+    os.waitpid(child, 0)
+    assert seen and seen != parent
+    assert svc_mod.INSTANCE_ID == parent
