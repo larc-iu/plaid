@@ -132,3 +132,31 @@ it('a paste over two words that starts with a letter of the first deletes both',
   expect(ids).not.toContain('w-1');
   expect(ids).not.toContain('w-2');
 });
+
+// H1-3: a text saved as whitespace only got one sentence over it, and the
+// lines pasted next joined that sentence, while the box said each line
+// becomes a sentence. A text with no letters before the save is cut per line
+// as a first save is.
+it('lines pasted over a text of whitespace only end one sentence per line', async () => {
+  for (const blank of ['\n', '   \n  ']) {
+    resetIds();
+    const raw = buildRawDoc({
+      body: blank,
+      words: [],
+      morphemes: [],
+      sentences: [{ id: 's-1', begin: 0, end: [...blank].length }],
+    });
+    const server = segmentServer(raw);
+    const doc = makeIgtDoc({ raw: structuredClone(server.stored), client: server.client });
+    const gaps = [{ start: 0, end: [...blank].length, value: 'Uno dos.\nTres cuatro.\nCinco.' }];
+    expect(await doc.editBaselineText({ base: blank, digest: server.digest, gaps })).toBe(true);
+    while (doc.isSaving) await new Promise((r) => setTimeout(r, 0));
+    expect(server.body).toBe('Uno dos.\nTres cuatro.\nCinco.');
+    expect(sentencesOf(server.stored)).toEqual([
+      [0, 9],
+      [9, 22],
+      [22, 28],
+    ]);
+    expect(sentencesOf(doc._raw)).toEqual(sentencesOf(server.stored));
+  }
+});

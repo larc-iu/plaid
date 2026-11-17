@@ -237,6 +237,9 @@ export const documentMutations = {
   async _saveBaselineEdit(textId, plan) {
     plan.forms ??= soleForms(this.layerInfo, this.body);
     plan.sentences ??= new Set((this.layerInfo.sentenceTokenLayer?.tokens || []).map((s) => s.id));
+    // A text of whitespace only, before the edit (H1-3): its one sentence is
+    // cut per line as a new text's is, as the Baseline tab's hint says.
+    plan.blank ??= !/[^\s\u0085]/u.test(this.body);
     if (await this._sendBaselineEdit(textId, plan)) await this._reloadInSend();
     await this._followSoleForms(plan.forms);
     const body = this.body;
@@ -247,11 +250,15 @@ export const documentMutations = {
       await this._afterBaselineEdit(SENTENCES_NOT_MADE, () =>
         this._client.tokens.bulkCreate(sentenceSeed(sentenceLayer.id, textId, body)),
       );
-    } else if (sentencesAfter.length === 1 && !plan.sentences.has(sentencesAfter[0].id)) {
+    } else if (
+      sentencesAfter.length === 1 &&
+      (plan.blank || !plan.sentences.has(sentencesAfter[0].id))
+    ) {
       // An edit that left the text none of its sentences (it took them all,
       // or they were never made and the edit made words) leaves the one the
       // server made over the whole text, which is cut into one sentence per
-      // line, as a new text's are. Each cut keeps the sentence on its left.
+      // line, as a new text's are, and so is the one sentence of a text that
+      // was whitespace only. Each cut keeps the sentence on its left.
       const cuts = sentenceSeed(sentenceLayer.id, textId, body)
         .slice(1)
         .map((s) => s.begin)
