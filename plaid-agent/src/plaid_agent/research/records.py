@@ -83,7 +83,8 @@ ERROR_CLASSES: List[Tuple[str, re.Pattern]] = [(name, re.compile(rx, re.I)) for 
     # where their role does not reach (the wording since the vocabulary home,
     # and before it "does not maintain the lexicon"), another project's
     # lexicon, a turn that read the web, a conversation planning elsewhere.
-    ('not-allowed', r'^Only a (writer or )?maintainer|does not maintain the lexicon|needs maintainer access|'
+    ('not-allowed', r'^Only a ([Ww]riter or )?[Mm]aintainer|needs write access|does not maintain the lexicon|'
+                    r'needs maintainer access|'
                     r'belongs to another project|'
                     r'cannot also plan changes|^This conversation plans changes in "'),
     # A value a closed list does not take.

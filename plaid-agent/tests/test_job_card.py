@@ -190,7 +190,8 @@ def test_a_reader_is_refused_at_staging_with_the_line_the_card_says():
         out = _draft(ws)
         assert out.startswith('Drafted the job card.') == may, (role, admin, out)
         if not may:
-            assert 'Starting a job needs write access.' in out and ws.job_card is None
+            assert out == ('Error: Only a Writer or Maintainer of this project can start a job, and the person you are '
+                           'acting for is not one. Tell them so.') and ws.job_card is None
 
 
 def test_a_turn_that_read_the_web_drafts_no_card_as_it_plans_no_change():

@@ -50,14 +50,14 @@ from .plan import (ANALYSIS, ENTRY_READ, KIND, LEXICON_MAINTAINER, LEXICON_WRITE
 # whoever asks, and is changed from its own project.
 # Which ops need which is the registry's (``lexicon_right``), and the lexicon an
 # op writes is its ``vocab_id`` or that of the entry it is placed at.
-MAINTAINER_ACTS = ('Only a maintainer of {project} can rename, merge, delete or restore entries of the lexicon '
+MAINTAINER_ACTS = ('Only a Maintainer of {project} can rename, merge, delete or restore entries of the lexicon '
                    '{lexicon}, and the person you are acting for is not one. Nothing was planned. Tell them a '
-                   'maintainer of that project has to make this change.')
-WRITER_ACTS = ('Only a writer or maintainer of {project} can change the lexicon {lexicon}, and the person you '
+                   'Maintainer of that project has to make this change.')
+WRITER_ACTS = ('Only a Writer or Maintainer of {project} can change the lexicon {lexicon}, and the person you '
                'are acting for is {role}. Nothing was planned.')
 BORROWED = ('The lexicon {lexicon} belongs to another project and is read only here: words link to its entries, '
             'and no entry is added or changed. Nothing was planned. Tell the user its entries are changed in its '
-            'own project, by a writer or maintainer of that project.')
+            'own project, by a Writer or Maintainer of that project.')
 
 # The kinds of field a staged value may be for besides an annotation field's
 # layer (Workspace.staged_values).
@@ -877,7 +877,7 @@ class Workspace(BaseWorkspace):
         if right == LEXICON_MAINTAINER:
             return MAINTAINER_ACTS.format(project=project, lexicon=qv(v['name']))
         return WRITER_ACTS.format(project=project, lexicon=qv(v['name']),
-                                  role='a reader' if role == 'reader' else 'not one')
+                                  role='a Reader' if role == 'reader' else 'not one')
 
     def lexicon_rights(self) -> Optional[str]:
         """What the overview says the user the turn acts for may change in
@@ -889,10 +889,10 @@ class Workspace(BaseWorkspace):
         if role == LEXICON_MAINTAINER or role not in (LEXICON_WRITER, 'reader') or self.requester_is_admin():
             return None
         if role == LEXICON_WRITER:
-            return ("The user is a writer here: in this project's own lexicons they may add entries and change what "
-                    'is stored on them, and only a maintainer of this project renames, merges, deletes or restores '
+            return ("The user is a Writer here: in this project's own lexicons they may add entries and change what "
+                    'is stored on them, and only a Maintainer of this project renames, merges, deletes or restores '
                     'entries.')
-        return "The user is a reader here: no lexicon entry can be added or changed for them."
+        return "The user is a Reader here: no change can be planned for them."
 
     def can_manage_vocab(self, v: dict) -> bool:
         """Whether the user the turn acts for may rename, merge or delete

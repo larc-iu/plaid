@@ -44,14 +44,15 @@ def _ws(column=None, admin=False, requester=USER, raw=None):
     return w
 
 
-MAINTAINER = ('Only a maintainer of "Demo" can rename, merge, delete or restore entries of the lexicon "Lexicon", '
-              'and the person you are acting for is not one. Nothing was planned. Tell them a maintainer of that '
+MAINTAINER = ('Only a Maintainer of "Demo" can rename, merge, delete or restore entries of the lexicon "Lexicon", '
+              'and the person you are acting for is not one. Nothing was planned. Tell them a Maintainer of that '
               'project has to make this change.')
-READER = ('Only a writer or maintainer of "Demo" can change the lexicon "Lexicon", and the person you are acting '
-          'for is a reader. Nothing was planned.')
+# A Reader of the project is refused anything (test_reader_refused_early.py).
+READER = ('Only a Writer or Maintainer of "Demo" can change anything in it, and the person you are acting for is '
+          'a Reader. Nothing was planned.')
 BORROWED = ('The lexicon "Lexicon" belongs to another project and is read only here: words link to its entries, '
             'and no entry is added or changed. Nothing was planned. Tell the user its entries are changed in its '
-            'own project, by a writer or maintainer of that project.')
+            'own project, by a Writer or Maintainer of that project.')
 
 # What only a maintainer of the home may do.
 MAINTAINER_CALLS = [
@@ -78,10 +79,10 @@ LINK_CALL = ('link_entry', {'document': 'Text 1', 'refs': ['s1.w3'], 'entry_form
 EXPECTED = {
     'HM': (None, None),
     'HW': (MAINTAINER, None),
-    'HR': (MAINTAINER, READER),
+    'HR': (READER, READER),
     'BM': (BORROWED, BORROWED),
     'BW': (BORROWED, BORROWED),
-    'BR': (BORROWED, BORROWED),
+    'BR': (READER, READER),
 }
 
 
@@ -169,7 +170,7 @@ def test_a_respelling_renames_only_the_headwords_the_user_may_rename(column, ren
     out = call_tool(w, 'respell_all', RESPELL)
     assert bool(applied(w).updates('vocab_items')) is renamed, out
     if note:
-        assert ('Headwords left as they are, since only a maintainer of the project a lexicon belongs to can '
+        assert ('Headwords left as they are, since only a Maintainer of the project a lexicon belongs to can '
                 'rename them: ' + note) in out
     else:
         assert 'Headwords left as they are' not in out
@@ -204,9 +205,9 @@ def test_the_prompt_and_the_overview_mark_a_borrowed_lexicon():
 
 @pytest.mark.parametrize('column, line', [
     ('HM', None),
-    ('HW', "The user is a writer here: in this project's own lexicons they may add entries and change what is "
-           'stored on them, and only a maintainer of this project renames, merges, deletes or restores entries.'),
-    ('HR', 'The user is a reader here: no lexicon entry can be added or changed for them.'),
+    ('HW', "The user is a Writer here: in this project's own lexicons they may add entries and change what is "
+           'stored on them, and only a Maintainer of this project renames, merges, deletes or restores entries.'),
+    ('HR', 'The user is a Reader here: no change can be planned for them.'),
 ])
 def test_the_overview_says_what_the_user_may_change_in_the_projects_lexicons(column, line):
     out = call_tool(_ws(column), 'project_overview', {})
@@ -303,9 +304,9 @@ TAGSET = {'action': 'edit', 'tagset': 'POS', 'lexicon': 'Lexicon', 'changes': {'
 
 @pytest.mark.parametrize('column, said', [
     ('HM', None),
-    ('HW', 'Only a maintainer of this project may change the tagsets of the lexicon "Lexicon", and the user is '
+    ('HW', 'Only a Maintainer of this project may change the tagsets of the lexicon "Lexicon", and the user is '
            'not one.'),
-    ('BM', 'The lexicon "Lexicon" belongs to another project, and its tagsets are changed there, by a maintainer '
+    ('BM', 'The lexicon "Lexicon" belongs to another project, and its tagsets are changed there, by a Maintainer '
            'of that project. Nothing was planned.'),
 ])
 def test_a_lexicons_tagsets_are_its_own_projects_maintainers(column, said):

@@ -164,8 +164,8 @@ def _active_facts(ws, job: Dict[str, Any]) -> str:
 
 
 #: A user who may not start a job (a reader): the card would be a dead end.
-READER_REFUSAL = ('Starting a job needs write access. Tell the user so, and that a writer of the project can start '
-                  'one.')
+READER_REFUSAL = ('Only a Writer or Maintainer of this project can start a job, and the person you are acting for is '
+                  'not one. Tell them so.')
 
 
 def _may_start(ws) -> bool:

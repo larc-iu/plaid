@@ -37,6 +37,14 @@ from plaid_agent.research.records import error_class, snake, turn_end, uuid7_tim
      'person you are acting for is not one.', 'not-allowed'),
     ('Error: Only a writer or maintainer of "P" can change the lexicon "L", and the person you are acting for is '
      'a reader. Nothing was planned.', 'not-allowed'),
+    # The page's role names since SVB B3, and a Reader refused anything.
+    ('Error: Only a Maintainer of "P" can rename, merge, delete or restore entries of the lexicon "L", and the '
+     'person you are acting for is not one.', 'not-allowed'),
+    ('Error: Only a Writer or Maintainer of "P" can change anything in it, and the person you are acting for is a '
+     'Reader. Nothing was planned.', 'not-allowed'),
+    ('Error: Only a Writer or Maintainer of this project can start a job, and the person you are acting for is '
+     'not one. Tell them so.', 'not-allowed'),
+    ('Error: Starting a job needs write access. Tell the user so', 'not-allowed'),
     ('Error: The lexicon "L" belongs to another project and is read only here: words link to its entries',
      'not-allowed'),
     ('Error: The lexicon "L" belongs to another project, and its tagsets are changed there', 'not-allowed'),

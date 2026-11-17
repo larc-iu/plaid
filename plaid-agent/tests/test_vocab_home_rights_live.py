@@ -47,12 +47,13 @@ MAINTAINER_CALLS = [
 
 
 def _maintainer(project):
-    return (f'Only a maintainer of "{project}" can rename, merge, delete or restore entries of the lexicon '
+    return (f'Only a Maintainer of "{project}" can rename, merge, delete or restore entries of the lexicon '
             '"Lexicon", and the person you are acting for is not one.')
 
 
 def _reader(project):
-    return f'Only a writer or maintainer of "{project}" can change the lexicon "Lexicon", and the person you are acting for is a reader.'
+    # A Reader of the project is refused anything (test_reader_refused_early.py).
+    return f'Only a Writer or Maintainer of "{project}" can change anything in it, and the person you are acting for is a Reader.'
 
 
 BORROWED = 'The lexicon "Lexicon" belongs to another project and is read only here'
@@ -61,10 +62,10 @@ BORROWED = 'The lexicon "Lexicon" belongs to another project and is read only he
 TABLE = {
     'HM': ('H', None, None, True),
     'HW': ('H', _maintainer(HOME), None, True),
-    'HR': ('H', _maintainer(HOME), _reader(HOME), False),
+    'HR': ('H', _reader(HOME), _reader(HOME), False),
     'BM': ('B', BORROWED, BORROWED, True),
     'BW': ('B', BORROWED, BORROWED, True),
-    'BR': ('B', BORROWED, BORROWED, False),
+    'BR': ('B', _reader(BORROWER), _reader(BORROWER), False),
     'A': ('H', None, None, True),
 }
 

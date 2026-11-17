@@ -22,6 +22,7 @@ from typing import Any, Callable, Dict, List, Optional
 
 from plaid_client import uuid7
 from plaid_client.constraints import value_set_allows
+from plaid_client.provenance import project_role
 
 from . import docload, fingerprint as fp, garble, opkind, rules, work
 from .bidi import plain_quote
@@ -48,6 +49,12 @@ WEB_READ_REFUSAL = (
 READ_ONLY_REFUSAL = (
     'This conversation plans changes in "{home}" only. Tell the user what you would change in '
     '"{here}" and let them make it there.')
+
+# Nothing is staged for a Reader of the project: core refuses them every
+# write, so a plan for them is refused at its first change, not at approval
+# (2026-11-17 survey). The role names are the page's.
+READER_REFUSAL = ('Only a Writer or Maintainer of {project} can change anything in it, and the person you are acting '
+                  'for is a Reader. Nothing was planned.')
 
 # A turn holds a plan of changes or a job card, never both (the job card,
 # `job_card` below): whichever is staged first stands, and the other is
@@ -166,6 +173,7 @@ class BaseWorkspace:
         self.conversation_id: Optional[str] = None
         self._requester: Optional[Requester] = None
         self._requester_reviewed: Optional[bool] = None
+        self._requester_role: Optional[tuple] = None
         self._doc_list: Optional[List[dict]] = None
         self._docs: Dict[str, Any] = {}
         # The version of each document a corpus-wide change reached, as it
@@ -836,6 +844,29 @@ class BaseWorkspace:
         server would refuse."""
         return self.requester.is_admin()
 
+    def requester_role(self) -> Optional[str]:
+        """The role of the user the turn acts for in this project
+        ('maintainer', 'writer', 'reader'), from its role lists as the server
+        gives them, read once, or None (no role, no user, or a read that
+        failed). An app that loads the lists with its project answers from
+        them."""
+        if self.requester_id is None:
+            return None
+        if self._requester_role is None:
+            try:
+                role = project_role(self.client.projects.get(self.project.id), self.requester_id)
+            except Exception:  # noqa: BLE001 - unknown: left to the server
+                role = None
+            self._requester_role = (role,)
+        return self._requester_role[0]
+
+    def refuse_reader(self) -> None:
+        """Nothing is staged for a Reader of the project (:data:`READER_REFUSAL`),
+        unless they are an administrator. No user (a script, a test) is left
+        to the server."""
+        if self.requester_id is not None and self.requester_role() == 'reader' and not self.requester_is_admin():
+            raise ToolError(READER_REFUSAL.format(project=plain_quote(self.project.name or '')), kind='not-allowed')
+
     def requester_reviewed(self) -> bool:
         """Whether the work of the user the turn acts for is reviewed in this
         project (its ``plaid.review`` lists), asked of the server once. Their
@@ -862,6 +893,7 @@ class BaseWorkspace:
         refusals a plan owes itself live here rather than in the tools.
         """
         self.refuse_read_only()
+        self.refuse_reader()
         self.refuse_job_card()
         self.refuse_web_read()
         at = self.replacing(op)
@@ -898,6 +930,7 @@ class BaseWorkspace:
         approved a change the model never told them about.
         """
         self.refuse_read_only()
+        self.refuse_reader()
         self.refuse_job_card()
         self.reserve(len(ops))
         # Each op against the plan AS IT STANDS, never against the batch's own

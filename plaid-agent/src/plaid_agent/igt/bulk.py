@@ -269,7 +269,7 @@ def _kept_lexicons(ws: Workspace, rep) -> str:
             kept.append(f'{n} in "{v["name"]}"' + (' (another project\'s lexicon)' if v.get('borrowed') else ''))
     if not kept:
         return ''
-    return ('\nHeadwords left as they are, since only a maintainer of the project a lexicon belongs to can rename '
+    return ('\nHeadwords left as they are, since only a Maintainer of the project a lexicon belongs to can rename '
             'them: ' + ', '.join(kept) + '. Tell the user.')
 
 

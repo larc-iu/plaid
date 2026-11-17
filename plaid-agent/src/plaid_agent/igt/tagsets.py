@@ -417,12 +417,12 @@ def _require_maintainer(ws, lexicon: Optional[dict]) -> None:
     Unknown requesters (no id) are left to the server."""
     if lexicon is not None and lexicon.get('borrowed'):
         raise ToolError(f'The lexicon {qv(lexicon["name"])} belongs to another project, and its tagsets are changed '
-                        'there, by a maintainer of that project. Nothing was planned.', kind='not-allowed')
+                        'there, by a Maintainer of that project. Nothing was planned.', kind='not-allowed')
     uid = getattr(ws, 'requester_id', None)
     if uid is None or ws.requester_role() == 'maintainer' or ws.requester_is_admin():
         return
     where = f'the lexicon {qv(lexicon["name"])}' if lexicon is not None else 'the project'
-    raise ToolError(f'Only a maintainer of this project may change the tagsets of {where}, and the user is not one. '
+    raise ToolError(f'Only a Maintainer of this project may change the tagsets of {where}, and the user is not one. '
                     'Tell them who can.', kind='not-allowed')
 
 

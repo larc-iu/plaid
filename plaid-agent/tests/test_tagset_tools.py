@@ -36,7 +36,7 @@ def test_a_requester_who_maintains_nothing_is_refused_before_anything_is_planned
     ws.requester_id = 'someone@x'
     ws.requester_is_admin = lambda: False
     out = call_tool(ws, 'tagsets', {'action': 'edit', 'tagset': 'Leipzig', 'changes': {'mode': 'closed'}})
-    assert 'Only a maintainer of this project' in out and ws.ops == []
+    assert 'Only a Maintainer of this project' in out and ws.ops == []
 
 
 def test_edits_build_on_what_the_plan_already_holds():
@@ -320,7 +320,7 @@ def test_a_maintainer_who_is_no_admin_may_and_a_writer_may_not(proj):
         ws = Workspace(c, load_project(c, proj.project_id))
         ws.requester_id = email
         out = call_tool(ws, 'tagsets', {'action': 'edit', 'tagset': 'Leipzig', 'changes': {'add': ['DAT']}})
-        assert ('Only a maintainer' not in out) == may, (email, out)
+        assert ('Only a Maintainer' not in out) == may, (email, out)
         if may:
             page_write(c, proj.project_id, ws.ops)
             assert execute_plan(c, ws.ops, source='test', label='t', project=ws.project)['tagset changes'] == 1
